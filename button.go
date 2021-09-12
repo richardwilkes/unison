@@ -1,0 +1,207 @@
+// Copyright ©2021 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package unison
+
+import (
+	"time"
+
+	"github.com/richardwilkes/toolbox/xmath/geom32"
+)
+
+// Button represents a clickable button.
+type Button struct {
+	GroupPanel
+	ClickCallback            func()
+	Font                     FontProvider
+	EdgeColor                Ink
+	PressedColor             Ink
+	OnPressedColor           Ink
+	SelectionColor           Ink
+	OnSelectionColor         Ink
+	InactiveSelectionColor   Ink
+	OnInactiveSelectionColor Ink
+	EnabledColor             Ink
+	OnEnabledColor           Ink
+	DisabledColor            Ink
+	OnDisabledColor          Ink
+	Image                    *Image
+	Text                     string
+	Gap                      float32
+	CornerRadius             float32
+	HMargin                  float32
+	VMargin                  float32
+	ImageOnlyHMargin         float32
+	ImageOnlyVMargin         float32
+	ClickAnimationTime       time.Duration
+	HAlign                   Alignment
+	VAlign                   Alignment
+	Side                     Side
+	Sticky                   bool
+	HideBase                 bool
+	Pressed                  bool
+}
+
+// NewButton creates a new button.
+func NewButton() *Button {
+	b := &Button{
+		Gap:                3,
+		CornerRadius:       4,
+		HMargin:            8,
+		VMargin:            1,
+		ImageOnlyHMargin:   3,
+		ImageOnlyVMargin:   3,
+		ClickAnimationTime: 100 * time.Millisecond,
+		HAlign:             MiddleAlignment,
+		VAlign:             MiddleAlignment,
+		Side:               LeftSide,
+	}
+	b.Self = b
+	b.SetFocusable(true)
+	b.SetSizer(b.DefaultSizes)
+	b.DrawCallback = b.DefaultDraw
+	b.GainedFocusCallback = b.MarkForRedraw
+	b.LostFocusCallback = b.MarkForRedraw
+	b.MouseDownCallback = b.DefaultMouseDown
+	b.MouseDragCallback = b.DefaultMouseDrag
+	b.MouseUpCallback = b.DefaultMouseUp
+	b.KeyDownCallback = b.DefaultKeyDown
+	return b
+}
+
+// DefaultSizes provides the default sizing.
+func (b *Button) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+	text := b.Text
+	if b.Image == nil && text == "" {
+		text = "M"
+	}
+	pref = LabelSize(text, ChooseFont(b.Font, SystemFont), b.Image, b.Side, b.Gap)
+	if theBorder := b.Border(); theBorder != nil {
+		pref.AddInsets(theBorder.Insets())
+	}
+	pref.Width += b.HorizontalMargin() * 2
+	pref.Height += b.VerticalMargin() * 2
+	if !b.HideBase {
+		pref.Width += 2
+		pref.Height += 2
+	}
+	pref.GrowToInteger()
+	pref.ConstrainForHint(hint)
+	return pref, pref, MaxSize(pref)
+}
+
+// HorizontalMargin returns the horizontal margin that will be used.
+func (b *Button) HorizontalMargin() float32 {
+	if b.Text == "" && b.Image != nil {
+		return b.ImageOnlyHMargin
+	}
+	return b.HMargin
+}
+
+// VerticalMargin returns the vertical margin that will be used.
+func (b *Button) VerticalMargin() float32 {
+	if b.Text == "" && b.Image != nil {
+		return b.ImageOnlyVMargin
+	}
+	return b.VMargin
+}
+
+// DefaultDraw provides the default drawing.
+func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+	var fg, bg Ink
+	switch {
+	case b.Pressed:
+		bg = ChooseInk(b.PressedColor, ControlPressedColor)
+		fg = ChooseInk(b.OnPressedColor, OnControlPressedColor)
+	case b.Sticky && b.Selected() && b.Enabled():
+		bg = ChooseInk(b.SelectionColor, SelectionColor)
+		fg = ChooseInk(b.OnSelectionColor, OnSelectionColor)
+	case b.Sticky && b.Selected():
+		bg = ChooseInk(b.InactiveSelectionColor, InactiveSelectionColor)
+		fg = ChooseInk(b.OnInactiveSelectionColor, OnInactiveSelectionColor)
+	case b.Enabled():
+		bg = ChooseInk(b.EnabledColor, ControlColor)
+		fg = ChooseInk(b.OnEnabledColor, OnControlColor)
+	default:
+		bg = ChooseInk(b.DisabledColor, ControlDisabledColor)
+		fg = ChooseInk(b.OnDisabledColor, OnControlDisabledColor)
+	}
+	rect := b.ContentRect(false)
+	if !b.HideBase || b.Focused() {
+		thickness := float32(1)
+		if b.Focused() {
+			thickness++
+		}
+		DrawRoundedRectBase(canvas, rect, b.CornerRadius, thickness, bg,
+			ChooseInk(b.EdgeColor, ControlEdgeColor))
+		rect.InsetUniform(thickness + 0.5)
+	}
+	rect.X += b.HorizontalMargin()
+	rect.Y += b.VerticalMargin()
+	rect.Width -= b.HorizontalMargin() * 2
+	rect.Height -= b.VerticalMargin() * 2
+	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.Text, ChooseFont(b.Font, SystemFont), fg, b.Image,
+		b.Side, b.Gap, !b.Enabled())
+}
+
+// Click makes the button behave as if a user clicked on it.
+func (b *Button) Click() {
+	b.SetSelected(true)
+	pressed := b.Pressed
+	b.Pressed = true
+	b.MarkForRedraw()
+	b.FlushDrawing()
+	b.Pressed = pressed
+	time.Sleep(b.ClickAnimationTime)
+	b.MarkForRedraw()
+	if b.ClickCallback != nil {
+		b.ClickCallback()
+	}
+}
+
+// DefaultMouseDown provides the default mouse down handling.
+func (b *Button) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+	b.Pressed = true
+	b.MarkForRedraw()
+	return true
+}
+
+// DefaultMouseDrag provides the default mouse drag handling.
+func (b *Button) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+	rect := b.ContentRect(false)
+	pressed := rect.ContainsPoint(where)
+	if b.Pressed != pressed {
+		b.Pressed = pressed
+		b.MarkForRedraw()
+	}
+	return true
+}
+
+// DefaultMouseUp provides the default mouse up handling.
+func (b *Button) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+	b.Pressed = false
+	b.MarkForRedraw()
+	rect := b.ContentRect(false)
+	if rect.ContainsPoint(where) {
+		b.SetSelected(true)
+		if b.ClickCallback != nil {
+			b.ClickCallback()
+		}
+	}
+	return true
+}
+
+// DefaultKeyDown provides the default key down handling.
+func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+	if IsControlAction(keyCode, mod) {
+		b.Click()
+		return true
+	}
+	return false
+}

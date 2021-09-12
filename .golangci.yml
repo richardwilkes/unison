@@ -1,0 +1,104 @@
+run:
+  deadline: 5m
+  tests: true
+  modules-download-mode: readonly
+  skip-dirs:
+    - internal/ns
+    - internal/skia
+    - internal/w32
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+linters-settings:
+  depguard:
+    list-type: blacklist
+    include-go-root: true
+    packages:
+      - log
+      - github.com/satori/go.uuid
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+      - opinionated
+      - experimental
+    disabled-checks:
+      - dupImport
+      - sloppyReassign
+      - whyNoLint
+  gofmt:
+    simplify: true
+  golint:
+    min-confidence: 0.8
+  govet:
+    check-shadowing: true
+    settings:
+      printf:
+        funcs:
+          - Errorf
+          - Warnf
+          - Infof
+          - Debugf
+          - Fatalf
+          - StartRootSpanf
+          - StartSubSpanf
+          - EndWithMsgf
+          - Newf
+          - NewWithCausef
+  maligned:
+    suggest-new: true
+  misspell:
+    locale: US
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+  unused:
+    check-exported: false
+linters:
+  disable-all: true
+  enable:
+    - deadcode
+    - depguard
+    - errcheck
+    - goconst
+    - gocritic
+    - gofmt
+    - goimports
+    - golint
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - interfacer
+    - maligned
+    - misspell
+    - prealloc
+    - scopelint
+    - staticcheck
+    - structcheck
+    - unconvert
+    - unused
+    - varcheck
+issues:
+  max-per-linter: 20
+  max-same-issues: 3
+  new: false
+  exclude-use-default: false
+  exclude:
+    - should call os.Exit to set exit code
+    - "G301: Expect directory permissions to be 0750 or less"
+    - "G302: Expect file permissions to be 0600 or less"
+    - "G304: Potential file inclusion via variable"
+    - "G306: Expect WriteFile permissions to be 0600 or less"
+    - "G103: Use of unsafe calls should be audited"
+    - "G104: Errors unhandled"
+    - "G204: Subprocess launched with variable"

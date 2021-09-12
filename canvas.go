@@ -1,0 +1,333 @@
+// Copyright ©2021 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package unison
+
+import (
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom32/poly32"
+	"github.com/richardwilkes/unison/internal/skia"
+)
+
+// PointMode controls how DrawPoints() renders the points passed to it.
+type PointMode byte
+
+// Possible values for PointMode.
+const (
+	PointsPointMode PointMode = iota
+	LinesPointMode
+	PolygonPointMode
+)
+
+// ClipOp holds the type of clip operation to perform.
+type ClipOp byte
+
+// Possible values for ClipOp.
+const (
+	DifferenceClipOp ClipOp = iota
+	IntersectClipOp
+)
+
+// Canvas is a drawing surface.
+type Canvas struct {
+	canvas  skia.Canvas
+	surface *surface
+}
+
+// SaveCount returns the number of saved states, which equals the number of save calls minus the number of Restore()
+// calls plus 1. The SaveCount() of a new Canvas is 1.
+func (c *Canvas) SaveCount() int {
+	return skia.CanvasGetSaveCount(c.canvas)
+}
+
+// Save pushes the current transformation matrix and clip onto a stack and returns the current count. Multiple save
+// calls should be balanced by an equal number of calls to Restore().
+func (c *Canvas) Save() int {
+	return skia.CanvasSave(c.canvas)
+}
+
+// SaveLayer pushes the current transformation matrix and clip onto a stack and returns the current count. The provided
+// paint will be applied to all subsequent drawing until the corresponding call to Restore(). Multiple save calls should
+// be balanced by an equal number of calls to Restore().
+func (c *Canvas) SaveLayer(paint *Paint) int {
+	return skia.CanvasSaveLayer(c.canvas, paint.paint)
+}
+
+// SaveWithOpacity pushes the current transformation matrix and clip onto a stack and returns the current count. The
+// opacity (a value between 0 and 1, where 0 is fully transparent and 1 is fully opaque) will be applied to all
+// subsequent drawing until the corresponding call to Restore(). Multiple save calls should be balanced by an equal
+// number of calls to Restore().
+func (c *Canvas) SaveWithOpacity(opacity float32) int {
+	return skia.CanvasSaveLayerAlpha(c.canvas, byte(clamp0To1AndScale255(opacity)))
+}
+
+// Restore removes changes to the transformation matrix and clip since the last call to Save() or SaveWithOpacity().
+// Does nothing if the stack is empty.
+func (c *Canvas) Restore() {
+	skia.CanvasRestore(c.canvas)
+}
+
+// RestoreToCount restores the transformation matrix and clip to the state they where in when the specified count was
+// returned from a call to Save() or SaveWithOpacity(). Does nothing if count is greater than the current state stack
+// count. Restores the state to the initial values if count is <= 1.
+func (c *Canvas) RestoreToCount(count int) {
+	skia.CanvasRestoreToCount(c.canvas, count)
+}
+
+// Translate the coordinate system.
+func (c *Canvas) Translate(dx, dy float32) {
+	skia.CanvasTranslate(c.canvas, dx, dy)
+}
+
+// TranslatePt the coordinate system.
+func (c *Canvas) TranslatePt(offset geom32.Point) {
+	skia.CanvasTranslate(c.canvas, offset.X, offset.Y)
+}
+
+// Scale the coordinate system on both the horizontal and vertical axis.
+func (c *Canvas) Scale(scale float32) {
+	skia.CanvasScale(c.canvas, scale, scale)
+}
+
+// ScaleIndependently scales the coordinate system independently on each axis.
+func (c *Canvas) ScaleIndependently(x, y float32) {
+	skia.CanvasScale(c.canvas, x, y)
+}
+
+// Rotate the coordinate system.
+func (c *Canvas) Rotate(radians float32) {
+	skia.CanvasRotateRadians(c.canvas, radians)
+}
+
+// RotateDegrees the coordinate system.
+func (c *Canvas) RotateDegrees(degrees float32) {
+	skia.CanvasRotateRadians(c.canvas, degrees*xmath.DegreesToRadians)
+}
+
+// Skew the coordinate system. A positive value of sx skews the drawing right as y-axis values increase; a positive
+// value of sy skews the drawing down as x-axis values increase.
+func (c *Canvas) Skew(sx, sy float32) {
+	skia.CanvasSkew(c.canvas, sx, sy)
+}
+
+// SkewPt the coordinate system. A positive value of sx skews the drawing right as y-axis values increase; a positive
+// value of sy skews the drawing down as x-axis values increase.
+func (c *Canvas) SkewPt(skew geom32.Point) {
+	skia.CanvasSkew(c.canvas, skew.X, skew.Y)
+}
+
+// Concat the matrix.
+func (c *Canvas) Concat(matrix *geom32.Matrix2D) {
+	skia.CanvasConcat(c.canvas, skia.Matrix2DtoMatrix(matrix))
+}
+
+// ResetMatrix sets the current transform matrix to the identity matrix.
+func (c *Canvas) ResetMatrix() {
+	skia.CanvasResetMatrix(c.canvas)
+}
+
+// Matrix returns the current transform matrix.
+func (c *Canvas) Matrix() *geom32.Matrix2D {
+	return skia.CanvasGetTotalMatrix(c.canvas).ToMatrix2D()
+}
+
+// SetMatrix replaces the current matrix with the given matrix.
+func (c *Canvas) SetMatrix(matrix *geom32.Matrix2D) {
+	skia.CanvasSetMatrix(c.canvas, skia.Matrix2DtoMatrix(matrix))
+}
+
+// QuickRejectPath returns true if the path, after transformations by the current matrix, can be quickly determined to
+// be outside of the current clip. May return false even though the path is outside of the clip.
+func (c *Canvas) QuickRejectPath(path *Path) bool {
+	return skia.CanvasQuickRejectPath(c.canvas, path.path)
+}
+
+// QuickRejectRect returns true if the rect, after transformations by the current matrix, can be quickly determined to
+// be outside of the current clip. May return false even though the rect is outside of the clip.
+func (c *Canvas) QuickRejectRect(rect geom32.Rect) bool {
+	return skia.CanvasQuickRejectRect(c.canvas, skia.RectToSkRect(&rect))
+}
+
+// Clear fills the clip with the color.
+func (c *Canvas) Clear(color Color) {
+	skia.CanvasClear(c.canvas, skia.Color(color))
+}
+
+// DrawPaint fills the clip with Paint. Any MaskFilter or PathEffect in the Paint is ignored.
+func (c *Canvas) DrawPaint(paint *Paint) {
+	skia.CanvasDrawPaint(c.canvas, paint.paint)
+}
+
+// DrawRect draws the rectangle with Paint.
+func (c *Canvas) DrawRect(rect geom32.Rect, paint *Paint) {
+	skia.CanvasDrawRect(c.canvas, skia.RectToSkRect(&rect), paint.paint)
+}
+
+// DrawRoundedRect draws a rounded rectangle with Paint.
+func (c *Canvas) DrawRoundedRect(rect geom32.Rect, radius float32, paint *Paint) {
+	skia.CanvasDrawRoundRect(c.canvas, skia.RectToSkRect(&rect), radius, radius, paint.paint)
+}
+
+// DrawRoundedRectXY draws a rounded rectangle with Paint.
+func (c *Canvas) DrawRoundedRectXY(rect geom32.Rect, radius geom32.Point, paint *Paint) {
+	skia.CanvasDrawRoundRect(c.canvas, skia.RectToSkRect(&rect), radius.X, radius.Y, paint.paint)
+}
+
+// DrawCircle draws the circle with Paint.
+func (c *Canvas) DrawCircle(center geom32.Point, radius float32, paint *Paint) {
+	skia.CanvasDrawCircle(c.canvas, center.X, center.Y, radius, paint.paint)
+}
+
+// DrawOval draws the oval with Paint.
+func (c *Canvas) DrawOval(rect geom32.Rect, paint *Paint) {
+	skia.CanvasDrawOval(c.canvas, skia.RectToSkRect(&rect), paint.paint)
+}
+
+// DrawPath draws the path with Paint.
+func (c *Canvas) DrawPath(path *Path, paint *Paint) {
+	skia.CanvasDrawPath(c.canvas, path.path, paint.paint)
+}
+
+// DrawImage draws the image at the specified location using its logical size. paint may be nil.
+func (c *Canvas) DrawImage(img *Image, pt geom32.Point, sampling *SamplingOptions, paint *Paint) {
+	srcRect := geom32.Rect{Size: img.Size()}
+	dstRect := geom32.Rect{Point: pt, Size: img.LogicalSize()}
+	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkRect(&srcRect),
+		skia.RectToSkRect(&dstRect), sampling.skSamplingOptions(), paint.paintOrNil())
+}
+
+// DrawImageInRect draws the image into the area specified by the rect, scaling if necessary. paint may be nil.
+func (c *Canvas) DrawImageInRect(img *Image, rect geom32.Rect, sampling *SamplingOptions, paint *Paint) {
+	srcRect := geom32.Rect{Size: img.Size()}
+	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkRect(&srcRect),
+		skia.RectToSkRect(&rect), sampling.skSamplingOptions(), paint.paintOrNil())
+}
+
+// DrawImageRectInRect draws a portion of the image into the area specified, scaling if necessary. srcRect should be in
+// raw pixel coordinates, not logical coordinates. dstRect should be in logical coordinates. paint may be nil.
+func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom32.Rect, sampling *SamplingOptions, paint *Paint) {
+	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkRect(&srcRect),
+		skia.RectToSkRect(&dstRect), sampling.skSamplingOptions(), paint.paintOrNil())
+}
+
+// DrawImageNine draws an image stretched proportionally to fit into dstRect. 'center' divides the image into nine
+// sections: four sides, four corners, and the center. Corners are unmodified or scaled down proportionately if their
+// sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. paint may be nil.
+func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect geom32.Rect, filter FilterMode, paint *Paint) {
+	skia.CanvasDrawImageNine(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkIRect(&centerRect),
+		skia.RectToSkRect(&dstRect), skia.FilterMode(filter), paint.paintOrNil())
+}
+
+// DrawColor fills the clip with the color.
+func (c *Canvas) DrawColor(color Color, mode BlendMode) {
+	skia.CanvasDrawColor(c.canvas, skia.Color(color), skia.BlendMode(mode))
+}
+
+// DrawPoint draws a point.
+func (c *Canvas) DrawPoint(x, y float32, paint *Paint) {
+	skia.CanvasDrawPoint(c.canvas, x, y, paint.paint)
+}
+
+// DrawPointPt draws a point.
+func (c *Canvas) DrawPointPt(pt geom32.Point, paint *Paint) {
+	skia.CanvasDrawPoint(c.canvas, pt.X, pt.Y, paint.paint)
+}
+
+// DrawPoints draws the points using the given mode.
+func (c *Canvas) DrawPoints(pts []geom32.Point, paint *Paint, mode PointMode) {
+	skia.CanvasDrawPoints(c.canvas, skia.PointMode(mode), pts, paint.paint)
+}
+
+// DrawLine draws a line.
+func (c *Canvas) DrawLine(sx, sy, ex, ey float32, paint *Paint) {
+	skia.CanvasDrawLine(c.canvas, sx, sy, ex, ey, paint.paint)
+}
+
+// DrawLinePt draws a line.
+func (c *Canvas) DrawLinePt(start, end geom32.Point, paint *Paint) {
+	skia.CanvasDrawLine(c.canvas, start.X, start.Y, end.X, end.Y, paint.paint)
+}
+
+// DrawPolygon draws a polygon.
+func (c *Canvas) DrawPolygon(poly poly32.Polygon, mode FillType, paint *Paint) {
+	path := NewPath()
+	path.SetFillType(mode)
+	path.Polygon(poly)
+	c.DrawPath(path, paint)
+}
+
+// DrawArc draws an arc. startAngle and sweepAngle are in degrees. If useCenter is true, this will draw a wedge that
+// includes lines from the oval center to the arc end points. If useCenter is false, then just and arc between the end
+// points will be drawn.
+func (c *Canvas) DrawArc(oval geom32.Rect, startAngle, sweepAngle float32, paint *Paint, useCenter bool) {
+	skia.CanvasDrawArc(c.canvas, skia.RectToSkRect(&oval), startAngle, sweepAngle, useCenter, paint.paint)
+}
+
+// DrawSimpleText draws text. This uses the default character-to-glyph mapping from the font. It does not perform
+// typeface fallback for characters not found in the typeface. It does not perform kerning or other complex shaping.
+// Glyphs are positioned based on their default advances. y is the baseline of the first line of text.
+func (c *Canvas) DrawSimpleText(str string, x, y float32, font *Font, paint *Paint) {
+	if str != "" {
+		skia.CanvasDrawSimpleText(c.canvas, str, x, y, font.font, paint.paint)
+	}
+}
+
+// DrawSimpleTextPt draws text. This uses the default character-to-glyph mapping from the font. It does not perform
+// typeface fallback for characters not found in the typeface. It does not perform kerning or other complex shaping.
+// Glyphs are positioned based on their default advances. pt.Y is the baseline of the first line of text.
+func (c *Canvas) DrawSimpleTextPt(str string, pt geom32.Point, font *Font, paint *Paint) {
+	if str != "" {
+		skia.CanvasDrawSimpleText(c.canvas, str, pt.X, pt.Y, font.font, paint.paint)
+	}
+}
+
+// DrawText draws text. y is the baseline of the first line of text.
+func (c *Canvas) DrawText(text *Text, x, y float32, paint *Paint) {
+	if text != nil {
+		skia.CanvasDrawTextBlob(c.canvas, text.text, x, y, paint.paint)
+	}
+}
+
+// DrawTextPt draws text. pt.Y is the baseline of the first line of text.
+func (c *Canvas) DrawTextPt(text *Text, pt geom32.Point, paint *Paint) {
+	if text != nil {
+		skia.CanvasDrawTextBlob(c.canvas, text.text, pt.X, pt.Y, paint.paint)
+	}
+}
+
+// ClipRect replaces the clip with the intersection of difference of the current clip and rect.
+func (c *Canvas) ClipRect(rect geom32.Rect, op ClipOp, antialias bool) {
+	skia.CanavasClipRectWithOperation(c.canvas, skia.RectToSkRect(&rect), skia.ClipOp(op), antialias)
+}
+
+// ClipPath replaces the clip with the intersection of difference of the current clip and path.
+func (c *Canvas) ClipPath(path *Path, op ClipOp, antialias bool) {
+	skia.CanavasClipPathWithOperation(c.canvas, path.path, skia.ClipOp(op), antialias)
+}
+
+// ClipBounds returns the clip bounds.
+func (c *Canvas) ClipBounds() geom32.Rect {
+	return skia.CanvasGetLocalClipBounds(c.canvas).ToRect()
+}
+
+// IsClipEmpty returns true if the clip is empty, i.e. nothing will draw.
+func (c *Canvas) IsClipEmpty() bool {
+	return skia.CanvasIsClipEmpty(c.canvas)
+}
+
+// IsClipRect returns true if the clip is a rectangle and not empty.
+func (c *Canvas) IsClipRect() bool {
+	return skia.CanvasIsClipRect(c.canvas)
+}
+
+// Flush any drawing.
+func (c *Canvas) Flush() {
+	skia.CanvasFlush(c.canvas)
+}

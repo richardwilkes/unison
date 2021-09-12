@@ -1,0 +1,1796 @@
+// Copyright ©2021 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package skia
+
+import (
+	"crypto/sha256"
+	_ "embed" // Needed for dll embedding
+	"encoding/base64"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"syscall"
+	"unsafe"
+
+	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/unison"
+	"golang.org/x/sys/windows"
+)
+
+var (
+	//go:embed skia_windows.dll
+	dllData                                   []byte
+	grBackendRenderTargetNewGLProc            *syscall.Proc
+	grBackendRenderTargetDeleteProc           *syscall.Proc
+	grContextMakeGLProc                       *syscall.Proc
+	grContextAbandonContextProc               *syscall.Proc
+	grGLInterfaceCreateNativeInterfaceProc    *syscall.Proc
+	skCanvasGetSaveCountProc                  *syscall.Proc
+	skCanvasSaveProc                          *syscall.Proc
+	skCanvasSaveLayerProc                     *syscall.Proc
+	skCanvasSaveLayerAlphaProc                *syscall.Proc
+	skCanvasRestoreProc                       *syscall.Proc
+	skCanvasRestoreToCountProc                *syscall.Proc
+	skCanvasTranslateProc                     *syscall.Proc
+	skCanvasScaleProc                         *syscall.Proc
+	skCanvasRotateRadiansProc                 *syscall.Proc
+	skCanvasSkewProc                          *syscall.Proc
+	skCanvasConcatProc                        *syscall.Proc
+	skCanvasResetMatrixProc                   *syscall.Proc
+	skCanvasGetTotalMatrixProc                *syscall.Proc
+	skCanvasSetMatrixProc                     *syscall.Proc
+	skCanvasQuickRejectPathProc               *syscall.Proc
+	skCanvasQuickRejectRectProc               *syscall.Proc
+	skCanvasClearProc                         *syscall.Proc
+	skCanvasDrawPaintProc                     *syscall.Proc
+	skCanvasDrawRectProc                      *syscall.Proc
+	skCanvasDrawRoundRectProc                 *syscall.Proc
+	skCanvasDrawCircleProc                    *syscall.Proc
+	skCanvasDrawOvalProc                      *syscall.Proc
+	skCanvasDrawPathProc                      *syscall.Proc
+	skCanvasDrawImageRectProc                 *syscall.Proc
+	skCanvasDrawImageNineProc                 *syscall.Proc
+	skCanvasDrawColorProc                     *syscall.Proc
+	skCanvasDrawPointProc                     *syscall.Proc
+	skCanvasDrawPointsProc                    *syscall.Proc
+	skCanvasDrawLineProc                      *syscall.Proc
+	skCanvasDrawArcProc                       *syscall.Proc
+	skCanvasDrawSimpleTextProc                *syscall.Proc
+	skCanvasDrawTextBlobProc                  *syscall.Proc
+	skCanavasClipRectWithOperationProc        *syscall.Proc
+	skCanavasClipPathWithOperationProc        *syscall.Proc
+	skCanvasGetLocalClipBoundsProc            *syscall.Proc
+	skCanvasIsClipEmptyProc                   *syscall.Proc
+	skCanvasIsClipRectProc                    *syscall.Proc
+	skCanvasFlushProc                         *syscall.Proc
+	skColorFilterNewModeProc                  *syscall.Proc
+	skColorFilterNewLightingProc              *syscall.Proc
+	skColorFilterNewComposeProc               *syscall.Proc
+	skColorFilterNewColorMatrixProc           *syscall.Proc
+	skColorFilterNewLumaColorProc             *syscall.Proc
+	skColorFilterNewHighContrastProc          *syscall.Proc
+	skColorFilterNewTableARGBProc             *syscall.Proc
+	skColorFilterUnrefProc                    *syscall.Proc
+	skColorSpaceNewSRGBProc                   *syscall.Proc
+	skDataNewWithCopyProc                     *syscall.Proc
+	skDataGetSizeProc                         *syscall.Proc
+	skDataGetDataProc                         *syscall.Proc
+	skDataUnrefProc                           *syscall.Proc
+	skFontNewWithValuesProc                   *syscall.Proc
+	skFontSetSubPixelProc                     *syscall.Proc
+	skFontSetForceAutoHintingProc             *syscall.Proc
+	skFontSetHintingProc                      *syscall.Proc
+	skFontGetMetricsProc                      *syscall.Proc
+	skFontMeasureTextProc                     *syscall.Proc
+	skFontTextToGlyphsProc                    *syscall.Proc
+	skFontGetXPosProc                         *syscall.Proc
+	skFontDeleteProc                          *syscall.Proc
+	skFontMgrRefDefaultProc                   *syscall.Proc
+	skFontMgrCreateFromDataProc               *syscall.Proc
+	skFontMgrMatchFamilyProc                  *syscall.Proc
+	skFontMgrMatchFamilyStyleProc             *syscall.Proc
+	skFontMgrCountFamiliesProc                *syscall.Proc
+	skFontMgrGetFamilyNameProc                *syscall.Proc
+	skFontStyleNewProc                        *syscall.Proc
+	skFontStyleGetWeightProc                  *syscall.Proc
+	skFontStyleGetWidthProc                   *syscall.Proc
+	skFontStyleGetSlantProc                   *syscall.Proc
+	skFontStyleDeleteProc                     *syscall.Proc
+	skFontStyleSetGetCountProc                *syscall.Proc
+	skFontStyleSetGetStyleProc                *syscall.Proc
+	skFontStyleSetCreateTypeFaceProc          *syscall.Proc
+	skFontStyleSetMatchStyleProc              *syscall.Proc
+	skFontStyleSetUnrefProc                   *syscall.Proc
+	skImageNewFromEncodedProc                 *syscall.Proc
+	skImageNewRasterDataProc                  *syscall.Proc
+	skImageGetWidthProc                       *syscall.Proc
+	skImageGetHeightProc                      *syscall.Proc
+	skImageGetColorSpaceProc                  *syscall.Proc
+	skImageGetColorTypeProc                   *syscall.Proc
+	skImageGetAlphaTypeProc                   *syscall.Proc
+	skImageReadPixelsProc                     *syscall.Proc
+	skImageEncodeSpecificProc                 *syscall.Proc
+	skImageMakeShaderProc                     *syscall.Proc
+	skImageMakeTextureImageProc               *syscall.Proc
+	skImageUnrefProc                          *syscall.Proc
+	skImageFilterNewArithmeticProc            *syscall.Proc
+	skImageFilterNewBlurProc                  *syscall.Proc
+	skImageFilterNewColorFilterProc           *syscall.Proc
+	skImageFilterNewComposeProc               *syscall.Proc
+	skImageFilterNewDisplacementMapEffectProc *syscall.Proc
+	skImageFilterNewDropShadowProc            *syscall.Proc
+	skImageFilterNewDropShadowOnlyProc        *syscall.Proc
+	skImageFilterNewImageSourceProc           *syscall.Proc
+	skImageFilterNewImageSourceDefaultProc    *syscall.Proc
+	skImageFilterNewMagnifierProc             *syscall.Proc
+	skImageFilterNewMatrixConvolutionProc     *syscall.Proc
+	skImageFilterNewMatrixTransformProc       *syscall.Proc
+	skImageFilterNewMergeProc                 *syscall.Proc
+	skImageFilterNewOffsetProc                *syscall.Proc
+	skImageFilterNewTileProc                  *syscall.Proc
+	skImageFilterNewDilateProc                *syscall.Proc
+	skImageFilterNewErodeProc                 *syscall.Proc
+	skImageFilterNewDistantLitDiffuseProc     *syscall.Proc
+	skImageFilterNewPointLitDiffuseProc       *syscall.Proc
+	skImageFilterNewSpotLitDiffuseProc        *syscall.Proc
+	skImageFilterNewDistantLitSpecularProc    *syscall.Proc
+	skImageFilterNewPointLitSpecularProc      *syscall.Proc
+	skImageFilterNewSpotLitSpecularProc       *syscall.Proc
+	skImageFilterUnrefProc                    *syscall.Proc
+	skMaskFilterNewBlurWithFlagsProc          *syscall.Proc
+	skMaskFilterNewTableProc                  *syscall.Proc
+	skMaskFilterNewGammaProc                  *syscall.Proc
+	skMaskFilterNewClipProc                   *syscall.Proc
+	skMaskFilterNewShaderProc                 *syscall.Proc
+	skMaskFilterUnrefProc                     *syscall.Proc
+	skOpBuilderNewProc                        *syscall.Proc
+	skOpBuilderAddProc                        *syscall.Proc
+	skOpBuilderResolveProc                    *syscall.Proc
+	skOpBuilderDestroyProc                    *syscall.Proc
+	skPaintNewProc                            *syscall.Proc
+	skPaintDeleteProc                         *syscall.Proc
+	skPaintCloneProc                          *syscall.Proc
+	skPaintResetProc                          *syscall.Proc
+	skPaintIsAntialiasProc                    *syscall.Proc
+	skPaintSetAntialiasProc                   *syscall.Proc
+	skPaintIsDitherProc                       *syscall.Proc
+	skPaintSetDitherProc                      *syscall.Proc
+	skPaintGetColorProc                       *syscall.Proc
+	skPaintSetColorProc                       *syscall.Proc
+	skPaintGetStyleProc                       *syscall.Proc
+	skPaintSetStyleProc                       *syscall.Proc
+	skPaintGetStrokeWidthProc                 *syscall.Proc
+	skPaintSetStrokeWidthProc                 *syscall.Proc
+	skPaintGetStrokeMiterProc                 *syscall.Proc
+	skPaintSetStrokeMiterProc                 *syscall.Proc
+	skPaintGetStrokeCapProc                   *syscall.Proc
+	skPaintSetStrokeCapProc                   *syscall.Proc
+	skPaintGetStrokeJoinProc                  *syscall.Proc
+	skPaintSetStrokeJoinProc                  *syscall.Proc
+	skPaintGetBlendModeProc                   *syscall.Proc
+	skPaintSetBlendModeProc                   *syscall.Proc
+	skPaintGetShaderProc                      *syscall.Proc
+	skPaintSetShaderProc                      *syscall.Proc
+	skPaintGetColorFilterProc                 *syscall.Proc
+	skPaintSetColorFilterProc                 *syscall.Proc
+	skPaintGetMaskFilterProc                  *syscall.Proc
+	skPaintSetMaskFilterProc                  *syscall.Proc
+	skPaintGetImageFilterProc                 *syscall.Proc
+	skPaintSetImageFilterProc                 *syscall.Proc
+	skPaintGetPathEffectProc                  *syscall.Proc
+	skPaintSetPathEffectProc                  *syscall.Proc
+	skPaintGetFillPathProc                    *syscall.Proc
+	skPathNewProc                             *syscall.Proc
+	skPathParseSVGStringProc                  *syscall.Proc
+	skPathToSVGStringProc                     *syscall.Proc
+	skPathGetFillTypeProc                     *syscall.Proc
+	skPathSetFillTypeProc                     *syscall.Proc
+	skPathArcToProc                           *syscall.Proc
+	skPathArcToWithPointsProc                 *syscall.Proc
+	skPathArcToWithOvalProc                   *syscall.Proc
+	skPathRArcToProc                          *syscall.Proc
+	skPathGetBoundsProc                       *syscall.Proc
+	skPathComputeTightBoundsProc              *syscall.Proc
+	skPathAddCircleProc                       *syscall.Proc
+	skPathCloneProc                           *syscall.Proc
+	skPathCloseProc                           *syscall.Proc
+	skPathConicToProc                         *syscall.Proc
+	skPathRConicToProc                        *syscall.Proc
+	skPathCubicToProc                         *syscall.Proc
+	skPathRCubicToProc                        *syscall.Proc
+	skPathLineToProc                          *syscall.Proc
+	skPathRLineToProc                         *syscall.Proc
+	skPathMoveToProc                          *syscall.Proc
+	skPathRMoveToProc                         *syscall.Proc
+	skPathAddOvalProc                         *syscall.Proc
+	skPathAddPathProc                         *syscall.Proc
+	skPathAddPathReverseProc                  *syscall.Proc
+	skPathAddPathMatrixProc                   *syscall.Proc
+	skPathAddPathOffsetProc                   *syscall.Proc
+	skPathAddPolyProc                         *syscall.Proc
+	skPathQuadToProc                          *syscall.Proc
+	skPathAddRectProc                         *syscall.Proc
+	skPathAddRoundedRectProc                  *syscall.Proc
+	skPathTransformProc                       *syscall.Proc
+	skPathTransformToDestProc                 *syscall.Proc
+	skPathResetProc                           *syscall.Proc
+	skPathRewindProc                          *syscall.Proc
+	skPathContainsProc                        *syscall.Proc
+	skPathGetLastPointProc                    *syscall.Proc
+	skPathDeleteProc                          *syscall.Proc
+	skPathEffectCreateComposeProc             *syscall.Proc
+	skPathEffectCreateSumProc                 *syscall.Proc
+	skPathEffectCreateDiscreteProc            *syscall.Proc
+	skPathEffectCreateCornerProc              *syscall.Proc
+	skPathEffectCreate1dPathProc              *syscall.Proc
+	skPathEffectCreate2dLineProc              *syscall.Proc
+	skPathEffectCreate2dPathProc              *syscall.Proc
+	skPathEffectCreateDashProc                *syscall.Proc
+	skPathEffectCreateTrimProc                *syscall.Proc
+	skPathEffectUnrefProc                     *syscall.Proc
+	skShaderNewColorProc                      *syscall.Proc
+	skShaderNewBlendProc                      *syscall.Proc
+	skShaderNewLinearGradientProc             *syscall.Proc
+	skShaderNewRadialGradientProc             *syscall.Proc
+	skShaderNewSweepGradientProc              *syscall.Proc
+	skShaderNewTwoPointConicalGradientProc    *syscall.Proc
+	skShaderNewPerlinNoiseFractalNoiseProc    *syscall.Proc
+	skShaderNewPerlinNoiseTurbulenceProc      *syscall.Proc
+	skShaderWithLocalMatrixProc               *syscall.Proc
+	skShaderWithColorFilterProc               *syscall.Proc
+	skShaderUnrefProc                         *syscall.Proc
+	skStringNewEmptyProc                      *syscall.Proc
+	skStringGetCStrProc                       *syscall.Proc
+	skStringGetSizeProc                       *syscall.Proc
+	skStringDeleteProc                        *syscall.Proc
+	skSurfaceNewBackendRenderTargetProc       *syscall.Proc
+	skSurfaceGetCanvasProc                    *syscall.Proc
+	skSurfaceUnrefProc                        *syscall.Proc
+	skSurfacePropsNewProc                     *syscall.Proc
+	skTextBlobMakeFromTextProc                *syscall.Proc
+	skTextBlobGetBoundsProc                   *syscall.Proc
+	skTextBlobGetInterceptsProc               *syscall.Proc
+	skTextBlobUnrefProc                       *syscall.Proc
+	skTextBlobBuilderNewProc                  *syscall.Proc
+	skTextBlobBuilderMakeProc                 *syscall.Proc
+	skTextBlobBuilderAllocRunProc             *syscall.Proc
+	skTextBlobBuilderAllocRunPosProc          *syscall.Proc
+	skTextBlobBuilderAllocRunPosHProc         *syscall.Proc
+	skTextBlobBuilderDeleteProc               *syscall.Proc
+	skTypeFaceGetFontStyleProc                *syscall.Proc
+	skTypeFaceIsFixedPitchProc                *syscall.Proc
+	skTypeFaceGetFamilyNameProc               *syscall.Proc
+	skTypeFaceGetUnitsPerEmProc               *syscall.Proc
+	skTypeFaceUnrefProc                       *syscall.Proc
+)
+
+func init() {
+	dir, err := os.UserCacheDir()
+	jot.FatalIfErr(err)
+	dir = filepath.Join(dir, "unison", "dll_cache")
+	jot.FatalIfErr(os.MkdirAll(dir, 0755))
+	windows.SetDllDirectory(dir)
+	sha := sha256.Sum256(dllData)
+	dllName := fmt.Sprintf("skia-%s.dll", base64.RawURLEncoding.EncodeToString(sha[:]))
+	filePath := filepath.Join(dir, dllName)
+	if !fs.FileExists(filePath) {
+		jot.FatalIfErr(os.WriteFile(filePath, dllData, 0644))
+	}
+	skia := syscall.MustLoadDLL(dllName)
+	grBackendRenderTargetNewGLProc = skia.MustFindProc("gr_backendrendertarget_new_gl")
+	grBackendRenderTargetDeleteProc = skia.MustFindProc("gr_backendrendertarget_delete")
+	grContextMakeGLProc = skia.MustFindProc("gr_direct_context_make_gl")
+	grContextAbandonContextProc = skia.MustFindProc("gr_direct_context_abandon_context")
+	grGLInterfaceCreateNativeInterfaceProc = skia.MustFindProc("gr_glinterface_create_native_interface")
+	skCanvasGetSaveCountProc = skia.MustFindProc("sk_canvas_get_save_count")
+	skCanvasSaveProc = skia.MustFindProc("sk_canvas_save")
+	skCanvasSaveLayerProc = skia.MustFindProc("sk_canvas_save_layer")
+	skCanvasSaveLayerAlphaProc = skia.MustFindProc("sk_canvas_save_layer_alpha")
+	skCanvasRestoreProc = skia.MustFindProc("sk_canvas_restore")
+	skCanvasRestoreToCountProc = skia.MustFindProc("sk_canvas_restore_to_count")
+	skCanvasTranslateProc = skia.MustFindProc("sk_canvas_translate")
+	skCanvasScaleProc = skia.MustFindProc("sk_canvas_scale")
+	skCanvasRotateRadiansProc = skia.MustFindProc("sk_canvas_rotate_radians")
+	skCanvasSkewProc = skia.MustFindProc("sk_canvas_skew")
+	skCanvasConcatProc = skia.MustFindProc("sk_canvas_concat")
+	skCanvasResetMatrixProc = skia.MustFindProc("sk_canvas_reset_matrix")
+	skCanvasGetTotalMatrixProc = skia.MustFindProc("sk_canvas_get_total_matrix")
+	skCanvasSetMatrixProc = skia.MustFindProc("sk_canvas_set_matrix")
+	skCanvasQuickRejectPathProc = skia.MustFindProc("sk_canvas_quick_reject_path")
+	skCanvasQuickRejectRectProc = skia.MustFindProc("sk_canvas_quick_reject_rect")
+	skCanvasClearProc = skia.MustFindProc("sk_canvas_clear")
+	skCanvasDrawPaintProc = skia.MustFindProc("sk_canvas_draw_paint")
+	skCanvasDrawRectProc = skia.MustFindProc("sk_canvas_draw_rect")
+	skCanvasDrawRoundRectProc = skia.MustFindProc("sk_canvas_draw_round_rect")
+	skCanvasDrawCircleProc = skia.MustFindProc("sk_canvas_draw_circle")
+	skCanvasDrawOvalProc = skia.MustFindProc("sk_canvas_draw_oval")
+	skCanvasDrawPathProc = skia.MustFindProc("sk_canvas_draw_path")
+	skCanvasDrawImageRectProc = skia.MustFindProc("sk_canvas_draw_image_rect")
+	skCanvasDrawImageNineProc = skia.MustFindProc("sk_canvas_draw_image_nine")
+	skCanvasDrawColorProc = skia.MustFindProc("sk_canvas_draw_color")
+	skCanvasDrawPointProc = skia.MustFindProc("sk_canvas_draw_point")
+	skCanvasDrawPointsProc = skia.MustFindProc("sk_canvas_draw_points")
+	skCanvasDrawLineProc = skia.MustFindProc("sk_canvas_draw_line")
+	skCanvasDrawArcProc = skia.MustFindProc("sk_canvas_draw_arc")
+	skCanvasDrawSimpleTextProc = skia.MustFindProc("sk_canvas_draw_simple_text")
+	skCanvasDrawTextBlobProc = skia.MustFindProc("sk_canvas_draw_text_blob")
+	skCanavasClipRectWithOperationProc = skia.MustFindProc("sk_canvas_clip_rect_with_operation")
+	skCanavasClipPathWithOperationProc = skia.MustFindProc("sk_canvas_clip_path_with_operation")
+	skCanvasGetLocalClipBoundsProc = skia.MustFindProc("sk_canvas_get_local_clip_bounds")
+	skCanvasIsClipEmptyProc = skia.MustFindProc("sk_canvas_is_clip_empty")
+	skCanvasIsClipRectProc = skia.MustFindProc("sk_canvas_is_clip_rect")
+	skCanvasFlushProc = skia.MustFindProc("sk_canvas_flush")
+	skColorFilterNewModeProc = skia.MustFindProc("sk_colorfilter_new_mode")
+	skColorFilterNewLightingProc = skia.MustFindProc("sk_colorfilter_new_lighting")
+	skColorFilterNewComposeProc = skia.MustFindProc("sk_colorfilter_new_compose")
+	skColorFilterNewColorMatrixProc = skia.MustFindProc("sk_colorfilter_new_color_matrix")
+	skColorFilterNewLumaColorProc = skia.MustFindProc("sk_colorfilter_new_luma_color")
+	skColorFilterNewHighContrastProc = skia.MustFindProc("sk_colorfilter_new_high_contrast")
+	skColorFilterNewTableARGBProc = skia.MustFindProc("sk_colorfilter_new_table_argb")
+	skColorFilterUnrefProc = skia.MustFindProc("sk_colorfilter_unref")
+	skColorSpaceNewSRGBProc = skia.MustFindProc("sk_colorspace_new_srgb")
+	skDataNewWithCopyProc = skia.MustFindProc("sk_data_new_with_copy")
+	skDataGetSizeProc = skia.MustFindProc("sk_data_get_size")
+	skDataGetDataProc = skia.MustFindProc("sk_data_get_data")
+	skDataUnrefProc = skia.MustFindProc("sk_data_unref")
+	skFontNewWithValuesProc = skia.MustFindProc("sk_font_new_with_values")
+	skFontSetSubPixelProc = skia.MustFindProc("sk_font_set_subpixel")
+	skFontSetForceAutoHintingProc = skia.MustFindProc("sk_font_set_force_auto_hinting")
+	skFontSetHintingProc = skia.MustFindProc("sk_font_set_hinting")
+	skFontGetMetricsProc = skia.MustFindProc("sk_font_get_metrics")
+	skFontMeasureTextProc = skia.MustFindProc("sk_font_measure_text")
+	skFontTextToGlyphsProc = skia.MustFindProc("sk_font_text_to_glyphs")
+	skFontGetXPosProc = skia.MustFindProc("sk_font_get_xpos")
+	skFontDeleteProc = skia.MustFindProc("sk_font_delete")
+	skFontMgrRefDefaultProc = skia.MustFindProc("sk_fontmgr_ref_default")
+	skFontMgrCreateFromDataProc = skia.MustFindProc("sk_fontmgr_create_from_data")
+	skFontMgrMatchFamilyProc = skia.MustFindProc("sk_fontmgr_match_family")
+	skFontMgrMatchFamilyStyleProc = skia.MustFindProc("sk_fontmgr_match_family_style")
+	skFontMgrCountFamiliesProc = skia.MustFindProc("sk_fontmgr_count_families")
+	skFontMgrGetFamilyNameProc = skia.MustFindProc("sk_fontmgr_get_family_name")
+	skFontStyleNewProc = skia.MustFindProc("sk_fontstyle_new")
+	skFontStyleGetWeightProc = skia.MustFindProc("sk_fontstyle_get_weight")
+	skFontStyleGetWidthProc = skia.MustFindProc("sk_fontstyle_get_width")
+	skFontStyleGetSlantProc = skia.MustFindProc("sk_fontstyle_get_slant")
+	skFontStyleDeleteProc = skia.MustFindProc("sk_fontstyle_delete")
+	skFontStyleSetGetCountProc = skia.MustFindProc("sk_fontstyleset_get_count")
+	skFontStyleSetGetStyleProc = skia.MustFindProc("sk_fontstyleset_get_style")
+	skFontStyleSetCreateTypeFaceProc = skia.MustFindProc("sk_fontstyleset_create_typeface")
+	skFontStyleSetMatchStyleProc = skia.MustFindProc("sk_fontstyleset_match_style")
+	skFontStyleSetUnrefProc = skia.MustFindProc("sk_fontstyleset_unref")
+	skImageNewFromEncodedProc = skia.MustFindProc("sk_image_new_from_encoded")
+	skImageNewRasterDataProc = skia.MustFindProc("sk_image_new_raster_data")
+	skImageGetWidthProc = skia.MustFindProc("sk_image_get_width")
+	skImageGetHeightProc = skia.MustFindProc("sk_image_get_height")
+	skImageGetColorSpaceProc = skia.MustFindProc("sk_image_get_colorspace")
+	skImageGetColorTypeProc = skia.MustFindProc("sk_image_get_color_type")
+	skImageGetAlphaTypeProc = skia.MustFindProc("sk_image_get_alpha_type")
+	skImageReadPixelsProc = skia.MustFindProc("sk_image_read_pixels")
+	skImageEncodeSpecificProc = skia.MustFindProc("sk_image_encode_specific")
+	skImageMakeShaderProc = skia.MustFindProc("sk_image_make_shader")
+	skImageMakeTextureImageProc = skia.MustFindProc("sk_image_make_texture_image")
+	skImageUnrefProc = skia.MustFindProc("sk_image_unref")
+	skImageFilterNewArithmeticProc = skia.MustFindProc("sk_imagefilter_new_arithmetic")
+	skImageFilterNewBlurProc = skia.MustFindProc("sk_imagefilter_new_blur")
+	skImageFilterNewColorFilterProc = skia.MustFindProc("sk_imagefilter_new_color_filter")
+	skImageFilterNewComposeProc = skia.MustFindProc("sk_imagefilter_new_compose")
+	skImageFilterNewDisplacementMapEffectProc = skia.MustFindProc("sk_imagefilter_new_displacement_map_effect")
+	skImageFilterNewDropShadowProc = skia.MustFindProc("sk_imagefilter_new_drop_shadow")
+	skImageFilterNewDropShadowOnlyProc = skia.MustFindProc("sk_imagefilter_new_drop_shadow_only")
+	skImageFilterNewImageSourceProc = skia.MustFindProc("sk_imagefilter_new_image_source")
+	skImageFilterNewImageSourceDefaultProc = skia.MustFindProc("sk_imagefilter_new_image_source_default")
+	skImageFilterNewMagnifierProc = skia.MustFindProc("sk_imagefilter_new_magnifier")
+	skImageFilterNewMatrixConvolutionProc = skia.MustFindProc("sk_imagefilter_new_matrix_convolution")
+	skImageFilterNewMatrixTransformProc = skia.MustFindProc("sk_imagefilter_new_matrix_transform")
+	skImageFilterNewMergeProc = skia.MustFindProc("sk_imagefilter_new_merge")
+	skImageFilterNewOffsetProc = skia.MustFindProc("sk_imagefilter_new_offset")
+	skImageFilterNewTileProc = skia.MustFindProc("sk_imagefilter_new_tile")
+	skImageFilterNewDilateProc = skia.MustFindProc("sk_imagefilter_new_dilate")
+	skImageFilterNewErodeProc = skia.MustFindProc("sk_imagefilter_new_erode")
+	skImageFilterNewDistantLitDiffuseProc = skia.MustFindProc("sk_imagefilter_new_distant_lit_diffuse")
+	skImageFilterNewPointLitDiffuseProc = skia.MustFindProc("sk_imagefilter_new_point_lit_diffuse")
+	skImageFilterNewSpotLitDiffuseProc = skia.MustFindProc("sk_imagefilter_new_spot_lit_diffuse")
+	skImageFilterNewDistantLitSpecularProc = skia.MustFindProc("sk_imagefilter_new_distant_lit_specular")
+	skImageFilterNewPointLitSpecularProc = skia.MustFindProc("sk_imagefilter_new_point_lit_specular")
+	skImageFilterNewSpotLitSpecularProc = skia.MustFindProc("sk_imagefilter_new_spot_lit_specular")
+	skImageFilterUnrefProc = skia.MustFindProc("sk_imagefilter_unref")
+	skMaskFilterNewBlurWithFlagsProc = skia.MustFindProc("sk_maskfilter_new_blur_with_flags")
+	skMaskFilterNewTableProc = skia.MustFindProc("sk_maskfilter_new_table")
+	skMaskFilterNewGammaProc = skia.MustFindProc("sk_maskfilter_new_gamma")
+	skMaskFilterNewClipProc = skia.MustFindProc("sk_maskfilter_new_clip")
+	skMaskFilterNewShaderProc = skia.MustFindProc("sk_maskfilter_new_shader")
+	skMaskFilterUnrefProc = skia.MustFindProc("sk_maskfilter_unref")
+	skOpBuilderNewProc = skia.MustFindProc("sk_opbuilder_new")
+	skOpBuilderAddProc = skia.MustFindProc("sk_opbuilder_add")
+	skOpBuilderResolveProc = skia.MustFindProc("sk_opbuilder_resolve")
+	skOpBuilderDestroyProc = skia.MustFindProc("sk_opbuilder_destroy")
+	skPaintNewProc = skia.MustFindProc("sk_paint_new")
+	skPaintDeleteProc = skia.MustFindProc("sk_paint_delete")
+	skPaintCloneProc = skia.MustFindProc("sk_paint_clone")
+	skPaintResetProc = skia.MustFindProc("sk_paint_reset")
+	skPaintIsAntialiasProc = skia.MustFindProc("sk_paint_is_antialias")
+	skPaintSetAntialiasProc = skia.MustFindProc("sk_paint_set_antialias")
+	skPaintIsDitherProc = skia.MustFindProc("sk_paint_is_dither")
+	skPaintSetDitherProc = skia.MustFindProc("sk_paint_set_dither")
+	skPaintGetColorProc = skia.MustFindProc("sk_paint_get_color")
+	skPaintSetColorProc = skia.MustFindProc("sk_paint_set_color")
+	skPaintGetStyleProc = skia.MustFindProc("sk_paint_get_style")
+	skPaintSetStyleProc = skia.MustFindProc("sk_paint_set_style")
+	skPaintGetStrokeWidthProc = skia.MustFindProc("sk_paint_get_stroke_width")
+	skPaintSetStrokeWidthProc = skia.MustFindProc("sk_paint_set_stroke_width")
+	skPaintGetStrokeMiterProc = skia.MustFindProc("sk_paint_get_stroke_miter")
+	skPaintSetStrokeMiterProc = skia.MustFindProc("sk_paint_set_stroke_miter")
+	skPaintGetStrokeCapProc = skia.MustFindProc("sk_paint_get_stroke_cap")
+	skPaintSetStrokeCapProc = skia.MustFindProc("sk_paint_set_stroke_cap")
+	skPaintGetStrokeJoinProc = skia.MustFindProc("sk_paint_get_stroke_join")
+	skPaintSetStrokeJoinProc = skia.MustFindProc("sk_paint_set_stroke_join")
+	skPaintGetBlendModeProc = skia.MustFindProc("sk_paint_get_blend_mode_or")
+	skPaintSetBlendModeProc = skia.MustFindProc("sk_paint_set_blend_mode")
+	skPaintGetShaderProc = skia.MustFindProc("sk_paint_get_shader")
+	skPaintSetShaderProc = skia.MustFindProc("sk_paint_set_shader")
+	skPaintGetColorFilterProc = skia.MustFindProc("sk_paint_get_colorfilter")
+	skPaintSetColorFilterProc = skia.MustFindProc("sk_paint_set_colorfilter")
+	skPaintGetMaskFilterProc = skia.MustFindProc("sk_paint_get_maskfilter")
+	skPaintSetMaskFilterProc = skia.MustFindProc("sk_paint_set_maskfilter")
+	skPaintGetImageFilterProc = skia.MustFindProc("sk_paint_get_imagefilter")
+	skPaintSetImageFilterProc = skia.MustFindProc("sk_paint_set_imagefilter")
+	skPaintGetPathEffectProc = skia.MustFindProc("sk_paint_get_path_effect")
+	skPaintSetPathEffectProc = skia.MustFindProc("sk_paint_set_path_effect")
+	skPaintGetFillPathProc = skia.MustFindProc("sk_paint_get_fill_path")
+	skPathNewProc = skia.MustFindProc("sk_path_new")
+	skPathParseSVGStringProc = skia.MustFindProc("sk_path_parse_svg_string")
+	skPathToSVGStringProc = skia.MustFindProc("sk_path_to_svg_string")
+	skPathGetFillTypeProc = skia.MustFindProc("sk_path_get_filltype")
+	skPathSetFillTypeProc = skia.MustFindProc("sk_path_set_filltype")
+	skPathArcToProc = skia.MustFindProc("sk_path_arc_to")
+	skPathArcToWithPointsProc = skia.MustFindProc("sk_path_arc_to_with_points")
+	skPathArcToWithOvalProc = skia.MustFindProc("sk_path_arc_to_with_oval")
+	skPathRArcToProc = skia.MustFindProc("sk_path_rarc_to")
+	skPathGetBoundsProc = skia.MustFindProc("sk_path_get_bounds")
+	skPathComputeTightBoundsProc = skia.MustFindProc("sk_path_compute_tight_bounds")
+	skPathAddCircleProc = skia.MustFindProc("sk_path_add_circle")
+	skPathCloneProc = skia.MustFindProc("sk_path_clone")
+	skPathCloseProc = skia.MustFindProc("sk_path_close")
+	skPathConicToProc = skia.MustFindProc("sk_path_conic_to")
+	skPathRConicToProc = skia.MustFindProc("sk_path_rconic_to")
+	skPathCubicToProc = skia.MustFindProc("sk_path_cubic_to")
+	skPathRCubicToProc = skia.MustFindProc("sk_path_rcubic_to")
+	skPathLineToProc = skia.MustFindProc("sk_path_line_to")
+	skPathRLineToProc = skia.MustFindProc("sk_path_rline_to")
+	skPathMoveToProc = skia.MustFindProc("sk_path_move_to")
+	skPathRMoveToProc = skia.MustFindProc("sk_path_rmove_to")
+	skPathAddOvalProc = skia.MustFindProc("sk_path_add_oval")
+	skPathAddPathProc = skia.MustFindProc("sk_path_add_path")
+	skPathAddPathReverseProc = skia.MustFindProc("sk_path_add_path_reverse")
+	skPathAddPathMatrixProc = skia.MustFindProc("sk_path_add_path_matrix")
+	skPathAddPathOffsetProc = skia.MustFindProc("sk_path_add_path_offset")
+	skPathAddPolyProc = skia.MustFindProc("sk_path_add_poly")
+	skPathQuadToProc = skia.MustFindProc("sk_path_quad_to")
+	skPathAddRectProc = skia.MustFindProc("sk_path_add_rect")
+	skPathAddRoundedRectProc = skia.MustFindProc("sk_path_add_rounded_rect")
+	skPathTransformProc = skia.MustFindProc("sk_path_transform")
+	skPathTransformToDestProc = skia.MustFindProc("sk_path_transform_to_dest")
+	skPathResetProc = skia.MustFindProc("sk_path_reset")
+	skPathRewindProc = skia.MustFindProc("sk_path_rewind")
+	skPathContainsProc = skia.MustFindProc("sk_path_contains")
+	skPathGetLastPointProc = skia.MustFindProc("sk_path_get_last_point")
+	skPathDeleteProc = skia.MustFindProc("sk_path_delete")
+	skPathEffectCreateComposeProc = skia.MustFindProc("sk_path_effect_create_compose")
+	skPathEffectCreateSumProc = skia.MustFindProc("sk_path_effect_create_sum")
+	skPathEffectCreateDiscreteProc = skia.MustFindProc("sk_path_effect_create_discrete")
+	skPathEffectCreateCornerProc = skia.MustFindProc("sk_path_effect_create_corner")
+	skPathEffectCreate1dPathProc = skia.MustFindProc("sk_path_effect_create_1d_path")
+	skPathEffectCreate2dLineProc = skia.MustFindProc("sk_path_effect_create_2d_line")
+	skPathEffectCreate2dPathProc = skia.MustFindProc("sk_path_effect_create_2d_path")
+	skPathEffectCreateDashProc = skia.MustFindProc("sk_path_effect_create_dash")
+	skPathEffectCreateTrimProc = skia.MustFindProc("sk_path_effect_create_trim")
+	skPathEffectUnrefProc = skia.MustFindProc("sk_path_effect_unref")
+	skShaderNewColorProc = skia.MustFindProc("sk_shader_new_color")
+	skShaderNewBlendProc = skia.MustFindProc("sk_shader_new_blend")
+	skShaderNewLinearGradientProc = skia.MustFindProc("sk_shader_new_linear_gradient")
+	skShaderNewRadialGradientProc = skia.MustFindProc("sk_shader_new_radial_gradient")
+	skShaderNewSweepGradientProc = skia.MustFindProc("sk_shader_new_sweep_gradient")
+	skShaderNewTwoPointConicalGradientProc = skia.MustFindProc("sk_shader_new_two_point_conical_gradient")
+	skShaderNewPerlinNoiseFractalNoiseProc = skia.MustFindProc("sk_shader_new_perlin_noise_fractal_noise")
+	skShaderNewPerlinNoiseTurbulenceProc = skia.MustFindProc("sk_shader_new_perlin_noise_turbulence")
+	skShaderWithLocalMatrixProc = skia.MustFindProc("sk_shader_with_local_matrix")
+	skShaderWithColorFilterProc = skia.MustFindProc("sk_shader_with_color_filter")
+	skShaderUnrefProc = skia.MustFindProc("sk_shader_unref")
+	skStringNewEmptyProc = skia.MustFindProc("sk_string_new_empty")
+	skStringGetCStrProc = skia.MustFindProc("sk_string_get_c_str")
+	skStringGetSizeProc = skia.MustFindProc("sk_string_get_size")
+	skStringDeleteProc = skia.MustFindProc("sk_string_delete")
+	skSurfaceNewBackendRenderTargetProc = skia.MustFindProc("sk_surface_new_backend_render_target")
+	skSurfaceGetCanvasProc = skia.MustFindProc("sk_surface_get_canvas")
+	skSurfaceUnrefProc = skia.MustFindProc("sk_surface_unref")
+	skSurfacePropsNewProc = skia.MustFindProc("sk_surfaceprops_new")
+	skTextBlobMakeFromTextProc = skia.MustFindProc("sk_textblob_make_from_text")
+	skTextBlobGetBoundsProc = skia.MustFindProc("sk_textblob_get_bounds")
+	skTextBlobGetInterceptsProc = skia.MustFindProc("sk_textblob_get_intercepts")
+	skTextBlobUnrefProc = skia.MustFindProc("sk_textblob_unref")
+	skTextBlobBuilderNewProc = skia.MustFindProc("sk_textblob_builder_new")
+	skTextBlobBuilderMakeProc = skia.MustFindProc("sk_textblob_builder_make")
+	skTextBlobBuilderAllocRunProc = skia.MustFindProc("sk_textblob_builder_alloc_run")
+	skTextBlobBuilderAllocRunPosProc = skia.MustFindProc("sk_textblob_builder_alloc_run_pos")
+	skTextBlobBuilderAllocRunPosHProc = skia.MustFindProc("sk_textblob_builder_alloc_run_pos_h")
+	skTextBlobBuilderDeleteProc = skia.MustFindProc("sk_textblob_builder_delete")
+	skTypeFaceGetFontStyleProc = skia.MustFindProc("sk_typeface_get_fontstyle")
+	skTypeFaceIsFixedPitchProc = skia.MustFindProc("sk_typeface_is_fixed_pitch")
+	skTypeFaceGetFamilyNameProc = skia.MustFindProc("sk_typeface_get_family_name")
+	skTypeFaceGetUnitsPerEmProc = skia.MustFindProc("sk_typeface_get_units_per_em")
+	skTypeFaceUnrefProc = skia.MustFindProc("sk_typeface_unref")
+}
+
+type (
+	BackendRenderTarget unsafe.Pointer
+	DirectContext       unsafe.Pointer
+	GLInterface         unsafe.Pointer
+	Canvas              unsafe.Pointer
+	ColorFilter         unsafe.Pointer
+	ColorSpace          unsafe.Pointer
+	Data                unsafe.Pointer
+	Font                unsafe.Pointer
+	FontMgr             unsafe.Pointer
+	FontStyle           unsafe.Pointer
+	FontStyleSet        unsafe.Pointer
+	Image               unsafe.Pointer
+	ImageFilter         unsafe.Pointer
+	MaskFilter          unsafe.Pointer
+	OpBuilder           unsafe.Pointer
+	Paint               unsafe.Pointer
+	Path                unsafe.Pointer
+	PathEffect          unsafe.Pointer
+	SamplingOptions     uintptr
+	Shader              unsafe.Pointer
+	String              unsafe.Pointer
+	Surface             unsafe.Pointer
+	SurfaceProps        unsafe.Pointer
+	TextBlob            unsafe.Pointer
+	TextBlobBuilder     unsafe.Pointer
+	TypeFace            unsafe.Pointer
+)
+
+func BackendRenderTargetNewGL(width, height, samples, stencilBits int, info *GLFrameBufferInfo) BackendRenderTarget {
+	r1, _, _ := grBackendRenderTargetNewGLProc.Call(uintptr(width), uintptr(height), uintptr(samples),
+		uintptr(stencilBits), uintptr(unsafe.Pointer(info)))
+	return BackendRenderTarget(r1)
+}
+
+func BackendRenderTargetDelete(backend BackendRenderTarget) {
+	grBackendRenderTargetDeleteProc.Call(uintptr(backend))
+}
+
+func ContextMakeGL(gl GLInterface) DirectContext {
+	r1, _, _ := grContextMakeGLProc.Call(uintptr(gl))
+	return DirectContext(r1)
+}
+
+func ContextAbandonContext(ctx DirectContext) {
+	grContextAbandonContextProc.Call(uintptr(ctx))
+}
+
+func GLInterfaceCreateNativeInterface() GLInterface {
+	r1, _, _ := grGLInterfaceCreateNativeInterfaceProc.Call()
+	return GLInterface(r1)
+}
+
+func CanvasGetSaveCount(canvas Canvas) int {
+	r1, _, _ := skCanvasGetSaveCountProc.Call(uintptr(canvas))
+	return int(r1)
+}
+
+func CanvasSave(canvas Canvas) int {
+	r1, _, _ := skCanvasSaveProc.Call(uintptr(canvas))
+	return int(r1)
+}
+
+func CanvasSaveLayer(canvas Canvas, paint Paint) int {
+	r1, _, _ := skCanvasSaveLayerProc.Call(uintptr(canvas), 0, uintptr(paint))
+	return int(r1)
+}
+
+func CanvasSaveLayerAlpha(canvas Canvas, opacity byte) int {
+	r1, _, _ := skCanvasSaveLayerAlphaProc.Call(uintptr(canvas), 0, uintptr(opacity))
+	return int(r1)
+}
+
+func CanvasRestore(canvas Canvas) {
+	skCanvasRestoreProc.Call(uintptr(canvas))
+}
+
+func CanvasRestoreToCount(canvas Canvas, count int) {
+	skCanvasRestoreToCountProc.Call(uintptr(canvas), uintptr(count))
+}
+
+func CanvasTranslate(canvas Canvas, dx, dy float32) {
+	skCanvasTranslateProc.Call(uintptr(canvas), uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)))
+}
+
+func CanvasScale(canvas Canvas, xScale, yScale float32) {
+	skCanvasScaleProc.Call(uintptr(canvas), uintptr(math.Float32bits(xScale)), uintptr(math.Float32bits(yScale)))
+}
+
+func CanvasRotateRadians(canvas Canvas, radians float32) {
+	skCanvasRotateRadiansProc.Call(uintptr(canvas), uintptr(math.Float32bits(radians)))
+}
+
+func CanvasSkew(canvas Canvas, sx, sy float32) {
+	skCanvasSkewProc.Call(uintptr(canvas), uintptr(math.Float32bits(sx)), uintptr(math.Float32bits(sy)))
+}
+
+func CanvasConcat(canvas Canvas, matrix *Matrix) {
+	skCanvasConcatProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(matrix)))
+}
+
+func CanvasResetMatrix(canvas Canvas) {
+	skCanvasResetMatrixProc.Call(uintptr(canvas))
+}
+
+func CanvasGetTotalMatrix(canvas Canvas) *Matrix {
+	var matrix Matrix
+	skCanvasGetTotalMatrixProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(&matrix)))
+	return &matrix
+}
+
+func CanvasSetMatrix(canvas Canvas, matrix *Matrix) {
+	skCanvasSetMatrixProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(matrix)))
+}
+
+func CanvasQuickRejectPath(canvas Canvas, path Path) bool {
+	r1, _, _ := skCanvasQuickRejectPathProc.Call(uintptr(canvas), uintptr(path))
+	return r1 != 0
+}
+
+func CanvasQuickRejectRect(canvas Canvas, rect *Rect) bool {
+	r1, _, _ := skCanvasQuickRejectRectProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(rect)))
+	return r1 != 0
+}
+
+func CanvasClear(canvas Canvas, color unison.Color) {
+	skCanvasClearProc.Call(uintptr(canvas), uintptr(color))
+}
+
+func CanvasDrawPaint(canvas Canvas, paint Paint) {
+	skCanvasDrawPaintProc.Call(uintptr(canvas), uintptr(paint))
+}
+
+func CanvasDrawRect(canvas Canvas, rect *Rect, paint Paint) {
+	skCanvasDrawRectProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(rect)), uintptr(paint))
+}
+
+func CanvasDrawRoundRect(canvas Canvas, rect *Rect, radiusX, radiusY float32, paint Paint) {
+	skCanvasDrawRoundRectProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(rect)), uintptr(math.Float32bits(radiusX)), uintptr(math.Float32bits(radiusY)), uintptr(paint))
+}
+
+func CanvasDrawCircle(canvas Canvas, centerX, centerY, radius float32, paint Paint) {
+	skCanvasDrawCircleProc.Call(uintptr(canvas), uintptr(math.Float32bits(centerX)), uintptr(math.Float32bits(centerY)), uintptr(math.Float32bits(radius)), uintptr(paint))
+}
+
+func CanvasDrawOval(canvas Canvas, rect *Rect, paint Paint) {
+	skCanvasDrawOvalProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(rect)), uintptr(paint))
+}
+
+func CanvasDrawPath(canvas Canvas, path Path, paint Paint) {
+	skCanvasDrawPathProc.Call(uintptr(canvas), uintptr(path), uintptr(paint))
+}
+
+func CanvasDrawImageRect(canvas Canvas, img Image, srcRect, dstRect *Rect, sampling SamplingOptions, paint Paint) {
+	skCanvasDrawImageRectProc.Call(uintptr(canvas), uintptr(img), uintptr(unsafe.Pointer(srcRect)),
+		uintptr(unsafe.Pointer(dstRect)), uintptr(sampling), uintptr(paint))
+}
+
+func CanvasDrawImageNine(canvas Canvas, img Image, centerRect *IRect, dstRect *Rect, filter unison.FilterMode, paint Paint) {
+	skCanvasDrawImageNineProc.Call(uintptr(canvas), uintptr(img), uintptr(unsafe.Pointer(centerRect)),
+		uintptr(unsafe.Pointer(dstRect)), uintptr(filter), uintptr(paint))
+}
+
+func CanvasDrawColor(canvas Canvas, color unison.Color, mode unison.BlendMode) {
+	skCanvasDrawColorProc.Call(uintptr(canvas), uintptr(color), uintptr(mode))
+}
+
+func CanvasDrawPoint(canvas Canvas, x, y float32, paint Paint) {
+	skCanvasDrawPointProc.Call(uintptr(canvas), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(paint))
+}
+
+func CanvasDrawPoints(canvas Canvas, mode unison.PointMode, pts []geom32.Point, paint Paint) {
+	skCanvasDrawPointsProc.Call(uintptr(canvas), uintptr(mode), uintptr(len(pts)),
+		uintptr(unsafe.Pointer(&pts[0])), uintptr(paint))
+}
+
+func CanvasDrawLine(canvas Canvas, sx, sy, ex, ey float32, paint Paint) {
+	skCanvasDrawLineProc.Call(uintptr(canvas), uintptr(math.Float32bits(sx)), uintptr(math.Float32bits(sy)), uintptr(math.Float32bits(ex)), uintptr(math.Float32bits(ey)), uintptr(paint))
+}
+
+func CanvasDrawArc(canvas Canvas, oval *Rect, startAngle, sweepAngle float32, useCenter bool, paint Paint) {
+	skCanvasDrawArcProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(oval)), uintptr(math.Float32bits(startAngle)), uintptr(math.Float32bits(sweepAngle)),
+		boolToUintptr(useCenter), uintptr(paint))
+}
+
+func CanvasDrawSimpleText(canvas Canvas, str string, x, y float32, font Font, paint Paint) {
+	b := []byte(str)
+	skCanvasDrawSimpleTextProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)),
+		uintptr(TextEncodingUTF8), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(font), uintptr(paint))
+}
+
+func CanvasDrawTextBlob(canvas Canvas, txt TextBlob, x, y float32, paint Paint) {
+	skCanvasDrawTextBlobProc.Call(uintptr(canvas), uintptr(txt), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(paint))
+}
+
+func CanavasClipRectWithOperation(canvas Canvas, rect *Rect, op unison.ClipOp, antialias bool) {
+	skCanavasClipRectWithOperationProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(rect)), uintptr(op),
+		boolToUintptr(antialias))
+}
+
+func CanavasClipPathWithOperation(canvas Canvas, path Path, op unison.ClipOp, antialias bool) {
+	skCanavasClipPathWithOperationProc.Call(uintptr(canvas), uintptr(path), uintptr(op), boolToUintptr(antialias))
+}
+
+func CanvasGetLocalClipBounds(canvas Canvas) *Rect {
+	var rect Rect
+	skCanvasGetLocalClipBoundsProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(&rect)))
+	return &rect
+}
+
+func CanvasIsClipEmpty(canvas Canvas) bool {
+	r1, _, _ := skCanvasIsClipEmptyProc.Call(uintptr(canvas))
+	return r1 != 0
+}
+
+func CanvasIsClipRect(canvas Canvas) bool {
+	r1, _, _ := skCanvasIsClipRectProc.Call(uintptr(canvas))
+	return r1 != 0
+}
+
+func CanvasFlush(canvas Canvas) {
+	skCanvasFlushProc.Call(uintptr(canvas))
+}
+
+func ColorFilterNewMode(color unison.Color, blendMode unison.BlendMode) ColorFilter {
+	r1, _, _ := skColorFilterNewModeProc.Call(uintptr(color), uintptr(blendMode))
+	return ColorFilter(r1)
+}
+
+func ColorFilterNewLighting(mul, add unison.Color) ColorFilter {
+	r1, _, _ := skColorFilterNewLightingProc.Call(uintptr(mul), uintptr(add))
+	return ColorFilter(r1)
+}
+
+func ColorFilterNewCompose(outer, inner ColorFilter) ColorFilter {
+	r1, _, _ := skColorFilterNewComposeProc.Call(uintptr(outer), uintptr(inner))
+	return ColorFilter(r1)
+}
+
+func ColorFilterNewColorMatrix(array []float32) ColorFilter {
+	r1, _, _ := skColorFilterNewColorMatrixProc.Call(uintptr(unsafe.Pointer(&array[0])))
+	return ColorFilter(r1)
+}
+
+func ColorFilterNewLumaColor() ColorFilter {
+	r1, _, _ := skColorFilterNewLumaColorProc.Call()
+	return ColorFilter(r1)
+}
+
+func ColorFilterNewHighContrast(config *HighContrastConfig) ColorFilter {
+	r1, _, _ := skColorFilterNewHighContrastProc.Call(uintptr(unsafe.Pointer(config)))
+	return ColorFilter(r1)
+}
+
+func ColorFilterNewTableARGB(a, r, g, b []byte) ColorFilter {
+	r1, _, _ := skColorFilterNewTableARGBProc.Call(uintptr(unsafe.Pointer(&a[0])), uintptr(unsafe.Pointer(&r[0])),
+		uintptr(unsafe.Pointer(&g[0])), uintptr(unsafe.Pointer(&b[0])))
+	return ColorFilter(r1)
+}
+
+func ColorFilterUnref(filter ColorFilter) {
+	skColorFilterUnrefProc.Call(uintptr(filter))
+}
+
+func ColorSpaceNewSRGB() ColorSpace {
+	r1, _, _ := skColorSpaceNewSRGBProc.Call()
+	return ColorSpace(r1)
+}
+
+func DataNewWithCopy(data []byte) Data {
+	r1, _, _ := skDataNewWithCopyProc.Call(uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
+	return Data(r1)
+}
+
+func DataGetSize(data Data) int {
+	r1, _, _ := skDataGetSizeProc.Call(uintptr(data))
+	return int(r1)
+}
+
+func DataGetData(data Data) unsafe.Pointer {
+	r1, _, _ := skDataGetDataProc.Call(uintptr(data))
+	return unsafe.Pointer(r1)
+}
+
+func DataUnref(data Data) {
+	skDataUnrefProc.Call(uintptr(data))
+}
+
+func FontNewWithValues(face TypeFace, size, scaleX, skewX float32) Font {
+	r1, _, _ := skFontNewWithValuesProc.Call(uintptr(face), uintptr(math.Float32bits(size)),
+		uintptr(math.Float32bits(scaleX)), uintptr(math.Float32bits(skewX)))
+	return Font(r1)
+}
+
+func FontSetSubPixel(font Font, enabled bool) {
+	skFontSetSubPixelProc.Call(uintptr(font), boolToUintptr(enabled))
+}
+
+func FontSetForceAutoHinting(font Font, enabled bool) {
+	skFontSetForceAutoHintingProc.Call(uintptr(font), boolToUintptr(enabled))
+}
+
+func FontSetHinting(font Font, hinting unison.FontHinting) {
+	skFontSetHintingProc.Call(uintptr(font), uintptr(hinting))
+}
+
+func FontGetMetrics(font Font, metrics *unison.FontMetrics) {
+	skFontGetMetricsProc.Call(uintptr(font), uintptr(unsafe.Pointer(metrics)))
+}
+
+func FontMeasureText(font Font, str string) float32 {
+	b := []byte(str)
+	_, r2, _ := skFontMeasureTextProc.Call(uintptr(font), uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), uintptr(TextEncodingUTF8), 0, 0)
+	return math.Float32frombits(uint32(r2))
+}
+
+func FontTextToGlyphs(font Font, str string) []uint16 {
+	b := []byte(str)
+	glyphs := make([]uint16, len(str))
+	r1, _, _ := skFontTextToGlyphsProc.Call(uintptr(font), uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), uintptr(TextEncodingUTF8), uintptr(unsafe.Pointer(&glyphs[0])), uintptr(len(glyphs)))
+	glyphs = glyphs[:int(r1)]
+	return glyphs
+}
+
+func FontGetXPos(font Font, str string) []float32 {
+	glyphs := FontTextToGlyphs(font, str+"a")
+	pos := make([]float32, len(glyphs))
+	skFontGetXPosProc.Call(uintptr(font), uintptr(unsafe.Pointer(&glyphs[0])), uintptr(len(glyphs)), uintptr(unsafe.Pointer(&pos[0])), 0)
+	return pos
+}
+
+func FontDelete(font Font) {
+	skFontDeleteProc.Call(uintptr(font))
+}
+
+func FontMgrRefDefault() FontMgr {
+	r1, _, _ := skFontMgrRefDefaultProc.Call()
+	return FontMgr(r1)
+}
+
+func FontMgrCreateFromData(mgr FontMgr, data Data) TypeFace {
+	r1, _, _ := skFontMgrCreateFromDataProc.Call(uintptr(mgr), uintptr(data), 0)
+	return TypeFace(r1)
+}
+
+func FontMgrMatchFamily(mgr FontMgr, family string) FontStyleSet {
+	cstr := make([]byte, len(family)+1)
+	copy(cstr, family)
+	r1, _, _ := skFontMgrMatchFamilyProc.Call(uintptr(mgr), uintptr(unsafe.Pointer(&cstr[0])))
+	return FontStyleSet(r1)
+}
+
+func FontMgrMatchFamilyStyle(mgr FontMgr, family string, style FontStyle) TypeFace {
+	cstr := make([]byte, len(family)+1)
+	copy(cstr, family)
+	r1, _, _ := skFontMgrMatchFamilyStyleProc.Call(uintptr(mgr), uintptr(unsafe.Pointer(&cstr[0])), uintptr(style))
+	return TypeFace(r1)
+}
+
+func FontMgrCountFamilies(mgr FontMgr) int {
+	r1, _, _ := skFontMgrCountFamiliesProc.Call(uintptr(mgr))
+	return int(r1)
+}
+
+func FontMgrGetFamilyName(mgr FontMgr, index int, str String) {
+	skFontMgrGetFamilyNameProc.Call(uintptr(mgr), uintptr(index), uintptr(str))
+}
+
+func FontStyleNew(weight unison.FontWeight, spacing unison.FontSpacing, slant unison.FontSlant) FontStyle {
+	r1, _, _ := skFontStyleNewProc.Call(uintptr(weight), uintptr(spacing), uintptr(slant))
+	return FontStyle(r1)
+}
+
+func FontStyleGetWeight(style FontStyle) unison.FontWeight {
+	r1, _, _ := skFontStyleGetWeightProc.Call(uintptr(style))
+	return unison.FontWeight(r1)
+}
+
+func FontStyleGetWidth(style FontStyle) unison.FontSpacing {
+	r1, _, _ := skFontStyleGetWidthProc.Call(uintptr(style))
+	return unison.FontSpacing(r1)
+}
+
+func FontStyleGetSlant(style FontStyle) unison.FontSlant {
+	r1, _, _ := skFontStyleGetSlantProc.Call(uintptr(style))
+	return unison.FontSlant(r1)
+}
+
+func FontStyleDelete(style FontStyle) {
+	skFontStyleDeleteProc.Call(uintptr(style))
+}
+
+func FontStyleSetGetCount(set FontStyleSet) int {
+	r1, _, _ := skFontStyleSetGetCountProc.Call(uintptr(set))
+	return int(r1)
+}
+
+func FontStyleSetGetStyle(set FontStyleSet, index int, style FontStyle, str String) {
+	skFontStyleSetGetStyleProc.Call(uintptr(set), uintptr(index), uintptr(style), uintptr(str))
+}
+
+func FontStyleSetCreateTypeFace(set FontStyleSet, index int) TypeFace {
+	r1, _, _ := skFontStyleSetCreateTypeFaceProc.Call(uintptr(set), uintptr(index))
+	return TypeFace(r1)
+}
+
+func FontStyleSetMatchStyle(set FontStyleSet, style FontStyle) TypeFace {
+	r1, _, _ := skFontStyleSetMatchStyleProc.Call(uintptr(set), uintptr(style))
+	return TypeFace(r1)
+}
+
+func FontStyleSetUnref(set FontStyleSet) {
+	skFontStyleSetUnrefProc.Call(uintptr(set))
+}
+
+func ImageNewFromEncoded(data Data) Image {
+	r1, _, _ := skImageNewFromEncodedProc.Call(uintptr(data))
+	return Image(r1)
+}
+
+func ImageNewRasterData(info *ImageInfo, data Data, rowBytes int) Image {
+	r1, _, _ := skImageNewRasterDataProc.Call(uintptr(unsafe.Pointer(info)), uintptr(data), uintptr(rowBytes))
+	return Image(r1)
+}
+
+func ImageGetWidth(img Image) int {
+	r1, _, _ := skImageGetWidthProc.Call(uintptr(img))
+	return int(r1)
+}
+
+func ImageGetHeight(img Image) int {
+	r1, _, _ := skImageGetHeightProc.Call(uintptr(img))
+	return int(r1)
+}
+
+func ImageGetColorSpace(img Image) ColorSpace {
+	r1, _, _ := skImageGetColorSpaceProc.Call(uintptr(img))
+	return ColorSpace(r1)
+}
+
+func ImageGetColorType(img Image) ColorType {
+	r1, _, _ := skImageGetColorTypeProc.Call(uintptr(img))
+	return ColorType(r1)
+}
+
+func ImageGetAlphaType(img Image) AlphaType {
+	r1, _, _ := skImageGetAlphaTypeProc.Call(uintptr(img))
+	return AlphaType(r1)
+}
+
+func ImageReadPixels(img Image, info *ImageInfo, pixels []byte, dstRowBytes, srcX, srcY int, cachingHint ImageCachingHint) bool {
+	r1, _, _ := skImageReadPixelsProc.Call(uintptr(img), uintptr(unsafe.Pointer(info)),
+		uintptr(unsafe.Pointer(&pixels[0])), uintptr(dstRowBytes), uintptr(srcX), uintptr(srcY), uintptr(cachingHint))
+	return r1 != 0
+}
+
+func ImageEncodeSpecific(img Image, format unison.EncodedImageFormat, quality int) Data {
+	r1, _, _ := skImageEncodeSpecificProc.Call(uintptr(img), uintptr(format), uintptr(quality))
+	return Data(r1)
+}
+
+func ImageMakeShader(img Image, tileModeX, tileModeY unison.TileMode, sampling SamplingOptions, matrix *Matrix) Shader {
+	r1, _, _ := skImageMakeShaderProc.Call(uintptr(img), uintptr(tileModeX), uintptr(tileModeY),
+		uintptr(sampling), uintptr(unsafe.Pointer(matrix)))
+	return Shader(r1)
+}
+
+func ImageMakeTextureImage(img Image, ctx DirectContext, mipMapped bool) Image {
+	r1, _, _ := skImageMakeTextureImageProc.Call(uintptr(img), uintptr(ctx), boolToUintptr(mipMapped))
+	return Image(r1)
+}
+
+func ImageUnref(img Image) {
+	skImageUnrefProc.Call(uintptr(img))
+}
+
+func ImageFilterNewArithmetic(k1, k2, k3, k4 float32, enforcePMColor bool, background, foreground ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewArithmeticProc.Call(uintptr(math.Float32bits(k1)), uintptr(math.Float32bits(k2)),
+		uintptr(math.Float32bits(k3)), uintptr(math.Float32bits(k4)), boolToUintptr(enforcePMColor),
+		uintptr(background), uintptr(foreground), uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewBlur(sigmaX, sigmaY float32, tileMode unison.TileMode, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewBlurProc.Call(uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(tileMode), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewColorFilter(colorFilter ColorFilter, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewColorFilterProc.Call(uintptr(colorFilter), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewCompose(outer, inner ImageFilter) ImageFilter {
+	r1, _, _ := skImageFilterNewComposeProc.Call(uintptr(outer), uintptr(inner))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewDisplacementMapEffect(xChannelSelector, yChannelSelector unison.ColorChannel, scale float32, displacement, color ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewDisplacementMapEffectProc.Call(uintptr(xChannelSelector), uintptr(yChannelSelector),
+		uintptr(math.Float32bits(scale)), uintptr(displacement), uintptr(color), uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewDropShadowProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
+		uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(color), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewDropShadowOnlyProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
+		uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(color), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewImageSource(img Image, srcRect, dstRect *geom32.Rect, sampling SamplingOptions) ImageFilter {
+	r1, _, _ := skImageFilterNewImageSourceProc.Call(uintptr(img), uintptr(unsafe.Pointer(RectToSkRect(srcRect))),
+		uintptr(unsafe.Pointer(RectToSkRect(dstRect))), uintptr(sampling))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewImageSourceDefault(img Image) ImageFilter {
+	r1, _, _ := skImageFilterNewImageSourceDefaultProc.Call(uintptr(img))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewMagnifier(src *geom32.Rect, inset float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewMagnifierProc.Call(uintptr(unsafe.Pointer(RectToSkRect(src))),
+		uintptr(math.Float32bits(inset)), uintptr(input), uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode unison.TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewMatrixConvolutionProc.Call(uintptr(unsafe.Pointer(size)),
+		uintptr(unsafe.Pointer(&kernel[0])), uintptr(math.Float32bits(gain)), uintptr(math.Float32bits(bias)),
+		uintptr(unsafe.Pointer(offset)), uintptr(tileMode), boolToUintptr(convolveAlpha), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewMatrixTransform(matrix *Matrix, sampling SamplingOptions, input ImageFilter) ImageFilter {
+	r1, _, _ := skImageFilterNewMatrixTransformProc.Call(uintptr(unsafe.Pointer(matrix)),
+		uintptr(sampling), uintptr(input))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewMerge(filters []ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewMergeProc.Call(uintptr(unsafe.Pointer(&filters[0])), uintptr(len(filters)),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewOffset(dx, dy float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewOffsetProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
+		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewTile(src, dst *geom32.Rect, input ImageFilter) ImageFilter {
+	r1, _, _ := skImageFilterNewTileProc.Call(uintptr(unsafe.Pointer(RectToSkRect(src))),
+		uintptr(unsafe.Pointer(RectToSkRect(dst))), uintptr(input))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewDilate(radiusX, radiusY int, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewDilateProc.Call(uintptr(radiusX), uintptr(radiusY), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewErode(radiusX, radiusY int, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewErodeProc.Call(uintptr(radiusX), uintptr(radiusY), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewDistantLitDiffuse(pt *Point3, color unison.Color, scale, reflectivity float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewDistantLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
+		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewPointLitDiffuse(pt *Point3, color unison.Color, scale, reflectivity float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewPointLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
+		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewSpotLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)),
+		uintptr(unsafe.Pointer(targetPt)), uintptr(math.Float32bits(specularExponent)),
+		uintptr(math.Float32bits(cutoffAngle)), uintptr(color), uintptr(math.Float32bits(scale)),
+		uintptr(math.Float32bits(reflectivity)), uintptr(input), uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewDistantLitSpecular(pt *Point3, color unison.Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewDistantLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
+		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(math.Float32bits(shine)),
+		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewPointLitSpecular(pt *Point3, color unison.Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewPointLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
+		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(math.Float32bits(shine)),
+		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterNewSpotLitSpecular(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+	r1, _, _ := skImageFilterNewSpotLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)),
+		uintptr(unsafe.Pointer(targetPt)), uintptr(math.Float32bits(specularExponent)),
+		uintptr(math.Float32bits(cutoffAngle)), uintptr(color), uintptr(math.Float32bits(scale)),
+		uintptr(math.Float32bits(reflectivity)), uintptr(math.Float32bits(shine)), uintptr(input),
+		uintptr(unsafe.Pointer(cropRect)))
+	return ImageFilter(r1)
+}
+
+func ImageFilterUnref(filter ImageFilter) {
+	skImageFilterUnrefProc.Call(uintptr(filter))
+}
+
+func MaskFilterNewBlurWithFlags(style unison.Blur, sigma float32, respectMatrix bool) MaskFilter {
+	r1, _, _ := skMaskFilterNewBlurWithFlagsProc.Call(uintptr(style), uintptr(math.Float32bits(sigma)),
+		boolToUintptr(respectMatrix))
+	return MaskFilter(r1)
+}
+
+func MaskFilterNewTable(table []byte) MaskFilter {
+	r1, _, _ := skMaskFilterNewTableProc.Call(uintptr(unsafe.Pointer(&table[0])))
+	return MaskFilter(r1)
+}
+
+func MaskFilterNewGamma(gamma float32) MaskFilter {
+	r1, _, _ := skMaskFilterNewGammaProc.Call(uintptr(math.Float32bits(gamma)))
+	return MaskFilter(r1)
+}
+
+func MaskFilterNewClip(min, max byte) MaskFilter {
+	r1, _, _ := skMaskFilterNewClipProc.Call(uintptr(min), uintptr(max))
+	return MaskFilter(r1)
+}
+
+func MaskFilterNewShader(shader Shader) MaskFilter {
+	r1, _, _ := skMaskFilterNewShaderProc.Call(uintptr(shader))
+	return MaskFilter(r1)
+}
+
+func MaskFilterUnref(filter MaskFilter) {
+	skMaskFilterUnrefProc.Call(uintptr(filter))
+}
+
+func OpBuilderNew() OpBuilder {
+	r1, _, _ := skOpBuilderNewProc.Call()
+	return OpBuilder(r1)
+}
+
+func OpBuilderAdd(builder OpBuilder, path Path, op unison.PathOp) {
+	skOpBuilderAddProc.Call(uintptr(builder), uintptr(path), uintptr(op))
+}
+
+func OpBuilderResolve(builder OpBuilder, path Path) bool {
+	r1, _, _ := skOpBuilderResolveProc.Call(uintptr(builder), uintptr(path))
+	return r1 != 0
+}
+
+func OpBuilderDestroy(builder OpBuilder) {
+	skOpBuilderDestroyProc.Call(uintptr(builder))
+}
+
+func PaintNew() Paint {
+	r1, _, _ := skPaintNewProc.Call()
+	return Paint(r1)
+}
+
+func PaintDelete(paint Paint) {
+	skPaintDeleteProc.Call(uintptr(paint))
+}
+
+func PaintClone(paint Paint) Paint {
+	r1, _, _ := skPaintCloneProc.Call(uintptr(paint))
+	return Paint(r1)
+}
+
+func PaintReset(paint Paint) {
+	skPaintResetProc.Call(uintptr(paint))
+}
+
+func PaintIsAntialias(paint Paint) bool {
+	r1, _, _ := skPaintIsAntialiasProc.Call(uintptr(paint))
+	return r1 != 0
+}
+
+func PaintSetAntialias(paint Paint, enabled bool) {
+	skPaintSetAntialiasProc.Call(uintptr(paint), boolToUintptr(enabled))
+}
+
+func PaintIsDither(paint Paint) bool {
+	r1, _, _ := skPaintIsDitherProc.Call(uintptr(paint))
+	return r1 != 0
+}
+
+func PaintSetDither(paint Paint, enabled bool) {
+	skPaintSetDitherProc.Call(uintptr(paint), boolToUintptr(enabled))
+}
+
+func PaintGetColor(paint Paint) unison.Color {
+	r1, _, _ := skPaintGetColorProc.Call(uintptr(paint))
+	return unison.Color(r1)
+}
+
+func PaintSetColor(paint Paint, color unison.Color) {
+	skPaintSetColorProc.Call(uintptr(paint), uintptr(color))
+}
+
+func PaintGetStyle(paint Paint) unison.PaintStyle {
+	r1, _, _ := skPaintGetStyleProc.Call(uintptr(paint))
+	return unison.PaintStyle(r1)
+}
+
+func PaintSetStyle(paint Paint, style unison.PaintStyle) {
+	skPaintSetStyleProc.Call(uintptr(paint), uintptr(style))
+}
+
+func PaintGetStrokeWidth(paint Paint) float32 {
+	_, r2, _ := skPaintGetStrokeWidthProc.Call(uintptr(paint))
+	return math.Float32frombits(uint32(r2))
+}
+
+func PaintSetStrokeWidth(paint Paint, width float32) {
+	skPaintSetStrokeWidthProc.Call(uintptr(paint), uintptr(math.Float32bits(width)))
+}
+
+func PaintGetStrokeMiter(paint Paint) float32 {
+	_, r2, _ := skPaintGetStrokeMiterProc.Call(uintptr(paint))
+	return math.Float32frombits(uint32(r2))
+}
+
+func PaintSetStrokeMiter(paint Paint, miter float32) {
+	skPaintSetStrokeMiterProc.Call(uintptr(paint), uintptr(math.Float32bits(miter)))
+}
+
+func PaintGetStrokeCap(paint Paint) unison.StrokeCap {
+	r1, _, _ := skPaintGetStrokeCapProc.Call(uintptr(paint))
+	return unison.StrokeCap(r1)
+}
+
+func PaintSetStrokeCap(paint Paint, strokeCap unison.StrokeCap) {
+	skPaintSetStrokeCapProc.Call(uintptr(paint), uintptr(strokeCap))
+}
+
+func PaintGetStrokeJoin(paint Paint) unison.StrokeJoin {
+	r1, _, _ := skPaintGetStrokeJoinProc.Call(uintptr(paint))
+	return unison.StrokeJoin(r1)
+}
+
+func PaintSetStrokeJoin(paint Paint, strokeJoin unison.StrokeJoin) {
+	skPaintSetStrokeJoinProc.Call(uintptr(paint), uintptr(strokeJoin))
+}
+
+func PaintGetBlendMode(paint Paint) unison.BlendMode {
+	r1, _, _ := skPaintGetBlendModeProc.Call(uintptr(paint), uintptr(unison.SrcOverBlendMode))
+	return unison.BlendMode(r1)
+}
+
+func PaintSetBlendMode(paint Paint, blendMode unison.BlendMode) {
+	skPaintSetBlendModeProc.Call(uintptr(paint), uintptr(blendMode))
+}
+
+func PaintGetShader(paint Paint) Shader {
+	r1, _, _ := skPaintGetShaderProc.Call(uintptr(paint))
+	return Shader(r1)
+}
+
+func PaintSetShader(paint Paint, shader Shader) {
+	skPaintSetShaderProc.Call(uintptr(paint), uintptr(shader))
+}
+
+func PaintGetColorFilter(paint Paint) ColorFilter {
+	r1, _, _ := skPaintGetColorFilterProc.Call(uintptr(paint))
+	return ColorFilter(r1)
+}
+
+func PaintSetColorFilter(paint Paint, filter ColorFilter) {
+	skPaintSetColorFilterProc.Call(uintptr(paint), uintptr(filter))
+}
+
+func PaintGetMaskFilter(paint Paint) MaskFilter {
+	r1, _, _ := skPaintGetMaskFilterProc.Call(uintptr(paint))
+	return MaskFilter(r1)
+}
+
+func PaintSetMaskFilter(paint Paint, filter MaskFilter) {
+	skPaintSetMaskFilterProc.Call(uintptr(paint), uintptr(filter))
+}
+
+func PaintGetImageFilter(paint Paint) ImageFilter {
+	r1, _, _ := skPaintGetImageFilterProc.Call(uintptr(paint))
+	return ImageFilter(r1)
+}
+
+func PaintSetImageFilter(paint Paint, filter ImageFilter) {
+	skPaintSetImageFilterProc.Call(uintptr(paint), uintptr(filter))
+}
+
+func PaintGetPathEffect(paint Paint) PathEffect {
+	r1, _, _ := skPaintGetPathEffectProc.Call(uintptr(paint))
+	return PathEffect(r1)
+}
+
+func PaintSetPathEffect(paint Paint, effect PathEffect) {
+	skPaintSetPathEffectProc.Call(uintptr(paint), uintptr(effect))
+}
+
+func PaintGetFillPath(paint Paint, inPath, outPath Path, cullRect *Rect, resScale float32) bool {
+	r1, _, _ := skPaintGetFillPathProc.Call(uintptr(paint), uintptr(inPath), uintptr(outPath),
+		uintptr(unsafe.Pointer(cullRect)), uintptr(math.Float32bits(resScale)))
+	return r1 != 0
+}
+
+func PathNew() Path {
+	r1, _, _ := skPathNewProc.Call()
+	return Path(r1)
+}
+
+func PathParseSVGString(path Path, svg string) bool {
+	buffer := make([]byte, len(svg)+1)
+	copy(buffer, svg)
+	r1, _, _ := skPathParseSVGStringProc.Call(uintptr(path), uintptr(unsafe.Pointer(&buffer[0])))
+	return r1 != 0
+}
+
+func PathToSVGString(path Path, str String) {
+	skPathToSVGStringProc.Call(uintptr(path), uintptr(str))
+}
+
+func PathGetFillType(path Path) unison.FillType {
+	r1, _, _ := skPathGetFillTypeProc.Call(uintptr(path))
+	return unison.FillType(r1)
+}
+
+func PathSetFillType(path Path, fillType unison.FillType) {
+	skPathSetFillTypeProc.Call(uintptr(path), uintptr(fillType))
+}
+
+func PathArcTo(path Path, x, y, rx, ry, rotation float32, arcSize unison.ArcSize, direction unison.Direction) {
+	skPathArcToProc.Call(uintptr(path), uintptr(math.Float32bits(rx)), uintptr(math.Float32bits(ry)),
+		uintptr(math.Float32bits(rotation)), uintptr(arcSize), uintptr(direction), uintptr(math.Float32bits(x)),
+		uintptr(math.Float32bits(y)))
+}
+
+func PathArcToWithPoints(path Path, x1, y1, x2, y2, radius float32) {
+	skPathArcToWithPointsProc.Call(uintptr(path), uintptr(math.Float32bits(x1)), uintptr(math.Float32bits(y1)),
+		uintptr(math.Float32bits(x2)), uintptr(math.Float32bits(y2)), uintptr(math.Float32bits(radius)))
+}
+
+func PathArcToWithOval(path Path, rect *Rect, startAngle, sweepAngle float32, forceMoveTo bool) {
+	skPathArcToWithOvalProc.Call(uintptr(path), uintptr(unsafe.Pointer(rect)), uintptr(math.Float32bits(startAngle)),
+		uintptr(math.Float32bits(sweepAngle)), boolToUintptr(forceMoveTo))
+}
+
+func PathRArcTo(path Path, dx, dy, rx, ry, rotation float32, arcSize unison.ArcSize, direction unison.Direction) {
+	skPathRArcToProc.Call(uintptr(path), uintptr(math.Float32bits(rx)), uintptr(math.Float32bits(ry)),
+		uintptr(math.Float32bits(rotation)), uintptr(arcSize), uintptr(direction), uintptr(math.Float32bits(dx)),
+		uintptr(math.Float32bits(dy)))
+}
+
+func PathGetBounds(path Path) *Rect {
+	var r Rect
+	skPathGetBoundsProc.Call(uintptr(path), uintptr(unsafe.Pointer(&r)))
+	return &r
+}
+
+func PathComputeTightBounds(path Path) *Rect {
+	var r Rect
+	skPathComputeTightBoundsProc.Call(uintptr(path), uintptr(unsafe.Pointer(&r)))
+	return &r
+}
+
+func PathAddCircle(path Path, x, y, radius float32, direction unison.Direction) {
+	skPathAddCircleProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)),
+		uintptr(math.Float32bits(radius)), uintptr(direction))
+}
+
+func PathClone(path Path) Path {
+	r1, _, _ := skPathCloneProc.Call(uintptr(path))
+	return Path(r1)
+}
+
+func PathClose(path Path) {
+	skPathCloseProc.Call(uintptr(path))
+}
+
+func PathConicTo(path Path, cpx, cpy, x, y, weight float32) {
+	skPathConicToProc.Call(uintptr(path), uintptr(math.Float32bits(cpx)), uintptr(math.Float32bits(cpy)),
+		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(math.Float32bits(weight)))
+}
+
+func PathRConicTo(path Path, cpdx, cpdy, dx, dy, weight float32) {
+	skPathRConicToProc.Call(uintptr(path), uintptr(math.Float32bits(cpdx)), uintptr(math.Float32bits(cpdy)),
+		uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)), uintptr(math.Float32bits(weight)))
+}
+
+func PathCubicTo(path Path, cp1x, cp1y, cp2x, cp2y, x, y float32) {
+	skPathCubicToProc.Call(uintptr(path), uintptr(math.Float32bits(cp1x)), uintptr(math.Float32bits(cp1y)),
+		uintptr(math.Float32bits(cp2x)), uintptr(math.Float32bits(cp2y)), uintptr(math.Float32bits(x)),
+		uintptr(math.Float32bits(y)))
+}
+
+func PathRCubicTo(path Path, cp1dx, cp1dy, cp2dx, cp2dy, dx, dy float32) {
+	skPathRCubicToProc.Call(uintptr(path), uintptr(math.Float32bits(cp1dx)), uintptr(math.Float32bits(cp1dy)),
+		uintptr(math.Float32bits(cp2dx)), uintptr(math.Float32bits(cp2dy)), uintptr(math.Float32bits(dx)),
+		uintptr(math.Float32bits(dy)))
+}
+
+func PathLineTo(path Path, x, y float32) {
+	skPathLineToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+}
+
+func PathRLineTo(path Path, x, y float32) {
+	skPathRLineToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+}
+
+func PathMoveTo(path Path, x, y float32) {
+	skPathMoveToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+}
+
+func PathRMoveTo(path Path, x, y float32) {
+	skPathRMoveToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+}
+
+func PathAddOval(path Path, rect *Rect, direction unison.Direction) {
+	skPathAddOvalProc.Call(uintptr(path), uintptr(unsafe.Pointer(rect)), uintptr(direction))
+}
+
+func PathAddPath(path, other Path, mode PathAddMode) {
+	skPathAddPathProc.Call(uintptr(path), uintptr(other), uintptr(mode))
+}
+
+func PathAddPathReverse(path, other Path) {
+	skPathAddPathReverseProc.Call(uintptr(path), uintptr(other))
+}
+
+func PathAddPathMatrix(path, other Path, matrix *Matrix, mode PathAddMode) {
+	skPathAddPathMatrixProc.Call(uintptr(path), uintptr(other), uintptr(unsafe.Pointer(matrix)), uintptr(mode))
+}
+
+func PathAddPathOffset(path, other Path, offsetX, offsetY float32, mode PathAddMode) {
+	skPathAddPathOffsetProc.Call(uintptr(path), uintptr(other), uintptr(math.Float32bits(offsetX)),
+		uintptr(math.Float32bits(offsetY)), uintptr(mode))
+}
+
+func PathAddPoly(path Path, pts []geom32.Point, closePath bool) {
+	skPathAddPolyProc.Call(uintptr(path), uintptr(unsafe.Pointer(&pts[0])), uintptr(len(pts)), boolToUintptr(closePath))
+}
+
+func PathQuadTo(path Path, cpx, cpy, x, y float32) {
+	skPathQuadToProc.Call(uintptr(path), uintptr(math.Float32bits(cpx)), uintptr(math.Float32bits(cpy)),
+		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+}
+
+func PathAddRect(path Path, rect *Rect, direction unison.Direction) {
+	skPathAddRectProc.Call(uintptr(path), uintptr(unsafe.Pointer(rect)), uintptr(direction))
+}
+
+func PathAddRoundedRect(path Path, rect *Rect, radiusX, radiusY float32, direction unison.Direction) {
+	skPathAddRoundedRectProc.Call(uintptr(path), uintptr(unsafe.Pointer(rect)), uintptr(math.Float32bits(radiusX)),
+		uintptr(math.Float32bits(radiusY)), uintptr(direction))
+}
+
+func PathTransform(path Path, matrix *Matrix) {
+	skPathTransformProc.Call(uintptr(path), uintptr(unsafe.Pointer(matrix)))
+}
+
+func PathTransformToDest(path, dstPath Path, matrix *Matrix) {
+	skPathTransformToDestProc.Call(uintptr(path), uintptr(unsafe.Pointer(matrix)), uintptr(dstPath))
+}
+
+func PathReset(path Path) {
+	skPathResetProc.Call(uintptr(path))
+}
+
+func PathRewind(path Path) {
+	skPathRewindProc.Call(uintptr(path))
+}
+
+func PathContains(path Path, x, y float32) bool {
+	r1, _, _ := skPathContainsProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+	return r1 != 0
+}
+
+func PathGetLastPoint(path Path) geom32.Point {
+	var pt geom32.Point
+	skPathGetLastPointProc.Call(uintptr(path), uintptr(unsafe.Pointer(&pt)))
+	return pt
+}
+
+func PathDelete(path Path) {
+	skPathDeleteProc.Call(uintptr(path))
+}
+
+func PathEffectCreateCompose(outer, inner PathEffect) PathEffect {
+	r1, _, _ := skPathEffectCreateComposeProc.Call(uintptr(outer), uintptr(inner))
+	return PathEffect(r1)
+}
+
+func PathEffectCreateSum(first, second PathEffect) PathEffect {
+	r1, _, _ := skPathEffectCreateSumProc.Call(uintptr(first), uintptr(second))
+	return PathEffect(r1)
+}
+
+func PathEffectCreateDiscrete(segLength, deviation float32, seedAssist uint32) PathEffect {
+	r1, _, _ := skPathEffectCreateDiscreteProc.Call(uintptr(math.Float32bits(segLength)),
+		uintptr(math.Float32bits(deviation)), uintptr(seedAssist))
+	return PathEffect(r1)
+}
+
+func PathEffectCreateCorner(radius float32) PathEffect {
+	r1, _, _ := skPathEffectCreateCornerProc.Call(uintptr(math.Float32bits(radius)))
+	return PathEffect(r1)
+}
+
+func PathEffectCreate1dPath(path Path, advance, phase float32, style unison.PathEffect1DStyle) PathEffect {
+	r1, _, _ := skPathEffectCreate1dPathProc.Call(uintptr(path), uintptr(math.Float32bits(advance)),
+		uintptr(math.Float32bits(phase)), uintptr(style))
+	return PathEffect(r1)
+}
+
+func PathEffectCreate2dLine(width float32, matrix *Matrix) PathEffect {
+	r1, _, _ := skPathEffectCreate2dLineProc.Call(uintptr(math.Float32bits(width)), uintptr(unsafe.Pointer(matrix)))
+	return PathEffect(r1)
+}
+
+func PathEffectCreate2dPath(matrix *Matrix, path Path) PathEffect {
+	r1, _, _ := skPathEffectCreate2dPathProc.Call(uintptr(unsafe.Pointer(matrix)), uintptr(path))
+	return PathEffect(r1)
+}
+
+func PathEffectCreateDash(intervals []float32, phase float32) PathEffect {
+	r1, _, _ := skPathEffectCreateDashProc.Call(uintptr(unsafe.Pointer(&intervals[0])), uintptr(len(intervals)),
+		uintptr(math.Float32bits(phase)))
+	return PathEffect(r1)
+}
+
+func PathEffectCreateTrim(start, stop float32, mode unison.TrimMode) PathEffect {
+	r1, _, _ := skPathEffectCreateTrimProc.Call(uintptr(math.Float32bits(start)), uintptr(math.Float32bits(stop)),
+		uintptr(mode))
+	return PathEffect(r1)
+}
+
+func PathEffectUnref(effect PathEffect) {
+	skPathEffectUnrefProc.Call(uintptr(effect))
+}
+
+func ShaderNewColor(color unison.Color) Shader {
+	r1, _, _ := skShaderNewColorProc.Call(uintptr(color))
+	return Shader(r1)
+}
+
+func ShaderNewBlend(blendMode unison.BlendMode, dst, src Shader) Shader {
+	r1, _, _ := skShaderNewBlendProc.Call(uintptr(blendMode), uintptr(dst), uintptr(src))
+	return Shader(r1)
+}
+
+func ShaderNewLinearGradient(start, end geom32.Point, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+	pts := make([]geom32.Point, 2)
+	pts[0] = start
+	pts[1] = end
+	r1, _, _ := skShaderNewLinearGradientProc.Call(uintptr(unsafe.Pointer(&pts[0])), uintptr(unsafe.Pointer(&colors[0])),
+		uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)), uintptr(tileMode), uintptr(unsafe.Pointer(matrix)))
+	return Shader(r1)
+}
+
+func ShaderNewRadialGradient(center geom32.Point, radius float32, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+	r1, _, _ := skShaderNewRadialGradientProc.Call(uintptr(unsafe.Pointer(&center)), uintptr(math.Float32bits(radius)),
+		uintptr(unsafe.Pointer(&colors[0])), uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)),
+		uintptr(tileMode), uintptr(unsafe.Pointer(matrix)))
+	return Shader(r1)
+}
+
+func ShaderNewSweepGradient(center geom32.Point, startAngle, endAngle float32, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+	r1, _, _ := skShaderNewSweepGradientProc.Call(uintptr(unsafe.Pointer(&center)), uintptr(unsafe.Pointer(&colors[0])),
+		uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)), uintptr(tileMode),
+		uintptr(math.Float32bits(startAngle)), uintptr(math.Float32bits(endAngle)), uintptr(unsafe.Pointer(matrix)))
+	return Shader(r1)
+}
+
+func ShaderNewTwoPointConicalGradient(startPt, endPt geom32.Point, startRadius, endRadius float32, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+	r1, _, _ := skShaderNewTwoPointConicalGradientProc.Call(uintptr(unsafe.Pointer(&startPt)),
+		uintptr(math.Float32bits(startRadius)), uintptr(unsafe.Pointer(&endPt)), uintptr(math.Float32bits(endRadius)),
+		uintptr(unsafe.Pointer(&colors[0])), uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)),
+		uintptr(tileMode), uintptr(unsafe.Pointer(matrix)))
+	return Shader(r1)
+}
+
+func ShaderNewPerlinNoiseFractalNoise(baseFreqX, baseFreqY, seed float32, numOctaves int, size ISize) Shader {
+	r1, _, _ := skShaderNewPerlinNoiseFractalNoiseProc.Call(uintptr(baseFreqX), uintptr(baseFreqY), uintptr(numOctaves),
+		uintptr(math.Float32bits(seed)), uintptr(unsafe.Pointer(&size)))
+	return Shader(r1)
+}
+
+func ShaderNewPerlinNoiseTurbulence(baseFreqX, baseFreqY, seed float32, numOctaves int, size ISize) Shader {
+	r1, _, _ := skShaderNewPerlinNoiseTurbulenceProc.Call(uintptr(math.Float32bits(baseFreqX)),
+		uintptr(math.Float32bits(baseFreqY)), uintptr(numOctaves), uintptr(math.Float32bits(seed)),
+		uintptr(unsafe.Pointer(&size)))
+	return Shader(r1)
+}
+
+func ShaderWithLocalMatrix(shader Shader, matrix *Matrix) Shader {
+	r1, _, _ := skShaderWithLocalMatrixProc.Call(uintptr(shader), uintptr(unsafe.Pointer(matrix)))
+	return Shader(r1)
+}
+
+func ShaderWithColorFilter(shader Shader, filter ColorFilter) Shader {
+	r1, _, _ := skShaderWithColorFilterProc.Call(uintptr(shader), uintptr(filter))
+	return Shader(r1)
+}
+
+func ShaderUnref(shader Shader) {
+	skShaderUnrefProc.Call(uintptr(shader))
+}
+
+func StringNewEmpty() String {
+	r1, _, _ := skStringNewEmptyProc.Call()
+	return String(r1)
+}
+
+func StringGetString(str String) string {
+	r1, _, _ := skStringGetCStrProc.Call(uintptr(str))
+	ptr := (*[1 << 30]byte)(unsafe.Pointer(r1))
+	r1, _, _ = skStringGetSizeProc.Call(uintptr(str))
+	data := make([]byte, int(r1))
+	copy(data, ptr[:len(data)])
+	return string(data)
+}
+
+func StringDelete(str String) {
+	skStringDeleteProc.Call(uintptr(str))
+}
+
+func SurfaceNewBackendRenderTarget(ctx DirectContext, backend BackendRenderTarget, origin SurfaceOrigin, colorType ColorType, colorSpace ColorSpace, surfaceProps SurfaceProps) Surface {
+	r1, _, _ := skSurfaceNewBackendRenderTargetProc.Call(uintptr(ctx), uintptr(backend), uintptr(origin),
+		uintptr(colorType), uintptr(colorSpace), uintptr(surfaceProps))
+	return Surface(r1)
+}
+
+func SurfaceGetCanvas(aSurface Surface) Canvas {
+	r1, _, _ := skSurfaceGetCanvasProc.Call(uintptr(aSurface))
+	return Canvas(r1)
+}
+
+func SurfaceUnref(aSurface Surface) {
+	skSurfaceUnrefProc.Call(uintptr(aSurface))
+}
+
+func SurfacePropsNew(geometry PixelGeometry) SurfaceProps {
+	r1, _, _ := skSurfacePropsNewProc.Call(0, uintptr(geometry))
+	return SurfaceProps(r1)
+}
+
+func TextBlobMakeFromText(text string, font Font) TextBlob {
+	b := []byte(text)
+	r1, _, _ := skTextBlobMakeFromTextProc.Call(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), uintptr(font), uintptr(TextEncodingUTF8))
+	return TextBlob(r1)
+}
+
+func TextBlobGetBounds(txt TextBlob) *Rect {
+	var r Rect
+	skTextBlobGetBoundsProc.Call(uintptr(txt), uintptr(unsafe.Pointer(&r)))
+	return &r
+}
+
+func TextBlobGetIntercepts(txt TextBlob, p Paint, start, end float32, intercepts []float32) int {
+	pos := []float32{start, end}
+	var dst *float32
+	if len(intercepts) != 0 {
+		dst = &intercepts[0]
+	}
+	r1, _, _ := skTextBlobGetInterceptsProc.Call(uintptr(txt), uintptr(unsafe.Pointer(&pos[0])), uintptr(unsafe.Pointer(dst)), uintptr(p))
+	return int(r1)
+}
+
+func TextBlobUnref(txt TextBlob) {
+	skTextBlobUnrefProc.Call(uintptr(txt))
+}
+
+func TextBlobBuilderNew() TextBlobBuilder {
+	r1, _, _ := skTextBlobBuilderNewProc.Call()
+	return TextBlobBuilder(r1)
+}
+
+func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
+	r1, _, _ := skTextBlobBuilderMakeProc.Call(uintptr(builder))
+	return TextBlob(r1)
+}
+
+func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, x, y float32) {
+	buffer := &TextBlobBuilderRunBuffer{
+		Glyphs: unsafe.Pointer(&glyphs[0]),
+	}
+	skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
+		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), 0, uintptr(unsafe.Pointer(buffer)))
+}
+
+func TextBlobBuilderAllocRunPos(builder TextBlobBuilder, font Font, glyphs []uint16, pos []geom32.Point) {
+	buffer := &TextBlobBuilderRunBuffer{
+		Glyphs: unsafe.Pointer(&glyphs[0]),
+		Pos:    unsafe.Pointer(&pos[0]),
+	}
+	skTextBlobBuilderAllocRunPosProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)), 0, uintptr(unsafe.Pointer(buffer)))
+}
+
+func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, pos []float32, y float32) {
+	buffer := &TextBlobBuilderRunBuffer{
+		Glyphs: unsafe.Pointer(&glyphs[0]),
+		Pos:    unsafe.Pointer(&pos[0]),
+	}
+	skTextBlobBuilderAllocRunPosHProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
+		uintptr(math.Float32bits(y)), 0, uintptr(unsafe.Pointer(buffer)))
+}
+
+func TextBlobBuilderDelete(builder TextBlobBuilder) {
+	skTextBlobBuilderDeleteProc.Call(uintptr(builder))
+}
+
+func TypeFaceGetFontStyle(face TypeFace) FontStyle {
+	r1, _, _ := skTypeFaceGetFontStyleProc.Call(uintptr(face))
+	return FontStyle(r1)
+}
+
+func TypeFaceIsFixedPitch(face TypeFace) bool {
+	r1, _, _ := skTypeFaceIsFixedPitchProc.Call(uintptr(face))
+	return r1 != 0
+}
+
+func TypeFaceGetFamilyName(face TypeFace) String {
+	r1, _, _ := skTypeFaceGetFamilyNameProc.Call(uintptr(face))
+	return String(r1)
+}
+
+func TypeFaceGetUnitsPerEm(face TypeFace) int {
+	r1, _, _ := skTypeFaceGetUnitsPerEmProc.Call(uintptr(face))
+	return int(r1)
+}
+
+func TypeFaceUnref(face TypeFace) {
+	skTypeFaceUnrefProc.Call(uintptr(face))
+}
+
+func boolToUintptr(b bool) uintptr {
+	if b {
+		return 1
+	}
+	return 0
+}

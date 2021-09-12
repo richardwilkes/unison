@@ -1,0 +1,23 @@
+# Set the default behavior, in case people don't have core.autocrlf set.
+* text=auto
+
+# Force text files to have LF
+*.bat text eol=crlf
+*.go text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.tmpl text eol=lf
+*.txt text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.mod text eol=lf
+*.sum text eol=lf
+
+# Denote all files that are truly binary and should not be modified.
+*.gif binary
+*.jpg binary
+*.jpeg binary
+*.otf binary
+*.png binary
+*.psd binary
+*.ttf binary
