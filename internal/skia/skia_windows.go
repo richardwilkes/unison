@@ -23,7 +23,6 @@ import (
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/unison"
 	"golang.org/x/sys/windows"
 )
 
@@ -656,7 +655,7 @@ func CanvasQuickRejectRect(canvas Canvas, rect *Rect) bool {
 	return r1 != 0
 }
 
-func CanvasClear(canvas Canvas, color unison.Color) {
+func CanvasClear(canvas Canvas, color Color) {
 	skCanvasClearProc.Call(uintptr(canvas), uintptr(color))
 }
 
@@ -689,12 +688,12 @@ func CanvasDrawImageRect(canvas Canvas, img Image, srcRect, dstRect *Rect, sampl
 		uintptr(unsafe.Pointer(dstRect)), uintptr(sampling), uintptr(paint))
 }
 
-func CanvasDrawImageNine(canvas Canvas, img Image, centerRect *IRect, dstRect *Rect, filter unison.FilterMode, paint Paint) {
+func CanvasDrawImageNine(canvas Canvas, img Image, centerRect *IRect, dstRect *Rect, filter FilterMode, paint Paint) {
 	skCanvasDrawImageNineProc.Call(uintptr(canvas), uintptr(img), uintptr(unsafe.Pointer(centerRect)),
 		uintptr(unsafe.Pointer(dstRect)), uintptr(filter), uintptr(paint))
 }
 
-func CanvasDrawColor(canvas Canvas, color unison.Color, mode unison.BlendMode) {
+func CanvasDrawColor(canvas Canvas, color Color, mode BlendMode) {
 	skCanvasDrawColorProc.Call(uintptr(canvas), uintptr(color), uintptr(mode))
 }
 
@@ -702,7 +701,7 @@ func CanvasDrawPoint(canvas Canvas, x, y float32, paint Paint) {
 	skCanvasDrawPointProc.Call(uintptr(canvas), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(paint))
 }
 
-func CanvasDrawPoints(canvas Canvas, mode unison.PointMode, pts []geom32.Point, paint Paint) {
+func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom32.Point, paint Paint) {
 	skCanvasDrawPointsProc.Call(uintptr(canvas), uintptr(mode), uintptr(len(pts)),
 		uintptr(unsafe.Pointer(&pts[0])), uintptr(paint))
 }
@@ -726,12 +725,12 @@ func CanvasDrawTextBlob(canvas Canvas, txt TextBlob, x, y float32, paint Paint) 
 	skCanvasDrawTextBlobProc.Call(uintptr(canvas), uintptr(txt), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(paint))
 }
 
-func CanavasClipRectWithOperation(canvas Canvas, rect *Rect, op unison.ClipOp, antialias bool) {
+func CanavasClipRectWithOperation(canvas Canvas, rect *Rect, op ClipOp, antialias bool) {
 	skCanavasClipRectWithOperationProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(rect)), uintptr(op),
 		boolToUintptr(antialias))
 }
 
-func CanavasClipPathWithOperation(canvas Canvas, path Path, op unison.ClipOp, antialias bool) {
+func CanavasClipPathWithOperation(canvas Canvas, path Path, op ClipOp, antialias bool) {
 	skCanavasClipPathWithOperationProc.Call(uintptr(canvas), uintptr(path), uintptr(op), boolToUintptr(antialias))
 }
 
@@ -755,12 +754,12 @@ func CanvasFlush(canvas Canvas) {
 	skCanvasFlushProc.Call(uintptr(canvas))
 }
 
-func ColorFilterNewMode(color unison.Color, blendMode unison.BlendMode) ColorFilter {
+func ColorFilterNewMode(color Color, blendMode BlendMode) ColorFilter {
 	r1, _, _ := skColorFilterNewModeProc.Call(uintptr(color), uintptr(blendMode))
 	return ColorFilter(r1)
 }
 
-func ColorFilterNewLighting(mul, add unison.Color) ColorFilter {
+func ColorFilterNewLighting(mul, add Color) ColorFilter {
 	r1, _, _ := skColorFilterNewLightingProc.Call(uintptr(mul), uintptr(add))
 	return ColorFilter(r1)
 }
@@ -833,11 +832,11 @@ func FontSetForceAutoHinting(font Font, enabled bool) {
 	skFontSetForceAutoHintingProc.Call(uintptr(font), boolToUintptr(enabled))
 }
 
-func FontSetHinting(font Font, hinting unison.FontHinting) {
+func FontSetHinting(font Font, hinting FontHinting) {
 	skFontSetHintingProc.Call(uintptr(font), uintptr(hinting))
 }
 
-func FontGetMetrics(font Font, metrics *unison.FontMetrics) {
+func FontGetMetrics(font Font, metrics *FontMetrics) {
 	skFontGetMetricsProc.Call(uintptr(font), uintptr(unsafe.Pointer(metrics)))
 }
 
@@ -899,24 +898,24 @@ func FontMgrGetFamilyName(mgr FontMgr, index int, str String) {
 	skFontMgrGetFamilyNameProc.Call(uintptr(mgr), uintptr(index), uintptr(str))
 }
 
-func FontStyleNew(weight unison.FontWeight, spacing unison.FontSpacing, slant unison.FontSlant) FontStyle {
+func FontStyleNew(weight FontWeight, spacing FontSpacing, slant FontSlant) FontStyle {
 	r1, _, _ := skFontStyleNewProc.Call(uintptr(weight), uintptr(spacing), uintptr(slant))
 	return FontStyle(r1)
 }
 
-func FontStyleGetWeight(style FontStyle) unison.FontWeight {
+func FontStyleGetWeight(style FontStyle) FontWeight {
 	r1, _, _ := skFontStyleGetWeightProc.Call(uintptr(style))
-	return unison.FontWeight(r1)
+	return FontWeight(r1)
 }
 
-func FontStyleGetWidth(style FontStyle) unison.FontSpacing {
+func FontStyleGetWidth(style FontStyle) FontSpacing {
 	r1, _, _ := skFontStyleGetWidthProc.Call(uintptr(style))
-	return unison.FontSpacing(r1)
+	return FontSpacing(r1)
 }
 
-func FontStyleGetSlant(style FontStyle) unison.FontSlant {
+func FontStyleGetSlant(style FontStyle) FontSlant {
 	r1, _, _ := skFontStyleGetSlantProc.Call(uintptr(style))
-	return unison.FontSlant(r1)
+	return FontSlant(r1)
 }
 
 func FontStyleDelete(style FontStyle) {
@@ -987,12 +986,12 @@ func ImageReadPixels(img Image, info *ImageInfo, pixels []byte, dstRowBytes, src
 	return r1 != 0
 }
 
-func ImageEncodeSpecific(img Image, format unison.EncodedImageFormat, quality int) Data {
+func ImageEncodeSpecific(img Image, format EncodedImageFormat, quality int) Data {
 	r1, _, _ := skImageEncodeSpecificProc.Call(uintptr(img), uintptr(format), uintptr(quality))
 	return Data(r1)
 }
 
-func ImageMakeShader(img Image, tileModeX, tileModeY unison.TileMode, sampling SamplingOptions, matrix *Matrix) Shader {
+func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling SamplingOptions, matrix *Matrix) Shader {
 	r1, _, _ := skImageMakeShaderProc.Call(uintptr(img), uintptr(tileModeX), uintptr(tileModeY),
 		uintptr(sampling), uintptr(unsafe.Pointer(matrix)))
 	return Shader(r1)
@@ -1014,7 +1013,7 @@ func ImageFilterNewArithmetic(k1, k2, k3, k4 float32, enforcePMColor bool, backg
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewBlur(sigmaX, sigmaY float32, tileMode unison.TileMode, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewBlur(sigmaX, sigmaY float32, tileMode TileMode, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewBlurProc.Call(uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(tileMode), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
@@ -1031,20 +1030,20 @@ func ImageFilterNewCompose(outer, inner ImageFilter) ImageFilter {
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDisplacementMapEffect(xChannelSelector, yChannelSelector unison.ColorChannel, scale float32, displacement, color ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewDisplacementMapEffect(xChannelSelector, yChannelSelector ColorChannel, scale float32, displacement, color ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewDisplacementMapEffectProc.Call(uintptr(xChannelSelector), uintptr(yChannelSelector),
 		uintptr(math.Float32bits(scale)), uintptr(displacement), uintptr(color), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewDropShadowProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
 		uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(color), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewDropShadowOnlyProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
 		uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(color), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
@@ -1068,7 +1067,7 @@ func ImageFilterNewMagnifier(src *geom32.Rect, inset float32, input ImageFilter,
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode unison.TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewMatrixConvolutionProc.Call(uintptr(unsafe.Pointer(size)),
 		uintptr(unsafe.Pointer(&kernel[0])), uintptr(math.Float32bits(gain)), uintptr(math.Float32bits(bias)),
 		uintptr(unsafe.Pointer(offset)), uintptr(tileMode), boolToUintptr(convolveAlpha), uintptr(input),
@@ -1112,21 +1111,21 @@ func ImageFilterNewErode(radiusX, radiusY int, input ImageFilter, cropRect *geom
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDistantLitDiffuse(pt *Point3, color unison.Color, scale, reflectivity float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewDistantLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewDistantLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewPointLitDiffuse(pt *Point3, color unison.Color, scale, reflectivity float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewPointLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewPointLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity float32, color Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewSpotLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)),
 		uintptr(unsafe.Pointer(targetPt)), uintptr(math.Float32bits(specularExponent)),
 		uintptr(math.Float32bits(cutoffAngle)), uintptr(color), uintptr(math.Float32bits(scale)),
@@ -1134,21 +1133,21 @@ func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoff
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDistantLitSpecular(pt *Point3, color unison.Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewDistantLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewDistantLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(math.Float32bits(shine)),
 		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewPointLitSpecular(pt *Point3, color unison.Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewPointLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewPointLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(math.Float32bits(shine)),
 		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewSpotLitSpecular(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color unison.Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
+func ImageFilterNewSpotLitSpecular(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color Color, input ImageFilter, cropRect *geom32.Rect) ImageFilter {
 	r1, _, _ := skImageFilterNewSpotLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)),
 		uintptr(unsafe.Pointer(targetPt)), uintptr(math.Float32bits(specularExponent)),
 		uintptr(math.Float32bits(cutoffAngle)), uintptr(color), uintptr(math.Float32bits(scale)),
@@ -1161,7 +1160,7 @@ func ImageFilterUnref(filter ImageFilter) {
 	skImageFilterUnrefProc.Call(uintptr(filter))
 }
 
-func MaskFilterNewBlurWithFlags(style unison.Blur, sigma float32, respectMatrix bool) MaskFilter {
+func MaskFilterNewBlurWithFlags(style Blur, sigma float32, respectMatrix bool) MaskFilter {
 	r1, _, _ := skMaskFilterNewBlurWithFlagsProc.Call(uintptr(style), uintptr(math.Float32bits(sigma)),
 		boolToUintptr(respectMatrix))
 	return MaskFilter(r1)
@@ -1196,7 +1195,7 @@ func OpBuilderNew() OpBuilder {
 	return OpBuilder(r1)
 }
 
-func OpBuilderAdd(builder OpBuilder, path Path, op unison.PathOp) {
+func OpBuilderAdd(builder OpBuilder, path Path, op PathOp) {
 	skOpBuilderAddProc.Call(uintptr(builder), uintptr(path), uintptr(op))
 }
 
@@ -1245,21 +1244,21 @@ func PaintSetDither(paint Paint, enabled bool) {
 	skPaintSetDitherProc.Call(uintptr(paint), boolToUintptr(enabled))
 }
 
-func PaintGetColor(paint Paint) unison.Color {
+func PaintGetColor(paint Paint) Color {
 	r1, _, _ := skPaintGetColorProc.Call(uintptr(paint))
-	return unison.Color(r1)
+	return Color(r1)
 }
 
-func PaintSetColor(paint Paint, color unison.Color) {
+func PaintSetColor(paint Paint, color Color) {
 	skPaintSetColorProc.Call(uintptr(paint), uintptr(color))
 }
 
-func PaintGetStyle(paint Paint) unison.PaintStyle {
+func PaintGetStyle(paint Paint) PaintStyle {
 	r1, _, _ := skPaintGetStyleProc.Call(uintptr(paint))
-	return unison.PaintStyle(r1)
+	return PaintStyle(r1)
 }
 
-func PaintSetStyle(paint Paint, style unison.PaintStyle) {
+func PaintSetStyle(paint Paint, style PaintStyle) {
 	skPaintSetStyleProc.Call(uintptr(paint), uintptr(style))
 }
 
@@ -1281,30 +1280,30 @@ func PaintSetStrokeMiter(paint Paint, miter float32) {
 	skPaintSetStrokeMiterProc.Call(uintptr(paint), uintptr(math.Float32bits(miter)))
 }
 
-func PaintGetStrokeCap(paint Paint) unison.StrokeCap {
+func PaintGetStrokeCap(paint Paint) StrokeCap {
 	r1, _, _ := skPaintGetStrokeCapProc.Call(uintptr(paint))
-	return unison.StrokeCap(r1)
+	return StrokeCap(r1)
 }
 
-func PaintSetStrokeCap(paint Paint, strokeCap unison.StrokeCap) {
+func PaintSetStrokeCap(paint Paint, strokeCap StrokeCap) {
 	skPaintSetStrokeCapProc.Call(uintptr(paint), uintptr(strokeCap))
 }
 
-func PaintGetStrokeJoin(paint Paint) unison.StrokeJoin {
+func PaintGetStrokeJoin(paint Paint) StrokeJoin {
 	r1, _, _ := skPaintGetStrokeJoinProc.Call(uintptr(paint))
-	return unison.StrokeJoin(r1)
+	return StrokeJoin(r1)
 }
 
-func PaintSetStrokeJoin(paint Paint, strokeJoin unison.StrokeJoin) {
+func PaintSetStrokeJoin(paint Paint, strokeJoin StrokeJoin) {
 	skPaintSetStrokeJoinProc.Call(uintptr(paint), uintptr(strokeJoin))
 }
 
-func PaintGetBlendMode(paint Paint) unison.BlendMode {
-	r1, _, _ := skPaintGetBlendModeProc.Call(uintptr(paint), uintptr(unison.SrcOverBlendMode))
-	return unison.BlendMode(r1)
+func PaintGetBlendMode(paint Paint) BlendMode {
+	r1, _, _ := skPaintGetBlendModeProc.Call(uintptr(paint), uintptr(3)) // SrcOverBlendMode
+	return BlendMode(r1)
 }
 
-func PaintSetBlendMode(paint Paint, blendMode unison.BlendMode) {
+func PaintSetBlendMode(paint Paint, blendMode BlendMode) {
 	skPaintSetBlendModeProc.Call(uintptr(paint), uintptr(blendMode))
 }
 
@@ -1375,16 +1374,16 @@ func PathToSVGString(path Path, str String) {
 	skPathToSVGStringProc.Call(uintptr(path), uintptr(str))
 }
 
-func PathGetFillType(path Path) unison.FillType {
+func PathGetFillType(path Path) FillType {
 	r1, _, _ := skPathGetFillTypeProc.Call(uintptr(path))
-	return unison.FillType(r1)
+	return FillType(r1)
 }
 
-func PathSetFillType(path Path, fillType unison.FillType) {
+func PathSetFillType(path Path, fillType FillType) {
 	skPathSetFillTypeProc.Call(uintptr(path), uintptr(fillType))
 }
 
-func PathArcTo(path Path, x, y, rx, ry, rotation float32, arcSize unison.ArcSize, direction unison.Direction) {
+func PathArcTo(path Path, x, y, rx, ry, rotation float32, arcSize ArcSize, direction Direction) {
 	skPathArcToProc.Call(uintptr(path), uintptr(math.Float32bits(rx)), uintptr(math.Float32bits(ry)),
 		uintptr(math.Float32bits(rotation)), uintptr(arcSize), uintptr(direction), uintptr(math.Float32bits(x)),
 		uintptr(math.Float32bits(y)))
@@ -1400,7 +1399,7 @@ func PathArcToWithOval(path Path, rect *Rect, startAngle, sweepAngle float32, fo
 		uintptr(math.Float32bits(sweepAngle)), boolToUintptr(forceMoveTo))
 }
 
-func PathRArcTo(path Path, dx, dy, rx, ry, rotation float32, arcSize unison.ArcSize, direction unison.Direction) {
+func PathRArcTo(path Path, dx, dy, rx, ry, rotation float32, arcSize ArcSize, direction Direction) {
 	skPathRArcToProc.Call(uintptr(path), uintptr(math.Float32bits(rx)), uintptr(math.Float32bits(ry)),
 		uintptr(math.Float32bits(rotation)), uintptr(arcSize), uintptr(direction), uintptr(math.Float32bits(dx)),
 		uintptr(math.Float32bits(dy)))
@@ -1418,7 +1417,7 @@ func PathComputeTightBounds(path Path) *Rect {
 	return &r
 }
 
-func PathAddCircle(path Path, x, y, radius float32, direction unison.Direction) {
+func PathAddCircle(path Path, x, y, radius float32, direction Direction) {
 	skPathAddCircleProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)),
 		uintptr(math.Float32bits(radius)), uintptr(direction))
 }
@@ -1470,7 +1469,7 @@ func PathRMoveTo(path Path, x, y float32) {
 	skPathRMoveToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
 }
 
-func PathAddOval(path Path, rect *Rect, direction unison.Direction) {
+func PathAddOval(path Path, rect *Rect, direction Direction) {
 	skPathAddOvalProc.Call(uintptr(path), uintptr(unsafe.Pointer(rect)), uintptr(direction))
 }
 
@@ -1500,11 +1499,11 @@ func PathQuadTo(path Path, cpx, cpy, x, y float32) {
 		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
 }
 
-func PathAddRect(path Path, rect *Rect, direction unison.Direction) {
+func PathAddRect(path Path, rect *Rect, direction Direction) {
 	skPathAddRectProc.Call(uintptr(path), uintptr(unsafe.Pointer(rect)), uintptr(direction))
 }
 
-func PathAddRoundedRect(path Path, rect *Rect, radiusX, radiusY float32, direction unison.Direction) {
+func PathAddRoundedRect(path Path, rect *Rect, radiusX, radiusY float32, direction Direction) {
 	skPathAddRoundedRectProc.Call(uintptr(path), uintptr(unsafe.Pointer(rect)), uintptr(math.Float32bits(radiusX)),
 		uintptr(math.Float32bits(radiusY)), uintptr(direction))
 }
@@ -1561,7 +1560,7 @@ func PathEffectCreateCorner(radius float32) PathEffect {
 	return PathEffect(r1)
 }
 
-func PathEffectCreate1dPath(path Path, advance, phase float32, style unison.PathEffect1DStyle) PathEffect {
+func PathEffectCreate1dPath(path Path, advance, phase float32, style PathEffect1DStyle) PathEffect {
 	r1, _, _ := skPathEffectCreate1dPathProc.Call(uintptr(path), uintptr(math.Float32bits(advance)),
 		uintptr(math.Float32bits(phase)), uintptr(style))
 	return PathEffect(r1)
@@ -1583,7 +1582,7 @@ func PathEffectCreateDash(intervals []float32, phase float32) PathEffect {
 	return PathEffect(r1)
 }
 
-func PathEffectCreateTrim(start, stop float32, mode unison.TrimMode) PathEffect {
+func PathEffectCreateTrim(start, stop float32, mode TrimMode) PathEffect {
 	r1, _, _ := skPathEffectCreateTrimProc.Call(uintptr(math.Float32bits(start)), uintptr(math.Float32bits(stop)),
 		uintptr(mode))
 	return PathEffect(r1)
@@ -1593,17 +1592,17 @@ func PathEffectUnref(effect PathEffect) {
 	skPathEffectUnrefProc.Call(uintptr(effect))
 }
 
-func ShaderNewColor(color unison.Color) Shader {
+func ShaderNewColor(color Color) Shader {
 	r1, _, _ := skShaderNewColorProc.Call(uintptr(color))
 	return Shader(r1)
 }
 
-func ShaderNewBlend(blendMode unison.BlendMode, dst, src Shader) Shader {
+func ShaderNewBlend(blendMode BlendMode, dst, src Shader) Shader {
 	r1, _, _ := skShaderNewBlendProc.Call(uintptr(blendMode), uintptr(dst), uintptr(src))
 	return Shader(r1)
 }
 
-func ShaderNewLinearGradient(start, end geom32.Point, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+func ShaderNewLinearGradient(start, end geom32.Point, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
 	pts := make([]geom32.Point, 2)
 	pts[0] = start
 	pts[1] = end
@@ -1612,21 +1611,21 @@ func ShaderNewLinearGradient(start, end geom32.Point, colors []unison.Color, col
 	return Shader(r1)
 }
 
-func ShaderNewRadialGradient(center geom32.Point, radius float32, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+func ShaderNewRadialGradient(center geom32.Point, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
 	r1, _, _ := skShaderNewRadialGradientProc.Call(uintptr(unsafe.Pointer(&center)), uintptr(math.Float32bits(radius)),
 		uintptr(unsafe.Pointer(&colors[0])), uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)),
 		uintptr(tileMode), uintptr(unsafe.Pointer(matrix)))
 	return Shader(r1)
 }
 
-func ShaderNewSweepGradient(center geom32.Point, startAngle, endAngle float32, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+func ShaderNewSweepGradient(center geom32.Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
 	r1, _, _ := skShaderNewSweepGradientProc.Call(uintptr(unsafe.Pointer(&center)), uintptr(unsafe.Pointer(&colors[0])),
 		uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)), uintptr(tileMode),
 		uintptr(math.Float32bits(startAngle)), uintptr(math.Float32bits(endAngle)), uintptr(unsafe.Pointer(matrix)))
 	return Shader(r1)
 }
 
-func ShaderNewTwoPointConicalGradient(startPt, endPt geom32.Point, startRadius, endRadius float32, colors []unison.Color, colorPos []float32, tileMode unison.TileMode, matrix *Matrix) Shader {
+func ShaderNewTwoPointConicalGradient(startPt, endPt geom32.Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
 	r1, _, _ := skShaderNewTwoPointConicalGradientProc.Call(uintptr(unsafe.Pointer(&startPt)),
 		uintptr(math.Float32bits(startRadius)), uintptr(unsafe.Pointer(&endPt)), uintptr(math.Float32bits(endRadius)),
 		uintptr(unsafe.Pointer(&colors[0])), uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)),

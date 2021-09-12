@@ -243,3 +243,23 @@ type ImageInfo struct {
 	Width      int32
 	Height     int32
 }
+
+// FontMetrics holds various metrics about a font.
+type FontMetrics struct {
+	Flags              uint32  // Flags indicating which metrics are valid
+	Top                float32 // Greatest extent above origin of any glyph bounding box; typically negative; deprecated with variable fonts; only if Flags & BoundsInvalidFontMetricsFlag == 0
+	Ascent             float32 // Distance to reserve above baseline; typically negative
+	Descent            float32 // Distance to reserve below baseline; typically positive
+	Bottom             float32 // Greatest extent below origin of any glyph bounding box; typically positive; deprecated with variable fonts; only if Flags & BoundsInvalidFontMetricsFlag == 0
+	Leading            float32 // Distance to add between lines; typically positive or zero
+	AvgCharWidth       float32 // Average character width; zero if unknown
+	MaxCharWidth       float32 // Maximum character width; zero if unknown
+	XMin               float32 // Greatest extent to left of origin of any glyph bounding box; typically negative; deprecated with variable fonts; only if Flags & BoundsInvalidFontMetricsFlag == 0
+	XMax               float32 // Greatest extent to right of origin of any glyph bounding box; typically positive; deprecated with variable fonts; only if Flags & BoundsInvalidFontMetricsFlag == 0
+	XHeight            float32 // Height of lowercase 'x'; zero if unknown; typically negative
+	CapHeight          float32 // Height of uppercase letter; zero if unknown; typically negative
+	UnderlineThickness float32 // Underline thickness; only if Flags & UnderlineThicknessIsValidFontMetricsFlag != 0
+	UnderlinePosition  float32 // Distance from baseline to top of stroke; typically positive; only if Flags & UnderlinePositionIsValidFontMetricsFlag != 0
+	StrikeoutThickness float32 // Strikeout thickness; only if Flags & StrikeoutThicknessIsValidFontMetricsFlag != 0
+	StrikeoutPosition  float32 // Distance from baseline to bottom of stroke; typically negative; only if Flags & StrikeoutPositionIsValidFontMetricsFlag != 0
+}
