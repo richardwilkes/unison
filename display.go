@@ -17,6 +17,8 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
+var lastPrimaryDisplay *Display
+
 // Display holds information about each available active display.
 type Display struct {
 	Name        string      // The name of the display.
@@ -29,7 +31,21 @@ type Display struct {
 
 // PrimaryDisplay returns the primary display.
 func PrimaryDisplay() *Display {
-	return convertMonitorToDisplay(glfw.GetPrimaryMonitor())
+	m := glfw.GetPrimaryMonitor()
+	if m == nil {
+		// On macOS, I've had cases where the monitor list has been emptied after some time has passed. Appears to be a
+		// bug in glfw, but we can try to work around it by just using the last primary monitor we found.
+		if lastPrimaryDisplay == nil {
+			return nil
+		}
+	} else {
+		lastPrimaryDisplay = convertMonitorToDisplay(glfw.GetPrimaryMonitor())
+	}
+	if lastPrimaryDisplay != nil {
+		d := *lastPrimaryDisplay
+		return &d
+	}
+	return nil
 }
 
 // AllDisplays returns all displays.

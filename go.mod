@@ -9,7 +9,7 @@ require (
 	github.com/richardwilkes/toolbox v1.51.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d
-	golang.org/x/sys v0.0.0-20210909193231-528a39cd75f3
+	golang.org/x/sys v0.0.0-20210917161153-d61c044b1678
 )
 
 require (
