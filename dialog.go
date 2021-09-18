@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/richardwilkes/toolbox/errs"
@@ -221,9 +222,10 @@ func breakTextIntoLabels(panel *Panel, text string, font FontProvider) {
 // The full error will be logged via jot.Error(). Embedded line feeds are OK.
 func ErrorDialogWithError(primary string, detail error) {
 	var msg string
-	if e, ok := detail.(*errs.Error); ok {
+	var err errs.StackError
+	if errors.As(detail, &err) {
 		jot.Error(detail)
-		msg = e.Message()
+		msg = err.Message()
 	} else {
 		msg = detail.Error()
 	}

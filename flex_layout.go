@@ -46,8 +46,7 @@ type FlexLayoutData struct {
 func (f *FlexLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
 	min = f.layout(target, geom32.Point{}, hint, false, true)
 	pref = f.layout(target, geom32.Point{}, hint, false, false)
-	b := target.Border()
-	if b != nil {
+	if b := target.Border(); b != nil {
 		insets := b.Insets()
 		min.AddInsets(insets)
 		pref.AddInsets(insets)
@@ -58,8 +57,7 @@ func (f *FlexLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 // PerformLayout implements the Layout interface.
 func (f *FlexLayout) PerformLayout(target Layoutable) {
 	var insets geom32.Insets
-	b := target.Border()
-	if b != nil {
+	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
 	hint := target.FrameRect().Size

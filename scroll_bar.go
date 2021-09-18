@@ -150,8 +150,7 @@ func (s *ScrollBar) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) 
 
 // DefaultDraw provides the default drawing.
 func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom32.Rect) {
-	thumb := s.Thumb()
-	if thumb.Width > 0 && thumb.Height > 0 {
+	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
 		var ink Ink
 		if s.overThumb {
 			ink = ChooseInk(s.RolloverColor, ScrollRolloverColor)
@@ -239,7 +238,7 @@ func (s *ScrollBar) adjustValueForPoint(pt geom32.Point) {
 }
 
 func (s *ScrollBar) checkOverThumb(pt geom32.Point) {
-	was := s.overThumb
+	was := s.overThumb //nolint:ifshort // Can't move this into the if statement
 	s.overThumb = s.Thumb().ContainsPoint(pt)
 	if was != s.overThumb {
 		s.MarkForRedraw()

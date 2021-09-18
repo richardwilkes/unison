@@ -191,7 +191,7 @@ func NewHelpMenu(f MenuFactory, aboutHandler func(MenuItem), updater func(Menu))
 
 type barHolder interface {
 	MenuBar() *Panel
-	SetMenuBar(bar *Panel, preMovedCallback func(*Window), postLostFocusCallback func(*Window),
+	SetMenuBar(bar *Panel, preMovedCallback, postLostFocusCallback func(*Window),
 		preMouseDownCallback func(*Window, geom32.Point) bool,
 		preKeyDownCallback func(*Window, KeyCode, Modifiers) bool,
 		preKeyUpCallback func(*Window, KeyCode, Modifiers) bool,

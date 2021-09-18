@@ -18,25 +18,21 @@ import (
 
 // UndoEdit defines the required methods an undoable edit must implement.
 type UndoEdit interface {
-	// Name returns the localized name of the edit, suitable for displaying in
-	// a user interface menu. Note that no leading "Undo " or "Redo " should
-	// be part of this name, as the UndoManager will add this.
+	// Name returns the localized name of the edit, suitable for displaying in a user interface menu. Note that no
+	// leading "Undo " or "Redo " should be part of this name, as the UndoManager will add this.
 	Name() string
-	// Cost returns a cost factor for this edit. When the cost values of the
-	// edits within a given UndoManager exceed the UndoManager's defined cost limit,
-	// the oldest edits will be discarded until the cost values are less than
-	// or equal to the UndoManager's defined limit. Note that if this method
-	// returns a value less than 1, it will be set to 1 for purposes of this
-	// calculation.
+	// Cost returns a cost factor for this edit. When the cost values of the edits within a given UndoManager exceed the
+	// UndoManager's defined cost limit, the oldest edits will be discarded until the cost values are less than or equal
+	// to the UndoManager's defined limit. Note that if this method returns a value less than 1, it will be set to 1 for
+	// purposes of this calculation.
 	Cost() int
 	// Undo the state.
 	Undo()
 	// Redo the state.
 	Redo()
-	// Absorb gives this edit a chance to absorb a new edit that is about to
-	// be added to the manager. If this method returns true, it is assumed
-	// this edit has incorporated any necessary state into itself to perform
-	// an undo/redo and the other edit will be discarded.
+	// Absorb gives this edit a chance to absorb a new edit that is about to be added to the manager. If this method
+	// returns true, it is assumed this edit has incorporated any necessary state into itself to perform an undo/redo
+	// and the other edit will be discarded.
 	Absorb(other UndoEdit) bool
 	// Release is called when this edit is no longer needed by the UndoManager.
 	Release()
@@ -67,12 +63,11 @@ func (m *UndoManager) CostLimit() int {
 	return m.costLimit
 }
 
-// SetCostLimit sets a new cost limit, potentially trimming existing edits to
-// fit within the new limit. Note that if the most recent edit has a cost
-// larger than the new limit, that last edit (and only that last edit) will
-// still be retained.
+// SetCostLimit sets a new cost limit, potentially trimming existing edits to fit within the new limit. Note that if the
+// most recent edit has a cost larger than the new limit, that last edit (and only that last edit) will still be
+// retained.
 func (m *UndoManager) SetCostLimit(limit int) {
-	old := m.CostLimit()
+	old := m.CostLimit() //nolint:ifshort // Cannot merge this into the if statement
 	if limit < 1 {
 		limit = 1
 	}
@@ -82,8 +77,8 @@ func (m *UndoManager) SetCostLimit(limit int) {
 	}
 }
 
-// Add an edit. If one or more undos have been performed, this will cause
-// any redo capability beyond this point to be lost.
+// Add an edit. If one or more undos have been performed, this will cause any redo capability beyond this point to be
+// lost.
 func (m *UndoManager) Add(edit UndoEdit) {
 	for i := m.index + 1; i < len(m.edits); i++ {
 		m.release(m.edits[i])
@@ -185,9 +180,8 @@ func (m *UndoManager) cost(edit UndoEdit) int {
 }
 
 func (m *UndoManager) trimForLimit() {
-	// Start at current index and tally cost moving to beginning. If we run
-	// out before reaching the start, then keep just the edits from index to
-	// the point we ran out.
+	// Start at current index and tally cost moving to beginning. If we run out before reaching the start, then keep
+	// just the edits from index to the point we ran out.
 	i := m.index
 	remaining := m.CostLimit()
 	for ; i >= 0; i-- {
@@ -195,8 +189,7 @@ func (m *UndoManager) trimForLimit() {
 			continue
 		}
 		if i == m.index {
-			// If even the current index doesn't fit, retain just the
-			// current index.
+			// If even the current index doesn't fit, retain just the current index.
 			for j := range m.edits {
 				if j != i {
 					m.release(m.edits[j])
@@ -206,8 +199,7 @@ func (m *UndoManager) trimForLimit() {
 			m.index = 0
 			return
 		}
-		// Trim out the edits from this point to the start, plus those
-		// after the current index.
+		// Trim out the edits from this point to the start, plus those after the current index.
 		for j := 0; j <= i; j++ {
 			m.release(m.edits[j])
 		}
@@ -220,9 +212,8 @@ func (m *UndoManager) trimForLimit() {
 		m.index -= i + 1
 		return
 	}
-	// If we get here, then all edits up to the current index fit within the
-	// cost limit. Look at those beyond the current index and trim out any
-	// that go over the limit.
+	// If we get here, then all edits up to the current index fit within the cost limit. Look at those beyond the
+	// current index and trim out any that go over the limit.
 	for i = m.index + 1; i < len(m.edits); i++ {
 		if remaining -= m.cost(m.edits[i]); remaining >= 0 {
 			continue

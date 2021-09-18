@@ -20,8 +20,7 @@ type DynamicFont struct {
 
 // ResolvedFont implements the FontProvider interface.
 func (d *DynamicFont) ResolvedFont() *Font {
-	fd := d.Resolver()
-	if fd != d.lastDesc {
+	if fd := d.Resolver(); fd != d.lastDesc {
 		d.lastDesc = fd
 		d.lastFont = fd.Font()
 	}

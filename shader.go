@@ -69,29 +69,29 @@ func NewBlendShader(blendMode BlendMode, dst, src *Shader) *Shader {
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.
 func NewLinearGradientShader(start, end geom32.Point, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom32.Matrix2D) *Shader {
 	return newShader(skia.ShaderNewLinearGradient(start, end,
-		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], colorPos, skia.TileMode(tileMode),
-		skia.Matrix2DtoMatrix(matrix)))
+		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
+		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
 }
 
 // NewRadialGradientShader creates a new radial gradient Shader. matrix may be nil.
 func NewRadialGradientShader(center geom32.Point, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom32.Matrix2D) *Shader {
 	return newShader(skia.ShaderNewRadialGradient(center, radius,
-		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], colorPos, skia.TileMode(tileMode),
-		skia.Matrix2DtoMatrix(matrix)))
+		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
+		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
 }
 
 // NewSweepGradientShader creates a new sweep gradient Shader. matrix may be nil.
 func NewSweepGradientShader(center geom32.Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom32.Matrix2D) *Shader {
 	return newShader(skia.ShaderNewSweepGradient(center, startAngle, endAngle,
-		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], colorPos, skia.TileMode(tileMode),
-		skia.Matrix2DtoMatrix(matrix)))
+		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
+		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
 }
 
 // New2PtConicalGradientShader creates a new 2-point conical gradient Shader. matrix may be nil.
 func New2PtConicalGradientShader(startPt, endPt geom32.Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom32.Matrix2D) *Shader {
 	return newShader(skia.ShaderNewTwoPointConicalGradient(startPt, endPt, startRadius, endRadius,
-		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], colorPos, skia.TileMode(tileMode),
-		skia.Matrix2DtoMatrix(matrix)))
+		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
+		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
 }
 
 // NewFractalPerlinNoiseShader creates a new fractal perlin noise Shader.

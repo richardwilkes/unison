@@ -49,10 +49,9 @@ func (p *rootPanel) MenuBar() *Panel {
 }
 
 // SetMenuBar fulfills the menu.barHolder interface.
-func (p *rootPanel) SetMenuBar(bar *Panel, preMovedCallback func(*Window), postLostFocusCallback func(*Window),
+func (p *rootPanel) SetMenuBar(bar *Panel, preMovedCallback, postLostFocusCallback func(*Window),
 	preMouseDownCallback func(*Window, geom32.Point) bool,
-	preKeyDownCallback func(*Window, KeyCode, Modifiers) bool,
-	preKeyUpCallback func(*Window, KeyCode, Modifiers) bool,
+	preKeyDownCallback, preKeyUpCallback func(*Window, KeyCode, Modifiers) bool,
 	preRuneTypedCallback func(*Window, rune) bool) {
 	if p.menubar != nil {
 		p.RemoveChild(p.menubar)

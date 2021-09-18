@@ -15,9 +15,11 @@ import (
 	"github.com/richardwilkes/unison"
 )
 
-//go:embed resources/home.png
-var homePngBytes []byte
-var homeImage *unison.Image
+var (
+	//go:embed resources/home.png
+	homePngBytes []byte
+	homeImage    *unison.Image
+)
 
 // HomeImage returns a stylized image of a home, suitable for an icon.
 func HomeImage() (*unison.Image, error) {
@@ -30,9 +32,11 @@ func HomeImage() (*unison.Image, error) {
 	return homeImage, nil
 }
 
-//go:embed resources/classic-apple-logo.png
-var classicAppleLogoPngBytes []byte
-var classicAppleLogoImage *unison.Image
+var (
+	//go:embed resources/classic-apple-logo.png
+	classicAppleLogoPngBytes []byte
+	classicAppleLogoImage    *unison.Image
+)
 
 // ClassicAppleLogoImage returns an image of the classic rainbow-colored Apple logo.
 func ClassicAppleLogoImage() (*unison.Image, error) {
@@ -45,9 +49,11 @@ func ClassicAppleLogoImage() (*unison.Image, error) {
 	return classicAppleLogoImage, nil
 }
 
-//go:embed resources/mountains.jpg
-var mountainsJpgBytes []byte
-var mountainsImage *unison.Image
+var (
+	//go:embed resources/mountains.jpg
+	mountainsJpgBytes []byte
+	mountainsImage    *unison.Image
+)
 
 // MountainsImage returns an image of some mountains.
 func MountainsImage() (*unison.Image, error) {

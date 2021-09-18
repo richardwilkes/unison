@@ -311,8 +311,7 @@ func (c Color) AdjustHue(amount float32) Color {
 
 // Saturation of the color, a value from 0-1.
 func (c Color) Saturation() float32 {
-	brightness := c.Brightness()
-	if brightness != 0 {
+	if brightness := c.Brightness(); brightness != 0 {
 		return (brightness - (float32(min3(c.Red(), c.Green(), c.Blue())) / 255)) / brightness
 	}
 	return 0

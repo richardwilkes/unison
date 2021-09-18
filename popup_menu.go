@@ -37,8 +37,7 @@ type PopupMenu struct {
 	Pressed           bool
 }
 
-type popupSeparationMarker struct {
-}
+type popupSeparationMarker struct{}
 
 // NewPopupMenu creates a new PopupMenu.
 func NewPopupMenu() *PopupMenu {
@@ -143,7 +142,7 @@ func (p *PopupMenu) Text() string {
 
 // Click performs any animation associated with a click and triggers the popup menu to appear.
 func (p *PopupMenu) Click() {
-	hasItem := false
+	hasItem := false //nolint:ifshort // Cannot collapse this into the if statement, despite what the linter says
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
 	defer m.Dispose()
 	for i, one := range p.items {

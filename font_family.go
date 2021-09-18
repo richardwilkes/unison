@@ -140,7 +140,7 @@ func (f *FontFamily) MatchStyle(weight FontWeight, spacing FontSpacing, slant Fo
 			if weight == w && spacing == sp && slant == sl {
 				return face
 			}
-			score := 0
+			var score int
 			if spacing <= StandardSpacing {
 				if sp <= spacing {
 					score = 10 - int(spacing) + int(sp)

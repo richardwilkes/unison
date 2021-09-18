@@ -49,8 +49,7 @@ var (
 	platformDarkModeEnabled           bool
 )
 
-type startupOption struct {
-	// This exists just to prevent arbitrary functions from being passed to application startup.
+type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
 }
 
 // StartupOption holds an option for application startup.
@@ -224,7 +223,7 @@ func allowQuit() bool {
 
 func quitting() {
 	quitLock.Lock()
-	callback := quittingCallback
+	callback := quittingCallback //nolint:ifshort // The callback must be made outside of holding the lock
 	quittingCallback = nil
 	quitLock.Unlock()
 	if callback != nil {

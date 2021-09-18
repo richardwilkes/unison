@@ -26,8 +26,7 @@ type FlowLayout struct {
 // LayoutSizes implements Layout.
 func (f *FlowLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
 	var insets geom32.Insets
-	b := target.Border()
-	if b != nil {
+	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
 	if hint.Width < 1 {
@@ -114,8 +113,7 @@ func (f *FlowLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 // PerformLayout implements Layout.
 func (f *FlowLayout) PerformLayout(target Layoutable) {
 	var insets geom32.Insets
-	b := target.Border()
-	if b != nil {
+	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
 	size := target.FrameRect().Size

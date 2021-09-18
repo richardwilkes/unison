@@ -185,10 +185,10 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		delete(redrawSet, w)
 		w.draw()
 	})
-	w.wnd.SetPosCallback(func(_ *glfw.Window, xpos int, ypos int) {
+	w.wnd.SetPosCallback(func(_ *glfw.Window, xpos, ypos int) {
 		w.moved()
 	})
-	w.wnd.SetSizeCallback(func(_ *glfw.Window, width int, height int) {
+	w.wnd.SetSizeCallback(func(_ *glfw.Window, width, height int) {
 		w.resized(false)
 	})
 	w.wnd.SetCloseCallback(func(_ *glfw.Window) {
@@ -233,7 +233,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
 		}
 	})
-	w.wnd.SetCursorPosCallback(func(_ *glfw.Window, x float64, y float64) {
+	w.wnd.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {
 		where := w.convertMouseLocation(x, y)
 		if w.inMouseDown {
 			w.mouseDrag(where, w.lastButton, w.lastKeyModifiers)
@@ -248,7 +248,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			w.mouseExit()
 		}
 	})
-	w.wnd.SetScrollCallback(func(_ *glfw.Window, xoff float64, yoff float64) {
+	w.wnd.SetScrollCallback(func(_ *glfw.Window, xoff, yoff float64) {
 		w.mouseWheel(w.MouseLocation(), w.convertMouseLocation(xoff, yoff), w.lastKeyModifiers)
 	})
 	w.wnd.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, code int, action glfw.Action, mods glfw.ModifierKey) {

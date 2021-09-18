@@ -121,7 +121,7 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 	// Determine image and text areas
 	imgX := rect.X
 	imgY := rect.Y
-	txtX := rect.X
+	txtX := rect.X //nolint:ifshort // Variable cannot be collapsed into the if, despite what the linter claims
 	txtY := rect.Y
 	if text != "" && image != nil {
 		logicalSize := image.LogicalSize()

@@ -31,15 +31,14 @@ type Display struct {
 
 // PrimaryDisplay returns the primary display.
 func PrimaryDisplay() *Display {
-	m := glfw.GetPrimaryMonitor()
-	if m == nil {
+	if monitor := glfw.GetPrimaryMonitor(); monitor == nil {
 		// On macOS, I've had cases where the monitor list has been emptied after some time has passed. Appears to be a
 		// bug in glfw, but we can try to work around it by just using the last primary monitor we found.
 		if lastPrimaryDisplay == nil {
 			return nil
 		}
 	} else {
-		lastPrimaryDisplay = convertMonitorToDisplay(glfw.GetPrimaryMonitor())
+		lastPrimaryDisplay = convertMonitorToDisplay(monitor)
 	}
 	if lastPrimaryDisplay != nil {
 		d := *lastPrimaryDisplay
