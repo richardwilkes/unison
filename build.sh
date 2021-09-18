@@ -60,5 +60,5 @@ if [ "$LINT"x == "1x" ]; then
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$TOOLS_DIR" v$GOLANGCI_LINT_VERSION
   fi
   echo -e "\033[33mRunning Go linters...\033[0m"
-  $TOOLS_DIR/golangci-lint run 2> >(grep -Ev "The linter '(interfacer|maligned)' is deprecated")
+  $TOOLS_DIR/golangci-lint run
 fi
