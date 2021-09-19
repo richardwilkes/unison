@@ -203,7 +203,7 @@ func (m *menu) createPopup() {
 	}
 	activeWnd := ActiveWindow()
 	m.closeMenuStackStoppingAt(activeWnd, m.titleItem.menu)
-	w, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), TransientWindowOption())
+	w, err := NewWindow("", NotResizableWindowOption(), FloatingWindowOption(), UndecoratedWindowOption(), TransientWindowOption())
 	if err != nil {
 		jot.Error(err)
 		return

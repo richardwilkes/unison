@@ -25,7 +25,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 
 		// Nope, so create it.
 		var err error
-		aboutWindow, err = unison.NewWindow(item.Title())
+		aboutWindow, err = unison.NewWindow(item.Title(), unison.NotResizableWindowOption())
 		if err != nil {
 			jot.Error(err)
 			return

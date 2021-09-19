@@ -68,7 +68,7 @@ type Window struct {
 	valid               bool
 	focused             bool
 	transient           bool
-	resizable           bool
+	notResizable        bool
 	undecorated         bool
 	floating            bool
 	inModal             bool
@@ -79,10 +79,10 @@ type Window struct {
 // WindowOption holds an option for window creation.
 type WindowOption func(*Window) error
 
-// ResizableWindowOption allows a window to be resized by the user.
-func ResizableWindowOption() WindowOption {
+// NotResizableWindowOption prevents the window from being resized by the user.
+func NotResizableWindowOption() WindowOption {
 	return func(w *Window) error {
-		w.resizable = true
+		w.notResizable = true
 		return nil
 	}
 }
@@ -170,7 +170,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	}
 	glfw.WindowHint(glfw.Visible, glfw.False)
-	glfw.WindowHint(glfw.Resizable, glfwEnabled(w.resizable))
+	glfw.WindowHint(glfw.Resizable, glfwEnabled(!w.notResizable))
 	glfw.WindowHint(glfw.Decorated, glfwEnabled(!w.undecorated))
 	glfw.WindowHint(glfw.Floating, glfwEnabled(w.floating))
 	glfw.WindowHint(glfw.AutoIconify, glfw.False)
@@ -738,7 +738,7 @@ func (w *Window) Zoom() {
 
 // Resizable returns true if the window can be resized by the user.
 func (w *Window) Resizable() bool {
-	return w.resizable
+	return !w.notResizable
 }
 
 // MouseLocation returns the current mouse location relative to this window.

@@ -25,7 +25,7 @@ var windowCounter int
 func NewDemoWindow(where geom32.Point) (*unison.Window, error) {
 	// Create the window
 	windowCounter++
-	wnd, err := unison.NewWindow(fmt.Sprintf("Demo #%d", windowCounter), unison.ResizableWindowOption())
+	wnd, err := unison.NewWindow(fmt.Sprintf("Demo #%d", windowCounter))
 	if err != nil {
 		return nil, err
 	}

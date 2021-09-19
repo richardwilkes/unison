@@ -47,7 +47,7 @@ func NewDialog(img *Image, msgPanel *Panel, buttonInfo []*DialogButtonInfo) (*Di
 	} else {
 		frame = PrimaryDisplay().Usable
 	}
-	d.wnd, d.err = NewWindow("", ResizableWindowOption(), FloatingWindowOption())
+	d.wnd, d.err = NewWindow("", FloatingWindowOption())
 	if d.err != nil {
 		return nil, errs.NewWithCause("unable to create dialog", d.err)
 	}
