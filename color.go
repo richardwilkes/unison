@@ -19,10 +19,16 @@ import (
 )
 
 var (
-	nameToColor     = make(map[string]Color)
-	colorToName     = make(map[Color]string)
-	_           Ink = Color(0)
+	nameToColor               = make(map[string]Color)
+	colorToName               = make(map[Color]string)
+	_           Ink           = Color(0)
+	_           ColorProvider = Color(0)
 )
+
+// ColorProvider allows for different types of objects that hold a color to be used interchangeably.
+type ColorProvider interface {
+	GetColor() Color
+}
 
 // Color contains the value of a color used for drawing, stored as 0xAARRGGBB.
 type Color uint32
@@ -129,12 +135,17 @@ func ColorDecode(buffer string) Color {
 	return 0
 }
 
-// Paint returns a Paint for this Color.
+// Paint returns a Paint for this Color. Here to satisfy the Ink interface.
 func (c Color) Paint(_ *Canvas, _ geom32.Rect, style PaintStyle) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	paint.SetColor(c)
 	return paint
+}
+
+// GetColor returns this Color. Here to satisfy the ColorProvider interface.
+func (c Color) GetColor() Color {
+	return c
 }
 
 // String implements the fmt.Stringer interface. The output can be used as a color in CSS.

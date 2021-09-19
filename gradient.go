@@ -19,12 +19,12 @@ var _ Ink = &Gradient{}
 
 // Stop provides information about the color and position of one 'color stop' in a gradient.
 type Stop struct {
-	Color    *DynamicColor
+	Color    ColorProvider
 	Location float32
 }
 
 func (s Stop) String() string {
-	return fmt.Sprintf("%v:%v", s.Color.Color, s.Location)
+	return fmt.Sprintf("%v:%v", s.Color.GetColor(), s.Location)
 }
 
 // Gradient defines a smooth transition between colors across an area. Start and End should hold values from 0 to 1.
@@ -40,19 +40,19 @@ type Gradient struct {
 
 // NewHorizontalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole
 // range.
-func NewHorizontalEvenlySpacedGradient(colors ...*DynamicColor) *Gradient {
+func NewHorizontalEvenlySpacedGradient(colors ...ColorProvider) *Gradient {
 	return NewEvenlySpacedGradient(geom32.Point{}, geom32.Point{X: 1}, 0, 0, colors...)
 }
 
 // NewVerticalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole
 // range.
-func NewVerticalEvenlySpacedGradient(colors ...*DynamicColor) *Gradient {
+func NewVerticalEvenlySpacedGradient(colors ...ColorProvider) *Gradient {
 	return NewEvenlySpacedGradient(geom32.Point{}, geom32.Point{Y: 1}, 0, 0, colors...)
 }
 
 // NewEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole range. start
 // and end should hold values from 0 to 1, representing the percentage position within the area that will be filled.
-func NewEvenlySpacedGradient(start, end geom32.Point, startRadius, endRadius float32, colors ...*DynamicColor) *Gradient {
+func NewEvenlySpacedGradient(start, end geom32.Point, startRadius, endRadius float32, colors ...ColorProvider) *Gradient {
 	gradient := &Gradient{
 		Start:       start,
 		StartRadius: startRadius,
@@ -92,7 +92,7 @@ func (g *Gradient) Paint(_ *Canvas, rect geom32.Rect, style PaintStyle) *Paint {
 	colors := make([]Color, len(g.Stops))
 	colorPos := make([]float32, len(g.Stops))
 	for i := range g.Stops {
-		colors[i] = g.Stops[i].Color.Color
+		colors[i] = g.Stops[i].Color.GetColor()
 		colorPos[i] = g.Stops[i].Location
 	}
 	start := geom32.Point{

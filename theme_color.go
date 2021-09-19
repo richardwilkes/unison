@@ -13,7 +13,10 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
-var _ Ink = &ThemeColor{}
+var (
+	_ ColorProvider = &ThemeColor{}
+	_ Ink           = &ThemeColor{}
+)
 
 // Pre-defined theme colors.
 var (
@@ -54,15 +57,15 @@ type ThemeColor struct {
 	Dark  Color
 }
 
-// Color returns the current color.
-func (t *ThemeColor) Color() Color {
+// GetColor returns the current color. Here to satisfy the ColorProvider interface.
+func (t *ThemeColor) GetColor() Color {
 	if IsDarkModeEnabled() {
 		return t.Dark
 	}
 	return t.Light
 }
 
-// Paint returns a Paint for this ThemeColor.
+// Paint returns a Paint for this ThemeColor. Here to satisfy the Ink interface.
 func (t *ThemeColor) Paint(canvas *Canvas, rect geom32.Rect, style PaintStyle) *Paint {
-	return t.Color().Paint(canvas, rect, style)
+	return t.GetColor().Paint(canvas, rect, style)
 }

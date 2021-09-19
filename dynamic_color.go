@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	_                      Ink = &DynamicColor{}
-	needDynamicColorUpdate     = true
+	_                      Ink           = &DynamicColor{}
+	_                      ColorProvider = &DynamicColor{}
+	needDynamicColorUpdate               = true
 	dynamicColors          []*DynamicColor
 )
 
@@ -36,7 +37,12 @@ func NewDynamicColor(rebuilder func() Color) *DynamicColor {
 	return c
 }
 
-// Paint returns a Paint for this DynamicColor.
+// GetColor returns the current color. Here to satisfy the ColorProvider interface.
+func (c *DynamicColor) GetColor() Color {
+	return c.Color
+}
+
+// Paint returns a Paint for this DynamicColor. Here to satisfy the Ink interface.
 func (c *DynamicColor) Paint(canvas *Canvas, rect geom32.Rect, style PaintStyle) *Paint {
 	return c.Color.Paint(canvas, rect, style)
 }
