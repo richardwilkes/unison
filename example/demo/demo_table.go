@@ -38,15 +38,21 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	table.ColumnWidths = make([]float32, 2)
 	rows := make([]unison.TableRowData, 10000)
 	for i := range rows {
-		row := &demoRow{index: i}
+		row := &demoRow{text: fmt.Sprintf("Row %d", i+1)}
 		if i%10 == 3 {
 			row.container = true
 			row.open = true
 			row.children = make([]unison.TableRowData, 5)
 			for j := range row.children {
-				row.children[j] = &demoRow{
-					index:    i,
-					subIndex: j + 1,
+				child := &demoRow{text: fmt.Sprintf("Sub-Row %d", j+1)}
+				row.children[j] = child
+				if j < 2 {
+					child.container = true
+					child.open = true
+					child.children = make([]unison.TableRowData, 2)
+					for k := range child.children {
+						child.children[k] = &demoRow{text: fmt.Sprintf("Sub-Sub-Row %d", k+1)}
+					}
 				}
 			}
 		}

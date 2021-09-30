@@ -10,15 +10,14 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 	"github.com/richardwilkes/unison/fa"
 )
 
 const (
-	// DefaultTableIndent is the default amount of space to indent for each level of depth in the hierarchy.
-	DefaultTableIndent = 16
+	// DefaultHierarchyIndent is the default amount of space to indent for each level of depth in the hierarchy.
+	DefaultHierarchyIndent = 16
 	// DefaultMinimumRowHeight is the default minimum height a row is permitted to have.
 	DefaultMinimumRowHeight = 16
 )
@@ -38,7 +37,8 @@ type TableRowData interface {
 }
 
 type tableCache struct {
-	data   TableRowData
+	row    TableRowData
+	parent int
 	depth  int
 	height float32
 }
@@ -56,15 +56,16 @@ type Table struct {
 	OnRowColor           Ink
 	AltRowColor          Ink
 	OnAltRowColor        Ink
-	PressedColor         Ink
-	OnPressedColor       Ink
+	SelectionColor       Ink
+	OnSelectionColor     Ink
+	Padding              geom32.Insets
 	topLevelRows         []TableRowData
-	selection            *xmath.BitSet
+	selMap               map[TableRowData]bool
 	HierarchyColumnIndex int       // The column index that will display the hierarchy
 	ColumnWidths         []float32 // The widths of each column
 	hitRects             []tableHitRect
 	rowCache             []tableCache
-	TableIndent          float32
+	HierarchyIndent      float32
 	MinimumRowHeight     float32
 	ShowRowDivider       bool
 	ShowColumnDivider    bool
@@ -73,11 +74,13 @@ type Table struct {
 // NewTable creates a new Table control.
 func NewTable() *Table {
 	t := &Table{
-		selection:         &xmath.BitSet{},
-		TableIndent:       DefaultTableIndent,
-		MinimumRowHeight:  DefaultMinimumRowHeight,
-		ShowRowDivider:    true,
-		ShowColumnDivider: true,
+		selMap:               make(map[TableRowData]bool),
+		Padding:              geom32.NewUniformInsets(4),
+		HierarchyIndent:      DefaultHierarchyIndent,
+		MinimumRowHeight:     DefaultMinimumRowHeight,
+		HierarchyColumnIndex: 1,
+		ShowRowDivider:       true,
+		ShowColumnDivider:    true,
 	}
 	t.Self = t
 	t.SetFocusable(true)
@@ -130,8 +133,8 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	rect.Y = y
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
 		rect.Height = t.rowCache[r].height
-		if t.selection.State(r) {
-			canvas.DrawRect(rect, ChooseInk(t.PressedColor, ControlPressedColor).Paint(canvas, rect, Fill))
+		if t.IsRowOrAnyParentSelected(r) {
+			canvas.DrawRect(rect, ChooseInk(t.SelectionColor, SelectionColor).Paint(canvas, rect, Fill))
 		} else if r%2 == 1 {
 			canvas.DrawRect(rect, ChooseInk(t.AltRowColor, ListAltColor).Paint(canvas, rect, Fill))
 		}
@@ -157,20 +160,21 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	rect = dirty
 	rect.Y = y
 	lastX := dirty.Right()
-	faFont := FontDescriptor{
+	faDesc := FontDescriptor{
 		Family:  FontAwesomeFreeFamilyName,
-		Size:    t.TableIndent - 8,
+		Size:    t.HierarchyIndent - 6,
 		Weight:  BlackFontWeight,
 		Spacing: StandardSpacing,
 		Slant:   NoSlant,
-	}.Font()
+	}
+	faFont := faDesc.Font()
 	t.hitRects = nil
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
-		row := t.rowCache[r].data
+		row := t.rowCache[r].row
 		var fg Ink
 		switch {
-		case t.selection.State(r):
-			fg = ChooseInk(t.OnPressedColor, OnControlPressedColor)
+		case t.IsRowOrAnyParentSelected(r):
+			fg = ChooseInk(t.OnSelectionColor, OnSelectionColor)
 		case row.IsOpen():
 			fg = ChooseInk(t.OnAltRowColor, OnListAltColor)
 		default:
@@ -181,6 +185,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		for c := firstCol; c < len(t.ColumnWidths) && rect.X < lastX; c++ {
 			rect.Width = t.ColumnWidths[c]
 			cellRect := rect
+			cellRect.Inset(t.Padding)
 			if c == t.HierarchyColumnIndex {
 				if row.CanHaveChildRows() {
 					var code string
@@ -190,16 +195,19 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 						code = fa.ChevronCircleRight
 					}
 					extents := faFont.Extents(code)
-					canvas.DrawSimpleText(code, rect.X+(t.TableIndent-extents.Width)/2,
-						rect.Y+(rect.Height-extents.Height)/2+faFont.Size(), faFont, fg.Paint(canvas, rect, Fill))
-					t.hitRects = append(t.hitRects, t.newTableHitRect(rect, row))
+					left := cellRect.X + t.HierarchyIndent*float32(t.rowCache[r].depth)
+					canvas.DrawSimpleText(code, left+(t.HierarchyIndent-extents.Width)/2,
+						cellRect.Y+(cellRect.Height-faDesc.Size)/2+faDesc.Size-0.5, faFont,
+						fg.Paint(canvas, cellRect, Fill))
+					t.hitRects = append(t.hitRects, t.newTableHitRect(geom32.NewRect(left,
+						cellRect.Y+(cellRect.Height-t.HierarchyIndent)/2, t.HierarchyIndent, t.HierarchyIndent), row))
 				}
-				indent := t.TableIndent * float32(t.rowCache[r].depth+1)
+				indent := t.HierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left
 				cellRect.X += indent
 				cellRect.Width -= indent
 			}
 			cell := row.ColumnCell(c).AsPanel()
-			cell.SetFrameRect(rect)
+			cell.SetFrameRect(cellRect)
 			canvas.Save()
 			canvas.Translate(cellRect.X, cellRect.Y)
 			cellRect.X = 0
@@ -218,9 +226,29 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	}
 }
 
+// OverRow returns the row index that the y coordinate is over, or -1 if it isn't over any row.
+func (t *Table) OverRow(y float32) int {
+	var insets geom32.Insets
+	if border := t.Border(); border != nil {
+		insets = border.Insets()
+	}
+	end := insets.Top
+	for i := range t.rowCache {
+		start := end
+		end += t.rowCache[i].height
+		if t.ShowRowDivider {
+			end++
+		}
+		if y >= start && y < end {
+			return i
+		}
+	}
+	return -1
+}
+
 func (t *Table) newTableHitRect(rect geom32.Rect, row TableRowData) tableHitRect {
 	return tableHitRect{
-		Rect: geom32.NewRect(rect.X, rect.Y+(rect.Height-t.TableIndent)/2, t.TableIndent, t.TableIndent),
+		Rect: rect,
 		handler: func(where geom32.Point, button, clickCount int, mod Modifiers) {
 			row.SetOpen(!row.IsOpen())
 			t.SyncToModel()
@@ -234,15 +262,44 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 	for _, one := range t.hitRects {
 		if one.ContainsPoint(where) {
 			one.handler(where, button, clickCount, mod)
-			break
+			return true
+		}
+	}
+	if over := t.OverRow(where.Y); over != -1 {
+		if t.IsRowOrAnyParentSelected(over) {
+			if mod&OptionModifier != 0 {
+				t.selMap[t.rowCache[over].row] = false
+				t.MarkForRedraw()
+			}
+		} else {
+			if mod&(ShiftModifier|OptionModifier) == 0 {
+				t.selMap = make(map[TableRowData]bool)
+			}
+			t.selMap[t.rowCache[over].row] = true
+			t.MarkForRedraw()
 		}
 	}
 	return true
 }
 
+// IsRowOrAnyParentSelected returns true if the specified row index or any of its parents are selected.
+func (t *Table) IsRowOrAnyParentSelected(index int) bool {
+	if index < 0 || index >= len(t.rowCache) {
+		return false
+	}
+	for index >= 0 {
+		if t.selMap[t.rowCache[index].row] {
+			return true
+		}
+		index = t.rowCache[index].parent
+	}
+	return false
+}
+
 // SetTopLevelRows sets the top-level rows this table will display. This will call SyncToModel() automatically.
 func (t *Table) SetTopLevelRows(rows []TableRowData) {
 	t.topLevelRows = rows
+	t.selMap = make(map[TableRowData]bool)
 	t.SyncToModel()
 }
 
@@ -255,7 +312,7 @@ func (t *Table) SyncToModel() {
 	t.rowCache = make([]tableCache, rowCount)
 	j := 0
 	for _, row := range t.topLevelRows {
-		j = t.buildRowCacheEntry(row, j, 0)
+		j = t.buildRowCacheEntry(row, -1, j, 0)
 	}
 	_, pref, _ := t.DefaultSizes(geom32.Size{})
 	rect := t.FrameRect()
@@ -273,27 +330,35 @@ func (t *Table) countOpenRowChildrenRecursively(row TableRowData) int {
 	return count
 }
 
-func (t *Table) buildRowCacheEntry(row TableRowData, index, depth int) int {
-	t.rowCache[index].data = row
+func (t *Table) buildRowCacheEntry(row TableRowData, parentIndex, index, depth int) int {
+	t.rowCache[index].row = row
+	t.rowCache[index].parent = parentIndex
 	t.rowCache[index].depth = depth
-	t.rowCache[index].height = t.heightForColumns(row)
+	t.rowCache[index].height = t.heightForColumns(row, depth)
+	parentIndex = index
 	index++
 	if row.CanHaveChildRows() && row.IsOpen() {
 		for _, child := range row.ChildRows() {
-			index = t.buildRowCacheEntry(child, index, depth+1)
+			index = t.buildRowCacheEntry(child, parentIndex, index, depth+1)
 		}
 	}
 	return index
 }
 
-func (t *Table) heightForColumns(row TableRowData) float32 {
+func (t *Table) heightForColumns(row TableRowData, depth int) float32 {
 	var height float32
 	for i, w := range t.ColumnWidths {
-		if w > 0 {
-			_, cpref, _ := row.ColumnCell(i).AsPanel().Sizes(geom32.Size{Width: w})
-			if height < cpref.Height {
-				height = cpref.Height
-			}
+		if w <= 0 {
+			continue
+		}
+		w -= t.Padding.Left + t.Padding.Right
+		if i == t.HierarchyColumnIndex {
+			w -= t.Padding.Left + t.HierarchyIndent*float32(depth+1)
+		}
+		_, cpref, _ := row.ColumnCell(i).AsPanel().Sizes(geom32.Size{Width: w})
+		cpref.Height += t.Padding.Top + t.Padding.Bottom
+		if height < cpref.Height {
+			height = cpref.Height
 		}
 	}
 	return mathf32.Max(mathf32.Ceil(height), t.MinimumRowHeight)
@@ -304,9 +369,10 @@ func (t *Table) SizeColumnsToFit() {
 	t.ColumnWidths = make([]float32, len(t.ColumnWidths))
 	for _, cache := range t.rowCache {
 		for i := range t.ColumnWidths {
-			_, pref, _ := cache.data.ColumnCell(i).AsPanel().Sizes(geom32.Size{})
+			_, pref, _ := cache.row.ColumnCell(i).AsPanel().Sizes(geom32.Size{})
+			pref.Width += t.Padding.Left + t.Padding.Right
 			if i == t.HierarchyColumnIndex {
-				pref.Width += t.TableIndent * float32(cache.depth+1)
+				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 			}
 			if t.ColumnWidths[i] < pref.Width {
 				t.ColumnWidths[i] = pref.Width
@@ -314,7 +380,7 @@ func (t *Table) SizeColumnsToFit() {
 		}
 	}
 	for i, cache := range t.rowCache {
-		t.rowCache[i].height = t.heightForColumns(cache.data)
+		t.rowCache[i].height = t.heightForColumns(cache.row, cache.depth)
 	}
 }
 
