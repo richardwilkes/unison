@@ -41,8 +41,12 @@ func (d *demoRow) ColumnCell(index int) unison.Paneler {
 		label := unison.NewLabel()
 		label.Text = d.text
 		return label
+	case 2:
+		label := unison.NewLabel()
+		label.Text = "Some longer text just to fill some space."
+		return label
 	default:
-		jot.Errorf("column index out of range (0-1): %d", index)
+		jot.Errorf("column index out of range (0-2): %d", index)
 		return unison.NewLabel()
 	}
 }
