@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"time"
+
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 	"github.com/richardwilkes/unison/fa"
@@ -53,26 +55,27 @@ type tableHitRect struct {
 // Table provides a control that can display data in columns and rows.
 type Table struct {
 	Panel
-	DividerColor         Ink
-	RowColor             Ink
-	OnRowColor           Ink
-	AltRowColor          Ink
-	OnAltRowColor        Ink
-	SelectionColor       Ink
-	OnSelectionColor     Ink
-	Padding              geom32.Insets
-	topLevelRows         []TableRowData
-	selMap               map[TableRowData]bool
-	HierarchyColumnIndex int       // The column index that will display the hierarchy
-	ColumnWidths         []float32 // The widths of each column
-	hitRects             []tableHitRect
-	rowCache             []tableCache
-	interactionRow       int
-	interactionColumn    int
-	HierarchyIndent      float32
-	MinimumRowHeight     float32
-	ShowRowDivider       bool
-	ShowColumnDivider    bool
+	DividerColor             Ink
+	RowColor                 Ink
+	OnRowColor               Ink
+	AltRowColor              Ink
+	OnAltRowColor            Ink
+	SelectionColor           Ink
+	OnSelectionColor         Ink
+	Padding                  geom32.Insets
+	topLevelRows             []TableRowData
+	selMap                   map[TableRowData]bool
+	HierarchyColumnIndex     int       // The column index that will display the hierarchy
+	ColumnWidths             []float32 // The widths of each column
+	hitRects                 []tableHitRect
+	rowCache                 []tableCache
+	interactionRow           int
+	interactionColumn        int
+	HierarchyIndent          float32
+	MinimumRowHeight         float32
+	ShowRowDivider           bool
+	ShowColumnDivider        bool
+	awaitingSizeColumnsToFit bool
 }
 
 // NewTable creates a new Table control.
@@ -477,8 +480,9 @@ func (t *Table) heightForColumns(row TableRowData, depth int) float32 {
 	return mathf32.Max(mathf32.Ceil(height), t.MinimumRowHeight)
 }
 
-// SizeColumnsToFit sizes each column to its preferred size.
-func (t *Table) SizeColumnsToFit() {
+// SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the Table's FrameRect will be set to
+// its preferred size as well.
+func (t *Table) SizeColumnsToFit(adjust bool) {
 	t.ColumnWidths = make([]float32, len(t.ColumnWidths))
 	for _, cache := range t.rowCache {
 		for i := range t.ColumnWidths {
@@ -494,6 +498,25 @@ func (t *Table) SizeColumnsToFit() {
 	}
 	for i, cache := range t.rowCache {
 		t.rowCache[i].height = t.heightForColumns(cache.row, cache.depth)
+	}
+	if adjust {
+		_, pref, _ := t.DefaultSizes(geom32.Size{})
+		rect := t.FrameRect()
+		rect.Size = pref
+		t.SetFrameRect(rect)
+	}
+}
+
+// EventuallySizeColumnsToFit sizes each column to its preferred size after a short delay, allowing multiple
+// back-to-back calls to this function to only do work once. If 'adjust' is true, the Table's FrameRect will be set to
+// its preferred size as well.
+func (t *Table) EventuallySizeColumnsToFit(adjust bool) {
+	if !t.awaitingSizeColumnsToFit {
+		t.awaitingSizeColumnsToFit = true
+		InvokeTaskAfter(func() {
+			t.SizeColumnsToFit(adjust)
+			t.awaitingSizeColumnsToFit = false
+		}, 20*time.Millisecond)
 	}
 }
 
