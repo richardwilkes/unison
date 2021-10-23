@@ -31,13 +31,7 @@ func NewDemoWindow(where geom32.Point) (*unison.Window, error) {
 	}
 
 	// Install our menus
-	unison.DefaultMenuFactory().BarForWindow(wnd, func(m unison.Menu) {
-		unison.InsertStdMenus(m, ShowAboutWindow, nil, nil)
-		fileMenu := m.Menu(unison.FileMenuID)
-		f := fileMenu.Factory()
-		fileMenu.InsertItem(0, NewWindowAction.NewMenuItem(f))
-		fileMenu.InsertItem(1, OpenAction.NewMenuItem(f))
-	})
+	installDefaultMenus(wnd)
 
 	// Put some empty space around the edges of our window and apply a single column layout.
 	content := wnd.Content()

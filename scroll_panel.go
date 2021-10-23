@@ -32,14 +32,15 @@ type Behavior uint8
 // ScrollPanel provides a scrollable area.
 type ScrollPanel struct {
 	Panel
-	BackgroundColor Ink
-	horizontalBar   *ScrollBar
-	verticalBar     *ScrollBar
-	columnHeader    *Panel
-	rowHeader       *Panel
-	view            *Panel
-	content         *Panel
-	behavior        Behavior
+	BackgroundColor      Ink
+	horizontalBar        *ScrollBar
+	verticalBar          *ScrollBar
+	columnHeader         *Panel
+	rowHeader            *Panel
+	view                 *Panel
+	content              *Panel
+	behavior             Behavior
+	MouseWheelMultiplier float32
 }
 
 // NewScrollPanel creates a new scrollable area.
@@ -158,10 +159,18 @@ func (s *ScrollPanel) barChanged() {
 // DefaultMouseWheel provides the default mouse wheel handling.
 func (s *ScrollPanel) DefaultMouseWheel(where, delta geom32.Point, mod Modifiers) bool {
 	if delta.Y != 0 {
-		s.verticalBar.SetRange(s.verticalBar.Value()-delta.Y, s.verticalBar.Extent(), s.verticalBar.Max())
+		dy := delta.Y
+		if s.MouseWheelMultiplier > 0 {
+			dy *= s.MouseWheelMultiplier
+		}
+		s.verticalBar.SetRange(s.verticalBar.Value()-dy, s.verticalBar.Extent(), s.verticalBar.Max())
 	}
 	if delta.X != 0 {
-		s.horizontalBar.SetRange(s.horizontalBar.Value()-delta.X, s.horizontalBar.Extent(), s.horizontalBar.Max())
+		dx := delta.X
+		if s.MouseWheelMultiplier > 0 {
+			dx *= s.MouseWheelMultiplier
+		}
+		s.horizontalBar.SetRange(s.horizontalBar.Value()-dx, s.horizontalBar.Extent(), s.horizontalBar.Max())
 	}
 	return true
 }
