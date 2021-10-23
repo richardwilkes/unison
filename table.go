@@ -82,7 +82,7 @@ func NewTable() *Table {
 		Padding:              geom32.NewUniformInsets(4),
 		HierarchyIndent:      DefaultHierarchyIndent,
 		MinimumRowHeight:     DefaultMinimumRowHeight,
-		HierarchyColumnIndex: 1,
+		HierarchyColumnIndex: 0,
 		ShowRowDivider:       true,
 		ShowColumnDivider:    true,
 	}
@@ -236,6 +236,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 func (t *Table) installCell(cell *Panel, frame geom32.Rect) {
 	cell.SetFrameRect(frame)
 	cell.parent = t.AsPanel()
+	cell.ValidateLayout()
 }
 
 func (t *Table) uninstallCell(cell *Panel) {

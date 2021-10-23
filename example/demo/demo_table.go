@@ -35,6 +35,7 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 
 	// Create the table
 	table := unison.NewTable()
+	table.HierarchyColumnIndex = 1
 	table.ColumnWidths = make([]float32, 3)
 	rows := make([]unison.TableRowData, 10000)
 	for i := range rows {
