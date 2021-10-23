@@ -17,6 +17,7 @@ import (
 type demoRow struct {
 	text      string
 	children  []unison.TableRowData
+	checkbox  *unison.CheckBox
 	container bool
 	open      bool
 }
@@ -32,14 +33,17 @@ func (d *demoRow) ChildRows() []unison.TableRowData {
 func (d *demoRow) ColumnCell(index int) unison.Paneler {
 	switch index {
 	case 0:
-		return unison.NewCheckBox()
+		if d.checkbox == nil {
+			d.checkbox = unison.NewCheckBox()
+		}
+		return d.checkbox
 	case 1:
 		label := unison.NewLabel()
 		label.Text = d.text
 		return label
 	default:
-		jot.Fatal(1, "column index out of bounds")
-		return nil
+		jot.Errorf("column index out of range (0-1): %d", index)
+		return unison.NewLabel()
 	}
 }
 

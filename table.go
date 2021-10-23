@@ -28,7 +28,9 @@ type TableRowData interface {
 	CanHaveChildRows() bool
 	// ChildRows returns the child rows.
 	ChildRows() []TableRowData
-	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index.
+	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index. If you
+	// need for the cell to retain widget state, make sure to return the same widget each time rather than creating a
+	// new one.
 	ColumnCell(index int) Paneler
 	// IsOpen returns true if the row can have children and is currently showing its children.
 	IsOpen() bool
@@ -65,6 +67,8 @@ type Table struct {
 	ColumnWidths         []float32 // The widths of each column
 	hitRects             []tableHitRect
 	rowCache             []tableCache
+	interactionRow       int
+	interactionColumn    int
 	HierarchyIndent      float32
 	MinimumRowHeight     float32
 	ShowRowDivider       bool
@@ -87,6 +91,8 @@ func NewTable() *Table {
 	t.SetSizer(t.DefaultSizes)
 	t.DrawCallback = t.DefaultDraw
 	t.MouseDownCallback = t.DefaultMouseDown
+	t.MouseDragCallback = t.DefaultMouseDrag
+	t.MouseUpCallback = t.DefaultMouseUp
 	return t
 }
 
@@ -207,12 +213,13 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 				cellRect.Width -= indent
 			}
 			cell := row.ColumnCell(c).AsPanel()
-			cell.SetFrameRect(cellRect)
+			t.installCell(cell, cellRect)
 			canvas.Save()
 			canvas.Translate(cellRect.X, cellRect.Y)
 			cellRect.X = 0
 			cellRect.Y = 0
 			cell.Draw(canvas, cellRect)
+			t.uninstallCell(cell)
 			canvas.Restore()
 			rect.X += t.ColumnWidths[c]
 			if t.ShowColumnDivider {
@@ -224,6 +231,15 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			rect.Y++
 		}
 	}
+}
+
+func (t *Table) installCell(cell *Panel, frame geom32.Rect) {
+	cell.SetFrameRect(frame)
+	cell.parent = t.AsPanel()
+}
+
+func (t *Table) uninstallCell(cell *Panel) {
+	cell.parent = nil
 }
 
 // OverRow returns the row index that the y coordinate is over, or -1 if it isn't over any row.
@@ -246,6 +262,59 @@ func (t *Table) OverRow(y float32) int {
 	return -1
 }
 
+// OverColumn returns the column index that the x coordinate is over, or -1 if it isn't over any column.
+func (t *Table) OverColumn(x float32) int {
+	var insets geom32.Insets
+	if border := t.Border(); border != nil {
+		insets = border.Insets()
+	}
+	end := insets.Left
+	for i := range t.ColumnWidths {
+		start := end
+		end += t.ColumnWidths[i]
+		if t.ShowColumnDivider {
+			end++
+		}
+		if x >= start && x < end {
+			return i
+		}
+	}
+	return -1
+}
+
+// CellFrame returns the frame of the given cell.
+func (t *Table) CellFrame(row, col int) geom32.Rect {
+	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.ColumnWidths) {
+		return geom32.Rect{}
+	}
+	var insets geom32.Insets
+	if border := t.Border(); border != nil {
+		insets = border.Insets()
+	}
+	x := insets.Left
+	for c := 0; c < col; c++ {
+		x += t.ColumnWidths[c]
+		if t.ShowColumnDivider {
+			x++
+		}
+	}
+	y := insets.Top
+	for r := 0; r < row; r++ {
+		y += t.rowCache[r].height
+		if t.ShowRowDivider {
+			y++
+		}
+	}
+	rect := geom32.NewRect(x, y, t.rowCache[row].height, t.ColumnWidths[col])
+	rect.Inset(t.Padding)
+	if col == t.HierarchyColumnIndex {
+		indent := t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
+		rect.X += indent
+		rect.Width -= indent
+	}
+	return rect
+}
+
 func (t *Table) newTableHitRect(rect geom32.Rect, row TableRowData) tableHitRect {
 	return tableHitRect{
 		Rect: rect,
@@ -259,27 +328,70 @@ func (t *Table) newTableHitRect(rect geom32.Rect, row TableRowData) tableHitRect
 
 // DefaultMouseDown provides the default mouse down handling.
 func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+	t.interactionRow = -1
+	t.interactionColumn = -1
 	for _, one := range t.hitRects {
 		if one.ContainsPoint(where) {
 			one.handler(where, button, clickCount, mod)
 			return true
 		}
 	}
-	if over := t.OverRow(where.Y); over != -1 {
-		if t.IsRowOrAnyParentSelected(over) {
+	stop := true
+	if row := t.OverRow(where.Y); row != -1 {
+		if t.IsRowOrAnyParentSelected(row) {
 			if mod&OptionModifier != 0 {
-				t.selMap[t.rowCache[over].row] = false
+				t.selMap[t.rowCache[row].row] = false
 				t.MarkForRedraw()
 			}
 		} else {
 			if mod&(ShiftModifier|OptionModifier) == 0 {
 				t.selMap = make(map[TableRowData]bool)
 			}
-			t.selMap[t.rowCache[over].row] = true
+			t.selMap[t.rowCache[row].row] = true
 			t.MarkForRedraw()
 		}
+		if col := t.OverColumn(where.X); col != -1 {
+			cell := t.rowCache[row].row.ColumnCell(col).AsPanel()
+			if cell.MouseDownCallback != nil {
+				t.interactionRow = row
+				t.interactionColumn = col
+				rect := t.CellFrame(row, col)
+				t.installCell(cell, rect)
+				where.Subtract(rect.Point)
+				stop = cell.MouseDownCallback(where, button, clickCount, mod)
+				t.uninstallCell(cell)
+			}
+		}
 	}
-	return true
+	return stop
+}
+
+// DefaultMouseDrag provides the default mouse drag handling.
+func (t *Table) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+	stop := false
+	if t.interactionRow != -1 && t.interactionColumn != -1 {
+		cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn).AsPanel()
+		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
+		t.installCell(cell, rect)
+		where.Subtract(rect.Point)
+		stop = cell.MouseDragCallback(where, button, mod)
+		t.uninstallCell(cell)
+	}
+	return stop
+}
+
+// DefaultMouseUp provides the default mouse up handling.
+func (t *Table) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+	stop := false
+	if t.interactionRow != -1 && t.interactionColumn != -1 {
+		cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn).AsPanel()
+		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
+		t.installCell(cell, rect)
+		where.Subtract(rect.Point)
+		stop = cell.MouseUpCallback(where, button, mod)
+		t.uninstallCell(cell)
+	}
+	return stop
 }
 
 // IsRowOrAnyParentSelected returns true if the specified row index or any of its parents are selected.
