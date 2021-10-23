@@ -17,7 +17,7 @@ import (
 const (
 	// MinimumScrollBarSize is the minimum width for vertical bars and height for horizontal bars.
 	MinimumScrollBarSize  = 16
-	scrollBarMinimumThumb = 4
+	scrollBarMinimumThumb = 16
 	scrollBarThumbIndent  = 3
 	scrollBarCornerRadius = 8
 )
