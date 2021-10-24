@@ -34,6 +34,11 @@ func NewSvgPath(size geom32.Size, svgPath string) (*SvgPath, error) {
 	}, nil
 }
 
+// Size returns the original size.
+func (s *SvgPath) Size() geom32.Size {
+	return s.size
+}
+
 // PathScaledTo returns the path with the specified scaling. You should not modify this path, as it is cached.
 func (s *SvgPath) PathScaledTo(scale float32) *Path {
 	if scale == 1 {
