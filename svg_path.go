@@ -39,6 +39,13 @@ func (s *SvgPath) Size() geom32.Size {
 	return s.size
 }
 
+// OffsetToCenterWithinScaledSize returns the scaled offset values to use to keep the image centered within the given
+// size.
+func (s *SvgPath) OffsetToCenterWithinScaledSize(size geom32.Size) geom32.Point {
+	scale := mathf32.Min(size.Width/s.size.Width, size.Height/s.size.Height)
+	return geom32.NewPoint((size.Width-s.size.Width*scale)/2, (size.Height-s.size.Height*scale)/2)
+}
+
 // PathScaledTo returns the path with the specified scaling. You should not modify this path, as it is cached.
 func (s *SvgPath) PathScaledTo(scale float32) *Path {
 	if scale == 1 {
