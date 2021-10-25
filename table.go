@@ -238,8 +238,8 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 
 func (t *Table) installCell(cell *Panel, frame geom32.Rect) {
 	cell.SetFrameRect(frame)
-	cell.parent = t.AsPanel()
 	cell.ValidateLayout()
+	cell.parent = t.AsPanel()
 }
 
 func (t *Table) uninstallCell(cell *Panel) {
