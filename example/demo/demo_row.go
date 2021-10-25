@@ -15,11 +15,12 @@ import (
 )
 
 type demoRow struct {
-	text      string
-	children  []unison.TableRowData
-	checkbox  *unison.CheckBox
-	container bool
-	open      bool
+	text         string
+	children     []unison.TableRowData
+	checkbox     *unison.CheckBox
+	container    bool
+	open         bool
+	doubleHeight bool
 }
 
 func (d *demoRow) CanHaveChildRows() bool {
@@ -40,7 +41,19 @@ func (d *demoRow) ColumnCell(index int) unison.Paneler {
 	case 1:
 		label := unison.NewLabel()
 		label.Text = d.text
-		return label
+		if !d.doubleHeight {
+			return label
+		}
+		wrapper := unison.NewPanel()
+		wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
+		wrapper.AddChild(label)
+		label = unison.NewLabel()
+		label.Text = "A little note…"
+		desc := unison.LabelFont.ResolvedFont().Descriptor()
+		desc.Size -= 2
+		label.Font = desc.Font()
+		wrapper.AddChild(label)
+		return wrapper
 	case 2:
 		label := unison.NewLabel()
 		label.Text = "Some longer text just to fill some space."

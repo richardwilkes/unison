@@ -23,12 +23,8 @@ import (
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
-const (
-	// DefaultSystemFamilyName is the default system font family name and will be used as a fallback where needed.
-	DefaultSystemFamilyName = "Roboto"
-	// FontAwesomeFreeFamilyName is the name of the FontAwesome Free font that has been loaded automatically.
-	FontAwesomeFreeFamilyName = "Font Awesome 5 Free"
-)
+// DefaultSystemFamilyName is the default system font family name and will be used as a fallback where needed.
+const DefaultSystemFamilyName = "Roboto"
 
 //go:embed resources/fonts
 var fontFS embed.FS

@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
-	"github.com/richardwilkes/unison/fa"
 )
 
 const (
@@ -169,14 +168,6 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	rect = dirty
 	rect.Y = y
 	lastX := dirty.Right()
-	faDesc := FontDescriptor{
-		Family:  FontAwesomeFreeFamilyName,
-		Size:    t.HierarchyIndent - 6,
-		Weight:  BlackFontWeight,
-		Spacing: StandardSpacing,
-		Slant:   NoSlant,
-	}
-	faFont := faDesc.Font()
 	t.hitRects = nil
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
 		row := t.rowCache[r].row
@@ -197,19 +188,23 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			cellRect.Inset(t.Padding)
 			if c == t.HierarchyColumnIndex {
 				if row.CanHaveChildRows() {
-					var code string
+					const disclosureIndent = 1
+					disclosureSize := mathf32.Min(t.HierarchyIndent, t.MinimumRowHeight) - disclosureIndent*2
+					canvas.Save()
+					left := cellRect.X + t.HierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
+					top := cellRect.Y
+					t.hitRects = append(t.hitRects, t.newTableHitRect(geom32.NewRect(left, top, disclosureSize,
+						disclosureSize), row))
+					canvas.Translate(left, top)
 					if row.IsOpen() {
-						code = fa.ChevronCircleDown
-					} else {
-						code = fa.ChevronCircleRight
+						offset := disclosureSize / 2
+						canvas.Translate(offset, offset)
+						canvas.RotateDegrees(90)
+						canvas.Translate(-offset, -offset)
 					}
-					extents := faFont.Extents(code)
-					left := cellRect.X + t.HierarchyIndent*float32(t.rowCache[r].depth)
-					canvas.DrawSimpleText(code, left+(t.HierarchyIndent-extents.Width)/2,
-						cellRect.Y+(cellRect.Height-faDesc.Size)/2+faDesc.Size-0.5, faFont,
+					canvas.DrawPath(CircledChevronRight().PathForSize(geom32.NewSize(disclosureSize, disclosureSize)),
 						fg.Paint(canvas, cellRect, Fill))
-					t.hitRects = append(t.hitRects, t.newTableHitRect(geom32.NewRect(left,
-						cellRect.Y+(cellRect.Height-t.HierarchyIndent)/2, t.HierarchyIndent, t.HierarchyIndent), row))
+					canvas.Restore()
 				}
 				indent := t.HierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left
 				cellRect.X += indent

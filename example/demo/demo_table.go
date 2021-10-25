@@ -41,6 +41,9 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	for i := range rows {
 		row := &demoRow{text: fmt.Sprintf("Row %d", i+1)}
 		if i%10 == 3 {
+			if i == 3 {
+				row.doubleHeight = true
+			}
 			row.container = true
 			row.open = true
 			row.children = make([]unison.TableRowData, 5)

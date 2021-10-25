@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
@@ -63,4 +64,16 @@ func (s *SvgPath) PathScaledTo(scale float32) *Path {
 // PathForSize returns the path scaled to fit in the specified size. You should not modify this path, as it is cached.
 func (s *SvgPath) PathForSize(size geom32.Size) *Path {
 	return s.PathScaledTo(mathf32.Min(size.Width/s.size.Width, size.Height/s.size.Height))
+}
+
+var circledChevronRight *SvgPath
+
+// CircledChevronRight returns an SvgPath that holds a circled chevron pointing towards the right.
+func CircledChevronRight() *SvgPath {
+	if circledChevronRight == nil {
+		var err error
+		circledChevronRight, err = NewSvgPath(geom32.NewSize(512, 512), "M256 8c137 0 248 111 248 248S393 504 256 504 8 393 8 256 119 8 256 8zm113.9 231L234.4 103.5c-9.4-9.4-24.6-9.4-33.9 0l-17 17c-9.4 9.4-9.4 24.6 0 33.9L285.1 256 183.5 357.6c-9.4 9.4-9.4 24.6 0 33.9l17 17c9.4 9.4 24.6 9.4 33.9 0L369.9 273c9.4-9.4 9.4-24.6 0-34z")
+		jot.FatalIfErr(err)
+	}
+	return circledChevronRight
 }
