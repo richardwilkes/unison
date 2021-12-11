@@ -24,6 +24,7 @@ import (
 var appUsesLightThemeValue = uint32(1)
 
 func platformEarlyInit() {
+	AttachConsole()
 }
 
 func platformLateInit() {

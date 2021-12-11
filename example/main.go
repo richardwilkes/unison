@@ -27,6 +27,8 @@ func main() {
 	cmdline.CopyrightHolder = "Richard A. Wilkes"
 	cmdline.AppIdentifier = "com.trollworks.unison.example"
 
+	unison.AttachConsole()
+
 	cl := cmdline.New(true)
 	cl.Parse(os.Args[1:])
 

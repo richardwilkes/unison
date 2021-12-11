@@ -13,16 +13,27 @@ import (
 	"syscall"
 )
 
-var (
-	kernel32         = syscall.NewLazyDLL("kernel32.dll")
-	globalAllocProc  = kernel32.NewProc("GlobalAlloc")
-	globalFreeProc   = kernel32.NewProc("GlobalFree")
-	globalLockProc   = kernel32.NewProc("GlobalLock")
-	globalUnlockProc = kernel32.NewProc("GlobalUnlock")
+const (
+	// AttachParentProcessID https://docs.microsoft.com/en-us/windows/console/attachconsole
+	AttachParentProcessID = ^uint32(0)
+	// GMemMoveable https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalalloc
+	GMemMoveable = 0x0002
 )
 
-// GMemMoveable https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalalloc
-const GMemMoveable = 0x0002
+var (
+	kernel32          = syscall.NewLazyDLL("kernel32.dll")
+	attachConsoleProc = kernel32.NewProc("AttachConsole")
+	globalAllocProc   = kernel32.NewProc("GlobalAlloc")
+	globalFreeProc    = kernel32.NewProc("GlobalFree")
+	globalLockProc    = kernel32.NewProc("GlobalLock")
+	globalUnlockProc  = kernel32.NewProc("GlobalUnlock")
+)
+
+// AttachConsole https://docs.microsoft.com/en-us/windows/console/attachconsole
+func AttachConsole(processID uint32) bool {
+	r1, _, _ := attachConsoleProc.Call(uintptr(processID))
+	return r1 != 0
+}
 
 // GlobalAlloc https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalalloc
 func GlobalAlloc(flags uint, size int) syscall.Handle {
