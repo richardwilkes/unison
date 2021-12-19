@@ -16,6 +16,7 @@ import (
 
 type demoRow struct {
 	text         string
+	text2        string
 	children     []unison.TableRowData
 	checkbox     *unison.CheckBox
 	container    bool
@@ -56,7 +57,7 @@ func (d *demoRow) ColumnCell(index int) unison.Paneler {
 		return wrapper
 	case 2:
 		label := unison.NewLabel()
-		label.Text = "Some longer text just to fill some space."
+		label.Text = d.text2
 		return label
 	default:
 		jot.Errorf("column index out of range (0-2): %d", index)

@@ -16,6 +16,8 @@ import (
 	"github.com/richardwilkes/unison"
 )
 
+const topLevelRowsToMake = 100
+
 var tableCounter int
 
 // NewDemoTableWindow creates and displays our demo table window.
@@ -37,9 +39,12 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	table := unison.NewTable()
 	table.HierarchyColumnIndex = 1
 	table.ColumnWidths = make([]float32, 3)
-	rows := make([]unison.TableRowData, 10000)
+	rows := make([]unison.TableRowData, topLevelRowsToMake)
 	for i := range rows {
-		row := &demoRow{text: fmt.Sprintf("Row %d", i+1)}
+		row := &demoRow{
+			text:  fmt.Sprintf("Row %d", i+1),
+			text2: fmt.Sprintf("Some longer content for Row %d", i+1),
+		}
 		if i%10 == 3 {
 			if i == 3 {
 				row.doubleHeight = true
