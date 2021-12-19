@@ -11,8 +11,11 @@ package demo
 
 import (
 	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison"
 )
+
+var _ unison.TableRowData = &demoRow{}
 
 type demoRow struct {
 	text         string
@@ -48,12 +51,18 @@ func (d *demoRow) ColumnCell(index int) unison.Paneler {
 		wrapper := unison.NewPanel()
 		wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
 		wrapper.AddChild(label)
-		label = unison.NewLabel()
-		label.Text = "A little note…"
+		subLabel := unison.NewLabel()
+		subLabel.Text = "A little note…"
 		desc := unison.LabelFont.ResolvedFont().Descriptor()
 		desc.Size -= 2
-		label.Font = desc.Font()
-		wrapper.AddChild(label)
+		subLabel.Font = desc.Font()
+		wrapper.AddChild(subLabel)
+		wrapper.UpdateTooltipCallback = func(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
+			wrapper.Tooltip = unison.NewTooltipWithText("A tooltip for the cell")
+			avoid := label.FrameRect()
+			avoid.Union(subLabel.FrameRect())
+			return wrapper.RectToRoot(avoid)
+		}
 		return wrapper
 	case 2:
 		label := unison.NewLabel()

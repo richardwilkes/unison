@@ -38,7 +38,14 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	// Create the table
 	table := unison.NewTable()
 	table.HierarchyColumnIndex = 1
-	table.ColumnWidths = make([]float32, 3)
+	table.ColumnSizes = make([]unison.ColumnSize, 3)
+	for i := range table.ColumnSizes {
+		table.ColumnSizes[i].Minimum = 20
+		table.ColumnSizes[i].Maximum = 10000
+	}
+	_, checkColSize, _ := unison.NewCheckBox().Sizes(geom32.Size{})
+	table.ColumnSizes[0].Minimum = checkColSize.Width
+	table.ColumnSizes[0].Maximum = checkColSize.Width
 	rows := make([]unison.TableRowData, topLevelRowsToMake)
 	for i := range rows {
 		row := &demoRow{
