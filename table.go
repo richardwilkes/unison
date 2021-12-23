@@ -432,6 +432,12 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 	t.interactionColumn = -1
 	if over := t.OverColumnDivider(where.X); over != -1 {
 		if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
+			if clickCount == 2 {
+				t.SizeColumnToFit(over, true)
+				t.MarkForRedraw()
+				t.Window().UpdateCursorNow()
+				return true
+			}
 			t.interactionColumn = over
 			t.columnResizeStart = where.X
 			t.columnResizeBase = t.ColumnSizes[over].Current
@@ -645,6 +651,43 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 			if t.ColumnSizes[i].Current < pref.Width {
 				t.ColumnSizes[i].Current = pref.Width
 			}
+		}
+	}
+	for i, cache := range t.rowCache {
+		t.rowCache[i].height = t.heightForColumns(cache.row, cache.depth)
+	}
+	if adjust {
+		_, pref, _ := t.DefaultSizes(geom32.Size{})
+		rect := t.FrameRect()
+		rect.Size = pref
+		t.SetFrameRect(rect)
+	}
+}
+
+// SizeColumnToFit sizes the specified column to its preferred size. If 'adjust' is true, the Table's FrameRect will be
+// set to its preferred size as well.
+func (t *Table) SizeColumnToFit(index int, adjust bool) {
+	if index < 0 || index >= len(t.ColumnSizes) {
+		return
+	}
+	t.ColumnSizes[index].Current = t.ColumnSizes[index].Minimum
+	for _, cache := range t.rowCache {
+		_, pref, _ := cache.row.ColumnCell(index).AsPanel().Sizes(geom32.Size{})
+		min := t.ColumnSizes[index].Minimum
+		if min > 0 && pref.Width < min {
+			pref.Width = min
+		} else {
+			max := t.ColumnSizes[index].Maximum
+			if max > 0 && pref.Width > max {
+				pref.Width = max
+			}
+		}
+		pref.Width += t.Padding.Left + t.Padding.Right
+		if index == t.HierarchyColumnIndex {
+			pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
+		}
+		if t.ColumnSizes[index].Current < pref.Width {
+			t.ColumnSizes[index].Current = pref.Width
 		}
 	}
 	for i, cache := range t.rowCache {
