@@ -40,6 +40,8 @@ type TableRowData interface {
 	IsOpen() bool
 	// SetOpen sets the row's open state.
 	SetOpen(open bool)
+	// CellDataForSort returns the string that represents the data in the specified cell.
+	CellDataForSort(index int) string
 }
 
 // ColumnSize holds the column sizing information.
@@ -117,6 +119,8 @@ func NewTable() *Table {
 
 // DefaultDraw provides the default drawing.
 func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+	canvas.DrawRect(dirty, ChooseInk(t.RowColor, ListColor).Paint(canvas, dirty, Fill))
+
 	var insets geom32.Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
@@ -150,8 +154,6 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		y = y1
 		firstRow = i + 1
 	}
-
-	canvas.DrawRect(dirty, ChooseInk(t.RowColor, ListColor).Paint(canvas, dirty, Fill))
 
 	lastY := dirty.Bottom()
 	rect := dirty
@@ -219,7 +221,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 						canvas.RotateDegrees(90)
 						canvas.Translate(-offset, -offset)
 					}
-					canvas.DrawPath(CircledChevronRight().PathForSize(geom32.NewSize(disclosureSize, disclosureSize)),
+					canvas.DrawPath(CircledChevronRightSVG().PathForSize(geom32.NewSize(disclosureSize, disclosureSize)),
 						fg.Paint(canvas, cellRect, Fill))
 					canvas.Restore()
 				}
@@ -513,13 +515,16 @@ func (t *Table) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 				t.SyncToModel()
 				t.MarkForRedraw()
 			}
+			stop = true
 		} else {
 			cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn).AsPanel()
-			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
-			t.installCell(cell, rect)
-			where.Subtract(rect.Point)
-			stop = cell.MouseDragCallback(where, button, mod)
-			t.uninstallCell(cell)
+			if cell.MouseDragCallback != nil {
+				rect := t.CellFrame(t.interactionRow, t.interactionColumn)
+				t.installCell(cell, rect)
+				where.Subtract(rect.Point)
+				stop = cell.MouseDragCallback(where, button, mod)
+				t.uninstallCell(cell)
+			}
 		}
 	}
 	return stop
@@ -530,11 +535,13 @@ func (t *Table) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bo
 	stop := false
 	if t.interactionRow != -1 && t.interactionColumn != -1 {
 		cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn).AsPanel()
-		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
-		t.installCell(cell, rect)
-		where.Subtract(rect.Point)
-		stop = cell.MouseUpCallback(where, button, mod)
-		t.uninstallCell(cell)
+		if cell.MouseUpCallback != nil {
+			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
+			t.installCell(cell, rect)
+			where.Subtract(rect.Point)
+			stop = cell.MouseUpCallback(where, button, mod)
+			t.uninstallCell(cell)
+		}
 	}
 	return stop
 }

@@ -233,7 +233,7 @@ func createImageButtonsPanel() *unison.Panel {
 
 func createImageButton(img *unison.Image, actionText string, panel *unison.Panel) *unison.Button {
 	btn := unison.NewButton()
-	btn.Image = img
+	btn.Drawable = img
 	btn.ClickCallback = func() { jot.Info(actionText) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", actionText))
 	btn.SetLayoutData(unison.MiddleAlignment)
@@ -523,7 +523,7 @@ func createImagePanel() *unison.Label {
 	if err != nil {
 		jot.Error(err)
 	} else {
-		imgPanel.Image = img
+		imgPanel.Drawable = img
 	}
 
 	// Set the set of the widget to match its preferred size
@@ -550,7 +550,7 @@ func createWellsPanel(imgPanel *unison.Label) *unison.Panel {
 	well1.InkChangedCallback = func() {
 		ink := well1.Ink()
 		if pattern, ok := ink.(*unison.Pattern); ok {
-			imgPanel.Image = pattern.Image
+			imgPanel.Drawable = pattern.Image
 			_, pSize, _ := imgPanel.Sizes(geom32.Size{})
 			imgPanel.SetFrameRect(geom32.Rect{Size: pSize})
 			imgPanel.MarkForRedraw()

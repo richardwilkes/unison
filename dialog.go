@@ -57,7 +57,7 @@ func NewDialog(img *Image, msgPanel *Panel, buttonInfo []*DialogButtonInfo) (*Di
 	if img != nil {
 		columns++
 		icon := NewLabel()
-		icon.Image = img
+		icon.Drawable = img
 		icon.SetBorder(NewEmptyBorder(geom32.Insets{Bottom: 16, Right: 8}))
 		icon.SetLayoutData(&FlexLayoutData{
 			HSpan: 1,

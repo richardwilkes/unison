@@ -47,7 +47,7 @@ type CheckBox struct {
 	OnEnabledColor     Ink
 	DisabledColor      Ink
 	OnDisabledColor    Ink
-	Image              *Image
+	Drawable           Drawable
 	Text               string
 	Gap                float32
 	CornerRadius       float32
@@ -94,10 +94,10 @@ func (c *CheckBox) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 
 func (c *CheckBox) boxAndLabelSize() geom32.Size {
 	boxSize := c.boxSize()
-	if c.Image == nil && c.Text == "" {
+	if c.Drawable == nil && c.Text == "" {
 		return geom32.Size{Width: boxSize, Height: boxSize}
 	}
-	size := LabelSize(c.Text, ChooseFont(c.Font, SystemFont), c.Image, c.Side, c.Gap)
+	size := LabelSize(c.Text, ChooseFont(c.Font, SystemFont), c.Drawable, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
 	if size.Height < boxSize {
 		size.Height = boxSize
@@ -130,7 +130,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	}
 	rect.Size = size
 	boxSize := c.boxSize()
-	if c.Image != nil || c.Text != "" {
+	if c.Drawable != nil || c.Text != "" {
 		r := rect
 		r.X += boxSize + c.Gap
 		r.Width -= boxSize + c.Gap
@@ -140,7 +140,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		} else {
 			ink = ChooseInk(c.OnDisabledColor, OnControlDisabledColor)
 		}
-		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Text, ChooseFont(c.Font, SystemFont), ink, c.Image, c.Side, c.Gap,
+		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Text, ChooseFont(c.Font, SystemFont), ink, c.Drawable, c.Side, c.Gap,
 			!c.Enabled())
 	}
 	if rect.Height > boxSize {

@@ -28,7 +28,7 @@ type RadioButton struct {
 	OnEnabledColor     Ink
 	DisabledColor      Ink
 	OnDisabledColor    Ink
-	Image              *Image
+	Drawable           Drawable
 	Text               string
 	Gap                float32
 	CornerRadius       float32
@@ -75,10 +75,10 @@ func (r *RadioButton) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size
 
 func (r *RadioButton) circleAndLabelSize() geom32.Size {
 	circleSize := r.circleSize()
-	if r.Image == nil && r.Text == "" {
+	if r.Drawable == nil && r.Text == "" {
 		return geom32.Size{Width: circleSize, Height: circleSize}
 	}
-	size := LabelSize(r.Text, ChooseFont(r.Font, SystemFont), r.Image, r.Side, r.Gap)
+	size := LabelSize(r.Text, ChooseFont(r.Font, SystemFont), r.Drawable, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
 	if size.Height < circleSize {
 		size.Height = circleSize
@@ -126,7 +126,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	}
 	rect.Size = size
 	circleSize := r.circleSize()
-	if r.Image != nil || r.Text != "" {
+	if r.Drawable != nil || r.Text != "" {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
@@ -136,7 +136,8 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		} else {
 			ink = OnControlDisabledColor
 		}
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, ChooseFont(r.Font, SystemFont), ink, r.Image, r.Side, r.Gap, !r.Enabled())
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, ChooseFont(r.Font, SystemFont), ink, r.Drawable, r.Side,
+			r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += mathf32.Floor((rect.Height - circleSize) / 2)

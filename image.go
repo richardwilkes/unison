@@ -25,7 +25,10 @@ import (
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
-var imgPool = softref.NewPool(&jot.Logger{})
+var (
+	_       Drawable = &Image{}
+	imgPool          = softref.NewPool(&jot.Logger{})
+)
 
 // Image holds a reference to an image.
 type Image softref.SoftRef
@@ -135,6 +138,11 @@ func (img *Image) LogicalSize() geom32.Size {
 		Width:  float32(skia.ImageGetWidth(ref.img)) * ref.scale,
 		Height: float32(skia.ImageGetHeight(ref.img)) * ref.scale,
 	}
+}
+
+// DrawInRect draws this image in the given rectangle.
+func (img *Image) DrawInRect(canvas *Canvas, rect geom32.Rect, sampling *SamplingOptions, paint *Paint) {
+	canvas.DrawImageInRect(img, rect, sampling, paint)
 }
 
 // Scale returns the internal scaling factor for this image.

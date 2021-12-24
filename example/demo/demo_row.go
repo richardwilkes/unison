@@ -10,6 +10,8 @@
 package demo
 
 import (
+	"strconv"
+
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison"
@@ -33,6 +35,22 @@ func (d *demoRow) CanHaveChildRows() bool {
 
 func (d *demoRow) ChildRows() []unison.TableRowData {
 	return d.children
+}
+
+func (d *demoRow) CellDataForSort(index int) string {
+	switch index {
+	case 0:
+		if d.checkbox == nil {
+			d.checkbox = unison.NewCheckBox()
+		}
+		return strconv.Itoa(int(d.checkbox.State))
+	case 1:
+		return d.text
+	case 2:
+		return d.text2
+	default:
+		return ""
+	}
 }
 
 func (d *demoRow) ColumnCell(index int) unison.Paneler {

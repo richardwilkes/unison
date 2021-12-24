@@ -77,6 +77,13 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	table.SetTopLevelRows(rows)
 	table.SizeColumnsToFit(true)
 
+	header := unison.NewTableHeader(table,
+		unison.NewTableColumnHeader(""),
+		unison.NewTableColumnHeader("First"),
+		unison.NewTableColumnHeader("Second"),
+	)
+	content.AddChild(header)
+
 	// Create a scroll panel and place a table panel inside it
 	scrollArea := unison.NewScrollPanel()
 	scrollArea.MouseWheelMultiplier = 2

@@ -31,14 +31,14 @@ type Button struct {
 	OnEnabledColor           Ink
 	DisabledColor            Ink
 	OnDisabledColor          Ink
-	Image                    *Image
+	Drawable                 Drawable
 	Text                     string
 	Gap                      float32
 	CornerRadius             float32
 	HMargin                  float32
 	VMargin                  float32
-	ImageOnlyHMargin         float32
-	ImageOnlyVMargin         float32
+	DrawableOnlyHMargin      float32
+	DrawableOnlyVMargin      float32
 	ClickAnimationTime       time.Duration
 	HAlign                   Alignment
 	VAlign                   Alignment
@@ -51,16 +51,16 @@ type Button struct {
 // NewButton creates a new button.
 func NewButton() *Button {
 	b := &Button{
-		Gap:                3,
-		CornerRadius:       4,
-		HMargin:            8,
-		VMargin:            1,
-		ImageOnlyHMargin:   3,
-		ImageOnlyVMargin:   3,
-		ClickAnimationTime: 100 * time.Millisecond,
-		HAlign:             MiddleAlignment,
-		VAlign:             MiddleAlignment,
-		Side:               LeftSide,
+		Gap:                 3,
+		CornerRadius:        4,
+		HMargin:             8,
+		VMargin:             1,
+		DrawableOnlyHMargin: 3,
+		DrawableOnlyVMargin: 3,
+		ClickAnimationTime:  100 * time.Millisecond,
+		HAlign:              MiddleAlignment,
+		VAlign:              MiddleAlignment,
+		Side:                LeftSide,
 	}
 	b.Self = b
 	b.SetFocusable(true)
@@ -78,10 +78,10 @@ func NewButton() *Button {
 // DefaultSizes provides the default sizing.
 func (b *Button) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	text := b.Text
-	if b.Image == nil && text == "" {
+	if b.Drawable == nil && text == "" {
 		text = "M"
 	}
-	pref = LabelSize(text, ChooseFont(b.Font, SystemFont), b.Image, b.Side, b.Gap)
+	pref = LabelSize(text, ChooseFont(b.Font, SystemFont), b.Drawable, b.Side, b.Gap)
 	if theBorder := b.Border(); theBorder != nil {
 		pref.AddInsets(theBorder.Insets())
 	}
@@ -98,16 +98,16 @@ func (b *Button) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 
 // HorizontalMargin returns the horizontal margin that will be used.
 func (b *Button) HorizontalMargin() float32 {
-	if b.Text == "" && b.Image != nil {
-		return b.ImageOnlyHMargin
+	if b.Text == "" && b.Drawable != nil {
+		return b.DrawableOnlyHMargin
 	}
 	return b.HMargin
 }
 
 // VerticalMargin returns the vertical margin that will be used.
 func (b *Button) VerticalMargin() float32 {
-	if b.Text == "" && b.Image != nil {
-		return b.ImageOnlyVMargin
+	if b.Text == "" && b.Drawable != nil {
+		return b.DrawableOnlyVMargin
 	}
 	return b.VMargin
 }
@@ -146,7 +146,7 @@ func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	rect.Y += b.VerticalMargin()
 	rect.Width -= b.HorizontalMargin() * 2
 	rect.Height -= b.VerticalMargin() * 2
-	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.Text, ChooseFont(b.Font, SystemFont), fg, b.Image,
+	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.Text, ChooseFont(b.Font, SystemFont), fg, b.Drawable,
 		b.Side, b.Gap, !b.Enabled())
 }
 
