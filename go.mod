@@ -3,13 +3,13 @@ module github.com/richardwilkes/unison
 go 1.17
 
 require (
-	github.com/go-gl/gl v0.0.0-20210905235341-f7a045908259
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20210727001814-0db043d8d5be
-	github.com/progrium/macdriver v0.1.0
-	github.com/richardwilkes/toolbox v1.52.0
+	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6
+	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20211213063430-748e38ca8aec
+	github.com/progrium/macdriver v0.2.0
+	github.com/richardwilkes/toolbox v1.53.0
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d
-	golang.org/x/sys v0.0.0-20210923061019-b8560ed6a9b7
+	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
+	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
 )
 
 require (
