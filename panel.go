@@ -214,7 +214,6 @@ func (p *Panel) SetFrameRect(rect geom32.Rect) {
 	moved := p.frame.X != rect.X || p.frame.Y != rect.Y
 	resized := p.frame.Width != rect.Width || p.frame.Height != rect.Height
 	if moved || resized {
-		p.MarkForRedraw()
 		if moved {
 			p.frame.Point = rect.Point
 		}
@@ -324,22 +323,12 @@ func (p *Panel) MarkForLayoutAndRedraw() {
 	p.MarkForRedraw()
 }
 
-// MarkForRedraw marks this panel for drawing at the next update.
+// MarkForRedraw finds the parent window and marks it for drawing at the next update. Note that currently I have found
+// no way to get glfw to both only redraw a subset of the window AND retain the previous contents of that window, such
+// that incremental updates can be done. So... we just redraw everything in the window every time.
 func (p *Panel) MarkForRedraw() {
-	p.MarkRectForRedraw(p.ContentRect(true))
-}
-
-// MarkRectForRedraw marks the rect in local coordinates within the panel for drawing at the next update.
-func (p *Panel) MarkRectForRedraw(rect geom32.Rect) {
-	rect.Intersect(p.ContentRect(true))
-	if !rect.IsEmpty() {
-		if p.parent != nil {
-			rect.X += p.frame.X
-			rect.Y += p.frame.Y
-			p.parent.MarkRectForRedraw(rect)
-		} else if w := p.Window(); w != nil {
-			w.MarkRectForRedraw(rect)
-		}
+	if w := p.Window(); w != nil {
+		w.MarkForRedraw()
 	}
 }
 

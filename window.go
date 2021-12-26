@@ -803,19 +803,6 @@ func (w *Window) MarkForRedraw() {
 	}
 }
 
-// MarkRectForRedraw marks the rect in local coordinates within the window for drawing at the next update.
-func (w *Window) MarkRectForRedraw(rect geom32.Rect) {
-	cRect := w.LocalContentRect()
-	rect.Intersect(cRect)
-	if !rect.IsEmpty() {
-		// Note that currently I have found no way to get glfw to both only redraw a subset of the window AND retain the
-		// previous contents of that window, such that incremental updates can be done. So... we just redraw everything
-		// in the window every time. I've left the logic in the panel code to still manage dirty rects, but removed it
-		// from the window code.
-		w.MarkForRedraw()
-	}
-}
-
 // FlushDrawing causes any areas marked for drawing to be drawn now.
 func (w *Window) FlushDrawing() {
 	if _, exists := redrawSet[w]; exists {
