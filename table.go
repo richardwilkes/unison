@@ -464,20 +464,18 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 	}
 	stop := true
 	if row := t.OverRow(where.Y); row != -1 {
-		if t.IsRowOrAnyParentSelected(row) {
-			if mod&OptionModifier != 0 {
-				t.selMap[t.rowCache[row].row] = false
-				t.MarkForRedraw()
-			}
-		} else {
-			if mod&(ShiftModifier|OptionModifier) == 0 {
-				t.selMap = make(map[TableRowData]bool)
-			}
-			t.selMap[t.rowCache[row].row] = true
-			t.MarkForRedraw()
+		if mod&(ShiftModifier|OptionModifier) == 0 {
+			t.selMap = make(map[TableRowData]bool)
 		}
+		rowData := t.rowCache[row].row
+		if mod&OptionModifier != 0 {
+			t.selMap[rowData] = !t.selMap[rowData]
+		} else {
+			t.selMap[rowData] = true
+		}
+		t.MarkForRedraw()
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.rowCache[row].row.ColumnCell(col).AsPanel()
+			cell := rowData.ColumnCell(col).AsPanel()
 			if cell.MouseDownCallback != nil {
 				t.interactionRow = row
 				t.interactionColumn = col
