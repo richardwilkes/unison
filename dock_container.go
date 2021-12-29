@@ -41,30 +41,30 @@ type Dockable interface {
 // DockContainer holds one or more Dockable panels.
 type DockContainer struct {
 	Panel
-	Dock          *Dock
-	header        *dockHeader
-	DockablesList []Dockable
-	current       Dockable
-	Background    Ink
-	Active        bool
+	Dock       *Dock
+	header     *dockHeader
+	content    *dockContainerContent
+	Background Ink
+	Active     bool
 }
 
 func NewDockContainer(dock *Dock, dockable Dockable) *DockContainer {
 	d := &DockContainer{
-		Dock:          dock,
-		DockablesList: []Dockable{dockable},
-		current:       dockable,
+		Dock:    dock,
+		content: newDockContainerContent(),
 	}
 	d.Self = d
 	d.SetLayout(d)
-	d.AddChild(dockable)
+	d.content.AddChild(dockable)
+	d.content.SetCurrentIndex(0)
 	d.header = newDockHeader(d)
-	d.AddChildAtIndex(d.header, 0)
+	d.AddChild(d.header)
+	d.AddChild(d.content)
 	return d
 }
 
 func (d *DockContainer) Dockables() []Dockable {
-	children := d.Children()
+	children := d.content.Children()
 	dockables := make([]Dockable, 0, len(children))
 	for _, c := range children {
 		if dockable, ok := c.Self.(Dockable); ok {
@@ -75,29 +75,20 @@ func (d *DockContainer) Dockables() []Dockable {
 }
 
 func (d *DockContainer) CurrentDockableIndex() int {
-	for i, c := range d.DockablesList {
-		if c == d.current {
-			return i
-		}
-	}
-	return -1
+	return d.content.CurrentIndex()
 }
 
 func (d *DockContainer) CurrentDockable() Dockable {
-	return d.current
+	return d.content.Current()
 }
 
 // SetCurrentDockable makes the provided dockable the current one.
 func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
-	if dockable != d.current {
-		for _, c := range d.DockablesList {
-			if c == dockable {
-				if d.current != nil {
-					d.RemoveChild(d.current)
-				}
-				d.current = dockable
-				d.AddChild(d.current)
-				d.MarkForLayoutAndRedraw()
+	current := d.CurrentDockable()
+	if dockable != current {
+		for i, c := range d.content.Children() {
+			if c.Self == dockable {
+				d.content.SetCurrentIndex(i)
 				d.AcquireFocus()
 				if d.Active {
 					dockable.Activated()
@@ -111,8 +102,8 @@ func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
 func (d *DockContainer) AcquireFocus() {
 	if wnd := d.Window(); wnd != nil {
 		if focus := wnd.Focus(); focus != nil {
-			current := d.current.AsPanel()
-			for focus != nil && focus != current {
+			current := d.CurrentDockable()
+			for focus != nil && focus.Self != current {
 				focus = focus.Parent()
 			}
 			if focus == nil {
@@ -123,8 +114,8 @@ func (d *DockContainer) AcquireFocus() {
 }
 
 func (d *DockContainer) UpdateTitle(dockable Dockable) {
-	for i, c := range d.DockablesList {
-		if c == dockable {
+	for i, c := range d.content.Children() {
+		if c.Self == dockable {
 			d.header.updateTitle(i)
 			break
 		}
@@ -144,20 +135,13 @@ func DockContainerFor(dockable Dockable) *DockContainer {
 
 func (d *DockContainer) Stack(dockable Dockable, index int) {
 	if dc := DockContainerFor(dockable); dc != nil {
-		if dc == d && len(d.DockablesList) == 1 {
+		if dc == d && len(d.content.Children()) == 1 {
 			d.AcquireFocus()
 			return
 		}
 		dc.Close(dockable)
 	}
-	if index < 0 || index >= len(d.DockablesList) {
-		d.DockablesList = append(d.DockablesList, dockable)
-		index = len(d.DockablesList) - 1
-	} else {
-		d.DockablesList = append(d.DockablesList, nil)
-		copy(d.DockablesList[index+1:], d.DockablesList[index:])
-		d.DockablesList[index] = dockable
-	}
+	d.content.AddChildAtIndex(dockable, index)
 	d.header.addTab(dockable, index)
 	d.SetCurrentDockable(dockable)
 	d.AcquireFocus()
@@ -168,8 +152,8 @@ func (d *DockContainer) Stack(dockable Dockable, index int) {
 // DockContainer's close(Dockable) method to actually close the tab.
 func (d *DockContainer) AttemptClose(dockable Dockable) {
 	if closer, ok := dockable.(TabCloser); ok {
-		for _, c := range d.DockablesList {
-			if c == dockable {
+		for _, c := range d.content.Children() {
+			if c.Self == dockable {
 				if closer.MayAttemptClose() {
 					closer.AttemptClose()
 				}
@@ -182,14 +166,12 @@ func (d *DockContainer) AttemptClose(dockable Dockable) {
 // Close the specified Dockable. If the last Dockable within this DockContainer is closed, then this DockContainer is
 // also removed from the Dock.
 func (d *DockContainer) Close(dockable Dockable) {
-	for i, c := range d.DockablesList {
-		if c == dockable {
-			d.RemoveChild(dockable)
-			copy(d.DockablesList[i:], d.DockablesList[i+1:])
-			d.DockablesList[len(d.DockablesList)-1] = nil
-			d.DockablesList = d.DockablesList[:len(d.DockablesList)-1]
+	for i, c := range d.content.Children() {
+		if c.Self == dockable {
+			d.content.RemoveChild(dockable)
 			d.header.close(dockable)
-			if len(d.DockablesList) == 0 {
+			children := d.content.Children()
+			if len(children) == 0 {
 				d.Dock.Restore()
 				d.Dock.RemoveChild(d)
 				d.Dock.MarkForLayoutAndRedraw()
@@ -198,7 +180,7 @@ func (d *DockContainer) Close(dockable Dockable) {
 				if i > 0 {
 					i--
 				}
-				d.SetCurrentDockable(d.DockablesList[i])
+				d.SetCurrentDockable(children[i].Self.(Dockable))
 			}
 			break
 		}
@@ -214,18 +196,16 @@ func (d *DockContainer) LayoutSizes(target Layoutable, hint geom32.Size) (min, p
 	min, pref, max = d.header.Sizes(geom32.Size{Width: hint.Width})
 	min.Height = pref.Height
 	max.Height = pref.Height
-	if d.current != nil {
-		min2, pref2, max2 := d.current.AsPanel().Sizes(geom32.Size{
-			Width:  hint.Width,
-			Height: mathf32.Max(hint.Height-pref.Height, 0),
-		})
-		min.Width = mathf32.Max(min.Width, min2.Width)
-		pref.Width = mathf32.Max(pref.Width, pref2.Width)
-		max.Width = mathf32.Max(max.Width, max2.Width)
-		min.Height += min2.Height
-		pref.Height += pref2.Height
-		max.Height += max2.Height
-	}
+	min2, pref2, max2 := d.content.Sizes(geom32.Size{
+		Width:  hint.Width,
+		Height: mathf32.Max(hint.Height-pref.Height, 0),
+	})
+	min.Width = mathf32.Max(min.Width, min2.Width)
+	pref.Width = mathf32.Max(pref.Width, pref2.Width)
+	max.Width = mathf32.Max(max.Width, max2.Width)
+	min.Height += min2.Height
+	pref.Height += pref2.Height
+	max.Height += max2.Height
 	if b := target.Border(); b != nil {
 		pref.AddInsets(b.Insets())
 	}
@@ -233,17 +213,10 @@ func (d *DockContainer) LayoutSizes(target Layoutable, hint geom32.Size) (min, p
 }
 
 func (d *DockContainer) PerformLayout(target Layoutable) {
-	var insets geom32.Insets
-	if b := target.Border(); b != nil {
-		insets = b.Insets()
-	}
-	size := target.FrameRect().Size
-	size.SubtractInsets(insets)
-	_, pref, _ := d.header.Sizes(geom32.Size{Width: size.Width})
-	d.header.SetFrameRect(geom32.NewRect(insets.Left, insets.Top, size.Width, pref.Height))
-	if d.current != nil {
-		d.current.AsPanel().SetFrameRect(geom32.NewRect(insets.Left, insets.Top+pref.Height, size.Width, mathf32.Max(size.Height-pref.Height, 0)))
-	}
+	r := d.ContentRect(false)
+	_, pref, _ := d.header.Sizes(geom32.Size{Width: r.Width})
+	d.header.SetFrameRect(geom32.NewRect(r.X, r.Y, r.Width, pref.Height))
+	d.content.SetFrameRect(geom32.NewRect(r.X, r.Y+pref.Height, r.Width, mathf32.Max(r.Height-pref.Height, 0)))
 }
 
 func (d *DockContainer) Maximize() {

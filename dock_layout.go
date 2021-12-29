@@ -16,6 +16,7 @@ import (
 
 var (
 	_ Layout         = &DockLayout{}
+	_ Layoutable     = &DockLayout{}
 	_ DockLayoutNode = &DockLayout{}
 )
 
@@ -330,6 +331,7 @@ func (d *DockLayout) FrameRect() geom32.Rect {
 
 func (d *DockLayout) SetFrameRect(r geom32.Rect) {
 	d.frame = r
+	d.PerformLayout(d)
 }
 
 // LayoutSizes implements Layout.
@@ -358,19 +360,13 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
-	size := target.FrameRect().Size
+	d.frame = target.FrameRect()
+	size := d.frame.Size
 	size.SubtractInsets(insets)
 	dock := d.Dock()
 	switch {
 	case dock != nil && dock.MaximizedContainer != nil:
-		d.forEachDockContainer(func(dc *DockContainer) {
-			for _, child := range dc.Children() {
-				frame := child.FrameRect()
-				frame.X = -32000
-				frame.Y = -32000
-				child.SetFrameRect(frame)
-			}
-		})
+		d.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = dc != dock.MaximizedContainer })
 		dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(insets.Left, insets.Top, size.Width, size.Height))
 	case d.Full():
 		available := size.Height
@@ -402,4 +398,26 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 	case d.nodes[1] != nil:
 		d.nodes[1].SetFrameRect(geom32.NewRect(insets.Left, insets.Top, size.Width, size.Height))
 	}
+}
+
+func (d *DockLayout) SetLayout(layout Layout) {
+}
+
+func (d *DockLayout) LayoutData() interface{} {
+	return nil
+}
+
+func (d *DockLayout) SetLayoutData(data interface{}) {
+}
+
+func (d *DockLayout) Sizes(hint geom32.Size) (min, pref, max geom32.Size) {
+	return d.LayoutSizes(d, hint)
+}
+
+func (d *DockLayout) Border() Border {
+	return nil
+}
+
+func (d *DockLayout) ChildrenForLayout() []Layoutable {
+	return nil
 }

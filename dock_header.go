@@ -43,7 +43,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	d.SetBorder(NewCompoundBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
 		NewEmptyBorder(geom32.NewHorizontalInsets(TabGap))))
 	d.SetLayout(d)
-	for _, dockable := range dc.DockablesList {
+	for _, dockable := range dc.Dockables() {
 		d.AddChild(newDockTab(dockable))
 	}
 	d.showTabsButton.Text = "»"

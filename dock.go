@@ -41,7 +41,6 @@ func NewDock() *Dock {
 	d.SetLayout(d.layout)
 	d.DrawCallback = d.DefaultDraw
 	d.DrawOverCallback = d.DefaultDrawOver
-	d.FrameChangeCallback = func() { d.layout.SetFrameRect(d.FrameRect()) }
 	return d
 }
 
@@ -53,7 +52,7 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 	if d.layout.Contains(target) {
 		dc := DockContainerFor(dockable)
 		if dc == target {
-			if len(dc.DockablesList) == 1 {
+			if len(dc.Dockables()) == 1 {
 				// It's already where it needs to be
 				return
 			}
@@ -103,7 +102,9 @@ func (d *Dock) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 }
 
 func (d *Dock) DefaultDrawOver(canvas *Canvas, dirty geom32.Rect) {
-	d.drawDividers(canvas, d.layout, dirty)
+	if d.MaximizedContainer == nil {
+		d.drawDividers(canvas, d.layout, dirty)
+	}
 }
 
 func (d *Dock) drawDividers(canvas *Canvas, layout *DockLayout, clip geom32.Rect) {
@@ -161,6 +162,7 @@ func (d *Dock) Maximize(dc *DockContainer) {
 
 func (d *Dock) Restore() {
 	if d.MaximizedContainer != nil {
+		d.layout.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = false })
 		d.MaximizedContainer.header.adjustToRestoredState()
 		d.MaximizedContainer = nil
 		d.MarkForLayoutAndRedraw()
@@ -168,6 +170,7 @@ func (d *Dock) Restore() {
 }
 
 func (d *Dock) DebugDump() {
+	fmt.Println()
 	fmt.Println("Dock Debug Dump")
 	fmt.Print("---------------")
 	dumpNode(0, d.layout)
@@ -194,8 +197,8 @@ func dumpNode(depth int, node DockLayoutNode) {
 			}
 		}
 	case *DockContainer:
-		fmt.Printf("Container [x:%f y:%f w:%f h:%f]", n.frame.X, n.frame.Y, n.frame.Width, n.frame.Height)
-		for i, d := range n.DockablesList {
+		fmt.Printf("Container [x:%f y:%f w:%f h:%f, active:%v]", n.frame.X, n.frame.Y, n.frame.Width, n.frame.Height, n.Active)
+		for i, d := range n.Dockables() {
 			fmt.Println()
 			fmt.Print(strings.Repeat(".", (depth+1)*2))
 			fmt.Printf("Dockable %d [%s]", i+1, d.Title())
