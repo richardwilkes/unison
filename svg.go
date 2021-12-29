@@ -18,8 +18,12 @@ import (
 var (
 	_                      Drawable = &DrawableSVG{}
 	circledChevronRightSVG *SVG
+	circledXSVG            *SVG
+	documentSVG            *SVG
 	sortAscendingSVG       *SVG
 	sortDescendingSVG      *SVG
+	windowMaximizeSVG      *SVG
+	windowRestoreSVG       *SVG
 )
 
 // DrawableSVG makes an SVG conform to the Drawable interface.
@@ -102,6 +106,26 @@ func CircledChevronRightSVG() *SVG {
 	return circledChevronRightSVG
 }
 
+// CircledXSVG returns an SVG that holds an icon for closing content.
+func CircledXSVG() *SVG {
+	if circledXSVG == nil {
+		var err error
+		circledXSVG, err = NewSVG(geom32.NewSize(512, 512), "M256 8C119 8 8 119 8 256s111 248 248 248 248-111 248-248S393 8 256 8zm121.6 313.1c4.7 4.7 4.7 12.3 0 17L338 377.6c-4.7 4.7-12.3 4.7-17 0L256 312l-65.1 65.6c-4.7 4.7-12.3 4.7-17 0L134.4 338c-4.7-4.7-4.7-12.3 0-17l65.6-65-65.6-65.1c-4.7-4.7-4.7-12.3 0-17l39.6-39.6c4.7-4.7 12.3-4.7 17 0l65 65.7 65.1-65.6c4.7-4.7 12.3-4.7 17 0l39.6 39.6c4.7 4.7 4.7 12.3 0 17L312 256l65.6 65.1z")
+		jot.FatalIfErr(err)
+	}
+	return circledXSVG
+}
+
+// DocumentSVG returns an SVG that holds an icon for a document.
+func DocumentSVG() *SVG {
+	if documentSVG == nil {
+		var err error
+		documentSVG, err = NewSVG(geom32.NewSize(384, 512), "M224 136V0H24C10.7 0 0 10.7 0 24v464c0 13.3 10.7 24 24 24h336c13.3 0 24-10.7 24-24V160H248c-13.2 0-24-10.8-24-24zm160-14.1v6.1H256V0h6.1c6.4 0 12.5 2.5 17 7l97.9 98c4.5 4.5 7 10.6 7 16.9z")
+		jot.FatalIfErr(err)
+	}
+	return documentSVG
+}
+
 // SortAscendingSVG returns an SVG that holds an icon for an ascending sort.
 func SortAscendingSVG() *SVG {
 	if sortAscendingSVG == nil {
@@ -120,4 +144,24 @@ func SortDescendingSVG() *SVG {
 		jot.FatalIfErr(err)
 	}
 	return sortDescendingSVG
+}
+
+// WindowMaximizeSVG returns an SVG that holds an icon for maximizing a window.
+func WindowMaximizeSVG() *SVG {
+	if windowMaximizeSVG == nil {
+		var err error
+		windowMaximizeSVG, err = NewSVG(geom32.NewSize(512, 512), "M464 32H48C21.5 32 0 53.5 0 80v352c0 26.5 21.5 48 48 48h416c26.5 0 48-21.5 48-48V80c0-26.5-21.5-48-48-48zm-16 160H64v-84c0-6.6 5.4-12 12-12h360c6.6 0 12 5.4 12 12v84z")
+		jot.FatalIfErr(err)
+	}
+	return windowMaximizeSVG
+}
+
+// WindowRestoreSVG returns an SVG that holds an icon for restoring a maximized window.
+func WindowRestoreSVG() *SVG {
+	if windowRestoreSVG == nil {
+		var err error
+		windowRestoreSVG, err = NewSVG(geom32.NewSize(512, 512), "M512 48v288c0 26.5-21.5 48-48 48h-48V176c0-44.1-35.9-80-80-80H128V48c0-26.5 21.5-48 48-48h288c26.5 0 48 21.5 48 48zM384 176v288c0 26.5-21.5 48-48 48H48c-26.5 0-48-21.5-48-48V176c0-26.5 21.5-48 48-48h288c26.5 0 48 21.5 48 48zm-68 28c0-6.6-5.4-12-12-12H76c-6.6 0-12 5.4-12 12v52h252v-52z")
+		jot.FatalIfErr(err)
+	}
+	return windowRestoreSVG
 }
