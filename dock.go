@@ -151,7 +151,7 @@ func (d *Dock) drawHorizontalGripper(canvas *Canvas, node DockLayoutNode) {
 	y := frame.Y + (frame.Height-DockGripLength)/2
 	paint := DividerColor.Paint(canvas, frame, Fill)
 	for yy := y; yy < y+DockGripLength; yy += DockGripHeight + DockGripGap {
-		canvas.DrawRect(geom32.NewRect(x, yy, DockGripWidth-1, DockGripHeight), paint)
+		canvas.DrawRect(geom32.NewRect(x, yy, DockGripWidth, DockGripHeight), paint)
 	}
 }
 
@@ -161,7 +161,7 @@ func (d *Dock) drawVerticalGripper(canvas *Canvas, node DockLayoutNode) {
 	y := frame.Y - DockDividerSize + (DockDividerSize-DockGripWidth)/2
 	paint := DividerColor.Paint(canvas, frame, Fill)
 	for xx := x; xx < x+DockGripLength; xx += DockGripHeight + DockGripGap {
-		canvas.DrawRect(geom32.NewRect(xx, y, DockGripHeight, DockGripWidth-1), paint)
+		canvas.DrawRect(geom32.NewRect(xx, y, DockGripHeight, DockGripWidth), paint)
 	}
 }
 
