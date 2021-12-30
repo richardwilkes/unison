@@ -33,9 +33,6 @@ type Dockable interface {
 	Title() string
 	// Tooltip returns the tooltip of this Dockable.
 	Tooltip() string
-	// Activated is called when this Dockable is made active within a DockContainer. This can be called many times in a
-	// row without other Dockables receiving a call in between.
-	Activated()
 }
 
 // DockContainer holds one or more Dockable panels.
@@ -45,7 +42,6 @@ type DockContainer struct {
 	header     *dockHeader
 	content    *dockContainerContent
 	Background Ink
-	Active     bool
 }
 
 func NewDockContainer(dock *Dock, dockable Dockable) *DockContainer {
@@ -90,9 +86,6 @@ func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
 			if c.Self == dockable {
 				d.content.SetCurrentIndex(i)
 				d.AcquireFocus()
-				if d.Active {
-					dockable.Activated()
-				}
 				break
 			}
 		}
@@ -122,13 +115,22 @@ func (d *DockContainer) UpdateTitle(dockable Dockable) {
 	}
 }
 
-func DockContainerFor(dockable Dockable) *DockContainer {
-	p := dockable.AsPanel().Parent()
-	for p != nil {
-		if dc, ok := p.Self.(*DockContainer); ok {
-			return dc
+func FocusedDockContainerFor(wnd *Window) *DockContainer {
+	if wnd != nil {
+		return DockContainerFor(wnd.Focus())
+	}
+	return nil
+}
+
+func DockContainerFor(paneler Paneler) *DockContainer {
+	if paneler != nil {
+		p := paneler.AsPanel().Parent()
+		for p != nil {
+			if dc, ok := p.Self.(*DockContainer); ok {
+				return dc
+			}
+			p = p.Parent()
 		}
-		p = p.Parent()
 	}
 	return nil
 }

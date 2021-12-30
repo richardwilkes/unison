@@ -100,7 +100,7 @@ func (t *dockTab) updateTitle() {
 func (t *dockTab) draw(gc *Canvas, rect geom32.Rect) {
 	var bg, fg Ink
 	if dc := DockContainerFor(t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
-		if dc.Active {
+		if dc == FocusedDockContainerFor(t.Window()) {
 			bg = TabFocusedColor
 			fg = OnTabFocusedColor
 		} else {
@@ -136,9 +136,10 @@ func (t *dockTab) attemptClose() {
 
 func (t *dockTab) mouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
 	if dc := DockContainerFor(t.dockable); dc != nil {
-		if dc.CurrentDockable() != t.dockable {
+		switch {
+		case dc.CurrentDockable() != t.dockable:
 			dc.SetCurrentDockable(t.dockable)
-		} else if !dc.Active {
+		case dc != FocusedDockContainerFor(t.Window()):
 			dc.AcquireFocus()
 		}
 	}

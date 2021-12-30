@@ -10,7 +10,6 @@
 package demo
 
 import (
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison"
 )
@@ -31,7 +30,7 @@ func NewDockablePanel(title string, background unison.Ink) *DockablePanel {
 	d.Self = d
 	d.DrawCallback = d.draw
 	d.SetSizer(func(_ geom32.Size) (min, pref, max geom32.Size) {
-		pref.Width = 100
+		pref.Width = 50
 		pref.Height = 100
 		return min, pref, unison.MaxSize(max)
 	})
@@ -56,8 +55,4 @@ func (d *DockablePanel) Title() string {
 
 func (d *DockablePanel) Tooltip() string {
 	return ""
-}
-
-func (d *DockablePanel) Activated() {
-	jot.Info(d.Text + " activated")
 }

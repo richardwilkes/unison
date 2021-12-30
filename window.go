@@ -619,19 +619,32 @@ func (w *Window) Focus() *Panel {
 // SetFocus sets the keyboard focus to the specified target.
 func (w *Window) SetFocus(target Paneler) {
 	if target != nil {
-		t := target.AsPanel()
-		tw := t.Window()
-		if tw == w && !t.Is(w.focus) {
-			defer errs.Recovery(func(err error) { jot.Error(err) })
-			if w.focus != nil && w.focus.LostFocusCallback != nil {
-				w.focus.LostFocusCallback()
-			}
-			w.focus = t
+		newFocus := target.AsPanel()
+		tw := newFocus.Window()
+		if tw == w && !newFocus.Is(w.focus) {
+			oldFocus := w.focus
 			if w.focus != nil {
-				if w.focus.GainedFocusCallback != nil {
-					w.focus.GainedFocusCallback()
+				if oldFocus.LostFocusCallback != nil {
+					toolbox.Call(oldFocus.LostFocusCallback)
 				}
-				w.focus.ScrollIntoView()
+			}
+			w.focus = newFocus
+			if newFocus != nil {
+				if newFocus.GainedFocusCallback != nil {
+					toolbox.Call(newFocus.GainedFocusCallback)
+				}
+				newFocus.ScrollIntoView()
+			}
+			for _, p := range []*Panel{oldFocus, newFocus} {
+				if p != nil {
+					p = p.Parent()
+					for p != nil {
+						if p.FocusChangeInHierarchyCallback != nil {
+							toolbox.Call(func() { p.FocusChangeInHierarchyCallback(oldFocus, newFocus) })
+						}
+						p = p.Parent()
+					}
+				}
 			}
 		}
 	}

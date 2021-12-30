@@ -41,6 +41,7 @@ type Panel struct {
 	FrameChangeInChildHierarchyCallback func(panel *Panel)
 	ScrollRectIntoViewCallback          func(rect geom32.Rect) bool
 	ParentChangedCallback               func()
+	FocusChangeInHierarchyCallback      func(from, to *Panel)
 	Tooltip                             *Panel
 	parent                              *Panel
 	frame                               geom32.Rect

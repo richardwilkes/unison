@@ -41,6 +41,7 @@ func NewDock() *Dock {
 	d.SetLayout(d.layout)
 	d.DrawCallback = d.DefaultDraw
 	d.DrawOverCallback = d.DefaultDrawOver
+	d.FocusChangeInHierarchyCallback = d.DefaultFocusChangeInHierarchy
 	return d
 }
 
@@ -169,6 +170,10 @@ func (d *Dock) Restore() {
 	}
 }
 
+func (d *Dock) DefaultFocusChangeInHierarchy(from, to *Panel) {
+	d.MarkForRedraw()
+}
+
 func (d *Dock) DebugDump() {
 	fmt.Println()
 	fmt.Println("Dock Debug Dump")
@@ -197,7 +202,7 @@ func dumpNode(depth int, node DockLayoutNode) {
 			}
 		}
 	case *DockContainer:
-		fmt.Printf("Container [x:%f y:%f w:%f h:%f, active:%v]", n.frame.X, n.frame.Y, n.frame.Width, n.frame.Height, n.Active)
+		fmt.Printf("Container [x:%f y:%f w:%f h:%f]", n.frame.X, n.frame.Y, n.frame.Width, n.frame.Height)
 		for i, d := range n.Dockables() {
 			fmt.Println()
 			fmt.Print(strings.Repeat(".", (depth+1)*2))

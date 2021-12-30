@@ -35,7 +35,6 @@ func NewDemoDockWindow(where geom32.Point) (*unison.Window, error) {
 
 	// Create the dock
 	dock := unison.NewDock()
-	dock.DebugDump()
 	blueDockable := NewDockablePanel("Blue with a really long title", unison.Blue)
 	dock.DockTo(blueDockable, nil, unison.LeftSide)
 	unison.DockContainerFor(blueDockable).Stack(NewDockablePanel("Purple", unison.Purple), -1)

@@ -45,26 +45,6 @@ func (d *DockLayout) forEachDockContainer(f func(*DockContainer)) {
 	}
 }
 
-func (d *DockLayout) FocusedDockContainer() *DockContainer {
-	return d.rootLayout().focusedDockContainer()
-}
-
-func (d *DockLayout) focusedDockContainer() *DockContainer {
-	for _, node := range d.nodes {
-		switch c := node.(type) {
-		case *DockContainer:
-			if c.Active {
-				return c
-			}
-		case *DockLayout:
-			if dc := d.focusedDockContainer(); dc != nil {
-				return dc
-			}
-		}
-	}
-	return nil
-}
-
 func (d *DockLayout) rootLayout() *DockLayout {
 	root := d
 	for root.parent != nil {

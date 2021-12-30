@@ -172,6 +172,8 @@ github.com/richardwilkes/toolbox v1.52.0 h1:Lp2kQfm8AYXk+GZG3jp7y4898NOmVXYG01MX
 github.com/richardwilkes/toolbox v1.52.0/go.mod h1:jsPC77d240631vL5u96AEtgRQ7sPt+Ec8eP1ksNY5qA=
 github.com/richardwilkes/toolbox v1.53.0 h1:WyEnzggJAPs8vUp25h4E8xVogGTJ2lqRmLHfKym/G2Y=
 github.com/richardwilkes/toolbox v1.53.0/go.mod h1:jsPC77d240631vL5u96AEtgRQ7sPt+Ec8eP1ksNY5qA=
+github.com/richardwilkes/toolbox v1.54.0 h1:s5TMkrHONGOjZp7o8UiHxSYbBeX8QRiVdsKTa84jbCw=
+github.com/richardwilkes/toolbox v1.54.0/go.mod h1:PJe2CGtD+8r+PnwiLBZVCvLm3d5lDSnJgH167+zWWhk=
 github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6SoW27p1b0cqNHllgS5HIMJraePCO15w5zCzIWYg=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
