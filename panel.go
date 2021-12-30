@@ -505,3 +505,11 @@ func (p *Panel) UpdateCursorNow() {
 		wnd.UpdateCursorNow()
 	}
 }
+
+// IsDragGesture returns true if a gesture to start a drag operation was made.
+func (p *Panel) IsDragGesture(where geom32.Point) bool {
+	if w := p.Window(); w != nil {
+		return w.IsDragGesture(p.PointToRoot(where))
+	}
+	return false
+}
