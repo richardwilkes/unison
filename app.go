@@ -293,3 +293,9 @@ func IsDarkModeEnabled() bool {
 func DoubleClickParameters() (maxDelay time.Duration, maxMouseDrift float32) {
 	return platformDoubleClickInterval(), 5
 }
+
+// DragGestureParameters returns the minimum delay before mouse movement should be recognized as a drag as well as the
+// minimum pixel drift required to trigger a drag.
+func DragGestureParameters() (minDelay time.Duration, minMouseDrift float32) {
+	return 250 * time.Millisecond, 5
+}
