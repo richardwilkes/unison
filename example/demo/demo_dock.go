@@ -40,6 +40,7 @@ func NewDemoDockWindow(where geom32.Point) (*unison.Window, error) {
 	unison.DockContainerFor(blueDockable).Stack(NewDockablePanel("Purple", unison.Purple), -1)
 	dock.DockTo(NewDockablePanel("Yellow", unison.Yellow), unison.DockContainerFor(blueDockable), unison.RightSide)
 	dock.DockTo(NewDockablePanel("Green", unison.Green), nil, unison.RightSide)
+	dock.DockTo(NewDockablePanel("Orange", unison.Orange), nil, unison.BottomSide)
 	dock.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,

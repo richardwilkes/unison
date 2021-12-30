@@ -40,6 +40,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 		hidden:                make(map[*dockTab]bool),
 	}
 	d.Self = d
+	d.DrawCallback = d.DefaultDraw
 	d.SetBorder(NewCompoundBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
 		NewEmptyBorder(geom32.NewHorizontalInsets(TabGap))))
 	d.SetLayout(d)
@@ -55,6 +56,10 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	d.adjustToRestoredState()
 	d.AddChild(d.maximizeRestoreButton)
 	return d
+}
+
+func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom32.Rect) {
+	gc.DrawRect(rect, BackgroundColor.Paint(gc, rect, Fill))
 }
 
 func (d *dockHeader) updateTitle(index int) {

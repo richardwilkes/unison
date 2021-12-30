@@ -30,7 +30,7 @@ type DockLayout struct {
 	parent     *DockLayout
 	nodes      [2]DockLayoutNode
 	frame      geom32.Rect
-	Divider    float32
+	divider    float32
 	Horizontal bool
 }
 
@@ -156,7 +156,7 @@ func (d *DockLayout) dockWithin(dc *DockContainer, side Side) {
 			d.nodes[p2] = d.nodes[p1]
 		} else {
 			d.nodes[p2] = d.pushDown()
-			d.Divider = -1
+			d.divider = -1
 		}
 	}
 	d.nodes[p1] = dc
@@ -166,7 +166,7 @@ func (d *DockLayout) dockWithin(dc *DockContainer, side Side) {
 func (d *DockLayout) pushDown() *DockLayout {
 	layout := &DockLayout{
 		parent:     d,
-		Divider:    d.Divider,
+		divider:    d.divider,
 		Horizontal: d.Horizontal,
 	}
 	for i, n := range d.nodes {
@@ -188,7 +188,7 @@ func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode,
 		} else {
 			layout := &DockLayout{
 				parent:     d,
-				Divider:    -1,
+				divider:    -1,
 				Horizontal: side.Horizontal(),
 			}
 			layout.nodes[p1] = dc
@@ -199,8 +199,8 @@ func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode,
 			layout.nodes[p2] = d.nodes[which]
 			d.nodes[which] = layout
 			if which == 0 {
-				layout.Divider = d.Divider
-				d.Divider = -1
+				layout.divider = d.divider
+				d.divider = -1
 			}
 		}
 	} else {
@@ -290,14 +290,31 @@ func (d *DockLayout) DividerPosition() float32 {
 	if !d.Full() {
 		return 0
 	}
-	if d.Divider < 0 {
+	if d.divider < 0 {
 		frame := d.nodes[0].FrameRect()
 		if d.Horizontal {
 			return frame.Width
 		}
 		return frame.Height
 	}
-	return mathf32.Min(d.Divider, d.DividerMaximum())
+	return mathf32.Min(d.divider, d.DividerMaximum())
+}
+
+// SetDividerPosition sets the new divider position. Use a value less than 0 to reset the divider to its default mode,
+// which splits the available space evenly between the children.
+func (d *DockLayout) SetDividerPosition(pos float32) {
+	old := d.divider
+	if pos < 0 {
+		d.divider = -1
+	} else {
+		d.divider = pos
+	}
+	if d.divider != old && d.Full() {
+		d.PerformLayout(d)
+		if dock := d.Dock(); dock != nil {
+			dock.MarkForRedraw()
+		}
+	}
 }
 
 func (d *DockLayout) PreferredSize() geom32.Size {
@@ -358,13 +375,13 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 			available = 0
 		}
 		var primary float32
-		if d.Divider < 0 {
+		if d.divider < 0 {
 			primary = available / 2
 		} else {
-			if d.Divider > available {
-				d.Divider = available
+			if d.divider > available {
+				d.divider = available
 			}
-			primary = d.Divider
+			primary = d.divider
 		}
 		if d.Horizontal {
 			d.nodes[0].SetFrameRect(geom32.NewRect(insets.Left, insets.Top, primary, size.Height))

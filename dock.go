@@ -12,36 +12,50 @@ package unison
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
 const (
-	DockGripGap     = 1
-	DockGripWidth   = 4
-	DockGripHeight  = 2
-	DockGripLength  = DockGripHeight*5 + DockGripGap*4
-	DockDividerSize = DockGripWidth + 4
+	DockGripGap       = 1
+	DockGripWidth     = 4
+	DockGripHeight    = 2
+	DockGripLength    = DockGripHeight*5 + DockGripGap*4
+	DockDividerSize   = DockGripWidth + 4
+	DockDragThreshold = 5
+	DockDragDelay     = 250 * time.Millisecond
 )
 
 // Dock provides an area where Dockable panels can be displayed and rearranged.
 type Dock struct {
 	Panel
-	layout             *DockLayout
-	MaximizedContainer *DockContainer
-	BackgroundColor    Ink
+	layout                     *DockLayout
+	MaximizedContainer         *DockContainer
+	BackgroundColor            Ink
+	dividerDragLayout          *DockLayout
+	dividerDragStartedAt       time.Time
+	dividerDragStart           geom32.Point
+	dividerDragInitialPosition float32
+	dividerDragEventPosition   float32
+	dividerDragIsValid         bool
 }
 
 // NewDock creates a new, empty, dock.
 func NewDock() *Dock {
 	d := &Dock{
-		layout: &DockLayout{Divider: -1},
+		layout: &DockLayout{divider: -1},
 	}
 	d.Self = d
 	d.SetLayout(d.layout)
 	d.DrawCallback = d.DefaultDraw
 	d.DrawOverCallback = d.DefaultDrawOver
 	d.FocusChangeInHierarchyCallback = d.DefaultFocusChangeInHierarchy
+	d.UpdateCursorCallback = d.DefaultUpdateCursor
+	d.MouseDownCallback = d.DefaultMouseDown
+	d.MouseDragCallback = d.DefaultMouseDrag
+	d.MouseUpCallback = d.DefaultMouseUp
 	return d
 }
 
@@ -174,6 +188,95 @@ func (d *Dock) DefaultFocusChangeInHierarchy(from, to *Panel) {
 	d.MarkForRedraw()
 }
 
+func (d *Dock) DefaultUpdateCursor(where geom32.Point) *Cursor {
+	over := d.overNode(d.layout, where)
+	if dl, ok := over.(*DockLayout); ok {
+		if dl.Horizontal {
+			return ArrowsHorizontalCursor()
+		}
+		return ArrowsVerticalCursor()
+	}
+	return ArrowCursor()
+}
+
+func (d *Dock) overNode(node DockLayoutNode, where geom32.Point) DockLayoutNode {
+	if dockLayoutNodeContains(node, where) {
+		switch n := node.(type) {
+		case *DockLayout:
+			for _, c := range n.nodes {
+				if dockLayoutNodeContains(c, where) {
+					return d.overNode(c, where)
+				}
+			}
+			if n.Full() {
+				return node
+			}
+		case *DockContainer:
+			return node
+		}
+	}
+	return nil
+}
+
+func dockLayoutNodeContains(node DockLayoutNode, where geom32.Point) bool {
+	if node != nil {
+		return node.FrameRect().ContainsPoint(where)
+	}
+	return false
+}
+
+func (d *Dock) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+	over := d.overNode(d.layout, where)
+	if dl, ok := over.(*DockLayout); ok {
+		d.dividerDragLayout = dl
+		d.dividerDragStartedAt = time.Now()
+		d.dividerDragStart = where
+		d.dividerDragInitialPosition = dl.DividerPosition()
+		if dl.Horizontal {
+			d.dividerDragEventPosition = where.X
+		} else {
+			d.dividerDragEventPosition = where.Y
+		}
+		d.dividerDragIsValid = false
+		return true
+	}
+	return false
+}
+
+func (d *Dock) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+	d.dragDivider(where)
+	return true
+}
+
+func (d *Dock) dragDivider(where geom32.Point) {
+	if d.dividerDragLayout != nil {
+		if !d.dividerDragIsValid {
+			d.dividerDragIsValid = mathf32.Abs(d.dividerDragStart.X-where.X) > DockDragThreshold ||
+				mathf32.Abs(d.dividerDragStart.Y-where.Y) > DockDragThreshold ||
+				time.Since(d.dividerDragStartedAt) > DockDragDelay
+		}
+		if d.dividerDragIsValid {
+			pos := d.dividerDragEventPosition
+			if d.dividerDragLayout.Horizontal {
+				pos -= where.X
+			} else {
+				pos -= where.Y
+			}
+			d.dividerDragLayout.SetDividerPosition(mathf32.Max(d.dividerDragInitialPosition-pos, 0))
+		}
+	}
+}
+
+func (d *Dock) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+	if d.dividerDragLayout != nil {
+		if d.dividerDragIsValid {
+			d.dragDivider(where)
+		}
+		d.dividerDragLayout = nil
+	}
+	return true
+}
+
 func (d *Dock) DebugDump() {
 	fmt.Println()
 	fmt.Println("Dock Debug Dump")
@@ -193,8 +296,8 @@ func dumpNode(depth int, node DockLayoutNode) {
 		} else {
 			fmt.Print(" Vertical")
 		}
-		if n.Divider >= 0 {
-			fmt.Printf(" Divider:%f", n.Divider)
+		if n.divider >= 0 {
+			fmt.Printf(" Divider:%f", n.divider)
 		}
 		for _, c := range n.nodes {
 			if c != nil {
