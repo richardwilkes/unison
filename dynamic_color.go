@@ -10,8 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
@@ -75,10 +74,7 @@ func RebuildDynamicColors() {
 	if needDynamicColorUpdate {
 		needDynamicColorUpdate = false
 		for _, color := range dynamicColors {
-			func(handler errs.RecoveryHandler) {
-				defer errs.Recovery(handler)
-				color.Color = color.Rebuilder()
-			}(func(err error) { jot.Error(err) })
+			toolbox.Call(func() { color.Color = color.Rebuilder() })
 		}
 	}
 }

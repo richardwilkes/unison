@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
 )
@@ -111,10 +112,13 @@ func (m *UndoManager) CanUndo() bool {
 // Undo rewinds the current state by one edit.
 func (m *UndoManager) Undo() {
 	if m.CanUndo() {
-		defer errs.Recovery(m.recoveryHandler)
-		m.edits[m.index].Undo()
-		m.index--
+		toolbox.CallWithHandler(m.undo, m.recoveryHandler)
 	}
+}
+
+func (m *UndoManager) undo() {
+	m.edits[m.index].Undo()
+	m.index--
 }
 
 // UndoTitle returns the title for the current undo state.
@@ -138,10 +142,13 @@ func (m *UndoManager) CanRedo() bool {
 // Redo re-applies the current state by one edit.
 func (m *UndoManager) Redo() {
 	if m.CanRedo() {
-		defer errs.Recovery(m.recoveryHandler)
-		m.index++
-		m.edits[m.index].Redo()
+		toolbox.CallWithHandler(m.redo, m.recoveryHandler)
 	}
+}
+
+func (m *UndoManager) redo() {
+	m.index++
+	m.edits[m.index].Redo()
 }
 
 // RedoTitle returns the title for the current redo state.
@@ -167,8 +174,7 @@ func (m *UndoManager) Clear() {
 }
 
 func (m *UndoManager) release(edit UndoEdit) {
-	defer errs.Recovery(m.recoveryHandler)
-	edit.Release()
+	toolbox.CallWithHandler(edit.Release, m.recoveryHandler)
 }
 
 func (m *UndoManager) cost(edit UndoEdit) int {
