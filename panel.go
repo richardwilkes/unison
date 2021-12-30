@@ -42,19 +42,28 @@ type Panel struct {
 	ScrollRectIntoViewCallback          func(rect geom32.Rect) bool
 	ParentChangedCallback               func()
 	FocusChangeInHierarchyCallback      func(from, to *Panel)
-	Tooltip                             *Panel
-	parent                              *Panel
-	frame                               geom32.Rect
-	border                              Border
-	sizer                               Sizer
-	layout                              Layout
-	layoutData                          interface{}
-	children                            []*Panel
-	data                                map[string]interface{}
-	NeedsLayout                         bool
-	focusable                           bool
-	disabled                            bool
-	Hidden                              bool
+	// DataDragOverCallback is called when a data drag is over a potential drop target. Return true to stop further
+	// handling or false to propagate up to parents.
+	DataDragOverCallback func(where geom32.Point, data map[string]interface{}) bool
+	// DataDragExitCallback is called when a previous call to DataDragOverCallback returned true and the data drag
+	// leaves the component.
+	DataDragExitCallback func()
+	// DataDragDropCallback is called when a data drag is dropped and a previous call to DataDragOverCallback returned
+	// true.
+	DataDragDropCallback func(where geom32.Point, data map[string]interface{})
+	Tooltip              *Panel
+	parent               *Panel
+	frame                geom32.Rect
+	border               Border
+	sizer                Sizer
+	layout               Layout
+	layoutData           interface{}
+	children             []*Panel
+	data                 map[string]interface{}
+	NeedsLayout          bool
+	focusable            bool
+	disabled             bool
+	Hidden               bool
 }
 
 // NewPanel creates a new panel.
@@ -512,4 +521,11 @@ func (p *Panel) IsDragGesture(where geom32.Point) bool {
 		return w.IsDragGesture(p.PointToRoot(where))
 	}
 	return false
+}
+
+// StartDataDrag starts a data drag operation.
+func (p *Panel) StartDataDrag(data *DragData) {
+	if w := p.Window(); w != nil {
+		w.StartDataDrag(data)
+	}
 }

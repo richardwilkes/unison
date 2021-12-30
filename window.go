@@ -30,6 +30,15 @@ var (
 	glInited   = false
 )
 
+// DragData holds data drag information.
+type DragData struct {
+	Data            map[string]interface{}
+	Drawable        Drawable
+	SamplingOptions *SamplingOptions
+	Ink             Ink
+	Offset          geom32.Point
+}
+
 // Window holds window information.
 type Window struct {
 	InputCallbacks
@@ -64,7 +73,9 @@ type Window struct {
 	lastButtonTime      time.Time
 	lastContentRect     geom32.Rect
 	firstButtonLocation geom32.Point
-	dragData            map[string]interface{}
+	dragDataLocation    geom32.Point
+	dragDataPanel       *Panel
+	dragData            *DragData
 	lastKeyModifiers    Modifiers
 	valid               bool
 	focused             bool
@@ -784,6 +795,14 @@ func (w *Window) Draw(c *Canvas) {
 			w.root.ValidateLayout()
 			c.DrawPaint(BackgroundColor.Paint(c, w.LocalContentRect(), Fill))
 			w.root.Draw(c, w.LocalContentRect())
+			if w.dragData != nil {
+				c.Save()
+				c.Translate(w.dragDataLocation.X+w.dragData.Offset.X, w.dragDataLocation.Y+w.dragData.Offset.Y)
+				r := geom32.Rect{Size: w.dragData.Drawable.LogicalSize()}
+				c.ClipRect(r, IntersectClipOp, false)
+				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions, w.dragData.Ink.Paint(c, r, Fill))
+				c.Restore()
+			}
 		})
 	}
 }
@@ -956,7 +975,12 @@ func (w *Window) mouseDown(where geom32.Point, button, clickCount int, mod Modif
 }
 
 func (w *Window) mouseDrag(where geom32.Point, button int, mod Modifiers) {
+	w.dragDataLocation = where
 	w.restoreHiddenCursor()
+	if w.dragData != nil {
+		w.dataDragOver()
+		return
+	}
 	if w.MouseDragCallback != nil {
 		stop := false
 		toolbox.Call(func() { stop = w.MouseDragCallback(where, button, mod) })
@@ -970,6 +994,12 @@ func (w *Window) mouseDrag(where geom32.Point, button int, mod Modifiers) {
 }
 
 func (w *Window) mouseUp(where geom32.Point, button int, mod Modifiers) {
+	if w.dragData != nil {
+		w.dragDataLocation = where
+		w.dataDragFinish()
+		w.lastMouseDownPanel = nil
+		return
+	}
 	if w.MouseUpCallback != nil {
 		stop := false
 		toolbox.Call(func() { stop = w.MouseUpCallback(where, button, mod) })
@@ -1197,6 +1227,49 @@ func (w *Window) IsDragGesture(where geom32.Point) bool {
 		time.Since(w.lastButtonTime) > minDelay
 }
 
-func (w *Window) StartDataDrag(data map[string]interface{}) {
-	w.dragData = data
+// StartDataDrag starts a data drag operation.
+func (w *Window) StartDataDrag(data *DragData) {
+	if data != nil && len(data.Data) != 0 && data.Drawable != nil && data.Ink != nil {
+		w.dragData = data
+		w.dragDataPanel = nil
+		w.dataDragOver()
+	}
+}
+
+func (w *Window) dataDragOver() {
+	w.MarkForRedraw()
+	panel := w.root.PanelAt(w.dragDataLocation)
+	for panel != nil {
+		for panel != nil && panel.DataDragOverCallback == nil {
+			panel = panel.Parent()
+		}
+		if panel != nil {
+			handled := false
+			toolbox.Call(func() { handled = panel.DataDragOverCallback(panel.PointFromRoot(w.dragDataLocation), w.dragData.Data) })
+			if handled {
+				if !panel.Is(w.dragDataPanel) {
+					if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
+						toolbox.Call(w.dragDataPanel.DataDragExitCallback)
+					}
+					w.dragDataPanel = panel
+				}
+				return
+			}
+		}
+	}
+	if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
+		toolbox.Call(w.dragDataPanel.DataDragExitCallback)
+	}
+	w.dragDataPanel = nil
+}
+
+func (w *Window) dataDragFinish() {
+	w.MarkForRedraw()
+	if w.dragDataPanel != nil && w.dragDataPanel.DataDragDropCallback != nil {
+		toolbox.Call(func() {
+			w.dragDataPanel.DataDragDropCallback(w.dragDataPanel.PointFromRoot(w.dragDataLocation), w.dragData.Data)
+		})
+	}
+	w.dragDataPanel = nil
+	w.dragData = nil
 }

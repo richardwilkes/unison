@@ -35,12 +35,12 @@ func NewDemoDockWindow(where geom32.Point) (*unison.Window, error) {
 
 	// Create the dock
 	dock := unison.NewDock()
-	blueDockable := NewDockablePanel("Blue with a really long title", unison.Blue)
+	blueDockable := NewDockablePanel("Blue with a tooltip", "I've got a tooltip!", unison.Blue)
 	dock.DockTo(blueDockable, nil, unison.LeftSide)
-	unison.DockContainerFor(blueDockable).Stack(NewDockablePanel("Purple", unison.Purple), -1)
-	dock.DockTo(NewDockablePanel("Yellow", unison.Yellow), unison.DockContainerFor(blueDockable), unison.RightSide)
-	dock.DockTo(NewDockablePanel("Green", unison.Green), nil, unison.RightSide)
-	dock.DockTo(NewDockablePanel("Orange", unison.Orange), nil, unison.BottomSide)
+	unison.DockContainerFor(blueDockable).Stack(NewDockablePanel("Purple", "", unison.Purple), -1)
+	dock.DockTo(NewDockablePanel("Yellow", "", unison.Yellow), unison.DockContainerFor(blueDockable), unison.RightSide)
+	dock.DockTo(NewDockablePanel("Green", "", unison.Green), nil, unison.RightSide)
+	dock.DockTo(NewDockablePanel("Orange", "", unison.Orange), nil, unison.BottomSide)
 	dock.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,

@@ -15,6 +15,9 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
+// DockTabDragDataKey holds the key used when dragging dock tabs.
+const DockTabDragDataKey = "dock.tab"
+
 type Saver interface {
 	Modified() bool
 	AddDataModifiedListener(func())
@@ -69,8 +72,9 @@ func newDockTab(dockable Dockable) *dockTab {
 	if saver, ok := t.dockable.(Saver); ok {
 		saver.AddDataModifiedListener(t.updateDataModified)
 	}
-	t.Tooltip = NewTooltipWithText(t.dockable.Tooltip())
 	t.MouseDownCallback = t.mouseDown
+	t.MouseDragCallback = t.mouseDrag
+	t.UpdateTooltipCallback = t.updateTooltip
 	return t
 }
 
@@ -138,6 +142,15 @@ func (t *dockTab) attemptClose() {
 	}
 }
 
+func (t *dockTab) updateTooltip(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
+	if tip := t.dockable.Tooltip(); tip != "" {
+		t.Tooltip = NewTooltipWithText(t.dockable.Tooltip())
+	} else {
+		t.Tooltip = nil
+	}
+	return suggestedAvoid
+}
+
 func (t *dockTab) mouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
 	if dc := DockContainerFor(t.dockable); dc != nil {
 		switch {
@@ -146,6 +159,20 @@ func (t *dockTab) mouseDown(where geom32.Point, button, clickCount int, mod Modi
 		case dc != FocusedDockContainerFor(t.Window()):
 			dc.AcquireFocus()
 		}
+	}
+	return true
+}
+
+func (t *dockTab) mouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+	if t.IsDragGesture(where) {
+		icon := t.dockable.TitleIcon()
+		size := icon.LogicalSize()
+		t.StartDataDrag(&DragData{
+			Data:     map[string]interface{}{DockTabDragDataKey: t},
+			Drawable: icon,
+			Ink:      t.title.Ink,
+			Offset:   geom32.NewPoint(-size.Width/2, -size.Height/2),
+		})
 	}
 	return true
 }

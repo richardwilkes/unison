@@ -23,33 +23,40 @@ const (
 
 // InputCallbacks holds the callbacks that client code can hook into for user input events.
 type InputCallbacks struct {
-	// GainedFocusCallback is called when the keyboard focus is gained on this window.
+	// GainedFocusCallback is called when the keyboard focus is gained.
 	GainedFocusCallback func()
-	// LostFocusCallback is called when the keyboard focus is lost from this window.
+	// LostFocusCallback is called when the keyboard focus is lost.
 	LostFocusCallback func()
-	// MouseDownCallback is called when the mouse is pressed within this window. Return true to stop further handling.
+	// MouseDownCallback is called when the mouse is pressed. Return true to stop further handling or false to propagate
+	// up to parents.
 	MouseDownCallback func(where geom32.Point, button, clickCount int, mod Modifiers) bool
-	// MouseDragCallback is called when the mouse is dragged after being pressed within this window. Return true to stop
-	// further handling.
+	// MouseDragCallback is called when the mouse is dragged after being pressed. Return true to stop further handling
+	// or false to propagate up to parents.
 	MouseDragCallback func(where geom32.Point, button int, mod Modifiers) bool
-	// MouseUpCallback is called when the mouse is released after being pressed within this window. Return true to stop
-	// further handling.
+	// MouseUpCallback is called when the mouse is released after being pressed. Return true to stop further handling or
+	// false to propagate up to parents.
 	MouseUpCallback func(where geom32.Point, button int, mod Modifiers) bool
-	// MouseEnterCallback is called when the mouse enters this window. Return true to stop further handling.
+	// MouseEnterCallback is called on mouse entry. Return true to stop further handling or false to propagate up to
+	// parents.
 	MouseEnterCallback func(where geom32.Point, mod Modifiers) bool
-	// MouseMoveCallback is called when the mouse moves within this window. Return true to stop further handling.
+	// MouseMoveCallback is called when the mouse moves. Return true to stop further handling or false to propagate up
+	// to parents.
 	MouseMoveCallback func(where geom32.Point, mod Modifiers) bool
-	// MouseExitCallback is called when the mouse exits this window. Return true to stop further handling.
+	// MouseExitCallback is called on mouse exit. Return true to stop further handling or false to propagate up to
+	// parents.
 	MouseExitCallback func() bool
-	// MouseWheelCallback is called when the mouse wheel is rotated over this window. Return true to stop further
-	// handling.
+	// MouseWheelCallback is called when the mouse wheel is rotated. Return true to stop further handling or false to
+	// propagate up to parents.
 	MouseWheelCallback func(where, delta geom32.Point, mod Modifiers) bool
-	// KeyDownCallback is called when a key is pressed in this window. Return true to stop further handling.
+	// KeyDownCallback is called when a key is pressed. Return true to stop further handling or false to propagate up to
+	// parents.
 	KeyDownCallback func(keyCode KeyCode, mod Modifiers, repeat bool) bool
-	// KeyUpCallback is called when a key is released in this window. Return true to stop further handling.
+	// KeyUpCallback is called when a key is released. Return true to stop further handling or false to propagate up to
+	// parents.
 	KeyUpCallback func(keyCode KeyCode, mod Modifiers) bool
-	// RuneTypedCallback is called when a key is typed in this window. Return true to stop further handling.
+	// RuneTypedCallback is called when a key is typed. Return true to stop further handling or false to propagate up to
+	// parents.
 	RuneTypedCallback func(ch rune) bool
-	// FileDropCallback is called when files are drag & dropped into the window.
+	// FileDropCallback is called when files are drag & dropped from the OS.
 	FileDropCallback func(files []string)
 }

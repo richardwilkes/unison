@@ -12,20 +12,17 @@ package unison
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
 const (
-	DockGripGap       = 1
-	DockGripWidth     = 4
-	DockGripHeight    = 2
-	DockGripLength    = DockGripHeight*5 + DockGripGap*4
-	DockDividerSize   = DockGripWidth + 4
-	DockDragThreshold = 5
-	DockDragDelay     = 250 * time.Millisecond
+	DockGripGap     = 1
+	DockGripWidth   = 4
+	DockGripHeight  = 2
+	DockGripLength  = DockGripHeight*5 + DockGripGap*4
+	DockDividerSize = DockGripWidth + 4
 )
 
 // Dock provides an area where Dockable panels can be displayed and rearranged.
@@ -35,8 +32,6 @@ type Dock struct {
 	MaximizedContainer         *DockContainer
 	BackgroundColor            Ink
 	dividerDragLayout          *DockLayout
-	dividerDragStartedAt       time.Time
-	dividerDragStart           geom32.Point
 	dividerDragInitialPosition float32
 	dividerDragEventPosition   float32
 	dividerDragIsValid         bool
@@ -229,8 +224,6 @@ func (d *Dock) DefaultMouseDown(where geom32.Point, button, clickCount int, mod 
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
 		d.dividerDragLayout = dl
-		d.dividerDragStartedAt = time.Now()
-		d.dividerDragStart = where
 		d.dividerDragInitialPosition = dl.DividerPosition()
 		if dl.Horizontal {
 			d.dividerDragEventPosition = where.X
@@ -251,9 +244,7 @@ func (d *Dock) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) b
 func (d *Dock) dragDivider(where geom32.Point) {
 	if d.dividerDragLayout != nil {
 		if !d.dividerDragIsValid {
-			d.dividerDragIsValid = mathf32.Abs(d.dividerDragStart.X-where.X) > DockDragThreshold ||
-				mathf32.Abs(d.dividerDragStart.Y-where.Y) > DockDragThreshold ||
-				time.Since(d.dividerDragStartedAt) > DockDragDelay
+			d.dividerDragIsValid = d.IsDragGesture(where)
 		}
 		if d.dividerDragIsValid {
 			pos := d.dividerDragEventPosition

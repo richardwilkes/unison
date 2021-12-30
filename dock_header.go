@@ -22,6 +22,7 @@ var _ Layout = &dockHeader{}
 const (
 	MinimumTabWidth = 30
 	TabGap          = 4
+	TabInsertSize   = 3
 )
 
 type dockHeader struct {
@@ -30,6 +31,7 @@ type dockHeader struct {
 	showTabsButton        *Button
 	maximizeRestoreButton *Button
 	hidden                map[*dockTab]bool
+	dragInsertIndex       int
 }
 
 func newDockHeader(dc *DockContainer) *dockHeader {
@@ -38,9 +40,13 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 		showTabsButton:        NewButton(),
 		maximizeRestoreButton: NewButton(),
 		hidden:                make(map[*dockTab]bool),
+		dragInsertIndex:       -1,
 	}
 	d.Self = d
 	d.DrawCallback = d.DefaultDraw
+	d.DataDragOverCallback = d.DefaultDataDragOver
+	d.DataDragExitCallback = d.DefaultDataDragExit
+	d.DataDragDropCallback = d.DefaultDataDrop
 	d.SetBorder(NewCompoundBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
 		NewEmptyBorder(geom32.NewHorizontalInsets(TabGap))))
 	d.SetLayout(d)
@@ -60,6 +66,65 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 
 func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom32.Rect) {
 	gc.DrawRect(rect, BackgroundColor.Paint(gc, rect, Fill))
+	if d.dragInsertIndex >= 0 {
+		r := d.ContentRect(false)
+		r.Width = TabInsertSize
+		tabs, _ := d.partition()
+		switch {
+		case d.dragInsertIndex < len(tabs):
+			r.X = tabs[d.dragInsertIndex].FrameRect().X - ((TabGap-TabInsertSize)/2 + TabInsertSize + 1)
+		default:
+			r.X = tabs[len(tabs)-1].FrameRect().Right()
+		}
+		gc.DrawRect(r, DropAreaColor.Paint(gc, rect, Fill))
+	}
+}
+
+func (d *dockHeader) DefaultDataDragOver(where geom32.Point, data map[string]interface{}) bool {
+	return d.dragOver(where, data) != nil
+}
+
+func (d *dockHeader) dragOver(where geom32.Point, data map[string]interface{}) *dockTab {
+	d.dragInsertIndex = -1
+	if t, ok := data[DockTabDragDataKey]; ok {
+		if tab, ok2 := t.(*dockTab); ok2 {
+			tabs, _ := d.partition()
+			d.dragInsertIndex = len(tabs)
+			for i, one := range tabs {
+				r := one.FrameRect()
+				if where.X < r.CenterX() {
+					d.dragInsertIndex = i
+					break
+				}
+				if where.X < r.Right() {
+					d.dragInsertIndex = i + 1
+					break
+				}
+			}
+			return tab
+		}
+	}
+	return nil
+}
+
+func (d *dockHeader) DefaultDataDragExit() {
+	d.dragInsertIndex = -1
+}
+
+func (d *dockHeader) DefaultDataDrop(where geom32.Point, data map[string]interface{}) {
+	if tab := d.dragOver(where, data); tab != nil {
+		d.owner.Stack(tab.dockable, d.dragInsertIndex)
+	}
+	d.dragInsertIndex = -1
+}
+
+func (d *dockHeader) dragDockTab(data map[string]interface{}) *dockTab {
+	if t, ok := data[DockTabDragDataKey]; ok {
+		if tab, ok2 := t.(*dockTab); ok2 {
+			return tab
+		}
+	}
+	return nil
 }
 
 func (d *dockHeader) updateTitle(index int) {

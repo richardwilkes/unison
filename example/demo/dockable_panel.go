@@ -22,12 +22,14 @@ var (
 type DockablePanel struct {
 	unison.Panel
 	Text  string
+	Tip   string
 	Color unison.Ink
 }
 
-func NewDockablePanel(title string, background unison.Ink) *DockablePanel {
+func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 	d := &DockablePanel{
 		Text:  title,
+		Tip:   tip,
 		Color: background,
 	}
 	d.Self = d
@@ -57,7 +59,7 @@ func (d *DockablePanel) Title() string {
 }
 
 func (d *DockablePanel) Tooltip() string {
-	return ""
+	return d.Tip
 }
 
 func (d *DockablePanel) MayAttemptClose() bool {

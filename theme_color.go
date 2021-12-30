@@ -51,6 +51,7 @@ var (
 	OnTabFocusedColor        = &ThemeColor{Light: Black, Dark: RGB(221, 221, 221)}
 	TabCurrentColor          = &ThemeColor{Light: RGB(211, 207, 197), Dark: RGB(41, 61, 0)}
 	OnTabCurrentColor        = &ThemeColor{Light: Black, Dark: RGB(221, 221, 221)}
+	DropAreaColor            = &ThemeColor{Light: RGB(204, 0, 51), Dark: RGB(255, 0, 0)}
 	BlackWhenDarkColor       = &ThemeColor{Light: White, Dark: Black}
 	WhiteWhenDarkColor       = &ThemeColor{Light: Black, Dark: White}
 )

@@ -49,6 +49,11 @@ func (d *dockContainerContent) SetCurrentIndex(index int) {
 			c.Hidden = i != index
 		}
 		d.MarkForRedraw()
+		if p := d.Parent(); p != nil {
+			if dc, ok := p.Self.(*DockContainer); ok {
+				dc.header.MarkForLayoutAndRedraw()
+			}
+		}
 	}
 }
 
