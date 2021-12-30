@@ -14,7 +14,10 @@ import (
 	"github.com/richardwilkes/unison"
 )
 
-var _ unison.Dockable = &DockablePanel{}
+var (
+	_ unison.Dockable  = &DockablePanel{}
+	_ unison.TabCloser = &DockablePanel{}
+)
 
 type DockablePanel struct {
 	unison.Panel
@@ -55,4 +58,14 @@ func (d *DockablePanel) Title() string {
 
 func (d *DockablePanel) Tooltip() string {
 	return ""
+}
+
+func (d *DockablePanel) MayAttemptClose() bool {
+	return true
+}
+
+func (d *DockablePanel) AttemptClose() {
+	if dc := unison.DockContainerFor(d); dc != nil {
+		dc.Close(d)
+	}
 }

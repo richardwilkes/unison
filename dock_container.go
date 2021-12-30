@@ -175,6 +175,9 @@ func (d *DockContainer) Close(dockable Dockable) {
 			children := d.content.Children()
 			if len(children) == 0 {
 				d.Dock.Restore()
+				if dl := d.Dock.layout.findLayout(d); dl != nil {
+					dl.Remove(d)
+				}
 				d.Dock.RemoveChild(d)
 				d.Dock.MarkForLayoutAndRedraw()
 				d.Dock = nil

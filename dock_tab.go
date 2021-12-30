@@ -40,27 +40,31 @@ func newDockTab(dockable Dockable) *dockTab {
 		Bottom: 2,
 		Right:  4,
 	}))
-	t.SetLayout(&FlexLayout{
+	flex := &FlexLayout{
 		Columns:  1,
 		HSpacing: 4,
 		VSpacing: 4,
 		HAlign:   StartAlignment,
 		VAlign:   StartAlignment,
-	})
+	}
+	t.SetLayout(flex)
 	t.title.Text = t.fullTitle()
 	t.title.Drawable = t.dockable.TitleIcon()
-	t.title.SetLayoutData(&FlexLayoutData{HGrab: true})
+	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: MiddleAlignment})
 	t.AddChild(t.title)
 	if _, ok := t.dockable.(TabCloser); ok {
 		t.button = NewButton()
+		t.button.SetFocusable(false)
 		fSize := ChooseFont(t.title.Font, LabelFont).Baseline()
 		t.button.Drawable = &DrawableSVG{
 			SVG:  CircledXSVG(),
 			Size: geom32.Size{Width: fSize, Height: fSize},
 		}
-		t.button.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment})
+		t.button.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment, VAlign: MiddleAlignment})
+		t.button.HideBase = true
 		t.AddChild(t.button)
 		t.button.ClickCallback = t.attemptClose
+		flex.Columns++
 	}
 	if saver, ok := t.dockable.(Saver); ok {
 		saver.AddDataModifiedListener(t.updateDataModified)
