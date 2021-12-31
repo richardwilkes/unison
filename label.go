@@ -14,8 +14,6 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
-var disabledPaint *Paint
-
 // Label represents non-interactive text and/or a Drawable.
 type Label struct {
 	Panel
@@ -94,7 +92,15 @@ func adjustLabelSizeForDrawable(text string, drawable Drawable, drawableSide Sid
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
 func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text string, font *Font, textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
-	origRect := rect
+	if drawable == nil && text == "" {
+		return
+	}
+
+	paint := textInk.Paint(canvas, rect, Fill)
+	if applyDisabledFilter {
+		paint.SetColorFilter(Grayscale30PercentFilter())
+	}
+
 	// Determine overall size of content
 	var size, txtSize geom32.Size
 	if text != "" {
@@ -163,33 +169,14 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 
 	canvas.Save()
 	canvas.ClipRect(rect, IntersectClipOp, false)
-
-	// Draw the drawable
 	if drawable != nil {
 		rect.X = imgX
 		rect.Y = imgY
 		rect.Size = drawable.LogicalSize()
-		var paint *Paint
-		if applyDisabledFilter {
-			if disabledPaint == nil {
-				disabledPaint = NewPaint()
-				disabledPaint.SetColorFilter(NewMatrixColorFilter([]float32{
-					0.2126, 0.7152, 0.0722, 0, 0,
-					0.2126, 0.7152, 0.0722, 0, 0,
-					0.2126, 0.7152, 0.0722, 0, 0,
-					0, 0, 0, 1, -0.67,
-				}))
-			}
-			paint = disabledPaint
-		} else {
-			paint = textInk.Paint(canvas, rect, Fill)
-		}
 		drawable.DrawInRect(canvas, rect, nil, paint)
 	}
-
-	// Draw the text
 	if text != "" {
-		canvas.DrawSimpleText(text, txtX, txtY+font.Baseline(), font, textInk.Paint(canvas, origRect, Fill))
+		canvas.DrawSimpleText(text, txtX, txtY+font.Baseline(), font, paint)
 	}
 	canvas.Restore()
 }

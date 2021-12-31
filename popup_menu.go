@@ -25,10 +25,8 @@ type PopupMenu struct {
 	EdgeColor         Ink
 	PressedColor      Ink
 	OnPressedColor    Ink
-	EnabledColor      Ink
-	OnEnabledColor    Ink
-	DisabledColor     Ink
-	OnDisabledColor   Ink
+	ControlColor      Ink
+	OnControlColor    Ink
 	items             []interface{}
 	selectedIndex     int
 	CornerRadius      float32
@@ -93,21 +91,17 @@ func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case p.Pressed:
-		bg = ChooseInk(p.PressedColor, ControlPressedColor)
-		fg = ChooseInk(p.OnPressedColor, OnControlPressedColor)
-	case p.Enabled():
-		bg = ChooseInk(p.EnabledColor, ControlColor)
-		fg = ChooseInk(p.OnEnabledColor, OnControlColor)
+		bg = ChooseInk(p.PressedColor, SelectionColor)
+		fg = ChooseInk(p.OnPressedColor, OnSelectionColor)
 	default:
-		bg = ChooseInk(p.DisabledColor, ControlDisabledColor)
-		fg = ChooseInk(p.OnDisabledColor, OnControlDisabledColor)
+		bg = ChooseInk(p.ControlColor, ControlColor)
+		fg = ChooseInk(p.OnControlColor, OnControlColor)
 	}
 	thickness := float32(1)
 	if p.Focused() {
 		thickness++
 	}
-	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, bg,
-		ChooseInk(p.EdgeColor, ControlEdgeColor))
+	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, bg, ChooseInk(p.EdgeColor, ControlEdgeColor))
 	rect.InsetUniform(1.5)
 	rect.X += p.HMargin
 	rect.Y += p.VMargin
@@ -116,15 +110,19 @@ func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	triWidth := rect.Height * 0.75
 	triHeight := triWidth / 2
 	rect.Width -= triWidth
-	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.Text(), ChooseFont(p.Font, SystemFont), fg,
-		nil, 0, 0, !p.Enabled())
+	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.Text(), ChooseFont(p.Font, SystemFont), fg, nil, 0, 0,
+		!p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()
 	path.MoveTo(rect.Right(), rect.Y+(rect.Height-triHeight)/2)
 	path.LineTo(rect.Right()-triWidth, rect.Y+(rect.Height-triHeight)/2)
 	path.LineTo(rect.Right()-triWidth/2, rect.Y+(rect.Height-triHeight)/2+triHeight)
 	path.Close()
-	canvas.DrawPath(path, fg.Paint(canvas, rect, Fill))
+	paint := fg.Paint(canvas, rect, Fill)
+	if !p.Enabled() {
+		paint.SetColorFilter(Grayscale30PercentFilter())
+	}
+	canvas.DrawPath(path, paint)
 }
 
 // Text the currently shown text.

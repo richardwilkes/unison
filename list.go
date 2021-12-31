@@ -188,14 +188,14 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			var fg, bg Ink
 			switch {
 			case selected:
-				bg = ChooseInk(l.PressedColor, ControlPressedColor)
-				fg = ChooseInk(l.OnPressedColor, OnControlPressedColor)
+				bg = ChooseInk(l.PressedColor, SelectionColor)
+				fg = ChooseInk(l.OnPressedColor, OnSelectionColor)
 			case index%2 == 0:
-				bg = ChooseInk(l.RowColor, ListColor)
-				fg = ChooseInk(l.OnRowColor, OnListColor)
+				bg = ChooseInk(l.RowColor, ContentColor)
+				fg = ChooseInk(l.OnRowColor, OnContentColor)
 			default:
-				bg = ChooseInk(l.AltRowColor, ListAltColor)
-				fg = ChooseInk(l.OnAltRowColor, OnListAltColor)
+				bg = ChooseInk(l.AltRowColor, BandingColor)
+				fg = ChooseInk(l.OnAltRowColor, OnBandingColor)
 			}
 			cell := l.Factory.CreateCell(l, l.rows[index], index, fg, selected, focused && selected && selCount == 1)
 			cellRect := geom32.Rect{Point: geom32.Point{X: rect.X, Y: y}, Size: geom32.Size{Width: rect.Width, Height: cellHeight}}

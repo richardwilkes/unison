@@ -115,3 +115,18 @@ func NewARGBTableColorFilter(a, r, g, b []byte) *ColorFilter {
 	}
 	return newColorFilter(skia.ColorFilterNewTableARGB(a, r, g, b))
 }
+
+var grayscale30PercentFilter *ColorFilter
+
+// Grayscale30PercentFilter returns a ColorFilter that transforms colors to grayscale and applies a 30% alpha blend.
+func Grayscale30PercentFilter() *ColorFilter {
+	if grayscale30PercentFilter == nil {
+		grayscale30PercentFilter = NewMatrixColorFilter([]float32{
+			0.2126, 0.7152, 0.0722, 0, 0,
+			0.2126, 0.7152, 0.0722, 0, 0,
+			0.2126, 0.7152, 0.0722, 0, 0,
+			0, 0, 0, 0.3, 0,
+		})
+	}
+	return grayscale30PercentFilter
+}

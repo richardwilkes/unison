@@ -39,6 +39,7 @@ func NewTableHeader(table *Table, columnHeaders ...TableColumnHeader) *TableHead
 	}
 	h.Self = h
 	h.SetSizer(h.DefaultSizes)
+	h.SetBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false))
 	h.DrawCallback = h.DefaultDraw
 	h.UpdateCursorCallback = h.DefaultUpdateCursorCallback
 	h.UpdateTooltipCallback = h.DefaultUpdateTooltipCallback

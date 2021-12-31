@@ -42,8 +42,8 @@ func showWellDialog(w *Well) {
 		preview: NewPanel(),
 		right:   NewPanel(),
 	}
-	d.preview.SetBorder(NewCompoundBorder(NewLineBorder(WhiteWhenDarkColor, 0, geom32.NewUniformInsets(1), false),
-		NewLineBorder(BlackWhenDarkColor, 0, geom32.NewUniformInsets(1), false)))
+	d.preview.SetBorder(NewCompoundBorder(NewLineBorder(OnBackgroundColor, 0, geom32.NewUniformInsets(1), false),
+		NewLineBorder(BackgroundColor, 0, geom32.NewUniformInsets(1), false)))
 	d.panel.SetLayout(&FlexLayout{
 		Columns:  2,
 		HSpacing: StdHSpacing,

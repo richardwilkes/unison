@@ -21,13 +21,11 @@ type RadioButton struct {
 	GroupPanel
 	ClickCallback      func()
 	Font               FontProvider
+	ControlColor       Ink
+	OnControlColor     Ink
 	EdgeColor          Ink
 	PressedColor       Ink
 	OnPressedColor     Ink
-	EnabledColor       Ink
-	OnEnabledColor     Ink
-	DisabledColor      Ink
-	OnDisabledColor    Ink
 	Drawable           Drawable
 	Text               string
 	Gap                float32
@@ -111,14 +109,11 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case r.Pressed:
-		bg = ChooseInk(r.PressedColor, ControlPressedColor)
-		fg = ChooseInk(r.OnPressedColor, OnControlPressedColor)
-	case r.Enabled():
-		bg = ChooseInk(r.EnabledColor, ControlColor)
-		fg = ChooseInk(r.OnEnabledColor, OnControlColor)
+		bg = ChooseInk(r.PressedColor, SelectionColor)
+		fg = ChooseInk(r.OnPressedColor, OnSelectionColor)
 	default:
-		bg = ChooseInk(r.DisabledColor, ControlDisabledColor)
-		fg = ChooseInk(r.OnDisabledColor, OnControlDisabledColor)
+		bg = ChooseInk(r.ControlColor, ControlColor)
+		fg = ChooseInk(r.OnControlColor, OnControlColor)
 	}
 	thickness := float32(1)
 	if r.Focused() {
@@ -130,13 +125,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
-		var ink Ink
-		if r.Enabled() {
-			ink = OnBackgroundColor
-		} else {
-			ink = OnControlDisabledColor
-		}
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, ChooseFont(r.Font, SystemFont), ink, r.Drawable, r.Side,
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, ChooseFont(r.Font, SystemFont), fg, r.Drawable, r.Side,
 			r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
@@ -147,7 +136,11 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	DrawEllipseBase(canvas, rect, thickness, bg, ChooseInk(r.EdgeColor, ControlEdgeColor))
 	if r.Selected() {
 		rect.InsetUniform(0.5 + 0.2*circleSize)
-		canvas.DrawOval(rect, fg.Paint(canvas, rect, Fill))
+		paint := fg.Paint(canvas, rect, Fill)
+		if !r.Enabled() {
+			paint.SetColorFilter(Grayscale30PercentFilter())
+		}
+		canvas.DrawOval(rect, paint)
 	}
 }
 

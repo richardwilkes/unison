@@ -20,6 +20,8 @@ type Button struct {
 	GroupPanel
 	ClickCallback            func()
 	Font                     FontProvider
+	BackgroundColor          Ink
+	OnBackgroundColor        Ink
 	EdgeColor                Ink
 	PressedColor             Ink
 	OnPressedColor           Ink
@@ -27,10 +29,6 @@ type Button struct {
 	OnSelectionColor         Ink
 	InactiveSelectionColor   Ink
 	OnInactiveSelectionColor Ink
-	EnabledColor             Ink
-	OnEnabledColor           Ink
-	DisabledColor            Ink
-	OnDisabledColor          Ink
 	Drawable                 Drawable
 	Text                     string
 	Gap                      float32
@@ -116,21 +114,12 @@ func (b *Button) VerticalMargin() float32 {
 func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
-	case b.Pressed:
-		bg = ChooseInk(b.PressedColor, ControlPressedColor)
-		fg = ChooseInk(b.OnPressedColor, OnControlPressedColor)
-	case b.Sticky && b.Selected() && b.Enabled():
+	case b.Pressed || (b.Sticky && b.Selected()):
 		bg = ChooseInk(b.SelectionColor, SelectionColor)
 		fg = ChooseInk(b.OnSelectionColor, OnSelectionColor)
-	case b.Sticky && b.Selected():
-		bg = ChooseInk(b.InactiveSelectionColor, InactiveSelectionColor)
-		fg = ChooseInk(b.OnInactiveSelectionColor, OnInactiveSelectionColor)
-	case b.Enabled():
-		bg = ChooseInk(b.EnabledColor, ControlColor)
-		fg = ChooseInk(b.OnEnabledColor, OnControlColor)
 	default:
-		bg = ChooseInk(b.DisabledColor, ControlDisabledColor)
-		fg = ChooseInk(b.OnDisabledColor, OnControlDisabledColor)
+		bg = ChooseInk(b.BackgroundColor, ControlColor)
+		fg = ChooseInk(b.OnBackgroundColor, OnControlColor)
 	}
 	rect := b.ContentRect(false)
 	if !b.HideBase || b.Focused() {

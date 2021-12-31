@@ -53,7 +53,7 @@ func (d *demoRow) CellDataForSort(index int) string {
 	}
 }
 
-func (d *demoRow) ColumnCell(index int) unison.Paneler {
+func (d *demoRow) ColumnCell(index int, selected bool) unison.Paneler {
 	switch index {
 	case 0:
 		if d.checkbox == nil {
@@ -63,6 +63,9 @@ func (d *demoRow) ColumnCell(index int) unison.Paneler {
 	case 1:
 		label := unison.NewLabel()
 		label.Text = d.text
+		if selected {
+			label.Ink = unison.OnSelectionColor
+		}
 		if !d.doubleHeight {
 			return label
 		}
@@ -71,6 +74,9 @@ func (d *demoRow) ColumnCell(index int) unison.Paneler {
 		wrapper.AddChild(label)
 		subLabel := unison.NewLabel()
 		subLabel.Text = "A little note…"
+		if selected {
+			subLabel.Ink = unison.OnSelectionColor
+		}
 		desc := unison.LabelFont.ResolvedFont().Descriptor()
 		desc.Size -= 2
 		subLabel.Font = desc.Font()
@@ -85,6 +91,9 @@ func (d *demoRow) ColumnCell(index int) unison.Paneler {
 	case 2:
 		label := unison.NewLabel()
 		label.Text = d.text2
+		if selected {
+			label.Ink = unison.OnSelectionColor
+		}
 		return label
 	default:
 		jot.Errorf("column index out of range (0-2): %d", index)

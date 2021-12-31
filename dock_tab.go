@@ -111,7 +111,7 @@ func (t *dockTab) draw(gc *Canvas, rect geom32.Rect) {
 	}
 	t.title.Ink = fg
 	if t.button != nil {
-		t.button.EnabledColor = fg
+		t.button.BackgroundColor = fg
 	}
 	r := t.ContentRect(true)
 	p := NewPath()

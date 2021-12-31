@@ -43,10 +43,8 @@ type CheckBox struct {
 	OnBackgroundColor  Ink
 	PressedColor       Ink
 	OnPressedColor     Ink
-	EnabledColor       Ink
-	OnEnabledColor     Ink
-	DisabledColor      Ink
-	OnDisabledColor    Ink
+	ControlColor       Ink
+	OnControlColor     Ink
 	Drawable           Drawable
 	Text               string
 	Gap                float32
@@ -134,14 +132,8 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		r := rect
 		r.X += boxSize + c.Gap
 		r.Width -= boxSize + c.Gap
-		var ink Ink
-		if c.Enabled() {
-			ink = ChooseInk(c.OnBackgroundColor, OnBackgroundColor)
-		} else {
-			ink = ChooseInk(c.OnDisabledColor, OnControlDisabledColor)
-		}
-		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Text, ChooseFont(c.Font, SystemFont), ink, c.Drawable, c.Side, c.Gap,
-			!c.Enabled())
+		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Text, ChooseFont(c.Font, SystemFont),
+			ChooseInk(c.OnBackgroundColor, OnBackgroundColor), c.Drawable, c.Side, c.Gap, !c.Enabled())
 	}
 	if rect.Height > boxSize {
 		rect.Y += mathf32.Floor((rect.Height - boxSize) / 2)
@@ -151,27 +143,26 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case c.Pressed:
-		bg = ChooseInk(c.PressedColor, ControlPressedColor)
-		fg = ChooseInk(c.OnPressedColor, OnControlPressedColor)
-	case c.Enabled():
-		bg = ChooseInk(c.EnabledColor, ControlColor)
-		fg = ChooseInk(c.OnEnabledColor, OnControlColor)
+		bg = ChooseInk(c.PressedColor, SelectionColor)
+		fg = ChooseInk(c.OnPressedColor, OnSelectionColor)
 	default:
-		bg = ChooseInk(c.DisabledColor, ControlDisabledColor)
-		fg = ChooseInk(c.OnDisabledColor, OnControlDisabledColor)
+		bg = ChooseInk(c.ControlColor, ControlColor)
+		fg = ChooseInk(c.OnControlColor, OnControlColor)
 	}
 	thickness := float32(1)
 	if c.Focused() {
 		thickness++
 	}
-	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg,
-		ChooseInk(c.EdgeColor, ControlEdgeColor))
+	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, ChooseInk(c.EdgeColor, ControlEdgeColor))
 	rect.InsetUniform(0.5)
 	if c.State == OffCheckState {
 		return
 	}
 	paint := fg.Paint(canvas, contentRect, Stroke)
 	paint.SetStrokeWidth(2)
+	if !c.Enabled() {
+		paint.SetColorFilter(Grayscale30PercentFilter())
+	}
 	if c.State == OnCheckState {
 		path := NewPath()
 		path.MoveTo(rect.X+rect.Width*0.25, rect.Y+rect.Height*0.55)

@@ -35,7 +35,7 @@ type TableRowData interface {
 	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index. If you
 	// need for the cell to retain widget state, make sure to return the same widget each time rather than creating a
 	// new one.
-	ColumnCell(index int) Paneler
+	ColumnCell(index int, selected bool) Paneler
 	// IsOpen returns true if the row can have children and is currently showing its children.
 	IsOpen() bool
 	// SetOpen sets the row's open state.
@@ -119,7 +119,7 @@ func NewTable() *Table {
 
 // DefaultDraw provides the default drawing.
 func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
-	canvas.DrawRect(dirty, ChooseInk(t.RowColor, ListColor).Paint(canvas, dirty, Fill))
+	canvas.DrawRect(dirty, ChooseInk(t.RowColor, ContentColor).Paint(canvas, dirty, Fill))
 
 	var insets geom32.Insets
 	if border := t.Border(); border != nil {
@@ -163,7 +163,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		if t.IsRowOrAnyParentSelected(r) {
 			canvas.DrawRect(rect, ChooseInk(t.SelectionColor, SelectionColor).Paint(canvas, rect, Fill))
 		} else if r%2 == 1 {
-			canvas.DrawRect(rect, ChooseInk(t.AltRowColor, ListAltColor).Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, ChooseInk(t.AltRowColor, BandingColor).Paint(canvas, rect, Fill))
 		}
 		rect.Y += t.rowCache[r].height
 		if t.ShowRowDivider && r != rowCount-1 {
@@ -190,14 +190,15 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	t.hitRects = nil
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
 		row := t.rowCache[r].row
+		selected := t.IsRowOrAnyParentSelected(r)
 		var fg Ink
 		switch {
-		case t.IsRowOrAnyParentSelected(r):
+		case selected:
 			fg = ChooseInk(t.OnSelectionColor, OnSelectionColor)
 		case row.IsOpen():
-			fg = ChooseInk(t.OnAltRowColor, OnListAltColor)
+			fg = ChooseInk(t.OnAltRowColor, OnBandingColor)
 		default:
-			fg = ChooseInk(t.OnRowColor, OnListColor)
+			fg = ChooseInk(t.OnRowColor, OnContentColor)
 		}
 		rect.X = x
 		rect.Height = t.rowCache[r].height
@@ -229,7 +230,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 				cellRect.X += indent
 				cellRect.Width -= indent
 			}
-			cell := row.ColumnCell(c).AsPanel()
+			cell := row.ColumnCell(c, selected).AsPanel()
 			t.installCell(cell, cellRect)
 			canvas.Save()
 			canvas.Translate(cellRect.X, cellRect.Y)
@@ -376,7 +377,7 @@ func (t *Table) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
 	}
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.rowCache[row].row.ColumnCell(col).AsPanel()
+			cell := t.rowCache[row].row.ColumnCell(col, t.IsRowOrAnyParentSelected(row)).AsPanel()
 			if cell.UpdateCursorCallback != nil {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -394,7 +395,7 @@ func (t *Table) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
 func (t *Table) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.rowCache[row].row.ColumnCell(col).AsPanel()
+			cell := t.rowCache[row].row.ColumnCell(col, t.IsRowOrAnyParentSelected(row)).AsPanel()
 			if cell.UpdateTooltipCallback != nil {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -415,7 +416,7 @@ func (t *Table) DefaultMouseMove(where geom32.Point, mod Modifiers) bool {
 	stop := false
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.rowCache[row].row.ColumnCell(col).AsPanel()
+			cell := t.rowCache[row].row.ColumnCell(col, t.IsRowOrAnyParentSelected(row)).AsPanel()
 			if cell.MouseMoveCallback != nil {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -475,7 +476,7 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 		}
 		t.MarkForRedraw()
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := rowData.ColumnCell(col).AsPanel()
+			cell := rowData.ColumnCell(col, t.IsRowOrAnyParentSelected(row)).AsPanel()
 			if cell.MouseDownCallback != nil {
 				t.interactionRow = row
 				t.interactionColumn = col
@@ -515,7 +516,7 @@ func (t *Table) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 			}
 			stop = true
 		} else {
-			cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn).AsPanel()
+			cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn, t.IsRowOrAnyParentSelected(t.interactionRow)).AsPanel()
 			if cell.MouseDragCallback != nil {
 				rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 				t.installCell(cell, rect)
@@ -532,7 +533,7 @@ func (t *Table) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 func (t *Table) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
 	stop := false
 	if t.interactionRow != -1 && t.interactionColumn != -1 {
-		cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn).AsPanel()
+		cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionColumn, t.IsRowOrAnyParentSelected(t.interactionRow)).AsPanel()
 		if cell.MouseUpCallback != nil {
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
@@ -596,7 +597,7 @@ func (t *Table) buildRowCacheEntry(row TableRowData, parentIndex, index, depth i
 	t.rowCache[index].row = row
 	t.rowCache[index].parent = parentIndex
 	t.rowCache[index].depth = depth
-	t.rowCache[index].height = t.heightForColumns(row, depth)
+	t.rowCache[index].height = t.heightForColumns(row, depth, t.IsRowOrAnyParentSelected(index))
 	parentIndex = index
 	index++
 	if row.CanHaveChildRows() && row.IsOpen() {
@@ -607,7 +608,7 @@ func (t *Table) buildRowCacheEntry(row TableRowData, parentIndex, index, depth i
 	return index
 }
 
-func (t *Table) heightForColumns(row TableRowData, depth int) float32 {
+func (t *Table) heightForColumns(row TableRowData, depth int, selected bool) float32 {
 	var height float32
 	for i := range t.ColumnSizes {
 		w := t.ColumnSizes[i].Current
@@ -618,7 +619,7 @@ func (t *Table) heightForColumns(row TableRowData, depth int) float32 {
 		if i == t.HierarchyColumnIndex {
 			w -= t.Padding.Left + t.HierarchyIndent*float32(depth+1)
 		}
-		_, cpref, _ := row.ColumnCell(i).AsPanel().Sizes(geom32.Size{Width: w})
+		_, cpref, _ := row.ColumnCell(i, selected).AsPanel().Sizes(geom32.Size{Width: w})
 		cpref.Height += t.Padding.Top + t.Padding.Bottom
 		if height < cpref.Height {
 			height = cpref.Height
@@ -637,9 +638,10 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 		}
 		t.ColumnSizes[i].Current = initial
 	}
-	for _, cache := range t.rowCache {
+	for rowIndex, cache := range t.rowCache {
+		selected := t.IsRowOrAnyParentSelected(rowIndex)
 		for i := range t.ColumnSizes {
-			_, pref, _ := cache.row.ColumnCell(i).AsPanel().Sizes(geom32.Size{})
+			_, pref, _ := cache.row.ColumnCell(i, selected).AsPanel().Sizes(geom32.Size{})
 			min := t.ColumnSizes[i].Minimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
@@ -659,7 +661,7 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 		}
 	}
 	for i, cache := range t.rowCache {
-		t.rowCache[i].height = t.heightForColumns(cache.row, cache.depth)
+		t.rowCache[i].height = t.heightForColumns(cache.row, cache.depth, t.IsRowOrAnyParentSelected(i))
 	}
 	if adjust {
 		_, pref, _ := t.DefaultSizes(geom32.Size{})
@@ -676,8 +678,8 @@ func (t *Table) SizeColumnToFit(index int, adjust bool) {
 		return
 	}
 	t.ColumnSizes[index].Current = t.ColumnSizes[index].Minimum
-	for _, cache := range t.rowCache {
-		_, pref, _ := cache.row.ColumnCell(index).AsPanel().Sizes(geom32.Size{})
+	for rowIndex, cache := range t.rowCache {
+		_, pref, _ := cache.row.ColumnCell(index, t.IsRowOrAnyParentSelected(rowIndex)).AsPanel().Sizes(geom32.Size{})
 		min := t.ColumnSizes[index].Minimum
 		if min > 0 && pref.Width < min {
 			pref.Width = min
@@ -696,7 +698,7 @@ func (t *Table) SizeColumnToFit(index int, adjust bool) {
 		}
 	}
 	for i, cache := range t.rowCache {
-		t.rowCache[i].height = t.heightForColumns(cache.row, cache.depth)
+		t.rowCache[i].height = t.heightForColumns(cache.row, cache.depth, t.IsRowOrAnyParentSelected(i))
 	}
 	if adjust {
 		_, pref, _ := t.DefaultSizes(geom32.Size{})

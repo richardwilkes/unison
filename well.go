@@ -33,10 +33,9 @@ type Well struct {
 	InkChangedCallback    func()
 	ClickCallback         func()
 	ValidateImageCallback func(*Image) *Image
+	ControlColor          Ink
 	EdgeColor             Ink
 	PressedColor          Ink
-	EnabledColor          Ink
-	DisabledColor         Ink
 	ink                   Ink
 	ClickAnimationTime    time.Duration
 	ImageScale            float32
@@ -125,19 +124,16 @@ func (w *Well) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var bg Ink
 	switch {
 	case w.Pressed:
-		bg = ChooseInk(w.PressedColor, ControlPressedColor)
-	case w.Enabled():
-		bg = ChooseInk(w.EnabledColor, ControlColor)
+		bg = ChooseInk(w.PressedColor, SelectionColor)
 	default:
-		bg = ChooseInk(w.DisabledColor, ControlDisabledColor)
+		bg = ChooseInk(w.ControlColor, ControlColor)
 	}
 	thickness := float32(1)
 	wellInset := thickness + 2.5
 	if w.Focused() {
 		thickness++
 	}
-	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg,
-		ChooseInk(w.EdgeColor, ControlEdgeColor))
+	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, ChooseInk(w.EdgeColor, ControlEdgeColor))
 	r.InsetUniform(wellInset)
 	radius := w.CornerRadius - (wellInset - 2)
 	if pattern, ok := w.ink.(*Pattern); ok {
@@ -151,13 +147,12 @@ func (w *Well) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		canvas.DrawRoundedRect(r, radius, w.ink.Paint(canvas, r, Fill))
 	}
 	if !w.Enabled() {
-		p := WhiteWhenDarkColor.Paint(canvas, r, Stroke)
+		p := Black.Paint(canvas, r, Stroke)
 		p.SetBlendMode(XorBlendMode)
 		canvas.DrawLine(r.X+1, r.Y+1, r.Right()-1, r.Bottom()-1, p)
 		canvas.DrawLine(r.X+1, r.Bottom()-1, r.Right()-1, r.Y+1, p)
 	}
-	canvas.DrawRoundedRect(r, radius,
-		ChooseInk(w.EdgeColor, ControlEdgeColor).Paint(canvas, r, Stroke))
+	canvas.DrawRoundedRect(r, radius, ChooseInk(w.EdgeColor, ControlEdgeColor).Paint(canvas, r, Stroke))
 }
 
 // DefaultMouseDown provides the default mouse down handling.

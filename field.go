@@ -22,32 +22,32 @@ import (
 // Field provides a single-line text input control.
 type Field struct {
 	Panel
-	ModifiedCallback func()
-	ValidateCallback func() bool
-	Font             FontProvider
-	ErrorColor       Ink
-	OnErrorColor     Ink
-	EnabledColor     Ink
-	OnEnabledColor   Ink
-	DisabledColor    Ink
-	OnDisabledColor  Ink
-	SelectionColor   Ink
-	OnSelectionColor Ink
-	BlinkRate        time.Duration
-	Watermark        string
-	FocusedBorder    Border
-	UnfocusedBorder  Border
-	runes            []rune
-	selectionStart   int
-	selectionEnd     int
-	selectionAnchor  int
-	forceShowUntil   time.Time
-	MinimumTextWidth float32
-	scrollOffset     float32
-	showCursor       bool
-	pending          bool
-	extendByWord     bool
-	invalid          bool
+	ModifiedCallback  func()
+	ValidateCallback  func() bool
+	Font              FontProvider
+	EditableColor     Ink
+	OnEditableColor   Ink
+	BackgroundColor   Ink
+	OnBackgroundColor Ink
+	SelectionColor    Ink
+	OnSelectionColor  Ink
+	ErrorColor        Ink
+	OnErrorColor      Ink
+	BlinkRate         time.Duration
+	Watermark         string
+	FocusedBorder     Border
+	UnfocusedBorder   Border
+	runes             []rune
+	selectionStart    int
+	selectionEnd      int
+	selectionAnchor   int
+	forceShowUntil    time.Time
+	MinimumTextWidth  float32
+	scrollOffset      float32
+	showCursor        bool
+	pending           bool
+	extendByWord      bool
+	invalid           bool
 }
 
 // NewField creates a new, empty, field.
@@ -55,7 +55,7 @@ func NewField() *Field {
 	t := &Field{
 		MinimumTextWidth: 10,
 		BlinkRate:        560 * time.Millisecond,
-		FocusedBorder:    NewCompoundBorder(NewLineBorder(SelectionColor, 0, geom32.NewUniformInsets(2), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 2, Bottom: 1, Right: 2})),
+		FocusedBorder:    NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(2), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 2, Bottom: 1, Right: 2})),
 		UnfocusedBorder:  NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 3, Left: 3, Bottom: 2, Right: 3})),
 	}
 	t.Self = t
@@ -108,14 +108,14 @@ func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case t.invalid:
-		fg = ChooseInk(t.ErrorColor, EditableErrorColor)
-		bg = ChooseInk(t.OnErrorColor, OnEditableErrorColor)
-	case !t.Enabled():
-		fg = ChooseInk(t.DisabledColor, BackgroundColor)
-		bg = ChooseInk(t.OnDisabledColor, OnBackgroundColor)
+		fg = ChooseInk(t.ErrorColor, ErrorColor)
+		bg = ChooseInk(t.OnErrorColor, OnErrorColor)
+	case t.Enabled():
+		fg = ChooseInk(t.EditableColor, EditableColor)
+		bg = ChooseInk(t.OnEditableColor, OnEditableColor)
 	default:
-		fg = ChooseInk(t.EnabledColor, EditableColor)
-		bg = ChooseInk(t.OnEnabledColor, OnEditableColor)
+		fg = ChooseInk(t.BackgroundColor, BackgroundColor)
+		bg = ChooseInk(t.OnBackgroundColor, OnBackgroundColor)
 	}
 	rect := t.ContentRect(true)
 	canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
@@ -126,12 +126,13 @@ func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	f := ChooseFont(t.Font, FieldFont)
 	textTop := rect.Y + (rect.Height-f.LineHeight())/2
 	textBaseLine := textTop + f.Baseline()
+	paint := bg.Paint(canvas, rect, Fill)
 	switch {
 	case t.Enabled() && t.Focused() && t.HasSelectionRange():
 		left := rect.X + t.scrollOffset
 		if t.selectionStart > 0 {
 			pre := string(t.runes[:t.selectionStart])
-			canvas.DrawSimpleText(pre, left, textBaseLine, f, bg.Paint(canvas, rect, Fill))
+			canvas.DrawSimpleText(pre, left, textBaseLine, f, paint)
 			left += f.Width(pre)
 		}
 		mid := string(t.runes[t.selectionStart:t.selectionEnd])
@@ -145,18 +146,19 @@ func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		canvas.DrawSimpleText(mid, left, textBaseLine, f,
 			ChooseInk(t.OnSelectionColor, OnSelectionColor).Paint(canvas, rect, Fill))
 		if t.selectionStart < len(t.runes) {
-			canvas.DrawSimpleText(string(t.runes[t.selectionEnd:]), right, textBaseLine, f,
-				bg.Paint(canvas, rect, Fill))
+			canvas.DrawSimpleText(string(t.runes[t.selectionEnd:]), right, textBaseLine, f, paint)
 		}
 	case len(t.runes) == 0:
 		if t.Watermark != "" {
-			canvas.SaveWithOpacity(0.33)
-			canvas.DrawSimpleText(t.Watermark, rect.X, textBaseLine, f, bg.Paint(canvas, rect, Fill))
-			canvas.Restore()
+			faded := paint.Clone()
+			faded.SetColor(faded.Color().SetAlphaIntensity(0.3))
+			canvas.DrawSimpleText(t.Watermark, rect.X, textBaseLine, f, faded)
 		}
 	default:
-		canvas.DrawSimpleText(string(t.runes), rect.X+t.scrollOffset, textBaseLine, f,
-			bg.Paint(canvas, rect, Fill))
+		if !t.Enabled() {
+			paint.SetColorFilter(Grayscale30PercentFilter())
+		}
+		canvas.DrawSimpleText(string(t.runes), rect.X+t.scrollOffset, textBaseLine, f, paint)
 	}
 	if !t.HasSelectionRange() && t.Enabled() && t.Focused() {
 		if t.showCursor {
