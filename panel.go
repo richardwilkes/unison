@@ -41,18 +41,29 @@ type Panel struct {
 	FrameChangeInChildHierarchyCallback func(panel *Panel)
 	ScrollRectIntoViewCallback          func(rect geom32.Rect) bool
 	ParentChangedCallback               func()
-	Tooltip                             *Panel
-	parent                              *Panel
-	frame                               geom32.Rect
-	border                              Border
-	sizer                               Sizer
-	layout                              Layout
-	layoutData                          interface{}
-	children                            []*Panel
-	data                                map[string]interface{}
-	NeedsLayout                         bool
-	focusable                           bool
-	disabled                            bool
+	FocusChangeInHierarchyCallback      func(from, to *Panel)
+	// DataDragOverCallback is called when a data drag is over a potential drop target. Return true to stop further
+	// handling or false to propagate up to parents.
+	DataDragOverCallback func(where geom32.Point, data map[string]interface{}) bool
+	// DataDragExitCallback is called when a previous call to DataDragOverCallback returned true and the data drag
+	// leaves the component.
+	DataDragExitCallback func()
+	// DataDragDropCallback is called when a data drag is dropped and a previous call to DataDragOverCallback returned
+	// true.
+	DataDragDropCallback func(where geom32.Point, data map[string]interface{})
+	Tooltip              *Panel
+	parent               *Panel
+	frame                geom32.Rect
+	border               Border
+	sizer                Sizer
+	layout               Layout
+	layoutData           interface{}
+	children             []*Panel
+	data                 map[string]interface{}
+	NeedsLayout          bool
+	focusable            bool
+	disabled             bool
+	Hidden               bool
 }
 
 // NewPanel creates a new panel.
@@ -341,6 +352,9 @@ func (p *Panel) FlushDrawing() {
 
 // Draw is called by its owning window when a panel needs to be drawn. The canvas has already had its clip set to rect.
 func (p *Panel) Draw(gc *Canvas, rect geom32.Rect) {
+	if p.Hidden {
+		return
+	}
 	rect.Intersect(p.ContentRect(true))
 	if !rect.IsEmpty() {
 		gc.Save()
@@ -352,16 +366,17 @@ func (p *Panel) Draw(gc *Canvas, rect geom32.Rect) {
 		}
 		// Drawn from last to first, to get correct ordering in case of overlap
 		for i := len(p.children) - 1; i >= 0; i-- {
-			child := p.children[i]
-			adjusted := rect
-			adjusted.Intersect(child.frame)
-			if !adjusted.IsEmpty() {
-				gc.Save()
-				gc.Translate(child.frame.X, child.frame.Y)
-				adjusted.X -= child.frame.X
-				adjusted.Y -= child.frame.Y
-				child.Draw(gc, adjusted)
-				gc.Restore()
+			if child := p.children[i]; !child.Hidden {
+				adjusted := rect
+				adjusted.Intersect(child.frame)
+				if !adjusted.IsEmpty() {
+					gc.Save()
+					gc.Translate(child.frame.X, child.frame.Y)
+					adjusted.X -= child.frame.X
+					adjusted.Y -= child.frame.Y
+					child.Draw(gc, adjusted)
+					gc.Restore()
+				}
 			}
 		}
 		if p.border != nil {
@@ -378,7 +393,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom32.Rect) {
 
 // Enabled returns true if this panel is currently enabled and can receive events.
 func (p *Panel) Enabled() bool {
-	return !p.disabled
+	return !p.disabled && !p.Hidden
 }
 
 // SetEnabled sets this panel's enabled state.
@@ -391,7 +406,7 @@ func (p *Panel) SetEnabled(enabled bool) {
 
 // Focusable returns true if this panel can have the keyboard focus.
 func (p *Panel) Focusable() bool {
-	return p.focusable && !p.disabled
+	return p.focusable && p.Enabled()
 }
 
 // SetFocusable sets whether this panel can have the keyboard focus.
@@ -419,7 +434,7 @@ func (p *Panel) RequestFocus() {
 // PanelAt returns the leaf-most child panel containing the point, or this panel if no child is found.
 func (p *Panel) PanelAt(pt geom32.Point) *Panel {
 	for _, child := range p.children {
-		if child.frame.ContainsPoint(pt) {
+		if !child.Hidden && child.frame.ContainsPoint(pt) {
 			pt.Subtract(child.frame.Point)
 			return child.PanelAt(pt)
 		}
@@ -497,5 +512,20 @@ func (p *Panel) ClientData() map[string]interface{} {
 func (p *Panel) UpdateCursorNow() {
 	if wnd := p.Window(); wnd != nil {
 		wnd.UpdateCursorNow()
+	}
+}
+
+// IsDragGesture returns true if a gesture to start a drag operation was made.
+func (p *Panel) IsDragGesture(where geom32.Point) bool {
+	if w := p.Window(); w != nil {
+		return w.IsDragGesture(p.PointToRoot(where))
+	}
+	return false
+}
+
+// StartDataDrag starts a data drag operation.
+func (p *Panel) StartDataDrag(data *DragData) {
+	if w := p.Window(); w != nil {
+		w.StartDataDrag(data)
 	}
 }

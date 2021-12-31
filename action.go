@@ -10,9 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 var (
@@ -91,8 +90,9 @@ func (a *Action) Enabled(src interface{}) bool {
 	if a.EnabledCallback == nil {
 		return true
 	}
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	return a.EnabledCallback(a, src)
+	result := false
+	toolbox.Call(func() { result = a.EnabledCallback(a, src) })
+	return result
 }
 
 func (a *Action) enabled(item MenuItem) bool {
@@ -102,8 +102,7 @@ func (a *Action) enabled(item MenuItem) bool {
 // Execute the action.
 func (a *Action) Execute(src interface{}) {
 	if a.ExecuteCallback != nil && a.Enabled(src) {
-		defer errs.Recovery(func(err error) { jot.Error(err) })
-		a.ExecuteCallback(a, src)
+		toolbox.Call(func() { a.ExecuteCallback(a, src) })
 	}
 }
 
@@ -116,8 +115,9 @@ func (a *Action) execute(item MenuItem) {
 func RouteActionToFocusEnabledFunc(action *Action, src interface{}) bool {
 	if wnd := ActiveWindow(); wnd != nil {
 		if focus := wnd.Focus(); focus != nil && focus.CanPerformCmdCallback != nil {
-			defer errs.Recovery(func(err error) { jot.Error(err) })
-			return focus.CanPerformCmdCallback(src, action.ID)
+			result := false
+			toolbox.Call(func() { result = focus.CanPerformCmdCallback(src, action.ID) })
+			return result
 		}
 	}
 	return false
@@ -128,8 +128,7 @@ func RouteActionToFocusEnabledFunc(action *Action, src interface{}) bool {
 func RouteActionToFocusExecuteFunc(action *Action, src interface{}) {
 	if wnd := ActiveWindow(); wnd != nil {
 		if focus := wnd.Focus(); focus != nil && focus.PerformCmdCallback != nil {
-			defer errs.Recovery(func(err error) { jot.Error(err) })
-			focus.PerformCmdCallback(src, action.ID)
+			toolbox.Call(func() { focus.PerformCmdCallback(src, action.ID) })
 		}
 	}
 }

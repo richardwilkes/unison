@@ -6,7 +6,7 @@ require (
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20211213063430-748e38ca8aec
 	github.com/progrium/macdriver v0.2.0
-	github.com/richardwilkes/toolbox v1.53.0
+	github.com/richardwilkes/toolbox v1.54.0
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e

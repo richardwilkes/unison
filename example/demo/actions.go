@@ -21,6 +21,7 @@ import (
 const (
 	NewWindowActionID = unison.UserBaseID + iota
 	NewTableWindowActionID
+	NewDockWindowActionID
 	OpenActionID
 )
 
@@ -29,6 +30,8 @@ var (
 	NewWindowAction *unison.Action
 	// NewTableWindowAction opens a new demo table window when triggered.
 	NewTableWindowAction *unison.Action
+	// NewDockWindowAction opens a new demo dock window when triggered.
+	NewDockWindowAction *unison.Action
 	// OpenAction presents a file open dialog and then prints any selected files onto the console.
 	OpenAction *unison.Action
 )
@@ -67,6 +70,25 @@ func init() {
 				pt.Y = r.Y
 			}
 			if _, err := NewDemoTableWindow(pt); err != nil {
+				jot.Error(err)
+			}
+		},
+	}
+
+	NewDockWindowAction = &unison.Action{
+		ID:         NewDockWindowActionID,
+		Title:      "New Demo Dock Window",
+		HotKey:     unison.KeyD,
+		HotKeyMods: unison.OSMenuCmdModifier(),
+		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
+			// Try to position the new window to the right of the currently active window
+			var pt geom32.Point
+			if w := unison.ActiveWindow(); w != nil {
+				r := w.FrameRect()
+				pt.X = r.X + r.Width
+				pt.Y = r.Y
+			}
+			if _, err := NewDemoDockWindow(pt); err != nil {
 				jot.Error(err)
 			}
 		},

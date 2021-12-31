@@ -12,8 +12,7 @@ package unison
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
@@ -240,15 +239,13 @@ func (mi *menuItem) validate() {
 	mi.enabled = true
 	if mi.validator != nil {
 		mi.enabled = false
-		defer errs.Recovery(func(err error) { jot.Error(err) })
-		mi.enabled = mi.validator(mi)
+		toolbox.Call(func() { mi.enabled = mi.validator(mi) })
 	}
 }
 
 func (mi *menuItem) execute() {
 	mi.menu.closeMenuStack()
 	if mi.enabled && mi.handler != nil {
-		defer errs.Recovery(func(err error) { jot.Error(err) })
-		mi.handler(mi)
+		toolbox.Call(func() { mi.handler(mi) })
 	}
 }

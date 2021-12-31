@@ -30,6 +30,15 @@ var (
 	glInited   = false
 )
 
+// DragData holds data drag information.
+type DragData struct {
+	Data            map[string]interface{}
+	Drawable        Drawable
+	SamplingOptions *SamplingOptions
+	Ink             Ink
+	Offset          geom32.Point
+}
+
 // Window holds window information.
 type Window struct {
 	InputCallbacks
@@ -64,6 +73,9 @@ type Window struct {
 	lastButtonTime      time.Time
 	lastContentRect     geom32.Rect
 	firstButtonLocation geom32.Point
+	dragDataLocation    geom32.Point
+	dragDataPanel       *Panel
+	dragData            *DragData
 	lastKeyModifiers    Modifiers
 	valid               bool
 	focused             bool
@@ -215,10 +227,11 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		if action == glfw.Press {
 			maxDelay, maxMouseDrift := DoubleClickParameters()
 			now := time.Now()
-			if int(button) == w.lastButton && now.Add(-maxDelay).Before(w.lastButtonTime) &&
+			if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
 				mathf32.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
 				mathf32.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
 				w.lastButtonCount++
+				time.Since(w.lastButtonTime)
 			} else {
 				w.lastButtonCount = 1
 				w.firstButtonLocation = where
@@ -285,17 +298,15 @@ func glfwEnabled(enabled bool) int {
 }
 
 func (w *Window) moved() {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
 	if w.root.preMovedCallback != nil {
-		w.root.preMovedCallback(w)
+		toolbox.Call(func() { w.root.preMovedCallback(w) })
 	}
 	if w.MovedCallback != nil {
-		w.MovedCallback()
+		toolbox.Call(w.MovedCallback)
 	}
 }
 
 func (w *Window) resized(constrained bool) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
 	if constrained {
 		w.ValidateLayout()
 	} else {
@@ -308,7 +319,7 @@ func (w *Window) resized(constrained bool) {
 		}
 	}
 	if w.ResizedCallback != nil {
-		w.ResizedCallback(true)
+		toolbox.Call(func() { w.ResizedCallback(true) })
 	}
 }
 
@@ -399,10 +410,14 @@ func (w *Window) String() string {
 
 // AttemptClose closes the window if permitted.
 func (w *Window) AttemptClose() {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.AllowCloseCallback == nil || w.AllowCloseCallback() {
-		w.Dispose()
+	if w.AllowCloseCallback != nil {
+		allow := false
+		toolbox.Call(func() { allow = w.AllowCloseCallback() })
+		if !allow {
+			return
+		}
 	}
+	w.Dispose()
 }
 
 func (w *Window) removeFromWindowList() {
@@ -421,9 +436,8 @@ func (w *Window) removeFromWindowList() {
 // Dispose of the window.
 func (w *Window) Dispose() {
 	active := ActiveWindow()
-	defer errs.Recovery(func(err error) { jot.Error(err) })
 	if w.WillCloseCallback != nil {
-		w.WillCloseCallback()
+		toolbox.Call(w.WillCloseCallback)
 		w.WillCloseCallback = nil
 	}
 	if w.inModal {
@@ -619,19 +633,32 @@ func (w *Window) Focus() *Panel {
 // SetFocus sets the keyboard focus to the specified target.
 func (w *Window) SetFocus(target Paneler) {
 	if target != nil {
-		t := target.AsPanel()
-		tw := t.Window()
-		if tw == w && !t.Is(w.focus) {
-			defer errs.Recovery(func(err error) { jot.Error(err) })
-			if w.focus != nil && w.focus.LostFocusCallback != nil {
-				w.focus.LostFocusCallback()
-			}
-			w.focus = t
+		newFocus := target.AsPanel()
+		tw := newFocus.Window()
+		if tw == w && !newFocus.Is(w.focus) {
+			oldFocus := w.focus
 			if w.focus != nil {
-				if w.focus.GainedFocusCallback != nil {
-					w.focus.GainedFocusCallback()
+				if oldFocus.LostFocusCallback != nil {
+					toolbox.Call(oldFocus.LostFocusCallback)
 				}
-				w.focus.ScrollIntoView()
+			}
+			w.focus = newFocus
+			if newFocus != nil {
+				if newFocus.GainedFocusCallback != nil {
+					toolbox.Call(newFocus.GainedFocusCallback)
+				}
+				newFocus.ScrollIntoView()
+			}
+			for _, p := range []*Panel{oldFocus, newFocus} {
+				if p != nil {
+					p = p.Parent()
+					for p != nil {
+						if p.FocusChangeInHierarchyCallback != nil {
+							toolbox.Call(func() { p.FocusChangeInHierarchyCallback(oldFocus, newFocus) })
+						}
+						p = p.Parent()
+					}
+				}
 			}
 		}
 	}
@@ -764,10 +791,19 @@ func (w *Window) BackingScale() (x, y float32) {
 // Draw the window contents.
 func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
-		defer errs.Recovery(func(err error) { jot.Error(err) })
-		w.root.ValidateLayout()
-		c.DrawPaint(BackgroundColor.Paint(c, w.LocalContentRect(), Fill))
-		w.root.Draw(c, w.LocalContentRect())
+		toolbox.Call(func() {
+			w.root.ValidateLayout()
+			c.DrawPaint(BackgroundColor.Paint(c, w.LocalContentRect(), Fill))
+			w.root.Draw(c, w.LocalContentRect())
+			if w.dragData != nil {
+				c.Save()
+				c.Translate(w.dragDataLocation.X+w.dragData.Offset.X, w.dragDataLocation.Y+w.dragData.Offset.Y)
+				r := geom32.Rect{Size: w.dragData.Drawable.LogicalSize()}
+				c.ClipRect(r, IntersectClipOp, false)
+				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions, w.dragData.Ink.Paint(c, r, Fill))
+				c.Restore()
+			}
+		})
 	}
 }
 
@@ -841,7 +877,6 @@ func (w *Window) updateTooltipAndCursor(target *Panel, where geom32.Point) {
 }
 
 func (w *Window) updateTooltip(target *Panel, where geom32.Point) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
 	var avoid geom32.Rect
 	var tip *Panel
 	for target != nil {
@@ -849,7 +884,7 @@ func (w *Window) updateTooltip(target *Panel, where geom32.Point) {
 		avoid.Point = target.PointToRoot(avoid.Point)
 		avoid.Align()
 		if target.UpdateTooltipCallback != nil {
-			avoid = target.UpdateTooltipCallback(target.PointFromRoot(where), avoid)
+			toolbox.Call(func() { avoid = target.UpdateTooltipCallback(target.PointFromRoot(where), avoid) })
 		}
 		if target.Tooltip != nil {
 			tip = target.Tooltip
@@ -887,13 +922,12 @@ func (w *Window) UpdateCursorNow() {
 }
 
 func (w *Window) updateCursor(target *Panel, where geom32.Point) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
 	var cursor *Cursor
 	for target != nil {
 		if target.UpdateCursorCallback == nil {
 			target = target.parent
 		} else {
-			cursor = target.UpdateCursorCallback(target.PointFromRoot(where))
+			toolbox.Call(func() { cursor = target.UpdateCursorCallback(target.PointFromRoot(where)) })
 			break
 		}
 	}
@@ -908,21 +942,32 @@ func (w *Window) updateCursor(target *Panel, where geom32.Point) {
 }
 
 func (w *Window) mouseDown(where geom32.Point, button, clickCount int, mod Modifiers) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.root.preMouseDownCallback != nil && w.root.preMouseDownCallback(w, where) {
-		return
+	if w.root.preMouseDownCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.root.preMouseDownCallback(w, where) })
+		if stop {
+			return
+		}
 	}
-	if w.MouseDownCallback != nil && w.MouseDownCallback(where, button, clickCount, mod) {
-		return
+	if w.MouseDownCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.MouseDownCallback(where, button, clickCount, mod) })
+		if stop {
+			return
+		}
 	}
 	if w.focused || w.transient {
 		w.ClearTooltip()
 		w.lastMouseDownPanel = nil
 		panel := w.root.PanelAt(where)
 		for panel != nil {
-			if panel.Enabled() && panel.MouseDownCallback != nil && panel.MouseDownCallback(panel.PointFromRoot(where), button, clickCount, mod) {
-				w.lastMouseDownPanel = panel
-				break
+			if panel.MouseDownCallback != nil && panel.Enabled() {
+				stop := false
+				toolbox.Call(func() { stop = panel.MouseDownCallback(panel.PointFromRoot(where), button, clickCount, mod) })
+				if stop {
+					w.lastMouseDownPanel = panel
+					return
+				}
 			}
 			panel = panel.parent
 		}
@@ -930,23 +975,40 @@ func (w *Window) mouseDown(where geom32.Point, button, clickCount int, mod Modif
 }
 
 func (w *Window) mouseDrag(where geom32.Point, button int, mod Modifiers) {
+	w.dragDataLocation = where
 	w.restoreHiddenCursor()
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.MouseDragCallback != nil && w.MouseDragCallback(where, button, mod) {
+	if w.dragData != nil {
+		w.dataDragOver()
 		return
 	}
+	if w.MouseDragCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.MouseDragCallback(where, button, mod) })
+		if stop {
+			return
+		}
+	}
 	if w.lastMouseDownPanel != nil && w.lastMouseDownPanel.MouseDragCallback != nil && w.lastMouseDownPanel.Enabled() {
-		w.lastMouseDownPanel.MouseDragCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mod)
+		toolbox.Call(func() { w.lastMouseDownPanel.MouseDragCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mod) })
 	}
 }
 
 func (w *Window) mouseUp(where geom32.Point, button int, mod Modifiers) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.MouseUpCallback != nil && w.MouseUpCallback(where, button, mod) {
+	if w.dragData != nil {
+		w.dragDataLocation = where
+		w.dataDragFinish()
+		w.lastMouseDownPanel = nil
 		return
 	}
+	if w.MouseUpCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.MouseUpCallback(where, button, mod) })
+		if stop {
+			return
+		}
+	}
 	if w.lastMouseDownPanel != nil && w.lastMouseDownPanel.MouseUpCallback != nil && w.lastMouseDownPanel.Enabled() {
-		w.lastMouseDownPanel.MouseUpCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mod)
+		toolbox.Call(func() { w.lastMouseDownPanel.MouseUpCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mod) })
 	}
 	panel := w.root.PanelAt(where)
 	if w.root != nil && !panel.Is(w.lastMouseOverPanel) {
@@ -960,13 +1022,16 @@ func (w *Window) mouseUp(where geom32.Point, button int, mod Modifiers) {
 func (w *Window) mouseEnter(where geom32.Point, mod Modifiers) {
 	w.restoreHiddenCursor()
 	w.mouseExit()
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.MouseEnterCallback != nil && w.MouseEnterCallback(where, mod) {
-		return
+	if w.MouseEnterCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.MouseEnterCallback(where, mod) })
+		if stop {
+			return
+		}
 	}
 	panel := w.root.PanelAt(where)
 	if panel.MouseEnterCallback != nil {
-		panel.MouseEnterCallback(panel.PointFromRoot(where), mod)
+		toolbox.Call(func() { panel.MouseEnterCallback(panel.PointFromRoot(where), mod) })
 	}
 	w.updateTooltipAndCursor(panel, where)
 	w.lastMouseOverPanel = panel
@@ -976,12 +1041,15 @@ func (w *Window) mouseMove(where geom32.Point, mod Modifiers) {
 	w.restoreHiddenCursor()
 	panel := w.root.PanelAt(where)
 	if panel.Is(w.lastMouseOverPanel) {
-		defer errs.Recovery(func(err error) { jot.Error(err) })
-		if w.MouseMoveCallback != nil && w.MouseMoveCallback(where, mod) {
-			return
+		if w.MouseMoveCallback != nil {
+			stop := false
+			toolbox.Call(func() { stop = w.MouseMoveCallback(where, mod) })
+			if stop {
+				return
+			}
 		}
 		if panel.MouseMoveCallback != nil {
-			panel.MouseMoveCallback(panel.PointFromRoot(where), mod)
+			toolbox.Call(func() { panel.MouseMoveCallback(panel.PointFromRoot(where), mod) })
 		}
 		w.updateTooltipAndCursor(panel, where)
 	} else {
@@ -990,13 +1058,16 @@ func (w *Window) mouseMove(where geom32.Point, mod Modifiers) {
 }
 
 func (w *Window) mouseExit() {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.MouseExitCallback != nil && w.MouseExitCallback() {
-		return
+	if w.MouseExitCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.MouseExitCallback() })
+		if stop {
+			return
+		}
 	}
 	if w.lastMouseDownPanel == nil && w.lastMouseOverPanel != nil {
 		if w.lastMouseOverPanel.MouseExitCallback != nil {
-			w.lastMouseOverPanel.MouseExitCallback()
+			toolbox.Call(func() { w.lastMouseOverPanel.MouseExitCallback() })
 		}
 		w.lastMouseOverPanel = nil
 		w.cursor = nil
@@ -1004,14 +1075,21 @@ func (w *Window) mouseExit() {
 }
 
 func (w *Window) mouseWheel(where, delta geom32.Point, mod Modifiers) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.MouseWheelCallback != nil && w.MouseWheelCallback(where, delta, mod) {
-		return
+	if w.MouseWheelCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.MouseWheelCallback(where, delta, mod) })
+		if stop {
+			return
+		}
 	}
 	panel := w.root.PanelAt(where)
 	for panel != nil {
-		if panel.Enabled() && panel.MouseWheelCallback != nil && panel.MouseWheelCallback(panel.PointFromRoot(where), delta, mod) {
-			break
+		if panel.Enabled() && panel.MouseWheelCallback != nil {
+			stop := false
+			toolbox.Call(func() { stop = panel.MouseWheelCallback(panel.PointFromRoot(where), delta, mod) })
+			if stop {
+				break
+			}
 		}
 		panel = panel.parent
 	}
@@ -1023,12 +1101,19 @@ func (w *Window) mouseWheel(where, delta geom32.Point, mod Modifiers) {
 }
 
 func (w *Window) keyDown(keyCode KeyCode, mod Modifiers, repeat bool) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.root.preKeyDownCallback != nil && w.root.preKeyDownCallback(w, keyCode, mod) {
-		return
+	if w.root.preKeyDownCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.root.preKeyDownCallback(w, keyCode, mod) })
+		if stop {
+			return
+		}
 	}
-	if w.KeyDownCallback != nil && w.KeyDownCallback(keyCode, mod, repeat) {
-		return
+	if w.KeyDownCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.KeyDownCallback(keyCode, mod, repeat) })
+		if stop {
+			return
+		}
 	}
 	w.ClearTooltip()
 	w.lastKeyDownPanel = nil
@@ -1036,9 +1121,13 @@ func (w *Window) keyDown(keyCode KeyCode, mod Modifiers, repeat bool) {
 		panel := focus
 		w.lastKeyDownPanel = panel
 		for panel != nil {
-			if panel.Enabled() && panel.KeyDownCallback != nil && panel.KeyDownCallback(keyCode, mod, repeat) {
-				w.lastKeyDownPanel = panel
-				return
+			if panel.Enabled() && panel.KeyDownCallback != nil {
+				stop := false
+				toolbox.Call(func() { stop = panel.KeyDownCallback(keyCode, mod, repeat) })
+				if stop {
+					w.lastKeyDownPanel = panel
+					return
+				}
 			}
 			panel = panel.parent
 		}
@@ -1053,25 +1142,39 @@ func (w *Window) keyDown(keyCode KeyCode, mod Modifiers, repeat bool) {
 }
 
 func (w *Window) keyUp(keyCode KeyCode, mod Modifiers) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.root.preKeyUpCallback != nil && w.root.preKeyUpCallback(w, keyCode, mod) {
-		return
+	if w.root.preKeyUpCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.root.preKeyUpCallback(w, keyCode, mod) })
+		if stop {
+			return
+		}
 	}
-	if w.KeyUpCallback != nil && w.KeyUpCallback(keyCode, mod) {
-		return
+	if w.KeyUpCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.KeyUpCallback(keyCode, mod) })
+		if stop {
+			return
+		}
 	}
 	if w.lastKeyDownPanel != nil && w.lastKeyDownPanel.KeyUpCallback != nil {
-		w.lastKeyDownPanel.KeyUpCallback(keyCode, mod)
+		toolbox.Call(func() { w.lastKeyDownPanel.KeyUpCallback(keyCode, mod) })
 	}
 }
 
 func (w *Window) runeTyped(ch rune) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	if w.root.preRuneTypedCallback != nil && w.root.preRuneTypedCallback(w, ch) {
-		return
+	if w.root.preRuneTypedCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.root.preRuneTypedCallback(w, ch) })
+		if stop {
+			return
+		}
 	}
-	if w.RuneTypedCallback != nil && w.RuneTypedCallback(ch) {
-		return
+	if w.RuneTypedCallback != nil {
+		stop := false
+		toolbox.Call(func() { stop = w.RuneTypedCallback(ch) })
+		if stop {
+			return
+		}
 	}
 	w.ClearTooltip()
 	w.lastKeyDownPanel = nil
@@ -1079,9 +1182,13 @@ func (w *Window) runeTyped(ch rune) {
 		panel := focus
 		w.lastKeyDownPanel = panel
 		for panel != nil {
-			if panel.Enabled() && panel.RuneTypedCallback != nil && panel.RuneTypedCallback(ch) {
-				w.lastKeyDownPanel = panel
-				return
+			if panel.Enabled() && panel.RuneTypedCallback != nil {
+				stop := false
+				toolbox.Call(func() { stop = panel.RuneTypedCallback(ch) })
+				if stop {
+					w.lastKeyDownPanel = panel
+					return
+				}
 			}
 			panel = panel.parent
 		}
@@ -1089,15 +1196,14 @@ func (w *Window) runeTyped(ch rune) {
 }
 
 func (w *Window) fileDrop(files []string) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
 	if w.FileDropCallback != nil {
-		w.FileDropCallback(files)
+		toolbox.Call(func() { w.FileDropCallback(files) })
 		return
 	}
 	panel := w.root.PanelAt(w.MouseLocation())
 	for panel != nil {
 		if panel.FileDropCallback != nil && panel.Enabled() {
-			panel.FileDropCallback(files)
+			toolbox.Call(func() { panel.FileDropCallback(files) })
 			return
 		}
 		panel = panel.parent
@@ -1110,4 +1216,61 @@ func (w *Window) ClientData() map[string]interface{} {
 		w.data = make(map[string]interface{})
 	}
 	return w.data
+}
+
+// IsDragGesture returns true if a gesture to start a drag operation was made.
+func (w *Window) IsDragGesture(where geom32.Point) bool {
+	minDelay, minMouseDrift := DragGestureParameters()
+	return w.inMouseDown &&
+		mathf32.Abs(w.firstButtonLocation.X-where.X) > minMouseDrift ||
+		mathf32.Abs(w.firstButtonLocation.Y-where.Y) > minMouseDrift ||
+		time.Since(w.lastButtonTime) > minDelay
+}
+
+// StartDataDrag starts a data drag operation.
+func (w *Window) StartDataDrag(data *DragData) {
+	if data != nil && len(data.Data) != 0 && data.Drawable != nil && data.Ink != nil {
+		w.dragData = data
+		w.dragDataPanel = nil
+		w.dataDragOver()
+	}
+}
+
+func (w *Window) dataDragOver() {
+	w.MarkForRedraw()
+	panel := w.root.PanelAt(w.dragDataLocation)
+	for panel != nil {
+		for panel != nil && panel.DataDragOverCallback == nil {
+			panel = panel.Parent()
+		}
+		if panel != nil {
+			handled := false
+			toolbox.Call(func() { handled = panel.DataDragOverCallback(panel.PointFromRoot(w.dragDataLocation), w.dragData.Data) })
+			if handled {
+				if !panel.Is(w.dragDataPanel) {
+					if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
+						toolbox.Call(w.dragDataPanel.DataDragExitCallback)
+					}
+					w.dragDataPanel = panel
+				}
+				return
+			}
+			panel = panel.Parent()
+		}
+	}
+	if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
+		toolbox.Call(w.dragDataPanel.DataDragExitCallback)
+	}
+	w.dragDataPanel = nil
+}
+
+func (w *Window) dataDragFinish() {
+	w.MarkForRedraw()
+	if w.dragDataPanel != nil && w.dragDataPanel.DataDragDropCallback != nil {
+		toolbox.Call(func() {
+			w.dragDataPanel.DataDragDropCallback(w.dragDataPanel.PointFromRoot(w.dragDataLocation), w.dragData.Data)
+		})
+	}
+	w.dragDataPanel = nil
+	w.dragData = nil
 }

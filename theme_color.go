@@ -47,6 +47,11 @@ var (
 	ScrollColor              = &ThemeColor{Light: ARGB(0.5, 192, 192, 192), Dark: ARGB(0.5, 128, 128, 128)}
 	ScrollRolloverColor      = &ThemeColor{Light: RGB(192, 192, 192), Dark: RGB(128, 128, 128)}
 	ScrollEdgeColor          = &ThemeColor{Light: RGB(102, 102, 102), Dark: RGB(153, 153, 153)}
+	TabFocusedColor          = &ThemeColor{Light: RGB(224, 212, 175), Dark: RGB(68, 102, 0)}
+	OnTabFocusedColor        = &ThemeColor{Light: Black, Dark: RGB(221, 221, 221)}
+	TabCurrentColor          = &ThemeColor{Light: RGB(211, 207, 197), Dark: RGB(41, 61, 0)}
+	OnTabCurrentColor        = &ThemeColor{Light: Black, Dark: RGB(221, 221, 221)}
+	DropAreaColor            = &ThemeColor{Light: RGB(204, 0, 51), Dark: RGB(255, 0, 0)}
 	BlackWhenDarkColor       = &ThemeColor{Light: White, Dark: Black}
 	WhiteWhenDarkColor       = &ThemeColor{Light: Black, Dark: White}
 )

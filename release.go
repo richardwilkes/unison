@@ -13,8 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox"
 )
 
 var (
@@ -57,7 +56,7 @@ func processReleaseQueue() {
 			funcs := list
 			InvokeTask(func() {
 				for _, f := range funcs {
-					processRelease(f)
+					toolbox.Call(f)
 				}
 			})
 			allocation[pos] = len(list)
@@ -77,9 +76,4 @@ func processReleaseQueue() {
 			list = make([]func(), 0, peak)
 		}
 	}
-}
-
-func processRelease(f func()) {
-	defer errs.Recovery(func(err error) { jot.Error(err) })
-	f()
 }

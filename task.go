@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 )
 
@@ -48,7 +49,6 @@ func processNextTask(recoveryHandler errs.RecoveryHandler) {
 	taskQueueLock.Unlock()
 	if f != nil {
 		defer glfw.PostEmptyEvent()
-		defer errs.Recovery(recoveryHandler)
-		f()
+		toolbox.CallWithHandler(f, recoveryHandler)
 	}
 }
