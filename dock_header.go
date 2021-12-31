@@ -82,25 +82,23 @@ func (d *dockHeader) DefaultDataDragOver(where geom32.Point, data map[string]int
 	return d.dragOver(where, data) != nil
 }
 
-func (d *dockHeader) dragOver(where geom32.Point, data map[string]interface{}) *dockTab {
+func (d *dockHeader) dragOver(where geom32.Point, data map[string]interface{}) Dockable {
 	d.dragInsertIndex = -1
-	if t, ok := data[DockTabDragDataKey]; ok {
-		if tab, ok2 := t.(*dockTab); ok2 {
-			tabs, _ := d.partition()
-			d.dragInsertIndex = len(tabs)
-			for i, one := range tabs {
-				r := one.FrameRect()
-				if where.X < r.CenterX() {
-					d.dragInsertIndex = i
-					break
-				}
-				if where.X < r.Right() {
-					d.dragInsertIndex = i + 1
-					break
-				}
+	if dockable := DockableFromDragData(d.owner.Dock.DragKey, data); dockable != nil {
+		tabs, _ := d.partition()
+		d.dragInsertIndex = len(tabs)
+		for i, one := range tabs {
+			r := one.FrameRect()
+			if where.X < r.CenterX() {
+				d.dragInsertIndex = i
+				break
 			}
-			return tab
+			if where.X < r.Right() {
+				d.dragInsertIndex = i + 1
+				break
+			}
 		}
+		return dockable
 	}
 	return nil
 }
@@ -110,19 +108,10 @@ func (d *dockHeader) DefaultDataDragExit() {
 }
 
 func (d *dockHeader) DefaultDataDrop(where geom32.Point, data map[string]interface{}) {
-	if tab := d.dragOver(where, data); tab != nil {
-		d.owner.Stack(tab.dockable, d.dragInsertIndex)
+	if dockable := d.dragOver(where, data); dockable != nil {
+		d.owner.Stack(dockable, d.dragInsertIndex)
 	}
 	d.dragInsertIndex = -1
-}
-
-func (d *dockHeader) dragDockTab(data map[string]interface{}) *dockTab {
-	if t, ok := data[DockTabDragDataKey]; ok {
-		if tab, ok2 := t.(*dockTab); ok2 {
-			return tab
-		}
-	}
-	return nil
 }
 
 func (d *dockHeader) updateTitle(index int) {

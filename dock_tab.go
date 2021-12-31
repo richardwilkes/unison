@@ -15,9 +15,6 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
-// DockTabDragDataKey holds the key used when dragging dock tabs.
-const DockTabDragDataKey = "dock.tab"
-
 type Saver interface {
 	Modified() bool
 	AddDataModifiedListener(func())
@@ -162,14 +159,16 @@ func (t *dockTab) mouseDown(where geom32.Point, button, clickCount int, mod Modi
 
 func (t *dockTab) mouseDrag(where geom32.Point, button int, mod Modifiers) bool {
 	if t.IsDragGesture(where) {
-		icon := t.dockable.TitleIcon()
-		size := icon.LogicalSize()
-		t.StartDataDrag(&DragData{
-			Data:     map[string]interface{}{DockTabDragDataKey: t},
-			Drawable: icon,
-			Ink:      t.title.Ink,
-			Offset:   geom32.NewPoint(-size.Width/2, -size.Height/2),
-		})
+		if dc := DockContainerFor(t.dockable); dc != nil {
+			icon := t.dockable.TitleIcon()
+			size := icon.LogicalSize()
+			t.StartDataDrag(&DragData{
+				Data:     map[string]interface{}{dc.Dock.DragKey: t.dockable},
+				Drawable: icon,
+				Ink:      t.title.Ink,
+				Offset:   geom32.NewPoint(-size.Width/2, -size.Height/2),
+			})
+		}
 	}
 	return true
 }

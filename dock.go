@@ -20,6 +20,7 @@ type Dock struct {
 	layout                     *DockLayout
 	MaximizedContainer         *DockContainer
 	BackgroundColor            Ink
+	DragKey                    string
 	dragDockable               Dockable
 	dragOverNode               DockLayoutNode
 	dividerDragLayout          *DockLayout
@@ -37,6 +38,7 @@ type Dock struct {
 // NewDock creates a new, empty, dock.
 func NewDock() *Dock {
 	d := &Dock{
+		DragKey:        "dockable",
 		DockGripCount:  5,
 		DockGripGap:    1,
 		DockGripWidth:  4,
@@ -320,30 +322,37 @@ func (d *Dock) DefaultDataDragOver(where geom32.Point, data map[string]interface
 	return d.dragDockable != nil
 }
 
+func DockableFromDragData(key string, data map[string]interface{}) Dockable {
+	if keyData, ok := data[key]; ok {
+		if dockable, ok2 := keyData.(Dockable); ok2 {
+			return dockable
+		}
+	}
+	return nil
+}
+
 func (d *Dock) updateDragDockable(where geom32.Point, data map[string]interface{}) {
 	d.dragDockable = nil
 	d.dragOverNode = nil
-	if t, ok := data[DockTabDragDataKey]; ok {
-		if tab, ok2 := t.(*dockTab); ok2 {
-			if d.dragOverNode = d.overNode(d.layout, where); d.dragOverNode != nil {
-				var extent float32
-				r := d.dragOverNode.FrameRect()
-				if where.X < r.CenterX() {
-					d.dragSide = LeftSide
-					extent = where.X - r.X
-				} else {
-					d.dragSide = RightSide
-					extent = r.Width - (where.X - r.X)
-				}
-				if where.Y < r.CenterY() {
-					if extent > where.Y-r.Y {
-						d.dragSide = TopSide
-					}
-				} else if extent > r.Height-(where.Y-r.Y) {
-					d.dragSide = BottomSide
-				}
-				d.dragDockable = tab.dockable
+	if dockable := DockableFromDragData(d.DragKey, data); dockable != nil {
+		if d.dragOverNode = d.overNode(d.layout, where); d.dragOverNode != nil {
+			var extent float32
+			r := d.dragOverNode.FrameRect()
+			if where.X < r.CenterX() {
+				d.dragSide = LeftSide
+				extent = where.X - r.X
+			} else {
+				d.dragSide = RightSide
+				extent = r.Width - (where.X - r.X)
 			}
+			if where.Y < r.CenterY() {
+				if extent > where.Y-r.Y {
+					d.dragSide = TopSide
+				}
+			} else if extent > r.Height-(where.Y-r.Y) {
+				d.dragSide = BottomSide
+			}
+			d.dragDockable = dockable
 		}
 	}
 }
