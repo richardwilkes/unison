@@ -19,6 +19,7 @@ var (
 	_ unison.TabCloser = &DockablePanel{}
 )
 
+// DockablePanel provides a sample dockable panel.
 type DockablePanel struct {
 	unison.Panel
 	Text  string
@@ -26,6 +27,7 @@ type DockablePanel struct {
 	Color unison.Ink
 }
 
+// NewDockablePanel creates a new sample dockable panel.
 func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 	d := &DockablePanel{
 		Text:  title,
@@ -46,6 +48,7 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect geom32.Rect) {
 	gc.DrawRect(rect, d.Color.Paint(gc, rect, unison.Fill))
 }
 
+// TitleIcon implements Dockable.
 func (d *DockablePanel) TitleIcon() unison.Drawable {
 	fSize := unison.LabelFont.ResolvedFont().Baseline()
 	return &unison.DrawableSVG{
@@ -54,18 +57,27 @@ func (d *DockablePanel) TitleIcon() unison.Drawable {
 	}
 }
 
+// Title implements Dockable.
 func (d *DockablePanel) Title() string {
 	return d.Text
 }
 
+// Tooltip implements Dockable.
 func (d *DockablePanel) Tooltip() string {
 	return d.Tip
 }
 
+// Modified implements Dockable.
+func (d *DockablePanel) Modified() bool {
+	return false
+}
+
+// MayAttemptClose implements TabCloser.
 func (d *DockablePanel) MayAttemptClose() bool {
 	return true
 }
 
+// AttemptClose implements TabCloser.
 func (d *DockablePanel) AttemptClose() {
 	if dc := unison.DockContainerFor(d); dc != nil {
 		dc.Close(d)

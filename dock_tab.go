@@ -15,9 +15,10 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
-type Saver interface {
-	Modified() bool
-	AddDataModifiedListener(func())
+// TabCloser defines the methods that must be implemented to cause the tabs to show a close button.
+type TabCloser interface {
+	MayAttemptClose() bool
+	AttemptClose()
 }
 
 type dockTab struct {
@@ -63,9 +64,6 @@ func newDockTab(dockable Dockable) *dockTab {
 		t.button.ClickCallback = t.attemptClose
 		flex.Columns++
 	}
-	if saver, ok := t.dockable.(Saver); ok {
-		saver.AddDataModifiedListener(t.updateDataModified)
-	}
 	t.MouseDownCallback = t.mouseDown
 	t.MouseDragCallback = t.mouseDrag
 	t.UpdateTooltipCallback = t.updateTooltip
@@ -74,29 +72,26 @@ func newDockTab(dockable Dockable) *dockTab {
 
 func (t *dockTab) fullTitle() string {
 	var buffer strings.Builder
-	if saver, ok := t.dockable.(Saver); ok && saver.Modified() {
+	if t.dockable.Modified() {
 		buffer.WriteByte('*')
 	}
 	buffer.WriteString(t.dockable.Title())
 	return buffer.String()
 }
 
-func (t *dockTab) updateDataModified() {
-	title := t.fullTitle()
-	if t.title.Text != title {
-		t.title.Text = title
-		t.title.MarkForLayoutAndRedraw()
-	}
-}
-
 func (t *dockTab) updateTitle() {
-	t.updateDataModified()
 	drawable := t.dockable.TitleIcon()
-	if t.title.Drawable != drawable {
+	title := t.fullTitle()
+	if title != t.title.Text || t.title.Drawable != drawable {
+		t.title.Text = title
 		t.title.Drawable = drawable
-		t.title.MarkForLayoutAndRedraw()
+		t.NeedsLayout = true
+		t.title.NeedsLayout = true
+		if p := t.Parent(); p != nil {
+			p.NeedsLayout = true
+		}
+		t.MarkForRedraw()
 	}
-	t.Tooltip = NewTooltipWithText(t.dockable.Tooltip())
 }
 
 func (t *dockTab) draw(gc *Canvas, rect geom32.Rect) {

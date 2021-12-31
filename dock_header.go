@@ -126,7 +126,7 @@ func (d *dockHeader) updateTitle(index int) {
 
 func (d *dockHeader) addTab(dockable Dockable, index int) {
 	d.AddChildAtIndex(newDockTab(dockable), index)
-	d.MarkForRedraw()
+	d.MarkForLayoutAndRedraw()
 }
 
 func (d *dockHeader) partition() (tabs []*dockTab, buttons []*Panel) {
@@ -231,14 +231,15 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 			if len(tabs) > 1 {
 				remaining += buttonSizes[showTabsIndex].Width + d.TabGap
 				for i := len(tabs) - 1; i >= 0 && remaining > 0; i-- {
-					if i != current {
-						remaining -= buttonSizes[showTabsIndex].Width
-						hidden[tabs[i]] = true
-						d.showTabsButton.Text = "»" + strconv.Itoa(len(hidden))
-						_, buttonSizes[showTabsIndex], _ = d.showTabsButton.Sizes(geom32.Size{})
-						remaining += buttonSizes[showTabsIndex].Width
-						remaining -= tabSizes[i].Width + d.TabGap
+					if i == current {
+						continue
 					}
+					remaining -= buttonSizes[showTabsIndex].Width
+					hidden[tabs[i]] = true
+					d.showTabsButton.Text = "»" + strconv.Itoa(len(hidden))
+					_, buttonSizes[showTabsIndex], _ = d.showTabsButton.Sizes(geom32.Size{})
+					remaining += buttonSizes[showTabsIndex].Width
+					remaining -= tabSizes[i].Width + d.TabGap
 				}
 			}
 			if remaining > 0 {
@@ -278,7 +279,7 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 }
 
 func (d *dockHeader) adjustToMaximizedState() {
-	d.maximizeRestoreButton.ClickCallback = d.owner.Restore
+	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Restore() }
 	fSize := ChooseFont(d.showTabsButton.Font, LabelFont).Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowRestoreSVG(),
@@ -288,7 +289,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 }
 
 func (d *dockHeader) adjustToRestoredState() {
-	d.maximizeRestoreButton.ClickCallback = d.owner.Maximize
+	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Maximize(d.owner) }
 	fSize := ChooseFont(d.showTabsButton.Font, LabelFont).Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowMaximizeSVG(),

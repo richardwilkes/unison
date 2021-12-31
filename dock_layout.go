@@ -16,16 +16,17 @@ import (
 
 var (
 	_ Layout         = &DockLayout{}
-	_ Layoutable     = &DockLayout{}
 	_ DockLayoutNode = &DockLayout{}
 )
 
+// DockLayoutNode defines the methods for nodes within a DockLayout.
 type DockLayoutNode interface {
 	PreferredSize() geom32.Size
 	FrameRect() geom32.Rect
 	SetFrameRect(r geom32.Rect)
 }
 
+// DockLayout provides layout of DockContainers and other DockLayouts within a Dock.
 type DockLayout struct {
 	dock       *Dock
 	parent     *DockLayout
@@ -46,7 +47,8 @@ func (d *DockLayout) forEachDockContainer(f func(*DockContainer)) {
 	}
 }
 
-func (d *DockLayout) rootLayout() *DockLayout {
+// RootLayout returns the topmost parent DockLayout.
+func (d *DockLayout) RootLayout() *DockLayout {
 	root := d
 	for root.parent != nil {
 		root = root.parent
@@ -57,7 +59,7 @@ func (d *DockLayout) rootLayout() *DockLayout {
 // FindLayout returns the DockLayout that contains the specified DockContainer, or nil if it is not present. Note that
 // this method will always start at the root and work its way down, even if called on a sub-node.
 func (d *DockLayout) FindLayout(dc *DockContainer) *DockLayout {
-	return d.rootLayout().findLayout(dc)
+	return d.RootLayout().findLayout(dc)
 }
 
 func (d *DockLayout) findLayout(dc *DockContainer) *DockLayout {
@@ -270,6 +272,11 @@ func (d *DockLayout) DividerMaximum() float32 {
 	return 0
 }
 
+// RawDividerPosition returns the divider position, unadjusted for the current content.
+func (d *DockLayout) RawDividerPosition() float32 {
+	return d.divider
+}
+
 // DividerPosition returns the current divider position.
 func (d *DockLayout) DividerPosition() float32 {
 	if !d.Full() {
@@ -295,23 +302,26 @@ func (d *DockLayout) SetDividerPosition(pos float32) {
 		d.divider = pos
 	}
 	if d.divider != old && d.Full() {
-		d.PerformLayout(d)
+		d.PerformLayout(nil)
 		d.dock.MarkForRedraw()
 	}
 }
 
+// PreferredSize implements DockLayoutNode.
 func (d *DockLayout) PreferredSize() geom32.Size {
 	_, pref, _ := d.LayoutSizes(nil, geom32.Size{})
 	return pref
 }
 
+// FrameRect implements DockLayoutNode.
 func (d *DockLayout) FrameRect() geom32.Rect {
 	return d.frame
 }
 
+// SetFrameRect implements DockLayoutNode.
 func (d *DockLayout) SetFrameRect(r geom32.Rect) {
 	d.frame = r
-	d.PerformLayout(d)
+	d.PerformLayout(nil)
 }
 
 // LayoutSizes implements Layout.
@@ -335,18 +345,15 @@ func (d *DockLayout) LayoutSizes(_ Layoutable, _ geom32.Size) (min, pref, max ge
 }
 
 // PerformLayout implements Layout.
-func (d *DockLayout) PerformLayout(target Layoutable) {
-	var insets geom32.Insets
-	if b := target.Border(); b != nil {
-		insets = b.Insets()
+func (d *DockLayout) PerformLayout(_ Layoutable) {
+	if d.parent == nil {
+		d.frame = d.dock.ContentRect(false)
 	}
-	d.frame = target.FrameRect()
 	size := d.frame.Size
-	size.SubtractInsets(insets)
 	switch {
 	case d.dock.MaximizedContainer != nil:
 		d.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = dc != d.dock.MaximizedContainer })
-		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
+		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	case d.Full():
 		available := size.Height
 		if d.Horizontal {
@@ -367,37 +374,15 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 			primary = d.divider
 		}
 		if d.Horizontal {
-			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, primary, size.Height))
-			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left+primary+dividerSize, d.frame.Y+insets.Top, available-primary, size.Height))
+			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, primary, size.Height))
+			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+primary+dividerSize, d.frame.Y, available-primary, size.Height))
 		} else {
-			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, primary))
-			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top+primary+dividerSize, size.Width, available-primary))
+			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, primary))
+			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y+primary+dividerSize, size.Width, available-primary))
 		}
 	case d.nodes[0] != nil:
-		d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
+		d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	case d.nodes[1] != nil:
-		d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
+		d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	}
-}
-
-func (d *DockLayout) SetLayout(layout Layout) {
-}
-
-func (d *DockLayout) LayoutData() interface{} {
-	return nil
-}
-
-func (d *DockLayout) SetLayoutData(data interface{}) {
-}
-
-func (d *DockLayout) Sizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	return d.LayoutSizes(d, hint)
-}
-
-func (d *DockLayout) Border() Border {
-	return nil
-}
-
-func (d *DockLayout) ChildrenForLayout() []Layoutable {
-	return nil
 }

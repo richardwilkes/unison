@@ -19,11 +19,6 @@ var (
 	_ DockLayoutNode = &DockContainer{}
 )
 
-type TabCloser interface {
-	MayAttemptClose() bool
-	AttemptClose()
-}
-
 // Dockable represents a dockable Panel.
 type Dockable interface {
 	Paneler
@@ -33,6 +28,8 @@ type Dockable interface {
 	Title() string
 	// Tooltip returns the tooltip of this Dockable.
 	Tooltip() string
+	// Modified returns true if the dockable has been modified.
+	Modified() bool
 }
 
 // DockContainer holds one or more Dockable panels.
@@ -44,6 +41,7 @@ type DockContainer struct {
 	Background Ink
 }
 
+// NewDockContainer creates a new DockContainer.
 func NewDockContainer(dock *Dock, dockable Dockable) *DockContainer {
 	d := &DockContainer{
 		Dock:    dock,
@@ -59,6 +57,7 @@ func NewDockContainer(dock *Dock, dockable Dockable) *DockContainer {
 	return d
 }
 
+// Dockables returns the list of Dockables within this DockContainer, in tab order.
 func (d *DockContainer) Dockables() []Dockable {
 	children := d.content.Children()
 	dockables := make([]Dockable, 0, len(children))
@@ -70,18 +69,20 @@ func (d *DockContainer) Dockables() []Dockable {
 	return dockables
 }
 
+// CurrentDockableIndex returns the index of the frontmost Dockable within this DockContainer, or -1 if there are no
+// Dockables.
 func (d *DockContainer) CurrentDockableIndex() int {
 	return d.content.CurrentIndex()
 }
 
+// CurrentDockable returns the frontmost Dockable within this DockContainer. May return nil.
 func (d *DockContainer) CurrentDockable() Dockable {
 	return d.content.Current()
 }
 
 // SetCurrentDockable makes the provided dockable the current one.
 func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
-	current := d.CurrentDockable()
-	if dockable != current {
+	if d.CurrentDockable() != dockable {
 		for i, c := range d.content.Children() {
 			if c.Self == dockable {
 				d.content.SetCurrentIndex(i)
@@ -92,20 +93,24 @@ func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
 	}
 }
 
+// AcquireFocus will set the focus within the current Dockable of this DockContainer. If the focus is already within it,
+// nothing is changed.
 func (d *DockContainer) AcquireFocus() {
 	if wnd := d.Window(); wnd != nil {
-		if focus := wnd.Focus(); focus != nil {
-			current := d.CurrentDockable()
+		current := d.CurrentDockable()
+		focus := wnd.Focus()
+		if focus != nil {
 			for focus != nil && focus.Self != current {
 				focus = focus.Parent()
 			}
-			if focus == nil {
-				wnd.SetFocus(current)
-			}
+		}
+		if focus == nil {
+			wnd.SetFocus(current)
 		}
 	}
 }
 
+// UpdateTitle will cause the dock tab for the given Dockable to update itself.
 func (d *DockContainer) UpdateTitle(dockable Dockable) {
 	for i, c := range d.content.Children() {
 		if c.Self == dockable {
@@ -115,6 +120,8 @@ func (d *DockContainer) UpdateTitle(dockable Dockable) {
 	}
 }
 
+// FocusedDockContainerFor returns the DockContainer that holds the panel with the current focus in the given Window.
+// May return nil.
 func FocusedDockContainerFor(wnd *Window) *DockContainer {
 	if wnd != nil {
 		return DockContainerFor(wnd.Focus())
@@ -122,6 +129,7 @@ func FocusedDockContainerFor(wnd *Window) *DockContainer {
 	return nil
 }
 
+// DockContainerFor returns the DockContainer that holds the given Paneler in its hierarchy. May return nil.
 func DockContainerFor(paneler Paneler) *DockContainer {
 	if paneler != nil {
 		p := paneler.AsPanel().Parent()
@@ -135,6 +143,8 @@ func DockContainerFor(paneler Paneler) *DockContainer {
 	return nil
 }
 
+// Stack adds the Dockable to this DockContainer at the specified index. An out-of-bounds index will cause the Dockable
+// to be added at the end.
 func (d *DockContainer) Stack(dockable Dockable, index int) {
 	if dc := DockContainerFor(dockable); dc != nil {
 		if dc == d && len(d.content.Children()) == 1 {
@@ -169,34 +179,37 @@ func (d *DockContainer) AttemptClose(dockable Dockable) {
 // also removed from the Dock.
 func (d *DockContainer) Close(dockable Dockable) {
 	for i, c := range d.content.Children() {
-		if c.Self == dockable {
-			d.content.RemoveChild(dockable)
-			d.header.close(dockable)
-			children := d.content.Children()
-			if len(children) == 0 {
-				d.Dock.Restore()
-				if dl := d.Dock.layout.findLayout(d); dl != nil {
-					dl.Remove(d)
-				}
-				d.Dock.RemoveChild(d)
-				d.Dock.MarkForLayoutAndRedraw()
-				d.Dock = nil
-			} else {
-				if i > 0 {
-					i--
-				}
-				d.SetCurrentDockable(children[i].Self.(Dockable))
-			}
-			break
+		if c.Self != dockable {
+			continue
 		}
+		d.content.RemoveChild(dockable)
+		d.header.close(dockable)
+		children := d.content.Children()
+		if len(children) == 0 {
+			d.Dock.Restore()
+			if dl := d.Dock.layout.findLayout(d); dl != nil {
+				dl.Remove(d)
+			}
+			d.Dock.RemoveChild(d)
+			d.Dock.MarkForLayoutAndRedraw()
+			d.Dock = nil
+		} else {
+			if i > 0 {
+				i--
+			}
+			d.SetCurrentDockable(children[i].Self.(Dockable))
+		}
+		return
 	}
 }
 
+// PreferredSize implements DockLayoutNode.
 func (d *DockContainer) PreferredSize() geom32.Size {
 	_, pref, _ := d.LayoutSizes(d, geom32.Size{})
 	return pref
 }
 
+// LayoutSizes implements Layout.
 func (d *DockContainer) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
 	min, pref, max = d.header.Sizes(geom32.Size{Width: hint.Width})
 	min.Height = pref.Height
@@ -217,17 +230,10 @@ func (d *DockContainer) LayoutSizes(target Layoutable, hint geom32.Size) (min, p
 	return min, pref, max
 }
 
+// PerformLayout implements Layout.
 func (d *DockContainer) PerformLayout(target Layoutable) {
 	r := d.ContentRect(false)
 	_, pref, _ := d.header.Sizes(geom32.Size{Width: r.Width})
 	d.header.SetFrameRect(geom32.NewRect(r.X, r.Y, r.Width, pref.Height))
 	d.content.SetFrameRect(geom32.NewRect(r.X, r.Y+pref.Height, r.Width, mathf32.Max(r.Height-pref.Height, 0)))
-}
-
-func (d *DockContainer) Maximize() {
-	d.Dock.Maximize(d)
-}
-
-func (d *DockContainer) Restore() {
-	d.Dock.Restore()
 }
