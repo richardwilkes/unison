@@ -22,7 +22,7 @@ var _ Layout = &dockHeader{}
 type dockHeader struct {
 	Panel
 	owner                 *DockContainer
-	showTabsButton        *Button
+	overflowButton        *Button
 	maximizeRestoreButton *Button
 	dragInsertIndex       int
 	MinimumTabWidth       float32
@@ -33,7 +33,7 @@ type dockHeader struct {
 func newDockHeader(dc *DockContainer) *dockHeader {
 	d := &dockHeader{
 		owner:                 dc,
-		showTabsButton:        createDockHeaderButton(),
+		overflowButton:        createDockHeaderButton(),
 		maximizeRestoreButton: createDockHeaderButton(),
 		dragInsertIndex:       -1,
 		MinimumTabWidth:       50,
@@ -51,8 +51,8 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	for _, dockable := range dc.Dockables() {
 		d.AddChild(newDockTab(dockable))
 	}
-	d.showTabsButton.ClickCallback = d.showHiddenTabsList
-	d.AddChild(d.showTabsButton)
+	d.overflowButton.ClickCallback = d.handleOverflowPopup
+	d.AddChild(d.overflowButton)
 	d.AddChild(d.maximizeRestoreButton)
 	d.adjustToRestoredState()
 	return d
@@ -152,7 +152,7 @@ func (d *dockHeader) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 		}
 	}
 	for _, b := range buttons {
-		if b.Self != d.showTabsButton {
+		if b.Self != d.overflowButton {
 			_, size, _ := b.Sizes(geom32.Size{})
 			pref.Width += size.Width
 			pref.Height = mathf32.Max(pref.Height, size.Height)
@@ -182,11 +182,11 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 		extra -= tabSizes[i].Width
 	}
 	buttonSizes := make([]geom32.Size, len(buttons))
-	showTabsIndex := -1
+	overflowIndex := -1
 	for i, b := range buttons {
 		_, buttonSizes[i], _ = b.Sizes(geom32.Size{})
-		if b.Self == d.showTabsButton {
-			showTabsIndex = i
+		if b.Self == d.overflowButton {
+			overflowIndex = i
 		} else {
 			extra -= buttonSizes[i].Width
 		}
@@ -225,18 +225,18 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 			}
 		}
 		if remaining > 0 {
-			// Still not small enough... add the show button and start trimming out tabs
+			// Still not small enough... add the overflow button and start trimming out tabs
 			if len(tabs) > 1 {
-				remaining += buttonSizes[showTabsIndex].Width + d.TabGap
+				remaining += buttonSizes[overflowIndex].Width + d.TabGap
 				for i := len(tabs) - 1; i >= 0 && remaining > 0; i-- {
 					if i == current {
 						continue
 					}
-					remaining -= buttonSizes[showTabsIndex].Width
+					remaining -= buttonSizes[overflowIndex].Width
 					hidden[tabs[i]] = true
-					d.showTabsButton.Text = "»" + strconv.Itoa(len(hidden))
-					_, buttonSizes[showTabsIndex], _ = d.showTabsButton.Sizes(geom32.Size{})
-					remaining += buttonSizes[showTabsIndex].Width
+					d.overflowButton.Text = "»" + strconv.Itoa(len(hidden))
+					_, buttonSizes[overflowIndex], _ = d.overflowButton.Sizes(geom32.Size{})
+					remaining += buttonSizes[overflowIndex].Width
 					remaining -= tabSizes[i].Width + d.TabGap
 				}
 			}
@@ -264,7 +264,7 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 	}
 	x += extra
 	for i, b := range buttons {
-		if b.Self == d.showTabsButton && len(hidden) == 0 {
+		if b.Self == d.overflowButton && len(hidden) == 0 {
 			b.Hidden = true
 		} else {
 			b.Hidden = false
@@ -312,7 +312,7 @@ func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))
 }
 
-func (d *dockHeader) showHiddenTabsList() {
+func (d *dockHeader) handleOverflowPopup() {
 	tabs, _ := d.partition()
 	m := DefaultMenuFactory().NewMenu(PopupMenuTemporaryBaseID, "", nil)
 	defer m.Dispose()
@@ -323,5 +323,5 @@ func (d *dockHeader) showHiddenTabsList() {
 			}))
 		}
 	}
-	m.Popup(d.showTabsButton.RectToRoot(d.showTabsButton.ContentRect(true)), 0)
+	m.Popup(d.overflowButton.RectToRoot(d.overflowButton.ContentRect(true)), 0)
 }
