@@ -27,6 +27,7 @@ type DockLayoutNode interface {
 }
 
 type DockLayout struct {
+	dock       *Dock
 	parent     *DockLayout
 	nodes      [2]DockLayoutNode
 	frame      geom32.Rect
@@ -51,24 +52,6 @@ func (d *DockLayout) rootLayout() *DockLayout {
 		root = root.parent
 	}
 	return root
-}
-
-func (d *DockLayout) Dock() *Dock {
-	return d.rootLayout().dock()
-}
-
-func (d *DockLayout) dock() *Dock {
-	for _, node := range d.nodes {
-		switch c := node.(type) {
-		case *DockContainer:
-			return c.Dock
-		case *DockLayout:
-			if dock := c.dock(); dock != nil {
-				return dock
-			}
-		}
-	}
-	return nil
 }
 
 // FindLayout returns the DockLayout that contains the specified DockContainer, or nil if it is not present. Note that
@@ -165,6 +148,7 @@ func (d *DockLayout) dockWithin(dc *DockContainer, side Side) {
 
 func (d *DockLayout) pushDown() *DockLayout {
 	layout := &DockLayout{
+		dock:       d.dock,
 		parent:     d,
 		divider:    d.divider,
 		Horizontal: d.Horizontal,
@@ -187,6 +171,7 @@ func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode,
 			d.Horizontal = side.Horizontal()
 		} else {
 			layout := &DockLayout{
+				dock:       d.dock,
 				parent:     d,
 				divider:    -1,
 				Horizontal: side.Horizontal(),
@@ -276,7 +261,7 @@ func (d *DockLayout) DividerMaximum() float32 {
 		} else {
 			extent = d.frame.Height
 		}
-		extent -= DockDividerSize
+		extent -= d.dock.DockDividerSize()
 		if extent < 0 {
 			extent = 0
 		}
@@ -311,9 +296,7 @@ func (d *DockLayout) SetDividerPosition(pos float32) {
 	}
 	if d.divider != old && d.Full() {
 		d.PerformLayout(d)
-		if dock := d.Dock(); dock != nil {
-			dock.MarkForRedraw()
-		}
+		d.dock.MarkForRedraw()
 	}
 }
 
@@ -342,10 +325,10 @@ func (d *DockLayout) LayoutSizes(_ Layoutable, _ geom32.Size) (min, pref, max ge
 	if d.Full() {
 		if d.Horizontal {
 			pref.Width *= 2
-			pref.Width += DockDividerSize
+			pref.Width += d.dock.DockDividerSize()
 		} else {
 			pref.Height *= 2
-			pref.Height += DockDividerSize
+			pref.Height += d.dock.DockDividerSize()
 		}
 	}
 	return min, pref, MaxSize(pref)
@@ -360,17 +343,17 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 	d.frame = target.FrameRect()
 	size := d.frame.Size
 	size.SubtractInsets(insets)
-	dock := d.Dock()
 	switch {
-	case dock != nil && dock.MaximizedContainer != nil:
-		d.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = dc != dock.MaximizedContainer })
-		dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
+	case d.dock.MaximizedContainer != nil:
+		d.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = dc != d.dock.MaximizedContainer })
+		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
 	case d.Full():
 		available := size.Height
 		if d.Horizontal {
 			available = size.Width
 		}
-		available -= DockDividerSize
+		dividerSize := d.dock.DockDividerSize()
+		available -= dividerSize
 		if available < 0 {
 			available = 0
 		}
@@ -385,10 +368,10 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 		}
 		if d.Horizontal {
 			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, primary, size.Height))
-			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left+primary+DockDividerSize, d.frame.Y+insets.Top, available-primary, size.Height))
+			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left+primary+dividerSize, d.frame.Y+insets.Top, available-primary, size.Height))
 		} else {
 			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, primary))
-			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top+primary+DockDividerSize, size.Width, available-primary))
+			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top+primary+dividerSize, size.Width, available-primary))
 		}
 	case d.nodes[0] != nil:
 		d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))

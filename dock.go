@@ -14,14 +14,6 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
-const (
-	DockGripGap     = 1
-	DockGripWidth   = 4
-	DockGripHeight  = 2
-	DockGripLength  = DockGripHeight*5 + DockGripGap*4
-	DockDividerSize = DockGripWidth + 4
-)
-
 // Dock provides an area where Dockable panels can be displayed and rearranged.
 type Dock struct {
 	Panel
@@ -31,6 +23,11 @@ type Dock struct {
 	dragDockable               Dockable
 	dragOverNode               DockLayoutNode
 	dividerDragLayout          *DockLayout
+	DockGripCount              int
+	DockGripGap                float32
+	DockGripWidth              float32
+	DockGripHeight             float32
+	DockGripMargin             float32
 	dividerDragInitialPosition float32
 	dividerDragEventPosition   float32
 	dragSide                   Side
@@ -40,9 +37,17 @@ type Dock struct {
 // NewDock creates a new, empty, dock.
 func NewDock() *Dock {
 	d := &Dock{
-		layout: &DockLayout{divider: -1},
+		DockGripCount:  5,
+		DockGripGap:    1,
+		DockGripWidth:  4,
+		DockGripHeight: 2,
+		DockGripMargin: 2,
 	}
 	d.Self = d
+	d.layout = &DockLayout{
+		dock:    d,
+		divider: -1,
+	}
 	d.SetLayout(d.layout)
 	d.DrawCallback = d.DefaultDraw
 	d.DrawOverCallback = d.DefaultDrawOver
@@ -167,23 +172,35 @@ func (d *Dock) drawDockLayoutNode(canvas *Canvas, node DockLayoutNode, clip geom
 	}
 }
 
+func (d *Dock) DockGripLength() float32 {
+	return (d.DockGripHeight+d.DockGripGap)*float32(d.DockGripCount) - d.DockGripGap
+}
+
+func (d *Dock) DockDividerSize() float32 {
+	return d.DockGripWidth + d.DockGripMargin*2
+}
+
 func (d *Dock) drawHorizontalGripper(canvas *Canvas, node DockLayoutNode) {
+	gripLength := d.DockGripLength()
+	dividerSize := d.DockDividerSize()
 	frame := node.FrameRect()
-	x := frame.X - DockDividerSize + (DockDividerSize-DockGripWidth)/2
-	y := frame.Y + (frame.Height-DockGripLength)/2
+	x := frame.X - dividerSize + (dividerSize-d.DockGripWidth)/2
+	y := frame.Y + (frame.Height-gripLength)/2
 	paint := DividerColor.Paint(canvas, frame, Fill)
-	for yy := y; yy < y+DockGripLength; yy += DockGripHeight + DockGripGap {
-		canvas.DrawRect(geom32.NewRect(x, yy, DockGripWidth, DockGripHeight), paint)
+	for yy := y; yy < y+gripLength; yy += d.DockGripHeight + d.DockGripGap {
+		canvas.DrawRect(geom32.NewRect(x, yy, d.DockGripWidth, d.DockGripHeight), paint)
 	}
 }
 
 func (d *Dock) drawVerticalGripper(canvas *Canvas, node DockLayoutNode) {
+	gripLength := d.DockGripLength()
+	dividerSize := d.DockDividerSize()
 	frame := node.FrameRect()
-	x := frame.X + (frame.Width-DockGripLength)/2
-	y := frame.Y - DockDividerSize + (DockDividerSize-DockGripWidth)/2
+	x := frame.X + (frame.Width-gripLength)/2
+	y := frame.Y - dividerSize + (dividerSize-d.DockGripWidth)/2
 	paint := DividerColor.Paint(canvas, frame, Fill)
-	for xx := x; xx < x+DockGripLength; xx += DockGripHeight + DockGripGap {
-		canvas.DrawRect(geom32.NewRect(xx, y, DockGripHeight, DockGripWidth), paint)
+	for xx := x; xx < x+gripLength; xx += d.DockGripHeight + d.DockGripGap {
+		canvas.DrawRect(geom32.NewRect(xx, y, d.DockGripHeight, d.DockGripWidth), paint)
 	}
 }
 

@@ -19,19 +19,15 @@ import (
 
 var _ Layout = &dockHeader{}
 
-const (
-	MinimumTabWidth = 30
-	TabGap          = 4
-	TabInsertSize   = 3
-)
-
 type dockHeader struct {
 	Panel
 	owner                 *DockContainer
 	showTabsButton        *Button
 	maximizeRestoreButton *Button
-	hidden                map[*dockTab]bool
 	dragInsertIndex       int
+	MinimumTabWidth       float32
+	TabGap                float32
+	TabInsertSize         float32
 }
 
 func newDockHeader(dc *DockContainer) *dockHeader {
@@ -39,8 +35,10 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 		owner:                 dc,
 		showTabsButton:        NewButton(),
 		maximizeRestoreButton: NewButton(),
-		hidden:                make(map[*dockTab]bool),
 		dragInsertIndex:       -1,
+		MinimumTabWidth:       50,
+		TabGap:                4,
+		TabInsertSize:         3,
 	}
 	d.Self = d
 	d.DrawCallback = d.DefaultDraw
@@ -48,7 +46,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	d.DataDragExitCallback = d.DefaultDataDragExit
 	d.DataDragDropCallback = d.DefaultDataDrop
 	d.SetBorder(NewCompoundBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
-		NewEmptyBorder(geom32.NewHorizontalInsets(TabGap))))
+		NewEmptyBorder(geom32.NewHorizontalInsets(d.TabGap))))
 	d.SetLayout(d)
 	for _, dockable := range dc.Dockables() {
 		d.AddChild(newDockTab(dockable))
@@ -68,11 +66,11 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom32.Rect) {
 	gc.DrawRect(rect, BackgroundColor.Paint(gc, rect, Fill))
 	if d.dragInsertIndex >= 0 {
 		r := d.ContentRect(false)
-		r.Width = TabInsertSize
+		r.Width = d.TabInsertSize
 		tabs, _ := d.partition()
 		switch {
 		case d.dragInsertIndex < len(tabs):
-			r.X = tabs[d.dragInsertIndex].FrameRect().X - ((TabGap-TabInsertSize)/2 + TabInsertSize + 1)
+			r.X = tabs[d.dragInsertIndex].FrameRect().X - ((d.TabGap-d.TabInsertSize)/2 + d.TabInsertSize + 1)
 		default:
 			r.X = tabs[len(tabs)-1].FrameRect().Right()
 		}
@@ -160,7 +158,7 @@ func (d *dockHeader) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 	tabs, buttons := d.partition()
 	for i, dt := range tabs {
 		_, size, _ := dt.Sizes(geom32.Size{})
-		pref.Width += mathf32.Max(size.Width, MinimumTabWidth)
+		pref.Width += mathf32.Max(size.Width, d.MinimumTabWidth)
 		pref.Height = mathf32.Max(pref.Height, size.Height)
 		if i == 0 {
 			min.Width += size.Width
@@ -174,7 +172,7 @@ func (d *dockHeader) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 			min.Width += size.Width
 		}
 	}
-	gaps := float32((len(tabs) + len(buttons) - 2) * TabGap)
+	gaps := float32(len(tabs)+len(buttons)-2) * d.TabGap
 	min.Width += gaps
 	pref.Width += gaps
 	min.Height = pref.Height
@@ -187,14 +185,13 @@ func (d *dockHeader) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 }
 
 func (d *dockHeader) PerformLayout(target Layoutable) {
-	d.hidden = make(map[*dockTab]bool)
 	contentRect := d.ContentRect(false)
 	tabs, buttons := d.partition()
 	tabSizes := make([]geom32.Size, len(tabs))
 	extra := contentRect.Width
 	for i, dt := range tabs {
 		_, tabSizes[i], _ = dt.Sizes(geom32.Size{})
-		tabSizes[i].Width = mathf32.Max(tabSizes[i].Width, MinimumTabWidth)
+		tabSizes[i].Width = mathf32.Max(tabSizes[i].Width, d.MinimumTabWidth)
 		extra -= tabSizes[i].Width
 	}
 	buttonSizes := make([]geom32.Size, len(buttons))
@@ -207,7 +204,8 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 			extra -= buttonSizes[i].Width
 		}
 	}
-	extra -= float32((len(tabs) + len(buttons) - 2) * TabGap)
+	hidden := make(map[*dockTab]bool)
+	extra -= float32(len(tabs)+len(buttons)-2) * d.TabGap
 	if extra < 0 {
 		// Shrink the non-current tabs down
 		current := d.owner.CurrentDockableIndex()
@@ -217,20 +215,20 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 			fatTabs := 0
 			found = false
 			for i := range tabs {
-				if i != current && tabSizes[i].Width > MinimumTabWidth {
+				if i != current && tabSizes[i].Width > d.MinimumTabWidth {
 					fatTabs++
 				}
 			}
 			if fatTabs > 0 {
 				perTab := mathf32.Max(remaining/float32(fatTabs), 1)
 				for i := range tabs {
-					if i != current && tabSizes[i].Width > MinimumTabWidth {
+					if i != current && tabSizes[i].Width > d.MinimumTabWidth {
 						found = true
 						remaining -= perTab
 						tabSizes[i].Width -= perTab
-						if tabSizes[i].Width < MinimumTabWidth {
-							remaining += MinimumTabWidth - tabSizes[i].Width
-							tabSizes[i].Width = MinimumTabWidth
+						if tabSizes[i].Width < d.MinimumTabWidth {
+							remaining += d.MinimumTabWidth - tabSizes[i].Width
+							tabSizes[i].Width = d.MinimumTabWidth
 						}
 					}
 					if remaining <= 0 {
@@ -242,22 +240,21 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 		if remaining > 0 {
 			// Still not small enough... add the show button and start trimming out tabs
 			if len(tabs) > 1 {
-				remaining += buttonSizes[showTabsIndex].Width + TabGap
+				remaining += buttonSizes[showTabsIndex].Width + d.TabGap
 				for i := len(tabs) - 1; i >= 0 && remaining > 0; i-- {
 					if i != current {
 						remaining -= buttonSizes[showTabsIndex].Width
-						d.hidden[tabs[i]] = true
-						d.showTabsButton.Text = "»" + strconv.Itoa(len(d.hidden))
-						d.MarkForRedraw()
+						hidden[tabs[i]] = true
+						d.showTabsButton.Text = "»" + strconv.Itoa(len(hidden))
 						_, buttonSizes[showTabsIndex], _ = d.showTabsButton.Sizes(geom32.Size{})
 						remaining += buttonSizes[showTabsIndex].Width
-						remaining -= tabSizes[i].Width + TabGap
+						remaining -= tabSizes[i].Width + d.TabGap
 					}
 				}
 			}
 			if remaining > 0 {
 				// STILL not small enough... reduce the size of the current tab, too
-				tabSizes[current].Width = mathf32.Max(tabSizes[current].Width-remaining, MinimumTabWidth)
+				tabSizes[current].Width = mathf32.Max(tabSizes[current].Width-remaining, d.MinimumTabWidth)
 				remaining = 0
 			}
 			extra = -remaining
@@ -267,30 +264,26 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 	}
 	x := contentRect.X
 	for i, dt := range tabs {
-		if d.hidden[dt] {
-			dt.SetEnabled(false)
-			dt.frame.X = -32000
-			dt.frame.Y = -32000
+		if hidden[dt] {
+			dt.Hidden = true
 		} else {
-			dt.SetEnabled(true)
+			dt.Hidden = false
 			r := geom32.NewRect(x, contentRect.Y+(contentRect.Height-tabSizes[i].Height)/2, tabSizes[i].Width, tabSizes[i].Height)
 			r.Align()
 			dt.SetFrameRect(r)
-			x += tabSizes[i].Width + TabGap
+			x += tabSizes[i].Width + d.TabGap
 		}
 	}
 	x += extra
 	for i, b := range buttons {
-		if b.Self == d.showTabsButton && len(d.hidden) == 0 {
-			b.SetEnabled(false)
-			b.frame.X = -32000
-			b.frame.Y = -32000
+		if b.Self == d.showTabsButton && len(hidden) == 0 {
+			b.Hidden = true
 		} else {
-			b.SetEnabled(true)
+			b.Hidden = false
 			r := geom32.NewRect(x, contentRect.Y+(contentRect.Height-buttonSizes[i].Height)/2, buttonSizes[i].Width, buttonSizes[i].Height)
 			r.Align()
 			b.SetFrameRect(r)
-			x += buttonSizes[i].Width + TabGap
+			x += buttonSizes[i].Width + d.TabGap
 		}
 	}
 }

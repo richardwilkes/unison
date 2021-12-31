@@ -46,9 +46,6 @@ func newDockTab(dockable Dockable) *dockTab {
 	flex := &FlexLayout{
 		Columns:  1,
 		HSpacing: 4,
-		VSpacing: 4,
-		HAlign:   StartAlignment,
-		VAlign:   StartAlignment,
 	}
 	t.SetLayout(flex)
 	t.title.Text = t.fullTitle()
