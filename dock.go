@@ -296,6 +296,9 @@ func (d *Dock) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) boo
 }
 
 func (d *Dock) DefaultDataDragOver(where geom32.Point, data map[string]interface{}) bool {
+	if d.MaximizedContainer != nil {
+		return false
+	}
 	d.updateDragDockable(where, data)
 	return d.dragDockable != nil
 }

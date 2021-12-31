@@ -1255,6 +1255,7 @@ func (w *Window) dataDragOver() {
 				}
 				return
 			}
+			panel = panel.Parent()
 		}
 	}
 	if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
