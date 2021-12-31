@@ -10,9 +10,6 @@
 package unison
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
@@ -31,9 +28,12 @@ type Dock struct {
 	layout                     *DockLayout
 	MaximizedContainer         *DockContainer
 	BackgroundColor            Ink
+	dragDockable               Dockable
+	dragOverNode               DockLayoutNode
 	dividerDragLayout          *DockLayout
 	dividerDragInitialPosition float32
 	dividerDragEventPosition   float32
+	dragSide                   Side
 	dividerDragIsValid         bool
 }
 
@@ -51,6 +51,9 @@ func NewDock() *Dock {
 	d.MouseDownCallback = d.DefaultMouseDown
 	d.MouseDragCallback = d.DefaultMouseDrag
 	d.MouseUpCallback = d.DefaultMouseUp
+	d.DataDragOverCallback = d.DefaultDataDragOver
+	d.DataDragExitCallback = d.DefaultDataDragExit
+	d.DataDragDropCallback = d.DefaultDataDrop
 	return d
 }
 
@@ -72,16 +75,18 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 			var layouts []DockLayoutNode
 			dl, ok2 := target.(*DockLayout)
 			if ok2 {
-				for target != nil {
-					layouts = append(layouts, target)
-					target = dl.parent
+				for dl != nil {
+					layouts = append(layouts, dl)
+					dl = dl.parent
 				}
 				target = layouts[0]
-				for _, child := range dl.nodes {
-					if child != dc {
-						layouts = append(layouts, nil)
-						copy(layouts[2:], layouts[1:])
-						layouts[1] = child
+				if dl, ok2 = target.(*DockLayout); ok2 {
+					for _, child := range dl.nodes {
+						if child != dc {
+							layouts = append(layouts, nil)
+							copy(layouts[2:], layouts[1:])
+							layouts[1] = child
+						}
 					}
 				}
 			}
@@ -106,14 +111,36 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 	}
 }
 
-func (d *Dock) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (d *Dock) DefaultDraw(gc *Canvas, dirty geom32.Rect) {
 	rect := d.ContentRect(true)
-	canvas.DrawRect(rect, ChooseInk(d.BackgroundColor, BackgroundColor).Paint(canvas, rect, Fill))
+	gc.DrawRect(rect, ChooseInk(d.BackgroundColor, BackgroundColor).Paint(gc, rect, Fill))
 }
 
-func (d *Dock) DefaultDrawOver(canvas *Canvas, dirty geom32.Rect) {
+func (d *Dock) DefaultDrawOver(gc *Canvas, dirty geom32.Rect) {
 	if d.MaximizedContainer == nil {
-		d.drawDividers(canvas, d.layout, dirty)
+		d.drawDividers(gc, d.layout, dirty)
+	}
+	if d.dragDockable != nil && d.dragOverNode != nil {
+		r := d.dragOverNode.FrameRect()
+		switch d.dragSide {
+		case TopSide:
+			r.Height = mathf32.Max(r.Height/2, 1)
+		case LeftSide:
+			r.Width = mathf32.Max(r.Width/2, 1)
+		case BottomSide:
+			half := mathf32.Max(r.Height/2, 1)
+			r.Y += r.Height - half
+			r.Height = half
+		default:
+			half := mathf32.Max(r.Width/2, 1)
+			r.X += r.Width - half
+			r.Width = half
+		}
+		gc.DrawRect(r, DropAreaColor.GetColor().SetAlphaIntensity(0.25).Paint(gc, r, Fill))
+		r.InsetUniform(1)
+		p := DropAreaColor.Paint(gc, r, Stroke)
+		p.SetStrokeWidth(2)
+		gc.DrawRect(r, p)
 	}
 }
 
@@ -268,44 +295,49 @@ func (d *Dock) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) boo
 	return true
 }
 
-func (d *Dock) DebugDump() {
-	fmt.Println()
-	fmt.Println("Dock Debug Dump")
-	fmt.Print("---------------")
-	dumpNode(0, d.layout)
-	fmt.Println()
+func (d *Dock) DefaultDataDragOver(where geom32.Point, data map[string]interface{}) bool {
+	d.updateDragDockable(where, data)
+	return d.dragDockable != nil
 }
 
-func dumpNode(depth int, node DockLayoutNode) {
-	fmt.Println()
-	fmt.Print(strings.Repeat(".", depth*2))
-	switch n := node.(type) {
-	case *DockLayout:
-		fmt.Printf("Layout [x:%f y:%f w:%f h:%f]", n.frame.X, n.frame.Y, n.frame.Width, n.frame.Height)
-		if n.Horizontal {
-			fmt.Print(" Horizontal")
-		} else {
-			fmt.Print(" Vertical")
-		}
-		if n.divider >= 0 {
-			fmt.Printf(" Divider:%f", n.divider)
-		}
-		for _, c := range n.nodes {
-			if c != nil {
-				dumpNode(depth+1, c)
+func (d *Dock) updateDragDockable(where geom32.Point, data map[string]interface{}) {
+	d.dragDockable = nil
+	d.dragOverNode = nil
+	if t, ok := data[DockTabDragDataKey]; ok {
+		if tab, ok2 := t.(*dockTab); ok2 {
+			if d.dragOverNode = d.overNode(d.layout, where); d.dragOverNode != nil {
+				var extent float32
+				r := d.dragOverNode.FrameRect()
+				if where.X < r.CenterX() {
+					d.dragSide = LeftSide
+					extent = where.X - r.X
+				} else {
+					d.dragSide = RightSide
+					extent = r.Width - (where.X - r.X)
+				}
+				if where.Y < r.CenterY() {
+					if extent > where.Y-r.Y {
+						d.dragSide = TopSide
+					}
+				} else if extent > r.Height-(where.Y-r.Y) {
+					d.dragSide = BottomSide
+				}
+				d.dragDockable = tab.dockable
 			}
 		}
-	case *DockContainer:
-		fmt.Printf("Container [x:%f y:%f w:%f h:%f]", n.frame.X, n.frame.Y, n.frame.Width, n.frame.Height)
-		for i, d := range n.Dockables() {
-			fmt.Println()
-			fmt.Print(strings.Repeat(".", (depth+1)*2))
-			fmt.Printf("Dockable %d [%s]", i+1, d.Title())
-			if d == n.CurrentDockable() {
-				fmt.Print(" (Current)")
-			}
-		}
-	default:
-		fmt.Print("<unknown type>")
 	}
+}
+
+func (d *Dock) DefaultDataDragExit() {
+	d.dragDockable = nil
+	d.dragOverNode = nil
+}
+
+func (d *Dock) DefaultDataDrop(where geom32.Point, data map[string]interface{}) {
+	d.updateDragDockable(where, data)
+	if d.dragDockable != nil && d.dragOverNode != nil {
+		d.DockTo(d.dragDockable, d.dragOverNode, d.dragSide)
+	}
+	d.dragDockable = nil
+	d.dragOverNode = nil
 }

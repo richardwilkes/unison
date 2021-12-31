@@ -364,7 +364,7 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 	switch {
 	case dock != nil && dock.MaximizedContainer != nil:
 		d.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = dc != dock.MaximizedContainer })
-		dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(insets.Left, insets.Top, size.Width, size.Height))
+		dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
 	case d.Full():
 		available := size.Height
 		if d.Horizontal {
@@ -384,16 +384,16 @@ func (d *DockLayout) PerformLayout(target Layoutable) {
 			primary = d.divider
 		}
 		if d.Horizontal {
-			d.nodes[0].SetFrameRect(geom32.NewRect(insets.Left, insets.Top, primary, size.Height))
-			d.nodes[1].SetFrameRect(geom32.NewRect(insets.Left+primary+DockDividerSize, insets.Top, available-primary, size.Height))
+			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, primary, size.Height))
+			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left+primary+DockDividerSize, d.frame.Y+insets.Top, available-primary, size.Height))
 		} else {
-			d.nodes[0].SetFrameRect(geom32.NewRect(insets.Left, insets.Top, size.Width, primary))
-			d.nodes[1].SetFrameRect(geom32.NewRect(insets.Left, insets.Top+primary+DockDividerSize, size.Width, available-primary))
+			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, primary))
+			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top+primary+DockDividerSize, size.Width, available-primary))
 		}
 	case d.nodes[0] != nil:
-		d.nodes[0].SetFrameRect(geom32.NewRect(insets.Left, insets.Top, size.Width, size.Height))
+		d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
 	case d.nodes[1] != nil:
-		d.nodes[1].SetFrameRect(geom32.NewRect(insets.Left, insets.Top, size.Width, size.Height))
+		d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+insets.Left, d.frame.Y+insets.Top, size.Width, size.Height))
 	}
 }
 
