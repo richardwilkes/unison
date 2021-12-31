@@ -23,6 +23,7 @@ type RadioButton struct {
 	Font               FontProvider
 	ControlColor       Ink
 	OnControlColor     Ink
+	OnBackgroundColor  Ink
 	EdgeColor          Ink
 	PressedColor       Ink
 	OnPressedColor     Ink
@@ -125,8 +126,8 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, ChooseFont(r.Font, SystemFont), fg, r.Drawable, r.Side,
-			r.Gap, !r.Enabled())
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, ChooseFont(r.Font, SystemFont),
+			ChooseInk(r.OnBackgroundColor, OnBackgroundColor), r.Drawable, r.Side, r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += mathf32.Floor((rect.Height - circleSize) / 2)
