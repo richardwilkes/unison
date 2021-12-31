@@ -37,7 +37,7 @@ func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 	d.Self = d
 	d.DrawCallback = d.draw
 	d.SetSizer(func(_ geom32.Size) (min, pref, max geom32.Size) {
-		pref.Width = 50
+		pref.Width = 200
 		pref.Height = 100
 		return min, pref, unison.MaxSize(max)
 	})

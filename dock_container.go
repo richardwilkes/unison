@@ -218,9 +218,9 @@ func (d *DockContainer) LayoutSizes(target Layoutable, hint geom32.Size) (min, p
 		Width:  hint.Width,
 		Height: mathf32.Max(hint.Height-pref.Height, 0),
 	})
-	min.Width = mathf32.Max(min.Width, min2.Width)
-	pref.Width = mathf32.Max(pref.Width, pref2.Width)
-	max.Width = mathf32.Max(max.Width, max2.Width)
+	min.Width = min2.Width
+	pref.Width = pref2.Width
+	max.Width = max2.Width
 	min.Height += min2.Height
 	pref.Height += pref2.Height
 	max.Height += max2.Height
