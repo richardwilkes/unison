@@ -46,6 +46,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		HSpacing: 4,
 	}
 	t.SetLayout(flex)
+	t.title.Font = SystemFont
 	t.title.Text = t.fullTitle()
 	t.title.Drawable = t.dockable.TitleIcon()
 	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: MiddleAlignment})
@@ -53,7 +54,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	if _, ok := t.dockable.(TabCloser); ok {
 		t.button = NewButton()
 		t.button.SetFocusable(false)
-		fSize := ChooseFont(t.title.Font, LabelFont).Baseline()
+		fSize := ChooseFont(t.title.Font, SystemFont).Baseline()
 		t.button.Drawable = &DrawableSVG{
 			SVG:  CircledXSVG(),
 			Size: geom32.Size{Width: fSize, Height: fSize},

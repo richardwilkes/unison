@@ -33,8 +33,8 @@ type dockHeader struct {
 func newDockHeader(dc *DockContainer) *dockHeader {
 	d := &dockHeader{
 		owner:                 dc,
-		showTabsButton:        NewButton(),
-		maximizeRestoreButton: NewButton(),
+		showTabsButton:        createDockHeaderButton(),
+		maximizeRestoreButton: createDockHeaderButton(),
 		dragInsertIndex:       -1,
 		MinimumTabWidth:       50,
 		TabGap:                4,
@@ -51,14 +51,10 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	for _, dockable := range dc.Dockables() {
 		d.AddChild(newDockTab(dockable))
 	}
-	d.showTabsButton.Text = "»"
-	d.showTabsButton.HideBase = true
-	d.showTabsButton.SetFocusable(false)
-	d.maximizeRestoreButton.HideBase = true
-	d.maximizeRestoreButton.SetFocusable(false)
+	d.showTabsButton.ClickCallback = d.showHiddenTabsList
 	d.AddChild(d.showTabsButton)
-	d.adjustToRestoredState()
 	d.AddChild(d.maximizeRestoreButton)
+	d.adjustToRestoredState()
 	return d
 }
 
@@ -116,15 +112,17 @@ func (d *dockHeader) DefaultDataDrop(where geom32.Point, data map[string]interfa
 
 func (d *dockHeader) updateTitle(index int) {
 	if index >= 0 {
-		if children := d.Children(); index < len(children) {
-			if dt, ok := children[index].Self.(*dockTab); ok {
-				dt.updateTitle()
-			}
+		if tabs, _ := d.partition(); index < len(tabs) {
+			tabs[index].updateTitle()
 		}
 	}
 }
 
 func (d *dockHeader) addTab(dockable Dockable, index int) {
+	tabs, _ := d.partition()
+	if index < 0 || index >= len(tabs) {
+		index = len(tabs)
+	}
 	d.AddChildAtIndex(newDockTab(dockable), index)
 	d.MarkForLayoutAndRedraw()
 }
@@ -278,9 +276,25 @@ func (d *dockHeader) PerformLayout(target Layoutable) {
 	}
 }
 
+func (d *dockHeader) close(dockable Dockable) {
+	for i, c := range d.Children() {
+		if dt, ok := c.Self.(*dockTab); ok && dockable == dt.dockable {
+			d.RemoveChildAtIndex(i)
+			break
+		}
+	}
+}
+
+func createDockHeaderButton() *Button {
+	b := NewButton()
+	b.HideBase = true
+	b.SetFocusable(false)
+	return b
+}
+
 func (d *dockHeader) adjustToMaximizedState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Restore() }
-	fSize := ChooseFont(d.showTabsButton.Font, LabelFont).Baseline()
+	fSize := SystemFont.ResolvedFont().Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowRestoreSVG(),
 		Size: geom32.Size{Width: fSize, Height: fSize},
@@ -290,7 +304,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 
 func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Maximize(d.owner) }
-	fSize := ChooseFont(d.showTabsButton.Font, LabelFont).Baseline()
+	fSize := SystemFont.ResolvedFont().Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowMaximizeSVG(),
 		Size: geom32.Size{Width: fSize, Height: fSize},
@@ -298,11 +312,16 @@ func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))
 }
 
-func (d *dockHeader) close(dockable Dockable) {
-	for i, c := range d.Children() {
-		if dt, ok := c.Self.(*dockTab); ok && dockable == dt.dockable {
-			d.RemoveChildAtIndex(i)
-			break
+func (d *dockHeader) showHiddenTabsList() {
+	tabs, _ := d.partition()
+	m := DefaultMenuFactory().NewMenu(PopupMenuTemporaryBaseID, "", nil)
+	defer m.Dispose()
+	for i, tab := range tabs {
+		if tab.Hidden {
+			m.InsertItem(-1, m.Factory().NewItem(PopupMenuTemporaryBaseID+i+1, tab.dockable.Title(), KeyNone, NoModifiers, nil, func(item MenuItem) {
+				d.owner.SetCurrentDockable(tabs[item.ID()-(PopupMenuTemporaryBaseID+1)].dockable)
+			}))
 		}
 	}
+	m.Popup(d.showTabsButton.RectToRoot(d.showTabsButton.ContentRect(true)), 0)
 }
