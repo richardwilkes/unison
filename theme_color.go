@@ -60,7 +60,6 @@ var (
 	OnErrorColor             = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(221, 221, 221)}
 	WarningColor             = &ThemeColor{Light: RGB(224, 128, 0), Dark: RGB(192, 96, 0)}
 	OnWarningColor           = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(221, 221, 221)}
-	HintColor                = &ThemeColor{Light: RGB(128, 128, 128), Dark: RGB(64, 64, 64)}
 )
 
 // ThemeColor holds a pair of colors, one for light mode and one for dark mode.
