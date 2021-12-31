@@ -118,11 +118,13 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 	}
 }
 
+// DefaultDraw fills in the background.
 func (d *Dock) DefaultDraw(gc *Canvas, dirty geom32.Rect) {
 	rect := d.ContentRect(true)
 	gc.DrawRect(rect, ChooseInk(d.BackgroundColor, BackgroundColor).Paint(gc, rect, Fill))
 }
 
+// DefaultDrawOver draws the dividers and any drag markers.
 func (d *Dock) DefaultDrawOver(gc *Canvas, dirty geom32.Rect) {
 	if d.MaximizedContainer == nil {
 		d.drawDividers(gc, d.layout, dirty)
@@ -174,10 +176,12 @@ func (d *Dock) drawDockLayoutNode(canvas *Canvas, node DockLayoutNode, clip geom
 	}
 }
 
+// DockGripLength returns the length (running along the divider) of a divider's grip area.
 func (d *Dock) DockGripLength() float32 {
 	return (d.DockGripHeight+d.DockGripGap)*float32(d.DockGripCount) - d.DockGripGap
 }
 
+// DockDividerSize returns the size (running across the divider) of a divider.
 func (d *Dock) DockDividerSize() float32 {
 	return d.DockGripWidth + d.DockGripMargin*2
 }
@@ -206,6 +210,7 @@ func (d *Dock) drawVerticalGripper(canvas *Canvas, node DockLayoutNode) {
 	}
 }
 
+// Maximize the current Dockable.
 func (d *Dock) Maximize(dc *DockContainer) {
 	if d.MaximizedContainer != nil {
 		d.MaximizedContainer.header.adjustToRestoredState()
@@ -216,6 +221,7 @@ func (d *Dock) Maximize(dc *DockContainer) {
 	d.MarkForLayoutAndRedraw()
 }
 
+// Restore the current Dockable to its non-maximized state.
 func (d *Dock) Restore() {
 	if d.MaximizedContainer != nil {
 		d.layout.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = false })
@@ -225,10 +231,13 @@ func (d *Dock) Restore() {
 	}
 }
 
+// DefaultFocusChangeInHierarchy marks the dock for redraw whenever the focus changes within it so that the tabs get the
+// correct highlight state.
 func (d *Dock) DefaultFocusChangeInHierarchy(from, to *Panel) {
 	d.MarkForRedraw()
 }
 
+// DefaultUpdateCursor adjusts the cursor for any dividers it may be over.
 func (d *Dock) DefaultUpdateCursor(where geom32.Point) *Cursor {
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
@@ -266,6 +275,7 @@ func dockLayoutNodeContains(node DockLayoutNode, where geom32.Point) bool {
 	return false
 }
 
+// DefaultMouseDown provides the default mouse down handling.
 func (d *Dock) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
@@ -282,6 +292,7 @@ func (d *Dock) DefaultMouseDown(where geom32.Point, button, clickCount int, mod 
 	return false
 }
 
+// DefaultMouseDrag provides the default mouse drag handling.
 func (d *Dock) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
 	d.dragDivider(where)
 	return true
@@ -304,6 +315,7 @@ func (d *Dock) dragDivider(where geom32.Point) {
 	}
 }
 
+// DefaultMouseUp provides the default mouse up handling.
 func (d *Dock) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
 	if d.dividerDragLayout != nil {
 		if d.dividerDragIsValid {
@@ -314,6 +326,7 @@ func (d *Dock) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) boo
 	return true
 }
 
+// DefaultDataDragOver provides the default data drag over handling.
 func (d *Dock) DefaultDataDragOver(where geom32.Point, data map[string]interface{}) bool {
 	if d.MaximizedContainer != nil {
 		return false
@@ -322,6 +335,7 @@ func (d *Dock) DefaultDataDragOver(where geom32.Point, data map[string]interface
 	return d.dragDockable != nil
 }
 
+// DockableFromDragData attempts to extract a Dockable from the given key in the data.
 func DockableFromDragData(key string, data map[string]interface{}) Dockable {
 	if keyData, ok := data[key]; ok {
 		if dockable, ok2 := keyData.(Dockable); ok2 {
@@ -357,11 +371,13 @@ func (d *Dock) updateDragDockable(where geom32.Point, data map[string]interface{
 	}
 }
 
+// DefaultDataDragExit provides the default data drag exit handling.
 func (d *Dock) DefaultDataDragExit() {
 	d.dragDockable = nil
 	d.dragOverNode = nil
 }
 
+// DefaultDataDrop provides the default data drop handling.
 func (d *Dock) DefaultDataDrop(where geom32.Point, data map[string]interface{}) {
 	d.updateDragDockable(where, data)
 	if d.dragDockable != nil && d.dragOverNode != nil {
