@@ -17,11 +17,6 @@ import (
 
 var eventClass = objc.Get("NSEvent")
 
-// Event https://developer.apple.com/documentation/appkit/nsevent?language=objc
-type Event struct {
-	objc.Object
-}
-
 // DoubleClickInterval https://developer.apple.com/documentation/appkit/nsevent/1528384-doubleclickinterval?language=objc
 func DoubleClickInterval() time.Duration {
 	return time.Duration(eventClass.Send("doubleClickInterval").Float()*1000) * time.Millisecond
