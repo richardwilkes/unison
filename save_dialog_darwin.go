@@ -11,6 +11,7 @@ package unison
 
 import (
 	"net/url"
+	"runtime"
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -22,7 +23,13 @@ type macSaveDialog struct {
 }
 
 func platformNewSaveDialog() SaveDialog {
-	return &macSaveDialog{dialog: ns.NewSavePanel()}
+	d := &macSaveDialog{dialog: ns.NewSavePanel()}
+	runtime.SetFinalizer(d, func(obj *macSaveDialog) {
+		ReleaseOnUIThread(func() {
+			obj.dialog.Release()
+		})
+	})
+	return d
 }
 
 func (d *macSaveDialog) InitialDirectory() string {
@@ -43,15 +50,15 @@ func (d *macSaveDialog) SetInitialDirectory(dir string) {
 func (d *macSaveDialog) AllowedExtensions() []string {
 	allowed := d.dialog.AllowedFileTypes()
 	defer allowed.Release()
-	return ns.StringArrayToSlice(allowed)
+	return allowed.ArrayOfStringToStringSlice()
 }
 
 func (d *macSaveDialog) SetAllowedExtensions(types ...string) {
 	types = SanitizeExtensionList(types)
 	if len(types) != 0 {
-		d.dialog.SetAllowedFileTypes(ns.StringSliceToArray(types))
+		d.dialog.SetAllowedFileTypes(ns.NewArrayFromStringSlice(types))
 	} else {
-		d.dialog.SetAllowedFileTypes(ns.Array{})
+		d.dialog.SetAllowedFileTypes(0)
 	}
 }
 
@@ -70,5 +77,5 @@ func (d *macSaveDialog) RunModal() bool {
 	if active != nil && active.IsVisible() {
 		active.ToFront()
 	}
-	return result == 1
+	return result
 }

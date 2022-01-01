@@ -346,7 +346,8 @@ typedef enum {
     SK_COLOR_TYPE_R16G16_UNORM,       // pixel with a little endian uint16_t for red and green
     SK_COLOR_TYPE_R16G16B16A16_UNORM, // pixel with a little endian uint16_t for red, green, blue and alpha
 
-    SK_COLOR_TYPE_LAST = SK_COLOR_TYPE_R16G16B16A16_UNORM,
+    SK_COLOR_TYPE_SRGBA_8888,         // pixel with 8 bits for red, green, blue, alpha; in 32-bit word with conversion between sRGB and linear space
+    SK_COLOR_TYPE_LAST = SK_COLOR_TYPE_SRGBA_8888,
 } sk_color_type_t;
 
 typedef enum {
@@ -429,16 +430,6 @@ typedef struct {
     sk_filter_mode_t     filter;
     sk_mipmap_mode_t     mipmap;
 } sk_sampling_options_t;
-
-// ===== Types from include/core/SkFilterQuality.h =====
-
-typedef enum {
-    SK_FILTER_QUALITY_NONE,   // nearest-neighbor; fastest but lowest quality
-    SK_FILTER_QUALITY_LOW,    // bilerp
-    SK_FILTER_QUALITY_MEDIUM, // bilerp + mipmaps; good for down-scaling
-    SK_FILTER_QUALITY_HIGH,   // bicubic resampling; slowest but good quality
-    SK_FILTER_QUALITY_LAST = SK_FILTER_QUALITY_HIGH
-} sk_filter_quality_t;
 
 // ===== Types from include/core/SkTypeface.h =====
 

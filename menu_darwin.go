@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"github.com/progrium/macdriver/objc"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison/internal/ns"
 )
@@ -29,7 +28,7 @@ func (m *macMenu) Factory() MenuFactory {
 
 func (m *macMenu) IsSame(other Menu) bool {
 	if m2, ok := other.(*macMenu); ok {
-		return m.menu.Equals(m2.menu)
+		return m.menu == m2.menu
 	}
 	return false
 }
@@ -112,13 +111,13 @@ func (m *macMenu) insertMenu(atIndex int, subMenu *macMenu) {
 	case AppMenuID:
 		if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
 			if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
-				ns.App().SetServicesMenu(servicesMenu.(*macMenu).menu)
+				ns.SetServicesMenu(servicesMenu.(*macMenu).menu)
 			}
 		}
 	case WindowMenuID:
-		ns.App().SetWindowsMenu(subMenu.menu)
+		ns.SetWindowsMenu(subMenu.menu)
 	case HelpMenuID:
-		ns.App().SetHelpMenu(subMenu.menu)
+		ns.SetHelpMenu(subMenu.menu)
 	}
 }
 
@@ -144,18 +143,12 @@ func (m *macMenu) Popup(where geom32.Rect, itemIndex int) {
 	w := ActiveWindow()
 	if w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {
-			view := ns.Window{Object: objc.ObjectPtr(uintptr(w.wnd.GetCocoaWindow()))}.ContentView()
+			wnd := ns.Window(w.wnd.GetCocoaWindow())
+			view := wnd.ContentView()
 			frame := view.Frame()
 			where.X += 8
-			where.Y = float32(frame.Size.Height) - where.Bottom()
-			cell := ns.NewPopupButtonCell("", false)
-			cell.SetAutoEnablesItems(false)
-			cell.SetAltersStateOfSelectedItem(false)
-			cell.SetMenu(m.menu)
-			cell.SelectItem(mi.(*macMenuItem).item)
-			cell.PerformClickWithFrameInView(ns.MakeRect(float64(where.X), float64(where.Y), float64(where.Width),
-				float64(where.Height)), view)
-			cell.Release()
+			where.Y = frame.Height - where.Bottom()
+			m.menu.Popup(wnd, m.menu, m.menu.ItemAtIndex(itemIndex), where)
 		}
 	}
 }
