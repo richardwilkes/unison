@@ -22,9 +22,9 @@ func platformAddAppMenuEntries(m Menu) {
 	m.InsertMenu(-1, m.Factory().NewMenu(ServicesMenuID, i18n.Text("Services"), nil))
 	m.InsertSeparator(-1, false)
 	m.InsertItem(-1, m.Factory().NewItem(HideItemID, fmt.Sprintf(i18n.Text("Hide %s"), cmdline.AppName), KeyH,
-		OSMenuCmdModifier(), nil, func(MenuItem) { ns.CurrentApplication().Hide() }))
+		OSMenuCmdModifier(), nil, func(MenuItem) { ns.HideApplication() }))
 	m.InsertItem(-1, m.Factory().NewItem(HideOthersItemID, i18n.Text("Hide Others"), KeyH,
-		OptionModifier|OSMenuCmdModifier(), nil, func(MenuItem) { ns.App().HideOtherApplications() }))
+		OptionModifier|OSMenuCmdModifier(), nil, func(MenuItem) { ns.HideOtherApplications() }))
 	m.InsertItem(-1, m.Factory().NewItem(ShowAllItemID, i18n.Text("Show All"), KeyNone, NoModifiers, nil,
-		func(MenuItem) { ns.App().UnhideAllApplications() }))
+		func(MenuItem) { ns.UnhideAllApplications() }))
 }

@@ -21,9 +21,7 @@ type macMenuItem struct {
 }
 
 func newMacMenuItemForSubMenu(f *macMenuFactory, subMenu *macMenu) ns.MenuItem {
-	mi := ns.NewMenuItem(subMenu.Title(), f.handleMenuItemSelector, "")
-	mi.SetTag(subMenu.id)
-	mi.SetTarget(f.menuItemDelegate)
+	mi := ns.NewMenuItem(subMenu.id, subMenu.Title(), "", 0, nil, nil)
 	mi.SetSubMenu(subMenu.menu)
 	return mi
 }
@@ -38,14 +36,14 @@ func (mi *macMenuItem) ID() int {
 
 func (mi *macMenuItem) IsSame(other MenuItem) bool {
 	if mi2, ok := other.(*macMenuItem); ok {
-		return mi.item.Equals(mi2.item)
+		return mi.item == mi2.item
 	}
 	return false
 }
 
 func (mi *macMenuItem) Menu() Menu {
 	m := mi.item.Menu()
-	if m.Pointer() == 0 {
+	if m == 0 {
 		return nil
 	}
 	return &macMenu{
@@ -81,7 +79,7 @@ func (mi *macMenuItem) SetTitle(title string) {
 
 func (mi *macMenuItem) SubMenu() Menu {
 	subMenu := mi.item.SubMenu()
-	if subMenu.Pointer() == 0 {
+	if subMenu == 0 {
 		return nil
 	}
 	return &macMenu{

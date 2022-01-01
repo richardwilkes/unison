@@ -10,7 +10,9 @@
 package unison
 
 import (
+	"fmt"
 	"net/url"
+	"runtime"
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -22,7 +24,14 @@ type macOpenDialog struct {
 }
 
 func platformNewOpenDialog() OpenDialog {
-	return &macOpenDialog{dialog: ns.NewOpenPanel()}
+	d := &macOpenDialog{dialog: ns.NewOpenPanel()}
+	runtime.SetFinalizer(d, func(obj *macOpenDialog) {
+		ReleaseOnUIThread(func() {
+			fmt.Println("release")
+			obj.dialog.Release()
+		})
+	})
+	return d
 }
 
 func (d *macOpenDialog) InitialDirectory() string {
@@ -43,15 +52,15 @@ func (d *macOpenDialog) SetInitialDirectory(dir string) {
 func (d *macOpenDialog) AllowedExtensions() []string {
 	allowed := d.dialog.AllowedFileTypes()
 	defer allowed.Release()
-	return ns.StringArrayToSlice(allowed)
+	return allowed.ArrayOfStringToStringSlice()
 }
 
 func (d *macOpenDialog) SetAllowedExtensions(types ...string) {
 	types = SanitizeExtensionList(types)
 	if len(types) != 0 {
-		d.dialog.SetAllowedFileTypes(ns.StringSliceToArray(types))
+		d.dialog.SetAllowedFileTypes(ns.NewArrayFromStringSlice(types))
 	} else {
-		d.dialog.SetAllowedFileTypes(ns.Array{})
+		d.dialog.SetAllowedFileTypes(0)
 	}
 }
 
@@ -96,7 +105,7 @@ func (d *macOpenDialog) Path() string {
 }
 
 func (d *macOpenDialog) Paths() []string {
-	return ns.URLArrayToStringSlice(d.dialog.URLs())
+	return d.dialog.URLs().ArrayOfURLToStringSlice()
 }
 
 func (d *macOpenDialog) RunModal() bool {
@@ -105,5 +114,5 @@ func (d *macOpenDialog) RunModal() bool {
 	if active != nil && active.IsVisible() {
 		active.ToFront()
 	}
-	return result == 1
+	return result
 }

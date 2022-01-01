@@ -10,53 +10,18 @@
 package unison
 
 import (
-	"strings"
 	"time"
 
-	"github.com/progrium/macdriver/objc"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
 func platformEarlyInit() {
-	if openURLsCallback != nil {
-		appDelegate := ns.App().GetDelegate()
-		cls := objc.NewClass("UnisonAppDelegate", "NSObject")
-		cls.AddMethod("applicationShouldTerminate:", func(_, p1 objc.Object) uint {
-			return uint(appDelegate.Send("applicationShouldTerminte:", p1).Uint())
-		})
-		cls.AddMethod("applicationDidChangeScreenParameters:", func(_, p1 objc.Object) {
-			appDelegate.Send("applicationDidChangeScreenParameters:", p1)
-		})
-		cls.AddMethod("applicationWillFinishLaunching:", func(_, p1 objc.Object) {
-			appDelegate.Send("applicationWillFinishLaunching:", p1)
-		})
-		cls.AddMethod("applicationDidFinishLaunching:", func(_, p1 objc.Object) {
-			appDelegate.Send("applicationDidFinishLaunching:", p1)
-		})
-		cls.AddMethod("applicationDidHide:", func(_, p1 objc.Object) {
-			appDelegate.Send("applicationDidHide:", p1)
-		})
-		// All of the methods above this point are just pass-throughs to glfw. If glfw adds more methods, corresponding
-		// additions should be made here.
-		cls.AddMethod("application:openURLs:", func(_, app, urls objc.Object) {
-			if data := ns.URLArrayToStringSlice(ns.Array{Object: urls}); len(data) != 0 {
-				openURLsCallback(data)
-			}
-		})
-		ns.App().SetDelegate(cls.Alloc().Init())
-	}
+	ns.InstallAppDelegate(openURLsCallback)
 }
 
 func platformLateInit() {
-	cls := objc.NewClass("ThemeDelegate", "NSObject")
-	cls.AddMethod("themeChanged:", func(objc.Object) { themeChanged() })
-	delegate := cls.Alloc().Init()
-	def := ns.DefaultCenter()
-	selector := objc.Sel("themeChanged:")
-	def.AddObserver(delegate, selector, "AppleInterfaceThemeChangedNotification")
-	def.AddObserver(delegate, selector, "AppleColorPreferencesChangedNotification")
-
-	ns.App().SetActivationPolicy(ns.ActivationPolicyRegular)
+	ns.InstallSystemThemeChangedCallback(themeChanged)
+	ns.SetActivationPolicy(ns.ActivationPolicyRegular)
 }
 
 func platformBeep() {
@@ -68,7 +33,7 @@ func platformIsDarkModeTrackingPossible() bool {
 }
 
 func platformIsDarkModeEnabled() bool {
-	return strings.Contains(strings.ToLower(ns.StandardUserDefaults().StringForKey("AppleInterfaceStyle")), "dark")
+	return ns.IsDarkModeEnabled()
 }
 
 func platformDoubleClickInterval() time.Duration {

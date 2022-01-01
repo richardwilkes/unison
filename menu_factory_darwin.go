@@ -10,58 +10,22 @@
 package unison
 
 import (
-	"github.com/progrium/macdriver/objc"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
 type macMenuFactory struct {
-	bar                    *macMenu
-	menuDelegate           objc.Object
-	menuUpdaterMap         map[uintptr]func(Menu)
-	menuItemDelegate       objc.Object
-	menuItemValidatorMap   map[int]func(MenuItem) bool
-	menuItemHandlerMap     map[int]func(MenuItem)
-	handleMenuItemSelector objc.Selector
+	bar *macMenu
 }
 
 func platformNewDefaultMenuFactory() MenuFactory {
-	f := &macMenuFactory{
-		menuUpdaterMap:         make(map[uintptr]func(Menu)),
-		menuItemValidatorMap:   make(map[int]func(MenuItem) bool),
-		menuItemHandlerMap:     make(map[int]func(MenuItem)),
-		handleMenuItemSelector: objc.Sel("handleMenuItem:"),
-	}
-	cls := objc.NewClass("MenuDelegate", "NSObject")
-	cls.AddMethod("menuNeedsUpdate:", func(_, obj objc.Object) {
-		m := ns.Menu{Object: obj}
-		if updater, ok := f.menuUpdaterMap[m.Pointer()]; ok {
-			updater(&macMenu{factory: f, menu: m})
-		}
-	})
-	f.menuDelegate = cls.Alloc().Init()
-	cls = objc.NewClass("MenuItemDelegate", "NSObject")
-	cls.AddMethod("validateMenuItem:", func(_, obj objc.Object) bool {
-		mi := ns.MenuItem{Object: obj}
-		if validator, ok := f.menuItemValidatorMap[mi.Tag()]; ok {
-			return validator(&macMenuItem{factory: f, item: mi})
-		}
-		return true
-	})
-	cls.AddMethod("handleMenuItem:", func(_, obj objc.Object) {
-		mi := ns.MenuItem{Object: obj}
-		if handler, ok := f.menuItemHandlerMap[mi.Tag()]; ok {
-			handler(&macMenuItem{factory: f, item: mi})
-		}
-	})
-	f.menuItemDelegate = cls.Alloc().Init()
-	return f
+	return &macMenuFactory{}
 }
 
 func (f *macMenuFactory) BarForWindow(window *Window, initializer func(Menu)) Menu {
 	if f.bar == nil {
 		f.bar = f.newMenu(RootMenuID, "", nil)
 		initializer(f.bar)
-		InvokeTask(func() { ns.App().SetMainMenu(f.bar.menu) })
+		InvokeTask(func() { ns.SetMainMenu(f.bar.menu) })
 	}
 	return f.bar
 }
@@ -75,11 +39,13 @@ func (f *macMenuFactory) NewMenu(id int, title string, updater func(Menu)) Menu 
 }
 
 func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macMenu {
-	m := ns.NewMenu(title)
-	m.SetDelegate(f.menuDelegate)
+	var u func(ns.Menu)
 	if updater != nil {
-		f.menuUpdaterMap[m.Pointer()] = updater
+		u = func(m ns.Menu) {
+			updater(&macMenu{factory: f, menu: m})
+		}
 	}
+	m := ns.NewMenu(title, u)
 	return &macMenu{
 		factory: f,
 		id:      id,
@@ -88,8 +54,6 @@ func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macM
 }
 
 func (f *macMenuFactory) NewItem(id int, title string, keyCode KeyCode, keyModifiers Modifiers, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
-	mi := ns.NewMenuItem(title, f.handleMenuItemSelector, macKeyCodeToMenuEquivalentMap[keyCode])
-	mi.SetTag(id)
 	var mods ns.EventModifierFlags
 	if keyModifiers.ShiftDown() {
 		mods |= ns.EventModifierFlagShift
@@ -106,18 +70,19 @@ func (f *macMenuFactory) NewItem(id int, title string, keyCode KeyCode, keyModif
 	if keyModifiers.CapsLockDown() {
 		mods |= ns.EventModifierFlagCapsLock
 	}
-	mi.SetKeyEquivalentModifierMask(mods)
-	mi.SetTarget(f.menuItemDelegate)
+	var v func(ns.MenuItem) bool
 	if validator != nil {
-		f.menuItemValidatorMap[id] = validator
-	} else {
-		delete(f.menuItemValidatorMap, id)
+		v = func(mi ns.MenuItem) bool {
+			return validator(&macMenuItem{factory: f, item: mi})
+		}
 	}
+	var h func(ns.MenuItem)
 	if handler != nil {
-		f.menuItemHandlerMap[id] = handler
-	} else {
-		delete(f.menuItemHandlerMap, id)
+		h = func(mi ns.MenuItem) {
+			handler(&macMenuItem{factory: f, item: mi})
+		}
 	}
+	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyCode], mods, v, h)
 	return &macMenuItem{
 		factory: f,
 		item:    mi,
