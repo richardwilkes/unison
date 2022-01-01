@@ -13,7 +13,9 @@ package skia
 
 /*
 #cgo CFLAGS: -I${SRCDIR}
-#cgo darwin LDFLAGS: -L${SRCDIR} -lskia_darwin -lc++ -framework Cocoa -framework Metal
+#cgo darwin LDFLAGS: -L${SRCDIR} -lc++ -framework Cocoa -framework Metal
+#cgo darwin,amd64 LDFLAGS: -lskia_darwin_amd64
+#cgo darwin,arm64 LDFLAGS: -lskia_darwin_arm64
 #cgo linux LDFLAGS: -L${SRCDIR} -lskia_linux -lfontconfig -lfreetype -lGL -ldl -lm -lstdc++
 
 #include <stdlib.h>
