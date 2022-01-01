@@ -23,15 +23,6 @@ const (
 	ActivationPolicyProhibited
 )
 
-// https://developer.apple.com/documentation/appkit/nsmodalresponse
-const (
-	ModalResponseCancel   = 0
-	ModalResponseOK       = 1
-	ModalResponseStop     = -1000
-	ModalResponseAbort    = -1001
-	ModalResponseContinue = -1002
-)
-
 var applicationClass = objc.Get("NSApplication")
 
 // Application https://developer.apple.com/documentation/appkit/nsapplication?language=objc
@@ -87,14 +78,4 @@ func (a Application) SetWindowsMenu(menu Menu) {
 // SetHelpMenu https://developer.apple.com/documentation/appkit/nsapplication/1428644-helpmenu?language=objc
 func (a Application) SetHelpMenu(menu Menu) {
 	a.Send("setHelpMenu:", menu)
-}
-
-// KeyWindow https://developer.apple.com/documentation/appkit/nsapplication/1428406-keywindow?language=objc
-func (a Application) KeyWindow() Window {
-	return Window{Object: a.Send("keyWindow")}
-}
-
-// MainWindow https://developer.apple.com/documentation/appkit/nsapplication/1428723-mainwindow?language=objc
-func (a Application) MainWindow() Window {
-	return Window{Object: a.Send("mainWindow")}
 }

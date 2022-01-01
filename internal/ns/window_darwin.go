@@ -20,10 +20,3 @@ type Window struct {
 func (w Window) ContentView() View {
 	return View{Object: w.Send("contentView")}
 }
-
-// Frame https://developer.apple.com/documentation/appkit/nswindow/1419697-frame?language=objc
-func (w Window) Frame() Rect {
-	var frame Rect
-	w.Send("frame", &frame)
-	return frame
-}

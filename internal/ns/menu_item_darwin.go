@@ -23,9 +23,6 @@ const (
 	EventModifierFlagControl
 	EventModifierFlagOption
 	EventModifierFlagCommand
-	EventModifierFlagNumericPad
-	EventModifierFlagHelp
-	EventModifierFlagFunction
 )
 
 // ControlStateValue https://developer.apple.com/documentation/appkit/nscontrolstatevalue?language=objc

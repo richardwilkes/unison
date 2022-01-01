@@ -70,5 +70,5 @@ func (d *macSaveDialog) RunModal() bool {
 	if active != nil && active.IsVisible() {
 		active.ToFront()
 	}
-	return result == ns.ModalResponseOK
+	return result == 1
 }

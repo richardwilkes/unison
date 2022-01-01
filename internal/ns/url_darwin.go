@@ -18,13 +18,6 @@ type URL struct {
 	objc.Object
 }
 
-// NewURL https://developer.apple.com/documentation/foundation/nsurl/1572047-urlwithstring?language=objc
-func NewURL(str string) URL {
-	s := StringFromString(str)
-	defer s.Release()
-	return URL{Object: urlClass.Send("URLWithString:", s)}
-}
-
 // NewFileURL https://developer.apple.com/documentation/foundation/nsurl/1414650-fileurlwithpath?language=objc
 func NewFileURL(str string) URL {
 	s := StringFromString(str)
