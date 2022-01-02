@@ -11,7 +11,6 @@ package unison
 
 import (
 	"net/url"
-	"runtime"
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -23,13 +22,7 @@ type macSaveDialog struct {
 }
 
 func platformNewSaveDialog() SaveDialog {
-	d := &macSaveDialog{dialog: ns.NewSavePanel()}
-	runtime.SetFinalizer(d, func(obj *macSaveDialog) {
-		ReleaseOnUIThread(func() {
-			obj.dialog.Release()
-		})
-	})
-	return d
+	return &macSaveDialog{dialog: ns.NewSavePanel()}
 }
 
 func (d *macSaveDialog) InitialDirectory() string {

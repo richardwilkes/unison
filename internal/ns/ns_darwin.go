@@ -575,10 +575,6 @@ func (p OpenPanel) RunModal() bool {
 	return bool(C.openPanelRunModal(C.NSOpenPanelRef(p)))
 }
 
-func (p OpenPanel) Release() {
-	C.CFRelease(C.CFTypeRef(p))
-}
-
 type SavePanel C.NSSavePanelRef
 
 func NewSavePanel() SavePanel {
@@ -607,10 +603,6 @@ func (p SavePanel) URL() URL {
 
 func (p SavePanel) RunModal() bool {
 	return bool(C.savePanelRunModal(C.NSSavePanelRef(p)))
-}
-
-func (p SavePanel) Release() {
-	C.CFRelease(C.CFTypeRef(p))
 }
 
 type Window C.NSWindowRef

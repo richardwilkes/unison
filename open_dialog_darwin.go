@@ -10,9 +10,7 @@
 package unison
 
 import (
-	"fmt"
 	"net/url"
-	"runtime"
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -24,14 +22,7 @@ type macOpenDialog struct {
 }
 
 func platformNewOpenDialog() OpenDialog {
-	d := &macOpenDialog{dialog: ns.NewOpenPanel()}
-	runtime.SetFinalizer(d, func(obj *macOpenDialog) {
-		ReleaseOnUIThread(func() {
-			fmt.Println("release")
-			obj.dialog.Release()
-		})
-	})
-	return d
+	return &macOpenDialog{dialog: ns.NewOpenPanel()}
 }
 
 func (d *macOpenDialog) InitialDirectory() string {
