@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -19,10 +20,12 @@ import (
 )
 
 var (
-	nameToColor               = make(map[string]Color)
-	colorToName               = make(map[Color]string)
-	_           Ink           = Color(0)
-	_           ColorProvider = Color(0)
+	// ErrColorDecode is the sentinel error returned by the ColorDecode function on failure.
+	ErrColorDecode               = errors.New("invalid color string")
+	nameToColor                  = make(map[string]Color)
+	colorToName                  = make(map[Color]string)
+	_              Ink           = Color(0)
+	_              ColorProvider = Color(0)
 )
 
 // ColorProvider allows for different types of objects that hold a color to be used interchangeably.
@@ -83,6 +86,12 @@ func HSBA(hue, saturation, brightness, alpha float32) Color {
 	}
 }
 
+// MustColorDecode is the same as ColorDecode(), but returns Black if an error occurs.
+func MustColorDecode(buffer string) Color {
+	c, _ := ColorDecode(buffer) //nolint:errcheck // Intentional dropping of the error
+	return c
+}
+
 // ColorDecode creates a Color from a string. The string may be in any of the standard CSS formats:
 //
 // - CSS predefined color name, e.g. "Yellow"
@@ -92,47 +101,135 @@ func HSBA(hue, saturation, brightness, alpha float32) Color {
 // - CSS long hexadecimal colors, e.g. "#FFFF00"
 // - CCS hsl(), e.g. "hsl(120, 100%, 50%)"
 // - CSS hsla(), e.g. "hsla(120, 100%, 50%, 0.3)"
-func ColorDecode(buffer string) Color {
+func ColorDecode(buffer string) (Color, error) {
 	buffer = strings.ToLower(strings.TrimSpace(buffer))
 	if color, ok := nameToColor[buffer]; ok {
-		return color
+		return color, nil
 	}
 	switch {
 	case strings.HasPrefix(buffer, "#"):
 		buffer = buffer[1:]
 		switch len(buffer) {
 		case 3:
-			return RGB(extractChannel(buffer[0:1]+buffer[0:1], 16), extractChannel(buffer[1:2]+buffer[1:2], 16),
-				extractChannel(buffer[2:3]+buffer[2:3], 16))
+			red, err := strconv.ParseInt(buffer[0:1], 16, 64)
+			if err != nil {
+				return 0, ErrColorDecode
+			}
+			var green int64
+			if green, err = strconv.ParseInt(buffer[1:2], 16, 64); err != nil {
+				return 0, ErrColorDecode
+			}
+			var blue int64
+			if blue, err = strconv.ParseInt(buffer[2:3], 16, 64); err != nil {
+				return 0, ErrColorDecode
+			}
+			return RGB(int((red<<4)|red), int((green<<4)|green), int((blue<<4)|blue)), nil
 		case 6:
-			return RGB(extractChannel(buffer[0:2], 16), extractChannel(buffer[2:4], 16),
-				extractChannel(buffer[4:6], 16))
+			red, err := strconv.ParseInt(strings.TrimSpace(buffer[0:2]), 16, 64)
+			if err != nil {
+				return 0, ErrColorDecode
+			}
+			var green int64
+			if green, err = strconv.ParseInt(strings.TrimSpace(buffer[2:4]), 16, 64); err != nil {
+				return 0, ErrColorDecode
+			}
+			var blue int64
+			if blue, err = strconv.ParseInt(strings.TrimSpace(buffer[4:6]), 16, 64); err != nil {
+				return 0, ErrColorDecode
+			}
+			return RGB(int(red), int(green), int(blue)), nil
 		}
 	case strings.HasPrefix(buffer, "rgb(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[4:len(buffer)-1]), ",", 4)
 		if len(parts) == 3 {
-			return RGB(extractChannel(parts[0], 10), extractChannel(parts[1], 10), extractChannel(parts[2], 10))
+			red, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+			if err != nil || red < 0 || red > 255 {
+				return 0, ErrColorDecode
+			}
+			var green int
+			if green, err = strconv.Atoi(strings.TrimSpace(parts[1])); err != nil || green < 0 || green > 255 {
+				return 0, ErrColorDecode
+			}
+			var blue int
+			if blue, err = strconv.Atoi(strings.TrimSpace(parts[2])); err != nil || blue < 0 || blue > 255 {
+				return 0, ErrColorDecode
+			}
+			return RGB(red, green, blue), nil
 		}
 	case strings.HasPrefix(buffer, "rgba(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[5:len(buffer)-1]), ",", 5)
 		if len(parts) == 4 {
-			return ARGB(extractAlpha(parts[3]), extractChannel(parts[0], 10), extractChannel(parts[1], 10),
-				extractChannel(parts[2], 10))
+			red, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+			if err != nil || red < 0 || red > 255 {
+				return 0, ErrColorDecode
+			}
+			var green int
+			if green, err = strconv.Atoi(strings.TrimSpace(parts[1])); err != nil || green < 0 || green > 255 {
+				return 0, ErrColorDecode
+			}
+			var blue int
+			if blue, err = strconv.Atoi(strings.TrimSpace(parts[2])); err != nil || blue < 0 || blue > 255 {
+				return 0, ErrColorDecode
+			}
+			var alpha float64
+			if alpha, err = strconv.ParseFloat(strings.TrimSpace(parts[3]), 32); err != nil || alpha < 0 || alpha > 1 {
+				return 0, ErrColorDecode
+			}
+			return ARGB(float32(alpha), red, green, blue), nil
 		}
 	case strings.HasPrefix(buffer, "hsl(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[4:len(buffer)-1]), ",", 4)
 		if len(parts) == 3 {
-			return HSB(float32(extractChannel(parts[0], 10))/360, extractPercentage(parts[1]),
-				extractPercentage(parts[2]))
+			hue, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+			if err != nil || hue < 0 || hue > 359 {
+				return 0, ErrColorDecode
+			}
+			var saturation float32
+			if saturation, err = extractColorPercentage(parts[1]); err != nil {
+				return 0, ErrColorDecode
+			}
+			var brightness float32
+			if brightness, err = extractColorPercentage(parts[2]); err != nil {
+				return 0, ErrColorDecode
+			}
+			return HSB(float32(hue)/360, saturation, brightness), nil
 		}
 	case strings.HasPrefix(buffer, "hsla(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[5:len(buffer)-1]), ",", 5)
 		if len(parts) == 4 {
-			return HSBA(float32(extractChannel(parts[0], 10))/360, extractPercentage(parts[1]),
-				extractPercentage(parts[2]), extractAlpha(parts[3]))
+			hue, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+			if err != nil || hue < 0 || hue > 359 {
+				return 0, ErrColorDecode
+			}
+			var saturation float32
+			if saturation, err = extractColorPercentage(parts[1]); err != nil {
+				return 0, ErrColorDecode
+			}
+			var brightness float32
+			if brightness, err = extractColorPercentage(parts[2]); err != nil {
+				return 0, ErrColorDecode
+			}
+			var alpha float64
+			if alpha, err = strconv.ParseFloat(strings.TrimSpace(parts[3]), 32); err != nil || alpha < 0 || alpha > 1 {
+				return 0, ErrColorDecode
+			}
+			return HSBA(float32(hue)/360, saturation, brightness, float32(alpha)), nil
 		}
 	}
-	return 0
+	return 0, ErrColorDecode
+}
+
+func extractColorPercentage(buffer string) (float32, error) {
+	buffer = strings.TrimSpace(buffer)
+	if strings.HasSuffix(buffer, "%") {
+		if value, err := strconv.Atoi(strings.TrimSpace(buffer[:len(buffer)-1])); err == nil {
+			percentage := float32(value) / 100
+			if percentage >= 0 && percentage <= 1 {
+				return percentage, nil
+			}
+		}
+	}
+	return 0, ErrColorDecode
 }
 
 // Paint returns a Paint for this Color. Here to satisfy the Ink interface.
@@ -177,7 +274,11 @@ func (c Color) MarshalText() ([]byte, error) {
 
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (c *Color) UnmarshalText(text []byte) error {
-	*c = ColorDecode(string(text))
+	color, err := ColorDecode(string(text))
+	if err != nil {
+		return err
+	}
+	*c = color
 	return nil
 }
 
@@ -458,33 +559,6 @@ func (c Color) Unpremultiply() Color {
 		b /= a
 		return ARGB(c.AlphaIntensity(), int(r&0xff), int(g&0xff), int(b&0xff))
 	}
-}
-
-func extractChannel(buffer string, base int) int {
-	if value, err := strconv.ParseInt(strings.TrimSpace(buffer), base, 64); err == nil {
-		return int(value)
-	}
-	return 0
-}
-
-func extractAlpha(buffer string) float32 {
-	alpha, err := strconv.ParseFloat(strings.TrimSpace(buffer), 32)
-	if err != nil {
-		return 0
-	}
-	return clamp0To1(float32(alpha))
-}
-
-func extractPercentage(buffer string) float32 {
-	buffer = strings.TrimSpace(buffer)
-	if strings.HasSuffix(buffer, "%") {
-		value, err := strconv.Atoi(strings.TrimSpace(buffer[:len(buffer)-1]))
-		if err != nil {
-			return 0
-		}
-		return clamp0To1(float32(value) / 100)
-	}
-	return 0
 }
 
 func clamp0To1(value float32) float32 {
