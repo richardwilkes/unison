@@ -307,17 +307,14 @@ func (w *Window) moved() {
 }
 
 func (w *Window) resized(constrained bool) {
-	if constrained {
-		w.ValidateLayout()
-	} else {
+	if !constrained {
 		current := w.ContentRect()
 		adjusted := w.adjustContentRectForMinMax(current)
 		if adjusted != current {
 			w.SetContentRect(adjusted)
-		} else {
-			w.ValidateLayout()
 		}
 	}
+	w.ValidateLayout()
 	if w.ResizedCallback != nil {
 		toolbox.Call(func() { w.ResizedCallback(true) })
 	}
