@@ -27,8 +27,6 @@ var (
 	BandingColor             = &ThemeColor{Light: RGB(235, 235, 220), Dark: RGB(42, 42, 42)}
 	OnBandingColor           = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	DividerColor             = &ThemeColor{Light: RGB(192, 192, 192), Dark: RGB(102, 102, 102)}
-	HeaderColor              = &ThemeColor{Light: RGB(43, 43, 43), Dark: RGB(64, 64, 64)}
-	OnHeaderColor            = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(192, 192, 192)}
 	TabFocusedColor          = &ThemeColor{Light: RGB(224, 212, 175), Dark: RGB(68, 102, 0)}
 	OnTabFocusedColor        = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	TabCurrentColor          = &ThemeColor{Light: RGB(211, 207, 197), Dark: RGB(41, 61, 0)}
@@ -43,7 +41,6 @@ var (
 	ScrollColor              = &ThemeColor{Light: ARGB(0.5, 192, 192, 192), Dark: ARGB(0.5, 128, 128, 128)}
 	ScrollRolloverColor      = &ThemeColor{Light: RGB(192, 192, 192), Dark: RGB(128, 128, 128)}
 	ScrollEdgeColor          = &ThemeColor{Light: RGB(128, 128, 128), Dark: RGB(160, 160, 160)}
-	AccentColor              = &ThemeColor{Light: RGB(0, 102, 102), Dark: RGB(100, 153, 153)}
 	ControlColor             = &ThemeColor{Light: RGB(248, 248, 255), Dark: RGB(64, 64, 64)}
 	OnControlColor           = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	ControlPressedColor      = &ThemeColor{Light: RGB(0, 96, 160), Dark: RGB(0, 96, 160)}
@@ -54,8 +51,6 @@ var (
 	IconButtonPressedColor   = &ThemeColor{Light: RGB(0, 96, 160), Dark: RGB(0, 96, 160)}
 	TooltipColor             = &ThemeColor{Light: RGB(252, 252, 196), Dark: RGB(184, 204, 143)}
 	OnTooltipColor           = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(32, 32, 32)}
-	SearchListColor          = &ThemeColor{Light: RGB(224, 255, 255), Dark: RGB(0, 43, 43)}
-	OnSearchListColor        = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(204, 204, 204)}
 	ErrorColor               = &ThemeColor{Light: RGB(192, 64, 64), Dark: RGB(115, 37, 37)}
 	OnErrorColor             = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(221, 221, 221)}
 	WarningColor             = &ThemeColor{Light: RGB(224, 128, 0), Dark: RGB(192, 96, 0)}
