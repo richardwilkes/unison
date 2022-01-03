@@ -12,6 +12,7 @@ package unison
 import (
 	"time"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
@@ -66,31 +67,32 @@ type tableHitRect struct {
 // Table provides a control that can display data in columns and rows.
 type Table struct {
 	Panel
-	DividerColor             Ink
-	RowColor                 Ink
-	OnRowColor               Ink
-	AltRowColor              Ink
-	OnAltRowColor            Ink
-	SelectionColor           Ink
-	OnSelectionColor         Ink
-	Padding                  geom32.Insets
-	topLevelRows             []TableRowData
-	selMap                   map[TableRowData]bool
-	HierarchyColumnIndex     int // The column index that will display the hierarchy
-	ColumnSizes              []ColumnSize
-	hitRects                 []tableHitRect
-	rowCache                 []tableCache
-	interactionRow           int
-	interactionColumn        int
-	columnResizeStart        float32
-	columnResizeBase         float32
-	columnResizeOverhead     float32
-	HierarchyIndent          float32
-	MinimumRowHeight         float32
-	ColumnResizeSlop         float32
-	ShowRowDivider           bool
-	ShowColumnDivider        bool
-	awaitingSizeColumnsToFit bool
+	SelectionDoubleClickCallback func()
+	DividerColor                 Ink
+	RowColor                     Ink
+	OnRowColor                   Ink
+	AltRowColor                  Ink
+	OnAltRowColor                Ink
+	SelectionColor               Ink
+	OnSelectionColor             Ink
+	Padding                      geom32.Insets
+	topLevelRows                 []TableRowData
+	selMap                       map[TableRowData]bool
+	HierarchyColumnIndex         int // The column index that will display the hierarchy
+	ColumnSizes                  []ColumnSize
+	hitRects                     []tableHitRect
+	rowCache                     []tableCache
+	interactionRow               int
+	interactionColumn            int
+	columnResizeStart            float32
+	columnResizeBase             float32
+	columnResizeOverhead         float32
+	HierarchyIndent              float32
+	MinimumRowHeight             float32
+	ColumnResizeSlop             float32
+	ShowRowDivider               bool
+	ShowColumnDivider            bool
+	awaitingSizeColumnsToFit     bool
 }
 
 // NewTable creates a new Table control.
@@ -382,7 +384,8 @@ func (t *Table) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				cursor := cell.UpdateCursorCallback(where)
+				var cursor *Cursor
+				toolbox.Call(func() { cursor = cell.UpdateCursorCallback(where) })
 				t.uninstallCell(cell)
 				return cursor
 			}
@@ -400,7 +403,8 @@ func (t *Table) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoid 
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				avoid := cell.UpdateTooltipCallback(where, suggestedAvoid)
+				var avoid geom32.Rect
+				toolbox.Call(func() { avoid = cell.UpdateTooltipCallback(where, suggestedAvoid) })
 				t.Tooltip = cell.Tooltip
 				t.uninstallCell(cell)
 				return avoid
@@ -421,7 +425,7 @@ func (t *Table) DefaultMouseMove(where geom32.Point, mod Modifiers) bool {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				stop = cell.MouseMoveCallback(where, mod)
+				toolbox.Call(func() { stop = cell.MouseMoveCallback(where, mod) })
 				t.uninstallCell(cell)
 			}
 		}
@@ -483,9 +487,13 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				stop = cell.MouseDownCallback(where, button, clickCount, mod)
+				toolbox.Call(func() { stop = cell.MouseDownCallback(where, button, clickCount, mod) })
 				t.uninstallCell(cell)
+				return stop
 			}
+		}
+		if clickCount == 2 && t.SelectionDoubleClickCallback != nil && len(t.selMap) != 0 {
+			toolbox.Call(t.SelectionDoubleClickCallback)
 		}
 	}
 	return stop
@@ -521,7 +529,7 @@ func (t *Table) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 				rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				stop = cell.MouseDragCallback(where, button, mod)
+				toolbox.Call(func() { stop = cell.MouseDragCallback(where, button, mod) })
 				t.uninstallCell(cell)
 			}
 		}
@@ -538,7 +546,7 @@ func (t *Table) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bo
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
 			where.Subtract(rect.Point)
-			stop = cell.MouseUpCallback(where, button, mod)
+			toolbox.Call(func() { stop = cell.MouseUpCallback(where, button, mod) })
 			t.uninstallCell(cell)
 		}
 	}
@@ -557,6 +565,21 @@ func (t *Table) IsRowOrAnyParentSelected(index int) bool {
 		index = t.rowCache[index].parent
 	}
 	return false
+}
+
+// SelectedRows returns the currently selected rows. Note that children of selected rows are not returned, just the
+// topmost row that is selected in any given hierarchy.
+func (t *Table) SelectedRows() []TableRowData {
+	if len(t.selMap) == 0 {
+		return nil
+	}
+	rows := make([]TableRowData, 0, len(t.selMap))
+	for _, entry := range t.rowCache {
+		if t.selMap[entry.row] && (entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
+			rows = append(rows, entry.row)
+		}
+	}
+	return rows
 }
 
 // SetTopLevelRows sets the top-level rows this table will display. This will call SyncToModel() automatically.

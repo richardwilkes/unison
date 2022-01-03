@@ -49,11 +49,10 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect geom32.Rect) {
 }
 
 // TitleIcon implements Dockable.
-func (d *DockablePanel) TitleIcon() unison.Drawable {
-	fSize := unison.LabelFont.ResolvedFont().Baseline()
+func (d *DockablePanel) TitleIcon(suggestedSize geom32.Size) unison.Drawable {
 	return &unison.DrawableSVG{
 		SVG:  unison.DocumentSVG(),
-		Size: geom32.Size{Width: fSize, Height: fSize},
+		Size: suggestedSize,
 	}
 }
 

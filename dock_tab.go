@@ -48,7 +48,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	t.SetLayout(flex)
 	t.title.Font = SystemFont
 	t.title.Text = t.fullTitle()
-	t.title.Drawable = t.dockable.TitleIcon()
+	t.title.Drawable = t.TitleIcon()
 	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: MiddleAlignment})
 	t.AddChild(t.title)
 	if _, ok := t.dockable.(TabCloser); ok {
@@ -71,6 +71,11 @@ func newDockTab(dockable Dockable) *dockTab {
 	return t
 }
 
+func (t *dockTab) TitleIcon() Drawable {
+	fSize := ChooseFont(t.title.Font, SystemFont).Baseline()
+	return t.dockable.TitleIcon(geom32.Size{Width: fSize, Height: fSize})
+}
+
 func (t *dockTab) fullTitle() string {
 	var buffer strings.Builder
 	if t.dockable.Modified() {
@@ -81,7 +86,7 @@ func (t *dockTab) fullTitle() string {
 }
 
 func (t *dockTab) updateTitle() {
-	drawable := t.dockable.TitleIcon()
+	drawable := t.TitleIcon()
 	title := t.fullTitle()
 	if title != t.title.Text || t.title.Drawable != drawable {
 		t.title.Text = title
@@ -156,7 +161,7 @@ func (t *dockTab) mouseDown(where geom32.Point, button, clickCount int, mod Modi
 func (t *dockTab) mouseDrag(where geom32.Point, button int, mod Modifiers) bool {
 	if t.IsDragGesture(where) {
 		if dc := DockContainerFor(t.dockable); dc != nil {
-			icon := t.dockable.TitleIcon()
+			icon := t.TitleIcon()
 			size := icon.LogicalSize()
 			t.StartDataDrag(&DragData{
 				Data:     map[string]interface{}{dc.Dock.DragKey: t.dockable},

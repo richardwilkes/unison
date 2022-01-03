@@ -64,6 +64,11 @@ func NewDock() *Dock {
 	return d
 }
 
+// RootDockLayout returns the root DockLayout.
+func (d *Dock) RootDockLayout() *DockLayout {
+	return d.layout
+}
+
 // DockTo a Dockable within this Dock. If the Dockable already exists in this Dock, it will be moved to the new location. nil may be passed in for the target, in which case the top-most layout is used.
 func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 	if target == nil {
@@ -224,7 +229,10 @@ func (d *Dock) Maximize(dc *DockContainer) {
 // Restore the current Dockable to its non-maximized state.
 func (d *Dock) Restore() {
 	if d.MaximizedContainer != nil {
-		d.layout.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = false })
+		d.layout.ForEachDockContainer(func(dc *DockContainer) bool {
+			dc.Hidden = false
+			return false
+		})
 		d.MaximizedContainer.header.adjustToRestoredState()
 		d.MaximizedContainer = nil
 		d.MarkForLayoutAndRedraw()

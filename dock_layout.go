@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
@@ -36,15 +37,28 @@ type DockLayout struct {
 	Horizontal bool
 }
 
-func (d *DockLayout) forEachDockContainer(f func(*DockContainer)) {
+// ForEachDockContainer iterates through all DockContainers in this DockLayout's hierarchy and calls the given function
+// with them. The function should return true to stop further processing.
+func (d *DockLayout) ForEachDockContainer(f func(*DockContainer) bool) {
+	d.forEachDockContainer(f)
+}
+
+func (d *DockLayout) forEachDockContainer(f func(*DockContainer) bool) bool {
 	for _, node := range d.nodes {
 		switch c := node.(type) {
 		case *DockContainer:
-			f(c)
+			stop := false
+			toolbox.Call(func() { stop = f(c) })
+			if stop {
+				return true
+			}
 		case *DockLayout:
-			c.forEachDockContainer(f)
+			if c.forEachDockContainer(f) {
+				return true
+			}
 		}
 	}
+	return false
 }
 
 // RootLayout returns the topmost parent DockLayout.
@@ -352,7 +366,10 @@ func (d *DockLayout) PerformLayout(_ Layoutable) {
 	size := d.frame.Size
 	switch {
 	case d.dock.MaximizedContainer != nil:
-		d.forEachDockContainer(func(dc *DockContainer) { dc.Hidden = dc != d.dock.MaximizedContainer })
+		d.ForEachDockContainer(func(dc *DockContainer) bool {
+			dc.Hidden = dc != d.dock.MaximizedContainer
+			return false
+		})
 		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	case d.Full():
 		available := size.Height

@@ -23,7 +23,7 @@ var (
 type Dockable interface {
 	Paneler
 	// TitleIcon returns an Drawable representing this Dockable.
-	TitleIcon() Drawable
+	TitleIcon(suggestedSize geom32.Size) Drawable
 	// Title returns the title of this Dockable.
 	Title() string
 	// Tooltip returns the tooltip of this Dockable.
