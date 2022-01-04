@@ -16,22 +16,6 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
-// ChooseInk returns the local ink if it is non-nil, otherwise returns the global ink.
-func ChooseInk(local, global Ink) Ink {
-	if local != nil {
-		return local
-	}
-	return global
-}
-
-// ChooseFont returns the local font if it is non-nil, otherwise returns the global font.
-func ChooseFont(local, global FontProvider) *Font {
-	if local != nil {
-		return local.ResolvedFont()
-	}
-	return global.ResolvedFont()
-}
-
 // DrawRectBase fills and strokes a rectangle.
 func DrawRectBase(canvas *Canvas, rect geom32.Rect, fillInk, strokeInk Ink) {
 	canvas.DrawRect(rect, fillInk.Paint(canvas, rect, Fill))
