@@ -29,10 +29,21 @@ const (
 // Behavior controls how auto-sizing of the scroll content's preferred size is handled.
 type Behavior uint8
 
+// DefaultScrollPanelTheme holds the default ScrollPanelTheme values for ScrollPanels. Modifying this data will not
+// alter existing ScrollPanels, but will alter any ScrollPanels created in the future.
+var DefaultScrollPanelTheme = ScrollPanelTheme{
+	BackgroundInk: BackgroundColor,
+}
+
+// ScrollPanelTheme holds theming data for a ScrollPanel.
+type ScrollPanelTheme struct {
+	BackgroundInk Ink
+}
+
 // ScrollPanel provides a scrollable area.
 type ScrollPanel struct {
 	Panel
-	BackgroundColor      Ink
+	ScrollPanelTheme
 	horizontalBar        *ScrollBar
 	verticalBar          *ScrollBar
 	columnHeader         *Panel
@@ -46,9 +57,10 @@ type ScrollPanel struct {
 // NewScrollPanel creates a new scrollable area.
 func NewScrollPanel() *ScrollPanel {
 	s := &ScrollPanel{
-		horizontalBar: NewScrollBar(true),
-		verticalBar:   NewScrollBar(false),
-		view:          NewPanel(),
+		ScrollPanelTheme: DefaultScrollPanelTheme,
+		horizontalBar:    NewScrollBar(true),
+		verticalBar:      NewScrollBar(false),
+		view:             NewPanel(),
 	}
 	s.Self = s
 	s.AddChild(s.horizontalBar)
@@ -144,7 +156,7 @@ func (s *ScrollPanel) SetPosition(h, v float32) {
 // DefaultDraw provides the default drawing.
 func (s *ScrollPanel) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	r := s.ContentRect(true)
-	canvas.DrawRect(r, ChooseInk(s.BackgroundColor, BackgroundColor).Paint(canvas, r, Fill))
+	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, Fill))
 }
 
 func (s *ScrollPanel) barChanged() {
@@ -230,8 +242,8 @@ func (s *ScrollPanel) LayoutSizes(_ Layoutable, hint geom32.Size) (min, pref, ma
 	if s.content != nil {
 		_, pref, _ = s.content.Sizes(hint)
 	}
-	min.Width = MinimumScrollBarSize
-	min.Height = MinimumScrollBarSize
+	min.Width = s.verticalBar.MinimumThickness
+	min.Height = s.horizontalBar.MinimumThickness
 	if s.columnHeader != nil {
 		_, p, _ := s.columnHeader.Sizes(geom32.Size{Width: hint.Width})
 		min.Height += p.Height
@@ -330,10 +342,10 @@ func (s *ScrollPanel) PerformLayout(_ Layoutable) {
 	s.verticalBar.SetRange(s.verticalBar.Value(), viewContent.Height, contentSize.Height)
 	s.horizontalBar.SetRange(s.horizontalBar.Value(), viewContent.Width, contentSize.Width)
 	if bothNeeded {
-		width -= MinimumScrollBarSize
-		height -= MinimumScrollBarSize
+		width -= s.verticalBar.MinimumThickness
+		height -= s.horizontalBar.MinimumThickness
 	}
-	s.verticalBar.SetFrameRect(geom32.NewRect(viewContent.Right()-MinimumScrollBarSize, viewContent.Y, MinimumScrollBarSize, height))
-	s.horizontalBar.SetFrameRect(geom32.NewRect(viewContent.X, viewContent.Bottom()-MinimumScrollBarSize, width, MinimumScrollBarSize))
+	s.verticalBar.SetFrameRect(geom32.NewRect(viewContent.Right()-s.verticalBar.MinimumThickness, viewContent.Y, s.verticalBar.MinimumThickness, height))
+	s.horizontalBar.SetFrameRect(geom32.NewRect(viewContent.X, viewContent.Bottom()-s.horizontalBar.MinimumThickness, width, s.horizontalBar.MinimumThickness))
 	s.view.SetFrameRect(r)
 }

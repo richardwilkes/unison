@@ -22,6 +22,17 @@ type TableColumnHeader interface {
 	SetSortState(state SortState)
 }
 
+// DefaultTableColumnHeaderTheme holds the default TableColumnHeaderTheme values for TableColumnHeaders. Modifying this
+// data will not alter existing TableColumnHeaders, but will alter any TableColumnHeaders created in the future.
+var DefaultTableColumnHeaderTheme = LabelTheme{
+	Font:            LabelFont,
+	OnBackgroundInk: OnBackgroundColor,
+	Gap:             3,
+	HAlign:          MiddleAlignment,
+	VAlign:          MiddleAlignment,
+	Side:            RightSide,
+}
+
 // DefaultTableColumnHeader provides a default table column header panel.
 type DefaultTableColumnHeader struct {
 	Label
@@ -32,11 +43,8 @@ type DefaultTableColumnHeader struct {
 func NewTableColumnHeader(title string) *DefaultTableColumnHeader {
 	h := &DefaultTableColumnHeader{
 		Label: Label{
-			Gap:    3,
-			HAlign: MiddleAlignment,
-			VAlign: MiddleAlignment,
-			Side:   RightSide,
-			Text:   title,
+			LabelTheme: DefaultTableColumnHeaderTheme,
+			Text:       title,
 		},
 		sortState: SortState{
 			Order:     -1,
@@ -61,7 +69,7 @@ func (h *DefaultTableColumnHeader) SetSortState(state SortState) {
 	if h.sortState != state {
 		h.sortState = state
 		if h.sortState.Sortable && h.sortState.Order == 0 {
-			baseline := ChooseFont(h.Font, LabelFont).Baseline()
+			baseline := h.Font.ResolvedFont().Baseline()
 			if h.sortState.Ascending {
 				h.Drawable = &DrawableSVG{
 					SVG:  SortAscendingSVG(),

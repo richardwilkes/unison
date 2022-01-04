@@ -16,56 +16,55 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
-// Possible values for CheckState.
-const (
-	OffCheckState CheckState = iota
-	OnCheckState
-	MixedCheckState
-)
-
-// CheckState represents the current state of something like a check box or mark.
-type CheckState uint8
-
-// CheckStateFromBool returns the equivalent CheckState.
-func CheckStateFromBool(b bool) CheckState {
-	if b {
-		return OnCheckState
-	}
-	return OffCheckState
+// DefaultCheckBoxTheme holds the default CheckBoxTheme values for CheckBoxes. Modifying this data will not alter
+// existing CheckBoxes, but will alter any CheckBoxes created in the future.
+var DefaultCheckBoxTheme = CheckBoxTheme{
+	Font:               SystemFont,
+	OnBackgroundInk:    OnBackgroundColor,
+	EdgeInk:            ControlEdgeColor,
+	SelectionInk:       SelectionColor,
+	OnSelectionInk:     OnSelectionColor,
+	ControlInk:         ControlColor,
+	OnControlInk:       OnControlColor,
+	Gap:                3,
+	CornerRadius:       4,
+	ClickAnimationTime: 100 * time.Millisecond,
+	HAlign:             StartAlignment,
+	VAlign:             MiddleAlignment,
+	Side:               LeftSide,
 }
 
-// CheckBox represents a clickable checkbox with an optional label.
-type CheckBox struct {
-	Panel
-	ClickCallback      func()
+// CheckBoxTheme holds theming data for a CheckBox.
+type CheckBoxTheme struct {
 	Font               FontProvider
-	EdgeColor          Ink
-	OnBackgroundColor  Ink
-	PressedColor       Ink
-	OnPressedColor     Ink
-	ControlColor       Ink
-	OnControlColor     Ink
-	Drawable           Drawable
-	Text               string
+	OnBackgroundInk    Ink
+	EdgeInk            Ink
+	SelectionInk       Ink
+	OnSelectionInk     Ink
+	ControlInk         Ink
+	OnControlInk       Ink
 	Gap                float32
 	CornerRadius       float32
 	ClickAnimationTime time.Duration
 	HAlign             Alignment
 	VAlign             Alignment
 	Side               Side
-	State              CheckState
-	Pressed            bool
+}
+
+// CheckBox represents a clickable checkbox with an optional label.
+type CheckBox struct {
+	Panel
+	CheckBoxTheme
+	ClickCallback func()
+	Drawable      Drawable
+	Text          string
+	State         CheckState
+	Pressed       bool
 }
 
 // NewCheckBox creates a new checkbox.
 func NewCheckBox() *CheckBox {
-	c := &CheckBox{
-		Gap:                3,
-		CornerRadius:       4,
-		ClickAnimationTime: 100 * time.Millisecond,
-		VAlign:             MiddleAlignment,
-		Side:               LeftSide,
-	}
+	c := &CheckBox{CheckBoxTheme: DefaultCheckBoxTheme}
 	c.Self = c
 	c.SetFocusable(true)
 	c.SetSizer(c.DefaultSizes)
@@ -95,7 +94,7 @@ func (c *CheckBox) boxAndLabelSize() geom32.Size {
 	if c.Drawable == nil && c.Text == "" {
 		return geom32.Size{Width: boxSize, Height: boxSize}
 	}
-	size := LabelSize(c.Text, ChooseFont(c.Font, SystemFont), c.Drawable, c.Side, c.Gap)
+	size := LabelSize(c.Text, c.Font, c.Drawable, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
 	if size.Height < boxSize {
 		size.Height = boxSize
@@ -104,7 +103,7 @@ func (c *CheckBox) boxAndLabelSize() geom32.Size {
 }
 
 func (c *CheckBox) boxSize() float32 {
-	return mathf32.Ceil(ChooseFont(c.Font, SystemFont).Baseline())
+	return mathf32.Ceil(c.Font.ResolvedFont().Baseline())
 }
 
 // DefaultDraw provides the default drawing.
@@ -132,8 +131,8 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		r := rect
 		r.X += boxSize + c.Gap
 		r.Width -= boxSize + c.Gap
-		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Text, ChooseFont(c.Font, SystemFont),
-			ChooseInk(c.OnBackgroundColor, OnBackgroundColor), c.Drawable, c.Side, c.Gap, !c.Enabled())
+		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Text, c.Font, c.OnBackgroundInk, c.Drawable, c.Side, c.Gap,
+			!c.Enabled())
 	}
 	if rect.Height > boxSize {
 		rect.Y += mathf32.Floor((rect.Height - boxSize) / 2)
@@ -143,17 +142,17 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case c.Pressed:
-		bg = ChooseInk(c.PressedColor, SelectionColor)
-		fg = ChooseInk(c.OnPressedColor, OnSelectionColor)
+		bg = c.SelectionInk
+		fg = c.OnSelectionInk
 	default:
-		bg = ChooseInk(c.ControlColor, ControlColor)
-		fg = ChooseInk(c.OnControlColor, OnControlColor)
+		bg = c.ControlInk
+		fg = c.OnControlInk
 	}
 	thickness := float32(1)
 	if c.Focused() {
 		thickness++
 	}
-	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, ChooseInk(c.EdgeColor, ControlEdgeColor))
+	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, c.EdgeInk)
 	rect.InsetUniform(0.5)
 	if c.State == OffCheckState {
 		return

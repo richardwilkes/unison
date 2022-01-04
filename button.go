@@ -15,51 +15,63 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
+// DefaultButtonTheme holds the default ButtonTheme values for Buttons. Modifying this data will not alter existing
+// Buttons, but will alter any Buttons created in the future.
+var DefaultButtonTheme = ButtonTheme{
+	Font:                SystemFont,
+	BackgroundInk:       ControlColor,
+	OnBackgroundInk:     OnControlColor,
+	EdgeInk:             ControlEdgeColor,
+	SelectionInk:        SelectionColor,
+	OnSelectionInk:      OnSelectionColor,
+	Gap:                 3,
+	CornerRadius:        4,
+	HMargin:             8,
+	VMargin:             1,
+	DrawableOnlyHMargin: 3,
+	DrawableOnlyVMargin: 3,
+	ClickAnimationTime:  100 * time.Millisecond,
+	HAlign:              MiddleAlignment,
+	VAlign:              MiddleAlignment,
+	Side:                LeftSide,
+	HideBase:            false,
+}
+
+// ButtonTheme holds theming data for a Button.
+type ButtonTheme struct {
+	Font                FontProvider
+	BackgroundInk       Ink
+	OnBackgroundInk     Ink
+	EdgeInk             Ink
+	SelectionInk        Ink
+	OnSelectionInk      Ink
+	Gap                 float32
+	CornerRadius        float32
+	HMargin             float32
+	VMargin             float32
+	DrawableOnlyHMargin float32
+	DrawableOnlyVMargin float32
+	ClickAnimationTime  time.Duration
+	HAlign              Alignment
+	VAlign              Alignment
+	Side                Side
+	HideBase            bool
+	Sticky              bool
+}
+
 // Button represents a clickable button.
 type Button struct {
 	GroupPanel
-	ClickCallback            func()
-	Font                     FontProvider
-	BackgroundColor          Ink
-	OnBackgroundColor        Ink
-	EdgeColor                Ink
-	PressedColor             Ink
-	OnPressedColor           Ink
-	SelectionColor           Ink
-	OnSelectionColor         Ink
-	InactiveSelectionColor   Ink
-	OnInactiveSelectionColor Ink
-	Drawable                 Drawable
-	Text                     string
-	Gap                      float32
-	CornerRadius             float32
-	HMargin                  float32
-	VMargin                  float32
-	DrawableOnlyHMargin      float32
-	DrawableOnlyVMargin      float32
-	ClickAnimationTime       time.Duration
-	HAlign                   Alignment
-	VAlign                   Alignment
-	Side                     Side
-	Sticky                   bool
-	HideBase                 bool
-	Pressed                  bool
+	ButtonTheme
+	ClickCallback func()
+	Drawable      Drawable
+	Text          string
+	Pressed       bool
 }
 
 // NewButton creates a new button.
 func NewButton() *Button {
-	b := &Button{
-		Gap:                 3,
-		CornerRadius:        4,
-		HMargin:             8,
-		VMargin:             1,
-		DrawableOnlyHMargin: 3,
-		DrawableOnlyVMargin: 3,
-		ClickAnimationTime:  100 * time.Millisecond,
-		HAlign:              MiddleAlignment,
-		VAlign:              MiddleAlignment,
-		Side:                LeftSide,
-	}
+	b := &Button{ButtonTheme: DefaultButtonTheme}
 	b.Self = b
 	b.SetFocusable(true)
 	b.SetSizer(b.DefaultSizes)
@@ -79,7 +91,7 @@ func (b *Button) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	if b.Drawable == nil && text == "" {
 		text = "M"
 	}
-	pref = LabelSize(text, ChooseFont(b.Font, SystemFont), b.Drawable, b.Side, b.Gap)
+	pref = LabelSize(text, b.Font, b.Drawable, b.Side, b.Gap)
 	if theBorder := b.Border(); theBorder != nil {
 		pref.AddInsets(theBorder.Insets())
 	}
@@ -115,11 +127,11 @@ func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case b.Pressed || (b.Sticky && b.Selected()):
-		bg = ChooseInk(b.SelectionColor, SelectionColor)
-		fg = ChooseInk(b.OnSelectionColor, OnSelectionColor)
+		bg = b.SelectionInk
+		fg = b.OnSelectionInk
 	default:
-		bg = ChooseInk(b.BackgroundColor, ControlColor)
-		fg = ChooseInk(b.OnBackgroundColor, OnControlColor)
+		bg = b.BackgroundInk
+		fg = b.OnBackgroundInk
 	}
 	rect := b.ContentRect(false)
 	if !b.HideBase || b.Focused() {
@@ -127,16 +139,14 @@ func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		if b.Focused() {
 			thickness++
 		}
-		DrawRoundedRectBase(canvas, rect, b.CornerRadius, thickness, bg,
-			ChooseInk(b.EdgeColor, ControlEdgeColor))
+		DrawRoundedRectBase(canvas, rect, b.CornerRadius, thickness, bg, b.EdgeInk)
 		rect.InsetUniform(thickness + 0.5)
 	}
 	rect.X += b.HorizontalMargin()
 	rect.Y += b.VerticalMargin()
 	rect.Width -= b.HorizontalMargin() * 2
 	rect.Height -= b.VerticalMargin() * 2
-	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.Text, ChooseFont(b.Font, SystemFont), fg, b.Drawable,
-		b.Side, b.Gap, !b.Enabled())
+	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.Text, b.Font, fg, b.Drawable, b.Side, b.Gap, !b.Enabled())
 }
 
 // Click makes the button behave as if a user clicked on it.

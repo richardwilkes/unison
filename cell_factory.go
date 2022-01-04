@@ -42,9 +42,9 @@ func (f *DefaultCellFactory) CellHeight() float32 {
 // CreateCell implements CellFactory.
 func (f *DefaultCellFactory) CreateCell(owner Paneler, element interface{}, index int, foreground Ink, selected, focused bool) *Panel {
 	txtLabel := NewLabel()
-	txtLabel.Text = fmt.Sprintf("%v", element)
 	txtLabel.SetBorder(NewEmptyBorder(geom32.Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}))
+	txtLabel.Text = fmt.Sprintf("%v", element)
 	txtLabel.Font = FieldFont
-	txtLabel.Ink = foreground
+	txtLabel.OnBackgroundInk = foreground
 	return txtLabel.AsPanel()
 }

@@ -53,6 +53,19 @@ type Menu interface {
 	Dispose()
 }
 
+// DefaultMenuTheme holds the default MenuTheme values for Menus. Modifying this data will not alter existing Menus,
+// but will alter any Menus created in the future.
+var DefaultMenuTheme = MenuTheme{
+	BarBorder:  NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
+	MenuBorder: NewLineBorder(DividerColor, 0, geom32.NewUniformInsets(1), false),
+}
+
+// MenuTheme holds theming data for a Menu.
+type MenuTheme struct {
+	BarBorder  Border
+	MenuBorder Border
+}
+
 type menu struct {
 	factory   *inWindowMenuFactory
 	titleItem *menuItem
@@ -224,9 +237,9 @@ func (m *menu) Dispose() {
 func (m *menu) newPanel(forBar bool) *Panel {
 	p := NewPanel()
 	if forBar {
-		p.SetBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false))
+		p.SetBorder(DefaultMenuTheme.BarBorder)
 	} else {
-		p.SetBorder(NewLineBorder(DividerColor, 0, geom32.NewUniformInsets(1), false))
+		p.SetBorder(DefaultMenuTheme.MenuBorder)
 	}
 	for _, mi := range m.items {
 		mi.validate()
@@ -234,8 +247,6 @@ func (m *menu) newPanel(forBar bool) *Panel {
 		p.AddChild(child)
 		if !forBar {
 			child.SetLayoutData(&FlexLayoutData{
-				HSpan:  1,
-				VSpan:  1,
 				HAlign: FillAlignment,
 				VAlign: MiddleAlignment,
 				HGrab:  true,

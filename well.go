@@ -26,34 +26,48 @@ const (
 	PatternWellMask
 )
 
+// DefaultWellTheme holds the default WellTheme values for Wells. Modifying this data will not alter existing Wells, but
+// will alter any Wells created in the future.
+var DefaultWellTheme = WellTheme{
+	BackgroundInk:      ControlColor,
+	EdgeInk:            ControlEdgeColor,
+	SelectionInk:       SelectionColor,
+	ImageScale:         0.5,
+	ContentSize:        20,
+	CornerRadius:       4,
+	ClickAnimationTime: 100 * time.Millisecond,
+	Mask:               ColorWellMask | GradientWellMask | PatternWellMask,
+}
+
+// WellTheme holds theming data for a Well.
+type WellTheme struct {
+	BackgroundInk      Ink
+	EdgeInk            Ink
+	SelectionInk       Ink
+	ClickAnimationTime time.Duration
+	ImageScale         float32
+	ContentSize        float32
+	CornerRadius       float32
+	Mask               WellMask
+}
+
 // Well represents a control that holds and lets a user choose an ink.
 type Well struct {
 	Panel
+	WellTheme
 	ImageFromSpecCallback func(filePathOrURL string, scale float32) (*Image, error)
 	InkChangedCallback    func()
 	ClickCallback         func()
 	ValidateImageCallback func(*Image) *Image
-	ControlColor          Ink
-	EdgeColor             Ink
-	PressedColor          Ink
 	ink                   Ink
-	ClickAnimationTime    time.Duration
-	ImageScale            float32
-	ContentSize           float32
-	CornerRadius          float32
-	Mask                  WellMask
 	Pressed               bool
 }
 
 // NewWell creates a new Well.
 func NewWell() *Well {
 	well := &Well{
-		ink:                Black,
-		ImageScale:         0.5,
-		ContentSize:        20,
-		CornerRadius:       4,
-		ClickAnimationTime: 100 * time.Millisecond,
-		Mask:               ColorWellMask | GradientWellMask | PatternWellMask,
+		WellTheme: DefaultWellTheme,
+		ink:       Black,
 	}
 	well.Self = well
 	well.SetFocusable(true)
@@ -124,16 +138,16 @@ func (w *Well) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var bg Ink
 	switch {
 	case w.Pressed:
-		bg = ChooseInk(w.PressedColor, SelectionColor)
+		bg = w.SelectionInk
 	default:
-		bg = ChooseInk(w.ControlColor, ControlColor)
+		bg = w.BackgroundInk
 	}
 	thickness := float32(1)
 	wellInset := thickness + 2.5
 	if w.Focused() {
 		thickness++
 	}
-	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, ChooseInk(w.EdgeColor, ControlEdgeColor))
+	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, w.EdgeInk)
 	r.InsetUniform(wellInset)
 	radius := w.CornerRadius - (wellInset - 2)
 	if pattern, ok := w.ink.(*Pattern); ok {
@@ -152,7 +166,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		canvas.DrawLine(r.X+1, r.Y+1, r.Right()-1, r.Bottom()-1, p)
 		canvas.DrawLine(r.X+1, r.Bottom()-1, r.Right()-1, r.Y+1, p)
 	}
-	canvas.DrawRoundedRect(r, radius, ChooseInk(w.EdgeColor, ControlEdgeColor).Paint(canvas, r, Stroke))
+	canvas.DrawRoundedRect(r, radius, w.EdgeInk.Paint(canvas, r, Stroke))
 }
 
 // DefaultMouseDown provides the default mouse down handling.

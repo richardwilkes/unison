@@ -14,26 +14,38 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
+// DefaultLabelTheme holds the default LabelTheme values for Labels. Modifying this data will not alter existing Labels,
+// but will alter any Labels created in the future.
+var DefaultLabelTheme = LabelTheme{
+	Font:            LabelFont,
+	OnBackgroundInk: OnBackgroundColor,
+	Gap:             3,
+	HAlign:          StartAlignment,
+	VAlign:          MiddleAlignment,
+	Side:            LeftSide,
+}
+
+// LabelTheme holds theming data for a Label.
+type LabelTheme struct {
+	Font            FontProvider
+	OnBackgroundInk Ink
+	Gap             float32
+	HAlign          Alignment
+	VAlign          Alignment
+	Side            Side
+}
+
 // Label represents non-interactive text and/or a Drawable.
 type Label struct {
 	Panel
-	Font     FontProvider
-	Ink      Ink
+	LabelTheme
 	Drawable Drawable
 	Text     string
-	Gap      float32
-	HAlign   Alignment
-	VAlign   Alignment
-	Side     Side
 }
 
 // NewLabel creates a new, empty label.
 func NewLabel() *Label {
-	l := &Label{
-		Gap:    3,
-		VAlign: MiddleAlignment,
-		Side:   LeftSide,
-	}
+	l := &Label{LabelTheme: DefaultLabelTheme}
 	l.Self = l
 	l.SetSizer(l.DefaultSizes)
 	l.DrawCallback = l.DefaultDraw
@@ -42,7 +54,7 @@ func NewLabel() *Label {
 
 // DefaultSizes provides the default sizing.
 func (l *Label) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	pref = LabelSize(l.Text, ChooseFont(l.Font, LabelFont), l.Drawable, l.Side, l.Gap)
+	pref = LabelSize(l.Text, l.Font, l.Drawable, l.Side, l.Gap)
 	if b := l.Border(); b != nil {
 		pref.AddInsets(b.Insets())
 	}
@@ -53,16 +65,16 @@ func (l *Label) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 
 // DefaultDraw provides the default drawing.
 func (l *Label) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
-	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Text, ChooseFont(l.Font, LabelFont),
-		ChooseInk(l.Ink, OnBackgroundColor), l.Drawable, l.Side, l.Gap, !l.Enabled())
+	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Text, l.Font.ResolvedFont(), l.OnBackgroundInk,
+		l.Drawable, l.Side, l.Gap, !l.Enabled())
 }
 
-// LabelSize returns the preferred size of a label. Provided as a standalone
-// function so that other types of panels can make use of it.
-func LabelSize(text string, font *Font, drawable Drawable, drawableSide Side, imgGap float32) geom32.Size {
+// LabelSize returns the preferred size of a label. Provided as a standalone function so that other types of panels can
+// make use of it.
+func LabelSize(text string, fontProvider FontProvider, drawable Drawable, drawableSide Side, imgGap float32) geom32.Size {
 	var size geom32.Size
 	if text != "" {
-		size = font.Extents(text)
+		size = fontProvider.ResolvedFont().Extents(text)
 		size.GrowToInteger()
 	}
 	adjustLabelSizeForDrawable(text, drawable, drawableSide, imgGap, &size)
@@ -91,7 +103,8 @@ func adjustLabelSizeForDrawable(text string, drawable Drawable, drawableSide Sid
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text string, font *Font, textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
+func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text string, fontProvider FontProvider,
+	textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
 	if drawable == nil && text == "" {
 		return
 	}
@@ -102,8 +115,10 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 	}
 
 	// Determine overall size of content
+	var font *Font
 	var size, txtSize geom32.Size
 	if text != "" {
+		font = fontProvider.ResolvedFont()
 		txtSize = font.Extents(text)
 		size = txtSize
 	}

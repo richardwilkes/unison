@@ -130,3 +130,13 @@ func Grayscale30PercentFilter() *ColorFilter {
 	}
 	return grayscale30PercentFilter
 }
+
+// NewAlphaFilter returns a new ColorFilter that applies an alpha blend.
+func NewAlphaFilter(alpha float32) *ColorFilter {
+	return NewMatrixColorFilter([]float32{
+		1, 0, 0, 0, 0,
+		0, 1, 0, 0, 0,
+		0, 0, 1, 0, 0,
+		0, 0, 0, alpha, 0,
+	})
+}

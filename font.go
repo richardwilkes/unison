@@ -12,10 +12,12 @@ package unison
 import (
 	"embed"
 	"path"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/txt"
@@ -37,12 +39,13 @@ var (
 
 // Pre-defined fonts
 var (
-	SystemFont                FontProvider
-	EmphasizedSystemFont      FontProvider
-	SmallSystemFont           FontProvider
-	EmphasizedSmallSystemFont FontProvider
-	LabelFont                 FontProvider
-	FieldFont                 FontProvider
+	SystemFont                = &IndirectFont{}
+	EmphasizedSystemFont      = &IndirectFont{}
+	SmallSystemFont           = &IndirectFont{}
+	EmphasizedSmallSystemFont = &IndirectFont{}
+	LabelFont                 = &IndirectFont{}
+	FieldFont                 = &IndirectFont{}
+	KeyboardFont              = &IndirectFont{}
 )
 
 type internalFont struct {
@@ -221,16 +224,19 @@ func initSystemFonts() {
 		}
 	}
 
-	SystemFont = newSystemFont(10, MediumFontWeight, StandardSpacing, NoSlant)
-	EmphasizedSystemFont = newSystemFont(10, BoldFontWeight, StandardSpacing, NoSlant)
-	SmallSystemFont = newSystemFont(8, MediumFontWeight, StandardSpacing, NoSlant)
-	EmphasizedSmallSystemFont = newSystemFont(8, BoldFontWeight, StandardSpacing, NoSlant)
-	LabelFont = newSystemFont(8, NormalFontWeight, StandardSpacing, NoSlant)
-	FieldFont = newSystemFont(10, NormalFontWeight, StandardSpacing, NoSlant)
-}
-
-func newSystemFont(size float32, weight FontWeight, spacing FontSpacing, slant FontSlant) *IndirectFont {
-	return &IndirectFont{Font: MatchFontFace(DefaultSystemFamilyName, weight, spacing, slant).Font(size)}
+	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(10)
+	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(10)
+	SmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(8)
+	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(8)
+	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(8)
+	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(10)
+	keyboardFamilyName := DefaultSystemFamilyName
+	if runtime.GOOS == toolbox.MacOS {
+		// This is a special font on macOS. Ideally, I'd find a source for an equivalent font and embed it so that the
+		// same font could be used on all platforms.
+		keyboardFamilyName = ".Keyboard"
+	}
+	KeyboardFont.Font = MatchFontFace(keyboardFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(10)
 }
 
 // RegisterFont registers a font with the font manager.

@@ -17,13 +17,27 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
+// DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
+// alter existing TableHeaders, but will alter any TableHeaders created in the future.
+var DefaultTableHeaderTheme = TableHeaderTheme{
+	BackgroundInk: ControlColor,
+	DividerInk:    DividerColor,
+	HeaderBorder:  NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
+}
+
+// TableHeaderTheme holds theming data for a TableHeader.
+type TableHeaderTheme struct {
+	BackgroundInk Ink
+	DividerInk    Ink
+	HeaderBorder  Border
+}
+
 // TableHeader provides a header for a Table.
 type TableHeader struct {
 	Panel
+	TableHeaderTheme
 	Table                *Table
 	ColumnHeaders        []TableColumnHeader
-	BackgroundColor      Ink
-	DividerColor         Ink
 	interactionColumn    int
 	columnResizeStart    float32
 	columnResizeBase     float32
@@ -34,12 +48,13 @@ type TableHeader struct {
 // NewTableHeader creates a new TableHeader.
 func NewTableHeader(table *Table, columnHeaders ...TableColumnHeader) *TableHeader {
 	h := &TableHeader{
-		Table:         table,
-		ColumnHeaders: columnHeaders,
+		TableHeaderTheme: DefaultTableHeaderTheme,
+		Table:            table,
+		ColumnHeaders:    columnHeaders,
 	}
 	h.Self = h
 	h.SetSizer(h.DefaultSizes)
-	h.SetBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false))
+	h.SetBorder(h.TableHeaderTheme.HeaderBorder)
 	h.DrawCallback = h.DefaultDraw
 	h.UpdateCursorCallback = h.DefaultUpdateCursorCallback
 	h.UpdateTooltipCallback = h.DefaultUpdateTooltipCallback
@@ -117,7 +132,7 @@ func (h *TableHeader) combinedInsets() geom32.Insets {
 
 // DefaultDraw provides the default drawing.
 func (h *TableHeader) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
-	canvas.DrawRect(dirty, ChooseInk(h.BackgroundColor, ControlColor).Paint(canvas, dirty, Fill))
+	canvas.DrawRect(dirty, h.BackgroundInk.Paint(canvas, dirty, Fill))
 
 	var firstCol int
 	insets := h.combinedInsets()
@@ -140,7 +155,7 @@ func (h *TableHeader) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(h.Table.ColumnSizes)-1; c++ {
 			rect.X += h.Table.ColumnSizes[c].Current
-			canvas.DrawRect(rect, ChooseInk(h.DividerColor, DividerColor).Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, h.DividerInk.Paint(canvas, rect, Fill))
 			rect.X++
 		}
 	}

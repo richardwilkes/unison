@@ -17,19 +17,36 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
+// DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
+// but will alter any Lists created in the future.
+var DefaultListTheme = ListTheme{
+	BackgroundInk:      ContentColor,
+	OnBackgroundInk:    OnContentColor,
+	BandingInk:         BandingColor,
+	OnBandingInk:       OnBandingColor,
+	SelectionInk:       SelectionColor,
+	OnSelectionInk:     OnSelectionColor,
+	FlashAnimationTime: 100 * time.Millisecond,
+}
+
+// ListTheme holds theming data for a List.
+type ListTheme struct {
+	BackgroundInk      Ink
+	OnBackgroundInk    Ink
+	BandingInk         Ink
+	OnBandingInk       Ink
+	SelectionInk       Ink
+	OnSelectionInk     Ink
+	FlashAnimationTime time.Duration
+}
+
 // List provides a control that allows the user to select from a list of items, represented by cells.
 type List struct {
 	Panel
+	ListTheme
 	DoubleClickCallback  func()
 	NewSelectionCallback func()
-	PressedColor         Ink
-	OnPressedColor       Ink
-	RowColor             Ink
-	OnRowColor           Ink
-	AltRowColor          Ink
-	OnAltRowColor        Ink
 	Factory              CellFactory
-	FlashAnimationTime   time.Duration
 	rows                 []interface{}
 	Selection            *xmath.BitSet
 	savedSelection       *xmath.BitSet
@@ -42,12 +59,12 @@ type List struct {
 // NewList creates a new List control.
 func NewList() *List {
 	l := &List{
-		Factory:            &DefaultCellFactory{},
-		FlashAnimationTime: 100 * time.Millisecond,
-		Selection:          &xmath.BitSet{},
-		savedSelection:     &xmath.BitSet{},
-		anchor:             -1,
-		allowMultiple:      true,
+		ListTheme:      DefaultListTheme,
+		Factory:        &DefaultCellFactory{},
+		Selection:      &xmath.BitSet{},
+		savedSelection: &xmath.BitSet{},
+		anchor:         -1,
+		allowMultiple:  true,
 	}
 	l.Self = l
 	l.SetFocusable(true)
@@ -188,14 +205,14 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			var fg, bg Ink
 			switch {
 			case selected:
-				bg = ChooseInk(l.PressedColor, SelectionColor)
-				fg = ChooseInk(l.OnPressedColor, OnSelectionColor)
+				bg = l.SelectionInk
+				fg = l.OnSelectionInk
 			case index%2 == 0:
-				bg = ChooseInk(l.RowColor, ContentColor)
-				fg = ChooseInk(l.OnRowColor, OnContentColor)
+				bg = l.BackgroundInk
+				fg = l.OnBackgroundInk
 			default:
-				bg = ChooseInk(l.AltRowColor, BandingColor)
-				fg = ChooseInk(l.OnAltRowColor, OnBandingColor)
+				bg = l.BandingInk
+				fg = l.OnBandingInk
 			}
 			cell := l.Factory.CreateCell(l, l.rows[index], index, fg, selected, focused && selected && selCount == 1)
 			cellRect := geom32.Rect{Point: geom32.Point{X: rect.X, Y: y}, Size: geom32.Size{Width: rect.Width, Height: cellHeight}}

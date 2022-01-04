@@ -17,16 +17,6 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
-const (
-	// DefaultHierarchyIndent is the default amount of space to indent for each level of depth in the hierarchy.
-	DefaultHierarchyIndent = 16
-	// DefaultMinimumRowHeight is the default minimum height a row is permitted to have.
-	DefaultMinimumRowHeight = 16
-	// DefaultColumnResizeSlop is the default number of logical pixels on either side of the column divider where the
-	// user can grab the divider and resize it.
-	DefaultColumnResizeSlop = 4
-)
-
 // TableRowData provides information about a single row of data.
 type TableRowData interface {
 	// CanHaveChildRows returns true if this row can have children, even if it currently does not have any.
@@ -64,22 +54,51 @@ type tableHitRect struct {
 	handler func(where geom32.Point, button, clickCount int, mod Modifiers)
 }
 
+// DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
+// but will alter any Tables created in the future.
+var DefaultTableTheme = TableTheme{
+	BackgroundInk:        ContentColor,
+	OnBackgroundInk:      OnContentColor,
+	BandingInk:           BandingColor,
+	OnBandingInk:         OnBandingColor,
+	DividerInk:           DividerColor,
+	SelectionInk:         SelectionColor,
+	OnSelectionInk:       OnSelectionColor,
+	Padding:              geom32.NewUniformInsets(4),
+	HierarchyColumnIndex: 0,
+	HierarchyIndent:      16,
+	MinimumRowHeight:     16,
+	ColumnResizeSlop:     4,
+	ShowRowDivider:       true,
+	ShowColumnDivider:    true,
+}
+
+// TableTheme holds theming data for a Table.
+type TableTheme struct {
+	BackgroundInk        Ink
+	OnBackgroundInk      Ink
+	BandingInk           Ink
+	OnBandingInk         Ink
+	DividerInk           Ink
+	SelectionInk         Ink
+	OnSelectionInk       Ink
+	Padding              geom32.Insets
+	HierarchyColumnIndex int
+	HierarchyIndent      float32
+	MinimumRowHeight     float32
+	ColumnResizeSlop     float32
+	ShowRowDivider       bool
+	ShowColumnDivider    bool
+}
+
 // Table provides a control that can display data in columns and rows.
 type Table struct {
 	Panel
+	TableTheme
 	SelectionDoubleClickCallback func()
-	DividerColor                 Ink
-	RowColor                     Ink
-	OnRowColor                   Ink
-	AltRowColor                  Ink
-	OnAltRowColor                Ink
-	SelectionColor               Ink
-	OnSelectionColor             Ink
-	Padding                      geom32.Insets
+	ColumnSizes                  []ColumnSize
 	topLevelRows                 []TableRowData
 	selMap                       map[TableRowData]bool
-	HierarchyColumnIndex         int // The column index that will display the hierarchy
-	ColumnSizes                  []ColumnSize
 	hitRects                     []tableHitRect
 	rowCache                     []tableCache
 	interactionRow               int
@@ -87,24 +106,14 @@ type Table struct {
 	columnResizeStart            float32
 	columnResizeBase             float32
 	columnResizeOverhead         float32
-	HierarchyIndent              float32
-	MinimumRowHeight             float32
-	ColumnResizeSlop             float32
-	ShowRowDivider               bool
-	ShowColumnDivider            bool
 	awaitingSizeColumnsToFit     bool
 }
 
 // NewTable creates a new Table control.
 func NewTable() *Table {
 	t := &Table{
-		selMap:            make(map[TableRowData]bool),
-		Padding:           geom32.NewUniformInsets(4),
-		HierarchyIndent:   DefaultHierarchyIndent,
-		MinimumRowHeight:  DefaultMinimumRowHeight,
-		ColumnResizeSlop:  DefaultColumnResizeSlop,
-		ShowRowDivider:    true,
-		ShowColumnDivider: true,
+		TableTheme: DefaultTableTheme,
+		selMap:     make(map[TableRowData]bool),
 	}
 	t.Self = t
 	t.SetFocusable(true)
@@ -121,7 +130,7 @@ func NewTable() *Table {
 
 // DefaultDraw provides the default drawing.
 func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
-	canvas.DrawRect(dirty, ChooseInk(t.RowColor, ContentColor).Paint(canvas, dirty, Fill))
+	canvas.DrawRect(dirty, t.BackgroundInk.Paint(canvas, dirty, Fill))
 
 	var insets geom32.Insets
 	if border := t.Border(); border != nil {
@@ -163,14 +172,14 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
 		rect.Height = t.rowCache[r].height
 		if t.IsRowOrAnyParentSelected(r) {
-			canvas.DrawRect(rect, ChooseInk(t.SelectionColor, SelectionColor).Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, t.SelectionInk.Paint(canvas, rect, Fill))
 		} else if r%2 == 1 {
-			canvas.DrawRect(rect, ChooseInk(t.AltRowColor, BandingColor).Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, t.BandingInk.Paint(canvas, rect, Fill))
 		}
 		rect.Y += t.rowCache[r].height
 		if t.ShowRowDivider && r != rowCount-1 {
 			rect.Height = 1
-			canvas.DrawRect(rect, ChooseInk(t.DividerColor, DividerColor).Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, t.DividerInk.Paint(canvas, rect, Fill))
 			rect.Y++
 		}
 	}
@@ -181,7 +190,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(t.ColumnSizes)-1; c++ {
 			rect.X += t.ColumnSizes[c].Current
-			canvas.DrawRect(rect, ChooseInk(t.DividerColor, DividerColor).Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, t.DividerInk.Paint(canvas, rect, Fill))
 			rect.X++
 		}
 	}
@@ -196,11 +205,11 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		var fg Ink
 		switch {
 		case selected:
-			fg = ChooseInk(t.OnSelectionColor, OnSelectionColor)
+			fg = t.OnSelectionInk
 		case row.IsOpen():
-			fg = ChooseInk(t.OnAltRowColor, OnBandingColor)
+			fg = t.OnBandingInk
 		default:
-			fg = ChooseInk(t.OnRowColor, OnContentColor)
+			fg = t.OnBackgroundInk
 		}
 		rect.X = x
 		rect.Height = t.rowCache[r].height

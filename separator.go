@@ -13,16 +13,28 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
+// DefaultSeparatorTheme holds the default SeparatorTheme values for Separators. Modifying this data will not alter
+// existing Separators, but will alter any Separators created in the future.
+var DefaultSeparatorTheme = SeparatorTheme{
+	LineInk:  DividerColor,
+	Vertical: false,
+}
+
+// SeparatorTheme holds theming data for a Separator.
+type SeparatorTheme struct {
+	LineInk  Ink
+	Vertical bool
+}
+
 // Separator provides a simple vertical or horizontal separator line.
 type Separator struct {
 	Panel
-	Ink      Ink
-	Vertical bool
+	SeparatorTheme
 }
 
 // NewSeparator creates a new separator line.
 func NewSeparator() *Separator {
-	s := &Separator{}
+	s := &Separator{SeparatorTheme: DefaultSeparatorTheme}
 	s.Self = s
 	s.SetSizer(s.DefaultSizes)
 	s.DrawCallback = s.DefaultDraw
@@ -75,5 +87,5 @@ func (s *Separator) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		rect.Y += (rect.Height - 1) / 2
 		rect.Height = 1
 	}
-	canvas.DrawRect(rect, ChooseInk(s.Ink, DividerColor).Paint(canvas, rect, Fill))
+	canvas.DrawRect(rect, s.LineInk.Paint(canvas, rect, Fill))
 }

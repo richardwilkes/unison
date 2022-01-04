@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
 var _ MenuItem = &menuItem{}
@@ -44,6 +45,33 @@ type MenuItem interface {
 	SetCheckState(s CheckState)
 }
 
+// DefaultMenuItemTheme holds the default MenuItemTheme values for MenuItems. Modifying this data will not alter
+// existing MenuItems, but will alter any MenuItems created in the future.
+var DefaultMenuItemTheme = MenuItemTheme{
+	TitleFont:         SystemFont,
+	KeyFont:           KeyboardFont,
+	BackgroundColor:   BackgroundColor,
+	OnBackgroundColor: OnBackgroundColor,
+	SelectionColor:    SelectionColor,
+	OnSelectionColor:  OnSelectionColor,
+	ItemBorder:        NewEmptyBorder(geom32.Insets{Top: 4, Left: 8, Bottom: 4, Right: 8}),
+	SeparatorBorder:   NewEmptyBorder(geom32.NewVerticalInsets(4)),
+	KeyGap:            16,
+}
+
+// MenuItemTheme holds theming data for a MenuItem.
+type MenuItemTheme struct {
+	TitleFont         FontProvider
+	KeyFont           FontProvider
+	BackgroundColor   Ink
+	OnBackgroundColor Ink
+	SelectionColor    Ink
+	OnSelectionColor  Ink
+	ItemBorder        Border
+	SeparatorBorder   Border
+	KeyGap            float32
+}
+
 type menuItem struct {
 	factory      *inWindowMenuFactory
 	id           int
@@ -51,8 +79,6 @@ type menuItem struct {
 	menu         *menu
 	subMenu      *menu
 	panel        *Panel
-	bgInk        Ink
-	fgInk        Ink
 	validator    func(MenuItem) bool
 	handler      func(MenuItem)
 	keyCode      KeyCode
@@ -60,6 +86,7 @@ type menuItem struct {
 	state        CheckState
 	isSeparator  bool
 	enabled      bool
+	over         bool
 }
 
 func (mi *menuItem) Factory() MenuFactory {
@@ -119,60 +146,18 @@ func (mi *menuItem) SetCheckState(s CheckState) {
 }
 
 func (mi *menuItem) newPanel() *Panel {
-	if mi.IsSeparator() {
-		sep := NewSeparator()
-		sep.SetBorder(NewEmptyBorder(geom32.NewVerticalInsets(4)))
-		return sep.AsPanel()
-	}
-
 	mi.panel = NewPanel()
-	mi.panel.SetBorder(NewEmptyBorder(geom32.Insets{Top: 4, Left: 8, Bottom: 4, Right: 8}))
-	mi.adjustColors(false)
+	if mi.isSeparator {
+		mi.panel.SetBorder(DefaultMenuItemTheme.SeparatorBorder)
+	} else {
+		mi.panel.SetBorder(DefaultMenuItemTheme.ItemBorder)
+	}
+	mi.over = false
 	mi.panel.DrawCallback = mi.paint
 	mi.panel.MouseEnterCallback = mi.mouseEnter
 	mi.panel.MouseExitCallback = mi.mouseExit
 	mi.panel.MouseDownCallback = mi.mouseDown
-
-	title := NewLabel()
-	title.Text = mi.Title()
-	title.Ink = mi.fgInk
-	title.Font = SystemFont
-	title.MouseEnterCallback = mi.mouseEnter
-	title.MouseExitCallback = mi.mouseExit
-	title.SetLayoutData(&FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
-		VAlign: MiddleAlignment,
-		HGrab:  true,
-	})
-	mi.panel.AddChild(title)
-
-	lay := &FlexLayout{
-		Columns:  1,
-		HSpacing: StdHSpacing,
-		VSpacing: StdVSpacing,
-	}
-	if mi.keyCode != 0 {
-		keyName := KeyCodeToName[mi.keyCode]
-		if keyName != "" {
-			keyStroke := NewLabel()
-			keyStroke.Text = mi.keyModifiers.String() + keyName
-			keyStroke.Ink = mi.fgInk
-			keyStroke.Font = SmallSystemFont
-			keyStroke.MouseEnterCallback = mi.mouseEnter
-			keyStroke.MouseExitCallback = mi.mouseExit
-			keyStroke.SetLayoutData(&FlexLayoutData{
-				HSpan:  1,
-				VSpan:  1,
-				HAlign: EndAlignment,
-				VAlign: MiddleAlignment,
-			})
-			mi.panel.AddChild(keyStroke)
-			lay.Columns = 2
-			lay.HSpacing = 10
-		}
-	}
-	mi.panel.SetLayout(lay)
+	mi.panel.SetSizer(mi.sizer)
 	return mi.panel
 }
 
@@ -203,7 +188,7 @@ func (mi *menuItem) showSubMenu() {
 }
 
 func (mi *menuItem) mouseEnter(_ geom32.Point, _ Modifiers) bool {
-	mi.adjustColors(true)
+	mi.over = true
 	mi.panel.MarkForRedraw()
 	if mi.subMenu != nil && mi.menu.isActiveWindowShowingPopupMenu() {
 		mi.showSubMenu()
@@ -212,30 +197,69 @@ func (mi *menuItem) mouseEnter(_ geom32.Point, _ Modifiers) bool {
 }
 
 func (mi *menuItem) mouseExit() bool {
-	mi.adjustColors(false)
+	mi.over = false
 	mi.panel.MarkForRedraw()
 	return false
 }
 
-func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
-	gc.DrawRect(rect, mi.bgInk.Paint(gc, rect, Fill))
+func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
+	if mi.isSeparator {
+		pref.Height = 1
+	} else {
+		pref = LabelSize(mi.Title(), DefaultMenuItemTheme.TitleFont, nil, LeftSide, 0)
+		if mi.keyCode != 0 {
+			keyName := KeyCodeToName[mi.keyCode]
+			if keyName != "" {
+				font := DefaultMenuItemTheme.KeyFont.ResolvedFont()
+				size := font.Extents(mi.keyModifiers.String() + keyName)
+				pref.Width += DefaultMenuItemTheme.KeyGap + size.Width
+				pref.Height = mathf32.Max(pref.Height, size.Height)
+			}
+		}
+	}
+	pref.AddInsets(DefaultMenuItemTheme.ItemBorder.Insets())
+	pref.GrowToInteger()
+	pref.ConstrainForHint(hint)
+	return pref, pref, pref
 }
 
-func (mi *menuItem) adjustColors(over bool) {
-	switch {
-	case !mi.enabled:
-		mi.bgInk = BackgroundColor
-		mi.fgInk = DividerColor
-	case !over:
-		mi.bgInk = BackgroundColor
-		mi.fgInk = OnBackgroundColor
-	default:
-		mi.bgInk = SelectionColor
-		mi.fgInk = OnSelectionColor
+func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
+	var fg, bg Ink
+	if !mi.over || !mi.enabled {
+		fg = DefaultMenuItemTheme.OnBackgroundColor
+		bg = DefaultMenuItemTheme.BackgroundColor
+	} else {
+		fg = DefaultMenuItemTheme.OnSelectionColor
+		bg = DefaultMenuItemTheme.SelectionColor
+	}
+	gc.DrawRect(rect, bg.Paint(gc, rect, Fill))
+	paint := fg.Paint(gc, rect, Fill)
+	if !mi.enabled {
+		paint.SetColorFilter(Grayscale30PercentFilter())
+	}
+	rect = mi.panel.ContentRect(false)
+	if mi.isSeparator {
+		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, paint)
+	} else {
+		font := DefaultMenuItemTheme.TitleFont.ResolvedFont()
+		size := font.Extents(mi.Title())
+		gc.DrawSimpleText(mi.Title(), rect.X, mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+font.Baseline(), font, paint)
+		if mi.keyCode != 0 {
+			keyName := KeyCodeToName[mi.keyCode]
+			if keyName != "" {
+				text := mi.keyModifiers.String() + keyName
+				font = DefaultMenuItemTheme.KeyFont.ResolvedFont()
+				size = font.Extents(text)
+				gc.DrawSimpleText(text, mathf32.Floor(rect.Right()-size.Width), mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+font.Baseline(), font, paint)
+			}
+		}
 	}
 }
 
 func (mi *menuItem) validate() {
+	if mi.isSeparator {
+		return
+	}
 	mi.enabled = true
 	if mi.validator != nil {
 		mi.enabled = false
@@ -244,6 +268,9 @@ func (mi *menuItem) validate() {
 }
 
 func (mi *menuItem) execute() {
+	if mi.isSeparator {
+		return
+	}
 	mi.menu.closeMenuStack()
 	if mi.enabled && mi.handler != nil {
 		toolbox.Call(func() { mi.handler(mi) })

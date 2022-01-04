@@ -15,34 +15,48 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
-// ProgressBar provides a meter showing progress.
-type ProgressBar struct {
-	Panel
-	BackgroundColor    Ink
-	FillColor          Ink
-	EdgeColor          Ink
+// DefaultProgressBarTheme holds the default ProgressBarTheme values for ProgressBars. Modifying this data will not
+// alter existing ProgressBars, but will alter any ProgressBars created in the future.
+var DefaultProgressBarTheme = ProgressBarTheme{
+	BackgroundInk:      BackgroundColor,
+	FillInk:            SelectionColor,
+	EdgeInk:            ControlEdgeColor,
+	TickSpeed:          time.Second / 30,
+	FullTraversalSpeed: time.Second,
+	PreferredBarHeight: 8,
+	CornerRadius:       8,
+	IndeterminateWidth: 15,
+	EdgeThickness:      1,
+}
+
+// ProgressBarTheme holds theming data for a ProgressBar.
+type ProgressBarTheme struct {
+	BackgroundInk      Ink
+	FillInk            Ink
+	EdgeInk            Ink
 	TickSpeed          time.Duration
 	FullTraversalSpeed time.Duration
 	PreferredBarHeight float32
 	CornerRadius       float32
 	IndeterminateWidth float32
 	EdgeThickness      float32
-	current            float32
-	max                float32
-	lastAnimationTime  time.Time
+}
+
+// ProgressBar provides a meter showing progress.
+type ProgressBar struct {
+	Panel
+	ProgressBarTheme
+	current           float32
+	max               float32
+	lastAnimationTime time.Time
 }
 
 // NewProgressBar creates a new progress bar. A max of zero will create an indeterminate progress bar, i.e. one whose
 // meter animates back and forth.
 func NewProgressBar(max float32) *ProgressBar {
 	p := &ProgressBar{
-		TickSpeed:          time.Second / 30,
-		FullTraversalSpeed: time.Second,
-		PreferredBarHeight: 8,
-		CornerRadius:       8,
-		IndeterminateWidth: 15,
-		EdgeThickness:      1,
-		max:                max,
+		ProgressBarTheme: DefaultProgressBarTheme,
+		max:              max,
 	}
 	p.Self = p
 	p.SetSizer(p.DefaultSizes)
@@ -131,15 +145,15 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	} else if p.current > 0 {
 		meter.Width = bounds.Width * (p.current / p.max)
 	}
-	canvas.DrawRoundedRect(bounds, p.CornerRadius, ChooseInk(p.BackgroundColor, BackgroundColor).Paint(canvas, bounds, Fill))
+	canvas.DrawRoundedRect(bounds, p.CornerRadius, p.BackgroundInk.Paint(canvas, bounds, Fill))
 	if meter.Width > 0 {
 		trimmedMeter := meter
 		trimmedMeter.X += 0.5
 		trimmedMeter.Width--
-		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, ChooseInk(p.FillColor, SelectionColor).Paint(canvas, trimmedMeter, Fill))
+		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, p.FillInk.Paint(canvas, trimmedMeter, Fill))
 	}
 	bounds.InsetUniform(p.EdgeThickness / 2)
-	paint := ChooseInk(p.EdgeColor, ControlEdgeColor).Paint(canvas, bounds, Stroke)
+	paint := p.EdgeInk.Paint(canvas, bounds, Stroke)
 	paint.SetStrokeWidth(p.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, paint)
 	if meter.Width > 0 {

@@ -19,34 +19,50 @@ import (
 
 var _ Layout = &dockHeader{}
 
+// DefaultDockHeaderTheme holds the default DockHeaderTheme values for DockHeaders. Modifying this data will not alter
+// existing DockHeaders, but will alter any DockHeaders created in the future.
+var DefaultDockHeaderTheme = DockHeaderTheme{
+	BackgroundInk:   BackgroundColor,
+	DropAreaInk:     DropAreaColor,
+	HeaderBorder:    NewCompoundBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false), NewEmptyBorder(geom32.NewHorizontalInsets(4))),
+	MinimumTabWidth: 50,
+	TabGap:          4,
+	TabInsertSize:   3,
+}
+
+// DockHeaderTheme holds theming data for a DockHeader.
+type DockHeaderTheme struct {
+	BackgroundInk   Ink
+	DropAreaInk     Ink
+	HeaderBorder    Border
+	MinimumTabWidth float32
+	TabGap          float32
+	TabInsertSize   float32
+}
+
 type dockHeader struct {
 	Panel
+	DockHeaderTheme
 	owner                 *DockContainer
 	overflowButton        *Button
 	maximizeRestoreButton *Button
 	dragInsertIndex       int
-	MinimumTabWidth       float32
-	TabGap                float32
-	TabInsertSize         float32
 }
 
 func newDockHeader(dc *DockContainer) *dockHeader {
 	d := &dockHeader{
+		DockHeaderTheme:       DefaultDockHeaderTheme,
 		owner:                 dc,
 		overflowButton:        createDockHeaderButton(),
 		maximizeRestoreButton: createDockHeaderButton(),
 		dragInsertIndex:       -1,
-		MinimumTabWidth:       50,
-		TabGap:                4,
-		TabInsertSize:         3,
 	}
 	d.Self = d
 	d.DrawCallback = d.DefaultDraw
 	d.DataDragOverCallback = d.DefaultDataDragOver
 	d.DataDragExitCallback = d.DefaultDataDragExit
 	d.DataDragDropCallback = d.DefaultDataDrop
-	d.SetBorder(NewCompoundBorder(NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
-		NewEmptyBorder(geom32.NewHorizontalInsets(d.TabGap))))
+	d.SetBorder(d.DockHeaderTheme.HeaderBorder)
 	d.SetLayout(d)
 	for _, dockable := range dc.Dockables() {
 		d.AddChild(newDockTab(dockable))
@@ -59,7 +75,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 }
 
 func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom32.Rect) {
-	gc.DrawRect(rect, BackgroundColor.Paint(gc, rect, Fill))
+	gc.DrawRect(rect, d.BackgroundInk.Paint(gc, rect, Fill))
 	if d.dragInsertIndex >= 0 {
 		r := d.ContentRect(false)
 		r.Width = d.TabInsertSize
@@ -70,7 +86,7 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom32.Rect) {
 		default:
 			r.X = tabs[len(tabs)-1].FrameRect().Right()
 		}
-		gc.DrawRect(r, DropAreaColor.Paint(gc, rect, Fill))
+		gc.DrawRect(r, d.DropAreaInk.Paint(gc, rect, Fill))
 	}
 }
 

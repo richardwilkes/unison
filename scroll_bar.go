@@ -14,20 +14,33 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
-const (
-	// MinimumScrollBarSize is the minimum width for vertical bars and height for horizontal bars.
-	MinimumScrollBarSize  = 16
-	scrollBarMinimumThumb = 16
-	scrollBarThumbIndent  = 3
-	scrollBarCornerRadius = 8
-)
+// DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
+// existing ScrollBars, but will alter any ScrollBars created in the future.
+var DefaultScrollBarTheme = ScrollBarTheme{
+	EdgeInk:          ScrollEdgeColor,
+	ThumbInk:         ScrollColor,
+	RolloverInk:      ScrollRolloverColor,
+	MinimumThickness: 16,
+	MinimumThumb:     16,
+	ThumbIndent:      3,
+	CornerRadius:     8,
+}
+
+// ScrollBarTheme holds theming data for a ScrollBar.
+type ScrollBarTheme struct {
+	EdgeInk          Ink
+	ThumbInk         Ink
+	RolloverInk      Ink
+	MinimumThickness float32
+	MinimumThumb     float32
+	ThumbIndent      float32
+	CornerRadius     float32
+}
 
 // ScrollBar holds the data necessary for tracking a scroll bar's state.
 type ScrollBar struct {
 	Panel
-	EdgeColor       Ink
-	ThumbColor      Ink
-	RolloverColor   Ink
+	ScrollBarTheme
 	ChangedCallback func()
 	value           float32
 	extent          float32
@@ -40,7 +53,10 @@ type ScrollBar struct {
 
 // NewScrollBar creates a new scroll bar.
 func NewScrollBar(horizontal bool) *ScrollBar {
-	s := &ScrollBar{horizontal: horizontal}
+	s := &ScrollBar{
+		ScrollBarTheme: DefaultScrollBarTheme,
+		horizontal:     horizontal,
+	}
 	s.Self = s
 	s.SetSizer(s.DefaultSizes)
 	s.DrawCallback = s.DefaultDraw
@@ -117,32 +133,32 @@ func (s *ScrollBar) Thumb() geom32.Rect {
 	if s.horizontal {
 		start := r.Width * (s.value / s.max)
 		size := r.Width * (s.extent / s.max)
-		if size < scrollBarMinimumThumb {
-			size = scrollBarMinimumThumb
+		if size < s.MinimumThumb {
+			size = s.MinimumThumb
 		}
-		return geom32.NewRect(start, scrollBarThumbIndent, size, r.Height-2*scrollBarThumbIndent)
+		return geom32.NewRect(start, s.ThumbIndent, size, r.Height-2*s.ThumbIndent)
 	}
 	start := r.Height * (s.value / s.max)
 	size := r.Height * (s.extent / s.max)
-	if size < scrollBarMinimumThumb {
-		size = scrollBarMinimumThumb
+	if size < s.MinimumThumb {
+		size = s.MinimumThumb
 	}
-	return geom32.NewRect(scrollBarThumbIndent, start, r.Width-2*scrollBarThumbIndent, size)
+	return geom32.NewRect(s.ThumbIndent, start, r.Width-2*s.ThumbIndent, size)
 }
 
 // DefaultSizes provides the default sizing.
 func (s *ScrollBar) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	min.Width = MinimumScrollBarSize
-	min.Height = MinimumScrollBarSize
+	min.Width = s.MinimumThickness
+	min.Height = s.MinimumThickness
 	if s.horizontal {
-		pref.Width = MinimumScrollBarSize * 2
-		pref.Height = MinimumScrollBarSize
+		pref.Width = s.MinimumThickness * 2
+		pref.Height = s.MinimumThickness
 		max.Width = DefaultMaxSize
-		max.Height = MinimumScrollBarSize
+		max.Height = s.MinimumThickness
 	} else {
-		pref.Width = MinimumScrollBarSize
-		pref.Height = MinimumScrollBarSize * 2
-		max.Width = MinimumScrollBarSize
+		pref.Width = s.MinimumThickness
+		pref.Height = s.MinimumThickness * 2
+		max.Width = s.MinimumThickness
 		max.Height = DefaultMaxSize
 	}
 	return min, pref, max
@@ -153,13 +169,12 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom32.Rect) {
 	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
 		var ink Ink
 		if s.overThumb {
-			ink = ChooseInk(s.RolloverColor, ScrollRolloverColor)
+			ink = s.RolloverInk
 		} else {
-			ink = ChooseInk(s.ThumbColor, ScrollColor)
+			ink = s.ThumbInk
 		}
-		gc.DrawRoundedRect(thumb, scrollBarCornerRadius, ink.Paint(gc, thumb, Fill))
-		gc.DrawRoundedRect(thumb, scrollBarCornerRadius,
-			ChooseInk(s.EdgeColor, ScrollEdgeColor).Paint(gc, thumb, Stroke))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, ink.Paint(gc, thumb, Fill))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, Stroke))
 	}
 }
 

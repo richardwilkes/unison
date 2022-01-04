@@ -21,8 +21,52 @@ type TabCloser interface {
 	AttemptClose()
 }
 
+// DefaultDockTabTheme holds the default DockTabTheme values for DockTabs. Modifying this data will not alter existing
+// DockTabs, but will alter any DockTabs created in the future.
+var DefaultDockTabTheme = DockTabTheme{
+	BackgroundInk:   ControlColor,
+	OnBackgroundInk: OnControlColor,
+	EdgeInk:         ControlEdgeColor,
+	TabFocusedInk:   TabFocusedColor,
+	OnTabFocusedInk: OnTabFocusedColor,
+	TabCurrentInk:   TabCurrentColor,
+	OnTabCurrentInk: OnTabCurrentColor,
+	TabBorder:       NewEmptyBorder(geom32.Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}),
+	Gap:             4,
+	LabelTheme:      defaultLabelTheme(),
+	ButtonTheme:     defaultButtonTheme(),
+}
+
+func defaultLabelTheme() LabelTheme {
+	theme := DefaultLabelTheme
+	theme.Font = SystemFont
+	return theme
+}
+
+func defaultButtonTheme() ButtonTheme {
+	theme := DefaultButtonTheme
+	theme.HideBase = true
+	return theme
+}
+
+// DockTabTheme holds theming data for a DockTab.
+type DockTabTheme struct {
+	BackgroundInk   Ink
+	OnBackgroundInk Ink
+	EdgeInk         Ink
+	TabFocusedInk   Ink
+	OnTabFocusedInk Ink
+	TabCurrentInk   Ink
+	OnTabCurrentInk Ink
+	TabBorder       Border
+	Gap             float32
+	LabelTheme      LabelTheme
+	ButtonTheme     ButtonTheme
+}
+
 type dockTab struct {
 	Panel
+	DockTabTheme
 	dockable Dockable
 	title    *Label
 	button   *Button
@@ -30,37 +74,33 @@ type dockTab struct {
 
 func newDockTab(dockable Dockable) *dockTab {
 	t := &dockTab{
-		dockable: dockable,
-		title:    NewLabel(),
+		DockTabTheme: DefaultDockTabTheme,
+		dockable:     dockable,
+		title:        NewLabel(),
 	}
 	t.Self = t
 	t.DrawCallback = t.draw
-	t.SetBorder(NewEmptyBorder(geom32.Insets{
-		Top:    2,
-		Left:   4,
-		Bottom: 2,
-		Right:  4,
-	}))
+	t.SetBorder(t.DockTabTheme.TabBorder)
 	flex := &FlexLayout{
 		Columns:  1,
-		HSpacing: 4,
+		HSpacing: t.Gap,
 	}
 	t.SetLayout(flex)
-	t.title.Font = SystemFont
+	t.title.LabelTheme = t.LabelTheme
 	t.title.Text = t.fullTitle()
 	t.title.Drawable = t.TitleIcon()
 	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: MiddleAlignment})
 	t.AddChild(t.title)
 	if _, ok := t.dockable.(TabCloser); ok {
 		t.button = NewButton()
+		t.button.ButtonTheme = t.ButtonTheme
 		t.button.SetFocusable(false)
-		fSize := ChooseFont(t.title.Font, SystemFont).Baseline()
+		fSize := t.LabelTheme.Font.ResolvedFont().Baseline()
 		t.button.Drawable = &DrawableSVG{
 			SVG:  CircledXSVG(),
 			Size: geom32.Size{Width: fSize, Height: fSize},
 		}
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment, VAlign: MiddleAlignment})
-		t.button.HideBase = true
 		t.AddChild(t.button)
 		t.button.ClickCallback = t.attemptClose
 		flex.Columns++
@@ -72,7 +112,7 @@ func newDockTab(dockable Dockable) *dockTab {
 }
 
 func (t *dockTab) TitleIcon() Drawable {
-	fSize := ChooseFont(t.title.Font, SystemFont).Baseline()
+	fSize := t.title.Font.ResolvedFont().Baseline()
 	return t.dockable.TitleIcon(geom32.Size{Width: fSize, Height: fSize})
 }
 
@@ -104,19 +144,19 @@ func (t *dockTab) draw(gc *Canvas, rect geom32.Rect) {
 	var bg, fg Ink
 	if dc := DockContainerFor(t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
 		if dc == FocusedDockContainerFor(t.Window()) {
-			bg = TabFocusedColor
-			fg = OnTabFocusedColor
+			bg = t.TabFocusedInk
+			fg = t.OnTabFocusedInk
 		} else {
-			bg = TabCurrentColor
-			fg = OnTabCurrentColor
+			bg = t.TabCurrentInk
+			fg = t.OnTabCurrentInk
 		}
 	} else {
-		bg = ControlColor
-		fg = OnControlColor
+		bg = t.BackgroundInk
+		fg = t.OnBackgroundInk
 	}
-	t.title.Ink = fg
+	t.title.OnBackgroundInk = fg
 	if t.button != nil {
-		t.button.BackgroundColor = fg
+		t.button.BackgroundInk = fg
 	}
 	r := t.ContentRect(true)
 	p := NewPath()
@@ -128,7 +168,7 @@ func (t *dockTab) draw(gc *Canvas, rect geom32.Rect) {
 	p.LineTo(r.Width-1, r.Height)
 	p.Close()
 	gc.DrawPath(p, bg.Paint(gc, r, Fill))
-	gc.DrawPath(p, DividerColor.Paint(gc, r, Stroke))
+	gc.DrawPath(p, t.EdgeInk.Paint(gc, r, Stroke))
 }
 
 func (t *dockTab) attemptClose() {
@@ -166,7 +206,7 @@ func (t *dockTab) mouseDrag(where geom32.Point, button int, mod Modifiers) bool 
 			t.StartDataDrag(&DragData{
 				Data:     map[string]interface{}{dc.Dock.DragKey: t.dockable},
 				Drawable: icon,
-				Ink:      t.title.Ink,
+				Ink:      t.title.OnBackgroundInk,
 				Offset:   geom32.NewPoint(-size.Width/2, -size.Height/2),
 			})
 		}

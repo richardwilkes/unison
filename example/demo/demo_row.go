@@ -64,7 +64,7 @@ func (d *demoRow) ColumnCell(index int, selected bool) unison.Paneler {
 		label := unison.NewLabel()
 		label.Text = d.text
 		if selected {
-			label.Ink = unison.OnSelectionColor
+			label.OnBackgroundInk = unison.OnSelectionColor
 		}
 		if !d.doubleHeight {
 			return label
@@ -75,7 +75,7 @@ func (d *demoRow) ColumnCell(index int, selected bool) unison.Paneler {
 		subLabel := unison.NewLabel()
 		subLabel.Text = "A little note…"
 		if selected {
-			subLabel.Ink = unison.OnSelectionColor
+			subLabel.OnBackgroundInk = unison.OnSelectionColor
 		}
 		desc := unison.LabelFont.ResolvedFont().Descriptor()
 		desc.Size -= 2
@@ -92,7 +92,7 @@ func (d *demoRow) ColumnCell(index int, selected bool) unison.Paneler {
 		label := unison.NewLabel()
 		label.Text = d.text2
 		if selected {
-			label.Ink = unison.OnSelectionColor
+			label.OnBackgroundInk = unison.OnSelectionColor
 		}
 		return label
 	default:

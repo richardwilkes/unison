@@ -19,45 +19,63 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
+// DefaultFieldTheme holds the default FieldTheme values for Fields. Modifying this data will not alter existing Fields,
+// but will alter any Fields created in the future.
+var DefaultFieldTheme = FieldTheme{
+	Font:             FieldFont,
+	BackgroundInk:    BackgroundColor,
+	OnBackgroundInk:  OnBackgroundColor,
+	EditableInk:      EditableColor,
+	OnEditableInk:    OnEditableColor,
+	SelectionInk:     SelectionColor,
+	OnSelectionInk:   OnSelectionColor,
+	ErrorInk:         ErrorColor,
+	OnErrorInk:       OnErrorColor,
+	FocusedBorder:    NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(2), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 2, Bottom: 1, Right: 2})),
+	UnfocusedBorder:  NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 3, Left: 3, Bottom: 2, Right: 3})),
+	BlinkRate:        560 * time.Millisecond,
+	MinimumTextWidth: 10,
+}
+
+// FieldTheme holds theming data for a Field.
+type FieldTheme struct {
+	Font             FontProvider
+	BackgroundInk    Ink
+	OnBackgroundInk  Ink
+	EditableInk      Ink
+	OnEditableInk    Ink
+	SelectionInk     Ink
+	OnSelectionInk   Ink
+	ErrorInk         Ink
+	OnErrorInk       Ink
+	FocusedBorder    Border
+	UnfocusedBorder  Border
+	BlinkRate        time.Duration
+	MinimumTextWidth float32
+}
+
 // Field provides a single-line text input control.
 type Field struct {
 	Panel
-	ModifiedCallback  func()
-	ValidateCallback  func() bool
-	Font              FontProvider
-	EditableColor     Ink
-	OnEditableColor   Ink
-	BackgroundColor   Ink
-	OnBackgroundColor Ink
-	SelectionColor    Ink
-	OnSelectionColor  Ink
-	ErrorColor        Ink
-	OnErrorColor      Ink
-	BlinkRate         time.Duration
-	Watermark         string
-	FocusedBorder     Border
-	UnfocusedBorder   Border
-	runes             []rune
-	selectionStart    int
-	selectionEnd      int
-	selectionAnchor   int
-	forceShowUntil    time.Time
-	MinimumTextWidth  float32
-	scrollOffset      float32
-	showCursor        bool
-	pending           bool
-	extendByWord      bool
-	invalid           bool
+	FieldTheme
+	ModifiedCallback func()
+	ValidateCallback func() bool
+	Watermark        string
+	runes            []rune
+	selectionStart   int
+	selectionEnd     int
+	selectionAnchor  int
+	forceShowUntil   time.Time
+	scrollOffset     float32
+	showCursor       bool
+	pending          bool
+	extendByWord     bool
+	invalid          bool
 }
 
 // NewField creates a new, empty, field.
 func NewField() *Field {
-	t := &Field{
-		MinimumTextWidth: 10,
-		BlinkRate:        560 * time.Millisecond,
-		FocusedBorder:    NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(2), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 2, Bottom: 1, Right: 2})),
-		UnfocusedBorder:  NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 3, Left: 3, Bottom: 2, Right: 3})),
-	}
+	t := &Field{FieldTheme: DefaultFieldTheme}
 	t.Self = t
 	t.SetBorder(t.UnfocusedBorder)
 	t.SetFocusable(true)
@@ -84,7 +102,7 @@ func (t *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 		text = "M"
 	}
 	minWidth := t.MinimumTextWidth
-	pref = ChooseFont(t.Font, FieldFont).Extents(text)
+	pref = t.Font.ResolvedFont().Extents(text)
 	if pref.Width < minWidth {
 		pref.Width = minWidth
 	}
@@ -108,14 +126,14 @@ func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case t.invalid:
-		fg = ChooseInk(t.ErrorColor, ErrorColor)
-		bg = ChooseInk(t.OnErrorColor, OnErrorColor)
+		fg = t.ErrorInk
+		bg = t.OnErrorInk
 	case t.Enabled():
-		fg = ChooseInk(t.EditableColor, EditableColor)
-		bg = ChooseInk(t.OnEditableColor, OnEditableColor)
+		fg = t.EditableInk
+		bg = t.OnEditableInk
 	default:
-		fg = ChooseInk(t.BackgroundColor, BackgroundColor)
-		bg = ChooseInk(t.OnBackgroundColor, OnBackgroundColor)
+		fg = t.BackgroundInk
+		bg = t.OnBackgroundInk
 	}
 	rect := t.ContentRect(true)
 	canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
@@ -123,7 +141,7 @@ func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	clipRect := rect
 	clipRect.Inset(geom32.NewUniformInsets(-2)) // Remove interior padding for the clip
 	canvas.ClipRect(clipRect, IntersectClipOp, false)
-	f := ChooseFont(t.Font, FieldFont)
+	f := t.Font.ResolvedFont()
 	textTop := rect.Y + (rect.Height-f.LineHeight())/2
 	textBaseLine := textTop + f.Baseline()
 	paint := bg.Paint(canvas, rect, Fill)
@@ -141,18 +159,15 @@ func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			Point: geom32.Point{X: left, Y: clipRect.Y},
 			Size:  geom32.Size{Width: right - left, Height: clipRect.Height},
 		}
-		focusInk := ChooseInk(t.SelectionColor, SelectionColor)
-		canvas.DrawRect(selRect, focusInk.Paint(canvas, selRect, Fill))
-		canvas.DrawSimpleText(mid, left, textBaseLine, f,
-			ChooseInk(t.OnSelectionColor, OnSelectionColor).Paint(canvas, rect, Fill))
+		canvas.DrawRect(selRect, t.SelectionInk.Paint(canvas, selRect, Fill))
+		canvas.DrawSimpleText(mid, left, textBaseLine, f, t.OnSelectionInk.Paint(canvas, rect, Fill))
 		if t.selectionStart < len(t.runes) {
 			canvas.DrawSimpleText(string(t.runes[t.selectionEnd:]), right, textBaseLine, f, paint)
 		}
 	case len(t.runes) == 0:
 		if t.Watermark != "" {
-			faded := paint.Clone()
-			faded.SetColor(faded.Color().SetAlphaIntensity(0.3))
-			canvas.DrawSimpleText(t.Watermark, rect.X, textBaseLine, f, faded)
+			paint.SetColorFilter(NewAlphaFilter(0.3))
+			canvas.DrawSimpleText(t.Watermark, rect.X, textBaseLine, f, paint)
 		}
 	default:
 		if !t.Enabled() {
@@ -730,7 +745,7 @@ func (t *Field) autoScroll() {
 // ToSelectionIndex returns the rune index for the specified x-coordinate.
 func (t *Field) ToSelectionIndex(x float32) int {
 	rect := t.ContentRect(false)
-	return ChooseFont(t.Font, FieldFont).IndexForPosition(x-(rect.X+t.scrollOffset), string(t.runes))
+	return t.Font.ResolvedFont().IndexForPosition(x-(rect.X+t.scrollOffset), string(t.runes))
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
@@ -743,7 +758,7 @@ func (t *Field) FromSelectionIndex(index int) geom32.Point {
 		if index > length {
 			index = length
 		}
-		x += ChooseFont(t.Font, FieldFont).PositionForIndex(index, string(t.runes))
+		x += t.Font.ResolvedFont().PositionForIndex(index, string(t.runes))
 	}
 	return geom32.Point{X: x, Y: top}
 }

@@ -16,38 +16,54 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
-// RadioButton represents a clickable radio button with an optional label.
-type RadioButton struct {
-	GroupPanel
-	ClickCallback      func()
+// DefaultRadioButtonTheme holds the default RadioButtonTheme values for RadioButtons. Modifying this data will not
+// alter existing RadioButtons, but will alter any RadioButtons created in the future.
+var DefaultRadioButtonTheme = RadioButtonTheme{
+	Font:               SystemFont,
+	BackgroundInk:      ControlColor,
+	OnBackgroundInk:    OnControlColor,
+	EdgeInk:            ControlEdgeColor,
+	LabelInk:           OnBackgroundColor,
+	SelectionInk:       SelectionColor,
+	OnSelectionInk:     OnSelectionColor,
+	Gap:                3,
+	CornerRadius:       4,
+	ClickAnimationTime: 100 * time.Millisecond,
+	HAlign:             MiddleAlignment,
+	VAlign:             MiddleAlignment,
+	Side:               LeftSide,
+}
+
+// RadioButtonTheme holds theming data for a RadioButton.
+type RadioButtonTheme struct {
 	Font               FontProvider
-	ControlColor       Ink
-	OnControlColor     Ink
-	OnBackgroundColor  Ink
-	EdgeColor          Ink
-	PressedColor       Ink
-	OnPressedColor     Ink
-	Drawable           Drawable
-	Text               string
+	BackgroundInk      Ink
+	OnBackgroundInk    Ink
+	EdgeInk            Ink
+	LabelInk           Ink
+	SelectionInk       Ink
+	OnSelectionInk     Ink
 	Gap                float32
 	CornerRadius       float32
 	ClickAnimationTime time.Duration
 	HAlign             Alignment
 	VAlign             Alignment
 	Side               Side
-	Pressed            bool
+}
+
+// RadioButton represents a clickable radio button with an optional label.
+type RadioButton struct {
+	GroupPanel
+	RadioButtonTheme
+	ClickCallback func()
+	Drawable      Drawable
+	Text          string
+	Pressed       bool
 }
 
 // NewRadioButton creates a new radio button.
 func NewRadioButton() *RadioButton {
-	r := &RadioButton{
-		Gap:                3,
-		CornerRadius:       4,
-		ClickAnimationTime: 100 * time.Millisecond,
-		HAlign:             MiddleAlignment,
-		VAlign:             MiddleAlignment,
-		Side:               LeftSide,
-	}
+	r := &RadioButton{RadioButtonTheme: DefaultRadioButtonTheme}
 	r.Self = r
 	r.SetFocusable(true)
 	r.SetSizer(r.DefaultSizes)
@@ -77,7 +93,7 @@ func (r *RadioButton) circleAndLabelSize() geom32.Size {
 	if r.Drawable == nil && r.Text == "" {
 		return geom32.Size{Width: circleSize, Height: circleSize}
 	}
-	size := LabelSize(r.Text, ChooseFont(r.Font, SystemFont), r.Drawable, r.Side, r.Gap)
+	size := LabelSize(r.Text, r.Font, r.Drawable, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
 	if size.Height < circleSize {
 		size.Height = circleSize
@@ -86,7 +102,7 @@ func (r *RadioButton) circleAndLabelSize() geom32.Size {
 }
 
 func (r *RadioButton) circleSize() float32 {
-	return mathf32.Ceil(ChooseFont(r.Font, SystemFont).Baseline())
+	return mathf32.Ceil(r.Font.ResolvedFont().Baseline())
 }
 
 // DefaultDraw provides the default drawing.
@@ -110,11 +126,11 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
 	case r.Pressed:
-		bg = ChooseInk(r.PressedColor, SelectionColor)
-		fg = ChooseInk(r.OnPressedColor, OnSelectionColor)
+		bg = r.SelectionInk
+		fg = r.OnSelectionInk
 	default:
-		bg = ChooseInk(r.ControlColor, ControlColor)
-		fg = ChooseInk(r.OnControlColor, OnControlColor)
+		bg = r.BackgroundInk
+		fg = r.OnBackgroundInk
 	}
 	thickness := float32(1)
 	if r.Focused() {
@@ -126,15 +142,14 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, ChooseFont(r.Font, SystemFont),
-			ChooseInk(r.OnBackgroundColor, OnBackgroundColor), r.Drawable, r.Side, r.Gap, !r.Enabled())
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, r.Font, r.LabelInk, r.Drawable, r.Side, r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += mathf32.Floor((rect.Height - circleSize) / 2)
 	}
 	rect.Width = circleSize
 	rect.Height = circleSize
-	DrawEllipseBase(canvas, rect, thickness, bg, ChooseInk(r.EdgeColor, ControlEdgeColor))
+	DrawEllipseBase(canvas, rect, thickness, bg, r.EdgeInk)
 	if r.Selected() {
 		rect.InsetUniform(0.5 + 0.2*circleSize)
 		paint := fg.Paint(canvas, rect, Fill)

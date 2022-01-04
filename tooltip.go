@@ -16,12 +16,33 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
-var (
-	// TooltipDelay holds the delay before a tooltip will be shown.
-	TooltipDelay = 1500 * time.Millisecond
-	// TooltipDismissal holds the delay before a tooltip will be dismissed.
-	TooltipDismissal = 3 * time.Second
-)
+// DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
+// Tooltips, but will alter any Tooltips created in the future.
+var DefaultTooltipTheme = TooltipTheme{
+	SecondaryTextFont: SmallSystemFont,
+	BackgroundInk:     TooltipColor,
+	BaseBorder:        NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 4, Bottom: 2, Right: 4})),
+	Label:             defaultToolTipLabelTheme(),
+	Delay:             1500 * time.Millisecond,
+	Dismissal:         3 * time.Second,
+}
+
+func defaultToolTipLabelTheme() LabelTheme {
+	theme := DefaultLabelTheme
+	theme.Font = SystemFont
+	theme.OnBackgroundInk = OnTooltipColor
+	return theme
+}
+
+// TooltipTheme holds theming data for a Tooltip.
+type TooltipTheme struct {
+	SecondaryTextFont FontProvider
+	BackgroundInk     Ink
+	BaseBorder        Border
+	Label             LabelTheme
+	Delay             time.Duration
+	Dismissal         time.Duration
+}
 
 type tooltipSequencer struct {
 	window   *Window
@@ -32,11 +53,10 @@ type tooltipSequencer struct {
 // NewTooltipBase returns the base for a tooltip.
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
-	tip.SetBorder(NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0,
-		geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 4, Bottom: 2, Right: 4})))
+	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
 	tip.DrawCallback = func(canvas *Canvas, dirty geom32.Rect) {
 		r := tip.ContentRect(true)
-		canvas.DrawRect(r, TooltipColor.Paint(canvas, r, Fill))
+		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, Fill))
 	}
 	return tip
 }
@@ -51,9 +71,8 @@ func NewTooltipWithText(text string) *Panel {
 	})
 	for _, str := range strings.Split(text, "\n") {
 		l := NewLabel()
+		l.LabelTheme = DefaultTooltipTheme.Label
 		l.Text = str
-		l.Font = SystemFont
-		l.Ink = OnTooltipColor
 		tip.AddChild(l)
 	}
 	return tip
@@ -66,9 +85,9 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 	if secondary != "" {
 		for _, str := range strings.Split(secondary, "\n") {
 			l := NewLabel()
+			l.LabelTheme = DefaultTooltipTheme.Label
+			l.LabelTheme.Font = DefaultTooltipTheme.SecondaryTextFont
 			l.Text = str
-			l.Font = SmallSystemFont
-			l.Ink = OnTooltipColor
 			tip.AddChild(l)
 		}
 	}
@@ -109,7 +128,7 @@ func (ts *tooltipSequencer) show() {
 		tip.SetFrameRect(rect)
 		ts.window.root.setTooltip(tip)
 		ts.window.lastTooltipShownAt = time.Now()
-		InvokeTaskAfter(ts.close, TooltipDismissal)
+		InvokeTaskAfter(ts.close, DefaultTooltipTheme.Dismissal)
 	}
 }
 

@@ -16,22 +16,41 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
+// DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
+// existing PopupMenus, but will alter any PopupMenus created in the future.
+var DefaultPopupMenuTheme = PopupMenuTheme{
+	Font:            SystemFont,
+	BackgroundInk:   ControlColor,
+	OnBackgroundInk: OnControlColor,
+	EdgeInk:         ControlEdgeColor,
+	SelectionInk:    SelectionColor,
+	OnSelectionInk:  OnSelectionColor,
+	CornerRadius:    4,
+	HMargin:         8,
+	VMargin:         1,
+}
+
+// PopupMenuTheme holds theming data for a PopupMenu.
+type PopupMenuTheme struct {
+	Font            FontProvider
+	BackgroundInk   Ink
+	OnBackgroundInk Ink
+	EdgeInk         Ink
+	SelectionInk    Ink
+	OnSelectionInk  Ink
+	CornerRadius    float32
+	HMargin         float32
+	VMargin         float32
+}
+
 // PopupMenu represents a clickable button that displays a menu of choices.
 type PopupMenu struct {
 	Panel
+	PopupMenuTheme
 	MenuFactory       MenuFactory
 	SelectionCallback func()
-	Font              FontProvider
-	EdgeColor         Ink
-	PressedColor      Ink
-	OnPressedColor    Ink
-	ControlColor      Ink
-	OnControlColor    Ink
 	items             []interface{}
 	selectedIndex     int
-	CornerRadius      float32
-	HMargin           float32
-	VMargin           float32
 	Pressed           bool
 }
 
@@ -39,11 +58,7 @@ type popupSeparationMarker struct{}
 
 // NewPopupMenu creates a new PopupMenu.
 func NewPopupMenu() *PopupMenu {
-	p := &PopupMenu{
-		CornerRadius: 4,
-		HMargin:      8,
-		VMargin:      1,
-	}
+	p := &PopupMenu{PopupMenuTheme: DefaultPopupMenuTheme}
 	p.Self = p
 	p.SetFocusable(true)
 	p.SetSizer(p.DefaultSizes)
@@ -58,13 +73,12 @@ func NewPopupMenu() *PopupMenu {
 
 // DefaultSizes provides the default sizing.
 func (p *PopupMenu) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	f := ChooseFont(p.Font, SystemFont)
-	pref = LabelSize("M", f, nil, 0, 0)
+	pref = LabelSize("M", p.Font, nil, 0, 0)
 	for _, one := range p.items {
 		switch one.(type) {
 		case *popupSeparationMarker:
 		default:
-			size := LabelSize(fmt.Sprintf("%v", one), f, nil, 0, 0)
+			size := LabelSize(fmt.Sprintf("%v", one), p.Font, nil, 0, 0)
 			if pref.Width < size.Width {
 				pref.Width = size.Width
 			}
@@ -87,21 +101,21 @@ func (p *PopupMenu) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) 
 
 // DefaultDraw provides the default drawing.
 func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
-	rect := p.ContentRect(false)
 	var fg, bg Ink
 	switch {
 	case p.Pressed:
-		bg = ChooseInk(p.PressedColor, SelectionColor)
-		fg = ChooseInk(p.OnPressedColor, OnSelectionColor)
+		bg = p.SelectionInk
+		fg = p.OnSelectionInk
 	default:
-		bg = ChooseInk(p.ControlColor, ControlColor)
-		fg = ChooseInk(p.OnControlColor, OnControlColor)
+		bg = p.BackgroundInk
+		fg = p.OnBackgroundInk
 	}
 	thickness := float32(1)
 	if p.Focused() {
 		thickness++
 	}
-	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, bg, ChooseInk(p.EdgeColor, ControlEdgeColor))
+	rect := p.ContentRect(false)
+	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, bg, p.EdgeInk)
 	rect.InsetUniform(1.5)
 	rect.X += p.HMargin
 	rect.Y += p.VMargin
@@ -110,7 +124,7 @@ func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	triWidth := rect.Height * 0.75
 	triHeight := triWidth / 2
 	rect.Width -= triWidth
-	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.Text(), ChooseFont(p.Font, SystemFont), fg, nil, 0, 0,
+	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.Text(), p.Font, fg, nil, 0, 0,
 		!p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()

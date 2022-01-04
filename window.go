@@ -895,10 +895,10 @@ func (w *Window) updateTooltip(target *Panel, where geom32.Point) {
 		w.lastTooltip = tip
 		if tip != nil {
 			ts := &tooltipSequencer{window: w, avoid: avoid, sequence: w.tooltipSequence}
-			if wasShowing || time.Since(w.lastTooltipShownAt) < TooltipDismissal {
+			if wasShowing || time.Since(w.lastTooltipShownAt) < DefaultTooltipTheme.Dismissal {
 				ts.show()
 			} else {
-				InvokeTaskAfter(ts.show, TooltipDelay)
+				InvokeTaskAfter(ts.show, DefaultTooltipTheme.Delay)
 			}
 		}
 	}
