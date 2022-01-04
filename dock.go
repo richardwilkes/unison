@@ -10,9 +10,13 @@
 package unison
 
 import (
+	"fmt"
+
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
+
+var dockCounter = 0
 
 // Dock provides an area where Dockable panels can be displayed and rearranged.
 type Dock struct {
@@ -37,8 +41,9 @@ type Dock struct {
 
 // NewDock creates a new, empty, dock.
 func NewDock() *Dock {
+	dockCounter++
 	d := &Dock{
-		DragKey:        "dockable",
+		DragKey:        fmt.Sprintf("dock-%d", dockCounter),
 		DockGripCount:  5,
 		DockGripGap:    1,
 		DockGripWidth:  4,
