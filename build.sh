@@ -12,7 +12,7 @@ set -eo pipefail
 
 trap 'echo -e "\033[33;5mBuild failed on build.sh:$LINENO\033[0m"' ERR
 
-GOLANGCI_LINT_VERSION=1.42.1
+GOLANGCI_LINT_VERSION=1.43.0
 
 for arg in "$@"
 do
