@@ -109,7 +109,7 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 	}
 }
 
-func (p *rootPanel) LayoutSizes(_ Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
+func (p *rootPanel) LayoutSizes(_ *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
 	min, pref, max = p.content.Sizes(hint)
 	if p.menubar != nil {
 		_, barSize, _ := p.menubar.Sizes(geom32.Size{})
@@ -123,7 +123,7 @@ func (p *rootPanel) LayoutSizes(_ Layoutable, hint geom32.Size) (min, pref, max 
 	return
 }
 
-func (p *rootPanel) PerformLayout(_ Layoutable) {
+func (p *rootPanel) PerformLayout(_ *Panel) {
 	rect := p.FrameRect()
 	rect.X = 0
 	rect.Y = 0

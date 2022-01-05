@@ -238,7 +238,7 @@ func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(panel *Panel) {
 }
 
 // LayoutSizes implements the Layout interface.
-func (s *ScrollPanel) LayoutSizes(_ Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
+func (s *ScrollPanel) LayoutSizes(_ *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
 	if s.content != nil {
 		_, pref, _ = s.content.Sizes(hint)
 	}
@@ -268,7 +268,7 @@ func (s *ScrollPanel) LayoutSizes(_ Layoutable, hint geom32.Size) (min, pref, ma
 }
 
 // PerformLayout implements the Layout interface.
-func (s *ScrollPanel) PerformLayout(_ Layoutable) {
+func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	r := s.ContentRect(false)
 	col := geom32.NewRect(0, r.Y, 0, 0)
 	if s.columnHeader != nil {

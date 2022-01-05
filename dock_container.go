@@ -204,12 +204,12 @@ func (d *DockContainer) Close(dockable Dockable) {
 
 // PreferredSize implements DockLayoutNode.
 func (d *DockContainer) PreferredSize() geom32.Size {
-	_, pref, _ := d.LayoutSizes(d, geom32.Size{})
+	_, pref, _ := d.LayoutSizes(d.AsPanel(), geom32.Size{})
 	return pref
 }
 
 // LayoutSizes implements Layout.
-func (d *DockContainer) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
+func (d *DockContainer) LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
 	min, pref, max = d.header.Sizes(geom32.Size{Width: hint.Width})
 	min.Height = pref.Height
 	max.Height = pref.Height
@@ -230,7 +230,7 @@ func (d *DockContainer) LayoutSizes(target Layoutable, hint geom32.Size) (min, p
 }
 
 // PerformLayout implements Layout.
-func (d *DockContainer) PerformLayout(target Layoutable) {
+func (d *DockContainer) PerformLayout(target *Panel) {
 	r := d.ContentRect(false)
 	_, pref, _ := d.header.Sizes(geom32.Size{Width: r.Width})
 	d.header.SetFrameRect(geom32.NewRect(r.X, r.Y, r.Width, pref.Height))

@@ -16,10 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
-var (
-	_ Layoutable = &Panel{}
-	_ Paneler    = &Panel{}
-)
+var _ Paneler = &Panel{}
 
 // Paneler is used to convert widgets into the base Panel type.
 type Paneler interface {
@@ -98,15 +95,6 @@ func (p *Panel) String() string {
 // Children returns the direct descendents of this panel.
 func (p *Panel) Children() []*Panel {
 	return p.children
-}
-
-// ChildrenForLayout is the same as calling Children(), but returns them as layout.Layoutable objects instead.
-func (p *Panel) ChildrenForLayout() []Layoutable {
-	children := make([]Layoutable, len(p.children))
-	for i := range p.children {
-		children[i] = p.children[i]
-	}
-	return children
 }
 
 // IndexOfChild returns the index of the specified child, or -1 if the passed in panel is not a child of this panel.

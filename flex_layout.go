@@ -43,7 +43,7 @@ type FlexLayoutData struct {
 }
 
 // LayoutSizes implements the Layout interface.
-func (f *FlexLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
+func (f *FlexLayout) LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
 	min = f.layout(target, geom32.Point{}, hint, false, true)
 	pref = f.layout(target, geom32.Point{}, hint, false, false)
 	if b := target.Border(); b != nil {
@@ -55,7 +55,7 @@ func (f *FlexLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 }
 
 // PerformLayout implements the Layout interface.
-func (f *FlexLayout) PerformLayout(target Layoutable) {
+func (f *FlexLayout) PerformLayout(target *Panel) {
 	var insets geom32.Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
@@ -65,7 +65,7 @@ func (f *FlexLayout) PerformLayout(target Layoutable) {
 	f.layout(target, geom32.Point{X: insets.Left, Y: insets.Top}, hint, true, false)
 }
 
-func (f *FlexLayout) layout(target Layoutable, location geom32.Point, hint geom32.Size, move, useMinimumSize bool) geom32.Size {
+func (f *FlexLayout) layout(target *Panel, location geom32.Point, hint geom32.Size, move, useMinimumSize bool) geom32.Size {
 	var totalSize geom32.Size
 	if f.Columns > 0 {
 		children := f.prepChildren(target, useMinimumSize)
@@ -110,15 +110,15 @@ func (f *FlexLayout) layout(target Layoutable, location geom32.Point, hint geom3
 	return totalSize
 }
 
-func (f *FlexLayout) prepChildren(target Layoutable, useMinimumSize bool) []Layoutable {
-	children := target.ChildrenForLayout()
+func (f *FlexLayout) prepChildren(target *Panel, useMinimumSize bool) []*Panel {
+	children := target.Children()
 	for _, child := range children {
 		getDataFromTarget(child).computeCacheSize(child.Sizes, geom32.Size{}, useMinimumSize)
 	}
 	return children
 }
 
-func getDataFromTarget(target Layoutable) *FlexLayoutData {
+func getDataFromTarget(target *Panel) *FlexLayoutData {
 	if data, ok := target.LayoutData().(*FlexLayoutData); ok {
 		return data
 	}
@@ -131,8 +131,8 @@ func getDataFromTarget(target Layoutable) *FlexLayoutData {
 	return data
 }
 
-func (f *FlexLayout) buildGrid(children []Layoutable) [][]Layoutable {
-	var grid [][]Layoutable
+func (f *FlexLayout) buildGrid(children []*Panel) [][]*Panel {
+	var grid [][]*Panel
 	var row, column int
 	f.rows = 0
 	for _, child := range children {
@@ -142,7 +142,7 @@ func (f *FlexLayout) buildGrid(children []Layoutable) [][]Layoutable {
 		for {
 			lastRow := row + vSpan
 			if lastRow >= len(grid) {
-				grid = append(grid, make([]Layoutable, f.Columns))
+				grid = append(grid, make([]*Panel, f.Columns))
 			}
 			// noinspection GoNilness
 			for column < f.Columns && grid[row][column] != nil {
@@ -178,7 +178,7 @@ func (f *FlexLayout) buildGrid(children []Layoutable) [][]Layoutable {
 	return grid
 }
 
-func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]Layoutable) []float32 {
+func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float32 {
 	availableWidth := width - f.HSpacing*float32(f.Columns-1)
 	expandCount := 0
 	widths := make([]float32, f.Columns)
@@ -368,7 +368,7 @@ func (f *FlexLayout) apportionExtra(extra float32, base, count, span int, expand
 	}
 }
 
-func (f *FlexLayout) getData(grid [][]Layoutable, row, column int, first bool) *FlexLayoutData {
+func (f *FlexLayout) getData(grid [][]*Panel, row, column int, first bool) *FlexLayoutData {
 	target := grid[row][column]
 	if target != nil {
 		data := getDataFromTarget(target)
@@ -393,7 +393,7 @@ func (f *FlexLayout) getData(grid [][]Layoutable, row, column int, first bool) *
 	return nil
 }
 
-func (f *FlexLayout) wrap(width float32, grid [][]Layoutable, widths []float32, useMinimumSize bool) {
+func (f *FlexLayout) wrap(width float32, grid [][]*Panel, widths []float32, useMinimumSize bool) {
 	if width > 0 {
 		for j := 0; j < f.Columns; j++ {
 			for i := 0; i < f.rows; i++ {
@@ -420,7 +420,7 @@ func (f *FlexLayout) wrap(width float32, grid [][]Layoutable, widths []float32, 
 	}
 }
 
-func (f *FlexLayout) adjustRowHeights(height float32, grid [][]Layoutable) []float32 {
+func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32 {
 	availableHeight := height - f.VSpacing*float32(f.rows-1)
 	expandCount := 0
 	heights := make([]float32, f.rows)
@@ -566,7 +566,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]Layoutable) []flo
 	return heights
 }
 
-func (f *FlexLayout) positionChildren(location geom32.Point, grid [][]Layoutable, widths, heights []float32) {
+func (f *FlexLayout) positionChildren(location geom32.Point, grid [][]*Panel, widths, heights []float32) {
 	gridY := location.Y
 	for i := 0; i < f.rows; i++ {
 		gridX := location.X

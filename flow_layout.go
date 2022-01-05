@@ -24,7 +24,7 @@ type FlowLayout struct {
 }
 
 // LayoutSizes implements Layout.
-func (f *FlowLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
+func (f *FlowLayout) LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
 	var insets geom32.Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
@@ -42,7 +42,7 @@ func (f *FlowLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 	availHeight := hint.Height - (insets.Top + insets.Bottom)
 	var maxHeight float32
 	var largestChildMin geom32.Size
-	for _, child := range target.ChildrenForLayout() {
+	for _, child := range target.Children() {
 		min, pref, _ = child.Sizes(geom32.Size{})
 		if largestChildMin.Width < min.Width {
 			largestChildMin.Width = min.Width
@@ -111,7 +111,7 @@ func (f *FlowLayout) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 }
 
 // PerformLayout implements Layout.
-func (f *FlowLayout) PerformLayout(target Layoutable) {
+func (f *FlowLayout) PerformLayout(target *Panel) {
 	var insets geom32.Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
@@ -122,7 +122,7 @@ func (f *FlowLayout) PerformLayout(target Layoutable) {
 	availWidth := width
 	availHeight := size.Height - (insets.Top + insets.Bottom)
 	var maxHeight float32
-	children := target.ChildrenForLayout()
+	children := target.Children()
 	rects := make([]geom32.Rect, len(children))
 	start := 0
 	for i, child := range children {
@@ -184,7 +184,7 @@ func (f *FlowLayout) PerformLayout(target Layoutable) {
 	}
 }
 
-func (f *FlowLayout) applyRects(children []Layoutable, rects []geom32.Rect, maxHeight float32) {
+func (f *FlowLayout) applyRects(children []*Panel, rects []geom32.Rect, maxHeight float32) {
 	for i, child := range children {
 		vAlign, ok := child.LayoutData().(Alignment)
 		if !ok {

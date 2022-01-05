@@ -157,7 +157,7 @@ func (d *dockHeader) partition() (tabs []*dockTab, buttons []*Panel) {
 	return tabs, buttons
 }
 
-func (d *dockHeader) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size) {
+func (d *dockHeader) LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
 	tabs, buttons := d.partition()
 	for i, dt := range tabs {
 		_, size, _ := dt.Sizes(geom32.Size{})
@@ -187,7 +187,7 @@ func (d *dockHeader) LayoutSizes(target Layoutable, hint geom32.Size) (min, pref
 	return min, pref, MaxSize(pref)
 }
 
-func (d *dockHeader) PerformLayout(target Layoutable) {
+func (d *dockHeader) PerformLayout(target *Panel) {
 	contentRect := d.ContentRect(false)
 	tabs, buttons := d.partition()
 	tabSizes := make([]geom32.Size, len(tabs))

@@ -339,7 +339,7 @@ func (d *DockLayout) SetFrameRect(r geom32.Rect) {
 }
 
 // LayoutSizes implements Layout.
-func (d *DockLayout) LayoutSizes(_ Layoutable, _ geom32.Size) (min, pref, max geom32.Size) {
+func (d *DockLayout) LayoutSizes(_ *Panel, _ geom32.Size) (min, pref, max geom32.Size) {
 	if d.nodes[0] != nil {
 		pref = d.nodes[0].PreferredSize()
 	}
@@ -359,7 +359,7 @@ func (d *DockLayout) LayoutSizes(_ Layoutable, _ geom32.Size) (min, pref, max ge
 }
 
 // PerformLayout implements Layout.
-func (d *DockLayout) PerformLayout(_ Layoutable) {
+func (d *DockLayout) PerformLayout(_ *Panel) {
 	if d.parent == nil {
 		d.frame = d.dock.ContentRect(false)
 	}

@@ -64,21 +64,8 @@ type Sizer func(hint geom32.Size) (min, pref, max geom32.Size)
 
 // Layout defines methods that all layouts must provide.
 type Layout interface {
-	LayoutSizes(target Layoutable, hint geom32.Size) (min, pref, max geom32.Size)
-	PerformLayout(target Layoutable)
-}
-
-// Layoutable defines the methods an object that wants to participate in
-// layout must implement.
-type Layoutable interface {
-	SetLayout(layout Layout)
-	LayoutData() interface{}
-	SetLayoutData(data interface{})
-	Sizes(hint geom32.Size) (min, pref, max geom32.Size)
-	Border() Border
-	FrameRect() geom32.Rect
-	SetFrameRect(rect geom32.Rect)
-	ChildrenForLayout() []Layoutable
+	LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size)
+	PerformLayout(target *Panel)
 }
 
 // MaxSize returns the size that is at least as large as DefaultMaxSize in
