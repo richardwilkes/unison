@@ -310,7 +310,7 @@ func createDockHeaderButton() *Button {
 
 func (d *dockHeader) adjustToMaximizedState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Restore() }
-	fSize := SystemFont.Baseline()
+	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowRestoreSVG(),
 		Size: geom32.Size{Width: fSize, Height: fSize},
@@ -320,7 +320,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 
 func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Maximize(d.owner) }
-	fSize := SystemFont.Baseline()
+	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowMaximizeSVG(),
 		Size: geom32.Size{Width: fSize, Height: fSize},
