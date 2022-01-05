@@ -79,7 +79,7 @@ func (a *Action) NewMenuItem(f MenuFactory) MenuItem {
 // NewContextMenuItemFromAction returns a newly created menu item for a context menu using this action. If the menuItem
 // would be disabled, nil is returned instead.
 func (a *Action) NewContextMenuItemFromAction(f MenuFactory) MenuItem {
-	if a.Enabled(nil) {
+	if !a.Enabled(nil) {
 		return nil
 	}
 	return f.NewItem(a.ID|ContextMenuIDFlag, a.Title, KeyNone, NoModifiers, a.enabled, a.execute)
