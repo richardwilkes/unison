@@ -32,7 +32,7 @@ var DefaultPopupMenuTheme = PopupMenuTheme{
 
 // PopupMenuTheme holds theming data for a PopupMenu.
 type PopupMenuTheme struct {
-	Font            FontProvider
+	Font            Font
 	BackgroundInk   Ink
 	OnBackgroundInk Ink
 	EdgeInk         Ink

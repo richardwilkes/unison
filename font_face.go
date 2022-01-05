@@ -64,7 +64,7 @@ func CreateFontFace(data []byte) *FontFace {
 }
 
 // Font returns a Font of the given size for this FontFace.
-func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) *Font {
+func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 	weight, spacing, slant := f.Style()
 	fd := FontDescriptor{
 		Family:  f.Family(),
@@ -82,7 +82,7 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) *Font {
 		return font
 	}
 	skiaSize = capHeightSizeInLogicalPixels
-	var font *Font
+	var font *fontImpl
 	font = f.createFontWithSkiaSize(skiaSize)
 	skiaSize = mathf32.Floor(capHeightSizeInLogicalPixels * skiaSize / font.metrics.CapHeight)
 	for {
@@ -103,8 +103,8 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) *Font {
 	return font
 }
 
-func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *Font {
-	font := &Font{
+func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
+	font := &fontImpl{
 		face: f,
 		font: skia.FontNewWithValues(f.face, skiaSize, 1, 0),
 	}
@@ -112,7 +112,7 @@ func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *Font {
 	skia.FontSetForceAutoHinting(font.font, true)
 	skia.FontSetHinting(font.font, skia.FontHinting(FontHintingFull))
 	skia.FontGetMetrics(font.font, (*skia.FontMetrics)(&font.metrics))
-	runtime.SetFinalizer(font, func(obj *Font) {
+	runtime.SetFinalizer(font, func(obj *fontImpl) {
 		ReleaseOnUIThread(func() {
 			skia.FontDelete(obj.font)
 		})

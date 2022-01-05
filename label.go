@@ -27,7 +27,7 @@ var DefaultLabelTheme = LabelTheme{
 
 // LabelTheme holds theming data for a Label.
 type LabelTheme struct {
-	Font            FontProvider
+	Font            Font
 	OnBackgroundInk Ink
 	Gap             float32
 	HAlign          Alignment
@@ -65,16 +65,16 @@ func (l *Label) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 
 // DefaultDraw provides the default drawing.
 func (l *Label) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
-	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Text, l.Font.ResolvedFont(), l.OnBackgroundInk,
-		l.Drawable, l.Side, l.Gap, !l.Enabled())
+	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Text, l.Font, l.OnBackgroundInk, l.Drawable, l.Side,
+		l.Gap, !l.Enabled())
 }
 
 // LabelSize returns the preferred size of a label. Provided as a standalone function so that other types of panels can
 // make use of it.
-func LabelSize(text string, fontProvider FontProvider, drawable Drawable, drawableSide Side, imgGap float32) geom32.Size {
+func LabelSize(text string, font Font, drawable Drawable, drawableSide Side, imgGap float32) geom32.Size {
 	var size geom32.Size
 	if text != "" {
-		size = fontProvider.ResolvedFont().Extents(text)
+		size = font.Extents(text)
 		size.GrowToInteger()
 	}
 	adjustLabelSizeForDrawable(text, drawable, drawableSide, imgGap, &size)
@@ -103,7 +103,7 @@ func adjustLabelSizeForDrawable(text string, drawable Drawable, drawableSide Sid
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text string, fontProvider FontProvider,
+func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text string, font Font,
 	textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
 	if drawable == nil && text == "" {
 		return
@@ -115,10 +115,8 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 	}
 
 	// Determine overall size of content
-	var font *Font
 	var size, txtSize geom32.Size
 	if text != "" {
-		font = fontProvider.ResolvedFont()
 		txtSize = font.Extents(text)
 		size = txtSize
 	}

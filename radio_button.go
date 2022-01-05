@@ -36,7 +36,7 @@ var DefaultRadioButtonTheme = RadioButtonTheme{
 
 // RadioButtonTheme holds theming data for a RadioButton.
 type RadioButtonTheme struct {
-	Font               FontProvider
+	Font               Font
 	BackgroundInk      Ink
 	OnBackgroundInk    Ink
 	EdgeInk            Ink
@@ -102,7 +102,7 @@ func (r *RadioButton) circleAndLabelSize() geom32.Size {
 }
 
 func (r *RadioButton) circleSize() float32 {
-	return mathf32.Ceil(r.Font.ResolvedFont().Baseline())
+	return mathf32.Ceil(r.Font.Baseline())
 }
 
 // DefaultDraw provides the default drawing.

@@ -9,14 +9,73 @@
 
 package unison
 
-var _ FontProvider = &IndirectFont{}
+import (
+	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/unison/internal/skia"
+)
 
-// IndirectFont holds a FontProvider that references another font.
+var _ Font = &IndirectFont{}
+
+// IndirectFont holds a Font that references another font.
 type IndirectFont struct {
-	Font *Font
+	Font Font
 }
 
-// ResolvedFont implements the FontProvider interface.
-func (i *IndirectFont) ResolvedFont() *Font {
-	return i.Font
+// Face implements Font.
+func (f *IndirectFont) Face() *FontFace {
+	return f.Font.Face()
+}
+
+// Size implements Font.
+func (f *IndirectFont) Size() float32 {
+	return f.Font.Size()
+}
+
+// Metrics implements Font.
+func (f *IndirectFont) Metrics() FontMetrics {
+	return f.Font.Metrics()
+}
+
+// Baseline implements Font.
+func (f *IndirectFont) Baseline() float32 {
+	return f.Font.Baseline()
+}
+
+// LineHeight implements Font.
+func (f *IndirectFont) LineHeight() float32 {
+	return f.Font.LineHeight()
+}
+
+// Width implements Font.
+func (f *IndirectFont) Width(str string) float32 {
+	return f.Font.Width(str)
+}
+
+// Extents implements Font.
+func (f *IndirectFont) Extents(str string) geom32.Size {
+	return f.Font.Extents(str)
+}
+
+// Glyphs implements Font.
+func (f *IndirectFont) Glyphs(text string) []uint16 {
+	return f.Font.Glyphs(text)
+}
+
+// IndexForPosition implements Font.
+func (f *IndirectFont) IndexForPosition(x float32, str string) int {
+	return f.Font.IndexForPosition(x, str)
+}
+
+// PositionForIndex implements Font.
+func (f *IndirectFont) PositionForIndex(index int, str string) float32 {
+	return f.Font.PositionForIndex(index, str)
+}
+
+// Descriptor implements Font.
+func (f *IndirectFont) Descriptor() FontDescriptor {
+	return f.Font.Descriptor()
+}
+
+func (f *IndirectFont) skiaFont() skia.Font {
+	return f.Font.skiaFont()
 }

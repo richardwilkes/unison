@@ -46,7 +46,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 		// Put the name of the app in a large font at the top
 		title := unison.NewLabel()
 		title.Text = cmdline.AppName
-		title.Font = unison.EmphasizedSystemFont.ResolvedFont().Face().Font(24)
+		title.Font = unison.EmphasizedSystemFont.Face().Font(24)
 		title.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
@@ -59,7 +59,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 		// Put a description below the title, line 1
 		desc := unison.NewLabel()
 		desc.Text = "A simple app to demonstrate"
-		desc.Font = unison.LabelFont.ResolvedFont().Face().Font(14)
+		desc.Font = unison.LabelFont.Face().Font(14)
 		desc.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
@@ -72,7 +72,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 		// Put a description below the title, line 2
 		desc = unison.NewLabel()
 		desc.Text = "the capabilities of Unison"
-		desc.Font = unison.LabelFont.ResolvedFont().Face().Font(14)
+		desc.Font = unison.LabelFont.Face().Font(14)
 		desc.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,

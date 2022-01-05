@@ -35,7 +35,7 @@ func (fd FontDescriptor) Face() *FontFace {
 
 // Font returns the matching Font. If the specified font family cannot be found, the DefaultSystemFamilyName will be
 // substituted.
-func (fd FontDescriptor) Font() *Font {
+func (fd FontDescriptor) Font() Font {
 	f := fd.Face()
 	if f == nil {
 		if fd.Family == DefaultSystemFamilyName {

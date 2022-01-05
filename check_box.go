@@ -36,7 +36,7 @@ var DefaultCheckBoxTheme = CheckBoxTheme{
 
 // CheckBoxTheme holds theming data for a CheckBox.
 type CheckBoxTheme struct {
-	Font               FontProvider
+	Font               Font
 	OnBackgroundInk    Ink
 	EdgeInk            Ink
 	SelectionInk       Ink
@@ -103,7 +103,7 @@ func (c *CheckBox) boxAndLabelSize() geom32.Size {
 }
 
 func (c *CheckBox) boxSize() float32 {
-	return mathf32.Ceil(c.Font.ResolvedFont().Baseline())
+	return mathf32.Ceil(c.Font.Baseline())
 }
 
 // DefaultDraw provides the default drawing.

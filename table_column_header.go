@@ -69,7 +69,7 @@ func (h *DefaultTableColumnHeader) SetSortState(state SortState) {
 	if h.sortState != state {
 		h.sortState = state
 		if h.sortState.Sortable && h.sortState.Order == 0 {
-			baseline := h.Font.ResolvedFont().Baseline()
+			baseline := h.Font.Baseline()
 			if h.sortState.Ascending {
 				h.Drawable = &DrawableSVG{
 					SVG:  SortAscendingSVG(),

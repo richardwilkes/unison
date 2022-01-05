@@ -39,7 +39,7 @@ var DefaultButtonTheme = ButtonTheme{
 
 // ButtonTheme holds theming data for a Button.
 type ButtonTheme struct {
-	Font                FontProvider
+	Font                Font
 	BackgroundInk       Ink
 	OnBackgroundInk     Ink
 	EdgeInk             Ink

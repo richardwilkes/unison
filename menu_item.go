@@ -61,8 +61,8 @@ var DefaultMenuItemTheme = MenuItemTheme{
 
 // MenuItemTheme holds theming data for a MenuItem.
 type MenuItemTheme struct {
-	TitleFont         FontProvider
-	KeyFont           FontProvider
+	TitleFont         Font
+	KeyFont           Font
 	BackgroundColor   Ink
 	OnBackgroundColor Ink
 	SelectionColor    Ink
@@ -210,8 +210,7 @@ func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
 		if mi.keyCode != 0 {
 			keyName := KeyCodeToName[mi.keyCode]
 			if keyName != "" {
-				font := DefaultMenuItemTheme.KeyFont.ResolvedFont()
-				size := font.Extents(mi.keyModifiers.String() + keyName)
+				size := DefaultMenuItemTheme.KeyFont.Extents(mi.keyModifiers.String() + keyName)
 				pref.Width += DefaultMenuItemTheme.KeyGap + size.Width
 				pref.Height = mathf32.Max(pref.Height, size.Height)
 			}
@@ -241,16 +240,18 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 	if mi.isSeparator {
 		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, paint)
 	} else {
-		font := DefaultMenuItemTheme.TitleFont.ResolvedFont()
-		size := font.Extents(mi.Title())
-		gc.DrawSimpleText(mi.Title(), rect.X, mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+font.Baseline(), font, paint)
+		size := DefaultMenuItemTheme.TitleFont.Extents(mi.Title())
+		gc.DrawSimpleText(mi.Title(), rect.X,
+			mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.TitleFont.Baseline(),
+			DefaultMenuItemTheme.TitleFont, paint)
 		if mi.keyCode != 0 {
 			keyName := KeyCodeToName[mi.keyCode]
 			if keyName != "" {
 				text := mi.keyModifiers.String() + keyName
-				font = DefaultMenuItemTheme.KeyFont.ResolvedFont()
-				size = font.Extents(text)
-				gc.DrawSimpleText(text, mathf32.Floor(rect.Right()-size.Width), mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+font.Baseline(), font, paint)
+				size = DefaultMenuItemTheme.KeyFont.Extents(text)
+				gc.DrawSimpleText(text, mathf32.Floor(rect.Right()-size.Width),
+					mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.KeyFont.Baseline(),
+					DefaultMenuItemTheme.KeyFont, paint)
 			}
 		}
 	}

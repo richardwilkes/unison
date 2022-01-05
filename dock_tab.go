@@ -95,7 +95,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		t.button = NewButton()
 		t.button.ButtonTheme = t.ButtonTheme
 		t.button.SetFocusable(false)
-		fSize := t.LabelTheme.Font.ResolvedFont().Baseline()
+		fSize := t.LabelTheme.Font.Baseline()
 		t.button.Drawable = &DrawableSVG{
 			SVG:  CircledXSVG(),
 			Size: geom32.Size{Width: fSize, Height: fSize},
@@ -112,7 +112,7 @@ func newDockTab(dockable Dockable) *dockTab {
 }
 
 func (t *dockTab) TitleIcon() Drawable {
-	fSize := t.title.Font.ResolvedFont().Baseline()
+	fSize := t.title.Font.Baseline()
 	return t.dockable.TitleIcon(geom32.Size{Width: fSize, Height: fSize})
 }
 

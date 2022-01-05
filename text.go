@@ -22,8 +22,8 @@ type Text struct {
 }
 
 // NewText creates a new Text with the given Font.
-func NewText(text string, font *Font) *Text {
-	return newText(skia.TextBlobMakeFromText(text, font.font))
+func NewText(text string, font Font) *Text {
+	return newText(skia.TextBlobMakeFromText(text, font.skiaFont()))
 }
 
 func newText(text skia.TextBlob) *Text {

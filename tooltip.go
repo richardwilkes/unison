@@ -36,7 +36,7 @@ func defaultToolTipLabelTheme() LabelTheme {
 
 // TooltipTheme holds theming data for a Tooltip.
 type TooltipTheme struct {
-	SecondaryTextFont FontProvider
+	SecondaryTextFont Font
 	BackgroundInk     Ink
 	BaseBorder        Border
 	Label             LabelTheme

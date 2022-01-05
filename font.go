@@ -33,8 +33,8 @@ var fontFS embed.FS
 
 var (
 	internalFontLock sync.RWMutex
-	internalFonts                 = make(map[string]*internalFont)
-	_                FontProvider = &Font{}
+	internalFonts         = make(map[string]*internalFont)
+	_                Font = &fontImpl{}
 )
 
 // Pre-defined fonts
@@ -48,14 +48,38 @@ var (
 	KeyboardFont              = &IndirectFont{}
 )
 
+// Font holds a realized FontFace of a specific size that can be used to render text.
+type Font interface {
+	// Face returns the FontFace this Font belongs to.
+	Face() *FontFace
+	// Size returns the size of the font. This is the value that was passed to FontFace.Font() when creating the font.
+	Size() float32
+	// Metrics returns a copy of the FontMetrics for this font.
+	Metrics() FontMetrics
+	// Baseline returns the number of logical pixels to the bottom of characters without descenders.
+	Baseline() float32
+	// LineHeight returns the recommended line height of the font.
+	LineHeight() float32
+	// Width of the string rendered with this font. Note that this does not account for any embedded line endings nor tabs.
+	Width(str string) float32
+	// Extents of the string rendered with this font. Note that this does not account for any embedded line endings nor tabs.
+	Extents(str string) geom32.Size
+	// Glyphs converts the text into a series of glyphs.
+	Glyphs(text string) []uint16
+	// IndexForPosition returns the rune index within the string for the specified x-coordinate, where 0 is the start of the
+	// string. Note that this does not account for any embedded line endings nor tabs.
+	IndexForPosition(x float32, str string) int
+	// PositionForIndex returns the x-coordinate where the specified rune index starts. The returned coordinate assumes 0 is
+	// the start of the string. Note that this does not account for any embedded line endings nor tabs.
+	PositionForIndex(index int, str string) float32
+	// Descriptor returns a FontDescriptor for this Font.
+	Descriptor() FontDescriptor
+	skiaFont() skia.Font
+}
+
 type internalFont struct {
 	family string
 	faces  []*FontFace
-}
-
-// FontProvider holds a font to draw with.
-type FontProvider interface {
-	ResolvedFont() *Font
 }
 
 // FontHinting holds the type of font hinting to use.
@@ -98,70 +122,58 @@ type FontMetrics struct {
 	StrikeoutPosition  float32 // Distance from baseline to bottom of stroke; typically negative; only if Flags & StrikeoutPositionIsValidFontMetricsFlag != 0
 }
 
-// Font holds a realized FontFace of a specific size that can be used to render text.
-type Font struct {
+type fontImpl struct {
 	size    float32
 	face    *FontFace
 	font    skia.Font
 	metrics FontMetrics
 }
 
-// ResolvedFont implements the FontProvider interface.
-func (f *Font) ResolvedFont() *Font {
-	return f
-}
-
-// Face returns the FontFace this Font belongs to.
-func (f *Font) Face() *FontFace {
+func (f *fontImpl) Face() *FontFace {
 	return f.face
 }
 
-// Size returns the size of the font. This is the value that was passed to FontFace.Font() when creating the font.
-func (f *Font) Size() float32 {
+func (f *fontImpl) Size() float32 {
 	return f.size
 }
 
-// Metrics returns a copy of the FontMetrics for this font.
-func (f *Font) Metrics() FontMetrics {
+func (f *fontImpl) Metrics() FontMetrics {
 	return f.metrics
 }
 
-// Baseline returns the number of logical pixels to the bottom of characters without descenders.
-func (f *Font) Baseline() float32 {
+func (f *fontImpl) Baseline() float32 {
 	return f.metrics.Descent + f.size
 }
 
-// LineHeight returns the recommended line height of the font.
-func (f *Font) LineHeight() float32 {
+func (f *fontImpl) LineHeight() float32 {
 	return f.size + f.metrics.Descent*2
 }
 
-// Width of the string rendered with this font. Note that this does not account for any embedded line endings nor tabs.
-func (f *Font) Width(str string) float32 {
+func (f *fontImpl) Width(str string) float32 {
 	if str == "" {
 		return 0
 	}
 	return skia.FontMeasureText(f.font, str)
 }
 
-// Extents of the string rendered with this font. Note that this does not account for any embedded line endings nor tabs.
-func (f *Font) Extents(str string) geom32.Size {
+func (f *fontImpl) Extents(str string) geom32.Size {
 	return geom32.Size{Width: f.Width(str), Height: f.LineHeight()}
 }
 
-// Glyphs converts the text into a series of glyphs.
-func (f *Font) Glyphs(text string) []uint16 {
+func (f *fontImpl) Glyphs(text string) []uint16 {
 	return skia.FontTextToGlyphs(f.font, text)
 }
 
-func (f *Font) runeStarts(str string) []float32 {
+func (f *fontImpl) runeStarts(str string) []float32 {
 	// TODO: Revisit -- can we use the Text object instead?
 	return skia.FontGetXPos(f.font, str)
 }
 
-// IndexForPosition returns the rune index within the string for the specified x-coordinate, where 0 is the start of the
-// string. Note that this does not account for any embedded line endings nor tabs.
-func (f *Font) IndexForPosition(x float32, str string) int {
+func (f *fontImpl) skiaFont() skia.Font {
+	return f.font
+}
+
+func (f *fontImpl) IndexForPosition(x float32, str string) int {
 	if x <= 0 || str == "" {
 		return 0
 	}
@@ -177,9 +189,7 @@ func (f *Font) IndexForPosition(x float32, str string) int {
 	return len(pos) - 1
 }
 
-// PositionForIndex returns the x-coordinate where the specified rune index starts. The returned coordinate assumes 0 is
-// the start of the string. Note that this does not account for any embedded line endings nor tabs.
-func (f *Font) PositionForIndex(index int, str string) float32 {
+func (f *fontImpl) PositionForIndex(index int, str string) float32 {
 	if index <= 0 || str == "" {
 		return 0
 	}
@@ -190,8 +200,7 @@ func (f *Font) PositionForIndex(index int, str string) float32 {
 	return pos[index]
 }
 
-// Descriptor returns a FontDescriptor for this Font.
-func (f *Font) Descriptor() FontDescriptor {
+func (f *fontImpl) Descriptor() FontDescriptor {
 	weight, spacing, slant := f.face.Style()
 	return FontDescriptor{
 		Family:  f.face.Family(),

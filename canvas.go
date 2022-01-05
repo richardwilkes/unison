@@ -273,18 +273,18 @@ func (c *Canvas) DrawArc(oval geom32.Rect, startAngle, sweepAngle float32, paint
 // DrawSimpleText draws text. This uses the default character-to-glyph mapping from the font. It does not perform
 // typeface fallback for characters not found in the typeface. It does not perform kerning or other complex shaping.
 // Glyphs are positioned based on their default advances. y is the baseline of the first line of text.
-func (c *Canvas) DrawSimpleText(str string, x, y float32, font *Font, paint *Paint) {
+func (c *Canvas) DrawSimpleText(str string, x, y float32, font Font, paint *Paint) {
 	if str != "" {
-		skia.CanvasDrawSimpleText(c.canvas, str, x, y, font.font, paint.paint)
+		skia.CanvasDrawSimpleText(c.canvas, str, x, y, font.skiaFont(), paint.paint)
 	}
 }
 
 // DrawSimpleTextPt draws text. This uses the default character-to-glyph mapping from the font. It does not perform
 // typeface fallback for characters not found in the typeface. It does not perform kerning or other complex shaping.
 // Glyphs are positioned based on their default advances. pt.Y is the baseline of the first line of text.
-func (c *Canvas) DrawSimpleTextPt(str string, pt geom32.Point, font *Font, paint *Paint) {
+func (c *Canvas) DrawSimpleTextPt(str string, pt geom32.Point, font Font, paint *Paint) {
 	if str != "" {
-		skia.CanvasDrawSimpleText(c.canvas, str, pt.X, pt.Y, font.font, paint.paint)
+		skia.CanvasDrawSimpleText(c.canvas, str, pt.X, pt.Y, font.skiaFont(), paint.paint)
 	}
 }
 

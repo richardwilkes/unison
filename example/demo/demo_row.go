@@ -77,7 +77,7 @@ func (d *demoRow) ColumnCell(index int, selected bool) unison.Paneler {
 		if selected {
 			subLabel.OnBackgroundInk = unison.OnSelectionColor
 		}
-		desc := unison.LabelFont.ResolvedFont().Descriptor()
+		desc := unison.LabelFont.Descriptor()
 		desc.Size -= 2
 		subLabel.Font = desc.Font()
 		wrapper.AddChild(subLabel)

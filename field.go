@@ -39,7 +39,7 @@ var DefaultFieldTheme = FieldTheme{
 
 // FieldTheme holds theming data for a Field.
 type FieldTheme struct {
-	Font             FontProvider
+	Font             Font
 	BackgroundInk    Ink
 	OnBackgroundInk  Ink
 	EditableInk      Ink
@@ -102,7 +102,7 @@ func (t *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 		text = "M"
 	}
 	minWidth := t.MinimumTextWidth
-	pref = t.Font.ResolvedFont().Extents(text)
+	pref = t.Font.Extents(text)
 	if pref.Width < minWidth {
 		pref.Width = minWidth
 	}
@@ -141,43 +141,42 @@ func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	clipRect := rect
 	clipRect.Inset(geom32.NewUniformInsets(-2)) // Remove interior padding for the clip
 	canvas.ClipRect(clipRect, IntersectClipOp, false)
-	f := t.Font.ResolvedFont()
-	textTop := rect.Y + (rect.Height-f.LineHeight())/2
-	textBaseLine := textTop + f.Baseline()
+	textTop := rect.Y + (rect.Height-t.Font.LineHeight())/2
+	textBaseLine := textTop + t.Font.Baseline()
 	paint := bg.Paint(canvas, rect, Fill)
 	switch {
 	case t.Enabled() && t.Focused() && t.HasSelectionRange():
 		left := rect.X + t.scrollOffset
 		if t.selectionStart > 0 {
 			pre := string(t.runes[:t.selectionStart])
-			canvas.DrawSimpleText(pre, left, textBaseLine, f, paint)
-			left += f.Width(pre)
+			canvas.DrawSimpleText(pre, left, textBaseLine, t.Font, paint)
+			left += t.Font.Width(pre)
 		}
 		mid := string(t.runes[t.selectionStart:t.selectionEnd])
-		right := rect.X + f.Width(string(t.runes[:t.selectionEnd])) + t.scrollOffset
+		right := rect.X + t.Font.Width(string(t.runes[:t.selectionEnd])) + t.scrollOffset
 		selRect := geom32.Rect{
 			Point: geom32.Point{X: left, Y: clipRect.Y},
 			Size:  geom32.Size{Width: right - left, Height: clipRect.Height},
 		}
 		canvas.DrawRect(selRect, t.SelectionInk.Paint(canvas, selRect, Fill))
-		canvas.DrawSimpleText(mid, left, textBaseLine, f, t.OnSelectionInk.Paint(canvas, rect, Fill))
+		canvas.DrawSimpleText(mid, left, textBaseLine, t.Font, t.OnSelectionInk.Paint(canvas, rect, Fill))
 		if t.selectionStart < len(t.runes) {
-			canvas.DrawSimpleText(string(t.runes[t.selectionEnd:]), right, textBaseLine, f, paint)
+			canvas.DrawSimpleText(string(t.runes[t.selectionEnd:]), right, textBaseLine, t.Font, paint)
 		}
 	case len(t.runes) == 0:
 		if t.Watermark != "" {
 			paint.SetColorFilter(NewAlphaFilter(0.3))
-			canvas.DrawSimpleText(t.Watermark, rect.X, textBaseLine, f, paint)
+			canvas.DrawSimpleText(t.Watermark, rect.X, textBaseLine, t.Font, paint)
 		}
 	default:
 		if !t.Enabled() {
 			paint.SetColorFilter(Grayscale30PercentFilter())
 		}
-		canvas.DrawSimpleText(string(t.runes), rect.X+t.scrollOffset, textBaseLine, f, paint)
+		canvas.DrawSimpleText(string(t.runes), rect.X+t.scrollOffset, textBaseLine, t.Font, paint)
 	}
 	if !t.HasSelectionRange() && t.Enabled() && t.Focused() {
 		if t.showCursor {
-			canvas.DrawRect(geom32.NewRect(rect.X+f.Width(string(t.runes[:t.selectionEnd]))+t.scrollOffset-0.5,
+			canvas.DrawRect(geom32.NewRect(rect.X+t.Font.Width(string(t.runes[:t.selectionEnd]))+t.scrollOffset-0.5,
 				clipRect.Y, 1, clipRect.Height), bg.Paint(canvas, rect, Fill))
 		}
 		t.scheduleBlink()
@@ -745,7 +744,7 @@ func (t *Field) autoScroll() {
 // ToSelectionIndex returns the rune index for the specified x-coordinate.
 func (t *Field) ToSelectionIndex(x float32) int {
 	rect := t.ContentRect(false)
-	return t.Font.ResolvedFont().IndexForPosition(x-(rect.X+t.scrollOffset), string(t.runes))
+	return t.Font.IndexForPosition(x-(rect.X+t.scrollOffset), string(t.runes))
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
@@ -758,7 +757,7 @@ func (t *Field) FromSelectionIndex(index int) geom32.Point {
 		if index > length {
 			index = length
 		}
-		x += t.Font.ResolvedFont().PositionForIndex(index, string(t.runes))
+		x += t.Font.PositionForIndex(index, string(t.runes))
 	}
 	return geom32.Point{X: x, Y: top}
 }

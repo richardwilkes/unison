@@ -22,7 +22,7 @@ type TextBuilder struct {
 }
 
 // NewTextBuilder creates a new NewTextBuilder.
-func NewTextBuilder(text string, font *Font) *TextBuilder {
+func NewTextBuilder() *TextBuilder {
 	b := &TextBuilder{builder: skia.TextBlobBuilderNew()}
 	runtime.SetFinalizer(b, func(obj *TextBuilder) {
 		ReleaseOnUIThread(func() {
@@ -39,16 +39,16 @@ func (b *TextBuilder) Text() *Text {
 }
 
 // AllocRun allocates a text run.
-func (b *TextBuilder) AllocRun(font *Font, glyphs []uint16, x, y float32) {
-	skia.TextBlobBuilderAllocRun(b.builder, font.font, glyphs, x, y)
+func (b *TextBuilder) AllocRun(font Font, glyphs []uint16, x, y float32) {
+	skia.TextBlobBuilderAllocRun(b.builder, font.skiaFont(), glyphs, x, y)
 }
 
 // AllocRunPos allocates a text run.
-func (b *TextBuilder) AllocRunPos(font *Font, glyphs []uint16, pos []geom32.Point) {
-	skia.TextBlobBuilderAllocRunPos(b.builder, font.font, glyphs, pos)
+func (b *TextBuilder) AllocRunPos(font Font, glyphs []uint16, pos []geom32.Point) {
+	skia.TextBlobBuilderAllocRunPos(b.builder, font.skiaFont(), glyphs, pos)
 }
 
 // AllocRunPosH allocates a text run.
-func (b *TextBuilder) AllocRunPosH(font *Font, glyphs []uint16, pos []float32, y float32) {
-	skia.TextBlobBuilderAllocRunPosH(b.builder, font.font, glyphs, pos, y)
+func (b *TextBuilder) AllocRunPosH(font Font, glyphs []uint16, pos []float32, y float32) {
+	skia.TextBlobBuilderAllocRunPosH(b.builder, font.skiaFont(), glyphs, pos, y)
 }

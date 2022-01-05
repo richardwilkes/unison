@@ -181,7 +181,7 @@ func NewMessagePanel(primary, detail string) *Panel {
 	return panel
 }
 
-func breakTextIntoLabels(panel *Panel, text string, font FontProvider) {
+func breakTextIntoLabels(panel *Panel, text string, font Font) {
 	if text != "" {
 		returns := 0
 		for {

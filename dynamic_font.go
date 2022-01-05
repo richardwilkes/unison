@@ -9,20 +9,83 @@
 
 package unison
 
-var _ FontProvider = &DynamicFont{}
+import (
+	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/unison/internal/skia"
+)
 
-// DynamicFont holds a FontProvider that dynamically creates a font.
+var _ Font = &DynamicFont{}
+
+// DynamicFont holds a Font that can be dynamically adjusted.
 type DynamicFont struct {
 	Resolver func() FontDescriptor
-	lastDesc FontDescriptor
-	lastFont *Font
+	desc     FontDescriptor
+	font     Font
 }
 
-// ResolvedFont implements the FontProvider interface.
-func (d *DynamicFont) ResolvedFont() *Font {
-	if fd := d.Resolver(); fd != d.lastDesc {
-		d.lastDesc = fd
-		d.lastFont = fd.Font()
+func (f *DynamicFont) resolvedFont() Font {
+	if desc := f.Resolver(); desc != f.desc {
+		f.desc = desc
+		f.font = desc.Font()
 	}
-	return d.lastFont
+	return f.font
+}
+
+// Face implements Font.
+func (f *DynamicFont) Face() *FontFace {
+	return f.resolvedFont().Face()
+}
+
+// Size implements Font.
+func (f *DynamicFont) Size() float32 {
+	return f.resolvedFont().Size()
+}
+
+// Metrics implements Font.
+func (f *DynamicFont) Metrics() FontMetrics {
+	return f.resolvedFont().Metrics()
+}
+
+// Baseline implements Font.
+func (f *DynamicFont) Baseline() float32 {
+	return f.resolvedFont().Baseline()
+}
+
+// LineHeight implements Font.
+func (f *DynamicFont) LineHeight() float32 {
+	return f.resolvedFont().LineHeight()
+}
+
+// Width implements Font.
+func (f *DynamicFont) Width(str string) float32 {
+	return f.resolvedFont().Width(str)
+}
+
+// Extents implements Font.
+func (f *DynamicFont) Extents(str string) geom32.Size {
+	return f.resolvedFont().Extents(str)
+}
+
+// Glyphs implements Font.
+func (f *DynamicFont) Glyphs(text string) []uint16 {
+	return f.resolvedFont().Glyphs(text)
+}
+
+// IndexForPosition implements Font.
+func (f *DynamicFont) IndexForPosition(x float32, str string) int {
+	return f.resolvedFont().IndexForPosition(x, str)
+}
+
+// PositionForIndex implements Font.
+func (f *DynamicFont) PositionForIndex(index int, str string) float32 {
+	return f.resolvedFont().PositionForIndex(index, str)
+}
+
+// Descriptor implements Font.
+func (f *DynamicFont) Descriptor() FontDescriptor {
+	return f.resolvedFont().Descriptor()
+}
+
+func (f *DynamicFont) skiaFont() skia.Font {
+	return f.resolvedFont().skiaFont()
 }
