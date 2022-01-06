@@ -19,10 +19,13 @@ var (
 	_                      Drawable = &DrawableSVG{}
 	chevronRightSVG        *SVG
 	circledChevronRightSVG *SVG
+	circledExclamationSVG  *SVG
+	circledQuestionSVG     *SVG
 	circledXSVG            *SVG
 	documentSVG            *SVG
 	sortAscendingSVG       *SVG
 	sortDescendingSVG      *SVG
+	triangleExclamationSVG *SVG
 	windowMaximizeSVG      *SVG
 	windowRestoreSVG       *SVG
 )
@@ -117,6 +120,26 @@ func CircledChevronRightSVG() *SVG {
 	return circledChevronRightSVG
 }
 
+// CircledExclamationSVG returns an SVG that holds a circled exclamation mark.
+func CircledExclamationSVG() *SVG {
+	if circledExclamationSVG == nil {
+		var err error
+		circledExclamationSVG, err = NewSVG(geom32.NewSize(512, 512), "M504 256c0 136.997-111.043 248-248 248S8 392.997 8 256C8 119.083 119.043 8 256 8s248 111.083 248 248zm-248 50c-25.405 0-46 20.595-46 46s20.595 46 46 46 46-20.595 46-46-20.595-46-46-46zm-43.673-165.346 7.418 136c.347 6.364 5.609 11.346 11.982 11.346h48.546c6.373 0 11.635-4.982 11.982-11.346l7.418-136c.375-6.874-5.098-12.654-11.982-12.654h-63.383c-6.884 0-12.356 5.78-11.981 12.654z")
+		jot.FatalIfErr(err)
+	}
+	return circledExclamationSVG
+}
+
+// CircledQuestionSVG returns an SVG that holds a circled question mark.
+func CircledQuestionSVG() *SVG {
+	if circledQuestionSVG == nil {
+		var err error
+		circledQuestionSVG, err = NewSVG(geom32.NewSize(512, 512), "M504 256c0 136.997-111.043 248-248 248S8 392.997 8 256C8 119.083 119.043 8 256 8s248 111.083 248 248zM262.655 90c-54.497 0-89.255 22.957-116.549 63.758-3.536 5.286-2.353 12.415 2.715 16.258l34.699 26.31c5.205 3.947 12.621 3.008 16.665-2.122 17.864-22.658 30.113-35.797 57.303-35.797 20.429 0 45.698 13.148 45.698 32.958 0 14.976-12.363 22.667-32.534 33.976C247.128 238.528 216 254.941 216 296v4c0 6.627 5.373 12 12 12h56c6.627 0 12-5.373 12-12v-1.333c0-28.462 83.186-29.647 83.186-106.667 0-58.002-60.165-102-116.531-102zM256 338c-25.365 0-46 20.635-46 46 0 25.364 20.635 46 46 46s46-20.636 46-46c0-25.365-20.635-46-46-46z")
+		jot.FatalIfErr(err)
+	}
+	return circledQuestionSVG
+}
+
 // CircledXSVG returns an SVG that holds an icon for closing content.
 func CircledXSVG() *SVG {
 	if circledXSVG == nil {
@@ -155,6 +178,16 @@ func SortDescendingSVG() *SVG {
 		jot.FatalIfErr(err)
 	}
 	return sortDescendingSVG
+}
+
+// TriangleExclamationSVG returns an SVG that holds an exclamation mark inside a triangle.
+func TriangleExclamationSVG() *SVG {
+	if triangleExclamationSVG == nil {
+		var err error
+		triangleExclamationSVG, err = NewSVG(geom32.NewSize(576, 512), "M569.517 440.013C587.975 472.007 564.806 512 527.94 512H48.054c-36.937 0-59.999-40.055-41.577-71.987L246.423 23.985c18.467-32.009 64.72-31.951 83.154 0l239.94 416.028zM288 354c-25.405 0-46 20.595-46 46s20.595 46 46 46 46-20.595 46-46-20.595-46-46-46zm-43.673-165.346 7.418 136c.347 6.364 5.609 11.346 11.982 11.346h48.546c6.373 0 11.635-4.982 11.982-11.346l7.418-136c.375-6.874-5.098-12.654-11.982-12.654h-63.383c-6.884 0-12.356 5.78-11.981 12.654z")
+		jot.FatalIfErr(err)
+	}
+	return triangleExclamationSVG
 }
 
 // WindowMaximizeSVG returns an SVG that holds an icon for maximizing a window.

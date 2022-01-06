@@ -84,7 +84,7 @@ func showWellDialog(w *Well) {
 	}
 
 	var err error
-	d.dialog, err = NewDialog(nil, d.panel, []*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()})
+	d.dialog, err = NewDialog(nil, nil, d.panel, []*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()})
 	if err != nil {
 		jot.Error(err)
 		return

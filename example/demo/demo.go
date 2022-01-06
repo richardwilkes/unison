@@ -14,6 +14,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison"
@@ -44,6 +45,16 @@ func NewDemoWindow(where geom32.Point) (*unison.Window, error) {
 
 	// Create a wrappable row of buttons
 	panel := createButtonsPanel()
+	panel.SetLayoutData(&unison.FlexLayoutData{
+		HSpan:  1,
+		VSpan:  1,
+		VAlign: unison.MiddleAlignment,
+		HGrab:  true,
+	})
+	content.AddChild(panel)
+
+	// Create a wrappable row of buttons that bring up dialogs
+	panel = createDialogButtonsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
@@ -164,6 +175,30 @@ func createButtonsPanel() *unison.Panel {
 		if i == 2 {
 			btn.SetEnabled(false)
 		}
+	}
+
+	return panel
+}
+
+func createDialogButtonsPanel() *unison.Panel {
+	// Create a panel to place some buttons into.
+	panel := unison.NewPanel()
+	panel.SetLayout(&unison.FlowLayout{
+		HSpacing: unison.StdHSpacing,
+		VSpacing: unison.StdVSpacing,
+	})
+
+	btn := createButton("Show Question Dialog", panel)
+	btn.ClickCallback = func() {
+		unison.QuestionDialog("Sample Question", "Text for a question goes here")
+	}
+	btn = createButton("Show Warning Dialog", panel)
+	btn.ClickCallback = func() {
+		unison.WarningDialogWithMessage("Sample Warning", "Text for a warning goes here")
+	}
+	btn = createButton("Show Error Dialog", panel)
+	btn.ClickCallback = func() {
+		unison.ErrorDialogWithError("Sample Error", errs.New("A stack trace will be emitted to the log"))
 	}
 
 	return panel

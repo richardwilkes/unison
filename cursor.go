@@ -45,38 +45,38 @@ func ArrowCursor() *Cursor {
 
 // ArrowsHorizontalCursor returns the standard horizontal arrows cursor, pointing left and right.
 func ArrowsHorizontalCursor() *Cursor {
-	return retrieveCursor(ArrowsHorizontalImage(), &arrowsHorizontalCursor)
+	return retrieveCursor(ArrowsHorizontalCursorImage(), &arrowsHorizontalCursor)
 }
 
 // ArrowsHorizontalVerticalCursor returns the standard horizontal and vertical arrows cursor, pointing left, right, up
 // and down.
 func ArrowsHorizontalVerticalCursor() *Cursor {
-	return retrieveCursor(ArrowsHorizontalVerticalImage(), &arrowsHorizontalVerticalCursor)
+	return retrieveCursor(ArrowsHorizontalVerticalCursorImage(), &arrowsHorizontalVerticalCursor)
 }
 
 // ArrowsLeftDiagonalCursor returns the standard left diagonal arrows cursor, pointing northwest and southeast.
 func ArrowsLeftDiagonalCursor() *Cursor {
-	return retrieveCursor(ArrowsLeftDiagonalImage(), &arrowsLeftDiagonalCursor)
+	return retrieveCursor(ArrowsLeftDiagonalCursorImage(), &arrowsLeftDiagonalCursor)
 }
 
 // ArrowsRightDiagonalCursor returns the standard right diagonal arrows cursor, pointing northeast and southwest.
 func ArrowsRightDiagonalCursor() *Cursor {
-	return retrieveCursor(ArrowsRightDiagonalImage(), &arrowsRightDiagonalCursor)
+	return retrieveCursor(ArrowsRightDiagonalCursorImage(), &arrowsRightDiagonalCursor)
 }
 
 // ArrowsVerticalCursor returns the standard vertical arrows cursor, pointing up and down.
 func ArrowsVerticalCursor() *Cursor {
-	return retrieveCursor(ArrowsVerticalImage(), &arrowsVerticalCursor)
+	return retrieveCursor(ArrowsVerticalCursorImage(), &arrowsVerticalCursor)
 }
 
 // ClosedHandCursor returns the standard closed hand cursor.
 func ClosedHandCursor() *Cursor {
-	return retrieveCursor(ClosedHandImage(), &closedHandCursor)
+	return retrieveCursor(ClosedHandCursorImage(), &closedHandCursor)
 }
 
 // OpenHandCursor returns the standard open hand cursor.
 func OpenHandCursor() *Cursor {
-	return retrieveCursor(OpenHandImage(), &openHandCursor)
+	return retrieveCursor(OpenHandCursorImage(), &openHandCursor)
 }
 
 // TextCursor returns the standard text cursor.

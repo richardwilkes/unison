@@ -66,7 +66,7 @@ func (d *fileDialog) RunModal() bool {
 		dialogTitle = i18n.Text("Save…")
 		okTitle = i18n.Text("Save")
 	}
-	dlg, err := NewDialog(nil, d.createContent(), []*DialogButtonInfo{
+	dlg, err := NewDialog(nil, nil, d.createContent(), []*DialogButtonInfo{
 		NewCancelButtonInfo(),
 		NewOKButtonInfoWithTitle(okTitle),
 	})
