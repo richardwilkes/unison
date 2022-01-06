@@ -138,14 +138,14 @@ func Start(options ...StartupOption) {
 	for _, option := range options {
 		jot.FatalIfErr(option(startupOption{}))
 	}
+	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
+	jot.FatalIfErr(glfw.Init())
 	atexit.Register(quitting)
 	atexit.Register(func() {
 		quitLock.Lock()
 		calledAtExit = true
 		quitLock.Unlock()
 	})
-	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
-	jot.FatalIfErr(glfw.Init())
 	glfw.WindowHint(glfw.ContextVersionMajor, 3)
 	glfw.WindowHint(glfw.ContextVersionMinor, 2)
 	if runtime.GOOS != toolbox.LinuxOS {
@@ -238,6 +238,7 @@ func quitting() {
 	if !calledExit {
 		atexit.Exit(0)
 	}
+	glfw.Terminate()
 }
 
 // AttemptQuit initiates the termination sequence.
