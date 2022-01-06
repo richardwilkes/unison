@@ -340,13 +340,13 @@ func createRadioButton(title string, panel *unison.Panel, group *unison.Group, p
 
 func createPopupMenusPanel() *unison.Panel {
 	panel := unison.NewPanel()
+	createPopupMenu(panel, 1, "Alphabet Tooltip", "Alpha", "Beta", "Charlie", "", "Delta", "Echo", "Foxtrot")
+	createPopupMenu(panel, 2, "Color Tooltip", "Red", "Blue", "Green").SetEnabled(false)
 	panel.SetLayout(&unison.FlexLayout{
-		Columns:  2,
+		Columns:  len(panel.Children()),
 		HSpacing: unison.StdHSpacing,
 		VSpacing: unison.StdVSpacing,
 	})
-	createPopupMenu(panel, 1, "Alphabet Tooltip", "Alpha", "Beta", "Charlie", "", "Delta", "Echo", "Foxtrot")
-	createPopupMenu(panel, 2, "Color Tooltip", "Red", "Blue", "Green").SetEnabled(false)
 	return panel
 }
 

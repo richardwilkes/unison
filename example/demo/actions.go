@@ -19,7 +19,8 @@ import (
 
 // IDs for the actions
 const (
-	NewWindowActionID = unison.UserBaseID + iota
+	NewMenuID = unison.UserBaseID + iota
+	NewWindowActionID
 	NewTableWindowActionID
 	NewDockWindowActionID
 	OpenActionID

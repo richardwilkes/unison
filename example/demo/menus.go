@@ -9,16 +9,20 @@
 
 package demo
 
-import "github.com/richardwilkes/unison"
+import (
+	"github.com/richardwilkes/unison"
+)
 
 func installDefaultMenus(wnd *unison.Window) {
 	unison.DefaultMenuFactory().BarForWindow(wnd, func(m unison.Menu) {
 		unison.InsertStdMenus(m, ShowAboutWindow, nil, nil)
 		fileMenu := m.Menu(unison.FileMenuID)
 		f := fileMenu.Factory()
-		fileMenu.InsertItem(0, NewWindowAction.NewMenuItem(f))
-		fileMenu.InsertItem(1, NewTableWindowAction.NewMenuItem(f))
-		fileMenu.InsertItem(2, NewDockWindowAction.NewMenuItem(f))
-		fileMenu.InsertItem(3, OpenAction.NewMenuItem(f))
+		newMenu := f.NewMenu(NewMenuID, "New…", nil)
+		newMenu.InsertItem(-1, NewWindowAction.NewMenuItem(f))
+		newMenu.InsertItem(-1, NewTableWindowAction.NewMenuItem(f))
+		newMenu.InsertItem(-1, NewDockWindowAction.NewMenuItem(f))
+		fileMenu.InsertMenu(0, newMenu)
+		fileMenu.InsertItem(1, OpenAction.NewMenuItem(f))
 	})
 }

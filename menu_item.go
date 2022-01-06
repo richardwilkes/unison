@@ -155,6 +155,7 @@ func (mi *menuItem) newPanel() *Panel {
 	mi.over = false
 	mi.panel.DrawCallback = mi.paint
 	mi.panel.MouseEnterCallback = mi.mouseEnter
+	mi.panel.MouseMoveCallback = mi.mouseMove
 	mi.panel.MouseExitCallback = mi.mouseExit
 	mi.panel.MouseDownCallback = mi.mouseDown
 	mi.panel.SetSizer(mi.sizer)
@@ -179,8 +180,13 @@ func (mi *menuItem) showSubMenu() {
 			pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
 			pr.Point.Add(mi.panel.Window().ContentRect().Point)
 			fr := mi.subMenu.popup.FrameRect()
-			fr.X = pr.X
-			fr.Y = pr.Bottom()
+			if mi.isRoot() {
+				fr.X = pr.X
+				fr.Y = pr.Bottom()
+			} else {
+				fr.X = pr.Right()
+				fr.Y = pr.Y
+			}
 			mi.subMenu.popup.SetFrameRect(fr)
 			mi.subMenu.popup.Show()
 		}
@@ -193,6 +199,15 @@ func (mi *menuItem) mouseEnter(_ geom32.Point, _ Modifiers) bool {
 	if mi.subMenu != nil && mi.menu.isActiveWindowShowingPopupMenu() {
 		mi.showSubMenu()
 	}
+	return false
+}
+
+func (mi *menuItem) mouseMove(where geom32.Point, mod Modifiers) bool {
+	stopAt := mi.menu
+	if mi.subMenu != nil && mi.subMenu.popup != nil {
+		stopAt = mi.subMenu
+	}
+	mi.menu.closeMenuStackStoppingAt(ActiveWindow(), stopAt)
 	return false
 }
 
@@ -244,17 +259,32 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 		gc.DrawSimpleText(mi.Title(), rect.X,
 			mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.TitleFont.Baseline(),
 			DefaultMenuItemTheme.TitleFont, paint)
-		if mi.keyCode != 0 {
-			keyName := KeyCodeToName[mi.keyCode]
-			if keyName != "" {
-				text := mi.keyModifiers.String() + keyName
-				size = DefaultMenuItemTheme.KeyFont.Extents(text)
-				gc.DrawSimpleText(text, mathf32.Floor(rect.Right()-size.Width),
-					mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.KeyFont.Baseline(),
-					DefaultMenuItemTheme.KeyFont, paint)
+		if mi.subMenu == nil {
+			if mi.keyCode != 0 {
+				keyName := KeyCodeToName[mi.keyCode]
+				if keyName != "" {
+					text := mi.keyModifiers.String() + keyName
+					size = DefaultMenuItemTheme.KeyFont.Extents(text)
+					gc.DrawSimpleText(text, mathf32.Floor(rect.Right()-size.Width),
+						mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.KeyFont.Baseline(),
+						DefaultMenuItemTheme.KeyFont, paint)
+				}
 			}
+		} else if !mi.isRoot() {
+			baseline := DefaultMenuItemTheme.KeyFont.Baseline()
+			rect.X = rect.Right() - baseline
+			rect.Width = baseline
+			drawable := &DrawableSVG{
+				SVG:  ChevronRightSVG(),
+				Size: geom32.NewSize(baseline, baseline),
+			}
+			drawable.DrawInRect(gc, rect, nil, paint)
 		}
 	}
+}
+
+func (mi *menuItem) isRoot() bool {
+	return mi.menu.popup == nil
 }
 
 func (mi *menuItem) validate() {
