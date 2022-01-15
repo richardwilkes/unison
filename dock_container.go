@@ -142,6 +142,19 @@ func DockContainerFor(paneler Paneler) *DockContainer {
 	return nil
 }
 
+// DockableHasFocus returns true if the given Dockable has the current focus inside it.
+func DockableHasFocus(dockable Dockable) bool {
+	if wnd := dockable.AsPanel().Window(); wnd != nil {
+		focus := wnd.Focus()
+		for focus != nil {
+			if d, ok := focus.Self.(Dockable); ok && d == dockable {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Stack adds the Dockable to this DockContainer at the specified index. An out-of-bounds index will cause the Dockable
 // to be added at the end.
 func (d *DockContainer) Stack(dockable Dockable, index int) {
@@ -177,12 +190,17 @@ func (d *DockContainer) AttemptClose(dockable Dockable) {
 // Close the specified Dockable. If the last Dockable within this DockContainer is closed, then this DockContainer is
 // also removed from the Dock.
 func (d *DockContainer) Close(dockable Dockable) {
-	for i, c := range d.content.Children() {
+	for _, c := range d.content.Children() {
 		if c.Self != dockable {
 			continue
 		}
+		var next Dockable
+		if DockableHasFocus(dockable) {
+			next = d.Dock.NextDockableFor(dockable)
+		}
 		d.content.RemoveChild(dockable)
 		d.header.close(dockable)
+		d.MarkForRedraw()
 		children := d.content.Children()
 		if len(children) == 0 {
 			d.Dock.Restore()
@@ -192,11 +210,12 @@ func (d *DockContainer) Close(dockable Dockable) {
 			d.Dock.RemoveChild(d)
 			d.Dock.MarkForLayoutAndRedraw()
 			d.Dock = nil
-		} else {
-			if i > 0 {
-				i--
+		}
+		if next != nil {
+			if dc := DockContainerFor(next); dc != nil {
+				dc.SetCurrentDockable(next)
+				dc.AcquireFocus()
 			}
-			d.SetCurrentDockable(children[i].Self.(Dockable))
 		}
 		return
 	}

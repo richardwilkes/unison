@@ -273,9 +273,9 @@ func (d *Dock) DefaultUpdateCursor(where geom32.Point) *Cursor {
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
 		if dl.Horizontal {
-			return ArrowsHorizontalCursor()
+			return ResizeHorizontalCursor()
 		}
-		return ArrowsVerticalCursor()
+		return ResizeVerticalCursor()
 	}
 	return ArrowCursor()
 }
@@ -416,4 +416,62 @@ func (d *Dock) DefaultDataDrop(where geom32.Point, data map[string]interface{}) 
 	}
 	d.dragDockable = nil
 	d.dragOverNode = nil
+}
+
+// NextDockableFor returns the logical next Dockable in the Dock given the one passed in as a starting point. The
+// returned value may be the same as the starting point if there are no other Dockables. Passing in nil will result in
+// the first Dockable found being returned.
+func (d *Dock) NextDockableFor(dockable Dockable) Dockable {
+	var result Dockable
+	next := false
+	d.layout.ForEachDockContainer(func(container *DockContainer) bool {
+		for _, one := range container.Dockables() {
+			if next {
+				result = one
+				return true
+			}
+			if one == dockable {
+				next = true
+			}
+		}
+		return false
+	})
+	if result == nil {
+		d.layout.ForEachDockContainer(func(container *DockContainer) bool {
+			list := container.Dockables()
+			if len(list) > 0 {
+				result = list[0]
+				return true
+			}
+			return false
+		})
+	}
+	return result
+}
+
+// PreviousDockableFor returns the logical previous Dockable in the Dock given the one passed in as a starting point. The
+// returned value may be the same as the starting point if there are no other Dockables. Passing in nil will result in
+// the last Dockable found being returned.
+func (d *Dock) PreviousDockableFor(dockable Dockable) Dockable {
+	var previous, result Dockable
+	d.layout.ForEachDockContainer(func(container *DockContainer) bool {
+		for _, one := range container.Dockables() {
+			if one == dockable {
+				result = previous
+				return true
+			}
+			previous = one
+		}
+		return false
+	})
+	if result == nil {
+		d.layout.ForEachDockContainer(func(container *DockContainer) bool {
+			list := container.Dockables()
+			if len(list) > 0 {
+				result = list[len(list)-1]
+			}
+			return false
+		})
+	}
+	return result
 }
