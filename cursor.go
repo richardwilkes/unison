@@ -21,15 +21,13 @@ import (
 )
 
 var (
-	arrowCursor                    *Cursor
-	arrowsHorizontalCursor         *Cursor
-	arrowsHorizontalVerticalCursor *Cursor
-	arrowsLeftDiagonalCursor       *Cursor
-	arrowsRightDiagonalCursor      *Cursor
-	arrowsVerticalCursor           *Cursor
-	closedHandCursor               *Cursor
-	openHandCursor                 *Cursor
-	textCursor                     *Cursor
+	arrowCursor               *Cursor
+	moveCursor                *Cursor
+	resizeHorizontalCursor    *Cursor
+	resizeLeftDiagonalCursor  *Cursor
+	resizeRightDiagonalCursor *Cursor
+	resizeVerticalCursor      *Cursor
+	textCursor                *Cursor
 )
 
 // Cursor provides a graphical cursor for the mouse location.
@@ -43,40 +41,29 @@ func ArrowCursor() *Cursor {
 	return arrowCursor
 }
 
-// ArrowsHorizontalCursor returns the standard horizontal arrows cursor, pointing left and right.
-func ArrowsHorizontalCursor() *Cursor {
-	return retrieveCursor(ArrowsHorizontalCursorImage(), &arrowsHorizontalCursor)
+// MoveCursor returns the standard move cursor.
+func MoveCursor() *Cursor {
+	return retrieveCursor(MoveCursorImage(), &moveCursor)
 }
 
-// ArrowsHorizontalVerticalCursor returns the standard horizontal and vertical arrows cursor, pointing left, right, up
-// and down.
-func ArrowsHorizontalVerticalCursor() *Cursor {
-	return retrieveCursor(ArrowsHorizontalVerticalCursorImage(), &arrowsHorizontalVerticalCursor)
+// ResizeHorizontalCursor returns the standard horizontal resize cursor.
+func ResizeHorizontalCursor() *Cursor {
+	return retrieveCursor(ResizeHorizontalCursorImage(), &resizeHorizontalCursor)
 }
 
-// ArrowsLeftDiagonalCursor returns the standard left diagonal arrows cursor, pointing northwest and southeast.
-func ArrowsLeftDiagonalCursor() *Cursor {
-	return retrieveCursor(ArrowsLeftDiagonalCursorImage(), &arrowsLeftDiagonalCursor)
+// ResizeLeftDiagonalCursor returns the standard left diagonal resize cursor.
+func ResizeLeftDiagonalCursor() *Cursor {
+	return retrieveCursor(ResizeLeftDiagonalCursorImage(), &resizeLeftDiagonalCursor)
 }
 
-// ArrowsRightDiagonalCursor returns the standard right diagonal arrows cursor, pointing northeast and southwest.
-func ArrowsRightDiagonalCursor() *Cursor {
-	return retrieveCursor(ArrowsRightDiagonalCursorImage(), &arrowsRightDiagonalCursor)
+// ResizeRightDiagonalCursor returns the standard right diagonal resize cursor.
+func ResizeRightDiagonalCursor() *Cursor {
+	return retrieveCursor(ResizeRightDiagonalCursorImage(), &resizeRightDiagonalCursor)
 }
 
-// ArrowsVerticalCursor returns the standard vertical arrows cursor, pointing up and down.
-func ArrowsVerticalCursor() *Cursor {
-	return retrieveCursor(ArrowsVerticalCursorImage(), &arrowsVerticalCursor)
-}
-
-// ClosedHandCursor returns the standard closed hand cursor.
-func ClosedHandCursor() *Cursor {
-	return retrieveCursor(ClosedHandCursorImage(), &closedHandCursor)
-}
-
-// OpenHandCursor returns the standard open hand cursor.
-func OpenHandCursor() *Cursor {
-	return retrieveCursor(OpenHandCursorImage(), &openHandCursor)
+// ResizeVerticalCursor returns the standard vertical resize cursor.
+func ResizeVerticalCursor() *Cursor {
+	return retrieveCursor(ResizeVerticalCursorImage(), &resizeVerticalCursor)
 }
 
 // TextCursor returns the standard text cursor.

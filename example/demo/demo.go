@@ -530,7 +530,7 @@ func createImagePanel() *unison.Label {
 	imgPanel.SetFocusable(true)
 
 	// Prepare a cursor for when the mouse is over the image
-	cursor := unison.ClosedHandCursor()
+	cursor := unison.MoveCursor()
 	if logoImg, err := ClassicAppleLogoImage(); err != nil {
 		jot.Error(err)
 	} else {

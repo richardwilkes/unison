@@ -16,116 +16,81 @@ import (
 )
 
 var (
-	arrowsHorizontalCursorImage *Image
-	//go:embed resources/images/arrows_horizontal.png
-	arrowsHorizontalCursorImageData []byte
+	moveCursorImage *Image
+	//go:embed resources/images/move.png
+	moveCursorImageData []byte
 )
 
-// ArrowsHorizontalCursorImage returns the standard horizontal arrows cursor image, pointing left and right.
-func ArrowsHorizontalCursorImage() *Image {
-	if arrowsHorizontalCursorImage == nil {
+// MoveCursorImage returns the standard move cursor image.
+func MoveCursorImage() *Image {
+	if moveCursorImage == nil {
 		var err error
-		arrowsHorizontalCursorImage, err = NewImageFromBytes(arrowsHorizontalCursorImageData, 0.5)
+		moveCursorImage, err = NewImageFromBytes(moveCursorImageData, 0.5)
 		jot.FatalIfErr(err)
 	}
-	return arrowsHorizontalCursorImage
+	return moveCursorImage
 }
 
 var (
-	arrowsHorizontalVerticalCursorImage *Image
-	//go:embed resources/images/arrows_horizontal_vertical.png
-	arrowsHorizontalVerticalCursorImageData []byte
+	resizeHorizontalCursorImage *Image
+	//go:embed resources/images/resize_horizontal.png
+	resizeHorizontalCursorImageData []byte
 )
 
-// ArrowsHorizontalVerticalCursorImage returns the standard horizontal and vertical arrows cursor image, pointing left,
-// right, up and down.
-func ArrowsHorizontalVerticalCursorImage() *Image {
-	if arrowsHorizontalVerticalCursorImage == nil {
+// ResizeHorizontalCursorImage returns the standard horizontal resize cursor image.
+func ResizeHorizontalCursorImage() *Image {
+	if resizeHorizontalCursorImage == nil {
 		var err error
-		arrowsHorizontalVerticalCursorImage, err = NewImageFromBytes(arrowsHorizontalVerticalCursorImageData, 0.5)
+		resizeHorizontalCursorImage, err = NewImageFromBytes(resizeHorizontalCursorImageData, 0.5)
 		jot.FatalIfErr(err)
 	}
-	return arrowsHorizontalVerticalCursorImage
+	return resizeHorizontalCursorImage
 }
 
 var (
-	arrowsLeftDiagonalCursorImage *Image
-	//go:embed resources/images/arrows_left_diagonal.png
-	arrowsLeftDiagonalCursorImageData []byte
+	resizeLeftDiagonalCursorImage *Image
+	//go:embed resources/images/resize_left_diagonal.png
+	resizeLeftDiagonalCursorImageData []byte
 )
 
-// ArrowsLeftDiagonalCursorImage returns the standard left diagonal arrows cursor image, pointing northwest and
-// southeast.
-func ArrowsLeftDiagonalCursorImage() *Image {
-	if arrowsLeftDiagonalCursorImage == nil {
+// ResizeLeftDiagonalCursorImage returns the standard left diagonal resize cursor image.
+func ResizeLeftDiagonalCursorImage() *Image {
+	if resizeLeftDiagonalCursorImage == nil {
 		var err error
-		arrowsLeftDiagonalCursorImage, err = NewImageFromBytes(arrowsLeftDiagonalCursorImageData, 0.5)
+		resizeLeftDiagonalCursorImage, err = NewImageFromBytes(resizeLeftDiagonalCursorImageData, 0.5)
 		jot.FatalIfErr(err)
 	}
-	return arrowsLeftDiagonalCursorImage
+	return resizeLeftDiagonalCursorImage
 }
 
 var (
-	arrowsRightDiagonalCursorImage *Image
-	//go:embed resources/images/arrows_right_diagonal.png
-	arrowsRightDiagonalCursorImageData []byte
+	resizeRightDiagonalCursorImage *Image
+	//go:embed resources/images/resize_right_diagonal.png
+	resizeRightDiagonalCursorImageData []byte
 )
 
-// ArrowsRightDiagonalCursorImage returns the standard right diagonal arrows cursor image, pointing northeast and
-// southwest.
-func ArrowsRightDiagonalCursorImage() *Image {
-	if arrowsRightDiagonalCursorImage == nil {
+// ResizeRightDiagonalCursorImage returns the standard right diagonal resize cursor image.
+func ResizeRightDiagonalCursorImage() *Image {
+	if resizeRightDiagonalCursorImage == nil {
 		var err error
-		arrowsRightDiagonalCursorImage, err = NewImageFromBytes(arrowsRightDiagonalCursorImageData, 0.5)
+		resizeRightDiagonalCursorImage, err = NewImageFromBytes(resizeRightDiagonalCursorImageData, 0.5)
 		jot.FatalIfErr(err)
 	}
-	return arrowsRightDiagonalCursorImage
+	return resizeRightDiagonalCursorImage
 }
 
 var (
-	arrowsVerticalCursorImage *Image
-	//go:embed resources/images/arrows_vertical.png
-	arrowsVerticalCursorImageData []byte
+	resizeVerticalCursorImage *Image
+	//go:embed resources/images/resize_vertical.png
+	resizeVerticalCursorImageData []byte
 )
 
-// ArrowsVerticalCursorImage returns the standard vertical arrows cursor image, pointing up and down.
-func ArrowsVerticalCursorImage() *Image {
-	if arrowsVerticalCursorImage == nil {
+// ResizeVerticalCursorImage returns the standard vertical resize cursor image.
+func ResizeVerticalCursorImage() *Image {
+	if resizeVerticalCursorImage == nil {
 		var err error
-		arrowsVerticalCursorImage, err = NewImageFromBytes(arrowsVerticalCursorImageData, 0.5)
+		resizeVerticalCursorImage, err = NewImageFromBytes(resizeVerticalCursorImageData, 0.5)
 		jot.FatalIfErr(err)
 	}
-	return arrowsVerticalCursorImage
-}
-
-var (
-	closedHandCursorImage *Image
-	//go:embed resources/images/closed_hand.png
-	closedHandCursorImageData []byte
-)
-
-// ClosedHandCursorImage returns the standard closed hand cursor image.
-func ClosedHandCursorImage() *Image {
-	if closedHandCursorImage == nil {
-		var err error
-		closedHandCursorImage, err = NewImageFromBytes(closedHandCursorImageData, 0.5)
-		jot.FatalIfErr(err)
-	}
-	return closedHandCursorImage
-}
-
-var (
-	openHandCursorImage *Image
-	//go:embed resources/images/open_hand.png
-	openHandCursorImageData []byte
-)
-
-// OpenHandCursorImage returns the standard open hand cursor image.
-func OpenHandCursorImage() *Image {
-	if openHandCursorImage == nil {
-		var err error
-		openHandCursorImage, err = NewImageFromBytes(openHandCursorImageData, 0.5)
-		jot.FatalIfErr(err)
-	}
-	return openHandCursorImage
+	return resizeVerticalCursorImage
 }

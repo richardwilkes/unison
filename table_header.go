@@ -201,7 +201,7 @@ func (h *TableHeader) uninstallCell(cell *Panel) {
 func (h *TableHeader) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
 	if over := h.Table.OverColumnDivider(where.X); over != -1 {
 		if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
-			return ArrowsHorizontalCursor()
+			return ResizeHorizontalCursor()
 		}
 	}
 	if col := h.Table.OverColumn(where.X); col != -1 {

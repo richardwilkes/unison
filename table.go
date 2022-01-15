@@ -383,7 +383,7 @@ func (t *Table) newTableHitRect(rect geom32.Rect, row TableRowData) tableHitRect
 func (t *Table) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
 	if over := t.OverColumnDivider(where.X); over != -1 {
 		if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
-			return ArrowsHorizontalCursor()
+			return ResizeHorizontalCursor()
 		}
 	}
 	if row := t.OverRow(where.Y); row != -1 {
