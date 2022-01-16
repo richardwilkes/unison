@@ -96,7 +96,8 @@ func (s *DrawableSVG) LogicalSize() geom32.Size {
 func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect geom32.Rect, _ *SamplingOptions, paint *Paint) {
 	canvas.Save()
 	defer canvas.Restore()
-	canvas.Translate(rect.X, rect.Y)
+	offset := s.SVG.OffsetToCenterWithinScaledSize(rect.Size)
+	canvas.Translate(rect.X+offset.X, rect.Y+offset.Y)
 	canvas.DrawPath(s.SVG.PathForSize(rect.Size), paint)
 }
 
