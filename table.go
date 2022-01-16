@@ -591,6 +591,13 @@ func (t *Table) SelectedRows() []TableRowData {
 	return rows
 }
 
+// TopLevelRows returns the top-level rows.
+func (t *Table) TopLevelRows() []TableRowData {
+	rows := make([]TableRowData, len(t.topLevelRows))
+	copy(rows, t.topLevelRows)
+	return rows
+}
+
 // SetTopLevelRows sets the top-level rows this table will display. This will call SyncToModel() automatically.
 func (t *Table) SetTopLevelRows(rows []TableRowData) {
 	t.topLevelRows = rows
