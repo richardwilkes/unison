@@ -21,12 +21,23 @@ var lastPrimaryDisplay *Display
 
 // Display holds information about each available active display.
 type Display struct {
-	Name        string      // The name of the display.
-	Frame       geom32.Rect // The position of the display in the global screen coordinate system.
-	Usable      geom32.Rect // The usable area, i.e. the Frame minus the area used by global menu bars or task bars.
-	ScaleX      float32     // The horizontal scale of content.
-	ScaleY      float32     // The vertical scale of content.
-	RefreshRate int         // The refresh rate, in Hz.
+	Name        string      // The name of the display
+	Frame       geom32.Rect // The position of the display in the global screen coordinate system
+	Usable      geom32.Rect // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
+	ScaleX      float32     // The horizontal scale of content
+	ScaleY      float32     // The vertical scale of content
+	RefreshRate int         // The refresh rate, in Hz
+	WidthMM     int         // The display's physical width, in millimeters
+	HeightMM    int         // The display's physical height, in millimeters
+}
+
+// PPI returns the pixels-per-inch for the display. Some operating systems do not provide accurate information, either
+// because the monitor's EDID data is incorrect, or because the driver does not report it accurately.
+func (d *Display) PPI() int {
+	if d.WidthMM > d.HeightMM {
+		return int(d.Frame.Width / (float32(d.WidthMM) / 25.4))
+	}
+	return int(d.Frame.Height / (float32(d.HeightMM) / 25.4))
 }
 
 // PrimaryDisplay returns the primary display.
@@ -62,6 +73,7 @@ func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
 	vidMode := monitor.GetVideoMode()
 	workX, workY, workWidth, workHeight := monitor.GetWorkarea()
 	sx, sy := monitor.GetContentScale()
+	mmx, mmy := monitor.GetPhysicalSize()
 	display := &Display{
 		Name:        monitor.GetName(),
 		Frame:       geom32.NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
@@ -69,6 +81,8 @@ func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
 		ScaleX:      sx,
 		ScaleY:      sy,
 		RefreshRate: vidMode.RefreshRate,
+		WidthMM:     mmx,
+		HeightMM:    mmy,
 	}
 	if runtime.GOOS != toolbox.MacOS {
 		display.Frame.X /= display.ScaleX
