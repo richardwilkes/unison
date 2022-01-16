@@ -150,6 +150,7 @@ func DockableHasFocus(dockable Dockable) bool {
 			if d, ok := focus.Self.(Dockable); ok && d == dockable {
 				return true
 			}
+			focus = focus.Parent()
 		}
 	}
 	return false
