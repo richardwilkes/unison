@@ -265,6 +265,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		w.mouseWheel(w.MouseLocation(), w.convertMouseLocation(xoff, yoff), w.lastKeyModifiers)
 	})
 	w.wnd.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, code int, action glfw.Action, mods glfw.ModifierKey) {
+		w.lastKeyModifiers = Modifiers(mods)
 		switch action {
 		case glfw.Press:
 			w.keyDown(KeyCode(key), Modifiers(mods), false)
