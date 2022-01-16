@@ -21,7 +21,7 @@ var (
 	menuUpdaters               = make(map[Menu]func(Menu))
 	menuItemValidators         = make(map[MenuItem]func(item MenuItem) bool)
 	menuItemHandlers           = make(map[MenuItem]func(item MenuItem))
-	openURLsCallback           func([]string)
+	openFilesCallback          func([]string)
 	systemThemeChangedCallback func()
 )
 
@@ -52,9 +52,9 @@ func menuItemHandleCallback(mi C.NSMenuItemRef) {
 
 //export appOpenURLsCallback
 func appOpenURLsCallback(a C.CFArrayRef) {
-	if openURLsCallback != nil {
+	if openFilesCallback != nil {
 		if urls := Array(a).ArrayOfURLToStringSlice(); len(urls) > 0 {
-			openURLsCallback(urls)
+			openFilesCallback(urls)
 		}
 	}
 }

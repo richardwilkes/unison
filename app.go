@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -35,7 +37,7 @@ const (
 var (
 	redrawSet                         = make(map[*Window]struct{})
 	startupFinishedCallback           func()
-	openURLsCallback                  func([]string) //nolint:unused // Not all platforms use this
+	openFilesCallback                 func([]string) //nolint:unused // Not all platforms use this
 	themeChangedCallback              func()
 	recoveryCallback                  errs.RecoveryHandler
 	quitAfterLastWindowClosedCallback func() bool
@@ -70,11 +72,11 @@ func StartupFinishedCallback(f func()) StartupOption {
 	}
 }
 
-// OpenURLsCallback will cause f to be called when the application is asked to open one or more URLs by the OS or an
+// OpenFilesCallback will cause f to be called when the application is asked to open one or more files by the OS or an
 // external application. By default, nothing is done with the request.
-func OpenURLsCallback(f func(urls []string)) StartupOption {
+func OpenFilesCallback(f func(urls []string)) StartupOption {
 	return func(_ startupOption) error {
-		openURLsCallback = f
+		openFilesCallback = f
 		return nil
 	}
 }
@@ -135,11 +137,19 @@ func NoGlobalMenuBar() StartupOption {
 // Start the application. This function does NOT return. While some calls may be safe to make, it should be assumed no
 // calls into unison can be made prior to Start() being called unless explicitly stated otherwise.
 func Start(options ...StartupOption) {
+	pwd, err := filepath.Abs(".")
+	if err != nil {
+		jot.Error(err)
+	}
 	for _, option := range options {
 		jot.FatalIfErr(option(startupOption{}))
 	}
 	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
 	jot.FatalIfErr(glfw.Init())
+	// Restore the original working directory, as glfw changes it on some platforms
+	if err = os.Chdir(pwd); err != nil {
+		jot.Error(err)
+	}
 	atexit.Register(quitting)
 	atexit.Register(func() {
 		quitLock.Lock()

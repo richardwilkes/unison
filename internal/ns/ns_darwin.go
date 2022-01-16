@@ -392,7 +392,7 @@ const (
 )
 
 func InstallAppDelegate(urlOpener func([]string)) {
-	openURLsCallback = urlOpener
+	openFilesCallback = urlOpener
 	if urlOpener != nil {
 		C.installAppDelegate()
 	}
