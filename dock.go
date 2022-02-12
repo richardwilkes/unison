@@ -224,6 +224,10 @@ func (d *Dock) drawHorizontalGripper(canvas *Canvas, node DockLayoutNode) {
 	for yy := y; yy < y+gripLength; yy += d.GripHeight + d.GripGap {
 		canvas.DrawRect(geom32.NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
 	}
+	x = frame.X - dividerSize + 0.5
+	canvas.DrawLine(x, frame.Y, x, frame.Bottom(), paint)
+	x = frame.X - 0.5
+	canvas.DrawLine(x, frame.Y, x, frame.Bottom(), paint)
 }
 
 func (d *Dock) drawVerticalGripper(canvas *Canvas, node DockLayoutNode) {
@@ -236,6 +240,10 @@ func (d *Dock) drawVerticalGripper(canvas *Canvas, node DockLayoutNode) {
 	for xx := x; xx < x+gripLength; xx += d.GripHeight + d.GripGap {
 		canvas.DrawRect(geom32.NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
 	}
+	y = frame.Y - dividerSize + 0.5
+	canvas.DrawLine(frame.X, y, frame.Right(), y, paint)
+	y = frame.Y - 0.5
+	canvas.DrawLine(frame.X, y, frame.Right(), y, paint)
 }
 
 // Maximize the current Dockable.
