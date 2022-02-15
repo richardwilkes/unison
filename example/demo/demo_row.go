@@ -53,8 +53,8 @@ func (d *demoRow) CellDataForSort(index int) string {
 	}
 }
 
-func (d *demoRow) ColumnCell(index int, selected bool) unison.Paneler {
-	switch index {
+func (d *demoRow) ColumnCell(_, col int, selected bool) unison.Paneler {
+	switch col {
 	case 0:
 		if d.checkbox == nil {
 			d.checkbox = unison.NewCheckBox()
@@ -96,7 +96,7 @@ func (d *demoRow) ColumnCell(index int, selected bool) unison.Paneler {
 		}
 		return label
 	default:
-		jot.Errorf("column index out of range (0-2): %d", index)
+		jot.Errorf("column index out of range (0-2): %d", col)
 		return unison.NewLabel()
 	}
 }
