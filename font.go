@@ -60,18 +60,23 @@ type Font interface {
 	Baseline() float32
 	// LineHeight returns the recommended line height of the font.
 	LineHeight() float32
-	// Width of the string rendered with this font. Note that this does not account for any embedded line endings nor tabs.
+	// Width of the string rendered with this font. Note that this does not account for any embedded line endings nor
+	// tabs.
 	Width(str string) float32
-	// Extents of the string rendered with this font. Note that this does not account for any embedded line endings nor tabs.
+	// Extents of the string rendered with this font. Note that this does not account for any embedded line endings nor
+	// tabs.
 	Extents(str string) geom32.Size
 	// Glyphs converts the text into a series of glyphs.
 	Glyphs(text string) []uint16
-	// IndexForPosition returns the rune index within the string for the specified x-coordinate, where 0 is the start of the
-	// string. Note that this does not account for any embedded line endings nor tabs.
+	// IndexForPosition returns the rune index within the string for the specified x-coordinate, where 0 is the start of
+	// the string. Note that this does not account for any embedded line endings nor tabs.
 	IndexForPosition(x float32, str string) int
-	// PositionForIndex returns the x-coordinate where the specified rune index starts. The returned coordinate assumes 0 is
-	// the start of the string. Note that this does not account for any embedded line endings nor tabs.
+	// PositionForIndex returns the x-coordinate where the specified rune index starts. The returned coordinate assumes
+	// 0 is the start of the string. Note that this does not account for any embedded line endings nor tabs.
 	PositionForIndex(index int, str string) float32
+	// WrapText breaks the given text into multiple lines that are <= width. Embedded line feeds are respected. Trailing
+	// whitespace is not considered for purposes of fitting within the given width.
+	WrapText(text string, width float32) []string
 	// Descriptor returns a FontDescriptor for this Font.
 	Descriptor() FontDescriptor
 	skiaFont() skia.Font
@@ -198,6 +203,55 @@ func (f *fontImpl) PositionForIndex(index int, str string) float32 {
 		index = len(pos) - 1
 	}
 	return pos[index]
+}
+
+func (f *fontImpl) WrapText(text string, width float32) []string {
+	var lines []string
+	for _, line := range strings.Split(text, "\n") {
+		positions := f.runeStarts(line) // returns 1 more than there are characters
+		start := 0
+		for start < len(line) {
+			i := start
+			for i < len(line) && positions[i+1]-positions[start] < width {
+				i++
+			}
+			if i == len(line) {
+				lines = append(lines, line[start:])
+				break
+			}
+			// Forward past any additional whitespace
+			for i < len(line) && isWhitespace(line[i]) {
+				i++
+			}
+			// Backup to first break
+			for i > start && !isWordBreak(line[i-1]) {
+				i--
+			}
+			if i == start {
+				// Nothing found that fits, so take the first word and any trailing whitespace after it
+				for i < len(line) && !isWordBreak(line[i]) {
+					i++
+				}
+				if i < len(line) && isWordBreak(line[i]) {
+					i++
+				}
+				for i < len(line) && isWhitespace(line[i]) {
+					i++
+				}
+			}
+			lines = append(lines, line[start:i])
+			start = i
+		}
+	}
+	return lines
+}
+
+func isWhitespace(ch byte) bool {
+	return ch == ' ' || ch == '\t'
+}
+
+func isWordBreak(ch byte) bool {
+	return ch == ' ' || ch == '\t' || ch == '/' || ch == '\\'
 }
 
 func (f *fontImpl) Descriptor() FontDescriptor {

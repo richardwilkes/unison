@@ -71,6 +71,11 @@ func (f *IndirectFont) PositionForIndex(index int, str string) float32 {
 	return f.Font.PositionForIndex(index, str)
 }
 
+// WrapText implements Font.
+func (f *IndirectFont) WrapText(text string, width float32) []string {
+	return f.Font.WrapText(text, width)
+}
+
 // Descriptor implements Font.
 func (f *IndirectFont) Descriptor() FontDescriptor {
 	return f.Font.Descriptor()

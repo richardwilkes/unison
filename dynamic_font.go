@@ -81,6 +81,11 @@ func (f *DynamicFont) PositionForIndex(index int, str string) float32 {
 	return f.resolvedFont().PositionForIndex(index, str)
 }
 
+// WrapText implements Font.
+func (f *DynamicFont) WrapText(text string, width float32) []string {
+	return f.resolvedFont().WrapText(text, width)
+}
+
 // Descriptor implements Font.
 func (f *DynamicFont) Descriptor() FontDescriptor {
 	return f.resolvedFont().Descriptor()
