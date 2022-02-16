@@ -30,17 +30,18 @@ var DefaultTableColumnHeaderTheme = LabelTheme{
 	Gap:             3,
 	HAlign:          MiddleAlignment,
 	VAlign:          MiddleAlignment,
-	Side:            RightSide,
+	Side:            LeftSide,
 }
 
 // DefaultTableColumnHeader provides a default table column header panel.
 type DefaultTableColumnHeader struct {
 	Label
-	sortState SortState
+	sortState     SortState
+	sortIndicator *DrawableSVG
 }
 
-// NewTableColumnHeader creates a new table column header panel with the given title.
-func NewTableColumnHeader(title string) *DefaultTableColumnHeader {
+// NewTableColumnHeader creates a new table column header panel with the given title and tooltip.
+func NewTableColumnHeader(title, tooltip string) *DefaultTableColumnHeader {
 	h := &DefaultTableColumnHeader{
 		Label: Label{
 			LabelTheme: DefaultTableColumnHeaderTheme,
@@ -56,7 +57,48 @@ func NewTableColumnHeader(title string) *DefaultTableColumnHeader {
 	h.SetSizer(h.DefaultSizes)
 	h.DrawCallback = h.DefaultDraw
 	h.MouseUpCallback = h.DefaultMouseUp
+	if tooltip != "" {
+		h.Tooltip = NewTooltipWithText(tooltip)
+	}
 	return h
+}
+
+// DefaultSizes provides the default sizing.
+func (h *DefaultTableColumnHeader) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+	pref = LabelSize(h.Text, h.Font, h.Drawable, h.Side, h.Gap)
+	if h.sortIndicator != nil {
+		size := h.sortIndicator.LogicalSize()
+		pref.Width += h.LabelTheme.Gap + size.Width
+		if pref.Height < size.Height {
+			pref.Height = size.Height
+		}
+	}
+	if b := h.Border(); b != nil {
+		pref.AddInsets(b.Insets())
+	}
+	pref.GrowToInteger()
+	pref.ConstrainForHint(hint)
+	return pref, pref, pref
+}
+
+// DefaultDraw provides the default drawing.
+func (h *DefaultTableColumnHeader) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+	r := h.ContentRect(false)
+	if h.sortIndicator != nil {
+		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
+	}
+	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.Text, h.Font, h.OnBackgroundInk, h.Drawable, h.Side, h.Gap, !h.Enabled())
+	if h.sortIndicator != nil {
+		size := h.sortIndicator.LogicalSize()
+		r.X = r.Right() + h.LabelTheme.Gap
+		r.Y += (r.Height - size.Height) / 2
+		r.Size = size
+		paint := h.OnBackgroundInk.Paint(canvas, r, Fill)
+		if !h.Enabled() {
+			paint.SetColorFilter(Grayscale30PercentFilter())
+		}
+		h.sortIndicator.DrawInRect(canvas, r, nil, paint)
+	}
 }
 
 // SortState returns the current SortState.
@@ -71,18 +113,18 @@ func (h *DefaultTableColumnHeader) SetSortState(state SortState) {
 		if h.sortState.Sortable && h.sortState.Order == 0 {
 			baseline := h.Font.Baseline()
 			if h.sortState.Ascending {
-				h.Drawable = &DrawableSVG{
+				h.sortIndicator = &DrawableSVG{
 					SVG:  SortAscendingSVG(),
 					Size: geom32.NewSize(baseline, baseline),
 				}
 			} else {
-				h.Drawable = &DrawableSVG{
+				h.sortIndicator = &DrawableSVG{
 					SVG:  SortDescendingSVG(),
 					Size: geom32.NewSize(baseline, baseline),
 				}
 			}
 		} else {
-			h.Drawable = nil
+			h.sortIndicator = nil
 		}
 		h.MarkForRedraw()
 	}
