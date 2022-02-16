@@ -683,12 +683,9 @@ func (t *Table) heightForColumns(row TableRowData, rowIndex, depth int, selected
 // SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the Table's FrameRect will be set to
 // its preferred size as well.
 func (t *Table) SizeColumnsToFit(adjust bool) {
+	current := make([]float32, len(t.ColumnSizes))
 	for i := range t.ColumnSizes {
-		initial := t.ColumnSizes[i].Minimum
-		if initial < 0 {
-			initial = 0
-		}
-		t.ColumnSizes[i].Current = initial
+		current[i] = mathf32.Max(t.ColumnSizes[i].Minimum, 0)
 	}
 	for rowIndex, cache := range t.rowCache {
 		selected := t.IsRowOrAnyParentSelected(rowIndex)
@@ -707,10 +704,13 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 			if i == t.HierarchyColumnIndex {
 				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 			}
-			if t.ColumnSizes[i].Current < pref.Width {
-				t.ColumnSizes[i].Current = pref.Width
+			if current[i] < pref.Width {
+				current[i] = pref.Width
 			}
 		}
+	}
+	for i := range current {
+		t.ColumnSizes[i].Current = current[i]
 	}
 	for i, cache := range t.rowCache {
 		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
