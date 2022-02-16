@@ -686,6 +686,7 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 	current := make([]float32, len(t.ColumnSizes))
 	for i := range t.ColumnSizes {
 		current[i] = mathf32.Max(t.ColumnSizes[i].Minimum, 0)
+		t.ColumnSizes[i].Current = 0
 	}
 	for rowIndex, cache := range t.rowCache {
 		selected := t.IsRowOrAnyParentSelected(rowIndex)
@@ -729,7 +730,8 @@ func (t *Table) SizeColumnToFit(index int, adjust bool) {
 	if index < 0 || index >= len(t.ColumnSizes) {
 		return
 	}
-	t.ColumnSizes[index].Current = t.ColumnSizes[index].Minimum
+	current := mathf32.Max(t.ColumnSizes[index].Minimum, 0)
+	t.ColumnSizes[index].Current = 0
 	for rowIndex, cache := range t.rowCache {
 		_, pref, _ := cache.row.ColumnCell(rowIndex, index, t.IsRowOrAnyParentSelected(rowIndex)).AsPanel().Sizes(geom32.Size{})
 		min := t.ColumnSizes[index].Minimum
@@ -745,10 +747,11 @@ func (t *Table) SizeColumnToFit(index int, adjust bool) {
 		if index == t.HierarchyColumnIndex {
 			pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 		}
-		if t.ColumnSizes[index].Current < pref.Width {
-			t.ColumnSizes[index].Current = pref.Width
+		if current < pref.Width {
+			current = pref.Width
 		}
 	}
+	t.ColumnSizes[index].Current = current
 	for i, cache := range t.rowCache {
 		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
 	}
