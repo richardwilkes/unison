@@ -226,10 +226,19 @@ func (h *TableHeader) DefaultUpdateTooltipCallback(where geom32.Point, suggested
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
 			where.Subtract(rect.Point)
-			avoid := cell.UpdateTooltipCallback(where, suggestedAvoid)
+			rect.Point = h.PointToRoot(rect.Point)
+			rect.Align()
+			avoid := cell.UpdateTooltipCallback(where, rect)
 			h.Tooltip = cell.Tooltip
 			h.uninstallCell(cell)
 			return avoid
+		}
+		if cell.Tooltip != nil {
+			h.Tooltip = cell.Tooltip
+			suggestedAvoid = h.ColumnFrame(col)
+			suggestedAvoid.Point = h.PointToRoot(suggestedAvoid.Point)
+			suggestedAvoid.Align()
+			return suggestedAvoid
 		}
 	}
 	h.Tooltip = nil
