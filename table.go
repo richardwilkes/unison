@@ -439,6 +439,13 @@ func (t *Table) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoid 
 				t.uninstallCell(cell)
 				return avoid
 			}
+			if cell.Tooltip != nil {
+				t.Tooltip = cell.Tooltip
+				suggestedAvoid = t.CellFrame(row, col)
+				suggestedAvoid.Point = t.PointToRoot(suggestedAvoid.Point)
+				suggestedAvoid.Align()
+				return suggestedAvoid
+			}
 		}
 	}
 	t.Tooltip = nil
