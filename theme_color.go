@@ -49,8 +49,8 @@ var (
 	IconButtonColor          = &ThemeColor{Light: RGB(96, 96, 96), Dark: RGB(128, 128, 128)}
 	IconButtonRolloverColor  = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(192, 192, 192)}
 	IconButtonPressedColor   = &ThemeColor{Light: RGB(0, 96, 160), Dark: RGB(0, 96, 160)}
-	TooltipColor             = &ThemeColor{Light: RGB(252, 252, 196), Dark: RGB(184, 204, 143)}
-	OnTooltipColor           = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(32, 32, 32)}
+	TooltipColor             = &ThemeColor{Light: RGB(252, 252, 196), Dark: RGB(252, 252, 196)}
+	OnTooltipColor           = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(0, 0, 0)}
 	ErrorColor               = &ThemeColor{Light: RGB(192, 64, 64), Dark: RGB(115, 37, 37)}
 	OnErrorColor             = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(221, 221, 221)}
 	WarningColor             = &ThemeColor{Light: RGB(224, 128, 0), Dark: RGB(192, 96, 0)}
