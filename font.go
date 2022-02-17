@@ -208,49 +208,50 @@ func (f *fontImpl) PositionForIndex(index int, str string) float32 {
 func (f *fontImpl) WrapText(text string, width float32) []string {
 	var lines []string
 	for _, line := range strings.Split(text, "\n") {
-		positions := f.runeStarts(line) // returns 1 more than there are characters
+		positions := f.runeStarts(line) // returns 1 more than there are runes
+		runes := []rune(line)
 		start := 0
-		for start < len(line) {
+		for start < len(runes) {
 			i := start
-			for i < len(line) && positions[i+1]-positions[start] < width {
+			for i < len(runes) && positions[i+1]-positions[start] < width {
 				i++
 			}
-			if i == len(line) {
-				lines = append(lines, line[start:])
+			if i == len(runes) {
+				lines = append(lines, string(runes[start:]))
 				break
 			}
 			// Forward past any additional whitespace
-			for i < len(line) && isWhitespace(line[i]) {
+			for i < len(runes) && isWhitespace(runes[i]) {
 				i++
 			}
 			// Backup to first break
-			for i > start && !isWordBreak(line[i-1]) {
+			for i > start && !isWordBreak(runes[i-1]) {
 				i--
 			}
 			if i == start {
 				// Nothing found that fits, so take the first word and any trailing whitespace after it
-				for i < len(line) && !isWordBreak(line[i]) {
+				for i < len(runes) && !isWordBreak(runes[i]) {
 					i++
 				}
-				if i < len(line) && isWordBreak(line[i]) {
+				if i < len(runes) && isWordBreak(runes[i]) {
 					i++
 				}
-				for i < len(line) && isWhitespace(line[i]) {
+				for i < len(runes) && isWhitespace(runes[i]) {
 					i++
 				}
 			}
-			lines = append(lines, line[start:i])
+			lines = append(lines, string(runes[start:i]))
 			start = i
 		}
 	}
 	return lines
 }
 
-func isWhitespace(ch byte) bool {
+func isWhitespace(ch rune) bool {
 	return ch == ' ' || ch == '\t'
 }
 
-func isWordBreak(ch byte) bool {
+func isWordBreak(ch rune) bool {
 	return ch == ' ' || ch == '\t' || ch == '/' || ch == '\\'
 }
 
