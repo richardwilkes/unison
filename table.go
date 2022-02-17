@@ -37,9 +37,11 @@ type TableRowData interface {
 
 // ColumnSize holds the column sizing information.
 type ColumnSize struct {
-	Current float32
-	Minimum float32
-	Maximum float32
+	Current     float32
+	Minimum     float32
+	Maximum     float32
+	AutoMinimum float32
+	AutoMaximum float32
 }
 
 type tableCache struct {
@@ -692,11 +694,11 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 		selected := t.IsRowOrAnyParentSelected(rowIndex)
 		for i := range t.ColumnSizes {
 			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(geom32.Size{})
-			min := t.ColumnSizes[i].Minimum
+			min := t.ColumnSizes[i].AutoMinimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
 			} else {
-				max := t.ColumnSizes[i].Maximum
+				max := t.ColumnSizes[i].AutoMaximum
 				if max > 0 && pref.Width > max {
 					pref.Width = max
 				}
@@ -734,11 +736,11 @@ func (t *Table) SizeColumnToFit(index int, adjust bool) {
 	t.ColumnSizes[index].Current = 0
 	for rowIndex, cache := range t.rowCache {
 		_, pref, _ := cache.row.ColumnCell(rowIndex, index, t.IsRowOrAnyParentSelected(rowIndex)).AsPanel().Sizes(geom32.Size{})
-		min := t.ColumnSizes[index].Minimum
+		min := t.ColumnSizes[index].AutoMinimum
 		if min > 0 && pref.Width < min {
 			pref.Width = min
 		} else {
-			max := t.ColumnSizes[index].Maximum
+			max := t.ColumnSizes[index].AutoMaximum
 			if max > 0 && pref.Width > max {
 				pref.Width = max
 			}
