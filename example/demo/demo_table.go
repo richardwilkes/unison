@@ -86,7 +86,6 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 
 	// Create a scroll panel and place a table panel inside it
 	scrollArea := unison.NewScrollPanel()
-	scrollArea.MouseWheelMultiplier = 2
 	scrollArea.SetContent(table, unison.FillBehavior)
 	scrollArea.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,

@@ -59,10 +59,11 @@ type ScrollPanel struct {
 // NewScrollPanel creates a new scrollable area.
 func NewScrollPanel() *ScrollPanel {
 	s := &ScrollPanel{
-		ScrollPanelTheme: DefaultScrollPanelTheme,
-		horizontalBar:    NewScrollBar(true),
-		verticalBar:      NewScrollBar(false),
-		contentView:      NewPanel(),
+		ScrollPanelTheme:     DefaultScrollPanelTheme,
+		horizontalBar:        NewScrollBar(true),
+		verticalBar:          NewScrollBar(false),
+		contentView:          NewPanel(),
+		MouseWheelMultiplier: 10,
 	}
 	s.Self = s
 	s.AddChild(s.horizontalBar)
