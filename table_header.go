@@ -38,6 +38,7 @@ type TableHeader struct {
 	TableHeaderTheme
 	Table                *Table
 	ColumnHeaders        []TableColumnHeader
+	Less                 func(s1, s2 string) bool
 	interactionColumn    int
 	columnResizeStart    float32
 	columnResizeBase     float32
@@ -51,6 +52,7 @@ func NewTableHeader(table *Table, columnHeaders ...TableColumnHeader) *TableHead
 		TableHeaderTheme: DefaultTableHeaderTheme,
 		Table:            table,
 		ColumnHeaders:    columnHeaders,
+		Less:             func(s1, s2 string) bool { return txt.NaturalLess(s1, s2, true) },
 	}
 	h.Self = h
 	h.SetSizer(h.DefaultSizes)
@@ -434,10 +436,11 @@ func (h *TableHeader) applySort(headers []*headerWithIndex, rows []TableRowData)
 				d1 := rows[i].CellDataForSort(hdr.index)
 				d2 := rows[j].CellDataForSort(hdr.index)
 				if d1 != d2 {
-					if txt.NaturalLess(d1, d2, true) {
-						return hdr.header.SortState().Ascending
+					ascending := hdr.header.SortState().Ascending
+					if h.Less(d1, d2) {
+						return ascending
 					}
-					return !hdr.header.SortState().Ascending
+					return !ascending
 				}
 			}
 			return i < j
