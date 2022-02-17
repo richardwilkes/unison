@@ -78,9 +78,9 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	table.SizeColumnsToFit(true)
 
 	header := unison.NewTableHeader(table,
-		unison.NewTableColumnHeader("", ""),
-		unison.NewTableColumnHeader("First", ""),
-		unison.NewTableColumnHeader("Second", ""),
+		unison.NewTableColumnHeader(""),
+		unison.NewTableColumnHeader("First"),
+		unison.NewTableColumnHeader("Second"),
 	)
 	content.AddChild(header)
 
