@@ -105,6 +105,8 @@ type Table struct {
 	rowCache                     []tableCache
 	interactionRow               int
 	interactionColumn            int
+	lastMouseMotionRow           int
+	lastMouseMotionColumn        int
 	columnResizeStart            float32
 	columnResizeBase             float32
 	columnResizeOverhead         float32
@@ -115,8 +117,10 @@ type Table struct {
 // NewTable creates a new Table control.
 func NewTable() *Table {
 	t := &Table{
-		TableTheme: DefaultTableTheme,
-		selMap:     make(map[TableRowData]bool),
+		TableTheme:            DefaultTableTheme,
+		selMap:                make(map[TableRowData]bool),
+		lastMouseMotionRow:    -1,
+		lastMouseMotionColumn: -1,
 	}
 	t.Self = t
 	t.SetFocusable(true)
@@ -128,6 +132,8 @@ func NewTable() *Table {
 	t.MouseDownCallback = t.DefaultMouseDown
 	t.MouseDragCallback = t.DefaultMouseDrag
 	t.MouseUpCallback = t.DefaultMouseUp
+	t.MouseEnterCallback = t.DefaultMouseEnter
+	t.MouseExitCallback = t.DefaultMouseExit
 	return t
 }
 
@@ -439,8 +445,51 @@ func (t *Table) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoid 
 	return geom32.Rect{}
 }
 
+// DefaultMouseEnter provides the default mouse enter handling.
+func (t *Table) DefaultMouseEnter(where geom32.Point, mod Modifiers) bool {
+	stop := false
+	row := t.OverRow(where.Y)
+	col := t.OverColumn(where.X)
+	if row != -1 && col != -1 {
+		if t.lastMouseMotionRow != row || t.lastMouseMotionColumn != col {
+			t.DefaultMouseExit()
+			t.lastMouseMotionRow = row
+			t.lastMouseMotionColumn = col
+			cell := t.rowCache[row].row.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
+			if cell.MouseEnterCallback != nil {
+				rect := t.CellFrame(row, col)
+				t.installCell(cell, rect)
+				where.Subtract(rect.Point)
+				toolbox.Call(func() { stop = cell.MouseEnterCallback(where, mod) })
+				t.uninstallCell(cell)
+			}
+		}
+	} else {
+		t.DefaultMouseExit()
+	}
+	return stop
+}
+
+// DefaultMouseExit provides the default mouse exit handling.
+func (t *Table) DefaultMouseExit() bool {
+	stop := false
+	if t.lastMouseMotionRow != -1 && t.lastMouseMotionColumn != -1 {
+		cell := t.rowCache[t.lastMouseMotionRow].row.ColumnCell(t.lastMouseMotionRow, t.lastMouseMotionColumn,
+			t.IsRowOrAnyParentSelected(t.lastMouseMotionRow)).AsPanel()
+		if cell.MouseExitCallback != nil {
+			t.installCell(cell, t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn))
+			toolbox.Call(func() { stop = cell.MouseExitCallback() })
+			t.uninstallCell(cell)
+		}
+	}
+	t.lastMouseMotionRow = -1
+	t.lastMouseMotionColumn = -1
+	return stop
+}
+
 // DefaultMouseMove provides the default mouse move handling.
 func (t *Table) DefaultMouseMove(where geom32.Point, mod Modifiers) bool {
+	t.DefaultMouseEnter(where, mod)
 	stop := false
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
