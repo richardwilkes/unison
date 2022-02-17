@@ -19,11 +19,8 @@ import (
 )
 
 var (
-	// DefaultFontHinting holds the FontHinting that will be used when creating a font. This is automatically set
-	// depending on the platform and should usually not be modified.
-	DefaultFontHinting = FontHintingNone
-	fontSizeCacheLock  sync.RWMutex
-	fontSizeCache      = make(map[FontDescriptor]float32)
+	fontSizeCacheLock sync.RWMutex
+	fontSizeCache     = make(map[FontDescriptor]float32)
 )
 
 // FontFace holds the immutable portions of a font description.
@@ -113,7 +110,9 @@ func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
 	}
 	skia.FontSetSubPixel(font.font, true)
 	skia.FontSetForceAutoHinting(font.font, true)
-	skia.FontSetHinting(font.font, skia.FontHinting(DefaultFontHinting))
+	// Using hinting on some platforms (Linux, for example) was resulting in bad placement of the text. Carefully test
+	// any changes away from FontHintingNone on all supported platforms.
+	skia.FontSetHinting(font.font, skia.FontHinting(FontHintingNone))
 	skia.FontGetMetrics(font.font, (*skia.FontMetrics)(&font.metrics))
 	runtime.SetFinalizer(font, func(obj *fontImpl) {
 		ReleaseOnUIThread(func() {
