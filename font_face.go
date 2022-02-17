@@ -19,8 +19,11 @@ import (
 )
 
 var (
-	fontSizeCacheLock sync.RWMutex
-	fontSizeCache     = make(map[FontDescriptor]float32)
+	// DefaultFontHinting holds the FontHinting that will be used when creating a font. This is automatically set
+	// depending on the platform and should usually not be modified.
+	DefaultFontHinting = FontHintingNone
+	fontSizeCacheLock  sync.RWMutex
+	fontSizeCache      = make(map[FontDescriptor]float32)
 )
 
 // FontFace holds the immutable portions of a font description.
@@ -110,7 +113,7 @@ func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
 	}
 	skia.FontSetSubPixel(font.font, true)
 	skia.FontSetForceAutoHinting(font.font, true)
-	skia.FontSetHinting(font.font, skia.FontHinting(FontHintingFull))
+	skia.FontSetHinting(font.font, skia.FontHinting(DefaultFontHinting))
 	skia.FontGetMetrics(font.font, (*skia.FontMetrics)(&font.metrics))
 	runtime.SetFinalizer(font, func(obj *fontImpl) {
 		ReleaseOnUIThread(func() {

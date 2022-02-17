@@ -165,6 +165,7 @@ func Start(options ...StartupOption) {
 		// So... don't set them on Linux...
 		glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 		glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
+		DefaultFontHinting = FontHintingFull
 	}
 	platformEarlyInit()
 	InvokeTask(finishStartup)
