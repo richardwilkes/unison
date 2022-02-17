@@ -19,17 +19,16 @@ import (
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
 // Tooltips, but will alter any Tooltips created in the future.
 var DefaultTooltipTheme = TooltipTheme{
-	SecondaryTextFont: SmallSystemFont,
-	BackgroundInk:     TooltipColor,
-	BaseBorder:        NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 4, Bottom: 2, Right: 4})),
-	Label:             defaultToolTipLabelTheme(),
-	Delay:             1500 * time.Millisecond,
-	Dismissal:         3 * time.Second,
+	BackgroundInk: TooltipColor,
+	BaseBorder:    NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 4, Left: 8, Bottom: 4, Right: 8})),
+	Label:         defaultToolTipLabelTheme(),
+	Delay:         1500 * time.Millisecond,
+	Dismissal:     5 * time.Second,
 }
 
 func defaultToolTipLabelTheme() LabelTheme {
 	theme := DefaultLabelTheme
-	theme.Font = SystemFont
+	theme.Font = FieldFont
 	theme.OnBackgroundInk = OnTooltipColor
 	return theme
 }
@@ -86,7 +85,9 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 		for _, str := range strings.Split(secondary, "\n") {
 			l := NewLabel()
 			l.LabelTheme = DefaultTooltipTheme.Label
-			l.LabelTheme.Font = DefaultTooltipTheme.SecondaryTextFont
+			desc := DefaultTooltipTheme.Label.Font.Descriptor()
+			desc.Size--
+			l.LabelTheme.Font = desc.Font()
 			l.Text = str
 			tip.AddChild(l)
 		}
