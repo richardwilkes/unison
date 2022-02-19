@@ -195,14 +195,14 @@ func finishStartup() {
 	initSystemFonts()
 	platformLateInit()
 	if startupFinishedCallback != nil {
-		startupFinishedCallback()
+		toolbox.Call(startupFinishedCallback)
 	}
 }
 
 func themeChanged() {
 	MarkDynamicColorsForRebuild()
 	if themeChangedCallback != nil {
-		themeChangedCallback()
+		toolbox.Call(themeChangedCallback)
 	}
 	for _, wnd := range Windows() {
 		wnd.MarkForRedraw()
@@ -211,7 +211,7 @@ func themeChanged() {
 
 func uiTaskRecovery(err error) {
 	if recoveryCallback != nil {
-		recoveryCallback(err)
+		toolbox.Call(func() { recoveryCallback(err) })
 	} else {
 		jot.Error(err)
 	}
@@ -219,14 +219,18 @@ func uiTaskRecovery(err error) {
 
 func quitAfterLastWindowClosed() bool {
 	if quitAfterLastWindowClosedCallback != nil {
-		return quitAfterLastWindowClosedCallback()
+		quit := true
+		toolbox.Call(func() { quit = quitAfterLastWindowClosedCallback() })
+		return quit
 	}
 	return true
 }
 
 func allowQuit() bool {
 	if allowQuitCallback != nil {
-		return allowQuitCallback()
+		allow := true
+		toolbox.Call(func() { allow = allowQuitCallback() })
+		return allow
 	}
 	return true
 }
@@ -237,7 +241,7 @@ func quitting() {
 	quittingCallback = nil
 	quitLock.Unlock()
 	if callback != nil {
-		callback()
+		toolbox.Call(callback)
 	}
 	// atexit.Exit() is called here once to ensure registered atexit hooks are actually called, as OS's may directly
 	// terminate the app after returning from this function.
