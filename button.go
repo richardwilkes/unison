@@ -85,6 +85,19 @@ func NewButton() *Button {
 	return b
 }
 
+// NewSVGButton creates an SVG icon button with a size equal to the default button theme's font baseline.
+func NewSVGButton(svg *SVG) *Button {
+	b := NewButton()
+	b.HideBase = true
+	baseline := b.Font.Baseline()
+	size := geom32.NewSize(baseline, baseline)
+	b.Drawable = &DrawableSVG{
+		SVG:  svg,
+		Size: *size.GrowToInteger(),
+	}
+	return b
+}
+
 // DefaultSizes provides the default sizing.
 func (b *Button) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	text := b.Text
