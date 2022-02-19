@@ -63,13 +63,14 @@ func NewTableColumnHeader(title string) *DefaultTableColumnHeader {
 // DefaultSizes provides the default sizing.
 func (h *DefaultTableColumnHeader) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	pref = LabelSize(h.Text, h.Font, h.Drawable, h.Side, h.Gap)
-	if h.sortIndicator != nil {
-		size := h.sortIndicator.LogicalSize()
-		pref.Width += h.LabelTheme.Gap + size.Width
-		if pref.Height < size.Height {
-			pref.Height = size.Height
-		}
+
+	// Account for the potential sort indicator
+	baseline := h.Font.Baseline()
+	pref.Width += h.LabelTheme.Gap + baseline
+	if pref.Height < baseline {
+		pref.Height = baseline
 	}
+
 	if b := h.Border(); b != nil {
 		pref.AddInsets(b.Insets())
 	}
