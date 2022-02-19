@@ -43,13 +43,18 @@ type PopupMenuTheme struct {
 	VMargin         float32
 }
 
+type popupMenuItem struct {
+	item    interface{}
+	enabled bool
+}
+
 // PopupMenu represents a clickable button that displays a menu of choices.
 type PopupMenu struct {
 	Panel
 	PopupMenuTheme
 	MenuFactory       MenuFactory
 	SelectionCallback func()
-	items             []interface{}
+	items             []*popupMenuItem
 	selectedIndex     int
 	Pressed           bool
 }
@@ -75,10 +80,10 @@ func NewPopupMenu() *PopupMenu {
 func (p *PopupMenu) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	pref = LabelSize("M", p.Font, nil, 0, 0)
 	for _, one := range p.items {
-		switch one.(type) {
+		switch one.item.(type) {
 		case *popupSeparationMarker:
 		default:
-			size := LabelSize(fmt.Sprintf("%v", one), p.Font, nil, 0, 0)
+			size := LabelSize(fmt.Sprintf("%v", one.item), p.Font, nil, 0, 0)
 			if pref.Width < size.Width {
 				pref.Width = size.Width
 			}
@@ -142,7 +147,7 @@ func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 // Text the currently shown text.
 func (p *PopupMenu) Text() string {
 	if p.selectedIndex >= 0 && p.selectedIndex < len(p.items) {
-		one := p.items[p.selectedIndex]
+		one := p.items[p.selectedIndex].item
 		switch one.(type) {
 		case *popupSeparationMarker:
 		default:
@@ -158,20 +163,11 @@ func (p *PopupMenu) Click() {
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
 	defer m.Dispose()
 	for i, one := range p.items {
-		if _, ok := one.(*popupSeparationMarker); ok {
+		if _, ok := one.item.(*popupSeparationMarker); ok {
 			m.InsertSeparator(-1, false)
 		} else {
 			hasItem = true
-			index := i
-			var mi MenuItem
-			mi = m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
-				fmt.Sprintf("%v", one), KeyNone, NoModifiers, nil, func(MenuItem) {
-					if index != p.SelectedIndex() {
-						p.SelectIndex(index)
-						mi.SetCheckState(OnCheckState)
-					}
-				})
-			m.InsertItem(-1, mi)
+			m.InsertItem(-1, p.createMenuItem(m, i, one))
 		}
 	}
 	if hasItem {
@@ -179,22 +175,42 @@ func (p *PopupMenu) Click() {
 	}
 }
 
-// AddItem appends an menuItem to the end of the PopupMenu.
+func (p *PopupMenu) createMenuItem(m Menu, index int, entry *popupMenuItem) MenuItem {
+	return m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
+		fmt.Sprintf("%v", entry.item), KeyNone, NoModifiers, func(mi MenuItem) bool {
+			return entry.enabled
+		}, func(mi MenuItem) {
+			if index != p.SelectedIndex() {
+				p.SelectIndex(index)
+				mi.SetCheckState(OnCheckState)
+			}
+		})
+}
+
+// AddItem appends a menu item to the end of the PopupMenu.
 func (p *PopupMenu) AddItem(item interface{}) *PopupMenu {
-	p.items = append(p.items, item)
+	p.items = append(p.items, &popupMenuItem{
+		item:    item,
+		enabled: true,
+	})
+	return p
+}
+
+// AddDisabledItem appends a disabled menu item to the end of the PopupMenu.
+func (p *PopupMenu) AddDisabledItem(item interface{}) *PopupMenu {
+	p.items = append(p.items, &popupMenuItem{item: item})
 	return p
 }
 
 // AddSeparator adds a separator to the end of the PopupMenu.
 func (p *PopupMenu) AddSeparator() *PopupMenu {
-	p.items = append(p.items, &popupSeparationMarker{})
-	return p
+	return p.AddDisabledItem(&popupSeparationMarker{})
 }
 
-// IndexOfItem returns the index of the specified menuItem. -1 will be returned if the menuItem isn't present.
+// IndexOfItem returns the index of the specified menu item. -1 will be returned if the menu item isn't present.
 func (p *PopupMenu) IndexOfItem(item interface{}) int {
 	for i, one := range p.items {
-		if one == item {
+		if one.item == item {
 			return i
 		}
 	}
@@ -248,16 +264,17 @@ func (p *PopupMenu) ItemCount() int {
 // ItemAt returns the menuItem at the specified index or nil.
 func (p *PopupMenu) ItemAt(index int) interface{} {
 	if index >= 0 && index < len(p.items) {
-		return p.items[index]
+		return p.items[index].item
 	}
 	return nil
 }
 
 // SetItemAt sets the menuItem at the specified index.
-func (p *PopupMenu) SetItemAt(index int, item interface{}) *PopupMenu {
+func (p *PopupMenu) SetItemAt(index int, item interface{}, enabled bool) *PopupMenu {
 	if index >= 0 && index < len(p.items) {
-		if p.items[index] != item {
-			p.items[index] = item
+		if p.items[index].item != item {
+			p.items[index].item = item
+			p.items[index].enabled = enabled
 			p.MarkForRedraw()
 		}
 	}

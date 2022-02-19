@@ -28,8 +28,8 @@ type MenuFactory interface {
 	// NewMenu creates a new Menu. updater is optional and, if present, will be called prior to showing the Menu, giving
 	// a chance to modify it.
 	NewMenu(id int, title string, updater func(Menu)) Menu
-	// NewItem creates a new MenuItem. Both validator and handler may be nil for default behavior. If keyCode is 0, no key
-	// accelerator will be attached to the menuItem.
+	// NewItem creates a new MenuItem. Both validator and handler may be nil for default behavior. If keyCode is 0, no
+	// key accelerator will be attached to the menuItem.
 	NewItem(id int, title string, keyCode KeyCode, keyModifiers Modifiers, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem
 }
 
