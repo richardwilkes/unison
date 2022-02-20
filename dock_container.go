@@ -48,7 +48,7 @@ func NewDockContainer(dock *Dock, dockable Dockable) *DockContainer {
 	}
 	d.Self = d
 	d.SetLayout(d)
-	d.content.AddChild(dockable)
+	d.content.AddChild(resolveDockable(dockable))
 	d.content.SetCurrentIndex(0)
 	d.header = newDockHeader(d)
 	d.AddChild(d.header)
@@ -76,11 +76,12 @@ func (d *DockContainer) CurrentDockableIndex() int {
 
 // CurrentDockable returns the frontmost Dockable within this DockContainer. May return nil.
 func (d *DockContainer) CurrentDockable() Dockable {
-	return d.content.Current()
+	return resolveDockable(d.content.Current())
 }
 
 // SetCurrentDockable makes the provided dockable the current one.
 func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
+	dockable = resolveDockable(dockable)
 	if d.CurrentDockable() != dockable {
 		for i, c := range d.content.Children() {
 			if c.Self == dockable {
@@ -90,6 +91,14 @@ func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
 			}
 		}
 	}
+}
+
+// resolveDockable makes sure we're pointing to the Self version of the Dockable and not some intermediate layer.
+func resolveDockable(dockable Dockable) Dockable {
+	if dockable == nil {
+		return nil
+	}
+	return dockable.AsPanel().Self.(Dockable)
 }
 
 // AcquireFocus will set the focus within the current Dockable of this DockContainer. If the focus is already within it,
@@ -111,6 +120,7 @@ func (d *DockContainer) AcquireFocus() {
 
 // UpdateTitle will cause the dock tab for the given Dockable to update itself.
 func (d *DockContainer) UpdateTitle(dockable Dockable) {
+	dockable = resolveDockable(dockable)
 	for i, c := range d.content.Children() {
 		if c.Self == dockable {
 			d.header.updateTitle(i)
@@ -145,6 +155,7 @@ func DockContainerFor(paneler Paneler) *DockContainer {
 // DockableHasFocus returns true if the given Dockable has the current focus inside it.
 func DockableHasFocus(dockable Dockable) bool {
 	if wnd := dockable.AsPanel().Window(); wnd != nil {
+		dockable = resolveDockable(dockable)
 		focus := wnd.Focus()
 		for focus != nil {
 			if d, ok := focus.Self.(Dockable); ok && d == dockable {
@@ -159,6 +170,7 @@ func DockableHasFocus(dockable Dockable) bool {
 // Stack adds the Dockable to this DockContainer at the specified index. An out-of-bounds index will cause the Dockable
 // to be added at the end.
 func (d *DockContainer) Stack(dockable Dockable, index int) {
+	dockable = resolveDockable(dockable)
 	if dc := DockContainerFor(dockable); dc != nil {
 		if dc == d && len(d.content.Children()) == 1 {
 			d.AcquireFocus()
@@ -177,6 +189,7 @@ func (d *DockContainer) Stack(dockable Dockable, index int) {
 // DockContainer's close(Dockable) method to actually close the tab.
 func (d *DockContainer) AttemptClose(dockable Dockable) {
 	if closer, ok := dockable.(TabCloser); ok {
+		dockable = resolveDockable(dockable)
 		for _, c := range d.content.Children() {
 			if c.Self == dockable {
 				if closer.MayAttemptClose() {
@@ -191,6 +204,7 @@ func (d *DockContainer) AttemptClose(dockable Dockable) {
 // Close the specified Dockable. If the last Dockable within this DockContainer is closed, then this DockContainer is
 // also removed from the Dock.
 func (d *DockContainer) Close(dockable Dockable) {
+	dockable = resolveDockable(dockable)
 	for _, c := range d.content.Children() {
 		if c.Self != dockable {
 			continue
