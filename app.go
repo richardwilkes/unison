@@ -199,7 +199,10 @@ func finishStartup() {
 	}
 }
 
-func themeChanged() {
+// ThemeChanged marks dynamic colors for rebuilding, calls any installed theme change callback, and then redraws all
+// windows. This is normally called automatically for you, however, it has been made public to allow you to trigger it
+// on demand.
+func ThemeChanged() {
 	MarkDynamicColorsForRebuild()
 	if themeChangedCallback != nil {
 		toolbox.Call(themeChangedCallback)
@@ -283,7 +286,7 @@ func SetDarkModeTracking(mode DarkModeTracking) {
 	if currentDarkModeTracking != mode {
 		currentDarkModeTracking = mode
 		needPlatformDarkModeUpdate = true
-		InvokeTask(themeChanged)
+		InvokeTask(ThemeChanged)
 	}
 }
 

@@ -79,9 +79,9 @@ func updateTheme(k registry.Key, sync bool) error {
 	}
 	if swapped && currentDarkModeTracking == DarkModeTrackPlatform {
 		if sync {
-			themeChanged()
+			ThemeChanged()
 		} else {
-			InvokeTask(themeChanged)
+			InvokeTask(ThemeChanged)
 		}
 	}
 	return nil

@@ -20,7 +20,7 @@ func platformEarlyInit() {
 }
 
 func platformLateInit() {
-	ns.InstallSystemThemeChangedCallback(themeChanged)
+	ns.InstallSystemThemeChangedCallback(ThemeChanged)
 	ns.SetActivationPolicy(ns.ActivationPolicyRegular)
 }
 
