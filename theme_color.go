@@ -59,8 +59,8 @@ var (
 
 // ThemeColor holds a pair of colors, one for light mode and one for dark mode.
 type ThemeColor struct {
-	Light Color
-	Dark  Color
+	Light Color `json:"light"`
+	Dark  Color `json:"dark"`
 }
 
 // GetColor returns the current color. Here to satisfy the ColorProvider interface.
