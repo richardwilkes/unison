@@ -288,19 +288,19 @@ func initSystemFonts() {
 		}
 	}
 
-	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(10)
-	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(10)
+	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(9)
+	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(9)
 	SmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(8)
 	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(8)
-	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(8)
-	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(10)
+	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(9)
+	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(9)
 	keyboardFamilyName := DefaultSystemFamilyName
 	if runtime.GOOS == toolbox.MacOS {
 		// This is a special font on macOS. Ideally, I'd find a source for an equivalent font and embed it so that the
 		// same font could be used on all platforms.
 		keyboardFamilyName = ".Keyboard"
 	}
-	KeyboardFont.Font = MatchFontFace(keyboardFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(10)
+	KeyboardFont.Font = MatchFontFace(keyboardFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(9)
 }
 
 // RegisterFont registers a font with the font manager.
@@ -312,7 +312,7 @@ func RegisterFont(data []byte) (*FontDescriptor, error) {
 	weight, spacing, slant := f.Style()
 	fd := &FontDescriptor{
 		Family:  f.Family(),
-		Size:    12, // Arbitrary
+		Size:    9, // Arbitrary
 		Weight:  weight,
 		Spacing: spacing,
 		Slant:   slant,

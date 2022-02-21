@@ -78,7 +78,7 @@ func (d *demoRow) ColumnCell(_, col int, selected bool) unison.Paneler {
 			subLabel.OnBackgroundInk = unison.OnSelectionColor
 		}
 		desc := unison.LabelFont.Descriptor()
-		desc.Size -= 2
+		desc.Size--
 		subLabel.Font = desc.Font()
 		wrapper.AddChild(subLabel)
 		wrapper.UpdateTooltipCallback = func(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
