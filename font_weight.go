@@ -50,7 +50,7 @@ var FontWeights = []FontWeight{
 
 // MarshalText implements the encoding.TextMarshaler interface.
 func (w FontWeight) MarshalText() (text []byte, err error) {
-	return []byte(strings.ToLower(w.String())), nil
+	return []byte(w.Key()), nil
 }
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
@@ -65,14 +65,15 @@ func WeightFromString(str string) FontWeight {
 		return NormalFontWeight
 	}
 	for w := InvisibleFontWeight; w <= ExtraBlackFontWeight; w += 100 {
-		if strings.EqualFold(w.String(), str) {
+		if strings.EqualFold(w.Key(), str) {
 			return w
 		}
 	}
 	return NormalFontWeight
 }
 
-func (w FontWeight) String() string {
+// Key returns the key that is used when serializing.
+func (w FontWeight) Key() string {
 	switch w {
 	case InvisibleFontWeight:
 		return "invisible"
@@ -99,8 +100,7 @@ func (w FontWeight) String() string {
 	}
 }
 
-// Localized returns the localized name.
-func (w FontWeight) Localized() string {
+func (w FontWeight) String() string {
 	switch w {
 	case InvisibleFontWeight:
 		return i18n.Text("Invisible")

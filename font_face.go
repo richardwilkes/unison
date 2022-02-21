@@ -11,9 +11,9 @@ package unison
 
 import (
 	"runtime"
-	"strings"
 	"sync"
 
+	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -84,17 +84,19 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 	skiaSize = capHeightSizeInLogicalPixels
 	var font *fontImpl
 	font = f.createFontWithSkiaSize(skiaSize)
-	skiaSize = mathf32.Floor(capHeightSizeInLogicalPixels * skiaSize / font.metrics.CapHeight)
-	for {
-		font = f.createFontWithSkiaSize(skiaSize)
-		if font.metrics.CapHeight >= capHeightSizeInLogicalPixels {
-			break
+	if font.metrics.CapHeight > 0 { // I've seen some fonts with a negative CapHeight, which won't work
+		skiaSize = mathf32.Floor(capHeightSizeInLogicalPixels * skiaSize / font.metrics.CapHeight)
+		for {
+			font = f.createFontWithSkiaSize(skiaSize)
+			if font.metrics.CapHeight >= capHeightSizeInLogicalPixels {
+				break
+			}
+			skiaSize++
 		}
-		skiaSize++
-	}
-	for font.metrics.CapHeight > capHeightSizeInLogicalPixels {
-		skiaSize -= 0.5
-		font = f.createFontWithSkiaSize(skiaSize)
+		for font.metrics.CapHeight > capHeightSizeInLogicalPixels {
+			skiaSize -= 0.5
+			font = f.createFontWithSkiaSize(skiaSize)
+		}
 	}
 	font.size = capHeightSizeInLogicalPixels
 	fontSizeCacheLock.Lock()
@@ -149,19 +151,32 @@ func (f *FontFace) UnitsPerEm() int {
 	return skia.TypeFaceGetUnitsPerEm(f.face)
 }
 
-func (f *FontFace) String() string {
-	var buffer strings.Builder
-	buffer.WriteString(f.Family())
-	weight, spacing, slant := f.Style()
-	buffer.WriteByte(' ')
-	buffer.WriteString(weight.String())
-	if spacing != StandardSpacing {
-		buffer.WriteByte(' ')
-		buffer.WriteString(spacing.String())
+// Less returns true if this FontFace is logically before the other FontFace.
+func (f *FontFace) Less(other *FontFace) bool {
+	f1 := f.Family()
+	f2 := other.Family()
+	if txt.NaturalLess(f1, f2, true) {
+		return true
 	}
-	if slant != NoSlant {
-		buffer.WriteByte(' ')
-		buffer.WriteString(slant.String())
+	if f1 != f2 {
+		return false
 	}
-	return buffer.String()
+	w1, sp1, sl1 := f.Style()
+	w2, sp2, sl2 := other.Style()
+	if w1 < w2 {
+		return true
+	}
+	if w1 != w2 {
+		return false
+	}
+	if sp1 < sp2 {
+		return true
+	}
+	if sp1 != sp2 {
+		return false
+	}
+	if sl1 < sl2 {
+		return true
+	}
+	return false
 }

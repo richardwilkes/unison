@@ -192,7 +192,6 @@ func processEvents() {
 func finishStartup() {
 	skiaColorspace = skia.ColorSpaceNewSRGB()
 	RebuildDynamicColors()
-	initSystemFonts()
 	platformLateInit()
 	if startupFinishedCallback != nil {
 		toolbox.Call(startupFinishedCallback)

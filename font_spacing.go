@@ -46,7 +46,7 @@ var Spacings = []FontSpacing{
 
 // MarshalText implements the encoding.TextMarshaler interface.
 func (s FontSpacing) MarshalText() (text []byte, err error) {
-	return []byte(strings.ToLower(s.String())), nil
+	return []byte(s.Key()), nil
 }
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
@@ -61,14 +61,15 @@ func SpacingFromString(str string) FontSpacing {
 		return StandardSpacing
 	}
 	for s := UltraCondensedSpacing; s <= UltraExpandedSpacing; s++ {
-		if strings.EqualFold(s.String(), str) {
+		if strings.EqualFold(s.Key(), str) {
 			return s
 		}
 	}
 	return StandardSpacing
 }
 
-func (s FontSpacing) String() string {
+// Key returns the key that is used when serializing.
+func (s FontSpacing) Key() string {
 	switch s {
 	case UltraCondensedSpacing:
 		return "ultra-condensed"
@@ -91,8 +92,7 @@ func (s FontSpacing) String() string {
 	}
 }
 
-// Localized returns the localized name.
-func (s FontSpacing) Localized() string {
+func (s FontSpacing) String() string {
 	switch s {
 	case UltraCondensedSpacing:
 		return i18n.Text("Ultra-Condensed")

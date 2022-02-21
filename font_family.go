@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -35,6 +36,11 @@ func FontFamilies() []string {
 	fm := skia.FontMgrRefDefault()
 	count := skia.FontMgrCountFamilies(fm)
 	names := make(map[string]bool)
+	if runtime.GOOS == toolbox.MacOS {
+		// This is a special font on macOS. Ideally, I'd find a source for an equivalent font and embed it so that the
+		// same font could be used on all platforms.
+		names[".Keyboard"] = true
+	}
 	ss := skia.StringNewEmpty()
 	for i := 0; i < count; i++ {
 		skia.FontMgrGetFamilyName(fm, i, ss)
@@ -92,14 +98,14 @@ func (f *FontFamily) Style(index int) (description string, weight FontWeight, sp
 		if index >= 0 && index < len(fnt.faces) {
 			weight, spacing, slant = fnt.faces[index].Style()
 			var buffer strings.Builder
-			buffer.WriteString(weight.Localized())
+			buffer.WriteString(weight.String())
 			if spacing != StandardSpacing {
 				buffer.WriteString(" ")
-				buffer.WriteString(spacing.Localized())
+				buffer.WriteString(spacing.String())
 			}
 			if slant != NoSlant {
 				buffer.WriteString(" ")
-				buffer.WriteString(slant.Localized())
+				buffer.WriteString(slant.String())
 			}
 			description = buffer.String()
 		}

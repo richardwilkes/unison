@@ -34,7 +34,7 @@ var Slants = []FontSlant{
 
 // MarshalText implements the encoding.TextMarshaler interface.
 func (s FontSlant) MarshalText() (text []byte, err error) {
-	return []byte(strings.ToLower(s.String())), nil
+	return []byte(s.Key()), nil
 }
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
@@ -49,14 +49,15 @@ func SlantFromString(str string) FontSlant {
 		return NoSlant
 	}
 	for s := NoSlant; s <= ObliqueSlant; s++ {
-		if strings.EqualFold(s.String(), str) {
+		if strings.EqualFold(s.Key(), str) {
 			return s
 		}
 	}
 	return NoSlant
 }
 
-func (s FontSlant) String() string {
+// Key returns the key that is used when serializing.
+func (s FontSlant) Key() string {
 	switch s {
 	case ItalicSlant:
 		return "italic"
@@ -67,8 +68,7 @@ func (s FontSlant) String() string {
 	}
 }
 
-// Localized returns the localized name.
-func (s FontSlant) Localized() string {
+func (s FontSlant) String() string {
 	switch s {
 	case ItalicSlant:
 		return i18n.Text("Italic")

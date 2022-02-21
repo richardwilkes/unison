@@ -20,7 +20,6 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -266,7 +265,7 @@ func (f *fontImpl) Descriptor() FontDescriptor {
 	}
 }
 
-func initSystemFonts() {
+func init() {
 	const fontDir = "resources/fonts"
 	entries, err := fontFS.ReadDir(fontDir)
 	if err != nil {
@@ -288,19 +287,20 @@ func initSystemFonts() {
 		}
 	}
 
-	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(9)
-	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(9)
-	SmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(8)
-	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(8)
-	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(9)
-	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(9)
+	baseSize := float32(10)
+	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize)
+	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(baseSize)
+	SmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize - 1)
+	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(baseSize - 1)
+	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
+	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
 	keyboardFamilyName := DefaultSystemFamilyName
 	if runtime.GOOS == toolbox.MacOS {
 		// This is a special font on macOS. Ideally, I'd find a source for an equivalent font and embed it so that the
 		// same font could be used on all platforms.
 		keyboardFamilyName = ".Keyboard"
 	}
-	KeyboardFont.Font = MatchFontFace(keyboardFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(9)
+	KeyboardFont.Font = MatchFontFace(keyboardFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize)
 }
 
 // RegisterFont registers a font with the font manager.
@@ -331,7 +331,7 @@ func RegisterFont(data []byte) (*FontDescriptor, error) {
 		if add {
 			info.faces = append(info.faces, f)
 			sort.Slice(info.faces, func(i, j int) bool {
-				return txt.NaturalLess(info.faces[i].String(), info.faces[j].String(), true)
+				return info.faces[i].Less(info.faces[j])
 			})
 		}
 	} else {
