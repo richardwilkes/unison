@@ -19,8 +19,7 @@ var (
 	CutAction = &Action{
 		ID:              CutItemID,
 		Title:           i18n.Text("Cut"),
-		HotKey:          KeyX,
-		HotKeyMods:      OSMenuCmdModifier(),
+		KeyBinding:      KeyBinding{KeyCode: KeyX, Modifiers: OSMenuCmdModifier()},
 		EnabledCallback: RouteActionToFocusEnabledFunc,
 		ExecuteCallback: RouteActionToFocusExecuteFunc,
 	}
@@ -28,8 +27,7 @@ var (
 	CopyAction = &Action{
 		ID:              CopyItemID,
 		Title:           i18n.Text("Copy"),
-		HotKey:          KeyC,
-		HotKeyMods:      OSMenuCmdModifier(),
+		KeyBinding:      KeyBinding{KeyCode: KeyC, Modifiers: OSMenuCmdModifier()},
 		EnabledCallback: RouteActionToFocusEnabledFunc,
 		ExecuteCallback: RouteActionToFocusExecuteFunc,
 	}
@@ -37,8 +35,7 @@ var (
 	PasteAction = &Action{
 		ID:              PasteItemID,
 		Title:           i18n.Text("Paste"),
-		HotKey:          KeyV,
-		HotKeyMods:      OSMenuCmdModifier(),
+		KeyBinding:      KeyBinding{KeyCode: KeyV, Modifiers: OSMenuCmdModifier()},
 		EnabledCallback: RouteActionToFocusEnabledFunc,
 		ExecuteCallback: RouteActionToFocusExecuteFunc,
 	}
@@ -46,7 +43,7 @@ var (
 	DeleteAction = &Action{
 		ID:              DeleteItemID,
 		Title:           i18n.Text("Delete"),
-		HotKey:          KeyBackspace,
+		KeyBinding:      KeyBinding{KeyCode: KeyBackspace},
 		EnabledCallback: RouteActionToFocusEnabledFunc,
 		ExecuteCallback: RouteActionToFocusExecuteFunc,
 	}
@@ -54,8 +51,7 @@ var (
 	SelectAllAction = &Action{
 		ID:              SelectAllItemID,
 		Title:           i18n.Text("Select All"),
-		HotKey:          KeyA,
-		HotKeyMods:      OSMenuCmdModifier(),
+		KeyBinding:      KeyBinding{KeyCode: KeyA, Modifiers: OSMenuCmdModifier()},
 		EnabledCallback: RouteActionToFocusEnabledFunc,
 		ExecuteCallback: RouteActionToFocusExecuteFunc,
 	}
@@ -65,15 +61,14 @@ var (
 type Action struct {
 	ID              int                             // Should be unique among all actions and menu items.
 	Title           string                          // Typically used in a menu item title or tooltip for a button.
-	HotKey          KeyCode                         // The key that will trigger the action.
-	HotKeyMods      Modifiers                       // The modifier keys that must be pressed for the hot key to be recognized.
+	KeyBinding      KeyBinding                      // The key binding that will trigger the action.
 	EnabledCallback func(*Action, interface{}) bool // Should return true if the action can be used. Care should be made to keep this method fast to avoid slowing down the user interface. May be nil, in which case it is assumed to always be enabled.
 	ExecuteCallback func(*Action, interface{})      // Will be called to run the action. May be nil.
 }
 
 // NewMenuItem returns a newly created menu item using this action.
 func (a *Action) NewMenuItem(f MenuFactory) MenuItem {
-	return f.NewItem(a.ID, a.Title, a.HotKey, a.HotKeyMods, a.enabled, a.execute)
+	return f.NewItem(a.ID, a.Title, a.KeyBinding, a.enabled, a.execute)
 }
 
 // NewContextMenuItemFromAction returns a newly created menu item for a context menu using this action. If the menuItem
@@ -82,7 +77,7 @@ func (a *Action) NewContextMenuItemFromAction(f MenuFactory) MenuItem {
 	if !a.Enabled(nil) {
 		return nil
 	}
-	return f.NewItem(a.ID|ContextMenuIDFlag, a.Title, KeyNone, NoModifiers, a.enabled, a.execute)
+	return f.NewItem(a.ID|ContextMenuIDFlag, a.Title, KeyBinding{}, a.enabled, a.execute)
 }
 
 // Enabled returns true if the action can be used.

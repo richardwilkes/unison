@@ -10,9 +10,8 @@
 package unison
 
 import (
-	"runtime"
-
-	"github.com/richardwilkes/toolbox"
+	"bytes"
+	"strings"
 )
 
 // Possible Modifiers values.
@@ -31,7 +30,7 @@ const (
 
 // Modifiers contains flags indicating which modifier keys were down when an
 // event occurred.
-type Modifiers int
+type Modifiers byte
 
 // ShiftDown returns true if the shift key is being pressed.
 func (m Modifiers) ShiftDown() bool {
@@ -63,14 +62,6 @@ func (m Modifiers) NumLockDown() bool {
 	return m&NumLockModifier == NumLockModifier
 }
 
-// OSMenuCmdModifier returns the OS's standard menu command key modifier.
-func OSMenuCmdModifier() Modifiers {
-	if runtime.GOOS == toolbox.MacOS {
-		return CommandModifier
-	}
-	return ControlModifier
-}
-
 // OSMenuCmdModifierDown returns true if the OS's standard menu command key is
 // being pressed.
 func (m Modifiers) OSMenuCmdModifierDown() bool {
@@ -81,4 +72,79 @@ func (m Modifiers) OSMenuCmdModifierDown() bool {
 // String returns a text representation of these modifiers.
 func (m Modifiers) String() string {
 	return m.platformString()
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (m Modifiers) MarshalText() (text []byte, err error) {
+	return []byte(m.Key()), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (m *Modifiers) UnmarshalText(text []byte) error {
+	*m = ModifiersFromKey(string(text))
+	return nil
+}
+
+// ModifiersFromKey extracts Modifiers from a string created via a call to .Key().
+func ModifiersFromKey(key string) Modifiers {
+	var mods Modifiers
+	for _, one := range strings.Split(strings.ToLower(key), "+") {
+		switch one {
+		case "ctrl":
+			mods |= ControlModifier
+		case "alt":
+			mods |= OptionModifier
+		case "shift":
+			mods |= ShiftModifier
+		case "caps":
+			mods |= CapsLockModifier
+		case "num":
+			mods |= NumLockModifier
+		case "cmd":
+			mods |= CommandModifier
+		}
+	}
+	return mods
+}
+
+// Key returns a string version of the Modifiers for the purpose of serialization.
+func (m Modifiers) Key() string {
+	if m == 0 {
+		return ""
+	}
+	var buffer bytes.Buffer
+	if m.ControlDown() {
+		buffer.WriteString("ctrl")
+	}
+	if m.OptionDown() {
+		if buffer.Len() != 0 {
+			buffer.WriteByte('+')
+		}
+		buffer.WriteString("alt")
+	}
+	if m.ShiftDown() {
+		if buffer.Len() != 0 {
+			buffer.WriteByte('+')
+		}
+		buffer.WriteString("shift")
+	}
+	if m.CapsLockDown() {
+		if buffer.Len() != 0 {
+			buffer.WriteByte('+')
+		}
+		buffer.WriteString("caps")
+	}
+	if m.NumLockDown() {
+		if buffer.Len() != 0 {
+			buffer.WriteByte('+')
+		}
+		buffer.WriteString("num")
+	}
+	if m.CommandDown() {
+		if buffer.Len() != 0 {
+			buffer.WriteByte('+')
+		}
+		buffer.WriteString("cmd")
+	}
+	return buffer.String()
 }

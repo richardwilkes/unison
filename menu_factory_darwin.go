@@ -21,6 +21,10 @@ func platformNewDefaultMenuFactory() MenuFactory {
 	return &macMenuFactory{}
 }
 
+func (f *macMenuFactory) BarForWindowNoCreate(window *Window) Menu {
+	return f.bar
+}
+
 func (f *macMenuFactory) BarForWindow(window *Window, initializer func(Menu)) Menu {
 	if f.bar == nil {
 		f.bar = f.newMenu(RootMenuID, "", nil)
@@ -53,7 +57,7 @@ func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macM
 	}
 }
 
-func (f *macMenuFactory) NewItem(id int, title string, keyCode KeyCode, keyModifiers Modifiers, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
+func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
 	var v func(ns.MenuItem) bool
 	if validator != nil {
 		v = func(mi ns.MenuItem) bool {
@@ -66,7 +70,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyCode KeyCode, keyModif
 			handler(&macMenuItem{factory: f, item: mi})
 		}
 	}
-	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyCode], keyModifiers.eventModifierFlags(), v, h)
+	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode], keyBinding.Modifiers.eventModifierFlags(), v, h)
 	return &macMenuItem{
 		factory: f,
 		item:    mi,

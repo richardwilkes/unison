@@ -15,6 +15,11 @@ import (
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
+// OSMenuCmdModifier returns the OS's standard menu command key modifier.
+func OSMenuCmdModifier() Modifiers {
+	return CommandModifier
+}
+
 func (m Modifiers) platformString() string {
 	if m == 0 {
 		return ""

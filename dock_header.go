@@ -334,7 +334,7 @@ func (d *dockHeader) handleOverflowPopup() {
 	defer m.Dispose()
 	for i, tab := range tabs {
 		if tab.Hidden {
-			m.InsertItem(-1, m.Factory().NewItem(PopupMenuTemporaryBaseID+i+1, tab.dockable.Title(), KeyNone, NoModifiers, nil, func(item MenuItem) {
+			m.InsertItem(-1, m.Factory().NewItem(PopupMenuTemporaryBaseID+i+1, tab.dockable.Title(), KeyBinding{}, nil, func(item MenuItem) {
 				d.owner.SetCurrentDockable(tabs[item.ID()-(PopupMenuTemporaryBaseID+1)].dockable)
 			}))
 		}

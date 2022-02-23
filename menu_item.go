@@ -37,11 +37,10 @@ type MenuItem interface {
 	Title() string
 	// SetTitle sets the menu item's title.
 	SetTitle(title string)
-	// KeyBinding returns the key binding for the menu item. Both will be 0 if no key accelerator is attached.
-	KeyBinding() (keyCode KeyCode, keyModifiers Modifiers)
-	// SetKeyBinding sets the key binding for the menu item. If keyCode is 0, no key accelerator will be attached to the
-	// menu item.
-	SetKeyBinding(keyCode KeyCode, keyModifiers Modifiers)
+	// KeyBinding returns the key binding for the menu item.
+	KeyBinding() KeyBinding
+	// SetKeyBinding sets the key binding for the menu item.
+	SetKeyBinding(keyBinding KeyBinding)
 	// SubMenu returns the menu item's sub-menu, if any.
 	SubMenu() Menu
 	// CheckState returns the menu item's current check state.
@@ -78,20 +77,19 @@ type MenuItemTheme struct {
 }
 
 type menuItem struct {
-	factory      *inWindowMenuFactory
-	id           int
-	title        string
-	menu         *menu
-	subMenu      *menu
-	panel        *Panel
-	validator    func(MenuItem) bool
-	handler      func(MenuItem)
-	keyCode      KeyCode
-	keyModifiers Modifiers
-	state        CheckState
-	isSeparator  bool
-	enabled      bool
-	over         bool
+	factory     *inWindowMenuFactory
+	id          int
+	title       string
+	menu        *menu
+	subMenu     *menu
+	panel       *Panel
+	validator   func(MenuItem) bool
+	handler     func(MenuItem)
+	keyBinding  KeyBinding
+	state       CheckState
+	isSeparator bool
+	enabled     bool
+	over        bool
 }
 
 func (mi *menuItem) Factory() MenuFactory {
@@ -138,13 +136,12 @@ func (mi *menuItem) SetTitle(title string) {
 	mi.title = title
 }
 
-func (mi *menuItem) KeyBinding() (keyCode KeyCode, keyModifiers Modifiers) {
-	return mi.keyCode, mi.keyModifiers
+func (mi *menuItem) KeyBinding() KeyBinding {
+	return mi.keyBinding
 }
 
-func (mi *menuItem) SetKeyBinding(keyCode KeyCode, keyModifiers Modifiers) {
-	mi.keyCode = keyCode
-	mi.keyModifiers = keyModifiers
+func (mi *menuItem) SetKeyBinding(keyBinding KeyBinding) {
+	mi.keyBinding = keyBinding
 }
 
 func (mi *menuItem) SubMenu() Menu {
@@ -236,10 +233,10 @@ func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
 		pref.Height = 1
 	} else {
 		pref = LabelSize(mi.Title(), DefaultMenuItemTheme.TitleFont, nil, LeftSide, 0)
-		if mi.keyCode != 0 {
-			keyName := KeyCodeToName[mi.keyCode]
-			if keyName != "" {
-				size := DefaultMenuItemTheme.KeyFont.Extents(mi.keyModifiers.String() + keyName)
+		if !mi.keyBinding.KeyCode.ShouldOmit() {
+			name := mi.keyBinding.String()
+			if name != "" {
+				size := DefaultMenuItemTheme.KeyFont.Extents(name)
 				pref.Width += DefaultMenuItemTheme.KeyGap + size.Width
 				pref.Height = mathf32.Max(pref.Height, size.Height)
 			}
@@ -274,12 +271,11 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 			mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.TitleFont.Baseline(),
 			DefaultMenuItemTheme.TitleFont, paint)
 		if mi.subMenu == nil {
-			if mi.keyCode != 0 {
-				keyName := KeyCodeToName[mi.keyCode]
-				if keyName != "" {
-					text := mi.keyModifiers.String() + keyName
-					size = DefaultMenuItemTheme.KeyFont.Extents(text)
-					gc.DrawSimpleText(text, mathf32.Floor(rect.Right()-size.Width),
+			if !mi.keyBinding.KeyCode.ShouldOmit() {
+				name := mi.keyBinding.String()
+				if name != "" {
+					size = DefaultMenuItemTheme.KeyFont.Extents(name)
+					gc.DrawSimpleText(name, mathf32.Floor(rect.Right()-size.Width),
 						mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.KeyFont.Baseline(),
 						DefaultMenuItemTheme.KeyFont, paint)
 				}

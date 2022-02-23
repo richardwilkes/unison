@@ -23,14 +23,16 @@ type MenuFactory interface {
 	// BarForWindow returns the menu bar for the given window. If this is the first time the menu bar has been returned
 	// from this call, initializer will be called so that your code can configure the menus.
 	BarForWindow(window *Window, initializer func(Menu)) Menu
+	// BarForWindowNoCreate returns the menu bar for the given window. May return nil if no menu bar for the window has
+	// been created yet.
+	BarForWindowNoCreate(window *Window) Menu
 	// BarIsPerWindow returns true if the menu bar returned from this MenuFactory is per-window instead of global.
 	BarIsPerWindow() bool
 	// NewMenu creates a new Menu. updater is optional and, if present, will be called prior to showing the Menu, giving
 	// a chance to modify it.
 	NewMenu(id int, title string, updater func(Menu)) Menu
-	// NewItem creates a new MenuItem. Both validator and handler may be nil for default behavior. If keyCode is 0, no
-	// key accelerator will be attached to the menuItem.
-	NewItem(id int, title string, keyCode KeyCode, keyModifiers Modifiers, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem
+	// NewItem creates a new MenuItem. Both validator and handler may be nil for default behavior.
+	NewItem(id int, title string, keyBinding KeyBinding, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem
 }
 
 // DefaultMenuFactory returns the default MenuFactory for the platform. Multiple calls always return the same object.
@@ -61,6 +63,10 @@ func NewInWindowMenuFactory() MenuFactory {
 		wndBarMap:      make(map[*Window]*menu),
 		wndRootMenuMap: make(map[*Window]*menu),
 	}
+}
+
+func (f *inWindowMenuFactory) BarForWindowNoCreate(window *Window) Menu {
+	return f.wndBarMap[window]
 }
 
 func (f *inWindowMenuFactory) BarForWindow(window *Window, initializer func(Menu)) Menu {
@@ -98,15 +104,14 @@ func (f *inWindowMenuFactory) NewMenu(id int, title string, updater func(Menu)) 
 	return m
 }
 
-func (f *inWindowMenuFactory) NewItem(id int, title string, keyCode KeyCode, keyModifiers Modifiers, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
+func (f *inWindowMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
 	return &menuItem{
-		factory:      f,
-		id:           id,
-		title:        title,
-		validator:    validator,
-		handler:      handler,
-		keyCode:      keyCode,
-		keyModifiers: keyModifiers,
+		factory:    f,
+		id:         id,
+		title:      title,
+		validator:  validator,
+		handler:    handler,
+		keyBinding: keyBinding,
 	}
 }
 

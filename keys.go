@@ -10,12 +10,19 @@
 package unison
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/json"
 	"github.com/richardwilkes/toolbox/i18n"
 )
 
+var _ json.Omitter = KeyCode(0)
+
 // KeyCode holds a virtual key code.
-type KeyCode int
+type KeyCode int16
 
 // Virtual key codes.
 const (
@@ -154,131 +161,312 @@ const (
 	KeyFn             = KeyInsert
 )
 
-// KeyCodeToName maps virtual key codes to a human-readable name.
-var KeyCodeToName = map[KeyCode]string{
-	KeySpace:          i18n.Text("Space"),
-	KeyApostrophe:     i18n.Text("Apostrophe"),
-	KeyComma:          i18n.Text("Comma"),
-	KeyMinus:          i18n.Text("Minus"),
-	KeyPeriod:         i18n.Text("Period"),
-	KeySlash:          i18n.Text("Slash"),
-	Key0:              i18n.Text("0"),
-	Key1:              i18n.Text("1"),
-	Key2:              i18n.Text("2"),
-	Key3:              i18n.Text("3"),
-	Key4:              i18n.Text("4"),
-	Key5:              i18n.Text("5"),
-	Key6:              i18n.Text("6"),
-	Key7:              i18n.Text("7"),
-	Key8:              i18n.Text("8"),
-	Key9:              i18n.Text("9"),
-	KeySemiColon:      i18n.Text("SemiColon"),
-	KeyEqual:          i18n.Text("Equal"),
-	KeyA:              i18n.Text("A"),
-	KeyB:              i18n.Text("B"),
-	KeyC:              i18n.Text("C"),
-	KeyD:              i18n.Text("D"),
-	KeyE:              i18n.Text("E"),
-	KeyF:              i18n.Text("F"),
-	KeyG:              i18n.Text("G"),
-	KeyH:              i18n.Text("H"),
-	KeyI:              i18n.Text("I"),
-	KeyJ:              i18n.Text("J"),
-	KeyK:              i18n.Text("K"),
-	KeyL:              i18n.Text("L"),
-	KeyM:              i18n.Text("M"),
-	KeyN:              i18n.Text("N"),
-	KeyO:              i18n.Text("O"),
-	KeyP:              i18n.Text("P"),
-	KeyQ:              i18n.Text("Q"),
-	KeyR:              i18n.Text("R"),
-	KeyS:              i18n.Text("S"),
-	KeyT:              i18n.Text("T"),
-	KeyU:              i18n.Text("U"),
-	KeyV:              i18n.Text("V"),
-	KeyW:              i18n.Text("W"),
-	KeyX:              i18n.Text("X"),
-	KeyY:              i18n.Text("Y"),
-	KeyZ:              i18n.Text("Z"),
-	KeyOpenBracket:    i18n.Text("OpenBracket"),
-	KeyBackslash:      i18n.Text("Backslash"),
-	KeyCloseBracket:   i18n.Text("CloseBracket"),
-	KeyBackQuote:      i18n.Text("BackQuote"),
-	KeyWorld1:         i18n.Text("World1"),
-	KeyWorld2:         i18n.Text("World2"),
-	KeyEscape:         i18n.Text("Escape"),
-	KeyReturn:         i18n.Text("Return"),
-	KeyTab:            i18n.Text("Tab"),
-	KeyBackspace:      i18n.Text("Backspace"),
-	KeyInsert:         i18n.Text("Insert"),
-	KeyDelete:         i18n.Text("Delete"),
-	KeyRight:          i18n.Text("Right"),
-	KeyLeft:           i18n.Text("Left"),
-	KeyDown:           i18n.Text("Down"),
-	KeyUp:             i18n.Text("Up"),
-	KeyPageUp:         i18n.Text("PageUp"),
-	KeyPageDown:       i18n.Text("PageDown"),
-	KeyHome:           i18n.Text("Home"),
-	KeyEnd:            i18n.Text("End"),
-	KeyCapsLock:       i18n.Text("CapsLock"),
-	KeyScrollLock:     i18n.Text("ScrollLock"),
-	KeyNumLock:        i18n.Text("NumLock"),
-	KeyPrintScreen:    i18n.Text("PrintScreen"),
-	KeyPause:          i18n.Text("Pause"),
-	KeyF1:             i18n.Text("F1"),
-	KeyF2:             i18n.Text("F2"),
-	KeyF3:             i18n.Text("F3"),
-	KeyF4:             i18n.Text("F4"),
-	KeyF5:             i18n.Text("F5"),
-	KeyF6:             i18n.Text("F6"),
-	KeyF7:             i18n.Text("F7"),
-	KeyF8:             i18n.Text("F8"),
-	KeyF9:             i18n.Text("F9"),
-	KeyF10:            i18n.Text("F10"),
-	KeyF11:            i18n.Text("F11"),
-	KeyF12:            i18n.Text("F12"),
-	KeyF13:            i18n.Text("F13"),
-	KeyF14:            i18n.Text("F14"),
-	KeyF15:            i18n.Text("F15"),
-	KeyF16:            i18n.Text("F16"),
-	KeyF17:            i18n.Text("F17"),
-	KeyF18:            i18n.Text("F18"),
-	KeyF19:            i18n.Text("F19"),
-	KeyF20:            i18n.Text("F20"),
-	KeyF21:            i18n.Text("F21"),
-	KeyF22:            i18n.Text("F22"),
-	KeyF23:            i18n.Text("F23"),
-	KeyF24:            i18n.Text("F24"),
-	KeyF25:            i18n.Text("F25"),
-	KeyNumPad0:        i18n.Text("NumPad-0"),
-	KeyNumPad1:        i18n.Text("NumPad-1"),
-	KeyNumPad2:        i18n.Text("NumPad-2"),
-	KeyNumPad3:        i18n.Text("NumPad-3"),
-	KeyNumPad4:        i18n.Text("NumPad-4"),
-	KeyNumPad5:        i18n.Text("NumPad-5"),
-	KeyNumPad6:        i18n.Text("NumPad-6"),
-	KeyNumPad7:        i18n.Text("NumPad-7"),
-	KeyNumPad8:        i18n.Text("NumPad-8"),
-	KeyNumPad9:        i18n.Text("NumPad-9"),
-	KeyNumPadDecimal:  i18n.Text("NumPad-Decimal"),
-	KeyNumPadDivide:   i18n.Text("NumPad-Divide"),
-	KeyNumPadMultiply: i18n.Text("NumPad-Multiply"),
-	KeyNumPadSubtract: i18n.Text("NumPad-Minus"),
-	KeyNumPadAdd:      i18n.Text("NumPad-Add"),
-	KeyNumPadEnter:    i18n.Text("NumPad-Enter"),
-	KeyNumPadEqual:    i18n.Text("NumPad-Equal"),
-	KeyLShift:         i18n.Text("Left-Shift"),
-	KeyLControl:       i18n.Text("Left-Control"),
-	KeyLOption:        i18n.Text("Left-Option"),
-	KeyLCommand:       i18n.Text("Left-Command"),
-	KeyRShift:         i18n.Text("Right-Shift"),
-	KeyRControl:       i18n.Text("Right-Control"),
-	KeyROption:        i18n.Text("Right-Option"),
-	KeyRCommand:       i18n.Text("Right-Command"),
-	KeyMenu:           i18n.Text("Menu"),
+var (
+	// KeyCodeToName maps virtual key codes to a human-readable name.
+	KeyCodeToName = map[KeyCode]string{
+		KeySpace:          i18n.Text("Space"),
+		KeyApostrophe:     "'",
+		KeyComma:          ",",
+		KeyMinus:          "-",
+		KeyPeriod:         ".",
+		KeySlash:          "/",
+		Key0:              "0",
+		Key1:              "1",
+		Key2:              "2",
+		Key3:              "3",
+		Key4:              "4",
+		Key5:              "5",
+		Key6:              "6",
+		Key7:              "7",
+		Key8:              "8",
+		Key9:              "9",
+		KeySemiColon:      ";",
+		KeyEqual:          "=",
+		KeyA:              "A",
+		KeyB:              "B",
+		KeyC:              "C",
+		KeyD:              "D",
+		KeyE:              "E",
+		KeyF:              "F",
+		KeyG:              "G",
+		KeyH:              "H",
+		KeyI:              "I",
+		KeyJ:              "J",
+		KeyK:              "K",
+		KeyL:              "L",
+		KeyM:              "M",
+		KeyN:              "N",
+		KeyO:              "O",
+		KeyP:              "P",
+		KeyQ:              "Q",
+		KeyR:              "R",
+		KeyS:              "S",
+		KeyT:              "T",
+		KeyU:              "U",
+		KeyV:              "V",
+		KeyW:              "W",
+		KeyX:              "X",
+		KeyY:              "Y",
+		KeyZ:              "Z",
+		KeyOpenBracket:    "[",
+		KeyBackslash:      "\\",
+		KeyCloseBracket:   "]",
+		KeyBackQuote:      "`",
+		KeyWorld1:         i18n.Text("World1"),
+		KeyWorld2:         i18n.Text("World2"),
+		KeyEscape:         i18n.Text("Escape"),
+		KeyReturn:         i18n.Text("Return"),
+		KeyTab:            i18n.Text("Tab"),
+		KeyBackspace:      i18n.Text("Backspace"),
+		KeyInsert:         i18n.Text("Insert"),
+		KeyDelete:         i18n.Text("Delete"),
+		KeyRight:          i18n.Text("Right"),
+		KeyLeft:           i18n.Text("Left"),
+		KeyDown:           i18n.Text("Down"),
+		KeyUp:             i18n.Text("Up"),
+		KeyPageUp:         i18n.Text("PageUp"),
+		KeyPageDown:       i18n.Text("PageDown"),
+		KeyHome:           i18n.Text("Home"),
+		KeyEnd:            i18n.Text("End"),
+		KeyCapsLock:       i18n.Text("CapsLock"),
+		KeyScrollLock:     i18n.Text("ScrollLock"),
+		KeyNumLock:        i18n.Text("NumLock"),
+		KeyPrintScreen:    i18n.Text("PrintScreen"),
+		KeyPause:          i18n.Text("Pause"),
+		KeyF1:             "F1",
+		KeyF2:             "F2",
+		KeyF3:             "F3",
+		KeyF4:             "F4",
+		KeyF5:             "F5",
+		KeyF6:             "F6",
+		KeyF7:             "F7",
+		KeyF8:             "F8",
+		KeyF9:             "F9",
+		KeyF10:            "F10",
+		KeyF11:            "F11",
+		KeyF12:            "F12",
+		KeyF13:            "F13",
+		KeyF14:            "F14",
+		KeyF15:            "F15",
+		KeyF16:            "F16",
+		KeyF17:            "F17",
+		KeyF18:            "F18",
+		KeyF19:            "F19",
+		KeyF20:            "F20",
+		KeyF21:            "F21",
+		KeyF22:            "F22",
+		KeyF23:            "F23",
+		KeyF24:            "F24",
+		KeyF25:            "F25",
+		KeyNumPad0:        i18n.Text("NumPad-0"),
+		KeyNumPad1:        i18n.Text("NumPad-1"),
+		KeyNumPad2:        i18n.Text("NumPad-2"),
+		KeyNumPad3:        i18n.Text("NumPad-3"),
+		KeyNumPad4:        i18n.Text("NumPad-4"),
+		KeyNumPad5:        i18n.Text("NumPad-5"),
+		KeyNumPad6:        i18n.Text("NumPad-6"),
+		KeyNumPad7:        i18n.Text("NumPad-7"),
+		KeyNumPad8:        i18n.Text("NumPad-8"),
+		KeyNumPad9:        i18n.Text("NumPad-9"),
+		KeyNumPadDecimal:  i18n.Text("NumPad-Decimal"),
+		KeyNumPadDivide:   i18n.Text("NumPad-Divide"),
+		KeyNumPadMultiply: i18n.Text("NumPad-Multiply"),
+		KeyNumPadSubtract: i18n.Text("NumPad-Minus"),
+		KeyNumPadAdd:      i18n.Text("NumPad-Add"),
+		KeyNumPadEnter:    i18n.Text("NumPad-Enter"),
+		KeyNumPadEqual:    i18n.Text("NumPad-Equal"),
+		KeyLShift:         i18n.Text("Left-Shift"),
+		KeyLControl:       i18n.Text("Left-Control"),
+		KeyLOption:        i18n.Text("Left-Option"),
+		KeyLCommand:       i18n.Text("Left-Command"),
+		KeyRShift:         i18n.Text("Right-Shift"),
+		KeyRControl:       i18n.Text("Right-Control"),
+		KeyROption:        i18n.Text("Right-Option"),
+		KeyRCommand:       i18n.Text("Right-Command"),
+		KeyMenu:           i18n.Text("Menu"),
+	}
+	keyCodeToKey = map[KeyCode]string{
+		KeySpace:          "space",
+		KeyApostrophe:     "'",
+		KeyComma:          ",",
+		KeyMinus:          "-",
+		KeyPeriod:         ".",
+		KeySlash:          "/",
+		Key0:              "0",
+		Key1:              "1",
+		Key2:              "2",
+		Key3:              "3",
+		Key4:              "4",
+		Key5:              "5",
+		Key6:              "6",
+		Key7:              "7",
+		Key8:              "8",
+		Key9:              "9",
+		KeySemiColon:      ";",
+		KeyEqual:          "=",
+		KeyA:              "A",
+		KeyB:              "B",
+		KeyC:              "C",
+		KeyD:              "D",
+		KeyE:              "E",
+		KeyF:              "F",
+		KeyG:              "G",
+		KeyH:              "H",
+		KeyI:              "I",
+		KeyJ:              "J",
+		KeyK:              "K",
+		KeyL:              "L",
+		KeyM:              "M",
+		KeyN:              "N",
+		KeyO:              "O",
+		KeyP:              "P",
+		KeyQ:              "Q",
+		KeyR:              "R",
+		KeyS:              "S",
+		KeyT:              "T",
+		KeyU:              "U",
+		KeyV:              "V",
+		KeyW:              "W",
+		KeyX:              "X",
+		KeyY:              "Y",
+		KeyZ:              "Z",
+		KeyOpenBracket:    "[",
+		KeyBackslash:      "\\",
+		KeyCloseBracket:   "]",
+		KeyBackQuote:      "`",
+		KeyWorld1:         "world1",
+		KeyWorld2:         "world2",
+		KeyEscape:         "escape",
+		KeyReturn:         "return",
+		KeyTab:            "tab",
+		KeyBackspace:      "backspace",
+		KeyInsert:         "insert",
+		KeyDelete:         "delete",
+		KeyRight:          "right",
+		KeyLeft:           "left",
+		KeyDown:           "down",
+		KeyUp:             "up",
+		KeyPageUp:         "pageup",
+		KeyPageDown:       "pagedown",
+		KeyHome:           "home",
+		KeyEnd:            "end",
+		KeyCapsLock:       "caps",
+		KeyScrollLock:     "scroll",
+		KeyNumLock:        "num",
+		KeyPrintScreen:    "print",
+		KeyPause:          "pause",
+		KeyF1:             "F1",
+		KeyF2:             "F2",
+		KeyF3:             "F3",
+		KeyF4:             "F4",
+		KeyF5:             "F5",
+		KeyF6:             "F6",
+		KeyF7:             "F7",
+		KeyF8:             "F8",
+		KeyF9:             "F9",
+		KeyF10:            "F10",
+		KeyF11:            "F11",
+		KeyF12:            "F12",
+		KeyF13:            "F13",
+		KeyF14:            "F14",
+		KeyF15:            "F15",
+		KeyF16:            "F16",
+		KeyF17:            "F17",
+		KeyF18:            "F18",
+		KeyF19:            "F19",
+		KeyF20:            "F20",
+		KeyF21:            "F21",
+		KeyF22:            "F22",
+		KeyF23:            "F23",
+		KeyF24:            "F24",
+		KeyF25:            "F25",
+		KeyNumPad0:        "numpad0",
+		KeyNumPad1:        "numpad1",
+		KeyNumPad2:        "numpad2",
+		KeyNumPad3:        "numpad3",
+		KeyNumPad4:        "numpad4",
+		KeyNumPad5:        "numpad5",
+		KeyNumPad6:        "numpad6",
+		KeyNumPad7:        "numpad7",
+		KeyNumPad8:        "numpad8",
+		KeyNumPad9:        "numpad9",
+		KeyNumPadDecimal:  "numpad_decimal",
+		KeyNumPadDivide:   "numpad_divide",
+		KeyNumPadMultiply: "numpad_multiply",
+		KeyNumPadSubtract: "numpad_minus",
+		KeyNumPadAdd:      "numpad_add",
+		KeyNumPadEnter:    "numpad_enter",
+		KeyNumPadEqual:    "numpad_equal",
+		KeyLShift:         "left_shift",
+		KeyLControl:       "left_control",
+		KeyLOption:        "left_option",
+		KeyLCommand:       "left_command",
+		KeyRShift:         "right_shift",
+		KeyRControl:       "right_control",
+		KeyROption:        "right_option",
+		KeyRCommand:       "right_command",
+		KeyMenu:           "menu",
+	}
+	keyToKeyCode = make(map[string]KeyCode)
+)
+
+func init() {
+	for k, v := range keyCodeToKey {
+		keyToKeyCode[v] = k
+	}
 }
 
 // IsControlAction returns true if the keyCode should trigger a control, such as a button, that is focused.
 func IsControlAction(keyCode KeyCode, mod Modifiers) bool {
 	return mod&NonStickyModifiers == 0 && (keyCode == KeyReturn || keyCode == KeyNumPadEnter || keyCode == KeySpace)
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (k KeyCode) MarshalText() (text []byte, err error) {
+	return []byte(k.Key()), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (k *KeyCode) UnmarshalText(text []byte) error {
+	*k = KeyCodeFromKey(string(text))
+	return nil
+}
+
+// KeyCodeFromKey extracts KeyCode from a string created via a call to .Key().
+func KeyCodeFromKey(key string) KeyCode {
+	if v, ok := keyToKeyCode[strings.ToLower(key)]; ok {
+		return v
+	}
+	if strings.HasPrefix(key, "#") {
+		if v, err := strconv.Atoi(key[1:]); err == nil {
+			return KeyCode(v)
+		}
+	}
+	return KeyNone
+}
+
+// Key returns a string version of the KeyCode for the purpose of serialization.
+func (k KeyCode) Key() string {
+	if k.ShouldOmit() {
+		return ""
+	}
+	if v, ok := keyCodeToKey[k]; ok {
+		return v
+	}
+	return fmt.Sprintf("#%d", k)
+}
+
+func (k KeyCode) String() string {
+	if k.ShouldOmit() {
+		return ""
+	}
+	if v, ok := KeyCodeToName[k]; ok {
+		return v
+	}
+	return fmt.Sprintf("#%d", k)
+}
+
+// ShouldOmit implements json.Omitter.
+func (k KeyCode) ShouldOmit() bool {
+	return k == 0 || k == KeyNone
 }

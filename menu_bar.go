@@ -76,8 +76,8 @@ func NewAppMenu(f MenuFactory, aboutHandler, prefsHandler func(MenuItem), update
 
 // InsertAboutItem creates the standard "About" menu item that will call the provided handler when chosen.
 func InsertAboutItem(m Menu, atIndex int, aboutHandler func(MenuItem)) {
-	m.InsertItem(-1, m.Factory().NewItem(AboutItemID, fmt.Sprintf(i18n.Text("About %s"), cmdline.AppName), KeyNone,
-		NoModifiers, func(MenuItem) bool { return aboutHandler != nil }, aboutHandler))
+	m.InsertItem(-1, m.Factory().NewItem(AboutItemID, fmt.Sprintf(i18n.Text("About %s"), cmdline.AppName), KeyBinding{},
+		func(MenuItem) bool { return aboutHandler != nil }, aboutHandler))
 }
 
 // NewFileMenu creates a standard 'File' menu.
@@ -94,7 +94,8 @@ func NewFileMenu(f MenuFactory, updater func(Menu)) Menu {
 // InsertCloseFocusedWindowItem creates the standard "Close" menu item that will close the currently focused window when
 // chosen.
 func InsertCloseFocusedWindowItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(CloseItemID, i18n.Text("Close"), KeyW, OSMenuCmdModifier(),
+	m.InsertItem(atIndex, m.Factory().NewItem(CloseItemID, i18n.Text("Close"),
+		KeyBinding{KeyCode: KeyW, Modifiers: OSMenuCmdModifier()},
 		func(MenuItem) bool { return ActiveWindow() != nil },
 		func(MenuItem) {
 			if wnd := ActiveWindow(); wnd != nil {
@@ -111,7 +112,9 @@ func InsertQuitItem(m Menu, atIndex int) {
 	} else {
 		title = i18n.Text("Exit")
 	}
-	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, title, KeyQ, OSMenuCmdModifier(), nil,
+	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, title,
+		KeyBinding{KeyCode: KeyQ, Modifiers: OSMenuCmdModifier()},
+		nil,
 		func(MenuItem) { AttemptQuit() }))
 }
 
@@ -132,7 +135,8 @@ func NewEditMenu(f MenuFactory, prefsHandler func(MenuItem), updater func(Menu))
 
 // InsertPreferencesItem creates the standard "Preferences…" menu item that will call the provided handler when chosen.
 func InsertPreferencesItem(m Menu, atIndex int, prefsHandler func(MenuItem)) {
-	m.InsertItem(-1, m.Factory().NewItem(PreferencesItemID, i18n.Text("Preferences…"), KeyComma, OSMenuCmdModifier(),
+	m.InsertItem(-1, m.Factory().NewItem(PreferencesItemID, i18n.Text("Preferences…"),
+		KeyBinding{KeyCode: KeyComma, Modifiers: OSMenuCmdModifier()},
 		func(MenuItem) bool { return prefsHandler != nil }, prefsHandler))
 }
 
@@ -149,7 +153,8 @@ func NewWindowMenu(f MenuFactory, updater func(Menu)) Menu {
 // InsertMinimizeItem creates the standard "Minimize" menu item that will issue the Minimize command to the currently
 // focused window when chosen.
 func InsertMinimizeItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(MinimizeItemID, i18n.Text("Minimize"), KeyM, OSMenuCmdModifier(),
+	m.InsertItem(atIndex, m.Factory().NewItem(MinimizeItemID, i18n.Text("Minimize"),
+		KeyBinding{KeyCode: KeyM, Modifiers: OSMenuCmdModifier()},
 		func(MenuItem) bool { return ActiveWindow() != nil },
 		func(MenuItem) {
 			if wnd := ActiveWindow(); wnd != nil {
@@ -161,7 +166,8 @@ func InsertMinimizeItem(m Menu, atIndex int) {
 // InsertZoomItem creates the standard "Zoom" menu item that will issue the Zoom command to the currently focused window
 // when chosen.
 func InsertZoomItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(ZoomItemID, i18n.Text("Zoom"), KeyZ, ShiftModifier|OSMenuCmdModifier(),
+	m.InsertItem(atIndex, m.Factory().NewItem(ZoomItemID, i18n.Text("Zoom"),
+		KeyBinding{KeyCode: KeyZ, Modifiers: ShiftModifier | OSMenuCmdModifier()},
 		func(MenuItem) bool {
 			w := ActiveWindow()
 			return w != nil && w.Resizable()
@@ -176,8 +182,8 @@ func InsertZoomItem(m Menu, atIndex int) {
 // InsertBringAllToFrontItem creates the standard "Bring All to Front" menu item that will call AllWindowsToFront when
 // chosen.
 func InsertBringAllToFrontItem(m Menu, atIndex int) {
-	m.InsertItem(-1, m.Factory().NewItem(BringAllWindowsToFrontItemID, i18n.Text("Bring All to Front"), KeyNone,
-		NoModifiers, func(MenuItem) bool { return WindowCount() > 0 }, func(MenuItem) { AllWindowsToFront() }))
+	m.InsertItem(-1, m.Factory().NewItem(BringAllWindowsToFrontItemID, i18n.Text("Bring All to Front"), KeyBinding{},
+		func(MenuItem) bool { return WindowCount() > 0 }, func(MenuItem) { AllWindowsToFront() }))
 }
 
 // NewHelpMenu creates a standard 'Help' menu.

@@ -41,8 +41,7 @@ func init() {
 	NewWindowAction = &unison.Action{
 		ID:         NewWindowActionID,
 		Title:      "New Demo Window",
-		HotKey:     unison.KeyN,
-		HotKeyMods: unison.OSMenuCmdModifier(),
+		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyN, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
 			// Try to position the new window to the right of the currently active window
 			var pt geom32.Point
@@ -60,8 +59,7 @@ func init() {
 	NewTableWindowAction = &unison.Action{
 		ID:         NewTableWindowActionID,
 		Title:      "New Demo Table Window",
-		HotKey:     unison.KeyT,
-		HotKeyMods: unison.OSMenuCmdModifier(),
+		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyT, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
 			// Try to position the new window to the right of the currently active window
 			var pt geom32.Point
@@ -79,8 +77,7 @@ func init() {
 	NewDockWindowAction = &unison.Action{
 		ID:         NewDockWindowActionID,
 		Title:      "New Demo Dock Window",
-		HotKey:     unison.KeyD,
-		HotKeyMods: unison.OSMenuCmdModifier(),
+		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyD, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
 			// Try to position the new window to the right of the currently active window
 			var pt geom32.Point
@@ -98,8 +95,7 @@ func init() {
 	OpenAction = &unison.Action{
 		ID:         OpenActionID,
 		Title:      "Open…",
-		HotKey:     unison.KeyO,
-		HotKeyMods: unison.OSMenuCmdModifier(),
+		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyO, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
 			open := unison.NewOpenDialog()
 			open.SetAllowsMultipleSelection(true)

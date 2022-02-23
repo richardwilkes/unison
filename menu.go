@@ -283,7 +283,7 @@ func (m *menu) preMouseDown(w *Window, where geom32.Point) bool {
 
 func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 	for _, mi := range m.items {
-		if mi.keyCode != 0 && mi.keyCode == keyCode && mi.keyModifiers == mod {
+		if !mi.keyBinding.KeyCode.ShouldOmit() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mod {
 			mi.validate()
 			if mi.enabled {
 				mi.execute()

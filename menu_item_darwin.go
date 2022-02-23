@@ -77,13 +77,13 @@ func (mi *macMenuItem) SetTitle(title string) {
 	mi.item.SetTitle(title)
 }
 
-func (mi *macMenuItem) KeyBinding() (keyCode KeyCode, keyModifiers Modifiers) {
+func (mi *macMenuItem) KeyBinding() KeyBinding {
 	keyStr, mods := mi.item.KeyBinding()
-	return macMenuEquivalentToKeyCodeMap[keyStr], modifiersFromEventModifierFlags(mods)
+	return KeyBinding{KeyCode: macMenuEquivalentToKeyCodeMap[keyStr], Modifiers: modifiersFromEventModifierFlags(mods)}
 }
 
-func (mi *macMenuItem) SetKeyBinding(keyCode KeyCode, keyModifiers Modifiers) {
-	mi.item.SetKeyBinding(macKeyCodeToMenuEquivalentMap[keyCode], keyModifiers.eventModifierFlags())
+func (mi *macMenuItem) SetKeyBinding(keyBinding KeyBinding) {
+	mi.item.SetKeyBinding(macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode], keyBinding.Modifiers.eventModifierFlags())
 }
 
 func (mi *macMenuItem) SubMenu() Menu {

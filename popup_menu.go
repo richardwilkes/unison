@@ -177,7 +177,7 @@ func (p *PopupMenu) Click() {
 
 func (p *PopupMenu) createMenuItem(m Menu, index int, entry *popupMenuItem) MenuItem {
 	return m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
-		fmt.Sprintf("%v", entry.item), KeyNone, NoModifiers, func(mi MenuItem) bool {
+		fmt.Sprintf("%v", entry.item), KeyBinding{}, func(mi MenuItem) bool {
 			return entry.enabled
 		}, func(mi MenuItem) {
 			if index != p.SelectedIndex() {
