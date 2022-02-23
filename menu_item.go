@@ -23,30 +23,35 @@ var _ MenuItem = &menuItem{}
 type MenuItem interface {
 	// Factory returns the MenuFactory that created this MenuItem.
 	Factory() MenuFactory
-	// ID returns the id of this menuItem.
+	// ID returns the id of this menu item.
 	ID() int
 	// IsSame returns true if the two items represent the same object. Do not use == to test for equality.
 	IsSame(other MenuItem) bool
 	// Menu returns the owning menu.
 	Menu() Menu
-	// Index returns the index of the menuItem within its menu. Returns -1 if it is not yet attached to a menu.
+	// Index returns the index of the menu item within its menu. Returns -1 if it is not yet attached to a menu.
 	Index() int
-	// IsSeparator returns true if this menuItem is a separator.
+	// IsSeparator returns true if this menu item is a separator.
 	IsSeparator() bool
-	// Title returns the menuItem's title.
+	// Title returns the menu item's title.
 	Title() string
-	// SetTitle sets the menuItem's title.
+	// SetTitle sets the menu item's title.
 	SetTitle(title string)
-	// SubMenu returns the menuItem's sub-menu, if any.
+	// KeyBinding returns the key binding for the menu item. Both will be 0 if no key accelerator is attached.
+	KeyBinding() (keyCode KeyCode, keyModifiers Modifiers)
+	// SetKeyBinding sets the key binding for the menu item. If keyCode is 0, no key accelerator will be attached to the
+	// menu item.
+	SetKeyBinding(keyCode KeyCode, keyModifiers Modifiers)
+	// SubMenu returns the menu item's sub-menu, if any.
 	SubMenu() Menu
-	// CheckState returns the menuItem's current check state.
+	// CheckState returns the menu item's current check state.
 	CheckState() CheckState
-	// SetCheckState sets the menuItem's check state.
+	// SetCheckState sets the menu item's check state.
 	SetCheckState(s CheckState)
 }
 
-// DefaultMenuItemTheme holds the default MenuItemTheme values for MenuItems. Modifying this data will not alter
-// existing MenuItems, but will alter any MenuItems created in the future.
+// DefaultMenuItemTheme holds the default MenuItemTheme values for menu items. Modifying this data will not alter
+// existing menu items, but will alter any menu items created in the future.
 var DefaultMenuItemTheme = MenuItemTheme{
 	TitleFont:         SystemFont,
 	KeyFont:           KeyboardFont,
@@ -59,7 +64,7 @@ var DefaultMenuItemTheme = MenuItemTheme{
 	KeyGap:            16,
 }
 
-// MenuItemTheme holds theming data for a MenuItem.
+// MenuItemTheme holds theming data for a menu item.
 type MenuItemTheme struct {
 	TitleFont         Font
 	KeyFont           Font
@@ -131,6 +136,15 @@ func (mi *menuItem) String() string {
 
 func (mi *menuItem) SetTitle(title string) {
 	mi.title = title
+}
+
+func (mi *menuItem) KeyBinding() (keyCode KeyCode, keyModifiers Modifiers) {
+	return mi.keyCode, mi.keyModifiers
+}
+
+func (mi *menuItem) SetKeyBinding(keyCode KeyCode, keyModifiers Modifiers) {
+	mi.keyCode = keyCode
+	mi.keyModifiers = keyModifiers
 }
 
 func (mi *menuItem) SubMenu() Menu {

@@ -9,7 +9,11 @@
 
 package unison
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/richardwilkes/unison/internal/ns"
+)
 
 func (m Modifiers) platformString() string {
 	if m == 0 {
@@ -35,4 +39,44 @@ func (m Modifiers) platformString() string {
 		buffer.WriteRune('⌘')
 	}
 	return buffer.String()
+}
+
+func (m Modifiers) eventModifierFlags() ns.EventModifierFlags {
+	var mods ns.EventModifierFlags
+	if m.ShiftDown() {
+		mods |= ns.EventModifierFlagShift
+	}
+	if m.OptionDown() {
+		mods |= ns.EventModifierFlagOption
+	}
+	if m.CommandDown() {
+		mods |= ns.EventModifierFlagCommand
+	}
+	if m.ControlDown() {
+		mods |= ns.EventModifierFlagControl
+	}
+	if m.CapsLockDown() {
+		mods |= ns.EventModifierFlagCapsLock
+	}
+	return mods
+}
+
+func modifiersFromEventModifierFlags(flags ns.EventModifierFlags) Modifiers {
+	var mods Modifiers
+	if flags&ns.EventModifierFlagShift != 0 {
+		mods |= ShiftModifier
+	}
+	if flags&ns.EventModifierFlagOption != 0 {
+		mods |= OptionModifier
+	}
+	if flags&ns.EventModifierFlagCommand != 0 {
+		mods |= CommandModifier
+	}
+	if flags&ns.EventModifierFlagControl != 0 {
+		mods |= ControlModifier
+	}
+	if flags&ns.EventModifierFlagCapsLock != 0 {
+		mods |= CapsLockModifier
+	}
+	return mods
 }

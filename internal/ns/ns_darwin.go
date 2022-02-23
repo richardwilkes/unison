@@ -230,6 +230,19 @@ void menuItemSetTitle(NSMenuItemRef mi, CFStringRef title) {
 	[(NSMenuItem *)mi setTitle:(NSString *)title];
 }
 
+CFStringRef menuItemKeyEquivalent(NSMenuItemRef mi) {
+	return (CFStringRef)[(NSMenuItem *)mi keyEquivalent];
+}
+
+NSEventModifierFlags menuItemKeyEquivalentModifierMask(NSMenuItemRef mi) {
+	return [(NSMenuItem *)mi keyEquivalentModifierMask];
+}
+
+void menuItemSetKeyBinding(NSMenuItemRef mi, CFStringRef keyEquiv, NSEventModifierFlags modifiers) {
+	[(NSMenuItem *)mi setKeyEquivalent:(NSString *)keyEquiv];
+	[(NSMenuItem *)mi setKeyEquivalentModifierMask:modifiers];
+}
+
 NSMenuRef menuItemMenu(NSMenuItemRef mi) {
 	return (NSMenuRef)[(NSMenuItem *)mi menu];
 }
@@ -731,6 +744,17 @@ func (m MenuItem) SetTitle(title string) {
 	titleStr := NewString(title)
 	C.menuItemSetTitle(C.NSMenuItemRef(m), C.CFStringRef(titleStr))
 	titleStr.Release()
+}
+
+func (m MenuItem) KeyBinding() (keyEquivalent string, modifiers EventModifierFlags) {
+	ref := C.NSMenuItemRef(m)
+	return String(C.menuItemKeyEquivalent(ref)).String(), EventModifierFlags(C.menuItemKeyEquivalentModifierMask(ref))
+}
+
+func (m MenuItem) SetKeyBinding(keyEquivalent string, modifiers EventModifierFlags) {
+	keyStr := NewString(keyEquivalent)
+	C.menuItemSetKeyBinding(C.NSMenuItemRef(m), C.CFStringRef(keyStr), C.NSEventModifierFlags(modifiers))
+	keyStr.Release()
 }
 
 func (m MenuItem) Menu() Menu {

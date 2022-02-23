@@ -54,22 +54,6 @@ func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macM
 }
 
 func (f *macMenuFactory) NewItem(id int, title string, keyCode KeyCode, keyModifiers Modifiers, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
-	var mods ns.EventModifierFlags
-	if keyModifiers.ShiftDown() {
-		mods |= ns.EventModifierFlagShift
-	}
-	if keyModifiers.OptionDown() {
-		mods |= ns.EventModifierFlagOption
-	}
-	if keyModifiers.CommandDown() {
-		mods |= ns.EventModifierFlagCommand
-	}
-	if keyModifiers.ControlDown() {
-		mods |= ns.EventModifierFlagControl
-	}
-	if keyModifiers.CapsLockDown() {
-		mods |= ns.EventModifierFlagCapsLock
-	}
 	var v func(ns.MenuItem) bool
 	if validator != nil {
 		v = func(mi ns.MenuItem) bool {
@@ -82,7 +66,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyCode KeyCode, keyModif
 			handler(&macMenuItem{factory: f, item: mi})
 		}
 	}
-	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyCode], mods, v, h)
+	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyCode], keyModifiers.eventModifierFlags(), v, h)
 	return &macMenuItem{
 		factory: f,
 		item:    mi,
