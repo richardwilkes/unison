@@ -153,12 +153,12 @@ func (w *Well) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	if pattern, ok := w.ink.(*Pattern); ok {
 		canvas.Save()
 		path := NewPath()
-		path.RoundedRectBounds(r, radius)
+		path.RoundedRect(r, radius, radius)
 		canvas.ClipPath(path, IntersectClipOp, true)
 		canvas.DrawImageInRect(pattern.Image, r, nil, nil)
 		canvas.Restore()
 	} else {
-		canvas.DrawRoundedRect(r, radius, w.ink.Paint(canvas, r, Fill))
+		canvas.DrawRoundedRect(r, radius, radius, w.ink.Paint(canvas, r, Fill))
 	}
 	if !w.Enabled() {
 		p := Black.Paint(canvas, r, Stroke)
@@ -166,7 +166,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		canvas.DrawLine(r.X+1, r.Y+1, r.Right()-1, r.Bottom()-1, p)
 		canvas.DrawLine(r.X+1, r.Bottom()-1, r.Right()-1, r.Y+1, p)
 	}
-	canvas.DrawRoundedRect(r, radius, w.EdgeInk.Paint(canvas, r, Stroke))
+	canvas.DrawRoundedRect(r, radius, radius, w.EdgeInk.Paint(canvas, r, Stroke))
 }
 
 // DefaultMouseDown provides the default mouse down handling.

@@ -86,28 +86,13 @@ func (c *Canvas) Translate(dx, dy float32) {
 	skia.CanvasTranslate(c.canvas, dx, dy)
 }
 
-// TranslatePt the coordinate system.
-func (c *Canvas) TranslatePt(offset geom32.Point) {
-	skia.CanvasTranslate(c.canvas, offset.X, offset.Y)
-}
-
-// Scale the coordinate system on both the horizontal and vertical axis.
-func (c *Canvas) Scale(scale float32) {
-	skia.CanvasScale(c.canvas, scale, scale)
-}
-
-// ScaleIndependently scales the coordinate system independently on each axis.
-func (c *Canvas) ScaleIndependently(x, y float32) {
+// Scale the coordinate system.
+func (c *Canvas) Scale(x, y float32) {
 	skia.CanvasScale(c.canvas, x, y)
 }
 
 // Rotate the coordinate system.
-func (c *Canvas) Rotate(radians float32) {
-	skia.CanvasRotateRadians(c.canvas, radians)
-}
-
-// RotateDegrees the coordinate system.
-func (c *Canvas) RotateDegrees(degrees float32) {
+func (c *Canvas) Rotate(degrees float32) {
 	skia.CanvasRotateRadians(c.canvas, degrees*xmath.DegreesToRadians)
 }
 
@@ -115,12 +100,6 @@ func (c *Canvas) RotateDegrees(degrees float32) {
 // value of sy skews the drawing down as x-axis values increase.
 func (c *Canvas) Skew(sx, sy float32) {
 	skia.CanvasSkew(c.canvas, sx, sy)
-}
-
-// SkewPt the coordinate system. A positive value of sx skews the drawing right as y-axis values increase; a positive
-// value of sy skews the drawing down as x-axis values increase.
-func (c *Canvas) SkewPt(skew geom32.Point) {
-	skia.CanvasSkew(c.canvas, skew.X, skew.Y)
 }
 
 // Concat the matrix.
@@ -171,18 +150,13 @@ func (c *Canvas) DrawRect(rect geom32.Rect, paint *Paint) {
 }
 
 // DrawRoundedRect draws a rounded rectangle with Paint.
-func (c *Canvas) DrawRoundedRect(rect geom32.Rect, radius float32, paint *Paint) {
-	skia.CanvasDrawRoundRect(c.canvas, skia.RectToSkRect(&rect), radius, radius, paint.paint)
-}
-
-// DrawRoundedRectXY draws a rounded rectangle with Paint.
-func (c *Canvas) DrawRoundedRectXY(rect geom32.Rect, radius geom32.Point, paint *Paint) {
-	skia.CanvasDrawRoundRect(c.canvas, skia.RectToSkRect(&rect), radius.X, radius.Y, paint.paint)
+func (c *Canvas) DrawRoundedRect(rect geom32.Rect, radiusX, radiusY float32, paint *Paint) {
+	skia.CanvasDrawRoundRect(c.canvas, skia.RectToSkRect(&rect), radiusX, radiusY, paint.paint)
 }
 
 // DrawCircle draws the circle with Paint.
-func (c *Canvas) DrawCircle(center geom32.Point, radius float32, paint *Paint) {
-	skia.CanvasDrawCircle(c.canvas, center.X, center.Y, radius, paint.paint)
+func (c *Canvas) DrawCircle(cx, cy, radius float32, paint *Paint) {
+	skia.CanvasDrawCircle(c.canvas, cx, cy, radius, paint.paint)
 }
 
 // DrawOval draws the oval with Paint.
@@ -196,18 +170,13 @@ func (c *Canvas) DrawPath(path *Path, paint *Paint) {
 }
 
 // DrawImage draws the image at the specified location using its logical size. paint may be nil.
-func (c *Canvas) DrawImage(img *Image, pt geom32.Point, sampling *SamplingOptions, paint *Paint) {
-	srcRect := geom32.Rect{Size: img.Size()}
-	dstRect := geom32.Rect{Point: pt, Size: img.LogicalSize()}
-	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkRect(&srcRect),
-		skia.RectToSkRect(&dstRect), sampling.skSamplingOptions(), paint.paintOrNil())
+func (c *Canvas) DrawImage(img *Image, x, y float32, sampling *SamplingOptions, paint *Paint) {
+	c.DrawImageInRect(img, geom32.Rect{Point: geom32.Point{X: x, Y: y}, Size: img.LogicalSize()}, sampling, paint)
 }
 
 // DrawImageInRect draws the image into the area specified by the rect, scaling if necessary. paint may be nil.
 func (c *Canvas) DrawImageInRect(img *Image, rect geom32.Rect, sampling *SamplingOptions, paint *Paint) {
-	srcRect := geom32.Rect{Size: img.Size()}
-	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkRect(&srcRect),
-		skia.RectToSkRect(&rect), sampling.skSamplingOptions(), paint.paintOrNil())
+	c.DrawImageRectInRect(img, geom32.Rect{Size: img.Size()}, rect, sampling, paint)
 }
 
 // DrawImageRectInRect draws a portion of the image into the area specified, scaling if necessary. srcRect should be in
@@ -235,11 +204,6 @@ func (c *Canvas) DrawPoint(x, y float32, paint *Paint) {
 	skia.CanvasDrawPoint(c.canvas, x, y, paint.paint)
 }
 
-// DrawPointPt draws a point.
-func (c *Canvas) DrawPointPt(pt geom32.Point, paint *Paint) {
-	skia.CanvasDrawPoint(c.canvas, pt.X, pt.Y, paint.paint)
-}
-
 // DrawPoints draws the points using the given mode.
 func (c *Canvas) DrawPoints(pts []geom32.Point, paint *Paint, mode PointMode) {
 	skia.CanvasDrawPoints(c.canvas, skia.PointMode(mode), pts, paint.paint)
@@ -248,11 +212,6 @@ func (c *Canvas) DrawPoints(pts []geom32.Point, paint *Paint, mode PointMode) {
 // DrawLine draws a line.
 func (c *Canvas) DrawLine(sx, sy, ex, ey float32, paint *Paint) {
 	skia.CanvasDrawLine(c.canvas, sx, sy, ex, ey, paint.paint)
-}
-
-// DrawLinePt draws a line.
-func (c *Canvas) DrawLinePt(start, end geom32.Point, paint *Paint) {
-	skia.CanvasDrawLine(c.canvas, start.X, start.Y, end.X, end.Y, paint.paint)
 }
 
 // DrawPolygon draws a polygon.
@@ -279,26 +238,10 @@ func (c *Canvas) DrawSimpleText(str string, x, y float32, font Font, paint *Pain
 	}
 }
 
-// DrawSimpleTextPt draws text. This uses the default character-to-glyph mapping from the font. It does not perform
-// typeface fallback for characters not found in the typeface. It does not perform kerning or other complex shaping.
-// Glyphs are positioned based on their default advances. pt.Y is the baseline of the first line of text.
-func (c *Canvas) DrawSimpleTextPt(str string, pt geom32.Point, font Font, paint *Paint) {
-	if str != "" {
-		skia.CanvasDrawSimpleText(c.canvas, str, pt.X, pt.Y, font.skiaFont(), paint.paint)
-	}
-}
-
 // DrawText draws text. y is the baseline of the first line of text.
 func (c *Canvas) DrawText(text *Text, x, y float32, paint *Paint) {
 	if text != nil {
 		skia.CanvasDrawTextBlob(c.canvas, text.text, x, y, paint.paint)
-	}
-}
-
-// DrawTextPt draws text. pt.Y is the baseline of the first line of text.
-func (c *Canvas) DrawTextPt(text *Text, pt geom32.Point, paint *Paint) {
-	if text != nil {
-		skia.CanvasDrawTextBlob(c.canvas, text.text, pt.X, pt.Y, paint.paint)
 	}
 }
 

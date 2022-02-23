@@ -76,7 +76,7 @@ func (s *SVG) PathScaledTo(scale float32) *Path {
 	scaledSize := geom32.NewSize(scale, scale)
 	p, ok := s.scaledPathMap[scaledSize]
 	if !ok {
-		p = s.unscaledPath.NewScaledSize(scaledSize)
+		p = s.unscaledPath.NewScaled(scale, scale)
 		s.scaledPathMap[scaledSize] = p
 	}
 	return p

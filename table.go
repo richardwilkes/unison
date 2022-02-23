@@ -239,7 +239,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 					if row.IsOpen() {
 						offset := disclosureSize / 2
 						canvas.Translate(offset, offset)
-						canvas.RotateDegrees(90)
+						canvas.Rotate(90)
 						canvas.Translate(-offset, -offset)
 					}
 					canvas.DrawPath(CircledChevronRightSVG().PathForSize(geom32.NewSize(disclosureSize, disclosureSize)),

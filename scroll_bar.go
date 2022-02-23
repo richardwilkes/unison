@@ -173,8 +173,8 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom32.Rect) {
 		} else {
 			ink = s.ThumbInk
 		}
-		gc.DrawRoundedRect(thumb, s.CornerRadius, ink.Paint(gc, thumb, Fill))
-		gc.DrawRoundedRect(thumb, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, Stroke))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, ink.Paint(gc, thumb, Fill))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, Stroke))
 	}
 }
 

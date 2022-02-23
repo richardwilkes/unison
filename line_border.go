@@ -51,11 +51,12 @@ func (b *LineBorder) Draw(canvas *Canvas, rect geom32.Rect) {
 	path := NewPath()
 	path.SetFillType(EvenOdd)
 	if b.cornerRadius > 0 {
-		path.RoundedRectBounds(rect, b.cornerRadius)
-		path.RoundedRectBounds(clip, mathf32.Max(b.cornerRadius-((b.insets.Top+b.insets.Left+b.insets.Bottom+b.insets.Right)/4), 1))
+		path.RoundedRect(rect, b.cornerRadius, b.cornerRadius)
+		radius := mathf32.Max(b.cornerRadius-((b.insets.Top+b.insets.Left+b.insets.Bottom+b.insets.Right)/4), 1)
+		path.RoundedRect(clip, radius, radius)
 	} else {
-		path.RectBounds(rect)
-		path.RectBounds(clip)
+		path.Rect(rect)
+		path.Rect(clip)
 	}
 	canvas.DrawPath(path, b.ink.Paint(canvas, rect, Fill))
 }

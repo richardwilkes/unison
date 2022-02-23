@@ -25,12 +25,12 @@ func DrawRectBase(canvas *Canvas, rect geom32.Rect, fillInk, strokeInk Ink) {
 
 // DrawRoundedRectBase fills and strokes a rounded rectangle.
 func DrawRoundedRectBase(canvas *Canvas, rect geom32.Rect, cornerRadius, thickness float32, fillInk, strokeInk Ink) {
-	canvas.DrawRoundedRect(rect, cornerRadius, fillInk.Paint(canvas, rect, Fill))
+	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, fillInk.Paint(canvas, rect, Fill))
 	rect.InsetUniform(thickness / 2)
 	cornerRadius = mathf32.Max(cornerRadius-thickness/2, 0)
 	p := strokeInk.Paint(canvas, rect, Stroke)
 	p.SetStrokeWidth(thickness)
-	canvas.DrawRoundedRect(rect, cornerRadius, p)
+	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, p)
 }
 
 // DrawEllipseBase fills and strokes an ellipse.

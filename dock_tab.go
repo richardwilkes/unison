@@ -162,10 +162,12 @@ func (t *dockTab) draw(gc *Canvas, rect geom32.Rect) {
 	p := NewPath()
 	p.MoveTo(0, r.Height)
 	p.LineTo(0, 6)
-	p.CubicToPt(geom32.NewPoint(0, 6), geom32.NewPoint(0, 1), geom32.NewPoint(6, 1))
-	p.LineTo(r.Width-7, 1)
-	p.CubicToPt(geom32.NewPoint(r.Width-7, 1), geom32.NewPoint(r.Width-1, 1), geom32.NewPoint(r.Width-1, 7))
-	p.LineTo(r.Width-1, r.Height)
+	p.CubicTo(0, 6, 0, 1, 6, 1)
+	rightCornerStart := r.Width - 7
+	p.LineTo(rightCornerStart, 1)
+	right := r.Width - 1
+	p.CubicTo(rightCornerStart, 1, right, 1, right, 7)
+	p.LineTo(right, r.Height)
 	p.Close()
 	gc.DrawPath(p, bg.Paint(gc, r, Fill))
 	gc.DrawPath(p, t.EdgeInk.Paint(gc, r, Stroke))
