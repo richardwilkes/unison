@@ -19,6 +19,7 @@ package skia
 #cgo linux LDFLAGS: -L${SRCDIR} -lskia_linux -lfontconfig -lfreetype -lGL -ldl -lm -lstdc++
 
 #include <stdlib.h>
+#include <string.h>
 #include "sk_capi.h"
 */
 import "C"
@@ -328,9 +329,8 @@ func FontTextToGlyphs(font Font, str string) []uint16 {
 	return glyphs
 }
 
-func FontGetXPos(font Font, str string) []float32 {
-	glyphs := FontTextToGlyphs(font, str+"a")
-	pos := make([]float32, len(glyphs))
+func FontGlyphsXPos(font Font, glyphs []uint16) []float32 {
+	pos := make([]float32, len(glyphs)+1)
 	C.sk_font_get_xpos(font, (*C.ushort)(&glyphs[0]), C.int(len(glyphs)), (*C.float)(unsafe.Pointer(&pos[0])), 0)
 	return pos
 }
@@ -357,6 +357,12 @@ func FontMgrMatchFamilyStyle(mgr FontMgr, family string, style FontStyle) TypeFa
 	cFamily := C.CString(family)
 	defer C.free(unsafe.Pointer(cFamily))
 	return C.sk_fontmgr_match_family_style(mgr, cFamily, style)
+}
+
+func FontMgrMatchFamilyStyleCharacter(mgr FontMgr, family string, style FontStyle, ch rune) TypeFace {
+	cFamily := C.CString(family)
+	defer C.free(unsafe.Pointer(cFamily))
+	return C.sk_fontmgr_match_family_style_character(mgr, cFamily, style, nil, 0, C.int32_t(ch))
 }
 
 func FontMgrCountFamilies(mgr FontMgr) int {

@@ -52,3 +52,32 @@ func (b *TextBuilder) AllocRunPos(font Font, glyphs []uint16, pos []geom32.Point
 func (b *TextBuilder) AllocRunPosH(font Font, glyphs []uint16, pos []float32, y float32) {
 	skia.TextBlobBuilderAllocRunPosH(b.builder, font.skiaFont(), glyphs, pos, y)
 }
+
+func (b *TextBuilder) AllocTextRun(font Font, text string, x, y float32) {
+	face := font.Face()
+	glyphs := font.Glyphs(text)
+	runes := []rune(text)
+	start := 0
+	i := 0
+	for i < len(glyphs) {
+		if glyphs[i] == 0 {
+			if i > start {
+				glyphRun := glyphs[start:i]
+				b.AllocRun(font, glyphRun, x, y)
+				starts := font.GlyphStarts(glyphRun)
+				x = starts[len(starts)-1]
+			}
+			altFace := face.FallbackForCharacter(runes[i])
+			glyphRun := glyphs[i : i+1]
+			b.AllocRun(altFace.Font(font.Size()), glyphRun, x, y)
+			starts := font.GlyphStarts(glyphRun)
+			x = starts[len(starts)-1]
+			start = i + 1
+		}
+		i++
+	}
+	if start < len(glyphs)-1 {
+		glyphRun := glyphs[start:]
+		b.AllocRun(font, glyphRun, x, y)
+	}
+}

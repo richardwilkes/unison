@@ -67,6 +67,10 @@ type Font interface {
 	Extents(str string) geom32.Size
 	// Glyphs converts the text into a series of glyphs.
 	Glyphs(text string) []uint16
+	// GlyphStarts returns the starting x-coordinate for each glyph as if they were laid out side-by-side in a row. The
+	// number of coordinates returned is one greater than the number of glyphs so that the start of the next glyph can
+	// be determined.
+	GlyphStarts(glyphs []uint16) []float32
 	// IndexForPosition returns the rune index within the string for the specified x-coordinate, where 0 is the start of
 	// the string. Note that this does not account for any embedded line endings nor tabs.
 	IndexForPosition(x float32, str string) int
@@ -168,9 +172,13 @@ func (f *fontImpl) Glyphs(text string) []uint16 {
 	return skia.FontTextToGlyphs(f.font, text)
 }
 
+func (f *fontImpl) GlyphStarts(glyphs []uint16) []float32 {
+	return skia.FontGlyphsXPos(f.font, glyphs)
+}
+
 func (f *fontImpl) runeStarts(str string) []float32 {
 	// TODO: Revisit -- can we use the Text object instead?
-	return skia.FontGetXPos(f.font, str)
+	return skia.FontGlyphsXPos(f.font, skia.FontTextToGlyphs(f.font, str))
 }
 
 func (f *fontImpl) skiaFont() skia.Font {

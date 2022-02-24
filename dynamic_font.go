@@ -71,6 +71,11 @@ func (f *DynamicFont) Glyphs(text string) []uint16 {
 	return f.resolvedFont().Glyphs(text)
 }
 
+// GlyphStarts implements Font.
+func (f *DynamicFont) GlyphStarts(glyphs []uint16) []float32 {
+	return f.resolvedFont().GlyphStarts(glyphs)
+}
+
 // IndexForPosition implements Font.
 func (f *DynamicFont) IndexForPosition(x float32, str string) int {
 	return f.resolvedFont().IndexForPosition(x, str)

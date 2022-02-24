@@ -61,6 +61,11 @@ func (f *IndirectFont) Glyphs(text string) []uint16 {
 	return f.Font.Glyphs(text)
 }
 
+// GlyphStarts implements Font.
+func (f *IndirectFont) GlyphStarts(glyphs []uint16) []float32 {
+	return f.Font.GlyphStarts(glyphs)
+}
+
 // IndexForPosition implements Font.
 func (f *IndirectFont) IndexForPosition(x float32, str string) int {
 	return f.Font.IndexForPosition(x, str)

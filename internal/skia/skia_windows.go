@@ -98,6 +98,7 @@ var (
 	skFontMgrCreateFromDataProc               *syscall.Proc
 	skFontMgrMatchFamilyProc                  *syscall.Proc
 	skFontMgrMatchFamilyStyleProc             *syscall.Proc
+	skFontMgrMatchFamilyStyleCharacterProc    *syscall.Proc
 	skFontMgrCountFamiliesProc                *syscall.Proc
 	skFontMgrGetFamilyNameProc                *syscall.Proc
 	skFontStyleNewProc                        *syscall.Proc
@@ -355,6 +356,7 @@ func init() {
 	skFontMgrCreateFromDataProc = skia.MustFindProc("sk_fontmgr_create_from_data")
 	skFontMgrMatchFamilyProc = skia.MustFindProc("sk_fontmgr_match_family")
 	skFontMgrMatchFamilyStyleProc = skia.MustFindProc("sk_fontmgr_match_family_style")
+	skFontMgrMatchFamilyStyleCharacterProc = skia.MustFindProc("sk_fontmgr_match_family_style_character")
 	skFontMgrCountFamiliesProc = skia.MustFindProc("sk_fontmgr_count_families")
 	skFontMgrGetFamilyNameProc = skia.MustFindProc("sk_fontmgr_get_family_name")
 	skFontStyleNewProc = skia.MustFindProc("sk_fontstyle_new")
@@ -854,8 +856,7 @@ func FontTextToGlyphs(font Font, str string) []uint16 {
 	return glyphs
 }
 
-func FontGetXPos(font Font, str string) []float32 {
-	glyphs := FontTextToGlyphs(font, str+"a")
+func FontGlyphsXPos(font Font, glyphs []uint16) []float32 {
 	pos := make([]float32, len(glyphs))
 	skFontGetXPosProc.Call(uintptr(font), uintptr(unsafe.Pointer(&glyphs[0])), uintptr(len(glyphs)), uintptr(unsafe.Pointer(&pos[0])), 0)
 	return pos
@@ -886,6 +887,13 @@ func FontMgrMatchFamilyStyle(mgr FontMgr, family string, style FontStyle) TypeFa
 	cstr := make([]byte, len(family)+1)
 	copy(cstr, family)
 	r1, _, _ := skFontMgrMatchFamilyStyleProc.Call(uintptr(mgr), uintptr(unsafe.Pointer(&cstr[0])), uintptr(style))
+	return TypeFace(r1)
+}
+
+func FontMgrMatchFamilyStyleCharacter(mgr FontMgr, family string, style FontStyle, ch rune) TypeFace {
+	cstr := make([]byte, len(family)+1)
+	copy(cstr, family)
+	r1, _, _ := skFontMgrMatchFamilyStyleCharacterProc.Call(uintptr(mgr), uintptr(unsafe.Pointer(&cstr[0])), uintptr(style), 0, 0, uintptr(ch))
 	return TypeFace(r1)
 }
 

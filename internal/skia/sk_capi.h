@@ -643,6 +643,7 @@ SK_C_API sk_typeface_t* sk_fontmgr_create_from_data(sk_font_mgr_t* fontmgr, sk_d
 SK_C_API void sk_fontmgr_get_family_name(sk_font_mgr_t* fontmgr, int index, sk_string_t* familyName);
 SK_C_API sk_font_style_set_t* sk_fontmgr_match_family(sk_font_mgr_t* fontmgr, const char* familyName);
 SK_C_API sk_typeface_t* sk_fontmgr_match_family_style(sk_font_mgr_t* fontmgr, const char* familyName, sk_font_style_t* style);
+SK_C_API sk_typeface_t* sk_fontmgr_match_family_style_character(sk_font_mgr_t* fontmgr, const char* familyName, sk_font_style_t* style, const char** bcp47, int bcp47Count, int32_t character);
 SK_C_API sk_font_mgr_t* sk_fontmgr_ref_default(void);
 
 SK_C_API sk_typeface_t* sk_fontstyleset_create_typeface(sk_font_style_set_t* fss, int index);

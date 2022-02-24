@@ -105,6 +105,14 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 	return font
 }
 
+// FallbackForCharacter attempts to locate the FontFace that best matches this FontFace and has the given character.
+// Will return nil if nothing suitable can be found.
+func (f *FontFace) FallbackForCharacter(ch rune) *FontFace {
+	style := skia.TypeFaceGetFontStyle(f.face)
+	defer skia.FontStyleDelete(style)
+	return newFace(skia.FontMgrMatchFamilyStyleCharacter(skia.FontMgrRefDefault(), f.Family(), style, ch))
+}
+
 func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
 	font := &fontImpl{
 		face: f,
