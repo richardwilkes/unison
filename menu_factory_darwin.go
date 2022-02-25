@@ -23,6 +23,9 @@ func platformNewDefaultMenuFactory() MenuFactory {
 }
 
 func (f *macMenuFactory) BarForWindowNoCreate(window *Window) Menu {
+	if f.bar == nil {
+		return nil
+	}
 	return f.bar
 }
 
