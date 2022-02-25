@@ -94,6 +94,7 @@ var (
 	skFontTextToGlyphsProc                    *syscall.Proc
 	skFontUnicharToGlyphProc                  *syscall.Proc
 	skFontUnicharsToGlyphsProc                *syscall.Proc
+	skFontGlyphWidthsProc                     *syscall.Proc
 	skFontGetXPosProc                         *syscall.Proc
 	skFontDeleteProc                          *syscall.Proc
 	skFontMgrRefDefaultProc                   *syscall.Proc
@@ -355,6 +356,7 @@ func init() {
 	skFontTextToGlyphsProc = skia.MustFindProc("sk_font_text_to_glyphs")
 	skFontUnicharToGlyphProc = skia.MustFindProc("sk_font_unichar_to_glyph")
 	skFontUnicharsToGlyphsProc = skia.MustFindProc("sk_font_unichars_to_glyphs")
+	skFontGlyphWidthsProc = skia.MustFindProc("sk_font_glyph_widths")
 	skFontGetXPosProc = skia.MustFindProc("sk_font_get_xpos")
 	skFontDeleteProc = skia.MustFindProc("sk_font_delete")
 	skFontMgrRefDefaultProc = skia.MustFindProc("sk_fontmgr_ref_default")
@@ -1780,7 +1782,7 @@ func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16
 		Clusters unsafe.Pointer
 	}
 	r1, _, _ := skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
-		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), 0, uintptr(unsafe.Pointer(buffer)))
+		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), 0)
 	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
 	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Glyphs)))[:len(glyphs)], glyphs)
 }
