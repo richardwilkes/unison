@@ -14,6 +14,10 @@ import (
 )
 
 var (
+	// DisableMenus overrides all application menus when set to true, causing them to become disabled. This is primarily
+	// provided to allow a way to disable menu key capture temporarily. This will not allow system keys to be captured,
+	// but will prevent the menus from capturing keys while it is true.
+	DisableMenus       bool
 	defaultMenuFactory MenuFactory
 	_                  MenuFactory = &inWindowMenuFactory{}
 )

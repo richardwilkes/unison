@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
@@ -58,19 +59,24 @@ func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macM
 }
 
 func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
-	var v func(ns.MenuItem) bool
-	if validator != nil {
-		v = func(mi ns.MenuItem) bool {
-			return validator(&macMenuItem{factory: f, item: mi})
-		}
-	}
 	var h func(ns.MenuItem)
 	if handler != nil {
 		h = func(mi ns.MenuItem) {
-			handler(&macMenuItem{factory: f, item: mi})
+			toolbox.Call(func() { handler(&macMenuItem{factory: f, item: mi}) })
 		}
 	}
-	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode], keyBinding.Modifiers.eventModifierFlags(), v, h)
+	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
+		keyBinding.Modifiers.eventModifierFlags(), func(mi ns.MenuItem) bool {
+			if DisableMenus {
+				return false
+			}
+			if validator != nil {
+				var result bool
+				toolbox.Call(func() { result = validator(&macMenuItem{factory: f, item: mi}) })
+				return result
+			}
+			return true
+		}, h)
 	return &macMenuItem{
 		factory: f,
 		item:    mi,

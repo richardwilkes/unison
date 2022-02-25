@@ -309,10 +309,14 @@ func (mi *menuItem) validate() {
 	if mi.isSeparator {
 		return
 	}
-	mi.enabled = true
-	if mi.validator != nil {
+	if DisableMenus {
 		mi.enabled = false
-		toolbox.Call(func() { mi.enabled = mi.validator(mi) })
+	} else {
+		mi.enabled = true
+		if mi.validator != nil {
+			mi.enabled = false
+			toolbox.Call(func() { mi.enabled = mi.validator(mi) })
+		}
 	}
 }
 
