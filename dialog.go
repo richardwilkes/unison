@@ -69,7 +69,7 @@ type Dialog struct {
 }
 
 // NewDialog creates a new standard dialog. To show the dialog you must call .RunModal() on the returned dialog.
-func NewDialog(icon Drawable, iconInk Ink, msgPanel *Panel, buttonInfo []*DialogButtonInfo) (*Dialog, error) {
+func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo) (*Dialog, error) {
 	d := &Dialog{buttons: make(map[int]*buttonData)}
 	var frame geom32.Rect
 	if focused := ActiveWindow(); focused != nil {
@@ -98,12 +98,13 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel *Panel, buttonInfo []*Dialog
 		HSpacing: StdHSpacing,
 		VSpacing: StdVSpacing,
 	})
-	if b := msgPanel.Border(); b != nil {
-		msgPanel.SetBorder(NewCompoundBorder(NewEmptyBorder(geom32.Insets{Bottom: 16}), b))
+	p := msgPanel.AsPanel()
+	if b := p.Border(); b != nil {
+		p.SetBorder(NewCompoundBorder(NewEmptyBorder(geom32.Insets{Bottom: 16}), b))
 	} else {
-		msgPanel.SetBorder(NewEmptyBorder(geom32.Insets{Bottom: 16}))
+		p.SetBorder(NewEmptyBorder(geom32.Insets{Bottom: 16}))
 	}
-	msgPanel.SetLayoutData(&FlexLayoutData{
+	p.SetLayoutData(&FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
 		HAlign: FillAlignment,
@@ -265,7 +266,7 @@ func ErrorDialogWithMessage(primary, detail string) {
 }
 
 // ErrorDialogWithPanel displays a standard error dialog with the specified panel.
-func ErrorDialogWithPanel(msgPanel *Panel) {
+func ErrorDialogWithPanel(msgPanel Paneler) {
 	if dialog, err := NewDialog(DefaultDialogTheme.ErrorIcon, DefaultDialogTheme.ErrorIconInk, msgPanel,
 		[]*DialogButtonInfo{NewOKButtonInfo()}); err != nil {
 		jot.Error(err)
@@ -281,7 +282,7 @@ func WarningDialogWithMessage(primary, detail string) {
 }
 
 // WarningDialogWithPanel displays a standard error dialog with the specified panel.
-func WarningDialogWithPanel(msgPanel *Panel) {
+func WarningDialogWithPanel(msgPanel Paneler) {
 	if dialog, err := NewDialog(DefaultDialogTheme.WarningIcon, DefaultDialogTheme.WarningIconInk, msgPanel,
 		[]*DialogButtonInfo{NewOKButtonInfo()}); err != nil {
 		jot.Error(err)
@@ -299,7 +300,7 @@ func QuestionDialog(primary, detail string) int {
 
 // QuestionDialogWithPanel displays a standard question dialog with the specified panel. This function returns
 // ids.ModalResponseOK if the OK button was pressed and ids.ModalResponseCancel if the Cancel button was pressed.
-func QuestionDialogWithPanel(msgPanel *Panel) int {
+func QuestionDialogWithPanel(msgPanel Paneler) int {
 	if dialog, err := NewDialog(DefaultDialogTheme.QuestionIcon, DefaultDialogTheme.QuestionIconInk, msgPanel,
 		[]*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()}); err != nil {
 		jot.Error(err)
