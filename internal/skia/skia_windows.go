@@ -92,6 +92,8 @@ var (
 	skFontGetMetricsProc                      *syscall.Proc
 	skFontMeasureTextProc                     *syscall.Proc
 	skFontTextToGlyphsProc                    *syscall.Proc
+	skFontUnicharToGlyphProc                  *syscall.Proc
+	skFontUnicharsToGlyphsProc                *syscall.Proc
 	skFontGetXPosProc                         *syscall.Proc
 	skFontDeleteProc                          *syscall.Proc
 	skFontMgrRefDefaultProc                   *syscall.Proc
@@ -160,6 +162,7 @@ var (
 	skPaintNewProc                            *syscall.Proc
 	skPaintDeleteProc                         *syscall.Proc
 	skPaintCloneProc                          *syscall.Proc
+	skPaintEquivalentProc                     *syscall.Proc
 	skPaintResetProc                          *syscall.Proc
 	skPaintIsAntialiasProc                    *syscall.Proc
 	skPaintSetAntialiasProc                   *syscall.Proc
@@ -350,6 +353,8 @@ func init() {
 	skFontGetMetricsProc = skia.MustFindProc("sk_font_get_metrics")
 	skFontMeasureTextProc = skia.MustFindProc("sk_font_measure_text")
 	skFontTextToGlyphsProc = skia.MustFindProc("sk_font_text_to_glyphs")
+	skFontUnicharToGlyphProc = skia.MustFindProc("sk_font_unichar_to_glyph")
+	skFontUnicharsToGlyphsProc = skia.MustFindProc("sk_font_unichars_to_glyphs")
 	skFontGetXPosProc = skia.MustFindProc("sk_font_get_xpos")
 	skFontDeleteProc = skia.MustFindProc("sk_font_delete")
 	skFontMgrRefDefaultProc = skia.MustFindProc("sk_fontmgr_ref_default")
@@ -418,6 +423,7 @@ func init() {
 	skPaintNewProc = skia.MustFindProc("sk_paint_new")
 	skPaintDeleteProc = skia.MustFindProc("sk_paint_delete")
 	skPaintCloneProc = skia.MustFindProc("sk_paint_clone")
+	skPaintEquivalentProc = skia.MustFindProc("sk_paint_equivalent")
 	skPaintResetProc = skia.MustFindProc("sk_paint_reset")
 	skPaintIsAntialiasProc = skia.MustFindProc("sk_paint_is_antialias")
 	skPaintSetAntialiasProc = skia.MustFindProc("sk_paint_set_antialias")
@@ -856,9 +862,28 @@ func FontTextToGlyphs(font Font, str string) []uint16 {
 	return glyphs
 }
 
+func FontRuneToGlyph(font Font, r rune) uint16 {
+	r1, _, _ := skFontUnicharToGlyphProc.Call(uintptr(font), uintptr(r))
+	return uint16(r1)
+}
+
+func FontRunesToGlyphs(font Font, r []rune) []uint16 {
+	glyphs := make([]uint16, len(r))
+	skFontUnicharsToGlyphsProc.Call(uintptr(font), uintptr(unsafe.Pointer(&r[0])), uintptr(len(r)), uintptr(unsafe.Pointer(&glyphs[0])))
+	return glyphs
+}
+
+func FontGlyphWidths(font Font, glyphs []uint16) []float32 {
+	widths := make([]float32, len(glyphs))
+	skFontGlyphWidthsProc.Call(uintptr(font), uintptr(unsafe.Pointer(&glyphs[0])), uintptr(len(glyphs)), uintptr(unsafe.Pointer(&widths[0])))
+	return widths
+}
+
 func FontGlyphsXPos(font Font, glyphs []uint16) []float32 {
-	pos := make([]float32, len(glyphs))
-	skFontGetXPosProc.Call(uintptr(font), uintptr(unsafe.Pointer(&glyphs[0])), uintptr(len(glyphs)), uintptr(unsafe.Pointer(&pos[0])), 0)
+	pos := make([]float32, len(glyphs)+1)
+	g2 := make([]uint16, len(glyphs)+1)
+	copy(g2, glyphs)
+	skFontGetXPosProc.Call(uintptr(font), uintptr(unsafe.Pointer(&g2[0])), uintptr(len(g2)), uintptr(unsafe.Pointer(&pos[0])), 0)
 	return pos
 }
 
@@ -1219,6 +1244,11 @@ func OpBuilderDestroy(builder OpBuilder) {
 func PaintNew() Paint {
 	r1, _, _ := skPaintNewProc.Call()
 	return Paint(r1)
+}
+
+func PaintEquivalent(left, right Paint) bool {
+	r1, _, _ := skPaintEquivalentProc.Call(uintptr(left), uintptr(right))
+	return r1 != 0
 }
 
 func PaintDelete(paint Paint) {
@@ -1743,28 +1773,16 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 }
 
 func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, x, y float32) {
-	buffer := &TextBlobBuilderRunBuffer{
-		Glyphs: unsafe.Pointer(&glyphs[0]),
+	type textBlobBuilderRunBuffer struct {
+		Glyphs   unsafe.Pointer
+		Pos      unsafe.Pointer
+		UTF8Text unsafe.Pointer
+		Clusters unsafe.Pointer
 	}
-	skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
+	r1, _, _ := skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), 0, uintptr(unsafe.Pointer(buffer)))
-}
-
-func TextBlobBuilderAllocRunPos(builder TextBlobBuilder, font Font, glyphs []uint16, pos []geom32.Point) {
-	buffer := &TextBlobBuilderRunBuffer{
-		Glyphs: unsafe.Pointer(&glyphs[0]),
-		Pos:    unsafe.Pointer(&pos[0]),
-	}
-	skTextBlobBuilderAllocRunPosProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)), 0, uintptr(unsafe.Pointer(buffer)))
-}
-
-func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, pos []float32, y float32) {
-	buffer := &TextBlobBuilderRunBuffer{
-		Glyphs: unsafe.Pointer(&glyphs[0]),
-		Pos:    unsafe.Pointer(&pos[0]),
-	}
-	skTextBlobBuilderAllocRunPosHProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
-		uintptr(math.Float32bits(y)), 0, uintptr(unsafe.Pointer(buffer)))
+	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
+	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Glyphs)))[:len(glyphs)], glyphs)
 }
 
 func TextBlobBuilderDelete(builder TextBlobBuilder) {

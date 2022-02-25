@@ -229,19 +229,22 @@ func (c *Canvas) DrawArc(oval geom32.Rect, startAngle, sweepAngle float32, paint
 	skia.CanvasDrawArc(c.canvas, skia.RectToSkRect(&oval), startAngle, sweepAngle, useCenter, paint.paint)
 }
 
-// DrawSimpleText draws text. This uses the default character-to-glyph mapping from the font. It does not perform
-// typeface fallback for characters not found in the typeface. It does not perform kerning or other complex shaping.
-// Glyphs are positioned based on their default advances. y is the baseline of the first line of text.
-func (c *Canvas) DrawSimpleText(str string, x, y float32, font Font, paint *Paint) {
+// DrawSimpleString draws a string. It does not do any processing of embedded line endings nor tabs. It also does not do
+// any font fallback. y is the baseline for the text.
+func (c *Canvas) DrawSimpleString(str string, x, y float32, font Font, paint *Paint) {
 	if str != "" {
 		skia.CanvasDrawSimpleText(c.canvas, str, x, y, font.skiaFont(), paint.paint)
 	}
 }
 
-// DrawText draws text. y is the baseline of the first line of text.
-func (c *Canvas) DrawText(text *Text, x, y float32, paint *Paint) {
-	if text != nil {
-		skia.CanvasDrawTextBlob(c.canvas, text.text, x, y, paint.paint)
+// DrawString draws a string. It does not do any processing of embedded line endings nor tabs. y is the baseline for the
+// text.
+func (c *Canvas) DrawString(str string, x, y float32, font Font, paint *Paint) {
+	if str != "" {
+		NewText(str, &TextDecoration{
+			Font:  font,
+			Paint: paint,
+		}).Draw(c, x, y)
 	}
 }
 

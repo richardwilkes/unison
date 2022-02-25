@@ -20,7 +20,6 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -59,27 +58,17 @@ type Font interface {
 	Baseline() float32
 	// LineHeight returns the recommended line height of the font.
 	LineHeight() float32
-	// Width of the string rendered with this font. Note that this does not account for any embedded line endings nor
-	// tabs.
-	Width(str string) float32
-	// Extents of the string rendered with this font. Note that this does not account for any embedded line endings nor
-	// tabs.
-	Extents(str string) geom32.Size
-	// Glyphs converts the text into a series of glyphs.
-	Glyphs(text string) []uint16
-	// GlyphStarts returns the starting x-coordinate for each glyph as if they were laid out side-by-side in a row. The
-	// number of coordinates returned is one greater than the number of glyphs so that the start of the next glyph can
-	// be determined.
-	GlyphStarts(glyphs []uint16) []float32
-	// IndexForPosition returns the rune index within the string for the specified x-coordinate, where 0 is the start of
-	// the string. Note that this does not account for any embedded line endings nor tabs.
-	IndexForPosition(x float32, str string) int
-	// PositionForIndex returns the x-coordinate where the specified rune index starts. The returned coordinate assumes
-	// 0 is the start of the string. Note that this does not account for any embedded line endings nor tabs.
-	PositionForIndex(index int, str string) float32
-	// WrapText breaks the given text into multiple lines that are <= width. Embedded line feeds are respected. Trailing
-	// whitespace is not considered for purposes of fitting within the given width.
-	WrapText(text string, width float32) []string
+	// RuneToGlyph converts a rune into a glyph. Missing glyphs will have a value of 0.
+	RuneToGlyph(r rune) uint16
+	// RunesToGlyphs converts the runes into glyphs. Missing glyphs will have a value of 0.
+	RunesToGlyphs(r []rune) []uint16
+	// GlyphWidth returns the width for the glyph. This does not do font fallback for missing glyphs.
+	GlyphWidth(glyph uint16) float32
+	// GlyphWidths returns the widths for each glyph. This does not do font fallback for missing glyphs.
+	GlyphWidths(glyphs []uint16) []float32
+	// SimpleWidth returns the width of a string. It does not do font fallback, nor does it consider tabs or line
+	// endings.
+	SimpleWidth(str string) float32
 	// Descriptor returns a FontDescriptor for this Font.
 	Descriptor() FontDescriptor
 	skiaFont() skia.Font
@@ -157,109 +146,37 @@ func (f *fontImpl) LineHeight() float32 {
 	return f.size + f.metrics.Descent*2
 }
 
-func (f *fontImpl) Width(str string) float32 {
+func (f *fontImpl) RuneToGlyph(r rune) uint16 {
+	return skia.FontRuneToGlyph(f.font, r)
+}
+
+func (f *fontImpl) RunesToGlyphs(r []rune) []uint16 {
+	if len(r) == 0 {
+		return nil
+	}
+	return skia.FontRunesToGlyphs(f.font, r)
+}
+
+func (f *fontImpl) GlyphWidth(glyph uint16) float32 {
+	return skia.FontGlyphWidths(f.font, []uint16{glyph})[0]
+}
+
+func (f *fontImpl) GlyphWidths(glyphs []uint16) []float32 {
+	if len(glyphs) == 0 {
+		return nil
+	}
+	return skia.FontGlyphWidths(f.font, glyphs)
+}
+
+func (f *fontImpl) SimpleWidth(str string) float32 {
 	if str == "" {
 		return 0
 	}
 	return skia.FontMeasureText(f.font, str)
 }
 
-func (f *fontImpl) Extents(str string) geom32.Size {
-	return geom32.Size{Width: f.Width(str), Height: f.LineHeight()}
-}
-
-func (f *fontImpl) Glyphs(text string) []uint16 {
-	return skia.FontTextToGlyphs(f.font, text)
-}
-
-func (f *fontImpl) GlyphStarts(glyphs []uint16) []float32 {
-	return skia.FontGlyphsXPos(f.font, glyphs)
-}
-
-func (f *fontImpl) runeStarts(str string) []float32 {
-	// TODO: Revisit -- can we use the Text object instead?
-	return skia.FontGlyphsXPos(f.font, skia.FontTextToGlyphs(f.font, str))
-}
-
 func (f *fontImpl) skiaFont() skia.Font {
 	return f.font
-}
-
-func (f *fontImpl) IndexForPosition(x float32, str string) int {
-	if x <= 0 || str == "" {
-		return 0
-	}
-	pos := f.runeStarts(str)
-	for i, p := range pos {
-		if x < p {
-			if p-x > x-pos[i-1] {
-				return i - 1
-			}
-			return i
-		}
-	}
-	return len(pos) - 1
-}
-
-func (f *fontImpl) PositionForIndex(index int, str string) float32 {
-	if index <= 0 || str == "" {
-		return 0
-	}
-	pos := f.runeStarts(str)
-	if index > len(pos)-1 {
-		index = len(pos) - 1
-	}
-	return pos[index]
-}
-
-func (f *fontImpl) WrapText(text string, width float32) []string {
-	var lines []string
-	for _, line := range strings.Split(text, "\n") {
-		positions := f.runeStarts(line) // returns 1 more than there are runes
-		runes := []rune(line)
-		start := 0
-		for start < len(runes) {
-			i := start
-			for i < len(runes) && positions[i+1]-positions[start] < width {
-				i++
-			}
-			if i == len(runes) {
-				lines = append(lines, string(runes[start:]))
-				break
-			}
-			// Forward past any additional whitespace
-			for i < len(runes) && isWhitespace(runes[i]) {
-				i++
-			}
-			// Backup to first break
-			for i > start && !isWordBreak(runes[i-1]) {
-				i--
-			}
-			if i == start {
-				// Nothing found that fits, so take the first word and any trailing whitespace after it
-				for i < len(runes) && !isWordBreak(runes[i]) {
-					i++
-				}
-				if i < len(runes) && isWordBreak(runes[i]) {
-					i++
-				}
-				for i < len(runes) && isWhitespace(runes[i]) {
-					i++
-				}
-			}
-			lines = append(lines, string(runes[start:i]))
-			start = i
-		}
-	}
-	return lines
-}
-
-func isWhitespace(ch rune) bool {
-	return ch == ' ' || ch == '\t'
-}
-
-func isWordBreak(ch rune) bool {
-	return ch == ' ' || ch == '\t' || ch == '/' || ch == '\\'
 }
 
 func (f *fontImpl) Descriptor() FontDescriptor {

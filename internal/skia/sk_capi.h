@@ -636,6 +636,9 @@ SK_C_API void sk_font_set_force_auto_hinting(sk_font_t* font, bool value);
 SK_C_API void sk_font_set_hinting(sk_font_t* font, sk_font_hinting_t value);
 SK_C_API void sk_font_set_subpixel(sk_font_t* font, bool value);
 SK_C_API int sk_font_text_to_glyphs(const sk_font_t* font, const void* text, size_t byteLength, sk_text_encoding_t encoding, uint16_t glyphs[], int maxGlyphCount);
+SK_C_API uint16_t sk_font_unichar_to_glyph(const sk_font_t* font, int32_t unichar);
+SK_C_API void sk_font_unichars_to_glyphs(const sk_font_t* font, const int32_t* unichars, int count, uint16_t* glyphs);
+SK_C_API void sk_font_glyph_widths(const sk_font_t* font, const uint16_t *glyphs, int count, float *widths);
 
 // ===== Functions from include/core/SkFontMgr.h =====
 SK_C_API int sk_fontmgr_count_families(sk_font_mgr_t* fontmgr);
@@ -709,6 +712,7 @@ SK_C_API void sk_maskfilter_unref(sk_mask_filter_t* filter);
 
 // ===== Functions from include/core/SkPaint.h =====
 
+SK_C_API bool sk_paint_equivalent(sk_paint_t* cpaint, sk_paint_t* other);
 SK_C_API sk_paint_t* sk_paint_clone(sk_paint_t* cpaint);
 SK_C_API void sk_paint_delete(sk_paint_t* cpaint);
 SK_C_API sk_blend_mode_t sk_paint_get_blend_mode_or(sk_paint_t* cpaint, sk_blend_mode_t defaultMode);
@@ -829,9 +833,9 @@ SK_C_API void sk_surface_unref(sk_surface_t* surface);
 SK_C_API sk_surface_props_t* sk_surfaceprops_new(uint32_t flags, sk_pixel_geometry_t geometry);
 
 // ===== Functions from include/core/SkTextBlob.h =====
-SK_C_API void sk_textblob_builder_alloc_run(sk_text_blob_builder_t* builder, const sk_font_t* font, int count, float x, float y, const sk_rect_t* bounds, sk_text_blob_builder_run_buffer_t* runbuffer);
-SK_C_API void sk_textblob_builder_alloc_run_pos(sk_text_blob_builder_t* builder, const sk_font_t* font, int count, const sk_rect_t* bounds, sk_text_blob_builder_run_buffer_t* runbuffer);
-SK_C_API void sk_textblob_builder_alloc_run_pos_h(sk_text_blob_builder_t* builder, const sk_font_t* font, int count, float y, const sk_rect_t* bounds, sk_text_blob_builder_run_buffer_t* runbuffer);
+SK_C_API const sk_text_blob_builder_run_buffer_t* sk_textblob_builder_alloc_run(sk_text_blob_builder_t* builder, const sk_font_t* font, int count, float x, float y, const sk_rect_t* bounds);
+SK_C_API const sk_text_blob_builder_run_buffer_t* sk_textblob_builder_alloc_run_pos(sk_text_blob_builder_t* builder, const sk_font_t* font, int count, const sk_rect_t* bounds);
+SK_C_API const sk_text_blob_builder_run_buffer_t* sk_textblob_builder_alloc_run_pos_h(sk_text_blob_builder_t* builder, const sk_font_t* font, int count, float y, const sk_rect_t* bounds);
 SK_C_API void sk_textblob_builder_delete(sk_text_blob_builder_t* builder);
 SK_C_API sk_text_blob_t* sk_textblob_builder_make(sk_text_blob_builder_t* builder);
 SK_C_API sk_text_blob_builder_t* sk_textblob_builder_new(void);

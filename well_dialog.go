@@ -216,7 +216,10 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 func determineMinimumTextWidth(field *Field, candidates ...string) float32 {
 	var width float32
 	for _, one := range candidates {
-		width = mathf32.Max(field.Font.Extents(one).Width, width)
+		width = mathf32.Max(NewText(one, &TextDecoration{
+			Font:  field.Font,
+			Paint: nil,
+		}).Width(), width)
 	}
 	return width
 }

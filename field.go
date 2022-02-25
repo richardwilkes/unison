@@ -75,38 +75,41 @@ type Field struct {
 
 // NewField creates a new, empty, field.
 func NewField() *Field {
-	t := &Field{FieldTheme: DefaultFieldTheme}
-	t.Self = t
-	t.SetBorder(t.UnfocusedBorder)
-	t.SetFocusable(true)
-	t.SetSizer(t.DefaultSizes)
-	t.DrawCallback = t.DefaultDraw
-	t.GainedFocusCallback = t.DefaultFocusGained
-	t.LostFocusCallback = t.DefaultFocusLost
-	t.MouseDownCallback = t.DefaultMouseDown
-	t.MouseDragCallback = t.DefaultMouseDrag
-	t.UpdateCursorCallback = t.DefaultUpdateCursor
-	t.KeyDownCallback = t.DefaultKeyDown
-	t.RuneTypedCallback = t.DefaultRuneTyped
-	t.CanPerformCmdCallback = t.DefaultCanPerformCmd
-	t.PerformCmdCallback = t.DefaultPerformCmd
-	return t
+	f := &Field{FieldTheme: DefaultFieldTheme}
+	f.Self = f
+	f.SetBorder(f.UnfocusedBorder)
+	f.SetFocusable(true)
+	f.SetSizer(f.DefaultSizes)
+	f.DrawCallback = f.DefaultDraw
+	f.GainedFocusCallback = f.DefaultFocusGained
+	f.LostFocusCallback = f.DefaultFocusLost
+	f.MouseDownCallback = f.DefaultMouseDown
+	f.MouseDragCallback = f.DefaultMouseDrag
+	f.UpdateCursorCallback = f.DefaultUpdateCursor
+	f.KeyDownCallback = f.DefaultKeyDown
+	f.RuneTypedCallback = f.DefaultRuneTyped
+	f.CanPerformCmdCallback = f.DefaultCanPerformCmd
+	f.PerformCmdCallback = f.DefaultPerformCmd
+	return f
 }
 
 // DefaultSizes provides the default sizing.
-func (t *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	var text string
-	if len(t.runes) != 0 {
-		text = string(t.runes)
+func (f *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+	var r []rune
+	if len(f.runes) != 0 {
+		r = f.runes
 	} else {
-		text = "M"
+		r = []rune{'M'}
 	}
-	minWidth := t.MinimumTextWidth
-	pref = t.Font.Extents(text)
+	minWidth := f.MinimumTextWidth
+	pref = NewTextFromRunes(r, &TextDecoration{
+		Font:  f.Font,
+		Paint: nil,
+	}).Extents()
 	if pref.Width < minWidth {
 		pref.Width = minWidth
 	}
-	if b := t.Border(); b != nil {
+	if b := f.Border(); b != nil {
 		insets := b.Insets()
 		pref.AddInsets(insets)
 		minWidth += insets.Left + insets.Right
@@ -122,140 +125,158 @@ func (t *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (t *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (f *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	var fg, bg Ink
 	switch {
-	case t.invalid:
-		fg = t.ErrorInk
-		bg = t.OnErrorInk
-	case t.Enabled():
-		fg = t.EditableInk
-		bg = t.OnEditableInk
+	case f.invalid:
+		fg = f.ErrorInk
+		bg = f.OnErrorInk
+	case f.Enabled():
+		fg = f.EditableInk
+		bg = f.OnEditableInk
 	default:
-		fg = t.BackgroundInk
-		bg = t.OnBackgroundInk
+		fg = f.BackgroundInk
+		bg = f.OnBackgroundInk
 	}
-	rect := t.ContentRect(true)
+	rect := f.ContentRect(true)
 	canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
-	rect = t.ContentRect(false)
+	rect = f.ContentRect(false)
 	clipRect := rect
 	clipRect.Inset(geom32.NewUniformInsets(-2)) // Remove interior padding for the clip
 	canvas.ClipRect(clipRect, IntersectClipOp, false)
-	textTop := rect.Y + (rect.Height-t.Font.LineHeight())/2
-	textBaseLine := textTop + t.Font.Baseline()
+	textTop := rect.Y + (rect.Height-f.Font.LineHeight())/2
+	textBaseLine := textTop + f.Font.Baseline()
 	paint := bg.Paint(canvas, rect, Fill)
 	switch {
-	case t.Enabled() && t.Focused() && t.HasSelectionRange():
-		left := rect.X + t.scrollOffset
-		if t.selectionStart > 0 {
-			pre := string(t.runes[:t.selectionStart])
-			canvas.DrawSimpleText(pre, left, textBaseLine, t.Font, paint)
-			left += t.Font.Width(pre)
+	case f.Enabled() && f.Focused() && f.HasSelectionRange():
+		left := rect.X + f.scrollOffset
+		if f.selectionStart > 0 {
+			t := NewTextFromRunes(f.runes[:f.selectionStart], &TextDecoration{
+				Font:  f.Font,
+				Paint: paint,
+			})
+			t.Draw(canvas, left, textBaseLine)
+			left += t.Width()
 		}
-		mid := string(t.runes[t.selectionStart:t.selectionEnd])
-		right := rect.X + t.Font.Width(string(t.runes[:t.selectionEnd])) + t.scrollOffset
+		t := NewTextFromRunes(f.runes[f.selectionStart:f.selectionEnd], &TextDecoration{
+			Font:  f.Font,
+			Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
+		})
+		right := left + t.Width()
 		selRect := geom32.Rect{
 			Point: geom32.Point{X: left, Y: clipRect.Y},
 			Size:  geom32.Size{Width: right - left, Height: clipRect.Height},
 		}
-		canvas.DrawRect(selRect, t.SelectionInk.Paint(canvas, selRect, Fill))
-		canvas.DrawSimpleText(mid, left, textBaseLine, t.Font, t.OnSelectionInk.Paint(canvas, rect, Fill))
-		if t.selectionStart < len(t.runes) {
-			canvas.DrawSimpleText(string(t.runes[t.selectionEnd:]), right, textBaseLine, t.Font, paint)
+		canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
+		t.Draw(canvas, left, textBaseLine)
+		if f.selectionStart < len(f.runes) {
+			NewTextFromRunes(f.runes[f.selectionEnd:], &TextDecoration{
+				Font:  f.Font,
+				Paint: paint,
+			}).Draw(canvas, right, textBaseLine)
 		}
-	case len(t.runes) == 0:
-		if t.Watermark != "" {
+	case len(f.runes) == 0:
+		if f.Watermark != "" {
 			paint.SetColorFilter(NewAlphaFilter(0.3))
-			canvas.DrawSimpleText(t.Watermark, rect.X, textBaseLine, t.Font, paint)
+			NewText(f.Watermark, &TextDecoration{
+				Font:  f.Font,
+				Paint: paint,
+			}).Draw(canvas, rect.X, textBaseLine)
 		}
 	default:
-		if !t.Enabled() {
+		if !f.Enabled() {
 			paint.SetColorFilter(Grayscale30PercentFilter())
 		}
-		canvas.DrawSimpleText(string(t.runes), rect.X+t.scrollOffset, textBaseLine, t.Font, paint)
+		NewTextFromRunes(f.runes, &TextDecoration{
+			Font:  f.Font,
+			Paint: paint,
+		}).Draw(canvas, rect.X+f.scrollOffset, textBaseLine)
 	}
-	if !t.HasSelectionRange() && t.Enabled() && t.Focused() {
-		if t.showCursor {
-			canvas.DrawRect(geom32.NewRect(rect.X+t.Font.Width(string(t.runes[:t.selectionEnd]))+t.scrollOffset-0.5,
-				clipRect.Y, 1, clipRect.Height), bg.Paint(canvas, rect, Fill))
+	if !f.HasSelectionRange() && f.Enabled() && f.Focused() {
+		if f.showCursor {
+			canvas.DrawRect(geom32.NewRect(rect.X+NewTextFromRunes(f.runes[:f.selectionEnd], &TextDecoration{
+				Font:  f.Font,
+				Paint: nil,
+			}).Width()+f.scrollOffset-0.5, clipRect.Y, 1, clipRect.Height),
+				bg.Paint(canvas, rect, Fill))
 		}
-		t.scheduleBlink()
+		f.scheduleBlink()
 	}
 }
 
 // Invalid returns true if the field is currently marked as invalid.
-func (t *Field) Invalid() bool {
-	return t.invalid
+func (f *Field) Invalid() bool {
+	return f.invalid
 }
 
-func (t *Field) scheduleBlink() {
-	window := t.Window()
-	if window != nil && window.IsValid() && !t.pending && t.Enabled() && t.Focused() {
-		t.pending = true
-		InvokeTaskAfter(t.blink, t.BlinkRate)
+func (f *Field) scheduleBlink() {
+	window := f.Window()
+	if window != nil && window.IsValid() && !f.pending && f.Enabled() && f.Focused() {
+		f.pending = true
+		InvokeTaskAfter(f.blink, f.BlinkRate)
 	}
 }
 
-func (t *Field) blink() {
-	window := t.Window()
+func (f *Field) blink() {
+	window := f.Window()
 	if window != nil && window.IsValid() {
-		t.pending = false
-		if time.Now().After(t.forceShowUntil) {
-			t.showCursor = !t.showCursor
-			t.MarkForRedraw()
+		f.pending = false
+		if time.Now().After(f.forceShowUntil) {
+			f.showCursor = !f.showCursor
+			f.MarkForRedraw()
 		}
-		t.scheduleBlink()
+		f.scheduleBlink()
 	}
 }
 
 // DefaultFocusGained provides the default focus gained handling.
-func (t *Field) DefaultFocusGained() {
-	t.SetBorder(t.FocusedBorder)
-	if !t.HasSelectionRange() {
-		t.SelectAll()
+func (f *Field) DefaultFocusGained() {
+	f.SetBorder(f.FocusedBorder)
+	if !f.HasSelectionRange() {
+		f.SelectAll()
 	}
-	t.showCursor = true
-	t.MarkForRedraw()
+	f.showCursor = true
+	f.MarkForRedraw()
 }
 
 // DefaultFocusLost provides the default focus lost handling.
-func (t *Field) DefaultFocusLost() {
-	t.SetBorder(t.UnfocusedBorder)
-	if !t.CanSelectAll() {
-		t.SetSelectionToStart()
+func (f *Field) DefaultFocusLost() {
+	f.SetBorder(f.UnfocusedBorder)
+	if !f.CanSelectAll() {
+		f.SetSelectionToStart()
 	}
-	t.MarkForRedraw()
+	f.MarkForRedraw()
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (t *Field) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
-	t.RequestFocus()
+func (f *Field) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+	f.RequestFocus()
 	if button == ButtonLeft {
-		t.extendByWord = false
+		f.extendByWord = false
 		switch clickCount {
 		case 2:
-			start, end := t.findWordAt(t.ToSelectionIndex(where.X))
-			t.SetSelection(start, end)
-			t.extendByWord = true
+			start, end := f.findWordAt(f.ToSelectionIndex(where.X))
+			f.SetSelection(start, end)
+			f.extendByWord = true
 		case 3:
-			t.SelectAll()
+			f.SelectAll()
 		default:
-			oldAnchor := t.selectionAnchor
-			t.selectionAnchor = t.ToSelectionIndex(where.X)
+			oldAnchor := f.selectionAnchor
+			f.selectionAnchor = f.ToSelectionIndex(where.X)
 			var start, end int
 			if mod.ShiftDown() {
-				if oldAnchor > t.selectionAnchor {
-					start = t.selectionAnchor
+				if oldAnchor > f.selectionAnchor {
+					start = f.selectionAnchor
 					end = oldAnchor
 				} else {
 					start = oldAnchor
-					end = t.selectionAnchor
+					end = f.selectionAnchor
 				}
 			} else {
-				start = t.selectionAnchor
-				end = t.selectionAnchor
+				start = f.selectionAnchor
+				end = f.selectionAnchor
 			}
-			t.setSelection(start, end, t.selectionAnchor)
+			f.setSelection(start, end, f.selectionAnchor)
 		}
 		return true
 	}
@@ -263,12 +284,12 @@ func (t *Field) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (t *Field) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
-	oldAnchor := t.selectionAnchor
-	pos := t.ToSelectionIndex(where.X)
+func (f *Field) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+	oldAnchor := f.selectionAnchor
+	pos := f.ToSelectionIndex(where.X)
 	var start, end int
-	if t.extendByWord {
-		s1, e1 := t.findWordAt(oldAnchor)
+	if f.extendByWord {
+		s1, e1 := f.findWordAt(oldAnchor)
 		var dir int
 		if pos > s1 {
 			dir = -1
@@ -276,7 +297,7 @@ func (t *Field) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 			dir = 1
 		}
 		for {
-			start, end = t.findWordAt(pos)
+			start, end = f.findWordAt(pos)
 			if start != end {
 				if start > s1 {
 					start = s1
@@ -302,55 +323,55 @@ func (t *Field) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 			end = oldAnchor
 		}
 	}
-	t.setSelection(start, end, oldAnchor)
+	f.setSelection(start, end, oldAnchor)
 	return true
 }
 
 // DefaultUpdateCursor provides the default cursor update handling.
-func (t *Field) DefaultUpdateCursor(where geom32.Point) *Cursor {
-	if t.Enabled() {
+func (f *Field) DefaultUpdateCursor(where geom32.Point) *Cursor {
+	if f.Enabled() {
 		return TextCursor()
 	}
 	return ArrowCursor()
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (t *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
 	if mod.OSMenuCmdModifierDown() {
 		return false
 	}
-	if wnd := t.Window(); wnd != nil {
+	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}
 	switch keyCode {
 	case KeyBackspace:
-		t.Delete()
+		f.Delete()
 	case KeyDelete, KeyNumPadDelete:
-		if t.HasSelectionRange() {
-			t.Delete()
-		} else if t.selectionStart < len(t.runes) {
-			t.runes = append(t.runes[:t.selectionStart], t.runes[t.selectionStart+1:]...)
-			t.notifyOfModification()
+		if f.HasSelectionRange() {
+			f.Delete()
+		} else if f.selectionStart < len(f.runes) {
+			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionStart+1:]...)
+			f.notifyOfModification()
 		}
-		t.MarkForRedraw()
+		f.MarkForRedraw()
 	case KeyLeft, KeyNumPadLeft:
 		extend := mod.ShiftDown()
 		if mod.CommandDown() {
-			t.handleHome(extend)
+			f.handleHome(extend)
 		} else {
-			t.handleArrowLeft(extend, mod.OptionDown())
+			f.handleArrowLeft(extend, mod.OptionDown())
 		}
 	case KeyRight, KeyNumPadRight:
 		extend := mod.ShiftDown()
 		if mod.CommandDown() {
-			t.handleEnd(extend)
+			f.handleEnd(extend)
 		} else {
-			t.handleArrowRight(extend, mod.OptionDown())
+			f.handleArrowRight(extend, mod.OptionDown())
 		}
 	case KeyEnd, KeyNumPadEnd, KeyPageDown, KeyNumPadPageDown, KeyDown, KeyNumPadDown:
-		t.handleEnd(mod.ShiftDown())
+		f.handleEnd(mod.ShiftDown())
 	case KeyHome, KeyNumPadHome, KeyPageUp, KeyNumPadPageUp, KeyUp, KeyNumPadUp:
-		t.handleHome(mod.ShiftDown())
+		f.handleHome(mod.ShiftDown())
 	case KeyTab:
 		return false
 	}
@@ -358,304 +379,304 @@ func (t *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool
 }
 
 // DefaultRuneTyped provides the default rune typed handling.
-func (t *Field) DefaultRuneTyped(ch rune) bool {
-	if wnd := t.Window(); wnd != nil {
+func (f *Field) DefaultRuneTyped(ch rune) bool {
+	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}
 	if unicode.IsControl(ch) {
 		return false
 	}
-	if t.HasSelectionRange() {
-		t.runes = append(t.runes[:t.selectionStart], t.runes[t.selectionEnd:]...)
+	if f.HasSelectionRange() {
+		f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
 	}
-	t.runes = append(t.runes[:t.selectionStart], append([]rune{ch}, t.runes[t.selectionStart:]...)...)
-	t.SetSelectionTo(t.selectionStart + 1)
-	t.notifyOfModification()
+	f.runes = append(f.runes[:f.selectionStart], append([]rune{ch}, f.runes[f.selectionStart:]...)...)
+	f.SetSelectionTo(f.selectionStart + 1)
+	f.notifyOfModification()
 	return true
 }
 
-func (t *Field) handleHome(extend bool) {
+func (f *Field) handleHome(extend bool) {
 	if extend {
-		t.setSelection(0, t.selectionEnd, t.selectionEnd)
+		f.setSelection(0, f.selectionEnd, f.selectionEnd)
 	} else {
-		t.SetSelectionToStart()
+		f.SetSelectionToStart()
 	}
 }
 
-func (t *Field) handleEnd(extend bool) {
+func (f *Field) handleEnd(extend bool) {
 	if extend {
-		t.SetSelection(t.selectionStart, len(t.runes))
+		f.SetSelection(f.selectionStart, len(f.runes))
 	} else {
-		t.SetSelectionToEnd()
+		f.SetSelectionToEnd()
 	}
 }
 
-func (t *Field) handleArrowLeft(extend, byWord bool) {
-	if t.HasSelectionRange() {
+func (f *Field) handleArrowLeft(extend, byWord bool) {
+	if f.HasSelectionRange() {
 		if extend {
-			anchor := t.selectionAnchor
-			if t.selectionStart == anchor {
-				pos := t.selectionEnd - 1
+			anchor := f.selectionAnchor
+			if f.selectionStart == anchor {
+				pos := f.selectionEnd - 1
 				if byWord {
-					start, _ := t.findWordAt(pos)
+					start, _ := f.findWordAt(pos)
 					pos = xmath.MinInt(xmath.MaxInt(start, anchor), pos)
 				}
-				t.setSelection(anchor, pos, anchor)
+				f.setSelection(anchor, pos, anchor)
 			} else {
-				pos := t.selectionStart - 1
+				pos := f.selectionStart - 1
 				if byWord {
-					start, _ := t.findWordAt(pos)
+					start, _ := f.findWordAt(pos)
 					pos = xmath.MinInt(start, pos)
 				}
-				t.setSelection(pos, anchor, anchor)
+				f.setSelection(pos, anchor, anchor)
 			}
 		} else {
-			t.SetSelectionTo(t.selectionStart)
+			f.SetSelectionTo(f.selectionStart)
 		}
 	} else {
-		pos := t.selectionStart - 1
+		pos := f.selectionStart - 1
 		if byWord {
-			start, _ := t.findWordAt(pos)
+			start, _ := f.findWordAt(pos)
 			pos = xmath.MinInt(start, pos)
 		}
 		if extend {
-			t.setSelection(pos, t.selectionStart, t.selectionEnd)
+			f.setSelection(pos, f.selectionStart, f.selectionEnd)
 		} else {
-			t.SetSelectionTo(pos)
+			f.SetSelectionTo(pos)
 		}
 	}
 }
 
-func (t *Field) handleArrowRight(extend, byWord bool) {
-	if t.HasSelectionRange() {
+func (f *Field) handleArrowRight(extend, byWord bool) {
+	if f.HasSelectionRange() {
 		if extend {
-			anchor := t.selectionAnchor
-			if t.selectionEnd == anchor {
-				pos := t.selectionStart + 1
+			anchor := f.selectionAnchor
+			if f.selectionEnd == anchor {
+				pos := f.selectionStart + 1
 				if byWord {
-					_, end := t.findWordAt(pos)
+					_, end := f.findWordAt(pos)
 					pos = xmath.MaxInt(xmath.MinInt(end, anchor), pos)
 				}
-				t.setSelection(pos, anchor, anchor)
+				f.setSelection(pos, anchor, anchor)
 			} else {
-				pos := t.selectionEnd + 1
+				pos := f.selectionEnd + 1
 				if byWord {
-					_, end := t.findWordAt(pos)
+					_, end := f.findWordAt(pos)
 					pos = xmath.MaxInt(end, pos)
 				}
-				t.setSelection(anchor, pos, anchor)
+				f.setSelection(anchor, pos, anchor)
 			}
 		} else {
-			t.SetSelectionTo(t.selectionEnd)
+			f.SetSelectionTo(f.selectionEnd)
 		}
 	} else {
-		pos := t.selectionEnd + 1
+		pos := f.selectionEnd + 1
 		if byWord {
-			_, end := t.findWordAt(pos)
+			_, end := f.findWordAt(pos)
 			pos = xmath.MaxInt(end, pos)
 		}
 		if extend {
-			t.SetSelection(t.selectionStart, pos)
+			f.SetSelection(f.selectionStart, pos)
 		} else {
-			t.SetSelectionTo(pos)
+			f.SetSelectionTo(pos)
 		}
 	}
 }
 
 // DefaultCanPerformCmd provides the default can perform command handling.
-func (t *Field) DefaultCanPerformCmd(source interface{}, id int) bool {
+func (f *Field) DefaultCanPerformCmd(source interface{}, id int) bool {
 	switch id {
 	case CutItemID:
-		return t.CanCut()
+		return f.CanCut()
 	case CopyItemID:
-		return t.CanCopy()
+		return f.CanCopy()
 	case PasteItemID:
-		return t.CanPaste()
+		return f.CanPaste()
 	case DeleteItemID:
-		return t.CanDelete()
+		return f.CanDelete()
 	case SelectAllItemID:
-		return t.CanSelectAll()
+		return f.CanSelectAll()
 	default:
 		return false
 	}
 }
 
 // DefaultPerformCmd provides the default perform command handling.
-func (t *Field) DefaultPerformCmd(source interface{}, id int) {
+func (f *Field) DefaultPerformCmd(source interface{}, id int) {
 	switch id {
 	case CutItemID:
-		t.Cut()
+		f.Cut()
 	case CopyItemID:
-		t.Copy()
+		f.Copy()
 	case PasteItemID:
-		t.Paste()
+		f.Paste()
 	case DeleteItemID:
-		t.Delete()
+		f.Delete()
 	case SelectAllItemID:
-		t.SelectAll()
+		f.SelectAll()
 	default:
 	}
 }
 
 // CanCut returns true if the field has a selection that can be cut.
-func (t *Field) CanCut() bool {
-	return t.HasSelectionRange()
+func (f *Field) CanCut() bool {
+	return f.HasSelectionRange()
 }
 
 // Cut the selected text to the clipboard.
-func (t *Field) Cut() {
-	if t.HasSelectionRange() {
-		GlobalClipboard.SetText(t.SelectedText())
-		t.Delete()
+func (f *Field) Cut() {
+	if f.HasSelectionRange() {
+		GlobalClipboard.SetText(f.SelectedText())
+		f.Delete()
 	}
 }
 
 // CanCopy returns true if the field has a selection that can be copied.
-func (t *Field) CanCopy() bool {
-	return t.HasSelectionRange()
+func (f *Field) CanCopy() bool {
+	return f.HasSelectionRange()
 }
 
 // Copy the selected text to the clipboard.
-func (t *Field) Copy() {
-	if t.HasSelectionRange() {
-		GlobalClipboard.SetText(t.SelectedText())
+func (f *Field) Copy() {
+	if f.HasSelectionRange() {
+		GlobalClipboard.SetText(f.SelectedText())
 	}
 }
 
 // CanPaste returns true if the clipboard has content that can be pasted into the field.
-func (t *Field) CanPaste() bool {
+func (f *Field) CanPaste() bool {
 	return GlobalClipboard.GetText() != ""
 }
 
 // Paste any text on the clipboard into the field.
-func (t *Field) Paste() {
+func (f *Field) Paste() {
 	text := GlobalClipboard.GetText()
 	if text != "" {
-		runes := []rune(t.sanitize(text))
-		if t.HasSelectionRange() {
-			t.runes = append(t.runes[:t.selectionStart], t.runes[t.selectionEnd:]...)
+		runes := []rune(f.sanitize(text))
+		if f.HasSelectionRange() {
+			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
 		}
-		t.runes = append(t.runes[:t.selectionStart], append(runes, t.runes[t.selectionStart:]...)...)
-		t.SetSelectionTo(t.selectionStart + len(runes))
-		t.notifyOfModification()
-	} else if t.HasSelectionRange() {
-		t.Delete()
+		f.runes = append(f.runes[:f.selectionStart], append(runes, f.runes[f.selectionStart:]...)...)
+		f.SetSelectionTo(f.selectionStart + len(runes))
+		f.notifyOfModification()
+	} else if f.HasSelectionRange() {
+		f.Delete()
 	}
 }
 
 // CanDelete returns true if the field has a selection that can be deleted.
-func (t *Field) CanDelete() bool {
-	return t.HasSelectionRange() || t.selectionStart > 0
+func (f *Field) CanDelete() bool {
+	return f.HasSelectionRange() || f.selectionStart > 0
 }
 
 // Delete removes the currently selected text, if any.
-func (t *Field) Delete() {
-	if t.CanDelete() {
-		if t.HasSelectionRange() {
-			t.runes = append(t.runes[:t.selectionStart], t.runes[t.selectionEnd:]...)
-			t.SetSelectionTo(t.selectionStart)
+func (f *Field) Delete() {
+	if f.CanDelete() {
+		if f.HasSelectionRange() {
+			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
+			f.SetSelectionTo(f.selectionStart)
 		} else {
-			t.runes = append(t.runes[:t.selectionStart-1], t.runes[t.selectionStart:]...)
-			t.SetSelectionTo(t.selectionStart - 1)
+			f.runes = append(f.runes[:f.selectionStart-1], f.runes[f.selectionStart:]...)
+			f.SetSelectionTo(f.selectionStart - 1)
 		}
-		t.notifyOfModification()
-		t.MarkForRedraw()
+		f.notifyOfModification()
+		f.MarkForRedraw()
 	}
 }
 
 // CanSelectAll returns true if the field's selection can be expanded.
-func (t *Field) CanSelectAll() bool {
-	return t.selectionStart != 0 || t.selectionEnd != len(t.runes)
+func (f *Field) CanSelectAll() bool {
+	return f.selectionStart != 0 || f.selectionEnd != len(f.runes)
 }
 
 // SelectAll selects all of the text in the field.
-func (t *Field) SelectAll() {
-	t.SetSelection(0, len(t.runes))
+func (f *Field) SelectAll() {
+	f.SetSelection(0, len(f.runes))
 }
 
 // Text returns the content of the field.
-func (t *Field) Text() string {
-	return string(t.runes)
+func (f *Field) Text() string {
+	return string(f.runes)
 }
 
 // SetText sets the content of the field.
-func (t *Field) SetText(text string) {
-	text = t.sanitize(text)
-	if string(t.runes) != text {
-		t.runes = []rune(text)
-		t.SetSelectionToEnd()
-		t.notifyOfModification()
+func (f *Field) SetText(text string) {
+	text = f.sanitize(text)
+	if string(f.runes) != text {
+		f.runes = []rune(text)
+		f.SetSelectionToEnd()
+		f.notifyOfModification()
 	}
 }
 
-func (t *Field) notifyOfModification() {
-	t.MarkForRedraw()
-	if t.ModifiedCallback != nil {
-		t.ModifiedCallback()
+func (f *Field) notifyOfModification() {
+	f.MarkForRedraw()
+	if f.ModifiedCallback != nil {
+		f.ModifiedCallback()
 	}
-	t.Validate()
+	f.Validate()
 }
 
 // Validate forces field content validation to be run.
-func (t *Field) Validate() {
+func (f *Field) Validate() {
 	invalid := false
-	if t.ValidateCallback != nil {
-		invalid = !t.ValidateCallback()
+	if f.ValidateCallback != nil {
+		invalid = !f.ValidateCallback()
 	}
-	if invalid != t.invalid {
-		t.invalid = invalid
-		t.MarkForRedraw()
+	if invalid != f.invalid {
+		f.invalid = invalid
+		f.MarkForRedraw()
 	}
 }
 
-func (t *Field) sanitize(text string) string {
+func (f *Field) sanitize(text string) string {
 	return strings.NewReplacer("\n", "", "\r", "").Replace(text)
 }
 
 // SelectedText returns the currently selected text.
-func (t *Field) SelectedText() string {
-	return string(t.runes[t.selectionStart:t.selectionEnd])
+func (f *Field) SelectedText() string {
+	return string(f.runes[f.selectionStart:f.selectionEnd])
 }
 
 // HasSelectionRange returns true is a selection range is currently present.
-func (t *Field) HasSelectionRange() bool {
-	return t.selectionStart < t.selectionEnd
+func (f *Field) HasSelectionRange() bool {
+	return f.selectionStart < f.selectionEnd
 }
 
 // SelectionCount returns the number of characters currently selected.
-func (t *Field) SelectionCount() int {
-	return t.selectionEnd - t.selectionStart
+func (f *Field) SelectionCount() int {
+	return f.selectionEnd - f.selectionStart
 }
 
 // Selection returns the current start and end selection indexes.
-func (t *Field) Selection() (start, end int) {
-	return t.selectionStart, t.selectionEnd
+func (f *Field) Selection() (start, end int) {
+	return f.selectionStart, f.selectionEnd
 }
 
 // SetSelectionToStart moves the cursor to the beginning of the text and removes any range that may have been present.
-func (t *Field) SetSelectionToStart() {
-	t.SetSelection(0, 0)
+func (f *Field) SetSelectionToStart() {
+	f.SetSelection(0, 0)
 }
 
 // SetSelectionToEnd moves the cursor to the end of the text and removes any range that may have been present.
-func (t *Field) SetSelectionToEnd() {
-	t.SetSelection(math.MaxInt64, math.MaxInt64)
+func (f *Field) SetSelectionToEnd() {
+	f.SetSelection(math.MaxInt64, math.MaxInt64)
 }
 
 // SetSelectionTo moves the cursor to the specified index and removes any range that may have been present.
-func (t *Field) SetSelectionTo(pos int) {
-	t.SetSelection(pos, pos)
+func (f *Field) SetSelectionTo(pos int) {
+	f.SetSelection(pos, pos)
 }
 
 // SetSelection sets the start and end range of the selection. Values beyond either end will be constrained to the
 // appropriate end. Likewise, an end value less than the start value will be treated as if the start and end values were
 // the same.
-func (t *Field) SetSelection(start, end int) {
-	t.setSelection(start, end, start)
+func (f *Field) SetSelection(start, end int) {
+	f.setSelection(start, end, start)
 }
 
-func (t *Field) setSelection(start, end, anchor int) {
-	length := len(t.runes)
+func (f *Field) setSelection(start, end, anchor int) {
+	length := len(f.runes)
 	if start < 0 {
 		start = 0
 	} else if start > length {
@@ -671,61 +692,61 @@ func (t *Field) setSelection(start, end, anchor int) {
 	} else if anchor > end {
 		anchor = end
 	}
-	if t.selectionStart != start || t.selectionEnd != end || t.selectionAnchor != anchor {
-		t.selectionStart = start
-		t.selectionEnd = end
-		t.selectionAnchor = anchor
-		t.forceShowUntil = time.Now().Add(t.BlinkRate)
-		t.showCursor = true
-		t.MarkForRedraw()
-		t.ScrollIntoView()
-		t.autoScroll()
+	if f.selectionStart != start || f.selectionEnd != end || f.selectionAnchor != anchor {
+		f.selectionStart = start
+		f.selectionEnd = end
+		f.selectionAnchor = anchor
+		f.forceShowUntil = time.Now().Add(f.BlinkRate)
+		f.showCursor = true
+		f.MarkForRedraw()
+		f.ScrollIntoView()
+		f.autoScroll()
 	}
 }
 
 // ScrollOffset returns the current autoscroll offset.
-func (t *Field) ScrollOffset() float32 {
-	return t.scrollOffset
+func (f *Field) ScrollOffset() float32 {
+	return f.scrollOffset
 }
 
 // SetScrollOffset sets the autoscroll offset to the specified value.
-func (t *Field) SetScrollOffset(offset float32) {
-	if t.scrollOffset != offset {
-		t.scrollOffset = offset
-		t.MarkForRedraw()
+func (f *Field) SetScrollOffset(offset float32) {
+	if f.scrollOffset != offset {
+		f.scrollOffset = offset
+		f.MarkForRedraw()
 	}
 }
 
-func (t *Field) autoScroll() {
-	rect := t.ContentRect(false)
+func (f *Field) autoScroll() {
+	rect := f.ContentRect(false)
 	if rect.Width > 0 {
-		original := t.scrollOffset
-		if t.selectionStart == t.selectionAnchor {
-			right := t.FromSelectionIndex(t.selectionEnd).X
+		original := f.scrollOffset
+		if f.selectionStart == f.selectionAnchor {
+			right := f.FromSelectionIndex(f.selectionEnd).X
 			if right < rect.X {
-				t.scrollOffset = 0
-				t.scrollOffset = rect.X - t.FromSelectionIndex(t.selectionEnd).X
+				f.scrollOffset = 0
+				f.scrollOffset = rect.X - f.FromSelectionIndex(f.selectionEnd).X
 			} else if right >= rect.X+rect.Width {
-				t.scrollOffset = 0
-				t.scrollOffset = rect.X + rect.Width - 1 - t.FromSelectionIndex(t.selectionEnd).X
+				f.scrollOffset = 0
+				f.scrollOffset = rect.X + rect.Width - 1 - f.FromSelectionIndex(f.selectionEnd).X
 			}
 		} else {
-			left := t.FromSelectionIndex(t.selectionStart).X
+			left := f.FromSelectionIndex(f.selectionStart).X
 			if left < rect.X {
-				t.scrollOffset = 0
-				t.scrollOffset = rect.X - t.FromSelectionIndex(t.selectionStart).X
+				f.scrollOffset = 0
+				f.scrollOffset = rect.X - f.FromSelectionIndex(f.selectionStart).X
 			} else if left >= rect.X+rect.Width {
-				t.scrollOffset = 0
-				t.scrollOffset = rect.X + rect.Width - 1 - t.FromSelectionIndex(t.selectionStart).X
+				f.scrollOffset = 0
+				f.scrollOffset = rect.X + rect.Width - 1 - f.FromSelectionIndex(f.selectionStart).X
 			}
 		}
-		save := t.scrollOffset
-		t.scrollOffset = 0
-		min := rect.X + rect.Width - 1 - t.FromSelectionIndex(len(t.runes)).X
+		save := f.scrollOffset
+		f.scrollOffset = 0
+		min := rect.X + rect.Width - 1 - f.FromSelectionIndex(len(f.runes)).X
 		if min > 0 {
 			min = 0
 		}
-		max := rect.X - t.FromSelectionIndex(0).X
+		max := rect.X - f.FromSelectionIndex(0).X
 		if max < 0 {
 			max = 0
 		}
@@ -734,36 +755,42 @@ func (t *Field) autoScroll() {
 		} else if save > max {
 			save = max
 		}
-		t.scrollOffset = save
-		if original != t.scrollOffset {
-			t.MarkForRedraw()
+		f.scrollOffset = save
+		if original != f.scrollOffset {
+			f.MarkForRedraw()
 		}
 	}
 }
 
 // ToSelectionIndex returns the rune index for the specified x-coordinate.
-func (t *Field) ToSelectionIndex(x float32) int {
-	rect := t.ContentRect(false)
-	return t.Font.IndexForPosition(x-(rect.X+t.scrollOffset), string(t.runes))
+func (f *Field) ToSelectionIndex(x float32) int {
+	rect := f.ContentRect(false)
+	return NewTextFromRunes(f.runes, &TextDecoration{
+		Font:  f.Font,
+		Paint: nil,
+	}).RuneIndexForPosition(x - (rect.X + f.scrollOffset))
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
-func (t *Field) FromSelectionIndex(index int) geom32.Point {
-	rect := t.ContentRect(false)
-	x := rect.X + t.scrollOffset
+func (f *Field) FromSelectionIndex(index int) geom32.Point {
+	rect := f.ContentRect(false)
+	x := rect.X + f.scrollOffset
 	top := rect.Y + rect.Height/2
 	if index > 0 {
-		length := len(t.runes)
+		length := len(f.runes)
 		if index > length {
 			index = length
 		}
-		x += t.Font.PositionForIndex(index, string(t.runes))
+		x += NewTextFromRunes(f.runes, &TextDecoration{
+			Font:  f.Font,
+			Paint: nil,
+		}).PositionForRuneIndex(index)
 	}
 	return geom32.Point{X: x, Y: top}
 }
 
-func (t *Field) findWordAt(pos int) (start, end int) {
-	length := len(t.runes)
+func (f *Field) findWordAt(pos int) (start, end int) {
+	length := len(f.runes)
 	if pos < 0 {
 		pos = 0
 	} else if pos >= length {
@@ -771,11 +798,11 @@ func (t *Field) findWordAt(pos int) (start, end int) {
 	}
 	start = pos
 	end = pos
-	if length > 0 && !unicode.IsSpace(t.runes[start]) {
-		for start > 0 && !unicode.IsSpace(t.runes[start-1]) {
+	if length > 0 && !unicode.IsSpace(f.runes[start]) {
+		for start > 0 && !unicode.IsSpace(f.runes[start-1]) {
 			start--
 		}
-		for end < length && !unicode.IsSpace(t.runes[end]) {
+		for end < length && !unicode.IsSpace(f.runes[end]) {
 			end++
 		}
 	}

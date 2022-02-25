@@ -329,9 +329,27 @@ func FontTextToGlyphs(font Font, str string) []uint16 {
 	return glyphs
 }
 
+func FontRuneToGlyph(font Font, r rune) uint16 {
+	return uint16(C.sk_font_unichar_to_glyph(font, C.int32_t(r)))
+}
+
+func FontRunesToGlyphs(font Font, r []rune) []uint16 {
+	glyphs := make([]uint16, len(r))
+	C.sk_font_unichars_to_glyphs(font, (*C.int32_t)(unsafe.Pointer(&r[0])), C.int(len(r)), (*C.uint16_t)(unsafe.Pointer(&glyphs[0])))
+	return glyphs
+}
+
+func FontGlyphWidths(font Font, glyphs []uint16) []float32 {
+	widths := make([]float32, len(glyphs))
+	C.sk_font_glyph_widths(font, (*C.uint16_t)(unsafe.Pointer(&glyphs[0])), C.int(len(glyphs)), (*C.float)(unsafe.Pointer(&widths[0])))
+	return widths
+}
+
 func FontGlyphsXPos(font Font, glyphs []uint16) []float32 {
 	pos := make([]float32, len(glyphs)+1)
-	C.sk_font_get_xpos(font, (*C.ushort)(&glyphs[0]), C.int(len(glyphs)), (*C.float)(unsafe.Pointer(&pos[0])), 0)
+	g2 := make([]uint16, len(glyphs)+1)
+	copy(g2, glyphs)
+	C.sk_font_get_xpos(font, (*C.ushort)(&g2[0]), C.int(len(g2)), (*C.float)(unsafe.Pointer(&pos[0])), 0)
 	return pos
 }
 
@@ -640,6 +658,10 @@ func PaintDelete(paint Paint) {
 
 func PaintClone(paint Paint) Paint {
 	return C.sk_paint_clone(paint)
+}
+
+func PaintEquivalent(left, right Paint) bool {
+	return bool(C.sk_paint_equivalent(left, right))
 }
 
 func PaintReset(paint Paint) {
@@ -1085,26 +1107,8 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 }
 
 func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, x, y float32) {
-	buffer := &TextBlobBuilderRunBuffer{
-		Glyphs: unsafe.Pointer(&glyphs[0]),
-	}
-	C.sk_textblob_builder_alloc_run(builder, font, C.int(len(glyphs)), C.float(x), C.float(y), nil, (*C.sk_text_blob_builder_run_buffer_t)(unsafe.Pointer(buffer)))
-}
-
-func TextBlobBuilderAllocRunPos(builder TextBlobBuilder, font Font, glyphs []uint16, pos []geom32.Point) {
-	buffer := &TextBlobBuilderRunBuffer{
-		Glyphs: unsafe.Pointer(&glyphs[0]),
-		Pos:    unsafe.Pointer(&pos[0]),
-	}
-	C.sk_textblob_builder_alloc_run_pos(builder, font, C.int(len(glyphs)), nil, (*C.sk_text_blob_builder_run_buffer_t)(unsafe.Pointer(buffer)))
-}
-
-func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, pos []float32, y float32) {
-	buffer := &TextBlobBuilderRunBuffer{
-		Glyphs: unsafe.Pointer(&glyphs[0]),
-		Pos:    unsafe.Pointer(&pos[0]),
-	}
-	C.sk_textblob_builder_alloc_run_pos_h(builder, font, C.int(len(glyphs)), C.float(y), nil, (*C.sk_text_blob_builder_run_buffer_t)(unsafe.Pointer(buffer)))
+	buffer := C.sk_textblob_builder_alloc_run(builder, font, C.int(len(glyphs)), C.float(x), C.float(y), nil)
+	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.glyphs)))[:len(glyphs)], glyphs)
 }
 
 func TextBlobBuilderDelete(builder TextBlobBuilder) {

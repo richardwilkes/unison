@@ -10,8 +10,6 @@
 package skia
 
 import (
-	"unsafe"
-
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
 
@@ -222,13 +220,6 @@ func Matrix2DtoMatrix(m *geom32.Matrix2D) *Matrix {
 		TransY: m.TransY,
 		Persp2: 1,
 	}
-}
-
-type TextBlobBuilderRunBuffer struct {
-	Glyphs   unsafe.Pointer
-	Pos      unsafe.Pointer
-	UTF8Text unsafe.Pointer
-	Clusters unsafe.Pointer
 }
 
 type GLFrameBufferInfo struct {

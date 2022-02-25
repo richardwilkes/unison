@@ -74,7 +74,10 @@ func (l *Label) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 func LabelSize(text string, font Font, drawable Drawable, drawableSide Side, imgGap float32) geom32.Size {
 	var size geom32.Size
 	if text != "" {
-		size = font.Extents(text)
+		size = NewText(text, &TextDecoration{
+			Font:  font,
+			Paint: nil,
+		}).Extents()
 		size.GrowToInteger()
 	}
 	adjustLabelSizeForDrawable(text, drawable, drawableSide, imgGap, &size)
@@ -116,8 +119,13 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 
 	// Determine overall size of content
 	var size, txtSize geom32.Size
+	var t *Text
 	if text != "" {
-		txtSize = font.Extents(text)
+		t = NewText(text, &TextDecoration{
+			Font:  font,
+			Paint: paint,
+		})
+		txtSize = t.Extents()
 		size = txtSize
 	}
 	adjustLabelSizeForDrawable(text, drawable, drawableSide, imgGap, &size)
@@ -188,8 +196,8 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 		rect.Size = drawable.LogicalSize()
 		drawable.DrawInRect(canvas, rect, nil, paint)
 	}
-	if text != "" {
-		canvas.DrawSimpleText(text, txtX, txtY+font.Baseline(), font, paint)
+	if t != nil {
+		t.Draw(canvas, txtX, txtY+t.Baseline())
 	}
 	canvas.Restore()
 }

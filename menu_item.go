@@ -236,7 +236,10 @@ func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
 		if !mi.keyBinding.KeyCode.ShouldOmit() {
 			name := mi.keyBinding.String()
 			if name != "" {
-				size := DefaultMenuItemTheme.KeyFont.Extents(name)
+				size := NewText(name, &TextDecoration{
+					Font:  DefaultMenuItemTheme.KeyFont,
+					Paint: nil,
+				}).Extents()
 				pref.Width += DefaultMenuItemTheme.KeyGap + size.Width
 				pref.Height = mathf32.Max(pref.Height, size.Height)
 			}
@@ -266,18 +269,23 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 	if mi.isSeparator {
 		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, paint)
 	} else {
-		size := DefaultMenuItemTheme.TitleFont.Extents(mi.Title())
-		gc.DrawSimpleText(mi.Title(), rect.X,
-			mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.TitleFont.Baseline(),
-			DefaultMenuItemTheme.TitleFont, paint)
+		t := NewText(mi.Title(), &TextDecoration{
+			Font:  DefaultMenuItemTheme.TitleFont,
+			Paint: paint,
+		})
+		size := t.Extents()
+		t.Draw(gc, rect.X, mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 		if mi.subMenu == nil {
 			if !mi.keyBinding.KeyCode.ShouldOmit() {
 				name := mi.keyBinding.String()
 				if name != "" {
-					size = DefaultMenuItemTheme.KeyFont.Extents(name)
-					gc.DrawSimpleText(name, mathf32.Floor(rect.Right()-size.Width),
-						mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+DefaultMenuItemTheme.KeyFont.Baseline(),
-						DefaultMenuItemTheme.KeyFont, paint)
+					t = NewText(name, &TextDecoration{
+						Font:  DefaultMenuItemTheme.KeyFont,
+						Paint: paint,
+					})
+					size = t.Extents()
+					t.Draw(gc, mathf32.Floor(rect.Right()-size.Width),
+						mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 				}
 			}
 		} else if !mi.isRoot() {

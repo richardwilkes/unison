@@ -133,6 +133,17 @@ func (p *Paint) Clone() *Paint {
 	return newPaint(skia.PaintClone(p.paint))
 }
 
+// Equivalent returns true if these Paint objects are equivalent.
+func (p *Paint) Equivalent(other *Paint) bool {
+	if p == nil {
+		return other == nil
+	}
+	if other == nil {
+		return false
+	}
+	return skia.PaintEquivalent(p.paint, other.paint)
+}
+
 // Reset the Paint back to its default state.
 func (p *Paint) Reset() {
 	skia.PaintReset(p.paint)

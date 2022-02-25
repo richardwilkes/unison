@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -56,39 +55,29 @@ func (f *DynamicFont) LineHeight() float32 {
 	return f.resolvedFont().LineHeight()
 }
 
-// Width implements Font.
-func (f *DynamicFont) Width(str string) float32 {
-	return f.resolvedFont().Width(str)
+// RuneToGlyph implements Font.
+func (f *DynamicFont) RuneToGlyph(r rune) uint16 {
+	return f.resolvedFont().RuneToGlyph(r)
 }
 
-// Extents implements Font.
-func (f *DynamicFont) Extents(str string) geom32.Size {
-	return f.resolvedFont().Extents(str)
+// RunesToGlyphs implements Font.
+func (f *DynamicFont) RunesToGlyphs(r []rune) []uint16 {
+	return f.resolvedFont().RunesToGlyphs(r)
 }
 
-// Glyphs implements Font.
-func (f *DynamicFont) Glyphs(text string) []uint16 {
-	return f.resolvedFont().Glyphs(text)
+// GlyphWidth implements Font.
+func (f *DynamicFont) GlyphWidth(glyph uint16) float32 {
+	return f.resolvedFont().GlyphWidth(glyph)
 }
 
-// GlyphStarts implements Font.
-func (f *DynamicFont) GlyphStarts(glyphs []uint16) []float32 {
-	return f.resolvedFont().GlyphStarts(glyphs)
+// GlyphWidths implements Font.
+func (f *DynamicFont) GlyphWidths(glyphs []uint16) []float32 {
+	return f.resolvedFont().GlyphWidths(glyphs)
 }
 
-// IndexForPosition implements Font.
-func (f *DynamicFont) IndexForPosition(x float32, str string) int {
-	return f.resolvedFont().IndexForPosition(x, str)
-}
-
-// PositionForIndex implements Font.
-func (f *DynamicFont) PositionForIndex(index int, str string) float32 {
-	return f.resolvedFont().PositionForIndex(index, str)
-}
-
-// WrapText implements Font.
-func (f *DynamicFont) WrapText(text string, width float32) []string {
-	return f.resolvedFont().WrapText(text, width)
+// SimpleWidth implements Font.
+func (f *DynamicFont) SimpleWidth(str string) float32 {
+	return f.resolvedFont().SimpleWidth(str)
 }
 
 // Descriptor implements Font.

@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -46,39 +45,29 @@ func (f *IndirectFont) LineHeight() float32 {
 	return f.Font.LineHeight()
 }
 
-// Width implements Font.
-func (f *IndirectFont) Width(str string) float32 {
-	return f.Font.Width(str)
+// RuneToGlyph implements Font.
+func (f *IndirectFont) RuneToGlyph(r rune) uint16 {
+	return f.Font.RuneToGlyph(r)
 }
 
-// Extents implements Font.
-func (f *IndirectFont) Extents(str string) geom32.Size {
-	return f.Font.Extents(str)
+// RunesToGlyphs implements Font.
+func (f *IndirectFont) RunesToGlyphs(r []rune) []uint16 {
+	return f.Font.RunesToGlyphs(r)
 }
 
-// Glyphs implements Font.
-func (f *IndirectFont) Glyphs(text string) []uint16 {
-	return f.Font.Glyphs(text)
+// GlyphWidth implements Font.
+func (f *IndirectFont) GlyphWidth(glyph uint16) float32 {
+	return f.Font.GlyphWidth(glyph)
 }
 
-// GlyphStarts implements Font.
-func (f *IndirectFont) GlyphStarts(glyphs []uint16) []float32 {
-	return f.Font.GlyphStarts(glyphs)
+// GlyphWidths implements Font.
+func (f *IndirectFont) GlyphWidths(glyphs []uint16) []float32 {
+	return f.Font.GlyphWidths(glyphs)
 }
 
-// IndexForPosition implements Font.
-func (f *IndirectFont) IndexForPosition(x float32, str string) int {
-	return f.Font.IndexForPosition(x, str)
-}
-
-// PositionForIndex implements Font.
-func (f *IndirectFont) PositionForIndex(index int, str string) float32 {
-	return f.Font.PositionForIndex(index, str)
-}
-
-// WrapText implements Font.
-func (f *IndirectFont) WrapText(text string, width float32) []string {
-	return f.Font.WrapText(text, width)
+// SimpleWidth implements Font.
+func (f *IndirectFont) SimpleWidth(str string) float32 {
+	return f.Font.SimpleWidth(str)
 }
 
 // Descriptor implements Font.
