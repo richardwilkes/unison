@@ -174,7 +174,7 @@ func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		bg = b.BackgroundInk
 		fg = b.OnBackgroundInk
 	}
-	if b.rollover && b.RolloverInk != nil {
+	if b.rollover && !b.disabled && b.RolloverInk != nil {
 		fg = b.RolloverInk
 	}
 	rect := b.ContentRect(false)
