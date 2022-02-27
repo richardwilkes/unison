@@ -37,6 +37,29 @@ var DefaultButtonTheme = ButtonTheme{
 	HideBase:            false,
 }
 
+// DefaultSVGButtonTheme holds the default ButtonTheme values for SVG Buttons. Modifying this data will not alter
+// existing Buttons, but will alter any Buttons created in the future.
+var DefaultSVGButtonTheme = ButtonTheme{
+	Font:                SystemFont,
+	BackgroundInk:       ControlColor,
+	OnBackgroundInk:     IconButtonColor,
+	EdgeInk:             ControlEdgeColor,
+	SelectionInk:        SelectionColor,
+	OnSelectionInk:      IconButtonPressedColor,
+	RolloverInk:         IconButtonRolloverColor,
+	Gap:                 3,
+	CornerRadius:        4,
+	HMargin:             8,
+	VMargin:             1,
+	DrawableOnlyHMargin: 3,
+	DrawableOnlyVMargin: 3,
+	ClickAnimationTime:  100 * time.Millisecond,
+	HAlign:              MiddleAlignment,
+	VAlign:              MiddleAlignment,
+	Side:                LeftSide,
+	HideBase:            false,
+}
+
 // ButtonTheme holds theming data for a Button.
 type ButtonTheme struct {
 	Font                Font
@@ -45,6 +68,7 @@ type ButtonTheme struct {
 	EdgeInk             Ink
 	SelectionInk        Ink
 	OnSelectionInk      Ink
+	RolloverInk         Ink
 	Gap                 float32
 	CornerRadius        float32
 	HMargin             float32
@@ -67,6 +91,7 @@ type Button struct {
 	Drawable      Drawable
 	Text          string
 	Pressed       bool
+	rollover      bool
 }
 
 // NewButton creates a new button.
@@ -81,6 +106,8 @@ func NewButton() *Button {
 	b.MouseDownCallback = b.DefaultMouseDown
 	b.MouseDragCallback = b.DefaultMouseDrag
 	b.MouseUpCallback = b.DefaultMouseUp
+	b.MouseEnterCallback = b.DefaultMouseEnter
+	b.MouseExitCallback = b.DefaultMouseExit
 	b.KeyDownCallback = b.DefaultKeyDown
 	return b
 }
@@ -88,6 +115,7 @@ func NewButton() *Button {
 // NewSVGButton creates an SVG icon button with a size equal to the default button theme's font baseline.
 func NewSVGButton(svg *SVG) *Button {
 	b := NewButton()
+	b.ButtonTheme = DefaultSVGButtonTheme
 	b.HideBase = true
 	baseline := b.Font.Baseline()
 	size := geom32.NewSize(baseline, baseline)
@@ -145,6 +173,9 @@ func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	default:
 		bg = b.BackgroundInk
 		fg = b.OnBackgroundInk
+	}
+	if b.rollover && b.RolloverInk != nil {
+		fg = b.RolloverInk
 	}
 	rect := b.ContentRect(false)
 	if !b.HideBase || b.Focused() {
@@ -206,6 +237,20 @@ func (b *Button) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) b
 			b.ClickCallback()
 		}
 	}
+	return true
+}
+
+// DefaultMouseEnter provides the default mouse enter handling.
+func (b *Button) DefaultMouseEnter(_ geom32.Point, _ Modifiers) bool {
+	b.rollover = true
+	b.MarkForRedraw()
+	return true
+}
+
+// DefaultMouseExit provides the default mouse exit handling.
+func (b *Button) DefaultMouseExit() bool {
+	b.rollover = false
+	b.MarkForRedraw()
 	return true
 }
 
