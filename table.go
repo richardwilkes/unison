@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
@@ -101,6 +102,7 @@ type Table struct {
 	ColumnSizes                  []ColumnSize
 	topLevelRows                 []TableRowData
 	selMap                       map[TableRowData]bool
+	selAnchor                    TableRowData
 	hitRects                     []tableHitRect
 	rowCache                     []tableCache
 	interactionRow               int
@@ -178,10 +180,19 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	lastY := dirty.Bottom()
 	rect := dirty
 	rect.Y = y
+	var indirectSelectPaint *Paint
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
 		rect.Height = t.rowCache[r].height
 		if t.IsRowOrAnyParentSelected(r) {
-			canvas.DrawRect(rect, t.SelectionInk.Paint(canvas, rect, Fill))
+			if t.IsRowSelected(r) {
+				canvas.DrawRect(rect, t.SelectionInk.Paint(canvas, rect, Fill))
+			} else {
+				if indirectSelectPaint == nil {
+					indirectSelectPaint = t.SelectionInk.Paint(canvas, rect, Fill)
+					indirectSelectPaint.SetColorFilter(NewAlphaFilter(0.8))
+				}
+				canvas.DrawRect(rect, indirectSelectPaint)
+			}
 		} else if r%2 == 1 {
 			canvas.DrawRect(rect, t.BandingInk.Paint(canvas, rect, Fill))
 		}
@@ -549,14 +560,36 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 	}
 	stop := true
 	if row := t.OverRow(where.Y); row != -1 {
-		if mod&(ShiftModifier|OptionModifier) == 0 {
-			t.selMap = make(map[TableRowData]bool)
-		}
 		rowData := t.rowCache[row].row
-		if mod&OptionModifier != 0 {
+		switch {
+		case mod&ShiftModifier != 0: // Extend selection from anchor
+			selAnchorIndex := -1
+			if t.selAnchor != nil {
+				for i, c := range t.rowCache {
+					if c.row == t.selAnchor {
+						selAnchorIndex = i
+						break
+					}
+				}
+			}
+			if selAnchorIndex != -1 {
+				last := xmath.MaxInt(selAnchorIndex, row)
+				for i := xmath.MinInt(selAnchorIndex, row); i <= last; i++ {
+					t.selMap[t.rowCache[i].row] = true
+				}
+			} else if !t.selMap[rowData] { // No anchor, so behave like a regular click
+				t.selMap = make(map[TableRowData]bool)
+				t.selMap[rowData] = true
+				t.selAnchor = rowData
+			}
+		case mod&(OptionModifier|CommandModifier) != 0: // Toggle single row
 			t.selMap[rowData] = !t.selMap[rowData]
-		} else {
-			t.selMap[rowData] = true
+		default: // If not already selected, replace selection with current row and make it the anchor
+			if !t.selMap[rowData] {
+				t.selMap = make(map[TableRowData]bool)
+				t.selMap[rowData] = true
+				t.selAnchor = rowData
+			}
 		}
 		t.MarkForRedraw()
 		if col := t.OverColumn(where.X); col != -1 {
@@ -647,6 +680,14 @@ func (t *Table) IsRowOrAnyParentSelected(index int) bool {
 	return false
 }
 
+// IsRowSelected returns true if the specified row index is selected.
+func (t *Table) IsRowSelected(index int) bool {
+	if index < 0 || index >= len(t.rowCache) {
+		return false
+	}
+	return t.selMap[t.rowCache[index].row]
+}
+
 // SelectedRows returns the currently selected rows. Note that children of selected rows are not returned, just the
 // topmost row that is selected in any given hierarchy.
 func (t *Table) SelectedRows() []TableRowData {
@@ -673,6 +714,7 @@ func (t *Table) TopLevelRows() []TableRowData {
 func (t *Table) SetTopLevelRows(rows []TableRowData) {
 	t.topLevelRows = rows
 	t.selMap = make(map[TableRowData]bool)
+	t.selAnchor = nil
 	t.SyncToModel()
 }
 
