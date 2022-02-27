@@ -229,29 +229,39 @@ func (s *ScrollPanel) DefaultMouseWheel(where, delta geom32.Point, mod Modifiers
 // DefaultScrollRectIntoView provides the default scroll rect into contentView handling.
 func (s *ScrollPanel) DefaultScrollRectIntoView(rect geom32.Rect) bool {
 	viewRect := s.contentView.ContentRect(false)
-	hAdj := computeScrollAdj(rect.X, viewRect.X, rect.Y+rect.Width, viewRect.X+viewRect.Width)
-	vAdj := computeScrollAdj(rect.Y, viewRect.Y, rect.Y+rect.Height, viewRect.Y+viewRect.Height)
+	if s.columnHeaderView != nil {
+		height := s.columnHeaderView.FrameRect().Height
+		viewRect.Y += height
+		viewRect.Height -= height
+	}
+	if s.rowHeaderView != nil {
+		width := s.rowHeaderView.FrameRect().Width
+		viewRect.X += width
+		viewRect.Width -= width
+	}
+	hAdj := computeScrollAdj(rect.X, viewRect.X, rect.Right(), viewRect.Right())
+	vAdj := computeScrollAdj(rect.Y, viewRect.Y, rect.Bottom(), viewRect.Bottom())
 	if hAdj != 0 || vAdj != 0 {
 		if hAdj != 0 {
-			s.verticalBar.SetRange(s.verticalBar.Value()+hAdj, s.verticalBar.Extent(), s.verticalBar.Max())
+			s.horizontalBar.SetRange(s.horizontalBar.Value()+hAdj, s.horizontalBar.Extent(), s.horizontalBar.Max())
 		}
 		if vAdj != 0 {
-			s.horizontalBar.SetRange(s.horizontalBar.Value()+vAdj, s.horizontalBar.Extent(), s.horizontalBar.Max())
+			s.verticalBar.SetRange(s.verticalBar.Value()+vAdj, s.verticalBar.Extent(), s.verticalBar.Max())
 		}
 		return true
 	}
 	return false
 }
 
-func computeScrollAdj(upper1, upper2, lower1, lower2 float32) float32 {
-	if upper1 < upper2 {
-		return upper1 - upper2
+func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBottomRight float32) float32 {
+	if contentTopLeft < viewTopLeft {
+		return contentTopLeft - viewTopLeft
 	}
-	if lower1 > lower2 {
-		if lower1-upper1 <= lower2-upper2 {
-			return lower1 - lower2
+	if contentBottomRight > viewBottomRight {
+		if contentBottomRight-contentTopLeft <= viewBottomRight-viewTopLeft {
+			return contentBottomRight - viewBottomRight
 		}
-		return upper1 - upper2
+		return contentTopLeft - viewTopLeft
 	}
 	return 0
 }
@@ -378,18 +388,18 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		_, contentSize, _ = s.content.AsPanel().Sizes(hint)
 		switch s.behavior {
 		case FillWidthBehavior:
-			if viewContent.Width > contentSize.Width {
+			if contentSize.Width < viewContent.Width {
 				contentSize.Width = viewContent.Width
 			}
 		case FillHeightBehavior:
-			if viewContent.Height > contentSize.Height {
+			if contentSize.Height < viewContent.Height {
 				contentSize.Height = viewContent.Height
 			}
 		case FillBehavior:
-			if viewContent.Width > contentSize.Width {
+			if contentSize.Width < viewContent.Width {
 				contentSize.Width = viewContent.Width
 			}
-			if viewContent.Height > contentSize.Height {
+			if contentSize.Height < viewContent.Height {
 				contentSize.Height = viewContent.Height
 			}
 		case FollowsWidthBehavior:
