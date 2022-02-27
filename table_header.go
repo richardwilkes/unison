@@ -75,7 +75,7 @@ func (h *TableHeader) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size
 		insets := border.Insets()
 		pref.Height += insets.Top + insets.Bottom
 	}
-	return pref, pref, pref
+	return geom32.NewSize(16, pref.Height), pref, pref
 }
 
 // ColumnFrame returns the frame of the given column.
