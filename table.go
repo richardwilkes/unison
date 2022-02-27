@@ -733,6 +733,7 @@ func (t *Table) SyncToModel() {
 	rect := t.FrameRect()
 	rect.Size = pref
 	t.SetFrameRect(rect)
+	t.MarkForRedraw()
 }
 
 func (t *Table) countOpenRowChildrenRecursively(row TableRowData) int {
@@ -883,7 +884,6 @@ func (t *Table) EventuallySyncToModel() {
 		t.awaitingSyncToModel = true
 		InvokeTaskAfter(func() {
 			t.SyncToModel()
-			t.MarkForRedraw()
 			t.awaitingSyncToModel = false
 		}, 20*time.Millisecond)
 	}
