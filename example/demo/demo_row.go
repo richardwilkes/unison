@@ -21,6 +21,7 @@ var _ unison.TableRowData = &demoRow{}
 
 type demoRow struct {
 	table        *unison.Table
+	parent       unison.TableRowData
 	text         string
 	text2        string
 	children     []unison.TableRowData
@@ -28,6 +29,10 @@ type demoRow struct {
 	container    bool
 	open         bool
 	doubleHeight bool
+}
+
+func (d *demoRow) ParentRow() unison.TableRowData {
+	return d.parent
 }
 
 func (d *demoRow) CanHaveChildRows() bool {

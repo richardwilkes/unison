@@ -20,6 +20,8 @@ import (
 
 // TableRowData provides information about a single row of data.
 type TableRowData interface {
+	// ParentRow returns the parent of this row, or nil if it is a root node.
+	ParentRow() TableRowData
 	// CanHaveChildRows returns true if this row can have children, even if it currently does not have any.
 	CanHaveChildRows() bool
 	// ChildRows returns the child rows.
@@ -400,6 +402,22 @@ func (t *Table) CellFrame(row, col int) geom32.Rect {
 	return rect
 }
 
+// RowFrame returns the frame of the row.
+func (t *Table) RowFrame(row int) geom32.Rect {
+	if row < 0 || row >= len(t.rowCache) {
+		return geom32.Rect{}
+	}
+	rect := t.ContentRect(false)
+	for i := 0; i < row; i++ {
+		rect.Y += t.rowCache[i].height
+		if t.ShowRowDivider {
+			rect.Y++
+		}
+	}
+	rect.Height = t.rowCache[row].height
+	return rect
+}
+
 func (t *Table) newTableHitRect(rect geom32.Rect, row TableRowData) tableHitRect {
 	return tableHitRect{
 		Rect: rect,
@@ -583,7 +601,11 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 				t.selAnchor = rowData
 			}
 		case mod&(OptionModifier|CommandModifier) != 0: // Toggle single row
-			t.selMap[rowData] = !t.selMap[rowData]
+			if t.selMap[rowData] {
+				delete(t.selMap, rowData)
+			} else {
+				t.selMap[rowData] = true
+			}
 		default: // If not already selected, replace selection with current row and make it the anchor
 			if !t.selMap[rowData] {
 				t.selMap = make(map[TableRowData]bool)
@@ -701,6 +723,62 @@ func (t *Table) SelectedRows() []TableRowData {
 		}
 	}
 	return rows
+}
+
+// ClearSelection clears the selection.
+func (t *Table) ClearSelection() {
+	if len(t.selMap) == 0 {
+		return
+	}
+	t.selMap = make(map[TableRowData]bool)
+	t.selAnchor = nil
+	t.MarkForRedraw()
+}
+
+// SelectByIndex selects the given indexes. The first one will be considered the anchor selection if no existing anchor
+// selection exists.
+func (t *Table) SelectByIndex(indexes ...int) {
+	for _, index := range indexes {
+		if index >= 0 && index < len(t.rowCache) {
+			t.selMap[t.rowCache[index].row] = true
+			if t.selAnchor == nil {
+				t.selAnchor = t.rowCache[index].row
+			}
+		}
+	}
+	t.MarkForRedraw()
+}
+
+// DeselectByIndex deselects the given indexes.
+func (t *Table) DeselectByIndex(indexes ...int) {
+	for _, index := range indexes {
+		if index >= 0 && index < len(t.rowCache) {
+			delete(t.selMap, t.rowCache[index].row)
+		}
+	}
+	t.MarkForRedraw()
+}
+
+// DiscloseRow ensures the given row can be viewed by opening all parents that lead to it. Returns true if any
+// modification was made.
+func (t *Table) DiscloseRow(row TableRowData, delaySync bool) bool {
+	modified := false
+	p := row.ParentRow()
+	for !toolbox.IsNil(p) {
+		if !p.IsOpen() {
+			p.SetOpen(true)
+			modified = true
+		}
+		p = p.ParentRow()
+	}
+	if modified {
+		if delaySync {
+			t.EventuallySyncToModel()
+		} else {
+			t.SyncToModel()
+		}
+	}
+	return modified
 }
 
 // TopLevelRows returns the top-level rows.
@@ -908,4 +986,21 @@ func (t *Table) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	}
 	pref.GrowToInteger()
 	return pref, pref, pref
+}
+
+// RowToIndex returns the row's index within the displayed data, or -1 if it isn't currently in the disclosed rows.
+func (t *Table) RowToIndex(row TableRowData) int {
+	for i, data := range t.rowCache {
+		if data.row == row {
+			return i
+		}
+	}
+	return -1
+}
+
+// ScrollRowIntoView scrolls the row at the given index into view.
+func (t *Table) ScrollRowIntoView(row int) {
+	if frame := t.RowFrame(row); !frame.IsEmpty() {
+		t.ScrollRectIntoView(frame)
+	}
 }

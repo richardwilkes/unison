@@ -62,8 +62,9 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 			row.children = make([]unison.TableRowData, 5)
 			for j := range row.children {
 				child := &demoRow{
-					table: table,
-					text:  fmt.Sprintf("Sub Row %d", j+1),
+					table:  table,
+					parent: row,
+					text:   fmt.Sprintf("Sub Row %d", j+1),
 				}
 				row.children[j] = child
 				if j < 2 {
@@ -72,8 +73,9 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 					child.children = make([]unison.TableRowData, 2)
 					for k := range child.children {
 						child.children[k] = &demoRow{
-							table: table,
-							text:  fmt.Sprintf("Sub Sub Row %d", k+1),
+							table:  table,
+							parent: child,
+							text:   fmt.Sprintf("Sub Sub Row %d", k+1),
 						}
 					}
 				}
