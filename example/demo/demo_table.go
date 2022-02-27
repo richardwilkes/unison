@@ -38,7 +38,7 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	// Create the table
 	table := unison.NewTable()
 	table.HierarchyColumnIndex = 1
-	table.ColumnSizes = make([]unison.ColumnSize, 3)
+	table.ColumnSizes = make([]unison.ColumnSize, 4)
 	for i := range table.ColumnSizes {
 		table.ColumnSizes[i].Minimum = 20
 		table.ColumnSizes[i].Maximum = 10000
@@ -49,6 +49,7 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	rows := make([]unison.TableRowData, topLevelRowsToMake)
 	for i := range rows {
 		row := &demoRow{
+			table: table,
 			text:  fmt.Sprintf("Row %d", i+1),
 			text2: fmt.Sprintf("Some longer content for Row %d", i+1),
 		}
@@ -60,14 +61,20 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 			row.open = true
 			row.children = make([]unison.TableRowData, 5)
 			for j := range row.children {
-				child := &demoRow{text: fmt.Sprintf("Sub-Row %d", j+1)}
+				child := &demoRow{
+					table: table,
+					text:  fmt.Sprintf("Sub Row %d", j+1),
+				}
 				row.children[j] = child
 				if j < 2 {
 					child.container = true
 					child.open = true
 					child.children = make([]unison.TableRowData, 2)
 					for k := range child.children {
-						child.children[k] = &demoRow{text: fmt.Sprintf("Sub-Sub-Row %d", k+1)}
+						child.children[k] = &demoRow{
+							table: table,
+							text:  fmt.Sprintf("Sub Sub Row %d", k+1),
+						}
 					}
 				}
 			}
@@ -81,15 +88,19 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 		unison.NewTableColumnHeader(""),
 		unison.NewTableColumnHeader("First"),
 		unison.NewTableColumnHeader("Second"),
+		unison.NewTableColumnHeader("xyz"),
 	)
+	header.SetLayoutData(&unison.FlexLayoutData{
+		HAlign: unison.FillAlignment,
+		VAlign: unison.FillAlignment,
+		HGrab:  true,
+	})
 	content.AddChild(header)
 
 	// Create a scroll panel and place a table panel inside it
 	scrollArea := unison.NewScrollPanel()
 	scrollArea.SetContent(table, unison.FillBehavior)
 	scrollArea.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: unison.FillAlignment,
 		VAlign: unison.FillAlignment,
 		HGrab:  true,
