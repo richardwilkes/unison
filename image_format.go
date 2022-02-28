@@ -27,11 +27,16 @@ const (
 	PNG
 	WBMP
 	WEBP
-	PKM
-	KTX
-	ASTC
-	DNG
-	HEIF
+	/*
+		The following formats, though supported in theory, fail to work with the cskia builds I've done.
+
+		PKM
+		KTX
+		ASTC
+		DNG
+		HEIF
+	*/
+	knownEncodedImageFormatCount
 	UnknownEncodedImageFormat EncodedImageFormat = 255
 )
 
@@ -43,11 +48,15 @@ var imageFormatToExtensions = map[EncodedImageFormat][]string{
 	PNG:  {".png"},
 	WBMP: {".wbmp"},
 	WEBP: {".webp"},
-	PKM:  {".pkm"},
-	KTX:  {".ktx"},
-	ASTC: {".astc"},
-	DNG:  {".dng"},
-	HEIF: {".heif", ".heic"},
+	/*
+		The following formats, though supported in theory, fail to work with the cskia builds I've done.
+
+		PKM:  {".pkm"},
+		KTX:  {".ktx"},
+		ASTC: {".astc"},
+		DNG:  {".dng"},
+		HEIF: {".heif", ".heic"},
+	*/
 }
 
 var (
@@ -74,7 +83,7 @@ func (e EncodedImageFormat) String() string {
 
 // CanRead returns true if the format can be read.
 func (e EncodedImageFormat) CanRead() bool {
-	return e <= HEIF
+	return e < knownEncodedImageFormatCount
 }
 
 // CanWrite returns true if the format can be written.
