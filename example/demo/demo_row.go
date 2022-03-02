@@ -76,9 +76,9 @@ func (d *demoRow) ColumnCell(row, col int, selected bool) unison.Paneler {
 		if d.doubleHeight {
 			addWrappedText(wrapper, "A little note…", unison.LabelFont.Face().Font(unison.LabelFont.Size()-1), width, selected)
 		}
-		wrapper.UpdateTooltipCallback = func(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
+		wrapper.UpdateTooltipCallback = func(where geom32.Point, suggestedAvoidInRoot geom32.Rect) geom32.Rect {
 			wrapper.Tooltip = unison.NewTooltipWithText("A tooltip for the cell")
-			return wrapper.RectToRoot(wrapper.FrameRect())
+			return wrapper.RectToRoot(wrapper.ContentRect(true))
 		}
 		return wrapper
 	case 2:

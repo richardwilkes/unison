@@ -31,7 +31,7 @@ type Panel struct {
 	DrawCallback                        func(gc *Canvas, rect geom32.Rect)
 	DrawOverCallback                    func(gc *Canvas, rect geom32.Rect)
 	UpdateCursorCallback                func(where geom32.Point) *Cursor
-	UpdateTooltipCallback               func(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect
+	UpdateTooltipCallback               func(where geom32.Point, suggestedAvoidInRoot geom32.Rect) geom32.Rect
 	CanPerformCmdCallback               func(source interface{}, id int) bool
 	PerformCmdCallback                  func(source interface{}, id int)
 	FrameChangeCallback                 func()
@@ -57,6 +57,7 @@ type Panel struct {
 	layoutData           interface{}
 	children             []*Panel
 	data                 map[string]interface{}
+	scale                float32
 	NeedsLayout          bool
 	focusable            bool
 	disabled             bool
@@ -203,13 +204,31 @@ func (p *Panel) Window() *Window {
 	}
 }
 
+func (p *Panel) Scale() float32 {
+	if p.scale <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
+		p.scale = 1
+	}
+	return p.scale
+}
+
+func (p *Panel) SetScale(scale float32) {
+	p.scale = scale
+}
+
 // FrameRect returns the location and size of the panel in its parent's coordinate system.
 func (p *Panel) FrameRect() geom32.Rect {
-	return p.frame
+	scale := p.Scale()
+	r := p.frame
+	r.Width *= scale
+	r.Height *= scale
+	return r
 }
 
 // SetFrameRect sets the location and size of the panel in its parent's coordinate system.
 func (p *Panel) SetFrameRect(rect geom32.Rect) {
+	scale := p.Scale()
+	rect.Width /= scale
+	rect.Height /= scale
 	moved := p.frame.X != rect.X || p.frame.Y != rect.Y
 	resized := p.frame.Width != rect.Width || p.frame.Height != rect.Height
 	if moved || resized {
@@ -271,13 +290,22 @@ func (p *Panel) SetSizer(sizer Sizer) {
 // panel's layout. If no layout is present, then the panel's sizer is asked. If no sizer is present, then it finally
 // uses a default set of sizes that are used for all panels.
 func (p *Panel) Sizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	if p.layout != nil {
-		return p.layout.LayoutSizes(p, hint)
+	switch {
+	case p.layout != nil:
+		min, pref, max = p.layout.LayoutSizes(p, hint)
+	case p.sizer != nil:
+		min, pref, max = p.sizer(hint)
+	default:
+		return min, pref, geom32.Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
 	}
-	if p.sizer != nil {
-		return p.sizer(hint)
-	}
-	return geom32.Size{}, geom32.Size{}, geom32.Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
+	scale := p.Scale()
+	min.Width *= scale
+	min.Height *= scale
+	pref.Width *= scale
+	pref.Height *= scale
+	max.Width *= scale
+	max.Height *= scale
+	return
 }
 
 // Layout returns the Layout for this panel, if any.
@@ -343,25 +371,36 @@ func (p *Panel) Draw(gc *Canvas, rect geom32.Rect) {
 	if p.Hidden {
 		return
 	}
-	rect.Intersect(p.ContentRect(true))
+	localRect := p.FrameRect()
+	localRect.X = 0
+	localRect.Y = 0
+	rect.Intersect(localRect)
 	if !rect.IsEmpty() {
+		scale := p.Scale()
+		localRect = rect
+		localRect.Width /= scale
+		localRect.Height /= scale
 		gc.Save()
 		gc.ClipRect(rect, IntersectClipOp, false)
+		gc.Scale(scale, scale)
 		if p.DrawCallback != nil {
 			gc.Save()
-			p.DrawCallback(gc, rect)
+			p.DrawCallback(gc, localRect)
 			gc.Restore()
 		}
+		rect.Width /= scale
+		rect.Height /= scale
 		// Drawn from last to first, to get correct ordering in case of overlap
 		for i := len(p.children) - 1; i >= 0; i-- {
 			if child := p.children[i]; !child.Hidden {
 				adjusted := rect
-				adjusted.Intersect(child.frame)
+				childFrame := child.FrameRect()
+				adjusted.Intersect(childFrame)
 				if !adjusted.IsEmpty() {
 					gc.Save()
-					gc.Translate(child.frame.X, child.frame.Y)
-					adjusted.X -= child.frame.X
-					adjusted.Y -= child.frame.Y
+					gc.Translate(childFrame.X, childFrame.Y)
+					adjusted.X -= childFrame.X
+					adjusted.Y -= childFrame.Y
 					child.Draw(gc, adjusted)
 					gc.Restore()
 				}
@@ -422,9 +461,14 @@ func (p *Panel) RequestFocus() {
 // PanelAt returns the leaf-most child panel containing the point, or this panel if no child is found.
 func (p *Panel) PanelAt(pt geom32.Point) *Panel {
 	for _, child := range p.children {
-		if !child.Hidden && child.frame.ContainsPoint(pt) {
-			pt.Subtract(child.frame.Point)
-			return child.PanelAt(pt)
+		if !child.Hidden {
+			if r := child.FrameRect(); r.ContainsPoint(pt) {
+				pt.Subtract(r.Point)
+				scale := p.Scale()
+				pt.X /= scale
+				pt.Y /= scale
+				return child.PanelAt(pt)
+			}
 		}
 	}
 	return p
@@ -433,11 +477,13 @@ func (p *Panel) PanelAt(pt geom32.Point) *Panel {
 // PointToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
 func (p *Panel) PointToRoot(pt geom32.Point) geom32.Point {
-	pt.Add(p.frame.Point)
-	parent := p.parent
-	for parent != nil {
-		pt.Add(parent.frame.Point)
-		parent = parent.parent
+	one := p
+	for one != nil {
+		scale := one.Scale()
+		pt.X *= scale
+		pt.Y *= scale
+		pt.Add(one.frame.Point)
+		one = one.parent
 	}
 	return pt
 }
@@ -445,11 +491,18 @@ func (p *Panel) PointToRoot(pt geom32.Point) geom32.Point {
 // PointFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local
 // coordinates.
 func (p *Panel) PointFromRoot(pt geom32.Point) geom32.Point {
-	pt.Subtract(p.frame.Point)
-	parent := p.parent
-	for parent != nil {
-		pt.Subtract(parent.frame.Point)
-		parent = parent.parent
+	list := make([]*Panel, 0, 32)
+	one := p
+	for one != nil {
+		list = append(list, one)
+		one = one.parent
+	}
+	for i := len(list) - 1; i >= 0; i-- {
+		one = list[i]
+		pt.Subtract(one.frame.Point)
+		scale := one.Scale()
+		pt.X /= scale
+		pt.Y /= scale
 	}
 	return pt
 }
@@ -457,13 +510,19 @@ func (p *Panel) PointFromRoot(pt geom32.Point) geom32.Point {
 // RectToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
 func (p *Panel) RectToRoot(rect geom32.Rect) geom32.Rect {
+	pt := p.PointToRoot(rect.BottomRight())
 	rect.Point = p.PointToRoot(rect.Point)
+	rect.Width = pt.X - rect.X
+	rect.Height = pt.Y - rect.Y
 	return rect
 }
 
 // RectFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local coordinates.
 func (p *Panel) RectFromRoot(rect geom32.Rect) geom32.Rect {
+	pt := p.PointFromRoot(rect.BottomRight())
 	rect.Point = p.PointFromRoot(rect.Point)
+	rect.Width = pt.X - rect.X
+	rect.Height = pt.Y - rect.Y
 	return rect
 }
 
@@ -484,6 +543,9 @@ func (p *Panel) ScrollRectIntoView(rect geom32.Rect) {
 			}
 		}
 		rect.Point.Add(look.frame.Point)
+		scale := look.Scale()
+		rect.X *= scale
+		rect.Y *= scale
 		look = look.parent
 	}
 }

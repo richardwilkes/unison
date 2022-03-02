@@ -99,7 +99,7 @@ func (ts *tooltipSequencer) show() {
 	if ts.window.tooltipSequence == ts.sequence && ts.window.Focused() {
 		tip := ts.window.lastTooltip
 		_, pref, _ := tip.Sizes(geom32.Size{})
-		rect := geom32.Rect{Point: geom32.Point{X: ts.avoid.X, Y: ts.avoid.Y + ts.avoid.Height + 1}, Size: pref}
+		rect := geom32.Rect{Point: geom32.Point{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
 		if rect.X < 0 {
 			rect.X = 0
 		}

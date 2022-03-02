@@ -454,7 +454,7 @@ func (t *Table) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (t *Table) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
+func (t *Table) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoidInRoot geom32.Rect) geom32.Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
 			cell := t.rowCache[row].row.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
@@ -463,17 +463,16 @@ func (t *Table) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoid 
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
 				var avoid geom32.Rect
-				toolbox.Call(func() { avoid = cell.UpdateTooltipCallback(where, suggestedAvoid) })
+				toolbox.Call(func() { avoid = cell.UpdateTooltipCallback(where, suggestedAvoidInRoot) })
 				t.Tooltip = cell.Tooltip
 				t.uninstallCell(cell)
 				return avoid
 			}
 			if cell.Tooltip != nil {
 				t.Tooltip = cell.Tooltip
-				suggestedAvoid = t.CellFrame(row, col)
-				suggestedAvoid.Point = t.PointToRoot(suggestedAvoid.Point)
-				suggestedAvoid.Align()
-				return suggestedAvoid
+				suggestedAvoidInRoot = t.RectToRoot(t.CellFrame(row, col))
+				suggestedAvoidInRoot.Align()
+				return suggestedAvoidInRoot
 			}
 		}
 	}
