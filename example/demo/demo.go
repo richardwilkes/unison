@@ -175,13 +175,7 @@ func createButtonsPanel() *unison.Panel {
 		if i == 2 {
 			btn.SetEnabled(false)
 		}
-		btn.SetScale(0.5)
 	}
-
-	panel.SetScale(2)
-
-	// TODO: Two issues: nested scaling breaks mouse coordinates as well as layouts
-
 	return panel
 }
 

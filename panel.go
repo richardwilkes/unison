@@ -290,6 +290,9 @@ func (p *Panel) SetSizer(sizer Sizer) {
 // panel's layout. If no layout is present, then the panel's sizer is asked. If no sizer is present, then it finally
 // uses a default set of sizes that are used for all panels.
 func (p *Panel) Sizes(hint geom32.Size) (min, pref, max geom32.Size) {
+	scale := p.Scale()
+	hint.Width /= scale
+	hint.Height /= scale
 	switch {
 	case p.layout != nil:
 		min, pref, max = p.layout.LayoutSizes(p, hint)
@@ -298,7 +301,6 @@ func (p *Panel) Sizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	default:
 		return min, pref, geom32.Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
 	}
-	scale := p.Scale()
 	min.Width *= scale
 	min.Height *= scale
 	pref.Width *= scale
@@ -371,25 +373,17 @@ func (p *Panel) Draw(gc *Canvas, rect geom32.Rect) {
 	if p.Hidden {
 		return
 	}
-	localRect := p.FrameRect()
-	localRect.X = 0
-	localRect.Y = 0
-	rect.Intersect(localRect)
+	rect.Intersect(p.frame.CopyAndZeroLocation())
 	if !rect.IsEmpty() {
-		scale := p.Scale()
-		localRect = rect
-		localRect.Width /= scale
-		localRect.Height /= scale
 		gc.Save()
-		gc.ClipRect(rect, IntersectClipOp, false)
+		scale := p.Scale()
 		gc.Scale(scale, scale)
+		gc.ClipRect(rect, IntersectClipOp, false)
 		if p.DrawCallback != nil {
 			gc.Save()
-			p.DrawCallback(gc, localRect)
+			p.DrawCallback(gc, rect)
 			gc.Restore()
 		}
-		rect.Width /= scale
-		rect.Height /= scale
 		// Drawn from last to first, to get correct ordering in case of overlap
 		for i := len(p.children) - 1; i >= 0; i-- {
 			if child := p.children[i]; !child.Hidden {
@@ -399,8 +393,12 @@ func (p *Panel) Draw(gc *Canvas, rect geom32.Rect) {
 				if !adjusted.IsEmpty() {
 					gc.Save()
 					gc.Translate(childFrame.X, childFrame.Y)
-					adjusted.X -= childFrame.X
-					adjusted.Y -= childFrame.Y
+					adjusted.Point.Subtract(childFrame.Point)
+					scale = child.Scale()
+					adjusted.X /= scale
+					adjusted.Y /= scale
+					adjusted.Width /= scale
+					adjusted.Height /= scale
 					child.Draw(gc, adjusted)
 					gc.Restore()
 				}
@@ -464,7 +462,7 @@ func (p *Panel) PanelAt(pt geom32.Point) *Panel {
 		if !child.Hidden {
 			if r := child.FrameRect(); r.ContainsPoint(pt) {
 				pt.Subtract(r.Point)
-				scale := p.Scale()
+				scale := child.Scale()
 				pt.X /= scale
 				pt.Y /= scale
 				return child.PanelAt(pt)
@@ -533,7 +531,7 @@ func (p *Panel) ScrollIntoView() {
 }
 
 // ScrollRectIntoView attempts to scroll the rect (in coordinates local to this Panel) into the current view if it is
-// not already there, using ScrollAreas in this Panel's hierarchy.
+// not already there, using scroll areas in this Panel's hierarchy.
 func (p *Panel) ScrollRectIntoView(rect geom32.Rect) {
 	look := p
 	for look != nil {
@@ -542,10 +540,10 @@ func (p *Panel) ScrollRectIntoView(rect geom32.Rect) {
 				return
 			}
 		}
-		rect.Point.Add(look.frame.Point)
 		scale := look.Scale()
 		rect.X *= scale
 		rect.Y *= scale
+		rect.Point.Add(look.frame.Point)
 		look = look.parent
 	}
 }

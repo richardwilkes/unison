@@ -70,8 +70,8 @@ func NewScrollPanel() *ScrollPanel {
 	s.AddChild(s.verticalBar)
 	s.AddChild(s.contentView)
 	s.SetLayout(s)
-	s.horizontalBar.ChangedCallback = s.barChanged
-	s.verticalBar.ChangedCallback = s.barChanged
+	s.horizontalBar.ChangedCallback = s.Sync
+	s.verticalBar.ChangedCallback = s.Sync
 	s.DrawCallback = s.DefaultDraw
 	s.MouseWheelCallback = s.DefaultMouseWheel
 	s.ScrollRectIntoViewCallback = s.DefaultScrollRectIntoView
@@ -109,7 +109,7 @@ func (s *ScrollPanel) SetColumnHeader(p Paneler) {
 			s.AddChild(s.columnHeaderView)
 		}
 		s.columnHeaderView.AddChild(p)
-		s.barChanged()
+		s.Sync()
 	} else if s.columnHeaderView != nil {
 		s.columnHeaderView.RemoveFromParent()
 		s.columnHeaderView = nil
@@ -139,7 +139,7 @@ func (s *ScrollPanel) SetRowHeader(p Paneler) {
 			s.AddChild(s.rowHeaderView)
 		}
 		s.rowHeaderView.AddChild(p)
-		s.barChanged()
+		s.Sync()
 	} else if s.rowHeaderView != nil {
 		s.rowHeaderView.RemoveFromParent()
 		s.rowHeaderView = nil
@@ -166,7 +166,7 @@ func (s *ScrollPanel) SetContent(p Paneler, behave Behavior) {
 	s.behavior = behave
 	if p != nil {
 		s.contentView.AddChild(p)
-		s.barChanged()
+		s.Sync()
 	}
 	s.MarkForLayoutAndRedraw()
 }
@@ -188,23 +188,27 @@ func (s *ScrollPanel) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, Fill))
 }
 
-func (s *ScrollPanel) barChanged() {
+// Sync the headers and content with the current scroll state.
+func (s *ScrollPanel) Sync() {
 	if s.columnHeader != nil {
-		r := s.columnHeader.AsPanel().ContentRect(true)
+		r := s.columnHeader.AsPanel().FrameRect()
 		r.X = -s.horizontalBar.Value()
+		r.Y = 0
 		s.columnHeader.AsPanel().SetFrameRect(r)
 	}
 	if s.rowHeader != nil {
-		r := s.rowHeader.AsPanel().ContentRect(true)
+		r := s.rowHeader.AsPanel().FrameRect()
+		r.X = 0
 		r.Y = -s.verticalBar.Value()
 		s.rowHeader.AsPanel().SetFrameRect(r)
 	}
 	if s.content != nil {
-		r := s.content.AsPanel().ContentRect(true)
+		r := s.content.AsPanel().FrameRect()
 		r.X = -s.horizontalBar.Value()
 		r.Y = -s.verticalBar.Value()
 		s.content.AsPanel().SetFrameRect(r)
 	}
+	s.PerformLayout(s.AsPanel())
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
@@ -228,7 +232,9 @@ func (s *ScrollPanel) DefaultMouseWheel(where, delta geom32.Point, mod Modifiers
 
 // DefaultScrollRectIntoView provides the default scroll rect into contentView handling.
 func (s *ScrollPanel) DefaultScrollRectIntoView(rect geom32.Rect) bool {
-	viewRect := s.contentView.ContentRect(false)
+	viewRect := s.contentView.FrameRect()
+	viewRect.X = 0
+	viewRect.Y = 0
 	if s.columnHeaderView != nil {
 		height := s.columnHeaderView.FrameRect().Height
 		viewRect.Y += height
@@ -270,7 +276,7 @@ func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBotto
 func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(panel *Panel) {
 	// TODO: Need to adjust the headers, too?
 	if s.content != nil {
-		vs := s.contentView.ContentRect(false).Size
+		vs := s.contentView.FrameRect().Size
 		r := s.content.AsPanel().FrameRect()
 		nl := r.Point
 		if r.Y != 0 && vs.Height > r.Bottom() {
@@ -339,7 +345,9 @@ func (s *ScrollPanel) LayoutSizes(_ *Panel, hint geom32.Size) (min, pref, max ge
 
 // PerformLayout implements the Layout interface.
 func (s *ScrollPanel) PerformLayout(_ *Panel) {
-	r := s.ContentRect(false)
+	r := s.FrameRect()
+	r.X = 0
+	r.Y = 0
 	columnHeaderTop := r.Y
 	if s.columnHeaderView != nil {
 		_, p, _ := s.columnHeader.AsPanel().Sizes(geom32.Size{Width: r.Width})
@@ -431,14 +439,14 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	s.horizontalBar.SetFrameRect(geom32.NewRect(viewContent.X, viewContent.Bottom()-s.horizontalBar.MinimumThickness, width, s.horizontalBar.MinimumThickness))
 	s.contentView.SetFrameRect(r)
 	if s.columnHeaderView != nil {
-		vr := s.columnHeaderView.ContentRect(false)
+		vr := s.columnHeaderView.FrameRect()
 		r = s.columnHeader.AsPanel().FrameRect()
 		r.Height = vr.Height
 		r.Width = mathf32.Max(vr.Width, contentSize.Width)
 		s.columnHeader.AsPanel().SetFrameRect(r)
 	}
 	if s.rowHeaderView != nil {
-		vr := s.rowHeaderView.ContentRect(false)
+		vr := s.rowHeaderView.FrameRect()
 		r = s.rowHeader.AsPanel().FrameRect()
 		r.Width = vr.Width
 		r.Height = mathf32.Max(vr.Height, contentSize.Height)
