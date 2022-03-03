@@ -204,6 +204,8 @@ func (p *Panel) Window() *Window {
 	}
 }
 
+// Scale returns the scale that has been applied to this panel. This will be automatically applied, transforming the
+// graphics and mouse events.
 func (p *Panel) Scale() float32 {
 	if p.scale <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
 		p.scale = 1
@@ -211,6 +213,7 @@ func (p *Panel) Scale() float32 {
 	return p.scale
 }
 
+// SetScale sets the scale for this panel and the panels in the hierarchy below it.
 func (p *Panel) SetScale(scale float32) {
 	p.scale = scale
 }
