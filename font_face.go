@@ -93,7 +93,7 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 			}
 			skiaSize++
 		}
-		for font.metrics.CapHeight > capHeightSizeInLogicalPixels {
+		for skiaSize >= 1 && font.metrics.CapHeight > capHeightSizeInLogicalPixels {
 			skiaSize -= 0.5
 			font = f.createFontWithSkiaSize(skiaSize)
 		}

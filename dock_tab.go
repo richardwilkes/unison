@@ -179,13 +179,13 @@ func (t *dockTab) attemptClose() {
 	}
 }
 
-func (t *dockTab) updateTooltip(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
+func (t *dockTab) updateTooltip(where geom32.Point, suggestedAvoidInRoot geom32.Rect) geom32.Rect {
 	if tip := t.dockable.Tooltip(); tip != "" {
 		t.Tooltip = NewTooltipWithText(t.dockable.Tooltip())
 	} else {
 		t.Tooltip = nil
 	}
-	return suggestedAvoid
+	return suggestedAvoidInRoot
 }
 
 func (t *dockTab) mouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {

@@ -221,14 +221,14 @@ func (h *TableHeader) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (h *TableHeader) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoid geom32.Rect) geom32.Rect {
+func (h *TableHeader) DefaultUpdateTooltipCallback(where geom32.Point, suggestedAvoidInRoot geom32.Rect) geom32.Rect {
 	if col := h.Table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateTooltipCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
 			where.Subtract(rect.Point)
-			rect.Point = h.PointToRoot(rect.Point)
+			rect = h.RectToRoot(rect)
 			rect.Align()
 			avoid := cell.UpdateTooltipCallback(where, rect)
 			h.Tooltip = cell.Tooltip
@@ -237,10 +237,9 @@ func (h *TableHeader) DefaultUpdateTooltipCallback(where geom32.Point, suggested
 		}
 		if cell.Tooltip != nil {
 			h.Tooltip = cell.Tooltip
-			suggestedAvoid = h.ColumnFrame(col)
-			suggestedAvoid.Point = h.PointToRoot(suggestedAvoid.Point)
-			suggestedAvoid.Align()
-			return suggestedAvoid
+			suggestedAvoidInRoot = h.RectToRoot(h.ColumnFrame(col))
+			suggestedAvoidInRoot.Align()
+			return suggestedAvoidInRoot
 		}
 	}
 	h.Tooltip = nil

@@ -116,7 +116,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
-	size := target.FrameRect().Size
+	size := target.ContentRect(true).Size
 	width := size.Width - (insets.Left + insets.Right)
 	pt := geom32.Point{X: insets.Left, Y: insets.Top}
 	availWidth := width

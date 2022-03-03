@@ -15,6 +15,8 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/mathf32"
 )
 
+// TODO: Fix scaling for docks, too
+
 var (
 	_ Layout         = &DockLayout{}
 	_ DockLayoutNode = &DockLayout{}

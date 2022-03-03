@@ -60,7 +60,7 @@ func (f *FlexLayout) PerformLayout(target *Panel) {
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
-	hint := target.FrameRect().Size
+	hint := target.ContentRect(true).Size
 	hint.SubtractInsets(insets)
 	f.layout(target, geom32.Point{X: insets.Left, Y: insets.Top}, hint, true, false)
 }

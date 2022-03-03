@@ -878,8 +878,7 @@ func (w *Window) updateTooltip(target *Panel, where geom32.Point) {
 	var avoid geom32.Rect
 	var tip *Panel
 	for target != nil {
-		avoid = target.ContentRect(true)
-		avoid.Point = target.PointToRoot(avoid.Point)
+		avoid = target.RectToRoot(target.ContentRect(true))
 		avoid.Align()
 		if target.UpdateTooltipCallback != nil {
 			toolbox.Call(func() { avoid = target.UpdateTooltipCallback(target.PointFromRoot(where), avoid) })

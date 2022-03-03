@@ -176,7 +176,6 @@ func createButtonsPanel() *unison.Panel {
 			btn.SetEnabled(false)
 		}
 	}
-
 	return panel
 }
 
@@ -543,14 +542,13 @@ func createImagePanel() *unison.Label {
 	imgPanel.UpdateCursorCallback = func(where geom32.Point) *unison.Cursor { return cursor }
 
 	// Add a tooltip that shows the current mouse coordinates
-	imgPanel.UpdateTooltipCallback = func(where geom32.Point, avoid geom32.Rect) geom32.Rect {
+	imgPanel.UpdateTooltipCallback = func(where geom32.Point, suggestedAvoidInRoot geom32.Rect) geom32.Rect {
 		imgPanel.Tooltip = unison.NewTooltipWithText(where.String())
-		avoid.X = where.X - 16
-		avoid.Y = where.Y - 16
-		avoid.Point = imgPanel.PointToRoot(avoid.Point)
-		avoid.Width = 32
-		avoid.Height = 32
-		return avoid
+		suggestedAvoidInRoot.X = where.X - 16
+		suggestedAvoidInRoot.Y = where.Y - 16
+		suggestedAvoidInRoot.Width = 32
+		suggestedAvoidInRoot.Height = 32
+		return imgPanel.RectToRoot(suggestedAvoidInRoot)
 	}
 
 	// Set the initial image
