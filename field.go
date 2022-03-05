@@ -35,6 +35,7 @@ var DefaultFieldTheme = FieldTheme{
 	UnfocusedBorder:  NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 3, Left: 3, Bottom: 2, Right: 3})),
 	BlinkRate:        560 * time.Millisecond,
 	MinimumTextWidth: 10,
+	HAlign:           StartAlignment,
 }
 
 // FieldTheme holds theming data for a Field.
@@ -52,6 +53,7 @@ type FieldTheme struct {
 	UnfocusedBorder  Border
 	BlinkRate        time.Duration
 	MinimumTextWidth float32
+	HAlign           Alignment
 }
 
 // Field provides a single-line text input control.
@@ -109,6 +111,7 @@ func (f *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	if pref.Width < minWidth {
 		pref.Width = minWidth
 	}
+	pref.Width += 2 // Allow room for the cursor on either side of the text
 	if b := f.Border(); b != nil {
 		insets := b.Insets()
 		pref.AddInsets(insets)
@@ -141,15 +144,18 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	rect := f.ContentRect(true)
 	canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
 	rect = f.ContentRect(false)
-	clipRect := rect
-	clipRect.Inset(geom32.NewUniformInsets(-2)) // Remove interior padding for the clip
-	canvas.ClipRect(clipRect, IntersectClipOp, false)
+	canvas.ClipRect(rect, IntersectClipOp, false)
+	paint := bg.Paint(canvas, rect, Fill)
+	text := NewTextFromRunes(f.runes, &TextDecoration{
+		Font:  f.Font,
+		Paint: paint,
+	})
+	textLeft := f.textLeft(text, rect)
 	textTop := rect.Y + (rect.Height-f.Font.LineHeight())/2
 	textBaseLine := textTop + f.Font.Baseline()
-	paint := bg.Paint(canvas, rect, Fill)
 	switch {
 	case f.Enabled() && f.Focused() && f.HasSelectionRange():
-		left := rect.X + f.scrollOffset
+		left := textLeft + f.scrollOffset
 		if f.selectionStart > 0 {
 			t := NewTextFromRunes(f.runes[:f.selectionStart], &TextDecoration{
 				Font:  f.Font,
@@ -164,8 +170,8 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		})
 		right := left + t.Width()
 		selRect := geom32.Rect{
-			Point: geom32.Point{X: left, Y: clipRect.Y},
-			Size:  geom32.Size{Width: right - left, Height: clipRect.Height},
+			Point: geom32.Point{X: left, Y: rect.Y},
+			Size:  geom32.Size{Width: right - left, Height: rect.Height},
 		}
 		canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
 		t.Draw(canvas, left, textBaseLine)
@@ -178,26 +184,24 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	case len(f.runes) == 0:
 		if f.Watermark != "" {
 			paint.SetColorFilter(NewAlphaFilter(0.3))
-			NewText(f.Watermark, &TextDecoration{
+			text = NewText(f.Watermark, &TextDecoration{
 				Font:  f.Font,
 				Paint: paint,
-			}).Draw(canvas, rect.X, textBaseLine)
+			})
+			text.Draw(canvas, textLeft-text.Width(), textBaseLine)
 		}
 	default:
 		if !f.Enabled() {
 			paint.SetColorFilter(Grayscale30PercentFilter())
 		}
-		NewTextFromRunes(f.runes, &TextDecoration{
-			Font:  f.Font,
-			Paint: paint,
-		}).Draw(canvas, rect.X+f.scrollOffset, textBaseLine)
+		text.Draw(canvas, textLeft+f.scrollOffset, textBaseLine)
 	}
 	if !f.HasSelectionRange() && f.Enabled() && f.Focused() {
 		if f.showCursor {
-			canvas.DrawRect(geom32.NewRect(rect.X+NewTextFromRunes(f.runes[:f.selectionEnd], &TextDecoration{
+			canvas.DrawRect(geom32.NewRect(textLeft+NewTextFromRunes(f.runes[:f.selectionEnd], &TextDecoration{
 				Font:  f.Font,
 				Paint: nil,
-			}).Width()+f.scrollOffset-0.5, clipRect.Y, 1, clipRect.Height),
+			}).Width()+f.scrollOffset-0.5, rect.Y, 1, rect.Height),
 				bg.Paint(canvas, rect, Fill))
 		}
 		f.scheduleBlink()
@@ -762,29 +766,38 @@ func (f *Field) autoScroll() {
 	}
 }
 
+func (f *Field) textLeft(text *Text, bounds geom32.Rect) float32 {
+	left := bounds.X
+	switch f.HAlign {
+	case MiddleAlignment:
+		left += (bounds.Width - text.Width()) / 2
+	case EndAlignment:
+		left += bounds.Width - text.Width() - 1 // Inset since we leave space for the cursor
+	default:
+		left++ // Inset since we leave space for the cursor
+	}
+	return left
+}
+
 // ToSelectionIndex returns the rune index for the specified x-coordinate.
 func (f *Field) ToSelectionIndex(x float32) int {
-	rect := f.ContentRect(false)
-	return NewTextFromRunes(f.runes, &TextDecoration{
-		Font:  f.Font,
-		Paint: nil,
-	}).RuneIndexForPosition(x - (rect.X + f.scrollOffset))
+	text := NewTextFromRunes(f.runes, &TextDecoration{Font: f.Font})
+	return text.RuneIndexForPosition(x - (f.textLeft(text, f.ContentRect(false)) + f.scrollOffset))
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
 func (f *Field) FromSelectionIndex(index int) geom32.Point {
+	text := NewTextFromRunes(f.runes, &TextDecoration{Font: f.Font})
 	rect := f.ContentRect(false)
-	x := rect.X + f.scrollOffset
+	left := f.textLeft(text, rect)
+	x := left + f.scrollOffset
 	top := rect.Y + rect.Height/2
 	if index > 0 {
 		length := len(f.runes)
 		if index > length {
 			index = length
 		}
-		x += NewTextFromRunes(f.runes, &TextDecoration{
-			Font:  f.Font,
-			Paint: nil,
-		}).PositionForRuneIndex(index)
+		x += text.PositionForRuneIndex(index)
 	}
 	return geom32.Point{X: x, Y: top}
 }

@@ -439,6 +439,7 @@ func createTextFieldsPanel() *unison.Panel {
 	field := createTextField("Longer Label:", "", panel)
 	field.Watermark = "Watermarked"
 	field = createTextField("Field 4:", "", panel)
+	field.HAlign = unison.EndAlignment
 	field.Watermark = "Enter only numbers"
 	field.ValidateCallback = func() bool {
 		for _, r := range field.Text() {
