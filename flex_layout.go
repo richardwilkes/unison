@@ -141,7 +141,7 @@ func (f *FlexLayout) buildGrid(children []*Panel) [][]*Panel {
 		vSpan := xmath.MaxInt(1, data.VSpan)
 		for {
 			lastRow := row + vSpan
-			if lastRow >= len(grid) {
+			for lastRow >= len(grid) {
 				grid = append(grid, make([]*Panel, f.Columns))
 			}
 			// noinspection GoNilness
