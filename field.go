@@ -11,10 +11,10 @@ package unison
 
 import (
 	"math"
-	"strings"
 	"time"
 	"unicode"
 
+	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/toolbox/xmath/geom32"
 )
@@ -556,7 +556,7 @@ func (f *Field) CanPaste() bool {
 func (f *Field) Paste() {
 	text := GlobalClipboard.GetText()
 	if text != "" {
-		runes := []rune(f.sanitize(text))
+		runes := f.sanitize([]rune(text))
 		if f.HasSelectionRange() {
 			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
 		}
@@ -566,6 +566,19 @@ func (f *Field) Paste() {
 	} else if f.HasSelectionRange() {
 		f.Delete()
 	}
+}
+
+// RunesIfPasted returns the resulting runes if the given input was pasted into the field.
+func (f *Field) RunesIfPasted(input []rune) []rune {
+	runes := f.sanitize(input)
+	result := make([]rune, 0, len(runes)+len(f.runes))
+	if f.HasSelectionRange() {
+		copy(result, f.runes[:f.selectionStart])
+		result = append(result, f.runes[f.selectionEnd:]...)
+	} else {
+		copy(result, f.runes)
+	}
+	return append(result[:f.selectionStart], append(runes, result[f.selectionStart:]...)...)
 }
 
 // CanDelete returns true if the field has a selection that can be deleted.
@@ -605,9 +618,9 @@ func (f *Field) Text() string {
 
 // SetText sets the content of the field.
 func (f *Field) SetText(text string) {
-	text = f.sanitize(text)
-	if string(f.runes) != text {
-		f.runes = []rune(text)
+	runes := f.sanitize([]rune(text))
+	if txt.RunesEqual(runes, f.runes) {
+		f.runes = runes
 		f.SetSelectionToEnd()
 		f.notifyOfModification()
 	}
@@ -633,8 +646,15 @@ func (f *Field) Validate() {
 	}
 }
 
-func (f *Field) sanitize(text string) string {
-	return strings.NewReplacer("\n", "", "\r", "").Replace(text)
+func (f *Field) sanitize(runes []rune) []rune {
+	i := 0
+	for _, ch := range runes {
+		if ch != '\n' && ch != '\r' {
+			runes[i] = ch
+			i++
+		}
+	}
+	return runes[:i]
 }
 
 // SelectedText returns the currently selected text.
