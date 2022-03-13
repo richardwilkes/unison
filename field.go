@@ -572,13 +572,9 @@ func (f *Field) Paste() {
 func (f *Field) RunesIfPasted(input []rune) []rune {
 	runes := f.sanitize(input)
 	result := make([]rune, 0, len(runes)+len(f.runes))
-	if f.HasSelectionRange() {
-		copy(result, f.runes[:f.selectionStart])
-		result = append(result, f.runes[f.selectionEnd:]...)
-	} else {
-		copy(result, f.runes)
-	}
-	return append(result[:f.selectionStart], append(runes, result[f.selectionStart:]...)...)
+	result = append(result, f.runes[:f.selectionStart]...)
+	result = append(result, runes...)
+	return append(result, f.runes[f.selectionEnd:]...)
 }
 
 // CanDelete returns true if the field has a selection that can be deleted.
@@ -619,7 +615,7 @@ func (f *Field) Text() string {
 // SetText sets the content of the field.
 func (f *Field) SetText(text string) {
 	runes := f.sanitize([]rune(text))
-	if txt.RunesEqual(runes, f.runes) {
+	if !txt.RunesEqual(runes, f.runes) {
 		f.runes = runes
 		f.SetSelectionToEnd()
 		f.notifyOfModification()
