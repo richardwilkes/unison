@@ -84,7 +84,7 @@ func (m *UndoManager) Add(edit UndoEdit) {
 	for i := m.index + 1; i < len(m.edits); i++ {
 		m.release(m.edits[i])
 	}
-	add := m.index < 0
+	add := m.index < 0 //nolint:ifshort // No, the short syntax is not appropriate here
 	if !add {
 		absorb := m.edits[m.index].Absorb(edit)
 		if absorb {

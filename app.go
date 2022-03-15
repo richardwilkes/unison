@@ -248,7 +248,7 @@ func quitting() {
 	// atexit.Exit() is called here once to ensure registered atexit hooks are actually called, as OS's may directly
 	// terminate the app after returning from this function.
 	quitLock.Lock()
-	calledExit := calledAtExit
+	calledExit := calledAtExit //nolint:ifshort // No, the short syntax is not appropriate here
 	calledAtExit = true
 	quitLock.Unlock()
 	if !calledExit {
