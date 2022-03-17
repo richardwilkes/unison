@@ -245,7 +245,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 					disclosureSize := mathf32.Min(t.HierarchyIndent, t.MinimumRowHeight) - disclosureIndent*2
 					canvas.Save()
 					left := cellRect.X + t.HierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
-					top := cellRect.Y + disclosureIndent - 1 // Unclear why the -1 is needed...
+					top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
 					t.hitRects = append(t.hitRects, t.newTableHitRect(geom32.NewRect(left, top, disclosureSize,
 						disclosureSize), row))
 					canvas.Translate(left, top)
