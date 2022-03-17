@@ -201,9 +201,11 @@ func (h *TableHeader) uninstallCell(cell *Panel) {
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.
 func (h *TableHeader) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
-	if over := h.Table.OverColumnDivider(where.X); over != -1 {
-		if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
-			return ResizeHorizontalCursor()
+	if !h.Table.PreventUserColumnResize {
+		if over := h.Table.OverColumnDivider(where.X); over != -1 {
+			if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
+				return ResizeHorizontalCursor()
+			}
 		}
 	}
 	if col := h.Table.OverColumn(where.X); col != -1 {
@@ -266,28 +268,30 @@ func (h *TableHeader) DefaultMouseMove(where geom32.Point, mod Modifiers) bool {
 func (h *TableHeader) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
 	h.interactionColumn = -1
 	h.inHeader = false
-	if over := h.Table.OverColumnDivider(where.X); over != -1 {
-		if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
-			if clickCount == 2 {
-				h.Table.SizeColumnToFit(over, true)
-				h.MarkForRedraw()
-				h.Window().UpdateCursorNow()
+	if !h.Table.PreventUserColumnResize {
+		if over := h.Table.OverColumnDivider(where.X); over != -1 {
+			if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
+				if clickCount == 2 {
+					h.Table.SizeColumnToFit(over, true)
+					h.MarkForRedraw()
+					h.Window().UpdateCursorNow()
+					return true
+				}
+				h.interactionColumn = over
+				h.columnResizeStart = where.X
+				h.columnResizeBase = h.Table.ColumnSizes[over].Current
+				h.columnResizeOverhead = h.Table.Padding.Left + h.Table.Padding.Right
+				if over == h.Table.HierarchyColumnIndex {
+					depth := 0
+					for _, cache := range h.Table.rowCache {
+						if depth < cache.depth {
+							depth = cache.depth
+						}
+					}
+					h.columnResizeOverhead += h.Table.Padding.Left + h.Table.HierarchyIndent*float32(depth+1)
+				}
 				return true
 			}
-			h.interactionColumn = over
-			h.columnResizeStart = where.X
-			h.columnResizeBase = h.Table.ColumnSizes[over].Current
-			h.columnResizeOverhead = h.Table.Padding.Left + h.Table.Padding.Right
-			if over == h.Table.HierarchyColumnIndex {
-				depth := 0
-				for _, cache := range h.Table.rowCache {
-					if depth < cache.depth {
-						depth = cache.depth
-					}
-				}
-				h.columnResizeOverhead += h.Table.Padding.Left + h.Table.HierarchyIndent*float32(depth+1)
-			}
-			return true
 		}
 	}
 	stop := true
@@ -308,7 +312,7 @@ func (h *TableHeader) DefaultMouseDown(where geom32.Point, button, clickCount in
 
 // DefaultMouseDrag provides the default mouse drag handling.
 func (h *TableHeader) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
-	if !h.inHeader && h.interactionColumn != -1 {
+	if !h.Table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
 		width := h.columnResizeBase + where.X - h.columnResizeStart
 		if width < h.columnResizeOverhead {
 			width = h.columnResizeOverhead

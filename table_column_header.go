@@ -40,8 +40,8 @@ type DefaultTableColumnHeader struct {
 	sortIndicator *DrawableSVG
 }
 
-// NewTableColumnHeader creates a new table column header panel with the given title.
-func NewTableColumnHeader(title string) *DefaultTableColumnHeader {
+// NewTableColumnHeader creates a new table column header panel.
+func NewTableColumnHeader(title, tooltip string) *DefaultTableColumnHeader {
 	h := &DefaultTableColumnHeader{
 		Label: Label{
 			LabelTheme: DefaultTableColumnHeaderTheme,
@@ -57,6 +57,9 @@ func NewTableColumnHeader(title string) *DefaultTableColumnHeader {
 	h.SetSizer(h.DefaultSizes)
 	h.DrawCallback = h.DefaultDraw
 	h.MouseUpCallback = h.DefaultMouseUp
+	if tooltip != "" {
+		h.Tooltip = NewTooltipWithText(tooltip)
+	}
 	return h
 }
 

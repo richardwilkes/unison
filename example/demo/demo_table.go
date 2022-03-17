@@ -87,10 +87,10 @@ func NewDemoTableWindow(where geom32.Point) (*unison.Window, error) {
 	table.SizeColumnsToFit(true)
 
 	header := unison.NewTableHeader(table,
-		unison.NewTableColumnHeader(""),
-		unison.NewTableColumnHeader("First"),
-		unison.NewTableColumnHeader("Second"),
-		unison.NewTableColumnHeader("xyz"),
+		unison.NewTableColumnHeader("", ""),
+		unison.NewTableColumnHeader("First", ""),
+		unison.NewTableColumnHeader("Second", ""),
+		unison.NewTableColumnHeader("xyz", ""),
 	)
 	header.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: unison.FillAlignment,

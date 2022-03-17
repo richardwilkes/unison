@@ -114,6 +114,7 @@ type Table struct {
 	columnResizeStart            float32
 	columnResizeBase             float32
 	columnResizeOverhead         float32
+	PreventUserColumnResize      bool
 	awaitingSizeColumnsToFit     bool
 	awaitingSyncToModel          bool
 }
@@ -431,9 +432,11 @@ func (t *Table) newTableHitRect(rect geom32.Rect, row TableRowData) tableHitRect
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.
 func (t *Table) DefaultUpdateCursorCallback(where geom32.Point) *Cursor {
-	if over := t.OverColumnDivider(where.X); over != -1 {
-		if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
-			return ResizeHorizontalCursor()
+	if !t.PreventUserColumnResize {
+		if over := t.OverColumnDivider(where.X); over != -1 {
+			if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
+				return ResizeHorizontalCursor()
+			}
 		}
 	}
 	if row := t.OverRow(where.Y); row != -1 {
@@ -545,28 +548,30 @@ func (t *Table) DefaultMouseMove(where geom32.Point, mod Modifiers) bool {
 func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
 	t.interactionRow = -1
 	t.interactionColumn = -1
-	if over := t.OverColumnDivider(where.X); over != -1 {
-		if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
-			if clickCount == 2 {
-				t.SizeColumnToFit(over, true)
-				t.MarkForRedraw()
-				t.Window().UpdateCursorNow()
+	if !t.PreventUserColumnResize {
+		if over := t.OverColumnDivider(where.X); over != -1 {
+			if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
+				if clickCount == 2 {
+					t.SizeColumnToFit(over, true)
+					t.MarkForRedraw()
+					t.Window().UpdateCursorNow()
+					return true
+				}
+				t.interactionColumn = over
+				t.columnResizeStart = where.X
+				t.columnResizeBase = t.ColumnSizes[over].Current
+				t.columnResizeOverhead = t.Padding.Left + t.Padding.Right
+				if over == t.HierarchyColumnIndex {
+					depth := 0
+					for _, cache := range t.rowCache {
+						if depth < cache.depth {
+							depth = cache.depth
+						}
+					}
+					t.columnResizeOverhead += t.Padding.Left + t.HierarchyIndent*float32(depth+1)
+				}
 				return true
 			}
-			t.interactionColumn = over
-			t.columnResizeStart = where.X
-			t.columnResizeBase = t.ColumnSizes[over].Current
-			t.columnResizeOverhead = t.Padding.Left + t.Padding.Right
-			if over == t.HierarchyColumnIndex {
-				depth := 0
-				for _, cache := range t.rowCache {
-					if depth < cache.depth {
-						depth = cache.depth
-					}
-				}
-				t.columnResizeOverhead += t.Padding.Left + t.HierarchyIndent*float32(depth+1)
-			}
-			return true
 		}
 	}
 	for _, one := range t.hitRects {
@@ -638,25 +643,27 @@ func (t *Table) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 	stop := false
 	if t.interactionColumn != -1 {
 		if t.interactionRow == -1 {
-			width := t.columnResizeBase + where.X - t.columnResizeStart
-			if width < t.columnResizeOverhead {
-				width = t.columnResizeOverhead
-			}
-			min := t.ColumnSizes[t.interactionColumn].Minimum
-			if min > 0 && width < min+t.columnResizeOverhead {
-				width = min + t.columnResizeOverhead
-			} else {
-				max := t.ColumnSizes[t.interactionColumn].Maximum
-				if max > 0 && width > max+t.columnResizeOverhead {
-					width = max + t.columnResizeOverhead
+			if !t.PreventUserColumnResize {
+				width := t.columnResizeBase + where.X - t.columnResizeStart
+				if width < t.columnResizeOverhead {
+					width = t.columnResizeOverhead
 				}
+				min := t.ColumnSizes[t.interactionColumn].Minimum
+				if min > 0 && width < min+t.columnResizeOverhead {
+					width = min + t.columnResizeOverhead
+				} else {
+					max := t.ColumnSizes[t.interactionColumn].Maximum
+					if max > 0 && width > max+t.columnResizeOverhead {
+						width = max + t.columnResizeOverhead
+					}
+				}
+				if t.ColumnSizes[t.interactionColumn].Current != width {
+					t.ColumnSizes[t.interactionColumn].Current = width
+					t.EventuallySyncToModel()
+					t.MarkForRedraw()
+				}
+				stop = true
 			}
-			if t.ColumnSizes[t.interactionColumn].Current != width {
-				t.ColumnSizes[t.interactionColumn].Current = width
-				t.EventuallySyncToModel()
-				t.MarkForRedraw()
-			}
-			stop = true
 		} else {
 			cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionRow, t.interactionColumn, t.IsRowOrAnyParentSelected(t.interactionRow)).AsPanel()
 			if cell.MouseDragCallback != nil {
@@ -856,6 +863,63 @@ func (t *Table) heightForColumns(row TableRowData, rowIndex, depth int, selected
 		}
 	}
 	return mathf32.Max(mathf32.Ceil(height), t.MinimumRowHeight)
+}
+
+// SizeColumnsToFitWithExcessIn sizes each column to its preferred size, with the exception of the 'excessColumnIndex',
+// which gets set to any remaining width left over. Pass in -1 for the 'excessColumnIndex' to use the
+// HierarchyColumnIndex or 0, if the HierarchyColumnIndex is less than 0
+func (t *Table) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
+	if excessColumnIndex < 0 {
+		excessColumnIndex = t.HierarchyColumnIndex
+		if excessColumnIndex < 0 {
+			excessColumnIndex = 0
+		}
+	}
+	current := make([]float32, len(t.ColumnSizes))
+	for i := range t.ColumnSizes {
+		current[i] = mathf32.Max(t.ColumnSizes[i].Minimum, 0)
+		t.ColumnSizes[i].Current = 0
+	}
+	for rowIndex, cache := range t.rowCache {
+		selected := t.IsRowOrAnyParentSelected(rowIndex)
+		for i := range t.ColumnSizes {
+			if i == excessColumnIndex {
+				continue
+			}
+			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(geom32.Size{})
+			min := t.ColumnSizes[i].AutoMinimum
+			if min > 0 && pref.Width < min {
+				pref.Width = min
+			} else {
+				max := t.ColumnSizes[i].AutoMaximum
+				if max > 0 && pref.Width > max {
+					pref.Width = max
+				}
+			}
+			pref.Width += t.Padding.Left + t.Padding.Right
+			if i == t.HierarchyColumnIndex {
+				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
+			}
+			if current[i] < pref.Width {
+				current[i] = pref.Width
+			}
+		}
+	}
+	width := t.ContentRect(false).Width
+	if t.ShowColumnDivider {
+		width -= float32(len(t.ColumnSizes) - 1)
+	}
+	for i := range current {
+		if i == excessColumnIndex {
+			continue
+		}
+		t.ColumnSizes[i].Current = current[i]
+		width -= current[i]
+	}
+	t.ColumnSizes[excessColumnIndex].Current = mathf32.Max(width, t.ColumnSizes[excessColumnIndex].Minimum)
+	for i, cache := range t.rowCache {
+		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
+	}
 }
 
 // SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the Table's FrameRect will be set to
