@@ -52,7 +52,8 @@ func (p *rootPanel) MenuBar() *Panel {
 func (p *rootPanel) SetMenuBar(bar *Panel, preMovedCallback, postLostFocusCallback func(*Window),
 	preMouseDownCallback func(*Window, geom32.Point) bool,
 	preKeyDownCallback, preKeyUpCallback func(*Window, KeyCode, Modifiers) bool,
-	preRuneTypedCallback func(*Window, rune) bool) {
+	preRuneTypedCallback func(*Window, rune) bool,
+) {
 	if p.menubar != nil {
 		p.RemoveChild(p.menubar)
 	}

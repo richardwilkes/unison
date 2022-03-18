@@ -107,7 +107,8 @@ func adjustLabelSizeForDrawable(text string, drawable Drawable, drawableSide Sid
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
 func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text string, font Font,
-	textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
+	textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool,
+) {
 	if drawable == nil && text == "" {
 		return
 	}
