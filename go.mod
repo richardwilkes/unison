@@ -1,15 +1,15 @@
 module github.com/richardwilkes/unison
 
-go 1.17
+go 1.18
 
 require (
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20211213063430-748e38ca8aec
 	github.com/richardwilkes/json v0.0.0-20220202023945-ac9125b86187
-	github.com/richardwilkes/toolbox v1.64.1
-	github.com/stretchr/testify v1.7.0
+	github.com/richardwilkes/toolbox v1.65.0
+	github.com/stretchr/testify v1.7.1
 	golang.org/x/image v0.0.0-20220302094943-723b81ca9867
-	golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5
+	golang.org/x/sys v0.0.0-20220318055525-2edf467146b5
 )
 
 require (
