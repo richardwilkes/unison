@@ -208,7 +208,7 @@ func (s *ScrollPanel) Sync() {
 		r.Y = -s.verticalBar.Value()
 		s.content.AsPanel().SetFrameRect(r)
 	}
-	s.PerformLayout(s.AsPanel())
+	s.MarkForLayoutAndRedraw()
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
