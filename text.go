@@ -152,6 +152,9 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	start := len(t.decorations)
 	if start != 0 && decoration.Equivalent(t.decorations[start-1]) {
 		decoration = t.decorations[start-1]
+	} else {
+		clonedDecoration := *decoration
+		decoration = &clonedDecoration
 	}
 	t.runes = append(t.runes, runes...)
 	face := decoration.Font.Face()
@@ -171,6 +174,14 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 				t.widths[start+i] = altDec.Font.GlyphWidths([]uint16{altDec.Font.RuneToGlyph(r)})[0]
 			}
 		}
+	}
+}
+
+// ReplacePaint replaces the paint of this Text. Note that if this Text originally had multiple runs, some with
+// different paint, after this call all of the runs will have the same paint.
+func (t *Text) ReplacePaint(paint *Paint) {
+	for _, d := range t.decorations {
+		d.Paint = paint
 	}
 }
 
