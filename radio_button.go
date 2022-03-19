@@ -58,6 +58,7 @@ type RadioButton struct {
 	ClickCallback func()
 	Drawable      Drawable
 	Text          string
+	textCache     TextCache
 	Pressed       bool
 }
 
@@ -93,7 +94,7 @@ func (r *RadioButton) circleAndLabelSize() geom32.Size {
 	if r.Drawable == nil && r.Text == "" {
 		return geom32.Size{Width: circleSize, Height: circleSize}
 	}
-	size := LabelSize(r.Text, r.Font, r.Drawable, r.Side, r.Gap)
+	size := LabelSize(r.textCache.Text(r.Text, r.Font), r.Drawable, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
 	if size.Height < circleSize {
 		size.Height = circleSize
@@ -142,7 +143,8 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Text, r.Font, r.LabelInk, r.Drawable, r.Side, r.Gap, !r.Enabled())
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.textCache.Text(r.Text, r.Font), r.LabelInk, r.Drawable, r.Side,
+			r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += mathf32.Floor((rect.Height - circleSize) / 2)

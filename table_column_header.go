@@ -65,7 +65,7 @@ func NewTableColumnHeader(title, tooltip string) *DefaultTableColumnHeader {
 
 // DefaultSizes provides the default sizing.
 func (h *DefaultTableColumnHeader) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	pref = LabelSize(h.Text, h.Font, h.Drawable, h.Side, h.Gap)
+	pref = LabelSize(h.textCache.Text(h.Text, h.Font), h.Drawable, h.Side, h.Gap)
 
 	// Account for the potential sort indicator
 	baseline := h.Font.Baseline()
@@ -88,7 +88,8 @@ func (h *DefaultTableColumnHeader) DefaultDraw(canvas *Canvas, dirty geom32.Rect
 	if h.sortIndicator != nil {
 		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
 	}
-	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.Text, h.Font, h.OnBackgroundInk, h.Drawable, h.Side, h.Gap, !h.Enabled())
+	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.textCache.Text(h.Text, h.Font), h.OnBackgroundInk, h.Drawable, h.Side,
+		h.Gap, !h.Enabled())
 	if h.sortIndicator != nil {
 		size := h.sortIndicator.LogicalSize()
 		r.X = r.Right() + h.LabelTheme.Gap

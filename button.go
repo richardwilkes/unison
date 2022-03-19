@@ -90,6 +90,7 @@ type Button struct {
 	ClickCallback func()
 	Drawable      Drawable
 	Text          string
+	textCache     TextCache
 	Pressed       bool
 	rollover      bool
 }
@@ -128,11 +129,7 @@ func NewSVGButton(svg *SVG) *Button {
 
 // DefaultSizes provides the default sizing.
 func (b *Button) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	text := b.Text
-	if b.Drawable == nil && text == "" {
-		text = "M"
-	}
-	pref = LabelSize(text, b.Font, b.Drawable, b.Side, b.Gap)
+	pref = LabelSize(b.textCache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
 	if theBorder := b.Border(); theBorder != nil {
 		pref.AddInsets(theBorder.Insets())
 	}
@@ -190,7 +187,8 @@ func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	rect.Y += b.VerticalMargin()
 	rect.Width -= b.HorizontalMargin() * 2
 	rect.Height -= b.VerticalMargin() * 2
-	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.Text, b.Font, fg, b.Drawable, b.Side, b.Gap, !b.Enabled())
+	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.textCache.Text(b.Text, b.Font), fg, b.Drawable, b.Side, b.Gap,
+		!b.Enabled())
 }
 
 // Click makes the button behave as if a user clicked on it.

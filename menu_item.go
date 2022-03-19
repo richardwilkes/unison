@@ -80,6 +80,8 @@ type menuItem struct {
 	factory     *inWindowMenuFactory
 	id          int
 	title       string
+	titleCache  TextCache
+	keyCache    TextCache
 	menu        *menu
 	subMenu     *menu
 	panel       *Panel
@@ -232,14 +234,11 @@ func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
 	if mi.isSeparator {
 		pref.Height = 1
 	} else {
-		pref = LabelSize(mi.Title(), DefaultMenuItemTheme.TitleFont, nil, LeftSide, 0)
+		pref = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, LeftSide, 0)
 		if !mi.keyBinding.KeyCode.ShouldOmit() {
-			name := mi.keyBinding.String()
-			if name != "" {
-				size := NewText(name, &TextDecoration{
-					Font:  DefaultMenuItemTheme.KeyFont,
-					Paint: nil,
-				}).Extents()
+			keys := mi.keyBinding.String()
+			if keys != "" {
+				size := mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont).Extents()
 				pref.Width += DefaultMenuItemTheme.KeyGap + size.Width
 				pref.Height = mathf32.Max(pref.Height, size.Height)
 			}
@@ -269,20 +268,16 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 	if mi.isSeparator {
 		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, paint)
 	} else {
-		t := NewText(mi.Title(), &TextDecoration{
-			Font:  DefaultMenuItemTheme.TitleFont,
-			Paint: paint,
-		})
+		t := mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont)
+		t.ReplacePaint(paint)
 		size := t.Extents()
 		t.Draw(gc, rect.X, mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 		if mi.subMenu == nil {
 			if !mi.keyBinding.KeyCode.ShouldOmit() {
-				name := mi.keyBinding.String()
-				if name != "" {
-					t = NewText(name, &TextDecoration{
-						Font:  DefaultMenuItemTheme.KeyFont,
-						Paint: paint,
-					})
+				keys := mi.keyBinding.String()
+				if keys != "" {
+					t = mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont)
+					t.ReplacePaint(paint)
 					size = t.Extents()
 					t.Draw(gc, mathf32.Floor(rect.Right()-size.Width),
 						mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())

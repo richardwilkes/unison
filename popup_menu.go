@@ -44,8 +44,9 @@ type PopupMenuTheme struct {
 }
 
 type popupMenuItem struct {
-	item    interface{}
-	enabled bool
+	item      interface{}
+	textCache TextCache
+	enabled   bool
 }
 
 // PopupMenu represents a clickable button that displays a menu of choices.
@@ -56,6 +57,7 @@ type PopupMenu struct {
 	SelectionCallback func()
 	items             []*popupMenuItem
 	selectedIndex     int
+	textCache         TextCache
 	Pressed           bool
 }
 
@@ -78,12 +80,12 @@ func NewPopupMenu() *PopupMenu {
 
 // DefaultSizes provides the default sizing.
 func (p *PopupMenu) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
-	pref = LabelSize("M", p.Font, nil, 0, 0)
+	pref = LabelSize(p.textCache.Text("M", p.Font), nil, 0, 0)
 	for _, one := range p.items {
 		switch one.item.(type) {
 		case *popupSeparationMarker:
 		default:
-			size := LabelSize(fmt.Sprintf("%v", one.item), p.Font, nil, 0, 0)
+			size := LabelSize(one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font), nil, 0, 0)
 			if pref.Width < size.Width {
 				pref.Width = size.Width
 			}
@@ -129,8 +131,7 @@ func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	triWidth := rect.Height * 0.75
 	triHeight := triWidth / 2
 	rect.Width -= triWidth
-	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.Text(), p.Font, fg, nil, 0, 0,
-		!p.Enabled())
+	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.textObj(), fg, nil, 0, 0, !p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()
 	path.MoveTo(rect.Right(), rect.Y+(rect.Height-triHeight)/2)
@@ -142,6 +143,18 @@ func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		paint.SetColorFilter(Grayscale30PercentFilter())
 	}
 	canvas.DrawPath(path, paint)
+}
+
+func (p *PopupMenu) textObj() *Text {
+	if p.selectedIndex >= 0 && p.selectedIndex < len(p.items) {
+		one := p.items[p.selectedIndex].item
+		switch one.(type) {
+		case *popupSeparationMarker:
+		default:
+			return p.items[p.selectedIndex].textCache.Text(fmt.Sprintf("%v", one), p.Font)
+		}
+	}
+	return nil
 }
 
 // Text the currently shown text.

@@ -58,6 +58,7 @@ type CheckBox struct {
 	ClickCallback func()
 	Drawable      Drawable
 	Text          string
+	textCache     TextCache
 	State         CheckState
 	Pressed       bool
 }
@@ -94,7 +95,7 @@ func (c *CheckBox) boxAndLabelSize() geom32.Size {
 	if c.Drawable == nil && c.Text == "" {
 		return geom32.Size{Width: boxSize, Height: boxSize}
 	}
-	size := LabelSize(c.Text, c.Font, c.Drawable, c.Side, c.Gap)
+	size := LabelSize(c.textCache.Text(c.Text, c.Font), c.Drawable, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
 	if size.Height < boxSize {
 		size.Height = boxSize
@@ -131,8 +132,8 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		r := rect
 		r.X += boxSize + c.Gap
 		r.Width -= boxSize + c.Gap
-		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Text, c.Font, c.OnBackgroundInk, c.Drawable, c.Side, c.Gap,
-			!c.Enabled())
+		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.textCache.Text(c.Text, c.Font), c.OnBackgroundInk, c.Drawable,
+			c.Side, c.Gap, !c.Enabled())
 	}
 	if rect.Height > boxSize {
 		rect.Y += mathf32.Floor((rect.Height - boxSize) / 2)
