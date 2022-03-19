@@ -19,6 +19,7 @@ var _ Layout = &FlexLayout{}
 
 // FlexLayout lays out the children of its Layoutable based on the FlexLayoutData assigned to each child.
 type FlexLayout struct {
+	sizingCache  map[*Panel]map[geom32.Size]*flexSizingCacheData
 	rows         int
 	Columns      int
 	HSpacing     float32
@@ -26,6 +27,12 @@ type FlexLayout struct {
 	HAlign       Alignment
 	VAlign       Alignment
 	EqualColumns bool
+}
+
+type flexSizingCacheData struct {
+	min  geom32.Size
+	pref geom32.Size
+	max  geom32.Size
 }
 
 // FlexLayoutData is used to control how an object is laid out by the FlexLayout layout.
@@ -44,6 +51,7 @@ type FlexLayoutData struct {
 
 // LayoutSizes implements the Layout interface.
 func (f *FlexLayout) LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
+	f.sizingCache = make(map[*Panel]map[geom32.Size]*flexSizingCacheData)
 	min = f.layout(target, geom32.Point{}, hint, false, true)
 	pref = f.layout(target, geom32.Point{}, hint, false, false)
 	if b := target.Border(); b != nil {
@@ -56,6 +64,7 @@ func (f *FlexLayout) LayoutSizes(target *Panel, hint geom32.Size) (min, pref, ma
 
 // PerformLayout implements the Layout interface.
 func (f *FlexLayout) PerformLayout(target *Panel) {
+	f.sizingCache = make(map[*Panel]map[geom32.Size]*flexSizingCacheData)
 	var insets geom32.Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
@@ -110,10 +119,27 @@ func (f *FlexLayout) layout(target *Panel, location geom32.Point, hint geom32.Si
 	return totalSize
 }
 
+func (f *FlexLayout) sizingCacheData(panel *Panel, hint geom32.Size) *flexSizingCacheData {
+	m, ok := f.sizingCache[panel]
+	if !ok {
+		m = make(map[geom32.Size]*flexSizingCacheData)
+		f.sizingCache[panel] = m
+	}
+	var data *flexSizingCacheData
+	if data, ok = m[hint]; !ok {
+		var sizing flexSizingCacheData
+		sizing.min, sizing.pref, sizing.max = panel.Sizes(hint)
+		data = &sizing
+		m[hint] = data
+	}
+	return data
+}
+
 func (f *FlexLayout) prepChildren(target *Panel, useMinimumSize bool) []*Panel {
+	var hint geom32.Size
 	children := target.Children()
 	for _, child := range children {
-		getDataFromTarget(child).computeCacheSize(child.Sizes, geom32.Size{}, useMinimumSize)
+		getDataFromTarget(child).computeCacheSize(f.sizingCacheData(child, hint), hint, useMinimumSize)
 	}
 	return children
 }
@@ -127,7 +153,7 @@ func getDataFromTarget(target *Panel) *FlexLayoutData {
 		VSpan:  1,
 		VAlign: MiddleAlignment,
 	}
-	target.SetLayoutData(data)
+	target.layoutData = data
 	return data
 }
 
@@ -407,7 +433,8 @@ func (f *FlexLayout) wrap(width float32, grid [][]*Panel, widths []float32, useM
 						}
 						currentWidth += float32(hSpan-1) * f.HSpacing
 						if currentWidth != data.cacheSize.Width && data.HAlign == FillAlignment || data.cacheSize.Width > currentWidth {
-							data.computeCacheSize(grid[i][j].Sizes, geom32.Size{Width: mathf32.Max(data.minCacheSize.Width, currentWidth)}, useMinimumSize)
+							hint := geom32.Size{Width: mathf32.Max(data.minCacheSize.Width, currentWidth)}
+							data.computeCacheSize(f.sizingCacheData(grid[i][j], hint), hint, useMinimumSize)
 							minimumHeight := data.MinSize.Height
 							if data.VGrab && minimumHeight > 0 && data.cacheSize.Height < minimumHeight {
 								data.cacheSize.Height = minimumHeight
@@ -617,7 +644,7 @@ func (f *FlexLayout) positionChildren(location geom32.Point, grid [][]*Panel, wi
 	}
 }
 
-func (f *FlexLayoutData) computeCacheSize(sizer Sizer, hint geom32.Size, useMinimumSize bool) {
+func (f *FlexLayoutData) computeCacheSize(sizing *flexSizingCacheData, hint geom32.Size, useMinimumSize bool) {
 	f.cacheSize.Width = 0
 	f.cacheSize.Height = 0
 	f.minCacheSize.Width = 0
@@ -640,45 +667,44 @@ func (f *FlexLayoutData) computeCacheSize(sizer Sizer, hint geom32.Size, useMini
 	if f.VSpan < 1 {
 		f.VSpan = 1
 	}
-	min, pref, max := sizer(hint)
 	if hint.Width > 0 || hint.Height > 0 {
 		if f.MinSize.Width > 0 {
 			f.minCacheSize.Width = f.MinSize.Width
 		} else {
-			f.minCacheSize.Width = min.Width
+			f.minCacheSize.Width = sizing.min.Width
 		}
 		if hint.Width > 0 && hint.Width < f.minCacheSize.Width {
 			hint.Width = f.minCacheSize.Width
 		}
-		if hint.Width > 0 && hint.Width > max.Width {
-			hint.Width = max.Width
+		if hint.Width > 0 && hint.Width > sizing.max.Width {
+			hint.Width = sizing.max.Width
 		}
 		if f.MinSize.Height > 0 {
 			f.minCacheSize.Height = f.MinSize.Height
 		} else {
-			f.minCacheSize.Height = min.Height
+			f.minCacheSize.Height = sizing.min.Height
 		}
 		if hint.Height > 0 && hint.Height < f.minCacheSize.Height {
 			hint.Height = f.minCacheSize.Height
 		}
-		if hint.Height > 0 && hint.Height > max.Height {
-			hint.Height = max.Height
+		if hint.Height > 0 && hint.Height > sizing.max.Height {
+			hint.Height = sizing.max.Height
 		}
 	}
 	if useMinimumSize {
-		f.cacheSize = min
+		f.cacheSize = sizing.min
 		if f.MinSize.Width > 0 {
 			f.minCacheSize.Width = f.MinSize.Width
 		} else {
-			f.minCacheSize.Width = min.Width
+			f.minCacheSize.Width = sizing.min.Width
 		}
 		if f.MinSize.Height > 0 {
 			f.minCacheSize.Height = f.MinSize.Height
 		} else {
-			f.minCacheSize.Height = min.Height
+			f.minCacheSize.Height = sizing.min.Height
 		}
 	} else {
-		f.cacheSize = pref
+		f.cacheSize = sizing.pref
 	}
 	if hint.Width > 0 {
 		f.cacheSize.Width = hint.Width
