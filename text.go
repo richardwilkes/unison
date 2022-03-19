@@ -19,34 +19,12 @@ import (
 
 // Text holds data necessary to draw a string using font fallbacks where necessary.
 type Text struct {
-	Runes       []rune
-	Decorations []*TextDecoration
+	text        string
+	runes       []rune
+	decorations []*TextDecoration
 	widths      []float32
 	extents     geom32.Size
 	baseline    float32
-	str         string
-}
-
-// TextDecoration holds the decorations that can be applied to text when drawn.
-type TextDecoration struct {
-	Font           Font
-	Paint          *Paint
-	BaselineOffset float32
-	Underline      bool
-	StrikeThrough  bool
-}
-
-// Equivalent returns true if this TextDecoration is equivalent to the other.
-func (d *TextDecoration) Equivalent(other *TextDecoration) bool {
-	if d == nil {
-		return other == nil
-	}
-	if other == nil {
-		return false
-	}
-	return d.Underline == other.Underline && d.StrikeThrough == other.StrikeThrough &&
-		d.BaselineOffset == other.BaselineOffset && d.Paint.Equivalent(other.Paint) &&
-		d.Font.Descriptor() == other.Font.Descriptor()
 }
 
 // NewText creates a new Text. Note that tabs and line endings are not considered.
@@ -58,8 +36,8 @@ func NewText(str string, decoration *TextDecoration) *Text {
 // NewText(), since the string doesn't have to be converted to runes first.
 func NewTextFromRunes(runes []rune, decoration *TextDecoration) *Text {
 	t := &Text{
-		Runes:       make([]rune, 0, len(runes)),
-		Decorations: make([]*TextDecoration, 0, len(runes)),
+		runes:       make([]rune, 0, len(runes)),
+		decorations: make([]*TextDecoration, 0, len(runes)),
 		widths:      make([]float32, 0, len(runes)),
 		extents:     geom32.Size{Width: -1},
 	}
@@ -93,15 +71,15 @@ func (t *Text) Slice(i, j int) *Text {
 	if i < 0 {
 		i = 0
 	}
-	if j > len(t.Runes) {
-		j = len(t.Runes)
+	if j > len(t.runes) {
+		j = len(t.runes)
 	}
 	if i >= j {
 		return &Text{}
 	}
 	return &Text{
-		Runes:       t.Runes[i:j],
-		Decorations: t.Decorations[i:j],
+		runes:       t.runes[i:j],
+		decorations: t.decorations[i:j],
 		widths:      t.widths[i:j],
 		extents:     geom32.Size{Width: -1},
 	}
@@ -109,10 +87,10 @@ func (t *Text) Slice(i, j int) *Text {
 
 // String returns the string representation of this Text.
 func (t *Text) String() string {
-	if t.str == "" && len(t.Runes) != 0 {
-		t.str = string(t.Runes)
+	if t.text == "" && len(t.runes) != 0 {
+		t.text = string(t.runes)
 	}
-	return t.str
+	return t.text
 }
 
 // Extents returns the width and height.
@@ -144,7 +122,7 @@ func (t *Text) cache() {
 		t.extents.Width = 0
 		t.extents.Height = 0
 		t.baseline = 0
-		for i, d := range t.Decorations {
+		for i, d := range t.decorations {
 			h := d.Font.LineHeight() + mathf32.Abs(d.BaselineOffset)
 			t.extents.Width += t.widths[i]
 			if t.extents.Height < h {
@@ -169,26 +147,26 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	if len(runes) == 0 {
 		return
 	}
-	t.str = ""
+	t.text = ""
 	t.extents.Width = -1
-	start := len(t.Decorations)
-	if start != 0 && decoration.Equivalent(t.Decorations[start-1]) {
-		decoration = t.Decorations[start-1]
+	start := len(t.decorations)
+	if start != 0 && decoration.Equivalent(t.decorations[start-1]) {
+		decoration = t.decorations[start-1]
 	}
-	t.Runes = append(t.Runes, runes...)
+	t.runes = append(t.runes, runes...)
 	face := decoration.Font.Face()
 	glyphs := decoration.Font.RunesToGlyphs(runes)
 	t.widths = append(t.widths, decoration.Font.GlyphWidths(glyphs)...)
 	for i, r := range runes {
-		t.Decorations = append(t.Decorations, decoration)
+		t.decorations = append(t.decorations, decoration)
 		if glyphs[i] == 0 {
 			if altFace := face.FallbackForCharacter(r); altFace != nil {
 				altDec := *decoration
 				altDec.Font = altFace.Font(decoration.Font.Size())
-				if start != 0 && altDec.Equivalent(t.Decorations[start-1]) {
-					t.Decorations[len(t.Decorations)-1] = t.Decorations[start-1]
+				if start != 0 && altDec.Equivalent(t.decorations[start-1]) {
+					t.decorations[len(t.decorations)-1] = t.decorations[start-1]
 				} else {
-					t.Decorations[len(t.Decorations)-1] = &altDec
+					t.decorations[len(t.decorations)-1] = &altDec
 				}
 				t.widths[start+i] = altDec.Font.GlyphWidths([]uint16{altDec.Font.RuneToGlyph(r)})[0]
 			}
@@ -198,23 +176,23 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 
 // Draw the Text at the given location. y is where the baseline of the text will be placed.
 func (t *Text) Draw(canvas *Canvas, x, y float32) {
-	if len(t.Decorations) == 0 {
+	if len(t.decorations) == 0 {
 		return
 	}
 	start := 0
-	current := t.Decorations[0]
+	current := t.decorations[0]
 	nx := x
-	for i, d := range t.Decorations {
+	for i, d := range t.decorations {
 		if i != 0 && !current.Equivalent(d) {
-			canvas.DrawSimpleString(string(t.Runes[start:i]), x, y+current.BaselineOffset, current.Font, current.Paint)
+			canvas.DrawSimpleString(string(t.runes[start:i]), x, y+current.BaselineOffset, current.Font, current.Paint)
 			current = d
 			x = nx
 			start = i
 		}
 		nx += t.widths[i]
 	}
-	if start < len(t.Decorations) {
-		canvas.DrawSimpleString(string(t.Runes[start:]), x, y+current.BaselineOffset, current.Font, current.Paint)
+	if start < len(t.decorations) {
+		canvas.DrawSimpleString(string(t.runes[start:]), x, y+current.BaselineOffset, current.Font, current.Paint)
 	}
 }
 
@@ -262,34 +240,34 @@ func (t *Text) BreakToWidth(width float32) []*Text {
 	}
 	var lines []*Text
 	start := 0
-	for start < len(t.Runes) {
+	for start < len(t.runes) {
 		i := start
 		var w float32
-		for i < len(t.Runes) && w+t.widths[i] < width {
+		for i < len(t.runes) && w+t.widths[i] < width {
 			w += t.widths[i]
 			i++
 		}
-		if i == len(t.Runes) {
-			lines = append(lines, t.Slice(start, len(t.Runes)))
+		if i == len(t.runes) {
+			lines = append(lines, t.Slice(start, len(t.runes)))
 			break
 		}
 		// Forward past any additional whitespace
-		for i < len(t.Runes) && unicode.IsSpace(t.Runes[i]) {
+		for i < len(t.runes) && unicode.IsSpace(t.runes[i]) {
 			i++
 		}
 		// Backup to first break
-		for i > start && !isWordBreak(t.Runes[i-1]) {
+		for i > start && !isWordBreak(t.runes[i-1]) {
 			i--
 		}
 		if i == start {
 			// Nothing found that fits, so take the first word and any trailing whitespace after it
-			for i < len(t.Runes) && !isWordBreak(t.Runes[i]) {
+			for i < len(t.runes) && !isWordBreak(t.runes[i]) {
 				i++
 			}
-			if i < len(t.Runes) && isWordBreak(t.Runes[i]) {
+			if i < len(t.runes) && isWordBreak(t.runes[i]) {
 				i++
 			}
-			for i < len(t.Runes) && unicode.IsSpace(t.Runes[i]) {
+			for i < len(t.runes) && unicode.IsSpace(t.runes[i]) {
 				i++
 			}
 		}
