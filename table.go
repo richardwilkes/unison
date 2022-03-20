@@ -62,38 +62,42 @@ type tableHitRect struct {
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
 // but will alter any Tables created in the future.
 var DefaultTableTheme = TableTheme{
-	BackgroundInk:        ContentColor,
-	OnBackgroundInk:      OnContentColor,
-	BandingInk:           BandingColor,
-	OnBandingInk:         OnBandingColor,
-	DividerInk:           DividerColor,
-	SelectionInk:         SelectionColor,
-	OnSelectionInk:       OnSelectionColor,
-	Padding:              geom32.NewUniformInsets(4),
-	HierarchyColumnIndex: 0,
-	HierarchyIndent:      16,
-	MinimumRowHeight:     16,
-	ColumnResizeSlop:     4,
-	ShowRowDivider:       true,
-	ShowColumnDivider:    true,
+	BackgroundInk:          ContentColor,
+	OnBackgroundInk:        OnContentColor,
+	BandingInk:             BandingColor,
+	OnBandingInk:           OnBandingColor,
+	DividerInk:             DividerColor,
+	SelectionInk:           SelectionColor,
+	OnSelectionInk:         OnSelectionColor,
+	IndirectSelectionInk:   InactiveSelectionColor,
+	OnIndirectSelectionInk: OnInactiveSelectionColor,
+	Padding:                geom32.NewUniformInsets(4),
+	HierarchyColumnIndex:   0,
+	HierarchyIndent:        16,
+	MinimumRowHeight:       16,
+	ColumnResizeSlop:       4,
+	ShowRowDivider:         true,
+	ShowColumnDivider:      true,
 }
 
 // TableTheme holds theming data for a Table.
 type TableTheme struct {
-	BackgroundInk        Ink
-	OnBackgroundInk      Ink
-	BandingInk           Ink
-	OnBandingInk         Ink
-	DividerInk           Ink
-	SelectionInk         Ink
-	OnSelectionInk       Ink
-	Padding              geom32.Insets
-	HierarchyColumnIndex int
-	HierarchyIndent      float32
-	MinimumRowHeight     float32
-	ColumnResizeSlop     float32
-	ShowRowDivider       bool
-	ShowColumnDivider    bool
+	BackgroundInk          Ink
+	OnBackgroundInk        Ink
+	BandingInk             Ink
+	OnBandingInk           Ink
+	DividerInk             Ink
+	SelectionInk           Ink
+	OnSelectionInk         Ink
+	IndirectSelectionInk   Ink
+	OnIndirectSelectionInk Ink
+	Padding                geom32.Insets
+	HierarchyColumnIndex   int
+	HierarchyIndent        float32
+	MinimumRowHeight       float32
+	ColumnResizeSlop       float32
+	ShowRowDivider         bool
+	ShowColumnDivider      bool
 }
 
 // Table provides a control that can display data in columns and rows.
@@ -183,18 +187,13 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	lastY := dirty.Bottom()
 	rect := dirty
 	rect.Y = y
-	var indirectSelectPaint *Paint
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
 		rect.Height = t.rowCache[r].height
 		if t.IsRowOrAnyParentSelected(r) {
 			if t.IsRowSelected(r) {
 				canvas.DrawRect(rect, t.SelectionInk.Paint(canvas, rect, Fill))
 			} else {
-				if indirectSelectPaint == nil {
-					indirectSelectPaint = t.SelectionInk.Paint(canvas, rect, Fill)
-					indirectSelectPaint.SetColorFilter(NewAlphaFilter(0.8))
-				}
-				canvas.DrawRect(rect, indirectSelectPaint)
+				canvas.DrawRect(rect, t.IndirectSelectionInk.Paint(canvas, rect, Fill))
 			}
 		} else if r%2 == 1 {
 			canvas.DrawRect(rect, t.BandingInk.Paint(canvas, rect, Fill))
@@ -228,7 +227,11 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 		var fg Ink
 		switch {
 		case selected:
-			fg = t.OnSelectionInk
+			if t.IsRowSelected(r) {
+				fg = t.OnSelectionInk
+			} else {
+				fg = t.OnIndirectSelectionInk
+			}
 		case row.IsOpen():
 			fg = t.OnBandingInk
 		default:
@@ -718,15 +721,15 @@ func (t *Table) IsRowSelected(index int) bool {
 	return t.selMap[t.rowCache[index].row]
 }
 
-// SelectedRows returns the currently selected rows. Note that children of selected rows are not returned, just the
-// topmost row that is selected in any given hierarchy.
-func (t *Table) SelectedRows() []TableRowData {
+// SelectedRows returns the currently selected rows. If 'minimal' is true, then children of selected rows that may also
+// be selected are not returned, just the topmost row that is selected in any given hierarchy.
+func (t *Table) SelectedRows(minimal bool) []TableRowData {
 	if len(t.selMap) == 0 {
 		return nil
 	}
 	rows := make([]TableRowData, 0, len(t.selMap))
 	for _, entry := range t.rowCache {
-		if t.selMap[entry.row] && (entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
+		if t.selMap[entry.row] && (!minimal || entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
 			rows = append(rows, entry.row)
 		}
 	}
