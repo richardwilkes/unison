@@ -583,6 +583,21 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 	stop := true
 	if row := t.OverRow(where.Y); row != -1 {
 		rowData := t.rowCache[row].row
+		if col := t.OverColumn(where.X); col != -1 {
+			cell := rowData.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
+			if cell.MouseDownCallback != nil {
+				t.interactionRow = row
+				t.interactionColumn = col
+				rect := t.CellFrame(row, col)
+				t.installCell(cell, rect)
+				where.Subtract(rect.Point)
+				toolbox.Call(func() { stop = cell.MouseDownCallback(where, button, clickCount, mod) })
+				t.uninstallCell(cell)
+				if stop {
+					return stop
+				}
+			}
+		}
 		switch {
 		case mod&ShiftModifier != 0: // Extend selection from anchor
 			selAnchorIndex := -1
@@ -618,19 +633,6 @@ func (t *Table) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 			}
 		}
 		t.MarkForRedraw()
-		if col := t.OverColumn(where.X); col != -1 {
-			cell := rowData.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
-			if cell.MouseDownCallback != nil {
-				t.interactionRow = row
-				t.interactionColumn = col
-				rect := t.CellFrame(row, col)
-				t.installCell(cell, rect)
-				where.Subtract(rect.Point)
-				toolbox.Call(func() { stop = cell.MouseDownCallback(where, button, clickCount, mod) })
-				t.uninstallCell(cell)
-				return stop
-			}
-		}
 		if clickCount == 2 && t.SelectionDoubleClickCallback != nil && len(t.selMap) != 0 {
 			toolbox.Call(t.SelectionDoubleClickCallback)
 		}
