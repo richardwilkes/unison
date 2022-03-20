@@ -212,6 +212,8 @@ func (d *DockContainer) Close(dockable Dockable) {
 		var next Dockable
 		if DockableHasFocus(dockable) {
 			next = d.Dock.NextDockableFor(dockable)
+		} else {
+			next = d.CurrentDockable()
 		}
 		d.content.RemoveChild(dockable)
 		d.header.close(dockable)
