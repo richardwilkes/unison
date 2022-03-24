@@ -349,6 +349,14 @@ func (p *Panel) SetLayoutData(data interface{}) {
 	p.NeedsLayout = true
 }
 
+// MarkForLayoutRecursively marks this panel and all of its descendents as needing to be laid out.
+func (p *Panel) MarkForLayoutRecursively() {
+	p.NeedsLayout = true
+	for _, child := range p.Children() {
+		child.MarkForLayoutRecursively()
+	}
+}
+
 // MarkForLayoutAndRedraw marks this panel as needing to be laid out as well as redrawn at the next update.
 func (p *Panel) MarkForLayoutAndRedraw() {
 	p.NeedsLayout = true
