@@ -10,26 +10,26 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Border = &EmptyBorder{}
 
 // EmptyBorder provides and empty border with the specified insets.
 type EmptyBorder struct {
-	insets geom32.Insets
+	insets geom.Insets[float32]
 }
 
 // NewEmptyBorder creates a new empty border with the specified insets.
-func NewEmptyBorder(insets geom32.Insets) *EmptyBorder {
+func NewEmptyBorder(insets geom.Insets[float32]) *EmptyBorder {
 	return &EmptyBorder{insets: insets}
 }
 
 // Insets returns the insets describing the space the border occupies on each side.
-func (b *EmptyBorder) Insets() geom32.Insets {
+func (b *EmptyBorder) Insets() geom.Insets[float32] {
 	return b.insets
 }
 
 // Draw the border into rect.
-func (b *EmptyBorder) Draw(_ *Canvas, _ geom32.Rect) {
+func (b *EmptyBorder) Draw(_ *Canvas, _ geom.Rect[float32]) {
 }

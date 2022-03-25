@@ -10,7 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Layout = &rootPanel{}
@@ -21,7 +21,7 @@ type rootPanel struct {
 	menubar               *Panel
 	preMovedCallback      func(*Window)
 	postLostFocusCallback func(*Window)
-	preMouseDownCallback  func(*Window, geom32.Point) bool
+	preMouseDownCallback  func(*Window, geom.Point[float32]) bool
 	preKeyDownCallback    func(*Window, KeyCode, Modifiers) bool
 	preKeyUpCallback      func(*Window, KeyCode, Modifiers) bool
 	preRuneTypedCallback  func(*Window, rune) bool
@@ -50,7 +50,7 @@ func (p *rootPanel) MenuBar() *Panel {
 
 // SetMenuBar fulfills the menu.barHolder interface.
 func (p *rootPanel) SetMenuBar(bar *Panel, preMovedCallback, postLostFocusCallback func(*Window),
-	preMouseDownCallback func(*Window, geom32.Point) bool,
+	preMouseDownCallback func(*Window, geom.Point[float32]) bool,
 	preKeyDownCallback, preKeyUpCallback func(*Window, KeyCode, Modifiers) bool,
 	preRuneTypedCallback func(*Window, rune) bool,
 ) {
@@ -110,11 +110,11 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 	}
 }
 
-func (p *rootPanel) LayoutSizes(_ *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
+func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	min, pref, max = p.content.Sizes(hint)
 	if p.menubar != nil {
-		_, barSize, _ := p.menubar.Sizes(geom32.Size{})
-		for _, size := range []*geom32.Size{&min, &pref, &max} {
+		_, barSize, _ := p.menubar.Sizes(geom.Size[float32]{})
+		for _, size := range []*geom.Size[float32]{&min, &pref, &max} {
 			size.Height += barSize.Height
 			if size.Width < barSize.Width {
 				size.Width = barSize.Width
@@ -129,8 +129,8 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	rect.X = 0
 	rect.Y = 0
 	if p.menubar != nil {
-		_, size, _ := p.menubar.Sizes(geom32.Size{})
-		p.menubar.SetFrameRect(geom32.Rect{Size: geom32.Size{Width: rect.Width, Height: size.Height}})
+		_, size, _ := p.menubar.Sizes(geom.Size[float32]{})
+		p.menubar.SetFrameRect(geom.Rect[float32]{Size: geom.Size[float32]{Width: rect.Width, Height: size.Height}})
 		rect.Y += size.Height
 		rect.Height -= size.Height
 	}

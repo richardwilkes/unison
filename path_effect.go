@@ -12,7 +12,7 @@ package unison
 import (
 	"runtime"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -86,12 +86,12 @@ func New1dPathPathEffect(path *Path, advance, phase float32, style PathEffect1DS
 }
 
 // New2dLinePathEffect creates a new 2D line PathEffect.
-func New2dLinePathEffect(width float32, matrix *geom32.Matrix2D) *PathEffect {
+func New2dLinePathEffect(width float32, matrix *geom.Matrix2D[float32]) *PathEffect {
 	return newPathEffect(skia.PathEffectCreate2dLine(width, skia.Matrix2DtoMatrix(matrix)))
 }
 
 // New2dPathEffect creates a new 2D PathEffect.
-func New2dPathEffect(matrix *geom32.Matrix2D, path *Path) *PathEffect {
+func New2dPathEffect(matrix *geom.Matrix2D[float32], path *Path) *PathEffect {
 	return newPathEffect(skia.PathEffectCreate2dPath(skia.Matrix2DtoMatrix(matrix), path.path))
 }
 

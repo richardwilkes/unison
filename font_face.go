@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	"github.com/richardwilkes/toolbox/txt"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -85,7 +85,7 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 	var font *fontImpl
 	font = f.createFontWithSkiaSize(skiaSize)
 	if font.metrics.CapHeight > 0 { // I've seen some fonts with a negative CapHeight, which won't work
-		skiaSize = mathf32.Floor(capHeightSizeInLogicalPixels * skiaSize / font.metrics.CapHeight)
+		skiaSize = xmath.Floor(capHeightSizeInLogicalPixels * skiaSize / font.metrics.CapHeight)
 		for {
 			font = f.createFontWithSkiaSize(skiaSize)
 			if font.metrics.CapHeight >= capHeightSizeInLogicalPixels {

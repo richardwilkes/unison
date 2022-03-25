@@ -14,21 +14,21 @@ import (
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var lastPrimaryDisplay *Display
 
 // Display holds information about each available active display.
 type Display struct {
-	Name        string      // The name of the display
-	Frame       geom32.Rect // The position of the display in the global screen coordinate system
-	Usable      geom32.Rect // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
-	ScaleX      float32     // The horizontal scale of content
-	ScaleY      float32     // The vertical scale of content
-	RefreshRate int         // The refresh rate, in Hz
-	WidthMM     int         // The display's physical width, in millimeters
-	HeightMM    int         // The display's physical height, in millimeters
+	Name        string             // The name of the display
+	Frame       geom.Rect[float32] // The position of the display in the global screen coordinate system
+	Usable      geom.Rect[float32] // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
+	ScaleX      float32            // The horizontal scale of content
+	ScaleY      float32            // The vertical scale of content
+	RefreshRate int                // The refresh rate, in Hz
+	WidthMM     int                // The display's physical width, in millimeters
+	HeightMM    int                // The display's physical height, in millimeters
 }
 
 // PPI returns the pixels-per-inch for the display. Some operating systems do not provide accurate information, either
@@ -76,8 +76,8 @@ func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
 	mmx, mmy := monitor.GetPhysicalSize()
 	display := &Display{
 		Name:        monitor.GetName(),
-		Frame:       geom32.NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
-		Usable:      geom32.NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
+		Frame:       geom.NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
+		Usable:      geom.NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
 		ScaleX:      sx,
 		ScaleY:      sy,
 		RefreshRate: vidMode.RefreshRate,

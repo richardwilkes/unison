@@ -10,15 +10,15 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Border = &LineBorder{}
 
 // LineBorder private a lined border.
 type LineBorder struct {
-	insets       geom32.Insets
+	insets       geom.Insets[float32]
 	ink          Ink
 	cornerRadius float32
 	noInset      bool
@@ -27,7 +27,7 @@ type LineBorder struct {
 // NewLineBorder creates a new line border. The cornerRadius specifies the amount of rounding to use on the corners. The
 // insets represent how thick the border will be drawn on that edge. If noInset is true, the Insets() method will return
 // zeroes.
-func NewLineBorder(ink Ink, cornerRadius float32, insets geom32.Insets, noInset bool) *LineBorder {
+func NewLineBorder(ink Ink, cornerRadius float32, insets geom.Insets[float32], noInset bool) *LineBorder {
 	return &LineBorder{
 		insets:       insets,
 		ink:          ink,
@@ -37,22 +37,22 @@ func NewLineBorder(ink Ink, cornerRadius float32, insets geom32.Insets, noInset 
 }
 
 // Insets returns the insets describing the space the border occupies on each side.
-func (b *LineBorder) Insets() geom32.Insets {
+func (b *LineBorder) Insets() geom.Insets[float32] {
 	if b.noInset {
-		return geom32.Insets{}
+		return geom.Insets[float32]{}
 	}
 	return b.insets
 }
 
 // Draw the border into rect.
-func (b *LineBorder) Draw(canvas *Canvas, rect geom32.Rect) {
+func (b *LineBorder) Draw(canvas *Canvas, rect geom.Rect[float32]) {
 	clip := rect
 	clip.Inset(b.insets)
 	path := NewPath()
 	path.SetFillType(EvenOdd)
 	if b.cornerRadius > 0 {
 		path.RoundedRect(rect, b.cornerRadius, b.cornerRadius)
-		radius := mathf32.Max(b.cornerRadius-((b.insets.Top+b.insets.Left+b.insets.Bottom+b.insets.Right)/4), 1)
+		radius := xmath.Max(b.cornerRadius-((b.insets.Top+b.insets.Left+b.insets.Bottom+b.insets.Right)/4), 1)
 		path.RoundedRect(clip, radius, radius)
 	} else {
 		path.Rect(rect)

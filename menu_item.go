@@ -13,8 +13,8 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ MenuItem = &menuItem{}
@@ -58,8 +58,8 @@ var DefaultMenuItemTheme = MenuItemTheme{
 	OnBackgroundColor: OnBackgroundColor,
 	SelectionColor:    SelectionColor,
 	OnSelectionColor:  OnSelectionColor,
-	ItemBorder:        NewEmptyBorder(geom32.Insets{Top: 4, Left: 8, Bottom: 4, Right: 8}),
-	SeparatorBorder:   NewEmptyBorder(geom32.NewVerticalInsets(4)),
+	ItemBorder:        NewEmptyBorder(geom.Insets[float32]{Top: 4, Left: 8, Bottom: 4, Right: 8}),
+	SeparatorBorder:   NewEmptyBorder(geom.NewVerticalInsets[float32](4)),
 	KeyGap:            16,
 }
 
@@ -175,7 +175,7 @@ func (mi *menuItem) newPanel() *Panel {
 	return mi.panel
 }
 
-func (mi *menuItem) mouseDown(_ geom32.Point, _, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseDown(_ geom.Point[float32], _, _ int, _ Modifiers) bool {
 	if mi.subMenu == nil {
 		mi.execute()
 		return true
@@ -206,7 +206,7 @@ func (mi *menuItem) showSubMenu() {
 	}
 }
 
-func (mi *menuItem) mouseEnter(_ geom32.Point, _ Modifiers) bool {
+func (mi *menuItem) mouseEnter(_ geom.Point[float32], _ Modifiers) bool {
 	mi.over = true
 	mi.panel.MarkForRedraw()
 	if mi.subMenu != nil && mi.menu.isActiveWindowShowingPopupMenu() {
@@ -215,7 +215,7 @@ func (mi *menuItem) mouseEnter(_ geom32.Point, _ Modifiers) bool {
 	return false
 }
 
-func (mi *menuItem) mouseMove(where geom32.Point, mod Modifiers) bool {
+func (mi *menuItem) mouseMove(where geom.Point[float32], mod Modifiers) bool {
 	stopAt := mi.menu
 	if mi.subMenu != nil && mi.subMenu.popup != nil {
 		stopAt = mi.subMenu
@@ -230,7 +230,7 @@ func (mi *menuItem) mouseExit() bool {
 	return false
 }
 
-func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
+func (mi *menuItem) sizer(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	if mi.isSeparator {
 		pref.Height = 1
 	} else {
@@ -240,7 +240,7 @@ func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
 			if keys != "" {
 				size := mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont).Extents()
 				pref.Width += DefaultMenuItemTheme.KeyGap + size.Width
-				pref.Height = mathf32.Max(pref.Height, size.Height)
+				pref.Height = xmath.Max(pref.Height, size.Height)
 			}
 		}
 	}
@@ -250,7 +250,7 @@ func (mi *menuItem) sizer(hint geom32.Size) (min, pref, max geom32.Size) {
 	return pref, pref, pref
 }
 
-func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
+func (mi *menuItem) paint(gc *Canvas, rect geom.Rect[float32]) {
 	var fg, bg Ink
 	if !mi.over || !mi.enabled {
 		fg = DefaultMenuItemTheme.OnBackgroundColor
@@ -271,7 +271,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 		t := mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont)
 		t.ReplacePaint(paint)
 		size := t.Extents()
-		t.Draw(gc, rect.X, mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
+		t.Draw(gc, rect.X, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 		if mi.subMenu == nil {
 			if !mi.keyBinding.KeyCode.ShouldOmit() {
 				keys := mi.keyBinding.String()
@@ -279,8 +279,8 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 					t = mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont)
 					t.ReplacePaint(paint)
 					size = t.Extents()
-					t.Draw(gc, mathf32.Floor(rect.Right()-size.Width),
-						mathf32.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
+					t.Draw(gc, xmath.Floor(rect.Right()-size.Width),
+						xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 				}
 			}
 		} else if !mi.isRoot() {
@@ -289,7 +289,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom32.Rect) {
 			rect.Width = baseline
 			drawable := &DrawableSVG{
 				SVG:  ChevronRightSVG(),
-				Size: geom32.NewSize(baseline, baseline),
+				Size: geom.NewSize[float32](baseline, baseline),
 			}
 			drawable.DrawInRect(gc, rect, nil, paint)
 		}

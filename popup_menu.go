@@ -12,8 +12,8 @@ package unison
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
@@ -79,7 +79,7 @@ func NewPopupMenu() *PopupMenu {
 }
 
 // DefaultSizes provides the default sizing.
-func (p *PopupMenu) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (p *PopupMenu) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	pref = LabelSize(p.textCache.Text("M", p.Font), nil, 0, 0)
 	for _, one := range p.items {
 		switch one.item.(type) {
@@ -101,13 +101,13 @@ func (p *PopupMenu) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) 
 	pref.Width += p.HMargin*2 + 2 + pref.Height*0.75
 	pref.GrowToInteger()
 	pref.ConstrainForHint(hint)
-	max.Width = mathf32.Max(DefaultMaxSize, pref.Width)
+	max.Width = xmath.Max(DefaultMaxSize, pref.Width)
 	max.Height = pref.Height
 	return pref, pref, max
 }
 
 // DefaultDraw provides the default drawing.
-func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	var fg, bg Ink
 	switch {
 	case p.Pressed:
@@ -323,7 +323,7 @@ func (p *PopupMenu) SelectIndex(index int) *PopupMenu {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (p *PopupMenu) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+func (p *PopupMenu) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	p.Click()
 	return true
 }

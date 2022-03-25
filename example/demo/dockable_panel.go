@@ -10,7 +10,7 @@
 package demo
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -36,7 +36,7 @@ func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 	}
 	d.Self = d
 	d.DrawCallback = d.draw
-	d.SetSizer(func(_ geom32.Size) (min, pref, max geom32.Size) {
+	d.SetSizer(func(_ geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 		pref.Width = 200
 		pref.Height = 100
 		return min, pref, unison.MaxSize(max)
@@ -44,12 +44,12 @@ func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 	return d
 }
 
-func (d *DockablePanel) draw(gc *unison.Canvas, rect geom32.Rect) {
+func (d *DockablePanel) draw(gc *unison.Canvas, rect geom.Rect[float32]) {
 	gc.DrawRect(rect, d.Color.Paint(gc, rect, unison.Fill))
 }
 
 // TitleIcon implements Dockable.
-func (d *DockablePanel) TitleIcon(suggestedSize geom32.Size) unison.Drawable {
+func (d *DockablePanel) TitleIcon(suggestedSize geom.Size[float32]) unison.Drawable {
 	return &unison.DrawableSVG{
 		SVG:  unison.DocumentSVG(),
 		Size: suggestedSize,

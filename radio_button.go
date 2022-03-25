@@ -12,8 +12,8 @@ package unison
 import (
 	"time"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultRadioButtonTheme holds the default RadioButtonTheme values for RadioButtons. Modifying this data will not
@@ -79,7 +79,7 @@ func NewRadioButton() *RadioButton {
 }
 
 // DefaultSizes provides the default sizing.
-func (r *RadioButton) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (r *RadioButton) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	pref = r.circleAndLabelSize()
 	if border := r.Border(); border != nil {
 		pref.AddInsets(border.Insets())
@@ -89,10 +89,10 @@ func (r *RadioButton) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size
 	return pref, pref, MaxSize(pref)
 }
 
-func (r *RadioButton) circleAndLabelSize() geom32.Size {
+func (r *RadioButton) circleAndLabelSize() geom.Size[float32] {
 	circleSize := r.circleSize()
 	if r.Drawable == nil && r.Text == "" {
-		return geom32.Size{Width: circleSize, Height: circleSize}
+		return geom.Size[float32]{Width: circleSize, Height: circleSize}
 	}
 	size := LabelSize(r.textCache.Text(r.Text, r.Font), r.Drawable, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
@@ -103,23 +103,23 @@ func (r *RadioButton) circleAndLabelSize() geom32.Size {
 }
 
 func (r *RadioButton) circleSize() float32 {
-	return mathf32.Ceil(r.Font.Baseline())
+	return xmath.Ceil(r.Font.Baseline())
 }
 
 // DefaultDraw provides the default drawing.
-func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	rect := r.ContentRect(false)
 	size := r.circleAndLabelSize()
 	switch r.HAlign {
 	case MiddleAlignment, FillAlignment:
-		rect.X = mathf32.Floor(rect.X + (rect.Width-size.Width)/2)
+		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
 	case EndAlignment:
 		rect.X += rect.Width - size.Width
 	default: // StartAlignment
 	}
 	switch r.VAlign {
 	case MiddleAlignment, FillAlignment:
-		rect.Y = mathf32.Floor(rect.Y + (rect.Height-size.Height)/2)
+		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
 	case EndAlignment:
 		rect.Y += rect.Height - size.Height
 	default: // StartAlignment
@@ -147,7 +147,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
-		rect.Y += mathf32.Floor((rect.Height - circleSize) / 2)
+		rect.Y += xmath.Floor((rect.Height - circleSize) / 2)
 	}
 	rect.Width = circleSize
 	rect.Height = circleSize
@@ -178,14 +178,14 @@ func (r *RadioButton) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (r *RadioButton) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	r.Pressed = true
 	r.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (r *RadioButton) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
 	rect := r.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if r.Pressed != pressed {
@@ -196,7 +196,7 @@ func (r *RadioButton) DefaultMouseDrag(where geom32.Point, button int, mod Modif
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (r *RadioButton) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
 	rect := r.ContentRect(false)

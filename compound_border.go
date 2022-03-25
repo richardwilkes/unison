@@ -10,7 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Border = &CompoundBorder{}
@@ -27,8 +27,8 @@ func NewCompoundBorder(borders ...Border) *CompoundBorder {
 }
 
 // Insets returns the insets describing the space the border occupies on each side.
-func (b *CompoundBorder) Insets() geom32.Insets {
-	insets := geom32.Insets{}
+func (b *CompoundBorder) Insets() geom.Insets[float32] {
+	insets := geom.Insets[float32]{}
 	for _, one := range b.borders {
 		insets.Add(one.Insets())
 	}
@@ -36,7 +36,7 @@ func (b *CompoundBorder) Insets() geom32.Insets {
 }
 
 // Draw the border into rect.
-func (b *CompoundBorder) Draw(canvas *Canvas, rect geom32.Rect) {
+func (b *CompoundBorder) Draw(canvas *Canvas, rect geom.Rect[float32]) {
 	for _, one := range b.borders {
 		canvas.Save()
 		one.Draw(canvas, rect)

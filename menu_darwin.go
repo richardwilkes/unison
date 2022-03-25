@@ -10,7 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
@@ -139,7 +139,7 @@ func (m *macMenu) Count() int {
 	return m.menu.NumberOfItems()
 }
 
-func (m *macMenu) Popup(where geom32.Rect, itemIndex int) {
+func (m *macMenu) Popup(where geom.Rect[float32], itemIndex int) {
 	w := ActiveWindow()
 	if w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {

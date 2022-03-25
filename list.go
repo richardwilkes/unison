@@ -13,8 +13,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
@@ -140,13 +139,13 @@ func (l *List) RemoveRange(from, to int) {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *List) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (l *List) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	max = MaxSize(max)
-	height := mathf32.Ceil(l.Factory.CellHeight())
+	height := xmath.Ceil(l.Factory.CellHeight())
 	if height < 1 {
 		height = 0
 	}
-	size := geom32.Size{Width: hint.Width, Height: height}
+	size := geom.Size[float32]{Width: hint.Width, Height: height}
 	for i, row := range l.rows {
 		cell := l.Factory.CreateCell(l, row, i, Black, false, false)
 		_, cPref, cMax := cell.Sizes(size)
@@ -185,10 +184,10 @@ func (l *List) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (l *List) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (l *List) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	index, y := l.rowAt(dirty.Y)
 	if index >= 0 {
-		cellHeight := mathf32.Ceil(l.Factory.CellHeight())
+		cellHeight := xmath.Ceil(l.Factory.CellHeight())
 		count := len(l.rows)
 		yMax := dirty.Y + dirty.Height
 		focused := l.Focused()
@@ -215,15 +214,15 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 				fg = l.OnBandingInk
 			}
 			cell := l.Factory.CreateCell(l, l.rows[index], index, fg, selected, focused && selected && selCount == 1)
-			cellRect := geom32.Rect{Point: geom32.Point{X: rect.X, Y: y}, Size: geom32.Size{Width: rect.Width, Height: cellHeight}}
+			cellRect := geom.Rect[float32]{Point: geom.Point[float32]{X: rect.X, Y: y}, Size: geom.Size[float32]{Width: rect.Width, Height: cellHeight}}
 			if cellHeight < 1 {
-				_, pref, _ := cell.Sizes(geom32.Size{})
+				_, pref, _ := cell.Sizes(geom.Size[float32]{})
 				pref.GrowToInteger()
 				cellRect.Height = pref.Height
 			}
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
-			r := geom32.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
+			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
 			canvas.DrawRect(r, bg.Paint(canvas, r, Fill))
 			canvas.Save()
 			tl := cellRect.Point
@@ -240,7 +239,7 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (l *List) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+func (l *List) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	l.RequestFocus()
 	l.savedSelection = l.Selection.Clone()
 	if index, _ := l.rowAt(where.Y); index >= 0 {
@@ -288,7 +287,7 @@ func (l *List) DefaultMouseDown(where geom32.Point, button, clickCount int, mod 
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (l *List) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+func (l *List) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
 	if l.pressed {
 		l.Selection.Copy(l.savedSelection)
 		if index, _ := l.rowAt(where.Y); index >= 0 {
@@ -319,7 +318,7 @@ func (l *List) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) b
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (l *List) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+func (l *List) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
@@ -402,8 +401,8 @@ func (l *List) SelectRange(start, end int, add bool) {
 		l.anchor = -1
 	}
 	max := len(l.rows) - 1
-	start = xmath.MaxInt(xmath.MinInt(start, max), 0)
-	end = xmath.MaxInt(xmath.MinInt(end, max), 0)
+	start = xmath.Max(xmath.Min(start, max), 0)
+	end = xmath.Max(xmath.Min(end, max), 0)
 	l.Selection.SetRange(start, end)
 	if l.anchor == -1 || !l.allowMultiple {
 		l.anchor = start
@@ -462,11 +461,11 @@ func (l *List) SetAllowMultipleSelection(allow bool) *List {
 func (l *List) rowAt(y float32) (index int, top float32) {
 	count := len(l.rows)
 	top = l.ContentRect(false).Y
-	cellHeight := mathf32.Ceil(l.Factory.CellHeight())
+	cellHeight := xmath.Ceil(l.Factory.CellHeight())
 	if cellHeight < 1 {
 		for index < count {
 			cell := l.Factory.CreateCell(l, l.rows[index], index, Black, false, false)
-			_, pref, _ := cell.Sizes(geom32.Size{})
+			_, pref, _ := cell.Sizes(geom.Size[float32]{})
 			pref.GrowToInteger()
 			if top+pref.Height >= y {
 				break
@@ -475,7 +474,7 @@ func (l *List) rowAt(y float32) (index int, top float32) {
 			index++
 		}
 	} else {
-		index = int(mathf32.Floor((y - top) / cellHeight))
+		index = int(xmath.Floor((y - top) / cellHeight))
 		top += float32(index) * cellHeight
 	}
 	if index >= count {

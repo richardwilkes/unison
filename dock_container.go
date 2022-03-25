@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var (
@@ -23,7 +23,7 @@ var (
 type Dockable interface {
 	Paneler
 	// TitleIcon returns an Drawable representing this Dockable.
-	TitleIcon(suggestedSize geom32.Size) Drawable
+	TitleIcon(suggestedSize geom.Size[float32]) Drawable
 	// Title returns the title of this Dockable.
 	Title() string
 	// Tooltip returns the tooltip of this Dockable.
@@ -239,19 +239,19 @@ func (d *DockContainer) Close(dockable Dockable) {
 }
 
 // PreferredSize implements DockLayoutNode.
-func (d *DockContainer) PreferredSize() geom32.Size {
-	_, pref, _ := d.LayoutSizes(d.AsPanel(), geom32.Size{})
+func (d *DockContainer) PreferredSize() geom.Size[float32] {
+	_, pref, _ := d.LayoutSizes(d.AsPanel(), geom.Size[float32]{})
 	return pref
 }
 
 // LayoutSizes implements Layout.
-func (d *DockContainer) LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size) {
-	min, pref, max = d.header.Sizes(geom32.Size{Width: hint.Width})
+func (d *DockContainer) LayoutSizes(target *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+	min, pref, max = d.header.Sizes(geom.Size[float32]{Width: hint.Width})
 	min.Height = pref.Height
 	max.Height = pref.Height
-	min2, pref2, max2 := d.content.Sizes(geom32.Size{
+	min2, pref2, max2 := d.content.Sizes(geom.Size[float32]{
 		Width:  hint.Width,
-		Height: mathf32.Max(hint.Height-pref.Height, 0),
+		Height: xmath.Max(hint.Height-pref.Height, 0),
 	})
 	min.Width = min2.Width
 	pref.Width = pref2.Width
@@ -268,7 +268,7 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint geom32.Size) (min, pref,
 // PerformLayout implements Layout.
 func (d *DockContainer) PerformLayout(target *Panel) {
 	r := d.ContentRect(false)
-	_, pref, _ := d.header.Sizes(geom32.Size{Width: r.Width})
-	d.header.SetFrameRect(geom32.NewRect(r.X, r.Y, r.Width, pref.Height))
-	d.content.SetFrameRect(geom32.NewRect(r.X, r.Y+pref.Height, r.Width, mathf32.Max(r.Height-pref.Height, 0)))
+	_, pref, _ := d.header.Sizes(geom.Size[float32]{Width: r.Width})
+	d.header.SetFrameRect(geom.NewRect(r.X, r.Y, r.Width, pref.Height))
+	d.content.SetFrameRect(geom.NewRect(r.X, r.Y+pref.Height, r.Width, xmath.Max(r.Height-pref.Height, 0)))
 }

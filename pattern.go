@@ -9,22 +9,22 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/xmath/geom32"
+import "github.com/richardwilkes/toolbox/xmath/geom"
 
 var _ Ink = &Pattern{}
 
 // Pattern holds the information necessary to draw an image in a pattern.
 type Pattern struct {
 	Image           *Image
-	Offset          geom32.Point
-	Scale           geom32.Point
+	Offset          geom.Point[float32]
+	Scale           geom.Point[float32]
 	TileModeX       TileMode
 	TileModeY       TileMode
 	SamplingOptions SamplingOptions
 }
 
 // Paint returns a Paint for this Pattern.
-func (p *Pattern) Paint(canvas *Canvas, _ geom32.Rect, style PaintStyle) *Paint {
+func (p *Pattern) Paint(canvas *Canvas, _ geom.Rect[float32], style PaintStyle) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	scale := p.Scale
@@ -37,7 +37,7 @@ func (p *Pattern) Paint(canvas *Canvas, _ geom32.Rect, style PaintStyle) *Paint 
 	imgScale := p.Image.Scale()
 	paint.SetColor(Black)
 	paint.SetShader(NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
-		&geom32.Matrix2D{
+		&geom.Matrix2D[float32]{
 			ScaleX: scale.X * imgScale,
 			ScaleY: scale.Y * imgScale,
 			TransX: p.Offset.X,

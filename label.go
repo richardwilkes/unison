@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultLabelTheme holds the default LabelTheme values for Labels. Modifying this data will not alter existing Labels,
@@ -54,7 +54,7 @@ func NewLabel() *Label {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *Label) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (l *Label) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	pref = LabelSize(l.textCache.Text(l.Text, l.Font), l.Drawable, l.Side, l.Gap)
 	if b := l.Border(); b != nil {
 		pref.AddInsets(b.Insets())
@@ -65,15 +65,15 @@ func (l *Label) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (l *Label) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (l *Label) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.textCache.Text(l.Text, l.Font), l.OnBackgroundInk,
 		l.Drawable, l.Side, l.Gap, !l.Enabled())
 }
 
 // LabelSize returns the preferred size of a label. Provided as a standalone function so that other types of panels can
 // make use of it.
-func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32) geom32.Size {
-	var size geom32.Size
+func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32) geom.Size[float32] {
+	var size geom.Size[float32]
 	if text != nil {
 		size = text.Extents()
 		size.GrowToInteger()
@@ -84,7 +84,7 @@ func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32)
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable,
+func DrawLabel(canvas *Canvas, rect geom.Rect[float32], hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable,
 	drawableSide Side, imgGap float32, applyDisabledFilter bool,
 ) {
 	if drawable == nil && text == nil {
@@ -97,7 +97,7 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 	}
 
 	// Determine overall size of content
-	var size, txtSize geom32.Size
+	var size, txtSize geom.Size[float32]
 	if text != nil {
 		text.ReplacePaint(paint)
 		txtSize = text.Extents()
@@ -108,14 +108,14 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 	// Adjust the working area for the content size
 	switch hAlign {
 	case MiddleAlignment, FillAlignment:
-		rect.X = mathf32.Floor(rect.X + (rect.Width-size.Width)/2)
+		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
 	case EndAlignment:
 		rect.X += rect.Width - size.Width
 	default: // StartAlignment
 	}
 	switch vAlign {
 	case MiddleAlignment, FillAlignment:
-		rect.Y = mathf32.Floor(rect.Y + (rect.Height-size.Height)/2)
+		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
 	case EndAlignment:
 		rect.Y += rect.Height - size.Height
 	default: // StartAlignment
@@ -133,32 +133,32 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 		case TopSide:
 			txtY += logicalSize.Height + imgGap
 			if logicalSize.Width > txtSize.Width {
-				txtX = mathf32.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
+				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
 			} else {
-				imgX = mathf32.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
+				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
 			}
 		case LeftSide:
 			txtX += logicalSize.Width + imgGap
 			if logicalSize.Height > txtSize.Height {
-				txtY = mathf32.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
+				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
 			} else {
-				imgY = mathf32.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
+				imgY = xmath.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
 			}
 		case BottomSide:
 			imgY += rect.Height - logicalSize.Height
 			txtY = imgY - (imgGap + txtSize.Height)
 			if logicalSize.Width > txtSize.Width {
-				txtX = mathf32.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
+				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
 			} else {
-				imgX = mathf32.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
+				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
 			}
 		case RightSide:
 			imgX += rect.Width - logicalSize.Width
 			txtX = imgX - (imgGap + txtSize.Width)
 			if logicalSize.Height > txtSize.Height {
-				txtY = mathf32.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
+				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
 			} else {
-				imgY = mathf32.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
+				imgY = xmath.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
 			}
 		}
 	}
@@ -177,7 +177,7 @@ func DrawLabel(canvas *Canvas, rect geom32.Rect, hAlign, vAlign Alignment, text 
 	canvas.Restore()
 }
 
-func adjustLabelSizeForDrawable(hasText bool, drawable Drawable, drawableSide Side, imgGap float32, size *geom32.Size) {
+func adjustLabelSizeForDrawable(hasText bool, drawable Drawable, drawableSide Side, imgGap float32, size *geom.Size[float32]) {
 	if drawable != nil {
 		logicalSize := drawable.LogicalSize()
 		switch {

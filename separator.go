@@ -10,7 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultSeparatorTheme holds the default SeparatorTheme values for Separators. Modifying this data will not alter
@@ -42,7 +42,7 @@ func NewSeparator() *Separator {
 }
 
 // DefaultSizes provides the default sizing.
-func (s *Separator) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (s *Separator) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	if s.Vertical {
 		if hint.Height < 1 {
 			pref.Height = 1
@@ -76,7 +76,7 @@ func (s *Separator) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) 
 }
 
 // DefaultDraw provides the default drawing.
-func (s *Separator) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (s *Separator) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	rect := s.ContentRect(false)
 	if s.Vertical {
 		if rect.Width > 1 {

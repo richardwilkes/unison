@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -44,7 +44,7 @@ func init() {
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyN, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
 			// Try to position the new window to the right of the currently active window
-			var pt geom32.Point
+			var pt geom.Point[float32]
 			if w := unison.ActiveWindow(); w != nil {
 				r := w.FrameRect()
 				pt.X = r.X + r.Width
@@ -62,7 +62,7 @@ func init() {
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyT, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
 			// Try to position the new window to the right of the currently active window
-			var pt geom32.Point
+			var pt geom.Point[float32]
 			if w := unison.ActiveWindow(); w != nil {
 				r := w.FrameRect()
 				pt.X = r.X + r.Width
@@ -80,7 +80,7 @@ func init() {
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyD, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
 			// Try to position the new window to the right of the currently active window
-			var pt geom32.Point
+			var pt geom.Point[float32]
 			if w := unison.ActiveWindow(); w != nil {
 				r := w.FrameRect()
 				pt.X = r.X + r.Width

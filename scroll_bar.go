@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
@@ -86,7 +86,7 @@ func (s *ScrollBar) Value() float32 {
 
 // MaxValue returns the maximum value that can be set without adjusting the extent or max.
 func (s *ScrollBar) MaxValue() float32 {
-	return mathf32.Max(s.max-s.extent, 0)
+	return xmath.Max(s.max-s.extent, 0)
 }
 
 // Extent returns the amount of space representing the visible content area.
@@ -125,9 +125,9 @@ func (s *ScrollBar) SetRange(value, extent, max float32) {
 }
 
 // Thumb returns the location of the thumb.
-func (s *ScrollBar) Thumb() geom32.Rect {
+func (s *ScrollBar) Thumb() geom.Rect[float32] {
 	if s.max == 0 {
-		return geom32.Rect{}
+		return geom.Rect[float32]{}
 	}
 	r := s.ContentRect(false)
 	if s.horizontal {
@@ -136,18 +136,18 @@ func (s *ScrollBar) Thumb() geom32.Rect {
 		if size < s.MinimumThumb {
 			size = s.MinimumThumb
 		}
-		return geom32.NewRect(start, s.ThumbIndent, size, r.Height-2*s.ThumbIndent)
+		return geom.NewRect(start, s.ThumbIndent, size, r.Height-2*s.ThumbIndent)
 	}
 	start := r.Height * (s.value / s.max)
 	size := r.Height * (s.extent / s.max)
 	if size < s.MinimumThumb {
 		size = s.MinimumThumb
 	}
-	return geom32.NewRect(s.ThumbIndent, start, r.Width-2*s.ThumbIndent, size)
+	return geom.NewRect(s.ThumbIndent, start, r.Width-2*s.ThumbIndent, size)
 }
 
 // DefaultSizes provides the default sizing.
-func (s *ScrollBar) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (s *ScrollBar) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	min.Width = s.MinimumThickness
 	min.Height = s.MinimumThickness
 	if s.horizontal {
@@ -165,7 +165,7 @@ func (s *ScrollBar) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) 
 }
 
 // DefaultDraw provides the default drawing.
-func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom32.Rect) {
+func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom.Rect[float32]) {
 	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
 		var ink Ink
 		if s.overThumb {
@@ -179,7 +179,7 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom32.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *ScrollBar) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	thumb := s.Thumb()
 	if !thumb.ContainsPoint(where) {
 		s.dragOffset = 0
@@ -198,14 +198,14 @@ func (s *ScrollBar) DefaultMouseDown(where geom32.Point, button, clickCount int,
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *ScrollBar) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
 	s.trackingThumb = false
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (s *ScrollBar) DefaultMouseEnter(where geom32.Point, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseEnter(where geom.Point[float32], mod Modifiers) bool {
 	if !s.trackingThumb {
 		s.checkOverThumb(where)
 	}
@@ -222,19 +222,19 @@ func (s *ScrollBar) DefaultMouseExit() bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (s *ScrollBar) DefaultMouseMove(where geom32.Point, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseMove(where geom.Point[float32], mod Modifiers) bool {
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *ScrollBar) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
 	s.adjustValueForPoint(where)
 	s.MarkForRedraw()
 	return true
 }
 
-func (s *ScrollBar) adjustValueForPoint(pt geom32.Point) {
+func (s *ScrollBar) adjustValueForPoint(pt geom.Point[float32]) {
 	r := s.ContentRect(false)
 	thumb := s.Thumb()
 	var pos, max float32
@@ -252,7 +252,7 @@ func (s *ScrollBar) adjustValueForPoint(pt geom32.Point) {
 	}
 }
 
-func (s *ScrollBar) checkOverThumb(pt geom32.Point) {
+func (s *ScrollBar) checkOverThumb(pt geom.Point[float32]) {
 	was := s.overThumb //nolint:ifshort // Can't move this into the if statement
 	s.overThumb = s.Thumb().ContainsPoint(pt)
 	if was != s.overThumb {

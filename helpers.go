@@ -12,29 +12,29 @@ package unison
 import (
 	"strings"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DrawRectBase fills and strokes a rectangle.
-func DrawRectBase(canvas *Canvas, rect geom32.Rect, fillInk, strokeInk Ink) {
+func DrawRectBase(canvas *Canvas, rect geom.Rect[float32], fillInk, strokeInk Ink) {
 	canvas.DrawRect(rect, fillInk.Paint(canvas, rect, Fill))
 	rect.InsetUniform(0.5)
 	canvas.DrawRect(rect, strokeInk.Paint(canvas, rect, Stroke))
 }
 
 // DrawRoundedRectBase fills and strokes a rounded rectangle.
-func DrawRoundedRectBase(canvas *Canvas, rect geom32.Rect, cornerRadius, thickness float32, fillInk, strokeInk Ink) {
+func DrawRoundedRectBase(canvas *Canvas, rect geom.Rect[float32], cornerRadius, thickness float32, fillInk, strokeInk Ink) {
 	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, fillInk.Paint(canvas, rect, Fill))
 	rect.InsetUniform(thickness / 2)
-	cornerRadius = mathf32.Max(cornerRadius-thickness/2, 0)
+	cornerRadius = xmath.Max(cornerRadius-thickness/2, 0)
 	p := strokeInk.Paint(canvas, rect, Stroke)
 	p.SetStrokeWidth(thickness)
 	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, p)
 }
 
 // DrawEllipseBase fills and strokes an ellipse.
-func DrawEllipseBase(canvas *Canvas, rect geom32.Rect, thickness float32, fillInk, strokeInk Ink) {
+func DrawEllipseBase(canvas *Canvas, rect geom.Rect[float32], thickness float32, fillInk, strokeInk Ink) {
 	canvas.DrawOval(rect, fillInk.Paint(canvas, rect, Fill))
 	rect.InsetUniform(thickness / 2)
 	p := strokeInk.Paint(canvas, rect, Stroke)

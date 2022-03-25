@@ -9,9 +9,7 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-)
+import "github.com/richardwilkes/toolbox/xmath/geom"
 
 var (
 	_ ColorProvider = &ThemeColor{}
@@ -72,6 +70,6 @@ func (t *ThemeColor) GetColor() Color {
 }
 
 // Paint returns a Paint for this ThemeColor. Here to satisfy the Ink interface.
-func (t *ThemeColor) Paint(canvas *Canvas, rect geom32.Rect, style PaintStyle) *Paint {
+func (t *ThemeColor) Paint(canvas *Canvas, rect geom.Rect[float32], style PaintStyle) *Paint {
 	return t.GetColor().Paint(canvas, rect, style)
 }

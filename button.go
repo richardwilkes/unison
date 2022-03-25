@@ -12,7 +12,7 @@ package unison
 import (
 	"time"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultButtonTheme holds the default ButtonTheme values for Buttons. Modifying this data will not alter existing
@@ -119,7 +119,7 @@ func NewSVGButton(svg *SVG) *Button {
 	b.ButtonTheme = DefaultSVGButtonTheme
 	b.HideBase = true
 	baseline := b.Font.Baseline()
-	size := geom32.NewSize(baseline, baseline)
+	size := geom.NewSize[float32](baseline, baseline)
 	b.Drawable = &DrawableSVG{
 		SVG:  svg,
 		Size: *size.GrowToInteger(),
@@ -128,7 +128,7 @@ func NewSVGButton(svg *SVG) *Button {
 }
 
 // DefaultSizes provides the default sizing.
-func (b *Button) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (b *Button) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	pref = LabelSize(b.textCache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
 	if theBorder := b.Border(); theBorder != nil {
 		pref.AddInsets(theBorder.Insets())
@@ -161,7 +161,7 @@ func (b *Button) VerticalMargin() float32 {
 }
 
 // DefaultDraw provides the default drawing.
-func (b *Button) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (b *Button) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	var fg, bg Ink
 	switch {
 	case b.Pressed || (b.Sticky && b.Selected()):
@@ -207,14 +207,14 @@ func (b *Button) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (b *Button) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+func (b *Button) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	b.Pressed = true
 	b.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (b *Button) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+func (b *Button) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
 	rect := b.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if b.Pressed != pressed {
@@ -225,7 +225,7 @@ func (b *Button) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers)
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (b *Button) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+func (b *Button) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	rect := b.ContentRect(false)
@@ -239,7 +239,7 @@ func (b *Button) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) b
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (b *Button) DefaultMouseEnter(_ geom32.Point, _ Modifiers) bool {
+func (b *Button) DefaultMouseEnter(_ geom.Point[float32], _ Modifiers) bool {
 	b.rollover = true
 	b.MarkForRedraw()
 	return true

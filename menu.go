@@ -11,8 +11,8 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Menu = &menu{}
@@ -48,7 +48,7 @@ type Menu interface {
 	// Count of menu items in this menu.
 	Count() int
 	// Popup the menu at the specified position within the active window.
-	Popup(where geom32.Rect, itemIndex int)
+	Popup(where geom.Rect[float32], itemIndex int)
 	// Dispose releases any OS resources associated with this menu.
 	Dispose()
 }
@@ -56,8 +56,8 @@ type Menu interface {
 // DefaultMenuTheme holds the default MenuTheme values for Menus. Modifying this data will not alter existing Menus,
 // but will alter any Menus created in the future.
 var DefaultMenuTheme = MenuTheme{
-	BarBorder:  NewLineBorder(DividerColor, 0, geom32.Insets{Bottom: 1}, false),
-	MenuBorder: NewLineBorder(DividerColor, 0, geom32.NewUniformInsets(1), false),
+	BarBorder:  NewLineBorder(DividerColor, 0, geom.Insets[float32]{Bottom: 1}, false),
+	MenuBorder: NewLineBorder(DividerColor, 0, geom.NewUniformInsets[float32](1), false),
 }
 
 // MenuTheme holds theming data for a Menu.
@@ -187,7 +187,7 @@ func (m *menu) Count() int {
 	return len(m.items)
 }
 
-func (m *menu) Popup(where geom32.Rect, itemIndex int) {
+func (m *menu) Popup(where geom.Rect[float32], itemIndex int) {
 	if m.popup == nil {
 		m.createPopup()
 		if m.popup != nil {
@@ -200,11 +200,11 @@ func (m *menu) Popup(where geom32.Rect, itemIndex int) {
 			}
 			fr := m.popup.FrameRect()
 			where.Height = fr.Height
-			where.Width = mathf32.Max(fr.Width, where.Width)
+			where.Width = xmath.Max(fr.Width, where.Width)
 			m.popup.SetFrameRect(where)
 			m.popup.Show()
 			if itemIndex >= 0 && itemIndex < len(m.items) {
-				m.items[itemIndex].mouseEnter(geom32.Point{}, 0) // params are unused
+				m.items[itemIndex].mouseEnter(geom.Point[float32]{}, 0) // params are unused
 			}
 		}
 	}
@@ -274,7 +274,7 @@ func (m *menu) postLostFocus(w *Window) {
 	})
 }
 
-func (m *menu) preMouseDown(w *Window, where geom32.Point) bool {
+func (m *menu) preMouseDown(w *Window, where geom.Point[float32]) bool {
 	if !overMenuBar(w, where) {
 		m.closeMenuStackStoppingAt(w, nil)
 	}

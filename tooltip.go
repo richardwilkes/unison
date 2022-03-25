@@ -13,17 +13,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
 // Tooltips, but will alter any Tooltips created in the future.
 var DefaultTooltipTheme = TooltipTheme{
 	BackgroundInk: TooltipColor,
-	BaseBorder:    NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 4, Left: 8, Bottom: 4, Right: 8})),
-	Label:         defaultToolTipLabelTheme(),
-	Delay:         1500 * time.Millisecond,
-	Dismissal:     5 * time.Second,
+	BaseBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](1), false),
+		NewEmptyBorder(geom.Insets[float32]{Top: 4, Left: 8, Bottom: 4, Right: 8})),
+	Label:     defaultToolTipLabelTheme(),
+	Delay:     1500 * time.Millisecond,
+	Dismissal: 5 * time.Second,
 }
 
 func defaultToolTipLabelTheme() LabelTheme {
@@ -45,7 +46,7 @@ type TooltipTheme struct {
 
 type tooltipSequencer struct {
 	window   *Window
-	avoid    geom32.Rect
+	avoid    geom.Rect[float32]
 	sequence int
 }
 
@@ -53,7 +54,7 @@ type tooltipSequencer struct {
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
-	tip.DrawCallback = func(canvas *Canvas, dirty geom32.Rect) {
+	tip.DrawCallback = func(canvas *Canvas, dirty geom.Rect[float32]) {
 		r := tip.ContentRect(true)
 		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, Fill))
 	}
@@ -98,8 +99,8 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 func (ts *tooltipSequencer) show() {
 	if ts.window.tooltipSequence == ts.sequence && ts.window.Focused() {
 		tip := ts.window.lastTooltip
-		_, pref, _ := tip.Sizes(geom32.Size{})
-		rect := geom32.Rect{Point: geom32.Point{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
+		_, pref, _ := tip.Sizes(geom.Size[float32]{})
+		rect := geom.Rect[float32]{Point: geom.Point[float32]{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
 		if rect.X < 0 {
 			rect.X = 0
 		}
@@ -108,7 +109,7 @@ func (ts *tooltipSequencer) show() {
 		}
 		viewSize := ts.window.root.ContentRect(true).Size
 		if viewSize.Width < rect.Width {
-			_, pref, _ = tip.Sizes(geom32.Size{Width: viewSize.Width})
+			_, pref, _ = tip.Sizes(geom.Size[float32]{Width: viewSize.Width})
 			if viewSize.Width < pref.Width {
 				rect.X = 0
 				rect.Width = viewSize.Width

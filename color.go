@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var (
@@ -65,8 +65,8 @@ func HSBA(hue, saturation, brightness, alpha float32) Color {
 	if saturation == 0 {
 		return ARGB(alpha, v, v, v)
 	}
-	h := (hue - mathf32.Floor(hue)) * 6
-	f := h - mathf32.Floor(h)
+	h := (hue - xmath.Floor(hue)) * 6
+	f := h - xmath.Floor(h)
 	p := clamp0To1AndScale255(brightness * (1 - saturation))
 	q := clamp0To1AndScale255(brightness * (1 - saturation*f))
 	t := clamp0To1AndScale255(brightness * (1 - (saturation * (1 - f))))
@@ -233,7 +233,7 @@ func extractColorPercentage(buffer string) (float32, error) {
 }
 
 // Paint returns a Paint for this Color. Here to satisfy the Ink interface.
-func (c Color) Paint(_ *Canvas, _ geom32.Rect, style PaintStyle) *Paint {
+func (c Color) Paint(_ *Canvas, _ geom.Rect[float32], style PaintStyle) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	paint.SetColor(c)

@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 const (
@@ -60,19 +60,19 @@ func (s Side) Vertical() bool {
 
 // Sizer returns minimum, preferred, and maximum sizes. The hint will contain
 // values other than zero for a dimension that has already been determined.
-type Sizer func(hint geom32.Size) (min, pref, max geom32.Size)
+type Sizer func(hint geom.Size[float32]) (min, pref, max geom.Size[float32])
 
 // Layout defines methods that all layouts must provide.
 type Layout interface {
-	LayoutSizes(target *Panel, hint geom32.Size) (min, pref, max geom32.Size)
+	LayoutSizes(target *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32])
 	PerformLayout(target *Panel)
 }
 
 // MaxSize returns the size that is at least as large as DefaultMaxSize in
 // both dimensions, but larger if the size that is passed in is larger.
-func MaxSize(size geom32.Size) geom32.Size {
-	return geom32.Size{
-		Width:  mathf32.Max(DefaultMaxSize, size.Width),
-		Height: mathf32.Max(DefaultMaxSize, size.Height),
+func MaxSize(size geom.Size[float32]) geom.Size[float32] {
+	return geom.Size[float32]{
+		Width:  xmath.Max(DefaultMaxSize, size.Width),
+		Height: xmath.Max(DefaultMaxSize, size.Height),
 	}
 }

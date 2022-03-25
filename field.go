@@ -16,23 +16,25 @@ import (
 
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultFieldTheme holds the default FieldTheme values for Fields. Modifying this data will not alter existing Fields,
 // but will alter any Fields created in the future.
 var DefaultFieldTheme = FieldTheme{
-	Font:             FieldFont,
-	BackgroundInk:    BackgroundColor,
-	OnBackgroundInk:  OnBackgroundColor,
-	EditableInk:      EditableColor,
-	OnEditableInk:    OnEditableColor,
-	SelectionInk:     SelectionColor,
-	OnSelectionInk:   OnSelectionColor,
-	ErrorInk:         ErrorColor,
-	OnErrorInk:       OnErrorColor,
-	FocusedBorder:    NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(2), false), NewEmptyBorder(geom32.Insets{Top: 2, Left: 2, Bottom: 1, Right: 2})),
-	UnfocusedBorder:  NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom32.NewUniformInsets(1), false), NewEmptyBorder(geom32.Insets{Top: 3, Left: 3, Bottom: 2, Right: 3})),
+	Font:            FieldFont,
+	BackgroundInk:   BackgroundColor,
+	OnBackgroundInk: OnBackgroundColor,
+	EditableInk:     EditableColor,
+	OnEditableInk:   OnEditableColor,
+	SelectionInk:    SelectionColor,
+	OnSelectionInk:  OnSelectionColor,
+	ErrorInk:        ErrorColor,
+	OnErrorInk:      OnErrorColor,
+	FocusedBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](2), false),
+		NewEmptyBorder(geom.Insets[float32]{Top: 2, Left: 2, Bottom: 1, Right: 2})),
+	UnfocusedBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](1), false),
+		NewEmptyBorder(geom.Insets[float32]{Top: 3, Left: 3, Bottom: 2, Right: 3})),
 	BlinkRate:        560 * time.Millisecond,
 	MinimumTextWidth: 10,
 	HAlign:           StartAlignment,
@@ -96,7 +98,7 @@ func NewField() *Field {
 }
 
 // DefaultSizes provides the default sizing.
-func (f *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (f *Field) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	var r []rune
 	if len(f.runes) != 0 {
 		r = f.runes
@@ -128,7 +130,7 @@ func (f *Field) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (f *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	var fg, bg Ink
 	switch {
 	case f.invalid:
@@ -169,9 +171,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
 		})
 		right := left + t.Width()
-		selRect := geom32.Rect{
-			Point: geom32.Point{X: left, Y: rect.Y},
-			Size:  geom32.Size{Width: right - left, Height: rect.Height},
+		selRect := geom.Rect[float32]{
+			Point: geom.Point[float32]{X: left, Y: rect.Y},
+			Size:  geom.Size[float32]{Width: right - left, Height: rect.Height},
 		}
 		canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
 		t.Draw(canvas, left, textBaseLine)
@@ -198,7 +200,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 	}
 	if !f.HasSelectionRange() && f.Enabled() && f.Focused() {
 		if f.showCursor {
-			canvas.DrawRect(geom32.NewRect(textLeft+NewTextFromRunes(f.runes[:f.selectionEnd], &TextDecoration{
+			canvas.DrawRect(geom.NewRect(textLeft+NewTextFromRunes(f.runes[:f.selectionEnd], &TextDecoration{
 				Font:  f.Font,
 				Paint: nil,
 			}).Width()+f.scrollOffset-0.5, rect.Y, 1, rect.Height),
@@ -253,7 +255,7 @@ func (f *Field) DefaultFocusLost() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (f *Field) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	f.RequestFocus()
 	if button == ButtonLeft {
 		f.extendByWord = false
@@ -288,7 +290,7 @@ func (f *Field) DefaultMouseDown(where geom32.Point, button, clickCount int, mod
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (f *Field) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
 	oldAnchor := f.selectionAnchor
 	pos := f.ToSelectionIndex(where.X)
 	var start, end int
@@ -332,7 +334,7 @@ func (f *Field) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) 
 }
 
 // DefaultUpdateCursor provides the default cursor update handling.
-func (f *Field) DefaultUpdateCursor(where geom32.Point) *Cursor {
+func (f *Field) DefaultUpdateCursor(where geom.Point[float32]) *Cursor {
 	if f.Enabled() {
 		return TextCursor()
 	}
@@ -423,14 +425,14 @@ func (f *Field) handleArrowLeft(extend, byWord bool) {
 				pos := f.selectionEnd - 1
 				if byWord {
 					start, _ := f.findWordAt(pos)
-					pos = xmath.MinInt(xmath.MaxInt(start, anchor), pos)
+					pos = xmath.Min(xmath.Max(start, anchor), pos)
 				}
 				f.setSelection(anchor, pos, anchor)
 			} else {
 				pos := f.selectionStart - 1
 				if byWord {
 					start, _ := f.findWordAt(pos)
-					pos = xmath.MinInt(start, pos)
+					pos = xmath.Min(start, pos)
 				}
 				f.setSelection(pos, anchor, anchor)
 			}
@@ -441,7 +443,7 @@ func (f *Field) handleArrowLeft(extend, byWord bool) {
 		pos := f.selectionStart - 1
 		if byWord {
 			start, _ := f.findWordAt(pos)
-			pos = xmath.MinInt(start, pos)
+			pos = xmath.Min(start, pos)
 		}
 		if extend {
 			f.setSelection(pos, f.selectionStart, f.selectionEnd)
@@ -459,14 +461,14 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 				pos := f.selectionStart + 1
 				if byWord {
 					_, end := f.findWordAt(pos)
-					pos = xmath.MaxInt(xmath.MinInt(end, anchor), pos)
+					pos = xmath.Max(xmath.Min(end, anchor), pos)
 				}
 				f.setSelection(pos, anchor, anchor)
 			} else {
 				pos := f.selectionEnd + 1
 				if byWord {
 					_, end := f.findWordAt(pos)
-					pos = xmath.MaxInt(end, pos)
+					pos = xmath.Max(end, pos)
 				}
 				f.setSelection(anchor, pos, anchor)
 			}
@@ -477,7 +479,7 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 		pos := f.selectionEnd + 1
 		if byWord {
 			_, end := f.findWordAt(pos)
-			pos = xmath.MaxInt(end, pos)
+			pos = xmath.Max(end, pos)
 		}
 		if extend {
 			f.SetSelection(f.selectionStart, pos)
@@ -782,7 +784,7 @@ func (f *Field) autoScroll() {
 	}
 }
 
-func (f *Field) textLeft(text *Text, bounds geom32.Rect) float32 {
+func (f *Field) textLeft(text *Text, bounds geom.Rect[float32]) float32 {
 	left := bounds.X
 	switch f.HAlign {
 	case MiddleAlignment:
@@ -802,7 +804,7 @@ func (f *Field) ToSelectionIndex(x float32) int {
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
-func (f *Field) FromSelectionIndex(index int) geom32.Point {
+func (f *Field) FromSelectionIndex(index int) geom.Point[float32] {
 	text := NewTextFromRunes(f.runes, &TextDecoration{Font: f.Font})
 	rect := f.ContentRect(false)
 	left := f.textLeft(text, rect)
@@ -815,7 +817,7 @@ func (f *Field) FromSelectionIndex(index int) geom32.Point {
 		}
 		x += text.PositionForRuneIndex(index)
 	}
-	return geom32.Point{X: x, Y: top}
+	return geom.Point[float32]{X: x, Y: top}
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {

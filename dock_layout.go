@@ -11,8 +11,8 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // TODO: Fix scaling for docks, too
@@ -24,9 +24,9 @@ var (
 
 // DockLayoutNode defines the methods for nodes within a DockLayout.
 type DockLayoutNode interface {
-	PreferredSize() geom32.Size
-	FrameRect() geom32.Rect
-	SetFrameRect(r geom32.Rect)
+	PreferredSize() geom.Size[float32]
+	FrameRect() geom.Rect[float32]
+	SetFrameRect(r geom.Rect[float32])
 }
 
 // DockLayout provides layout of DockContainers and other DockLayouts within a Dock.
@@ -34,7 +34,7 @@ type DockLayout struct {
 	dock       *Dock
 	parent     *DockLayout
 	nodes      [2]DockLayoutNode
-	frame      geom32.Rect
+	frame      geom.Rect[float32]
 	divider    float32
 	Horizontal bool
 }
@@ -305,7 +305,7 @@ func (d *DockLayout) DividerPosition() float32 {
 		}
 		return frame.Height
 	}
-	return mathf32.Min(d.divider, d.DividerMaximum())
+	return xmath.Min(d.divider, d.DividerMaximum())
 }
 
 // SetDividerPosition sets the new divider position. Use a value less than 0 to reset the divider to its default mode,
@@ -324,24 +324,24 @@ func (d *DockLayout) SetDividerPosition(pos float32) {
 }
 
 // PreferredSize implements DockLayoutNode.
-func (d *DockLayout) PreferredSize() geom32.Size {
-	_, pref, _ := d.LayoutSizes(nil, geom32.Size{})
+func (d *DockLayout) PreferredSize() geom.Size[float32] {
+	_, pref, _ := d.LayoutSizes(nil, geom.Size[float32]{})
 	return pref
 }
 
 // FrameRect implements DockLayoutNode.
-func (d *DockLayout) FrameRect() geom32.Rect {
+func (d *DockLayout) FrameRect() geom.Rect[float32] {
 	return d.frame
 }
 
 // SetFrameRect implements DockLayoutNode.
-func (d *DockLayout) SetFrameRect(r geom32.Rect) {
+func (d *DockLayout) SetFrameRect(r geom.Rect[float32]) {
 	d.frame = r
 	d.PerformLayout(nil)
 }
 
 // LayoutSizes implements Layout.
-func (d *DockLayout) LayoutSizes(_ *Panel, _ geom32.Size) (min, pref, max geom32.Size) {
+func (d *DockLayout) LayoutSizes(_ *Panel, _ geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	if d.nodes[0] != nil {
 		pref = d.nodes[0].PreferredSize()
 	}
@@ -372,7 +372,7 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 			dc.Hidden = dc != d.dock.MaximizedContainer
 			return false
 		})
-		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
+		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	case d.Full():
 		available := size.Height
 		if d.Horizontal {
@@ -393,15 +393,15 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 			primary = d.divider
 		}
 		if d.Horizontal {
-			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, primary, size.Height))
-			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X+primary+dividerSize, d.frame.Y, available-primary, size.Height))
+			d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, primary, size.Height))
+			d.nodes[1].SetFrameRect(geom.NewRect(d.frame.X+primary+dividerSize, d.frame.Y, available-primary, size.Height))
 		} else {
-			d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, primary))
-			d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y+primary+dividerSize, size.Width, available-primary))
+			d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, primary))
+			d.nodes[1].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y+primary+dividerSize, size.Width, available-primary))
 		}
 	case d.nodes[0] != nil:
-		d.nodes[0].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
+		d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	case d.nodes[1] != nil:
-		d.nodes[1].SetFrameRect(geom32.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
+		d.nodes[1].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	}
 }

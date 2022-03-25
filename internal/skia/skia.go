@@ -10,7 +10,7 @@
 package skia
 
 import (
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 type (
@@ -146,20 +146,20 @@ type Rect struct {
 	Bottom float32
 }
 
-func (r *Rect) ToRect() geom32.Rect {
-	return geom32.Rect{
-		Point: geom32.Point{
+func (r *Rect) ToRect() geom.Rect[float32] {
+	return geom.Rect[float32]{
+		Point: geom.Point[float32]{
 			X: r.Left,
 			Y: r.Top,
 		},
-		Size: geom32.Size{
+		Size: geom.Size[float32]{
 			Width:  r.Right - r.Left,
 			Height: r.Bottom - r.Top,
 		},
 	}
 }
 
-func RectToSkRect(r *geom32.Rect) *Rect {
+func RectToSkRect(r *geom.Rect[float32]) *Rect {
 	return &Rect{
 		Left:   r.X,
 		Top:    r.Y,
@@ -175,7 +175,7 @@ type IRect struct {
 	Bottom int32
 }
 
-func RectToSkIRect(r *geom32.Rect) *IRect {
+func RectToSkIRect(r *geom.Rect[float32]) *IRect {
 	return &IRect{
 		Left:   int32(r.X),
 		Top:    int32(r.Y),
@@ -196,8 +196,8 @@ type Matrix struct {
 	Persp2 float32
 }
 
-func (m *Matrix) ToMatrix2D() *geom32.Matrix2D {
-	return &geom32.Matrix2D{
+func (m *Matrix) ToMatrix2D() *geom.Matrix2D[float32] {
+	return &geom.Matrix2D[float32]{
 		ScaleX: m.ScaleX,
 		SkewX:  m.SkewX,
 		TransX: m.TransX,
@@ -207,7 +207,7 @@ func (m *Matrix) ToMatrix2D() *geom32.Matrix2D {
 	}
 }
 
-func Matrix2DtoMatrix(m *geom32.Matrix2D) *Matrix {
+func Matrix2DtoMatrix(m *geom.Matrix2D[float32]) *Matrix {
 	if m == nil {
 		return nil
 	}

@@ -12,7 +12,7 @@ package demo
 import (
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -36,7 +36,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 
 		// Put some empty space around the edges of our window and apply a single column layout.
 		content := aboutWindow.Content()
-		content.SetBorder(unison.NewEmptyBorder(geom32.NewUniformInsets(24)))
+		content.SetBorder(unison.NewEmptyBorder(geom.NewUniformInsets[float32](24)))
 		content.SetLayout(&unison.FlexLayout{
 			Columns:  1,
 			HSpacing: unison.StdHSpacing,

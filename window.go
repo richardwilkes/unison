@@ -19,8 +19,8 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var (
@@ -36,14 +36,14 @@ type DragData struct {
 	Drawable        Drawable
 	SamplingOptions *SamplingOptions
 	Ink             Ink
-	Offset          geom32.Point
+	Offset          geom.Point[float32]
 }
 
 // Window holds window information.
 type Window struct {
 	InputCallbacks
 	// MinMaxContentSizeCallback returns the minimum and maximum size for the window content.
-	MinMaxContentSizeCallback func() (min, max geom32.Size)
+	MinMaxContentSizeCallback func() (min, max geom.Size[float32])
 	// MovedCallback is called when the window is moved.
 	MovedCallback func()
 	// ResizedCallback is called when the window is resized. If constrained is true, then the resulting window size has
@@ -71,9 +71,9 @@ type Window struct {
 	lastButton          int
 	lastButtonCount     int
 	lastButtonTime      time.Time
-	lastContentRect     geom32.Rect
-	firstButtonLocation geom32.Point
-	dragDataLocation    geom32.Point
+	lastContentRect     geom.Rect[float32]
+	firstButtonLocation geom.Point[float32]
+	dragDataLocation    geom.Point[float32]
 	dragDataPanel       *Panel
 	dragData            *DragData
 	lastKeyModifiers    Modifiers
@@ -228,8 +228,8 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			maxDelay, maxMouseDrift := DoubleClickParameters()
 			now := time.Now()
 			if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
-				mathf32.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
-				mathf32.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
+				xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
+				xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
 				w.lastButtonCount++
 				time.Since(w.lastButtonTime)
 			} else {
@@ -497,7 +497,7 @@ func (w *Window) ValidateLayout() {
 
 // FrameRect returns the boundaries in display coordinates of the frame of this window (i.e. the area that includes both
 // the content and its border and window controls).
-func (w *Window) FrameRect() geom32.Rect {
+func (w *Window) FrameRect() geom.Rect[float32] {
 	fr := w.frameRect()
 	cr := w.ContentRect()
 	cr.X -= fr.X
@@ -507,9 +507,9 @@ func (w *Window) FrameRect() geom32.Rect {
 	return cr
 }
 
-func (w *Window) frameRect() geom32.Rect {
+func (w *Window) frameRect() geom.Rect[float32] {
 	left, top, right, bottom := w.wnd.GetFrameSize()
-	r := geom32.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+	r := geom.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
 	if runtime.GOOS != toolbox.MacOS {
 		sx, sy := w.wnd.GetContentScale()
 		r.X /= sx
@@ -521,7 +521,7 @@ func (w *Window) frameRect() geom32.Rect {
 }
 
 // ContentRectForFrameRect returns the content rect for the given frame rect.
-func (w *Window) ContentRectForFrameRect(frame geom32.Rect) geom32.Rect {
+func (w *Window) ContentRectForFrameRect(frame geom.Rect[float32]) geom.Rect[float32] {
 	fr := w.frameRect()
 	frame.X += fr.X
 	frame.Y += fr.Y
@@ -531,7 +531,7 @@ func (w *Window) ContentRectForFrameRect(frame geom32.Rect) geom32.Rect {
 }
 
 // FrameRectForContentRect returns the frame rect for the given content rect.
-func (w *Window) FrameRectForContentRect(cr geom32.Rect) geom32.Rect {
+func (w *Window) FrameRectForContentRect(cr geom.Rect[float32]) geom.Rect[float32] {
 	fr := w.frameRect()
 	cr.X -= fr.X
 	cr.Y -= fr.Y
@@ -541,19 +541,19 @@ func (w *Window) FrameRectForContentRect(cr geom32.Rect) geom32.Rect {
 }
 
 // SetFrameRect sets the boundaries of the frame of this window.
-func (w *Window) SetFrameRect(rect geom32.Rect) {
+func (w *Window) SetFrameRect(rect geom.Rect[float32]) {
 	w.SetContentRect(w.ContentRectForFrameRect(rect))
 }
 
-func (w *Window) minMaxContentSize() (min, max geom32.Size) {
+func (w *Window) minMaxContentSize() (min, max geom.Size[float32]) {
 	if w.MinMaxContentSizeCallback != nil {
 		return w.MinMaxContentSizeCallback()
 	}
-	min, _, max = w.root.Sizes(geom32.Size{})
+	min, _, max = w.root.Sizes(geom.Size[float32]{})
 	return
 }
 
-func (w *Window) adjustContentRectForMinMax(rect geom32.Rect) geom32.Rect {
+func (w *Window) adjustContentRectForMinMax(rect geom.Rect[float32]) geom.Rect[float32] {
 	min, max := w.minMaxContentSize()
 	if rect.Width < min.Width {
 		rect.Width = min.Width
@@ -569,10 +569,10 @@ func (w *Window) adjustContentRectForMinMax(rect geom32.Rect) geom32.Rect {
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
-func (w *Window) ContentRect() geom32.Rect {
+func (w *Window) ContentRect() geom.Rect[float32] {
 	x, y := w.wnd.GetPos()
 	width, height := w.wnd.GetSize()
-	r := geom32.NewRect(float32(x), float32(y), float32(width), float32(height))
+	r := geom.NewRect(float32(x), float32(y), float32(width), float32(height))
 	if runtime.GOOS != toolbox.MacOS {
 		sx, sy := w.wnd.GetContentScale()
 		r.X /= sx
@@ -584,7 +584,7 @@ func (w *Window) ContentRect() geom32.Rect {
 }
 
 // LocalContentRect returns the boundaries in local coordinates of the window's content area.
-func (w *Window) LocalContentRect() geom32.Rect {
+func (w *Window) LocalContentRect() geom.Rect[float32] {
 	r := w.ContentRect()
 	r.Point.X = 0
 	r.Point.Y = 0
@@ -593,7 +593,7 @@ func (w *Window) LocalContentRect() geom32.Rect {
 
 // SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
 // rect and then applying it to the window.
-func (w *Window) SetContentRect(rect geom32.Rect) {
+func (w *Window) SetContentRect(rect geom.Rect[float32]) {
 	rect = w.adjustContentRectForMinMax(rect)
 	w.lastContentRect = rect
 	if runtime.GOOS != toolbox.MacOS {
@@ -609,7 +609,7 @@ func (w *Window) SetContentRect(rect geom32.Rect) {
 
 // Pack sets the window's content size to match the preferred size of the root panel.
 func (w *Window) Pack() {
-	_, pref, _ := w.root.Sizes(geom32.Size{})
+	_, pref, _ := w.root.Sizes(geom.Size[float32]{})
 	rect := w.ContentRect()
 	rect.Size = pref
 	w.SetContentRect(rect)
@@ -767,12 +767,12 @@ func (w *Window) Resizable() bool {
 }
 
 // MouseLocation returns the current mouse location relative to this window.
-func (w *Window) MouseLocation() geom32.Point {
+func (w *Window) MouseLocation() geom.Point[float32] {
 	return w.convertMouseLocation(w.wnd.GetCursorPos())
 }
 
-func (w *Window) convertMouseLocation(x, y float64) geom32.Point {
-	pt := geom32.Point{X: float32(x), Y: float32(y)}
+func (w *Window) convertMouseLocation(x, y float64) geom.Point[float32] {
+	pt := geom.Point[float32]{X: float32(x), Y: float32(y)}
 	if runtime.GOOS != toolbox.MacOS {
 		sx, sy := w.wnd.GetContentScale()
 		pt.X /= sx
@@ -796,7 +796,7 @@ func (w *Window) Draw(c *Canvas) {
 			if w.dragData != nil {
 				c.Save()
 				c.Translate(w.dragDataLocation.X+w.dragData.Offset.X, w.dragDataLocation.Y+w.dragData.Offset.Y)
-				r := geom32.Rect{Size: w.dragData.Drawable.LogicalSize()}
+				r := geom.Rect[float32]{Size: w.dragData.Drawable.LogicalSize()}
 				c.ClipRect(r, IntersectClipOp, false)
 				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions, w.dragData.Ink.Paint(c, r, Fill))
 				c.Restore()
@@ -869,13 +869,13 @@ func (w *Window) restoreHiddenCursor() {
 	}
 }
 
-func (w *Window) updateTooltipAndCursor(target *Panel, where geom32.Point) {
+func (w *Window) updateTooltipAndCursor(target *Panel, where geom.Point[float32]) {
 	w.updateCursor(target, where)
 	w.updateTooltip(target, where)
 }
 
-func (w *Window) updateTooltip(target *Panel, where geom32.Point) {
-	var avoid geom32.Rect
+func (w *Window) updateTooltip(target *Panel, where geom.Point[float32]) {
+	var avoid geom.Rect[float32]
 	var tip *Panel
 	for target != nil {
 		avoid = target.RectToRoot(target.ContentRect(true))
@@ -918,7 +918,7 @@ func (w *Window) UpdateCursorNow() {
 	w.updateCursor(target, target.PointFromRoot(where))
 }
 
-func (w *Window) updateCursor(target *Panel, where geom32.Point) {
+func (w *Window) updateCursor(target *Panel, where geom.Point[float32]) {
 	var cursor *Cursor
 	for target != nil {
 		if target.UpdateCursorCallback == nil {
@@ -938,7 +938,7 @@ func (w *Window) updateCursor(target *Panel, where geom32.Point) {
 	}
 }
 
-func (w *Window) mouseDown(where geom32.Point, button, clickCount int, mod Modifiers) {
+func (w *Window) mouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) {
 	if w.root.preMouseDownCallback != nil {
 		stop := false
 		toolbox.Call(func() { stop = w.root.preMouseDownCallback(w, where) })
@@ -971,7 +971,7 @@ func (w *Window) mouseDown(where geom32.Point, button, clickCount int, mod Modif
 	}
 }
 
-func (w *Window) mouseDrag(where geom32.Point, button int, mod Modifiers) {
+func (w *Window) mouseDrag(where geom.Point[float32], button int, mod Modifiers) {
 	w.dragDataLocation = where
 	w.restoreHiddenCursor()
 	if w.dragData != nil {
@@ -990,7 +990,7 @@ func (w *Window) mouseDrag(where geom32.Point, button int, mod Modifiers) {
 	}
 }
 
-func (w *Window) mouseUp(where geom32.Point, button int, mod Modifiers) {
+func (w *Window) mouseUp(where geom.Point[float32], button int, mod Modifiers) {
 	if w.dragData != nil {
 		w.dragDataLocation = where
 		w.dataDragFinish()
@@ -1016,7 +1016,7 @@ func (w *Window) mouseUp(where geom32.Point, button int, mod Modifiers) {
 	w.lastMouseDownPanel = nil
 }
 
-func (w *Window) mouseEnter(where geom32.Point, mod Modifiers) {
+func (w *Window) mouseEnter(where geom.Point[float32], mod Modifiers) {
 	w.restoreHiddenCursor()
 	w.mouseExit()
 	if w.MouseEnterCallback != nil {
@@ -1034,7 +1034,7 @@ func (w *Window) mouseEnter(where geom32.Point, mod Modifiers) {
 	w.lastMouseOverPanel = panel
 }
 
-func (w *Window) mouseMove(where geom32.Point, mod Modifiers) {
+func (w *Window) mouseMove(where geom.Point[float32], mod Modifiers) {
 	w.restoreHiddenCursor()
 	panel := w.root.PanelAt(where)
 	if panel.Is(w.lastMouseOverPanel) {
@@ -1071,7 +1071,7 @@ func (w *Window) mouseExit() {
 	}
 }
 
-func (w *Window) mouseWheel(where, delta geom32.Point, mod Modifiers) {
+func (w *Window) mouseWheel(where, delta geom.Point[float32], mod Modifiers) {
 	if w.MouseWheelCallback != nil {
 		stop := false
 		toolbox.Call(func() { stop = w.MouseWheelCallback(where, delta, mod) })
@@ -1216,11 +1216,11 @@ func (w *Window) ClientData() map[string]interface{} {
 }
 
 // IsDragGesture returns true if a gesture to start a drag operation was made.
-func (w *Window) IsDragGesture(where geom32.Point) bool {
+func (w *Window) IsDragGesture(where geom.Point[float32]) bool {
 	minDelay, minMouseDrift := DragGestureParameters()
 	return w.inMouseDown &&
-		mathf32.Abs(w.firstButtonLocation.X-where.X) > minMouseDrift ||
-		mathf32.Abs(w.firstButtonLocation.Y-where.Y) > minMouseDrift ||
+		xmath.Abs(w.firstButtonLocation.X-where.X) > minMouseDrift ||
+		xmath.Abs(w.firstButtonLocation.Y-where.Y) > minMouseDrift ||
 		time.Since(w.lastButtonTime) > minDelay
 }
 

@@ -12,8 +12,8 @@ package unison
 import (
 	"time"
 
-	"github.com/richardwilkes/toolbox/xmath/geom32"
-	"github.com/richardwilkes/toolbox/xmath/mathf32"
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultCheckBoxTheme holds the default CheckBoxTheme values for CheckBoxes. Modifying this data will not alter
@@ -80,7 +80,7 @@ func NewCheckBox() *CheckBox {
 }
 
 // DefaultSizes provides the default sizing.
-func (c *CheckBox) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
+func (c *CheckBox) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	pref = c.boxAndLabelSize()
 	if border := c.Border(); border != nil {
 		pref.AddInsets(border.Insets())
@@ -90,10 +90,10 @@ func (c *CheckBox) DefaultSizes(hint geom32.Size) (min, pref, max geom32.Size) {
 	return pref, pref, MaxSize(pref)
 }
 
-func (c *CheckBox) boxAndLabelSize() geom32.Size {
+func (c *CheckBox) boxAndLabelSize() geom.Size[float32] {
 	boxSize := c.boxSize()
 	if c.Drawable == nil && c.Text == "" {
-		return geom32.Size{Width: boxSize, Height: boxSize}
+		return geom.Size[float32]{Width: boxSize, Height: boxSize}
 	}
 	size := LabelSize(c.textCache.Text(c.Text, c.Font), c.Drawable, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
@@ -104,24 +104,24 @@ func (c *CheckBox) boxAndLabelSize() geom32.Size {
 }
 
 func (c *CheckBox) boxSize() float32 {
-	return mathf32.Ceil(c.Font.Baseline())
+	return xmath.Ceil(c.Font.Baseline())
 }
 
 // DefaultDraw provides the default drawing.
-func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
+func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	contentRect := c.ContentRect(false)
 	rect := contentRect
 	size := c.boxAndLabelSize()
 	switch c.HAlign {
 	case MiddleAlignment, FillAlignment:
-		rect.X = mathf32.Floor(rect.X + (rect.Width-size.Width)/2)
+		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
 	case EndAlignment:
 		rect.X += rect.Width - size.Width
 	default: // StartAlignment
 	}
 	switch c.VAlign {
 	case MiddleAlignment, FillAlignment:
-		rect.Y = mathf32.Floor(rect.Y + (rect.Height-size.Height)/2)
+		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
 	case EndAlignment:
 		rect.Y += rect.Height - size.Height
 	default: // StartAlignment
@@ -136,7 +136,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom32.Rect) {
 			c.Side, c.Gap, !c.Enabled())
 	}
 	if rect.Height > boxSize {
-		rect.Y += mathf32.Floor((rect.Height - boxSize) / 2)
+		rect.Y += xmath.Floor((rect.Height - boxSize) / 2)
 	}
 	rect.Width = boxSize
 	rect.Height = boxSize
@@ -199,14 +199,14 @@ func (c *CheckBox) updateState() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (c *CheckBox) DefaultMouseDown(where geom32.Point, button, clickCount int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	c.Pressed = true
 	c.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (c *CheckBox) DefaultMouseDrag(where geom32.Point, button int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
 	rect := c.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if c.Pressed != pressed {
@@ -217,7 +217,7 @@ func (c *CheckBox) DefaultMouseDrag(where geom32.Point, button int, mod Modifier
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (c *CheckBox) DefaultMouseUp(where geom32.Point, button int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
 	rect := c.ContentRect(false)

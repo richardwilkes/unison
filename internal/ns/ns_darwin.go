@@ -383,7 +383,7 @@ import (
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
-	"github.com/richardwilkes/toolbox/xmath/geom32"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 type EventModifierFlags uint
@@ -626,15 +626,15 @@ func (w Window) ContentView() View {
 
 type View C.NSViewRef
 
-func (v View) Frame() geom32.Rect {
+func (v View) Frame() geom.Rect[float32] {
 	var frame C.NSRect
 	C.viewFrame(C.NSViewRef(v), &frame)
-	return geom32.Rect{
-		Point: geom32.Point{
+	return geom.Rect[float32]{
+		Point: geom.Point[float32]{
 			X: float32(frame.origin.x),
 			Y: float32(frame.origin.y),
 		},
-		Size: geom32.Size{
+		Size: geom.Size[float32]{
 			Width:  float32(frame.size.width),
 			Height: float32(frame.size.height),
 		},
@@ -684,7 +684,7 @@ func (m Menu) Title() string {
 	return String(C.menuTitle(C.NSMenuRef(m))).String()
 }
 
-func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom32.Rect) {
+func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom.Rect[float32]) {
 	C.menuPopup(C.NSWindowRef(wnd), C.NSMenuRef(menu), C.NSMenuItemRef(item), C.CGRect{
 		origin: C.CGPoint{
 			x: C.double(bounds.X),
