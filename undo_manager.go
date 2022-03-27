@@ -17,6 +17,11 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 )
 
+// UndoManagerProvider defines the method a provider of UndoManager should define.
+type UndoManagerProvider interface {
+	UndoManager() *UndoManager
+}
+
 // UndoManager provides management of an undo/redo stack.
 type UndoManager struct {
 	recoveryHandler errs.RecoveryHandler
@@ -35,6 +40,20 @@ func NewUndoManager(costLimit int, recoveryHandler errs.RecoveryHandler) *UndoMa
 		costLimit:       costLimit,
 		index:           -1,
 	}
+}
+
+// UndoManagerFor returns the UndoManager for a given Paneler. May return nil.
+func UndoManagerFor(paneler Paneler) *UndoManager {
+	p := paneler.AsPanel()
+	for p != nil {
+		if provider, ok := p.Self.(UndoManagerProvider); ok {
+			if manager := provider.UndoManager(); manager != nil {
+				return manager
+			}
+		}
+		p = p.Parent()
+	}
+	return nil
 }
 
 // CostLimit returns the current cost limit permitted by this undo manager.

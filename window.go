@@ -23,6 +23,8 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
+var _ UndoManagerProvider = &Window{}
+
 var (
 	windowMap  = make(map[*glfw.Window]*Window)
 	windowList []*Window
@@ -296,6 +298,14 @@ func glfwEnabled(enabled bool) int {
 		return glfw.True
 	}
 	return glfw.False
+}
+
+// UndoManager returns the UndoManager for the currently focused panel in the Window. May return nil.
+func (w *Window) UndoManager() *UndoManager {
+	if focus := w.Focus(); focus != nil {
+		return UndoManagerFor(focus)
+	}
+	return nil
 }
 
 func (w *Window) moved() {
