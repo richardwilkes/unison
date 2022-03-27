@@ -108,7 +108,7 @@ func (tu *testUndo) Redo() {
 	tu.redone++
 }
 
-func (tu *testUndo) Absorb(other unison.UndoEdit) bool {
+func (tu *testUndo) Absorb(other unison.Undoable) bool {
 	if otu, ok := other.(*testUndo); ok && tu.name == otu.name {
 		otu.absorbed++
 		return true

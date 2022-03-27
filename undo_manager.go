@@ -17,32 +17,10 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 )
 
-// UndoEdit defines the required methods an undoable edit must implement.
-type UndoEdit interface {
-	// Name returns the localized name of the edit, suitable for displaying in a user interface menu. Note that no
-	// leading "Undo " or "Redo " should be part of this name, as the UndoManager will add this.
-	Name() string
-	// Cost returns a cost factor for this edit. When the cost values of the edits within a given UndoManager exceed the
-	// UndoManager's defined cost limit, the oldest edits will be discarded until the cost values are less than or equal
-	// to the UndoManager's defined limit. Note that if this method returns a value less than 1, it will be set to 1 for
-	// purposes of this calculation.
-	Cost() int
-	// Undo the state.
-	Undo()
-	// Redo the state.
-	Redo()
-	// Absorb gives this edit a chance to absorb a new edit that is about to be added to the manager. If this method
-	// returns true, it is assumed this edit has incorporated any necessary state into itself to perform an undo/redo
-	// and the other edit will be discarded.
-	Absorb(other UndoEdit) bool
-	// Release is called when this edit is no longer needed by the UndoManager.
-	Release()
-}
-
 // UndoManager provides management of an undo/redo stack.
 type UndoManager struct {
 	recoveryHandler errs.RecoveryHandler
-	edits           []UndoEdit
+	edits           []Undoable
 	costLimit       int
 	index           int // points to the currently applied edit
 }
@@ -80,7 +58,7 @@ func (m *UndoManager) SetCostLimit(limit int) {
 
 // Add an edit. If one or more undos have been performed, this will cause any redo capability beyond this point to be
 // lost.
-func (m *UndoManager) Add(edit UndoEdit) {
+func (m *UndoManager) Add(edit Undoable) {
 	for i := m.index + 1; i < len(m.edits); i++ {
 		m.release(m.edits[i])
 	}
@@ -95,7 +73,7 @@ func (m *UndoManager) Add(edit UndoEdit) {
 	if add {
 		m.index++
 	}
-	edits := make([]UndoEdit, m.index+1)
+	edits := make([]Undoable, m.index+1)
 	copy(edits, m.edits)
 	if add {
 		edits[m.index] = edit
@@ -173,11 +151,11 @@ func (m *UndoManager) Clear() {
 	m.index = -1
 }
 
-func (m *UndoManager) release(edit UndoEdit) {
+func (m *UndoManager) release(edit Undoable) {
 	toolbox.CallWithHandler(edit.Release, m.recoveryHandler)
 }
 
-func (m *UndoManager) cost(edit UndoEdit) int {
+func (m *UndoManager) cost(edit Undoable) int {
 	cost := edit.Cost()
 	if cost < 1 {
 		return 1
@@ -201,7 +179,7 @@ func (m *UndoManager) trimForLimit() {
 					m.release(m.edits[j])
 				}
 			}
-			m.edits = []UndoEdit{m.edits[i]}
+			m.edits = []Undoable{m.edits[i]}
 			m.index = 0
 			return
 		}
@@ -212,7 +190,7 @@ func (m *UndoManager) trimForLimit() {
 		for j := m.index + 1; j < len(m.edits); j++ {
 			m.release(m.edits[j])
 		}
-		edits := make([]UndoEdit, m.index-i)
+		edits := make([]Undoable, m.index-i)
 		copy(edits, m.edits[i+1:m.index+1])
 		m.edits = edits
 		m.index -= i + 1
@@ -227,7 +205,7 @@ func (m *UndoManager) trimForLimit() {
 		for j := i; j < len(m.edits); j++ {
 			m.release(m.edits[j])
 		}
-		edits := make([]UndoEdit, i)
+		edits := make([]Undoable, i)
 		copy(edits, m.edits)
 		m.edits = edits
 		return
