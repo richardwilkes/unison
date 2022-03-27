@@ -22,6 +22,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"golang.org/x/sys/windows"
 )
 
