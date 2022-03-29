@@ -185,31 +185,27 @@ func (mi *menuItem) mouseDown(_ geom.Point[float32], _, _ int, _ Modifiers) bool
 }
 
 func (mi *menuItem) showSubMenu() {
-	if !mi.factory.showInProgress && mi.subMenu.popup == nil {
+	if !mi.factory.showInProgress && mi.subMenu.popupPanel == nil {
 		mi.factory.showInProgress = true
 		defer func() { mi.factory.showInProgress = false }()
 		mi.subMenu.createPopup()
-		if mi.subMenu.popup != nil {
-			pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
-			pr.Point.Add(mi.panel.Window().ContentRect().Point)
-			fr := mi.subMenu.popup.FrameRect()
-			if mi.isRoot() {
-				fr.X = pr.X
-				fr.Y = pr.Bottom()
-			} else {
-				fr.X = pr.Right()
-				fr.Y = pr.Y
-			}
-			mi.subMenu.popup.SetFrameRect(fr)
-			mi.subMenu.popup.Show()
+		pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
+		fr := mi.subMenu.popupPanel.FrameRect()
+		if mi.isRoot() {
+			fr.X = pr.X
+			fr.Y = pr.Bottom()
+		} else {
+			fr.X = pr.Right()
+			fr.Y = pr.Y
 		}
+		mi.subMenu.popupPanel.SetFrameRect(fr)
 	}
 }
 
 func (mi *menuItem) mouseEnter(_ geom.Point[float32], _ Modifiers) bool {
 	mi.over = true
 	mi.panel.MarkForRedraw()
-	if mi.subMenu != nil && mi.menu.isActiveWindowShowingPopupMenu() {
+	if mi.subMenu != nil && len(mi.panel.Window().root.openMenuPanels) != 0 {
 		mi.showSubMenu()
 	}
 	return false
@@ -217,7 +213,7 @@ func (mi *menuItem) mouseEnter(_ geom.Point[float32], _ Modifiers) bool {
 
 func (mi *menuItem) mouseMove(where geom.Point[float32], mod Modifiers) bool {
 	stopAt := mi.menu
-	if mi.subMenu != nil && mi.subMenu.popup != nil {
+	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu
 	}
 	mi.menu.closeMenuStackStoppingAt(ActiveWindow(), stopAt)
@@ -297,7 +293,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect[float32]) {
 }
 
 func (mi *menuItem) isRoot() bool {
-	return mi.menu.popup == nil
+	return mi.menu.popupPanel == nil
 }
 
 func (mi *menuItem) validate() {

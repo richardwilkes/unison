@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
@@ -66,12 +65,17 @@ type MenuTheme struct {
 	MenuBorder Border
 }
 
+type menuPanel struct {
+	Panel
+	menu *menu
+}
+
 type menu struct {
-	factory   *inWindowMenuFactory
-	titleItem *menuItem
-	items     []*menuItem
-	updater   func(Menu)
-	popup     *Window
+	factory    *inWindowMenuFactory
+	titleItem  *menuItem
+	items      []*menuItem
+	updater    func(Menu)
+	popupPanel *menuPanel
 }
 
 func (m *menu) Factory() MenuFactory {
@@ -188,54 +192,43 @@ func (m *menu) Count() int {
 }
 
 func (m *menu) Popup(where geom.Rect[float32], itemIndex int) {
-	if m.popup == nil {
+	if m.popupPanel == nil {
 		m.createPopup()
-		if m.popup != nil {
-			where.Point.Add(ActiveWindow().ContentRect().Point)
-			if itemIndex >= 0 && itemIndex < len(m.items) {
-				p := m.popup.Content().Children()[itemIndex]
-				fr := p.FrameRect()
-				where.X += fr.X
-				where.Y -= fr.Y
-			}
-			fr := m.popup.FrameRect()
-			where.Height = fr.Height
-			where.Width = xmath.Max(fr.Width, where.Width)
-			m.popup.SetFrameRect(where)
-			m.popup.Show()
-			if itemIndex >= 0 && itemIndex < len(m.items) {
-				m.items[itemIndex].mouseEnter(geom.Point[float32]{}, 0) // params are unused
-			}
+		if itemIndex >= 0 && itemIndex < len(m.items) {
+			m.popupPanel.ValidateLayout()
+			p := m.popupPanel.Children()[itemIndex]
+			fr := p.FrameRect()
+			where.Y -= fr.Y
+		}
+		fr := m.popupPanel.FrameRect()
+		where.Height = fr.Height
+		where.Width = xmath.Max(fr.Width, where.Width)
+		m.popupPanel.SetFrameRect(where)
+		if itemIndex >= 0 && itemIndex < len(m.items) {
+			m.items[itemIndex].mouseEnter(geom.Point[float32]{}, 0) // params are unused
 		}
 	}
 }
 
 func (m *menu) createPopup() {
-	if m.popup != nil {
+	if m.popupPanel != nil {
 		return
 	}
 	activeWnd := ActiveWindow()
 	m.closeMenuStackStoppingAt(activeWnd, m.titleItem.menu)
-	w, err := NewWindow("", NotResizableWindowOption(), FloatingWindowOption(), UndecoratedWindowOption(), TransientWindowOption())
-	if err != nil {
-		jot.Error(err)
-		return
-	}
-	m.popup = w
 	root := m
 	for root.titleItem.menu != nil {
 		root = root.titleItem.menu
 	}
-	m.factory.wndRootMenuMap[activeWnd] = root
-	w.SetContent(m.newPanel(false))
-	w.Pack()
+	m.popupPanel = m.newPanel(false)
+	_, pref, _ := m.popupPanel.Sizes(geom.Size[float32]{})
+	m.popupPanel.SetFrameRect(geom.Rect[float32]{Size: pref})
+	activeWnd.root.insertMenu(m.popupPanel)
 }
 
-func (m *menu) Dispose() {
-}
-
-func (m *menu) newPanel(forBar bool) *Panel {
-	p := NewPanel()
+func (m *menu) newPanel(forBar bool) *menuPanel {
+	p := &menuPanel{menu: m}
+	p.Self = p
 	if forBar {
 		p.SetBorder(DefaultMenuTheme.BarBorder)
 	} else {
@@ -261,6 +254,9 @@ func (m *menu) newPanel(forBar bool) *Panel {
 	return p
 }
 
+func (m *menu) Dispose() {
+}
+
 func (m *menu) preMoved(w *Window) {
 	m.closeMenuStackStoppingAt(w, nil)
 }
@@ -275,8 +271,13 @@ func (m *menu) postLostFocus(w *Window) {
 }
 
 func (m *menu) preMouseDown(w *Window, where geom.Point[float32]) bool {
-	if !w.root.menuBarPanel.FrameRect().ContainsPoint(where) ||
-		w.root.menuBarPanel.PanelAt(where) == w.root.menuBarPanel {
+	if w.root.menuBar != nil {
+		for _, one := range w.root.openMenuPanels {
+			if one.FrameRect().ContainsPoint(where) {
+				m.closeMenuStackStoppingAt(w, one.menu)
+				return false
+			}
+		}
 		m.closeMenuStackStoppingAt(w, nil)
 	}
 	return false
@@ -290,7 +291,7 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 				mi.execute()
 				return true
 			}
-			return m.isActiveWindowShowingPopupMenu()
+			return len(wnd.root.openMenuPanels) != 0
 		}
 		if mi.subMenu != nil {
 			if mi.subMenu.preKeyDown(wnd, keyCode, mod) {
@@ -298,19 +299,15 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 			}
 		}
 	}
-	return m.isActiveWindowShowingPopupMenu()
+	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) preKeyUp(_ *Window, _ KeyCode, _ Modifiers) bool {
-	return m.isActiveWindowShowingPopupMenu()
+func (m *menu) preKeyUp(wnd *Window, _ KeyCode, _ Modifiers) bool {
+	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) preRuneTyped(_ *Window, _ rune) bool {
-	return m.isActiveWindowShowingPopupMenu()
-}
-
-func (m *menu) isActiveWindowShowingPopupMenu() bool {
-	return m.factory.wndRootMenuMap[ActiveWindow()] != nil
+func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
+	return len(wnd.root.openMenuPanels) != 0
 }
 
 func (m *menu) closeMenuStack() bool {
@@ -321,29 +318,14 @@ func (m *menu) closeMenuStack() bool {
 }
 
 func (m *menu) closeMenuStackStoppingAt(wnd *Window, stopAt *menu) bool {
-	list := m.factory.activeMenuList(wnd)
-	if len(list) == 0 {
+	if len(wnd.root.openMenuPanels) == 0 {
 		return false
 	}
-	for i := len(list) - 1; i >= 0; i-- {
-		if list[i] == stopAt {
+	for i := len(wnd.root.openMenuPanels) - 1; i >= 0; i-- {
+		if wnd.root.openMenuPanels[i].menu == stopAt {
 			return true
 		}
-		if list[i].popup != nil {
-			list[i].popup.Dispose()
-			list[i].popup = nil
-		}
+		wnd.root.removeMenu(wnd.root.openMenuPanels[i])
 	}
-	delete(m.factory.wndRootMenuMap, wnd)
 	return true
-}
-
-func (m *menu) collectActiveMenus(list []*menu) []*menu {
-	list = append(list, m)
-	for _, mi := range m.items {
-		if mi.subMenu != nil && mi.subMenu.popup != nil {
-			return mi.subMenu.collectActiveMenus(list)
-		}
-	}
-	return list
 }

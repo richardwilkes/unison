@@ -18,8 +18,8 @@ var _ Layout = &rootPanel{}
 type rootPanel struct {
 	Panel
 	window         *Window
-	openMenuPanels []*Panel
-	menuBarPanel   *Panel
+	openMenuPanels []*menuPanel
+	menuBarPanel   *menuPanel
 	tooltipPanel   *Panel
 	contentPanel   *Panel
 	menuBar        *menu
@@ -40,7 +40,7 @@ func newRootPanel(wnd *Window) *rootPanel {
 }
 
 func (p *rootPanel) MenuBar() *Panel {
-	return p.menuBarPanel
+	return p.menuBarPanel.AsPanel()
 }
 
 func (p *rootPanel) setMenuBar(menuBar *menu) {
@@ -56,6 +56,25 @@ func (p *rootPanel) setMenuBar(menuBar *menu) {
 		p.menuBarPanel = nil
 	}
 	p.MarkForLayoutAndRedraw()
+}
+
+func (p *rootPanel) insertMenu(panel *menuPanel) {
+	p.openMenuPanels = append(p.openMenuPanels, panel)
+	p.AddChildAtIndex(panel, 0)
+}
+
+func (p *rootPanel) removeMenu(panel *menuPanel) {
+	for i, one := range p.openMenuPanels {
+		if one == panel {
+			copy(p.openMenuPanels[i:], p.openMenuPanels[i+1:])
+			p.openMenuPanels[len(p.openMenuPanels)-1] = nil
+			p.openMenuPanels = p.openMenuPanels[:len(p.openMenuPanels)-1]
+			panel.RemoveFromParent()
+			panel.menu.popupPanel = nil
+			p.MarkForRedraw()
+			break
+		}
+	}
 }
 
 func (p *rootPanel) setContent(content Paneler) {

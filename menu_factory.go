@@ -48,35 +48,25 @@ func DefaultMenuFactory() MenuFactory {
 }
 
 type inWindowMenuFactory struct {
-	wndBarMap      map[*Window]*menu
-	wndRootMenuMap map[*Window]*menu
 	showInProgress bool
 }
 
 // NewInWindowMenuFactory creates a new MenuFactory for in-window usage. This is the fallback Go-only version of menus
 // used when a non-platform-native version doesn't exist.
-// TODO: Consider doing something similar to Java and only create native windows for menu content when absolutely
-//       necessary. While the current approach works extremely well on macOS, it is slow on both Windows and Linux,
-//       thanks to gratuitous animations upon window creation that I don't see a way to disable.
 func NewInWindowMenuFactory() MenuFactory {
-	return &inWindowMenuFactory{
-		wndBarMap:      make(map[*Window]*menu),
-		wndRootMenuMap: make(map[*Window]*menu),
-	}
+	return &inWindowMenuFactory{}
 }
 
 func (f *inWindowMenuFactory) BarForWindowNoCreate(window *Window) Menu {
-	return f.wndBarMap[window]
+	return window.root.menuBar
 }
 
 func (f *inWindowMenuFactory) BarForWindow(window *Window, initializer func(Menu)) Menu {
-	b, exists := f.wndBarMap[window]
-	if exists {
-		return b
+	if window.root.menuBar != nil {
+		return window.root.menuBar
 	}
-	b = f.NewMenu(RootMenuID, "", nil).(*menu) //nolint:errcheck // Can only be used with this type
+	b := f.newMenu(RootMenuID, "", nil)
 	initializer(b)
-	f.wndBarMap[window] = b
 	window.root.setMenuBar(b)
 	return b
 }
@@ -86,6 +76,10 @@ func (f *inWindowMenuFactory) BarIsPerWindow() bool {
 }
 
 func (f *inWindowMenuFactory) NewMenu(id int, title string, updater func(Menu)) Menu {
+	return f.newMenu(id, title, updater)
+}
+
+func (f *inWindowMenuFactory) newMenu(id int, title string, updater func(Menu)) *menu {
 	m := &menu{
 		factory: f,
 		titleItem: &menuItem{
@@ -108,12 +102,4 @@ func (f *inWindowMenuFactory) NewItem(id int, title string, keyBinding KeyBindin
 		handler:    handler,
 		keyBinding: keyBinding,
 	}
-}
-
-func (f *inWindowMenuFactory) activeMenuList(wnd *Window) []*menu {
-	root := f.wndRootMenuMap[wnd]
-	if root == nil {
-		return nil
-	}
-	return root.collectActiveMenus(nil)
 }
