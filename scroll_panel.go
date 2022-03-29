@@ -32,38 +32,38 @@ type Behavior uint8
 // DefaultScrollPanelTheme holds the default ScrollPanelTheme values for ScrollPanels. Modifying this data will not
 // alter existing ScrollPanels, but will alter any ScrollPanels created in the future.
 var DefaultScrollPanelTheme = ScrollPanelTheme{
-	BackgroundInk: BackgroundColor,
+	BackgroundInk:        BackgroundColor,
+	MouseWheelMultiplier: 16,
 }
 
 // ScrollPanelTheme holds theming data for a ScrollPanel.
 type ScrollPanelTheme struct {
-	BackgroundInk Ink
+	BackgroundInk        Ink
+	MouseWheelMultiplier float32
 }
 
 // ScrollPanel provides a scrollable area.
 type ScrollPanel struct {
 	Panel
 	ScrollPanelTheme
-	horizontalBar        *ScrollBar
-	verticalBar          *ScrollBar
-	columnHeaderView     *Panel
-	columnHeader         Paneler
-	rowHeaderView        *Panel
-	rowHeader            Paneler
-	contentView          *Panel
-	content              Paneler
-	behavior             Behavior
-	MouseWheelMultiplier float32
+	horizontalBar    *ScrollBar
+	verticalBar      *ScrollBar
+	columnHeaderView *Panel
+	columnHeader     Paneler
+	rowHeaderView    *Panel
+	rowHeader        Paneler
+	contentView      *Panel
+	content          Paneler
+	behavior         Behavior
 }
 
 // NewScrollPanel creates a new scrollable area.
 func NewScrollPanel() *ScrollPanel {
 	s := &ScrollPanel{
-		ScrollPanelTheme:     DefaultScrollPanelTheme,
-		horizontalBar:        NewScrollBar(true),
-		verticalBar:          NewScrollBar(false),
-		contentView:          NewPanel(),
-		MouseWheelMultiplier: 10,
+		ScrollPanelTheme: DefaultScrollPanelTheme,
+		horizontalBar:    NewScrollBar(true),
+		verticalBar:      NewScrollBar(false),
+		contentView:      NewPanel(),
 	}
 	s.Self = s
 	s.AddChild(s.horizontalBar)
