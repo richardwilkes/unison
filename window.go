@@ -264,7 +264,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	})
 	w.wnd.SetScrollCallback(func(_ *glfw.Window, xoff, yoff float64) {
-		w.mouseWheel(w.MouseLocation(), w.convertMouseLocation(xoff, yoff), w.lastKeyModifiers)
+		w.mouseWheel(w.MouseLocation(), geom.Point[float32]{X: float32(xoff), Y: float32(yoff)}, w.lastKeyModifiers)
 	})
 	w.wnd.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, code int, action glfw.Action, mods glfw.ModifierKey) {
 		w.lastKeyModifiers = Modifiers(mods)
