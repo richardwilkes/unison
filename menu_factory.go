@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/log/jot"
-)
-
 var (
 	// DisableMenus overrides all application menus when set to true, causing them to become disabled. This is primarily
 	// provided to allow a way to disable menu key capture temporarily. This will not allow system keys to be captured,
@@ -81,12 +77,7 @@ func (f *inWindowMenuFactory) BarForWindow(window *Window, initializer func(Menu
 	b = f.NewMenu(RootMenuID, "", nil).(*menu) //nolint:errcheck // Can only be used with this type
 	initializer(b)
 	f.wndBarMap[window] = b
-	if holder := barHolderFromWindow(window); holder != nil {
-		holder.SetMenuBar(b.newPanel(true), b.preMoved, b.postLostFocus, b.preMouseDown, b.preKeyDown, b.preKeyUp, b.preRuneTyped)
-	} else {
-		// This should be impossible
-		jot.Error("unable to obtain menu bar holder")
-	}
+	window.root.setMenuBar(b)
 	return b
 }
 

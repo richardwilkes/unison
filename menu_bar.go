@@ -16,7 +16,6 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // Pre-defined menu IDs. Apps should start their IDs at UserBaseID.
@@ -193,33 +192,4 @@ func NewHelpMenu(f MenuFactory, aboutHandler func(MenuItem), updater func(Menu))
 		InsertAboutItem(m, -1, aboutHandler)
 	}
 	return m
-}
-
-type barHolder interface {
-	MenuBar() *Panel
-	SetMenuBar(bar *Panel, preMovedCallback, postLostFocusCallback func(*Window),
-		preMouseDownCallback func(*Window, geom.Point[float32]) bool,
-		preKeyDownCallback func(*Window, KeyCode, Modifiers) bool,
-		preKeyUpCallback func(*Window, KeyCode, Modifiers) bool,
-		preRuneTypedCallback func(*Window, rune) bool)
-}
-
-func barHolderFromWindow(w *Window) barHolder {
-	p := w.Content()
-	for p.Parent() != nil {
-		p = p.Parent()
-	}
-	if holder, ok := p.Self.(barHolder); ok {
-		return holder
-	}
-	return nil
-}
-
-func overMenuBar(w *Window, where geom.Point[float32]) bool {
-	if holder := barHolderFromWindow(w); holder != nil {
-		if bar := holder.MenuBar(); bar != nil {
-			return bar.FrameRect().ContainsPoint(where) && bar.PanelAt(where) != bar
-		}
-	}
-	return false
 }

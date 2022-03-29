@@ -266,7 +266,7 @@ func (m *menu) preMoved(w *Window) {
 }
 
 func (m *menu) postLostFocus(w *Window) {
-	// Need to give the event loop a chance to potentially refocus is before we decide to tear it down.
+	// Need to give the event loop a chance to potentially refocus it before we decide to tear it down.
 	InvokeTask(func() {
 		if ActiveWindow() != w {
 			m.closeMenuStackStoppingAt(w, nil)
@@ -275,7 +275,8 @@ func (m *menu) postLostFocus(w *Window) {
 }
 
 func (m *menu) preMouseDown(w *Window, where geom.Point[float32]) bool {
-	if !overMenuBar(w, where) {
+	if !w.root.menuBarPanel.FrameRect().ContainsPoint(where) ||
+		w.root.menuBarPanel.PanelAt(where) == w.root.menuBarPanel {
 		m.closeMenuStackStoppingAt(w, nil)
 	}
 	return false

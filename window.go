@@ -309,8 +309,8 @@ func (w *Window) UndoManager() *UndoManager {
 }
 
 func (w *Window) moved() {
-	if w.root.preMovedCallback != nil {
-		toolbox.Call(func() { w.root.preMovedCallback(w) })
+	if w.root.menuBar != nil {
+		toolbox.Call(func() { w.root.menuBar.preMoved(w) })
 	}
 	if w.MovedCallback != nil {
 		toolbox.Call(w.MovedCallback)
@@ -361,8 +361,8 @@ func (w *Window) lostFocus() {
 	if w.LostFocusCallback != nil {
 		w.LostFocusCallback()
 	}
-	if w.root.postLostFocusCallback != nil {
-		w.root.postLostFocusCallback(w)
+	if w.root.menuBar != nil {
+		w.root.menuBar.postLostFocus(w)
 	}
 }
 
@@ -451,8 +451,8 @@ func (w *Window) Dispose() {
 	if w.inModal {
 		w.StopModal(-1) // Can't use dialog.ModalResponseDiscard because of package import cycles
 	}
-	if w.root.content != nil {
-		w.root.content.RemoveFromParent()
+	if w.root.contentPanel != nil {
+		w.root.contentPanel.RemoveFromParent()
 	}
 	w.removeFromWindowList()
 	delete(windowMap, w.wnd)
@@ -486,7 +486,7 @@ func (w *Window) SetTitle(title string) {
 
 // Content returns the content panel for the window.
 func (w *Window) Content() *Panel {
-	return w.root.content
+	return w.root.contentPanel
 }
 
 // SetContent sets the content panel for the window.
@@ -674,12 +674,12 @@ func (w *Window) SetFocus(target Paneler) {
 
 // FocusNext moves the keyboard focus to the next focusable panel.
 func (w *Window) FocusNext() {
-	if w.root.content != nil {
+	if w.root.contentPanel != nil {
 		current := w.focus
 		if current == nil {
-			current = w.root.content
+			current = w.root.contentPanel
 		}
-		i, focusables := collectFocusables(w.root.content, current, nil)
+		i, focusables := collectFocusables(w.root.contentPanel, current, nil)
 		if len(focusables) > 0 {
 			i++
 			if i >= len(focusables) {
@@ -693,12 +693,12 @@ func (w *Window) FocusNext() {
 
 // FocusPrevious moves the keyboard focus to the previous focusable panel.
 func (w *Window) FocusPrevious() {
-	if w.root.content != nil {
+	if w.root.contentPanel != nil {
 		current := w.focus
 		if current == nil {
-			current = w.root.content
+			current = w.root.contentPanel
 		}
-		i, focusables := collectFocusables(w.root.content, current, nil)
+		i, focusables := collectFocusables(w.root.contentPanel, current, nil)
 		if len(focusables) > 0 {
 			i--
 			if i < 0 {
@@ -900,7 +900,7 @@ func (w *Window) updateTooltip(target *Panel, where geom.Point[float32]) {
 		target = target.parent
 	}
 	if !w.lastTooltip.Is(tip) {
-		wasShowing := w.root.tooltip != nil
+		wasShowing := w.root.tooltipPanel != nil
 		w.ClearTooltip()
 		w.lastTooltip = tip
 		if tip != nil {
@@ -949,9 +949,9 @@ func (w *Window) updateCursor(target *Panel, where geom.Point[float32]) {
 }
 
 func (w *Window) mouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) {
-	if w.root.preMouseDownCallback != nil {
+	if w.root.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = w.root.preMouseDownCallback(w, where) })
+		toolbox.Call(func() { stop = w.root.menuBar.preMouseDown(w, where) })
 		if stop {
 			return
 		}
@@ -1108,9 +1108,9 @@ func (w *Window) mouseWheel(where, delta geom.Point[float32], mod Modifiers) {
 }
 
 func (w *Window) keyDown(keyCode KeyCode, mod Modifiers, repeat bool) {
-	if w.root.preKeyDownCallback != nil {
+	if w.root.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = w.root.preKeyDownCallback(w, keyCode, mod) })
+		toolbox.Call(func() { stop = w.root.menuBar.preKeyDown(w, keyCode, mod) })
 		if stop {
 			return
 		}
@@ -1149,9 +1149,9 @@ func (w *Window) keyDown(keyCode KeyCode, mod Modifiers, repeat bool) {
 }
 
 func (w *Window) keyUp(keyCode KeyCode, mod Modifiers) {
-	if w.root.preKeyUpCallback != nil {
+	if w.root.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = w.root.preKeyUpCallback(w, keyCode, mod) })
+		toolbox.Call(func() { stop = w.root.menuBar.preKeyUp(w, keyCode, mod) })
 		if stop {
 			return
 		}
@@ -1169,9 +1169,9 @@ func (w *Window) keyUp(keyCode KeyCode, mod Modifiers) {
 }
 
 func (w *Window) runeTyped(ch rune) {
-	if w.root.preRuneTypedCallback != nil {
+	if w.root.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = w.root.preRuneTypedCallback(w, ch) })
+		toolbox.Call(func() { stop = w.root.menuBar.preRuneTyped(w, ch) })
 		if stop {
 			return
 		}

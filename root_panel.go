@@ -17,16 +17,12 @@ var _ Layout = &rootPanel{}
 
 type rootPanel struct {
 	Panel
-	window                *Window
-	menubar               *Panel
-	preMovedCallback      func(*Window)
-	postLostFocusCallback func(*Window)
-	preMouseDownCallback  func(*Window, geom.Point[float32]) bool
-	preKeyDownCallback    func(*Window, KeyCode, Modifiers) bool
-	preKeyUpCallback      func(*Window, KeyCode, Modifiers) bool
-	preRuneTypedCallback  func(*Window, rune) bool
-	content               *Panel
-	tooltip               *Panel
+	window         *Window
+	openMenuPanels []*Panel
+	menuBarPanel   *Panel
+	tooltipPanel   *Panel
+	contentPanel   *Panel
+	menuBar        *menu
 }
 
 func newRootPanel(wnd *Window) *rootPanel {
@@ -43,53 +39,36 @@ func newRootPanel(wnd *Window) *rootPanel {
 	return p
 }
 
-// MenuBar fulfills the menu.barHolder interface.
 func (p *rootPanel) MenuBar() *Panel {
-	return p.menubar
+	return p.menuBarPanel
 }
 
-// SetMenuBar fulfills the menu.barHolder interface.
-func (p *rootPanel) SetMenuBar(bar *Panel, preMovedCallback, postLostFocusCallback func(*Window),
-	preMouseDownCallback func(*Window, geom.Point[float32]) bool,
-	preKeyDownCallback, preKeyUpCallback func(*Window, KeyCode, Modifiers) bool,
-	preRuneTypedCallback func(*Window, rune) bool,
-) {
-	if p.menubar != nil {
-		p.RemoveChild(p.menubar)
+func (p *rootPanel) setMenuBar(menuBar *menu) {
+	if p.menuBarPanel != nil {
+		p.menuBar.closeMenuStackStoppingAt(p.window, nil)
+		p.RemoveChild(p.menuBarPanel)
 	}
-	if bar != nil {
-		p.menubar = bar.AsPanel()
+	p.menuBar = menuBar
+	if menuBar != nil {
+		p.menuBarPanel = menuBar.newPanel(true)
+		p.AddChildAtIndex(p.menuBarPanel, 0)
 	} else {
-		p.menubar = nil
+		p.menuBarPanel = nil
 	}
-	p.preMovedCallback = preMovedCallback
-	p.postLostFocusCallback = postLostFocusCallback
-	p.preMouseDownCallback = preMouseDownCallback
-	p.preKeyDownCallback = preKeyDownCallback
-	p.preKeyUpCallback = preKeyUpCallback
-	p.preRuneTypedCallback = preRuneTypedCallback
-	if bar != nil {
-		index := 0
-		if p.tooltip != nil {
-			index++
-		}
-		p.AddChildAtIndex(bar, index)
-	}
-	p.NeedsLayout = true
-	p.MarkForRedraw()
+	p.MarkForLayoutAndRedraw()
 }
 
 func (p *rootPanel) setContent(content Paneler) {
-	if p.content != nil {
-		p.RemoveChild(p.content)
+	if p.contentPanel != nil {
+		p.RemoveChild(p.contentPanel)
 	}
-	p.content = content.AsPanel()
+	p.contentPanel = content.AsPanel()
 	if content != nil {
-		index := 0
-		if p.tooltip != nil {
+		index := len(p.openMenuPanels)
+		if p.menuBarPanel != nil {
 			index++
 		}
-		if p.menubar != nil {
+		if p.tooltipPanel != nil {
 			index++
 		}
 		p.AddChildAtIndex(content, index)
@@ -99,21 +78,25 @@ func (p *rootPanel) setContent(content Paneler) {
 }
 
 func (p *rootPanel) setTooltip(tip *Panel) {
-	if p.tooltip != nil {
-		p.tooltip.MarkForRedraw()
-		p.RemoveChild(p.tooltip)
+	if p.tooltipPanel != nil {
+		p.tooltipPanel.MarkForRedraw()
+		p.RemoveChild(p.tooltipPanel)
 	}
-	p.tooltip = tip
+	p.tooltipPanel = tip
 	if tip != nil {
-		p.AddChildAtIndex(tip, 0)
+		index := len(p.openMenuPanels)
+		if p.menuBarPanel != nil {
+			index++
+		}
+		p.AddChildAtIndex(tip, index)
 		tip.MarkForRedraw()
 	}
 }
 
 func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
-	min, pref, max = p.content.Sizes(hint)
-	if p.menubar != nil {
-		_, barSize, _ := p.menubar.Sizes(geom.Size[float32]{})
+	min, pref, max = p.contentPanel.Sizes(hint)
+	if p.menuBarPanel != nil {
+		_, barSize, _ := p.menuBarPanel.Sizes(geom.Size[float32]{})
 		for _, size := range []*geom.Size[float32]{&min, &pref, &max} {
 			size.Height += barSize.Height
 			if size.Width < barSize.Width {
@@ -128,11 +111,11 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	rect := p.FrameRect()
 	rect.X = 0
 	rect.Y = 0
-	if p.menubar != nil {
-		_, size, _ := p.menubar.Sizes(geom.Size[float32]{})
-		p.menubar.SetFrameRect(geom.Rect[float32]{Size: geom.Size[float32]{Width: rect.Width, Height: size.Height}})
+	if p.menuBarPanel != nil {
+		_, size, _ := p.menuBarPanel.Sizes(geom.Size[float32]{})
+		p.menuBarPanel.SetFrameRect(geom.Rect[float32]{Size: geom.Size[float32]{Width: rect.Width, Height: size.Height}})
 		rect.Y += size.Height
 		rect.Height -= size.Height
 	}
-	p.content.SetFrameRect(rect)
+	p.contentPanel.SetFrameRect(rect)
 }
