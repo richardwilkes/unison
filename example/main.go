@@ -22,8 +22,7 @@ import (
 func main() {
 	cmdline.AppName = "Example"
 	cmdline.AppCmdName = "example"
-	cmdline.AppVersion = "0.1"
-	cmdline.CopyrightYears = "2021"
+	cmdline.CopyrightStartYear = "2021"
 	cmdline.CopyrightHolder = "Richard A. Wilkes"
 	cmdline.AppIdentifier = "com.trollworks.unison.example"
 
