@@ -49,6 +49,7 @@ var (
 	currentDarkModeTracking           = DarkModeTrackPlatform
 	needPlatformDarkModeUpdate        = true
 	platformDarkModeEnabled           bool
+	glfwInited                        bool
 )
 
 type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
@@ -146,6 +147,7 @@ func Start(options ...StartupOption) {
 	}
 	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
 	jot.FatalIfErr(glfw.Init())
+	glfwInited = true
 	// Restore the original working directory, as glfw changes it on some platforms
 	if err = os.Chdir(pwd); err != nil {
 		jot.Error(err)

@@ -52,7 +52,7 @@ func processReleaseQueue() {
 		timer.Stop()
 
 		// If we have any, pass them off to the UI thread for execution
-		if len(list) > 0 {
+		if glfwInited && len(list) > 0 {
 			funcs := list
 			InvokeTask(func() {
 				for _, f := range funcs {
