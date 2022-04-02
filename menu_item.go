@@ -198,7 +198,7 @@ func (mi *menuItem) showSubMenu() {
 			fr.X = pr.Right()
 			fr.Y = pr.Y
 		}
-		mi.subMenu.popupPanel.SetFrameRect(fr)
+		mi.subMenu.ensureInWindow(fr)
 	}
 }
 

@@ -313,6 +313,12 @@ func (p *Panel) Sizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32
 	return
 }
 
+// Pack resizes the panel to its preferred size.
+func (p *Panel) Pack() {
+	_, pref, _ := p.Sizes(geom.Size[float32]{})
+	p.SetFrameRect(geom.Rect[float32]{Point: p.frame.Point, Size: pref})
+}
+
 // Layout returns the Layout for this panel, if any.
 func (p *Panel) Layout() Layout {
 	return p.layout

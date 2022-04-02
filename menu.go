@@ -196,18 +196,39 @@ func (m *menu) Popup(where geom.Rect[float32], itemIndex int) {
 		m.createPopup()
 		if itemIndex >= 0 && itemIndex < len(m.items) {
 			m.popupPanel.ValidateLayout()
-			p := m.popupPanel.Children()[itemIndex]
-			fr := p.FrameRect()
-			where.Y -= fr.Y
+			where.Y -= m.popupPanel.Children()[0].Self.(*ScrollPanel).Content().AsPanel().Children()[itemIndex].FrameRect().Y
 		}
 		fr := m.popupPanel.FrameRect()
 		where.Height = fr.Height
 		where.Width = xmath.Max(fr.Width, where.Width)
-		m.popupPanel.SetFrameRect(where)
+		m.ensureInWindow(where)
 		if itemIndex >= 0 && itemIndex < len(m.items) {
 			m.items[itemIndex].mouseEnter(geom.Point[float32]{}, 0) // params are unused
 		}
 	}
+}
+
+func (m *menu) ensureInWindow(where geom.Rect[float32]) {
+	fr := m.popupPanel.Parent().ContentRect(true)
+	if where.Width > fr.Width {
+		where.Width = fr.Width
+	}
+	if where.Right() > fr.Right() {
+		where.X = fr.Right() - where.Width
+	}
+	if where.X < 0 {
+		where.X = 0
+	}
+	if where.Height > fr.Height {
+		where.Height = fr.Height
+	}
+	if where.Bottom() > fr.Bottom() {
+		where.Y = fr.Bottom() - where.Height
+	}
+	if where.Y < 0 {
+		where.Y = 0
+	}
+	m.popupPanel.SetFrameRect(where)
 }
 
 func (m *menu) createPopup() {
@@ -221,8 +242,7 @@ func (m *menu) createPopup() {
 		root = root.titleItem.menu
 	}
 	m.popupPanel = m.newPanel(false)
-	_, pref, _ := m.popupPanel.Sizes(geom.Size[float32]{})
-	m.popupPanel.SetFrameRect(geom.Rect[float32]{Size: pref})
+	m.popupPanel.Pack()
 	activeWnd.root.insertMenu(m.popupPanel)
 }
 
@@ -234,10 +254,11 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	} else {
 		p.SetBorder(DefaultMenuTheme.MenuBorder)
 	}
+	content := NewPanel()
 	for _, mi := range m.items {
 		mi.validate()
 		child := mi.newPanel()
-		p.AddChild(child)
+		content.AddChild(child)
 		if !forBar {
 			child.SetLayoutData(&FlexLayoutData{
 				HAlign: FillAlignment,
@@ -248,9 +269,20 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	}
 	lay := &FlexLayout{Columns: 1}
 	if forBar {
-		lay.Columns = len(p.Children())
+		lay.Columns = len(content.Children())
 	}
-	p.SetLayout(lay)
+	content.SetLayout(lay)
+	content.Pack()
+	s := NewScrollPanel()
+	s.SetContent(content, FollowsWidthBehavior)
+	s.SetLayoutData(&FlexLayoutData{
+		HAlign: FillAlignment,
+		VAlign: FillAlignment,
+		HGrab:  true,
+		VGrab:  true,
+	})
+	p.SetLayout(&FlexLayout{Columns: 1})
+	p.AddChild(s)
 	return p
 }
 
