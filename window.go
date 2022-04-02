@@ -192,8 +192,13 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	glfw.WindowHint(glfw.FocusOnShow, glfw.False)
 	glfw.WindowHint(glfw.ScaleToMonitor, glfw.False)
 	var err error
-	if w.wnd, err = glfw.CreateWindow(1, 1, title, nil, nil); err != nil {
-		return nil, err
+	toolbox.CallWithHandler(func() {
+		w.wnd, err = glfw.CreateWindow(1, 1, title, nil, nil)
+	}, func(panicErr error) {
+		err = panicErr
+	})
+	if err != nil {
+		return nil, errs.Wrap(err)
 	}
 	w.wnd.SetRefreshCallback(func(_ *glfw.Window) {
 		delete(redrawSet, w)
