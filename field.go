@@ -11,6 +11,7 @@ package unison
 
 import (
 	"math"
+	"strings"
 	"time"
 	"unicode"
 
@@ -79,6 +80,8 @@ type Field struct {
 	selectionAnchor  int
 	forceShowUntil   time.Time
 	scrollOffset     float32
+	multiLine        bool
+	wrap             bool
 	showCursor       bool
 	pending          bool
 	extendByWord     bool
@@ -105,36 +108,87 @@ func NewField() *Field {
 	return f
 }
 
+// NewMultiLineField creates a new, empty, multi-line, field.
+func NewMultiLineField() *Field {
+	f := NewField()
+	f.multiLine = true
+	f.wrap = true
+	return f
+}
+
+// AllowsMultipleLines returns true if this field allows embedded line feeds.
+func (f *Field) AllowsMultipleLines() bool {
+	return f.multiLine
+}
+
+// Wrap returns true if this field wraps lines that don't fit the width of the component.
+func (f *Field) Wrap() bool {
+	return f.wrap
+}
+
+// SetWrap sets the wrapping attribute.
+func (f *Field) SetWrap(wrap bool) {
+	if wrap != f.wrap {
+		f.MarkForLayoutAndRedraw()
+	}
+}
+
 // DefaultSizes provides the default sizing.
 func (f *Field) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
-	var r []rune
-	if len(f.runes) != 0 {
-		r = f.runes
-	} else {
-		r = []rune{'M'}
-	}
 	minWidth := f.MinimumTextWidth
-	pref = NewTextFromRunes(r, &TextDecoration{
-		Font:  f.Font,
-		Paint: nil,
-	}).Extents()
-	if pref.Width < minWidth {
+	var insets geom.Insets[float32]
+	if b := f.Border(); b != nil {
+		insets = b.Insets()
+	}
+	if len(f.runes) != 0 {
+		decoration := &TextDecoration{
+			Font:  f.Font,
+			Paint: nil,
+		}
+		if f.multiLine {
+			for _, line := range strings.Split(string(f.runes), "\n") {
+				t := NewText(line, decoration)
+				if f.wrap && hint.Width > 0 {
+					for _, one := range t.BreakToWidth(hint.Width - (2 + insets.Left + insets.Right)) {
+						pref = addSizeForLine(pref, one.Extents())
+					}
+				} else {
+					pref = addSizeForLine(pref, t.Extents())
+				}
+			}
+		} else {
+			pref = NewTextFromRunes(f.runes, decoration).Extents()
+		}
+		if pref.Width < minWidth {
+			pref.Width = minWidth
+		}
+	} else {
 		pref.Width = minWidth
+		pref.Height = f.Font.LineHeight()
 	}
 	pref.Width += 2 // Allow room for the cursor on either side of the text
-	if b := f.Border(); b != nil {
-		insets := b.Insets()
-		pref.AddInsets(insets)
-		minWidth += insets.Left + insets.Right
-	}
+	minWidth += 2
+	pref.AddInsets(insets)
+	minWidth += insets.Left + insets.Right
 	pref.GrowToInteger()
 	if hint.Width >= 1 && hint.Width < minWidth {
 		hint.Width = minWidth
 	}
 	pref.ConstrainForHint(hint)
+	if hint.Width > 0 && pref.Width < hint.Width {
+		pref.Width = hint.Width
+	}
 	min = pref
 	min.Width = minWidth
 	return min, pref, MaxSize(pref)
+}
+
+func addSizeForLine(size, add geom.Size[float32]) geom.Size[float32] {
+	if size.Width < add.Width {
+		size.Width = add.Width
+	}
+	size.Height += add.Height
+	return size
 }
 
 // DefaultDraw provides the default drawing.
@@ -653,6 +707,9 @@ func (f *Field) Validate() {
 }
 
 func (f *Field) sanitize(runes []rune) []rune {
+	if f.multiLine {
+		return f.runes
+	}
 	i := 0
 	for _, ch := range runes {
 		if ch != '\n' && ch != '\r' {
