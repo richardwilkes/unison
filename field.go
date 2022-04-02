@@ -22,22 +22,30 @@ import (
 // DefaultFieldTheme holds the default FieldTheme values for Fields. Modifying this data will not alter existing Fields,
 // but will alter any Fields created in the future.
 var DefaultFieldTheme = FieldTheme{
-	Font:            FieldFont,
-	BackgroundInk:   BackgroundColor,
-	OnBackgroundInk: OnBackgroundColor,
-	EditableInk:     EditableColor,
-	OnEditableInk:   OnEditableColor,
-	SelectionInk:    SelectionColor,
-	OnSelectionInk:  OnSelectionColor,
-	ErrorInk:        ErrorColor,
-	OnErrorInk:      OnErrorColor,
-	FocusedBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](2), false),
-		NewEmptyBorder(geom.Insets[float32]{Top: 2, Left: 2, Bottom: 1, Right: 2})),
-	UnfocusedBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](1), false),
-		NewEmptyBorder(geom.Insets[float32]{Top: 3, Left: 3, Bottom: 2, Right: 3})),
+	Font:             FieldFont,
+	BackgroundInk:    BackgroundColor,
+	OnBackgroundInk:  OnBackgroundColor,
+	EditableInk:      EditableColor,
+	OnEditableInk:    OnEditableColor,
+	SelectionInk:     SelectionColor,
+	OnSelectionInk:   OnSelectionColor,
+	ErrorInk:         ErrorColor,
+	OnErrorInk:       OnErrorColor,
+	FocusedBorder:    NewDefaultFieldBorder(true),
+	UnfocusedBorder:  NewDefaultFieldBorder(false),
 	BlinkRate:        560 * time.Millisecond,
 	MinimumTextWidth: 10,
 	HAlign:           StartAlignment,
+}
+
+// NewDefaultFieldBorder creates the default border for a field.
+func NewDefaultFieldBorder(focused bool) Border {
+	adj := float32(1)
+	if focused {
+		adj = 0
+	}
+	return NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](2-adj), false),
+		NewEmptyBorder(geom.Insets[float32]{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}))
 }
 
 // FieldTheme holds theming data for a Field.
