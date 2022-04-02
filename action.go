@@ -91,7 +91,11 @@ func (a *Action) Enabled(src interface{}) bool {
 }
 
 func (a *Action) enabled(item MenuItem) bool {
-	return a.Enabled(item)
+	enabled := a.Enabled(item)
+	if item.Title() != a.Title {
+		item.SetTitle(a.Title)
+	}
+	return enabled
 }
 
 // Execute the action.
