@@ -449,6 +449,7 @@ func createTextFieldsPanel() *unison.Panel {
 		}
 		return true
 	}
+	createMultiLineTextField("Field 5:", "One\nTwo\nThree", panel)
 	return panel
 }
 
@@ -464,6 +465,31 @@ func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.F
 	})
 	panel.AddChild(lbl)
 	field := unison.NewField()
+	field.SetText(fieldText)
+	field.SetLayoutData(&unison.FlexLayoutData{
+		HSpan:  1,
+		VSpan:  1,
+		HAlign: unison.FillAlignment,
+		VAlign: unison.MiddleAlignment,
+		HGrab:  true,
+	})
+	field.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for %v", field))
+	panel.AddChild(field)
+	return field
+}
+
+func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {
+	lbl := unison.NewLabel()
+	lbl.Text = labelText
+	lbl.HAlign = unison.EndAlignment
+	lbl.SetLayoutData(&unison.FlexLayoutData{
+		HSpan:  1,
+		VSpan:  1,
+		HAlign: unison.EndAlignment,
+		VAlign: unison.MiddleAlignment,
+	})
+	panel.AddChild(lbl)
+	field := unison.NewMultiLineField()
 	field.SetText(fieldText)
 	field.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,

@@ -148,17 +148,6 @@ const (
 	KeyRCommand       = KeyCode(glfw.KeyRightSuper)
 	KeyMenu           = KeyCode(glfw.KeyMenu)
 	KeyLast           = KeyCode(glfw.KeyLast)
-	KeyNumPadEnd      = KeyNumPad1
-	KeyNumPadDown     = KeyNumPad2
-	KeyNumPadPageDown = KeyNumPad3
-	KeyNumPadLeft     = KeyNumPad4
-	KeyNumPadRight    = KeyNumPad6
-	KeyNumPadHome     = KeyNumPad7
-	KeyNumPadUp       = KeyNumPad8
-	KeyNumPadPageUp   = KeyNumPad9
-	KeyNumPadDelete   = KeyNumPadDecimal
-	KeyClear          = KeyNumLock
-	KeyFn             = KeyInsert
 )
 
 var (

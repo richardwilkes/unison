@@ -337,7 +337,7 @@ func (l *List) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool 
 		}
 	} else {
 		switch keyCode {
-		case KeyUp, KeyNumPadUp:
+		case KeyUp:
 			var first int
 			if l.Selection.Count() == 0 {
 				first = len(l.rows) - 1
@@ -351,7 +351,7 @@ func (l *List) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool 
 			if l.NewSelectionCallback != nil {
 				l.NewSelectionCallback()
 			}
-		case KeyDown, KeyNumPadDown:
+		case KeyDown:
 			last := l.Selection.LastSet() + 1
 			if last >= len(l.rows) {
 				last = len(l.rows) - 1
@@ -360,12 +360,12 @@ func (l *List) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool 
 			if l.NewSelectionCallback != nil {
 				l.NewSelectionCallback()
 			}
-		case KeyHome, KeyNumPadHome:
+		case KeyHome:
 			l.Select(mod.ShiftDown(), 0)
 			if l.NewSelectionCallback != nil {
 				l.NewSelectionCallback()
 			}
-		case KeyEnd, KeyNumPadEnd:
+		case KeyEnd:
 			l.Select(mod.ShiftDown(), len(l.rows)-1)
 			if l.NewSelectionCallback != nil {
 				l.NewSelectionCallback()

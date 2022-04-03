@@ -82,6 +82,7 @@ type Field struct {
 	selectionAnchor  int
 	forceShowUntil   time.Time
 	scrollOffset     float32
+	linesBuiltFor    float32
 	multiLine        bool
 	wrap             bool
 	showCursor       bool
@@ -92,7 +93,10 @@ type Field struct {
 
 // NewField creates a new, empty, field.
 func NewField() *Field {
-	f := &Field{FieldTheme: DefaultFieldTheme}
+	f := &Field{
+		FieldTheme:    DefaultFieldTheme,
+		linesBuiltFor: -1,
+	}
 	f.Self = f
 	f.SetBorder(f.UnfocusedBorder)
 	f.SetFocusable(true)
@@ -172,38 +176,49 @@ func (f *Field) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[
 	return min, pref, MaxSize(pref)
 }
 
+func (f *Field) prepareLines(width float32) {
+	f.lines, f.endsWithLineFeed = f.buildLines(width)
+	f.linesBuiltFor = xmath.Max(width, 0)
+}
+
+func (f *Field) prepareLinesForCurrentWidth() {
+	f.prepareLines(f.ContentRect(false).Width - 2)
+}
+
 func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed []bool) {
-	if len(f.runes) == 0 {
-		return nil, nil
+	if wrapWidth == f.linesBuiltFor && f.linesBuiltFor >= 0 {
+		return f.lines, f.endsWithLineFeed
 	}
-	lines = make([]*Text, 0)
-	decoration := &TextDecoration{
-		Font:  f.Font,
-		Paint: nil,
-	}
-	if f.multiLine {
-		endsWithLineFeed = make([]bool, 0, 16)
-		for _, line := range strings.Split(string(f.runes), "\n") {
-			one := NewText(line, decoration)
-			if f.wrap && wrapWidth > 0 {
-				parts := one.BreakToWidth(wrapWidth)
-				for i, part := range parts {
-					lines = append(lines, part)
-					endsWithLineFeed = append(endsWithLineFeed, i == len(parts)-1)
+	if len(f.runes) != 0 {
+		lines = make([]*Text, 0)
+		decoration := &TextDecoration{
+			Font:  f.Font,
+			Paint: nil,
+		}
+		if f.multiLine {
+			endsWithLineFeed = make([]bool, 0, 16)
+			for _, line := range strings.Split(string(f.runes), "\n") {
+				one := NewText(line, decoration)
+				if f.wrap && wrapWidth > 0 {
+					parts := one.BreakToWidth(wrapWidth)
+					for i, part := range parts {
+						lines = append(lines, part)
+						endsWithLineFeed = append(endsWithLineFeed, i == len(parts)-1)
+					}
+				} else {
+					lines = append(lines, one)
+					endsWithLineFeed = append(endsWithLineFeed, true)
 				}
+			}
+		} else {
+			one := NewTextFromRunes(f.runes, decoration)
+			if f.wrap && wrapWidth > 0 {
+				lines = append(lines, one.BreakToWidth(wrapWidth)...)
 			} else {
 				lines = append(lines, one)
-				endsWithLineFeed = append(endsWithLineFeed, true)
 			}
+			endsWithLineFeed = make([]bool, len(lines))
 		}
-	} else {
-		one := NewTextFromRunes(f.runes, decoration)
-		if f.wrap && wrapWidth > 0 {
-			lines = append(lines, one.BreakToWidth(wrapWidth)...)
-		} else {
-			lines = append(lines, one)
-		}
-		endsWithLineFeed = make([]bool, len(lines))
 	}
 	return
 }
@@ -227,7 +242,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, IntersectClipOp, false)
-	f.lines, f.endsWithLineFeed = f.buildLines(rect.Width - 2)
+	f.prepareLines(rect.Width - 2)
 	paint := bg.Paint(canvas, rect, Fill)
 	if !enabled {
 		paint.SetColorFilter(Grayscale30PercentFilter())
@@ -247,12 +262,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 		}
 		if !hasSelectionRange && enabled && focused {
 			if f.showCursor {
-				line := NewTextFromRunes(nil, &TextDecoration{
-					Font:  f.Font,
-					Paint: nil,
-				})
-				rect.X = f.textLeft(line, rect) + line.Width() + f.scrollOffset - 0.5
+				rect.X = f.textLeftForWidth(0, rect) + f.scrollOffset - 0.5
 				rect.Width = 1
+				rect.Height = f.Font.LineHeight()
 				canvas.DrawRect(rect, bg.Paint(canvas, rect, Fill))
 			}
 			f.scheduleBlink()
@@ -289,8 +301,12 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 				}
 				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
 				t.Draw(canvas, left, textBaseLine)
-				if selStart < end {
-					NewTextFromRunes(f.runes[selEnd:end], &TextDecoration{
+				if selEnd < end {
+					e := end
+					if f.endsWithLineFeed[i] {
+						e--
+					}
+					NewTextFromRunes(f.runes[selEnd:e], &TextDecoration{
 						Font:  f.Font,
 						Paint: paint,
 					}).Draw(canvas, right, textBaseLine)
@@ -299,7 +315,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 				line.ReplacePaint(paint)
 				line.Draw(canvas, textLeft+f.scrollOffset, textBaseLine)
 			}
-			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && f.selectionEnd <= end {
+			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
 				if f.showCursor {
 					t := NewTextFromRunes(f.runes[start:f.selectionEnd], &TextDecoration{
 						Font:  f.Font,
@@ -367,14 +383,14 @@ func (f *Field) DefaultMouseDown(where geom.Point[float32], button, clickCount i
 		f.extendByWord = false
 		switch clickCount {
 		case 2:
-			start, end := f.findWordAt(f.ToSelectionIndex(where.X))
+			start, end := f.findWordAt(f.ToSelectionIndex(where))
 			f.SetSelection(start, end)
 			f.extendByWord = true
 		case 3:
 			f.SelectAll()
 		default:
 			oldAnchor := f.selectionAnchor
-			f.selectionAnchor = f.ToSelectionIndex(where.X)
+			f.selectionAnchor = f.ToSelectionIndex(where)
 			var start, end int
 			if mod.ShiftDown() {
 				if oldAnchor > f.selectionAnchor {
@@ -398,7 +414,7 @@ func (f *Field) DefaultMouseDown(where geom.Point[float32], button, clickCount i
 // DefaultMouseDrag provides the default mouse drag handling.
 func (f *Field) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
 	oldAnchor := f.selectionAnchor
-	pos := f.ToSelectionIndex(where.X)
+	pos := f.ToSelectionIndex(where)
 	var start, end int
 	if f.extendByWord {
 		s1, e1 := f.findWordAt(oldAnchor)
@@ -458,34 +474,61 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool
 	switch keyCode {
 	case KeyBackspace:
 		f.Delete()
-	case KeyDelete, KeyNumPadDelete:
+	case KeyDelete:
 		if f.HasSelectionRange() {
 			f.Delete()
 		} else if f.selectionStart < len(f.runes) {
 			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionStart+1:]...)
+			f.linesBuiltFor = -1
 			f.notifyOfModification()
 		}
 		f.MarkForRedraw()
-	case KeyLeft, KeyNumPadLeft:
+	case KeyLeft:
 		extend := mod.ShiftDown()
 		if mod.CommandDown() {
 			f.handleHome(extend)
 		} else {
 			f.handleArrowLeft(extend, mod.OptionDown())
 		}
-	case KeyRight, KeyNumPadRight:
+	case KeyRight:
 		extend := mod.ShiftDown()
 		if mod.CommandDown() {
 			f.handleEnd(extend)
 		} else {
 			f.handleArrowRight(extend, mod.OptionDown())
 		}
-	case KeyEnd, KeyNumPadEnd, KeyPageDown, KeyNumPadPageDown, KeyDown, KeyNumPadDown:
+	case KeyEnd, KeyPageDown:
 		f.handleEnd(mod.ShiftDown())
-	case KeyHome, KeyNumPadHome, KeyPageUp, KeyNumPadPageUp, KeyUp, KeyNumPadUp:
+	case KeyHome, KeyPageUp:
 		f.handleHome(mod.ShiftDown())
+	case KeyDown:
+		if f.multiLine {
+			extend := mod.ShiftDown()
+			if mod.CommandDown() {
+				f.handleEnd(extend)
+			} else {
+				f.handleArrowDown(extend, mod.OptionDown())
+			}
+		} else {
+			f.handleEnd(mod.ShiftDown())
+		}
+	case KeyUp:
+		if f.multiLine {
+			extend := mod.ShiftDown()
+			if mod.CommandDown() {
+				f.handleHome(extend)
+			} else {
+				f.handleArrowUp(extend, mod.OptionDown())
+			}
+		} else {
+			f.handleHome(mod.ShiftDown())
+		}
 	case KeyTab:
 		return false
+	case KeyReturn, KeyNumPadEnter:
+		if f.multiLine {
+			f.DefaultRuneTyped('\n')
+		}
 	}
 	return true
 }
@@ -495,13 +538,14 @@ func (f *Field) DefaultRuneTyped(ch rune) bool {
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}
-	if unicode.IsControl(ch) {
+	if unicode.IsControl(ch) && (!f.multiLine || ch != '\n') {
 		return false
 	}
 	if f.HasSelectionRange() {
 		f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
 	}
 	f.runes = append(f.runes[:f.selectionStart], append([]rune{ch}, f.runes[f.selectionStart:]...)...)
+	f.linesBuiltFor = -1
 	f.SetSelectionTo(f.selectionStart + 1)
 	f.notifyOfModification()
 	return true
@@ -595,6 +639,90 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 	}
 }
 
+func (f *Field) handleArrowUp(extend, byWord bool) {
+	if f.HasSelectionRange() {
+		if extend {
+			anchor := f.selectionAnchor
+			if f.selectionStart == anchor {
+				pt := f.FromSelectionIndex(f.selectionEnd)
+				pt.Y -= f.Font.LineHeight()
+				pos := f.ToSelectionIndex(pt)
+				if byWord {
+					start, _ := f.findWordAt(pos)
+					pos = xmath.Min(xmath.Max(start, anchor), pos)
+				}
+				f.setSelection(anchor, pos, anchor)
+			} else {
+				pt := f.FromSelectionIndex(f.selectionStart)
+				pt.Y -= f.Font.LineHeight()
+				pos := f.ToSelectionIndex(pt)
+				if byWord {
+					start, _ := f.findWordAt(pos)
+					pos = xmath.Min(start, pos)
+				}
+				f.setSelection(pos, anchor, anchor)
+			}
+		} else {
+			f.SetSelectionTo(f.selectionStart)
+		}
+	} else {
+		pt := f.FromSelectionIndex(f.selectionStart)
+		pt.Y -= f.Font.LineHeight()
+		pos := f.ToSelectionIndex(pt)
+		if byWord {
+			start, _ := f.findWordAt(pos)
+			pos = xmath.Min(start, pos)
+		}
+		if extend {
+			f.setSelection(pos, f.selectionStart, f.selectionEnd)
+		} else {
+			f.SetSelectionTo(pos)
+		}
+	}
+}
+
+func (f *Field) handleArrowDown(extend, byWord bool) {
+	if f.HasSelectionRange() {
+		if extend {
+			anchor := f.selectionAnchor
+			if f.selectionEnd == anchor {
+				pt := f.FromSelectionIndex(f.selectionStart)
+				pt.Y += f.Font.LineHeight()
+				pos := f.ToSelectionIndex(pt)
+				if byWord {
+					_, end := f.findWordAt(pos)
+					pos = xmath.Max(xmath.Min(end, anchor), pos)
+				}
+				f.setSelection(pos, anchor, anchor)
+			} else {
+				pt := f.FromSelectionIndex(f.selectionEnd)
+				pt.Y += f.Font.LineHeight()
+				pos := f.ToSelectionIndex(pt)
+				if byWord {
+					_, end := f.findWordAt(pos)
+					pos = xmath.Max(end, pos)
+				}
+				f.setSelection(anchor, pos, anchor)
+			}
+		} else {
+			f.SetSelectionTo(f.selectionEnd)
+		}
+	} else {
+		pt := f.FromSelectionIndex(f.selectionEnd)
+		pt.Y += f.Font.LineHeight()
+		pos := f.ToSelectionIndex(pt)
+		if byWord {
+			_, end := f.findWordAt(pos)
+			pos = xmath.Max(end, pos)
+		}
+		if extend {
+			f.SetSelection(f.selectionStart, pos)
+		} else {
+			f.SetSelectionTo(pos)
+		}
+	}
+}
+
 // DefaultCanPerformCmd provides the default can perform command handling.
 func (f *Field) DefaultCanPerformCmd(source interface{}, id int) bool {
 	switch id {
@@ -669,6 +797,7 @@ func (f *Field) Paste() {
 			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
 		}
 		f.runes = append(f.runes[:f.selectionStart], append(runes, f.runes[f.selectionStart:]...)...)
+		f.linesBuiltFor = -1
 		f.SetSelectionTo(f.selectionStart + len(runes))
 		f.notifyOfModification()
 	} else if f.HasSelectionRange() {
@@ -693,6 +822,7 @@ func (f *Field) CanDelete() bool {
 // Delete removes the currently selected text, if any.
 func (f *Field) Delete() {
 	if f.CanDelete() {
+		f.linesBuiltFor = -1
 		if f.HasSelectionRange() {
 			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
 			f.SetSelectionTo(f.selectionStart)
@@ -725,6 +855,7 @@ func (f *Field) SetText(text string) {
 	runes := f.sanitize([]rune(text))
 	if !txt.RunesEqual(runes, f.runes) {
 		f.runes = runes
+		f.linesBuiltFor = -1
 		f.SetSelectionToEnd()
 		f.notifyOfModification()
 	}
@@ -752,7 +883,7 @@ func (f *Field) Validate() {
 
 func (f *Field) sanitize(runes []rune) []rune {
 	if f.multiLine {
-		return f.runes
+		return runes
 	}
 	i := 0
 	for _, ch := range runes {
@@ -894,39 +1025,63 @@ func (f *Field) autoScroll() {
 }
 
 func (f *Field) textLeft(text *Text, bounds geom.Rect[float32]) float32 {
+	return f.textLeftForWidth(text.Width(), bounds)
+}
+
+func (f *Field) textLeftForWidth(width float32, bounds geom.Rect[float32]) float32 {
 	left := bounds.X
 	switch f.HAlign {
 	case MiddleAlignment:
-		left += (bounds.Width - text.Width()) / 2
+		left += (bounds.Width - width) / 2
 	case EndAlignment:
-		left += bounds.Width - text.Width() - 1 // Inset since we leave space for the cursor
+		left += bounds.Width - width - 1 // Inset since we leave space for the cursor
 	default:
 		left++ // Inset since we leave space for the cursor
 	}
 	return left
 }
 
-// ToSelectionIndex returns the rune index for the specified x-coordinate.
-func (f *Field) ToSelectionIndex(x float32) int {
-	text := NewTextFromRunes(f.runes, &TextDecoration{Font: f.Font})
-	return text.RuneIndexForPosition(x - (f.textLeft(text, f.ContentRect(false)) + f.scrollOffset))
+// ToSelectionIndex returns the rune index for the coordinates.
+func (f *Field) ToSelectionIndex(where geom.Point[float32]) int {
+	if where.Y < 0 {
+		return 0
+	}
+	f.prepareLinesForCurrentWidth()
+	var y float32
+	pos := 0
+	for i, line := range f.lines {
+		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
+		if where.Y >= y && where.Y < y+lineHeight {
+			return pos + line.RuneIndexForPosition(where.X-(f.textLeft(line, f.ContentRect(false))+f.scrollOffset))
+		}
+		y += lineHeight
+		pos += len(line.Runes())
+		if f.endsWithLineFeed[i] {
+			pos++
+		}
+	}
+	return len(f.runes)
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
 func (f *Field) FromSelectionIndex(index int) geom.Point[float32] {
-	text := NewTextFromRunes(f.runes, &TextDecoration{Font: f.Font})
+	index = xmath.Max(xmath.Min(index, len(f.runes)), 0)
+	f.prepareLinesForCurrentWidth()
 	rect := f.ContentRect(false)
-	left := f.textLeft(text, rect)
-	x := left + f.scrollOffset
-	top := rect.Y + rect.Height/2
-	if index > 0 {
-		length := len(f.runes)
-		if index > length {
-			index = length
+	y := rect.Y
+	pos := 0
+	for i, line := range f.lines {
+		lineLength := len(line.Runes())
+		if lineLength >= index-pos {
+			return geom.NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset, y)
 		}
-		x += text.PositionForRuneIndex(index)
+		y += xmath.Max(line.Height(), f.Font.LineHeight())
+		if f.endsWithLineFeed[i] {
+			lineLength++
+		}
+		pos += lineLength
 	}
-	return geom.Point[float32]{X: x, Y: top}
+	return geom.NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset, y)
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {
