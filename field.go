@@ -67,7 +67,7 @@ type FieldTheme struct {
 	HAlign           Alignment
 }
 
-// Field provides a single-line text input control.
+// Field provides a text input control.
 type Field struct {
 	Panel
 	FieldTheme
@@ -75,6 +75,8 @@ type Field struct {
 	ValidateCallback func() bool
 	Watermark        string
 	runes            []rune
+	lines            []*Text
+	endsWithLineFeed []bool
 	selectionStart   int
 	selectionEnd     int
 	selectionAnchor  int
@@ -135,41 +137,28 @@ func (f *Field) SetWrap(wrap bool) {
 
 // DefaultSizes provides the default sizing.
 func (f *Field) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
-	minWidth := f.MinimumTextWidth
 	var insets geom.Insets[float32]
 	if b := f.Border(); b != nil {
 		insets = b.Insets()
 	}
-	if len(f.runes) != 0 {
-		decoration := &TextDecoration{
-			Font:  f.Font,
-			Paint: nil,
+	lines, _ := f.buildLines(hint.Width - (2 + insets.Left + insets.Right))
+	for _, line := range lines {
+		size := line.Extents()
+		if pref.Width < size.Width {
+			pref.Width = size.Width
 		}
-		if f.multiLine {
-			for _, line := range strings.Split(string(f.runes), "\n") {
-				t := NewText(line, decoration)
-				if f.wrap && hint.Width > 0 {
-					for _, one := range t.BreakToWidth(hint.Width - (2 + insets.Left + insets.Right)) {
-						pref = addSizeForLine(pref, one.Extents())
-					}
-				} else {
-					pref = addSizeForLine(pref, t.Extents())
-				}
-			}
-		} else {
-			pref = NewTextFromRunes(f.runes, decoration).Extents()
-		}
-		if pref.Width < minWidth {
-			pref.Width = minWidth
-		}
-	} else {
-		pref.Width = minWidth
-		pref.Height = f.Font.LineHeight()
+		pref.Height += size.Height
+	}
+	if pref.Width < f.MinimumTextWidth {
+		pref.Width = f.MinimumTextWidth
+	}
+	height := f.Font.LineHeight()
+	if pref.Height < height {
+		pref.Height = height
 	}
 	pref.Width += 2 // Allow room for the cursor on either side of the text
-	minWidth += 2
+	minWidth := f.MinimumTextWidth + 2 + insets.Left + insets.Right
 	pref.AddInsets(insets)
-	minWidth += insets.Left + insets.Right
 	pref.GrowToInteger()
 	if hint.Width >= 1 && hint.Width < minWidth {
 		hint.Width = minWidth
@@ -183,22 +172,51 @@ func (f *Field) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[
 	return min, pref, MaxSize(pref)
 }
 
-func addSizeForLine(size, add geom.Size[float32]) geom.Size[float32] {
-	if size.Width < add.Width {
-		size.Width = add.Width
+func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed []bool) {
+	if len(f.runes) == 0 {
+		return nil, nil
 	}
-	size.Height += add.Height
-	return size
+	lines = make([]*Text, 0)
+	decoration := &TextDecoration{
+		Font:  f.Font,
+		Paint: nil,
+	}
+	if f.multiLine {
+		endsWithLineFeed = make([]bool, 0, 16)
+		for _, line := range strings.Split(string(f.runes), "\n") {
+			one := NewText(line, decoration)
+			if f.wrap && wrapWidth > 0 {
+				parts := one.BreakToWidth(wrapWidth)
+				for i, part := range parts {
+					lines = append(lines, part)
+					endsWithLineFeed = append(endsWithLineFeed, i == len(parts)-1)
+				}
+			} else {
+				lines = append(lines, one)
+				endsWithLineFeed = append(endsWithLineFeed, true)
+			}
+		}
+	} else {
+		one := NewTextFromRunes(f.runes, decoration)
+		if f.wrap && wrapWidth > 0 {
+			lines = append(lines, one.BreakToWidth(wrapWidth)...)
+		} else {
+			lines = append(lines, one)
+		}
+		endsWithLineFeed = make([]bool, len(lines))
+	}
+	return
 }
 
 // DefaultDraw provides the default drawing.
 func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	var fg, bg Ink
+	enabled := f.Enabled()
 	switch {
 	case f.invalid:
 		fg = f.ErrorInk
 		bg = f.OnErrorInk
-	case f.Enabled():
+	case enabled:
 		fg = f.EditableInk
 		bg = f.OnEditableInk
 	default:
@@ -209,66 +227,92 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, IntersectClipOp, false)
+	f.lines, f.endsWithLineFeed = f.buildLines(rect.Width - 2)
 	paint := bg.Paint(canvas, rect, Fill)
-	text := NewTextFromRunes(f.runes, &TextDecoration{
-		Font:  f.Font,
-		Paint: paint,
-	})
-	textLeft := f.textLeft(text, rect)
-	textTop := rect.Y + (rect.Height-f.Font.LineHeight())/2
-	textBaseLine := textTop + f.Font.Baseline()
-	switch {
-	case f.Enabled() && f.Focused() && f.HasSelectionRange():
-		left := textLeft + f.scrollOffset
-		if f.selectionStart > 0 {
-			t := NewTextFromRunes(f.runes[:f.selectionStart], &TextDecoration{
-				Font:  f.Font,
-				Paint: paint,
-			})
-			t.Draw(canvas, left, textBaseLine)
-			left += t.Width()
-		}
-		t := NewTextFromRunes(f.runes[f.selectionStart:f.selectionEnd], &TextDecoration{
-			Font:  f.Font,
-			Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
-		})
-		right := left + t.Width()
-		selRect := geom.Rect[float32]{
-			Point: geom.Point[float32]{X: left, Y: rect.Y},
-			Size:  geom.Size[float32]{Width: right - left, Height: rect.Height},
-		}
-		canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
-		t.Draw(canvas, left, textBaseLine)
-		if f.selectionStart < len(f.runes) {
-			NewTextFromRunes(f.runes[f.selectionEnd:], &TextDecoration{
-				Font:  f.Font,
-				Paint: paint,
-			}).Draw(canvas, right, textBaseLine)
-		}
-	case len(f.runes) == 0:
+	if !enabled {
+		paint.SetColorFilter(Grayscale30PercentFilter())
+	}
+	textTop := rect.Y
+	focused := f.Focused()
+	hasSelectionRange := f.HasSelectionRange()
+	start := 0
+	if len(f.runes) == 0 {
 		if f.Watermark != "" {
 			paint.SetColorFilter(NewAlphaFilter(0.3))
-			text = NewText(f.Watermark, &TextDecoration{
+			text := NewText(f.Watermark, &TextDecoration{
 				Font:  f.Font,
 				Paint: paint,
 			})
-			text.Draw(canvas, textLeft-text.Width(), textBaseLine)
+			text.Draw(canvas, f.textLeft(text, rect)-text.Width(), textTop+text.Baseline())
 		}
-	default:
-		if !f.Enabled() {
-			paint.SetColorFilter(Grayscale30PercentFilter())
+		if !hasSelectionRange && enabled && focused {
+			if f.showCursor {
+				line := NewTextFromRunes(nil, &TextDecoration{
+					Font:  f.Font,
+					Paint: nil,
+				})
+				rect.X = f.textLeft(line, rect) + line.Width() + f.scrollOffset - 0.5
+				rect.Width = 1
+				canvas.DrawRect(rect, bg.Paint(canvas, rect, Fill))
+			}
+			f.scheduleBlink()
 		}
-		text.Draw(canvas, textLeft+f.scrollOffset, textBaseLine)
-	}
-	if !f.HasSelectionRange() && f.Enabled() && f.Focused() {
-		if f.showCursor {
-			canvas.DrawRect(geom.NewRect(textLeft+NewTextFromRunes(f.runes[:f.selectionEnd], &TextDecoration{
-				Font:  f.Font,
-				Paint: nil,
-			}).Width()+f.scrollOffset-0.5, rect.Y, 1, rect.Height),
-				bg.Paint(canvas, rect, Fill))
+	} else {
+		for i, line := range f.lines {
+			textLeft := f.textLeft(line, rect)
+			textBaseLine := textTop + line.Baseline()
+			textHeight := xmath.Max(line.Height(), f.Font.LineHeight())
+			end := start + len(line.Runes())
+			if f.endsWithLineFeed[i] {
+				end++
+			}
+			if enabled && focused && hasSelectionRange && f.selectionStart < end && f.selectionEnd > start {
+				left := textLeft + f.scrollOffset
+				selStart := xmath.Max(f.selectionStart, start)
+				selEnd := xmath.Min(f.selectionEnd, end)
+				if selStart > start {
+					t := NewTextFromRunes(f.runes[start:selStart], &TextDecoration{
+						Font:  f.Font,
+						Paint: paint,
+					})
+					t.Draw(canvas, left, textBaseLine)
+					left += t.Width()
+				}
+				t := NewTextFromRunes(f.runes[selStart:selEnd], &TextDecoration{
+					Font:  f.Font,
+					Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
+				})
+				right := left + t.Width()
+				selRect := geom.Rect[float32]{
+					Point: geom.Point[float32]{X: left, Y: textTop},
+					Size:  geom.Size[float32]{Width: right - left, Height: textHeight},
+				}
+				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
+				t.Draw(canvas, left, textBaseLine)
+				if selStart < end {
+					NewTextFromRunes(f.runes[selEnd:end], &TextDecoration{
+						Font:  f.Font,
+						Paint: paint,
+					}).Draw(canvas, right, textBaseLine)
+				}
+			} else {
+				line.ReplacePaint(paint)
+				line.Draw(canvas, textLeft+f.scrollOffset, textBaseLine)
+			}
+			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && f.selectionEnd <= end {
+				if f.showCursor {
+					t := NewTextFromRunes(f.runes[start:f.selectionEnd], &TextDecoration{
+						Font:  f.Font,
+						Paint: nil,
+					})
+					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset-0.5, textTop, 1, textHeight),
+						bg.Paint(canvas, rect, Fill))
+				}
+				f.scheduleBlink()
+			}
+			textTop += textHeight
+			start = end
 		}
-		f.scheduleBlink()
 	}
 }
 
