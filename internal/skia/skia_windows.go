@@ -26,6 +26,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const ColorTypeN32 = ColorTypeBGRA8888
+
 var (
 	//go:embed skia_windows.dll
 	dllData                                   []byte

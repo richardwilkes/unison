@@ -15,8 +15,8 @@ correctly:
   packages.
 * See [compilation dependencies](http://www.glfw.org/docs/latest/compile.html#compile_deps) for full details.
 
-This version of Unison was built using Go 1.17.1. It has been compiled under many earlier versions of Go in the past,
-but only Go 1.17.1+ will be considered as I make further changes.
+This version of Unison was built using Go 1.18. It has been compiled under many earlier versions of Go in the past, but
+only Go 1.18+ will be considered as I make further changes.
 
 ### Example
 
@@ -52,23 +52,13 @@ experience code tends to need to have its tentacles in many places, and the logi
 the ability to do things. Ultimately, I made the decision to collapse nearly everything into a single package to
 simplify development and greatly reduce the overall complexity of things.
 
-#### Performance
-
-There are some areas within Unison that still need to be optimized. On Windows and Linux platforms, for example, the
-menus are particularly slow to appear. This is due to the use of top-level windows to back the menus that pop up. On
-those platforms, various system animations occur that I've yet to find a way to disable programmatically, which causes a
-noticeable delay as you move from menu to menu. I plan to fix this by using a hybrid model where a menu is only put into
-a top-level window when it can't fit into the existing window's content area. Oddly enough, even if you force Unison to
-use the per-window menus on macOS rather than macOS's standard global menus, there is no performance problem. This seems
-to indicate that if I could find a way to elminate the system animations that Windows and Linux add when making a window
-visible that the problem would go away without having to rework things into a hybrid display model.
-
 #### Future Plans
 
-- Fix menu performance by either discovering a way to remove the platform animations when windows are made visible, or
-  introducing a hybrid menu display mode where menus that can be fully contained in the owning window are instead drawn
-  inside the content area instead.
+- Drag & drop support in the Table object
+- In-window menus (those used on non-macOS platforms) need to be able to constrain themselves to the window and provide
+  scrolling mechanisms when required to view all content
 - Improve the generic file open and save dialogs (i.e. the ones that are used when there is no platform-specific
   version) to make them both more functional and better behaving.
 - Improve the color well dialog to add additional ways to specify colors as well as adding a way to set gradients.
+- Printing support
 - More widgets...

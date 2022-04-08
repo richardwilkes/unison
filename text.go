@@ -85,6 +85,11 @@ func (t *Text) Slice(i, j int) *Text {
 	}
 }
 
+// Runes returns the runes comprising this Text. Do not modify this slice.
+func (t *Text) Runes() []rune {
+	return t.runes
+}
+
 // String returns the string representation of this Text.
 func (t *Text) String() string {
 	if t.text == "" && len(t.runes) != 0 {

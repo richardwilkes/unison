@@ -103,6 +103,8 @@ const (
 	ColorTypeA16UNorm
 	ColorTypeR16G16UNorm
 	ColorTypeR16G16B16A16UNorm
+	ColorTypeSRGBA8888
+	ColorTypeR8UNorm
 )
 
 type AlphaType int32

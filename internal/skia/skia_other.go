@@ -30,6 +30,8 @@ import (
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
+const ColorTypeN32 = ColorTypeRGBA8888
+
 type (
 	BackendRenderTarget = *C.gr_backendrendertarget_t
 	DirectContext       = *C.gr_direct_context_t

@@ -319,7 +319,7 @@ typedef enum {
 
 typedef struct sk_paint_t sk_paint_t;
 
-// ===== Types from include/core/SkImageInfo.h =====
+// ===== Types from include/core/SkColorType.h =====
 
 typedef enum {
     SK_COLOR_TYPE_UNKNOWN,       // uninitialized
@@ -347,8 +347,16 @@ typedef enum {
     SK_COLOR_TYPE_R16G16B16A16_UNORM, // pixel with a little endian uint16_t for red, green, blue and alpha
 
     SK_COLOR_TYPE_SRGBA_8888,         // pixel with 8 bits for red, green, blue, alpha; in 32-bit word with conversion between sRGB and linear space
-    SK_COLOR_TYPE_LAST = SK_COLOR_TYPE_SRGBA_8888,
+    SK_COLOR_TYPE_R8_UNORM,
+    SK_COLOR_TYPE_LAST = SK_COLOR_TYPE_R8_UNORM,
+#if defined(SK_BUILD_FOR_WIN)
+    SK_COLOR_TYPE_N32 = SK_COLOR_TYPE_BGRA_8888, // native 32-bit BGRA encoding
+#else
+    SK_COLOR_TYPE_N32 = SK_COLOR_TYPE_RGBA_8888, // native 32-bit RGBA encoding
+#endif
 } sk_color_type_t;
+
+// ===== Types from include/core/SkAlphaType.h =====
 
 typedef enum {
     SK_ALPHA_TYPE_UNKNOWN,
@@ -357,6 +365,8 @@ typedef enum {
     SK_ALPHA_TYPE_UNPREMUL,
     SK_ALPHA_TYPE_LAST = SK_ALPHA_TYPE_UNPREMUL,
 } sk_alpha_type_t;
+
+// ===== Types from include/core/SkImageInfo.h =====
 
 typedef struct {
     sk_color_space_t* colorSpace;
