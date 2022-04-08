@@ -81,7 +81,7 @@ type Field struct {
 	selectionEnd     int
 	selectionAnchor  int
 	forceShowUntil   time.Time
-	scrollOffset     float32
+	scrollOffset     geom.Point[float32]
 	linesBuiltFor    float32
 	multiLine        bool
 	wrap             bool
@@ -156,8 +156,7 @@ func (f *Field) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[
 	if pref.Width < f.MinimumTextWidth {
 		pref.Width = f.MinimumTextWidth
 	}
-	height := f.Font.LineHeight()
-	if pref.Height < height {
+	if height := f.Font.LineHeight(); pref.Height < height {
 		pref.Height = height
 	}
 	pref.Width += 2 // Allow room for the cursor on either side of the text
@@ -247,7 +246,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	if !enabled {
 		paint.SetColorFilter(Grayscale30PercentFilter())
 	}
-	textTop := rect.Y
+	textTop := rect.Y + f.scrollOffset.Y
 	focused := f.Focused()
 	hasSelectionRange := f.HasSelectionRange()
 	start := 0
@@ -262,7 +261,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 		}
 		if !hasSelectionRange && enabled && focused {
 			if f.showCursor {
-				rect.X = f.textLeftForWidth(0, rect) + f.scrollOffset - 0.5
+				rect.X = f.textLeftForWidth(0, rect) + f.scrollOffset.X - 0.5
 				rect.Width = 1
 				rect.Height = f.Font.LineHeight()
 				canvas.DrawRect(rect, bg.Paint(canvas, rect, Fill))
@@ -279,7 +278,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 				end++
 			}
 			if enabled && focused && hasSelectionRange && f.selectionStart < end && f.selectionEnd > start {
-				left := textLeft + f.scrollOffset
+				left := textLeft + f.scrollOffset.X
 				selStart := xmath.Max(f.selectionStart, start)
 				selEnd := xmath.Min(f.selectionEnd, end)
 				if selStart > start {
@@ -313,7 +312,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 				}
 			} else {
 				line.ReplacePaint(paint)
-				line.Draw(canvas, textLeft+f.scrollOffset, textBaseLine)
+				line.Draw(canvas, textLeft+f.scrollOffset.X, textBaseLine)
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
 				if f.showCursor {
@@ -321,7 +320,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 						Font:  f.Font,
 						Paint: nil,
 					})
-					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset-0.5, textTop, 1, textHeight),
+					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
 						bg.Paint(canvas, rect, Fill))
 				}
 				f.scheduleBlink()
@@ -967,12 +966,12 @@ func (f *Field) setSelection(start, end, anchor int) {
 }
 
 // ScrollOffset returns the current autoscroll offset.
-func (f *Field) ScrollOffset() float32 {
+func (f *Field) ScrollOffset() geom.Point[float32] {
 	return f.scrollOffset
 }
 
 // SetScrollOffset sets the autoscroll offset to the specified value.
-func (f *Field) SetScrollOffset(offset float32) {
+func (f *Field) SetScrollOffset(offset geom.Point[float32]) {
 	if f.scrollOffset != offset {
 		f.scrollOffset = offset
 		f.MarkForRedraw()
@@ -981,30 +980,30 @@ func (f *Field) SetScrollOffset(offset float32) {
 
 func (f *Field) autoScroll() {
 	rect := f.ContentRect(false)
+	original := f.scrollOffset //nolint:ifshort // Can't do this later
 	if rect.Width > 0 {
-		original := f.scrollOffset
 		if f.selectionStart == f.selectionAnchor {
 			right := f.FromSelectionIndex(f.selectionEnd).X
 			if right < rect.X {
-				f.scrollOffset = 0
-				f.scrollOffset = rect.X - f.FromSelectionIndex(f.selectionEnd).X
-			} else if right >= rect.X+rect.Width {
-				f.scrollOffset = 0
-				f.scrollOffset = rect.X + rect.Width - 1 - f.FromSelectionIndex(f.selectionEnd).X
+				f.scrollOffset.X = 0
+				f.scrollOffset.X = rect.X - f.FromSelectionIndex(f.selectionEnd).X
+			} else if right >= rect.Right() {
+				f.scrollOffset.X = 0
+				f.scrollOffset.X = rect.Right() - 1 - f.FromSelectionIndex(f.selectionEnd).X
 			}
 		} else {
 			left := f.FromSelectionIndex(f.selectionStart).X
 			if left < rect.X {
-				f.scrollOffset = 0
-				f.scrollOffset = rect.X - f.FromSelectionIndex(f.selectionStart).X
-			} else if left >= rect.X+rect.Width {
-				f.scrollOffset = 0
-				f.scrollOffset = rect.X + rect.Width - 1 - f.FromSelectionIndex(f.selectionStart).X
+				f.scrollOffset.X = 0
+				f.scrollOffset.X = rect.X - f.FromSelectionIndex(f.selectionStart).X
+			} else if left >= rect.Right() {
+				f.scrollOffset.X = 0
+				f.scrollOffset.X = rect.Right() - 1 - f.FromSelectionIndex(f.selectionStart).X
 			}
 		}
-		save := f.scrollOffset
-		f.scrollOffset = 0
-		min := rect.X + rect.Width - 1 - f.FromSelectionIndex(len(f.runes)).X
+		save := f.scrollOffset.X
+		f.scrollOffset.X = 0
+		min := rect.Right() - 1 - f.FromSelectionIndex(len(f.runes)).X
 		if min > 0 {
 			min = 0
 		}
@@ -1017,10 +1016,47 @@ func (f *Field) autoScroll() {
 		} else if save > max {
 			save = max
 		}
-		f.scrollOffset = save
-		if original != f.scrollOffset {
-			f.MarkForRedraw()
+		f.scrollOffset.X = save
+	}
+	if rect.Height > 0 {
+		if f.selectionStart == f.selectionAnchor {
+			top := f.FromSelectionIndex(f.selectionEnd).Y
+			if top < rect.Y {
+				f.scrollOffset.Y = 0
+				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionEnd).Y
+			} else if top+f.Font.LineHeight() >= rect.Bottom() {
+				f.scrollOffset.Y = 0
+				f.scrollOffset.Y = rect.Bottom() - 1 - (f.FromSelectionIndex(f.selectionEnd).Y + f.Font.LineHeight())
+			}
+		} else {
+			top := f.FromSelectionIndex(f.selectionStart).Y
+			if top < rect.Y {
+				f.scrollOffset.Y = 0
+				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionStart).Y
+			} else if top+f.Font.LineHeight() >= rect.Bottom() {
+				f.scrollOffset.Y = 0
+				f.scrollOffset.Y = rect.Bottom() - 1 - (f.FromSelectionIndex(f.selectionStart).Y + f.Font.LineHeight())
+			}
 		}
+		save := f.scrollOffset.Y
+		f.scrollOffset.Y = 0
+		min := rect.Bottom() - 1 - (f.FromSelectionIndex(len(f.runes)).Y + f.Font.LineHeight())
+		if min > 0 {
+			min = 0
+		}
+		max := rect.Y - (f.FromSelectionIndex(0).Y + f.Font.LineHeight())
+		if max < 0 {
+			max = 0
+		}
+		if save < min {
+			save = min
+		} else if save > max {
+			save = max
+		}
+		f.scrollOffset.Y = save
+	}
+	if original != f.scrollOffset {
+		f.MarkForRedraw()
 	}
 }
 
@@ -1047,12 +1083,12 @@ func (f *Field) ToSelectionIndex(where geom.Point[float32]) int {
 		return 0
 	}
 	f.prepareLinesForCurrentWidth()
-	var y float32
+	y := f.scrollOffset.Y
 	pos := 0
 	for i, line := range f.lines {
 		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
 		if where.Y >= y && where.Y < y+lineHeight {
-			return pos + line.RuneIndexForPosition(where.X-(f.textLeft(line, f.ContentRect(false))+f.scrollOffset))
+			return pos + line.RuneIndexForPosition(where.X-(f.textLeft(line, f.ContentRect(false))+f.scrollOffset.X))
 		}
 		y += lineHeight
 		pos += len(line.Runes())
@@ -1068,12 +1104,12 @@ func (f *Field) FromSelectionIndex(index int) geom.Point[float32] {
 	index = xmath.Max(xmath.Min(index, len(f.runes)), 0)
 	f.prepareLinesForCurrentWidth()
 	rect := f.ContentRect(false)
-	y := rect.Y
+	y := rect.Y + f.scrollOffset.Y
 	pos := 0
 	for i, line := range f.lines {
 		lineLength := len(line.Runes())
 		if lineLength >= index-pos {
-			return geom.NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset, y)
+			return geom.NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
 		}
 		y += xmath.Max(line.Height(), f.Font.LineHeight())
 		if f.endsWithLineFeed[i] {
@@ -1081,7 +1117,7 @@ func (f *Field) FromSelectionIndex(index int) geom.Point[float32] {
 		}
 		pos += lineLength
 	}
-	return geom.NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset, y)
+	return geom.NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y)
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {
