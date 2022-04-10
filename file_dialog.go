@@ -191,11 +191,9 @@ func (d *fileDialog) rebuildParentDirs() {
 	}
 }
 
-func (d *fileDialog) parentDirPopupSelectionHandler() {
-	if d.parentDirPopup.SelectedIndex() != 0 {
-		if item, ok := d.parentDirPopup.Selected(); ok {
-			d.changeDirTo(item.path)
-		}
+func (d *fileDialog) parentDirPopupSelectionHandler(index int, item *parentDirItem) {
+	if index != 0 {
+		d.changeDirTo(item.path)
 	}
 }
 
@@ -297,8 +295,8 @@ func (d *fileDialog) rebuildFileList() {
 	}
 }
 
-func (d *fileDialog) filterHandler() {
-	d.currentExt = d.extensions[d.filterPopup.SelectedIndex()]
+func (d *fileDialog) filterHandler(index int, _ string) {
+	d.currentExt = d.extensions[index]
 	d.rebuildFileList()
 }
 

@@ -55,11 +55,10 @@ type PopupMenu[T comparable] struct {
 	Panel
 	PopupMenuTheme
 	MenuFactory       MenuFactory
-	SelectionCallback func()
+	SelectionCallback func(index int, item T)
 	items             []*popupMenuItem[T]
 	selectedIndex     int
 	textCache         TextCache
-	Pressed           bool
 }
 
 // NewPopupMenu creates a new PopupMenu.
@@ -105,21 +104,12 @@ func (p *PopupMenu[T]) DefaultSizes(hint geom.Size[float32]) (min, pref, max geo
 
 // DefaultDraw provides the default drawing.
 func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
-	var fg, bg Ink
-	switch {
-	case p.Pressed:
-		bg = p.SelectionInk
-		fg = p.OnSelectionInk
-	default:
-		bg = p.BackgroundInk
-		fg = p.OnBackgroundInk
-	}
 	thickness := float32(1)
 	if p.Focused() {
 		thickness++
 	}
 	rect := p.ContentRect(false)
-	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, bg, p.EdgeInk)
+	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, p.BackgroundInk, p.EdgeInk)
 	rect.InsetUniform(1.5)
 	rect.X += p.HMargin
 	rect.Y += p.VMargin
@@ -128,14 +118,14 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	triWidth := rect.Height * 0.75
 	triHeight := triWidth / 2
 	rect.Width -= triWidth
-	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.textObj(), fg, nil, 0, 0, !p.Enabled())
+	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.textObj(), p.OnBackgroundInk, nil, 0, 0, !p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()
 	path.MoveTo(rect.Right(), rect.Y+(rect.Height-triHeight)/2)
 	path.LineTo(rect.Right()-triWidth, rect.Y+(rect.Height-triHeight)/2)
 	path.LineTo(rect.Right()-triWidth/2, rect.Y+(rect.Height-triHeight)/2+triHeight)
 	path.Close()
-	paint := fg.Paint(canvas, rect, Fill)
+	paint := p.OnBackgroundInk.Paint(canvas, rect, Fill)
 	if !p.Enabled() {
 		paint.SetColorFilter(Grayscale30PercentFilter())
 	}
@@ -302,11 +292,11 @@ func (p *PopupMenu[T]) Select(item T) {
 
 // SelectIndex selects an item by its index.
 func (p *PopupMenu[T]) SelectIndex(index int) {
-	if index != p.selectedIndex && index >= 0 && index < len(p.items) {
+	if index != p.selectedIndex && index >= 0 && index < len(p.items) && !p.items[index].separator {
 		p.selectedIndex = index
 		p.MarkForRedraw()
 		if p.SelectionCallback != nil {
-			p.SelectionCallback()
+			p.SelectionCallback(index, p.items[index].item)
 		}
 	}
 }

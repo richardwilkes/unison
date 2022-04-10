@@ -395,10 +395,8 @@ func createPopupMenu(panel *unison.Panel, selection int, tooltip string, titles 
 		}
 	}
 	p.SelectIndex(selection)
-	p.SelectionCallback = func() {
-		if selected, ok := p.Selected(); ok {
-			jot.Infof("The '%s' item was selected from the %s PopupMenu.", selected, tooltip)
-		}
+	p.SelectionCallback = func(_ int, item string) {
+		jot.Infof("The '%s' item was selected from the %s PopupMenu.", item, tooltip)
 	}
 	panel.AddChild(p)
 	return p
