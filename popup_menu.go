@@ -43,29 +43,28 @@ type PopupMenuTheme struct {
 	VMargin         float32
 }
 
-type popupMenuItem struct {
-	item      interface{}
+type popupMenuItem[T comparable] struct {
+	item      T
 	textCache TextCache
 	enabled   bool
+	separator bool
 }
 
 // PopupMenu represents a clickable button that displays a menu of choices.
-type PopupMenu struct {
+type PopupMenu[T comparable] struct {
 	Panel
 	PopupMenuTheme
 	MenuFactory       MenuFactory
 	SelectionCallback func()
-	items             []*popupMenuItem
+	items             []*popupMenuItem[T]
 	selectedIndex     int
 	textCache         TextCache
 	Pressed           bool
 }
 
-type popupSeparationMarker struct{}
-
 // NewPopupMenu creates a new PopupMenu.
-func NewPopupMenu() *PopupMenu {
-	p := &PopupMenu{PopupMenuTheme: DefaultPopupMenuTheme}
+func NewPopupMenu[T comparable]() *PopupMenu[T] {
+	p := &PopupMenu[T]{PopupMenuTheme: DefaultPopupMenuTheme}
 	p.Self = p
 	p.SetFocusable(true)
 	p.SetSizer(p.DefaultSizes)
@@ -79,12 +78,10 @@ func NewPopupMenu() *PopupMenu {
 }
 
 // DefaultSizes provides the default sizing.
-func (p *PopupMenu) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (p *PopupMenu[T]) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	pref = LabelSize(p.textCache.Text("M", p.Font), nil, 0, 0)
 	for _, one := range p.items {
-		switch one.item.(type) {
-		case *popupSeparationMarker:
-		default:
+		if !one.separator {
 			size := LabelSize(one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font), nil, 0, 0)
 			if pref.Width < size.Width {
 				pref.Width = size.Width
@@ -107,7 +104,7 @@ func (p *PopupMenu) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.S
 }
 
 // DefaultDraw provides the default drawing.
-func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	var fg, bg Ink
 	switch {
 	case p.Pressed:
@@ -145,38 +142,32 @@ func (p *PopupMenu) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	canvas.DrawPath(path, paint)
 }
 
-func (p *PopupMenu) textObj() *Text {
+func (p *PopupMenu[T]) textObj() *Text {
 	if p.selectedIndex >= 0 && p.selectedIndex < len(p.items) {
-		one := p.items[p.selectedIndex].item
-		switch one.(type) {
-		case *popupSeparationMarker:
-		default:
-			return p.items[p.selectedIndex].textCache.Text(fmt.Sprintf("%v", one), p.Font)
+		if one := p.items[p.selectedIndex]; !one.separator {
+			return one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font)
 		}
 	}
 	return nil
 }
 
 // Text the currently shown text.
-func (p *PopupMenu) Text() string {
+func (p *PopupMenu[T]) Text() string {
 	if p.selectedIndex >= 0 && p.selectedIndex < len(p.items) {
-		one := p.items[p.selectedIndex].item
-		switch one.(type) {
-		case *popupSeparationMarker:
-		default:
-			return fmt.Sprintf("%v", one)
+		if one := p.items[p.selectedIndex]; !one.separator {
+			return fmt.Sprintf("%v", one.item)
 		}
 	}
 	return ""
 }
 
 // Click performs any animation associated with a click and triggers the popup menu to appear.
-func (p *PopupMenu) Click() {
+func (p *PopupMenu[T]) Click() {
 	hasItem := false //nolint:ifshort // Cannot collapse this into the if statement, despite what the linter says
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
 	defer m.Dispose()
 	for i, one := range p.items {
-		if _, ok := one.item.(*popupSeparationMarker); ok {
+		if one.separator {
 			m.InsertSeparator(-1, false)
 		} else {
 			hasItem = true
@@ -188,7 +179,7 @@ func (p *PopupMenu) Click() {
 	}
 }
 
-func (p *PopupMenu) createMenuItem(m Menu, index int, entry *popupMenuItem) MenuItem {
+func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]) MenuItem {
 	return m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
 		fmt.Sprintf("%v", entry.item), KeyBinding{}, func(mi MenuItem) bool {
 			return entry.enabled
@@ -201,29 +192,27 @@ func (p *PopupMenu) createMenuItem(m Menu, index int, entry *popupMenuItem) Menu
 }
 
 // AddItem appends a menu item to the end of the PopupMenu.
-func (p *PopupMenu) AddItem(item interface{}) *PopupMenu {
-	p.items = append(p.items, &popupMenuItem{
+func (p *PopupMenu[T]) AddItem(item T) {
+	p.items = append(p.items, &popupMenuItem[T]{
 		item:    item,
 		enabled: true,
 	})
-	return p
 }
 
 // AddDisabledItem appends a disabled menu item to the end of the PopupMenu.
-func (p *PopupMenu) AddDisabledItem(item interface{}) *PopupMenu {
-	p.items = append(p.items, &popupMenuItem{item: item})
-	return p
+func (p *PopupMenu[T]) AddDisabledItem(item T) {
+	p.items = append(p.items, &popupMenuItem[T]{item: item})
 }
 
 // AddSeparator adds a separator to the end of the PopupMenu.
-func (p *PopupMenu) AddSeparator() *PopupMenu {
-	return p.AddDisabledItem(&popupSeparationMarker{})
+func (p *PopupMenu[T]) AddSeparator() {
+	p.items = append(p.items, &popupMenuItem[T]{separator: true})
 }
 
 // IndexOfItem returns the index of the specified menu item. -1 will be returned if the menu item isn't present.
-func (p *PopupMenu) IndexOfItem(item interface{}) int {
+func (p *PopupMenu[T]) IndexOfItem(item T) int {
 	for i, one := range p.items {
-		if one.item == item {
+		if !one.separator && one.item == item {
 			return i
 		}
 	}
@@ -231,21 +220,19 @@ func (p *PopupMenu) IndexOfItem(item interface{}) int {
 }
 
 // RemoveAllItems removes all items from the PopupMenu.
-func (p *PopupMenu) RemoveAllItems() *PopupMenu {
+func (p *PopupMenu[T]) RemoveAllItems() {
 	p.selectedIndex = 0
 	p.items = nil
 	p.MarkForRedraw()
-	return p
 }
 
 // RemoveItem from the PopupMenu.
-func (p *PopupMenu) RemoveItem(item interface{}) *PopupMenu {
+func (p *PopupMenu[T]) RemoveItem(item T) {
 	p.RemoveItemAt(p.IndexOfItem(item))
-	return p
 }
 
 // RemoveItemAt the specified index from the PopupMenu.
-func (p *PopupMenu) RemoveItemAt(index int) *PopupMenu {
+func (p *PopupMenu[T]) RemoveItemAt(index int) {
 	if index >= 0 {
 		length := len(p.items)
 		if index < length {
@@ -266,52 +253,55 @@ func (p *PopupMenu) RemoveItemAt(index int) *PopupMenu {
 			p.items = p.items[:length]
 		}
 	}
-	return p
 }
 
 // ItemCount returns the number of items in this PopupMenu.
-func (p *PopupMenu) ItemCount() int {
+func (p *PopupMenu[T]) ItemCount() int {
 	return len(p.items)
 }
 
-// ItemAt returns the menuItem at the specified index or nil.
-func (p *PopupMenu) ItemAt(index int) interface{} {
+// ItemAt returns the item at the specified index. 'ok' will be false if the index is out of range or the specified
+// index contains a separator.
+func (p *PopupMenu[T]) ItemAt(index int) (item T, ok bool) {
 	if index >= 0 && index < len(p.items) {
-		return p.items[index].item
+		one := p.items[index]
+		if !one.separator {
+			return one.item, true
+		}
 	}
-	return nil
+	return item, false
 }
 
-// SetItemAt sets the menuItem at the specified index.
-func (p *PopupMenu) SetItemAt(index int, item interface{}, enabled bool) *PopupMenu {
+// SetItemAt sets the item at the specified index.
+func (p *PopupMenu[T]) SetItemAt(index int, item T, enabled bool) {
 	if index >= 0 && index < len(p.items) {
-		if p.items[index].item != item {
-			p.items[index].item = item
-			p.items[index].enabled = enabled
+		one := p.items[index]
+		if one.separator || one.item != item {
+			one.item = item
+			one.enabled = enabled
+			one.separator = false
 			p.MarkForRedraw()
 		}
 	}
-	return p
 }
 
-// Selected returns the currently selected menuItem or nil.
-func (p *PopupMenu) Selected() interface{} {
+// Selected returns the currently selected item. 'ok' will be false if there is no selection.
+func (p *PopupMenu[T]) Selected() (item T, ok bool) {
 	return p.ItemAt(p.selectedIndex)
 }
 
-// SelectedIndex returns the currently selected menuItem index.
-func (p *PopupMenu) SelectedIndex() int {
+// SelectedIndex returns the currently selected item index.
+func (p *PopupMenu[T]) SelectedIndex() int {
 	return p.selectedIndex
 }
 
-// Select an menuItem.
-func (p *PopupMenu) Select(item interface{}) *PopupMenu {
+// Select an item.
+func (p *PopupMenu[T]) Select(item T) {
 	p.SelectIndex(p.IndexOfItem(item))
-	return p
 }
 
-// SelectIndex selects an menuItem by its index.
-func (p *PopupMenu) SelectIndex(index int) *PopupMenu {
+// SelectIndex selects an item by its index.
+func (p *PopupMenu[T]) SelectIndex(index int) {
 	if index != p.selectedIndex && index >= 0 && index < len(p.items) {
 		p.selectedIndex = index
 		p.MarkForRedraw()
@@ -319,17 +309,16 @@ func (p *PopupMenu) SelectIndex(index int) *PopupMenu {
 			p.SelectionCallback()
 		}
 	}
-	return p
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (p *PopupMenu) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
 	p.Click()
 	return true
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (p *PopupMenu) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		p.Click()
 		return true

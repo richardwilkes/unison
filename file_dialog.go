@@ -29,11 +29,11 @@ type fileDialog struct {
 	currentExt     string
 	dirEntries     []os.DirEntry
 	dialog         *Dialog
-	parentDirPopup *PopupMenu
+	parentDirPopup *PopupMenu[*parentDirItem]
 	fileNameField  *Field
 	scroller       *ScrollPanel
 	fileList       *List
-	filterPopup    *PopupMenu
+	filterPopup    *PopupMenu[string]
 	forOpen        bool
 }
 
@@ -95,7 +95,7 @@ func (d *fileDialog) createContent() *Panel {
 		VSpacing: StdVSpacing,
 	})
 
-	d.parentDirPopup = NewPopupMenu()
+	d.parentDirPopup = NewPopupMenu[*parentDirItem]()
 	d.parentDirPopup.SelectionCallback = d.parentDirPopupSelectionHandler
 	d.rebuildParentDirs()
 	content.AddChild(d.parentDirPopup)
@@ -140,7 +140,7 @@ func (d *fileDialog) createContent() *Panel {
 	})
 
 	if len(d.extensions) > 1 {
-		d.filterPopup = NewPopupMenu()
+		d.filterPopup = NewPopupMenu[string]()
 		for _, ext := range d.extensions {
 			if ext == "*" {
 				d.filterPopup.AddItem(i18n.Text("Any File"))
@@ -193,7 +193,7 @@ func (d *fileDialog) rebuildParentDirs() {
 
 func (d *fileDialog) parentDirPopupSelectionHandler() {
 	if d.parentDirPopup.SelectedIndex() != 0 {
-		if item, ok := d.parentDirPopup.Selected().(*parentDirItem); ok {
+		if item, ok := d.parentDirPopup.Selected(); ok {
 			d.changeDirTo(item.path)
 		}
 	}

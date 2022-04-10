@@ -384,8 +384,8 @@ func createPopupMenusPanel() *unison.Panel {
 	return panel
 }
 
-func createPopupMenu(panel *unison.Panel, selection int, tooltip string, titles ...string) *unison.PopupMenu {
-	p := unison.NewPopupMenu()
+func createPopupMenu(panel *unison.Panel, selection int, tooltip string, titles ...string) *unison.PopupMenu[string] {
+	p := unison.NewPopupMenu[string]()
 	p.Tooltip = unison.NewTooltipWithText(tooltip)
 	for _, title := range titles {
 		if title == "" {
@@ -395,7 +395,11 @@ func createPopupMenu(panel *unison.Panel, selection int, tooltip string, titles 
 		}
 	}
 	p.SelectIndex(selection)
-	p.SelectionCallback = func() { jot.Infof("The '%v' item was selected from the %s PopupMenu.", p.Selected(), tooltip) }
+	p.SelectionCallback = func() {
+		if selected, ok := p.Selected(); ok {
+			jot.Infof("The '%s' item was selected from the %s PopupMenu.", selected, tooltip)
+		}
+	}
 	panel.AddChild(p)
 	return p
 }
