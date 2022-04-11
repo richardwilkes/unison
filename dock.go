@@ -90,6 +90,19 @@ func (d *Dock) RootDockLayout() *DockLayout {
 	return d.layout
 }
 
+// ContainerForGroup returns the first DockContainer whose Group matches, if any.
+func (d *Dock) ContainerForGroup(group string) *DockContainer {
+	var found *DockContainer
+	d.layout.ForEachDockContainer(func(dc *DockContainer) bool {
+		if dc.Group == group {
+			found = dc
+			return true
+		}
+		return false
+	})
+	return found
+}
+
 // DockTo a Dockable within this Dock. If the Dockable already exists in this Dock, it will be moved to the new location. nil may be passed in for the target, in which case the top-most layout is used.
 func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 	if target == nil {
