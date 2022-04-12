@@ -12,6 +12,7 @@ package unison
 import (
 	"time"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
@@ -130,6 +131,9 @@ func NewSVGButton(svg *SVG) *Button {
 // DefaultSizes provides the default sizing.
 func (b *Button) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
 	pref = LabelSize(b.textCache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
+	if b.Text == "" && toolbox.IsNil(b.Drawable) {
+		pref.Height = b.Font.LineHeight()
+	}
 	if theBorder := b.Border(); theBorder != nil {
 		pref.AddInsets(theBorder.Insets())
 	}
