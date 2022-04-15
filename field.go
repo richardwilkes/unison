@@ -463,11 +463,21 @@ func (f *Field) DefaultUpdateCursor(where Point) *Cursor {
 
 // DefaultKeyDown provides the default key down handling.
 func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
-	if mod.OSMenuCmdModifierDown() {
-		return false
-	}
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
+	}
+	if mod.OSMenuCmdModifierDown() {
+		switch keyCode {
+		case KeyRight:
+			f.handleEnd(f.multiLine, mod.ShiftDown())
+		case KeyDown:
+			f.handleEnd(false, mod.ShiftDown())
+		case KeyLeft:
+			f.handleHome(f.multiLine, mod.ShiftDown())
+		case KeyUp:
+			f.handleHome(false, mod.ShiftDown())
+		}
+		return false
 	}
 	switch keyCode {
 	case KeyBackspace:
@@ -482,44 +492,28 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool
 		}
 		f.MarkForRedraw()
 	case KeyLeft:
-		extend := mod.ShiftDown()
-		if mod.CommandDown() {
-			f.handleHome(extend)
-		} else {
-			f.handleArrowLeft(extend, mod.OptionDown())
-		}
+		f.handleArrowLeft(mod.ShiftDown(), mod.OptionDown())
 	case KeyRight:
-		extend := mod.ShiftDown()
-		if mod.CommandDown() {
-			f.handleEnd(extend)
-		} else {
-			f.handleArrowRight(extend, mod.OptionDown())
-		}
-	case KeyEnd, KeyPageDown:
-		f.handleEnd(mod.ShiftDown())
-	case KeyHome, KeyPageUp:
-		f.handleHome(mod.ShiftDown())
+		f.handleArrowRight(mod.ShiftDown(), mod.OptionDown())
+	case KeyEnd:
+		f.handleEnd(f.multiLine, mod.ShiftDown())
+	case KeyPageDown:
+		f.handleEnd(false, mod.ShiftDown())
+	case KeyHome:
+		f.handleHome(f.multiLine, mod.ShiftDown())
+	case KeyPageUp:
+		f.handleHome(false, mod.ShiftDown())
 	case KeyDown:
 		if f.multiLine {
-			extend := mod.ShiftDown()
-			if mod.CommandDown() {
-				f.handleEnd(extend)
-			} else {
-				f.handleArrowDown(extend, mod.OptionDown())
-			}
+			f.handleArrowDown(mod.ShiftDown(), mod.OptionDown())
 		} else {
-			f.handleEnd(mod.ShiftDown())
+			f.handleEnd(false, mod.ShiftDown())
 		}
 	case KeyUp:
 		if f.multiLine {
-			extend := mod.ShiftDown()
-			if mod.CommandDown() {
-				f.handleHome(extend)
-			} else {
-				f.handleArrowUp(extend, mod.OptionDown())
-			}
+			f.handleArrowUp(mod.ShiftDown(), mod.OptionDown())
 		} else {
-			f.handleHome(mod.ShiftDown())
+			f.handleHome(false, mod.ShiftDown())
 		}
 	case KeyTab:
 		return false
@@ -549,18 +543,43 @@ func (f *Field) DefaultRuneTyped(ch rune) bool {
 	return true
 }
 
-func (f *Field) handleHome(extend bool) {
-	if extend {
+func (f *Field) handleHome(lineOnly, extend bool) {
+	switch {
+	case lineOnly:
+		if f.selectionStart == 0 || f.runes[f.selectionStart-1] == '\n' {
+			return
+		}
+		start := f.findPrevLineBreak(f.selectionStart)
+		if start != 0 {
+			start++
+		}
+		if extend {
+			f.setSelection(start, f.selectionEnd, f.selectionEnd)
+		} else {
+			f.SetSelectionTo(start)
+		}
+	case extend:
 		f.setSelection(0, f.selectionEnd, f.selectionEnd)
-	} else {
+	default:
 		f.SetSelectionToStart()
 	}
 }
 
-func (f *Field) handleEnd(extend bool) {
-	if extend {
+func (f *Field) handleEnd(lineOnly, extend bool) {
+	switch {
+	case lineOnly:
+		if f.selectionEnd == len(f.runes) || f.runes[f.selectionEnd] == '\n' {
+			return
+		}
+		end := f.findNextLineBreak(f.selectionEnd)
+		if extend {
+			f.setSelection(f.selectionStart, end, end)
+		} else {
+			f.SetSelectionTo(end)
+		}
+	case extend:
 		f.SetSelection(f.selectionStart, len(f.runes))
-	} else {
+	default:
 		f.SetSelectionToEnd()
 	}
 }
@@ -1137,4 +1156,34 @@ func (f *Field) findWordAt(pos int) (start, end int) {
 		}
 	}
 	return start, end
+}
+
+func (f *Field) findPrevLineBreak(pos int) int {
+	if pos >= len(f.runes) {
+		pos = len(f.runes) - 1
+	} else {
+		pos--
+	}
+	for pos >= 0 && f.runes[pos] != '\n' {
+		pos--
+	}
+	if pos < 0 {
+		pos = 0
+	}
+	return pos
+}
+
+func (f *Field) findNextLineBreak(pos int) int {
+	if pos < 0 {
+		pos = 0
+	} else {
+		pos++
+	}
+	for pos < len(f.runes) && f.runes[pos] != '\n' {
+		pos++
+	}
+	if pos > len(f.runes) {
+		pos = len(f.runes)
+	}
+	return pos
 }
