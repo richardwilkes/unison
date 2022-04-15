@@ -16,7 +16,6 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 type wellDialog struct {
@@ -52,7 +51,7 @@ func showWellDialog(w *Well) {
 	})
 
 	left := NewPanel()
-	left.SetBorder(NewEmptyBorder(geom.Insets[float32]{Right: 16}))
+	left.SetBorder(NewEmptyBorder(Insets{Right: 16}))
 	left.SetLayoutData(&FlexLayoutData{})
 	left.SetLayout(&FlexLayout{
 		Columns:  1,
@@ -135,7 +134,7 @@ func (d *wellDialog) addPatternSelector(parent *Panel) {
 		}
 	}
 	if d.well.Mask&^PatternWellMask != 0 {
-		b.SetBorder(NewEmptyBorder(geom.Insets[float32]{Bottom: 16}))
+		b.SetBorder(NewEmptyBorder(Insets{Bottom: 16}))
 	}
 	parent.AddChild(b)
 }
@@ -176,7 +175,7 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 	})
 
 	right := NewPanel()
-	right.SetBorder(NewEmptyBorder(geom.Insets[float32]{Left: 16}))
+	right.SetBorder(NewEmptyBorder(Insets{Left: 16}))
 	right.SetLayout(&FlexLayout{
 		Columns:  3,
 		HSpacing: StdHSpacing,
@@ -197,7 +196,7 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 	})
 
 	bottom := NewPanel()
-	bottom.SetBorder(NewEmptyBorder(geom.Insets[float32]{Top: 16}))
+	bottom.SetBorder(NewEmptyBorder(Insets{Top: 16}))
 	bottom.SetLayout(&FlexLayout{
 		Columns:  2,
 		HSpacing: StdHSpacing,
@@ -431,7 +430,7 @@ func (d *wellDialog) addCSSField(parent *Panel, color Color) *Field {
 		l = NewLabel()
 		l.Text = txt
 		l.SetEnabled(false)
-		l.SetBorder(NewEmptyBorder(geom.Insets[float32]{Left: 8}))
+		l.SetBorder(NewEmptyBorder(Insets{Left: 8}))
 		l.SetLayoutData(&FlexLayoutData{
 			VAlign: MiddleAlignment,
 		})
@@ -472,17 +471,17 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 		VAlign: MiddleAlignment,
 	})
 	if spaceBefore > 0 {
-		label.SetBorder(NewEmptyBorder(geom.Insets[float32]{Top: spaceBefore}))
+		label.SetBorder(NewEmptyBorder(Insets{Top: spaceBefore}))
 	}
 	parent.AddChild(label)
 
 	preview := NewPanel()
-	preview.SetBorder(NewCompoundBorder(NewLineBorder(OnBackgroundColor, 0, geom.NewUniformInsets[float32](1), false),
-		NewLineBorder(BackgroundColor, 0, geom.NewUniformInsets[float32](1), false)))
+	preview.SetBorder(NewCompoundBorder(NewLineBorder(OnBackgroundColor, 0, NewUniformInsets(1), false),
+		NewLineBorder(BackgroundColor, 0, NewUniformInsets(1), false)))
 	preview.SetLayoutData(&FlexLayoutData{
-		SizeHint: geom.NewSize[float32](64, 64),
+		SizeHint: NewSize(64, 64),
 	})
-	preview.DrawCallback = func(canvas *Canvas, dirty geom.Rect[float32]) {
+	preview.DrawCallback = func(canvas *Canvas, dirty Rect) {
 		r := preview.ContentRect(false)
 		ink := inkRetriever()
 		if pattern, ok := ink.(*Pattern); ok {

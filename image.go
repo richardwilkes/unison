@@ -21,7 +21,6 @@ import (
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -123,25 +122,25 @@ func (img *Image) ref() *imageRef {
 }
 
 // Size returns the size, in pixels, of the image. These dimensions will always be whole numbers > 0 for valid images.
-func (img *Image) Size() geom.Size[float32] {
+func (img *Image) Size() Size {
 	ref := img.ref()
-	return geom.Size[float32]{
+	return Size{
 		Width:  float32(skia.ImageGetWidth(ref.img)),
 		Height: float32(skia.ImageGetHeight(ref.img)),
 	}
 }
 
 // LogicalSize returns the logical (device-independent) size.
-func (img *Image) LogicalSize() geom.Size[float32] {
+func (img *Image) LogicalSize() Size {
 	ref := img.ref()
-	return geom.Size[float32]{
+	return Size{
 		Width:  float32(skia.ImageGetWidth(ref.img)) * ref.scale,
 		Height: float32(skia.ImageGetHeight(ref.img)) * ref.scale,
 	}
 }
 
 // DrawInRect draws this image in the given rectangle.
-func (img *Image) DrawInRect(canvas *Canvas, rect geom.Rect[float32], sampling *SamplingOptions, paint *Paint) {
+func (img *Image) DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOptions, paint *Paint) {
 	canvas.DrawImageInRect(img, rect, sampling, paint)
 }
 

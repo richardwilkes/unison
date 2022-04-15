@@ -15,7 +15,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // Pre-defined modal response codes. Apps should start their codes at ModalResponseUserBase.
@@ -31,17 +30,17 @@ const (
 var DefaultDialogTheme = DialogTheme{
 	ErrorIcon: &DrawableSVG{
 		SVG:  CircledExclamationSVG(),
-		Size: geom.NewSize[float32](48, 48),
+		Size: NewSize(48, 48),
 	},
 	ErrorIconInk: ErrorColor,
 	WarningIcon: &DrawableSVG{
 		SVG:  TriangleExclamationSVG(),
-		Size: geom.NewSize[float32](48, 48),
+		Size: NewSize(48, 48),
 	},
 	WarningIconInk: WarningColor,
 	QuestionIcon: &DrawableSVG{
 		SVG:  CircledQuestionSVG(),
-		Size: geom.NewSize[float32](48, 48),
+		Size: NewSize(48, 48),
 	},
 	QuestionIconInk: OnBackgroundColor,
 }
@@ -71,7 +70,7 @@ type Dialog struct {
 // NewDialog creates a new standard dialog. To show the dialog you must call .RunModal() on the returned dialog.
 func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo) (*Dialog, error) {
 	d := &Dialog{buttons: make(map[int]*buttonData)}
-	var frame geom.Rect[float32]
+	var frame Rect
 	if focused := ActiveWindow(); focused != nil {
 		frame = focused.FrameRect()
 	} else {
@@ -82,14 +81,14 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 		return nil, errs.NewWithCause("unable to create dialog", d.err)
 	}
 	content := d.wnd.Content()
-	content.SetBorder(NewEmptyBorder(geom.NewUniformInsets[float32](16)))
+	content.SetBorder(NewEmptyBorder(NewUniformInsets(16)))
 	columns := 1
 	if icon != nil {
 		columns++
 		iconLabel := NewLabel()
 		iconLabel.Drawable = icon
 		iconLabel.OnBackgroundInk = iconInk
-		iconLabel.SetBorder(NewEmptyBorder(geom.Insets[float32]{Bottom: 16, Right: 8}))
+		iconLabel.SetBorder(NewEmptyBorder(Insets{Bottom: 16, Right: 8}))
 		iconLabel.SetLayoutData(&FlexLayoutData{})
 		content.AddChild(iconLabel)
 	}
@@ -100,9 +99,9 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	})
 	p := msgPanel.AsPanel()
 	if b := p.Border(); b != nil {
-		p.SetBorder(NewCompoundBorder(NewEmptyBorder(geom.Insets[float32]{Bottom: 16}), b))
+		p.SetBorder(NewCompoundBorder(NewEmptyBorder(Insets{Bottom: 16}), b))
 	} else {
-		p.SetBorder(NewEmptyBorder(geom.Insets[float32]{Bottom: 16}))
+		p.SetBorder(NewEmptyBorder(Insets{Bottom: 16}))
 	}
 	p.SetLayoutData(&FlexLayoutData{
 		HSpan:  1,
@@ -201,7 +200,7 @@ func NewMessagePanel(primary, detail string) *Panel {
 	breakTextIntoLabels(panel, primary, EmphasizedSystemFont)
 	breakTextIntoLabels(panel, detail, SystemFont)
 	panel.SetLayoutData(&FlexLayoutData{
-		MinSize: geom.Size[float32]{Width: 200},
+		MinSize: Size{Width: 200},
 		HSpan:   1,
 		VSpan:   1,
 		VAlign:  MiddleAlignment,
@@ -223,7 +222,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font) {
 					l.Text = part
 					l.Font = font
 					if returns > 1 {
-						l.SetBorder(NewEmptyBorder(geom.Insets[float32]{Top: 8}))
+						l.SetBorder(NewEmptyBorder(Insets{Top: 8}))
 					}
 					panel.AddChild(l)
 					text = text[i+1:]
@@ -235,7 +234,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font) {
 					l.Text = text
 					l.Font = font
 					if returns > 1 {
-						l.SetBorder(NewEmptyBorder(geom.Insets[float32]{Top: 8}))
+						l.SetBorder(NewEmptyBorder(Insets{Top: 8}))
 					}
 					panel.AddChild(l)
 				}

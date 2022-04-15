@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
@@ -46,7 +45,7 @@ type List struct {
 	DoubleClickCallback  func()
 	NewSelectionCallback func()
 	Factory              CellFactory
-	rows                 []interface{}
+	rows                 []any
 	Selection            *xmath.BitSet
 	savedSelection       *xmath.BitSet
 	anchor               int
@@ -84,7 +83,7 @@ func (l *List) Count() int {
 }
 
 // DataAtIndex returns the data for the specified row index.
-func (l *List) DataAtIndex(index int) interface{} {
+func (l *List) DataAtIndex(index int) any {
 	if index >= 0 && index < len(l.rows) {
 		return l.rows[index]
 	}
@@ -92,13 +91,13 @@ func (l *List) DataAtIndex(index int) interface{} {
 }
 
 // Append values to the list of items.
-func (l *List) Append(values ...interface{}) {
+func (l *List) Append(values ...any) {
 	l.rows = append(l.rows, values...)
 	l.MarkForLayoutAndRedraw()
 }
 
 // Insert values at the specified index.
-func (l *List) Insert(index int, values ...interface{}) {
+func (l *List) Insert(index int, values ...any) {
 	if index < 0 || index > len(l.rows) {
 		index = len(l.rows)
 	}
@@ -107,7 +106,7 @@ func (l *List) Insert(index int, values ...interface{}) {
 }
 
 // Replace the value at the specified index.
-func (l *List) Replace(index int, value interface{}) {
+func (l *List) Replace(index int, value any) {
 	if index >= 0 && index < len(l.rows) {
 		l.rows[index] = value
 		l.MarkForLayoutAndRedraw()
@@ -139,13 +138,13 @@ func (l *List) RemoveRange(from, to int) {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *List) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (l *List) DefaultSizes(hint Size) (min, pref, max Size) {
 	max = MaxSize(max)
 	height := xmath.Ceil(l.Factory.CellHeight())
 	if height < 1 {
 		height = 0
 	}
-	size := geom.Size[float32]{Width: hint.Width, Height: height}
+	size := Size{Width: hint.Width, Height: height}
 	for i, row := range l.rows {
 		cell := l.Factory.CreateCell(l, row, i, Black, false, false)
 		_, cPref, cMax := cell.Sizes(size)
@@ -184,7 +183,7 @@ func (l *List) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[f
 }
 
 // DefaultDraw provides the default drawing.
-func (l *List) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (l *List) DefaultDraw(canvas *Canvas, dirty Rect) {
 	index, y := l.rowAt(dirty.Y)
 	if index >= 0 {
 		cellHeight := xmath.Ceil(l.Factory.CellHeight())
@@ -214,15 +213,15 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 				fg = l.OnBandingInk
 			}
 			cell := l.Factory.CreateCell(l, l.rows[index], index, fg, selected, focused && selected && selCount == 1)
-			cellRect := geom.Rect[float32]{Point: geom.Point[float32]{X: rect.X, Y: y}, Size: geom.Size[float32]{Width: rect.Width, Height: cellHeight}}
+			cellRect := Rect{Point: Point{X: rect.X, Y: y}, Size: Size{Width: rect.Width, Height: cellHeight}}
 			if cellHeight < 1 {
-				_, pref, _ := cell.Sizes(geom.Size[float32]{})
+				_, pref, _ := cell.Sizes(Size{})
 				pref.GrowToInteger()
 				cellRect.Height = pref.Height
 			}
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
-			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
+			r := NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
 			canvas.DrawRect(r, bg.Paint(canvas, r, Fill))
 			canvas.Save()
 			tl := cellRect.Point
@@ -239,7 +238,7 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (l *List) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (l *List) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	l.RequestFocus()
 	l.savedSelection = l.Selection.Clone()
 	if index, _ := l.rowAt(where.Y); index >= 0 {
@@ -287,7 +286,7 @@ func (l *List) DefaultMouseDown(where geom.Point[float32], button, clickCount in
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (l *List) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (l *List) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	if l.pressed {
 		l.Selection.Copy(l.savedSelection)
 		if index, _ := l.rowAt(where.Y); index >= 0 {
@@ -318,7 +317,7 @@ func (l *List) DefaultMouseDrag(where geom.Point[float32], button int, mod Modif
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (l *List) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (l *List) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
@@ -378,12 +377,12 @@ func (l *List) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool 
 }
 
 // DefaultCanPerformCmd provides the default can perform cmd handling.
-func (l *List) DefaultCanPerformCmd(source interface{}, id int) bool {
+func (l *List) DefaultCanPerformCmd(source any, id int) bool {
 	return id == SelectAllItemID && l.Selection.Count() < len(l.rows)
 }
 
 // DefaultPerformCmd provides the default perform cmd handling.
-func (l *List) DefaultPerformCmd(source interface{}, id int) {
+func (l *List) DefaultPerformCmd(source any, id int) {
 	if id == SelectAllItemID {
 		l.SelectRange(0, len(l.rows)-1, false)
 	}
@@ -465,7 +464,7 @@ func (l *List) rowAt(y float32) (index int, top float32) {
 	if cellHeight < 1 {
 		for index < count {
 			cell := l.Factory.CreateCell(l, l.rows[index], index, Black, false, false)
-			_, pref, _ := cell.Sizes(geom.Size[float32]{})
+			_, pref, _ := cell.Sizes(Size{})
 			pref.GrowToInteger()
 			if top+pref.Height >= y {
 				break

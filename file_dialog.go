@@ -18,7 +18,6 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 const pathSeparator = string(os.PathSeparator)
@@ -126,11 +125,11 @@ func (d *fileDialog) createContent() *Panel {
 	d.fileList.DoubleClickCallback = d.fileListDoubleClickHandler
 	d.rebuildFileList()
 	d.scroller = NewScrollPanel()
-	d.scroller.SetBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](1), false))
+	d.scroller.SetBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(1), false))
 	d.scroller.SetContent(d.fileList, FollowsWidthBehavior)
 	content.AddChild(d.scroller)
 	d.scroller.SetLayoutData(&FlexLayoutData{
-		MinSize: geom.NewSize[float32](300, 200),
+		MinSize: NewSize(300, 200),
 		HSpan:   1,
 		VSpan:   1,
 		HAlign:  FillAlignment,
@@ -289,8 +288,8 @@ func (d *fileDialog) rebuildFileList() {
 		d.fileList.Append(&fileListItem{entry: entry})
 	}
 	if d.fileList.Parent() != nil {
-		_, pref, _ := d.fileList.Sizes(geom.Size[float32]{})
-		d.fileList.SetFrameRect(geom.Rect[float32]{Size: pref})
+		_, pref, _ := d.fileList.Sizes(Size{})
+		d.fileList.SetFrameRect(Rect{Size: pref})
 		d.scroller.SetPosition(0, 0)
 	}
 }

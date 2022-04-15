@@ -12,14 +12,13 @@ package demo
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
 var dockCounter int
 
 // NewDemoDockWindow creates and displays our demo dock window.
-func NewDemoDockWindow(where geom.Point[float32]) (*unison.Window, error) {
+func NewDemoDockWindow(where unison.Point) (*unison.Window, error) {
 	// Create the window
 	dockCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Dock #%d", dockCounter))

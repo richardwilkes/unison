@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var (
@@ -42,7 +41,7 @@ func (c *DynamicColor) GetColor() Color {
 }
 
 // Paint returns a Paint for this DynamicColor. Here to satisfy the Ink interface.
-func (c *DynamicColor) Paint(canvas *Canvas, rect geom.Rect[float32], style PaintStyle) *Paint {
+func (c *DynamicColor) Paint(canvas *Canvas, rect Rect, style PaintStyle) *Paint {
 	return c.Color.Paint(canvas, rect, style)
 }
 

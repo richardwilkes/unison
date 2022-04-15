@@ -11,8 +11,6 @@ package unison
 
 import (
 	"time"
-
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultProgressBarTheme holds the default ProgressBarTheme values for ProgressBars. Modifying this data will not
@@ -105,7 +103,7 @@ func (p *ProgressBar) SetMaximum(value float32) {
 }
 
 // DefaultSizes provides the default sizing.
-func (p *ProgressBar) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (p *ProgressBar) DefaultSizes(hint Size) (min, pref, max Size) {
 	min.Width = 80
 	min.Height = p.PreferredBarHeight
 	pref.Width = 100
@@ -126,7 +124,7 @@ func (p *ProgressBar) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom
 }
 
 // DefaultDraw provides the default drawing.
-func (p *ProgressBar) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (p *ProgressBar) DefaultDraw(canvas *Canvas, dirty Rect) {
 	bounds := p.ContentRect(false)
 	meter := bounds
 	meter.Width = 0

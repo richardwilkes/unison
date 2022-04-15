@@ -12,8 +12,6 @@ package unison
 import (
 	"reflect"
 	"strings"
-
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Paneler = &Panel{}
@@ -27,36 +25,36 @@ type Paneler interface {
 // set the Self field to the final object. Failure to do so may result in incorrect behavior.
 type Panel struct {
 	InputCallbacks
-	Self                                interface{}
-	DrawCallback                        func(gc *Canvas, rect geom.Rect[float32])
-	DrawOverCallback                    func(gc *Canvas, rect geom.Rect[float32])
-	UpdateCursorCallback                func(where geom.Point[float32]) *Cursor
-	UpdateTooltipCallback               func(where geom.Point[float32], suggestedAvoidInRoot geom.Rect[float32]) geom.Rect[float32]
-	CanPerformCmdCallback               func(source interface{}, id int) bool
-	PerformCmdCallback                  func(source interface{}, id int)
+	Self                                any
+	DrawCallback                        func(gc *Canvas, rect Rect)
+	DrawOverCallback                    func(gc *Canvas, rect Rect)
+	UpdateCursorCallback                func(where Point) *Cursor
+	UpdateTooltipCallback               func(where Point, suggestedAvoidInRoot Rect) Rect
+	CanPerformCmdCallback               func(source any, id int) bool
+	PerformCmdCallback                  func(source any, id int)
 	FrameChangeCallback                 func()
 	FrameChangeInChildHierarchyCallback func(panel *Panel)
-	ScrollRectIntoViewCallback          func(rect geom.Rect[float32]) bool
+	ScrollRectIntoViewCallback          func(rect Rect) bool
 	ParentChangedCallback               func()
 	FocusChangeInHierarchyCallback      func(from, to *Panel)
 	// DataDragOverCallback is called when a data drag is over a potential drop target. Return true to stop further
 	// handling or false to propagate up to parents.
-	DataDragOverCallback func(where geom.Point[float32], data map[string]interface{}) bool
+	DataDragOverCallback func(where Point, data map[string]any) bool
 	// DataDragExitCallback is called when a previous call to DataDragOverCallback returned true and the data drag
 	// leaves the component.
 	DataDragExitCallback func()
 	// DataDragDropCallback is called when a data drag is dropped and a previous call to DataDragOverCallback returned
 	// true.
-	DataDragDropCallback func(where geom.Point[float32], data map[string]interface{})
+	DataDragDropCallback func(where Point, data map[string]any)
 	Tooltip              *Panel
 	parent               *Panel
-	frame                geom.Rect[float32]
+	frame                Rect
 	border               Border
 	sizer                Sizer
 	layout               Layout
-	layoutData           interface{}
+	layoutData           any
 	children             []*Panel
-	data                 map[string]interface{}
+	data                 map[string]any
 	scale                float32
 	NeedsLayout          bool
 	focusable            bool
@@ -219,7 +217,7 @@ func (p *Panel) SetScale(scale float32) {
 }
 
 // FrameRect returns the location and size of the panel in its parent's coordinate system.
-func (p *Panel) FrameRect() geom.Rect[float32] {
+func (p *Panel) FrameRect() Rect {
 	scale := p.Scale()
 	r := p.frame
 	r.Width *= scale
@@ -228,7 +226,7 @@ func (p *Panel) FrameRect() geom.Rect[float32] {
 }
 
 // SetFrameRect sets the location and size of the panel in its parent's coordinate system.
-func (p *Panel) SetFrameRect(rect geom.Rect[float32]) {
+func (p *Panel) SetFrameRect(rect Rect) {
 	scale := p.Scale()
 	rect.Width /= scale
 	rect.Height /= scale
@@ -257,7 +255,7 @@ func (p *Panel) SetFrameRect(rect geom.Rect[float32]) {
 }
 
 // ContentRect returns the location and size of the panel in local coordinates.
-func (p *Panel) ContentRect(includeBorder bool) geom.Rect[float32] {
+func (p *Panel) ContentRect(includeBorder bool) Rect {
 	rect := p.frame.CopyAndZeroLocation()
 	if !includeBorder && p.border != nil {
 		rect.Inset(p.border.Insets())
@@ -292,7 +290,7 @@ func (p *Panel) SetSizer(sizer Sizer) {
 // Sizes returns the minimum, preferred, and maximum sizes the panel wishes to be. It does this by first asking the
 // panel's layout. If no layout is present, then the panel's sizer is asked. If no sizer is present, then it finally
 // uses a default set of sizes that are used for all panels.
-func (p *Panel) Sizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (p *Panel) Sizes(hint Size) (min, pref, max Size) {
 	scale := p.Scale()
 	hint.Width /= scale
 	hint.Height /= scale
@@ -302,7 +300,7 @@ func (p *Panel) Sizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32
 	case p.sizer != nil:
 		min, pref, max = p.sizer(hint)
 	default:
-		return min, pref, geom.Size[float32]{Width: DefaultMaxSize, Height: DefaultMaxSize}
+		return min, pref, Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
 	}
 	min.Width *= scale
 	min.Height *= scale
@@ -315,8 +313,8 @@ func (p *Panel) Sizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32
 
 // Pack resizes the panel to its preferred size.
 func (p *Panel) Pack() {
-	_, pref, _ := p.Sizes(geom.Size[float32]{})
-	p.SetFrameRect(geom.Rect[float32]{Point: p.frame.Point, Size: pref})
+	_, pref, _ := p.Sizes(Size{})
+	p.SetFrameRect(Rect{Point: p.frame.Point, Size: pref})
 }
 
 // Layout returns the Layout for this panel, if any.
@@ -345,12 +343,12 @@ func (p *Panel) ValidateLayout() {
 }
 
 // LayoutData returns the layout data, if any, associated with this panel.
-func (p *Panel) LayoutData() interface{} {
+func (p *Panel) LayoutData() any {
 	return p.layoutData
 }
 
 // SetLayoutData sets layout data on this panel. May be nil.
-func (p *Panel) SetLayoutData(data interface{}) {
+func (p *Panel) SetLayoutData(data any) {
 	p.layoutData = data
 	p.NeedsLayout = true
 }
@@ -386,7 +384,7 @@ func (p *Panel) FlushDrawing() {
 }
 
 // Draw is called by its owning window when a panel needs to be drawn. The canvas has already had its clip set to rect.
-func (p *Panel) Draw(gc *Canvas, rect geom.Rect[float32]) {
+func (p *Panel) Draw(gc *Canvas, rect Rect) {
 	if p.Hidden {
 		return
 	}
@@ -474,7 +472,7 @@ func (p *Panel) RequestFocus() {
 }
 
 // PanelAt returns the leaf-most child panel containing the point, or this panel if no child is found.
-func (p *Panel) PanelAt(pt geom.Point[float32]) *Panel {
+func (p *Panel) PanelAt(pt Point) *Panel {
 	for _, child := range p.children {
 		if !child.Hidden {
 			if r := child.FrameRect(); r.ContainsPoint(pt) {
@@ -491,7 +489,7 @@ func (p *Panel) PanelAt(pt geom.Point[float32]) *Panel {
 
 // PointToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
-func (p *Panel) PointToRoot(pt geom.Point[float32]) geom.Point[float32] {
+func (p *Panel) PointToRoot(pt Point) Point {
 	one := p
 	for one != nil {
 		scale := one.Scale()
@@ -505,7 +503,7 @@ func (p *Panel) PointToRoot(pt geom.Point[float32]) geom.Point[float32] {
 
 // PointFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local
 // coordinates.
-func (p *Panel) PointFromRoot(pt geom.Point[float32]) geom.Point[float32] {
+func (p *Panel) PointFromRoot(pt Point) Point {
 	list := make([]*Panel, 0, 32)
 	one := p
 	for one != nil {
@@ -524,7 +522,7 @@ func (p *Panel) PointFromRoot(pt geom.Point[float32]) geom.Point[float32] {
 
 // RectToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
-func (p *Panel) RectToRoot(rect geom.Rect[float32]) geom.Rect[float32] {
+func (p *Panel) RectToRoot(rect Rect) Rect {
 	pt := p.PointToRoot(rect.BottomRight())
 	rect.Point = p.PointToRoot(rect.Point)
 	rect.Width = pt.X - rect.X
@@ -533,7 +531,7 @@ func (p *Panel) RectToRoot(rect geom.Rect[float32]) geom.Rect[float32] {
 }
 
 // RectFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local coordinates.
-func (p *Panel) RectFromRoot(rect geom.Rect[float32]) geom.Rect[float32] {
+func (p *Panel) RectFromRoot(rect Rect) Rect {
 	pt := p.PointFromRoot(rect.BottomRight())
 	rect.Point = p.PointFromRoot(rect.Point)
 	rect.Width = pt.X - rect.X
@@ -549,7 +547,7 @@ func (p *Panel) ScrollIntoView() {
 
 // ScrollRectIntoView attempts to scroll the rect (in coordinates local to this Panel) into the current view if it is
 // not already there, using scroll areas in this Panel's hierarchy.
-func (p *Panel) ScrollRectIntoView(rect geom.Rect[float32]) {
+func (p *Panel) ScrollRectIntoView(rect Rect) {
 	look := p
 	for look != nil {
 		if look.ScrollRectIntoViewCallback != nil {
@@ -566,9 +564,9 @@ func (p *Panel) ScrollRectIntoView(rect geom.Rect[float32]) {
 }
 
 // ClientData returns a map of client data for this Panel.
-func (p *Panel) ClientData() map[string]interface{} {
+func (p *Panel) ClientData() map[string]any {
 	if p.data == nil {
-		p.data = make(map[string]interface{})
+		p.data = make(map[string]any)
 	}
 	return p.data
 }
@@ -581,7 +579,7 @@ func (p *Panel) UpdateCursorNow() {
 }
 
 // IsDragGesture returns true if a gesture to start a drag operation was made.
-func (p *Panel) IsDragGesture(where geom.Point[float32]) bool {
+func (p *Panel) IsDragGesture(where Point) bool {
 	if w := p.Window(); w != nil {
 		return w.IsDragGesture(p.PointToRoot(where))
 	}

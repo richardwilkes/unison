@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultCheckBoxTheme holds the default CheckBoxTheme values for CheckBoxes. Modifying this data will not alter
@@ -80,7 +79,7 @@ func NewCheckBox() *CheckBox {
 }
 
 // DefaultSizes provides the default sizing.
-func (c *CheckBox) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (c *CheckBox) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref = c.boxAndLabelSize()
 	if border := c.Border(); border != nil {
 		pref.AddInsets(border.Insets())
@@ -90,10 +89,10 @@ func (c *CheckBox) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Si
 	return pref, pref, MaxSize(pref)
 }
 
-func (c *CheckBox) boxAndLabelSize() geom.Size[float32] {
+func (c *CheckBox) boxAndLabelSize() Size {
 	boxSize := c.boxSize()
 	if c.Drawable == nil && c.Text == "" {
-		return geom.Size[float32]{Width: boxSize, Height: boxSize}
+		return Size{Width: boxSize, Height: boxSize}
 	}
 	size := LabelSize(c.textCache.Text(c.Text, c.Font), c.Drawable, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
@@ -108,7 +107,7 @@ func (c *CheckBox) boxSize() float32 {
 }
 
 // DefaultDraw provides the default drawing.
-func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty Rect) {
 	contentRect := c.ContentRect(false)
 	rect := contentRect
 	size := c.boxAndLabelSize()
@@ -199,14 +198,14 @@ func (c *CheckBox) updateState() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (c *CheckBox) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	c.Pressed = true
 	c.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (c *CheckBox) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	rect := c.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if c.Pressed != pressed {
@@ -217,7 +216,7 @@ func (c *CheckBox) DefaultMouseDrag(where geom.Point[float32], button int, mod M
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (c *CheckBox) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
 	rect := c.ContentRect(false)

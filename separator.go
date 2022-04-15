@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath/geom"
-)
-
 // DefaultSeparatorTheme holds the default SeparatorTheme values for Separators. Modifying this data will not alter
 // existing Separators, but will alter any Separators created in the future.
 var DefaultSeparatorTheme = SeparatorTheme{
@@ -42,7 +38,7 @@ func NewSeparator() *Separator {
 }
 
 // DefaultSizes provides the default sizing.
-func (s *Separator) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (s *Separator) DefaultSizes(hint Size) (min, pref, max Size) {
 	if s.Vertical {
 		if hint.Height < 1 {
 			pref.Height = 1
@@ -76,7 +72,7 @@ func (s *Separator) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.S
 }
 
 // DefaultDraw provides the default drawing.
-func (s *Separator) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (s *Separator) DefaultDraw(canvas *Canvas, dirty Rect) {
 	rect := s.ContentRect(false)
 	if s.Vertical {
 		if rect.Width > 1 {

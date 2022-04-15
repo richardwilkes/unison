@@ -13,7 +13,6 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
@@ -77,7 +76,7 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 }
 
 // DefaultSizes provides the default sizing.
-func (p *PopupMenu[T]) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (p *PopupMenu[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref = LabelSize(p.textCache.Text("M", p.Font), nil, 0, 0)
 	for _, one := range p.items {
 		if !one.separator {
@@ -103,7 +102,7 @@ func (p *PopupMenu[T]) DefaultSizes(hint geom.Size[float32]) (min, pref, max geo
 }
 
 // DefaultDraw provides the default drawing.
-func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	thickness := float32(1)
 	if p.Focused() {
 		thickness++
@@ -302,7 +301,7 @@ func (p *PopupMenu[T]) SelectIndex(index int) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (p *PopupMenu[T]) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	p.Click()
 	return true
 }

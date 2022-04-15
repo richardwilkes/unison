@@ -21,7 +21,7 @@ var GlobalClipboard = &Clipboard{}
 // ClipboardData holds a type and data pair.
 type ClipboardData struct {
 	Type string
-	Data interface{}
+	Data any
 }
 
 // Clipboard provides access to the system clipboard as well as an internal, application-only, clipboard. Currently, due
@@ -31,7 +31,7 @@ type ClipboardData struct {
 // accidental mutations.
 type Clipboard struct {
 	lock sync.RWMutex
-	data map[string]interface{}
+	data map[string]any
 }
 
 // GetText returns text from the current clipboard data. This reads from the system clipboard.
@@ -49,7 +49,7 @@ func (c *Clipboard) SetText(str string) {
 
 // GetData returns the data associated with the specified type on the application clipboard and does not examine the
 // system clipboard at all.
-func (c *Clipboard) GetData(dataType string) (data interface{}, exists bool) {
+func (c *Clipboard) GetData(dataType string) (data any, exists bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	data, exists = c.data[dataType]
@@ -59,9 +59,9 @@ func (c *Clipboard) GetData(dataType string) (data interface{}, exists bool) {
 // SetData the data for a single type on the application clipboard, clearing out any others that were previously
 // present. If the data can be converted to text by .(string), it will also be set onto the system clipboard, otherwise,
 // the system clipboard will be cleared.
-func (c *Clipboard) SetData(dataType string, data interface{}) {
+func (c *Clipboard) SetData(dataType string, data any) {
 	c.lock.Lock()
-	c.data = make(map[string]interface{})
+	c.data = make(map[string]any)
 	c.data[dataType] = data
 	c.lock.Unlock()
 	if s, ok := data.(string); ok {
@@ -77,7 +77,7 @@ func (c *Clipboard) SetData(dataType string, data interface{}) {
 func (c *Clipboard) SetMultipleData(pairs []ClipboardData) {
 	var str string
 	c.lock.Lock()
-	c.data = make(map[string]interface{})
+	c.data = make(map[string]any)
 	for _, p := range pairs {
 		c.data[p.Type] = p.Data
 		if str == "" {

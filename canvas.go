@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/toolbox/xmath/geom/poly"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -103,7 +102,7 @@ func (c *Canvas) Skew(sx, sy float32) {
 }
 
 // Concat the matrix.
-func (c *Canvas) Concat(matrix *geom.Matrix2D[float32]) {
+func (c *Canvas) Concat(matrix *Matrix) {
 	skia.CanvasConcat(c.canvas, skia.Matrix2DtoMatrix(matrix))
 }
 
@@ -113,12 +112,12 @@ func (c *Canvas) ResetMatrix() {
 }
 
 // Matrix returns the current transform matrix.
-func (c *Canvas) Matrix() *geom.Matrix2D[float32] {
+func (c *Canvas) Matrix() *Matrix {
 	return skia.CanvasGetTotalMatrix(c.canvas).ToMatrix2D()
 }
 
 // SetMatrix replaces the current matrix with the given matrix.
-func (c *Canvas) SetMatrix(matrix *geom.Matrix2D[float32]) {
+func (c *Canvas) SetMatrix(matrix *Matrix) {
 	skia.CanvasSetMatrix(c.canvas, skia.Matrix2DtoMatrix(matrix))
 }
 
@@ -130,7 +129,7 @@ func (c *Canvas) QuickRejectPath(path *Path) bool {
 
 // QuickRejectRect returns true if the rect, after transformations by the current matrix, can be quickly determined to
 // be outside of the current clip. May return false even though the rect is outside of the clip.
-func (c *Canvas) QuickRejectRect(rect geom.Rect[float32]) bool {
+func (c *Canvas) QuickRejectRect(rect Rect) bool {
 	return skia.CanvasQuickRejectRect(c.canvas, skia.RectToSkRect(&rect))
 }
 
@@ -145,12 +144,12 @@ func (c *Canvas) DrawPaint(paint *Paint) {
 }
 
 // DrawRect draws the rectangle with Paint.
-func (c *Canvas) DrawRect(rect geom.Rect[float32], paint *Paint) {
+func (c *Canvas) DrawRect(rect Rect, paint *Paint) {
 	skia.CanvasDrawRect(c.canvas, skia.RectToSkRect(&rect), paint.paint)
 }
 
 // DrawRoundedRect draws a rounded rectangle with Paint.
-func (c *Canvas) DrawRoundedRect(rect geom.Rect[float32], radiusX, radiusY float32, paint *Paint) {
+func (c *Canvas) DrawRoundedRect(rect Rect, radiusX, radiusY float32, paint *Paint) {
 	skia.CanvasDrawRoundRect(c.canvas, skia.RectToSkRect(&rect), radiusX, radiusY, paint.paint)
 }
 
@@ -160,7 +159,7 @@ func (c *Canvas) DrawCircle(cx, cy, radius float32, paint *Paint) {
 }
 
 // DrawOval draws the oval with Paint.
-func (c *Canvas) DrawOval(rect geom.Rect[float32], paint *Paint) {
+func (c *Canvas) DrawOval(rect Rect, paint *Paint) {
 	skia.CanvasDrawOval(c.canvas, skia.RectToSkRect(&rect), paint.paint)
 }
 
@@ -171,17 +170,17 @@ func (c *Canvas) DrawPath(path *Path, paint *Paint) {
 
 // DrawImage draws the image at the specified location using its logical size. paint may be nil.
 func (c *Canvas) DrawImage(img *Image, x, y float32, sampling *SamplingOptions, paint *Paint) {
-	c.DrawImageInRect(img, geom.Rect[float32]{Point: geom.Point[float32]{X: x, Y: y}, Size: img.LogicalSize()}, sampling, paint)
+	c.DrawImageInRect(img, Rect{Point: Point{X: x, Y: y}, Size: img.LogicalSize()}, sampling, paint)
 }
 
 // DrawImageInRect draws the image into the area specified by the rect, scaling if necessary. paint may be nil.
-func (c *Canvas) DrawImageInRect(img *Image, rect geom.Rect[float32], sampling *SamplingOptions, paint *Paint) {
-	c.DrawImageRectInRect(img, geom.Rect[float32]{Size: img.Size()}, rect, sampling, paint)
+func (c *Canvas) DrawImageInRect(img *Image, rect Rect, sampling *SamplingOptions, paint *Paint) {
+	c.DrawImageRectInRect(img, Rect{Size: img.Size()}, rect, sampling, paint)
 }
 
 // DrawImageRectInRect draws a portion of the image into the area specified, scaling if necessary. srcRect should be in
 // raw pixel coordinates, not logical coordinates. dstRect should be in logical coordinates. paint may be nil.
-func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom.Rect[float32], sampling *SamplingOptions, paint *Paint) {
+func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect Rect, sampling *SamplingOptions, paint *Paint) {
 	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkRect(&srcRect),
 		skia.RectToSkRect(&dstRect), sampling.skSamplingOptions(), paint.paintOrNil())
 }
@@ -189,7 +188,7 @@ func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom.Rect[floa
 // DrawImageNine draws an image stretched proportionally to fit into dstRect. 'center' divides the image into nine
 // sections: four sides, four corners, and the center. Corners are unmodified or scaled down proportionately if their
 // sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. paint may be nil.
-func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect geom.Rect[float32], filter FilterMode, paint *Paint) {
+func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect Rect, filter FilterMode, paint *Paint) {
 	skia.CanvasDrawImageNine(c.canvas, img.ref().contextImg(c.surface.context), skia.RectToSkIRect(&centerRect),
 		skia.RectToSkRect(&dstRect), skia.FilterMode(filter), paint.paintOrNil())
 }
@@ -205,7 +204,7 @@ func (c *Canvas) DrawPoint(x, y float32, paint *Paint) {
 }
 
 // DrawPoints draws the points using the given mode.
-func (c *Canvas) DrawPoints(pts []geom.Point[float32], paint *Paint, mode PointMode) {
+func (c *Canvas) DrawPoints(pts []Point, paint *Paint, mode PointMode) {
 	skia.CanvasDrawPoints(c.canvas, skia.PointMode(mode), pts, paint.paint)
 }
 
@@ -225,7 +224,7 @@ func (c *Canvas) DrawPolygon(poly poly.Polygon[float32], mode FillType, paint *P
 // DrawArc draws an arc. startAngle and sweepAngle are in degrees. If useCenter is true, this will draw a wedge that
 // includes lines from the oval center to the arc end points. If useCenter is false, then just and arc between the end
 // points will be drawn.
-func (c *Canvas) DrawArc(oval geom.Rect[float32], startAngle, sweepAngle float32, paint *Paint, useCenter bool) {
+func (c *Canvas) DrawArc(oval Rect, startAngle, sweepAngle float32, paint *Paint, useCenter bool) {
 	skia.CanvasDrawArc(c.canvas, skia.RectToSkRect(&oval), startAngle, sweepAngle, useCenter, paint.paint)
 }
 
@@ -249,7 +248,7 @@ func (c *Canvas) DrawString(str string, x, y float32, font Font, paint *Paint) {
 }
 
 // ClipRect replaces the clip with the intersection of difference of the current clip and rect.
-func (c *Canvas) ClipRect(rect geom.Rect[float32], op ClipOp, antialias bool) {
+func (c *Canvas) ClipRect(rect Rect, op ClipOp, antialias bool) {
 	skia.CanavasClipRectWithOperation(c.canvas, skia.RectToSkRect(&rect), skia.ClipOp(op), antialias)
 }
 
@@ -259,7 +258,7 @@ func (c *Canvas) ClipPath(path *Path, op ClipOp, antialias bool) {
 }
 
 // ClipBounds returns the clip bounds.
-func (c *Canvas) ClipBounds() geom.Rect[float32] {
+func (c *Canvas) ClipBounds() Rect {
 	return skia.CanvasGetLocalClipBounds(c.canvas).ToRect()
 }
 

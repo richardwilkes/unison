@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultLabelTheme holds the default LabelTheme values for Labels. Modifying this data will not alter existing Labels,
@@ -54,7 +53,7 @@ func NewLabel() *Label {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *Label) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (l *Label) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref = LabelSize(l.textCache.Text(l.Text, l.Font), l.Drawable, l.Side, l.Gap)
 	if b := l.Border(); b != nil {
 		pref.AddInsets(b.Insets())
@@ -65,15 +64,15 @@ func (l *Label) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[
 }
 
 // DefaultDraw provides the default drawing.
-func (l *Label) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
 	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.textCache.Text(l.Text, l.Font), l.OnBackgroundInk,
 		l.Drawable, l.Side, l.Gap, !l.Enabled())
 }
 
 // LabelSize returns the preferred size of a label. Provided as a standalone function so that other types of panels can
 // make use of it.
-func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32) geom.Size[float32] {
-	var size geom.Size[float32]
+func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32) Size {
+	var size Size
 	if text != nil {
 		size = text.Extents()
 		size.GrowToInteger()
@@ -84,7 +83,7 @@ func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32)
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect geom.Rect[float32], hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable,
+func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable,
 	drawableSide Side, imgGap float32, applyDisabledFilter bool,
 ) {
 	if drawable == nil && text == nil {
@@ -97,7 +96,7 @@ func DrawLabel(canvas *Canvas, rect geom.Rect[float32], hAlign, vAlign Alignment
 	}
 
 	// Determine overall size of content
-	var size, txtSize geom.Size[float32]
+	var size, txtSize Size
 	if text != nil {
 		text.ReplacePaint(paint)
 		txtSize = text.Extents()
@@ -177,7 +176,7 @@ func DrawLabel(canvas *Canvas, rect geom.Rect[float32], hAlign, vAlign Alignment
 	canvas.Restore()
 }
 
-func adjustLabelSizeForDrawable(hasText bool, drawable Drawable, drawableSide Side, imgGap float32, size *geom.Size[float32]) {
+func adjustLabelSizeForDrawable(hasText bool, drawable Drawable, drawableSide Side, imgGap float32, size *Size) {
 	if drawable != nil {
 		logicalSize := drawable.LogicalSize()
 		switch {

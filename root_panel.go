@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath/geom"
-)
-
 var _ Layout = &rootPanel{}
 
 type rootPanel struct {
@@ -112,11 +108,11 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 	}
 }
 
-func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (p *rootPanel) LayoutSizes(_ *Panel, hint Size) (min, pref, max Size) {
 	min, pref, max = p.contentPanel.Sizes(hint)
 	if p.menuBarPanel != nil {
-		_, barSize, _ := p.menuBarPanel.Sizes(geom.Size[float32]{})
-		for _, size := range []*geom.Size[float32]{&min, &pref, &max} {
+		_, barSize, _ := p.menuBarPanel.Sizes(Size{})
+		for _, size := range []*Size{&min, &pref, &max} {
 			size.Height += barSize.Height
 			if size.Width < barSize.Width {
 				size.Width = barSize.Width
@@ -131,8 +127,8 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	rect.X = 0
 	rect.Y = 0
 	if p.menuBarPanel != nil {
-		_, size, _ := p.menuBarPanel.Sizes(geom.Size[float32]{})
-		p.menuBarPanel.SetFrameRect(geom.Rect[float32]{Size: geom.Size[float32]{Width: rect.Width, Height: size.Height}})
+		_, size, _ := p.menuBarPanel.Sizes(Size{})
+		p.menuBarPanel.SetFrameRect(Rect{Size: Size{Width: rect.Width, Height: size.Height}})
 		rect.Y += size.Height
 		rect.Height -= size.Height
 	}

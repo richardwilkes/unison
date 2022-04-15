@@ -11,8 +11,6 @@ package unison
 
 import (
 	"fmt"
-
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ CellFactory = &DefaultCellFactory{}
@@ -26,7 +24,7 @@ type CellFactory interface {
 	// CreateCell creates a new cell for 'owner' using 'element' as the content. 'index' indicates which row the element
 	// came from. 'selected' indicates the cell should be created in its selected state. 'focused' indicates the cell
 	// should be created in its focused state.
-	CreateCell(owner Paneler, element interface{}, index int, foreground Ink, selected, focused bool) *Panel
+	CreateCell(owner Paneler, element any, index int, foreground Ink, selected, focused bool) *Panel
 }
 
 // DefaultCellFactory provides a simple implementation of a CellFactory that uses Labels for its cells.
@@ -40,9 +38,9 @@ func (f *DefaultCellFactory) CellHeight() float32 {
 }
 
 // CreateCell implements CellFactory.
-func (f *DefaultCellFactory) CreateCell(owner Paneler, element interface{}, index int, foreground Ink, selected, focused bool) *Panel {
+func (f *DefaultCellFactory) CreateCell(owner Paneler, element any, index int, foreground Ink, selected, focused bool) *Panel {
 	txtLabel := NewLabel()
-	txtLabel.SetBorder(NewEmptyBorder(geom.Insets[float32]{Top: 2, Left: 4, Bottom: 2, Right: 4}))
+	txtLabel.SetBorder(NewEmptyBorder(Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}))
 	txtLabel.Text = fmt.Sprintf("%v", element)
 	txtLabel.Font = FieldFont
 	txtLabel.OnBackgroundInk = foreground

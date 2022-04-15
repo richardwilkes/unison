@@ -9,13 +9,11 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/xmath/geom"
-
 // Drawable represents a drawable object.
 type Drawable interface {
 	// LogicalSize returns the logical size of this object.
-	LogicalSize() geom.Size[float32]
+	LogicalSize() Size
 
 	// DrawInRect draws this object in the given rectangle.
-	DrawInRect(canvas *Canvas, rect geom.Rect[float32], sampling *SamplingOptions, paint *Paint)
+	DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOptions, paint *Paint)
 }

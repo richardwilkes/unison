@@ -11,8 +11,6 @@ package unison
 
 import (
 	"strings"
-
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // TabCloser defines the methods that must be implemented to cause the tabs to show a close button.
@@ -31,7 +29,7 @@ var DefaultDockTabTheme = DockTabTheme{
 	OnTabFocusedInk: OnTabFocusedColor,
 	TabCurrentInk:   TabCurrentColor,
 	OnTabCurrentInk: OnTabCurrentColor,
-	TabBorder:       NewEmptyBorder(geom.Insets[float32]{Top: 2, Left: 4, Bottom: 2, Right: 4}),
+	TabBorder:       NewEmptyBorder(Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}),
 	Gap:             4,
 	LabelTheme:      defaultLabelTheme(),
 	ButtonTheme:     defaultButtonTheme(),
@@ -98,7 +96,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		fSize := t.LabelTheme.Font.Baseline()
 		t.button.Drawable = &DrawableSVG{
 			SVG:  CircledXSVG(),
-			Size: geom.Size[float32]{Width: fSize, Height: fSize},
+			Size: Size{Width: fSize, Height: fSize},
 		}
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment, VAlign: MiddleAlignment})
 		t.AddChild(t.button)
@@ -113,7 +111,7 @@ func newDockTab(dockable Dockable) *dockTab {
 
 func (t *dockTab) TitleIcon() Drawable {
 	fSize := t.title.Font.Baseline()
-	return t.dockable.TitleIcon(geom.Size[float32]{Width: fSize, Height: fSize})
+	return t.dockable.TitleIcon(Size{Width: fSize, Height: fSize})
 }
 
 func (t *dockTab) fullTitle() string {
@@ -140,7 +138,7 @@ func (t *dockTab) updateTitle() {
 	}
 }
 
-func (t *dockTab) draw(gc *Canvas, rect geom.Rect[float32]) {
+func (t *dockTab) draw(gc *Canvas, rect Rect) {
 	var bg, fg Ink
 	if dc := DockContainerFor(t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
 		if dc == FocusedDockContainerFor(t.Window()) {
@@ -179,7 +177,7 @@ func (t *dockTab) attemptClose() {
 	}
 }
 
-func (t *dockTab) updateTooltip(where geom.Point[float32], suggestedAvoidInRoot geom.Rect[float32]) geom.Rect[float32] {
+func (t *dockTab) updateTooltip(where Point, suggestedAvoidInRoot Rect) Rect {
 	if tip := t.dockable.Tooltip(); tip != "" {
 		t.Tooltip = NewTooltipWithText(t.dockable.Tooltip())
 	} else {
@@ -188,7 +186,7 @@ func (t *dockTab) updateTooltip(where geom.Point[float32], suggestedAvoidInRoot 
 	return suggestedAvoidInRoot
 }
 
-func (t *dockTab) mouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (t *dockTab) mouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	if dc := DockContainerFor(t.dockable); dc != nil {
 		switch {
 		case dc.CurrentDockable() != t.dockable:
@@ -200,16 +198,16 @@ func (t *dockTab) mouseDown(where geom.Point[float32], button, clickCount int, m
 	return true
 }
 
-func (t *dockTab) mouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (t *dockTab) mouseDrag(where Point, button int, mod Modifiers) bool {
 	if t.IsDragGesture(where) {
 		if dc := DockContainerFor(t.dockable); dc != nil {
 			icon := t.TitleIcon()
 			size := icon.LogicalSize()
 			t.StartDataDrag(&DragData{
-				Data:     map[string]interface{}{dc.Dock.DragKey: t.dockable},
+				Data:     map[string]any{dc.Dock.DragKey: t.dockable},
 				Drawable: icon,
 				Ink:      t.title.OnBackgroundInk,
-				Offset:   geom.NewPoint(-size.Width/2, -size.Height/2),
+				Offset:   NewPoint(-size.Width/2, -size.Height/2),
 			})
 		}
 	}

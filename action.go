@@ -59,11 +59,11 @@ var (
 
 // Action describes an action that can be performed.
 type Action struct {
-	ID              int                             // Should be unique among all actions and menu items.
-	Title           string                          // Typically used in a menu item title or tooltip for a button.
-	KeyBinding      KeyBinding                      // The key binding that will trigger the action.
-	EnabledCallback func(*Action, interface{}) bool // Should return true if the action can be used. Care should be made to keep this method fast to avoid slowing down the user interface. May be nil, in which case it is assumed to always be enabled.
-	ExecuteCallback func(*Action, interface{})      // Will be called to run the action. May be nil.
+	ID              int                     // Should be unique among all actions and menu items.
+	Title           string                  // Typically used in a menu item title or tooltip for a button.
+	KeyBinding      KeyBinding              // The key binding that will trigger the action.
+	EnabledCallback func(*Action, any) bool // Should return true if the action can be used. Care should be made to keep this method fast to avoid slowing down the user interface. May be nil, in which case it is assumed to always be enabled.
+	ExecuteCallback func(*Action, any)      // Will be called to run the action. May be nil.
 }
 
 // NewMenuItem returns a newly created menu item using this action.
@@ -81,7 +81,7 @@ func (a *Action) NewContextMenuItemFromAction(f MenuFactory) MenuItem {
 }
 
 // Enabled returns true if the action can be used.
-func (a *Action) Enabled(src interface{}) bool {
+func (a *Action) Enabled(src any) bool {
 	if a.EnabledCallback == nil {
 		return true
 	}
@@ -99,7 +99,7 @@ func (a *Action) enabled(item MenuItem) bool {
 }
 
 // Execute the action.
-func (a *Action) Execute(src interface{}) {
+func (a *Action) Execute(src any) {
 	if a.ExecuteCallback != nil && a.Enabled(src) {
 		toolbox.Call(func() { a.ExecuteCallback(a, src) })
 	}
@@ -111,7 +111,7 @@ func (a *Action) execute(item MenuItem) {
 
 // RouteActionToFocusEnabledFunc is intended to be the EnabledCallback for actions that will route to the currently
 // focused UI widget and call CanPerformCmdCallback() on them.
-func RouteActionToFocusEnabledFunc(action *Action, src interface{}) bool {
+func RouteActionToFocusEnabledFunc(action *Action, src any) bool {
 	if wnd := ActiveWindow(); wnd != nil {
 		if focus := wnd.Focus(); focus != nil && focus.CanPerformCmdCallback != nil {
 			result := false
@@ -124,7 +124,7 @@ func RouteActionToFocusEnabledFunc(action *Action, src interface{}) bool {
 
 // RouteActionToFocusExecuteFunc is intended to be the ExecuteCallback for actions that will route to the currently
 // focused UI widget and call PerformCmdCallback() on them.
-func RouteActionToFocusExecuteFunc(action *Action, src interface{}) {
+func RouteActionToFocusExecuteFunc(action *Action, src any) {
 	if wnd := ActiveWindow(); wnd != nil {
 		if focus := wnd.Focus(); focus != nil && focus.PerformCmdCallback != nil {
 			toolbox.Call(func() { focus.PerformCmdCallback(src, action.ID) })

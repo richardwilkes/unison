@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
@@ -22,7 +21,7 @@ import (
 var DefaultTableHeaderTheme = TableHeaderTheme{
 	BackgroundInk: ControlColor,
 	DividerInk:    DividerColor,
-	HeaderBorder:  NewLineBorder(DividerColor, 0, geom.Insets[float32]{Bottom: 1}, false),
+	HeaderBorder:  NewLineBorder(DividerColor, 0, Insets{Bottom: 1}, false),
 }
 
 // TableHeaderTheme holds theming data for a TableHeader.
@@ -68,20 +67,20 @@ func NewTableHeader(table *Table, columnHeaders ...TableColumnHeader) *TableHead
 }
 
 // DefaultSizes provides the default sizing.
-func (h *TableHeader) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (h *TableHeader) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref.Width = h.Table.FrameRect().Size.Width
 	pref.Height = h.heightForColumns()
 	if border := h.Border(); border != nil {
 		insets := border.Insets()
 		pref.Height += insets.Top + insets.Bottom
 	}
-	return geom.NewSize[float32](16, pref.Height), pref, pref
+	return NewSize(16, pref.Height), pref, pref
 }
 
 // ColumnFrame returns the frame of the given column.
-func (h *TableHeader) ColumnFrame(col int) geom.Rect[float32] {
+func (h *TableHeader) ColumnFrame(col int) Rect {
 	if col < 0 || col >= len(h.Table.ColumnSizes) {
-		return geom.Rect[float32]{}
+		return Rect{}
 	}
 	insets := h.combinedInsets()
 	x := insets.Left
@@ -91,7 +90,7 @@ func (h *TableHeader) ColumnFrame(col int) geom.Rect[float32] {
 			x++
 		}
 	}
-	rect := geom.NewRect(x, insets.Top, h.Table.ColumnSizes[col].Current, h.FrameRect().Height-(insets.Top+insets.Bottom))
+	rect := NewRect(x, insets.Top, h.Table.ColumnSizes[col].Current, h.FrameRect().Height-(insets.Top+insets.Bottom))
 	rect.Inset(h.Table.Padding)
 	return rect
 }
@@ -105,7 +104,7 @@ func (h *TableHeader) heightForColumns() float32 {
 		}
 		w -= h.Table.Padding.Left + h.Table.Padding.Right
 		if i < len(h.ColumnHeaders) {
-			_, cpref, _ := h.ColumnHeaders[i].AsPanel().Sizes(geom.Size[float32]{Width: w})
+			_, cpref, _ := h.ColumnHeaders[i].AsPanel().Sizes(Size{Width: w})
 			cpref.Height += h.Table.Padding.Top + h.Table.Padding.Bottom
 			if height < cpref.Height {
 				height = cpref.Height
@@ -115,8 +114,8 @@ func (h *TableHeader) heightForColumns() float32 {
 	return xmath.Max(xmath.Ceil(height), h.Table.MinimumRowHeight)
 }
 
-func (h *TableHeader) combinedInsets() geom.Insets[float32] {
-	var insets geom.Insets[float32]
+func (h *TableHeader) combinedInsets() Insets {
+	var insets Insets
 	if border := h.Border(); border != nil {
 		insets = border.Insets()
 	}
@@ -133,7 +132,7 @@ func (h *TableHeader) combinedInsets() geom.Insets[float32] {
 }
 
 // DefaultDraw provides the default drawing.
-func (h *TableHeader) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (h *TableHeader) DefaultDraw(canvas *Canvas, dirty Rect) {
 	canvas.DrawRect(dirty, h.BackgroundInk.Paint(canvas, dirty, Fill))
 
 	var firstCol int
@@ -189,7 +188,7 @@ func (h *TableHeader) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	}
 }
 
-func (h *TableHeader) installCell(cell *Panel, frame geom.Rect[float32]) {
+func (h *TableHeader) installCell(cell *Panel, frame Rect) {
 	cell.SetFrameRect(frame)
 	cell.ValidateLayout()
 	cell.parent = h.AsPanel()
@@ -200,7 +199,7 @@ func (h *TableHeader) uninstallCell(cell *Panel) {
 }
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.
-func (h *TableHeader) DefaultUpdateCursorCallback(where geom.Point[float32]) *Cursor {
+func (h *TableHeader) DefaultUpdateCursorCallback(where Point) *Cursor {
 	if !h.Table.PreventUserColumnResize {
 		if over := h.Table.OverColumnDivider(where.X); over != -1 {
 			if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
@@ -223,7 +222,7 @@ func (h *TableHeader) DefaultUpdateCursorCallback(where geom.Point[float32]) *Cu
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (h *TableHeader) DefaultUpdateTooltipCallback(where geom.Point[float32], suggestedAvoidInRoot geom.Rect[float32]) geom.Rect[float32] {
+func (h *TableHeader) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
 	if col := h.Table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateTooltipCallback != nil {
@@ -245,11 +244,11 @@ func (h *TableHeader) DefaultUpdateTooltipCallback(where geom.Point[float32], su
 		}
 	}
 	h.Tooltip = nil
-	return geom.Rect[float32]{}
+	return Rect{}
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (h *TableHeader) DefaultMouseMove(where geom.Point[float32], mod Modifiers) bool {
+func (h *TableHeader) DefaultMouseMove(where Point, mod Modifiers) bool {
 	stop := false
 	if col := h.Table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
@@ -265,7 +264,7 @@ func (h *TableHeader) DefaultMouseMove(where geom.Point[float32], mod Modifiers)
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (h *TableHeader) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (h *TableHeader) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	h.interactionColumn = -1
 	h.inHeader = false
 	if !h.Table.PreventUserColumnResize {
@@ -311,7 +310,7 @@ func (h *TableHeader) DefaultMouseDown(where geom.Point[float32], button, clickC
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (h *TableHeader) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (h *TableHeader) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	if !h.Table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
 		width := h.columnResizeBase + where.X - h.columnResizeStart
 		if width < h.columnResizeOverhead {
@@ -337,7 +336,7 @@ func (h *TableHeader) DefaultMouseDrag(where geom.Point[float32], button int, mo
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *TableHeader) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (h *TableHeader) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if h.inHeader && h.interactionColumn != -1 {
 		cell := h.ColumnHeaders[h.interactionColumn].AsPanel()

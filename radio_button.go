@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultRadioButtonTheme holds the default RadioButtonTheme values for RadioButtons. Modifying this data will not
@@ -79,7 +78,7 @@ func NewRadioButton() *RadioButton {
 }
 
 // DefaultSizes provides the default sizing.
-func (r *RadioButton) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (r *RadioButton) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref = r.circleAndLabelSize()
 	if border := r.Border(); border != nil {
 		pref.AddInsets(border.Insets())
@@ -89,10 +88,10 @@ func (r *RadioButton) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom
 	return pref, pref, MaxSize(pref)
 }
 
-func (r *RadioButton) circleAndLabelSize() geom.Size[float32] {
+func (r *RadioButton) circleAndLabelSize() Size {
 	circleSize := r.circleSize()
 	if r.Drawable == nil && r.Text == "" {
-		return geom.Size[float32]{Width: circleSize, Height: circleSize}
+		return Size{Width: circleSize, Height: circleSize}
 	}
 	size := LabelSize(r.textCache.Text(r.Text, r.Font), r.Drawable, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
@@ -107,7 +106,7 @@ func (r *RadioButton) circleSize() float32 {
 }
 
 // DefaultDraw provides the default drawing.
-func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty Rect) {
 	rect := r.ContentRect(false)
 	size := r.circleAndLabelSize()
 	switch r.HAlign {
@@ -178,14 +177,14 @@ func (r *RadioButton) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (r *RadioButton) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	r.Pressed = true
 	r.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (r *RadioButton) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	rect := r.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if r.Pressed != pressed {
@@ -196,7 +195,7 @@ func (r *RadioButton) DefaultMouseDrag(where geom.Point[float32], button int, mo
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (r *RadioButton) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
 	rect := r.ContentRect(false)

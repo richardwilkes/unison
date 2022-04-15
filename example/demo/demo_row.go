@@ -13,7 +13,6 @@ import (
 	"strconv"
 
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -76,7 +75,7 @@ func (d *demoRow) ColumnCell(row, col int, selected bool) unison.Paneler {
 		if d.doubleHeight {
 			addWrappedText(wrapper, "A little note…", unison.LabelFont.Face().Font(unison.LabelFont.Size()-1), width, selected)
 		}
-		wrapper.UpdateTooltipCallback = func(where geom.Point[float32], suggestedAvoidInRoot geom.Rect[float32]) geom.Rect[float32] {
+		wrapper.UpdateTooltipCallback = func(where unison.Point, suggestedAvoidInRoot unison.Rect) unison.Rect {
 			wrapper.Tooltip = unison.NewTooltipWithText("A tooltip for the cell")
 			return wrapper.RectToRoot(wrapper.ContentRect(true))
 		}

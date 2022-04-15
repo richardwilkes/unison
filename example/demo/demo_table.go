@@ -12,7 +12,6 @@ package demo
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -21,7 +20,7 @@ const topLevelRowsToMake = 100
 var tableCounter int
 
 // NewDemoTableWindow creates and displays our demo table window.
-func NewDemoTableWindow(where geom.Point[float32]) (*unison.Window, error) {
+func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 	// Create the window
 	tableCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Table #%d", tableCounter))
@@ -43,7 +42,7 @@ func NewDemoTableWindow(where geom.Point[float32]) (*unison.Window, error) {
 		table.ColumnSizes[i].Minimum = 20
 		table.ColumnSizes[i].Maximum = 10000
 	}
-	_, checkColSize, _ := unison.NewCheckBox().Sizes(geom.Size[float32]{})
+	_, checkColSize, _ := unison.NewCheckBox().Sizes(unison.Size{})
 	table.ColumnSizes[0].Minimum = checkColSize.Width
 	table.ColumnSizes[0].Maximum = checkColSize.Width
 	rows := make([]unison.TableRowData, topLevelRowsToMake)

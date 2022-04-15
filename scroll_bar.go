@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
@@ -125,9 +124,9 @@ func (s *ScrollBar) SetRange(value, extent, max float32) {
 }
 
 // Thumb returns the location of the thumb.
-func (s *ScrollBar) Thumb() geom.Rect[float32] {
+func (s *ScrollBar) Thumb() Rect {
 	if s.max == 0 {
-		return geom.Rect[float32]{}
+		return Rect{}
 	}
 	r := s.ContentRect(false)
 	if s.horizontal {
@@ -136,18 +135,18 @@ func (s *ScrollBar) Thumb() geom.Rect[float32] {
 		if size < s.MinimumThumb {
 			size = s.MinimumThumb
 		}
-		return geom.NewRect(start, s.ThumbIndent, size, r.Height-2*s.ThumbIndent)
+		return NewRect(start, s.ThumbIndent, size, r.Height-2*s.ThumbIndent)
 	}
 	start := r.Height * (s.value / s.max)
 	size := r.Height * (s.extent / s.max)
 	if size < s.MinimumThumb {
 		size = s.MinimumThumb
 	}
-	return geom.NewRect(s.ThumbIndent, start, r.Width-2*s.ThumbIndent, size)
+	return NewRect(s.ThumbIndent, start, r.Width-2*s.ThumbIndent, size)
 }
 
 // DefaultSizes provides the default sizing.
-func (s *ScrollBar) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (s *ScrollBar) DefaultSizes(hint Size) (min, pref, max Size) {
 	min.Width = s.MinimumThickness
 	min.Height = s.MinimumThickness
 	if s.horizontal {
@@ -165,7 +164,7 @@ func (s *ScrollBar) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.S
 }
 
 // DefaultDraw provides the default drawing.
-func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom.Rect[float32]) {
+func (s *ScrollBar) DefaultDraw(gc *Canvas, rect Rect) {
 	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
 		var ink Ink
 		if s.overThumb {
@@ -179,7 +178,7 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, rect geom.Rect[float32]) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *ScrollBar) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	thumb := s.Thumb()
 	if !thumb.ContainsPoint(where) {
 		s.dragOffset = 0
@@ -198,14 +197,14 @@ func (s *ScrollBar) DefaultMouseDown(where geom.Point[float32], button, clickCou
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *ScrollBar) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	s.trackingThumb = false
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (s *ScrollBar) DefaultMouseEnter(where geom.Point[float32], mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseEnter(where Point, mod Modifiers) bool {
 	if !s.trackingThumb {
 		s.checkOverThumb(where)
 	}
@@ -222,19 +221,19 @@ func (s *ScrollBar) DefaultMouseExit() bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (s *ScrollBar) DefaultMouseMove(where geom.Point[float32], mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseMove(where Point, mod Modifiers) bool {
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *ScrollBar) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	s.adjustValueForPoint(where)
 	s.MarkForRedraw()
 	return true
 }
 
-func (s *ScrollBar) adjustValueForPoint(pt geom.Point[float32]) {
+func (s *ScrollBar) adjustValueForPoint(pt Point) {
 	r := s.ContentRect(false)
 	thumb := s.Thumb()
 	var pos, max float32
@@ -252,7 +251,7 @@ func (s *ScrollBar) adjustValueForPoint(pt geom.Point[float32]) {
 	}
 }
 
-func (s *ScrollBar) checkOverThumb(pt geom.Point[float32]) {
+func (s *ScrollBar) checkOverThumb(pt Point) {
 	was := s.overThumb //nolint:ifshort // Can't move this into the if statement
 	s.overThumb = s.Thumb().ContainsPoint(pt)
 	if was != s.overThumb {

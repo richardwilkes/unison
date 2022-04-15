@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var (
@@ -233,7 +232,7 @@ func extractColorPercentage(buffer string) (float32, error) {
 }
 
 // Paint returns a Paint for this Color. Here to satisfy the Ink interface.
-func (c Color) Paint(_ *Canvas, _ geom.Rect[float32], style PaintStyle) *Paint {
+func (c Color) Paint(_ *Canvas, _ Rect, style PaintStyle) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	paint.SetColor(c)

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // WellMask is used to limit the types of ink permitted in the ink well.
@@ -121,7 +120,7 @@ func (w *Well) SetInk(ink Ink) {
 }
 
 // DefaultSizes provides the default sizing.
-func (w *Well) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (w *Well) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref.Width = 4 + w.ContentSize
 	pref.Height = 4 + w.ContentSize
 	if border := w.Border(); border != nil {
@@ -133,7 +132,7 @@ func (w *Well) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[f
 }
 
 // DefaultDraw provides the default drawing.
-func (w *Well) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (w *Well) DefaultDraw(canvas *Canvas, dirty Rect) {
 	r := w.ContentRect(false)
 	var bg Ink
 	switch {
@@ -170,14 +169,14 @@ func (w *Well) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (w *Well) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (w *Well) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	w.Pressed = true
 	w.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (w *Well) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (w *Well) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	rect := w.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if w.Pressed != pressed {
@@ -188,7 +187,7 @@ func (w *Well) DefaultMouseDrag(where geom.Point[float32], button int, mod Modif
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (w *Well) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (w *Well) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	w.Pressed = false
 	w.MarkForRedraw()
 	rect := w.ContentRect(false)

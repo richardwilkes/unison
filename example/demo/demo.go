@@ -16,14 +16,13 @@ import (
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
 var windowCounter int
 
 // NewDemoWindow creates and displays our demo window.
-func NewDemoWindow(where geom.Point[float32]) (*unison.Window, error) {
+func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create the window
 	windowCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Demo #%d", windowCounter))
@@ -36,7 +35,7 @@ func NewDemoWindow(where geom.Point[float32]) (*unison.Window, error) {
 
 	// Put some empty space around the edges of our window and apply a single column layout.
 	content := wnd.Content()
-	content.SetBorder(unison.NewEmptyBorder(geom.NewUniformInsets[float32](10)))
+	content.SetBorder(unison.NewEmptyBorder(unison.NewUniformInsets(10)))
 	content.SetLayout(&unison.FlexLayout{
 		Columns:  1,
 		HSpacing: unison.StdHSpacing,
@@ -243,7 +242,7 @@ func createImageButtonsPanel() *unison.Panel {
 		// Add spacer
 		spacer := &unison.Panel{}
 		spacer.Self = spacer
-		spacer.SetSizer(func(_ geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+		spacer.SetSizer(func(_ unison.Size) (min, pref, max unison.Size) {
 			min.Width = 40
 			pref.Width = 40
 			max.Width = 40
@@ -536,10 +535,10 @@ func createListPanel() *unison.Panel {
 	lst.DoubleClickCallback = func() {
 		jot.Info("Double-clicked on the list")
 	}
-	_, prefSize, _ := lst.Sizes(geom.Size[float32]{})
-	lst.SetFrameRect(geom.Rect[float32]{Size: prefSize})
+	_, prefSize, _ := lst.Sizes(unison.Size{})
+	lst.SetFrameRect(unison.Rect{Size: prefSize})
 	scroller := unison.NewScrollPanel()
-	scroller.SetBorder(unison.NewLineBorder(unison.DividerColor, 0, geom.NewUniformInsets[float32](1), false))
+	scroller.SetBorder(unison.NewLineBorder(unison.DividerColor, 0, unison.NewUniformInsets(1), false))
 	scroller.SetContent(lst, unison.FillBehavior)
 	scroller.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
@@ -563,15 +562,15 @@ func createImagePanel() *unison.Label {
 		jot.Error(err)
 	} else {
 		size := logoImg.LogicalSize()
-		cursor = unison.NewCursor(logoImg, geom.Point[float32]{
+		cursor = unison.NewCursor(logoImg, unison.Point{
 			X: size.Width / 2,
 			Y: size.Height / 2,
 		})
 	}
-	imgPanel.UpdateCursorCallback = func(where geom.Point[float32]) *unison.Cursor { return cursor }
+	imgPanel.UpdateCursorCallback = func(where unison.Point) *unison.Cursor { return cursor }
 
 	// Add a tooltip that shows the current mouse coordinates
-	imgPanel.UpdateTooltipCallback = func(where geom.Point[float32], suggestedAvoidInRoot geom.Rect[float32]) geom.Rect[float32] {
+	imgPanel.UpdateTooltipCallback = func(where unison.Point, suggestedAvoidInRoot unison.Rect) unison.Rect {
 		imgPanel.Tooltip = unison.NewTooltipWithText(where.String())
 		suggestedAvoidInRoot.X = where.X - 16
 		suggestedAvoidInRoot.Y = where.Y - 16
@@ -589,8 +588,8 @@ func createImagePanel() *unison.Label {
 	}
 
 	// Set the set of the widget to match its preferred size
-	_, prefSize, _ := imgPanel.Sizes(geom.Size[float32]{})
-	imgPanel.SetFrameRect(geom.Rect[float32]{Size: prefSize})
+	_, prefSize, _ := imgPanel.Sizes(unison.Size{})
+	imgPanel.SetFrameRect(unison.Rect{Size: prefSize})
 
 	return imgPanel
 }
@@ -613,8 +612,8 @@ func createWellsPanel(imgPanel *unison.Label) *unison.Panel {
 		ink := well1.Ink()
 		if pattern, ok := ink.(*unison.Pattern); ok {
 			imgPanel.Drawable = pattern.Image
-			_, pSize, _ := imgPanel.Sizes(geom.Size[float32]{})
-			imgPanel.SetFrameRect(geom.Rect[float32]{Size: pSize})
+			_, pSize, _ := imgPanel.Sizes(unison.Size{})
+			imgPanel.SetFrameRect(unison.Rect{Size: pSize})
 			imgPanel.MarkForRedraw()
 		}
 	}

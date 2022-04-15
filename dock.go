@@ -13,7 +13,6 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultDockTheme holds the default DockTheme values for Docks. Modifying this data will not alter existing Docks, but
@@ -158,13 +157,13 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 }
 
 // DefaultDraw fills in the background.
-func (d *Dock) DefaultDraw(gc *Canvas, dirty geom.Rect[float32]) {
+func (d *Dock) DefaultDraw(gc *Canvas, dirty Rect) {
 	rect := d.ContentRect(true)
 	gc.DrawRect(rect, d.BackgroundInk.Paint(gc, rect, Fill))
 }
 
 // DefaultDrawOver draws the dividers and any drag markers.
-func (d *Dock) DefaultDrawOver(gc *Canvas, dirty geom.Rect[float32]) {
+func (d *Dock) DefaultDrawOver(gc *Canvas, dirty Rect) {
 	if d.MaximizedContainer == nil {
 		d.drawDividers(gc, d.layout, dirty)
 	}
@@ -194,9 +193,9 @@ func (d *Dock) DefaultDrawOver(gc *Canvas, dirty geom.Rect[float32]) {
 	}
 }
 
-func (d *Dock) drawDividers(canvas *Canvas, layout *DockLayout, clip geom.Rect[float32]) {
+func (d *Dock) drawDividers(canvas *Canvas, layout *DockLayout, clip Rect) {
 	frame := layout.FrameRect()
-	frame.Inset(geom.NewUniformInsets[float32](1))
+	frame.Inset(NewUniformInsets(1))
 	if clip.Intersects(frame) {
 		if layout.Full() {
 			if layout.Horizontal {
@@ -211,7 +210,7 @@ func (d *Dock) drawDividers(canvas *Canvas, layout *DockLayout, clip geom.Rect[f
 	}
 }
 
-func (d *Dock) drawDockLayoutNode(canvas *Canvas, node DockLayoutNode, clip geom.Rect[float32]) {
+func (d *Dock) drawDockLayoutNode(canvas *Canvas, node DockLayoutNode, clip Rect) {
 	if dl, ok := node.(*DockLayout); ok {
 		d.drawDividers(canvas, dl, clip)
 	}
@@ -235,7 +234,7 @@ func (d *Dock) drawHorizontalGripper(canvas *Canvas, node DockLayoutNode) {
 	y := frame.Y + (frame.Height-gripLength)/2
 	paint := d.GripInk.Paint(canvas, frame, Fill)
 	for yy := y; yy < y+gripLength; yy += d.GripHeight + d.GripGap {
-		canvas.DrawRect(geom.NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
+		canvas.DrawRect(NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
 	}
 	x = frame.X - dividerSize + 0.5
 	canvas.DrawLine(x, frame.Y, x, frame.Bottom(), paint)
@@ -251,7 +250,7 @@ func (d *Dock) drawVerticalGripper(canvas *Canvas, node DockLayoutNode) {
 	y := frame.Y - dividerSize + (dividerSize-d.GripWidth)/2
 	paint := d.GripInk.Paint(canvas, frame, Fill)
 	for xx := x; xx < x+gripLength; xx += d.GripHeight + d.GripGap {
-		canvas.DrawRect(geom.NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
+		canvas.DrawRect(NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
 	}
 	y = frame.Y - dividerSize + 0.5
 	canvas.DrawLine(frame.X, y, frame.Right(), y, paint)
@@ -290,7 +289,7 @@ func (d *Dock) DefaultFocusChangeInHierarchy(from, to *Panel) {
 }
 
 // DefaultUpdateCursor adjusts the cursor for any dividers it may be over.
-func (d *Dock) DefaultUpdateCursor(where geom.Point[float32]) *Cursor {
+func (d *Dock) DefaultUpdateCursor(where Point) *Cursor {
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
 		if dl.Horizontal {
@@ -301,7 +300,7 @@ func (d *Dock) DefaultUpdateCursor(where geom.Point[float32]) *Cursor {
 	return ArrowCursor()
 }
 
-func (d *Dock) overNode(node DockLayoutNode, where geom.Point[float32]) DockLayoutNode {
+func (d *Dock) overNode(node DockLayoutNode, where Point) DockLayoutNode {
 	if dockLayoutNodeContains(node, where) {
 		switch n := node.(type) {
 		case *DockLayout:
@@ -320,7 +319,7 @@ func (d *Dock) overNode(node DockLayoutNode, where geom.Point[float32]) DockLayo
 	return nil
 }
 
-func dockLayoutNodeContains(node DockLayoutNode, where geom.Point[float32]) bool {
+func dockLayoutNodeContains(node DockLayoutNode, where Point) bool {
 	if node != nil {
 		return node.FrameRect().ContainsPoint(where)
 	}
@@ -328,7 +327,7 @@ func dockLayoutNodeContains(node DockLayoutNode, where geom.Point[float32]) bool
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (d *Dock) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (d *Dock) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
 		d.dividerDragLayout = dl
@@ -345,12 +344,12 @@ func (d *Dock) DefaultMouseDown(where geom.Point[float32], button, clickCount in
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (d *Dock) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (d *Dock) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	d.dragDivider(where)
 	return true
 }
 
-func (d *Dock) dragDivider(where geom.Point[float32]) {
+func (d *Dock) dragDivider(where Point) {
 	if d.dividerDragLayout != nil {
 		if !d.dividerDragIsValid {
 			d.dividerDragIsValid = d.IsDragGesture(where)
@@ -368,7 +367,7 @@ func (d *Dock) dragDivider(where geom.Point[float32]) {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (d *Dock) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (d *Dock) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	if d.dividerDragLayout != nil {
 		if d.dividerDragIsValid {
 			d.dragDivider(where)
@@ -379,7 +378,7 @@ func (d *Dock) DefaultMouseUp(where geom.Point[float32], button int, mod Modifie
 }
 
 // DefaultDataDragOver provides the default data drag over handling.
-func (d *Dock) DefaultDataDragOver(where geom.Point[float32], data map[string]interface{}) bool {
+func (d *Dock) DefaultDataDragOver(where Point, data map[string]any) bool {
 	if d.MaximizedContainer != nil {
 		return false
 	}
@@ -388,7 +387,7 @@ func (d *Dock) DefaultDataDragOver(where geom.Point[float32], data map[string]in
 }
 
 // DockableFromDragData attempts to extract a Dockable from the given key in the data.
-func DockableFromDragData(key string, data map[string]interface{}) Dockable {
+func DockableFromDragData(key string, data map[string]any) Dockable {
 	if keyData, ok := data[key]; ok {
 		if dockable, ok2 := keyData.(Dockable); ok2 {
 			return dockable
@@ -397,7 +396,7 @@ func DockableFromDragData(key string, data map[string]interface{}) Dockable {
 	return nil
 }
 
-func (d *Dock) updateDragDockable(where geom.Point[float32], data map[string]interface{}) {
+func (d *Dock) updateDragDockable(where Point, data map[string]any) {
 	d.dragDockable = nil
 	d.dragOverNode = nil
 	if dockable := DockableFromDragData(d.DragKey, data); dockable != nil {
@@ -430,7 +429,7 @@ func (d *Dock) DefaultDataDragExit() {
 }
 
 // DefaultDataDrop provides the default data drop handling.
-func (d *Dock) DefaultDataDrop(where geom.Point[float32], data map[string]interface{}) {
+func (d *Dock) DefaultDataDrop(where Point, data map[string]any) {
 	d.updateDragDockable(where, data)
 	if d.dragDockable != nil && d.dragOverNode != nil {
 		d.DockTo(d.dragDockable, d.dragOverNode, d.dragSide)

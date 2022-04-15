@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Layout = &dockHeader{}
@@ -24,8 +23,8 @@ var _ Layout = &dockHeader{}
 var DefaultDockHeaderTheme = DockHeaderTheme{
 	BackgroundInk: BackgroundColor,
 	DropAreaInk:   DropAreaColor,
-	HeaderBorder: NewCompoundBorder(NewLineBorder(DividerColor, 0, geom.Insets[float32]{Bottom: 1}, false),
-		NewEmptyBorder(geom.NewHorizontalInsets[float32](4))),
+	HeaderBorder: NewCompoundBorder(NewLineBorder(DividerColor, 0, Insets{Bottom: 1}, false),
+		NewEmptyBorder(NewHorizontalInsets(4))),
 	MinimumTabWidth: 50,
 	TabGap:          4,
 	TabInsertSize:   3,
@@ -75,7 +74,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	return d
 }
 
-func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect[float32]) {
+func (d *dockHeader) DefaultDraw(gc *Canvas, rect Rect) {
 	gc.DrawRect(rect, d.BackgroundInk.Paint(gc, rect, Fill))
 	if d.dragInsertIndex >= 0 {
 		r := d.ContentRect(false)
@@ -91,11 +90,11 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect[float32]) {
 	}
 }
 
-func (d *dockHeader) DefaultDataDragOver(where geom.Point[float32], data map[string]interface{}) bool {
+func (d *dockHeader) DefaultDataDragOver(where Point, data map[string]any) bool {
 	return d.dragOver(where, data) != nil
 }
 
-func (d *dockHeader) dragOver(where geom.Point[float32], data map[string]interface{}) Dockable {
+func (d *dockHeader) dragOver(where Point, data map[string]any) Dockable {
 	d.dragInsertIndex = -1
 	if dockable := DockableFromDragData(d.owner.Dock.DragKey, data); dockable != nil {
 		tabs, _ := d.partition()
@@ -120,7 +119,7 @@ func (d *dockHeader) DefaultDataDragExit() {
 	d.dragInsertIndex = -1
 }
 
-func (d *dockHeader) DefaultDataDrop(where geom.Point[float32], data map[string]interface{}) {
+func (d *dockHeader) DefaultDataDrop(where Point, data map[string]any) {
 	if dockable := d.dragOver(where, data); dockable != nil {
 		d.owner.Stack(dockable, d.dragInsertIndex)
 	}
@@ -158,10 +157,10 @@ func (d *dockHeader) partition() (tabs []*dockTab, buttons []*Panel) {
 	return tabs, buttons
 }
 
-func (d *dockHeader) LayoutSizes(target *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (d *dockHeader) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
 	tabs, buttons := d.partition()
 	for i, dt := range tabs {
-		_, size, _ := dt.Sizes(geom.Size[float32]{})
+		_, size, _ := dt.Sizes(Size{})
 		pref.Width += xmath.Max(size.Width, d.MinimumTabWidth)
 		pref.Height = xmath.Max(pref.Height, size.Height)
 		if i == 0 {
@@ -170,7 +169,7 @@ func (d *dockHeader) LayoutSizes(target *Panel, hint geom.Size[float32]) (min, p
 	}
 	for _, b := range buttons {
 		if b.Self != d.overflowButton {
-			_, size, _ := b.Sizes(geom.Size[float32]{})
+			_, size, _ := b.Sizes(Size{})
 			pref.Width += size.Width
 			pref.Height = xmath.Max(pref.Height, size.Height)
 			min.Width += size.Width
@@ -191,17 +190,17 @@ func (d *dockHeader) LayoutSizes(target *Panel, hint geom.Size[float32]) (min, p
 func (d *dockHeader) PerformLayout(target *Panel) {
 	contentRect := d.ContentRect(false)
 	tabs, buttons := d.partition()
-	tabSizes := make([]geom.Size[float32], len(tabs))
+	tabSizes := make([]Size, len(tabs))
 	extra := contentRect.Width
 	for i, dt := range tabs {
-		_, tabSizes[i], _ = dt.Sizes(geom.Size[float32]{})
+		_, tabSizes[i], _ = dt.Sizes(Size{})
 		tabSizes[i].Width = xmath.Max(tabSizes[i].Width, d.MinimumTabWidth)
 		extra -= tabSizes[i].Width
 	}
-	buttonSizes := make([]geom.Size[float32], len(buttons))
+	buttonSizes := make([]Size, len(buttons))
 	overflowIndex := -1
 	for i, b := range buttons {
-		_, buttonSizes[i], _ = b.Sizes(geom.Size[float32]{})
+		_, buttonSizes[i], _ = b.Sizes(Size{})
 		if b.Self == d.overflowButton {
 			overflowIndex = i
 		} else {
@@ -252,7 +251,7 @@ func (d *dockHeader) PerformLayout(target *Panel) {
 					remaining -= buttonSizes[overflowIndex].Width
 					hidden[tabs[i]] = true
 					d.overflowButton.Text = "»" + strconv.Itoa(len(hidden))
-					_, buttonSizes[overflowIndex], _ = d.overflowButton.Sizes(geom.Size[float32]{})
+					_, buttonSizes[overflowIndex], _ = d.overflowButton.Sizes(Size{})
 					remaining += buttonSizes[overflowIndex].Width
 					remaining -= tabSizes[i].Width + d.TabGap
 				}
@@ -273,7 +272,7 @@ func (d *dockHeader) PerformLayout(target *Panel) {
 			dt.Hidden = true
 		} else {
 			dt.Hidden = false
-			r := geom.NewRect(x, contentRect.Y+(contentRect.Height-tabSizes[i].Height)/2, tabSizes[i].Width, tabSizes[i].Height)
+			r := NewRect(x, contentRect.Y+(contentRect.Height-tabSizes[i].Height)/2, tabSizes[i].Width, tabSizes[i].Height)
 			r.Align()
 			dt.SetFrameRect(r)
 			x += tabSizes[i].Width + d.TabGap
@@ -285,7 +284,7 @@ func (d *dockHeader) PerformLayout(target *Panel) {
 			b.Hidden = true
 		} else {
 			b.Hidden = false
-			r := geom.NewRect(x, contentRect.Y+(contentRect.Height-buttonSizes[i].Height)/2, buttonSizes[i].Width, buttonSizes[i].Height)
+			r := NewRect(x, contentRect.Y+(contentRect.Height-buttonSizes[i].Height)/2, buttonSizes[i].Width, buttonSizes[i].Height)
 			r.Align()
 			b.SetFrameRect(r)
 			x += buttonSizes[i].Width + d.TabGap
@@ -314,7 +313,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowRestoreSVG(),
-		Size: geom.Size[float32]{Width: fSize, Height: fSize},
+		Size: Size{Width: fSize, Height: fSize},
 	}
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Restore"))
 }
@@ -324,7 +323,7 @@ func (d *dockHeader) adjustToRestoredState() {
 	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowMaximizeSVG(),
-		Size: geom.Size[float32]{Width: fSize, Height: fSize},
+		Size: Size{Width: fSize, Height: fSize},
 	}
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))
 }

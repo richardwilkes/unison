@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // TableRowData provides information about a single row of data.
@@ -54,8 +53,8 @@ type tableCache struct {
 }
 
 type tableHitRect struct {
-	geom.Rect[float32]
-	handler func(where geom.Point[float32], button, clickCount int, mod Modifiers)
+	Rect
+	handler func(where Point, button, clickCount int, mod Modifiers)
 }
 
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
@@ -70,7 +69,7 @@ var DefaultTableTheme = TableTheme{
 	OnSelectionInk:         OnSelectionColor,
 	IndirectSelectionInk:   InactiveSelectionColor,
 	OnIndirectSelectionInk: OnInactiveSelectionColor,
-	Padding:                geom.NewUniformInsets[float32](4),
+	Padding:                NewUniformInsets(4),
 	HierarchyColumnIndex:   0,
 	HierarchyIndent:        16,
 	MinimumRowHeight:       16,
@@ -90,7 +89,7 @@ type TableTheme struct {
 	OnSelectionInk         Ink
 	IndirectSelectionInk   Ink
 	OnIndirectSelectionInk Ink
-	Padding                geom.Insets[float32]
+	Padding                Insets
 	HierarchyColumnIndex   int
 	HierarchyIndent        float32
 	MinimumRowHeight       float32
@@ -146,10 +145,10 @@ func NewTable() *Table {
 }
 
 // DefaultDraw provides the default drawing.
-func (t *Table) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 	canvas.DrawRect(dirty, t.BackgroundInk.Paint(canvas, dirty, Fill))
 
-	var insets geom.Insets[float32]
+	var insets Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
 	}
@@ -249,7 +248,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 					canvas.Save()
 					left := cellRect.X + t.HierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
 					top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
-					t.hitRects = append(t.hitRects, t.newTableHitRect(geom.NewRect(left, top, disclosureSize,
+					t.hitRects = append(t.hitRects, t.newTableHitRect(NewRect(left, top, disclosureSize,
 						disclosureSize), row))
 					canvas.Translate(left, top)
 					if row.IsOpen() {
@@ -258,7 +257,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 						canvas.Rotate(90)
 						canvas.Translate(-offset, -offset)
 					}
-					canvas.DrawPath(CircledChevronRightSVG().PathForSize(geom.NewSize[float32](disclosureSize, disclosureSize)),
+					canvas.DrawPath(CircledChevronRightSVG().PathForSize(NewSize(disclosureSize, disclosureSize)),
 						fg.Paint(canvas, cellRect, Fill))
 					canvas.Restore()
 				}
@@ -287,7 +286,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 	}
 }
 
-func (t *Table) installCell(cell *Panel, frame geom.Rect[float32]) {
+func (t *Table) installCell(cell *Panel, frame Rect) {
 	cell.SetFrameRect(frame)
 	cell.ValidateLayout()
 	cell.parent = t.AsPanel()
@@ -299,7 +298,7 @@ func (t *Table) uninstallCell(cell *Panel) {
 
 // OverRow returns the row index that the y coordinate is over, or -1 if it isn't over any row.
 func (t *Table) OverRow(y float32) int {
-	var insets geom.Insets[float32]
+	var insets Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
 	}
@@ -319,7 +318,7 @@ func (t *Table) OverRow(y float32) int {
 
 // OverColumn returns the column index that the x coordinate is over, or -1 if it isn't over any column.
 func (t *Table) OverColumn(x float32) int {
-	var insets geom.Insets[float32]
+	var insets Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
 	}
@@ -343,7 +342,7 @@ func (t *Table) OverColumnDivider(x float32) int {
 	if len(t.ColumnSizes) < 2 {
 		return -1
 	}
-	var insets geom.Insets[float32]
+	var insets Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
 	}
@@ -373,11 +372,11 @@ func (t *Table) CellWidth(row, col int) float32 {
 }
 
 // CellFrame returns the frame of the given cell.
-func (t *Table) CellFrame(row, col int) geom.Rect[float32] {
+func (t *Table) CellFrame(row, col int) Rect {
 	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.ColumnSizes) {
-		return geom.Rect[float32]{}
+		return Rect{}
 	}
-	var insets geom.Insets[float32]
+	var insets Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
 	}
@@ -395,7 +394,7 @@ func (t *Table) CellFrame(row, col int) geom.Rect[float32] {
 			y++
 		}
 	}
-	rect := geom.NewRect(x, y, t.rowCache[row].height, t.ColumnSizes[col].Current)
+	rect := NewRect(x, y, t.rowCache[row].height, t.ColumnSizes[col].Current)
 	rect.Inset(t.Padding)
 	if col == t.HierarchyColumnIndex {
 		indent := t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
@@ -406,9 +405,9 @@ func (t *Table) CellFrame(row, col int) geom.Rect[float32] {
 }
 
 // RowFrame returns the frame of the row.
-func (t *Table) RowFrame(row int) geom.Rect[float32] {
+func (t *Table) RowFrame(row int) Rect {
 	if row < 0 || row >= len(t.rowCache) {
-		return geom.Rect[float32]{}
+		return Rect{}
 	}
 	rect := t.ContentRect(false)
 	for i := 0; i < row; i++ {
@@ -421,10 +420,10 @@ func (t *Table) RowFrame(row int) geom.Rect[float32] {
 	return rect
 }
 
-func (t *Table) newTableHitRect(rect geom.Rect[float32], row TableRowData) tableHitRect {
+func (t *Table) newTableHitRect(rect Rect, row TableRowData) tableHitRect {
 	return tableHitRect{
 		Rect: rect,
-		handler: func(where geom.Point[float32], button, clickCount int, mod Modifiers) {
+		handler: func(where Point, button, clickCount int, mod Modifiers) {
 			row.SetOpen(!row.IsOpen())
 			t.SyncToModel()
 			t.MarkForRedraw()
@@ -433,7 +432,7 @@ func (t *Table) newTableHitRect(rect geom.Rect[float32], row TableRowData) table
 }
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.
-func (t *Table) DefaultUpdateCursorCallback(where geom.Point[float32]) *Cursor {
+func (t *Table) DefaultUpdateCursorCallback(where Point) *Cursor {
 	if !t.PreventUserColumnResize {
 		if over := t.OverColumnDivider(where.X); over != -1 {
 			if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
@@ -459,7 +458,7 @@ func (t *Table) DefaultUpdateCursorCallback(where geom.Point[float32]) *Cursor {
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (t *Table) DefaultUpdateTooltipCallback(where geom.Point[float32], suggestedAvoidInRoot geom.Rect[float32]) geom.Rect[float32] {
+func (t *Table) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
 			cell := t.rowCache[row].row.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
@@ -467,7 +466,7 @@ func (t *Table) DefaultUpdateTooltipCallback(where geom.Point[float32], suggeste
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				var avoid geom.Rect[float32]
+				var avoid Rect
 				toolbox.Call(func() { avoid = cell.UpdateTooltipCallback(where, suggestedAvoidInRoot) })
 				t.Tooltip = cell.Tooltip
 				t.uninstallCell(cell)
@@ -482,11 +481,11 @@ func (t *Table) DefaultUpdateTooltipCallback(where geom.Point[float32], suggeste
 		}
 	}
 	t.Tooltip = nil
-	return geom.Rect[float32]{}
+	return Rect{}
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (t *Table) DefaultMouseEnter(where geom.Point[float32], mod Modifiers) bool {
+func (t *Table) DefaultMouseEnter(where Point, mod Modifiers) bool {
 	stop := false
 	row := t.OverRow(where.Y)
 	col := t.OverColumn(where.X)
@@ -528,7 +527,7 @@ func (t *Table) DefaultMouseExit() bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (t *Table) DefaultMouseMove(where geom.Point[float32], mod Modifiers) bool {
+func (t *Table) DefaultMouseMove(where Point, mod Modifiers) bool {
 	t.DefaultMouseEnter(where, mod)
 	stop := false
 	if row := t.OverRow(where.Y); row != -1 {
@@ -547,7 +546,7 @@ func (t *Table) DefaultMouseMove(where geom.Point[float32], mod Modifiers) bool 
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (t *Table) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	t.interactionRow = -1
 	t.interactionColumn = -1
 	if !t.PreventUserColumnResize {
@@ -643,7 +642,7 @@ func (t *Table) DefaultMouseDown(where geom.Point[float32], button, clickCount i
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (t *Table) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (t *Table) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if t.interactionColumn != -1 {
 		if t.interactionRow == -1 {
@@ -683,7 +682,7 @@ func (t *Table) DefaultMouseDrag(where geom.Point[float32], button int, mod Modi
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (t *Table) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (t *Table) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if t.interactionRow != -1 && t.interactionColumn != -1 {
 		cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionRow, t.interactionColumn, t.IsRowOrAnyParentSelected(t.interactionRow)).AsPanel()
@@ -817,7 +816,7 @@ func (t *Table) SyncToModel() {
 	for _, row := range t.topLevelRows {
 		j = t.buildRowCacheEntry(row, -1, j, 0)
 	}
-	_, pref, _ := t.DefaultSizes(geom.Size[float32]{})
+	_, pref, _ := t.DefaultSizes(Size{})
 	rect := t.FrameRect()
 	rect.Size = pref
 	t.SetFrameRect(rect)
@@ -860,7 +859,7 @@ func (t *Table) heightForColumns(row TableRowData, rowIndex, depth int, selected
 		if i == t.HierarchyColumnIndex {
 			w -= t.Padding.Left + t.HierarchyIndent*float32(depth+1)
 		}
-		_, cpref, _ := row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(geom.Size[float32]{Width: w})
+		_, cpref, _ := row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(Size{Width: w})
 		cpref.Height += t.Padding.Top + t.Padding.Bottom
 		if height < cpref.Height {
 			height = cpref.Height
@@ -890,7 +889,7 @@ func (t *Table) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 			if i == excessColumnIndex {
 				continue
 			}
-			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(geom.Size[float32]{})
+			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(Size{})
 			min := t.ColumnSizes[i].AutoMinimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
@@ -937,7 +936,7 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 	for rowIndex, cache := range t.rowCache {
 		selected := t.IsRowOrAnyParentSelected(rowIndex)
 		for i := range t.ColumnSizes {
-			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(geom.Size[float32]{})
+			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(Size{})
 			min := t.ColumnSizes[i].AutoMinimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
@@ -963,7 +962,7 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
 	}
 	if adjust {
-		_, pref, _ := t.DefaultSizes(geom.Size[float32]{})
+		_, pref, _ := t.DefaultSizes(Size{})
 		rect := t.FrameRect()
 		rect.Size = pref
 		t.SetFrameRect(rect)
@@ -979,7 +978,7 @@ func (t *Table) SizeColumnToFit(index int, adjust bool) {
 	current := xmath.Max(t.ColumnSizes[index].Minimum, 0)
 	t.ColumnSizes[index].Current = 0
 	for rowIndex, cache := range t.rowCache {
-		_, pref, _ := cache.row.ColumnCell(rowIndex, index, t.IsRowOrAnyParentSelected(rowIndex)).AsPanel().Sizes(geom.Size[float32]{})
+		_, pref, _ := cache.row.ColumnCell(rowIndex, index, t.IsRowOrAnyParentSelected(rowIndex)).AsPanel().Sizes(Size{})
 		min := t.ColumnSizes[index].AutoMinimum
 		if min > 0 && pref.Width < min {
 			pref.Width = min
@@ -1002,7 +1001,7 @@ func (t *Table) SizeColumnToFit(index int, adjust bool) {
 		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
 	}
 	if adjust {
-		_, pref, _ := t.DefaultSizes(geom.Size[float32]{})
+		_, pref, _ := t.DefaultSizes(Size{})
 		rect := t.FrameRect()
 		rect.Size = pref
 		t.SetFrameRect(rect)
@@ -1035,7 +1034,7 @@ func (t *Table) EventuallySyncToModel() {
 }
 
 // DefaultSizes provides the default sizing.
-func (t *Table) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (t *Table) DefaultSizes(hint Size) (min, pref, max Size) {
 	for i := range t.ColumnSizes {
 		pref.Width += t.ColumnSizes[i].Current
 	}

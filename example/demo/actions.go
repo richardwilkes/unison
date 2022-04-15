@@ -13,7 +13,6 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -42,9 +41,9 @@ func init() {
 		ID:         NewWindowActionID,
 		Title:      "New Demo Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyN, Modifiers: unison.OSMenuCmdModifier()},
-		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
+		ExecuteCallback: func(_ *unison.Action, _ any) {
 			// Try to position the new window to the right of the currently active window
-			var pt geom.Point[float32]
+			var pt unison.Point
 			if w := unison.ActiveWindow(); w != nil {
 				r := w.FrameRect()
 				pt.X = r.X + r.Width
@@ -60,9 +59,9 @@ func init() {
 		ID:         NewTableWindowActionID,
 		Title:      "New Demo Table Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyT, Modifiers: unison.OSMenuCmdModifier()},
-		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
+		ExecuteCallback: func(_ *unison.Action, _ any) {
 			// Try to position the new window to the right of the currently active window
-			var pt geom.Point[float32]
+			var pt unison.Point
 			if w := unison.ActiveWindow(); w != nil {
 				r := w.FrameRect()
 				pt.X = r.X + r.Width
@@ -78,9 +77,9 @@ func init() {
 		ID:         NewDockWindowActionID,
 		Title:      "New Demo Dock Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyD, Modifiers: unison.OSMenuCmdModifier()},
-		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
+		ExecuteCallback: func(_ *unison.Action, _ any) {
 			// Try to position the new window to the right of the currently active window
-			var pt geom.Point[float32]
+			var pt unison.Point
 			if w := unison.ActiveWindow(); w != nil {
 				r := w.FrameRect()
 				pt.X = r.X + r.Width
@@ -96,7 +95,7 @@ func init() {
 		ID:         OpenActionID,
 		Title:      "Open…",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyO, Modifiers: unison.OSMenuCmdModifier()},
-		ExecuteCallback: func(_ *unison.Action, _ interface{}) {
+		ExecuteCallback: func(_ *unison.Action, _ any) {
 			open := unison.NewOpenDialog()
 			open.SetAllowsMultipleSelection(true)
 			if open.RunModal() {

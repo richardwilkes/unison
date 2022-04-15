@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // Constants for mouse buttons.
@@ -29,25 +28,25 @@ type InputCallbacks struct {
 	LostFocusCallback func()
 	// MouseDownCallback is called when the mouse is pressed. Return true to stop further handling or false to propagate
 	// up to parents.
-	MouseDownCallback func(where geom.Point[float32], button, clickCount int, mod Modifiers) bool
+	MouseDownCallback func(where Point, button, clickCount int, mod Modifiers) bool
 	// MouseDragCallback is called when the mouse is dragged after being pressed. Return true to stop further handling
 	// or false to propagate up to parents.
-	MouseDragCallback func(where geom.Point[float32], button int, mod Modifiers) bool
+	MouseDragCallback func(where Point, button int, mod Modifiers) bool
 	// MouseUpCallback is called when the mouse is released after being pressed. Return true to stop further handling or
 	// false to propagate up to parents.
-	MouseUpCallback func(where geom.Point[float32], button int, mod Modifiers) bool
+	MouseUpCallback func(where Point, button int, mod Modifiers) bool
 	// MouseEnterCallback is called on mouse entry. Return true to stop further handling or false to propagate up to
 	// parents.
-	MouseEnterCallback func(where geom.Point[float32], mod Modifiers) bool
+	MouseEnterCallback func(where Point, mod Modifiers) bool
 	// MouseMoveCallback is called when the mouse moves. Return true to stop further handling or false to propagate up
 	// to parents.
-	MouseMoveCallback func(where geom.Point[float32], mod Modifiers) bool
+	MouseMoveCallback func(where Point, mod Modifiers) bool
 	// MouseExitCallback is called on mouse exit. Return true to stop further handling or false to propagate up to
 	// parents.
 	MouseExitCallback func() bool
 	// MouseWheelCallback is called when the mouse wheel is rotated. Return true to stop further handling or false to
 	// propagate up to parents.
-	MouseWheelCallback func(where, delta geom.Point[float32], mod Modifiers) bool
+	MouseWheelCallback func(where, delta Point, mod Modifiers) bool
 	// KeyDownCallback is called when a key is pressed. Return true to stop further handling or false to propagate up to
 	// parents.
 	KeyDownCallback func(keyCode KeyCode, mod Modifiers, repeat bool) bool

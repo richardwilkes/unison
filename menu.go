@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Menu = &menu{}
@@ -47,7 +46,7 @@ type Menu interface {
 	// Count of menu items in this menu.
 	Count() int
 	// Popup the menu at the specified position within the active window.
-	Popup(where geom.Rect[float32], itemIndex int)
+	Popup(where Rect, itemIndex int)
 	// Dispose releases any OS resources associated with this menu.
 	Dispose()
 }
@@ -55,8 +54,8 @@ type Menu interface {
 // DefaultMenuTheme holds the default MenuTheme values for Menus. Modifying this data will not alter existing Menus,
 // but will alter any Menus created in the future.
 var DefaultMenuTheme = MenuTheme{
-	BarBorder:  NewLineBorder(DividerColor, 0, geom.Insets[float32]{Bottom: 1}, false),
-	MenuBorder: NewLineBorder(DividerColor, 0, geom.NewUniformInsets[float32](1), false),
+	BarBorder:  NewLineBorder(DividerColor, 0, Insets{Bottom: 1}, false),
+	MenuBorder: NewLineBorder(DividerColor, 0, NewUniformInsets(1), false),
 }
 
 // MenuTheme holds theming data for a Menu.
@@ -191,7 +190,7 @@ func (m *menu) Count() int {
 	return len(m.items)
 }
 
-func (m *menu) Popup(where geom.Rect[float32], itemIndex int) {
+func (m *menu) Popup(where Rect, itemIndex int) {
 	if m.popupPanel == nil {
 		m.createPopup()
 		if itemIndex >= 0 && itemIndex < len(m.items) {
@@ -203,12 +202,12 @@ func (m *menu) Popup(where geom.Rect[float32], itemIndex int) {
 		where.Width = xmath.Max(fr.Width, where.Width)
 		m.ensureInWindow(where)
 		if itemIndex >= 0 && itemIndex < len(m.items) {
-			m.items[itemIndex].mouseEnter(geom.Point[float32]{}, 0) // params are unused
+			m.items[itemIndex].mouseEnter(Point{}, 0) // params are unused
 		}
 	}
 }
 
-func (m *menu) ensureInWindow(where geom.Rect[float32]) {
+func (m *menu) ensureInWindow(where Rect) {
 	fr := m.popupPanel.Parent().ContentRect(true)
 	if where.Width > fr.Width {
 		where.Width = fr.Width
@@ -302,7 +301,7 @@ func (m *menu) postLostFocus(w *Window) {
 	})
 }
 
-func (m *menu) preMouseDown(w *Window, where geom.Point[float32]) bool {
+func (m *menu) preMouseDown(w *Window, where Point) bool {
 	if w.root.menuBar != nil {
 		for _, one := range w.root.openMenuPanels {
 			if one.FrameRect().ContainsPoint(where) {

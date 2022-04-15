@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var (
@@ -23,7 +22,7 @@ var (
 type Dockable interface {
 	Paneler
 	// TitleIcon returns an Drawable representing this Dockable.
-	TitleIcon(suggestedSize geom.Size[float32]) Drawable
+	TitleIcon(suggestedSize Size) Drawable
 	// Title returns the title of this Dockable.
 	Title() string
 	// Tooltip returns the tooltip of this Dockable.
@@ -240,17 +239,17 @@ func (d *DockContainer) Close(dockable Dockable) {
 }
 
 // PreferredSize implements DockLayoutNode.
-func (d *DockContainer) PreferredSize() geom.Size[float32] {
-	_, pref, _ := d.LayoutSizes(d.AsPanel(), geom.Size[float32]{})
+func (d *DockContainer) PreferredSize() Size {
+	_, pref, _ := d.LayoutSizes(d.AsPanel(), Size{})
 	return pref
 }
 
 // LayoutSizes implements Layout.
-func (d *DockContainer) LayoutSizes(target *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
-	min, pref, max = d.header.Sizes(geom.Size[float32]{Width: hint.Width})
+func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
+	min, pref, max = d.header.Sizes(Size{Width: hint.Width})
 	min.Height = pref.Height
 	max.Height = pref.Height
-	min2, pref2, max2 := d.content.Sizes(geom.Size[float32]{
+	min2, pref2, max2 := d.content.Sizes(Size{
 		Width:  hint.Width,
 		Height: xmath.Max(hint.Height-pref.Height, 0),
 	})
@@ -269,7 +268,7 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint geom.Size[float32]) (min
 // PerformLayout implements Layout.
 func (d *DockContainer) PerformLayout(target *Panel) {
 	r := d.ContentRect(false)
-	_, pref, _ := d.header.Sizes(geom.Size[float32]{Width: r.Width})
-	d.header.SetFrameRect(geom.NewRect(r.X, r.Y, r.Width, pref.Height))
-	d.content.SetFrameRect(geom.NewRect(r.X, r.Y+pref.Height, r.Width, xmath.Max(r.Height-pref.Height, 0)))
+	_, pref, _ := d.header.Sizes(Size{Width: r.Width})
+	d.header.SetFrameRect(NewRect(r.X, r.Y, r.Width, pref.Height))
+	d.content.SetFrameRect(NewRect(r.X, r.Y+pref.Height, r.Width, xmath.Max(r.Height-pref.Height, 0)))
 }

@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ MenuItem = &menuItem{}
@@ -58,8 +57,8 @@ var DefaultMenuItemTheme = MenuItemTheme{
 	OnBackgroundColor: OnBackgroundColor,
 	SelectionColor:    SelectionColor,
 	OnSelectionColor:  OnSelectionColor,
-	ItemBorder:        NewEmptyBorder(geom.Insets[float32]{Top: 4, Left: 8, Bottom: 4, Right: 8}),
-	SeparatorBorder:   NewEmptyBorder(geom.NewVerticalInsets[float32](4)),
+	ItemBorder:        NewEmptyBorder(Insets{Top: 4, Left: 8, Bottom: 4, Right: 8}),
+	SeparatorBorder:   NewEmptyBorder(NewVerticalInsets(4)),
 	KeyGap:            16,
 }
 
@@ -175,7 +174,7 @@ func (mi *menuItem) newPanel() *Panel {
 	return mi.panel
 }
 
-func (mi *menuItem) mouseDown(_ geom.Point[float32], _, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseDown(_ Point, _, _ int, _ Modifiers) bool {
 	if mi.subMenu == nil {
 		mi.execute()
 		return true
@@ -202,7 +201,7 @@ func (mi *menuItem) showSubMenu() {
 	}
 }
 
-func (mi *menuItem) mouseEnter(_ geom.Point[float32], _ Modifiers) bool {
+func (mi *menuItem) mouseEnter(_ Point, _ Modifiers) bool {
 	mi.over = true
 	mi.panel.MarkForRedraw()
 	if mi.subMenu != nil && len(mi.panel.Window().root.openMenuPanels) != 0 {
@@ -211,7 +210,7 @@ func (mi *menuItem) mouseEnter(_ geom.Point[float32], _ Modifiers) bool {
 	return false
 }
 
-func (mi *menuItem) mouseMove(where geom.Point[float32], mod Modifiers) bool {
+func (mi *menuItem) mouseMove(where Point, mod Modifiers) bool {
 	stopAt := mi.menu
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu
@@ -226,7 +225,7 @@ func (mi *menuItem) mouseExit() bool {
 	return false
 }
 
-func (mi *menuItem) sizer(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (mi *menuItem) sizer(hint Size) (min, pref, max Size) {
 	if mi.isSeparator {
 		pref.Height = 1
 	} else {
@@ -246,7 +245,7 @@ func (mi *menuItem) sizer(hint geom.Size[float32]) (min, pref, max geom.Size[flo
 	return pref, pref, pref
 }
 
-func (mi *menuItem) paint(gc *Canvas, rect geom.Rect[float32]) {
+func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 	var fg, bg Ink
 	if !mi.over || !mi.enabled {
 		fg = DefaultMenuItemTheme.OnBackgroundColor
@@ -285,7 +284,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect[float32]) {
 			rect.Width = baseline
 			drawable := &DrawableSVG{
 				SVG:  ChevronRightSVG(),
-				Size: geom.NewSize[float32](baseline, baseline),
+				Size: NewSize(baseline, baseline),
 			}
 			drawable.DrawInRect(gc, rect, nil, paint)
 		}

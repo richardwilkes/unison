@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath/geom"
-)
-
 var _ TableColumnHeader = &DefaultTableColumnHeader{}
 
 // TableColumnHeader defines the methods a table column header must implement.
@@ -64,7 +60,7 @@ func NewTableColumnHeader(title, tooltip string) *DefaultTableColumnHeader {
 }
 
 // DefaultSizes provides the default sizing.
-func (h *DefaultTableColumnHeader) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (h *DefaultTableColumnHeader) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref = LabelSize(h.textCache.Text(h.Text, h.Font), h.Drawable, h.Side, h.Gap)
 
 	// Account for the potential sort indicator
@@ -83,7 +79,7 @@ func (h *DefaultTableColumnHeader) DefaultSizes(hint geom.Size[float32]) (min, p
 }
 
 // DefaultDraw provides the default drawing.
-func (h *DefaultTableColumnHeader) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (h *DefaultTableColumnHeader) DefaultDraw(canvas *Canvas, dirty Rect) {
 	r := h.ContentRect(false)
 	if h.sortIndicator != nil {
 		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
@@ -117,12 +113,12 @@ func (h *DefaultTableColumnHeader) SetSortState(state SortState) {
 			if h.sortState.Ascending {
 				h.sortIndicator = &DrawableSVG{
 					SVG:  SortAscendingSVG(),
-					Size: geom.NewSize[float32](baseline, baseline),
+					Size: NewSize(baseline, baseline),
 				}
 			} else {
 				h.sortIndicator = &DrawableSVG{
 					SVG:  SortDescendingSVG(),
-					Size: geom.NewSize[float32](baseline, baseline),
+					Size: NewSize(baseline, baseline),
 				}
 			}
 		} else {
@@ -133,7 +129,7 @@ func (h *DefaultTableColumnHeader) SetSortState(state SortState) {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *DefaultTableColumnHeader) DefaultMouseUp(where geom.Point[float32], button int, mod Modifiers) bool {
+func (h *DefaultTableColumnHeader) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	if h.sortState.Sortable && h.ContentRect(false).ContainsPoint(where) {
 		if header, ok := h.Parent().Self.(*TableHeader); ok {
 			header.SortOn(h)

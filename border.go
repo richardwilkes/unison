@@ -9,14 +9,10 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath/geom"
-)
-
 // Border defines methods required of all border providers.
 type Border interface {
 	// Insets returns the insets describing the space the border occupies on each side.
-	Insets() geom.Insets[float32]
+	Insets() Insets
 	// Draw the border into rect.
-	Draw(canvas *Canvas, rect geom.Rect[float32])
+	Draw(canvas *Canvas, rect Rect)
 }

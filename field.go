@@ -17,7 +17,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultFieldTheme holds the default FieldTheme values for Fields. Modifying this data will not alter existing Fields,
@@ -45,8 +44,8 @@ func NewDefaultFieldBorder(focused bool) Border {
 	if focused {
 		adj = 0
 	}
-	return NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](2-adj), false),
-		NewEmptyBorder(geom.Insets[float32]{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}))
+	return NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(2-adj), false),
+		NewEmptyBorder(Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}))
 }
 
 // FieldTheme holds theming data for a Field.
@@ -81,7 +80,7 @@ type Field struct {
 	selectionEnd     int
 	selectionAnchor  int
 	forceShowUntil   time.Time
-	scrollOffset     geom.Point[float32]
+	scrollOffset     Point
 	linesBuiltFor    float32
 	multiLine        bool
 	wrap             bool
@@ -140,8 +139,8 @@ func (f *Field) SetWrap(wrap bool) {
 }
 
 // DefaultSizes provides the default sizing.
-func (f *Field) DefaultSizes(hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
-	var insets geom.Insets[float32]
+func (f *Field) DefaultSizes(hint Size) (min, pref, max Size) {
+	var insets Insets
 	if b := f.Border(); b != nil {
 		insets = b.Insets()
 	}
@@ -223,7 +222,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 }
 
 // DefaultDraw provides the default drawing.
-func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
+func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 	var fg, bg Ink
 	enabled := f.Enabled()
 	switch {
@@ -294,9 +293,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 					Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
 				})
 				right := left + t.Width()
-				selRect := geom.Rect[float32]{
-					Point: geom.Point[float32]{X: left, Y: textTop},
-					Size:  geom.Size[float32]{Width: right - left, Height: textHeight},
+				selRect := Rect{
+					Point: Point{X: left, Y: textTop},
+					Size:  Size{Width: right - left, Height: textHeight},
 				}
 				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
 				t.Draw(canvas, left, textBaseLine)
@@ -320,7 +319,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty geom.Rect[float32]) {
 						Font:  f.Font,
 						Paint: nil,
 					})
-					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
+					canvas.DrawRect(NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
 						bg.Paint(canvas, rect, Fill))
 				}
 				f.scheduleBlink()
@@ -376,7 +375,7 @@ func (f *Field) DefaultFocusLost() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (f *Field) DefaultMouseDown(where geom.Point[float32], button, clickCount int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	f.RequestFocus()
 	if button == ButtonLeft {
 		f.extendByWord = false
@@ -411,7 +410,7 @@ func (f *Field) DefaultMouseDown(where geom.Point[float32], button, clickCount i
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (f *Field) DefaultMouseDrag(where geom.Point[float32], button int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	oldAnchor := f.selectionAnchor
 	pos := f.ToSelectionIndex(where)
 	var start, end int
@@ -455,7 +454,7 @@ func (f *Field) DefaultMouseDrag(where geom.Point[float32], button int, mod Modi
 }
 
 // DefaultUpdateCursor provides the default cursor update handling.
-func (f *Field) DefaultUpdateCursor(where geom.Point[float32]) *Cursor {
+func (f *Field) DefaultUpdateCursor(where Point) *Cursor {
 	if f.Enabled() {
 		return TextCursor()
 	}
@@ -723,7 +722,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 }
 
 // DefaultCanPerformCmd provides the default can perform command handling.
-func (f *Field) DefaultCanPerformCmd(source interface{}, id int) bool {
+func (f *Field) DefaultCanPerformCmd(source any, id int) bool {
 	switch id {
 	case CutItemID:
 		return f.CanCut()
@@ -741,7 +740,7 @@ func (f *Field) DefaultCanPerformCmd(source interface{}, id int) bool {
 }
 
 // DefaultPerformCmd provides the default perform command handling.
-func (f *Field) DefaultPerformCmd(source interface{}, id int) {
+func (f *Field) DefaultPerformCmd(source any, id int) {
 	switch id {
 	case CutItemID:
 		f.Cut()
@@ -966,12 +965,12 @@ func (f *Field) setSelection(start, end, anchor int) {
 }
 
 // ScrollOffset returns the current autoscroll offset.
-func (f *Field) ScrollOffset() geom.Point[float32] {
+func (f *Field) ScrollOffset() Point {
 	return f.scrollOffset
 }
 
 // SetScrollOffset sets the autoscroll offset to the specified value.
-func (f *Field) SetScrollOffset(offset geom.Point[float32]) {
+func (f *Field) SetScrollOffset(offset Point) {
 	if f.scrollOffset != offset {
 		f.scrollOffset = offset
 		f.MarkForRedraw()
@@ -1060,11 +1059,11 @@ func (f *Field) autoScroll() {
 	}
 }
 
-func (f *Field) textLeft(text *Text, bounds geom.Rect[float32]) float32 {
+func (f *Field) textLeft(text *Text, bounds Rect) float32 {
 	return f.textLeftForWidth(text.Width(), bounds)
 }
 
-func (f *Field) textLeftForWidth(width float32, bounds geom.Rect[float32]) float32 {
+func (f *Field) textLeftForWidth(width float32, bounds Rect) float32 {
 	left := bounds.X
 	switch f.HAlign {
 	case MiddleAlignment:
@@ -1078,7 +1077,7 @@ func (f *Field) textLeftForWidth(width float32, bounds geom.Rect[float32]) float
 }
 
 // ToSelectionIndex returns the rune index for the coordinates.
-func (f *Field) ToSelectionIndex(where geom.Point[float32]) int {
+func (f *Field) ToSelectionIndex(where Point) int {
 	if where.Y < 0 {
 		return 0
 	}
@@ -1100,7 +1099,7 @@ func (f *Field) ToSelectionIndex(where geom.Point[float32]) int {
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
-func (f *Field) FromSelectionIndex(index int) geom.Point[float32] {
+func (f *Field) FromSelectionIndex(index int) Point {
 	index = xmath.Max(xmath.Min(index, len(f.runes)), 0)
 	f.prepareLinesForCurrentWidth()
 	rect := f.ContentRect(false)
@@ -1109,7 +1108,7 @@ func (f *Field) FromSelectionIndex(index int) geom.Point[float32] {
 	for i, line := range f.lines {
 		lineLength := len(line.Runes())
 		if lineLength >= index-pos {
-			return geom.NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
+			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
 		}
 		y += xmath.Max(line.Height(), f.Font.LineHeight())
 		if f.endsWithLineFeed[i] {
@@ -1117,7 +1116,7 @@ func (f *Field) FromSelectionIndex(index int) geom.Point[float32] {
 		}
 		pos += lineLength
 	}
-	return geom.NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y)
+	return NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y)
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {

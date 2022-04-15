@@ -9,8 +9,6 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/xmath/geom"
-
 var _ Layout = &dockContainerContent{}
 
 type dockContainerContent struct {
@@ -59,7 +57,7 @@ func (d *dockContainerContent) SetCurrentIndex(index int) {
 	}
 }
 
-func (d *dockContainerContent) LayoutSizes(target *Panel, hint geom.Size[float32]) (min, pref, max geom.Size[float32]) {
+func (d *dockContainerContent) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
 	for _, c := range d.Children() {
 		min2, pref2, max2 := c.AsPanel().Sizes(hint)
 		min.Max(min2)

@@ -12,16 +12,14 @@ package unison
 import (
 	"strings"
 	"time"
-
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
 // Tooltips, but will alter any Tooltips created in the future.
 var DefaultTooltipTheme = TooltipTheme{
 	BackgroundInk: TooltipColor,
-	BaseBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, geom.NewUniformInsets[float32](1), false),
-		NewEmptyBorder(geom.Insets[float32]{Top: 4, Left: 8, Bottom: 4, Right: 8})),
+	BaseBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(1), false),
+		NewEmptyBorder(Insets{Top: 4, Left: 8, Bottom: 4, Right: 8})),
 	Label:     defaultToolTipLabelTheme(),
 	Delay:     1500 * time.Millisecond,
 	Dismissal: 5 * time.Second,
@@ -46,7 +44,7 @@ type TooltipTheme struct {
 
 type tooltipSequencer struct {
 	window   *Window
-	avoid    geom.Rect[float32]
+	avoid    Rect
 	sequence int
 }
 
@@ -54,7 +52,7 @@ type tooltipSequencer struct {
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
-	tip.DrawCallback = func(canvas *Canvas, dirty geom.Rect[float32]) {
+	tip.DrawCallback = func(canvas *Canvas, dirty Rect) {
 		r := tip.ContentRect(true)
 		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, Fill))
 	}
@@ -99,8 +97,8 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 func (ts *tooltipSequencer) show() {
 	if ts.window.tooltipSequence == ts.sequence && ts.window.Focused() {
 		tip := ts.window.lastTooltip
-		_, pref, _ := tip.Sizes(geom.Size[float32]{})
-		rect := geom.Rect[float32]{Point: geom.Point[float32]{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
+		_, pref, _ := tip.Sizes(Size{})
+		rect := Rect{Point: Point{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
 		if rect.X < 0 {
 			rect.X = 0
 		}
@@ -109,7 +107,7 @@ func (ts *tooltipSequencer) show() {
 		}
 		viewSize := ts.window.root.ContentRect(true).Size
 		if viewSize.Width < rect.Width {
-			_, pref, _ = tip.Sizes(geom.Size[float32]{Width: viewSize.Width})
+			_, pref, _ = tip.Sizes(Size{Width: viewSize.Width})
 			if viewSize.Width < pref.Width {
 				rect.X = 0
 				rect.Width = viewSize.Width
