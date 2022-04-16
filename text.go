@@ -24,6 +24,7 @@ type Text struct {
 	widths      []float32
 	extents     Size
 	baseline    float32
+	emptyHeight float32
 }
 
 // NewText creates a new Text. Note that tabs and line endings are not considered.
@@ -39,6 +40,7 @@ func NewTextFromRunes(runes []rune, decoration *TextDecoration) *Text {
 		decorations: make([]*TextDecoration, 0, len(runes)),
 		widths:      make([]float32, 0, len(runes)),
 		extents:     Size{Width: -1},
+		emptyHeight: decoration.Font.LineHeight() + xmath.Abs(decoration.BaselineOffset),
 	}
 	t.AddRunes(runes, decoration)
 	return t
@@ -74,13 +76,14 @@ func (t *Text) Slice(i, j int) *Text {
 		j = len(t.runes)
 	}
 	if i >= j {
-		return &Text{}
+		return &Text{emptyHeight: t.emptyHeight}
 	}
 	return &Text{
 		runes:       t.runes[i:j],
 		decorations: t.decorations[i:j],
 		widths:      t.widths[i:j],
 		extents:     Size{Width: -1},
+		emptyHeight: t.decorations[i].Font.LineHeight() + xmath.Abs(t.decorations[i].BaselineOffset),
 	}
 }
 
@@ -124,7 +127,7 @@ func (t *Text) Baseline() float32 {
 func (t *Text) cache() {
 	if t.extents.Width < 0 {
 		t.extents.Width = 0
-		t.extents.Height = 0
+		t.extents.Height = t.emptyHeight
 		t.baseline = 0
 		for i, d := range t.decorations {
 			h := d.Font.LineHeight() + xmath.Abs(d.BaselineOffset)
