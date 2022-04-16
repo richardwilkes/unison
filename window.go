@@ -644,11 +644,23 @@ func (w *Window) Focus() *Panel {
 
 // SetFocus sets the keyboard focus to the specified target.
 func (w *Window) SetFocus(target Paneler) {
+	var newFocus *Panel
 	if target != nil {
-		newFocus := target.AsPanel()
-		tw := newFocus.Window()
-		if tw == w && !newFocus.Is(w.focus) {
-			oldFocus := w.focus
+		newFocus = target.AsPanel()
+	}
+	oldFocus := w.focus
+	if newFocus == nil {
+		w.removeFocus()
+		return
+	}
+	if newFocus.Window() == w {
+		if !newFocus.Focusable() {
+			if newFocus = newFocus.FirstFocusableChild(); newFocus == nil {
+				w.removeFocus()
+				return
+			}
+		}
+		if !newFocus.Is(w.focus) {
 			if w.focus != nil {
 				if oldFocus.LostFocusCallback != nil {
 					toolbox.Call(oldFocus.LostFocusCallback)
@@ -661,16 +673,31 @@ func (w *Window) SetFocus(target Paneler) {
 				}
 				newFocus.ScrollIntoView()
 			}
-			for _, p := range []*Panel{oldFocus, newFocus} {
-				if p != nil {
-					p = p.Parent()
-					for p != nil {
-						if p.FocusChangeInHierarchyCallback != nil {
-							toolbox.Call(func() { p.FocusChangeInHierarchyCallback(oldFocus, newFocus) })
-						}
-						p = p.Parent()
-					}
+			w.notifyOfFocusChangeInHierarchy(oldFocus, newFocus)
+		}
+	}
+}
+
+func (w *Window) removeFocus() {
+	oldFocus := w.focus
+	if oldFocus != nil {
+		if oldFocus.LostFocusCallback != nil {
+			toolbox.Call(oldFocus.LostFocusCallback)
+		}
+		w.focus = nil
+		w.notifyOfFocusChangeInHierarchy(oldFocus, nil)
+	}
+}
+
+func (w *Window) notifyOfFocusChangeInHierarchy(oldFocus, newFocus *Panel) {
+	for _, p := range []*Panel{oldFocus, newFocus} {
+		if p != nil {
+			p = p.Parent()
+			for p != nil {
+				if p.FocusChangeInHierarchyCallback != nil {
+					toolbox.Call(func() { p.FocusChangeInHierarchyCallback(oldFocus, newFocus) })
 				}
+				p = p.Parent()
 			}
 		}
 	}
