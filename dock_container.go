@@ -86,11 +86,11 @@ func (d *DockContainer) SetCurrentDockable(dockable Dockable) {
 		for i, c := range d.content.Children() {
 			if c.Self == dockable {
 				d.content.SetCurrentIndex(i)
-				d.AcquireFocus()
 				break
 			}
 		}
 	}
+	d.AcquireFocus()
 }
 
 // resolveDockable makes sure we're pointing to the Self version of the Dockable and not some intermediate layer.
@@ -107,10 +107,8 @@ func (d *DockContainer) AcquireFocus() {
 	if wnd := d.Window(); wnd != nil {
 		current := d.CurrentDockable()
 		focus := wnd.Focus()
-		if focus != nil {
-			for focus != nil && focus.Self != current {
-				focus = focus.Parent()
-			}
+		for focus != nil && focus.Self != current {
+			focus = focus.Parent()
 		}
 		if focus == nil {
 			wnd.SetFocus(current)
