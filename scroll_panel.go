@@ -18,11 +18,8 @@ var _ Layout = &ScrollPanel{}
 // Possible ways to handle auto-sizing of the scroll content's preferred size.
 const (
 	UnmodifiedBehavior Behavior = iota
-	FillWidthBehavior
-	FillHeightBehavior
-	FillBehavior
-	FollowsWidthBehavior
-	FollowsHeightBehavior
+	FillBehavior                // If the content is smaller than the available space, expand it
+	FollowBehavior              // Fix the content to the view size
 )
 
 // Behavior controls how auto-sizing of the scroll content's preferred size is handled.
@@ -53,7 +50,8 @@ type ScrollPanel struct {
 	rowHeader        Paneler
 	contentView      *Panel
 	content          Paneler
-	behavior         Behavior
+	widthBehavior    Behavior
+	heightBehavior   Behavior
 }
 
 // NewScrollPanel creates a new scrollable area.
@@ -157,12 +155,13 @@ func (s *ScrollPanel) Content() Paneler {
 }
 
 // SetContent sets the content panel.
-func (s *ScrollPanel) SetContent(p Paneler, behave Behavior) {
+func (s *ScrollPanel) SetContent(p Paneler, widthBehavior, heightBehavior Behavior) {
 	if s.content != nil {
 		s.content.AsPanel().RemoveFromParent()
 	}
 	s.content = p
-	s.behavior = behave
+	s.widthBehavior = widthBehavior
+	s.heightBehavior = heightBehavior
 	if p != nil {
 		s.contentView.AddChild(p)
 		s.Sync()
@@ -386,32 +385,27 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	var contentSize Size
 	if s.content != nil {
 		var hint Size
-		switch s.behavior {
-		case FollowsWidthBehavior:
+		if s.widthBehavior == FollowBehavior {
 			hint.Width = viewContent.Width
-		case FollowsHeightBehavior:
+		}
+		if s.heightBehavior == FollowBehavior {
 			hint.Height = viewContent.Height
 		}
 		_, contentSize, _ = s.content.AsPanel().Sizes(hint)
-		switch s.behavior {
-		case FillWidthBehavior:
-			if contentSize.Width < viewContent.Width {
-				contentSize.Width = viewContent.Width
-			}
-		case FillHeightBehavior:
-			if contentSize.Height < viewContent.Height {
-				contentSize.Height = viewContent.Height
-			}
+		switch s.widthBehavior {
 		case FillBehavior:
 			if contentSize.Width < viewContent.Width {
 				contentSize.Width = viewContent.Width
 			}
+		case FollowBehavior:
+			contentSize.Width = viewContent.Width
+		}
+		switch s.heightBehavior {
+		case FillBehavior:
 			if contentSize.Height < viewContent.Height {
 				contentSize.Height = viewContent.Height
 			}
-		case FollowsWidthBehavior:
-			contentSize.Width = viewContent.Width
-		case FollowsHeightBehavior:
+		case FollowBehavior:
 			contentSize.Height = viewContent.Height
 		}
 		cr := s.content.AsPanel().FrameRect()
