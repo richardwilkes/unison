@@ -471,6 +471,33 @@ func (p *Panel) RequestFocus() {
 	}
 }
 
+// FirstFocusableChild returns the first focusable child or nil.
+func (p *Panel) FirstFocusableChild() *Panel {
+	for _, child := range p.children {
+		if child.Focusable() {
+			return child
+		}
+		if found := child.FirstFocusableChild(); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// LastFocusableChild returns the last focusable child or nil.
+func (p *Panel) LastFocusableChild() *Panel {
+	for i := len(p.children) - 1; i >= 0; i-- {
+		child := p.children[i]
+		if child.Focusable() {
+			return child
+		}
+		if found := child.LastFocusableChild(); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
 // PanelAt returns the leaf-most child panel containing the point, or this panel if no child is found.
 func (p *Panel) PanelAt(pt Point) *Panel {
 	for _, child := range p.children {
