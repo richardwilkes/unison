@@ -100,7 +100,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 
 	// Create a scroll panel and place a table panel inside it
 	scrollArea := unison.NewScrollPanel()
-	scrollArea.SetContent(table, unison.FillBehavior)
+	scrollArea.SetContent(table, unison.FillBehavior, unison.FillBehavior)
 	scrollArea.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: unison.FillAlignment,
 		VAlign: unison.FillAlignment,

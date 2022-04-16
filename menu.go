@@ -273,7 +273,7 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	content.SetLayout(lay)
 	content.Pack()
 	s := NewScrollPanel()
-	s.SetContent(content, FollowsWidthBehavior)
+	s.SetContent(content, FollowBehavior, FillBehavior)
 	s.SetLayoutData(&FlexLayoutData{
 		HAlign: FillAlignment,
 		VAlign: FillAlignment,

@@ -126,7 +126,7 @@ func (d *fileDialog) createContent() *Panel {
 	d.rebuildFileList()
 	d.scroller = NewScrollPanel()
 	d.scroller.SetBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(1), false))
-	d.scroller.SetContent(d.fileList, FollowsWidthBehavior)
+	d.scroller.SetContent(d.fileList, FollowBehavior, FillBehavior)
 	content.AddChild(d.scroller)
 	d.scroller.SetLayoutData(&FlexLayoutData{
 		MinSize: NewSize(300, 200),

@@ -139,7 +139,7 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 
 	// Create a scroll panel and place the image panel inside it
 	scrollArea := unison.NewScrollPanel()
-	scrollArea.SetContent(imgPanel, unison.UnmodifiedBehavior)
+	scrollArea.SetContent(imgPanel, unison.UnmodifiedBehavior, unison.UnmodifiedBehavior)
 	scrollArea.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
@@ -539,7 +539,7 @@ func createListPanel() *unison.Panel {
 	lst.SetFrameRect(unison.Rect{Size: prefSize})
 	scroller := unison.NewScrollPanel()
 	scroller.SetBorder(unison.NewLineBorder(unison.DividerColor, 0, unison.NewUniformInsets(1), false))
-	scroller.SetContent(lst, unison.FillBehavior)
+	scroller.SetContent(lst, unison.FillBehavior, unison.FillBehavior)
 	scroller.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
