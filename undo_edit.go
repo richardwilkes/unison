@@ -9,7 +9,15 @@
 
 package unison
 
-var _ Undoable = &UndoEdit[int]{}
+import "sync/atomic"
+
+// NoUndoID represents an empty undo ID value.
+const NoUndoID = 0
+
+var (
+	_          Undoable = &UndoEdit[int]{}
+	nextUndoID          = int64(NoUndoID + 1)
+)
 
 // Undoable defines the required methods an undoable edit must implement.
 type Undoable interface {
@@ -35,7 +43,7 @@ type Undoable interface {
 
 // UndoEdit provides a standard Undoable.
 type UndoEdit[T any] struct {
-	ID          int
+	ID          int64
 	EditName    string
 	EditCost    int
 	UndoFunc    func(*UndoEdit[T])
@@ -44,6 +52,11 @@ type UndoEdit[T any] struct {
 	ReleaseFunc func(*UndoEdit[T])
 	BeforeData  T
 	AfterData   T
+}
+
+// NextUndoID returns the next available undo ID.
+func NextUndoID() int64 {
+	return atomic.AddInt64(&nextUndoID, 1)
 }
 
 // Name implements Undoable
