@@ -54,7 +54,13 @@ func NewLabel() *Label {
 
 // DefaultSizes provides the default sizing.
 func (l *Label) DefaultSizes(hint Size) (min, pref, max Size) {
-	pref = LabelSize(l.textCache.Text(l.Text, l.Font), l.Drawable, l.Side, l.Gap)
+	text := l.textCache.Text(l.Text, l.Font)
+	if text == nil && l.Drawable == nil {
+		pref.Height = l.Font.LineHeight()
+		pref.GrowToInteger()
+	} else {
+		pref = LabelSize(text, l.Drawable, l.Side, l.Gap)
+	}
 	if b := l.Border(); b != nil {
 		pref.AddInsets(b.Insets())
 	}
