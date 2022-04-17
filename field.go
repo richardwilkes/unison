@@ -82,6 +82,7 @@ type Field struct {
 	forceShowUntil   time.Time
 	scrollOffset     Point
 	linesBuiltFor    float32
+	AutoScroll       bool
 	multiLine        bool
 	wrap             bool
 	showCursor       bool
@@ -95,6 +96,7 @@ func NewField() *Field {
 	f := &Field{
 		FieldTheme:    DefaultFieldTheme,
 		linesBuiltFor: -1,
+		AutoScroll:    true,
 	}
 	f.Self = f
 	f.SetBorder(f.UnfocusedBorder)
@@ -978,8 +980,14 @@ func (f *Field) setSelection(start, end, anchor int) {
 		f.forceShowUntil = time.Now().Add(f.BlinkRate)
 		f.showCursor = true
 		f.MarkForRedraw()
-		f.ScrollIntoView()
 		f.autoScroll()
+		if anchor == start {
+			anchor = end
+		} else {
+			anchor = start
+		}
+		pt := f.FromSelectionIndex(anchor)
+		f.ScrollRectIntoView(NewRect(pt.X-1, pt.Y, 3, f.Font.LineHeight()))
 	}
 }
 
@@ -990,13 +998,16 @@ func (f *Field) ScrollOffset() Point {
 
 // SetScrollOffset sets the autoscroll offset to the specified value.
 func (f *Field) SetScrollOffset(offset Point) {
-	if f.scrollOffset != offset {
+	if f.AutoScroll && f.scrollOffset != offset {
 		f.scrollOffset = offset
 		f.MarkForRedraw()
 	}
 }
 
 func (f *Field) autoScroll() {
+	if !f.AutoScroll {
+		return
+	}
 	rect := f.ContentRect(false)
 	original := f.scrollOffset //nolint:ifshort // Can't do this later
 	if rect.Width > 0 {
@@ -1044,7 +1055,7 @@ func (f *Field) autoScroll() {
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionEnd).Y
 			} else if top+f.Font.LineHeight() >= rect.Bottom() {
 				f.scrollOffset.Y = 0
-				f.scrollOffset.Y = rect.Bottom() - 1 - (f.FromSelectionIndex(f.selectionEnd).Y + f.Font.LineHeight())
+				f.scrollOffset.Y = rect.Bottom() - (f.FromSelectionIndex(f.selectionEnd).Y + f.Font.LineHeight())
 			}
 		} else {
 			top := f.FromSelectionIndex(f.selectionStart).Y
@@ -1053,12 +1064,12 @@ func (f *Field) autoScroll() {
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionStart).Y
 			} else if top+f.Font.LineHeight() >= rect.Bottom() {
 				f.scrollOffset.Y = 0
-				f.scrollOffset.Y = rect.Bottom() - 1 - (f.FromSelectionIndex(f.selectionStart).Y + f.Font.LineHeight())
+				f.scrollOffset.Y = rect.Bottom() - (f.FromSelectionIndex(f.selectionStart).Y + f.Font.LineHeight())
 			}
 		}
 		save := f.scrollOffset.Y
 		f.scrollOffset.Y = 0
-		min := rect.Bottom() - 1 - (f.FromSelectionIndex(len(f.runes)).Y + f.Font.LineHeight())
+		min := rect.Bottom() - (f.FromSelectionIndex(len(f.runes)).Y + f.Font.LineHeight())
 		if min > 0 {
 			min = 0
 		}
