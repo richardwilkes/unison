@@ -50,13 +50,15 @@ type FlexLayoutData struct {
 // LayoutSizes implements the Layout interface.
 func (f *FlexLayout) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
 	f.sizingCache = make(map[*Panel]map[Size]*flexSizingCacheData)
+	var insets Insets
+	if b := target.Border(); b != nil {
+		insets = b.Insets()
+		hint.SubtractInsets(insets).Max(Size{})
+	}
 	min = f.layout(target, Point{}, hint, false, true)
 	pref = f.layout(target, Point{}, hint, false, false)
-	if b := target.Border(); b != nil {
-		insets := b.Insets()
-		min.AddInsets(insets)
-		pref.AddInsets(insets)
-	}
+	min.AddInsets(insets)
+	pref.AddInsets(insets)
 	return min, pref, MaxSize(pref)
 }
 
