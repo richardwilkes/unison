@@ -30,3 +30,22 @@ func (d *TextDecoration) Equivalent(other *TextDecoration) bool {
 		d.BaselineOffset == other.BaselineOffset && d.Paint.Equivalent(other.Paint) &&
 		d.Font.Descriptor() == other.Font.Descriptor()
 }
+
+// DrawText draws the given text using this TextDecoration.
+func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
+	y += d.BaselineOffset
+	canvas.DrawSimpleString(text, x, y, d.Font, d.Paint)
+	if d.Underline || d.StrikeThrough {
+		paint := d.Paint.Clone()
+		y++
+		if d.StrikeThrough {
+			yy := y + 0.5 - d.Font.Baseline()/2
+			paint.SetStrokeWidth(1)
+			canvas.DrawLine(x, yy, x+width, yy, paint)
+		}
+		if d.Underline {
+			paint.SetStrokeWidth(1)
+			canvas.DrawLine(x, y, x+width, y, paint)
+		}
+	}
+}

@@ -32,6 +32,8 @@ type LabelTheme struct {
 	HAlign          Alignment
 	VAlign          Alignment
 	Side            Side
+	Underline       bool
+	StrikeThrough   bool
 }
 
 // Label represents non-interactive text and/or a Drawable.
@@ -71,8 +73,15 @@ func (l *Label) DefaultSizes(hint Size) (min, pref, max Size) {
 
 // DefaultDraw provides the default drawing.
 func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
-	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.textCache.Text(l.Text, l.Font), l.OnBackgroundInk,
-		l.Drawable, l.Side, l.Gap, !l.Enabled())
+	txt := l.textCache.Text(l.Text, l.Font)
+	if l.Underline {
+		txt.ReplaceUnderline(l.Underline)
+	}
+	if l.StrikeThrough {
+		txt.ReplaceStrikeThrough(l.StrikeThrough)
+	}
+	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, txt, l.OnBackgroundInk, l.Drawable, l.Side, l.Gap,
+		!l.Enabled())
 }
 
 // LabelSize returns the preferred size of a label. Provided as a standalone function so that other types of panels can

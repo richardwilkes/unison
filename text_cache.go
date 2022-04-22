@@ -17,7 +17,8 @@ type TextCache struct {
 }
 
 // Text composes the Text object, if needed, and returns it. The paint will be nil or whatever was last used, so be
-// sure to call .ReplacePaint() with the paint you want to use.
+// sure to call .ReplacePaint() with the paint you want to use. Likewise, underline and strike through will be false,
+// so calls to .ReplaceUnderline() and/or .ReplaceStrikeThrough() should be made to enable them, if desired.
 func (c *TextCache) Text(str string, font Font) *Text {
 	if str == "" {
 		c.str = ""

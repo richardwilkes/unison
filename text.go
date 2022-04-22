@@ -192,6 +192,22 @@ func (t *Text) ReplacePaint(paint *Paint) {
 	}
 }
 
+// ReplaceUnderline replaces the underline of this Text. Note that if this Text originally had multiple runs, some with
+// different underline state, after this call all of the runs will have the same underline state.
+func (t *Text) ReplaceUnderline(underline bool) {
+	for _, d := range t.decorations {
+		d.Underline = underline
+	}
+}
+
+// ReplaceStrikeThrough replaces the strike through of this Text. Note that if this Text originally had multiple runs,
+// some with different strike through state, after this call all of the runs will have the same strike through state.
+func (t *Text) ReplaceStrikeThrough(strikeThrough bool) {
+	for _, d := range t.decorations {
+		d.StrikeThrough = strikeThrough
+	}
+}
+
 // Draw the Text at the given location. y is where the baseline of the text will be placed.
 func (t *Text) Draw(canvas *Canvas, x, y float32) {
 	if len(t.decorations) == 0 {
@@ -202,7 +218,7 @@ func (t *Text) Draw(canvas *Canvas, x, y float32) {
 	nx := x
 	for i, d := range t.decorations {
 		if i != 0 && !current.Equivalent(d) {
-			canvas.DrawSimpleString(string(t.runes[start:i]), x, y+current.BaselineOffset, current.Font, current.Paint)
+			current.DrawText(canvas, string(t.runes[start:i]), x, y+current.BaselineOffset, nx-x)
 			current = d
 			x = nx
 			start = i
@@ -210,7 +226,7 @@ func (t *Text) Draw(canvas *Canvas, x, y float32) {
 		nx += t.widths[i]
 	}
 	if start < len(t.decorations) {
-		canvas.DrawSimpleString(string(t.runes[start:]), x, y+current.BaselineOffset, current.Font, current.Paint)
+		current.DrawText(canvas, string(t.runes[start:]), x, y+current.BaselineOffset, nx-x)
 	}
 }
 
