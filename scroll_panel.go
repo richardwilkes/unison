@@ -20,6 +20,7 @@ const (
 	UnmodifiedBehavior Behavior = iota
 	FillBehavior                // If the content is smaller than the available space, expand it
 	FollowBehavior              // Fix the content to the view size
+	HintedFillBehavior          // Uses hints to try and fix the content to the view size, but if the resulting content is smaller than the available space, expands it
 )
 
 // Behavior controls how auto-sizing of the scroll content's preferred size is handled.
@@ -385,15 +386,15 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	var contentSize Size
 	if s.content != nil {
 		var hint Size
-		if s.widthBehavior == FollowBehavior {
+		if s.widthBehavior == FollowBehavior || s.widthBehavior == HintedFillBehavior {
 			hint.Width = viewContent.Width
 		}
-		if s.heightBehavior == FollowBehavior {
+		if s.heightBehavior == FollowBehavior || s.heightBehavior == HintedFillBehavior {
 			hint.Height = viewContent.Height
 		}
 		_, contentSize, _ = s.content.AsPanel().Sizes(hint)
 		switch s.widthBehavior {
-		case FillBehavior:
+		case FillBehavior, HintedFillBehavior:
 			if contentSize.Width < viewContent.Width {
 				contentSize.Width = viewContent.Width
 			}
@@ -401,7 +402,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 			contentSize.Width = viewContent.Width
 		}
 		switch s.heightBehavior {
-		case FillBehavior:
+		case FillBehavior, HintedFillBehavior:
 			if contentSize.Height < viewContent.Height {
 				contentSize.Height = viewContent.Height
 			}
