@@ -33,11 +33,11 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (min, pref, max Size)
 	if hint.Height < 1 {
 		hint.Height = math.MaxFloat32
 	}
-	width := hint.Width - (insets.Left + insets.Right)
+	width := hint.Width - insets.Width()
 	pt := Point{X: insets.Left, Y: insets.Top}
 	result := Size{Width: pt.Y, Height: pt.Y}
 	availWidth := width
-	availHeight := hint.Height - (insets.Top + insets.Bottom)
+	availHeight := hint.Height - insets.Height()
 	var maxHeight float32
 	var largestChildMin Size
 	for _, child := range target.Children() {
@@ -103,8 +103,8 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (min, pref, max Size)
 	}
 	result.Width += insets.Right
 	result.Height += insets.Bottom
-	largestChildMin.Width += insets.Left + insets.Right
-	largestChildMin.Height += insets.Top + insets.Bottom
+	largestChildMin.Width += insets.Width()
+	largestChildMin.Height += insets.Height()
 	return largestChildMin, result, MaxSize(result)
 }
 
@@ -115,10 +115,10 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 		insets = b.Insets()
 	}
 	size := target.ContentRect(true).Size
-	width := size.Width - (insets.Left + insets.Right)
+	width := size.Width - insets.Width()
 	pt := Point{X: insets.Left, Y: insets.Top}
 	availWidth := width
-	availHeight := size.Height - (insets.Top + insets.Bottom)
+	availHeight := size.Height - insets.Height()
 	var maxHeight float32
 	children := target.Children()
 	rects := make([]Rect, len(children))

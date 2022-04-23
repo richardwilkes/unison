@@ -315,8 +315,8 @@ func (s *ScrollPanel) LayoutSizes(_ *Panel, hint Size) (min, pref, max Size) {
 		pref.Height += p.Height
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
-			min.Height += insets.Top + insets.Bottom
-			pref.Height += insets.Top + insets.Bottom
+			min.Height += insets.Height()
+			pref.Height += insets.Height()
 		}
 	}
 	if s.rowHeaderView != nil {
@@ -325,8 +325,8 @@ func (s *ScrollPanel) LayoutSizes(_ *Panel, hint Size) (min, pref, max Size) {
 		pref.Width += p.Width
 		if border := s.rowHeaderView.Border(); border != nil {
 			insets := border.Insets()
-			min.Width += insets.Left + insets.Right
-			pref.Width += insets.Left + insets.Right
+			min.Width += insets.Width()
+			pref.Width += insets.Width()
 		}
 	}
 	if border := s.contentView.Border(); border != nil {
@@ -353,7 +353,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		height := xmath.Min(r.Height, p.Height)
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
-			height += insets.Top + insets.Bottom
+			height += insets.Height()
 		}
 		r.Y += height
 		r.Height -= height
@@ -364,7 +364,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		row.Width = xmath.Min(r.Width, p.Width)
 		if border := s.rowHeaderView.Border(); border != nil {
 			insets := border.Insets()
-			row.Width += insets.Left + insets.Right
+			row.Width += insets.Width()
 		}
 		s.rowHeaderView.AsPanel().SetFrameRect(row)
 		r.X += row.Width
@@ -375,7 +375,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		col := NewRect(r.X, columnHeaderTop, r.Width, xmath.Min(r.Height, p.Height))
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
-			col.Height += insets.Top + insets.Bottom
+			col.Height += insets.Height()
 		}
 		s.columnHeaderView.AsPanel().SetFrameRect(col)
 	}

@@ -146,7 +146,7 @@ func (f *Field) DefaultSizes(hint Size) (min, pref, max Size) {
 	if b := f.Border(); b != nil {
 		insets = b.Insets()
 	}
-	lines, _ := f.buildLines(hint.Width - (2 + insets.Left + insets.Right))
+	lines, _ := f.buildLines(hint.Width - (2 + insets.Width()))
 	for _, line := range lines {
 		size := line.Extents()
 		if pref.Width < size.Width {
@@ -161,7 +161,7 @@ func (f *Field) DefaultSizes(hint Size) (min, pref, max Size) {
 		pref.Height = height
 	}
 	pref.Width += 2 // Allow room for the cursor on either side of the text
-	minWidth := f.MinimumTextWidth + 2 + insets.Left + insets.Right
+	minWidth := f.MinimumTextWidth + 2 + insets.Width()
 	pref.AddInsets(insets)
 	pref.GrowToInteger()
 	if hint.Width >= 1 && hint.Width < minWidth {

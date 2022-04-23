@@ -72,7 +72,7 @@ func (h *TableHeader) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref.Height = h.heightForColumns()
 	if border := h.Border(); border != nil {
 		insets := border.Insets()
-		pref.Height += insets.Top + insets.Bottom
+		pref.Height += insets.Height()
 	}
 	return NewSize(16, pref.Height), pref, pref
 }
@@ -90,7 +90,7 @@ func (h *TableHeader) ColumnFrame(col int) Rect {
 			x++
 		}
 	}
-	rect := NewRect(x, insets.Top, h.Table.ColumnSizes[col].Current, h.FrameRect().Height-(insets.Top+insets.Bottom))
+	rect := NewRect(x, insets.Top, h.Table.ColumnSizes[col].Current, h.FrameRect().Height-insets.Height())
 	rect.Inset(h.Table.Padding)
 	return rect
 }

@@ -51,7 +51,7 @@ func (b *LineBorder) Draw(canvas *Canvas, rect Rect) {
 	path.SetFillType(EvenOdd)
 	if b.cornerRadius > 0 {
 		path.RoundedRect(rect, b.cornerRadius, b.cornerRadius)
-		radius := xmath.Max(b.cornerRadius-((b.insets.Top+b.insets.Left+b.insets.Bottom+b.insets.Right)/4), 1)
+		radius := xmath.Max(b.cornerRadius-((b.insets.Width()+b.insets.Height())/4), 1)
 		path.RoundedRect(clip, radius, radius)
 	} else {
 		path.Rect(rect)
