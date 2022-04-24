@@ -6,7 +6,7 @@ require (
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20220320163800-277f93cfa958
 	github.com/richardwilkes/json v0.0.0-20220202023945-ac9125b86187
-	github.com/richardwilkes/toolbox v1.68.2-0.20220423195511-0a3af4c33d30
+	github.com/richardwilkes/toolbox v1.69.0
 	github.com/stretchr/testify v1.7.1
 	golang.org/x/image v0.0.0-20220413100746-70e8d0d3baa9
 	golang.org/x/sys v0.0.0-20220422013727-9388b58f7150
