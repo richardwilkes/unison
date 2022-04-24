@@ -54,7 +54,7 @@ linters-settings:
 linters:
   disable-all: true
   enable:
-#    - bodyclose
+    - bodyclose
     - deadcode
     - depguard
     - errcheck
@@ -65,21 +65,21 @@ linters:
     - gofumpt
     - goimports
     - gosec
-#    - gosimple
+    - gosimple
     - govet
     - ifshort
     - ineffassign
     - misspell
-#    - noctx
+    - noctx
     - prealloc
     - predeclared
     - revive
-#    - staticcheck
-#    - structcheck
+    - staticcheck
+    - structcheck
     - unconvert
-#    - unused
+    - unused
     - varcheck
-#    - wastedassign
+    - wastedassign
 # Once Go 1.18 support is finalized in golangci-lint, re-enable the above linters
 issues:
   max-same-issues: 10
