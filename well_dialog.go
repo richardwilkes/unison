@@ -51,7 +51,7 @@ func showWellDialog(w *Well) {
 	})
 
 	left := NewPanel()
-	left.SetBorder(NewEmptyBorder(Insets{Right: 16}))
+	left.SetBorder(NewEmptyBorder(Insets{Right: 2 * StdHSpacing}))
 	left.SetLayoutData(&FlexLayoutData{})
 	left.SetLayout(&FlexLayout{
 		Columns:  1,
@@ -134,7 +134,7 @@ func (d *wellDialog) addPatternSelector(parent *Panel) {
 		}
 	}
 	if d.well.Mask&^PatternWellMask != 0 {
-		b.SetBorder(NewEmptyBorder(Insets{Bottom: 16}))
+		b.SetBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing}))
 	}
 	parent.AddChild(b)
 }
@@ -175,7 +175,7 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 	})
 
 	right := NewPanel()
-	right.SetBorder(NewEmptyBorder(Insets{Left: 16}))
+	right.SetBorder(NewEmptyBorder(Insets{Left: 2 * StdHSpacing}))
 	right.SetLayout(&FlexLayout{
 		Columns:  3,
 		HSpacing: StdHSpacing,
@@ -196,7 +196,7 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 	})
 
 	bottom := NewPanel()
-	bottom.SetBorder(NewEmptyBorder(Insets{Top: 16}))
+	bottom.SetBorder(NewEmptyBorder(Insets{Top: 2 * StdHSpacing}))
 	bottom.SetLayout(&FlexLayout{
 		Columns:  2,
 		HSpacing: StdHSpacing,
@@ -430,7 +430,7 @@ func (d *wellDialog) addCSSField(parent *Panel, color Color) *Field {
 		l = NewLabel()
 		l.Text = txt
 		l.SetEnabled(false)
-		l.SetBorder(NewEmptyBorder(Insets{Left: 8}))
+		l.SetBorder(NewEmptyBorder(Insets{Left: StdHSpacing}))
 		l.SetLayoutData(&FlexLayoutData{
 			VAlign: MiddleAlignment,
 		})

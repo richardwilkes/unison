@@ -68,6 +68,16 @@ func NewVerticalInsets(amount float32) Insets {
 	return geom.NewVerticalInsets(amount)
 }
 
+// StdInsets returns insets preset to the standard spacing.
+func StdInsets() Insets {
+	return Insets{
+		Top:    StdVSpacing,
+		Left:   StdHSpacing,
+		Bottom: StdVSpacing,
+		Right:  StdHSpacing,
+	}
+}
+
 // Matrix is an alias for geom.Matrix2D[float32], for convenience.
 type Matrix = geom.Matrix2D[float32]
 

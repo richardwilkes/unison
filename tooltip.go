@@ -19,7 +19,7 @@ import (
 var DefaultTooltipTheme = TooltipTheme{
 	BackgroundInk: TooltipColor,
 	BaseBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(1), false),
-		NewEmptyBorder(Insets{Top: 4, Left: 8, Bottom: 4, Right: 8})),
+		NewEmptyBorder(StdInsets())),
 	Label:     defaultToolTipLabelTheme(),
 	Delay:     1500 * time.Millisecond,
 	Dismissal: 5 * time.Second,

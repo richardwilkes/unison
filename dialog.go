@@ -81,14 +81,14 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 		return nil, errs.NewWithCause("unable to create dialog", d.err)
 	}
 	content := d.wnd.Content()
-	content.SetBorder(NewEmptyBorder(NewUniformInsets(16)))
+	content.SetBorder(NewEmptyBorder(NewUniformInsets(2 * StdHSpacing)))
 	columns := 1
 	if icon != nil {
 		columns++
 		iconLabel := NewLabel()
 		iconLabel.Drawable = icon
 		iconLabel.OnBackgroundInk = iconInk
-		iconLabel.SetBorder(NewEmptyBorder(Insets{Bottom: 16, Right: 8}))
+		iconLabel.SetBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing, Right: StdHSpacing}))
 		iconLabel.SetLayoutData(&FlexLayoutData{})
 		content.AddChild(iconLabel)
 	}
@@ -99,9 +99,9 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	})
 	p := msgPanel.AsPanel()
 	if b := p.Border(); b != nil {
-		p.SetBorder(NewCompoundBorder(NewEmptyBorder(Insets{Bottom: 16}), b))
+		p.SetBorder(NewCompoundBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing}), b))
 	} else {
-		p.SetBorder(NewEmptyBorder(Insets{Bottom: 16}))
+		p.SetBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing}))
 	}
 	p.SetLayoutData(&FlexLayoutData{
 		HSpan:  1,
@@ -222,7 +222,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font) {
 					l.Text = part
 					l.Font = font
 					if returns > 1 {
-						l.SetBorder(NewEmptyBorder(Insets{Top: 8}))
+						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
 					}
 					panel.AddChild(l)
 					text = text[i+1:]
@@ -234,7 +234,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font) {
 					l.Text = text
 					l.Font = font
 					if returns > 1 {
-						l.SetBorder(NewEmptyBorder(Insets{Top: 8}))
+						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
 					}
 					panel.AddChild(l)
 				}

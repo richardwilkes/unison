@@ -57,7 +57,7 @@ var DefaultMenuItemTheme = MenuItemTheme{
 	OnBackgroundColor: OnBackgroundColor,
 	SelectionColor:    SelectionColor,
 	OnSelectionColor:  OnSelectionColor,
-	ItemBorder:        NewEmptyBorder(Insets{Top: 4, Left: 8, Bottom: 4, Right: 8}),
+	ItemBorder:        NewEmptyBorder(StdInsets()),
 	SeparatorBorder:   NewEmptyBorder(NewVerticalInsets(4)),
 	KeyGap:            16,
 }
