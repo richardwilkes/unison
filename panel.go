@@ -181,6 +181,9 @@ func (p *Panel) RemoveFromParent() {
 
 // Parent returns the parent panel, if any.
 func (p *Panel) Parent() *Panel {
+	if p == nil {
+		return nil
+	}
 	return p.parent
 }
 
