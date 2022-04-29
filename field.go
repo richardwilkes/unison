@@ -258,7 +258,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 				Font:  f.Font,
 				Paint: paint,
 			})
-			text.Draw(canvas, f.textLeft(text, rect)-text.Width(), textTop+text.Baseline())
+			text.Draw(canvas, f.textLeft(text, rect), textTop+text.Baseline())
 		}
 		if !hasSelectionRange && enabled && focused {
 			if f.showCursor {
