@@ -184,19 +184,20 @@ func (d *DockContainer) Stack(dockable Dockable, index int) {
 
 // AttemptClose attempts to close a Dockable within this DockContainer. This only has an affect if the Dockable is
 // contained by this DockContainer and implements the TabCloser interface. Note that the TabCloser must call this
-// DockContainer's close(Dockable) method to actually close the tab.
-func (d *DockContainer) AttemptClose(dockable Dockable) {
+// DockContainer's close(Dockable) method to actually close the tab. Returns true if dockable is closed.
+func (d *DockContainer) AttemptClose(dockable Dockable) bool {
 	if closer, ok := dockable.(TabCloser); ok {
 		dockable = resolveDockable(dockable)
 		for _, c := range d.content.Children() {
 			if c.Self == dockable {
 				if closer.MayAttemptClose() {
-					closer.AttemptClose()
+					return closer.AttemptClose()
 				}
 				break
 			}
 		}
 	}
+	return false
 }
 
 // Close the specified Dockable. If the last Dockable within this DockContainer is closed, then this DockContainer is

@@ -420,16 +420,17 @@ func (w *Window) String() string {
 	return fmt.Sprintf("Window[%s]", w.title)
 }
 
-// AttemptClose closes the window if permitted.
-func (w *Window) AttemptClose() {
+// AttemptClose closes the window if permitted. Returns true on success.
+func (w *Window) AttemptClose() bool {
 	if w.AllowCloseCallback != nil {
 		allow := false
 		toolbox.Call(func() { allow = w.AllowCloseCallback() })
 		if !allow {
-			return
+			return false
 		}
 	}
 	w.Dispose()
+	return true
 }
 
 func (w *Window) removeFromWindowList() {

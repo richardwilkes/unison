@@ -15,8 +15,10 @@ import (
 
 // TabCloser defines the methods that must be implemented to cause the tabs to show a close button.
 type TabCloser interface {
+	// MayAttemptClose returns true if a call to AttemptClose() is permitted.
 	MayAttemptClose() bool
-	AttemptClose()
+	// AttemptClose attempts to close the tab. On success, returns true.
+	AttemptClose() bool
 }
 
 // DefaultDockTabTheme holds the default DockTabTheme values for DockTabs. Modifying this data will not alter existing
@@ -100,7 +102,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		}
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment, VAlign: MiddleAlignment})
 		t.AddChild(t.button)
-		t.button.ClickCallback = t.attemptClose
+		t.button.ClickCallback = func() { t.attemptClose() }
 		flex.Columns++
 	}
 	t.MouseDownCallback = t.mouseDown
@@ -171,10 +173,11 @@ func (t *dockTab) draw(gc *Canvas, rect Rect) {
 	gc.DrawPath(p, t.EdgeInk.Paint(gc, r, Stroke))
 }
 
-func (t *dockTab) attemptClose() {
+func (t *dockTab) attemptClose() bool {
 	if dc := DockContainerFor(t.dockable); dc != nil {
-		dc.AttemptClose(t.dockable)
+		return dc.AttemptClose(t.dockable)
 	}
+	return false
 }
 
 func (t *dockTab) updateTooltip(where Point, suggestedAvoidInRoot Rect) Rect {

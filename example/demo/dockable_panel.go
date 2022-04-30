@@ -76,8 +76,10 @@ func (d *DockablePanel) MayAttemptClose() bool {
 }
 
 // AttemptClose implements TabCloser.
-func (d *DockablePanel) AttemptClose() {
+func (d *DockablePanel) AttemptClose() bool {
 	if dc := unison.DockContainerFor(d); dc != nil {
 		dc.Close(d)
+		return true
 	}
+	return false
 }
