@@ -43,6 +43,24 @@ func NewCancelButtonInfo() *DialogButtonInfo {
 	}
 }
 
+// NewNoButtonInfo creates a standard No button.
+func NewNoButtonInfo() *DialogButtonInfo {
+	return &DialogButtonInfo{
+		Title:        i18n.Text("No"),
+		ResponseCode: ModalResponseDiscard,
+		KeyCodes:     []KeyCode{KeyN},
+	}
+}
+
+// NewYesButtonInfo creates a standard Yes button.
+func NewYesButtonInfo() *DialogButtonInfo {
+	return &DialogButtonInfo{
+		Title:        i18n.Text("Yes"),
+		ResponseCode: ModalResponseOK,
+		KeyCodes:     []KeyCode{KeyReturn, KeyNumPadEnter, KeyY},
+	}
+}
+
 // NewOKButtonInfo creates a standard OK button.
 func NewOKButtonInfo() *DialogButtonInfo {
 	return NewOKButtonInfoWithTitle(i18n.Text("OK"))

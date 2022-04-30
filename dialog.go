@@ -308,3 +308,23 @@ func QuestionDialogWithPanel(msgPanel Paneler) int {
 	}
 	return ModalResponseCancel
 }
+
+// YesNoCancelDialog displays a standard question dialog with the specified primary and detail messages. Embedded line
+// feeds are OK. This function returns ids.ModalResponseOK if the Yes button was pressed, ids.ModalResponseDiscard if
+// the No button was pressed, and ids.ModalResponseCancel if the Cancel button was pressed.
+func YesNoCancelDialog(primary, detail string) int {
+	return YesNoCancelDialogWithPanel(NewMessagePanel(primary, detail))
+}
+
+// YesNoCancelDialogWithPanel displays a standard question dialog with the specified panel. Embedded line feeds are OK.
+// This function returns ids.ModalResponseOK if the Yes button was pressed, ids.ModalResponseDiscard if the No button
+// was pressed, and ids.ModalResponseCancel if the Cancel button was pressed.
+func YesNoCancelDialogWithPanel(msgPanel Paneler) int {
+	if dialog, err := NewDialog(DefaultDialogTheme.QuestionIcon, DefaultDialogTheme.QuestionIconInk, msgPanel,
+		[]*DialogButtonInfo{NewCancelButtonInfo(), NewNoButtonInfo(), NewYesButtonInfo()}); err != nil {
+		jot.Error(err)
+	} else {
+		return dialog.RunModal()
+	}
+	return ModalResponseCancel
+}
