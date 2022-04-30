@@ -74,7 +74,7 @@ func NewWell() *Well {
 	well.ImageFromSpecCallback = NewImageFromFilePathOrURL
 	well.ClickCallback = well.DefaultClick
 	well.DrawCallback = well.DefaultDraw
-	well.GainedFocusCallback = well.MarkForRedraw
+	well.GainedFocusCallback = well.DefaultFocusGained
 	well.LostFocusCallback = well.MarkForRedraw
 	well.MouseDownCallback = well.DefaultMouseDown
 	well.MouseDragCallback = well.DefaultMouseDrag
@@ -129,6 +129,12 @@ func (w *Well) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref.GrowToInteger()
 	pref.ConstrainForHint(hint)
 	return pref, pref, pref
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (w *Well) DefaultFocusGained() {
+	w.ScrollIntoView()
+	w.MarkForRedraw()
 }
 
 // DefaultDraw provides the default drawing.

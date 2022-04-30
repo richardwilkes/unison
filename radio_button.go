@@ -68,7 +68,7 @@ func NewRadioButton() *RadioButton {
 	r.SetFocusable(true)
 	r.SetSizer(r.DefaultSizes)
 	r.DrawCallback = r.DefaultDraw
-	r.GainedFocusCallback = r.MarkForRedraw
+	r.GainedFocusCallback = r.DefaultFocusGained
 	r.LostFocusCallback = r.MarkForRedraw
 	r.MouseDownCallback = r.DefaultMouseDown
 	r.MouseDragCallback = r.DefaultMouseDrag
@@ -103,6 +103,12 @@ func (r *RadioButton) circleAndLabelSize() Size {
 
 func (r *RadioButton) circleSize() float32 {
 	return xmath.Ceil(r.Font.Baseline())
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (r *RadioButton) DefaultFocusGained() {
+	r.ScrollIntoView()
+	r.MarkForRedraw()
 }
 
 // DefaultDraw provides the default drawing.

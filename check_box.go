@@ -69,13 +69,19 @@ func NewCheckBox() *CheckBox {
 	c.SetFocusable(true)
 	c.SetSizer(c.DefaultSizes)
 	c.DrawCallback = c.DefaultDraw
-	c.GainedFocusCallback = c.MarkForRedraw
+	c.GainedFocusCallback = c.DefaultFocusGained
 	c.LostFocusCallback = c.MarkForRedraw
 	c.MouseDownCallback = c.DefaultMouseDown
 	c.MouseDragCallback = c.DefaultMouseDrag
 	c.MouseUpCallback = c.DefaultMouseUp
 	c.KeyDownCallback = c.DefaultKeyDown
 	return c
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (c *CheckBox) DefaultFocusGained() {
+	c.ScrollIntoView()
+	c.MarkForRedraw()
 }
 
 // DefaultSizes provides the default sizing.

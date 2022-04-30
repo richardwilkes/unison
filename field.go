@@ -364,6 +364,7 @@ func (f *Field) DefaultFocusGained() {
 		f.SelectAll()
 	}
 	f.showCursor = true
+	f.ScrollIntoView()
 	f.MarkForRedraw()
 }
 

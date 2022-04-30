@@ -126,12 +126,15 @@ func NewTable() *Table {
 	t := &Table{
 		TableTheme:            DefaultTableTheme,
 		selMap:                make(map[TableRowData]bool),
+		interactionRow:        -1,
+		interactionColumn:     -1,
 		lastMouseMotionRow:    -1,
 		lastMouseMotionColumn: -1,
 	}
 	t.Self = t
 	t.SetFocusable(true)
 	t.SetSizer(t.DefaultSizes)
+	t.GainedFocusCallback = t.DefaultFocusGained
 	t.DrawCallback = t.DefaultDraw
 	t.UpdateCursorCallback = t.DefaultUpdateCursorCallback
 	t.UpdateTooltipCallback = t.DefaultUpdateTooltipCallback
@@ -429,6 +432,19 @@ func (t *Table) newTableHitRect(rect Rect, row TableRowData) tableHitRect {
 			t.MarkForRedraw()
 		},
 	}
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (t *Table) DefaultFocusGained() {
+	switch {
+	case t.interactionRow != -1:
+		t.ScrollRowIntoView(t.interactionRow)
+	case t.lastMouseMotionRow != -1:
+		t.ScrollRowIntoView(t.lastMouseMotionRow)
+	default:
+		t.ScrollIntoView()
+	}
+	t.MarkForRedraw()
 }
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.

@@ -68,7 +68,7 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 	p.SetSizer(p.DefaultSizes)
 	p.MenuFactory = DefaultMenuFactory()
 	p.DrawCallback = p.DefaultDraw
-	p.GainedFocusCallback = p.MarkForRedraw
+	p.GainedFocusCallback = p.DefaultFocusGained
 	p.LostFocusCallback = p.MarkForRedraw
 	p.MouseDownCallback = p.DefaultMouseDown
 	p.KeyDownCallback = p.DefaultKeyDown
@@ -99,6 +99,12 @@ func (p *PopupMenu[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 	max.Width = xmath.Max(DefaultMaxSize, pref.Width)
 	max.Height = pref.Height
 	return pref, pref, max
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (p *PopupMenu[T]) DefaultFocusGained() {
+	p.ScrollIntoView()
+	p.MarkForRedraw()
 }
 
 // DefaultDraw provides the default drawing.

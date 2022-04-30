@@ -102,7 +102,7 @@ func NewButton() *Button {
 	b.SetFocusable(true)
 	b.SetSizer(b.DefaultSizes)
 	b.DrawCallback = b.DefaultDraw
-	b.GainedFocusCallback = b.MarkForRedraw
+	b.GainedFocusCallback = b.DefaultFocusGained
 	b.LostFocusCallback = b.MarkForRedraw
 	b.MouseDownCallback = b.DefaultMouseDown
 	b.MouseDragCallback = b.DefaultMouseDrag
@@ -161,6 +161,12 @@ func (b *Button) VerticalMargin() float32 {
 		return b.DrawableOnlyVMargin
 	}
 	return b.VMargin
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (b *Button) DefaultFocusGained() {
+	b.ScrollIntoView()
+	b.MarkForRedraw()
 }
 
 // DefaultDraw provides the default drawing.

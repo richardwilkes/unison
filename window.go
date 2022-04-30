@@ -671,7 +671,6 @@ func (w *Window) SetFocus(target Paneler) {
 				if newFocus.GainedFocusCallback != nil {
 					toolbox.Call(newFocus.GainedFocusCallback)
 				}
-				newFocus.ScrollIntoView()
 			}
 			w.notifyOfFocusChangeInHierarchy(oldFocus, newFocus)
 		}

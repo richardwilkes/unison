@@ -68,6 +68,7 @@ func NewList() *List {
 	l.SetFocusable(true)
 	l.SetSizer(l.DefaultSizes)
 	l.DrawCallback = l.DefaultDraw
+	l.GainedFocusCallback = l.DefaultFocusGained
 	l.MouseDownCallback = l.DefaultMouseDown
 	l.MouseDragCallback = l.DefaultMouseDrag
 	l.MouseUpCallback = l.DefaultMouseUp
@@ -180,6 +181,12 @@ func (l *List) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref.GrowToInteger()
 	max.GrowToInteger()
 	return pref, pref, max
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (l *List) DefaultFocusGained() {
+	l.ScrollIntoView()
+	l.MarkForRedraw()
 }
 
 // DefaultDraw provides the default drawing.
