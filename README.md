@@ -13,7 +13,7 @@ correctly:
 * On CentOS/Fedora-like Linux distributions, you
   need `libX11-devel libXcursor-devel libXrandr-devel libXinerama-devel mesa-libGL-devel libXi-devel libXxf86vm-devel`
   packages.
-* On Windowws, you need https://jmeubank.github.io/tdm-gcc/download/ as well as https://git-scm.com for its bash shell.
+* On Windows, you need https://jmeubank.github.io/tdm-gcc/download/ as well as https://git-scm.com for its bash shell.
 * See [compilation dependencies](http://www.glfw.org/docs/latest/compile.html#compile_deps) for full details.
 
 This version of Unison was built using Go 1.18. It has been compiled under many earlier versions of Go in the past, but
