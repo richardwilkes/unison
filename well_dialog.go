@@ -15,7 +15,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 type wellDialog struct {
@@ -212,17 +211,6 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 	d.cssField = d.addCSSField(bottom, color)
 }
 
-func determineMinimumTextWidth(field *Field, candidates ...string) float32 {
-	var width float32
-	for _, one := range candidates {
-		width = xmath.Max(NewText(one, &TextDecoration{
-			Font:  field.Font,
-			Paint: nil,
-		}).Width(), width)
-	}
-	return width
-}
-
 func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adjuster func(value int, color Color) Color) *Field {
 	l := NewLabel()
 	l.Text = title
@@ -235,7 +223,7 @@ func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adj
 	field := NewField()
 	field.SetText(strconv.Itoa(value))
 	field.Watermark = "0"
-	field.MinimumTextWidth = determineMinimumTextWidth(field, "255", "100%")
+	field.SetMinimumTextWidthUsing("255", "100%")
 	field.SetLayoutData(&FlexLayoutData{
 		HAlign: FillAlignment,
 		VAlign: MiddleAlignment,
@@ -292,7 +280,7 @@ func (d *wellDialog) addHueField(parent *Panel, color Color) *Field {
 	field := NewField()
 	field.SetText(strconv.Itoa(int(color.Hue()*360 + 0.5)))
 	field.Watermark = "0"
-	field.MinimumTextWidth = determineMinimumTextWidth(field, "360", "100%")
+	field.SetMinimumTextWidthUsing("360", "100%")
 	field.SetLayoutData(&FlexLayoutData{
 		HAlign: FillAlignment,
 		VAlign: MiddleAlignment,
@@ -349,7 +337,7 @@ func (d *wellDialog) addPercentageField(parent *Panel, title string, value float
 	field := NewField()
 	field.SetText(strconv.Itoa(int(value*100+0.5)) + "%")
 	field.Watermark = "0%"
-	field.MinimumTextWidth = determineMinimumTextWidth(field, "100%")
+	field.SetMinimumTextWidthUsing("100%")
 	field.SetLayoutData(&FlexLayoutData{
 		HAlign: FillAlignment,
 		VAlign: MiddleAlignment,

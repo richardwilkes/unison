@@ -140,6 +140,20 @@ func (f *Field) SetWrap(wrap bool) {
 	}
 }
 
+// SetMinimumTextWidthUsing sets the MinimumTextWidth by measuring the provided candidates and using the widest.
+func (f *Field) SetMinimumTextWidthUsing(candidates ...string) {
+	var width float32
+	f.MinimumTextWidth = 10
+	for _, one := range candidates {
+		if width = NewText(one, &TextDecoration{
+			Font:  f.Font,
+			Paint: nil,
+		}).Width(); width > f.MinimumTextWidth {
+			f.MinimumTextWidth = width
+		}
+	}
+}
+
 // DefaultSizes provides the default sizing.
 func (f *Field) DefaultSizes(hint Size) (min, pref, max Size) {
 	var insets Insets
