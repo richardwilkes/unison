@@ -713,6 +713,32 @@ func (t *Table) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	return stop
 }
 
+// FirstSelectedRowIndex returns the first selected row index, or -1 if there is no selection.
+func (t *Table) FirstSelectedRowIndex() int {
+	if len(t.selMap) == 0 {
+		return -1
+	}
+	for i, entry := range t.rowCache {
+		if t.selMap[entry.row] {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastSelectedRowIndex returns the last selected row index, or -1 if there is no selection.
+func (t *Table) LastSelectedRowIndex() int {
+	if len(t.selMap) == 0 {
+		return -1
+	}
+	for i := len(t.rowCache) - 1; i >= 0; i-- {
+		if t.selMap[t.rowCache[i].row] {
+			return i
+		}
+	}
+	return -1
+}
+
 // IsRowOrAnyParentSelected returns true if the specified row index or any of its parents are selected.
 func (t *Table) IsRowOrAnyParentSelected(index int) bool {
 	if index < 0 || index >= len(t.rowCache) {
@@ -1070,6 +1096,14 @@ func (t *Table) DefaultSizes(hint Size) (min, pref, max Size) {
 	return pref, pref, pref
 }
 
+// RowFromIndex returns the row data for the given index.
+func (t *Table) RowFromIndex(index int) TableRowData {
+	if index < 0 || index >= len(t.rowCache) {
+		return nil
+	}
+	return t.rowCache[index].row
+}
+
 // RowToIndex returns the row's index within the displayed data, or -1 if it isn't currently in the disclosed rows.
 func (t *Table) RowToIndex(row TableRowData) int {
 	for i, data := range t.rowCache {
@@ -1083,6 +1117,13 @@ func (t *Table) RowToIndex(row TableRowData) int {
 // ScrollRowIntoView scrolls the row at the given index into view.
 func (t *Table) ScrollRowIntoView(row int) {
 	if frame := t.RowFrame(row); !frame.IsEmpty() {
+		t.ScrollRectIntoView(frame)
+	}
+}
+
+// ScrollRowCellIntoView scrolls the cell from the row and column at the given indexes into view.
+func (t *Table) ScrollRowCellIntoView(row, col int) {
+	if frame := t.CellFrame(row, col); !frame.IsEmpty() {
 		t.ScrollRectIntoView(frame)
 	}
 }
