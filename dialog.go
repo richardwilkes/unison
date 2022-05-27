@@ -195,7 +195,7 @@ func NewMessagePanel(primary, detail string) *Panel {
 	panel.SetLayout(&FlexLayout{
 		Columns:  1,
 		HSpacing: StdHSpacing,
-		VSpacing: StdVSpacing,
+		VSpacing: EmphasizedSystemFont.Size(),
 	})
 	breakTextIntoLabels(panel, primary, EmphasizedSystemFont)
 	breakTextIntoLabels(panel, detail, SystemFont)
