@@ -403,6 +403,9 @@ func (t *Table) CellFrame(row, col int) Rect {
 		indent := t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
 		rect.X += indent
 		rect.Width -= indent
+		if rect.Width < 1 {
+			rect.Width = 1
+		}
 	}
 	return rect
 }
@@ -774,6 +777,11 @@ func (t *Table) SelectedRows(minimal bool) []TableRowData {
 		}
 	}
 	return rows
+}
+
+// HasSelection returns true if there is a selection.
+func (t *Table) HasSelection() bool {
+	return len(t.selMap) != 0
 }
 
 // ClearSelection clears the selection.
