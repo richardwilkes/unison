@@ -195,10 +195,10 @@ func NewMessagePanel(primary, detail string) *Panel {
 	panel.SetLayout(&FlexLayout{
 		Columns:  1,
 		HSpacing: StdHSpacing,
-		VSpacing: EmphasizedSystemFont.Size(),
+		VSpacing: StdVSpacing,
 	})
-	breakTextIntoLabels(panel, primary, EmphasizedSystemFont)
-	breakTextIntoLabels(panel, detail, SystemFont)
+	breakTextIntoLabels(panel, primary, EmphasizedSystemFont, false)
+	breakTextIntoLabels(panel, detail, SystemFont, true)
 	panel.SetLayoutData(&FlexLayoutData{
 		MinSize: Size{Width: 200},
 		HSpan:   1,
@@ -208,7 +208,7 @@ func NewMessagePanel(primary, detail string) *Panel {
 	return panel
 }
 
-func breakTextIntoLabels(panel *Panel, text string, font Font) {
+func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove bool) {
 	if text != "" {
 		returns := 0
 		for {
@@ -221,7 +221,8 @@ func breakTextIntoLabels(panel *Panel, text string, font Font) {
 					l := NewLabel()
 					l.Text = part
 					l.Font = font
-					if returns > 1 {
+					if returns > 1 || addSpaceAbove {
+						addSpaceAbove = false
 						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
 					}
 					panel.AddChild(l)
@@ -233,7 +234,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font) {
 					l := NewLabel()
 					l.Text = text
 					l.Font = font
-					if returns > 1 {
+					if returns > 1 || addSpaceAbove {
 						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
 					}
 					panel.AddChild(l)
