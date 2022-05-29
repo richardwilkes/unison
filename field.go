@@ -758,25 +758,25 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 }
 
 // DefaultCanPerformCmd provides the default can perform command handling.
-func (f *Field) DefaultCanPerformCmd(source any, id int) bool {
+func (f *Field) DefaultCanPerformCmd(source any, id int) (enabled, handled bool) {
 	switch id {
 	case CutItemID:
-		return f.CanCut()
+		return f.CanCut(), true
 	case CopyItemID:
-		return f.CanCopy()
+		return f.CanCopy(), true
 	case PasteItemID:
-		return f.CanPaste()
+		return f.CanPaste(), true
 	case DeleteItemID:
-		return f.CanDelete()
+		return f.CanDelete(), true
 	case SelectAllItemID:
-		return f.CanSelectAll()
+		return f.CanSelectAll(), true
 	default:
-		return false
+		return false, false
 	}
 }
 
 // DefaultPerformCmd provides the default perform command handling.
-func (f *Field) DefaultPerformCmd(source any, id int) {
+func (f *Field) DefaultPerformCmd(source any, id int) bool {
 	switch id {
 	case CutItemID:
 		f.Cut()
@@ -789,7 +789,9 @@ func (f *Field) DefaultPerformCmd(source any, id int) {
 	case SelectAllItemID:
 		f.SelectAll()
 	default:
+		return false
 	}
+	return true
 }
 
 // CanCut returns true if the field has a selection that can be cut.

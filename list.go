@@ -384,15 +384,24 @@ func (l *List) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool 
 }
 
 // DefaultCanPerformCmd provides the default can perform cmd handling.
-func (l *List) DefaultCanPerformCmd(source any, id int) bool {
-	return id == SelectAllItemID && l.Selection.Count() < len(l.rows)
+func (l *List) DefaultCanPerformCmd(source any, id int) (enabled, handled bool) {
+	switch id {
+	case SelectAllItemID:
+		return l.Selection.Count() < len(l.rows), true
+	default:
+		return false, false
+	}
 }
 
 // DefaultPerformCmd provides the default perform cmd handling.
-func (l *List) DefaultPerformCmd(source any, id int) {
-	if id == SelectAllItemID {
+func (l *List) DefaultPerformCmd(source any, id int) bool {
+	switch id {
+	case SelectAllItemID:
 		l.SelectRange(0, len(l.rows)-1, false)
+	default:
+		return false
 	}
+	return true
 }
 
 // SelectRange selects items from 'start' to 'end', inclusive. If 'add' is true, then any existing selection is added to

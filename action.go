@@ -110,24 +110,19 @@ func (a *Action) execute(item MenuItem) {
 }
 
 // RouteActionToFocusEnabledFunc is intended to be the EnabledCallback for actions that will route to the currently
-// focused UI widget and call CanPerformCmdCallback() on them.
+// focused UI widget and call CanPerformCmd() on it.
 func RouteActionToFocusEnabledFunc(action *Action, src any) bool {
 	if wnd := ActiveWindow(); wnd != nil {
-		if focus := wnd.Focus(); focus != nil && focus.CanPerformCmdCallback != nil {
-			result := false
-			toolbox.Call(func() { result = focus.CanPerformCmdCallback(src, action.ID) })
-			return result
-		}
+		enabled, _ := wnd.Focus().CanPerformCmd(src, action.ID)
+		return enabled
 	}
 	return false
 }
 
 // RouteActionToFocusExecuteFunc is intended to be the ExecuteCallback for actions that will route to the currently
-// focused UI widget and call PerformCmdCallback() on them.
+// focused UI widget and call PerformCmd() on it.
 func RouteActionToFocusExecuteFunc(action *Action, src any) {
 	if wnd := ActiveWindow(); wnd != nil {
-		if focus := wnd.Focus(); focus != nil && focus.PerformCmdCallback != nil {
-			toolbox.Call(func() { focus.PerformCmdCallback(src, action.ID) })
-		}
+		wnd.Focus().PerformCmd(src, action.ID)
 	}
 }

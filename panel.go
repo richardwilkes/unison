@@ -12,6 +12,8 @@ package unison
 import (
 	"reflect"
 	"strings"
+
+	"github.com/richardwilkes/toolbox"
 )
 
 var _ Paneler = &Panel{}
@@ -30,8 +32,8 @@ type Panel struct {
 	DrawOverCallback                    func(gc *Canvas, rect Rect)
 	UpdateCursorCallback                func(where Point) *Cursor
 	UpdateTooltipCallback               func(where Point, suggestedAvoidInRoot Rect) Rect
-	CanPerformCmdCallback               func(source any, id int) bool
-	PerformCmdCallback                  func(source any, id int)
+	CanPerformCmdCallback               func(source any, id int) (enabled, handled bool)
+	PerformCmdCallback                  func(source any, id int) bool
 	FrameChangeCallback                 func()
 	FrameChangeInChildHierarchyCallback func(panel *Panel)
 	ScrollRectIntoViewCallback          func(rect Rect) bool
@@ -621,4 +623,37 @@ func (p *Panel) StartDataDrag(data *DragData) {
 	if w := p.Window(); w != nil {
 		w.StartDataDrag(data)
 	}
+}
+
+// CanPerformCmd checks if this panel or one of its ancestors can handle the command and whether it should be enabled or
+// not. May be called on a nil Panel object.
+func (p *Panel) CanPerformCmd(src any, id int) (enabled, handled bool) {
+	current := p
+	for current != nil {
+		if current.CanPerformCmdCallback != nil {
+			toolbox.Call(func() { enabled, handled = current.CanPerformCmdCallback(src, id) })
+			if handled {
+				return enabled, handled
+			}
+		}
+		current = current.parent
+	}
+	return false, false
+}
+
+// PerformCmd returns true if the command was handled, either by this panel or one of its ancestors. May be called on a
+// nil Panel object.
+func (p *Panel) PerformCmd(src any, id int) bool {
+	current := p
+	for current != nil {
+		if current.PerformCmdCallback != nil {
+			handled := false
+			toolbox.Call(func() { handled = current.PerformCmdCallback(src, id) })
+			if handled {
+				return true
+			}
+		}
+		current = current.parent
+	}
+	return false
 }
