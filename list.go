@@ -150,8 +150,8 @@ func (l *List) DefaultSizes(hint Size) (min, pref, max Size) {
 		height = 0
 	}
 	size := Size{Width: hint.Width, Height: height}
-	for i, row := range l.rows {
-		cell := l.Factory.CreateCell(l, row, i, Black, false, false)
+	for row := range l.rows {
+		cell := l.cell(row)
 		_, cPref, cMax := cell.Sizes(size)
 		cPref.GrowToInteger()
 		cMax.GrowToInteger()
@@ -193,44 +193,44 @@ func (l *List) DefaultFocusGained() {
 	l.MarkForRedraw()
 }
 
+func (l *List) cellParams(row int) (fg, bg Ink, selected, focused bool) {
+	focused = l.Focused()
+	if !l.suppressSelection {
+		selected = l.Selection.State(row)
+	}
+	switch {
+	case selected && focused:
+		fg = l.OnSelectionInk
+		bg = l.SelectionInk
+	case selected:
+		fg = l.OnInactiveSelectionInk
+		bg = l.InactiveSelectionInk
+	case row%2 == 1:
+		fg = l.OnBandingInk
+		bg = l.BandingInk
+	default:
+		fg = l.OnBackgroundInk
+		bg = l.BackgroundInk
+	}
+	return fg, bg, selected, focused
+}
+
+func (l *List) cell(row int) *Panel {
+	fg, bg, selected, focused := l.cellParams(row)
+	return l.Factory.CreateCell(l, l.rows[row], row, fg, bg, selected, focused).AsPanel()
+}
+
 // DefaultDraw provides the default drawing.
 func (l *List) DefaultDraw(canvas *Canvas, dirty Rect) {
-	selectionInk := l.SelectionInk
-	onSelectionInk := l.OnSelectionInk
-	if !l.Focused() {
-		selectionInk = l.InactiveSelectionInk
-		onSelectionInk = l.OnInactiveSelectionInk
-	}
-
-	index, y := l.rowAt(dirty.Y)
-	if index >= 0 {
+	row, y := l.rowAt(dirty.Y)
+	if row >= 0 {
 		cellHeight := xmath.Ceil(l.Factory.CellHeight())
 		count := len(l.rows)
 		yMax := dirty.Y + dirty.Height
-		focused := l.Focused()
-		var selCount int
-		if !l.suppressSelection {
-			selCount = l.Selection.Count()
-		}
 		rect := l.ContentRect(false)
-		for index < count && y < yMax {
-			var selected bool
-			if !l.suppressSelection {
-				selected = l.Selection.State(index)
-			}
-			var fg, bg Ink
-			switch {
-			case selected:
-				bg = selectionInk
-				fg = onSelectionInk
-			case index%2 == 0:
-				bg = l.BackgroundInk
-				fg = l.OnBackgroundInk
-			default:
-				bg = l.BandingInk
-				fg = l.OnBandingInk
-			}
-			cell := l.Factory.CreateCell(l, l.rows[index], index, fg, selected, focused && selected && selCount == 1)
+		for row < count && y < yMax {
+			fg, bg, selected, focused := l.cellParams(row)
+			cell := l.Factory.CreateCell(l, l.rows[row], row, fg, bg, selected, focused).AsPanel()
 			cellRect := Rect{Point: Point{X: rect.X, Y: y}, Size: Size{Width: rect.Width, Height: cellHeight}}
 			if cellHeight < 1 {
 				_, pref, _ := cell.Sizes(Size{})
@@ -250,7 +250,7 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty Rect) {
 			cell.Draw(canvas, dirty)
 			dirty.Point.Add(tl)
 			canvas.Restore()
-			index++
+			row++
 		}
 	}
 }
@@ -484,30 +484,29 @@ func (l *List) SetAllowMultipleSelection(allow bool) *List {
 	return l
 }
 
-func (l *List) rowAt(y float32) (index int, top float32) {
+func (l *List) rowAt(y float32) (row int, top float32) {
 	count := len(l.rows)
 	top = l.ContentRect(false).Y
 	cellHeight := xmath.Ceil(l.Factory.CellHeight())
 	if cellHeight < 1 {
-		for index < count {
-			cell := l.Factory.CreateCell(l, l.rows[index], index, Black, false, false)
-			_, pref, _ := cell.Sizes(Size{})
+		for row < count {
+			_, pref, _ := l.cell(row).Sizes(Size{})
 			pref.GrowToInteger()
 			if top+pref.Height >= y {
 				break
 			}
 			top += pref.Height
-			index++
+			row++
 		}
 	} else {
-		index = int(xmath.Floor((y - top) / cellHeight))
-		top += float32(index) * cellHeight
+		row = int(xmath.Floor((y - top) / cellHeight))
+		top += float32(row) * cellHeight
 	}
-	if index >= count {
-		index = -1
+	if row >= count {
+		row = -1
 		top = 0
 	}
-	return index, top
+	return row, top
 }
 
 // FlashSelection flashes the current selection.

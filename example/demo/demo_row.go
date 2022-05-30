@@ -60,7 +60,7 @@ func (d *demoRow) CellDataForSort(index int) string {
 	}
 }
 
-func (d *demoRow) ColumnCell(row, col int, selected bool) unison.Paneler {
+func (d *demoRow) ColumnCell(row, col int, foreground, background unison.Ink, selected, indirectlySelected, focused bool) unison.Paneler {
 	switch col {
 	case 0:
 		if d.checkbox == nil {
@@ -71,9 +71,10 @@ func (d *demoRow) ColumnCell(row, col int, selected bool) unison.Paneler {
 		wrapper := unison.NewPanel()
 		wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
 		width := d.table.CellWidth(row, col)
-		addWrappedText(wrapper, d.text, unison.LabelFont, width, selected)
+		addWrappedText(wrapper, d.text, foreground, unison.LabelFont, width)
 		if d.doubleHeight {
-			addWrappedText(wrapper, "A little note…", unison.LabelFont.Face().Font(unison.LabelFont.Size()-1), width, selected)
+			addWrappedText(wrapper, "A little note…", foreground,
+				unison.LabelFont.Face().Font(unison.LabelFont.Size()-1), width)
 		}
 		wrapper.UpdateTooltipCallback = func(where unison.Point, suggestedAvoidInRoot unison.Rect) unison.Rect {
 			wrapper.Tooltip = unison.NewTooltipWithText("A tooltip for the cell")
@@ -84,13 +85,13 @@ func (d *demoRow) ColumnCell(row, col int, selected bool) unison.Paneler {
 		wrapper := unison.NewPanel()
 		wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
 		width := d.table.CellWidth(row, col)
-		addWrappedText(wrapper, d.text2, unison.LabelFont, width, selected)
+		addWrappedText(wrapper, d.text2, foreground, unison.LabelFont, width)
 		return wrapper
 	case 3:
 		wrapper := unison.NewPanel()
 		wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
 		width := d.table.CellWidth(row, col)
-		addWrappedText(wrapper, "xyz", unison.LabelFont, width, selected)
+		addWrappedText(wrapper, "xyz", foreground, unison.LabelFont, width)
 		return wrapper
 	default:
 		jot.Errorf("column index out of range (0-2): %d", col)
@@ -98,7 +99,7 @@ func (d *demoRow) ColumnCell(row, col int, selected bool) unison.Paneler {
 	}
 }
 
-func addWrappedText(parent *unison.Panel, text string, font unison.Font, width float32, selected bool) {
+func addWrappedText(parent *unison.Panel, text string, ink unison.Ink, font unison.Font, width float32) {
 	decoration := &unison.TextDecoration{Font: font}
 	var lines []*unison.Text
 	if width > 0 {
@@ -110,9 +111,7 @@ func addWrappedText(parent *unison.Panel, text string, font unison.Font, width f
 		label := unison.NewLabel()
 		label.Text = line.String()
 		label.Font = font
-		if selected {
-			label.LabelTheme.OnBackgroundInk = unison.OnSelectionColor
-		}
+		label.LabelTheme.OnBackgroundInk = ink
 		parent.AddChild(label)
 	}
 }

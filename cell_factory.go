@@ -21,10 +21,8 @@ type CellFactory interface {
 	// different.
 	CellHeight() float32
 
-	// CreateCell creates a new cell for 'owner' using 'element' as the content. 'index' indicates which row the element
-	// came from. 'selected' indicates the cell should be created in its selected state. 'focused' indicates the cell
-	// should be created in its focused state.
-	CreateCell(owner Paneler, element any, index int, foreground Ink, selected, focused bool) *Panel
+	// CreateCell creates a new cell.
+	CreateCell(owner Paneler, element any, row int, foreground, background Ink, selected, focused bool) Paneler
 }
 
 // DefaultCellFactory provides a simple implementation of a CellFactory that uses Labels for its cells.
@@ -38,11 +36,11 @@ func (f *DefaultCellFactory) CellHeight() float32 {
 }
 
 // CreateCell implements CellFactory.
-func (f *DefaultCellFactory) CreateCell(owner Paneler, element any, index int, foreground Ink, selected, focused bool) *Panel {
+func (f *DefaultCellFactory) CreateCell(owner Paneler, element any, row int, foreground, background Ink, selected, focused bool) Paneler {
 	txtLabel := NewLabel()
 	txtLabel.SetBorder(NewEmptyBorder(Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}))
 	txtLabel.Text = fmt.Sprintf("%v", element)
 	txtLabel.Font = FieldFont
 	txtLabel.OnBackgroundInk = foreground
-	return txtLabel.AsPanel()
+	return txtLabel
 }

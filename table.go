@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 // TableRowData provides information about a single row of data.
@@ -27,7 +28,7 @@ type TableRowData interface {
 	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index. If you
 	// need for the cell to retain widget state, make sure to return the same widget each time rather than creating a
 	// new one.
-	ColumnCell(row, col int, selected bool) Paneler
+	ColumnCell(row, col int, foreground, background Ink, selected, indirectlySelected, focused bool) Paneler
 	// IsOpen returns true if the row can have children and is currently showing its children.
 	IsOpen() bool
 	// SetOpen sets the row's open state.
@@ -154,10 +155,8 @@ func NewTable() *Table {
 // DefaultDraw provides the default drawing.
 func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 	selectionInk := t.SelectionInk
-	onSelectionInk := t.OnSelectionInk
 	if !t.Focused() {
 		selectionInk = t.InactiveSelectionInk
-		onSelectionInk = t.OnInactiveSelectionInk
 	}
 
 	canvas.DrawRect(dirty, t.BackgroundInk.Paint(canvas, dirty, Fill))
@@ -234,27 +233,14 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 	lastX := dirty.Right()
 	t.hitRects = nil
 	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
-		row := t.rowCache[r].row
-		selected := t.IsRowOrAnyParentSelected(r)
-		var fg Ink
-		switch {
-		case selected:
-			if t.IsRowSelected(r) {
-				fg = onSelectionInk
-			} else {
-				fg = t.OnIndirectSelectionInk
-			}
-		case row.IsOpen():
-			fg = t.OnBandingInk
-		default:
-			fg = t.OnBackgroundInk
-		}
 		rect.X = x
 		rect.Height = t.rowCache[r].height
 		for c := firstCol; c < len(t.ColumnSizes) && rect.X < lastX; c++ {
+			fg, bg, selected, indirectlySelected, focused := t.cellParams(r, c)
 			rect.Width = t.ColumnSizes[c].Current
 			cellRect := rect
 			cellRect.Inset(t.Padding)
+			row := t.rowCache[r].row
 			if c == t.HierarchyColumnIndex {
 				if row.CanHaveChildRows() {
 					const disclosureIndent = 2
@@ -279,7 +265,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 				cellRect.X += indent
 				cellRect.Width -= indent
 			}
-			cell := row.ColumnCell(r, c, selected).AsPanel()
+			cell := row.ColumnCell(r, c, fg, bg, selected, indirectlySelected, focused).AsPanel()
 			t.installCell(cell, cellRect)
 			canvas.Save()
 			canvas.Translate(cellRect.X, cellRect.Y)
@@ -298,6 +284,35 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 			rect.Y++
 		}
 	}
+}
+
+func (t *Table) cellParams(row, col int) (fg, bg Ink, selected, indirectlySelected, focused bool) {
+	focused = t.Focused()
+	selected = t.IsRowSelected(row)
+	indirectlySelected = !selected && t.IsRowOrAnyParentSelected(row)
+	switch {
+	case selected && focused:
+		fg = t.OnSelectionInk
+		bg = t.SelectionInk
+	case selected:
+		fg = t.OnInactiveSelectionInk
+		bg = t.InactiveSelectionInk
+	case indirectlySelected:
+		fg = t.OnIndirectSelectionInk
+		bg = t.IndirectSelectionInk
+	case row%2 == 1:
+		fg = t.OnBandingInk
+		bg = t.BandingInk
+	default:
+		fg = t.OnBackgroundInk
+		bg = t.BackgroundInk
+	}
+	return fg, bg, selected, indirectlySelected, focused
+}
+
+func (t *Table) cell(row, col int) *Panel {
+	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
+	return t.rowCache[row].row.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
 }
 
 func (t *Table) installCell(cell *Panel, frame Rect) {
@@ -472,7 +487,7 @@ func (t *Table) DefaultUpdateCursorCallback(where Point) *Cursor {
 	}
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.rowCache[row].row.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
+			cell := t.cell(row, col)
 			if cell.UpdateCursorCallback != nil {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -491,7 +506,7 @@ func (t *Table) DefaultUpdateCursorCallback(where Point) *Cursor {
 func (t *Table) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.rowCache[row].row.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
+			cell := t.cell(row, col)
 			if cell.UpdateTooltipCallback != nil {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -524,7 +539,7 @@ func (t *Table) DefaultMouseEnter(where Point, mod Modifiers) bool {
 			t.DefaultMouseExit()
 			t.lastMouseMotionRow = row
 			t.lastMouseMotionColumn = col
-			cell := t.rowCache[row].row.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
+			cell := t.cell(row, col)
 			if cell.MouseEnterCallback != nil {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -543,8 +558,7 @@ func (t *Table) DefaultMouseEnter(where Point, mod Modifiers) bool {
 func (t *Table) DefaultMouseExit() bool {
 	stop := false
 	if t.lastMouseMotionRow != -1 && t.lastMouseMotionColumn != -1 {
-		cell := t.rowCache[t.lastMouseMotionRow].row.ColumnCell(t.lastMouseMotionRow, t.lastMouseMotionColumn,
-			t.IsRowOrAnyParentSelected(t.lastMouseMotionRow)).AsPanel()
+		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		if cell.MouseExitCallback != nil {
 			t.installCell(cell, t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn))
 			toolbox.Call(func() { stop = cell.MouseExitCallback() })
@@ -562,7 +576,7 @@ func (t *Table) DefaultMouseMove(where Point, mod Modifiers) bool {
 	stop := false
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.rowCache[row].row.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
+			cell := t.cell(row, col)
 			if cell.MouseMoveCallback != nil {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -613,9 +627,8 @@ func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 	}
 	stop := true
 	if row := t.OverRow(where.Y); row != -1 {
-		rowData := t.rowCache[row].row
 		if col := t.OverColumn(where.X); col != -1 {
-			cell := rowData.ColumnCell(row, col, t.IsRowOrAnyParentSelected(row)).AsPanel()
+			cell := t.cell(row, col)
 			if cell.MouseDownCallback != nil {
 				t.interactionRow = row
 				t.interactionColumn = col
@@ -629,6 +642,7 @@ func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 				}
 			}
 		}
+		rowData := t.rowCache[row].row
 		switch {
 		case mod&ShiftModifier != 0: // Extend selection from anchor
 			selAnchorIndex := -1
@@ -698,7 +712,7 @@ func (t *Table) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 				stop = true
 			}
 		} else {
-			cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionRow, t.interactionColumn, t.IsRowOrAnyParentSelected(t.interactionRow)).AsPanel()
+			cell := t.cell(t.interactionRow, t.interactionColumn)
 			if cell.MouseDragCallback != nil {
 				rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 				t.installCell(cell, rect)
@@ -715,7 +729,7 @@ func (t *Table) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 func (t *Table) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if t.interactionRow != -1 && t.interactionColumn != -1 {
-		cell := t.rowCache[t.interactionRow].row.ColumnCell(t.interactionRow, t.interactionColumn, t.IsRowOrAnyParentSelected(t.interactionRow)).AsPanel()
+		cell := t.cell(t.interactionRow, t.interactionColumn)
 		if cell.MouseUpCallback != nil {
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
@@ -898,7 +912,7 @@ func (t *Table) buildRowCacheEntry(row TableRowData, parentIndex, index, depth i
 	t.rowCache[index].row = row
 	t.rowCache[index].parent = parentIndex
 	t.rowCache[index].depth = depth
-	t.rowCache[index].height = t.heightForColumns(row, index, depth, t.IsRowOrAnyParentSelected(index))
+	t.rowCache[index].height = t.heightForColumns(row, index, depth)
 	parentIndex = index
 	index++
 	if row.CanHaveChildRows() && row.IsOpen() {
@@ -909,24 +923,31 @@ func (t *Table) buildRowCacheEntry(row TableRowData, parentIndex, index, depth i
 	return index
 }
 
-func (t *Table) heightForColumns(row TableRowData, rowIndex, depth int, selected bool) float32 {
+func (t *Table) heightForColumns(rowData TableRowData, row, depth int) float32 {
 	var height float32
-	for i := range t.ColumnSizes {
-		w := t.ColumnSizes[i].Current
+	for col := range t.ColumnSizes {
+		w := t.ColumnSizes[col].Current
 		if w <= 0 {
 			continue
 		}
 		w -= t.Padding.Left + t.Padding.Right
-		if i == t.HierarchyColumnIndex {
+		if col == t.HierarchyColumnIndex {
 			w -= t.Padding.Left + t.HierarchyIndent*float32(depth+1)
 		}
-		_, cpref, _ := row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(Size{Width: w})
-		cpref.Height += t.Padding.Top + t.Padding.Bottom
-		if height < cpref.Height {
-			height = cpref.Height
+		size := t.cellPrefSize(rowData, row, col, w)
+		size.Height += t.Padding.Top + t.Padding.Bottom
+		if height < size.Height {
+			height = size.Height
 		}
 	}
 	return xmath.Max(xmath.Ceil(height), t.MinimumRowHeight)
+}
+
+func (t *Table) cellPrefSize(rowData TableRowData, row, col int, widthConstraint float32) geom.Size[float32] {
+	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
+	cell := rowData.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
+	_, size, _ := cell.Sizes(Size{Width: widthConstraint})
+	return size
 }
 
 // SizeColumnsToFitWithExcessIn sizes each column to its preferred size, with the exception of the 'excessColumnIndex',
@@ -940,32 +961,31 @@ func (t *Table) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 		}
 	}
 	current := make([]float32, len(t.ColumnSizes))
-	for i := range t.ColumnSizes {
-		current[i] = xmath.Max(t.ColumnSizes[i].Minimum, 0)
-		t.ColumnSizes[i].Current = 0
+	for col := range t.ColumnSizes {
+		current[col] = xmath.Max(t.ColumnSizes[col].Minimum, 0)
+		t.ColumnSizes[col].Current = 0
 	}
-	for rowIndex, cache := range t.rowCache {
-		selected := t.IsRowOrAnyParentSelected(rowIndex)
-		for i := range t.ColumnSizes {
-			if i == excessColumnIndex {
+	for row, cache := range t.rowCache {
+		for col := range t.ColumnSizes {
+			if col == excessColumnIndex {
 				continue
 			}
-			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(Size{})
-			min := t.ColumnSizes[i].AutoMinimum
+			pref := t.cellPrefSize(cache.row, row, col, 0)
+			min := t.ColumnSizes[col].AutoMinimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
 			} else {
-				max := t.ColumnSizes[i].AutoMaximum
+				max := t.ColumnSizes[col].AutoMaximum
 				if max > 0 && pref.Width > max {
 					pref.Width = max
 				}
 			}
 			pref.Width += t.Padding.Left + t.Padding.Right
-			if i == t.HierarchyColumnIndex {
+			if col == t.HierarchyColumnIndex {
 				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 			}
-			if current[i] < pref.Width {
-				current[i] = pref.Width
+			if current[col] < pref.Width {
+				current[col] = pref.Width
 			}
 		}
 	}
@@ -973,16 +993,16 @@ func (t *Table) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 	if t.ShowColumnDivider {
 		width -= float32(len(t.ColumnSizes) - 1)
 	}
-	for i := range current {
-		if i == excessColumnIndex {
+	for col := range current {
+		if col == excessColumnIndex {
 			continue
 		}
-		t.ColumnSizes[i].Current = current[i]
-		width -= current[i]
+		t.ColumnSizes[col].Current = current[col]
+		width -= current[col]
 	}
 	t.ColumnSizes[excessColumnIndex].Current = xmath.Max(width, t.ColumnSizes[excessColumnIndex].Minimum)
-	for i, cache := range t.rowCache {
-		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
+	for row, cache := range t.rowCache {
+		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
 	}
 }
 
@@ -990,37 +1010,36 @@ func (t *Table) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 // its preferred size as well.
 func (t *Table) SizeColumnsToFit(adjust bool) {
 	current := make([]float32, len(t.ColumnSizes))
-	for i := range t.ColumnSizes {
-		current[i] = xmath.Max(t.ColumnSizes[i].Minimum, 0)
-		t.ColumnSizes[i].Current = 0
+	for col := range t.ColumnSizes {
+		current[col] = xmath.Max(t.ColumnSizes[col].Minimum, 0)
+		t.ColumnSizes[col].Current = 0
 	}
-	for rowIndex, cache := range t.rowCache {
-		selected := t.IsRowOrAnyParentSelected(rowIndex)
-		for i := range t.ColumnSizes {
-			_, pref, _ := cache.row.ColumnCell(rowIndex, i, selected).AsPanel().Sizes(Size{})
-			min := t.ColumnSizes[i].AutoMinimum
+	for row, cache := range t.rowCache {
+		for col := range t.ColumnSizes {
+			pref := t.cellPrefSize(cache.row, row, col, 0)
+			min := t.ColumnSizes[col].AutoMinimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
 			} else {
-				max := t.ColumnSizes[i].AutoMaximum
+				max := t.ColumnSizes[col].AutoMaximum
 				if max > 0 && pref.Width > max {
 					pref.Width = max
 				}
 			}
 			pref.Width += t.Padding.Left + t.Padding.Right
-			if i == t.HierarchyColumnIndex {
+			if col == t.HierarchyColumnIndex {
 				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 			}
-			if current[i] < pref.Width {
-				current[i] = pref.Width
+			if current[col] < pref.Width {
+				current[col] = pref.Width
 			}
 		}
 	}
-	for i := range current {
-		t.ColumnSizes[i].Current = current[i]
+	for col := range current {
+		t.ColumnSizes[col].Current = current[col]
 	}
-	for i, cache := range t.rowCache {
-		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
+	for row, cache := range t.rowCache {
+		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
 	}
 	if adjust {
 		_, pref, _ := t.DefaultSizes(Size{})
@@ -1032,34 +1051,34 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 
 // SizeColumnToFit sizes the specified column to its preferred size. If 'adjust' is true, the Table's FrameRect will be
 // set to its preferred size as well.
-func (t *Table) SizeColumnToFit(index int, adjust bool) {
-	if index < 0 || index >= len(t.ColumnSizes) {
+func (t *Table) SizeColumnToFit(col int, adjust bool) {
+	if col < 0 || col >= len(t.ColumnSizes) {
 		return
 	}
-	current := xmath.Max(t.ColumnSizes[index].Minimum, 0)
-	t.ColumnSizes[index].Current = 0
-	for rowIndex, cache := range t.rowCache {
-		_, pref, _ := cache.row.ColumnCell(rowIndex, index, t.IsRowOrAnyParentSelected(rowIndex)).AsPanel().Sizes(Size{})
-		min := t.ColumnSizes[index].AutoMinimum
+	current := xmath.Max(t.ColumnSizes[col].Minimum, 0)
+	t.ColumnSizes[col].Current = 0
+	for row, cache := range t.rowCache {
+		pref := t.cellPrefSize(cache.row, row, col, 0)
+		min := t.ColumnSizes[col].AutoMinimum
 		if min > 0 && pref.Width < min {
 			pref.Width = min
 		} else {
-			max := t.ColumnSizes[index].AutoMaximum
+			max := t.ColumnSizes[col].AutoMaximum
 			if max > 0 && pref.Width > max {
 				pref.Width = max
 			}
 		}
 		pref.Width += t.Padding.Left + t.Padding.Right
-		if index == t.HierarchyColumnIndex {
+		if col == t.HierarchyColumnIndex {
 			pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 		}
 		if current < pref.Width {
 			current = pref.Width
 		}
 	}
-	t.ColumnSizes[index].Current = current
-	for i, cache := range t.rowCache {
-		t.rowCache[i].height = t.heightForColumns(cache.row, i, cache.depth, t.IsRowOrAnyParentSelected(i))
+	t.ColumnSizes[col].Current = current
+	for row, cache := range t.rowCache {
+		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
 	}
 	if adjust {
 		_, pref, _ := t.DefaultSizes(Size{})
@@ -1096,8 +1115,8 @@ func (t *Table) EventuallySyncToModel() {
 
 // DefaultSizes provides the default sizing.
 func (t *Table) DefaultSizes(hint Size) (min, pref, max Size) {
-	for i := range t.ColumnSizes {
-		pref.Width += t.ColumnSizes[i].Current
+	for col := range t.ColumnSizes {
+		pref.Width += t.ColumnSizes[col].Current
 	}
 	for _, cache := range t.rowCache {
 		pref.Height += cache.height
@@ -1124,10 +1143,10 @@ func (t *Table) RowFromIndex(index int) TableRowData {
 }
 
 // RowToIndex returns the row's index within the displayed data, or -1 if it isn't currently in the disclosed rows.
-func (t *Table) RowToIndex(row TableRowData) int {
-	for i, data := range t.rowCache {
-		if data.row == row {
-			return i
+func (t *Table) RowToIndex(rowData TableRowData) int {
+	for row, data := range t.rowCache {
+		if data.row == rowData {
+			return row
 		}
 	}
 	return -1
