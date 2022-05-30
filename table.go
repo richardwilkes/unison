@@ -67,8 +67,10 @@ var DefaultTableTheme = TableTheme{
 	DividerInk:             DividerColor,
 	SelectionInk:           SelectionColor,
 	OnSelectionInk:         OnSelectionColor,
-	IndirectSelectionInk:   InactiveSelectionColor,
-	OnIndirectSelectionInk: OnInactiveSelectionColor,
+	InactiveSelectionInk:   InactiveSelectionColor,
+	OnInactiveSelectionInk: OnInactiveSelectionColor,
+	IndirectSelectionInk:   IndirectSelectionColor,
+	OnIndirectSelectionInk: OnIndirectSelectionColor,
 	Padding:                NewUniformInsets(4),
 	HierarchyColumnIndex:   0,
 	HierarchyIndent:        16,
@@ -87,6 +89,8 @@ type TableTheme struct {
 	DividerInk             Ink
 	SelectionInk           Ink
 	OnSelectionInk         Ink
+	InactiveSelectionInk   Ink
+	OnInactiveSelectionInk Ink
 	IndirectSelectionInk   Ink
 	OnIndirectSelectionInk Ink
 	Padding                Insets
@@ -149,6 +153,13 @@ func NewTable() *Table {
 
 // DefaultDraw provides the default drawing.
 func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
+	selectionInk := t.SelectionInk
+	onSelectionInk := t.OnSelectionInk
+	if !t.Focused() {
+		selectionInk = t.InactiveSelectionInk
+		onSelectionInk = t.OnInactiveSelectionInk
+	}
+
 	canvas.DrawRect(dirty, t.BackgroundInk.Paint(canvas, dirty, Fill))
 
 	var insets Insets
@@ -192,7 +203,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect.Height = t.rowCache[r].height
 		if t.IsRowOrAnyParentSelected(r) {
 			if t.IsRowSelected(r) {
-				canvas.DrawRect(rect, t.SelectionInk.Paint(canvas, rect, Fill))
+				canvas.DrawRect(rect, selectionInk.Paint(canvas, rect, Fill))
 			} else {
 				canvas.DrawRect(rect, t.IndirectSelectionInk.Paint(canvas, rect, Fill))
 			}
@@ -229,7 +240,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 		switch {
 		case selected:
 			if t.IsRowSelected(r) {
-				fg = t.OnSelectionInk
+				fg = onSelectionInk
 			} else {
 				fg = t.OnIndirectSelectionInk
 			}
