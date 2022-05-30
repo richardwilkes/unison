@@ -32,8 +32,10 @@ var (
 	OnEditableColor          = &ThemeColor{Light: RGB(0, 0, 160), Dark: RGB(100, 153, 153)}
 	SelectionColor           = &ThemeColor{Light: RGB(0, 96, 160), Dark: RGB(0, 96, 160)}
 	OnSelectionColor         = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(255, 255, 255)}
-	InactiveSelectionColor   = &ThemeColor{Light: RGB(0, 64, 148), Dark: RGB(0, 64, 148)}
+	InactiveSelectionColor   = &ThemeColor{Light: RGB(0, 64, 128), Dark: RGB(0, 64, 128)}
 	OnInactiveSelectionColor = &ThemeColor{Light: RGB(228, 228, 228), Dark: RGB(228, 228, 228)}
+	IndirectSelectionColor   = &ThemeColor{Light: RGB(0, 64, 64), Dark: RGB(0, 64, 64)}
+	OnIndirectSelectionColor = &ThemeColor{Light: RGB(228, 228, 228), Dark: RGB(228, 228, 228)}
 	ScrollColor              = &ThemeColor{Light: ARGB(0.5, 192, 192, 192), Dark: ARGB(0.5, 128, 128, 128)}
 	ScrollRolloverColor      = &ThemeColor{Light: RGB(192, 192, 192), Dark: RGB(128, 128, 128)}
 	ScrollEdgeColor          = &ThemeColor{Light: RGB(128, 128, 128), Dark: RGB(160, 160, 160)}
