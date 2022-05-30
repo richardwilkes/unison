@@ -18,24 +18,28 @@ import (
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
 // but will alter any Lists created in the future.
 var DefaultListTheme = ListTheme{
-	BackgroundInk:      ContentColor,
-	OnBackgroundInk:    OnContentColor,
-	BandingInk:         BandingColor,
-	OnBandingInk:       OnBandingColor,
-	SelectionInk:       SelectionColor,
-	OnSelectionInk:     OnSelectionColor,
-	FlashAnimationTime: 100 * time.Millisecond,
+	BackgroundInk:          ContentColor,
+	OnBackgroundInk:        OnContentColor,
+	BandingInk:             BandingColor,
+	OnBandingInk:           OnBandingColor,
+	SelectionInk:           SelectionColor,
+	OnSelectionInk:         OnSelectionColor,
+	InactiveSelectionInk:   InactiveSelectionColor,
+	OnInactiveSelectionInk: OnInactiveSelectionColor,
+	FlashAnimationTime:     100 * time.Millisecond,
 }
 
 // ListTheme holds theming data for a List.
 type ListTheme struct {
-	BackgroundInk      Ink
-	OnBackgroundInk    Ink
-	BandingInk         Ink
-	OnBandingInk       Ink
-	SelectionInk       Ink
-	OnSelectionInk     Ink
-	FlashAnimationTime time.Duration
+	BackgroundInk          Ink
+	OnBackgroundInk        Ink
+	BandingInk             Ink
+	OnBandingInk           Ink
+	SelectionInk           Ink
+	OnSelectionInk         Ink
+	InactiveSelectionInk   Ink
+	OnInactiveSelectionInk Ink
+	FlashAnimationTime     time.Duration
 }
 
 // List provides a control that allows the user to select from a list of items, represented by cells.
@@ -191,6 +195,13 @@ func (l *List) DefaultFocusGained() {
 
 // DefaultDraw provides the default drawing.
 func (l *List) DefaultDraw(canvas *Canvas, dirty Rect) {
+	selectionInk := l.SelectionInk
+	onSelectionInk := l.OnSelectionInk
+	if !l.Focused() {
+		selectionInk = l.InactiveSelectionInk
+		onSelectionInk = l.OnInactiveSelectionInk
+	}
+
 	index, y := l.rowAt(dirty.Y)
 	if index >= 0 {
 		cellHeight := xmath.Ceil(l.Factory.CellHeight())
@@ -210,8 +221,8 @@ func (l *List) DefaultDraw(canvas *Canvas, dirty Rect) {
 			var fg, bg Ink
 			switch {
 			case selected:
-				bg = l.SelectionInk
-				fg = l.OnSelectionInk
+				bg = selectionInk
+				fg = onSelectionInk
 			case index%2 == 0:
 				bg = l.BackgroundInk
 				fg = l.OnBackgroundInk
