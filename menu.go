@@ -41,6 +41,8 @@ type Menu interface {
 	InsertMenu(atIndex int, subMenu Menu)
 	// RemoveItem removes the menu item at the specified index from this menu.
 	RemoveItem(index int)
+	// RemoveAll removes all menu items from the menu.
+	RemoveAll()
 	// Title returns the title of this menu.
 	Title() string
 	// Count of menu items in this menu.
@@ -172,6 +174,10 @@ func (m *menu) RemoveItem(index int) {
 		m.items[len(m.items)-1] = nil
 		m.items = m.items[:len(m.items)-1]
 	}
+}
+
+func (m *menu) RemoveAll() {
+	m.items = nil
 }
 
 func (m *menu) ID() int {

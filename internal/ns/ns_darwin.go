@@ -176,6 +176,10 @@ void menuRemoveItemAtIndex(NSMenuRef m, int index) {
 	[(NSMenu *)m removeItemAtIndex:index];
 }
 
+void menuRemoveAll(NSMenuRef m) {
+	[(NSMenu *)m removeAllItems];
+}
+
 CFStringRef menuTitle(NSMenuRef m) {
 	return (CFStringRef)[(NSMenu *)m title];
 }
@@ -678,6 +682,10 @@ func (m Menu) InsertItemAtIndex(item MenuItem, index int) {
 
 func (m Menu) RemoveItemAtIndex(index int) {
 	C.menuRemoveItemAtIndex(C.NSMenuRef(m), C.int(index))
+}
+
+func (m Menu) RemoveAll() {
+	C.menuRemoveAll(C.NSMenuRef(m))
 }
 
 func (m Menu) Title() string {

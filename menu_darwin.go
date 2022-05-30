@@ -126,6 +126,10 @@ func (m *macMenu) RemoveItem(index int) {
 	}
 }
 
+func (m *macMenu) RemoveAll() {
+	m.menu.RemoveAll()
+}
+
 func (m *macMenu) ID() int {
 	return m.id
 }
