@@ -557,7 +557,7 @@ func (t *Table) DefaultMouseEnter(where Point, mod Modifiers) bool {
 // DefaultMouseExit provides the default mouse exit handling.
 func (t *Table) DefaultMouseExit() bool {
 	stop := false
-	if t.lastMouseMotionRow != -1 && t.lastMouseMotionColumn != -1 {
+	if t.lastMouseMotionColumn != -1 && t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) {
 		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		if cell.MouseExitCallback != nil {
 			t.installCell(cell, t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn))
