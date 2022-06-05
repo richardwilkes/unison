@@ -43,7 +43,6 @@ var (
 	DeleteAction = &Action{
 		ID:              DeleteItemID,
 		Title:           i18n.Text("Delete"),
-		KeyBinding:      KeyBinding{KeyCode: KeyBackspace},
 		EnabledCallback: RouteActionToFocusEnabledFunc,
 		ExecuteCallback: RouteActionToFocusExecuteFunc,
 	}
