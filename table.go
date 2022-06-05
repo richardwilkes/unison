@@ -423,7 +423,7 @@ func (t *Table) CellFrame(row, col int) Rect {
 			y++
 		}
 	}
-	rect := NewRect(x, y, t.rowCache[row].height, t.ColumnSizes[col].Current)
+	rect := NewRect(x, y, t.ColumnSizes[col].Current, t.rowCache[row].height)
 	rect.Inset(t.Padding)
 	if col == t.HierarchyColumnIndex {
 		indent := t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
