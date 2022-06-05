@@ -110,8 +110,11 @@ func NewField() *Field {
 	f.UpdateCursorCallback = f.DefaultUpdateCursor
 	f.KeyDownCallback = f.DefaultKeyDown
 	f.RuneTypedCallback = f.DefaultRuneTyped
-	f.CanPerformCmdCallback = f.DefaultCanPerformCmd
-	f.PerformCmdCallback = f.DefaultPerformCmd
+	f.InstallCmdHandlers(CutItemID, func(_ any) bool { return f.CanCut() }, func(_ any) { f.Cut() })
+	f.InstallCmdHandlers(CopyItemID, func(_ any) bool { return f.CanCopy() }, func(_ any) { f.Copy() })
+	f.InstallCmdHandlers(PasteItemID, func(_ any) bool { return f.CanPaste() }, func(_ any) { f.Paste() })
+	f.InstallCmdHandlers(DeleteItemID, func(_ any) bool { return f.CanDelete() }, func(_ any) { f.Delete() })
+	f.InstallCmdHandlers(SelectAllItemID, func(_ any) bool { return f.CanSelectAll() }, func(_ any) { f.SelectAll() })
 	return f
 }
 
@@ -755,43 +758,6 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 			f.SetSelectionTo(pos)
 		}
 	}
-}
-
-// DefaultCanPerformCmd provides the default can perform command handling.
-func (f *Field) DefaultCanPerformCmd(source any, id int) (enabled, handled bool) {
-	switch id {
-	case CutItemID:
-		return f.CanCut(), true
-	case CopyItemID:
-		return f.CanCopy(), true
-	case PasteItemID:
-		return f.CanPaste(), true
-	case DeleteItemID:
-		return f.CanDelete(), true
-	case SelectAllItemID:
-		return f.CanSelectAll(), true
-	default:
-		return false, false
-	}
-}
-
-// DefaultPerformCmd provides the default perform command handling.
-func (f *Field) DefaultPerformCmd(source any, id int) bool {
-	switch id {
-	case CutItemID:
-		f.Cut()
-	case CopyItemID:
-		f.Copy()
-	case PasteItemID:
-		f.Paste()
-	case DeleteItemID:
-		f.Delete()
-	case SelectAllItemID:
-		f.SelectAll()
-	default:
-		return false
-	}
-	return true
 }
 
 // CanCut returns true if the field has a selection that can be cut.

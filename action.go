@@ -98,7 +98,7 @@ func (a *Action) enabled(item MenuItem) bool {
 	return enabled
 }
 
-// Execute the action.
+// Execute the action. Calls Enabled() to verify execution is permitted.
 func (a *Action) Execute(src any) {
 	if a.ExecuteCallback != nil && a.Enabled(src) {
 		toolbox.Call(func() { a.ExecuteCallback(a, src) })
@@ -113,8 +113,7 @@ func (a *Action) execute(item MenuItem) {
 // focused UI widget and call CanPerformCmd() on it.
 func RouteActionToFocusEnabledFunc(action *Action, src any) bool {
 	if wnd := ActiveWindow(); wnd != nil {
-		enabled, _ := wnd.Focus().CanPerformCmd(src, action.ID)
-		return enabled
+		return wnd.Focus().CanPerformCmd(src, action.ID)
 	}
 	return false
 }

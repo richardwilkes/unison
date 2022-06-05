@@ -77,8 +77,7 @@ func NewList() *List {
 	l.MouseDragCallback = l.DefaultMouseDrag
 	l.MouseUpCallback = l.DefaultMouseUp
 	l.KeyDownCallback = l.DefaultKeyDown
-	l.CanPerformCmdCallback = l.DefaultCanPerformCmd
-	l.PerformCmdCallback = l.DefaultPerformCmd
+	l.InstallCmdHandlers(SelectAllItemID, func(_ any) bool { return l.CanSelectAll() }, func(_ any) { l.SelectAll() })
 	return l
 }
 
@@ -394,25 +393,14 @@ func (l *List) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool 
 	return true
 }
 
-// DefaultCanPerformCmd provides the default can perform cmd handling.
-func (l *List) DefaultCanPerformCmd(source any, id int) (enabled, handled bool) {
-	switch id {
-	case SelectAllItemID:
-		return l.Selection.Count() < len(l.rows), true
-	default:
-		return false, false
-	}
+// CanSelectAll returns true if the list's selection can be expanded.
+func (l *List) CanSelectAll() bool {
+	return l.Selection.Count() < len(l.rows)
 }
 
-// DefaultPerformCmd provides the default perform cmd handling.
-func (l *List) DefaultPerformCmd(source any, id int) bool {
-	switch id {
-	case SelectAllItemID:
-		l.SelectRange(0, len(l.rows)-1, false)
-	default:
-		return false
-	}
-	return true
+// SelectAll selects all of the rows in the list.
+func (l *List) SelectAll() {
+	l.SelectRange(0, len(l.rows)-1, false)
 }
 
 // SelectRange selects items from 'start' to 'end', inclusive. If 'add' is true, then any existing selection is added to

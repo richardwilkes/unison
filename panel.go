@@ -32,8 +32,6 @@ type Panel struct {
 	DrawOverCallback                    func(gc *Canvas, rect Rect)
 	UpdateCursorCallback                func(where Point) *Cursor
 	UpdateTooltipCallback               func(where Point, suggestedAvoidInRoot Rect) Rect
-	CanPerformCmdCallback               func(source any, id int) (enabled, handled bool)
-	PerformCmdCallback                  func(source any, id int) bool
 	FrameChangeCallback                 func()
 	FrameChangeInChildHierarchyCallback func(panel *Panel)
 	ScrollRectIntoViewCallback          func(rect Rect) bool
@@ -56,6 +54,8 @@ type Panel struct {
 	layout               Layout
 	layoutData           any
 	children             []*Panel
+	canPerformMap        map[int]func(any) bool
+	performMap           map[int]func(any)
 	data                 map[string]any
 	scale                float32
 	NeedsLayout          bool
@@ -625,35 +625,60 @@ func (p *Panel) StartDataDrag(data *DragData) {
 	}
 }
 
-// CanPerformCmd checks if this panel or one of its ancestors can handle the command and whether it should be enabled or
-// not. May be called on a nil Panel object.
-func (p *Panel) CanPerformCmd(src any, id int) (enabled, handled bool) {
-	current := p
-	for current != nil {
-		if current.CanPerformCmdCallback != nil {
-			toolbox.Call(func() { enabled, handled = current.CanPerformCmdCallback(src, id) })
-			if handled {
-				return enabled, handled
-			}
-		}
-		current = current.parent
+// InstallCmdHandlers installs handlers for the command with the given ID, returning any previously installed handlers.
+func (p *Panel) InstallCmdHandlers(id int, can func(any) bool, do func(any)) (formerCan func(any) bool, formerDo func(any)) {
+	if p.canPerformMap == nil {
+		p.canPerformMap = make(map[int]func(any) bool)
+		p.performMap = make(map[int]func(any))
 	}
-	return false, false
+	formerCan = p.canPerformMap[id]
+	formerDo = p.performMap[id]
+	p.canPerformMap[id] = can
+	p.performMap[id] = do
+	return
 }
 
-// PerformCmd returns true if the command was handled, either by this panel or one of its ancestors. May be called on a
-// nil Panel object.
-func (p *Panel) PerformCmd(src any, id int) bool {
+// RemoveCmdHandler removes the handlers for the command with the given ID.
+func (p *Panel) RemoveCmdHandler(id int) {
+	delete(p.canPerformMap, id)
+	delete(p.performMap, id)
+	if len(p.canPerformMap) == 0 {
+		p.canPerformMap = nil
+		p.performMap = nil
+	}
+}
+
+// CanPerformCmd checks if this panel or its ancestors can perform the command. May be called on a nil Panel object.
+func (p *Panel) CanPerformCmd(src any, id int) bool {
 	current := p
 	for current != nil {
-		if current.PerformCmdCallback != nil {
-			handled := false
-			toolbox.Call(func() { handled = current.PerformCmdCallback(src, id) })
-			if handled {
-				return true
-			}
+		if f, ok := current.canPerformMap[id]; ok {
+			enabled := false
+			toolbox.Call(func() { enabled = f(src) })
+			return enabled
 		}
 		current = current.parent
 	}
 	return false
+}
+
+// PerformCmd returns true if the command was handled, either by this panel or its ancestors. May be called on a nil
+// Panel object. First calls CanPerformCmd() to ensure the command is permitted to be performed.
+func (p *Panel) PerformCmd(src any, id int) {
+	if p.CanPerformCmd(src, id) {
+		current := p
+		for current != nil {
+			if f, ok := current.performMap[id]; ok {
+				toolbox.Call(func() { f(src) })
+				return
+			}
+			current = current.parent
+		}
+	}
+}
+
+// AlwaysEnabled is a helper function whose signature matches the 'can' function signature required for
+// InstallCmdHandlers() that always returns true.
+func AlwaysEnabled(_ any) bool {
+	return true
 }
