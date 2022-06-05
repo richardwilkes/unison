@@ -625,6 +625,25 @@ func (p *Panel) StartDataDrag(data *DragData) {
 	}
 }
 
+// ScrollRoot returns the containing ScrollPanel, if any.
+func (p *Panel) ScrollRoot() *ScrollPanel {
+	one := p.Parent()
+	for one != nil {
+		if s, ok := one.Self.(*ScrollPanel); ok {
+			return s
+		}
+		one = one.Parent()
+	}
+	return nil
+}
+
+// ValidateScrollRoot calls ValidateLayout() on the containing ScrollPanel, if any.
+func (p *Panel) ValidateScrollRoot() {
+	if s := p.ScrollRoot(); s != nil {
+		s.ValidateLayout()
+	}
+}
+
 // InstallCmdHandlers installs handlers for the command with the given ID, returning any previously installed handlers.
 func (p *Panel) InstallCmdHandlers(id int, can func(any) bool, do func(any)) (formerCan func(any) bool, formerDo func(any)) {
 	if p.canPerformMap == nil {
