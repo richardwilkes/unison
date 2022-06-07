@@ -304,7 +304,9 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 			expandColumn[i] = expandCount > 0
 			widths[i] = columnWidth
 		}
-	} else if width > 0 && expandCount > 0 {
+	}
+	// The following is still run even when EqualColumns is set, so that the overall width is consistent.
+	if width > 0 && expandCount > 0 {
 		var totalWidth float32
 		for i := 0; i < f.Columns; i++ {
 			totalWidth += widths[i]
