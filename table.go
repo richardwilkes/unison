@@ -149,6 +149,7 @@ func NewTable() *Table {
 	t.MouseUpCallback = t.DefaultMouseUp
 	t.MouseEnterCallback = t.DefaultMouseEnter
 	t.MouseExitCallback = t.DefaultMouseExit
+	t.InstallCmdHandlers(SelectAllItemID, AlwaysEnabled, func(_ any) { t.SelectAll() })
 	return t
 }
 
@@ -816,6 +817,19 @@ func (t *Table) ClearSelection() {
 	}
 	t.selMap = make(map[TableRowData]bool)
 	t.selAnchor = nil
+	t.MarkForRedraw()
+}
+
+// SelectAll selects all rows.
+func (t *Table) SelectAll() {
+	t.selMap = make(map[TableRowData]bool, len(t.rowCache))
+	t.selAnchor = nil
+	for _, cache := range t.rowCache {
+		t.selMap[cache.row] = true
+		if t.selAnchor == nil {
+			t.selAnchor = cache.row
+		}
+	}
 	t.MarkForRedraw()
 }
 
