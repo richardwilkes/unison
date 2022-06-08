@@ -1166,6 +1166,11 @@ func (t *Table) RowToIndex(rowData TableRowData) int {
 	return -1
 }
 
+// LastRowIndex returns the index of the last row. Will be -1 if there are no rows.
+func (t *Table) LastRowIndex() int {
+	return len(t.rowCache) - 1
+}
+
 // ScrollRowIntoView scrolls the row at the given index into view.
 func (t *Table) ScrollRowIntoView(row int) {
 	if frame := t.RowFrame(row); !frame.IsEmpty() {
