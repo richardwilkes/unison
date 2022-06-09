@@ -240,15 +240,16 @@ func (m *menu) createPopup() {
 	if m.popupPanel != nil {
 		return
 	}
-	activeWnd := ActiveWindow()
-	m.closeMenuStackStoppingAt(activeWnd, m.titleItem.menu)
-	root := m
-	for root.titleItem.menu != nil {
-		root = root.titleItem.menu
+	if activeWnd := ActiveWindow(); activeWnd != nil {
+		m.closeMenuStackStoppingAt(activeWnd, m.titleItem.menu)
+		root := m
+		for root.titleItem.menu != nil {
+			root = root.titleItem.menu
+		}
+		m.popupPanel = m.newPanel(false)
+		m.popupPanel.Pack()
+		activeWnd.root.insertMenu(m.popupPanel)
 	}
-	m.popupPanel = m.newPanel(false)
-	m.popupPanel.Pack()
-	activeWnd.root.insertMenu(m.popupPanel)
 }
 
 func (m *menu) newPanel(forBar bool) *menuPanel {
@@ -347,22 +348,21 @@ func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) closeMenuStack() bool {
-	wnd := ActiveWindow()
-	closed := m.closeMenuStackStoppingAt(wnd, nil)
-	wnd.ToFront()
-	return closed
+func (m *menu) closeMenuStack() {
+	if wnd := ActiveWindow(); wnd != nil {
+		m.closeMenuStackStoppingAt(wnd, nil)
+		wnd.ToFront()
+	}
 }
 
-func (m *menu) closeMenuStackStoppingAt(wnd *Window, stopAt *menu) bool {
+func (m *menu) closeMenuStackStoppingAt(wnd *Window, stopAt *menu) {
 	if len(wnd.root.openMenuPanels) == 0 {
-		return false
+		return
 	}
 	for i := len(wnd.root.openMenuPanels) - 1; i >= 0; i-- {
 		if wnd.root.openMenuPanels[i].menu == stopAt {
-			return true
+			return
 		}
 		wnd.root.removeMenu(wnd.root.openMenuPanels[i])
 	}
-	return true
 }

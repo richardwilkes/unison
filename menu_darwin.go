@@ -143,8 +143,7 @@ func (m *macMenu) Count() int {
 }
 
 func (m *macMenu) Popup(where Rect, itemIndex int) {
-	w := ActiveWindow()
-	if w.IsValid() {
+	if w := ActiveWindow(); w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {
 			wnd := ns.Window(w.wnd.GetCocoaWindow())
 			view := wnd.ContentView()

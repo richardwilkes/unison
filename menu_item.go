@@ -215,7 +215,9 @@ func (mi *menuItem) mouseMove(where Point, mod Modifiers) bool {
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu
 	}
-	mi.menu.closeMenuStackStoppingAt(ActiveWindow(), stopAt)
+	if w := ActiveWindow(); w != nil {
+		mi.menu.closeMenuStackStoppingAt(w, stopAt)
+	}
 	return false
 }
 
@@ -257,7 +259,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 	gc.DrawRect(rect, bg.Paint(gc, rect, Fill))
 	paint := fg.Paint(gc, rect, Fill)
 	if !mi.enabled {
-		paint.SetColorFilter(Grayscale30PercentFilter())
+		paint.SetColorFilter(Grayscale30Filter())
 	}
 	rect = mi.panel.ContentRect(false)
 	if mi.isSeparator {
