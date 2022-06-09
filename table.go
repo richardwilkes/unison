@@ -37,6 +37,12 @@ type TableRowData interface {
 	CellDataForSort(index int) string
 }
 
+// TableDragData holds the data from a table row drag.
+type TableDragData struct {
+	Table *Table
+	Rows  []TableRowData
+}
+
 // ColumnSize holds the column sizing information.
 type ColumnSize struct {
 	Current     float32
@@ -399,6 +405,34 @@ func (t *Table) CellWidth(row, col int) float32 {
 		width -= t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
 	}
 	return width
+}
+
+// ColumnEdges returns the x-coordinates of the left and right sides of the column.
+func (t *Table) ColumnEdges(col int) (left, right float32) {
+	if col < 0 || col >= len(t.ColumnSizes) {
+		return 0, 0
+	}
+	var insets Insets
+	if border := t.Border(); border != nil {
+		insets = border.Insets()
+	}
+	left = insets.Left
+	for c := 0; c < col; c++ {
+		left += t.ColumnSizes[c].Current
+		if t.ShowColumnDivider {
+			left++
+		}
+	}
+	right = left + t.ColumnSizes[col].Current
+	left += t.Padding.Left
+	right -= t.Padding.Right
+	if col == t.HierarchyColumnIndex {
+		left += t.HierarchyIndent + t.Padding.Left
+	}
+	if right < left {
+		right = left
+	}
+	return left, right
 }
 
 // CellFrame returns the frame of the given cell.
@@ -879,6 +913,11 @@ func (t *Table) DiscloseRow(row TableRowData, delaySync bool) bool {
 	return modified
 }
 
+// TopLevelRowCount returns the number of top-level rows.
+func (t *Table) TopLevelRowCount() int {
+	return len(t.topLevelRows)
+}
+
 // TopLevelRows returns the top-level rows.
 func (t *Table) TopLevelRows() []TableRowData {
 	rows := make([]TableRowData, len(t.topLevelRows))
@@ -1183,4 +1222,58 @@ func (t *Table) ScrollRowCellIntoView(row, col int) {
 	if frame := t.CellFrame(row, col); !frame.IsEmpty() {
 		t.ScrollRectIntoView(frame)
 	}
+}
+
+// InstallDragSupport installs default drag support into a table. This will chain a function to any existing
+// MouseDragCallback.
+func (t *Table) InstallDragSupport(svg *SVG, dragKey, singularName, pluralName string) {
+	orig := t.MouseDragCallback
+	t.MouseDragCallback = func(where Point, button int, mod Modifiers) bool {
+		if orig != nil && orig(where, button, mod) {
+			return true
+		}
+		if t.HasSelection() && t.IsDragGesture(where) {
+			data := &TableDragData{
+				Table: t,
+				Rows:  t.SelectedRows(true),
+			}
+			drawable := NewTableDragDrawable(data, svg, singularName, pluralName)
+			size := drawable.LogicalSize()
+			t.StartDataDrag(&DragData{
+				Data:     map[string]any{dragKey: data},
+				Drawable: drawable,
+				Ink:      t.OnBackgroundInk,
+				Offset:   Point{X: 0, Y: -size.Height / 2},
+			})
+		}
+		return false
+	}
+}
+
+// InstallDropSupport installs default drop support into a table. This will replace any existing DataDragOverCallback,
+// DataDragExitCallback, and DataDragDropCallback functions. It will also chain a function to any existing
+// DrawOverCallback.
+func (t *Table) InstallDropSupport(dragKey string, dropCallback func(*TableDrop)) *TableDrop {
+	drop := &TableDrop{
+		Table:            t,
+		DragKey:          dragKey,
+		originalDrawOver: t.DrawOverCallback,
+		dropCallback:     dropCallback,
+	}
+	t.DataDragOverCallback = drop.DataDragOverCallback
+	t.DataDragExitCallback = drop.DataDragExitCallback
+	t.DataDragDropCallback = drop.DataDragDropCallback
+	t.DrawOverCallback = drop.DrawOverCallback
+	return drop
+}
+
+// CountTableRows returns the number of table rows, including all descendants, whether open or not.
+func CountTableRows(rows []TableRowData) int {
+	count := len(rows)
+	for _, row := range rows {
+		if row.CanHaveChildRows() {
+			count += CountTableRows(row.ChildRows())
+		}
+	}
+	return count
 }
