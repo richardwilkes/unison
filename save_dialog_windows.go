@@ -32,7 +32,7 @@ func (d *winSaveDialog) RunModal() bool {
 	filter := createExtensionFilter(d.extensions)
 	initialDir := utf16.Encode([]rune(d.initialDir + "\x00"))
 	d.paths = nil
-	if w32.GetSaveFileName(&w32.OpenFileName{
+	if !w32.GetSaveFileName(&w32.OpenFileName{
 		Size:        uint32(unsafe.Sizeof(w32.OpenFileName{})),
 		FileName:    uintptr(unsafe.Pointer(&fileNameBuffer[0])),
 		MaxFileName: uint32(len(fileNameBuffer)),
