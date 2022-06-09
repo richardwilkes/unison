@@ -93,7 +93,7 @@ func (h *DefaultTableColumnHeader) DefaultDraw(canvas *Canvas, dirty Rect) {
 		r.Size = size
 		paint := h.OnBackgroundInk.Paint(canvas, r, Fill)
 		if !h.Enabled() {
-			paint.SetColorFilter(Grayscale30PercentFilter())
+			paint.SetColorFilter(Grayscale30Filter())
 		}
 		h.sortIndicator.DrawInRect(canvas, r, nil, paint)
 	}

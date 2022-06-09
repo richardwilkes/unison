@@ -161,7 +161,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect.InsetUniform(0.5 + 0.2*circleSize)
 		paint := fg.Paint(canvas, rect, Fill)
 		if !r.Enabled() {
-			paint.SetColorFilter(Grayscale30PercentFilter())
+			paint.SetColorFilter(Grayscale30Filter())
 		}
 		canvas.DrawOval(rect, paint)
 	}

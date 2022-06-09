@@ -132,7 +132,7 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	path.Close()
 	paint := p.OnBackgroundInk.Paint(canvas, rect, Fill)
 	if !p.Enabled() {
-		paint.SetColorFilter(Grayscale30PercentFilter())
+		paint.SetColorFilter(Grayscale30Filter())
 	}
 	canvas.DrawPath(path, paint)
 }

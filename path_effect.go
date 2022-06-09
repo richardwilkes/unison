@@ -103,3 +103,13 @@ func NewDashPathEffect(intervals []float32, phase float32) *PathEffect {
 func NewTrimPathEffect(start, stop float32, mode TrimMode) *PathEffect {
 	return newPathEffect(skia.PathEffectCreateTrim(start, stop, skia.TrimMode(mode)))
 }
+
+var dashEffect *PathEffect
+
+// DashEffect returns a 4-4 dash effect.
+func DashEffect() *PathEffect {
+	if dashEffect == nil {
+		dashEffect = NewDashPathEffect([]float32{4, 4}, 0)
+	}
+	return dashEffect
+}

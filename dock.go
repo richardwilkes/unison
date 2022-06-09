@@ -184,7 +184,7 @@ func (d *Dock) DefaultDrawOver(gc *Canvas, dirty Rect) {
 			r.Width = half
 		}
 		paint := d.DropAreaInk.Paint(gc, r, Fill)
-		paint.SetColorFilter(NewAlphaFilter(0.25))
+		paint.SetColorFilter(Alpha30Filter())
 		gc.DrawRect(r, paint)
 		r.InsetUniform(1)
 		p := d.DropAreaInk.Paint(gc, r, Stroke)

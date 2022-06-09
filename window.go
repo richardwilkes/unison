@@ -413,7 +413,7 @@ func (w *Window) removeFromModalStack() {
 
 // IsValid returns true if the window is still valid (i.e. hasn't been disposed).
 func (w *Window) IsValid() bool {
-	return w.valid
+	return w != nil && w.valid
 }
 
 func (w *Window) String() string {

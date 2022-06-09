@@ -262,7 +262,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 	f.prepareLines(rect.Width - 2)
 	paint := bg.Paint(canvas, rect, Fill)
 	if !enabled {
-		paint.SetColorFilter(Grayscale30PercentFilter())
+		paint.SetColorFilter(Grayscale30Filter())
 	}
 	textTop := rect.Y + f.scrollOffset.Y
 	focused := f.Focused()
@@ -270,7 +270,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 	start := 0
 	if len(f.runes) == 0 {
 		if f.Watermark != "" {
-			paint.SetColorFilter(NewAlphaFilter(0.3))
+			paint.SetColorFilter(Alpha30Filter())
 			text := NewText(f.Watermark, &TextDecoration{
 				Font:  f.Font,
 				Paint: paint,

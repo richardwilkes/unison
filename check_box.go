@@ -166,7 +166,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty Rect) {
 	paint := fg.Paint(canvas, contentRect, Stroke)
 	paint.SetStrokeWidth(2)
 	if !c.Enabled() {
-		paint.SetColorFilter(Grayscale30PercentFilter())
+		paint.SetColorFilter(Grayscale30Filter())
 	}
 	if c.State == OnCheckState {
 		path := NewPath()

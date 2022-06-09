@@ -107,7 +107,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 
 	paint := textInk.Paint(canvas, rect, Fill)
 	if applyDisabledFilter {
-		paint.SetColorFilter(Grayscale30PercentFilter())
+		paint.SetColorFilter(Grayscale30Filter())
 	}
 
 	// Determine overall size of content
