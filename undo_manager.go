@@ -44,14 +44,16 @@ func NewUndoManager(costLimit int, recoveryHandler errs.RecoveryHandler) *UndoMa
 
 // UndoManagerFor returns the UndoManager for a given Paneler. May return nil.
 func UndoManagerFor(paneler Paneler) *UndoManager {
-	p := paneler.AsPanel()
-	for p != nil {
-		if provider, ok := p.Self.(UndoManagerProvider); ok {
-			if manager := provider.UndoManager(); manager != nil {
-				return manager
-			}
+	provider := AncestorOrSelf[UndoManagerProvider](paneler)
+	for provider != nil {
+		if manager := provider.UndoManager(); manager != nil {
+			return manager
 		}
-		p = p.Parent()
+		p, ok := provider.(Paneler)
+		if !ok {
+			return nil
+		}
+		provider = Ancestor[UndoManagerProvider](p)
 	}
 	return nil
 }

@@ -637,6 +637,9 @@ func (w *Window) Focused() bool {
 
 // Focus returns the panel with the keyboard focus in this window.
 func (w *Window) Focus() *Panel {
+	if w == nil {
+		return nil
+	}
 	if w.focus == nil {
 		w.FocusNext()
 	}

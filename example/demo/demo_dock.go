@@ -36,10 +36,10 @@ func NewDemoDockWindow(where unison.Point) (*unison.Window, error) {
 	dock := unison.NewDock()
 	yellowDockable := NewDockablePanel("Yellow", "", unison.Yellow)
 	dock.DockTo(yellowDockable, nil, unison.LeftSide)
-	dock.DockTo(NewDockablePanel("Green", "", unison.Green), unison.DockContainerFor(yellowDockable), unison.RightSide)
+	dock.DockTo(NewDockablePanel("Green", "", unison.Green), unison.Ancestor[*unison.DockContainer](yellowDockable), unison.RightSide)
 	blueDockable := NewDockablePanel("Blue with a tooltip", "I've got a tooltip!", unison.Blue)
 	dock.DockTo(blueDockable, nil, unison.BottomSide)
-	unison.DockContainerFor(blueDockable).Stack(NewDockablePanel("Orange", "", unison.Orange), -1)
+	unison.Ancestor[*unison.DockContainer](blueDockable).Stack(NewDockablePanel("Orange", "", unison.Orange), -1)
 	dock.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,

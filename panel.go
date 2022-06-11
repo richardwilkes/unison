@@ -701,3 +701,26 @@ func (p *Panel) PerformCmd(src any, id int) {
 func AlwaysEnabled(_ any) bool {
 	return true
 }
+
+// Ancestor returns the first ancestor of the given type. May return nil if no parent matches.
+func Ancestor[T any](paneler Paneler) T {
+	if paneler != nil {
+		p := paneler.AsPanel().Parent()
+		for p != nil {
+			if one, ok := p.Self.(T); ok {
+				return one
+			}
+			p = p.Parent()
+		}
+	}
+	var zero T
+	return zero
+}
+
+// AncestorOrSelf returns the provided panel or the first ancestor of the given type. May return nil if nothing matches.
+func AncestorOrSelf[T any](paneler Paneler) T {
+	if one, ok := paneler.AsPanel().Self.(T); ok {
+		return one
+	}
+	return Ancestor[T](paneler)
+}

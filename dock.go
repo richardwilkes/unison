@@ -108,7 +108,7 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 		target = d.layout
 	}
 	if d.layout.Contains(target) {
-		dc := DockContainerFor(dockable)
+		dc := Ancestor[*DockContainer](dockable)
 		if dc == target {
 			if len(dc.Dockables()) == 1 {
 				// It's already where it needs to be

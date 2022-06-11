@@ -142,8 +142,8 @@ func (t *dockTab) updateTitle() {
 
 func (t *dockTab) draw(gc *Canvas, rect Rect) {
 	var bg, fg Ink
-	if dc := DockContainerFor(t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
-		if dc == FocusedDockContainerFor(t.Window()) {
+	if dc := Ancestor[*DockContainer](t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
+		if dc == Ancestor[*DockContainer](t.Window().Focus()) {
 			bg = t.TabFocusedInk
 			fg = t.OnTabFocusedInk
 		} else {
@@ -174,7 +174,7 @@ func (t *dockTab) draw(gc *Canvas, rect Rect) {
 }
 
 func (t *dockTab) attemptClose() bool {
-	if dc := DockContainerFor(t.dockable); dc != nil {
+	if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 		return dc.AttemptClose(t.dockable)
 	}
 	return false
@@ -190,11 +190,11 @@ func (t *dockTab) updateTooltip(where Point, suggestedAvoidInRoot Rect) Rect {
 }
 
 func (t *dockTab) mouseDown(where Point, button, clickCount int, mod Modifiers) bool {
-	if dc := DockContainerFor(t.dockable); dc != nil {
+	if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 		switch {
 		case dc.CurrentDockable() != t.dockable:
 			dc.SetCurrentDockable(t.dockable)
-		case dc != FocusedDockContainerFor(t.Window()):
+		case dc != Ancestor[*DockContainer](t.Window().Focus()):
 			dc.AcquireFocus()
 		}
 	}
@@ -203,7 +203,7 @@ func (t *dockTab) mouseDown(where Point, button, clickCount int, mod Modifiers) 
 
 func (t *dockTab) mouseDrag(where Point, button int, mod Modifiers) bool {
 	if t.IsDragGesture(where) {
-		if dc := DockContainerFor(t.dockable); dc != nil {
+		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			icon := t.TitleIcon()
 			size := icon.LogicalSize()
 			t.StartDataDrag(&DragData{

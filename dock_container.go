@@ -127,29 +127,6 @@ func (d *DockContainer) UpdateTitle(dockable Dockable) {
 	}
 }
 
-// FocusedDockContainerFor returns the DockContainer that holds the panel with the current focus in the given Window.
-// May return nil.
-func FocusedDockContainerFor(wnd *Window) *DockContainer {
-	if wnd != nil {
-		return DockContainerFor(wnd.Focus())
-	}
-	return nil
-}
-
-// DockContainerFor returns the DockContainer that holds the given Paneler in its hierarchy. May return nil.
-func DockContainerFor(paneler Paneler) *DockContainer {
-	if paneler != nil {
-		p := paneler.AsPanel().Parent()
-		for p != nil {
-			if dc, ok := p.Self.(*DockContainer); ok {
-				return dc
-			}
-			p = p.Parent()
-		}
-	}
-	return nil
-}
-
 // DockableHasFocus returns true if the given Dockable has the current focus inside it.
 func DockableHasFocus(dockable Dockable) bool {
 	if wnd := dockable.AsPanel().Window(); wnd != nil {
@@ -169,7 +146,7 @@ func DockableHasFocus(dockable Dockable) bool {
 // to be added at the end.
 func (d *DockContainer) Stack(dockable Dockable, index int) {
 	dockable = resolveDockable(dockable)
-	if dc := DockContainerFor(dockable); dc != nil {
+	if dc := Ancestor[*DockContainer](dockable); dc != nil {
 		if dc == d && len(d.content.Children()) == 1 {
 			d.AcquireFocus()
 			return
@@ -228,7 +205,7 @@ func (d *DockContainer) Close(dockable Dockable) {
 			d.Dock = nil
 		}
 		if next != nil {
-			if dc := DockContainerFor(next); dc != nil {
+			if dc := Ancestor[*DockContainer](next); dc != nil {
 				dc.SetCurrentDockable(next)
 				dc.AcquireFocus()
 			}
