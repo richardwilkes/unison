@@ -366,6 +366,15 @@ func (p *Panel) MarkForLayoutRecursively() {
 	}
 }
 
+// MarkForLayoutRecursivelyUpward marks this panel and all of its parents as needing to be laid out.
+func (p *Panel) MarkForLayoutRecursivelyUpward() {
+	one := p
+	for one != nil {
+		one.NeedsLayout = true
+		one = one.Parent()
+	}
+}
+
 // MarkForLayoutAndRedraw marks this panel as needing to be laid out as well as redrawn at the next update.
 func (p *Panel) MarkForLayoutAndRedraw() {
 	p.NeedsLayout = true
