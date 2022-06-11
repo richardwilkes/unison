@@ -16,29 +16,29 @@ import (
 	"github.com/richardwilkes/unison"
 )
 
-var _ unison.TableRowData = &demoRow{}
+var _ unison.TableRowData[*demoRow] = &demoRow{}
 
 type demoRow struct {
-	table        *unison.Table
-	parent       unison.TableRowData
+	table        *unison.Table[*demoRow]
+	parent       *demoRow
 	text         string
 	text2        string
-	children     []unison.TableRowData
+	children     []*demoRow
 	checkbox     *unison.CheckBox
 	container    bool
 	open         bool
 	doubleHeight bool
 }
 
-func (d *demoRow) ParentRow() unison.TableRowData {
+func (d *demoRow) Parent() *demoRow {
 	return d.parent
 }
 
-func (d *demoRow) CanHaveChildRows() bool {
+func (d *demoRow) CanHaveChildren() bool {
 	return d.container
 }
 
-func (d *demoRow) ChildRows() []unison.TableRowData {
+func (d *demoRow) Children() []*demoRow {
 	return d.children
 }
 

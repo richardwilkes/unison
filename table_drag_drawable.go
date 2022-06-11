@@ -18,7 +18,7 @@ type dragDrawable struct {
 }
 
 // NewTableDragDrawable creates a new drawable for a table row drag.
-func NewTableDragDrawable(data *TableDragData, svg *SVG, singularName, pluralName string) Drawable {
+func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *SVG, singularName, pluralName string) Drawable {
 	label := NewLabel()
 	label.DrawCallback = func(gc *Canvas, rect Rect) {
 		r := rect

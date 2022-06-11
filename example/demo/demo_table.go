@@ -35,7 +35,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 	content.SetLayout(&unison.FlexLayout{Columns: 1})
 
 	// Create the table
-	table := unison.NewTable()
+	table := unison.NewTable[*demoRow]()
 	table.HierarchyColumnIndex = 1
 	table.ColumnSizes = make([]unison.ColumnSize, 4)
 	for i := range table.ColumnSizes {
@@ -45,7 +45,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 	_, checkColSize, _ := unison.NewCheckBox().Sizes(unison.Size{})
 	table.ColumnSizes[0].Minimum = checkColSize.Width
 	table.ColumnSizes[0].Maximum = checkColSize.Width
-	rows := make([]unison.TableRowData, topLevelRowsToMake)
+	rows := make([]*demoRow, topLevelRowsToMake)
 	for i := range rows {
 		row := &demoRow{
 			table: table,
@@ -58,7 +58,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 			}
 			row.container = true
 			row.open = true
-			row.children = make([]unison.TableRowData, 5)
+			row.children = make([]*demoRow, 5)
 			for j := range row.children {
 				child := &demoRow{
 					table:  table,
@@ -69,7 +69,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 				if j < 2 {
 					child.container = true
 					child.open = true
-					child.children = make([]unison.TableRowData, 2)
+					child.children = make([]*demoRow, 2)
 					for k := range child.children {
 						child.children[k] = &demoRow{
 							table:  table,
@@ -85,11 +85,11 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 	table.SetTopLevelRows(rows)
 	table.SizeColumnsToFit(true)
 
-	header := unison.NewTableHeader(table,
-		unison.NewTableColumnHeader("", ""),
-		unison.NewTableColumnHeader("First", ""),
-		unison.NewTableColumnHeader("Second", ""),
-		unison.NewTableColumnHeader("xyz", ""),
+	header := unison.NewTableHeader[*demoRow](table,
+		unison.NewTableColumnHeader[*demoRow]("", ""),
+		unison.NewTableColumnHeader[*demoRow]("First", ""),
+		unison.NewTableColumnHeader[*demoRow]("Second", ""),
+		unison.NewTableColumnHeader[*demoRow]("xyz", ""),
 	)
 	header.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: unison.FillAlignment,

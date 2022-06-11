@@ -9,10 +9,8 @@
 
 package unison
 
-var _ TableColumnHeader = &DefaultTableColumnHeader{}
-
 // TableColumnHeader defines the methods a table column header must implement.
-type TableColumnHeader interface {
+type TableColumnHeader[T TableRowConstraint[T]] interface {
 	Paneler
 	SortState() SortState
 	SetSortState(state SortState)
@@ -30,15 +28,15 @@ var DefaultTableColumnHeaderTheme = LabelTheme{
 }
 
 // DefaultTableColumnHeader provides a default table column header panel.
-type DefaultTableColumnHeader struct {
+type DefaultTableColumnHeader[T TableRowConstraint[T]] struct {
 	Label
 	sortState     SortState
 	sortIndicator *DrawableSVG
 }
 
 // NewTableColumnHeader creates a new table column header panel.
-func NewTableColumnHeader(title, tooltip string) *DefaultTableColumnHeader {
-	h := &DefaultTableColumnHeader{
+func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *DefaultTableColumnHeader[T] {
+	h := &DefaultTableColumnHeader[T]{
 		Label: Label{
 			LabelTheme: DefaultTableColumnHeaderTheme,
 			Text:       title,
@@ -60,7 +58,7 @@ func NewTableColumnHeader(title, tooltip string) *DefaultTableColumnHeader {
 }
 
 // DefaultSizes provides the default sizing.
-func (h *DefaultTableColumnHeader) DefaultSizes(hint Size) (min, pref, max Size) {
+func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref = LabelSize(h.textCache.Text(h.Text, h.Font), h.Drawable, h.Side, h.Gap)
 
 	// Account for the potential sort indicator
@@ -79,7 +77,7 @@ func (h *DefaultTableColumnHeader) DefaultSizes(hint Size) (min, pref, max Size)
 }
 
 // DefaultDraw provides the default drawing.
-func (h *DefaultTableColumnHeader) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	r := h.ContentRect(false)
 	if h.sortIndicator != nil {
 		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
@@ -100,12 +98,12 @@ func (h *DefaultTableColumnHeader) DefaultDraw(canvas *Canvas, dirty Rect) {
 }
 
 // SortState returns the current SortState.
-func (h *DefaultTableColumnHeader) SortState() SortState {
+func (h *DefaultTableColumnHeader[T]) SortState() SortState {
 	return h.sortState
 }
 
 // SetSortState sets the SortState.
-func (h *DefaultTableColumnHeader) SetSortState(state SortState) {
+func (h *DefaultTableColumnHeader[T]) SetSortState(state SortState) {
 	if h.sortState != state {
 		h.sortState = state
 		if h.sortState.Sortable && h.sortState.Order == 0 {
@@ -129,9 +127,9 @@ func (h *DefaultTableColumnHeader) SetSortState(state SortState) {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *DefaultTableColumnHeader) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (h *DefaultTableColumnHeader[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	if h.sortState.Sortable && h.ContentRect(false).ContainsPoint(where) {
-		if header, ok := h.Parent().Self.(*TableHeader); ok {
+		if header, ok := h.Parent().Self.(*TableHeader[T]); ok {
 			header.SortOn(h)
 			header.ApplySort()
 		}

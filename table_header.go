@@ -32,11 +32,11 @@ type TableHeaderTheme struct {
 }
 
 // TableHeader provides a header for a Table.
-type TableHeader struct {
+type TableHeader[T TableRowConstraint[T]] struct {
 	Panel
 	TableHeaderTheme
-	Table                *Table
-	ColumnHeaders        []TableColumnHeader
+	Table                *Table[T]
+	ColumnHeaders        []TableColumnHeader[T]
 	Less                 func(s1, s2 string) bool
 	interactionColumn    int
 	columnResizeStart    float32
@@ -46,8 +46,8 @@ type TableHeader struct {
 }
 
 // NewTableHeader creates a new TableHeader.
-func NewTableHeader(table *Table, columnHeaders ...TableColumnHeader) *TableHeader {
-	h := &TableHeader{
+func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...TableColumnHeader[T]) *TableHeader[T] {
+	h := &TableHeader[T]{
 		TableHeaderTheme: DefaultTableHeaderTheme,
 		Table:            table,
 		ColumnHeaders:    columnHeaders,
@@ -67,7 +67,7 @@ func NewTableHeader(table *Table, columnHeaders ...TableColumnHeader) *TableHead
 }
 
 // DefaultSizes provides the default sizing.
-func (h *TableHeader) DefaultSizes(hint Size) (min, pref, max Size) {
+func (h *TableHeader[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 	pref.Width = h.Table.FrameRect().Size.Width
 	pref.Height = h.heightForColumns()
 	if border := h.Border(); border != nil {
@@ -78,7 +78,7 @@ func (h *TableHeader) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 // ColumnFrame returns the frame of the given column.
-func (h *TableHeader) ColumnFrame(col int) Rect {
+func (h *TableHeader[T]) ColumnFrame(col int) Rect {
 	if col < 0 || col >= len(h.Table.ColumnSizes) {
 		return Rect{}
 	}
@@ -95,7 +95,7 @@ func (h *TableHeader) ColumnFrame(col int) Rect {
 	return rect
 }
 
-func (h *TableHeader) heightForColumns() float32 {
+func (h *TableHeader[T]) heightForColumns() float32 {
 	var height float32
 	for i := range h.Table.ColumnSizes {
 		w := h.Table.ColumnSizes[i].Current
@@ -114,7 +114,7 @@ func (h *TableHeader) heightForColumns() float32 {
 	return xmath.Max(xmath.Ceil(height), h.Table.MinimumRowHeight)
 }
 
-func (h *TableHeader) combinedInsets() Insets {
+func (h *TableHeader[T]) combinedInsets() Insets {
 	var insets Insets
 	if border := h.Border(); border != nil {
 		insets = border.Insets()
@@ -132,7 +132,7 @@ func (h *TableHeader) combinedInsets() Insets {
 }
 
 // DefaultDraw provides the default drawing.
-func (h *TableHeader) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	canvas.DrawRect(dirty, h.BackgroundInk.Paint(canvas, dirty, Fill))
 
 	var firstCol int
@@ -188,18 +188,18 @@ func (h *TableHeader) DefaultDraw(canvas *Canvas, dirty Rect) {
 	}
 }
 
-func (h *TableHeader) installCell(cell *Panel, frame Rect) {
+func (h *TableHeader[T]) installCell(cell *Panel, frame Rect) {
 	cell.SetFrameRect(frame)
 	cell.ValidateLayout()
 	cell.parent = h.AsPanel()
 }
 
-func (h *TableHeader) uninstallCell(cell *Panel) {
+func (h *TableHeader[T]) uninstallCell(cell *Panel) {
 	cell.parent = nil
 }
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.
-func (h *TableHeader) DefaultUpdateCursorCallback(where Point) *Cursor {
+func (h *TableHeader[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 	if !h.Table.PreventUserColumnResize {
 		if over := h.Table.OverColumnDivider(where.X); over != -1 {
 			if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
@@ -222,7 +222,7 @@ func (h *TableHeader) DefaultUpdateCursorCallback(where Point) *Cursor {
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (h *TableHeader) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
+func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
 	if col := h.Table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateTooltipCallback != nil {
@@ -248,7 +248,7 @@ func (h *TableHeader) DefaultUpdateTooltipCallback(where Point, suggestedAvoidIn
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (h *TableHeader) DefaultMouseMove(where Point, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 	stop := false
 	if col := h.Table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
@@ -264,7 +264,7 @@ func (h *TableHeader) DefaultMouseMove(where Point, mod Modifiers) bool {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (h *TableHeader) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	h.interactionColumn = -1
 	h.inHeader = false
 	if !h.Table.PreventUserColumnResize {
@@ -310,7 +310,7 @@ func (h *TableHeader) DefaultMouseDown(where Point, button, clickCount int, mod 
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (h *TableHeader) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	if !h.Table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
 		width := h.columnResizeBase + where.X - h.columnResizeStart
 		if width < h.columnResizeOverhead {
@@ -336,7 +336,7 @@ func (h *TableHeader) DefaultMouseDrag(where Point, button int, mod Modifiers) b
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *TableHeader) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if h.inHeader && h.interactionColumn != -1 {
 		cell := h.ColumnHeaders[h.interactionColumn].AsPanel()
@@ -353,9 +353,9 @@ func (h *TableHeader) DefaultMouseUp(where Point, button int, mod Modifiers) boo
 
 // SortOn adjusts the sort such that the specified header is the primary sort column. If the header was already the
 // primary sort column, then its ascending/descending flag will be flipped instead.
-func (h *TableHeader) SortOn(header TableColumnHeader) {
+func (h *TableHeader[T]) SortOn(header TableColumnHeader[T]) {
 	if header.SortState().Sortable {
-		headers := make([]TableColumnHeader, len(h.ColumnHeaders))
+		headers := make([]TableColumnHeader[T], len(h.ColumnHeaders))
 		copy(headers, h.ColumnHeaders)
 		sort.Slice(headers, func(i, j int) bool {
 			if headers[i] == header {
@@ -394,16 +394,16 @@ func (h *TableHeader) SortOn(header TableColumnHeader) {
 	}
 }
 
-type headerWithIndex struct {
+type headerWithIndex[T TableRowConstraint[T]] struct {
 	index  int
-	header TableColumnHeader
+	header TableColumnHeader[T]
 }
 
 // ApplySort sorts the table according to the current sort criteria.
-func (h *TableHeader) ApplySort() {
-	headers := make([]*headerWithIndex, len(h.ColumnHeaders))
+func (h *TableHeader[T]) ApplySort() {
+	headers := make([]*headerWithIndex[T], len(h.ColumnHeaders))
 	for i, hdr := range h.ColumnHeaders {
-		headers[i] = &headerWithIndex{
+		headers[i] = &headerWithIndex[T]{
 			index:  i,
 			header: hdr,
 		}
@@ -431,7 +431,7 @@ func (h *TableHeader) ApplySort() {
 	h.MarkForRedraw()
 }
 
-func (h *TableHeader) applySort(headers []*headerWithIndex, rows []TableRowData) {
+func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 	if len(headers) > 0 && len(rows) > 0 {
 		sort.Slice(rows, func(i, j int) bool {
 			for _, hdr := range headers {
@@ -448,8 +448,8 @@ func (h *TableHeader) applySort(headers []*headerWithIndex, rows []TableRowData)
 			return i < j
 		})
 		for _, row := range rows {
-			if row.CanHaveChildRows() {
-				h.applySort(headers, row.ChildRows())
+			if row.CanHaveChildren() {
+				h.applySort(headers, row.Children())
 			}
 		}
 	}

@@ -18,13 +18,13 @@ import (
 )
 
 // TableRowData provides information about a single row of data.
-type TableRowData interface {
-	// ParentRow returns the parent of this row, or nil if it is a root node.
-	ParentRow() TableRowData
-	// CanHaveChildRows returns true if this row can have children, even if it currently does not have any.
-	CanHaveChildRows() bool
-	// ChildRows returns the child rows.
-	ChildRows() []TableRowData
+type TableRowData[T any] interface {
+	// Parent returns the parent of this row, or nil if it is a root node.
+	Parent() T
+	// CanHaveChildren returns true if this row can have children, even if it currently does not have any.
+	CanHaveChildren() bool
+	// Children returns the child rows.
+	Children() []T
 	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index. If you
 	// need for the cell to retain widget state, make sure to return the same widget each time rather than creating a
 	// new one.
@@ -37,10 +37,16 @@ type TableRowData interface {
 	CellDataForSort(index int) string
 }
 
+// TableRowConstraint defines the constraints required of the data type used for data rows in tables.
+type TableRowConstraint[T any] interface {
+	comparable
+	TableRowData[T]
+}
+
 // TableDragData holds the data from a table row drag.
-type TableDragData struct {
-	Table *Table
-	Rows  []TableRowData
+type TableDragData[T TableRowConstraint[T]] struct {
+	Table *Table[T]
+	Rows  []T
 }
 
 // ColumnSize holds the column sizing information.
@@ -52,8 +58,8 @@ type ColumnSize struct {
 	AutoMaximum float32
 }
 
-type tableCache struct {
-	row    TableRowData
+type tableCache[T TableRowConstraint[T]] struct {
+	row    T
 	parent int
 	depth  int
 	height float32
@@ -110,16 +116,16 @@ type TableTheme struct {
 }
 
 // Table provides a control that can display data in columns and rows.
-type Table struct {
+type Table[T TableRowConstraint[T]] struct {
 	Panel
 	TableTheme
 	SelectionDoubleClickCallback func()
 	ColumnSizes                  []ColumnSize
-	topLevelRows                 []TableRowData
-	selMap                       map[TableRowData]bool
-	selAnchor                    TableRowData
+	topLevelRows                 []T
+	selMap                       map[T]bool
+	selAnchor                    T
 	hitRects                     []tableHitRect
-	rowCache                     []tableCache
+	rowCache                     []tableCache[T]
 	interactionRow               int
 	interactionColumn            int
 	lastMouseMotionRow           int
@@ -133,10 +139,10 @@ type Table struct {
 }
 
 // NewTable creates a new Table control.
-func NewTable() *Table {
-	t := &Table{
+func NewTable[T TableRowConstraint[T]]() *Table[T] {
+	t := &Table[T]{
 		TableTheme:            DefaultTableTheme,
-		selMap:                make(map[TableRowData]bool),
+		selMap:                make(map[T]bool),
 		interactionRow:        -1,
 		interactionColumn:     -1,
 		lastMouseMotionRow:    -1,
@@ -160,7 +166,7 @@ func NewTable() *Table {
 }
 
 // DefaultDraw provides the default drawing.
-func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	selectionInk := t.SelectionInk
 	if !t.Focused() {
 		selectionInk = t.InactiveSelectionInk
@@ -249,7 +255,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 			cellRect.Inset(t.Padding)
 			row := t.rowCache[r].row
 			if c == t.HierarchyColumnIndex {
-				if row.CanHaveChildRows() {
+				if row.CanHaveChildren() {
 					const disclosureIndent = 2
 					disclosureSize := xmath.Min(t.HierarchyIndent, t.MinimumRowHeight) - disclosureIndent*2
 					canvas.Save()
@@ -293,7 +299,7 @@ func (t *Table) DefaultDraw(canvas *Canvas, dirty Rect) {
 	}
 }
 
-func (t *Table) cellParams(row, col int) (fg, bg Ink, selected, indirectlySelected, focused bool) {
+func (t *Table[T]) cellParams(row, col int) (fg, bg Ink, selected, indirectlySelected, focused bool) {
 	focused = t.Focused()
 	selected = t.IsRowSelected(row)
 	indirectlySelected = !selected && t.IsRowOrAnyParentSelected(row)
@@ -317,23 +323,23 @@ func (t *Table) cellParams(row, col int) (fg, bg Ink, selected, indirectlySelect
 	return fg, bg, selected, indirectlySelected, focused
 }
 
-func (t *Table) cell(row, col int) *Panel {
+func (t *Table[T]) cell(row, col int) *Panel {
 	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
 	return t.rowCache[row].row.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
 }
 
-func (t *Table) installCell(cell *Panel, frame Rect) {
+func (t *Table[T]) installCell(cell *Panel, frame Rect) {
 	cell.SetFrameRect(frame)
 	cell.ValidateLayout()
 	cell.parent = t.AsPanel()
 }
 
-func (t *Table) uninstallCell(cell *Panel) {
+func (t *Table[T]) uninstallCell(cell *Panel) {
 	cell.parent = nil
 }
 
 // OverRow returns the row index that the y coordinate is over, or -1 if it isn't over any row.
-func (t *Table) OverRow(y float32) int {
+func (t *Table[T]) OverRow(y float32) int {
 	var insets Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
@@ -353,7 +359,7 @@ func (t *Table) OverRow(y float32) int {
 }
 
 // OverColumn returns the column index that the x coordinate is over, or -1 if it isn't over any column.
-func (t *Table) OverColumn(x float32) int {
+func (t *Table[T]) OverColumn(x float32) int {
 	var insets Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
@@ -374,7 +380,7 @@ func (t *Table) OverColumn(x float32) int {
 
 // OverColumnDivider returns the column index of the column divider that the x coordinate is over, or -1 if it isn't
 // over any column divider.
-func (t *Table) OverColumnDivider(x float32) int {
+func (t *Table[T]) OverColumnDivider(x float32) int {
 	if len(t.ColumnSizes) < 2 {
 		return -1
 	}
@@ -396,7 +402,7 @@ func (t *Table) OverColumnDivider(x float32) int {
 }
 
 // CellWidth returns the current width of a given cell.
-func (t *Table) CellWidth(row, col int) float32 {
+func (t *Table[T]) CellWidth(row, col int) float32 {
 	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.ColumnSizes) {
 		return 0
 	}
@@ -408,7 +414,7 @@ func (t *Table) CellWidth(row, col int) float32 {
 }
 
 // ColumnEdges returns the x-coordinates of the left and right sides of the column.
-func (t *Table) ColumnEdges(col int) (left, right float32) {
+func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
 	if col < 0 || col >= len(t.ColumnSizes) {
 		return 0, 0
 	}
@@ -436,7 +442,7 @@ func (t *Table) ColumnEdges(col int) (left, right float32) {
 }
 
 // CellFrame returns the frame of the given cell.
-func (t *Table) CellFrame(row, col int) Rect {
+func (t *Table[T]) CellFrame(row, col int) Rect {
 	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.ColumnSizes) {
 		return Rect{}
 	}
@@ -472,7 +478,7 @@ func (t *Table) CellFrame(row, col int) Rect {
 }
 
 // RowFrame returns the frame of the row.
-func (t *Table) RowFrame(row int) Rect {
+func (t *Table[T]) RowFrame(row int) Rect {
 	if row < 0 || row >= len(t.rowCache) {
 		return Rect{}
 	}
@@ -487,19 +493,18 @@ func (t *Table) RowFrame(row int) Rect {
 	return rect
 }
 
-func (t *Table) newTableHitRect(rect Rect, row TableRowData) tableHitRect {
+func (t *Table[T]) newTableHitRect(rect Rect, row T) tableHitRect {
 	return tableHitRect{
 		Rect: rect,
 		handler: func(where Point, button, clickCount int, mod Modifiers) {
 			row.SetOpen(!row.IsOpen())
 			t.SyncToModel()
-			t.MarkForRedraw()
 		},
 	}
 }
 
 // DefaultFocusGained provides the default focus gained handling.
-func (t *Table) DefaultFocusGained() {
+func (t *Table[T]) DefaultFocusGained() {
 	switch {
 	case t.interactionRow != -1:
 		t.ScrollRowIntoView(t.interactionRow)
@@ -512,7 +517,7 @@ func (t *Table) DefaultFocusGained() {
 }
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.
-func (t *Table) DefaultUpdateCursorCallback(where Point) *Cursor {
+func (t *Table[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 	if !t.PreventUserColumnResize {
 		if over := t.OverColumnDivider(where.X); over != -1 {
 			if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
@@ -538,7 +543,7 @@ func (t *Table) DefaultUpdateCursorCallback(where Point) *Cursor {
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (t *Table) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
+func (t *Table[T]) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
 			cell := t.cell(row, col)
@@ -565,7 +570,7 @@ func (t *Table) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot R
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (t *Table) DefaultMouseEnter(where Point, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseEnter(where Point, mod Modifiers) bool {
 	stop := false
 	row := t.OverRow(where.Y)
 	col := t.OverColumn(where.X)
@@ -590,7 +595,7 @@ func (t *Table) DefaultMouseEnter(where Point, mod Modifiers) bool {
 }
 
 // DefaultMouseExit provides the default mouse exit handling.
-func (t *Table) DefaultMouseExit() bool {
+func (t *Table[T]) DefaultMouseExit() bool {
 	stop := false
 	if t.lastMouseMotionColumn != -1 && t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) {
 		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
@@ -606,7 +611,7 @@ func (t *Table) DefaultMouseExit() bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (t *Table) DefaultMouseMove(where Point, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 	t.DefaultMouseEnter(where, mod)
 	stop := false
 	if row := t.OverRow(where.Y); row != -1 {
@@ -625,7 +630,7 @@ func (t *Table) DefaultMouseMove(where Point, mod Modifiers) bool {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	t.interactionRow = -1
 	t.interactionColumn = -1
 	if !t.PreventUserColumnResize {
@@ -681,7 +686,7 @@ func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 		switch {
 		case mod&ShiftModifier != 0: // Extend selection from anchor
 			selAnchorIndex := -1
-			if t.selAnchor != nil {
+			if !toolbox.IsNil(t.selAnchor) {
 				for i, c := range t.rowCache {
 					if c.row == t.selAnchor {
 						selAnchorIndex = i
@@ -695,7 +700,7 @@ func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 					t.selMap[t.rowCache[i].row] = true
 				}
 			} else if !t.selMap[rowData] { // No anchor, so behave like a regular click
-				t.selMap = make(map[TableRowData]bool)
+				t.selMap = make(map[T]bool)
 				t.selMap[rowData] = true
 				t.selAnchor = rowData
 			}
@@ -707,7 +712,7 @@ func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 			}
 		default: // If not already selected, replace selection with current row and make it the anchor
 			if !t.selMap[rowData] {
-				t.selMap = make(map[TableRowData]bool)
+				t.selMap = make(map[T]bool)
 				t.selMap[rowData] = true
 				t.selAnchor = rowData
 			}
@@ -721,7 +726,7 @@ func (t *Table) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (t *Table) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if t.interactionColumn != -1 {
 		if t.interactionRow == -1 {
@@ -761,7 +766,7 @@ func (t *Table) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (t *Table) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if t.interactionRow != -1 && t.interactionColumn != -1 {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
@@ -777,7 +782,7 @@ func (t *Table) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 }
 
 // FirstSelectedRowIndex returns the first selected row index, or -1 if there is no selection.
-func (t *Table) FirstSelectedRowIndex() int {
+func (t *Table[T]) FirstSelectedRowIndex() int {
 	if len(t.selMap) == 0 {
 		return -1
 	}
@@ -790,7 +795,7 @@ func (t *Table) FirstSelectedRowIndex() int {
 }
 
 // LastSelectedRowIndex returns the last selected row index, or -1 if there is no selection.
-func (t *Table) LastSelectedRowIndex() int {
+func (t *Table[T]) LastSelectedRowIndex() int {
 	if len(t.selMap) == 0 {
 		return -1
 	}
@@ -803,7 +808,7 @@ func (t *Table) LastSelectedRowIndex() int {
 }
 
 // IsRowOrAnyParentSelected returns true if the specified row index or any of its parents are selected.
-func (t *Table) IsRowOrAnyParentSelected(index int) bool {
+func (t *Table[T]) IsRowOrAnyParentSelected(index int) bool {
 	if index < 0 || index >= len(t.rowCache) {
 		return false
 	}
@@ -817,7 +822,7 @@ func (t *Table) IsRowOrAnyParentSelected(index int) bool {
 }
 
 // IsRowSelected returns true if the specified row index is selected.
-func (t *Table) IsRowSelected(index int) bool {
+func (t *Table[T]) IsRowSelected(index int) bool {
 	if index < 0 || index >= len(t.rowCache) {
 		return false
 	}
@@ -826,11 +831,11 @@ func (t *Table) IsRowSelected(index int) bool {
 
 // SelectedRows returns the currently selected rows. If 'minimal' is true, then children of selected rows that may also
 // be selected are not returned, just the topmost row that is selected in any given hierarchy.
-func (t *Table) SelectedRows(minimal bool) []TableRowData {
+func (t *Table[T]) SelectedRows(minimal bool) []T {
 	if len(t.selMap) == 0 {
 		return nil
 	}
-	rows := make([]TableRowData, 0, len(t.selMap))
+	rows := make([]T, 0, len(t.selMap))
 	for _, entry := range t.rowCache {
 		if t.selMap[entry.row] && (!minimal || entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
 			rows = append(rows, entry.row)
@@ -840,27 +845,29 @@ func (t *Table) SelectedRows(minimal bool) []TableRowData {
 }
 
 // HasSelection returns true if there is a selection.
-func (t *Table) HasSelection() bool {
+func (t *Table[T]) HasSelection() bool {
 	return len(t.selMap) != 0
 }
 
 // ClearSelection clears the selection.
-func (t *Table) ClearSelection() {
+func (t *Table[T]) ClearSelection() {
 	if len(t.selMap) == 0 {
 		return
 	}
-	t.selMap = make(map[TableRowData]bool)
-	t.selAnchor = nil
+	t.selMap = make(map[T]bool)
+	var zero T
+	t.selAnchor = zero
 	t.MarkForRedraw()
 }
 
 // SelectAll selects all rows.
-func (t *Table) SelectAll() {
-	t.selMap = make(map[TableRowData]bool, len(t.rowCache))
-	t.selAnchor = nil
+func (t *Table[T]) SelectAll() {
+	t.selMap = make(map[T]bool, len(t.rowCache))
+	var zero T
+	t.selAnchor = zero
 	for _, cache := range t.rowCache {
 		t.selMap[cache.row] = true
-		if t.selAnchor == nil {
+		if t.selAnchor == zero {
 			t.selAnchor = cache.row
 		}
 	}
@@ -869,11 +876,12 @@ func (t *Table) SelectAll() {
 
 // SelectByIndex selects the given indexes. The first one will be considered the anchor selection if no existing anchor
 // selection exists.
-func (t *Table) SelectByIndex(indexes ...int) {
+func (t *Table[T]) SelectByIndex(indexes ...int) {
+	var zero T
 	for _, index := range indexes {
 		if index >= 0 && index < len(t.rowCache) {
 			t.selMap[t.rowCache[index].row] = true
-			if t.selAnchor == nil {
+			if t.selAnchor == zero {
 				t.selAnchor = t.rowCache[index].row
 			}
 		}
@@ -882,7 +890,7 @@ func (t *Table) SelectByIndex(indexes ...int) {
 }
 
 // DeselectByIndex deselects the given indexes.
-func (t *Table) DeselectByIndex(indexes ...int) {
+func (t *Table[T]) DeselectByIndex(indexes ...int) {
 	for _, index := range indexes {
 		if index >= 0 && index < len(t.rowCache) {
 			delete(t.selMap, t.rowCache[index].row)
@@ -893,15 +901,16 @@ func (t *Table) DeselectByIndex(indexes ...int) {
 
 // DiscloseRow ensures the given row can be viewed by opening all parents that lead to it. Returns true if any
 // modification was made.
-func (t *Table) DiscloseRow(row TableRowData, delaySync bool) bool {
+func (t *Table[T]) DiscloseRow(row T, delaySync bool) bool {
 	modified := false
-	p := row.ParentRow()
-	for !toolbox.IsNil(p) {
+	p := row.Parent()
+	var zero T
+	for p != zero {
 		if !p.IsOpen() {
 			p.SetOpen(true)
 			modified = true
 		}
-		p = p.ParentRow()
+		p = p.Parent()
 	}
 	if modified {
 		if delaySync {
@@ -914,32 +923,33 @@ func (t *Table) DiscloseRow(row TableRowData, delaySync bool) bool {
 }
 
 // TopLevelRowCount returns the number of top-level rows.
-func (t *Table) TopLevelRowCount() int {
+func (t *Table[T]) TopLevelRowCount() int {
 	return len(t.topLevelRows)
 }
 
 // TopLevelRows returns the top-level rows.
-func (t *Table) TopLevelRows() []TableRowData {
-	rows := make([]TableRowData, len(t.topLevelRows))
+func (t *Table[T]) TopLevelRows() []T {
+	rows := make([]T, len(t.topLevelRows))
 	copy(rows, t.topLevelRows)
 	return rows
 }
 
 // SetTopLevelRows sets the top-level rows this table will display. This will call SyncToModel() automatically.
-func (t *Table) SetTopLevelRows(rows []TableRowData) {
+func (t *Table[T]) SetTopLevelRows(rows []T) {
 	t.topLevelRows = rows
-	t.selMap = make(map[TableRowData]bool)
-	t.selAnchor = nil
+	t.selMap = make(map[T]bool)
+	var zero T
+	t.selAnchor = zero
 	t.SyncToModel()
 }
 
 // SyncToModel causes the table to update its internal caches to reflect the current model.
-func (t *Table) SyncToModel() {
+func (t *Table[T]) SyncToModel() {
 	rowCount := 0
 	for _, row := range t.topLevelRows {
 		rowCount += t.countOpenRowChildrenRecursively(row)
 	}
-	t.rowCache = make([]tableCache, rowCount)
+	t.rowCache = make([]tableCache[T], rowCount)
 	j := 0
 	for _, row := range t.topLevelRows {
 		j = t.buildRowCacheEntry(row, -1, j, 0)
@@ -949,34 +959,35 @@ func (t *Table) SyncToModel() {
 	rect.Size = pref
 	t.SetFrameRect(rect)
 	t.MarkForRedraw()
+	t.MarkForLayoutRecursivelyUpward()
 }
 
-func (t *Table) countOpenRowChildrenRecursively(row TableRowData) int {
+func (t *Table[T]) countOpenRowChildrenRecursively(row T) int {
 	count := 1
-	if row.CanHaveChildRows() && row.IsOpen() {
-		for _, child := range row.ChildRows() {
+	if row.CanHaveChildren() && row.IsOpen() {
+		for _, child := range row.Children() {
 			count += t.countOpenRowChildrenRecursively(child)
 		}
 	}
 	return count
 }
 
-func (t *Table) buildRowCacheEntry(row TableRowData, parentIndex, index, depth int) int {
+func (t *Table[T]) buildRowCacheEntry(row T, parentIndex, index, depth int) int {
 	t.rowCache[index].row = row
 	t.rowCache[index].parent = parentIndex
 	t.rowCache[index].depth = depth
 	t.rowCache[index].height = t.heightForColumns(row, index, depth)
 	parentIndex = index
 	index++
-	if row.CanHaveChildRows() && row.IsOpen() {
-		for _, child := range row.ChildRows() {
+	if row.CanHaveChildren() && row.IsOpen() {
+		for _, child := range row.Children() {
 			index = t.buildRowCacheEntry(child, parentIndex, index, depth+1)
 		}
 	}
 	return index
 }
 
-func (t *Table) heightForColumns(rowData TableRowData, row, depth int) float32 {
+func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 	var height float32
 	for col := range t.ColumnSizes {
 		w := t.ColumnSizes[col].Current
@@ -996,7 +1007,7 @@ func (t *Table) heightForColumns(rowData TableRowData, row, depth int) float32 {
 	return xmath.Max(xmath.Ceil(height), t.MinimumRowHeight)
 }
 
-func (t *Table) cellPrefSize(rowData TableRowData, row, col int, widthConstraint float32) geom.Size[float32] {
+func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) geom.Size[float32] {
 	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
 	cell := rowData.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
 	_, size, _ := cell.Sizes(Size{Width: widthConstraint})
@@ -1006,7 +1017,7 @@ func (t *Table) cellPrefSize(rowData TableRowData, row, col int, widthConstraint
 // SizeColumnsToFitWithExcessIn sizes each column to its preferred size, with the exception of the 'excessColumnIndex',
 // which gets set to any remaining width left over. Pass in -1 for the 'excessColumnIndex' to use the
 // HierarchyColumnIndex or 0, if the HierarchyColumnIndex is less than 0
-func (t *Table) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
+func (t *Table[T]) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 	if excessColumnIndex < 0 {
 		excessColumnIndex = t.HierarchyColumnIndex
 		if excessColumnIndex < 0 {
@@ -1061,7 +1072,7 @@ func (t *Table) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 
 // SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the Table's FrameRect will be set to
 // its preferred size as well.
-func (t *Table) SizeColumnsToFit(adjust bool) {
+func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 	current := make([]float32, len(t.ColumnSizes))
 	for col := range t.ColumnSizes {
 		current[col] = xmath.Max(t.ColumnSizes[col].Minimum, 0)
@@ -1104,7 +1115,7 @@ func (t *Table) SizeColumnsToFit(adjust bool) {
 
 // SizeColumnToFit sizes the specified column to its preferred size. If 'adjust' is true, the Table's FrameRect will be
 // set to its preferred size as well.
-func (t *Table) SizeColumnToFit(col int, adjust bool) {
+func (t *Table[T]) SizeColumnToFit(col int, adjust bool) {
 	if col < 0 || col >= len(t.ColumnSizes) {
 		return
 	}
@@ -1144,7 +1155,7 @@ func (t *Table) SizeColumnToFit(col int, adjust bool) {
 // EventuallySizeColumnsToFit sizes each column to its preferred size after a short delay, allowing multiple
 // back-to-back calls to this function to only do work once. If 'adjust' is true, the Table's FrameRect will be set to
 // its preferred size as well.
-func (t *Table) EventuallySizeColumnsToFit(adjust bool) {
+func (t *Table[T]) EventuallySizeColumnsToFit(adjust bool) {
 	if !t.awaitingSizeColumnsToFit {
 		t.awaitingSizeColumnsToFit = true
 		InvokeTaskAfter(func() {
@@ -1156,7 +1167,7 @@ func (t *Table) EventuallySizeColumnsToFit(adjust bool) {
 
 // EventuallySyncToModel syncs the table to its underlying model after a short delay, allowing multiple back-to-back
 // calls to this function to only do work once.
-func (t *Table) EventuallySyncToModel() {
+func (t *Table[T]) EventuallySyncToModel() {
 	if !t.awaitingSyncToModel {
 		t.awaitingSyncToModel = true
 		InvokeTaskAfter(func() {
@@ -1167,7 +1178,7 @@ func (t *Table) EventuallySyncToModel() {
 }
 
 // DefaultSizes provides the default sizing.
-func (t *Table) DefaultSizes(hint Size) (min, pref, max Size) {
+func (t *Table[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 	for col := range t.ColumnSizes {
 		pref.Width += t.ColumnSizes[col].Current
 	}
@@ -1188,15 +1199,16 @@ func (t *Table) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 // RowFromIndex returns the row data for the given index.
-func (t *Table) RowFromIndex(index int) TableRowData {
+func (t *Table[T]) RowFromIndex(index int) T {
 	if index < 0 || index >= len(t.rowCache) {
-		return nil
+		var zero T
+		return zero
 	}
 	return t.rowCache[index].row
 }
 
 // RowToIndex returns the row's index within the displayed data, or -1 if it isn't currently in the disclosed rows.
-func (t *Table) RowToIndex(rowData TableRowData) int {
+func (t *Table[T]) RowToIndex(rowData T) int {
 	for row, data := range t.rowCache {
 		if data.row == rowData {
 			return row
@@ -1206,19 +1218,19 @@ func (t *Table) RowToIndex(rowData TableRowData) int {
 }
 
 // LastRowIndex returns the index of the last row. Will be -1 if there are no rows.
-func (t *Table) LastRowIndex() int {
+func (t *Table[T]) LastRowIndex() int {
 	return len(t.rowCache) - 1
 }
 
 // ScrollRowIntoView scrolls the row at the given index into view.
-func (t *Table) ScrollRowIntoView(row int) {
+func (t *Table[T]) ScrollRowIntoView(row int) {
 	if frame := t.RowFrame(row); !frame.IsEmpty() {
 		t.ScrollRectIntoView(frame)
 	}
 }
 
 // ScrollRowCellIntoView scrolls the cell from the row and column at the given indexes into view.
-func (t *Table) ScrollRowCellIntoView(row, col int) {
+func (t *Table[T]) ScrollRowCellIntoView(row, col int) {
 	if frame := t.CellFrame(row, col); !frame.IsEmpty() {
 		t.ScrollRectIntoView(frame)
 	}
@@ -1226,14 +1238,14 @@ func (t *Table) ScrollRowCellIntoView(row, col int) {
 
 // InstallDragSupport installs default drag support into a table. This will chain a function to any existing
 // MouseDragCallback.
-func (t *Table) InstallDragSupport(svg *SVG, dragKey, singularName, pluralName string) {
+func (t *Table[T]) InstallDragSupport(svg *SVG, dragKey, singularName, pluralName string) {
 	orig := t.MouseDragCallback
 	t.MouseDragCallback = func(where Point, button int, mod Modifiers) bool {
 		if orig != nil && orig(where, button, mod) {
 			return true
 		}
 		if t.HasSelection() && t.IsDragGesture(where) {
-			data := &TableDragData{
+			data := &TableDragData[T]{
 				Table: t,
 				Rows:  t.SelectedRows(true),
 			}
@@ -1253,12 +1265,16 @@ func (t *Table) InstallDragSupport(svg *SVG, dragKey, singularName, pluralName s
 // InstallDropSupport installs default drop support into a table. This will replace any existing DataDragOverCallback,
 // DataDragExitCallback, and DataDragDropCallback functions. It will also chain a function to any existing
 // DrawOverCallback.
-func (t *Table) InstallDropSupport(dragKey string, dropCallback func(*TableDrop)) *TableDrop {
-	drop := &TableDrop{
-		Table:            t,
-		DragKey:          dragKey,
-		originalDrawOver: t.DrawOverCallback,
-		dropCallback:     dropCallback,
+func (t *Table[T]) InstallDropSupport(dragKey string, shouldMoveDataCallback func(drop *TableDrop[T]) bool, copyCallback func(drop *TableDrop[T]), setRowParentCallback func(drop *TableDrop[T], row, newParent T), setChildRowsCallback func(drop *TableDrop[T], row T, children []T), droppedCallback func(drop *TableDrop[T], moved bool)) *TableDrop[T] {
+	drop := &TableDrop[T]{
+		Table:                  t,
+		DragKey:                dragKey,
+		originalDrawOver:       t.DrawOverCallback,
+		shouldMoveDataCallback: shouldMoveDataCallback,
+		copyCallback:           copyCallback,
+		setRowParentCallback:   setRowParentCallback,
+		setChildRowsCallback:   setChildRowsCallback,
+		droppedCallback:        droppedCallback,
 	}
 	t.DataDragOverCallback = drop.DataDragOverCallback
 	t.DataDragExitCallback = drop.DataDragExitCallback
@@ -1268,12 +1284,21 @@ func (t *Table) InstallDropSupport(dragKey string, dropCallback func(*TableDrop)
 }
 
 // CountTableRows returns the number of table rows, including all descendants, whether open or not.
-func CountTableRows(rows []TableRowData) int {
+func CountTableRows[T TableRowConstraint[T]](rows []T) int {
 	count := len(rows)
 	for _, row := range rows {
-		if row.CanHaveChildRows() {
-			count += CountTableRows(row.ChildRows())
+		if row.CanHaveChildren() {
+			count += CountTableRows(row.Children())
 		}
 	}
 	return count
+}
+
+// RowContainsRow returns true if 'descendant' is in fact a descendant of 'ancestor'.
+func RowContainsRow[T TableRowConstraint[T]](ancestor, descendant T) bool {
+	var zero T
+	for descendant != zero && descendant != ancestor {
+		descendant = descendant.Parent()
+	}
+	return descendant == ancestor
 }
