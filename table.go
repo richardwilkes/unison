@@ -1247,7 +1247,7 @@ func (t *Table[T]) InstallDragSupport(svg *SVG, dragKey, singularName, pluralNam
 // actual data changes are made, giving an opportunity to start an undo event, which should be returned. The
 // didDropCallback is called after data changes are made and is passed the undo event (if any) returned by the
 // willDropCallback, so that the undo event can be completed and posted.
-func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dragKey string, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) UndoEdit[U], didDropCallback func(undo UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
+func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dragKey string, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
 	drop := &TableDrop[T, U]{
 		Table:                  t,
 		DragKey:                dragKey,

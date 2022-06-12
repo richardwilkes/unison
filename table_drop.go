@@ -26,8 +26,8 @@ type TableDrop[T TableRowConstraint[T], U any] struct {
 	TableDragData          *TableDragData[T]
 	originalDrawOver       func(*Canvas, Rect)
 	shouldMoveDataCallback func(from, to *Table[T]) bool
-	willDropCallback       func(from, to *Table[T], move bool) UndoEdit[U]
-	didDropCallback        func(undo UndoEdit[U], from, to *Table[T], move bool)
+	willDropCallback       func(from, to *Table[T], move bool) *UndoEdit[U]
+	didDropCallback        func(undo *UndoEdit[U], from, to *Table[T], move bool)
 	top                    float32
 	left                   float32
 	inDragOver             bool
@@ -158,7 +158,7 @@ func (d *TableDrop[T, U]) DataDragDropCallback(where Point, data map[string]any)
 		d.AllDragData = data
 
 		move := d.shouldMoveDataCallback(d.TableDragData.Table, d.Table)
-		var undo UndoEdit[U]
+		var undo *UndoEdit[U]
 		if d.willDropCallback != nil {
 			undo = d.willDropCallback(d.TableDragData.Table, d.Table, move)
 		}
