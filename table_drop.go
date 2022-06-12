@@ -17,7 +17,7 @@ import (
 
 // TableDrop provides default support for dropping data into a table. This should only be instantiated by a call to
 // Table.InstallDropSupport().
-type TableDrop[T TableRowConstraint[T]] struct {
+type TableDrop[T TableRowConstraint[T], U any] struct {
 	Table                  *Table[T]
 	DragKey                string
 	TargetParent           T
@@ -25,14 +25,16 @@ type TableDrop[T TableRowConstraint[T]] struct {
 	AllDragData            map[string]any
 	TableDragData          *TableDragData[T]
 	originalDrawOver       func(*Canvas, Rect)
-	shouldMoveDataCallback func(drop *TableDrop[T]) bool
+	shouldMoveDataCallback func(from, to *Table[T]) bool
+	willDropCallback       func(from, to *Table[T], move bool) UndoEdit[U]
+	didDropCallback        func(undo UndoEdit[U], from, to *Table[T], move bool)
 	top                    float32
 	left                   float32
 	inDragOver             bool
 }
 
 // DrawOverCallback handles drawing the drop zone feedback.
-func (d *TableDrop[T]) DrawOverCallback(gc *Canvas, rect Rect) {
+func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect Rect) {
 	if d.originalDrawOver != nil {
 		d.originalDrawOver(gc, rect)
 	}
@@ -50,7 +52,7 @@ func (d *TableDrop[T]) DrawOverCallback(gc *Canvas, rect Rect) {
 }
 
 // DataDragOverCallback handles determining if a given drag is one that we are interested in.
-func (d *TableDrop[T]) DataDragOverCallback(where Point, data map[string]any) bool {
+func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any) bool {
 	var zero T
 	d.inDragOver = false
 	if dd, ok := data[d.DragKey]; ok {
@@ -95,7 +97,7 @@ func (d *TableDrop[T]) DataDragOverCallback(where Point, data map[string]any) bo
 					d.top = xmath.Max(rect.Y-d.Table.Padding.Bottom, 1)
 					d.left = rect.X
 				}
-				if d.TargetIndex == -1 {
+				if d.TargetIndex == -1 && row != zero {
 					var children []T
 					if d.TargetParent == zero {
 						children = d.Table.RootRows()
@@ -140,7 +142,7 @@ func (d *TableDrop[T]) DataDragOverCallback(where Point, data map[string]any) bo
 }
 
 // DataDragExitCallback handles resetting the state when a drag is no longer of interest.
-func (d *TableDrop[T]) DataDragExitCallback() {
+func (d *TableDrop[T, U]) DataDragExitCallback() {
 	d.inDragOver = false
 	var zero T
 	d.TargetParent = zero
@@ -148,15 +150,19 @@ func (d *TableDrop[T]) DataDragExitCallback() {
 }
 
 // DataDragDropCallback handles processing a drop.
-func (d *TableDrop[T]) DataDragDropCallback(where Point, data map[string]any) {
+func (d *TableDrop[T, U]) DataDragDropCallback(where Point, data map[string]any) {
 	var zero T
 	d.inDragOver = false
 	var ok bool
 	if d.TableDragData, ok = data[d.DragKey].(*TableDragData[T]); ok {
 		d.AllDragData = data
-		rows := slices.Clone(d.TableDragData.Rows)
 
-		move := d.shouldMoveDataCallback(d)
+		move := d.shouldMoveDataCallback(d.TableDragData.Table, d.Table)
+		var undo UndoEdit[U]
+		if d.willDropCallback != nil {
+			undo = d.willDropCallback(d.TableDragData.Table, d.Table, move)
+		}
+		rows := slices.Clone(d.TableDragData.Rows)
 		if move {
 			// Remove the drag rows from their original places
 			commonParents := collectCommonParents(rows)
@@ -169,27 +175,29 @@ func (d *TableDrop[T]) DataDragDropCallback(where Point, data map[string]any) {
 				}
 				list = d.pruneRows(parent, children, makeRowSet(list))
 				if parent == zero {
-					d.TableDragData.Table.SetRootRows(list)
+					d.TableDragData.Table.Model.SetRootRows(list)
 				} else {
 					parent.SetChildren(list)
 				}
 			}
-
-			if d.Table != d.TableDragData.Table {
-				// Notify the source table if it is different from the destination
-				if d.Table != d.TableDragData.Table && d.TableDragData.Table.DragRemovedRowsCallback != nil {
-					d.TableDragData.Table.DragRemovedRowsCallback()
-				}
-			}
+			d.TableDragData.Table.ClearSelection()
+			d.TableDragData.Table.SyncToModel()
 
 			// Set the new parent
 			for _, row := range rows {
 				row.SetParent(d.TargetParent)
 			}
+
+			// Notify the source table if it is different from the destination
+			if d.Table != d.TableDragData.Table {
+				if d.Table != d.TableDragData.Table && d.TableDragData.Table.DragRemovedRowsCallback != nil {
+					d.TableDragData.Table.DragRemovedRowsCallback()
+				}
+			}
 		} else {
 			// Make a copy of the data
 			for i, row := range rows {
-				rows[i] = row.Clone(d.Table, d.TargetParent)
+				rows[i] = row.CloneForTarget(d.Table, d.TargetParent)
 			}
 		}
 
@@ -212,6 +220,10 @@ func (d *TableDrop[T]) DataDragDropCallback(where Point, data map[string]any) {
 		if d.Table.DropOccurredCallback != nil {
 			d.Table.DropOccurredCallback()
 		}
+
+		if d.didDropCallback != nil {
+			d.didDropCallback(undo, d.TableDragData.Table, d.Table, move)
+		}
 	}
 	d.Table.MarkForRedraw()
 	d.TargetParent = zero
@@ -219,7 +231,7 @@ func (d *TableDrop[T]) DataDragDropCallback(where Point, data map[string]any) {
 	d.TableDragData = nil
 }
 
-func (d *TableDrop[T]) pruneRows(parent T, rows []T, movingSet map[uuid.UUID]bool) []T {
+func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[uuid.UUID]bool) []T {
 	movingToThisParent := d.TargetParent == parent
 	list := make([]T, 0, len(rows))
 	for i, row := range rows {

@@ -24,9 +24,10 @@ type TableModel[T TableRowConstraint[T]] interface {
 
 // TableRowData provides information about a single row of data.
 type TableRowData[T any] interface {
-	// Clone creates a duplicate of this row with its parent set to 'newParent'. 'target' is the table that the row will
-	// be placed within. Limitations in the way generics work in Go prevent this from being declared as a *Table.
-	Clone(target Paneler, newParent T) T
+	// CloneForTarget creates a duplicate of this row with its parent set to 'newParent'. 'target' is the table that the
+	// row will be placed within. Limitations in the way generics work in Go prevent this from being declared as a
+	// *Table.
+	CloneForTarget(target Paneler, newParent T) T
 	// UUID returns the UUID of this data.
 	UUID() uuid.UUID
 	// Parent returns the parent of this row, or nil if it is a root node.

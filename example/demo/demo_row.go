@@ -32,7 +32,7 @@ type demoRow struct {
 	doubleHeight bool
 }
 
-func (d *demoRow) Clone(target unison.Paneler, newParent *demoRow) *demoRow {
+func (d *demoRow) CloneForTarget(target unison.Paneler, newParent *demoRow) *demoRow {
 	table, ok := target.(*unison.Table[*demoRow])
 	if !ok {
 		jot.Fatal(1, "invalid target")
