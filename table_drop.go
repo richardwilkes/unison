@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/google/uuid"
 	"github.com/richardwilkes/toolbox/xmath"
 	"golang.org/x/exp/slices"
 )
@@ -25,10 +26,6 @@ type TableDrop[T TableRowConstraint[T]] struct {
 	TableDragData          *TableDragData[T]
 	originalDrawOver       func(*Canvas, Rect)
 	shouldMoveDataCallback func(drop *TableDrop[T]) bool
-	copyCallback           func(drop *TableDrop[T])
-	setRowParentCallback   func(drop *TableDrop[T], row, newParent T)
-	setChildRowsCallback   func(drop *TableDrop[T], row T, children []T)
-	droppedCallback        func(drop *TableDrop[T], moved bool)
 	top                    float32
 	left                   float32
 	inDragOver             bool
@@ -64,9 +61,9 @@ func (d *TableDrop[T]) DataDragOverCallback(where Point, data map[string]any) bo
 			if where.Y >= contentRect.Bottom()-2 {
 				// Over bottom edge, adding to end of top-level rows
 				d.TargetParent = zero
-				d.TargetIndex = d.Table.TopLevelRowCount()
+				d.TargetIndex = d.Table.RootRowCount()
 				rect := d.Table.RowFrame(last)
-				d.top = rect.Bottom() - 1
+				d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
 				d.left, _ = d.Table.ColumnEdges(xmath.Max(d.Table.HierarchyColumnIndex, 0))
 				d.Table.MarkForRedraw()
 				return true
@@ -77,7 +74,7 @@ func (d *TableDrop[T]) DataDragOverCallback(where Point, data map[string]any) bo
 				row := d.Table.RowFromIndex(rowIndex)
 				rect := d.Table.CellFrame(rowIndex, xmath.Max(d.Table.HierarchyColumnIndex, 0))
 				if where.Y >= d.Table.RowFrame(rowIndex).CenterY() {
-					d.top = xmath.Min(rect.Bottom()+1, contentRect.Bottom()-1)
+					d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
 					d.left = rect.X
 					// Over lower half of row
 					if row.CanHaveChildren() {
@@ -95,18 +92,18 @@ func (d *TableDrop[T]) DataDragOverCallback(where Point, data map[string]any) bo
 				} else {
 					// Over upper half of row; add to parent of this row at this row's index
 					d.TargetParent = row.Parent()
-					d.top = xmath.Max(rect.Y, 1)
+					d.top = xmath.Max(rect.Y-d.Table.Padding.Bottom, 1)
 					d.left = rect.X
 				}
 				if d.TargetIndex == -1 {
 					var children []T
 					if d.TargetParent == zero {
-						children = d.Table.TopLevelRows()
+						children = d.Table.RootRows()
 					} else {
 						children = d.TargetParent.Children()
 					}
 					for i, child := range children {
-						if child == row {
+						if child.UUID() == row.UUID() {
 							d.TargetIndex = i
 							break
 						}
@@ -131,9 +128,9 @@ func (d *TableDrop[T]) DataDragOverCallback(where Point, data map[string]any) bo
 			}
 			// Not over any row, adding to end of top-level rows
 			d.TargetParent = zero
-			d.TargetIndex = d.Table.TopLevelRowCount()
+			d.TargetIndex = d.Table.RootRowCount()
 			rect := d.Table.RowFrame(last)
-			d.top = xmath.Min(rect.Bottom()+1, contentRect.Bottom()-1)
+			d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
 			d.left, _ = d.Table.ColumnEdges(xmath.Max(d.Table.HierarchyColumnIndex, 0))
 			d.Table.MarkForRedraw()
 			return true
@@ -157,52 +154,64 @@ func (d *TableDrop[T]) DataDragDropCallback(where Point, data map[string]any) {
 	var ok bool
 	if d.TableDragData, ok = data[d.DragKey].(*TableDragData[T]); ok {
 		d.AllDragData = data
-		top := d.Table.TopLevelRows()
+		rows := slices.Clone(d.TableDragData.Rows)
 
 		move := d.shouldMoveDataCallback(d)
 		if move {
 			// Remove the drag rows from their original places
-			commonParents := collectCommonParents(d.TableDragData.Rows)
-			for parent, rows := range commonParents {
+			commonParents := collectCommonParents(rows)
+			for parent, list := range commonParents {
 				var children []T
 				if parent == zero {
-					children = top
+					children = d.TableDragData.Table.RootRows()
 				} else {
 					children = parent.Children()
 				}
-				rows = d.pruneRows(parent, children, makeRowSet(rows))
+				list = d.pruneRows(parent, children, makeRowSet(list))
 				if parent == zero {
-					top = rows
+					d.TableDragData.Table.SetRootRows(list)
+				} else {
+					parent.SetChildren(list)
 				}
-				d.setChildRowsCallback(d, parent, rows)
+			}
+
+			if d.Table != d.TableDragData.Table {
+				// Notify the source table if it is different from the destination
+				if d.Table != d.TableDragData.Table && d.TableDragData.Table.DragRemovedRowsCallback != nil {
+					d.TableDragData.Table.DragRemovedRowsCallback()
+				}
+			}
+
+			// Set the new parent
+			for _, row := range rows {
+				row.SetParent(d.TargetParent)
 			}
 		} else {
 			// Make a copy of the data
-			d.copyCallback(d)
-		}
-
-		// Set the new parent
-		for _, row := range d.TableDragData.Rows {
-			d.setRowParentCallback(d, row, d.TargetParent)
+			for i, row := range rows {
+				rows[i] = row.Clone(d.Table, d.TargetParent)
+			}
 		}
 
 		// Insert the rows into their new location
-		var rows []T
+		var targetRows []T
 		if d.TargetParent == zero {
-			rows = top
+			targetRows = d.Table.RootRows()
 		} else {
-			rows = d.TargetParent.Children()
+			targetRows = d.TargetParent.Children()
 		}
-		rows = slices.Insert(rows, xmath.Max(d.TargetIndex, 0), d.TableDragData.Rows...)
+		targetRows = slices.Insert(slices.Clone(targetRows), xmath.Max(d.TargetIndex, 0), rows...)
 		if d.TargetParent == zero {
-			top = rows
+			d.Table.SetRootRows(targetRows)
+		} else {
+			d.TargetParent.SetChildren(targetRows)
+			d.Table.SyncToModel()
 		}
-		d.setChildRowsCallback(d, d.TargetParent, rows)
 
-		// Sync the data
-		d.Table.SetTopLevelRows(top)
-		d.Table.SyncToModel()
-		d.droppedCallback(d, move)
+		// Notify the destination table
+		if d.Table.DropOccurredCallback != nil {
+			d.Table.DropOccurredCallback()
+		}
 	}
 	d.Table.MarkForRedraw()
 	d.TargetParent = zero
@@ -210,31 +219,25 @@ func (d *TableDrop[T]) DataDragDropCallback(where Point, data map[string]any) {
 	d.TableDragData = nil
 }
 
-func (d *TableDrop[T]) pruneRows(parent T, rows []T, movingSet map[T]bool) []T {
+func (d *TableDrop[T]) pruneRows(parent T, rows []T, movingSet map[uuid.UUID]bool) []T {
 	movingToThisParent := d.TargetParent == parent
-	j := 0
+	list := make([]T, 0, len(rows))
 	for i, row := range rows {
-		if movingSet[row] {
+		if movingSet[row.UUID()] {
 			if movingToThisParent && d.TargetIndex >= i {
 				d.TargetIndex--
 			}
 		} else {
-			rows[j] = row
-			j++
+			list = append(list, row)
 		}
 	}
-	var zero T
-	i := j
-	for ; i < len(rows); i++ {
-		rows[i] = zero
-	}
-	return rows[:j]
+	return list
 }
 
-func makeRowSet[T TableRowConstraint[T]](rows []T) map[T]bool {
-	set := make(map[T]bool, len(rows))
+func makeRowSet[T TableRowConstraint[T]](rows []T) map[uuid.UUID]bool {
+	set := make(map[uuid.UUID]bool, len(rows))
 	for _, row := range rows {
-		set[row] = true
+		set[row.UUID()] = true
 	}
 	return set
 }

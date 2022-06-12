@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
+	"golang.org/x/exp/slices"
 )
 
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
@@ -426,7 +427,9 @@ func (h *TableHeader[T]) ApplySort() {
 			break
 		}
 	}
-	h.applySort(headers, h.Table.topLevelRows)
+	roots := slices.Clone(h.Table.RootRows())
+	h.applySort(headers, roots)
+	h.Table.Model.SetRootRows(roots) // Avoid resetting the selection by directly updating the model
 	h.Table.SyncToModel()
 	h.MarkForRedraw()
 }
@@ -449,7 +452,11 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 		})
 		for _, row := range rows {
 			if row.CanHaveChildren() {
-				h.applySort(headers, row.Children())
+				if children := row.Children(); len(children) > 1 {
+					children = slices.Clone(children)
+					h.applySort(headers, children)
+					row.SetChildren(children)
+				}
 			}
 		}
 	}

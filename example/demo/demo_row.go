@@ -12,6 +12,7 @@ package demo
 import (
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison"
 )
@@ -21,6 +22,7 @@ var _ unison.TableRowData[*demoRow] = &demoRow{}
 type demoRow struct {
 	table        *unison.Table[*demoRow]
 	parent       *demoRow
+	id           uuid.UUID
 	text         string
 	text2        string
 	children     []*demoRow
@@ -30,8 +32,28 @@ type demoRow struct {
 	doubleHeight bool
 }
 
+func (d *demoRow) Clone(target unison.Paneler, newParent *demoRow) *demoRow {
+	table, ok := target.(*unison.Table[*demoRow])
+	if !ok {
+		jot.Fatal(1, "invalid target")
+	}
+	clone := *d
+	clone.table = table
+	clone.parent = newParent
+	clone.id = uuid.New()
+	return &clone
+}
+
+func (d *demoRow) UUID() uuid.UUID {
+	return d.id
+}
+
 func (d *demoRow) Parent() *demoRow {
 	return d.parent
+}
+
+func (d *demoRow) SetParent(parent *demoRow) {
+	d.parent = parent
 }
 
 func (d *demoRow) CanHaveChildren() bool {
@@ -40,6 +62,10 @@ func (d *demoRow) CanHaveChildren() bool {
 
 func (d *demoRow) Children() []*demoRow {
 	return d.children
+}
+
+func (d *demoRow) SetChildren(children []*demoRow) {
+	d.children = children
 }
 
 func (d *demoRow) CellDataForSort(index int) string {

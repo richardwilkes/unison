@@ -12,6 +12,7 @@ package demo
 import (
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/richardwilkes/unison"
 )
 
@@ -35,7 +36,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 	content.SetLayout(&unison.FlexLayout{Columns: 1})
 
 	// Create the table
-	table := unison.NewTable[*demoRow]()
+	table := unison.NewTable[*demoRow](&unison.SimpleTableModel[*demoRow]{})
 	table.HierarchyColumnIndex = 1
 	table.ColumnSizes = make([]unison.ColumnSize, 4)
 	for i := range table.ColumnSizes {
@@ -49,6 +50,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 	for i := range rows {
 		row := &demoRow{
 			table: table,
+			id:    uuid.New(),
 			text:  fmt.Sprintf("Row %d", i+1),
 			text2: fmt.Sprintf("Some longer content for Row %d", i+1),
 		}
@@ -63,6 +65,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 				child := &demoRow{
 					table:  table,
 					parent: row,
+					id:     uuid.New(),
 					text:   fmt.Sprintf("Sub Row %d", j+1),
 				}
 				row.children[j] = child
@@ -74,6 +77,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 						child.children[k] = &demoRow{
 							table:  table,
 							parent: child,
+							id:     uuid.New(),
 							text:   fmt.Sprintf("Sub Sub Row %d", k+1),
 						}
 					}
@@ -82,8 +86,10 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 		}
 		rows[i] = row
 	}
-	table.SetTopLevelRows(rows)
+	table.SetRootRows(rows)
 	table.SizeColumnsToFit(true)
+	table.InstallDragSupport(nil, "demoRow", "Row", "Rows")
+	table.InstallDropSupport("demoRow", func(_ *unison.TableDrop[*demoRow]) bool { return true })
 
 	header := unison.NewTableHeader[*demoRow](table,
 		unison.NewTableColumnHeader[*demoRow]("", ""),

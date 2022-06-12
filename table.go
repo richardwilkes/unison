@@ -12,36 +12,13 @@ package unison
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
-// TableRowData provides information about a single row of data.
-type TableRowData[T any] interface {
-	// Parent returns the parent of this row, or nil if it is a root node.
-	Parent() T
-	// CanHaveChildren returns true if this row can have children, even if it currently does not have any.
-	CanHaveChildren() bool
-	// Children returns the child rows.
-	Children() []T
-	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index. If you
-	// need for the cell to retain widget state, make sure to return the same widget each time rather than creating a
-	// new one.
-	ColumnCell(row, col int, foreground, background Ink, selected, indirectlySelected, focused bool) Paneler
-	// IsOpen returns true if the row can have children and is currently showing its children.
-	IsOpen() bool
-	// SetOpen sets the row's open state.
-	SetOpen(open bool)
-	// CellDataForSort returns the string that represents the data in the specified cell.
-	CellDataForSort(index int) string
-}
-
-// TableRowConstraint defines the constraints required of the data type used for data rows in tables.
-type TableRowConstraint[T any] interface {
-	comparable
-	TableRowData[T]
-}
+var zeroUUID = uuid.UUID{}
 
 // TableDragData holds the data from a table row drag.
 type TableDragData[T TableRowConstraint[T]] struct {
@@ -120,10 +97,12 @@ type Table[T TableRowConstraint[T]] struct {
 	Panel
 	TableTheme
 	SelectionDoubleClickCallback func()
+	DragRemovedRowsCallback      func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
+	DropOccurredCallback         func() // Called whenever a drop occurs that modifies the model.
 	ColumnSizes                  []ColumnSize
-	topLevelRows                 []T
-	selMap                       map[T]bool
-	selAnchor                    T
+	Model                        TableModel[T]
+	selMap                       map[uuid.UUID]bool
+	selAnchor                    uuid.UUID
 	hitRects                     []tableHitRect
 	rowCache                     []tableCache[T]
 	interactionRow               int
@@ -139,10 +118,11 @@ type Table[T TableRowConstraint[T]] struct {
 }
 
 // NewTable creates a new Table control.
-func NewTable[T TableRowConstraint[T]]() *Table[T] {
+func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	t := &Table[T]{
 		TableTheme:            DefaultTableTheme,
-		selMap:                make(map[T]bool),
+		Model:                 model,
+		selMap:                make(map[uuid.UUID]bool),
 		interactionRow:        -1,
 		interactionColumn:     -1,
 		lastMouseMotionRow:    -1,
@@ -683,12 +663,13 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 		}
 		rowData := t.rowCache[row].row
+		id := rowData.UUID()
 		switch {
 		case mod&ShiftModifier != 0: // Extend selection from anchor
 			selAnchorIndex := -1
 			if !toolbox.IsNil(t.selAnchor) {
 				for i, c := range t.rowCache {
-					if c.row == t.selAnchor {
+					if c.row.UUID() == t.selAnchor {
 						selAnchorIndex = i
 						break
 					}
@@ -697,24 +678,24 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			if selAnchorIndex != -1 {
 				last := xmath.Max(selAnchorIndex, row)
 				for i := xmath.Min(selAnchorIndex, row); i <= last; i++ {
-					t.selMap[t.rowCache[i].row] = true
+					t.selMap[t.rowCache[i].row.UUID()] = true
 				}
-			} else if !t.selMap[rowData] { // No anchor, so behave like a regular click
-				t.selMap = make(map[T]bool)
-				t.selMap[rowData] = true
-				t.selAnchor = rowData
+			} else if !t.selMap[id] { // No anchor, so behave like a regular click
+				t.selMap = make(map[uuid.UUID]bool)
+				t.selMap[id] = true
+				t.selAnchor = id
 			}
 		case mod&(OptionModifier|CommandModifier) != 0: // Toggle single row
-			if t.selMap[rowData] {
-				delete(t.selMap, rowData)
+			if t.selMap[id] {
+				delete(t.selMap, id)
 			} else {
-				t.selMap[rowData] = true
+				t.selMap[id] = true
 			}
 		default: // If not already selected, replace selection with current row and make it the anchor
-			if !t.selMap[rowData] {
-				t.selMap = make(map[T]bool)
-				t.selMap[rowData] = true
-				t.selAnchor = rowData
+			if !t.selMap[id] {
+				t.selMap = make(map[uuid.UUID]bool)
+				t.selMap[id] = true
+				t.selAnchor = id
 			}
 		}
 		t.MarkForRedraw()
@@ -787,7 +768,7 @@ func (t *Table[T]) FirstSelectedRowIndex() int {
 		return -1
 	}
 	for i, entry := range t.rowCache {
-		if t.selMap[entry.row] {
+		if t.selMap[entry.row.UUID()] {
 			return i
 		}
 	}
@@ -800,7 +781,7 @@ func (t *Table[T]) LastSelectedRowIndex() int {
 		return -1
 	}
 	for i := len(t.rowCache) - 1; i >= 0; i-- {
-		if t.selMap[t.rowCache[i].row] {
+		if t.selMap[t.rowCache[i].row.UUID()] {
 			return i
 		}
 	}
@@ -813,7 +794,7 @@ func (t *Table[T]) IsRowOrAnyParentSelected(index int) bool {
 		return false
 	}
 	for index >= 0 {
-		if t.selMap[t.rowCache[index].row] {
+		if t.selMap[t.rowCache[index].row.UUID()] {
 			return true
 		}
 		index = t.rowCache[index].parent
@@ -826,7 +807,7 @@ func (t *Table[T]) IsRowSelected(index int) bool {
 	if index < 0 || index >= len(t.rowCache) {
 		return false
 	}
-	return t.selMap[t.rowCache[index].row]
+	return t.selMap[t.rowCache[index].row.UUID()]
 }
 
 // SelectedRows returns the currently selected rows. If 'minimal' is true, then children of selected rows that may also
@@ -837,7 +818,7 @@ func (t *Table[T]) SelectedRows(minimal bool) []T {
 	}
 	rows := make([]T, 0, len(t.selMap))
 	for _, entry := range t.rowCache {
-		if t.selMap[entry.row] && (!minimal || entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
+		if t.selMap[entry.row.UUID()] && (!minimal || entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
 			rows = append(rows, entry.row)
 		}
 	}
@@ -854,21 +835,20 @@ func (t *Table[T]) ClearSelection() {
 	if len(t.selMap) == 0 {
 		return
 	}
-	t.selMap = make(map[T]bool)
-	var zero T
-	t.selAnchor = zero
+	t.selMap = make(map[uuid.UUID]bool)
+	t.selAnchor = zeroUUID
 	t.MarkForRedraw()
 }
 
 // SelectAll selects all rows.
 func (t *Table[T]) SelectAll() {
-	t.selMap = make(map[T]bool, len(t.rowCache))
-	var zero T
-	t.selAnchor = zero
+	t.selMap = make(map[uuid.UUID]bool, len(t.rowCache))
+	t.selAnchor = zeroUUID
 	for _, cache := range t.rowCache {
-		t.selMap[cache.row] = true
-		if t.selAnchor == zero {
-			t.selAnchor = cache.row
+		id := cache.row.UUID()
+		t.selMap[id] = true
+		if t.selAnchor == zeroUUID {
+			t.selAnchor = id
 		}
 	}
 	t.MarkForRedraw()
@@ -877,12 +857,12 @@ func (t *Table[T]) SelectAll() {
 // SelectByIndex selects the given indexes. The first one will be considered the anchor selection if no existing anchor
 // selection exists.
 func (t *Table[T]) SelectByIndex(indexes ...int) {
-	var zero T
 	for _, index := range indexes {
 		if index >= 0 && index < len(t.rowCache) {
-			t.selMap[t.rowCache[index].row] = true
-			if t.selAnchor == zero {
-				t.selAnchor = t.rowCache[index].row
+			id := t.rowCache[index].row.UUID()
+			t.selMap[id] = true
+			if t.selAnchor == zeroUUID {
+				t.selAnchor = id
 			}
 		}
 	}
@@ -893,7 +873,7 @@ func (t *Table[T]) SelectByIndex(indexes ...int) {
 func (t *Table[T]) DeselectByIndex(indexes ...int) {
 	for _, index := range indexes {
 		if index >= 0 && index < len(t.rowCache) {
-			delete(t.selMap, t.rowCache[index].row)
+			delete(t.selMap, t.rowCache[index].row.UUID())
 		}
 	}
 	t.MarkForRedraw()
@@ -922,36 +902,34 @@ func (t *Table[T]) DiscloseRow(row T, delaySync bool) bool {
 	return modified
 }
 
-// TopLevelRowCount returns the number of top-level rows.
-func (t *Table[T]) TopLevelRowCount() int {
-	return len(t.topLevelRows)
+// RootRowCount returns the number of top-level rows.
+func (t *Table[T]) RootRowCount() int {
+	return t.Model.RootRowCount()
 }
 
-// TopLevelRows returns the top-level rows.
-func (t *Table[T]) TopLevelRows() []T {
-	rows := make([]T, len(t.topLevelRows))
-	copy(rows, t.topLevelRows)
-	return rows
+// RootRows returns the top-level rows. Do not alter the returned list.
+func (t *Table[T]) RootRows() []T {
+	return t.Model.RootRows()
 }
 
-// SetTopLevelRows sets the top-level rows this table will display. This will call SyncToModel() automatically.
-func (t *Table[T]) SetTopLevelRows(rows []T) {
-	t.topLevelRows = rows
-	t.selMap = make(map[T]bool)
-	var zero T
-	t.selAnchor = zero
+// SetRootRows sets the top-level rows this table will display. This will call SyncToModel() automatically.
+func (t *Table[T]) SetRootRows(rows []T) {
+	t.Model.SetRootRows(rows)
+	t.selMap = make(map[uuid.UUID]bool)
+	t.selAnchor = zeroUUID
 	t.SyncToModel()
 }
 
 // SyncToModel causes the table to update its internal caches to reflect the current model.
 func (t *Table[T]) SyncToModel() {
 	rowCount := 0
-	for _, row := range t.topLevelRows {
+	roots := t.RootRows()
+	for _, row := range roots {
 		rowCount += t.countOpenRowChildrenRecursively(row)
 	}
 	t.rowCache = make([]tableCache[T], rowCount)
 	j := 0
-	for _, row := range t.topLevelRows {
+	for _, row := range roots {
 		j = t.buildRowCacheEntry(row, -1, j, 0)
 	}
 	_, pref, _ := t.DefaultSizes(Size{})
@@ -1265,16 +1243,12 @@ func (t *Table[T]) InstallDragSupport(svg *SVG, dragKey, singularName, pluralNam
 // InstallDropSupport installs default drop support into a table. This will replace any existing DataDragOverCallback,
 // DataDragExitCallback, and DataDragDropCallback functions. It will also chain a function to any existing
 // DrawOverCallback.
-func (t *Table[T]) InstallDropSupport(dragKey string, shouldMoveDataCallback func(drop *TableDrop[T]) bool, copyCallback func(drop *TableDrop[T]), setRowParentCallback func(drop *TableDrop[T], row, newParent T), setChildRowsCallback func(drop *TableDrop[T], row T, children []T), droppedCallback func(drop *TableDrop[T], moved bool)) *TableDrop[T] {
+func (t *Table[T]) InstallDropSupport(dragKey string, shouldMoveDataCallback func(drop *TableDrop[T]) bool) *TableDrop[T] {
 	drop := &TableDrop[T]{
 		Table:                  t,
 		DragKey:                dragKey,
 		originalDrawOver:       t.DrawOverCallback,
 		shouldMoveDataCallback: shouldMoveDataCallback,
-		copyCallback:           copyCallback,
-		setRowParentCallback:   setRowParentCallback,
-		setChildRowsCallback:   setChildRowsCallback,
-		droppedCallback:        droppedCallback,
 	}
 	t.DataDragOverCallback = drop.DataDragOverCallback
 	t.DataDragExitCallback = drop.DataDragExitCallback
