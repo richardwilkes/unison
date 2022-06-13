@@ -89,7 +89,13 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 					} else {
 						// Row is not a container; add as sibling below this row
 						d.TargetParent = row.Parent()
-						row = d.Table.RowFromIndex(rowIndex + 1)
+						if row = d.Table.RowFromIndex(rowIndex + 1); row == zero {
+							if d.TargetParent == zero {
+								d.TargetIndex = len(d.Table.RootRows())
+							} else {
+								d.TargetIndex = len(d.TargetParent.Children())
+							}
+						}
 					}
 				} else {
 					// Over upper half of row; add to parent of this row at this row's index
