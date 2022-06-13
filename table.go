@@ -825,6 +825,25 @@ func (t *Table[T]) SelectedRows(minimal bool) []T {
 	return rows
 }
 
+// CopySelectionMap returns a copy of the current selection map.
+func (t *Table[T]) CopySelectionMap() map[uuid.UUID]bool {
+	return copySelMap(t.selMap)
+}
+
+// SetSelectionMap sets the current selection map.
+func (t *Table[T]) SetSelectionMap(selMap map[uuid.UUID]bool) {
+	t.selMap = copySelMap(selMap)
+	t.MarkForRedraw()
+}
+
+func copySelMap(selMap map[uuid.UUID]bool) map[uuid.UUID]bool {
+	result := make(map[uuid.UUID]bool, len(selMap))
+	for k, v := range selMap {
+		result[k] = v
+	}
+	return result
+}
+
 // HasSelection returns true if there is a selection.
 func (t *Table[T]) HasSelection() bool {
 	return len(t.selMap) != 0

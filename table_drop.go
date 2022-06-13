@@ -169,6 +169,10 @@ func (d *TableDrop[T, U]) DataDragDropCallback(where Point, data map[string]any)
 			undo = d.willDropCallback(d.TableDragData.Table, d.Table, move)
 		}
 		rows := slices.Clone(d.TableDragData.Rows)
+		selMap := make(map[uuid.UUID]bool, len(rows))
+		for _, row := range rows {
+			selMap[row.UUID()] = true
+		}
 		if move {
 			// Remove the drag rows from their original places
 			commonParents := collectCommonParents(rows)
@@ -221,6 +225,7 @@ func (d *TableDrop[T, U]) DataDragDropCallback(where Point, data map[string]any)
 			d.TargetParent.SetChildren(targetRows)
 			d.Table.SyncToModel()
 		}
+		d.Table.SetSelectionMap(selMap)
 
 		// Notify the destination table
 		if d.Table.DropOccurredCallback != nil {
