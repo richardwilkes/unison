@@ -53,6 +53,7 @@ type ScrollPanel struct {
 	content          Paneler
 	widthBehavior    Behavior
 	heightBehavior   Behavior
+	syncing          bool
 }
 
 // NewScrollPanel creates a new scrollable area.
@@ -189,25 +190,29 @@ func (s *ScrollPanel) DefaultDraw(canvas *Canvas, dirty Rect) {
 
 // Sync the headers and content with the current scroll state.
 func (s *ScrollPanel) Sync() {
-	if s.columnHeader != nil {
-		r := s.columnHeader.AsPanel().FrameRect()
-		r.X = -s.horizontalBar.Value()
-		r.Y = 0
-		s.columnHeader.AsPanel().SetFrameRect(r)
+	if !s.syncing {
+		s.syncing = true
+		defer func() { s.syncing = false }()
+		if s.columnHeader != nil {
+			r := s.columnHeader.AsPanel().FrameRect()
+			r.X = -s.horizontalBar.Value()
+			r.Y = 0
+			s.columnHeader.AsPanel().SetFrameRect(r)
+		}
+		if s.rowHeader != nil {
+			r := s.rowHeader.AsPanel().FrameRect()
+			r.X = 0
+			r.Y = -s.verticalBar.Value()
+			s.rowHeader.AsPanel().SetFrameRect(r)
+		}
+		if s.content != nil {
+			r := s.content.AsPanel().FrameRect()
+			r.X = -s.horizontalBar.Value()
+			r.Y = -s.verticalBar.Value()
+			s.content.AsPanel().SetFrameRect(r)
+		}
+		s.MarkForLayoutAndRedraw()
 	}
-	if s.rowHeader != nil {
-		r := s.rowHeader.AsPanel().FrameRect()
-		r.X = 0
-		r.Y = -s.verticalBar.Value()
-		s.rowHeader.AsPanel().SetFrameRect(r)
-	}
-	if s.content != nil {
-		r := s.content.AsPanel().FrameRect()
-		r.X = -s.horizontalBar.Value()
-		r.Y = -s.verticalBar.Value()
-		s.content.AsPanel().SetFrameRect(r)
-	}
-	s.MarkForLayoutAndRedraw()
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
@@ -273,7 +278,6 @@ func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBotto
 
 // DefaultFrameChangeInChildHierarchy provides the default frame change in child hierarchy handling.
 func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(panel *Panel) {
-	// TODO: Need to adjust the headers, too?
 	if s.content != nil {
 		vs := s.contentView.FrameRect().Size
 		r := s.content.AsPanel().FrameRect()
@@ -299,6 +303,7 @@ func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(panel *Panel) {
 			}
 		}
 		s.MarkForLayoutAndRedraw()
+		s.Sync()
 	}
 }
 

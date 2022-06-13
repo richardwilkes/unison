@@ -7,9 +7,9 @@ require (
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20220516021902-eb3e265c7661
 	github.com/google/uuid v1.3.0
 	github.com/richardwilkes/json v0.1.0
-	github.com/richardwilkes/toolbox v1.71.1
+	github.com/richardwilkes/toolbox v1.71.2
 	github.com/stretchr/testify v1.7.2
-	golang.org/x/exp v0.0.0-20220609121020-a51bd0440498
+	golang.org/x/exp v0.0.0-20220613132600-b0d781184e0d
 	golang.org/x/image v0.0.0-20220601225756-64ec528b34cd
 	golang.org/x/sys v0.0.0-20220610221304-9f5ed59c137d
 )
