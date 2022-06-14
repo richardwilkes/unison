@@ -28,8 +28,7 @@ const (
 	NoModifiers        Modifiers = 0
 )
 
-// Modifiers contains flags indicating which modifier keys were down when an
-// event occurred.
+// Modifiers contains flags indicating which modifier keys were down when an event occurred.
 type Modifiers byte
 
 // ShiftDown returns true if the shift key is being pressed.
@@ -62,8 +61,7 @@ func (m Modifiers) NumLockDown() bool {
 	return m&NumLockModifier == NumLockModifier
 }
 
-// OSMenuCmdModifierDown returns true if the OS's standard menu command key is
-// being pressed.
+// OSMenuCmdModifierDown returns true if the OS's standard menu command key is being pressed.
 func (m Modifiers) OSMenuCmdModifierDown() bool {
 	mask := OSMenuCmdModifier()
 	return m&mask == mask
