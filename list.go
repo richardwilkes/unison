@@ -12,6 +12,7 @@ package unison
 import (
 	"time"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
@@ -286,7 +287,7 @@ func (l *List) DefaultMouseDown(where Point, button, clickCount int, mod Modifie
 		case l.Selection.State(index):
 			l.anchor = index
 			if clickCount == 2 && l.DoubleClickCallback != nil {
-				l.DoubleClickCallback()
+				toolbox.Call(l.DoubleClickCallback)
 				return true
 			}
 		default:
@@ -338,7 +339,7 @@ func (l *List) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
-			l.NewSelectionCallback()
+			toolbox.Call(l.NewSelectionCallback)
 		}
 	}
 	l.savedSelection = nil
@@ -349,46 +350,46 @@ func (l *List) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 func (l *List) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		if l.DoubleClickCallback != nil && l.Selection.Count() > 0 {
-			l.DoubleClickCallback()
+			toolbox.Call(l.DoubleClickCallback)
 		}
-	} else {
-		switch keyCode {
-		case KeyUp:
-			var first int
-			if l.Selection.Count() == 0 {
-				first = len(l.rows) - 1
-			} else {
-				first = l.Selection.FirstSet() - 1
-				if first < 0 {
-					first = 0
-				}
+		return true
+	}
+	switch keyCode {
+	case KeyUp:
+		var first int
+		if l.Selection.Count() == 0 {
+			first = len(l.rows) - 1
+		} else {
+			first = l.Selection.FirstSet() - 1
+			if first < 0 {
+				first = 0
 			}
-			l.Select(mod.ShiftDown(), first)
-			if l.NewSelectionCallback != nil {
-				l.NewSelectionCallback()
-			}
-		case KeyDown:
-			last := l.Selection.LastSet() + 1
-			if last >= len(l.rows) {
-				last = len(l.rows) - 1
-			}
-			l.Select(mod.ShiftDown(), last)
-			if l.NewSelectionCallback != nil {
-				l.NewSelectionCallback()
-			}
-		case KeyHome:
-			l.Select(mod.ShiftDown(), 0)
-			if l.NewSelectionCallback != nil {
-				l.NewSelectionCallback()
-			}
-		case KeyEnd:
-			l.Select(mod.ShiftDown(), len(l.rows)-1)
-			if l.NewSelectionCallback != nil {
-				l.NewSelectionCallback()
-			}
-		default:
-			return false
 		}
+		l.Select(mod.ShiftDown(), first)
+		if l.NewSelectionCallback != nil {
+			toolbox.Call(l.NewSelectionCallback)
+		}
+	case KeyDown:
+		last := l.Selection.LastSet() + 1
+		if last >= len(l.rows) {
+			last = len(l.rows) - 1
+		}
+		l.Select(mod.ShiftDown(), last)
+		if l.NewSelectionCallback != nil {
+			toolbox.Call(l.NewSelectionCallback)
+		}
+	case KeyHome:
+		l.Select(mod.ShiftDown(), 0)
+		if l.NewSelectionCallback != nil {
+			toolbox.Call(l.NewSelectionCallback)
+		}
+	case KeyEnd:
+		l.Select(mod.ShiftDown(), len(l.rows)-1)
+		if l.NewSelectionCallback != nil {
+			toolbox.Call(l.NewSelectionCallback)
+		}
+	default:
+		return false
 	}
 	return true
 }
