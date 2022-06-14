@@ -218,7 +218,7 @@ func (d *TableDrop[T, U]) DataDragDropCallback(where Point, data map[string]any)
 		} else {
 			targetRows = d.TargetParent.Children()
 		}
-		targetRows = slices.Insert(slices.Clone(targetRows), xmath.Max(d.TargetIndex, 0), rows...)
+		targetRows = slices.Insert(slices.Clone(targetRows), xmath.Max(xmath.Min(d.TargetIndex, len(targetRows)-1), 0), rows...)
 		if d.TargetParent == zero {
 			d.Table.SetRootRows(targetRows)
 		} else {

@@ -96,25 +96,25 @@ type TableTheme struct {
 type Table[T TableRowConstraint[T]] struct {
 	Panel
 	TableTheme
-	SelectionDoubleClickCallback func()
-	DragRemovedRowsCallback      func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
-	DropOccurredCallback         func() // Called whenever a drop occurs that modifies the model.
-	ColumnSizes                  []ColumnSize
-	Model                        TableModel[T]
-	selMap                       map[uuid.UUID]bool
-	selAnchor                    uuid.UUID
-	hitRects                     []tableHitRect
-	rowCache                     []tableCache[T]
-	interactionRow               int
-	interactionColumn            int
-	lastMouseMotionRow           int
-	lastMouseMotionColumn        int
-	columnResizeStart            float32
-	columnResizeBase             float32
-	columnResizeOverhead         float32
-	PreventUserColumnResize      bool
-	awaitingSizeColumnsToFit     bool
-	awaitingSyncToModel          bool
+	DoubleClickCallback      func()
+	DragRemovedRowsCallback  func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
+	DropOccurredCallback     func() // Called whenever a drop occurs that modifies the model.
+	ColumnSizes              []ColumnSize
+	Model                    TableModel[T]
+	selMap                   map[uuid.UUID]bool
+	selAnchor                uuid.UUID
+	hitRects                 []tableHitRect
+	rowCache                 []tableCache[T]
+	interactionRow           int
+	interactionColumn        int
+	lastMouseMotionRow       int
+	lastMouseMotionColumn    int
+	columnResizeStart        float32
+	columnResizeBase         float32
+	columnResizeOverhead     float32
+	PreventUserColumnResize  bool
+	awaitingSizeColumnsToFit bool
+	awaitingSyncToModel      bool
 }
 
 // NewTable creates a new Table control.
@@ -141,6 +141,7 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	t.MouseUpCallback = t.DefaultMouseUp
 	t.MouseEnterCallback = t.DefaultMouseEnter
 	t.MouseExitCallback = t.DefaultMouseExit
+	t.KeyDownCallback = t.DefaultKeyDown
 	t.InstallCmdHandlers(SelectAllItemID, AlwaysEnabled, func(_ any) { t.SelectAll() })
 	return t
 }
@@ -699,8 +700,8 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 		}
 		t.MarkForRedraw()
-		if clickCount == 2 && t.SelectionDoubleClickCallback != nil && len(t.selMap) != 0 {
-			toolbox.Call(t.SelectionDoubleClickCallback)
+		if clickCount == 2 && t.DoubleClickCallback != nil && len(t.selMap) != 0 {
+			toolbox.Call(t.DoubleClickCallback)
 		}
 	}
 	return stop
@@ -760,6 +761,82 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 		}
 	}
 	return stop
+}
+
+// DefaultKeyDown provides the default key down handling.
+func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+	if IsControlAction(keyCode, mod) {
+		if t.DoubleClickCallback != nil && len(t.selMap) != 0 {
+			toolbox.Call(t.DoubleClickCallback)
+		}
+		return true
+	}
+	switch keyCode {
+	case KeyLeft:
+		if t.HasSelection() {
+			altered := false
+			for _, row := range t.SelectedRows(false) {
+				if row.IsOpen() {
+					row.SetOpen(false)
+					altered = true
+				}
+			}
+			if altered {
+				t.SyncToModel()
+			}
+		}
+	case KeyRight:
+		if t.HasSelection() {
+			altered := false
+			for _, row := range t.SelectedRows(false) {
+				if !row.IsOpen() {
+					row.SetOpen(true)
+					altered = true
+				}
+			}
+			if altered {
+				t.SyncToModel()
+			}
+		}
+	case KeyUp:
+		var i int
+		if t.HasSelection() {
+			i = xmath.Max(t.FirstSelectedRowIndex()-1, 0)
+		} else {
+			i = len(t.rowCache) - 1
+		}
+		if !mod.ShiftDown() {
+			t.ClearSelection()
+		}
+		t.SelectByIndex(i)
+		t.ScrollRowCellIntoView(i, 0)
+	case KeyDown:
+		i := xmath.Min(t.LastSelectedRowIndex()+1, len(t.rowCache)-1)
+		if !mod.ShiftDown() {
+			t.ClearSelection()
+		}
+		t.SelectByIndex(i)
+		t.ScrollRowCellIntoView(i, 0)
+	case KeyHome:
+		if mod.ShiftDown() && t.HasSelection() {
+			t.SelectRange(0, t.FirstSelectedRowIndex())
+		} else {
+			t.ClearSelection()
+			t.SelectByIndex(0)
+		}
+		t.ScrollRowCellIntoView(0, 0)
+	case KeyEnd:
+		if mod.ShiftDown() && t.HasSelection() {
+			t.SelectRange(t.LastSelectedRowIndex(), len(t.rowCache)-1)
+		} else {
+			t.ClearSelection()
+			t.SelectByIndex(len(t.rowCache) - 1)
+		}
+		t.ScrollRowCellIntoView(len(t.rowCache)-1, 0)
+	default:
+		return false
+	}
+	return true
 }
 
 // FirstSelectedRowIndex returns the first selected row index, or -1 if there is no selection.
@@ -888,12 +965,43 @@ func (t *Table[T]) SelectByIndex(indexes ...int) {
 	t.MarkForRedraw()
 }
 
+// SelectRange selects the given range. The start will be considered the anchor selection if no existing anchor
+// selection exists.
+func (t *Table[T]) SelectRange(start, end int) {
+	start = xmath.Max(start, 0)
+	end = xmath.Min(end, len(t.rowCache)-1)
+	if start > end {
+		return
+	}
+	for i := start; i <= end; i++ {
+		id := t.rowCache[i].row.UUID()
+		t.selMap[id] = true
+		if t.selAnchor == zeroUUID {
+			t.selAnchor = id
+		}
+	}
+	t.MarkForRedraw()
+}
+
 // DeselectByIndex deselects the given indexes.
 func (t *Table[T]) DeselectByIndex(indexes ...int) {
 	for _, index := range indexes {
 		if index >= 0 && index < len(t.rowCache) {
 			delete(t.selMap, t.rowCache[index].row.UUID())
 		}
+	}
+	t.MarkForRedraw()
+}
+
+// DeselectRange deselects the given range.
+func (t *Table[T]) DeselectRange(start, end int) {
+	start = xmath.Max(start, 0)
+	end = xmath.Min(end, len(t.rowCache)-1)
+	if start > end {
+		return
+	}
+	for i := start; i <= end; i++ {
+		delete(t.selMap, t.rowCache[i].row.UUID())
 	}
 	t.MarkForRedraw()
 }
