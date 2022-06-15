@@ -261,6 +261,9 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 		p.SetBorder(DefaultMenuTheme.MenuBorder)
 	}
 	content := NewPanel()
+	if m.updater != nil {
+		m.updater(m)
+	}
 	for _, mi := range m.items {
 		mi.validate()
 		child := mi.newPanel()
