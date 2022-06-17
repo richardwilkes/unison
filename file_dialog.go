@@ -269,7 +269,7 @@ func (d *fileDialog) fileNameFieldModified() {
 			text += "." + d.currentExt
 		}
 	}
-	d.paths = []string{text}
+	d.paths = []string{filepath.Join(d.currentDir, text)}
 	d.dialog.Button(ModalResponseOK).SetEnabled(text != "")
 }
 
