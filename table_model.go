@@ -77,3 +77,11 @@ func (m *SimpleTableModel[T]) RootRows() []T {
 func (m *SimpleTableModel[T]) SetRootRows(rows []T) {
 	m.roots = rows
 }
+
+// CollectUUIDsFromRow returns a map containing the UUIDs of the provided node and all of its descendants.
+func CollectUUIDsFromRow[T TableRowConstraint[T]](node T, ids map[uuid.UUID]bool) {
+	ids[node.UUID()] = true
+	for _, child := range node.Children() {
+		CollectUUIDsFromRow(child, ids)
+	}
+}
