@@ -1315,8 +1315,9 @@ func (t *Table[T]) RowFromIndex(index int) T {
 
 // RowToIndex returns the row's index within the displayed data, or -1 if it isn't currently in the disclosed rows.
 func (t *Table[T]) RowToIndex(rowData T) int {
+	id := rowData.UUID()
 	for row, data := range t.rowCache {
-		if data.row == rowData {
+		if data.row.UUID() == id {
 			return row
 		}
 	}
