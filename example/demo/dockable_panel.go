@@ -35,6 +35,10 @@ func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 	}
 	d.Self = d
 	d.DrawCallback = d.draw
+	d.GainedFocusCallback = d.MarkForRedraw
+	d.LostFocusCallback = d.MarkForRedraw
+	d.MouseDownCallback = d.mouseDown
+	d.SetFocusable(true)
 	d.SetSizer(func(_ unison.Size) (min, pref, max unison.Size) {
 		pref.Width = 200
 		pref.Height = 100
@@ -45,6 +49,23 @@ func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 
 func (d *DockablePanel) draw(gc *unison.Canvas, rect unison.Rect) {
 	gc.DrawRect(rect, d.Color.Paint(gc, rect, unison.Fill))
+	if d.Focused() {
+		txt := unison.NewText("Focused", &unison.TextDecoration{
+			Font:  unison.EmphasizedSystemFont,
+			Paint: unison.Black.Paint(gc, rect, unison.Fill),
+		})
+		r := d.ContentRect(false)
+		size := txt.Extents()
+		txt.Draw(gc, r.X+(r.Width-size.Width)/2, r.Y+(r.Height-size.Height)/2+txt.Baseline())
+	}
+}
+
+func (d *DockablePanel) mouseDown(where unison.Point, button, clickCount int, mod unison.Modifiers) bool {
+	if !d.Focused() {
+		d.RequestFocus()
+		d.MarkForRedraw()
+	}
+	return true
 }
 
 // TitleIcon implements Dockable.

@@ -161,7 +161,7 @@ func (d *DockContainer) Stack(dockable Dockable, index int) {
 
 // AttemptClose attempts to close a Dockable within this DockContainer. This only has an affect if the Dockable is
 // contained by this DockContainer and implements the TabCloser interface. Note that the TabCloser must call this
-// DockContainer's close(Dockable) method to actually close the tab. Returns true if dockable is closed.
+// DockContainer's Close(Dockable) method to actually close the tab. Returns true if dockable is closed.
 func (d *DockContainer) AttemptClose(dockable Dockable) bool {
 	if closer, ok := dockable.(TabCloser); ok {
 		dockable = resolveDockable(dockable)
@@ -181,21 +181,30 @@ func (d *DockContainer) AttemptClose(dockable Dockable) bool {
 // also removed from the Dock.
 func (d *DockContainer) Close(dockable Dockable) {
 	dockable = resolveDockable(dockable)
-	for _, c := range d.content.Children() {
-		if c.Self != dockable {
+	children := d.Dockables()
+	for i, c := range children {
+		if c != dockable {
 			continue
 		}
 		var next Dockable
 		if DockableHasFocus(dockable) {
-			next = d.Dock.NextDockableFor(dockable)
+			switch {
+			case i+1 < len(children):
+				next = children[i+1]
+				d.content.SetCurrentIndex(i + 1)
+			case i > 0:
+				next = children[i-1]
+				d.content.SetCurrentIndex(i - 1)
+			default:
+				next = d.Dock.NextDockableFor(dockable)
+			}
 		} else {
 			next = d.CurrentDockable()
 		}
 		d.content.RemoveChild(dockable)
 		d.header.close(dockable)
 		d.MarkForRedraw()
-		children := d.content.Children()
-		if len(children) == 0 {
+		if len(children) == 1 {
 			d.Dock.Restore()
 			if dl := d.Dock.layout.findLayout(d); dl != nil {
 				dl.Remove(d)
