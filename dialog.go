@@ -25,6 +25,10 @@ const (
 	ModalResponseUserBase = 100
 )
 
+// DialogClientDataKey is the key used in the ClientData() of the Window the dialog puts up which contains the *Dialog
+// of the owning dialog.
+const DialogClientDataKey = "dialog"
+
 // DefaultDialogTheme holds the default DialogTheme values for Dialogs. Modifying this data will not alter existing
 // Dialogs, but will alter any Dialogs created in the future.
 var DefaultDialogTheme = DialogTheme{
@@ -80,6 +84,7 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	if d.err != nil {
 		return nil, errs.NewWithCause("unable to create dialog", d.err)
 	}
+	d.wnd.ClientData()[DialogClientDataKey] = d
 	content := d.wnd.Content()
 	content.SetBorder(NewEmptyBorder(NewUniformInsets(2 * StdHSpacing)))
 	columns := 1
