@@ -505,7 +505,7 @@ func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) 
 }
 
 func createListPanel() *unison.Panel {
-	lst := unison.NewList()
+	lst := unison.NewList[string]()
 	lst.Append(
 		"One",
 		"Two",

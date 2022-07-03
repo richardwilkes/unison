@@ -31,7 +31,7 @@ type fileDialog struct {
 	parentDirPopup *PopupMenu[*parentDirItem]
 	fileNameField  *Field
 	scroller       *ScrollPanel
-	fileList       *List
+	fileList       *List[*fileListItem]
 	filterPopup    *PopupMenu[string]
 	forOpen        bool
 }
@@ -120,7 +120,7 @@ func (d *fileDialog) createContent() *Panel {
 		})
 	}
 
-	d.fileList = NewList().SetAllowMultipleSelection(d.allowMultipleSelection)
+	d.fileList = NewList[*fileListItem]().SetAllowMultipleSelection(d.allowMultipleSelection)
 	d.fileList.NewSelectionCallback = d.fileListSelectionHandler
 	d.fileList.DoubleClickCallback = d.fileListDoubleClickHandler
 	d.rebuildFileList()
@@ -208,21 +208,20 @@ func (d *fileDialog) fileListSelectionHandler() {
 	i := d.fileList.Selection.FirstSet()
 	for i != -1 {
 		okEnabled = true
-		if item, ok := d.fileList.DataAtIndex(i).(*fileListItem); ok {
-			d.paths = append(d.paths, filepath.Join(d.currentDir, item.entry.Name()))
-			switch {
-			case item.entry.IsDir():
-				if !d.forOpen || !d.canChooseDirs {
-					okEnabled = false
-				}
-			case d.forOpen:
-				if !d.canChooseFiles {
-					okEnabled = false
-				}
-			default:
-				d.fileNameField.SetText(item.entry.Name())
-				d.fileNameField.SelectAll()
+		item := d.fileList.DataAtIndex(i)
+		d.paths = append(d.paths, filepath.Join(d.currentDir, item.entry.Name()))
+		switch {
+		case item.entry.IsDir():
+			if !d.forOpen || !d.canChooseDirs {
+				okEnabled = false
 			}
+		case d.forOpen:
+			if !d.canChooseFiles {
+				okEnabled = false
+			}
+		default:
+			d.fileNameField.SetText(item.entry.Name())
+			d.fileNameField.SelectAll()
 		}
 		i = d.fileList.Selection.NextSet(i + 1)
 	}
@@ -234,8 +233,8 @@ func (d *fileDialog) fileListDoubleClickHandler() {
 	if i == -1 {
 		i = d.fileList.Selection.FirstSet()
 	}
-	if item, ok := d.fileList.DataAtIndex(i).(*fileListItem); ok {
-		if item.entry.IsDir() {
+	if i != -1 {
+		if item := d.fileList.DataAtIndex(i); item.entry.IsDir() {
 			d.fileList.Selection.Reset()
 			d.fileList.Selection.Set(i)
 			d.fileList.FlashSelection()
