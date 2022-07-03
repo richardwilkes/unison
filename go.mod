@@ -8,10 +8,10 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/richardwilkes/json v0.1.0
 	github.com/richardwilkes/toolbox v1.72.0
-	github.com/stretchr/testify v1.7.5
+	github.com/stretchr/testify v1.8.0
 	golang.org/x/exp v0.0.0-20220613132600-b0d781184e0d
 	golang.org/x/image v0.0.0-20220617043117-41969df76e82
-	golang.org/x/sys v0.0.0-20220627191245-f75cf1eec38b
+	golang.org/x/sys v0.0.0-20220702020025-31831981b65f
 )
 
 require (
