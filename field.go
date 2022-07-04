@@ -540,7 +540,11 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool
 	case KeyReturn, KeyNumPadEnter:
 		if f.multiLine {
 			f.DefaultRuneTyped('\n')
+		} else {
+			return false
 		}
+	case KeyEscape:
+		return false
 	}
 	return true
 }
