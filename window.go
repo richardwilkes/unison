@@ -1307,11 +1307,14 @@ func (w *Window) dataDragOver() {
 
 func (w *Window) dataDragFinish() {
 	w.MarkForRedraw()
-	if w.dragDataPanel != nil && w.dragDataPanel.DataDragDropCallback != nil {
+	dragData := w.dragData
+	dragDataLocation := w.dragDataLocation
+	dragDataPanel := w.dragDataPanel
+	w.dragData = nil
+	w.dragDataPanel = nil
+	if dragDataPanel != nil && dragDataPanel.DataDragDropCallback != nil {
 		toolbox.Call(func() {
-			w.dragDataPanel.DataDragDropCallback(w.dragDataPanel.PointFromRoot(w.dragDataLocation), w.dragData.Data)
+			dragDataPanel.DataDragDropCallback(dragDataPanel.PointFromRoot(dragDataLocation), dragData.Data)
 		})
 	}
-	w.dragDataPanel = nil
-	w.dragData = nil
 }
