@@ -57,6 +57,7 @@ type Panel struct {
 	canPerformMap        map[int]func(any) bool
 	performMap           map[int]func(any)
 	data                 map[string]any
+	RefKey               string
 	scale                float32
 	NeedsLayout          bool
 	focusable            bool
@@ -83,6 +84,20 @@ func (p *Panel) Is(other Paneler) bool {
 		return p2 != nil && p.Self == p2.Self
 	}
 	return false
+}
+
+// FindRefKey looks for refKey starting with this panel and then descending into its children recursively, returning the
+// first match or nil if none is found.
+func (p *Panel) FindRefKey(refKey string) *Panel {
+	if p.RefKey == refKey {
+		return p
+	}
+	for _, child := range p.children {
+		if found := child.FindRefKey(refKey); found != nil {
+			return found
+		}
+	}
+	return nil
 }
 
 func (p *Panel) String() string {
