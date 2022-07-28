@@ -24,16 +24,6 @@ import (
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
-// DarkModeTracking holds the current dark mode control setting.
-type DarkModeTracking uint8
-
-// Possible values for DarkModeTracking.
-const (
-	DarkModeForcedOff DarkModeTracking = iota
-	DarkModeForcedOn
-	DarkModeTrackPlatform
-)
-
 var (
 	redrawSet                         = make(map[*Window]struct{})
 	startupFinishedCallback           func()
@@ -46,7 +36,7 @@ var (
 	noGlobalMenuBar                   bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
-	currentDarkModeTracking           = DarkModeTrackPlatform
+	currentColorMode                  = AutomaticColorMode
 	needPlatformDarkModeUpdate        = true
 	platformDarkModeEnabled           bool
 	glfwInited                        bool
@@ -271,21 +261,21 @@ func Beep() {
 	platformBeep()
 }
 
-// IsDarkModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
-// platforms that return false from this function, DarkModeTrackPlatform is the same as DarkModeForcedOff.
-func IsDarkModeTrackingPossible() bool {
+// IsColorModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
+// platforms that return false from this function, AutomaticColorMode is the same as LightColorMode.
+func IsColorModeTrackingPossible() bool {
 	return platformIsDarkModeTrackingPossible()
 }
 
-// CurrentDarkModeTracking returns the current DarkModeTracking state.
-func CurrentDarkModeTracking() DarkModeTracking {
-	return currentDarkModeTracking
+// CurrentColorMode returns the current ColorMode state.
+func CurrentColorMode() ColorMode {
+	return currentColorMode
 }
 
-// SetDarkModeTracking sets the way dark mode is tracked.
-func SetDarkModeTracking(mode DarkModeTracking) {
-	if currentDarkModeTracking != mode {
-		currentDarkModeTracking = mode
+// SetColorMode sets the current ColorMode.
+func SetColorMode(mode ColorMode) {
+	if currentColorMode != mode {
+		currentColorMode = mode
 		needPlatformDarkModeUpdate = true
 		InvokeTask(ThemeChanged)
 	}
@@ -293,10 +283,10 @@ func SetDarkModeTracking(mode DarkModeTracking) {
 
 // IsDarkModeEnabled returns true if the OS is currently using a "dark mode".
 func IsDarkModeEnabled() bool {
-	switch currentDarkModeTracking {
-	case DarkModeForcedOff:
+	switch currentColorMode {
+	case LightColorMode:
 		return false
-	case DarkModeForcedOn:
+	case DarkColorMode:
 		return true
 	default:
 		if needPlatformDarkModeUpdate {

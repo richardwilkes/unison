@@ -77,7 +77,7 @@ func updateTheme(k registry.Key, sync bool) error {
 	} else {
 		swapped = atomic.CompareAndSwapUint32(&appUsesLightThemeValue, 0, 1)
 	}
-	if swapped && currentDarkModeTracking == DarkModeTrackPlatform {
+	if swapped && currentColorMode == AutomaticColorMode {
 		if sync {
 			ThemeChanged()
 		} else {
