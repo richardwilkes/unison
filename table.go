@@ -96,6 +96,7 @@ type TableTheme struct {
 type Table[T TableRowConstraint[T]] struct {
 	Panel
 	TableTheme
+	SelectionChangedCallback func()
 	DoubleClickCallback      func()
 	DragRemovedRowsCallback  func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
 	DropOccurredCallback     func() // Called whenever a drop occurs that modifies the model.
@@ -682,10 +683,12 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 				for i := xmath.Min(selAnchorIndex, row); i <= last; i++ {
 					t.selMap[t.rowCache[i].row.UUID()] = true
 				}
+				t.notifyOfSelectionChange()
 			} else if !t.selMap[id] { // No anchor, so behave like a regular click
 				t.selMap = make(map[uuid.UUID]bool)
 				t.selMap[id] = true
 				t.selAnchor = id
+				t.notifyOfSelectionChange()
 			}
 		case mod&(OptionModifier|CommandModifier) != 0: // Toggle single row
 			if t.selMap[id] {
@@ -693,11 +696,13 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			} else {
 				t.selMap[id] = true
 			}
+			t.notifyOfSelectionChange()
 		default: // If not already selected, replace selection with current row and make it the anchor
 			if !t.selMap[id] {
 				t.selMap = make(map[uuid.UUID]bool)
 				t.selMap[id] = true
 				t.selAnchor = id
+				t.notifyOfSelectionChange()
 			}
 		}
 		t.MarkForRedraw()
@@ -706,6 +711,12 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 		}
 	}
 	return stop
+}
+
+func (t *Table[T]) notifyOfSelectionChange() {
+	if t.SelectionChangedCallback != nil {
+		toolbox.Call(t.SelectionChangedCallback)
+	}
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
@@ -912,6 +923,7 @@ func (t *Table[T]) CopySelectionMap() map[uuid.UUID]bool {
 func (t *Table[T]) SetSelectionMap(selMap map[uuid.UUID]bool) {
 	t.selMap = copySelMap(selMap)
 	t.MarkForRedraw()
+	t.notifyOfSelectionChange()
 }
 
 func copySelMap(selMap map[uuid.UUID]bool) map[uuid.UUID]bool {
@@ -927,6 +939,11 @@ func (t *Table[T]) HasSelection() bool {
 	return len(t.selMap) != 0
 }
 
+// SelectionCount returns the number of rows explicitly selected.
+func (t *Table[T]) SelectionCount() int {
+	return len(t.selMap)
+}
+
 // ClearSelection clears the selection.
 func (t *Table[T]) ClearSelection() {
 	if len(t.selMap) == 0 {
@@ -935,6 +952,7 @@ func (t *Table[T]) ClearSelection() {
 	t.selMap = make(map[uuid.UUID]bool)
 	t.selAnchor = zeroUUID
 	t.MarkForRedraw()
+	t.notifyOfSelectionChange()
 }
 
 // SelectAll selects all rows.
@@ -949,6 +967,7 @@ func (t *Table[T]) SelectAll() {
 		}
 	}
 	t.MarkForRedraw()
+	t.notifyOfSelectionChange()
 }
 
 // SelectByIndex selects the given indexes. The first one will be considered the anchor selection if no existing anchor
@@ -964,6 +983,7 @@ func (t *Table[T]) SelectByIndex(indexes ...int) {
 		}
 	}
 	t.MarkForRedraw()
+	t.notifyOfSelectionChange()
 }
 
 // SelectRange selects the given range. The start will be considered the anchor selection if no existing anchor
@@ -982,6 +1002,7 @@ func (t *Table[T]) SelectRange(start, end int) {
 		}
 	}
 	t.MarkForRedraw()
+	t.notifyOfSelectionChange()
 }
 
 // DeselectByIndex deselects the given indexes.
@@ -992,6 +1013,7 @@ func (t *Table[T]) DeselectByIndex(indexes ...int) {
 		}
 	}
 	t.MarkForRedraw()
+	t.notifyOfSelectionChange()
 }
 
 // DeselectRange deselects the given range.
@@ -1005,6 +1027,7 @@ func (t *Table[T]) DeselectRange(start, end int) {
 		delete(t.selMap, t.rowCache[i].row.UUID())
 	}
 	t.MarkForRedraw()
+	t.notifyOfSelectionChange()
 }
 
 // DiscloseRow ensures the given row can be viewed by opening all parents that lead to it. Returns true if any
