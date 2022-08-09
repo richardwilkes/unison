@@ -16,8 +16,8 @@ correctly:
 * On Windows, you need https://jmeubank.github.io/tdm-gcc/download/ as well as https://git-scm.com for its bash shell.
 * See [compilation dependencies](http://www.glfw.org/docs/latest/compile.html#compile_deps) for full details.
 
-This version of Unison was built using Go 1.18. It has been compiled under many earlier versions of Go in the past, but
-only Go 1.18+ will be considered as I make further changes.
+This version of Unison was built using Go 1.19. It has been compiled under many earlier versions of Go in the past, but
+only Go 1.19+ will be considered as I make further changes.
 
 ### Example
 
