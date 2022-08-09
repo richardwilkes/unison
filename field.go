@@ -388,9 +388,6 @@ func (f *Field) DefaultFocusGained() {
 // DefaultFocusLost provides the default focus lost handling.
 func (f *Field) DefaultFocusLost() {
 	f.SetBorder(f.UnfocusedBorder)
-	if !f.CanSelectAll() {
-		f.SetSelectionToStart()
-	}
 	f.MarkForRedraw()
 }
 

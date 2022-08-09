@@ -54,7 +54,7 @@ linters-settings:
 linters:
   disable-all: true
   enable:
-#    - bodyclose
+    - bodyclose
     - deadcode
     - depguard
     - errcheck
@@ -67,10 +67,9 @@ linters:
     - gosec
     - gosimple
     - govet
-    - ifshort
     - ineffassign
     - misspell
-#    - noctx
+    - noctx
     - prealloc
     - predeclared
     - revive

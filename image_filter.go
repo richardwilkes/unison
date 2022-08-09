@@ -160,17 +160,17 @@ func NewMagnifierImageFilter(src Rect, inset float32, input *ImageFilter, cropRe
 
 // NewMatrixConvolutionImageFilter returns a new matrix convolution image filter.
 //
-// width, height: The kernel size in pixels
+// width, height: The kernel size in pixels.
 // kernel: The image processing kernel. Must contain width * height elements, in row order. If less than this, zeroes
-//         will be added to make up the difference.
+// will be added to make up the difference.
 // gain: A scale factor applied to each pixel after convolution. This can be used to normalize the kernel, if it does
-//       not already sum to 1.
+// not already sum to 1.
 // bias: A bias factor added to each pixel after convolution.
 // offsetX, offsetY: An offset applied to each pixel coordinate before convolution. This can be used to center the
-//                   kernel over the image (e.g., a 3x3 kernel should have an offset of {1, 1}).
+// kernel over the image (e.g., a 3x3 kernel should have an offset of {1, 1}).
 // tileMode: How accesses outside the image are treated.
 // convolveAlpha: If true, all channels are convolved. If false, only the RGB channels are convolved, and alpha is
-//                copied from the source image.
+// copied from the source image.
 // input: The input image filter, if nil the source bitmap is used instead.
 // cropRect: Rectangle to which the output processing will be limited. May be nil.
 func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, bias float32, offsetX, offsetY int, tileMode TileMode, convolveAlpha bool, input *ImageFilter, cropRect *Rect) *ImageFilter {

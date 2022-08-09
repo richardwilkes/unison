@@ -43,11 +43,11 @@ func DrawEllipseBase(canvas *Canvas, rect Rect, thickness float32, fillInk, stro
 
 // SanitizeExtensionList ensures the extension list is consistent:
 //
-//  - removal of leading and trailing white space
-//  - removal of leading "*." or "."
-//  - lower-cased
-//  - removal of duplicates
-//  - removal of empty extensions
+//   - removal of leading and trailing white space
+//   - removal of leading "*." or "."
+//   - lower-cased
+//   - removal of duplicates
+//   - removal of empty extensions
 func SanitizeExtensionList(in []string) []string {
 	var actual []string
 	existence := make(map[string]bool)
