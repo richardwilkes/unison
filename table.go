@@ -116,6 +116,7 @@ type Table[T TableRowConstraint[T]] struct {
 	PreventUserColumnResize  bool
 	awaitingSizeColumnsToFit bool
 	awaitingSyncToModel      bool
+	selNeedsPrune            bool
 }
 
 // NewTable creates a new Table control.
@@ -479,8 +480,12 @@ func (t *Table[T]) newTableHitRect(rect Rect, row T) tableHitRect {
 	return tableHitRect{
 		Rect: rect,
 		handler: func(where Point, button, clickCount int, mod Modifiers) {
-			row.SetOpen(!row.IsOpen())
+			open := !row.IsOpen()
+			row.SetOpen(open)
 			t.SyncToModel()
+			if !open {
+				t.PruneSelectionOfUndisclosedNodes()
+			}
 		},
 	}
 }
@@ -795,6 +800,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) b
 			}
 			if altered {
 				t.SyncToModel()
+				t.PruneSelectionOfUndisclosedNodes()
 			}
 		}
 	case KeyRight:
@@ -851,6 +857,32 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) b
 	return true
 }
 
+// PruneSelectionOfUndisclosedNodes removes any nodes in the selection map that are no longer disclosed from the
+// selection map.
+func (t *Table[T]) PruneSelectionOfUndisclosedNodes() {
+	if !t.selNeedsPrune {
+		return
+	}
+	t.selNeedsPrune = false
+	if len(t.selMap) == 0 {
+		return
+	}
+	needsNotify := false
+	selMap := make(map[uuid.UUID]bool, len(t.selMap))
+	for _, entry := range t.rowCache {
+		id := entry.row.UUID()
+		if t.selMap[id] {
+			selMap[id] = true
+		} else {
+			needsNotify = true
+		}
+	}
+	t.selMap = selMap
+	if needsNotify {
+		t.notifyOfSelectionChange()
+	}
+}
+
 // FirstSelectedRowIndex returns the first selected row index, or -1 if there is no selection.
 func (t *Table[T]) FirstSelectedRowIndex() int {
 	if len(t.selMap) == 0 {
@@ -902,6 +934,7 @@ func (t *Table[T]) IsRowSelected(index int) bool {
 // SelectedRows returns the currently selected rows. If 'minimal' is true, then children of selected rows that may also
 // be selected are not returned, just the topmost row that is selected in any given hierarchy.
 func (t *Table[T]) SelectedRows(minimal bool) []T {
+	t.PruneSelectionOfUndisclosedNodes()
 	if len(t.selMap) == 0 {
 		return nil
 	}
@@ -916,12 +949,14 @@ func (t *Table[T]) SelectedRows(minimal bool) []T {
 
 // CopySelectionMap returns a copy of the current selection map.
 func (t *Table[T]) CopySelectionMap() map[uuid.UUID]bool {
+	t.PruneSelectionOfUndisclosedNodes()
 	return copySelMap(t.selMap)
 }
 
 // SetSelectionMap sets the current selection map.
 func (t *Table[T]) SetSelectionMap(selMap map[uuid.UUID]bool) {
 	t.selMap = copySelMap(selMap)
+	t.selNeedsPrune = true
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
 }
@@ -936,11 +971,13 @@ func copySelMap(selMap map[uuid.UUID]bool) map[uuid.UUID]bool {
 
 // HasSelection returns true if there is a selection.
 func (t *Table[T]) HasSelection() bool {
+	t.PruneSelectionOfUndisclosedNodes()
 	return len(t.selMap) != 0
 }
 
 // SelectionCount returns the number of rows explicitly selected.
 func (t *Table[T]) SelectionCount() int {
+	t.PruneSelectionOfUndisclosedNodes()
 	return len(t.selMap)
 }
 
@@ -950,6 +987,7 @@ func (t *Table[T]) ClearSelection() {
 		return
 	}
 	t.selMap = make(map[uuid.UUID]bool)
+	t.selNeedsPrune = false
 	t.selAnchor = zeroUUID
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
@@ -958,6 +996,7 @@ func (t *Table[T]) ClearSelection() {
 // SelectAll selects all rows.
 func (t *Table[T]) SelectAll() {
 	t.selMap = make(map[uuid.UUID]bool, len(t.rowCache))
+	t.selNeedsPrune = false
 	t.selAnchor = zeroUUID
 	for _, cache := range t.rowCache {
 		id := cache.row.UUID()
@@ -977,6 +1016,7 @@ func (t *Table[T]) SelectByIndex(indexes ...int) {
 		if index >= 0 && index < len(t.rowCache) {
 			id := t.rowCache[index].row.UUID()
 			t.selMap[id] = true
+			t.selNeedsPrune = true
 			if t.selAnchor == zeroUUID {
 				t.selAnchor = id
 			}
@@ -997,6 +1037,7 @@ func (t *Table[T]) SelectRange(start, end int) {
 	for i := start; i <= end; i++ {
 		id := t.rowCache[i].row.UUID()
 		t.selMap[id] = true
+		t.selNeedsPrune = true
 		if t.selAnchor == zeroUUID {
 			t.selAnchor = id
 		}
@@ -1067,6 +1108,7 @@ func (t *Table[T]) RootRows() []T {
 func (t *Table[T]) SetRootRows(rows []T) {
 	t.Model.SetRootRows(rows)
 	t.selMap = make(map[uuid.UUID]bool)
+	t.selNeedsPrune = false
 	t.selAnchor = zeroUUID
 	t.SyncToModel()
 }
@@ -1083,6 +1125,7 @@ func (t *Table[T]) SyncToModel() {
 	for _, row := range roots {
 		j = t.buildRowCacheEntry(row, -1, j, 0)
 	}
+	t.selNeedsPrune = true
 	_, pref, _ := t.DefaultSizes(Size{})
 	rect := t.FrameRect()
 	rect.Size = pref
