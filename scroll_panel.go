@@ -173,13 +173,23 @@ func (s *ScrollPanel) SetContent(p Paneler, widthBehavior, heightBehavior Behavi
 
 // Position returns the current scroll position.
 func (s *ScrollPanel) Position() (h, v float32) {
-	return s.horizontalBar.Value(), s.verticalBar.Value()
+	if s.horizontalBar != nil {
+		h = s.horizontalBar.Value()
+	}
+	if s.verticalBar != nil {
+		v = s.verticalBar.Value()
+	}
+	return h, v
 }
 
 // SetPosition sets the current scroll position.
 func (s *ScrollPanel) SetPosition(h, v float32) {
-	s.horizontalBar.SetRange(h, s.horizontalBar.Extent(), s.horizontalBar.Max())
-	s.verticalBar.SetRange(v, s.verticalBar.Extent(), s.verticalBar.Max())
+	if s.horizontalBar != nil {
+		s.horizontalBar.SetRange(h, s.horizontalBar.Extent(), s.horizontalBar.Max())
+	}
+	if s.verticalBar != nil {
+		s.verticalBar.SetRange(v, s.verticalBar.Extent(), s.verticalBar.Max())
+	}
 }
 
 // DefaultDraw provides the default drawing.

@@ -57,6 +57,7 @@ type List[T any] struct {
 	allowMultiple        bool
 	pressed              bool
 	suppressSelection    bool
+	suppressScroll       bool
 }
 
 // NewList creates a new List control.
@@ -192,7 +193,9 @@ func (l *List[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 
 // DefaultFocusGained provides the default focus gained handling.
 func (l *List[T]) DefaultFocusGained() {
-	l.ScrollIntoView()
+	if !l.suppressScroll {
+		l.ScrollIntoView()
+	}
 	l.MarkForRedraw()
 }
 
@@ -260,7 +263,9 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 
 // DefaultMouseDown provides the default mouse down handling.
 func (l *List[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+	l.suppressScroll = true
 	l.RequestFocus()
+	l.suppressScroll = false
 	l.savedSelection = l.Selection.Clone()
 	if index, _ := l.rowAt(where.Y); index >= 0 {
 		switch {

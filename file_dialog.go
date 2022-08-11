@@ -26,6 +26,7 @@ type fileDialog struct {
 	fileCommon
 	currentDir     string
 	currentExt     string
+	readable       []string
 	dirEntries     []os.DirEntry
 	dialog         *Dialog
 	parentDirPopup *PopupMenu[*parentDirItem]
@@ -80,10 +81,19 @@ func (d *fileDialog) RunModal() bool {
 }
 
 func (d *fileDialog) createContent() *Panel {
-	if len(d.extensions) > 0 {
-		d.currentExt = d.extensions[0]
-	} else {
+	d.readable = make([]string, 0, len(d.extensions))
+	for _, ext := range d.extensions {
+		if ext != "*" {
+			d.readable = append(d.readable, ext)
+		}
+	}
+	switch len(d.readable) {
+	case 0:
 		d.currentExt = "*"
+	case 1:
+		d.currentExt = d.readable[0]
+	default:
+		d.currentExt = strings.Join(d.readable, ";")
 	}
 	d.prepareCurrentDir(d.initialDir)
 
@@ -140,9 +150,10 @@ func (d *fileDialog) createContent() *Panel {
 
 	if len(d.extensions) > 1 {
 		d.filterPopup = NewPopupMenu[string]()
+		d.filterPopup.AddItem(i18n.Text("All Readable Files"))
 		for _, ext := range d.extensions {
 			if ext == "*" {
-				d.filterPopup.AddItem(i18n.Text("Any File"))
+				d.filterPopup.AddItem(i18n.Text("All Files"))
 			} else {
 				d.filterPopup.AddItem("*." + ext)
 			}
@@ -262,9 +273,25 @@ func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mod Modifiers, repeat
 
 func (d *fileDialog) fileNameFieldModified() {
 	text := d.fileNameField.Text()
-	if text != "" && d.currentExt != "*" {
-		e := filepath.Ext(text)
-		if e == "" || !strings.EqualFold(e[1:], d.currentExt) {
+	if text != "" {
+		switch {
+		case d.currentExt == "*":
+		case strings.Contains(d.currentExt, ";"):
+			found := false
+			ext := filepath.Ext(text)
+			if ext != "" {
+				ext = ext[1:]
+				for _, one := range d.readable {
+					if strings.EqualFold(ext, one) {
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				text += "." + d.readable[0]
+			}
+		default:
 			text += "." + d.currentExt
 		}
 	}
@@ -275,13 +302,29 @@ func (d *fileDialog) fileNameFieldModified() {
 func (d *fileDialog) rebuildFileList() {
 	d.fileList.RemoveRange(0, d.fileList.Count()-1)
 	for _, entry := range d.dirEntries {
-		if d.currentExt != "*" && !entry.IsDir() {
-			e := filepath.Ext(entry.Name())
-			if e == "" {
-				continue
-			}
-			if !strings.EqualFold(e[1:], d.currentExt) {
-				continue
+		if !entry.IsDir() {
+			ext := filepath.Ext(entry.Name())
+			switch {
+			case d.currentExt == "*":
+			case strings.Contains(d.currentExt, ";"):
+				if ext == "" {
+					continue
+				}
+				ext = ext[1:]
+				found := false
+				for _, one := range d.readable {
+					if strings.EqualFold(ext, one) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			default:
+				if !strings.EqualFold(ext[1:], d.currentExt) {
+					continue
+				}
 			}
 		}
 		d.fileList.Append(&fileListItem{entry: entry})
@@ -294,7 +337,11 @@ func (d *fileDialog) rebuildFileList() {
 }
 
 func (d *fileDialog) filterHandler(index int, _ string) {
-	d.currentExt = d.extensions[index]
+	if index == 0 {
+		d.currentExt = strings.Join(d.readable, ";")
+	} else {
+		d.currentExt = d.extensions[index-1]
+	}
 	d.rebuildFileList()
 }
 
