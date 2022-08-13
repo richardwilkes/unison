@@ -748,3 +748,35 @@ func AncestorOrSelf[T any](paneler Paneler) T {
 	}
 	return Ancestor[T](paneler)
 }
+
+// AncestorIs returns true if the paneler has the given ancestor.
+func AncestorIs(paneler, ancestor Paneler) bool {
+	if toolbox.IsNil(paneler) || toolbox.IsNil(ancestor) {
+		return false
+	}
+	target := ancestor.AsPanel().Self
+	p := paneler.AsPanel().Parent()
+	for p != nil {
+		if p.Self == target {
+			return true
+		}
+		p = p.Parent()
+	}
+	return false
+}
+
+// AncestorIsOrSelf returns true if the paneler has the given ancestor or is the ancestor.
+func AncestorIsOrSelf(paneler, ancestor Paneler) bool {
+	if toolbox.IsNil(paneler) || toolbox.IsNil(ancestor) {
+		return false
+	}
+	target := ancestor.AsPanel().Self
+	p := paneler.AsPanel()
+	for p != nil {
+		if p.Self == target {
+			return true
+		}
+		p = p.Parent()
+	}
+	return false
+}
