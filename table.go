@@ -621,36 +621,38 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 	t.RequestFocus()
 	t.interactionRow = -1
 	t.interactionColumn = -1
-	if !t.PreventUserColumnResize {
-		if over := t.OverColumnDivider(where.X); over != -1 {
-			if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
-				if clickCount == 2 {
-					t.SizeColumnToFit(over, true)
-					t.MarkForRedraw()
-					t.Window().UpdateCursorNow()
+	if button == ButtonLeft {
+		if !t.PreventUserColumnResize {
+			if over := t.OverColumnDivider(where.X); over != -1 {
+				if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
+					if clickCount == 2 {
+						t.SizeColumnToFit(over, true)
+						t.MarkForRedraw()
+						t.Window().UpdateCursorNow()
+						return true
+					}
+					t.interactionColumn = over
+					t.columnResizeStart = where.X
+					t.columnResizeBase = t.ColumnSizes[over].Current
+					t.columnResizeOverhead = t.Padding.Left + t.Padding.Right
+					if over == t.HierarchyColumnIndex {
+						depth := 0
+						for _, cache := range t.rowCache {
+							if depth < cache.depth {
+								depth = cache.depth
+							}
+						}
+						t.columnResizeOverhead += t.Padding.Left + t.HierarchyIndent*float32(depth+1)
+					}
 					return true
 				}
-				t.interactionColumn = over
-				t.columnResizeStart = where.X
-				t.columnResizeBase = t.ColumnSizes[over].Current
-				t.columnResizeOverhead = t.Padding.Left + t.Padding.Right
-				if over == t.HierarchyColumnIndex {
-					depth := 0
-					for _, cache := range t.rowCache {
-						if depth < cache.depth {
-							depth = cache.depth
-						}
-					}
-					t.columnResizeOverhead += t.Padding.Left + t.HierarchyIndent*float32(depth+1)
-				}
-				return true
 			}
 		}
-	}
-	for _, one := range t.hitRects {
-		if one.ContainsPoint(where) {
-			one.handler(where, button, clickCount, mod)
-			return true
+		for _, one := range t.hitRects {
+			if one.ContainsPoint(where) {
+				one.handler(where, button, clickCount, mod)
+				return true
+			}
 		}
 	}
 	stop := true
@@ -711,7 +713,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 		}
 		t.MarkForRedraw()
-		if clickCount == 2 && t.DoubleClickCallback != nil && len(t.selMap) != 0 {
+		if button == ButtonLeft && clickCount == 2 && t.DoubleClickCallback != nil && len(t.selMap) != 0 {
 			toolbox.Call(t.DoubleClickCallback)
 		}
 	}
@@ -729,7 +731,7 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 	stop := false
 	if t.interactionColumn != -1 {
 		if t.interactionRow == -1 {
-			if !t.PreventUserColumnResize {
+			if button == ButtonLeft && !t.PreventUserColumnResize {
 				width := t.columnResizeBase + where.X - t.columnResizeStart
 				if width < t.columnResizeOverhead {
 					width = t.columnResizeOverhead
@@ -1417,7 +1419,7 @@ func (t *Table[T]) InstallDragSupport(svg *SVG, dragKey, singularName, pluralNam
 		if orig != nil && orig(where, button, mod) {
 			return true
 		}
-		if t.HasSelection() && t.IsDragGesture(where) {
+		if button == ButtonLeft && t.HasSelection() && t.IsDragGesture(where) {
 			data := &TableDragData[T]{
 				Table: t,
 				Rows:  t.SelectedRows(true),
