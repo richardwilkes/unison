@@ -618,6 +618,9 @@ func (t *Table[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 
 // DefaultMouseDown provides the default mouse down handling.
 func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+	if t.Window().InDrag() {
+		return false
+	}
 	t.RequestFocus()
 	t.interactionRow = -1
 	t.interactionColumn = -1

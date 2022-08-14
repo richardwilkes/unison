@@ -837,7 +837,7 @@ func (w *Window) Draw(c *Canvas) {
 			w.root.ValidateLayout()
 			c.DrawPaint(BackgroundColor.Paint(c, w.LocalContentRect(), Fill))
 			w.root.Draw(c, w.LocalContentRect())
-			if w.dragData != nil {
+			if w.InDrag() {
 				c.Save()
 				c.Translate(w.dragDataLocation.X+w.dragData.Offset.X, w.dragDataLocation.Y+w.dragData.Offset.Y)
 				r := Rect{Size: w.dragData.Drawable.LogicalSize()}
@@ -1015,10 +1015,15 @@ func (w *Window) mouseDown(where Point, button, clickCount int, mod Modifiers) {
 	}
 }
 
+// InDrag returns true if a drag is currently in progress in this window.
+func (w *Window) InDrag() bool {
+	return w.dragData != nil
+}
+
 func (w *Window) mouseDrag(where Point, button int, mod Modifiers) {
 	w.dragDataLocation = where
 	w.restoreHiddenCursor()
-	if w.dragData != nil {
+	if w.InDrag() {
 		w.dataDragOver()
 		return
 	}
@@ -1035,7 +1040,7 @@ func (w *Window) mouseDrag(where Point, button int, mod Modifiers) {
 }
 
 func (w *Window) mouseUp(where Point, button int, mod Modifiers) {
-	if w.dragData != nil {
+	if w.InDrag() {
 		w.dragDataLocation = where
 		w.dataDragFinish()
 		w.lastMouseDownPanel = nil
@@ -1135,7 +1140,7 @@ func (w *Window) mouseWheel(where, delta Point, mod Modifiers) {
 		panel = panel.parent
 	}
 	if w.lastMouseDownPanel != nil {
-		w.mouseDrag(where, 0, mod)
+		w.mouseDrag(where, w.lastButton, mod)
 	} else {
 		w.mouseMove(where, mod)
 	}
