@@ -246,7 +246,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			w.lastButtonTime = now
 			w.inMouseDown = true
 			w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
-		} else {
+		} else if w.inMouseDown {
 			w.lastButton = int(button)
 			w.inMouseDown = false
 			w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
