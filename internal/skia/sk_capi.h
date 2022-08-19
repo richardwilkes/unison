@@ -435,6 +435,7 @@ typedef enum {
 } sk_mipmap_mode_t;
 
 typedef struct {
+	int                  maxAniso;
     bool                 useCubic;
     sk_cubic_resampler_t cubic;
     sk_filter_mode_t     filter;
