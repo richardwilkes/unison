@@ -33,32 +33,36 @@ import (
 const ColorTypeN32 = ColorTypeRGBA8888
 
 type (
-	BackendRenderTarget = *C.gr_backendrendertarget_t
-	DirectContext       = *C.gr_direct_context_t
-	GLInterface         = *C.gr_glinterface_t
-	Canvas              = *C.sk_canvas_t
-	ColorFilter         = *C.sk_color_filter_t
-	ColorSpace          = *C.sk_color_space_t
-	Data                = *C.sk_data_t
-	Font                = *C.sk_font_t
-	FontMgr             = *C.sk_font_mgr_t
-	FontStyle           = *C.sk_font_style_t
-	FontStyleSet        = *C.sk_font_style_set_t
-	Image               = *C.sk_image_t
-	ImageFilter         = *C.sk_image_filter_t
-	MaskFilter          = *C.sk_mask_filter_t
-	OpBuilder           = *C.sk_op_builder_t
-	Paint               = *C.sk_paint_t
-	Path                = *C.sk_path_t
-	PathEffect          = *C.sk_path_effect_t
-	SamplingOptions     = *C.sk_sampling_options_t
-	Shader              = *C.sk_shader_t
-	String              = *C.sk_string_t
-	Surface             = *C.sk_surface_t
-	SurfaceProps        = *C.sk_surface_props_t
-	TextBlob            = *C.sk_text_blob_t
-	TextBlobBuilder     = *C.sk_text_blob_builder_t
-	TypeFace            = *C.sk_typeface_t
+	BackendRenderTarget  = *C.gr_backendrendertarget_t
+	DirectContext        = *C.gr_direct_context_t
+	GLInterface          = *C.gr_glinterface_t
+	Canvas               = *C.sk_canvas_t
+	ColorFilter          = *C.sk_color_filter_t
+	ColorSpace           = *C.sk_color_space_t
+	Data                 = *C.sk_data_t
+	Document             = *C.sk_document_t
+	DynamicMemoryWStream = *C.sk_dynamic_memory_wstream_t
+	FileWStream          = *C.sk_file_wstream_t
+	Font                 = *C.sk_font_t
+	FontMgr              = *C.sk_font_mgr_t
+	FontStyle            = *C.sk_font_style_t
+	FontStyleSet         = *C.sk_font_style_set_t
+	Image                = *C.sk_image_t
+	ImageFilter          = *C.sk_image_filter_t
+	MaskFilter           = *C.sk_mask_filter_t
+	OpBuilder            = *C.sk_op_builder_t
+	Paint                = *C.sk_paint_t
+	Path                 = *C.sk_path_t
+	PathEffect           = *C.sk_path_effect_t
+	SamplingOptions      = *C.sk_sampling_options_t
+	Shader               = *C.sk_shader_t
+	String               = *C.sk_string_t
+	Surface              = *C.sk_surface_t
+	SurfaceProps         = *C.sk_surface_props_t
+	TextBlob             = *C.sk_text_blob_t
+	TextBlobBuilder      = *C.sk_text_blob_builder_t
+	TypeFace             = *C.sk_typeface_t
+	WStream              = *C.sk_wstream_t
 )
 
 func BackendRenderTargetNewGL(width, height, samples, stencilBits int, info *GLFrameBufferInfo) BackendRenderTarget {
@@ -296,6 +300,76 @@ func DataGetData(data Data) unsafe.Pointer {
 
 func DataUnref(data Data) {
 	C.sk_data_unref(data)
+}
+
+func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
+	return C.sk_document_make_pdf(stream, (*C.sk_metadata_t)(unsafe.Pointer(metadata)))
+}
+
+func DocumentBeginPage(doc Document, width, height float32) Canvas {
+	return C.sk_document_begin_page(doc, C.float(width), C.float(height))
+}
+
+func DocumentEndPage(doc Document) {
+	C.sk_document_end_page(doc)
+}
+
+func DocumentClose(doc Document) {
+	C.sk_document_close(doc)
+}
+
+func DocumentAbort(doc Document) {
+	C.sk_document_abort(doc)
+}
+
+func DynamicMemoryWStreamNew() DynamicMemoryWStream {
+	return C.sk_dynamic_memory_wstream_new()
+}
+
+func DynamicMemoryWStreamAsWStream(s DynamicMemoryWStream) WStream {
+	return C.sk_dynamic_memory_wstream_as_wstream(s)
+}
+
+func DynamicMemoryWStreamWrite(s DynamicMemoryWStream, data []byte) bool {
+	return bool(C.sk_dynamic_memory_wstream_write(s, unsafe.Pointer(&data[0]), C.size_t(len(data))))
+}
+
+func DynamicMemoryWStreamBytesWritten(s DynamicMemoryWStream) int {
+	return int(C.sk_dynamic_memory_wstream_bytes_written(s))
+}
+
+func DynamicMemoryWStreamRead(s DynamicMemoryWStream, data []byte) int {
+	return int(C.sk_dynamic_memory_wstream_read(s, unsafe.Pointer(&data[0]), 0, C.size_t(len(data))))
+}
+
+func DynamicMemoryWStreamDelete(s DynamicMemoryWStream) {
+	C.sk_dynamic_memory_wstream_delete(s)
+}
+
+func FileWStreamNew(filePath string) FileWStream {
+	p := C.CString(filePath)
+	defer C.free(unsafe.Pointer(p))
+	return C.sk_file_wstream_new(p)
+}
+
+func FileWStreamAsWStream(s FileWStream) WStream {
+	return C.sk_file_wstream_as_wstream(s)
+}
+
+func FileWStreamWrite(s FileWStream, data []byte) bool {
+	return bool(C.sk_file_wstream_write(s, unsafe.Pointer(&data[0]), C.size_t(len(data))))
+}
+
+func FileWStreamBytesWritten(s FileWStream) int {
+	return int(C.sk_file_wstream_bytes_written(s))
+}
+
+func FileWStreamFlush(s FileWStream) {
+	C.sk_file_wstream_flush(s)
+}
+
+func FileWStreamDelete(s FileWStream) {
+	C.sk_file_wstream_delete(s)
 }
 
 func FontNewWithValues(face TypeFace, size, scaleX, skewX float32) Font {

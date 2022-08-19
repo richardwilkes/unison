@@ -563,6 +563,48 @@ typedef enum {
 
 typedef struct sk_shader_t sk_shader_t;
 
+// ===== Types from include/core/SkTime.h =====
+
+typedef struct {
+	int16_t  timeZoneMinutes;
+	uint16_t year;
+	uint8_t  month;
+	uint8_t  dayOfWeek;
+	uint8_t  day;
+	uint8_t  hour;
+	uint8_t  minute;
+	uint8_t  second;
+} sk_date_time_t;
+
+// ===== Types from include/core/SkStream.h =====
+
+typedef struct sk_wstream_t sk_wstream_t;
+typedef struct sk_file_wstream_t sk_file_wstream_t;
+typedef struct sk_dynamic_memory_wstream_t sk_dynamic_memory_wstream_t;
+
+// ===== Types from include/docs/SkPDFDocument.h =====
+
+typedef struct {
+    sk_string_t*   title;
+    sk_string_t*   author;
+    sk_string_t*   subject;
+    sk_string_t*   keywords;
+    sk_string_t*   creator;
+    sk_string_t*   producer;
+    sk_date_time_t creation;
+    sk_date_time_t modified;
+    float          rasterDPI;
+    bool           pdfA;
+    int            encodingQuality;
+    void*          structureElementTreeRoot;
+    void*          executor;
+    int            subsetter;
+} sk_metadata_t;
+
+// ===== Types from include/core/SkDocument.h =====
+
+typedef struct sk_document_t sk_document_t;
+
 
 // ======================================================
 
@@ -862,6 +904,31 @@ SK_C_API sk_font_style_t* sk_typeface_get_fontstyle(const sk_typeface_t* typefac
 SK_C_API int sk_typeface_get_units_per_em(const sk_typeface_t* typeface);
 SK_C_API bool sk_typeface_is_fixed_pitch(const sk_typeface_t* typeface);
 SK_C_API void sk_typeface_unref(sk_typeface_t* typeface);
+
+// ===== Functions from include/core/SkStream.h =====
+
+SK_C_API sk_dynamic_memory_wstream_t* sk_dynamic_memory_wstream_new(void);
+SK_C_API sk_wstream_t* sk_dynamic_memory_wstream_as_wstream(sk_dynamic_memory_wstream_t* stream);
+SK_C_API bool sk_dynamic_memory_wstream_write(sk_dynamic_memory_wstream_t* stream, const void *buffer, size_t size);
+SK_C_API size_t sk_dynamic_memory_wstream_bytes_written(sk_dynamic_memory_wstream_t* stream);
+SK_C_API size_t sk_dynamic_memory_wstream_read(sk_dynamic_memory_wstream_t* stream, void *buffer, size_t offset, size_t size);
+SK_C_API void sk_dynamic_memory_wstream_delete(sk_dynamic_memory_wstream_t* stream);
+
+SK_C_API sk_file_wstream_t* sk_file_wstream_new(const char path[]);
+SK_C_API sk_wstream_t* sk_file_wstream_as_wstream(sk_file_wstream_t* stream);
+SK_C_API bool sk_file_wstream_write(sk_file_wstream_t* stream, const void *buffer, size_t size);
+SK_C_API size_t sk_file_wstream_bytes_written(sk_file_wstream_t* stream);
+SK_C_API void sk_file_wstream_flush(sk_file_wstream_t* stream);
+SK_C_API void sk_file_wstream_delete(sk_file_wstream_t* stream);
+
+// ===== Functions from include/core/SKDocument.h =====
+SK_C_API sk_canvas_t* sk_document_begin_page(sk_document_t* doc, float width, float height);
+SK_C_API void sk_document_end_page(sk_document_t* doc);
+SK_C_API void sk_document_close(sk_document_t* doc);
+SK_C_API void sk_document_abort(sk_document_t* doc);
+
+// ===== Functions from include/docs/SkPDFDocument.h =====
+SK_C_API sk_document_t* sk_document_make_pdf(sk_wstream_t* stream, sk_metadata_t* metadata);
 
 #ifdef __cplusplus
 }

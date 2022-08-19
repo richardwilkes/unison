@@ -256,3 +256,36 @@ type FontMetrics struct {
 	StrikeoutThickness float32 // Strikeout thickness; only if Flags & StrikeoutThicknessIsValidFontMetricsFlag != 0
 	StrikeoutPosition  float32 // Distance from baseline to bottom of stroke; typically negative; only if Flags & StrikeoutPositionIsValidFontMetricsFlag != 0
 }
+
+type DateTime struct {
+	TimeZoneMinutes int16
+	Year            uint16
+	Month           uint8
+	DayOfWeek       uint8
+	Day             uint8
+	Hour            uint8
+	Minute          uint8
+	Second          uint8
+	_               uint8
+	_               uint8
+}
+
+type MetaData struct {
+	Title                    String
+	Author                   String
+	Subject                  String
+	Keywords                 String
+	Creator                  String
+	Producer                 String
+	Creation                 DateTime
+	Modified                 DateTime
+	RasterDPI                float32
+	PDFA                     bool
+	_                        int8
+	_                        int8
+	_                        int8
+	EncodingQuality          int
+	StructureElementTreeRoot uintptr
+	Executor                 uintptr
+	Subsetter                int
+}

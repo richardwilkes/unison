@@ -87,6 +87,23 @@ var (
 	skDataGetSizeProc                         *syscall.Proc
 	skDataGetDataProc                         *syscall.Proc
 	skDataUnrefProc                           *syscall.Proc
+	skDocumentAbortProc                       *syscall.Proc
+	skDocumentBeginPageProc                   *syscall.Proc
+	skDocumentCloseProc                       *syscall.Proc
+	skDocumentEndPageProc                     *syscall.Proc
+	skDocumentMakePDFProc                     *syscall.Proc
+	skDynamicMemoryWStreamNewProc             *syscall.Proc
+	skDynamicMemoryWStreamAsWStream           *syscall.Proc
+	skDynamicMemoryWStreamWriteProc           *syscall.Proc
+	skDynamicMemoryWStreamBytesWrittenProc    *syscall.Proc
+	skDynamicMemoryWStreamReadProc            *syscall.Proc
+	skDynamicMemoryWStreamDeleteProc          *syscall.Proc
+	skFileWStreamNewProc                      *syscall.Proc
+	skFileWStreamAsWStream                    *syscall.Proc
+	skFileWStreamWriteProc                    *syscall.Proc
+	skFileWStreamBytesWrittenProc             *syscall.Proc
+	skFileWStreamFlushProc                    *syscall.Proc
+	skFileWStreamDeleteProc                   *syscall.Proc
 	skFontNewWithValuesProc                   *syscall.Proc
 	skFontSetSubPixelProc                     *syscall.Proc
 	skFontSetForceAutoHintingProc             *syscall.Proc
@@ -349,6 +366,23 @@ func init() {
 	skDataGetSizeProc = skia.MustFindProc("sk_data_get_size")
 	skDataGetDataProc = skia.MustFindProc("sk_data_get_data")
 	skDataUnrefProc = skia.MustFindProc("sk_data_unref")
+	skDocumentAbortProc = skia.MustFindProc("sk_document_abort")
+	skDocumentBeginPageProc = skia.MustFindProc("sk_document_begin_page")
+	skDocumentCloseProc = skia.MustFindProc("sk_document_close")
+	skDocumentEndPageProc = skia.MustFindProc("sk_document_end_page")
+	skDocumentMakePDFProc = skia.MustFindProc("sk_document_make_pdf")
+	skDynamicMemoryWStreamNewProc = skia.MustFindProc("sk_dynamic_memory_wstream_new")
+	skDynamicMemoryWStreamAsWStreamProc = skia.MustFindProc("sk_dynamic_memory_wstream_as_wstream")
+	skDynamicMemoryWStreamWriteProc = skia.MustFindProc("sk_dynamic_memory_wstream_write")
+	skDynamicMemoryWStreamBytesWrittenProc = skia.MustFindProc("sk_dynamic_memory_wstream_bytes_written")
+	skDynamicMemoryWStreamReadProc = skia.MustFindProc("sk_dynamic_memory_wstream_read")
+	skDynamicMemoryWStreamDeleteProc = skia.MustFindProc("sk_dynamic_memory_wstream_delete")
+	skFileWStreamNewProc = skia.MustFindProc("sk_file_wstream_new")
+	skFileWStreamAsWStreamProc = skia.MustFindProc("sk_file_wstream_as_wstream")
+	skFileWStreamWriteProc = skia.MustFindProc("sk_file_wstream_write")
+	skFileWStreamBytesWrittenProc = skia.MustFindProc("sk_file_wstream_bytes_written")
+	skFileWStreamFlushProc = skia.MustFindProc("sk_file_wstream_read")
+	skFileWStreamDeleteProc = skia.MustFindProc("sk_file_wstream_delete")
 	skFontNewWithValuesProc = skia.MustFindProc("sk_font_new_with_values")
 	skFontSetSubPixelProc = skia.MustFindProc("sk_font_set_subpixel")
 	skFontSetForceAutoHintingProc = skia.MustFindProc("sk_font_set_force_auto_hinting")
@@ -543,32 +577,36 @@ func init() {
 }
 
 type (
-	BackendRenderTarget unsafe.Pointer
-	DirectContext       unsafe.Pointer
-	GLInterface         unsafe.Pointer
-	Canvas              unsafe.Pointer
-	ColorFilter         unsafe.Pointer
-	ColorSpace          unsafe.Pointer
-	Data                unsafe.Pointer
-	Font                unsafe.Pointer
-	FontMgr             unsafe.Pointer
-	FontStyle           unsafe.Pointer
-	FontStyleSet        unsafe.Pointer
-	Image               unsafe.Pointer
-	ImageFilter         unsafe.Pointer
-	MaskFilter          unsafe.Pointer
-	OpBuilder           unsafe.Pointer
-	Paint               unsafe.Pointer
-	Path                unsafe.Pointer
-	PathEffect          unsafe.Pointer
-	SamplingOptions     uintptr
-	Shader              unsafe.Pointer
-	String              unsafe.Pointer
-	Surface             unsafe.Pointer
-	SurfaceProps        unsafe.Pointer
-	TextBlob            unsafe.Pointer
-	TextBlobBuilder     unsafe.Pointer
-	TypeFace            unsafe.Pointer
+	BackendRenderTarget  unsafe.Pointer
+	DirectContext        unsafe.Pointer
+	GLInterface          unsafe.Pointer
+	Canvas               unsafe.Pointer
+	ColorFilter          unsafe.Pointer
+	ColorSpace           unsafe.Pointer
+	Data                 unsafe.Pointer
+	Document             unsafe.Pointer
+	DynamicMemoryWStream unsafe.Pointer
+	FileWStream          unsafe.Pointer
+	Font                 unsafe.Pointer
+	FontMgr              unsafe.Pointer
+	FontStyle            unsafe.Pointer
+	FontStyleSet         unsafe.Pointer
+	Image                unsafe.Pointer
+	ImageFilter          unsafe.Pointer
+	MaskFilter           unsafe.Pointer
+	OpBuilder            unsafe.Pointer
+	Paint                unsafe.Pointer
+	Path                 unsafe.Pointer
+	PathEffect           unsafe.Pointer
+	SamplingOptions      uintptr
+	Shader               unsafe.Pointer
+	String               unsafe.Pointer
+	Surface              unsafe.Pointer
+	SurfaceProps         unsafe.Pointer
+	TextBlob             unsafe.Pointer
+	TextBlobBuilder      unsafe.Pointer
+	TypeFace             unsafe.Pointer
+	WStream              unsafe.Pointer
 )
 
 func BackendRenderTargetNewGL(width, height, samples, stencilBits int, info *GLFrameBufferInfo) BackendRenderTarget {
@@ -828,6 +866,87 @@ func DataGetData(data Data) unsafe.Pointer {
 
 func DataUnref(data Data) {
 	skDataUnrefProc.Call(uintptr(data))
+}
+
+func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
+	r1, _, _ := skDocumentMakePDFProc.Call(uintptr(stream), uintptr(unsafe.Pointer(metadata)))
+	return Document(r1)
+}
+
+func DocumentBeginPage(doc Document, width, height float32) Canvas {
+	r1, _, _ := skDocumentBeginPageProc.Call(uintptr(doc), uintptr(math.Float32bits(width)), uintptr(math.Float32bits(height)))
+	return Canvas(r1)
+}
+
+func DocumentEndPage(doc Document) {
+	skDocumentEndPageProc.Call(uintptr(doc))
+}
+
+func DocumentClose(doc Document) {
+	skDocumentCloseProc.Call(uintptr(doc))
+}
+
+func DocumentAbort(doc Document) {
+	skDocumentAbortProc.Call(uintptr(doc))
+}
+
+func DynamicMemoryWStreamNew() DynamicMemoryWStream {
+	r1, _, _ := skDynamicMemoryWStreamNewProc.Call()
+	return DynamicMemoryWStream(r1)
+}
+
+func DynamicMemoryWStreamAsWStream(s DynamicMemoryWStream) WStream {
+	_r1, _, _ := skDynamicMemoryWStreamAsWStreamProc.Call(uintptr(s))
+	return WStream(r1)
+}
+
+func DynamicMemoryWStreamWrite(s DynamicMemoryWStream, data []byte) bool {
+	r1, _, _ := skDynamicMemoryWStreamWriteProc.Call(uintptr(s), uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
+	return r1 != 0
+}
+
+func DynamicMemoryWStreamBytesWritten(s DynamicMemoryWStream) int {
+	r1, _, _ := skDynamicMemoryWStreamBytesWrittenProc.Call(uintptr(s))
+	return int(r1)
+}
+
+func DynamicMemoryWStreamRead(s DynamicMemoryWStream, data []byte) int {
+	r1, _, _ := skDynamicMemoryWStreamReadProc.Call(uintptr(s), uintptr(unsafe.Pointer(&data[0])), 0, uintptr(len(data)))
+	return int(r1)
+}
+
+func DynamicMemoryWStreamDelete(s DynamicMemoryWStream) {
+	skDynamicMemoryWStreamDeleteProc.Call(uintptr(s))
+}
+
+func FileWStreamNew(filePath string) FileWStream {
+	cstr := make([]byte, len(filePath)+1)
+	copy(cstr, filePath)
+	r1, _, _ := skFileWStreamNewProc.Call(uintptr(unsafe.Pointer(&cstr[0])))
+	return FileWStream(r1)
+}
+
+func FileWStreamAsWStream(s FileWStream) WStream {
+	_r1, _, _ := skFileWStreamAsWStreamProc.Call(uintptr(s))
+	return WStream(r1)
+}
+
+func FileWStreamWrite(s FileWStream, data []byte) bool {
+	r1, _, _ := skFileWStreamWriteProc.Call(uintptr(s), uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
+	return r1 != 0
+}
+
+func FileWStreamBytesWritten(s FileWStream) int {
+	r1, _, _ := skFileWStreamBytesWrittenProc.Call(uintptr(s))
+	return int(r1)
+}
+
+func FileWStreamFlush(s FileWStream) {
+	skFileWStreamFlushProc.Call(uintptr(s))
+}
+
+func FileWStreamDelete(s FileWStream) {
+	skFileWStreamDeleteProc.Call(uintptr(s))
 }
 
 func FontNewWithValues(face TypeFace, size, scaleX, skewX float32) Font {
