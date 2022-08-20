@@ -94,13 +94,13 @@ var (
 	skDocumentEndPageProc                     *syscall.Proc
 	skDocumentMakePDFProc                     *syscall.Proc
 	skDynamicMemoryWStreamNewProc             *syscall.Proc
-	skDynamicMemoryWStreamAsWStream           *syscall.Proc
+	skDynamicMemoryWStreamAsWStreamProc       *syscall.Proc
 	skDynamicMemoryWStreamWriteProc           *syscall.Proc
 	skDynamicMemoryWStreamBytesWrittenProc    *syscall.Proc
 	skDynamicMemoryWStreamReadProc            *syscall.Proc
 	skDynamicMemoryWStreamDeleteProc          *syscall.Proc
 	skFileWStreamNewProc                      *syscall.Proc
-	skFileWStreamAsWStream                    *syscall.Proc
+	skFileWStreamAsWStreamProc                *syscall.Proc
 	skFileWStreamWriteProc                    *syscall.Proc
 	skFileWStreamBytesWrittenProc             *syscall.Proc
 	skFileWStreamFlushProc                    *syscall.Proc
@@ -274,7 +274,7 @@ var (
 	skShaderWithLocalMatrixProc               *syscall.Proc
 	skShaderWithColorFilterProc               *syscall.Proc
 	skShaderUnrefProc                         *syscall.Proc
-	skStringNewProc                           = *syscall.Proc
+	skStringNewProc                           *syscall.Proc
 	skStringNewEmptyProc                      *syscall.Proc
 	skStringGetCStrProc                       *syscall.Proc
 	skStringGetSizeProc                       *syscall.Proc
@@ -385,7 +385,7 @@ func init() {
 	skFileWStreamAsWStreamProc = skia.MustFindProc("sk_file_wstream_as_wstream")
 	skFileWStreamWriteProc = skia.MustFindProc("sk_file_wstream_write")
 	skFileWStreamBytesWrittenProc = skia.MustFindProc("sk_file_wstream_bytes_written")
-	skFileWStreamFlushProc = skia.MustFindProc("sk_file_wstream_read")
+	skFileWStreamFlushProc = skia.MustFindProc("sk_file_wstream_flush")
 	skFileWStreamDeleteProc = skia.MustFindProc("sk_file_wstream_delete")
 	skFontNewWithValuesProc = skia.MustFindProc("sk_font_new_with_values")
 	skFontSetSubPixelProc = skia.MustFindProc("sk_font_set_subpixel")
@@ -797,7 +797,7 @@ func CanvasGetLocalClipBounds(canvas Canvas) *Rect {
 }
 
 func CanvasGetSurface(canvas Canvas) Surface {
-	r1_, _, _ := skCanvasGetSurfaceProc.Call(uintptr(canvas))
+	r1, _, _ := skCanvasGetSurfaceProc.Call(uintptr(canvas))
 	return Surface(r1)
 }
 
@@ -909,7 +909,7 @@ func DynamicMemoryWStreamNew() DynamicMemoryWStream {
 }
 
 func DynamicMemoryWStreamAsWStream(s DynamicMemoryWStream) WStream {
-	_r1, _, _ := skDynamicMemoryWStreamAsWStreamProc.Call(uintptr(s))
+	r1, _, _ := skDynamicMemoryWStreamAsWStreamProc.Call(uintptr(s))
 	return WStream(r1)
 }
 
@@ -940,7 +940,7 @@ func FileWStreamNew(filePath string) FileWStream {
 }
 
 func FileWStreamAsWStream(s FileWStream) WStream {
-	_r1, _, _ := skFileWStreamAsWStreamProc.Call(uintptr(s))
+	r1, _, _ := skFileWStreamAsWStreamProc.Call(uintptr(s))
 	return WStream(r1)
 }
 
