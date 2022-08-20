@@ -10,6 +10,9 @@
 package skia
 
 import (
+	"time"
+	"unsafe"
+
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
@@ -255,4 +258,93 @@ type FontMetrics struct {
 	UnderlinePosition  float32 // Distance from baseline to top of stroke; typically positive; only if Flags & UnderlinePositionIsValidFontMetricsFlag != 0
 	StrikeoutThickness float32 // Strikeout thickness; only if Flags & StrikeoutThicknessIsValidFontMetricsFlag != 0
 	StrikeoutPosition  float32 // Distance from baseline to bottom of stroke; typically negative; only if Flags & StrikeoutPositionIsValidFontMetricsFlag != 0
+}
+
+type dateTime struct {
+	TimeZoneMinutes int16
+	Year            uint16
+	Month           uint8
+	DayOfWeek       uint8
+	Day             uint8
+	Hour            uint8
+	Minute          uint8
+	Second          uint8
+}
+
+func (dt *dateTime) set(t time.Time) {
+	_, offset := t.Zone()
+	dt.TimeZoneMinutes = int16(offset / 60)
+	dt.Year = uint16(t.Year())
+	dt.Month = uint8(t.Month())
+	dt.DayOfWeek = uint8(t.Weekday())
+	dt.Day = uint8(t.Day())
+	dt.Hour = uint8(t.Hour())
+	dt.Minute = uint8(t.Minute())
+	dt.Second = uint8(t.Second())
+}
+
+type metaData struct {
+	Title           uintptr
+	Author          uintptr
+	Subject         uintptr
+	Keywords        uintptr
+	Creator         uintptr
+	Producer        uintptr
+	Creation        dateTime
+	Modified        dateTime
+	RasterDPI       float32
+	_               int32
+	EncodingQuality int
+}
+
+func (m *metaData) set(md *MetaData) {
+	producer := md.Producer
+	if producer == "" {
+		producer = "unison"
+	}
+	creation := md.Creation
+	if creation.IsZero() {
+		creation = time.Now()
+	}
+	modified := md.Modified
+	if modified.IsZero() {
+		modified = creation
+	}
+	rasterDPI := md.RasterDPI
+	if rasterDPI < 36 {
+		rasterDPI = 72
+	}
+	encodingQuality := md.EncodingQuality
+	if encodingQuality < 1 {
+		encodingQuality = 101
+	}
+	m.Title = toCStr(md.Title)
+	m.Author = toCStr(md.Author)
+	m.Subject = toCStr(md.Subject)
+	m.Keywords = toCStr(md.Keywords)
+	m.Creator = toCStr(md.Creator)
+	m.Producer = toCStr(producer)
+	m.Creation.set(creation)
+	m.Modified.set(modified)
+	m.RasterDPI = rasterDPI
+	m.EncodingQuality = encodingQuality
+}
+
+type MetaData struct {
+	Title           string
+	Author          string
+	Subject         string
+	Keywords        string
+	Creator         string
+	Producer        string
+	Creation        time.Time
+	Modified        time.Time
+	RasterDPI       float32
+	EncodingQuality int
+}
+
+func toCStr(s string) uintptr {
+	cstr := make([]byte, len(s)+1)
+	copy(cstr, s)
+	return uintptr(unsafe.Pointer(&cstr[0]))
 }

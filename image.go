@@ -222,9 +222,13 @@ type imageRef struct {
 	scale float32
 }
 
-func (ref *imageRef) contextImg(ctx skia.DirectContext) skia.Image {
+func (ref *imageRef) contextImg(s *surface) skia.Image {
 	imageCtxMapLock.Lock()
 	defer imageCtxMapLock.Unlock()
+	var ctx skia.DirectContext
+	if s != nil {
+		ctx = s.context
+	}
 	m, ok := imageCtxMap[ctx]
 	if !ok {
 		m = make(map[string]skia.Image)
@@ -232,7 +236,12 @@ func (ref *imageRef) contextImg(ctx skia.DirectContext) skia.Image {
 	}
 	i, ok2 := m[ref.key]
 	if !ok2 {
-		if i = skia.ImageMakeTextureImage(ref.img, ctx, false); i != nil {
+		if ctx == nil {
+			i = skia.ImageMakeNonTextureImage(ref.img)
+		} else {
+			i = skia.ImageMakeTextureImage(ref.img, ctx, false)
+		}
+		if i != nil {
 			m[ref.key] = i
 		} else {
 			jot.Warn("failed to create texture from image")

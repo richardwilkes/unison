@@ -128,10 +128,11 @@ func NewDropShadowOnlyImageFilter(dx, dy, sigmaX, sigmaY float32, color Color, i
 // image will be used if possible.
 func NewImageSourceImageFilter(canvas *Canvas, img *Image, srcRect, dstRect Rect, sampling *SamplingOptions) *ImageFilter {
 	var image skia.Image
-	if canvas == nil || canvas.surface == nil {
-		image = img.ref().img
+	ref := img.ref()
+	if canvas == nil {
+		image = ref.img
 	} else {
-		image = img.ref().contextImg(canvas.surface.context)
+		image = ref.contextImg(canvas.surface)
 	}
 	return newImageFilter(skia.ImageFilterNewImageSource(image, &srcRect, &dstRect, sampling.skSamplingOptions()))
 }
@@ -140,10 +141,11 @@ func NewImageSourceImageFilter(canvas *Canvas, img *Image, srcRect, dstRect Rect
 // image size. If canvas is not nil, a hardware-accellerated image will be used if possible.
 func NewImageSourceDefaultImageFilter(canvas *Canvas, img *Image) *ImageFilter {
 	var image skia.Image
-	if canvas == nil || canvas.surface == nil {
-		image = img.ref().img
+	ref := img.ref()
+	if canvas == nil {
+		image = ref.img
 	} else {
-		image = img.ref().contextImg(canvas.surface.context)
+		image = ref.contextImg(canvas.surface)
 	}
 	return newImageFilter(skia.ImageFilterNewImageSourceDefault(image))
 }
