@@ -585,20 +585,17 @@ typedef struct sk_dynamic_memory_wstream_t sk_dynamic_memory_wstream_t;
 // ===== Types from include/docs/SkPDFDocument.h =====
 
 typedef struct {
-    sk_string_t*   title;
-    sk_string_t*   author;
-    sk_string_t*   subject;
-    sk_string_t*   keywords;
-    sk_string_t*   creator;
-    sk_string_t*   producer;
+    char*          title;
+    char*          author;
+    char*          subject;
+    char*          keywords;
+    char*          creator;
+    char*          producer;
     sk_date_time_t creation;
     sk_date_time_t modified;
     float          rasterDPI;
-    bool           pdfA;
+    float          unused;
     int            encodingQuality;
-    void*          structureElementTreeRoot;
-    void*          executor;
-    int            subsetter;
 } sk_metadata_t;
 
 // ===== Types from include/core/SkDocument.h =====
@@ -621,6 +618,7 @@ SK_C_API void gr_direct_context_abandon_context(gr_direct_context_t* context);
 SK_C_API const gr_glinterface_t* gr_glinterface_create_native_interface(void);
 
 // ===== Functions from include/core/SkCanvas.h =====
+SK_C_API sk_surface_t* sk_canvas_get_surface(sk_canvas_t* canvas);
 SK_C_API void sk_canvas_clear(sk_canvas_t* canvas, sk_color_t color);
 SK_C_API void sk_canvas_clip_path_with_operation(sk_canvas_t* t, const sk_path_t* crect, sk_clip_op_t op, bool doAA);
 SK_C_API void sk_canvas_clip_rect_with_operation(sk_canvas_t* t, const sk_rect_t* crect, sk_clip_op_t op, bool doAA);
@@ -722,8 +720,9 @@ SK_C_API sk_color_type_t sk_image_get_color_type(const sk_image_t* image);
 SK_C_API sk_color_space_t* sk_image_get_colorspace(const sk_image_t* image);
 SK_C_API int sk_image_get_height(const sk_image_t* image);
 SK_C_API int sk_image_get_width(const sk_image_t* image);
+SK_C_API sk_image_t* sk_image_make_non_texture_image(const sk_image_t* image);
 SK_C_API sk_shader_t* sk_image_make_shader(const sk_image_t* image, sk_tile_mode_t tileX, sk_tile_mode_t tileY, const sk_sampling_options_t *samplingOptions, const sk_matrix_t* cmatrix);
-SK_C_API sk_image_t* sk_image_make_texture_image(const sk_image_t* cimage, gr_direct_context_t* context, bool mipmapped);
+SK_C_API sk_image_t* sk_image_make_texture_image(const sk_image_t* image, gr_direct_context_t* context, bool mipmapped);
 SK_C_API sk_image_t* sk_image_new_from_encoded(sk_data_t* encoded);
 SK_C_API sk_image_t* sk_image_new_raster_data(const sk_image_info_t* cinfo, sk_data_t* pixels, size_t rowBytes);
 SK_C_API bool sk_image_read_pixels(const sk_image_t* image, const sk_image_info_t* dstInfo, void* dstPixels, size_t dstRowBytes, int srcX, int srcY, sk_image_caching_hint_t cachingHint);
@@ -872,10 +871,11 @@ SK_C_API sk_shader_t* sk_shader_with_color_filter(const sk_shader_t* shader, con
 SK_C_API sk_shader_t* sk_shader_with_local_matrix(const sk_shader_t* shader, const sk_matrix_t* localMatrix);
 
 // ===== Functions from include/core/SkString.h =====
+SK_C_API sk_string_t* sk_string_new(const char* text, size_t len);
+SK_C_API sk_string_t* sk_string_new_empty(void);
 SK_C_API void sk_string_delete(const sk_string_t* str);
 SK_C_API const char* sk_string_get_c_str(const sk_string_t* str);
 SK_C_API size_t sk_string_get_size(const sk_string_t* str);
-SK_C_API sk_string_t* sk_string_new_empty(void);
 
 // ===== Functions from include/core/SkSurface.h =====
 SK_C_API sk_canvas_t* sk_surface_get_canvas(sk_surface_t* surface);
@@ -914,7 +914,7 @@ SK_C_API size_t sk_dynamic_memory_wstream_bytes_written(sk_dynamic_memory_wstrea
 SK_C_API size_t sk_dynamic_memory_wstream_read(sk_dynamic_memory_wstream_t* stream, void *buffer, size_t offset, size_t size);
 SK_C_API void sk_dynamic_memory_wstream_delete(sk_dynamic_memory_wstream_t* stream);
 
-SK_C_API sk_file_wstream_t* sk_file_wstream_new(const char path[]);
+SK_C_API sk_file_wstream_t* sk_file_wstream_new(const char* path);
 SK_C_API sk_wstream_t* sk_file_wstream_as_wstream(sk_file_wstream_t* stream);
 SK_C_API bool sk_file_wstream_write(sk_file_wstream_t* stream, const void *buffer, size_t size);
 SK_C_API size_t sk_file_wstream_bytes_written(sk_file_wstream_t* stream);

@@ -71,6 +71,7 @@ var (
 	skCanavasClipRectWithOperationProc        *syscall.Proc
 	skCanavasClipPathWithOperationProc        *syscall.Proc
 	skCanvasGetLocalClipBoundsProc            *syscall.Proc
+	skCanvasGetSurfaceProc                    *syscall.Proc
 	skCanvasIsClipEmptyProc                   *syscall.Proc
 	skCanvasIsClipRectProc                    *syscall.Proc
 	skCanvasFlushProc                         *syscall.Proc
@@ -142,6 +143,7 @@ var (
 	skImageGetAlphaTypeProc                   *syscall.Proc
 	skImageReadPixelsProc                     *syscall.Proc
 	skImageEncodeSpecificProc                 *syscall.Proc
+	skImageMakeNonTextureImageProc            *syscall.Proc
 	skImageMakeShaderProc                     *syscall.Proc
 	skImageMakeTextureImageProc               *syscall.Proc
 	skImageUnrefProc                          *syscall.Proc
@@ -272,6 +274,7 @@ var (
 	skShaderWithLocalMatrixProc               *syscall.Proc
 	skShaderWithColorFilterProc               *syscall.Proc
 	skShaderUnrefProc                         *syscall.Proc
+	skStringNewProc                           = *syscall.Proc
 	skStringNewEmptyProc                      *syscall.Proc
 	skStringGetCStrProc                       *syscall.Proc
 	skStringGetSizeProc                       *syscall.Proc
@@ -350,6 +353,7 @@ func init() {
 	skCanavasClipRectWithOperationProc = skia.MustFindProc("sk_canvas_clip_rect_with_operation")
 	skCanavasClipPathWithOperationProc = skia.MustFindProc("sk_canvas_clip_path_with_operation")
 	skCanvasGetLocalClipBoundsProc = skia.MustFindProc("sk_canvas_get_local_clip_bounds")
+	skCanvasGetSurfaceProc = skia.MustFindProc("sk_canvas_get_surface")
 	skCanvasIsClipEmptyProc = skia.MustFindProc("sk_canvas_is_clip_empty")
 	skCanvasIsClipRectProc = skia.MustFindProc("sk_canvas_is_clip_rect")
 	skCanvasFlushProc = skia.MustFindProc("sk_canvas_flush")
@@ -421,6 +425,7 @@ func init() {
 	skImageGetAlphaTypeProc = skia.MustFindProc("sk_image_get_alpha_type")
 	skImageReadPixelsProc = skia.MustFindProc("sk_image_read_pixels")
 	skImageEncodeSpecificProc = skia.MustFindProc("sk_image_encode_specific")
+	skImageMakeNonTextureImageProc = skia.MustFindProc("sk_image_make_non_texture_image")
 	skImageMakeShaderProc = skia.MustFindProc("sk_image_make_shader")
 	skImageMakeTextureImageProc = skia.MustFindProc("sk_image_make_texture_image")
 	skImageUnrefProc = skia.MustFindProc("sk_image_unref")
@@ -551,6 +556,7 @@ func init() {
 	skShaderWithLocalMatrixProc = skia.MustFindProc("sk_shader_with_local_matrix")
 	skShaderWithColorFilterProc = skia.MustFindProc("sk_shader_with_color_filter")
 	skShaderUnrefProc = skia.MustFindProc("sk_shader_unref")
+	skStringNewProc = skia.MustFindProc("sk_string_new")
 	skStringNewEmptyProc = skia.MustFindProc("sk_string_new_empty")
 	skStringGetCStrProc = skia.MustFindProc("sk_string_get_c_str")
 	skStringGetSizeProc = skia.MustFindProc("sk_string_get_size")
@@ -790,6 +796,11 @@ func CanvasGetLocalClipBounds(canvas Canvas) *Rect {
 	return &rect
 }
 
+func CanvasGetSurface(canvas Canvas) Surface {
+	r1_, _, _ := skCanvasGetSurfaceProc.Call(uintptr(canvas))
+	return Surface(r1)
+}
+
 func CanvasIsClipEmpty(canvas Canvas) bool {
 	r1, _, _ := skCanvasIsClipEmptyProc.Call(uintptr(canvas))
 	return r1 != 0
@@ -869,7 +880,9 @@ func DataUnref(data Data) {
 }
 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
-	r1, _, _ := skDocumentMakePDFProc.Call(uintptr(stream), uintptr(unsafe.Pointer(metadata)))
+	var md metaData
+	md.set(metadata)
+	r1, _, _ := skDocumentMakePDFProc.Call(uintptr(stream), uintptr(unsafe.Pointer(&md)))
 	return Document(r1)
 }
 
@@ -1155,6 +1168,11 @@ func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling Sampling
 
 func ImageMakeTextureImage(img Image, ctx DirectContext, mipMapped bool) Image {
 	r1, _, _ := skImageMakeTextureImageProc.Call(uintptr(img), uintptr(ctx), boolToUintptr(mipMapped))
+	return Image(r1)
+}
+
+func ImageMakeNonTextureImage(img Image) Image {
+	r1, _, _ := skImageMakeNonTextureImageProc.Call(uintptr(img))
 	return Image(r1)
 }
 
@@ -1819,6 +1837,12 @@ func ShaderWithColorFilter(shader Shader, filter ColorFilter) Shader {
 
 func ShaderUnref(shader Shader) {
 	skShaderUnrefProc.Call(uintptr(shader))
+}
+
+func StringNew(s string) String {
+	b := []byte(s)
+	r1, _, _ := skStringNewProc.Call(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)))
+	return String(r1)
 }
 
 func StringNewEmpty() String {

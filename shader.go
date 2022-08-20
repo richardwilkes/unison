@@ -113,10 +113,11 @@ func NewTurbulencePerlinNoiseShader(baseFreqX, baseFreqY, seed float32, numOctav
 // possible.
 func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY TileMode, sampling *SamplingOptions, matrix *Matrix) *Shader {
 	var image skia.Image
-	if canvas == nil || canvas.surface == nil {
-		image = img.ref().img
+	ref := img.ref()
+	if canvas == nil {
+		image = ref.img
 	} else {
-		image = img.ref().contextImg(canvas.surface.context)
+		image = ref.contextImg(canvas.surface)
 	}
 	return newShader(skia.ImageMakeShader(image, skia.TileMode(tileModeX), skia.TileMode(tileModeY),
 		sampling.skSamplingOptions(), skia.Matrix2DtoMatrix(matrix)))

@@ -237,6 +237,10 @@ func CanvasGetLocalClipBounds(canvas Canvas) *Rect {
 	return &rect
 }
 
+func CanvasGetSurface(canvas Canvas) Surface {
+	return C.sk_canvas_get_surface(canvas)
+}
+
 func CanvasIsClipEmpty(canvas Canvas) bool {
 	return bool(C.sk_canvas_is_clip_empty(canvas))
 }
@@ -303,7 +307,9 @@ func DataUnref(data Data) {
 }
 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
-	return C.sk_document_make_pdf(stream, (*C.sk_metadata_t)(unsafe.Pointer(metadata)))
+	var md metaData
+	md.set(metadata)
+	return C.sk_document_make_pdf(stream, (*C.sk_metadata_t)(unsafe.Pointer(&md)))
 }
 
 func DocumentBeginPage(doc Document, width, height float32) Canvas {
@@ -551,6 +557,10 @@ func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling Sampling
 
 func ImageMakeTextureImage(img Image, ctx DirectContext, mipMapped bool) Image {
 	return C.sk_image_make_texture_image(img, ctx, C.bool(mipMapped))
+}
+
+func ImageMakeNonTextureImage(img Image) Image {
+	return C.sk_image_make_non_texture_image(img)
 }
 
 func ImageUnref(img Image) {
@@ -1119,6 +1129,14 @@ func ShaderWithColorFilter(shader Shader, filter ColorFilter) Shader {
 
 func ShaderUnref(shader Shader) {
 	C.sk_shader_unref(shader)
+}
+
+func StringNew(s string) String {
+	if s == "" {
+		return StringNewEmpty()
+	}
+	b := []byte(s)
+	return C.sk_string_new((*C.char)(unsafe.Pointer(&b[0])), C.size_t(len(b)))
 }
 
 func StringNewEmpty() String {
