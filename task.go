@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 )
@@ -29,7 +28,7 @@ func InvokeTask(f func()) {
 	taskQueueLock.Lock()
 	taskQueue = append(taskQueue, f)
 	taskQueueLock.Unlock()
-	glfw.PostEmptyEvent()
+	postEmptyEvent()
 }
 
 // InvokeTaskAfter schedules a function to be run on the UI thread after waiting for the specified duration.
@@ -48,7 +47,7 @@ func processNextTask(recoveryHandler errs.RecoveryHandler) {
 	}
 	taskQueueLock.Unlock()
 	if f != nil {
-		defer glfw.PostEmptyEvent()
+		defer postEmptyEvent()
 		toolbox.CallWithHandler(f, recoveryHandler)
 	}
 }

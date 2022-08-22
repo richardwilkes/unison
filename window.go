@@ -876,7 +876,7 @@ func (w *Window) MarkForRedraw() {
 	if _, exists := redrawSet[w]; !exists {
 		redrawSet[w] = struct{}{}
 		if len(redrawSet) == 1 {
-			glfw.PostEmptyEvent()
+			postEmptyEvent()
 		}
 	}
 }

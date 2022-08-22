@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
@@ -33,13 +34,13 @@ var (
 	quitAfterLastWindowClosedCallback func() bool
 	allowQuitCallback                 func() bool
 	quittingCallback                  func()
+	glfwInited                        atomic.Bool
 	noGlobalMenuBar                   bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
 	currentColorMode                  = AutomaticColorMode
 	needPlatformDarkModeUpdate        = true
 	platformDarkModeEnabled           bool
-	glfwInited                        bool
 )
 
 type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
@@ -137,7 +138,7 @@ func Start(options ...StartupOption) {
 	}
 	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
 	jot.FatalIfErr(glfw.Init())
-	glfwInited = true
+	glfwInited.Store(true)
 	// Restore the original working directory, as glfw changes it on some platforms
 	if err = os.Chdir(pwd); err != nil {
 		jot.Error(err)
@@ -307,4 +308,10 @@ func DoubleClickParameters() (maxDelay time.Duration, maxMouseDrift float32) {
 // minimum pixel drift required to trigger a drag.
 func DragGestureParameters() (minDelay time.Duration, minMouseDrift float32) {
 	return 250 * time.Millisecond, 5
+}
+
+func postEmptyEvent() {
+	if glfwInited.Load() {
+		glfw.PostEmptyEvent()
+	}
 }
