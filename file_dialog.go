@@ -306,10 +306,9 @@ func (d *fileDialog) rebuildFileList() {
 			ext := filepath.Ext(entry.Name())
 			switch {
 			case d.currentExt == "*":
+			case ext == "":
+				continue
 			case strings.Contains(d.currentExt, ";"):
-				if ext == "" {
-					continue
-				}
 				ext = ext[1:]
 				found := false
 				for _, one := range d.readable {
