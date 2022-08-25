@@ -110,6 +110,8 @@ type Table[T TableRowConstraint[T]] struct {
 	interactionColumn        int
 	lastMouseMotionRow       int
 	lastMouseMotionColumn    int
+	startRow                 int
+	endBeforeRow             int
 	columnResizeStart        float32
 	columnResizeBase         float32
 	columnResizeOverhead     float32
@@ -148,6 +150,28 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	return t
 }
 
+// SetDrawRowRange sets a restricted range for sizing and drawing the table. This is intended primarily to be able to
+// draw different sections of the table on separate pages of a display and should not be used for anything requiring
+// interactivity.
+func (t *Table[T]) SetDrawRowRange(start, endBefore int) {
+	t.startRow = start
+	t.endBeforeRow = endBefore
+}
+
+// ClearDrawRowRange clears any restricted range for sizing and drawing the table.
+func (t *Table[T]) ClearDrawRowRange() {
+	t.startRow = 0
+	t.endBeforeRow = 0
+}
+
+// CurrentDrawRowRange returns the range of rows that are considered for sizing and drawing.
+func (t *Table[T]) CurrentDrawRowRange() (start, endBefore int) {
+	if t.startRow < t.endBeforeRow && t.startRow >= 0 && t.endBeforeRow <= len(t.rowCache) {
+		return t.startRow, t.endBeforeRow
+	}
+	return 0, len(t.rowCache)
+}
+
 // DefaultDraw provides the default drawing.
 func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	selectionInk := t.SelectionInk
@@ -176,10 +200,9 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		firstCol = i + 1
 	}
 
-	var firstRow int
+	startRow, endBeforeRow := t.CurrentDrawRowRange()
 	y := insets.Top
-	rowCount := len(t.rowCache)
-	for i := 0; i < rowCount; i++ {
+	for i := startRow; i < endBeforeRow; i++ {
 		y1 := y + t.rowCache[i].height
 		if t.ShowRowDivider {
 			y1++
@@ -188,13 +211,13 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			break
 		}
 		y = y1
-		firstRow = i + 1
+		startRow = i + 1
 	}
 
 	lastY := dirty.Bottom()
 	rect := dirty
 	rect.Y = y
-	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
+	for r := startRow; r < endBeforeRow && rect.Y < lastY; r++ {
 		rect.Height = t.rowCache[r].height
 		if t.IsRowOrAnyParentSelected(r) {
 			if t.IsRowSelected(r) {
@@ -206,7 +229,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			canvas.DrawRect(rect, t.BandingInk.Paint(canvas, rect, Fill))
 		}
 		rect.Y += t.rowCache[r].height
-		if t.ShowRowDivider && r != rowCount-1 {
+		if t.ShowRowDivider && r != endBeforeRow-1 {
 			rect.Height = 1
 			canvas.DrawRect(rect, t.DividerInk.Paint(canvas, rect, Fill))
 			rect.Y++
@@ -228,7 +251,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	rect.Y = y
 	lastX := dirty.Right()
 	t.hitRects = nil
-	for r := firstRow; r < rowCount && rect.Y < lastY; r++ {
+	for r := startRow; r < endBeforeRow && rect.Y < lastY; r++ {
 		rect.X = x
 		rect.Height = t.rowCache[r].height
 		for c := firstCol; c < len(t.ColumnSizes) && rect.X < lastX; c++ {
@@ -319,6 +342,15 @@ func (t *Table[T]) installCell(cell *Panel, frame Rect) {
 
 func (t *Table[T]) uninstallCell(cell *Panel) {
 	cell.parent = nil
+}
+
+// RowHeights returns the heights of each row.
+func (t *Table[T]) RowHeights() []float32 {
+	heights := make([]float32, len(t.rowCache))
+	for i := range t.rowCache {
+		heights[i] = t.rowCache[i].height
+	}
+	return heights
 }
 
 // OverRow returns the row index that the y coordinate is over, or -1 if it isn't over any row.
@@ -1359,14 +1391,15 @@ func (t *Table[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 	for col := range t.ColumnSizes {
 		pref.Width += t.ColumnSizes[col].Current
 	}
-	for _, cache := range t.rowCache {
+	startRow, endBeforeRow := t.CurrentDrawRowRange()
+	for _, cache := range t.rowCache[startRow:endBeforeRow] {
 		pref.Height += cache.height
 	}
 	if t.ShowColumnDivider {
 		pref.Width += float32(len(t.ColumnSizes) - 1)
 	}
 	if t.ShowRowDivider {
-		pref.Height += float32(len(t.rowCache) - 1)
+		pref.Height += float32((endBeforeRow - startRow) - 1)
 	}
 	if border := t.Border(); border != nil {
 		pref.AddInsets(border.Insets())
