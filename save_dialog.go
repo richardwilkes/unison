@@ -47,11 +47,13 @@ func NewSaveDialog() SaveDialog {
 // function will ensure filePath ends with that extension. If the resulting file already exists, the user will be
 // prompted to verify they intend to overwrite the destination. If the approved, the file will be removed.
 func ValidateSaveFilePath(filePath, requiredExtension string) (revisedPath string, ok bool) {
-	if !strings.HasPrefix(requiredExtension, ".") {
-		requiredExtension = "." + requiredExtension
-	}
-	if requiredExtension != "" && filepath.Ext(filePath) != requiredExtension {
-		filePath = fs.TrimExtension(filePath) + requiredExtension
+	if requiredExtension != "" {
+		if !strings.HasPrefix(requiredExtension, ".") {
+			requiredExtension = "." + requiredExtension
+		}
+		if filepath.Ext(filePath) != requiredExtension {
+			filePath = fs.TrimExtension(filePath) + requiredExtension
+		}
 	}
 	if fs.FileExists(filePath) {
 		if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), filePath); result != ModalResponseOK {
