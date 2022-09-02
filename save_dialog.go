@@ -9,6 +9,15 @@
 
 package unison
 
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/xio/fs"
+)
+
 var lastWorkingDir = ""
 
 // SaveDialog represents a dialog that permits a user to select where to save a file.
@@ -32,4 +41,26 @@ type SaveDialog interface {
 // NewSaveDialog creates a new save dialog using native support where possible.
 func NewSaveDialog() SaveDialog {
 	return platformNewSaveDialog()
+}
+
+// ValidateSaveFilePath ensures the given path is should be used to save a file. If requiredExtension isn't empty, this
+// function will ensure filePath ends with that extension. If the resulting file already exists, the user will be
+// prompted to verify they intend to overwrite the destination. If the approved, the file will be removed.
+func ValidateSaveFilePath(filePath, requiredExtension string) (revisedPath string, ok bool) {
+	if !strings.HasPrefix(requiredExtension, ".") {
+		requiredExtension = "." + requiredExtension
+	}
+	if requiredExtension != "" && filepath.Ext(filePath) != requiredExtension {
+		filePath = fs.TrimExtension(filePath) + requiredExtension
+	}
+	if fs.FileExists(filePath) {
+		if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), filePath); result != ModalResponseOK {
+			return "", false
+		}
+		if err := os.Remove(filePath); err != nil {
+			ErrorDialogWithError(i18n.Text("Unable to remove ")+fs.BaseName(filePath), err)
+			return "", false
+		}
+	}
+	return filePath, true
 }
