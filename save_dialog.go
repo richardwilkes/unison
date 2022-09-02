@@ -12,8 +12,10 @@ package unison
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xio/fs"
 )
@@ -45,8 +47,13 @@ func NewSaveDialog() SaveDialog {
 
 // ValidateSaveFilePath ensures the given path is should be used to save a file. If requiredExtension isn't empty, this
 // function will ensure filePath ends with that extension. If the resulting file already exists, the user will be
-// prompted to verify they intend to overwrite the destination. If the approved, the file will be removed.
-func ValidateSaveFilePath(filePath, requiredExtension string) (revisedPath string, ok bool) {
+// prompted to verify they intend to overwrite the destination. If the approved, the file will be removed. On platforms
+// that do these operations in the native dialog, this method will just return filepath and true unless force is set to
+// true, in which case the logic will be run.
+func ValidateSaveFilePath(filePath, requiredExtension string, force bool) (revisedPath string, ok bool) {
+	if !force && runtime.GOOS == toolbox.MacOS {
+		return filePath, true
+	}
 	if requiredExtension != "" {
 		if !strings.HasPrefix(requiredExtension, ".") {
 			requiredExtension = "." + requiredExtension
