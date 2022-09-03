@@ -207,7 +207,9 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		w.moved()
 	})
 	w.wnd.SetSizeCallback(func(_ *glfw.Window, width, height int) {
-		w.resized(false)
+		if width > 0 && height > 0 {
+			w.resized(false)
+		}
 	})
 	w.wnd.SetCloseCallback(func(_ *glfw.Window) {
 		w.AttemptClose()
