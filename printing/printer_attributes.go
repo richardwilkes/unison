@@ -39,9 +39,14 @@ func (a *PrinterAttributes) Icons() []string {
 	return a.Strings("printer-icons", nil)
 }
 
+// PageRangesSupported returns true if page ranges are supported.
+func (a *PrinterAttributes) PageRangesSupported() bool {
+	return a.Boolean("page-ranges-supported", false)
+}
+
 // DefaultMedia returns the default media (page size) that will be used.
 func (a *PrinterAttributes) DefaultMedia() string {
-	return a.FirstString("media-default", "")
+	return a.String("media-default", "")
 }
 
 // SupportedMedia returns the supported media (page sizes) that may be used.
@@ -49,9 +54,29 @@ func (a *PrinterAttributes) SupportedMedia() []string {
 	return a.Strings("media-supported", nil)
 }
 
+// DefaultPDFFitToPage returns the default PDF fit-to-page value that will be used.
+func (a *PrinterAttributes) DefaultPDFFitToPage() bool {
+	return a.Boolean("pdf-fit-to-page-default", false)
+}
+
+// SupportedPDFFitToPage returns the supported PDF fit-to-page values that may be used.
+func (a *PrinterAttributes) SupportedPDFFitToPage() []bool {
+	return a.Booleans("pdf-fit-to-page-supported", nil)
+}
+
+// DefaultPrintScaling returns the default print scaling that will be used.
+func (a *PrinterAttributes) DefaultPrintScaling() string {
+	return a.String("print-scaling-default", "")
+}
+
+// SupportedPrintScaling returns the supported print scaling that may be used.
+func (a *PrinterAttributes) SupportedPrintScaling() []string {
+	return a.Strings("print-scaling-supported", nil)
+}
+
 // DefaultColorMode returns the default color mode.
 func (a *PrinterAttributes) DefaultColorMode() string {
-	return a.FirstString("print-color-mode-default", "")
+	return a.String("print-color-mode-default", "")
 }
 
 // SupportedColorModes returns the supported color modes.
@@ -81,7 +106,7 @@ func (a *PrinterAttributes) SupportedMediaSources() []string {
 
 // DefaultContentOptimization returns the default content optimization to perform.
 func (a *PrinterAttributes) DefaultContentOptimization() string {
-	return a.FirstString("print-content-optimize-default", "")
+	return a.String("print-content-optimize-default", "")
 }
 
 // SupportedContentOptimizations returns the supported content optimizations.
@@ -91,7 +116,7 @@ func (a *PrinterAttributes) SupportedContentOptimizations() []string {
 
 // DefaultSides returns the default sides to print on.
 func (a *PrinterAttributes) DefaultSides() string {
-	return a.FirstString("sides-default", "")
+	return a.String("sides-default", "")
 }
 
 // SupportedSides returns the supported sides that may be printed on.

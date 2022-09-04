@@ -75,27 +75,86 @@ func (p *Printer) Attributes(timeout time.Duration, allowCachedReturn bool) (*Pr
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.lastID++
-	req := goipp.NewRequest(goipp.DefaultVersion, goipp.OpGetPrinterAttributes, p.lastID)
-	req.Operation.Add(goipp.MakeAttribute("attributes-charset", goipp.TagCharset, goipp.String("utf-8")))
-	req.Operation.Add(goipp.MakeAttribute("attributes-natural-language", goipp.TagLanguage, goipp.String("en-US")))
-	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(toolbox.CurrentUserName())))
-	req.Operation.Add(goipp.MakeAttribute("printer-uri", goipp.TagURI, goipp.String(p.printerURI())))
+	req := p.newRequest(p.lastID, goipp.OpGetPrinterAttributes)
 	req.Operation.Add(goipp.MakeAttribute("requested-attributes", goipp.TagKeyword, goipp.String("all")))
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	rsp, err := p.sendRequest(ctx, "", req, nil, 0)
+	rsp, err := p.sendRequest(ctx, req, nil, 0)
 	if err != nil {
 		return nil, err
 	}
-	if goipp.Status(rsp.Code) != goipp.StatusOk {
-		msg := fmt.Sprintf(i18n.Text("Error code 0x%04x"), rsp.Code)
-		if s := NewAttributes(rsp.Operation).Strings("status-message", nil); s != nil {
-			msg += ":\n" + strings.Join(s, "\n")
-		}
-		return nil, errs.New(msg)
+	if err = checkIPPStatus(rsp); err != nil {
+		return nil, err
 	}
 	p.attributes = NewAttributes(rsp.Printer).ForPrinter()
+	fmt.Println("==== SUPPORTED with DEFAULT =====")
+	for _, one := range rsp.Printer {
+		if strings.HasSuffix(one.Name, "-supported") {
+			v, ok := p.attributes.Attributes[strings.TrimSuffix(one.Name, "-supported")+"-default"]
+			if ok {
+				fmt.Printf("%s: [%v]: %v\n", one.Name, v, one.Values)
+			}
+		}
+	}
+	fmt.Println("\n==== SUPPORTED without DEFAULT =====")
+	for _, one := range rsp.Printer {
+		if strings.HasSuffix(one.Name, "-supported") {
+			_, ok := p.attributes.Attributes[strings.TrimSuffix(one.Name, "-supported")+"-default"]
+			if !ok {
+				fmt.Printf("%s: %v\n", one.Name, one.Values)
+			}
+		}
+	}
 	return p.attributes, nil
+}
+
+// Validate the job attributes. Any attributes that have been either ignored or altered by the printer will be returned.
+func (p *Printer) Validate(ctx context.Context, jobName, mimeType string, attributes *JobAttributes) (*JobAttributes, error) {
+	p.lock.Lock()
+	p.lastID++
+	id := p.lastID
+	p.lock.Unlock()
+	req := p.newRequest(id, goipp.OpValidateJob)
+	addAttributesForJob(req, jobName, mimeType)
+	req.Job = attributes.toIPP()
+	rsp, err := p.sendRequest(ctx, req, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err = checkIPPStatus(rsp); err != nil {
+		return nil, err
+	}
+	return NewAttributes(rsp.Unsupported).ForJob(), nil
+}
+
+// Print a document.
+func (p *Printer) Print(ctx context.Context, jobName, mimeType string, fileData io.Reader, fileLength int, attributes *JobAttributes) error {
+	p.lock.Lock()
+	p.lastID++
+	id := p.lastID
+	p.lock.Unlock()
+	req := p.newRequest(id, goipp.OpPrintJob)
+	addAttributesForJob(req, jobName, mimeType)
+	req.Job = attributes.toIPP()
+	rsp, err := p.sendRequest(ctx, req, fileData, fileLength)
+	if err != nil {
+		return err
+	}
+	if err = checkIPPStatus(rsp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func checkIPPStatus(rsp *goipp.Message) error {
+	if rsp.Code <= 0xFF {
+		return nil
+	}
+	msg := fmt.Sprintf(i18n.Text("Error code 0x%04x"), rsp.Code)
+	if s := NewAttributes(rsp.Operation).Strings("status-message", nil); s != nil {
+		msg += ":\n" + strings.Join(s, "\n")
+	}
+	return errs.New(msg)
 }
 
 func (p *Printer) useTLS() string {
@@ -105,19 +164,29 @@ func (p *Printer) useTLS() string {
 	return ""
 }
 
-func (p *Printer) uri(namespace string) string {
-	uri := fmt.Sprintf("http%s://%s:%d/%s", p.useTLS(), p.Host, p.Port, p.RemotePath)
-	if namespace != "" {
-		uri += "/" + namespace
-	}
-	return uri
+func (p *Printer) uri() string {
+	return fmt.Sprintf("http%s://%s:%d/%s", p.useTLS(), p.Host, p.Port, p.RemotePath)
 }
 
 func (p *Printer) printerURI() string {
 	return fmt.Sprintf("ipp%s://%s:%d/%s", p.useTLS(), p.Host, p.Port, p.RemotePath)
 }
 
-func (p *Printer) sendRequest(ctx context.Context, namespace string, req *goipp.Message, fileData io.Reader, fileLength int) (*goipp.Message, error) {
+func (p *Printer) newRequest(id uint32, op goipp.Op) *goipp.Message {
+	req := goipp.NewRequest(goipp.DefaultVersion, op, id)
+	req.Operation.Add(goipp.MakeAttribute("printer-uri", goipp.TagURI, goipp.String(p.printerURI())))
+	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(toolbox.CurrentUserName())))
+	req.Operation.Add(goipp.MakeAttribute("attributes-charset", goipp.TagCharset, goipp.String("utf-8")))
+	req.Operation.Add(goipp.MakeAttribute("attributes-natural-language", goipp.TagLanguage, goipp.String("en-US")))
+	return req
+}
+
+func addAttributesForJob(req *goipp.Message, jobName, mimeType string) {
+	req.Operation.Add(goipp.MakeAttribute("document-format", goipp.TagMimeType, goipp.String(mimeType)))
+	req.Operation.Add(goipp.MakeAttribute("job-name", goipp.TagName, goipp.String(jobName)))
+}
+
+func (p *Printer) sendRequest(ctx context.Context, req *goipp.Message, fileData io.Reader, fileLength int) (*goipp.Message, error) {
 	data, err := req.EncodeBytes()
 	if err != nil {
 		return nil, errs.Wrap(err)
@@ -128,7 +197,7 @@ func (p *Printer) sendRequest(ctx context.Context, namespace string, req *goipp.
 		r = io.MultiReader(r, fileData)
 	}
 	var httpReq *http.Request
-	if httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, p.uri(namespace), r); err != nil {
+	if httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, p.uri(), r); err != nil {
 		return nil, errs.Wrap(err)
 	}
 	httpReq.Header.Set("Content-Length", strconv.Itoa(len(data)+fileLength))
