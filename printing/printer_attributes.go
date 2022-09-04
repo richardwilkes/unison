@@ -61,7 +61,7 @@ func (a *PrinterAttributes) SupportedColorModes() []string {
 
 // MaxCopies returns the maximum number of copies that are supported.
 func (a *PrinterAttributes) MaxCopies() int {
-	return a.FirstInteger("copies-supported", 1)
+	return a.Integer("copies-supported", 1)
 }
 
 // SupportedDocumentTypes returns the supported document MIME types.
@@ -115,7 +115,7 @@ func SidePresentationName(key string) string {
 
 // DefaultOrientation returns the default page orientation.
 func (a *PrinterAttributes) DefaultOrientation() string {
-	return orientationKeyFromInt(a.FirstInteger("orientation-requested-default", 7))
+	return orientationKeyFromInt(a.Integer("orientation-requested-default", 7))
 }
 
 // SupportedOrientations returns the supported page orientations.
@@ -180,9 +180,9 @@ func orientationFromKey(key string) int {
 // of an inch).
 func (a *PrinterAttributes) MinimumMargins() geom.Insets[int] {
 	return geom.Insets[int]{
-		Top:    a.FirstInteger("media-top-margin-supported", 0),
-		Left:   a.FirstInteger("media-left-margin-supported", 0),
-		Bottom: a.FirstInteger("media-bottom-margin-supported", 0),
-		Right:  a.FirstInteger("media-right-margin-supported", 0),
+		Top:    a.Integer("media-top-margin-supported", 0),
+		Left:   a.Integer("media-left-margin-supported", 0),
+		Bottom: a.Integer("media-bottom-margin-supported", 0),
+		Right:  a.Integer("media-right-margin-supported", 0),
 	}
 }

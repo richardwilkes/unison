@@ -27,13 +27,13 @@ func NewAttributes(attrs goipp.Attributes) Attributes {
 	return a
 }
 
-// ForPrinter returns an Attributes that has extra methods for easily accessing the Printer-specific attributes.
+// ForPrinter returns an Attributes that has extra methods for easily accessing the printer-specific attributes.
 func (a Attributes) ForPrinter() *PrinterAttributes {
 	return &PrinterAttributes{Attributes: a}
 }
 
-// FirstBoolean returns the first boolean value for the given key.
-func (a Attributes) FirstBoolean(key string, def bool) bool {
+// Boolean returns the first boolean value for the given key.
+func (a Attributes) Boolean(key string, def bool) bool {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeBoolean {
 		return bool(v[0].V.(goipp.Boolean))
 	}
@@ -54,8 +54,8 @@ func (a Attributes) Booleans(key string, def []bool) []bool {
 	return def
 }
 
-// FirstInteger returns the first integer value for the given key.
-func (a Attributes) FirstInteger(key string, def int) int {
+// Integer returns the first integer value for the given key.
+func (a Attributes) Integer(key string, def int) int {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeInteger {
 		return int(v[0].V.(goipp.Integer))
 	}
@@ -98,8 +98,8 @@ func (a Attributes) Strings(key string, def []string) []string {
 	return def
 }
 
-// FirstTime returns the first time value for the given key.
-func (a Attributes) FirstTime(key string, def time.Time) time.Time {
+// Time returns the first time value for the given key.
+func (a Attributes) Time(key string, def time.Time) time.Time {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeDateTime {
 		return v[0].V.(goipp.Time).Time
 	}
@@ -120,8 +120,8 @@ func (a Attributes) Times(key string, def []time.Time) []time.Time {
 	return def
 }
 
-// FirstResolution returns the first resolution value for the given key.
-func (a Attributes) FirstResolution(key string, def goipp.Resolution) goipp.Resolution {
+// Resolution returns the first resolution value for the given key.
+func (a Attributes) Resolution(key string, def goipp.Resolution) goipp.Resolution {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeResolution {
 		return v[0].V.(goipp.Resolution)
 	}
@@ -142,8 +142,8 @@ func (a Attributes) Resolutions(key string, def []goipp.Resolution) []goipp.Reso
 	return def
 }
 
-// FirstRange returns the first Range value for the given key.
-func (a Attributes) FirstRange(key string, def goipp.Range) goipp.Range {
+// Range returns the first Range value for the given key.
+func (a Attributes) Range(key string, def goipp.Range) goipp.Range {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeRange {
 		return v[0].V.(goipp.Range)
 	}
@@ -164,8 +164,8 @@ func (a Attributes) Ranges(key string, def []goipp.Range) []goipp.Range {
 	return def
 }
 
-// FirstTextWithLang returns the first TextWithLang value for the given key.
-func (a Attributes) FirstTextWithLang(key string, def goipp.TextWithLang) goipp.TextWithLang {
+// TextWithLang returns the first TextWithLang value for the given key.
+func (a Attributes) TextWithLang(key string, def goipp.TextWithLang) goipp.TextWithLang {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeTextWithLang {
 		return v[0].V.(goipp.TextWithLang)
 	}
@@ -186,8 +186,8 @@ func (a Attributes) TextWithLangs(key string, def []goipp.TextWithLang) []goipp.
 	return def
 }
 
-// FirstBinary returns the first binary value for the given key.
-func (a Attributes) FirstBinary(key string) []byte {
+// Binary returns the first binary value for the given key.
+func (a Attributes) Binary(key string) []byte {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeBinary {
 		return v[0].V.(goipp.Binary)
 	}
@@ -208,8 +208,8 @@ func (a Attributes) Binaries(key string) [][]byte {
 	return nil
 }
 
-// FirstCollection returns the first collection value for the given key.
-func (a Attributes) FirstCollection(key string) Attributes {
+// Collection returns the first collection value for the given key.
+func (a Attributes) Collection(key string) Attributes {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeCollection {
 		return NewAttributes(goipp.Attributes(v[0].V.(goipp.Collection)))
 	}
