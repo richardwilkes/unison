@@ -10,6 +10,7 @@
 package printing
 
 import (
+	"github.com/OpenPrinting/goipp"
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
@@ -86,7 +87,10 @@ func (a *PrinterAttributes) SupportedColorModes() []string {
 
 // MaxCopies returns the maximum number of copies that are supported.
 func (a *PrinterAttributes) MaxCopies() int {
-	return a.Integer("copies-supported", 1)
+	return a.Range("copies-supported", goipp.Range{
+		Lower: 1,
+		Upper: 1,
+	}).Upper
 }
 
 // SupportedDocumentTypes returns the supported document MIME types.
@@ -97,6 +101,11 @@ func (a *PrinterAttributes) SupportedDocumentTypes() []string {
 // SupportedJobCreationAttributes returns the set of attributes that are supported when creating a new job.
 func (a *PrinterAttributes) SupportedJobCreationAttributes() []string {
 	return a.Strings("job-creation-attributes-supported", nil)
+}
+
+// DefaultMediaSource returns the default media source.
+func (a *PrinterAttributes) DefaultMediaSource() string {
+	return a.String("media-source-default", "")
 }
 
 // SupportedMediaSources returns the supported media sources.

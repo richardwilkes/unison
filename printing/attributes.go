@@ -27,6 +27,19 @@ func NewAttributes(attrs goipp.Attributes) Attributes {
 	return a
 }
 
+// Copy creates a new copy of these attributes.
+func (a Attributes) Copy() Attributes {
+	other := make(Attributes, len(a))
+	for k, v := range a {
+		values := make(goipp.Values, 0, len(v))
+		for _, one := range v {
+			values.Add(one.T, one.V)
+		}
+		other[k] = values
+	}
+	return other
+}
+
 // ForPrinter returns an Attributes that has extra methods for easily accessing the printer-specific attributes.
 func (a Attributes) ForPrinter() *PrinterAttributes {
 	return &PrinterAttributes{Attributes: a}

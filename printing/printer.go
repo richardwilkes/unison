@@ -27,13 +27,25 @@ import (
 	"github.com/richardwilkes/toolbox/xio"
 )
 
+// PrinterID identifies a specific printer.
+type PrinterID struct {
+	UUID string `json:"uuid"`
+	Name string `json:"name"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+func (p *PrinterID) String() string {
+	if p.Host == "" {
+		return p.Name
+	}
+	return fmt.Sprintf("%s (%s)", p.Name, strings.TrimSuffix(p.Host, ".local"))
+}
+
 // Printer holds the information for a printer. Note that the User, Password, and UseTLS fields must be filled in if you
 // wish to use those features, as the call to PrintManager.Printers() will not fill them in for you.
 type Printer struct {
-	ID               string
-	Name             string
-	Host             string
-	Port             int
+	PrinterID
 	RemotePath       string
 	AuthInfoRequired string
 	User             string
@@ -70,7 +82,7 @@ func (p *Printer) Attributes(timeout time.Duration, allowCachedReturn bool) (*Pr
 		p.lock.RUnlock()
 	}
 	if timeout < 1 {
-		return nil, context.DeadlineExceeded
+		return NewAttributes(nil).ForPrinter(), context.DeadlineExceeded
 	}
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -81,30 +93,12 @@ func (p *Printer) Attributes(timeout time.Duration, allowCachedReturn bool) (*Pr
 	defer cancel()
 	rsp, err := p.sendRequest(ctx, req, nil, 0)
 	if err != nil {
-		return nil, err
+		return NewAttributes(nil).ForPrinter(), err
 	}
 	if err = checkIPPStatus(rsp); err != nil {
-		return nil, err
+		return NewAttributes(nil).ForPrinter(), err
 	}
 	p.attributes = NewAttributes(rsp.Printer).ForPrinter()
-	fmt.Println("==== SUPPORTED with DEFAULT =====")
-	for _, one := range rsp.Printer {
-		if strings.HasSuffix(one.Name, "-supported") {
-			v, ok := p.attributes.Attributes[strings.TrimSuffix(one.Name, "-supported")+"-default"]
-			if ok {
-				fmt.Printf("%s: [%v]: %v\n", one.Name, v, one.Values)
-			}
-		}
-	}
-	fmt.Println("\n==== SUPPORTED without DEFAULT =====")
-	for _, one := range rsp.Printer {
-		if strings.HasSuffix(one.Name, "-supported") {
-			_, ok := p.attributes.Attributes[strings.TrimSuffix(one.Name, "-supported")+"-default"]
-			if !ok {
-				fmt.Printf("%s: %v\n", one.Name, one.Values)
-			}
-		}
-	}
 	return p.attributes, nil
 }
 

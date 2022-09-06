@@ -9,13 +9,17 @@
 
 package printing
 
-import "github.com/OpenPrinting/goipp"
+import (
+	"strconv"
+	"strings"
+
+	"github.com/OpenPrinting/goipp"
+)
 
 const (
 	copiesKey              = "copies"
 	pageRangesKey          = "page-ranges"
 	mediaKey               = "media"
-	pdfFitToPageKey        = "pdf-fit-to-page"
 	printScalingKey        = "print-scaling"
 	printColorModeKey      = "print-color-mode"
 	mediaSourceKey         = "media-source"
@@ -58,6 +62,79 @@ func (a *JobAttributes) SetPageRanges(ranges []goipp.Range) {
 	}
 }
 
+// ValidPageRanges returns true if the page ranges are valid.
+func ValidPageRanges(ranges []goipp.Range) bool {
+	next := 1
+	for _, r := range ranges {
+		if r.Lower < next {
+			return false
+		}
+		if r.Upper < r.Lower {
+			return false
+		}
+		next = r.Upper + 1
+	}
+	return true
+}
+
+// FormatPageRanges returns a string representing the given ranges.
+func FormatPageRanges(ranges []goipp.Range) string {
+	if len(ranges) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(ranges))
+	for _, r := range ranges {
+		if r.Lower == r.Upper {
+			parts = append(parts, strconv.Itoa(r.Lower))
+		} else {
+			parts = append(parts, r.String())
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// ExtractPageRanges extracts a set of ranges from the given string.
+func ExtractPageRanges(text string) (ranges []goipp.Range, noErrors bool) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, true
+	}
+	noErrors = true
+	for _, part := range strings.Split(text, ",") {
+		parts := strings.Split(strings.TrimSpace(part), "-")
+		switch len(parts) {
+		case 1:
+			if parts[0] != "" {
+				if value, err := strconv.Atoi(parts[0]); err != nil {
+					noErrors = false
+				} else {
+					ranges = append(ranges, goipp.Range{
+						Lower: value,
+						Upper: value,
+					})
+				}
+			}
+		case 2:
+			if lower, err := strconv.Atoi(parts[0]); err != nil {
+				noErrors = false
+			} else {
+				var upper int
+				if upper, err = strconv.Atoi(parts[1]); err != nil {
+					noErrors = false
+				} else {
+					ranges = append(ranges, goipp.Range{
+						Lower: lower,
+						Upper: upper,
+					})
+				}
+			}
+		default:
+			noErrors = false
+		}
+	}
+	return ranges, noErrors
+}
+
 // Media returns the media (page size).
 func (a *JobAttributes) Media() string {
 	return a.String(mediaKey, "")
@@ -66,16 +143,6 @@ func (a *JobAttributes) Media() string {
 // SetMedia sets the media.
 func (a *JobAttributes) SetMedia(media string) {
 	a.SetKeyword(mediaKey, media, true)
-}
-
-// PDFFitToPage returns true if PDFs should be scaled to fit to the page.
-func (a *JobAttributes) PDFFitToPage() bool {
-	return a.Boolean(pdfFitToPageKey, false)
-}
-
-// SetPDFFitToPage returns whether PDFs should be scaled to fit to the page.
-func (a *JobAttributes) SetPDFFitToPage(fit bool) {
-	a.SetBoolean(pdfFitToPageKey, fit, true)
 }
 
 // PrintScaling returns the print scaling.
