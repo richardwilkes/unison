@@ -23,8 +23,8 @@ import (
 // but will alter any Fields created in the future.
 var DefaultFieldTheme = FieldTheme{
 	Font:             FieldFont,
-	BackgroundInk:    BackgroundColor,
-	OnBackgroundInk:  OnBackgroundColor,
+	BackgroundInk:    ContentColor,
+	OnBackgroundInk:  OnContentColor,
 	EditableInk:      EditableColor,
 	OnEditableInk:    OnEditableColor,
 	SelectionInk:     SelectionColor,

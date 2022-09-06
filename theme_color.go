@@ -28,7 +28,7 @@ var (
 	TabCurrentColor          = &ThemeColor{Light: RGB(211, 207, 197), Dark: RGB(41, 61, 0)}
 	OnTabCurrentColor        = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	DropAreaColor            = &ThemeColor{Light: RGB(204, 0, 51), Dark: RGB(255, 0, 0)}
-	EditableColor            = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(24, 24, 24)}
+	EditableColor            = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(32, 32, 32)}
 	OnEditableColor          = &ThemeColor{Light: RGB(0, 0, 160), Dark: RGB(100, 153, 153)}
 	SelectionColor           = &ThemeColor{Light: RGB(0, 96, 160), Dark: RGB(0, 96, 160)}
 	OnSelectionColor         = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(255, 255, 255)}
