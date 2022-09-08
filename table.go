@@ -119,6 +119,13 @@ type Table[T TableRowConstraint[T]] struct {
 	awaitingSizeColumnsToFit bool
 	awaitingSyncToModel      bool
 	selNeedsPrune            bool
+	lastClick                Click
+}
+
+// Click records a row and time at which it was clicked
+type Click struct {
+	id uuid.UUID
+	t  time.Time
 }
 
 // NewTable creates a new Table control.
@@ -739,6 +746,8 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 				t.selMap[id] = true
 			}
 			t.notifyOfSelectionChange()
+		case t.selMap[id]: // Sets lastClick so that on mouse up, we can treat a click and click and hold differently
+			t.lastClick = Click{id: id, t: time.Now()}
 		default: // If not already selected, replace selection with current row and make it the anchor
 			if !t.selMap[id] {
 				t.selMap = make(map[uuid.UUID]bool)
@@ -803,6 +812,16 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+	time_elapsed := int64(time.Since(t.lastClick.t))
+	time_elapsed = time_elapsed / int64(time.Millisecond)
+
+	if button == ButtonLeft && time_elapsed < 75 {
+		t.ClearSelection()
+		t.selMap[t.lastClick.id] = true
+		t.MarkForRedraw()
+		t.notifyOfSelectionChange()
+	}
+
 	stop := false
 	if t.interactionRow != -1 && t.interactionColumn != -1 {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
