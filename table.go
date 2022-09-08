@@ -812,10 +812,10 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
-	time_elapsed := int64(time.Since(t.lastClick.t))
-	time_elapsed = time_elapsed / int64(time.Millisecond)
+	timeElapsed := int64(time.Since(t.lastClick.t))
+	timeElapsed = timeElapsed / int64(time.Millisecond)
 
-	if button == ButtonLeft && time_elapsed < 75 {
+	if button == ButtonLeft && timeElapsed < 75 {
 		t.ClearSelection()
 		t.selMap[t.lastClick.id] = true
 		t.MarkForRedraw()
