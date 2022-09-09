@@ -120,12 +120,13 @@ type Table[T TableRowConstraint[T]] struct {
 	awaitingSyncToModel      bool
 	selNeedsPrune            bool
 	lastClick                Click
+	wasDragged               bool
 }
 
-// Click records a row and time at which it was clicked
+// Click records a row clicked and a boolean
 type Click struct {
-	id uuid.UUID
-	t  time.Time
+	id    uuid.UUID
+	check bool
 }
 
 // NewTable creates a new Table control.
@@ -154,6 +155,7 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	t.MouseExitCallback = t.DefaultMouseExit
 	t.KeyDownCallback = t.DefaultKeyDown
 	t.InstallCmdHandlers(SelectAllItemID, AlwaysEnabled, func(_ any) { t.SelectAll() })
+	t.wasDragged = false
 	return t
 }
 
@@ -660,6 +662,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 	if t.Window().InDrag() {
 		return false
 	}
+	t.wasDragged = false
 	t.RequestFocus()
 	t.interactionRow = -1
 	t.interactionColumn = -1
@@ -747,7 +750,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 			t.notifyOfSelectionChange()
 		case t.selMap[id]: // Sets lastClick so that on mouse up, we can treat a click and click and hold differently
-			t.lastClick = Click{id: id, t: time.Now()}
+			t.lastClick = Click{id: id, check: true}
 		default: // If not already selected, replace selection with current row and make it the anchor
 			if !t.selMap[id] {
 				t.selMap = make(map[uuid.UUID]bool)
@@ -772,6 +775,7 @@ func (t *Table[T]) notifyOfSelectionChange() {
 
 // DefaultMouseDrag provides the default mouse drag handling.
 func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+	t.wasDragged = true
 	stop := false
 	if t.interactionColumn != -1 {
 		if t.interactionRow == -1 {
@@ -812,14 +816,12 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
-	timeElapsed := int64(time.Since(t.lastClick.t))
-	timeElapsed = timeElapsed / int64(time.Millisecond)
-
-	if button == ButtonLeft && timeElapsed < 75 {
+	if !t.wasDragged && t.lastClick.check {
 		t.ClearSelection()
 		t.selMap[t.lastClick.id] = true
 		t.MarkForRedraw()
 		t.notifyOfSelectionChange()
+		t.lastClick.check = false
 	}
 
 	stop := false
