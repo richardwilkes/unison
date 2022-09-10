@@ -712,7 +712,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 		switch {
 		case mod&ShiftModifier != 0: // Extend selection from anchor
 			selAnchorIndex := -1
-			if !toolbox.IsNil(t.selAnchor) {
+			if t.selAnchor != zeroUUID {
 				for i, c := range t.rowCache {
 					if c.row.UUID() == t.selAnchor {
 						selAnchorIndex = i
