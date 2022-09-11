@@ -119,14 +119,8 @@ type Table[T TableRowConstraint[T]] struct {
 	awaitingSizeColumnsToFit bool
 	awaitingSyncToModel      bool
 	selNeedsPrune            bool
-	lastClick                Click
+	lastSel                  uuid.UUID
 	wasDragged               bool
-}
-
-// Click records a row clicked and a boolean
-type Click struct {
-	id    uuid.UUID
-	check bool
 }
 
 // NewTable creates a new Table control.
@@ -662,8 +656,10 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 	if t.Window().InDrag() {
 		return false
 	}
-	t.wasDragged = false
 	t.RequestFocus()
+	t.wasDragged = false
+	t.lastSel = zeroUUID
+
 	t.interactionRow = -1
 	t.interactionColumn = -1
 	if button == ButtonLeft {
@@ -750,14 +746,12 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 			t.notifyOfSelectionChange()
 		case t.selMap[id]: // Sets lastClick so that on mouse up, we can treat a click and click and hold differently
-			t.lastClick = Click{id: id, check: true}
+			t.lastSel = id
 		default: // If not already selected, replace selection with current row and make it the anchor
-			if !t.selMap[id] {
-				t.selMap = make(map[uuid.UUID]bool)
-				t.selMap[id] = true
-				t.selAnchor = id
-				t.notifyOfSelectionChange()
-			}
+			t.selMap = make(map[uuid.UUID]bool)
+			t.selMap[id] = true
+			t.selAnchor = id
+			t.notifyOfSelectionChange()
 		}
 		t.MarkForRedraw()
 		if button == ButtonLeft && clickCount == 2 && t.DoubleClickCallback != nil && len(t.selMap) != 0 {
@@ -816,12 +810,12 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
-	if !t.wasDragged && t.lastClick.check {
+	if !t.wasDragged && t.lastSel != zeroUUID {
 		t.ClearSelection()
-		t.selMap[t.lastClick.id] = true
+		t.selMap[t.lastSel] = true
+		t.selAnchor = t.lastSel
 		t.MarkForRedraw()
 		t.notifyOfSelectionChange()
-		t.lastClick.check = false
 	}
 
 	stop := false
