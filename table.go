@@ -119,6 +119,8 @@ type Table[T TableRowConstraint[T]] struct {
 	awaitingSizeColumnsToFit bool
 	awaitingSyncToModel      bool
 	selNeedsPrune            bool
+	lastSel                  uuid.UUID
+	wasDragged               bool
 }
 
 // NewTable creates a new Table control.
@@ -147,6 +149,7 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	t.MouseExitCallback = t.DefaultMouseExit
 	t.KeyDownCallback = t.DefaultKeyDown
 	t.InstallCmdHandlers(SelectAllItemID, AlwaysEnabled, func(_ any) { t.SelectAll() })
+	t.wasDragged = false
 	return t
 }
 
@@ -654,6 +657,9 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 		return false
 	}
 	t.RequestFocus()
+	t.wasDragged = false
+	t.lastSel = zeroUUID
+
 	t.interactionRow = -1
 	t.interactionColumn = -1
 	if button == ButtonLeft {
@@ -739,13 +745,13 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 				t.selMap[id] = true
 			}
 			t.notifyOfSelectionChange()
+		case t.selMap[id]: // Sets lastClick so that on mouse up, we can treat a click and click and hold differently
+			t.lastSel = id
 		default: // If not already selected, replace selection with current row and make it the anchor
-			if !t.selMap[id] {
-				t.selMap = make(map[uuid.UUID]bool)
-				t.selMap[id] = true
-				t.selAnchor = id
-				t.notifyOfSelectionChange()
-			}
+			t.selMap = make(map[uuid.UUID]bool)
+			t.selMap[id] = true
+			t.selAnchor = id
+			t.notifyOfSelectionChange()
 		}
 		t.MarkForRedraw()
 		if button == ButtonLeft && clickCount == 2 && t.DoubleClickCallback != nil && len(t.selMap) != 0 {
@@ -763,6 +769,7 @@ func (t *Table[T]) notifyOfSelectionChange() {
 
 // DefaultMouseDrag provides the default mouse drag handling.
 func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+	t.wasDragged = true
 	stop := false
 	if t.interactionColumn != -1 {
 		if t.interactionRow == -1 {
@@ -803,6 +810,14 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+	if !t.wasDragged && t.lastSel != zeroUUID {
+		t.ClearSelection()
+		t.selMap[t.lastSel] = true
+		t.selAnchor = t.lastSel
+		t.MarkForRedraw()
+		t.notifyOfSelectionChange()
+	}
+
 	stop := false
 	if t.interactionRow != -1 && t.interactionColumn != -1 {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
