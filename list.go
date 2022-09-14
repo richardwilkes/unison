@@ -54,10 +54,12 @@ type List[T any] struct {
 	Selection            *xmath.BitSet
 	savedSelection       *xmath.BitSet
 	anchor               int
+	lastSel              int
 	allowMultiple        bool
 	pressed              bool
 	suppressSelection    bool
 	suppressScroll       bool
+	wasDragged           bool
 }
 
 // NewList creates a new List control.
@@ -68,6 +70,7 @@ func NewList[T any]() *List[T] {
 		Selection:      &xmath.BitSet{},
 		savedSelection: &xmath.BitSet{},
 		anchor:         -1,
+		lastSel:        -1,
 		allowMultiple:  true,
 	}
 	l.Self = l
@@ -267,6 +270,8 @@ func (l *List[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modi
 	l.RequestFocus()
 	l.suppressScroll = false
 	l.savedSelection = l.Selection.Clone()
+	l.lastSel = -1
+	l.wasDragged = false
 	if index, _ := l.rowAt(where.Y); index >= 0 {
 		switch {
 		case mod.CommandDown():
@@ -293,6 +298,7 @@ func (l *List[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modi
 				l.Selection.Set(index)
 			}
 		case l.Selection.State(index):
+			l.lastSel = index
 			l.anchor = index
 			if clickCount == 2 && l.DoubleClickCallback != nil {
 				toolbox.Call(l.DoubleClickCallback)
@@ -314,6 +320,7 @@ func (l *List[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modi
 // DefaultMouseDrag provides the default mouse drag handling.
 func (l *List[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	if l.pressed {
+		l.wasDragged = true
 		l.Selection.Copy(l.savedSelection)
 		if index, _ := l.rowAt(where.Y); index >= 0 {
 			if l.allowMultiple {
@@ -346,6 +353,12 @@ func (l *List[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool 
 func (l *List[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
+		if !l.wasDragged && l.lastSel != -1 {
+			l.Selection.Reset()
+			l.Selection.Set(l.lastSel)
+			l.anchor = l.lastSel
+			l.MarkForRedraw()
+		}
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
 			toolbox.Call(l.NewSelectionCallback)
 		}
