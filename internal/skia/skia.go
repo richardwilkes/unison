@@ -293,8 +293,8 @@ type metaData struct {
 	Creation        dateTime
 	Modified        dateTime
 	RasterDPI       float32
-	_               int32
-	EncodingQuality int
+	_               float32
+	EncodingQuality int32
 }
 
 func (m *metaData) set(md *MetaData) {
@@ -340,7 +340,7 @@ type MetaData struct {
 	Creation        time.Time
 	Modified        time.Time
 	RasterDPI       float32
-	EncodingQuality int
+	EncodingQuality int32
 }
 
 func toCStr(s string) uintptr {
