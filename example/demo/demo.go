@@ -438,7 +438,8 @@ func createTextFieldsPanel() *unison.Panel {
 	createTextField("Field 1:", "First Text Field", panel)
 	createTextField("Field 2:", "Second Text Field (disabled)", panel).SetEnabled(false)
 	field := createTextField("Longer Label:", "", panel)
-	field.Watermark = "Watermarked"
+	field.Watermark = "Password Field"
+	field.ObscurementRune = '●'
 	field = createTextField("Field 4:", "", panel)
 	field.HAlign = unison.EndAlignment
 	field.Watermark = "Enter only numbers"

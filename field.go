@@ -82,6 +82,7 @@ type Field struct {
 	forceShowUntil   time.Time
 	scrollOffset     Point
 	linesBuiltFor    float32
+	ObscurementRune  rune
 	AutoScroll       bool
 	multiLine        bool
 	wrap             bool
@@ -215,7 +216,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 		if f.multiLine {
 			endsWithLineFeed = make([]bool, 0, 16)
 			for _, line := range strings.Split(string(f.runes), "\n") {
-				one := NewText(line, decoration)
+				one := NewText(f.obscureStringIfNeeded(line), decoration)
 				if f.wrap && wrapWidth > 0 {
 					parts := one.BreakToWidth(wrapWidth)
 					for i, part := range parts {
@@ -228,7 +229,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 				}
 			}
 		} else {
-			one := NewTextFromRunes(f.runes, decoration)
+			one := NewTextFromRunes(f.obscureIfNeeded(f.runes), decoration)
 			if f.wrap && wrapWidth > 0 {
 				lines = append(lines, one.BreakToWidth(wrapWidth)...)
 			} else {
@@ -238,6 +239,29 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 		}
 	}
 	return
+}
+
+func (f *Field) obscureStringIfNeeded(in string) string {
+	if f.ObscurementRune == 0 {
+		return in
+	}
+	r := []rune(in)
+	replacement := make([]rune, len(r))
+	for i := range r {
+		replacement[i] = f.ObscurementRune
+	}
+	return string(replacement)
+}
+
+func (f *Field) obscureIfNeeded(in []rune) []rune {
+	if f.ObscurementRune == 0 {
+		return in
+	}
+	replacement := make([]rune, len(in))
+	for i := range in {
+		replacement[i] = f.ObscurementRune
+	}
+	return replacement
 }
 
 // DefaultDraw provides the default drawing.
@@ -300,14 +324,14 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 				selStart := xmath.Max(f.selectionStart, start)
 				selEnd := xmath.Min(f.selectionEnd, end)
 				if selStart > start {
-					t := NewTextFromRunes(f.runes[start:selStart], &TextDecoration{
+					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:selStart]), &TextDecoration{
 						Font:  f.Font,
 						Paint: paint,
 					})
 					t.Draw(canvas, left, textBaseLine)
 					left += t.Width()
 				}
-				t := NewTextFromRunes(f.runes[selStart:selEnd], &TextDecoration{
+				t := NewTextFromRunes(f.obscureIfNeeded(f.runes[selStart:selEnd]), &TextDecoration{
 					Font:  f.Font,
 					Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
 				})
@@ -323,7 +347,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 					if f.endsWithLineFeed[i] {
 						e--
 					}
-					NewTextFromRunes(f.runes[selEnd:e], &TextDecoration{
+					NewTextFromRunes(f.obscureIfNeeded(f.runes[selEnd:e]), &TextDecoration{
 						Font:  f.Font,
 						Paint: paint,
 					}).Draw(canvas, right, textBaseLine)
@@ -334,7 +358,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
 				if f.showCursor {
-					t := NewTextFromRunes(f.runes[start:f.selectionEnd], &TextDecoration{
+					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]), &TextDecoration{
 						Font:  f.Font,
 						Paint: nil,
 					})
