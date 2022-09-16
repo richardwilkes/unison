@@ -11,9 +11,9 @@ require (
 	github.com/richardwilkes/json v0.1.0
 	github.com/richardwilkes/toolbox v1.74.0
 	github.com/stretchr/testify v1.8.0
-	golang.org/x/exp v0.0.0-20220909182711-5c715a9e8561
+	golang.org/x/exp v0.0.0-20220916125017-b168a2c6b86b
 	golang.org/x/image v0.0.0-20220902085622-e7cb96979f69
-	golang.org/x/sys v0.0.0-20220913175220-63ea55921009
+	golang.org/x/sys v0.0.0-20220915200043-7b5979e65e41
 	golang.org/x/text v0.3.7
 )
 
