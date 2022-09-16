@@ -45,15 +45,12 @@ func NewSaveDialog() SaveDialog {
 	return platformNewSaveDialog()
 }
 
-// ValidateSaveFilePath ensures the given path is should be used to save a file. If requiredExtension isn't empty, this
+// ValidateSaveFilePath ensures the given path is ok to be used to save a file. If requiredExtension isn't empty, this
 // function will ensure filePath ends with that extension. If the resulting file already exists, the user will be
-// prompted to verify they intend to overwrite the destination. If the approved, the file will be removed. On platforms
-// that do these operations in the native dialog, this method will just return filepath and true unless force is set to
-// true, in which case the logic will be run.
-func ValidateSaveFilePath(filePath, requiredExtension string, force bool) (revisedPath string, ok bool) {
-	if !force && runtime.GOOS == toolbox.MacOS {
-		return filePath, true
-	}
+// prompted to verify they intend to overwrite the destination. If approved, the file will be removed. On platforms that
+// prompt for file overwrite in the native dialog, this method will not prompt the user again unless forcePrompt is
+// true, which can be useful if the path in question did not come from a file dialog.
+func ValidateSaveFilePath(filePath, requiredExtension string, forcePrompt bool) (revisedPath string, ok bool) {
 	if requiredExtension != "" {
 		if !strings.HasPrefix(requiredExtension, ".") {
 			requiredExtension = "." + requiredExtension
@@ -63,8 +60,10 @@ func ValidateSaveFilePath(filePath, requiredExtension string, force bool) (revis
 		}
 	}
 	if fs.FileExists(filePath) {
-		if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), filePath); result != ModalResponseOK {
-			return "", false
+		if forcePrompt || runtime.GOOS != toolbox.MacOS {
+			if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), filePath); result != ModalResponseOK {
+				return "", false
+			}
 		}
 		if err := os.Remove(filePath); err != nil {
 			ErrorDialogWithError(i18n.Text("Unable to remove ")+fs.BaseName(filePath), err)
