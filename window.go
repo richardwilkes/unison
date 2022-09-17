@@ -11,6 +11,7 @@ package unison
 
 import (
 	"fmt"
+	"image"
 	"runtime"
 	"time"
 
@@ -25,10 +26,14 @@ import (
 var _ UndoManagerProvider = &Window{}
 
 var (
-	windowMap  = make(map[*glfw.Window]*Window)
-	windowList []*Window
-	modalStack []*Window
-	glInited   = false
+	// DefaultTitleIcons are the default title icons that will be used for all newly created windows. The image closest to
+	// the size desired by the system will be selected and used, scaling if needed. If no images are specified, the system's
+	// default icon will be used.
+	DefaultTitleIcons []*Image
+	windowMap         = make(map[*glfw.Window]*Window)
+	windowList        []*Window
+	modalStack        []*Window
+	glInited          = false
 )
 
 // DragData holds data drag information.
@@ -56,6 +61,7 @@ type Window struct {
 	// WillCloseCallback is called just prior to the window closing.
 	WillCloseCallback   func()
 	title               string
+	titleIcons          []*Image
 	wnd                 *glfw.Window
 	surface             *surface
 	data                map[string]any
@@ -126,6 +132,15 @@ func TransientWindowOption() WindowOption {
 	}
 }
 
+// TitleIconsWindowOption sets the title icon of the window. The image closest to the size desired by the system will be
+// selected and used, scaling if needed. If no images are specified, the system's default window icon will be used.
+func TitleIconsWindowOption(images []*Image) WindowOption {
+	return func(w *Window) error {
+		w.titleIcons = images
+		return nil
+	}
+}
+
 // AllWindowsToFront brings all of the application's windows to the foreground.
 func AllWindowsToFront() {
 	if len(windowList) != 0 {
@@ -174,8 +189,9 @@ func ActiveWindow() *Window {
 // NewWindow creates a new, initially hidden, window. Call Show() or ToFront() to make it visible.
 func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	w := &Window{
-		title:   title,
-		surface: &surface{},
+		title:      title,
+		titleIcons: DefaultTitleIcons,
+		surface:    &surface{},
 	}
 	for _, option := range options {
 		if err := option(w); err != nil {
@@ -296,6 +312,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	windowMap[w.wnd] = w
 	w.root = newRootPanel(w)
 	w.ValidateLayout()
+	w.SetTitleIcons(w.titleIcons)
 	return w, nil
 }
 
@@ -489,6 +506,27 @@ func (w *Window) SetTitle(title string) {
 		w.title = title
 		w.wnd.SetTitle(title)
 	}
+}
+
+// TitleIcons the title icons that were previously set, if any.
+func (w *Window) TitleIcons() []*Image {
+	return w.titleIcons
+}
+
+// SetTitleIcons sets the title icon of the window. The image closest to the size desired by the system will be selected
+// and used, scaling if needed. If no images are specified, the window reverts to its default icon.
+func (w *Window) SetTitleIcons(images []*Image) {
+	w.titleIcons = images
+	imgs := make([]image.Image, 0, len(images))
+	for _, img := range images {
+		if nrgba, err := img.ToNRGBA(); err != nil {
+			jot.Error(err)
+		} else {
+			w.titleIcons = append(w.titleIcons, img)
+			imgs = append(imgs, nrgba)
+		}
+	}
+	w.wnd.SetIcon(imgs)
 }
 
 // Content returns the content panel for the window.
