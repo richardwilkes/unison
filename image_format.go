@@ -15,8 +15,11 @@ import (
 	"strings"
 )
 
+// InvalidImageFormatStr is returned for as an error indicator for some methods on EncodedImageFormat.
+const InvalidImageFormatStr = "\x00invalid"
+
 // EncodedImageFormat holds the type of encoding an image was stored with.
-type EncodedImageFormat byte
+type EncodedImageFormat uint8
 
 // Possible values for EncodedImageFormat.
 const (
@@ -40,43 +43,79 @@ const (
 	UnknownEncodedImageFormat EncodedImageFormat = 255
 )
 
-var imageFormatToExtensions = map[EncodedImageFormat][]string{
-	BMP:  {".bmp"},
-	GIF:  {".gif"},
-	ICO:  {".ico"},
-	JPEG: {".jpg", ".jpeg"},
-	PNG:  {".png"},
-	WBMP: {".wbmp"},
-	WEBP: {".webp"},
-	/*
-		The following formats, though supported in theory, fail to work with the cskia builds I've done.
+type imageFormatInfo struct {
+	Extensions []string
+	MimeTypes  []string
+	UTI        string
+	CanWrite   bool
+}
 
-		PKM:  {".pkm"},
-		KTX:  {".ktx"},
-		ASTC: {".astc"},
-		DNG:  {".dng"},
-		HEIF: {".heif", ".heic"},
-	*/
+var knownImageFormats = []*imageFormatInfo{
+	{
+		Extensions: []string{".bmp", ".dib"},
+		MimeTypes:  []string{"image/bmp", "image/x-bmp"},
+		UTI:        "com.microsoft.bmp",
+	},
+	{
+		Extensions: []string{".gif"},
+		MimeTypes:  []string{"image/gif"},
+		UTI:        "com.compuserve.gif",
+	},
+	{
+		Extensions: []string{".ico"},
+		MimeTypes:  []string{"image/x-icon", "image/vnd.microsoft.icon"},
+		UTI:        "com.microsoft.ico",
+	},
+	{
+		Extensions: []string{".jpg", ".jpeg", ".jpe", ".jif", ".jfif", ".jfi"},
+		MimeTypes:  []string{"image/jpeg"},
+		UTI:        "public.jpeg",
+		CanWrite:   true,
+	},
+	{
+		Extensions: []string{".png"},
+		MimeTypes:  []string{"image/png"},
+		UTI:        "public.png",
+		CanWrite:   true,
+	},
+	{
+		Extensions: []string{".wbmp"},
+		MimeTypes:  []string{"image/vnd.wap.wbmp"},
+		UTI:        "com.adobe.wbmp",
+	},
+	{
+		Extensions: []string{".webp"},
+		MimeTypes:  []string{"image/webp"},
+		UTI:        "org.webmproject.webp",
+		CanWrite:   true,
+	},
 }
 
 var (
+	// KnownImageFormatFormats holds the list of known image file formats.
+	KnownImageFormatFormats = make([]EncodedImageFormat, len(knownImageFormats))
 	// KnownImageFormatExtensions holds the list of known image file format extensions.
 	KnownImageFormatExtensions []string
+	mimeTypeToImageFormat      = make(map[string]EncodedImageFormat)
 	extensionToImageFormat     = make(map[string]EncodedImageFormat)
 )
 
 func init() {
-	for k, v := range imageFormatToExtensions {
-		for _, one := range v {
-			extensionToImageFormat[one] = k
-			KnownImageFormatExtensions = append(KnownImageFormatExtensions, one)
+	for i, one := range knownImageFormats {
+		KnownImageFormatFormats[i] = EncodedImageFormat(i)
+		for _, ext := range one.Extensions {
+			extensionToImageFormat[ext] = EncodedImageFormat(i)
+			KnownImageFormatExtensions = append(KnownImageFormatExtensions, ext)
+		}
+		for _, mimeType := range one.MimeTypes {
+			mimeTypeToImageFormat[mimeType] = EncodedImageFormat(i)
 		}
 	}
 }
 
 func (e EncodedImageFormat) String() string {
-	if s, ok := imageFormatToExtensions[e]; ok {
-		return s[0][1:]
+	if e < knownEncodedImageFormatCount {
+		return knownImageFormats[e].Extensions[0][1:]
 	}
 	return "unknown format"
 }
@@ -88,29 +127,75 @@ func (e EncodedImageFormat) CanRead() bool {
 
 // CanWrite returns true if the format can be written.
 func (e EncodedImageFormat) CanWrite() bool {
-	return e == JPEG || e == PNG || e == WEBP
+	if e < knownEncodedImageFormatCount {
+		return knownImageFormats[e].CanWrite
+	}
+	return false
 }
 
 // Extensions returns the list of valid extensions for the format. An unknown / invalid format will return nil.
 func (e EncodedImageFormat) Extensions() []string {
-	return imageFormatToExtensions[e]
+	if e < knownEncodedImageFormatCount {
+		return knownImageFormats[e].Extensions
+	}
+	return nil
 }
 
-// Extension returns the primary extension for the format. An unknown / invalid format will return "\x00invalid".
+// Extension returns the primary extension for the format. An unknown / invalid format will return InvalidImageFormatStr.
 func (e EncodedImageFormat) Extension() string {
-	if s, ok := imageFormatToExtensions[e]; ok {
-		return s[0]
+	if e < knownEncodedImageFormatCount {
+		return knownImageFormats[e].Extensions[0]
 	}
-	return "\x00invalid"
+	return InvalidImageFormatStr
+}
+
+// MimeTypes returns the list of valid mime types for the format. An unknown / invalid format will return nil.
+func (e EncodedImageFormat) MimeTypes() []string {
+	if e < knownEncodedImageFormatCount {
+		return knownImageFormats[e].MimeTypes
+	}
+	return nil
+}
+
+// MimeType returns the primary mime type for the format. An unknown / invalid format will return InvalidImageFormatStr.
+func (e EncodedImageFormat) MimeType() string {
+	if e < knownEncodedImageFormatCount {
+		return knownImageFormats[e].MimeTypes[0]
+	}
+	return InvalidImageFormatStr
+}
+
+// UTI returns the uniform type identifier for the format. An unknown / invalid format will return
+// InvalidImageFormatStr.
+func (e EncodedImageFormat) UTI() string {
+	if e < knownEncodedImageFormatCount {
+		return knownImageFormats[e].UTI
+	}
+	return InvalidImageFormatStr
 }
 
 // EncodedImageFormatForPath returns the EncodedImageFormat associated with the extension of the given path.
 func EncodedImageFormatForPath(p string) EncodedImageFormat {
-	e, ok := extensionToImageFormat[strings.ToLower(path.Ext(p))]
-	if !ok {
-		return UnknownEncodedImageFormat
+	return EncodedImageFormatForExtension(path.Ext(p))
+}
+
+// EncodedImageFormatForExtension returns the EncodedImageFormat associated with the extension.
+func EncodedImageFormatForExtension(ext string) EncodedImageFormat {
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
 	}
-	return e
+	if e, ok := extensionToImageFormat[strings.ToLower(ext)]; ok {
+		return e
+	}
+	return UnknownEncodedImageFormat
+}
+
+// EncodedImageFormatForMimeType returns the EncodedImageFormat associated with the mime type.
+func EncodedImageFormatForMimeType(mimeType string) EncodedImageFormat {
+	if e, ok := mimeTypeToImageFormat[strings.ToLower(mimeType)]; ok {
+		return e
+	}
+	return UnknownEncodedImageFormat
 }
 
 // DistillImageSpecFor distills a file path or URL string into one that likely has an image we can read, or an empty
