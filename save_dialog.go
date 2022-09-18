@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -45,9 +44,9 @@ func NewSaveDialog() SaveDialog {
 
 // ValidateSaveFilePath ensures the given path is ok to be used to save a file. If requiredExtension isn't empty, this
 // function will ensure filePath ends with that extension. If the resulting file already exists, the user will be
-// prompted to verify they intend to overwrite the destination. If approved, the file will be removed. On platforms that
-// prompt for file overwrite in the native dialog, this method will not prompt the user again unless forcePrompt is
-// true, which can be useful if the path in question did not come from a file dialog.
+// prompted to verify they intend to overwrite the destination. On platforms that prompt for file overwrite in the
+// native dialog, this method will not prompt the user again unless forcePrompt is true, which can be useful if the path
+// in question did not come from a file dialog.
 func ValidateSaveFilePath(filePath, requiredExtension string, forcePrompt bool) (revisedPath string, ok bool) {
 	revisedPath = filePath
 	if requiredExtension != "" {
@@ -63,10 +62,6 @@ func ValidateSaveFilePath(filePath, requiredExtension string, forcePrompt bool) 
 			if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), revisedPath); result != ModalResponseOK {
 				return "", false
 			}
-		}
-		if err := os.Remove(revisedPath); err != nil {
-			ErrorDialogWithError(i18n.Text("Unable to remove ")+fs.BaseName(revisedPath), err)
-			return "", false
 		}
 	}
 	return revisedPath, true
