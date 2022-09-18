@@ -77,7 +77,14 @@ func (d *fileDialog) RunModal() bool {
 	dlg.Window().SetTitle(dialogTitle)
 	d.dialog = dlg
 	d.dialog.Button(ModalResponseOK).SetEnabled(false)
-	return dlg.RunModal() == ModalResponseOK
+	if dlg.RunModal() == ModalResponseOK {
+		if !d.forOpen {
+			_, ok := ValidateSaveFilePath(d.Path(), "", true)
+			return ok
+		}
+		return true
+	}
+	return false
 }
 
 func (d *fileDialog) createContent() *Panel {
@@ -175,22 +182,23 @@ func (d *fileDialog) createContent() *Panel {
 func (d *fileDialog) rebuildParentDirs() {
 	d.parentDirPopup.RemoveAllItems()
 	dir := d.currentDir
+	vol := filepath.VolumeName(dir)
 	for {
 		parent, f := filepath.Split(dir)
-		if dir == pathSeparator {
+		if dir == pathSeparator || dir == vol {
 			f = pathSeparator
 		}
 		d.parentDirPopup.AddItem(&parentDirItem{
 			name: f,
 			path: dir,
 		})
-		if dir == pathSeparator {
+		if dir == pathSeparator || dir == vol {
 			break
 		}
-		if parent != pathSeparator {
+		if parent != pathSeparator && parent != vol {
 			parent = strings.TrimRight(parent, pathSeparator)
 		}
-		if parent == "" {
+		if parent == "" || parent == vol {
 			break
 		}
 		dir = parent
@@ -289,10 +297,10 @@ func (d *fileDialog) fileNameFieldModified() {
 				}
 			}
 			if !found {
-				text += "." + d.readable[0]
+				text = fs.TrimExtension(text) + "." + d.readable[0]
 			}
 		default:
-			text += "." + d.currentExt
+			text = fs.TrimExtension(text) + "." + d.currentExt
 		}
 	}
 	d.paths = []string{filepath.Join(d.currentDir, text)}
