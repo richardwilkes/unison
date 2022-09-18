@@ -12,10 +12,8 @@ package unison
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
-	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xio/fs"
 )
@@ -51,24 +49,25 @@ func NewSaveDialog() SaveDialog {
 // prompt for file overwrite in the native dialog, this method will not prompt the user again unless forcePrompt is
 // true, which can be useful if the path in question did not come from a file dialog.
 func ValidateSaveFilePath(filePath, requiredExtension string, forcePrompt bool) (revisedPath string, ok bool) {
+	revisedPath = filePath
 	if requiredExtension != "" {
 		if !strings.HasPrefix(requiredExtension, ".") {
 			requiredExtension = "." + requiredExtension
 		}
-		if filepath.Ext(filePath) != requiredExtension {
-			filePath = fs.TrimExtension(filePath) + requiredExtension
+		if filepath.Ext(revisedPath) != requiredExtension {
+			revisedPath = fs.TrimExtension(revisedPath) + requiredExtension
 		}
 	}
-	if fs.FileExists(filePath) {
-		if forcePrompt || runtime.GOOS != toolbox.MacOS {
-			if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), filePath); result != ModalResponseOK {
+	if fs.FileExists(revisedPath) {
+		if forcePrompt || !fs.FileExists(filePath) { // forced or the native dialog didn't see it because the extension wasn't applied
+			if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), revisedPath); result != ModalResponseOK {
 				return "", false
 			}
 		}
-		if err := os.Remove(filePath); err != nil {
-			ErrorDialogWithError(i18n.Text("Unable to remove ")+fs.BaseName(filePath), err)
+		if err := os.Remove(revisedPath); err != nil {
+			ErrorDialogWithError(i18n.Text("Unable to remove ")+fs.BaseName(revisedPath), err)
 			return "", false
 		}
 	}
-	return filePath, true
+	return revisedPath, true
 }
