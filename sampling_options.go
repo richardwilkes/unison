@@ -56,6 +56,7 @@ func CatmullRomResampler() CubicResampler {
 
 // SamplingOptions controls how images are sampled.
 type SamplingOptions struct {
+	MaxAniso       int32
 	UseCubic       bool
 	_              [3]bool
 	CubicResampler CubicResampler
