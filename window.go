@@ -659,7 +659,22 @@ func (w *Window) SetContentRect(rect Rect) {
 		rect.Height *= sy
 	}
 	w.wnd.SetPos(int(rect.X), int(rect.Y))
-	w.wnd.SetSize(int(rect.Width), int(rect.Height))
+	tx := int(rect.Width)
+	ty := int(rect.Height)
+	w.wnd.SetSize(tx, ty)
+	if runtime.GOOS == toolbox.LinuxOS {
+		// X11 responds asynchronously to window positioning and sizing requests. Due to this, we need to wait for it to
+		// catch up, or subsequent code that is relying on the coordinates being updated will get the wrong information.
+		// We do put a cap on the amount of time we are willing to wait, however, to ensure we don't hang should
+		// something go wrong.
+		for i := 0; i < 50; i++ {
+			time.Sleep(time.Millisecond)
+			nx, ny := w.wnd.GetSize()
+			if nx == tx && ny == ty {
+				break
+			}
+		}
+	}
 }
 
 // Pack sets the window's content size to match the preferred size of the root panel.
