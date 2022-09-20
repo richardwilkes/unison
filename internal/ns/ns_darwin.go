@@ -187,12 +187,6 @@ CFStringRef menuTitle(NSMenuRef m) {
 bool menuItemValidateCallback(NSMenuItemRef item);
 void menuItemHandleCallback(NSMenuItemRef item);
 
-#if !defined(MAC_OS_X_VERSION_10_14) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_14
-@protocol NSMenuItemValidation <NSObject>
-- (BOOL)validateMenuItem:(NSMenuItem *)menuItem;
-@end
-#endif
-
 @interface MenuItemDelegate : NSObject<NSMenuItemValidation>
 @end
 
