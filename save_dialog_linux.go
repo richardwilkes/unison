@@ -81,7 +81,7 @@ func (d *linuxFileDialog) runZenity(zenity string) bool {
 	cmd := exec.Command(zenity, "--file-selection", "--save", "--confirm-overwrite",
 		"--filename="+d.InitialDirectory()+"/untitled"+ext)
 	if len(allowed) != 0 {
-		cmd.Args = append(cmd.Args, strings.Join(allowed, " "))
+		cmd.Args = append(cmd.Args, "-file-filter="+strings.Join(allowed, " "))
 	}
 	return d.runCmd(cmd)
 }
