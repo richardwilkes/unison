@@ -10,10 +10,14 @@
 package unison
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 type linuxFileDialog struct {
@@ -79,7 +83,11 @@ func (d *linuxFileDialog) runKDialog(kdialog string) bool {
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
 	}
 	out, err := cmd.Output()
-	if err != nil && !errors.Is(err, *exec.ExitError) {
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return false
+		}
 		jot.Error(errs.Wrap(err))
 		return false
 	}
