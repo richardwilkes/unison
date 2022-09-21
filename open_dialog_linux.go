@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/log/jot"
 )
 
@@ -121,7 +122,7 @@ func (d *linuxOpenDialog) runKDialog(kdialog string) bool {
 	if d.CanChooseFiles() {
 		allowed := d.prepExt()
 		if len(allowed) != 0 {
-			cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", strings.Join(allowed, " ")))
+			cmd.Args = append(cmd.Args, fmt.Sprintf(i18n.Text("Readable Files (%s)"), strings.Join(allowed, " ")))
 		}
 	}
 	return d.runModal(cmd, "\n")
