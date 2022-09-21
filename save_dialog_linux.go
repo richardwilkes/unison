@@ -21,31 +21,35 @@ import (
 	"github.com/richardwilkes/toolbox/log/jot"
 )
 
-type linuxFileDialog struct {
+type linuxSaveDialog struct {
 	fallback SaveDialog
 }
 
 func platformNewSaveDialog() SaveDialog {
-	return &linuxFileDialog{fallback: NewCommonSaveDialog()}
+	return &linuxSaveDialog{fallback: NewCommonSaveDialog()}
 }
 
-func (d *linuxFileDialog) InitialDirectory() string {
+func (d *linuxSaveDialog) InitialDirectory() string {
 	return d.fallback.InitialDirectory()
 }
 
-func (d *linuxFileDialog) SetInitialDirectory(dir string) {
+func (d *linuxSaveDialog) SetInitialDirectory(dir string) {
 	d.fallback.SetInitialDirectory(dir)
 }
 
-func (d *linuxFileDialog) AllowedExtensions() []string {
+func (d *linuxSaveDialog) AllowedExtensions() []string {
 	return d.fallback.AllowedExtensions()
 }
 
-func (d *linuxFileDialog) SetAllowedExtensions(extensions ...string) {
+func (d *linuxSaveDialog) SetAllowedExtensions(extensions ...string) {
 	d.fallback.SetAllowedExtensions(extensions...)
 }
 
-func (d *linuxFileDialog) RunModal() bool {
+func (d *linuxSaveDialog) Path() string {
+	return d.fallback.Path()
+}
+
+func (d *linuxSaveDialog) RunModal() bool {
 	kdialog, err := exec.LookPath("kdialog")
 	if err != nil {
 		kdialog = ""
@@ -67,27 +71,27 @@ func (d *linuxFileDialog) RunModal() bool {
 	return d.fallback.RunModal()
 }
 
-func (d *linuxFileDialog) runKDialog(kdialog string) bool {
+func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
 	ext, allowed := d.prepExt()
 	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/untitled"+ext)
 	if len(allowed) != 0 {
 		list := strings.Join(allowed, " ")
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
 	}
-	return d.runModal(cmd)
+	return d.runModal(cmd, "\n")
 }
 
-func (d *linuxFileDialog) runZenity(zenity string) bool {
+func (d *linuxSaveDialog) runZenity(zenity string) bool {
 	ext, allowed := d.prepExt()
 	cmd := exec.Command(zenity, "--file-selection", "--save", "--confirm-overwrite",
 		"--filename="+d.InitialDirectory()+"/untitled"+ext)
 	if len(allowed) != 0 {
 		cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
 	}
-	return d.runModal(cmd)
+	return d.runModal(cmd, "|")
 }
 
-func (d *linuxFileDialog) prepExt() (string, []string) {
+func (d *linuxSaveDialog) prepExt() (string, []string) {
 	ext := ""
 	allowed := d.fallback.AllowedExtensions()
 	if len(allowed) != 0 {
@@ -101,17 +105,17 @@ func (d *linuxFileDialog) prepExt() (string, []string) {
 	return ext, allowed
 }
 
-func (d *linuxFileDialog) runModal(cmd *exec.Cmd) bool {
+func (d *linuxSaveDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
 	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
 	if err != nil {
 		jot.Error(err)
 	}
 	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
-	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd) }, time.Millisecond)
+	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
 	return wnd.RunModal() == ModalResponseOK
 }
 
-func (d *linuxFileDialog) runCmd(wnd *Window, cmd *exec.Cmd) {
+func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 	code := ModalResponseCancel
 	defer func() { InvokeTask(func() { wnd.StopModal(code) }) }()
 	out, err := cmd.Output()
@@ -126,10 +130,6 @@ func (d *linuxFileDialog) runCmd(wnd *Window, cmd *exec.Cmd) {
 	if cmd.ProcessState.ExitCode() != 0 {
 		return
 	}
-	d.fallback.(*fileDialog).paths = strings.Split(string(out), "\n")
+	d.fallback.(*fileDialog).paths = strings.Split(strings.TrimSuffix(string(out), "\n"), splitOn)
 	code = ModalResponseOK
-}
-
-func (d *linuxFileDialog) Path() string {
-	return d.fallback.Path()
 }
