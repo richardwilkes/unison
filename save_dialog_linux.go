@@ -14,8 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 type linuxFileDialog struct {
@@ -81,11 +79,7 @@ func (d *linuxFileDialog) runKDialog(kdialog string) bool {
 		list := strings.Join(allowed, " ")
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
 	}
-	out, err := cmd.Output()
-	if err != nil {
-		jot.Error(err)
-		return false
-	}
+	out, _ := cmd.Output()
 	if cmd.ProcessState.ExitCode() != 0 {
 		return false
 	}
