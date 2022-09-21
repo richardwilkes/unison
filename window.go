@@ -228,46 +228,46 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	})
 	w.wnd.SetCloseCallback(func(_ *glfw.Window) {
-		w.AttemptClose()
+		if w.okToProcess() {
+			w.AttemptClose()
+		}
 	})
 	w.wnd.SetFocusCallback(func(_ *glfw.Window, focused bool) {
 		if focused {
-			if len(modalStack) != 0 {
-				modal := modalStack[len(modalStack)-1]
-				if modal != w {
-					Beep()
-					modal.ToFront()
-					return
-				}
+			if w.okToProcess() {
+				w.gainedFocus()
+			} else {
+				modalStack[len(modalStack)-1].ToFront()
 			}
-			w.gainedFocus()
 		} else {
 			w.lostFocus()
 		}
 	})
 	w.wnd.SetMouseButtonCallback(func(_ *glfw.Window, button glfw.MouseButton, action glfw.Action, mods glfw.ModifierKey) {
-		where := w.MouseLocation()
-		w.lastKeyModifiers = Modifiers(mods)
-		if action == glfw.Press {
-			maxDelay, maxMouseDrift := DoubleClickParameters()
-			now := time.Now()
-			if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
-				xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
-				xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
-				w.lastButtonCount++
-				time.Since(w.lastButtonTime)
-			} else {
-				w.lastButtonCount = 1
-				w.firstButtonLocation = where
+		if w.okToProcess() {
+			where := w.MouseLocation()
+			w.lastKeyModifiers = Modifiers(mods)
+			if action == glfw.Press {
+				maxDelay, maxMouseDrift := DoubleClickParameters()
+				now := time.Now()
+				if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
+					xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
+					xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
+					w.lastButtonCount++
+					time.Since(w.lastButtonTime)
+				} else {
+					w.lastButtonCount = 1
+					w.firstButtonLocation = where
+				}
+				w.lastButton = int(button)
+				w.lastButtonTime = now
+				w.inMouseDown = true
+				w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
+			} else if w.inMouseDown {
+				w.lastButton = int(button)
+				w.inMouseDown = false
+				w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
 			}
-			w.lastButton = int(button)
-			w.lastButtonTime = now
-			w.inMouseDown = true
-			w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
-		} else if w.inMouseDown {
-			w.lastButton = int(button)
-			w.inMouseDown = false
-			w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
 		}
 	})
 	w.wnd.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {
@@ -289,23 +289,29 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		w.mouseWheel(w.MouseLocation(), Point{X: float32(xoff), Y: float32(yoff)}, w.lastKeyModifiers)
 	})
 	w.wnd.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, code int, action glfw.Action, mods glfw.ModifierKey) {
-		w.lastKeyModifiers = Modifiers(mods)
-		switch action {
-		case glfw.Press:
-			w.keyDown(KeyCode(key), Modifiers(mods), false)
-		case glfw.Release:
-			w.keyUp(KeyCode(key), Modifiers(mods))
-		case glfw.Repeat:
-			w.keyDown(KeyCode(key), Modifiers(mods), true)
+		if w.okToProcess() {
+			w.lastKeyModifiers = Modifiers(mods)
+			switch action {
+			case glfw.Press:
+				w.keyDown(KeyCode(key), Modifiers(mods), false)
+			case glfw.Release:
+				w.keyUp(KeyCode(key), Modifiers(mods))
+			case glfw.Repeat:
+				w.keyDown(KeyCode(key), Modifiers(mods), true)
+			}
 		}
 	})
 	w.wnd.SetCharCallback(func(_ *glfw.Window, ch rune) {
-		w.runeTyped(ch)
+		if w.okToProcess() {
+			w.runeTyped(ch)
+		}
 	})
 	// Real drag & drop support can't really be added due to the way glfw has already hooked in for their primitive
 	// file drop capability... so we'll just live with that for now.
 	w.wnd.SetDropCallback(func(_ *glfw.Window, files []string) {
-		w.fileDrop(files)
+		if w.okToProcess() {
+			w.fileDrop(files)
+		}
 	})
 	w.valid = true
 	windowList = append(windowList, w)
@@ -321,6 +327,14 @@ func glfwEnabled(enabled bool) int {
 		return glfw.True
 	}
 	return glfw.False
+}
+
+func (w *Window) okToProcess() bool {
+	if len(modalStack) == 0 || modalStack[len(modalStack)-1] == w {
+		return true
+	}
+	Beep()
+	return false
 }
 
 // UndoManager returns the UndoManager for the currently focused panel in the Window. May return nil.
