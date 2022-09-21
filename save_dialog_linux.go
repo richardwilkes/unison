@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -73,7 +74,7 @@ func (d *linuxFileDialog) runKDialog(kdialog string) bool {
 		list := strings.Join(allowed, " ")
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
 	}
-	return d.runCmd(cmd)
+	return d.runModal(cmd)
 }
 
 func (d *linuxFileDialog) runZenity(zenity string) bool {
@@ -83,7 +84,7 @@ func (d *linuxFileDialog) runZenity(zenity string) bool {
 	if len(allowed) != 0 {
 		cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
 	}
-	return d.runCmd(cmd)
+	return d.runModal(cmd)
 }
 
 func (d *linuxFileDialog) prepExt() (string, []string) {
@@ -100,21 +101,33 @@ func (d *linuxFileDialog) prepExt() (string, []string) {
 	return ext, allowed
 }
 
-func (d *linuxFileDialog) runCmd(cmd *exec.Cmd) bool {
+func (d *linuxFileDialog) runModal(cmd *exec.Cmd) bool {
+	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
+	if err != nil {
+		jot.Error(err)
+	}
+	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
+	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd) }, time.Millisecond)
+	return wnd.RunModal() == ModalResponseOK
+}
+
+func (d *linuxFileDialog) runCmd(wnd *Window, cmd *exec.Cmd) {
+	code := ModalResponseCancel
+	defer func() { InvokeTask(func() { wnd.StopModal(code) }) }()
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return false
+			return
 		}
 		jot.Error(errs.Wrap(err))
-		return false
+		return
 	}
 	if cmd.ProcessState.ExitCode() != 0 {
-		return false
+		return
 	}
 	d.fallback.(*fileDialog).paths = strings.Split(string(out), "\n")
-	return true
+	code = ModalResponseOK
 }
 
 func (d *linuxFileDialog) Path() string {
