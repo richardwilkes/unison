@@ -9,6 +9,127 @@
 
 package unison
 
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/log/jot"
+)
+
+type linuxSaveDialog struct {
+	fallback SaveDialog
+}
+
 func platformNewSaveDialog() SaveDialog {
-	return NewCommonSaveDialog()
+	return &linuxSaveDialog{fallback: NewCommonSaveDialog()}
+}
+
+func (d *linuxSaveDialog) InitialDirectory() string {
+	return d.fallback.InitialDirectory()
+}
+
+func (d *linuxSaveDialog) SetInitialDirectory(dir string) {
+	d.fallback.SetInitialDirectory(dir)
+}
+
+func (d *linuxSaveDialog) AllowedExtensions() []string {
+	return d.fallback.AllowedExtensions()
+}
+
+func (d *linuxSaveDialog) SetAllowedExtensions(extensions ...string) {
+	d.fallback.SetAllowedExtensions(extensions...)
+}
+
+func (d *linuxSaveDialog) Path() string {
+	return d.fallback.Path()
+}
+
+func (d *linuxSaveDialog) RunModal() bool {
+	kdialog, err := exec.LookPath("kdialog")
+	if err != nil {
+		kdialog = ""
+	}
+	if os.Getenv("KDE_FULL_SESSION") != "" && kdialog != "" {
+		return d.runKDialog(kdialog)
+	}
+
+	var zenity string
+	if zenity, err = exec.LookPath("zenity"); err != nil {
+		zenity = ""
+	}
+	if zenity != "" {
+		return d.runZenity(zenity)
+	}
+	if kdialog != "" {
+		return d.runKDialog(kdialog)
+	}
+	return d.fallback.RunModal()
+}
+
+func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
+	ext, allowed := d.prepExt()
+	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/untitled"+ext)
+	if len(allowed) != 0 {
+		list := strings.Join(allowed, " ")
+		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
+	}
+	return d.runModal(cmd, "\n")
+}
+
+func (d *linuxSaveDialog) runZenity(zenity string) bool {
+	ext, allowed := d.prepExt()
+	cmd := exec.Command(zenity, "--file-selection", "--save", "--confirm-overwrite",
+		"--filename="+d.InitialDirectory()+"/untitled"+ext)
+	if len(allowed) != 0 {
+		cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
+	}
+	return d.runModal(cmd, "|")
+}
+
+func (d *linuxSaveDialog) prepExt() (string, []string) {
+	ext := ""
+	allowed := d.fallback.AllowedExtensions()
+	if len(allowed) != 0 {
+		ext = "." + allowed[0]
+		revised := make([]string, len(allowed))
+		for i, one := range allowed {
+			revised[i] = "*." + one
+		}
+		allowed = revised
+	}
+	return ext, allowed
+}
+
+func (d *linuxSaveDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
+	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
+	if err != nil {
+		jot.Error(err)
+	}
+	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
+	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
+	return wnd.RunModal() == ModalResponseOK
+}
+
+func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
+	code := ModalResponseCancel
+	defer func() { InvokeTask(func() { wnd.StopModal(code) }) }()
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return
+		}
+		jot.Error(errs.Wrap(err))
+		return
+	}
+	if cmd.ProcessState.ExitCode() != 0 {
+		return
+	}
+	d.fallback.(*fileDialog).paths = strings.Split(strings.TrimSuffix(string(out), "\n"), splitOn)
+	code = ModalResponseOK
 }
