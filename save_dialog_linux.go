@@ -69,11 +69,11 @@ func (d *linuxFileDialog) runKDialog(kdialog string) bool {
 	ext := ""
 	allowed := d.fallback.AllowedExtensions()
 	if len(allowed) != 0 {
+		ext = "." + allowed[0]
 		revised := make([]string, len(allowed))
 		for i, one := range allowed {
 			revised[i] = "*." + one
 		}
-		ext = revised[0]
 		allowed = revised
 	}
 	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/untitled"+ext)
