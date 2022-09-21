@@ -52,9 +52,3 @@ There are a large number of Go source files in a single, top-level package. Unis
 experience code tends to need to have its tentacles in many places, and the logical separations I made kept hindering
 the ability to do things. Ultimately, I made the decision to collapse nearly everything into a single package to
 simplify development and greatly reduce the overall complexity of things.
-
-#### Future Plans
-
-- Improve the generic file open and save dialogs (i.e. the ones that are used when there is no platform-specific
-  version) to make them both more functional and better behaving.
-- Improve the color well dialog to add additional ways to specify colors as well as adding a way to set gradients.
