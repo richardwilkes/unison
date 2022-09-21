@@ -18,7 +18,6 @@ import (
 
 type linuxFileDialog struct {
 	fallback SaveDialog
-	results  []string
 }
 
 func platformNewSaveDialog() SaveDialog {
@@ -79,7 +78,11 @@ func (d *linuxFileDialog) runKDialog(kdialog string) bool {
 		list := strings.Join(allowed, " ")
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
 	}
-	out, _ := cmd.Output()
+	out, err := cmd.Output()
+	if err != nil && !errors.Is(err, *exec.ExitError) {
+		jot.Error(errs.Wrap(err))
+		return false
+	}
 	if cmd.ProcessState.ExitCode() != 0 {
 		return false
 	}
