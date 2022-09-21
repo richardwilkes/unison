@@ -397,7 +397,7 @@ func (w *Window) RunModal() int {
 		w.Dispose()
 	}()
 	active := ActiveWindow()
-	w.modalResultCode = -1 // Can't use dialog.ModalResponseDiscard because of package import cycles
+	w.modalResultCode = ModalResponseDiscard
 	w.inModal = true
 	modalStack = append(modalStack, w)
 	w.ToFront()
@@ -473,7 +473,7 @@ func (w *Window) Dispose() {
 		w.WillCloseCallback = nil
 	}
 	if w.inModal {
-		w.StopModal(-1) // Can't use dialog.ModalResponseDiscard because of package import cycles
+		w.StopModal(ModalResponseDiscard)
 	}
 	if w.root.contentPanel != nil {
 		w.root.contentPanel.RemoveFromParent()
