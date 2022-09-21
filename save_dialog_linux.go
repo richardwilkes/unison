@@ -67,6 +67,26 @@ func (d *linuxFileDialog) RunModal() bool {
 }
 
 func (d *linuxFileDialog) runKDialog(kdialog string) bool {
+	ext, allowed := d.prepExt()
+	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/untitled"+ext)
+	if len(allowed) != 0 {
+		list := strings.Join(allowed, " ")
+		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
+	}
+	return d.runCmd(cmd)
+}
+
+func (d *linuxFileDialog) runZenity(zenity string) bool {
+	ext, allowed := d.prepExt()
+	cmd := exec.Command(zenity, "--file-selection", "--save", "--confirm-overwrite",
+		"--filename="+d.InitialDirectory()+"/untitled"+ext)
+	if len(allowed) != 0 {
+		cmd.Args = append(cmd.Args, strings.Join(allowed, " "))
+	}
+	return d.runCmd(cmd)
+}
+
+func (d *linuxFileDialog) prepExt() (string, []string) {
 	ext := ""
 	allowed := d.fallback.AllowedExtensions()
 	if len(allowed) != 0 {
@@ -77,11 +97,10 @@ func (d *linuxFileDialog) runKDialog(kdialog string) bool {
 		}
 		allowed = revised
 	}
-	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/untitled"+ext)
-	if len(allowed) != 0 {
-		list := strings.Join(allowed, " ")
-		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
-	}
+	return ext, allowed
+}
+
+func (d *linuxFileDialog) runCmd(cmd *exec.Cmd) bool {
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -95,10 +114,6 @@ func (d *linuxFileDialog) runKDialog(kdialog string) bool {
 		return false
 	}
 	d.fallback.(*fileDialog).paths = strings.Split(string(out), "\n")
-	return true
-}
-
-func (d *linuxFileDialog) runZenity(zenity string) bool {
 	return true
 }
 
