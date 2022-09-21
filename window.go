@@ -244,30 +244,31 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	})
 	w.wnd.SetMouseButtonCallback(func(_ *glfw.Window, button glfw.MouseButton, action glfw.Action, mods glfw.ModifierKey) {
-		if w.okToProcess() {
-			where := w.MouseLocation()
-			w.lastKeyModifiers = Modifiers(mods)
-			if action == glfw.Press {
-				maxDelay, maxMouseDrift := DoubleClickParameters()
-				now := time.Now()
-				if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
-					xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
-					xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
-					w.lastButtonCount++
-					time.Since(w.lastButtonTime)
-				} else {
-					w.lastButtonCount = 1
-					w.firstButtonLocation = where
-				}
-				w.lastButton = int(button)
-				w.lastButtonTime = now
-				w.inMouseDown = true
-				w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
-			} else if w.inMouseDown {
-				w.lastButton = int(button)
-				w.inMouseDown = false
-				w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
+		w.lastKeyModifiers = Modifiers(mods)
+		if !w.okToProcess() {
+			return
+		}
+		where := w.MouseLocation()
+		if action == glfw.Press {
+			maxDelay, maxMouseDrift := DoubleClickParameters()
+			now := time.Now()
+			if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
+				xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
+				xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
+				w.lastButtonCount++
+				time.Since(w.lastButtonTime)
+			} else {
+				w.lastButtonCount = 1
+				w.firstButtonLocation = where
 			}
+			w.lastButton = int(button)
+			w.lastButtonTime = now
+			w.inMouseDown = true
+			w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
+		} else if w.inMouseDown {
+			w.lastButton = int(button)
+			w.inMouseDown = false
+			w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
 		}
 	})
 	w.wnd.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {
@@ -330,11 +331,7 @@ func glfwEnabled(enabled bool) int {
 }
 
 func (w *Window) okToProcess() bool {
-	if len(modalStack) == 0 || modalStack[len(modalStack)-1] == w {
-		return true
-	}
-	Beep()
-	return false
+	return len(modalStack) == 0 || modalStack[len(modalStack)-1] == w
 }
 
 // UndoManager returns the UndoManager for the currently focused panel in the Window. May return nil.
@@ -390,6 +387,7 @@ func (w *Window) gainedFocus() {
 }
 
 func (w *Window) lostFocus() {
+	w.restoreHiddenCursor()
 	w.focused = false
 	w.ClearTooltip()
 	if w.focus != nil {
@@ -406,20 +404,23 @@ func (w *Window) lostFocus() {
 // RunModal displays and brings this window to the front, the runs a modal event loop until StopModal is called.
 // Disposes the window before it returns.
 func (w *Window) RunModal() int {
+	active := ActiveWindow()
+	if active != nil {
+		active.restoreHiddenCursor()
+	}
 	defer func() {
 		w.removeFromModalStack()
 		w.Dispose()
+		if active != nil && active.IsVisible() {
+			active.ToFront()
+		}
 	}()
-	active := ActiveWindow()
 	w.modalResultCode = ModalResponseDiscard
 	w.inModal = true
 	modalStack = append(modalStack, w)
 	w.ToFront()
 	for w.inModal {
 		processEvents()
-	}
-	if active != nil && active.IsVisible() {
-		active.ToFront()
 	}
 	return w.modalResultCode
 }

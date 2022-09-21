@@ -66,9 +66,13 @@ func (d *macSaveDialog) Path() string {
 
 func (d *macSaveDialog) RunModal() bool {
 	active := ActiveWindow()
-	result := d.dialog.RunModal()
-	if active != nil && active.IsVisible() {
-		active.ToFront()
+	if active != nil {
+		active.restoreHiddenCursor()
 	}
-	return result
+	defer func() {
+		if active != nil && active.IsVisible() {
+			active.ToFront()
+		}
+	}()
+	return d.dialog.RunModal()
 }

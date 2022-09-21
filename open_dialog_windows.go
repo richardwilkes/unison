@@ -30,6 +30,15 @@ func platformNewOpenDialog() OpenDialog {
 }
 
 func (d *winOpenDialog) RunModal() bool {
+	active := ActiveWindow()
+	if active != nil {
+		active.restoreHiddenCursor()
+	}
+	defer func() {
+		if active != nil && active.IsVisible() {
+			active.ToFront()
+		}
+	}()
 	var fileNameBuffer [64 * 1024]uint16
 	filter := createExtensionFilter(d.extensions)
 	initialDir := utf16.Encode([]rune(d.initialDir + "\x00"))
