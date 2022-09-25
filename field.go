@@ -331,7 +331,11 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 					t.Draw(canvas, left, textBaseLine)
 					left += t.Width()
 				}
-				t := NewTextFromRunes(f.obscureIfNeeded(f.runes[selStart:selEnd]), &TextDecoration{
+				e := selEnd
+				if end == selEnd && f.endsWithLineFeed[i] {
+					e--
+				}
+				t := NewTextFromRunes(f.obscureIfNeeded(f.runes[selStart:e]), &TextDecoration{
 					Font:  f.Font,
 					Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
 				})
@@ -343,7 +347,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, Fill))
 				t.Draw(canvas, left, textBaseLine)
 				if selEnd < end {
-					e := end
+					e = end
 					if f.endsWithLineFeed[i] {
 						e--
 					}
