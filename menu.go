@@ -10,8 +10,6 @@
 package unison
 
 import (
-	"time"
-
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
@@ -74,12 +72,11 @@ type menuPanel struct {
 }
 
 type menu struct {
-	factory           *inWindowMenuFactory
-	titleItem         *menuItem
-	items             []*menuItem
-	updater           func(Menu)
-	lastUpdaterForKey time.Time
-	popupPanel        *menuPanel
+	factory    *inWindowMenuFactory
+	titleItem  *menuItem
+	items      []*menuItem
+	updater    func(Menu)
+	popupPanel *menuPanel
 }
 
 func (m *menu) Factory() MenuFactory {
@@ -328,14 +325,10 @@ func (m *menu) preMouseDown(w *Window, where Point) bool {
 }
 
 func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
-	if m.updater != nil {
-		// We only call the updater for key presses if we haven't recently processed a key press for this menu. This is
-		// because the updater may be doing relatively expensive operations to setup the menu and we don't want to
-		// impact every key a user types.
-		if time.Since(m.lastUpdaterForKey) > time.Second {
-			m.updater(m)
-		}
-		m.lastUpdaterForKey = time.Now()
+	if m.updater != nil && mod.OSMenuCmdModifierDown() {
+		// We only call the updater for key presses with the cmd modifier down. This is because the updater may be doing
+		// relatively expensive operations to setup the menu and we don't want to impact every key a user types.
+		m.updater(m)
 	}
 	for _, mi := range m.items {
 		if !mi.keyBinding.KeyCode.ShouldOmit() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mod {
