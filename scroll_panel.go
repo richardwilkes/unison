@@ -13,7 +13,11 @@ import (
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
-var _ Layout = &ScrollPanel{}
+var (
+	_ Layout = &ScrollPanel{}
+	// MouseWheelMultiplier is used by the default theme to multiply incoming mouse wheel event deltas.
+	MouseWheelMultiplier = float32(16)
+)
 
 // Possible ways to handle auto-sizing of the scroll content's preferred size.
 const (
@@ -30,13 +34,13 @@ type Behavior uint8
 // alter existing ScrollPanels, but will alter any ScrollPanels created in the future.
 var DefaultScrollPanelTheme = ScrollPanelTheme{
 	BackgroundInk:        BackgroundColor,
-	MouseWheelMultiplier: 16,
+	MouseWheelMultiplier: func() float32 { return MouseWheelMultiplier },
 }
 
 // ScrollPanelTheme holds theming data for a ScrollPanel.
 type ScrollPanelTheme struct {
 	BackgroundInk        Ink
-	MouseWheelMultiplier float32
+	MouseWheelMultiplier func() float32
 }
 
 // ScrollPanel provides a scrollable area.
@@ -227,17 +231,18 @@ func (s *ScrollPanel) Sync() {
 
 // DefaultMouseWheel provides the default mouse wheel handling.
 func (s *ScrollPanel) DefaultMouseWheel(where, delta Point, mod Modifiers) bool {
+	multiplier := s.MouseWheelMultiplier()
 	if delta.Y != 0 {
 		dy := delta.Y
-		if s.MouseWheelMultiplier > 0 {
-			dy *= s.MouseWheelMultiplier
+		if multiplier > 0 {
+			dy *= multiplier
 		}
 		s.verticalBar.SetRange(s.verticalBar.Value()-dy, s.verticalBar.Extent(), s.verticalBar.Max())
 	}
 	if delta.X != 0 {
 		dx := delta.X
-		if s.MouseWheelMultiplier > 0 {
-			dx *= s.MouseWheelMultiplier
+		if multiplier > 0 {
+			dx *= multiplier
 		}
 		s.horizontalBar.SetRange(s.horizontalBar.Value()-dx, s.horizontalBar.Extent(), s.horizontalBar.Max())
 	}
