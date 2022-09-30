@@ -54,7 +54,7 @@ var DefaultTableTheme = TableTheme{
 	OnBackgroundInk:        OnContentColor,
 	BandingInk:             BandingColor,
 	OnBandingInk:           OnBandingColor,
-	DividerInk:             DividerColor,
+	InteriorDividerInk:     InteriorDividerColor,
 	SelectionInk:           SelectionColor,
 	OnSelectionInk:         OnSelectionColor,
 	InactiveSelectionInk:   InactiveSelectionColor,
@@ -76,7 +76,7 @@ type TableTheme struct {
 	OnBackgroundInk        Ink
 	BandingInk             Ink
 	OnBandingInk           Ink
-	DividerInk             Ink
+	InteriorDividerInk     Ink
 	SelectionInk           Ink
 	OnSelectionInk         Ink
 	InactiveSelectionInk   Ink
@@ -234,7 +234,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect.Y += t.rowCache[r].height
 		if t.ShowRowDivider && r != endBeforeRow-1 {
 			rect.Height = 1
-			canvas.DrawRect(rect, t.DividerInk.Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, t.InteriorDividerInk.Paint(canvas, rect, Fill))
 			rect.Y++
 		}
 	}
@@ -245,7 +245,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(t.ColumnSizes)-1; c++ {
 			rect.X += t.ColumnSizes[c].Current
-			canvas.DrawRect(rect, t.DividerInk.Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, t.InteriorDividerInk.Paint(canvas, rect, Fill))
 			rect.X++
 		}
 	}

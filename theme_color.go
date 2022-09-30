@@ -16,13 +16,14 @@ var (
 
 // Pre-defined theme colors.
 var (
-	BackgroundColor          = &ThemeColor{Light: RGB(238, 238, 238), Dark: RGB(50, 50, 50)}
+	BackgroundColor          = &ThemeColor{Light: RGB(238, 238, 238), Dark: RGB(48, 48, 48)}
 	OnBackgroundColor        = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	ContentColor             = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(32, 32, 32)}
 	OnContentColor           = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	BandingColor             = &ThemeColor{Light: RGB(235, 235, 220), Dark: RGB(42, 42, 42)}
 	OnBandingColor           = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	DividerColor             = &ThemeColor{Light: RGB(192, 192, 192), Dark: RGB(102, 102, 102)}
+	InteriorDividerColor     = &ThemeColor{Light: RGB(216, 216, 216), Dark: RGB(53, 53, 53)}
 	TabFocusedColor          = &ThemeColor{Light: RGB(224, 212, 175), Dark: RGB(68, 102, 0)}
 	OnTabFocusedColor        = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
 	TabCurrentColor          = &ThemeColor{Light: RGB(211, 207, 197), Dark: RGB(41, 61, 0)}

@@ -20,16 +20,16 @@ import (
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
 // alter existing TableHeaders, but will alter any TableHeaders created in the future.
 var DefaultTableHeaderTheme = TableHeaderTheme{
-	BackgroundInk: ControlColor,
-	DividerInk:    DividerColor,
-	HeaderBorder:  NewLineBorder(DividerColor, 0, Insets{Bottom: 1}, false),
+	BackgroundInk:        ControlColor,
+	InteriorDividerColor: InteriorDividerColor,
+	HeaderBorder:         NewLineBorder(InteriorDividerColor, 0, Insets{Bottom: 1}, false),
 }
 
 // TableHeaderTheme holds theming data for a TableHeader.
 type TableHeaderTheme struct {
-	BackgroundInk Ink
-	DividerInk    Ink
-	HeaderBorder  Border
+	BackgroundInk        Ink
+	InteriorDividerColor Ink
+	HeaderBorder         Border
 }
 
 // TableHeader provides a header for a Table.
@@ -157,7 +157,7 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(h.Table.ColumnSizes)-1; c++ {
 			rect.X += h.Table.ColumnSizes[c].Current
-			canvas.DrawRect(rect, h.DividerInk.Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, h.InteriorDividerColor.Paint(canvas, rect, Fill))
 			rect.X++
 		}
 	}

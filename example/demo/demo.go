@@ -539,7 +539,7 @@ func createListPanel() *unison.Panel {
 	_, prefSize, _ := lst.Sizes(unison.Size{})
 	lst.SetFrameRect(unison.Rect{Size: prefSize})
 	scroller := unison.NewScrollPanel()
-	scroller.SetBorder(unison.NewLineBorder(unison.DividerColor, 0, unison.NewUniformInsets(1), false))
+	scroller.SetBorder(unison.NewLineBorder(unison.ControlEdgeColor, 0, unison.NewUniformInsets(1), false))
 	scroller.SetContent(lst, unison.FillBehavior, unison.FillBehavior)
 	scroller.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
