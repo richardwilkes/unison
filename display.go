@@ -39,6 +39,60 @@ func (d *Display) PPI() int {
 	return int(d.Frame.Height / (float32(d.HeightMM) / 25.4))
 }
 
+// FitRectOnto returns a rectangle that fits onto this display, trying to preserve its position and size as much as
+// possible.
+func (d *Display) FitRectOnto(r Rect) Rect {
+	if d == nil {
+		return r
+	}
+	if r.Width > d.Usable.Width {
+		r.Width = d.Usable.Width
+	}
+	if r.Height > d.Usable.Height {
+		r.Height = d.Usable.Height
+	}
+	right := d.Usable.Right()
+	if r.X >= right {
+		r.X = right - r.Width
+	}
+	if r.X < d.Usable.X {
+		r.X = d.Usable.X
+	}
+	bottom := d.Usable.Bottom()
+	if r.X >= bottom {
+		r.X = bottom - r.Height
+	}
+	if r.Y < d.Usable.Y {
+		r.Y = d.Usable.Y
+	}
+	return r
+}
+
+// BestDisplayForRect returns the display with the greatest overlap with the rectangle, or the primary display if there
+// is no overlap.
+func BestDisplayForRect(r Rect) *Display {
+	var bestArea float32
+	var bestDisplay *Display
+	for _, display := range AllDisplays() {
+		if display.Usable.ContainsRect(r) {
+			return display
+		}
+		intersection := r
+		intersection.Intersect(display.Usable)
+		if !intersection.IsEmpty() {
+			area := intersection.Width * intersection.Height
+			if bestArea < area {
+				bestArea = area
+				bestDisplay = display
+			}
+		}
+	}
+	if bestDisplay == nil {
+		bestDisplay = PrimaryDisplay()
+	}
+	return bestDisplay
+}
+
 // PrimaryDisplay returns the primary display.
 func PrimaryDisplay() *Display {
 	if monitor := glfw.GetPrimaryMonitor(); monitor == nil {

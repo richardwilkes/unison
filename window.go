@@ -697,7 +697,7 @@ func (w *Window) Pack() {
 	_, pref, _ := w.root.Sizes(Size{})
 	rect := w.ContentRect()
 	rect.Size = pref
-	w.SetContentRect(rect)
+	w.SetContentRect(BestDisplayForRect(rect).FitRectOnto(rect))
 }
 
 // Focused returns true if the window has the current keyboard focus.
