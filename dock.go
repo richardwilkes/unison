@@ -40,6 +40,46 @@ type DockTheme struct {
 	GripMargin    float32
 }
 
+// DockGripLength returns the length (running along the divider) of a divider's grip area.
+func (d *DockTheme) DockGripLength() float32 {
+	return (d.GripHeight+d.GripGap)*float32(d.GripCount) - d.GripGap
+}
+
+// DockDividerSize returns the size (running across the divider) of a divider.
+func (d *DockTheme) DockDividerSize() float32 {
+	return d.GripWidth + d.GripMargin*2
+}
+
+// DrawHorizontalGripper draws the horizontal divider gripper.
+func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r Rect) {
+	gripLength := d.DockGripLength()
+	x := r.X + (r.Width-d.GripWidth)/2
+	y := r.Y + (r.Height-gripLength)/2
+	paint := d.GripInk.Paint(canvas, r, Fill)
+	for yy := y; yy < y+gripLength; yy += d.GripHeight + d.GripGap {
+		canvas.DrawRect(NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
+	}
+	x = r.X + 0.5
+	canvas.DrawLine(x, r.Y, x, r.Bottom(), paint)
+	x = r.Right() - 0.5
+	canvas.DrawLine(x, r.Y, x, r.Bottom(), paint)
+}
+
+// DrawVerticalGripper draws the vertical divider gripper.
+func (d *DockTheme) DrawVerticalGripper(canvas *Canvas, r Rect) {
+	gripLength := d.DockGripLength()
+	x := r.X + (r.Width-gripLength)/2
+	y := r.Y + (r.Height-d.GripWidth)/2
+	paint := d.GripInk.Paint(canvas, r, Fill)
+	for xx := x; xx < x+gripLength; xx += d.GripHeight + d.GripGap {
+		canvas.DrawRect(NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
+	}
+	y = r.Y + 0.5
+	canvas.DrawLine(r.X, y, r.Right(), y, paint)
+	y = r.Bottom() - 0.5
+	canvas.DrawLine(r.X, y, r.Right(), y, paint)
+}
+
 // Dock provides an area where Dockable panels can be displayed and rearranged.
 type Dock struct {
 	Panel
@@ -198,10 +238,16 @@ func (d *Dock) drawDividers(canvas *Canvas, layout *DockLayout, clip Rect) {
 	frame.Inset(NewUniformInsets(1))
 	if clip.Intersects(frame) {
 		if layout.Full() {
+			r := layout.nodes[1].FrameRect()
+			size := d.DockDividerSize()
 			if layout.Horizontal {
-				d.drawHorizontalGripper(canvas, layout.nodes[1])
+				r.X -= size
+				r.Width = size
+				d.DrawHorizontalGripper(canvas, r)
 			} else {
-				d.drawVerticalGripper(canvas, layout.nodes[1])
+				r.Y -= size
+				r.Height = size
+				d.DrawVerticalGripper(canvas, r)
 			}
 		}
 		for _, node := range layout.nodes {
@@ -214,48 +260,6 @@ func (d *Dock) drawDockLayoutNode(canvas *Canvas, node DockLayoutNode, clip Rect
 	if dl, ok := node.(*DockLayout); ok {
 		d.drawDividers(canvas, dl, clip)
 	}
-}
-
-// DockGripLength returns the length (running along the divider) of a divider's grip area.
-func (d *Dock) DockGripLength() float32 {
-	return (d.GripHeight+d.GripGap)*float32(d.GripCount) - d.GripGap
-}
-
-// DockDividerSize returns the size (running across the divider) of a divider.
-func (d *Dock) DockDividerSize() float32 {
-	return d.GripWidth + d.GripMargin*2
-}
-
-func (d *Dock) drawHorizontalGripper(canvas *Canvas, node DockLayoutNode) {
-	gripLength := d.DockGripLength()
-	dividerSize := d.DockDividerSize()
-	frame := node.FrameRect()
-	x := frame.X - dividerSize + (dividerSize-d.GripWidth)/2
-	y := frame.Y + (frame.Height-gripLength)/2
-	paint := d.GripInk.Paint(canvas, frame, Fill)
-	for yy := y; yy < y+gripLength; yy += d.GripHeight + d.GripGap {
-		canvas.DrawRect(NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
-	}
-	x = frame.X - dividerSize + 0.5
-	canvas.DrawLine(x, frame.Y, x, frame.Bottom(), paint)
-	x = frame.X - 0.5
-	canvas.DrawLine(x, frame.Y, x, frame.Bottom(), paint)
-}
-
-func (d *Dock) drawVerticalGripper(canvas *Canvas, node DockLayoutNode) {
-	gripLength := d.DockGripLength()
-	dividerSize := d.DockDividerSize()
-	frame := node.FrameRect()
-	x := frame.X + (frame.Width-gripLength)/2
-	y := frame.Y - dividerSize + (dividerSize-d.GripWidth)/2
-	paint := d.GripInk.Paint(canvas, frame, Fill)
-	for xx := x; xx < x+gripLength; xx += d.GripHeight + d.GripGap {
-		canvas.DrawRect(NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
-	}
-	y = frame.Y - dividerSize + 0.5
-	canvas.DrawLine(frame.X, y, frame.Right(), y, paint)
-	y = frame.Y - 0.5
-	canvas.DrawLine(frame.X, y, frame.Right(), y, paint)
 }
 
 // Maximize the current Dockable.
