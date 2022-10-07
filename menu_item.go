@@ -201,6 +201,10 @@ func (mi *menuItem) showSubMenu() {
 	}
 }
 
+func (mi *menuItem) scrollIntoView() {
+	mi.panel.ScrollIntoView()
+}
+
 func (mi *menuItem) mouseEnter(_ Point, _ Modifiers) bool {
 	if mi.menu != nil {
 		for _, item := range mi.menu.items {

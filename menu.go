@@ -208,6 +208,7 @@ func (m *menu) Popup(where Rect, itemIndex int) {
 		where.Height = fr.Height
 		where.Width = xmath.Max(fr.Width, where.Width)
 		m.ensureInWindow(where)
+		m.popupPanel.ValidateLayout()
 		m.setKeyIndex(itemIndex)
 	}
 }
@@ -362,6 +363,7 @@ func (m *menu) doExitEnter(previousIndex int) {
 			m.items[previousIndex].mouseExit()
 		}
 		m.items[m.popupPanel.itemIndex].mouseEnter(Point{}, 0) // params are unused
+		m.items[m.popupPanel.itemIndex].scrollIntoView()
 		if subMenu := m.items[m.popupPanel.itemIndex].subMenu; subMenu != nil {
 			subMenu.setKeyIndex(0)
 		}
@@ -372,6 +374,7 @@ func (m *menu) setKeyIndex(index int) {
 	m.popupPanel.itemIndex = index
 	if index >= 0 && index < len(m.items) {
 		m.items[index].mouseEnter(Point{}, 0) // params are unused
+		m.items[index].scrollIntoView()
 	}
 }
 
