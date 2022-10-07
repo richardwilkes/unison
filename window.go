@@ -243,34 +243,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			w.lostFocus()
 		}
 	})
-	w.wnd.SetMouseButtonCallback(func(_ *glfw.Window, button glfw.MouseButton, action glfw.Action, mods glfw.ModifierKey) {
-		w.lastKeyModifiers = Modifiers(mods)
-		if !w.okToProcess() {
-			return
-		}
-		where := w.MouseLocation()
-		if action == glfw.Press {
-			maxDelay, maxMouseDrift := DoubleClickParameters()
-			now := time.Now()
-			if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
-				xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
-				xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
-				w.lastButtonCount++
-				time.Since(w.lastButtonTime)
-			} else {
-				w.lastButtonCount = 1
-				w.firstButtonLocation = where
-			}
-			w.lastButton = int(button)
-			w.lastButtonTime = now
-			w.inMouseDown = true
-			w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
-		} else if w.inMouseDown {
-			w.lastButton = int(button)
-			w.inMouseDown = false
-			w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
-		}
-	})
+	w.wnd.SetMouseButtonCallback(w.mouseButtonCallback)
 	w.wnd.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {
 		where := w.convertMouseLocation(x, y)
 		if w.inMouseDown {
@@ -328,6 +301,36 @@ func glfwEnabled(enabled bool) int {
 		return glfw.True
 	}
 	return glfw.False
+}
+
+func (w *Window) mouseButtonCallback(_ *glfw.Window, button glfw.MouseButton, action glfw.Action, mods glfw.ModifierKey) {
+	if !w.okToProcess() {
+		modalStack[len(modalStack)-1].mouseButtonCallback(nil, button, action, mods)
+		return
+	}
+	w.lastKeyModifiers = Modifiers(mods)
+	where := w.MouseLocation()
+	if action == glfw.Press {
+		maxDelay, maxMouseDrift := DoubleClickParameters()
+		now := time.Now()
+		if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
+			xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
+			xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
+			w.lastButtonCount++
+			time.Since(w.lastButtonTime)
+		} else {
+			w.lastButtonCount = 1
+			w.firstButtonLocation = where
+		}
+		w.lastButton = int(button)
+		w.lastButtonTime = now
+		w.inMouseDown = true
+		w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
+	} else if w.inMouseDown {
+		w.lastButton = int(button)
+		w.inMouseDown = false
+		w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
+	}
 }
 
 func (w *Window) okToProcess() bool {
