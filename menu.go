@@ -68,7 +68,8 @@ type MenuTheme struct {
 
 type menuPanel struct {
 	Panel
-	menu *menu
+	menu      *menu
+	itemIndex int
 }
 
 type menu struct {
@@ -207,9 +208,7 @@ func (m *menu) Popup(where Rect, itemIndex int) {
 		where.Height = fr.Height
 		where.Width = xmath.Max(fr.Width, where.Width)
 		m.ensureInWindow(where)
-		if itemIndex >= 0 && itemIndex < len(m.items) {
-			m.items[itemIndex].mouseEnter(Point{}, 0) // params are unused
-		}
+		m.setKeyIndex(itemIndex)
 	}
 }
 
@@ -253,7 +252,10 @@ func (m *menu) createPopup() {
 }
 
 func (m *menu) newPanel(forBar bool) *menuPanel {
-	p := &menuPanel{menu: m}
+	p := &menuPanel{
+		menu:      m,
+		itemIndex: -1,
+	}
 	p.Self = p
 	if forBar {
 		p.SetBorder(DefaultMenuTheme.BarBorder)
@@ -276,6 +278,65 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 			})
 		}
 	}
+	p.KeyDownCallback = func(keyCode KeyCode, mod Modifiers, _ bool) bool {
+		if mod != 0 {
+			return false
+		}
+		switch keyCode {
+		case KeyDown:
+			old := m.popupPanel.itemIndex
+			next := old
+			for {
+				next++
+				if next < 0 {
+					next = 0
+				}
+				if next >= len(p.menu.items) {
+					break
+				}
+				if !p.menu.items[next].isSeparator {
+					m.popupPanel.itemIndex = next
+					break
+				}
+			}
+			m.doExitEnter(old)
+			return true
+		case KeyUp:
+			old := m.popupPanel.itemIndex
+			next := old
+			for {
+				next--
+				if next < 0 {
+					break
+				}
+				if next >= len(p.menu.items) {
+					next = len(p.menu.items) - 1
+					if next < 0 {
+						break
+					}
+				}
+				if !p.menu.items[next].isSeparator {
+					m.popupPanel.itemIndex = next
+					break
+				}
+			}
+			m.doExitEnter(old)
+			return true
+		case KeyReturn, KeyNumPadEnter:
+			if m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(p.menu.items) {
+				m.items[m.popupPanel.itemIndex].mouseDown(Point{}, 0, 0, 0) // params are unused
+				return true
+			}
+		case KeyEscape, KeyLeft:
+			m.closeMenuStackStoppingAt(p.Window(), m.titleItem.menu)
+			return true
+		case KeyRight:
+			if m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(m.items) && m.items[m.popupPanel.itemIndex].subMenu != nil {
+				m.doExitEnter(-1)
+			}
+		}
+		return false
+	}
 	lay := &FlexLayout{Columns: 1}
 	if forBar {
 		lay.Columns = len(content.Children())
@@ -293,6 +354,25 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	p.SetLayout(&FlexLayout{Columns: 1})
 	p.AddChild(s)
 	return p
+}
+
+func (m *menu) doExitEnter(previousIndex int) {
+	if previousIndex != m.popupPanel.itemIndex && m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(m.items) {
+		if previousIndex >= 0 && previousIndex < len(m.items) {
+			m.items[previousIndex].mouseExit()
+		}
+		m.items[m.popupPanel.itemIndex].mouseEnter(Point{}, 0) // params are unused
+		if subMenu := m.items[m.popupPanel.itemIndex].subMenu; subMenu != nil {
+			subMenu.setKeyIndex(0)
+		}
+	}
+}
+
+func (m *menu) setKeyIndex(index int) {
+	m.popupPanel.itemIndex = index
+	if index >= 0 && index < len(m.items) {
+		m.items[index].mouseEnter(Point{}, 0) // params are unused
+	}
 }
 
 func (m *menu) Dispose() {

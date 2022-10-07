@@ -343,9 +343,7 @@ func (w *Window) UndoManager() *UndoManager {
 }
 
 func (w *Window) moved() {
-	if w.root.menuBar != nil {
-		toolbox.Call(func() { w.root.menuBar.preMoved(w) })
-	}
+	w.root.preMoved(w)
 	if w.MovedCallback != nil {
 		toolbox.Call(w.MovedCallback)
 	}
@@ -1053,12 +1051,8 @@ func (w *Window) updateCursor(target *Panel, where Point) {
 }
 
 func (w *Window) mouseDown(where Point, button, clickCount int, mod Modifiers) {
-	if w.root.menuBar != nil {
-		stop := false
-		toolbox.Call(func() { stop = w.root.menuBar.preMouseDown(w, where) })
-		if stop {
-			return
-		}
+	if w.root.preMouseDown(w, where) {
+		return
 	}
 	if w.MouseDownCallback != nil {
 		stop := false
@@ -1217,12 +1211,8 @@ func (w *Window) mouseWheel(where, delta Point, mod Modifiers) {
 }
 
 func (w *Window) keyDown(keyCode KeyCode, mod Modifiers, repeat bool) {
-	if w.root.menuBar != nil {
-		stop := false
-		toolbox.Call(func() { stop = w.root.menuBar.preKeyDown(w, keyCode, mod) })
-		if stop {
-			return
-		}
+	if w.root.preKeyDown(w, keyCode, mod, repeat) {
+		return
 	}
 	if w.KeyDownCallback != nil {
 		stop := false
@@ -1258,12 +1248,8 @@ func (w *Window) keyDown(keyCode KeyCode, mod Modifiers, repeat bool) {
 }
 
 func (w *Window) keyUp(keyCode KeyCode, mod Modifiers) {
-	if w.root.menuBar != nil {
-		stop := false
-		toolbox.Call(func() { stop = w.root.menuBar.preKeyUp(w, keyCode, mod) })
-		if stop {
-			return
-		}
+	if w.root.preKeyUp(w, keyCode, mod) {
+		return
 	}
 	if w.KeyUpCallback != nil {
 		stop := false
@@ -1278,12 +1264,8 @@ func (w *Window) keyUp(keyCode KeyCode, mod Modifiers) {
 }
 
 func (w *Window) runeTyped(ch rune) {
-	if w.root.menuBar != nil {
-		stop := false
-		toolbox.Call(func() { stop = w.root.menuBar.preRuneTyped(w, ch) })
-		if stop {
-			return
-		}
+	if w.root.preRuneTyped(w, ch) {
+		return
 	}
 	if w.RuneTypedCallback != nil {
 		stop := false

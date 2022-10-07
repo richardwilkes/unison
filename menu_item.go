@@ -202,6 +202,14 @@ func (mi *menuItem) showSubMenu() {
 }
 
 func (mi *menuItem) mouseEnter(_ Point, _ Modifiers) bool {
+	if mi.menu != nil {
+		for _, item := range mi.menu.items {
+			if item.over {
+				item.over = false
+				item.panel.MarkForRedraw()
+			}
+		}
+	}
 	mi.over = true
 	mi.panel.MarkForRedraw()
 	if mi.subMenu != nil && len(mi.panel.Window().root.openMenuPanels) != 0 {
@@ -210,7 +218,7 @@ func (mi *menuItem) mouseEnter(_ Point, _ Modifiers) bool {
 	return false
 }
 
-func (mi *menuItem) mouseMove(where Point, mod Modifiers) bool {
+func (mi *menuItem) mouseMove(_ Point, _ Modifiers) bool {
 	stopAt := mi.menu
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu

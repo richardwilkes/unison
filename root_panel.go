@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox"
+
 var _ Layout = &rootPanel{}
 
 type rootPanel struct {
@@ -133,4 +135,51 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 		rect.Height -= size.Height
 	}
 	p.contentPanel.SetFrameRect(rect)
+}
+
+func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers, repeat bool) bool {
+	if len(p.openMenuPanels) != 0 {
+		if p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mod, repeat) {
+			return true
+		}
+	}
+	if p.menuBar != nil {
+		stop := false
+		toolbox.Call(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mod) })
+		return stop
+	}
+	return false
+}
+
+func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
+	if p.menuBar != nil {
+		stop := false
+		toolbox.Call(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mod) })
+		return stop
+	}
+	return false
+}
+
+func (p *rootPanel) preRuneTyped(wnd *Window, ch rune) bool {
+	if p.menuBar != nil {
+		stop := false
+		toolbox.Call(func() { stop = p.menuBar.preRuneTyped(wnd, ch) })
+		return stop
+	}
+	return false
+}
+
+func (p *rootPanel) preMouseDown(wnd *Window, where Point) bool {
+	if p.menuBar != nil {
+		stop := false
+		toolbox.Call(func() { stop = p.menuBar.preMouseDown(wnd, where) })
+		return stop
+	}
+	return false
+}
+
+func (p *rootPanel) preMoved(wnd *Window) {
+	if p.menuBar != nil {
+		toolbox.Call(func() { p.menuBar.preMoved(wnd) })
+	}
 }
