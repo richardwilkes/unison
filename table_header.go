@@ -36,7 +36,7 @@ type TableHeaderTheme struct {
 type TableHeader[T TableRowConstraint[T]] struct {
 	Panel
 	TableHeaderTheme
-	Table                *Table[T]
+	table                *Table[T]
 	ColumnHeaders        []TableColumnHeader[T]
 	Less                 func(s1, s2 string) bool
 	interactionColumn    int
@@ -50,7 +50,7 @@ type TableHeader[T TableRowConstraint[T]] struct {
 func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...TableColumnHeader[T]) *TableHeader[T] {
 	h := &TableHeader[T]{
 		TableHeaderTheme: DefaultTableHeaderTheme,
-		Table:            table,
+		table:            table,
 		ColumnHeaders:    columnHeaders,
 		Less:             func(s1, s2 string) bool { return txt.NaturalLess(s1, s2, true) },
 	}
@@ -64,12 +64,13 @@ func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...T
 	h.MouseDownCallback = h.DefaultMouseDown
 	h.MouseDragCallback = h.DefaultMouseDrag
 	h.MouseUpCallback = h.DefaultMouseUp
+	h.table.header = h
 	return h
 }
 
 // DefaultSizes provides the default sizing.
 func (h *TableHeader[T]) DefaultSizes(hint Size) (min, pref, max Size) {
-	pref.Width = h.Table.FrameRect().Size.Width
+	pref.Width = h.table.FrameRect().Size.Width
 	pref.Height = h.heightForColumns()
 	if border := h.Border(); border != nil {
 		insets := border.Insets()
@@ -80,39 +81,39 @@ func (h *TableHeader[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 
 // ColumnFrame returns the frame of the given column.
 func (h *TableHeader[T]) ColumnFrame(col int) Rect {
-	if col < 0 || col >= len(h.Table.ColumnSizes) {
+	if col < 0 || col >= len(h.table.ColumnSizes) {
 		return Rect{}
 	}
 	insets := h.combinedInsets()
 	x := insets.Left
 	for c := 0; c < col; c++ {
-		x += h.Table.ColumnSizes[c].Current
-		if h.Table.ShowColumnDivider {
+		x += h.table.ColumnSizes[c].Current
+		if h.table.ShowColumnDivider {
 			x++
 		}
 	}
-	rect := NewRect(x, insets.Top, h.Table.ColumnSizes[col].Current, h.FrameRect().Height-insets.Height())
-	rect.Inset(h.Table.Padding)
+	rect := NewRect(x, insets.Top, h.table.ColumnSizes[col].Current, h.FrameRect().Height-insets.Height())
+	rect.Inset(h.table.Padding)
 	return rect
 }
 
 func (h *TableHeader[T]) heightForColumns() float32 {
 	var height float32
-	for i := range h.Table.ColumnSizes {
-		w := h.Table.ColumnSizes[i].Current
+	for i := range h.table.ColumnSizes {
+		w := h.table.ColumnSizes[i].Current
 		if w <= 0 {
 			continue
 		}
-		w -= h.Table.Padding.Left + h.Table.Padding.Right
+		w -= h.table.Padding.Left + h.table.Padding.Right
 		if i < len(h.ColumnHeaders) {
 			_, cpref, _ := h.ColumnHeaders[i].AsPanel().Sizes(Size{Width: w})
-			cpref.Height += h.Table.Padding.Top + h.Table.Padding.Bottom
+			cpref.Height += h.table.Padding.Top + h.table.Padding.Bottom
 			if height < cpref.Height {
 				height = cpref.Height
 			}
 		}
 	}
-	return xmath.Max(xmath.Ceil(height), h.Table.MinimumRowHeight)
+	return xmath.Max(xmath.Ceil(height), h.table.MinimumRowHeight)
 }
 
 func (h *TableHeader[T]) combinedInsets() Insets {
@@ -120,7 +121,7 @@ func (h *TableHeader[T]) combinedInsets() Insets {
 	if border := h.Border(); border != nil {
 		insets = border.Insets()
 	}
-	if border := h.Table.Border(); border != nil {
+	if border := h.table.Border(); border != nil {
 		insets2 := border.Insets()
 		if insets.Left < insets2.Left {
 			insets.Left = insets2.Left
@@ -139,9 +140,9 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	var firstCol int
 	insets := h.combinedInsets()
 	x := insets.Left
-	for i := range h.Table.ColumnSizes {
-		x1 := x + h.Table.ColumnSizes[i].Current
-		if h.Table.ShowColumnDivider {
+	for i := range h.table.ColumnSizes {
+		x1 := x + h.table.ColumnSizes[i].Current
+		if h.table.ShowColumnDivider {
 			x1++
 		}
 		if x1 >= dirty.X {
@@ -151,12 +152,12 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		firstCol = i + 1
 	}
 
-	if h.Table.ShowColumnDivider {
+	if h.table.ShowColumnDivider {
 		rect := dirty
 		rect.X = x
 		rect.Width = 1
-		for c := firstCol; c < len(h.Table.ColumnSizes)-1; c++ {
-			rect.X += h.Table.ColumnSizes[c].Current
+		for c := firstCol; c < len(h.table.ColumnSizes)-1; c++ {
+			rect.X += h.table.ColumnSizes[c].Current
 			canvas.DrawRect(rect, h.InteriorDividerColor.Paint(canvas, rect, Fill))
 			rect.X++
 		}
@@ -167,10 +168,10 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	rect.Y = insets.Top
 	rect.Height = h.heightForColumns()
 	lastX := dirty.Right()
-	for c := firstCol; c < len(h.Table.ColumnSizes) && rect.X < lastX; c++ {
-		rect.Width = h.Table.ColumnSizes[c].Current
+	for c := firstCol; c < len(h.table.ColumnSizes) && rect.X < lastX; c++ {
+		rect.Width = h.table.ColumnSizes[c].Current
 		cellRect := rect
-		cellRect.Inset(h.Table.Padding)
+		cellRect.Inset(h.table.Padding)
 		if c < len(h.ColumnHeaders) {
 			cell := h.ColumnHeaders[c].AsPanel()
 			h.installCell(cell, cellRect)
@@ -182,8 +183,8 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			h.uninstallCell(cell)
 			canvas.Restore()
 		}
-		rect.X += h.Table.ColumnSizes[c].Current
-		if h.Table.ShowColumnDivider {
+		rect.X += h.table.ColumnSizes[c].Current
+		if h.table.ShowColumnDivider {
 			rect.X++
 		}
 	}
@@ -201,14 +202,14 @@ func (h *TableHeader[T]) uninstallCell(cell *Panel) {
 
 // DefaultUpdateCursorCallback provides the default cursor update handling.
 func (h *TableHeader[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
-	if !h.Table.PreventUserColumnResize {
-		if over := h.Table.OverColumnDivider(where.X); over != -1 {
-			if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
+	if !h.table.PreventUserColumnResize {
+		if over := h.table.OverColumnDivider(where.X); over != -1 {
+			if h.table.ColumnSizes[over].Minimum <= 0 || h.table.ColumnSizes[over].Minimum < h.table.ColumnSizes[over].Maximum {
 				return ResizeHorizontalCursor()
 			}
 		}
 	}
-	if col := h.Table.OverColumn(where.X); col != -1 {
+	if col := h.table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateCursorCallback != nil {
 			rect := h.ColumnFrame(col)
@@ -224,7 +225,7 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
 func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
-	if col := h.Table.OverColumn(where.X); col != -1 {
+	if col := h.table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateTooltipCallback != nil {
 			rect := h.ColumnFrame(col)
@@ -251,7 +252,7 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where Point, suggestedAvoi
 // DefaultMouseMove provides the default mouse move handling.
 func (h *TableHeader[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 	stop := false
-	if col := h.Table.OverColumn(where.X); col != -1 {
+	if col := h.table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.MouseMoveCallback != nil {
 			rect := h.ColumnFrame(col)
@@ -268,34 +269,34 @@ func (h *TableHeader[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	h.interactionColumn = -1
 	h.inHeader = false
-	if !h.Table.PreventUserColumnResize {
-		if over := h.Table.OverColumnDivider(where.X); over != -1 {
-			if h.Table.ColumnSizes[over].Minimum <= 0 || h.Table.ColumnSizes[over].Minimum < h.Table.ColumnSizes[over].Maximum {
+	if !h.table.PreventUserColumnResize {
+		if over := h.table.OverColumnDivider(where.X); over != -1 {
+			if h.table.ColumnSizes[over].Minimum <= 0 || h.table.ColumnSizes[over].Minimum < h.table.ColumnSizes[over].Maximum {
 				if clickCount == 2 {
-					h.Table.SizeColumnToFit(over, true)
+					h.table.SizeColumnToFit(over, true)
 					h.MarkForRedraw()
 					h.Window().UpdateCursorNow()
 					return true
 				}
 				h.interactionColumn = over
 				h.columnResizeStart = where.X
-				h.columnResizeBase = h.Table.ColumnSizes[over].Current
-				h.columnResizeOverhead = h.Table.Padding.Left + h.Table.Padding.Right
-				if over == h.Table.HierarchyColumnIndex {
+				h.columnResizeBase = h.table.ColumnSizes[over].Current
+				h.columnResizeOverhead = h.table.Padding.Left + h.table.Padding.Right
+				if over == h.table.HierarchyColumnIndex {
 					depth := 0
-					for _, cache := range h.Table.rowCache {
+					for _, cache := range h.table.rowCache {
 						if depth < cache.depth {
 							depth = cache.depth
 						}
 					}
-					h.columnResizeOverhead += h.Table.Padding.Left + h.Table.HierarchyIndent*float32(depth+1)
+					h.columnResizeOverhead += h.table.Padding.Left + h.table.HierarchyIndent*float32(depth+1)
 				}
 				return true
 			}
 		}
 	}
 	stop := true
-	if col := h.Table.OverColumn(where.X); col != -1 {
+	if col := h.table.OverColumn(where.X); col != -1 {
 		h.interactionColumn = col
 		h.inHeader = true
 		cell := h.ColumnHeaders[col].AsPanel()
@@ -312,23 +313,23 @@ func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, m
 
 // DefaultMouseDrag provides the default mouse drag handling.
 func (h *TableHeader[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
-	if !h.Table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
+	if !h.table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
 		width := h.columnResizeBase + where.X - h.columnResizeStart
 		if width < h.columnResizeOverhead {
 			width = h.columnResizeOverhead
 		}
-		min := h.Table.ColumnSizes[h.interactionColumn].Minimum
+		min := h.table.ColumnSizes[h.interactionColumn].Minimum
 		if min > 0 && width < min+h.columnResizeOverhead {
 			width = min + h.columnResizeOverhead
 		} else {
-			max := h.Table.ColumnSizes[h.interactionColumn].Maximum
+			max := h.table.ColumnSizes[h.interactionColumn].Maximum
 			if max > 0 && width > max+h.columnResizeOverhead {
 				width = max + h.columnResizeOverhead
 			}
 		}
-		if h.Table.ColumnSizes[h.interactionColumn].Current != width {
-			h.Table.ColumnSizes[h.interactionColumn].Current = width
-			h.Table.SyncToModel()
+		if h.table.ColumnSizes[h.interactionColumn].Current != width {
+			h.table.ColumnSizes[h.interactionColumn].Current = width
+			h.table.SyncToModel()
 			h.MarkForRedraw()
 		}
 		return true
@@ -400,6 +401,16 @@ type headerWithIndex[T TableRowConstraint[T]] struct {
 	header TableColumnHeader[T]
 }
 
+// HasSort returns true if at least one column is marked for sorting.
+func (h *TableHeader[T]) HasSort() bool {
+	for _, hdr := range h.ColumnHeaders {
+		if ss := hdr.SortState(); ss.Sortable && ss.Order >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // ApplySort sorts the table according to the current sort criteria.
 func (h *TableHeader[T]) ApplySort() {
 	headers := make([]*headerWithIndex[T], len(h.ColumnHeaders))
@@ -427,11 +438,14 @@ func (h *TableHeader[T]) ApplySort() {
 			break
 		}
 	}
-	roots := slices.Clone(h.Table.RootRows())
-	h.applySort(headers, roots)
-	h.Table.Model.SetRootRows(roots) // Avoid resetting the selection by directly updating the model
-	h.Table.SyncToModel()
-	h.MarkForRedraw()
+	if h.table.filteredRows == nil {
+		roots := slices.Clone(h.table.RootRows())
+		h.applySort(headers, roots)
+		h.table.Model.SetRootRows(roots) // Avoid resetting the selection by directly updating the model
+	} else {
+		h.applySort(headers, h.table.filteredRows)
+	}
+	h.table.SyncToModel()
 }
 
 func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
@@ -450,12 +464,14 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 			}
 			return i < j
 		})
-		for _, row := range rows {
-			if row.CanHaveChildren() {
-				if children := row.Children(); len(children) > 1 {
-					children = slices.Clone(children)
-					h.applySort(headers, children)
-					row.SetChildren(children)
+		if h.table.filteredRows == nil {
+			for _, row := range rows {
+				if row.CanHaveChildren() {
+					if children := row.Children(); len(children) > 1 {
+						children = slices.Clone(children)
+						h.applySort(headers, children)
+						row.SetChildren(children)
+					}
 				}
 			}
 		}

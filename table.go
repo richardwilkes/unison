@@ -102,8 +102,11 @@ type Table[T TableRowConstraint[T]] struct {
 	DropOccurredCallback     func() // Called whenever a drop occurs that modifies the model.
 	ColumnSizes              []ColumnSize
 	Model                    TableModel[T]
+	filteredRows             []T // Note that we use the difference between nil and an empty slice here
+	header                   *TableHeader[T]
 	selMap                   map[uuid.UUID]bool
 	selAnchor                uuid.UUID
+	lastSel                  uuid.UUID
 	hitRects                 []tableHitRect
 	rowCache                 []tableCache[T]
 	interactionRow           int
@@ -119,7 +122,6 @@ type Table[T TableRowConstraint[T]] struct {
 	awaitingSizeColumnsToFit bool
 	awaitingSyncToModel      bool
 	selNeedsPrune            bool
-	lastSel                  uuid.UUID
 	wasDragged               bool
 }
 
@@ -1148,16 +1150,23 @@ func (t *Table[T]) DiscloseRow(row T, delaySync bool) bool {
 
 // RootRowCount returns the number of top-level rows.
 func (t *Table[T]) RootRowCount() int {
+	if t.filteredRows != nil {
+		return len(t.filteredRows)
+	}
 	return t.Model.RootRowCount()
 }
 
 // RootRows returns the top-level rows. Do not alter the returned list.
 func (t *Table[T]) RootRows() []T {
+	if t.filteredRows != nil {
+		return t.filteredRows
+	}
 	return t.Model.RootRows()
 }
 
 // SetRootRows sets the top-level rows this table will display. This will call SyncToModel() automatically.
 func (t *Table[T]) SetRootRows(rows []T) {
+	t.filteredRows = nil
 	t.Model.SetRootRows(rows)
 	t.selMap = make(map[uuid.UUID]bool)
 	t.selNeedsPrune = false
@@ -1169,8 +1178,12 @@ func (t *Table[T]) SetRootRows(rows []T) {
 func (t *Table[T]) SyncToModel() {
 	rowCount := 0
 	roots := t.RootRows()
-	for _, row := range roots {
-		rowCount += t.countOpenRowChildrenRecursively(row)
+	if t.filteredRows != nil {
+		rowCount = len(t.filteredRows)
+	} else {
+		for _, row := range roots {
+			rowCount += t.countOpenRowChildrenRecursively(row)
+		}
 	}
 	t.rowCache = make([]tableCache[T], rowCount)
 	j := 0
@@ -1203,7 +1216,7 @@ func (t *Table[T]) buildRowCacheEntry(row T, parentIndex, index, depth int) int 
 	t.rowCache[index].height = t.heightForColumns(row, index, depth)
 	parentIndex = index
 	index++
-	if row.CanHaveChildren() && row.IsOpen() {
+	if t.filteredRows == nil && row.CanHaveChildren() && row.IsOpen() {
 		for _, child := range row.Children() {
 			index = t.buildRowCacheEntry(child, parentIndex, index, depth+1)
 		}
@@ -1459,6 +1472,44 @@ func (t *Table[T]) ScrollRowIntoView(row int) {
 func (t *Table[T]) ScrollRowCellIntoView(row, col int) {
 	if frame := t.CellFrame(row, col); !frame.IsEmpty() {
 		t.ScrollRectIntoView(frame)
+	}
+}
+
+// IsFiltered returns true if a filter is currently applied. When a filter is applied, no hierarchy is display and no
+// modifications to the row data should be performed.
+func (t *Table[T]) IsFiltered() bool {
+	return t.filteredRows != nil
+}
+
+// ApplyFilter applies a filter to the data. When a non-nil filter is applied, all rows (recursively) are passed through
+// the filter. Only those that the filter returns false for will be visible in the table. When a filter is applied, no
+// hierarchy is display and no modifications to the row data should be performed.
+func (t *Table[T]) ApplyFilter(filter func(row T) bool) {
+	if filter == nil {
+		if t.filteredRows == nil {
+			return
+		}
+		t.filteredRows = nil
+	} else {
+		t.filteredRows = make([]T, 0)
+		for _, row := range t.Model.RootRows() {
+			t.applyFilter(row, filter)
+		}
+	}
+	t.SyncToModel()
+	if t.header != nil && t.header.HasSort() {
+		t.header.ApplySort()
+	}
+}
+
+func (t *Table[T]) applyFilter(row T, filter func(row T) bool) {
+	if !filter(row) {
+		t.filteredRows = append(t.filteredRows, row)
+	}
+	if row.CanHaveChildren() {
+		for _, child := range row.Children() {
+			t.applyFilter(child, filter)
+		}
 	}
 }
 

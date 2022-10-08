@@ -53,6 +53,9 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect Rect) {
 
 // DataDragOverCallback handles determining if a given drag is one that we are interested in.
 func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any) bool {
+	if d.Table.filteredRows != nil {
+		return false
+	}
 	var zero T
 	d.inDragOver = false
 	if dd, ok := data[d.DragKey]; ok {
