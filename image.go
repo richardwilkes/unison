@@ -17,6 +17,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/softref"
@@ -80,6 +81,42 @@ func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image
 		return nil, errs.New("unable to create image")
 	}
 	return newImage(img, scale)
+}
+
+// NewImageFromDrawing creates a new image by drawing into it. This is currently fairly inefficient, so take care to use
+// it sparingly.
+func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
+	scale := float32(ppi) / 72
+	s := &surface{
+		// context: skia.ContextMakeGL(defaultGLInterface()),
+		surface: skia.SurfaceMakeRasterN32PreMul(int(float32(width)*scale), int(float32(height)*scale), defaultSurfaceProps()),
+	}
+	c := &Canvas{
+		canvas:  skia.SurfaceGetCanvas(s.surface),
+		surface: s,
+	}
+	c.RestoreToCount(1)
+	c.SetMatrix(NewScaleMatrix(scale, scale))
+	c.Save()
+	toolbox.Call(func() { draw(c) })
+	c.Restore()
+	c.Flush()
+	defer s.dispose()
+	img := skia.SurfaceMakeImageSnapshot(s.surface)
+	width = skia.ImageGetWidth(img)
+	height = skia.ImageGetHeight(img)
+	pixels := make([]byte, width*height*4)
+	if !skia.ImageReadPixels(img, &skia.ImageInfo{
+		Colorspace: skia.ImageGetColorSpace(img),
+		Width:      int32(width),
+		Height:     int32(height),
+		ColorType:  skia.ImageGetColorType(img),
+		AlphaType:  skia.ImageGetAlphaType(img),
+	}, pixels, width*4, 0, 0, skia.ImageCachingHintDisallow) {
+		return nil, errs.New("unable to read raw pixels from image")
+	}
+	skia.ImageUnref(img)
+	return NewImageFromPixels(width, height, pixels, 1)
 }
 
 func newImage(img skia.Image, scale float32) (*Image, error) {

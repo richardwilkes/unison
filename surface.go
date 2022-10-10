@@ -39,10 +39,7 @@ func (s *surface) prepareCanvas(size Size, dirty Rect, scaleX, scaleY float32) (
 		s.size = size
 	}
 	if s.surface == nil {
-		if skiaGLInterface == nil {
-			skiaGLInterface = skia.GLInterfaceCreateNativeInterface()
-		}
-		s.context = skia.ContextMakeGL(skiaGLInterface)
+		s.context = skia.ContextMakeGL(defaultGLInterface())
 		var fbo int32
 		gl.GetIntegerv(gl.FRAMEBUFFER_BINDING, &fbo)
 		if s.backend = skia.BackendRenderTargetNewGL(int(size.Width*scaleX), int(size.Height*scaleY), 1, 8,
@@ -52,11 +49,8 @@ func (s *surface) prepareCanvas(size Size, dirty Rect, scaleX, scaleY float32) (
 			}); s.backend == nil {
 			return nil, errs.New("unable to create backend render target")
 		}
-		if skiaSurfaceProps == nil {
-			skiaSurfaceProps = skia.SurfacePropsNew(skia.PixelGeometryRGBH)
-		}
 		if s.surface = skia.SurfaceNewBackendRenderTarget(s.context, s.backend, skia.SurfaceOriginBottomLeft,
-			skia.ColorTypeRGBA8888, skiaColorspace, skiaSurfaceProps); s.surface == nil {
+			skia.ColorTypeRGBA8888, skiaColorspace, defaultSurfaceProps()); s.surface == nil {
 			return nil, errs.New("unable to create backend rendering surface")
 		}
 	}
@@ -74,9 +68,27 @@ func (s *surface) dispose() {
 		releaseImagesForContext(s.context)
 		skia.SurfaceUnref(s.surface)
 		s.surface = nil
+	}
+	if s.backend != nil {
 		skia.BackendRenderTargetDelete(s.backend)
 		s.backend = nil
+	}
+	if s.context != nil {
 		skia.ContextAbandonContext(s.context)
 		s.context = nil
 	}
+}
+
+func defaultGLInterface() skia.GLInterface {
+	if skiaGLInterface == nil {
+		skiaGLInterface = skia.GLInterfaceCreateNativeInterface()
+	}
+	return skiaGLInterface
+}
+
+func defaultSurfaceProps() skia.SurfaceProps {
+	if skiaSurfaceProps == nil {
+		skiaSurfaceProps = skia.SurfacePropsNew(skia.PixelGeometryRGBH)
+	}
+	return skiaSurfaceProps
 }

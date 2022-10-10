@@ -1151,9 +1151,21 @@ func StringDelete(str String) {
 	C.sk_string_delete(str)
 }
 
+func SurfaceMakeRasterDirect(info *ImageInfo, pixels []byte, rowBytes int, surfaceProps SurfaceProps) Surface {
+	return C.sk_surface_make_raster_direct((*C.sk_image_info_t)(unsafe.Pointer(info)), unsafe.Pointer(&pixels[0]), C.size_t(rowBytes), surfaceProps)
+}
+
+func SurfaceMakeRasterN32PreMul(width, height int, surfaceProps SurfaceProps) Surface {
+	return C.sk_surface_make_raster_n32_premul(C.int(width), C.int(height), surfaceProps)
+}
+
 func SurfaceNewBackendRenderTarget(ctx DirectContext, backend BackendRenderTarget, origin SurfaceOrigin, colorType ColorType, colorSpace ColorSpace, surfaceProps SurfaceProps) Surface {
 	return C.sk_surface_new_backend_render_target(ctx, backend, C.gr_surface_origin_t(origin),
 		C.sk_color_type_t(colorType), colorSpace, surfaceProps)
+}
+
+func SurfaceMakeImageSnapshot(aSurface Surface) Image {
+	return C.sk_surface_make_image_snapshot(aSurface)
 }
 
 func SurfaceGetCanvas(aSurface Surface) Canvas {

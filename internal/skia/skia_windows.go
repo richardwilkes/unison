@@ -279,7 +279,10 @@ var (
 	skStringGetCStrProc                       *syscall.Proc
 	skStringGetSizeProc                       *syscall.Proc
 	skStringDeleteProc                        *syscall.Proc
+	skSurfaceMakeRasterDirectProc             *syscall.Proc
+	skSurfaceMakeRasterN32PreMulProc          *syscall.Proc
 	skSurfaceNewBackendRenderTargetProc       *syscall.Proc
+	skSurfaceMakeImageSnapshotProc            *syscall.Proc
 	skSurfaceGetCanvasProc                    *syscall.Proc
 	skSurfaceUnrefProc                        *syscall.Proc
 	skSurfacePropsNewProc                     *syscall.Proc
@@ -561,7 +564,10 @@ func init() {
 	skStringGetCStrProc = skia.MustFindProc("sk_string_get_c_str")
 	skStringGetSizeProc = skia.MustFindProc("sk_string_get_size")
 	skStringDeleteProc = skia.MustFindProc("sk_string_delete")
+	skSurfaceMakeRasterDirectProc = skia.MustFindProc("sk_surface_make_raster_direct")
+	skSurfaceMakeRasterN32PreMulProc = skia.MustFindProc("sk_surface_make_raster_n32_premul")
 	skSurfaceNewBackendRenderTargetProc = skia.MustFindProc("sk_surface_new_backend_render_target")
+	skSurfaceMakeImageSnapshotProc = skia.MustFindProc("sk_surface_make_image_snapshot")
 	skSurfaceGetCanvasProc = skia.MustFindProc("sk_surface_get_canvas")
 	skSurfaceUnrefProc = skia.MustFindProc("sk_surface_unref")
 	skSurfacePropsNewProc = skia.MustFindProc("sk_surfaceprops_new")
@@ -1863,10 +1869,24 @@ func StringDelete(str String) {
 	skStringDeleteProc.Call(uintptr(str))
 }
 
+func SurfaceMakeRasterDirect(info *ImageInfo, pixels []byte, rowBytes int, surfaceProps SurfaceProps) Surface {
+	r1, _, _ := skSurfaceMakeRasterDirectProc.Call(uintptr(unsafe.Pointer(info)), uintptr(unsafe.Pointer(&pixels[0])), uintptr(rowBytes), uintptr(surfaceProps))
+}
+
+func SurfaceMakeRasterN32PreMul(width, height int, surfaceProps SurfaceProps) Surface {
+	r1, _, _ := skSurfaceMakeRasterN32PreMulProc.Call(uintptr(width), uintptr(height), uintptr(surfaceProps))
+	return Surface(r1)
+}
+
 func SurfaceNewBackendRenderTarget(ctx DirectContext, backend BackendRenderTarget, origin SurfaceOrigin, colorType ColorType, colorSpace ColorSpace, surfaceProps SurfaceProps) Surface {
 	r1, _, _ := skSurfaceNewBackendRenderTargetProc.Call(uintptr(ctx), uintptr(backend), uintptr(origin),
 		uintptr(colorType), uintptr(colorSpace), uintptr(surfaceProps))
 	return Surface(r1)
+}
+
+func SurfaceMakeImageSnapshot(aSurface Surface) Image {
+	r1, _, _ := skSurfaceMakeImageSnapshotProc.Call(uintptr(aSurface))
+	return Image(r1)
 }
 
 func SurfaceGetCanvas(aSurface Surface) Canvas {
