@@ -88,7 +88,6 @@ func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
 	scale := float32(ppi) / 72
 	s := &surface{
-		// context: skia.ContextMakeGL(defaultGLInterface()),
 		surface: skia.SurfaceMakeRasterN32PreMul(int(float32(width)*scale), int(float32(height)*scale), defaultSurfaceProps()),
 	}
 	c := &Canvas{
@@ -107,11 +106,11 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 	height = skia.ImageGetHeight(img)
 	pixels := make([]byte, width*height*4)
 	if !skia.ImageReadPixels(img, &skia.ImageInfo{
-		Colorspace: skia.ImageGetColorSpace(img),
+		Colorspace: skiaColorspace,
 		Width:      int32(width),
 		Height:     int32(height),
-		ColorType:  skia.ImageGetColorType(img),
-		AlphaType:  skia.ImageGetAlphaType(img),
+		ColorType:  skia.ColorTypeRGBA8888,
+		AlphaType:  skia.AlphaTypeUnPreMul,
 	}, pixels, width*4, 0, 0, skia.ImageCachingHintDisallow) {
 		return nil, errs.New("unable to read raw pixels from image")
 	}
