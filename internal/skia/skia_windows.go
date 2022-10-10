@@ -1871,6 +1871,7 @@ func StringDelete(str String) {
 
 func SurfaceMakeRasterDirect(info *ImageInfo, pixels []byte, rowBytes int, surfaceProps SurfaceProps) Surface {
 	r1, _, _ := skSurfaceMakeRasterDirectProc.Call(uintptr(unsafe.Pointer(info)), uintptr(unsafe.Pointer(&pixels[0])), uintptr(rowBytes), uintptr(surfaceProps))
+	return Surface(r1)
 }
 
 func SurfaceMakeRasterN32PreMul(width, height int, surfaceProps SurfaceProps) Surface {
