@@ -270,7 +270,7 @@ void menuItemSetState(NSMenuItemRef mi, NSControlStateValue state) {
 void menuPopup(NSWindowRef wnd, NSMenuRef m, NSMenuItemRef mi, CGRect bounds) {
 	// popupMenuPositioningItem:atLocation:inView: is not being used here because it fails to work when a modal dialog
 	// is being used.
-	NSPopUpButtonCell *popUpButtonCell = [[NSPopUpButtonCell alloc] initTextCell:@"" pullsDown:NO];
+	NSPopUpButtonCell *popUpButtonCell = [[[NSPopUpButtonCell alloc] initTextCell:@"" pullsDown:NO] retain];
 	[popUpButtonCell setAutoenablesItems:NO];
 	[popUpButtonCell setAltersStateOfSelectedItem:NO];
 	[popUpButtonCell setMenu:(NSMenu *)m];
