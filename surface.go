@@ -26,10 +26,12 @@ type surface struct {
 	backend skia.BackendRenderTarget
 	surface skia.Surface
 	size    Size
+	scaleX  float32
+	scaleY  float32
 }
 
 func (s *surface) prepareCanvas(size Size, dirty Rect, scaleX, scaleY float32) (*Canvas, error) {
-	if s.size != size {
+	if s.size != size || scaleX != s.scaleX || scaleY != s.scaleY {
 		if s.surface != nil {
 			skia.SurfaceUnref(s.surface)
 			s.surface = nil
@@ -37,6 +39,8 @@ func (s *surface) prepareCanvas(size Size, dirty Rect, scaleX, scaleY float32) (
 			s.backend = nil
 		}
 		s.size = size
+		s.scaleX = scaleX
+		s.scaleY = scaleY
 	}
 	if s.surface == nil {
 		s.context = skia.ContextMakeGL(defaultGLInterface())
