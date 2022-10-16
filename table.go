@@ -740,7 +740,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 				t.selAnchor = id
 				t.notifyOfSelectionChange()
 			}
-		case mod&(OptionModifier|CommandModifier) != 0: // Toggle single row
+		case mod&(ControlModifier|CommandModifier) != 0: // Toggle single row
 			if t.selMap[id] {
 				delete(t.selMap, id)
 			} else {
