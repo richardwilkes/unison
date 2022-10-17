@@ -70,6 +70,7 @@ type dockTab struct {
 	dockable Dockable
 	title    *Label
 	button   *Button
+	pressed  bool
 }
 
 func newDockTab(dockable Dockable) *dockTab {
@@ -106,6 +107,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		flex.Columns++
 	}
 	t.MouseDownCallback = t.mouseDown
+	t.MouseUpCallback = t.mouseUp
 	t.MouseDragCallback = t.mouseDrag
 	t.UpdateTooltipCallback = t.updateTooltip
 	return t
@@ -142,7 +144,10 @@ func (t *dockTab) updateTitle() {
 
 func (t *dockTab) draw(gc *Canvas, rect Rect) {
 	var bg, fg Ink
-	if dc := Ancestor[*DockContainer](t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
+	if t.pressed {
+		bg = t.TabFocusedInk
+		fg = t.OnTabFocusedInk
+	} else if dc := Ancestor[*DockContainer](t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
 		if dc == Ancestor[*DockContainer](t.Window().Focus()) {
 			bg = t.TabFocusedInk
 			fg = t.OnTabFocusedInk
@@ -190,14 +195,8 @@ func (t *dockTab) updateTooltip(where Point, suggestedAvoidInRoot Rect) Rect {
 }
 
 func (t *dockTab) mouseDown(where Point, button, clickCount int, mod Modifiers) bool {
-	if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
-		switch {
-		case dc.CurrentDockable() != t.dockable:
-			dc.SetCurrentDockable(t.dockable)
-		case dc != Ancestor[*DockContainer](t.Window().Focus()):
-			dc.AcquireFocus()
-		}
-	}
+	t.pressed = true
+	t.MarkForRedraw()
 	return true
 }
 
@@ -214,5 +213,21 @@ func (t *dockTab) mouseDrag(where Point, button int, mod Modifiers) bool {
 			})
 		}
 	}
+	return true
+}
+
+func (t *dockTab) mouseUp(where Point, button int, mod Modifiers) bool {
+	if t.ContentRect(true).ContainsPoint(where) {
+		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
+			switch {
+			case dc.CurrentDockable() != t.dockable:
+				dc.SetCurrentDockable(t.dockable)
+			case dc != Ancestor[*DockContainer](t.Window().Focus()):
+				dc.AcquireFocus()
+			}
+		}
+	}
+	t.pressed = false
+	t.MarkForRedraw()
 	return true
 }

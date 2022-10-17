@@ -58,6 +58,7 @@ type PopupMenu[T comparable] struct {
 	items             []*popupMenuItem[T]
 	selectedIndex     int
 	textCache         TextCache
+	pressed           bool
 }
 
 // NewPopupMenu creates a new PopupMenu.
@@ -71,6 +72,8 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 	p.GainedFocusCallback = p.DefaultFocusGained
 	p.LostFocusCallback = p.MarkForRedraw
 	p.MouseDownCallback = p.DefaultMouseDown
+	p.MouseDragCallback = p.DefaultMouseDrag
+	p.MouseUpCallback = p.DefaultMouseUp
 	p.KeyDownCallback = p.DefaultKeyDown
 	return p
 }
@@ -110,7 +113,7 @@ func (p *PopupMenu[T]) DefaultFocusGained() {
 // DefaultDraw provides the default drawing.
 func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	thickness := float32(1)
-	if p.Focused() {
+	if p.Focused() || p.pressed {
 		thickness++
 	}
 	rect := p.ContentRect(false)
@@ -308,7 +311,25 @@ func (p *PopupMenu[T]) SelectIndex(index int) {
 
 // DefaultMouseDown provides the default mouse down handling.
 func (p *PopupMenu[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
-	p.Click()
+	p.pressed = true
+	p.MarkForRedraw()
+	return true
+}
+
+func (p *PopupMenu[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+	if p.pressed != p.ContentRect(true).ContainsPoint(where) {
+		p.pressed = !p.pressed
+		p.MarkForRedraw()
+	}
+	return true
+}
+
+func (p *PopupMenu[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+	if p.ContentRect(true).ContainsPoint(where) {
+		p.Click()
+	}
+	p.pressed = false
+	p.MarkForRedraw()
 	return true
 }
 
