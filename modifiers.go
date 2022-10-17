@@ -61,6 +61,11 @@ func (m Modifiers) NumLockDown() bool {
 	return m&NumLockModifier == NumLockModifier
 }
 
+// DiscontiguousSelectionDown returns true if either the control or command/meta key is being pressed.
+func (m Modifiers) DiscontiguousSelectionDown() bool {
+	return m&(ControlModifier|CommandModifier) != 0
+}
+
 // OSMenuCmdModifierDown returns true if the OS's standard menu command key is being pressed.
 func (m Modifiers) OSMenuCmdModifierDown() bool {
 	mask := OSMenuCmdModifier()
