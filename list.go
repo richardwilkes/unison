@@ -274,7 +274,7 @@ func (l *List[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modi
 	l.wasDragged = false
 	if index, _ := l.rowAt(where.Y); index >= 0 {
 		switch {
-		case mod&(ControlModifier|CommandModifier) != 0:
+		case mod.DiscontiguousSelectionDown():
 			if l.allowMultiple {
 				l.Selection.Flip(index)
 			} else {
@@ -328,7 +328,7 @@ func (l *List[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool 
 					l.anchor = index
 				}
 				switch {
-				case mod&(ControlModifier|CommandModifier) != 0:
+				case mod.DiscontiguousSelectionDown():
 					l.Selection.FlipRange(l.anchor, index)
 				case mod.ShiftDown():
 					l.Selection.SetRange(l.anchor, index)
