@@ -711,7 +711,7 @@ func (w *Window) Focus() *Panel {
 	if w == nil {
 		return nil
 	}
-	if w.focus == nil {
+	if w.focus == nil || w.focus.Window() != w {
 		w.FocusNext()
 	}
 	return w.focus
