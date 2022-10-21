@@ -44,7 +44,7 @@ type tableCache[T TableRowConstraint[T]] struct {
 
 type tableHitRect struct {
 	Rect
-	handler func(where Point, button, clickCount int, mod Modifiers)
+	handler func()
 }
 
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
@@ -516,7 +516,7 @@ func (t *Table[T]) RowFrame(row int) Rect {
 func (t *Table[T]) newTableHitRect(rect Rect, row T) tableHitRect {
 	return tableHitRect{
 		Rect: rect,
-		handler: func(where Point, button, clickCount int, mod Modifiers) {
+		handler: func() {
 			open := !row.IsOpen()
 			row.SetOpen(open)
 			t.SyncToModel()
@@ -693,7 +693,6 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 		}
 		for _, one := range t.hitRects {
 			if one.ContainsPoint(where) {
-				one.handler(where, button, clickCount, mod)
 				return true
 			}
 		}
@@ -812,6 +811,17 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+	stop := false
+	if !t.wasDragged && button == ButtonLeft {
+		for _, one := range t.hitRects {
+			if one.ContainsPoint(where) {
+				one.handler()
+				stop = true
+				break
+			}
+		}
+	}
+
 	if !t.wasDragged && t.lastSel != zeroUUID {
 		t.ClearSelection()
 		t.selMap[t.lastSel] = true
@@ -820,8 +830,7 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 		t.notifyOfSelectionChange()
 	}
 
-	stop := false
-	if t.interactionRow != -1 && t.interactionColumn != -1 {
+	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
 		if cell.MouseUpCallback != nil {
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
