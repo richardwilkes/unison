@@ -611,9 +611,13 @@ func (p *Panel) ScrollRectIntoView(rect Rect) {
 				return
 			}
 		}
+		x := rect.Right()
+		y := rect.Bottom()
 		scale := look.Scale()
 		rect.X *= scale
 		rect.Y *= scale
+		rect.Width = x*scale - rect.X
+		rect.Height = y*scale - rect.Y
 		rect.Point.Add(look.frame.Point)
 		look = look.parent
 	}
