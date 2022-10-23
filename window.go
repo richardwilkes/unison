@@ -264,6 +264,13 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	})
 	w.wnd.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, code int, action glfw.Action, mods glfw.ModifierKey) {
 		if w.okToProcess() {
+			if runtime.GOOS == toolbox.LinuxOS {
+				if action == glfw.Release {
+					mods &= ^glfwKeyToModifier(key)
+				} else {
+					mods |= glfwKeyToModifier(key)
+				}
+			}
 			w.lastKeyModifiers = Modifiers(mods)
 			switch action {
 			case glfw.Press:
@@ -294,6 +301,21 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	w.ValidateLayout()
 	w.SetTitleIcons(w.titleIcons)
 	return w, nil
+}
+
+func glfwKeyToModifier(key glfw.Key) glfw.ModifierKey {
+	switch key {
+	case glfw.KeyLeftControl, glfw.KeyRightControl:
+		return glfw.ModControl
+	case glfw.KeyLeftShift, glfw.KeyRightShift:
+		return glfw.ModShift
+	case glfw.KeyLeftAlt, glfw.KeyRightAlt:
+		return glfw.ModAlt
+	case glfw.KeyLeftSuper, glfw.KeyRightSuper:
+		return glfw.ModSuper
+	default:
+		return 0
+	}
 }
 
 func glfwEnabled(enabled bool) int {
