@@ -63,6 +63,7 @@ type Panel struct {
 	focusable            bool
 	disabled             bool
 	Hidden               bool
+	TooltipImmediate     bool
 }
 
 // NewPanel creates a new panel.

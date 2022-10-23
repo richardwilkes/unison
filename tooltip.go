@@ -128,7 +128,9 @@ func (ts *tooltipSequencer) show() {
 		tip.SetFrameRect(rect)
 		ts.window.root.setTooltip(tip)
 		ts.window.lastTooltipShownAt = time.Now()
-		InvokeTaskAfter(ts.close, DefaultTooltipTheme.Dismissal)
+		if !tip.TooltipImmediate {
+			InvokeTaskAfter(ts.close, DefaultTooltipTheme.Dismissal)
+		}
 	}
 }
 

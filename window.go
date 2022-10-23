@@ -1000,6 +1000,7 @@ func (w *Window) updateTooltip(target *Panel, where Point) {
 		}
 		if target.Tooltip != nil {
 			tip = target.Tooltip
+			tip.TooltipImmediate = target.TooltipImmediate
 			break
 		}
 		target = target.parent
@@ -1010,7 +1011,7 @@ func (w *Window) updateTooltip(target *Panel, where Point) {
 		w.lastTooltip = tip
 		if tip != nil {
 			ts := &tooltipSequencer{window: w, avoid: avoid, sequence: w.tooltipSequence}
-			if wasShowing || time.Since(w.lastTooltipShownAt) < DefaultTooltipTheme.Dismissal {
+			if tip.TooltipImmediate || wasShowing || time.Since(w.lastTooltipShownAt) < DefaultTooltipTheme.Dismissal {
 				ts.show()
 			} else {
 				InvokeTaskAfter(ts.show, DefaultTooltipTheme.Delay)
