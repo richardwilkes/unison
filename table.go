@@ -123,6 +123,7 @@ type Table[T TableRowConstraint[T]] struct {
 	awaitingSyncToModel      bool
 	selNeedsPrune            bool
 	wasDragged               bool
+	dividerDrag              bool
 }
 
 // NewTable creates a new Table control.
@@ -660,6 +661,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 	}
 	t.RequestFocus()
 	t.wasDragged = false
+	t.dividerDrag = false
 	t.lastSel = zeroUUID
 
 	t.interactionRow = -1
@@ -792,6 +794,7 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 					t.ColumnSizes[t.interactionColumn].Current = width
 					t.EventuallySyncToModel()
 					t.MarkForRedraw()
+					t.dividerDrag = true
 				}
 				stop = true
 			}
@@ -812,7 +815,7 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	stop := false
-	if !t.wasDragged && button == ButtonLeft {
+	if !t.dividerDrag && button == ButtonLeft {
 		for _, one := range t.hitRects {
 			if one.ContainsPoint(where) {
 				one.handler()
