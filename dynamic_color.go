@@ -14,7 +14,6 @@ import (
 )
 
 var (
-	_                      Ink           = &DynamicColor{}
 	_                      ColorProvider = &DynamicColor{}
 	needDynamicColorUpdate               = true
 	dynamicColors          []*DynamicColor

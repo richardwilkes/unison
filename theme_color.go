@@ -9,10 +9,7 @@
 
 package unison
 
-var (
-	_ ColorProvider = &ThemeColor{}
-	_ Ink           = &ThemeColor{}
-)
+var _ ColorProvider = &ThemeColor{}
 
 // Pre-defined theme colors.
 var (

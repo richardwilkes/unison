@@ -23,13 +23,13 @@ var (
 	ErrColorDecode               = errors.New("invalid color string")
 	nameToColor                  = make(map[string]Color)
 	colorToName                  = make(map[Color]string)
-	_              Ink           = Color(0)
 	_              ColorProvider = Color(0)
 )
 
 // ColorProvider allows for different types of objects that hold a color to be used interchangeably.
 type ColorProvider interface {
 	GetColor() Color
+	Ink
 }
 
 // Color contains the value of a color used for drawing, stored as 0xAARRGGBB.
