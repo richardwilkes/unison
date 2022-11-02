@@ -316,6 +316,7 @@ func (p *PopupMenu[T]) DefaultMouseDown(where Point, button, clickCount int, mod
 	return true
 }
 
+// DefaultMouseDrag is the default implementation of the MouseDragCallback.
 func (p *PopupMenu[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 	if p.pressed != p.ContentRect(true).ContainsPoint(where) {
 		p.pressed = !p.pressed
@@ -324,6 +325,7 @@ func (p *PopupMenu[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) 
 	return true
 }
 
+// DefaultMouseUp is the default implementation of the MouseUpCallback.
 func (p *PopupMenu[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	if p.ContentRect(true).ContainsPoint(where) {
 		p.Click()

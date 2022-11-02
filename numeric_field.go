@@ -48,11 +48,13 @@ func NewNumericField[T xmath.Numeric](current, min, max T, format func(T) string
 	return f
 }
 
+// Value returns the current value of the field.
 func (f *NumericField[T]) Value() T {
 	v, _ := f.Extract(strings.TrimSpace(f.Text())) //nolint:errcheck // Default value in case of error is acceptable
 	return xmath.Min(xmath.Max(v, f.min), f.max)
 }
 
+// SetValue sets the current value of the field.
 func (f *NumericField[T]) SetValue(value T) {
 	text := f.Format(value)
 	if text != f.Text() {
@@ -70,11 +72,13 @@ func (f *NumericField[T]) Max() T {
 	return f.max
 }
 
+// DefaultFocusLost is the default implementation for the LostFocusCallback.
 func (f *NumericField[T]) DefaultFocusLost() {
 	f.SetText(f.Format(f.Value()))
 	f.Field.DefaultFocusLost()
 }
 
+// DefaultRuneTyped is the default implementation for the RuneTypedCallback.
 func (f *NumericField[T]) DefaultRuneTyped(ch rune) bool {
 	if !unicode.IsControl(ch) {
 		if _, err := f.Extract(strings.TrimSpace(string(f.RunesIfPasted([]rune{ch})))); err != nil {
@@ -85,6 +89,7 @@ func (f *NumericField[T]) DefaultRuneTyped(ch rune) bool {
 	return f.Field.DefaultRuneTyped(ch)
 }
 
+// DefaultValidate is the default implementation for the ValidateCallback.
 func (f *NumericField[T]) DefaultValidate() bool {
 	if text := f.tooltipTextForValidation(); text != "" {
 		f.Tooltip = NewTooltipWithText(text)
