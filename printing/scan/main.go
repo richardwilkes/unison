@@ -40,7 +40,7 @@ func scan(duration time.Duration, output string) {
 		} else {
 			needDivider = true
 		}
-		jot.Infof("Found Printer: %s", printer.Name)
+		jot.Infof("Found Printer: %s (%s:%d)", printer.Name, printer.Host, printer.Port)
 		var a *printing.PrinterAttributes
 		if a, err = printer.Attributes(duration, true); err != nil {
 			jot.Error(err)
