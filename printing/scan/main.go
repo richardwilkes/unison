@@ -16,7 +16,7 @@ import (
 func main() {
 	cl := cmdline.New(true)
 	duration := time.Second
-	cl.NewGeneralOption(&duration).SetName("duration").SetSingle('d').SetUsage("The amount of time to scan for printers")
+	cl.NewGeneralOption(&duration).SetName("duration").SetSingle('d').SetUsage("The amount of time to scan for printers as well as the amount of time to wait for a response when querying for attributes")
 	output := "scan-results.txt"
 	cl.NewGeneralOption(&output).SetName("output").SetSingle('o').SetUsage("The file to write to")
 	cl.Parse(os.Args[1:])
@@ -31,7 +31,7 @@ func scan(duration time.Duration, output string) {
 	pm := &printing.PrintManager{}
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
-	printers := make(chan *printing.Printer)
+	printers := make(chan *printing.Printer, 128)
 	pm.ScanForPrinters(ctx, printers)
 	needDivider := false
 	for printer := range printers {
@@ -42,7 +42,7 @@ func scan(duration time.Duration, output string) {
 		}
 		jot.Infof("Found Printer: %s", printer.Name)
 		var a *printing.PrinterAttributes
-		if a, err = printer.Attributes(time.Second, true); err != nil {
+		if a, err = printer.Attributes(duration, true); err != nil {
 			jot.Error(err)
 			continue
 		}
