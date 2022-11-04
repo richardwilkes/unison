@@ -12,6 +12,7 @@ package unison
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -83,6 +84,35 @@ func HSBA(hue, saturation, brightness, alpha float32) Color {
 	default:
 		return ARGB(alpha, v, p, q)
 	}
+}
+
+// OKLCH creates a Color from lightness (0-1), chroma (0-0.37), hue (0-360), alpha (0-1) values using the OKLCH color space.
+func OKLCH(lightness, chroma, hue, alpha float32) Color {
+	x := float64(normalizeHue(float64(hue))) * math.Pi / 180
+	c := float64(clampChromaForOKLCH(chroma))
+	y := c * math.Cos(x)
+	z := c * math.Sin(x)
+	l := float64(clamp0To1(lightness))
+	L := math.Pow(l*0.99999999845051981432+0.39633779217376785678*y+0.21580375806075880339*z, 3)
+	M := math.Pow(l*1.0000000088817607767-0.1055613423236563494*y-0.063854174771705903402*z, 3)
+	S := math.Pow(l*1.0000000546724109177-0.089484182094965759684*y-1.2914855378640917399*z, 3)
+	return ARGBfloat(alpha, fromLinear(4.076741661347994*L-3.307711590408193*M+0.230969928729428*S),
+		fromLinear(-1.2684380040921763*L+2.6097574006633715*M-0.3413193963102197*S),
+		fromLinear(-0.004196086541837188*L-0.7034186144594493*M+1.7076147009309444*S))
+}
+
+func fromLinear(value float64) float32 {
+	abs := math.Abs(value)
+	if abs > 0.0031308 {
+		var m float64
+		if math.Signbit(value) {
+			m = -1
+		} else {
+			m = 1
+		}
+		return float32(m * (1.055*math.Pow(abs, 1/2.4) - 0.055))
+	}
+	return float32(value * 12.92)
 }
 
 // MustColorDecode is the same as ColorDecode(), but returns Black if an error occurs.
@@ -499,6 +529,50 @@ func (c Color) Luminance() float32 {
 	return 0.299*c.RedIntensity() + 0.587*c.GreenIntensity() + 0.114*c.BlueIntensity()
 }
 
+// OKLCH returns the lightness (0-1), chroma (0-0.37), and hue (0-360) values using the OKLCH color space.
+func (c Color) OKLCH() (rl, rc, rh float32) {
+	lr := toLinear(float64(c.RedIntensity()))
+	lg := toLinear(float64(c.GreenIntensity()))
+	lb := toLinear(float64(c.BlueIntensity()))
+	L := math.Cbrt(0.41222147079999993*lr + 0.5363325363*lg + 0.0514459929*lb)
+	M := math.Cbrt(0.2119034981999999*lr + 0.6806995450999999*lg + 0.1073969566*lb)
+	S := math.Cbrt(0.08830246189999998*lr + 0.2817188376*lg + 0.6299787005000002*lb)
+	b := c.Blue()
+	if c.Red() != b || b != c.Green() {
+		ra := 1.9779984951*L - 2.428592205*M + 0.4505937099*S
+		rb := 0.0259040371*L + 0.7827717662*M - 0.808675766*S
+		if rc = float32(math.Sqrt(ra*ra + rb*rb)); rc < 0 {
+			rc = 0
+		} else {
+			rc = clampChromaForOKLCH(rc)
+		}
+		if rc != 0 {
+			rh = normalizeHue(math.Atan2(rb, ra) * 180 / math.Pi)
+		}
+	}
+	return clamp0To1(float32(0.2104542553*L + 0.793617785*M - 0.0040720468*S)), rc, rh
+}
+
+func toLinear(value float64) float64 {
+	abs := math.Abs(value)
+	if abs < 0.04045 {
+		return value / 12.92
+	}
+	var m float64
+	if math.Signbit(value) {
+		m = -1
+	} else {
+		m = 1
+	}
+	return m * math.Pow((abs+0.055)/1.055, 2.4)
+}
+
+// NormalizeOKLCH returns the normalized lightness (0-1), chroma (0-0.37), and hue (0-360) values using the OKLCH color
+// space.
+func NormalizeOKLCH(lightness, chroma, hue, alpha float32) (l, c, h, a float32) {
+	return clamp0To1(lightness), clampChromaForOKLCH(chroma), normalizeHue(float64(hue)), clamp0To1(alpha)
+}
+
 // Blend blends this color with another color. pct is the amount of the other
 // color to use.
 func (c Color) Blend(other Color, pct float32) Color {
@@ -560,6 +634,16 @@ func (c Color) Unpremultiply() Color {
 	}
 }
 
+func normalizeHue(hue float64) float32 {
+	if hue < 0 || hue >= 360 {
+		hue = math.Mod(hue, 360)
+		if hue < 0 {
+			hue += 360
+		}
+	}
+	return float32(hue)
+}
+
 func clamp0To1(value float32) float32 {
 	switch {
 	case value < 0:
@@ -584,6 +668,17 @@ func clamp0To255(value int) int {
 
 func clamp0To1AndScale255(value float32) int {
 	return clamp0To255(int(clamp0To1(value)*255 + 0.5))
+}
+
+func clampChromaForOKLCH(value float32) float32 {
+	switch {
+	case value < 0:
+		return 0
+	case value > 0.37:
+		return 0.37
+	default:
+		return value
+	}
 }
 
 func min3(a, b, c int) int {
