@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
@@ -132,7 +133,7 @@ func (d *Dock) RootDockLayout() *DockLayout {
 // DockTo a Dockable within this Dock. If the Dockable already exists in this Dock, it will be moved to the new
 // location. nil may be passed in for the target, in which case the top-most layout is used.
 func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
-	if target == nil {
+	if toolbox.IsNil(target) {
 		target = d.layout
 	}
 	if d.layout.Contains(target) {
