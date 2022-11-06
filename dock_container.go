@@ -35,7 +35,6 @@ type Dockable interface {
 type DockContainer struct {
 	Panel
 	Dock    *Dock
-	Group   string
 	header  *dockHeader
 	content *dockContainerContent
 }
