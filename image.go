@@ -10,13 +10,13 @@
 package unison
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"image"
 	"math"
+	"strconv"
 	"sync"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -57,7 +57,11 @@ func NewImageFromBytes(buffer []byte, scale float32) (*Image, error) {
 	if img == nil {
 		return nil, errs.New("unable to decode image data")
 	}
-	return newImage(img, scale)
+	hash, err := hashImageData(skia.ImageGetWidth(img), skia.ImageGetHeight(img), scale, buffer)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+	return newImage(img, scale, hash)
 }
 
 // NewImageFromPixels creates a new image from pixel data.
@@ -80,7 +84,11 @@ func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image
 	if img == nil {
 		return nil, errs.New("unable to create image")
 	}
-	return newImage(img, scale)
+	hash, err := hashImageData(width, height, scale, pixels)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+	return newImage(img, scale, hash)
 }
 
 // NewImageFromDrawing creates a new image by drawing into it. This is currently fairly inefficient, so take care to use
@@ -118,34 +126,13 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 	return NewImageFromPixels(width, height, pixels, 1)
 }
 
-func newImage(img skia.Image, scale float32) (*Image, error) {
+func newImage(img skia.Image, scale float32, hash uint64) (*Image, error) {
 	imgRef := &imageRef{
+		hash:  hash,
+		key:   strconv.FormatUint(hash, 36),
 		img:   img,
 		scale: scale,
 	}
-	width := skia.ImageGetWidth(img)
-	height := skia.ImageGetHeight(img)
-	pixels := make([]byte, width*height*4)
-	// TODO: Consider generating the key from the input rather than the raw pixels, as this call is potentially expensive
-	if !skia.ImageReadPixels(img, &skia.ImageInfo{
-		Colorspace: skia.ImageGetColorSpace(img),
-		Width:      int32(width),
-		Height:     int32(height),
-		ColorType:  skia.ImageGetColorType(img),
-		AlphaType:  skia.ImageGetAlphaType(img),
-	}, pixels, width*4, 0, 0, skia.ImageCachingHintAllow) {
-		return nil, errs.New("unable to read raw pixels from image")
-	}
-	s := sha256.New224()
-	buffer := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buffer, math.Float64bits(float64(scale)))
-	if _, err := s.Write(buffer); err != nil {
-		return nil, errs.Wrap(err)
-	}
-	if _, err := s.Write(pixels); err != nil {
-		return nil, errs.Wrap(err)
-	}
-	imgRef.key = base64.RawURLEncoding.EncodeToString(s.Sum(nil)[:sha256.Size224])
 	ref, existedPreviously := imgPool.NewSoftRef(imgRef)
 	if existedPreviously {
 		imgRef.Release()
@@ -249,10 +236,11 @@ func releaseImagesForContext(ctx skia.DirectContext) {
 
 var (
 	imageCtxMapLock sync.Mutex
-	imageCtxMap     = make(map[skia.DirectContext]map[string]skia.Image)
+	imageCtxMap     = make(map[skia.DirectContext]map[uint64]skia.Image)
 )
 
 type imageRef struct {
+	hash  uint64
 	key   string
 	img   skia.Image
 	scale float32
@@ -267,10 +255,10 @@ func (ref *imageRef) contextImg(s *surface) skia.Image {
 	}
 	m, ok := imageCtxMap[ctx]
 	if !ok {
-		m = make(map[string]skia.Image)
+		m = make(map[uint64]skia.Image)
 		imageCtxMap[ctx] = m
 	}
-	i, ok2 := m[ref.key]
+	i, ok2 := m[ref.hash]
 	if !ok2 {
 		if ctx == nil {
 			i = skia.ImageMakeNonTextureImage(ref.img)
@@ -278,7 +266,7 @@ func (ref *imageRef) contextImg(s *surface) skia.Image {
 			i = skia.ImageMakeTextureImage(ref.img, ctx, false)
 		}
 		if i != nil {
-			m[ref.key] = i
+			m[ref.hash] = i
 		} else {
 			jot.Warn("failed to create texture from image")
 			i = ref.img
@@ -295,9 +283,9 @@ func (ref *imageRef) Release() {
 	imageCtxMapLock.Lock()
 	var list []skia.Image
 	for _, m := range imageCtxMap {
-		if img, ok := m[ref.key]; ok {
+		if img, ok := m[ref.hash]; ok {
 			list = append(list, img)
-			delete(m, ref.key)
+			delete(m, ref.hash)
 		}
 	}
 	imageCtxMapLock.Unlock()
@@ -309,4 +297,19 @@ func (ref *imageRef) Release() {
 			skia.ImageUnref(img)
 		}
 	})
+}
+
+func hashImageData(width, height int, scale float32, data []byte) (uint64, error) {
+	s := xxhash.New()
+	var buffer [12]byte
+	binary.LittleEndian.PutUint32(buffer[:4], math.Float32bits(scale))
+	binary.LittleEndian.PutUint32(buffer[4:8], uint32(width))
+	binary.LittleEndian.PutUint32(buffer[8:12], uint32(height))
+	if _, err := s.Write(buffer[:]); err != nil {
+		return 0, errs.Wrap(err)
+	}
+	if _, err := s.Write(data); err != nil {
+		return 0, errs.Wrap(err)
+	}
+	return s.Sum64(), nil
 }

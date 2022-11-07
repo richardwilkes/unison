@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/OpenPrinting/goipp v1.0.0
+	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b
 	github.com/google/uuid v1.3.0
@@ -11,7 +12,7 @@ require (
 	github.com/richardwilkes/json v0.1.0
 	github.com/richardwilkes/toolbox v1.77.2
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/exp v0.0.0-20221028150844-83b7d23a625f
+	golang.org/x/exp v0.0.0-20221106115401-f9659909a136
 	golang.org/x/image v0.1.0
 	golang.org/x/sys v0.1.0
 	golang.org/x/text v0.4.0
