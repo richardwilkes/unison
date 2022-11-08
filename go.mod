@@ -10,11 +10,11 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/json v0.1.0
-	github.com/richardwilkes/toolbox v1.77.2
+	github.com/richardwilkes/toolbox v1.78.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/exp v0.0.0-20221106115401-f9659909a136
 	golang.org/x/image v0.1.0
-	golang.org/x/sys v0.1.0
+	golang.org/x/sys v0.2.0
 	golang.org/x/text v0.4.0
 )
 
