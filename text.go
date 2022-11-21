@@ -160,8 +160,7 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	if start != 0 && decoration.Equivalent(t.decorations[start-1]) {
 		decoration = t.decorations[start-1]
 	} else {
-		clonedDecoration := *decoration
-		decoration = &clonedDecoration
+		decoration = decoration.Clone()
 	}
 	t.runes = append(t.runes, runes...)
 	face := decoration.Font.Face()

@@ -31,6 +31,18 @@ func (d *TextDecoration) Equivalent(other *TextDecoration) bool {
 		d.Font.Descriptor() == other.Font.Descriptor()
 }
 
+// Clone the TextDecoration.
+func (d *TextDecoration) Clone() *TextDecoration {
+	if d == nil {
+		return nil
+	}
+	other := *d
+	if other.Paint != nil {
+		other.Paint = other.Paint.Clone()
+	}
+	return &other
+}
+
 // DrawText draws the given text using this TextDecoration.
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
 	y += d.BaselineOffset
