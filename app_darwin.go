@@ -16,7 +16,7 @@ import (
 )
 
 func platformEarlyInit() {
-	ns.InstallAppDelegate(openFilesCallback)
+	ns.InstallAppDelegate(potentiallyDeferredOpenFilesHandler)
 }
 
 func platformLateInit() {
