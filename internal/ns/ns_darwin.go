@@ -484,6 +484,7 @@ func (a Array) StringAtIndex(index int) String {
 func (a Array) Release() {
 	C.CFRelease(C.CFTypeRef(a))
 }
+
 func (a Array) ArrayOfURLToStringSlice() []string {
 	count := a.Count()
 	result := make([]string, 0, count)
@@ -521,9 +522,11 @@ func NewFileURL(str string) URL {
 func (u URL) AbsoluteString() string {
 	other := C.CFURLCopyAbsoluteURL(C.CFURLRef(u))
 	s := String(C.CFURLGetString(other))
-	URL(other).Release()
-	defer s.Release()
-	return s.String()
+	str := s.String()
+	s.Release()
+	// If the following line is uncommented, I get a random crash at some later time
+	// URL(other).Release()
+	return str
 }
 
 func (u URL) Release() {
