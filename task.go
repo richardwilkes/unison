@@ -38,16 +38,20 @@ func InvokeTaskAfter(f func(), after time.Duration) {
 
 func processNextTask(recoveryHandler errs.RecoveryHandler) {
 	var f func()
+	needsPost := false
 	taskQueueLock.Lock()
 	if len(taskQueue) > 0 {
 		f = taskQueue[0]
 		copy(taskQueue, taskQueue[1:])
 		taskQueue[len(taskQueue)-1] = nil
 		taskQueue = taskQueue[:len(taskQueue)-1]
+		needsPost = len(taskQueue) > 0
 	}
 	taskQueueLock.Unlock()
 	if f != nil {
-		defer postEmptyEvent()
 		toolbox.CallWithHandler(f, recoveryHandler)
+		if needsPost {
+			postEmptyEvent()
+		}
 	}
 }
