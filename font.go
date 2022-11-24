@@ -23,8 +23,12 @@ import (
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
-// DefaultSystemFamilyName is the default system font family name and will be used as a fallback where needed.
-const DefaultSystemFamilyName = "Roboto"
+const (
+	// DefaultSystemFamilyName is the default system font family name and will be used as a fallback where needed.
+	DefaultSystemFamilyName = "Roboto"
+	// DefaultMonospacedFamilyName is the default monospaced font family name.
+	DefaultMonospacedFamilyName = "DejaVu Sans Mono"
+)
 
 //go:embed resources/fonts
 var fontFS embed.FS
@@ -44,6 +48,7 @@ var (
 	LabelFont                 = &IndirectFont{}
 	FieldFont                 = &IndirectFont{}
 	KeyboardFont              = &IndirectFont{}
+	MonospacedFont            = &IndirectFont{}
 )
 
 // Font holds a realized FontFace of a specific size that can be used to render text.
@@ -209,6 +214,7 @@ func init() {
 		keyboardFamilyName = ".Keyboard"
 	}
 	KeyboardFont.Font = MatchFontFace(keyboardFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize)
+	MonospacedFont.Font = MatchFontFace(DefaultMonospacedFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
 }
 
 // RegisterFont registers a font with the font manager.
