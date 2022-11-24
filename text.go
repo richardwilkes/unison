@@ -191,6 +191,14 @@ func (t *Text) ReplacePaint(paint *Paint) {
 	}
 }
 
+// ReplaceBackground replaces the background paint of this Text. Note that if this Text originally had multiple runs,
+// some with different paint, after this call all of the runs will have the same paint.
+func (t *Text) ReplaceBackground(paint *Paint) {
+	for _, d := range t.decorations {
+		d.Background = paint
+	}
+}
+
 // ReplaceUnderline replaces the underline of this Text. Note that if this Text originally had multiple runs, some with
 // different underline state, after this call all of the runs will have the same underline state.
 func (t *Text) ReplaceUnderline(underline bool) {

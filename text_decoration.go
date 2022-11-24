@@ -13,6 +13,7 @@ package unison
 type TextDecoration struct {
 	Font           Font
 	Paint          *Paint
+	Background     *Paint
 	BaselineOffset float32
 	Underline      bool
 	StrikeThrough  bool
@@ -28,7 +29,7 @@ func (d *TextDecoration) Equivalent(other *TextDecoration) bool {
 	}
 	return d.Underline == other.Underline && d.StrikeThrough == other.StrikeThrough &&
 		d.BaselineOffset == other.BaselineOffset && d.Paint.Equivalent(other.Paint) &&
-		d.Font.Descriptor() == other.Font.Descriptor()
+		d.Background.Equivalent(other.Background) && d.Font.Descriptor() == other.Font.Descriptor()
 }
 
 // Clone the TextDecoration.
@@ -40,11 +41,17 @@ func (d *TextDecoration) Clone() *TextDecoration {
 	if other.Paint != nil {
 		other.Paint = other.Paint.Clone()
 	}
+	if other.Background != nil {
+		other.Background = other.Background.Clone()
+	}
 	return &other
 }
 
 // DrawText draws the given text using this TextDecoration.
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
+	if d.Background != nil {
+		canvas.DrawRect(NewRect(x, y-d.Font.Baseline(), width, d.Font.LineHeight()), d.Background)
+	}
 	y += d.BaselineOffset
 	canvas.DrawSimpleString(text, x, y, d.Font, d.Paint)
 	if d.Underline || d.StrikeThrough {
@@ -57,7 +64,7 @@ func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float
 		}
 		if d.Underline {
 			paint.SetStrokeWidth(1)
-			canvas.DrawLine(x, y, x+width, y, paint)
+			canvas.DrawLine(x, y+1, x+width, y+1, paint)
 		}
 	}
 }
