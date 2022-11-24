@@ -74,11 +74,11 @@ func (l *Label) DefaultSizes(hint Size) (min, pref, max Size) {
 // DefaultDraw provides the default drawing.
 func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
 	txt := l.textCache.Text(l.Text, l.Font)
-	if l.Underline {
-		txt.ReplaceUnderline(l.Underline)
-	}
-	if l.StrikeThrough {
-		txt.ReplaceStrikeThrough(l.StrikeThrough)
+	if l.Underline || l.StrikeThrough {
+		txt.AdjustDecorations(func(decoration *TextDecoration) {
+			decoration.Underline = l.Underline
+			decoration.StrikeThrough = l.StrikeThrough
+		})
 	}
 	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, txt, l.OnBackgroundInk, l.Drawable, l.Side, l.Gap,
 		!l.Enabled())
@@ -98,21 +98,24 @@ func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32)
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable,
-	drawableSide Side, imgGap float32, applyDisabledFilter bool) {
+func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
 	if drawable == nil && text == nil {
 		return
 	}
 
-	paint := textInk.Paint(canvas, rect, Fill)
+	fg := textInk
 	if applyDisabledFilter {
-		paint.SetColorFilter(Grayscale30Filter())
+		fg = &ColorFilteredInk{
+			OriginalInk: fg,
+			ColorFilter: Grayscale30Filter(),
+		}
 	}
+	paint := fg.Paint(canvas, rect, Fill)
 
 	// Determine overall size of content
 	var size, txtSize Size
 	if text != nil {
-		text.ReplacePaint(paint)
+		text.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
 		txtSize = text.Extents()
 		size = txtSize
 	}

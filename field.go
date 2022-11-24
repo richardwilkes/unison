@@ -149,10 +149,7 @@ func (f *Field) SetMinimumTextWidthUsing(candidates ...string) {
 	var width float32
 	f.MinimumTextWidth = 10
 	for _, one := range candidates {
-		if width = NewText(one, &TextDecoration{
-			Font:  f.Font,
-			Paint: nil,
-		}).Width(); width > f.MinimumTextWidth {
+		if width = NewText(one, &TextDecoration{Font: f.Font}).Width(); width > f.MinimumTextWidth {
 			f.MinimumTextWidth = width
 		}
 	}
@@ -209,10 +206,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 	}
 	if len(f.runes) != 0 {
 		lines = make([]*Text, 0)
-		decoration := &TextDecoration{
-			Font:  f.Font,
-			Paint: nil,
-		}
+		decoration := &TextDecoration{Font: f.Font}
 		if f.multiLine {
 			endsWithLineFeed = make([]bool, 0, 16)
 			for _, line := range strings.Split(string(f.runes), "\n") {
@@ -266,27 +260,30 @@ func (f *Field) obscureIfNeeded(in []rune) []rune {
 
 // DefaultDraw provides the default drawing.
 func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
-	var fg, bg Ink
+	var bg, fg Ink
 	enabled := f.Enabled()
 	switch {
 	case f.invalid:
-		fg = f.ErrorInk
-		bg = f.OnErrorInk
+		bg = f.ErrorInk
+		fg = f.OnErrorInk
 	case enabled:
-		fg = f.EditableInk
-		bg = f.OnEditableInk
+		bg = f.EditableInk
+		fg = f.OnEditableInk
 	default:
-		fg = f.BackgroundInk
-		bg = f.OnBackgroundInk
+		bg = f.BackgroundInk
+		fg = f.OnBackgroundInk
 	}
 	rect := f.ContentRect(true)
-	canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
+	canvas.DrawRect(rect, bg.Paint(canvas, rect, Fill))
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, IntersectClipOp, false)
 	f.prepareLines(rect.Width - 2)
-	paint := bg.Paint(canvas, rect, Fill)
+	ink := fg
 	if !enabled {
-		paint.SetColorFilter(Grayscale30Filter())
+		ink = &ColorFilteredInk{
+			OriginalInk: ink,
+			ColorFilter: Grayscale30Filter(),
+		}
 	}
 	textTop := rect.Y + f.scrollOffset.Y
 	focused := f.Focused()
@@ -294,10 +291,12 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 	start := 0
 	if len(f.runes) == 0 {
 		if f.Watermark != "" {
-			paint.SetColorFilter(Alpha30Filter())
 			text := NewText(f.Watermark, &TextDecoration{
-				Font:  f.Font,
-				Paint: paint,
+				Font: f.Font,
+				Foreground: &ColorFilteredInk{
+					OriginalInk: ink,
+					ColorFilter: Alpha30Filter(),
+				},
 			})
 			text.Draw(canvas, f.textLeft(text, rect), textTop+text.Baseline())
 		}
@@ -306,7 +305,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 				rect.X = f.textLeftForWidth(0, rect) + f.scrollOffset.X - 0.5
 				rect.Width = 1
 				rect.Height = f.Font.LineHeight()
-				canvas.DrawRect(rect, bg.Paint(canvas, rect, Fill))
+				canvas.DrawRect(rect, fg.Paint(canvas, rect, Fill))
 			}
 			f.scheduleBlink()
 		}
@@ -325,8 +324,8 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 				selEnd := xmath.Min(f.selectionEnd, end)
 				if selStart > start {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:selStart]), &TextDecoration{
-						Font:  f.Font,
-						Paint: paint,
+						Font:       f.Font,
+						Foreground: ink,
 					})
 					t.Draw(canvas, left, textBaseLine)
 					left += t.Width()
@@ -336,8 +335,8 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 					e--
 				}
 				t := NewTextFromRunes(f.obscureIfNeeded(f.runes[selStart:e]), &TextDecoration{
-					Font:  f.Font,
-					Paint: f.OnSelectionInk.Paint(canvas, rect, Fill),
+					Font:       f.Font,
+					Foreground: f.OnSelectionInk,
 				})
 				right := left + t.Width()
 				selRect := Rect{
@@ -352,22 +351,19 @@ func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
 						e--
 					}
 					NewTextFromRunes(f.obscureIfNeeded(f.runes[selEnd:e]), &TextDecoration{
-						Font:  f.Font,
-						Paint: paint,
+						Font:       f.Font,
+						Foreground: ink,
 					}).Draw(canvas, right, textBaseLine)
 				}
 			} else {
-				line.ReplacePaint(paint)
+				line.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = ink })
 				line.Draw(canvas, textLeft+f.scrollOffset.X, textBaseLine)
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
 				if f.showCursor {
-					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]), &TextDecoration{
-						Font:  f.Font,
-						Paint: nil,
-					})
+					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]), &TextDecoration{Font: f.Font})
 					canvas.DrawRect(NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
-						bg.Paint(canvas, rect, Fill))
+						fg.Paint(canvas, rect, Fill))
 				}
 				f.scheduleBlink()
 			}

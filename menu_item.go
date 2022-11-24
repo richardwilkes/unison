@@ -269,16 +269,19 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 		bg = DefaultMenuItemTheme.SelectionColor
 	}
 	gc.DrawRect(rect, bg.Paint(gc, rect, Fill))
-	paint := fg.Paint(gc, rect, Fill)
+
 	if !mi.enabled {
-		paint.SetColorFilter(Grayscale30Filter())
+		fg = &ColorFilteredInk{
+			OriginalInk: fg,
+			ColorFilter: Grayscale30Filter(),
+		}
 	}
 	rect = mi.panel.ContentRect(false)
 	if mi.isSeparator {
-		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, paint)
+		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, fg.Paint(gc, rect, Fill))
 	} else {
 		t := mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont)
-		t.ReplacePaint(paint)
+		t.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
 		size := t.Extents()
 		t.Draw(gc, rect.X, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 		if mi.subMenu == nil {
@@ -286,7 +289,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				keys := mi.keyBinding.String()
 				if keys != "" {
 					t = mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont)
-					t.ReplacePaint(paint)
+					t.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
 					size = t.Extents()
 					t.Draw(gc, xmath.Floor(rect.Right()-size.Width),
 						xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
@@ -300,7 +303,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				SVG:  ChevronRightSVG(),
 				Size: NewSize(baseline, baseline),
 			}
-			drawable.DrawInRect(gc, rect, nil, paint)
+			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, Fill))
 		}
 	}
 }

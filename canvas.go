@@ -236,17 +236,6 @@ func (c *Canvas) DrawSimpleString(str string, x, y float32, font Font, paint *Pa
 	}
 }
 
-// DrawString draws a string. It does not do any processing of embedded line endings nor tabs. y is the baseline for the
-// text.
-func (c *Canvas) DrawString(str string, x, y float32, font Font, paint *Paint) {
-	if str != "" {
-		NewText(str, &TextDecoration{
-			Font:  font,
-			Paint: paint,
-		}).Draw(c, x, y)
-	}
-}
-
 // ClipRect replaces the clip with the intersection of difference of the current clip and rect.
 func (c *Canvas) ClipRect(rect Rect, op ClipOp, antialias bool) {
 	skia.CanavasClipRectWithOperation(c.canvas, skia.RectToSkRect(&rect), skia.ClipOp(op), antialias)

@@ -15,11 +15,6 @@ import (
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
-// Ink holds a color, pattern, or gradient to draw with.
-type Ink interface {
-	Paint(canvas *Canvas, rect Rect, style PaintStyle) *Paint
-}
-
 // PaintStyle holds the type of painting to do.
 type PaintStyle byte
 

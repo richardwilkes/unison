@@ -12,8 +12,8 @@ package unison
 // TextDecoration holds the decorations that can be applied to text when drawn.
 type TextDecoration struct {
 	Font           Font
-	Paint          *Paint
-	Background     *Paint
+	Foreground     Ink
+	Background     Ink
 	BaselineOffset float32
 	Underline      bool
 	StrikeThrough  bool
@@ -28,8 +28,8 @@ func (d *TextDecoration) Equivalent(other *TextDecoration) bool {
 		return false
 	}
 	return d.Underline == other.Underline && d.StrikeThrough == other.StrikeThrough &&
-		d.BaselineOffset == other.BaselineOffset && d.Paint.Equivalent(other.Paint) &&
-		d.Background.Equivalent(other.Background) && d.Font.Descriptor() == other.Font.Descriptor()
+		d.BaselineOffset == other.BaselineOffset && d.Foreground == other.Foreground &&
+		d.Background == other.Background && d.Font.Descriptor() == other.Font.Descriptor()
 }
 
 // Clone the TextDecoration.
@@ -38,24 +38,19 @@ func (d *TextDecoration) Clone() *TextDecoration {
 		return nil
 	}
 	other := *d
-	if other.Paint != nil {
-		other.Paint = other.Paint.Clone()
-	}
-	if other.Background != nil {
-		other.Background = other.Background.Clone()
-	}
 	return &other
 }
 
 // DrawText draws the given text using this TextDecoration.
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
+	r := NewRect(x, y-d.Font.Baseline(), width, d.Font.LineHeight())
 	if d.Background != nil {
-		canvas.DrawRect(NewRect(x, y-d.Font.Baseline(), width, d.Font.LineHeight()), d.Background)
+		canvas.DrawRect(r, d.Background.Paint(canvas, r, Fill))
 	}
 	y += d.BaselineOffset
-	canvas.DrawSimpleString(text, x, y, d.Font, d.Paint)
+	paint := d.Foreground.Paint(canvas, r, Fill)
+	canvas.DrawSimpleString(text, x, y, d.Font, paint)
 	if d.Underline || d.StrikeThrough {
-		paint := d.Paint.Clone()
 		y++
 		if d.StrikeThrough {
 			yy := y + 0.5 - d.Font.Baseline()/2

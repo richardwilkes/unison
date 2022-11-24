@@ -51,8 +51,8 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect unison.Rect) {
 	gc.DrawRect(rect, d.Color.Paint(gc, rect, unison.Fill))
 	if d.Focused() {
 		txt := unison.NewText("Focused", &unison.TextDecoration{
-			Font:  unison.EmphasizedSystemFont,
-			Paint: unison.Black.Paint(gc, rect, unison.Fill),
+			Font:       unison.EmphasizedSystemFont,
+			Foreground: unison.Black,
 		})
 		r := d.ContentRect(false)
 		size := txt.Extents()

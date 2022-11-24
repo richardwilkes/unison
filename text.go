@@ -183,35 +183,14 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	}
 }
 
-// ReplacePaint replaces the paint of this Text. Note that if this Text originally had multiple runs, some with
-// different paint, after this call all of the runs will have the same paint.
-func (t *Text) ReplacePaint(paint *Paint) {
+// AdjustDecorations calls adjuster for each decoration in no particular order.
+func (t *Text) AdjustDecorations(adjuster func(decoration *TextDecoration)) {
+	m := make(map[*TextDecoration]struct{})
 	for _, d := range t.decorations {
-		d.Paint = paint
+		m[d] = struct{}{}
 	}
-}
-
-// ReplaceBackground replaces the background paint of this Text. Note that if this Text originally had multiple runs,
-// some with different paint, after this call all of the runs will have the same paint.
-func (t *Text) ReplaceBackground(paint *Paint) {
-	for _, d := range t.decorations {
-		d.Background = paint
-	}
-}
-
-// ReplaceUnderline replaces the underline of this Text. Note that if this Text originally had multiple runs, some with
-// different underline state, after this call all of the runs will have the same underline state.
-func (t *Text) ReplaceUnderline(underline bool) {
-	for _, d := range t.decorations {
-		d.Underline = underline
-	}
-}
-
-// ReplaceStrikeThrough replaces the strike through of this Text. Note that if this Text originally had multiple runs,
-// some with different strike through state, after this call all of the runs will have the same strike through state.
-func (t *Text) ReplaceStrikeThrough(strikeThrough bool) {
-	for _, d := range t.decorations {
-		d.StrikeThrough = strikeThrough
+	for k := range m {
+		adjuster(k)
 	}
 }
 
