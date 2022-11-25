@@ -17,15 +17,6 @@ linters-settings:
   errcheck:
     check-type-assertions: true
     check-blank: true
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
-      - style
-      - opinionated
-      - experimental
-    disabled-checks:
-      - sloppyReassign
   gofumpt:
     extra-rules: true
   govet:
@@ -60,9 +51,7 @@ linters:
     - errorlint
     - exportloopref
     - goconst
-#    - gocritic
     - gofumpt
-#    - goimports
     - gosec
     - gosimple
     - govet
@@ -75,8 +64,6 @@ linters:
     - staticcheck
     - unconvert
     - unused
-#    - wastedassign
-# Once Go generics support is finalized in golangci-lint, re-enable the above linters
 issues:
   max-same-issues: 10
   exclude-use-default: false
