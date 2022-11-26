@@ -12,6 +12,7 @@ require (
 	github.com/richardwilkes/json v0.1.0
 	github.com/richardwilkes/toolbox v1.78.1
 	github.com/stretchr/testify v1.8.1
+	github.com/yuin/goldmark v1.5.3
 	golang.org/x/exp v0.0.0-20221114191408-850992195362
 	golang.org/x/image v0.1.0
 	golang.org/x/sys v0.2.0
