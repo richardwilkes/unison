@@ -41,12 +41,12 @@ var DefaultMarkdownTheme = MarkdownTheme{
 		Foreground: OnBackgroundColor,
 	},
 	HeadingFont: [6]Font{
-		&DynamicFont{Resolver: func() FontDescriptor { return headingFont(1) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return headingFont(2) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return headingFont(3) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return headingFont(4) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return headingFont(5) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return headingFont(6) }},
+		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 1) }},
+		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 2) }},
+		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 3) }},
+		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 4) }},
+		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 5) }},
+		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 6) }},
 	},
 	CodeBlockFont:       MonospacedFont,
 	CodeBackground:      ContentColor,
@@ -61,8 +61,9 @@ var DefaultMarkdownTheme = MarkdownTheme{
 	Slop:                4,
 }
 
-func headingFont(level int) FontDescriptor {
-	fd := LabelFont.Descriptor()
+// DeriveMarkdownHeadingFont derives a FontDescriptor for a heading from another font.
+func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
+	fd := font.Descriptor()
 	fd.Weight = BlackFontWeight
 	switch level {
 	case 1:
