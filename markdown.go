@@ -735,7 +735,10 @@ func (m *Markdown) flushAndIssueLineBreak() {
 }
 
 func (m *Markdown) issueLineBreak() {
-	children := m.textRow.Children()
+	var children []*Panel
+	if m.textRow != nil {
+		children = m.textRow.Children()
+	}
 	if len(children) == 0 {
 		m.addToTextRow(NewRichLabel())
 	} else if child, ok := children[len(children)-1].Self.(*RichLabel); ok {
