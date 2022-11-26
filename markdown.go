@@ -155,14 +155,13 @@ func (m *Markdown) adjustToParent() {
 }
 
 // SetVSpacing sets the vertical spacing between blocks. Use this function rather than setting VSpacing directly, since
-// this will also adjust the layout and border to match.
+// this will also adjust the layout to match.
 func (m *Markdown) SetVSpacing(spacing float32) {
 	m.VSpacing = spacing
 	m.SetLayout(&FlexLayout{
 		Columns:  1,
 		VSpacing: m.VSpacing,
 	})
-	m.SetBorder(NewEmptyBorder(NewUniformInsets(m.VSpacing)))
 }
 
 // SetContent replaces the current markdown content.
