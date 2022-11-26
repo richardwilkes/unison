@@ -98,7 +98,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		t.button.SetFocusable(false)
 		fSize := t.LabelTheme.Font.Baseline()
 		t.button.Drawable = &DrawableSVG{
-			SVG:  CircledXSVG(),
+			SVG:  CircledXSVG,
 			Size: Size{Width: fSize, Height: fSize},
 		}
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment, VAlign: MiddleAlignment})

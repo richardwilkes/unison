@@ -312,7 +312,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Restore() }
 	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
-		SVG:  WindowRestoreSVG(),
+		SVG:  WindowRestoreSVG,
 		Size: Size{Width: fSize, Height: fSize},
 	}
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Restore"))
@@ -322,7 +322,7 @@ func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Maximize(d.owner) }
 	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
-		SVG:  WindowMaximizeSVG(),
+		SVG:  WindowMaximizeSVG,
 		Size: Size{Width: fSize, Height: fSize},
 	}
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))

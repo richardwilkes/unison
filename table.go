@@ -282,7 +282,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 						canvas.Rotate(90)
 						canvas.Translate(-offset, -offset)
 					}
-					canvas.DrawPath(CircledChevronRightSVG().PathForSize(NewSize(disclosureSize, disclosureSize)),
+					canvas.DrawPath(CircledChevronRightSVG.PathForSize(NewSize(disclosureSize, disclosureSize)),
 						fg.Paint(canvas, cellRect, Fill))
 					canvas.Restore()
 				}

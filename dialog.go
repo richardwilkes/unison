@@ -33,17 +33,17 @@ const DialogClientDataKey = "dialog"
 // Dialogs, but will alter any Dialogs created in the future.
 var DefaultDialogTheme = DialogTheme{
 	ErrorIcon: &DrawableSVG{
-		SVG:  CircledExclamationSVG(),
+		SVG:  CircledExclamationSVG,
 		Size: NewSize(48, 48),
 	},
 	ErrorIconInk: ErrorColor,
 	WarningIcon: &DrawableSVG{
-		SVG:  TriangleExclamationSVG(),
+		SVG:  TriangleExclamationSVG,
 		Size: NewSize(48, 48),
 	},
 	WarningIconInk: WarningColor,
 	QuestionIcon: &DrawableSVG{
-		SVG:  CircledQuestionSVG(),
+		SVG:  CircledQuestionSVG,
 		Size: NewSize(48, 48),
 	},
 	QuestionIconInk: OnBackgroundColor,

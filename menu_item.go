@@ -300,7 +300,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 			rect.X = rect.Right() - baseline
 			rect.Width = baseline
 			drawable := &DrawableSVG{
-				SVG:  ChevronRightSVG(),
+				SVG:  ChevronRightSVG,
 				Size: NewSize(baseline, baseline),
 			}
 			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, Fill))

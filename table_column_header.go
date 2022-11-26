@@ -110,12 +110,12 @@ func (h *DefaultTableColumnHeader[T]) SetSortState(state SortState) {
 			baseline := h.Font.Baseline()
 			if h.sortState.Ascending {
 				h.sortIndicator = &DrawableSVG{
-					SVG:  SortAscendingSVG(),
+					SVG:  SortAscendingSVG,
 					Size: NewSize(baseline, baseline),
 				}
 			} else {
 				h.sortIndicator = &DrawableSVG{
-					SVG:  SortDescendingSVG(),
+					SVG:  SortDescendingSVG,
 					Size: NewSize(baseline, baseline),
 				}
 			}
