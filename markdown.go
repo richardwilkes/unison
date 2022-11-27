@@ -126,7 +126,7 @@ func NewMarkdown(autoSizingFromParent bool) *Markdown {
 		imgCache:      make(map[string]*Image),
 	}
 	m.SetVSpacing(m.VSpacing)
-	m.Self = &m
+	m.Self = m
 	if autoSizingFromParent {
 		m.ParentChangedCallback = m.adjustSizeOnParentChange
 	}
@@ -599,6 +599,9 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	p.Text = NewText(label, dec)
 	if target != "" {
 		in := false
+		p.UpdateCursorCallback = func(where Point) *Cursor {
+			return PointingCursor()
+		}
 		p.MouseEnterCallback = func(where Point, mod Modifiers) bool {
 			p.Text.AdjustDecorations(func(decoration *TextDecoration) {
 				decoration.Foreground = m.LinkRolloverInk
@@ -657,6 +660,8 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	}
 	if tooltip != "" {
 		p.Tooltip = NewTooltipWithText(tooltip)
+	} else if target != "" {
+		p.Tooltip = NewTooltipWithText(target)
 	}
 	return p
 }

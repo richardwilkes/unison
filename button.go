@@ -110,6 +110,7 @@ func NewButton() *Button {
 	b.MouseEnterCallback = b.DefaultMouseEnter
 	b.MouseExitCallback = b.DefaultMouseExit
 	b.KeyDownCallback = b.DefaultKeyDown
+	b.UpdateCursorCallback = b.DefaultUpdateCursor
 	return b
 }
 
@@ -268,4 +269,9 @@ func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) boo
 		return true
 	}
 	return false
+}
+
+// DefaultUpdateCursor provides the default cursor for buttons.
+func (b *Button) DefaultUpdateCursor(_ Point) *Cursor {
+	return PointingCursor()
 }

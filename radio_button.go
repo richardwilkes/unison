@@ -74,6 +74,7 @@ func NewRadioButton() *RadioButton {
 	r.MouseDragCallback = r.DefaultMouseDrag
 	r.MouseUpCallback = r.DefaultMouseUp
 	r.KeyDownCallback = r.DefaultKeyDown
+	r.UpdateCursorCallback = r.DefaultUpdateCursor
 	return r
 }
 
@@ -221,4 +222,9 @@ func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool
 		return true
 	}
 	return false
+}
+
+// DefaultUpdateCursor provides the default cursor for radio buttons.
+func (r *RadioButton) DefaultUpdateCursor(_ Point) *Cursor {
+	return PointingCursor()
 }

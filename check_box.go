@@ -75,6 +75,7 @@ func NewCheckBox() *CheckBox {
 	c.MouseDragCallback = c.DefaultMouseDrag
 	c.MouseUpCallback = c.DefaultMouseUp
 	c.KeyDownCallback = c.DefaultKeyDown
+	c.UpdateCursorCallback = c.DefaultUpdateCursor
 	return c
 }
 
@@ -242,4 +243,9 @@ func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) b
 		return true
 	}
 	return false
+}
+
+// DefaultUpdateCursor provides the default cursor for check boxes.
+func (c *CheckBox) DefaultUpdateCursor(_ Point) *Cursor {
+	return PointingCursor()
 }

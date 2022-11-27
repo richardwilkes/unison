@@ -21,6 +21,7 @@ import (
 
 var (
 	arrowCursor               *Cursor
+	pointingCursor            *Cursor
 	moveCursor                *Cursor
 	resizeHorizontalCursor    *Cursor
 	resizeLeftDiagonalCursor  *Cursor
@@ -38,6 +39,14 @@ func ArrowCursor() *Cursor {
 		arrowCursor = glfw.CreateStandardCursor(glfw.ArrowCursor)
 	}
 	return arrowCursor
+}
+
+// PointingCursor returns the standard pointing cursor.
+func PointingCursor() *Cursor {
+	if pointingCursor == nil {
+		pointingCursor = glfw.CreateStandardCursor(glfw.HandCursor)
+	}
+	return pointingCursor
 }
 
 // MoveCursor returns the standard move cursor.

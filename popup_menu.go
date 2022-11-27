@@ -75,6 +75,7 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 	p.MouseDragCallback = p.DefaultMouseDrag
 	p.MouseUpCallback = p.DefaultMouseUp
 	p.KeyDownCallback = p.DefaultKeyDown
+	p.UpdateCursorCallback = p.DefaultUpdateCursor
 	return p
 }
 
@@ -342,4 +343,9 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat boo
 		return true
 	}
 	return false
+}
+
+// DefaultUpdateCursor provides the default cursor for popup menus.
+func (p *PopupMenu[T]) DefaultUpdateCursor(_ Point) *Cursor {
+	return PointingCursor()
 }

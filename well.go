@@ -81,6 +81,7 @@ func NewWell() *Well {
 	well.MouseUpCallback = well.DefaultMouseUp
 	well.KeyDownCallback = well.DefaultKeyDown
 	well.FileDropCallback = well.DefaultFileDrop
+	well.UpdateCursorCallback = well.DefaultUpdateCursor
 	return well
 }
 
@@ -251,4 +252,9 @@ func (w *Well) DefaultFileDrop(files []string) {
 			}
 		}
 	}
+}
+
+// DefaultUpdateCursor provides the default cursor for wells.
+func (w *Well) DefaultUpdateCursor(_ Point) *Cursor {
+	return PointingCursor()
 }
