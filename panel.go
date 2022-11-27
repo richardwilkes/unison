@@ -725,6 +725,20 @@ func (p *Panel) PerformCmd(src any, id int) {
 	}
 }
 
+// HasInSelfOrDescendants calls checker for this panel and each of its descendants (depth-first), returning true for the
+// first one that checker() returns true for.
+func (p *Panel) HasInSelfOrDescendants(checker func(*Panel) bool) bool {
+	if checker(p) {
+		return true
+	}
+	for _, child := range p.Children() {
+		if child.HasInSelfOrDescendants(checker) {
+			return true
+		}
+	}
+	return false
+}
+
 // AlwaysEnabled is a helper function whose signature matches the 'can' function signature required for
 // InstallCmdHandlers() that always returns true.
 func AlwaysEnabled(_ any) bool {
