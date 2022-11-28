@@ -9,9 +9,24 @@
 
 package unison
 
+var (
+	_ Ink = &IndirectInk{}
+	_ Ink = &ColorFilteredInk{}
+)
+
 // Ink holds a color, pattern, or gradient to draw with.
 type Ink interface {
 	Paint(canvas *Canvas, rect Rect, style PaintStyle) *Paint
+}
+
+// IndirectInk an ink that references another ink.
+type IndirectInk struct {
+	Target Ink
+}
+
+// Paint implements Ink.
+func (i *IndirectInk) Paint(canvas *Canvas, rect Rect, style PaintStyle) *Paint {
+	return i.Target.Paint(canvas, rect, style)
 }
 
 // ColorFilteredInk holds an ink and a color filter to apply to the ink.
