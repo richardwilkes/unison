@@ -51,10 +51,10 @@ var DefaultMarkdownTheme = MarkdownTheme{
 	CodeBlockFont:       MonospacedFont,
 	CodeBackground:      ContentColor,
 	OnCodeBackground:    OnContentColor,
-	QuoteBarColor:       SelectionColor,
-	LinkInk:             IconButtonColor,
-	LinkRolloverInk:     IconButtonRolloverColor,
-	LinkPressedInk:      IconButtonPressedColor,
+	QuoteBarColor:       AccentColor,
+	LinkInk:             LinkColor,
+	LinkRolloverInk:     LinkRolloverColor,
+	LinkPressedInk:      LinkPressedColor,
 	VSpacing:            10,
 	QuoteBarThickness:   2,
 	CodeAndQuotePadding: 6,
@@ -148,7 +148,7 @@ func (m *Markdown) adjustSizeOnParentChange() {
 }
 
 func (m *Markdown) adjustToParent() {
-	m.SetContentBytes(m.content, 0)
+	m.SetContentBytes(m.content, 0, false)
 	if m.chainedFrameChangeCallback != nil {
 		m.chainedFrameChangeCallback()
 	}
@@ -166,12 +166,18 @@ func (m *Markdown) SetVSpacing(spacing float32) {
 
 // SetContent replaces the current markdown content.
 func (m *Markdown) SetContent(content string, maxWidth float32) {
-	m.SetContentBytes([]byte(content), maxWidth)
+	m.SetContentBytes([]byte(content), maxWidth, false)
+}
+
+// ContentBytes returns the current markdown content as a byte slice.
+func (m *Markdown) ContentBytes() []byte {
+	return m.content
 }
 
 // SetContentBytes replaces the current markdown content. If maxWidth < 1, then the content will be sized based on the
-// parent container or use DefaultMarkdownWidth if no parent is present.
-func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
+// parent container or use DefaultMarkdownWidth if no parent is present. Pass in true for the force parameter if you
+// want to force a rebuild of the content.
+func (m *Markdown) SetContentBytes(content []byte, maxWidth float32, force bool) {
 	if maxWidth < 1 {
 		if p := m.Parent(); p != nil {
 			maxWidth = p.ContentRect(false).Width - m.Slop
