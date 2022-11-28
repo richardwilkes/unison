@@ -109,6 +109,8 @@ type Table[T TableRowConstraint[T]] struct {
 	lastSel                  uuid.UUID
 	hitRects                 []tableHitRect
 	rowCache                 []tableCache[T]
+	lastMouseEnterCellPanel  *Panel
+	lastMouseDownCellPanel   *Panel
 	interactionRow           int
 	interactionColumn        int
 	lastMouseMotionRow       int
@@ -553,12 +555,20 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
 			cell := t.cell(row, col)
-			if cell.UpdateCursorCallback != nil {
+			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.UpdateCursorCallback != nil }) {
+				var cursor *Cursor
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				var cursor *Cursor
-				toolbox.Call(func() { cursor = cell.UpdateCursorCallback(where) })
+				target := cell.PanelAt(where)
+				for target != t.AsPanel() {
+					if target.UpdateCursorCallback == nil {
+						target = target.parent
+					} else {
+						toolbox.Call(func() { cursor = target.UpdateCursorCallback(cell.PointTo(where, target)) })
+						break
+					}
+				}
 				t.uninstallCell(cell)
 				return cursor
 			}
@@ -568,25 +578,39 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (t *Table[T]) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
+func (t *Table[T]) DefaultUpdateTooltipCallback(where Point, avoid Rect) Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
 			cell := t.cell(row, col)
-			if cell.UpdateTooltipCallback != nil {
+			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.UpdateTooltipCallback != nil || p.Tooltip != nil }) {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				var avoid Rect
-				toolbox.Call(func() { avoid = cell.UpdateTooltipCallback(where, suggestedAvoidInRoot) })
-				t.Tooltip = cell.Tooltip
+				target := cell.PanelAt(where)
+				t.Tooltip = nil
+				t.TooltipImmediate = false
+				for target != t.AsPanel() {
+					avoid = target.RectToRoot(target.ContentRect(true))
+					avoid.Align()
+					if target.UpdateTooltipCallback != nil {
+						toolbox.Call(func() { avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid) })
+					}
+					if target.Tooltip != nil {
+						t.Tooltip = target.Tooltip
+						t.TooltipImmediate = target.TooltipImmediate
+						break
+					}
+					target = target.parent
+				}
 				t.uninstallCell(cell)
 				return avoid
 			}
 			if cell.Tooltip != nil {
 				t.Tooltip = cell.Tooltip
-				suggestedAvoidInRoot = t.RectToRoot(t.CellFrame(row, col))
-				suggestedAvoidInRoot.Align()
-				return suggestedAvoidInRoot
+				t.TooltipImmediate = cell.TooltipImmediate
+				avoid = t.RectToRoot(t.CellFrame(row, col))
+				avoid.Align()
+				return avoid
 			}
 		}
 	}
@@ -596,62 +620,65 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoo
 
 // DefaultMouseEnter provides the default mouse enter handling.
 func (t *Table[T]) DefaultMouseEnter(where Point, mod Modifiers) bool {
-	stop := false
 	row := t.OverRow(where.Y)
 	col := t.OverColumn(where.X)
+	if t.lastMouseMotionRow != row || t.lastMouseMotionColumn != col {
+		t.DefaultMouseExit()
+		t.lastMouseMotionRow = row
+		t.lastMouseMotionColumn = col
+	}
 	if row != -1 && col != -1 {
-		if t.lastMouseMotionRow != row || t.lastMouseMotionColumn != col {
+		cell := t.cell(row, col)
+		rect := t.CellFrame(row, col)
+		t.installCell(cell, rect)
+		where.Subtract(rect.Point)
+		target := cell.PanelAt(where)
+		if target != t.lastMouseEnterCellPanel && t.lastMouseEnterCellPanel != nil {
 			t.DefaultMouseExit()
 			t.lastMouseMotionRow = row
 			t.lastMouseMotionColumn = col
-			cell := t.cell(row, col)
-			if cell.MouseEnterCallback != nil {
-				rect := t.CellFrame(row, col)
-				t.installCell(cell, rect)
-				where.Subtract(rect.Point)
-				toolbox.Call(func() { stop = cell.MouseEnterCallback(where, mod) })
-				t.uninstallCell(cell)
-			}
 		}
-	} else {
-		t.DefaultMouseExit()
-	}
-	return stop
-}
-
-// DefaultMouseExit provides the default mouse exit handling.
-func (t *Table[T]) DefaultMouseExit() bool {
-	stop := false
-	if t.lastMouseMotionColumn != -1 && t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) {
-		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
-		if cell.MouseExitCallback != nil {
-			t.installCell(cell, t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn))
-			toolbox.Call(func() { stop = cell.MouseExitCallback() })
-			t.uninstallCell(cell)
+		if target.MouseEnterCallback != nil {
+			toolbox.Call(func() { target.MouseEnterCallback(cell.PointTo(where, target), mod) })
 		}
+		t.uninstallCell(cell)
+		t.lastMouseEnterCellPanel = target
 	}
-	t.lastMouseMotionRow = -1
-	t.lastMouseMotionColumn = -1
-	return stop
+	return true
 }
 
 // DefaultMouseMove provides the default mouse move handling.
 func (t *Table[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 	t.DefaultMouseEnter(where, mod)
-	stop := false
-	if row := t.OverRow(where.Y); row != -1 {
-		if col := t.OverColumn(where.X); col != -1 {
-			cell := t.cell(row, col)
-			if cell.MouseMoveCallback != nil {
-				rect := t.CellFrame(row, col)
-				t.installCell(cell, rect)
-				where.Subtract(rect.Point)
-				toolbox.Call(func() { stop = cell.MouseMoveCallback(where, mod) })
-				t.uninstallCell(cell)
-			}
+	if t.lastMouseEnterCellPanel != nil {
+		row := t.OverRow(where.Y)
+		col := t.OverColumn(where.X)
+		cell := t.cell(row, col)
+		rect := t.CellFrame(row, col)
+		t.installCell(cell, rect)
+		where.Subtract(rect.Point)
+		if target := cell.PanelAt(where); target.MouseMoveCallback != nil {
+			toolbox.Call(func() { target.MouseMoveCallback(cell.PointTo(where, target), mod) })
 		}
+		t.uninstallCell(cell)
 	}
-	return stop
+	return true
+}
+
+// DefaultMouseExit provides the default mouse exit handling.
+func (t *Table[T]) DefaultMouseExit() bool {
+	if t.lastMouseEnterCellPanel != nil && t.lastMouseEnterCellPanel.MouseExitCallback != nil &&
+		t.lastMouseMotionColumn != -1 && t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) {
+		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
+		rect := t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn)
+		t.installCell(cell, rect)
+		toolbox.Call(func() { t.lastMouseEnterCellPanel.MouseExitCallback() })
+		t.uninstallCell(cell)
+	}
+	t.lastMouseEnterCellPanel = nil
+	t.lastMouseMotionRow = -1
+	t.lastMouseMotionColumn = -1
+	return true
 }
 
 // DefaultMouseDown provides the default mouse down handling.
@@ -699,17 +726,23 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 		}
 	}
-	stop := true
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
 			cell := t.cell(row, col)
-			if cell.MouseDownCallback != nil {
+			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.MouseDownCallback != nil }) {
 				t.interactionRow = row
 				t.interactionColumn = col
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where.Subtract(rect.Point)
-				toolbox.Call(func() { stop = cell.MouseDownCallback(where, button, clickCount, mod) })
+				stop := false
+				if target := cell.PanelAt(where); target.MouseDownCallback != nil {
+					t.lastMouseDownCellPanel = target
+					toolbox.Call(func() {
+						stop = target.MouseDownCallback(cell.PointTo(where, target), button,
+							clickCount, mod)
+					})
+				}
 				t.uninstallCell(cell)
 				if stop {
 					return stop
@@ -761,7 +794,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			toolbox.Call(t.DoubleClickCallback)
 		}
 	}
-	return stop
+	return true
 }
 
 func (t *Table[T]) notifyOfSelectionChange() {
@@ -798,15 +831,15 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 				}
 				stop = true
 			}
-		} else {
+		} else if t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseDragCallback != nil {
 			cell := t.cell(t.interactionRow, t.interactionColumn)
-			if cell.MouseDragCallback != nil {
-				rect := t.CellFrame(t.interactionRow, t.interactionColumn)
-				t.installCell(cell, rect)
-				where.Subtract(rect.Point)
-				toolbox.Call(func() { stop = cell.MouseDragCallback(where, button, mod) })
-				t.uninstallCell(cell)
-			}
+			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
+			t.installCell(cell, rect)
+			where.Subtract(rect.Point)
+			toolbox.Call(func() {
+				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mod)
+			})
+			t.uninstallCell(cell)
 		}
 	}
 	return stop
@@ -833,16 +866,18 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 		t.notifyOfSelectionChange()
 	}
 
-	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 {
+	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 && t.lastMouseDownCellPanel != nil &&
+		t.lastMouseDownCellPanel.MouseUpCallback != nil {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
-		if cell.MouseUpCallback != nil {
-			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
-			t.installCell(cell, rect)
-			where.Subtract(rect.Point)
-			toolbox.Call(func() { stop = cell.MouseUpCallback(where, button, mod) })
-			t.uninstallCell(cell)
-		}
+		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
+		t.installCell(cell, rect)
+		where.Subtract(rect.Point)
+		toolbox.Call(func() {
+			stop = t.lastMouseDownCellPanel.MouseUpCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mod)
+		})
+		t.uninstallCell(cell)
 	}
+	t.lastMouseDownCellPanel = nil
 	return stop
 }
 
@@ -1579,7 +1614,14 @@ func CountTableRows[T TableRowConstraint[T]](rows []T) int {
 	count := len(rows)
 	for _, row := range rows {
 		if row.CanHaveChildren() {
-			count += CountTableRows(row.Children())
+			// This should be just "count += CountTableRows(row.Children())", however, IntelliJ keeps flagging that as
+			// "invalid operation: count += CountTableRows(row.Children()) (the operation += is not defined on int)"
+			// which is of course wrong, but I'd rather not have any errors flagged in the display so I don't
+			// inadvertently ignore something valid. I've filed https://youtrack.jetbrains.com/issue/IDEA-306866 and
+			// hope that it will be fixed in the near future.
+			var x int //nolint:gosimple // Will go away once this bug in IntelliJ is fixed
+			x = CountTableRows(row.Children())
+			count += x
 		}
 	}
 	return count
