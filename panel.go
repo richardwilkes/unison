@@ -577,6 +577,11 @@ func (p *Panel) PointFromRoot(pt Point) Point {
 	return pt
 }
 
+// PointTo converts panel-local coordinates into another panel's coordinates.
+func (p *Panel) PointTo(pt Point, target *Panel) Point {
+	return target.PointFromRoot(p.PointToRoot(pt))
+}
+
 // RectToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
 func (p *Panel) RectToRoot(rect Rect) Rect {
@@ -594,6 +599,11 @@ func (p *Panel) RectFromRoot(rect Rect) Rect {
 	rect.Width = pt.X - rect.X
 	rect.Height = pt.Y - rect.Y
 	return rect
+}
+
+// RectTo converts panel-local coordinates into another panel's coordinates.
+func (p *Panel) RectTo(rect Rect, target *Panel) Rect {
+	return target.RectFromRoot(p.RectToRoot(rect))
 }
 
 // ScrollIntoView attempts to scroll this panel into the current view if it is not already there, using ScrollAreas in
