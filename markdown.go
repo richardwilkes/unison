@@ -640,7 +640,6 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 		select {
 		case one := <-result:
 			if one != nil {
-				fmt.Println("got before timeout")
 				img = one
 				m.imgCache[target] = img
 			}
