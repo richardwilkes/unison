@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"context"
 	"encoding/binary"
 	"image"
 	"math"
@@ -36,7 +37,13 @@ type Image softref.SoftRef
 // NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. The http.DefaultClient
 // will be used if the data is remote.
 func NewImageFromFilePathOrURL(filePathOrURL string, scale float32) (*Image, error) {
-	data, err := xio.RetrieveData(filePathOrURL)
+	return NewImageFromFilePathOrURLWithContext(context.Background(), filePathOrURL, scale)
+}
+
+// NewImageFromFilePathOrURLWithContext creates a new image from data retrieved from the file path or URL. The
+// http.DefaultClient will be used if the data is remote.
+func NewImageFromFilePathOrURLWithContext(ctx context.Context, filePathOrURL string, scale float32) (*Image, error) {
+	data, err := xio.RetrieveDataWithContext(ctx, filePathOrURL)
 	if err != nil {
 		return nil, errs.NewWithCause(filePathOrURL, err)
 	}
