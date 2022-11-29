@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"context"
 	"time"
 
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -35,6 +36,7 @@ var DefaultWellTheme = WellTheme{
 	ContentSize:        20,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
+	ImageLoadTimeout:   30 * time.Second,
 	Mask:               ColorWellMask | GradientWellMask | PatternWellMask,
 }
 
@@ -44,6 +46,7 @@ type WellTheme struct {
 	EdgeInk            Ink
 	SelectionInk       Ink
 	ClickAnimationTime time.Duration
+	ImageLoadTimeout   time.Duration
 	ImageScale         float32
 	ContentSize        float32
 	CornerRadius       float32
@@ -54,7 +57,7 @@ type WellTheme struct {
 type Well struct {
 	Panel
 	WellTheme
-	ImageFromSpecCallback func(filePathOrURL string, scale float32) (*Image, error)
+	ImageFromSpecCallback func(ctx context.Context, filePathOrURL string, scale float32) (*Image, error)
 	InkChangedCallback    func()
 	ClickCallback         func()
 	ValidateImageCallback func(*Image) *Image
@@ -71,7 +74,7 @@ func NewWell() *Well {
 	well.Self = well
 	well.SetFocusable(true)
 	well.SetSizer(well.DefaultSizes)
-	well.ImageFromSpecCallback = NewImageFromFilePathOrURL
+	well.ImageFromSpecCallback = NewImageFromFilePathOrURLWithContext
 	well.ClickCallback = well.DefaultClick
 	well.DrawCallback = well.DefaultDraw
 	well.GainedFocusCallback = well.DefaultFocusGained
@@ -238,7 +241,7 @@ func (w *Well) Click() {
 func (w *Well) DefaultFileDrop(files []string) {
 	for _, one := range files {
 		if imageSpec := DistillImageSpecFor(one); imageSpec != "" {
-			img, err := w.ImageFromSpecCallback(imageSpec, w.ImageScale)
+			img, err := w.loadImage(imageSpec)
 			if err != nil {
 				jot.Warn(err)
 				continue
@@ -252,6 +255,12 @@ func (w *Well) DefaultFileDrop(files []string) {
 			}
 		}
 	}
+}
+
+func (w *Well) loadImage(imageSpec string) (*Image, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), w.ImageLoadTimeout)
+	defer cancel()
+	return w.ImageFromSpecCallback(ctx, imageSpec, w.ImageScale)
 }
 
 // DefaultUpdateCursor provides the default cursor for wells.

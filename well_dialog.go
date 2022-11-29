@@ -116,7 +116,7 @@ func (d *wellDialog) addPatternSelector(parent *Panel) {
 				ErrorDialogWithMessage(unable, "Invalid image file")
 				return
 			}
-			img, err := d.well.ImageFromSpecCallback(imageSpec, d.well.ImageScale)
+			img, err := d.well.loadImage(imageSpec)
 			if err != nil {
 				ErrorDialogWithError(unable, err)
 				return

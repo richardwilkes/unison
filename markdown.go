@@ -13,8 +13,10 @@ package unison
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/richardwilkes/toolbox/desktop"
 	"github.com/richardwilkes/toolbox/errs"
@@ -613,20 +615,47 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	return NewLink(label, tooltip, target, theme, m.LinkHandler)
 }
 
+func (m *Markdown) retrieveImage(target string, label *Label) *Image {
+	img, ok := m.imgCache[target]
+	if !ok {
+		result := make(chan *Image, 1)
+		go func() {
+			var err error
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			if img, err = NewImageFromFilePathOrURLWithContext(ctx, target, 1); err != nil {
+				result <- nil
+				jot.Error(errs.Wrap(err))
+			} else {
+				result <- img
+				InvokeTask(func() {
+					m.imgCache[target] = img
+					label.Drawable = img
+					label.MarkForRedraw()
+					label.MarkForLayoutRecursivelyUpward()
+				})
+			}
+		}()
+		timer := time.NewTimer(time.Second)
+		select {
+		case one := <-result:
+			if one != nil {
+				fmt.Println("got before timeout")
+				img = one
+				m.imgCache[target] = img
+			}
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+	return img
+}
+
 func (m *Markdown) processImage() {
 	if image, ok := m.node.(*ast.Image); ok {
 		m.flushText()
-		target := string(image.Destination)
-		var img *Image
-		if img, ok = m.imgCache[target]; !ok {
-			var err error
-			if img, err = NewImageFromFilePathOrURL(target, 1); err != nil {
-				jot.Error(errs.Wrap(err))
-			} else {
-				m.imgCache[target] = img
-			}
-		}
 		label := NewLabel()
+		img := m.retrieveImage(string(image.Destination), label)
 		if img == nil {
 			size := xmath.Max(m.decoration.Font.Size(), 24)
 			label.Drawable = &DrawableSVG{
