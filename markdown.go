@@ -781,12 +781,13 @@ func (m *Markdown) flushText() {
 			m.addLabelToTextRow(part)
 			m.issueLineBreak()
 			// Now break the remaining text up to the max width size and add each line
-			parts := m.text.BreakToWidth(m.maxLineWidth)
-			for i := 0; i < len(parts)-1; i++ {
-				m.addLabelToTextRow(parts[i])
-				m.issueLineBreak()
+			if parts := m.text.BreakToWidth(m.maxLineWidth); len(parts) != 0 {
+				for i := 0; i < len(parts)-1; i++ {
+					m.addLabelToTextRow(parts[i])
+					m.issueLineBreak()
+				}
+				m.addLabelToTextRow(parts[len(parts)-1])
 			}
-			m.addLabelToTextRow(parts[len(parts)-1])
 		} else {
 			m.addLabelToTextRow(m.text)
 		}
