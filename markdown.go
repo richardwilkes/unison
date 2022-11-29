@@ -55,6 +55,7 @@ var DefaultMarkdownTheme = MarkdownTheme{
 	LinkInk:             LinkColor,
 	LinkRolloverInk:     LinkRolloverColor,
 	LinkPressedInk:      LinkPressedColor,
+	LinkHandler:         DefaultMarkdownLinkHandler,
 	VSpacing:            10,
 	QuoteBarThickness:   2,
 	CodeAndQuotePadding: 6,
@@ -92,6 +93,7 @@ type MarkdownTheme struct {
 	LinkInk             Ink
 	LinkRolloverInk     Ink
 	LinkPressedInk      Ink
+	LinkHandler         func(string)
 	VSpacing            float32
 	QuoteBarThickness   float32
 	CodeAndQuotePadding float32
@@ -598,78 +600,17 @@ func (m *Markdown) processLink() {
 }
 
 func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
-	dec := m.decoration.Clone()
-	dec.Foreground = m.LinkInk
-	dec.Underline = true
-	p := NewRichLabel()
-	p.Text = NewText(label, dec)
-	if target != "" {
-		in := false
-		p.UpdateCursorCallback = func(where Point) *Cursor {
-			return PointingCursor()
-		}
-		p.MouseEnterCallback = func(where Point, mod Modifiers) bool {
-			p.Text.AdjustDecorations(func(decoration *TextDecoration) {
-				decoration.Foreground = m.LinkRolloverInk
-			})
-			p.MarkForRedraw()
-			return true
-		}
-		p.MouseExitCallback = func() bool {
-			p.Text.AdjustDecorations(func(decoration *TextDecoration) {
-				decoration.Foreground = m.LinkInk
-			})
-			p.MarkForRedraw()
-			return true
-		}
-		p.MouseDownCallback = func(where Point, button, clickCount int, mod Modifiers) bool {
-			p.Text.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = m.LinkPressedInk })
-			p.MarkForRedraw()
-			in = true
-			return true
-		}
-		p.MouseDragCallback = func(where Point, button int, mod Modifiers) bool {
-			now := p.ContentRect(true).ContainsPoint(where)
-			if now != in {
-				in = now
-				p.Text.AdjustDecorations(func(decoration *TextDecoration) {
-					if in {
-						decoration.Foreground = m.LinkPressedInk
-					} else {
-						decoration.Foreground = m.LinkInk
-					}
-				})
-				p.MarkForRedraw()
-			}
-			return true
-		}
-		p.MouseUpCallback = func(where Point, button int, mod Modifiers) bool {
-			ink := m.LinkInk
-			inside := p.ContentRect(true).ContainsPoint(where)
-			if inside {
-				ink = m.LinkRolloverInk
-			}
-			p.Text.AdjustDecorations(func(decoration *TextDecoration) {
-				decoration.Foreground = ink
-			})
-			p.MarkForRedraw()
-			if inside {
-				if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-					if err := desktop.Open(target); err != nil {
-						ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
-					}
-				}
-				// TODO: Support other types
-			}
-			return true
-		}
+	theme := LinkTheme{
+		TextDecoration: *m.decoration.Clone(),
+		RolloverInk:    m.LinkRolloverInk,
+		PressedInk:     m.LinkPressedInk,
 	}
-	if tooltip != "" {
-		p.Tooltip = NewTooltipWithText(tooltip)
-	} else if target != "" {
-		p.Tooltip = NewTooltipWithText(target)
+	theme.Foreground = m.LinkInk
+	theme.Underline = true
+	if tooltip == "" && target != "" {
+		tooltip = target
 	}
-	return p
+	return NewLink(label, tooltip, target, theme, m.LinkHandler)
 }
 
 func (m *Markdown) processImage() {
@@ -799,4 +740,14 @@ func (m *Markdown) finishTextRow() {
 	m.flushText()
 	m.text = nil
 	m.textRow = nil
+}
+
+// DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browers for http and https
+// links.
+func DefaultMarkdownLinkHandler(target string) {
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		if err := desktop.Open(target); err != nil {
+			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
+		}
+	}
 }
