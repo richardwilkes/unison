@@ -70,26 +70,27 @@ type FieldTheme struct {
 type Field struct {
 	Panel
 	FieldTheme
-	ModifiedCallback func()
-	ValidateCallback func() bool
-	Watermark        string
-	runes            []rune
-	lines            []*Text
-	endsWithLineFeed []bool
-	selectionStart   int
-	selectionEnd     int
-	selectionAnchor  int
-	forceShowUntil   time.Time
-	scrollOffset     Point
-	linesBuiltFor    float32
-	ObscurementRune  rune
-	AutoScroll       bool
-	multiLine        bool
-	wrap             bool
-	showCursor       bool
-	pending          bool
-	extendByWord     bool
-	invalid          bool
+	ModifiedCallback   func()
+	ValidateCallback   func() bool
+	Watermark          string
+	runes              []rune
+	lines              []*Text
+	endsWithLineFeed   []bool
+	selectionStart     int
+	selectionEnd       int
+	selectionAnchor    int
+	forceShowUntil     time.Time
+	scrollOffset       Point
+	linesBuiltFor      float32
+	ObscurementRune    rune
+	AutoScroll         bool
+	NoSelectAllOnFocus bool
+	multiLine          bool
+	wrap               bool
+	showCursor         bool
+	pending            bool
+	extendByWord       bool
+	invalid            bool
 }
 
 // NewField creates a new, empty, field.
@@ -401,7 +402,7 @@ func (f *Field) blink() {
 // DefaultFocusGained provides the default focus gained handling.
 func (f *Field) DefaultFocusGained() {
 	f.SetBorder(f.FocusedBorder)
-	if !f.HasSelectionRange() {
+	if !f.NoSelectAllOnFocus && !f.HasSelectionRange() {
 		f.SelectAll()
 	}
 	f.showCursor = true
@@ -1120,11 +1121,12 @@ func (f *Field) ToSelectionIndex(where Point) int {
 		return 0
 	}
 	f.prepareLinesForCurrentWidth()
+	where.Y -= f.ContentRect(false).Y
 	y := f.scrollOffset.Y
 	pos := 0
 	for i, line := range f.lines {
 		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
-		if where.Y >= y && where.Y < y+lineHeight {
+		if where.Y >= y && where.Y <= y+lineHeight {
 			return pos + line.RuneIndexForPosition(where.X-(f.textLeft(line, f.ContentRect(false))+f.scrollOffset.X))
 		}
 		y += lineHeight
