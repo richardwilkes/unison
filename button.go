@@ -44,7 +44,7 @@ var DefaultSVGButtonTheme = ButtonTheme{
 	BackgroundInk:       ControlColor,
 	OnBackgroundInk:     IconButtonColor,
 	EdgeInk:             ControlEdgeColor,
-	SelectionInk:        SelectionColor,
+	SelectionInk:        ControlColor,
 	OnSelectionInk:      IconButtonPressedColor,
 	RolloverInk:         IconButtonRolloverColor,
 	Gap:                 3,
@@ -177,12 +177,12 @@ func (b *Button) DefaultDraw(canvas *Canvas, dirty Rect) {
 	case b.Pressed || (b.Sticky && b.Selected()):
 		bg = b.SelectionInk
 		fg = b.OnSelectionInk
+	case b.rollover && !b.disabled && b.RolloverInk != nil:
+		bg = b.BackgroundInk
+		fg = b.RolloverInk
 	default:
 		bg = b.BackgroundInk
 		fg = b.OnBackgroundInk
-	}
-	if b.rollover && !b.disabled && b.RolloverInk != nil {
-		fg = b.RolloverInk
 	}
 	rect := b.ContentRect(false)
 	if !b.HideBase || b.Focused() {
