@@ -11,9 +11,7 @@ package unison
 
 import (
 	"fmt"
-	"runtime"
 
-	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/i18n"
 )
@@ -105,13 +103,7 @@ func InsertCloseFocusedWindowItem(m Menu, atIndex int) {
 
 // InsertQuitItem creates the standard "Quit"/"Exit" menu item that will issue the Quit command when chosen.
 func InsertQuitItem(m Menu, atIndex int) {
-	var title string
-	if runtime.GOOS == toolbox.MacOS {
-		title = i18n.Text("Quit")
-	} else {
-		title = i18n.Text("Exit")
-	}
-	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, title,
+	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, quitMenuTitle(),
 		KeyBinding{KeyCode: KeyQ, Modifiers: OSMenuCmdModifier()},
 		nil,
 		func(MenuItem) { AttemptQuit() }))

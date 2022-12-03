@@ -11,5 +11,11 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/i18n"
+
+func quitMenuTitle() string {
+	return i18n.Text("Exit")
+}
+
 func platformAddAppMenuEntries(m Menu) {
 }
