@@ -12,7 +12,6 @@ package unison
 import (
 	"fmt"
 	"image"
-	"runtime"
 	"time"
 
 	"github.com/go-gl/gl/v3.2-core/gl"
@@ -262,26 +261,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	w.wnd.SetScrollCallback(func(_ *glfw.Window, xoff, yoff float64) {
 		w.mouseWheel(w.MouseLocation(), Point{X: float32(xoff), Y: float32(yoff)}, w.lastKeyModifiers)
 	})
-	w.wnd.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, code int, action glfw.Action, mods glfw.ModifierKey) {
-		if w.okToProcess() {
-			if runtime.GOOS == toolbox.LinuxOS {
-				if action == glfw.Release {
-					mods &= ^glfwKeyToModifier(key)
-				} else {
-					mods |= glfwKeyToModifier(key)
-				}
-			}
-			w.lastKeyModifiers = Modifiers(mods)
-			switch action {
-			case glfw.Press:
-				w.keyDown(KeyCode(key), Modifiers(mods), false)
-			case glfw.Release:
-				w.keyUp(KeyCode(key), Modifiers(mods))
-			case glfw.Repeat:
-				w.keyDown(KeyCode(key), Modifiers(mods), true)
-			}
-		}
-	})
+	w.wnd.SetKeyCallback(w.keyCallbackForGLFW)
 	w.wnd.SetCharCallback(func(_ *glfw.Window, ch rune) {
 		if w.okToProcess() {
 			w.runeTyped(ch)
@@ -303,18 +283,15 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	return w, nil
 }
 
-func glfwKeyToModifier(key glfw.Key) glfw.ModifierKey {
-	switch key {
-	case glfw.KeyLeftControl, glfw.KeyRightControl:
-		return glfw.ModControl
-	case glfw.KeyLeftShift, glfw.KeyRightShift:
-		return glfw.ModShift
-	case glfw.KeyLeftAlt, glfw.KeyRightAlt:
-		return glfw.ModAlt
-	case glfw.KeyLeftSuper, glfw.KeyRightSuper:
-		return glfw.ModSuper
-	default:
-		return 0
+func (w *Window) commonKeyCallbackForGLFW(key glfw.Key, action glfw.Action, mods glfw.ModifierKey) {
+	w.lastKeyModifiers = Modifiers(mods)
+	switch action {
+	case glfw.Press:
+		w.keyDown(KeyCode(key), Modifiers(mods), false)
+	case glfw.Release:
+		w.keyUp(KeyCode(key), Modifiers(mods))
+	case glfw.Repeat:
+		w.keyDown(KeyCode(key), Modifiers(mods), true)
 	}
 }
 
@@ -600,19 +577,6 @@ func (w *Window) FrameRect() Rect {
 	return cr
 }
 
-func (w *Window) frameRect() Rect {
-	left, top, right, bottom := w.wnd.GetFrameSize()
-	r := NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
-	if runtime.GOOS != toolbox.MacOS {
-		sx, sy := w.wnd.GetContentScale()
-		r.X /= sx
-		r.Y /= sy
-		r.Width /= sx
-		r.Height /= sy
-	}
-	return r
-}
-
 // ContentRectForFrameRect returns the content rect for the given frame rect.
 func (w *Window) ContentRectForFrameRect(frame Rect) Rect {
 	fr := w.frameRect()
@@ -661,58 +625,12 @@ func (w *Window) adjustContentRectForMinMax(rect Rect) Rect {
 	return rect
 }
 
-// ContentRect returns the boundaries in display coordinates of the window's content area.
-func (w *Window) ContentRect() Rect {
-	x, y := w.wnd.GetPos()
-	width, height := w.wnd.GetSize()
-	r := NewRect(float32(x), float32(y), float32(width), float32(height))
-	if runtime.GOOS != toolbox.MacOS {
-		sx, sy := w.wnd.GetContentScale()
-		r.X /= sx
-		r.Y /= sy
-		r.Width /= sx
-		r.Height /= sy
-	}
-	return r
-}
-
 // LocalContentRect returns the boundaries in local coordinates of the window's content area.
 func (w *Window) LocalContentRect() Rect {
 	r := w.ContentRect()
 	r.Point.X = 0
 	r.Point.Y = 0
 	return r
-}
-
-// SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
-// rect and then applying it to the window.
-func (w *Window) SetContentRect(rect Rect) {
-	rect = w.adjustContentRectForMinMax(rect)
-	w.lastContentRect = rect
-	if runtime.GOOS != toolbox.MacOS {
-		sx, sy := w.wnd.GetContentScale()
-		rect.X *= sx
-		rect.Y *= sy
-		rect.Width *= sx
-		rect.Height *= sy
-	}
-	w.wnd.SetPos(int(rect.X), int(rect.Y))
-	tx := int(rect.Width)
-	ty := int(rect.Height)
-	w.wnd.SetSize(tx, ty)
-	if runtime.GOOS == toolbox.LinuxOS {
-		// X11 responds asynchronously to window positioning and sizing requests. Due to this, we need to wait for it to
-		// catch up, or subsequent code that is relying on the coordinates being updated will get the wrong information.
-		// We do put a cap on the amount of time we are willing to wait, however, to ensure we don't hang should
-		// something go wrong.
-		for i := 0; i < 50; i++ {
-			time.Sleep(time.Millisecond)
-			nx, ny := w.wnd.GetSize()
-			if nx == tx && ny == ty {
-				break
-			}
-		}
-	}
 }
 
 // Pack sets the window's content size to match the preferred size of the root panel.
@@ -863,17 +781,6 @@ func (w *Window) IsVisible() bool {
 	return w.wnd.GetAttrib(glfw.Visible) == glfw.True
 }
 
-// Show makes the window visible, if it was previously hidden. If the window is already visible or is in full screen
-// mode, this function does nothing.
-func (w *Window) Show() {
-	w.wnd.Show()
-	if runtime.GOOS == toolbox.LinuxOS {
-		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
-		// last one we had.
-		w.SetContentRect(w.lastContentRect)
-	}
-}
-
 // Hide hides the window, if it was previously visible. If the window is already hidden or is in full screen mode, this
 // function does nothing.
 func (w *Window) Hide() {
@@ -906,16 +813,6 @@ func (w *Window) Resizable() bool {
 // MouseLocation returns the current mouse location relative to this window.
 func (w *Window) MouseLocation() Point {
 	return w.convertMouseLocation(w.wnd.GetCursorPos())
-}
-
-func (w *Window) convertMouseLocation(x, y float64) Point {
-	pt := Point{X: float32(x), Y: float32(y)}
-	if runtime.GOOS != toolbox.MacOS {
-		sx, sy := w.wnd.GetContentScale()
-		pt.X /= sx
-		pt.Y /= sy
-	}
-	return pt
 }
 
 // BackingScale returns the scale of the backing store for this window.
