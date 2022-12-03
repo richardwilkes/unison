@@ -153,14 +153,6 @@ func Start(options ...StartupOption) {
 	})
 	glfw.WindowHint(glfw.ContextVersionMajor, 3)
 	glfw.WindowHint(glfw.ContextVersionMinor, 2)
-	if runtime.GOOS != toolbox.LinuxOS {
-		// Some Linux platforms I've tried fail if either of these two options are enabled.
-		// macOS seems to require both be set.
-		// Windows doesn't seem to care either way.
-		// So... don't set them on Linux...
-		glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
-		glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-	}
 	platformEarlyInit()
 	glfwInited.Store(true)
 	InvokeTask(finishStartup)

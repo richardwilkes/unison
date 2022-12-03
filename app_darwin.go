@@ -12,10 +12,15 @@ package unison
 import (
 	"time"
 
+	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
 func platformEarlyInit() {
+	// macOS requires both of these hints to be set
+	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
+	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
+
 	ns.InstallAppDelegate(potentiallyDeferredOpenFilesHandler)
 }
 
