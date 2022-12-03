@@ -12,12 +12,10 @@ package unison
 import (
 	"embed"
 	"path"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/skia"
@@ -207,13 +205,7 @@ func init() {
 	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(baseSize - 1)
 	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
 	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
-	keyboardFamilyName := DefaultSystemFamilyName
-	if runtime.GOOS == toolbox.MacOS {
-		// This is a special font on macOS. Ideally, I'd find a source for an equivalent font and embed it so that the
-		// same font could be used on all platforms.
-		keyboardFamilyName = ".Keyboard"
-	}
-	KeyboardFont.Font = MatchFontFace(keyboardFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize)
+	KeyboardFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize)
 	MonospacedFont.Font = MatchFontFace(DefaultMonospacedFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
 }
 
