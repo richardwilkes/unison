@@ -10,10 +10,7 @@
 package unison
 
 import (
-	"runtime"
-
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/toolbox"
 )
 
 var lastPrimaryDisplay *Display
@@ -119,33 +116,4 @@ func AllDisplays() []*Display {
 		displays[i] = convertMonitorToDisplay(monitor)
 	}
 	return displays
-}
-
-func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
-	x, y := monitor.GetPos()
-	vidMode := monitor.GetVideoMode()
-	workX, workY, workWidth, workHeight := monitor.GetWorkarea()
-	sx, sy := monitor.GetContentScale()
-	mmx, mmy := monitor.GetPhysicalSize()
-	display := &Display{
-		Name:        monitor.GetName(),
-		Frame:       NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
-		Usable:      NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
-		ScaleX:      sx,
-		ScaleY:      sy,
-		RefreshRate: vidMode.RefreshRate,
-		WidthMM:     mmx,
-		HeightMM:    mmy,
-	}
-	if runtime.GOOS != toolbox.MacOS {
-		display.Frame.X /= display.ScaleX
-		display.Frame.Y /= display.ScaleY
-		display.Frame.Width /= display.ScaleX
-		display.Frame.Height /= display.ScaleY
-		display.Usable.X /= display.ScaleX
-		display.Usable.Y /= display.ScaleY
-		display.Usable.Width /= display.ScaleX
-		display.Usable.Height /= display.ScaleY
-	}
-	return display
 }
