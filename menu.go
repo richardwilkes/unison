@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
@@ -171,9 +172,7 @@ func (m *menu) insertItem(atIndex int, mi *menuItem) {
 func (m *menu) RemoveItem(index int) {
 	if index >= 0 && index < len(m.items) {
 		m.items[index].menu = nil
-		copy(m.items[index:], m.items[index+1:])
-		m.items[len(m.items)-1] = nil
-		m.items = m.items[:len(m.items)-1]
+		m.items = slice.ZeroedDelete(m.items, index, index+1)
 	}
 }
 

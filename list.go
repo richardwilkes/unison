@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
@@ -126,11 +127,7 @@ func (l *List[T]) Replace(index int, value T) {
 // Remove the item at the specified index.
 func (l *List[T]) Remove(index int) {
 	if index >= 0 && index < len(l.rows) {
-		copy(l.rows[index:], l.rows[index+1:])
-		size := len(l.rows) - 1
-		var zero T
-		l.rows[size] = zero
-		l.rows = l.rows[:size]
+		l.rows = slice.ZeroedDelete(l.rows, index, index+1)
 		l.MarkForLayoutAndRedraw()
 	}
 }
@@ -138,13 +135,7 @@ func (l *List[T]) Remove(index int) {
 // RemoveRange removes the items at the specified index range, inclusive.
 func (l *List[T]) RemoveRange(from, to int) {
 	if from >= 0 && from < len(l.rows) && to >= from && to < len(l.rows) {
-		copy(l.rows[from:], l.rows[to+1:])
-		size := len(l.rows) - (1 + to - from)
-		var zero T
-		for i := size; i < len(l.rows); i++ {
-			l.rows[i] = zero
-		}
-		l.rows = l.rows[:size]
+		l.rows = slice.ZeroedDelete(l.rows, from, to+1)
 		l.MarkForLayoutAndRedraw()
 	}
 }

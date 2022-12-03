@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 
+	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
@@ -246,10 +247,7 @@ func (p *PopupMenu[T]) RemoveItemAt(index int) {
 			} else if p.selectedIndex > index {
 				p.selectedIndex--
 			}
-			copy(p.items[index:], p.items[index+1:])
-			length--
-			p.items[length] = nil
-			p.items = p.items[:length]
+			p.items = slice.ZeroedDelete(p.items, index, index+1)
 		}
 	}
 }

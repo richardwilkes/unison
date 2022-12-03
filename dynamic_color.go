@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/collection/slice"
 )
 
 var (
@@ -48,13 +49,7 @@ func (c *DynamicColor) Paint(canvas *Canvas, rect Rect, style PaintStyle) *Paint
 func (c *DynamicColor) Unregister() {
 	for i, other := range dynamicColors {
 		if c == other {
-			if len(dynamicColors) == 1 {
-				dynamicColors = nil
-			} else {
-				copy(dynamicColors[i:], dynamicColors[i+1:])
-				dynamicColors[len(dynamicColors)-1] = nil
-				dynamicColors = dynamicColors[:len(dynamicColors)-1]
-			}
+			dynamicColors = slice.ZeroedDelete(dynamicColors, i, i+1)
 			break
 		}
 	}

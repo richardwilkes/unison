@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/collection/slice"
 )
 
 var _ Paneler = &Panel{}
@@ -180,9 +181,7 @@ func (p *Panel) RemoveChildAtIndex(index int) {
 	if index >= 0 && index < len(p.children) {
 		child := p.children[index]
 		child.parent = nil
-		copy(p.children[index:], p.children[index+1:])
-		p.children[len(p.children)-1] = nil
-		p.children = p.children[:len(p.children)-1]
+		p.children = slice.ZeroedDelete(p.children, index, index+1)
 		p.NeedsLayout = true
 		if child.ParentChangedCallback != nil {
 			child.ParentChangedCallback()

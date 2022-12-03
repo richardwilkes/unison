@@ -43,7 +43,6 @@ func processNextTask(recoveryHandler errs.RecoveryHandler) {
 	if len(taskQueue) > 0 {
 		f = taskQueue[0]
 		copy(taskQueue, taskQueue[1:])
-		taskQueue[len(taskQueue)-1] = nil
 		taskQueue = taskQueue[:len(taskQueue)-1]
 		needsPost = len(taskQueue) > 0
 	}

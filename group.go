@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/collection/slice"
+
 // Group is used to ensure only one panel in a group is selected at a time.
 type Group struct {
 	panel []*GroupPanel
@@ -40,9 +42,7 @@ func (sg *Group) Remove(panel *GroupPanel) {
 			if !one.Is(panel) {
 				continue
 			}
-			copy(sg.panel[i:], sg.panel[i+1:])
-			sg.panel[len(sg.panel)-1] = nil
-			sg.panel = sg.panel[:len(sg.panel)-1]
+			sg.panel = slice.ZeroedDelete(sg.panel, i, i+1)
 			panel.group = nil
 			break
 		}

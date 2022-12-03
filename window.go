@@ -17,6 +17,7 @@ import (
 	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xmath"
@@ -437,10 +438,7 @@ func (w *Window) removeFromModalStack() {
 		if w != wnd {
 			continue
 		}
-		copy(modalStack[i:], modalStack[i+1:])
-		count := len(modalStack) - 1
-		modalStack[count] = nil
-		modalStack = modalStack[:count]
+		modalStack = slice.ZeroedDelete(modalStack, i, i+1)
 		break
 	}
 }
@@ -472,10 +470,7 @@ func (w *Window) removeFromWindowList() {
 		if w != wnd {
 			continue
 		}
-		copy(windowList[i:], windowList[i+1:])
-		count := len(windowList) - 1
-		windowList[count] = nil
-		windowList = windowList[:count]
+		windowList = slice.ZeroedDelete(windowList, i, i+1)
 		break
 	}
 }

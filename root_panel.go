@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox"
+import (
+	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/collection/slice"
+)
 
 var _ Layout = &rootPanel{}
 
@@ -64,9 +67,7 @@ func (p *rootPanel) insertMenu(panel *menuPanel) {
 func (p *rootPanel) removeMenu(panel *menuPanel) {
 	for i, one := range p.openMenuPanels {
 		if one == panel {
-			copy(p.openMenuPanels[i:], p.openMenuPanels[i+1:])
-			p.openMenuPanels[len(p.openMenuPanels)-1] = nil
-			p.openMenuPanels = p.openMenuPanels[:len(p.openMenuPanels)-1]
+			p.openMenuPanels = slice.ZeroedDelete(p.openMenuPanels, i, i+1)
 			panel.RemoveFromParent()
 			panel.menu.popupPanel = nil
 			p.MarkForRedraw()
