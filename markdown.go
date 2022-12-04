@@ -629,7 +629,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 			p = revised
 		}
 		var err error
-		if p, err = filepath.Abs(filepath.Join(m.WorkingDir, p)); err != nil {
+		if p, err = filepath.Abs(filepath.Join(m.WorkingDir, p)); err == nil {
 			target = p
 		}
 	}
