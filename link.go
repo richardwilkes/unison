@@ -32,7 +32,7 @@ type LinkTheme struct {
 }
 
 // NewLink creates a new RichLabel that can be used as a hyperlink.
-func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(string)) *RichLabel {
+func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(Paneler, string)) *RichLabel {
 	link := NewRichLabel()
 	link.Text = NewText(title, &theme.TextDecoration)
 	if tooltip != "" {
@@ -90,7 +90,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(s
 		})
 		link.MarkForRedraw()
 		if inside && clickHandler != nil {
-			toolbox.Call(func() { clickHandler(target) })
+			toolbox.Call(func() { clickHandler(link, target) })
 		}
 		return true
 	}

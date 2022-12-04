@@ -95,7 +95,7 @@ type MarkdownTheme struct {
 	LinkInk             Ink
 	LinkRolloverInk     Ink
 	LinkPressedInk      Ink
-	LinkHandler         func(string)
+	LinkHandler         func(Paneler, string)
 	VSpacing            float32
 	QuoteBarThickness   float32
 	CodeAndQuotePadding float32
@@ -612,7 +612,11 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}
-	return NewLink(label, tooltip, target, theme, m.LinkHandler)
+	return NewLink(label, tooltip, target, theme, m.linkHandler)
+}
+
+func (m *Markdown) linkHandler(src Paneler, target string) {
+	m.LinkHandler(m, target)
 }
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
@@ -772,7 +776,7 @@ func (m *Markdown) finishTextRow() {
 
 // DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browers for http and https
 // links.
-func DefaultMarkdownLinkHandler(target string) {
+func DefaultMarkdownLinkHandler(src Paneler, target string) {
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		if err := desktop.Open(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
