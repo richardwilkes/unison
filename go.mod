@@ -4,13 +4,13 @@ go 1.19
 
 require (
 	github.com/OpenPrinting/goipp v1.0.0
-	github.com/cespare/xxhash/v2 v2.1.2
+	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b
 	github.com/google/uuid v1.3.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/json v0.1.0
-	github.com/richardwilkes/toolbox v1.79.0
+	github.com/richardwilkes/toolbox v1.80.0
 	github.com/stretchr/testify v1.8.1
 	github.com/yuin/goldmark v1.5.3
 	golang.org/x/exp v0.0.0-20221126150942-6ab00d035af9
