@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -623,7 +624,12 @@ func (m *Markdown) linkHandler(src Paneler, target string) {
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 	if m.WorkingDir != "" && (strings.HasPrefix(target, "./") || strings.HasPrefix(target, "../")) {
-		if p, err := filepath.Abs(filepath.Join(m.WorkingDir, target)); err != nil {
+		p := target
+		if revised, err := url.PathUnescape(p); err == nil {
+			p = revised
+		}
+		var err error
+		if p, err = filepath.Abs(filepath.Join(m.WorkingDir, p)); err != nil {
 			target = p
 		}
 	}
@@ -695,8 +701,8 @@ func (m *Markdown) processImage() {
 func (m *Markdown) processAutoLink() {
 	if link, ok := m.node.(*ast.AutoLink); ok {
 		m.flushText()
-		url := string(link.URL(m.content))
-		p := m.createLink(url, url, "")
+		u := string(link.URL(m.content))
+		p := m.createLink(u, u, "")
 		m.addToTextRow(p)
 	}
 }
