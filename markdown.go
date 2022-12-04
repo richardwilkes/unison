@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -115,6 +116,7 @@ type Markdown struct {
 	text                       *Text
 	decoration                 *TextDecoration
 	imgCache                   map[string]*Image
+	WorkingDir                 string
 	index                      int
 	maxWidth                   float32
 	maxLineWidth               float32
@@ -620,6 +622,11 @@ func (m *Markdown) linkHandler(src Paneler, target string) {
 }
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
+	if m.WorkingDir != "" && (strings.HasPrefix(target, "./") || strings.HasPrefix(target, "../")) {
+		if p, err := filepath.Abs(filepath.Join(m.WorkingDir, target)); err != nil {
+			target = p
+		}
+	}
 	img, ok := m.imgCache[target]
 	if !ok {
 		result := make(chan *Image, 1)
