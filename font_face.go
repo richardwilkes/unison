@@ -41,6 +41,27 @@ func newFace(face skia.TypeFace) *FontFace {
 	return f
 }
 
+// AllFontFaces returns all known font faces as FontFaceDescriptors. This will be computed each time, so it may be
+// worthwhile to cache the result if you don't expect the set of font faces to be changed between calls.
+func AllFontFaces() []*FontFaceDescriptor {
+	var all []*FontFaceDescriptor
+	for _, family := range FontFamilies() {
+		if ff := MatchFontFamily(family); ff != nil {
+			count := ff.Count()
+			for i := 0; i < count; i++ {
+				_, weight, spacing, slant := ff.Style(i)
+				all = append(all, &FontFaceDescriptor{
+					Family:  family,
+					Weight:  weight,
+					Spacing: spacing,
+					Slant:   slant,
+				})
+			}
+		}
+	}
+	return all
+}
+
 // MatchFontFace attempts to locate the FontFace with the given family and style. Will return nil if nothing suitable
 // can be found.
 func MatchFontFace(family string, weight FontWeight, spacing FontSpacing, slant FontSlant) *FontFace {
@@ -67,11 +88,13 @@ func CreateFontFace(data []byte) *FontFace {
 func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 	weight, spacing, slant := f.Style()
 	fd := FontDescriptor{
-		Family:  f.Family(),
-		Size:    capHeightSizeInLogicalPixels,
-		Weight:  weight,
-		Spacing: spacing,
-		Slant:   slant,
+		FontFaceDescriptor: FontFaceDescriptor{
+			Family:  f.Family(),
+			Weight:  weight,
+			Spacing: spacing,
+			Slant:   slant,
+		},
+		Size: capHeightSizeInLogicalPixels,
 	}
 	fontSizeCacheLock.RLock()
 	skiaSize, exists := fontSizeCache[fd]

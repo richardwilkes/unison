@@ -168,11 +168,13 @@ func (f *fontImpl) skiaFont() skia.Font {
 func (f *fontImpl) Descriptor() FontDescriptor {
 	weight, spacing, slant := f.face.Style()
 	return FontDescriptor{
-		Family:  f.face.Family(),
-		Size:    f.size,
-		Weight:  weight,
-		Spacing: spacing,
-		Slant:   slant,
+		FontFaceDescriptor: FontFaceDescriptor{
+			Family:  f.face.Family(),
+			Weight:  weight,
+			Spacing: spacing,
+			Slant:   slant,
+		},
+		Size: f.size,
 	}
 }
 
@@ -210,22 +212,21 @@ func init() {
 }
 
 // RegisterFont registers a font with the font manager.
-func RegisterFont(data []byte) (*FontDescriptor, error) {
+func RegisterFont(data []byte) (*FontFaceDescriptor, error) {
 	f := CreateFontFace(data)
 	if f == nil {
 		return nil, errs.New("unable to load font")
 	}
 	weight, spacing, slant := f.Style()
-	fd := &FontDescriptor{
+	ffd := &FontFaceDescriptor{
 		Family:  f.Family(),
-		Size:    9, // Arbitrary
 		Weight:  weight,
 		Spacing: spacing,
 		Slant:   slant,
 	}
 	internalFontLock.Lock()
 	defer internalFontLock.Unlock()
-	if info, ok := internalFonts[fd.Family]; ok {
+	if info, ok := internalFonts[ffd.Family]; ok {
 		add := true
 		for _, one := range info.faces {
 			weight2, spacing2, slant2 := one.Style()
@@ -241,10 +242,10 @@ func RegisterFont(data []byte) (*FontDescriptor, error) {
 			})
 		}
 	} else {
-		internalFonts[fd.Family] = &internalFont{
-			family: fd.Family,
+		internalFonts[ffd.Family] = &internalFont{
+			family: ffd.Family,
 			faces:  []*FontFace{f},
 		}
 	}
-	return fd, nil
+	return ffd, nil
 }
