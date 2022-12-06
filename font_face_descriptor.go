@@ -26,11 +26,11 @@ type FontFaceDescriptor struct {
 }
 
 // Face returns the matching FontFace, if any.
-func (ffd *FontFaceDescriptor) Face() *FontFace {
+func (ffd FontFaceDescriptor) Face() *FontFace {
 	return MatchFontFace(ffd.Family, ffd.Weight, ffd.Spacing, ffd.Slant)
 }
 
-func (ffd *FontFaceDescriptor) variants() string {
+func (ffd FontFaceDescriptor) variants() string {
 	variants := make([]string, 0, 3)
 	if ffd.Weight != NormalFontWeight {
 		variants = append(variants, ffd.Weight.String())
@@ -48,12 +48,12 @@ func (ffd *FontFaceDescriptor) variants() string {
 }
 
 // String this returns a string suitable for display. It is not suitable for converting back into a FontFaceDescriptor.
-func (ffd *FontFaceDescriptor) String() string {
+func (ffd FontFaceDescriptor) String() string {
 	return ffd.Family + ffd.variants()
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
-func (ffd *FontFaceDescriptor) MarshalText() (text []byte, err error) {
+func (ffd FontFaceDescriptor) MarshalText() (text []byte, err error) {
 	return []byte(fmt.Sprintf("%s %s %s %s", ffd.Family, ffd.Weight.Key(), ffd.Spacing.Key(), ffd.Slant.Key())), nil
 }
 

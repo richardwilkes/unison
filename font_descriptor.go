@@ -28,13 +28,13 @@ type FontDescriptor struct {
 
 // Font returns the matching Font. If the specified font family cannot be found, the DefaultSystemFamilyName will be
 // substituted.
-func (fd *FontDescriptor) Font() Font {
+func (fd FontDescriptor) Font() Font {
 	f := fd.Face()
 	if f == nil {
 		if fd.Family == DefaultSystemFamilyName {
 			jot.Fatal(1, "default system font family is unavailable")
 		}
-		other := *fd
+		other := fd
 		other.Family = DefaultSystemFamilyName
 		return other.Font()
 	}
@@ -42,12 +42,12 @@ func (fd *FontDescriptor) Font() Font {
 }
 
 // String this returns a string suitable for display. It is not suitable for converting back into a FontDescriptor.
-func (fd *FontDescriptor) String() string {
+func (fd FontDescriptor) String() string {
 	return fmt.Sprintf("%s %v%s", fd.Family, fd.Size, fd.variants())
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
-func (fd *FontDescriptor) MarshalText() (text []byte, err error) {
+func (fd FontDescriptor) MarshalText() (text []byte, err error) {
 	return []byte(fmt.Sprintf("%s %v %s %s %s", fd.Family, fd.Size, fd.Weight.Key(), fd.Spacing.Key(), fd.Slant.Key())), nil
 }
 

@@ -212,18 +212,17 @@ func init() {
 }
 
 // RegisterFont registers a font with the font manager.
-func RegisterFont(data []byte) (*FontFaceDescriptor, error) {
+func RegisterFont(data []byte) (FontFaceDescriptor, error) {
+	var ffd FontFaceDescriptor
 	f := CreateFontFace(data)
 	if f == nil {
-		return nil, errs.New("unable to load font")
+		return ffd, errs.New("unable to load font")
 	}
 	weight, spacing, slant := f.Style()
-	ffd := &FontFaceDescriptor{
-		Family:  f.Family(),
-		Weight:  weight,
-		Spacing: spacing,
-		Slant:   slant,
-	}
+	ffd.Family = f.Family()
+	ffd.Weight = weight
+	ffd.Spacing = spacing
+	ffd.Slant = slant
 	internalFontLock.Lock()
 	defer internalFontLock.Unlock()
 	if info, ok := internalFonts[ffd.Family]; ok {

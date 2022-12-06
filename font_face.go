@@ -43,14 +43,14 @@ func newFace(face skia.TypeFace) *FontFace {
 
 // AllFontFaces returns all known font faces as FontFaceDescriptors. This will be computed each time, so it may be
 // worthwhile to cache the result if you don't expect the set of font faces to be changed between calls.
-func AllFontFaces() []*FontFaceDescriptor {
-	var all []*FontFaceDescriptor
+func AllFontFaces() []FontFaceDescriptor {
+	var all []FontFaceDescriptor
 	for _, family := range FontFamilies() {
 		if ff := MatchFontFamily(family); ff != nil {
 			count := ff.Count()
 			for i := 0; i < count; i++ {
 				_, weight, spacing, slant := ff.Style(i)
-				all = append(all, &FontFaceDescriptor{
+				all = append(all, FontFaceDescriptor{
 					Family:  family,
 					Weight:  weight,
 					Spacing: spacing,
