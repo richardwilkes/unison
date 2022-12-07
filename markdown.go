@@ -342,7 +342,7 @@ func (m *Markdown) processCodeBlock() {
 	for i := 0; i < count; i++ {
 		segment := lines.At(i)
 		label := NewRichLabel()
-		label.Text = NewText(string(segment.Value(m.content)), m.decoration)
+		label.Text = NewText(string(bytes.TrimRight(segment.Value(m.content), "\n")), m.decoration)
 		p.AddChild(label)
 	}
 	m.text = nil
