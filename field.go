@@ -708,7 +708,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 			anchor := f.selectionAnchor
 			if f.selectionStart == anchor {
 				pt := f.FromSelectionIndex(f.selectionEnd)
-				pt.Y -= f.Font.LineHeight()
+				pt.Y -= f.lineHeightAt(pt.Y) - 1
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					start, _ := f.findWordAt(pos)
@@ -717,7 +717,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 				f.setSelection(anchor, pos, anchor)
 			} else {
 				pt := f.FromSelectionIndex(f.selectionStart)
-				pt.Y -= f.Font.LineHeight()
+				pt.Y -= f.lineHeightAt(pt.Y) - 1
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					start, _ := f.findWordAt(pos)
@@ -750,7 +750,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 			anchor := f.selectionAnchor
 			if f.selectionEnd == anchor {
 				pt := f.FromSelectionIndex(f.selectionStart)
-				pt.Y += f.Font.LineHeight()
+				pt.Y += 1 + f.lineHeightAt(pt.Y)
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					_, end := f.findWordAt(pos)
@@ -759,7 +759,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 				f.setSelection(pos, anchor, anchor)
 			} else {
 				pt := f.FromSelectionIndex(f.selectionEnd)
-				pt.Y += f.Font.LineHeight()
+				pt.Y += 1 + f.lineHeightAt(pt.Y)
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					_, end := f.findWordAt(pos)
@@ -1003,7 +1003,7 @@ func (f *Field) setSelection(start, end, anchor int) {
 			anchor = start
 		}
 		pt := f.FromSelectionIndex(anchor)
-		f.ScrollRectIntoView(NewRect(pt.X-1, pt.Y, 3, f.Font.LineHeight()))
+		f.ScrollRectIntoView(NewRect(pt.X-1, pt.Y, 3, f.lineHeightAt(pt.Y)))
 	}
 }
 
@@ -1069,27 +1069,35 @@ func (f *Field) autoScroll() {
 			if top < rect.Y {
 				f.scrollOffset.Y = 0
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionEnd).Y
-			} else if top+f.Font.LineHeight() >= rect.Bottom() {
-				f.scrollOffset.Y = 0
-				f.scrollOffset.Y = rect.Bottom() - (f.FromSelectionIndex(f.selectionEnd).Y + f.Font.LineHeight())
+			} else {
+				if top+f.lineHeightAt(top) >= rect.Bottom() {
+					f.scrollOffset.Y = 0
+					top = f.FromSelectionIndex(f.selectionEnd).Y
+					f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
+				}
 			}
 		} else {
 			top := f.FromSelectionIndex(f.selectionStart).Y
 			if top < rect.Y {
 				f.scrollOffset.Y = 0
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionStart).Y
-			} else if top+f.Font.LineHeight() >= rect.Bottom() {
-				f.scrollOffset.Y = 0
-				f.scrollOffset.Y = rect.Bottom() - (f.FromSelectionIndex(f.selectionStart).Y + f.Font.LineHeight())
+			} else {
+				if top+f.lineHeightAt(top) >= rect.Bottom() {
+					f.scrollOffset.Y = 0
+					top = f.FromSelectionIndex(f.selectionEnd).Y
+					f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
+				}
 			}
 		}
 		save := f.scrollOffset.Y
 		f.scrollOffset.Y = 0
-		min := rect.Bottom() - (f.FromSelectionIndex(len(f.runes)).Y + f.Font.LineHeight())
+		top := f.FromSelectionIndex(len(f.runes)).Y
+		min := rect.Bottom() - (top + f.lineHeightAt(top))
 		if min > 0 {
 			min = 0
 		}
-		max := rect.Y - (f.FromSelectionIndex(0).Y + f.Font.LineHeight())
+		top = f.FromSelectionIndex(0).Y
+		max := rect.Y - (top + f.lineHeightAt(top))
 		if max < 0 {
 			max = 0
 		}
@@ -1192,15 +1200,20 @@ func (f *Field) findWordAt(pos int) (start, end int) {
 	}
 	start = pos
 	end = pos
-	if length > 0 && !unicode.IsSpace(f.runes[start]) {
-		for start > 0 && !unicode.IsSpace(f.runes[start-1]) {
+	if length > 0 && f.isWordPart(start) {
+		for start > 0 && f.isWordPart(start-1) {
 			start--
 		}
-		for end < length && !unicode.IsSpace(f.runes[end]) {
+		for end < length && f.isWordPart(end) {
 			end++
 		}
 	}
 	return start, end
+}
+
+func (f *Field) isWordPart(index int) bool {
+	r := f.runes[index]
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }
 
 func (f *Field) findPrevLineBreak(pos int) int {
