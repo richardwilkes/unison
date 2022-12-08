@@ -13,8 +13,8 @@ require (
 	github.com/richardwilkes/toolbox v1.80.1
 	github.com/stretchr/testify v1.8.1
 	github.com/yuin/goldmark v1.5.3
-	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
-	golang.org/x/image v0.1.0
+	golang.org/x/exp v0.0.0-20221208152030-732eee02a75a
+	golang.org/x/image v0.2.0
 	golang.org/x/sys v0.3.0
 	golang.org/x/text v0.5.0
 )
@@ -29,8 +29,8 @@ require (
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/yookoala/realpath v1.0.0 // indirect
 	golang.org/x/mod v0.7.0 // indirect
-	golang.org/x/net v0.2.0 // indirect
-	golang.org/x/tools v0.3.0 // indirect
+	golang.org/x/net v0.4.0 // indirect
+	golang.org/x/tools v0.4.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
