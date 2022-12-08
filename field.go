@@ -730,7 +730,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 		}
 	} else {
 		pt := f.FromSelectionIndex(f.selectionStart)
-		pt.Y -= f.Font.LineHeight()
+		pt.Y -= f.lineHeightAt(pt.Y) - 1
 		pos := f.ToSelectionIndex(pt)
 		if byWord {
 			start, _ := f.findWordAt(pos)
@@ -772,7 +772,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 		}
 	} else {
 		pt := f.FromSelectionIndex(f.selectionEnd)
-		pt.Y += f.Font.LineHeight()
+		pt.Y += 1 + f.lineHeightAt(pt.Y)
 		pos := f.ToSelectionIndex(pt)
 		if byWord {
 			_, end := f.findWordAt(pos)
@@ -784,6 +784,13 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 			f.SetSelectionTo(pos)
 		}
 	}
+}
+
+func (f *Field) lineHeightAt(y float32) float32 {
+	if len(f.lines) == 0 {
+		return f.Font.LineHeight()
+	}
+	return xmath.Max(f.lines[f.lineIndexForY(y)].Height(), f.Font.LineHeight())
 }
 
 // CanCut returns true if the field has a selection that can be cut.
@@ -1113,6 +1120,23 @@ func (f *Field) textLeftForWidth(width float32, bounds Rect) float32 {
 		left++ // Inset since we leave space for the cursor
 	}
 	return left
+}
+
+func (f *Field) lineIndexForY(y float32) int {
+	if y < 0 {
+		return 0
+	}
+	f.prepareLinesForCurrentWidth()
+	y -= f.ContentRect(false).Y
+	yy := f.scrollOffset.Y
+	for i, line := range f.lines {
+		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
+		if y >= yy && y <= yy+lineHeight {
+			return i
+		}
+		yy += lineHeight
+	}
+	return xmath.Max(len(f.lines)-1, 0)
 }
 
 // ToSelectionIndex returns the rune index for the coordinates.
