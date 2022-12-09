@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -119,6 +120,8 @@ type Markdown struct {
 	imgCache                   map[string]*Image
 	WorkingDir                 string
 	index                      int
+	columnIndex                int
+	columnWidths               []int
 	maxWidth                   float32
 	maxLineWidth               float32
 	ordered                    bool
@@ -441,11 +444,13 @@ func (m *Markdown) processListItem() {
 }
 
 func (m *Markdown) processTable() {
-	// Tables currently don't respect the maximum width. To do that, we need multiple passes to properly size things and
-	// break them up into sub-rows. For now, just punting on this and allowing them to take whatever space they ask for.
 	if table, ok := m.node.(*tableAST.Table); ok {
 		if len(table.Alignments) != 0 {
 			saveBlock := m.block
+			m.columnWidths = make([]int, len(table.Alignments))
+			for i := 0; i < len(m.columnWidths); i++ {
+				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
+			}
 			p := NewPanel()
 			p.SetBorder(NewLineBorder(DividerColor, 0, NewUniformInsets(1), false))
 			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
@@ -453,6 +458,85 @@ func (m *Markdown) processTable() {
 			m.block = p
 			m.processChildren()
 			m.block = saveBlock
+
+			m.MarkForLayoutRecursively()
+			m.ValidateLayout()
+			if over := int(xmath.Ceil(p.FrameRect().Width - (m.maxLineWidth - (4 + StdHSpacing*float32(1+len(m.columnWidths)))))); over > 0 {
+				children := p.Children()
+				count := 0
+				for i := 0; i < len(m.columnWidths); i++ {
+					if i < len(children) {
+						m.columnWidths[i] = int(xmath.Ceil(children[i].FrameRect().Width))
+						if m.columnWidths[i] > 0 {
+							count++
+						}
+					} else {
+						m.columnWidths[i] = 0
+					}
+				}
+				if count > 0 {
+					widths := make([]int, len(m.columnWidths))
+					copy(widths, m.columnWidths)
+					sort.IntSlice(widths).Sort()
+					for i := len(widths) - 1; i > 0; i-- {
+						delta := widths[i] - widths[i-1]
+						qty := 0
+						for j := 0; j < len(m.columnWidths); j++ {
+							if m.columnWidths[j] == widths[i] {
+								qty++
+							}
+						}
+						if qty*delta > over {
+							amt := over / qty
+							extra := over - amt*qty
+							for j := 0; j < len(m.columnWidths); j++ {
+								if m.columnWidths[j] == widths[i] {
+									m.columnWidths[j] -= amt
+									if extra > 0 {
+										m.columnWidths[j]--
+										extra--
+									}
+								}
+							}
+							over = 0
+							break
+						}
+						for j := 0; j < len(m.columnWidths); j++ {
+							if m.columnWidths[j] == widths[i] {
+								m.columnWidths[j] -= delta
+								over -= delta
+							}
+						}
+					}
+					if over > 0 {
+						count = 0
+						for j := 0; j < len(m.columnWidths); j++ {
+							if m.columnWidths[j] > 0 {
+								count++
+							}
+						}
+						amt := over / count
+						extra := over - amt*count
+						for j := 0; j < len(m.columnWidths); j++ {
+							if m.columnWidths[j] > 0 {
+								m.columnWidths[j] -= amt
+								if extra > 0 {
+									m.columnWidths[j]--
+									extra--
+								}
+								if m.columnWidths[j] < 0 {
+									m.columnWidths[j] = 0
+								}
+							}
+						}
+					}
+				}
+				p.RemoveAllChildren()
+				m.block = p
+				m.processChildren()
+				m.block = saveBlock
+			}
+			m.MarkForLayoutRecursively()
 		}
 	}
 }
@@ -464,6 +548,7 @@ func (m *Markdown) processTableHeader() {
 }
 
 func (m *Markdown) processTableRow() {
+	m.columnIndex = 0
 	m.processChildren()
 }
 
@@ -504,11 +589,18 @@ func (m *Markdown) processTableCell() {
 		p.AddChild(inner)
 
 		m.block = inner
+		saveMaxLineWidth := m.maxLineWidth
+		m.maxLineWidth = float32(m.columnWidths[m.columnIndex])
 		m.text = NewText("", m.decoration)
 		m.processChildren()
 		m.finishTextRow()
+		m.maxLineWidth = saveMaxLineWidth
 		m.decoration = saveDec
 		m.block = saveBlock
+	}
+	m.columnIndex++
+	if m.columnIndex >= len(m.columnWidths) {
+		m.columnIndex = 0
 	}
 }
 
