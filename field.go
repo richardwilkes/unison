@@ -1228,13 +1228,8 @@ func (f *Field) findPrevLineBreak(pos int) int {
 	} else {
 		pos--
 	}
-	for pos >= 0 && f.runes[pos] != '\n' {
-		pos--
-	}
-	if pos < 0 {
-		pos = 0
-	}
-	return pos
+	_, start := f.lineIndexForPos(pos)
+	return xmath.Max(start-1, 0)
 }
 
 func (f *Field) findNextLineBreak(pos int) int {
@@ -1243,11 +1238,30 @@ func (f *Field) findNextLineBreak(pos int) int {
 	} else {
 		pos++
 	}
-	for pos < len(f.runes) && f.runes[pos] != '\n' {
-		pos++
+	index, start := f.lineIndexForPos(pos)
+	start += len(f.lines[index].runes)
+	if !f.endsWithLineFeed[index] {
+		start--
 	}
-	if pos > len(f.runes) {
-		pos = len(f.runes)
+	return xmath.Min(start, len(f.runes))
+}
+
+func (f *Field) lineIndexForPos(pos int) (index, startPos int) {
+	if pos < 0 {
+		return 0, 0
 	}
-	return pos
+	f.prepareLinesForCurrentWidth()
+	start := 0
+	length := 0
+	for i, line := range f.lines {
+		length = len(line.Runes())
+		if f.endsWithLineFeed[i] {
+			length++
+		}
+		if pos < start+length {
+			return i, start
+		}
+		start += length
+	}
+	return xmath.Max(len(f.lines)-1, 0), start - length
 }
