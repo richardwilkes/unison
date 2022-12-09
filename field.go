@@ -406,7 +406,7 @@ func (f *Field) DefaultFocusGained() {
 		f.SelectAll()
 	}
 	f.showCursor = true
-	f.ScrollIntoView()
+	f.ScrollSelectionIntoView()
 	f.MarkForRedraw()
 }
 
@@ -996,15 +996,21 @@ func (f *Field) setSelection(start, end, anchor int) {
 		f.forceShowUntil = time.Now().Add(f.BlinkRate)
 		f.showCursor = true
 		f.MarkForRedraw()
-		f.autoScroll()
-		if anchor == start {
-			anchor = end
-		} else {
-			anchor = start
-		}
-		pt := f.FromSelectionIndex(anchor)
-		f.ScrollRectIntoView(NewRect(pt.X-1, pt.Y, 3, f.lineHeightAt(pt.Y)))
+		f.ScrollSelectionIntoView()
 	}
+}
+
+// ScrollSelectionIntoView scrolls the selection into view.
+func (f *Field) ScrollSelectionIntoView() {
+	f.autoScroll()
+	var pos int
+	if f.selectionAnchor == f.selectionStart {
+		pos = f.selectionEnd
+	} else {
+		pos = f.selectionStart
+	}
+	pt := f.FromSelectionIndex(pos)
+	f.ScrollRectIntoView(NewRect(pt.X-1, pt.Y, 3, f.lineHeightAt(pt.Y)))
 }
 
 // ScrollOffset returns the current autoscroll offset.
@@ -1149,11 +1155,11 @@ func (f *Field) lineIndexForY(y float32) int {
 
 // ToSelectionIndex returns the rune index for the coordinates.
 func (f *Field) ToSelectionIndex(where Point) int {
+	where.Y -= f.ContentRect(false).Y
 	if where.Y < 0 {
 		return 0
 	}
 	f.prepareLinesForCurrentWidth()
-	where.Y -= f.ContentRect(false).Y
 	y := f.scrollOffset.Y
 	pos := 0
 	for i, line := range f.lines {
