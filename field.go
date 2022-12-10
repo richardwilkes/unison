@@ -708,7 +708,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 			anchor := f.selectionAnchor
 			if f.selectionStart == anchor {
 				pt := f.FromSelectionIndex(f.selectionEnd)
-				pt.Y -= f.lineHeightAt(pt.Y) - 1
+				pt.Y--
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					start, _ := f.findWordAt(pos)
@@ -717,7 +717,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 				f.setSelection(anchor, pos, anchor)
 			} else {
 				pt := f.FromSelectionIndex(f.selectionStart)
-				pt.Y -= f.lineHeightAt(pt.Y) - 1
+				pt.Y--
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					start, _ := f.findWordAt(pos)
@@ -730,7 +730,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 		}
 	} else {
 		pt := f.FromSelectionIndex(f.selectionStart)
-		pt.Y -= f.lineHeightAt(pt.Y) - 1
+		pt.Y--
 		pos := f.ToSelectionIndex(pt)
 		if byWord {
 			start, _ := f.findWordAt(pos)
@@ -790,7 +790,8 @@ func (f *Field) lineHeightAt(y float32) float32 {
 	if len(f.lines) == 0 {
 		return f.Font.LineHeight()
 	}
-	return xmath.Max(f.lines[f.lineIndexForY(y)].Height(), f.Font.LineHeight())
+	index, _ := f.lineIndexForY(y)
+	return xmath.Max(f.lines[index].Height(), f.Font.LineHeight())
 }
 
 // CanCut returns true if the field has a selection that can be cut.
@@ -1069,7 +1070,7 @@ func (f *Field) autoScroll() {
 		}
 		f.scrollOffset.X = save
 	}
-	if rect.Height > 0 {
+	if f.multiLine && rect.Height > 0 {
 		if f.selectionStart == f.selectionAnchor {
 			top := f.FromSelectionIndex(f.selectionEnd).Y
 			if top < rect.Y {
@@ -1136,62 +1137,36 @@ func (f *Field) textLeftForWidth(width float32, bounds Rect) float32 {
 	return left
 }
 
-func (f *Field) lineIndexForY(y float32) int {
-	if y < 0 {
-		return 0
-	}
-	f.prepareLinesForCurrentWidth()
-	y -= f.ContentRect(false).Y
-	yy := f.scrollOffset.Y
-	for i, line := range f.lines {
-		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
-		if y >= yy && y <= yy+lineHeight {
-			return i
-		}
-		yy += lineHeight
-	}
-	return xmath.Max(len(f.lines)-1, 0)
-}
-
 // ToSelectionIndex returns the rune index for the coordinates.
 func (f *Field) ToSelectionIndex(where Point) int {
-	where.Y -= f.ContentRect(false).Y
-	if where.Y < 0 {
-		return 0
-	}
 	f.prepareLinesForCurrentWidth()
-	y := f.scrollOffset.Y
-	pos := 0
-	for i, line := range f.lines {
-		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
-		if where.Y >= y && where.Y <= y+lineHeight {
-			return pos + line.RuneIndexForPosition(where.X-(f.textLeft(line, f.ContentRect(false))+f.scrollOffset.X))
-		}
-		y += lineHeight
-		pos += len(line.Runes())
-		if f.endsWithLineFeed[i] {
-			pos++
+	lineIndex, start := f.lineIndexForY(where.Y)
+	t := f.lines[lineIndex]
+	offset := t.RuneIndexForPosition(where.X - (f.textLeft(t, f.ContentRect(false)) + f.scrollOffset.X))
+	if f.multiLine && !f.endsWithLineFeed[lineIndex] {
+		if len(t.Runes()) == offset {
+			offset--
 		}
 	}
-	return len(f.runes)
+	return start + offset
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
 func (f *Field) FromSelectionIndex(index int) Point {
-	index = xmath.Max(xmath.Min(index, len(f.runes)), 0)
 	f.prepareLinesForCurrentWidth()
+	index = xmath.Max(xmath.Min(index, len(f.runes)), 0)
 	rect := f.ContentRect(false)
 	y := rect.Y + f.scrollOffset.Y
 	pos := 0
 	for i, line := range f.lines {
 		lineLength := len(line.Runes())
-		if lineLength >= index-pos {
-			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
-		}
-		y += xmath.Max(line.Height(), f.Font.LineHeight())
 		if f.endsWithLineFeed[i] {
 			lineLength++
 		}
+		if lineLength > index-pos {
+			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
+		}
+		y += xmath.Max(line.Height(), f.Font.LineHeight())
 		pos += lineLength
 	}
 	return NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y)
@@ -1240,7 +1215,7 @@ func (f *Field) findNextLineBreak(pos int) int {
 	}
 	index, start := f.lineIndexForPos(pos)
 	start += len(f.lines[index].runes)
-	if !f.endsWithLineFeed[index] {
+	if f.multiLine && !f.endsWithLineFeed[index] {
 		start--
 	}
 	return xmath.Min(start, len(f.runes))
@@ -1260,6 +1235,30 @@ func (f *Field) lineIndexForPos(pos int) (index, startPos int) {
 		}
 		if pos < start+length {
 			return i, start
+		}
+		start += length
+	}
+	return xmath.Max(len(f.lines)-1, 0), start - length
+}
+
+func (f *Field) lineIndexForY(y float32) (index, startPos int) {
+	y -= f.ContentRect(false).Y
+	if y < 0 {
+		return 0, 0
+	}
+	f.prepareLinesForCurrentWidth()
+	offsetY := f.scrollOffset.Y
+	start := 0
+	length := 0
+	for i, line := range f.lines {
+		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
+		if y >= offsetY && y <= offsetY+lineHeight {
+			return i, start
+		}
+		offsetY += lineHeight
+		length = len(line.Runes())
+		if f.endsWithLineFeed[i] {
+			length++
 		}
 		start += length
 	}
