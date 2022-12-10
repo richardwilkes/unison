@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/desktop"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
@@ -542,9 +543,30 @@ func (m *Markdown) processTable() {
 }
 
 func (m *Markdown) processTableHeader() {
-	m.isHeader = true
-	m.processChildren()
-	m.isHeader = false
+	if m.hasNonEmptyContentInTree(m.node) {
+		m.isHeader = true
+		m.processChildren()
+		m.isHeader = false
+	}
+}
+
+func (m *Markdown) hasNonEmptyContentInTree(node ast.Node) bool {
+	switch node.Kind() {
+	case ast.KindTextBlock, ast.KindParagraph, ast.KindHeading, ast.KindCodeBlock, ast.KindFencedCodeBlock,
+		ast.KindBlockquote, ast.KindList, ast.KindText, ast.KindEmphasis, ast.KindCodeSpan, ast.KindRawHTML,
+		ast.KindString, ast.KindLink, ast.KindImage, ast.KindAutoLink:
+		return true
+	}
+	if node.HasChildren() {
+		child := node.FirstChild()
+		for !toolbox.IsNil(child) {
+			if m.hasNonEmptyContentInTree(child) {
+				return true
+			}
+			child = child.NextSibling()
+		}
+	}
+	return false
 }
 
 func (m *Markdown) processTableRow() {
