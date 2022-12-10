@@ -1139,6 +1139,9 @@ func (f *Field) textLeftForWidth(width float32, bounds Rect) float32 {
 
 // ToSelectionIndex returns the rune index for the coordinates.
 func (f *Field) ToSelectionIndex(where Point) int {
+	if len(f.runes) == 0 {
+		return 0
+	}
 	f.prepareLinesForCurrentWidth()
 	lineIndex, start := f.lineIndexForY(where.Y)
 	t := f.lines[lineIndex]
@@ -1158,6 +1161,7 @@ func (f *Field) FromSelectionIndex(index int) Point {
 	rect := f.ContentRect(false)
 	y := rect.Y + f.scrollOffset.Y
 	pos := 0
+	var lastHeight float32
 	for i, line := range f.lines {
 		lineLength := len(line.Runes())
 		if f.endsWithLineFeed[i] {
@@ -1166,10 +1170,11 @@ func (f *Field) FromSelectionIndex(index int) Point {
 		if lineLength > index-pos {
 			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
 		}
-		y += xmath.Max(line.Height(), f.Font.LineHeight())
+		lastHeight = xmath.Max(line.Height(), f.Font.LineHeight())
+		y += lastHeight
 		pos += lineLength
 	}
-	return NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y)
+	return NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y-lastHeight)
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {
