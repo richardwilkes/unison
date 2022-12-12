@@ -619,7 +619,7 @@ func (f *Field) handleEnd(lineOnly, extend bool) {
 		}
 		end := f.findNextLineBreak(f.selectionEnd)
 		if extend {
-			f.setSelection(f.selectionStart, end, end)
+			f.setSelection(f.selectionStart, end, f.selectionStart)
 		} else {
 			f.SetSelectionTo(end)
 		}
