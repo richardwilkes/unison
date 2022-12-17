@@ -835,7 +835,7 @@ SK_C_API void sk_path_rewind(sk_path_t* cpath);
 SK_C_API void sk_path_rline_to(sk_path_t *cpath, float dx, float yd);
 SK_C_API void sk_path_rmove_to(sk_path_t *cpath, float dx, float dy);
 SK_C_API void sk_path_set_filltype(sk_path_t* cpath, sk_path_fill_type_t cfilltype);
-SK_C_API void sk_path_to_svg_string(const sk_path_t* cpath, sk_string_t* str);
+SK_C_API sk_string_t* sk_path_to_svg_string(const sk_path_t* cpath, bool absolute);
 SK_C_API void sk_path_transform(sk_path_t* cpath, const sk_matrix_t* cmatrix);
 SK_C_API void sk_path_transform_to_dest(const sk_path_t* cpath, const sk_matrix_t* cmatrix, sk_path_t* destination);
 

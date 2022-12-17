@@ -95,10 +95,9 @@ func NewPathFromSVGString(svg string) (*Path, error) {
 }
 
 // ToSVGString returns an SVG string that represents this path.
-func (p *Path) ToSVGString() string {
-	ss := skia.StringNewEmpty()
+func (p *Path) ToSVGString(useAbsoluteValues bool) string {
+	ss := skia.PathToSVGString(p.path, useAbsoluteValues)
 	defer skia.StringDelete(ss)
-	skia.PathToSVGString(p.path, ss)
 	return skia.StringGetString(ss)
 }
 
