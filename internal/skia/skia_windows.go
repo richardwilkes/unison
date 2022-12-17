@@ -1555,8 +1555,9 @@ func PathParseSVGString(path Path, svg string) bool {
 	return r1 != 0
 }
 
-func PathToSVGString(path Path, str String) {
-	skPathToSVGStringProc.Call(uintptr(path), uintptr(str))
+func PathToSVGString(path Path, absolute bool) String {
+	r1, _, _ := skPathToSVGStringProc.Call(uintptr(path), boolToUintptr(absolute))
+	return String(r1)
 }
 
 func PathGetFillType(path Path) FillType {

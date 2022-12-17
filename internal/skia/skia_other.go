@@ -880,8 +880,8 @@ func PathParseSVGString(path Path, svg string) bool {
 	return bool(C.sk_path_parse_svg_string(path, cstr))
 }
 
-func PathToSVGString(path Path, str String) {
-	C.sk_path_to_svg_string(path, str)
+func PathToSVGString(path Path, absolute bool) String {
+	return C.sk_path_to_svg_string(path, C.bool(absolute))
 }
 
 func PathGetFillType(path Path) FillType {
