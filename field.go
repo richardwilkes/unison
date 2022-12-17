@@ -592,10 +592,12 @@ func (f *Field) DefaultRuneTyped(ch rune) bool {
 func (f *Field) handleHome(lineOnly, extend bool) {
 	switch {
 	case lineOnly:
+		var start int
 		if f.selectionStart == 0 || f.runes[f.selectionStart-1] == '\n' {
-			return
+			start = f.findPrevLineBreak(f.selectionStart + 1)
+		} else {
+			start = f.findPrevLineBreak(f.selectionStart)
 		}
-		start := f.findPrevLineBreak(f.selectionStart)
 		if start != 0 {
 			start++
 		}
@@ -614,10 +616,12 @@ func (f *Field) handleHome(lineOnly, extend bool) {
 func (f *Field) handleEnd(lineOnly, extend bool) {
 	switch {
 	case lineOnly:
+		var end int
 		if f.selectionEnd == len(f.runes) || f.runes[f.selectionEnd] == '\n' {
-			return
+			end = f.findNextLineBreak(f.selectionEnd - 1)
+		} else {
+			end = f.findNextLineBreak(f.selectionEnd)
 		}
-		end := f.findNextLineBreak(f.selectionEnd)
 		if extend {
 			f.setSelection(f.selectionStart, end, f.selectionStart)
 		} else {
