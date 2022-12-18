@@ -12,6 +12,7 @@ package unison
 import (
 	"path/filepath"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/log/jot"
