@@ -11,9 +11,9 @@ package unison
 
 import (
 	"path/filepath"
-	"unicode/utf16"
-	"unsafe"
 
+	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
@@ -37,29 +37,53 @@ func (d *winSaveDialog) RunModal() bool {
 			active.ToFront()
 		}
 	}()
-	var fileNameBuffer [64 * 1024]uint16
-	filter := createExtensionFilter(d.extensions)
-	initialDir := utf16.Encode([]rune(d.initialDir + "\x00"))
-	d.paths = nil
-	if !w32.GetSaveFileName(&w32.OpenFileName{
-		Size:        uint32(unsafe.Sizeof(w32.OpenFileName{})),
-		FileName:    uintptr(unsafe.Pointer(&fileNameBuffer[0])),
-		MaxFileName: uint32(len(fileNameBuffer)),
-		Filter:      uintptr(unsafe.Pointer(&filter[0])),
-		FilterIndex: 1,
-		InitialDir:  uintptr(unsafe.Pointer(&initialDir[0])),
-		Flags:       w32.OFNExplorer | w32.OFNPathMustExist | w32.OFNNoTestFileCreate | w32.OFNOverwritePrompt,
-	}) {
+
+	saveDialog := w32.NewSaveDialog()
+	if saveDialog == nil {
+		jot.Error("unable to create save dialog")
 		return false
 	}
-	for i := range fileNameBuffer {
-		if fileNameBuffer[i] == 0 {
-			d.paths = append(d.paths, string(utf16.Decode(fileNameBuffer[:i])))
+	if d.initialDir != "" {
+		saveDialog.SetFolder(filepath.Clean(d.initialDir))
+	}
+	options := w32.FOSOverwritePrompt | w32.FOSPathMustExist | w32.FOSNoTestFileCreate
+	if d.canChooseDirs {
+		options |= w32.FOSPickFolders
+	}
+	if d.allowMultipleSelection {
+		options |= w32.FOSAllowMultiSelect
+	}
+	if !d.resolvesAliases {
+		options |= w32.FOSNoDereferenceLinks
+	}
+	saveDialog.SetOptions(options)
+	saveDialog.SetFileTypes(d.createFilters())
+	for _, ext := range d.extensions {
+		if ext != "*" {
+			saveDialog.SetDefaultExtension(ext)
 			break
 		}
 	}
-	if len(d.paths) != 0 {
-		lastWorkingDir = filepath.Dir(d.paths[0])
+	d.paths = nil
+	if !saveDialog.Show() {
+		return false
 	}
+	result := saveDialog.GetResult()
+	if result == "" {
+		return false
+	}
+	d.paths = []string{result}
+	lastWorkingDir = filepath.Dir(d.paths[0])
 	return true
+}
+
+func (d *winSaveDialog) createFilters() []w32.FileFilter {
+	filters := make([]w32.FileFilter, 0, len(d.extensions))
+	for _, ext := range d.extensions {
+		filters = append(filters, w32.FileFilter{
+			Name:    ext + i18n.Text(" Files"),
+			Pattern: "*." + ext,
+		})
+	}
+	return filters
 }
