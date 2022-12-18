@@ -45,6 +45,34 @@ const (
 	FOSDefaultNoMiniMode        = 0x20000000
 	FOSForcePreviewPaneOn       = 0x40000000
 	FOSSupportsStreamableItems  = 0x80000000
+
+	// Keep temporarily
+	OFNReadOnly             = 0x00000001
+	OFNOverwritePrompt      = 0x00000002
+	OFNHideReadOnly         = 0x00000004
+	OFNNoChangeDir          = 0x00000008
+	OFNShowHelp             = 0x00000010
+	OFNEnableHook           = 0x00000020
+	OFNEnableTemplate       = 0x00000040
+	OFNEnableTemplateHandle = 0x00000080
+	OFNNoValidate           = 0x00000100
+	OFNAllowMultiSelect     = 0x00000200
+	OFNExtensionDifferent   = 0x00000400
+	OFNPathMustExist        = 0x00000800
+	OFNFileMustExist        = 0x00001000
+	OFNCreatePrompt         = 0x00002000
+	OFNShareAware           = 0x00004000
+	OFNNoReadOnlyReturn     = 0x00008000
+	OFNNoTestFileCreate     = 0x00010000
+	OFNNoNetworkButton      = 0x00020000
+	OFNNoLongNames          = 0x00040000
+	OFNExplorer             = 0x00080000
+	OFNNoDereferenceLinks   = 0x00100000
+	OFNLongNames            = 0x00200000
+	OFNEnableIncludeNotify  = 0x00400000
+	OFNEnableSizing         = 0x00800000
+	OFNDontAddToRecent      = 0x02000000
+	OFNForceShowHidden      = 0x10000000
 )
 
 // OpenFileName https://docs.microsoft.com/en-us/windows/win32/api/commdlg/ns-commdlg-openfilenamew
