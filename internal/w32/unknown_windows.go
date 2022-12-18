@@ -14,24 +14,23 @@ import (
 	"unsafe"
 )
 
-// IUnknown https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nn-unknwn-iunknown
-type IUnknown struct {
+// Unknown https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nn-unknwn-iunknown
+type Unknown struct {
 	UnsafeVirtualMethodTable unsafe.Pointer
 }
 
-// VMTIUnknown holds the virtual dispatch table entries for IUnknown.
-type VMTIUnknown struct {
+type vmtUnknown struct {
 	QueryInterface uintptr
 	AddRef         uintptr
 	Release        uintptr
 }
 
-func (obj *IUnknown) vmt() *VMTIUnknown {
-	return (*VMTIUnknown)(obj.UnsafeVirtualMethodTable)
+func (obj *Unknown) vmt() *vmtUnknown {
+	return (*vmtUnknown)(obj.UnsafeVirtualMethodTable)
 }
 
 // QueryInterface https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-queryinterface(refiid_void)
-func (obj *IUnknown) QueryInterface(guid *GUID) unsafe.Pointer {
+func (obj *Unknown) QueryInterface(guid *GUID) unsafe.Pointer {
 	var dest unsafe.Pointer
 	if ret, _, _ := syscall.SyscallN(obj.vmt().QueryInterface, uintptr(unsafe.Pointer(obj)),
 		uintptr(unsafe.Pointer(guid)), uintptr(unsafe.Pointer(&dest))); ret != 0 {
@@ -41,11 +40,11 @@ func (obj *IUnknown) QueryInterface(guid *GUID) unsafe.Pointer {
 }
 
 // AddRef https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-addref
-func (obj *IUnknown) AddRef() {
+func (obj *Unknown) AddRef() {
 	syscall.SyscallN(obj.vmt().AddRef, uintptr(unsafe.Pointer(obj)))
 }
 
 // Release https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-release
-func (obj *IUnknown) Release() {
+func (obj *Unknown) Release() {
 	syscall.SyscallN(obj.vmt().Release, uintptr(unsafe.Pointer(obj)))
 }

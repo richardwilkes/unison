@@ -10,16 +10,35 @@
 package w32
 
 import (
+	"strings"
 	"syscall"
 	"unsafe"
 )
 
 const (
-	FileDialogOptionOverwritePrompt  = 0x2
-	FileDialogOptionPickFolders      = 0x20
-	FileDialogOptionAllowMultiSelect = 0x200
-	FileDialogOptionPathMustExist    = 0x800
-	FileDialogOptionFileMustExist    = 0x1000
+	FOSOverwritePrompt          = 0x00000002
+	FOSStrictFileTypes          = 0x00000004
+	FOSNoChangeDir              = 0x00000008
+	FOSPickFolders              = 0x00000020
+	FOSForceFileSystem          = 0x00000040
+	FOSAllNonStorageItems       = 0x00000080
+	FOSNoValidate               = 0x00000100
+	FOSAllowMultiSelect         = 0x00000200
+	FOSPathMustExist            = 0x00000800
+	FOSFileMustExist            = 0x00001000
+	FOSCreatePrompt             = 0x00002000
+	FOSShareAware               = 0x00004000
+	FOSNoReadOnlyReturn         = 0x00008000
+	FOSNoTestFileCreate         = 0x00010000
+	FOSHideMRUPlaces            = 0x00020000
+	FOSHidePinnedPlaces         = 0x00040000
+	FOSNoDereferenceLinks       = 0x00100000
+	FOSOKBUttonNeedsInteraction = 0x00200000
+	FOSDontAddToRecent          = 0x02000000
+	FOSForceShowHidden          = 0x10000000
+	FOSDefaultNoMiniMode        = 0x20000000
+	FOSForcePreviewPaneOn       = 0x40000000
+	FOSSupportsStreamableItems  = 0x80000000
 )
 
 type FileFilter struct {
@@ -91,4 +110,24 @@ func (obj *FileDialog) SetFileTypes(filters []FileFilter) {
 	}
 	syscall.SyscallN(obj.vmt().SetFileTypes, uintptr(unsafe.Pointer(obj)), uintptr(len(specs)),
 		uintptr(unsafe.Pointer(&specs[0])))
+}
+
+func (obj *FileDialog) SetDefaultExtension(ext string) {
+	syscall.SyscallN(obj.vmt().SetDefaultExtension, uintptr(unsafe.Pointer(obj)),
+		uintptr(unsafe.Pointer(SysAllocString(strings.TrimPrefix(ext, ".")))))
+}
+
+func (obj *FileDialog) SetFileName(fileName string) {
+	syscall.SyscallN(obj.vmt().SetFileName, uintptr(unsafe.Pointer(obj)),
+		uintptr(unsafe.Pointer(SysAllocString(fileName))))
+}
+
+func (obj *FileDialog) GetResult() string {
+	var item *ShellItem
+	r1, _, _ := syscall.SyscallN(obj.vmt().GetResult, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(&item)))
+	if r1 != 0 || item == nil {
+		return ""
+	}
+	defer item.Release()
+	return item.DisplayName()
 }

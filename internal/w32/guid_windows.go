@@ -11,13 +11,7 @@ package w32
 
 const hexTable = "0123456789ABCDEF"
 
-var (
-	NullGUID            GUID
-	InstanceIDUnknown   = NewGUID("{00000000-0000-0000-C000-000000000046}")
-	FileOpenDialogCLSID = NewGUID("{DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7}")
-	FileOpenDialogIID   = NewGUID("{D57C7288-D4AD-4768-BE02-9D969532D960}")
-	ShellItemIID        = NewGUID("43826d1e-e718-42ee-bc55-a1e261c37bfe")
-)
+var NullGUID GUID
 
 // GUID holds a Windows universal ID.
 type GUID struct {

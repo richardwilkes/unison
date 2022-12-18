@@ -16,12 +16,18 @@ import (
 
 const SIGDN_FILESYSPATH = 0x80058000
 
+var (
+	shell32                         = syscall.NewLazyDLL("Shell32.dll")
+	shCreateItemFromParsingNameProc = shell32.NewProc("SHCreateItemFromParsingName")
+	shellItemIID                    = NewGUID("43826D1E-E718-42EE-BC55-A1E261C37BFE")
+)
+
 type ShellItem struct {
-	IUnknown
+	Unknown
 }
 
 type vmtShellItem struct {
-	VMTIUnknown
+	vmtUnknown
 	BindToHandler  uintptr
 	GetParent      uintptr
 	GetDisplayName uintptr
@@ -32,7 +38,7 @@ type vmtShellItem struct {
 func NewShellItem(path string) *ShellItem {
 	var item *ShellItem
 	if r1, _, _ := shCreateItemFromParsingNameProc.Call(uintptr(unsafe.Pointer(SysAllocString(path))), 0,
-		uintptr(unsafe.Pointer(&ShellItemIID)), uintptr(unsafe.Pointer(&item))); r1 != 0 {
+		uintptr(unsafe.Pointer(&shellItemIID)), uintptr(unsafe.Pointer(&item))); r1 != 0 {
 		return nil
 	}
 	return item
@@ -54,11 +60,11 @@ func (obj *ShellItem) DisplayName() string {
 }
 
 type ShellItemArray struct {
-	IUnknown
+	Unknown
 }
 
 type vmtShellItemArray struct {
-	VMTIUnknown
+	vmtUnknown
 	BindToHandler              uintptr
 	GetPropertyStore           uintptr
 	GetPropertyDescriptionList uintptr

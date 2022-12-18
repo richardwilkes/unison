@@ -12,7 +12,6 @@ package unison
 import (
 	"path/filepath"
 	"strings"
-	"unicode/utf16"
 
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/log/jot"
@@ -48,9 +47,9 @@ func (d *winOpenDialog) RunModal() bool {
 	if d.initialDir != "" {
 		openDialog.SetFolder(filepath.Clean(d.initialDir))
 	}
-	options := w32.FOSOverwritePrompt | w32.FOSPathMustExist | w32.FOSFileMustExist
+	options := w32.FOSPathMustExist | w32.FOSFileMustExist
 	if d.canChooseDirs {
-		options |= w32.FileDialogOptionPickFolders
+		options |= w32.FOSPickFolders
 	}
 	if d.allowMultipleSelection {
 		options |= w32.FOSAllowMultiSelect
@@ -124,47 +123,4 @@ func createFileFilters(extensions []string) []w32.FileFilter {
 		})
 	}
 	return filters
-}
-
-// Keep Temporarily
-func createExtensionFilter(extensions []string) []uint16 {
-	if len(extensions) == 0 {
-		extensions = []string{"*"}
-	}
-	readable := make([]string, 0, len(extensions))
-	for _, ext := range extensions {
-		if ext != "*" {
-			readable = append(readable, ext)
-		}
-	}
-	var buffer strings.Builder
-	if len(readable) > 1 {
-		buffer.WriteString(i18n.Text("All Readable Files"))
-		buffer.WriteByte(0)
-		for i, ext := range readable {
-			if i != 0 {
-				buffer.WriteString(";")
-			}
-			buffer.WriteString("*.")
-			buffer.WriteString(ext)
-		}
-		buffer.WriteByte(0)
-	}
-	for _, ext := range extensions {
-		if ext == "*" {
-			buffer.WriteString(i18n.Text("All Files"))
-			buffer.WriteByte(0)
-			buffer.WriteString("*.*")
-			buffer.WriteByte(0)
-		} else {
-			buffer.WriteString(ext)
-			buffer.WriteString(i18n.Text(" Files"))
-			buffer.WriteByte(0)
-			buffer.WriteString("*.")
-			buffer.WriteString(ext)
-			buffer.WriteByte(0)
-		}
-	}
-	buffer.WriteByte(0)
-	return utf16.Encode([]rune(buffer.String()))
 }

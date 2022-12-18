@@ -15,11 +15,11 @@ import (
 )
 
 type ModalWindow struct {
-	IUnknown
+	Unknown
 }
 
 type vmtModalWindow struct {
-	VMTIUnknown
+	vmtUnknown
 	Show uintptr
 }
 

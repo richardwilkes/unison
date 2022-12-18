@@ -21,17 +21,18 @@ var (
 	coInitializeExProc   = ole32.NewProc("CoInitializeEx")
 	coCreateInstanceProc = ole32.NewProc("CoCreateInstance")
 	coTaskMemFreeProc    = ole32.NewProc("CoTaskMemFree")
+	instanceIDUnknown    = NewGUID("00000000-0000-0000-C000-000000000046")
 )
 
 func CoInitialize(coInit int) {
 	coInitializeExProc.Call(0, uintptr(coInit))
 }
 
-func CoCreateInstance(classID, instanceID GUID) *IUnknown {
+func CoCreateInstance(classID, instanceID GUID) *Unknown {
 	if instanceID == NullGUID {
-		instanceID = InstanceIDUnknown
+		instanceID = instanceIDUnknown
 	}
-	var unknown *IUnknown
+	var unknown *Unknown
 	if r1, _, _ := coCreateInstanceProc.Call(uintptr(unsafe.Pointer(&classID)), 0,
 		windows.CLSCTX_INPROC_SERVER|windows.CLSCTX_LOCAL_SERVER|windows.CLSCTX_REMOTE_SERVER,
 		uintptr(unsafe.Pointer(&instanceID)), uintptr(unsafe.Pointer(&unknown))); r1 != 0 {
