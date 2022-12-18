@@ -124,3 +124,46 @@ func createFileFilters(extensions []string) []w32.FileFilter {
 	}
 	return filters
 }
+
+// Keep Temporarily
+func createExtensionFilter(extensions []string) []uint16 {
+	if len(extensions) == 0 {
+		extensions = []string{"*"}
+	}
+	readable := make([]string, 0, len(extensions))
+	for _, ext := range extensions {
+		if ext != "*" {
+			readable = append(readable, ext)
+		}
+	}
+	var buffer strings.Builder
+	if len(readable) > 1 {
+		buffer.WriteString(i18n.Text("All Readable Files"))
+		buffer.WriteByte(0)
+		for i, ext := range readable {
+			if i != 0 {
+				buffer.WriteString(";")
+			}
+			buffer.WriteString("*.")
+			buffer.WriteString(ext)
+		}
+		buffer.WriteByte(0)
+	}
+	for _, ext := range extensions {
+		if ext == "*" {
+			buffer.WriteString(i18n.Text("All Files"))
+			buffer.WriteByte(0)
+			buffer.WriteString("*.*")
+			buffer.WriteByte(0)
+		} else {
+			buffer.WriteString(ext)
+			buffer.WriteString(i18n.Text(" Files"))
+			buffer.WriteByte(0)
+			buffer.WriteString("*.")
+			buffer.WriteString(ext)
+			buffer.WriteByte(0)
+		}
+	}
+	buffer.WriteByte(0)
+	return utf16.Encode([]rune(buffer.String()))
+}
