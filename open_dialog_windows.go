@@ -58,7 +58,7 @@ func (d *winOpenDialog) RunModal() bool {
 		options |= w32.FOSNoDereferenceLinks
 	}
 	openDialog.SetOptions(options)
-	openDialog.SetFileTypes(createFileFilters(d.extensions))
+	openDialog.SetFileTypes(d.createFilters())
 	d.paths = nil
 	if !openDialog.Show() {
 		return false
@@ -89,10 +89,10 @@ func (d *winOpenDialog) RunModal() bool {
 	return true
 }
 
-func createFileFilters(extensions []string) []w32.FileFilter {
-	filters := make([]w32.FileFilter, 0, len(extensions)+1)
-	readable := make([]string, 0, len(extensions))
-	for _, ext := range extensions {
+func (d *winOpenDialog) createFilters() []w32.FileFilter {
+	filters := make([]w32.FileFilter, 0, len(d.extensions)+1)
+	readable := make([]string, 0, len(d.extensions))
+	for _, ext := range d.extensions {
 		if ext != "*" {
 			readable = append(readable, "*."+ext)
 		}
@@ -103,7 +103,7 @@ func createFileFilters(extensions []string) []w32.FileFilter {
 			Pattern: strings.Join(readable, ";"),
 		})
 	}
-	for _, ext := range extensions {
+	for _, ext := range d.extensions {
 		if ext == "*" {
 			filters = append(filters, w32.FileFilter{
 				Name:    i18n.Text("All Files"),
@@ -116,7 +116,7 @@ func createFileFilters(extensions []string) []w32.FileFilter {
 			})
 		}
 	}
-	if len(extensions) == 0 {
+	if len(d.extensions) == 0 {
 		filters = append(filters, w32.FileFilter{
 			Name:    i18n.Text("All Files"),
 			Pattern: "*.*",

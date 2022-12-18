@@ -12,6 +12,7 @@ package unison
 import (
 	"path/filepath"
 
+	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/w32"
 )
@@ -56,7 +57,7 @@ func (d *winSaveDialog) RunModal() bool {
 		options |= w32.FOSNoDereferenceLinks
 	}
 	saveDialog.SetOptions(options)
-	saveDialog.SetFileTypes(createFileFilters(d.extensions))
+	saveDialog.SetFileTypes(d.createFilters())
 	for _, ext := range d.extensions {
 		if ext != "*" {
 			saveDialog.SetDefaultExtension(ext)
@@ -74,4 +75,15 @@ func (d *winSaveDialog) RunModal() bool {
 	d.paths = []string{result}
 	lastWorkingDir = filepath.Dir(d.paths[0])
 	return true
+}
+
+func (d *winSaveDialog) createFilters() []w32.FileFilter {
+	filters := make([]w32.FileFilter, 0, len(d.extensions))
+	for _, ext := range d.extensions {
+		filters = append(filters, w32.FileFilter{
+			Name:    ext + i18n.Text(" Files"),
+			Pattern: "*." + ext,
+		})
+	}
+	return filters
 }
