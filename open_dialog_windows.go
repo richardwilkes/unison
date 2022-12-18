@@ -12,10 +12,9 @@ package unison
 import (
 	"path/filepath"
 	"strings"
-	"unicode/utf16"
-	"unsafe"
 
 	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
@@ -39,38 +38,32 @@ func (d *winOpenDialog) RunModal() bool {
 			active.ToFront()
 		}
 	}()
-	var fileNameBuffer [64 * 1024]uint16
-	filter := createExtensionFilter(d.extensions)
-	initialDir := utf16.Encode([]rune(d.initialDir + "\x00"))
-	ofn := w32.OpenFileName{
-		Size:        uint32(unsafe.Sizeof(w32.OpenFileName{})),
-		FileName:    uintptr(unsafe.Pointer(&fileNameBuffer[0])),
-		MaxFileName: uint32(len(fileNameBuffer)),
-		Filter:      uintptr(unsafe.Pointer(&filter[0])),
-		FilterIndex: 1,
-		InitialDir:  uintptr(unsafe.Pointer(&initialDir[0])),
-		Flags:       w32.OFNExplorer | w32.OFNPathMustExist | w32.OFNFileMustExist,
-	}
-	if d.allowMultipleSelection {
-		ofn.Flags |= w32.OFNAllowMultiSelect
-	}
-	if !d.resolvesAliases {
-		ofn.Flags |= w32.OFNNoDereferenceLinks
-	}
-	d.paths = nil
-	if !w32.GetOpenFileName(&ofn) {
+
+	openDialog := w32.NewOpenDialog()
+	if openDialog == nil {
+		jot.Error("unable to create open dialog")
 		return false
 	}
-	start := 0
-	for i := range fileNameBuffer {
-		if fileNameBuffer[i] == 0 {
-			if start == i {
-				break
-			}
-			d.paths = append(d.paths, string(utf16.Decode(fileNameBuffer[start:i])))
-			start = i + 1
-		}
+	if d.initialDir != "" {
+		openDialog.SetFolder(filepath.Clean(d.initialDir))
 	}
+	options := w32.FOSOverwritePrompt | w32.FOSPathMustExist | w32.FOSFileMustExist
+	if d.canChooseDirs {
+		options |= w32.FileDialogOptionPickFolders
+	}
+	if d.allowMultipleSelection {
+		options |= w32.FOSAllowMultiSelect
+	}
+	if !d.resolvesAliases {
+		options |= w32.FOSNoDereferenceLinks
+	}
+	openDialog.SetOptions(options)
+	openDialog.SetFileTypes(createFileFilters(d.extensions))
+	d.paths = nil
+	if !openDialog.Show() {
+		return false
+	}
+	d.paths = openDialog.GetResults()
 	switch len(d.paths) {
 	case 0:
 		return false
@@ -96,44 +89,38 @@ func (d *winOpenDialog) RunModal() bool {
 	return true
 }
 
-func createExtensionFilter(extensions []string) []uint16 {
-	if len(extensions) == 0 {
-		extensions = []string{"*"}
-	}
+func createFileFilters(extensions []string) []w32.FileFilter {
+	filters := make([]w32.FileFilter, 0, len(extensions)+1)
 	readable := make([]string, 0, len(extensions))
 	for _, ext := range extensions {
 		if ext != "*" {
-			readable = append(readable, ext)
+			readable = append(readable, "*."+ext)
 		}
 	}
-	var buffer strings.Builder
-	if len(readable) > 1 {
-		buffer.WriteString(i18n.Text("All Readable Files"))
-		buffer.WriteByte(0)
-		for i, ext := range readable {
-			if i != 0 {
-				buffer.WriteString(";")
-			}
-			buffer.WriteString("*.")
-			buffer.WriteString(ext)
-		}
-		buffer.WriteByte(0)
+	if len(readable) != 0 {
+		filters = append(filters, w32.FileFilter{
+			Name:    i18n.Text("All Readable Files"),
+			Pattern: strings.Join(readable, ";"),
+		})
 	}
 	for _, ext := range extensions {
 		if ext == "*" {
-			buffer.WriteString(i18n.Text("All Files"))
-			buffer.WriteByte(0)
-			buffer.WriteString("*.*")
-			buffer.WriteByte(0)
+			filters = append(filters, w32.FileFilter{
+				Name:    i18n.Text("All Files"),
+				Pattern: "*.*",
+			})
 		} else {
-			buffer.WriteString(ext)
-			buffer.WriteString(i18n.Text(" Files"))
-			buffer.WriteByte(0)
-			buffer.WriteString("*.")
-			buffer.WriteString(ext)
-			buffer.WriteByte(0)
+			filters = append(filters, w32.FileFilter{
+				Name:    ext + i18n.Text(" Files"),
+				Pattern: "*." + ext,
+			})
 		}
 	}
-	buffer.WriteByte(0)
-	return utf16.Encode([]rune(buffer.String()))
+	if len(extensions) == 0 {
+		filters = append(filters, w32.FileFilter{
+			Name:    i18n.Text("All Files"),
+			Pattern: "*.*",
+		})
+	}
+	return filters
 }
