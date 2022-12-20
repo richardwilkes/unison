@@ -634,6 +634,32 @@ func (f *Field) handleEnd(lineOnly, extend bool) {
 	}
 }
 
+func (f *Field) scanLeftToWordPart(pos int) int {
+	if pos >= len(f.runes) {
+		pos = len(f.runes) - 1
+	}
+	if pos < 0 {
+		return 0
+	}
+	for pos > 0 && !f.isWordPart(pos) {
+		pos--
+	}
+	return pos
+}
+
+func (f *Field) scanRightToWordPart(pos int) int {
+	if pos >= len(f.runes) {
+		return xmath.Max(len(f.runes)-1, 0)
+	}
+	if pos < 0 {
+		pos = 0
+	}
+	for pos < len(f.runes)-1 && !f.isWordPart(pos) {
+		pos++
+	}
+	return pos
+}
+
 func (f *Field) handleArrowLeft(extend, byWord bool) {
 	if f.HasSelectionRange() {
 		if extend {
@@ -641,14 +667,14 @@ func (f *Field) handleArrowLeft(extend, byWord bool) {
 			if f.selectionStart == anchor {
 				pos := f.selectionEnd - 1
 				if byWord {
-					start, _ := f.findWordAt(pos)
+					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 					pos = xmath.Min(xmath.Max(start, anchor), pos)
 				}
 				f.setSelection(anchor, pos, anchor)
 			} else {
 				pos := f.selectionStart - 1
 				if byWord {
-					start, _ := f.findWordAt(pos)
+					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 					pos = xmath.Min(start, pos)
 				}
 				f.setSelection(pos, anchor, anchor)
@@ -659,7 +685,7 @@ func (f *Field) handleArrowLeft(extend, byWord bool) {
 	} else {
 		pos := f.selectionStart - 1
 		if byWord {
-			start, _ := f.findWordAt(pos)
+			start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 			pos = xmath.Min(start, pos)
 		}
 		if extend {
@@ -677,14 +703,14 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 			if f.selectionEnd == anchor {
 				pos := f.selectionStart + 1
 				if byWord {
-					_, end := f.findWordAt(pos)
+					_, end := f.findWordAt(f.scanRightToWordPart(pos))
 					pos = xmath.Max(xmath.Min(end, anchor), pos)
 				}
 				f.setSelection(pos, anchor, anchor)
 			} else {
 				pos := f.selectionEnd + 1
 				if byWord {
-					_, end := f.findWordAt(pos)
+					_, end := f.findWordAt(f.scanRightToWordPart(pos))
 					pos = xmath.Max(end, pos)
 				}
 				f.setSelection(anchor, pos, anchor)
@@ -695,7 +721,7 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 	} else {
 		pos := f.selectionEnd + 1
 		if byWord {
-			_, end := f.findWordAt(pos)
+			_, end := f.findWordAt(f.scanRightToWordPart(pos))
 			pos = xmath.Max(end, pos)
 		}
 		if extend {
@@ -715,7 +741,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 				pt.Y--
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
-					start, _ := f.findWordAt(pos)
+					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 					pos = xmath.Min(xmath.Max(start, anchor), pos)
 				}
 				f.setSelection(anchor, pos, anchor)
@@ -724,7 +750,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 				pt.Y--
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
-					start, _ := f.findWordAt(pos)
+					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 					pos = xmath.Min(start, pos)
 				}
 				f.setSelection(pos, anchor, anchor)
@@ -737,7 +763,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 		pt.Y--
 		pos := f.ToSelectionIndex(pt)
 		if byWord {
-			start, _ := f.findWordAt(pos)
+			start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 			pos = xmath.Min(start, pos)
 		}
 		if extend {
@@ -757,7 +783,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 				pt.Y += 1 + f.lineHeightAt(pt.Y)
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
-					_, end := f.findWordAt(pos)
+					_, end := f.findWordAt(f.scanRightToWordPart(pos))
 					pos = xmath.Max(xmath.Min(end, anchor), pos)
 				}
 				f.setSelection(pos, anchor, anchor)
@@ -766,7 +792,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 				pt.Y += 1 + f.lineHeightAt(pt.Y)
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
-					_, end := f.findWordAt(pos)
+					_, end := f.findWordAt(f.scanRightToWordPart(pos))
 					pos = xmath.Max(end, pos)
 				}
 				f.setSelection(anchor, pos, anchor)
@@ -779,7 +805,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 		pt.Y += 1 + f.lineHeightAt(pt.Y)
 		pos := f.ToSelectionIndex(pt)
 		if byWord {
-			_, end := f.findWordAt(pos)
+			_, end := f.findWordAt(f.scanRightToWordPart(pos))
 			pos = xmath.Max(end, pos)
 		}
 		if extend {
