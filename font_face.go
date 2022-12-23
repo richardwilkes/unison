@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sort"
 	"sync"
 
 	"github.com/richardwilkes/toolbox/txt"
@@ -44,29 +45,39 @@ func newFace(face skia.TypeFace) *FontFace {
 // AllFontFaces returns all known font faces as FontFaceDescriptors. This will be computed each time, so it may be
 // worthwhile to cache the result if you don't expect the set of font faces to be changed between calls.
 func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
+	ma := make(map[FontFaceDescriptor]struct{})
+	mm := make(map[FontFaceDescriptor]struct{})
 	for _, family := range FontFamilies() {
 		if ff := MatchFontFamily(family); ff != nil {
 			count := ff.Count()
 			for i := 0; i < count; i++ {
 				face := ff.Face(i)
 				weight, spacing, slant := face.Style()
-				all = append(all, FontFaceDescriptor{
+				ffd := FontFaceDescriptor{
 					Family:  family,
 					Weight:  weight,
 					Spacing: spacing,
 					Slant:   slant,
-				})
+				}
+				if _, exists := ma[ffd]; !exists {
+					all = append(all, ffd)
+					ma[ffd] = struct{}{}
+				}
 				if face.Monospaced() {
-					monospaced = append(monospaced, FontFaceDescriptor{
-						Family:  family,
-						Weight:  weight,
-						Spacing: spacing,
-						Slant:   slant,
-					})
+					if _, exists := mm[ffd]; !exists {
+						monospaced = append(monospaced, ffd)
+						mm[ffd] = struct{}{}
+					}
 				}
 			}
 		}
 	}
+	sort.Slice(all, func(i, j int) bool {
+		return txt.NaturalLess(all[i].String(), all[j].String(), true)
+	})
+	sort.Slice(monospaced, func(i, j int) bool {
+		return txt.NaturalLess(monospaced[i].String(), monospaced[j].String(), true)
+	})
 	return
 }
 
