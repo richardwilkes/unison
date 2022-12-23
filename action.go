@@ -15,45 +15,11 @@ import (
 )
 
 var (
-	// CutAction removes the selection and places it on the clipboard.
-	CutAction = &Action{
-		ID:              CutItemID,
-		Title:           i18n.Text("Cut"),
-		KeyBinding:      KeyBinding{KeyCode: KeyX, Modifiers: OSMenuCmdModifier()},
-		EnabledCallback: RouteActionToFocusEnabledFunc,
-		ExecuteCallback: RouteActionToFocusExecuteFunc,
-	}
-	// CopyAction copies the selection and places it on the clipboard.
-	CopyAction = &Action{
-		ID:              CopyItemID,
-		Title:           i18n.Text("Copy"),
-		KeyBinding:      KeyBinding{KeyCode: KeyC, Modifiers: OSMenuCmdModifier()},
-		EnabledCallback: RouteActionToFocusEnabledFunc,
-		ExecuteCallback: RouteActionToFocusExecuteFunc,
-	}
-	// PasteAction pastes the contents of the clipboard, replacing the selection.
-	PasteAction = &Action{
-		ID:              PasteItemID,
-		Title:           i18n.Text("Paste"),
-		KeyBinding:      KeyBinding{KeyCode: KeyV, Modifiers: OSMenuCmdModifier()},
-		EnabledCallback: RouteActionToFocusEnabledFunc,
-		ExecuteCallback: RouteActionToFocusExecuteFunc,
-	}
-	// DeleteAction deletes the selection.
-	DeleteAction = &Action{
-		ID:              DeleteItemID,
-		Title:           i18n.Text("Delete"),
-		EnabledCallback: RouteActionToFocusEnabledFunc,
-		ExecuteCallback: RouteActionToFocusExecuteFunc,
-	}
-	// SelectAllAction selects everything in the current focus.
-	SelectAllAction = &Action{
-		ID:              SelectAllItemID,
-		Title:           i18n.Text("Select All"),
-		KeyBinding:      KeyBinding{KeyCode: KeyA, Modifiers: OSMenuCmdModifier()},
-		EnabledCallback: RouteActionToFocusEnabledFunc,
-		ExecuteCallback: RouteActionToFocusExecuteFunc,
-	}
+	cutAction       *Action
+	copyAction      *Action
+	pasteAction     *Action
+	deleteAction    *Action
+	selectAllAction *Action
 )
 
 // Action describes an action that can be performed.
@@ -123,4 +89,73 @@ func RouteActionToFocusExecuteFunc(action *Action, src any) {
 	if wnd := ActiveWindow(); wnd != nil {
 		wnd.Focus().PerformCmd(src, action.ID)
 	}
+}
+
+// CutAction returns the action that removes the selection and places it on the clipboard.
+func CutAction() *Action {
+	if cutAction == nil {
+		cutAction = &Action{
+			ID:              CutItemID,
+			Title:           i18n.Text("Cut"),
+			KeyBinding:      KeyBinding{KeyCode: KeyX, Modifiers: OSMenuCmdModifier()},
+			EnabledCallback: RouteActionToFocusEnabledFunc,
+			ExecuteCallback: RouteActionToFocusExecuteFunc,
+		}
+	}
+	return cutAction
+}
+
+// CopyAction returns the action that copies the selection and places it on the clipboard.
+func CopyAction() *Action {
+	if copyAction == nil {
+		copyAction = &Action{
+			ID:              CopyItemID,
+			Title:           i18n.Text("Copy"),
+			KeyBinding:      KeyBinding{KeyCode: KeyC, Modifiers: OSMenuCmdModifier()},
+			EnabledCallback: RouteActionToFocusEnabledFunc,
+			ExecuteCallback: RouteActionToFocusExecuteFunc,
+		}
+	}
+	return copyAction
+}
+
+// PasteAction returns the action that pastes the contents of the clipboard, replacing the selection.
+func PasteAction() *Action {
+	if pasteAction == nil {
+		pasteAction = &Action{
+			ID:              PasteItemID,
+			Title:           i18n.Text("Paste"),
+			KeyBinding:      KeyBinding{KeyCode: KeyV, Modifiers: OSMenuCmdModifier()},
+			EnabledCallback: RouteActionToFocusEnabledFunc,
+			ExecuteCallback: RouteActionToFocusExecuteFunc,
+		}
+	}
+	return pasteAction
+}
+
+// DeleteAction returns the action that deletes the selection.
+func DeleteAction() *Action {
+	if deleteAction == nil {
+		deleteAction = &Action{
+			ID:              DeleteItemID,
+			Title:           i18n.Text("Delete"),
+			EnabledCallback: RouteActionToFocusEnabledFunc,
+			ExecuteCallback: RouteActionToFocusExecuteFunc,
+		}
+	}
+	return deleteAction
+}
+
+// SelectAllAction returns the action that selects everything in the current focus.
+func SelectAllAction() *Action {
+	if selectAllAction == nil {
+		selectAllAction = &Action{
+			ID:              SelectAllItemID,
+			Title:           i18n.Text("Select All"),
+			KeyBinding:      KeyBinding{KeyCode: KeyA, Modifiers: OSMenuCmdModifier()},
+			EnabledCallback: RouteActionToFocusEnabledFunc,
+			ExecuteCallback: RouteActionToFocusExecuteFunc,
+		}
+	}
+	return selectAllAction
 }

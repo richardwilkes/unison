@@ -112,11 +112,11 @@ func InsertQuitItem(m Menu, atIndex int) {
 // NewEditMenu creates a standard 'Edit' menu.
 func NewEditMenu(f MenuFactory, prefsHandler func(MenuItem), updater func(Menu)) Menu {
 	m := f.NewMenu(EditMenuID, i18n.Text("Edit"), updater)
-	m.InsertItem(-1, CutAction.NewMenuItem(f))
-	m.InsertItem(-1, CopyAction.NewMenuItem(f))
-	m.InsertItem(-1, PasteAction.NewMenuItem(f))
-	m.InsertItem(-1, DeleteAction.NewMenuItem(f))
-	m.InsertItem(-1, SelectAllAction.NewMenuItem(f))
+	m.InsertItem(-1, CutAction().NewMenuItem(f))
+	m.InsertItem(-1, CopyAction().NewMenuItem(f))
+	m.InsertItem(-1, PasteAction().NewMenuItem(f))
+	m.InsertItem(-1, DeleteAction().NewMenuItem(f))
+	m.InsertItem(-1, SelectAllAction().NewMenuItem(f))
 	if prefsHandler != nil && f.BarIsPerWindow() {
 		m.InsertSeparator(-1, false)
 		InsertPreferencesItem(m, -1, prefsHandler)

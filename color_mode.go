@@ -10,8 +10,6 @@
 package unison
 
 import (
-	"strings"
-
 	"github.com/richardwilkes/toolbox/i18n"
 )
 
@@ -23,31 +21,18 @@ const (
 	LastColorMode = LightColorMode
 )
 
-var (
-	// AllColorModes holds all possible values.
-	AllColorModes = []ColorMode{
-		AutomaticColorMode,
-		DarkColorMode,
-		LightColorMode,
-	}
-	modeData = []struct {
-		key    string
-		string string
-	}{
-		{
-			key:    "auto",
-			string: i18n.Text("Automatic"),
-		},
-		{
-			key:    "dark",
-			string: i18n.Text("Dark"),
-		},
-		{
-			key:    "light",
-			string: i18n.Text("Light"),
-		},
-	}
+const (
+	automaticModeKey = "auto"
+	darkModeKey      = "dark"
+	lightModeKey     = "light"
 )
+
+// AllColorModes holds all possible values.
+var AllColorModes = []ColorMode{
+	AutomaticColorMode,
+	DarkColorMode,
+	LightColorMode,
+}
 
 // ColorMode holds the display mode.
 type ColorMode byte
@@ -62,22 +47,44 @@ func (enum ColorMode) EnsureValid() ColorMode {
 
 // Key returns the key used in serialization.
 func (enum ColorMode) Key() string {
-	return modeData[enum.EnsureValid()].key
+	switch enum {
+	case AutomaticColorMode:
+		return automaticModeKey
+	case DarkColorMode:
+		return darkModeKey
+	case LightColorMode:
+		return lightModeKey
+	default:
+		return ColorMode(0).Key()
+	}
 }
 
 // String implements fmt.Stringer.
 func (enum ColorMode) String() string {
-	return modeData[enum.EnsureValid()].string
+	switch enum {
+	case AutomaticColorMode:
+		return i18n.Text("Automatic")
+	case DarkColorMode:
+		return i18n.Text("Dark")
+	case LightColorMode:
+		return i18n.Text("Light")
+	default:
+		return ColorMode(0).Key()
+	}
 }
 
 // ExtractMode extracts the value from a string.
 func ExtractMode(str string) ColorMode {
-	for i, one := range modeData {
-		if strings.EqualFold(one.key, str) {
-			return ColorMode(i)
-		}
+	switch str {
+	case automaticModeKey:
+		return AutomaticColorMode
+	case darkModeKey:
+		return DarkColorMode
+	case lightModeKey:
+		return LightColorMode
+	default:
+		return ColorMode(0)
 	}
-	return 0
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
