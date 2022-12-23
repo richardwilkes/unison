@@ -41,36 +41,46 @@ const DefaultMarkdownWidth = 8 * 100
 
 // DefaultMarkdownTheme holds the default MarkdownTheme values for Markdown. Modifying this data will not alter existing
 // Markdown, but will alter any Markdown created in the future.
-var DefaultMarkdownTheme = MarkdownTheme{
-	TextDecoration: TextDecoration{
-		Font:       LabelFont,
-		Foreground: OnBackgroundColor,
-	},
-	HeadingFont: [6]Font{
-		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 1) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 2) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 3) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 4) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 5) }},
-		&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(LabelFont, 6) }},
-	},
-	CodeBlockFont:       MonospacedFont,
-	CodeBackground:      ContentColor,
-	OnCodeBackground:    OnContentColor,
-	QuoteBarColor:       AccentColor,
-	LinkInk:             LinkColor,
-	LinkRolloverInk:     LinkRolloverColor,
-	LinkPressedInk:      LinkPressedColor,
-	LinkHandler:         DefaultMarkdownLinkHandler,
-	VSpacing:            10,
-	QuoteBarThickness:   2,
-	CodeAndQuotePadding: 6,
-	Slop:                4,
+var DefaultMarkdownTheme MarkdownTheme
+
+func init() {
+	DefaultMarkdownTheme = MarkdownTheme{
+		TextDecoration: TextDecoration{
+			Font:       LabelFont,
+			Foreground: OnBackgroundColor,
+		},
+		HeadingFont: [6]Font{
+			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 1) }},
+			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 2) }},
+			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 3) }},
+			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 4) }},
+			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 5) }},
+			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 6) }},
+		},
+		CodeBlockFont:       &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
+		CodeBackground:      ContentColor,
+		OnCodeBackground:    OnContentColor,
+		QuoteBarColor:       AccentColor,
+		LinkInk:             LinkColor,
+		LinkRolloverInk:     LinkRolloverColor,
+		LinkPressedInk:      LinkPressedColor,
+		LinkHandler:         DefaultMarkdownLinkHandler,
+		VSpacing:            10,
+		QuoteBarThickness:   2,
+		CodeAndQuotePadding: 6,
+		Slop:                4,
+	}
 }
 
-// DeriveMarkdownHeadingFont derives a FontDescriptor for a heading from another font.
+// DeriveMarkdownHeadingFont derives a FontDescriptor for a heading from another font. Pass in nil for the font to use
+// DefaultMarkdownTheme.Font.
 func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
-	fd := font.Descriptor()
+	var fd FontDescriptor
+	if toolbox.IsNil(font) {
+		fd = DefaultMarkdownTheme.Font.Descriptor()
+	} else {
+		fd = font.Descriptor()
+	}
 	fd.Weight = BlackFontWeight
 	switch level {
 	case 1:
@@ -85,6 +95,19 @@ func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
 		fd.Size *= 1.25
 	default:
 	}
+	return fd
+}
+
+// DeriveMarkdownCodeBlockFont derives a FontDescriptor for code from another font. Pass in nil for the font to use
+// MonospacedFont.
+func DeriveMarkdownCodeBlockFont(font Font) FontDescriptor {
+	var fd FontDescriptor
+	if toolbox.IsNil(font) {
+		fd = MonospacedFont.Descriptor()
+	} else {
+		fd = font.Descriptor()
+	}
+	fd.Size = DefaultMarkdownTheme.Font.Size()
 	return fd
 }
 
