@@ -279,7 +279,7 @@ func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mod Modifiers, repeat
 	return d.fileNameField.DefaultKeyDown(keyCode, mod, repeat)
 }
 
-func (d *fileDialog) fileNameFieldModified() {
+func (d *fileDialog) fileNameFieldModified(_, _ *FieldState) {
 	text := d.fileNameField.Text()
 	if text != "" {
 		switch {

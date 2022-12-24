@@ -70,9 +70,10 @@ type FieldTheme struct {
 type Field struct {
 	Panel
 	FieldTheme
-	ModifiedCallback   func()
+	ModifiedCallback   func(before, after *FieldState)
 	ValidateCallback   func() bool
 	Watermark          string
+	undoID             int64
 	runes              []rune
 	lines              []*Text
 	endsWithLineFeed   []bool
@@ -93,10 +94,19 @@ type Field struct {
 	invalid            bool
 }
 
+// FieldState holds the text and selection data for the field.
+type FieldState struct {
+	Text            string
+	SelectionStart  int
+	SelectionEnd    int
+	SelectionAnchor int
+}
+
 // NewField creates a new, empty, field.
 func NewField() *Field {
 	f := &Field{
 		FieldTheme:    DefaultFieldTheme,
+		undoID:        NextUndoID(),
 		linesBuiltFor: -1,
 		AutoScroll:    true,
 	}
@@ -126,6 +136,11 @@ func NewMultiLineField() *Field {
 	f.multiLine = true
 	f.wrap = true
 	return f
+}
+
+// CurrentUndoID returns the undo ID to use.
+func (f *Field) CurrentUndoID() int64 {
+	return f.undoID
 }
 
 // AllowsMultipleLines returns true if this field allows embedded line feeds.
@@ -412,12 +427,14 @@ func (f *Field) DefaultFocusGained() {
 
 // DefaultFocusLost provides the default focus lost handling.
 func (f *Field) DefaultFocusLost() {
+	f.undoID = NextUndoID()
 	f.SetBorder(f.UnfocusedBorder)
 	f.MarkForRedraw()
 }
 
 // DefaultMouseDown provides the default mouse down handling.
 func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+	f.undoID = NextUndoID()
 	f.RequestFocus()
 	if button == ButtonLeft {
 		f.extendByWord = false
@@ -528,9 +545,10 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool
 		if f.HasSelectionRange() {
 			f.Delete()
 		} else if f.selectionStart < len(f.runes) {
+			before := f.GetFieldState()
 			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionStart+1:]...)
 			f.linesBuiltFor = -1
-			f.notifyOfModification()
+			f.notifyOfModification(before, f.GetFieldState())
 		}
 		f.MarkForRedraw()
 	case KeyLeft:
@@ -560,6 +578,7 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool
 	case KeyTab:
 		return false
 	case KeyReturn, KeyNumPadEnter:
+		f.undoID = NextUndoID()
 		if f.multiLine {
 			f.DefaultRuneTyped('\n')
 		} else {
@@ -579,17 +598,19 @@ func (f *Field) DefaultRuneTyped(ch rune) bool {
 	if unicode.IsControl(ch) && (!f.multiLine || ch != '\n') {
 		return false
 	}
+	before := f.GetFieldState()
 	if f.HasSelectionRange() {
 		f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
 	}
 	f.runes = append(f.runes[:f.selectionStart], append([]rune{ch}, f.runes[f.selectionStart:]...)...)
 	f.linesBuiltFor = -1
 	f.SetSelectionTo(f.selectionStart + 1)
-	f.notifyOfModification()
+	f.notifyOfModification(before, f.GetFieldState())
 	return true
 }
 
 func (f *Field) handleHome(lineOnly, extend bool) {
+	f.undoID = NextUndoID()
 	switch {
 	case lineOnly:
 		var start int
@@ -614,6 +635,7 @@ func (f *Field) handleHome(lineOnly, extend bool) {
 }
 
 func (f *Field) handleEnd(lineOnly, extend bool) {
+	f.undoID = NextUndoID()
 	switch {
 	case lineOnly:
 		var end int
@@ -661,6 +683,7 @@ func (f *Field) scanRightToWordPart(pos int) int {
 }
 
 func (f *Field) handleArrowLeft(extend, byWord bool) {
+	f.undoID = NextUndoID()
 	if f.HasSelectionRange() {
 		if extend {
 			anchor := f.selectionAnchor
@@ -697,6 +720,7 @@ func (f *Field) handleArrowLeft(extend, byWord bool) {
 }
 
 func (f *Field) handleArrowRight(extend, byWord bool) {
+	f.undoID = NextUndoID()
 	if f.HasSelectionRange() {
 		if extend {
 			anchor := f.selectionAnchor
@@ -733,6 +757,7 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 }
 
 func (f *Field) handleArrowUp(extend, byWord bool) {
+	f.undoID = NextUndoID()
 	if f.HasSelectionRange() {
 		if extend {
 			anchor := f.selectionAnchor
@@ -775,6 +800,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 }
 
 func (f *Field) handleArrowDown(extend, byWord bool) {
+	f.undoID = NextUndoID()
 	if f.HasSelectionRange() {
 		if extend {
 			anchor := f.selectionAnchor
@@ -858,6 +884,8 @@ func (f *Field) CanPaste() bool {
 func (f *Field) Paste() {
 	text := GlobalClipboard.GetText()
 	if text != "" {
+		f.undoID = NextUndoID()
+		before := f.GetFieldState()
 		runes := f.sanitize([]rune(text))
 		if f.HasSelectionRange() {
 			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
@@ -865,7 +893,7 @@ func (f *Field) Paste() {
 		f.runes = append(f.runes[:f.selectionStart], append(runes, f.runes[f.selectionStart:]...)...)
 		f.linesBuiltFor = -1
 		f.SetSelectionTo(f.selectionStart + len(runes))
-		f.notifyOfModification()
+		f.notifyOfModification(before, f.GetFieldState())
 	} else if f.HasSelectionRange() {
 		f.Delete()
 	}
@@ -888,6 +916,8 @@ func (f *Field) CanDelete() bool {
 // Delete removes the currently selected text, if any.
 func (f *Field) Delete() {
 	if f.CanDelete() {
+		f.undoID = NextUndoID()
+		before := f.GetFieldState()
 		f.linesBuiltFor = -1
 		if f.HasSelectionRange() {
 			f.runes = append(f.runes[:f.selectionStart], f.runes[f.selectionEnd:]...)
@@ -896,7 +926,7 @@ func (f *Field) Delete() {
 			f.runes = append(f.runes[:f.selectionStart-1], f.runes[f.selectionStart:]...)
 			f.SetSelectionTo(f.selectionStart - 1)
 		}
-		f.notifyOfModification()
+		f.notifyOfModification(before, f.GetFieldState())
 		f.MarkForRedraw()
 	}
 }
@@ -908,6 +938,7 @@ func (f *Field) CanSelectAll() bool {
 
 // SelectAll selects all of the text in the field.
 func (f *Field) SelectAll() {
+	f.undoID = NextUndoID()
 	f.SetSelection(0, len(f.runes))
 }
 
@@ -920,17 +951,18 @@ func (f *Field) Text() string {
 func (f *Field) SetText(text string) {
 	runes := f.sanitize([]rune(text))
 	if !txt.RunesEqual(runes, f.runes) {
+		before := f.GetFieldState()
 		f.runes = runes
 		f.linesBuiltFor = -1
 		f.SetSelectionToEnd()
-		f.notifyOfModification()
+		f.notifyOfModification(before, f.GetFieldState())
 	}
 }
 
-func (f *Field) notifyOfModification() {
+func (f *Field) notifyOfModification(before, after *FieldState) {
 	f.MarkForRedraw()
 	if f.ModifiedCallback != nil {
-		f.ModifiedCallback()
+		f.ModifiedCallback(before, after)
 	}
 	f.Validate()
 }
@@ -1298,4 +1330,27 @@ func (f *Field) lineIndexForY(y float32) (index, startPos int) {
 		start += length
 	}
 	return xmath.Max(len(f.lines)-1, 0), start - length
+}
+
+// GetFieldState returns the current field state, usually used for undo.
+func (f *Field) GetFieldState() *FieldState {
+	runes := make([]rune, len(f.runes))
+	copy(runes, f.runes)
+	return &FieldState{
+		Text:            string(runes),
+		SelectionStart:  f.selectionStart,
+		SelectionEnd:    f.selectionEnd,
+		SelectionAnchor: f.selectionAnchor,
+	}
+}
+
+// ApplyFieldState sets the underlying field state to match the input and without triggering calls to the modification
+// callback.
+func (f *Field) ApplyFieldState(state *FieldState) {
+	runes := f.sanitize([]rune(state.Text))
+	if !txt.RunesEqual(runes, f.runes) {
+		f.runes = runes
+		f.linesBuiltFor = -1
+	}
+	f.setSelection(state.SelectionStart, state.SelectionEnd, state.SelectionAnchor)
 }

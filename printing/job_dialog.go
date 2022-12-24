@@ -99,7 +99,7 @@ func (d *JobDialog) RunModal() bool {
 		return pref, pref
 	}
 	dlg.Window().Pack()
-	d.adjustOKButton()
+	d.adjustOKButton(nil, nil)
 	if dlg.RunModal() != unison.ModalResponseOK {
 		return false
 	}
@@ -330,10 +330,10 @@ func (d *JobDialog) adjustEnablement() {
 	d.contentOptimization.setEnabled(enabled, d.printerAttributes.SupportedContentOptimizations)
 	d.sides.setEnabled(enabled, d.printerAttributes.SupportedSides)
 	d.orientation.setEnabled(enabled, d.printerAttributes.SupportedOrientations)
-	d.adjustOKButton()
+	d.adjustOKButton(nil, nil)
 }
 
-func (d *JobDialog) adjustOKButton() {
+func (d *JobDialog) adjustOKButton(_, _ *unison.FieldState) {
 	if d.dialog == nil {
 		return
 	}
