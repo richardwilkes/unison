@@ -214,7 +214,9 @@ func (d *DockContainer) Close(dockable Dockable) {
 		}
 		if next != nil {
 			if dc := Ancestor[*DockContainer](next); dc != nil {
-				dc.SetCurrentDockable(next)
+				if dc == d {
+					dc.SetCurrentDockable(next)
+				}
 				dc.AcquireFocus()
 			}
 		}
