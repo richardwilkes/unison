@@ -191,12 +191,14 @@ func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]
 		})
 }
 
-// AddItem appends a menu item to the end of the PopupMenu.
-func (p *PopupMenu[T]) AddItem(item T) {
-	p.items = append(p.items, &popupMenuItem[T]{
-		item:    item,
-		enabled: true,
-	})
+// AddItem appends one or more menu items to the end of the PopupMenu.
+func (p *PopupMenu[T]) AddItem(item ...T) {
+	for _, one := range item {
+		p.items = append(p.items, &popupMenuItem[T]{
+			item:    one,
+			enabled: true,
+		})
+	}
 }
 
 // AddDisabledItem appends a disabled menu item to the end of the PopupMenu.
