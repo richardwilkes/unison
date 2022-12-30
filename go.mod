@@ -13,7 +13,7 @@ require (
 	github.com/richardwilkes/toolbox v1.80.2
 	github.com/stretchr/testify v1.8.1
 	github.com/yuin/goldmark v1.5.3
-	golang.org/x/exp v0.0.0-20221217163422-3c43f8badb15
+	golang.org/x/exp v0.0.0-20221229233502-02c3fc3b3eb4
 	golang.org/x/image v0.2.0
 	golang.org/x/sys v0.3.0
 	golang.org/x/text v0.5.0
