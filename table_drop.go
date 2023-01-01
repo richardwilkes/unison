@@ -63,13 +63,14 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 			d.inDragOver = true
 			last := d.Table.LastRowIndex()
 			contentRect := d.Table.ContentRect(false)
+			hierarchyColumnIndex := d.Table.ColumnIndexForID(d.Table.HierarchyColumnID)
 			if where.Y >= contentRect.Bottom()-2 {
 				// Over bottom edge, adding to end of top-level rows
 				d.TargetParent = zero
 				d.TargetIndex = d.Table.RootRowCount()
 				rect := d.Table.RowFrame(last)
 				d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
-				d.left, _ = d.Table.ColumnEdges(xmath.Max(d.Table.HierarchyColumnIndex, 0))
+				d.left, _ = d.Table.ColumnEdges(xmath.Max(hierarchyColumnIndex, 0))
 				d.Table.MarkForRedraw()
 				return true
 			}
@@ -77,7 +78,7 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 				// Over row
 				d.TargetIndex = -1
 				row := d.Table.RowFromIndex(rowIndex)
-				rect := d.Table.CellFrame(rowIndex, xmath.Max(d.Table.HierarchyColumnIndex, 0))
+				rect := d.Table.CellFrame(rowIndex, xmath.Max(hierarchyColumnIndex, 0))
 				if where.Y >= d.Table.RowFrame(rowIndex).CenterY() {
 					d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
 					d.left = rect.X
@@ -86,7 +87,7 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 						// Row is a container; add to container at index 0
 						d.TargetParent = row
 						d.TargetIndex = 0
-						if d.Table.HierarchyColumnIndex != -1 {
+						if hierarchyColumnIndex != -1 {
 							d.left += d.Table.HierarchyIndent
 						}
 					} else {
@@ -142,7 +143,7 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 			d.TargetIndex = d.Table.RootRowCount()
 			rect := d.Table.RowFrame(last)
 			d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
-			d.left, _ = d.Table.ColumnEdges(xmath.Max(d.Table.HierarchyColumnIndex, 0))
+			d.left, _ = d.Table.ColumnEdges(xmath.Max(hierarchyColumnIndex, 0))
 			d.Table.MarkForRedraw()
 			return true
 		}

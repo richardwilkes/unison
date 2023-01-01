@@ -26,8 +26,9 @@ type TableDragData[T TableRowConstraint[T]] struct {
 	Rows  []T
 }
 
-// ColumnSize holds the column sizing information.
-type ColumnSize struct {
+// ColumnInfo holds column information.
+type ColumnInfo struct {
+	ID          int
 	Current     float32
 	Minimum     float32
 	Maximum     float32
@@ -62,7 +63,6 @@ var DefaultTableTheme = TableTheme{
 	IndirectSelectionInk:   IndirectSelectionColor,
 	OnIndirectSelectionInk: OnIndirectSelectionColor,
 	Padding:                NewUniformInsets(4),
-	HierarchyColumnIndex:   0,
 	HierarchyIndent:        16,
 	MinimumRowHeight:       16,
 	ColumnResizeSlop:       4,
@@ -84,7 +84,7 @@ type TableTheme struct {
 	IndirectSelectionInk   Ink
 	OnIndirectSelectionInk Ink
 	Padding                Insets
-	HierarchyColumnIndex   int
+	HierarchyColumnID      int
 	HierarchyIndent        float32
 	MinimumRowHeight       float32
 	ColumnResizeSlop       float32
@@ -100,7 +100,7 @@ type Table[T TableRowConstraint[T]] struct {
 	DoubleClickCallback      func()
 	DragRemovedRowsCallback  func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
 	DropOccurredCallback     func() // Called whenever a drop occurs that modifies the model.
-	ColumnSizes              []ColumnSize
+	Columns                  []ColumnInfo
 	Model                    TableModel[T]
 	filteredRows             []T // Note that we use the difference between nil and an empty slice here
 	header                   *TableHeader[T]
@@ -158,6 +158,16 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	return t
 }
 
+// ColumnIndexForID returns the column index with the given ID, or -1 if not found.
+func (t *Table[T]) ColumnIndexForID(id int) int {
+	for i, c := range t.Columns {
+		if c.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
 // SetDrawRowRange sets a restricted range for sizing and drawing the table. This is intended primarily to be able to
 // draw different sections of the table on separate pages of a display and should not be used for anything requiring
 // interactivity.
@@ -196,8 +206,8 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 
 	var firstCol int
 	x := insets.Left
-	for i := range t.ColumnSizes {
-		x1 := x + t.ColumnSizes[i].Current
+	for i := range t.Columns {
+		x1 := x + t.Columns[i].Current
 		if t.ShowColumnDivider {
 			x1++
 		}
@@ -248,8 +258,8 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect = dirty
 		rect.X = x
 		rect.Width = 1
-		for c := firstCol; c < len(t.ColumnSizes)-1; c++ {
-			rect.X += t.ColumnSizes[c].Current
+		for c := firstCol; c < len(t.Columns)-1; c++ {
+			rect.X += t.Columns[c].Current
 			canvas.DrawRect(rect, t.InteriorDividerInk.Paint(canvas, rect, Fill))
 			rect.X++
 		}
@@ -262,13 +272,13 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	for r := startRow; r < endBeforeRow && rect.Y < lastY; r++ {
 		rect.X = x
 		rect.Height = t.rowCache[r].height
-		for c := firstCol; c < len(t.ColumnSizes) && rect.X < lastX; c++ {
+		for c := firstCol; c < len(t.Columns) && rect.X < lastX; c++ {
 			fg, bg, selected, indirectlySelected, focused := t.cellParams(r, c)
-			rect.Width = t.ColumnSizes[c].Current
+			rect.Width = t.Columns[c].Current
 			cellRect := rect
 			cellRect.Inset(t.Padding)
 			row := t.rowCache[r].row
-			if c == t.HierarchyColumnIndex {
+			if t.Columns[c].ID == t.HierarchyColumnID {
 				if row.CanHaveChildren() {
 					const disclosureIndent = 2
 					disclosureSize := xmath.Min(t.HierarchyIndent, t.MinimumRowHeight) - disclosureIndent*2
@@ -301,7 +311,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			cell.Draw(canvas, cellRect)
 			t.uninstallCell(cell)
 			canvas.Restore()
-			rect.X += t.ColumnSizes[c].Current
+			rect.X += t.Columns[c].Current
 			if t.ShowColumnDivider {
 				rect.X++
 			}
@@ -388,9 +398,9 @@ func (t *Table[T]) OverColumn(x float32) int {
 		insets = border.Insets()
 	}
 	end := insets.Left
-	for i := range t.ColumnSizes {
+	for i := range t.Columns {
 		start := end
-		end += t.ColumnSizes[i].Current
+		end += t.Columns[i].Current
 		if t.ShowColumnDivider {
 			end++
 		}
@@ -404,7 +414,7 @@ func (t *Table[T]) OverColumn(x float32) int {
 // OverColumnDivider returns the column index of the column divider that the x coordinate is over, or -1 if it isn't
 // over any column divider.
 func (t *Table[T]) OverColumnDivider(x float32) int {
-	if len(t.ColumnSizes) < 2 {
+	if len(t.Columns) < 2 {
 		return -1
 	}
 	var insets Insets
@@ -412,8 +422,8 @@ func (t *Table[T]) OverColumnDivider(x float32) int {
 		insets = border.Insets()
 	}
 	pos := insets.Left
-	for i := range t.ColumnSizes[:len(t.ColumnSizes)-1] {
-		pos += t.ColumnSizes[i].Current
+	for i := range t.Columns[:len(t.Columns)-1] {
+		pos += t.Columns[i].Current
 		if t.ShowColumnDivider {
 			pos++
 		}
@@ -426,11 +436,11 @@ func (t *Table[T]) OverColumnDivider(x float32) int {
 
 // CellWidth returns the current width of a given cell.
 func (t *Table[T]) CellWidth(row, col int) float32 {
-	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.ColumnSizes) {
+	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.Columns) {
 		return 0
 	}
-	width := t.ColumnSizes[col].Current - (t.Padding.Left + t.Padding.Right)
-	if col == t.HierarchyColumnIndex {
+	width := t.Columns[col].Current - (t.Padding.Left + t.Padding.Right)
+	if t.Columns[col].ID == t.HierarchyColumnID {
 		width -= t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
 	}
 	return width
@@ -438,7 +448,7 @@ func (t *Table[T]) CellWidth(row, col int) float32 {
 
 // ColumnEdges returns the x-coordinates of the left and right sides of the column.
 func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
-	if col < 0 || col >= len(t.ColumnSizes) {
+	if col < 0 || col >= len(t.Columns) {
 		return 0, 0
 	}
 	var insets Insets
@@ -447,15 +457,15 @@ func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
 	}
 	left = insets.Left
 	for c := 0; c < col; c++ {
-		left += t.ColumnSizes[c].Current
+		left += t.Columns[c].Current
 		if t.ShowColumnDivider {
 			left++
 		}
 	}
-	right = left + t.ColumnSizes[col].Current
+	right = left + t.Columns[col].Current
 	left += t.Padding.Left
 	right -= t.Padding.Right
-	if col == t.HierarchyColumnIndex {
+	if t.Columns[col].ID == t.HierarchyColumnID {
 		left += t.HierarchyIndent + t.Padding.Left
 	}
 	if right < left {
@@ -466,7 +476,7 @@ func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
 
 // CellFrame returns the frame of the given cell.
 func (t *Table[T]) CellFrame(row, col int) Rect {
-	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.ColumnSizes) {
+	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.Columns) {
 		return Rect{}
 	}
 	var insets Insets
@@ -475,7 +485,7 @@ func (t *Table[T]) CellFrame(row, col int) Rect {
 	}
 	x := insets.Left
 	for c := 0; c < col; c++ {
-		x += t.ColumnSizes[c].Current
+		x += t.Columns[c].Current
 		if t.ShowColumnDivider {
 			x++
 		}
@@ -487,9 +497,9 @@ func (t *Table[T]) CellFrame(row, col int) Rect {
 			y++
 		}
 	}
-	rect := NewRect(x, y, t.ColumnSizes[col].Current, t.rowCache[row].height)
+	rect := NewRect(x, y, t.Columns[col].Current, t.rowCache[row].height)
 	rect.Inset(t.Padding)
-	if col == t.HierarchyColumnIndex {
+	if t.Columns[col].ID == t.HierarchyColumnID {
 		indent := t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
 		rect.X += indent
 		rect.Width -= indent
@@ -547,7 +557,7 @@ func (t *Table[T]) DefaultFocusGained() {
 func (t *Table[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 	if !t.PreventUserColumnResize {
 		if over := t.OverColumnDivider(where.X); over != -1 {
-			if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
+			if t.Columns[over].Minimum <= 0 || t.Columns[over].Minimum < t.Columns[over].Maximum {
 				return ResizeHorizontalCursor()
 			}
 		}
@@ -696,7 +706,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 	if button == ButtonLeft {
 		if !t.PreventUserColumnResize {
 			if over := t.OverColumnDivider(where.X); over != -1 {
-				if t.ColumnSizes[over].Minimum <= 0 || t.ColumnSizes[over].Minimum < t.ColumnSizes[over].Maximum {
+				if t.Columns[over].Minimum <= 0 || t.Columns[over].Minimum < t.Columns[over].Maximum {
 					if clickCount == 2 {
 						t.SizeColumnToFit(over, true)
 						t.MarkForRedraw()
@@ -705,9 +715,9 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 					}
 					t.interactionColumn = over
 					t.columnResizeStart = where.X
-					t.columnResizeBase = t.ColumnSizes[over].Current
+					t.columnResizeBase = t.Columns[over].Current
 					t.columnResizeOverhead = t.Padding.Left + t.Padding.Right
-					if over == t.HierarchyColumnIndex {
+					if t.Columns[over].ID == t.HierarchyColumnID {
 						depth := 0
 						for _, cache := range t.rowCache {
 							if depth < cache.depth {
@@ -814,17 +824,17 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 				if width < t.columnResizeOverhead {
 					width = t.columnResizeOverhead
 				}
-				min := t.ColumnSizes[t.interactionColumn].Minimum
+				min := t.Columns[t.interactionColumn].Minimum
 				if min > 0 && width < min+t.columnResizeOverhead {
 					width = min + t.columnResizeOverhead
 				} else {
-					max := t.ColumnSizes[t.interactionColumn].Maximum
+					max := t.Columns[t.interactionColumn].Maximum
 					if max > 0 && width > max+t.columnResizeOverhead {
 						width = max + t.columnResizeOverhead
 					}
 				}
-				if t.ColumnSizes[t.interactionColumn].Current != width {
-					t.ColumnSizes[t.interactionColumn].Current = width
+				if t.Columns[t.interactionColumn].Current != width {
+					t.Columns[t.interactionColumn].Current = width
 					t.EventuallySyncToModel()
 					t.MarkForRedraw()
 					t.dividerDrag = true
@@ -1273,13 +1283,13 @@ func (t *Table[T]) buildRowCacheEntry(row T, parentIndex, index, depth int) int 
 
 func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 	var height float32
-	for col := range t.ColumnSizes {
-		w := t.ColumnSizes[col].Current
+	for col := range t.Columns {
+		w := t.Columns[col].Current
 		if w <= 0 {
 			continue
 		}
 		w -= t.Padding.Left + t.Padding.Right
-		if col == t.HierarchyColumnIndex {
+		if t.Columns[col].ID == t.HierarchyColumnID {
 			w -= t.Padding.Left + t.HierarchyIndent*float32(depth+1)
 		}
 		size := t.cellPrefSize(rowData, row, col, w)
@@ -1298,38 +1308,33 @@ func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32
 	return size
 }
 
-// SizeColumnsToFitWithExcessIn sizes each column to its preferred size, with the exception of the 'excessColumnIndex',
-// which gets set to any remaining width left over. Pass in -1 for the 'excessColumnIndex' to use the
-// HierarchyColumnIndex or 0, if the HierarchyColumnIndex is less than 0
-func (t *Table[T]) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
-	if excessColumnIndex < 0 {
-		excessColumnIndex = t.HierarchyColumnIndex
-		if excessColumnIndex < 0 {
-			excessColumnIndex = 0
-		}
-	}
-	current := make([]float32, len(t.ColumnSizes))
-	for col := range t.ColumnSizes {
-		current[col] = xmath.Max(t.ColumnSizes[col].Minimum, 0)
-		t.ColumnSizes[col].Current = 0
+// SizeColumnsToFitWithExcessIn sizes each column to its preferred size, with the exception of the column with the given
+// ID, which gets set to any remaining width left over. If the provided column ID doesn't exist, the first column will
+// be used instead.
+func (t *Table[T]) SizeColumnsToFitWithExcessIn(columnID int) {
+	excessColumnIndex := xmath.Max(t.ColumnIndexForID(columnID), 0)
+	current := make([]float32, len(t.Columns))
+	for col := range t.Columns {
+		current[col] = xmath.Max(t.Columns[col].Minimum, 0)
+		t.Columns[col].Current = 0
 	}
 	for row, cache := range t.rowCache {
-		for col := range t.ColumnSizes {
+		for col := range t.Columns {
 			if col == excessColumnIndex {
 				continue
 			}
 			pref := t.cellPrefSize(cache.row, row, col, 0)
-			min := t.ColumnSizes[col].AutoMinimum
+			min := t.Columns[col].AutoMinimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
 			} else {
-				max := t.ColumnSizes[col].AutoMaximum
+				max := t.Columns[col].AutoMaximum
 				if max > 0 && pref.Width > max {
 					pref.Width = max
 				}
 			}
 			pref.Width += t.Padding.Left + t.Padding.Right
-			if col == t.HierarchyColumnIndex {
+			if t.Columns[col].ID == t.HierarchyColumnID {
 				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 			}
 			if current[col] < pref.Width {
@@ -1339,16 +1344,16 @@ func (t *Table[T]) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 	}
 	width := t.ContentRect(false).Width
 	if t.ShowColumnDivider {
-		width -= float32(len(t.ColumnSizes) - 1)
+		width -= float32(len(t.Columns) - 1)
 	}
 	for col := range current {
 		if col == excessColumnIndex {
 			continue
 		}
-		t.ColumnSizes[col].Current = current[col]
+		t.Columns[col].Current = current[col]
 		width -= current[col]
 	}
-	t.ColumnSizes[excessColumnIndex].Current = xmath.Max(width, t.ColumnSizes[excessColumnIndex].Minimum)
+	t.Columns[excessColumnIndex].Current = xmath.Max(width, t.Columns[excessColumnIndex].Minimum)
 	for row, cache := range t.rowCache {
 		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
 	}
@@ -1357,25 +1362,25 @@ func (t *Table[T]) SizeColumnsToFitWithExcessIn(excessColumnIndex int) {
 // SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the Table's FrameRect will be set to
 // its preferred size as well.
 func (t *Table[T]) SizeColumnsToFit(adjust bool) {
-	current := make([]float32, len(t.ColumnSizes))
-	for col := range t.ColumnSizes {
-		current[col] = xmath.Max(t.ColumnSizes[col].Minimum, 0)
-		t.ColumnSizes[col].Current = 0
+	current := make([]float32, len(t.Columns))
+	for col := range t.Columns {
+		current[col] = xmath.Max(t.Columns[col].Minimum, 0)
+		t.Columns[col].Current = 0
 	}
 	for row, cache := range t.rowCache {
-		for col := range t.ColumnSizes {
+		for col := range t.Columns {
 			pref := t.cellPrefSize(cache.row, row, col, 0)
-			min := t.ColumnSizes[col].AutoMinimum
+			min := t.Columns[col].AutoMinimum
 			if min > 0 && pref.Width < min {
 				pref.Width = min
 			} else {
-				max := t.ColumnSizes[col].AutoMaximum
+				max := t.Columns[col].AutoMaximum
 				if max > 0 && pref.Width > max {
 					pref.Width = max
 				}
 			}
 			pref.Width += t.Padding.Left + t.Padding.Right
-			if col == t.HierarchyColumnIndex {
+			if t.Columns[col].ID == t.HierarchyColumnID {
 				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 			}
 			if current[col] < pref.Width {
@@ -1384,7 +1389,7 @@ func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 		}
 	}
 	for col := range current {
-		t.ColumnSizes[col].Current = current[col]
+		t.Columns[col].Current = current[col]
 	}
 	for row, cache := range t.rowCache {
 		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
@@ -1400,31 +1405,31 @@ func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 // SizeColumnToFit sizes the specified column to its preferred size. If 'adjust' is true, the Table's FrameRect will be
 // set to its preferred size as well.
 func (t *Table[T]) SizeColumnToFit(col int, adjust bool) {
-	if col < 0 || col >= len(t.ColumnSizes) {
+	if col < 0 || col >= len(t.Columns) {
 		return
 	}
-	current := xmath.Max(t.ColumnSizes[col].Minimum, 0)
-	t.ColumnSizes[col].Current = 0
+	current := xmath.Max(t.Columns[col].Minimum, 0)
+	t.Columns[col].Current = 0
 	for row, cache := range t.rowCache {
 		pref := t.cellPrefSize(cache.row, row, col, 0)
-		min := t.ColumnSizes[col].AutoMinimum
+		min := t.Columns[col].AutoMinimum
 		if min > 0 && pref.Width < min {
 			pref.Width = min
 		} else {
-			max := t.ColumnSizes[col].AutoMaximum
+			max := t.Columns[col].AutoMaximum
 			if max > 0 && pref.Width > max {
 				pref.Width = max
 			}
 		}
 		pref.Width += t.Padding.Left + t.Padding.Right
-		if col == t.HierarchyColumnIndex {
+		if t.Columns[col].ID == t.HierarchyColumnID {
 			pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
 		}
 		if current < pref.Width {
 			current = pref.Width
 		}
 	}
-	t.ColumnSizes[col].Current = current
+	t.Columns[col].Current = current
 	for row, cache := range t.rowCache {
 		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
 	}
@@ -1463,15 +1468,15 @@ func (t *Table[T]) EventuallySyncToModel() {
 
 // DefaultSizes provides the default sizing.
 func (t *Table[T]) DefaultSizes(hint Size) (min, pref, max Size) {
-	for col := range t.ColumnSizes {
-		pref.Width += t.ColumnSizes[col].Current
+	for col := range t.Columns {
+		pref.Width += t.Columns[col].Current
 	}
 	startRow, endBeforeRow := t.CurrentDrawRowRange()
 	for _, cache := range t.rowCache[startRow:endBeforeRow] {
 		pref.Height += cache.height
 	}
 	if t.ShowColumnDivider {
-		pref.Width += float32(len(t.ColumnSizes) - 1)
+		pref.Width += float32(len(t.Columns) - 1)
 	}
 	if t.ShowRowDivider {
 		pref.Height += float32((endBeforeRow - startRow) - 1)

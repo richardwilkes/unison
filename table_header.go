@@ -81,26 +81,26 @@ func (h *TableHeader[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 
 // ColumnFrame returns the frame of the given column.
 func (h *TableHeader[T]) ColumnFrame(col int) Rect {
-	if col < 0 || col >= len(h.table.ColumnSizes) {
+	if col < 0 || col >= len(h.table.Columns) {
 		return Rect{}
 	}
 	insets := h.combinedInsets()
 	x := insets.Left
 	for c := 0; c < col; c++ {
-		x += h.table.ColumnSizes[c].Current
+		x += h.table.Columns[c].Current
 		if h.table.ShowColumnDivider {
 			x++
 		}
 	}
-	rect := NewRect(x, insets.Top, h.table.ColumnSizes[col].Current, h.FrameRect().Height-insets.Height())
+	rect := NewRect(x, insets.Top, h.table.Columns[col].Current, h.FrameRect().Height-insets.Height())
 	rect.Inset(h.table.Padding)
 	return rect
 }
 
 func (h *TableHeader[T]) heightForColumns() float32 {
 	var height float32
-	for i := range h.table.ColumnSizes {
-		w := h.table.ColumnSizes[i].Current
+	for i := range h.table.Columns {
+		w := h.table.Columns[i].Current
 		if w <= 0 {
 			continue
 		}
@@ -140,8 +140,8 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	var firstCol int
 	insets := h.combinedInsets()
 	x := insets.Left
-	for i := range h.table.ColumnSizes {
-		x1 := x + h.table.ColumnSizes[i].Current
+	for i := range h.table.Columns {
+		x1 := x + h.table.Columns[i].Current
 		if h.table.ShowColumnDivider {
 			x1++
 		}
@@ -156,8 +156,8 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect := dirty
 		rect.X = x
 		rect.Width = 1
-		for c := firstCol; c < len(h.table.ColumnSizes)-1; c++ {
-			rect.X += h.table.ColumnSizes[c].Current
+		for c := firstCol; c < len(h.table.Columns)-1; c++ {
+			rect.X += h.table.Columns[c].Current
 			canvas.DrawRect(rect, h.InteriorDividerColor.Paint(canvas, rect, Fill))
 			rect.X++
 		}
@@ -168,8 +168,8 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	rect.Y = insets.Top
 	rect.Height = h.heightForColumns()
 	lastX := dirty.Right()
-	for c := firstCol; c < len(h.table.ColumnSizes) && rect.X < lastX; c++ {
-		rect.Width = h.table.ColumnSizes[c].Current
+	for c := firstCol; c < len(h.table.Columns) && rect.X < lastX; c++ {
+		rect.Width = h.table.Columns[c].Current
 		cellRect := rect
 		cellRect.Inset(h.table.Padding)
 		if c < len(h.ColumnHeaders) {
@@ -183,7 +183,7 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			h.uninstallCell(cell)
 			canvas.Restore()
 		}
-		rect.X += h.table.ColumnSizes[c].Current
+		rect.X += h.table.Columns[c].Current
 		if h.table.ShowColumnDivider {
 			rect.X++
 		}
@@ -204,7 +204,7 @@ func (h *TableHeader[T]) uninstallCell(cell *Panel) {
 func (h *TableHeader[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 	if !h.table.PreventUserColumnResize {
 		if over := h.table.OverColumnDivider(where.X); over != -1 {
-			if h.table.ColumnSizes[over].Minimum <= 0 || h.table.ColumnSizes[over].Minimum < h.table.ColumnSizes[over].Maximum {
+			if h.table.Columns[over].Minimum <= 0 || h.table.Columns[over].Minimum < h.table.Columns[over].Maximum {
 				return ResizeHorizontalCursor()
 			}
 		}
@@ -271,7 +271,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, m
 	h.inHeader = false
 	if !h.table.PreventUserColumnResize {
 		if over := h.table.OverColumnDivider(where.X); over != -1 {
-			if h.table.ColumnSizes[over].Minimum <= 0 || h.table.ColumnSizes[over].Minimum < h.table.ColumnSizes[over].Maximum {
+			if h.table.Columns[over].Minimum <= 0 || h.table.Columns[over].Minimum < h.table.Columns[over].Maximum {
 				if clickCount == 2 {
 					h.table.SizeColumnToFit(over, true)
 					h.MarkForRedraw()
@@ -280,9 +280,9 @@ func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, m
 				}
 				h.interactionColumn = over
 				h.columnResizeStart = where.X
-				h.columnResizeBase = h.table.ColumnSizes[over].Current
+				h.columnResizeBase = h.table.Columns[over].Current
 				h.columnResizeOverhead = h.table.Padding.Left + h.table.Padding.Right
-				if over == h.table.HierarchyColumnIndex {
+				if h.table.Columns[over].ID == h.table.HierarchyColumnID {
 					depth := 0
 					for _, cache := range h.table.rowCache {
 						if depth < cache.depth {
@@ -318,17 +318,17 @@ func (h *TableHeader[T]) DefaultMouseDrag(where Point, button int, mod Modifiers
 		if width < h.columnResizeOverhead {
 			width = h.columnResizeOverhead
 		}
-		min := h.table.ColumnSizes[h.interactionColumn].Minimum
+		min := h.table.Columns[h.interactionColumn].Minimum
 		if min > 0 && width < min+h.columnResizeOverhead {
 			width = min + h.columnResizeOverhead
 		} else {
-			max := h.table.ColumnSizes[h.interactionColumn].Maximum
+			max := h.table.Columns[h.interactionColumn].Maximum
 			if max > 0 && width > max+h.columnResizeOverhead {
 				width = max + h.columnResizeOverhead
 			}
 		}
-		if h.table.ColumnSizes[h.interactionColumn].Current != width {
-			h.table.ColumnSizes[h.interactionColumn].Current = width
+		if h.table.Columns[h.interactionColumn].Current != width {
+			h.table.Columns[h.interactionColumn].Current = width
 			h.table.SyncToModel()
 			h.MarkForRedraw()
 		}

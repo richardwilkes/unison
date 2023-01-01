@@ -37,15 +37,16 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 
 	// Create the table
 	table := unison.NewTable[*demoRow](&unison.SimpleTableModel[*demoRow]{})
-	table.HierarchyColumnIndex = 1
-	table.ColumnSizes = make([]unison.ColumnSize, 4)
-	for i := range table.ColumnSizes {
-		table.ColumnSizes[i].Minimum = 20
-		table.ColumnSizes[i].Maximum = 10000
+	table.HierarchyColumnID = 1
+	table.Columns = make([]unison.ColumnInfo, 4)
+	for i := range table.Columns {
+		table.Columns[i].ID = i
+		table.Columns[i].Minimum = 20
+		table.Columns[i].Maximum = 10000
 	}
 	_, checkColSize, _ := unison.NewCheckBox().Sizes(unison.Size{})
-	table.ColumnSizes[0].Minimum = checkColSize.Width
-	table.ColumnSizes[0].Maximum = checkColSize.Width
+	table.Columns[0].Minimum = checkColSize.Width
+	table.Columns[0].Maximum = checkColSize.Width
 	rows := make([]*demoRow, topLevelRowsToMake)
 	for i := range rows {
 		row := &demoRow{
