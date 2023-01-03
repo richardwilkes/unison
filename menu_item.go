@@ -170,21 +170,27 @@ func (mi *menuItem) newPanel() *Panel {
 	mi.panel.MouseMoveCallback = mi.mouseMove
 	mi.panel.MouseExitCallback = mi.mouseExit
 	mi.panel.MouseDownCallback = mi.mouseDown
+	mi.panel.MouseUpCallback = mi.mouseUp
 	mi.panel.SetSizer(mi.sizer)
 	return mi.panel
 }
 
 func (mi *menuItem) mouseDown(_ Point, _, _ int, _ Modifiers) bool {
-	if mi.subMenu == nil {
-		mi.execute()
-		return true
+	if mi.subMenu != nil {
+		mi.showSubMenu()
 	}
-	mi.showSubMenu()
+	return true
+}
+
+func (mi *menuItem) mouseUp(where Point, button int, mod Modifiers) bool {
+	if mi.subMenu == nil && mi.panel.ContentRect(true).ContainsPoint(where) {
+		mi.execute()
+	}
 	return true
 }
 
 func (mi *menuItem) showSubMenu() {
-	if !mi.factory.showInProgress && mi.subMenu.popupPanel == nil {
+	if !mi.factory.showInProgress && mi.subMenu != nil && mi.subMenu.popupPanel == nil {
 		mi.factory.showInProgress = true
 		defer func() { mi.factory.showInProgress = false }()
 		mi.subMenu.createPopup()

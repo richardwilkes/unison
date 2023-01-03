@@ -442,6 +442,8 @@ func (m *menu) closeMenuStack() {
 	if wnd := ActiveWindow(); wnd != nil {
 		m.closeMenuStackStoppingAt(wnd, nil)
 		wnd.ToFront()
+		wnd.MarkForRedraw()
+		wnd.FlushDrawing()
 	}
 }
 
