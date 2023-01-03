@@ -12,6 +12,7 @@ package unison
 import (
 	"sort"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
 	"golang.org/x/exp/slices"
@@ -38,6 +39,7 @@ type TableHeader[T TableRowConstraint[T]] struct {
 	TableHeaderTheme
 	table                *Table[T]
 	ColumnHeaders        []TableColumnHeader[T]
+	RowLess              func(leftRow, rightRow T, headers []*headerWithIndex[T]) bool
 	Less                 func(s1, s2 string) bool
 	interactionColumn    int
 	columnResizeStart    float32
@@ -52,7 +54,6 @@ func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...T
 		TableHeaderTheme: DefaultTableHeaderTheme,
 		table:            table,
 		ColumnHeaders:    columnHeaders,
-		Less:             func(s1, s2 string) bool { return txt.NaturalLess(s1, s2, true) },
 	}
 	h.Self = h
 	h.SetSizer(h.DefaultSizes)
@@ -64,6 +65,8 @@ func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...T
 	h.MouseDownCallback = h.DefaultMouseDown
 	h.MouseDragCallback = h.DefaultMouseDrag
 	h.MouseUpCallback = h.DefaultMouseUp
+	h.RowLess = h.DefaultRowLess
+	h.Less = h.DefaultLess
 	h.table.header = h
 	return h
 }
@@ -451,18 +454,9 @@ func (h *TableHeader[T]) ApplySort() {
 func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 	if len(headers) > 0 && len(rows) > 0 {
 		sort.Slice(rows, func(i, j int) bool {
-			for _, hdr := range headers {
-				d1 := rows[i].CellDataForSort(hdr.index)
-				d2 := rows[j].CellDataForSort(hdr.index)
-				if d1 != d2 {
-					ascending := hdr.header.SortState().Ascending
-					if h.Less(d1, d2) {
-						return ascending
-					}
-					return !ascending
-				}
-			}
-			return i < j
+			var less bool
+			toolbox.Call(func() { less = h.RowLess(rows[i], rows[j], headers) })
+			return less
 		})
 		if h.table.filteredRows == nil {
 			for _, row := range rows {
@@ -476,4 +470,25 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 			}
 		}
 	}
+}
+
+// DefaultRowLess provides the default implementation of row comparison for row sorting.
+func (h *TableHeader[T]) DefaultRowLess(leftRow, rightRow T, headers []*headerWithIndex[T]) bool {
+	for _, hdr := range headers {
+		d1 := leftRow.CellDataForSort(hdr.index)
+		d2 := rightRow.CellDataForSort(hdr.index)
+		if d1 != d2 {
+			ascending := hdr.header.SortState().Ascending
+			if h.Less(d1, d2) {
+				return ascending
+			}
+			return !ascending
+		}
+	}
+	return true
+}
+
+// DefaultLess provides the default implementation of string comparison of a cell's contents for row sorting.
+func (h *TableHeader[T]) DefaultLess(s1, s2 string) bool {
+	return txt.NaturalLess(s1, s2, true)
 }
