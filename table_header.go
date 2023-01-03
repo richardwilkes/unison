@@ -38,7 +38,6 @@ type TableHeader[T TableRowConstraint[T]] struct {
 	TableHeaderTheme
 	table                *Table[T]
 	ColumnHeaders        []TableColumnHeader[T]
-	RowPreLess           func(r1, r2 T) bool
 	Less                 func(s1, s2 string) bool
 	interactionColumn    int
 	columnResizeStart    float32
@@ -452,9 +451,6 @@ func (h *TableHeader[T]) ApplySort() {
 func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 	if len(headers) > 0 && len(rows) > 0 {
 		sort.Slice(rows, func(i, j int) bool {
-			if h.RowPreLess != nil && h.RowPreLess(rows[i], rows[j]) {
-				return true
-			}
 			for _, hdr := range headers {
 				d1 := rows[i].CellDataForSort(hdr.index)
 				d2 := rows[j].CellDataForSort(hdr.index)
