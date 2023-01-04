@@ -176,7 +176,7 @@ func (d *JobDialog) createPrinterPopup(parent *unison.Panel) {
 }
 
 func (d *JobDialog) rebuildPrinterPopup() {
-	d.printers.SelectionCallback = nil
+	d.printers.SelectionChangedCallback = nil
 	d.printers.RemoveAllItems()
 	d.lock.Lock()
 	d.awaitingPrinterUpdate = false
@@ -203,20 +203,26 @@ func (d *JobDialog) rebuildPrinterPopup() {
 		p.NeedsLayout = true
 	}
 	if sel != d.printer {
-		d.printerPopupSelectionHandler(0, sel)
+		d.setPrinter(sel)
 	}
 	if !disabled && d.printer == nil {
 		sel, _ = d.printers.ItemAt(0)
-		d.printerPopupSelectionHandler(0, sel)
+		d.setPrinter(sel)
 	}
 	d.adjustEnablement()
-	d.printers.SelectionCallback = d.printerPopupSelectionHandler
+	d.printers.SelectionChangedCallback = d.printerPopupSelectionHandler
 	if d.dialog != nil {
 		d.dialog.Window().Pack()
 	}
 }
 
-func (d *JobDialog) printerPopupSelectionHandler(_ int, printer *Printer) {
+func (d *JobDialog) printerPopupSelectionHandler(popup *unison.PopupMenu[*Printer]) {
+	if printer, ok := popup.Selected(); ok {
+		d.setPrinter(printer)
+	}
+}
+
+func (d *JobDialog) setPrinter(printer *Printer) {
 	d.printer = printer
 	d.printerID = d.printer.PrinterID
 	var err error
@@ -241,6 +247,7 @@ func (d *JobDialog) printerPopupSelectionHandler(_ int, printer *Printer) {
 	d.orientation.rebuild(d.printerAttributes.SupportedOrientations, d.jobAttributes.Orientation,
 		d.printerAttributes.DefaultOrientation)
 	d.adjustEnablement()
+	d.printers.Select(printer)
 }
 
 func (d *JobDialog) retrieveIcon() *unison.Image {

@@ -11,9 +11,13 @@ package unison
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/richardwilkes/toolbox/collection/slice"
+	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xmath"
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
@@ -54,17 +58,21 @@ type popupMenuItem[T comparable] struct {
 type PopupMenu[T comparable] struct {
 	Panel
 	PopupMenuTheme
-	MenuFactory       MenuFactory
-	SelectionCallback func(index int, item T)
-	items             []*popupMenuItem[T]
-	selectedIndex     int
-	textCache         TextCache
-	pressed           bool
+	MenuFactory              MenuFactory
+	ChoiceMadeCallback       func(popup *PopupMenu[T], index int, item T)
+	SelectionChangedCallback func(popup *PopupMenu[T])
+	items                    []*popupMenuItem[T]
+	selection                map[int]bool
+	textCache                TextCache
+	pressed                  bool
 }
 
 // NewPopupMenu creates a new PopupMenu.
 func NewPopupMenu[T comparable]() *PopupMenu[T] {
-	p := &PopupMenu[T]{PopupMenuTheme: DefaultPopupMenuTheme}
+	p := &PopupMenu[T]{
+		PopupMenuTheme: DefaultPopupMenuTheme,
+		selection:      make(map[int]bool),
+	}
 	p.Self = p
 	p.SetFocusable(true)
 	p.SetSizer(p.DefaultSizes)
@@ -77,6 +85,7 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 	p.MouseUpCallback = p.DefaultMouseUp
 	p.KeyDownCallback = p.DefaultKeyDown
 	p.UpdateCursorCallback = p.DefaultUpdateCursor
+	p.ChoiceMadeCallback = func(popup *PopupMenu[T], index int, _ T) { popup.SelectIndex(index) }
 	return p
 }
 
@@ -143,22 +152,31 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 }
 
 func (p *PopupMenu[T]) textObj() *Text {
-	if p.selectedIndex >= 0 && p.selectedIndex < len(p.items) {
-		if one := p.items[p.selectedIndex]; !one.separator {
-			return one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font)
-		}
+	indexes := p.SelectedIndexes()
+	switch len(indexes) {
+	case 0:
+		return nil
+	case 1:
+		one := p.items[indexes[0]]
+		return one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font)
+	default:
+		desc := p.Font.Descriptor()
+		desc.Slant = ItalicSlant
+		return NewText(i18n.Text("Multiple"), &TextDecoration{Font: desc.Font()})
 	}
-	return nil
 }
 
 // Text the currently shown text.
 func (p *PopupMenu[T]) Text() string {
-	if p.selectedIndex >= 0 && p.selectedIndex < len(p.items) {
-		if one := p.items[p.selectedIndex]; !one.separator {
-			return fmt.Sprintf("%v", one.item)
-		}
+	indexes := p.SelectedIndexes()
+	switch len(indexes) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf("%v", p.items[indexes[0]].item)
+	default:
+		return i18n.Text("Multiple")
 	}
-	return ""
 }
 
 // Click performs any animation associated with a click and triggers the popup menu to appear.
@@ -175,20 +193,27 @@ func (p *PopupMenu[T]) Click() {
 		}
 	}
 	if hasItem {
-		m.Popup(p.RectToRoot(p.ContentRect(true)), p.selectedIndex)
+		index := 0
+		if indexes := p.SelectedIndexes(); len(indexes) > 0 {
+			index = indexes[0]
+		}
+		m.Popup(p.RectToRoot(p.ContentRect(true)), index)
 	}
 }
 
 func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]) MenuItem {
-	return m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
+	item := m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
 		fmt.Sprintf("%v", entry.item), KeyBinding{}, func(mi MenuItem) bool {
 			return entry.enabled
 		}, func(mi MenuItem) {
-			if index != p.SelectedIndex() {
-				p.SelectIndex(index)
-				mi.SetCheckState(OnCheckState)
+			if p.ChoiceMadeCallback != nil {
+				p.ChoiceMadeCallback(p, index, p.items[index].item)
 			}
 		})
+	if p.selection[index] {
+		item.SetCheckState(OnCheckState)
+	}
+	return item
 }
 
 // AddItem appends one or more menu items to the end of the PopupMenu.
@@ -223,14 +248,26 @@ func (p *PopupMenu[T]) IndexOfItem(item T) int {
 
 // RemoveAllItems removes all items from the PopupMenu.
 func (p *PopupMenu[T]) RemoveAllItems() {
-	p.selectedIndex = 0
+	p.selection = make(map[int]bool)
 	p.items = nil
 	p.MarkForRedraw()
 }
 
 // RemoveItem from the PopupMenu.
 func (p *PopupMenu[T]) RemoveItem(item T) {
-	p.RemoveItemAt(p.IndexOfItem(item))
+	index := p.IndexOfItem(item)
+	indexes := p.SelectedIndexes()
+	p.RemoveItemAt(index)
+	for _, one := range indexes {
+		if one >= index {
+			delete(p.selection, one)
+		}
+	}
+	for _, one := range indexes {
+		if one > index {
+			p.selection[one-1] = true
+		}
+	}
 }
 
 // RemoveItemAt the specified index from the PopupMenu.
@@ -238,18 +275,19 @@ func (p *PopupMenu[T]) RemoveItemAt(index int) {
 	if index >= 0 {
 		length := len(p.items)
 		if index < length {
-			if p.selectedIndex == index {
-				if p.selectedIndex > length-2 {
-					p.selectedIndex = length - 2
-					if p.selectedIndex < 0 {
-						p.selectedIndex = 0
-					}
-				}
-				p.MarkForRedraw()
-			} else if p.selectedIndex > index {
-				p.selectedIndex--
-			}
+			indexes := p.SelectedIndexes()
 			p.items = slice.ZeroedDelete(p.items, index, index+1)
+			for _, one := range indexes {
+				if one >= index {
+					delete(p.selection, one)
+				}
+			}
+			for _, one := range indexes {
+				if one > index {
+					p.selection[one-1] = true
+				}
+			}
+			p.MarkForRedraw()
 		}
 	}
 }
@@ -284,28 +322,60 @@ func (p *PopupMenu[T]) SetItemAt(index int, item T, enabled bool) {
 	}
 }
 
-// Selected returns the currently selected item. 'ok' will be false if there is no selection.
+// Selected returns the currently selected item. 'ok' will be false if there is no selection. The first selected item
+// will be returned if there are multiple.
 func (p *PopupMenu[T]) Selected() (item T, ok bool) {
-	return p.ItemAt(p.selectedIndex)
+	return p.ItemAt(p.SelectedIndex())
 }
 
-// SelectedIndex returns the currently selected item index.
+// SelectedIndex returns the currently selected item index. -1 will be returned if no selection is present. The first
+// selected item will be returned if there are multiple.
 func (p *PopupMenu[T]) SelectedIndex() int {
-	return p.selectedIndex
+	if indexes := p.SelectedIndexes(); len(indexes) != 0 {
+		return indexes[0]
+	}
+	return -1
 }
 
-// Select an item.
-func (p *PopupMenu[T]) Select(item T) {
-	p.SelectIndex(p.IndexOfItem(item))
+// SelectedIndexes returns the currently selected item indexes.
+func (p *PopupMenu[T]) SelectedIndexes() []int {
+	var indexes []int
+	for _, sel := range maps.Keys(p.selection) {
+		if sel >= 0 && sel < len(p.items) {
+			if one := p.items[sel]; !one.separator {
+				indexes = append(indexes, sel)
+			}
+		}
+	}
+	sort.Ints(indexes)
+	return indexes
 }
 
-// SelectIndex selects an item by its index.
-func (p *PopupMenu[T]) SelectIndex(index int) {
-	if index != p.selectedIndex && index >= 0 && index < len(p.items) && !p.items[index].separator {
-		p.selectedIndex = index
+// Select one or more items, replacing any existing selection.
+func (p *PopupMenu[T]) Select(item ...T) {
+	var indexes []int
+	for _, one := range item {
+		if index := p.IndexOfItem(one); index != -1 {
+			indexes = append(indexes, index)
+		}
+	}
+	p.SelectIndex(indexes...)
+}
+
+// SelectIndex selects one or more items by their indexes, replacing any existing selection.
+func (p *PopupMenu[T]) SelectIndex(index ...int) {
+	indexes := p.SelectedIndexes()
+	p.selection = make(map[int]bool)
+	for _, one := range index {
+		if one >= 0 && one < len(p.items) && !p.items[one].separator {
+			p.selection[one] = true
+		}
+	}
+	newIndexes := p.SelectedIndexes()
+	if !slices.Equal(indexes, newIndexes) {
 		p.MarkForRedraw()
-		if p.SelectionCallback != nil {
-			p.SelectionCallback(index, p.items[index].item)
+		if p.SelectionChangedCallback != nil {
+			p.SelectionChangedCallback(p)
 		}
 	}
 }

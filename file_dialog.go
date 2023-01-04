@@ -112,7 +112,7 @@ func (d *fileDialog) createContent() *Panel {
 	})
 
 	d.parentDirPopup = NewPopupMenu[*parentDirItem]()
-	d.parentDirPopup.SelectionCallback = d.parentDirPopupSelectionHandler
+	d.parentDirPopup.SelectionChangedCallback = d.parentDirPopupSelectionHandler
 	d.rebuildParentDirs()
 	content.AddChild(d.parentDirPopup)
 	d.parentDirPopup.SetLayoutData(&FlexLayoutData{
@@ -165,7 +165,8 @@ func (d *fileDialog) createContent() *Panel {
 				d.filterPopup.AddItem("*." + ext)
 			}
 		}
-		d.filterPopup.SelectionCallback = d.filterHandler
+		d.filterPopup.SelectionChangedCallback = d.filterHandler
+		d.filterPopup.SelectIndex(0)
 		content.AddChild(d.filterPopup)
 		d.filterPopup.SetLayoutData(&FlexLayoutData{
 			HSpan:  1,
@@ -203,15 +204,18 @@ func (d *fileDialog) rebuildParentDirs() {
 		}
 		dir = parent
 	}
+	d.parentDirPopup.SelectIndex(0)
 	d.parentDirPopup.MarkForLayoutAndRedraw()
 	if p := d.parentDirPopup.Parent(); p != nil {
 		p.NeedsLayout = true
 	}
 }
 
-func (d *fileDialog) parentDirPopupSelectionHandler(index int, item *parentDirItem) {
-	if index != 0 {
-		d.changeDirTo(item.path)
+func (d *fileDialog) parentDirPopupSelectionHandler(popup *PopupMenu[*parentDirItem]) {
+	if popup.SelectedIndex() > 0 {
+		if item, ok := popup.Selected(); ok {
+			d.changeDirTo(item.path)
+		}
 	}
 }
 
@@ -343,7 +347,8 @@ func (d *fileDialog) rebuildFileList() {
 	}
 }
 
-func (d *fileDialog) filterHandler(index int, _ string) {
+func (d *fileDialog) filterHandler(popup *PopupMenu[string]) {
+	index := popup.SelectedIndex()
 	if index == 0 {
 		d.currentExt = strings.Join(d.readable, ";")
 	} else {
