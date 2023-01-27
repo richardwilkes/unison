@@ -39,10 +39,20 @@ type DrawableSVG struct {
 }
 
 // SVG holds an SVG path. Note that this is a subset of SVG: just the 'd' attribute of the 'path' directive.
+//
+// If using a Color with a pre-defined SVG image then it may be desirable to apply the color
+// to a copy of the image, to avoid affecting the pre-defined image.
+//
+//	redDocumentSVG = *unison.DocumentSVG
+//	redDocumentSVG.Color = unison.Red
 type SVG struct {
 	size          Size
 	unscaledPath  *Path
 	scaledPathMap map[Size]*Path
+	// If the Color is opaque, it will be used for the path's paint color when drawing.
+	// The zero value is transparent so it will be ignored, and the canvas's paint's color
+	// will be used.
+	Color Color
 }
 
 // MustSVG creates a new SVG and panics if an error would be generated. The 'size' should be gotten from the original
@@ -108,5 +118,8 @@ func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, 
 	defer canvas.Restore()
 	offset := s.SVG.OffsetToCenterWithinScaledSize(rect.Size)
 	canvas.Translate(rect.X+offset.X, rect.Y+offset.Y)
+	if s.SVG.Color.Opaque() {
+		paint.SetColor(s.SVG.Color)
+	}
 	canvas.DrawPath(s.SVG.PathForSize(rect.Size), paint)
 }
