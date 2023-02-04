@@ -1954,6 +1954,20 @@ func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16
 	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Glyphs)))[:len(glyphs)], glyphs)
 }
 
+func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, positions []float32, y float32) {
+	type textBlobBuilderRunBuffer struct {
+		Glyphs   unsafe.Pointer
+		Pos      unsafe.Pointer
+		UTF8Text unsafe.Pointer
+		Clusters unsafe.Pointer
+	}
+	r1, _, _ := skTextBlobBuilderAllocRunPosHProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
+		uintptr(math.Float32bits(y)), 0)
+	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
+	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Glyphs)))[:len(glyphs)], glyphs)
+	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Pos)))[:len(positions)], positions)
+}
+
 func TextBlobBuilderDelete(builder TextBlobBuilder) {
 	skTextBlobBuilderDeleteProc.Call(uintptr(builder))
 }
