@@ -74,7 +74,7 @@ type Font interface {
 	SimpleWidth(str string) float32
 	// TextBlobPosH creates a text blob for glyphs, with specified horizontal positions.
 	// The glyphs and positions slices should have the same length.
-	TextBlobPosH(glyphs []uint16, positions []float32, y float32) TextBlob
+	TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob
 	// Descriptor returns a FontDescriptor for this Font.
 	Descriptor() FontDescriptor
 	skiaFont() skia.Font
@@ -164,12 +164,12 @@ func (f *fontImpl) SimpleWidth(str string) float32 {
 	return skia.FontMeasureText(f.font, str)
 }
 
-func (f *fontImpl) TextBlobPosH(glyphs []uint16, positions []float32, y float32) TextBlob {
+func (f *fontImpl) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob {
 	builder := skia.TextBlobBuilderNew()
 	skia.TextBlobBuilderAllocRunPosH(builder, f.font, glyphs, positions, y)
 	blob := skia.TextBlobBuilderMake(builder)
 	skia.TextBlobBuilderDelete(builder)
-	return *newTextBlob(blob)
+	return newTextBlob(blob)
 }
 
 func (f *fontImpl) skiaFont() skia.Font {

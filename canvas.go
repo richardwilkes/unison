@@ -237,7 +237,7 @@ func (c *Canvas) DrawSimpleString(str string, x, y float32, font Font, paint *Pa
 }
 
 // DrawTextBlob draws text from a text blob.
-func (c *Canvas) DrawTextBlob(blob TextBlob, x, y float32, paint *Paint) {
+func (c *Canvas) DrawTextBlob(blob *TextBlob, x, y float32, paint *Paint) {
 	skia.CanvasDrawTextBlob(c.canvas, blob.TextBlob, x, y, paint.paint)
 }
 

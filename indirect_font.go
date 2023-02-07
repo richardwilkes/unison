@@ -75,7 +75,7 @@ func (f *IndirectFont) Descriptor() FontDescriptor {
 	return f.Font.Descriptor()
 }
 
-func (f *IndirectFont) TextBlobPosH(glyphs []uint16, positions []float32, y float32) TextBlob {
+func (f *IndirectFont) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob {
 	return f.Font.TextBlobPosH(glyphs, positions, y)
 }
 
