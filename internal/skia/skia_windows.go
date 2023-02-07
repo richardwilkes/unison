@@ -303,6 +303,15 @@ var (
 	skTypeFaceUnrefProc                       *syscall.Proc
 )
 
+// textBlobBuilderRunBuffer supplies storage for glyphs and positions within a run.
+// It has the same layout as skia's SkTextBlobBuilder::RunBuffer type.
+type textBlobBuilderRunBuffer struct {
+	Glyphs   unsafe.Pointer
+	Pos      unsafe.Pointer
+	UTF8Text unsafe.Pointer
+	Clusters unsafe.Pointer
+}
+
 func init() {
 	dir, err := os.UserCacheDir()
 	jot.FatalIfErr(err)
@@ -1942,12 +1951,6 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 }
 
 func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, x, y float32) {
-	type textBlobBuilderRunBuffer struct {
-		Glyphs   unsafe.Pointer
-		Pos      unsafe.Pointer
-		UTF8Text unsafe.Pointer
-		Clusters unsafe.Pointer
-	}
 	r1, _, _ := skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), 0)
 	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
@@ -1955,12 +1958,6 @@ func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16
 }
 
 func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, positions []float32, y float32) {
-	type textBlobBuilderRunBuffer struct {
-		Glyphs   unsafe.Pointer
-		Pos      unsafe.Pointer
-		UTF8Text unsafe.Pointer
-		Clusters unsafe.Pointer
-	}
 	r1, _, _ := skTextBlobBuilderAllocRunPosHProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(y)), 0)
 	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
