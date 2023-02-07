@@ -93,6 +93,7 @@ type Window struct {
 	inModal             bool
 	inMouseDown         bool
 	cursorHidden        bool
+	lastDrawDuration    time.Duration
 }
 
 // WindowOption holds an option for window creation.
@@ -849,11 +850,18 @@ func (w *Window) draw() {
 		jot.Error(err)
 		return
 	}
+	start := time.Now()
 	c.Save()
 	w.Draw(c)
 	c.Restore()
 	c.Flush()
+	w.lastDrawDuration = time.Since(start)
 	w.wnd.SwapBuffers()
+}
+
+// LastDrawDuration returns the duration of the window's most recent draw.
+func (w *Window) LastDrawDuration() time.Duration {
+	return w.lastDrawDuration
 }
 
 // MarkForRedraw marks this window for drawing at the next update.
