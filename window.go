@@ -297,6 +297,11 @@ func (w *Window) commonKeyCallbackForGLFW(key glfw.Key, action glfw.Action, mods
 	}
 }
 
+// LastKeyModifiers returns the last set of key modifiers that this window has received.
+func (w *Window) LastKeyModifiers() Modifiers {
+	return w.lastKeyModifiers
+}
+
 func glfwEnabled(enabled bool) int {
 	if enabled {
 		return glfw.True
