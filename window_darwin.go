@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/go-gl/glfw/v3.3/glfw"
+import (
+	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/unison/internal/ns"
+)
 
 func (w *Window) frameRect() Rect {
 	left, top, right, bottom := w.wnd.GetFrameSize()
@@ -48,4 +51,11 @@ func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, code int, acti
 	if w.okToProcess() {
 		w.commonKeyCallbackForGLFW(key, action, mods)
 	}
+}
+
+// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
+// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
+// menu is being displayed.
+func (w *Window) CurrentKeyModifiers() Modifiers {
+	return modifiersFromEventModifierFlags(ns.CurrentModifierFlags())
 }

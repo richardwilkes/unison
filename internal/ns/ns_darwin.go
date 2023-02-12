@@ -30,6 +30,10 @@ double doubleClickInterval() {
 	return [NSEvent doubleClickInterval];
 }
 
+NSEventModifierFlags eventModifierFlags() {
+	return NSEvent.modifierFlags;
+}
+
 typedef CFTypeRef NSOpenPanelRef;
 
 NSOpenPanelRef newOpenPanel() {
@@ -428,6 +432,10 @@ func Beep() {
 
 func DoubleClickInterval() time.Duration {
 	return time.Duration(C.doubleClickInterval()*1000) * time.Millisecond
+}
+
+func CurrentModifierFlags() EventModifierFlags {
+	return EventModifierFlags(C.eventModifierFlags())
 }
 
 type String C.CFStringRef

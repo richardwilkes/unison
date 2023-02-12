@@ -70,3 +70,10 @@ func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, code int, acti
 		w.commonKeyCallbackForGLFW(key, action, mods)
 	}
 }
+
+// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
+// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
+// menu is being displayed.
+func (w *Window) CurrentKeyModifiers() Modifiers {
+	return w.LastKeyModifiers()
+}
