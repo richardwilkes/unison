@@ -250,6 +250,9 @@ func (mi *menuItem) sizer(hint Size) (min, pref, max Size) {
 		pref.Height = 1
 	} else {
 		pref = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, LeftSide, 0)
+		if !mi.isRoot() {
+			pref.Width += DefaultMenuItemTheme.KeyFont.Baseline() + 2
+		}
 		if !mi.keyBinding.KeyCode.ShouldOmit() {
 			keys := mi.keyBinding.String()
 			if keys != "" {
@@ -289,8 +292,26 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 		t := mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont)
 		t.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
 		size := t.Extents()
-		t.Draw(gc, rect.X, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
+		baseline := DefaultMenuItemTheme.KeyFont.Baseline()
+		shifted := baseline + 2
+		if mi.isRoot() {
+			shifted = 0
+		}
+		t.Draw(gc, rect.X+shifted, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 		if mi.subMenu == nil {
+			if !mi.isRoot() && mi.state != OffCheckState {
+				r := rect
+				r.Width = baseline
+				r.Height = baseline
+				r.Y += (rect.Height - baseline) / 2
+				drawable := &DrawableSVG{Size: NewSize(baseline, baseline)}
+				if mi.state == OnCheckState {
+					drawable.SVG = CheckmarkSVG
+				} else {
+					drawable.SVG = DashSVG
+				}
+				drawable.DrawInRect(gc, r, nil, fg.Paint(gc, r, Fill))
+			}
 			if !mi.keyBinding.KeyCode.ShouldOmit() {
 				keys := mi.keyBinding.String()
 				if keys != "" {
@@ -302,7 +323,6 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				}
 			}
 		} else if !mi.isRoot() {
-			baseline := DefaultMenuItemTheme.KeyFont.Baseline()
 			rect.X = rect.Right() - baseline
 			rect.Width = baseline
 			drawable := &DrawableSVG{
