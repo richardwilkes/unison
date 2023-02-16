@@ -72,8 +72,8 @@ type Font interface {
 	// SimpleWidth returns the width of a string. It does not do font fallback, nor does it consider tabs or line
 	// endings.
 	SimpleWidth(str string) float32
-	// TextBlobPosH creates a text blob for glyphs, with specified horizontal positions.
-	// The glyphs and positions slices should have the same length.
+	// TextBlobPosH creates a text blob for glyphs, with specified horizontal positions. The glyphs and positions slices
+	// should have the same length.
 	TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob
 	// Descriptor returns a FontDescriptor for this Font.
 	Descriptor() FontDescriptor

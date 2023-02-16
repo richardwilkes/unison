@@ -85,6 +85,7 @@ func (f *DynamicFont) Descriptor() FontDescriptor {
 	return f.resolvedFont().Descriptor()
 }
 
+// TextBlobPosH implements Font.
 func (f *DynamicFont) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob {
 	return f.resolvedFont().TextBlobPosH(glyphs, positions, y)
 }
