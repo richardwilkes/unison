@@ -1229,7 +1229,7 @@ func (f *Field) FromSelectionIndex(index int) Point {
 		if f.endsWithLineFeed[i] {
 			lineLength++
 		}
-		if lineLength > index-pos {
+		if lineLength >= index-pos {
 			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
 		}
 		lastHeight = xmath.Max(line.Height(), f.Font.LineHeight())
