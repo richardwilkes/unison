@@ -1962,7 +1962,7 @@ func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []ui
 		uintptr(math.Float32bits(y)), 0)
 	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
 	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Glyphs)))[:len(glyphs)], glyphs)
-	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Pos)))[:len(positions)], positions)
+	copy(((*[1 << 30]float32)(unsafe.Pointer(buffer.Pos)))[:len(positions)], positions)
 }
 
 func TextBlobBuilderDelete(builder TextBlobBuilder) {
