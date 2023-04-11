@@ -78,17 +78,32 @@ func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
 		list := strings.Join(allowed, " ")
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
 	}
-	return d.runModal(cmd, "\n")
+	return d.runModal(cmd, "\n") == ModalResponseOK
 }
 
 func (d *linuxSaveDialog) runZenity(zenity string) bool {
 	ext, allowed := d.prepExt()
+
 	cmd := exec.Command(zenity, "--file-selection", "--save", "--confirm-overwrite",
 		"--filename="+d.InitialDirectory()+"/untitled"+ext)
 	if len(allowed) != 0 {
 		cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
 	}
-	return d.runModal(cmd, "|")
+
+	ret := d.runModal(cmd, "|")
+
+	if ret == ModalResponseError {
+		// retry without "--confirm-overwrite"
+		cmd = exec.Command(zenity, "--file-selection", "--save",
+						"--filename="+d.InitialDirectory()+"/untitled"+ext)
+		if len(allowed) != 0 {
+			cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
+		}
+
+		return d.runModal(cmd, "|") == ModalResponseOK
+	} else {
+		return ret == ModalResponseOK
+	}
 }
 
 func (d *linuxSaveDialog) prepExt() (string, []string) {
@@ -105,14 +120,14 @@ func (d *linuxSaveDialog) prepExt() (string, []string) {
 	return ext, allowed
 }
 
-func (d *linuxSaveDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
+func (d *linuxSaveDialog) runModal(cmd *exec.Cmd, splitOn string) int {
 	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
 	if err != nil {
 		jot.Error(err)
 	}
 	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
 	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
-	return wnd.RunModal() == ModalResponseOK
+	return wnd.RunModal()
 }
 
 func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
@@ -124,12 +139,19 @@ func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 			return
 		}
+		if exitErr.ExitCode() == 255 {
+			code = ModalResponseError
+		}
 		jot.Error(errs.Wrap(err))
 		return
 	}
 	if cmd.ProcessState.ExitCode() != 0 {
+		if cmd.ProcessState.ExitCode() == 255 {
+			code = ModalResponseError
+		}
 		return
 	}
 	d.fallback.(*fileDialog).paths = strings.Split(strings.TrimSuffix(string(out), "\n"), splitOn)
 	code = ModalResponseOK
+	return
 }

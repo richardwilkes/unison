@@ -22,6 +22,7 @@ const (
 	ModalResponseDiscard = iota - 1
 	ModalResponseOK
 	ModalResponseCancel
+	ModalResponseError
 	ModalResponseUserBase = 100
 )
 
