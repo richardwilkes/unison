@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -57,7 +58,6 @@ func (d *linuxSaveDialog) RunModal() bool {
 	if os.Getenv("KDE_FULL_SESSION") != "" && kdialog != "" {
 		return d.runKDialog(kdialog)
 	}
-
 	var zenity string
 	if zenity, err = exec.LookPath("zenity"); err != nil {
 		zenity = ""
@@ -82,9 +82,17 @@ func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
 }
 
 func (d *linuxSaveDialog) runZenity(zenity string) bool {
+	output, err := exec.Command(zenity, "--help-file-selection").CombinedOutput()
+	if err != nil {
+		jot.Error(errs.Wrap(err))
+		return false
+	}
+	cmd := exec.Command(zenity, "--file-selection", "--save")
+	if bytes.Contains(output, []byte("confirm-overwrite")) {
+		cmd.Args = append(cmd.Args, "--confirm-overwrite")
+	}
 	ext, allowed := d.prepExt()
-	cmd := exec.Command(zenity, "--file-selection", "--save", "--confirm-overwrite",
-		"--filename="+d.InitialDirectory()+"/untitled"+ext)
+	cmd.Args = append(cmd.Args, "--filename="+d.InitialDirectory()+"/untitled"+ext)
 	if len(allowed) != 0 {
 		cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
 	}
