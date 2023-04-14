@@ -16,13 +16,13 @@ var (
 	AccentColor              = &ThemeColor{Light: RGB(0, 128, 128), Dark: RGB(100, 153, 153)}
 	BackgroundColor          = &ThemeColor{Light: RGB(238, 238, 238), Dark: RGB(48, 48, 48)}
 	BandingColor             = &ThemeColor{Light: RGB(235, 235, 220), Dark: RGB(42, 42, 42)}
-	ContentColor             = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(32, 32, 32)}
+	ContentColor             = &ThemeColor{Light: RGB(248, 248, 248), Dark: RGB(32, 32, 32)}
 	ControlColor             = &ThemeColor{Light: RGB(248, 248, 255), Dark: RGB(64, 64, 64)}
 	ControlEdgeColor         = &ThemeColor{Light: RGB(96, 96, 96), Dark: RGB(96, 96, 96)}
 	ControlPressedColor      = &ThemeColor{Light: RGB(0, 96, 160), Dark: RGB(0, 96, 160)}
 	DividerColor             = &ThemeColor{Light: RGB(192, 192, 192), Dark: RGB(102, 102, 102)}
 	DropAreaColor            = &ThemeColor{Light: RGB(204, 0, 51), Dark: RGB(255, 0, 0)}
-	EditableColor            = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(32, 32, 32)}
+	EditableColor            = &ThemeColor{Light: RGB(255, 255, 255), Dark: RGB(16, 16, 16)}
 	ErrorColor               = &ThemeColor{Light: RGB(192, 64, 64), Dark: RGB(115, 37, 37)}
 	IconButtonColor          = &ThemeColor{Light: RGB(96, 96, 96), Dark: RGB(128, 128, 128)}
 	IconButtonPressedColor   = &ThemeColor{Light: RGB(0, 96, 160), Dark: RGB(0, 96, 160)}
