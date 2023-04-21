@@ -15,32 +15,42 @@ import (
 )
 
 func (w *Window) frameRect() Rect {
-	left, top, right, bottom := w.wnd.GetFrameSize()
-	return NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+	if w.IsValid() {
+		left, top, right, bottom := w.wnd.GetFrameSize()
+		return NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+	}
+	return NewRect(0, 0, 1, 1)
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
 func (w *Window) ContentRect() Rect {
-	x, y := w.wnd.GetPos()
-	width, height := w.wnd.GetSize()
-	return NewRect(float32(x), float32(y), float32(width), float32(height))
+	if w.IsValid() {
+		x, y := w.wnd.GetPos()
+		width, height := w.wnd.GetSize()
+		return NewRect(float32(x), float32(y), float32(width), float32(height))
+	}
+	return NewRect(0, 0, 1, 1)
 }
 
 // SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
 // rect and then applying it to the window.
 func (w *Window) SetContentRect(rect Rect) {
-	rect = w.adjustContentRectForMinMax(rect)
-	w.lastContentRect = rect
-	w.wnd.SetPos(int(rect.X), int(rect.Y))
-	tx := int(rect.Width)
-	ty := int(rect.Height)
-	w.wnd.SetSize(tx, ty)
+	if w.IsValid() {
+		rect = w.adjustContentRectForMinMax(rect)
+		w.lastContentRect = rect
+		w.wnd.SetPos(int(rect.X), int(rect.Y))
+		tx := int(rect.Width)
+		ty := int(rect.Height)
+		w.wnd.SetSize(tx, ty)
+	}
 }
 
 // Show makes the window visible, if it was previously hidden. If the window is already visible or is in full screen
 // mode, this function does nothing.
 func (w *Window) Show() {
-	w.wnd.Show()
+	if w.IsValid() {
+		w.wnd.Show()
+	}
 }
 
 func (w *Window) convertMouseLocation(x, y float64) Point {

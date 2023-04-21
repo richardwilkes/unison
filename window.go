@@ -496,10 +496,9 @@ func (w *Window) Dispose() {
 	}
 	w.removeFromWindowList()
 	delete(windowMap, w.wnd)
-	if w.valid {
+	if w.IsValid() {
 		w.valid = false
 		w.surface.dispose()
-		delete(windowMap, w.wnd)
 		w.wnd.Destroy()
 		w.wnd = nil
 	}
@@ -520,7 +519,9 @@ func (w *Window) Title() string {
 func (w *Window) SetTitle(title string) {
 	if w.title != title {
 		w.title = title
-		w.wnd.SetTitle(title)
+		if w.IsValid() {
+			w.wnd.SetTitle(title)
+		}
 	}
 }
 
@@ -542,7 +543,9 @@ func (w *Window) SetTitleIcons(images []*Image) {
 			imgs = append(imgs, nrgba)
 		}
 	}
-	w.wnd.SetIcon(imgs)
+	if w.IsValid() {
+		w.wnd.SetIcon(imgs)
+	}
 }
 
 // Content returns the content panel for the window.
@@ -776,34 +779,42 @@ func collectFocusables(current, target *Panel, focusables []*Panel) (match int, 
 
 // IsVisible returns true if the window is currently being shown.
 func (w *Window) IsVisible() bool {
-	if !w.valid {
-		return false
+	if w.IsValid() {
+		return w.wnd.GetAttrib(glfw.Visible) == glfw.True
 	}
-	return w.wnd.GetAttrib(glfw.Visible) == glfw.True
+	return false
 }
 
 // Hide hides the window, if it was previously visible. If the window is already hidden or is in full screen mode, this
 // function does nothing.
 func (w *Window) Hide() {
-	w.wnd.Hide()
+	if w.IsValid() {
+		w.wnd.Hide()
+	}
 }
 
 // ToFront attempts to bring the window to the foreground and give it the keyboard focus. If it is hidden, it will be
 // made visible first.
 func (w *Window) ToFront() {
-	w.wnd.Show()
-	w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
-	w.wnd.Focus()
+	if w.IsValid() {
+		w.wnd.Show()
+		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
+		w.wnd.Focus()
+	}
 }
 
 // Minimize performs the minimize function on the window.
 func (w *Window) Minimize() {
-	w.wnd.Iconify()
+	if w.IsValid() {
+		w.wnd.Iconify()
+	}
 }
 
 // Zoom performs the zoom function on the window.
 func (w *Window) Zoom() {
-	w.wnd.Maximize()
+	if w.IsValid() {
+		w.wnd.Maximize()
+	}
 }
 
 // Resizable returns true if the window can be resized by the user.
@@ -813,12 +824,18 @@ func (w *Window) Resizable() bool {
 
 // MouseLocation returns the current mouse location relative to this window.
 func (w *Window) MouseLocation() Point {
-	return w.convertMouseLocation(w.wnd.GetCursorPos())
+	if w.IsValid() {
+		return w.convertMouseLocation(w.wnd.GetCursorPos())
+	}
+	return Point{}
 }
 
 // BackingScale returns the scale of the backing store for this window.
 func (w *Window) BackingScale() (x, y float32) {
-	return w.wnd.GetContentScale()
+	if w.IsValid() {
+		return w.wnd.GetContentScale()
+	}
+	return 1, 1
 }
 
 // Draw the window contents.
@@ -842,26 +859,28 @@ func (w *Window) Draw(c *Canvas) {
 
 func (w *Window) draw() {
 	RebuildDynamicColors()
-	sx, sy := w.BackingScale()
-	w.wnd.MakeContextCurrent()
-	if !glInited {
-		if err := gl.Init(); err != nil {
-			jot.Fatal(1, errs.Wrap(err))
+	if w.IsValid() {
+		sx, sy := w.BackingScale()
+		w.wnd.MakeContextCurrent()
+		if !glInited {
+			if err := gl.Init(); err != nil {
+				jot.Fatal(1, errs.Wrap(err))
+			}
+			glInited = true
 		}
-		glInited = true
+		c, err := w.surface.prepareCanvas(w.ContentRect().Size, w.LocalContentRect(), sx, sy)
+		if err != nil {
+			jot.Error(err)
+			return
+		}
+		start := time.Now()
+		c.Save()
+		w.Draw(c)
+		c.Restore()
+		c.Flush()
+		w.lastDrawDuration = time.Since(start)
+		w.wnd.SwapBuffers()
 	}
-	c, err := w.surface.prepareCanvas(w.ContentRect().Size, w.LocalContentRect(), sx, sy)
-	if err != nil {
-		jot.Error(err)
-		return
-	}
-	start := time.Now()
-	c.Save()
-	w.Draw(c)
-	c.Restore()
-	c.Flush()
-	w.lastDrawDuration = time.Since(start)
-	w.wnd.SwapBuffers()
 }
 
 // LastDrawDuration returns the duration of the window's most recent draw.
@@ -888,12 +907,16 @@ func (w *Window) FlushDrawing() {
 
 // HideCursor hides the cursor.
 func (w *Window) HideCursor() {
-	w.wnd.SetInputMode(glfw.CursorMode, glfw.CursorHidden)
+	if w.IsValid() {
+		w.wnd.SetInputMode(glfw.CursorMode, glfw.CursorHidden)
+	}
 }
 
 // ShowCursor shows the cursor.
 func (w *Window) ShowCursor() {
-	w.wnd.SetInputMode(glfw.CursorMode, glfw.CursorNormal)
+	if w.IsValid() {
+		w.wnd.SetInputMode(glfw.CursorMode, glfw.CursorNormal)
+	}
 }
 
 // HideCursorUntilMouseMoves hides the cursor until the mouse is moved.
@@ -977,7 +1000,9 @@ func (w *Window) updateCursor(target *Panel, where Point) {
 	if w.cursor != cursor {
 		w.cursor = cursor
 		w.restoreHiddenCursor()
-		w.wnd.SetCursor(w.cursor)
+		if w.IsValid() {
+			w.wnd.SetCursor(w.cursor)
+		}
 	}
 }
 
