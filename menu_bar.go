@@ -11,7 +11,9 @@ package unison
 
 import (
 	"fmt"
+	"runtime"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/i18n"
 )
@@ -40,10 +42,12 @@ const (
 	HideItemID
 	HideOthersItemID
 	ShowAllItemID
-	PopupMenuTemporaryBaseID
-	ContextMenuIDFlag = 1 << 15 // Should be or'd into IDs for context menus
-	UserBaseID        = 5000
-	MaxUserBaseID     = ContextMenuIDFlag - 1
+	WindowMenuItemBaseID
+	PopupMenuTemporaryBaseID = WindowMenuItemBaseID + maxWindowsListed
+	UserBaseID               = 5000
+	ContextMenuIDFlag        = 1 << 15 // Should be or'd into IDs for context menus
+	MaxUserBaseID            = ContextMenuIDFlag - 1
+	maxWindowsListed         = 100
 )
 
 // InsertStdMenus adds the standard menus to the menu bar.
@@ -133,12 +137,56 @@ func InsertPreferencesItem(m Menu, atIndex int, prefsHandler func(MenuItem)) {
 
 // NewWindowMenu creates a standard 'Window' menu.
 func NewWindowMenu(f MenuFactory, updater func(Menu)) Menu {
+	if runtime.GOOS != toolbox.MacOS || f.BarIsPerWindow() {
+		if updater != nil {
+			u := updater
+			updater = func(m Menu) {
+				windowListUpdater(m)
+				u(m)
+			}
+		} else {
+			updater = windowListUpdater
+		}
+	}
 	m := f.NewMenu(WindowMenuID, i18n.Text("Window"), updater)
 	InsertMinimizeItem(m, -1)
 	InsertZoomItem(m, -1)
 	m.InsertSeparator(-1, false)
 	InsertBringAllToFrontItem(m, -1)
 	return m
+}
+
+func windowListUpdater(m Menu) {
+	if m.ID() == WindowMenuID {
+		for i := m.Count() - 1; i >= 0; i-- {
+			mi := m.ItemAtIndex(i)
+			if !mi.IsSeparator() {
+				if id := mi.ID(); id < WindowMenuItemBaseID || id >= PopupMenuTemporaryBaseID {
+					break
+				}
+			}
+			m.RemoveItem(i)
+		}
+		if len(windowList) != 0 {
+			m.InsertSeparator(-1, false)
+			id := WindowMenuItemBaseID
+			f := m.Factory()
+			active := ActiveWindow()
+			for _, wnd := range windowList {
+				enabled := active != wnd
+				mi := f.NewItem(id, wnd.Title(), KeyBinding{}, func(_ MenuItem) bool { return enabled },
+					func(_ MenuItem) { wnd.ToFront() })
+				if active == wnd {
+					mi.SetCheckState(OnCheckState)
+				}
+				m.InsertItem(-1, mi)
+				id++
+				if id >= PopupMenuTemporaryBaseID {
+					break
+				}
+			}
+		}
+	}
 }
 
 // InsertMinimizeItem creates the standard "Minimize" menu item that will issue the Minimize command to the currently
