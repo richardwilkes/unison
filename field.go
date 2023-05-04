@@ -1222,19 +1222,19 @@ func (f *Field) FromSelectionIndex(index int) Point {
 	index = xmath.Max(xmath.Min(index, len(f.runes)), 0)
 	rect := f.ContentRect(false)
 	y := rect.Y + f.scrollOffset.Y
-	pos := 0
+	start := 0
 	var lastHeight float32
 	for i, line := range f.lines {
-		lineLength := len(line.Runes())
+		length := len(line.Runes())
 		if f.endsWithLineFeed[i] {
-			lineLength++
+			length++
 		}
-		if lineLength >= index-pos {
-			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-pos)+f.scrollOffset.X, y)
+		if index < start+length {
+			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-start)+f.scrollOffset.X, y)
 		}
 		lastHeight = xmath.Max(line.Height(), f.Font.LineHeight())
 		y += lastHeight
-		pos += lineLength
+		start += length
 	}
 	return NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y-lastHeight)
 }
