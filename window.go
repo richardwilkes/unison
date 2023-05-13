@@ -1159,7 +1159,7 @@ func (w *Window) mouseWheel(where, delta Point, mod Modifiers) {
 		}
 		panel = panel.parent
 	}
-	if w.lastMouseDownPanel != nil {
+	if w.inMouseDown && w.lastMouseDownPanel != nil {
 		w.mouseDrag(where, w.lastButton, mod)
 	} else {
 		w.mouseMove(where, mod)
