@@ -251,7 +251,7 @@ func (mi *menuItem) sizer(hint Size) (min, pref, max Size) {
 	} else {
 		pref = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, LeftSide, 0)
 		if !mi.isRoot() {
-			pref.Width += DefaultMenuItemTheme.KeyFont.Baseline() + 2
+			pref.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
 		}
 		if !mi.keyBinding.KeyCode.ShouldOmit() {
 			keys := mi.keyBinding.String()
@@ -293,9 +293,9 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 		t.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
 		size := t.Extents()
 		baseline := DefaultMenuItemTheme.KeyFont.Baseline()
-		shifted := baseline + 2
-		if mi.isRoot() {
-			shifted = 0
+		var shifted float32
+		if !mi.isRoot() {
+			shifted = baseline + 2
 		}
 		t.Draw(gc, rect.X+shifted, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 		if mi.subMenu == nil {
