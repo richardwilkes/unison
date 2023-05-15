@@ -20,11 +20,6 @@ type TextCache struct {
 // sure to call .ReplacePaint() with the paint you want to use. Likewise, underline and strike through will be false,
 // so calls to .ReplaceUnderline() and/or .ReplaceStrikeThrough() should be made to enable them, if desired.
 func (c *TextCache) Text(str string, font Font) *Text {
-	if str == "" {
-		c.str = ""
-		c.text = nil
-		return nil
-	}
 	desc := font.Descriptor()
 	if c.text == nil || str != c.str || desc != c.font {
 		c.str = str
