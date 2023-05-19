@@ -78,6 +78,10 @@ func ContextMakeGL(gl GLInterface) DirectContext {
 	return C.gr_direct_context_make_gl(gl)
 }
 
+func ContextDelete(ctx DirectContext) {
+	C.gr_direct_context_delete(ctx)
+}
+
 func ContextAbandonContext(ctx DirectContext) {
 	C.gr_direct_context_abandon_context(ctx)
 }

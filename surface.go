@@ -33,10 +33,7 @@ type surface struct {
 func (s *surface) prepareCanvas(size Size, dirty Rect, scaleX, scaleY float32) (*Canvas, error) {
 	if s.size != size || scaleX != s.scaleX || scaleY != s.scaleY {
 		if s.surface != nil {
-			skia.SurfaceUnref(s.surface)
-			s.surface = nil
-			skia.BackendRenderTargetDelete(s.backend)
-			s.backend = nil
+			s.dispose()
 		}
 		s.size = size
 		s.scaleX = scaleX
@@ -78,7 +75,7 @@ func (s *surface) dispose() {
 		s.backend = nil
 	}
 	if s.context != nil {
-		skia.ContextAbandonContext(s.context)
+		skia.ContextDelete(s.context)
 		s.context = nil
 	}
 }
