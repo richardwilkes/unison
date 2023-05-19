@@ -34,7 +34,7 @@ var (
 	grBackendRenderTargetNewGLProc            *syscall.Proc
 	grBackendRenderTargetDeleteProc           *syscall.Proc
 	grContextMakeGLProc                       *syscall.Proc
-	gfContextDeleteProc                       *syscall.Proc
+	grContextDeleteProc                       *syscall.Proc
 	grContextAbandonContextProc               *syscall.Proc
 	grGLInterfaceCreateNativeInterfaceProc    *syscall.Proc
 	skCanvasGetSaveCountProc                  *syscall.Proc
