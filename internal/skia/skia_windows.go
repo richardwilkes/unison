@@ -34,6 +34,7 @@ var (
 	grBackendRenderTargetNewGLProc            *syscall.Proc
 	grBackendRenderTargetDeleteProc           *syscall.Proc
 	grContextMakeGLProc                       *syscall.Proc
+	gfContextDeleteProc                       *syscall.Proc
 	grContextAbandonContextProc               *syscall.Proc
 	grGLInterfaceCreateNativeInterfaceProc    *syscall.Proc
 	skCanvasGetSaveCountProc                  *syscall.Proc
@@ -328,6 +329,7 @@ func init() {
 	grBackendRenderTargetNewGLProc = skia.MustFindProc("gr_backendrendertarget_new_gl")
 	grBackendRenderTargetDeleteProc = skia.MustFindProc("gr_backendrendertarget_delete")
 	grContextMakeGLProc = skia.MustFindProc("gr_direct_context_make_gl")
+	grContextDeleteProc = skia.MustFindProc("gr_direct_context_delete")
 	grContextAbandonContextProc = skia.MustFindProc("gr_direct_context_abandon_context")
 	grGLInterfaceCreateNativeInterfaceProc = skia.MustFindProc("gr_glinterface_create_native_interface")
 	skCanvasGetSaveCountProc = skia.MustFindProc("sk_canvas_get_save_count")
@@ -643,6 +645,10 @@ func BackendRenderTargetDelete(backend BackendRenderTarget) {
 func ContextMakeGL(gl GLInterface) DirectContext {
 	r1, _, _ := grContextMakeGLProc.Call(uintptr(gl))
 	return DirectContext(r1)
+}
+
+func ContextDelete(ctx DirectContext) {
+	grContextDeleteProc.Call(uintptr(ctx))
 }
 
 func ContextAbandonContext(ctx DirectContext) {
