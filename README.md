@@ -1,3 +1,6 @@
+[![Go Reference](https://pkg.go.dev/badge/github.com/richardwilkes/unison.svg)](https://pkg.go.dev/github.com/richardwilkes/unison)
+[![Go Report Card](https://goreportcard.com/badge/github.com/richardwilkes/unison)](https://goreportcard.com/report/github.com/richardwilkes/unison)
+
 # Unison
 
 A unified graphical user experience toolkit for Go desktop applications. macOS, Windows, and Linux are supported.
