@@ -46,7 +46,6 @@ func (w *Window) ContentRect() Rect {
 func (w *Window) SetContentRect(rect Rect) {
 	if w.IsValid() {
 		rect = w.adjustContentRectForMinMax(rect)
-		w.lastContentRect = rect
 		sx, sy := w.wnd.GetContentScale()
 		rect.X *= sx
 		rect.Y *= sy
@@ -56,14 +55,6 @@ func (w *Window) SetContentRect(rect Rect) {
 		tx := int(rect.Width)
 		ty := int(rect.Height)
 		w.wnd.SetSize(tx, ty)
-	}
-}
-
-// Show makes the window visible, if it was previously hidden. If the window is already visible or is in full screen
-// mode, this function does nothing.
-func (w *Window) Show() {
-	if w.IsValid() {
-		w.wnd.Show()
 	}
 }
 

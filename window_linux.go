@@ -50,7 +50,6 @@ func (w *Window) ContentRect() Rect {
 func (w *Window) SetContentRect(rect Rect) {
 	if w.IsValid() {
 		rect = w.adjustContentRectForMinMax(rect)
-		w.lastContentRect = rect
 		sx, sy := w.wnd.GetContentScale()
 		rect.X *= sx
 		rect.Y *= sy
@@ -75,18 +74,6 @@ func (w *Window) SetContentRect(rect Rect) {
 				return
 			}
 		}
-	}
-}
-
-// Show makes the window visible, if it was previously hidden. If the window is already visible or is in full screen
-// mode, this function does nothing.
-func (w *Window) Show() {
-	if w.IsValid() {
-		w.wnd.Show()
-
-		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
-		// last one we had.
-		w.SetContentRect(w.lastContentRect)
 	}
 }
 

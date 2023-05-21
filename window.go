@@ -52,9 +52,8 @@ type Window struct {
 	MinMaxContentSizeCallback func() (min, max Size)
 	// MovedCallback is called when the window is moved.
 	MovedCallback func()
-	// ResizedCallback is called when the window is resized. If constrained is true, then the resulting window size has
-	// already been constrained and there is no need to do so again.
-	ResizedCallback func(constrained bool)
+	// ResizedCallback is called when the window is resized.
+	ResizedCallback func()
 	// AllowCloseCallback is called when the user has requested that the window be closed. Return true to permit it,
 	// false to cancel the operation. Defaults to always returning true.
 	AllowCloseCallback func() bool
@@ -225,7 +224,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	})
 	w.wnd.SetSizeCallback(func(_ *glfw.Window, width, height int) {
 		if width > 0 && height > 0 {
-			w.resized(false)
+			w.resized()
 		}
 	})
 	w.wnd.SetCloseCallback(func(_ *glfw.Window) {
@@ -352,23 +351,22 @@ func (w *Window) UndoManager() *UndoManager {
 }
 
 func (w *Window) moved() {
+	w.lastContentRect = w.ContentRect()
 	w.root.preMoved(w)
 	if w.MovedCallback != nil {
 		toolbox.Call(w.MovedCallback)
 	}
 }
 
-func (w *Window) resized(constrained bool) {
-	if !constrained {
-		current := w.ContentRect()
-		adjusted := w.adjustContentRectForMinMax(current)
-		if adjusted != current {
-			w.SetContentRect(adjusted)
-		}
+func (w *Window) resized() {
+	current := w.ContentRect()
+	adjusted := w.adjustContentRectForMinMax(current)
+	if adjusted != current {
+		w.SetContentRect(adjusted)
 	}
 	w.ValidateLayout()
 	if w.ResizedCallback != nil {
-		toolbox.Call(func() { w.ResizedCallback(true) })
+		toolbox.Call(func() { w.ResizedCallback() })
 	}
 }
 
@@ -626,6 +624,7 @@ func (w *Window) adjustContentRectForMinMax(rect Rect) Rect {
 	} else if rect.Height > max.Height {
 		rect.Height = max.Height
 	}
+	w.lastContentRect = rect
 	return rect
 }
 
@@ -785,6 +784,20 @@ func (w *Window) IsVisible() bool {
 	return false
 }
 
+// Show makes the window visible, if it was previously hidden. If the window is already visible or is in full screen
+// mode, this function does nothing.
+func (w *Window) Show() {
+	if w.IsValid() {
+		// If another window was previously closed, the back buffer of this window may have been damaged (I've not yet
+		// discovered why that is). To fix this, force regeneration of the surface.
+		w.surface.dispose()
+		w.wnd.Show()
+		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
+		// last one we had.
+		w.SetContentRect(w.lastContentRect)
+	}
+}
+
 // Hide hides the window, if it was previously visible. If the window is already hidden or is in full screen mode, this
 // function does nothing.
 func (w *Window) Hide() {
@@ -797,7 +810,7 @@ func (w *Window) Hide() {
 // made visible first.
 func (w *Window) ToFront() {
 	if w.IsValid() {
-		w.wnd.Show()
+		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
 		w.wnd.Focus()
 	}
