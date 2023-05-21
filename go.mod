@@ -10,10 +10,10 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/json v0.1.0
-	github.com/richardwilkes/toolbox v1.84.0
-	github.com/stretchr/testify v1.8.2
+	github.com/richardwilkes/toolbox v1.85.0
+	github.com/stretchr/testify v1.8.3
 	github.com/yuin/goldmark v1.5.4
-	golang.org/x/exp v0.0.0-20230510235704-dd950f8aeaea
+	golang.org/x/exp v0.0.0-20230519143937-03e91628a987
 	golang.org/x/image v0.7.0
 	golang.org/x/sys v0.8.0
 	golang.org/x/text v0.9.0
