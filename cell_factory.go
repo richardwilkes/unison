@@ -36,7 +36,7 @@ func (f *DefaultCellFactory) CellHeight() float32 {
 }
 
 // CreateCell implements CellFactory.
-func (f *DefaultCellFactory) CreateCell(owner Paneler, element any, row int, foreground, background Ink, selected, focused bool) Paneler {
+func (f *DefaultCellFactory) CreateCell(_ Paneler, element any, _ int, foreground, _ Ink, _, _ bool) Paneler {
 	txtLabel := NewLabel()
 	txtLabel.SetBorder(NewEmptyBorder(Insets{Top: StdVSpacing, Left: StdHSpacing, Bottom: StdVSpacing, Right: StdHSpacing}))
 	txtLabel.Text = fmt.Sprintf("%v", element)

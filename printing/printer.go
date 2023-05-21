@@ -134,10 +134,7 @@ func (p *Printer) Print(ctx context.Context, jobName, mimeType string, fileData 
 	if err != nil {
 		return err
 	}
-	if err = checkIPPStatus(rsp); err != nil {
-		return err
-	}
-	return nil
+	return checkIPPStatus(rsp)
 }
 
 func checkIPPStatus(rsp *goipp.Message) error {

@@ -142,7 +142,7 @@ func (t *dockTab) updateTitle() {
 	}
 }
 
-func (t *dockTab) draw(gc *Canvas, rect Rect) {
+func (t *dockTab) draw(gc *Canvas, _ Rect) {
 	var bg, fg Ink
 	if t.pressed {
 		bg = t.TabFocusedInk
@@ -185,7 +185,7 @@ func (t *dockTab) attemptClose() bool {
 	return false
 }
 
-func (t *dockTab) updateTooltip(where Point, suggestedAvoidInRoot Rect) Rect {
+func (t *dockTab) updateTooltip(_ Point, suggestedAvoidInRoot Rect) Rect {
 	if tip := t.dockable.Tooltip(); tip != "" {
 		t.Tooltip = NewTooltipWithText(t.dockable.Tooltip())
 	} else {
@@ -194,13 +194,13 @@ func (t *dockTab) updateTooltip(where Point, suggestedAvoidInRoot Rect) Rect {
 	return suggestedAvoidInRoot
 }
 
-func (t *dockTab) mouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (t *dockTab) mouseDown(_ Point, _, _ int, _ Modifiers) bool {
 	t.pressed = true
 	t.MarkForRedraw()
 	return true
 }
 
-func (t *dockTab) mouseDrag(where Point, button int, mod Modifiers) bool {
+func (t *dockTab) mouseDrag(where Point, _ int, _ Modifiers) bool {
 	if t.IsDragGesture(where) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			icon := t.TitleIcon()
@@ -216,7 +216,7 @@ func (t *dockTab) mouseDrag(where Point, button int, mod Modifiers) bool {
 	return true
 }
 
-func (t *dockTab) mouseUp(where Point, button int, mod Modifiers) bool {
+func (t *dockTab) mouseUp(where Point, _ int, _ Modifiers) bool {
 	if t.ContentRect(true).ContainsPoint(where) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			switch {

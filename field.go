@@ -275,7 +275,7 @@ func (f *Field) obscureIfNeeded(in []rune) []rune {
 }
 
 // DefaultDraw provides the default drawing.
-func (f *Field) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 	var bg, fg Ink
 	enabled := f.Enabled()
 	switch {
@@ -469,7 +469,7 @@ func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (f *Field) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	oldAnchor := f.selectionAnchor
 	pos := f.ToSelectionIndex(where)
 	var start, end int
@@ -513,7 +513,7 @@ func (f *Field) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 }
 
 // DefaultUpdateCursor provides the default cursor update handling.
-func (f *Field) DefaultUpdateCursor(where Point) *Cursor {
+func (f *Field) DefaultUpdateCursor(_ Point) *Cursor {
 	if f.Enabled() {
 		return TextCursor()
 	}
@@ -521,7 +521,7 @@ func (f *Field) DefaultUpdateCursor(where Point) *Cursor {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}

@@ -30,7 +30,7 @@ type surface struct {
 	scaleY  float32
 }
 
-func (s *surface) prepareCanvas(size Size, dirty Rect, scaleX, scaleY float32) (*Canvas, error) {
+func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Canvas, error) {
 	if s.size != size || scaleX != s.scaleX || scaleY != s.scaleY {
 		if s.surface != nil {
 			s.dispose()

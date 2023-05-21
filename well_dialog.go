@@ -469,7 +469,7 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 	preview.SetLayoutData(&FlexLayoutData{
 		SizeHint: NewSize(64, 64),
 	})
-	preview.DrawCallback = func(canvas *Canvas, dirty Rect) {
+	preview.DrawCallback = func(canvas *Canvas, _ Rect) {
 		r := preview.ContentRect(false)
 		ink := inkRetriever()
 		if pattern, ok := ink.(*Pattern); ok {

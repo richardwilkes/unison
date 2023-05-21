@@ -52,7 +52,7 @@ type tooltipSequencer struct {
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
-	tip.DrawCallback = func(canvas *Canvas, dirty Rect) {
+	tip.DrawCallback = func(canvas *Canvas, _ Rect) {
 		r := tip.ContentRect(true)
 		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, Fill))
 	}

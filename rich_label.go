@@ -64,7 +64,7 @@ func (l *RichLabel) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (l *RichLabel) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 	if l.Drawable == nil && l.Text == nil {
 		return
 	}

@@ -22,14 +22,14 @@ func platformNewDefaultMenuFactory() MenuFactory {
 	return &macMenuFactory{}
 }
 
-func (f *macMenuFactory) BarForWindowNoCreate(window *Window) Menu {
+func (f *macMenuFactory) BarForWindowNoCreate(_ *Window) Menu {
 	if f.bar == nil {
 		return nil
 	}
 	return f.bar
 }
 
-func (f *macMenuFactory) BarForWindow(window *Window, initializer func(Menu)) Menu {
+func (f *macMenuFactory) BarForWindow(_ *Window, initializer func(Menu)) Menu {
 	if f.bar == nil {
 		f.bar = f.newMenu(RootMenuID, "", nil)
 		initializer(f.bar)

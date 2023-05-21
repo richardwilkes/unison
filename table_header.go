@@ -69,7 +69,7 @@ func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...T
 }
 
 // DefaultSizes provides the default sizing.
-func (h *TableHeader[T]) DefaultSizes(hint Size) (min, pref, max Size) {
+func (h *TableHeader[T]) DefaultSizes(_ Size) (min, pref, max Size) {
 	pref.Width = h.table.FrameRect().Size.Width
 	pref.Height = h.heightForColumns()
 	if border := h.Border(); border != nil {
@@ -312,7 +312,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, m
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (h *TableHeader[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	if !h.table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
 		width := h.columnResizeBase + where.X - h.columnResizeStart
 		if width < h.columnResizeOverhead {

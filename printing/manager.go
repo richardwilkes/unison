@@ -73,7 +73,15 @@ func (p *PrintManager) ScanForPrinters(ctx context.Context, printers chan<- *Pri
 }
 
 func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.ServiceEntry, out chan<- *Printer) {
+	defer func() {
+		if out != nil {
+			close(out)
+		}
+	}()
 	for entry := range in {
+		if ctx.Err() != nil {
+			return
+		}
 		m := make(map[string]string, len(entry.Text)+1)
 		for _, text := range entry.Text {
 			parts := strings.SplitN(text, "=", 2)
@@ -109,9 +117,6 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 		if out != nil {
 			out <- printer
 		}
-	}
-	if out != nil {
-		close(out)
 	}
 }
 

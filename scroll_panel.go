@@ -197,7 +197,7 @@ func (s *ScrollPanel) SetPosition(h, v float32) {
 }
 
 // DefaultDraw provides the default drawing.
-func (s *ScrollPanel) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ Rect) {
 	r := s.ContentRect(true)
 	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, Fill))
 }
@@ -230,7 +230,7 @@ func (s *ScrollPanel) Sync() {
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
-func (s *ScrollPanel) DefaultMouseWheel(where, delta Point, mod Modifiers) bool {
+func (s *ScrollPanel) DefaultMouseWheel(_, delta Point, _ Modifiers) bool {
 	multiplier := s.MouseWheelMultiplier()
 	if delta.Y != 0 {
 		dy := delta.Y
@@ -292,7 +292,7 @@ func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBotto
 }
 
 // DefaultFrameChangeInChildHierarchy provides the default frame change in child hierarchy handling.
-func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(panel *Panel) {
+func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
 	if s.content != nil {
 		vs := s.contentView.FrameRect().Size
 		r := s.content.AsPanel().FrameRect()

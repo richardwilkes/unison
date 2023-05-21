@@ -323,7 +323,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	}
 }
 
-func (t *Table[T]) cellParams(row, col int) (fg, bg Ink, selected, indirectlySelected, focused bool) {
+func (t *Table[T]) cellParams(row, _ int) (fg, bg Ink, selected, indirectlySelected, focused bool) {
 	focused = t.Focused()
 	selected = t.IsRowSelected(row)
 	indirectlySelected = !selected && t.IsRowOrAnyParentSelected(row)
@@ -892,7 +892,7 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
 		if t.DoubleClickCallback != nil && len(t.selMap) != 0 {
 			toolbox.Call(t.DoubleClickCallback)
@@ -1467,7 +1467,7 @@ func (t *Table[T]) EventuallySyncToModel() {
 }
 
 // DefaultSizes provides the default sizing.
-func (t *Table[T]) DefaultSizes(hint Size) (min, pref, max Size) {
+func (t *Table[T]) DefaultSizes(_ Size) (min, pref, max Size) {
 	for col := range t.Columns {
 		pref.Width += t.Columns[col].Current
 	}

@@ -252,7 +252,7 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (min, pref, max Si
 }
 
 // PerformLayout implements Layout.
-func (d *DockContainer) PerformLayout(target *Panel) {
+func (d *DockContainer) PerformLayout(_ *Panel) {
 	r := d.ContentRect(false)
 	_, pref, _ := d.header.Sizes(Size{Width: r.Width})
 	d.header.SetFrameRect(NewRect(r.X, r.Y, r.Width, pref.Height))

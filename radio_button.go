@@ -113,7 +113,7 @@ func (r *RadioButton) DefaultFocusGained() {
 }
 
 // DefaultDraw provides the default drawing.
-func (r *RadioButton) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 	rect := r.ContentRect(false)
 	size := r.circleAndLabelSize()
 	switch r.HAlign {
@@ -184,14 +184,14 @@ func (r *RadioButton) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (r *RadioButton) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 	r.Pressed = true
 	r.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (r *RadioButton) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	rect := r.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if r.Pressed != pressed {
@@ -202,7 +202,7 @@ func (r *RadioButton) DefaultMouseDrag(where Point, button int, mod Modifiers) b
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (r *RadioButton) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (r *RadioButton) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
 	rect := r.ContentRect(false)
@@ -216,7 +216,7 @@ func (r *RadioButton) DefaultMouseUp(where Point, button int, mod Modifiers) boo
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
 		r.Click()
 		return true

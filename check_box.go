@@ -114,7 +114,7 @@ func (c *CheckBox) boxSize() float32 {
 }
 
 // DefaultDraw provides the default drawing.
-func (c *CheckBox) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 	contentRect := c.ContentRect(false)
 	rect := contentRect
 	size := c.boxAndLabelSize()
@@ -205,14 +205,14 @@ func (c *CheckBox) updateState() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (c *CheckBox) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 	c.Pressed = true
 	c.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (c *CheckBox) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	rect := c.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if c.Pressed != pressed {
@@ -223,7 +223,7 @@ func (c *CheckBox) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (c *CheckBox) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (c *CheckBox) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
 	rect := c.ContentRect(false)
@@ -237,7 +237,7 @@ func (c *CheckBox) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
 		c.Click()
 		return true

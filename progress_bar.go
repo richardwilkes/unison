@@ -124,7 +124,7 @@ func (p *ProgressBar) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (p *ProgressBar) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ Rect) {
 	bounds := p.ContentRect(false)
 	meter := bounds
 	meter.Width = 0

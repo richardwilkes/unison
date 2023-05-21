@@ -256,7 +256,7 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (l *List[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (l *List[T]) DefaultMouseDown(where Point, _, clickCount int, mod Modifiers) bool {
 	l.suppressScroll = true
 	l.RequestFocus()
 	l.suppressScroll = false
@@ -309,7 +309,7 @@ func (l *List[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modi
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (l *List[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (l *List[T]) DefaultMouseDrag(where Point, _ int, mod Modifiers) bool {
 	if l.pressed {
 		l.wasDragged = true
 		l.Selection.Copy(l.savedSelection)
@@ -341,7 +341,7 @@ func (l *List[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool 
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (l *List[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (l *List[T]) DefaultMouseUp(_ Point, _ int, _ Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
 		if !l.wasDragged && l.lastSel != -1 {
@@ -359,7 +359,7 @@ func (l *List[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
 		if l.DoubleClickCallback != nil && l.Selection.Count() > 0 {
 			toolbox.Call(l.DoubleClickCallback)

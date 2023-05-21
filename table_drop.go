@@ -160,7 +160,7 @@ func (d *TableDrop[T, U]) DataDragExitCallback() {
 }
 
 // DataDragDropCallback handles processing a drop.
-func (d *TableDrop[T, U]) DataDragDropCallback(where Point, data map[string]any) {
+func (d *TableDrop[T, U]) DataDragDropCallback(_ Point, data map[string]any) {
 	var zero T
 	d.inDragOver = false
 	var ok bool

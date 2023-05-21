@@ -171,7 +171,7 @@ func (b *Button) DefaultFocusGained() {
 }
 
 // DefaultDraw provides the default drawing.
-func (b *Button) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 	var fg, bg Ink
 	switch {
 	case b.Pressed || (b.Sticky && b.Selected()):
@@ -217,14 +217,14 @@ func (b *Button) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (b *Button) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (b *Button) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 	b.Pressed = true
 	b.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (b *Button) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (b *Button) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	rect := b.ContentRect(false)
 	pressed := rect.ContainsPoint(where)
 	if b.Pressed != pressed {
@@ -235,7 +235,7 @@ func (b *Button) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (b *Button) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (b *Button) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	rect := b.ContentRect(false)
@@ -263,7 +263,7 @@ func (b *Button) DefaultMouseExit() bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
 		b.Click()
 		return true

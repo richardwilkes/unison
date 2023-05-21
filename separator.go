@@ -72,7 +72,7 @@ func (s *Separator) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (s *Separator) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (s *Separator) DefaultDraw(canvas *Canvas, _ Rect) {
 	rect := s.ContentRect(false)
 	if s.Vertical {
 		if rect.Width > 1 {

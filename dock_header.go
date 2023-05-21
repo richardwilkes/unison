@@ -157,7 +157,7 @@ func (d *dockHeader) partition() (tabs []*dockTab, buttons []*Panel) {
 	return tabs, buttons
 }
 
-func (d *dockHeader) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
+func (d *dockHeader) LayoutSizes(target *Panel, _ Size) (min, pref, max Size) {
 	tabs, buttons := d.partition()
 	for i, dt := range tabs {
 		_, size, _ := dt.Sizes(Size{})
@@ -187,7 +187,7 @@ func (d *dockHeader) LayoutSizes(target *Panel, hint Size) (min, pref, max Size)
 	return min, pref, MaxSize(pref)
 }
 
-func (d *dockHeader) PerformLayout(target *Panel) {
+func (d *dockHeader) PerformLayout(_ *Panel) {
 	contentRect := d.ContentRect(false)
 	tabs, buttons := d.partition()
 	tabSizes := make([]Size, len(tabs))

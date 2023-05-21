@@ -182,7 +182,7 @@ func (m *Markdown) adjustSizeOnParentChange() {
 }
 
 func (m *Markdown) adjustToParent() {
-	m.SetContentBytes(m.content, 0, false)
+	m.SetContentBytes(m.content, 0)
 	if m.chainedFrameChangeCallback != nil {
 		m.chainedFrameChangeCallback()
 	}
@@ -200,7 +200,7 @@ func (m *Markdown) SetVSpacing(spacing float32) {
 
 // SetContent replaces the current markdown content.
 func (m *Markdown) SetContent(content string, maxWidth float32) {
-	m.SetContentBytes([]byte(content), maxWidth, false)
+	m.SetContentBytes([]byte(content), maxWidth)
 }
 
 // ContentBytes returns the current markdown content as a byte slice.
@@ -209,9 +209,8 @@ func (m *Markdown) ContentBytes() []byte {
 }
 
 // SetContentBytes replaces the current markdown content. If maxWidth < 1, then the content will be sized based on the
-// parent container or use DefaultMarkdownWidth if no parent is present. Pass in true for the force parameter if you
-// want to force a rebuild of the content.
-func (m *Markdown) SetContentBytes(content []byte, maxWidth float32, force bool) {
+// parent container or use DefaultMarkdownWidth if no parent is present.
+func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	if maxWidth < 1 {
 		if p := m.Parent(); p != nil {
 			maxWidth = p.ContentRect(false).Width - m.Slop
@@ -755,7 +754,7 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	return NewLink(label, tooltip, target, theme, m.linkHandler)
 }
 
-func (m *Markdown) linkHandler(src Paneler, target string) {
+func (m *Markdown) linkHandler(_ Paneler, target string) {
 	m.LinkHandler(m, target)
 }
 
@@ -926,7 +925,7 @@ func (m *Markdown) finishTextRow() {
 
 // DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browers for http and https
 // links.
-func DefaultMarkdownLinkHandler(src Paneler, target string) {
+func DefaultMarkdownLinkHandler(_ Paneler, target string) {
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		if err := desktop.Open(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)

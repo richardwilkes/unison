@@ -146,7 +146,7 @@ func (s *ScrollBar) Thumb() Rect {
 }
 
 // DefaultSizes provides the default sizing.
-func (s *ScrollBar) DefaultSizes(hint Size) (min, pref, max Size) {
+func (s *ScrollBar) DefaultSizes(_ Size) (min, pref, max Size) {
 	min.Width = s.MinimumThickness
 	min.Height = s.MinimumThickness
 	if s.horizontal {
@@ -164,7 +164,7 @@ func (s *ScrollBar) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (s *ScrollBar) DefaultDraw(gc *Canvas, rect Rect) {
+func (s *ScrollBar) DefaultDraw(gc *Canvas, _ Rect) {
 	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
 		var ink Ink
 		if s.overThumb {
@@ -178,7 +178,7 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, rect Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *ScrollBar) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDown(where Point, _, _ int, _ Modifiers) bool {
 	thumb := s.Thumb()
 	if !thumb.ContainsPoint(where) {
 		s.dragOffset = 0
@@ -197,14 +197,14 @@ func (s *ScrollBar) DefaultMouseDown(where Point, button, clickCount int, mod Mo
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *ScrollBar) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	s.trackingThumb = false
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (s *ScrollBar) DefaultMouseEnter(where Point, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseEnter(where Point, _ Modifiers) bool {
 	if !s.trackingThumb {
 		s.checkOverThumb(where)
 	}
@@ -221,13 +221,13 @@ func (s *ScrollBar) DefaultMouseExit() bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (s *ScrollBar) DefaultMouseMove(where Point, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseMove(where Point, _ Modifiers) bool {
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *ScrollBar) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	s.adjustValueForPoint(where)
 	s.MarkForRedraw()
 	return true

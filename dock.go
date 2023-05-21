@@ -186,7 +186,7 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side Side) {
 }
 
 // DefaultDraw fills in the background.
-func (d *Dock) DefaultDraw(gc *Canvas, dirty Rect) {
+func (d *Dock) DefaultDraw(gc *Canvas, _ Rect) {
 	rect := d.ContentRect(true)
 	gc.DrawRect(rect, d.BackgroundInk.Paint(gc, rect, Fill))
 }
@@ -277,7 +277,7 @@ func (d *Dock) Restore() {
 
 // DefaultFocusChangeInHierarchy marks the dock for redraw whenever the focus changes within it so that the tabs get the
 // correct highlight state.
-func (d *Dock) DefaultFocusChangeInHierarchy(from, to *Panel) {
+func (d *Dock) DefaultFocusChangeInHierarchy(_, _ *Panel) {
 	d.MarkForRedraw()
 }
 
@@ -320,7 +320,7 @@ func dockLayoutNodeContains(node DockLayoutNode, where Point) bool {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (d *Dock) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (d *Dock) DefaultMouseDown(where Point, _, _ int, _ Modifiers) bool {
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
 		d.dividerDragLayout = dl
@@ -337,7 +337,7 @@ func (d *Dock) DefaultMouseDown(where Point, button, clickCount int, mod Modifie
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (d *Dock) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (d *Dock) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	d.dragDivider(where)
 	return true
 }
@@ -360,7 +360,7 @@ func (d *Dock) dragDivider(where Point) {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (d *Dock) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (d *Dock) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	if d.dividerDragLayout != nil {
 		if d.dividerDragIsValid {
 			d.dragDivider(where)

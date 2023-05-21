@@ -77,7 +77,7 @@ func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (min, pref, max Si
 }
 
 // DefaultDraw provides the default drawing.
-func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	r := h.ContentRect(false)
 	if h.sortIndicator != nil {
 		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
@@ -127,7 +127,7 @@ func (h *DefaultTableColumnHeader[T]) SetSortState(state SortState) {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *DefaultTableColumnHeader[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (h *DefaultTableColumnHeader[T]) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	if h.sortState.Sortable && h.ContentRect(false).ContainsPoint(where) {
 		if header, ok := h.Parent().Self.(*TableHeader[T]); ok {
 			header.SortOn(h)

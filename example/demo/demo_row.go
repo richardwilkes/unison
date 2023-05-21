@@ -86,7 +86,7 @@ func (d *demoRow) CellDataForSort(index int) string {
 	}
 }
 
-func (d *demoRow) ColumnCell(row, col int, foreground, background unison.Ink, selected, indirectlySelected, focused bool) unison.Paneler {
+func (d *demoRow) ColumnCell(row, col int, foreground, _ unison.Ink, _, _, _ bool) unison.Paneler {
 	switch col {
 	case 0:
 		if d.checkbox == nil {

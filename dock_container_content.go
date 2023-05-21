@@ -57,7 +57,7 @@ func (d *dockContainerContent) SetCurrentIndex(index int) {
 	}
 }
 
-func (d *dockContainerContent) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
+func (d *dockContainerContent) LayoutSizes(_ *Panel, hint Size) (min, pref, max Size) {
 	for _, c := range d.Children() {
 		min2, pref2, max2 := c.AsPanel().Sizes(hint)
 		min.Max(min2)
@@ -76,7 +76,7 @@ func (d *dockContainerContent) LayoutSizes(target *Panel, hint Size) (min, pref,
 	return min, pref, max
 }
 
-func (d *dockContainerContent) PerformLayout(target *Panel) {
+func (d *dockContainerContent) PerformLayout(_ *Panel) {
 	r := d.ContentRect(false)
 	for i, c := range d.Children() {
 		c.Hidden = i != d.currentIndex

@@ -60,7 +60,7 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect unison.Rect) {
 	}
 }
 
-func (d *DockablePanel) mouseDown(where unison.Point, button, clickCount int, mod unison.Modifiers) bool {
+func (d *DockablePanel) mouseDown(_ unison.Point, _, _ int, _ unison.Modifiers) bool {
 	if !d.Focused() {
 		d.RequestFocus()
 		d.MarkForRedraw()

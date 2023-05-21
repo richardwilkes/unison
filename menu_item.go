@@ -182,7 +182,7 @@ func (mi *menuItem) mouseDown(_ Point, _, _ int, _ Modifiers) bool {
 	return true
 }
 
-func (mi *menuItem) mouseUp(where Point, button int, mod Modifiers) bool {
+func (mi *menuItem) mouseUp(where Point, _ int, _ Modifiers) bool {
 	if mi.subMenu == nil && mi.panel.ContentRect(true).ContainsPoint(where) {
 		mi.execute()
 	}

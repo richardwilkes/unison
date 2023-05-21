@@ -72,7 +72,7 @@ func (l *Label) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (l *Label) DefaultDraw(canvas *Canvas, _ Rect) {
 	txt := l.textCache.Text(l.Text, l.Font)
 	if l.Underline || l.StrikeThrough {
 		txt.AdjustDecorations(func(decoration *TextDecoration) {

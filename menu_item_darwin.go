@@ -20,7 +20,7 @@ type macMenuItem struct {
 	item    ns.MenuItem
 }
 
-func newMacMenuItemForSubMenu(f *macMenuFactory, subMenu *macMenu) ns.MenuItem {
+func newMacMenuItemForSubMenu(_ *macMenuFactory, subMenu *macMenu) ns.MenuItem {
 	mi := ns.NewMenuItem(subMenu.id, subMenu.Title(), "", 0, nil, nil)
 	mi.SetSubMenu(subMenu.menu)
 	return mi

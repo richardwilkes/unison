@@ -122,7 +122,7 @@ func (p *PopupMenu[T]) DefaultFocusGained() {
 }
 
 // DefaultDraw provides the default drawing.
-func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	thickness := float32(1)
 	if p.Focused() || p.pressed {
 		thickness++
@@ -381,14 +381,14 @@ func (p *PopupMenu[T]) SelectIndex(index ...int) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (p *PopupMenu[T]) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 	p.pressed = true
 	p.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag is the default implementation of the MouseDragCallback.
-func (p *PopupMenu[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	if p.pressed != p.ContentRect(true).ContainsPoint(where) {
 		p.pressed = !p.pressed
 		p.MarkForRedraw()
@@ -397,7 +397,7 @@ func (p *PopupMenu[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) 
 }
 
 // DefaultMouseUp is the default implementation of the MouseUpCallback.
-func (p *PopupMenu[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	if p.ContentRect(true).ContainsPoint(where) {
 		p.Click()
 	}
@@ -407,7 +407,7 @@ func (p *PopupMenu[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bo
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
 		p.Click()
 		return true

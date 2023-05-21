@@ -11,9 +11,7 @@ package unison
 
 import (
 	"fmt"
-	"runtime"
 
-	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/i18n"
 )
@@ -77,7 +75,7 @@ func NewAppMenu(f MenuFactory, aboutHandler, prefsHandler func(MenuItem), update
 
 // InsertAboutItem creates the standard "About" menu item that will call the provided handler when chosen.
 func InsertAboutItem(m Menu, atIndex int, aboutHandler func(MenuItem)) {
-	m.InsertItem(-1, m.Factory().NewItem(AboutItemID, fmt.Sprintf(i18n.Text("About %s"), cmdline.AppName), KeyBinding{},
+	m.InsertItem(atIndex, m.Factory().NewItem(AboutItemID, fmt.Sprintf(i18n.Text("About %s"), cmdline.AppName), KeyBinding{},
 		func(MenuItem) bool { return aboutHandler != nil }, aboutHandler))
 }
 
@@ -130,14 +128,14 @@ func NewEditMenu(f MenuFactory, prefsHandler func(MenuItem), updater func(Menu))
 
 // InsertPreferencesItem creates the standard "Preferences…" menu item that will call the provided handler when chosen.
 func InsertPreferencesItem(m Menu, atIndex int, prefsHandler func(MenuItem)) {
-	m.InsertItem(-1, m.Factory().NewItem(PreferencesItemID, i18n.Text("Preferences…"),
+	m.InsertItem(atIndex, m.Factory().NewItem(PreferencesItemID, i18n.Text("Preferences…"),
 		KeyBinding{KeyCode: KeyComma, Modifiers: OSMenuCmdModifier()},
 		func(MenuItem) bool { return prefsHandler != nil }, prefsHandler))
 }
 
 // NewWindowMenu creates a standard 'Window' menu.
 func NewWindowMenu(f MenuFactory, updater func(Menu)) Menu {
-	if runtime.GOOS != toolbox.MacOS || f.BarIsPerWindow() {
+	if f.BarIsPerWindow() {
 		if updater != nil {
 			u := updater
 			updater = func(m Menu) {
@@ -221,7 +219,7 @@ func InsertZoomItem(m Menu, atIndex int) {
 // InsertBringAllToFrontItem creates the standard "Bring All to Front" menu item that will call AllWindowsToFront when
 // chosen.
 func InsertBringAllToFrontItem(m Menu, atIndex int) {
-	m.InsertItem(-1, m.Factory().NewItem(BringAllWindowsToFrontItemID, i18n.Text("Bring All to Front"), KeyBinding{},
+	m.InsertItem(atIndex, m.Factory().NewItem(BringAllWindowsToFrontItemID, i18n.Text("Bring All to Front"), KeyBinding{},
 		func(MenuItem) bool { return WindowCount() > 0 }, func(MenuItem) { AllWindowsToFront() }))
 }
 
