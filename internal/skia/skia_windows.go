@@ -37,7 +37,9 @@ var (
 	grContextDeleteProc                            *syscall.Proc
 	grContextAbandonContextProc                    *syscall.Proc
 	grContextReleaseResourcesAndAbandonContextProc *syscall.Proc
+	grContextUnrefProc                             *syscall.Proc
 	grGLInterfaceCreateNativeInterfaceProc         *syscall.Proc
+	grGLInterfaceUnrefProc                         *syscall.Proc
 	skCanvasGetSaveCountProc                       *syscall.Proc
 	skCanvasSaveProc                               *syscall.Proc
 	skCanvasSaveLayerProc                          *syscall.Proc
@@ -333,7 +335,9 @@ func init() {
 	grContextDeleteProc = skia.MustFindProc("gr_direct_context_delete")
 	grContextAbandonContextProc = skia.MustFindProc("gr_direct_context_abandon_context")
 	grContextReleaseResourcesAndAbandonContextProc = skia.MustFindProc("gr_direct_context_release_resources_and_abandon_context")
+	grContextUnrefProc = skia.MustFindProc("gr_direct_context_unref")
 	grGLInterfaceCreateNativeInterfaceProc = skia.MustFindProc("gr_glinterface_create_native_interface")
+	grGLInterfaceUnrefProc = skia.MustFindProc("gr_glinterface_unref")
 	skCanvasGetSaveCountProc = skia.MustFindProc("sk_canvas_get_save_count")
 	skCanvasSaveProc = skia.MustFindProc("sk_canvas_save")
 	skCanvasSaveLayerProc = skia.MustFindProc("sk_canvas_save_layer")
@@ -661,9 +665,17 @@ func ContextReleaseResourcesAndAbandonContext(ctx DirectContext) {
 	grContextReleaseResourcesAndAbandonContextProc.Call(uintptr(ctx))
 }
 
+func ContextUnref(ctx ColorFilter) {
+	grContextUnrefProc.Call(uintptr(ctx))
+}
+
 func GLInterfaceCreateNativeInterface() GLInterface {
 	r1, _, _ := grGLInterfaceCreateNativeInterfaceProc.Call()
 	return GLInterface(r1)
+}
+
+func GLInterfaceUnref(intf GLInterface) {
+	grGLInterfaceUnrefProc.Call(uintptr(intf))
 }
 
 func CanvasGetSaveCount(canvas Canvas) int {

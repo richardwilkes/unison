@@ -788,9 +788,6 @@ func (w *Window) IsVisible() bool {
 // mode, this function does nothing.
 func (w *Window) Show() {
 	if w.IsValid() {
-		// If another window was previously closed, the back buffer of this window may have been damaged (I've not yet
-		// discovered why that is). To fix this, force regeneration of the surface.
-		w.surface.dispose()
 		w.wnd.Show()
 		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
 		// last one we had.

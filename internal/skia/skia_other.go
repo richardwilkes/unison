@@ -90,8 +90,16 @@ func ContextReleaseResourcesAndAbandonContext(ctx DirectContext) {
 	C.gr_direct_context_release_resources_and_abandon_context(ctx)
 }
 
+func ContextUnref(ctx DirectContext) {
+	C.gr_direct_context_unref(ctx)
+}
+
 func GLInterfaceCreateNativeInterface() GLInterface {
 	return C.gr_glinterface_create_native_interface()
+}
+
+func GLInterfaceUnref(intf GLInterface) {
+	C.gr_glinterface_unref(intf)
 }
 
 func CanvasGetSaveCount(canvas Canvas) int {
