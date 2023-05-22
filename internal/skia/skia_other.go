@@ -86,6 +86,10 @@ func ContextAbandonContext(ctx DirectContext) {
 	C.gr_direct_context_abandon_context(ctx)
 }
 
+func ContextReleaseResourcesAndAbandonContext(ctx DirectContext) {
+	C.gr_direct_context_release_resources_and_abandon_context(ctx)
+}
+
 func GLInterfaceCreateNativeInterface() GLInterface {
 	return C.gr_glinterface_create_native_interface()
 }
