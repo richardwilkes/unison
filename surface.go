@@ -75,7 +75,7 @@ func (s *surface) dispose() {
 		s.backend = nil
 	}
 	if s.context != nil {
-		skia.ContextDelete(s.context)
+		skia.ContextReleaseResourcesAndAbandonContext(s.context)
 		s.context = nil
 	}
 }
