@@ -665,7 +665,7 @@ func ContextReleaseResourcesAndAbandonContext(ctx DirectContext) {
 	grContextReleaseResourcesAndAbandonContextProc.Call(uintptr(ctx))
 }
 
-func ContextUnref(ctx ColorFilter) {
+func ContextUnref(ctx DirectContext) {
 	grContextUnrefProc.Call(uintptr(ctx))
 }
 
