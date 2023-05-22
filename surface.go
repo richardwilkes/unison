@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	skiaGLInterface  skia.GLInterface
+	skiaGL           skia.GLInterface
 	skiaColorspace   skia.ColorSpace
 	skiaSurfaceProps skia.SurfaceProps
 )
@@ -32,15 +32,15 @@ type surface struct {
 
 func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Canvas, error) {
 	if s.size != size || scaleX != s.scaleX || scaleY != s.scaleY {
-		if s.surface != nil {
-			s.dispose()
-		}
+		s.partialDispose()
 		s.size = size
 		s.scaleX = scaleX
 		s.scaleY = scaleY
 	}
 	if s.surface == nil {
-		s.context = skia.ContextMakeGL(defaultGLInterface())
+		if s.context == nil {
+			s.context = skia.ContextMakeGL(defaultSkiaGL())
+		}
 		var fbo int32
 		gl.GetIntegerv(gl.FRAMEBUFFER_BINDING, &fbo)
 		if s.backend = skia.BackendRenderTargetNewGL(int(size.Width*scaleX), int(size.Height*scaleY), 1, 8,
@@ -64,9 +64,8 @@ func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Can
 	return c, nil
 }
 
-func (s *surface) dispose() {
+func (s *surface) partialDispose() {
 	if s.surface != nil {
-		releaseImagesForContext(s.context)
 		skia.SurfaceUnref(s.surface)
 		s.surface = nil
 	}
@@ -74,18 +73,23 @@ func (s *surface) dispose() {
 		skia.BackendRenderTargetDelete(s.backend)
 		s.backend = nil
 	}
+}
+
+func (s *surface) dispose() {
+	s.partialDispose()
 	if s.context != nil {
-		skia.ContextReleaseResourcesAndAbandonContext(s.context)
-		skia.ContextDelete(s.context)
+		releaseImagesForContext(s.context)
+		skia.ContextAbandonContext(s.context)
+		skia.ContextUnref(s.context)
 		s.context = nil
 	}
 }
 
-func defaultGLInterface() skia.GLInterface {
-	if skiaGLInterface == nil {
-		skiaGLInterface = skia.GLInterfaceCreateNativeInterface()
+func defaultSkiaGL() skia.GLInterface {
+	if skiaGL == nil {
+		skiaGL = skia.GLInterfaceCreateNativeInterface()
 	}
-	return skiaGLInterface
+	return skiaGL
 }
 
 func defaultSurfaceProps() skia.SurfaceProps {
