@@ -171,13 +171,7 @@ func windowListUpdater(m Menu) {
 			f := m.Factory()
 			active := ActiveWindow()
 			for _, wnd := range windowList {
-				enabled := active != wnd
-				mi := f.NewItem(id, wnd.Title(), KeyBinding{}, func(_ MenuItem) bool { return enabled },
-					func(_ MenuItem) { wnd.ToFront() })
-				if active == wnd {
-					mi.SetCheckState(OnCheckState)
-				}
-				m.InsertItem(-1, mi)
+				m.InsertItem(-1, createSelectWindowMenuItem(f, id, wnd, active))
 				id++
 				if id >= PopupMenuTemporaryBaseID {
 					break
@@ -185,6 +179,18 @@ func windowListUpdater(m Menu) {
 			}
 		}
 	}
+}
+
+func createSelectWindowMenuItem(f MenuFactory, id int, wnd, active *Window) MenuItem {
+	enabled := active != wnd
+	mi := f.NewItem(id, wnd.Title(), KeyBinding{},
+		func(_ MenuItem) bool { return enabled },
+		func(_ MenuItem) { wnd.ToFront() },
+	)
+	if active == wnd {
+		mi.SetCheckState(OnCheckState)
+	}
+	return mi
 }
 
 // InsertMinimizeItem creates the standard "Minimize" menu item that will issue the Minimize command to the currently

@@ -72,6 +72,7 @@ type Window struct {
 	lastKeyDownPanel    *Panel
 	lastTooltip         *Panel
 	lastTooltipShownAt  time.Time
+	lastDrawDuration    time.Duration
 	tooltipSequence     int
 	modalResultCode     int
 	lastButton          int
@@ -92,7 +93,6 @@ type Window struct {
 	inModal             bool
 	inMouseDown         bool
 	cursorHidden        bool
-	lastDrawDuration    time.Duration
 }
 
 // WindowOption holds an option for window creation.
