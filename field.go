@@ -19,6 +19,14 @@ import (
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
+type lineEndingType byte
+
+const (
+	noLineEnding = lineEndingType(iota)
+	hardLineEnding
+	softLineEnding
+)
+
 // DefaultFieldTheme holds the default FieldTheme values for Fields. Modifying this data will not alter existing Fields,
 // but will alter any Fields created in the future.
 var DefaultFieldTheme = FieldTheme{
@@ -76,7 +84,7 @@ type Field struct {
 	undoID             int64
 	runes              []rune
 	lines              []*Text
-	endsWithLineFeed   []bool
+	endsWithLineFeed   []lineEndingType
 	selectionStart     int
 	selectionEnd       int
 	selectionAnchor    int
@@ -156,6 +164,7 @@ func (f *Field) Wrap() bool {
 // SetWrap sets the wrapping attribute.
 func (f *Field) SetWrap(wrap bool) {
 	if wrap != f.wrap {
+		f.wrap = wrap
 		f.MarkForLayoutAndRedraw()
 	}
 }
@@ -208,15 +217,16 @@ func (f *Field) DefaultSizes(hint Size) (min, pref, max Size) {
 }
 
 func (f *Field) prepareLines(width float32) {
+	width = xmath.Max(width, 0)
 	f.lines, f.endsWithLineFeed = f.buildLines(width)
-	f.linesBuiltFor = xmath.Max(width, 0)
+	f.linesBuiltFor = width
 }
 
 func (f *Field) prepareLinesForCurrentWidth() {
 	f.prepareLines(f.ContentRect(false).Width - 2)
 }
 
-func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed []bool) {
+func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed []lineEndingType) {
 	if wrapWidth == f.linesBuiltFor && f.linesBuiltFor >= 0 {
 		return f.lines, f.endsWithLineFeed
 	}
@@ -224,18 +234,24 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 		lines = make([]*Text, 0)
 		decoration := &TextDecoration{Font: f.Font}
 		if f.multiLine {
-			endsWithLineFeed = make([]bool, 0, 16)
+			endsWithLineFeed = make([]lineEndingType, 0, 16)
 			for _, line := range strings.Split(string(f.runes), "\n") {
 				one := NewText(f.obscureStringIfNeeded(line), decoration)
 				if f.wrap && wrapWidth > 0 {
 					parts := one.BreakToWidth(wrapWidth)
 					for i, part := range parts {
 						lines = append(lines, part)
-						endsWithLineFeed = append(endsWithLineFeed, i == len(parts)-1)
+						var eol lineEndingType
+						if i == len(parts)-1 {
+							eol = hardLineEnding
+						} else {
+							eol = softLineEnding
+						}
+						endsWithLineFeed = append(endsWithLineFeed, eol)
 					}
 				} else {
 					lines = append(lines, one)
-					endsWithLineFeed = append(endsWithLineFeed, true)
+					endsWithLineFeed = append(endsWithLineFeed, hardLineEnding)
 				}
 			}
 		} else {
@@ -245,7 +261,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 			} else {
 				lines = append(lines, one)
 			}
-			endsWithLineFeed = make([]bool, len(lines))
+			endsWithLineFeed = make([]lineEndingType, len(lines))
 		}
 	}
 	return
@@ -331,7 +347,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 			textBaseLine := textTop + line.Baseline()
 			textHeight := xmath.Max(line.Height(), f.Font.LineHeight())
 			end := start + len(line.Runes())
-			if f.endsWithLineFeed[i] {
+			if f.endsWithLineFeed[i] == hardLineEnding {
 				end++
 			}
 			if enabled && focused && hasSelectionRange && f.selectionStart < end && f.selectionEnd > start {
@@ -347,7 +363,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 					left += t.Width()
 				}
 				e := selEnd
-				if end == selEnd && f.endsWithLineFeed[i] {
+				if end == selEnd && f.endsWithLineFeed[i] == hardLineEnding {
 					e--
 				}
 				t := NewTextFromRunes(f.obscureIfNeeded(f.runes[selStart:e]), &TextDecoration{
@@ -363,7 +379,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 				t.Draw(canvas, left, textBaseLine)
 				if selEnd < end {
 					e = end
-					if f.endsWithLineFeed[i] {
+					if f.endsWithLineFeed[i] == hardLineEnding {
 						e--
 					}
 					NewTextFromRunes(f.obscureIfNeeded(f.runes[selEnd:e]), &TextDecoration{
@@ -1094,7 +1110,7 @@ func (f *Field) autoScroll() {
 		return
 	}
 	rect := f.ContentRect(false)
-	original := f.scrollOffset //nolint:ifshort // Can't do this later
+	original := f.scrollOffset
 	if rect.Width > 0 {
 		if f.selectionStart == f.selectionAnchor {
 			right := f.FromSelectionIndex(f.selectionEnd).X
@@ -1115,22 +1131,6 @@ func (f *Field) autoScroll() {
 				f.scrollOffset.X = rect.Right() - 1 - f.FromSelectionIndex(f.selectionStart).X
 			}
 		}
-		save := f.scrollOffset.X
-		f.scrollOffset.X = 0
-		min := rect.Right() - 1 - f.FromSelectionIndex(len(f.runes)).X
-		if min > 0 {
-			min = 0
-		}
-		max := rect.X - f.FromSelectionIndex(0).X
-		if max < 0 {
-			max = 0
-		}
-		if save < min {
-			save = min
-		} else if save > max {
-			save = max
-		}
-		f.scrollOffset.X = save
 	}
 	if f.multiLine && rect.Height > 0 {
 		if f.selectionStart == f.selectionAnchor {
@@ -1206,14 +1206,8 @@ func (f *Field) ToSelectionIndex(where Point) int {
 	}
 	f.prepareLinesForCurrentWidth()
 	lineIndex, start := f.lineIndexForY(where.Y)
-	t := f.lines[lineIndex]
-	offset := t.RuneIndexForPosition(where.X - (f.textLeft(t, f.ContentRect(false)) + f.scrollOffset.X))
-	if f.multiLine && !f.endsWithLineFeed[lineIndex] {
-		if len(t.Runes()) == offset {
-			offset--
-		}
-	}
-	return start + offset
+	line := f.lines[lineIndex]
+	return start + line.RuneIndexForPosition(where.X-(f.textLeft(line, f.ContentRect(false))+f.scrollOffset.X))
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
@@ -1226,10 +1220,10 @@ func (f *Field) FromSelectionIndex(index int) Point {
 	var lastHeight float32
 	for i, line := range f.lines {
 		length := len(line.Runes())
-		if f.endsWithLineFeed[i] {
+		if f.endsWithLineFeed[i] == hardLineEnding {
 			length++
 		}
-		if index < start+length {
+		if !f.multiLine || index < start+length {
 			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-start)+f.scrollOffset.X, y)
 		}
 		lastHeight = xmath.Max(line.Height(), f.Font.LineHeight())
@@ -1282,7 +1276,7 @@ func (f *Field) findNextLineBreak(pos int) int {
 	}
 	index, start := f.lineIndexForPos(pos)
 	start += len(f.lines[index].runes)
-	if f.multiLine && !f.endsWithLineFeed[index] {
+	if f.multiLine && f.endsWithLineFeed[index] != hardLineEnding {
 		start--
 	}
 	return xmath.Min(start, len(f.runes))
@@ -1297,7 +1291,7 @@ func (f *Field) lineIndexForPos(pos int) (index, startPos int) {
 	length := 0
 	for i, line := range f.lines {
 		length = len(line.Runes())
-		if f.endsWithLineFeed[i] {
+		if f.endsWithLineFeed[i] == hardLineEnding {
 			length++
 		}
 		if pos < start+length {
@@ -1310,7 +1304,7 @@ func (f *Field) lineIndexForPos(pos int) (index, startPos int) {
 
 func (f *Field) lineIndexForY(y float32) (index, startPos int) {
 	y -= f.ContentRect(false).Y
-	if y < 0 {
+	if y < f.scrollOffset.Y {
 		return 0, 0
 	}
 	f.prepareLinesForCurrentWidth()
@@ -1324,7 +1318,7 @@ func (f *Field) lineIndexForY(y float32) (index, startPos int) {
 		}
 		offsetY += lineHeight
 		length = len(line.Runes())
-		if f.endsWithLineFeed[i] {
+		if f.endsWithLineFeed[i] == hardLineEnding {
 			length++
 		}
 		start += length
