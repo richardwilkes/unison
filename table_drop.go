@@ -161,6 +161,13 @@ func (d *TableDrop[T, U]) DataDragExitCallback() {
 
 // DataDragDropCallback handles processing a drop.
 func (d *TableDrop[T, U]) DataDragDropCallback(_ Point, data map[string]any) {
+	var savedScrollX, savedScrollY float32
+	if scroller := d.Table.ScrollRoot(); scroller != nil {
+		savedScrollX, savedScrollY = scroller.Position()
+		defer func() {
+			scroller.SetPosition(savedScrollX, savedScrollY)
+		}()
+	}
 	var zero T
 	d.inDragOver = false
 	var ok bool
