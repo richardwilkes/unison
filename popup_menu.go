@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xmath"
@@ -59,6 +60,7 @@ type PopupMenu[T comparable] struct {
 	Panel
 	PopupMenuTheme
 	MenuFactory              MenuFactory
+	WillShowMenuCallback     func(popup *PopupMenu[T])
 	ChoiceMadeCallback       func(popup *PopupMenu[T], index int, item T)
 	SelectionChangedCallback func(popup *PopupMenu[T])
 	items                    []*popupMenuItem[T]
@@ -181,6 +183,9 @@ func (p *PopupMenu[T]) Text() string {
 
 // Click performs any animation associated with a click and triggers the popup menu to appear.
 func (p *PopupMenu[T]) Click() {
+	if p.WillShowMenuCallback != nil {
+		toolbox.Call(func() { p.WillShowMenuCallback(p) })
+	}
 	hasItem := false //nolint:ifshort // Cannot collapse this into the if statement, despite what the linter says
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
 	defer m.Dispose()
