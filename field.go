@@ -996,12 +996,9 @@ func (f *Field) Validate() {
 }
 
 func (f *Field) sanitize(runes []rune) []rune {
-	if f.multiLine {
-		return runes
-	}
 	i := 0
 	for _, ch := range runes {
-		if ch != '\n' && ch != '\r' {
+		if ch >= ' ' || ch == '\t' || (f.multiLine && ch == '\n') {
 			runes[i] = ch
 			i++
 		}
