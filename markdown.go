@@ -759,7 +759,7 @@ func (m *Markdown) linkHandler(_ Paneler, target string) {
 }
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
-	if m.WorkingDir != "" && (strings.HasPrefix(target, "./") || strings.HasPrefix(target, "../")) {
+	if m.WorkingDir != "" && !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
 		p := target
 		if revised, err := url.PathUnescape(p); err == nil {
 			p = revised
