@@ -123,8 +123,8 @@ type MarkdownTheme struct {
 	LinkRolloverInk     Ink
 	LinkPressedInk      Ink
 	LinkHandler         func(Paneler, string)
+	WorkingDirProvider  func(Paneler) string
 	ImageConstrainer    func(size Size) Size
-	WorkingDir          string
 	AltLinkPrefixes     []string
 	VSpacing            float32
 	QuoteBarThickness   float32
@@ -798,7 +798,11 @@ func (m *Markdown) linkHandler(_ Paneler, target string) {
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 	var err error
-	if target, err = ReviseTarget(m.WorkingDir, target, m.AltLinkPrefixes); err != nil {
+	workingDir := ""
+	if m.WorkingDirProvider != nil {
+		workingDir = m.WorkingDirProvider(m)
+	}
+	if target, err = ReviseTarget(workingDir, target, m.AltLinkPrefixes); err != nil {
 		jot.Error(err)
 		return nil
 	}
