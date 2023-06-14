@@ -123,6 +123,8 @@ type MarkdownTheme struct {
 	LinkRolloverInk     Ink
 	LinkPressedInk      Ink
 	LinkHandler         func(Paneler, string)
+	WorkingDirProvider  func(Paneler) string
+	ImageConstrainer    func(size Size) Size
 	VSpacing            float32
 	QuoteBarThickness   float32
 	CodeAndQuotePadding float32
@@ -142,7 +144,6 @@ type Markdown struct {
 	text                       *Text
 	decoration                 *TextDecoration
 	imgCache                   map[string]*Image
-	WorkingDir                 string
 	index                      int
 	columnIndex                int
 	columnWidths               []int
@@ -754,21 +755,34 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	return NewLink(label, tooltip, target, theme, m.linkHandler)
 }
 
-func (m *Markdown) linkHandler(_ Paneler, target string) {
-	m.LinkHandler(m, target)
+func hasURLPrefix(target string) bool {
+	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
 }
 
-func (m *Markdown) retrieveImage(target string, label *Label) *Image {
-	if m.WorkingDir != "" && !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+func (m *Markdown) reviseTarget(target string) string {
+	if m.WorkingDirProvider != nil && !hasURLPrefix(target) {
+		workingDir := m.WorkingDirProvider(m)
+		if workingDir == "" {
+			workingDir = fmt.Sprintf(".%c", filepath.Separator)
+		}
 		p := target
 		if revised, err := url.PathUnescape(p); err == nil {
 			p = revised
 		}
 		var err error
-		if p, err = filepath.Abs(filepath.Join(m.WorkingDir, p)); err == nil {
+		if p, err = filepath.Abs(filepath.Join(workingDir, p)); err == nil {
 			target = p
 		}
 	}
+	return target
+}
+
+func (m *Markdown) linkHandler(_ Paneler, target string) {
+	m.LinkHandler(m, m.reviseTarget(target))
+}
+
+func (m *Markdown) retrieveImage(target string, label *Label) *Image {
+	target = m.reviseTarget(target)
 	img, ok := m.imgCache[target]
 	if !ok {
 		result := make(chan *Image, 1)
@@ -783,7 +797,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 				result <- img
 				InvokeTask(func() {
 					m.imgCache[target] = img
-					label.Drawable = img
+					label.Drawable = m.constrainImage(img)
 					label.MarkForRedraw()
 					label.MarkForLayoutRecursivelyUpward()
 				})
@@ -803,6 +817,16 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 	return img
 }
 
+func (m *Markdown) constrainImage(drawable Drawable) Drawable {
+	if m.ImageConstrainer != nil {
+		drawable = &SizedDrawable{
+			Drawable: drawable,
+			Size:     m.ImageConstrainer(drawable.LogicalSize()),
+		}
+	}
+	return drawable
+}
+
 func (m *Markdown) processImage() {
 	if image, ok := m.node.(*ast.Image); ok {
 		m.flushText()
@@ -810,12 +834,12 @@ func (m *Markdown) processImage() {
 		img := m.retrieveImage(string(image.Destination), label)
 		if img == nil {
 			size := xmath.Max(m.decoration.Font.Size(), 24)
-			label.Drawable = &DrawableSVG{
+			label.Drawable = m.constrainImage(&DrawableSVG{
 				SVG:  BrokenImageSVG,
 				Size: NewSize(size, size),
-			}
+			})
 		} else {
-			label.Drawable = img
+			label.Drawable = m.constrainImage(img)
 		}
 		primary := string(image.Text(m.content))
 		secondary := string(image.Title)
@@ -923,10 +947,10 @@ func (m *Markdown) finishTextRow() {
 	m.textRow = nil
 }
 
-// DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browers for http and https
+// DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browsers for http and https
 // links.
 func DefaultMarkdownLinkHandler(_ Paneler, target string) {
-	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+	if hasURLPrefix(target) {
 		if err := desktop.Open(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
 		}
