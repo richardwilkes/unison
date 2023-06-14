@@ -125,6 +125,7 @@ type MarkdownTheme struct {
 	LinkHandler         func(Paneler, string)
 	WorkingDirProvider  func(Paneler) string
 	ImageConstrainer    func(size Size) Size
+	AltLinkPrefixes     []string
 	VSpacing            float32
 	QuoteBarThickness   float32
 	CodeAndQuotePadding float32
@@ -759,35 +760,53 @@ func hasURLPrefix(target string) bool {
 	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
 }
 
-func (m *Markdown) reviseTarget(target string) string {
-	if m.WorkingDirProvider != nil && !hasURLPrefix(target) {
-		workingDir := m.WorkingDirProvider(m)
-		if workingDir == "" {
-			workingDir = fmt.Sprintf(".%c", filepath.Separator)
-		}
-		p := target
-		if revised, err := url.PathUnescape(p); err == nil {
-			p = revised
-		}
-		var err error
-		if p, err = filepath.Abs(filepath.Join(workingDir, p)); err == nil {
-			target = p
+// reviseTarget returns the input if it starts with a URL prefix. Next, any escapes are unescaped, then the resulting
+// value is checked for having any of the AltLinkPrefixes. If it does, the unescaped value is returned. Finally, the
+// path is joined with the working directory and turned into an absolute path, which is returned.
+func (m *Markdown) reviseTarget(target string) (string, error) {
+	if hasURLPrefix(target) {
+		return target, nil
+	}
+	revised, err := url.PathUnescape(target)
+	if err != nil {
+		return target, errs.Wrap(err)
+	}
+	for _, prefix := range m.AltLinkPrefixes {
+		if strings.HasPrefix(target, prefix) {
+			return target, nil
 		}
 	}
-	return target
+	workingDir := ""
+	if m.WorkingDirProvider != nil {
+		workingDir = m.WorkingDirProvider(m)
+	}
+	if workingDir == "" {
+		workingDir = "."
+	}
+	if revised, err = filepath.Abs(filepath.Join(workingDir, revised)); err != nil {
+		return target, errs.Wrap(err)
+	}
+	return revised, nil
 }
 
 func (m *Markdown) linkHandler(_ Paneler, target string) {
-	m.LinkHandler(m, m.reviseTarget(target))
+	var err error
+	if target, err = m.reviseTarget(target); err != nil {
+		jot.Error(err)
+	}
+	m.LinkHandler(m, target)
 }
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
-	target = m.reviseTarget(target)
+	var err error
+	if target, err = m.reviseTarget(target); err != nil {
+		jot.Error(err)
+		return nil
+	}
 	img, ok := m.imgCache[target]
 	if !ok {
 		result := make(chan *Image, 1)
 		go func() {
-			var err error
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 			if img, err = NewImageFromFilePathOrURLWithContext(ctx, target, 1); err != nil {
@@ -950,7 +969,7 @@ func (m *Markdown) finishTextRow() {
 // DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browsers for http and https
 // links.
 func DefaultMarkdownLinkHandler(_ Paneler, target string) {
-	if hasURLPrefix(target) {
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		if err := desktop.Open(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
 		}
