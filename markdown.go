@@ -124,7 +124,6 @@ type MarkdownTheme struct {
 	LinkPressedInk      Ink
 	LinkHandler         func(Paneler, string)
 	WorkingDirProvider  func(Paneler) string
-	ImageConstrainer    func(size Size) Size
 	AltLinkPrefixes     []string
 	VSpacing            float32
 	QuoteBarThickness   float32
@@ -812,7 +811,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			if img, err = NewImageFromFilePathOrURLWithContext(ctx, target, 1); err != nil {
+			if img, err = NewImageFromFilePathOrURLWithContext(ctx, target, 1/PrimaryDisplay().ScaleX); err != nil {
 				result <- nil
 				jot.Error(errs.Wrap(err))
 			} else {
@@ -840,17 +839,21 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 }
 
 func (m *Markdown) constrainImage(drawable Drawable) Drawable {
-	if m.ImageConstrainer != nil {
-		existingSize := drawable.LogicalSize()
-		size := m.ImageConstrainer(existingSize)
-		if existingSize != size {
-			return &SizedDrawable{
-				Drawable: drawable,
-				Size:     size,
-			}
-		}
+	size := drawable.LogicalSize()
+	if size.Width <= m.maxWidth {
+		return drawable
 	}
-	return drawable
+	if size.Width > 0 && size.Width > m.maxWidth {
+		size.Height *= m.maxWidth / size.Width
+		if size.Height < 1 {
+			size.Height = 1
+		}
+		size.Width = m.maxWidth
+	}
+	return &SizedDrawable{
+		Drawable: drawable,
+		Size:     size,
+	}
 }
 
 func (m *Markdown) processImage() {
@@ -860,10 +863,10 @@ func (m *Markdown) processImage() {
 		img := m.retrieveImage(string(image.Destination), label)
 		if img == nil {
 			size := xmath.Max(m.decoration.Font.Size(), 24)
-			label.Drawable = m.constrainImage(&DrawableSVG{
+			label.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
 				Size: NewSize(size, size),
-			})
+			}
 		} else {
 			label.Drawable = m.constrainImage(img)
 		}
