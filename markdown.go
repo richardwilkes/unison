@@ -132,6 +132,16 @@ type MarkdownTheme struct {
 	Slop                float32
 }
 
+// HasAltLinkPrefix returns true if the target has a prefix matching one of those found in AltLinkPrefixes.
+func (t *MarkdownTheme) HasAltLinkPrefix(target string) bool {
+	for _, prefix := range t.AltLinkPrefixes {
+		if strings.HasPrefix(target, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // Markdown provides markdown display widget.
 type Markdown struct {
 	Panel
@@ -771,10 +781,8 @@ func (m *Markdown) reviseTarget(target string) (string, error) {
 	if err != nil {
 		return target, errs.Wrap(err)
 	}
-	for _, prefix := range m.AltLinkPrefixes {
-		if strings.HasPrefix(target, prefix) {
-			return target, nil
-		}
+	if m.HasAltLinkPrefix(revised) {
+		return revised, nil
 	}
 	workingDir := ""
 	if m.WorkingDirProvider != nil {
