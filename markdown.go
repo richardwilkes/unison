@@ -771,7 +771,8 @@ func HasURLPrefix(target string) bool {
 	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
 }
 
-func (m *Markdown) reviseTarget(target string) (string, error) {
+// ReviseTarget returns a sanitized target with either a link or an absolute path.
+func ReviseTarget(workingDir, target string, altLinkPrefixes []string) (string, error) {
 	if HasURLPrefix(target) {
 		return target, nil
 	}
@@ -779,10 +780,9 @@ func (m *Markdown) reviseTarget(target string) (string, error) {
 	if err != nil {
 		return target, errs.Wrap(err)
 	}
-	if HasAnyPrefix(m.AltLinkPrefixes, revised) {
+	if HasAnyPrefix(altLinkPrefixes, revised) {
 		return revised, nil
 	}
-	workingDir := m.WorkingDir
 	if workingDir == "" {
 		workingDir = "."
 	}
@@ -793,16 +793,12 @@ func (m *Markdown) reviseTarget(target string) (string, error) {
 }
 
 func (m *Markdown) linkHandler(_ Paneler, target string) {
-	var err error
-	if target, err = m.reviseTarget(target); err != nil {
-		jot.Error(err)
-	}
 	m.LinkHandler(m, target)
 }
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 	var err error
-	if target, err = m.reviseTarget(target); err != nil {
+	if target, err = ReviseTarget(m.WorkingDir, target, m.AltLinkPrefixes); err != nil {
 		jot.Error(err)
 		return nil
 	}
