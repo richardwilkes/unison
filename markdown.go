@@ -766,7 +766,8 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	return NewLink(label, tooltip, target, theme, m.linkHandler)
 }
 
-func hasURLPrefix(target string) bool {
+// HasURLPrefix returns true if the target has a prefix of "http://" or "https://".
+func HasURLPrefix(target string) bool {
 	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
 }
 
@@ -774,7 +775,7 @@ func hasURLPrefix(target string) bool {
 // value is checked for having any of the AltLinkPrefixes. If it does, the unescaped value is returned. Finally, the
 // path is joined with the working directory and turned into an absolute path, which is returned.
 func (m *Markdown) reviseTarget(target string) (string, error) {
-	if hasURLPrefix(target) {
+	if HasURLPrefix(target) {
 		return target, nil
 	}
 	revised, err := url.PathUnescape(target)
@@ -977,7 +978,7 @@ func (m *Markdown) finishTextRow() {
 // DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browsers for http and https
 // links.
 func DefaultMarkdownLinkHandler(_ Paneler, target string) {
-	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+	if HasURLPrefix(target) {
 		if err := desktop.Open(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
 		}
