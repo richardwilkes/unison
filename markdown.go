@@ -123,8 +123,8 @@ type MarkdownTheme struct {
 	LinkRolloverInk     Ink
 	LinkPressedInk      Ink
 	LinkHandler         func(Paneler, string)
-	WorkingDirProvider  func(Paneler) string
 	ImageConstrainer    func(size Size) Size
+	WorkingDir          string
 	AltLinkPrefixes     []string
 	VSpacing            float32
 	QuoteBarThickness   float32
@@ -132,9 +132,9 @@ type MarkdownTheme struct {
 	Slop                float32
 }
 
-// HasAltLinkPrefix returns true if the target has a prefix matching one of those found in AltLinkPrefixes.
-func (t *MarkdownTheme) HasAltLinkPrefix(target string) bool {
-	for _, prefix := range t.AltLinkPrefixes {
+// HasAnyPrefix returns true if the target has a prefix matching one of those found in prefixes.
+func HasAnyPrefix(prefixes []string, target string) bool {
+	for _, prefix := range prefixes {
 		if strings.HasPrefix(target, prefix) {
 			return true
 		}
@@ -771,9 +771,6 @@ func HasURLPrefix(target string) bool {
 	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
 }
 
-// reviseTarget returns the input if it starts with a URL prefix. Next, any escapes are unescaped, then the resulting
-// value is checked for having any of the AltLinkPrefixes. If it does, the unescaped value is returned. Finally, the
-// path is joined with the working directory and turned into an absolute path, which is returned.
 func (m *Markdown) reviseTarget(target string) (string, error) {
 	if HasURLPrefix(target) {
 		return target, nil
@@ -782,13 +779,10 @@ func (m *Markdown) reviseTarget(target string) (string, error) {
 	if err != nil {
 		return target, errs.Wrap(err)
 	}
-	if m.HasAltLinkPrefix(revised) {
+	if HasAnyPrefix(m.AltLinkPrefixes, revised) {
 		return revised, nil
 	}
-	workingDir := ""
-	if m.WorkingDirProvider != nil {
-		workingDir = m.WorkingDirProvider(m)
-	}
+	workingDir := m.WorkingDir
 	if workingDir == "" {
 		workingDir = "."
 	}
@@ -847,9 +841,13 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 
 func (m *Markdown) constrainImage(drawable Drawable) Drawable {
 	if m.ImageConstrainer != nil {
-		drawable = &SizedDrawable{
-			Drawable: drawable,
-			Size:     m.ImageConstrainer(drawable.LogicalSize()),
+		existingSize := drawable.LogicalSize()
+		size := m.ImageConstrainer(existingSize)
+		if existingSize != size {
+			return &SizedDrawable{
+				Drawable: drawable,
+				Size:     size,
+			}
 		}
 	}
 	return drawable
