@@ -9,6 +9,8 @@
 
 package unison
 
+var _ Drawable = &SizedDrawable{}
+
 // Drawable represents a drawable object.
 type Drawable interface {
 	// LogicalSize returns the logical size of this object.
@@ -16,4 +18,20 @@ type Drawable interface {
 
 	// DrawInRect draws this object in the given rectangle.
 	DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOptions, paint *Paint)
+}
+
+// SizedDrawable allows the Drawable's logical size to be overridden.
+type SizedDrawable struct {
+	Drawable Drawable
+	Size     Size
+}
+
+// LogicalSize implements Drawable.
+func (d *SizedDrawable) LogicalSize() Size {
+	return d.Size
+}
+
+// DrawInRect implements Drawable.
+func (d *SizedDrawable) DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOptions, paint *Paint) {
+	d.Drawable.DrawInRect(canvas, rect, sampling, paint)
 }
