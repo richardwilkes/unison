@@ -30,7 +30,7 @@ var (
 	InactiveSelectionColor   = &ThemeColor{Light: RGB(0, 64, 128), Dark: RGB(0, 64, 128)}
 	IndirectSelectionColor   = &ThemeColor{Light: RGB(230, 247, 255), Dark: RGB(0, 43, 64)}
 	InteriorDividerColor     = &ThemeColor{Light: RGB(216, 216, 216), Dark: RGB(53, 53, 53)}
-	LinkColor                = &ThemeColor{Light: RGB(115, 153, 37), Dark: RGB(0, 128, 0)}
+	LinkColor                = &ThemeColor{Light: RGB(115, 153, 37), Dark: RGB(0, 204, 102)}
 	LinkPressedColor         = &ThemeColor{Light: RGB(0, 128, 255), Dark: RGB(0, 96, 160)}
 	LinkRolloverColor        = &ThemeColor{Light: RGB(0, 192, 0), Dark: RGB(0, 179, 0)}
 	OnBackgroundColor        = &ThemeColor{Light: RGB(0, 0, 0), Dark: RGB(221, 221, 221)}
