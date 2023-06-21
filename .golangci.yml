@@ -9,11 +9,13 @@ output:
   sort-results: true
 linters-settings:
   depguard:
-    list-type: blacklist
-    include-go-root: true
-    packages:
-      - log
-      - github.com/satori/go.uuid
+    rules:
+      main:
+        deny:
+          - pkg: log
+            desc: Use jot instead
+          - pkg: github.com/satori/go.uuid
+            desc: Use github.com/google/uuid or github.com/gofrs/uuid instead
   errcheck:
     check-type-assertions: true
     check-blank: true
