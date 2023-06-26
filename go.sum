@@ -35,8 +35,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/richardwilkes/json v0.1.0 h1:a+ihnd/BqcckTWCOgC80U8dcT5CJrlAHVxMkSDderkw=
 github.com/richardwilkes/json v0.1.0/go.mod h1:4maPYRzwKz+kN/HWUd1re9kco0eoN6znhPBBqX0p+gk=
-github.com/richardwilkes/toolbox v1.85.1 h1:Q6ebgoAInct0rh2WURJ/MZkD9NQeY5usQu/yp0X3/Vo=
-github.com/richardwilkes/toolbox v1.85.1/go.mod h1:m+mmokxe/mDFH9o2sKQY6CSFyB14xtgrTDhVN7dNzRo=
+github.com/richardwilkes/toolbox v1.86.0 h1:8GJ17FYF8nIgeOLG6V91iK/qaFHdoQTZMk/WqSdSB+g=
+github.com/richardwilkes/toolbox v1.86.0/go.mod h1:/Oq+okH1mvcF/hiIlzXtAokdxfnSIuQ0WSM7qQhApu4=
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
 github.com/rogpeppe/go-internal v1.8.0 h1:FCbCCtXNOY3UtUuHUYaghJg4y7Fd14rXifAYUAtL9R8=
 github.com/rogpeppe/go-internal v1.8.0/go.mod h1:WmiCO8CzOY8rg0OYDC4/i/2WRWAB6poM+XZ2dLUbcbE=

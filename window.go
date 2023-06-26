@@ -58,41 +58,45 @@ type Window struct {
 	// false to cancel the operation. Defaults to always returning true.
 	AllowCloseCallback func() bool
 	// WillCloseCallback is called just prior to the window closing.
-	WillCloseCallback   func()
-	title               string
-	titleIcons          []*Image
-	wnd                 *glfw.Window
-	surface             *surface
-	data                map[string]any
-	root                *rootPanel
-	focus               *Panel
-	cursor              *Cursor
-	lastMouseDownPanel  *Panel
-	lastMouseOverPanel  *Panel
-	lastKeyDownPanel    *Panel
-	lastTooltip         *Panel
-	lastTooltipShownAt  time.Time
-	lastDrawDuration    time.Duration
-	tooltipSequence     int
-	modalResultCode     int
-	lastButton          int
-	lastButtonCount     int
-	lastButtonTime      time.Time
-	lastContentRect     Rect
-	firstButtonLocation Point
-	dragDataLocation    Point
-	dragDataPanel       *Panel
-	dragData            *DragData
-	lastKeyModifiers    Modifiers
-	valid               bool
-	focused             bool
-	transient           bool
-	notResizable        bool
-	undecorated         bool
-	floating            bool
-	inModal             bool
-	inMouseDown         bool
-	cursorHidden        bool
+	WillCloseCallback func()
+	// DragIntoWindowWillStart is called just prior to a drag into the window starting.
+	DragIntoWindowWillStart func()
+	// DragIntoWindowFinished is called just after a drag into the window completes, whether a drop occurs or not.
+	DragIntoWindowFinished func()
+	title                  string
+	titleIcons             []*Image
+	wnd                    *glfw.Window
+	surface                *surface
+	data                   map[string]any
+	root                   *rootPanel
+	focus                  *Panel
+	cursor                 *Cursor
+	lastMouseDownPanel     *Panel
+	lastMouseOverPanel     *Panel
+	lastKeyDownPanel       *Panel
+	lastTooltip            *Panel
+	lastTooltipShownAt     time.Time
+	lastDrawDuration       time.Duration
+	tooltipSequence        int
+	modalResultCode        int
+	lastButton             int
+	lastButtonCount        int
+	lastButtonTime         time.Time
+	lastContentRect        Rect
+	firstButtonLocation    Point
+	dragDataLocation       Point
+	dragDataPanel          *Panel
+	dragData               *DragData
+	lastKeyModifiers       Modifiers
+	valid                  bool
+	focused                bool
+	transient              bool
+	notResizable           bool
+	undecorated            bool
+	floating               bool
+	inModal                bool
+	inMouseDown            bool
+	cursorHidden           bool
 }
 
 // WindowOption holds an option for window creation.
@@ -1296,6 +1300,9 @@ func (w *Window) StartDataDrag(data *DragData) {
 	if data != nil && len(data.Data) != 0 && data.Drawable != nil && data.Ink != nil {
 		w.dragData = data
 		w.dragDataPanel = nil
+		if w.DragIntoWindowWillStart != nil {
+			toolbox.Call(w.DragIntoWindowWillStart)
+		}
 		w.dataDragOver()
 	}
 }
@@ -1339,5 +1346,8 @@ func (w *Window) dataDragFinish() {
 		toolbox.Call(func() {
 			dragDataPanel.DataDragDropCallback(dragDataPanel.PointFromRoot(dragDataLocation), dragData.Data)
 		})
+	}
+	if w.DragIntoWindowFinished != nil {
+		toolbox.Call(w.DragIntoWindowFinished)
 	}
 }
