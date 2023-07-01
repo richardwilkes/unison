@@ -35,6 +35,8 @@ var (
 	grBackendRenderTargetDeleteProc                *syscall.Proc
 	grContextMakeGLProc                            *syscall.Proc
 	grContextDeleteProc                            *syscall.Proc
+	grContextResetGLTextureBindings                *syscall.Proc
+	grContextReset                                 *syscall.Proc
 	grContextAbandonContextProc                    *syscall.Proc
 	grContextReleaseResourcesAndAbandonContextProc *syscall.Proc
 	grContextUnrefProc                             *syscall.Proc
@@ -333,6 +335,8 @@ func init() {
 	grBackendRenderTargetDeleteProc = skia.MustFindProc("gr_backendrendertarget_delete")
 	grContextMakeGLProc = skia.MustFindProc("gr_direct_context_make_gl")
 	grContextDeleteProc = skia.MustFindProc("gr_direct_context_delete")
+	grContextResetGLTextureBindings = skia.MustFindProc("gr_direct_context_reset_gl_texture_bindings")
+	grContextReset = skia.MustFindProc("gr_direct_context_reset")
 	grContextAbandonContextProc = skia.MustFindProc("gr_direct_context_abandon_context")
 	grContextReleaseResourcesAndAbandonContextProc = skia.MustFindProc("gr_direct_context_release_resources_and_abandon_context")
 	grContextUnrefProc = skia.MustFindProc("gr_direct_context_unref")
@@ -655,6 +659,14 @@ func ContextMakeGL(gl GLInterface) DirectContext {
 
 func ContextDelete(ctx DirectContext) {
 	grContextDeleteProc.Call(uintptr(ctx))
+}
+
+func ContextResetGLTextureBindings(ctx DirectContext) {
+	grContextResetGLTextureBindings.Call(uintptr(ctx))
+}
+
+func ContextReset(ctx DirectContext) {
+	grContextReset.Call(uintptr(ctx))
 }
 
 func ContextAbandonContext(ctx DirectContext) {

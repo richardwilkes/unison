@@ -616,6 +616,8 @@ SK_C_API void gr_direct_context_delete(gr_direct_context_t* context);
 SK_C_API void gr_direct_context_abandon_context(gr_direct_context_t* context);
 SK_C_API void gr_direct_context_release_resources_and_abandon_context(gr_direct_context_t* context);
 SK_C_API void gr_direct_context_unref(const gr_direct_context_t* context);
+SK_C_API void gr_direct_context_reset_gl_texture_bindings(gr_direct_context_t* context);
+SK_C_API void gr_direct_context_reset(gr_direct_context_t* context);
 
 // ===== Functions from include/gpu/gl/GrGLInterface.h =====
 SK_C_API const gr_glinterface_t* gr_glinterface_create_native_interface(void);

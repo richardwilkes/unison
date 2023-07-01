@@ -59,6 +59,7 @@ func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Can
 		canvas:  skia.SurfaceGetCanvas(s.surface),
 		surface: s,
 	}
+	skia.ContextReset(s.context)
 	c.RestoreToCount(1)
 	c.SetMatrix(NewScaleMatrix(scaleX, scaleY))
 	return c, nil

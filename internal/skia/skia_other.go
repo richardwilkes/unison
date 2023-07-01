@@ -82,6 +82,14 @@ func ContextDelete(ctx DirectContext) {
 	C.gr_direct_context_delete(ctx)
 }
 
+func ContextResetGLTextureBindings(ctx DirectContext) {
+	C.gr_direct_context_reset_gl_texture_bindings(ctx)
+}
+
+func ContextReset(ctx DirectContext) {
+	C.gr_direct_context_reset(ctx)
+}
+
 func ContextAbandonContext(ctx DirectContext) {
 	C.gr_direct_context_abandon_context(ctx)
 }
