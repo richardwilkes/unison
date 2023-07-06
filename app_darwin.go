@@ -10,10 +10,17 @@
 package unison
 
 import (
+	"sync"
 	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/unison/internal/ns"
+)
+
+var (
+	pendingFilesLock   sync.Mutex
+	pendingFilesToOpen []string
+	okToIssueFileOpens bool
 )
 
 func platformEarlyInit() {
@@ -21,12 +28,37 @@ func platformEarlyInit() {
 	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
 
-	ns.InstallAppDelegate(potentiallyDeferredOpenFilesHandler)
+	ns.InstallAppDelegate(func(paths []string) {
+		pendingFilesLock.Lock()
+		defer pendingFilesLock.Unlock()
+		if okToIssueFileOpens {
+			InvokeTask(func() {
+				if openFilesCallback != nil {
+					openFilesCallback(paths)
+				}
+			})
+		} else {
+			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
+		}
+	})
 }
 
 func platformLateInit() {
 	ns.InstallSystemThemeChangedCallback(ThemeChanged)
 	ns.SetActivationPolicy(ns.ActivationPolicyRegular)
+}
+
+func platformFinishedStartup() {
+	pendingFilesLock.Lock()
+	defer pendingFilesLock.Unlock()
+	okToIssueFileOpens = true
+	if len(pendingFilesToOpen) != 0 {
+		paths := pendingFilesToOpen
+		pendingFilesToOpen = nil
+		if openFilesCallback != nil {
+			openFilesCallback(paths)
+		}
+	}
 }
 
 func platformBeep() {

@@ -50,6 +50,9 @@ func platformLateInit() {
 	}()
 }
 
+func platformFinishedStartup() {
+}
+
 func platformBeep() {
 	w32.MessageBeep(w32.MBDefault)
 }

@@ -41,9 +41,6 @@ var (
 	currentColorMode                  = AutomaticColorMode
 	needPlatformDarkModeUpdate        = true
 	platformDarkModeEnabled           bool
-	pendingFilesLock                  sync.Mutex
-	pendingFilesToOpen                []string
-	okToIssueFileOpens                bool
 )
 
 type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
@@ -184,7 +181,7 @@ func finishStartup() {
 	if startupFinishedCallback != nil {
 		toolbox.Call(startupFinishedCallback)
 	}
-	drainPendingFileOpens()
+	platformFinishedStartup()
 }
 
 // ThemeChanged marks dynamic colors for rebuilding, calls any installed theme change callback, and then redraws all
@@ -309,32 +306,5 @@ func DragGestureParameters() (minDelay time.Duration, minMouseDrift float32) {
 func postEmptyEvent() {
 	if glfwInited.Load() {
 		glfw.PostEmptyEvent()
-	}
-}
-
-func potentiallyDeferredOpenFilesHandler(paths []string) {
-	pendingFilesLock.Lock()
-	defer pendingFilesLock.Unlock()
-	if okToIssueFileOpens {
-		InvokeTask(func() {
-			if openFilesCallback != nil {
-				openFilesCallback(paths)
-			}
-		})
-	} else {
-		pendingFilesToOpen = append(pendingFilesToOpen, paths...)
-	}
-}
-
-func drainPendingFileOpens() {
-	pendingFilesLock.Lock()
-	defer pendingFilesLock.Unlock()
-	okToIssueFileOpens = true
-	if len(pendingFilesToOpen) != 0 {
-		paths := pendingFilesToOpen
-		pendingFilesToOpen = nil
-		if openFilesCallback != nil {
-			openFilesCallback(paths)
-		}
 	}
 }

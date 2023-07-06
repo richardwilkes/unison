@@ -19,6 +19,9 @@ func platformEarlyInit() {
 func platformLateInit() {
 }
 
+func platformFinishedStartup() {
+}
+
 func platformBeep() {
 	// TODO: Need implementation
 }
