@@ -88,7 +88,7 @@ func (w *Window) convertMouseLocation(x, y float64) Point {
 	return Point{}
 }
 
-func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, code int, action glfw.Action, mods glfw.ModifierKey) {
+func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {
 	if w.okToProcess() {
 		if action == glfw.Release {
 			mods &= ^keyToModifierForGLFW(key)

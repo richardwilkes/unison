@@ -17,5 +17,5 @@ func quitMenuTitle() string {
 	return i18n.Text("Exit")
 }
 
-func platformAddAppMenuEntries(m Menu) {
+func platformAddAppMenuEntries(_ Menu) {
 }
