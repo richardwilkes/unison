@@ -22,6 +22,24 @@ import (
 
 const pathSeparator = string(os.PathSeparator)
 
+// FileDialog represents the common API for open and save dialogs.
+type FileDialog interface {
+	// InitialDirectory returns a path pointing to the directory the dialog will open up in.
+	InitialDirectory() string
+	// SetInitialDirectory sets the directory the dialog will open up in.
+	SetInitialDirectory(dir string)
+	// AllowedExtensions returns the set of permitted file extensions. nil will be returned if all files are allowed.
+	AllowedExtensions() []string
+	// SetAllowedExtensions sets the permitted file extensions that may be selected. Just the extension is needed, e.g.
+	// "txt", not ".txt" or "*.txt", etc. Pass in nil to allow all files.
+	SetAllowedExtensions(extensions ...string)
+	// RunModal displays the dialog, allowing the user to make a selection. Returns true if successful or false if
+	// canceled.
+	RunModal() bool
+	// Path returns the path that was chosen.
+	Path() string
+}
+
 type fileDialog struct {
 	fileCommon
 	currentDir     string
@@ -77,6 +95,9 @@ func (d *fileDialog) RunModal() bool {
 	dlg.Window().SetTitle(dialogTitle)
 	d.dialog = dlg
 	d.dialog.Button(ModalResponseOK).SetEnabled(false)
+	if d.fileNameField != nil {
+		d.fileNameFieldModified(nil, nil)
+	}
 	if dlg.RunModal() == ModalResponseOK {
 		if !d.forOpen {
 			_, ok := ValidateSaveFilePath(d.Path(), "", true)
@@ -125,6 +146,7 @@ func (d *fileDialog) createContent() *Panel {
 
 	if !d.forOpen {
 		d.fileNameField = NewField()
+		d.fileNameField.SetText(d.initialName)
 		d.fileNameField.ModifiedCallback = d.fileNameFieldModified
 		d.fileNameField.KeyDownCallback = d.fileNameFieldKeyDown
 		content.AddChild(d.fileNameField)
@@ -367,6 +389,7 @@ func (d *fileDialog) prepareCurrentDir(dir string) {
 
 type fileCommon struct {
 	initialDir             string
+	initialName            string
 	extensions             []string
 	paths                  []string
 	canChooseFiles         bool
@@ -380,6 +403,7 @@ func (fc *fileCommon) initialize() {
 		lastWorkingDir = resolveToAcceptableAbsDir(".")
 	}
 	fc.initialDir = lastWorkingDir
+	fc.initialName = i18n.Text("untitled")
 	fc.extensions = nil
 	fc.paths = nil
 	fc.canChooseFiles = true
@@ -394,6 +418,14 @@ func (fc *fileCommon) InitialDirectory() string {
 
 func (fc *fileCommon) SetInitialDirectory(dir string) {
 	fc.initialDir = dir
+}
+
+func (fc *fileCommon) InitialFileName() string {
+	return fc.initialName
+}
+
+func (fc *fileCommon) SetInitialFileName(name string) {
+	fc.initialName = name
 }
 
 func (fc *fileCommon) AllowedExtensions() []string {

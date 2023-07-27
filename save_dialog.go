@@ -21,20 +21,11 @@ var lastWorkingDir = ""
 
 // SaveDialog represents a dialog that permits a user to select where to save a file.
 type SaveDialog interface {
-	// InitialDirectory returns a path pointing to the directory the dialog will open up in.
-	InitialDirectory() string
-	// SetInitialDirectory sets the directory the dialog will open up in.
-	SetInitialDirectory(dir string)
-	// AllowedExtensions returns the set of permitted file extensions. nil will be returned if all files are allowed.
-	AllowedExtensions() []string
-	// SetAllowedExtensions sets the permitted file extensions that may be selected. Just the extension is needed, e.g.
-	// "txt", not ".txt" or "*.txt", etc. Pass in nil to allow all files.
-	SetAllowedExtensions(extensions ...string)
-	// RunModal displays the dialog, allowing the user to make a selection. Returns true if successful or false if
-	// canceled.
-	RunModal() bool
-	// Path returns the path that was chosen.
-	Path() string
+	FileDialog
+	// InitialFileName returns the initial file name that will be used.
+	InitialFileName() string
+	// SetInitialFileName sets the file name that should be used when the dialog is first presented.
+	SetInitialFileName(name string)
 }
 
 // NewSaveDialog creates a new save dialog using native support where possible.

@@ -11,7 +11,7 @@ package unison
 
 // OpenDialog represents a dialog that permits a user to select one or more files or directories.
 type OpenDialog interface {
-	SaveDialog
+	FileDialog
 	// CanChooseFiles returns true if the open dialog is permitted to select files.
 	CanChooseFiles() bool
 	// SetCanChooseFiles sets whether the open dialog is permitted to select files.

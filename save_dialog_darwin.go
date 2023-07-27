@@ -40,6 +40,14 @@ func (d *macSaveDialog) SetInitialDirectory(dir string) {
 	d.dialog.SetDirectoryURL(dirURL)
 }
 
+func (d *macSaveDialog) InitialFileName() string {
+	return d.dialog.InitialFileName()
+}
+
+func (d *macSaveDialog) SetInitialFileName(name string) {
+	d.dialog.SetInitialFileName(name)
+}
+
 func (d *macSaveDialog) AllowedExtensions() []string {
 	allowed := d.dialog.AllowedFileTypes()
 	defer allowed.Release()

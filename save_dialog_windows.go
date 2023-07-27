@@ -58,6 +58,7 @@ func (d *winSaveDialog) RunModal() bool {
 	}
 	saveDialog.SetOptions(options)
 	saveDialog.SetFileTypes(d.createFilters())
+	saveDialog.SetFileName(d.InitialFileName())
 	for _, ext := range d.extensions {
 		if ext != "*" {
 			saveDialog.SetDefaultExtension(ext)

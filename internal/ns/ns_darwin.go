@@ -110,6 +110,14 @@ void savePanelSetDirectoryURL(NSSavePanelRef savePanel, CFURLRef url) {
 	[(NSSavePanel *)savePanel setDirectoryURL:(NSURL *)url];
 }
 
+CFStringRef savePanelNameFieldStringValue(NSSavePanelRef savePanel) {
+	return (CFStringRef)[(NSSavePanel *)savePanel nameFieldStringValue];
+}
+
+void savePanelSetNameFieldStringValue(NSSavePanelRef savePanel, CFStringRef name) {
+	[(NSSavePanel *)savePanel setNameFieldStringValue:(NSString *)name];
+}
+
 CFArrayRef savePanelAllowedFileTypes(NSSavePanelRef savePanel) {
 	return (CFArrayRef)[(NSSavePanel *)savePanel allowedFileTypes];
 }
@@ -615,6 +623,16 @@ func (p SavePanel) DirectoryURL() URL {
 
 func (p SavePanel) SetDirectoryURL(url URL) {
 	C.savePanelSetDirectoryURL(C.NSSavePanelRef(p), C.CFURLRef(url))
+}
+
+func (p SavePanel) InitialFileName() string {
+	return String(C.savePanelNameFieldStringValue(C.NSSavePanelRef(p))).String()
+}
+
+func (p SavePanel) SetInitialFileName(name string) {
+	str := NewString(name)
+	C.savePanelSetNameFieldStringValue(C.NSSavePanelRef(p), C.CFStringRef(str))
+	str.Release()
 }
 
 func (p SavePanel) AllowedFileTypes() Array {
