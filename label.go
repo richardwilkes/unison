@@ -57,7 +57,7 @@ func NewLabel() *Label {
 // DefaultSizes provides the default sizing.
 func (l *Label) DefaultSizes(hint Size) (min, pref, max Size) {
 	text := l.textCache.Text(l.Text, l.Font)
-	if text == nil && l.Drawable == nil {
+	if text.Empty() && l.Drawable == nil {
 		pref.Height = l.Font.LineHeight()
 		pref.GrowToInteger()
 	} else {
@@ -88,18 +88,20 @@ func (l *Label) DefaultDraw(canvas *Canvas, _ Rect) {
 // make use of it.
 func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32) Size {
 	var size Size
-	if text != nil {
+	hasText := !text.Empty()
+	if hasText {
 		size = text.Extents()
 		size.GrowToInteger()
 	}
-	adjustLabelSizeForDrawable(text != nil, drawable, drawableSide, imgGap, &size)
+	adjustLabelSizeForDrawable(hasText, drawable, drawableSide, imgGap, &size)
 	size.GrowToInteger()
 	return size
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
 func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
-	if drawable == nil && text == nil {
+	noText := text.Empty()
+	if drawable == nil && noText {
 		return
 	}
 
@@ -114,12 +116,12 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 
 	// Determine overall size of content
 	var size, txtSize Size
-	if text != nil {
+	if !noText {
 		text.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
 		txtSize = text.Extents()
 		size = txtSize
 	}
-	adjustLabelSizeForDrawable(text != nil, drawable, drawableSide, imgGap, &size)
+	adjustLabelSizeForDrawable(!noText, drawable, drawableSide, imgGap, &size)
 
 	// Adjust the working area for the content size
 	switch hAlign {
@@ -143,7 +145,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 	imgY := rect.Y
 	txtX := rect.X //nolint:ifshort // Variable cannot be collapsed into the if, despite what the linter claims
 	txtY := rect.Y
-	if text != nil && drawable != nil {
+	if !noText && drawable != nil {
 		logicalSize := drawable.LogicalSize()
 		switch drawableSide {
 		case TopSide:
@@ -187,7 +189,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 		rect.Size = drawable.LogicalSize()
 		drawable.DrawInRect(canvas, rect, nil, paint)
 	}
-	if text != nil {
+	if !noText {
 		text.Draw(canvas, txtX, txtY+text.Baseline())
 	}
 	canvas.Restore()

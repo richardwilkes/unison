@@ -67,6 +67,11 @@ func NewTextWrappedLines(text string, decoration *TextDecoration, width float32)
 	return lines
 }
 
+// Empty returns true if this doesn't hold any characters. May be called on a nil *Text.
+func (t *Text) Empty() bool {
+	return t == nil || len(t.runes) == 0
+}
+
 // Slice creates a new Text that is a slice of this Text. The indexes refer to rune positions.
 func (t *Text) Slice(i, j int) *Text {
 	if i < 0 {
