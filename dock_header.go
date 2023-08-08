@@ -13,7 +13,6 @@ import (
 	"strconv"
 
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 var _ Layout = &dockHeader{}
@@ -157,34 +156,34 @@ func (d *dockHeader) partition() (tabs []*dockTab, buttons []*Panel) {
 	return tabs, buttons
 }
 
-func (d *dockHeader) LayoutSizes(target *Panel, _ Size) (min, pref, max Size) {
+func (d *dockHeader) LayoutSizes(target *Panel, _ Size) (minSize, prefSize, maxSize Size) {
 	tabs, buttons := d.partition()
 	for i, dt := range tabs {
 		_, size, _ := dt.Sizes(Size{})
-		pref.Width += xmath.Max(size.Width, d.MinimumTabWidth)
-		pref.Height = xmath.Max(pref.Height, size.Height)
+		prefSize.Width += max(size.Width, d.MinimumTabWidth)
+		prefSize.Height = max(prefSize.Height, size.Height)
 		if i == 0 {
-			min.Width += size.Width
+			minSize.Width += size.Width
 		}
 	}
 	for _, b := range buttons {
 		if b.Self != d.overflowButton {
 			_, size, _ := b.Sizes(Size{})
-			pref.Width += size.Width
-			pref.Height = xmath.Max(pref.Height, size.Height)
-			min.Width += size.Width
+			prefSize.Width += size.Width
+			prefSize.Height = max(prefSize.Height, size.Height)
+			minSize.Width += size.Width
 		}
 	}
 	gaps := float32(len(tabs)+len(buttons)-2) * d.TabGap
-	min.Width += gaps
-	pref.Width += gaps
-	min.Height = pref.Height
+	minSize.Width += gaps
+	prefSize.Width += gaps
+	minSize.Height = prefSize.Height
 	if b := target.Border(); b != nil {
 		insets := b.Insets()
-		min.AddInsets(insets)
-		pref.AddInsets(insets)
+		minSize.AddInsets(insets)
+		prefSize.AddInsets(insets)
 	}
-	return min, pref, MaxSize(pref)
+	return minSize, prefSize, MaxSize(prefSize)
 }
 
 func (d *dockHeader) PerformLayout(_ *Panel) {
@@ -194,7 +193,7 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 	extra := contentRect.Width
 	for i, dt := range tabs {
 		_, tabSizes[i], _ = dt.Sizes(Size{})
-		tabSizes[i].Width = xmath.Max(tabSizes[i].Width, d.MinimumTabWidth)
+		tabSizes[i].Width = max(tabSizes[i].Width, d.MinimumTabWidth)
 		extra -= tabSizes[i].Width
 	}
 	buttonSizes := make([]Size, len(buttons))
@@ -223,7 +222,7 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 				}
 			}
 			if fatTabs > 0 {
-				perTab := xmath.Max(remaining/float32(fatTabs), 1)
+				perTab := max(remaining/float32(fatTabs), 1)
 				for i := range tabs {
 					if i != current && tabSizes[i].Width > d.MinimumTabWidth {
 						found = true
@@ -258,7 +257,7 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 			}
 			if remaining > 0 {
 				// STILL not small enough... reduce the size of the current tab, too
-				tabSizes[current].Width = xmath.Max(tabSizes[current].Width-remaining, d.MinimumTabWidth)
+				tabSizes[current].Width = max(tabSizes[current].Width-remaining, d.MinimumTabWidth)
 				remaining = 0
 			}
 			extra = -remaining

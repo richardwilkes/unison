@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath"
-)
-
 // DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
 // existing ScrollBars, but will alter any ScrollBars created in the future.
 var DefaultScrollBarTheme = ScrollBarTheme{
@@ -43,7 +39,7 @@ type ScrollBar struct {
 	ChangedCallback func()
 	value           float32
 	extent          float32
-	max             float32
+	maximum         float32
 	dragOffset      float32
 	horizontal      bool
 	overThumb       bool
@@ -85,7 +81,7 @@ func (s *ScrollBar) Value() float32 {
 
 // MaxValue returns the maximum value that can be set without adjusting the extent or max.
 func (s *ScrollBar) MaxValue() float32 {
-	return xmath.Max(s.max-s.extent, 0)
+	return max(s.maximum-s.extent, 0)
 }
 
 // Extent returns the amount of space representing the visible content area.
@@ -95,27 +91,27 @@ func (s *ScrollBar) Extent() float32 {
 
 // Max returns the amount of space representing the whole content area.
 func (s *ScrollBar) Max() float32 {
-	return s.max
+	return s.maximum
 }
 
 // SetRange sets the value, extent and max values.
-func (s *ScrollBar) SetRange(value, extent, max float32) {
+func (s *ScrollBar) SetRange(value, extent, maximum float32) {
 	if value < 0 {
 		value = 0
 	}
-	if max < 0 {
-		max = 0
+	if maximum < 0 {
+		maximum = 0
 	}
-	if extent > max {
-		extent = max
+	if extent > maximum {
+		extent = maximum
 	}
-	if value+extent > max {
-		value = max - extent
+	if value+extent > maximum {
+		value = maximum - extent
 	}
-	if value != s.value || extent != s.extent || max != s.max {
+	if value != s.value || extent != s.extent || maximum != s.maximum {
 		s.value = value
 		s.extent = extent
-		s.max = max
+		s.maximum = maximum
 		s.MarkForRedraw()
 		if s.ChangedCallback != nil {
 			s.ChangedCallback()
@@ -125,20 +121,20 @@ func (s *ScrollBar) SetRange(value, extent, max float32) {
 
 // Thumb returns the location of the thumb.
 func (s *ScrollBar) Thumb() Rect {
-	if s.max == 0 {
+	if s.maximum == 0 {
 		return Rect{}
 	}
 	r := s.ContentRect(false)
 	if s.horizontal {
-		start := r.Width * (s.value / s.max)
-		size := r.Width * (s.extent / s.max)
+		start := r.Width * (s.value / s.maximum)
+		size := r.Width * (s.extent / s.maximum)
 		if size < s.MinimumThumb {
 			size = s.MinimumThumb
 		}
 		return NewRect(start, s.ThumbIndent, size, r.Height-2*s.ThumbIndent)
 	}
-	start := r.Height * (s.value / s.max)
-	size := r.Height * (s.extent / s.max)
+	start := r.Height * (s.value / s.maximum)
+	size := r.Height * (s.extent / s.maximum)
 	if size < s.MinimumThumb {
 		size = s.MinimumThumb
 	}
@@ -146,21 +142,21 @@ func (s *ScrollBar) Thumb() Rect {
 }
 
 // DefaultSizes provides the default sizing.
-func (s *ScrollBar) DefaultSizes(_ Size) (min, pref, max Size) {
-	min.Width = s.MinimumThickness
-	min.Height = s.MinimumThickness
+func (s *ScrollBar) DefaultSizes(_ Size) (minSize, prefSize, maxSize Size) {
+	minSize.Width = s.MinimumThickness
+	minSize.Height = s.MinimumThickness
 	if s.horizontal {
-		pref.Width = s.MinimumThickness * 2
-		pref.Height = s.MinimumThickness
-		max.Width = DefaultMaxSize
-		max.Height = s.MinimumThickness
+		prefSize.Width = s.MinimumThickness * 2
+		prefSize.Height = s.MinimumThickness
+		maxSize.Width = DefaultMaxSize
+		maxSize.Height = s.MinimumThickness
 	} else {
-		pref.Width = s.MinimumThickness
-		pref.Height = s.MinimumThickness * 2
-		max.Width = s.MinimumThickness
-		max.Height = DefaultMaxSize
+		prefSize.Width = s.MinimumThickness
+		prefSize.Height = s.MinimumThickness * 2
+		maxSize.Width = s.MinimumThickness
+		maxSize.Height = DefaultMaxSize
 	}
-	return min, pref, max
+	return minSize, prefSize, maxSize
 }
 
 // DefaultDraw provides the default drawing.
@@ -236,18 +232,18 @@ func (s *ScrollBar) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 func (s *ScrollBar) adjustValueForPoint(pt Point) {
 	r := s.ContentRect(false)
 	thumb := s.Thumb()
-	var pos, max float32
+	var pos, maximum float32
 	if s.horizontal {
 		pos = pt.X
-		max = r.Width - thumb.Width
+		maximum = r.Width - thumb.Width
 	} else {
 		pos = pt.Y
-		max = r.Height - thumb.Height
+		maximum = r.Height - thumb.Height
 	}
-	if s.max <= s.extent {
-		s.SetRange(0, s.extent, s.max)
+	if s.maximum <= s.extent {
+		s.SetRange(0, s.extent, s.maximum)
 	} else {
-		s.SetRange((s.max-s.extent)*(pos+s.dragOffset)/max, s.extent, s.max)
+		s.SetRange((s.maximum-s.extent)*(pos+s.dragOffset)/maximum, s.extent, s.maximum)
 	}
 }
 

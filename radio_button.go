@@ -79,14 +79,14 @@ func NewRadioButton() *RadioButton {
 }
 
 // DefaultSizes provides the default sizing.
-func (r *RadioButton) DefaultSizes(hint Size) (min, pref, max Size) {
-	pref = r.circleAndLabelSize()
+func (r *RadioButton) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+	prefSize = r.circleAndLabelSize()
 	if border := r.Border(); border != nil {
-		pref.AddInsets(border.Insets())
+		prefSize.AddInsets(border.Insets())
 	}
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, MaxSize(pref)
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, MaxSize(prefSize)
 }
 
 func (r *RadioButton) circleAndLabelSize() Size {

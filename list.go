@@ -141,8 +141,8 @@ func (l *List[T]) RemoveRange(from, to int) {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *List[T]) DefaultSizes(hint Size) (min, pref, max Size) {
-	max = MaxSize(max)
+func (l *List[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+	maxSize = MaxSize(maxSize)
 	height := xmath.Ceil(l.Factory.CellHeight())
 	if height < 1 {
 		height = 0
@@ -153,15 +153,15 @@ func (l *List[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 		_, cPref, cMax := cell.Sizes(size)
 		cPref.GrowToInteger()
 		cMax.GrowToInteger()
-		if pref.Width < cPref.Width {
-			pref.Width = cPref.Width
+		if prefSize.Width < cPref.Width {
+			prefSize.Width = cPref.Width
 		}
-		if max.Width < cMax.Width {
-			max.Width = cMax.Width
+		if maxSize.Width < cMax.Width {
+			maxSize.Width = cMax.Width
 		}
 		if height < 1 {
-			pref.Height += cPref.Height
-			max.Height += cMax.Height
+			prefSize.Height += cPref.Height
+			maxSize.Height += cMax.Height
 		}
 	}
 	if height >= 1 {
@@ -169,20 +169,20 @@ func (l *List[T]) DefaultSizes(hint Size) (min, pref, max Size) {
 		if count < 1 {
 			count = 1
 		}
-		pref.Height = count * height
-		max.Height = count * height
-		if max.Height < DefaultMaxSize {
-			max.Height = DefaultMaxSize
+		prefSize.Height = count * height
+		maxSize.Height = count * height
+		if maxSize.Height < DefaultMaxSize {
+			maxSize.Height = DefaultMaxSize
 		}
 	}
 	if border := l.Border(); border != nil {
 		insets := border.Insets()
-		pref.AddInsets(insets)
-		max.AddInsets(insets)
+		prefSize.AddInsets(insets)
+		maxSize.AddInsets(insets)
 	}
-	pref.GrowToInteger()
-	max.GrowToInteger()
-	return pref, pref, max
+	prefSize.GrowToInteger()
+	maxSize.GrowToInteger()
+	return prefSize, prefSize, maxSize
 }
 
 // DefaultFocusGained provides the default focus gained handling.
@@ -427,9 +427,9 @@ func (l *List[T]) SelectRange(start, end int, add bool) {
 		l.Selection.Reset()
 		l.anchor = -1
 	}
-	max := len(l.rows) - 1
-	start = xmath.Max(xmath.Min(start, max), 0)
-	end = xmath.Max(xmath.Min(end, max), 0)
+	maximum := len(l.rows) - 1
+	start = max(min(start, maximum), 0)
+	end = max(min(end, maximum), 0)
 	l.Selection.SetRange(start, end)
 	if l.anchor == -1 || !l.allowMultiple {
 		l.anchor = start
@@ -450,9 +450,9 @@ func (l *List[T]) Select(add bool, index ...int) {
 		l.Selection.Reset()
 		l.anchor = -1
 	}
-	max := len(l.rows)
+	maximum := len(l.rows)
 	for _, v := range index {
-		if v >= 0 && v < max {
+		if v >= 0 && v < maximum {
 			l.Selection.Set(v)
 			if l.anchor == -1 {
 				l.anchor = v

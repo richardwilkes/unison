@@ -48,19 +48,19 @@ func NewRichLabel() *RichLabel {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *RichLabel) DefaultSizes(hint Size) (min, pref, max Size) {
+func (l *RichLabel) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	if l.Text == nil && l.Drawable == nil {
-		pref.Height = DefaultLabelTheme.Font.LineHeight()
-		pref.GrowToInteger()
+		prefSize.Height = DefaultLabelTheme.Font.LineHeight()
+		prefSize.GrowToInteger()
 	} else {
-		pref = LabelSize(l.Text, l.Drawable, l.Side, l.Gap)
+		prefSize = LabelSize(l.Text, l.Drawable, l.Side, l.Gap)
 	}
 	if b := l.Border(); b != nil {
-		pref.AddInsets(b.Insets())
+		prefSize.AddInsets(b.Insets())
 	}
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, pref
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, prefSize
 }
 
 // DefaultDraw provides the default drawing.

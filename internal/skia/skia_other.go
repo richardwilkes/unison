@@ -730,8 +730,8 @@ func MaskFilterNewGamma(gamma float32) MaskFilter {
 	return C.sk_maskfilter_new_gamma(C.float(gamma))
 }
 
-func MaskFilterNewClip(min, max byte) MaskFilter {
-	return C.sk_maskfilter_new_clip(C.uint8_t(min), C.uint8_t(max))
+func MaskFilterNewClip(minimum, maximum byte) MaskFilter {
+	return C.sk_maskfilter_new_clip(C.uint8_t(minimum), C.uint8_t(maximum))
 }
 
 func MaskFilterNewShader(shader Shader) MaskFilter {

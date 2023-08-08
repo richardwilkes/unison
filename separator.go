@@ -38,37 +38,37 @@ func NewSeparator() *Separator {
 }
 
 // DefaultSizes provides the default sizing.
-func (s *Separator) DefaultSizes(hint Size) (min, pref, max Size) {
+func (s *Separator) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	if s.Vertical {
 		if hint.Height < 1 {
-			pref.Height = 1
+			prefSize.Height = 1
 		} else {
-			pref.Height = hint.Height
+			prefSize.Height = hint.Height
 		}
-		min.Height = 1
-		max.Height = DefaultMaxSize
-		min.Width = 1
-		pref.Width = 1
-		max.Width = 1
+		minSize.Height = 1
+		maxSize.Height = DefaultMaxSize
+		minSize.Width = 1
+		prefSize.Width = 1
+		maxSize.Width = 1
 	} else {
 		if hint.Width < 1 {
-			pref.Width = 1
+			prefSize.Width = 1
 		} else {
-			pref.Width = hint.Width
+			prefSize.Width = hint.Width
 		}
-		min.Width = 1
-		max.Width = DefaultMaxSize
-		min.Height = 1
-		pref.Height = 1
-		max.Height = 1
+		minSize.Width = 1
+		maxSize.Width = DefaultMaxSize
+		minSize.Height = 1
+		prefSize.Height = 1
+		maxSize.Height = 1
 	}
 	if border := s.Border(); border != nil {
 		insets := border.Insets()
-		min.AddInsets(insets)
-		pref.AddInsets(insets)
-		max.AddInsets(insets)
+		minSize.AddInsets(insets)
+		prefSize.AddInsets(insets)
+		maxSize.AddInsets(insets)
 	}
-	return min, pref, max
+	return minSize, prefSize, maxSize
 }
 
 // DefaultDraw provides the default drawing.

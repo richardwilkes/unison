@@ -39,10 +39,10 @@ func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 	d.LostFocusCallback = d.MarkForRedraw
 	d.MouseDownCallback = d.mouseDown
 	d.SetFocusable(true)
-	d.SetSizer(func(_ unison.Size) (min, pref, max unison.Size) {
-		pref.Width = 200
-		pref.Height = 100
-		return min, pref, unison.MaxSize(max)
+	d.SetSizer(func(_ unison.Size) (minSize, prefSize, maxSize unison.Size) {
+		prefSize.Width = 200
+		prefSize.Height = 100
+		return minSize, prefSize, unison.MaxSize(maxSize)
 	})
 	return d
 }

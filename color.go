@@ -453,7 +453,7 @@ func (c Color) AdjustHue(amount float32) Color {
 // Saturation of the color, a value from 0-1.
 func (c Color) Saturation() float32 {
 	if brightness := c.Brightness(); brightness != 0 {
-		return (brightness - (float32(min3(c.Red(), c.Green(), c.Blue())) / 255)) / brightness
+		return (brightness - (float32(min(c.Red(), c.Green(), c.Blue())) / 255)) / brightness
 	}
 	return 0
 }
@@ -472,7 +472,7 @@ func (c Color) AdjustSaturation(amount float32) Color {
 
 // Brightness of the color, a value from 0-1.
 func (c Color) Brightness() float32 {
-	return float32(max3(c.Red(), c.Green(), c.Blue())) / 255
+	return float32(max(c.Red(), c.Green(), c.Blue())) / 255
 }
 
 // SetBrightness creates a new color from this color with the specified brightness.
@@ -492,8 +492,8 @@ func (c Color) HSB() (hue, saturation, brightness float32) {
 	r := c.Red()
 	g := c.Green()
 	b := c.Blue()
-	cMax := max3(r, g, b)
-	cMin := min3(r, g, b)
+	cMax := max(r, g, b)
+	cMin := min(r, g, b)
 	brightness = float32(cMax) / 255
 	if cMax != 0 {
 		saturation = float32(cMax-cMin) / float32(cMax)
@@ -679,32 +679,6 @@ func clampChromaForOKLCH(value float32) float32 {
 	default:
 		return value
 	}
-}
-
-func min3(a, b, c int) int {
-	if a < b {
-		if a < c {
-			return a
-		}
-		return c
-	}
-	if b < c {
-		return b
-	}
-	return c
-}
-
-func max3(a, b, c int) int {
-	if a > b {
-		if a > c {
-			return a
-		}
-		return c
-	}
-	if b > c {
-		return b
-	}
-	return c
 }
 
 // CSS named colors.

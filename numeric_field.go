@@ -23,21 +23,21 @@ type NumericField[T xmath.Numeric] struct {
 	*Field
 	Format     func(T) string
 	Extract    func(s string) (T, error)
-	Prototypes func(min, max T) []T
-	min        T
-	max        T
+	Prototypes func(minimum, maximum T) []T
+	minimum    T
+	maximum    T
 }
 
 // NewNumericField creates a new field that holds a numeric value and limits its input to a specific range of values.
 // The format and extract functions allow the field to be presented as something other than numbers.
-func NewNumericField[T xmath.Numeric](current, min, max T, format func(T) string, extract func(s string) (T, error), prototypes func(min, max T) []T) *NumericField[T] {
+func NewNumericField[T xmath.Numeric](current, minimum, maximum T, format func(T) string, extract func(s string) (T, error), prototypes func(minimum, maximum T) []T) *NumericField[T] {
 	f := &NumericField[T]{
 		Field:      NewField(),
 		Prototypes: prototypes,
 		Format:     format,
 		Extract:    extract,
-		min:        min,
-		max:        max,
+		minimum:    minimum,
+		maximum:    maximum,
 	}
 	f.Self = f
 	f.LostFocusCallback = f.DefaultFocusLost
@@ -51,7 +51,7 @@ func NewNumericField[T xmath.Numeric](current, min, max T, format func(T) string
 // Value returns the current value of the field.
 func (f *NumericField[T]) Value() T {
 	v, _ := f.Extract(strings.TrimSpace(f.Text())) //nolint:errcheck // Default value in case of error is acceptable
-	return xmath.Min(xmath.Max(v, f.min), f.max)
+	return min(max(v, f.minimum), f.maximum)
 }
 
 // SetValue sets the current value of the field.
@@ -64,12 +64,12 @@ func (f *NumericField[T]) SetValue(value T) {
 
 // Min returns the minimum value allowed.
 func (f *NumericField[T]) Min() T {
-	return f.min
+	return f.minimum
 }
 
 // Max returns the maximum value allowed.
 func (f *NumericField[T]) Max() T {
-	return f.max
+	return f.maximum
 }
 
 // DefaultFocusLost is the default implementation for the LostFocusCallback.
@@ -105,10 +105,10 @@ func (f *NumericField[T]) tooltipTextForValidation() string {
 	if err != nil || s == "-" || s == "+" {
 		return i18n.Text("Invalid value")
 	}
-	if minimum := f.min; v < minimum {
+	if minimum := f.minimum; v < minimum {
 		return fmt.Sprintf(i18n.Text("Value must be at least %s"), f.Format(minimum))
 	}
-	if maximum := f.max; v > maximum {
+	if maximum := f.maximum; v > maximum {
 		return fmt.Sprintf(i18n.Text("Value must be no more than %s"), f.Format(maximum))
 	}
 	return ""
@@ -116,19 +116,19 @@ func (f *NumericField[T]) tooltipTextForValidation() string {
 
 // SetMinMax sets the minimum and maximum values and then adjusts the minimum text width, if a prototype function has
 // been set.
-func (f *NumericField[T]) SetMinMax(min, max T) {
-	if f.min != min || f.max != max {
-		f.min = min
-		f.max = max
+func (f *NumericField[T]) SetMinMax(minimum, maximum T) {
+	if f.minimum != minimum || f.maximum != maximum {
+		f.minimum = minimum
+		f.maximum = maximum
 		f.adjustMinimumTextWidth()
 		v, _ := f.Extract(strings.TrimSpace(f.Text())) //nolint:errcheck // Default value in case of error is acceptable
-		f.SetValue(xmath.Min(xmath.Max(v, f.min), f.max))
+		f.SetValue(min(max(v, f.minimum), f.maximum))
 	}
 }
 
 func (f *NumericField[T]) adjustMinimumTextWidth() {
 	if f.Prototypes != nil {
-		prototypes := f.Prototypes(f.min, f.max)
+		prototypes := f.Prototypes(f.minimum, f.maximum)
 		candidates := make([]string, 0, len(prototypes))
 		for _, v := range prototypes {
 			candidates = append(candidates, f.Format(v))

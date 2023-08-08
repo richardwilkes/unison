@@ -94,7 +94,7 @@ func (d *JobDialog) RunModal() bool {
 	dlg.Window().SetTitle(i18n.Text("Print"))
 	d.dialog = dlg
 	d.dialog.Button(unison.ModalResponseOK).SetEnabled(false)
-	dlg.Window().MinMaxContentSizeCallback = func() (min, max unison.Size) {
+	dlg.Window().MinMaxContentSizeCallback = func() (minSize, maxSize unison.Size) {
 		_, pref, _ := dlg.Window().Content().Parent().Sizes(unison.Size{})
 		return pref, pref
 	}
@@ -283,7 +283,7 @@ func (d *JobDialog) retrieveIcon() *unison.Image {
 
 func (d *JobDialog) createCopies(parent *unison.Panel) {
 	d.copies = unison.NewNumericField(d.jobAttributes.Copies(), 1, d.printerAttributes.MaxCopies(), strconv.Itoa,
-		strconv.Atoi, func(min, max int) []int { return []int{max} })
+		strconv.Atoi, func(minimum, maximum int) []int { return []int{maximum} })
 	d.copies.ModifiedCallback = d.adjustOKButton
 	d.copies.SetLayoutData(&unison.FlexLayoutData{VAlign: unison.MiddleAlignment})
 

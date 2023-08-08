@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 // TODO: Fix scaling for docks, too
@@ -304,7 +303,7 @@ func (d *DockLayout) DividerPosition() float32 {
 		}
 		return frame.Height
 	}
-	return xmath.Min(d.divider, d.DividerMaximum())
+	return min(d.divider, d.DividerMaximum())
 }
 
 // SetDividerPosition sets the new divider position. Use a value less than 0 to reset the divider to its default mode,
@@ -340,23 +339,23 @@ func (d *DockLayout) SetFrameRect(r Rect) {
 }
 
 // LayoutSizes implements Layout.
-func (d *DockLayout) LayoutSizes(_ *Panel, _ Size) (min, pref, max Size) {
+func (d *DockLayout) LayoutSizes(_ *Panel, _ Size) (minSize, prefSize, maxSize Size) {
 	if d.nodes[0] != nil {
-		pref = d.nodes[0].PreferredSize()
+		prefSize = d.nodes[0].PreferredSize()
 	}
 	if d.nodes[1] != nil {
-		pref.Max(d.nodes[1].PreferredSize())
+		prefSize.Max(d.nodes[1].PreferredSize())
 	}
 	if d.Full() {
 		if d.Horizontal {
-			pref.Width *= 2
-			pref.Width += d.dock.DockDividerSize()
+			prefSize.Width *= 2
+			prefSize.Width += d.dock.DockDividerSize()
 		} else {
-			pref.Height *= 2
-			pref.Height += d.dock.DockDividerSize()
+			prefSize.Height *= 2
+			prefSize.Height += d.dock.DockDividerSize()
 		}
 	}
-	return min, pref, MaxSize(pref)
+	return minSize, prefSize, MaxSize(prefSize)
 }
 
 // PerformLayout implements Layout.

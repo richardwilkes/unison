@@ -22,7 +22,7 @@ type FlowLayout struct {
 }
 
 // LayoutSizes implements Layout.
-func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
+func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size) {
 	var insets Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
@@ -41,56 +41,56 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (min, pref, max Size)
 	var maxHeight float32
 	var largestChildMin Size
 	for _, child := range target.Children() {
-		min, pref, _ = child.Sizes(Size{})
-		if largestChildMin.Width < min.Width {
-			largestChildMin.Width = min.Width
+		minSize, prefSize, _ = child.Sizes(Size{})
+		if largestChildMin.Width < minSize.Width {
+			largestChildMin.Width = minSize.Width
 		}
-		if largestChildMin.Height < min.Height {
-			largestChildMin.Height = min.Height
+		if largestChildMin.Height < minSize.Height {
+			largestChildMin.Height = minSize.Height
 		}
-		if pref.Width > availWidth {
+		if prefSize.Width > availWidth {
 			switch {
-			case min.Width <= availWidth:
-				pref.Width = availWidth
+			case minSize.Width <= availWidth:
+				prefSize.Width = availWidth
 			case pt.X == insets.Left:
-				pref.Width = min.Width
+				prefSize.Width = minSize.Width
 			default:
 				pt.X = insets.Left
 				pt.Y += maxHeight + f.VSpacing
 				availWidth = width
 				availHeight -= maxHeight + f.VSpacing
 				maxHeight = 0
-				if pref.Width > availWidth {
-					if min.Width <= availWidth {
-						pref.Width = availWidth
+				if prefSize.Width > availWidth {
+					if minSize.Width <= availWidth {
+						prefSize.Width = availWidth
 					} else {
-						pref.Width = min.Width
+						prefSize.Width = minSize.Width
 					}
 				}
 			}
-			savedWidth := pref.Width
-			min, pref, _ = child.Sizes(Size{Width: pref.Width})
-			pref.Width = savedWidth
-			if pref.Height > availHeight {
-				if min.Height <= availHeight {
-					pref.Height = availHeight
+			savedWidth := prefSize.Width
+			minSize, prefSize, _ = child.Sizes(Size{Width: prefSize.Width})
+			prefSize.Width = savedWidth
+			if prefSize.Height > availHeight {
+				if minSize.Height <= availHeight {
+					prefSize.Height = availHeight
 				} else {
-					pref.Height = min.Height
+					prefSize.Height = minSize.Height
 				}
 			}
 		}
-		extent := pt.X + pref.Width
+		extent := pt.X + prefSize.Width
 		if result.Width < extent {
 			result.Width = extent
 		}
-		extent = pt.Y + pref.Height
+		extent = pt.Y + prefSize.Height
 		if result.Height < extent {
 			result.Height = extent
 		}
-		if maxHeight < pref.Height {
-			maxHeight = pref.Height
+		if maxHeight < prefSize.Height {
+			maxHeight = prefSize.Height
 		}
-		availWidth -= pref.Width + f.HSpacing
+		availWidth -= prefSize.Width + f.HSpacing
 		if availWidth <= 0 {
 			pt.X = insets.Left
 			pt.Y += maxHeight + f.VSpacing
@@ -98,7 +98,7 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (min, pref, max Size)
 			availHeight -= maxHeight + f.VSpacing
 			maxHeight = 0
 		} else {
-			pt.X += pref.Width + f.HSpacing
+			pt.X += prefSize.Width + f.HSpacing
 		}
 	}
 	result.Width += insets.Right
@@ -124,13 +124,13 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 	rects := make([]Rect, len(children))
 	start := 0
 	for i, child := range children {
-		min, pref, _ := child.Sizes(Size{})
-		if pref.Width > availWidth {
+		minSize, prefSize, _ := child.Sizes(Size{})
+		if prefSize.Width > availWidth {
 			switch {
-			case min.Width <= availWidth:
-				pref.Width = availWidth
+			case minSize.Width <= availWidth:
+				prefSize.Width = availWidth
 			case pt.X == insets.Left:
-				pref.Width = min.Width
+				prefSize.Width = minSize.Width
 			default:
 				pt.X = insets.Left
 				pt.Y += maxHeight + f.VSpacing
@@ -141,30 +141,30 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 					start = i
 				}
 				maxHeight = 0
-				if pref.Width > availWidth {
-					if min.Width <= availWidth {
-						pref.Width = availWidth
+				if prefSize.Width > availWidth {
+					if minSize.Width <= availWidth {
+						prefSize.Width = availWidth
 					} else {
-						pref.Width = min.Width
+						prefSize.Width = minSize.Width
 					}
 				}
 			}
-			savedWidth := pref.Width
-			min, pref, _ = child.Sizes(Size{Width: pref.Width})
-			pref.Width = savedWidth
-			if pref.Height > availHeight {
-				if min.Height <= availHeight {
-					pref.Height = availHeight
+			savedWidth := prefSize.Width
+			minSize, prefSize, _ = child.Sizes(Size{Width: prefSize.Width})
+			prefSize.Width = savedWidth
+			if prefSize.Height > availHeight {
+				if minSize.Height <= availHeight {
+					prefSize.Height = availHeight
 				} else {
-					pref.Height = min.Height
+					prefSize.Height = minSize.Height
 				}
 			}
 		}
-		rects[i] = Rect{Point: pt, Size: pref}
-		if maxHeight < pref.Height {
-			maxHeight = pref.Height
+		rects[i] = Rect{Point: pt, Size: prefSize}
+		if maxHeight < prefSize.Height {
+			maxHeight = prefSize.Height
 		}
-		availWidth -= pref.Width + f.HSpacing
+		availWidth -= prefSize.Width + f.HSpacing
 		if availWidth <= 0 {
 			pt.X = insets.Left
 			pt.Y += maxHeight + f.VSpacing
@@ -174,7 +174,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 			start = i + 1
 			maxHeight = 0
 		} else {
-			pt.X += pref.Width + f.HSpacing
+			pt.X += prefSize.Width + f.HSpacing
 		}
 	}
 	if start < len(children) {

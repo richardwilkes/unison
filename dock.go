@@ -13,7 +13,6 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 // DefaultDockTheme holds the default DockTheme values for Docks. Modifying this data will not alter existing Docks, but
@@ -200,15 +199,15 @@ func (d *Dock) DefaultDrawOver(gc *Canvas, dirty Rect) {
 		r := d.dragOverNode.FrameRect()
 		switch d.dragSide {
 		case TopSide:
-			r.Height = xmath.Max(r.Height/2, 1)
+			r.Height = max(r.Height/2, 1)
 		case LeftSide:
-			r.Width = xmath.Max(r.Width/2, 1)
+			r.Width = max(r.Width/2, 1)
 		case BottomSide:
-			half := xmath.Max(r.Height/2, 1)
+			half := max(r.Height/2, 1)
 			r.Y += r.Height - half
 			r.Height = half
 		default:
-			half := xmath.Max(r.Width/2, 1)
+			half := max(r.Width/2, 1)
 			r.X += r.Width - half
 			r.Width = half
 		}
@@ -354,7 +353,7 @@ func (d *Dock) dragDivider(where Point) {
 			} else {
 				pos -= where.Y
 			}
-			d.dividerDragLayout.SetDividerPosition(xmath.Max(d.dividerDragInitialPosition-pos, 0))
+			d.dividerDragLayout.SetDividerPosition(max(d.dividerDragInitialPosition-pos, 0))
 		}
 	}
 }

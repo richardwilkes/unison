@@ -9,15 +9,13 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/xmath"
-
 // DefaultTagTheme holds the default TagTheme values for Tags. Modifying this data will not alter existing Tags, but
 // will alter any Tags created in the future.
 var DefaultTagTheme = TagTheme{
 	Font: &DynamicFont{
 		Resolver: func() FontDescriptor {
 			desc := LabelFont.Descriptor()
-			desc.Size = xmath.Max(desc.Size-2, 1)
+			desc.Size = max(desc.Size-2, 1)
 			return desc
 		},
 	},
@@ -67,21 +65,21 @@ func NewTag() *Tag {
 }
 
 // DefaultSizes provides the default sizing.
-func (t *Tag) DefaultSizes(hint Size) (min, pref, max Size) {
+func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	text := t.textCache.Text(t.Text, t.Font)
 	if text == nil && t.Drawable == nil {
-		pref.Height = t.Font.LineHeight()
-		pref.GrowToInteger()
+		prefSize.Height = t.Font.LineHeight()
+		prefSize.GrowToInteger()
 	} else {
-		pref = LabelSize(text, t.Drawable, t.Side, t.Gap)
+		prefSize = LabelSize(text, t.Drawable, t.Side, t.Gap)
 	}
 	if b := t.Border(); b != nil {
-		pref.AddInsets(b.Insets())
+		prefSize.AddInsets(b.Insets())
 	}
-	pref.GrowToInteger()
-	pref.Width += t.SideInset * 2
-	pref.ConstrainForHint(hint)
-	return pref, pref, pref
+	prefSize.GrowToInteger()
+	prefSize.Width += t.SideInset * 2
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, prefSize
 }
 
 // DefaultDraw provides the default drawing.

@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/collection/slice"
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 var _ Menu = &menu{}
@@ -205,7 +204,7 @@ func (m *menu) Popup(where Rect, itemIndex int) {
 		}
 		fr := m.popupPanel.FrameRect()
 		where.Height = fr.Height
-		where.Width = xmath.Max(fr.Width, where.Width)
+		where.Width = max(fr.Width, where.Width)
 		m.ensureInWindow(where)
 		m.popupPanel.ValidateLayout()
 		m.setKeyIndex(itemIndex)

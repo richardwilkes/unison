@@ -310,24 +310,24 @@ func (p *Panel) SetSizer(sizer Sizer) {
 // Sizes returns the minimum, preferred, and maximum sizes the panel wishes to be. It does this by first asking the
 // panel's layout. If no layout is present, then the panel's sizer is asked. If no sizer is present, then it finally
 // uses a default set of sizes that are used for all panels.
-func (p *Panel) Sizes(hint Size) (min, pref, max Size) {
+func (p *Panel) Sizes(hint Size) (minSize, prefSize, maxSize Size) {
 	scale := p.Scale()
 	hint.Width /= scale
 	hint.Height /= scale
 	switch {
 	case p.layout != nil:
-		min, pref, max = p.layout.LayoutSizes(p, hint)
+		minSize, prefSize, maxSize = p.layout.LayoutSizes(p, hint)
 	case p.sizer != nil:
-		min, pref, max = p.sizer(hint)
+		minSize, prefSize, maxSize = p.sizer(hint)
 	default:
-		return min, pref, Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
+		return minSize, prefSize, Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
 	}
-	min.Width *= scale
-	min.Height *= scale
-	pref.Width *= scale
-	pref.Height *= scale
-	max.Width *= scale
-	max.Height *= scale
+	minSize.Width *= scale
+	minSize.Height *= scale
+	prefSize.Width *= scale
+	prefSize.Height *= scale
+	maxSize.Width *= scale
+	maxSize.Height *= scale
 	return
 }
 

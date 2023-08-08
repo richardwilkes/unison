@@ -330,7 +330,7 @@ func (m *Markdown) processHeading() {
 		saveDec := m.decoration
 		saveBlock := m.block
 		m.decoration = m.decoration.Clone()
-		m.decoration.Font = m.HeadingFont[xmath.Min(xmath.Max(heading.Level, 1), 6)-1]
+		m.decoration.Font = m.HeadingFont[min(max(heading.Level, 1), 6)-1]
 		p := NewPanel()
 		p.SetLayout(&FlexLayout{Columns: 1})
 		m.block.AddChild(p)
@@ -862,7 +862,7 @@ func (m *Markdown) processImage() {
 		label := NewLabel()
 		img := m.retrieveImage(string(image.Destination), label)
 		if img == nil {
-			size := xmath.Max(m.decoration.Font.Size(), 24)
+			size := max(m.decoration.Font.Size(), 24)
 			label.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
 				Size: NewSize(size, size),
@@ -942,8 +942,8 @@ func (m *Markdown) flushText() {
 			_, prefSize, _ := m.textRow.Sizes(Size{Width: m.maxLineWidth})
 			remaining -= prefSize.Width
 		}
-		min := m.decoration.Font.SimpleWidth("W")
-		if remaining < min {
+		minWidth := m.decoration.Font.SimpleWidth("W")
+		if remaining < minWidth {
 			// Remaining space is less than the width of a W, so go to the next line
 			m.issueLineBreak()
 			remaining = m.maxLineWidth

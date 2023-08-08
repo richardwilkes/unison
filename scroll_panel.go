@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath"
-)
-
 var (
 	_ Layout = &ScrollPanel{}
 	// MouseWheelMultiplier is used by the default theme to multiply incoming mouse wheel event deltas.
@@ -298,10 +294,10 @@ func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
 		r := s.content.AsPanel().FrameRect()
 		nl := r.Point
 		if r.Y != 0 && vs.Height > r.Bottom() {
-			nl.Y = xmath.Min(vs.Height-r.Height, 0)
+			nl.Y = min(vs.Height-r.Height, 0)
 		}
 		if r.X != 0 && vs.Width > r.Right() {
-			nl.X = xmath.Min(vs.Width-r.Width, 0)
+			nl.X = min(vs.Width-r.Width, 0)
 		}
 		if nl != r.Point {
 			r.Point = nl
@@ -323,43 +319,43 @@ func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
 }
 
 // LayoutSizes implements the Layout interface.
-func (s *ScrollPanel) LayoutSizes(_ *Panel, hint Size) (min, pref, max Size) {
+func (s *ScrollPanel) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSize Size) {
 	if s.content != nil {
-		_, pref, _ = s.content.AsPanel().Sizes(hint)
+		_, prefSize, _ = s.content.AsPanel().Sizes(hint)
 	}
-	min.Width = s.verticalBar.MinimumThickness
-	min.Height = s.horizontalBar.MinimumThickness
+	minSize.Width = s.verticalBar.MinimumThickness
+	minSize.Height = s.horizontalBar.MinimumThickness
 	if s.columnHeaderView != nil {
 		_, p, _ := s.columnHeader.AsPanel().Sizes(Size{Width: hint.Width})
-		min.Height += p.Height
-		pref.Height += p.Height
+		minSize.Height += p.Height
+		prefSize.Height += p.Height
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
-			min.Height += insets.Height()
-			pref.Height += insets.Height()
+			minSize.Height += insets.Height()
+			prefSize.Height += insets.Height()
 		}
 	}
 	if s.rowHeaderView != nil {
 		_, p, _ := s.rowHeader.AsPanel().Sizes(Size{Height: hint.Height})
-		min.Width += p.Width
-		pref.Width += p.Width
+		minSize.Width += p.Width
+		prefSize.Width += p.Width
 		if border := s.rowHeaderView.Border(); border != nil {
 			insets := border.Insets()
-			min.Width += insets.Width()
-			pref.Width += insets.Width()
+			minSize.Width += insets.Width()
+			prefSize.Width += insets.Width()
 		}
 	}
 	if border := s.contentView.Border(); border != nil {
 		insets := border.Insets()
-		min.AddInsets(insets)
-		pref.AddInsets(insets)
+		minSize.AddInsets(insets)
+		prefSize.AddInsets(insets)
 	}
 	if border := s.Border(); border != nil {
 		insets := border.Insets()
-		min.AddInsets(insets)
-		pref.AddInsets(insets)
+		minSize.AddInsets(insets)
+		prefSize.AddInsets(insets)
 	}
-	return min, pref, MaxSize(pref)
+	return minSize, prefSize, MaxSize(prefSize)
 }
 
 // PerformLayout implements the Layout interface.
@@ -370,7 +366,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	columnHeaderTop := r.Y
 	if s.columnHeaderView != nil {
 		_, p, _ := s.columnHeader.AsPanel().Sizes(Size{Width: r.Width})
-		height := xmath.Min(r.Height, p.Height)
+		height := min(r.Height, p.Height)
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
 			height += insets.Height()
@@ -381,7 +377,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	if s.rowHeaderView != nil {
 		_, p, _ := s.rowHeader.AsPanel().Sizes(Size{Height: r.Height})
 		row := NewRect(r.X, r.Y, 0, r.Height)
-		row.Width = xmath.Min(r.Width, p.Width)
+		row.Width = min(r.Width, p.Width)
 		if border := s.rowHeaderView.Border(); border != nil {
 			insets := border.Insets()
 			row.Width += insets.Width()
@@ -392,7 +388,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	}
 	if s.columnHeaderView != nil {
 		_, p, _ := s.columnHeader.AsPanel().Sizes(Size{Width: r.Width})
-		col := NewRect(r.X, columnHeaderTop, r.Width, xmath.Min(r.Height, p.Height))
+		col := NewRect(r.X, columnHeaderTop, r.Width, min(r.Height, p.Height))
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
 			col.Height += insets.Height()
@@ -456,14 +452,14 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		vr := s.columnHeaderView.FrameRect()
 		r = s.columnHeader.AsPanel().FrameRect()
 		r.Height = vr.Height
-		r.Width = xmath.Max(vr.Width, contentSize.Width)
+		r.Width = max(vr.Width, contentSize.Width)
 		s.columnHeader.AsPanel().SetFrameRect(r)
 	}
 	if s.rowHeaderView != nil {
 		vr := s.rowHeaderView.FrameRect()
 		r = s.rowHeader.AsPanel().FrameRect()
 		r.Width = vr.Width
-		r.Height = xmath.Max(vr.Height, contentSize.Height)
+		r.Height = max(vr.Height, contentSize.Height)
 		s.rowHeader.AsPanel().SetFrameRect(r)
 	}
 }

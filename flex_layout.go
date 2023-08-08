@@ -28,9 +28,9 @@ type FlexLayout struct {
 }
 
 type flexSizingCacheData struct {
-	min  Size
-	pref Size
-	max  Size
+	minSize  Size
+	prefSize Size
+	maxSize  Size
 }
 
 // FlexLayoutData is used to control how an object is laid out by the FlexLayout layout.
@@ -48,18 +48,18 @@ type FlexLayoutData struct {
 }
 
 // LayoutSizes implements the Layout interface.
-func (f *FlexLayout) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
+func (f *FlexLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size) {
 	f.sizingCache = make(map[*Panel]map[Size]*flexSizingCacheData)
 	var insets Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 		hint.SubtractInsets(insets).Max(Size{})
 	}
-	min = f.layout(target, Point{}, hint, false, true)
-	pref = f.layout(target, Point{}, hint, false, false)
-	min.AddInsets(insets)
-	pref.AddInsets(insets)
-	return min, pref, MaxSize(pref)
+	minSize = f.layout(target, Point{}, hint, false, true)
+	prefSize = f.layout(target, Point{}, hint, false, false)
+	minSize.AddInsets(insets)
+	prefSize.AddInsets(insets)
+	return minSize, prefSize, MaxSize(prefSize)
 }
 
 // PerformLayout implements the Layout interface.
@@ -128,7 +128,7 @@ func (f *FlexLayout) sizingCacheData(panel *Panel, hint Size) *flexSizingCacheDa
 	var data *flexSizingCacheData
 	if data, ok = m[hint]; !ok {
 		var sizing flexSizingCacheData
-		sizing.min, sizing.pref, sizing.max = panel.Sizes(hint)
+		sizing.minSize, sizing.prefSize, sizing.maxSize = panel.Sizes(hint)
 		data = &sizing
 		m[hint] = data
 	}
@@ -163,8 +163,8 @@ func (f *FlexLayout) buildGrid(children []*Panel) [][]*Panel {
 	f.rows = 0
 	for _, child := range children {
 		data := getDataFromTarget(child)
-		hSpan := xmath.Max(1, xmath.Min(data.HSpan, f.Columns))
-		vSpan := xmath.Max(1, data.VSpan)
+		hSpan := max(1, min(data.HSpan, f.Columns))
+		vSpan := max(1, data.VSpan)
 		for {
 			lastRow := row + vSpan
 			for lastRow >= len(grid) {
@@ -198,7 +198,7 @@ func (f *FlexLayout) buildGrid(children []*Panel) [][]*Panel {
 				grid[pos][column+k] = child
 			}
 		}
-		f.rows = xmath.Max(f.rows, row+vSpan)
+		f.rows = max(f.rows, row+vSpan)
 		column += hSpan
 	}
 	return grid
@@ -214,7 +214,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 		for i := 0; i < f.rows; i++ {
 			data := f.getData(grid, i, j, true)
 			if data != nil {
-				hSpan := xmath.Max(1, xmath.Min(data.HSpan, f.Columns))
+				hSpan := max(1, min(data.HSpan, f.Columns))
 				if hSpan == 1 {
 					w := data.cacheSize.Width
 					if widths[j] < w {
@@ -243,7 +243,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 		for i := 0; i < f.rows; i++ {
 			data := f.getData(grid, i, j, false)
 			if data != nil {
-				hSpan := xmath.Max(1, xmath.Min(data.HSpan, f.Columns))
+				hSpan := max(1, min(data.HSpan, f.Columns))
 				if hSpan > 1 {
 					var spanWidth, spanMinWidth float32
 					spanExpandCount := 0
@@ -298,7 +298,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 			}
 		}
 		if width > 0 && expandCount != 0 {
-			columnWidth = xmath.Max(minColumnWidth, xmath.Floor(availableWidth/float32(f.Columns)))
+			columnWidth = max(minColumnWidth, xmath.Floor(availableWidth/float32(f.Columns)))
 		}
 		for i := 0; i < f.Columns; i++ {
 			expandColumn[i] = expandCount > 0
@@ -335,7 +335,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 				for i := 0; i < f.rows; i++ {
 					data := f.getData(grid, i, j, false)
 					if data != nil {
-						hSpan := xmath.Max(1, xmath.Min(data.HSpan, f.Columns))
+						hSpan := max(1, min(data.HSpan, f.Columns))
 						if hSpan > 1 {
 							minimumWidth := data.minCacheSize.Width
 							if !data.HGrab || minimumWidth != 0 {
@@ -406,8 +406,8 @@ func (f *FlexLayout) getData(grid [][]*Panel, row, column int, first bool) *Flex
 	target := grid[row][column]
 	if target != nil {
 		data := getDataFromTarget(target)
-		hSpan := xmath.Max(1, xmath.Min(data.HSpan, f.Columns))
-		vSpan := xmath.Max(1, data.VSpan)
+		hSpan := max(1, min(data.HSpan, f.Columns))
+		vSpan := max(1, data.VSpan)
 		var i, j int
 		if first {
 			i = row + vSpan - 1
@@ -434,14 +434,14 @@ func (f *FlexLayout) wrap(width float32, grid [][]*Panel, widths []float32, useM
 				data := f.getData(grid, i, j, false)
 				if data != nil {
 					if data.SizeHint.Height < 1 {
-						hSpan := xmath.Max(1, xmath.Min(data.HSpan, f.Columns))
+						hSpan := max(1, min(data.HSpan, f.Columns))
 						var currentWidth float32
 						for k := 0; k < hSpan; k++ {
 							currentWidth += widths[j-k]
 						}
 						currentWidth += float32(hSpan-1) * f.HSpacing
 						if currentWidth != data.cacheSize.Width && data.HAlign == FillAlignment || data.cacheSize.Width > currentWidth {
-							hint := Size{Width: xmath.Max(data.minCacheSize.Width, currentWidth)}
+							hint := Size{Width: max(data.minCacheSize.Width, currentWidth)}
 							data.computeCacheSize(f.sizingCacheData(grid[i][j], hint), hint, useMinimumSize)
 							minimumHeight := data.MinSize.Height
 							if data.VGrab && minimumHeight > 0 && data.cacheSize.Height < minimumHeight {
@@ -465,7 +465,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 		for j := 0; j < f.Columns; j++ {
 			data := f.getData(grid, i, j, true)
 			if data != nil {
-				vSpan := xmath.Max(1, xmath.Min(data.VSpan, f.rows))
+				vSpan := max(1, min(data.VSpan, f.rows))
 				if vSpan == 1 {
 					h := data.cacheSize.Height
 					if heights[i] < h {
@@ -494,7 +494,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 		for j := 0; j < f.Columns; j++ {
 			data := f.getData(grid, i, j, false)
 			if data != nil {
-				vSpan := xmath.Max(1, xmath.Min(data.VSpan, f.rows))
+				vSpan := max(1, min(data.VSpan, f.rows))
 				if vSpan > 1 {
 					var spanHeight, spanMinHeight float32
 					spanExpandCount := 0
@@ -561,7 +561,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 				for j := 0; j < f.Columns; j++ {
 					data := f.getData(grid, i, j, false)
 					if data != nil {
-						vSpan := xmath.Max(1, xmath.Min(data.VSpan, f.rows))
+						vSpan := max(1, min(data.VSpan, f.rows))
 						if vSpan > 1 {
 							minimumHeight := data.MinSize.Height
 							if !data.VGrab || minimumHeight != 0 {
@@ -608,8 +608,8 @@ func (f *FlexLayout) positionChildren(location Point, grid [][]*Panel, widths, h
 		for j := 0; j < f.Columns; j++ {
 			data := f.getData(grid, i, j, true)
 			if data != nil {
-				hSpan := xmath.Max(1, xmath.Min(data.HSpan, f.Columns))
-				vSpan := xmath.Max(1, data.VSpan)
+				hSpan := max(1, min(data.HSpan, f.Columns))
+				vSpan := max(1, data.VSpan)
 				var cellWidth, cellHeight float32
 				for k := 0; k < hSpan; k++ {
 					cellWidth += widths[j+k]
@@ -619,24 +619,24 @@ func (f *FlexLayout) positionChildren(location Point, grid [][]*Panel, widths, h
 				}
 				cellWidth += f.HSpacing * float32(hSpan-1)
 				childX := gridX
-				childWidth := xmath.Min(data.cacheSize.Width, cellWidth)
+				childWidth := min(data.cacheSize.Width, cellWidth)
 				switch data.HAlign {
 				case MiddleAlignment:
-					childX += xmath.Max(0, (cellWidth-childWidth)/2)
+					childX += max(0, (cellWidth-childWidth)/2)
 				case EndAlignment:
-					childX += xmath.Max(0, cellWidth-childWidth)
+					childX += max(0, cellWidth-childWidth)
 				case FillAlignment:
 					childWidth = cellWidth
 				default:
 				}
 				cellHeight += f.VSpacing * float32(vSpan-1)
 				childY := gridY
-				childHeight := xmath.Min(data.cacheSize.Height, cellHeight)
+				childHeight := min(data.cacheSize.Height, cellHeight)
 				switch data.VAlign {
 				case MiddleAlignment:
-					childY += xmath.Max(0, (cellHeight-childHeight)/2)
+					childY += max(0, (cellHeight-childHeight)/2)
 				case EndAlignment:
-					childY += xmath.Max(0, cellHeight-childHeight)
+					childY += max(0, cellHeight-childHeight)
 				case FillAlignment:
 					childHeight = cellHeight
 				default:
@@ -679,40 +679,40 @@ func (f *FlexLayoutData) computeCacheSize(sizing *flexSizingCacheData, hint Size
 		if f.MinSize.Width > 0 {
 			f.minCacheSize.Width = f.MinSize.Width
 		} else {
-			f.minCacheSize.Width = sizing.min.Width
+			f.minCacheSize.Width = sizing.minSize.Width
 		}
 		if hint.Width > 0 && hint.Width < f.minCacheSize.Width {
 			hint.Width = f.minCacheSize.Width
 		}
-		if hint.Width > 0 && hint.Width > sizing.max.Width {
-			hint.Width = sizing.max.Width
+		if hint.Width > 0 && hint.Width > sizing.maxSize.Width {
+			hint.Width = sizing.maxSize.Width
 		}
 		if f.MinSize.Height > 0 {
 			f.minCacheSize.Height = f.MinSize.Height
 		} else {
-			f.minCacheSize.Height = sizing.min.Height
+			f.minCacheSize.Height = sizing.minSize.Height
 		}
 		if hint.Height > 0 && hint.Height < f.minCacheSize.Height {
 			hint.Height = f.minCacheSize.Height
 		}
-		if hint.Height > 0 && hint.Height > sizing.max.Height {
-			hint.Height = sizing.max.Height
+		if hint.Height > 0 && hint.Height > sizing.maxSize.Height {
+			hint.Height = sizing.maxSize.Height
 		}
 	}
 	if useMinimumSize {
-		f.cacheSize = sizing.min
+		f.cacheSize = sizing.minSize
 		if f.MinSize.Width > 0 {
 			f.minCacheSize.Width = f.MinSize.Width
 		} else {
-			f.minCacheSize.Width = sizing.min.Width
+			f.minCacheSize.Width = sizing.minSize.Width
 		}
 		if f.MinSize.Height > 0 {
 			f.minCacheSize.Height = f.MinSize.Height
 		} else {
-			f.minCacheSize.Height = sizing.min.Height
+			f.minCacheSize.Height = sizing.minSize.Height
 		}
 	} else {
-		f.cacheSize = sizing.pref
+		f.cacheSize = sizing.prefSize
 	}
 	if hint.Width > 0 {
 		f.cacheSize.Width = hint.Width

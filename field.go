@@ -16,7 +16,6 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/txt"
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 type lineEndingType byte
@@ -181,7 +180,7 @@ func (f *Field) SetMinimumTextWidthUsing(candidates ...string) {
 }
 
 // DefaultSizes provides the default sizing.
-func (f *Field) DefaultSizes(hint Size) (min, pref, max Size) {
+func (f *Field) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	var insets Insets
 	if b := f.Border(); b != nil {
 		insets = b.Insets()
@@ -189,35 +188,35 @@ func (f *Field) DefaultSizes(hint Size) (min, pref, max Size) {
 	lines, _ := f.buildLines(hint.Width - (2 + insets.Width()))
 	for _, line := range lines {
 		size := line.Extents()
-		if pref.Width < size.Width {
-			pref.Width = size.Width
+		if prefSize.Width < size.Width {
+			prefSize.Width = size.Width
 		}
-		pref.Height += size.Height
+		prefSize.Height += size.Height
 	}
-	if pref.Width < f.MinimumTextWidth {
-		pref.Width = f.MinimumTextWidth
+	if prefSize.Width < f.MinimumTextWidth {
+		prefSize.Width = f.MinimumTextWidth
 	}
-	if height := f.Font.LineHeight(); pref.Height < height {
-		pref.Height = height
+	if height := f.Font.LineHeight(); prefSize.Height < height {
+		prefSize.Height = height
 	}
-	pref.Width += 2 // Allow room for the cursor on either side of the text
+	prefSize.Width += 2 // Allow room for the cursor on either side of the text
 	minWidth := f.MinimumTextWidth + 2 + insets.Width()
-	pref.AddInsets(insets)
-	pref.GrowToInteger()
+	prefSize.AddInsets(insets)
+	prefSize.GrowToInteger()
 	if hint.Width >= 1 && hint.Width < minWidth {
 		hint.Width = minWidth
 	}
-	pref.ConstrainForHint(hint)
-	if hint.Width > 0 && pref.Width < hint.Width {
-		pref.Width = hint.Width
+	prefSize.ConstrainForHint(hint)
+	if hint.Width > 0 && prefSize.Width < hint.Width {
+		prefSize.Width = hint.Width
 	}
-	min = pref
-	min.Width = minWidth
-	return min, pref, MaxSize(pref)
+	minSize = prefSize
+	minSize.Width = minWidth
+	return minSize, prefSize, MaxSize(prefSize)
 }
 
 func (f *Field) prepareLines(width float32) {
-	width = xmath.Max(width, 0)
+	width = max(width, 0)
 	f.lines, f.endsWithLineFeed = f.buildLines(width)
 	f.linesBuiltFor = width
 }
@@ -345,15 +344,15 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 		for i, line := range f.lines {
 			textLeft := f.textLeft(line, rect)
 			textBaseLine := textTop + line.Baseline()
-			textHeight := xmath.Max(line.Height(), f.Font.LineHeight())
+			textHeight := max(line.Height(), f.Font.LineHeight())
 			end := start + len(line.Runes())
 			if f.endsWithLineFeed[i] == hardLineEnding {
 				end++
 			}
 			if enabled && focused && hasSelectionRange && f.selectionStart < end && f.selectionEnd > start {
 				left := textLeft + f.scrollOffset.X
-				selStart := xmath.Max(f.selectionStart, start)
-				selEnd := xmath.Min(f.selectionEnd, end)
+				selStart := max(f.selectionStart, start)
+				selEnd := min(f.selectionEnd, end)
 				if selStart > start {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:selStart]), &TextDecoration{
 						Font:       f.Font,
@@ -687,7 +686,7 @@ func (f *Field) scanLeftToWordPart(pos int) int {
 
 func (f *Field) scanRightToWordPart(pos int) int {
 	if pos >= len(f.runes) {
-		return xmath.Max(len(f.runes)-1, 0)
+		return max(len(f.runes)-1, 0)
 	}
 	if pos < 0 {
 		pos = 0
@@ -707,14 +706,14 @@ func (f *Field) handleArrowLeft(extend, byWord bool) {
 				pos := f.selectionEnd - 1
 				if byWord {
 					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
-					pos = xmath.Min(xmath.Max(start, anchor), pos)
+					pos = min(max(start, anchor), pos)
 				}
 				f.setSelection(anchor, pos, anchor)
 			} else {
 				pos := f.selectionStart - 1
 				if byWord {
 					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
-					pos = xmath.Min(start, pos)
+					pos = min(start, pos)
 				}
 				f.setSelection(pos, anchor, anchor)
 			}
@@ -725,7 +724,7 @@ func (f *Field) handleArrowLeft(extend, byWord bool) {
 		pos := f.selectionStart - 1
 		if byWord {
 			start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
-			pos = xmath.Min(start, pos)
+			pos = min(start, pos)
 		}
 		if extend {
 			f.setSelection(pos, f.selectionStart, f.selectionEnd)
@@ -744,14 +743,14 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 				pos := f.selectionStart + 1
 				if byWord {
 					_, end := f.findWordAt(f.scanRightToWordPart(pos))
-					pos = xmath.Max(xmath.Min(end, anchor), pos)
+					pos = max(min(end, anchor), pos)
 				}
 				f.setSelection(pos, anchor, anchor)
 			} else {
 				pos := f.selectionEnd + 1
 				if byWord {
 					_, end := f.findWordAt(f.scanRightToWordPart(pos))
-					pos = xmath.Max(end, pos)
+					pos = max(end, pos)
 				}
 				f.setSelection(anchor, pos, anchor)
 			}
@@ -762,7 +761,7 @@ func (f *Field) handleArrowRight(extend, byWord bool) {
 		pos := f.selectionEnd + 1
 		if byWord {
 			_, end := f.findWordAt(f.scanRightToWordPart(pos))
-			pos = xmath.Max(end, pos)
+			pos = max(end, pos)
 		}
 		if extend {
 			f.SetSelection(f.selectionStart, pos)
@@ -783,7 +782,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
-					pos = xmath.Min(xmath.Max(start, anchor), pos)
+					pos = min(max(start, anchor), pos)
 				}
 				f.setSelection(anchor, pos, anchor)
 			} else {
@@ -792,7 +791,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
-					pos = xmath.Min(start, pos)
+					pos = min(start, pos)
 				}
 				f.setSelection(pos, anchor, anchor)
 			}
@@ -805,7 +804,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 		pos := f.ToSelectionIndex(pt)
 		if byWord {
 			start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
-			pos = xmath.Min(start, pos)
+			pos = min(start, pos)
 		}
 		if extend {
 			f.setSelection(pos, f.selectionStart, f.selectionEnd)
@@ -826,7 +825,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					_, end := f.findWordAt(f.scanRightToWordPart(pos))
-					pos = xmath.Max(xmath.Min(end, anchor), pos)
+					pos = max(min(end, anchor), pos)
 				}
 				f.setSelection(pos, anchor, anchor)
 			} else {
@@ -835,7 +834,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 				pos := f.ToSelectionIndex(pt)
 				if byWord {
 					_, end := f.findWordAt(f.scanRightToWordPart(pos))
-					pos = xmath.Max(end, pos)
+					pos = max(end, pos)
 				}
 				f.setSelection(anchor, pos, anchor)
 			}
@@ -848,7 +847,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 		pos := f.ToSelectionIndex(pt)
 		if byWord {
 			_, end := f.findWordAt(f.scanRightToWordPart(pos))
-			pos = xmath.Max(end, pos)
+			pos = max(end, pos)
 		}
 		if extend {
 			f.SetSelection(f.selectionStart, pos)
@@ -863,7 +862,7 @@ func (f *Field) lineHeightAt(y float32) float32 {
 		return f.Font.LineHeight()
 	}
 	index, _ := f.lineIndexForY(y)
-	return xmath.Max(f.lines[index].Height(), f.Font.LineHeight())
+	return max(f.lines[index].Height(), f.Font.LineHeight())
 }
 
 // CanCut returns true if the field has a selection that can be cut.
@@ -1158,19 +1157,19 @@ func (f *Field) autoScroll() {
 		save := f.scrollOffset.Y
 		f.scrollOffset.Y = 0
 		top := f.FromSelectionIndex(len(f.runes)).Y
-		min := rect.Bottom() - (top + f.lineHeightAt(top))
-		if min > 0 {
-			min = 0
+		minimum := rect.Bottom() - (top + f.lineHeightAt(top))
+		if minimum > 0 {
+			minimum = 0
 		}
 		top = f.FromSelectionIndex(0).Y
-		max := rect.Y - (top + f.lineHeightAt(top))
-		if max < 0 {
-			max = 0
+		maximum := rect.Y - (top + f.lineHeightAt(top))
+		if maximum < 0 {
+			maximum = 0
 		}
-		if save < min {
-			save = min
-		} else if save > max {
-			save = max
+		if save < minimum {
+			save = minimum
+		} else if save > maximum {
+			save = maximum
 		}
 		f.scrollOffset.Y = save
 	}
@@ -1210,7 +1209,7 @@ func (f *Field) ToSelectionIndex(where Point) int {
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
 func (f *Field) FromSelectionIndex(index int) Point {
 	f.prepareLinesForCurrentWidth()
-	index = xmath.Max(xmath.Min(index, len(f.runes)), 0)
+	index = max(min(index, len(f.runes)), 0)
 	rect := f.ContentRect(false)
 	y := rect.Y + f.scrollOffset.Y
 	start := 0
@@ -1223,7 +1222,7 @@ func (f *Field) FromSelectionIndex(index int) Point {
 		if !f.multiLine || index < start+length {
 			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-start)+f.scrollOffset.X, y)
 		}
-		lastHeight = xmath.Max(line.Height(), f.Font.LineHeight())
+		lastHeight = max(line.Height(), f.Font.LineHeight())
 		y += lastHeight
 		start += length
 	}
@@ -1262,7 +1261,7 @@ func (f *Field) findPrevLineBreak(pos int) int {
 		pos--
 	}
 	_, start := f.lineIndexForPos(pos)
-	return xmath.Max(start-1, 0)
+	return max(start-1, 0)
 }
 
 func (f *Field) findNextLineBreak(pos int) int {
@@ -1276,7 +1275,7 @@ func (f *Field) findNextLineBreak(pos int) int {
 	if f.multiLine && f.endsWithLineFeed[index] != hardLineEnding {
 		start--
 	}
-	return xmath.Min(start, len(f.runes))
+	return min(start, len(f.runes))
 }
 
 func (f *Field) lineIndexForPos(pos int) (index, startPos int) {
@@ -1296,7 +1295,7 @@ func (f *Field) lineIndexForPos(pos int) (index, startPos int) {
 		}
 		start += length
 	}
-	return xmath.Max(len(f.lines)-1, 0), start - length
+	return max(len(f.lines)-1, 0), start - length
 }
 
 func (f *Field) lineIndexForY(y float32) (index, startPos int) {
@@ -1309,7 +1308,7 @@ func (f *Field) lineIndexForY(y float32) (index, startPos int) {
 	start := 0
 	length := 0
 	for i, line := range f.lines {
-		lineHeight := xmath.Max(line.Height(), f.Font.LineHeight())
+		lineHeight := max(line.Height(), f.Font.LineHeight())
 		if y >= offsetY && y <= offsetY+lineHeight {
 			return i, start
 		}
@@ -1320,7 +1319,7 @@ func (f *Field) lineIndexForY(y float32) (index, startPos int) {
 		}
 		start += length
 	}
-	return xmath.Max(len(f.lines)-1, 0), start - length
+	return max(len(f.lines)-1, 0), start - length
 }
 
 // GetFieldState returns the current field state, usually used for undo.

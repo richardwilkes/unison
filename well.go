@@ -124,15 +124,15 @@ func (w *Well) SetInk(ink Ink) {
 }
 
 // DefaultSizes provides the default sizing.
-func (w *Well) DefaultSizes(hint Size) (min, pref, max Size) {
-	pref.Width = 4 + w.ContentSize
-	pref.Height = 4 + w.ContentSize
+func (w *Well) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+	prefSize.Width = 4 + w.ContentSize
+	prefSize.Height = 4 + w.ContentSize
 	if border := w.Border(); border != nil {
-		pref.AddInsets(border.Insets())
+		prefSize.AddInsets(border.Insets())
 	}
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, pref
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, prefSize
 }
 
 // DefaultFocusGained provides the default focus gained handling.

@@ -245,27 +245,27 @@ func (mi *menuItem) mouseExit() bool {
 	return false
 }
 
-func (mi *menuItem) sizer(hint Size) (min, pref, max Size) {
+func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 	if mi.isSeparator {
-		pref.Height = 1
+		prefSize.Height = 1
 	} else {
-		pref = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, LeftSide, 0)
+		prefSize = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, LeftSide, 0)
 		if !mi.isRoot() {
-			pref.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
+			prefSize.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
 		}
 		if !mi.keyBinding.KeyCode.ShouldOmit() {
 			keys := mi.keyBinding.String()
 			if keys != "" {
 				size := mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont).Extents()
-				pref.Width += DefaultMenuItemTheme.KeyGap + size.Width
-				pref.Height = xmath.Max(pref.Height, size.Height)
+				prefSize.Width += DefaultMenuItemTheme.KeyGap + size.Width
+				prefSize.Height = max(prefSize.Height, size.Height)
 			}
 		}
 	}
-	pref.AddInsets(DefaultMenuItemTheme.ItemBorder.Insets())
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, pref
+	prefSize.AddInsets(DefaultMenuItemTheme.ItemBorder.Insets())
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, prefSize
 }
 
 func (mi *menuItem) paint(gc *Canvas, rect Rect) {

@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/log/jot"
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 var _ Drawable = &DrawableSVG{}
@@ -76,7 +75,7 @@ func (s *SVG) Size() Size {
 // OffsetToCenterWithinScaledSize returns the scaled offset values to use to keep the image centered within the given
 // size.
 func (s *SVG) OffsetToCenterWithinScaledSize(size Size) Point {
-	scale := xmath.Min(size.Width/s.size.Width, size.Height/s.size.Height)
+	scale := min(size.Width/s.size.Width, size.Height/s.size.Height)
 	return NewPoint((size.Width-s.size.Width*scale)/2, (size.Height-s.size.Height*scale)/2)
 }
 
@@ -96,7 +95,7 @@ func (s *SVG) PathScaledTo(scale float32) *Path {
 
 // PathForSize returns the path scaled to fit in the specified size. You should not modify this path, as it is cached.
 func (s *SVG) PathForSize(size Size) *Path {
-	return s.PathScaledTo(xmath.Min(size.Width/s.size.Width, size.Height/s.size.Height))
+	return s.PathScaledTo(min(size.Width/s.size.Width, size.Height/s.size.Height))
 }
 
 // LogicalSize implements the Drawable interface.

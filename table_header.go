@@ -10,11 +10,11 @@
 package unison
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
-	"golang.org/x/exp/slices"
 )
 
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
@@ -69,14 +69,14 @@ func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...T
 }
 
 // DefaultSizes provides the default sizing.
-func (h *TableHeader[T]) DefaultSizes(_ Size) (min, pref, max Size) {
-	pref.Width = h.table.FrameRect().Size.Width
-	pref.Height = h.heightForColumns()
+func (h *TableHeader[T]) DefaultSizes(_ Size) (minSize, prefSize, maxSize Size) {
+	prefSize.Width = h.table.FrameRect().Size.Width
+	prefSize.Height = h.heightForColumns()
 	if border := h.Border(); border != nil {
 		insets := border.Insets()
-		pref.Height += insets.Height()
+		prefSize.Height += insets.Height()
 	}
-	return NewSize(16, pref.Height), pref, pref
+	return NewSize(16, prefSize.Height), prefSize, prefSize
 }
 
 // ColumnFrame returns the frame of the given column.
@@ -113,7 +113,7 @@ func (h *TableHeader[T]) heightForColumns() float32 {
 			}
 		}
 	}
-	return xmath.Max(xmath.Ceil(height), h.table.MinimumRowHeight)
+	return max(xmath.Ceil(height), h.table.MinimumRowHeight)
 }
 
 func (h *TableHeader[T]) combinedInsets() Insets {
@@ -318,13 +318,13 @@ func (h *TableHeader[T]) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool 
 		if width < h.columnResizeOverhead {
 			width = h.columnResizeOverhead
 		}
-		min := h.table.Columns[h.interactionColumn].Minimum
-		if min > 0 && width < min+h.columnResizeOverhead {
-			width = min + h.columnResizeOverhead
+		minimum := h.table.Columns[h.interactionColumn].Minimum
+		if minimum > 0 && width < minimum+h.columnResizeOverhead {
+			width = minimum + h.columnResizeOverhead
 		} else {
-			max := h.table.Columns[h.interactionColumn].Maximum
-			if max > 0 && width > max+h.columnResizeOverhead {
-				width = max + h.columnResizeOverhead
+			maximum := h.table.Columns[h.interactionColumn].Maximum
+			if maximum > 0 && width > maximum+h.columnResizeOverhead {
+				width = maximum + h.columnResizeOverhead
 			}
 		}
 		if h.table.Columns[h.interactionColumn].Current != width {

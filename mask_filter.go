@@ -77,8 +77,8 @@ func NewGammaMaskFilter(gamma float32) *MaskFilter {
 }
 
 // NewClipMaskFilter returns a new clip mask filter.
-func NewClipMaskFilter(min, max byte) *MaskFilter {
-	return newMaskFilter(skia.MaskFilterNewClip(min, max))
+func NewClipMaskFilter(minimum, maximum byte) *MaskFilter {
+	return newMaskFilter(skia.MaskFilterNewClip(minimum, maximum))
 }
 
 // NewShaderMaskFilter returns a new shader mask filter.

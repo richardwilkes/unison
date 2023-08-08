@@ -57,23 +57,23 @@ func (d *dockContainerContent) SetCurrentIndex(index int) {
 	}
 }
 
-func (d *dockContainerContent) LayoutSizes(_ *Panel, hint Size) (min, pref, max Size) {
+func (d *dockContainerContent) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSize Size) {
 	for _, c := range d.Children() {
 		min2, pref2, max2 := c.AsPanel().Sizes(hint)
-		min.Max(min2)
-		pref.Max(pref2)
-		max.Max(max2)
+		minSize.Max(min2)
+		prefSize.Max(pref2)
+		maxSize.Max(max2)
 	}
 	if b := d.Border(); b != nil {
 		insets := b.Insets()
-		min.AddInsets(insets)
-		pref.AddInsets(insets)
-		max.AddInsets(insets)
+		minSize.AddInsets(insets)
+		prefSize.AddInsets(insets)
+		maxSize.AddInsets(insets)
 	}
-	min.GrowToInteger()
-	pref.GrowToInteger()
-	max.GrowToInteger()
-	return min, pref, max
+	minSize.GrowToInteger()
+	prefSize.GrowToInteger()
+	maxSize.GrowToInteger()
+	return minSize, prefSize, maxSize
 }
 
 func (d *dockContainerContent) PerformLayout(_ *Panel) {

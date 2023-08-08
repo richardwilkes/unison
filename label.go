@@ -55,20 +55,20 @@ func NewLabel() *Label {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *Label) DefaultSizes(hint Size) (min, pref, max Size) {
+func (l *Label) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	text := l.textCache.Text(l.Text, l.Font)
 	if text.Empty() && l.Drawable == nil {
-		pref.Height = l.Font.LineHeight()
-		pref.GrowToInteger()
+		prefSize.Height = l.Font.LineHeight()
+		prefSize.GrowToInteger()
 	} else {
-		pref = LabelSize(text, l.Drawable, l.Side, l.Gap)
+		prefSize = LabelSize(text, l.Drawable, l.Side, l.Gap)
 	}
 	if b := l.Border(); b != nil {
-		pref.AddInsets(b.Insets())
+		prefSize.AddInsets(b.Insets())
 	}
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, pref
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, prefSize
 }
 
 // DefaultDraw provides the default drawing.

@@ -20,7 +20,6 @@ import (
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/txt"
-	"golang.org/x/exp/maps"
 )
 
 // PrintManager holds the data needed by the print manager.
@@ -39,7 +38,10 @@ func (p *PrintManager) LookupPrinter(id PrinterID) *Printer {
 // Printers returns the previously discovered available printers, sorted by name.
 func (p *PrintManager) Printers() []*Printer {
 	p.lock.RLock()
-	printers := maps.Values(p.printers)
+	printers := make([]*Printer, 0, len(p.printers))
+	for _, printer := range p.printers {
+		printers = append(printers, printer)
+	}
 	p.lock.RUnlock()
 	sort.Slice(printers, func(i, j int) bool {
 		if txt.NaturalLess(printers[i].Name, printers[j].Name, true) {

@@ -242,10 +242,10 @@ func createImageButtonsPanel() *unison.Panel {
 		// Add spacer
 		spacer := &unison.Panel{}
 		spacer.Self = spacer
-		spacer.SetSizer(func(_ unison.Size) (min, pref, max unison.Size) {
-			min.Width = 40
-			pref.Width = 40
-			max.Width = 40
+		spacer.SetSizer(func(_ unison.Size) (minSize, prefSize, maxSize unison.Size) {
+			minSize.Width = 40
+			prefSize.Width = 40
+			maxSize.Width = 40
 			return
 		})
 		panel.AddChild(spacer)
@@ -357,11 +357,11 @@ func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 	return wrapper
 }
 
-func createRadioButton(title string, panel *unison.Panel, group *unison.Group, progressBar *unison.ProgressBar, current, max float32) *unison.RadioButton {
+func createRadioButton(title string, panel *unison.Panel, group *unison.Group, progressBar *unison.ProgressBar, current, maximum float32) *unison.RadioButton {
 	rb := unison.NewRadioButton()
 	rb.Text = title
 	rb.ClickCallback = func() {
-		progressBar.SetMaximum(max)
+		progressBar.SetMaximum(maximum)
 		progressBar.SetCurrent(current)
 		jot.Infof("%s was clicked.", title)
 	}

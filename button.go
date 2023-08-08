@@ -129,23 +129,23 @@ func NewSVGButton(svg *SVG) *Button {
 }
 
 // DefaultSizes provides the default sizing.
-func (b *Button) DefaultSizes(hint Size) (min, pref, max Size) {
-	pref = LabelSize(b.textCache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
+func (b *Button) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+	prefSize = LabelSize(b.textCache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
 	if b.Text == "" && toolbox.IsNil(b.Drawable) {
-		pref.Height = b.Font.LineHeight()
+		prefSize.Height = b.Font.LineHeight()
 	}
 	if theBorder := b.Border(); theBorder != nil {
-		pref.AddInsets(theBorder.Insets())
+		prefSize.AddInsets(theBorder.Insets())
 	}
-	pref.Width += b.HorizontalMargin() * 2
-	pref.Height += b.VerticalMargin() * 2
+	prefSize.Width += b.HorizontalMargin() * 2
+	prefSize.Height += b.VerticalMargin() * 2
 	if !b.HideBase {
-		pref.Width += 2
-		pref.Height += 2
+		prefSize.Width += 2
+		prefSize.Height += 2
 	}
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, MaxSize(pref)
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, MaxSize(prefSize)
 }
 
 // HorizontalMargin returns the horizontal margin that will be used.

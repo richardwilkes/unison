@@ -11,8 +11,6 @@ package unison
 
 import (
 	"strings"
-
-	"github.com/richardwilkes/toolbox/xmath"
 )
 
 // DrawRectBase fills and strokes a rectangle.
@@ -26,7 +24,7 @@ func DrawRectBase(canvas *Canvas, rect Rect, fillInk, strokeInk Ink) {
 func DrawRoundedRectBase(canvas *Canvas, rect Rect, cornerRadius, thickness float32, fillInk, strokeInk Ink) {
 	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, fillInk.Paint(canvas, rect, Fill))
 	rect.InsetUniform(thickness / 2)
-	cornerRadius = xmath.Max(cornerRadius-thickness/2, 0)
+	cornerRadius = max(cornerRadius-thickness/2, 0)
 	p := strokeInk.Paint(canvas, rect, Stroke)
 	p.SetStrokeWidth(thickness)
 	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, p)

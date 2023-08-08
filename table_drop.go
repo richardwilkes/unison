@@ -10,9 +10,9 @@
 package unison
 
 import (
+	"slices"
+
 	"github.com/google/uuid"
-	"github.com/richardwilkes/toolbox/xmath"
-	"golang.org/x/exp/slices"
 )
 
 // TableDrop provides default support for dropping data into a table. This should only be instantiated by a call to
@@ -69,8 +69,8 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 				d.TargetParent = zero
 				d.TargetIndex = d.Table.RootRowCount()
 				rect := d.Table.RowFrame(last)
-				d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
-				d.left, _ = d.Table.ColumnEdges(xmath.Max(hierarchyColumnIndex, 0))
+				d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
+				d.left, _ = d.Table.ColumnEdges(max(hierarchyColumnIndex, 0))
 				d.Table.MarkForRedraw()
 				return true
 			}
@@ -78,9 +78,9 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 				// Over row
 				d.TargetIndex = -1
 				row := d.Table.RowFromIndex(rowIndex)
-				rect := d.Table.CellFrame(rowIndex, xmath.Max(hierarchyColumnIndex, 0))
+				rect := d.Table.CellFrame(rowIndex, max(hierarchyColumnIndex, 0))
 				if where.Y >= d.Table.RowFrame(rowIndex).CenterY() {
-					d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
+					d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
 					d.left = rect.X
 					// Over lower half of row
 					if row.CanHaveChildren() {
@@ -104,7 +104,7 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 				} else {
 					// Over upper half of row; add to parent of this row at this row's index
 					d.TargetParent = row.Parent()
-					d.top = xmath.Max(rect.Y-d.Table.Padding.Bottom, 1)
+					d.top = max(rect.Y-d.Table.Padding.Bottom, 1)
 					d.left = rect.X
 				}
 				if d.TargetIndex == -1 && row != zero {
@@ -142,8 +142,8 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 			d.TargetParent = zero
 			d.TargetIndex = d.Table.RootRowCount()
 			rect := d.Table.RowFrame(last)
-			d.top = xmath.Min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
-			d.left, _ = d.Table.ColumnEdges(xmath.Max(hierarchyColumnIndex, 0))
+			d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
+			d.left, _ = d.Table.ColumnEdges(max(hierarchyColumnIndex, 0))
 			d.Table.MarkForRedraw()
 			return true
 		}
@@ -225,7 +225,7 @@ func (d *TableDrop[T, U]) DataDragDropCallback(_ Point, data map[string]any) {
 		} else {
 			targetRows = d.TargetParent.Children()
 		}
-		targetRows = slices.Insert(slices.Clone(targetRows), xmath.Max(xmath.Min(d.TargetIndex, len(targetRows)), 0), rows...)
+		targetRows = slices.Insert(slices.Clone(targetRows), max(min(d.TargetIndex, len(targetRows)), 0), rows...)
 		if d.TargetParent == zero {
 			d.Table.SetRootRows(targetRows)
 		} else {

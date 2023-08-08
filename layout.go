@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath"
-)
-
 const (
 	// DefaultMaxSize is the default size that should be used for a maximum dimension if the target has no real
 	// preference and can be expanded beyond its preferred size. This is intentionally not something very large to allow
@@ -59,11 +55,11 @@ func (s Side) Vertical() bool {
 
 // Sizer returns minimum, preferred, and maximum sizes. The hint will contain
 // values other than zero for a dimension that has already been determined.
-type Sizer func(hint Size) (min, pref, max Size)
+type Sizer func(hint Size) (minSize, prefSize, maxSize Size)
 
 // Layout defines methods that all layouts must provide.
 type Layout interface {
-	LayoutSizes(target *Panel, hint Size) (min, pref, max Size)
+	LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size)
 	PerformLayout(target *Panel)
 }
 
@@ -71,7 +67,7 @@ type Layout interface {
 // both dimensions, but larger if the size that is passed in is larger.
 func MaxSize(size Size) Size {
 	return Size{
-		Width:  xmath.Max(DefaultMaxSize, size.Width),
-		Height: xmath.Max(DefaultMaxSize, size.Height),
+		Width:  max(DefaultMaxSize, size.Width),
+		Height: max(DefaultMaxSize, size.Height),
 	}
 }

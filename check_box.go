@@ -86,14 +86,14 @@ func (c *CheckBox) DefaultFocusGained() {
 }
 
 // DefaultSizes provides the default sizing.
-func (c *CheckBox) DefaultSizes(hint Size) (min, pref, max Size) {
-	pref = c.boxAndLabelSize()
+func (c *CheckBox) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+	prefSize = c.boxAndLabelSize()
 	if border := c.Border(); border != nil {
-		pref.AddInsets(border.Insets())
+		prefSize.AddInsets(border.Insets())
 	}
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, MaxSize(pref)
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, MaxSize(prefSize)
 }
 
 func (c *CheckBox) boxAndLabelSize() Size {

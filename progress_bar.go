@@ -45,16 +45,16 @@ type ProgressBar struct {
 	Panel
 	ProgressBarTheme
 	current           float32
-	max               float32
+	maximum           float32
 	lastAnimationTime time.Time
 }
 
 // NewProgressBar creates a new progress bar. A max of zero will create an indeterminate progress bar, i.e. one whose
 // meter animates back and forth.
-func NewProgressBar(max float32) *ProgressBar {
+func NewProgressBar(maximum float32) *ProgressBar {
 	p := &ProgressBar{
 		ProgressBarTheme: DefaultProgressBarTheme,
-		max:              max,
+		maximum:          maximum,
 	}
 	p.Self = p
 	p.SetSizer(p.DefaultSizes)
@@ -71,8 +71,8 @@ func (p *ProgressBar) Current() float32 {
 func (p *ProgressBar) SetCurrent(value float32) {
 	if value < 0 {
 		value = 0
-	} else if value > p.max {
-		value = p.max
+	} else if value > p.maximum {
+		value = p.maximum
 	}
 	if p.current != value {
 		p.current = value
@@ -82,7 +82,7 @@ func (p *ProgressBar) SetCurrent(value float32) {
 
 // Maximum returns the maximum value of the progress bar.
 func (p *ProgressBar) Maximum() float32 {
-	return p.max
+	return p.maximum
 }
 
 // SetMaximum sets the maximum value.
@@ -90,37 +90,37 @@ func (p *ProgressBar) SetMaximum(value float32) {
 	if value < 0 {
 		value = 0
 	}
-	if p.max != value {
-		p.max = value
-		if p.max == 0 {
+	if p.maximum != value {
+		p.maximum = value
+		if p.maximum == 0 {
 			p.lastAnimationTime = time.Time{}
 		}
-		if p.current > p.max {
-			p.current = p.max
+		if p.current > p.maximum {
+			p.current = p.maximum
 		}
 		p.MarkForRedraw()
 	}
 }
 
 // DefaultSizes provides the default sizing.
-func (p *ProgressBar) DefaultSizes(hint Size) (min, pref, max Size) {
-	min.Width = 80
-	min.Height = p.PreferredBarHeight
-	pref.Width = 100
-	pref.Height = p.PreferredBarHeight
-	max.Width = DefaultMaxSize
-	max.Height = p.PreferredBarHeight
+func (p *ProgressBar) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+	minSize.Width = 80
+	minSize.Height = p.PreferredBarHeight
+	prefSize.Width = 100
+	prefSize.Height = p.PreferredBarHeight
+	maxSize.Width = DefaultMaxSize
+	maxSize.Height = p.PreferredBarHeight
 	if border := p.Border(); border != nil {
 		insets := border.Insets()
-		min.AddInsets(insets)
-		pref.AddInsets(insets)
-		max.AddInsets(insets)
+		minSize.AddInsets(insets)
+		prefSize.AddInsets(insets)
+		maxSize.AddInsets(insets)
 	}
-	min.GrowToInteger()
-	pref.GrowToInteger()
-	max.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	return pref, pref, MaxSize(pref)
+	minSize.GrowToInteger()
+	prefSize.GrowToInteger()
+	maxSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	return prefSize, prefSize, MaxSize(prefSize)
 }
 
 // DefaultDraw provides the default drawing.
@@ -128,20 +128,20 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ Rect) {
 	bounds := p.ContentRect(false)
 	meter := bounds
 	meter.Width = 0
-	if p.max <= 0 {
+	if p.maximum <= 0 {
 		meter.Width = p.IndeterminateWidth
 		if p.lastAnimationTime.IsZero() {
 			p.lastAnimationTime = time.Now()
 		} else {
-			max := bounds.Width - p.IndeterminateWidth
+			maximum := bounds.Width - p.IndeterminateWidth
 			elapsed := time.Since(p.lastAnimationTime) % (2 * p.FullTraversalSpeed)
 			if elapsed >= p.FullTraversalSpeed {
 				elapsed = p.FullTraversalSpeed - (elapsed - p.FullTraversalSpeed)
 			}
-			meter.X = max * float32(elapsed) / float32(p.FullTraversalSpeed)
+			meter.X = maximum * float32(elapsed) / float32(p.FullTraversalSpeed)
 		}
 	} else if p.current > 0 {
-		meter.Width = bounds.Width * (p.current / p.max)
+		meter.Width = bounds.Width * (p.current / p.maximum)
 	}
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, p.CornerRadius, p.BackgroundInk.Paint(canvas, bounds, Fill))
 	if meter.Width > 0 {
@@ -158,7 +158,7 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ Rect) {
 		meter.InsetUniform(p.EdgeThickness / 2)
 		canvas.DrawRoundedRect(meter, p.CornerRadius, p.CornerRadius, paint)
 	}
-	if p.max == 0 {
+	if p.maximum == 0 {
 		InvokeTaskAfter(p.MarkForRedraw, p.TickSpeed)
 	}
 }

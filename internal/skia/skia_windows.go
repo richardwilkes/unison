@@ -1401,8 +1401,8 @@ func MaskFilterNewGamma(gamma float32) MaskFilter {
 	return MaskFilter(r1)
 }
 
-func MaskFilterNewClip(min, max byte) MaskFilter {
-	r1, _, _ := skMaskFilterNewClipProc.Call(uintptr(min), uintptr(max))
+func MaskFilterNewClip(minimum, maximum byte) MaskFilter {
+	r1, _, _ := skMaskFilterNewClipProc.Call(uintptr(minimum), uintptr(maximum))
 	return MaskFilter(r1)
 }
 

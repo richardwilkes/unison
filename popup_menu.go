@@ -11,14 +11,12 @@ package unison
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xmath"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
@@ -92,29 +90,29 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 }
 
 // DefaultSizes provides the default sizing.
-func (p *PopupMenu[T]) DefaultSizes(hint Size) (min, pref, max Size) {
-	pref = LabelSize(p.textCache.Text("M", p.Font), nil, 0, 0)
+func (p *PopupMenu[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+	prefSize = LabelSize(p.textCache.Text("M", p.Font), nil, 0, 0)
 	for _, one := range p.items {
 		if !one.separator {
 			size := LabelSize(one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font), nil, 0, 0)
-			if pref.Width < size.Width {
-				pref.Width = size.Width
+			if prefSize.Width < size.Width {
+				prefSize.Width = size.Width
 			}
-			if pref.Height < size.Height {
-				pref.Height = size.Height
+			if prefSize.Height < size.Height {
+				prefSize.Height = size.Height
 			}
 		}
 	}
 	if border := p.Border(); border != nil {
-		pref.AddInsets(border.Insets())
+		prefSize.AddInsets(border.Insets())
 	}
-	pref.Height += p.VMargin*2 + 2
-	pref.Width += p.HMargin*2 + 2 + pref.Height*0.75
-	pref.GrowToInteger()
-	pref.ConstrainForHint(hint)
-	max.Width = xmath.Max(DefaultMaxSize, pref.Width)
-	max.Height = pref.Height
-	return pref, pref, max
+	prefSize.Height += p.VMargin*2 + 2
+	prefSize.Width += p.HMargin*2 + 2 + prefSize.Height*0.75
+	prefSize.GrowToInteger()
+	prefSize.ConstrainForHint(hint)
+	maxSize.Width = max(DefaultMaxSize, prefSize.Width)
+	maxSize.Height = prefSize.Height
+	return prefSize, prefSize, maxSize
 }
 
 // DefaultFocusGained provides the default focus gained handling.
@@ -345,7 +343,7 @@ func (p *PopupMenu[T]) SelectedIndex() int {
 // SelectedIndexes returns the currently selected item indexes.
 func (p *PopupMenu[T]) SelectedIndexes() []int {
 	var indexes []int
-	for _, sel := range maps.Keys(p.selection) {
+	for sel := range p.selection {
 		if sel >= 0 && sel < len(p.items) {
 			if one := p.items[sel]; !one.separator {
 				indexes = append(indexes, sel)

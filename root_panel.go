@@ -111,11 +111,11 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 	}
 }
 
-func (p *rootPanel) LayoutSizes(_ *Panel, hint Size) (min, pref, max Size) {
-	min, pref, max = p.contentPanel.Sizes(hint)
+func (p *rootPanel) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSize Size) {
+	minSize, prefSize, maxSize = p.contentPanel.Sizes(hint)
 	if p.menuBarPanel != nil {
 		_, barSize, _ := p.menuBarPanel.Sizes(Size{})
-		for _, size := range []*Size{&min, &pref, &max} {
+		for _, size := range []*Size{&minSize, &prefSize, &maxSize} {
 			size.Height += barSize.Height
 			if size.Width < barSize.Width {
 				size.Width = barSize.Width

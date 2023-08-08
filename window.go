@@ -49,7 +49,7 @@ type DragData struct {
 type Window struct {
 	InputCallbacks
 	// MinMaxContentSizeCallback returns the minimum and maximum size for the window content.
-	MinMaxContentSizeCallback func() (min, max Size)
+	MinMaxContentSizeCallback func() (minimum, maximum Size)
 	// MovedCallback is called when the window is moved.
 	MovedCallback func()
 	// ResizedCallback is called when the window is resized.
@@ -608,25 +608,25 @@ func (w *Window) SetFrameRect(rect Rect) {
 	w.SetContentRect(w.ContentRectForFrameRect(rect))
 }
 
-func (w *Window) minMaxContentSize() (min, max Size) {
+func (w *Window) minMaxContentSize() (minimum, maximum Size) {
 	if w.MinMaxContentSizeCallback != nil {
 		return w.MinMaxContentSizeCallback()
 	}
-	min, _, max = w.root.Sizes(Size{})
+	minimum, _, maximum = w.root.Sizes(Size{})
 	return
 }
 
 func (w *Window) adjustContentRectForMinMax(rect Rect) Rect {
-	min, max := w.minMaxContentSize()
-	if rect.Width < min.Width {
-		rect.Width = min.Width
-	} else if rect.Width > max.Width {
-		rect.Width = max.Width
+	minimum, maximum := w.minMaxContentSize()
+	if rect.Width < minimum.Width {
+		rect.Width = minimum.Width
+	} else if rect.Width > maximum.Width {
+		rect.Width = maximum.Width
 	}
-	if rect.Height < min.Height {
-		rect.Height = min.Height
-	} else if rect.Height > max.Height {
-		rect.Height = max.Height
+	if rect.Height < minimum.Height {
+		rect.Height = minimum.Height
+	} else if rect.Height > maximum.Height {
+		rect.Height = maximum.Height
 	}
 	w.lastContentRect = rect
 	return rect

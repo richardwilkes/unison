@@ -9,10 +9,6 @@
 
 package unison
 
-import (
-	"github.com/richardwilkes/toolbox/xmath"
-)
-
 var (
 	_ Layout         = &DockContainer{}
 	_ DockLayoutNode = &DockContainer{}
@@ -231,24 +227,24 @@ func (d *DockContainer) PreferredSize() Size {
 }
 
 // LayoutSizes implements Layout.
-func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (min, pref, max Size) {
-	min, pref, max = d.header.Sizes(Size{Width: hint.Width})
-	min.Height = pref.Height
-	max.Height = pref.Height
+func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size) {
+	minSize, prefSize, maxSize = d.header.Sizes(Size{Width: hint.Width})
+	minSize.Height = prefSize.Height
+	maxSize.Height = prefSize.Height
 	min2, pref2, max2 := d.content.Sizes(Size{
 		Width:  hint.Width,
-		Height: xmath.Max(hint.Height-pref.Height, 0),
+		Height: max(hint.Height-prefSize.Height, 0),
 	})
-	min.Width = min2.Width
-	pref.Width = pref2.Width
-	max.Width = max2.Width
-	min.Height += min2.Height
-	pref.Height += pref2.Height
-	max.Height += max2.Height
+	minSize.Width = min2.Width
+	prefSize.Width = pref2.Width
+	maxSize.Width = max2.Width
+	minSize.Height += min2.Height
+	prefSize.Height += pref2.Height
+	maxSize.Height += max2.Height
 	if b := target.Border(); b != nil {
-		pref.AddInsets(b.Insets())
+		prefSize.AddInsets(b.Insets())
 	}
-	return min, pref, max
+	return minSize, prefSize, maxSize
 }
 
 // PerformLayout implements Layout.
@@ -256,5 +252,5 @@ func (d *DockContainer) PerformLayout(_ *Panel) {
 	r := d.ContentRect(false)
 	_, pref, _ := d.header.Sizes(Size{Width: r.Width})
 	d.header.SetFrameRect(NewRect(r.X, r.Y, r.Width, pref.Height))
-	d.content.SetFrameRect(NewRect(r.X, r.Y+pref.Height, r.Width, xmath.Max(r.Height-pref.Height, 0)))
+	d.content.SetFrameRect(NewRect(r.X, r.Y+pref.Height, r.Width, max(r.Height-pref.Height, 0)))
 }
