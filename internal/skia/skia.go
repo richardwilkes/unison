@@ -201,8 +201,8 @@ type Matrix struct {
 	Persp2 float32
 }
 
-func (m *Matrix) ToMatrix2D() *geom.Matrix2D[float32] {
-	return &geom.Matrix2D[float32]{
+func (m *Matrix) ToMatrix2D() *geom.Matrix2D32 {
+	return &geom.Matrix2D32{
 		ScaleX: m.ScaleX,
 		SkewX:  m.SkewX,
 		TransX: m.TransX,
@@ -212,7 +212,7 @@ func (m *Matrix) ToMatrix2D() *geom.Matrix2D[float32] {
 	}
 }
 
-func Matrix2DtoMatrix(m *geom.Matrix2D[float32]) *Matrix {
+func Matrix2DtoMatrix(m *geom.Matrix2D32) *Matrix {
 	if m == nil {
 		return nil
 	}

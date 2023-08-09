@@ -13,6 +13,7 @@ import (
 	"runtime"
 
 	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/toolbox/xmath/geom/poly"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -235,18 +236,18 @@ func (p *Path) PathReverse(path *Path) {
 // PathRotated appends a path after rotating it. If extend is true, a line from the current point to the start of the
 // added path is created.
 func (p *Path) PathRotated(path *Path, degrees float32, extend bool) {
-	skia.PathAddPathMatrix(p.path, path.path, skia.Matrix2DtoMatrix(NewRotationByDegreesMatrix(degrees)), pathAddMode(extend))
+	skia.PathAddPathMatrix(p.path, path.path, skia.Matrix2DtoMatrix(geom.NewRotationByDegreesMatrix2D(degrees)), pathAddMode(extend))
 }
 
 // PathScaled appends a path after scaling it. If extend is true, a line from the current point to the start of the
 // added path is created.
 func (p *Path) PathScaled(path *Path, sx, sy float32, extend bool) {
-	skia.PathAddPathMatrix(p.path, path.path, skia.Matrix2DtoMatrix(NewScaleMatrix(sx, sy)), pathAddMode(extend))
+	skia.PathAddPathMatrix(p.path, path.path, skia.Matrix2DtoMatrix(geom.NewScaleMatrix2D(sx, sy)), pathAddMode(extend))
 }
 
 // PathTransformed appends a path after transforming it. If extend is true, a line from the current point to the start
 // of the added path is created.
-func (p *Path) PathTransformed(path *Path, matrix *Matrix, extend bool) {
+func (p *Path) PathTransformed(path *Path, matrix *geom.Matrix2D32, extend bool) {
 	skia.PathAddPathMatrix(p.path, path.path, skia.Matrix2DtoMatrix(matrix), pathAddMode(extend))
 }
 
@@ -301,40 +302,40 @@ func (p *Path) RoundedRectWithDirection(bounds Rect, radiusX, radiusY float32, d
 
 // Rotate the path.
 func (p *Path) Rotate(degrees float32) {
-	skia.PathTransform(p.path, skia.Matrix2DtoMatrix(NewRotationByDegreesMatrix(degrees)))
+	skia.PathTransform(p.path, skia.Matrix2DtoMatrix(geom.NewRotationByDegreesMatrix2D(degrees)))
 }
 
 // Scale the path.
 func (p *Path) Scale(sx, sy float32) {
-	skia.PathTransform(p.path, skia.Matrix2DtoMatrix(NewScaleMatrix(sx, sy)))
+	skia.PathTransform(p.path, skia.Matrix2DtoMatrix(geom.NewScaleMatrix2D(sx, sy)))
 }
 
 // Transform the path by the provided matrix.
-func (p *Path) Transform(matrix *Matrix) {
+func (p *Path) Transform(matrix *geom.Matrix2D32) {
 	skia.PathTransform(p.path, skia.Matrix2DtoMatrix(matrix))
 }
 
 // Translate the path.
 func (p *Path) Translate(x, y float32) {
-	skia.PathTransform(p.path, skia.Matrix2DtoMatrix(NewTranslationMatrix(x, y)))
+	skia.PathTransform(p.path, skia.Matrix2DtoMatrix(geom.NewTranslationMatrix2D(x, y)))
 }
 
 // NewRotated creates a copy of this path and then rotates it.
 func (p *Path) NewRotated(degrees float32) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, skia.Matrix2DtoMatrix(NewRotationByDegreesMatrix(degrees)))
+	skia.PathTransformToDest(p.path, path.path, skia.Matrix2DtoMatrix(geom.NewRotationByDegreesMatrix2D(degrees)))
 	return path
 }
 
 // NewScaled creates a copy of this path and then scales it.
 func (p *Path) NewScaled(sx, sy float32) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, skia.Matrix2DtoMatrix(NewScaleMatrix(sx, sy)))
+	skia.PathTransformToDest(p.path, path.path, skia.Matrix2DtoMatrix(geom.NewScaleMatrix2D(sx, sy)))
 	return path
 }
 
 // NewTransformed creates a copy of this path and then transforms it by the provided matrix.
-func (p *Path) NewTransformed(matrix *Matrix) *Path {
+func (p *Path) NewTransformed(matrix *geom.Matrix2D32) *Path {
 	path := NewPath()
 	skia.PathTransformToDest(p.path, path.path, skia.Matrix2DtoMatrix(matrix))
 	return path
@@ -343,7 +344,7 @@ func (p *Path) NewTransformed(matrix *Matrix) *Path {
 // NewTranslated creates a copy of this path and then translates it.
 func (p *Path) NewTranslated(x, y float32) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, skia.Matrix2DtoMatrix(NewTranslationMatrix(x, y)))
+	skia.PathTransformToDest(p.path, path.path, skia.Matrix2DtoMatrix(geom.NewTranslationMatrix2D(x, y)))
 	return path
 }
 

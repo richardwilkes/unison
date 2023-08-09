@@ -77,31 +77,3 @@ func StdInsets() Insets {
 		Right:  StdHSpacing,
 	}
 }
-
-// Matrix is an alias for geom.Matrix2D[float32], for convenience.
-type Matrix = geom.Matrix2D[float32]
-
-// NewIdentityMatrix creates a new identity transformation 2D matrix.
-func NewIdentityMatrix() *Matrix {
-	return geom.NewIdentityMatrix2D[float32]()
-}
-
-// NewTranslationMatrix creates a new 2D matrix that translates by 'tx' and 'ty'.
-func NewTranslationMatrix(tx, ty float32) *Matrix {
-	return geom.NewTranslationMatrix2D(tx, ty)
-}
-
-// NewScaleMatrix creates a new 2D matrix that scales by 'sx' and 'sy'.
-func NewScaleMatrix(sx, sy float32) *Matrix {
-	return geom.NewScaleMatrix2D(sx, sy)
-}
-
-// NewRotationMatrix creates a new 2D matrix that rotates by 'radians'. Positive values are clockwise.
-func NewRotationMatrix(radians float32) *Matrix {
-	return geom.NewRotationMatrix2D(radians)
-}
-
-// NewRotationByDegreesMatrix creates a new 2D matrix that rotates by 'degrees'. Positive values are clockwise.
-func NewRotationByDegreesMatrix(degrees float32) *Matrix {
-	return geom.NewRotationByDegreesMatrix2D(degrees)
-}

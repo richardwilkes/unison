@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/toolbox/xmath/geom/poly"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -102,7 +103,7 @@ func (c *Canvas) Skew(sx, sy float32) {
 }
 
 // Concat the matrix.
-func (c *Canvas) Concat(matrix *Matrix) {
+func (c *Canvas) Concat(matrix *geom.Matrix2D32) {
 	skia.CanvasConcat(c.canvas, skia.Matrix2DtoMatrix(matrix))
 }
 
@@ -112,12 +113,12 @@ func (c *Canvas) ResetMatrix() {
 }
 
 // Matrix returns the current transform matrix.
-func (c *Canvas) Matrix() *Matrix {
+func (c *Canvas) Matrix() *geom.Matrix2D32 {
 	return skia.CanvasGetTotalMatrix(c.canvas).ToMatrix2D()
 }
 
 // SetMatrix replaces the current matrix with the given matrix.
-func (c *Canvas) SetMatrix(matrix *Matrix) {
+func (c *Canvas) SetMatrix(matrix *geom.Matrix2D32) {
 	skia.CanvasSetMatrix(c.canvas, skia.Matrix2DtoMatrix(matrix))
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -110,7 +111,7 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		surface: s,
 	}
 	c.RestoreToCount(1)
-	c.SetMatrix(NewScaleMatrix(scale, scale))
+	c.SetMatrix(geom.NewScaleMatrix2D(scale, scale))
 	c.Save()
 	toolbox.Call(func() { draw(c) })
 	c.Restore()
