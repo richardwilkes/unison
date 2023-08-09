@@ -12,7 +12,6 @@ package unison
 import (
 	"runtime"
 
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -197,7 +196,7 @@ func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, 
 
 // NewMatrixTransformImageFilter returns a new matrix transform image filter. input may be nil, in which case the source
 // bitmap will be used.
-func NewMatrixTransformImageFilter(matrix *geom.Matrix2D32, sampling *SamplingOptions, input *ImageFilter) *ImageFilter {
+func NewMatrixTransformImageFilter(matrix *Matrix, sampling *SamplingOptions, input *ImageFilter) *ImageFilter {
 	var in skia.ImageFilter
 	if input != nil {
 		in = input.filter

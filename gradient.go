@@ -11,8 +11,6 @@ package unison
 
 import (
 	"fmt"
-
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var _ Ink = &Gradient{}
@@ -106,10 +104,10 @@ func (g *Gradient) Paint(_ *Canvas, rect Rect, style PaintStyle) *Paint {
 	var shader *Shader
 	if g.StartRadius > 0 && g.EndRadius > 0 {
 		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, colors, colorPos, TileModeClamp,
-			geom.NewIdentityMatrix2D[float32]())
+			NewIdentityMatrix())
 	} else {
 		shader = NewLinearGradientShader(start, end, colors, colorPos, TileModeClamp,
-			geom.NewIdentityMatrix2D[float32]())
+			NewIdentityMatrix())
 	}
 	paint.SetShader(shader)
 	return paint

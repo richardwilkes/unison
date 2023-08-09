@@ -12,7 +12,6 @@ package unison
 import (
 	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -62,7 +61,7 @@ func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Can
 	}
 	skia.ContextReset(s.context)
 	c.RestoreToCount(1)
-	c.SetMatrix(geom.NewScaleMatrix2D(scaleX, scaleY))
+	c.SetMatrix(NewScaleMatrix(scaleX, scaleY))
 	return c, nil
 }
 

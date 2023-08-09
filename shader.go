@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -67,28 +66,28 @@ func NewBlendShader(blendMode BlendMode, dst, src *Shader) *Shader {
 }
 
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.
-func NewLinearGradientShader(start, end Point, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom.Matrix2D32) *Shader {
+func NewLinearGradientShader(start, end Point, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
 	return newShader(skia.ShaderNewLinearGradient(start, end,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
 		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
 }
 
 // NewRadialGradientShader creates a new radial gradient Shader. matrix may be nil.
-func NewRadialGradientShader(center Point, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom.Matrix2D32) *Shader {
+func NewRadialGradientShader(center Point, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
 	return newShader(skia.ShaderNewRadialGradient(center, radius,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
 		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
 }
 
 // NewSweepGradientShader creates a new sweep gradient Shader. matrix may be nil.
-func NewSweepGradientShader(center Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom.Matrix2D32) *Shader {
+func NewSweepGradientShader(center Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
 	return newShader(skia.ShaderNewSweepGradient(center, startAngle, endAngle,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
 		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
 }
 
 // New2PtConicalGradientShader creates a new 2-point conical gradient Shader. matrix may be nil.
-func New2PtConicalGradientShader(startPt, endPt Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *geom.Matrix2D32) *Shader {
+func New2PtConicalGradientShader(startPt, endPt Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
 	return newShader(skia.ShaderNewTwoPointConicalGradient(startPt, endPt, startRadius, endRadius,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
 		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
@@ -112,7 +111,7 @@ func NewTurbulencePerlinNoiseShader(baseFreqX, baseFreqY, seed float32, numOctav
 
 // NewImageShader creates a new image Shader. If canvas is not nil, a hardware-accellerated image will be used if
 // possible.
-func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY TileMode, sampling *SamplingOptions, matrix *geom.Matrix2D32) *Shader {
+func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY TileMode, sampling *SamplingOptions, matrix *Matrix) *Shader {
 	var image skia.Image
 	ref := img.ref()
 	if canvas == nil {
@@ -125,7 +124,7 @@ func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY TileMode, s
 }
 
 // NewWithLocalMatrix creates a new copy of this shader with a local matrix applied.
-func (s *Shader) NewWithLocalMatrix(matrix *geom.Matrix2D32) *Shader {
+func (s *Shader) NewWithLocalMatrix(matrix *Matrix) *Shader {
 	return newShader(skia.ShaderWithLocalMatrix(s.shader, skia.Matrix2DtoMatrix(matrix)))
 }
 
