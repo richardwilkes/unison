@@ -11,9 +11,10 @@ package unison
 
 import (
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/collection/dict"
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -46,11 +47,8 @@ func FontFamilies() []string {
 		names[k] = true
 	}
 	internalFontLock.RUnlock()
-	families := make([]string, 0, len(names))
-	for k := range names {
-		families = append(families, k)
-	}
-	sort.Slice(families, func(i, j int) bool { return txt.NaturalLess(families[i], families[j], true) })
+	families := dict.Keys(names)
+	slices.SortFunc(families, func(a, b string) int { return txt.NaturalCmp(a, b, true) })
 	return families
 }
 

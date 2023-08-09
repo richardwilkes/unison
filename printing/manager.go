@@ -12,11 +12,12 @@ package printing
 import (
 	"context"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/grandcat/zeroconf"
+	"github.com/richardwilkes/toolbox/collection/dict"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/txt"
@@ -38,19 +39,13 @@ func (p *PrintManager) LookupPrinter(id PrinterID) *Printer {
 // Printers returns the previously discovered available printers, sorted by name.
 func (p *PrintManager) Printers() []*Printer {
 	p.lock.RLock()
-	printers := make([]*Printer, 0, len(p.printers))
-	for _, printer := range p.printers {
-		printers = append(printers, printer)
-	}
+	printers := dict.Values(p.printers)
 	p.lock.RUnlock()
-	sort.Slice(printers, func(i, j int) bool {
-		if txt.NaturalLess(printers[i].Name, printers[j].Name, true) {
-			return true
+	slices.SortFunc(printers, func(a, b *Printer) int {
+		if result := txt.NaturalCmp(a.Name, b.Name, true); result != 0 {
+			return result
 		}
-		if printers[i].Name != printers[j].Name {
-			return false
-		}
-		return txt.NaturalLess(printers[i].UUID, printers[j].UUID, true)
+		return txt.NaturalCmp(a.UUID, b.UUID, true)
 	})
 	return printers
 }

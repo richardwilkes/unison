@@ -11,7 +11,7 @@ package unison
 
 import (
 	"runtime"
-	"sort"
+	"slices"
 	"sync"
 
 	"github.com/richardwilkes/toolbox/txt"
@@ -72,12 +72,9 @@ func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
 			}
 		}
 	}
-	sort.Slice(all, func(i, j int) bool {
-		return txt.NaturalLess(all[i].String(), all[j].String(), true)
-	})
-	sort.Slice(monospaced, func(i, j int) bool {
-		return txt.NaturalLess(monospaced[i].String(), monospaced[j].String(), true)
-	})
+	sorter := func(a, b FontFaceDescriptor) int { return txt.NaturalCmp(a.String(), b.String(), true) }
+	slices.SortFunc(all, sorter)
+	slices.SortFunc(monospaced, sorter)
 	return
 }
 

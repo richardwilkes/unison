@@ -12,7 +12,6 @@ package unison
 import (
 	"fmt"
 	"slices"
-	"sort"
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
@@ -350,7 +349,7 @@ func (p *PopupMenu[T]) SelectedIndexes() []int {
 			}
 		}
 	}
-	sort.Ints(indexes)
+	slices.Sort(indexes)
 	return indexes
 }
 

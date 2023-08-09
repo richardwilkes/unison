@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -511,7 +511,7 @@ func (m *Markdown) processTable() {
 				if count > 0 {
 					widths := make([]int, len(m.columnWidths))
 					copy(widths, m.columnWidths)
-					sort.IntSlice(widths).Sort()
+					slices.Sort(widths)
 					for i := len(widths) - 1; i > 0; i-- {
 						delta := widths[i] - widths[i-1]
 						qty := 0
