@@ -111,3 +111,6 @@ func NewRotationByDegreesMatrix(degrees float32) *Matrix {
 
 // Polygon is an alias for poly.Polygon[float32], for convenience.
 type Polygon = poly.Polygon[float32]
+
+// Contour is an alias for poly.Contour[float32], for convenience.
+type Contour = poly.Contour[float32]
