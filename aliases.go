@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/xmath/geom"
+import (
+	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/toolbox/xmath/geom/poly"
+)
 
 // Point is an alias for geom.Point[float32], for convenience.
 type Point = geom.Point[float32]
@@ -105,3 +108,6 @@ func NewRotationMatrix(radians float32) *Matrix {
 func NewRotationByDegreesMatrix(degrees float32) *Matrix {
 	return geom.NewRotationByDegreesMatrix2D(degrees)
 }
+
+// Polygon is an alias for poly.Polygon[float32], for convenience.
+type Polygon = poly.Polygon[float32]

@@ -659,15 +659,15 @@ func (w Window) ContentView() View {
 
 type View C.NSViewRef
 
-func (v View) Frame() geom.Rect[float32] {
+func (v View) Frame() geom.Rect32 {
 	var frame C.NSRect
 	C.viewFrame(C.NSViewRef(v), &frame)
-	return geom.Rect[float32]{
-		Point: geom.Point[float32]{
+	return geom.Rect32{
+		Point: geom.Pt32{
 			X: float32(frame.origin.x),
 			Y: float32(frame.origin.y),
 		},
-		Size: geom.Size[float32]{
+		Size: geom.Size32{
 			Width:  float32(frame.size.width),
 			Height: float32(frame.size.height),
 		},
@@ -721,7 +721,7 @@ func (m Menu) Title() string {
 	return String(C.menuTitle(C.NSMenuRef(m))).String()
 }
 
-func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom.Rect[float32]) {
+func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom.Rect32) {
 	C.menuPopup(C.NSWindowRef(wnd), C.NSMenuRef(menu), C.NSMenuItemRef(item), C.CGRect{
 		origin: C.CGPoint{
 			x: C.double(bounds.X),

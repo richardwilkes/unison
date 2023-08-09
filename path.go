@@ -13,7 +13,6 @@ import (
 	"runtime"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xmath/geom/poly"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -264,7 +263,7 @@ func (p *Path) Poly(pts []Point, closePath bool) {
 }
 
 // Polygon appends the polygon to the path.
-func (p *Path) Polygon(poly poly.Polygon[float32]) {
+func (p *Path) Polygon(poly Polygon) {
 	for _, contour := range poly {
 		p.Poly(contour, true)
 	}

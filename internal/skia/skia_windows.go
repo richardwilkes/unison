@@ -808,7 +808,7 @@ func CanvasDrawPoint(canvas Canvas, x, y float32, paint Paint) {
 	skCanvasDrawPointProc.Call(uintptr(canvas), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(paint))
 }
 
-func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Point[float32], paint Paint) {
+func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Pt32, paint Paint) {
 	skCanvasDrawPointsProc.Call(uintptr(canvas), uintptr(mode), uintptr(len(pts)),
 		uintptr(unsafe.Pointer(&pts[0])), uintptr(paint))
 }
@@ -1231,20 +1231,20 @@ func ImageUnref(img Image) {
 	skImageUnrefProc.Call(uintptr(img))
 }
 
-func ImageFilterNewArithmetic(k1, k2, k3, k4 float32, enforcePMColor bool, background, foreground ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewArithmetic(k1, k2, k3, k4 float32, enforcePMColor bool, background, foreground ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewArithmeticProc.Call(uintptr(math.Float32bits(k1)), uintptr(math.Float32bits(k2)),
 		uintptr(math.Float32bits(k3)), uintptr(math.Float32bits(k4)), boolToUintptr(enforcePMColor),
 		uintptr(background), uintptr(foreground), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewBlur(sigmaX, sigmaY float32, tileMode TileMode, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewBlur(sigmaX, sigmaY float32, tileMode TileMode, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewBlurProc.Call(uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(tileMode), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewColorFilter(colorFilter ColorFilter, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewColorFilter(colorFilter ColorFilter, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewColorFilterProc.Call(uintptr(colorFilter), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
@@ -1255,27 +1255,27 @@ func ImageFilterNewCompose(outer, inner ImageFilter) ImageFilter {
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDisplacementMapEffect(xChannelSelector, yChannelSelector ColorChannel, scale float32, displacement, color ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDisplacementMapEffect(xChannelSelector, yChannelSelector ColorChannel, scale float32, displacement, color ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewDisplacementMapEffectProc.Call(uintptr(xChannelSelector), uintptr(yChannelSelector),
 		uintptr(math.Float32bits(scale)), uintptr(displacement), uintptr(color), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewDropShadowProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
 		uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(color), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewDropShadowOnlyProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
 		uintptr(math.Float32bits(sigmaX)), uintptr(math.Float32bits(sigmaY)), uintptr(color), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewImageSource(img Image, srcRect, dstRect *geom.Rect[float32], sampling SamplingOptions) ImageFilter {
+func ImageFilterNewImageSource(img Image, srcRect, dstRect *geom.Rect32, sampling SamplingOptions) ImageFilter {
 	r1, _, _ := skImageFilterNewImageSourceProc.Call(uintptr(img), uintptr(unsafe.Pointer(RectToSkRect(srcRect))),
 		uintptr(unsafe.Pointer(RectToSkRect(dstRect))), uintptr(sampling))
 	return ImageFilter(r1)
@@ -1286,13 +1286,13 @@ func ImageFilterNewImageSourceDefault(img Image) ImageFilter {
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewMagnifier(src *geom.Rect[float32], inset float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewMagnifier(src *geom.Rect32, inset float32, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewMagnifierProc.Call(uintptr(unsafe.Pointer(RectToSkRect(src))),
 		uintptr(math.Float32bits(inset)), uintptr(input), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewMatrixConvolutionProc.Call(uintptr(unsafe.Pointer(size)),
 		uintptr(unsafe.Pointer(&kernel[0])), uintptr(math.Float32bits(gain)), uintptr(math.Float32bits(bias)),
 		uintptr(unsafe.Pointer(offset)), uintptr(tileMode), boolToUintptr(convolveAlpha), uintptr(input),
@@ -1306,51 +1306,51 @@ func ImageFilterNewMatrixTransform(matrix *Matrix, sampling SamplingOptions, inp
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewMerge(filters []ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewMerge(filters []ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewMergeProc.Call(uintptr(unsafe.Pointer(&filters[0])), uintptr(len(filters)),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewOffset(dx, dy float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewOffset(dx, dy float32, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewOffsetProc.Call(uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)),
 		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewTile(src, dst *geom.Rect[float32], input ImageFilter) ImageFilter {
+func ImageFilterNewTile(src, dst *geom.Rect32, input ImageFilter) ImageFilter {
 	r1, _, _ := skImageFilterNewTileProc.Call(uintptr(unsafe.Pointer(RectToSkRect(src))),
 		uintptr(unsafe.Pointer(RectToSkRect(dst))), uintptr(input))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDilate(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDilate(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewDilateProc.Call(uintptr(radiusX), uintptr(radiusY), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewErode(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewErode(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewErodeProc.Call(uintptr(radiusX), uintptr(radiusY), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDistantLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDistantLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewDistantLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewPointLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewPointLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewPointLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(input),
 		uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity float32, color Color, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewSpotLitDiffuseProc.Call(uintptr(unsafe.Pointer(pt)),
 		uintptr(unsafe.Pointer(targetPt)), uintptr(math.Float32bits(specularExponent)),
 		uintptr(math.Float32bits(cutoffAngle)), uintptr(color), uintptr(math.Float32bits(scale)),
@@ -1358,21 +1358,21 @@ func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoff
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewDistantLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDistantLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewDistantLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(math.Float32bits(shine)),
 		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewPointLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewPointLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewPointLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)), uintptr(color),
 		uintptr(math.Float32bits(scale)), uintptr(math.Float32bits(reflectivity)), uintptr(math.Float32bits(shine)),
 		uintptr(input), uintptr(unsafe.Pointer(cropRect)))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewSpotLitSpecular(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewSpotLitSpecular(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color Color, input ImageFilter, cropRect *geom.Rect32) ImageFilter {
 	r1, _, _ := skImageFilterNewSpotLitSpecularProc.Call(uintptr(unsafe.Pointer(pt)),
 		uintptr(unsafe.Pointer(targetPt)), uintptr(math.Float32bits(specularExponent)),
 		uintptr(math.Float32bits(cutoffAngle)), uintptr(color), uintptr(math.Float32bits(scale)),
@@ -1721,7 +1721,7 @@ func PathAddPathOffset(path, other Path, offsetX, offsetY float32, mode PathAddM
 		uintptr(math.Float32bits(offsetY)), uintptr(mode))
 }
 
-func PathAddPoly(path Path, pts []geom.Point[float32], closePath bool) {
+func PathAddPoly(path Path, pts []geom.Pt32, closePath bool) {
 	skPathAddPolyProc.Call(uintptr(path), uintptr(unsafe.Pointer(&pts[0])), uintptr(len(pts)), boolToUintptr(closePath))
 }
 
@@ -1760,8 +1760,8 @@ func PathContains(path Path, x, y float32) bool {
 	return r1 != 0
 }
 
-func PathGetLastPoint(path Path) geom.Point[float32] {
-	var pt geom.Point[float32]
+func PathGetLastPoint(path Path) geom.Pt32 {
+	var pt geom.Pt32
 	skPathGetLastPointProc.Call(uintptr(path), uintptr(unsafe.Pointer(&pt)))
 	return pt
 }
@@ -1833,8 +1833,8 @@ func ShaderNewBlend(blendMode BlendMode, dst, src Shader) Shader {
 	return Shader(r1)
 }
 
-func ShaderNewLinearGradient(start, end geom.Point[float32], colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
-	pts := make([]geom.Point[float32], 2)
+func ShaderNewLinearGradient(start, end geom.Pt32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
+	pts := make([]geom.Pt32, 2)
 	pts[0] = start
 	pts[1] = end
 	r1, _, _ := skShaderNewLinearGradientProc.Call(uintptr(unsafe.Pointer(&pts[0])), uintptr(unsafe.Pointer(&colors[0])),
@@ -1842,21 +1842,21 @@ func ShaderNewLinearGradient(start, end geom.Point[float32], colors []Color, col
 	return Shader(r1)
 }
 
-func ShaderNewRadialGradient(center geom.Point[float32], radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
+func ShaderNewRadialGradient(center geom.Pt32, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
 	r1, _, _ := skShaderNewRadialGradientProc.Call(uintptr(unsafe.Pointer(&center)), uintptr(math.Float32bits(radius)),
 		uintptr(unsafe.Pointer(&colors[0])), uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)),
 		uintptr(tileMode), uintptr(unsafe.Pointer(matrix)))
 	return Shader(r1)
 }
 
-func ShaderNewSweepGradient(center geom.Point[float32], startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
+func ShaderNewSweepGradient(center geom.Pt32, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
 	r1, _, _ := skShaderNewSweepGradientProc.Call(uintptr(unsafe.Pointer(&center)), uintptr(unsafe.Pointer(&colors[0])),
 		uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)), uintptr(tileMode),
 		uintptr(math.Float32bits(startAngle)), uintptr(math.Float32bits(endAngle)), uintptr(unsafe.Pointer(matrix)))
 	return Shader(r1)
 }
 
-func ShaderNewTwoPointConicalGradient(startPt, endPt geom.Point[float32], startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
+func ShaderNewTwoPointConicalGradient(startPt, endPt geom.Pt32, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) Shader {
 	r1, _, _ := skShaderNewTwoPointConicalGradientProc.Call(uintptr(unsafe.Pointer(&startPt)),
 		uintptr(math.Float32bits(startRadius)), uintptr(unsafe.Pointer(&endPt)), uintptr(math.Float32bits(endRadius)),
 		uintptr(unsafe.Pointer(&colors[0])), uintptr(unsafe.Pointer(&colorPos[0])), uintptr(len(colors)),

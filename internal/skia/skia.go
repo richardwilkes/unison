@@ -151,20 +151,20 @@ type Rect struct {
 	Bottom float32
 }
 
-func (r *Rect) ToRect() geom.Rect[float32] {
-	return geom.Rect[float32]{
-		Point: geom.Point[float32]{
+func (r *Rect) ToRect() geom.Rect32 {
+	return geom.Rect32{
+		Point: geom.Pt32{
 			X: r.Left,
 			Y: r.Top,
 		},
-		Size: geom.Size[float32]{
+		Size: geom.Size32{
 			Width:  r.Right - r.Left,
 			Height: r.Bottom - r.Top,
 		},
 	}
 }
 
-func RectToSkRect(r *geom.Rect[float32]) *Rect {
+func RectToSkRect(r *geom.Rect32) *Rect {
 	return &Rect{
 		Left:   r.X,
 		Top:    r.Y,
@@ -180,7 +180,7 @@ type IRect struct {
 	Bottom int32
 }
 
-func RectToSkIRect(r *geom.Rect[float32]) *IRect {
+func RectToSkIRect(r *geom.Rect32) *IRect {
 	return &IRect{
 		Left:   int32(r.X),
 		Top:    int32(r.Y),
@@ -201,8 +201,8 @@ type Matrix struct {
 	Persp2 float32
 }
 
-func (m *Matrix) ToMatrix2D() *geom.Matrix2D[float32] {
-	return &geom.Matrix2D[float32]{
+func (m *Matrix) ToMatrix2D() *geom.Matrix2D32 {
+	return &geom.Matrix2D32{
 		ScaleX: m.ScaleX,
 		SkewX:  m.SkewX,
 		TransX: m.TransX,
@@ -212,7 +212,7 @@ func (m *Matrix) ToMatrix2D() *geom.Matrix2D[float32] {
 	}
 }
 
-func Matrix2DtoMatrix(m *geom.Matrix2D[float32]) *Matrix {
+func Matrix2DtoMatrix(m *geom.Matrix2D32) *Matrix {
 	if m == nil {
 		return nil
 	}

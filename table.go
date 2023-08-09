@@ -1301,7 +1301,7 @@ func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 	return max(xmath.Ceil(height), t.MinimumRowHeight)
 }
 
-func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) geom.Size[float32] {
+func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) geom.Size32 {
 	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
 	cell := rowData.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
 	_, size, _ := cell.Sizes(Size{Width: widthConstraint})

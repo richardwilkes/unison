@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom/poly"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -214,7 +213,7 @@ func (c *Canvas) DrawLine(sx, sy, ex, ey float32, paint *Paint) {
 }
 
 // DrawPolygon draws a polygon.
-func (c *Canvas) DrawPolygon(poly poly.Polygon[float32], mode FillType, paint *Paint) {
+func (c *Canvas) DrawPolygon(poly Polygon, mode FillType, paint *Paint) {
 	path := NewPath()
 	path.SetFillType(mode)
 	path.Polygon(poly)
