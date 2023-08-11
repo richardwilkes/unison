@@ -259,6 +259,8 @@ var (
 	skPathContainsProc                             *syscall.Proc
 	skPathGetLastPointProc                         *syscall.Proc
 	skPathDeleteProc                               *syscall.Proc
+	skPathComputeProc                              *syscall.Proc
+	skPathSimplifyProc                             *syscall.Proc
 	skPathEffectCreateComposeProc                  *syscall.Proc
 	skPathEffectCreateSumProc                      *syscall.Proc
 	skPathEffectCreateDiscreteProc                 *syscall.Proc
@@ -559,6 +561,8 @@ func init() {
 	skPathContainsProc = skia.MustFindProc("sk_path_contains")
 	skPathGetLastPointProc = skia.MustFindProc("sk_path_get_last_point")
 	skPathDeleteProc = skia.MustFindProc("sk_path_delete")
+	skPathComputeProc = skia.MustFindProc("sk_path_compute")
+	skPathSimplifyProc = skia.MustFindProc("sk_path_simplify")
 	skPathEffectCreateComposeProc = skia.MustFindProc("sk_path_effect_create_compose")
 	skPathEffectCreateSumProc = skia.MustFindProc("sk_path_effect_create_sum")
 	skPathEffectCreateDiscreteProc = skia.MustFindProc("sk_path_effect_create_discrete")
@@ -1768,6 +1772,16 @@ func PathGetLastPoint(path Path) geom.Pt32 {
 
 func PathDelete(path Path) {
 	skPathDeleteProc.Call(uintptr(path))
+}
+
+func PathCompute(path, other Path, op PathOp) bool {
+	r1, _, _ := skPathComputeProc.Call(uintptr(path), uintptr(other), uintptr(op), uintptr(path))
+	return r1 != 0
+}
+
+func PathSimplify(path Path) bool {
+	r1, _, _ := skPathSimplifyProc.Call(uintptr(path), uintptr(path))
+	return r1 != 0
 }
 
 func PathEffectCreateCompose(outer, inner PathEffect) PathEffect {

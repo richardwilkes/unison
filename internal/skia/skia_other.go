@@ -1057,6 +1057,14 @@ func PathDelete(path Path) {
 	C.sk_path_delete(path)
 }
 
+func PathCompute(path, other Path, op PathOp) bool {
+	return bool(C.sk_path_op(path, other, C.sk_path_op_t(op), path))
+}
+
+func PathSimplify(path Path) bool {
+	return bool(C.sk_path_simplify(path, path))
+}
+
 func PathEffectCreateCompose(outer, inner PathEffect) PathEffect {
 	return C.sk_path_effect_create_compose(outer, inner)
 }
