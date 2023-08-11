@@ -259,7 +259,7 @@ var (
 	skPathContainsProc                             *syscall.Proc
 	skPathGetLastPointProc                         *syscall.Proc
 	skPathDeleteProc                               *syscall.Proc
-	skPathComputeProc                              *syscall.Proc
+	skPathOpProc                                   *syscall.Proc
 	skPathSimplifyProc                             *syscall.Proc
 	skPathEffectCreateComposeProc                  *syscall.Proc
 	skPathEffectCreateSumProc                      *syscall.Proc
@@ -561,7 +561,7 @@ func init() {
 	skPathContainsProc = skia.MustFindProc("sk_path_contains")
 	skPathGetLastPointProc = skia.MustFindProc("sk_path_get_last_point")
 	skPathDeleteProc = skia.MustFindProc("sk_path_delete")
-	skPathComputeProc = skia.MustFindProc("sk_path_compute")
+	skPathOpProc = skia.MustFindProc("sk_path_op")
 	skPathSimplifyProc = skia.MustFindProc("sk_path_simplify")
 	skPathEffectCreateComposeProc = skia.MustFindProc("sk_path_effect_create_compose")
 	skPathEffectCreateSumProc = skia.MustFindProc("sk_path_effect_create_sum")
@@ -1775,7 +1775,7 @@ func PathDelete(path Path) {
 }
 
 func PathCompute(path, other Path, op PathOp) bool {
-	r1, _, _ := skPathComputeProc.Call(uintptr(path), uintptr(other), uintptr(op), uintptr(path))
+	r1, _, _ := skPathOpProc.Call(uintptr(path), uintptr(other), uintptr(op), uintptr(path))
 	return r1 != 0
 }
 
