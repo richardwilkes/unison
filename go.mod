@@ -27,7 +27,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/yookoala/realpath v1.0.0 // indirect
-	golang.org/x/exp v0.0.0-20230809150735-7b3493d9a819 // indirect
+	golang.org/x/exp v0.0.0-20230811145659-89c5cff77bcb // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/tools v0.12.0 // indirect

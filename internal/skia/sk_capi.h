@@ -858,6 +858,8 @@ SK_C_API sk_path_effect_t* sk_path_effect_create_trim(float start, float stop, s
 SK_C_API void sk_path_effect_unref(sk_path_effect_t* effect);
 
 // ===== Functions from include/pathops/SkPathOps.h =====
+SK_C_API bool sk_path_op(const sk_path_t* path, const sk_path_t* other, sk_path_op_t op, sk_path_t *result);
+SK_C_API bool sk_path_simplify(const sk_path_t* path, sk_path_t *result);
 SK_C_API void sk_opbuilder_add(sk_op_builder_t* builder, const sk_path_t* path, sk_path_op_t op);
 SK_C_API void sk_opbuilder_destroy(sk_op_builder_t* builder);
 SK_C_API sk_op_builder_t* sk_opbuilder_new(void);

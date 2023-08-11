@@ -367,7 +367,32 @@ func (p *Path) CurrentPt() Point {
 	return skia.PathGetLastPoint(p.path)
 }
 
-// CombinePaths combines two or more paths into a new path.
+// Union this path with the other path. Returns true if successful. Path is left unmodified if not successful.
+func (p *Path) Union(other *Path) bool {
+	return skia.PathCompute(p.path, other.path, skia.PathOp(Union))
+}
+
+// Subtract the other path from this path. Returns true if successful. Path is left unmodified if not successful.
+func (p *Path) Subtract(other *Path) bool {
+	return skia.PathCompute(p.path, other.path, skia.PathOp(Difference))
+}
+
+// Intersect this path with the other path. Returns true if successful. Path is left unmodified if not successful.
+func (p *Path) Intersect(other *Path) bool {
+	return skia.PathCompute(p.path, other.path, skia.PathOp(Intersect))
+}
+
+// Xor this path with the other path. Returns true if successful. Path is left unmodified if not successful.
+func (p *Path) Xor(other *Path) bool {
+	return skia.PathCompute(p.path, other.path, skia.PathOp(Xor))
+}
+
+// Simplify this path. Returns true if successful. Path is left unmodified if not successful.
+func (p *Path) Simplify() bool {
+	return skia.PathSimplify(p.path)
+}
+
+// CombinePaths combines two or more paths into a new path. There is an implied empty path as the starting point.
 func CombinePaths(ops []PathOpPair) (*Path, error) {
 	b := skia.OpBuilderNew()
 	defer skia.OpBuilderDestroy(b)
