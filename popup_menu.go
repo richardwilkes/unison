@@ -183,7 +183,7 @@ func (p *PopupMenu[T]) Click() {
 	if p.WillShowMenuCallback != nil {
 		toolbox.Call(func() { p.WillShowMenuCallback(p) })
 	}
-	hasItem := false //nolint:ifshort // Cannot collapse this into the if statement, despite what the linter says
+	hasItem := false
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
 	defer m.Dispose()
 	for i, one := range p.items {

@@ -197,7 +197,7 @@ func (p *Printer) sendRequest(ctx context.Context, req *goipp.Message, fileData 
 		httpReq.SetBasicAuth(p.User, p.Password)
 	}
 	var httpResp *http.Response
-	if httpResp, err = p.httpClient.Do(httpReq); err != nil { //nolint:bodyclose // xio.DiscardAndCloseIgnoringErrors does this
+	if httpResp, err = p.httpClient.Do(httpReq); err != nil { //nolint:bodyclose // Body is closed by xio.DiscardAndCloseIgnoringErrors
 		return nil, errs.Wrap(err)
 	}
 	defer xio.DiscardAndCloseIgnoringErrors(httpResp.Body)

@@ -67,7 +67,7 @@ func (m *UndoManager) CostLimit() int {
 // most recent edit has a cost larger than the new limit, that last edit (and only that last edit) will still be
 // retained.
 func (m *UndoManager) SetCostLimit(limit int) {
-	old := m.CostLimit() //nolint:ifshort // Cannot merge this into the if statement
+	old := m.CostLimit()
 	if limit < 1 {
 		limit = 1
 	}
@@ -83,7 +83,7 @@ func (m *UndoManager) Add(edit Undoable) {
 	for i := m.index + 1; i < len(m.edits); i++ {
 		m.release(m.edits[i])
 	}
-	add := m.index < 0 //nolint:ifshort // No, the short syntax is not appropriate here
+	add := m.index < 0
 	if !add {
 		absorb := m.edits[m.index].Absorb(edit)
 		if absorb {

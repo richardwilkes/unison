@@ -194,7 +194,6 @@ func orientationKeyFromInt(value int) string {
 	}
 }
 
-//nolint:unused,deadcode // Will eventually be used
 func orientationFromKey(key string) int {
 	switch key {
 	case Portrait:

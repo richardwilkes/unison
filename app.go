@@ -225,7 +225,7 @@ func allowQuit() bool {
 
 func quitting() {
 	quitLock.Lock()
-	callback := quittingCallback //nolint:ifshort // The callback must be made outside of holding the lock
+	callback := quittingCallback
 	quittingCallback = nil
 	quitLock.Unlock()
 	if callback != nil {
@@ -234,7 +234,7 @@ func quitting() {
 	// atexit.Exit() is called here once to ensure registered atexit hooks are actually called, as OS's may directly
 	// terminate the app after returning from this function.
 	quitLock.Lock()
-	calledExit := calledAtExit //nolint:ifshort // No, the short syntax is not appropriate here
+	calledExit := calledAtExit
 	calledAtExit = true
 	quitLock.Unlock()
 	if !calledExit {

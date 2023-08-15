@@ -1619,14 +1619,7 @@ func CountTableRows[T TableRowConstraint[T]](rows []T) int {
 	count := len(rows)
 	for _, row := range rows {
 		if row.CanHaveChildren() {
-			// This should be just "count += CountTableRows(row.Children())", however, IntelliJ keeps flagging that as
-			// "invalid operation: count += CountTableRows(row.Children()) (the operation += is not defined on int)"
-			// which is of course wrong, but I'd rather not have any errors flagged in the display so I don't
-			// inadvertently ignore something valid. I've filed https://youtrack.jetbrains.com/issue/IDEA-306866 and
-			// hope that it will be fixed in the near future.
-			var x int //nolint:gosimple // Will go away once this bug in IntelliJ is fixed
-			x = CountTableRows(row.Children())
-			count += x
+			count += CountTableRows(row.Children())
 		}
 	}
 	return count

@@ -98,7 +98,7 @@ func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 	// Determine drawable and text areas
 	imgX := rect.X
 	imgY := rect.Y
-	txtX := rect.X //nolint:ifshort // Variable cannot be collapsed into the if, despite what the linter claims
+	txtX := rect.X
 	txtY := rect.Y
 	if l.Text != nil && l.Drawable != nil {
 		logicalSize := l.Drawable.LogicalSize()

@@ -143,7 +143,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 	// Determine drawable and text areas
 	imgX := rect.X
 	imgY := rect.Y
-	txtX := rect.X //nolint:ifshort // Variable cannot be collapsed into the if, despite what the linter claims
+	txtX := rect.X
 	txtY := rect.Y
 	if !noText && drawable != nil {
 		logicalSize := drawable.LogicalSize()

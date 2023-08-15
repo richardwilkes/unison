@@ -248,7 +248,7 @@ func (s *ScrollBar) adjustValueForPoint(pt Point) {
 }
 
 func (s *ScrollBar) checkOverThumb(pt Point) {
-	was := s.overThumb //nolint:ifshort // Can't move this into the if statement
+	was := s.overThumb
 	s.overThumb = s.Thumb().ContainsPoint(pt)
 	if was != s.overThumb {
 		s.MarkForRedraw()
