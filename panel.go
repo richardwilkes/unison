@@ -127,6 +127,9 @@ func (p *Panel) IndexOfChild(child Paneler) int {
 
 // AddChild adds child to this panel, removing it from any previous parent it may have had.
 func (p *Panel) AddChild(child Paneler) {
+	if toolbox.IsNil(child) {
+		return
+	}
 	c := child.AsPanel()
 	c.RemoveFromParent()
 	p.children = append(p.children, c)
@@ -140,6 +143,9 @@ func (p *Panel) AddChild(child Paneler) {
 // AddChildAtIndex adds child to this panel at the index, removing it from any previous parent it may have had. Passing
 // in a negative value for the index will add it to the end.
 func (p *Panel) AddChildAtIndex(child Paneler, index int) {
+	if toolbox.IsNil(child) {
+		return
+	}
 	c := child.AsPanel()
 	c.RemoveFromParent()
 	if index < 0 || index >= len(p.children) {
