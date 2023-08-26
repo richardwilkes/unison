@@ -28,7 +28,7 @@ import (
 
 var (
 	_       Drawable = &Image{}
-	imgPool          = softref.NewPool(&jot.Logger{})
+	imgPool          = softref.NewPool()
 )
 
 // Image holds a reference to an image.

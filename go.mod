@@ -10,8 +10,7 @@ require (
 	github.com/google/uuid v1.3.1
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/json v0.1.0
-	github.com/richardwilkes/toolbox v1.93.1
-	github.com/stretchr/testify v1.8.4
+	github.com/richardwilkes/toolbox v1.94.0
 	github.com/yuin/goldmark v1.5.6
 	golang.org/x/image v0.11.0
 	golang.org/x/sys v0.11.0
@@ -20,17 +19,14 @@ require (
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
 	github.com/pkg/term v1.1.0 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
-	github.com/yookoala/realpath v1.0.0 // indirect
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.14.0 // indirect
-	golang.org/x/tools v0.12.1-0.20230824164143-c28af0abbd9a // indirect
+	golang.org/x/tools v0.12.1-0.20230825192346-2191a27a6dc5 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
