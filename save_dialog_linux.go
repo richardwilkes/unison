@@ -90,12 +90,13 @@ func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
 }
 
 func (d *linuxSaveDialog) runZenity(zenity string) bool {
-	output, err := exec.Command(zenity, "--help-file-selection").CombinedOutput()
+	cmd := exec.Command(zenity, "--help-file-selection")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		errs.Log(err)
+		errs.Log(err, "cmd", cmd.String())
 		return false
 	}
-	cmd := exec.Command(zenity, "--file-selection", "--save")
+	cmd = exec.Command(zenity, "--file-selection", "--save")
 	if bytes.Contains(output, []byte("confirm-overwrite")) {
 		cmd.Args = append(cmd.Args, "--confirm-overwrite")
 	}
@@ -140,7 +141,7 @@ func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 			return
 		}
-		errs.Log(err)
+		errs.Log(err, "cmd", cmd.String())
 		return
 	}
 	if cmd.ProcessState.ExitCode() != 0 {

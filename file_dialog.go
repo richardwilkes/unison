@@ -383,7 +383,7 @@ func (d *fileDialog) prepareCurrentDir(dir string) {
 	d.currentDir = resolveToAcceptableAbsDir(dir)
 	var err error
 	if d.dirEntries, err = os.ReadDir(d.currentDir); err != nil {
-		errs.Log(err)
+		errs.Log(err, "path", d.currentDir)
 	}
 }
 

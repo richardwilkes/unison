@@ -27,9 +27,10 @@ func platformEarlyInit() {
 }
 
 func platformLateInit() {
-	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, syscall.KEY_NOTIFY|registry.QUERY_VALUE)
+	keyPath := `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
+	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, syscall.KEY_NOTIFY|registry.QUERY_VALUE)
 	if err != nil {
-		errs.Log(errs.NewWithCause("unable to open dark mode key", err))
+		errs.Log(errs.NewWithCause("unable to open dark mode key", err), "key", "CURRENT_USER", "path", keyPath)
 		return
 	}
 	if err = updateTheme(k, true); err != nil {
@@ -71,7 +72,7 @@ func platformDoubleClickInterval() time.Duration {
 func updateTheme(k registry.Key, sync bool) error {
 	val, _, err := k.GetIntegerValue("AppsUseLightTheme")
 	if err != nil {
-		return errs.NewWithCause("unable to retrieve dark mode key", err)
+		return errs.NewWithCause("unable to retrieve current dark mode value", err)
 	}
 	var swapped bool
 	if val == 0 {

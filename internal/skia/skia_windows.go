@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/toolbox/xio/fs"
 	"github.com/richardwilkes/toolbox/xmath/geom"
 	"golang.org/x/sys/windows"
@@ -324,7 +325,7 @@ func init() {
 	fatal.IfErr(err)
 	dir = filepath.Join(dir, "unison", "dll_cache")
 	fatal.IfErr(os.MkdirAll(dir, 0755))
-	windows.SetDllDirectory(dir)
+	fatal.IfErr(windows.SetDllDirectory(dir))
 	sha := sha256.Sum256(dllData)
 	dllName := fmt.Sprintf("skia-%s.dll", base64.RawURLEncoding.EncodeToString(sha[:]))
 	filePath := filepath.Join(dir, dllName)

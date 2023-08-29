@@ -25,9 +25,10 @@ func platformNewOpenDialog() OpenDialog {
 }
 
 func (d *macOpenDialog) InitialDirectory() string {
-	u, err := url.Parse(d.dialog.DirectoryURL().AbsoluteString())
+	urlStr := d.dialog.DirectoryURL().AbsoluteString()
+	u, err := url.Parse(urlStr)
 	if err != nil {
-		errs.Log(errs.NewWithCause("unable to parse directory URL", err))
+		errs.Log(errs.NewWithCause("unable to parse directory URL", err), "url", urlStr)
 		return ""
 	}
 	return u.Path

@@ -882,7 +882,7 @@ func (w *Window) draw() {
 		}
 		c, err := w.surface.prepareCanvas(w.ContentRect().Size, w.LocalContentRect(), sx, sy)
 		if err != nil {
-			errs.Log(err)
+			errs.Log(err, "size", w.ContentRect().Size, "rect", w.LocalContentRect(), "scaleX", sx, "scaleY", sy)
 			return
 		}
 		start := time.Now()

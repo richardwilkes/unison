@@ -192,7 +192,7 @@ func init() {
 	const fontDir = "resources/fonts"
 	entries, err := fontFS.ReadDir(fontDir)
 	if err != nil {
-		errs.Log(errs.NewWithCause("unable to read embedded file system", err))
+		errs.Log(errs.NewWithCause("unable to read embedded file system", err), "path", fontDir)
 		return
 	}
 	for _, entry := range entries {
@@ -202,9 +202,9 @@ func init() {
 			if strings.HasSuffix(lower, ".otf") || strings.HasSuffix(lower, ".ttf") {
 				var data []byte
 				if data, err = fontFS.ReadFile(path.Join(fontDir, name)); err != nil {
-					errs.Log(errs.NewWithCausef(err, "unable to read font %s", name))
+					errs.Log(errs.NewWithCause("unable to read font", err), "name", name)
 				} else if _, err = RegisterFont(data); err != nil {
-					errs.Log(errs.NewWithCause(name, err))
+					errs.Log(errs.NewWithCause("unable to register font", err), "name", name)
 				}
 			}
 		}

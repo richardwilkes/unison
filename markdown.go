@@ -795,28 +795,29 @@ func (m *Markdown) linkHandler(_ Paneler, target string) {
 }
 
 func (m *Markdown) retrieveImage(target string, label *Label) *Image {
-	var err error
 	workingDir := ""
 	if m.WorkingDirProvider != nil {
 		workingDir = m.WorkingDirProvider(m)
 	}
-	if target, err = ReviseTarget(workingDir, target, m.AltLinkPrefixes); err != nil {
-		errs.Log(err)
+	revisedTarget, err := ReviseTarget(workingDir, target, m.AltLinkPrefixes)
+	if err != nil {
+		errs.Log(err, "workingDir", workingDir, "target", target, "altLinkPrefixes", m.AltLinkPrefixes)
 		return nil
 	}
-	img, ok := m.imgCache[target]
+	img, ok := m.imgCache[revisedTarget]
 	if !ok {
 		result := make(chan *Image, 1)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			if img, err = NewImageFromFilePathOrURLWithContext(ctx, target, 1/PrimaryDisplay().ScaleX); err != nil {
+			scale := 1 / PrimaryDisplay().ScaleX
+			if img, err = NewImageFromFilePathOrURLWithContext(ctx, revisedTarget, scale); err != nil {
 				result <- nil
-				errs.Log(err)
+				errs.Log(err, "path", revisedTarget, "scale", scale)
 			} else {
 				result <- img
 				InvokeTask(func() {
-					m.imgCache[target] = img
+					m.imgCache[revisedTarget] = img
 					label.Drawable = m.constrainImage(img)
 					label.MarkForRedraw()
 					label.MarkForLayoutRecursivelyUpward()
@@ -828,7 +829,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 		case one := <-result:
 			if one != nil {
 				img = one
-				m.imgCache[target] = img
+				m.imgCache[revisedTarget] = img
 			}
 		case <-timer.C:
 		}
