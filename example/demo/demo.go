@@ -11,11 +11,11 @@ package demo
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison"
 )
 
@@ -205,7 +205,7 @@ func createDialogButtonsPanel() *unison.Panel {
 func createButton(title string, panel *unison.Panel) *unison.Button {
 	btn := unison.NewButton()
 	btn.Text = title
-	btn.ClickCallback = func() { jot.Info(title) }
+	btn.ClickCallback = func() { slog.Info(title) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", title))
 	btn.SetLayoutData(unison.MiddleAlignment)
 	panel.AddChild(btn)
@@ -223,7 +223,7 @@ func createImageButtonsPanel() *unison.Panel {
 	// Load our home image, and if successful (we should be!), add two buttons with it, one enabled and one not.
 	homeImg, err := HomeImage()
 	if err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		createImageButton(homeImg, "home_enabled", panel)
 		createImageButton(homeImg, "home_disabled", panel).SetEnabled(false)
@@ -232,7 +232,7 @@ func createImageButtonsPanel() *unison.Panel {
 	// Load our logo image, and if successful (we should be!), add two buttons with it, one enabled and one not.
 	var logoImg *unison.Image
 	if logoImg, err = ClassicAppleLogoImage(); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		createImageButton(logoImg, "logo_enabled", panel)
 		createImageButton(logoImg, "logo_disabled", panel).SetEnabled(false)
@@ -267,7 +267,7 @@ func createImageButtonsPanel() *unison.Panel {
 func createImageButton(img *unison.Image, actionText string, panel *unison.Panel) *unison.Button {
 	btn := unison.NewButton()
 	btn.Drawable = img
-	btn.ClickCallback = func() { jot.Info(actionText) }
+	btn.ClickCallback = func() { slog.Info(actionText) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", actionText))
 	btn.SetLayoutData(unison.MiddleAlignment)
 	panel.AddChild(btn)
@@ -305,7 +305,7 @@ func createCheckBox(title string, initialState unison.CheckState, panel *unison.
 	check := unison.NewCheckBox()
 	check.Text = title
 	check.State = initialState
-	check.ClickCallback = func() { jot.Infof("'%s' was clicked.", title) }
+	check.ClickCallback = func() { slog.Info("checkbox clicked", "title", title) }
 	check.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for '%s'", title))
 	panel.AddChild(check)
 	return check
@@ -363,7 +363,7 @@ func createRadioButton(title string, panel *unison.Panel, group *unison.Group, p
 	rb.ClickCallback = func() {
 		progressBar.SetMaximum(maximum)
 		progressBar.SetCurrent(current)
-		jot.Infof("%s was clicked.", title)
+		slog.Info("radio button clicked", "title", title)
 	}
 	rb.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for %s", title))
 	panel.AddChild(rb)
@@ -396,7 +396,7 @@ func createPopupMenu(panel *unison.Panel, selection int, tooltip string, titles 
 	p.SelectIndex(selection)
 	p.SelectionChangedCallback = func(popup *unison.PopupMenu[string]) {
 		if title, ok := popup.Selected(); ok {
-			jot.Infof("The '%s' item was selected from the %s PopupMenu.", title, tooltip)
+			slog.Info("item selected from PopupMenu", "title", title, "popup", tooltip)
 		}
 	}
 	panel.AddChild(p)
@@ -533,10 +533,10 @@ func createListPanel() *unison.Panel {
 			}
 			fmt.Fprintf(&buffer, " %d", index)
 		}
-		jot.Info(buffer.String())
+		slog.Info(buffer.String())
 	}
 	lst.DoubleClickCallback = func() {
-		jot.Info("Double-clicked on the list")
+		slog.Info("Double-clicked on the list")
 	}
 	_, prefSize, _ := lst.Sizes(unison.Size{})
 	lst.SetFrameRect(unison.Rect{Size: prefSize})
@@ -562,7 +562,7 @@ func createImagePanel() *unison.Label {
 	// Prepare a cursor for when the mouse is over the image
 	cursor := unison.MoveCursor()
 	if logoImg, err := ClassicAppleLogoImage(); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		size := logoImg.LogicalSize()
 		cursor = unison.NewCursor(logoImg, unison.Point{
@@ -585,7 +585,7 @@ func createImagePanel() *unison.Label {
 	// Set the initial image
 	img, err := MountainsImage()
 	if err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		imgPanel.Drawable = img
 	}

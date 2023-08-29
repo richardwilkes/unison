@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.3.1
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/json v0.1.0
-	github.com/richardwilkes/toolbox v1.94.0
+	github.com/richardwilkes/toolbox v1.95.0
 	github.com/yuin/goldmark v1.5.6
 	golang.org/x/image v0.11.0
 	golang.org/x/sys v0.11.0
@@ -26,7 +26,7 @@ require (
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.14.0 // indirect
-	golang.org/x/tools v0.12.1-0.20230825192346-2191a27a6dc5 // indirect
+	golang.org/x/tools v0.12.1-0.20230828153821-cd226032e970 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

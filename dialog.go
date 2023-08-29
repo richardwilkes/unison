@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 // Pre-defined modal response codes. Apps should start their codes at ModalResponseUserBase.
@@ -251,12 +250,12 @@ func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove boo
 }
 
 // ErrorDialogWithError displays a standard error dialog with the specified primary message and extracts the message
-// from the error for its detail. The full error will be logged via jot.Error(). Embedded line feeds are OK.
+// from the error for its detail. The full error will be logged via errs.Log(). Embedded line feeds are OK.
 func ErrorDialogWithError(primary string, detail error) {
 	var msg string
 	var err errs.StackError
 	if errors.As(detail, &err) {
-		jot.Error(detail)
+		errs.Log(detail)
 		msg = err.Message()
 	} else {
 		msg = detail.Error()
@@ -274,7 +273,7 @@ func ErrorDialogWithMessage(primary, detail string) {
 func ErrorDialogWithPanel(msgPanel Paneler) {
 	if dialog, err := NewDialog(DefaultDialogTheme.ErrorIcon, DefaultDialogTheme.ErrorIconInk, msgPanel,
 		[]*DialogButtonInfo{NewOKButtonInfo()}); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		dialog.RunModal()
 	}
@@ -290,7 +289,7 @@ func WarningDialogWithMessage(primary, detail string) {
 func WarningDialogWithPanel(msgPanel Paneler) {
 	if dialog, err := NewDialog(DefaultDialogTheme.WarningIcon, DefaultDialogTheme.WarningIconInk, msgPanel,
 		[]*DialogButtonInfo{NewOKButtonInfo()}); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		dialog.RunModal()
 	}
@@ -308,7 +307,7 @@ func QuestionDialog(primary, detail string) int {
 func QuestionDialogWithPanel(msgPanel Paneler) int {
 	if dialog, err := NewDialog(DefaultDialogTheme.QuestionIcon, DefaultDialogTheme.QuestionIconInk, msgPanel,
 		[]*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()}); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		return dialog.RunModal()
 	}
@@ -329,7 +328,7 @@ func YesNoDialogWithPanel(msgPanel Paneler) int {
 	if dialog, err := NewDialog(DefaultDialogTheme.QuestionIcon,
 		DefaultDialogTheme.QuestionIconInk, msgPanel,
 		[]*DialogButtonInfo{NewNoButtonInfo(), NewYesButtonInfo()}); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		return dialog.RunModal()
 	}
@@ -349,7 +348,7 @@ func YesNoCancelDialog(primary, detail string) int {
 func YesNoCancelDialogWithPanel(msgPanel Paneler) int {
 	if dialog, err := NewDialog(DefaultDialogTheme.QuestionIcon, DefaultDialogTheme.QuestionIconInk, msgPanel,
 		[]*DialogButtonInfo{NewCancelButtonInfo(), NewNoButtonInfo(), NewYesButtonInfo()}); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	} else {
 		return dialog.RunModal()
 	}

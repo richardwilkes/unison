@@ -19,7 +19,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio"
 	"github.com/richardwilkes/unison"
 )
@@ -227,7 +226,7 @@ func (d *JobDialog) setPrinter(printer *Printer) {
 	d.printerID = d.printer.PrinterID
 	var err error
 	if d.printerAttributes, err = d.printer.Attributes(15*time.Second, true); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	}
 	if icon := d.retrieveIcon(); icon != nil {
 		d.img.Drawable = icon
@@ -252,28 +251,30 @@ func (d *JobDialog) setPrinter(printer *Printer) {
 
 func (d *JobDialog) retrieveIcon() *unison.Image {
 	if icons := d.printerAttributes.Icons(); len(icons) != 0 {
+		const linkAttr = "link"
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, icons[len(icons)-1], http.NoBody)
+		link := icons[len(icons)-1]
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, http.NoBody)
 		if err != nil {
-			jot.Error(errs.NewWithCause("unable to create request for link: "+icons[len(icons)-1], err))
+			errs.Log(errs.NewWithCause("unable to create request for link", err), linkAttr, link)
 			return nil
 		}
 		req.Header.Add("Accept-Encoding", "identity")
 		var rsp *http.Response
 		if rsp, err = d.printer.httpClient.Do(req); err != nil { //nolint:bodyclose // Body is closed by xio.CloseIgnoringErrors
-			jot.Error(errs.NewWithCause("unable to initiate download for link: "+icons[len(icons)-1], err))
+			errs.Log(errs.NewWithCause("unable to initiate download for link", err), linkAttr, link)
 			return nil
 		}
 		defer xio.CloseIgnoringErrors(rsp.Body)
 		var content []byte
 		if content, err = io.ReadAll(rsp.Body); err != nil {
-			jot.Error(errs.NewWithCause("unable to read body for link: "+icons[len(icons)-1], err))
+			errs.Log(errs.NewWithCause("unable to read body for link", err), linkAttr, link)
 			return nil
 		}
 		var img *unison.Image
 		if img, err = unison.NewImageFromBytes(content, 0.5); err != nil {
-			jot.Error(errs.NewWithCause("unable to create image from data for link: "+icons[len(icons)-1], err))
+			errs.Log(errs.NewWithCause("unable to create image from data for link", err), linkAttr, link)
 			return nil
 		}
 		return img

@@ -11,7 +11,7 @@ package demo
 
 import (
 	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/unison"
 )
 
@@ -26,7 +26,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 		var err error
 		aboutWindow, err = unison.NewWindow(item.Title(), unison.NotResizableWindowOption())
 		if err != nil {
-			jot.Error(err)
+			errs.Log(err)
 			return
 		}
 

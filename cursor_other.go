@@ -13,14 +13,13 @@ package unison
 
 import (
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 // NewCursor creates a new custom cursor from an image.
 func NewCursor(img *Image, hotSpot Point) *Cursor {
 	nrgba, err := img.ToNRGBA()
 	if err != nil {
-		jot.Warn(err)
+		errs.Log(err)
 		return ArrowCursor()
 	}
 	return glfw.CreateCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))

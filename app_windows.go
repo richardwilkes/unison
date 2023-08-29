@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows/registry"
@@ -30,11 +29,11 @@ func platformEarlyInit() {
 func platformLateInit() {
 	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, syscall.KEY_NOTIFY|registry.QUERY_VALUE)
 	if err != nil {
-		jot.Warn(errs.NewWithCause("unable to open dark mode key", err))
+		errs.Log(errs.NewWithCause("unable to open dark mode key", err))
 		return
 	}
 	if err = updateTheme(k, true); err != nil {
-		jot.Warn(err)
+		errs.Log(err)
 		xio.CloseIgnoringErrors(k)
 		return
 	}
@@ -42,7 +41,7 @@ func platformLateInit() {
 		for {
 			w32.RegNotifyChangeKeyValue(k, false, w32.RegNotifyChangeName|w32.RegNotifyChangeLastSet, 0, false)
 			if err = updateTheme(k, false); err != nil {
-				jot.Warn(err)
+				errs.Log(err)
 				xio.CloseIgnoringErrors(k)
 				return
 			}

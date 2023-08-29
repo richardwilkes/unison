@@ -14,7 +14,7 @@ import (
 	"os"
 
 	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/example/demo"
 )
@@ -33,6 +33,6 @@ func main() {
 
 	unison.Start(unison.StartupFinishedCallback(func() {
 		_, err := demo.NewDemoWindow(unison.PrimaryDisplay().Usable.Point)
-		jot.FatalIfErr(err)
+		fatal.IfErr(err)
 	})) // Never returns
 }

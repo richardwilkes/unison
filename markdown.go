@@ -25,7 +25,6 @@ import (
 	"github.com/richardwilkes/toolbox/desktop"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/yuin/goldmark"
@@ -302,7 +301,7 @@ func (m *Markdown) walk(node ast.Node) {
 		m.processAutoLink()
 
 	default:
-		jot.Infof("unhandled markdown element: %v", m.node.Kind())
+		errs.Log(errs.New("unhandled markdown element"), "kind", m.node.Kind())
 	}
 	m.node = save
 }
@@ -802,7 +801,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 		workingDir = m.WorkingDirProvider(m)
 	}
 	if target, err = ReviseTarget(workingDir, target, m.AltLinkPrefixes); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 		return nil
 	}
 	img, ok := m.imgCache[target]
@@ -813,7 +812,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 			defer cancel()
 			if img, err = NewImageFromFilePathOrURLWithContext(ctx, target, 1/PrimaryDisplay().ScaleX); err != nil {
 				result <- nil
-				jot.Error(errs.Wrap(err))
+				errs.Log(err)
 			} else {
 				result <- img
 				InvokeTask(func() {

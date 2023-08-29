@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/fatal"
 )
 
 var _ Drawable = &DrawableSVG{}
@@ -99,7 +99,7 @@ type SVG struct {
 // parameter.
 func MustSVG(size Size, svg string) *SVG {
 	s, err := NewSVG(size, svg)
-	jot.FatalIfErr(err)
+	fatal.IfErr(err)
 	return s
 }
 
@@ -122,7 +122,7 @@ func NewSVG(size Size, svg string) (*SVG, error) {
 // attribute and any "d" attributes from enclosed SVG "path" elements.
 func MustSVGFromContentString(content string) *SVG {
 	s, err := NewSVGFromContentString(content)
-	jot.FatalIfErr(err)
+	fatal.IfErr(err)
 	return s
 }
 
@@ -138,7 +138,7 @@ func NewSVGFromContentString(content string) (*SVG, error) {
 // and any "d" attributes from enclosed SVG "path" elements.
 func MustSVGFromReader(r io.Reader) *SVG {
 	s, err := NewSVGFromReader(r)
-	jot.FatalIfErr(err)
+	fatal.IfErr(err)
 	return s
 }
 

@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 type wellDialog struct {
@@ -84,7 +84,7 @@ func showWellDialog(w *Well) {
 	var err error
 	d.dialog, err = NewDialog(nil, nil, d.panel, []*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()})
 	if err != nil {
-		jot.Error(err)
+		errs.Log(err)
 		return
 	}
 	d.dialog.Window().SetTitle(i18n.Text("Choose an ink"))

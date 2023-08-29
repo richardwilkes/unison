@@ -12,8 +12,6 @@ linters-settings:
     rules:
       main:
         deny:
-          - pkg: log
-            desc: Use jot instead
           - pkg: github.com/satori/go.uuid
             desc: Use github.com/google/uuid or github.com/gofrs/uuid instead
   errcheck:

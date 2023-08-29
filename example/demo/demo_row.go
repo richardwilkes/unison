@@ -13,7 +13,8 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/unison"
 )
 
@@ -35,7 +36,7 @@ type demoRow struct {
 func (d *demoRow) CloneForTarget(target unison.Paneler, newParent *demoRow) *demoRow {
 	table, ok := target.(*unison.Table[*demoRow])
 	if !ok {
-		jot.Fatal(1, "invalid target")
+		fatal.IfErr(errs.New("invalid target"))
 	}
 	clone := *d
 	clone.table = table
@@ -120,7 +121,7 @@ func (d *demoRow) ColumnCell(row, col int, foreground, _ unison.Ink, _, _, _ boo
 		addWrappedText(wrapper, "xyz", foreground, unison.LabelFont, width)
 		return wrapper
 	default:
-		jot.Errorf("column index out of range (0-2): %d", col)
+		errs.Log(errs.New("column index out of range (0-2)"), "column", col)
 		return unison.NewLabel()
 	}
 }

@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
 )
 
@@ -93,7 +92,7 @@ func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
 func (d *linuxSaveDialog) runZenity(zenity string) bool {
 	output, err := exec.Command(zenity, "--help-file-selection").CombinedOutput()
 	if err != nil {
-		jot.Error(errs.Wrap(err))
+		errs.Log(err)
 		return false
 	}
 	cmd := exec.Command(zenity, "--file-selection", "--save")
@@ -125,7 +124,7 @@ func (d *linuxSaveDialog) prepExt() (string, []string) {
 func (d *linuxSaveDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
 	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
 	if err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	}
 	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
 	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
@@ -141,7 +140,7 @@ func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 			return
 		}
-		jot.Error(errs.Wrap(err))
+		errs.Log(err)
 		return
 	}
 	if cmd.ProcessState.ExitCode() != 0 {

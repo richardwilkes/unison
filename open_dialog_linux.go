@@ -19,7 +19,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 type linuxOpenDialog struct {
@@ -159,7 +158,7 @@ func (d *linuxOpenDialog) prepExt() []string {
 func (d *linuxOpenDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
 	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
 	if err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	}
 	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
 	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
@@ -175,7 +174,7 @@ func (d *linuxOpenDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 			return
 		}
-		jot.Error(errs.Wrap(err))
+		errs.Log(err)
 		return
 	}
 	if cmd.ProcessState.ExitCode() != 0 {

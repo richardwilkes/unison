@@ -20,7 +20,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
 	"github.com/richardwilkes/toolbox/xmath/geom"
 	"golang.org/x/sys/windows"
@@ -322,15 +321,15 @@ type textBlobBuilderRunBuffer struct {
 
 func init() {
 	dir, err := os.UserCacheDir()
-	jot.FatalIfErr(err)
+	fatal.IfErr(err)
 	dir = filepath.Join(dir, "unison", "dll_cache")
-	jot.FatalIfErr(os.MkdirAll(dir, 0755))
+	fatal.IfErr(os.MkdirAll(dir, 0755))
 	windows.SetDllDirectory(dir)
 	sha := sha256.Sum256(dllData)
 	dllName := fmt.Sprintf("skia-%s.dll", base64.RawURLEncoding.EncodeToString(sha[:]))
 	filePath := filepath.Join(dir, dllName)
 	if !fs.FileExists(filePath) {
-		jot.FatalIfErr(os.WriteFile(filePath, dllData, 0644))
+		fatal.IfErr(os.WriteFile(filePath, dllData, 0644))
 	}
 	skia := syscall.MustLoadDLL(dllName)
 	grBackendRenderTargetNewGLProc = skia.MustFindProc("gr_backendrendertarget_new_gl")

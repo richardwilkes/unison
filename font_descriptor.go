@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/toolbox/txt"
 )
 
@@ -32,7 +32,7 @@ func (fd FontDescriptor) Font() Font {
 	f := fd.Face()
 	if f == nil {
 		if fd.Family == DefaultSystemFamilyName {
-			jot.Fatal(1, "default system font family is unavailable")
+			fatal.IfErr(errs.New("default system font family is unavailable"))
 		}
 		other := fd
 		other.Family = DefaultSystemFamilyName

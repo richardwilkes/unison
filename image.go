@@ -20,7 +20,6 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
 	"github.com/richardwilkes/unison/internal/skia"
@@ -275,7 +274,7 @@ func (ref *imageRef) contextImg(s *surface) skia.Image {
 		if i != nil {
 			m[ref.hash] = i
 		} else {
-			jot.Warn("failed to create texture from image")
+			errs.Log(errs.New("failed to create texture from image"))
 			i = ref.img
 		}
 	}

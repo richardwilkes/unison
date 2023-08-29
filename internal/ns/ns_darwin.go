@@ -391,13 +391,11 @@ import "C"
 
 import (
 	"net/url"
-	"reflect"
 	"strings"
 	"time"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
 	"github.com/richardwilkes/toolbox/xmath/geom"
 )
@@ -449,8 +447,7 @@ func CurrentModifierFlags() EventModifierFlags {
 type String C.CFStringRef
 
 func NewString(str string) String {
-	header := (*reflect.StringHeader)(unsafe.Pointer(&str))
-	return String(C.CFStringCreateWithBytes(0, (*C.uint8)(unsafe.Pointer(header.Data)), C.long(header.Len),
+	return String(C.CFStringCreateWithBytes(0, (*C.uint8)(unsafe.Pointer(unsafe.StringData(str))), C.long(len(str)),
 		C.kCFStringEncodingUTF8, 0))
 }
 
@@ -461,7 +458,7 @@ func (s String) String() string {
 		strPtr = (*C.char)(C.malloc(C.size_t(maxBytes)))
 		defer C.free(unsafe.Pointer(strPtr))
 		if C.CFStringGetCString(C.CFStringRef(s), strPtr, maxBytes, C.kCFStringEncodingUTF8) == 0 {
-			jot.Warn(errs.New("failed to convert string"))
+			errs.Log(errs.New("failed to convert string"))
 			return ""
 		}
 	}
@@ -505,9 +502,10 @@ func (a Array) ArrayOfURLToStringSlice() []string {
 	count := a.Count()
 	result := make([]string, 0, count)
 	for i := 0; i < count; i++ {
-		u, err := url.Parse(a.URLAtIndex(i).AbsoluteString())
+		urlStr := a.URLAtIndex(i).AbsoluteString()
+		u, err := url.Parse(urlStr)
 		if err != nil {
-			jot.Warn(errs.NewWithCause("unable to parse URL", err))
+			errs.Log(errs.NewWithCause("unable to parse URL", err), "url", urlStr)
 			continue
 		}
 		result = append(result, u.Path)
@@ -531,8 +529,8 @@ func NewFileURL(str string) URL {
 	if strings.HasSuffix(str, "/") || fs.IsDir(str) {
 		isDir = 1
 	}
-	header := (*reflect.StringHeader)(unsafe.Pointer(&str))
-	return URL(C.CFURLCreateFromFileSystemRepresentation(0, (*C.uint8)(unsafe.Pointer(header.Data)), C.long(header.Len), isDir))
+	return URL(C.CFURLCreateFromFileSystemRepresentation(0, (*C.uint8)(unsafe.Pointer(unsafe.StringData(str))),
+		C.long(len(str)), isDir))
 }
 
 func (u URL) AbsoluteString() string {

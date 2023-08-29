@@ -12,7 +12,6 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 )
 
 // Possible values for the DockState Type field.
@@ -67,7 +66,7 @@ func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string
 			Horizontal: t.Horizontal,
 		}
 	default:
-		jot.Fatal(1, errs.New("invalid dock data"))
+		errs.Log(errs.New("invalid dock data"))
 		return nil
 	}
 }

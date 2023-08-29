@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/xio/fs"
 )
 
@@ -383,7 +383,7 @@ func (d *fileDialog) prepareCurrentDir(dir string) {
 	d.currentDir = resolveToAcceptableAbsDir(dir)
 	var err error
 	if d.dirEntries, err = os.ReadDir(d.currentDir); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	}
 }
 

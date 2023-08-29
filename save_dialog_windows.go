@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
@@ -40,7 +39,7 @@ func (d *winSaveDialog) RunModal() bool {
 
 	saveDialog := w32.NewSaveDialog()
 	if saveDialog == nil {
-		jot.Error("unable to create save dialog")
+		errs.Log(errs.New("unable to create save dialog"))
 		return false
 	}
 	if d.initialDir != "" {

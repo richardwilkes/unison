@@ -19,7 +19,6 @@ import (
 	"github.com/grandcat/zeroconf"
 	"github.com/richardwilkes/toolbox/collection/dict"
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/toolbox/txt"
 )
 
@@ -59,13 +58,13 @@ func (p *PrintManager) ScanForPrinters(ctx context.Context, printers chan<- *Pri
 	p.lock.Unlock()
 	resolver, err := zeroconf.NewResolver()
 	if err != nil {
-		jot.Error(errs.NewWithCause("unable to create zeroconf resolver", err))
+		errs.Log(errs.NewWithCause("unable to create zeroconf resolver", err))
 		return
 	}
 	entries := make(chan *zeroconf.ServiceEntry, 8)
 	go p.collectPrinters(ctx, entries, printers)
 	if err = resolver.Browse(ctx, "_ipp._tcp", "local.", entries); err != nil {
-		jot.Error(errs.NewWithCause("browsing for printers failed", err))
+		errs.Log(errs.NewWithCause("browsing for printers failed", err))
 	}
 }
 

@@ -12,7 +12,7 @@ package unison
 import (
 	_ "embed"
 
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/fatal"
 )
 
 var (
@@ -26,7 +26,7 @@ func MoveCursorImage() *Image {
 	if moveCursorImage == nil {
 		var err error
 		moveCursorImage, err = NewImageFromBytes(moveCursorImageData, 0.5)
-		jot.FatalIfErr(err)
+		fatal.IfErr(err)
 	}
 	return moveCursorImage
 }
@@ -42,7 +42,7 @@ func ResizeHorizontalCursorImage() *Image {
 	if resizeHorizontalCursorImage == nil {
 		var err error
 		resizeHorizontalCursorImage, err = NewImageFromBytes(resizeHorizontalCursorImageData, 0.5)
-		jot.FatalIfErr(err)
+		fatal.IfErr(err)
 	}
 	return resizeHorizontalCursorImage
 }
@@ -58,7 +58,7 @@ func ResizeLeftDiagonalCursorImage() *Image {
 	if resizeLeftDiagonalCursorImage == nil {
 		var err error
 		resizeLeftDiagonalCursorImage, err = NewImageFromBytes(resizeLeftDiagonalCursorImageData, 0.5)
-		jot.FatalIfErr(err)
+		fatal.IfErr(err)
 	}
 	return resizeLeftDiagonalCursorImage
 }
@@ -74,7 +74,7 @@ func ResizeRightDiagonalCursorImage() *Image {
 	if resizeRightDiagonalCursorImage == nil {
 		var err error
 		resizeRightDiagonalCursorImage, err = NewImageFromBytes(resizeRightDiagonalCursorImageData, 0.5)
-		jot.FatalIfErr(err)
+		fatal.IfErr(err)
 	}
 	return resizeRightDiagonalCursorImage
 }
@@ -90,7 +90,7 @@ func ResizeVerticalCursorImage() *Image {
 	if resizeVerticalCursorImage == nil {
 		var err error
 		resizeVerticalCursorImage, err = NewImageFromBytes(resizeVerticalCursorImageData, 0.5)
-		jot.FatalIfErr(err)
+		fatal.IfErr(err)
 	}
 	return resizeVerticalCursorImage
 }

@@ -13,7 +13,6 @@ import (
 	"net/url"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
@@ -26,9 +25,10 @@ func platformNewSaveDialog() SaveDialog {
 }
 
 func (d *macSaveDialog) InitialDirectory() string {
-	u, err := url.Parse(d.dialog.DirectoryURL().AbsoluteString())
+	urlStr := d.dialog.DirectoryURL().AbsoluteString()
+	u, err := url.Parse(urlStr)
 	if err != nil {
-		jot.Warn(errs.NewWithCause("unable to parse directory URL", err))
+		errs.Log(errs.NewWithCause("unable to parse directory URL", err), "url", urlStr)
 		return ""
 	}
 	return u.Path
@@ -64,9 +64,10 @@ func (d *macSaveDialog) SetAllowedExtensions(types ...string) {
 }
 
 func (d *macSaveDialog) Path() string {
-	u, err := url.Parse(d.dialog.URL().AbsoluteString())
+	urlStr := d.dialog.URL().AbsoluteString()
+	u, err := url.Parse(urlStr)
 	if err != nil {
-		jot.Warn(errs.NewWithCause("unable to convert url to path", err))
+		errs.Log(errs.NewWithCause("unable to convert url to path", err), "url", urlStr)
 		return ""
 	}
 	return u.Path

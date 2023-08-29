@@ -13,7 +13,6 @@ import (
 	"net/url"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
@@ -28,7 +27,7 @@ func platformNewOpenDialog() OpenDialog {
 func (d *macOpenDialog) InitialDirectory() string {
 	u, err := url.Parse(d.dialog.DirectoryURL().AbsoluteString())
 	if err != nil {
-		jot.Warn(errs.NewWithCause("unable to parse directory URL", err))
+		errs.Log(errs.NewWithCause("unable to parse directory URL", err))
 		return ""
 	}
 	return u.Path

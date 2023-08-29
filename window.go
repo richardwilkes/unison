@@ -19,7 +19,7 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/toolbox/xmath"
 )
 
@@ -539,7 +539,7 @@ func (w *Window) SetTitleIcons(images []*Image) {
 	imgs := make([]image.Image, 0, len(images))
 	for _, img := range images {
 		if nrgba, err := img.ToNRGBA(); err != nil {
-			jot.Error(err)
+			errs.Log(err)
 		} else {
 			w.titleIcons = append(w.titleIcons, img)
 			imgs = append(imgs, nrgba)
@@ -877,14 +877,12 @@ func (w *Window) draw() {
 		sx, sy := w.BackingScale()
 		w.wnd.MakeContextCurrent()
 		if !glInited {
-			if err := gl.Init(); err != nil {
-				jot.Fatal(1, errs.Wrap(err))
-			}
+			fatal.IfErr(gl.Init())
 			glInited = true
 		}
 		c, err := w.surface.prepareCanvas(w.ContentRect().Size, w.LocalContentRect(), sx, sy)
 		if err != nil {
-			jot.Error(err)
+			errs.Log(err)
 			return
 		}
 		start := time.Now()

@@ -17,7 +17,6 @@ import (
 	"sync"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -193,7 +192,7 @@ func init() {
 	const fontDir = "resources/fonts"
 	entries, err := fontFS.ReadDir(fontDir)
 	if err != nil {
-		jot.Error(errs.NewWithCause("unable to read embedded file system", err))
+		errs.Log(errs.NewWithCause("unable to read embedded file system", err))
 		return
 	}
 	for _, entry := range entries {
@@ -203,9 +202,9 @@ func init() {
 			if strings.HasSuffix(lower, ".otf") || strings.HasSuffix(lower, ".ttf") {
 				var data []byte
 				if data, err = fontFS.ReadFile(path.Join(fontDir, name)); err != nil {
-					jot.Error(errs.NewWithCausef(err, "unable to read font %s", name))
+					errs.Log(errs.NewWithCausef(err, "unable to read font %s", name))
 				} else if _, err = RegisterFont(data); err != nil {
-					jot.Error(errs.NewWithCause(name, err))
+					errs.Log(errs.NewWithCause(name, err))
 				}
 			}
 		}

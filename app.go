@@ -21,7 +21,7 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/atexit"
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -83,7 +83,7 @@ func ThemeChangedCallback(f func()) StartupOption {
 }
 
 // RecoveryCallback will cause f to be called should a task invoked via task.InvokeTask() or task.InvokeTaskAfter()
-// panic. If no recovery callback is set, the panic will be logged via jot.Error(err).
+// panic. If no recovery callback is set, the panic will be logged via errs.Log(err).
 func RecoveryCallback(f errs.RecoveryHandler) StartupOption {
 	return func(_ startupOption) error {
 		recoveryCallback = f
@@ -131,16 +131,16 @@ func NoGlobalMenuBar() StartupOption {
 func Start(options ...StartupOption) {
 	pwd, err := filepath.Abs(".")
 	if err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	}
 	for _, option := range options {
-		jot.FatalIfErr(option(startupOption{}))
+		fatal.IfErr(option(startupOption{}))
 	}
 	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
-	jot.FatalIfErr(glfw.Init())
+	fatal.IfErr(glfw.Init())
 	// Restore the original working directory, as glfw changes it on some platforms
 	if err = os.Chdir(pwd); err != nil {
-		jot.Error(err)
+		errs.Log(err)
 	}
 	atexit.Register(quitting)
 	atexit.Register(func() {
@@ -201,7 +201,7 @@ func uiTaskRecovery(err error) {
 	if recoveryCallback != nil {
 		toolbox.Call(func() { recoveryCallback(err) })
 	} else {
-		jot.Error(err)
+		errs.Log(err)
 	}
 }
 

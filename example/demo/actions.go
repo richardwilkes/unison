@@ -12,7 +12,7 @@ package demo
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/unison"
 )
 
@@ -50,7 +50,7 @@ func init() {
 				pt.Y = r.Y
 			}
 			if _, err := NewDemoWindow(pt); err != nil {
-				jot.Error(err)
+				errs.Log(err)
 			}
 		},
 	}
@@ -68,7 +68,7 @@ func init() {
 				pt.Y = r.Y
 			}
 			if _, err := NewDemoTableWindow(pt); err != nil {
-				jot.Error(err)
+				errs.Log(err)
 			}
 		},
 	}
@@ -86,7 +86,7 @@ func init() {
 				pt.Y = r.Y
 			}
 			if _, err := NewDemoDockWindow(pt); err != nil {
-				jot.Error(err)
+				errs.Log(err)
 			}
 		},
 	}

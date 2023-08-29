@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/log/jot"
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
@@ -41,7 +40,7 @@ func (d *winOpenDialog) RunModal() bool {
 
 	openDialog := w32.NewOpenDialog()
 	if openDialog == nil {
-		jot.Error("unable to create open dialog")
+		errs.Log(errs.New("unable to create open dialog"))
 		return false
 	}
 	if d.initialDir != "" {

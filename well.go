@@ -13,7 +13,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/richardwilkes/toolbox/log/jot"
+	"github.com/richardwilkes/toolbox/errs"
 )
 
 // WellMask is used to limit the types of ink permitted in the ink well.
@@ -243,7 +243,7 @@ func (w *Well) DefaultFileDrop(files []string) {
 		if imageSpec := DistillImageSpecFor(one); imageSpec != "" {
 			img, err := w.loadImage(imageSpec)
 			if err != nil {
-				jot.Warn(err)
+				errs.Log(err, "spec", imageSpec)
 				continue
 			}
 			if w.ValidateImageCallback != nil {
