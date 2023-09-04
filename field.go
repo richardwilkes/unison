@@ -573,10 +573,16 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	case KeyEnd:
 		f.handleEnd(f.multiLine, mod.ShiftDown())
 	case KeyPageDown:
+		if !f.multiLine {
+			return false
+		}
 		f.handleEnd(false, mod.ShiftDown())
 	case KeyHome:
 		f.handleHome(f.multiLine, mod.ShiftDown())
 	case KeyPageUp:
+		if !f.multiLine {
+			return false
+		}
 		f.handleHome(false, mod.ShiftDown())
 	case KeyDown:
 		if f.multiLine {
