@@ -30,7 +30,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
-	tableAST "github.com/yuin/goldmark/extension/ast"
+	astex "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
@@ -273,13 +273,13 @@ func (m *Markdown) walk(node ast.Node) {
 		m.processListItem()
 	case ast.KindHTMLBlock:
 		// Ignore
-	case tableAST.KindTable:
+	case astex.KindTable:
 		m.processTable()
-	case tableAST.KindTableHeader:
+	case astex.KindTableHeader:
 		m.processTableHeader()
-	case tableAST.KindTableRow:
+	case astex.KindTableRow:
 		m.processTableRow()
-	case tableAST.KindTableCell:
+	case astex.KindTableCell:
 		m.processTableCell()
 
 	// Inline types
@@ -299,6 +299,8 @@ func (m *Markdown) walk(node ast.Node) {
 		m.processImage()
 	case ast.KindAutoLink:
 		m.processAutoLink()
+	case astex.KindStrikethrough:
+		m.processStrikethrough()
 
 	default:
 		errs.Log(errs.New("unhandled markdown element"), "kind", m.node.Kind())
@@ -477,7 +479,7 @@ func (m *Markdown) processListItem() {
 }
 
 func (m *Markdown) processTable() {
-	if table, ok := m.node.(*tableAST.Table); ok {
+	if table, ok := m.node.(*astex.Table); ok {
 		if len(table.Alignments) != 0 {
 			saveBlock := m.block
 			m.columnWidths = make([]int, len(table.Alignments))
@@ -607,7 +609,7 @@ func (m *Markdown) processTableRow() {
 }
 
 func (m *Markdown) processTableCell() {
-	if cell, ok := m.node.(*tableAST.TableCell); ok {
+	if cell, ok := m.node.(*astex.TableCell); ok {
 		saveDec := m.decoration
 		saveBlock := m.block
 		align := m.alignment(cell.Alignment)
@@ -658,13 +660,13 @@ func (m *Markdown) processTableCell() {
 	}
 }
 
-func (m *Markdown) alignment(alignment tableAST.Alignment) Alignment {
+func (m *Markdown) alignment(alignment astex.Alignment) Alignment {
 	switch alignment {
-	case tableAST.AlignLeft:
+	case astex.AlignLeft:
 		return StartAlignment
-	case tableAST.AlignRight:
+	case astex.AlignRight:
 		return EndAlignment
-	case tableAST.AlignCenter:
+	case astex.AlignCenter:
 		return MiddleAlignment
 	default:
 		return StartAlignment
@@ -711,6 +713,16 @@ func (m *Markdown) processCodeSpan() {
 	m.decoration.Font = m.CodeBlockFont
 	m.processChildren()
 	m.decoration = save
+}
+
+func (m *Markdown) processStrikethrough() {
+	if _, ok := m.node.(*astex.Strikethrough); ok {
+		save := m.decoration
+		m.decoration = save.Clone()
+		m.decoration.StrikeThrough = true
+		m.processChildren()
+		m.decoration = save
+	}
 }
 
 func (m *Markdown) processRawHTML() {
