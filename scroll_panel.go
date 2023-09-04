@@ -75,6 +75,7 @@ func NewScrollPanel() *ScrollPanel {
 	s.MouseWheelCallback = s.DefaultMouseWheel
 	s.ScrollRectIntoViewCallback = s.DefaultScrollRectIntoView
 	s.FrameChangeInChildHierarchyCallback = s.DefaultFrameChangeInChildHierarchy
+	s.KeyDownCallback = s.DefaultKeyDown
 	return s
 }
 
@@ -223,6 +224,30 @@ func (s *ScrollPanel) Sync() {
 		}
 		s.MarkForLayoutAndRedraw()
 	}
+}
+
+// DefaultKeyDown provides the default key down handling.
+func (s *ScrollPanel) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
+	switch keyCode {
+	case KeyPageUp:
+		s.scrollViewByPage(-1, mod.ShiftDown())
+	case KeyPageDown:
+		s.scrollViewByPage(1, mod.ShiftDown())
+	default:
+		return false
+	}
+	return true
+}
+
+func (s *ScrollPanel) scrollViewByPage(direction float32, horizontal bool) {
+	var bar *ScrollBar
+	if horizontal {
+		bar = s.horizontalBar
+	} else {
+		bar = s.verticalBar
+	}
+	extent := bar.Extent()
+	bar.SetRange(bar.Value()+(direction*max(extent-SystemFont.LineHeight()*2, 0)), extent, bar.Max())
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
