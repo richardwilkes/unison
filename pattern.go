@@ -35,7 +35,7 @@ func (p *Pattern) Paint(canvas *Canvas, _ Rect, style PaintStyle) *Paint {
 	imgScale := p.Image.Scale()
 	paint.SetColor(Black)
 	paint.SetShader(NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
-		&Matrix{
+		Matrix{
 			ScaleX: scale.X * imgScale,
 			ScaleY: scale.Y * imgScale,
 			TransX: p.Offset.X,

@@ -69,10 +69,9 @@ func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (minSize, prefSize
 	}
 
 	if b := h.Border(); b != nil {
-		prefSize.AddInsets(b.Insets())
+		prefSize = prefSize.Add(b.Insets().Size())
 	}
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
 }
 
@@ -111,12 +110,12 @@ func (h *DefaultTableColumnHeader[T]) SetSortState(state SortState) {
 			if h.sortState.Ascending {
 				h.sortIndicator = &DrawableSVG{
 					SVG:  SortAscendingSVG,
-					Size: NewSize(baseline, baseline),
+					Size: Size{Width: baseline, Height: baseline},
 				}
 			} else {
 				h.sortIndicator = &DrawableSVG{
 					SVG:  SortDescendingSVG,
-					Size: NewSize(baseline, baseline),
+					Size: Size{Width: baseline, Height: baseline},
 				}
 			}
 		} else {
@@ -128,7 +127,7 @@ func (h *DefaultTableColumnHeader[T]) SetSortState(state SortState) {
 
 // DefaultMouseUp provides the default mouse up handling.
 func (h *DefaultTableColumnHeader[T]) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
-	if h.sortState.Sortable && h.ContentRect(false).ContainsPoint(where) {
+	if h.sortState.Sortable && where.In(h.ContentRect(false)) {
 		if header, ok := h.Parent().Self.(*TableHeader[T]); ok {
 			header.SortOn(h)
 			header.ApplySort()

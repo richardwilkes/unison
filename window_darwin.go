@@ -17,9 +17,12 @@ import (
 func (w *Window) frameRect() Rect {
 	if w.IsValid() {
 		left, top, right, bottom := w.wnd.GetFrameSize()
-		return NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+		return Rect{
+			Point: Point{X: float32(left), Y: float32(top)},
+			Size:  Size{Width: float32(right - left), Height: float32(bottom - top)},
+		}
 	}
-	return NewRect(0, 0, 1, 1)
+	return Rect{Size: Size{Width: 1, Height: 1}}
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
@@ -27,9 +30,12 @@ func (w *Window) ContentRect() Rect {
 	if w.IsValid() {
 		x, y := w.wnd.GetPos()
 		width, height := w.wnd.GetSize()
-		return NewRect(float32(x), float32(y), float32(width), float32(height))
+		return Rect{
+			Point: Point{X: float32(x), Y: float32(y)},
+			Size:  Size{Width: float32(width), Height: float32(height)},
+		}
 	}
-	return NewRect(0, 0, 1, 1)
+	return Rect{Size: Size{Width: 1, Height: 1}}
 }
 
 // SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame

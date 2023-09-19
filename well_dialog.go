@@ -467,7 +467,7 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 	preview.SetBorder(NewCompoundBorder(NewLineBorder(OnBackgroundColor, 0, NewUniformInsets(1), false),
 		NewLineBorder(BackgroundColor, 0, NewUniformInsets(1), false)))
 	preview.SetLayoutData(&FlexLayoutData{
-		SizeHint: NewSize(64, 64),
+		SizeHint: Size{Width: 64, Height: 64},
 	})
 	preview.DrawCallback = func(canvas *Canvas, _ Rect) {
 		r := preview.ContentRect(false)

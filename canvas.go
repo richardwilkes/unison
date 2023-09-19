@@ -101,8 +101,8 @@ func (c *Canvas) Skew(sx, sy float32) {
 }
 
 // Concat the matrix.
-func (c *Canvas) Concat(matrix *Matrix) {
-	skia.CanvasConcat(c.canvas, skia.Matrix2DtoMatrix(matrix))
+func (c *Canvas) Concat(matrix Matrix) {
+	skia.CanvasConcat(c.canvas, matrix)
 }
 
 // ResetMatrix sets the current transform matrix to the identity matrix.
@@ -111,13 +111,13 @@ func (c *Canvas) ResetMatrix() {
 }
 
 // Matrix returns the current transform matrix.
-func (c *Canvas) Matrix() *Matrix {
-	return skia.CanvasGetTotalMatrix(c.canvas).ToMatrix2D()
+func (c *Canvas) Matrix() Matrix {
+	return skia.CanvasGetTotalMatrix(c.canvas)
 }
 
 // SetMatrix replaces the current matrix with the given matrix.
-func (c *Canvas) SetMatrix(matrix *Matrix) {
-	skia.CanvasSetMatrix(c.canvas, skia.Matrix2DtoMatrix(matrix))
+func (c *Canvas) SetMatrix(matrix Matrix) {
+	skia.CanvasSetMatrix(c.canvas, matrix)
 }
 
 // QuickRejectPath returns true if the path, after transformations by the current matrix, can be quickly determined to
@@ -129,7 +129,7 @@ func (c *Canvas) QuickRejectPath(path *Path) bool {
 // QuickRejectRect returns true if the rect, after transformations by the current matrix, can be quickly determined to
 // be outside of the current clip. May return false even though the rect is outside of the clip.
 func (c *Canvas) QuickRejectRect(rect Rect) bool {
-	return skia.CanvasQuickRejectRect(c.canvas, skia.RectToSkRect(&rect))
+	return skia.CanvasQuickRejectRect(c.canvas, rect)
 }
 
 // Clear fills the clip with the color.
@@ -144,12 +144,12 @@ func (c *Canvas) DrawPaint(paint *Paint) {
 
 // DrawRect draws the rectangle with Paint.
 func (c *Canvas) DrawRect(rect Rect, paint *Paint) {
-	skia.CanvasDrawRect(c.canvas, skia.RectToSkRect(&rect), paint.paint)
+	skia.CanvasDrawRect(c.canvas, rect, paint.paint)
 }
 
 // DrawRoundedRect draws a rounded rectangle with Paint.
 func (c *Canvas) DrawRoundedRect(rect Rect, radiusX, radiusY float32, paint *Paint) {
-	skia.CanvasDrawRoundRect(c.canvas, skia.RectToSkRect(&rect), radiusX, radiusY, paint.paint)
+	skia.CanvasDrawRoundRect(c.canvas, rect, radiusX, radiusY, paint.paint)
 }
 
 // DrawCircle draws the circle with Paint.
@@ -159,7 +159,7 @@ func (c *Canvas) DrawCircle(cx, cy, radius float32, paint *Paint) {
 
 // DrawOval draws the oval with Paint.
 func (c *Canvas) DrawOval(rect Rect, paint *Paint) {
-	skia.CanvasDrawOval(c.canvas, skia.RectToSkRect(&rect), paint.paint)
+	skia.CanvasDrawOval(c.canvas, rect, paint.paint)
 }
 
 // DrawPath draws the path with Paint.
@@ -180,16 +180,16 @@ func (c *Canvas) DrawImageInRect(img *Image, rect Rect, sampling *SamplingOption
 // DrawImageRectInRect draws a portion of the image into the area specified, scaling if necessary. srcRect should be in
 // raw pixel coordinates, not logical coordinates. dstRect should be in logical coordinates. paint may be nil.
 func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect Rect, sampling *SamplingOptions, paint *Paint) {
-	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface), skia.RectToSkRect(&srcRect),
-		skia.RectToSkRect(&dstRect), sampling.skSamplingOptions(), paint.paintOrNil())
+	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface), srcRect, dstRect, sampling.skSamplingOptions(),
+		paint.paintOrNil())
 }
 
 // DrawImageNine draws an image stretched proportionally to fit into dstRect. 'center' divides the image into nine
 // sections: four sides, four corners, and the center. Corners are unmodified or scaled down proportionately if their
 // sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. paint may be nil.
 func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect Rect, filter FilterMode, paint *Paint) {
-	skia.CanvasDrawImageNine(c.canvas, img.ref().contextImg(c.surface), skia.RectToSkIRect(&centerRect),
-		skia.RectToSkRect(&dstRect), skia.FilterMode(filter), paint.paintOrNil())
+	skia.CanvasDrawImageNine(c.canvas, img.ref().contextImg(c.surface), centerRect, dstRect, skia.FilterMode(filter),
+		paint.paintOrNil())
 }
 
 // DrawColor fills the clip with the color.
@@ -224,7 +224,7 @@ func (c *Canvas) DrawPolygon(poly Polygon, mode FillType, paint *Paint) {
 // includes lines from the oval center to the arc end points. If useCenter is false, then just and arc between the end
 // points will be drawn.
 func (c *Canvas) DrawArc(oval Rect, startAngle, sweepAngle float32, paint *Paint, useCenter bool) {
-	skia.CanvasDrawArc(c.canvas, skia.RectToSkRect(&oval), startAngle, sweepAngle, useCenter, paint.paint)
+	skia.CanvasDrawArc(c.canvas, oval, startAngle, sweepAngle, useCenter, paint.paint)
 }
 
 // DrawSimpleString draws a string. It does not do any processing of embedded line endings nor tabs. It also does not do
@@ -242,7 +242,7 @@ func (c *Canvas) DrawTextBlob(blob *TextBlob, x, y float32, paint *Paint) {
 
 // ClipRect replaces the clip with the intersection of difference of the current clip and rect.
 func (c *Canvas) ClipRect(rect Rect, op ClipOp, antialias bool) {
-	skia.CanavasClipRectWithOperation(c.canvas, skia.RectToSkRect(&rect), skia.ClipOp(op), antialias)
+	skia.CanavasClipRectWithOperation(c.canvas, rect, skia.ClipOp(op), antialias)
 }
 
 // ClipPath replaces the clip with the intersection of difference of the current clip and path.
@@ -252,7 +252,7 @@ func (c *Canvas) ClipPath(path *Path, op ClipOp, antialias bool) {
 
 // ClipBounds returns the clip bounds.
 func (c *Canvas) ClipBounds() Rect {
-	return skia.CanvasGetLocalClipBounds(c.canvas).ToRect()
+	return skia.CanvasGetLocalClipBounds(c.canvas)
 }
 
 // IsClipEmpty returns true if the clip is empty, i.e. nothing will draw.

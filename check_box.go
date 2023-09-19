@@ -57,7 +57,7 @@ type CheckBox struct {
 	ClickCallback func()
 	Drawable      Drawable
 	Text          string
-	textCache     TextCache
+	cache         TextCache
 	State         CheckState
 	Pressed       bool
 }
@@ -89,10 +89,9 @@ func (c *CheckBox) DefaultFocusGained() {
 func (c *CheckBox) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	prefSize = c.boxAndLabelSize()
 	if border := c.Border(); border != nil {
-		prefSize.AddInsets(border.Insets())
+		prefSize = prefSize.Add(border.Insets().Size())
 	}
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, MaxSize(prefSize)
 }
 
@@ -101,7 +100,7 @@ func (c *CheckBox) boxAndLabelSize() Size {
 	if c.Drawable == nil && c.Text == "" {
 		return Size{Width: boxSize, Height: boxSize}
 	}
-	size := LabelSize(c.textCache.Text(c.Text, c.Font), c.Drawable, c.Side, c.Gap)
+	size := LabelSize(c.cache.Text(c.Text, c.Font), c.Drawable, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
 	if size.Height < boxSize {
 		size.Height = boxSize
@@ -138,7 +137,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 		r := rect
 		r.X += boxSize + c.Gap
 		r.Width -= boxSize + c.Gap
-		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.textCache.Text(c.Text, c.Font), c.OnBackgroundInk, c.Drawable,
+		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.cache.Text(c.Text, c.Font), c.OnBackgroundInk, c.Drawable,
 			c.Side, c.Gap, !c.Enabled())
 	}
 	if rect.Height > boxSize {
@@ -160,7 +159,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 		thickness++
 	}
 	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, c.EdgeInk)
-	rect.InsetUniform(0.5)
+	rect = rect.Inset(NewUniformInsets(0.5))
 	if c.State == OffCheckState {
 		return
 	}
@@ -213,9 +212,7 @@ func (c *CheckBox) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 
 // DefaultMouseDrag provides the default mouse drag handling.
 func (c *CheckBox) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
-	rect := c.ContentRect(false)
-	pressed := rect.ContainsPoint(where)
-	if c.Pressed != pressed {
+	if pressed := where.In(c.ContentRect(false)); pressed != c.Pressed {
 		c.Pressed = pressed
 		c.MarkForRedraw()
 	}
@@ -226,8 +223,7 @@ func (c *CheckBox) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 func (c *CheckBox) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
-	rect := c.ContentRect(false)
-	if rect.ContainsPoint(where) {
+	if where.In(c.ContentRect(false)) {
 		c.updateState()
 		if c.ClickCallback != nil {
 			c.ClickCallback()

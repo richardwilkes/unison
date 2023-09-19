@@ -168,7 +168,7 @@ func (d *fileDialog) createContent() *Panel {
 	d.scroller.SetContent(d.fileList, FollowBehavior, FillBehavior)
 	content.AddChild(d.scroller)
 	d.scroller.SetLayoutData(&FlexLayoutData{
-		MinSize: NewSize(300, 200),
+		MinSize: Size{Width: 300, Height: 200},
 		HSpan:   1,
 		VSpan:   1,
 		HAlign:  FillAlignment,

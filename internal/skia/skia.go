@@ -151,26 +151,8 @@ type Rect struct {
 	Bottom float32
 }
 
-func (r *Rect) ToRect() geom.Rect32 {
-	return geom.Rect32{
-		Point: geom.Pt32{
-			X: r.Left,
-			Y: r.Top,
-		},
-		Size: geom.Size32{
-			Width:  r.Right - r.Left,
-			Height: r.Bottom - r.Top,
-		},
-	}
-}
-
-func RectToSkRect(r *geom.Rect32) *Rect {
-	return &Rect{
-		Left:   r.X,
-		Top:    r.Y,
-		Right:  r.Right(),
-		Bottom: r.Bottom(),
-	}
+func toGeomRect(r Rect) geom.Rect[float32] {
+	return geom.Rect[float32]{Point: geom.NewPoint(r.Left, r.Top), Size: geom.NewSize(r.Right-r.Left, r.Bottom-r.Top)}
 }
 
 type IRect struct {
@@ -180,51 +162,11 @@ type IRect struct {
 	Bottom int32
 }
 
-func RectToSkIRect(r *geom.Rect32) *IRect {
-	return &IRect{
-		Left:   int32(r.X),
-		Top:    int32(r.Y),
-		Right:  int32(r.Right()),
-		Bottom: int32(r.Bottom()),
-	}
-}
-
 type Matrix struct {
-	ScaleX float32
-	SkewX  float32
-	TransX float32
-	SkewY  float32
-	ScaleY float32
-	TransY float32
+	geom.Matrix[float32]
 	Persp0 float32
 	Persp1 float32
 	Persp2 float32
-}
-
-func (m *Matrix) ToMatrix2D() *geom.Matrix2D32 {
-	return &geom.Matrix2D32{
-		ScaleX: m.ScaleX,
-		SkewX:  m.SkewX,
-		TransX: m.TransX,
-		SkewY:  m.SkewY,
-		ScaleY: m.ScaleY,
-		TransY: m.TransY,
-	}
-}
-
-func Matrix2DtoMatrix(m *geom.Matrix2D32) *Matrix {
-	if m == nil {
-		return nil
-	}
-	return &Matrix{
-		ScaleX: m.ScaleX,
-		SkewX:  m.SkewX,
-		TransX: m.TransX,
-		SkewY:  m.SkewY,
-		ScaleY: m.ScaleY,
-		TransY: m.TransY,
-		Persp2: 1,
-	}
 }
 
 type GLFrameBufferInfo struct {

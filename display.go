@@ -71,13 +71,12 @@ func BestDisplayForRect(r Rect) *Display {
 	var bestArea float32
 	var bestDisplay *Display
 	for _, display := range AllDisplays() {
-		if display.Usable.ContainsRect(r) {
+		if r.In(display.Usable) {
 			return display
 		}
-		intersection := r
-		intersection.Intersect(display.Usable)
-		if !intersection.IsEmpty() {
-			area := intersection.Width * intersection.Height
+		ri := r.Intersect(display.Usable)
+		if !ri.Empty() {
+			area := ri.Width * ri.Height
 			if bestArea < area {
 				bestArea = area
 				bestDisplay = display

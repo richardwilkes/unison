@@ -18,9 +18,15 @@ func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
 	sx, sy := monitor.GetContentScale()
 	mmx, mmy := monitor.GetPhysicalSize()
 	display := &Display{
-		Name:        monitor.GetName(),
-		Frame:       NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
-		Usable:      NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
+		Name: monitor.GetName(),
+		Frame: Rect{
+			Point: Point{X: float32(x), Y: float32(y)},
+			Size:  Size{Width: float32(vidMode.Width), Height: float32(vidMode.Height)},
+		},
+		Usable: Rect{
+			Point: Point{X: float32(workX), Y: float32(workY)},
+			Size:  Size{Width: float32(workWidth), Height: float32(workHeight)},
+		},
 		ScaleX:      sx,
 		ScaleY:      sy,
 		RefreshRate: vidMode.RefreshRate,

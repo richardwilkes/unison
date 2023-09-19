@@ -21,8 +21,7 @@ type dragDrawable struct {
 func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *SVG, singularName, pluralName string) Drawable {
 	label := NewLabel()
 	label.DrawCallback = func(gc *Canvas, rect Rect) {
-		r := rect
-		r.Inset(NewUniformInsets(1))
+		r := rect.Inset(NewUniformInsets(1))
 		corner := r.Height / 2
 		gc.SaveWithOpacity(0.7)
 		gc.DrawRoundedRect(r, corner, corner, data.Table.SelectionInk.Paint(gc, r, Fill))
@@ -46,7 +45,7 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		baseline := label.Font.Baseline()
 		label.Drawable = &DrawableSVG{
 			SVG:  svg,
-			Size: NewSize(baseline, baseline),
+			Size: Size{Width: baseline, Height: baseline},
 		}
 	}
 	_, pref, _ := label.Sizes(Size{})

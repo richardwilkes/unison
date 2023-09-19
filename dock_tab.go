@@ -209,7 +209,7 @@ func (t *dockTab) mouseDrag(where Point, _ int, _ Modifiers) bool {
 				Data:     map[string]any{dc.Dock.DragKey: t.dockable},
 				Drawable: icon,
 				Ink:      t.title.OnBackgroundInk,
-				Offset:   NewPoint(-size.Width/2, -size.Height/2),
+				Offset:   Point{X: -size.Width / 2, Y: -size.Height / 2},
 			})
 		}
 	}
@@ -217,7 +217,7 @@ func (t *dockTab) mouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 func (t *dockTab) mouseUp(where Point, _ int, _ Modifiers) bool {
-	if t.ContentRect(true).ContainsPoint(where) {
+	if where.In(t.ContentRect(true)) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			switch {
 			case dc.CurrentDockable() != t.dockable:

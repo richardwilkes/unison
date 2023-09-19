@@ -183,7 +183,7 @@ func (mi *menuItem) mouseDown(_ Point, _, _ int, _ Modifiers) bool {
 }
 
 func (mi *menuItem) mouseUp(where Point, _ int, _ Modifiers) bool {
-	if mi.subMenu == nil && mi.panel.ContentRect(true).ContainsPoint(where) {
+	if mi.subMenu == nil && where.In(mi.panel.ContentRect(true)) {
 		mi.execute()
 	}
 	return true
@@ -262,9 +262,7 @@ func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 			}
 		}
 	}
-	prefSize.AddInsets(DefaultMenuItemTheme.ItemBorder.Insets())
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Add(DefaultMenuItemTheme.ItemBorder.Insets().Size()).Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
 }
 
@@ -304,7 +302,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				r.Width = baseline
 				r.Height = baseline
 				r.Y += (rect.Height - baseline) / 2
-				drawable := &DrawableSVG{Size: NewSize(baseline, baseline)}
+				drawable := &DrawableSVG{Size: Size{Width: baseline, Height: baseline}}
 				if mi.state == OnCheckState {
 					drawable.SVG = CheckmarkSVG
 				} else {
@@ -327,7 +325,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 			rect.Width = baseline
 			drawable := &DrawableSVG{
 				SVG:  ChevronRightSVG,
-				Size: NewSize(baseline, baseline),
+				Size: Size{Width: baseline, Height: baseline},
 			}
 			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, Fill))
 		}

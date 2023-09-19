@@ -50,16 +50,13 @@ type FlexLayoutData struct {
 // LayoutSizes implements the Layout interface.
 func (f *FlexLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size) {
 	f.sizingCache = make(map[*Panel]map[Size]*flexSizingCacheData)
-	var insets Insets
+	var insets Size
 	if b := target.Border(); b != nil {
-		insets = b.Insets()
-		hint.SubtractInsets(insets).Max(Size{})
+		insets = b.Insets().Size()
+		hint = hint.Sub(insets).Max(Size{})
 	}
-	minSize = f.layout(target, Point{}, hint, false, true)
-	prefSize = f.layout(target, Point{}, hint, false, false)
-	minSize.AddInsets(insets)
-	prefSize.AddInsets(insets)
-	return minSize, prefSize, MaxSize(prefSize)
+	prefSize = f.layout(target, Point{}, hint, false, false).Add(insets)
+	return f.layout(target, Point{}, hint, false, true).Add(insets), prefSize, MaxSize(prefSize)
 }
 
 // PerformLayout implements the Layout interface.
@@ -69,9 +66,7 @@ func (f *FlexLayout) PerformLayout(target *Panel) {
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
-	hint := target.ContentRect(true).Size
-	hint.SubtractInsets(insets)
-	f.layout(target, Point{X: insets.Left, Y: insets.Top}, hint, true, false)
+	f.layout(target, Point{X: insets.Left, Y: insets.Top}, target.ContentRect(true).Size.Sub(insets.Size()), true, false)
 }
 
 func (f *FlexLayout) layout(target *Panel, location Point, hint Size, move, useMinimumSize bool) Size {

@@ -89,8 +89,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 		frame.Height = wndFrame.Height
 		frame.X += (frame.Width - wndFrame.Width) / 2
 		frame.Width = wndFrame.Width
-		frame.Align()
-		aboutWindow.SetFrameRect(frame)
+		aboutWindow.SetFrameRect(frame.Align())
 	}
 
 	// Make it visible and in the front.

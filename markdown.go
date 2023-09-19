@@ -877,7 +877,7 @@ func (m *Markdown) processImage() {
 			size := max(m.decoration.Font.Size(), 24)
 			label.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
-				Size: NewSize(size, size),
+				Size: Size{Width: size, Height: size},
 			}
 		} else {
 			label.Drawable = m.constrainImage(img)

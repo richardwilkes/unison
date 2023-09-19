@@ -371,14 +371,14 @@ func (s *ScrollPanel) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSi
 		}
 	}
 	if border := s.contentView.Border(); border != nil {
-		insets := border.Insets()
-		minSize.AddInsets(insets)
-		prefSize.AddInsets(insets)
+		insets := border.Insets().Size()
+		minSize = minSize.Add(insets)
+		prefSize = prefSize.Add(insets)
 	}
 	if border := s.Border(); border != nil {
-		insets := border.Insets()
-		minSize.AddInsets(insets)
-		prefSize.AddInsets(insets)
+		insets := border.Insets().Size()
+		minSize = minSize.Add(insets)
+		prefSize = prefSize.Add(insets)
 	}
 	return minSize, prefSize, MaxSize(prefSize)
 }
@@ -401,7 +401,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	}
 	if s.rowHeaderView != nil {
 		_, p, _ := s.rowHeader.AsPanel().Sizes(Size{Height: r.Height})
-		row := NewRect(r.X, r.Y, 0, r.Height)
+		row := r
 		row.Width = min(r.Width, p.Width)
 		if border := s.rowHeaderView.Border(); border != nil {
 			insets := border.Insets()
@@ -413,7 +413,9 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	}
 	if s.columnHeaderView != nil {
 		_, p, _ := s.columnHeader.AsPanel().Sizes(Size{Width: r.Width})
-		col := NewRect(r.X, columnHeaderTop, r.Width, min(r.Height, p.Height))
+		col := r
+		col.Y = columnHeaderTop
+		col.Height = min(r.Height, p.Height)
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
 			col.Height += insets.Height()
@@ -422,7 +424,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	}
 	viewContent := r
 	if border := s.contentView.Border(); border != nil {
-		viewContent.Inset(border.Insets())
+		viewContent = viewContent.Inset(border.Insets())
 	}
 	var contentSize Size
 	if s.content != nil {
@@ -470,8 +472,14 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		width -= s.verticalBar.MinimumThickness
 		height -= s.horizontalBar.MinimumThickness
 	}
-	s.verticalBar.SetFrameRect(NewRect(viewContent.Right()-s.verticalBar.MinimumThickness, viewContent.Y, s.verticalBar.MinimumThickness, height))
-	s.horizontalBar.SetFrameRect(NewRect(viewContent.X, viewContent.Bottom()-s.horizontalBar.MinimumThickness, width, s.horizontalBar.MinimumThickness))
+	s.verticalBar.SetFrameRect(Rect{
+		Point: Point{X: viewContent.Right() - s.verticalBar.MinimumThickness, Y: viewContent.Y},
+		Size:  Size{Width: s.verticalBar.MinimumThickness, Height: height},
+	})
+	s.horizontalBar.SetFrameRect(Rect{
+		Point: Point{X: viewContent.X, Y: viewContent.Bottom() - s.horizontalBar.MinimumThickness},
+		Size:  Size{Width: width, Height: s.horizontalBar.MinimumThickness},
+	})
 	s.contentView.SetFrameRect(r)
 	if s.columnHeaderView != nil {
 		vr := s.columnHeaderView.FrameRect()

@@ -41,8 +41,7 @@ func (b *LineBorder) Insets() Insets {
 
 // Draw the border into rect.
 func (b *LineBorder) Draw(canvas *Canvas, rect Rect) {
-	clip := rect
-	clip.Inset(b.insets)
+	clip := rect.Inset(b.insets)
 	path := NewPath()
 	path.SetFillType(EvenOdd)
 	if b.cornerRadius > 0 {

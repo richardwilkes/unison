@@ -69,16 +69,16 @@ func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	text := t.textCache.Text(t.Text, t.Font)
 	if text == nil && t.Drawable == nil {
 		prefSize.Height = t.Font.LineHeight()
-		prefSize.GrowToInteger()
+		prefSize = prefSize.Ceil()
 	} else {
 		prefSize = LabelSize(text, t.Drawable, t.Side, t.Gap)
 	}
 	if b := t.Border(); b != nil {
-		prefSize.AddInsets(b.Insets())
+		prefSize = prefSize.Add(b.Insets().Size())
 	}
-	prefSize.GrowToInteger()
+	prefSize = prefSize.Ceil()
 	prefSize.Width += t.SideInset * 2
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
 }
 

@@ -344,7 +344,7 @@ func (d *DockLayout) LayoutSizes(_ *Panel, _ Size) (minSize, prefSize, maxSize S
 		prefSize = d.nodes[0].PreferredSize()
 	}
 	if d.nodes[1] != nil {
-		prefSize.Max(d.nodes[1].PreferredSize())
+		prefSize = prefSize.Max(d.nodes[1].PreferredSize())
 	}
 	if d.Full() {
 		if d.Horizontal {
@@ -370,7 +370,7 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 			dc.Hidden = dc != d.dock.MaximizedContainer
 			return false
 		})
-		d.dock.MaximizedContainer.AsPanel().SetFrameRect(NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
+		d.dock.MaximizedContainer.AsPanel().SetFrameRect(Rect{Point: d.frame.Point, Size: size})
 	case d.Full():
 		available := size.Height
 		if d.Horizontal {
@@ -391,15 +391,21 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 			primary = d.divider
 		}
 		if d.Horizontal {
-			d.nodes[0].SetFrameRect(NewRect(d.frame.X, d.frame.Y, primary, size.Height))
-			d.nodes[1].SetFrameRect(NewRect(d.frame.X+primary+dividerSize, d.frame.Y, available-primary, size.Height))
+			d.nodes[0].SetFrameRect(Rect{Point: d.frame.Point, Size: Size{Width: primary, Height: size.Height}})
+			d.nodes[1].SetFrameRect(Rect{
+				Point: Point{X: d.frame.X + primary + dividerSize, Y: d.frame.Y},
+				Size:  Size{Width: available - primary, Height: size.Height},
+			})
 		} else {
-			d.nodes[0].SetFrameRect(NewRect(d.frame.X, d.frame.Y, size.Width, primary))
-			d.nodes[1].SetFrameRect(NewRect(d.frame.X, d.frame.Y+primary+dividerSize, size.Width, available-primary))
+			d.nodes[0].SetFrameRect(Rect{Point: d.frame.Point, Size: Size{Width: size.Width, Height: primary}})
+			d.nodes[1].SetFrameRect(Rect{
+				Point: Point{X: d.frame.X, Y: d.frame.Y + primary + dividerSize},
+				Size:  Size{Width: size.Width, Height: available - primary},
+			})
 		}
 	case d.nodes[0] != nil:
-		d.nodes[0].SetFrameRect(NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
+		d.nodes[0].SetFrameRect(Rect{Point: d.frame.Point, Size: size})
 	case d.nodes[1] != nil:
-		d.nodes[1].SetFrameRect(NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
+		d.nodes[1].SetFrameRect(Rect{Point: d.frame.Point, Size: size})
 	}
 }

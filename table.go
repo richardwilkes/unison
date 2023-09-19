@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/geom"
 )
 
 var zeroUUID = uuid.UUID{}
@@ -275,8 +274,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		for c := firstCol; c < len(t.Columns) && rect.X < lastX; c++ {
 			fg, bg, selected, indirectlySelected, focused := t.cellParams(r, c)
 			rect.Width = t.Columns[c].Current
-			cellRect := rect
-			cellRect.Inset(t.Padding)
+			cellRect := rect.Inset(t.Padding)
 			row := t.rowCache[r].row
 			if t.Columns[c].ID == t.HierarchyColumnID {
 				if row.CanHaveChildren() {
@@ -285,8 +283,9 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 					canvas.Save()
 					left := cellRect.X + t.HierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
 					top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
-					t.hitRects = append(t.hitRects, t.newTableHitRect(NewRect(left, top, disclosureSize,
-						disclosureSize), row))
+					dSize := Size{Width: disclosureSize, Height: disclosureSize}
+					t.hitRects = append(t.hitRects,
+						t.newTableHitRect(Rect{Point: Point{X: left, Y: top}, Size: dSize}, row))
 					canvas.Translate(left, top)
 					if row.IsOpen() {
 						offset := disclosureSize / 2
@@ -294,8 +293,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 						canvas.Rotate(90)
 						canvas.Translate(-offset, -offset)
 					}
-					canvas.DrawPath(CircledChevronRightSVG.PathForSize(NewSize(disclosureSize, disclosureSize)),
-						fg.Paint(canvas, cellRect, Fill))
+					canvas.DrawPath(CircledChevronRightSVG.PathForSize(dSize), fg.Paint(canvas, cellRect, Fill))
 					canvas.Restore()
 				}
 				indent := t.HierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left
@@ -497,8 +495,10 @@ func (t *Table[T]) CellFrame(row, col int) Rect {
 			y++
 		}
 	}
-	rect := NewRect(x, y, t.Columns[col].Current, t.rowCache[row].height)
-	rect.Inset(t.Padding)
+	rect := Rect{
+		Point: Point{X: x, Y: y},
+		Size:  Size{Width: t.Columns[col].Current, Height: t.rowCache[row].height},
+	}.Inset(t.Padding)
 	if t.Columns[col].ID == t.HierarchyColumnID {
 		indent := t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
 		rect.X += indent
@@ -569,7 +569,7 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 				var cursor *Cursor
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
-				where.Subtract(rect.Point)
+				where = where.Sub(rect.Point)
 				target := cell.PanelAt(where)
 				for target != t.AsPanel() {
 					if target.UpdateCursorCallback == nil {
@@ -595,13 +595,12 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where Point, avoid Rect) Rect {
 			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.UpdateTooltipCallback != nil || p.Tooltip != nil }) {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
-				where.Subtract(rect.Point)
+				where = where.Sub(rect.Point)
 				target := cell.PanelAt(where)
 				t.Tooltip = nil
 				t.TooltipImmediate = false
 				for target != t.AsPanel() {
-					avoid = target.RectToRoot(target.ContentRect(true))
-					avoid.Align()
+					avoid = target.RectToRoot(target.ContentRect(true)).Align()
 					if target.UpdateTooltipCallback != nil {
 						toolbox.Call(func() { avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid) })
 					}
@@ -618,9 +617,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where Point, avoid Rect) Rect {
 			if cell.Tooltip != nil {
 				t.Tooltip = cell.Tooltip
 				t.TooltipImmediate = cell.TooltipImmediate
-				avoid = t.RectToRoot(t.CellFrame(row, col))
-				avoid.Align()
-				return avoid
+				return t.RectToRoot(t.CellFrame(row, col)).Align()
 			}
 		}
 	}
@@ -641,7 +638,7 @@ func (t *Table[T]) DefaultMouseEnter(where Point, mod Modifiers) bool {
 		cell := t.cell(row, col)
 		rect := t.CellFrame(row, col)
 		t.installCell(cell, rect)
-		where.Subtract(rect.Point)
+		where = where.Sub(rect.Point)
 		target := cell.PanelAt(where)
 		if target != t.lastMouseEnterCellPanel && t.lastMouseEnterCellPanel != nil {
 			t.DefaultMouseExit()
@@ -666,7 +663,7 @@ func (t *Table[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 		cell := t.cell(row, col)
 		rect := t.CellFrame(row, col)
 		t.installCell(cell, rect)
-		where.Subtract(rect.Point)
+		where = where.Sub(rect.Point)
 		if target := cell.PanelAt(where); target.MouseMoveCallback != nil {
 			toolbox.Call(func() { target.MouseMoveCallback(cell.PointTo(where, target), mod) })
 		}
@@ -731,7 +728,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 		}
 		for _, one := range t.hitRects {
-			if one.ContainsPoint(where) {
+			if where.In(one.Rect) {
 				return true
 			}
 		}
@@ -744,7 +741,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 				t.interactionColumn = col
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
-				where.Subtract(rect.Point)
+				where = where.Sub(rect.Point)
 				stop := false
 				if target := cell.PanelAt(where); target.MouseDownCallback != nil {
 					t.lastMouseDownCellPanel = target
@@ -845,7 +842,7 @@ func (t *Table[T]) DefaultMouseDrag(where Point, button int, mod Modifiers) bool
 			cell := t.cell(t.interactionRow, t.interactionColumn)
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
-			where.Subtract(rect.Point)
+			where = where.Sub(rect.Point)
 			toolbox.Call(func() {
 				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mod)
 			})
@@ -860,7 +857,7 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 	stop := false
 	if !t.dividerDrag && button == ButtonLeft {
 		for _, one := range t.hitRects {
-			if one.ContainsPoint(where) {
+			if where.In(one.Rect) {
 				one.handler()
 				stop = true
 				break
@@ -881,7 +878,7 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
 		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 		t.installCell(cell, rect)
-		where.Subtract(rect.Point)
+		where = where.Sub(rect.Point)
 		toolbox.Call(func() {
 			stop = t.lastMouseDownCellPanel.MouseUpCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mod)
 		})
@@ -1301,7 +1298,7 @@ func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 	return max(xmath.Ceil(height), t.MinimumRowHeight)
 }
 
-func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) geom.Size32 {
+func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) Size {
 	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
 	cell := rowData.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
 	_, size, _ := cell.Sizes(Size{Width: widthConstraint})
@@ -1482,9 +1479,9 @@ func (t *Table[T]) DefaultSizes(_ Size) (minSize, prefSize, maxSize Size) {
 		prefSize.Height += float32((endBeforeRow - startRow) - 1)
 	}
 	if border := t.Border(); border != nil {
-		prefSize.AddInsets(border.Insets())
+		prefSize = prefSize.Add(border.Insets().Size())
 	}
-	prefSize.GrowToInteger()
+	prefSize = prefSize.Ceil()
 	return prefSize, prefSize, prefSize
 }
 
@@ -1515,14 +1512,14 @@ func (t *Table[T]) LastRowIndex() int {
 
 // ScrollRowIntoView scrolls the row at the given index into view.
 func (t *Table[T]) ScrollRowIntoView(row int) {
-	if frame := t.RowFrame(row); !frame.IsEmpty() {
+	if frame := t.RowFrame(row); !frame.Empty() {
 		t.ScrollRectIntoView(frame)
 	}
 }
 
 // ScrollRowCellIntoView scrolls the cell from the row and column at the given indexes into view.
 func (t *Table[T]) ScrollRowCellIntoView(row, col int) {
-	if frame := t.CellFrame(row, col); !frame.IsEmpty() {
+	if frame := t.CellFrame(row, col); !frame.Empty() {
 		t.ScrollRectIntoView(frame)
 	}
 }

@@ -201,12 +201,11 @@ func (f *Field) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	}
 	prefSize.Width += 2 // Allow room for the cursor on either side of the text
 	minWidth := f.MinimumTextWidth + 2 + insets.Width()
-	prefSize.AddInsets(insets)
-	prefSize.GrowToInteger()
+	prefSize = prefSize.Add(insets.Size()).Ceil()
 	if hint.Width >= 1 && hint.Width < minWidth {
 		hint.Width = minWidth
 	}
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.ConstrainForHint(hint)
 	if hint.Width > 0 && prefSize.Width < hint.Width {
 		prefSize.Width = hint.Width
 	}
@@ -393,8 +392,10 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
 				if f.showCursor {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]), &TextDecoration{Font: f.Font})
-					canvas.DrawRect(NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
-						fg.Paint(canvas, rect, Fill))
+					canvas.DrawRect(Rect{
+						Point: Point{X: textLeft + t.Width() + f.scrollOffset.X - 0.5, Y: textTop},
+						Size:  Size{Width: 1, Height: textHeight},
+					}, fg.Paint(canvas, rect, Fill))
 				}
 				f.scheduleBlink()
 			}
@@ -1091,7 +1092,7 @@ func (f *Field) ScrollSelectionIntoView() {
 		pos = f.selectionStart
 	}
 	pt := f.FromSelectionIndex(pos)
-	f.ScrollRectIntoView(NewRect(pt.X-1, pt.Y, 3, f.lineHeightAt(pt.Y)))
+	f.ScrollRectIntoView(Rect{Point: Point{X: pt.X - 1, Y: pt.Y}, Size: Size{Width: 3, Height: f.lineHeightAt(pt.Y)}})
 }
 
 // ScrollOffset returns the current autoscroll offset.
@@ -1226,13 +1227,13 @@ func (f *Field) FromSelectionIndex(index int) Point {
 			length++
 		}
 		if !f.multiLine || index < start+length {
-			return NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-start)+f.scrollOffset.X, y)
+			return Point{X: f.textLeft(line, rect) + line.PositionForRuneIndex(index-start) + f.scrollOffset.X, Y: y}
 		}
 		lastHeight = max(line.Height(), f.Font.LineHeight())
 		y += lastHeight
 		start += length
 	}
-	return NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y-lastHeight)
+	return Point{X: f.textLeftForWidth(0, rect) + f.scrollOffset.X, Y: y - lastHeight}
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {

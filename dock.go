@@ -57,7 +57,7 @@ func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r Rect) {
 	y := r.Y + (r.Height-gripLength)/2
 	paint := d.GripInk.Paint(canvas, r, Fill)
 	for yy := y; yy < y+gripLength; yy += d.GripHeight + d.GripGap {
-		canvas.DrawRect(NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
+		canvas.DrawRect(Rect{Point: Point{X: x, Y: yy}, Size: Size{Width: d.GripWidth, Height: d.GripHeight}}, paint)
 	}
 	x = r.X + 0.5
 	canvas.DrawLine(x, r.Y, x, r.Bottom(), paint)
@@ -72,7 +72,7 @@ func (d *DockTheme) DrawVerticalGripper(canvas *Canvas, r Rect) {
 	y := r.Y + (r.Height-d.GripWidth)/2
 	paint := d.GripInk.Paint(canvas, r, Fill)
 	for xx := x; xx < x+gripLength; xx += d.GripHeight + d.GripGap {
-		canvas.DrawRect(NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
+		canvas.DrawRect(Rect{Point: Point{X: xx, Y: y}, Size: Size{Width: d.GripHeight, Height: d.GripWidth}}, paint)
 	}
 	y = r.Y + 0.5
 	canvas.DrawLine(r.X, y, r.Right(), y, paint)
@@ -214,7 +214,7 @@ func (d *Dock) DefaultDrawOver(gc *Canvas, dirty Rect) {
 		paint := d.DropAreaInk.Paint(gc, r, Fill)
 		paint.SetColorFilter(Alpha30Filter())
 		gc.DrawRect(r, paint)
-		r.InsetUniform(1)
+		r = r.Inset(NewUniformInsets(1))
 		p := d.DropAreaInk.Paint(gc, r, Stroke)
 		p.SetStrokeWidth(2)
 		gc.DrawRect(r, p)
@@ -223,7 +223,7 @@ func (d *Dock) DefaultDrawOver(gc *Canvas, dirty Rect) {
 
 func (d *Dock) drawDividers(canvas *Canvas, layout *DockLayout, clip Rect) {
 	frame := layout.FrameRect()
-	frame.Inset(NewUniformInsets(1))
+	frame = frame.Inset(NewUniformInsets(1))
 	if clip.Intersects(frame) {
 		if layout.Full() {
 			r := layout.nodes[1].FrameRect()
@@ -313,7 +313,7 @@ func (d *Dock) overNode(node DockLayoutNode, where Point) DockLayoutNode {
 
 func dockLayoutNodeContains(node DockLayoutNode, where Point) bool {
 	if node != nil {
-		return node.FrameRect().ContainsPoint(where)
+		return where.In(node.FrameRect())
 	}
 	return false
 }

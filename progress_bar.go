@@ -111,16 +111,12 @@ func (p *ProgressBar) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) 
 	maxSize.Width = DefaultMaxSize
 	maxSize.Height = p.PreferredBarHeight
 	if border := p.Border(); border != nil {
-		insets := border.Insets()
-		minSize.AddInsets(insets)
-		prefSize.AddInsets(insets)
-		maxSize.AddInsets(insets)
+		insets := border.Insets().Size()
+		minSize = minSize.Add(insets)
+		prefSize = prefSize.Add(insets)
+		maxSize = maxSize.Add(insets)
 	}
-	minSize.GrowToInteger()
-	prefSize.GrowToInteger()
-	maxSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
-	return prefSize, prefSize, MaxSize(prefSize)
+	return minSize.Ceil(), prefSize.Ceil().ConstrainForHint(hint), MaxSize(maxSize.Ceil())
 }
 
 // DefaultDraw provides the default drawing.
@@ -150,12 +146,12 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ Rect) {
 		trimmedMeter.Width--
 		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, p.CornerRadius, p.FillInk.Paint(canvas, trimmedMeter, Fill))
 	}
-	bounds.InsetUniform(p.EdgeThickness / 2)
+	bounds = bounds.Inset(NewUniformInsets(p.EdgeThickness / 2))
 	paint := p.EdgeInk.Paint(canvas, bounds, Stroke)
 	paint.SetStrokeWidth(p.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, p.CornerRadius, paint)
 	if meter.Width > 0 {
-		meter.InsetUniform(p.EdgeThickness / 2)
+		meter = meter.Inset(NewUniformInsets(p.EdgeThickness / 2))
 		canvas.DrawRoundedRect(meter, p.CornerRadius, p.CornerRadius, paint)
 	}
 	if p.maximum == 0 {

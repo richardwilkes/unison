@@ -33,17 +33,17 @@ const DialogClientDataKey = "dialog"
 var DefaultDialogTheme = DialogTheme{
 	ErrorIcon: &DrawableSVG{
 		SVG:  CircledExclamationSVG,
-		Size: NewSize(48, 48),
+		Size: Size{Width: 48, Height: 48},
 	},
 	ErrorIconInk: ErrorColor,
 	WarningIcon: &DrawableSVG{
 		SVG:  TriangleExclamationSVG,
-		Size: NewSize(48, 48),
+		Size: Size{Width: 48, Height: 48},
 	},
 	WarningIconInk: WarningColor,
 	QuestionIcon: &DrawableSVG{
 		SVG:  CircledQuestionSVG,
-		Size: NewSize(48, 48),
+		Size: Size{Width: 48, Height: 48},
 	},
 	QuestionIconInk: OnBackgroundColor,
 }
@@ -164,8 +164,7 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	frame.Height = wndFrame.Height
 	frame.X += (frame.Width - wndFrame.Width) / 2
 	frame.Width = wndFrame.Width
-	frame.Align()
-	d.wnd.SetFrameRect(frame)
+	d.wnd.SetFrameRect(frame.Align())
 	return d, nil
 }
 

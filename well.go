@@ -128,10 +128,9 @@ func (w *Well) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	prefSize.Width = 4 + w.ContentSize
 	prefSize.Height = 4 + w.ContentSize
 	if border := w.Border(); border != nil {
-		prefSize.AddInsets(border.Insets())
+		prefSize = prefSize.Add(border.Insets().Size())
 	}
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
 }
 
@@ -157,7 +156,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ Rect) {
 		thickness++
 	}
 	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, w.EdgeInk)
-	r.InsetUniform(wellInset)
+	r = r.Inset(NewUniformInsets(wellInset))
 	radius := w.CornerRadius - (wellInset - 2)
 	if pattern, ok := w.ink.(*Pattern); ok {
 		canvas.Save()
@@ -188,8 +187,7 @@ func (w *Well) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 // DefaultMouseDrag provides the default mouse drag handling.
 func (w *Well) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 	rect := w.ContentRect(false)
-	pressed := rect.ContainsPoint(where)
-	if w.Pressed != pressed {
+	if pressed := where.In(rect); pressed != w.Pressed {
 		w.Pressed = pressed
 		w.MarkForRedraw()
 	}
@@ -200,8 +198,7 @@ func (w *Well) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 func (w *Well) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	w.Pressed = false
 	w.MarkForRedraw()
-	rect := w.ContentRect(false)
-	if rect.ContainsPoint(where) {
+	if where.In(w.ContentRect(false)) {
 		if w.ClickCallback != nil {
 			w.ClickCallback()
 		}

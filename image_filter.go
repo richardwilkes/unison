@@ -134,7 +134,8 @@ func NewImageSourceImageFilter(canvas *Canvas, img *Image, srcRect, dstRect Rect
 	} else {
 		image = ref.contextImg(canvas.surface)
 	}
-	return newImageFilter(skia.ImageFilterNewImageSource(image, &srcRect, &dstRect, sampling.skSamplingOptions()))
+	return newImageFilter(skia.ImageFilterNewImageSource(image, srcRect, dstRect,
+		sampling.skSamplingOptions()))
 }
 
 // NewImageSourceDefaultImageFilter returns a new image source image filter that uses the default quality and the full
@@ -157,7 +158,7 @@ func NewMagnifierImageFilter(src Rect, inset float32, input *ImageFilter, cropRe
 	if input != nil {
 		in = input.filter
 	}
-	return newImageFilter(skia.ImageFilterNewMagnifier(&src, inset, in, cropRect))
+	return newImageFilter(skia.ImageFilterNewMagnifier(src, inset, in, cropRect))
 }
 
 // NewMatrixConvolutionImageFilter returns a new matrix convolution image filter.
@@ -196,13 +197,12 @@ func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, 
 
 // NewMatrixTransformImageFilter returns a new matrix transform image filter. input may be nil, in which case the source
 // bitmap will be used.
-func NewMatrixTransformImageFilter(matrix *Matrix, sampling *SamplingOptions, input *ImageFilter) *ImageFilter {
+func NewMatrixTransformImageFilter(matrix Matrix, sampling *SamplingOptions, input *ImageFilter) *ImageFilter {
 	var in skia.ImageFilter
 	if input != nil {
 		in = input.filter
 	}
-	return newImageFilter(skia.ImageFilterNewMatrixTransform(skia.Matrix2DtoMatrix(matrix),
-		sampling.skSamplingOptions(), in))
+	return newImageFilter(skia.ImageFilterNewMatrixTransform(matrix, sampling.skSamplingOptions(), in))
 }
 
 // NewMergeImageFilter returns a new merge image filter. Each filter will draw their results in order with src-over
@@ -233,7 +233,7 @@ func NewTileImageFilter(src, dst Rect, input *ImageFilter) *ImageFilter {
 	if input != nil {
 		in = input.filter
 	}
-	return newImageFilter(skia.ImageFilterNewTile(&src, &dst, in))
+	return newImageFilter(skia.ImageFilterNewTile(src, dst, in))
 }
 
 // NewDilateImageFilter returns a new dilate image filter. input may be nil, in which case the source bitmap will be

@@ -131,14 +131,14 @@ func (s *ScrollBar) Thumb() Rect {
 		if size < s.MinimumThumb {
 			size = s.MinimumThumb
 		}
-		return NewRect(start, s.ThumbIndent, size, r.Height-2*s.ThumbIndent)
+		return Rect{Point: Point{X: start, Y: s.ThumbIndent}, Size: Size{Width: size, Height: r.Height - 2*s.ThumbIndent}}
 	}
 	start := r.Height * (s.value / s.maximum)
 	size := r.Height * (s.extent / s.maximum)
 	if size < s.MinimumThumb {
 		size = s.MinimumThumb
 	}
-	return NewRect(s.ThumbIndent, start, r.Width-2*s.ThumbIndent, size)
+	return Rect{Point: Point{X: s.ThumbIndent, Y: start}, Size: Size{Width: r.Width - 2*s.ThumbIndent, Height: size}}
 }
 
 // DefaultSizes provides the default sizing.
@@ -176,7 +176,7 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, _ Rect) {
 // DefaultMouseDown provides the default mouse down handling.
 func (s *ScrollBar) DefaultMouseDown(where Point, _, _ int, _ Modifiers) bool {
 	thumb := s.Thumb()
-	if !thumb.ContainsPoint(where) {
+	if where.In(thumb) {
 		s.dragOffset = 0
 		s.adjustValueForPoint(where)
 		thumb = s.Thumb()
@@ -249,7 +249,7 @@ func (s *ScrollBar) adjustValueForPoint(pt Point) {
 
 func (s *ScrollBar) checkOverThumb(pt Point) {
 	was := s.overThumb
-	s.overThumb = s.Thumb().ContainsPoint(pt)
+	s.overThumb = pt.In(s.Thumb())
 	if was != s.overThumb {
 		s.MarkForRedraw()
 	}

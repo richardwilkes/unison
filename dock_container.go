@@ -231,10 +231,7 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (minSize, prefSize
 	minSize, prefSize, maxSize = d.header.Sizes(Size{Width: hint.Width})
 	minSize.Height = prefSize.Height
 	maxSize.Height = prefSize.Height
-	min2, pref2, max2 := d.content.Sizes(Size{
-		Width:  hint.Width,
-		Height: max(hint.Height-prefSize.Height, 0),
-	})
+	min2, pref2, max2 := d.content.Sizes(Size{Width: hint.Width, Height: max(hint.Height-prefSize.Height, 0)})
 	minSize.Width = min2.Width
 	prefSize.Width = pref2.Width
 	maxSize.Width = max2.Width
@@ -242,7 +239,7 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (minSize, prefSize
 	prefSize.Height += pref2.Height
 	maxSize.Height += max2.Height
 	if b := target.Border(); b != nil {
-		prefSize.AddInsets(b.Insets())
+		prefSize = prefSize.Add(b.Insets().Size())
 	}
 	return minSize, prefSize, maxSize
 }
@@ -251,6 +248,11 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (minSize, prefSize
 func (d *DockContainer) PerformLayout(_ *Panel) {
 	r := d.ContentRect(false)
 	_, pref, _ := d.header.Sizes(Size{Width: r.Width})
-	d.header.SetFrameRect(NewRect(r.X, r.Y, r.Width, pref.Height))
-	d.content.SetFrameRect(NewRect(r.X, r.Y+pref.Height, r.Width, max(r.Height-pref.Height, 0)))
+	hr := r
+	hr.Height = pref.Height
+	d.header.SetFrameRect(hr)
+	fr := r
+	fr.Y += pref.Height
+	fr.Height = max(r.Height-pref.Height, 0)
+	d.content.SetFrameRect(fr)
 }

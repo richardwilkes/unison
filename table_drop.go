@@ -39,8 +39,7 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect Rect) {
 		d.originalDrawOver(gc, rect)
 	}
 	if d.inDragOver {
-		r := d.Table.ContentRect(false)
-		r.Inset(NewUniformInsets(1))
+		r := d.Table.ContentRect(false).Inset(NewUniformInsets(1))
 		paint := DropAreaColor.Paint(gc, r, Stroke)
 		paint.SetStrokeWidth(2)
 		paint.SetColorFilter(Alpha30Filter())

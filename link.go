@@ -65,7 +65,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 		return true
 	}
 	link.MouseDragCallback = func(where Point, button int, mod Modifiers) bool {
-		now := link.ContentRect(true).ContainsPoint(where)
+		now := where.In(link.ContentRect(true))
 		if now != in {
 			in = now
 			link.Text.AdjustDecorations(func(decoration *TextDecoration) {
@@ -81,7 +81,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 	}
 	link.MouseUpCallback = func(where Point, button int, mod Modifiers) bool {
 		ink := theme.Foreground
-		inside := link.ContentRect(true).ContainsPoint(where)
+		inside := where.In(link.ContentRect(true))
 		if inside {
 			ink = theme.RolloverInk
 		}

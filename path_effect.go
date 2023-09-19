@@ -85,13 +85,13 @@ func New1dPathPathEffect(path *Path, advance, phase float32, style PathEffect1DS
 }
 
 // New2dLinePathEffect creates a new 2D line PathEffect.
-func New2dLinePathEffect(width float32, matrix *Matrix) *PathEffect {
-	return newPathEffect(skia.PathEffectCreate2dLine(width, skia.Matrix2DtoMatrix(matrix)))
+func New2dLinePathEffect(width float32, matrix Matrix) *PathEffect {
+	return newPathEffect(skia.PathEffectCreate2dLine(width, matrix))
 }
 
 // New2dPathEffect creates a new 2D PathEffect.
-func New2dPathEffect(matrix *Matrix, path *Path) *PathEffect {
-	return newPathEffect(skia.PathEffectCreate2dPath(skia.Matrix2DtoMatrix(matrix), path.path))
+func New2dPathEffect(matrix Matrix, path *Path) *PathEffect {
+	return newPathEffect(skia.PathEffectCreate2dPath(matrix, path.path))
 }
 
 // NewDashPathEffect creates a new dash PathEffect.

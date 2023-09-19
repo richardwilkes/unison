@@ -82,10 +82,9 @@ func NewRadioButton() *RadioButton {
 func (r *RadioButton) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	prefSize = r.circleAndLabelSize()
 	if border := r.Border(); border != nil {
-		prefSize.AddInsets(border.Insets())
+		prefSize = prefSize.Add(border.Insets().Size())
 	}
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, MaxSize(prefSize)
 }
 
@@ -159,7 +158,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 	rect.Height = circleSize
 	DrawEllipseBase(canvas, rect, thickness, bg, r.EdgeInk)
 	if r.Selected() {
-		rect.InsetUniform(0.5 + 0.2*circleSize)
+		rect = rect.Inset(NewUniformInsets(0.5 + 0.2*circleSize))
 		paint := fg.Paint(canvas, rect, Fill)
 		if !r.Enabled() {
 			paint.SetColorFilter(Grayscale30Filter())
@@ -192,9 +191,7 @@ func (r *RadioButton) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 
 // DefaultMouseDrag provides the default mouse drag handling.
 func (r *RadioButton) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
-	rect := r.ContentRect(false)
-	pressed := rect.ContainsPoint(where)
-	if r.Pressed != pressed {
+	if pressed := where.In(r.ContentRect(false)); pressed != r.Pressed {
 		r.Pressed = pressed
 		r.MarkForRedraw()
 	}
@@ -205,8 +202,7 @@ func (r *RadioButton) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 func (r *RadioButton) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
-	rect := r.ContentRect(false)
-	if rect.ContainsPoint(where) {
+	if where.In(r.ContentRect(false)) {
 		r.SetSelected(true)
 		if r.ClickCallback != nil {
 			r.ClickCallback()

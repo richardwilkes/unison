@@ -16,14 +16,14 @@ import (
 // DrawRectBase fills and strokes a rectangle.
 func DrawRectBase(canvas *Canvas, rect Rect, fillInk, strokeInk Ink) {
 	canvas.DrawRect(rect, fillInk.Paint(canvas, rect, Fill))
-	rect.InsetUniform(0.5)
+	rect = rect.Inset(NewUniformInsets(0.5))
 	canvas.DrawRect(rect, strokeInk.Paint(canvas, rect, Stroke))
 }
 
 // DrawRoundedRectBase fills and strokes a rounded rectangle.
 func DrawRoundedRectBase(canvas *Canvas, rect Rect, cornerRadius, thickness float32, fillInk, strokeInk Ink) {
 	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, fillInk.Paint(canvas, rect, Fill))
-	rect.InsetUniform(thickness / 2)
+	rect = rect.Inset(NewUniformInsets(thickness / 2))
 	cornerRadius = max(cornerRadius-thickness/2, 0)
 	p := strokeInk.Paint(canvas, rect, Stroke)
 	p.SetStrokeWidth(thickness)
@@ -33,7 +33,7 @@ func DrawRoundedRectBase(canvas *Canvas, rect Rect, cornerRadius, thickness floa
 // DrawEllipseBase fills and strokes an ellipse.
 func DrawEllipseBase(canvas *Canvas, rect Rect, thickness float32, fillInk, strokeInk Ink) {
 	canvas.DrawOval(rect, fillInk.Paint(canvas, rect, Fill))
-	rect.InsetUniform(thickness / 2)
+	rect = rect.Inset(NewUniformInsets(thickness / 2))
 	p := strokeInk.Paint(canvas, rect, Stroke)
 	p.SetStrokeWidth(thickness)
 	canvas.DrawOval(rect, p)

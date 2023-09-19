@@ -395,7 +395,7 @@ func (m *menu) postLostFocus(w *Window) {
 func (m *menu) preMouseDown(w *Window, where Point) bool {
 	if w.root.menuBar != nil {
 		for _, one := range w.root.openMenuPanels {
-			if one.FrameRect().ContainsPoint(where) {
+			if where.In(one.FrameRect()) {
 				m.closeMenuStackStoppingAt(w, one.menu)
 				return false
 			}

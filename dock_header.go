@@ -179,9 +179,9 @@ func (d *dockHeader) LayoutSizes(target *Panel, _ Size) (minSize, prefSize, maxS
 	prefSize.Width += gaps
 	minSize.Height = prefSize.Height
 	if b := target.Border(); b != nil {
-		insets := b.Insets()
-		minSize.AddInsets(insets)
-		prefSize.AddInsets(insets)
+		insets := b.Insets().Size()
+		minSize = minSize.Add(insets)
+		prefSize = prefSize.Add(insets)
 	}
 	return minSize, prefSize, MaxSize(prefSize)
 }
@@ -271,9 +271,10 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 			dt.Hidden = true
 		} else {
 			dt.Hidden = false
-			r := NewRect(x, contentRect.Y+(contentRect.Height-tabSizes[i].Height)/2, tabSizes[i].Width, tabSizes[i].Height)
-			r.Align()
-			dt.SetFrameRect(r)
+			dt.SetFrameRect(Rect{
+				Point: Point{X: x, Y: contentRect.Y + (contentRect.Height-tabSizes[i].Height)/2},
+				Size:  tabSizes[i],
+			}.Align())
 			x += tabSizes[i].Width + d.TabGap
 		}
 	}
@@ -283,9 +284,10 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 			b.Hidden = true
 		} else {
 			b.Hidden = false
-			r := NewRect(x, contentRect.Y+(contentRect.Height-buttonSizes[i].Height)/2, buttonSizes[i].Width, buttonSizes[i].Height)
-			r.Align()
-			b.SetFrameRect(r)
+			b.SetFrameRect(Rect{
+				Point: Point{X: x, Y: contentRect.Y + (contentRect.Height-buttonSizes[i].Height)/2},
+				Size:  buttonSizes[i],
+			}.Align())
 			x += buttonSizes[i].Width + d.TabGap
 		}
 	}

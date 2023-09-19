@@ -76,7 +76,7 @@ func (h *TableHeader[T]) DefaultSizes(_ Size) (minSize, prefSize, maxSize Size) 
 		insets := border.Insets()
 		prefSize.Height += insets.Height()
 	}
-	return NewSize(16, prefSize.Height), prefSize, prefSize
+	return Size{Width: 16, Height: prefSize.Height}, prefSize, prefSize
 }
 
 // ColumnFrame returns the frame of the given column.
@@ -92,9 +92,10 @@ func (h *TableHeader[T]) ColumnFrame(col int) Rect {
 			x++
 		}
 	}
-	rect := NewRect(x, insets.Top, h.table.Columns[col].Current, h.FrameRect().Height-insets.Height())
-	rect.Inset(h.table.Padding)
-	return rect
+	return Rect{
+		Point: Point{X: x, Y: insets.Top},
+		Size:  Size{Width: h.table.Columns[col].Current, Height: h.FrameRect().Height - insets.Height()},
+	}.Inset(h.table.Padding)
 }
 
 func (h *TableHeader[T]) heightForColumns() float32 {
@@ -170,8 +171,7 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 	lastX := dirty.Right()
 	for c := firstCol; c < len(h.table.Columns) && rect.X < lastX; c++ {
 		rect.Width = h.table.Columns[c].Current
-		cellRect := rect
-		cellRect.Inset(h.table.Padding)
+		cellRect := rect.Inset(h.table.Padding)
 		if c < len(h.ColumnHeaders) {
 			cell := h.ColumnHeaders[c].AsPanel()
 			h.installCell(cell, cellRect)
@@ -214,8 +214,7 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 		if cell.UpdateCursorCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			where.Subtract(rect.Point)
-			cursor := cell.UpdateCursorCallback(where)
+			cursor := cell.UpdateCursorCallback(where.Sub(rect.Point))
 			h.uninstallCell(cell)
 			return cursor
 		}
@@ -224,25 +223,20 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where Point) *Cursor {
 }
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
-func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where Point, suggestedAvoidInRoot Rect) Rect {
+func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where Point, _ Rect) Rect {
 	if col := h.table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateTooltipCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			where.Subtract(rect.Point)
-			rect = h.RectToRoot(rect)
-			rect.Align()
-			avoid := cell.UpdateTooltipCallback(where, rect)
+			avoid := cell.UpdateTooltipCallback(where.Sub(rect.Point), h.RectToRoot(rect).Align())
 			h.Tooltip = cell.Tooltip
 			h.uninstallCell(cell)
 			return avoid
 		}
 		if cell.Tooltip != nil {
 			h.Tooltip = cell.Tooltip
-			suggestedAvoidInRoot = h.RectToRoot(h.ColumnFrame(col))
-			suggestedAvoidInRoot.Align()
-			return suggestedAvoidInRoot
+			return h.RectToRoot(h.ColumnFrame(col)).Align()
 		}
 	}
 	h.Tooltip = nil
@@ -257,8 +251,7 @@ func (h *TableHeader[T]) DefaultMouseMove(where Point, mod Modifiers) bool {
 		if cell.MouseMoveCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			where.Subtract(rect.Point)
-			stop = cell.MouseMoveCallback(where, mod)
+			stop = cell.MouseMoveCallback(where.Sub(rect.Point), mod)
 			h.uninstallCell(cell)
 		}
 	}
@@ -303,8 +296,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, m
 		if cell.MouseDownCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			where.Subtract(rect.Point)
-			stop = cell.MouseDownCallback(where, button, clickCount, mod)
+			stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mod)
 			h.uninstallCell(cell)
 		}
 	}
@@ -345,8 +337,7 @@ func (h *TableHeader[T]) DefaultMouseUp(where Point, button int, mod Modifiers) 
 		if cell.MouseUpCallback != nil {
 			rect := h.ColumnFrame(h.interactionColumn)
 			h.installCell(cell, rect)
-			where.Subtract(rect.Point)
-			stop = cell.MouseUpCallback(where, button, mod)
+			stop = cell.MouseUpCallback(where.Sub(rect.Point), button, mod)
 			h.uninstallCell(cell)
 		}
 	}

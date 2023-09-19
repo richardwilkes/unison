@@ -90,7 +90,7 @@ type Button struct {
 	ClickCallback func()
 	Drawable      Drawable
 	Text          string
-	textCache     TextCache
+	cache         TextCache
 	Pressed       bool
 	rollover      bool
 }
@@ -120,22 +120,21 @@ func NewSVGButton(svg *SVG) *Button {
 	b.ButtonTheme = DefaultSVGButtonTheme
 	b.HideBase = true
 	baseline := b.Font.Baseline()
-	size := NewSize(baseline, baseline)
 	b.Drawable = &DrawableSVG{
 		SVG:  svg,
-		Size: *size.GrowToInteger(),
+		Size: NewSize(baseline, baseline).Ceil(),
 	}
 	return b
 }
 
 // DefaultSizes provides the default sizing.
 func (b *Button) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize = LabelSize(b.textCache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
+	prefSize = LabelSize(b.cache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
 	if b.Text == "" && toolbox.IsNil(b.Drawable) {
 		prefSize.Height = b.Font.LineHeight()
 	}
-	if theBorder := b.Border(); theBorder != nil {
-		prefSize.AddInsets(theBorder.Insets())
+	if border := b.Border(); border != nil {
+		prefSize = prefSize.Add(border.Insets().Size())
 	}
 	prefSize.Width += b.HorizontalMargin() * 2
 	prefSize.Height += b.VerticalMargin() * 2
@@ -143,8 +142,7 @@ func (b *Button) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 		prefSize.Width += 2
 		prefSize.Height += 2
 	}
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, MaxSize(prefSize)
 }
 
@@ -184,21 +182,17 @@ func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 		bg = b.BackgroundInk
 		fg = b.OnBackgroundInk
 	}
-	rect := b.ContentRect(false)
+	r := b.ContentRect(false)
 	if !b.HideBase || b.Focused() {
 		thickness := float32(1)
 		if b.Focused() {
 			thickness++
 		}
-		DrawRoundedRectBase(canvas, rect, b.CornerRadius, thickness, bg, b.EdgeInk)
-		rect.InsetUniform(thickness + 0.5)
+		DrawRoundedRectBase(canvas, r, b.CornerRadius, thickness, bg, b.EdgeInk)
+		r = r.Inset(NewUniformInsets(thickness + 0.5))
 	}
-	rect.X += b.HorizontalMargin()
-	rect.Y += b.VerticalMargin()
-	rect.Width -= b.HorizontalMargin() * 2
-	rect.Height -= b.VerticalMargin() * 2
-	DrawLabel(canvas, rect, b.HAlign, b.VAlign, b.textCache.Text(b.Text, b.Font), fg, b.Drawable, b.Side, b.Gap,
-		!b.Enabled())
+	r = r.Inset(NewSymmetricInsets(b.HorizontalMargin(), b.VerticalMargin()))
+	DrawLabel(canvas, r, b.HAlign, b.VAlign, b.cache.Text(b.Text, b.Font), fg, b.Drawable, b.Side, b.Gap, !b.Enabled())
 }
 
 // Click makes the button behave as if a user clicked on it.
@@ -225,9 +219,7 @@ func (b *Button) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 
 // DefaultMouseDrag provides the default mouse drag handling.
 func (b *Button) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
-	rect := b.ContentRect(false)
-	pressed := rect.ContainsPoint(where)
-	if b.Pressed != pressed {
+	if pressed := where.In(b.ContentRect(false)); pressed != b.Pressed {
 		b.Pressed = pressed
 		b.MarkForRedraw()
 	}
@@ -238,8 +230,7 @@ func (b *Button) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 func (b *Button) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
-	rect := b.ContentRect(false)
-	if rect.ContainsPoint(where) {
+	if where.In(b.ContentRect(false)) {
 		b.SetSelected(true)
 		if b.ClickCallback != nil {
 			b.ClickCallback()

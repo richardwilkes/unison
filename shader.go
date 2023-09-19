@@ -66,31 +66,31 @@ func NewBlendShader(blendMode BlendMode, dst, src *Shader) *Shader {
 }
 
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.
-func NewLinearGradientShader(start, end Point, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
+func NewLinearGradientShader(start, end Point, colors []Color, colorPos []float32, tileMode TileMode, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewLinearGradient(start, end,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
-		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
+		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // NewRadialGradientShader creates a new radial gradient Shader. matrix may be nil.
-func NewRadialGradientShader(center Point, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
+func NewRadialGradientShader(center Point, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewRadialGradient(center, radius,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
-		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
+		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // NewSweepGradientShader creates a new sweep gradient Shader. matrix may be nil.
-func NewSweepGradientShader(center Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
+func NewSweepGradientShader(center Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewSweepGradient(center, startAngle, endAngle,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
-		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
+		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // New2PtConicalGradientShader creates a new 2-point conical gradient Shader. matrix may be nil.
-func New2PtConicalGradientShader(startPt, endPt Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix *Matrix) *Shader {
+func New2PtConicalGradientShader(startPt, endPt Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewTwoPointConicalGradient(startPt, endPt, startRadius, endRadius,
 		((*[1 << 30]skia.Color)(unsafe.Pointer(&colors[0])))[:len(colors)], //nolint:gosec // Needed to convert for skia
-		colorPos, skia.TileMode(tileMode), skia.Matrix2DtoMatrix(matrix)))
+		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // NewFractalPerlinNoiseShader creates a new fractal perlin noise Shader.
@@ -111,7 +111,7 @@ func NewTurbulencePerlinNoiseShader(baseFreqX, baseFreqY, seed float32, numOctav
 
 // NewImageShader creates a new image Shader. If canvas is not nil, a hardware-accellerated image will be used if
 // possible.
-func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY TileMode, sampling *SamplingOptions, matrix *Matrix) *Shader {
+func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY TileMode, sampling *SamplingOptions, matrix Matrix) *Shader {
 	var image skia.Image
 	ref := img.ref()
 	if canvas == nil {
@@ -120,12 +120,12 @@ func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY TileMode, s
 		image = ref.contextImg(canvas.surface)
 	}
 	return newShader(skia.ImageMakeShader(image, skia.TileMode(tileModeX), skia.TileMode(tileModeY),
-		sampling.skSamplingOptions(), skia.Matrix2DtoMatrix(matrix)))
+		sampling.skSamplingOptions(), matrix))
 }
 
 // NewWithLocalMatrix creates a new copy of this shader with a local matrix applied.
-func (s *Shader) NewWithLocalMatrix(matrix *Matrix) *Shader {
-	return newShader(skia.ShaderWithLocalMatrix(s.shader, skia.Matrix2DtoMatrix(matrix)))
+func (s *Shader) NewWithLocalMatrix(matrix Matrix) *Shader {
+	return newShader(skia.ShaderWithLocalMatrix(s.shader, matrix))
 }
 
 // NewWithColorFilter creates a new copy of this shader with a color filter applied.

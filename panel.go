@@ -282,11 +282,11 @@ func (p *Panel) SetFrameRect(rect Rect) {
 
 // ContentRect returns the location and size of the panel in local coordinates.
 func (p *Panel) ContentRect(includeBorder bool) Rect {
-	rect := p.frame.CopyAndZeroLocation()
+	r := Rect{Size: p.frame.Size}
 	if !includeBorder && p.border != nil {
-		rect.Inset(p.border.Insets())
+		r = r.Inset(p.border.Insets())
 	}
-	return rect
+	return r
 }
 
 // Border returns the border for this panel, if any.
@@ -423,8 +423,8 @@ func (p *Panel) Draw(gc *Canvas, rect Rect) {
 	if p.Hidden {
 		return
 	}
-	rect.Intersect(p.frame.CopyAndZeroLocation())
-	if !rect.IsEmpty() {
+	rect = rect.Intersect(Rect{Size: p.frame.Size})
+	if !rect.Empty() {
 		gc.Save()
 		scale := p.Scale()
 		gc.Scale(scale, scale)
@@ -437,18 +437,13 @@ func (p *Panel) Draw(gc *Canvas, rect Rect) {
 		// Drawn from last to first, to get correct ordering in case of overlap
 		for i := len(p.children) - 1; i >= 0; i-- {
 			if child := p.children[i]; !child.Hidden {
-				adjusted := rect
 				childFrame := child.FrameRect()
-				adjusted.Intersect(childFrame)
-				if !adjusted.IsEmpty() {
+				if adjusted := rect.Intersect(childFrame); !adjusted.Empty() {
 					gc.Save()
 					gc.Translate(childFrame.X, childFrame.Y)
-					adjusted.Point.Subtract(childFrame.Point)
 					scale = child.Scale()
-					adjusted.X /= scale
-					adjusted.Y /= scale
-					adjusted.Width /= scale
-					adjusted.Height /= scale
+					adjusted.Point = adjusted.Point.Sub(childFrame.Point).Div(scale)
+					adjusted.Size = adjusted.Size.Div(scale)
 					child.Draw(gc, adjusted)
 					gc.Restore()
 				}
@@ -537,12 +532,9 @@ func (p *Panel) LastFocusableChild() *Panel {
 func (p *Panel) PanelAt(pt Point) *Panel {
 	for _, child := range p.children {
 		if !child.Hidden {
-			if r := child.FrameRect(); r.ContainsPoint(pt) {
-				pt.Subtract(r.Point)
+			if r := child.FrameRect(); pt.In(r) {
 				scale := child.Scale()
-				pt.X /= scale
-				pt.Y /= scale
-				return child.PanelAt(pt)
+				return child.PanelAt(pt.Sub(r.Point).Div(scale))
 			}
 		}
 	}
@@ -552,13 +544,10 @@ func (p *Panel) PanelAt(pt Point) *Panel {
 // PointToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
 func (p *Panel) PointToRoot(pt Point) Point {
-	one := p
-	for one != nil {
-		scale := one.Scale()
-		pt.X *= scale
-		pt.Y *= scale
-		pt.Add(one.frame.Point)
-		one = one.parent
+	panel := p
+	for panel != nil {
+		pt = pt.Mul(panel.Scale()).Add(panel.frame.Point)
+		panel = panel.parent
 	}
 	return pt
 }
@@ -567,17 +556,14 @@ func (p *Panel) PointToRoot(pt Point) Point {
 // coordinates.
 func (p *Panel) PointFromRoot(pt Point) Point {
 	list := make([]*Panel, 0, 32)
-	one := p
-	for one != nil {
-		list = append(list, one)
-		one = one.parent
+	panel := p
+	for panel != nil {
+		list = append(list, panel)
+		panel = panel.parent
 	}
 	for i := len(list) - 1; i >= 0; i-- {
-		one = list[i]
-		pt.Subtract(one.frame.Point)
-		scale := one.Scale()
-		pt.X /= scale
-		pt.Y /= scale
+		panel = list[i]
+		pt = pt.Sub(panel.frame.Point).Div(panel.Scale())
 	}
 	return pt
 }
@@ -627,14 +613,12 @@ func (p *Panel) ScrollRectIntoView(rect Rect) {
 				return
 			}
 		}
-		x := rect.Right()
-		y := rect.Bottom()
 		scale := look.Scale()
-		rect.X *= scale
-		rect.Y *= scale
-		rect.Width = x*scale - rect.X
-		rect.Height = y*scale - rect.Y
-		rect.Point.Add(look.frame.Point)
+		pt := rect.BottomRight().Mul(scale)
+		rect.Point = rect.Point.Mul(scale)
+		rect.Width = pt.X - rect.X
+		rect.Height = pt.Y - rect.Y
+		rect.Point = rect.Point.Add(look.frame.Point)
 		look = look.parent
 	}
 }

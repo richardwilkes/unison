@@ -63,10 +63,10 @@ func (s *Separator) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 		maxSize.Height = 1
 	}
 	if border := s.Border(); border != nil {
-		insets := border.Insets()
-		minSize.AddInsets(insets)
-		prefSize.AddInsets(insets)
-		maxSize.AddInsets(insets)
+		insets := border.Insets().Size()
+		minSize = minSize.Add(insets)
+		prefSize = prefSize.Add(insets)
+		maxSize = maxSize.Add(insets)
 	}
 	return minSize, prefSize, maxSize
 }

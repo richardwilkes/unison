@@ -59,15 +59,14 @@ func (l *Label) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	text := l.textCache.Text(l.Text, l.Font)
 	if text.Empty() && l.Drawable == nil {
 		prefSize.Height = l.Font.LineHeight()
-		prefSize.GrowToInteger()
+		prefSize = prefSize.Ceil()
 	} else {
 		prefSize = LabelSize(text, l.Drawable, l.Side, l.Gap)
 	}
 	if b := l.Border(); b != nil {
-		prefSize.AddInsets(b.Insets())
+		prefSize = prefSize.Add(b.Insets().Size())
 	}
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
 }
 
@@ -90,12 +89,10 @@ func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32)
 	var size Size
 	hasText := !text.Empty()
 	if hasText {
-		size = text.Extents()
-		size.GrowToInteger()
+		size = text.Extents().Ceil()
 	}
 	adjustLabelSizeForDrawable(hasText, drawable, drawableSide, imgGap, &size)
-	size.GrowToInteger()
-	return size
+	return size.Ceil()
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.

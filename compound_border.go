@@ -26,7 +26,7 @@ func NewCompoundBorder(borders ...Border) *CompoundBorder {
 func (b *CompoundBorder) Insets() Insets {
 	insets := Insets{}
 	for _, one := range b.borders {
-		insets.Add(one.Insets())
+		insets = insets.Add(one.Insets())
 	}
 	return insets
 }
@@ -37,6 +37,6 @@ func (b *CompoundBorder) Draw(canvas *Canvas, rect Rect) {
 		canvas.Save()
 		one.Draw(canvas, rect)
 		canvas.Restore()
-		rect.Inset(one.Insets())
+		rect = rect.Inset(one.Insets())
 	}
 }

@@ -151,8 +151,8 @@ func (l *List[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	for row := range l.rows {
 		cell := l.cell(row)
 		_, cPref, cMax := cell.Sizes(size)
-		cPref.GrowToInteger()
-		cMax.GrowToInteger()
+		cPref = cPref.Ceil()
+		cMax = cMax.Ceil()
 		if prefSize.Width < cPref.Width {
 			prefSize.Width = cPref.Width
 		}
@@ -176,13 +176,12 @@ func (l *List[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 		}
 	}
 	if border := l.Border(); border != nil {
-		insets := border.Insets()
-		prefSize.AddInsets(insets)
-		maxSize.AddInsets(insets)
+		insets := border.Insets().Size()
+		prefSize = prefSize.Add(insets)
+		maxSize = maxSize.Add(insets)
 	}
-	prefSize.GrowToInteger()
-	maxSize.GrowToInteger()
-	return prefSize, prefSize, maxSize
+	prefSize = prefSize.Ceil()
+	return prefSize, prefSize, maxSize.Ceil()
 }
 
 // DefaultFocusGained provides the default focus gained handling.
@@ -234,21 +233,20 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			cellRect := Rect{Point: Point{X: rect.X, Y: y}, Size: Size{Width: rect.Width, Height: cellHeight}}
 			if cellHeight < 1 {
 				_, pref, _ := cell.Sizes(Size{})
-				pref.GrowToInteger()
-				cellRect.Height = pref.Height
+				cellRect.Height = pref.Ceil().Height
 			}
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
-			r := NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
+			r := Rect{Point: Point{X: rect.X, Y: cellRect.Y}, Size: Size{Width: rect.Width, Height: cellRect.Height}}
 			canvas.DrawRect(r, bg.Paint(canvas, r, Fill))
 			canvas.Save()
 			tl := cellRect.Point
-			dirty.Point.Subtract(tl)
+			dirty.Point = dirty.Point.Sub(tl)
 			canvas.Translate(cellRect.X, cellRect.Y)
 			cellRect.X = 0
 			cellRect.Y = 0
 			cell.Draw(canvas, dirty)
-			dirty.Point.Add(tl)
+			dirty.Point = dirty.Point.Add(tl)
 			canvas.Restore()
 			row++
 		}
@@ -492,7 +490,7 @@ func (l *List[T]) rowAt(y float32) (row int, top float32) {
 	if cellHeight < 1 {
 		for row < count {
 			_, pref, _ := l.cell(row).Sizes(Size{})
-			pref.GrowToInteger()
+			pref = pref.Ceil()
 			if top+pref.Height >= y {
 				break
 			}

@@ -103,12 +103,11 @@ func (p *PopupMenu[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size)
 		}
 	}
 	if border := p.Border(); border != nil {
-		prefSize.AddInsets(border.Insets())
+		prefSize = prefSize.Add(border.Insets().Size())
 	}
 	prefSize.Height += p.VMargin*2 + 2
 	prefSize.Width += p.HMargin*2 + 2 + prefSize.Height*0.75
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	maxSize.Width = max(DefaultMaxSize, prefSize.Width)
 	maxSize.Height = prefSize.Height
 	return prefSize, prefSize, maxSize
@@ -128,7 +127,7 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	}
 	rect := p.ContentRect(false)
 	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, p.BackgroundInk, p.EdgeInk)
-	rect.InsetUniform(1.5)
+	rect = rect.Inset(NewUniformInsets(1.5))
 	rect.X += p.HMargin
 	rect.Y += p.VMargin
 	rect.Width -= p.HMargin * 2
@@ -391,7 +390,7 @@ func (p *PopupMenu[T]) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
 
 // DefaultMouseDrag is the default implementation of the MouseDragCallback.
 func (p *PopupMenu[T]) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
-	if p.pressed != p.ContentRect(true).ContainsPoint(where) {
+	if p.pressed != where.In(p.ContentRect(true)) {
 		p.pressed = !p.pressed
 		p.MarkForRedraw()
 	}
@@ -400,7 +399,7 @@ func (p *PopupMenu[T]) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 
 // DefaultMouseUp is the default implementation of the MouseUpCallback.
 func (p *PopupMenu[T]) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
-	if p.ContentRect(true).ContainsPoint(where) {
+	if where.In(p.ContentRect(true)) {
 		p.Click()
 	}
 	p.pressed = false

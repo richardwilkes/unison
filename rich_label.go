@@ -51,15 +51,14 @@ func NewRichLabel() *RichLabel {
 func (l *RichLabel) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	if l.Text == nil && l.Drawable == nil {
 		prefSize.Height = DefaultLabelTheme.Font.LineHeight()
-		prefSize.GrowToInteger()
+		prefSize = prefSize.Ceil()
 	} else {
 		prefSize = LabelSize(l.Text, l.Drawable, l.Side, l.Gap)
 	}
 	if b := l.Border(); b != nil {
-		prefSize.AddInsets(b.Insets())
+		prefSize = prefSize.Add(b.Insets().Size())
 	}
-	prefSize.GrowToInteger()
-	prefSize.ConstrainForHint(hint)
+	prefSize = prefSize.Ceil().ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
 }
 

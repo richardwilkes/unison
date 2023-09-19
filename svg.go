@@ -194,7 +194,7 @@ func (s *SVG) Size() Size {
 // size.
 func (s *SVG) OffsetToCenterWithinScaledSize(size Size) Point {
 	scale := min(size.Width/s.size.Width, size.Height/s.size.Height)
-	return NewPoint((size.Width-s.size.Width*scale)/2, (size.Height-s.size.Height*scale)/2)
+	return Point{X: (size.Width - s.size.Width*scale) / 2, Y: (size.Height - s.size.Height*scale) / 2}
 }
 
 // PathScaledTo returns the path with the specified scaling. You should not modify this path, as it is cached.
@@ -202,7 +202,7 @@ func (s *SVG) PathScaledTo(scale float32) *Path {
 	if scale == 1 {
 		return s.unscaledPath
 	}
-	scaledSize := NewSize(scale, scale)
+	scaledSize := Size{Width: scale, Height: scale}
 	p, ok := s.scaledPathMap[scaledSize]
 	if !ok {
 		p = s.unscaledPath.NewScaled(scale, scale)
