@@ -193,6 +193,7 @@ typedef enum {
 typedef struct {
     unsigned int fFBOID;
     unsigned int fFormat;
+    bool         fProtected;
 } gr_gl_framebufferinfo_t;
 
 // ===== Types from include/gpu/GrDirectContext.h =====
@@ -322,21 +323,22 @@ typedef struct sk_paint_t sk_paint_t;
 // ===== Types from include/core/SkColorType.h =====
 
 typedef enum {
-    SK_COLOR_TYPE_UNKNOWN,       // uninitialized
-    SK_COLOR_TYPE_ALPHA_8,       // pixel with alpha in 8-bit byte
-    SK_COLOR_TYPE_RGB_565,       // pixel with 5 bits red, 6 bits green, 5 bits blue, in 16-bit word
-    SK_COLOR_TYPE_ARGB_4444,     // pixel with 4 bits for alpha, red, green, blue; in 16-bit word
-    SK_COLOR_TYPE_RGBA_8888,     // pixel with 8 bits for red, green, blue, alpha; in 32-bit word
-    SK_COLOR_TYPE_RGB_888X,      // pixel with 8 bits each for red, green, blue; in 32-bit word
-    SK_COLOR_TYPE_BGRA_8888,     // pixel with 8 bits for blue, green, red, alpha; in 32-bit word
-    SK_COLOR_TYPE_RGBA_1010102,  // 10 bits for red, green, blue; 2 bits for alpha; in 32-bit word
-    SK_COLOR_TYPE_BGRA_1010102,  // 10 bits for blue, green, red; 2 bits for alpha; in 32-bit word
-    SK_COLOR_TYPE_RGB_101010X,   // pixel with 10 bits each for red, green, blue; in 32-bit word
-    SK_COLOR_TYPE_BGR_101010X,   // pixel with 10 bits each for blue, green, red; in 32-bit word
-    SK_COLOR_TYPE_GRAY_8,        // pixel with grayscale level in 8-bit byte
-    SK_COLOR_TYPE_RGBA_F16_NORM, // pixel with half floats in [0,1] for red, green, blue, alpha; in 64-bit word
-    SK_COLOR_TYPE_RGBA_F16,      // pixel with half floats for red, green, blue, alpha; in 64-bit word
-    SK_COLOR_TYPE_RGBA_F32,      // pixel using C float for red, green, blue, alpha; in 128-bit word
+    SK_COLOR_TYPE_UNKNOWN,        // uninitialized
+    SK_COLOR_TYPE_ALPHA_8,        // pixel with alpha in 8-bit byte
+    SK_COLOR_TYPE_RGB_565,        // pixel with 5 bits red, 6 bits green, 5 bits blue, in 16-bit word
+    SK_COLOR_TYPE_ARGB_4444,      // pixel with 4 bits for alpha, red, green, blue; in 16-bit word
+    SK_COLOR_TYPE_RGBA_8888,      // pixel with 8 bits for red, green, blue, alpha; in 32-bit word
+    SK_COLOR_TYPE_RGB_888X,       // pixel with 8 bits each for red, green, blue; in 32-bit word
+    SK_COLOR_TYPE_BGRA_8888,      // pixel with 8 bits for blue, green, red, alpha; in 32-bit word
+    SK_COLOR_TYPE_RGBA_1010102,   // 10 bits for red, green, blue; 2 bits for alpha; in 32-bit word
+    SK_COLOR_TYPE_BGRA_1010102,   // 10 bits for blue, green, red; 2 bits for alpha; in 32-bit word
+    SK_COLOR_TYPE_RGB_101010X,    // pixel with 10 bits each for red, green, blue; in 32-bit word
+    SK_COLOR_TYPE_BGR_101010X,    // pixel with 10 bits each for blue, green, red; in 32-bit word
+    SK_COLOR_TYPE_BGR_101010X_XR, // pixel with 10 bits each for blue, green, red; in 32-bit word, extended range
+    SK_COLOR_TYPE_GRAY_8,         // pixel with grayscale level in 8-bit byte
+    SK_COLOR_TYPE_RGBA_F16_NORM,  // pixel with half floats in [0,1] for red, green, blue, alpha; in 64-bit word
+    SK_COLOR_TYPE_RGBA_F16,       // pixel with half floats for red, green, blue, alpha; in 64-bit word
+    SK_COLOR_TYPE_RGBA_F32,       // pixel using C float for red, green, blue, alpha; in 128-bit word
 
     // The following color types are read-only
     SK_COLOR_TYPE_R8G8_UNORM,         // pixel with a uint8_t for red and green
@@ -392,23 +394,6 @@ typedef struct sk_image_filter_t sk_image_filter_t;
 // ===== Types from include/core/SkMaskFilter.h =====
 
 typedef struct sk_mask_filter_t sk_mask_filter_t;
-
-// ===== Types from include/core/SkEncodedImageFormat.h =====
-
-typedef enum {
-    SK_ENCODED_FORMAT_BMP,
-    SK_ENCODED_FORMAT_GIF,
-    SK_ENCODED_FORMAT_ICO,
-    SK_ENCODED_FORMAT_JPEG,
-    SK_ENCODED_FORMAT_PNG,
-    SK_ENCODED_FORMAT_WBMP,
-    SK_ENCODED_FORMAT_WEBP,
-    SK_ENCODED_FORMAT_PKM,
-    SK_ENCODED_FORMAT_KTX,
-    SK_ENCODED_FORMAT_ASTC,
-    SK_ENCODED_FORMAT_DNG,
-    SK_ENCODED_FORMAT_HEIF,
-} sk_encoded_image_format_t;
 
 // ===== Types from include/core/SkColorFilter.h =====
 
@@ -612,12 +597,13 @@ SK_C_API void gr_backendrendertarget_delete(gr_backendrendertarget_t* rendertarg
 SK_C_API gr_direct_context_t* gr_direct_context_make_gl(const gr_glinterface_t* glInterface);
 
 // ===== Functions from include/gpu/GrDirectContext.h =====
-SK_C_API void gr_direct_context_delete(gr_direct_context_t* context);
 SK_C_API void gr_direct_context_abandon_context(gr_direct_context_t* context);
+SK_C_API void gr_direct_context_delete(gr_direct_context_t* context);
+SK_C_API void gr_direct_context_flush_and_submit(gr_direct_context_t* context, bool syncCPU);
 SK_C_API void gr_direct_context_release_resources_and_abandon_context(gr_direct_context_t* context);
-SK_C_API void gr_direct_context_unref(const gr_direct_context_t* context);
-SK_C_API void gr_direct_context_reset_gl_texture_bindings(gr_direct_context_t* context);
 SK_C_API void gr_direct_context_reset(gr_direct_context_t* context);
+SK_C_API void gr_direct_context_reset_gl_texture_bindings(gr_direct_context_t* context);
+SK_C_API void gr_direct_context_unref(const gr_direct_context_t* context);
 
 // ===== Functions from include/gpu/gl/GrGLInterface.h =====
 SK_C_API const gr_glinterface_t* gr_glinterface_create_native_interface(void);
@@ -644,7 +630,6 @@ SK_C_API void sk_canvas_draw_rect(sk_canvas_t* canvas, const sk_rect_t* crect, c
 SK_C_API void sk_canvas_draw_round_rect(sk_canvas_t* canvas, const sk_rect_t* crect, float rx, float ry, const sk_paint_t* cpaint);
 SK_C_API void sk_canvas_draw_simple_text(sk_canvas_t* canvas, const void* text, size_t byte_length, sk_text_encoding_t encoding, float x, float y, const sk_font_t* cfont, const sk_paint_t* cpaint);
 SK_C_API void sk_canvas_draw_text_blob (sk_canvas_t* canvas, sk_text_blob_t* text, float x, float y, const sk_paint_t* paint);
-SK_C_API void sk_canvas_flush(sk_canvas_t* canvas);
 SK_C_API bool sk_canvas_get_local_clip_bounds(sk_canvas_t* canvas, sk_rect_t* cbounds);
 SK_C_API int sk_canvas_get_save_count(sk_canvas_t* canvas);
 SK_C_API void sk_canvas_get_total_matrix(sk_canvas_t* canvas, sk_matrix_t* matrix);
@@ -671,7 +656,6 @@ SK_C_API sk_color_filter_t* sk_colorfilter_new_high_contrast(const sk_high_contr
 SK_C_API sk_color_filter_t* sk_colorfilter_new_lighting(sk_color_t mul, sk_color_t add);
 SK_C_API sk_color_filter_t* sk_colorfilter_new_luma_color(void);
 SK_C_API sk_color_filter_t* sk_colorfilter_new_mode(sk_color_t c, sk_blend_mode_t mode);
-SK_C_API sk_color_filter_t* sk_colorfilter_new_table_argb(const uint8_t tableA[256], const uint8_t tableR[256], const uint8_t tableG[256], const uint8_t tableB[256]);
 SK_C_API void sk_colorfilter_unref(sk_color_filter_t* filter);
 
 // ===== Functions from include/core/SkColorSpace.h =====
@@ -682,6 +666,15 @@ SK_C_API const void* sk_data_get_data(const sk_data_t* data);
 SK_C_API size_t sk_data_get_size(const sk_data_t* data);
 SK_C_API sk_data_t* sk_data_new_with_copy(const void* src, size_t length);
 SK_C_API void sk_data_unref(const sk_data_t* data);
+
+// ===== Functions from include/encode/SkJpegEncoder.h =====
+SK_C_API sk_data_t* sk_encode_jpeg(gr_direct_context_t* ctx, const sk_image_t* img, int quality);
+
+// ===== Functions from include/encode/SkPngEncoder.h =====
+SK_C_API sk_data_t* sk_encode_png(gr_direct_context_t* ctx, const sk_image_t* img, int compressionLevel);
+
+// ===== Functions from include/encode/SkWebpEncoder.h =====
+SK_C_API sk_data_t* sk_encode_webp(gr_direct_context_t* ctx, const sk_image_t* img, float quality, bool lossy);
 
 // ===== Functions from include/core/SkFont.h =====
 SK_C_API void sk_font_delete(sk_font_t* font);
@@ -720,7 +713,6 @@ SK_C_API int sk_fontstyle_get_width(const sk_font_style_t* fs);
 SK_C_API sk_font_style_t* sk_fontstyle_new(int weight, int width, sk_font_style_slant_t slant);
 
 // ===== Functions from include/core/SkImage.h =====
-SK_C_API sk_data_t* sk_image_encode_specific(const sk_image_t* cimage, sk_encoded_image_format_t encoder, int quality);
 SK_C_API sk_alpha_type_t sk_image_get_alpha_type(const sk_image_t* image);
 SK_C_API sk_color_type_t sk_image_get_color_type(const sk_image_t* image);
 SK_C_API sk_color_space_t* sk_image_get_colorspace(const sk_image_t* image);
@@ -728,11 +720,13 @@ SK_C_API int sk_image_get_height(const sk_image_t* image);
 SK_C_API int sk_image_get_width(const sk_image_t* image);
 SK_C_API sk_image_t* sk_image_make_non_texture_image(const sk_image_t* image);
 SK_C_API sk_shader_t* sk_image_make_shader(const sk_image_t* image, sk_tile_mode_t tileX, sk_tile_mode_t tileY, const sk_sampling_options_t *samplingOptions, const sk_matrix_t* cmatrix);
-SK_C_API sk_image_t* sk_image_make_texture_image(const sk_image_t* image, gr_direct_context_t* context, bool mipmapped);
 SK_C_API sk_image_t* sk_image_new_from_encoded(sk_data_t* encoded);
 SK_C_API sk_image_t* sk_image_new_raster_data(const sk_image_info_t* cinfo, sk_data_t* pixels, size_t rowBytes);
 SK_C_API bool sk_image_read_pixels(const sk_image_t* image, const sk_image_info_t* dstInfo, void* dstPixels, size_t dstRowBytes, int srcX, int srcY, sk_image_caching_hint_t cachingHint);
 SK_C_API void sk_image_unref(const sk_image_t* image);
+
+// ===== Functions from include/gpu/ganesh/SkImageGanesh.h =====
+SK_C_API sk_image_t* sk_image_texture_from_image(gr_direct_context_t* ctx, const sk_image_t* image, bool mipmapped, bool budgeted);
 
 // ===== Functions from include/core/SkImageFilter.h =====
 SK_C_API sk_image_filter_t* sk_imagefilter_new_arithmetic(float k1, float k2, float k3, float k4, bool enforcePMColor, sk_image_filter_t* background, sk_image_filter_t* foreground, const sk_rect_t* rect);
@@ -747,8 +741,8 @@ SK_C_API sk_image_filter_t* sk_imagefilter_new_drop_shadow(float dx, float dy, f
 SK_C_API sk_image_filter_t* sk_imagefilter_new_drop_shadow_only(float dx, float dy, float sigmaX, float sigmaY, sk_color_t color, sk_image_filter_t* input, const sk_rect_t* rect);
 SK_C_API sk_image_filter_t* sk_imagefilter_new_erode(int radiusX, int radiusY, sk_image_filter_t* input, const sk_rect_t* rect);
 SK_C_API sk_image_filter_t* sk_imagefilter_new_image_source(sk_image_t* image, const sk_rect_t* srcRect, const sk_rect_t* dstRect, const sk_sampling_options_t* samplingOptions);
-SK_C_API sk_image_filter_t* sk_imagefilter_new_image_source_default(sk_image_t* image);
-SK_C_API sk_image_filter_t* sk_imagefilter_new_magnifier(const sk_rect_t* src, float inset, sk_image_filter_t* input, const sk_rect_t* rect);
+SK_C_API sk_image_filter_t* sk_imagefilter_new_image_source_default(sk_image_t* image, const sk_sampling_options_t* samplingOptions);
+SK_C_API sk_image_filter_t* sk_imagefilter_new_magnifier(const sk_rect_t* lensBounds, float zoomAmount, float inset, const sk_sampling_options_t* samplingOptions, sk_image_filter_t* input, const sk_rect_t* rect);
 SK_C_API sk_image_filter_t* sk_imagefilter_new_matrix_convolution(const sk_isize_t* kernelSize, const float kernel[], float gain, float bias, const sk_ipoint_t* kernelOffset, sk_tile_mode_t tileMode, bool convolveAlpha, sk_image_filter_t* input, const sk_rect_t* rect);
 SK_C_API sk_image_filter_t* sk_imagefilter_new_matrix_transform(const sk_matrix_t* matrix, const sk_sampling_options_t *samplingOptions, sk_image_filter_t* input);
 SK_C_API sk_image_filter_t* sk_imagefilter_new_merge(sk_image_filter_t* filters[], int count, const sk_rect_t* rect);
@@ -822,10 +816,12 @@ SK_C_API sk_path_t* sk_path_clone(const sk_path_t* cpath);
 SK_C_API void sk_path_close(sk_path_t* cpath);
 SK_C_API void sk_path_compute_tight_bounds(const sk_path_t* cpath, sk_rect_t* crect);
 SK_C_API void sk_path_conic_to(sk_path_t* cpath, float x0, float y0, float x1, float y1, float w);
-SK_C_API bool sk_path_contains (const sk_path_t* cpath, float x, float y);
+SK_C_API bool sk_path_contains(const sk_path_t* cpath, float x, float y);
+SK_C_API int sk_path_count_points(const sk_path_t* cpath);
 SK_C_API void sk_path_cubic_to(sk_path_t*, float x0, float y0, float x1, float y1, float x2, float y2);
 SK_C_API void sk_path_delete(sk_path_t* cpath);
 SK_C_API void sk_path_get_bounds(const sk_path_t* cpath, sk_rect_t* crect);
+SK_C_API int sk_path_get_points(const sk_path_t* cpath, sk_point_t* points, int max);
 SK_C_API sk_path_fill_type_t sk_path_get_filltype(sk_path_t *cpath);
 SK_C_API bool sk_path_get_last_point(const sk_path_t* cpath, sk_point_t* point);
 SK_C_API void sk_path_line_to(sk_path_t *cpath, float x, float y);
@@ -887,7 +883,7 @@ SK_C_API size_t sk_string_get_size(const sk_string_t* str);
 
 // ===== Functions from include/core/SkSurface.h =====
 SK_C_API sk_surface_t* sk_surface_make_raster_direct(const sk_image_info_t *imageInfo, void *pixels, size_t rowBytes, sk_surface_props_t* surfaceProps);
-SK_C_API sk_surface_t* sk_surface_make_raster_n32_premul(int width, int height, sk_surface_props_t* surfaceProps);
+SK_C_API sk_surface_t* sk_surface_make_raster_n32_premul(const sk_image_info_t *imageInfo, sk_surface_props_t* surfaceProps);
 SK_C_API sk_image_t* sk_surface_make_image_snapshot(sk_surface_t* surface);
 SK_C_API sk_canvas_t* sk_surface_get_canvas(sk_surface_t* surface);
 SK_C_API sk_surface_t* sk_surface_new_backend_render_target(gr_direct_context_t* context, const gr_backendrendertarget_t* target, gr_surface_origin_t origin, sk_color_type_t colorType, sk_color_space_t* colorspace, const sk_surface_props_t* props);
@@ -940,6 +936,9 @@ SK_C_API void sk_document_abort(sk_document_t* doc);
 
 // ===== Functions from include/docs/SkPDFDocument.h =====
 SK_C_API sk_document_t* sk_document_make_pdf(sk_wstream_t* stream, sk_metadata_t* metadata);
+
+// ===== Functions from include/codec/SkCodec.h =====
+SK_C_API void register_image_codecs();
 
 #ifdef __cplusplus
 }
