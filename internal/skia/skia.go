@@ -96,6 +96,7 @@ const (
 	ColorTypeBGRA1010102
 	ColorTypeRGB101010X
 	ColorTypeBGR101010X
+	ColorTypeBGR101010XXR
 	ColorTypeGray8
 	ColorTypeRGBAF16Norm
 	ColorTypeRGBAF16

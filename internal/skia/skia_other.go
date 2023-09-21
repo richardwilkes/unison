@@ -96,6 +96,10 @@ func ContextDelete(ctx DirectContext) {
 	C.gr_direct_context_delete(ctx)
 }
 
+func ContextFlushAndSubmit(ctx DirectContext, syncCPU bool) {
+	C.gr_direct_context_flush_and_submit(ctx, C.bool(syncCPU))
+}
+
 func ContextResetGLTextureBindings(ctx DirectContext) {
 	C.gr_direct_context_reset_gl_texture_bindings(ctx)
 }
@@ -290,10 +294,6 @@ func CanvasIsClipRect(canvas Canvas) bool {
 	return bool(C.sk_canvas_is_clip_rect(canvas))
 }
 
-func CanvasFlush(canvas Canvas) {
-	C.sk_canvas_flush(canvas)
-}
-
 func ColorFilterNewMode(color Color, blendMode BlendMode) ColorFilter {
 	return C.sk_colorfilter_new_mode(C.sk_color_t(color), C.sk_blend_mode_t(blendMode))
 }
@@ -345,6 +345,18 @@ func DataGetData(data Data) unsafe.Pointer {
 
 func DataUnref(data Data) {
 	C.sk_data_unref(data)
+}
+
+func EncodeJPEG(ctx DirectContext, img Image, quality int) Data {
+	return C.sk_encode_jpeg(ctx, img, C.int(quality))
+}
+
+func EncodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
+	return C.sk_encode_png(ctx, img, C.int(compressionLevel))
+}
+
+func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
+	return C.sk_encode_webp(ctx, img, C.float(quality), C.bool(lossy))
 }
 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
@@ -587,8 +599,8 @@ func ImageReadPixels(img Image, info *ImageInfo, pixels []byte, dstRowBytes, src
 		C.size_t(dstRowBytes), C.int(srcX), C.int(srcY), C.sk_image_caching_hint_t(cachingHint)))
 }
 
-func ImageEncodeSpecific(img Image, format EncodedImageFormat, quality int) Data {
-	return C.sk_image_encode_specific(img, C.sk_encoded_image_format_t(format), C.int(quality))
+func ImageMakeNonTextureImage(img Image) Image {
+	return C.sk_image_make_non_texture_image(img)
 }
 
 func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling SamplingOptions, matrix geom.Matrix[float32]) Shader {
@@ -596,12 +608,8 @@ func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling Sampling
 		fromGeomMatrix(&matrix))
 }
 
-func ImageMakeTextureImage(img Image, ctx DirectContext, mipMapped bool) Image {
-	return C.sk_image_make_texture_image(img, ctx, C.bool(mipMapped))
-}
-
-func ImageMakeNonTextureImage(img Image) Image {
-	return C.sk_image_make_non_texture_image(img)
+func ImageTextureFromImage(ctx DirectContext, img Image, mipMapped, budgeted bool) Image {
+	return C.sk_image_texture_from_image(ctx, img, C.bool(mipMapped), C.bool(budgeted))
 }
 
 func ImageUnref(img Image) {

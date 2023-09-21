@@ -267,5 +267,5 @@ func (c *Canvas) IsClipRect() bool {
 
 // Flush any drawing.
 func (c *Canvas) Flush() {
-	skia.CanvasFlush(c.canvas)
+	c.surface.flush(true)
 }

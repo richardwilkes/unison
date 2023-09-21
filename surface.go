@@ -65,6 +65,12 @@ func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Can
 	return c, nil
 }
 
+func (s *surface) flush(syncCPU bool) {
+	if s != nil && s.surface != nil {
+		skia.ContextFlushAndSubmit(s.context, syncCPU)
+	}
+}
+
 func (s *surface) partialDispose() {
 	if s.surface != nil {
 		skia.SurfaceUnref(s.surface)
