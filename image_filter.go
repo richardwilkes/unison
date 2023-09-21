@@ -140,7 +140,7 @@ func NewImageSourceImageFilter(canvas *Canvas, img *Image, srcRect, dstRect Rect
 
 // NewImageSourceDefaultImageFilter returns a new image source image filter that uses the default quality and the full
 // image size. If canvas is not nil, a hardware-accellerated image will be used if possible.
-func NewImageSourceDefaultImageFilter(canvas *Canvas, img *Image) *ImageFilter {
+func NewImageSourceDefaultImageFilter(canvas *Canvas, img *Image, sampling *SamplingOptions) *ImageFilter {
 	var image skia.Image
 	ref := img.ref()
 	if canvas == nil {
@@ -148,17 +148,17 @@ func NewImageSourceDefaultImageFilter(canvas *Canvas, img *Image) *ImageFilter {
 	} else {
 		image = ref.contextImg(canvas.surface)
 	}
-	return newImageFilter(skia.ImageFilterNewImageSourceDefault(image))
+	return newImageFilter(skia.ImageFilterNewImageSourceDefault(image, sampling.skSamplingOptions()))
 }
 
 // NewMagnifierImageFilter returns a new magnifier image filter. input may be nil, in which case the source bitmap will
 // be used. cropRect may be nil.
-func NewMagnifierImageFilter(src Rect, inset float32, input *ImageFilter, cropRect *Rect) *ImageFilter {
+func NewMagnifierImageFilter(lensBounds Rect, zoomAmount, inset float32, sampling *SamplingOptions, input *ImageFilter, cropRect *Rect) *ImageFilter {
 	var in skia.ImageFilter
 	if input != nil {
 		in = input.filter
 	}
-	return newImageFilter(skia.ImageFilterNewMagnifier(src, inset, in, cropRect))
+	return newImageFilter(skia.ImageFilterNewMagnifier(lensBounds, zoomAmount, inset, sampling.skSamplingOptions(), in, cropRect))
 }
 
 // NewMatrixConvolutionImageFilter returns a new matrix convolution image filter.

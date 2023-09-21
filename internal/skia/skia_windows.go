@@ -87,7 +87,6 @@ var (
 	skColorFilterNewColorMatrixProc                *syscall.Proc
 	skColorFilterNewLumaColorProc                  *syscall.Proc
 	skColorFilterNewHighContrastProc               *syscall.Proc
-	skColorFilterNewTableARGBProc                  *syscall.Proc
 	skColorFilterUnrefProc                         *syscall.Proc
 	skColorSpaceNewSRGBProc                        *syscall.Proc
 	skDataNewWithCopyProc                          *syscall.Proc
@@ -273,6 +272,7 @@ var (
 	skPathEffectCreateDashProc                     *syscall.Proc
 	skPathEffectCreateTrimProc                     *syscall.Proc
 	skPathEffectUnrefProc                          *syscall.Proc
+	skRegisterImageCodecsProc                      *syscall.Proc
 	skShaderNewColorProc                           *syscall.Proc
 	skShaderNewBlendProc                           *syscall.Proc
 	skShaderNewLinearGradientProc                  *syscall.Proc
@@ -391,7 +391,6 @@ func init() {
 	skColorFilterNewColorMatrixProc = skia.MustFindProc("sk_colorfilter_new_color_matrix")
 	skColorFilterNewLumaColorProc = skia.MustFindProc("sk_colorfilter_new_luma_color")
 	skColorFilterNewHighContrastProc = skia.MustFindProc("sk_colorfilter_new_high_contrast")
-	skColorFilterNewTableARGBProc = skia.MustFindProc("sk_colorfilter_new_table_argb")
 	skColorFilterUnrefProc = skia.MustFindProc("sk_colorfilter_unref")
 	skColorSpaceNewSRGBProc = skia.MustFindProc("sk_colorspace_new_srgb")
 	skDataNewWithCopyProc = skia.MustFindProc("sk_data_new_with_copy")
@@ -577,6 +576,7 @@ func init() {
 	skPathEffectCreateDashProc = skia.MustFindProc("sk_path_effect_create_dash")
 	skPathEffectCreateTrimProc = skia.MustFindProc("sk_path_effect_create_trim")
 	skPathEffectUnrefProc = skia.MustFindProc("sk_path_effect_unref")
+	skRegisterImageCodecsProc = skia.MustFindProc("register_image_codecs")
 	skShaderNewColorProc = skia.MustFindProc("sk_shader_new_color")
 	skShaderNewBlendProc = skia.MustFindProc("sk_shader_new_blend")
 	skShaderNewLinearGradientProc = skia.MustFindProc("sk_shader_new_linear_gradient")
@@ -924,12 +924,6 @@ func ColorFilterNewLumaColor() ColorFilter {
 
 func ColorFilterNewHighContrast(config *HighContrastConfig) ColorFilter {
 	r1, _, _ := skColorFilterNewHighContrastProc.Call(uintptr(unsafe.Pointer(config)))
-	return ColorFilter(r1)
-}
-
-func ColorFilterNewTableARGB(a, r, g, b []byte) ColorFilter {
-	r1, _, _ := skColorFilterNewTableARGBProc.Call(uintptr(unsafe.Pointer(&a[0])), uintptr(unsafe.Pointer(&r[0])),
-		uintptr(unsafe.Pointer(&g[0])), uintptr(unsafe.Pointer(&b[0])))
 	return ColorFilter(r1)
 }
 
@@ -1322,14 +1316,14 @@ func ImageFilterNewImageSource(img Image, srcRect, dstRect geom.Rect[float32], s
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewImageSourceDefault(img Image) ImageFilter {
-	r1, _, _ := skImageFilterNewImageSourceDefaultProc.Call(uintptr(img))
+func ImageFilterNewImageSourceDefault(img Image, sampling SamplingOptions) ImageFilter {
+	r1, _, _ := skImageFilterNewImageSourceDefaultProc.Call(uintptr(img), uintptr(sampling))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewMagnifier(src geom.Rect[float32], inset float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
-	r1, _, _ := skImageFilterNewMagnifierProc.Call(fromGeomRect(&src), uintptr(math.Float32bits(inset)),
-		uintptr(input), fromGeomRect(cropRect))
+func ImageFilterNewMagnifier(lensBounds geom.Rect[float32], zoomAmount, inset float32, sampling SamplingOptions, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+	r1, _, _ := skImageFilterNewMagnifierProc.Call(fromGeomRect(&lensBounds), uintptr(math.Float32bits(zoomAmount)),
+		uintptr(math.Float32bits(inset)), uintptr(sampling), uintptr(input), fromGeomRect(cropRect))
 	return ImageFilter(r1)
 }
 
@@ -1872,6 +1866,10 @@ func PathEffectUnref(effect PathEffect) {
 	skPathEffectUnrefProc.Call(uintptr(effect))
 }
 
+func RegisterImageCodecs() {
+	skRegisterImageCodecsProc.Call()
+}
+
 func ShaderNewColor(color Color) Shader {
 	r1, _, _ := skShaderNewColorProc.Call(uintptr(color))
 	return Shader(r1)
@@ -1970,8 +1968,8 @@ func SurfaceMakeRasterDirect(info *ImageInfo, pixels []byte, rowBytes int, surfa
 	return Surface(r1)
 }
 
-func SurfaceMakeRasterN32PreMul(width, height int, surfaceProps SurfaceProps) Surface {
-	r1, _, _ := skSurfaceMakeRasterN32PreMulProc.Call(uintptr(width), uintptr(height), uintptr(surfaceProps))
+func SurfaceMakeRasterN32PreMul(info *ImageInfo, surfaceProps SurfaceProps) Surface {
+	r1, _, _ := skSurfaceMakeRasterN32PreMulProc.Call(uintptr(unsafe.Pointer(info)), uintptr(surfaceProps))
 	return Surface(r1)
 }
 

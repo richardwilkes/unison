@@ -171,8 +171,9 @@ type Matrix struct {
 }
 
 type GLFrameBufferInfo struct {
-	Fboid  uint32
-	Format uint32
+	Fboid     uint32
+	Format    uint32
+	Protected bool
 }
 
 type ImageInfo struct {

@@ -22,6 +22,7 @@ import (
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
+	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -102,7 +103,13 @@ func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
 	scale := float32(ppi) / 72
 	s := &surface{
-		surface: skia.SurfaceMakeRasterN32PreMul(int(float32(width)*scale), int(float32(height)*scale), defaultSurfaceProps()),
+		surface: skia.SurfaceMakeRasterN32PreMul(&skia.ImageInfo{
+			Colorspace: skiaColorspace,
+			Width:      int32(xmath.Ceil(float32(width) * scale)),
+			Height:     int32(xmath.Ceil(float32(height) * scale)),
+			ColorType:  skia.ColorTypeRGBA8888,
+			AlphaType:  skia.AlphaTypeUnPreMul,
+		}, defaultSurfaceProps()),
 	}
 	c := &Canvas{
 		canvas:  skia.SurfaceGetCanvas(s.surface),

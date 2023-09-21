@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // InvalidImageFormatStr is returned for as an error indicator for some methods on EncodedImageFormat.
@@ -101,6 +103,7 @@ var (
 )
 
 func init() {
+	skia.RegisterImageCodecs()
 	for i, one := range knownImageFormats {
 		KnownImageFormatFormats[i] = EncodedImageFormat(i)
 		for _, ext := range one.Extensions {

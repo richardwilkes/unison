@@ -318,11 +318,6 @@ func ColorFilterNewHighContrast(config *HighContrastConfig) ColorFilter {
 	return C.sk_colorfilter_new_high_contrast((*C.sk_high_contrast_config_t)(unsafe.Pointer(config)))
 }
 
-func ColorFilterNewTableARGB(a, r, g, b []byte) ColorFilter {
-	return C.sk_colorfilter_new_table_argb((*C.uint8_t)(unsafe.Pointer(&a[0])), (*C.uint8_t)(unsafe.Pointer(&r[0])),
-		(*C.uint8_t)(unsafe.Pointer(&g[0])), (*C.uint8_t)(unsafe.Pointer(&b[0])))
-}
-
 func ColorFilterUnref(filter ColorFilter) {
 	C.sk_colorfilter_unref(filter)
 }
@@ -653,12 +648,12 @@ func ImageFilterNewImageSource(img Image, srcRect, dstRect geom.Rect[float32], s
 	return C.sk_imagefilter_new_image_source(img, fromGeomRect(&srcRect), fromGeomRect(&dstRect), sampling)
 }
 
-func ImageFilterNewImageSourceDefault(img Image) ImageFilter {
-	return C.sk_imagefilter_new_image_source_default(img)
+func ImageFilterNewImageSourceDefault(img Image, sampling SamplingOptions) ImageFilter {
+	return C.sk_imagefilter_new_image_source_default(img, sampling)
 }
 
-func ImageFilterNewMagnifier(src geom.Rect[float32], inset float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
-	return C.sk_imagefilter_new_magnifier(fromGeomRect(&src), C.float(inset), input, fromGeomRect(cropRect))
+func ImageFilterNewMagnifier(lensBounds geom.Rect[float32], zoomAmount, inset float32, sampling SamplingOptions, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+	return C.sk_imagefilter_new_magnifier(fromGeomRect(&lensBounds), C.float(zoomAmount), C.float(inset), sampling, input, fromGeomRect(cropRect))
 }
 
 func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
@@ -1117,6 +1112,10 @@ func PathEffectUnref(effect PathEffect) {
 	C.sk_path_effect_unref(effect)
 }
 
+func RegisterImageCodecs() {
+	C.register_image_codecs()
+}
+
 func ShaderNewColor(color Color) Shader {
 	return C.sk_shader_new_color(C.sk_color_t(color))
 }
@@ -1199,8 +1198,8 @@ func SurfaceMakeRasterDirect(info *ImageInfo, pixels []byte, rowBytes int, surfa
 	return C.sk_surface_make_raster_direct((*C.sk_image_info_t)(unsafe.Pointer(info)), unsafe.Pointer(&pixels[0]), C.size_t(rowBytes), surfaceProps)
 }
 
-func SurfaceMakeRasterN32PreMul(width, height int, surfaceProps SurfaceProps) Surface {
-	return C.sk_surface_make_raster_n32_premul(C.int(width), C.int(height), surfaceProps)
+func SurfaceMakeRasterN32PreMul(info *ImageInfo, surfaceProps SurfaceProps) Surface {
+	return C.sk_surface_make_raster_n32_premul((*C.sk_image_info_t)(unsafe.Pointer(info)), surfaceProps)
 }
 
 func SurfaceNewBackendRenderTarget(ctx DirectContext, backend BackendRenderTarget, origin SurfaceOrigin, colorType ColorType, colorSpace ColorSpace, surfaceProps SurfaceProps) Surface {
