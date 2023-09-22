@@ -35,6 +35,7 @@ var (
 	grBackendRenderTargetDeleteProc                *syscall.Proc
 	grContextMakeGLProc                            *syscall.Proc
 	grContextDeleteProc                            *syscall.Proc
+	grContextFlushAndSubmitProc                    *syscall.Proc
 	grContextResetGLTextureBindings                *syscall.Proc
 	grContextReset                                 *syscall.Proc
 	grContextAbandonContextProc                    *syscall.Proc
@@ -80,20 +81,21 @@ var (
 	skCanvasGetSurfaceProc                         *syscall.Proc
 	skCanvasIsClipEmptyProc                        *syscall.Proc
 	skCanvasIsClipRectProc                         *syscall.Proc
-	skCanvasFlushProc                              *syscall.Proc
 	skColorFilterNewModeProc                       *syscall.Proc
 	skColorFilterNewLightingProc                   *syscall.Proc
 	skColorFilterNewComposeProc                    *syscall.Proc
 	skColorFilterNewColorMatrixProc                *syscall.Proc
 	skColorFilterNewLumaColorProc                  *syscall.Proc
 	skColorFilterNewHighContrastProc               *syscall.Proc
-	skColorFilterNewTableARGBProc                  *syscall.Proc
 	skColorFilterUnrefProc                         *syscall.Proc
 	skColorSpaceNewSRGBProc                        *syscall.Proc
 	skDataNewWithCopyProc                          *syscall.Proc
 	skDataGetSizeProc                              *syscall.Proc
 	skDataGetDataProc                              *syscall.Proc
 	skDataUnrefProc                                *syscall.Proc
+	skEncodeJPEGProc                               *syscall.Proc
+	skEncodePNGProc                                *syscall.Proc
+	skEncodeWEBPProc                               *syscall.Proc
 	skDocumentAbortProc                            *syscall.Proc
 	skDocumentBeginPageProc                        *syscall.Proc
 	skDocumentCloseProc                            *syscall.Proc
@@ -148,10 +150,9 @@ var (
 	skImageGetColorTypeProc                        *syscall.Proc
 	skImageGetAlphaTypeProc                        *syscall.Proc
 	skImageReadPixelsProc                          *syscall.Proc
-	skImageEncodeSpecificProc                      *syscall.Proc
 	skImageMakeNonTextureImageProc                 *syscall.Proc
 	skImageMakeShaderProc                          *syscall.Proc
-	skImageMakeTextureImageProc                    *syscall.Proc
+	skImageTextureFromImageProc                    *syscall.Proc
 	skImageUnrefProc                               *syscall.Proc
 	skImageFilterNewArithmeticProc                 *syscall.Proc
 	skImageFilterNewBlurProc                       *syscall.Proc
@@ -271,6 +272,7 @@ var (
 	skPathEffectCreateDashProc                     *syscall.Proc
 	skPathEffectCreateTrimProc                     *syscall.Proc
 	skPathEffectUnrefProc                          *syscall.Proc
+	skRegisterImageCodecsProc                      *syscall.Proc
 	skShaderNewColorProc                           *syscall.Proc
 	skShaderNewBlendProc                           *syscall.Proc
 	skShaderNewLinearGradientProc                  *syscall.Proc
@@ -337,6 +339,7 @@ func init() {
 	grBackendRenderTargetDeleteProc = skia.MustFindProc("gr_backendrendertarget_delete")
 	grContextMakeGLProc = skia.MustFindProc("gr_direct_context_make_gl")
 	grContextDeleteProc = skia.MustFindProc("gr_direct_context_delete")
+	grContextFlushAndSubmitProc = skia.MustFindProc("gr_direct_context_flush_and_submit")
 	grContextResetGLTextureBindings = skia.MustFindProc("gr_direct_context_reset_gl_texture_bindings")
 	grContextReset = skia.MustFindProc("gr_direct_context_reset")
 	grContextAbandonContextProc = skia.MustFindProc("gr_direct_context_abandon_context")
@@ -382,20 +385,21 @@ func init() {
 	skCanvasGetSurfaceProc = skia.MustFindProc("sk_canvas_get_surface")
 	skCanvasIsClipEmptyProc = skia.MustFindProc("sk_canvas_is_clip_empty")
 	skCanvasIsClipRectProc = skia.MustFindProc("sk_canvas_is_clip_rect")
-	skCanvasFlushProc = skia.MustFindProc("sk_canvas_flush")
 	skColorFilterNewModeProc = skia.MustFindProc("sk_colorfilter_new_mode")
 	skColorFilterNewLightingProc = skia.MustFindProc("sk_colorfilter_new_lighting")
 	skColorFilterNewComposeProc = skia.MustFindProc("sk_colorfilter_new_compose")
 	skColorFilterNewColorMatrixProc = skia.MustFindProc("sk_colorfilter_new_color_matrix")
 	skColorFilterNewLumaColorProc = skia.MustFindProc("sk_colorfilter_new_luma_color")
 	skColorFilterNewHighContrastProc = skia.MustFindProc("sk_colorfilter_new_high_contrast")
-	skColorFilterNewTableARGBProc = skia.MustFindProc("sk_colorfilter_new_table_argb")
 	skColorFilterUnrefProc = skia.MustFindProc("sk_colorfilter_unref")
 	skColorSpaceNewSRGBProc = skia.MustFindProc("sk_colorspace_new_srgb")
 	skDataNewWithCopyProc = skia.MustFindProc("sk_data_new_with_copy")
 	skDataGetSizeProc = skia.MustFindProc("sk_data_get_size")
 	skDataGetDataProc = skia.MustFindProc("sk_data_get_data")
 	skDataUnrefProc = skia.MustFindProc("sk_data_unref")
+	skEncodeJPEGProc = skia.MustFindProc("sk_encode_jpeg")
+	skEncodePNGProc = skia.MustFindProc("sk_encode_png")
+	skEncodeWEBPProc = skia.MustFindProc("sk_encode_webp")
 	skDocumentAbortProc = skia.MustFindProc("sk_document_abort")
 	skDocumentBeginPageProc = skia.MustFindProc("sk_document_begin_page")
 	skDocumentCloseProc = skia.MustFindProc("sk_document_close")
@@ -450,10 +454,9 @@ func init() {
 	skImageGetColorTypeProc = skia.MustFindProc("sk_image_get_color_type")
 	skImageGetAlphaTypeProc = skia.MustFindProc("sk_image_get_alpha_type")
 	skImageReadPixelsProc = skia.MustFindProc("sk_image_read_pixels")
-	skImageEncodeSpecificProc = skia.MustFindProc("sk_image_encode_specific")
 	skImageMakeNonTextureImageProc = skia.MustFindProc("sk_image_make_non_texture_image")
 	skImageMakeShaderProc = skia.MustFindProc("sk_image_make_shader")
-	skImageMakeTextureImageProc = skia.MustFindProc("sk_image_make_texture_image")
+	skImageTextureFromImageProc = skia.MustFindProc("sk_image_texture_from_image")
 	skImageUnrefProc = skia.MustFindProc("sk_image_unref")
 	skImageFilterNewArithmeticProc = skia.MustFindProc("sk_imagefilter_new_arithmetic")
 	skImageFilterNewBlurProc = skia.MustFindProc("sk_imagefilter_new_blur")
@@ -573,6 +576,7 @@ func init() {
 	skPathEffectCreateDashProc = skia.MustFindProc("sk_path_effect_create_dash")
 	skPathEffectCreateTrimProc = skia.MustFindProc("sk_path_effect_create_trim")
 	skPathEffectUnrefProc = skia.MustFindProc("sk_path_effect_unref")
+	skRegisterImageCodecsProc = skia.MustFindProc("register_image_codecs")
 	skShaderNewColorProc = skia.MustFindProc("sk_shader_new_color")
 	skShaderNewBlendProc = skia.MustFindProc("sk_shader_new_blend")
 	skShaderNewLinearGradientProc = skia.MustFindProc("sk_shader_new_linear_gradient")
@@ -677,6 +681,10 @@ func ContextMakeGL(gl GLInterface) DirectContext {
 
 func ContextDelete(ctx DirectContext) {
 	grContextDeleteProc.Call(uintptr(ctx))
+}
+
+func ContextFlushAndSubmit(ctx DirectContext, syncCPU bool) {
+	grContextFlushAndSubmitProc.Call(uintptr(ctx), boolToUintptr(syncCPU))
 }
 
 func ContextResetGLTextureBindings(ctx DirectContext) {
@@ -889,10 +897,6 @@ func CanvasIsClipRect(canvas Canvas) bool {
 	return r1 != 0
 }
 
-func CanvasFlush(canvas Canvas) {
-	skCanvasFlushProc.Call(uintptr(canvas))
-}
-
 func ColorFilterNewMode(color Color, blendMode BlendMode) ColorFilter {
 	r1, _, _ := skColorFilterNewModeProc.Call(uintptr(color), uintptr(blendMode))
 	return ColorFilter(r1)
@@ -923,12 +927,6 @@ func ColorFilterNewHighContrast(config *HighContrastConfig) ColorFilter {
 	return ColorFilter(r1)
 }
 
-func ColorFilterNewTableARGB(a, r, g, b []byte) ColorFilter {
-	r1, _, _ := skColorFilterNewTableARGBProc.Call(uintptr(unsafe.Pointer(&a[0])), uintptr(unsafe.Pointer(&r[0])),
-		uintptr(unsafe.Pointer(&g[0])), uintptr(unsafe.Pointer(&b[0])))
-	return ColorFilter(r1)
-}
-
 func ColorFilterUnref(filter ColorFilter) {
 	skColorFilterUnrefProc.Call(uintptr(filter))
 }
@@ -955,6 +953,21 @@ func DataGetData(data Data) unsafe.Pointer {
 
 func DataUnref(data Data) {
 	skDataUnrefProc.Call(uintptr(data))
+}
+
+func EncodeJPEG(ctx DirectContext, img Image, quality int) Data {
+	r1, _, _ := skEncodeJPEGProc.Call(uintptr(ctx), uintptr(img), uintptr(quality))
+	return Data(r1)
+}
+
+func EncodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
+	r1, _, _ := skEncodePNGProc.Call(uintptr(ctx), uintptr(img), uintptr(compressionLevel))
+	return Data(r1)
+}
+
+func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
+	r1, _, _ := skEncodeWEBPProc.Call(uintptr(ctx), uintptr(img), uintptr(math.Float32bits(quality)), boolToUintptr(lossy))
+	return Data(r1)
 }
 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
@@ -1233,9 +1246,9 @@ func ImageReadPixels(img Image, info *ImageInfo, pixels []byte, dstRowBytes, src
 	return r1 != 0
 }
 
-func ImageEncodeSpecific(img Image, format EncodedImageFormat, quality int) Data {
-	r1, _, _ := skImageEncodeSpecificProc.Call(uintptr(img), uintptr(format), uintptr(quality))
-	return Data(r1)
+func ImageMakeNonTextureImage(img Image) Image {
+	r1, _, _ := skImageMakeNonTextureImageProc.Call(uintptr(img))
+	return Image(r1)
 }
 
 func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling SamplingOptions, matrix geom.Matrix[float32]) Shader {
@@ -1244,13 +1257,8 @@ func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling Sampling
 	return Shader(r1)
 }
 
-func ImageMakeTextureImage(img Image, ctx DirectContext, mipMapped bool) Image {
-	r1, _, _ := skImageMakeTextureImageProc.Call(uintptr(img), uintptr(ctx), boolToUintptr(mipMapped))
-	return Image(r1)
-}
-
-func ImageMakeNonTextureImage(img Image) Image {
-	r1, _, _ := skImageMakeNonTextureImageProc.Call(uintptr(img))
+func ImageTextureFromImage(ctx DirectContext, img Image, mipMapped, budgeted bool) Image {
+	r1, _, _ := skImageTextureFromImageProc.Call(uintptr(ctx), uintptr(img), boolToUintptr(mipMapped), boolToUintptr(budgeted))
 	return Image(r1)
 }
 
@@ -1308,14 +1316,14 @@ func ImageFilterNewImageSource(img Image, srcRect, dstRect geom.Rect[float32], s
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewImageSourceDefault(img Image) ImageFilter {
-	r1, _, _ := skImageFilterNewImageSourceDefaultProc.Call(uintptr(img))
+func ImageFilterNewImageSourceDefault(img Image, sampling SamplingOptions) ImageFilter {
+	r1, _, _ := skImageFilterNewImageSourceDefaultProc.Call(uintptr(img), uintptr(sampling))
 	return ImageFilter(r1)
 }
 
-func ImageFilterNewMagnifier(src geom.Rect[float32], inset float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
-	r1, _, _ := skImageFilterNewMagnifierProc.Call(fromGeomRect(&src), uintptr(math.Float32bits(inset)),
-		uintptr(input), fromGeomRect(cropRect))
+func ImageFilterNewMagnifier(lensBounds geom.Rect[float32], zoomAmount, inset float32, sampling SamplingOptions, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+	r1, _, _ := skImageFilterNewMagnifierProc.Call(fromGeomRect(&lensBounds), uintptr(math.Float32bits(zoomAmount)),
+		uintptr(math.Float32bits(inset)), uintptr(sampling), uintptr(input), fromGeomRect(cropRect))
 	return ImageFilter(r1)
 }
 
@@ -1858,6 +1866,10 @@ func PathEffectUnref(effect PathEffect) {
 	skPathEffectUnrefProc.Call(uintptr(effect))
 }
 
+func RegisterImageCodecs() {
+	skRegisterImageCodecsProc.Call()
+}
+
 func ShaderNewColor(color Color) Shader {
 	r1, _, _ := skShaderNewColorProc.Call(uintptr(color))
 	return Shader(r1)
@@ -1956,8 +1968,8 @@ func SurfaceMakeRasterDirect(info *ImageInfo, pixels []byte, rowBytes int, surfa
 	return Surface(r1)
 }
 
-func SurfaceMakeRasterN32PreMul(width, height int, surfaceProps SurfaceProps) Surface {
-	r1, _, _ := skSurfaceMakeRasterN32PreMulProc.Call(uintptr(width), uintptr(height), uintptr(surfaceProps))
+func SurfaceMakeRasterN32PreMul(info *ImageInfo, surfaceProps SurfaceProps) Surface {
+	r1, _, _ := skSurfaceMakeRasterN32PreMulProc.Call(uintptr(unsafe.Pointer(info)), uintptr(surfaceProps))
 	return Surface(r1)
 }
 

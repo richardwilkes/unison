@@ -18,9 +18,9 @@ import (
 )
 
 var (
-	preservedStdin  *os.File
-	preservedStdout *os.File
-	preservedStderr *os.File
+	preservedStdin  *os.File //nolint:unused // We don't want them garbage collected
+	preservedStdout *os.File //nolint:unused // We don't want them garbage collected
+	preservedStderr *os.File //nolint:unused // We don't want them garbage collected
 )
 
 func attachConsole() {
@@ -30,9 +30,9 @@ func attachConsole() {
 	preservedStderr = os.Stderr
 
 	// Get the existing stdin/stdout/stderr handles.
-	stdin, _ := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE)
-	stdout, _ := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
-	stderr, _ := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE)
+	stdin, _ := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE)   //nolint:errcheck // A result of 0 is adequate
+	stdout, _ := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE) //nolint:errcheck // A result of 0 is adequate
+	stderr, _ := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE)  //nolint:errcheck // A result of 0 is adequate
 
 	// Attach the console if any of stdin/stdout/stderr are currently unattached, loading the newly-found handles for
 	// the unattached ones.
@@ -40,14 +40,14 @@ func attachConsole() {
 	if stdin == 0 || stdout == 0 || stderr == 0 {
 		if w32.AttachConsole(w32.AttachParentProcessID) {
 			if stdin == 0 {
-				stdin, _ = syscall.GetStdHandle(syscall.STD_INPUT_HANDLE)
+				stdin, _ = syscall.GetStdHandle(syscall.STD_INPUT_HANDLE) //nolint:errcheck // A result of 0 is adequate
 			}
 			if stdout == 0 {
-				stdout, _ = syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
+				stdout, _ = syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE) //nolint:errcheck // A result of 0 is adequate
 				console = stdout
 			}
 			if stderr == 0 {
-				stderr, _ = syscall.GetStdHandle(syscall.STD_ERROR_HANDLE)
+				stderr, _ = syscall.GetStdHandle(syscall.STD_ERROR_HANDLE) //nolint:errcheck // A result of 0 is adequate
 				console = stderr
 			}
 		}
@@ -57,7 +57,7 @@ func attachConsole() {
 	if console != 0 {
 		var mode uint32
 		if err := windows.GetConsoleMode(windows.Handle(console), &mode); err == nil {
-			windows.SetConsoleMode(windows.Handle(console), mode&^windows.DISABLE_NEWLINE_AUTO_RETURN)
+			_ = windows.SetConsoleMode(windows.Handle(console), mode&^windows.DISABLE_NEWLINE_AUTO_RETURN) //nolint:errcheck // Don't care
 		}
 	}
 

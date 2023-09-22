@@ -90,32 +90,6 @@ func NewHighContrastColorFilter(contrast float32, style InvertStyle, grayscale b
 	}))
 }
 
-// NewARGBTableColorFilter returns a new ARGB table color filter. Each of a, r, g, and b should be 256 bytes long. If
-// shorter than that, they will be expanded to 256 and the new locations will be set to 0.
-func NewARGBTableColorFilter(a, r, g, b []byte) *ColorFilter {
-	if len(a) < 256 {
-		a1 := make([]byte, 256)
-		copy(a1, a)
-		a = a1
-	}
-	if len(r) < 256 {
-		r1 := make([]byte, 256)
-		copy(r1, r)
-		r = r1
-	}
-	if len(g) < 256 {
-		g1 := make([]byte, 256)
-		copy(g1, g)
-		g = g1
-	}
-	if len(b) < 256 {
-		b1 := make([]byte, 256)
-		copy(b1, b)
-		b = b1
-	}
-	return newColorFilter(skia.ColorFilterNewTableARGB(a, r, g, b))
-}
-
 // NewAlphaFilter returns a new ColorFilter that applies an alpha blend.
 func NewAlphaFilter(alpha float32) *ColorFilter {
 	return NewMatrixColorFilter([]float32{

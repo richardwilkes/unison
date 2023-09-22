@@ -22,6 +22,7 @@ import (
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
+	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -102,7 +103,13 @@ func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
 	scale := float32(ppi) / 72
 	s := &surface{
-		surface: skia.SurfaceMakeRasterN32PreMul(int(float32(width)*scale), int(float32(height)*scale), defaultSurfaceProps()),
+		surface: skia.SurfaceMakeRasterN32PreMul(&skia.ImageInfo{
+			Colorspace: skiaColorspace,
+			Width:      int32(xmath.Ceil(float32(width) * scale)),
+			Height:     int32(xmath.Ceil(float32(height) * scale)),
+			ColorType:  skia.ColorTypeRGBA8888,
+			AlphaType:  skia.AlphaTypeUnPreMul,
+		}, defaultSurfaceProps()),
 	}
 	c := &Canvas{
 		canvas:  skia.SurfaceGetCanvas(s.surface),
@@ -200,30 +207,36 @@ func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 	}, nil
 }
 
-// ToPNG creates PNG data from the image.
-func (img *Image) ToPNG() ([]byte, error) {
-	return img.encode(PNG, 100)
+// ToPNG creates PNG data from the image. 'compressionLevel' should in the range 0-9 and is equivalent to
+// the zlib compression level. A typical compression level is 6 and is equivalent to the zlib default.
+func (img *Image) ToPNG(compressionLevel int) ([]byte, error) {
+	data := skia.EncodePNG(nil, img.ref().img, compressionLevel)
+	if data == nil {
+		return nil, errs.New("unable to create PNG from image")
+	}
+	buffer := make([]byte, skia.DataGetSize(data))
+	copy(buffer, ((*[1 << 30]byte)(skia.DataGetData(data)))[:len(buffer)])
+	skia.DataUnref(data)
+	return buffer, nil
 }
 
 // ToJPEG creates JPEG data from the image. quality should be greater than 0 and equal to or less than 100.
 func (img *Image) ToJPEG(quality int) ([]byte, error) {
-	return img.encode(JPEG, quality)
+	data := skia.EncodeJPEG(nil, img.ref().img, quality)
+	if data == nil {
+		return nil, errs.New("unable to create JPEG from image")
+	}
+	buffer := make([]byte, skia.DataGetSize(data))
+	copy(buffer, ((*[1 << 30]byte)(skia.DataGetData(data)))[:len(buffer)])
+	skia.DataUnref(data)
+	return buffer, nil
 }
 
 // ToWebp creates Webp data from the image. quality should be greater than 0 and equal to or less than 100.
-func (img *Image) ToWebp(quality int) ([]byte, error) {
-	return img.encode(WEBP, quality)
-}
-
-func (img *Image) encode(format EncodedImageFormat, quality int) ([]byte, error) {
-	if quality < 1 {
-		quality = 1
-	} else if quality > 100 {
-		quality = 100
-	}
-	data := skia.ImageEncodeSpecific(img.ref().img, skia.EncodedImageFormat(format), quality)
+func (img *Image) ToWebp(quality float32, lossy bool) ([]byte, error) {
+	data := skia.EncodeWebp(nil, img.ref().img, quality, lossy)
 	if data == nil {
-		return nil, errs.Newf("unable to create %s from image", format)
+		return nil, errs.New("unable to create WEBP from image")
 	}
 	buffer := make([]byte, skia.DataGetSize(data))
 	copy(buffer, ((*[1 << 30]byte)(skia.DataGetData(data)))[:len(buffer)])
@@ -269,7 +282,7 @@ func (ref *imageRef) contextImg(s *surface) skia.Image {
 		if ctx == nil {
 			i = skia.ImageMakeNonTextureImage(ref.img)
 		} else {
-			i = skia.ImageMakeTextureImage(ref.img, ctx, false)
+			i = skia.ImageTextureFromImage(ctx, ref.img, false, true)
 		}
 		if i != nil {
 			m[ref.hash] = i

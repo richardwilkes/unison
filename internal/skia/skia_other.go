@@ -96,6 +96,10 @@ func ContextDelete(ctx DirectContext) {
 	C.gr_direct_context_delete(ctx)
 }
 
+func ContextFlushAndSubmit(ctx DirectContext, syncCPU bool) {
+	C.gr_direct_context_flush_and_submit(ctx, C.bool(syncCPU))
+}
+
 func ContextResetGLTextureBindings(ctx DirectContext) {
 	C.gr_direct_context_reset_gl_texture_bindings(ctx)
 }
@@ -290,10 +294,6 @@ func CanvasIsClipRect(canvas Canvas) bool {
 	return bool(C.sk_canvas_is_clip_rect(canvas))
 }
 
-func CanvasFlush(canvas Canvas) {
-	C.sk_canvas_flush(canvas)
-}
-
 func ColorFilterNewMode(color Color, blendMode BlendMode) ColorFilter {
 	return C.sk_colorfilter_new_mode(C.sk_color_t(color), C.sk_blend_mode_t(blendMode))
 }
@@ -318,11 +318,6 @@ func ColorFilterNewHighContrast(config *HighContrastConfig) ColorFilter {
 	return C.sk_colorfilter_new_high_contrast((*C.sk_high_contrast_config_t)(unsafe.Pointer(config)))
 }
 
-func ColorFilterNewTableARGB(a, r, g, b []byte) ColorFilter {
-	return C.sk_colorfilter_new_table_argb((*C.uint8_t)(unsafe.Pointer(&a[0])), (*C.uint8_t)(unsafe.Pointer(&r[0])),
-		(*C.uint8_t)(unsafe.Pointer(&g[0])), (*C.uint8_t)(unsafe.Pointer(&b[0])))
-}
-
 func ColorFilterUnref(filter ColorFilter) {
 	C.sk_colorfilter_unref(filter)
 }
@@ -345,6 +340,18 @@ func DataGetData(data Data) unsafe.Pointer {
 
 func DataUnref(data Data) {
 	C.sk_data_unref(data)
+}
+
+func EncodeJPEG(ctx DirectContext, img Image, quality int) Data {
+	return C.sk_encode_jpeg(ctx, img, C.int(quality))
+}
+
+func EncodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
+	return C.sk_encode_png(ctx, img, C.int(compressionLevel))
+}
+
+func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
+	return C.sk_encode_webp(ctx, img, C.float(quality), C.bool(lossy))
 }
 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
@@ -587,8 +594,8 @@ func ImageReadPixels(img Image, info *ImageInfo, pixels []byte, dstRowBytes, src
 		C.size_t(dstRowBytes), C.int(srcX), C.int(srcY), C.sk_image_caching_hint_t(cachingHint)))
 }
 
-func ImageEncodeSpecific(img Image, format EncodedImageFormat, quality int) Data {
-	return C.sk_image_encode_specific(img, C.sk_encoded_image_format_t(format), C.int(quality))
+func ImageMakeNonTextureImage(img Image) Image {
+	return C.sk_image_make_non_texture_image(img)
 }
 
 func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling SamplingOptions, matrix geom.Matrix[float32]) Shader {
@@ -596,12 +603,8 @@ func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling Sampling
 		fromGeomMatrix(&matrix))
 }
 
-func ImageMakeTextureImage(img Image, ctx DirectContext, mipMapped bool) Image {
-	return C.sk_image_make_texture_image(img, ctx, C.bool(mipMapped))
-}
-
-func ImageMakeNonTextureImage(img Image) Image {
-	return C.sk_image_make_non_texture_image(img)
+func ImageTextureFromImage(ctx DirectContext, img Image, mipMapped, budgeted bool) Image {
+	return C.sk_image_texture_from_image(ctx, img, C.bool(mipMapped), C.bool(budgeted))
 }
 
 func ImageUnref(img Image) {
@@ -645,12 +648,12 @@ func ImageFilterNewImageSource(img Image, srcRect, dstRect geom.Rect[float32], s
 	return C.sk_imagefilter_new_image_source(img, fromGeomRect(&srcRect), fromGeomRect(&dstRect), sampling)
 }
 
-func ImageFilterNewImageSourceDefault(img Image) ImageFilter {
-	return C.sk_imagefilter_new_image_source_default(img)
+func ImageFilterNewImageSourceDefault(img Image, sampling SamplingOptions) ImageFilter {
+	return C.sk_imagefilter_new_image_source_default(img, sampling)
 }
 
-func ImageFilterNewMagnifier(src geom.Rect[float32], inset float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
-	return C.sk_imagefilter_new_magnifier(fromGeomRect(&src), C.float(inset), input, fromGeomRect(cropRect))
+func ImageFilterNewMagnifier(lensBounds geom.Rect[float32], zoomAmount, inset float32, sampling SamplingOptions, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+	return C.sk_imagefilter_new_magnifier(fromGeomRect(&lensBounds), C.float(zoomAmount), C.float(inset), sampling, input, fromGeomRect(cropRect))
 }
 
 func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
@@ -1109,6 +1112,10 @@ func PathEffectUnref(effect PathEffect) {
 	C.sk_path_effect_unref(effect)
 }
 
+func RegisterImageCodecs() {
+	C.register_image_codecs()
+}
+
 func ShaderNewColor(color Color) Shader {
 	return C.sk_shader_new_color(C.sk_color_t(color))
 }
@@ -1191,8 +1198,8 @@ func SurfaceMakeRasterDirect(info *ImageInfo, pixels []byte, rowBytes int, surfa
 	return C.sk_surface_make_raster_direct((*C.sk_image_info_t)(unsafe.Pointer(info)), unsafe.Pointer(&pixels[0]), C.size_t(rowBytes), surfaceProps)
 }
 
-func SurfaceMakeRasterN32PreMul(width, height int, surfaceProps SurfaceProps) Surface {
-	return C.sk_surface_make_raster_n32_premul(C.int(width), C.int(height), surfaceProps)
+func SurfaceMakeRasterN32PreMul(info *ImageInfo, surfaceProps SurfaceProps) Surface {
+	return C.sk_surface_make_raster_n32_premul((*C.sk_image_info_t)(unsafe.Pointer(info)), surfaceProps)
 }
 
 func SurfaceNewBackendRenderTarget(ctx DirectContext, backend BackendRenderTarget, origin SurfaceOrigin, colorType ColorType, colorSpace ColorSpace, surfaceProps SurfaceProps) Surface {

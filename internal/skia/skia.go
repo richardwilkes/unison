@@ -96,6 +96,7 @@ const (
 	ColorTypeBGRA1010102
 	ColorTypeRGB101010X
 	ColorTypeBGR101010X
+	ColorTypeBGR101010XXR
 	ColorTypeGray8
 	ColorTypeRGBAF16Norm
 	ColorTypeRGBAF16
@@ -170,8 +171,9 @@ type Matrix struct {
 }
 
 type GLFrameBufferInfo struct {
-	Fboid  uint32
-	Format uint32
+	Fboid     uint32
+	Format    uint32
+	Protected bool
 }
 
 type ImageInfo struct {
