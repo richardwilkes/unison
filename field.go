@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/txt"
 )
 
@@ -57,6 +58,7 @@ func NewDefaultFieldBorder(focused bool) Border {
 
 // FieldTheme holds theming data for a Field.
 type FieldTheme struct {
+	InitialClickSelectsAll func(*Field) bool
 	Font                   Font
 	BackgroundInk          Ink
 	OnBackgroundInk        Ink
@@ -71,7 +73,6 @@ type FieldTheme struct {
 	BlinkRate              time.Duration
 	MinimumTextWidth       float32
 	HAlign                 Alignment
-	InitialClickSelectsAll bool
 }
 
 // Field provides a text input control.
@@ -452,7 +453,7 @@ func (f *Field) DefaultFocusLost() {
 // DefaultMouseDown provides the default mouse down handling.
 func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	f.undoID = NextUndoID()
-	selectAll := f.InitialClickSelectsAll && !f.Focused()
+	wasFocused := f.Focused()
 	f.RequestFocus()
 	if button == ButtonLeft {
 		f.extendByWord = false
@@ -464,6 +465,12 @@ func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 		case 3:
 			f.SelectAll()
 		default:
+			selectAll := false
+			if !wasFocused {
+				if f.InitialClickSelectsAll != nil {
+					toolbox.Call(func() { selectAll = f.InitialClickSelectsAll(f) })
+				}
+			}
 			if selectAll {
 				f.setSelection(0, len(f.runes), f.ToSelectionIndex(where))
 			} else {
