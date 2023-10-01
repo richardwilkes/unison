@@ -57,20 +57,21 @@ func NewDefaultFieldBorder(focused bool) Border {
 
 // FieldTheme holds theming data for a Field.
 type FieldTheme struct {
-	Font             Font
-	BackgroundInk    Ink
-	OnBackgroundInk  Ink
-	EditableInk      Ink
-	OnEditableInk    Ink
-	SelectionInk     Ink
-	OnSelectionInk   Ink
-	ErrorInk         Ink
-	OnErrorInk       Ink
-	FocusedBorder    Border
-	UnfocusedBorder  Border
-	BlinkRate        time.Duration
-	MinimumTextWidth float32
-	HAlign           Alignment
+	Font                   Font
+	BackgroundInk          Ink
+	OnBackgroundInk        Ink
+	EditableInk            Ink
+	OnEditableInk          Ink
+	SelectionInk           Ink
+	OnSelectionInk         Ink
+	ErrorInk               Ink
+	OnErrorInk             Ink
+	FocusedBorder          Border
+	UnfocusedBorder        Border
+	BlinkRate              time.Duration
+	MinimumTextWidth       float32
+	HAlign                 Alignment
+	InitialClickSelectsAll bool
 }
 
 // Field provides a text input control.
@@ -451,6 +452,7 @@ func (f *Field) DefaultFocusLost() {
 // DefaultMouseDown provides the default mouse down handling.
 func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
 	f.undoID = NextUndoID()
+	selectAll := f.InitialClickSelectsAll && !f.Focused()
 	f.RequestFocus()
 	if button == ButtonLeft {
 		f.extendByWord = false
@@ -462,22 +464,26 @@ func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 		case 3:
 			f.SelectAll()
 		default:
-			oldAnchor := f.selectionAnchor
-			f.selectionAnchor = f.ToSelectionIndex(where)
-			var start, end int
-			if mod.ShiftDown() {
-				if oldAnchor > f.selectionAnchor {
-					start = f.selectionAnchor
-					end = oldAnchor
+			if selectAll {
+				f.setSelection(0, len(f.runes), f.ToSelectionIndex(where))
+			} else {
+				oldAnchor := f.selectionAnchor
+				f.selectionAnchor = f.ToSelectionIndex(where)
+				var start, end int
+				if mod.ShiftDown() {
+					if oldAnchor > f.selectionAnchor {
+						start = f.selectionAnchor
+						end = oldAnchor
+					} else {
+						start = oldAnchor
+						end = f.selectionAnchor
+					}
 				} else {
-					start = oldAnchor
+					start = f.selectionAnchor
 					end = f.selectionAnchor
 				}
-			} else {
-				start = f.selectionAnchor
-				end = f.selectionAnchor
+				f.setSelection(start, end, f.selectionAnchor)
 			}
-			f.setSelection(start, end, f.selectionAnchor)
 		}
 		return true
 	}
