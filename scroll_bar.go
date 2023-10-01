@@ -176,7 +176,7 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, _ Rect) {
 // DefaultMouseDown provides the default mouse down handling.
 func (s *ScrollBar) DefaultMouseDown(where Point, _, _ int, _ Modifiers) bool {
 	thumb := s.Thumb()
-	if where.In(thumb) {
+	if !where.In(thumb) {
 		s.dragOffset = 0
 		s.adjustValueForPoint(where)
 		thumb = s.Thumb()
