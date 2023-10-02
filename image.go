@@ -103,6 +103,7 @@ func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
 	scale := float32(ppi) / 72
 	s := &surface{
+		context: skia.ContextMakeGL(defaultSkiaGL()),
 		surface: skia.SurfaceMakeRasterN32PreMul(&skia.ImageInfo{
 			Colorspace: skiaColorspace,
 			Width:      int32(xmath.Ceil(float32(width) * scale)),
