@@ -35,7 +35,7 @@ var All = []Enum{
 }
 
 {{wrapComment (printf "Enum %s." .Desc) 120}}
-type Enum byte
+type Enum {{$info.BaseType}}
 
 // EnsureValid ensures this is of a known value.
 func (e Enum) EnsureValid() Enum {

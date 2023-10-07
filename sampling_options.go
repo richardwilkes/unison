@@ -12,31 +12,14 @@ package unison
 import (
 	"unsafe"
 
+	"github.com/richardwilkes/unison/enums/filtermode"
+	"github.com/richardwilkes/unison/enums/mipmapmode"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // All of the structures and constants in this file must match the equivalents in Skia
 
 var defaultSampling SamplingOptions
-
-// FilterMode holds the type of sampling to be done.
-type FilterMode int32
-
-// Possible values for FilterMode.
-const (
-	FilterModeNearest FilterMode = iota // single sample point (nearest neighbor)
-	FilterModeLinear                    // interporate between 2x2 sample points (bilinear interpolation)
-)
-
-// MipMapMode holds the type of mipmapping to be done.
-type MipMapMode int32
-
-// Possible values for MipMapMode.
-const (
-	MipMapModeNone    MipMapMode = iota // ignore mipmap levels, sample from the "base"
-	MipMapModeNearest                   // sample from the nearest level
-	MipMapModeLinear                    // interpolate between the two nearest levels
-)
 
 // CubicResampler holds the parameters for cubic resampling.
 type CubicResampler struct {
@@ -60,8 +43,8 @@ type SamplingOptions struct {
 	UseCubic       bool
 	_              [3]bool
 	CubicResampler CubicResampler
-	FilterMode     FilterMode
-	MipMapMode     MipMapMode
+	FilterMode     filtermode.Enum
+	MipMapMode     mipmapmode.Enum
 }
 
 func (s *SamplingOptions) skSamplingOptions() skia.SamplingOptions {

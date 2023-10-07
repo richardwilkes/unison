@@ -49,18 +49,20 @@ type enumValue struct {
 }
 
 type enumInfo struct {
-	Pkg    string
-	Name   string
-	Desc   string
-	Values []enumValue
+	Pkg      string
+	Name     string
+	Desc     string
+	BaseType string
+	Values   []enumValue
 }
 
 func main() {
 	removeExistingGenFiles()
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:  "enums/align",
-		Name: "align",
-		Desc: "specifies how to align an object within its available space",
+		Pkg:      "enums/align",
+		Name:     "align",
+		Desc:     "specifies how to align an object within its available space",
+		BaseType: "byte",
 		Values: []enumValue{
 			{Key: "start"},
 			{Key: "middle"},
@@ -69,9 +71,10 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:  "enums/behavior",
-		Name: "behavior",
-		Desc: "controls how auto-sizing of the scroll content's preferred size is handled",
+		Pkg:      "enums/behavior",
+		Name:     "behavior",
+		Desc:     "controls how auto-sizing of the scroll content's preferred size is handled",
+		BaseType: "byte",
 		Values: []enumValue{
 			{Key: "unmodified"},
 			{Key: "fill", Comment: "If the content is smaller than the available space, expand it"},
@@ -80,9 +83,10 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:  "enums/check",
-		Name: "check",
-		Desc: "represents the current state of something like a check box or mark",
+		Pkg:      "enums/check",
+		Name:     "check",
+		Desc:     "represents the current state of something like a check box or mark",
+		BaseType: "byte",
 		Values: []enumValue{
 			{Key: "off"},
 			{Key: "on"},
@@ -90,9 +94,20 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:  "enums/imgfmt",
-		Name: "imgfmt",
-		Desc: "holds the type of encoding an image was stored with",
+		Pkg:      "enums/filtermode",
+		Name:     "filtermode",
+		Desc:     "holds the type of sampling to be done",
+		BaseType: "int32",
+		Values: []enumValue{
+			{Key: "nearest", Comment: "Single sample point (nearest neighbor)"},
+			{Key: "linear", Comment: "Interpolate between 2x2 sample points (bilinear interpolation)"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:      "enums/imgfmt",
+		Name:     "imgfmt",
+		Desc:     "holds the type of encoding an image was stored with",
+		BaseType: "byte",
 		Values: []enumValue{
 			{Key: "unknown"},
 			{Key: "bmp", NoLocalize: true, ForceUpper: true},
@@ -105,14 +120,48 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:  "enums/side",
-		Name: "side",
-		Desc: "specifies which side an object should be on",
+		Pkg:      "enums/invertstyle",
+		Name:     "invertstyle",
+		Desc:     "holds the type of image inversion",
+		BaseType: "byte",
+		Values: []enumValue{
+			{Key: "none"},
+			{Key: "brightness"},
+			{Key: "lightness"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:      "enums/mipmapmode",
+		Name:     "mipmapmode",
+		Desc:     "holds the type of mipmapping to be done",
+		BaseType: "int32",
+		Values: []enumValue{
+			{Key: "none", Comment: "Ignore mipmap levels, sample from the 'base'"},
+			{Key: "nearest", Comment: "Sample from the nearest level"},
+			{Key: "linear", Comment: "Interpolate between the two nearest levels"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:      "enums/side",
+		Name:     "side",
+		Desc:     "specifies which side an object should be on",
+		BaseType: "byte",
 		Values: []enumValue{
 			{Key: "top"},
 			{Key: "left"},
 			{Key: "bottom"},
 			{Key: "right"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:      "enums/thememode",
+		Name:     "thememode",
+		Desc:     "holds the theme display mode",
+		BaseType: "byte",
+		Values: []enumValue{
+			{Key: "auto", String: "Automatic"},
+			{Key: "dark"},
+			{Key: "light"},
 		},
 	})
 }

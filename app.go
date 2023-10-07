@@ -22,6 +22,7 @@ import (
 	"github.com/richardwilkes/toolbox/atexit"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/fatal"
+	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -38,7 +39,7 @@ var (
 	noGlobalMenuBar                   bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
-	currentColorMode                  = AutomaticColorMode
+	currentThemeMode                  = thememode.Auto
 	needPlatformDarkModeUpdate        = true
 	platformDarkModeEnabled           bool
 )
@@ -261,15 +262,15 @@ func IsColorModeTrackingPossible() bool {
 	return platformIsDarkModeTrackingPossible()
 }
 
-// CurrentColorMode returns the current ColorMode state.
-func CurrentColorMode() ColorMode {
-	return currentColorMode
+// CurrentThemeMode returns the current theme mode state.
+func CurrentThemeMode() thememode.Enum {
+	return currentThemeMode
 }
 
-// SetColorMode sets the current ColorMode.
-func SetColorMode(mode ColorMode) {
-	if currentColorMode != mode {
-		currentColorMode = mode
+// SetThemeMode sets the current theme mode state.
+func SetThemeMode(mode thememode.Enum) {
+	if currentThemeMode != mode {
+		currentThemeMode = mode
 		needPlatformDarkModeUpdate = true
 		InvokeTask(ThemeChanged)
 	}
@@ -277,10 +278,10 @@ func SetColorMode(mode ColorMode) {
 
 // IsDarkModeEnabled returns true if the OS is currently using a "dark mode".
 func IsDarkModeEnabled() bool {
-	switch currentColorMode {
-	case LightColorMode:
+	switch currentThemeMode {
+	case thememode.Light:
 		return false
-	case DarkColorMode:
+	case thememode.Dark:
 		return true
 	default:
 		if needPlatformDarkModeUpdate {

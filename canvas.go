@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/filtermode"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -187,7 +188,7 @@ func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect Rect, sampling
 // DrawImageNine draws an image stretched proportionally to fit into dstRect. 'center' divides the image into nine
 // sections: four sides, four corners, and the center. Corners are unmodified or scaled down proportionately if their
 // sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. paint may be nil.
-func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect Rect, filter FilterMode, paint *Paint) {
+func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect Rect, filter filtermode.Enum, paint *Paint) {
 	skia.CanvasDrawImageNine(c.canvas, img.ref().contextImg(c.surface), centerRect, dstRect, skia.FilterMode(filter),
 		paint.paintOrNil())
 }

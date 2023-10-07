@@ -12,17 +12,8 @@ package unison
 import (
 	"runtime"
 
+	"github.com/richardwilkes/unison/enums/invertstyle"
 	"github.com/richardwilkes/unison/internal/skia"
-)
-
-// InvertStyle holds the type inversion.
-type InvertStyle int32
-
-// Possible values for InvertStyle.
-const (
-	NoInvert InvertStyle = iota
-	InvertBrightness
-	InvertLightness
 )
 
 // ColorFilter is called with source colors and return new colors, which are then passed onto the next stage.
@@ -82,7 +73,7 @@ func NewLumaColorFilter() *ColorFilter {
 }
 
 // NewHighContrastColorFilter returns a new high contrast color filter.
-func NewHighContrastColorFilter(contrast float32, style InvertStyle, grayscale bool) *ColorFilter {
+func NewHighContrastColorFilter(contrast float32, style invertstyle.Enum, grayscale bool) *ColorFilter {
 	return newColorFilter(skia.ColorFilterNewHighContrast(&skia.HighContrastConfig{
 		Grayscale:   grayscale,
 		InvertStyle: skia.InvertStyle(style),
