@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/align"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -27,7 +28,7 @@ type stringPopup[T ~string] struct {
 
 func createCapStringPopup[T ~string](parent *unison.Panel, label string) stringPopup[T] {
 	p := stringPopup[T]{colorMode: unison.NewPopupMenu[T]()}
-	p.colorMode.SetLayoutData(&unison.FlexLayoutData{VAlign: unison.MiddleAlignment})
+	p.colorMode.SetLayoutData(&unison.FlexLayoutData{VAlign: align.Middle})
 	parent.AddChild(createLabel(label))
 	parent.AddChild(p.colorMode)
 	return p

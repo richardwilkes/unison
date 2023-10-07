@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/enums/check"
 )
 
 // Pre-defined menu IDs. Apps should start their IDs at UserBaseID.
@@ -188,7 +189,7 @@ func createSelectWindowMenuItem(f MenuFactory, id int, wnd, active *Window) Menu
 		func(_ MenuItem) { wnd.ToFront() },
 	)
 	if active == wnd {
-		mi.SetCheckState(OnCheckState)
+		mi.SetCheckState(check.On)
 	}
 	return mi
 }

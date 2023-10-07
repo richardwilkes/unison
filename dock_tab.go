@@ -11,6 +11,8 @@ package unison
 
 import (
 	"strings"
+
+	"github.com/richardwilkes/unison/enums/align"
 )
 
 // TabCloser defines the methods that must be implemented to cause the tabs to show a close button.
@@ -90,7 +92,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	t.title.LabelTheme = t.LabelTheme
 	t.title.Text = t.fullTitle()
 	t.title.Drawable = t.TitleIcon()
-	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: MiddleAlignment})
+	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: align.Middle})
 	t.AddChild(t.title)
 	if _, ok := t.dockable.(TabCloser); ok {
 		t.button = NewButton()
@@ -101,7 +103,7 @@ func newDockTab(dockable Dockable) *dockTab {
 			SVG:  CircledXSVG,
 			Size: Size{Width: fSize, Height: fSize},
 		}
-		t.button.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment, VAlign: MiddleAlignment})
+		t.button.SetLayoutData(&FlexLayoutData{HAlign: align.End, VAlign: align.Middle})
 		t.AddChild(t.button)
 		t.button.ClickCallback = func() { t.attemptClose() }
 		flex.Columns++

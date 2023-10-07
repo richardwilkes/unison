@@ -13,6 +13,7 @@ import (
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/align"
 )
 
 var aboutWindow *unison.Window
@@ -49,8 +50,8 @@ func ShowAboutWindow(item unison.MenuItem) {
 		title.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
-			HAlign: unison.MiddleAlignment,
-			VAlign: unison.MiddleAlignment,
+			HAlign: align.Middle,
+			VAlign: align.Middle,
 			HGrab:  true,
 		})
 		content.AddChild(title)
@@ -62,8 +63,8 @@ func ShowAboutWindow(item unison.MenuItem) {
 		desc.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
-			HAlign: unison.MiddleAlignment,
-			VAlign: unison.MiddleAlignment,
+			HAlign: align.Middle,
+			VAlign: align.Middle,
 			HGrab:  true,
 		})
 		content.AddChild(desc)
@@ -75,8 +76,8 @@ func ShowAboutWindow(item unison.MenuItem) {
 		desc.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
-			HAlign: unison.MiddleAlignment,
-			VAlign: unison.MiddleAlignment,
+			HAlign: align.Middle,
+			VAlign: align.Middle,
 			HGrab:  true,
 		})
 		content.AddChild(desc)

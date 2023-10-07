@@ -14,6 +14,8 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/side"
 )
 
 var _ MenuItem = &menuItem{}
@@ -43,9 +45,9 @@ type MenuItem interface {
 	// SubMenu returns the menu item's sub-menu, if any.
 	SubMenu() Menu
 	// CheckState returns the menu item's current check state.
-	CheckState() CheckState
+	CheckState() check.Enum
 	// SetCheckState sets the menu item's check state.
-	SetCheckState(s CheckState)
+	SetCheckState(s check.Enum)
 }
 
 // DefaultMenuItemTheme holds the default MenuItemTheme values for menu items. Modifying this data will not alter
@@ -87,7 +89,7 @@ type menuItem struct {
 	validator   func(MenuItem) bool
 	handler     func(MenuItem)
 	keyBinding  KeyBinding
-	state       CheckState
+	state       check.Enum
 	isSeparator bool
 	enabled     bool
 	over        bool
@@ -149,11 +151,11 @@ func (mi *menuItem) SubMenu() Menu {
 	return mi.subMenu
 }
 
-func (mi *menuItem) CheckState() CheckState {
+func (mi *menuItem) CheckState() check.Enum {
 	return mi.state
 }
 
-func (mi *menuItem) SetCheckState(s CheckState) {
+func (mi *menuItem) SetCheckState(s check.Enum) {
 	mi.state = s
 }
 
@@ -249,7 +251,7 @@ func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 	if mi.isSeparator {
 		prefSize.Height = 1
 	} else {
-		prefSize = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, LeftSide, 0)
+		prefSize = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, side.Left, 0)
 		if !mi.isRoot() {
 			prefSize.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
 		}
@@ -297,13 +299,13 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 		}
 		t.Draw(gc, rect.X+shifted, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
 		if mi.subMenu == nil {
-			if !mi.isRoot() && mi.state != OffCheckState {
+			if !mi.isRoot() && mi.state != check.Off {
 				r := rect
 				r.Width = baseline
 				r.Height = baseline
 				r.Y += (rect.Height - baseline) / 2
 				drawable := &DrawableSVG{Size: Size{Width: baseline, Height: baseline}}
-				if mi.state == OnCheckState {
+				if mi.state == check.On {
 					drawable.SVG = CheckmarkSVG
 				} else {
 					drawable.SVG = DashSVG

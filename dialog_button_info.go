@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/enums/align"
 )
 
 // DialogButtonInfo holds information for constructing the dialog button panel.
@@ -28,8 +29,8 @@ func (bi *DialogButtonInfo) NewButton(d *Dialog) *Button {
 	b.SetLayoutData(&FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: FillAlignment,
-		VAlign: MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 	})
 	return b
 }

@@ -9,22 +9,13 @@
 
 package unison
 
+import "github.com/richardwilkes/unison/enums/behavior"
+
 var (
 	_ Layout = &ScrollPanel{}
 	// MouseWheelMultiplier is used by the default theme to multiply incoming mouse wheel event deltas.
 	MouseWheelMultiplier = float32(16)
 )
-
-// Possible ways to handle auto-sizing of the scroll content's preferred size.
-const (
-	UnmodifiedBehavior Behavior = iota
-	FillBehavior                // If the content is smaller than the available space, expand it
-	FollowBehavior              // Fix the content to the view size
-	HintedFillBehavior          // Uses hints to try and fix the content to the view size, but if the resulting content is smaller than the available space, expands it
-)
-
-// Behavior controls how auto-sizing of the scroll content's preferred size is handled.
-type Behavior uint8
 
 // DefaultScrollPanelTheme holds the default ScrollPanelTheme values for ScrollPanels. Modifying this data will not
 // alter existing ScrollPanels, but will alter any ScrollPanels created in the future.
@@ -51,8 +42,8 @@ type ScrollPanel struct {
 	rowHeader        Paneler
 	contentView      *Panel
 	content          Paneler
-	widthBehavior    Behavior
-	heightBehavior   Behavior
+	widthBehavior    behavior.Enum
+	heightBehavior   behavior.Enum
 	syncing          bool
 }
 
@@ -158,7 +149,7 @@ func (s *ScrollPanel) Content() Paneler {
 }
 
 // SetContent sets the content panel.
-func (s *ScrollPanel) SetContent(p Paneler, widthBehavior, heightBehavior Behavior) {
+func (s *ScrollPanel) SetContent(p Paneler, widthBehavior, heightBehavior behavior.Enum) {
 	if s.content != nil {
 		s.content.AsPanel().RemoveFromParent()
 	}
@@ -429,27 +420,27 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	var contentSize Size
 	if s.content != nil {
 		var hint Size
-		if s.widthBehavior == FollowBehavior || s.widthBehavior == HintedFillBehavior {
+		if s.widthBehavior == behavior.Follow || s.widthBehavior == behavior.HintedFill {
 			hint.Width = viewContent.Width
 		}
-		if s.heightBehavior == FollowBehavior || s.heightBehavior == HintedFillBehavior {
+		if s.heightBehavior == behavior.Follow || s.heightBehavior == behavior.HintedFill {
 			hint.Height = viewContent.Height
 		}
 		_, contentSize, _ = s.content.AsPanel().Sizes(hint)
 		switch s.widthBehavior {
-		case FillBehavior, HintedFillBehavior:
+		case behavior.Fill, behavior.HintedFill:
 			if contentSize.Width < viewContent.Width {
 				contentSize.Width = viewContent.Width
 			}
-		case FollowBehavior:
+		case behavior.Follow:
 			contentSize.Width = viewContent.Width
 		}
 		switch s.heightBehavior {
-		case FillBehavior, HintedFillBehavior:
+		case behavior.Fill, behavior.HintedFill:
 			if contentSize.Height < viewContent.Height {
 				contentSize.Height = viewContent.Height
 			}
-		case FollowBehavior:
+		case behavior.Follow:
 			contentSize.Height = viewContent.Height
 		}
 		cr := s.content.AsPanel().FrameRect()

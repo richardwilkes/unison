@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/unison/enums/side"
 )
 
 // TODO: Fix scaling for docks, too
@@ -114,7 +115,7 @@ func (d *DockLayout) Contains(node DockLayoutNode) bool {
 
 // DockTo docks a DockContainer within this DockLayout. If the DockContainer already exists in this DockLayout, it will
 // be moved to the new location.
-func (d *DockLayout) DockTo(dc *DockContainer, target DockLayoutNode, side Side) {
+func (d *DockLayout) DockTo(dc *DockContainer, target DockLayoutNode, side side.Enum) {
 	// Does the container already exist in our hierarchy?
 	if existingLayout := d.FindLayout(dc); existingLayout != nil {
 		// Yes. Is it the same layout?
@@ -148,7 +149,7 @@ func (d *DockLayout) DockTo(dc *DockContainer, target DockLayoutNode, side Side)
 	}
 }
 
-func (d *DockLayout) dockWithin(dc *DockContainer, side Side) {
+func (d *DockLayout) dockWithin(dc *DockContainer, side side.Enum) {
 	p1, p2 := dockOrder(side)
 	if d.nodes[p1] != nil {
 		if d.nodes[p2] == nil {
@@ -178,7 +179,7 @@ func (d *DockLayout) pushDown() *DockLayout {
 	return layout
 }
 
-func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode, side Side) {
+func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode, side side.Enum) {
 	p1, p2 := dockOrder(side)
 	if d.nodes[p1] != nil {
 		if d.nodes[p2] == nil {
@@ -210,8 +211,8 @@ func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode,
 	}
 }
 
-func dockOrder(side Side) (p1, p2 int) {
-	if side == TopSide || side == LeftSide {
+func dockOrder(s side.Enum) (p1, p2 int) {
+	if s == side.Top || s == side.Left {
 		return 0, 1
 	}
 	return 1, 0

@@ -17,6 +17,7 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/unison/enums/align"
 )
 
 type lineEndingType byte
@@ -43,7 +44,7 @@ var DefaultFieldTheme = FieldTheme{
 	UnfocusedBorder:  NewDefaultFieldBorder(false),
 	BlinkRate:        560 * time.Millisecond,
 	MinimumTextWidth: 10,
-	HAlign:           StartAlignment,
+	HAlign:           align.Start,
 }
 
 // NewDefaultFieldBorder creates the default border for a field.
@@ -72,7 +73,7 @@ type FieldTheme struct {
 	UnfocusedBorder        Border
 	BlinkRate              time.Duration
 	MinimumTextWidth       float32
-	HAlign                 Alignment
+	HAlign                 align.Enum
 }
 
 // Field provides a text input control.
@@ -1205,9 +1206,9 @@ func (f *Field) textLeft(text *Text, bounds Rect) float32 {
 func (f *Field) textLeftForWidth(width float32, bounds Rect) float32 {
 	left := bounds.X
 	switch f.HAlign {
-	case MiddleAlignment:
+	case align.Middle:
 		left += (bounds.Width - width) / 2
-	case EndAlignment:
+	case align.End:
 		left += bounds.Width - width - 1 // Inset since we leave space for the cursor
 	default:
 		left++ // Inset since we leave space for the cursor

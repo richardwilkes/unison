@@ -9,6 +9,11 @@
 
 package unison
 
+import (
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/side"
+)
+
 // DefaultTagTheme holds the default TagTheme values for Tags. Modifying this data will not alter existing Tags, but
 // will alter any Tags created in the future.
 var DefaultTagTheme = TagTheme{
@@ -25,9 +30,9 @@ var DefaultTagTheme = TagTheme{
 	SideInset:       3,
 	RadiusX:         6,
 	RadiusY:         6,
-	HAlign:          StartAlignment,
-	VAlign:          MiddleAlignment,
-	Side:            LeftSide,
+	HAlign:          align.Start,
+	VAlign:          align.Middle,
+	Side:            side.Left,
 }
 
 // TagTheme holds theming data for a Tag.
@@ -39,9 +44,9 @@ type TagTheme struct {
 	SideInset       float32
 	RadiusX         float32
 	RadiusY         float32
-	HAlign          Alignment
-	VAlign          Alignment
-	Side            Side
+	HAlign          align.Enum
+	VAlign          align.Enum
+	Side            side.Enum
 	Underline       bool
 	StrikeThrough   bool
 }

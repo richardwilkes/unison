@@ -16,6 +16,8 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/check"
 )
 
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
@@ -135,7 +137,7 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	triWidth := rect.Height * 0.75
 	triHeight := triWidth / 2
 	rect.Width -= triWidth
-	DrawLabel(canvas, rect, StartAlignment, MiddleAlignment, p.textObj(), p.OnBackgroundInk, nil, 0, 0, !p.Enabled())
+	DrawLabel(canvas, rect, align.Start, align.Middle, p.textObj(), p.OnBackgroundInk, nil, 0, 0, !p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()
 	path.MoveTo(rect.Right(), rect.Y+(rect.Height-triHeight)/2)
@@ -212,7 +214,7 @@ func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]
 			}
 		})
 	if p.selection[index] {
-		item.SetCheckState(OnCheckState)
+		item.SetCheckState(check.On)
 	}
 	return item
 }

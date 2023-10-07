@@ -11,6 +11,8 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/side"
 )
 
 // DefaultLabelTheme holds the default LabelTheme values for Labels. Modifying this data will not alter existing Labels,
@@ -19,9 +21,9 @@ var DefaultLabelTheme = LabelTheme{
 	Font:            LabelFont,
 	OnBackgroundInk: OnBackgroundColor,
 	Gap:             3,
-	HAlign:          StartAlignment,
-	VAlign:          MiddleAlignment,
-	Side:            LeftSide,
+	HAlign:          align.Start,
+	VAlign:          align.Middle,
+	Side:            side.Left,
 }
 
 // LabelTheme holds theming data for a Label.
@@ -29,9 +31,9 @@ type LabelTheme struct {
 	Font            Font
 	OnBackgroundInk Ink
 	Gap             float32
-	HAlign          Alignment
-	VAlign          Alignment
-	Side            Side
+	HAlign          align.Enum
+	VAlign          align.Enum
+	Side            side.Enum
 	Underline       bool
 	StrikeThrough   bool
 }
@@ -85,7 +87,7 @@ func (l *Label) DefaultDraw(canvas *Canvas, _ Rect) {
 
 // LabelSize returns the preferred size of a label. Provided as a standalone function so that other types of panels can
 // make use of it.
-func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32) Size {
+func LabelSize(text *Text, drawable Drawable, drawableSide side.Enum, imgGap float32) Size {
 	var size Size
 	hasText := !text.Empty()
 	if hasText {
@@ -96,7 +98,7 @@ func LabelSize(text *Text, drawable Drawable, drawableSide Side, imgGap float32)
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, textInk Ink, drawable Drawable, drawableSide Side, imgGap float32, applyDisabledFilter bool) {
+func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign align.Enum, text *Text, textInk Ink, drawable Drawable, drawableSide side.Enum, imgGap float32, applyDisabledFilter bool) {
 	noText := text.Empty()
 	if drawable == nil && noText {
 		return
@@ -122,18 +124,18 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 
 	// Adjust the working area for the content size
 	switch hAlign {
-	case MiddleAlignment, FillAlignment:
+	case align.Middle, align.Fill:
 		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
-	case EndAlignment:
+	case align.End:
 		rect.X += rect.Width - size.Width
-	default: // StartAlignment
+	default: // align.Start
 	}
 	switch vAlign {
-	case MiddleAlignment, FillAlignment:
+	case align.Middle, align.Fill:
 		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
-	case EndAlignment:
+	case align.End:
 		rect.Y += rect.Height - size.Height
-	default: // StartAlignment
+	default: // align.Start
 	}
 	rect.Size = size
 
@@ -145,21 +147,21 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 	if !noText && drawable != nil {
 		logicalSize := drawable.LogicalSize()
 		switch drawableSide {
-		case TopSide:
+		case side.Top:
 			txtY += logicalSize.Height + imgGap
 			if logicalSize.Width > txtSize.Width {
 				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
 			} else {
 				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
 			}
-		case LeftSide:
+		case side.Left:
 			txtX += logicalSize.Width + imgGap
 			if logicalSize.Height > txtSize.Height {
 				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
 			} else {
 				imgY = xmath.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
 			}
-		case BottomSide:
+		case side.Bottom:
 			imgY += rect.Height - logicalSize.Height
 			txtY = imgY - (imgGap + txtSize.Height)
 			if logicalSize.Width > txtSize.Width {
@@ -167,7 +169,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 			} else {
 				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
 			}
-		case RightSide:
+		case side.Right:
 			imgX += rect.Width - logicalSize.Width
 			txtX = imgX - (imgGap + txtSize.Width)
 			if logicalSize.Height > txtSize.Height {
@@ -192,7 +194,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign Alignment, text *Text, 
 	canvas.Restore()
 }
 
-func adjustLabelSizeForDrawable(hasText bool, drawable Drawable, drawableSide Side, imgGap float32, size *Size) {
+func adjustLabelSizeForDrawable(hasText bool, drawable Drawable, drawableSide side.Enum, imgGap float32, size *Size) {
 	if drawable != nil {
 		logicalSize := drawable.LogicalSize()
 		switch {

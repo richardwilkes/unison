@@ -11,6 +11,8 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/collection/slice"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/behavior"
 )
 
 var _ Menu = &menu{}
@@ -271,8 +273,8 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 		content.AddChild(child)
 		if !forBar {
 			child.SetLayoutData(&FlexLayoutData{
-				HAlign: FillAlignment,
-				VAlign: MiddleAlignment,
+				HAlign: align.Fill,
+				VAlign: align.Middle,
 				HGrab:  true,
 			})
 		}
@@ -343,10 +345,10 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	content.SetLayout(lay)
 	content.Pack()
 	s := NewScrollPanel()
-	s.SetContent(content, FollowBehavior, FillBehavior)
+	s.SetContent(content, behavior.Follow, behavior.Fill)
 	s.SetLayoutData(&FlexLayoutData{
-		HAlign: FillAlignment,
-		VAlign: FillAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Fill,
 		HGrab:  true,
 		VGrab:  true,
 	})

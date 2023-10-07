@@ -18,6 +18,8 @@ import (
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/behavior"
 )
 
 const pathSeparator = string(os.PathSeparator)
@@ -139,8 +141,8 @@ func (d *fileDialog) createContent() *Panel {
 	d.parentDirPopup.SetLayoutData(&FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: MiddleAlignment,
-		VAlign: MiddleAlignment,
+		HAlign: align.Middle,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 
@@ -153,8 +155,8 @@ func (d *fileDialog) createContent() *Panel {
 		d.fileNameField.SetLayoutData(&FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
-			HAlign: FillAlignment,
-			VAlign: MiddleAlignment,
+			HAlign: align.Fill,
+			VAlign: align.Middle,
 			HGrab:  true,
 		})
 	}
@@ -165,14 +167,14 @@ func (d *fileDialog) createContent() *Panel {
 	d.rebuildFileList()
 	d.scroller = NewScrollPanel()
 	d.scroller.SetBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(1), false))
-	d.scroller.SetContent(d.fileList, FollowBehavior, FillBehavior)
+	d.scroller.SetContent(d.fileList, behavior.Follow, behavior.Fill)
 	content.AddChild(d.scroller)
 	d.scroller.SetLayoutData(&FlexLayoutData{
 		MinSize: Size{Width: 300, Height: 200},
 		HSpan:   1,
 		VSpan:   1,
-		HAlign:  FillAlignment,
-		VAlign:  FillAlignment,
+		HAlign:  align.Fill,
+		VAlign:  align.Fill,
 		HGrab:   true,
 		VGrab:   true,
 	})
@@ -193,8 +195,8 @@ func (d *fileDialog) createContent() *Panel {
 		d.filterPopup.SetLayoutData(&FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
-			HAlign: MiddleAlignment,
-			VAlign: MiddleAlignment,
+			HAlign: align.Middle,
+			VAlign: align.Middle,
 			HGrab:  true,
 		})
 	}

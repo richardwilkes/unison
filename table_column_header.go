@@ -9,6 +9,11 @@
 
 package unison
 
+import (
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/side"
+)
+
 // TableColumnHeader defines the methods a table column header must implement.
 type TableColumnHeader[T TableRowConstraint[T]] interface {
 	Paneler
@@ -22,9 +27,9 @@ var DefaultTableColumnHeaderTheme = LabelTheme{
 	Font:            LabelFont,
 	OnBackgroundInk: OnBackgroundColor,
 	Gap:             3,
-	HAlign:          MiddleAlignment,
-	VAlign:          MiddleAlignment,
-	Side:            LeftSide,
+	HAlign:          align.Middle,
+	VAlign:          align.Middle,
+	Side:            side.Left,
 }
 
 // DefaultTableColumnHeader provides a default table column header panel.

@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/side"
 )
 
 // DefaultCheckBoxTheme holds the default CheckBoxTheme values for CheckBoxes. Modifying this data will not alter
@@ -28,9 +31,9 @@ var DefaultCheckBoxTheme = CheckBoxTheme{
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
-	HAlign:             StartAlignment,
-	VAlign:             MiddleAlignment,
-	Side:               LeftSide,
+	HAlign:             align.Start,
+	VAlign:             align.Middle,
+	Side:               side.Left,
 }
 
 // CheckBoxTheme holds theming data for a CheckBox.
@@ -45,9 +48,9 @@ type CheckBoxTheme struct {
 	Gap                float32
 	CornerRadius       float32
 	ClickAnimationTime time.Duration
-	HAlign             Alignment
-	VAlign             Alignment
-	Side               Side
+	HAlign             align.Enum
+	VAlign             align.Enum
+	Side               side.Enum
 }
 
 // CheckBox represents a clickable checkbox with an optional label.
@@ -58,7 +61,7 @@ type CheckBox struct {
 	Drawable      Drawable
 	Text          string
 	cache         TextCache
-	State         CheckState
+	State         check.Enum
 	Pressed       bool
 }
 
@@ -118,18 +121,18 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 	rect := contentRect
 	size := c.boxAndLabelSize()
 	switch c.HAlign {
-	case MiddleAlignment, FillAlignment:
+	case align.Middle, align.Fill:
 		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
-	case EndAlignment:
+	case align.End:
 		rect.X += rect.Width - size.Width
-	default: // StartAlignment
+	default: // align.Start
 	}
 	switch c.VAlign {
-	case MiddleAlignment, FillAlignment:
+	case align.Middle, align.Fill:
 		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
-	case EndAlignment:
+	case align.End:
 		rect.Y += rect.Height - size.Height
-	default: // StartAlignment
+	default: // align.Start
 	}
 	rect.Size = size
 	boxSize := c.boxSize()
@@ -160,7 +163,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 	}
 	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, c.EdgeInk)
 	rect = rect.Inset(NewUniformInsets(0.5))
-	if c.State == OffCheckState {
+	if c.State == check.Off {
 		return
 	}
 	paint := fg.Paint(canvas, contentRect, Stroke)
@@ -168,7 +171,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 	if !c.Enabled() {
 		paint.SetColorFilter(Grayscale30Filter())
 	}
-	if c.State == OnCheckState {
+	if c.State == check.On {
 		path := NewPath()
 		path.MoveTo(rect.X+rect.Width*0.25, rect.Y+rect.Height*0.55)
 		path.LineTo(rect.X+rect.Width*0.45, rect.Y+rect.Height*0.7)
@@ -196,10 +199,10 @@ func (c *CheckBox) Click() {
 }
 
 func (c *CheckBox) updateState() {
-	if c.State == OnCheckState {
-		c.State = OffCheckState
+	if c.State == check.On {
+		c.State = check.Off
 	} else {
-		c.State = OnCheckState
+		c.State = check.On
 	}
 }
 

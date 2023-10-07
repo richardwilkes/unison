@@ -21,38 +21,6 @@ const (
 	StdVSpacing = 4
 )
 
-// Alignment constants.
-const (
-	StartAlignment Alignment = iota
-	MiddleAlignment
-	EndAlignment
-	FillAlignment
-)
-
-// Alignment specifies how to align an object within its available space.
-type Alignment uint8
-
-// Side constants.
-const (
-	TopSide Side = iota
-	LeftSide
-	BottomSide
-	RightSide
-)
-
-// Side specifies which side an object should be on.
-type Side uint8
-
-// Horizontal returns true if the side is to the left or right.
-func (s Side) Horizontal() bool {
-	return s == LeftSide || s == RightSide
-}
-
-// Vertical returns true if the side is to the top or bottom.
-func (s Side) Vertical() bool {
-	return s == TopSide || s == BottomSide
-}
-
 // Sizer returns minimum, preferred, and maximum sizes. The hint will contain
 // values other than zero for a dimension that has already been determined.
 type Sizer func(hint Size) (minSize, prefSize, maxSize Size)

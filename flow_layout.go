@@ -11,6 +11,8 @@ package unison
 
 import (
 	"math"
+
+	"github.com/richardwilkes/unison/enums/align"
 )
 
 var _ Layout = &FlowLayout{}
@@ -184,20 +186,20 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 
 func (f *FlowLayout) applyRects(children []*Panel, rects []Rect, maxHeight float32) {
 	for i, child := range children {
-		vAlign, ok := child.LayoutData().(Alignment)
+		vAlign, ok := child.LayoutData().(align.Enum)
 		if !ok {
-			vAlign = StartAlignment
+			vAlign = align.Start
 		}
 		switch vAlign {
-		case MiddleAlignment:
+		case align.Middle:
 			if rects[i].Height < maxHeight {
 				rects[i].Y += (maxHeight - rects[i].Height) / 2
 			}
-		case EndAlignment:
+		case align.End:
 			rects[i].Y += maxHeight - rects[i].Height
-		case FillAlignment:
+		case align.Fill:
 			rects[i].Height = maxHeight
-		default: // same as StartAlignment
+		default: // same as align.Start
 		}
 		child.SetFrameRect(rects[i])
 	}

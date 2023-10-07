@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/unison/enums/imgfmt"
 )
 
 // WellMask is used to limit the types of ink permitted in the ink well.
@@ -237,7 +238,7 @@ func (w *Well) Click() {
 // DefaultFileDrop provides the default file drop behavior.
 func (w *Well) DefaultFileDrop(files []string) {
 	for _, one := range files {
-		if imageSpec := DistillImageSpecFor(one); imageSpec != "" {
+		if imageSpec := imgfmt.Distill(one); imageSpec != "" {
 			img, err := w.loadImage(imageSpec)
 			if err != nil {
 				errs.Log(err, "spec", imageSpec)

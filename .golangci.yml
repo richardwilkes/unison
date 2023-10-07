@@ -71,4 +71,5 @@ issues:
     - "fieldalignment: struct with \\d+ pointer bytes could be"
     - "G204:"
     - "G304:"
+    - "G306:"
     - "package-comments: should have a package comment"

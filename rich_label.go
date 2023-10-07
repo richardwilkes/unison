@@ -9,25 +9,29 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/xmath"
+import (
+	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/side"
+)
 
 // DefaultRichLabelTheme holds the default RichLabelTheme values for RichLabels. Modifying this data will not alter
 // existing RichLabels, but will alter any RichLabels created in the future.
 var DefaultRichLabelTheme = RichLabelTheme{
 	OnBackgroundInk: OnBackgroundColor,
 	Gap:             3,
-	HAlign:          StartAlignment,
-	VAlign:          MiddleAlignment,
-	Side:            LeftSide,
+	HAlign:          align.Start,
+	VAlign:          align.Middle,
+	Side:            side.Left,
 }
 
 // RichLabelTheme holds theming data for a RichLabel.
 type RichLabelTheme struct {
 	OnBackgroundInk Ink
 	Gap             float32
-	HAlign          Alignment
-	VAlign          Alignment
-	Side            Side
+	HAlign          align.Enum
+	VAlign          align.Enum
+	Side            side.Enum
 }
 
 // RichLabel represents non-interactive text and/or a Drawable.
@@ -79,18 +83,18 @@ func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 	// Adjust the working area for the content size
 	rect := l.ContentRect(false)
 	switch l.HAlign {
-	case MiddleAlignment, FillAlignment:
+	case align.Middle, align.Fill:
 		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
-	case EndAlignment:
+	case align.End:
 		rect.X += rect.Width - size.Width
-	default: // StartAlignment
+	default: // align.Start
 	}
 	switch l.VAlign {
-	case MiddleAlignment, FillAlignment:
+	case align.Middle, align.Fill:
 		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
-	case EndAlignment:
+	case align.End:
 		rect.Y += rect.Height - size.Height
-	default: // StartAlignment
+	default: // align.Start
 	}
 	rect.Size = size
 
@@ -102,21 +106,21 @@ func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 	if l.Text != nil && l.Drawable != nil {
 		logicalSize := l.Drawable.LogicalSize()
 		switch l.Side {
-		case TopSide:
+		case side.Top:
 			txtY += logicalSize.Height + l.Gap
 			if logicalSize.Width > txtSize.Width {
 				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
 			} else {
 				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
 			}
-		case LeftSide:
+		case side.Left:
 			txtX += logicalSize.Width + l.Gap
 			if logicalSize.Height > txtSize.Height {
 				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
 			} else {
 				imgY = xmath.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
 			}
-		case BottomSide:
+		case side.Bottom:
 			imgY += rect.Height - logicalSize.Height
 			txtY = imgY - (l.Gap + txtSize.Height)
 			if logicalSize.Width > txtSize.Width {
@@ -124,7 +128,7 @@ func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 			} else {
 				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
 			}
-		case RightSide:
+		case side.Right:
 			imgX += rect.Width - logicalSize.Width
 			txtX = imgX - (l.Gap + txtSize.Width)
 			if logicalSize.Height > txtSize.Height {

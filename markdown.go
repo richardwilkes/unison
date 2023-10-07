@@ -27,6 +27,7 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/align"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -348,8 +349,8 @@ func (m *Markdown) processThematicBreak() {
 	hr := NewSeparator()
 	hr.SetLayoutData(&FlexLayoutData{
 		HGrab:  true,
-		HAlign: FillAlignment,
-		VAlign: MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 	})
 	m.block.AddChild(hr)
 }
@@ -369,7 +370,7 @@ func (m *Markdown) processCodeBlock() {
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
-		HAlign: FillAlignment,
+		HAlign: align.Fill,
 		HGrab:  true,
 	})
 	p.SetBorder(NewEmptyBorder(NewUniformInsets(m.CodeAndQuotePadding)))
@@ -407,7 +408,7 @@ func (m *Markdown) processBlockquote() {
 		VSpacing: m.VSpacing,
 	})
 	p.SetLayoutData(&FlexLayoutData{
-		HAlign: FillAlignment,
+		HAlign: align.Fill,
 		HGrab:  true,
 	})
 	p.SetBorder(NewCompoundBorder(NewLineBorder(m.QuoteBarColor, 0,
@@ -436,7 +437,7 @@ func (m *Markdown) processList() {
 			HSpacing: m.decoration.Font.SimpleWidth(" "),
 		})
 		p.SetLayoutData(&FlexLayoutData{
-			HAlign: FillAlignment,
+			HAlign: align.Fill,
 			HGrab:  true,
 		})
 		m.block.AddChild(p)
@@ -461,14 +462,14 @@ func (m *Markdown) processListItem() {
 	}
 	label := NewRichLabel()
 	label.Text = NewText(bullet, m.decoration)
-	label.SetLayoutData(&FlexLayoutData{HAlign: EndAlignment})
+	label.SetLayoutData(&FlexLayoutData{HAlign: align.End})
 	m.block.AddChild(label)
 
 	saveBlock := m.block
 	p := NewPanel()
 	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
-		HAlign: FillAlignment,
+		HAlign: align.Fill,
 		HGrab:  true,
 	})
 	m.block.AddChild(p)
@@ -612,23 +613,23 @@ func (m *Markdown) processTableCell() {
 	if cell, ok := m.node.(*astex.TableCell); ok {
 		saveDec := m.decoration
 		saveBlock := m.block
-		align := m.alignment(cell.Alignment)
+		hAlign := m.alignment(cell.Alignment)
 		m.decoration = m.decoration.Clone()
 		if m.isHeader {
 			m.decoration.Font = m.HeadingFont[5]
-			if align != EndAlignment {
-				align = MiddleAlignment
+			if hAlign != align.End {
+				hAlign = align.Middle
 			}
 		}
 		p := NewPanel()
 		p.SetBorder(NewLineBorder(DividerColor, 0, NewUniformInsets(1), false))
 		p.SetLayout(&FlexLayout{
 			Columns: 1,
-			HAlign:  align,
+			HAlign:  hAlign,
 		})
 		p.SetLayoutData(&FlexLayoutData{
-			HAlign: FillAlignment,
-			VAlign: FillAlignment,
+			HAlign: align.Fill,
+			VAlign: align.Fill,
 			VGrab:  true,
 		})
 		m.block.AddChild(p)
@@ -637,10 +638,10 @@ func (m *Markdown) processTableCell() {
 		inner.SetBorder(NewEmptyBorder(StdInsets()))
 		inner.SetLayout(&FlexLayout{
 			Columns: 1,
-			HAlign:  align,
+			HAlign:  hAlign,
 		})
 		inner.SetLayoutData(&FlexLayoutData{
-			HAlign: align,
+			HAlign: hAlign,
 		})
 		p.AddChild(inner)
 
@@ -660,16 +661,16 @@ func (m *Markdown) processTableCell() {
 	}
 }
 
-func (m *Markdown) alignment(alignment astex.Alignment) Alignment {
+func (m *Markdown) alignment(alignment astex.Alignment) align.Enum {
 	switch alignment {
 	case astex.AlignLeft:
-		return StartAlignment
+		return align.Start
 	case astex.AlignRight:
-		return EndAlignment
+		return align.End
 	case astex.AlignCenter:
-		return MiddleAlignment
+		return align.Middle
 	default:
-		return StartAlignment
+		return align.Start
 	}
 }
 
@@ -913,7 +914,7 @@ func (m *Markdown) addToTextRow(p Paneler) {
 		m.textRow = NewPanel()
 		m.textRow.SetLayout(&FlowLayout{})
 		m.textRow.SetLayoutData(&FlexLayoutData{
-			HAlign: FillAlignment,
+			HAlign: align.Fill,
 			HGrab:  true,
 		})
 		m.block.AddChild(m.textRow)

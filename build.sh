@@ -29,6 +29,10 @@ do
   esac
 done
 
+# Generate the source
+echo -e "\033[32mGenerating...\033[0m"
+go generate ./gen/enumgen.go
+
 # Build the Go code
 echo -e "\033[33mBuilding Go code...\033[0m"
 go build -v ./...

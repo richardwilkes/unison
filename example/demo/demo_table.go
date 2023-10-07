@@ -14,6 +14,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/behavior"
 )
 
 const topLevelRowsToMake = 100
@@ -100,18 +102,18 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 		unison.NewTableColumnHeader[*demoRow]("xyz", ""),
 	)
 	header.SetLayoutData(&unison.FlexLayoutData{
-		HAlign: unison.FillAlignment,
-		VAlign: unison.FillAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Fill,
 		HGrab:  true,
 	})
 	content.AddChild(header)
 
 	// Create a scroll panel and place a table panel inside it
 	scrollArea := unison.NewScrollPanel()
-	scrollArea.SetContent(table, unison.FillBehavior, unison.FillBehavior)
+	scrollArea.SetContent(table, behavior.Fill, behavior.Fill)
 	scrollArea.SetLayoutData(&unison.FlexLayoutData{
-		HAlign: unison.FillAlignment,
-		VAlign: unison.FillAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Fill,
 		HGrab:  true,
 		VGrab:  true,
 	})

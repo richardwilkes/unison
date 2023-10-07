@@ -17,6 +17,9 @@ import (
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/check"
 )
 
 var windowCounter int
@@ -47,7 +50,7 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		VAlign: unison.MiddleAlignment,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
@@ -57,7 +60,7 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		VAlign: unison.MiddleAlignment,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
@@ -67,7 +70,7 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		VAlign: unison.MiddleAlignment,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
@@ -79,7 +82,7 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		VAlign: unison.MiddleAlignment,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
@@ -91,8 +94,8 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
@@ -104,7 +107,7 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		VAlign: unison.MiddleAlignment,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
@@ -116,8 +119,8 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
@@ -132,19 +135,19 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		VAlign: unison.MiddleAlignment,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	content.AddChild(panel)
 
 	// Create a scroll panel and place the image panel inside it
 	scrollArea := unison.NewScrollPanel()
-	scrollArea.SetContent(imgPanel, unison.UnmodifiedBehavior, unison.UnmodifiedBehavior)
+	scrollArea.SetContent(imgPanel, behavior.Unmodified, behavior.Unmodified)
 	scrollArea.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.FillAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Fill,
 		HGrab:  true,
 		VGrab:  true,
 	})
@@ -207,7 +210,7 @@ func createButton(title string, panel *unison.Panel) *unison.Button {
 	btn.Text = title
 	btn.ClickCallback = func() { slog.Info(title) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", title))
-	btn.SetLayoutData(unison.MiddleAlignment)
+	btn.SetLayoutData(align.Middle)
 	panel.AddChild(btn)
 	return btn
 }
@@ -269,7 +272,7 @@ func createImageButton(img *unison.Image, actionText string, panel *unison.Panel
 	btn.Drawable = img
 	btn.ClickCallback = func() { slog.Info(actionText) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", actionText))
-	btn.SetLayoutData(unison.MiddleAlignment)
+	btn.SetLayoutData(align.Middle)
 	panel.AddChild(btn)
 	return btn
 }
@@ -279,8 +282,8 @@ func addSeparator(parent *unison.Panel) {
 	sep.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 	})
 	parent.AddChild(sep)
 }
@@ -292,23 +295,23 @@ func createCheckBoxPanel() *unison.Panel {
 		HSpacing: unison.StdHSpacing,
 		VSpacing: unison.StdVSpacing,
 	})
-	createCheckBox("Initially Off", unison.OffCheckState, panel)
-	createCheckBox("Initially On", unison.OnCheckState, panel)
-	createCheckBox("Initially Mixed", unison.MixedCheckState, panel)
-	createCheckBox("Disabled", unison.OffCheckState, panel).SetEnabled(false)
-	createCheckBox("Disabled w/Check", unison.OnCheckState, panel).SetEnabled(false)
-	createCheckBox("Disabled w/Mixed", unison.MixedCheckState, panel).SetEnabled(false)
+	createCheckBox("Initially Off", check.Off, panel)
+	createCheckBox("Initially On", check.On, panel)
+	createCheckBox("Initially Mixed", check.Mixed, panel)
+	createCheckBox("Disabled", check.Off, panel).SetEnabled(false)
+	createCheckBox("Disabled w/Check", check.On, panel).SetEnabled(false)
+	createCheckBox("Disabled w/Mixed", check.Mixed, panel).SetEnabled(false)
 	return panel
 }
 
-func createCheckBox(title string, initialState unison.CheckState, panel *unison.Panel) *unison.CheckBox {
-	check := unison.NewCheckBox()
-	check.Text = title
-	check.State = initialState
-	check.ClickCallback = func() { slog.Info("checkbox clicked", "title", title) }
-	check.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for '%s'", title))
-	panel.AddChild(check)
-	return check
+func createCheckBox(title string, initialState check.Enum, panel *unison.Panel) *unison.CheckBox {
+	cb := unison.NewCheckBox()
+	cb.Text = title
+	cb.State = initialState
+	cb.ClickCallback = func() { slog.Info("checkbox clicked", "title", title) }
+	cb.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for '%s'", title))
+	panel.AddChild(cb)
+	return cb
 }
 
 func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
@@ -318,7 +321,7 @@ func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 		Columns:      2,
 		HSpacing:     10,
 		VSpacing:     unison.StdVSpacing,
-		VAlign:       unison.MiddleAlignment,
+		VAlign:       align.Middle,
 		EqualColumns: true,
 	})
 
@@ -328,8 +331,8 @@ func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 	progress.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 
@@ -418,8 +421,8 @@ func createFieldsAndListPanel() *unison.Panel {
 	textFieldsPanel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	wrapper.AddChild(textFieldsPanel)
@@ -443,7 +446,7 @@ func createTextFieldsPanel() *unison.Panel {
 	field.Watermark = "Password Field"
 	field.ObscurementRune = '●'
 	field = createTextField("Field 4:", "", panel)
-	field.HAlign = unison.EndAlignment
+	field.HAlign = align.End
 	field.Watermark = "Enter only numbers"
 	field.ValidateCallback = func() bool {
 		for _, r := range field.Text() {
@@ -460,12 +463,12 @@ func createTextFieldsPanel() *unison.Panel {
 func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {
 	lbl := unison.NewLabel()
 	lbl.Text = labelText
-	lbl.HAlign = unison.EndAlignment
+	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.EndAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.End,
+		VAlign: align.Middle,
 	})
 	panel.AddChild(lbl)
 	field := unison.NewField()
@@ -473,8 +476,8 @@ func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.F
 	field.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	field.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for %v", field))
@@ -485,12 +488,12 @@ func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.F
 func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {
 	lbl := unison.NewLabel()
 	lbl.Text = labelText
-	lbl.HAlign = unison.EndAlignment
+	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.EndAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.End,
+		VAlign: align.Middle,
 	})
 	panel.AddChild(lbl)
 	field := unison.NewMultiLineField()
@@ -498,8 +501,8 @@ func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) 
 	field.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.MiddleAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 		HGrab:  true,
 	})
 	field.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for %v", field))
@@ -542,12 +545,12 @@ func createListPanel() *unison.Panel {
 	lst.SetFrameRect(unison.Rect{Size: prefSize})
 	scroller := unison.NewScrollPanel()
 	scroller.SetBorder(unison.NewLineBorder(unison.ControlEdgeColor, 0, unison.NewUniformInsets(1), false))
-	scroller.SetContent(lst, unison.FillBehavior, unison.FillBehavior)
+	scroller.SetContent(lst, behavior.Fill, behavior.Fill)
 	scroller.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
-		HAlign: unison.FillAlignment,
-		VAlign: unison.FillAlignment,
+		HAlign: align.Fill,
+		VAlign: align.Fill,
 		HGrab:  true,
 		VGrab:  true,
 	})
