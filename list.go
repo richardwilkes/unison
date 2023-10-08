@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
@@ -238,7 +239,7 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
 			r := Rect{Point: Point{X: rect.X, Y: cellRect.Y}, Size: Size{Width: rect.Width, Height: cellRect.Height}}
-			canvas.DrawRect(r, bg.Paint(canvas, r, Fill))
+			canvas.DrawRect(r, bg.Paint(canvas, r, paintstyle.Fill))
 			canvas.Save()
 			tl := cellRect.Point
 			dirty.Point = dirty.Point.Sub(tl)

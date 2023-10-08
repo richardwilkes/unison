@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 // TabCloser defines the methods that must be implemented to cause the tabs to show a close button.
@@ -176,8 +177,8 @@ func (t *dockTab) draw(gc *Canvas, _ Rect) {
 	p.CubicTo(rightCornerStart, 1, right, 1, right, 7)
 	p.LineTo(right, r.Height)
 	p.Close()
-	gc.DrawPath(p, bg.Paint(gc, r, Fill))
-	gc.DrawPath(p, t.EdgeInk.Paint(gc, r, Stroke))
+	gc.DrawPath(p, bg.Paint(gc, r, paintstyle.Fill))
+	gc.DrawPath(p, t.EdgeInk.Paint(gc, r, paintstyle.Stroke))
 }
 
 func (t *dockTab) attemptClose() bool {

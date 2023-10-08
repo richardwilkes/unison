@@ -87,17 +87,6 @@ type internalFont struct {
 	faces  []*FontFace
 }
 
-// FontHinting holds the type of font hinting to use.
-type FontHinting byte
-
-// Possible values for FontHinting.
-const (
-	FontHintingNone FontHinting = iota
-	FontHintingSlight
-	FontHintingNormal
-	FontHintingFull
-)
-
 // FontMetrics flags
 const (
 	UnderlineThicknessIsValidFontMetricsFlag = 1 << iota

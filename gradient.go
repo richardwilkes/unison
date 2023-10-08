@@ -11,6 +11,9 @@ package unison
 
 import (
 	"fmt"
+
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/tilemode"
 )
 
 var _ Ink = &Gradient{}
@@ -83,7 +86,7 @@ func NewEvenlySpacedGradient(start, end Point, startRadius, endRadius float32, c
 }
 
 // Paint returns a Paint for this Gradient.
-func (g *Gradient) Paint(_ *Canvas, rect Rect, style PaintStyle) *Paint {
+func (g *Gradient) Paint(_ *Canvas, rect Rect, style paintstyle.Enum) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	paint.SetColor(Black)
@@ -103,11 +106,10 @@ func (g *Gradient) Paint(_ *Canvas, rect Rect, style PaintStyle) *Paint {
 	}
 	var shader *Shader
 	if g.StartRadius > 0 && g.EndRadius > 0 {
-		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, colors, colorPos, TileModeClamp,
+		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, colors, colorPos, tilemode.Clamp,
 			NewIdentityMatrix())
 	} else {
-		shader = NewLinearGradientShader(start, end, colors, colorPos, TileModeClamp,
-			NewIdentityMatrix())
+		shader = NewLinearGradientShader(start, end, colors, colorPos, tilemode.Clamp, NewIdentityMatrix())
 	}
 	paint.SetShader(shader)
 	return paint

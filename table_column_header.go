@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -93,7 +94,7 @@ func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 		r.X = r.Right() + h.LabelTheme.Gap
 		r.Y += (r.Height - size.Height) / 2
 		r.Size = size
-		paint := h.OnBackgroundInk.Paint(canvas, r, Fill)
+		paint := h.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)
 		if !h.Enabled() {
 			paint.SetColorFilter(Grayscale30Filter())
 		}

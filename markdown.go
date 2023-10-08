@@ -28,6 +28,7 @@ import (
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/weight"
 	"github.com/yuin/goldmark"
@@ -368,7 +369,7 @@ func (m *Markdown) processCodeBlock() {
 
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect Rect) {
-		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, Fill))
+		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, paintstyle.Fill))
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
@@ -403,7 +404,7 @@ func (m *Markdown) processBlockquote() {
 
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect Rect) {
-		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, Fill))
+		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, paintstyle.Fill))
 	}
 	p.SetLayout(&FlexLayout{
 		Columns:  1,

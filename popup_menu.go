@@ -18,6 +18,7 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/slant"
 )
 
@@ -145,7 +146,7 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	path.LineTo(rect.Right()-triWidth, rect.Y+(rect.Height-triHeight)/2)
 	path.LineTo(rect.Right()-triWidth/2, rect.Y+(rect.Height-triHeight)/2+triHeight)
 	path.Close()
-	paint := p.OnBackgroundInk.Paint(canvas, rect, Fill)
+	paint := p.OnBackgroundInk.Paint(canvas, rect, paintstyle.Fill)
 	if !p.Enabled() {
 		paint.SetColorFilter(Grayscale30Filter())
 	}

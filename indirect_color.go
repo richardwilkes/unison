@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/unison/enums/paintstyle"
+
 var _ ColorProvider = &IndirectColor{}
 
 // IndirectColor holds a color that references another color.
@@ -17,7 +19,7 @@ type IndirectColor struct {
 }
 
 // Paint returns a Paint for this IndirectColor. Here to satisfy the Ink interface.
-func (c *IndirectColor) Paint(canvas *Canvas, rect Rect, style PaintStyle) *Paint {
+func (c *IndirectColor) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint {
 	return c.Target.Paint(canvas, rect, style)
 }
 

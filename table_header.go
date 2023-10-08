@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
@@ -136,7 +137,7 @@ func (h *TableHeader[T]) combinedInsets() Insets {
 
 // DefaultDraw provides the default drawing.
 func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
-	canvas.DrawRect(dirty, h.BackgroundInk.Paint(canvas, dirty, Fill))
+	canvas.DrawRect(dirty, h.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill))
 
 	var firstCol int
 	insets := h.combinedInsets()
@@ -159,7 +160,7 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(h.table.Columns)-1; c++ {
 			rect.X += h.table.Columns[c].Current
-			canvas.DrawRect(rect, h.InteriorDividerColor.Paint(canvas, rect, Fill))
+			canvas.DrawRect(rect, h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill))
 			rect.X++
 		}
 	}

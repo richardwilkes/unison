@@ -12,6 +12,8 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/pathop"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -140,7 +142,7 @@ func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 	}
 
 	canvas.Save()
-	canvas.ClipRect(rect, IntersectClipOp, false)
+	canvas.ClipRect(rect, pathop.Intersect, false)
 	if l.Drawable != nil {
 		rect.X = imgX
 		rect.Y = imgY
@@ -152,7 +154,7 @@ func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 				ColorFilter: Grayscale30Filter(),
 			}
 		}
-		l.Drawable.DrawInRect(canvas, rect, nil, fg.Paint(canvas, rect, Fill))
+		l.Drawable.DrawInRect(canvas, rect, nil, fg.Paint(canvas, rect, paintstyle.Fill))
 	}
 	if l.Text != nil {
 		if l.Enabled() {

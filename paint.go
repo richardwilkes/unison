@@ -12,85 +12,11 @@ package unison
 import (
 	"runtime"
 
+	"github.com/richardwilkes/unison/enums/blendmode"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/strokecap"
+	"github.com/richardwilkes/unison/enums/strokejoin"
 	"github.com/richardwilkes/unison/internal/skia"
-)
-
-// PaintStyle holds the type of painting to do.
-type PaintStyle byte
-
-// Possible values for PaintStyle.
-const (
-	Fill PaintStyle = iota
-	Stroke
-	StrokeAndFill
-)
-
-// StrokeCap holds the style for rendering the endpoint of a stroked line.
-type StrokeCap byte
-
-// Possible values for StrokeCap.
-const (
-	ButtCap StrokeCap = iota
-	RoundCap
-	SquareCap
-)
-
-// StrokeJoin holds the method for drawing the junction between connected line segments.
-type StrokeJoin byte
-
-// Possible values for StrokeJoin.
-const (
-	MiterJoin StrokeJoin = iota
-	RoundJoin
-	BevelJoin
-)
-
-// BlendMode holds the mode used for blending pixels.
-type BlendMode byte
-
-// Possible values for BlendMode.
-const (
-	ClearBlendMode BlendMode = iota
-	SrcBlendMode
-	DstBlendMode
-	SrcOverBlendMode
-	DstOverBlendMode
-	SrcInBlendMode
-	DstInBlendMode
-	SrcOutBlendMode
-	DstOutBlendMode
-	SrcAtopBlendMode
-	DstAtopBlendMode
-	XorBlendMode
-	PlusBlendMode
-	ModulateBlendMode
-	ScreenBlendMode
-	OverlayBlendMode
-	DarkenBlendMode
-	LightenBlendMode
-	ColorDodgeBlendMode
-	ColorBurnBlendMode
-	HardLightBlendMode
-	SoftLightBlendMode
-	DifferenceBlendMode
-	ExclusionBlendMode
-	MultiplyBlendMode
-	HueBlendMode
-	SaturationBlendMode
-	ColorBlendMode
-	LuminosityBlendMode
-)
-
-// FilterQuality holds the image filtering level. Lower settings draw faster, while higher settings look better when the
-// image is scaled.
-type FilterQuality byte
-
-// Possible values for FilterQuality.
-const (
-	NoQuality FilterQuality = iota
-	LowQuality
-	MediumQuality
-	HighQuality
 )
 
 // Paint controls options applied when drawing.
@@ -174,12 +100,12 @@ func (p *Paint) SetColor(color Color) {
 }
 
 // Style returns the current PaintStyle.
-func (p *Paint) Style() PaintStyle {
-	return PaintStyle(skia.PaintGetStyle(p.paint))
+func (p *Paint) Style() paintstyle.Enum {
+	return paintstyle.Enum(skia.PaintGetStyle(p.paint))
 }
 
 // SetStyle sets the PaintStyle.
-func (p *Paint) SetStyle(style PaintStyle) {
+func (p *Paint) SetStyle(style paintstyle.Enum) {
 	skia.PaintSetStyle(p.paint, skia.PaintStyle(style))
 }
 
@@ -204,32 +130,32 @@ func (p *Paint) SetStrokeMiter(miter float32) {
 }
 
 // StrokeCap returns the current StrokeCap.
-func (p *Paint) StrokeCap() StrokeCap {
-	return StrokeCap(skia.PaintGetStrokeCap(p.paint))
+func (p *Paint) StrokeCap() strokecap.Enum {
+	return strokecap.Enum(skia.PaintGetStrokeCap(p.paint))
 }
 
 // SetStrokeCap sets the StrokeCap.
-func (p *Paint) SetStrokeCap(strokeCap StrokeCap) {
+func (p *Paint) SetStrokeCap(strokeCap strokecap.Enum) {
 	skia.PaintSetStrokeCap(p.paint, skia.StrokeCap(strokeCap))
 }
 
 // StrokeJoin returns the current StrokeJoin.
-func (p *Paint) StrokeJoin() StrokeJoin {
-	return StrokeJoin(skia.PaintGetStrokeJoin(p.paint))
+func (p *Paint) StrokeJoin() strokejoin.Enum {
+	return strokejoin.Enum(skia.PaintGetStrokeJoin(p.paint))
 }
 
 // SetStrokeJoin sets the StrokeJoin.
-func (p *Paint) SetStrokeJoin(strokeJoin StrokeJoin) {
+func (p *Paint) SetStrokeJoin(strokeJoin strokejoin.Enum) {
 	skia.PaintSetStrokeJoin(p.paint, skia.StrokeJoin(strokeJoin))
 }
 
 // BlendMode returns the current BlendMode.
-func (p *Paint) BlendMode() BlendMode {
-	return BlendMode(skia.PaintGetBlendMode(p.paint))
+func (p *Paint) BlendMode() blendmode.Enum {
+	return blendmode.Enum(skia.PaintGetBlendMode(p.paint))
 }
 
 // SetBlendMode sets the BlendMode.
-func (p *Paint) SetBlendMode(blendMode BlendMode) {
+func (p *Paint) SetBlendMode(blendMode blendmode.Enum) {
 	skia.PaintSetBlendMode(p.paint, skia.BlendMode(blendMode))
 }
 

@@ -56,7 +56,7 @@ func (e Enum) Key() string {
 	case Follow:
 		return "follow"
 	case HintedFill:
-		return "hinted_fill"
+		return "hinted-fill"
 	default:
 		return Unmodified.Key()
 	}
@@ -72,7 +72,7 @@ func (e Enum) String() string {
 	case Follow:
 		return i18n.Text("Follow")
 	case HintedFill:
-		return i18n.Text("Hinted Fill")
+		return i18n.Text("Hinted-Fill")
 	default:
 		return Unmodified.String()
 	}

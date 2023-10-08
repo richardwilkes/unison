@@ -13,6 +13,7 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 // TableDrop provides default support for dropping data into a table. This should only be instantiated by a call to
@@ -40,7 +41,7 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect Rect) {
 	}
 	if d.inDragOver {
 		r := d.Table.ContentRect(false).Inset(NewUniformInsets(1))
-		paint := DropAreaColor.Paint(gc, r, Stroke)
+		paint := DropAreaColor.Paint(gc, r, paintstyle.Stroke)
 		paint.SetStrokeWidth(2)
 		paint.SetColorFilter(Alpha30Filter())
 		gc.DrawRect(r, paint)

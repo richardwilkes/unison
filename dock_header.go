@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 var _ Layout = &dockHeader{}
@@ -74,7 +75,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 }
 
 func (d *dockHeader) DefaultDraw(gc *Canvas, rect Rect) {
-	gc.DrawRect(rect, d.BackgroundInk.Paint(gc, rect, Fill))
+	gc.DrawRect(rect, d.BackgroundInk.Paint(gc, rect, paintstyle.Fill))
 	if d.dragInsertIndex >= 0 {
 		r := d.ContentRect(false)
 		r.Width = d.TabInsertSize
@@ -85,7 +86,7 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect Rect) {
 		default:
 			r.X = tabs[len(tabs)-1].FrameRect().Right()
 		}
-		gc.DrawRect(r, d.DropAreaInk.Paint(gc, rect, Fill))
+		gc.DrawRect(r, d.DropAreaInk.Paint(gc, rect, paintstyle.Fill))
 	}
 }
 

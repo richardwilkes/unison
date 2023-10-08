@@ -14,7 +14,10 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/pathop"
 )
 
 // WellMask is used to limit the types of ink permitted in the ink well.
@@ -163,19 +166,19 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ Rect) {
 		canvas.Save()
 		path := NewPath()
 		path.RoundedRect(r, radius, radius)
-		canvas.ClipPath(path, IntersectClipOp, true)
+		canvas.ClipPath(path, pathop.Intersect, true)
 		canvas.DrawImageInRect(pattern.Image, r, nil, nil)
 		canvas.Restore()
 	} else {
-		canvas.DrawRoundedRect(r, radius, radius, w.ink.Paint(canvas, r, Fill))
+		canvas.DrawRoundedRect(r, radius, radius, w.ink.Paint(canvas, r, paintstyle.Fill))
 	}
 	if !w.Enabled() {
-		p := Black.Paint(canvas, r, Stroke)
-		p.SetBlendMode(XorBlendMode)
+		p := Black.Paint(canvas, r, paintstyle.Stroke)
+		p.SetBlendMode(blendmode.Xor)
 		canvas.DrawLine(r.X+1, r.Y+1, r.Right()-1, r.Bottom()-1, p)
 		canvas.DrawLine(r.X+1, r.Bottom()-1, r.Right()-1, r.Y+1, p)
 	}
-	canvas.DrawRoundedRect(r, radius, radius, w.EdgeInk.Paint(canvas, r, Stroke))
+	canvas.DrawRoundedRect(r, radius, radius, w.EdgeInk.Paint(canvas, r, paintstyle.Stroke))
 }
 
 // DefaultMouseDown provides the default mouse down handling.

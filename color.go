@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 var (
@@ -262,7 +263,7 @@ func extractColorPercentage(buffer string) (float32, error) {
 }
 
 // Paint returns a Paint for this Color. Here to satisfy the Ink interface.
-func (c Color) Paint(_ *Canvas, _ Rect, style PaintStyle) *Paint {
+func (c Color) Paint(_ *Canvas, _ Rect, style paintstyle.Enum) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	paint.SetColor(c)

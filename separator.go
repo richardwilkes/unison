@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/unison/enums/paintstyle"
+
 // DefaultSeparatorTheme holds the default SeparatorTheme values for Separators. Modifying this data will not alter
 // existing Separators, but will alter any Separators created in the future.
 var DefaultSeparatorTheme = SeparatorTheme{
@@ -83,5 +85,5 @@ func (s *Separator) DefaultDraw(canvas *Canvas, _ Rect) {
 		rect.Y += (rect.Height - 1) / 2
 		rect.Height = 1
 	}
-	canvas.DrawRect(rect, s.LineInk.Paint(canvas, rect, Fill))
+	canvas.DrawRect(rect, s.LineInk.Paint(canvas, rect, paintstyle.Fill))
 }

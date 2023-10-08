@@ -12,6 +12,7 @@ package unison
 import (
 	"runtime"
 
+	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/invertstyle"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -42,7 +43,7 @@ func (f *ColorFilter) filterOrNil() skia.ColorFilter {
 }
 
 // NewBlendColorFilter returns a new blend color filter.
-func NewBlendColorFilter(color Color, blendMode BlendMode) *ColorFilter {
+func NewBlendColorFilter(color Color, blendMode blendmode.Enum) *ColorFilter {
 	return newColorFilter(skia.ColorFilterNewMode(skia.Color(color), skia.BlendMode(blendMode)))
 }
 

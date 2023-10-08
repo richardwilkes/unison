@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/unison/enums/paintstyle"
+
 // TextDecoration holds the decorations that can be applied to text when drawn.
 type TextDecoration struct {
 	Font           Font
@@ -45,10 +47,10 @@ func (d *TextDecoration) Clone() *TextDecoration {
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
 	r := Rect{Point: Point{X: x, Y: y - d.Font.Baseline()}, Size: Size{Width: width, Height: d.Font.LineHeight()}}
 	if d.Background != nil {
-		canvas.DrawRect(r, d.Background.Paint(canvas, r, Fill))
+		canvas.DrawRect(r, d.Background.Paint(canvas, r, paintstyle.Fill))
 	}
 	y += d.BaselineOffset
-	paint := d.Foreground.Paint(canvas, r, Fill)
+	paint := d.Foreground.Paint(canvas, r, paintstyle.Fill)
 	canvas.DrawSimpleString(text, x, y, d.Font, paint)
 	if d.Underline || d.StrikeThrough {
 		y++

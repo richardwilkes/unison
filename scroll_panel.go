@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/unison/enums/behavior"
+import (
+	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+)
 
 var (
 	_ Layout = &ScrollPanel{}
@@ -187,7 +190,7 @@ func (s *ScrollPanel) SetPosition(h, v float32) {
 // DefaultDraw provides the default drawing.
 func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ Rect) {
 	r := s.ContentRect(true)
-	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, Fill))
+	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 }
 
 // Sync the headers and content with the current scroll state.

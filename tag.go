@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -97,7 +98,7 @@ func (t *Tag) DefaultDraw(canvas *Canvas, _ Rect) {
 		})
 	}
 	r := t.ContentRect(false)
-	canvas.DrawRoundedRect(r, t.RadiusX, t.RadiusY, t.BackgroundInk.Paint(canvas, r, Fill))
+	canvas.DrawRoundedRect(r, t.RadiusX, t.RadiusY, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	r.X += t.SideInset
 	r.Width -= t.SideInset * 2
 	DrawLabel(canvas, r, t.HAlign, t.VAlign, txt, t.OnBackgroundInk, t.Drawable, t.Side, t.Gap, !t.Enabled())

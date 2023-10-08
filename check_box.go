@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -166,7 +167,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 	if c.State == check.Off {
 		return
 	}
-	paint := fg.Paint(canvas, contentRect, Stroke)
+	paint := fg.Paint(canvas, contentRect, paintstyle.Stroke)
 	paint.SetStrokeWidth(2)
 	if !c.Enabled() {
 		paint.SetColorFilter(Grayscale30Filter())

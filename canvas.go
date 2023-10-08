@@ -11,27 +11,12 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/blendmode"
+	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/filtermode"
+	"github.com/richardwilkes/unison/enums/pathop"
+	"github.com/richardwilkes/unison/enums/pointmode"
 	"github.com/richardwilkes/unison/internal/skia"
-)
-
-// PointMode controls how DrawPoints() renders the points passed to it.
-type PointMode byte
-
-// Possible values for PointMode.
-const (
-	PointsPointMode PointMode = iota
-	LinesPointMode
-	PolygonPointMode
-)
-
-// ClipOp holds the type of clip operation to perform.
-type ClipOp byte
-
-// Possible values for ClipOp.
-const (
-	DifferenceClipOp ClipOp = iota
-	IntersectClipOp
 )
 
 // Canvas is a drawing surface.
@@ -194,7 +179,7 @@ func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect Rect, filter filt
 }
 
 // DrawColor fills the clip with the color.
-func (c *Canvas) DrawColor(color Color, mode BlendMode) {
+func (c *Canvas) DrawColor(color Color, mode blendmode.Enum) {
 	skia.CanvasDrawColor(c.canvas, skia.Color(color), skia.BlendMode(mode))
 }
 
@@ -204,7 +189,7 @@ func (c *Canvas) DrawPoint(x, y float32, paint *Paint) {
 }
 
 // DrawPoints draws the points using the given mode.
-func (c *Canvas) DrawPoints(pts []Point, paint *Paint, mode PointMode) {
+func (c *Canvas) DrawPoints(pts []Point, paint *Paint, mode pointmode.Enum) {
 	skia.CanvasDrawPoints(c.canvas, skia.PointMode(mode), pts, paint.paint)
 }
 
@@ -214,7 +199,7 @@ func (c *Canvas) DrawLine(sx, sy, ex, ey float32, paint *Paint) {
 }
 
 // DrawPolygon draws a polygon.
-func (c *Canvas) DrawPolygon(poly Polygon, mode FillType, paint *Paint) {
+func (c *Canvas) DrawPolygon(poly Polygon, mode filltype.Enum, paint *Paint) {
 	path := NewPath()
 	path.SetFillType(mode)
 	path.Polygon(poly)
@@ -242,12 +227,12 @@ func (c *Canvas) DrawTextBlob(blob *TextBlob, x, y float32, paint *Paint) {
 }
 
 // ClipRect replaces the clip with the intersection of difference of the current clip and rect.
-func (c *Canvas) ClipRect(rect Rect, op ClipOp, antialias bool) {
+func (c *Canvas) ClipRect(rect Rect, op pathop.Enum, antialias bool) {
 	skia.CanavasClipRectWithOperation(c.canvas, rect, skia.ClipOp(op), antialias)
 }
 
 // ClipPath replaces the clip with the intersection of difference of the current clip and path.
-func (c *Canvas) ClipPath(path *Path, op ClipOp, antialias bool) {
+func (c *Canvas) ClipPath(path *Path, op pathop.Enum, antialias bool) {
 	skia.CanavasClipPathWithOperation(c.canvas, path.path, skia.ClipOp(op), antialias)
 }
 

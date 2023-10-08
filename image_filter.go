@@ -12,18 +12,9 @@ package unison
 import (
 	"runtime"
 
+	"github.com/richardwilkes/unison/enums/colorchannel"
+	"github.com/richardwilkes/unison/enums/tilemode"
 	"github.com/richardwilkes/unison/internal/skia"
-)
-
-// ColorChannel specifies a specific channel within an RGBA color.
-type ColorChannel byte
-
-// Possible values for ColorChannel.
-const (
-	RedChannel ColorChannel = iota
-	GreenChannel
-	BlueChannel
-	AlphaChannel
 )
 
 // ImageFilter performs a transformation on the image before drawing it.
@@ -70,7 +61,7 @@ func NewArithmeticImageFilter(k1, k2, k3, k4 float32, background, foreground *Im
 
 // NewBlurImageFilter returns a new blur image filter. input may be nil, in which case the source bitmap is used.
 // cropRect may be nil.
-func NewBlurImageFilter(sigmaX, sigmaY float32, tileMode TileMode, input *ImageFilter, cropRect *Rect) *ImageFilter {
+func NewBlurImageFilter(sigmaX, sigmaY float32, tileMode tilemode.Enum, input *ImageFilter, cropRect *Rect) *ImageFilter {
 	var in skia.ImageFilter
 	if input != nil {
 		in = input.filter
@@ -95,7 +86,7 @@ func NewComposeImageFilter(outer, inner *ImageFilter) *ImageFilter {
 
 // NewDisplacementImageFilter returns a new displacement image filter. displayment may be nil, in which case the source
 // bitmap will be used. cropRect may be nil.
-func NewDisplacementImageFilter(xChannelSelector, yChannelSelector ColorChannel, scale float32, displacement, color *ImageFilter, cropRect *Rect) *ImageFilter {
+func NewDisplacementImageFilter(xChannelSelector, yChannelSelector colorchannel.Enum, scale float32, displacement, color *ImageFilter, cropRect *Rect) *ImageFilter {
 	var dis skia.ImageFilter
 	if displacement != nil {
 		dis = displacement.filter
@@ -176,7 +167,7 @@ func NewMagnifierImageFilter(lensBounds Rect, zoomAmount, inset float32, samplin
 // copied from the source image.
 // input: The input image filter, if nil the source bitmap is used instead.
 // cropRect: Rectangle to which the output processing will be limited. May be nil.
-func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, bias float32, offsetX, offsetY int, tileMode TileMode, convolveAlpha bool, input *ImageFilter, cropRect *Rect) *ImageFilter {
+func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, bias float32, offsetX, offsetY int, tileMode tilemode.Enum, convolveAlpha bool, input *ImageFilter, cropRect *Rect) *ImageFilter {
 	var in skia.ImageFilter
 	if input != nil {
 		in = input.filter

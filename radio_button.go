@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -161,7 +162,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 	DrawEllipseBase(canvas, rect, thickness, bg, r.EdgeInk)
 	if r.Selected() {
 		rect = rect.Inset(NewUniformInsets(0.5 + 0.2*circleSize))
-		paint := fg.Paint(canvas, rect, Fill)
+		paint := fg.Paint(canvas, rect, paintstyle.Fill)
 		if !r.Enabled() {
 			paint.SetColorFilter(Grayscale30Filter())
 		}

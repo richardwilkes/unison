@@ -163,8 +163,8 @@ func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
 	skia.FontSetSubPixel(font.font, true)
 	skia.FontSetForceAutoHinting(font.font, true)
 	// Using hinting on some platforms (Linux, for example) was resulting in bad placement of the text. Carefully test
-	// any changes away from FontHintingNone on all supported platforms.
-	skia.FontSetHinting(font.font, skia.FontHinting(FontHintingNone))
+	// any changes away from no font hinting (0) on all supported platforms.
+	skia.FontSetHinting(font.font, 0)
 	skia.FontGetMetrics(font.font, &font.metrics)
 	runtime.SetFinalizer(font, func(obj *fontImpl) {
 		ReleaseOnUIThread(func() {

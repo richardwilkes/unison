@@ -21,6 +21,8 @@ import (
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/pathop"
 )
 
 var _ UndoManagerProvider = &Window{}
@@ -857,14 +859,15 @@ func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
 		toolbox.Call(func() {
 			w.root.ValidateLayout()
-			c.DrawPaint(BackgroundColor.Paint(c, w.LocalContentRect(), Fill))
+			c.DrawPaint(BackgroundColor.Paint(c, w.LocalContentRect(), paintstyle.Fill))
 			w.root.Draw(c, w.LocalContentRect())
 			if w.InDrag() {
 				c.Save()
 				c.Translate(w.dragDataLocation.X+w.dragData.Offset.X, w.dragDataLocation.Y+w.dragData.Offset.Y)
 				r := Rect{Size: w.dragData.Drawable.LogicalSize()}
-				c.ClipRect(r, IntersectClipOp, false)
-				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions, w.dragData.Ink.Paint(c, r, Fill))
+				c.ClipRect(r, pathop.Intersect, false)
+				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions,
+					w.dragData.Ink.Paint(c, r, paintstyle.Fill))
 				c.Restore()
 			}
 		})

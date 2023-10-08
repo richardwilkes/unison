@@ -11,6 +11,8 @@ package unison
 
 import (
 	"fmt"
+
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 type dragDrawable struct {
@@ -24,8 +26,8 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		r := rect.Inset(NewUniformInsets(1))
 		corner := r.Height / 2
 		gc.SaveWithOpacity(0.7)
-		gc.DrawRoundedRect(r, corner, corner, data.Table.SelectionInk.Paint(gc, r, Fill))
-		gc.DrawRoundedRect(r, corner, corner, data.Table.OnSelectionInk.Paint(gc, r, Stroke))
+		gc.DrawRoundedRect(r, corner, corner, data.Table.SelectionInk.Paint(gc, r, paintstyle.Fill))
+		gc.DrawRoundedRect(r, corner, corner, data.Table.OnSelectionInk.Paint(gc, r, paintstyle.Stroke))
 		gc.Restore()
 		label.DefaultDraw(gc, rect)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -277,7 +278,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 		fg = DefaultMenuItemTheme.OnSelectionColor
 		bg = DefaultMenuItemTheme.SelectionColor
 	}
-	gc.DrawRect(rect, bg.Paint(gc, rect, Fill))
+	gc.DrawRect(rect, bg.Paint(gc, rect, paintstyle.Fill))
 
 	if !mi.enabled {
 		fg = &ColorFilteredInk{
@@ -287,7 +288,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 	}
 	rect = mi.panel.ContentRect(false)
 	if mi.isSeparator {
-		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, fg.Paint(gc, rect, Fill))
+		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, fg.Paint(gc, rect, paintstyle.Fill))
 	} else {
 		t := mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont)
 		t.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
@@ -310,7 +311,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				} else {
 					drawable.SVG = DashSVG
 				}
-				drawable.DrawInRect(gc, r, nil, fg.Paint(gc, r, Fill))
+				drawable.DrawInRect(gc, r, nil, fg.Paint(gc, r, paintstyle.Fill))
 			}
 			if !mi.keyBinding.KeyCode.ShouldOmit() {
 				keys := mi.keyBinding.String()
@@ -329,7 +330,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				SVG:  ChevronRightSVG,
 				Size: Size{Width: baseline, Height: baseline},
 			}
-			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, Fill))
+			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, paintstyle.Fill))
 		}
 	}
 }

@@ -12,6 +12,8 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/pathop"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -111,7 +113,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign align.Enum, text *Text,
 			ColorFilter: Grayscale30Filter(),
 		}
 	}
-	paint := fg.Paint(canvas, rect, Fill)
+	paint := fg.Paint(canvas, rect, paintstyle.Fill)
 
 	// Determine overall size of content
 	var size, txtSize Size
@@ -181,7 +183,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign align.Enum, text *Text,
 	}
 
 	canvas.Save()
-	canvas.ClipRect(rect, IntersectClipOp, false)
+	canvas.ClipRect(rect, pathop.Intersect, false)
 	if drawable != nil {
 		rect.X = imgX
 		rect.Y = imgY

@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/unison/enums/paintstyle"
+
 // DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
 // existing ScrollBars, but will alter any ScrollBars created in the future.
 var DefaultScrollBarTheme = ScrollBarTheme{
@@ -168,8 +170,8 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, _ Rect) {
 		} else {
 			ink = s.ThumbInk
 		}
-		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, ink.Paint(gc, thumb, Fill))
-		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, Stroke))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, ink.Paint(gc, thumb, paintstyle.Fill))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, paintstyle.Stroke))
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
+	"github.com/richardwilkes/unison/enums/pathop"
 )
 
 var _ Paneler = &Panel{}
@@ -428,7 +429,7 @@ func (p *Panel) Draw(gc *Canvas, rect Rect) {
 		gc.Save()
 		scale := p.Scale()
 		gc.Scale(scale, scale)
-		gc.ClipRect(rect, IntersectClipOp, false)
+		gc.ClipRect(rect, pathop.Intersect, false)
 		if p.DrawCallback != nil {
 			gc.Save()
 			p.DrawCallback(gc, rect)

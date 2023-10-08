@@ -11,6 +11,7 @@ package demo
 
 import (
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 var (
@@ -48,7 +49,7 @@ func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
 }
 
 func (d *DockablePanel) draw(gc *unison.Canvas, rect unison.Rect) {
-	gc.DrawRect(rect, d.Color.Paint(gc, rect, unison.Fill))
+	gc.DrawRect(rect, d.Color.Paint(gc, rect, paintstyle.Fill))
 	if d.Focused() {
 		txt := unison.NewText("Focused", &unison.TextDecoration{
 			Font:       unison.EmphasizedSystemFont,

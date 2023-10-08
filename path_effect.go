@@ -12,26 +12,9 @@ package unison
 import (
 	"runtime"
 
+	"github.com/richardwilkes/unison/enums/patheffect"
+	"github.com/richardwilkes/unison/enums/trimmode"
 	"github.com/richardwilkes/unison/internal/skia"
-)
-
-// PathEffect1DStyle holds the 1D path effect.
-type PathEffect1DStyle byte
-
-// Possible values for PathEffect1DStyle.
-const (
-	TranslatePathEffect PathEffect1DStyle = iota
-	RotatePathEffect
-	MorphPathEffect
-)
-
-// TrimMode holds the type of trim.
-type TrimMode byte
-
-// Possible values for TrimMode.
-const (
-	NormalTrim TrimMode = iota
-	InvertedTrim
 )
 
 // PathEffect affects the geometry of a drawing primitive before it is transformed by the canvas' matrix and drawn.
@@ -80,7 +63,7 @@ func NewCornerPathEffect(radius float32) *PathEffect {
 }
 
 // New1dPathPathEffect creates a new 1D path PathEffect.
-func New1dPathPathEffect(path *Path, advance, phase float32, style PathEffect1DStyle) *PathEffect {
+func New1dPathPathEffect(path *Path, advance, phase float32, style patheffect.Enum) *PathEffect {
 	return newPathEffect(skia.PathEffectCreate1dPath(path.path, advance, phase, skia.PathEffect1DStyle(style)))
 }
 
@@ -100,7 +83,7 @@ func NewDashPathEffect(intervals []float32, phase float32) *PathEffect {
 }
 
 // NewTrimPathEffect creates a new trim PathEffect.
-func NewTrimPathEffect(start, stop float32, mode TrimMode) *PathEffect {
+func NewTrimPathEffect(start, stop float32, mode trimmode.Enum) *PathEffect {
 	return newPathEffect(skia.PathEffectCreateTrim(start, stop, skia.TrimMode(mode)))
 }
 

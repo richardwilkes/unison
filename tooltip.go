@@ -12,6 +12,8 @@ package unison
 import (
 	"strings"
 	"time"
+
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
@@ -54,7 +56,7 @@ func NewTooltipBase() *Panel {
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
 	tip.DrawCallback = func(canvas *Canvas, _ Rect) {
 		r := tip.ContentRect(true)
-		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, Fill))
+		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	}
 	return tip
 }

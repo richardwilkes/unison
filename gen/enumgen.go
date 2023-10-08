@@ -73,6 +73,15 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/arcsize",
+		Name: "arcsize",
+		Desc: "holds the relative size of an arc",
+		Values: []enumValue{
+			{Key: "small"},
+			{Key: "large"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
 		Pkg:  "enums/behavior",
 		Name: "behavior",
 		Desc: "controls how auto-sizing of the scroll content's preferred size is handled",
@@ -80,7 +89,54 @@ func main() {
 			{Key: "unmodified"},
 			{Key: "fill", Comment: "If the content is smaller than the available space, expand it"},
 			{Key: "follow", Comment: "Fix the content to the view size"},
-			{Key: "hinted_fill", Comment: "Uses hints to try and fix the content to the view size, but if the resulting content is smaller than the available space, expands it"},
+			{Key: "hinted-fill", Comment: "Uses hints to try and fix the content to the view size, but if the resulting content is smaller than the available space, expands it"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/blendmode",
+		Name: "blendmode",
+		Desc: "holds the mode used for blending pixels",
+		Values: []enumValue{
+			{Key: "clear"},
+			{Key: "src"},
+			{Key: "dst"},
+			{Key: "src-over"},
+			{Key: "dst-over"},
+			{Key: "src-in"},
+			{Key: "dst-in"},
+			{Key: "src-out"},
+			{Key: "dst-out"},
+			{Key: "src-atop"},
+			{Key: "dst-atop"},
+			{Key: "xor"},
+			{Key: "plus"},
+			{Key: "modulate"},
+			{Key: "screen"},
+			{Key: "overlay"},
+			{Key: "darken"},
+			{Key: "lighten"},
+			{Key: "color-dodge"},
+			{Key: "color-burn"},
+			{Key: "hard-light"},
+			{Key: "soft-light"},
+			{Key: "difference"},
+			{Key: "exclusion"},
+			{Key: "multiply"},
+			{Key: "hue"},
+			{Key: "saturation"},
+			{Key: "color"},
+			{Key: "luminosity"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/blur",
+		Name: "blur",
+		Desc: "holds the type of blur to apply",
+		Values: []enumValue{
+			{Key: "normal"},
+			{Key: "solid"},
+			{Key: "outer"},
+			{Key: "inner"},
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
@@ -91,6 +147,26 @@ func main() {
 			{Key: "off"},
 			{Key: "on"},
 			{Key: "mixed"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/colorchannel",
+		Name: "colorchannel",
+		Desc: "specifies a specific channel within an RGBA color",
+		Values: []enumValue{
+			{Key: "red"},
+			{Key: "green"},
+			{Key: "blue"},
+			{Key: "alpha"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/direction",
+		Name: "direction",
+		Desc: "holds the direction of a path",
+		Values: []enumValue{
+			{Key: "clockwise"},
+			{Key: "counter-clockwise"},
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
@@ -140,6 +216,48 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/paintstyle",
+		Name: "paintstyle",
+		Desc: "holds the type of painting to do",
+		Values: []enumValue{
+			{Key: "fill"},
+			{Key: "stroke"},
+			{Key: "stroke-and-fill"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/patheffect",
+		Name: "patheffect",
+		Desc: "holds the 1D path effect",
+		Values: []enumValue{
+			{Key: "translate"},
+			{Key: "rotate"},
+			{Key: "morph"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/pathop",
+		Name: "pathop",
+		Desc: "holds the possible operations that can be performed on a pair of paths",
+		Values: []enumValue{
+			{Key: "difference"},
+			{Key: "intersect"},
+			{Key: "union"},
+			{Key: "xor"},
+			{Key: "reverse-difference"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/pointmode",
+		Name: "pointmode",
+		Desc: "controls how Canvas.DrawPoints() renders the points passed to it",
+		Values: []enumValue{
+			{Key: "points"},
+			{Key: "lines"},
+			{Key: "polygon"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
 		Pkg:  "enums/side",
 		Name: "side",
 		Desc: "specifies which side an object should be on",
@@ -178,6 +296,26 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/strokecap",
+		Name: "strokecap",
+		Desc: "holds the style for rendering the endpoint of a stroked line",
+		Values: []enumValue{
+			{Key: "butt"},
+			{Key: "round"},
+			{Key: "square"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/strokejoin",
+		Name: "strokejoin",
+		Desc: "holds the method for drawing the junction between connected line segments",
+		Values: []enumValue{
+			{Key: "miter"},
+			{Key: "round"},
+			{Key: "bevel"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
 		Pkg:  "enums/thememode",
 		Name: "thememode",
 		Desc: "holds the theme display mode",
@@ -185,6 +323,26 @@ func main() {
 			{Key: "auto", String: "Automatic"},
 			{Key: "dark"},
 			{Key: "light"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/tilemode",
+		Name: "tilemode",
+		Desc: "holds the type of tiling to perform",
+		Values: []enumValue{
+			{Key: "clamp"},
+			{Key: "repeat"},
+			{Key: "mirror"},
+			{Key: "decal"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/trimmode",
+		Name: "trimmode",
+		Desc: "holds the type of trim",
+		Values: []enumValue{
+			{Key: "normal"},
+			{Key: "inverted"},
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
@@ -206,6 +364,17 @@ func main() {
 			{Key: "extra-bold"},
 			{Key: "black"},
 			{Key: "extra-black"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/filltype",
+		Name: "filltype",
+		Desc: "holds the type of fill operation to perform, which affects how overlapping contours interact with each other",
+		Values: []enumValue{
+			{Key: "winding"},
+			{Key: "even-odd"},
+			{Key: "inverse-winding"},
+			{Key: "inverse-even-odd"},
 		},
 	})
 }

@@ -9,6 +9,11 @@
 
 package unison
 
+import (
+	"github.com/richardwilkes/unison/enums/filltype"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+)
+
 var _ Border = &LineBorder{}
 
 // LineBorder private a lined border.
@@ -43,7 +48,7 @@ func (b *LineBorder) Insets() Insets {
 func (b *LineBorder) Draw(canvas *Canvas, rect Rect) {
 	clip := rect.Inset(b.insets)
 	path := NewPath()
-	path.SetFillType(EvenOdd)
+	path.SetFillType(filltype.EvenOdd)
 	if b.cornerRadius > 0 {
 		path.RoundedRect(rect, b.cornerRadius, b.cornerRadius)
 		radius := max(b.cornerRadius-((b.insets.Width()+b.insets.Height())/4), 1)
@@ -52,5 +57,5 @@ func (b *LineBorder) Draw(canvas *Canvas, rect Rect) {
 		path.Rect(rect)
 		path.Rect(clip)
 	}
-	canvas.DrawPath(path, b.ink.Paint(canvas, rect, Fill))
+	canvas.DrawPath(path, b.ink.Paint(canvas, rect, paintstyle.Fill))
 }

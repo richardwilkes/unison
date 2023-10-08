@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/imgfmt"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 type wellDialog struct {
@@ -477,7 +478,7 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 		if pattern, ok := ink.(*Pattern); ok {
 			canvas.DrawImageInRect(pattern.Image, r, nil, nil)
 		} else {
-			canvas.DrawRect(r, ink.Paint(canvas, r, Fill))
+			canvas.DrawRect(r, ink.Paint(canvas, r, paintstyle.Fill))
 		}
 	}
 	parent.AddChild(preview)
