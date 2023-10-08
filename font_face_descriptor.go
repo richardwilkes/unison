@@ -15,14 +15,17 @@ import (
 
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/unison/enums/slant"
+	"github.com/richardwilkes/unison/enums/spacing"
+	"github.com/richardwilkes/unison/enums/weight"
 )
 
 // FontFaceDescriptor holds information necessary to construct a FontFace.
 type FontFaceDescriptor struct {
-	Family  string      `json:"family"`
-	Weight  FontWeight  `json:"weight"`
-	Spacing FontSpacing `json:"spacing"`
-	Slant   FontSlant   `json:"slant"`
+	Family  string       `json:"family"`
+	Weight  weight.Enum  `json:"weight"`
+	Spacing spacing.Enum `json:"spacing"`
+	Slant   slant.Enum   `json:"slant"`
 }
 
 // Face returns the matching FontFace, if any.
@@ -32,13 +35,13 @@ func (ffd FontFaceDescriptor) Face() *FontFace {
 
 func (ffd FontFaceDescriptor) variants() string {
 	variants := make([]string, 0, 3)
-	if ffd.Weight != NormalFontWeight {
+	if ffd.Weight != weight.Regular {
 		variants = append(variants, ffd.Weight.String())
 	}
-	if ffd.Spacing != StandardSpacing {
+	if ffd.Spacing != spacing.Standard {
 		variants = append(variants, ffd.Spacing.String())
 	}
-	if ffd.Slant != NoSlant {
+	if ffd.Slant != slant.Upright {
 		variants = append(variants, ffd.Slant.String())
 	}
 	if len(variants) != 0 {
@@ -63,9 +66,9 @@ func (ffd *FontFaceDescriptor) UnmarshalText(text []byte) error {
 	if len(parts) < 4 {
 		return errs.Newf("invalid font face descriptor: %s", string(text))
 	}
-	ffd.Slant = SlantFromString(parts[len(parts)-1])
-	ffd.Spacing = SpacingFromString(parts[len(parts)-2])
-	ffd.Weight = WeightFromString(parts[len(parts)-3])
+	ffd.Slant = slant.Extract(parts[len(parts)-1])
+	ffd.Spacing = spacing.Extract(parts[len(parts)-2])
+	ffd.Weight = weight.Extract(parts[len(parts)-3])
 	ffd.Family = strings.Join(parts[:len(parts)-3], " ")
 	return nil
 }

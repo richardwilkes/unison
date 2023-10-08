@@ -23,7 +23,7 @@ import (
 // Possible values.
 const (
 	{{- range $i, $one := .Values}}
-	{{$info.IDFor $one}}{{if eq $i 0}} Enum = iota{{end}}{{if $one.Comment}} // {{$one.Comment}}{{end}}
+	{{$info.IDFor $one}}{{if eq $i 0}} Enum = {{$info.BaseValue}}{{end}}{{if $one.Comment}} // {{$one.Comment}}{{end}}
 	{{- end}}
 )
 
@@ -39,10 +39,18 @@ type Enum {{$info.BaseType}}
 
 // EnsureValid ensures this is of a known value.
 func (e Enum) EnsureValid() Enum {
-	if e <= {{$info.IDFor (last .Values)}} {
-		return e
-	}
-	return 0
+    {{if $info.NonContiguous -}}
+    for _, one := range All {
+        if one == e {
+            return e 
+        }
+    }
+    {{- else -}}
+    if {{if $info.NeedLowerBoundsCheck}}e >= {{$info.IDFor $info.First}} && {{end}}e <= {{$info.IDFor $info.Last}} {
+        return e
+    }
+    {{- end}}
+	return {{$info.IDFor $info.Default}}
 }
 
 // Key returns the key used in serialization.
@@ -53,7 +61,7 @@ func (e Enum) Key() string {
         return "{{.Key}}"
     {{- end}}
     default:
-        return Enum(0).Key()
+        return {{$info.IDFor $info.Default}}.Key()
     }
 }
 
@@ -65,7 +73,7 @@ func (e Enum) oldKeys() []string {
         return {{if .OldKeys}}[]string{ {{join .OldKeys}} }{{else}}nil{{end}}
     {{- end}}
     default:
-        return Enum(0).oldKeys()
+        return {{$info.IDFor $info.Default}}.oldKeys()
     }
 }
 {{- end}}
@@ -78,7 +86,7 @@ func (e Enum) String() string {
         return {{if not .NoLocalize}}i18n.Text({{end}}{{printf "%q" .StringValue}}{{if not .NoLocalize}}){{end}}
     {{- end}}
     default:
-        return Enum(0).String()
+        return {{$info.IDFor $info.Default}}.String()
     }
 }
 
@@ -91,7 +99,7 @@ func (e Enum) AltString() string {
         return {{if .Alt}}i18n.Text({{printf "%q" .Alt}}){{else}}""{{end}}
     {{- end}}
     default:
-        return Enum(0).AltString()
+        return {{$info.IDFor $info.Default}}.AltString()
     }
 }
 {{- end}}
@@ -114,5 +122,5 @@ func Extract(str string) Enum {
             return e
         }
     }
-    return 0
+    return {{$info.IDFor $info.Default}}
 }

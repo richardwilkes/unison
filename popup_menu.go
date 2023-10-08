@@ -18,6 +18,7 @@ import (
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/slant"
 )
 
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
@@ -161,7 +162,7 @@ func (p *PopupMenu[T]) textObj() *Text {
 		return one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font)
 	default:
 		desc := p.Font.Descriptor()
-		desc.Slant = ItalicSlant
+		desc.Slant = slant.Italic
 		return NewText(i18n.Text("Multiple"), &TextDecoration{Font: desc.Font()})
 	}
 }

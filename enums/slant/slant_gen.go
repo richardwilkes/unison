@@ -11,7 +11,7 @@
  * defined by the Mozilla Public License, version 2.0.
  */
 
-package mipmapmode
+package slant
 
 import (
 	"strings"
@@ -21,54 +21,54 @@ import (
 
 // Possible values.
 const (
-	None    Enum = iota // Ignore mipmap levels, sample from the 'base'
-	Nearest             // Sample from the nearest level
-	Linear              // Interpolate between the two nearest levels
+	Upright Enum = iota
+	Italic
+	Oblique
 )
 
 // All possible values.
 var All = []Enum{
-	None,
-	Nearest,
-	Linear,
+	Upright,
+	Italic,
+	Oblique,
 }
 
-// Enum holds the type of mipmapping to be done.
-type Enum int32
+// Enum holds the slant of a font.
+type Enum byte
 
 // EnsureValid ensures this is of a known value.
 func (e Enum) EnsureValid() Enum {
-	if e >= None && e <= Linear {
+	if e <= Oblique {
 		return e
 	}
-	return None
+	return Upright
 }
 
 // Key returns the key used in serialization.
 func (e Enum) Key() string {
 	switch e {
-	case None:
-		return "none"
-	case Nearest:
-		return "nearest"
-	case Linear:
-		return "linear"
+	case Upright:
+		return "upright"
+	case Italic:
+		return "italic"
+	case Oblique:
+		return "oblique"
 	default:
-		return None.Key()
+		return Upright.Key()
 	}
 }
 
 // String implements fmt.Stringer.
 func (e Enum) String() string {
 	switch e {
-	case None:
-		return i18n.Text("None")
-	case Nearest:
-		return i18n.Text("Nearest")
-	case Linear:
-		return i18n.Text("Linear")
+	case Upright:
+		return i18n.Text("Upright")
+	case Italic:
+		return i18n.Text("Italic")
+	case Oblique:
+		return i18n.Text("Oblique")
 	default:
-		return None.String()
+		return Upright.String()
 	}
 }
 
@@ -90,5 +90,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return None
+	return Upright
 }

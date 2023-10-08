@@ -41,7 +41,7 @@ func (e Enum) EnsureValid() Enum {
 	if e <= Mixed {
 		return e
 	}
-	return 0
+	return Off
 }
 
 // Key returns the key used in serialization.
@@ -54,7 +54,7 @@ func (e Enum) Key() string {
 	case Mixed:
 		return "mixed"
 	default:
-		return Enum(0).Key()
+		return Off.Key()
 	}
 }
 
@@ -68,7 +68,7 @@ func (e Enum) String() string {
 	case Mixed:
 		return i18n.Text("Mixed")
 	default:
-		return Enum(0).String()
+		return Off.String()
 	}
 }
 
@@ -90,5 +90,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return 0
+	return Off
 }

@@ -36,10 +36,10 @@ type Enum int32
 
 // EnsureValid ensures this is of a known value.
 func (e Enum) EnsureValid() Enum {
-	if e <= Linear {
+	if e >= Nearest && e <= Linear {
 		return e
 	}
-	return 0
+	return Nearest
 }
 
 // Key returns the key used in serialization.
@@ -50,7 +50,7 @@ func (e Enum) Key() string {
 	case Linear:
 		return "linear"
 	default:
-		return Enum(0).Key()
+		return Nearest.Key()
 	}
 }
 
@@ -62,7 +62,7 @@ func (e Enum) String() string {
 	case Linear:
 		return i18n.Text("Linear")
 	default:
-		return Enum(0).String()
+		return Nearest.String()
 	}
 }
 
@@ -84,5 +84,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return 0
+	return Nearest
 }

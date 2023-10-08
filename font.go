@@ -17,6 +17,9 @@ import (
 	"sync"
 
 	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/unison/enums/slant"
+	"github.com/richardwilkes/unison/enums/spacing"
+	"github.com/richardwilkes/unison/enums/weight"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -211,14 +214,14 @@ func init() {
 	}
 
 	baseSize := float32(10)
-	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize)
-	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(baseSize)
-	SmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize - 1)
-	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, BoldFontWeight, StandardSpacing, NoSlant).Font(baseSize - 1)
-	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
-	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
-	KeyboardFont.Font = MatchFontFace(DefaultSystemFamilyName, MediumFontWeight, StandardSpacing, NoSlant).Font(baseSize)
-	MonospacedFont.Font = MatchFontFace(DefaultMonospacedFamilyName, NormalFontWeight, StandardSpacing, NoSlant).Font(baseSize)
+	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Medium, spacing.Standard, slant.Upright).Font(baseSize)
+	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Bold, spacing.Standard, slant.Upright).Font(baseSize)
+	SmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Medium, spacing.Standard, slant.Upright).Font(baseSize - 1)
+	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Bold, spacing.Standard, slant.Upright).Font(baseSize - 1)
+	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Regular, spacing.Standard, slant.Upright).Font(baseSize)
+	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Regular, spacing.Standard, slant.Upright).Font(baseSize)
+	KeyboardFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Medium, spacing.Standard, slant.Upright).Font(baseSize)
+	MonospacedFont.Font = MatchFontFace(DefaultMonospacedFamilyName, weight.Regular, spacing.Standard, slant.Upright).Font(baseSize)
 }
 
 // RegisterFont registers a font with the font manager.

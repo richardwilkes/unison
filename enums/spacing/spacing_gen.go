@@ -11,7 +11,7 @@
  * defined by the Mozilla Public License, version 2.0.
  */
 
-package mipmapmode
+package spacing
 
 import (
 	"strings"
@@ -21,54 +21,90 @@ import (
 
 // Possible values.
 const (
-	None    Enum = iota // Ignore mipmap levels, sample from the 'base'
-	Nearest             // Sample from the nearest level
-	Linear              // Interpolate between the two nearest levels
+	UltraCondensed Enum = iota + 1
+	ExtraCondensed
+	Condensed
+	SemiCondensed
+	Standard
+	SemiExpanded
+	Expanded
+	ExtraExpanded
+	UltraExpanded
 )
 
 // All possible values.
 var All = []Enum{
-	None,
-	Nearest,
-	Linear,
+	UltraCondensed,
+	ExtraCondensed,
+	Condensed,
+	SemiCondensed,
+	Standard,
+	SemiExpanded,
+	Expanded,
+	ExtraExpanded,
+	UltraExpanded,
 }
 
-// Enum holds the type of mipmapping to be done.
-type Enum int32
+// Enum holds the text spacing of a font.
+type Enum byte
 
 // EnsureValid ensures this is of a known value.
 func (e Enum) EnsureValid() Enum {
-	if e >= None && e <= Linear {
+	if e >= UltraCondensed && e <= UltraExpanded {
 		return e
 	}
-	return None
+	return Standard
 }
 
 // Key returns the key used in serialization.
 func (e Enum) Key() string {
 	switch e {
-	case None:
-		return "none"
-	case Nearest:
-		return "nearest"
-	case Linear:
-		return "linear"
+	case UltraCondensed:
+		return "ultra-condensed"
+	case ExtraCondensed:
+		return "extra-condensed"
+	case Condensed:
+		return "condensed"
+	case SemiCondensed:
+		return "semi-condensed"
+	case Standard:
+		return "standard"
+	case SemiExpanded:
+		return "semi-expanded"
+	case Expanded:
+		return "expanded"
+	case ExtraExpanded:
+		return "extra-expanded"
+	case UltraExpanded:
+		return "ultra-expanded"
 	default:
-		return None.Key()
+		return Standard.Key()
 	}
 }
 
 // String implements fmt.Stringer.
 func (e Enum) String() string {
 	switch e {
-	case None:
-		return i18n.Text("None")
-	case Nearest:
-		return i18n.Text("Nearest")
-	case Linear:
-		return i18n.Text("Linear")
+	case UltraCondensed:
+		return i18n.Text("Ultra-Condensed")
+	case ExtraCondensed:
+		return i18n.Text("Extra-Condensed")
+	case Condensed:
+		return i18n.Text("Condensed")
+	case SemiCondensed:
+		return i18n.Text("Semi-Condensed")
+	case Standard:
+		return i18n.Text("Standard")
+	case SemiExpanded:
+		return i18n.Text("Semi-Expanded")
+	case Expanded:
+		return i18n.Text("Expanded")
+	case ExtraExpanded:
+		return i18n.Text("Extra-Expanded")
+	case UltraExpanded:
+		return i18n.Text("Ultra-Expanded")
 	default:
-		return None.String()
+		return Standard.String()
 	}
 }
 
@@ -90,5 +126,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return None
+	return Standard
 }

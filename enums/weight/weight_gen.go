@@ -11,7 +11,7 @@
  * defined by the Mozilla Public License, version 2.0.
  */
 
-package mipmapmode
+package weight
 
 import (
 	"strings"
@@ -21,54 +21,104 @@ import (
 
 // Possible values.
 const (
-	None    Enum = iota // Ignore mipmap levels, sample from the 'base'
-	Nearest             // Sample from the nearest level
-	Linear              // Interpolate between the two nearest levels
+	Invisible Enum = iota * 100
+	Thin
+	ExtraLight
+	Light
+	Regular
+	Medium
+	SemiBold
+	Bold
+	ExtraBold
+	Black
+	ExtraBlack
 )
 
 // All possible values.
 var All = []Enum{
-	None,
-	Nearest,
-	Linear,
+	Invisible,
+	Thin,
+	ExtraLight,
+	Light,
+	Regular,
+	Medium,
+	SemiBold,
+	Bold,
+	ExtraBold,
+	Black,
+	ExtraBlack,
 }
 
-// Enum holds the type of mipmapping to be done.
+// Enum holds the wegith of a font.
 type Enum int32
 
 // EnsureValid ensures this is of a known value.
 func (e Enum) EnsureValid() Enum {
-	if e >= None && e <= Linear {
-		return e
+	for _, one := range All {
+		if one == e {
+			return e
+		}
 	}
-	return None
+	return Regular
 }
 
 // Key returns the key used in serialization.
 func (e Enum) Key() string {
 	switch e {
-	case None:
-		return "none"
-	case Nearest:
-		return "nearest"
-	case Linear:
-		return "linear"
+	case Invisible:
+		return "invisible"
+	case Thin:
+		return "thin"
+	case ExtraLight:
+		return "extra-light"
+	case Light:
+		return "light"
+	case Regular:
+		return "regular"
+	case Medium:
+		return "medium"
+	case SemiBold:
+		return "semi-bold"
+	case Bold:
+		return "bold"
+	case ExtraBold:
+		return "extra-bold"
+	case Black:
+		return "black"
+	case ExtraBlack:
+		return "extra-black"
 	default:
-		return None.Key()
+		return Regular.Key()
 	}
 }
 
 // String implements fmt.Stringer.
 func (e Enum) String() string {
 	switch e {
-	case None:
-		return i18n.Text("None")
-	case Nearest:
-		return i18n.Text("Nearest")
-	case Linear:
-		return i18n.Text("Linear")
+	case Invisible:
+		return i18n.Text("Invisible")
+	case Thin:
+		return i18n.Text("Thin")
+	case ExtraLight:
+		return i18n.Text("Extra-Light")
+	case Light:
+		return i18n.Text("Light")
+	case Regular:
+		return i18n.Text("Regular")
+	case Medium:
+		return i18n.Text("Medium")
+	case SemiBold:
+		return i18n.Text("Semi-Bold")
+	case Bold:
+		return i18n.Text("Bold")
+	case ExtraBold:
+		return i18n.Text("Extra-Bold")
+	case Black:
+		return i18n.Text("Black")
+	case ExtraBlack:
+		return i18n.Text("Extra-Black")
 	default:
-		return None.String()
+		return Regular.String()
 	}
 }
 
@@ -90,5 +140,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return None
+	return Regular
 }

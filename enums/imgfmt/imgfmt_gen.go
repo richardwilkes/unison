@@ -51,7 +51,7 @@ func (e Enum) EnsureValid() Enum {
 	if e <= WEBP {
 		return e
 	}
-	return 0
+	return Unknown
 }
 
 // Key returns the key used in serialization.
@@ -74,7 +74,7 @@ func (e Enum) Key() string {
 	case WEBP:
 		return "webp"
 	default:
-		return Enum(0).Key()
+		return Unknown.Key()
 	}
 }
 
@@ -98,7 +98,7 @@ func (e Enum) String() string {
 	case WEBP:
 		return "WEBP"
 	default:
-		return Enum(0).String()
+		return Unknown.String()
 	}
 }
 
@@ -120,5 +120,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return 0
+	return Unknown
 }

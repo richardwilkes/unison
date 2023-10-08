@@ -43,7 +43,7 @@ func (e Enum) EnsureValid() Enum {
 	if e <= Right {
 		return e
 	}
-	return 0
+	return Top
 }
 
 // Key returns the key used in serialization.
@@ -58,7 +58,7 @@ func (e Enum) Key() string {
 	case Right:
 		return "right"
 	default:
-		return Enum(0).Key()
+		return Top.Key()
 	}
 }
 
@@ -74,7 +74,7 @@ func (e Enum) String() string {
 	case Right:
 		return i18n.Text("Right")
 	default:
-		return Enum(0).String()
+		return Top.String()
 	}
 }
 
@@ -96,5 +96,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return 0
+	return Top
 }

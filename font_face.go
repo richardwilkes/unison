@@ -16,6 +16,9 @@ import (
 
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/enums/slant"
+	"github.com/richardwilkes/unison/enums/spacing"
+	"github.com/richardwilkes/unison/enums/weight"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -80,15 +83,15 @@ func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
 
 // MatchFontFace attempts to locate the FontFace with the given family and style. Will return nil if nothing suitable
 // can be found.
-func MatchFontFace(family string, weight FontWeight, spacing FontSpacing, slant FontSlant) *FontFace {
+func MatchFontFace(family string, weightValue weight.Enum, spacingValue spacing.Enum, slantValue slant.Enum) *FontFace {
 	internalFontLock.Lock()
 	_, exists := internalFonts[family]
 	internalFontLock.Unlock()
 	if exists {
 		fam := MatchFontFamily(family)
-		return fam.MatchStyle(weight, spacing, slant)
+		return fam.MatchStyle(weightValue, spacingValue, slantValue)
 	}
-	style := skia.FontStyleNew(skia.FontWeight(weight), skia.FontSpacing(spacing), skia.FontSlant(slant))
+	style := skia.FontStyleNew(skia.FontWeight(weightValue), skia.FontSpacing(spacingValue), skia.FontSlant(slantValue))
 	defer skia.FontStyleDelete(style)
 	return newFace(skia.FontMgrMatchFamilyStyle(skia.FontMgrRefDefault(), family, style))
 }
@@ -172,11 +175,11 @@ func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
 }
 
 // Style returns the style information for this FontFace.
-func (f *FontFace) Style() (weight FontWeight, spacing FontSpacing, slant FontSlant) {
+func (f *FontFace) Style() (weightValue weight.Enum, spacingValue spacing.Enum, slantValue slant.Enum) {
 	style := skia.TypeFaceGetFontStyle(f.face)
 	defer skia.FontStyleDelete(style)
-	return FontWeight(skia.FontStyleGetWeight(style)), FontSpacing(skia.FontStyleGetWidth(style)),
-		FontSlant(skia.FontStyleGetSlant(style))
+	return weight.Enum(skia.FontStyleGetWeight(style)), spacing.Enum(skia.FontStyleGetWidth(style)),
+		slant.Enum(skia.FontStyleGetSlant(style))
 }
 
 // Monospaced returns true if this FontFace has been marked as having a fixed width for every character.

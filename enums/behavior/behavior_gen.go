@@ -43,7 +43,7 @@ func (e Enum) EnsureValid() Enum {
 	if e <= HintedFill {
 		return e
 	}
-	return 0
+	return Unmodified
 }
 
 // Key returns the key used in serialization.
@@ -58,7 +58,7 @@ func (e Enum) Key() string {
 	case HintedFill:
 		return "hinted_fill"
 	default:
-		return Enum(0).Key()
+		return Unmodified.Key()
 	}
 }
 
@@ -74,7 +74,7 @@ func (e Enum) String() string {
 	case HintedFill:
 		return i18n.Text("Hinted Fill")
 	default:
-		return Enum(0).String()
+		return Unmodified.String()
 	}
 }
 
@@ -96,5 +96,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return 0
+	return Unmodified
 }

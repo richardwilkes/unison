@@ -41,7 +41,7 @@ func (e Enum) EnsureValid() Enum {
 	if e <= Lightness {
 		return e
 	}
-	return 0
+	return None
 }
 
 // Key returns the key used in serialization.
@@ -54,7 +54,7 @@ func (e Enum) Key() string {
 	case Lightness:
 		return "lightness"
 	default:
-		return Enum(0).Key()
+		return None.Key()
 	}
 }
 
@@ -68,7 +68,7 @@ func (e Enum) String() string {
 	case Lightness:
 		return i18n.Text("Lightness")
 	default:
-		return Enum(0).String()
+		return None.String()
 	}
 }
 
@@ -90,5 +90,5 @@ func Extract(str string) Enum {
 			return e
 		}
 	}
-	return 0
+	return None
 }

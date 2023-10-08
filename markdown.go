@@ -28,6 +28,8 @@ import (
 	"github.com/richardwilkes/toolbox/txt"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/slant"
+	"github.com/richardwilkes/unison/enums/weight"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -81,7 +83,7 @@ func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
 	} else {
 		fd = font.Descriptor()
 	}
-	fd.Weight = BlackFontWeight
+	fd.Weight = weight.Black
 	switch level {
 	case 1:
 		fd.Size *= 2.5
@@ -696,9 +698,9 @@ func (m *Markdown) processEmphasis() {
 		m.decoration = save.Clone()
 		fd := m.decoration.Font.Descriptor()
 		if emphasis.Level == 1 {
-			fd.Slant = ItalicSlant
+			fd.Slant = slant.Italic
 		} else {
-			fd.Weight = BlackFontWeight
+			fd.Weight = weight.Black
 		}
 		m.decoration.Font = fd.Font()
 		m.processChildren()

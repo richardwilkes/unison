@@ -43,26 +43,28 @@ type enumValue struct {
 	String        string
 	Alt           string
 	Comment       string
+	Default       bool
 	NoLocalize    bool
 	EmptyStringOK bool
 	ForceUpper    bool
 }
 
 type enumInfo struct {
-	Pkg      string
-	Name     string
-	Desc     string
-	BaseType string
-	Values   []enumValue
+	Pkg           string
+	Name          string
+	Desc          string
+	baseType      string
+	baseValue     string
+	NonContiguous bool
+	Values        []enumValue
 }
 
 func main() {
 	removeExistingGenFiles()
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:      "enums/align",
-		Name:     "align",
-		Desc:     "specifies how to align an object within its available space",
-		BaseType: "byte",
+		Pkg:  "enums/align",
+		Name: "align",
+		Desc: "specifies how to align an object within its available space",
 		Values: []enumValue{
 			{Key: "start"},
 			{Key: "middle"},
@@ -71,10 +73,9 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:      "enums/behavior",
-		Name:     "behavior",
-		Desc:     "controls how auto-sizing of the scroll content's preferred size is handled",
-		BaseType: "byte",
+		Pkg:  "enums/behavior",
+		Name: "behavior",
+		Desc: "controls how auto-sizing of the scroll content's preferred size is handled",
 		Values: []enumValue{
 			{Key: "unmodified"},
 			{Key: "fill", Comment: "If the content is smaller than the available space, expand it"},
@@ -83,10 +84,9 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:      "enums/check",
-		Name:     "check",
-		Desc:     "represents the current state of something like a check box or mark",
-		BaseType: "byte",
+		Pkg:  "enums/check",
+		Name: "check",
+		Desc: "represents the current state of something like a check box or mark",
 		Values: []enumValue{
 			{Key: "off"},
 			{Key: "on"},
@@ -97,17 +97,16 @@ func main() {
 		Pkg:      "enums/filtermode",
 		Name:     "filtermode",
 		Desc:     "holds the type of sampling to be done",
-		BaseType: "int32",
+		baseType: "int32",
 		Values: []enumValue{
 			{Key: "nearest", Comment: "Single sample point (nearest neighbor)"},
 			{Key: "linear", Comment: "Interpolate between 2x2 sample points (bilinear interpolation)"},
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:      "enums/imgfmt",
-		Name:     "imgfmt",
-		Desc:     "holds the type of encoding an image was stored with",
-		BaseType: "byte",
+		Pkg:  "enums/imgfmt",
+		Name: "imgfmt",
+		Desc: "holds the type of encoding an image was stored with",
 		Values: []enumValue{
 			{Key: "unknown"},
 			{Key: "bmp", NoLocalize: true, ForceUpper: true},
@@ -120,10 +119,9 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:      "enums/invertstyle",
-		Name:     "invertstyle",
-		Desc:     "holds the type of image inversion",
-		BaseType: "byte",
+		Pkg:  "enums/invertstyle",
+		Name: "invertstyle",
+		Desc: "holds the type of image inversion",
 		Values: []enumValue{
 			{Key: "none"},
 			{Key: "brightness"},
@@ -134,7 +132,7 @@ func main() {
 		Pkg:      "enums/mipmapmode",
 		Name:     "mipmapmode",
 		Desc:     "holds the type of mipmapping to be done",
-		BaseType: "int32",
+		baseType: "int32",
 		Values: []enumValue{
 			{Key: "none", Comment: "Ignore mipmap levels, sample from the 'base'"},
 			{Key: "nearest", Comment: "Sample from the nearest level"},
@@ -142,10 +140,9 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:      "enums/side",
-		Name:     "side",
-		Desc:     "specifies which side an object should be on",
-		BaseType: "byte",
+		Pkg:  "enums/side",
+		Name: "side",
+		Desc: "specifies which side an object should be on",
 		Values: []enumValue{
 			{Key: "top"},
 			{Key: "left"},
@@ -154,14 +151,61 @@ func main() {
 		},
 	})
 	processSourceTemplate(enumTmpl, &enumInfo{
-		Pkg:      "enums/thememode",
-		Name:     "thememode",
-		Desc:     "holds the theme display mode",
-		BaseType: "byte",
+		Pkg:  "enums/slant",
+		Name: "slant",
+		Desc: "holds the slant of a font",
+		Values: []enumValue{
+			{Key: "upright"},
+			{Key: "italic"},
+			{Key: "oblique"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:       "enums/spacing",
+		Name:      "spacing",
+		Desc:      "holds the text spacing of a font",
+		baseValue: "iota + 1",
+		Values: []enumValue{
+			{Key: "ultra-condensed"},
+			{Key: "extra-condensed"},
+			{Key: "condensed"},
+			{Key: "semi-condensed"},
+			{Key: "standard", Default: true},
+			{Key: "semi-expanded"},
+			{Key: "expanded"},
+			{Key: "extra-expanded"},
+			{Key: "ultra-expanded"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:  "enums/thememode",
+		Name: "thememode",
+		Desc: "holds the theme display mode",
 		Values: []enumValue{
 			{Key: "auto", String: "Automatic"},
 			{Key: "dark"},
 			{Key: "light"},
+		},
+	})
+	processSourceTemplate(enumTmpl, &enumInfo{
+		Pkg:           "enums/weight",
+		Name:          "weight",
+		Desc:          "holds the wegith of a font",
+		baseType:      "int32",
+		baseValue:     "iota * 100",
+		NonContiguous: true,
+		Values: []enumValue{
+			{Key: "invisible"},
+			{Key: "thin"},
+			{Key: "extra-light"},
+			{Key: "light"},
+			{Key: "regular", Default: true},
+			{Key: "medium"},
+			{Key: "semi-bold"},
+			{Key: "bold"},
+			{Key: "extra-bold"},
+			{Key: "black"},
+			{Key: "extra-black"},
 		},
 	})
 }
@@ -191,7 +235,6 @@ func processSourceTemplate(tmplName string, info *enumInfo) {
 		"fileLeaf":     filepath.Base,
 		"firstToLower": txt.FirstToLower,
 		"join":         join,
-		"last":         last,
 		"toCamelCase":  txt.ToCamelCase,
 		"toIdentifier": toIdentifier,
 		"wrapComment":  wrapComment,
@@ -234,6 +277,20 @@ func (e *enumInfo) LocalType() string {
 	return txt.FirstToLower(toIdentifier(e.Name)) + "Data"
 }
 
+func (e *enumInfo) BaseType() string {
+	if e.baseType == "" {
+		return "byte"
+	}
+	return e.baseType
+}
+
+func (e *enumInfo) BaseValue() string {
+	if e.baseValue == "" {
+		return "iota"
+	}
+	return e.baseValue
+}
+
 func (e *enumInfo) IDFor(v enumValue) string {
 	id := v.Name
 	if id == "" {
@@ -272,6 +329,28 @@ func (e *enumInfo) NeedI18N() bool {
 	return false
 }
 
+func (e *enumInfo) NeedLowerBoundsCheck() bool {
+	return e.baseValue != "" || (e.baseType != "" && e.baseType != "byte" && e.baseType != "uint8" &&
+		e.baseType != "uint16" && e.baseType != "uint32" && e.baseType != "uint64" && e.baseType != "uint")
+}
+
+func (e *enumInfo) First() enumValue {
+	return e.Values[0]
+}
+
+func (e *enumInfo) Default() enumValue {
+	for _, one := range e.Values {
+		if one.Default {
+			return one
+		}
+	}
+	return e.Values[0]
+}
+
+func (e *enumInfo) Last() enumValue {
+	return e.Values[len(e.Values)-1]
+}
+
 func (e *enumValue) StringValue() string {
 	if e.String == "" && !e.EmptyStringOK {
 		key := strings.ReplaceAll(e.Key, "_", " ")
@@ -281,10 +360,6 @@ func (e *enumValue) StringValue() string {
 		return cases.Title(language.AmericanEnglish).String(key)
 	}
 	return e.String
-}
-
-func last(in []enumValue) enumValue {
-	return in[len(in)-1]
 }
 
 func emptyIfTrue(str string, test bool) string {

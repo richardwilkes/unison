@@ -17,6 +17,9 @@ import (
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/unison/enums/slant"
+	"github.com/richardwilkes/unison/enums/spacing"
+	"github.com/richardwilkes/unison/enums/weight"
 )
 
 // FontDescriptor holds information necessary to construct a Font. The Size field is the value that was passed to
@@ -57,9 +60,9 @@ func (fd *FontDescriptor) UnmarshalText(text []byte) error {
 	if len(parts) < 5 {
 		return errs.Newf("invalid font descriptor: %s", string(text))
 	}
-	fd.Slant = SlantFromString(parts[len(parts)-1])
-	fd.Spacing = SpacingFromString(parts[len(parts)-2])
-	fd.Weight = WeightFromString(parts[len(parts)-3])
+	fd.Slant = slant.Extract(parts[len(parts)-1])
+	fd.Spacing = spacing.Extract(parts[len(parts)-2])
+	fd.Weight = weight.Extract(parts[len(parts)-3])
 	size, err := strconv.ParseFloat(parts[len(parts)-4], 32)
 	if err != nil || size <= 0 {
 		return errs.Newf("invalid font descriptor: %s", string(text))
