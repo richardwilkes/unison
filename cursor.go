@@ -10,7 +10,11 @@
 package unison
 
 import (
+	"image"
+
 	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/toolbox/errs"
+	"golang.org/x/image/draw"
 )
 
 var (
@@ -82,4 +86,25 @@ func retrieveCursor(img *Image, cursor **Cursor) *Cursor {
 		*cursor = NewCursor(img, Point{X: size.Width / 2, Y: size.Height / 2})
 	}
 	return *cursor
+}
+
+// NewCursor creates a new custom cursor from an image.
+func NewCursor(img *Image, hotSpot Point) *Cursor {
+	nrgba, err := img.ToNRGBA()
+	if err != nil {
+		errs.Log(err)
+		return ArrowCursor()
+	}
+
+	// glfw doesn't take the high resolution cursors properly, so scale them down, if needed
+	logicalSize := img.LogicalSize()
+	size := img.Size()
+	if logicalSize != size {
+		dstRect := image.Rect(0, 0, int(logicalSize.Width), int(logicalSize.Height))
+		dst := image.NewNRGBA(dstRect)
+		draw.CatmullRom.Scale(dst, dstRect, nrgba, image.Rect(0, 0, int(size.Width), int(size.Height)), draw.Over, nil)
+		nrgba = dst
+	}
+
+	return glfw.CreateCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
 }

@@ -25,22 +25,22 @@ func (m Modifiers) platformString() string {
 		return ""
 	}
 	var buffer bytes.Buffer
-	if m&ControlModifier == ControlModifier {
+	if m.ControlDown() {
 		buffer.WriteRune('⌃')
 	}
-	if m&OptionModifier == OptionModifier {
+	if m.OptionDown() {
 		buffer.WriteRune('⌥')
 	}
-	if m&ShiftModifier == ShiftModifier {
+	if m.ShiftDown() {
 		buffer.WriteRune('⇧')
 	}
-	if m&CapsLockModifier == CapsLockModifier {
+	if m.CapsLockDown() {
 		buffer.WriteRune('⇪')
 	}
-	if m&NumLockModifier == NumLockModifier {
+	if m.NumLockDown() {
 		buffer.WriteRune('⇭')
 	}
-	if m&CommandModifier == CommandModifier {
+	if m.CommandDown() {
 		buffer.WriteRune('⌘')
 	}
 	return buffer.String()
