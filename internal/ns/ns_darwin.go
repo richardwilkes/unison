@@ -535,11 +535,8 @@ func NewFileURL(str string) URL {
 
 func (u URL) AbsoluteString() string {
 	other := C.CFURLCopyAbsoluteURL(C.CFURLRef(u))
-	s := String(C.CFURLGetString(other))
-	str := s.String()
-	s.Release()
-	// If the following line is uncommented, I get a random crash at some later time
-	// URL(other).Release()
+	str := String(C.CFURLGetString(other)).String()
+	URL(other).Release()
 	return str
 }
 
