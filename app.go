@@ -257,7 +257,7 @@ func Beep() {
 }
 
 // IsColorModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
-// platforms that return false from this function, AutomaticColorMode is the same as LightColorMode.
+// platforms that return false from this function, thememode.Auto is the same as thememode.Light.
 func IsColorModeTrackingPossible() bool {
 	return platformIsDarkModeTrackingPossible()
 }
