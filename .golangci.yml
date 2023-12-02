@@ -38,10 +38,8 @@ linters-settings:
   misspell:
     locale: US
   staticcheck:
-    go: "1.19"
+    go: "1.21"
     checks: [ "all", "-SA3000" ]
-  unused:
-    check-exported: false
 linters:
   disable-all: true
   enable:

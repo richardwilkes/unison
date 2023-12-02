@@ -55,12 +55,12 @@ func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
 			count := ff.Count()
 			for i := 0; i < count; i++ {
 				face := ff.Face(i)
-				weight, spacing, slant := face.Style()
+				w, sp, sl := face.Style()
 				ffd := FontFaceDescriptor{
 					Family:  family,
-					Weight:  weight,
-					Spacing: spacing,
-					Slant:   slant,
+					Weight:  w,
+					Spacing: sp,
+					Slant:   sl,
 				}
 				if _, exists := ma[ffd]; !exists {
 					all = append(all, ffd)
@@ -105,13 +105,13 @@ func CreateFontFace(data []byte) *FontFace {
 
 // Font returns a Font of the given size for this FontFace.
 func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
-	weight, spacing, slant := f.Style()
+	w, sp, sl := f.Style()
 	fd := FontDescriptor{
 		FontFaceDescriptor: FontFaceDescriptor{
 			Family:  f.Family(),
-			Weight:  weight,
-			Spacing: spacing,
-			Slant:   slant,
+			Weight:  w,
+			Spacing: sp,
+			Slant:   sl,
 		},
 		Size: capHeightSizeInLogicalPixels,
 	}

@@ -168,13 +168,13 @@ func (f *fontImpl) skiaFont() skia.Font {
 }
 
 func (f *fontImpl) Descriptor() FontDescriptor {
-	weight, spacing, slant := f.face.Style()
+	w, sp, sl := f.face.Style()
 	return FontDescriptor{
 		FontFaceDescriptor: FontFaceDescriptor{
 			Family:  f.face.Family(),
-			Weight:  weight,
-			Spacing: spacing,
-			Slant:   slant,
+			Weight:  w,
+			Spacing: sp,
+			Slant:   sl,
 		},
 		Size: f.size,
 	}
@@ -220,18 +220,18 @@ func RegisterFont(data []byte) (FontFaceDescriptor, error) {
 	if f == nil {
 		return ffd, errs.New("unable to load font")
 	}
-	weight, spacing, slant := f.Style()
+	w, sp, sl := f.Style()
 	ffd.Family = f.Family()
-	ffd.Weight = weight
-	ffd.Spacing = spacing
-	ffd.Slant = slant
+	ffd.Weight = w
+	ffd.Spacing = sp
+	ffd.Slant = sl
 	internalFontLock.Lock()
 	defer internalFontLock.Unlock()
 	if info, ok := internalFonts[ffd.Family]; ok {
 		add := true
 		for _, one := range info.faces {
-			weight2, spacing2, slant2 := one.Style()
-			if weight == weight2 && spacing == spacing2 && slant == slant2 {
+			w2, sp2, sl2 := one.Style()
+			if w == w2 && sp == sp2 && sl == sl2 {
 				add = false
 				break
 			}
