@@ -16,6 +16,7 @@ import (
 	"math"
 	"strconv"
 	"sync"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/richardwilkes/toolbox"
@@ -216,7 +217,7 @@ func (img *Image) ToPNG(compressionLevel int) ([]byte, error) {
 		return nil, errs.New("unable to create PNG from image")
 	}
 	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, ((*[1 << 30]byte)(skia.DataGetData(data)))[:len(buffer)])
+	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
 	skia.DataUnref(data)
 	return buffer, nil
 }
@@ -228,7 +229,7 @@ func (img *Image) ToJPEG(quality int) ([]byte, error) {
 		return nil, errs.New("unable to create JPEG from image")
 	}
 	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, ((*[1 << 30]byte)(skia.DataGetData(data)))[:len(buffer)])
+	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
 	skia.DataUnref(data)
 	return buffer, nil
 }
@@ -240,7 +241,7 @@ func (img *Image) ToWebp(quality float32, lossy bool) ([]byte, error) {
 		return nil, errs.New("unable to create WEBP from image")
 	}
 	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, ((*[1 << 30]byte)(skia.DataGetData(data)))[:len(buffer)])
+	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
 	skia.DataUnref(data)
 	return buffer, nil
 }
