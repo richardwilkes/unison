@@ -1951,12 +1951,11 @@ func StringNewEmpty() String {
 }
 
 func StringGetString(str String) string {
-	r1, _, _ := skStringGetCStrProc.Call(uintptr(str))
-	ptr := (*[1 << 30]byte)(unsafe.Pointer(r1))
-	r1, _, _ = skStringGetSizeProc.Call(uintptr(str))
-	data := make([]byte, int(r1))
-	copy(data, ptr[:len(data)])
-	return string(data)
+	data, _, _ := skStringGetCStrProc.Call(uintptr(str))
+	size, _, _ := skStringGetSizeProc.Call(uintptr(str))
+	s := make([]byte, int(data))
+	copy(s, unsafe.Slice((*byte)(unsafe.Pointer(data)), size))
+	return string(s)
 }
 
 func StringDelete(str String) {
@@ -2038,15 +2037,15 @@ func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16
 	r1, _, _ := skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), 0)
 	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
-	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Glyphs)))[:len(glyphs)], glyphs)
+	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.Glyphs)), len(glyphs)), glyphs)
 }
 
 func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, positions []float32, y float32) {
 	r1, _, _ := skTextBlobBuilderAllocRunPosHProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(y)), 0)
 	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
-	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.Glyphs)))[:len(glyphs)], glyphs)
-	copy(((*[1 << 30]float32)(unsafe.Pointer(buffer.Pos)))[:len(positions)], positions)
+	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.Glyphs)), len(glyphs)), glyphs)
+	copy(unsafe.Slice((*float32)(unsafe.Pointer(buffer.Pos)), len(positions)), positions)
 }
 
 func TextBlobBuilderDelete(builder TextBlobBuilder) {

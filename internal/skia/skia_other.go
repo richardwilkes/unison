@@ -1257,13 +1257,13 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 
 func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, x, y float32) {
 	buffer := C.sk_textblob_builder_alloc_run(builder, font, C.int(len(glyphs)), C.float(x), C.float(y), nil)
-	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.glyphs)))[:len(glyphs)], glyphs)
+	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.glyphs)), len(glyphs)), glyphs)
 }
 
 func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, positions []float32, y float32) {
 	buffer := C.sk_textblob_builder_alloc_run_pos_h(builder, font, C.int(len(glyphs)), C.float(y), nil)
-	copy(((*[1 << 30]uint16)(unsafe.Pointer(buffer.glyphs)))[:len(glyphs)], glyphs)
-	copy(((*[1 << 30]float32)(unsafe.Pointer(buffer.pos)))[:len(positions)], positions)
+	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.glyphs)), len(glyphs)), glyphs)
+	copy(unsafe.Slice((*float32)(unsafe.Pointer(buffer.pos)), len(positions)), positions)
 }
 
 func TextBlobBuilderDelete(builder TextBlobBuilder) {

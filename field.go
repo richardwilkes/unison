@@ -1055,7 +1055,7 @@ func (f *Field) SetSelectionToStart() {
 
 // SetSelectionToEnd moves the cursor to the end of the text and removes any range that may have been present.
 func (f *Field) SetSelectionToEnd() {
-	f.SetSelection(math.MaxInt64, math.MaxInt64)
+	f.SetSelection(math.MaxInt32, math.MaxInt32)
 }
 
 // SetSelectionTo moves the cursor to the specified index and removes any range that may have been present.
