@@ -1951,12 +1951,11 @@ func StringNewEmpty() String {
 }
 
 func StringGetString(str String) string {
-	r1, _, _ := skStringGetCStrProc.Call(uintptr(str))
-	ptr := unsafe.Slice((*byte)(unsafe.Pointer(r1)), math.MaxInt32)
-	r1, _, _ = skStringGetSizeProc.Call(uintptr(str))
-	data := make([]byte, int(r1))
-	copy(data, ptr[:len(data)])
-	return string(data)
+	data, _, _ := skStringGetCStrProc.Call(uintptr(str))
+	size, _, _ := skStringGetSizeProc.Call(uintptr(str))
+	s := make([]byte, int(data))
+	copy(s, unsafe.Slice((*byte)(unsafe.Pointer(data)), size))
+	return string(s)
 }
 
 func StringDelete(str String) {

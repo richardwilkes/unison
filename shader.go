@@ -56,9 +56,6 @@ func NewBlendShader(blendMode blendmode.Enum, dst, src *Shader) *Shader {
 	return newShader(skia.ShaderNewBlend(skia.BlendMode(blendMode), dst.shader, src.shader))
 }
 
-const sizeofColor = unsafe.Sizeof(skia.Color(0))
-const maxColorArray = (1<<31 - sizeofColor) / sizeofColor
-
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.
 func NewLinearGradientShader(start, end Point, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewLinearGradient(start, end,
