@@ -323,9 +323,9 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 			}
 			m.doExitEnter(old)
 			return true
-		case KeyReturn, KeyNumPadEnter:
+		case KeyReturn, KeyNumPadEnter, KeySpace:
 			if m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(p.menu.items) {
-				m.items[m.popupPanel.itemIndex].mouseDown(Point{}, 0, 0, 0) // params are unused
+				m.items[m.popupPanel.itemIndex].click()
 				return true
 			}
 		case KeyEscape, KeyLeft:

@@ -192,6 +192,14 @@ func (mi *menuItem) mouseUp(where Point, _ int, _ Modifiers) bool {
 	return true
 }
 
+func (mi *menuItem) click() {
+	if mi.subMenu != nil {
+		mi.showSubMenu()
+	} else {
+		mi.execute()
+	}
+}
+
 func (mi *menuItem) showSubMenu() {
 	if !mi.factory.showInProgress && mi.subMenu != nil && mi.subMenu.popupPanel == nil {
 		mi.factory.showInProgress = true
