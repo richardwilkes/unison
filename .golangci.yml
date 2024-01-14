@@ -67,6 +67,7 @@ issues:
   exclude-use-default: false
   exclude:
     - "fieldalignment: struct with \\d+ pointer bytes could be"
+    - "G103:"
     - "G204:"
     - "G304:"
     - "G306:"

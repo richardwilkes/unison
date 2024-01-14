@@ -59,28 +59,28 @@ func NewBlendShader(blendMode blendmode.Enum, dst, src *Shader) *Shader {
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.
 func NewLinearGradientShader(start, end Point, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewLinearGradient(start, end,
-		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)), //nolint:gosec // Needed to convert for skia
+		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // NewRadialGradientShader creates a new radial gradient Shader. matrix may be nil.
 func NewRadialGradientShader(center Point, radius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewRadialGradient(center, radius,
-		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)), //nolint:gosec // Needed to convert for skia
+		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // NewSweepGradientShader creates a new sweep gradient Shader. matrix may be nil.
 func NewSweepGradientShader(center Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewSweepGradient(center, startAngle, endAngle,
-		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)), //nolint:gosec // Needed to convert for skia
+		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // New2PtConicalGradientShader creates a new 2-point conical gradient Shader. matrix may be nil.
 func New2PtConicalGradientShader(startPt, endPt Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
 	return newShader(skia.ShaderNewTwoPointConicalGradient(startPt, endPt, startRadius, endRadius,
-		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)), //nolint:gosec // Needed to convert for skia
+		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
 }
 

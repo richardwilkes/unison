@@ -51,5 +51,5 @@ func (s *SamplingOptions) skSamplingOptions() skia.SamplingOptions {
 	if s == nil {
 		return defaultSampling.skSamplingOptions()
 	}
-	return skia.SamplingOptions(unsafe.Pointer(s)) //nolint:gosec // Needed to cast to the skia type
+	return skia.SamplingOptions(unsafe.Pointer(s))
 }
