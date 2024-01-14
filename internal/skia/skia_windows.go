@@ -1953,7 +1953,7 @@ func StringNewEmpty() String {
 func StringGetString(str String) string {
 	data, _, _ := skStringGetCStrProc.Call(uintptr(str))
 	size, _, _ := skStringGetSizeProc.Call(uintptr(str))
-	s := make([]byte, int(data))
+	s := make([]byte, int(size))
 	copy(s, unsafe.Slice((*byte)(unsafe.Pointer(data)), size))
 	return string(s)
 }
