@@ -38,10 +38,10 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 	if tooltip != "" {
 		link.Tooltip = NewTooltipWithText(tooltip)
 	}
-	link.UpdateCursorCallback = func(where Point) *Cursor {
+	link.UpdateCursorCallback = func(_ Point) *Cursor {
 		return PointingCursor()
 	}
-	link.MouseEnterCallback = func(where Point, mod Modifiers) bool {
+	link.MouseEnterCallback = func(_ Point, _ Modifiers) bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
 			decoration.Foreground = theme.RolloverInk
 		})
@@ -56,7 +56,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 		return true
 	}
 	in := false
-	link.MouseDownCallback = func(where Point, button, clickCount int, mod Modifiers) bool {
+	link.MouseDownCallback = func(_ Point, _, _ int, _ Modifiers) bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
 			decoration.Foreground = theme.PressedInk
 		})
@@ -64,7 +64,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 		in = true
 		return true
 	}
-	link.MouseDragCallback = func(where Point, button int, mod Modifiers) bool {
+	link.MouseDragCallback = func(where Point, _ int, _ Modifiers) bool {
 		now := where.In(link.ContentRect(true))
 		if now != in {
 			in = now
@@ -79,7 +79,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 		}
 		return true
 	}
-	link.MouseUpCallback = func(where Point, button int, mod Modifiers) bool {
+	link.MouseUpCallback = func(where Point, _ int, _ Modifiers) bool {
 		ink := theme.Foreground
 		inside := where.In(link.ContentRect(true))
 		if inside {

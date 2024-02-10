@@ -208,9 +208,9 @@ func (p *PopupMenu[T]) Click() {
 
 func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]) MenuItem {
 	item := m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
-		fmt.Sprintf("%v", entry.item), KeyBinding{}, func(mi MenuItem) bool {
+		fmt.Sprintf("%v", entry.item), KeyBinding{}, func(_ MenuItem) bool {
 			return entry.enabled
-		}, func(mi MenuItem) {
+		}, func(_ MenuItem) {
 			if p.ChoiceMadeCallback != nil {
 				p.ChoiceMadeCallback(p, index, p.items[index].item)
 			}

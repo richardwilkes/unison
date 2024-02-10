@@ -285,7 +285,7 @@ func (d *JobDialog) retrieveIcon() *unison.Image {
 
 func (d *JobDialog) createCopies(parent *unison.Panel) {
 	d.copies = unison.NewNumericField(d.jobAttributes.Copies(), 1, d.printerAttributes.MaxCopies(), strconv.Itoa,
-		strconv.Atoi, func(minimum, maximum int) []int { return []int{maximum} })
+		strconv.Atoi, func(_, maximum int) []int { return []int{maximum} })
 	d.copies.ModifiedCallback = d.adjustOKButton
 	d.copies.SetLayoutData(&unison.FlexLayoutData{VAlign: align.Middle})
 

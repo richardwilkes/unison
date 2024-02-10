@@ -225,7 +225,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		delete(redrawSet, w)
 		w.draw()
 	})
-	w.wnd.SetPosCallback(func(_ *glfw.Window, xpos, ypos int) {
+	w.wnd.SetPosCallback(func(_ *glfw.Window, _, _ int) {
 		w.moved()
 	})
 	w.wnd.SetSizeCallback(func(_ *glfw.Window, width, height int) {

@@ -573,7 +573,7 @@ func createImagePanel() *unison.Label {
 			Y: size.Height / 2,
 		})
 	}
-	imgPanel.UpdateCursorCallback = func(where unison.Point) *unison.Cursor { return cursor }
+	imgPanel.UpdateCursorCallback = func(_ unison.Point) *unison.Cursor { return cursor }
 
 	// Add a tooltip that shows the current mouse coordinates
 	imgPanel.UpdateTooltipCallback = func(where unison.Point, suggestedAvoidInRoot unison.Rect) unison.Rect {

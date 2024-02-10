@@ -103,7 +103,7 @@ func (d *demoRow) ColumnCell(row, col int, foreground, _ unison.Ink, _, _, _ boo
 			addWrappedText(wrapper, "A little note…", foreground,
 				unison.LabelFont.Face().Font(unison.LabelFont.Size()-1), width)
 		}
-		wrapper.UpdateTooltipCallback = func(where unison.Point, suggestedAvoidInRoot unison.Rect) unison.Rect {
+		wrapper.UpdateTooltipCallback = func(_ unison.Point, _ unison.Rect) unison.Rect {
 			wrapper.Tooltip = unison.NewTooltipWithText("A tooltip for the cell")
 			return wrapper.RectToRoot(wrapper.ContentRect(true))
 		}

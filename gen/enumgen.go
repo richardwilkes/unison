@@ -382,7 +382,7 @@ func main() {
 func removeExistingGenFiles() {
 	root, err := filepath.Abs(rootDir)
 	fatal.IfErr(err)
-	fatal.IfErr(filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	fatal.IfErr(filepath.Walk(root, func(path string, info os.FileInfo, _ error) error {
 		name := info.Name()
 		if info.IsDir() {
 			if name == ".git" {
