@@ -114,6 +114,17 @@ func (l *List[T]) Insert(index int, values ...T) {
 		index = len(l.rows)
 	}
 	l.rows = append(l.rows[:index], append(values, l.rows[index:]...)...)
+	i := l.Selection.LastSet() + 1
+	if i >= index {
+		delta := len(values)
+		for {
+			if i = l.Selection.PreviousSet(i); i == -1 || i < index {
+				break
+			}
+			l.Selection.Set(i + delta)
+			l.Selection.Clear(i)
+		}
+	}
 	l.MarkForLayoutAndRedraw()
 }
 
@@ -129,6 +140,14 @@ func (l *List[T]) Replace(index int, value T) {
 func (l *List[T]) Remove(index int) {
 	if index >= 0 && index < len(l.rows) {
 		l.rows = slice.ZeroedDelete(l.rows, index, index+1)
+		l.Selection.Clear(index)
+		for {
+			if index = l.Selection.NextSet(index); index == -1 {
+				break
+			}
+			l.Selection.Set(index - 1)
+			l.Selection.Clear(index)
+		}
 		l.MarkForLayoutAndRedraw()
 	}
 }
@@ -137,6 +156,15 @@ func (l *List[T]) Remove(index int) {
 func (l *List[T]) RemoveRange(from, to int) {
 	if from >= 0 && from < len(l.rows) && to >= from && to < len(l.rows) {
 		l.rows = slice.ZeroedDelete(l.rows, from, to+1)
+		l.Selection.ClearRange(from, to)
+		delta := to - from + 1
+		for {
+			if from = l.Selection.NextSet(from); from == -1 {
+				break
+			}
+			l.Selection.Set(from - delta)
+			l.Selection.Clear(from)
+		}
 		l.MarkForLayoutAndRedraw()
 	}
 }
@@ -199,7 +227,7 @@ func (l *List[T]) cellParams(row int) (fg, bg Ink, selected, focused bool) {
 		selected = l.Selection.State(row)
 	}
 	switch {
-	case selected && focused:
+	case selected && focused && l.Enabled():
 		fg = l.OnSelectionInk
 		bg = l.SelectionInk
 	case selected:
@@ -220,14 +248,32 @@ func (l *List[T]) cell(row int) *Panel {
 	return l.Factory.CreateCell(l, l.rows[row], row, fg, bg, selected, focused).AsPanel()
 }
 
+// RowRect returns the rectangle for the specified row.
+func (l *List[T]) RowRect(row int) Rect {
+	if row < 0 || row >= len(l.rows) {
+		return Rect{}
+	}
+	rect := l.ContentRect(false)
+	cellHeight := xmath.Ceil(l.Factory.CellHeight())
+	if cellHeight < 1 {
+		_, pref, _ := l.cell(row).Sizes(Size{})
+		cellHeight = pref.Ceil().Height
+	}
+	rect.Y += cellHeight * float32(row)
+	rect.Height = cellHeight
+	return rect
+}
+
 // DefaultDraw provides the default drawing.
 func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
+	rect := l.ContentRect(false)
+	intersect := rect.Intersect(dirty)
+	canvas.DrawRect(intersect, l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill))
 	row, y := l.rowAt(dirty.Y)
 	if row >= 0 {
 		cellHeight := xmath.Ceil(l.Factory.CellHeight())
 		count := len(l.rows)
 		yMax := dirty.Y + dirty.Height
-		rect := l.ContentRect(false)
 		for row < count && y < yMax {
 			fg, bg, selected, focused := l.cellParams(row)
 			cell := l.Factory.CreateCell(l, l.rows[row], row, fg, bg, selected, focused).AsPanel()
