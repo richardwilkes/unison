@@ -136,6 +136,14 @@ func (l *List[T]) Replace(index int, value T) {
 	}
 }
 
+// Clear the list of items.
+func (l *List[T]) Clear() {
+	l.rows = nil
+	l.Selection.Reset()
+	l.anchor = -1
+	l.MarkForLayoutAndRedraw()
+}
+
 // Remove the item at the specified index.
 func (l *List[T]) Remove(index int) {
 	if index >= 0 && index < len(l.rows) {
