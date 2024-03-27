@@ -11,7 +11,11 @@
 
 package unison
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/richardwilkes/unison/i18n"
+)
 
 // OSMenuCmdModifier returns the OS's standard menu command key modifier.
 func OSMenuCmdModifier() Modifiers {
@@ -24,22 +28,22 @@ func (m Modifiers) platformString() string {
 	}
 	var buffer bytes.Buffer
 	if m.ControlDown() {
-		buffer.WriteString("Ctrl+")
+		buffer.WriteString(i18n.Text("Ctrl+"))
 	}
 	if m.OptionDown() {
-		buffer.WriteString("Alt+")
+		buffer.WriteString(i18n.Text("Alt+"))
 	}
 	if m.ShiftDown() {
-		buffer.WriteString("Shift+")
+		buffer.WriteString(i18n.Text("Shift+"))
 	}
 	if m.CapsLockDown() {
-		buffer.WriteString("CapsLock+")
+		buffer.WriteString(i18n.Text("CapsLock+"))
 	}
 	if m.NumLockDown() {
-		buffer.WriteString("NumLock+")
+		buffer.WriteString(i18n.Text("NumLock+"))
 	}
 	if m.CommandDown() {
-		buffer.WriteString("Super+")
+		buffer.WriteString(i18n.Text("Super+"))
 	}
 	return buffer.String()
 }
