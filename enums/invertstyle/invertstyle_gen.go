@@ -16,7 +16,7 @@ package invertstyle
 import (
 	"strings"
 
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 // Possible values.

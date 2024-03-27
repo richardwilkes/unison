@@ -11,8 +11,8 @@ package printing
 
 import (
 	"github.com/OpenPrinting/goipp"
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 // Possible orientations

@@ -12,8 +12,8 @@ package unison
 import (
 	"strconv"
 
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 var _ Layout = &dockHeader{}

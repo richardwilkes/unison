@@ -13,8 +13,8 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 // Pre-defined menu IDs. Apps should start their IDs at UserBaseID.

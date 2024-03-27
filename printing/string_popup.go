@@ -12,9 +12,9 @@ package printing
 import (
 	"strings"
 
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/i18n"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
