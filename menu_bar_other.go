@@ -11,7 +11,7 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/i18n"
+import "github.com/richardwilkes/unison/i18n"
 
 func quitMenuTitle() string {
 	return i18n.Text("Exit")

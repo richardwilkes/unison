@@ -14,10 +14,10 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/imgfmt"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 type wellDialog struct {

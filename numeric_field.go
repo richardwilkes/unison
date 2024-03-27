@@ -14,8 +14,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 // NumericField holds a numeric value that can be edited.

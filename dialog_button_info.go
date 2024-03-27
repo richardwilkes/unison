@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 // DialogButtonInfo holds information for constructing the dialog button panel.

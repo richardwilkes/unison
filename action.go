@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 var (

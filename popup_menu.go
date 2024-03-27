@@ -15,11 +15,11 @@ import (
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/collection/slice"
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/slant"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter

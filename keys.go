@@ -16,7 +16,7 @@ import (
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/json"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 var _ json.Omitter = KeyCode(0)

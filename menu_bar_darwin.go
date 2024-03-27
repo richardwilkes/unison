@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/i18n"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 

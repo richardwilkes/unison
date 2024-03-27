@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/unison/i18n"
 	"github.com/richardwilkes/unison/internal/w32"
 )
 

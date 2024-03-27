@@ -18,10 +18,10 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xio"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 // JobDialog provides a print job dialog.

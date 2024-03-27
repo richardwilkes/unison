@@ -16,10 +16,10 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/toolbox/xio/fs"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/i18n"
 )
 
 const pathSeparator = string(os.PathSeparator)
