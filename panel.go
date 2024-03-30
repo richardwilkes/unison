@@ -11,10 +11,10 @@ package unison
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
 
@@ -188,7 +188,7 @@ func (p *Panel) RemoveChildAtIndex(index int) {
 	if index >= 0 && index < len(p.children) {
 		child := p.children[index]
 		child.parent = nil
-		p.children = slice.ZeroedDelete(p.children, index, index+1)
+		p.children = slices.Delete(p.children, index, index+1)
 		p.NeedsLayout = true
 		if child.ParentChangedCallback != nil {
 			child.ParentChangedCallback()

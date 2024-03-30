@@ -12,12 +12,12 @@ package unison
 import (
 	"fmt"
 	"image"
+	"slices"
 	"time"
 
 	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/fatal"
 	"github.com/richardwilkes/toolbox/xmath"
@@ -448,7 +448,7 @@ func (w *Window) removeFromModalStack() {
 		if w != wnd {
 			continue
 		}
-		modalStack = slice.ZeroedDelete(modalStack, i, i+1)
+		modalStack = slices.Delete(modalStack, i, i+1)
 		break
 	}
 }
@@ -480,7 +480,7 @@ func (w *Window) removeFromWindowList() {
 		if w != wnd {
 			continue
 		}
-		windowList = slice.ZeroedDelete(windowList, i, i+1)
+		windowList = slices.Delete(windowList, i, i+1)
 		break
 	}
 }

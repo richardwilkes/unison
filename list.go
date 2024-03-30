@@ -10,10 +10,10 @@
 package unison
 
 import (
+	"slices"
 	"time"
 
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -147,7 +147,7 @@ func (l *List[T]) Clear() {
 // Remove the item at the specified index.
 func (l *List[T]) Remove(index int) {
 	if index >= 0 && index < len(l.rows) {
-		l.rows = slice.ZeroedDelete(l.rows, index, index+1)
+		l.rows = slices.Delete(l.rows, index, index+1)
 		l.Selection.Clear(index)
 		for {
 			if index = l.Selection.NextSet(index); index == -1 {
@@ -163,7 +163,7 @@ func (l *List[T]) Remove(index int) {
 // RemoveRange removes the items at the specified index range, inclusive.
 func (l *List[T]) RemoveRange(from, to int) {
 	if from >= 0 && from < len(l.rows) && to >= from && to < len(l.rows) {
-		l.rows = slice.ZeroedDelete(l.rows, from, to+1)
+		l.rows = slices.Delete(l.rows, from, to+1)
 		l.Selection.ClearRange(from, to)
 		delta := to - from + 1
 		for {

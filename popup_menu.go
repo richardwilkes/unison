@@ -14,7 +14,6 @@ import (
 	"slices"
 
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
@@ -281,7 +280,7 @@ func (p *PopupMenu[T]) RemoveItemAt(index int) {
 		length := len(p.items)
 		if index < length {
 			indexes := p.SelectedIndexes()
-			p.items = slice.ZeroedDelete(p.items, index, index+1)
+			p.items = slices.Delete(p.items, index, index+1)
 			for _, one := range indexes {
 				if one >= index {
 					delete(p.selection, one)

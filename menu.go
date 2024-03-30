@@ -10,7 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/collection/slice"
+	"slices"
+
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 )
@@ -173,7 +174,7 @@ func (m *menu) insertItem(atIndex int, mi *menuItem) {
 func (m *menu) RemoveItem(index int) {
 	if index >= 0 && index < len(m.items) {
 		m.items[index].menu = nil
-		m.items = slice.ZeroedDelete(m.items, index, index+1)
+		m.items = slices.Delete(m.items, index, index+1)
 	}
 }
 

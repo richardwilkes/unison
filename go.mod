@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/json v0.2.0
-	github.com/richardwilkes/toolbox v1.106.0
+	github.com/richardwilkes/toolbox v1.109.0
 	github.com/yuin/goldmark v1.7.0
 	golang.org/x/image v0.15.0
 	golang.org/x/sys v0.18.0
@@ -23,7 +23,7 @@ require (
 	github.com/miekg/dns v1.1.58 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
-	golang.org/x/exp v0.0.0-20240318143956-a85f2c67cd81 // indirect
+	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
 	golang.org/x/mod v0.16.0 // indirect
 	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/tools v0.19.0 // indirect

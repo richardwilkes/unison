@@ -10,8 +10,9 @@
 package unison
 
 import (
+	"slices"
+
 	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/collection/slice"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -50,7 +51,7 @@ func (c *DynamicColor) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *
 func (c *DynamicColor) Unregister() {
 	for i, other := range dynamicColors {
 		if c == other {
-			dynamicColors = slice.ZeroedDelete(dynamicColors, i, i+1)
+			dynamicColors = slices.Delete(dynamicColors, i, i+1)
 			break
 		}
 	}
