@@ -887,6 +887,7 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 		t.uninstallCell(cell)
 	}
 	t.lastMouseDownCellPanel = nil
+	t.interactionRow = -1
 	return stop
 }
 
