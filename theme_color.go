@@ -59,6 +59,37 @@ var (
 	WarningColor             = &ThemeColor{Light: RGB(224, 128, 0), Dark: RGB(192, 96, 0)}
 )
 
+var (
+	ColorSurface          = &ThemeColor{Light: RGB(238, 239, 227), Dark: RGB(30, 32, 26)}
+	ColorOnSurface        = &ThemeColor{Light: RGB(26, 28, 22), Dark: RGB(226, 227, 216)}
+	ColorSurfaceVariant   = &ThemeColor{Light: RGB(249, 250, 239), Dark: RGB(18, 20, 14)}
+	ColorOnSurfaceVariant = &ThemeColor{Light: RGB(68, 72, 61), Dark: RGB(197, 200, 186)}
+	ColorPrimary          = &ThemeColor{Light: RGB(76, 102, 43), Dark: RGB(177, 209, 138)}
+	ColorOnPrimary        = &ThemeColor{Light: White, Dark: RGB(42, 51, 30)}
+	ColorSecondary        = &ThemeColor{Light: RGB(88, 98, 73), Dark: RGB(191, 203, 173)}
+	ColorOnSecondary      = &ThemeColor{Light: White, Dark: RGB(42, 51, 30)}
+	ColorTertiary         = &ThemeColor{Light: RGB(56, 102, 99), Dark: RGB(160, 208, 203)}
+	ColorOnTertiary       = &ThemeColor{Light: White, Dark: RGB(0, 55, 53)}
+	ColorTertiaryFixed    = &ThemeColor{Light: RGB(188, 236, 231), Dark: RGB(188, 236, 231)}
+	ColorOnTertiaryFixed  = &ThemeColor{Light: RGB(0, 32, 30), Dark: RGB(0, 32, 30)}
+	ColorHeader           = &ThemeColor{Light: RGB(66, 67, 57), Dark: RGB(49, 52, 45)}
+	ColorOnHeader         = &ThemeColor{Light: RGB(222, 223, 211), Dark: RGB(128, 129, 119)}
+	ColorEditable         = &ThemeColor{Light: White, Dark: Black}
+	ColorOnEditable       = &ThemeColor{Light: Black, Dark: White}
+	ColorWarning          = &ThemeColor{Light: RGB(224, 128, 0), Dark: RGB(192, 96, 0)}
+	ColorOnWarning        = &ThemeColor{Light: White, Dark: RGB(221, 221, 221)}
+	ColorError            = &ThemeColor{Light: RGB(186, 26, 26), Dark: RGB(255, 180, 171)}
+	ColorOnError          = &ThemeColor{Light: White, Dark: RGB(105, 0, 5)}
+	ColorBackground       = &ThemeColor{Light: RGB(249, 250, 239), Dark: RGB(26, 28, 22)}
+	ColorShadow           = &ThemeColor{Light: Black, Dark: Black}
+	ColorOutline          = &ThemeColor{Light: RGB(117, 121, 108), Dark: RGB(143, 146, 133)}
+	ColorOutlineVariant   = &ThemeColor{Light: RGB(197, 200, 186), Dark: RGB(68, 72, 61)}
+)
+
+func newThemeColor(light, dark string) *ThemeColor {
+	return &ThemeColor{Light: MustColorDecode(light), Dark: MustColorDecode(dark)}
+}
+
 // ThemeColor holds a pair of colors, one for light mode and one for dark mode.
 type ThemeColor struct {
 	Light Color `json:"light"`
