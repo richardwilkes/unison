@@ -19,7 +19,7 @@ import (
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
 // Tooltips, but will alter any Tooltips created in the future.
 var DefaultTooltipTheme = TooltipTheme{
-	BackgroundInk: &PrimaryTheme.SurfaceAbove,
+	BackgroundInk: &PrimaryTheme.SurfaceBelow,
 	BaseBorder: NewCompoundBorder(
 		NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false),
 		NewEmptyBorder(StdInsets()),
