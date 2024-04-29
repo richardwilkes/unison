@@ -431,7 +431,10 @@ func createThemeColor(title string, color, onColor *unison.ThemeColor, container
 		gc.DrawRect(rect, color.Paint(gc, rect, paintstyle.Fill))
 		label.DefaultDraw(gc, rect)
 	}
-	label.SetBorder(unison.NewCompoundBorder(unison.NewLineBorder(&unison.PrimaryTheme.Outline, 0, unison.NewUniformInsets(1), false), unison.NewEmptyBorder(unison.NewUniformInsets(4))))
+	label.SetBorder(unison.NewCompoundBorder(
+		unison.NewLineBorder(&unison.PrimaryTheme.Outline, 0, unison.NewUniformInsets(1), false),
+		unison.NewEmptyBorder(unison.NewUniformInsets(4)),
+	))
 	container.AddChild(label)
 }
 

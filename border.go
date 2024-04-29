@@ -25,8 +25,10 @@ func NewDefaultFieldBorder(focused bool) Border {
 		adj = 0
 		color = &PrimaryTheme.Primary
 	}
-	return NewCompoundBorder(NewLineBorder(color, 0, NewUniformInsets(2-adj), false),
-		NewEmptyBorder(Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}))
+	return NewCompoundBorder(
+		NewLineBorder(color, 0, NewUniformInsets(2-adj), false),
+		NewEmptyBorder(Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}),
+	)
 }
 
 // InstallDefaultFieldBorder installs the default field border on the borderTarget and chains into the focus handling of

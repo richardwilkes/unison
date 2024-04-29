@@ -414,9 +414,10 @@ func (m *Markdown) processBlockquote() {
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
-	p.SetBorder(NewCompoundBorder(NewLineBorder(m.QuoteBarColor, 0,
-		Insets{Left: m.QuoteBarThickness}, false),
-		NewEmptyBorder(NewUniformInsets(m.CodeAndQuotePadding))))
+	p.SetBorder(NewCompoundBorder(
+		NewLineBorder(m.QuoteBarColor, 0, Insets{Left: m.QuoteBarThickness}, false),
+		NewEmptyBorder(NewUniformInsets(m.CodeAndQuotePadding)),
+	))
 	m.block.AddChild(p)
 	m.block = p
 	m.text = NewText("", m.decoration)

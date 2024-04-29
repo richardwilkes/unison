@@ -20,8 +20,10 @@ import (
 // Tooltips, but will alter any Tooltips created in the future.
 var DefaultTooltipTheme = TooltipTheme{
 	BackgroundInk: &PrimaryTheme.SurfaceAbove,
-	BaseBorder: NewCompoundBorder(NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false),
-		NewEmptyBorder(StdInsets())),
+	BaseBorder: NewCompoundBorder(
+		NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false),
+		NewEmptyBorder(StdInsets()),
+	),
 	Label:     defaultToolTipLabelTheme(),
 	Delay:     1500 * time.Millisecond,
 	Dismissal: 5 * time.Second,

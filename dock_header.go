@@ -23,8 +23,10 @@ var _ Layout = &dockHeader{}
 var DefaultDockHeaderTheme = DockHeaderTheme{
 	BackgroundInk: &PrimaryTheme.Surface,
 	DropAreaInk:   &PrimaryTheme.Warning,
-	HeaderBorder: NewCompoundBorder(NewLineBorder(&PrimaryTheme.Outline, 0, Insets{Bottom: 1}, false),
-		NewEmptyBorder(NewHorizontalInsets(4))),
+	HeaderBorder: NewCompoundBorder(
+		NewLineBorder(&PrimaryTheme.Outline, 0, Insets{Bottom: 1}, false),
+		NewEmptyBorder(NewHorizontalInsets(4)),
+	),
 	MinimumTabWidth: 50,
 	TabGap:          4,
 	TabInsertSize:   3,
