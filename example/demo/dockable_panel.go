@@ -24,11 +24,11 @@ type DockablePanel struct {
 	unison.Panel
 	Text  string
 	Tip   string
-	Color unison.Ink
+	Color unison.Color
 }
 
 // NewDockablePanel creates a new sample dockable panel.
-func NewDockablePanel(title, tip string, background unison.Ink) *DockablePanel {
+func NewDockablePanel(title, tip string, background unison.Color) *DockablePanel {
 	d := &DockablePanel{
 		Text:  title,
 		Tip:   tip,
@@ -53,7 +53,7 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect unison.Rect) {
 	if d.Focused() {
 		txt := unison.NewText("Focused", &unison.TextDecoration{
 			Font:       unison.EmphasizedSystemFont,
-			Foreground: unison.Black,
+			Foreground: unison.OnColor(d.Color),
 		})
 		r := d.ContentRect(false)
 		size := txt.Extents()

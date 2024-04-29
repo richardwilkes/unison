@@ -16,3 +16,38 @@ type Border interface {
 	// Draw the border into rect.
 	Draw(canvas *Canvas, rect Rect)
 }
+
+// NewDefaultFieldBorder creates the default border for a field.
+func NewDefaultFieldBorder(focused bool) Border {
+	color := &PrimaryTheme.Outline
+	adj := float32(1)
+	if focused {
+		adj = 0
+		color = &PrimaryTheme.Primary
+	}
+	return NewCompoundBorder(NewLineBorder(color, 0, NewUniformInsets(2-adj), false),
+		NewEmptyBorder(Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}))
+}
+
+// InstallDefaultFieldBorder installs the default field border on the borderTarget and chains into the focus handling of
+// the focusTarget to adjust the border as focus changes.
+func InstallDefaultFieldBorder(focusTarget, borderTarget Paneler) {
+	unfocusedBorder := NewDefaultFieldBorder(false)
+	focusedBorder := NewDefaultFieldBorder(true)
+	focusPanel := focusTarget.AsPanel()
+	savedFocusGainedCallback := focusPanel.GainedFocusCallback
+	focusPanel.GainedFocusCallback = func() {
+		borderTarget.AsPanel().SetBorder(focusedBorder)
+		if savedFocusGainedCallback != nil {
+			savedFocusGainedCallback()
+		}
+	}
+	savedFocusLostCallback := focusPanel.LostFocusCallback
+	focusPanel.LostFocusCallback = func() {
+		borderTarget.AsPanel().SetBorder(unfocusedBorder)
+		if savedFocusLostCallback != nil {
+			savedFocusLostCallback()
+		}
+	}
+	borderTarget.AsPanel().SetBorder(unfocusedBorder)
+}

@@ -23,12 +23,12 @@ import (
 // existing CheckBoxes, but will alter any CheckBoxes created in the future.
 var DefaultCheckBoxTheme = CheckBoxTheme{
 	Font:               SystemFont,
-	OnBackgroundInk:    OnBackgroundColor,
-	EdgeInk:            ControlEdgeColor,
-	SelectionInk:       SelectionColor,
-	OnSelectionInk:     OnSelectionColor,
-	ControlInk:         ControlColor,
-	OnControlInk:       OnControlColor,
+	OnBackgroundInk:    &PrimaryTheme.OnSurface,
+	EdgeInk:            &PrimaryTheme.Outline,
+	SelectionInk:       &PrimaryTheme.Primary,
+	OnSelectionInk:     &PrimaryTheme.OnPrimary,
+	ControlInk:         &PrimaryTheme.SurfaceAbove,
+	OnControlInk:       &PrimaryTheme.OnSurfaceAbove,
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
@@ -158,11 +158,13 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 		bg = c.ControlInk
 		fg = c.OnControlInk
 	}
+	edge := c.EdgeInk
 	thickness := float32(1)
 	if c.Focused() {
 		thickness++
+		edge = c.SelectionInk
 	}
-	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, c.EdgeInk)
+	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, edge)
 	rect = rect.Inset(NewUniformInsets(0.5))
 	if c.State == check.Off {
 		return

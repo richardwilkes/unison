@@ -19,8 +19,8 @@ import (
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
 // Tooltips, but will alter any Tooltips created in the future.
 var DefaultTooltipTheme = TooltipTheme{
-	BackgroundInk: TooltipColor,
-	BaseBorder: NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(1), false),
+	BackgroundInk: &PrimaryTheme.SurfaceAbove,
+	BaseBorder: NewCompoundBorder(NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false),
 		NewEmptyBorder(StdInsets())),
 	Label:     defaultToolTipLabelTheme(),
 	Delay:     1500 * time.Millisecond,
@@ -30,7 +30,7 @@ var DefaultTooltipTheme = TooltipTheme{
 func defaultToolTipLabelTheme() LabelTheme {
 	theme := DefaultLabelTheme
 	theme.Font = FieldFont
-	theme.OnBackgroundInk = OnTooltipColor
+	theme.OnBackgroundInk = &PrimaryTheme.OnSurfaceAbove
 	return theme
 }
 

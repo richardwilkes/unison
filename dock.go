@@ -20,9 +20,9 @@ import (
 // DefaultDockTheme holds the default DockTheme values for Docks. Modifying this data will not alter existing Docks, but
 // will alter any Docks created in the future.
 var DefaultDockTheme = DockTheme{
-	BackgroundInk: BackgroundColor,
-	GripInk:       DividerColor,
-	DropAreaInk:   DropAreaColor,
+	BackgroundInk: &PrimaryTheme.Surface,
+	GripInk:       &PrimaryTheme.Outline,
+	DropAreaInk:   &PrimaryTheme.Warning,
 	GripCount:     5,
 	GripGap:       1,
 	GripWidth:     4,

@@ -166,7 +166,7 @@ func (d *fileDialog) createContent() *Panel {
 	d.fileList.DoubleClickCallback = d.fileListDoubleClickHandler
 	d.rebuildFileList()
 	d.scroller = NewScrollPanel()
-	d.scroller.SetBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(1), false))
+	d.scroller.SetBorder(NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false))
 	d.scroller.SetContent(d.fileList, behavior.Follow, behavior.Fill)
 	content.AddChild(d.scroller)
 	d.scroller.SetLayoutData(&FlexLayoutData{

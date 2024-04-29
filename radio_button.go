@@ -22,12 +22,12 @@ import (
 // alter existing RadioButtons, but will alter any RadioButtons created in the future.
 var DefaultRadioButtonTheme = RadioButtonTheme{
 	Font:               SystemFont,
-	BackgroundInk:      ControlColor,
-	OnBackgroundInk:    OnControlColor,
-	EdgeInk:            ControlEdgeColor,
-	LabelInk:           OnBackgroundColor,
-	SelectionInk:       SelectionColor,
-	OnSelectionInk:     OnSelectionColor,
+	BackgroundInk:      &PrimaryTheme.SurfaceAbove,
+	OnBackgroundInk:    &PrimaryTheme.OnSurfaceAbove,
+	EdgeInk:            &PrimaryTheme.Outline,
+	LabelInk:           &PrimaryTheme.OnSurface,
+	SelectionInk:       &PrimaryTheme.Primary,
+	OnSelectionInk:     &PrimaryTheme.OnPrimary,
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
@@ -141,9 +141,11 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 		bg = r.BackgroundInk
 		fg = r.OnBackgroundInk
 	}
+	edge := r.EdgeInk
 	thickness := float32(1)
 	if r.Focused() {
 		thickness++
+		edge = r.SelectionInk
 	}
 	rect.Size = size
 	circleSize := r.circleSize()
@@ -159,7 +161,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 	}
 	rect.Width = circleSize
 	rect.Height = circleSize
-	DrawEllipseBase(canvas, rect, thickness, bg, r.EdgeInk)
+	DrawEllipseBase(canvas, rect, thickness, bg, edge)
 	if r.Selected() {
 		rect = rect.Inset(NewUniformInsets(0.5 + 0.2*circleSize))
 		paint := fg.Paint(canvas, rect, paintstyle.Fill)

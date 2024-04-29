@@ -36,17 +36,17 @@ var DefaultDialogTheme = DialogTheme{
 		SVG:  CircledExclamationSVG,
 		Size: Size{Width: 48, Height: 48},
 	},
-	ErrorIconInk: ErrorColor,
+	ErrorIconInk: &PrimaryTheme.Error,
 	WarningIcon: &DrawableSVG{
 		SVG:  TriangleExclamationSVG,
 		Size: Size{Width: 48, Height: 48},
 	},
-	WarningIconInk: WarningColor,
+	WarningIconInk: &PrimaryTheme.Warning,
 	QuestionIcon: &DrawableSVG{
 		SVG:  CircledQuestionSVG,
 		Size: Size{Width: 48, Height: 48},
 	},
-	QuestionIconInk: OnBackgroundColor,
+	QuestionIconInk: &PrimaryTheme.OnSurface,
 }
 
 // DialogTheme holds theming data for a Dialog.

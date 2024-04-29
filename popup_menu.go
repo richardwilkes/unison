@@ -25,11 +25,11 @@ import (
 // existing PopupMenus, but will alter any PopupMenus created in the future.
 var DefaultPopupMenuTheme = PopupMenuTheme{
 	Font:            SystemFont,
-	BackgroundInk:   ControlColor,
-	OnBackgroundInk: OnControlColor,
-	EdgeInk:         ControlEdgeColor,
-	SelectionInk:    SelectionColor,
-	OnSelectionInk:  OnSelectionColor,
+	BackgroundInk:   &PrimaryTheme.SurfaceAbove,
+	OnBackgroundInk: &PrimaryTheme.OnSurfaceAbove,
+	EdgeInk:         &PrimaryTheme.Outline,
+	SelectionInk:    &PrimaryTheme.Primary,
+	OnSelectionInk:  &PrimaryTheme.OnPrimary,
 	CornerRadius:    4,
 	HMargin:         8,
 	VMargin:         1,
@@ -125,11 +125,13 @@ func (p *PopupMenu[T]) DefaultFocusGained() {
 // DefaultDraw provides the default drawing.
 func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	thickness := float32(1)
+	edge := p.EdgeInk
 	if p.Focused() || p.pressed {
 		thickness++
+		edge = p.SelectionInk
 	}
 	rect := p.ContentRect(false)
-	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, p.BackgroundInk, p.EdgeInk)
+	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, p.BackgroundInk, edge)
 	rect = rect.Inset(NewUniformInsets(1.5))
 	rect.X += p.HMargin
 	rect.Y += p.VMargin

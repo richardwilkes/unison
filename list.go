@@ -21,14 +21,14 @@ import (
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
 // but will alter any Lists created in the future.
 var DefaultListTheme = ListTheme{
-	BackgroundInk:          ContentColor,
-	OnBackgroundInk:        OnContentColor,
-	BandingInk:             BandingColor,
-	OnBandingInk:           OnBandingColor,
-	SelectionInk:           SelectionColor,
-	OnSelectionInk:         OnSelectionColor,
-	InactiveSelectionInk:   InactiveSelectionColor,
-	OnInactiveSelectionInk: OnInactiveSelectionColor,
+	BackgroundInk:          &PrimaryTheme.SurfaceBelow,
+	OnBackgroundInk:        &PrimaryTheme.OnSurfaceBelow,
+	BandingInk:             &PrimaryTheme.Surface,
+	OnBandingInk:           &PrimaryTheme.OnSurface,
+	SelectionInk:           &PrimaryTheme.Primary,
+	OnSelectionInk:         &PrimaryTheme.OnPrimary,
+	InactiveSelectionInk:   &PrimaryTheme.Secondary,
+	OnInactiveSelectionInk: &PrimaryTheme.OnPrimary,
 	FlashAnimationTime:     100 * time.Millisecond,
 }
 

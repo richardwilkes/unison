@@ -17,11 +17,11 @@ import (
 var DefaultLinkTheme = LinkTheme{
 	TextDecoration: TextDecoration{
 		Font:       LabelFont,
-		Foreground: LinkColor,
+		Foreground: &PrimaryTheme.SurfaceAbove,
 		Underline:  true,
 	},
-	RolloverInk: LinkRolloverColor,
-	PressedInk:  LinkPressedColor,
+	RolloverInk: &PrimaryTheme.Secondary,
+	PressedInk:  &PrimaryTheme.Secondary,
 }
 
 // LinkTheme holds theming data for a link.

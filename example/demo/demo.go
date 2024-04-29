@@ -20,6 +20,7 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 var windowCounter int
@@ -79,6 +80,18 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 
 	// Create a column of checkboxes
 	panel = createCheckBoxPanel()
+	panel.SetLayoutData(&unison.FlexLayoutData{
+		HSpan:  1,
+		VSpan:  1,
+		VAlign: align.Middle,
+		HGrab:  true,
+	})
+	content.AddChild(panel)
+
+	addSeparator(content)
+
+	// Create theme colors panel
+	panel = createThemeColorsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
@@ -314,6 +327,37 @@ func createCheckBox(title string, initialState check.Enum, panel *unison.Panel) 
 	return cb
 }
 
+func createThemeColorsPanel() *unison.Panel {
+	panel := unison.NewPanel()
+	createThemeColor("Primary", &unison.PrimaryTheme.Primary, &unison.PrimaryTheme.OnPrimary, panel)
+	createThemeColor("Secondary", &unison.PrimaryTheme.Secondary, &unison.PrimaryTheme.OnSecondary, panel)
+	createThemeColor("Tertiary", &unison.PrimaryTheme.Tertiary, &unison.PrimaryTheme.OnTertiary, panel)
+	createThemeColor("Surface", &unison.PrimaryTheme.Surface, &unison.PrimaryTheme.OnSurface, panel)
+	createThemeColor("Surface Above", &unison.PrimaryTheme.SurfaceAbove, &unison.PrimaryTheme.OnSurfaceAbove, panel)
+	createThemeColor("Surface Below", &unison.PrimaryTheme.SurfaceBelow, &unison.PrimaryTheme.OnSurfaceBelow, panel)
+	createThemeColor("Error", &unison.PrimaryTheme.Error, &unison.PrimaryTheme.OnError, panel)
+	createThemeColor("Warning", &unison.PrimaryTheme.Warning, &unison.PrimaryTheme.OnWarning, panel)
+	panel.SetLayout(&unison.FlexLayout{
+		Columns:  len(panel.Children()),
+		HAlign:   align.Fill,
+		HSpacing: unison.StdHSpacing,
+		VSpacing: unison.StdVSpacing,
+	})
+	return panel
+}
+
+func createThemeColor(title string, color, onColor *unison.ThemeColor, container *unison.Panel) {
+	label := unison.NewLabel()
+	label.Text = title
+	label.OnBackgroundInk = onColor
+	label.DrawCallback = func(gc *unison.Canvas, rect unison.Rect) {
+		gc.DrawRect(rect, color.Paint(gc, rect, paintstyle.Fill))
+		label.DefaultDraw(gc, rect)
+	}
+	label.SetBorder(unison.NewCompoundBorder(unison.NewLineBorder(&unison.PrimaryTheme.Outline, 0, unison.NewUniformInsets(1), false), unison.NewEmptyBorder(unison.NewUniformInsets(4))))
+	container.AddChild(label)
+}
+
 func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 	// Create a wrapper to put them side-by-side
 	wrapper := unison.NewPanel()
@@ -428,7 +472,7 @@ func createFieldsAndListPanel() *unison.Panel {
 	wrapper.AddChild(textFieldsPanel)
 
 	// Add the list to the right side
-	wrapper.AddChild(createListPanel())
+	wrapper.AddChild(createListPanel(textFieldsPanel))
 
 	return wrapper
 }
@@ -510,7 +554,7 @@ func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) 
 	return field
 }
 
-func createListPanel() *unison.Panel {
+func createListPanel(companion unison.Paneler) *unison.Panel {
 	lst := unison.NewList[string]()
 	lst.Append(
 		"One",
@@ -518,6 +562,13 @@ func createListPanel() *unison.Panel {
 		"Three with some long text to make it interesting",
 		"Four",
 		"Five",
+		"Six",
+		"Seven",
+		"Eight",
+		"Nine",
+		"Ten",
+		"Eleven",
+		"Twelve",
 	)
 	lst.NewSelectionCallback = func() {
 		var buffer strings.Builder
@@ -544,23 +595,24 @@ func createListPanel() *unison.Panel {
 	_, prefSize, _ := lst.Sizes(unison.Size{})
 	lst.SetFrameRect(unison.Rect{Size: prefSize})
 	scroller := unison.NewScrollPanel()
-	scroller.SetBorder(unison.NewLineBorder(unison.ControlEdgeColor, 0, unison.NewUniformInsets(1), false))
 	scroller.SetContent(lst, behavior.Fill, behavior.Fill)
+	_, prefSize, _ = companion.AsPanel().Sizes(unison.Size{})
 	scroller.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
-		HAlign: align.Fill,
-		VAlign: align.Fill,
-		HGrab:  true,
-		VGrab:  true,
+		SizeHint: prefSize,
+		HSpan:    1,
+		VSpan:    1,
+		HAlign:   align.Fill,
+		VAlign:   align.Fill,
+		HGrab:    true,
+		VGrab:    true,
 	})
+	unison.InstallDefaultFieldBorder(lst, scroller)
 	return scroller.AsPanel()
 }
 
 func createImagePanel() *unison.Label {
-	// Create the label and make it focusable
+	// Create the label
 	imgPanel := unison.NewLabel()
-	imgPanel.SetFocusable(true)
 
 	// Prepare a cursor for when the mouse is over the image
 	cursor := unison.MoveCursor()

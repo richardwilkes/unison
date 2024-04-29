@@ -21,11 +21,11 @@ import (
 // Buttons, but will alter any Buttons created in the future.
 var DefaultButtonTheme = ButtonTheme{
 	Font:                SystemFont,
-	BackgroundInk:       ControlColor,
-	OnBackgroundInk:     OnControlColor,
-	EdgeInk:             ControlEdgeColor,
-	SelectionInk:        SelectionColor,
-	OnSelectionInk:      OnSelectionColor,
+	BackgroundInk:       &PrimaryTheme.SurfaceAbove,
+	OnBackgroundInk:     &PrimaryTheme.OnSurfaceAbove,
+	EdgeInk:             &PrimaryTheme.Outline,
+	SelectionInk:        &PrimaryTheme.Primary,
+	OnSelectionInk:      &PrimaryTheme.OnPrimary,
 	Gap:                 3,
 	CornerRadius:        4,
 	HMargin:             8,
@@ -43,12 +43,12 @@ var DefaultButtonTheme = ButtonTheme{
 // existing Buttons, but will alter any Buttons created in the future.
 var DefaultSVGButtonTheme = ButtonTheme{
 	Font:                SystemFont,
-	BackgroundInk:       ControlColor,
-	OnBackgroundInk:     IconButtonColor,
-	EdgeInk:             ControlEdgeColor,
-	SelectionInk:        ControlColor,
-	OnSelectionInk:      IconButtonPressedColor,
-	RolloverInk:         IconButtonRolloverColor,
+	BackgroundInk:       &PrimaryTheme.SurfaceAbove,
+	OnBackgroundInk:     &PrimaryTheme.SurfaceAbove,
+	EdgeInk:             &PrimaryTheme.Outline,
+	SelectionInk:        &PrimaryTheme.SurfaceAbove,
+	OnSelectionInk:      &PrimaryTheme.Primary,
+	RolloverInk:         &PrimaryTheme.SurfaceAbove,
 	Gap:                 3,
 	CornerRadius:        4,
 	HMargin:             8,
@@ -187,10 +187,12 @@ func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 	r := b.ContentRect(false)
 	if !b.HideBase || b.Focused() {
 		thickness := float32(1)
+		edge := b.EdgeInk
 		if b.Focused() {
 			thickness++
+			edge = b.SelectionInk
 		}
-		DrawRoundedRectBase(canvas, r, b.CornerRadius, thickness, bg, b.EdgeInk)
+		DrawRoundedRectBase(canvas, r, b.CornerRadius, thickness, bg, edge)
 		r = r.Inset(NewUniformInsets(thickness + 0.5))
 	}
 	r = r.Inset(NewSymmetricInsets(b.HorizontalMargin(), b.VerticalMargin()))

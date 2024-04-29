@@ -50,7 +50,7 @@ func init() {
 	DefaultMarkdownTheme = MarkdownTheme{
 		TextDecoration: TextDecoration{
 			Font:       LabelFont,
-			Foreground: OnBackgroundColor,
+			Foreground: &PrimaryTheme.OnSurface,
 		},
 		HeadingFont: [6]Font{
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 1) }},
@@ -61,12 +61,12 @@ func init() {
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 6) }},
 		},
 		CodeBlockFont:       &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
-		CodeBackground:      ContentColor,
-		OnCodeBackground:    OnContentColor,
-		QuoteBarColor:       AccentColor,
-		LinkInk:             LinkColor,
-		LinkRolloverInk:     LinkRolloverColor,
-		LinkPressedInk:      LinkPressedColor,
+		CodeBackground:      &PrimaryTheme.Surface,
+		OnCodeBackground:    &PrimaryTheme.OnSurface,
+		QuoteBarColor:       &PrimaryTheme.Tertiary,
+		LinkInk:             &PrimaryTheme.SurfaceAbove,
+		LinkRolloverInk:     &PrimaryTheme.Secondary,
+		LinkPressedInk:      &PrimaryTheme.Secondary,
 		LinkHandler:         DefaultMarkdownLinkHandler,
 		VSpacing:            10,
 		QuoteBarThickness:   2,
@@ -491,7 +491,7 @@ func (m *Markdown) processTable() {
 				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
 			}
 			p := NewPanel()
-			p.SetBorder(NewLineBorder(DividerColor, 0, NewUniformInsets(1), false))
+			p.SetBorder(NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false))
 			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
 			m.block.AddChild(p)
 			m.block = p
@@ -625,7 +625,7 @@ func (m *Markdown) processTableCell() {
 			}
 		}
 		p := NewPanel()
-		p.SetBorder(NewLineBorder(DividerColor, 0, NewUniformInsets(1), false))
+		p.SetBorder(NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false))
 		p.SetLayout(&FlexLayout{
 			Columns: 1,
 			HAlign:  hAlign,

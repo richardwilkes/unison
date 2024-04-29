@@ -20,7 +20,7 @@ import (
 // DefaultRichLabelTheme holds the default RichLabelTheme values for RichLabels. Modifying this data will not alter
 // existing RichLabels, but will alter any RichLabels created in the future.
 var DefaultRichLabelTheme = RichLabelTheme{
-	OnBackgroundInk: OnBackgroundColor,
+	OnBackgroundInk: &PrimaryTheme.OnSurface,
 	Gap:             3,
 	HAlign:          align.Start,
 	VAlign:          align.Middle,

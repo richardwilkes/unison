@@ -26,7 +26,7 @@ type TableColumnHeader[T TableRowConstraint[T]] interface {
 // data will not alter existing TableColumnHeaders, but will alter any TableColumnHeaders created in the future.
 var DefaultTableColumnHeaderTheme = LabelTheme{
 	Font:            LabelFont,
-	OnBackgroundInk: OnBackgroundColor,
+	OnBackgroundInk: &PrimaryTheme.OnSurface,
 	Gap:             3,
 	HAlign:          align.Middle,
 	VAlign:          align.Middle,
