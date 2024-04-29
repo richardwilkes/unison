@@ -533,9 +533,9 @@ func (c Color) Luminance() float32 {
 // OnColor returns Black if the input color is light, otherwise White.
 func OnColor(color Color) Color {
 	if color.Luminance() >= 0.55 {
-		return Black
+		return GreyPalette[9]
 	}
-	return White
+	return GreyPalette[0]
 }
 
 // OKLCH returns the lightness (0-1), chroma (0-0.37), and hue (0-360) values using the OKLCH color space.

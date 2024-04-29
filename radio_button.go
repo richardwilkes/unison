@@ -227,5 +227,8 @@ func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) boo
 
 // DefaultUpdateCursor provides the default cursor for radio buttons.
 func (r *RadioButton) DefaultUpdateCursor(_ Point) *Cursor {
+	if !r.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }

@@ -47,33 +47,38 @@ type ThemeColor struct {
 
 // NewDefaultTheme returns a new Theme with default colors.
 func NewDefaultTheme() Theme {
-	return NewThemeFromPalettes(BluePalette, GreenPalette, LimePalette)
+	return NewThemeFromPalettes(BluePalette, IndigoPalette, GreenPalette)
 }
 
 // NewThemeFromPalettes returns a new Theme created with the specified palettes.
 func NewThemeFromPalettes(primary, secondary, tertiary Palette) Theme {
 	darkSurface := RGB(48, 48, 48)
-	return Theme{
-		Primary:        ThemeColor{Light: primary[9], Dark: primary[9]},
-		OnPrimary:      ThemeColor{Light: OnColor(primary[9]), Dark: OnColor(primary[9])},
-		Secondary:      ThemeColor{Light: secondary[3], Dark: secondary[7]},
-		OnSecondary:    ThemeColor{Light: OnColor(secondary[3]), Dark: OnColor(secondary[7])},
-		Tertiary:       ThemeColor{Light: tertiary[3], Dark: tertiary[7]},
-		OnTertiary:     ThemeColor{Light: OnColor(tertiary[3]), Dark: OnColor(tertiary[7])},
+	t := Theme{
+		Primary:        ThemeColor{Light: primary[7], Dark: primary[7]},
+		Secondary:      ThemeColor{Light: secondary[7], Dark: secondary[7]},
+		Tertiary:       ThemeColor{Light: tertiary[7], Dark: tertiary[7]},
 		Surface:        ThemeColor{Light: GreyPalette[3], Dark: darkSurface},
-		OnSurface:      ThemeColor{Light: OnColor(GreyPalette[3]), Dark: OnColor(darkSurface)},
 		SurfaceAbove:   ThemeColor{Light: GreyPalette[4], Dark: GreyPalette[8]},
-		OnSurfaceAbove: ThemeColor{Light: OnColor(GreyPalette[4]), Dark: OnColor(GreyPalette[8])},
 		SurfaceBelow:   ThemeColor{Light: GreyPalette[2], Dark: GreyPalette[9]},
-		OnSurfaceBelow: ThemeColor{Light: OnColor(GreyPalette[2]), Dark: OnColor(GreyPalette[9])},
 		Error:          ThemeColor{Light: RedPalette[7], Dark: RedPalette[9]},
-		OnError:        ThemeColor{Light: OnColor(RedPalette[7]), Dark: OnColor(RedPalette[9])},
 		Warning:        ThemeColor{Light: OrangePalette[8], Dark: OrangePalette[9]},
-		OnWarning:      ThemeColor{Light: OnColor(OrangePalette[8]), Dark: OnColor(OrangePalette[9])},
 		Outline:        ThemeColor{Light: GreyPalette[5], Dark: GreyPalette[7]},
 		OutlineVariant: ThemeColor{Light: GreyPalette[4], Dark: GreyPalette[8]},
 		Shadow:         ThemeColor{Light: Black, Dark: Black},
 	}
+	t.OnPrimary = newOn(t.Primary)
+	t.OnSecondary = newOn(t.Secondary)
+	t.OnTertiary = newOn(t.Tertiary)
+	t.OnSurface = newOn(t.Surface)
+	t.OnSurfaceAbove = newOn(t.SurfaceAbove)
+	t.OnSurfaceBelow = newOn(t.SurfaceBelow)
+	t.OnError = newOn(t.Error)
+	t.OnWarning = newOn(t.Warning)
+	return t
+}
+
+func newOn(color ThemeColor) ThemeColor {
+	return ThemeColor{Light: OnColor(color.Light), Dark: OnColor(color.Dark)}
 }
 
 // GetColor returns the current color. Here to satisfy the ColorProvider interface.

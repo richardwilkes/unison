@@ -66,6 +66,20 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	})
 	content.AddChild(panel)
 
+	addSeparator(content)
+
+	// Create a wrappable row of svg buttons
+	panel = createSVGButtonsPanel()
+	panel.SetLayoutData(&unison.FlexLayoutData{
+		HSpan:  1,
+		VSpan:  1,
+		VAlign: align.Middle,
+		HGrab:  true,
+	})
+	content.AddChild(panel)
+
+	addSeparator(content)
+
 	// Create a wrappable row of image buttons
 	panel = createImageButtonsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
@@ -228,6 +242,80 @@ func createButton(title string, panel *unison.Panel) *unison.Button {
 	return btn
 }
 
+func createSVGButtonsPanel() *unison.Panel {
+	// Create a panel to place some buttons into.
+	panel := unison.NewPanel()
+	panel.SetLayout(&unison.FlowLayout{
+		HSpacing: unison.StdHSpacing,
+		VSpacing: unison.StdVSpacing,
+	})
+
+	createSVGButton(unison.CircledQuestionSVG, "question", panel)
+	createSVGButton(unison.CircledQuestionSVG, "question_disabled", panel).SetEnabled(false)
+
+	createSVGButton(unison.TriangleExclamationSVG, "warning", panel)
+	createSVGButton(unison.TriangleExclamationSVG, "warning_disabled", panel).SetEnabled(false)
+
+	createSpacer(20, panel)
+
+	createSVGButton(unison.CircledQuestionSVG, "question_boxed", panel).HideBase = false
+	b := createSVGButton(unison.CircledQuestionSVG, "question_boxed_disabled", panel)
+	b.HideBase = false
+	b.SetEnabled(false)
+
+	createSVGButton(unison.TriangleExclamationSVG, "warning_boxed", panel).HideBase = false
+	b = createSVGButton(unison.TriangleExclamationSVG, "warning_boxed_disabled", panel)
+	b.HideBase = false
+	b.SetEnabled(false)
+
+	createSpacer(20, panel)
+
+	group := unison.NewGroup()
+	first := createSVGButton(unison.CircledQuestionSVG, "question_toggle", panel)
+	first.Sticky = true
+	group.Add(first.AsGroupPanel())
+	second := createSVGButton(unison.TriangleExclamationSVG, "warning_toggle", panel)
+	second.Sticky = true
+	group.Add(second.AsGroupPanel())
+	group.Select(first.AsGroupPanel())
+
+	createSpacer(20, panel)
+
+	group = unison.NewGroup()
+	first = createSVGButton(unison.CircledQuestionSVG, "question_toggle_boxed", panel)
+	first.HideBase = false
+	first.Sticky = true
+	group.Add(first.AsGroupPanel())
+	second = createSVGButton(unison.TriangleExclamationSVG, "warning_toggle_boxed", panel)
+	second.HideBase = false
+	second.Sticky = true
+	group.Add(second.AsGroupPanel())
+	group.Select(first.AsGroupPanel())
+
+	return panel
+}
+
+func createSVGButton(svg *unison.SVG, actionText string, panel *unison.Panel) *unison.Button {
+	btn := unison.NewSVGButton(svg)
+	btn.ClickCallback = func() { slog.Info(actionText) }
+	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", actionText))
+	btn.SetLayoutData(align.Middle)
+	panel.AddChild(btn)
+	return btn
+}
+
+func createSpacer(width float32, panel *unison.Panel) {
+	spacer := &unison.Panel{}
+	spacer.Self = spacer
+	spacer.SetSizer(func(_ unison.Size) (minSize, prefSize, maxSize unison.Size) {
+		minSize.Width = width
+		prefSize.Width = width
+		maxSize.Width = width
+		return
+	})
+	panel.AddChild(spacer)
+}
+
 func createImageButtonsPanel() *unison.Panel {
 	// Create a panel to place some buttons into.
 	panel := unison.NewPanel()
@@ -255,16 +343,7 @@ func createImageButtonsPanel() *unison.Panel {
 	}
 
 	if homeImg != nil && logoImg != nil {
-		// Add spacer
-		spacer := &unison.Panel{}
-		spacer.Self = spacer
-		spacer.SetSizer(func(_ unison.Size) (minSize, prefSize, maxSize unison.Size) {
-			minSize.Width = 40
-			prefSize.Width = 40
-			maxSize.Width = 40
-			return
-		})
-		panel.AddChild(spacer)
+		createSpacer(20, panel)
 
 		// Add some sticky buttons in a group with our images
 		group := unison.NewGroup()
@@ -304,15 +383,15 @@ func addSeparator(parent *unison.Panel) {
 func createCheckBoxPanel() *unison.Panel {
 	panel := unison.NewPanel()
 	panel.SetLayout(&unison.FlexLayout{
-		Columns:  1,
-		HSpacing: unison.StdHSpacing,
+		Columns:  2,
+		HSpacing: unison.StdHSpacing * 2,
 		VSpacing: unison.StdVSpacing,
 	})
 	createCheckBox("Initially Off", check.Off, panel)
-	createCheckBox("Initially On", check.On, panel)
-	createCheckBox("Initially Mixed", check.Mixed, panel)
 	createCheckBox("Disabled", check.Off, panel).SetEnabled(false)
+	createCheckBox("Initially On", check.On, panel)
 	createCheckBox("Disabled w/Check", check.On, panel).SetEnabled(false)
+	createCheckBox("Initially Mixed", check.Mixed, panel)
 	createCheckBox("Disabled w/Mixed", check.Mixed, panel).SetEnabled(false)
 	return panel
 }
@@ -329,6 +408,10 @@ func createCheckBox(title string, initialState check.Enum, panel *unison.Panel) 
 
 func createThemeColorsPanel() *unison.Panel {
 	panel := unison.NewPanel()
+	panel.SetLayout(&unison.FlowLayout{
+		HSpacing: unison.StdHSpacing,
+		VSpacing: unison.StdVSpacing,
+	})
 	createThemeColor("Primary", &unison.PrimaryTheme.Primary, &unison.PrimaryTheme.OnPrimary, panel)
 	createThemeColor("Secondary", &unison.PrimaryTheme.Secondary, &unison.PrimaryTheme.OnSecondary, panel)
 	createThemeColor("Tertiary", &unison.PrimaryTheme.Tertiary, &unison.PrimaryTheme.OnTertiary, panel)
@@ -337,12 +420,6 @@ func createThemeColorsPanel() *unison.Panel {
 	createThemeColor("Surface Below", &unison.PrimaryTheme.SurfaceBelow, &unison.PrimaryTheme.OnSurfaceBelow, panel)
 	createThemeColor("Error", &unison.PrimaryTheme.Error, &unison.PrimaryTheme.OnError, panel)
 	createThemeColor("Warning", &unison.PrimaryTheme.Warning, &unison.PrimaryTheme.OnWarning, panel)
-	panel.SetLayout(&unison.FlexLayout{
-		Columns:  len(panel.Children()),
-		HAlign:   align.Fill,
-		HSpacing: unison.StdHSpacing,
-		VSpacing: unison.StdVSpacing,
-	})
 	return panel
 }
 
@@ -454,10 +531,9 @@ func createFieldsAndListPanel() *unison.Panel {
 	// Create a wrapper to put them side-by-side
 	wrapper := unison.NewPanel()
 	wrapper.SetLayout(&unison.FlexLayout{
-		Columns:      2,
-		HSpacing:     10,
-		VSpacing:     unison.StdVSpacing,
-		EqualColumns: true,
+		Columns:  2,
+		HSpacing: 10,
+		VSpacing: unison.StdVSpacing,
 	})
 
 	// Add the text fields to the left side

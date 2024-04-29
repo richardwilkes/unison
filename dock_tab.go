@@ -164,7 +164,7 @@ func (t *dockTab) draw(gc *Canvas, _ Rect) {
 	}
 	t.title.OnBackgroundInk = fg
 	if t.button != nil {
-		t.button.BackgroundInk = fg
+		t.button.OnBackgroundInk = fg
 	}
 	r := t.ContentRect(true)
 	p := NewPath()

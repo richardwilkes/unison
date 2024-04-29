@@ -423,5 +423,8 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bo
 
 // DefaultUpdateCursor provides the default cursor for popup menus.
 func (p *PopupMenu[T]) DefaultUpdateCursor(_ Point) *Cursor {
+	if !p.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }

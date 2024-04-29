@@ -268,5 +268,8 @@ func (w *Well) loadImage(imageSpec string) (*Image, error) {
 
 // DefaultUpdateCursor provides the default cursor for wells.
 func (w *Well) DefaultUpdateCursor(_ Point) *Cursor {
+	if !w.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }

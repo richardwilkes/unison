@@ -249,5 +249,8 @@ func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 
 // DefaultUpdateCursor provides the default cursor for check boxes.
 func (c *CheckBox) DefaultUpdateCursor(_ Point) *Cursor {
+	if !c.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }

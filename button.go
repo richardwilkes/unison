@@ -39,29 +39,6 @@ var DefaultButtonTheme = ButtonTheme{
 	HideBase:            false,
 }
 
-// DefaultSVGButtonTheme holds the default ButtonTheme values for SVG Buttons. Modifying this data will not alter
-// existing Buttons, but will alter any Buttons created in the future.
-var DefaultSVGButtonTheme = ButtonTheme{
-	Font:                SystemFont,
-	BackgroundInk:       &PrimaryTheme.SurfaceAbove,
-	OnBackgroundInk:     &PrimaryTheme.SurfaceAbove,
-	EdgeInk:             &PrimaryTheme.Outline,
-	SelectionInk:        &PrimaryTheme.SurfaceAbove,
-	OnSelectionInk:      &PrimaryTheme.Primary,
-	RolloverInk:         &PrimaryTheme.SurfaceAbove,
-	Gap:                 3,
-	CornerRadius:        4,
-	HMargin:             8,
-	VMargin:             1,
-	DrawableOnlyHMargin: 3,
-	DrawableOnlyVMargin: 3,
-	ClickAnimationTime:  100 * time.Millisecond,
-	HAlign:              align.Middle,
-	VAlign:              align.Middle,
-	Side:                side.Left,
-	HideBase:            false,
-}
-
 // ButtonTheme holds theming data for a Button.
 type ButtonTheme struct {
 	Font                Font
@@ -70,7 +47,6 @@ type ButtonTheme struct {
 	EdgeInk             Ink
 	SelectionInk        Ink
 	OnSelectionInk      Ink
-	RolloverInk         Ink
 	Gap                 float32
 	CornerRadius        float32
 	HMargin             float32
@@ -94,7 +70,6 @@ type Button struct {
 	Text          string
 	cache         TextCache
 	Pressed       bool
-	rollover      bool
 }
 
 // NewButton creates a new button.
@@ -109,8 +84,6 @@ func NewButton() *Button {
 	b.MouseDownCallback = b.DefaultMouseDown
 	b.MouseDragCallback = b.DefaultMouseDrag
 	b.MouseUpCallback = b.DefaultMouseUp
-	b.MouseEnterCallback = b.DefaultMouseEnter
-	b.MouseExitCallback = b.DefaultMouseExit
 	b.KeyDownCallback = b.DefaultKeyDown
 	b.UpdateCursorCallback = b.DefaultUpdateCursor
 	return b
@@ -119,7 +92,6 @@ func NewButton() *Button {
 // NewSVGButton creates an SVG icon button with a size equal to the default button theme's font baseline.
 func NewSVGButton(svg *SVG) *Button {
 	b := NewButton()
-	b.ButtonTheme = DefaultSVGButtonTheme
 	b.HideBase = true
 	baseline := b.Font.Baseline()
 	b.Drawable = &DrawableSVG{
@@ -175,13 +147,19 @@ func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 	var fg, bg Ink
 	switch {
 	case b.Pressed || (b.Sticky && b.Selected()):
-		bg = b.SelectionInk
-		fg = b.OnSelectionInk
-	case b.rollover && !b.disabled && b.RolloverInk != nil:
-		bg = b.BackgroundInk
-		fg = b.RolloverInk
+		if b.HideBase {
+			bg = Transparent
+			fg = b.SelectionInk
+		} else {
+			bg = b.SelectionInk
+			fg = b.OnSelectionInk
+		}
 	default:
-		bg = b.BackgroundInk
+		if b.HideBase {
+			bg = Transparent
+		} else {
+			bg = b.BackgroundInk
+		}
 		fg = b.OnBackgroundInk
 	}
 	r := b.ContentRect(false)
@@ -243,20 +221,6 @@ func (b *Button) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	return true
 }
 
-// DefaultMouseEnter provides the default mouse enter handling.
-func (b *Button) DefaultMouseEnter(_ Point, _ Modifiers) bool {
-	b.rollover = true
-	b.MarkForRedraw()
-	return true
-}
-
-// DefaultMouseExit provides the default mouse exit handling.
-func (b *Button) DefaultMouseExit() bool {
-	b.rollover = false
-	b.MarkForRedraw()
-	return true
-}
-
 // DefaultKeyDown provides the default key down handling.
 func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
@@ -268,5 +232,8 @@ func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 
 // DefaultUpdateCursor provides the default cursor for buttons.
 func (b *Button) DefaultUpdateCursor(_ Point) *Cursor {
+	if !b.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }
