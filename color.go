@@ -37,28 +37,28 @@ type ColorProvider interface {
 // Color contains the value of a color used for drawing, stored as 0xAARRGGBB.
 type Color uint32
 
-// RGB creates a new opaque Color from RGB values in the range 0-255.
+// RGB creates a new opaque Color from RGB (Red, Green Blue) values in the range 0-255.
 func RGB(red, green, blue int) Color {
 	return ARGB(1, red, green, blue)
 }
 
-// ARGB creates a new Color from RGB values in the range 0-255 and an alpha value in the range 0-1.
+// ARGB creates a new Color from RGB (Red, Green Blue) values in the range 0-255 and an alpha value in the range 0-1.
 func ARGB(alpha float32, red, green, blue int) Color {
 	return Color(clamp0To1AndScale255(alpha)<<24 | clamp0To255(red)<<16 | clamp0To255(green)<<8 | clamp0To255(blue))
 }
 
-// ARGBfloat creates a new Color from ARGB values in the range 0-1.
+// ARGBfloat creates a new Color from ARGB (Alpha, Red, Green Blue) values in the range 0-1.
 func ARGBfloat(alpha, red, green, blue float32) Color {
 	return Color(clamp0To1AndScale255(alpha)<<24 | clamp0To1AndScale255(red)<<16 | clamp0To1AndScale255(green)<<8 |
 		clamp0To1AndScale255(blue))
 }
 
-// HSB creates a new opaque Color from HSB values in the range 0-1.
+// HSB creates a new opaque Color from HSB (Hue, Saturation, Brightness) values in the range 0-1.
 func HSB(hue, saturation, brightness float32) Color {
 	return HSBA(hue, saturation, brightness, 1)
 }
 
-// HSBA creates a new Color from HSBA values in the range 0-1.
+// HSBA creates a new Color from HSBA (Hue, Saturation, Brightness, Alpha) values in the range 0-1.
 func HSBA(hue, saturation, brightness, alpha float32) Color {
 	saturation = clamp0To1(saturation)
 	brightness = clamp0To1(brightness)
@@ -654,25 +654,11 @@ func normalizeHue(hue float64) float32 {
 }
 
 func clamp0To1(value float32) float32 {
-	switch {
-	case value < 0:
-		return 0
-	case value > 1:
-		return 1
-	default:
-		return value
-	}
+	return min(max(value, 0), 1)
 }
 
 func clamp0To255(value int) int {
-	switch {
-	case value < 0:
-		return 0
-	case value > 255:
-		return 255
-	default:
-		return value
-	}
+	return min(max(value, 0), 255)
 }
 
 func clamp0To1AndScale255(value float32) int {
@@ -680,14 +666,7 @@ func clamp0To1AndScale255(value float32) int {
 }
 
 func clampChromaForOKLCH(value float32) float32 {
-	switch {
-	case value < 0:
-		return 0
-	case value > 0.37:
-		return 0.37
-	default:
-		return value
-	}
+	return min(max(value, 0), 0.37)
 }
 
 // CSS named colors.
