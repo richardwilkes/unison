@@ -17,7 +17,7 @@ import (
 var DefaultLinkTheme = LinkTheme{
 	TextDecoration: TextDecoration{
 		Font:       LabelFont,
-		Foreground: &PrimaryTheme.SurfaceAbove,
+		Foreground: &PrimaryTheme.OnSurface,
 		Underline:  true,
 	},
 	RolloverInk: &PrimaryTheme.Secondary,

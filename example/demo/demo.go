@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/richardwilkes/toolbox/desktop"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
@@ -82,6 +83,18 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 
 	// Create a wrappable row of image buttons
 	panel = createImageButtonsPanel()
+	panel.SetLayoutData(&unison.FlexLayoutData{
+		HSpan:  1,
+		VSpan:  1,
+		VAlign: align.Middle,
+		HGrab:  true,
+	})
+	content.AddChild(panel)
+
+	addSeparator(content)
+
+	// Create a wrappable row of links
+	panel = createLinksPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  1,
 		VSpan:  1,
@@ -367,6 +380,37 @@ func createImageButton(img *unison.Image, actionText string, panel *unison.Panel
 	btn.SetLayoutData(align.Middle)
 	panel.AddChild(btn)
 	return btn
+}
+
+func createLinksPanel() *unison.Panel {
+	// Create a panel to place some links into.
+	panel := unison.NewPanel()
+	panel.SetLayout(&unison.FlowLayout{
+		HSpacing: unison.StdHSpacing * 2,
+		VSpacing: unison.StdVSpacing,
+	})
+
+	// Add some links
+	panel.AddChild(unison.NewLink("Apple", "Open the Apple home page", "", unison.DefaultLinkTheme,
+		func(_ unison.Paneler, _ string) {
+			if err := desktop.Open("https://www.apple.com"); err != nil {
+				errs.Log(err)
+			}
+		}))
+	panel.AddChild(unison.NewLink("Google", "Open the Google home page", "", unison.DefaultLinkTheme,
+		func(_ unison.Paneler, _ string) {
+			if err := desktop.Open("https://www.google.com"); err != nil {
+				errs.Log(err)
+			}
+		}))
+	panel.AddChild(unison.NewLink("Microsoft", "Open the Microsoft home page", "", unison.DefaultLinkTheme,
+		func(_ unison.Paneler, _ string) {
+			if err := desktop.Open("https://www.microsoft.com"); err != nil {
+				errs.Log(err)
+			}
+		}))
+
+	return panel
 }
 
 func addSeparator(parent *unison.Panel) {
