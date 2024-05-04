@@ -17,40 +17,41 @@ import (
 var DefaultLinkTheme = LinkTheme{
 	TextDecoration: TextDecoration{
 		Font:       LabelFont,
-		Foreground: &PrimaryTheme.OnSurface,
-		Underline:  true,
+		Foreground: &PrimaryTheme.Primary,
 	},
-	RolloverInk: &PrimaryTheme.Secondary,
-	PressedInk:  &PrimaryTheme.Secondary,
+	PressedInk: &PrimaryTheme.Secondary,
 }
 
 // LinkTheme holds theming data for a link.
 type LinkTheme struct {
 	TextDecoration
-	RolloverInk Ink
-	PressedInk  Ink
+	PressedInk Ink
 }
 
 // NewLink creates a new RichLabel that can be used as a hyperlink.
 func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(Paneler, string)) *RichLabel {
 	link := NewRichLabel()
 	link.Text = NewText(title, &theme.TextDecoration)
+	link.OnBackgroundInk = theme.Foreground
 	if tooltip != "" {
 		link.Tooltip = NewTooltipWithText(tooltip)
 	}
 	link.UpdateCursorCallback = func(_ Point) *Cursor {
-		return PointingCursor()
+		if link.Enabled() {
+			return PointingCursor()
+		}
+		return ArrowCursor()
 	}
 	link.MouseEnterCallback = func(_ Point, _ Modifiers) bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Foreground = theme.RolloverInk
+			decoration.Underline = true
 		})
 		link.MarkForRedraw()
 		return true
 	}
 	link.MouseExitCallback = func() bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Foreground = theme.Foreground
+			decoration.Underline = false
 		})
 		link.MarkForRedraw()
 		return true
@@ -58,8 +59,10 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 	in := false
 	link.MouseDownCallback = func(_ Point, _, _ int, _ Modifiers) bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
+			decoration.Underline = true
 			decoration.Foreground = theme.PressedInk
 		})
+		link.OnBackgroundInk = theme.PressedInk
 		link.MarkForRedraw()
 		in = true
 		return true
@@ -70,24 +73,29 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 			in = now
 			link.Text.AdjustDecorations(func(decoration *TextDecoration) {
 				if in {
+					decoration.Underline = true
 					decoration.Foreground = theme.PressedInk
 				} else {
+					decoration.Underline = false
 					decoration.Foreground = theme.Foreground
 				}
 			})
+			if in {
+				link.OnBackgroundInk = theme.PressedInk
+			} else {
+				link.OnBackgroundInk = theme.Foreground
+			}
 			link.MarkForRedraw()
 		}
 		return true
 	}
 	link.MouseUpCallback = func(where Point, _ int, _ Modifiers) bool {
-		ink := theme.Foreground
 		inside := where.In(link.ContentRect(true))
-		if inside {
-			ink = theme.RolloverInk
-		}
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Foreground = ink
+			decoration.Underline = inside
+			decoration.Foreground = theme.Foreground
 		})
+		link.OnBackgroundInk = theme.Foreground
 		link.MarkForRedraw()
 		if inside && clickHandler != nil {
 			toolbox.Call(func() { clickHandler(link, target) })

@@ -65,7 +65,6 @@ func init() {
 		OnCodeBackground:    &PrimaryTheme.OnSurfaceBelow,
 		QuoteBarColor:       &PrimaryTheme.Tertiary,
 		LinkInk:             &PrimaryTheme.Primary,
-		LinkRolloverInk:     &PrimaryTheme.Primary,
 		LinkPressedInk:      &PrimaryTheme.Primary,
 		LinkHandler:         DefaultMarkdownLinkHandler,
 		VSpacing:            10,
@@ -123,7 +122,6 @@ type MarkdownTheme struct {
 	OnCodeBackground    Ink
 	QuoteBarColor       Ink
 	LinkInk             Ink
-	LinkRolloverInk     Ink
 	LinkPressedInk      Ink
 	LinkHandler         func(Paneler, string)
 	WorkingDirProvider  func(Paneler) string
@@ -770,7 +768,6 @@ func (m *Markdown) processLink() {
 func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	theme := LinkTheme{
 		TextDecoration: *m.decoration.Clone(),
-		RolloverInk:    m.LinkRolloverInk,
 		PressedInk:     m.LinkPressedInk,
 	}
 	theme.Foreground = m.LinkInk
