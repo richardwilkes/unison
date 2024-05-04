@@ -31,25 +31,43 @@ func NewDefaultFieldBorder(focused bool) Border {
 	)
 }
 
+// InstallFocusBorders installs the provided borders on the borderTarget and chains into the focus handling of the
+// focusTarget to adjust the border as focus changes. To prevent the display from shifting around, the borders should
+// have the same insets.
+func InstallFocusBorders(focusTarget, borderTarget Paneler, focusedBorder, unfocusedBorder Border) {
+	const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
+	type previousFocusCallbacks struct {
+		GainedFocusCallback func()
+		LostFocusCallback   func()
+	}
+	focusPanel := focusTarget.AsPanel()
+	borderPanel := borderTarget.AsPanel()
+	clientData := focusPanel.ClientData()
+	previous, ok := clientData[previousFocusCallbacksKey].(previousFocusCallbacks)
+	if !ok {
+		previous = previousFocusCallbacks{
+			GainedFocusCallback: focusPanel.GainedFocusCallback,
+			LostFocusCallback:   focusPanel.LostFocusCallback,
+		}
+	}
+	clientData[previousFocusCallbacksKey] = previous
+	focusPanel.GainedFocusCallback = func() {
+		borderPanel.SetBorder(focusedBorder)
+		if previous.GainedFocusCallback != nil {
+			previous.GainedFocusCallback()
+		}
+	}
+	focusPanel.LostFocusCallback = func() {
+		borderPanel.SetBorder(unfocusedBorder)
+		if previous.LostFocusCallback != nil {
+			previous.LostFocusCallback()
+		}
+	}
+	borderPanel.SetBorder(unfocusedBorder)
+}
+
 // InstallDefaultFieldBorder installs the default field border on the borderTarget and chains into the focus handling of
 // the focusTarget to adjust the border as focus changes.
 func InstallDefaultFieldBorder(focusTarget, borderTarget Paneler) {
-	unfocusedBorder := NewDefaultFieldBorder(false)
-	focusedBorder := NewDefaultFieldBorder(true)
-	focusPanel := focusTarget.AsPanel()
-	savedFocusGainedCallback := focusPanel.GainedFocusCallback
-	focusPanel.GainedFocusCallback = func() {
-		borderTarget.AsPanel().SetBorder(focusedBorder)
-		if savedFocusGainedCallback != nil {
-			savedFocusGainedCallback()
-		}
-	}
-	savedFocusLostCallback := focusPanel.LostFocusCallback
-	focusPanel.LostFocusCallback = func() {
-		borderTarget.AsPanel().SetBorder(unfocusedBorder)
-		if savedFocusLostCallback != nil {
-			savedFocusLostCallback()
-		}
-	}
-	borderTarget.AsPanel().SetBorder(unfocusedBorder)
+	InstallFocusBorders(focusTarget, borderTarget, NewDefaultFieldBorder(true), NewDefaultFieldBorder(false))
 }
