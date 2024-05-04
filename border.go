@@ -9,6 +9,13 @@
 
 package unison
 
+const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
+
+type previousFocusCallbacks struct {
+	GainedFocusCallback func()
+	LostFocusCallback   func()
+}
+
 // Border defines methods required of all border providers.
 type Border interface {
 	// Insets returns the insets describing the space the border occupies on each side.
@@ -35,11 +42,6 @@ func NewDefaultFieldBorder(focused bool) Border {
 // focusTarget to adjust the border as focus changes. To prevent the display from shifting around, the borders should
 // have the same insets.
 func InstallFocusBorders(focusTarget, borderTarget Paneler, focusedBorder, unfocusedBorder Border) {
-	const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
-	type previousFocusCallbacks struct {
-		GainedFocusCallback func()
-		LostFocusCallback   func()
-	}
 	focusPanel := focusTarget.AsPanel()
 	borderPanel := borderTarget.AsPanel()
 	clientData := focusPanel.ClientData()
@@ -64,6 +66,20 @@ func InstallFocusBorders(focusTarget, borderTarget Paneler, focusedBorder, unfoc
 		}
 	}
 	borderPanel.SetBorder(unfocusedBorder)
+}
+
+// UninstallFocusBorders removes the focus handling and border from the borderTarget that was installed by a previous
+// call to InstallFocusBorders.
+func UninstallFocusBorders(focusTarget, borderTarget Paneler) {
+	focusPanel := focusTarget.AsPanel()
+	borderPanel := borderTarget.AsPanel()
+	clientData := focusPanel.ClientData()
+	if previous, ok := clientData[previousFocusCallbacksKey].(previousFocusCallbacks); ok {
+		focusPanel.GainedFocusCallback = previous.GainedFocusCallback
+		focusPanel.LostFocusCallback = previous.LostFocusCallback
+	}
+	borderPanel.SetBorder(nil)
+	delete(clientData, previousFocusCallbacksKey)
 }
 
 // InstallDefaultFieldBorder installs the default field border on the borderTarget and chains into the focus handling of
