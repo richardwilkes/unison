@@ -19,7 +19,7 @@ var DefaultLinkTheme = LinkTheme{
 		Font:       LabelFont,
 		Foreground: &PrimaryTheme.Primary,
 	},
-	PressedInk: &PrimaryTheme.Secondary,
+	PressedInk: &PrimaryTheme.PrimaryVariant,
 }
 
 // LinkTheme holds theming data for a link.

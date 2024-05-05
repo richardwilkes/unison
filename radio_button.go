@@ -23,7 +23,7 @@ import (
 var DefaultRadioButtonTheme = RadioButtonTheme{
 	Font:               SystemFont,
 	BackgroundInk:      &PrimaryTheme.SurfaceAbove,
-	OnBackgroundInk:    &PrimaryTheme.OnSurfaceAbove,
+	OnBackgroundInk:    &PrimaryTheme.OnSurface,
 	EdgeInk:            &PrimaryTheme.Outline,
 	LabelInk:           &PrimaryTheme.OnSurface,
 	SelectionInk:       &PrimaryTheme.Primary,

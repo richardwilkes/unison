@@ -1,0 +1,82 @@
+{
+  "primary": {
+    "light": "#1565C0",
+    "dark": "#0080CC"
+  },
+  "primary_variant": {
+    "light": "#0D47A1",
+    "dark": "#006199"
+  },
+  "on_primary": {
+    "light": "White",
+    "dark": "#E0E0E0"
+  },
+  "secondary": {
+    "light": "#303F9F",
+    "dark": "#3D6199"
+  },
+  "secondary_variant": {
+    "light": "#1A237E",
+    "dark": "#294166"
+  },
+  "on_secondary": {
+    "light": "White",
+    "dark": "#E0E0E0"
+  },
+  "tertiary": {
+    "light": "#388E3C",
+    "dark": "#8BC34A"
+  },
+  "tertiary_variant": {
+    "light": "#33691E",
+    "dark": "#638F37"
+  },
+  "on_tertiary": {
+    "light": "White",
+    "dark": "#E0E0E0"
+  },
+  "surface": {
+    "light": "#E0E0E0",
+    "dark": "#202020"
+  },
+  "on_surface": {
+    "light": "Black",
+    "dark": "#E0E0E0"
+  },
+  "surface_above": {
+    "light": "#BDBDBD",
+    "dark": "#383838"
+  },
+  "surface_below": {
+    "light": "#EEEEEE",
+    "dark": "#101010"
+  },
+  "error": {
+    "light": "#D32F2F",
+    "dark": "#851414"
+  },
+  "on_error": {
+    "light": "White",
+    "dark": "#E0E0E0"
+  },
+  "warning": {
+    "light": "#EF6C00",
+    "dark": "#BF4300"
+  },
+  "on_warning": {
+    "light": "White",
+    "dark": "#E0E0E0"
+  },
+  "outline": {
+    "light": "#9E9E9E",
+    "dark": "#404040"
+  },
+  "outline_variant": {
+    "light": "#BDBDBD",
+    "dark": "#383838"
+  },
+  "shadow": {
+    "light": "Black",
+    "dark": "Black"
+  }
+}

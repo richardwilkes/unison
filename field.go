@@ -37,7 +37,7 @@ var DefaultFieldTheme = FieldTheme{
 	BackgroundInk:    &PrimaryTheme.Surface,
 	OnBackgroundInk:  &PrimaryTheme.OnSurface,
 	EditableInk:      &PrimaryTheme.SurfaceBelow,
-	OnEditableInk:    &PrimaryTheme.OnSurfaceBelow,
+	OnEditableInk:    &PrimaryTheme.OnSurface,
 	SelectionInk:     &PrimaryTheme.Primary,
 	OnSelectionInk:   &PrimaryTheme.OnPrimary,
 	ErrorInk:         &PrimaryTheme.Error,

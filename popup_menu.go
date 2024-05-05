@@ -26,7 +26,7 @@ import (
 var DefaultPopupMenuTheme = PopupMenuTheme{
 	Font:            SystemFont,
 	BackgroundInk:   &PrimaryTheme.SurfaceAbove,
-	OnBackgroundInk: &PrimaryTheme.OnSurfaceAbove,
+	OnBackgroundInk: &PrimaryTheme.OnSurface,
 	EdgeInk:         &PrimaryTheme.Outline,
 	SelectionInk:    &PrimaryTheme.Primary,
 	OnSelectionInk:  &PrimaryTheme.OnPrimary,

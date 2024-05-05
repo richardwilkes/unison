@@ -28,7 +28,7 @@ type TabCloser interface {
 // DockTabs, but will alter any DockTabs created in the future.
 var DefaultDockTabTheme = DockTabTheme{
 	BackgroundInk:   &PrimaryTheme.SurfaceAbove,
-	OnBackgroundInk: &PrimaryTheme.OnSurfaceAbove,
+	OnBackgroundInk: &PrimaryTheme.OnSurface,
 	EdgeInk:         &PrimaryTheme.Outline,
 	TabFocusedInk:   &PrimaryTheme.Primary,
 	OnTabFocusedInk: &PrimaryTheme.OnPrimary,

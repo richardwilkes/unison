@@ -32,7 +32,7 @@ var DefaultTooltipTheme = TooltipTheme{
 func defaultToolTipLabelTheme() LabelTheme {
 	theme := DefaultLabelTheme
 	theme.Font = FieldFont
-	theme.OnBackgroundInk = &PrimaryTheme.OnSurfaceAbove
+	theme.OnBackgroundInk = &PrimaryTheme.OnSurface
 	return theme
 }
 

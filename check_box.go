@@ -28,7 +28,7 @@ var DefaultCheckBoxTheme = CheckBoxTheme{
 	SelectionInk:       &PrimaryTheme.Primary,
 	OnSelectionInk:     &PrimaryTheme.OnPrimary,
 	ControlInk:         &PrimaryTheme.SurfaceAbove,
-	OnControlInk:       &PrimaryTheme.OnSurfaceAbove,
+	OnControlInk:       &PrimaryTheme.OnSurface,
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,

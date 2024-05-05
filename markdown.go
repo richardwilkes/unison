@@ -49,8 +49,8 @@ var DefaultMarkdownTheme MarkdownTheme
 func init() {
 	DefaultMarkdownTheme = MarkdownTheme{
 		TextDecoration: TextDecoration{
-			Font:       LabelFont,
-			Foreground: &PrimaryTheme.OnSurface,
+			Font:       DefaultLabelTheme.Font,
+			Foreground: DefaultLabelTheme.OnBackgroundInk,
 		},
 		HeadingFont: [6]Font{
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 1) }},
@@ -62,10 +62,10 @@ func init() {
 		},
 		CodeBlockFont:       &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
 		CodeBackground:      &PrimaryTheme.SurfaceBelow,
-		OnCodeBackground:    &PrimaryTheme.OnSurfaceBelow,
+		OnCodeBackground:    &PrimaryTheme.OnSurface,
 		QuoteBarColor:       &PrimaryTheme.Tertiary,
-		LinkInk:             &PrimaryTheme.Primary,
-		LinkPressedInk:      &PrimaryTheme.Primary,
+		LinkInk:             DefaultLinkTheme.Foreground,
+		LinkPressedInk:      DefaultLinkTheme.PressedInk,
 		LinkHandler:         DefaultMarkdownLinkHandler,
 		VSpacing:            10,
 		QuoteBarThickness:   2,
@@ -771,7 +771,6 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 		PressedInk:     m.LinkPressedInk,
 	}
 	theme.Foreground = m.LinkInk
-	theme.Underline = true
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}

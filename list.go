@@ -22,13 +22,13 @@ import (
 // but will alter any Lists created in the future.
 var DefaultListTheme = ListTheme{
 	BackgroundInk:          &PrimaryTheme.SurfaceBelow,
-	OnBackgroundInk:        &PrimaryTheme.OnSurfaceBelow,
+	OnBackgroundInk:        &PrimaryTheme.OnSurface,
 	BandingInk:             &PrimaryTheme.Surface,
 	OnBandingInk:           &PrimaryTheme.OnSurface,
 	SelectionInk:           &PrimaryTheme.Primary,
 	OnSelectionInk:         &PrimaryTheme.OnPrimary,
 	InactiveSelectionInk:   &PrimaryTheme.Secondary,
-	OnInactiveSelectionInk: &PrimaryTheme.OnPrimary,
+	OnInactiveSelectionInk: &PrimaryTheme.OnSecondary,
 	FlashAnimationTime:     100 * time.Millisecond,
 }
 

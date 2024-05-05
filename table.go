@@ -52,7 +52,7 @@ type tableHitRect struct {
 // but will alter any Tables created in the future.
 var DefaultTableTheme = TableTheme{
 	BackgroundInk:          &PrimaryTheme.SurfaceBelow,
-	OnBackgroundInk:        &PrimaryTheme.OnSurfaceBelow,
+	OnBackgroundInk:        &PrimaryTheme.OnSurface,
 	BandingInk:             &PrimaryTheme.Surface,
 	OnBandingInk:           &PrimaryTheme.OnSurface,
 	InteriorDividerInk:     &PrimaryTheme.OutlineVariant,
@@ -60,7 +60,7 @@ var DefaultTableTheme = TableTheme{
 	OnSelectionInk:         &PrimaryTheme.OnPrimary,
 	InactiveSelectionInk:   &PrimaryTheme.Secondary,
 	OnInactiveSelectionInk: &PrimaryTheme.OnSecondary,
-	IndirectSelectionInk:   &PrimaryTheme.Secondary,
+	IndirectSelectionInk:   &PrimaryTheme.SecondaryVariant,
 	OnIndirectSelectionInk: &PrimaryTheme.OnSecondary,
 	Padding:                NewUniformInsets(4),
 	HierarchyIndent:        16,

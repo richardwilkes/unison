@@ -21,7 +21,6 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/check"
-	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 var windowCounter int
@@ -50,8 +49,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a wrappable row of buttons
 	panel := createButtonsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -60,8 +57,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a wrappable row of buttons that bring up dialogs
 	panel = createDialogButtonsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -72,8 +67,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a wrappable row of svg buttons
 	panel = createSVGButtonsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -84,8 +77,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a wrappable row of image buttons
 	panel = createImageButtonsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -96,8 +87,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a wrappable row of links
 	panel = createLinksPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -108,20 +97,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a column of checkboxes
 	panel = createCheckBoxPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	content.AddChild(panel)
-
-	addSeparator(content)
-
-	// Create theme colors panel
-	panel = createThemeColorsPanel()
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -132,8 +107,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a column of radio buttons and a progress bar they control
 	panel = createRadioButtonsAndProgressBarsPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -145,8 +118,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create a column of popup menus
 	panel = createPopupMenusPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -157,8 +128,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create some fields and a list, side-by-side
 	panel = createFieldsAndListPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -173,8 +142,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	// Create some color wells and pass it our image panel
 	panel = createWellsPanel(imgPanel)
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
@@ -184,8 +151,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	scrollArea := unison.NewScrollPanel()
 	scrollArea.SetContent(imgPanel, behavior.Unmodified, behavior.Unmodified)
 	scrollArea.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Fill,
 		HGrab:  true,
@@ -416,8 +381,6 @@ func createLinksPanel() *unison.Panel {
 func addSeparator(parent *unison.Panel) {
 	sep := unison.NewSeparator()
 	sep.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 	})
@@ -450,38 +413,6 @@ func createCheckBox(title string, initialState check.Enum, panel *unison.Panel) 
 	return cb
 }
 
-func createThemeColorsPanel() *unison.Panel {
-	panel := unison.NewPanel()
-	panel.SetLayout(&unison.FlowLayout{
-		HSpacing: unison.StdHSpacing,
-		VSpacing: unison.StdVSpacing,
-	})
-	createThemeColor("Primary", &unison.PrimaryTheme.Primary, &unison.PrimaryTheme.OnPrimary, panel)
-	createThemeColor("Secondary", &unison.PrimaryTheme.Secondary, &unison.PrimaryTheme.OnSecondary, panel)
-	createThemeColor("Tertiary", &unison.PrimaryTheme.Tertiary, &unison.PrimaryTheme.OnTertiary, panel)
-	createThemeColor("Surface", &unison.PrimaryTheme.Surface, &unison.PrimaryTheme.OnSurface, panel)
-	createThemeColor("Surface Above", &unison.PrimaryTheme.SurfaceAbove, &unison.PrimaryTheme.OnSurfaceAbove, panel)
-	createThemeColor("Surface Below", &unison.PrimaryTheme.SurfaceBelow, &unison.PrimaryTheme.OnSurfaceBelow, panel)
-	createThemeColor("Error", &unison.PrimaryTheme.Error, &unison.PrimaryTheme.OnError, panel)
-	createThemeColor("Warning", &unison.PrimaryTheme.Warning, &unison.PrimaryTheme.OnWarning, panel)
-	return panel
-}
-
-func createThemeColor(title string, color, onColor *unison.ThemeColor, container *unison.Panel) {
-	label := unison.NewLabel()
-	label.Text = title
-	label.OnBackgroundInk = onColor
-	label.DrawCallback = func(gc *unison.Canvas, rect unison.Rect) {
-		gc.DrawRect(rect, color.Paint(gc, rect, paintstyle.Fill))
-		label.DefaultDraw(gc, rect)
-	}
-	label.SetBorder(unison.NewCompoundBorder(
-		unison.NewLineBorder(&unison.PrimaryTheme.Outline, 0, unison.NewUniformInsets(1), false),
-		unison.NewEmptyBorder(unison.NewUniformInsets(4)),
-	))
-	container.AddChild(label)
-}
-
 func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 	// Create a wrapper to put them side-by-side
 	wrapper := unison.NewPanel()
@@ -497,8 +428,6 @@ func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 	progress := unison.NewProgressBar(100)
 	progress.SetCurrent(25)
 	progress.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -586,8 +515,6 @@ func createFieldsAndListPanel() *unison.Panel {
 	// Add the text fields to the left side
 	textFieldsPanel := createTextFieldsPanel()
 	textFieldsPanel.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -632,8 +559,6 @@ func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.F
 	lbl.Text = labelText
 	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.End,
 		VAlign: align.Middle,
 	})
@@ -641,8 +566,6 @@ func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.F
 	field := unison.NewField()
 	field.SetText(fieldText)
 	field.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -657,8 +580,6 @@ func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) 
 	lbl.Text = labelText
 	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.End,
 		VAlign: align.Middle,
 	})
@@ -666,8 +587,6 @@ func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) 
 	field := unison.NewMultiLineField()
 	field.SetText(fieldText)
 	field.SetLayoutData(&unison.FlexLayoutData{
-		HSpan:  1,
-		VSpan:  1,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -722,8 +641,6 @@ func createListPanel(companion unison.Paneler) *unison.Panel {
 	_, prefSize, _ = companion.AsPanel().Sizes(unison.Size{})
 	scroller.SetLayoutData(&unison.FlexLayoutData{
 		SizeHint: prefSize,
-		HSpan:    1,
-		VSpan:    1,
 		HAlign:   align.Fill,
 		VAlign:   align.Fill,
 		HGrab:    true,
