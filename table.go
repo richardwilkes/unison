@@ -66,7 +66,6 @@ var DefaultTableTheme = TableTheme{
 	HierarchyIndent:        16,
 	MinimumRowHeight:       16,
 	ColumnResizeSlop:       4,
-	ShowRowDivider:         true,
 	ShowColumnDivider:      true,
 }
 
