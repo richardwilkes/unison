@@ -61,7 +61,7 @@ func init() {
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 6) }},
 		},
 		CodeBlockFont:       &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
-		CodeBackground:      &PrimaryTheme.SurfaceBelow,
+		CodeBackground:      &PrimaryTheme.SurfaceAbove,
 		OnCodeBackground:    &PrimaryTheme.OnSurface,
 		QuoteBarColor:       &PrimaryTheme.Tertiary,
 		LinkInk:             DefaultLinkTheme.Foreground,
