@@ -27,13 +27,13 @@ type TabCloser interface {
 // DefaultDockTabTheme holds the default DockTabTheme values for DockTabs. Modifying this data will not alter existing
 // DockTabs, but will alter any DockTabs created in the future.
 var DefaultDockTabTheme = DockTabTheme{
-	BackgroundInk:   &PrimaryTheme.SurfaceAbove,
-	OnBackgroundInk: &PrimaryTheme.OnSurface,
-	EdgeInk:         &PrimaryTheme.Outline,
+	BackgroundInk:   PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
+	OnBackgroundInk: PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1).DeriveOn(),
+	EdgeInk:         PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
 	TabFocusedInk:   &PrimaryTheme.Primary,
-	OnTabFocusedInk: &PrimaryTheme.OnPrimary,
-	TabCurrentInk:   &PrimaryTheme.Secondary,
-	OnTabCurrentInk: &PrimaryTheme.OnSecondary,
+	OnTabFocusedInk: PrimaryTheme.Primary.DeriveOn(),
+	TabCurrentInk:   PrimaryTheme.Primary.DeriveLightness(-0.15, -0.2),
+	OnTabCurrentInk: PrimaryTheme.Primary.DeriveLightness(-0.15, -0.2).DeriveOn(),
 	TabBorder:       NewEmptyBorder(Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}),
 	Gap:             4,
 	LabelTheme:      defaultLabelTheme(),

@@ -25,7 +25,7 @@ var DefaultTagTheme = TagTheme{
 			return desc
 		},
 	},
-	BackgroundInk:   &PrimaryTheme.OnSurface,
+	BackgroundInk:   PrimaryTheme.Surface.DeriveOn(),
 	OnBackgroundInk: &PrimaryTheme.Surface,
 	Gap:             3,
 	SideInset:       3,

@@ -21,7 +21,7 @@ import (
 // but will alter any Labels created in the future.
 var DefaultLabelTheme = LabelTheme{
 	Font:            LabelFont,
-	OnBackgroundInk: &PrimaryTheme.OnSurface,
+	OnBackgroundInk: PrimaryTheme.Surface.DeriveOn(),
 	Gap:             3,
 	HAlign:          align.Start,
 	VAlign:          align.Middle,

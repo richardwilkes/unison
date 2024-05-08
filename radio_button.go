@@ -22,12 +22,12 @@ import (
 // alter existing RadioButtons, but will alter any RadioButtons created in the future.
 var DefaultRadioButtonTheme = RadioButtonTheme{
 	Font:               SystemFont,
-	BackgroundInk:      &PrimaryTheme.SurfaceAbove,
-	OnBackgroundInk:    &PrimaryTheme.OnSurface,
-	EdgeInk:            &PrimaryTheme.Outline,
-	LabelInk:           &PrimaryTheme.OnSurface,
+	BackgroundInk:      PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
+	OnBackgroundInk:    PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1).DeriveOn(),
+	EdgeInk:            PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
+	LabelInk:           PrimaryTheme.Surface.DeriveOn(),
 	SelectionInk:       &PrimaryTheme.Primary,
-	OnSelectionInk:     &PrimaryTheme.OnPrimary,
+	OnSelectionInk:     PrimaryTheme.Primary.DeriveOn(),
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,

@@ -21,11 +21,11 @@ import (
 // Buttons, but will alter any Buttons created in the future.
 var DefaultButtonTheme = ButtonTheme{
 	Font:                SystemFont,
-	BackgroundInk:       &PrimaryTheme.SurfaceAbove,
-	OnBackgroundInk:     &PrimaryTheme.OnSurface,
-	EdgeInk:             &PrimaryTheme.Outline,
+	BackgroundInk:       PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
+	OnBackgroundInk:     PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1).DeriveOn(),
+	EdgeInk:             PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
 	SelectionInk:        &PrimaryTheme.Primary,
-	OnSelectionInk:      &PrimaryTheme.OnPrimary,
+	OnSelectionInk:      PrimaryTheme.Primary.DeriveOn(),
 	Gap:                 3,
 	CornerRadius:        4,
 	HMargin:             8,

@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 // DefaultLinkTheme holds the default Link theme values.
@@ -18,14 +19,15 @@ var DefaultLinkTheme = LinkTheme{
 	TextDecoration: TextDecoration{
 		Font:       LabelFont,
 		Foreground: &PrimaryTheme.Primary,
+		Underline:  true,
 	},
-	PressedInk: &PrimaryTheme.PrimaryVariant,
+	OnPressedInk: PrimaryTheme.Primary.DeriveOn(),
 }
 
 // LinkTheme holds theming data for a link.
 type LinkTheme struct {
 	TextDecoration
-	PressedInk Ink
+	OnPressedInk Ink
 }
 
 // NewLink creates a new RichLabel that can be used as a hyperlink.
@@ -42,46 +44,29 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 		}
 		return ArrowCursor()
 	}
-	link.MouseEnterCallback = func(_ Point, _ Modifiers) bool {
-		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Underline = true
-		})
-		link.MarkForRedraw()
-		return true
-	}
-	link.MouseExitCallback = func() bool {
-		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Underline = false
-		})
-		link.MarkForRedraw()
-		return true
-	}
-	in := false
+	mouseDownIn := false
 	link.MouseDownCallback = func(_ Point, _, _ int, _ Modifiers) bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Underline = true
-			decoration.Foreground = theme.PressedInk
+			decoration.Foreground = theme.OnPressedInk
 		})
-		link.OnBackgroundInk = theme.PressedInk
+		link.OnBackgroundInk = theme.OnPressedInk
 		link.MarkForRedraw()
-		in = true
+		mouseDownIn = true
 		return true
 	}
 	link.MouseDragCallback = func(where Point, _ int, _ Modifiers) bool {
 		now := where.In(link.ContentRect(true))
-		if now != in {
-			in = now
+		if now != mouseDownIn {
+			mouseDownIn = now
 			link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-				if in {
-					decoration.Underline = true
-					decoration.Foreground = theme.PressedInk
+				if mouseDownIn {
+					decoration.Foreground = theme.OnPressedInk
 				} else {
-					decoration.Underline = false
 					decoration.Foreground = theme.Foreground
 				}
 			})
-			if in {
-				link.OnBackgroundInk = theme.PressedInk
+			if mouseDownIn {
+				link.OnBackgroundInk = theme.OnPressedInk
 			} else {
 				link.OnBackgroundInk = theme.Foreground
 			}
@@ -90,17 +75,22 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 		return true
 	}
 	link.MouseUpCallback = func(where Point, _ int, _ Modifiers) bool {
-		inside := where.In(link.ContentRect(true))
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Underline = inside
 			decoration.Foreground = theme.Foreground
 		})
 		link.OnBackgroundInk = theme.Foreground
 		link.MarkForRedraw()
-		if inside && clickHandler != nil {
+		if where.In(link.ContentRect(true)) && clickHandler != nil {
 			toolbox.Call(func() { clickHandler(link, target) })
 		}
+		mouseDownIn = false
 		return true
+	}
+	link.DrawCallback = func(gc *Canvas, rect Rect) {
+		if mouseDownIn {
+			gc.DrawRect(rect, theme.Foreground.Paint(gc, rect, paintstyle.Fill))
+		}
+		link.DefaultDraw(gc, rect)
 	}
 	return link
 }

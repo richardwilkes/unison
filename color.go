@@ -524,18 +524,43 @@ func (c Color) HSB() (hue, saturation, brightness float32) {
 	return
 }
 
-// Luminance returns a value from 0-1 representing the perceived brightness. Lower values represent darker colors, while
-// higher values represent brighter colors.
-func (c Color) Luminance() float32 {
-	return 0.299*c.RedIntensity() + 0.587*c.GreenIntensity() + 0.114*c.BlueIntensity()
+// PerceivedLightness returns a value from 0-1 representing the perceived lightness. Lower values represent darker
+// colors, while higher values represent brighter colors. This is the same as the lightness value returned by calling
+// the .OKLCH() method.
+func (c Color) PerceivedLightness() float32 {
+	lr := toLinear(float64(c.RedIntensity()))
+	lg := toLinear(float64(c.GreenIntensity()))
+	lb := toLinear(float64(c.BlueIntensity()))
+	L := math.Cbrt(0.41222147079999993*lr + 0.5363325363*lg + 0.0514459929*lb)
+	M := math.Cbrt(0.2119034981999999*lr + 0.6806995450999999*lg + 0.1073969566*lb)
+	S := math.Cbrt(0.08830246189999998*lr + 0.2817188376*lg + 0.6299787005000002*lb)
+	return clamp0To1(float32(0.2104542553*L + 0.793617785*M - 0.0040720468*S))
 }
 
-// OnColor returns 'darkColor' if the input color is light, otherwise 'lightColor'.
-func OnColor(color, darkColor, lightColor Color) Color {
-	if color.Luminance() > 0.55 {
-		return darkColor
+// AdjustPerceivedLightness returns a new color based on this color with its perceived lightness adjusted by the
+// specified amount.
+func (c Color) AdjustPerceivedLightness(adj float32) Color {
+	rl, rc, rh := c.OKLCH()
+	return OKLCH(rl+adj, rc, rh, c.AlphaIntensity())
+}
+
+// Colors used for the On() method.
+var (
+	OnLight = RGB(16, 16, 16)
+	OnDark  = RGB(240, 240, 240)
+)
+
+// On returns OnLight if the input color is light, otherwise OnDark.
+func (c Color) On() Color {
+	return c.OnCustom(OnLight, OnDark)
+}
+
+// OnCustom returns onLightColor if the input color is light, otherwise onDarkColor.
+func (c Color) OnCustom(onLightColor, onDarkColor Color) Color {
+	if c.PerceivedLightness() > 0.6 {
+		return onLightColor
 	}
-	return lightColor
+	return onDarkColor
 }
 
 // OKLCH returns the lightness (0-1), chroma (0-0.37), and hue (0-360) values using the OKLCH color space.

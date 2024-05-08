@@ -26,14 +26,17 @@ type Border interface {
 
 // NewDefaultFieldBorder creates the default border for a field.
 func NewDefaultFieldBorder(focused bool) Border {
-	color := &PrimaryTheme.Outline
-	adj := float32(1)
+	var adj float32
+	var ink Ink
 	if focused {
 		adj = 0
-		color = &PrimaryTheme.Primary
+		ink = &PrimaryTheme.Primary
+	} else {
+		adj = 1
+		ink = PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15)
 	}
 	return NewCompoundBorder(
-		NewLineBorder(color, 0, NewUniformInsets(2-adj), false),
+		NewLineBorder(ink, 0, NewUniformInsets(2-adj), false),
 		NewEmptyBorder(Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}),
 	)
 }

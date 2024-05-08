@@ -46,7 +46,7 @@ var DefaultDialogTheme = DialogTheme{
 		SVG:  CircledQuestionSVG,
 		Size: Size{Width: 48, Height: 48},
 	},
-	QuestionIconInk: &PrimaryTheme.OnSurface,
+	QuestionIconInk: PrimaryTheme.Surface.DeriveOn(),
 }
 
 // DialogTheme holds theming data for a Dialog.

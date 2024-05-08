@@ -20,7 +20,7 @@ import (
 var DefaultProgressBarTheme = ProgressBarTheme{
 	BackgroundInk:      &PrimaryTheme.Surface,
 	FillInk:            &PrimaryTheme.Primary,
-	EdgeInk:            &PrimaryTheme.Outline,
+	EdgeInk:            PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
 	TickSpeed:          time.Second / 30,
 	FullTraversalSpeed: time.Second,
 	PreferredBarHeight: 8,

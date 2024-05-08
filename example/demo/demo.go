@@ -21,6 +21,8 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/pathop"
 )
 
 var windowCounter int
@@ -74,8 +76,8 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 
 	addSeparator(content)
 
-	// Create a wrappable row of image buttons
-	panel = createImageButtonsPanel()
+	// Create a wrappable row of links
+	panel = createLinksPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -84,12 +86,18 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 
 	addSeparator(content)
 
-	// Create a wrappable row of links
-	panel = createLinksPanel()
+	// Create a wrappale row of color test areas
+	panel = unison.NewPanel()
+	panel.SetLayout(&unison.FlowLayout{
+		HSpacing: unison.StdHSpacing * 2,
+		VSpacing: unison.StdVSpacing,
+	})
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
+	panel.AddChild(createColorBlock("Primary Color", &unison.PrimaryTheme.Primary))
+	panel.AddChild(createColorBlock("Surface Color", &unison.PrimaryTheme.Surface))
 	content.AddChild(panel)
 
 	addSeparator(content)
@@ -166,6 +174,45 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	wnd.ToFront()
 
 	return wnd, nil
+}
+
+func createColorBlock(name string, bg *unison.ThemeColor) *unison.Label {
+	label := unison.NewLabel()
+	label.Text = name
+	label.SetBorder(unison.NewCompoundBorder(
+		unison.NewLineBorder(unison.Black, 0, unison.NewUniformInsets(1), false),
+		unison.NewEmptyBorder(unison.NewUniformInsets(10)),
+	))
+	label.DrawCallback = func(gc *unison.Canvas, rect unison.Rect) {
+		r := label.ContentRect(true)
+		r2 := r
+		r2.Width /= 3
+		c := bg.DeriveLightness(-0.1, -0.1)
+		gc.DrawRect(r2, c.Paint(gc, r2, paintstyle.Fill))
+		gc.Save()
+		label.OnBackgroundInk = c.DeriveOn()
+		gc.ClipRect(r2, pathop.Intersect, false)
+		label.DefaultDraw(gc, rect)
+		gc.Restore()
+
+		r2.X += r2.Width
+		gc.DrawRect(r2, bg.Paint(gc, r2, paintstyle.Fill))
+		gc.Save()
+		label.OnBackgroundInk = bg.DeriveOn()
+		gc.ClipRect(r2, pathop.Intersect, false)
+		label.DefaultDraw(gc, rect)
+		gc.Restore()
+
+		r2.X += r2.Width
+		c = bg.DeriveLightness(0.1, 0.1)
+		gc.DrawRect(r2, c.Paint(gc, r2, paintstyle.Fill))
+		gc.Save()
+		label.OnBackgroundInk = c.DeriveOn()
+		gc.ClipRect(r2, pathop.Intersect, false)
+		label.DefaultDraw(gc, rect)
+		gc.Restore()
+	}
+	return label
 }
 
 func createButtonsPanel() *unison.Panel {
@@ -292,59 +339,6 @@ func createSpacer(width float32, panel *unison.Panel) {
 		return
 	})
 	panel.AddChild(spacer)
-}
-
-func createImageButtonsPanel() *unison.Panel {
-	// Create a panel to place some buttons into.
-	panel := unison.NewPanel()
-	panel.SetLayout(&unison.FlowLayout{
-		HSpacing: unison.StdHSpacing,
-		VSpacing: unison.StdVSpacing,
-	})
-
-	// Load our home image, and if successful (we should be!), add two buttons with it, one enabled and one not.
-	homeImg, err := HomeImage()
-	if err != nil {
-		errs.Log(err)
-	} else {
-		createImageButton(homeImg, "home_enabled", panel)
-		createImageButton(homeImg, "home_disabled", panel).SetEnabled(false)
-	}
-
-	// Load our logo image, and if successful (we should be!), add two buttons with it, one enabled and one not.
-	var logoImg *unison.Image
-	if logoImg, err = ClassicAppleLogoImage(); err != nil {
-		errs.Log(err)
-	} else {
-		createImageButton(logoImg, "logo_enabled", panel)
-		createImageButton(logoImg, "logo_disabled", panel).SetEnabled(false)
-	}
-
-	if homeImg != nil && logoImg != nil {
-		createSpacer(20, panel)
-
-		// Add some sticky buttons in a group with our images
-		group := unison.NewGroup()
-		first := createImageButton(homeImg, "home_toggle", panel)
-		first.Sticky = true
-		group.Add(first.AsGroupPanel())
-		second := createImageButton(logoImg, "logo_toggle", panel)
-		second.Sticky = true
-		group.Add(second.AsGroupPanel())
-		group.Select(first.AsGroupPanel())
-	}
-
-	return panel
-}
-
-func createImageButton(img *unison.Image, actionText string, panel *unison.Panel) *unison.Button {
-	btn := unison.NewButton()
-	btn.Drawable = img
-	btn.ClickCallback = func() { slog.Info(actionText) }
-	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", actionText))
-	btn.SetLayoutData(align.Middle)
-	panel.AddChild(btn)
-	return btn
 }
 
 func createLinksPanel() *unison.Panel {

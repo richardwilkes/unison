@@ -298,7 +298,11 @@ func (p *Panel) Border() Border {
 // SetBorder sets the border for this panel. May be nil.
 func (p *Panel) SetBorder(b Border) {
 	if p.border != b {
-		p.border = b
+		if toolbox.IsNil(b) {
+			p.border = nil
+		} else {
+			p.border = b
+		}
 		p.MarkForLayoutAndRedraw()
 	}
 }

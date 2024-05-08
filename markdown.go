@@ -61,11 +61,11 @@ func init() {
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 6) }},
 		},
 		CodeBlockFont:       &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
-		CodeBackground:      &PrimaryTheme.SurfaceAbove,
-		OnCodeBackground:    &PrimaryTheme.OnSurface,
-		QuoteBarColor:       &PrimaryTheme.Tertiary,
+		CodeBackground:      PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
+		OnCodeBackground:    PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1).DeriveOn(),
+		QuoteBarColor:       &PrimaryTheme.Primary,
 		LinkInk:             DefaultLinkTheme.Foreground,
-		LinkPressedInk:      DefaultLinkTheme.PressedInk,
+		LinkOnPressedInk:    DefaultLinkTheme.OnPressedInk,
 		LinkHandler:         DefaultMarkdownLinkHandler,
 		VSpacing:            10,
 		QuoteBarThickness:   2,
@@ -122,7 +122,7 @@ type MarkdownTheme struct {
 	OnCodeBackground    Ink
 	QuoteBarColor       Ink
 	LinkInk             Ink
-	LinkPressedInk      Ink
+	LinkOnPressedInk    Ink
 	LinkHandler         func(Paneler, string)
 	WorkingDirProvider  func(Paneler) string
 	AltLinkPrefixes     []string
@@ -490,7 +490,7 @@ func (m *Markdown) processTable() {
 				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
 			}
 			p := NewPanel()
-			p.SetBorder(NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false))
+			p.SetBorder(NewLineBorder(PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15), 0, NewUniformInsets(1), false))
 			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
 			m.block.AddChild(p)
 			m.block = p
@@ -624,7 +624,7 @@ func (m *Markdown) processTableCell() {
 			}
 		}
 		p := NewPanel()
-		p.SetBorder(NewLineBorder(&PrimaryTheme.Outline, 0, NewUniformInsets(1), false))
+		p.SetBorder(NewLineBorder(PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15), 0, NewUniformInsets(1), false))
 		p.SetLayout(&FlexLayout{
 			Columns: 1,
 			HAlign:  hAlign,
@@ -768,7 +768,7 @@ func (m *Markdown) processLink() {
 func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 	theme := LinkTheme{
 		TextDecoration: *m.decoration.Clone(),
-		PressedInk:     m.LinkPressedInk,
+		OnPressedInk:   m.LinkOnPressedInk,
 	}
 	theme.Foreground = m.LinkInk
 	if tooltip == "" && target != "" {

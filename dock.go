@@ -21,7 +21,7 @@ import (
 // will alter any Docks created in the future.
 var DefaultDockTheme = DockTheme{
 	BackgroundInk: &PrimaryTheme.Surface,
-	GripInk:       &PrimaryTheme.Outline,
+	GripInk:       PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
 	DropAreaInk:   &PrimaryTheme.Warning,
 	GripCount:     5,
 	GripGap:       1,
