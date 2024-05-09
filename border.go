@@ -30,10 +30,10 @@ func NewDefaultFieldBorder(focused bool) Border {
 	var ink Ink
 	if focused {
 		adj = 0
-		ink = &PrimaryTheme.Primary
+		ink = ThemeFocus
 	} else {
 		adj = 1
-		ink = PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15)
+		ink = ThemeSurfaceEdge
 	}
 	return NewCompoundBorder(
 		NewLineBorder(ink, 0, NewUniformInsets(2-adj), false),

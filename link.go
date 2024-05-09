@@ -18,10 +18,10 @@ import (
 var DefaultLinkTheme = LinkTheme{
 	TextDecoration: TextDecoration{
 		Font:       LabelFont,
-		Foreground: &PrimaryTheme.Primary,
+		Foreground: ThemeFocus,
 		Underline:  true,
 	},
-	OnPressedInk: PrimaryTheme.Primary.DeriveOn(),
+	OnPressedInk: ThemeOnFocus,
 }
 
 // LinkTheme holds theming data for a link.

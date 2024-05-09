@@ -25,11 +25,11 @@ import (
 // existing PopupMenus, but will alter any PopupMenus created in the future.
 var DefaultPopupMenuTheme = PopupMenuTheme{
 	Font:            SystemFont,
-	BackgroundInk:   PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
-	OnBackgroundInk: PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1).DeriveOn(),
-	EdgeInk:         PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
-	SelectionInk:    &PrimaryTheme.Primary,
-	OnSelectionInk:  PrimaryTheme.Primary.DeriveOn(),
+	BackgroundInk:   ThemeAboveSurface,
+	OnBackgroundInk: ThemeOnAboveSurface,
+	EdgeInk:         ThemeSurfaceEdge,
+	SelectionInk:    ThemeFocus,
+	OnSelectionInk:  ThemeOnFocus,
 	CornerRadius:    4,
 	HMargin:         8,
 	VMargin:         1,

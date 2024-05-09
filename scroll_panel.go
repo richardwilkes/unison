@@ -23,7 +23,7 @@ var (
 // DefaultScrollPanelTheme holds the default ScrollPanelTheme values for ScrollPanels. Modifying this data will not
 // alter existing ScrollPanels, but will alter any ScrollPanels created in the future.
 var DefaultScrollPanelTheme = ScrollPanelTheme{
-	BackgroundInk:        &PrimaryTheme.Surface,
+	BackgroundInk:        ThemeSurface,
 	MouseWheelMultiplier: func() float32 { return MouseWheelMultiplier },
 }
 

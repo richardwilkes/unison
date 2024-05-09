@@ -18,9 +18,9 @@ import (
 // DefaultProgressBarTheme holds the default ProgressBarTheme values for ProgressBars. Modifying this data will not
 // alter existing ProgressBars, but will alter any ProgressBars created in the future.
 var DefaultProgressBarTheme = ProgressBarTheme{
-	BackgroundInk:      &PrimaryTheme.Surface,
-	FillInk:            &PrimaryTheme.Primary,
-	EdgeInk:            PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
+	BackgroundInk:      ThemeSurface,
+	FillInk:            ThemeFocus,
+	EdgeInk:            ThemeSurfaceEdge,
 	TickSpeed:          time.Second / 30,
 	FullTraversalSpeed: time.Second,
 	PreferredBarHeight: 8,

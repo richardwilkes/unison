@@ -10,7 +10,6 @@
 package demo
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -24,18 +23,17 @@ var (
 )
 
 type themedColor struct {
-	ID    string
 	Title string
 	Color *unison.ThemeColor
 }
 
 func init() {
 	currentColors = []*themedColor{
-		{ID: "primary", Title: "Primary", Color: &unison.PrimaryTheme.Primary},
-		{ID: "surface", Title: "Surface", Color: &unison.PrimaryTheme.Surface},
-		{ID: "tooltip", Title: "Tooltip", Color: &unison.PrimaryTheme.Tooltip},
-		{ID: "error", Title: "Error", Color: &unison.PrimaryTheme.Error},
-		{ID: "warning", Title: "Warning", Color: &unison.PrimaryTheme.Warning},
+		{Title: "Surface", Color: unison.ThemeSurface},
+		{Title: "Focus", Color: unison.ThemeFocus},
+		{Title: "Tooltip", Color: unison.ThemeTooltip},
+		{Title: "Error", Color: unison.ThemeError},
+		{Title: "Warning", Color: unison.ThemeWarning},
 	}
 }
 
@@ -70,48 +68,25 @@ func NewDemoColorsWindow(where unison.Point) (*unison.Window, error) {
 		VSpacing: unison.StdVSpacing,
 	})
 	for _, one := range currentColors {
-		label := unison.NewLabel()
-		label.Text = one.Title
-		label.SetLayoutData(&unison.FlexLayoutData{
-			HAlign: align.End,
-			VAlign: align.Middle,
-		})
-		colorsPanel.AddChild(label)
 		colorsPanel.AddChild(createColorWellField(one, true))
 		colorsPanel.AddChild(createColorWellField(one, false))
+		label := unison.NewLabel()
+		label.Text = one.Title
+		colorsPanel.AddChild(label)
 	}
 	content.AddChild(colorsPanel)
-
-	jsonButton := unison.NewButton()
-	jsonButton.Text = "Copy JSON"
-	jsonButton.ClickCallback = func() {
-		d, err := json.MarshalIndent(unison.PrimaryTheme, "", "  ")
-		if err != nil {
-			unison.ErrorDialogWithError("Unable to marshal the colors", err)
-		} else {
-			unison.GlobalClipboard.SetText(string(d))
-		}
-	}
-	jsonButton.SetBorder(unison.NewEmptyBorder(unison.Insets{Top: 20}))
-	jsonButton.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Middle})
-	content.AddChild(jsonButton)
 
 	goCodeButton := unison.NewButton()
 	goCodeButton.Text = "Copy Code"
 	goCodeButton.ClickCallback = func() {
 		var buffer strings.Builder
-		buffer.WriteString("var MyTheme = unison.Theme{\n")
 		for _, one := range currentColors {
-			fmt.Fprintf(&buffer, "\t%s: unison.ThemeColor{\n\t\tLight: %s,\n\t\tDark: %s,\n\t},\n",
-				strings.ReplaceAll(one.Title, " ", ""),
-				colorToRGBString(one.Color.Light),
-				colorToRGBString(one.Color.Dark),
-			)
+			fmt.Fprintf(&buffer, "unison.Theme%s.Light = unison.%s\n", one.Title, colorToRGBString(one.Color.Light))
+			fmt.Fprintf(&buffer, "unison.Theme%s.Dark = unison.%s\n", one.Title, colorToRGBString(one.Color.Dark))
 		}
-		buffer.WriteString("}\n")
 		unison.GlobalClipboard.SetText(buffer.String())
 	}
-	goCodeButton.SetBorder(unison.NewEmptyBorder(unison.Insets{Top: 10}))
+	goCodeButton.SetBorder(unison.NewEmptyBorder(unison.Insets{Top: 20}))
 	goCodeButton.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Middle})
 	content.AddChild(goCodeButton)
 

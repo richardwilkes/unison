@@ -21,14 +21,14 @@ import (
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
 // but will alter any Lists created in the future.
 var DefaultListTheme = ListTheme{
-	BackgroundInk:          PrimaryTheme.Surface.DeriveLightness(0.05, -0.1),
-	OnBackgroundInk:        PrimaryTheme.Surface.DeriveLightness(0.05, -0.1).DeriveOn(),
-	BandingInk:             &PrimaryTheme.Surface,
-	OnBandingInk:           PrimaryTheme.Surface.DeriveOn(),
-	SelectionInk:           &PrimaryTheme.Primary,
-	OnSelectionInk:         PrimaryTheme.Primary.DeriveOn(),
-	InactiveSelectionInk:   PrimaryTheme.Primary.DeriveLightness(-0.05, -0.1),
-	OnInactiveSelectionInk: PrimaryTheme.Primary.DeriveLightness(-0.05, -0.1).DeriveOn(),
+	BackgroundInk:          ThemeBelowSurface,
+	OnBackgroundInk:        ThemeOnBelowSurface,
+	BandingInk:             ThemeSurface,
+	OnBandingInk:           ThemeOnSurface,
+	SelectionInk:           ThemeFocus,
+	OnSelectionInk:         ThemeOnFocus,
+	InactiveSelectionInk:   ThemeDeepFocus,
+	OnInactiveSelectionInk: ThemeOnDeepFocus,
 	FlashAnimationTime:     100 * time.Millisecond,
 }
 

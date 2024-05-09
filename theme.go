@@ -18,48 +18,65 @@ var (
 	_ ColorProvider = &DerivedThemeColor{}
 )
 
-// PrimaryTheme is the default theme.
-var PrimaryTheme = NewDefaultTheme()
+// The theme colors used throughout Unison.
+var (
+	ThemeSurface = DefaultThemeSurface()
+	ThemeFocus   = DefaultThemeFocus()
+	ThemeTooltip = DefaultThemeTooltip()
+	ThemeError   = DefaultThemeError()
+	ThemeWarning = DefaultThemeWarning()
+)
 
-// Theme holds a set of colors for a theme.
-type Theme struct {
-	Primary ThemeColor `json:"primary"`
-	Surface ThemeColor `json:"surface"`
-	Tooltip ThemeColor `json:"tooltip"`
-	Error   ThemeColor `json:"error"`
-	Warning ThemeColor `json:"warning"`
+// The colors derived from the theme colors.
+var (
+	ThemeOnSurface      = ThemeSurface.DeriveOn()
+	ThemeAboveSurface   = ThemeSurface.DeriveLightness(-0.05, 0.1)
+	ThemeOnAboveSurface = ThemeAboveSurface.DeriveOn()
+	ThemeBelowSurface   = ThemeSurface.DeriveLightness(0.05, -0.1)
+	ThemeOnBelowSurface = ThemeBelowSurface.DeriveOn()
+	ThemeSurfaceEdge    = ThemeSurface.DeriveLightness(-0.1, 0.15)
+	ThemeOnFocus        = ThemeFocus.DeriveOn()
+	ThemeDeepFocus      = ThemeFocus.DeriveLightness(-0.05, -0.1)
+	ThemeOnDeepFocus    = ThemeDeepFocus.DeriveOn()
+	ThemeDeeperFocus    = ThemeFocus.DeriveLightness(-0.1, -0.15)
+	ThemeOnDeeperFocus  = ThemeDeeperFocus.DeriveOn()
+	ThemeDeepestFocus   = ThemeFocus.DeriveLightness(-0.15, -0.2)
+	ThemeOnDeepestFocus = ThemeDeepestFocus.DeriveOn()
+	ThemeOnTooltip      = ThemeTooltip.DeriveOn()
+	ThemeTooltipEdge    = ThemeTooltip.DeriveLightness(-0.2, -0.2)
+	ThemeOnError        = ThemeError.DeriveOn()
+	ThemeOnWarning      = ThemeWarning.DeriveOn()
+)
+
+// DefaultThemeSurface returns the default surface color.
+func DefaultThemeSurface() *ThemeColor {
+	return &ThemeColor{Light: RGB(224, 224, 224), Dark: RGB(32, 32, 32)}
+}
+
+// DefaultThemeFocus returns the default focus color.
+func DefaultThemeFocus() *ThemeColor {
+	return &ThemeColor{Light: RGB(0, 97, 153), Dark: RGB(0, 128, 204)}
+}
+
+// DefaultThemeTooltip returns the default tooltip color.
+func DefaultThemeTooltip() *ThemeColor {
+	return &ThemeColor{Light: RGB(255, 244, 198), Dark: RGB(255, 242, 153)}
+}
+
+// DefaultThemeError returns the default error color.
+func DefaultThemeError() *ThemeColor {
+	return &ThemeColor{Light: RGB(133, 20, 20), Dark: RGB(133, 20, 20)}
+}
+
+// DefaultThemeWarning returns the default warning color.
+func DefaultThemeWarning() *ThemeColor {
+	return &ThemeColor{Light: RGB(217, 76, 0), Dark: RGB(191, 67, 0)}
 }
 
 // ThemeColor holds a pair of colors, one for light mode and one for dark mode.
 type ThemeColor struct {
 	Light Color `json:"light"`
 	Dark  Color `json:"dark"`
-}
-
-// NewDefaultTheme returns a new Theme with default colors.
-func NewDefaultTheme() Theme {
-	return Theme{
-		Primary: ThemeColor{
-			Light: RGB(0, 97, 153),
-			Dark:  RGB(0, 128, 204),
-		},
-		Surface: ThemeColor{
-			Light: RGB(224, 224, 224),
-			Dark:  RGB(32, 32, 32),
-		},
-		Tooltip: ThemeColor{
-			Light: RGB(255, 244, 198),
-			Dark:  RGB(255, 242, 153),
-		},
-		Error: ThemeColor{
-			Light: RGB(133, 20, 20),
-			Dark:  RGB(133, 20, 20),
-		},
-		Warning: ThemeColor{
-			Light: RGB(217, 76, 0),
-			Dark:  RGB(191, 67, 0),
-		},
-	}
 }
 
 // GetColor returns the current color. Here to satisfy the ColorProvider interface.

@@ -23,12 +23,12 @@ import (
 // existing CheckBoxes, but will alter any CheckBoxes created in the future.
 var DefaultCheckBoxTheme = CheckBoxTheme{
 	Font:               SystemFont,
-	OnBackgroundInk:    PrimaryTheme.Surface.DeriveOn(),
-	EdgeInk:            PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
-	SelectionInk:       &PrimaryTheme.Primary,
-	OnSelectionInk:     PrimaryTheme.Primary.DeriveOn(),
-	ControlInk:         PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
-	OnControlInk:       PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1).DeriveOn(),
+	OnBackgroundInk:    ThemeOnSurface,
+	EdgeInk:            ThemeSurfaceEdge,
+	SelectionInk:       ThemeFocus,
+	OnSelectionInk:     ThemeOnFocus,
+	ControlInk:         ThemeAboveSurface,
+	OnControlInk:       ThemeOnAboveSurface,
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,

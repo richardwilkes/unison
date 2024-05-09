@@ -21,8 +21,8 @@ import (
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
 // alter existing TableHeaders, but will alter any TableHeaders created in the future.
 var DefaultTableHeaderTheme = TableHeaderTheme{
-	BackgroundInk:        PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
-	InteriorDividerColor: PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
+	BackgroundInk:        ThemeAboveSurface,
+	InteriorDividerColor: ThemeAboveSurface,
 }
 
 // TableHeaderTheme holds theming data for a TableHeader.

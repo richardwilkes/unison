@@ -21,8 +21,6 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/check"
-	"github.com/richardwilkes/unison/enums/paintstyle"
-	"github.com/richardwilkes/unison/enums/pathop"
 )
 
 var windowCounter int
@@ -82,22 +80,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 		VAlign: align.Middle,
 		HGrab:  true,
 	})
-	content.AddChild(panel)
-
-	addSeparator(content)
-
-	// Create a wrappale row of color test areas
-	panel = unison.NewPanel()
-	panel.SetLayout(&unison.FlowLayout{
-		HSpacing: unison.StdHSpacing * 2,
-		VSpacing: unison.StdVSpacing,
-	})
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	panel.AddChild(createColorBlock("Primary Color", &unison.PrimaryTheme.Primary))
-	panel.AddChild(createColorBlock("Surface Color", &unison.PrimaryTheme.Surface))
 	content.AddChild(panel)
 
 	addSeparator(content)
@@ -174,45 +156,6 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 	wnd.ToFront()
 
 	return wnd, nil
-}
-
-func createColorBlock(name string, bg *unison.ThemeColor) *unison.Label {
-	label := unison.NewLabel()
-	label.Text = name
-	label.SetBorder(unison.NewCompoundBorder(
-		unison.NewLineBorder(unison.Black, 0, unison.NewUniformInsets(1), false),
-		unison.NewEmptyBorder(unison.NewUniformInsets(10)),
-	))
-	label.DrawCallback = func(gc *unison.Canvas, rect unison.Rect) {
-		r := label.ContentRect(true)
-		r2 := r
-		r2.Width /= 3
-		c := bg.DeriveLightness(-0.1, -0.1)
-		gc.DrawRect(r2, c.Paint(gc, r2, paintstyle.Fill))
-		gc.Save()
-		label.OnBackgroundInk = c.DeriveOn()
-		gc.ClipRect(r2, pathop.Intersect, false)
-		label.DefaultDraw(gc, rect)
-		gc.Restore()
-
-		r2.X += r2.Width
-		gc.DrawRect(r2, bg.Paint(gc, r2, paintstyle.Fill))
-		gc.Save()
-		label.OnBackgroundInk = bg.DeriveOn()
-		gc.ClipRect(r2, pathop.Intersect, false)
-		label.DefaultDraw(gc, rect)
-		gc.Restore()
-
-		r2.X += r2.Width
-		c = bg.DeriveLightness(0.1, 0.1)
-		gc.DrawRect(r2, c.Paint(gc, r2, paintstyle.Fill))
-		gc.Save()
-		label.OnBackgroundInk = c.DeriveOn()
-		gc.ClipRect(r2, pathop.Intersect, false)
-		label.DefaultDraw(gc, rect)
-		gc.Restore()
-	}
-	return label
 }
 
 func createButtonsPanel() *unison.Panel {

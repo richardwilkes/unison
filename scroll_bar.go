@@ -14,8 +14,8 @@ import "github.com/richardwilkes/unison/enums/paintstyle"
 // DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
 // existing ScrollBars, but will alter any ScrollBars created in the future.
 var DefaultScrollBarTheme = ScrollBarTheme{
-	EdgeInk:          PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
-	ThumbInk:         &PrimaryTheme.Primary,
+	EdgeInk:          ThemeSurfaceEdge,
+	ThumbInk:         ThemeFocus,
 	MinimumThickness: 16,
 	MinimumThumb:     16,
 	ThumbIndent:      3,

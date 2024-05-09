@@ -61,9 +61,9 @@ func init() {
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 6) }},
 		},
 		CodeBlockFont:       &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
-		CodeBackground:      PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
-		OnCodeBackground:    PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1).DeriveOn(),
-		QuoteBarColor:       &PrimaryTheme.Primary,
+		CodeBackground:      ThemeAboveSurface,
+		OnCodeBackground:    ThemeOnAboveSurface,
+		QuoteBarColor:       ThemeFocus,
 		LinkInk:             DefaultLinkTheme.Foreground,
 		LinkOnPressedInk:    DefaultLinkTheme.OnPressedInk,
 		LinkHandler:         DefaultMarkdownLinkHandler,
@@ -490,7 +490,7 @@ func (m *Markdown) processTable() {
 				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
 			}
 			p := NewPanel()
-			p.SetBorder(NewLineBorder(PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15), 0, NewUniformInsets(1), false))
+			p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, NewUniformInsets(1), false))
 			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
 			m.block.AddChild(p)
 			m.block = p
@@ -624,7 +624,7 @@ func (m *Markdown) processTableCell() {
 			}
 		}
 		p := NewPanel()
-		p.SetBorder(NewLineBorder(PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15), 0, NewUniformInsets(1), false))
+		p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, NewUniformInsets(1), false))
 		p.SetLayout(&FlexLayout{
 			Columns: 1,
 			HAlign:  hAlign,

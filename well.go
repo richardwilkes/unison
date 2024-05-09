@@ -33,9 +33,9 @@ const (
 // DefaultWellTheme holds the default WellTheme values for Wells. Modifying this data will not alter existing Wells, but
 // will alter any Wells created in the future.
 var DefaultWellTheme = WellTheme{
-	BackgroundInk:      PrimaryTheme.Surface.DeriveLightness(-0.05, 0.1),
-	EdgeInk:            PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15),
-	SelectionInk:       &PrimaryTheme.Primary,
+	BackgroundInk:      ThemeAboveSurface,
+	EdgeInk:            ThemeSurfaceEdge,
+	SelectionInk:       ThemeFocus,
 	ImageScale:         0.5,
 	ContentSize:        20,
 	CornerRadius:       4,

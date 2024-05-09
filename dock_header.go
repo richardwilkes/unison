@@ -21,10 +21,10 @@ var _ Layout = &dockHeader{}
 // DefaultDockHeaderTheme holds the default DockHeaderTheme values for DockHeaders. Modifying this data will not alter
 // existing DockHeaders, but will alter any DockHeaders created in the future.
 var DefaultDockHeaderTheme = DockHeaderTheme{
-	BackgroundInk: &PrimaryTheme.Surface,
-	DropAreaInk:   &PrimaryTheme.Warning,
+	BackgroundInk: ThemeSurface,
+	DropAreaInk:   ThemeWarning,
 	HeaderBorder: NewCompoundBorder(
-		NewLineBorder(PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15), 0, Insets{Bottom: 1}, false),
+		NewLineBorder(ThemeSurfaceEdge, 0, Insets{Bottom: 1}, false),
 		NewEmptyBorder(NewHorizontalInsets(4)),
 	),
 	MinimumTabWidth: 50,

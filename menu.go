@@ -59,8 +59,8 @@ type Menu interface {
 // DefaultMenuTheme holds the default MenuTheme values for Menus. Modifying this data will not alter existing Menus,
 // but will alter any Menus created in the future.
 var DefaultMenuTheme = MenuTheme{
-	BarBorder:  NewLineBorder(PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15), 0, Insets{Bottom: 1}, false),
-	MenuBorder: NewLineBorder(PrimaryTheme.Surface.DeriveLightness(-0.1, 0.15), 0, NewUniformInsets(1), false),
+	BarBorder:  NewLineBorder(ThemeSurfaceEdge, 0, Insets{Bottom: 1}, false),
+	MenuBorder: NewLineBorder(ThemeSurfaceEdge, 0, NewUniformInsets(1), false),
 }
 
 // MenuTheme holds theming data for a Menu.
