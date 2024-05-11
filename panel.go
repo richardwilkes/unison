@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox"
+
 	"github.com/richardwilkes/unison/enums/pathop"
 )
 
@@ -66,6 +67,10 @@ type Panel struct {
 	disabled             bool
 	Hidden               bool
 	TooltipImmediate     bool
+}
+
+func (p *Panel) SetParent(panel *Panel) {
+	p.parent = panel
 }
 
 // NewPanel creates a new panel.

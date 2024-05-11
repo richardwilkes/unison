@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/richardwilkes/toolbox/i18n"
+
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -49,6 +50,11 @@ type dockHeader struct {
 	dragInsertIndex       int
 }
 
+func (d *dockHeader) CurrentDockTabLabel() *Label {
+	index := d.owner.CurrentDockableIndex()
+	tabs, _ := d.partition()
+	return tabs[index].title
+}
 func newDockHeader(dc *DockContainer) *dockHeader {
 	d := &dockHeader{
 		DockHeaderTheme:       DefaultDockHeaderTheme,

@@ -50,6 +50,9 @@ func NewDockContainer(dock *Dock, dockable Dockable) *DockContainer {
 	d.AddChild(d.content)
 	return d
 }
+func (d *DockContainer) Header() *dockHeader {
+	return d.header
+}
 
 // Dockables returns the list of Dockables within this DockContainer, in tab order.
 func (d *DockContainer) Dockables() []Dockable {
