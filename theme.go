@@ -50,7 +50,7 @@ var (
 
 // DefaultThemeSurface returns the default surface color.
 func DefaultThemeSurface() *ThemeColor {
-	return &ThemeColor{Light: RGB(224, 224, 224), Dark: RGB(32, 32, 32)}
+	return &ThemeColor{Light: RGB(232, 232, 232), Dark: RGB(40, 40, 40)}
 }
 
 // DefaultThemeFocus returns the default focus color.
