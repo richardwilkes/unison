@@ -223,6 +223,9 @@ func (d *JobDialog) printerPopupSelectionHandler(popup *unison.PopupMenu[*Printe
 }
 
 func (d *JobDialog) setPrinter(printer *Printer) {
+	if printer == nil {
+		return
+	}
 	d.printer = printer
 	d.printerID = d.printer.PrinterID
 	var err error
