@@ -13,6 +13,12 @@ linters-settings:
   errcheck:
     check-type-assertions: true
     check-blank: true
+    ignore: ""
+    exclude-functions:
+      - fmt.Fprint
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - (fmt.State).Write
   gofumpt:
     extra-rules: true
   govet:
