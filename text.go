@@ -40,6 +40,7 @@ func NewTextFromRunes(runes []rune, decoration *TextDecoration) *Text {
 		decorations: make([]*TextDecoration, 0, len(runes)),
 		widths:      make([]float32, 0, len(runes)),
 		extents:     Size{Width: -1},
+		baseline:    decoration.Font.Baseline(),
 		emptyHeight: decoration.Font.LineHeight() + xmath.Abs(decoration.BaselineOffset),
 	}
 	t.AddRunes(runes, decoration)
@@ -70,9 +71,14 @@ func NewTextWrappedLines(text string, decoration *TextDecoration, width float32)
 // NewSmallCapsText creates a new Text object with the given text, but with lowercase letters replaced by small caps.
 func NewSmallCapsText(text string, decoration *TextDecoration) *Text {
 	smaller := decoration.Clone()
-	fd := smaller.Font.Descriptor()
-	fd.Size *= 0.75
-	smaller.Font = fd.Font()
+	font := smaller.Font
+	smaller.Font = &DynamicFont{
+		Resolver: func() FontDescriptor {
+			fd := font.Descriptor()
+			fd.Size *= 0.75
+			return fd
+		},
+	}
 	t := NewTextFromRunes(nil, decoration)
 	isLower := false
 	run := make([]rune, 0, 32)
@@ -128,7 +134,7 @@ func (t *Text) Slice(i, j int) *Text {
 		decorations: t.decorations[i:j],
 		widths:      t.widths[i:j],
 		extents:     Size{Width: -1},
-		emptyHeight: t.decorations[i].Font.LineHeight() + xmath.Abs(t.decorations[i].BaselineOffset),
+		emptyHeight: t.emptyHeight,
 	}
 }
 
@@ -163,9 +169,8 @@ func (t *Text) Height() float32 {
 	return t.extents.Height
 }
 
-// Baseline returns the largest baseline found, after considering any baseline offset adjustments.
+// Baseline returns the baseline that will be used, which is based on the original font passed in at creation time.
 func (t *Text) Baseline() float32 {
-	t.cache()
 	return t.baseline
 }
 
@@ -173,16 +178,11 @@ func (t *Text) cache() {
 	if t.extents.Width < 0 {
 		t.extents.Width = 0
 		t.extents.Height = t.emptyHeight
-		t.baseline = 0
 		for i, d := range t.decorations {
 			h := d.Font.LineHeight() + xmath.Abs(d.BaselineOffset)
 			t.extents.Width += t.widths[i]
 			if t.extents.Height < h {
 				t.extents.Height = h
-			}
-			b := d.Font.Baseline() + d.BaselineOffset
-			if t.baseline < b {
-				t.baseline = b
 			}
 		}
 	}
