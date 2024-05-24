@@ -72,7 +72,7 @@ func (l *Label) SetPlainText(text string) {
 
 // DefaultSizes provides the default sizing.
 func (l *Label) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize, _ = l.contentSizes()
+	prefSize, _ = LabelContentSizes(l.Text, l.Drawable, l.Font, l.Side, l.Gap)
 	if b := l.Border(); b != nil {
 		prefSize = prefSize.Add(b.Insets().Size())
 	}
@@ -80,26 +80,35 @@ func (l *Label) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	return prefSize, prefSize, prefSize
 }
 
-func (l *Label) contentSizes() (size, txtSize Size) {
-	noText := l.Text.Empty()
-	if noText && l.Drawable == nil {
-		txtSize.Height = l.Font.LineHeight()
+// DefaultDraw provides the default drawing.
+func (l *Label) DefaultDraw(canvas *Canvas, _ Rect) {
+	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.OnBackgroundInk, l.BackgroundInk,
+		l.Drawable, l.Side, l.Gap, !l.Enabled())
+}
+
+// LabelContentSizes returns the preferred size of a label, as well as the preferred size of the text within the label.
+// When no drawable is present, the two values will be the same. Provided as a standalone function so that other types
+// of panels can make use of it.
+func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide side.Enum, gap float32) (size, txtSize Size) {
+	empty := text.Empty()
+	if empty && drawable == nil {
+		txtSize.Height = font.LineHeight()
 		size = txtSize
 	} else {
-		if !noText {
-			txtSize = l.Text.Extents()
+		if !empty {
+			txtSize = text.Extents()
 			size = txtSize
 		}
-		if l.Drawable != nil {
-			logicalSize := l.Drawable.LogicalSize()
+		if drawable != nil {
+			logicalSize := drawable.LogicalSize()
 			switch {
-			case noText:
+			case empty:
 				size = logicalSize
-			case l.Side.Horizontal():
-				size.Width += logicalSize.Width + l.Gap
+			case drawableSide.Horizontal():
+				size.Width += logicalSize.Width + gap
 				size.Height = max(size.Height, logicalSize.Height)
 			default:
-				size.Height += logicalSize.Height + l.Gap
+				size.Height += logicalSize.Height + gap
 				size.Width = max(size.Width, logicalSize.Width)
 			}
 		}
@@ -107,29 +116,28 @@ func (l *Label) contentSizes() (size, txtSize Size) {
 	return size.Ceil(), txtSize
 }
 
-// DefaultDraw provides the default drawing.
-func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
-	if !toolbox.IsNil(l.BackgroundInk) {
-		canvas.DrawRect(dirty, l.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill))
+// DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
+func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign align.Enum, font Font, text *Text, onBackgroundInk, backgroundInk Ink, drawable Drawable, drawableSide side.Enum, imgGap float32, applyDisabledFilter bool) {
+	if !toolbox.IsNil(backgroundInk) {
+		canvas.DrawRect(rect, backgroundInk.Paint(canvas, rect, paintstyle.Fill))
 	}
-	noText := l.Text.Empty()
-	if l.Drawable == nil && noText {
+	empty := text.Empty()
+	if drawable == nil && empty {
 		return
 	}
 
 	// Determine overall size of content
-	size, txtSize := l.contentSizes()
+	size, txtSize := LabelContentSizes(text, drawable, font, drawableSide, imgGap)
 
 	// Adjust the working area for the content size
-	rect := l.ContentRect(false)
-	switch l.HAlign {
+	switch hAlign {
 	case align.Middle, align.Fill:
 		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
 	case align.End:
 		rect.X += rect.Width - size.Width
 	default: // align.Start
 	}
-	switch l.VAlign {
+	switch vAlign {
 	case align.Middle, align.Fill:
 		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
 	case align.End:
@@ -143,18 +151,18 @@ func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
 	imgY := rect.Y
 	txtX := rect.X
 	txtY := rect.Y
-	if !noText && l.Drawable != nil {
-		logicalSize := l.Drawable.LogicalSize()
-		switch l.Side {
+	if !empty && drawable != nil {
+		logicalSize := drawable.LogicalSize()
+		switch drawableSide {
 		case side.Top:
-			txtY += logicalSize.Height + l.Gap
+			txtY += logicalSize.Height + imgGap
 			if logicalSize.Width > txtSize.Width {
 				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
 			} else {
 				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
 			}
 		case side.Left:
-			txtX += logicalSize.Width + l.Gap
+			txtX += logicalSize.Width + imgGap
 			if logicalSize.Height > txtSize.Height {
 				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
 			} else {
@@ -162,7 +170,7 @@ func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
 			}
 		case side.Bottom:
 			imgY += rect.Height - logicalSize.Height
-			txtY = imgY - (l.Gap + txtSize.Height)
+			txtY = imgY - (imgGap + txtSize.Height)
 			if logicalSize.Width > txtSize.Width {
 				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
 			} else {
@@ -170,7 +178,7 @@ func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
 			}
 		case side.Right:
 			imgX += rect.Width - logicalSize.Width
-			txtX = imgX - (l.Gap + txtSize.Width)
+			txtX = imgX - (imgGap + txtSize.Width)
 			if logicalSize.Height > txtSize.Height {
 				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
 			} else {
@@ -181,32 +189,30 @@ func (l *Label) DefaultDraw(canvas *Canvas, dirty Rect) {
 
 	canvas.Save()
 	canvas.ClipRect(rect, pathop.Intersect, false)
-	if l.Drawable != nil {
+	if drawable != nil {
 		rect.X = imgX
 		rect.Y = imgY
-		rect.Size = l.Drawable.LogicalSize()
-		fg := l.OnBackgroundInk
-		if !l.Enabled() {
+		rect.Size = drawable.LogicalSize()
+		fg := onBackgroundInk
+		if applyDisabledFilter {
 			fg = &ColorFilteredInk{
 				OriginalInk: fg,
 				ColorFilter: Grayscale30Filter(),
 			}
 		}
-		l.Drawable.DrawInRect(canvas, rect, nil, fg.Paint(canvas, rect, paintstyle.Fill))
+		drawable.DrawInRect(canvas, rect, nil, fg.Paint(canvas, rect, paintstyle.Fill))
 	}
-	if !noText {
-		if l.Enabled() {
-			l.Text.Draw(canvas, txtX, txtY+l.Text.Baseline())
-		} else {
-			savedDecorations := l.Text.AdjustDecorations(func(decoration *TextDecoration) {
+	if !empty {
+		if applyDisabledFilter {
+			savedDecorations := text.AdjustDecorations(func(decoration *TextDecoration) {
 				decoration.OnBackgroundInk = &ColorFilteredInk{
 					OriginalInk: decoration.OnBackgroundInk,
 					ColorFilter: Grayscale30Filter(),
 				}
 			})
-			l.Text.Draw(canvas, txtX, txtY+l.Text.Baseline())
-			l.Text.RestoreDecorations(savedDecorations)
+			defer text.RestoreDecorations(savedDecorations)
 		}
+		text.Draw(canvas, txtX, txtY+text.Baseline())
 	}
 	canvas.Restore()
 }

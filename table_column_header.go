@@ -66,7 +66,7 @@ func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *Defau
 
 // DefaultSizes provides the default sizing.
 func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize = LabelSize(h.Text, h.Drawable, h.Side, h.Gap)
+	prefSize, _ = LabelContentSizes(h.Text, h.Drawable, h.Font, h.Side, h.Gap)
 
 	// Account for the potential sort indicator
 	baseline := h.Font.Baseline()
@@ -88,7 +88,8 @@ func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	if h.sortIndicator != nil {
 		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
 	}
-	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.Text, h.OnBackgroundInk, h.Drawable, h.Side, h.Gap, !h.Enabled())
+	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.Font, h.Text, h.OnBackgroundInk, nil, h.Drawable, h.Side, h.Gap,
+		!h.Enabled())
 	if h.sortIndicator != nil {
 		size := h.sortIndicator.LogicalSize()
 		r.X = r.Right() + h.LabelTheme.Gap

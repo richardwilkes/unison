@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,10 +11,13 @@ package main
 
 import (
 	_ "embed"
+	"log"
+	"log/slog"
 	"os"
 
 	"github.com/richardwilkes/toolbox/cmdline"
 	"github.com/richardwilkes/toolbox/fatal"
+	"github.com/richardwilkes/toolbox/log/tracelog"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/example/demo"
 )
@@ -30,6 +33,7 @@ func main() {
 
 	cl := cmdline.New(true)
 	cl.Parse(os.Args[1:])
+	slog.SetDefault(slog.New(tracelog.New(log.Default().Writer(), slog.LevelInfo)))
 
 	unison.Start(unison.StartupFinishedCallback(func() {
 		_, err := demo.NewDemoWindow(unison.PrimaryDisplay().Usable.Point)

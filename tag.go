@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -72,12 +72,15 @@ func NewTag() *Tag {
 
 // DefaultSizes provides the default sizing.
 func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	text := t.textCache.Text(t.Text, t.Font)
+	text := t.textCache.Text(t.Text, &TextDecoration{
+		Font:            t.Font,
+		OnBackgroundInk: t.OnBackgroundInk,
+	})
 	if text == nil && t.Drawable == nil {
 		prefSize.Height = t.Font.LineHeight()
 		prefSize = prefSize.Ceil()
 	} else {
-		prefSize = LabelSize(text, t.Drawable, t.Side, t.Gap)
+		prefSize, _ = LabelContentSizes(text, t.Drawable, t.Font, t.Side, t.Gap)
 	}
 	if b := t.Border(); b != nil {
 		prefSize = prefSize.Add(b.Insets().Size())
@@ -90,16 +93,16 @@ func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 
 // DefaultDraw provides the default drawing.
 func (t *Tag) DefaultDraw(canvas *Canvas, _ Rect) {
-	txt := t.textCache.Text(t.Text, t.Font)
-	if t.Underline || t.StrikeThrough {
-		txt.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Underline = t.Underline
-			decoration.StrikeThrough = t.StrikeThrough
-		})
-	}
+	txt := t.textCache.Text(t.Text, &TextDecoration{
+		Font:            t.Font,
+		OnBackgroundInk: t.OnBackgroundInk,
+		Underline:       t.Underline,
+		StrikeThrough:   t.StrikeThrough,
+	})
 	r := t.ContentRect(false)
 	canvas.DrawRoundedRect(r, t.RadiusX, t.RadiusY, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	r.X += t.SideInset
 	r.Width -= t.SideInset * 2
-	DrawLabel(canvas, r, t.HAlign, t.VAlign, txt, t.OnBackgroundInk, t.Drawable, t.Side, t.Gap, !t.Enabled())
+	DrawLabel(canvas, r, t.HAlign, t.VAlign, t.Font, txt, t.OnBackgroundInk, nil, t.Drawable, t.Side, t.Gap,
+		!t.Enabled())
 }

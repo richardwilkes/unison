@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -93,10 +93,16 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 
 // DefaultSizes provides the default sizing.
 func (p *PopupMenu[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize = LabelSize(p.textCache.Text("M", p.Font), nil, 0, 0)
+	prefSize, _ = LabelContentSizes(p.textCache.Text("M", &TextDecoration{
+		Font:            p.Font,
+		OnBackgroundInk: p.OnBackgroundInk,
+	}), nil, p.Font, 0, 0)
 	for _, one := range p.items {
 		if !one.separator {
-			size := LabelSize(one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font), nil, 0, 0)
+			size, _ := LabelContentSizes(one.textCache.Text(fmt.Sprintf("%v", one.item), &TextDecoration{
+				Font:            p.Font,
+				OnBackgroundInk: p.OnBackgroundInk,
+			}), nil, p.Font, 0, 0)
 			if prefSize.Width < size.Width {
 				prefSize.Width = size.Width
 			}
@@ -140,7 +146,8 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	triWidth := rect.Height * 0.75
 	triHeight := triWidth / 2
 	rect.Width -= triWidth
-	DrawLabel(canvas, rect, align.Start, align.Middle, p.textObj(), p.OnBackgroundInk, nil, 0, 0, !p.Enabled())
+	DrawLabel(canvas, rect, align.Start, align.Middle, p.Font, p.textObj(), p.OnBackgroundInk, nil, nil, 0, 0,
+		!p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()
 	path.MoveTo(rect.Right(), rect.Y+(rect.Height-triHeight)/2)
@@ -161,11 +168,17 @@ func (p *PopupMenu[T]) textObj() *Text {
 		return nil
 	case 1:
 		one := p.items[indexes[0]]
-		return one.textCache.Text(fmt.Sprintf("%v", one.item), p.Font)
+		return one.textCache.Text(fmt.Sprintf("%v", one.item), &TextDecoration{
+			Font:            p.Font,
+			OnBackgroundInk: p.OnBackgroundInk,
+		})
 	default:
 		desc := p.Font.Descriptor()
 		desc.Slant = slant.Italic
-		return NewText(i18n.Text("Multiple"), &TextDecoration{Font: desc.Font()})
+		return NewText(i18n.Text("Multiple"), &TextDecoration{
+			Font:            desc.Font(),
+			OnBackgroundInk: p.OnBackgroundInk,
+		})
 	}
 }
 

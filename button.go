@@ -116,7 +116,10 @@ func (b *Button) SetGroup(group *Group) {
 
 // DefaultSizes provides the default sizing.
 func (b *Button) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize = LabelSize(b.cache.Text(b.Text, b.Font), b.Drawable, b.Side, b.Gap)
+	prefSize, _ = LabelContentSizes(b.cache.Text(b.Text, &TextDecoration{
+		Font:            b.Font,
+		OnBackgroundInk: b.OnBackgroundInk,
+	}), b.Drawable, b.Font, b.Side, b.Gap)
 	if b.Text == "" && toolbox.IsNil(b.Drawable) {
 		prefSize.Height = b.Font.LineHeight()
 	}
@@ -187,7 +190,10 @@ func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 		r = r.Inset(NewUniformInsets(thickness + 0.5))
 	}
 	r = r.Inset(NewSymmetricInsets(b.HorizontalMargin(), b.VerticalMargin()))
-	DrawLabel(canvas, r, b.HAlign, b.VAlign, b.cache.Text(b.Text, b.Font), fg, b.Drawable, b.Side, b.Gap, !b.Enabled())
+	DrawLabel(canvas, r, b.HAlign, b.VAlign, b.Font, b.cache.Text(b.Text, &TextDecoration{
+		Font:            b.Font,
+		OnBackgroundInk: b.OnBackgroundInk,
+	}), fg, nil, b.Drawable, b.Side, b.Gap, !b.Enabled())
 }
 
 // Click makes the button behave as if a user clicked on it.

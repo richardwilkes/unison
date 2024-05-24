@@ -109,7 +109,10 @@ func (r *RadioButton) circleAndLabelSize() Size {
 	if r.Drawable == nil && r.Text == "" {
 		return Size{Width: circleSize, Height: circleSize}
 	}
-	size := LabelSize(r.textCache.Text(r.Text, r.Font), r.Drawable, r.Side, r.Gap)
+	size, _ := LabelContentSizes(r.textCache.Text(r.Text, &TextDecoration{
+		Font:            r.Font,
+		OnBackgroundInk: r.LabelInk,
+	}), r.Drawable, r.Font, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
 	if size.Height < circleSize {
 		size.Height = circleSize
@@ -166,8 +169,11 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.textCache.Text(r.Text, r.Font), r.LabelInk, r.Drawable, r.Side,
-			r.Gap, !r.Enabled())
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Font, r.textCache.Text(r.Text, &TextDecoration{
+			Font:            r.Font,
+			OnBackgroundInk: r.LabelInk,
+		}), r.LabelInk, nil,
+			r.Drawable, r.Side, r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += xmath.Floor((rect.Height - circleSize) / 2)

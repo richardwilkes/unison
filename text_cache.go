@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,20 +11,17 @@ package unison
 
 // TextCache provides a simple caching mechanism for Text objects.
 type TextCache struct {
-	str  string
-	font FontDescriptor
-	text *Text
+	str        string
+	decoration TextDecoration
+	text       *Text
 }
 
-// Text composes the Text object, if needed, and returns it. The paint will be nil or whatever was last used, so be
-// sure to call .ReplacePaint() with the paint you want to use. Likewise, underline and strike through will be false,
-// so calls to .ReplaceUnderline() and/or .ReplaceStrikeThrough() should be made to enable them, if desired.
-func (c *TextCache) Text(str string, font Font) *Text {
-	desc := font.Descriptor()
-	if c.text == nil || str != c.str || desc != c.font {
+// Text composes the Text object, if needed, and returns it.
+func (c *TextCache) Text(str string, decoration *TextDecoration) *Text {
+	if c.text == nil || str != c.str || c.decoration != *decoration {
 		c.str = str
-		c.font = desc
-		c.text = NewText(str, &TextDecoration{Font: font})
+		c.decoration = *decoration
+		c.text = NewText(str, decoration)
 	}
 	return c.text
 }

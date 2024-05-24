@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -260,14 +260,20 @@ func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 	if mi.isSeparator {
 		prefSize.Height = 1
 	} else {
-		prefSize = LabelSize(mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont), nil, side.Left, 0)
+		prefSize, _ = LabelContentSizes(mi.titleCache.Text(mi.Title(), &TextDecoration{
+			Font:            DefaultMenuItemTheme.TitleFont,
+			OnBackgroundInk: DefaultMenuItemTheme.OnBackgroundColor,
+		}), nil, DefaultMenuItemTheme.TitleFont, side.Left, 0)
 		if !mi.isRoot() {
 			prefSize.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
 		}
 		if !mi.keyBinding.KeyCode.ShouldOmit() {
 			keys := mi.keyBinding.String()
 			if keys != "" {
-				size := mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont).Extents()
+				size := mi.keyCache.Text(keys, &TextDecoration{
+					Font:            DefaultMenuItemTheme.KeyFont,
+					OnBackgroundInk: DefaultMenuItemTheme.OnBackgroundColor,
+				}).Extents()
 				prefSize.Width += DefaultMenuItemTheme.KeyGap + size.Width
 				prefSize.Height = max(prefSize.Height, size.Height)
 			}
@@ -298,8 +304,10 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 	if mi.isSeparator {
 		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, fg.Paint(gc, rect, paintstyle.Fill))
 	} else {
-		t := mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont)
-		t.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = fg })
+		t := mi.titleCache.Text(mi.Title(), &TextDecoration{
+			Font:            DefaultMenuItemTheme.TitleFont,
+			OnBackgroundInk: fg,
+		})
 		size := t.Extents()
 		baseline := DefaultMenuItemTheme.KeyFont.Baseline()
 		var shifted float32
@@ -324,8 +332,10 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 			if !mi.keyBinding.KeyCode.ShouldOmit() {
 				keys := mi.keyBinding.String()
 				if keys != "" {
-					t = mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont)
-					t.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = fg })
+					t = mi.keyCache.Text(keys, &TextDecoration{
+						Font:            DefaultMenuItemTheme.KeyFont,
+						OnBackgroundInk: fg,
+					})
 					size = t.Extents()
 					t.Draw(gc, xmath.Floor(rect.Right()-size.Width),
 						xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
