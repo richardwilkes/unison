@@ -71,7 +71,7 @@ func NewDemoColorsWindow(where unison.Point) (*unison.Window, error) {
 		colorsPanel.AddChild(createColorWellField(one, true))
 		colorsPanel.AddChild(createColorWellField(one, false))
 		label := unison.NewLabel()
-		label.Text = one.Title
+		label.SetPlainText(one.Title)
 		colorsPanel.AddChild(label)
 	}
 	content.AddChild(colorsPanel)

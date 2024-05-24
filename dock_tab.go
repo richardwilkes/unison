@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -91,7 +91,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	}
 	t.SetLayout(flex)
 	t.title.LabelTheme = t.LabelTheme
-	t.title.Text = t.fullTitle()
+	t.title.SetPlainText(t.fullTitle())
 	t.title.Drawable = t.TitleIcon()
 	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: align.Middle})
 	t.AddChild(t.title)
@@ -133,8 +133,8 @@ func (t *dockTab) fullTitle() string {
 func (t *dockTab) updateTitle() {
 	drawable := t.TitleIcon()
 	title := t.fullTitle()
-	if title != t.title.Text || t.title.Drawable != drawable {
-		t.title.Text = title
+	if title != t.title.String() || t.title.Drawable != drawable {
+		t.title.SetPlainText(title)
 		t.title.Drawable = drawable
 		t.NeedsLayout = true
 		t.title.NeedsLayout = true

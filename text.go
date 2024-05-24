@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -232,15 +232,26 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	}
 }
 
-// AdjustDecorations calls adjuster for each decoration in no particular order.
-func (t *Text) AdjustDecorations(adjuster func(decoration *TextDecoration)) {
-	m := make(map[*TextDecoration]struct{})
+// AdjustDecorations calls adjuster for each decoration in no particular order. The returned map can be passed to
+// RestoreDecorations() to restore the decorations to their original state.
+func (t *Text) AdjustDecorations(adjuster func(decoration *TextDecoration)) map[*TextDecoration]TextDecoration {
+	m := make(map[*TextDecoration]TextDecoration)
 	for _, d := range t.decorations {
-		m[d] = struct{}{}
+		m[d] = *d
 	}
 	for k := range m {
 		adjuster(k)
 	}
+	return m
+}
+
+// RestoreDecorations restores the decorations to the state they were in when AdjustDecorations() was called.
+func (t *Text) RestoreDecorations(m map[*TextDecoration]TextDecoration) {
+	t.AdjustDecorations(func(decoration *TextDecoration) {
+		if d, ok := m[decoration]; ok {
+			*decoration = d
+		}
+	})
 }
 
 // Draw the Text at the given location. y is where the baseline of the text will be placed.

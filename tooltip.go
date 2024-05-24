@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -74,7 +74,7 @@ func NewTooltipWithText(text string) *Panel {
 	for _, str := range strings.Split(text, "\n") {
 		l := NewLabel()
 		l.LabelTheme = DefaultTooltipTheme.Label
-		l.Text = str
+		l.SetPlainText(str)
 		tip.AddChild(l)
 	}
 	return tip
@@ -91,7 +91,7 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()
 			desc.Size--
 			l.LabelTheme.Font = desc.Font()
-			l.Text = str
+			l.SetPlainText(str)
 			tip.AddChild(l)
 		}
 	}

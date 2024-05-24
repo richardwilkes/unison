@@ -493,7 +493,7 @@ func createTextFieldsPanel() *unison.Panel {
 
 func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {
 	lbl := unison.NewLabel()
-	lbl.Text = labelText
+	lbl.SetPlainText(labelText)
 	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.End,
@@ -514,7 +514,7 @@ func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.F
 
 func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {
 	lbl := unison.NewLabel()
-	lbl.Text = labelText
+	lbl.SetPlainText(labelText)
 	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.End,

@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -223,8 +223,8 @@ func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove boo
 				} else {
 					part := text[:i]
 					l := NewLabel()
-					l.Text = part
 					l.Font = font
+					l.SetPlainText(part)
 					if returns > 1 || addSpaceAbove {
 						addSpaceAbove = false
 						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
@@ -236,8 +236,8 @@ func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove boo
 			} else {
 				if text != "" {
 					l := NewLabel()
-					l.Text = text
 					l.Font = font
+					l.SetPlainText(text)
 					if returns > 1 || addSpaceAbove {
 						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
 					}
