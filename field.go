@@ -314,7 +314,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 		if f.Watermark != "" {
 			text := NewText(f.Watermark, &TextDecoration{
 				Font: f.Font,
-				Foreground: &ColorFilteredInk{
+				OnBackgroundInk: &ColorFilteredInk{
 					OriginalInk: ink,
 					ColorFilter: Alpha30Filter(),
 				},
@@ -345,8 +345,8 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 				selEnd := min(f.selectionEnd, end)
 				if selStart > start {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:selStart]), &TextDecoration{
-						Font:       f.Font,
-						Foreground: ink,
+						Font:            f.Font,
+						OnBackgroundInk: ink,
 					})
 					t.Draw(canvas, left, textBaseLine)
 					left += t.Width()
@@ -356,8 +356,8 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 					e--
 				}
 				t := NewTextFromRunes(f.obscureIfNeeded(f.runes[selStart:e]), &TextDecoration{
-					Font:       f.Font,
-					Foreground: f.OnSelectionInk,
+					Font:            f.Font,
+					OnBackgroundInk: f.OnSelectionInk,
 				})
 				right := left + t.Width()
 				selRect := Rect{
@@ -372,12 +372,12 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 						e--
 					}
 					NewTextFromRunes(f.obscureIfNeeded(f.runes[selEnd:e]), &TextDecoration{
-						Font:       f.Font,
-						Foreground: ink,
+						Font:            f.Font,
+						OnBackgroundInk: ink,
 					}).Draw(canvas, right, textBaseLine)
 				}
 			} else {
-				line.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = ink })
+				line.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = ink })
 				line.Draw(canvas, textLeft+f.scrollOffset.X, textBaseLine)
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {

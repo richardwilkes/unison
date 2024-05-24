@@ -9,16 +9,19 @@
 
 package unison
 
-import "github.com/richardwilkes/unison/enums/paintstyle"
+import (
+	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+)
 
 // TextDecoration holds the decorations that can be applied to text when drawn.
 type TextDecoration struct {
-	Font           Font
-	Foreground     Ink
-	Background     Ink
-	BaselineOffset float32
-	Underline      bool
-	StrikeThrough  bool
+	Font            Font
+	BackgroundInk   Ink
+	OnBackgroundInk Ink
+	BaselineOffset  float32
+	Underline       bool
+	StrikeThrough   bool
 }
 
 // Equivalent returns true if this TextDecoration is equivalent to the other.
@@ -30,8 +33,8 @@ func (d *TextDecoration) Equivalent(other *TextDecoration) bool {
 		return false
 	}
 	return d.Underline == other.Underline && d.StrikeThrough == other.StrikeThrough &&
-		d.BaselineOffset == other.BaselineOffset && d.Foreground == other.Foreground &&
-		d.Background == other.Background && d.Font.Descriptor() == other.Font.Descriptor()
+		d.BaselineOffset == other.BaselineOffset && d.OnBackgroundInk == other.OnBackgroundInk &&
+		d.BackgroundInk == other.BackgroundInk && d.Font.Descriptor() == other.Font.Descriptor()
 }
 
 // Clone the TextDecoration.
@@ -46,11 +49,11 @@ func (d *TextDecoration) Clone() *TextDecoration {
 // DrawText draws the given text using this TextDecoration.
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
 	r := Rect{Point: Point{X: x, Y: y - d.Font.Baseline()}, Size: Size{Width: width, Height: d.Font.LineHeight()}}
-	if d.Background != nil {
-		canvas.DrawRect(r, d.Background.Paint(canvas, r, paintstyle.Fill))
+	if !toolbox.IsNil(d.BackgroundInk) {
+		canvas.DrawRect(r, d.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	}
 	y += d.BaselineOffset
-	paint := d.Foreground.Paint(canvas, r, paintstyle.Fill)
+	paint := d.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)
 	canvas.DrawSimpleString(text, x, y, d.Font, paint)
 	if d.Underline || d.StrikeThrough {
 		y++

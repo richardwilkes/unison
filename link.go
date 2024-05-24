@@ -17,9 +17,9 @@ import (
 // DefaultLinkTheme holds the default Link theme values.
 var DefaultLinkTheme = LinkTheme{
 	TextDecoration: TextDecoration{
-		Font:       LabelFont,
-		Foreground: ThemeFocus,
-		Underline:  true,
+		Font:            LabelFont,
+		OnBackgroundInk: ThemeFocus,
+		Underline:       true,
 	},
 	OnPressedInk: ThemeOnFocus,
 }
@@ -34,7 +34,7 @@ type LinkTheme struct {
 func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(Paneler, string)) *RichLabel {
 	link := NewRichLabel()
 	link.Text = NewText(title, &theme.TextDecoration)
-	link.OnBackgroundInk = theme.Foreground
+	link.OnBackgroundInk = theme.OnBackgroundInk
 	if tooltip != "" {
 		link.Tooltip = NewTooltipWithText(tooltip)
 	}
@@ -47,7 +47,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 	mouseDownIn := false
 	link.MouseDownCallback = func(_ Point, _, _ int, _ Modifiers) bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Foreground = theme.OnPressedInk
+			decoration.OnBackgroundInk = theme.OnPressedInk
 		})
 		link.OnBackgroundInk = theme.OnPressedInk
 		link.MarkForRedraw()
@@ -60,15 +60,15 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 			mouseDownIn = now
 			link.Text.AdjustDecorations(func(decoration *TextDecoration) {
 				if mouseDownIn {
-					decoration.Foreground = theme.OnPressedInk
+					decoration.OnBackgroundInk = theme.OnPressedInk
 				} else {
-					decoration.Foreground = theme.Foreground
+					decoration.OnBackgroundInk = theme.OnBackgroundInk
 				}
 			})
 			if mouseDownIn {
 				link.OnBackgroundInk = theme.OnPressedInk
 			} else {
-				link.OnBackgroundInk = theme.Foreground
+				link.OnBackgroundInk = theme.OnBackgroundInk
 			}
 			link.MarkForRedraw()
 		}
@@ -76,9 +76,9 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 	}
 	link.MouseUpCallback = func(where Point, _ int, _ Modifiers) bool {
 		link.Text.AdjustDecorations(func(decoration *TextDecoration) {
-			decoration.Foreground = theme.Foreground
+			decoration.OnBackgroundInk = theme.OnBackgroundInk
 		})
-		link.OnBackgroundInk = theme.Foreground
+		link.OnBackgroundInk = theme.OnBackgroundInk
 		link.MarkForRedraw()
 		if where.In(link.ContentRect(true)) && clickHandler != nil {
 			toolbox.Call(func() { clickHandler(link, target) })
@@ -88,7 +88,7 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 	}
 	link.DrawCallback = func(gc *Canvas, rect Rect) {
 		if mouseDownIn {
-			gc.DrawRect(rect, theme.Foreground.Paint(gc, rect, paintstyle.Fill))
+			gc.DrawRect(rect, theme.OnBackgroundInk.Paint(gc, rect, paintstyle.Fill))
 		}
 		link.DefaultDraw(gc, rect)
 	}

@@ -49,8 +49,8 @@ var DefaultMarkdownTheme MarkdownTheme
 func init() {
 	DefaultMarkdownTheme = MarkdownTheme{
 		TextDecoration: TextDecoration{
-			Font:       DefaultLabelTheme.Font,
-			Foreground: DefaultLabelTheme.OnBackgroundInk,
+			Font:            DefaultLabelTheme.Font,
+			OnBackgroundInk: DefaultLabelTheme.OnBackgroundInk,
 		},
 		HeadingFont: [6]Font{
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 1) }},
@@ -64,7 +64,7 @@ func init() {
 		CodeBackground:      ThemeAboveSurface,
 		OnCodeBackground:    ThemeOnAboveSurface,
 		QuoteBarColor:       ThemeFocus,
-		LinkInk:             DefaultLinkTheme.Foreground,
+		LinkInk:             DefaultLinkTheme.OnBackgroundInk,
 		LinkOnPressedInk:    DefaultLinkTheme.OnPressedInk,
 		LinkHandler:         DefaultMarkdownLinkHandler,
 		VSpacing:            10,
@@ -362,7 +362,7 @@ func (m *Markdown) processCodeBlock() {
 	saveMaxLineWidth := m.maxLineWidth
 	m.decoration = m.decoration.Clone()
 	m.decoration.Font = m.CodeBlockFont
-	m.decoration.Foreground = m.OnCodeBackground
+	m.decoration.OnBackgroundInk = m.OnCodeBackground
 	m.maxLineWidth -= m.CodeAndQuotePadding * 2
 
 	p := NewPanel()
@@ -397,7 +397,7 @@ func (m *Markdown) processBlockquote() {
 	saveBlock := m.block
 	saveMaxLineWidth := m.maxLineWidth
 	m.decoration = m.decoration.Clone()
-	m.decoration.Foreground = m.OnCodeBackground
+	m.decoration.OnBackgroundInk = m.OnCodeBackground
 	m.maxLineWidth -= m.QuoteBarThickness + m.CodeAndQuotePadding*2
 
 	p := NewPanel()
@@ -711,8 +711,8 @@ func (m *Markdown) processEmphasis() {
 func (m *Markdown) processCodeSpan() {
 	save := m.decoration
 	m.decoration = save.Clone()
-	m.decoration.Foreground = m.OnCodeBackground
-	m.decoration.Background = m.CodeBackground
+	m.decoration.OnBackgroundInk = m.OnCodeBackground
+	m.decoration.BackgroundInk = m.CodeBackground
 	m.decoration.Font = m.CodeBlockFont
 	m.processChildren()
 	m.decoration = save
@@ -770,7 +770,7 @@ func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
 		TextDecoration: *m.decoration.Clone(),
 		OnPressedInk:   m.LinkOnPressedInk,
 	}
-	theme.Foreground = m.LinkInk
+	theme.OnBackgroundInk = m.LinkInk
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}

@@ -118,7 +118,7 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign align.Enum, text *Text,
 	// Determine overall size of content
 	var size, txtSize Size
 	if !noText {
-		text.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
+		text.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = fg })
 		txtSize = text.Extents()
 		size = txtSize
 	}

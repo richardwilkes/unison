@@ -299,7 +299,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, fg.Paint(gc, rect, paintstyle.Fill))
 	} else {
 		t := mi.titleCache.Text(mi.Title(), DefaultMenuItemTheme.TitleFont)
-		t.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
+		t.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = fg })
 		size := t.Extents()
 		baseline := DefaultMenuItemTheme.KeyFont.Baseline()
 		var shifted float32
@@ -325,7 +325,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				keys := mi.keyBinding.String()
 				if keys != "" {
 					t = mi.keyCache.Text(keys, DefaultMenuItemTheme.KeyFont)
-					t.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = fg })
+					t.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = fg })
 					size = t.Extents()
 					t.Draw(gc, xmath.Floor(rect.Right()-size.Width),
 						xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())

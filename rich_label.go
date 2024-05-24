@@ -162,15 +162,15 @@ func (l *RichLabel) DefaultDraw(canvas *Canvas, _ Rect) {
 		} else {
 			m := make(map[*TextDecoration]Ink)
 			l.Text.AdjustDecorations(func(decoration *TextDecoration) {
-				m[decoration] = decoration.Foreground
-				decoration.Foreground = &ColorFilteredInk{
-					OriginalInk: decoration.Foreground,
+				m[decoration] = decoration.OnBackgroundInk
+				decoration.OnBackgroundInk = &ColorFilteredInk{
+					OriginalInk: decoration.OnBackgroundInk,
 					ColorFilter: Grayscale30Filter(),
 				}
 			})
 			l.Text.Draw(canvas, txtX, txtY+l.Text.Baseline())
 			l.Text.AdjustDecorations(func(decoration *TextDecoration) {
-				decoration.Foreground = m[decoration]
+				decoration.OnBackgroundInk = m[decoration]
 			})
 		}
 	}
