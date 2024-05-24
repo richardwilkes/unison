@@ -127,13 +127,17 @@ func (t *Text) Slice(i, j int) *Text {
 		j = len(t.runes)
 	}
 	if i >= j {
-		return &Text{emptyHeight: t.emptyHeight}
+		return &Text{
+			baseline:    t.baseline,
+			emptyHeight: t.emptyHeight,
+		}
 	}
 	return &Text{
 		runes:       t.runes[i:j],
 		decorations: t.decorations[i:j],
 		widths:      t.widths[i:j],
 		extents:     Size{Width: -1},
+		baseline:    t.baseline,
 		emptyHeight: t.emptyHeight,
 	}
 }
