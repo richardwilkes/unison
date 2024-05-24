@@ -381,7 +381,7 @@ func (m *Markdown) processCodeBlock() {
 	count := lines.Len()
 	for i := 0; i < count; i++ {
 		segment := lines.At(i)
-		label := NewRichLabel()
+		label := NewLabel()
 		label.Text = NewText(string(bytes.TrimRight(segment.Value(m.content), "\n")), m.decoration)
 		p.AddChild(label)
 	}
@@ -462,7 +462,7 @@ func (m *Markdown) processListItem() {
 		bullet = "•"
 		m.maxLineWidth -= m.decoration.Font.SimpleWidth("• ")
 	}
-	label := NewRichLabel()
+	label := NewLabel()
 	label.Text = NewText(bullet, m.decoration)
 	label.SetLayoutData(&FlexLayoutData{HAlign: align.End})
 	m.block.AddChild(label)
@@ -765,10 +765,13 @@ func (m *Markdown) processLink() {
 	}
 }
 
-func (m *Markdown) createLink(label, target, tooltip string) *RichLabel {
+func (m *Markdown) createLink(label, target, tooltip string) *Label {
 	theme := LinkTheme{
-		TextDecoration: *m.decoration.Clone(),
-		OnPressedInk:   m.LinkOnPressedInk,
+		LabelTheme: LabelTheme{
+			TextDecoration: *m.decoration.Clone(),
+		},
+		PressedInk:   m.LinkInk,
+		OnPressedInk: m.LinkOnPressedInk,
 	}
 	theme.OnBackgroundInk = m.LinkInk
 	if tooltip == "" && target != "" {
@@ -923,7 +926,7 @@ func (m *Markdown) addToTextRow(p Paneler) {
 }
 
 func (m *Markdown) addLabelToTextRow(t *Text) {
-	label := NewRichLabel()
+	label := NewLabel()
 	label.Text = t
 	m.addToTextRow(label)
 }
@@ -939,8 +942,8 @@ func (m *Markdown) issueLineBreak() {
 		children = m.textRow.Children()
 	}
 	if len(children) == 0 {
-		m.addToTextRow(NewRichLabel())
-	} else if child, ok := children[len(children)-1].Self.(*RichLabel); ok {
+		m.addToTextRow(NewLabel())
+	} else if child, ok := children[len(children)-1].Self.(*Label); ok {
 		if r := child.Text.Runes(); len(r) > 1 && r[len(r)-1] == ' ' {
 			child.Text = child.Text.Slice(0, len(r)-1)
 		}
