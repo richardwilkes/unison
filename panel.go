@@ -82,7 +82,7 @@ func (p *Panel) AsPanel() *Panel {
 
 // Is returns true if this panel is the other panel.
 func (p *Panel) Is(other Paneler) bool {
-	if p != nil && other != nil {
+	if p != nil && !toolbox.IsNil(other) {
 		p2 := other.AsPanel()
 		return p2 != nil && p.Self == p2.Self
 	}
