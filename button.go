@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -16,6 +16,8 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/side"
 )
+
+var _ Grouper = &Button{}
 
 // DefaultButtonTheme holds the default ButtonTheme values for Buttons. Modifying this data will not alter existing
 // Buttons, but will alter any Buttons created in the future.
@@ -63,12 +65,13 @@ type ButtonTheme struct {
 
 // Button represents a clickable button.
 type Button struct {
-	GroupPanel
+	Panel
 	ButtonTheme
 	ClickCallback func()
 	Drawable      Drawable
 	Text          string
 	cache         TextCache
+	group         *Group
 	Pressed       bool
 }
 
@@ -99,6 +102,16 @@ func NewSVGButton(svg *SVG) *Button {
 		Size: NewSize(baseline, baseline).Ceil(),
 	}
 	return b
+}
+
+// Group returns the group that this button is a part of.
+func (b *Button) Group() *Group {
+	return b.group
+}
+
+// SetGroup sets the group that this button is a part of. Should only be called by the Group.
+func (b *Button) SetGroup(group *Group) {
+	b.group = group
 }
 
 // DefaultSizes provides the default sizing.
@@ -146,7 +159,7 @@ func (b *Button) DefaultFocusGained() {
 func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 	var fg, bg Ink
 	switch {
-	case b.Pressed || (b.Sticky && b.Selected()):
+	case b.Pressed || (b.Sticky && b.group.Selected(b)):
 		if b.HideBase {
 			bg = Transparent
 			fg = b.SelectionInk
@@ -179,7 +192,7 @@ func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 
 // Click makes the button behave as if a user clicked on it.
 func (b *Button) Click() {
-	b.SetSelected(true)
+	b.group.Select(b)
 	pressed := b.Pressed
 	b.Pressed = true
 	b.MarkForRedraw()
@@ -213,7 +226,7 @@ func (b *Button) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	if where.In(b.ContentRect(false)) {
-		b.SetSelected(true)
+		b.group.Select(b)
 		if b.ClickCallback != nil {
 			b.ClickCallback()
 		}

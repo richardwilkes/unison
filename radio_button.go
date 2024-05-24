@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -17,6 +17,8 @@ import (
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
+
+var _ Grouper = &RadioButton{}
 
 // DefaultRadioButtonTheme holds the default RadioButtonTheme values for RadioButtons. Modifying this data will not
 // alter existing RadioButtons, but will alter any RadioButtons created in the future.
@@ -55,12 +57,13 @@ type RadioButtonTheme struct {
 
 // RadioButton represents a clickable radio button with an optional label.
 type RadioButton struct {
-	GroupPanel
+	Panel
 	RadioButtonTheme
 	ClickCallback func()
 	Drawable      Drawable
 	Text          string
 	textCache     TextCache
+	group         *Group
 	Pressed       bool
 }
 
@@ -79,6 +82,16 @@ func NewRadioButton() *RadioButton {
 	r.KeyDownCallback = r.DefaultKeyDown
 	r.UpdateCursorCallback = r.DefaultUpdateCursor
 	return r
+}
+
+// Group returns the group that this button is a part of.
+func (r *RadioButton) Group() *Group {
+	return r.group
+}
+
+// SetGroup sets the group that this button is a part of. Should only be called by the Group.
+func (r *RadioButton) SetGroup(group *Group) {
+	r.group = group
 }
 
 // DefaultSizes provides the default sizing.
@@ -162,7 +175,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 	rect.Width = circleSize
 	rect.Height = circleSize
 	DrawEllipseBase(canvas, rect, thickness, bg, edge)
-	if r.Selected() {
+	if r.group.Selected(r) {
 		rect = rect.Inset(NewUniformInsets(0.5 + 0.2*circleSize))
 		paint := fg.Paint(canvas, rect, paintstyle.Fill)
 		if !r.Enabled() {
@@ -174,7 +187,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 
 // Click makes the radio button behave as if a user clicked on it.
 func (r *RadioButton) Click() {
-	r.SetSelected(true)
+	r.group.Select(r)
 	pressed := r.Pressed
 	r.Pressed = true
 	r.MarkForRedraw()
@@ -208,7 +221,7 @@ func (r *RadioButton) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
 	if where.In(r.ContentRect(false)) {
-		r.SetSelected(true)
+		r.group.Select(r)
 		if r.ClickCallback != nil {
 			r.ClickCallback()
 		}

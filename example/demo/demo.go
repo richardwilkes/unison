@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -241,11 +241,11 @@ func createSVGButtonsPanel() *unison.Panel {
 	group := unison.NewGroup()
 	first := createSVGButton(unison.CircledQuestionSVG, "question_toggle", panel)
 	first.Sticky = true
-	group.Add(first.AsGroupPanel())
+	group.Add(first)
 	second := createSVGButton(unison.TriangleExclamationSVG, "warning_toggle", panel)
 	second.Sticky = true
-	group.Add(second.AsGroupPanel())
-	group.Select(first.AsGroupPanel())
+	group.Add(second)
+	group.Select(first)
 
 	createSpacer(20, panel)
 
@@ -253,12 +253,12 @@ func createSVGButtonsPanel() *unison.Panel {
 	first = createSVGButton(unison.CircledQuestionSVG, "question_toggle_boxed", panel)
 	first.HideBase = false
 	first.Sticky = true
-	group.Add(first.AsGroupPanel())
+	group.Add(first)
 	second = createSVGButton(unison.TriangleExclamationSVG, "warning_toggle_boxed", panel)
 	second.HideBase = false
 	second.Sticky = true
-	group.Add(second.AsGroupPanel())
-	group.Select(first.AsGroupPanel())
+	group.Add(second)
+	group.Select(first)
 
 	return panel
 }
@@ -383,7 +383,7 @@ func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 	createRadioButton("75%", panel, group, progress, 75, 100).SetEnabled(false)
 	createRadioButton("100%", panel, group, progress, 100, 100)
 	createRadioButton("Indeterminate", panel, group, progress, 0, 0)
-	group.Select(first.AsGroupPanel())
+	group.Select(first)
 
 	// Add the radio buttons to the left
 	wrapper.AddChild(panel)
@@ -404,7 +404,7 @@ func createRadioButton(title string, panel *unison.Panel, group *unison.Group, p
 	}
 	rb.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for %s", title))
 	panel.AddChild(rb)
-	group.Add(rb.AsGroupPanel())
+	group.Add(rb)
 	return rb
 }
 
