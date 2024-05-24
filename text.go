@@ -67,6 +67,46 @@ func NewTextWrappedLines(text string, decoration *TextDecoration, width float32)
 	return lines
 }
 
+// NewSmallCapsText creates a new Text object with the given text, but with lowercase letters replaced by small caps.
+func NewSmallCapsText(text string, decoration *TextDecoration) *Text {
+	smaller := decoration.Clone()
+	fd := smaller.Font.Descriptor()
+	fd.Size *= 0.75
+	smaller.Font = fd.Font()
+	t := NewTextFromRunes(nil, decoration)
+	isLower := false
+	run := make([]rune, 0, 32)
+	for _, r := range text {
+		if r >= 'a' && r <= 'z' {
+			if !isLower {
+				isLower = true
+				if len(run) > 0 {
+					t.AddRunes(run, decoration)
+					run = make([]rune, 0, 32)
+				}
+			}
+			run = append(run, unicode.ToUpper(r))
+		} else {
+			if isLower {
+				isLower = false
+				if len(run) > 0 {
+					t.AddRunes(run, smaller)
+					run = make([]rune, 0, 32)
+				}
+			}
+			run = append(run, r)
+		}
+	}
+	if len(run) > 0 {
+		if isLower {
+			t.AddRunes(run, smaller)
+		} else {
+			t.AddRunes(run, decoration)
+		}
+	}
+	return t
+}
+
 // Empty returns true if this doesn't hold any characters. May be called on a nil *Text.
 func (t *Text) Empty() bool {
 	return t == nil || len(t.runes) == 0
