@@ -67,6 +67,13 @@ func NewTag() *Tag {
 	return t
 }
 
+// SetTitle sets the text of the tag to the specified text. The theme's TextDecoration will be used, so any
+// changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
+// .Text field.
+func (t *Tag) SetTitle(text string) {
+	t.Text = NewText(text, &t.TextDecoration)
+}
+
 // DefaultSizes provides the default sizing.
 func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	prefSize, _ = LabelContentSizes(t.Text, t.Drawable, t.Font, t.Side, t.Gap)
