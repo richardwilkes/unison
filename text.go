@@ -149,6 +149,9 @@ func (t *Text) Runes() []rune {
 
 // String returns the string representation of this Text.
 func (t *Text) String() string {
+	if t.Empty() {
+		return ""
+	}
 	if t.text == "" && len(t.runes) != 0 {
 		t.text = string(t.runes)
 	}
