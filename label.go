@@ -58,10 +58,7 @@ func NewLabel() *Label {
 }
 
 func (l *Label) String() string {
-	if l.Text != nil {
-		return l.Text.String()
-	}
-	return ""
+	return l.Text.String()
 }
 
 // SetTitle sets the text of the label to the specified text. The theme's TextDecoration will be used, so any
