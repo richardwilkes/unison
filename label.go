@@ -64,9 +64,10 @@ func (l *Label) String() string {
 	return ""
 }
 
-// SetPlainText sets the text of the label to the specified plain text. The label theme's TextDecoration will be used,
-// so any changes you want to make to it should be done before calling this method.
-func (l *Label) SetPlainText(text string) {
+// SetTitle sets the text of the label to the specified text. The theme's TextDecoration will be used, so any
+// changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
+// .Text field.
+func (l *Label) SetTitle(text string) {
 	l.Text = NewText(text, &l.TextDecoration)
 }
 

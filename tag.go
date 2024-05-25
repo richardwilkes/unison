@@ -18,47 +18,44 @@ import (
 // DefaultTagTheme holds the default TagTheme values for Tags. Modifying this data will not alter existing Tags, but
 // will alter any Tags created in the future.
 var DefaultTagTheme = TagTheme{
-	Font: &DynamicFont{
-		Resolver: func() FontDescriptor {
-			desc := LabelFont.Descriptor()
-			desc.Size = max(desc.Size-2, 1)
-			return desc
+	TextDecoration: TextDecoration{
+		Font: &DynamicFont{
+			Resolver: func() FontDescriptor {
+				desc := LabelFont.Descriptor()
+				desc.Size = max(desc.Size-2, 1)
+				return desc
+			},
 		},
+		BackgroundInk:   ThemeOnSurface,
+		OnBackgroundInk: ThemeSurface,
 	},
-	BackgroundInk:   ThemeOnSurface,
-	OnBackgroundInk: ThemeSurface,
-	Gap:             3,
-	SideInset:       3,
-	RadiusX:         6,
-	RadiusY:         6,
-	HAlign:          align.Start,
-	VAlign:          align.Middle,
-	Side:            side.Left,
+	Gap:       3,
+	SideInset: 3,
+	RadiusX:   6,
+	RadiusY:   6,
+	HAlign:    align.Start,
+	VAlign:    align.Middle,
+	Side:      side.Left,
 }
 
 // TagTheme holds theming data for a Tag.
 type TagTheme struct {
-	Font            Font
-	BackgroundInk   Ink
-	OnBackgroundInk Ink
-	Gap             float32
-	SideInset       float32
-	RadiusX         float32
-	RadiusY         float32
-	HAlign          align.Enum
-	VAlign          align.Enum
-	Side            side.Enum
-	Underline       bool
-	StrikeThrough   bool
+	TextDecoration
+	Gap       float32
+	SideInset float32
+	RadiusX   float32
+	RadiusY   float32
+	HAlign    align.Enum
+	VAlign    align.Enum
+	Side      side.Enum
 }
 
 // Tag represents non-interactive text and/or a Drawable with a bubble around it.
 type Tag struct {
 	Panel
 	TagTheme
-	Drawable  Drawable
-	Text      string
-	textCache TextCache
+	Drawable Drawable
+	Text     *Text
 }
 
 // NewTag creates a new, empty Tag.
@@ -72,16 +69,7 @@ func NewTag() *Tag {
 
 // DefaultSizes provides the default sizing.
 func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	text := t.textCache.Text(t.Text, &TextDecoration{
-		Font:            t.Font,
-		OnBackgroundInk: t.OnBackgroundInk,
-	})
-	if text == nil && t.Drawable == nil {
-		prefSize.Height = t.Font.LineHeight()
-		prefSize = prefSize.Ceil()
-	} else {
-		prefSize, _ = LabelContentSizes(text, t.Drawable, t.Font, t.Side, t.Gap)
-	}
+	prefSize, _ = LabelContentSizes(t.Text, t.Drawable, t.Font, t.Side, t.Gap)
 	if b := t.Border(); b != nil {
 		prefSize = prefSize.Add(b.Insets().Size())
 	}
@@ -93,16 +81,10 @@ func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 
 // DefaultDraw provides the default drawing.
 func (t *Tag) DefaultDraw(canvas *Canvas, _ Rect) {
-	txt := t.textCache.Text(t.Text, &TextDecoration{
-		Font:            t.Font,
-		OnBackgroundInk: t.OnBackgroundInk,
-		Underline:       t.Underline,
-		StrikeThrough:   t.StrikeThrough,
-	})
 	r := t.ContentRect(false)
 	canvas.DrawRoundedRect(r, t.RadiusX, t.RadiusY, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	r.X += t.SideInset
 	r.Width -= t.SideInset * 2
-	DrawLabel(canvas, r, t.HAlign, t.VAlign, t.Font, txt, t.OnBackgroundInk, nil, t.Drawable, t.Side, t.Gap,
+	DrawLabel(canvas, r, t.HAlign, t.VAlign, t.Font, t.Text, t.OnBackgroundInk, nil, t.Drawable, t.Side, t.Gap,
 		!t.Enabled())
 }

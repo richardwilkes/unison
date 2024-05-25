@@ -224,7 +224,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove boo
 					part := text[:i]
 					l := NewLabel()
 					l.Font = font
-					l.SetPlainText(part)
+					l.SetTitle(part)
 					if returns > 1 || addSpaceAbove {
 						addSpaceAbove = false
 						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
@@ -237,7 +237,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove boo
 				if text != "" {
 					l := NewLabel()
 					l.Font = font
-					l.SetPlainText(text)
+					l.SetTitle(text)
 					if returns > 1 || addSpaceAbove {
 						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
 					}

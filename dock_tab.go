@@ -36,19 +36,20 @@ var DefaultDockTabTheme = DockTabTheme{
 	OnTabCurrentInk: ThemeOnDeepestFocus,
 	TabBorder:       NewEmptyBorder(Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}),
 	Gap:             4,
-	LabelTheme:      defaultLabelTheme(),
-	ButtonTheme:     defaultButtonTheme(),
+	LabelTheme:      defaultDockLabelTheme(),
+	ButtonTheme:     defaultDockButtonTheme(),
 }
 
-func defaultLabelTheme() LabelTheme {
+func defaultDockLabelTheme() LabelTheme {
 	theme := DefaultLabelTheme
 	theme.Font = SystemFont
 	return theme
 }
 
-func defaultButtonTheme() ButtonTheme {
+func defaultDockButtonTheme() ButtonTheme {
 	theme := DefaultButtonTheme
 	theme.HideBase = true
+	theme.SelectionInk = ThemeWarning
 	return theme
 }
 
@@ -91,7 +92,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	}
 	t.SetLayout(flex)
 	t.title.LabelTheme = t.LabelTheme
-	t.title.SetPlainText(t.fullTitle())
+	t.title.SetTitle(t.fullTitle())
 	t.title.Drawable = t.TitleIcon()
 	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: align.Middle})
 	t.AddChild(t.title)
@@ -134,7 +135,7 @@ func (t *dockTab) updateTitle() {
 	drawable := t.TitleIcon()
 	title := t.fullTitle()
 	if title != t.title.String() || t.title.Drawable != drawable {
-		t.title.SetPlainText(title)
+		t.title.SetTitle(title)
 		t.title.Drawable = drawable
 		t.NeedsLayout = true
 		t.title.NeedsLayout = true

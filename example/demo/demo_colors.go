@@ -71,13 +71,13 @@ func NewDemoColorsWindow(where unison.Point) (*unison.Window, error) {
 		colorsPanel.AddChild(createColorWellField(one, true))
 		colorsPanel.AddChild(createColorWellField(one, false))
 		label := unison.NewLabel()
-		label.SetPlainText(one.Title)
+		label.SetTitle(one.Title)
 		colorsPanel.AddChild(label)
 	}
 	content.AddChild(colorsPanel)
 
 	goCodeButton := unison.NewButton()
-	goCodeButton.Text = "Copy Code"
+	goCodeButton.SetTitle("Copy Code")
 	goCodeButton.ClickCallback = func() {
 		var buffer strings.Builder
 		for _, one := range currentColors {

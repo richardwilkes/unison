@@ -44,7 +44,7 @@ type LinkTheme struct {
 func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(Paneler, string)) *Label {
 	link := NewLabel()
 	link.LabelTheme = DefaultLinkTheme.LabelTheme
-	link.SetPlainText(title)
+	link.SetTitle(title)
 	if tooltip != "" {
 		link.Tooltip = NewTooltipWithText(tooltip)
 	}

@@ -322,7 +322,7 @@ order with no overlapping ranges`))
 
 func createLabel(text string) *unison.Label {
 	label := unison.NewLabel()
-	label.SetPlainText(text)
+	label.SetTitle(text)
 	label.HAlign = align.End
 	label.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.End,

@@ -82,8 +82,6 @@ type menuItem struct {
 	factory     *inWindowMenuFactory
 	id          int
 	title       string
-	titleCache  TextCache
-	keyCache    TextCache
 	menu        *menu
 	subMenu     *menu
 	panel       *Panel
@@ -260,7 +258,7 @@ func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 	if mi.isSeparator {
 		prefSize.Height = 1
 	} else {
-		prefSize, _ = LabelContentSizes(mi.titleCache.Text(mi.Title(), &TextDecoration{
+		prefSize, _ = LabelContentSizes(NewText(mi.Title(), &TextDecoration{
 			Font:            DefaultMenuItemTheme.TitleFont,
 			OnBackgroundInk: DefaultMenuItemTheme.OnBackgroundColor,
 		}), nil, DefaultMenuItemTheme.TitleFont, side.Left, 0)
@@ -270,7 +268,7 @@ func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 		if !mi.keyBinding.KeyCode.ShouldOmit() {
 			keys := mi.keyBinding.String()
 			if keys != "" {
-				size := mi.keyCache.Text(keys, &TextDecoration{
+				size := NewText(keys, &TextDecoration{
 					Font:            DefaultMenuItemTheme.KeyFont,
 					OnBackgroundInk: DefaultMenuItemTheme.OnBackgroundColor,
 				}).Extents()
@@ -304,7 +302,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 	if mi.isSeparator {
 		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, fg.Paint(gc, rect, paintstyle.Fill))
 	} else {
-		t := mi.titleCache.Text(mi.Title(), &TextDecoration{
+		t := NewText(mi.Title(), &TextDecoration{
 			Font:            DefaultMenuItemTheme.TitleFont,
 			OnBackgroundInk: fg,
 		})
@@ -332,7 +330,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 			if !mi.keyBinding.KeyCode.ShouldOmit() {
 				keys := mi.keyBinding.String()
 				if keys != "" {
-					t = mi.keyCache.Text(keys, &TextDecoration{
+					t = NewText(keys, &TextDecoration{
 						Font:            DefaultMenuItemTheme.KeyFont,
 						OnBackgroundInk: fg,
 					})

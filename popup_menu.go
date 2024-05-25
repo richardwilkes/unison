@@ -24,33 +24,32 @@ import (
 // DefaultPopupMenuTheme holds the default PopupMenuTheme values for PopupMenus. Modifying this data will not alter
 // existing PopupMenus, but will alter any PopupMenus created in the future.
 var DefaultPopupMenuTheme = PopupMenuTheme{
-	Font:            SystemFont,
-	BackgroundInk:   ThemeAboveSurface,
-	OnBackgroundInk: ThemeOnAboveSurface,
-	EdgeInk:         ThemeSurfaceEdge,
-	SelectionInk:    ThemeFocus,
-	OnSelectionInk:  ThemeOnFocus,
-	CornerRadius:    4,
-	HMargin:         8,
-	VMargin:         1,
+	TextDecoration: TextDecoration{
+		Font:            SystemFont,
+		BackgroundInk:   ThemeAboveSurface,
+		OnBackgroundInk: ThemeOnAboveSurface,
+	},
+	EdgeInk:        ThemeSurfaceEdge,
+	SelectionInk:   ThemeFocus,
+	OnSelectionInk: ThemeOnFocus,
+	CornerRadius:   4,
+	HMargin:        8,
+	VMargin:        1,
 }
 
 // PopupMenuTheme holds theming data for a PopupMenu.
 type PopupMenuTheme struct {
-	Font            Font
-	BackgroundInk   Ink
-	OnBackgroundInk Ink
-	EdgeInk         Ink
-	SelectionInk    Ink
-	OnSelectionInk  Ink
-	CornerRadius    float32
-	HMargin         float32
-	VMargin         float32
+	TextDecoration
+	EdgeInk        Ink
+	SelectionInk   Ink
+	OnSelectionInk Ink
+	CornerRadius   float32
+	HMargin        float32
+	VMargin        float32
 }
 
 type popupMenuItem[T comparable] struct {
 	item      T
-	textCache TextCache
 	enabled   bool
 	separator bool
 }
@@ -65,7 +64,6 @@ type PopupMenu[T comparable] struct {
 	SelectionChangedCallback func(popup *PopupMenu[T])
 	items                    []*popupMenuItem[T]
 	selection                map[int]bool
-	textCache                TextCache
 	pressed                  bool
 }
 
@@ -93,13 +91,10 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 
 // DefaultSizes provides the default sizing.
 func (p *PopupMenu[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize, _ = LabelContentSizes(p.textCache.Text("M", &TextDecoration{
-		Font:            p.Font,
-		OnBackgroundInk: p.OnBackgroundInk,
-	}), nil, p.Font, 0, 0)
+	prefSize, _ = LabelContentSizes(nil, nil, p.Font, 0, 0)
 	for _, one := range p.items {
 		if !one.separator {
-			size, _ := LabelContentSizes(one.textCache.Text(fmt.Sprintf("%v", one.item), &TextDecoration{
+			size, _ := LabelContentSizes(NewText(fmt.Sprintf("%v", one.item), &TextDecoration{
 				Font:            p.Font,
 				OnBackgroundInk: p.OnBackgroundInk,
 			}), nil, p.Font, 0, 0)
@@ -168,7 +163,7 @@ func (p *PopupMenu[T]) textObj() *Text {
 		return nil
 	case 1:
 		one := p.items[indexes[0]]
-		return one.textCache.Text(fmt.Sprintf("%v", one.item), &TextDecoration{
+		return NewText(fmt.Sprintf("%v", one.item), &TextDecoration{
 			Font:            p.Font,
 			OnBackgroundInk: p.OnBackgroundInk,
 		})

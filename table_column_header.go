@@ -54,7 +54,7 @@ func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *Defau
 	}
 	h.Self = h
 	h.LabelTheme = DefaultTableColumnHeaderTheme
-	h.SetPlainText(title)
+	h.SetTitle(title)
 	h.SetSizer(h.DefaultSizes)
 	h.DrawCallback = h.DefaultDraw
 	h.MouseUpCallback = h.DefaultMouseUp

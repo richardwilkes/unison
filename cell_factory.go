@@ -41,6 +41,6 @@ func (f *DefaultCellFactory) CreateCell(_ Paneler, element any, _ int, foregroun
 	txtLabel.SetBorder(NewEmptyBorder(Insets{Top: StdVSpacing, Left: StdHSpacing, Bottom: StdVSpacing, Right: StdHSpacing}))
 	txtLabel.Font = FieldFont
 	txtLabel.OnBackgroundInk = foreground
-	txtLabel.SetPlainText(fmt.Sprintf("%v", element))
+	txtLabel.SetTitle(fmt.Sprintf("%v", element))
 	return txtLabel
 }

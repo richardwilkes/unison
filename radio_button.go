@@ -23,11 +23,12 @@ var _ Grouper = &RadioButton{}
 // DefaultRadioButtonTheme holds the default RadioButtonTheme values for RadioButtons. Modifying this data will not
 // alter existing RadioButtons, but will alter any RadioButtons created in the future.
 var DefaultRadioButtonTheme = RadioButtonTheme{
-	Font:               SystemFont,
-	BackgroundInk:      ThemeAboveSurface,
-	OnBackgroundInk:    ThemeOnAboveSurface,
+	TextDecoration: TextDecoration{
+		Font:            SystemFont,
+		BackgroundInk:   ThemeAboveSurface,
+		OnBackgroundInk: ThemeOnAboveSurface,
+	},
 	EdgeInk:            ThemeSurfaceEdge,
-	LabelInk:           ThemeOnSurface,
 	SelectionInk:       ThemeFocus,
 	OnSelectionInk:     ThemeOnFocus,
 	Gap:                3,
@@ -40,11 +41,8 @@ var DefaultRadioButtonTheme = RadioButtonTheme{
 
 // RadioButtonTheme holds theming data for a RadioButton.
 type RadioButtonTheme struct {
-	Font               Font
-	BackgroundInk      Ink
-	OnBackgroundInk    Ink
+	TextDecoration
 	EdgeInk            Ink
-	LabelInk           Ink
 	SelectionInk       Ink
 	OnSelectionInk     Ink
 	Gap                float32
@@ -61,8 +59,7 @@ type RadioButton struct {
 	RadioButtonTheme
 	ClickCallback func()
 	Drawable      Drawable
-	Text          string
-	textCache     TextCache
+	Text          *Text
 	group         *Group
 	Pressed       bool
 }
@@ -82,6 +79,13 @@ func NewRadioButton() *RadioButton {
 	r.KeyDownCallback = r.DefaultKeyDown
 	r.UpdateCursorCallback = r.DefaultUpdateCursor
 	return r
+}
+
+// SetTitle sets the text of the radio button to the specified text. The theme's TextDecoration will be used, so any
+// changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
+// .Text field.
+func (r *RadioButton) SetTitle(text string) {
+	r.Text = NewText(text, &r.TextDecoration)
 }
 
 // Group returns the group that this button is a part of.
@@ -106,13 +110,10 @@ func (r *RadioButton) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) 
 
 func (r *RadioButton) circleAndLabelSize() Size {
 	circleSize := r.circleSize()
-	if r.Drawable == nil && r.Text == "" {
+	if r.Drawable == nil && r.Text.Empty() {
 		return Size{Width: circleSize, Height: circleSize}
 	}
-	size, _ := LabelContentSizes(r.textCache.Text(r.Text, &TextDecoration{
-		Font:            r.Font,
-		OnBackgroundInk: r.LabelInk,
-	}), r.Drawable, r.Font, r.Side, r.Gap)
+	size, _ := LabelContentSizes(r.Text, r.Drawable, r.Font, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
 	if size.Height < circleSize {
 		size.Height = circleSize
@@ -165,15 +166,15 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 	}
 	rect.Size = size
 	circleSize := r.circleSize()
-	if r.Drawable != nil || r.Text != "" {
+	if r.Drawable != nil || !r.Text.Empty() {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Font, r.textCache.Text(r.Text, &TextDecoration{
-			Font:            r.Font,
-			OnBackgroundInk: r.LabelInk,
-		}), r.LabelInk, nil,
-			r.Drawable, r.Side, r.Gap, !r.Enabled())
+		defer r.Text.RestoreDecorations(r.Text.AdjustDecorations(func(d *TextDecoration) {
+			d.BackgroundInk = nil
+			d.OnBackgroundInk = fg
+		}))
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Font, r.Text, fg, nil, r.Drawable, r.Side, r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += xmath.Floor((rect.Height - circleSize) / 2)

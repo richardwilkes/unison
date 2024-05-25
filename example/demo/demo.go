@@ -202,7 +202,7 @@ func createDialogButtonsPanel() *unison.Panel {
 
 func createButton(title string, panel *unison.Panel) *unison.Button {
 	btn := unison.NewButton()
-	btn.Text = title
+	btn.SetTitle(title)
 	btn.ClickCallback = func() { slog.Info(title) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", title))
 	btn.SetLayoutData(align.Middle)
@@ -342,7 +342,7 @@ func createCheckBoxPanel() *unison.Panel {
 
 func createCheckBox(title string, initialState check.Enum, panel *unison.Panel) *unison.CheckBox {
 	cb := unison.NewCheckBox()
-	cb.Text = title
+	cb.SetTitle(title)
 	cb.State = initialState
 	cb.ClickCallback = func() { slog.Info("checkbox clicked", "title", title) }
 	cb.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("This is the tooltip for '%s'", title))
@@ -396,7 +396,7 @@ func createRadioButtonsAndProgressBarsPanel() *unison.Panel {
 
 func createRadioButton(title string, panel *unison.Panel, group *unison.Group, progressBar *unison.ProgressBar, current, maximum float32) *unison.RadioButton {
 	rb := unison.NewRadioButton()
-	rb.Text = title
+	rb.SetTitle(title)
 	rb.ClickCallback = func() {
 		progressBar.SetMaximum(maximum)
 		progressBar.SetCurrent(current)
@@ -493,7 +493,7 @@ func createTextFieldsPanel() *unison.Panel {
 
 func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {
 	lbl := unison.NewLabel()
-	lbl.SetPlainText(labelText)
+	lbl.SetTitle(labelText)
 	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.End,
@@ -514,7 +514,7 @@ func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.F
 
 func createMultiLineTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {
 	lbl := unison.NewLabel()
-	lbl.SetPlainText(labelText)
+	lbl.SetTitle(labelText)
 	lbl.HAlign = align.End
 	lbl.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.End,

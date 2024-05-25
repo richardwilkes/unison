@@ -74,7 +74,7 @@ func NewTooltipWithText(text string) *Panel {
 	for _, str := range strings.Split(text, "\n") {
 		l := NewLabel()
 		l.LabelTheme = DefaultTooltipTheme.Label
-		l.SetPlainText(str)
+		l.SetTitle(str)
 		tip.AddChild(l)
 	}
 	return tip
@@ -91,7 +91,7 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()
 			desc.Size--
 			l.LabelTheme.Font = desc.Font()
-			l.SetPlainText(str)
+			l.SetTitle(str)
 			tip.AddChild(l)
 		}
 	}

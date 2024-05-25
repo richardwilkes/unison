@@ -138,7 +138,7 @@ func addWrappedText(parent *unison.Panel, text string, ink unison.Ink, font unis
 		label := unison.NewLabel()
 		label.Font = font
 		label.LabelTheme.OnBackgroundInk = ink
-		label.SetPlainText(line.String())
+		label.SetTitle(line.String())
 		parent.AddChild(label)
 	}
 }

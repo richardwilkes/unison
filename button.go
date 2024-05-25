@@ -12,7 +12,6 @@ package unison
 import (
 	"time"
 
-	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/side"
 )
@@ -22,9 +21,11 @@ var _ Grouper = &Button{}
 // DefaultButtonTheme holds the default ButtonTheme values for Buttons. Modifying this data will not alter existing
 // Buttons, but will alter any Buttons created in the future.
 var DefaultButtonTheme = ButtonTheme{
-	Font:                SystemFont,
-	BackgroundInk:       ThemeAboveSurface,
-	OnBackgroundInk:     ThemeOnAboveSurface,
+	TextDecoration: TextDecoration{
+		Font:            SystemFont,
+		BackgroundInk:   ThemeAboveSurface,
+		OnBackgroundInk: ThemeOnAboveSurface,
+	},
 	EdgeInk:             ThemeSurfaceEdge,
 	SelectionInk:        ThemeFocus,
 	OnSelectionInk:      ThemeOnFocus,
@@ -43,9 +44,7 @@ var DefaultButtonTheme = ButtonTheme{
 
 // ButtonTheme holds theming data for a Button.
 type ButtonTheme struct {
-	Font                Font
-	BackgroundInk       Ink
-	OnBackgroundInk     Ink
+	TextDecoration
 	EdgeInk             Ink
 	SelectionInk        Ink
 	OnSelectionInk      Ink
@@ -69,8 +68,7 @@ type Button struct {
 	ButtonTheme
 	ClickCallback func()
 	Drawable      Drawable
-	Text          string
-	cache         TextCache
+	Text          *Text
 	group         *Group
 	Pressed       bool
 }
@@ -104,6 +102,13 @@ func NewSVGButton(svg *SVG) *Button {
 	return b
 }
 
+// SetTitle sets the text of the button to the specified text. The theme's TextDecoration will be used, so any
+// changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
+// .Text field.
+func (b *Button) SetTitle(text string) {
+	b.Text = NewText(text, &b.TextDecoration)
+}
+
 // Group returns the group that this button is a part of.
 func (b *Button) Group() *Group {
 	return b.group
@@ -116,13 +121,7 @@ func (b *Button) SetGroup(group *Group) {
 
 // DefaultSizes provides the default sizing.
 func (b *Button) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize, _ = LabelContentSizes(b.cache.Text(b.Text, &TextDecoration{
-		Font:            b.Font,
-		OnBackgroundInk: b.OnBackgroundInk,
-	}), b.Drawable, b.Font, b.Side, b.Gap)
-	if b.Text == "" && toolbox.IsNil(b.Drawable) {
-		prefSize.Height = b.Font.LineHeight()
-	}
+	prefSize, _ = LabelContentSizes(b.Text, b.Drawable, b.Font, b.Side, b.Gap)
 	if border := b.Border(); border != nil {
 		prefSize = prefSize.Add(border.Insets().Size())
 	}
@@ -138,7 +137,7 @@ func (b *Button) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 
 // HorizontalMargin returns the horizontal margin that will be used.
 func (b *Button) HorizontalMargin() float32 {
-	if b.Text == "" && b.Drawable != nil {
+	if b.Text.Empty() && b.Drawable != nil {
 		return b.DrawableOnlyHMargin
 	}
 	return b.HMargin
@@ -146,7 +145,7 @@ func (b *Button) HorizontalMargin() float32 {
 
 // VerticalMargin returns the vertical margin that will be used.
 func (b *Button) VerticalMargin() float32 {
-	if b.Text == "" && b.Drawable != nil {
+	if b.Text.Empty() && b.Drawable != nil {
 		return b.DrawableOnlyVMargin
 	}
 	return b.VMargin
@@ -190,10 +189,11 @@ func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 		r = r.Inset(NewUniformInsets(thickness + 0.5))
 	}
 	r = r.Inset(NewSymmetricInsets(b.HorizontalMargin(), b.VerticalMargin()))
-	DrawLabel(canvas, r, b.HAlign, b.VAlign, b.Font, b.cache.Text(b.Text, &TextDecoration{
-		Font:            b.Font,
-		OnBackgroundInk: b.OnBackgroundInk,
-	}), fg, nil, b.Drawable, b.Side, b.Gap, !b.Enabled())
+	defer b.Text.RestoreDecorations(b.Text.AdjustDecorations(func(d *TextDecoration) {
+		d.BackgroundInk = nil
+		d.OnBackgroundInk = fg
+	}))
+	DrawLabel(canvas, r, b.HAlign, b.VAlign, b.Font, b.Text, fg, nil, b.Drawable, b.Side, b.Gap, !b.Enabled())
 }
 
 // Click makes the button behave as if a user clicked on it.

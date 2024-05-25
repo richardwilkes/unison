@@ -235,6 +235,9 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 // AdjustDecorations calls adjuster for each decoration in no particular order. The returned map can be passed to
 // RestoreDecorations() to restore the decorations to their original state.
 func (t *Text) AdjustDecorations(adjuster func(decoration *TextDecoration)) map[*TextDecoration]TextDecoration {
+	if t == nil {
+		return nil
+	}
 	m := make(map[*TextDecoration]TextDecoration)
 	for _, d := range t.decorations {
 		m[d] = *d

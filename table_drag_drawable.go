@@ -39,9 +39,9 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		Right:  label.Font.LineHeight(),
 	}))
 	if count := CountTableRows(data.Rows); count == 1 {
-		label.SetPlainText(fmt.Sprintf("1 %s", singularName))
+		label.SetTitle(fmt.Sprintf("1 %s", singularName))
 	} else {
-		label.SetPlainText(fmt.Sprintf("%d %s", count, pluralName))
+		label.SetTitle(fmt.Sprintf("%d %s", count, pluralName))
 	}
 	if svg != nil {
 		baseline := label.Font.Baseline()

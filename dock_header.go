@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -252,7 +252,7 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 					}
 					remaining -= buttonSizes[overflowIndex].Width
 					hidden[tabs[i]] = true
-					d.overflowButton.Text = "»" + strconv.Itoa(len(hidden))
+					d.overflowButton.SetTitle("»" + strconv.Itoa(len(hidden)))
 					_, buttonSizes[overflowIndex], _ = d.overflowButton.Sizes(Size{})
 					remaining += buttonSizes[overflowIndex].Width
 					remaining -= tabSizes[i].Width + d.TabGap
