@@ -202,13 +202,12 @@ func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign align.Enum, font Font, 
 	}
 	if !empty {
 		if applyDisabledFilter {
-			savedDecorations := text.AdjustDecorations(func(decoration *TextDecoration) {
+			defer text.RestoreDecorations(text.AdjustDecorations(func(decoration *TextDecoration) {
 				decoration.OnBackgroundInk = &ColorFilteredInk{
 					OriginalInk: decoration.OnBackgroundInk,
 					ColorFilter: Grayscale30Filter(),
 				}
-			})
-			defer text.RestoreDecorations(savedDecorations)
+			}))
 		}
 		text.Draw(canvas, txtX, txtY+text.Baseline())
 	}

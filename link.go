@@ -77,17 +77,13 @@ func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(P
 		return true
 	}
 	link.DrawCallback = func(gc *Canvas, rect Rect) {
-		var savedDecorations map[*TextDecoration]TextDecoration
 		if mouseDown {
-			savedDecorations = link.Text.AdjustDecorations(func(decoration *TextDecoration) {
+			defer link.Text.RestoreDecorations(link.Text.AdjustDecorations(func(decoration *TextDecoration) {
 				decoration.OnBackgroundInk = theme.OnPressedInk
-			})
+			}))
 			gc.DrawRect(rect, theme.PressedInk.Paint(gc, rect, paintstyle.Fill))
 		}
 		link.DefaultDraw(gc, rect)
-		if mouseDown {
-			link.Text.RestoreDecorations(savedDecorations)
-		}
 	}
 	return link
 }
