@@ -112,7 +112,7 @@ func createColorWellField(c *themedColor, light bool) *unison.Well {
 	w.Mask = unison.ColorWellMask
 	if light {
 		w.SetInk(c.Color.Light)
-		w.Tooltip = unison.NewTooltipWithText("The color to use when light mode is enabled")
+		w.Tooltip = unison.NewTooltipWithText("Light Mode Color")
 		w.InkChangedCallback = func() {
 			if clr, ok := w.Ink().(unison.Color); ok {
 				c.Color.Light = clr
@@ -121,7 +121,7 @@ func createColorWellField(c *themedColor, light bool) *unison.Well {
 		}
 	} else {
 		w.SetInk(c.Color.Dark)
-		w.Tooltip = unison.NewTooltipWithText("The color to use when dark mode is enabled")
+		w.Tooltip = unison.NewTooltipWithText("Dark Mode Color")
 		w.InkChangedCallback = func() {
 			if clr, ok := w.Ink().(unison.Color); ok {
 				c.Color.Dark = clr
