@@ -12,6 +12,7 @@ package unison
 import (
 	"strings"
 
+	"github.com/richardwilkes/toolbox/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -198,13 +199,39 @@ func (t *dockTab) updateTooltip(_ Point, suggestedAvoidInRoot Rect) Rect {
 	return suggestedAvoidInRoot
 }
 
-func (t *dockTab) mouseDown(_ Point, _, _ int, _ Modifiers) bool {
+func (t *dockTab) mouseDown(where Point, button, clickCount int, _ Modifiers) bool {
+	if button == ButtonRight && clickCount == 1 && !t.Window().InDrag() {
+		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
+			if len(dc.Dockables()) > 1 {
+				f := DefaultMenuFactory()
+				cm := f.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
+				cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close Other Tabs"), KeyBinding{}, nil, func(MenuItem) {
+					dc.AttemptCloseAllExcept(t.dockable)
+				}))
+				cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close All Tabs"), KeyBinding{}, nil, func(MenuItem) {
+					dc.AttemptCloseAll()
+				}))
+				cm.Popup(Rect{
+					Point: t.PointToRoot(where),
+					Size: Size{
+						Width:  1,
+						Height: 1,
+					},
+				}, 0)
+				cm.Dispose()
+				return true
+			}
+		}
+	}
 	t.pressed = true
 	t.MarkForRedraw()
 	return true
 }
 
 func (t *dockTab) mouseDrag(where Point, _ int, _ Modifiers) bool {
+	if !t.pressed {
+		return true
+	}
 	if t.IsDragGesture(where) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			icon := t.TitleIcon()
@@ -221,6 +248,9 @@ func (t *dockTab) mouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 func (t *dockTab) mouseUp(where Point, _ int, _ Modifiers) bool {
+	if !t.pressed {
+		return true
+	}
 	if where.In(t.ContentRect(true)) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			switch {
