@@ -154,6 +154,22 @@ func (d *DockContainer) Stack(dockable Dockable, index int) {
 	d.AcquireFocus()
 }
 
+// AttemptCloseAll attempts to close all Dockables within this DockContainer. Returns true if all Dockables are closed.
+func (d *DockContainer) AttemptCloseAll() bool {
+	return d.AttemptCloseAllExcept(nil)
+}
+
+// AttemptCloseAllExcept attempts to close all Dockables within this DockContainer except for the specified Dockable.
+// Returns true if all Dockables except for the specified Dockable are closed.
+func (d *DockContainer) AttemptCloseAllExcept(dockable Dockable) bool {
+	for _, one := range d.Dockables() {
+		if one != dockable && !d.AttemptClose(one) {
+			return false
+		}
+	}
+	return true
+}
+
 // AttemptClose attempts to close a Dockable within this DockContainer. This only has an affect if the Dockable is
 // contained by this DockContainer and implements the TabCloser interface. Note that the TabCloser must call this
 // DockContainer's Close(Dockable) method to actually close the tab. Returns true if dockable is closed.
