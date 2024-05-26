@@ -14,9 +14,8 @@ import "github.com/richardwilkes/unison/enums/paintstyle"
 // DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
 // existing ScrollBars, but will alter any ScrollBars created in the future.
 var DefaultScrollBarTheme = ScrollBarTheme{
-	EdgeInk:          ScrollEdgeColor,
-	ThumbInk:         ScrollColor,
-	RolloverInk:      ScrollRolloverColor,
+	EdgeInk:          ThemeSurfaceEdge,
+	ThumbInk:         ThemeFocus,
 	MinimumThickness: 16,
 	MinimumThumb:     16,
 	ThumbIndent:      3,
@@ -27,7 +26,6 @@ var DefaultScrollBarTheme = ScrollBarTheme{
 type ScrollBarTheme struct {
 	EdgeInk          Ink
 	ThumbInk         Ink
-	RolloverInk      Ink
 	MinimumThickness float32
 	MinimumThumb     float32
 	ThumbIndent      float32
@@ -164,13 +162,11 @@ func (s *ScrollBar) DefaultSizes(_ Size) (minSize, prefSize, maxSize Size) {
 // DefaultDraw provides the default drawing.
 func (s *ScrollBar) DefaultDraw(gc *Canvas, _ Rect) {
 	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
-		var ink Ink
-		if s.overThumb {
-			ink = s.RolloverInk
-		} else {
-			ink = s.ThumbInk
+		p := s.ThumbInk.Paint(gc, thumb, paintstyle.Fill)
+		if !s.overThumb {
+			p.SetColorFilter(Alpha30Filter())
 		}
-		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, ink.Paint(gc, thumb, paintstyle.Fill))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, p)
 		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, paintstyle.Stroke))
 	}
 }

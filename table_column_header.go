@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -25,17 +25,19 @@ type TableColumnHeader[T TableRowConstraint[T]] interface {
 // DefaultTableColumnHeaderTheme holds the default TableColumnHeaderTheme values for TableColumnHeaders. Modifying this
 // data will not alter existing TableColumnHeaders, but will alter any TableColumnHeaders created in the future.
 var DefaultTableColumnHeaderTheme = LabelTheme{
-	Font:            LabelFont,
-	OnBackgroundInk: OnBackgroundColor,
-	Gap:             3,
-	HAlign:          align.Middle,
-	VAlign:          align.Middle,
-	Side:            side.Left,
+	TextDecoration: TextDecoration{
+		Font:            LabelFont,
+		OnBackgroundInk: ThemeOnSurface,
+	},
+	Gap:    3,
+	HAlign: align.Middle,
+	VAlign: align.Middle,
+	Side:   side.Left,
 }
 
 // DefaultTableColumnHeader provides a default table column header panel.
 type DefaultTableColumnHeader[T TableRowConstraint[T]] struct {
-	Label
+	*Label
 	sortState     SortState
 	sortIndicator *DrawableSVG
 }
@@ -43,10 +45,7 @@ type DefaultTableColumnHeader[T TableRowConstraint[T]] struct {
 // NewTableColumnHeader creates a new table column header panel.
 func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *DefaultTableColumnHeader[T] {
 	h := &DefaultTableColumnHeader[T]{
-		Label: Label{
-			LabelTheme: DefaultTableColumnHeaderTheme,
-			Text:       title,
-		},
+		Label: NewLabel(),
 		sortState: SortState{
 			Order:     -1,
 			Ascending: true,
@@ -54,6 +53,8 @@ func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *Defau
 		},
 	}
 	h.Self = h
+	h.LabelTheme = DefaultTableColumnHeaderTheme
+	h.SetTitle(title)
 	h.SetSizer(h.DefaultSizes)
 	h.DrawCallback = h.DefaultDraw
 	h.MouseUpCallback = h.DefaultMouseUp
@@ -65,7 +66,7 @@ func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *Defau
 
 // DefaultSizes provides the default sizing.
 func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	prefSize = LabelSize(h.textCache.Text(h.Text, h.Font), h.Drawable, h.Side, h.Gap)
+	prefSize, _ = LabelContentSizes(h.Text, h.Drawable, h.Font, h.Side, h.Gap)
 
 	// Account for the potential sort indicator
 	baseline := h.Font.Baseline()
@@ -87,8 +88,8 @@ func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	if h.sortIndicator != nil {
 		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
 	}
-	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.textCache.Text(h.Text, h.Font), h.OnBackgroundInk, h.Drawable, h.Side,
-		h.Gap, !h.Enabled())
+	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.Font, h.Text, h.OnBackgroundInk, nil, h.Drawable, h.Side, h.Gap,
+		!h.Enabled())
 	if h.sortIndicator != nil {
 		size := h.sortIndicator.LogicalSize()
 		r.X = r.Right() + h.LabelTheme.Gap

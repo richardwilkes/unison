@@ -16,23 +16,6 @@ import (
 )
 
 var (
-	//go:embed resources/home.png
-	homePngBytes []byte
-	homeImage    *unison.Image
-)
-
-// HomeImage returns a stylized image of a home, suitable for an icon.
-func HomeImage() (*unison.Image, error) {
-	if homeImage == nil {
-		var err error
-		if homeImage, err = unison.NewImageFromBytes(homePngBytes, 0.5); err != nil {
-			return nil, err
-		}
-	}
-	return homeImage, nil
-}
-
-var (
 	//go:embed resources/classic-apple-logo.png
 	classicAppleLogoPngBytes []byte
 	classicAppleLogoImage    *unison.Image

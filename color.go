@@ -37,28 +37,28 @@ type ColorProvider interface {
 // Color contains the value of a color used for drawing, stored as 0xAARRGGBB.
 type Color uint32
 
-// RGB creates a new opaque Color from RGB values in the range 0-255.
+// RGB creates a new opaque Color from RGB (Red, Green Blue) values in the range 0-255.
 func RGB(red, green, blue int) Color {
 	return ARGB(1, red, green, blue)
 }
 
-// ARGB creates a new Color from RGB values in the range 0-255 and an alpha value in the range 0-1.
+// ARGB creates a new Color from RGB (Red, Green Blue) values in the range 0-255 and an alpha value in the range 0-1.
 func ARGB(alpha float32, red, green, blue int) Color {
 	return Color(clamp0To1AndScale255(alpha)<<24 | clamp0To255(red)<<16 | clamp0To255(green)<<8 | clamp0To255(blue))
 }
 
-// ARGBfloat creates a new Color from ARGB values in the range 0-1.
+// ARGBfloat creates a new Color from ARGB (Alpha, Red, Green Blue) values in the range 0-1.
 func ARGBfloat(alpha, red, green, blue float32) Color {
 	return Color(clamp0To1AndScale255(alpha)<<24 | clamp0To1AndScale255(red)<<16 | clamp0To1AndScale255(green)<<8 |
 		clamp0To1AndScale255(blue))
 }
 
-// HSB creates a new opaque Color from HSB values in the range 0-1.
+// HSB creates a new opaque Color from HSB (Hue, Saturation, Brightness) values in the range 0-1.
 func HSB(hue, saturation, brightness float32) Color {
 	return HSBA(hue, saturation, brightness, 1)
 }
 
-// HSBA creates a new Color from HSBA values in the range 0-1.
+// HSBA creates a new Color from HSBA (Hue, Saturation, Brightness, Alpha) values in the range 0-1.
 func HSBA(hue, saturation, brightness, alpha float32) Color {
 	saturation = clamp0To1(saturation)
 	brightness = clamp0To1(brightness)
@@ -524,10 +524,43 @@ func (c Color) HSB() (hue, saturation, brightness float32) {
 	return
 }
 
-// Luminance returns a value from 0-1 representing the perceived brightness. Lower values represent darker colors, while
-// higher values represent brighter colors.
-func (c Color) Luminance() float32 {
-	return 0.299*c.RedIntensity() + 0.587*c.GreenIntensity() + 0.114*c.BlueIntensity()
+// PerceivedLightness returns a value from 0-1 representing the perceived lightness. Lower values represent darker
+// colors, while higher values represent brighter colors. This is the same as the lightness value returned by calling
+// the .OKLCH() method.
+func (c Color) PerceivedLightness() float32 {
+	lr := toLinear(float64(c.RedIntensity()))
+	lg := toLinear(float64(c.GreenIntensity()))
+	lb := toLinear(float64(c.BlueIntensity()))
+	L := math.Cbrt(0.41222147079999993*lr + 0.5363325363*lg + 0.0514459929*lb)
+	M := math.Cbrt(0.2119034981999999*lr + 0.6806995450999999*lg + 0.1073969566*lb)
+	S := math.Cbrt(0.08830246189999998*lr + 0.2817188376*lg + 0.6299787005000002*lb)
+	return clamp0To1(float32(0.2104542553*L + 0.793617785*M - 0.0040720468*S))
+}
+
+// AdjustPerceivedLightness returns a new color based on this color with its perceived lightness adjusted by the
+// specified amount.
+func (c Color) AdjustPerceivedLightness(adj float32) Color {
+	rl, rc, rh := c.OKLCH()
+	return OKLCH(rl+adj, rc, rh, c.AlphaIntensity())
+}
+
+// Colors used for the On() method.
+var (
+	OnLight = RGB(16, 16, 16)
+	OnDark  = RGB(240, 240, 240)
+)
+
+// On returns OnLight if the input color is light, otherwise OnDark.
+func (c Color) On() Color {
+	return c.OnCustom(OnLight, OnDark)
+}
+
+// OnCustom returns onLightColor if the input color is light, otherwise onDarkColor.
+func (c Color) OnCustom(onLightColor, onDarkColor Color) Color {
+	if c.PerceivedLightness() > 0.6 {
+		return onLightColor
+	}
+	return onDarkColor
 }
 
 // OKLCH returns the lightness (0-1), chroma (0-0.37), and hue (0-360) values using the OKLCH color space.
@@ -646,25 +679,11 @@ func normalizeHue(hue float64) float32 {
 }
 
 func clamp0To1(value float32) float32 {
-	switch {
-	case value < 0:
-		return 0
-	case value > 1:
-		return 1
-	default:
-		return value
-	}
+	return min(max(value, 0), 1)
 }
 
 func clamp0To255(value int) int {
-	switch {
-	case value < 0:
-		return 0
-	case value > 255:
-		return 255
-	default:
-		return value
-	}
+	return min(max(value, 0), 255)
 }
 
 func clamp0To1AndScale255(value float32) int {
@@ -672,14 +691,7 @@ func clamp0To1AndScale255(value float32) int {
 }
 
 func clampChromaForOKLCH(value float32) float32 {
-	switch {
-	case value < 0:
-		return 0
-	case value > 0.37:
-		return 0.37
-	default:
-		return value
-	}
+	return min(max(value, 0), 0.37)
 }
 
 // CSS named colors.

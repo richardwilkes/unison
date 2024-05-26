@@ -859,7 +859,7 @@ func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
 		toolbox.Call(func() {
 			w.root.ValidateLayout()
-			c.DrawPaint(BackgroundColor.Paint(c, w.LocalContentRect(), paintstyle.Fill))
+			c.DrawPaint(ThemeSurface.Paint(c, w.LocalContentRect(), paintstyle.Fill))
 			w.root.Draw(c, w.LocalContentRect())
 			if w.InDrag() {
 				c.Save()

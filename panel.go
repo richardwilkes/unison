@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -82,7 +82,7 @@ func (p *Panel) AsPanel() *Panel {
 
 // Is returns true if this panel is the other panel.
 func (p *Panel) Is(other Paneler) bool {
-	if p != nil && other != nil {
+	if p != nil && !toolbox.IsNil(other) {
 		p2 := other.AsPanel()
 		return p2 != nil && p.Self == p2.Self
 	}
@@ -298,7 +298,11 @@ func (p *Panel) Border() Border {
 // SetBorder sets the border for this panel. May be nil.
 func (p *Panel) SetBorder(b Border) {
 	if p.border != b {
-		p.border = b
+		if toolbox.IsNil(b) {
+			p.border = nil
+		} else {
+			p.border = b
+		}
 		p.MarkForLayoutAndRedraw()
 	}
 }

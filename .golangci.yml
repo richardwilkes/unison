@@ -19,25 +19,10 @@ linters-settings:
     enable-all: true
     disable:
       - composites
-    settings:
-      printf:
-        funcs:
-          - Errorf
-          - Warnf
-          - Infof
-          - Debugf
-          - Fatalf
-          - StartRootSpanf
-          - StartSubSpanf
-          - EndWithMsgf
-          - Newf
-          - NewWithCausef
   misspell:
     locale: US
   staticcheck:
     checks: ["all", "-SA3000"]
-  unused:
-    check-exported: false
 linters:
   disable-all: true
   enable:

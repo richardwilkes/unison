@@ -21,9 +21,8 @@ import (
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
 // alter existing TableHeaders, but will alter any TableHeaders created in the future.
 var DefaultTableHeaderTheme = TableHeaderTheme{
-	BackgroundInk:        ControlColor,
-	InteriorDividerColor: InteriorDividerColor,
-	HeaderBorder:         NewLineBorder(InteriorDividerColor, 0, Insets{Bottom: 1}, false),
+	BackgroundInk:        ThemeAboveSurface,
+	InteriorDividerColor: ThemeAboveSurface,
 }
 
 // TableHeaderTheme holds theming data for a TableHeader.

@@ -33,9 +33,9 @@ const (
 // DefaultWellTheme holds the default WellTheme values for Wells. Modifying this data will not alter existing Wells, but
 // will alter any Wells created in the future.
 var DefaultWellTheme = WellTheme{
-	BackgroundInk:      ControlColor,
-	EdgeInk:            ControlEdgeColor,
-	SelectionInk:       SelectionColor,
+	BackgroundInk:      ThemeAboveSurface,
+	EdgeInk:            ThemeSurfaceEdge,
+	SelectionInk:       ThemeFocus,
 	ImageScale:         0.5,
 	ContentSize:        20,
 	CornerRadius:       4,
@@ -154,12 +154,14 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ Rect) {
 	default:
 		bg = w.BackgroundInk
 	}
+	edge := w.EdgeInk
 	thickness := float32(1)
 	wellInset := thickness + 2.5
 	if w.Focused() {
 		thickness++
+		edge = w.SelectionInk
 	}
-	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, w.EdgeInk)
+	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, edge)
 	r = r.Inset(NewUniformInsets(wellInset))
 	radius := w.CornerRadius - (wellInset - 2)
 	if pattern, ok := w.ink.(*Pattern); ok {
@@ -178,7 +180,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ Rect) {
 		canvas.DrawLine(r.X+1, r.Y+1, r.Right()-1, r.Bottom()-1, p)
 		canvas.DrawLine(r.X+1, r.Bottom()-1, r.Right()-1, r.Y+1, p)
 	}
-	canvas.DrawRoundedRect(r, radius, radius, w.EdgeInk.Paint(canvas, r, paintstyle.Stroke))
+	canvas.DrawRoundedRect(r, radius, radius, edge.Paint(canvas, r, paintstyle.Stroke))
 }
 
 // DefaultMouseDown provides the default mouse down handling.
@@ -266,5 +268,8 @@ func (w *Well) loadImage(imageSpec string) (*Image, error) {
 
 // DefaultUpdateCursor provides the default cursor for wells.
 func (w *Well) DefaultUpdateCursor(_ Point) *Cursor {
+	if !w.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }

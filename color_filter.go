@@ -116,3 +116,13 @@ func Alpha30Filter() *ColorFilter {
 	}
 	return alpha30Filter
 }
+
+var alpha50Filter *ColorFilter
+
+// Alpha50Filter returns a ColorFilter that transforms colors by applying a 50% alpha blend.
+func Alpha50Filter() *ColorFilter {
+	if alpha50Filter == nil {
+		alpha50Filter = NewAlphaFilter(0.5)
+	}
+	return alpha50Filter
+}

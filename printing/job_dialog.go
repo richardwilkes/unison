@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -223,6 +223,9 @@ func (d *JobDialog) printerPopupSelectionHandler(popup *unison.PopupMenu[*Printe
 }
 
 func (d *JobDialog) setPrinter(printer *Printer) {
+	if printer == nil {
+		return
+	}
 	d.printer = printer
 	d.printerID = d.printer.PrinterID
 	var err error
@@ -319,7 +322,7 @@ order with no overlapping ranges`))
 
 func createLabel(text string) *unison.Label {
 	label := unison.NewLabel()
-	label.Text = text
+	label.SetTitle(text)
 	label.HAlign = align.End
 	label.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.End,

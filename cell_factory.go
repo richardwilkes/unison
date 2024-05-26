@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -39,8 +39,8 @@ func (f *DefaultCellFactory) CellHeight() float32 {
 func (f *DefaultCellFactory) CreateCell(_ Paneler, element any, _ int, foreground, _ Ink, _, _ bool) Paneler {
 	txtLabel := NewLabel()
 	txtLabel.SetBorder(NewEmptyBorder(Insets{Top: StdVSpacing, Left: StdHSpacing, Bottom: StdVSpacing, Right: StdHSpacing}))
-	txtLabel.Text = fmt.Sprintf("%v", element)
 	txtLabel.Font = FieldFont
 	txtLabel.OnBackgroundInk = foreground
+	txtLabel.SetTitle(fmt.Sprintf("%v", element))
 	return txtLabel
 }

@@ -34,29 +34,17 @@ const (
 // but will alter any Fields created in the future.
 var DefaultFieldTheme = FieldTheme{
 	Font:             FieldFont,
-	BackgroundInk:    ContentColor,
-	OnBackgroundInk:  OnContentColor,
-	EditableInk:      EditableColor,
-	OnEditableInk:    OnEditableColor,
-	SelectionInk:     SelectionColor,
-	OnSelectionInk:   OnSelectionColor,
-	ErrorInk:         ErrorColor,
-	OnErrorInk:       OnErrorColor,
-	FocusedBorder:    NewDefaultFieldBorder(true),
-	UnfocusedBorder:  NewDefaultFieldBorder(false),
+	BackgroundInk:    ThemeSurface,
+	OnBackgroundInk:  ThemeOnSurface,
+	EditableInk:      ThemeDeepBelowSurface,
+	OnEditableInk:    ThemeOnDeepBelowSurface,
+	SelectionInk:     ThemeFocus,
+	OnSelectionInk:   ThemeOnFocus,
+	ErrorInk:         ThemeError,
+	OnErrorInk:       ThemeOnError,
 	BlinkRate:        560 * time.Millisecond,
 	MinimumTextWidth: 10,
 	HAlign:           align.Start,
-}
-
-// NewDefaultFieldBorder creates the default border for a field.
-func NewDefaultFieldBorder(focused bool) Border {
-	adj := float32(1)
-	if focused {
-		adj = 0
-	}
-	return NewCompoundBorder(NewLineBorder(ControlEdgeColor, 0, NewUniformInsets(2-adj), false),
-		NewEmptyBorder(Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}))
 }
 
 // FieldTheme holds theming data for a Field.
@@ -71,8 +59,6 @@ type FieldTheme struct {
 	OnSelectionInk         Ink
 	ErrorInk               Ink
 	OnErrorInk             Ink
-	FocusedBorder          Border
-	UnfocusedBorder        Border
 	BlinkRate              time.Duration
 	MinimumTextWidth       float32
 	HAlign                 align.Enum
@@ -123,7 +109,6 @@ func NewField() *Field {
 		AutoScroll:    true,
 	}
 	f.Self = f
-	f.SetBorder(f.UnfocusedBorder)
 	f.SetFocusable(true)
 	f.SetSizer(f.DefaultSizes)
 	f.DrawCallback = f.DefaultDraw
@@ -139,6 +124,7 @@ func NewField() *Field {
 	f.InstallCmdHandlers(PasteItemID, func(_ any) bool { return f.CanPaste() }, func(_ any) { f.Paste() })
 	f.InstallCmdHandlers(DeleteItemID, func(_ any) bool { return f.CanDelete() }, func(_ any) { f.Delete() })
 	f.InstallCmdHandlers(SelectAllItemID, func(_ any) bool { return f.CanSelectAll() }, func(_ any) { f.SelectAll() })
+	InstallDefaultFieldBorder(f, f)
 	return f
 }
 
@@ -328,7 +314,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 		if f.Watermark != "" {
 			text := NewText(f.Watermark, &TextDecoration{
 				Font: f.Font,
-				Foreground: &ColorFilteredInk{
+				OnBackgroundInk: &ColorFilteredInk{
 					OriginalInk: ink,
 					ColorFilter: Alpha30Filter(),
 				},
@@ -359,8 +345,8 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 				selEnd := min(f.selectionEnd, end)
 				if selStart > start {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:selStart]), &TextDecoration{
-						Font:       f.Font,
-						Foreground: ink,
+						Font:            f.Font,
+						OnBackgroundInk: ink,
 					})
 					t.Draw(canvas, left, textBaseLine)
 					left += t.Width()
@@ -370,8 +356,8 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 					e--
 				}
 				t := NewTextFromRunes(f.obscureIfNeeded(f.runes[selStart:e]), &TextDecoration{
-					Font:       f.Font,
-					Foreground: f.OnSelectionInk,
+					Font:            f.Font,
+					OnBackgroundInk: f.OnSelectionInk,
 				})
 				right := left + t.Width()
 				selRect := Rect{
@@ -386,12 +372,12 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 						e--
 					}
 					NewTextFromRunes(f.obscureIfNeeded(f.runes[selEnd:e]), &TextDecoration{
-						Font:       f.Font,
-						Foreground: ink,
+						Font:            f.Font,
+						OnBackgroundInk: ink,
 					}).Draw(canvas, right, textBaseLine)
 				}
 			} else {
-				line.AdjustDecorations(func(decoration *TextDecoration) { decoration.Foreground = ink })
+				line.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = ink })
 				line.Draw(canvas, textLeft+f.scrollOffset.X, textBaseLine)
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
@@ -437,7 +423,6 @@ func (f *Field) blink() {
 
 // DefaultFocusGained provides the default focus gained handling.
 func (f *Field) DefaultFocusGained() {
-	f.SetBorder(f.FocusedBorder)
 	if !f.NoSelectAllOnFocus && !f.HasSelectionRange() {
 		f.SelectAll()
 	}
@@ -449,7 +434,6 @@ func (f *Field) DefaultFocusGained() {
 // DefaultFocusLost provides the default focus lost handling.
 func (f *Field) DefaultFocusLost() {
 	f.undoID = NextUndoID()
-	f.SetBorder(f.UnfocusedBorder)
 	f.MarkForRedraw()
 }
 

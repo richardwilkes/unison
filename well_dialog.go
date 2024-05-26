@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -98,7 +98,7 @@ func showWellDialog(w *Well) {
 
 func (d *wellDialog) addPatternSelector(parent *Panel) {
 	b := NewButton()
-	b.Text = i18n.Text("Select Image…")
+	b.SetTitle(i18n.Text("Select Image…"))
 	b.SetLayoutData(&FlexLayoutData{
 		HSpan:  2,
 		HAlign: align.Middle,
@@ -216,7 +216,7 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 
 func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adjuster func(value int, color Color) Color) *Field {
 	l := NewLabel()
-	l.Text = title
+	l.SetTitle(title)
 	l.HAlign = align.End
 	l.SetLayoutData(&FlexLayoutData{
 		HAlign: align.End,
@@ -262,7 +262,7 @@ func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adj
 	}
 	parent.AddChild(field)
 	l = NewLabel()
-	l.Text = i18n.Text("0-255 or 0-100%")
+	l.SetTitle(i18n.Text("0-255 or 0-100%"))
 	l.SetEnabled(false)
 	l.SetLayoutData(&FlexLayoutData{
 		VAlign: align.Middle,
@@ -273,7 +273,7 @@ func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adj
 
 func (d *wellDialog) addHueField(parent *Panel, color Color) *Field {
 	l := NewLabel()
-	l.Text = i18n.Text("Hue:")
+	l.SetTitle(i18n.Text("Hue:"))
 	l.HAlign = align.End
 	l.SetLayoutData(&FlexLayoutData{
 		HAlign: align.End,
@@ -319,7 +319,7 @@ func (d *wellDialog) addHueField(parent *Panel, color Color) *Field {
 	}
 	parent.AddChild(field)
 	l = NewLabel()
-	l.Text = i18n.Text("0-360 or 0-100%")
+	l.SetTitle(i18n.Text("0-360 or 0-100%"))
 	l.SetEnabled(false)
 	l.SetLayoutData(&FlexLayoutData{
 		VAlign: align.Middle,
@@ -330,7 +330,7 @@ func (d *wellDialog) addHueField(parent *Panel, color Color) *Field {
 
 func (d *wellDialog) addPercentageField(parent *Panel, title string, value float32, adjuster func(value float32, color Color) Color) *Field {
 	l := NewLabel()
-	l.Text = title
+	l.SetTitle(title)
 	l.HAlign = align.End
 	l.SetLayoutData(&FlexLayoutData{
 		HAlign: align.End,
@@ -370,7 +370,7 @@ func (d *wellDialog) addPercentageField(parent *Panel, title string, value float
 	}
 	parent.AddChild(field)
 	l = NewLabel()
-	l.Text = i18n.Text("0-100%")
+	l.SetTitle(i18n.Text("0-100%"))
 	l.SetEnabled(false)
 	l.SetLayoutData(&FlexLayoutData{
 		VAlign: align.Middle,
@@ -381,7 +381,7 @@ func (d *wellDialog) addPercentageField(parent *Panel, title string, value float
 
 func (d *wellDialog) addCSSField(parent *Panel, color Color) *Field {
 	l := NewLabel()
-	l.Text = i18n.Text("CSS:")
+	l.SetTitle(i18n.Text("CSS:"))
 	l.HAlign = align.End
 	l.SetLayoutData(&FlexLayoutData{
 		HAlign: align.End,
@@ -419,7 +419,7 @@ func (d *wellDialog) addCSSField(parent *Panel, color Color) *Field {
 	} {
 		parent.AddChild(NewLabel())
 		l = NewLabel()
-		l.Text = txt
+		l.SetTitle(txt)
 		l.SetEnabled(false)
 		l.SetBorder(NewEmptyBorder(Insets{Left: StdHSpacing}))
 		l.SetLayoutData(&FlexLayoutData{
@@ -455,7 +455,7 @@ func (d *wellDialog) syncText(field *Field, text string) {
 
 func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore float32, inkRetriever func() Ink) {
 	label := NewLabel()
-	label.Text = title
+	label.SetTitle(title)
 	label.HAlign = align.Middle
 	label.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Middle,
@@ -467,8 +467,10 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 	parent.AddChild(label)
 
 	preview := NewPanel()
-	preview.SetBorder(NewCompoundBorder(NewLineBorder(OnBackgroundColor, 0, NewUniformInsets(1), false),
-		NewLineBorder(BackgroundColor, 0, NewUniformInsets(1), false)))
+	preview.SetBorder(NewCompoundBorder(
+		NewLineBorder(ThemeOnSurface, 0, NewUniformInsets(1), false),
+		NewLineBorder(ThemeSurface, 0, NewUniformInsets(1), false),
+	))
 	preview.SetLayoutData(&FlexLayoutData{
 		SizeHint: Size{Width: 64, Height: 64},
 	})

@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -40,6 +40,7 @@ func NewTextFromRunes(runes []rune, decoration *TextDecoration) *Text {
 		decorations: make([]*TextDecoration, 0, len(runes)),
 		widths:      make([]float32, 0, len(runes)),
 		extents:     Size{Width: -1},
+		baseline:    decoration.Font.Baseline(),
 		emptyHeight: decoration.Font.LineHeight() + xmath.Abs(decoration.BaselineOffset),
 	}
 	t.AddRunes(runes, decoration)
@@ -67,6 +68,51 @@ func NewTextWrappedLines(text string, decoration *TextDecoration, width float32)
 	return lines
 }
 
+// NewSmallCapsText creates a new Text object with the given text, but with lowercase letters replaced by small caps.
+func NewSmallCapsText(text string, decoration *TextDecoration) *Text {
+	smaller := decoration.Clone()
+	font := smaller.Font
+	smaller.Font = &DynamicFont{
+		Resolver: func() FontDescriptor {
+			fd := font.Descriptor()
+			fd.Size *= 0.75
+			return fd
+		},
+	}
+	t := NewTextFromRunes(nil, decoration)
+	isLower := false
+	run := make([]rune, 0, 32)
+	for _, r := range text {
+		if r >= 'a' && r <= 'z' {
+			if !isLower {
+				isLower = true
+				if len(run) > 0 {
+					t.AddRunes(run, decoration)
+					run = make([]rune, 0, 32)
+				}
+			}
+			run = append(run, unicode.ToUpper(r))
+		} else {
+			if isLower {
+				isLower = false
+				if len(run) > 0 {
+					t.AddRunes(run, smaller)
+					run = make([]rune, 0, 32)
+				}
+			}
+			run = append(run, r)
+		}
+	}
+	if len(run) > 0 {
+		if isLower {
+			t.AddRunes(run, smaller)
+		} else {
+			t.AddRunes(run, decoration)
+		}
+	}
+	return t
+}
+
 // Empty returns true if this doesn't hold any characters. May be called on a nil *Text.
 func (t *Text) Empty() bool {
 	return t == nil || len(t.runes) == 0
@@ -81,14 +127,18 @@ func (t *Text) Slice(i, j int) *Text {
 		j = len(t.runes)
 	}
 	if i >= j {
-		return &Text{emptyHeight: t.emptyHeight}
+		return &Text{
+			baseline:    t.baseline,
+			emptyHeight: t.emptyHeight,
+		}
 	}
 	return &Text{
 		runes:       t.runes[i:j],
 		decorations: t.decorations[i:j],
 		widths:      t.widths[i:j],
 		extents:     Size{Width: -1},
-		emptyHeight: t.decorations[i].Font.LineHeight() + xmath.Abs(t.decorations[i].BaselineOffset),
+		baseline:    t.baseline,
+		emptyHeight: t.emptyHeight,
 	}
 }
 
@@ -99,6 +149,9 @@ func (t *Text) Runes() []rune {
 
 // String returns the string representation of this Text.
 func (t *Text) String() string {
+	if t.Empty() {
+		return ""
+	}
 	if t.text == "" && len(t.runes) != 0 {
 		t.text = string(t.runes)
 	}
@@ -123,9 +176,8 @@ func (t *Text) Height() float32 {
 	return t.extents.Height
 }
 
-// Baseline returns the largest baseline found, after considering any baseline offset adjustments.
+// Baseline returns the baseline that will be used, which is based on the original font passed in at creation time.
 func (t *Text) Baseline() float32 {
-	t.cache()
 	return t.baseline
 }
 
@@ -133,16 +185,11 @@ func (t *Text) cache() {
 	if t.extents.Width < 0 {
 		t.extents.Width = 0
 		t.extents.Height = t.emptyHeight
-		t.baseline = 0
 		for i, d := range t.decorations {
 			h := d.Font.LineHeight() + xmath.Abs(d.BaselineOffset)
 			t.extents.Width += t.widths[i]
 			if t.extents.Height < h {
 				t.extents.Height = h
-			}
-			b := d.Font.Baseline() + d.BaselineOffset
-			if t.baseline < b {
-				t.baseline = b
 			}
 		}
 	}
@@ -188,15 +235,29 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	}
 }
 
-// AdjustDecorations calls adjuster for each decoration in no particular order.
-func (t *Text) AdjustDecorations(adjuster func(decoration *TextDecoration)) {
-	m := make(map[*TextDecoration]struct{})
+// AdjustDecorations calls adjuster for each decoration in no particular order. The returned map can be passed to
+// RestoreDecorations() to restore the decorations to their original state.
+func (t *Text) AdjustDecorations(adjuster func(decoration *TextDecoration)) map[*TextDecoration]TextDecoration {
+	if t == nil {
+		return nil
+	}
+	m := make(map[*TextDecoration]TextDecoration)
 	for _, d := range t.decorations {
-		m[d] = struct{}{}
+		m[d] = *d
 	}
 	for k := range m {
 		adjuster(k)
 	}
+	return m
+}
+
+// RestoreDecorations restores the decorations to the state they were in when AdjustDecorations() was called.
+func (t *Text) RestoreDecorations(m map[*TextDecoration]TextDecoration) {
+	t.AdjustDecorations(func(decoration *TextDecoration) {
+		if d, ok := m[decoration]; ok {
+			*decoration = d
+		}
+	})
 }
 
 // Draw the Text at the given location. y is where the baseline of the text will be placed.

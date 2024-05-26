@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -22,13 +22,15 @@ import (
 // DefaultCheckBoxTheme holds the default CheckBoxTheme values for CheckBoxes. Modifying this data will not alter
 // existing CheckBoxes, but will alter any CheckBoxes created in the future.
 var DefaultCheckBoxTheme = CheckBoxTheme{
-	Font:               SystemFont,
-	OnBackgroundInk:    OnBackgroundColor,
-	EdgeInk:            ControlEdgeColor,
-	SelectionInk:       SelectionColor,
-	OnSelectionInk:     OnSelectionColor,
-	ControlInk:         ControlColor,
-	OnControlInk:       OnControlColor,
+	TextDecoration: TextDecoration{
+		Font:            SystemFont,
+		OnBackgroundInk: ThemeOnSurface,
+	},
+	EdgeInk:            ThemeSurfaceEdge,
+	SelectionInk:       ThemeFocus,
+	OnSelectionInk:     ThemeOnFocus,
+	ControlInk:         ThemeAboveSurface,
+	OnControlInk:       ThemeOnAboveSurface,
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
@@ -39,8 +41,7 @@ var DefaultCheckBoxTheme = CheckBoxTheme{
 
 // CheckBoxTheme holds theming data for a CheckBox.
 type CheckBoxTheme struct {
-	Font               Font
-	OnBackgroundInk    Ink
+	TextDecoration
 	EdgeInk            Ink
 	SelectionInk       Ink
 	OnSelectionInk     Ink
@@ -60,8 +61,7 @@ type CheckBox struct {
 	CheckBoxTheme
 	ClickCallback func()
 	Drawable      Drawable
-	Text          string
-	cache         TextCache
+	Text          *Text
 	State         check.Enum
 	Pressed       bool
 }
@@ -83,6 +83,13 @@ func NewCheckBox() *CheckBox {
 	return c
 }
 
+// SetTitle sets the text of the checkbox to the specified text. The theme's TextDecoration will be used, so any
+// changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
+// .Text field.
+func (c *CheckBox) SetTitle(text string) {
+	c.Text = NewText(text, &c.TextDecoration)
+}
+
 // DefaultFocusGained provides the default focus gained handling.
 func (c *CheckBox) DefaultFocusGained() {
 	c.ScrollIntoView()
@@ -101,10 +108,10 @@ func (c *CheckBox) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 
 func (c *CheckBox) boxAndLabelSize() Size {
 	boxSize := c.boxSize()
-	if c.Drawable == nil && c.Text == "" {
+	if c.Drawable == nil && c.Text.Empty() {
 		return Size{Width: boxSize, Height: boxSize}
 	}
-	size := LabelSize(c.cache.Text(c.Text, c.Font), c.Drawable, c.Side, c.Gap)
+	size, _ := LabelContentSizes(c.Text, c.Drawable, c.Font, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
 	if size.Height < boxSize {
 		size.Height = boxSize
@@ -137,12 +144,12 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 	}
 	rect.Size = size
 	boxSize := c.boxSize()
-	if c.Drawable != nil || c.Text != "" {
+	if c.Drawable != nil || !c.Text.Empty() {
 		r := rect
 		r.X += boxSize + c.Gap
 		r.Width -= boxSize + c.Gap
-		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.cache.Text(c.Text, c.Font), c.OnBackgroundInk, c.Drawable,
-			c.Side, c.Gap, !c.Enabled())
+		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Font, c.Text, c.OnBackgroundInk, nil, c.Drawable, c.Side, c.Gap,
+			!c.Enabled())
 	}
 	if rect.Height > boxSize {
 		rect.Y += xmath.Floor((rect.Height - boxSize) / 2)
@@ -158,11 +165,13 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 		bg = c.ControlInk
 		fg = c.OnControlInk
 	}
+	edge := c.EdgeInk
 	thickness := float32(1)
 	if c.Focused() {
 		thickness++
+		edge = c.SelectionInk
 	}
-	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, c.EdgeInk)
+	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, edge)
 	rect = rect.Inset(NewUniformInsets(0.5))
 	if c.State == check.Off {
 		return
@@ -247,5 +256,8 @@ func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 
 // DefaultUpdateCursor provides the default cursor for check boxes.
 func (c *CheckBox) DefaultUpdateCursor(_ Point) *Cursor {
+	if !c.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }

@@ -41,14 +41,12 @@ var (
 
 // Pre-defined fonts
 var (
-	SystemFont                = &IndirectFont{}
-	EmphasizedSystemFont      = &IndirectFont{}
-	SmallSystemFont           = &IndirectFont{}
-	EmphasizedSmallSystemFont = &IndirectFont{}
-	LabelFont                 = &IndirectFont{}
-	FieldFont                 = &IndirectFont{}
-	KeyboardFont              = &IndirectFont{}
-	MonospacedFont            = &IndirectFont{}
+	SystemFont           = &IndirectFont{}
+	EmphasizedSystemFont = &IndirectFont{}
+	LabelFont            = &IndirectFont{}
+	FieldFont            = &IndirectFont{}
+	KeyboardFont         = &IndirectFont{}
+	MonospacedFont       = &IndirectFont{}
 )
 
 // Font holds a realized FontFace of a specific size that can be used to render text.
@@ -205,8 +203,6 @@ func init() {
 	baseSize := float32(10)
 	SystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Medium, spacing.Standard, slant.Upright).Font(baseSize)
 	EmphasizedSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Bold, spacing.Standard, slant.Upright).Font(baseSize)
-	SmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Medium, spacing.Standard, slant.Upright).Font(baseSize - 1)
-	EmphasizedSmallSystemFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Bold, spacing.Standard, slant.Upright).Font(baseSize - 1)
 	LabelFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Regular, spacing.Standard, slant.Upright).Font(baseSize)
 	FieldFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Regular, spacing.Standard, slant.Upright).Font(baseSize)
 	KeyboardFont.Font = MatchFontFace(DefaultSystemFamilyName, weight.Medium, spacing.Standard, slant.Upright).Font(baseSize)

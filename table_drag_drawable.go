@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -39,9 +39,9 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		Right:  label.Font.LineHeight(),
 	}))
 	if count := CountTableRows(data.Rows); count == 1 {
-		label.Text = fmt.Sprintf("1 %s", singularName)
+		label.SetTitle(fmt.Sprintf("1 %s", singularName))
 	} else {
-		label.Text = fmt.Sprintf("%d %s", count, pluralName)
+		label.SetTitle(fmt.Sprintf("%d %s", count, pluralName))
 	}
 	if svg != nil {
 		baseline := label.Font.Baseline()

@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -18,16 +18,19 @@ import (
 	"github.com/richardwilkes/unison/enums/side"
 )
 
+var _ Grouper = &RadioButton{}
+
 // DefaultRadioButtonTheme holds the default RadioButtonTheme values for RadioButtons. Modifying this data will not
 // alter existing RadioButtons, but will alter any RadioButtons created in the future.
 var DefaultRadioButtonTheme = RadioButtonTheme{
-	Font:               SystemFont,
-	BackgroundInk:      ControlColor,
-	OnBackgroundInk:    OnControlColor,
-	EdgeInk:            ControlEdgeColor,
-	LabelInk:           OnBackgroundColor,
-	SelectionInk:       SelectionColor,
-	OnSelectionInk:     OnSelectionColor,
+	TextDecoration: TextDecoration{
+		Font:            SystemFont,
+		BackgroundInk:   ThemeAboveSurface,
+		OnBackgroundInk: ThemeOnAboveSurface,
+	},
+	EdgeInk:            ThemeSurfaceEdge,
+	SelectionInk:       ThemeFocus,
+	OnSelectionInk:     ThemeOnFocus,
 	Gap:                3,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
@@ -38,11 +41,8 @@ var DefaultRadioButtonTheme = RadioButtonTheme{
 
 // RadioButtonTheme holds theming data for a RadioButton.
 type RadioButtonTheme struct {
-	Font               Font
-	BackgroundInk      Ink
-	OnBackgroundInk    Ink
+	TextDecoration
 	EdgeInk            Ink
-	LabelInk           Ink
 	SelectionInk       Ink
 	OnSelectionInk     Ink
 	Gap                float32
@@ -55,12 +55,12 @@ type RadioButtonTheme struct {
 
 // RadioButton represents a clickable radio button with an optional label.
 type RadioButton struct {
-	GroupPanel
+	Panel
 	RadioButtonTheme
 	ClickCallback func()
 	Drawable      Drawable
-	Text          string
-	textCache     TextCache
+	Text          *Text
+	group         *Group
 	Pressed       bool
 }
 
@@ -81,6 +81,23 @@ func NewRadioButton() *RadioButton {
 	return r
 }
 
+// SetTitle sets the text of the radio button to the specified text. The theme's TextDecoration will be used, so any
+// changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
+// .Text field.
+func (r *RadioButton) SetTitle(text string) {
+	r.Text = NewText(text, &r.TextDecoration)
+}
+
+// Group returns the group that this button is a part of.
+func (r *RadioButton) Group() *Group {
+	return r.group
+}
+
+// SetGroup sets the group that this button is a part of. Should only be called by the Group.
+func (r *RadioButton) SetGroup(group *Group) {
+	r.group = group
+}
+
 // DefaultSizes provides the default sizing.
 func (r *RadioButton) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	prefSize = r.circleAndLabelSize()
@@ -93,10 +110,10 @@ func (r *RadioButton) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) 
 
 func (r *RadioButton) circleAndLabelSize() Size {
 	circleSize := r.circleSize()
-	if r.Drawable == nil && r.Text == "" {
+	if r.Drawable == nil && r.Text.Empty() {
 		return Size{Width: circleSize, Height: circleSize}
 	}
-	size := LabelSize(r.textCache.Text(r.Text, r.Font), r.Drawable, r.Side, r.Gap)
+	size, _ := LabelContentSizes(r.Text, r.Drawable, r.Font, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
 	if size.Height < circleSize {
 		size.Height = circleSize
@@ -141,26 +158,31 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 		bg = r.BackgroundInk
 		fg = r.OnBackgroundInk
 	}
+	edge := r.EdgeInk
 	thickness := float32(1)
 	if r.Focused() {
 		thickness++
+		edge = r.SelectionInk
 	}
 	rect.Size = size
 	circleSize := r.circleSize()
-	if r.Drawable != nil || r.Text != "" {
+	if r.Drawable != nil || !r.Text.Empty() {
 		rct := rect
 		rct.X += circleSize + r.Gap
 		rct.Width -= circleSize + r.Gap
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.textCache.Text(r.Text, r.Font), r.LabelInk, r.Drawable, r.Side,
-			r.Gap, !r.Enabled())
+		defer r.Text.RestoreDecorations(r.Text.AdjustDecorations(func(d *TextDecoration) {
+			d.BackgroundInk = nil
+			d.OnBackgroundInk = fg
+		}))
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Font, r.Text, fg, nil, r.Drawable, r.Side, r.Gap, !r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += xmath.Floor((rect.Height - circleSize) / 2)
 	}
 	rect.Width = circleSize
 	rect.Height = circleSize
-	DrawEllipseBase(canvas, rect, thickness, bg, r.EdgeInk)
-	if r.Selected() {
+	DrawEllipseBase(canvas, rect, thickness, bg, edge)
+	if r.group.Selected(r) {
 		rect = rect.Inset(NewUniformInsets(0.5 + 0.2*circleSize))
 		paint := fg.Paint(canvas, rect, paintstyle.Fill)
 		if !r.Enabled() {
@@ -172,7 +194,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 
 // Click makes the radio button behave as if a user clicked on it.
 func (r *RadioButton) Click() {
-	r.SetSelected(true)
+	r.group.Select(r)
 	pressed := r.Pressed
 	r.Pressed = true
 	r.MarkForRedraw()
@@ -206,7 +228,7 @@ func (r *RadioButton) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
 	if where.In(r.ContentRect(false)) {
-		r.SetSelected(true)
+		r.group.Select(r)
 		if r.ClickCallback != nil {
 			r.ClickCallback()
 		}
@@ -225,5 +247,8 @@ func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) boo
 
 // DefaultUpdateCursor provides the default cursor for radio buttons.
 func (r *RadioButton) DefaultUpdateCursor(_ Point) *Cursor {
+	if !r.Enabled() {
+		return ArrowCursor()
+	}
 	return PointingCursor()
 }

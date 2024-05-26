@@ -1,4 +1,4 @@
-// Copyright ©2021-2022 by Richard A. Wilkes. All rights reserved.
+// Copyright ©2021-2024 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -45,8 +45,8 @@ func ShowAboutWindow(item unison.MenuItem) {
 
 		// Put the name of the app in a large font at the top
 		title := unison.NewLabel()
-		title.Text = cmdline.AppName
 		title.Font = unison.EmphasizedSystemFont.Face().Font(24)
+		title.SetTitle(cmdline.AppName)
 		title.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
@@ -58,8 +58,8 @@ func ShowAboutWindow(item unison.MenuItem) {
 
 		// Put a description below the title, line 1
 		desc := unison.NewLabel()
-		desc.Text = "A simple app to demonstrate"
 		desc.Font = unison.LabelFont.Face().Font(14)
+		desc.SetTitle("A simple app to demonstrate")
 		desc.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,
@@ -71,8 +71,8 @@ func ShowAboutWindow(item unison.MenuItem) {
 
 		// Put a description below the title, line 2
 		desc = unison.NewLabel()
-		desc.Text = "the capabilities of Unison"
 		desc.Font = unison.LabelFont.Face().Font(14)
+		desc.SetTitle("the capabilities of Unison")
 		desc.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,

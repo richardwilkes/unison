@@ -14,7 +14,7 @@ import "github.com/richardwilkes/unison/enums/paintstyle"
 // DefaultSeparatorTheme holds the default SeparatorTheme values for Separators. Modifying this data will not alter
 // existing Separators, but will alter any Separators created in the future.
 var DefaultSeparatorTheme = SeparatorTheme{
-	LineInk:  DividerColor,
+	LineInk:  ThemeSurfaceEdge,
 	Vertical: false,
 }
 
