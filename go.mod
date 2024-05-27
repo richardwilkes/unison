@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/json v0.2.0
-	github.com/richardwilkes/toolbox v1.113.0
+	github.com/richardwilkes/toolbox v1.114.1
 	github.com/yuin/goldmark v1.7.1
 	golang.org/x/image v0.16.0
 	golang.org/x/sys v0.20.0
