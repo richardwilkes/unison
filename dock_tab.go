@@ -164,7 +164,10 @@ func (t *dockTab) draw(gc *Canvas, _ Rect) {
 		bg = t.BackgroundInk
 		fg = t.OnBackgroundInk
 	}
-	t.title.OnBackgroundInk = fg
+	if t.title.OnBackgroundInk != fg {
+		t.title.OnBackgroundInk = fg
+		t.title.SetTitle(t.title.String())
+	}
 	if t.button != nil {
 		t.button.OnBackgroundInk = fg
 	}
