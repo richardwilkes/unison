@@ -199,7 +199,7 @@ func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 		Height:     int32(height),
 		ColorType:  skia.ColorTypeRGBA8888,
 		AlphaType:  skia.ImageGetAlphaType(imgData),
-	}, pixels, width*4, 0, 0, skia.ImageCachingHintAllow) {
+	}, pixels, width*4, 0, 0, skia.ImageCachingHintDisallow) {
 		return nil, errs.New("unable to read raw pixels from image")
 	}
 	return &image.NRGBA{
