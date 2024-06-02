@@ -250,6 +250,15 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.MarkForLayoutAndRedraw()
 }
 
+// Rebuild rebuilds the markdown content. This is useful if the theme has been changed.
+func (m *Markdown) Rebuild() {
+	maxWidth := m.maxWidth
+	m.maxWidth = -1
+	content := m.content
+	m.content = nil
+	m.SetContentBytes(content, maxWidth)
+}
+
 func (m *Markdown) walk(node ast.Node) {
 	save := m.node
 	m.node = node
