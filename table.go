@@ -12,13 +12,11 @@ package unison
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/tid"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
-
-var zeroUUID = uuid.UUID{}
 
 // TableDragData holds the data from a table row drag.
 type TableDragData[T TableRowConstraint[T]] struct {
@@ -103,9 +101,9 @@ type Table[T TableRowConstraint[T]] struct {
 	Model                    TableModel[T]
 	filteredRows             []T // Note that we use the difference between nil and an empty slice here
 	header                   *TableHeader[T]
-	selMap                   map[uuid.UUID]bool
-	selAnchor                uuid.UUID
-	lastSel                  uuid.UUID
+	selMap                   map[tid.TID]bool
+	selAnchor                tid.TID
+	lastSel                  tid.TID
 	hitRects                 []tableHitRect
 	rowCache                 []tableCache[T]
 	lastMouseEnterCellPanel  *Panel
@@ -132,7 +130,7 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	t := &Table[T]{
 		TableTheme:            DefaultTableTheme,
 		Model:                 model,
-		selMap:                make(map[uuid.UUID]bool),
+		selMap:                make(map[tid.TID]bool),
 		interactionRow:        -1,
 		interactionColumn:     -1,
 		lastMouseMotionRow:    -1,
@@ -697,7 +695,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 	t.RequestFocus()
 	t.wasDragged = false
 	t.dividerDrag = false
-	t.lastSel = zeroUUID
+	t.lastSel = ""
 
 	t.interactionRow = -1
 	t.interactionColumn = -1
@@ -758,13 +756,13 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			}
 		}
 		rowData := t.rowCache[row].row
-		id := rowData.UUID()
+		id := rowData.ID()
 		switch {
 		case mod&ShiftModifier != 0: // Extend selection from anchor
 			selAnchorIndex := -1
-			if t.selAnchor != zeroUUID {
+			if t.selAnchor != "" {
 				for i, c := range t.rowCache {
-					if c.row.UUID() == t.selAnchor {
+					if c.row.ID() == t.selAnchor {
 						selAnchorIndex = i
 						break
 					}
@@ -773,11 +771,11 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 			if selAnchorIndex != -1 {
 				last := max(selAnchorIndex, row)
 				for i := min(selAnchorIndex, row); i <= last; i++ {
-					t.selMap[t.rowCache[i].row.UUID()] = true
+					t.selMap[t.rowCache[i].row.ID()] = true
 				}
 				t.notifyOfSelectionChange()
 			} else if !t.selMap[id] { // No anchor, so behave like a regular click
-				t.selMap = make(map[uuid.UUID]bool)
+				t.selMap = make(map[tid.TID]bool)
 				t.selMap[id] = true
 				t.selAnchor = id
 				t.notifyOfSelectionChange()
@@ -792,7 +790,7 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 		case t.selMap[id]: // Sets lastClick so that on mouse up, we can treat a click and click and hold differently
 			t.lastSel = id
 		default: // If not already selected, replace selection with current row and make it the anchor
-			t.selMap = make(map[uuid.UUID]bool)
+			t.selMap = make(map[tid.TID]bool)
 			t.selMap[id] = true
 			t.selAnchor = id
 			t.notifyOfSelectionChange()
@@ -866,7 +864,7 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 		}
 	}
 
-	if !t.wasDragged && t.lastSel != zeroUUID {
+	if !t.wasDragged && t.lastSel != "" {
 		t.ClearSelection()
 		t.selMap[t.lastSel] = true
 		t.selAnchor = t.lastSel
@@ -978,9 +976,9 @@ func (t *Table[T]) PruneSelectionOfUndisclosedNodes() {
 		return
 	}
 	needsNotify := false
-	selMap := make(map[uuid.UUID]bool, len(t.selMap))
+	selMap := make(map[tid.TID]bool, len(t.selMap))
 	for _, entry := range t.rowCache {
-		id := entry.row.UUID()
+		id := entry.row.ID()
 		if t.selMap[id] {
 			selMap[id] = true
 		} else {
@@ -999,7 +997,7 @@ func (t *Table[T]) FirstSelectedRowIndex() int {
 		return -1
 	}
 	for i, entry := range t.rowCache {
-		if t.selMap[entry.row.UUID()] {
+		if t.selMap[entry.row.ID()] {
 			return i
 		}
 	}
@@ -1012,7 +1010,7 @@ func (t *Table[T]) LastSelectedRowIndex() int {
 		return -1
 	}
 	for i := len(t.rowCache) - 1; i >= 0; i-- {
-		if t.selMap[t.rowCache[i].row.UUID()] {
+		if t.selMap[t.rowCache[i].row.ID()] {
 			return i
 		}
 	}
@@ -1025,7 +1023,7 @@ func (t *Table[T]) IsRowOrAnyParentSelected(index int) bool {
 		return false
 	}
 	for index >= 0 {
-		if t.selMap[t.rowCache[index].row.UUID()] {
+		if t.selMap[t.rowCache[index].row.ID()] {
 			return true
 		}
 		index = t.rowCache[index].parent
@@ -1038,7 +1036,7 @@ func (t *Table[T]) IsRowSelected(index int) bool {
 	if index < 0 || index >= len(t.rowCache) {
 		return false
 	}
-	return t.selMap[t.rowCache[index].row.UUID()]
+	return t.selMap[t.rowCache[index].row.ID()]
 }
 
 // SelectedRows returns the currently selected rows. If 'minimal' is true, then children of selected rows that may also
@@ -1050,7 +1048,7 @@ func (t *Table[T]) SelectedRows(minimal bool) []T {
 	}
 	rows := make([]T, 0, len(t.selMap))
 	for _, entry := range t.rowCache {
-		if t.selMap[entry.row.UUID()] && (!minimal || entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
+		if t.selMap[entry.row.ID()] && (!minimal || entry.parent == -1 || !t.IsRowOrAnyParentSelected(entry.parent)) {
 			rows = append(rows, entry.row)
 		}
 	}
@@ -1058,21 +1056,21 @@ func (t *Table[T]) SelectedRows(minimal bool) []T {
 }
 
 // CopySelectionMap returns a copy of the current selection map.
-func (t *Table[T]) CopySelectionMap() map[uuid.UUID]bool {
+func (t *Table[T]) CopySelectionMap() map[tid.TID]bool {
 	t.PruneSelectionOfUndisclosedNodes()
 	return copySelMap(t.selMap)
 }
 
 // SetSelectionMap sets the current selection map.
-func (t *Table[T]) SetSelectionMap(selMap map[uuid.UUID]bool) {
+func (t *Table[T]) SetSelectionMap(selMap map[tid.TID]bool) {
 	t.selMap = copySelMap(selMap)
 	t.selNeedsPrune = true
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
 }
 
-func copySelMap(selMap map[uuid.UUID]bool) map[uuid.UUID]bool {
-	result := make(map[uuid.UUID]bool, len(selMap))
+func copySelMap(selMap map[tid.TID]bool) map[tid.TID]bool {
+	result := make(map[tid.TID]bool, len(selMap))
 	for k, v := range selMap {
 		result[k] = v
 	}
@@ -1096,22 +1094,22 @@ func (t *Table[T]) ClearSelection() {
 	if len(t.selMap) == 0 {
 		return
 	}
-	t.selMap = make(map[uuid.UUID]bool)
+	t.selMap = make(map[tid.TID]bool)
 	t.selNeedsPrune = false
-	t.selAnchor = zeroUUID
+	t.selAnchor = ""
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
 }
 
 // SelectAll selects all rows.
 func (t *Table[T]) SelectAll() {
-	t.selMap = make(map[uuid.UUID]bool, len(t.rowCache))
+	t.selMap = make(map[tid.TID]bool, len(t.rowCache))
 	t.selNeedsPrune = false
-	t.selAnchor = zeroUUID
+	t.selAnchor = ""
 	for _, cache := range t.rowCache {
-		id := cache.row.UUID()
+		id := cache.row.ID()
 		t.selMap[id] = true
-		if t.selAnchor == zeroUUID {
+		if t.selAnchor == "" {
 			t.selAnchor = id
 		}
 	}
@@ -1124,10 +1122,10 @@ func (t *Table[T]) SelectAll() {
 func (t *Table[T]) SelectByIndex(indexes ...int) {
 	for _, index := range indexes {
 		if index >= 0 && index < len(t.rowCache) {
-			id := t.rowCache[index].row.UUID()
+			id := t.rowCache[index].row.ID()
 			t.selMap[id] = true
 			t.selNeedsPrune = true
-			if t.selAnchor == zeroUUID {
+			if t.selAnchor == "" {
 				t.selAnchor = id
 			}
 		}
@@ -1145,10 +1143,10 @@ func (t *Table[T]) SelectRange(start, end int) {
 		return
 	}
 	for i := start; i <= end; i++ {
-		id := t.rowCache[i].row.UUID()
+		id := t.rowCache[i].row.ID()
 		t.selMap[id] = true
 		t.selNeedsPrune = true
-		if t.selAnchor == zeroUUID {
+		if t.selAnchor == "" {
 			t.selAnchor = id
 		}
 	}
@@ -1160,7 +1158,7 @@ func (t *Table[T]) SelectRange(start, end int) {
 func (t *Table[T]) DeselectByIndex(indexes ...int) {
 	for _, index := range indexes {
 		if index >= 0 && index < len(t.rowCache) {
-			delete(t.selMap, t.rowCache[index].row.UUID())
+			delete(t.selMap, t.rowCache[index].row.ID())
 		}
 	}
 	t.MarkForRedraw()
@@ -1175,7 +1173,7 @@ func (t *Table[T]) DeselectRange(start, end int) {
 		return
 	}
 	for i := start; i <= end; i++ {
-		delete(t.selMap, t.rowCache[i].row.UUID())
+		delete(t.selMap, t.rowCache[i].row.ID())
 	}
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
@@ -1224,9 +1222,9 @@ func (t *Table[T]) RootRows() []T {
 func (t *Table[T]) SetRootRows(rows []T) {
 	t.filteredRows = nil
 	t.Model.SetRootRows(rows)
-	t.selMap = make(map[uuid.UUID]bool)
+	t.selMap = make(map[tid.TID]bool)
 	t.selNeedsPrune = false
-	t.selAnchor = zeroUUID
+	t.selAnchor = ""
 	t.SyncToModel()
 }
 
@@ -1498,9 +1496,9 @@ func (t *Table[T]) RowFromIndex(index int) T {
 
 // RowToIndex returns the row's index within the displayed data, or -1 if it isn't currently in the disclosed rows.
 func (t *Table[T]) RowToIndex(rowData T) int {
-	id := rowData.UUID()
+	id := rowData.ID()
 	for row, data := range t.rowCache {
-		if data.row.UUID() == id {
+		if data.row.ID() == id {
 			return row
 		}
 	}

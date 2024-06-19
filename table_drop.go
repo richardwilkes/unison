@@ -12,7 +12,7 @@ package unison
 import (
 	"slices"
 
-	"github.com/google/uuid"
+	"github.com/richardwilkes/toolbox/tid"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -115,7 +115,7 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 						children = d.TargetParent.Children()
 					}
 					for i, child := range children {
-						if child.UUID() == row.UUID() {
+						if child.ID() == row.ID() {
 							d.TargetIndex = i
 							break
 						}
@@ -234,9 +234,9 @@ func (d *TableDrop[T, U]) DataDragDropCallback(_ Point, data map[string]any) {
 		}
 
 		// Restore selection
-		selMap := make(map[uuid.UUID]bool, len(rows))
+		selMap := make(map[tid.TID]bool, len(rows))
 		for _, row := range rows {
-			selMap[row.UUID()] = true
+			selMap[row.ID()] = true
 		}
 		d.Table.SetSelectionMap(selMap)
 
@@ -255,11 +255,11 @@ func (d *TableDrop[T, U]) DataDragDropCallback(_ Point, data map[string]any) {
 	d.TableDragData = nil
 }
 
-func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[uuid.UUID]bool) []T {
+func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[tid.TID]bool) []T {
 	movingToThisParent := d.TargetParent == parent
 	list := make([]T, 0, len(rows))
 	for i, row := range rows {
-		if movingSet[row.UUID()] {
+		if movingSet[row.ID()] {
 			if movingToThisParent && d.TargetIndex >= i {
 				d.TargetIndex--
 			}
@@ -270,10 +270,10 @@ func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[uuid.UUID]
 	return list
 }
 
-func makeRowSet[T TableRowConstraint[T]](rows []T) map[uuid.UUID]bool {
-	set := make(map[uuid.UUID]bool, len(rows))
+func makeRowSet[T TableRowConstraint[T]](rows []T) map[tid.TID]bool {
+	set := make(map[tid.TID]bool, len(rows))
 	for _, row := range rows {
-		set[row.UUID()] = true
+		set[row.ID()] = true
 	}
 	return set
 }

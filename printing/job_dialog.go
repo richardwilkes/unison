@@ -184,7 +184,7 @@ func (d *JobDialog) rebuildPrinterPopup() {
 	var sel *Printer
 	for _, p := range d.mgr.Printers() {
 		d.printers.AddItem(p)
-		if p.UUID == d.printerID.UUID {
+		if p.ID == d.printerID.ID {
 			sel = p
 		}
 	}

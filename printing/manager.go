@@ -32,7 +32,7 @@ type PrintManager struct {
 func (p *PrintManager) LookupPrinter(id PrinterID) *Printer {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
-	return p.printers[id.UUID]
+	return p.printers[id.ID]
 }
 
 // Printers returns the previously discovered available printers, sorted by name.
@@ -44,7 +44,7 @@ func (p *PrintManager) Printers() []*Printer {
 		if result := txt.NaturalCmp(a.Name, b.Name, true); result != 0 {
 			return result
 		}
-		return txt.NaturalCmp(a.UUID, b.UUID, true)
+		return txt.NaturalCmp(a.ID, b.ID, true)
 	})
 	return printers
 }
@@ -95,7 +95,7 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 		}
 		printer := &Printer{
 			PrinterID: PrinterID{
-				UUID: id,
+				ID:   id,
 				Name: m["ty"],
 				Host: strings.TrimSuffix(entry.HostName, "."),
 				Port: entry.Port,
@@ -108,7 +108,7 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 			httpClient:       &http.Client{},
 		}
 		p.lock.Lock()
-		p.printers[printer.UUID] = printer
+		p.printers[printer.ID] = printer
 		p.lock.Unlock()
 		if out != nil {
 			out <- printer

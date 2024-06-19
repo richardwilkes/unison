@@ -29,7 +29,7 @@ import (
 
 // PrinterID identifies a specific printer.
 type PrinterID struct {
-	UUID string `json:"uuid"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 	Host string `json:"host"`
 	Port int    `json:"port"`

@@ -12,9 +12,9 @@ package demo
 import (
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/fatal"
+	"github.com/richardwilkes/toolbox/tid"
 	"github.com/richardwilkes/unison"
 )
 
@@ -23,7 +23,7 @@ var _ unison.TableRowData[*demoRow] = &demoRow{}
 type demoRow struct {
 	table        *unison.Table[*demoRow]
 	parent       *demoRow
-	id           uuid.UUID
+	id           tid.TID
 	text         string
 	text2        string
 	children     []*demoRow
@@ -41,11 +41,11 @@ func (d *demoRow) CloneForTarget(target unison.Paneler, newParent *demoRow) *dem
 	clone := *d
 	clone.table = table
 	clone.parent = newParent
-	clone.id = uuid.New()
+	clone.id = tid.MustNewTID('a')
 	return &clone
 }
 
-func (d *demoRow) UUID() uuid.UUID {
+func (d *demoRow) ID() tid.TID {
 	return d.id
 }
 

@@ -12,7 +12,7 @@ package demo
 import (
 	"fmt"
 
-	"github.com/google/uuid"
+	"github.com/richardwilkes/toolbox/tid"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
@@ -53,7 +53,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 	for i := range rows {
 		row := &demoRow{
 			table: table,
-			id:    uuid.New(),
+			id:    tid.MustNewTID('a'),
 			text:  fmt.Sprintf("Row %d", i+1),
 			text2: fmt.Sprintf("Some longer content for Row %d", i+1),
 		}
@@ -68,7 +68,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 				child := &demoRow{
 					table:  table,
 					parent: row,
-					id:     uuid.New(),
+					id:     tid.MustNewTID('a'),
 					text:   fmt.Sprintf("Sub Row %d", j+1),
 				}
 				row.children[j] = child
@@ -80,7 +80,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 						child.children[k] = &demoRow{
 							table:  table,
 							parent: child,
-							id:     uuid.New(),
+							id:     tid.MustNewTID('a'),
 							text:   fmt.Sprintf("Sub Sub Row %d", k+1),
 						}
 					}

@@ -9,7 +9,9 @@
 
 package unison
 
-import "github.com/google/uuid"
+import (
+	"github.com/richardwilkes/toolbox/tid"
+)
 
 // TableModel provides access to the root nodes of the table's data underlying model.
 type TableModel[T TableRowConstraint[T]] interface {
@@ -28,8 +30,8 @@ type TableRowData[T any] interface {
 	// row will be placed within. Limitations in the way generics work in Go prevent this from being declared as a
 	// *Table.
 	CloneForTarget(target Paneler, newParent T) T
-	// UUID returns the UUID of this data.
-	UUID() uuid.UUID
+	// ID returns the ID of this data.
+	ID() tid.TID
 	// Parent returns the parent of this row, or nil if it is a root node.
 	Parent() T
 	// SetParent sets the parent of this row. parent will be nil if this is a top-level row.
@@ -78,10 +80,10 @@ func (m *SimpleTableModel[T]) SetRootRows(rows []T) {
 	m.roots = rows
 }
 
-// CollectUUIDsFromRow returns a map containing the UUIDs of the provided node and all of its descendants.
-func CollectUUIDsFromRow[T TableRowConstraint[T]](node T, ids map[uuid.UUID]bool) {
-	ids[node.UUID()] = true
+// CollectIDsFromRow returns a map containing the IDs of the provided node and all of its descendants.
+func CollectIDsFromRow[T TableRowConstraint[T]](node T, ids map[tid.TID]bool) {
+	ids[node.ID()] = true
 	for _, child := range node.Children() {
-		CollectUUIDsFromRow(child, ids)
+		CollectIDsFromRow(child, ids)
 	}
 }
