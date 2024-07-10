@@ -39,13 +39,13 @@ var DefaultPopupMenuTheme = PopupMenuTheme{
 
 // PopupMenuTheme holds theming data for a PopupMenu.
 type PopupMenuTheme struct {
-	TextDecoration
 	EdgeInk        Ink
 	SelectionInk   Ink
 	OnSelectionInk Ink
-	CornerRadius   float32
-	HMargin        float32
-	VMargin        float32
+	TextDecoration
+	CornerRadius float32
+	HMargin      float32
+	VMargin      float32
 }
 
 type popupMenuItem[T comparable] struct {
@@ -56,15 +56,15 @@ type popupMenuItem[T comparable] struct {
 
 // PopupMenu represents a clickable button that displays a menu of choices.
 type PopupMenu[T comparable] struct {
-	Panel
-	PopupMenuTheme
 	MenuFactory              MenuFactory
 	WillShowMenuCallback     func(popup *PopupMenu[T])
 	ChoiceMadeCallback       func(popup *PopupMenu[T], index int, item T)
 	SelectionChangedCallback func(popup *PopupMenu[T])
 	items                    []*popupMenuItem[T]
 	selection                map[int]bool
-	pressed                  bool
+	PopupMenuTheme
+	Panel
+	pressed bool
 }
 
 // NewPopupMenu creates a new PopupMenu.

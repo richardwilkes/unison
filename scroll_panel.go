@@ -35,8 +35,6 @@ type ScrollPanelTheme struct {
 
 // ScrollPanel provides a scrollable area.
 type ScrollPanel struct {
-	Panel
-	ScrollPanelTheme
 	horizontalBar    *ScrollBar
 	verticalBar      *ScrollBar
 	columnHeaderView *Panel
@@ -45,9 +43,11 @@ type ScrollPanel struct {
 	rowHeader        Paneler
 	contentView      *Panel
 	content          Paneler
-	widthBehavior    behavior.Enum
-	heightBehavior   behavior.Enum
-	syncing          bool
+	ScrollPanelTheme
+	Panel
+	widthBehavior  behavior.Enum
+	heightBehavior behavior.Enum
+	syncing        bool
 }
 
 // NewScrollPanel creates a new scrollable area.

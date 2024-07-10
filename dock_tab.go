@@ -64,18 +64,18 @@ type DockTabTheme struct {
 	TabCurrentInk   Ink
 	OnTabCurrentInk Ink
 	TabBorder       Border
-	Gap             float32
 	LabelTheme      LabelTheme
 	ButtonTheme     ButtonTheme
+	Gap             float32
 }
 
 type dockTab struct {
-	Panel
-	DockTabTheme
-	dockable Dockable
 	title    *Label
 	button   *Button
-	pressed  bool
+	dockable Dockable
+	Panel
+	DockTabTheme
+	pressed bool
 }
 
 func newDockTab(dockable Dockable) *dockTab {

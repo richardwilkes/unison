@@ -26,8 +26,8 @@ type SeparatorTheme struct {
 
 // Separator provides a simple vertical or horizontal separator line.
 type Separator struct {
-	Panel
 	SeparatorTheme
+	Panel
 }
 
 // NewSeparator creates a new separator line.

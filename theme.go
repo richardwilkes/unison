@@ -135,10 +135,10 @@ func CreateDeriveLightnessFunc(light, dark float32) func(ThemeColor) ThemeColor 
 
 // DerivedThemeColor holds a ThemeColor that is derived from another ThemeColor.
 type DerivedThemeColor struct {
-	derived      ThemeColor
 	deriveFunc   func(ThemeColor) ThemeColor
-	lastSeen     ThemeColor
 	lastSeenFunc func() ThemeColor
+	derived      ThemeColor
+	lastSeen     ThemeColor
 }
 
 // GetColor returns the current color. Here to satisfy the ColorProvider interface.

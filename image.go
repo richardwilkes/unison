@@ -261,9 +261,9 @@ var (
 )
 
 type imageRef struct {
-	hash  uint64
-	key   string
 	img   skia.Image
+	key   string
+	hash  uint64
 	scale float32
 }
 

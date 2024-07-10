@@ -30,6 +30,10 @@ type Paneler interface {
 type Panel struct {
 	InputCallbacks
 	Self                                any
+	layoutData                          any
+	layout                              Layout
+	sizer                               Sizer
+	border                              Border
 	DrawCallback                        func(gc *Canvas, rect Rect)
 	DrawOverCallback                    func(gc *Canvas, rect Rect)
 	UpdateCursorCallback                func(where Point) *Cursor
@@ -50,16 +54,12 @@ type Panel struct {
 	DataDragDropCallback func(where Point, data map[string]any)
 	Tooltip              *Panel
 	parent               *Panel
-	frame                Rect
-	border               Border
-	sizer                Sizer
-	layout               Layout
-	layoutData           any
-	children             []*Panel
 	canPerformMap        map[int]func(any) bool
 	performMap           map[int]func(any)
 	data                 map[string]any
 	RefKey               string
+	children             []*Panel
+	frame                Rect
 	scale                float32
 	NeedsLayout          bool
 	focusable            bool

@@ -52,10 +52,10 @@ type TagTheme struct {
 
 // Tag represents non-interactive text and/or a Drawable with a bubble around it.
 type Tag struct {
-	Panel
-	TagTheme
 	Drawable Drawable
 	Text     *Text
+	TagTheme
+	Panel
 }
 
 // NewTag creates a new, empty Tag.

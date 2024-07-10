@@ -42,10 +42,10 @@ type LabelTheme struct {
 
 // Label represents non-interactive text and/or a Drawable.
 type Label struct {
-	Panel
-	LabelTheme
 	Drawable Drawable
 	Text     *Text
+	LabelTheme
+	Panel
 }
 
 // NewLabel creates a new, empty label.

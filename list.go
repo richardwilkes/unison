@@ -47,21 +47,21 @@ type ListTheme struct {
 
 // List provides a control that allows the user to select from a list of items, represented by cells.
 type List[T any] struct {
-	Panel
-	ListTheme
 	DoubleClickCallback  func()
 	NewSelectionCallback func()
 	Factory              CellFactory
-	rows                 []T
 	Selection            *xmath.BitSet
 	savedSelection       *xmath.BitSet
-	anchor               int
-	lastSel              int
-	allowMultiple        bool
-	pressed              bool
-	suppressSelection    bool
-	suppressScroll       bool
-	wasDragged           bool
+	rows                 []T
+	ListTheme
+	Panel
+	anchor            int
+	lastSel           int
+	allowMultiple     bool
+	pressed           bool
+	suppressSelection bool
+	suppressScroll    bool
+	wasDragged        bool
 }
 
 // NewList creates a new List control.

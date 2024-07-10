@@ -41,10 +41,10 @@ var DefaultRadioButtonTheme = RadioButtonTheme{
 
 // RadioButtonTheme holds theming data for a RadioButton.
 type RadioButtonTheme struct {
+	EdgeInk        Ink
+	SelectionInk   Ink
+	OnSelectionInk Ink
 	TextDecoration
-	EdgeInk            Ink
-	SelectionInk       Ink
-	OnSelectionInk     Ink
 	Gap                float32
 	CornerRadius       float32
 	ClickAnimationTime time.Duration
@@ -55,13 +55,13 @@ type RadioButtonTheme struct {
 
 // RadioButton represents a clickable radio button with an optional label.
 type RadioButton struct {
-	Panel
-	RadioButtonTheme
 	ClickCallback func()
 	Drawable      Drawable
 	Text          *Text
 	group         *Group
-	Pressed       bool
+	RadioButtonTheme
+	Panel
+	Pressed bool
 }
 
 // NewRadioButton creates a new radio button.

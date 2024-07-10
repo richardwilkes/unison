@@ -18,8 +18,8 @@ var _ Border = &LineBorder{}
 
 // LineBorder private a lined border.
 type LineBorder struct {
-	insets       Insets
 	ink          Ink
+	insets       Insets
 	cornerRadius float32
 	noInset      bool
 }

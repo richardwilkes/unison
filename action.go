@@ -24,11 +24,11 @@ var (
 
 // Action describes an action that can be performed.
 type Action struct {
-	ID              int                     // Should be unique among all actions and menu items.
-	Title           string                  // Typically used in a menu item title or tooltip for a button.
-	KeyBinding      KeyBinding              // The key binding that will trigger the action.
 	EnabledCallback func(*Action, any) bool // Should return true if the action can be used. Care should be made to keep this method fast to avoid slowing down the user interface. May be nil, in which case it is assumed to always be enabled.
 	ExecuteCallback func(*Action, any)      // Will be called to run the action. May be nil.
+	Title           string                  // Typically used in a menu item title or tooltip for a button.
+	ID              int                     // Should be unique among all actions and menu items.
+	KeyBinding      KeyBinding              // The key binding that will trigger the action.
 }
 
 // NewMenuItem returns a newly created menu item using this action.

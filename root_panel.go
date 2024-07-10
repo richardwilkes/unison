@@ -18,13 +18,13 @@ import (
 var _ Layout = &rootPanel{}
 
 type rootPanel struct {
-	Panel
 	window         *Window
 	openMenuPanels []*menuPanel
 	menuBarPanel   *menuPanel
 	tooltipPanel   *Panel
 	contentPanel   *Panel
 	menuBar        *menu
+	Panel
 }
 
 func newRootPanel(wnd *Window) *rootPanel {

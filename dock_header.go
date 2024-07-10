@@ -43,12 +43,12 @@ type DockHeaderTheme struct {
 }
 
 type dockHeader struct {
-	Panel
-	DockHeaderTheme
 	owner                 *DockContainer
 	overflowButton        *Button
 	maximizeRestoreButton *Button
-	dragInsertIndex       int
+	DockHeaderTheme
+	Panel
+	dragInsertIndex int
 }
 
 func newDockHeader(dc *DockContainer) *dockHeader {

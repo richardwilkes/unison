@@ -18,8 +18,8 @@ var _ Font = &DynamicFont{}
 // DynamicFont holds a Font that can be dynamically adjusted.
 type DynamicFont struct {
 	Resolver func() FontDescriptor
-	desc     FontDescriptor
 	font     Font
+	desc     FontDescriptor
 }
 
 func (f *DynamicFont) resolvedFont() Font {

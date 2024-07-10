@@ -43,15 +43,15 @@ type Undoable interface {
 
 // UndoEdit provides a standard Undoable.
 type UndoEdit[T any] struct {
-	ID          int64
-	EditName    string
-	EditCost    int
 	UndoFunc    func(*UndoEdit[T])
 	RedoFunc    func(*UndoEdit[T])
 	AbsorbFunc  func(*UndoEdit[T], Undoable) bool
 	ReleaseFunc func(*UndoEdit[T])
 	BeforeData  T
 	AfterData   T
+	EditName    string
+	ID          int64
+	EditCost    int
 }
 
 // NextUndoID returns the next available undo ID.

@@ -53,5 +53,4 @@ issues:
     - internal/skia
     - internal/w32
   exclude:
-    - "fieldalignment: struct with \\d+ pointer bytes could be"
     - "package-comments: should have a package comment"

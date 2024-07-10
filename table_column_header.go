@@ -38,8 +38,8 @@ var DefaultTableColumnHeaderTheme = LabelTheme{
 // DefaultTableColumnHeader provides a default table column header panel.
 type DefaultTableColumnHeader[T TableRowConstraint[T]] struct {
 	*Label
-	sortState     SortState
 	sortIndicator *DrawableSVG
+	sortState     SortState
 }
 
 // NewTableColumnHeader creates a new table column header panel.

@@ -43,18 +43,18 @@ type FileDialog interface {
 }
 
 type fileDialog struct {
-	fileCommon
-	currentDir     string
-	currentExt     string
-	readable       []string
-	dirEntries     []os.DirEntry
 	dialog         *Dialog
 	parentDirPopup *PopupMenu[*parentDirItem]
 	fileNameField  *Field
 	scroller       *ScrollPanel
 	fileList       *List[*fileListItem]
 	filterPopup    *PopupMenu[string]
-	forOpen        bool
+	readable       []string
+	dirEntries     []os.DirEntry
+	currentDir     string
+	currentExt     string
+	fileCommon
+	forOpen bool
 }
 
 // NewCommonSaveDialog creates a new SaveDialog. This is the fallback Go-only version of the SaveDialog used when

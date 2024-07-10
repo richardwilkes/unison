@@ -23,8 +23,8 @@ var (
 )
 
 type themedColor struct {
-	Title string
 	Color *unison.ThemeColor
+	Title string
 }
 
 func init() {

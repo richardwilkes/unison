@@ -42,8 +42,8 @@ type tableCache[T TableRowConstraint[T]] struct {
 }
 
 type tableHitRect struct {
-	Rect
 	handler func()
+	Rect
 }
 
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
@@ -91,8 +91,6 @@ type TableTheme struct {
 
 // Table provides a control that can display data in columns and rows.
 type Table[T TableRowConstraint[T]] struct {
-	Panel
-	TableTheme
 	SelectionChangedCallback func()
 	DoubleClickCallback      func()
 	DragRemovedRowsCallback  func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
@@ -108,6 +106,8 @@ type Table[T TableRowConstraint[T]] struct {
 	rowCache                 []tableCache[T]
 	lastMouseEnterCellPanel  *Panel
 	lastMouseDownCellPanel   *Panel
+	TableTheme
+	Panel
 	interactionRow           int
 	interactionColumn        int
 	lastMouseMotionRow       int

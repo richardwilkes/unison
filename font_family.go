@@ -30,8 +30,8 @@ var slantMapping = [][]int{
 
 // FontFamily holds information about one font family.
 type FontFamily struct {
-	name string
 	set  skia.FontStyleSet
+	name string
 }
 
 // FontFamilies retrieves the names of the installed font families.

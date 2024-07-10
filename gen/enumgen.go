@@ -37,10 +37,10 @@ const (
 type enumValue struct {
 	Name          string
 	Key           string
-	OldKeys       []string
 	String        string
 	Alt           string
 	Comment       string
+	OldKeys       []string
 	Default       bool
 	NoLocalize    bool
 	EmptyStringOK bool
@@ -53,8 +53,8 @@ type enumInfo struct {
 	Desc          string
 	baseType      string
 	baseValue     string
-	NonContiguous bool
 	Values        []enumValue
+	NonContiguous bool
 }
 
 func main() {

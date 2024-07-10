@@ -34,11 +34,11 @@ type TableHeaderTheme struct {
 
 // TableHeader provides a header for a Table.
 type TableHeader[T TableRowConstraint[T]] struct {
-	Panel
+	table         *Table[T]
+	ColumnHeaders []TableColumnHeader[T]
+	Less          func(s1, s2 string) bool
 	TableHeaderTheme
-	table                *Table[T]
-	ColumnHeaders        []TableColumnHeader[T]
-	Less                 func(s1, s2 string) bool
+	Panel
 	interactionColumn    int
 	columnResizeStart    float32
 	columnResizeBase     float32
@@ -388,8 +388,8 @@ func (h *TableHeader[T]) SortOn(header TableColumnHeader[T]) {
 }
 
 type headerWithIndex[T TableRowConstraint[T]] struct {
-	index  int
 	header TableColumnHeader[T]
+	index  int
 }
 
 // HasSort returns true if at least one column is marked for sorting.

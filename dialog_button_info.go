@@ -17,8 +17,8 @@ import (
 // DialogButtonInfo holds information for constructing the dialog button panel.
 type DialogButtonInfo struct {
 	Title        string
-	ResponseCode int
 	KeyCodes     []KeyCode
+	ResponseCode int
 }
 
 // NewButton creates a new button for the dialog.

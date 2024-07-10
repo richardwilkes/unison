@@ -20,15 +20,15 @@ import (
 // Table.InstallDropSupport().
 type TableDrop[T TableRowConstraint[T], U any] struct {
 	Table                  *Table[T]
-	DragKey                string
-	TargetParent           T
-	TargetIndex            int
-	AllDragData            map[string]any
 	TableDragData          *TableDragData[T]
+	AllDragData            map[string]any
 	originalDrawOver       func(*Canvas, Rect)
 	shouldMoveDataCallback func(from, to *Table[T]) bool
 	willDropCallback       func(from, to *Table[T], move bool) *UndoEdit[U]
 	didDropCallback        func(undo *UndoEdit[U], from, to *Table[T], move bool)
+	TargetParent           T
+	DragKey                string
+	TargetIndex            int
 	top                    float32
 	left                   float32
 	inDragOver             bool

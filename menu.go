@@ -70,17 +70,17 @@ type MenuTheme struct {
 }
 
 type menuPanel struct {
+	menu *menu
 	Panel
-	menu      *menu
 	itemIndex int
 }
 
 type menu struct {
 	factory    *inWindowMenuFactory
 	titleItem  *menuItem
-	items      []*menuItem
-	updater    func(Menu)
 	popupPanel *menuPanel
+	updater    func(Menu)
+	items      []*menuItem
 }
 
 func (m *menu) Factory() MenuFactory {

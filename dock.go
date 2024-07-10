@@ -84,14 +84,14 @@ func (d *DockTheme) DrawVerticalGripper(canvas *Canvas, r Rect) {
 
 // Dock provides an area where Dockable panels can be displayed and rearranged.
 type Dock struct {
-	Panel
+	layout             *DockLayout
+	MaximizedContainer *DockContainer
+	dragDockable       Dockable
+	dragOverNode       DockLayoutNode
+	dividerDragLayout  *DockLayout
+	DragKey            string
 	DockTheme
-	layout                     *DockLayout
-	MaximizedContainer         *DockContainer
-	DragKey                    string
-	dragDockable               Dockable
-	dragOverNode               DockLayoutNode
-	dividerDragLayout          *DockLayout
+	Panel
 	dividerDragInitialPosition float32
 	dividerDragEventPosition   float32
 	dragSide                   side.Enum

@@ -32,11 +32,11 @@ func (s Stop) String() string {
 // These will be be used to set a relative starting and ending position for the gradient. If StartRadius and EndRadius
 // are both greater than 0, then the gradient will be a radial one instead of a linear one.
 type Gradient struct {
+	Stops       []Stop
 	Start       Point
 	StartRadius float32
 	End         Point
 	EndRadius   float32
-	Stops       []Stop
 }
 
 // NewHorizontalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole

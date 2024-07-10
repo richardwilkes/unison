@@ -66,19 +66,19 @@ type FieldTheme struct {
 
 // Field provides a text input control.
 type Field struct {
-	Panel
+	ModifiedCallback func(before, after *FieldState)
+	ValidateCallback func() bool
+	runes            []rune
+	lines            []*Text
+	endsWithLineFeed []lineEndingType
+	Watermark        string
+	forceShowUntil   time.Time
 	FieldTheme
-	ModifiedCallback   func(before, after *FieldState)
-	ValidateCallback   func() bool
-	Watermark          string
+	Panel
 	undoID             int64
-	runes              []rune
-	lines              []*Text
-	endsWithLineFeed   []lineEndingType
 	selectionStart     int
 	selectionEnd       int
 	selectionAnchor    int
-	forceShowUntil     time.Time
 	scrollOffset       Point
 	linesBuiltFor      float32
 	ObscurementRune    rune

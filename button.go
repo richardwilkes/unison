@@ -44,10 +44,10 @@ var DefaultButtonTheme = ButtonTheme{
 
 // ButtonTheme holds theming data for a Button.
 type ButtonTheme struct {
+	EdgeInk        Ink
+	SelectionInk   Ink
+	OnSelectionInk Ink
 	TextDecoration
-	EdgeInk             Ink
-	SelectionInk        Ink
-	OnSelectionInk      Ink
 	Gap                 float32
 	CornerRadius        float32
 	HMargin             float32
@@ -64,13 +64,13 @@ type ButtonTheme struct {
 
 // Button represents a clickable button.
 type Button struct {
-	Panel
-	ButtonTheme
 	ClickCallback func()
 	Drawable      Drawable
 	Text          *Text
 	group         *Group
-	Pressed       bool
+	Panel
+	ButtonTheme
+	Pressed bool
 }
 
 // NewButton creates a new button.

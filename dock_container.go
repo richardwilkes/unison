@@ -29,10 +29,10 @@ type Dockable interface {
 
 // DockContainer holds one or more Dockable panels.
 type DockContainer struct {
-	Panel
 	Dock    *Dock
 	header  *dockHeader
 	content *dockContainerContent
+	Panel
 }
 
 // NewDockContainer creates a new DockContainer.

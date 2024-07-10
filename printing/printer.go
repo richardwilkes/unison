@@ -45,19 +45,19 @@ func (p *PrinterID) String() string {
 // Printer holds the information for a printer. Note that the User, Password, and UseTLS fields must be filled in if you
 // wish to use those features, as the call to PrintManager.Printers() will not fill them in for you.
 type Printer struct {
-	PrinterID
+	httpClient       *http.Client
+	attributes       *PrinterAttributes
 	RemotePath       string
 	AuthInfoRequired string
 	User             string
 	Password         string
 	MimeTypes        []string
-	Color            bool
-	Duplex           bool
-	UseTLS           bool
-	lastID           uint32
-	httpClient       *http.Client
-	lock             sync.RWMutex
-	attributes       *PrinterAttributes
+	PrinterID
+	lock   sync.RWMutex
+	lastID uint32
+	Color  bool
+	Duplex bool
+	UseTLS bool
 }
 
 // MimeTypeSupported returns true if the given MIME type is supported by the printer.

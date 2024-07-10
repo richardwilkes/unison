@@ -142,24 +142,24 @@ func HasAnyPrefix(prefixes []string, target string) bool {
 
 // Markdown provides markdown display widget.
 type Markdown struct {
-	Panel
-	MarkdownTheme
 	lastParent                 *Panel
-	chainedFrameChangeCallback func()
-	node                       ast.Node
-	content                    []byte
 	block                      *Panel
 	textRow                    *Panel
 	text                       *Text
 	decoration                 *TextDecoration
-	imgCache                   map[string]*Image
-	index                      int
-	columnIndex                int
+	node                       ast.Node
+	chainedFrameChangeCallback func()
+	content                    []byte
 	columnWidths               []int
-	maxWidth                   float32
-	maxLineWidth               float32
-	ordered                    bool
-	isHeader                   bool
+	imgCache                   map[string]*Image
+	MarkdownTheme
+	Panel
+	index        int
+	columnIndex  int
+	maxWidth     float32
+	maxLineWidth float32
+	ordered      bool
+	isHeader     bool
 }
 
 // NewMarkdown creates a new markdown widget. If autoSizingFromParent is true, then the Markdown will attempt to keep

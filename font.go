@@ -98,10 +98,10 @@ const (
 type FontMetrics = skia.FontMetrics
 
 type fontImpl struct {
-	size    float32
 	face    *FontFace
 	font    skia.Font
 	metrics FontMetrics
+	size    float32
 }
 
 func (f *fontImpl) Face() *FontFace {

@@ -65,30 +65,30 @@ type Window struct {
 	DragIntoWindowWillStart func()
 	// DragIntoWindowFinished is called just after a drag into the window completes, whether a drop occurs or not.
 	DragIntoWindowFinished func()
-	title                  string
-	titleIcons             []*Image
 	wnd                    *glfw.Window
 	surface                *surface
-	data                   map[string]any
 	root                   *rootPanel
 	focus                  *Panel
 	cursor                 *Cursor
+	dragDataPanel          *Panel
+	dragData               *DragData
 	lastMouseDownPanel     *Panel
 	lastMouseOverPanel     *Panel
 	lastKeyDownPanel       *Panel
 	lastTooltip            *Panel
 	lastTooltipShownAt     time.Time
+	lastButtonTime         time.Time
+	data                   map[string]any
+	title                  string
+	titleIcons             []*Image
 	lastDrawDuration       time.Duration
 	tooltipSequence        int
 	modalResultCode        int
 	lastButton             int
 	lastButtonCount        int
-	lastButtonTime         time.Time
 	lastContentRect        Rect
 	firstButtonLocation    Point
 	dragDataLocation       Point
-	dragDataPanel          *Panel
-	dragData               *DragData
 	lastKeyModifiers       Modifiers
 	valid                  bool
 	focused                bool

@@ -24,8 +24,8 @@ import (
 
 // PrintManager holds the data needed by the print manager.
 type PrintManager struct {
-	lock     sync.RWMutex
 	printers map[string]*Printer
+	lock     sync.RWMutex
 }
 
 // LookupPrinter returns a printer by ID, or nil if it is not in our currently discovered set.

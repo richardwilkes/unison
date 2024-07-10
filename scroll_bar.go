@@ -34,16 +34,16 @@ type ScrollBarTheme struct {
 
 // ScrollBar holds the data necessary for tracking a scroll bar's state.
 type ScrollBar struct {
-	Panel
-	ScrollBarTheme
 	ChangedCallback func()
-	value           float32
-	extent          float32
-	maximum         float32
-	dragOffset      float32
-	horizontal      bool
-	overThumb       bool
-	trackingThumb   bool
+	ScrollBarTheme
+	Panel
+	value         float32
+	extent        float32
+	maximum       float32
+	dragOffset    float32
+	horizontal    bool
+	overThumb     bool
+	trackingThumb bool
 }
 
 // NewScrollBar creates a new scroll bar.

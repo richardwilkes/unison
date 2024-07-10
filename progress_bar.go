@@ -44,11 +44,11 @@ type ProgressBarTheme struct {
 
 // ProgressBar provides a meter showing progress.
 type ProgressBar struct {
-	Panel
-	ProgressBarTheme
-	current           float32
-	maximum           float32
 	lastAnimationTime time.Time
+	ProgressBarTheme
+	Panel
+	current float32
+	maximum float32
 }
 
 // NewProgressBar creates a new progress bar. A max of zero will create an indeterminate progress bar, i.e. one whose

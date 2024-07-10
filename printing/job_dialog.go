@@ -27,11 +27,9 @@ import (
 // JobDialog provides a print job dialog.
 type JobDialog struct {
 	mgr                   *PrintManager
-	printerID             PrinterID
 	printer               *Printer
 	printersChan          chan *Printer
 	scanCancel            func()
-	mimeType              string
 	printerAttributes     *PrinterAttributes
 	jobAttributes         *JobAttributes
 	dialog                *unison.Dialog
@@ -46,6 +44,8 @@ type JobDialog struct {
 	contentOptimization   stringPopup[capString]
 	sides                 stringPopup[capString]
 	orientation           stringPopup[capString]
+	mimeType              string
+	printerID             PrinterID
 	lock                  sync.Mutex
 	awaitingPrinterUpdate bool
 }

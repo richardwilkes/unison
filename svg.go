@@ -89,9 +89,9 @@ type DrawableSVG struct {
 
 // SVG holds an SVG.
 type SVG struct {
-	size          Size
 	unscaledPath  *Path
 	scaledPathMap map[Size]*Path
+	size          Size
 }
 
 // MustSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"

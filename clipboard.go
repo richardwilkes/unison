@@ -20,8 +20,8 @@ var GlobalClipboard = &Clipboard{}
 
 // ClipboardData holds a type and data pair.
 type ClipboardData struct {
-	Type string
 	Data any
+	Type string
 }
 
 // Clipboard provides access to the system clipboard as well as an internal, application-only, clipboard. Currently, due
@@ -30,8 +30,8 @@ type ClipboardData struct {
 // want to consider serializing and unserializing your data into bytes to pass it through the clipboard, to avoid
 // accidental mutations.
 type Clipboard struct {
-	lock sync.RWMutex
 	data map[string]any
+	lock sync.RWMutex
 }
 
 // GetText returns text from the current clipboard data. This reads from the system clipboard.

@@ -24,8 +24,8 @@ type Grouper interface {
 
 // Group is used to ensure only one panel in a group is selected at a time.
 type Group struct {
-	panel    []Grouper
 	selected Grouper
+	panel    []Grouper
 }
 
 // NewGroup creates a new group for the specified set of panels. Each panel is removed from any other group it may be in

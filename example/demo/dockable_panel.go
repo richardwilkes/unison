@@ -21,9 +21,9 @@ var (
 
 // DockablePanel provides a sample dockable panel.
 type DockablePanel struct {
+	Text string
+	Tip  string
 	unison.Panel
-	Text  string
-	Tip   string
 	Color unison.Color
 }
 

@@ -23,11 +23,11 @@ var _ unison.TableRowData[*demoRow] = &demoRow{}
 type demoRow struct {
 	table        *unison.Table[*demoRow]
 	parent       *demoRow
-	id           tid.TID
+	checkbox     *unison.CheckBox
 	text         string
 	text2        string
+	id           tid.TID
 	children     []*demoRow
-	checkbox     *unison.CheckBox
 	container    bool
 	open         bool
 	doubleHeight bool

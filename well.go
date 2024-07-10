@@ -59,14 +59,14 @@ type WellTheme struct {
 
 // Well represents a control that holds and lets a user choose an ink.
 type Well struct {
-	Panel
-	WellTheme
 	ImageFromSpecCallback func(ctx context.Context, filePathOrURL string, scale float32) (*Image, error)
 	InkChangedCallback    func()
 	ClickCallback         func()
 	ValidateImageCallback func(*Image) *Image
 	ink                   Ink
-	Pressed               bool
+	WellTheme
+	Panel
+	Pressed bool
 }
 
 // NewWell creates a new Well.

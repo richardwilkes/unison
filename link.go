@@ -35,9 +35,9 @@ var DefaultLinkTheme = LinkTheme{
 
 // LinkTheme holds theming data for a link.
 type LinkTheme struct {
-	LabelTheme
 	PressedInk   Ink
 	OnPressedInk Ink
+	LabelTheme
 }
 
 // NewLink creates a new RichLabel that can be used as a hyperlink.

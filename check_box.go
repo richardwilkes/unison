@@ -41,12 +41,12 @@ var DefaultCheckBoxTheme = CheckBoxTheme{
 
 // CheckBoxTheme holds theming data for a CheckBox.
 type CheckBoxTheme struct {
+	EdgeInk        Ink
+	SelectionInk   Ink
+	OnSelectionInk Ink
+	ControlInk     Ink
+	OnControlInk   Ink
 	TextDecoration
-	EdgeInk            Ink
-	SelectionInk       Ink
-	OnSelectionInk     Ink
-	ControlInk         Ink
-	OnControlInk       Ink
 	Gap                float32
 	CornerRadius       float32
 	ClickAnimationTime time.Duration
@@ -57,13 +57,13 @@ type CheckBoxTheme struct {
 
 // CheckBox represents a clickable checkbox with an optional label.
 type CheckBox struct {
-	Panel
-	CheckBoxTheme
 	ClickCallback func()
 	Drawable      Drawable
 	Text          *Text
-	State         check.Enum
-	Pressed       bool
+	CheckBoxTheme
+	Panel
+	State   check.Enum
+	Pressed bool
 }
 
 // NewCheckBox creates a new checkbox.

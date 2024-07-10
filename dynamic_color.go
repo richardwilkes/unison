@@ -24,8 +24,8 @@ var (
 
 // DynamicColor holds a color that may be changed.
 type DynamicColor struct {
-	Color     Color
 	Rebuilder func() Color
+	Color     Color
 }
 
 // NewDynamicColor creates a new DynamicColor and registers it for theme updates. If your color relies on another

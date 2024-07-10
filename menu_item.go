@@ -80,13 +80,13 @@ type MenuItemTheme struct {
 
 type menuItem struct {
 	factory     *inWindowMenuFactory
-	id          int
-	title       string
 	menu        *menu
 	subMenu     *menu
 	panel       *Panel
 	validator   func(MenuItem) bool
 	handler     func(MenuItem)
+	title       string
+	id          int
 	keyBinding  KeyBinding
 	state       check.Enum
 	isSeparator bool
