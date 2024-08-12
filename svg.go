@@ -11,12 +11,10 @@ package unison
 
 import (
 	_ "embed"
-	"encoding/xml"
 	"io"
-	"strconv"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/lafriks/go-svg"
 	"github.com/richardwilkes/toolbox/fatal"
 )
 
@@ -89,9 +87,10 @@ type DrawableSVG struct {
 
 // SVG holds an SVG.
 type SVG struct {
-	unscaledPath  *Path
-	scaledPathMap map[Size]*Path
-	size          Size
+	paths               []*Path
+	combinedPath        *Path
+	scaledCombinedPaths map[Size]*Path
+	size                Size
 }
 
 // MustSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"
@@ -106,14 +105,14 @@ func MustSVG(size Size, svg string) *SVG {
 // NewSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"
 // element). The 'size' should be gotten from the original SVG's 'viewBox' parameter.
 func NewSVG(size Size, svg string) (*SVG, error) {
-	unscaledPath, err := NewPathFromSVGString(svg)
+	path, err := NewPathFromSVGString(svg)
 	if err != nil {
 		return nil, err
 	}
 	return &SVG{
-		size:          size,
-		unscaledPath:  unscaledPath,
-		scaledPathMap: make(map[Size]*Path),
+		size:                size,
+		paths:               []*Path{path},
+		scaledCombinedPaths: make(map[Size]*Path),
 	}, nil
 }
 
@@ -146,48 +145,52 @@ func MustSVGFromReader(r io.Reader) *SVG {
 // small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed SVG
 // "path" elements.
 func NewSVGFromReader(r io.Reader) (*SVG, error) {
-	var svgXML struct {
-		ViewBox string `xml:"viewBox,attr"`
-		Paths   []struct {
-			Path string `xml:"d,attr"`
-		} `xml:"path"`
+	svg, err := svg.Parse(r, svg.StrictErrorMode)
+	if err != nil {
+		return nil, err
 	}
-	if err := xml.NewDecoder(r).Decode(&svgXML); err != nil {
-		return nil, errs.NewWithCause("unable to decode SVG", err)
+
+	s := &SVG{
+		paths:               make([]*Path, len(svg.SvgPaths)),
+		scaledCombinedPaths: make(map[Size]*Path),
+		size: Size{
+			Width:  float32(svg.ViewBox.W),
+			Height: float32(svg.ViewBox.H),
+		},
 	}
-	svg := &SVG{scaledPathMap: make(map[Size]*Path)}
-	var width, height string
-	if parts := strings.Split(svgXML.ViewBox, " "); len(parts) == 4 {
-		width = parts[2]
-		height = parts[3]
-	}
-	v, err := strconv.ParseFloat(width, 64)
-	if err != nil || v < 1 || v > 4096 {
-		return nil, errs.NewWithCause("unable to determine SVG width", err)
-	}
-	svg.size.Width = float32(v)
-	v, err = strconv.ParseFloat(height, 64)
-	if err != nil || v < 1 || v > 4096 {
-		return nil, errs.NewWithCause("unable to determine SVG height", err)
-	}
-	svg.size.Height = float32(v)
-	for i, svgPath := range svgXML.Paths {
-		var p *Path
-		if p, err = NewPathFromSVGString(svgPath.Path); err != nil {
-			return nil, errs.NewWithCausef(err, "unable to decode SVG: path element #%d", i)
+
+	for i, path := range svg.SvgPaths {
+		p, err := newPathFromSvgPath(path)
+		if err != nil {
+			return nil, err
 		}
-		if svg.unscaledPath == nil {
-			svg.unscaledPath = p
-		} else {
-			svg.unscaledPath.Path(p, false)
-		}
+		s.paths[i] = p
 	}
-	return svg, nil
+
+	return s, nil
 }
 
 // Size returns the original size.
 func (s *SVG) Size() Size {
 	return s.size
+}
+
+// CombinedPath combines all paths for an SVG in to a single path,
+// by extending the first path will all of the other paths.
+// The combined path will have the fill and stroke attributes of the first path.
+func (s *SVG) CombinedPath() *Path {
+	// Lazily create the combined path.
+	if s.combinedPath == nil {
+		for _, path := range s.paths {
+			if s.combinedPath == nil {
+				s.combinedPath = path.Clone()
+			} else {
+				s.combinedPath.Path(path, false)
+			}
+		}
+	}
+
+	return s.combinedPath
 }
 
 // OffsetToCenterWithinScaledSize returns the scaled offset values to use to keep the image centered within the given
@@ -200,13 +203,13 @@ func (s *SVG) OffsetToCenterWithinScaledSize(size Size) Point {
 // PathScaledTo returns the path with the specified scaling. You should not modify this path, as it is cached.
 func (s *SVG) PathScaledTo(scale float32) *Path {
 	if scale == 1 {
-		return s.unscaledPath
+		return s.CombinedPath()
 	}
 	scaledSize := Size{Width: scale, Height: scale}
-	p, ok := s.scaledPathMap[scaledSize]
+	p, ok := s.scaledCombinedPaths[scaledSize]
 	if !ok {
-		p = s.unscaledPath.NewScaled(scale, scale)
-		s.scaledPathMap[scaledSize] = p
+		p = s.CombinedPath().NewScaled(scale, scale)
+		s.scaledCombinedPaths[scaledSize] = p
 	}
 	return p
 }
@@ -216,16 +219,35 @@ func (s *SVG) PathForSize(size Size) *Path {
 	return s.PathScaledTo(min(size.Width/s.size.Width, size.Height/s.size.Height))
 }
 
+// AspectRatio returns the SVG's width to height ratio.
+func (s *SVG) AspectRatio() float32 {
+	return s.size.Width / s.size.Height
+}
+
 // LogicalSize implements the Drawable interface.
 func (s *DrawableSVG) LogicalSize() Size {
 	return s.Size
 }
 
 // DrawInRect implements the Drawable interface.
+//
+// If paint is not nil the SVG paths will be drawn with the provided paint.
+// Be sure to set the Paint's style (fill or stroke) as desired.
+// Any fill or stroke attributes in the SVG source will be ignored.
+// This is for backwards compatabality with an earlier SVG implementation.
 func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, paint *Paint) {
 	canvas.Save()
 	defer canvas.Restore()
+
 	offset := s.SVG.OffsetToCenterWithinScaledSize(rect.Size)
 	canvas.Translate(rect.X+offset.X, rect.Y+offset.Y)
-	canvas.DrawPath(s.SVG.PathForSize(rect.Size), paint)
+	canvas.Scale(rect.Width/s.SVG.size.Width, rect.Height/s.SVG.size.Height)
+
+	for _, path := range s.SVG.paths {
+		if paint == nil {
+			path.draw(canvas)
+		} else {
+			path.drawWithPaint(canvas, paint)
+		}
+	}
 }

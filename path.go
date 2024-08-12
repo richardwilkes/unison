@@ -10,15 +10,34 @@
 package unison
 
 import (
+	"fmt"
 	"runtime"
 
+	"github.com/lafriks/go-svg"
 	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/xmath/geom"
 	"github.com/richardwilkes/unison/enums/arcsize"
 	"github.com/richardwilkes/unison/enums/direction"
 	"github.com/richardwilkes/unison/enums/filltype"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
+	"github.com/richardwilkes/unison/enums/strokecap"
+	"github.com/richardwilkes/unison/enums/strokejoin"
 	"github.com/richardwilkes/unison/internal/skia"
 )
+
+var strokeCaps = map[svg.CapMode]strokecap.Enum{
+	svg.NilCap:    strokecap.Butt,
+	svg.ButtCap:   strokecap.Butt,
+	svg.SquareCap: strokecap.Square,
+	svg.RoundCap:  strokecap.Round,
+}
+
+var strokeJoins = map[svg.JoinMode]strokejoin.Enum{
+	svg.Round: strokejoin.Round,
+	svg.Bevel: strokejoin.Bevel,
+	svg.Miter: strokejoin.Miter,
+}
 
 // PathOpPair holds the combination of a Path and a PathOp.
 type PathOpPair struct {
@@ -28,7 +47,9 @@ type PathOpPair struct {
 
 // Path holds geometry.
 type Path struct {
-	path skia.Path
+	path        skia.Path
+	fillPaint   *Paint // if nil don't draw
+	strokePaint *Paint // if nil don't draw
 }
 
 func newPath(path skia.Path) *Path {
@@ -53,6 +74,133 @@ func NewPathFromSVGString(svg string) (*Path, error) {
 		return nil, errs.New("unable to parse SVG string into path")
 	}
 	return p, nil
+}
+
+func newPathFromSvgPath(svgPath svg.SvgPath) (*Path, error) {
+	p := &Path{}
+
+	p.createPath(svgPath)
+	if err := p.createFillPaint(svgPath); err != nil {
+		return nil, err
+	}
+	if err := p.createStrokePaint(svgPath); err != nil {
+		return nil, err
+	}
+
+	runtime.SetFinalizer(p, func(obj *Path) {
+		ReleaseOnUIThread(func() {
+			skia.PathDelete(obj.path)
+		})
+	})
+	return p, nil
+}
+
+// createPath creates a skia path from an svg.Path.
+//
+// The coordinates used in svg.Operation are of type fixed.Int26_6, which has a fractional
+// part of 6 bits. When converting to a float the values are divided by 64.
+func (p *Path) createPath(svgPath svg.SvgPath) {
+	p.path = skia.PathNew()
+
+	for _, op := range svgPath.Path {
+		switch op := op.(type) {
+		case svg.OpMoveTo:
+			p.MoveTo(float32(op.X)/64.0, float32(op.Y)/64.0)
+		case svg.OpLineTo:
+			p.LineTo(float32(op.X)/64.0, float32(op.Y)/64.0)
+		case svg.OpQuadTo:
+			p.QuadTo(
+				float32(op[0].X)/64.0, float32(op[0].Y)/64.0,
+				float32(op[1].X)/64.0, float32(op[1].Y)/64.0,
+			)
+		case svg.OpCubicTo:
+			p.CubicTo(
+				float32(op[0].X)/64.0, float32(op[0].Y)/64.0,
+				float32(op[1].X)/64.0, float32(op[1].Y)/64.0,
+				float32(op[2].X)/64.0, float32(op[2].Y)/64.0,
+			)
+		case svg.OpClose:
+			p.Close()
+		}
+	}
+
+	if svgPath.Style.Transform != svg.Identity {
+		p.Transform(
+			geom.Matrix[float32]{
+				ScaleX: float32(svgPath.Style.Transform.A),
+				SkewX:  float32(svgPath.Style.Transform.C),
+				TransX: float32(svgPath.Style.Transform.E),
+				SkewY:  float32(svgPath.Style.Transform.B),
+				ScaleY: float32(svgPath.Style.Transform.D),
+				TransY: float32(svgPath.Style.Transform.F),
+			})
+	}
+}
+
+func (p *Path) createFillPaint(svgPath svg.SvgPath) error {
+	if svgPath.Style.FillerColor == nil ||
+		svgPath.Style.FillOpacity == 0 {
+		return nil
+	}
+
+	p.fillPaint = NewPaint()
+	p.fillPaint.SetStyle(paintstyle.Fill)
+
+	if color, ok := svgPath.Style.FillerColor.(svg.PlainColor); ok {
+		alpha := float32(color.A) / 0xFF
+		alpha *= float32(svgPath.Style.FillOpacity)
+		p.fillPaint.SetColor(ARGB(alpha, int(color.R), int(color.G), int(color.B)))
+	} else {
+		return fmt.Errorf("unsupported path fill style %T", svgPath.Style.FillerColor)
+	}
+
+	return nil
+}
+
+func (p *Path) createStrokePaint(svgPath svg.SvgPath) error {
+	if svgPath.Style.LinerColor == nil ||
+		svgPath.Style.LineOpacity == 0 ||
+		svgPath.Style.LineWidth == 0 {
+		return nil
+	}
+
+	strokeCap, ok := strokeCaps[svgPath.Style.Join.TrailLineCap]
+	if !ok {
+		return fmt.Errorf("unsupported path stroke cap %s", svgPath.Style.Join.TrailLineCap)
+	}
+	strokeJoin, ok := strokeJoins[svgPath.Style.Join.LineJoin]
+	if !ok {
+		return fmt.Errorf("unsupported path stroke join %s", svgPath.Style.Join.LineJoin)
+	}
+
+	p.strokePaint = NewPaint()
+	p.strokePaint.SetStrokeCap(strokeCap)
+	p.strokePaint.SetStrokeJoin(strokeJoin)
+	p.strokePaint.SetStrokeWidth(float32(svgPath.Style.LineWidth))
+	p.strokePaint.SetStyle(paintstyle.Stroke)
+
+	if color, ok := svgPath.Style.LinerColor.(svg.PlainColor); ok {
+		alpha := float32(color.A) / 0xFF
+		alpha *= float32(svgPath.Style.LineOpacity)
+		p.strokePaint.SetColor(ARGB(alpha, int(color.R), int(color.G), int(color.B)))
+	} else {
+		return fmt.Errorf("unsupported path stroke style %T", svgPath.Style.LinerColor)
+	}
+
+	return nil
+}
+
+func (p *Path) draw(canvas *Canvas) {
+	if p.fillPaint != nil {
+		p.drawWithPaint(canvas, p.fillPaint)
+	}
+	if p.strokePaint != nil {
+		p.drawWithPaint(canvas, p.strokePaint)
+	}
+}
+
+func (p *Path) drawWithPaint(canvas *Canvas, paint *Paint) {
+	canvas.DrawPath(p, paint)
 }
 
 // ToSVGString returns an SVG string that represents this path.
