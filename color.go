@@ -12,6 +12,7 @@ package unison
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"math"
 	"strconv"
 	"strings"
@@ -51,6 +52,11 @@ func ARGB(alpha float32, red, green, blue int) Color {
 func ARGBfloat(alpha, red, green, blue float32) Color {
 	return Color(clamp0To1AndScale255(alpha)<<24 | clamp0To1AndScale255(red)<<16 | clamp0To1AndScale255(green)<<8 |
 		clamp0To1AndScale255(blue))
+}
+
+// ColorFromNRGBA creates a new Color from a color.NRGBA value.
+func ColorFromNRGBA(c color.NRGBA) Color {
+	return Color(uint32(c.A)<<24 | uint32(c.R)<<16 | uint32(c.G)<<8 | uint32(c.B))
 }
 
 // HSB creates a new opaque Color from HSB (Hue, Saturation, Brightness) values in the range 0-1.
