@@ -11,6 +11,7 @@ package unison
 
 import (
 	"fmt"
+	"image/color"
 	"runtime"
 
 	"github.com/lafriks/go-svg"
@@ -146,10 +147,9 @@ func (p *Path) createFillPaint(svgPath svg.SvgPath) error {
 	p.fillPaint = NewPaint()
 	p.fillPaint.SetStyle(paintstyle.Fill)
 
-	if color, ok := svgPath.Style.FillerColor.(svg.PlainColor); ok {
-		alpha := float32(color.A) / 0xFF
-		alpha *= float32(svgPath.Style.FillOpacity)
-		p.fillPaint.SetColor(ARGB(alpha, int(color.R), int(color.G), int(color.B)))
+	if col, ok := svgPath.Style.FillerColor.(svg.PlainColor); ok {
+		alpha := uint8(float64(col.A) * svgPath.Style.FillOpacity)
+		p.fillPaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: col.R, G: col.G, B: col.B}))
 	} else {
 		return fmt.Errorf("unsupported path fill style %T", svgPath.Style.FillerColor)
 	}
@@ -179,10 +179,9 @@ func (p *Path) createStrokePaint(svgPath svg.SvgPath) error {
 	p.strokePaint.SetStrokeWidth(float32(svgPath.Style.LineWidth))
 	p.strokePaint.SetStyle(paintstyle.Stroke)
 
-	if color, ok := svgPath.Style.LinerColor.(svg.PlainColor); ok {
-		alpha := float32(color.A) / 0xFF
-		alpha *= float32(svgPath.Style.LineOpacity)
-		p.strokePaint.SetColor(ARGB(alpha, int(color.R), int(color.G), int(color.B)))
+	if col, ok := svgPath.Style.LinerColor.(svg.PlainColor); ok {
+		alpha := uint8(float64(col.A) * svgPath.Style.FillOpacity)
+		p.strokePaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: col.R, G: col.G, B: col.B}))
 	} else {
 		return fmt.Errorf("unsupported path stroke style %T", svgPath.Style.LinerColor)
 	}
