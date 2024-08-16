@@ -51,8 +51,8 @@ type tableHitRect struct {
 var DefaultTableTheme = TableTheme{
 	BackgroundInk:          ThemeBelowSurface,
 	OnBackgroundInk:        ThemeOnBelowSurface,
-	BandingInk:             ThemeSurface,
-	OnBandingInk:           ThemeOnSurface,
+	BandingInk:             ThemeBanding,
+	OnBandingInk:           ThemeOnBanding,
 	InteriorDividerInk:     ThemeAboveSurface,
 	SelectionInk:           ThemeFocus,
 	OnSelectionInk:         ThemeOnFocus,
