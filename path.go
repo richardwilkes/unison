@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"fmt"
 	"image/color"
 	"runtime"
 
@@ -48,9 +47,10 @@ type PathOpPair struct {
 
 // Path holds geometry.
 type Path struct {
-	path        skia.Path
-	fillPaint   *Paint // if nil don't draw
-	strokePaint *Paint // if nil don't draw
+	path              skia.Path
+	fillPaint         *Paint // if nil don't draw
+	strokePaint       *Paint // if nil don't draw
+	ignoreUnsupported bool
 }
 
 func newPath(path skia.Path) *Path {
@@ -77,8 +77,8 @@ func NewPathFromSVGString(svg string) (*Path, error) {
 	return p, nil
 }
 
-func newPathFromSvgPath(svgPath svg.SvgPath) (*Path, error) {
-	p := &Path{}
+func newPathFromSvgPath(svgPath svg.SvgPath, ignoreUnsupported bool) (*Path, error) {
+	p := &Path{ignoreUnsupported: ignoreUnsupported}
 
 	p.createPath(svgPath)
 	if err := p.createFillPaint(svgPath); err != nil {
@@ -151,7 +151,11 @@ func (p *Path) createFillPaint(svgPath svg.SvgPath) error {
 		alpha := uint8(float64(col.A) * svgPath.Style.FillOpacity)
 		p.fillPaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: col.R, G: col.G, B: col.B}))
 	} else {
-		return fmt.Errorf("unsupported path fill style %T", svgPath.Style.FillerColor)
+		if p.ignoreUnsupported {
+			p.fillPaint.SetColor(Black)
+		} else {
+			return errs.Newf("unsupported path fill style %T", svgPath.Style.FillerColor)
+		}
 	}
 
 	return nil
@@ -166,11 +170,19 @@ func (p *Path) createStrokePaint(svgPath svg.SvgPath) error {
 
 	strokeCap, ok := strokeCaps[svgPath.Style.Join.TrailLineCap]
 	if !ok {
-		return fmt.Errorf("unsupported path stroke cap %s", svgPath.Style.Join.TrailLineCap)
+		if p.ignoreUnsupported {
+			strokeCap = strokecap.Butt
+		} else {
+			return errs.Newf("unsupported path stroke cap %s", svgPath.Style.Join.TrailLineCap)
+		}
 	}
 	strokeJoin, ok := strokeJoins[svgPath.Style.Join.LineJoin]
 	if !ok {
-		return fmt.Errorf("unsupported path stroke join %s", svgPath.Style.Join.LineJoin)
+		if p.ignoreUnsupported {
+			strokeJoin = strokejoin.Round
+		} else {
+			return errs.Newf("unsupported path stroke join %s", svgPath.Style.Join.LineJoin)
+		}
 	}
 
 	p.strokePaint = NewPaint()
@@ -183,7 +195,11 @@ func (p *Path) createStrokePaint(svgPath svg.SvgPath) error {
 		alpha := uint8(float64(col.A) * svgPath.Style.FillOpacity)
 		p.strokePaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: col.R, G: col.G, B: col.B}))
 	} else {
-		return fmt.Errorf("unsupported path stroke style %T", svgPath.Style.LinerColor)
+		if p.ignoreUnsupported {
+			p.fillPaint.SetColor(Black)
+		} else {
+			return errs.Newf("unsupported path stroke style %T", svgPath.Style.LinerColor)
+		}
 	}
 
 	return nil

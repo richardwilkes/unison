@@ -93,15 +93,24 @@ type SVG struct {
 	scaledCombinedPaths map[Size]*Path
 	size                Size
 	parseErrorMode      svg.ErrorMode
+	ignoreUnsupported   bool
 }
 
-// SVGOption is an option that make be passed to SVG construction functions.
+// SVGOption is an option that may be passed to SVG construction functions.
 type SVGOption func(s *SVG)
 
 // SVGOptionIgnoreParseErrors is an option that will ignore some errors when parsing an SVG.
 // If the XML is not well formed an error will still be generated.
 func SVGOptionIgnoreParseErrors(s *SVG) {
 	s.parseErrorMode = svg.IgnoreErrorMode
+}
+
+// SVGOptionIgnoreUnsupported is an option that will ignore unsupported SVG features that might be encountered
+// in a SVG.
+//
+// If this option is not present, then unsupported features will result in an error when constructing the SVG.
+func SVGOptionIgnoreUnsupported(s *SVG) {
+	s.ignoreUnsupported = true
 }
 
 // MustSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"
@@ -176,7 +185,7 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 	}
 
 	for i, path := range svg.SvgPaths {
-		p, err := newPathFromSvgPath(path)
+		p, err := newPathFromSvgPath(path, s.ignoreUnsupported)
 		if err != nil {
 			return nil, err
 		}
