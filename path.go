@@ -188,6 +188,7 @@ func (p *Path) createStrokePaint(svgPath svg.SvgPath) error {
 	p.strokePaint = NewPaint()
 	p.strokePaint.SetStrokeCap(strokeCap)
 	p.strokePaint.SetStrokeJoin(strokeJoin)
+	p.strokePaint.SetStrokeMiter(float32(svgPath.Style.Join.MiterLimit))
 	p.strokePaint.SetStrokeWidth(float32(svgPath.Style.LineWidth))
 	p.strokePaint.SetStyle(paintstyle.Stroke)
 
