@@ -245,9 +245,14 @@ func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, 
 
 	for _, path := range s.SVG.paths {
 		if paint == nil {
-			path.draw(canvas)
+			if path.fillPaint != nil {
+				canvas.DrawPath(path, path.fillPaint)
+			}
+			if path.strokePaint != nil {
+				canvas.DrawPath(path, path.strokePaint)
+			}
 		} else {
-			path.drawWithPaint(canvas, paint)
+			canvas.DrawPath(path, paint)
 		}
 	}
 }

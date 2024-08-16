@@ -189,19 +189,6 @@ func (p *Path) createStrokePaint(svgPath svg.SvgPath) error {
 	return nil
 }
 
-func (p *Path) draw(canvas *Canvas) {
-	if p.fillPaint != nil {
-		p.drawWithPaint(canvas, p.fillPaint)
-	}
-	if p.strokePaint != nil {
-		p.drawWithPaint(canvas, p.strokePaint)
-	}
-}
-
-func (p *Path) drawWithPaint(canvas *Canvas, paint *Paint) {
-	canvas.DrawPath(p, paint)
-}
-
 // ToSVGString returns an SVG string that represents this path.
 func (p *Path) ToSVGString(useAbsoluteValues bool) string {
 	ss := skia.PathToSVGString(p.path, useAbsoluteValues)
