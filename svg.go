@@ -201,6 +201,9 @@ func (s *SVG) OffsetToCenterWithinScaledSize(size Size) Point {
 }
 
 // PathScaledTo returns the path with the specified scaling. You should not modify this path, as it is cached.
+//
+// Deprecated: PathScaledTo and PathForSize are used for drawing a scaled SVG.
+// This can be achieved with DrawableSVG#DrawInRect.
 func (s *SVG) PathScaledTo(scale float32) *Path {
 	if scale == 1 {
 		return s.CombinedPath()
@@ -215,6 +218,9 @@ func (s *SVG) PathScaledTo(scale float32) *Path {
 }
 
 // PathForSize returns the path scaled to fit in the specified size. You should not modify this path, as it is cached.
+//
+// Deprecated: PathForSize and PathScaledTo are used for drawing a scaled SVG.
+// This can be achieved with DrawableSVG#DrawInRect.
 func (s *SVG) PathForSize(size Size) *Path {
 	return s.PathScaledTo(min(size.Width/s.size.Width, size.Height/s.size.Height))
 }
