@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/lafriks/go-svg"
+	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/fatal"
 )
 
@@ -91,6 +92,16 @@ type SVG struct {
 	combinedPath        *Path
 	scaledCombinedPaths map[Size]*Path
 	size                Size
+	parseErrorMode      svg.ErrorMode
+}
+
+// SVGOption is an option that make be passed to SVG construction functions.
+type SVGOption func(s *SVG)
+
+// SVGOptionIgnoreParseErrors is an option that will ignore some errors when parsing an SVG.
+// If the XML is not well formed an error will still be generated.
+func SVGOptionIgnoreParseErrors(s *SVG) {
+	s.parseErrorMode = svg.IgnoreErrorMode
 }
 
 // MustSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"
@@ -119,8 +130,8 @@ func NewSVG(size Size, svg string) (*SVG, error) {
 // MustSVGFromContentString creates a new SVG and panics if an error would be generated. The content should contain
 // valid SVG file data. Note that this only reads a very small subset of an SVG currently. Specifically, the "viewBox"
 // attribute and any "d" attributes from enclosed SVG "path" elements.
-func MustSVGFromContentString(content string) *SVG {
-	s, err := NewSVGFromContentString(content)
+func MustSVGFromContentString(content string, options ...SVGOption) *SVG {
+	s, err := NewSVGFromContentString(content, options...)
 	fatal.IfErr(err)
 	return s
 }
@@ -128,15 +139,15 @@ func MustSVGFromContentString(content string) *SVG {
 // NewSVGFromContentString creates a new SVG. The content should contain valid SVG file data. Note that this only reads
 // a very small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed
 // SVG "path" elements.
-func NewSVGFromContentString(content string) (*SVG, error) {
-	return NewSVGFromReader(strings.NewReader(content))
+func NewSVGFromContentString(content string, options ...SVGOption) (*SVG, error) {
+	return NewSVGFromReader(strings.NewReader(content), options...)
 }
 
 // MustSVGFromReader creates a new SVG and panics if an error would be generated. The reader should contain valid SVG
 // file data. Note that this only reads a very small subset of an SVG currently. Specifically, the "viewBox" attribute
 // and any "d" attributes from enclosed SVG "path" elements.
-func MustSVGFromReader(r io.Reader) *SVG {
-	s, err := NewSVGFromReader(r)
+func MustSVGFromReader(r io.Reader, options ...SVGOption) *SVG {
+	s, err := NewSVGFromReader(r, options...)
 	fatal.IfErr(err)
 	return s
 }
@@ -144,19 +155,24 @@ func MustSVGFromReader(r io.Reader) *SVG {
 // NewSVGFromReader creates a new SVG. The reader should contain valid SVG file data. Note that this only reads a very
 // small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed SVG
 // "path" elements.
-func NewSVGFromReader(r io.Reader) (*SVG, error) {
-	svg, err := svg.Parse(r, svg.StrictErrorMode)
-	if err != nil {
-		return nil, err
+func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
+	s := &SVG{
+		parseErrorMode: svg.StrictErrorMode,
+	}
+	for _, option := range options {
+		option(s)
 	}
 
-	s := &SVG{
-		paths:               make([]*Path, len(svg.SvgPaths)),
-		scaledCombinedPaths: make(map[Size]*Path),
-		size: Size{
-			Width:  float32(svg.ViewBox.W),
-			Height: float32(svg.ViewBox.H),
-		},
+	svg, err := svg.Parse(r, s.parseErrorMode)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
+	s.paths = make([]*Path, len(svg.SvgPaths))
+	s.scaledCombinedPaths = make(map[Size]*Path)
+	s.size = Size{
+		Width:  float32(svg.ViewBox.W),
+		Height: float32(svg.ViewBox.H),
 	}
 
 	for i, path := range svg.SvgPaths {
