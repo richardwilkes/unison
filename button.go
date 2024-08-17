@@ -29,7 +29,7 @@ var DefaultButtonTheme = ButtonTheme{
 	EdgeInk:             ThemeSurfaceEdge,
 	SelectionInk:        ThemeFocus,
 	OnSelectionInk:      ThemeOnFocus,
-	Gap:                 3,
+	Gap:                 StdIconGap,
 	CornerRadius:        4,
 	HMargin:             8,
 	VMargin:             1,

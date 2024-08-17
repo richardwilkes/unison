@@ -31,7 +31,7 @@ var DefaultRadioButtonTheme = RadioButtonTheme{
 	EdgeInk:            ThemeSurfaceEdge,
 	SelectionInk:       ThemeFocus,
 	OnSelectionInk:     ThemeOnFocus,
-	Gap:                3,
+	Gap:                StdIconGap,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
 	HAlign:             align.Middle,

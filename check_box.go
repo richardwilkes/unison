@@ -31,7 +31,7 @@ var DefaultCheckBoxTheme = CheckBoxTheme{
 	OnSelectionInk:     ThemeOnFocus,
 	ControlInk:         ThemeAboveSurface,
 	OnControlInk:       ThemeOnAboveSurface,
-	Gap:                3,
+	Gap:                StdIconGap,
 	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
 	HAlign:             align.Start,

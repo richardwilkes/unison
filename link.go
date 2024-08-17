@@ -24,7 +24,7 @@ var DefaultLinkTheme = LinkTheme{
 			OnBackgroundInk: ThemeFocus,
 			Underline:       true,
 		},
-		Gap:    3,
+		Gap:    StdIconGap,
 		HAlign: align.Start,
 		VAlign: align.Middle,
 		Side:   side.Left,

@@ -25,7 +25,7 @@ var DefaultLabelTheme = LabelTheme{
 		Font:            LabelFont,
 		OnBackgroundInk: ThemeOnSurface,
 	},
-	Gap:    3,
+	Gap:    StdIconGap,
 	HAlign: align.Start,
 	VAlign: align.Middle,
 	Side:   side.Left,

@@ -23,6 +23,7 @@ const (
 	NewTableWindowActionID
 	NewDockWindowActionID
 	NewMarkdownWindowActionID
+	NewSVGWindowActionID
 	ShowColorsWindowActionID
 	OpenActionID
 )
@@ -36,6 +37,8 @@ var (
 	NewDockWindowAction *unison.Action
 	// NewMarkdownWindowAction opens a new demo markdown window when triggered.
 	NewMarkdownWindowAction *unison.Action
+	// NewSVGWindowAction opens a new demo SVG window when triggered.
+	NewSVGWindowAction *unison.Action
 	// ShowColorsWindowAction opens a demo colors window when triggered.
 	ShowColorsWindowAction *unison.Action
 	// OpenAction presents a file open dialog and then prints any selected files onto the console.
@@ -82,6 +85,17 @@ func init() {
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyK, Modifiers: unison.ShiftModifier | unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
 			if _, err := NewDemoMarkdownWindow(initialWindowLocation()); err != nil {
+				errs.Log(err)
+			}
+		},
+	}
+
+	NewSVGWindowAction = &unison.Action{
+		ID:         NewSVGWindowActionID,
+		Title:      "New Demo SVG Window",
+		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyS, Modifiers: unison.OSMenuCmdModifier()},
+		ExecuteCallback: func(_ *unison.Action, _ any) {
+			if _, err := NewDemoSVGWindow(initialWindowLocation()); err != nil {
 				errs.Log(err)
 			}
 		},

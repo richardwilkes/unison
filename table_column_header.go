@@ -29,7 +29,7 @@ var DefaultTableColumnHeaderTheme = LabelTheme{
 		Font:            LabelFont,
 		OnBackgroundInk: ThemeOnSurface,
 	},
-	Gap:    3,
+	Gap:    StdIconGap,
 	HAlign: align.Middle,
 	VAlign: align.Middle,
 	Side:   side.Left,

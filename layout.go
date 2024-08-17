@@ -19,6 +19,8 @@ const (
 	StdHSpacing = 8
 	// StdVSpacing is the typical spacing between rows.
 	StdVSpacing = 4
+	// StdIconGap is the typical gap between an icon and text.
+	StdIconGap = 4
 )
 
 // Sizer returns minimum, preferred, and maximum sizes. The hint will contain

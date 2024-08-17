@@ -291,7 +291,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 						canvas.Rotate(90)
 						canvas.Translate(-offset, -offset)
 					}
-					canvas.DrawPath(CircledChevronRightSVG.PathForSize(dSize),
+					CircledChevronRightSVG.DrawInRect(canvas, Rect{Size: dSize}, nil,
 						fg.Paint(canvas, cellRect, paintstyle.Fill))
 					canvas.Restore()
 				}

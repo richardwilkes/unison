@@ -11,12 +11,17 @@ package unison
 
 import (
 	_ "embed"
+	"image/color"
 	"io"
 	"strings"
 
 	"github.com/lafriks/go-svg"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/fatal"
+	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/strokecap"
+	"github.com/richardwilkes/unison/enums/strokejoin"
 )
 
 var _ Drawable = &DrawableSVG{}
@@ -80,6 +85,19 @@ var (
 	WindowRestoreSVG = MustSVGFromContentString(windowRestoreSVG)
 )
 
+var strokeCaps = map[svg.CapMode]strokecap.Enum{
+	svg.NilCap:    strokecap.Butt,
+	svg.ButtCap:   strokecap.Butt,
+	svg.SquareCap: strokecap.Square,
+	svg.RoundCap:  strokecap.Round,
+}
+
+var strokeJoins = map[svg.JoinMode]strokejoin.Enum{
+	svg.Round: strokejoin.Round,
+	svg.Bevel: strokejoin.Bevel,
+	svg.Miter: strokejoin.Miter,
+}
+
 // DrawableSVG makes an SVG conform to the Drawable interface.
 type DrawableSVG struct {
 	SVG  *SVG
@@ -88,34 +106,58 @@ type DrawableSVG struct {
 
 // SVG holds an SVG.
 type SVG struct {
-	paths               []*Path
-	combinedPath        *Path
-	scaledCombinedPaths map[Size]*Path
-	size                Size
-	parseErrorMode      svg.ErrorMode
-	ignoreUnsupported   bool
+	paths []*svgPath
+	size  Size
+}
+
+type svgPath struct {
+	*Path
+	fillPaint   *Paint
+	strokePaint *Paint
 }
 
 // SVGOption is an option that may be passed to SVG construction functions.
-type SVGOption func(s *SVG)
+type SVGOption func(s *svgOptions) error
+
+type svgOptions struct {
+	parseErrorMode    svg.ErrorMode
+	ignoreUnsupported bool
+}
 
 // SVGOptionIgnoreParseErrors is an option that will ignore some errors when parsing an SVG.
 // If the XML is not well formed an error will still be generated.
-func SVGOptionIgnoreParseErrors(s *SVG) {
-	s.parseErrorMode = svg.IgnoreErrorMode
+func SVGOptionIgnoreParseErrors() SVGOption {
+	return func(opts *svgOptions) error {
+		opts.parseErrorMode = svg.IgnoreErrorMode
+		return nil
+	}
+}
+
+// SVGOptionWarnParseErrors is an option that will issue warnings to the log for some errors when parsing an SVG.
+// If the XML is not well formed an error will still be generated.
+func SVGOptionWarnParseErrors() SVGOption {
+	return func(opts *svgOptions) error {
+		opts.parseErrorMode = svg.WarnErrorMode
+		return nil
+	}
 }
 
 // SVGOptionIgnoreUnsupported is an option that will ignore unsupported SVG features that might be encountered
-// in a SVG.
+// in an SVG.
 //
 // If this option is not present, then unsupported features will result in an error when constructing the SVG.
-func SVGOptionIgnoreUnsupported(s *SVG) {
-	s.ignoreUnsupported = true
+func SVGOptionIgnoreUnsupported() SVGOption {
+	return func(opts *svgOptions) error {
+		opts.ignoreUnsupported = true
+		return nil
+	}
 }
 
 // MustSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"
 // element) and panics if an error would be generated. The 'size' should be gotten from the original SVG's 'viewBox'
 // parameter.
+//
+// Note: It is probably better to use one of the other Must... methods that take the full SVG content.
 func MustSVG(size Size, svg string) *SVG {
 	s, err := NewSVG(size, svg)
 	fatal.IfErr(err)
@@ -124,15 +166,16 @@ func MustSVG(size Size, svg string) *SVG {
 
 // NewSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"
 // element). The 'size' should be gotten from the original SVG's 'viewBox' parameter.
+//
+// Note: It is probably better to use one of the other New... methods that take the full SVG content.
 func NewSVG(size Size, svg string) (*SVG, error) {
 	path, err := NewPathFromSVGString(svg)
 	if err != nil {
 		return nil, err
 	}
 	return &SVG{
-		size:                size,
-		paths:               []*Path{path},
-		scaledCombinedPaths: make(map[Size]*Path),
+		paths: []*svgPath{{Path: path}},
+		size:  size,
 	}, nil
 }
 
@@ -165,57 +208,111 @@ func MustSVGFromReader(r io.Reader, options ...SVGOption) *SVG {
 // small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed SVG
 // "path" elements.
 func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
-	s := &SVG{
-		parseErrorMode: svg.StrictErrorMode,
-	}
+	s := &SVG{}
+	opts := svgOptions{parseErrorMode: svg.StrictErrorMode}
 	for _, option := range options {
-		option(s)
+		if err := option(&opts); err != nil {
+			return nil, err
+		}
 	}
 
-	svg, err := svg.Parse(r, s.parseErrorMode)
+	sData, err := svg.Parse(r, opts.parseErrorMode)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
-	s.paths = make([]*Path, len(svg.SvgPaths))
-	s.scaledCombinedPaths = make(map[Size]*Path)
-	s.size = Size{
-		Width:  float32(svg.ViewBox.W),
-		Height: float32(svg.ViewBox.H),
-	}
-
-	for i, path := range svg.SvgPaths {
-		p, err := newPathFromSvgPath(path, s.ignoreUnsupported)
-		if err != nil {
-			return nil, err
+	s.size = NewSize(float32(sData.ViewBox.W), float32(sData.ViewBox.H))
+	s.paths = make([]*svgPath, len(sData.SvgPaths))
+	for i, path := range sData.SvgPaths {
+		p := NewPath()
+		for _, op := range path.Path {
+			// The coordinates used in svg.Operation are of type fixed.Int26_6, which has a fractional part of 6 bits.
+			// When converting to a float, the values are divided by 64.
+			switch op := op.(type) {
+			case svg.OpMoveTo:
+				p.MoveTo(float32(op.X)/64, float32(op.Y)/64)
+			case svg.OpLineTo:
+				p.LineTo(float32(op.X)/64, float32(op.Y)/64)
+			case svg.OpQuadTo:
+				p.QuadTo(
+					float32(op[0].X)/64, float32(op[0].Y)/64,
+					float32(op[1].X)/64, float32(op[1].Y)/64,
+				)
+			case svg.OpCubicTo:
+				p.CubicTo(
+					float32(op[0].X)/64, float32(op[0].Y)/64,
+					float32(op[1].X)/64, float32(op[1].Y)/64,
+					float32(op[2].X)/64, float32(op[2].Y)/64,
+				)
+			case svg.OpClose:
+				p.Close()
+			}
 		}
-		s.paths[i] = p
-	}
 
+		if path.Style.Transform != svg.Identity {
+			p.Transform(geom.Matrix[float32]{
+				ScaleX: float32(path.Style.Transform.A),
+				SkewX:  float32(path.Style.Transform.C),
+				TransX: float32(path.Style.Transform.E),
+				SkewY:  float32(path.Style.Transform.B),
+				ScaleY: float32(path.Style.Transform.D),
+				TransY: float32(path.Style.Transform.F),
+			})
+		}
+		sp := &svgPath{Path: p}
+
+		if path.Style.FillerColor != nil && path.Style.FillOpacity != 0 {
+			sp.fillPaint = NewPaint()
+			sp.fillPaint.SetStyle(paintstyle.Fill)
+			if c, ok := path.Style.FillerColor.(svg.PlainColor); ok {
+				alpha := uint8(float64(c.A) * path.Style.FillOpacity)
+				sp.fillPaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: c.R, G: c.G, B: c.B}))
+			} else if opts.ignoreUnsupported {
+				sp.fillPaint.SetColor(Black)
+			} else {
+				return nil, errs.Newf("unsupported path fill style %T", path.Style.FillerColor)
+			}
+		}
+
+		if path.Style.LinerColor != nil && path.Style.LineOpacity != 0 && path.Style.LineWidth != 0 {
+			sp.strokePaint = NewPaint()
+			if strokeCap, ok := strokeCaps[path.Style.Join.TrailLineCap]; !ok {
+				if !opts.ignoreUnsupported {
+					return nil, errs.Newf("unsupported path stroke cap %s", path.Style.Join.TrailLineCap)
+				}
+				sp.strokePaint.SetStrokeCap(strokecap.Butt)
+			} else {
+				sp.strokePaint.SetStrokeCap(strokeCap)
+			}
+			if strokeJoin, ok := strokeJoins[path.Style.Join.LineJoin]; !ok {
+				if !opts.ignoreUnsupported {
+					return nil, errs.Newf("unsupported path stroke join %s", path.Style.Join.LineJoin)
+				}
+				sp.strokePaint.SetStrokeJoin(strokejoin.Round)
+			} else {
+				sp.strokePaint.SetStrokeJoin(strokeJoin)
+			}
+			sp.strokePaint.SetStrokeMiter(float32(path.Style.Join.MiterLimit))
+			sp.strokePaint.SetStrokeWidth(float32(path.Style.LineWidth))
+			sp.strokePaint.SetStyle(paintstyle.Stroke)
+			if c, ok := path.Style.LinerColor.(svg.PlainColor); ok {
+				alpha := uint8(float64(c.A) * path.Style.FillOpacity)
+				sp.strokePaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: c.R, G: c.G, B: c.B}))
+			} else if opts.ignoreUnsupported {
+				sp.fillPaint.SetColor(Black)
+			} else {
+				return nil, errs.Newf("unsupported path stroke style %T", path.Style.LinerColor)
+			}
+		}
+
+		s.paths[i] = sp
+	}
 	return s, nil
 }
 
 // Size returns the original size.
 func (s *SVG) Size() Size {
 	return s.size
-}
-
-// CombinedPath combines all paths for an SVG in to a single path,
-// by extending the first path will all of the other paths.
-// The combined path will have the fill and stroke attributes of the first path.
-func (s *SVG) CombinedPath() *Path {
-	// Lazily create the combined path.
-	if s.combinedPath == nil {
-		for _, path := range s.paths {
-			if s.combinedPath == nil {
-				s.combinedPath = path.Clone()
-			} else {
-				s.combinedPath.Path(path, false)
-			}
-		}
-	}
-
-	return s.combinedPath
 }
 
 // OffsetToCenterWithinScaledSize returns the scaled offset values to use to keep the image centered within the given
@@ -225,34 +322,32 @@ func (s *SVG) OffsetToCenterWithinScaledSize(size Size) Point {
 	return Point{X: (size.Width - s.size.Width*scale) / 2, Y: (size.Height - s.size.Height*scale) / 2}
 }
 
-// PathScaledTo returns the path with the specified scaling. You should not modify this path, as it is cached.
-//
-// Deprecated: PathScaledTo and PathForSize are used for drawing a scaled SVG.
-// This can be achieved with DrawableSVG#DrawInRect.
-func (s *SVG) PathScaledTo(scale float32) *Path {
-	if scale == 1 {
-		return s.CombinedPath()
-	}
-	scaledSize := Size{Width: scale, Height: scale}
-	p, ok := s.scaledCombinedPaths[scaledSize]
-	if !ok {
-		p = s.CombinedPath().NewScaled(scale, scale)
-		s.scaledCombinedPaths[scaledSize] = p
-	}
-	return p
-}
-
-// PathForSize returns the path scaled to fit in the specified size. You should not modify this path, as it is cached.
-//
-// Deprecated: PathForSize and PathScaledTo are used for drawing a scaled SVG.
-// This can be achieved with DrawableSVG#DrawInRect.
-func (s *SVG) PathForSize(size Size) *Path {
-	return s.PathScaledTo(min(size.Width/s.size.Width, size.Height/s.size.Height))
-}
-
 // AspectRatio returns the SVG's width to height ratio.
 func (s *SVG) AspectRatio() float32 {
 	return s.size.Width / s.size.Height
+}
+
+// DrawInRect draws this SVG resized to fit in the given rectangle. If paint is not nil, the SVG paths will be drawn
+// with the provided paint, ignoring any fill or stroke attributes within the source SVG. Be sure to set the Paint's
+// style (fill or stroke) as desired.
+func (s *SVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, paint *Paint) {
+	canvas.Save()
+	defer canvas.Restore()
+	offset := s.OffsetToCenterWithinScaledSize(rect.Size)
+	canvas.Translate(rect.X+offset.X, rect.Y+offset.Y)
+	canvas.Scale(rect.Width/s.size.Width, rect.Height/s.size.Height)
+	for _, path := range s.paths {
+		if paint == nil {
+			if path.fillPaint != nil {
+				canvas.DrawPath(path.Path, path.fillPaint)
+			}
+			if path.strokePaint != nil {
+				canvas.DrawPath(path.Path, path.strokePaint)
+			}
+		} else {
+			canvas.DrawPath(path.Path, paint)
+		}
+	}
 }
 
 // LogicalSize implements the Drawable interface.
@@ -262,28 +357,8 @@ func (s *DrawableSVG) LogicalSize() Size {
 
 // DrawInRect implements the Drawable interface.
 //
-// If paint is not nil the SVG paths will be drawn with the provided paint.
-// Be sure to set the Paint's style (fill or stroke) as desired.
-// Any fill or stroke attributes in the SVG source will be ignored.
-// This is for backwards compatabality with an earlier SVG implementation.
-func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, paint *Paint) {
-	canvas.Save()
-	defer canvas.Restore()
-
-	offset := s.SVG.OffsetToCenterWithinScaledSize(rect.Size)
-	canvas.Translate(rect.X+offset.X, rect.Y+offset.Y)
-	canvas.Scale(rect.Width/s.SVG.size.Width, rect.Height/s.SVG.size.Height)
-
-	for _, path := range s.SVG.paths {
-		if paint == nil {
-			if path.fillPaint != nil {
-				canvas.DrawPath(path, path.fillPaint)
-			}
-			if path.strokePaint != nil {
-				canvas.DrawPath(path, path.strokePaint)
-			}
-		} else {
-			canvas.DrawPath(path, paint)
-		}
-	}
+// If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
+// within the source SVG. Be sure to set the Paint's style (fill or stroke) as desired.
+func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, opts *SamplingOptions, paint *Paint) {
+	s.SVG.DrawInRect(canvas, rect, opts, paint)
 }

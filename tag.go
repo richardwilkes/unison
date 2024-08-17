@@ -29,7 +29,7 @@ var DefaultTagTheme = TagTheme{
 		BackgroundInk:   ThemeOnSurface,
 		OnBackgroundInk: ThemeSurface,
 	},
-	Gap:       3,
+	Gap:       StdIconGap,
 	SideInset: 3,
 	RadiusX:   6,
 	RadiusY:   6,
