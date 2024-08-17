@@ -30,6 +30,7 @@ type themedColor struct {
 func init() {
 	currentColors = []*themedColor{
 		{Title: "Surface", Color: unison.ThemeSurface},
+		{Title: "Banding", Color: unison.ThemeBanding},
 		{Title: "Focus", Color: unison.ThemeFocus},
 		{Title: "Tooltip", Color: unison.ThemeTooltip},
 		{Title: "Error", Color: unison.ThemeError},

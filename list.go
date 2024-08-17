@@ -23,8 +23,8 @@ import (
 var DefaultListTheme = ListTheme{
 	BackgroundInk:          ThemeBelowSurface,
 	OnBackgroundInk:        ThemeOnBelowSurface,
-	BandingInk:             ThemeSurface,
-	OnBandingInk:           ThemeOnSurface,
+	BandingInk:             ThemeBanding,
+	OnBandingInk:           ThemeOnBanding,
 	SelectionInk:           ThemeFocus,
 	OnSelectionInk:         ThemeOnFocus,
 	InactiveSelectionInk:   ThemeDeepFocus,

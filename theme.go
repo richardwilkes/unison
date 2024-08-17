@@ -21,6 +21,7 @@ var (
 // The theme colors used throughout Unison.
 var (
 	ThemeSurface = DefaultThemeSurface()
+	ThemeBanding = DefaultThemeBanding()
 	ThemeFocus   = DefaultThemeFocus()
 	ThemeTooltip = DefaultThemeTooltip()
 	ThemeError   = DefaultThemeError()
@@ -42,6 +43,7 @@ var (
 	ThemeOnAboveSurface     = ThemeAboveSurface.DeriveOn()
 	ThemeOnBelowSurface     = ThemeBelowSurface.DeriveOn()
 	ThemeOnDeepBelowSurface = ThemeDeepBelowSurface.DeriveOn()
+	ThemeOnBanding          = ThemeBanding.DeriveOn()
 	ThemeOnFocus            = ThemeFocus.DeriveOn()
 	ThemeOnDeepFocus        = ThemeDeepFocus.DeriveOn()
 	ThemeOnDeeperFocus      = ThemeDeeperFocus.DeriveOn()
@@ -54,6 +56,11 @@ var (
 // DefaultThemeSurface returns the default surface color.
 func DefaultThemeSurface() *ThemeColor {
 	return &ThemeColor{Light: RGB(232, 232, 232), Dark: RGB(40, 40, 40)}
+}
+
+// DefaultThemeBanding returns the default banding color.
+func DefaultThemeBanding() *ThemeColor {
+	return &ThemeColor{Light: RGB(232, 232, 216), Dark: RGB(40, 40, 24)}
 }
 
 // DefaultThemeFocus returns the default focus color.
