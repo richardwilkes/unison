@@ -350,6 +350,20 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, paint *P
 	}
 }
 
+// DrawInRectPreservingAspectRatio draws this SVG resized to fit in the given rectangle, preserving the aspect ratio.
+// If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
+// within the source SVG. Be sure to set the Paint's style (fill or stroke) as desired.
+func (s *SVG) DrawInRectPreservingAspectRatio(canvas *Canvas, rect Rect, opts *SamplingOptions, paint *Paint) {
+	ratio := s.AspectRatio()
+	w := rect.Width
+	h := w / ratio
+	if h > rect.Height {
+		h = rect.Height
+		w = h * ratio
+	}
+	s.DrawInRect(canvas, NewRect(rect.X+(rect.Width-w)/2, rect.Y+(rect.Height-h)/2, w, h), opts, paint)
+}
+
 // LogicalSize implements the Drawable interface.
 func (s *DrawableSVG) LogicalSize() Size {
 	return s.Size
@@ -360,5 +374,5 @@ func (s *DrawableSVG) LogicalSize() Size {
 // If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
 // within the source SVG. Be sure to set the Paint's style (fill or stroke) as desired.
 func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, opts *SamplingOptions, paint *Paint) {
-	s.SVG.DrawInRect(canvas, rect, opts, paint)
+	s.SVG.DrawInRectPreservingAspectRatio(canvas, rect, opts, paint)
 }
