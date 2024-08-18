@@ -218,10 +218,16 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	face := decoration.Font.Face()
 	glyphs := decoration.Font.RunesToGlyphs(runes)
 	t.widths = append(t.widths, decoration.Font.GlyphWidths(glyphs)...)
+	fallbackCache := make(map[rune]*FontFace)
 	for i, r := range runes {
 		t.decorations = append(t.decorations, decoration)
 		if glyphs[i] == 0 {
-			if altFace := face.FallbackForCharacter(r); altFace != nil {
+			altFace, ok := fallbackCache[r]
+			if !ok {
+				altFace = face.FallbackForCharacter(r)
+				fallbackCache[r] = altFace
+			}
+			if altFace != nil {
 				altDec := *decoration
 				altDec.Font = altFace.Font(decoration.Font.Size())
 				if start != 0 && altDec.Equivalent(t.decorations[start-1]) {
