@@ -16,10 +16,10 @@ import "github.com/richardwilkes/unison/enums/paintstyle"
 var DefaultScrollBarTheme = ScrollBarTheme{
 	EdgeInk:          ThemeSurfaceEdge,
 	ThumbInk:         ThemeFocus,
-	MinimumThickness: 16,
+	MinimumThickness: 11,
 	MinimumThumb:     16,
 	ThumbIndent:      3,
-	CornerRadius:     8,
+	CornerRadius:     4,
 }
 
 // ScrollBarTheme holds theming data for a ScrollBar.
@@ -131,14 +131,14 @@ func (s *ScrollBar) Thumb() Rect {
 		if size < s.MinimumThumb {
 			size = s.MinimumThumb
 		}
-		return Rect{Point: Point{X: start, Y: s.ThumbIndent}, Size: Size{Width: size, Height: r.Height - 2*s.ThumbIndent}}
+		return Rect{Point: Point{X: start}, Size: Size{Width: size, Height: r.Height - s.ThumbIndent}}
 	}
 	start := r.Height * (s.value / s.maximum)
 	size := r.Height * (s.extent / s.maximum)
 	if size < s.MinimumThumb {
 		size = s.MinimumThumb
 	}
-	return Rect{Point: Point{X: s.ThumbIndent, Y: start}, Size: Size{Width: r.Width - 2*s.ThumbIndent, Height: size}}
+	return Rect{Point: Point{Y: start}, Size: Size{Width: r.Width - s.ThumbIndent, Height: size}}
 }
 
 // DefaultSizes provides the default sizing.
