@@ -60,7 +60,7 @@ func DefaultThemeSurface() *ThemeColor {
 
 // DefaultThemeBanding returns the default banding color.
 func DefaultThemeBanding() *ThemeColor {
-	return &ThemeColor{Light: RGB(232, 232, 216), Dark: RGB(40, 40, 24)}
+	return &ThemeColor{Light: RGB(232, 232, 216), Dark: RGB(40, 40, 32)}
 }
 
 // DefaultThemeFocus returns the default focus color.
