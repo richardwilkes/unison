@@ -434,6 +434,7 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 		if l.NewSelectionCallback != nil {
 			toolbox.Call(l.NewSelectionCallback)
 		}
+		l.ScrollRectIntoView(l.RowRect(first))
 	case KeyDown:
 		last := l.Selection.LastSet() + 1
 		if last >= len(l.rows) {
@@ -443,16 +444,19 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 		if l.NewSelectionCallback != nil {
 			toolbox.Call(l.NewSelectionCallback)
 		}
+		l.ScrollRectIntoView(l.RowRect(last))
 	case KeyHome:
 		l.Select(mod.ShiftDown(), 0)
 		if l.NewSelectionCallback != nil {
 			toolbox.Call(l.NewSelectionCallback)
 		}
+		l.ScrollRectIntoView(l.RowRect(0))
 	case KeyEnd:
 		l.Select(mod.ShiftDown(), len(l.rows)-1)
 		if l.NewSelectionCallback != nil {
 			toolbox.Call(l.NewSelectionCallback)
 		}
+		l.ScrollRectIntoView(l.RowRect(len(l.rows) - 1))
 	default:
 		return false
 	}
