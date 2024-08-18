@@ -889,7 +889,7 @@ func (t *Table[T]) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
+func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		if t.DoubleClickCallback != nil && len(t.selMap) != 0 {
 			toolbox.Call(t.DoubleClickCallback)
@@ -898,10 +898,14 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	}
 	switch keyCode {
 	case KeyLeft:
-		if t.HasSelection() {
+		if !repeat && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
-				if row.IsOpen() {
+				if mod.OptionDown() {
+					if setOpenRecursively(row, false) {
+						altered = true
+					}
+				} else if row.IsOpen() {
 					row.SetOpen(false)
 					altered = true
 				}
@@ -912,10 +916,14 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 			}
 		}
 	case KeyRight:
-		if t.HasSelection() {
+		if !repeat && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
-				if !row.IsOpen() {
+				if mod.OptionDown() {
+					if setOpenRecursively(row, true) {
+						altered = true
+					}
+				} else if !row.IsOpen() {
 					row.SetOpen(true)
 					altered = true
 				}
@@ -963,6 +971,22 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 		return false
 	}
 	return true
+}
+
+func setOpenRecursively[T TableRowConstraint[T]](row T, open bool) bool {
+	altered := false
+	if row.IsOpen() != open {
+		row.SetOpen(open)
+		altered = true
+	}
+	if row.CanHaveChildren() {
+		for _, child := range row.Children() {
+			if setOpenRecursively(child, open) {
+				altered = true
+			}
+		}
+	}
+	return altered
 }
 
 // PruneSelectionOfUndisclosedNodes removes any nodes in the selection map that are no longer disclosed from the
