@@ -26,10 +26,10 @@ linters-settings:
 linters:
   disable-all: true
   enable:
+    - copyloopvar
     - depguard
     - errcheck
     - errorlint
-    - exportloopref
     - goconst
     - gofumpt
     - goimports

@@ -11,7 +11,6 @@ package main
 
 import (
 	_ "embed"
-	"log"
 	"log/slog"
 	"os"
 
@@ -33,7 +32,7 @@ func main() {
 
 	cl := cmdline.New(true)
 	cl.Parse(os.Args[1:])
-	slog.SetDefault(slog.New(tracelog.New(log.Default().Writer(), slog.LevelInfo)))
+	slog.SetDefault(slog.New(tracelog.New(nil)))
 
 	unison.Start(unison.StartupFinishedCallback(func() {
 		_, err := demo.NewDemoWindow(unison.PrimaryDisplay().Usable.Point)
