@@ -158,8 +158,8 @@ func SVGOptionIgnoreUnsupported() SVGOption {
 // parameter.
 //
 // Note: It is probably better to use one of the other Must... methods that take the full SVG content.
-func MustSVG(size Size, svg string) *SVG {
-	s, err := NewSVG(size, svg)
+func MustSVG(size Size, svgPathStr string) *SVG {
+	s, err := NewSVG(size, svgPathStr)
 	fatal.IfErr(err)
 	return s
 }
@@ -168,8 +168,8 @@ func MustSVG(size Size, svg string) *SVG {
 // element). The 'size' should be gotten from the original SVG's 'viewBox' parameter.
 //
 // Note: It is probably better to use one of the other New... methods that take the full SVG content.
-func NewSVG(size Size, svg string) (*SVG, error) {
-	path, err := NewPathFromSVGString(svg)
+func NewSVG(size Size, svgPathStr string) (*SVG, error) {
+	path, err := NewPathFromSVGString(svgPathStr)
 	if err != nil {
 		return nil, err
 	}
@@ -223,9 +223,9 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 
 	s.size = NewSize(float32(sData.ViewBox.W), float32(sData.ViewBox.H))
 	s.paths = make([]*svgPath, len(sData.SvgPaths))
-	for i, path := range sData.SvgPaths {
+	for i := range sData.SvgPaths {
 		p := NewPath()
-		for _, op := range path.Path {
+		for _, op := range sData.SvgPaths[i].Path {
 			// The coordinates used in svg.Operation are of type fixed.Int26_6, which has a fractional part of 6 bits.
 			// When converting to a float, the values are divided by 64.
 			switch op := op.(type) {
@@ -249,59 +249,60 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 			}
 		}
 
-		if path.Style.Transform != svg.Identity {
+		if sData.SvgPaths[i].Style.Transform != svg.Identity {
 			p.Transform(geom.Matrix[float32]{
-				ScaleX: float32(path.Style.Transform.A),
-				SkewX:  float32(path.Style.Transform.C),
-				TransX: float32(path.Style.Transform.E),
-				SkewY:  float32(path.Style.Transform.B),
-				ScaleY: float32(path.Style.Transform.D),
-				TransY: float32(path.Style.Transform.F),
+				ScaleX: float32(sData.SvgPaths[i].Style.Transform.A),
+				SkewX:  float32(sData.SvgPaths[i].Style.Transform.C),
+				TransX: float32(sData.SvgPaths[i].Style.Transform.E),
+				SkewY:  float32(sData.SvgPaths[i].Style.Transform.B),
+				ScaleY: float32(sData.SvgPaths[i].Style.Transform.D),
+				TransY: float32(sData.SvgPaths[i].Style.Transform.F),
 			})
 		}
 		sp := &svgPath{Path: p}
 
-		if path.Style.FillerColor != nil && path.Style.FillOpacity != 0 {
+		if sData.SvgPaths[i].Style.FillerColor != nil && sData.SvgPaths[i].Style.FillOpacity != 0 {
 			sp.fillPaint = NewPaint()
 			sp.fillPaint.SetStyle(paintstyle.Fill)
-			if c, ok := path.Style.FillerColor.(svg.PlainColor); ok {
-				alpha := uint8(float64(c.A) * path.Style.FillOpacity)
+			if c, ok := sData.SvgPaths[i].Style.FillerColor.(svg.PlainColor); ok {
+				alpha := uint8(float64(c.A) * sData.SvgPaths[i].Style.FillOpacity)
 				sp.fillPaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: c.R, G: c.G, B: c.B}))
 			} else if opts.ignoreUnsupported {
 				sp.fillPaint.SetColor(Black)
 			} else {
-				return nil, errs.Newf("unsupported path fill style %T", path.Style.FillerColor)
+				return nil, errs.Newf("unsupported path fill style %T", sData.SvgPaths[i].Style.FillerColor)
 			}
 		}
 
-		if path.Style.LinerColor != nil && path.Style.LineOpacity != 0 && path.Style.LineWidth != 0 {
+		if sData.SvgPaths[i].Style.LinerColor != nil && sData.SvgPaths[i].Style.LineOpacity != 0 &&
+			sData.SvgPaths[i].Style.LineWidth != 0 {
 			sp.strokePaint = NewPaint()
-			if strokeCap, ok := strokeCaps[path.Style.Join.TrailLineCap]; !ok {
+			if strokeCap, ok := strokeCaps[sData.SvgPaths[i].Style.Join.TrailLineCap]; !ok {
 				if !opts.ignoreUnsupported {
-					return nil, errs.Newf("unsupported path stroke cap %s", path.Style.Join.TrailLineCap)
+					return nil, errs.Newf("unsupported path stroke cap %s", sData.SvgPaths[i].Style.Join.TrailLineCap)
 				}
 				sp.strokePaint.SetStrokeCap(strokecap.Butt)
 			} else {
 				sp.strokePaint.SetStrokeCap(strokeCap)
 			}
-			if strokeJoin, ok := strokeJoins[path.Style.Join.LineJoin]; !ok {
+			if strokeJoin, ok := strokeJoins[sData.SvgPaths[i].Style.Join.LineJoin]; !ok {
 				if !opts.ignoreUnsupported {
-					return nil, errs.Newf("unsupported path stroke join %s", path.Style.Join.LineJoin)
+					return nil, errs.Newf("unsupported path stroke join %s", sData.SvgPaths[i].Style.Join.LineJoin)
 				}
 				sp.strokePaint.SetStrokeJoin(strokejoin.Round)
 			} else {
 				sp.strokePaint.SetStrokeJoin(strokeJoin)
 			}
-			sp.strokePaint.SetStrokeMiter(float32(path.Style.Join.MiterLimit))
-			sp.strokePaint.SetStrokeWidth(float32(path.Style.LineWidth))
+			sp.strokePaint.SetStrokeMiter(float32(sData.SvgPaths[i].Style.Join.MiterLimit))
+			sp.strokePaint.SetStrokeWidth(float32(sData.SvgPaths[i].Style.LineWidth))
 			sp.strokePaint.SetStyle(paintstyle.Stroke)
-			if c, ok := path.Style.LinerColor.(svg.PlainColor); ok {
-				alpha := uint8(float64(c.A) * path.Style.FillOpacity)
+			if c, ok := sData.SvgPaths[i].Style.LinerColor.(svg.PlainColor); ok {
+				alpha := uint8(float64(c.A) * sData.SvgPaths[i].Style.FillOpacity)
 				sp.strokePaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: c.R, G: c.G, B: c.B}))
 			} else if opts.ignoreUnsupported {
 				sp.fillPaint.SetColor(Black)
 			} else {
-				return nil, errs.Newf("unsupported path stroke style %T", path.Style.LinerColor)
+				return nil, errs.Newf("unsupported path stroke style %T", sData.SvgPaths[i].Style.LinerColor)
 			}
 		}
 

@@ -139,8 +139,8 @@ func MustColorDecode(buffer string) Color {
 // - CSS hsla(), e.g. "hsla(120, 100%, 50%, 0.3)"
 func ColorDecode(buffer string) (Color, error) {
 	buffer = strings.ToLower(strings.TrimSpace(buffer))
-	if color, ok := nameToColor[buffer]; ok {
-		return color, nil
+	if c, ok := nameToColor[buffer]; ok {
+		return c, nil
 	}
 	switch {
 	case strings.HasPrefix(buffer, "#"):
@@ -310,11 +310,11 @@ func (c Color) MarshalText() ([]byte, error) {
 
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (c *Color) UnmarshalText(text []byte) error {
-	color, err := ColorDecode(string(text))
+	clr, err := ColorDecode(string(text))
 	if err != nil {
 		return err
 	}
-	*c = color
+	*c = clr
 	return nil
 }
 
@@ -1002,7 +1002,7 @@ func init() {
 	registerColor("YellowGreen", YellowGreen)
 }
 
-func registerColor(name string, color Color) {
-	nameToColor[strings.ToLower(name)] = color
-	colorToName[color] = name
+func registerColor(name string, c Color) {
+	nameToColor[strings.ToLower(name)] = c
+	colorToName[c] = name
 }

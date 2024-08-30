@@ -133,7 +133,7 @@ func (d *Dock) RootDockLayout() *DockLayout {
 
 // DockTo a Dockable within this Dock. If the Dockable already exists in this Dock, it will be moved to the new
 // location. nil may be passed in for the target, in which case the top-most layout is used.
-func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side side.Enum) {
+func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, s side.Enum) {
 	if toolbox.IsNil(target) {
 		target = d.layout
 	}
@@ -179,7 +179,7 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, side side.Enum) 
 			}
 		}
 		dc = NewDockContainer(d, dockable)
-		d.layout.DockTo(dc, target, side)
+		d.layout.DockTo(dc, target, s)
 		d.AddChild(dc)
 		d.MarkForLayoutAndRedraw()
 		dc.SetCurrentDockable(dockable)

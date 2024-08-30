@@ -67,13 +67,14 @@ func (p *rootPanel) insertMenu(panel *menuPanel) {
 
 func (p *rootPanel) removeMenu(panel *menuPanel) {
 	for i, one := range p.openMenuPanels {
-		if one == panel {
-			p.openMenuPanels = slices.Delete(p.openMenuPanels, i, i+1)
-			panel.RemoveFromParent()
-			panel.menu.popupPanel = nil
-			p.MarkForRedraw()
-			break
+		if one != panel {
+			continue
 		}
+		p.openMenuPanels = slices.Delete(p.openMenuPanels, i, i+1)
+		panel.RemoveFromParent()
+		panel.menu.popupPanel = nil
+		p.MarkForRedraw()
+		break
 	}
 }
 

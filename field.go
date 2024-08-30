@@ -1141,24 +1141,20 @@ func (f *Field) autoScroll() {
 			if top < rect.Y {
 				f.scrollOffset.Y = 0
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionEnd).Y
-			} else {
-				if top+f.lineHeightAt(top) >= rect.Bottom() {
-					f.scrollOffset.Y = 0
-					top = f.FromSelectionIndex(f.selectionEnd).Y
-					f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
-				}
+			} else if top+f.lineHeightAt(top) >= rect.Bottom() {
+				f.scrollOffset.Y = 0
+				top = f.FromSelectionIndex(f.selectionEnd).Y
+				f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
 			}
 		} else {
 			top := f.FromSelectionIndex(f.selectionStart).Y
 			if top < rect.Y {
 				f.scrollOffset.Y = 0
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionStart).Y
-			} else {
-				if top+f.lineHeightAt(top) >= rect.Bottom() {
-					f.scrollOffset.Y = 0
-					top = f.FromSelectionIndex(f.selectionEnd).Y
-					f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
-				}
+			} else if top+f.lineHeightAt(top) >= rect.Bottom() {
+				f.scrollOffset.Y = 0
+				top = f.FromSelectionIndex(f.selectionEnd).Y
+				f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
 			}
 		}
 		save := f.scrollOffset.Y

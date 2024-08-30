@@ -458,7 +458,7 @@ func (e *enumInfo) BaseValue() string {
 	return e.baseValue
 }
 
-func (e *enumInfo) IDFor(v enumValue) string {
+func (e *enumInfo) IDFor(v enumValue) string { //nolint:gocritic // OK to pass large struct by value here
 	id := v.Name
 	if id == "" {
 		id = toIdentifier(v.Key)
