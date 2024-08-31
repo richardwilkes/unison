@@ -15,6 +15,13 @@ import (
 	"github.com/richardwilkes/unison/enums/side"
 )
 
+// SortState holds data regarding a sort state.
+type SortState struct {
+	Order     int // A negative value indicates it isn't participating at the moment.
+	Ascending bool
+	Sortable  bool // A false value indicates it is not sortable at all
+}
+
 // TableColumnHeader defines the methods a table column header must implement.
 type TableColumnHeader[T TableRowConstraint[T]] interface {
 	Paneler
