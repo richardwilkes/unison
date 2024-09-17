@@ -18,13 +18,13 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
 	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/unison/internal/skia"
+	"github.com/zeebo/xxh3"
 )
 
 var (
@@ -321,7 +321,7 @@ func (ref *imageRef) Release() {
 }
 
 func hashImageData(width, height int, scale float32, data []byte) (uint64, error) {
-	s := xxhash.New()
+	s := xxh3.New()
 	var buffer [12]byte
 	binary.LittleEndian.PutUint32(buffer[:4], math.Float32bits(scale))
 	binary.LittleEndian.PutUint32(buffer[4:8], uint32(width))
