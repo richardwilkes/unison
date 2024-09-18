@@ -11,9 +11,7 @@ package unison
 
 import (
 	"context"
-	"encoding/binary"
 	"image"
-	"math"
 	"strconv"
 	"sync"
 	"unsafe"
@@ -23,6 +21,7 @@ import (
 	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
 	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/xmath/hashhelper"
 	"github.com/richardwilkes/unison/internal/skia"
 	"github.com/zeebo/xxh3"
 )
@@ -65,11 +64,7 @@ func NewImageFromBytes(buffer []byte, scale float32) (*Image, error) {
 	if img == nil {
 		return nil, errs.New("unable to decode image data")
 	}
-	hash, err := hashImageData(skia.ImageGetWidth(img), skia.ImageGetHeight(img), scale, buffer)
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-	return newImage(img, scale, hash)
+	return newImage(img, scale, hashImageData(skia.ImageGetWidth(img), skia.ImageGetHeight(img), scale, buffer))
 }
 
 // NewImageFromPixels creates a new image from pixel data.
@@ -92,11 +87,7 @@ func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image
 	if img == nil {
 		return nil, errs.New("unable to create image")
 	}
-	hash, err := hashImageData(width, height, scale, pixels)
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-	return newImage(img, scale, hash)
+	return newImage(img, scale, hashImageData(width, height, scale, pixels))
 }
 
 // NewImageFromDrawing creates a new image by drawing into it. This is currently fairly inefficient, so take care to use
@@ -320,17 +311,11 @@ func (ref *imageRef) Release() {
 	})
 }
 
-func hashImageData(width, height int, scale float32, data []byte) (uint64, error) {
-	s := xxh3.New()
-	var buffer [12]byte
-	binary.LittleEndian.PutUint32(buffer[:4], math.Float32bits(scale))
-	binary.LittleEndian.PutUint32(buffer[4:8], uint32(width))
-	binary.LittleEndian.PutUint32(buffer[8:12], uint32(height))
-	if _, err := s.Write(buffer[:]); err != nil {
-		return 0, errs.Wrap(err)
-	}
-	if _, err := s.Write(data); err != nil {
-		return 0, errs.Wrap(err)
-	}
-	return s.Sum64(), nil
+func hashImageData(width, height int, scale float32, data []byte) uint64 {
+	hasher := xxh3.New()
+	hashhelper.Float32(hasher, scale)
+	hashhelper.Num32(hasher, uint32(width))
+	hashhelper.Num32(hasher, uint32(height))
+	_, _ = hasher.Write(data) //nolint:errcheck // No real chance of failure here
+	return hasher.Sum64()
 }
