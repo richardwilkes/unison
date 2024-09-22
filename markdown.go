@@ -950,7 +950,7 @@ func (m *Markdown) issueLineBreak() {
 	}
 	if len(children) == 0 {
 		m.addToTextRow(NewLabel())
-	} else if child, ok := children[len(children)-1].Self.(*Label); ok {
+	} else if child, ok := children[len(children)-1].Self.(*Label); ok && !child.Text.Empty() {
 		if r := child.Text.Runes(); len(r) > 1 && r[len(r)-1] == ' ' {
 			child.Text = child.Text.Slice(0, len(r)-1)
 		}

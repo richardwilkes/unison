@@ -58,6 +58,9 @@ func NewLabel() *Label {
 }
 
 func (l *Label) String() string {
+	if l.Text == nil {
+		return ""
+	}
 	return l.Text.String()
 }
 
