@@ -72,7 +72,9 @@ type Dialog struct {
 }
 
 // NewDialog creates a new standard dialog. To show the dialog you must call .RunModal() on the returned dialog.
-func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo) (*Dialog, error) {
+// 'windowOptions' are additional options to be passed to the Window constructor for the dialog. The dialog will be
+// always have te FloatingWindowOption() set.
+func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo, windowOptions ...WindowOption) (*Dialog, error) {
 	d := &Dialog{buttons: make(map[int]*buttonData)}
 	var frame Rect
 	if focused := ActiveWindow(); focused != nil {
@@ -80,7 +82,11 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	} else {
 		frame = PrimaryDisplay().Usable
 	}
-	d.wnd, d.err = NewWindow("", FloatingWindowOption())
+	opts := []WindowOption{FloatingWindowOption()}
+	if len(windowOptions) > 0 {
+		opts = append(opts, windowOptions...)
+	}
+	d.wnd, d.err = NewWindow("", opts...)
 	if d.err != nil {
 		return nil, errs.NewWithCause("unable to create dialog", d.err)
 	}
