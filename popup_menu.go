@@ -50,6 +50,7 @@ type PopupMenuTheme struct {
 
 type popupMenuItem[T comparable] struct {
 	item      T
+	size      Size
 	enabled   bool
 	separator bool
 }
@@ -61,6 +62,7 @@ type PopupMenu[T comparable] struct {
 	ChoiceMadeCallback       func(popup *PopupMenu[T], index int, item T)
 	SelectionChangedCallback func(popup *PopupMenu[T])
 	items                    []*popupMenuItem[T]
+	lastFont                 Font
 	selection                map[int]bool
 	PopupMenuTheme
 	Panel
@@ -94,18 +96,21 @@ func (p *PopupMenu[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size)
 	prefSize, _ = LabelContentSizes(nil, nil, p.Font, 0, 0)
 	for _, one := range p.items {
 		if !one.separator {
-			size, _ := LabelContentSizes(NewText(fmt.Sprintf("%v", one.item), &TextDecoration{
-				Font:            p.Font,
-				OnBackgroundInk: p.OnBackgroundInk,
-			}), nil, p.Font, 0, 0)
-			if prefSize.Width < size.Width {
-				prefSize.Width = size.Width
+			if one.size.Width == 0 || one.size.Height == 0 || p.Font != p.lastFont {
+				one.size, _ = LabelContentSizes(NewText(fmt.Sprintf("%v", one.item), &TextDecoration{
+					Font:            p.Font,
+					OnBackgroundInk: p.OnBackgroundInk,
+				}), nil, p.Font, 0, 0)
 			}
-			if prefSize.Height < size.Height {
-				prefSize.Height = size.Height
+			if prefSize.Width < one.size.Width {
+				prefSize.Width = one.size.Width
+			}
+			if prefSize.Height < one.size.Height {
+				prefSize.Height = one.size.Height
 			}
 		}
 	}
+	p.lastFont = p.Font
 	if border := p.Border(); border != nil {
 		prefSize = prefSize.Add(border.Insets().Size())
 	}
@@ -328,9 +333,29 @@ func (p *PopupMenu[T]) SetItemAt(index int, item T, enabled bool) {
 	if index >= 0 && index < len(p.items) {
 		one := p.items[index]
 		if one.separator || one.item != item {
+			one.size = Size{}
 			one.item = item
 			one.enabled = enabled
 			one.separator = false
+			p.MarkForRedraw()
+		}
+	}
+}
+
+// ItemEnabledAt returns whether the item at the specified index is enabled or not.
+func (p *PopupMenu[T]) ItemEnabledAt(index int) bool {
+	if index >= 0 && index < len(p.items) {
+		return p.items[index].enabled
+	}
+	return false
+}
+
+// SetItemEnabledAt sets the enabled state of the item at the specified index.
+func (p *PopupMenu[T]) SetItemEnabledAt(index int, enabled bool) {
+	if index >= 0 && index < len(p.items) {
+		one := p.items[index]
+		if !one.separator {
+			one.enabled = enabled
 			p.MarkForRedraw()
 		}
 	}
