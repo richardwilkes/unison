@@ -685,7 +685,7 @@ func (m *Markdown) alignment(alignment astex.Alignment) align.Enum {
 
 func (m *Markdown) processText() {
 	if t, ok := m.node.(*ast.Text); ok {
-		b := util.UnescapePunctuations(t.Text(m.content))
+		b := util.UnescapePunctuations(t.Value(m.content))
 		b = util.ResolveNumericReferences(b)
 		str := string(util.ResolveEntityNames(b))
 		if t.SoftLineBreak() {
@@ -767,7 +767,7 @@ func (m *Markdown) processString() {
 func (m *Markdown) processLink() {
 	if link, ok := m.node.(*ast.Link); ok {
 		m.flushText()
-		p := m.createLink(string(link.Text(m.content)), string(link.Destination), string(link.Title))
+		p := m.createLink(m.extractText(link), string(link.Destination), string(link.Title))
 		m.addToTextRow(p)
 	}
 }
@@ -879,6 +879,21 @@ func (m *Markdown) constrainImage(drawable Drawable) Drawable {
 	}
 }
 
+func (m *Markdown) extractText(node ast.Node) string {
+	str := ""
+	for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+		if t, ok := c.(*ast.Text); ok {
+			b := util.UnescapePunctuations(t.Value(m.content))
+			b = util.ResolveNumericReferences(b)
+			str += string(util.ResolveEntityNames(b))
+			if t.SoftLineBreak() {
+				str += " "
+			}
+		}
+	}
+	return str
+}
+
 func (m *Markdown) processImage() {
 	if image, ok := m.node.(*ast.Image); ok {
 		m.flushText()
@@ -893,7 +908,7 @@ func (m *Markdown) processImage() {
 		} else {
 			label.Drawable = m.constrainImage(img)
 		}
-		primary := string(image.Text(m.content))
+		primary := m.extractText(image)
 		secondary := string(image.Title)
 		if primary == "" && secondary != "" {
 			primary = secondary
