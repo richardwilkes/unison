@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/collection/dict"
 	"github.com/richardwilkes/toolbox/txt"
@@ -22,11 +23,15 @@ import (
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
-var slantMapping = [][]int{
-	{3, 1, 2},
-	{1, 3, 2},
-	{1, 2, 3},
-}
+var (
+	slantMapping = [][]int{
+		{3, 1, 2},
+		{1, 3, 2},
+		{1, 2, 3},
+	}
+	cachedFontFamiliesLock sync.RWMutex
+	cachedFontFamilies     []string
+)
 
 // FontFamily holds information about one font family.
 type FontFamily struct {
@@ -34,8 +39,21 @@ type FontFamily struct {
 	name string
 }
 
-// FontFamilies retrieves the names of the installed font families.
+// FontFamilies retrieves the names of the installed font families, using a cached version if available.
 func FontFamilies() []string {
+	cachedFontFamiliesLock.RLock()
+	families := cachedFontFamilies
+	cachedFontFamiliesLock.RUnlock()
+	if len(families) == 0 {
+		return FontFamiliesNoCache()
+	}
+	return families
+}
+
+// FontFamiliesNoCache retrieves the names of the installed font families.
+func FontFamiliesNoCache() []string {
+	cachedFontFamiliesLock.Lock()
+	defer cachedFontFamiliesLock.Unlock()
 	fm := skia.FontMgrRefDefault()
 	count := skia.FontMgrCountFamilies(fm)
 	names := make(map[string]bool)
@@ -52,6 +70,7 @@ func FontFamilies() []string {
 	internalFontLock.RUnlock()
 	families := dict.Keys(names)
 	slices.SortFunc(families, func(a, b string) int { return txt.NaturalCmp(a, b, true) })
+	cachedFontFamilies = families
 	return families
 }
 

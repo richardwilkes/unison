@@ -23,9 +23,18 @@ import (
 )
 
 var (
-	fontSizeCacheLock sync.RWMutex
-	fontSizeCache     = make(map[FontDescriptor]float32)
+	faceCacheLock         sync.RWMutex
+	faceCache             = make(map[skia.TypeFace]*FontFace)
+	faceFallbackCacheLock sync.RWMutex
+	faceFallbackCache     = make(map[faceFallbackCacheKey]*FontFace)
+	fontSizeCacheLock     sync.RWMutex
+	fontSizeCache         = make(map[FontDescriptor]float32)
 )
+
+type faceFallbackCacheKey struct {
+	face skia.TypeFace
+	r    rune
+}
 
 // FontFace holds the immutable portions of a font description.
 type FontFace struct {
@@ -36,12 +45,18 @@ func newFace(face skia.TypeFace) *FontFace {
 	if face == nil {
 		return nil
 	}
-	f := &FontFace{face: face}
-	runtime.SetFinalizer(f, func(obj *FontFace) {
-		ReleaseOnUIThread(func() {
-			skia.TypeFaceUnref(obj.face)
-		})
-	})
+	faceCacheLock.RLock()
+	f, exists := faceCache[face]
+	faceCacheLock.RUnlock()
+	if exists {
+		return f
+	}
+	faceCacheLock.Lock()
+	defer faceCacheLock.Unlock()
+	if f, exists = faceCache[face]; !exists {
+		f = &FontFace{face: face}
+		faceCache[face] = f
+	}
 	return f
 }
 
@@ -150,9 +165,26 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 // FallbackForCharacter attempts to locate the FontFace that best matches this FontFace and has the given character.
 // Will return nil if nothing suitable can be found.
 func (f *FontFace) FallbackForCharacter(ch rune) *FontFace {
+	key := faceFallbackCacheKey{
+		face: f.face,
+		r:    ch,
+	}
+	faceFallbackCacheLock.RLock()
+	ff, exists := faceFallbackCache[key]
+	faceFallbackCacheLock.RUnlock()
+	if exists {
+		return ff
+	}
+	faceFallbackCacheLock.Lock()
+	defer faceFallbackCacheLock.Unlock()
+	if ff, exists = faceFallbackCache[key]; exists {
+		return ff
+	}
 	style := skia.TypeFaceGetFontStyle(f.face)
 	defer skia.FontStyleDelete(style)
-	return newFace(skia.FontMgrMatchFamilyStyleCharacter(skia.FontMgrRefDefault(), f.Family(), style, ch))
+	ff = newFace(skia.FontMgrMatchFamilyStyleCharacter(skia.FontMgrRefDefault(), f.Family(), style, ch))
+	faceFallbackCache[key] = ff
+	return ff
 }
 
 func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {

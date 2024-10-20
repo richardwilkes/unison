@@ -218,25 +218,20 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	face := decoration.Font.Face()
 	glyphs := decoration.Font.RunesToGlyphs(runes)
 	t.widths = append(t.widths, decoration.Font.GlyphWidths(glyphs)...)
-	fallbackCache := make(map[rune]*FontFace)
 	for i, r := range runes {
 		t.decorations = append(t.decorations, decoration)
-		if glyphs[i] == 0 {
-			altFace, ok := fallbackCache[r]
-			if !ok {
-				altFace = face.FallbackForCharacter(r)
-				fallbackCache[r] = altFace
+		if glyphs[i] != 0 {
+			continue
+		}
+		if altFace := face.FallbackForCharacter(r); altFace != nil {
+			altDec := *decoration
+			altDec.Font = altFace.Font(decoration.Font.Size())
+			if start != 0 && altDec.Equivalent(t.decorations[start-1]) {
+				t.decorations[len(t.decorations)-1] = t.decorations[start-1]
+			} else {
+				t.decorations[len(t.decorations)-1] = &altDec
 			}
-			if altFace != nil {
-				altDec := *decoration
-				altDec.Font = altFace.Font(decoration.Font.Size())
-				if start != 0 && altDec.Equivalent(t.decorations[start-1]) {
-					t.decorations[len(t.decorations)-1] = t.decorations[start-1]
-				} else {
-					t.decorations[len(t.decorations)-1] = &altDec
-				}
-				t.widths[start+i] = altDec.Font.GlyphWidths([]uint16{altDec.Font.RuneToGlyph(r)})[0]
-			}
+			t.widths[start+i] = altDec.Font.GlyphWidths([]uint16{altDec.Font.RuneToGlyph(r)})[0]
 		}
 	}
 }
