@@ -96,12 +96,16 @@ func (m *macMenu) InsertSeparator(atIndex int, onlyIfNeeded bool) {
 
 func (m *macMenu) InsertItem(atIndex int, mi MenuItem) {
 	if mi != nil {
-		m.insert(mi.(*macMenuItem).item, atIndex)
+		if item, ok := mi.(*macMenuItem); ok {
+			m.insert(item.item, atIndex)
+		}
 	}
 }
 
 func (m *macMenu) InsertMenu(atIndex int, subMenu Menu) {
-	m.insertMenu(atIndex, subMenu.(*macMenu))
+	if menu, ok := subMenu.(*macMenu); ok {
+		m.insertMenu(atIndex, menu)
+	}
 }
 
 func (m *macMenu) insertMenu(atIndex int, subMenu *macMenu) {
@@ -110,7 +114,9 @@ func (m *macMenu) insertMenu(atIndex int, subMenu *macMenu) {
 	case AppMenuID:
 		if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
 			if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
-				ns.SetServicesMenu(servicesMenu.(*macMenu).menu)
+				if menu, ok := servicesMenu.(*macMenu); ok {
+					ns.SetServicesMenu(menu.menu)
+				}
 			}
 		}
 	case WindowMenuID:

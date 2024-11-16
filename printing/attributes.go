@@ -64,7 +64,9 @@ func (a Attributes) toIPP() goipp.Attributes {
 // Boolean returns the first boolean value for the given key.
 func (a Attributes) Boolean(key string, def bool) bool {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeBoolean {
-		return bool(v[0].V.(goipp.Boolean))
+		if b, ok2 := v[0].V.(goipp.Boolean); ok2 {
+			return bool(b)
+		}
 	}
 	return def
 }
@@ -75,7 +77,9 @@ func (a Attributes) Booleans(key string, def []bool) []bool {
 		all := make([]bool, 0, len(v))
 		for _, one := range v {
 			if one.T.Type() == goipp.TypeBoolean {
-				all = append(all, bool(one.V.(goipp.Boolean)))
+				if b, ok2 := one.V.(goipp.Boolean); ok2 {
+					all = append(all, bool(b))
+				}
 			}
 		}
 		return all
@@ -101,7 +105,9 @@ func (a Attributes) SetBoolean(key string, value, replaceExisting bool) {
 // Integer returns the first integer value for the given key.
 func (a Attributes) Integer(key string, def int) int {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeInteger {
-		return int(v[0].V.(goipp.Integer))
+		if i, ok2 := v[0].V.(goipp.Integer); ok2 {
+			return int(i)
+		}
 	}
 	return def
 }
@@ -112,7 +118,9 @@ func (a Attributes) Integers(key string, def []int) []int {
 		all := make([]int, 0, len(v))
 		for _, one := range v {
 			if one.T.Type() == goipp.TypeInteger {
-				all = append(all, int(one.V.(goipp.Integer)))
+				if i, ok2 := one.V.(goipp.Integer); ok2 {
+					all = append(all, int(i))
+				}
 			}
 		}
 		return all
@@ -250,7 +258,9 @@ func (a Attributes) setString(key, value string, tag goipp.Tag, replaceExisting 
 // Time returns the first time value for the given key.
 func (a Attributes) Time(key string, def time.Time) time.Time {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeDateTime {
-		return v[0].V.(goipp.Time).Time
+		if t, ok2 := v[0].V.(goipp.Time); ok2 {
+			return t.Time
+		}
 	}
 	return def
 }
@@ -261,7 +271,9 @@ func (a Attributes) Times(key string, def []time.Time) []time.Time {
 		all := make([]time.Time, 0, len(v))
 		for _, one := range v {
 			if one.T.Type() == goipp.TypeDateTime {
-				all = append(all, one.V.(goipp.Time).Time)
+				if t, ok2 := one.V.(goipp.Time); ok2 {
+					all = append(all, t.Time)
+				}
 			}
 		}
 		return all
@@ -287,7 +299,9 @@ func (a Attributes) SetTime(key string, value time.Time, replaceExisting bool) {
 // Resolution returns the first resolution value for the given key.
 func (a Attributes) Resolution(key string, def goipp.Resolution) goipp.Resolution {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeResolution {
-		return v[0].V.(goipp.Resolution)
+		if r, ok2 := v[0].V.(goipp.Resolution); ok2 {
+			return r
+		}
 	}
 	return def
 }
@@ -298,7 +312,9 @@ func (a Attributes) Resolutions(key string, def []goipp.Resolution) []goipp.Reso
 		all := make([]goipp.Resolution, 0, len(v))
 		for _, one := range v {
 			if one.T.Type() == goipp.TypeResolution {
-				all = append(all, one.V.(goipp.Resolution))
+				if r, ok2 := one.V.(goipp.Resolution); ok2 {
+					all = append(all, r)
+				}
 			}
 		}
 		return all
@@ -324,7 +340,9 @@ func (a Attributes) SetResolution(key string, value goipp.Resolution, replaceExi
 // Range returns the first Range value for the given key.
 func (a Attributes) Range(key string, def goipp.Range) goipp.Range {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeRange {
-		return v[0].V.(goipp.Range)
+		if r, ok2 := v[0].V.(goipp.Range); ok2 {
+			return r
+		}
 	}
 	return def
 }
@@ -335,7 +353,9 @@ func (a Attributes) Ranges(key string, def []goipp.Range) []goipp.Range {
 		all := make([]goipp.Range, 0, len(v))
 		for _, one := range v {
 			if one.T.Type() == goipp.TypeRange {
-				all = append(all, one.V.(goipp.Range))
+				if r, ok2 := one.V.(goipp.Range); ok2 {
+					all = append(all, r)
+				}
 			}
 		}
 		return all
@@ -361,7 +381,9 @@ func (a Attributes) SetRange(key string, value goipp.Range, replaceExisting bool
 // TextWithLang returns the first TextWithLang value for the given key.
 func (a Attributes) TextWithLang(key string, def goipp.TextWithLang) goipp.TextWithLang {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeTextWithLang {
-		return v[0].V.(goipp.TextWithLang)
+		if t, ok2 := v[0].V.(goipp.TextWithLang); ok2 {
+			return t
+		}
 	}
 	return def
 }
@@ -372,7 +394,9 @@ func (a Attributes) TextWithLangs(key string, def []goipp.TextWithLang) []goipp.
 		all := make([]goipp.TextWithLang, 0, len(v))
 		for _, one := range v {
 			if one.T.Type() == goipp.TypeTextWithLang {
-				all = append(all, one.V.(goipp.TextWithLang))
+				if t, ok2 := one.V.(goipp.TextWithLang); ok2 {
+					all = append(all, t)
+				}
 			}
 		}
 		return all
@@ -407,7 +431,9 @@ func (a Attributes) setTextWithLang(key string, value goipp.TextWithLang, tag go
 // Collection returns the first collection value for the given key.
 func (a Attributes) Collection(key string) Attributes {
 	if v, ok := a[key]; ok && v[0].T.Type() == goipp.TypeCollection {
-		return NewAttributes(goipp.Attributes(v[0].V.(goipp.Collection)))
+		if c, ok2 := v[0].V.(goipp.Collection); ok2 {
+			return NewAttributes(goipp.Attributes(c))
+		}
 	}
 	return make(Attributes)
 }
@@ -418,7 +444,9 @@ func (a Attributes) Collections(key string) []Attributes {
 		all := make([]Attributes, 0, len(v))
 		for _, one := range v {
 			if one.T.Type() == goipp.TypeCollection {
-				all = append(all, NewAttributes(goipp.Attributes(one.V.(goipp.Collection))))
+				if c, ok2 := one.V.(goipp.Collection); ok2 {
+					all = append(all, NewAttributes(goipp.Attributes(c)))
+				}
 			}
 		}
 		return all

@@ -28,7 +28,10 @@ func newDockContainerContent() *dockContainerContent {
 func (d *dockContainerContent) Current() Dockable {
 	children := d.Children()
 	if d.currentIndex >= 0 && d.currentIndex < len(children) {
-		return children[d.currentIndex].Self.(Dockable)
+		if resolved, ok := children[d.currentIndex].Self.(Dockable); ok {
+			return resolved
+		}
+		return nil
 	}
 	if len(children) != 0 {
 		d.SetCurrentIndex(len(children) - 1)

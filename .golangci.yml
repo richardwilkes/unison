@@ -142,6 +142,7 @@ linters:
     - unconvert
     - unused
 issues:
+  max-same-issues: 0
   exclude-use-default: false
   exclude-dirs:
     - internal/ns

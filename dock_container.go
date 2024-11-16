@@ -93,7 +93,10 @@ func resolveDockable(dockable Dockable) Dockable {
 	if dockable == nil {
 		return nil
 	}
-	return dockable.AsPanel().Self.(Dockable)
+	if resolved, ok := dockable.AsPanel().Self.(Dockable); ok {
+		return resolved
+	}
+	return nil
 }
 
 // AcquireFocus will set the focus within the current Dockable of this DockContainer. If the focus is already within it,

@@ -150,7 +150,9 @@ func (m *menu) InsertSeparator(atIndex int, onlyIfNeeded bool) {
 
 func (m *menu) InsertItem(atIndex int, mi MenuItem) {
 	if mi != nil {
-		m.insertItem(atIndex, mi.(*menuItem))
+		if item, ok := mi.(*menuItem); ok {
+			m.insertItem(atIndex, item)
+		}
 	}
 }
 
@@ -203,7 +205,9 @@ func (m *menu) Popup(where Rect, itemIndex int) {
 		m.createPopup()
 		if itemIndex >= 0 && itemIndex < len(m.items) {
 			m.popupPanel.ValidateLayout()
-			where.Y -= m.popupPanel.Children()[0].Self.(*ScrollPanel).Content().AsPanel().Children()[itemIndex].FrameRect().Y
+			if sp, ok := m.popupPanel.Children()[0].Self.(*ScrollPanel); ok {
+				where.Y -= sp.Content().AsPanel().Children()[itemIndex].FrameRect().Y
+			}
 		}
 		fr := m.popupPanel.FrameRect()
 		where.Height = fr.Height

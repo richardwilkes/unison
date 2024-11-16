@@ -147,7 +147,10 @@ func newImage(img skia.Image, scale float32, hash uint64) (*Image, error) {
 }
 
 func (img *Image) ref() *imageRef {
-	return img.Resource.(*imageRef)
+	if ref, ok := img.Resource.(*imageRef); ok {
+		return ref
+	}
+	return nil
 }
 
 // Size returns the size, in pixels, of the image. These dimensions will always be whole numbers > 0 for valid images.
