@@ -10,8 +10,6 @@
 package unison
 
 import (
-	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -130,19 +128,12 @@ func NoGlobalMenuBar() StartupOption {
 // Start the application. This function does NOT return. While some calls may be safe to make, it should be assumed no
 // calls into unison can be made prior to Start() being called unless explicitly stated otherwise.
 func Start(options ...StartupOption) {
-	pwd, err := filepath.Abs(".")
-	if err != nil {
-		errs.Log(err)
-	}
 	for _, option := range options {
 		fatal.IfErr(option(startupOption{}))
 	}
 	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
+	glfw.InitHint(glfw.CocoaChdirResources, glfw.False)
 	fatal.IfErr(glfw.Init())
-	// Restore the original working directory, as glfw changes it on some platforms
-	if err = os.Chdir(pwd); err != nil {
-		errs.Log(err)
-	}
 	atexit.Register(quitting)
 	atexit.Register(func() {
 		quitLock.Lock()
