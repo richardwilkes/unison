@@ -27,7 +27,7 @@ var markdownCounter int
 func NewDemoMarkdownWindow(where unison.Point) (*unison.Window, error) {
 	// Create the window
 	markdownCounter++
-	wnd, err := unison.NewWindow(fmt.Sprintf("Table #%d", markdownCounter))
+	wnd, err := unison.NewWindow(fmt.Sprintf("Markdown #%d", markdownCounter))
 	if err != nil {
 		return nil, err
 	}

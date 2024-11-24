@@ -693,7 +693,6 @@ func (m *Markdown) processText() {
 		}
 		m.text.AddString(str, m.decoration)
 		if t.HardLineBreak() {
-			m.flushText()
 			m.flushAndIssueLineBreak()
 		}
 	}
@@ -742,13 +741,15 @@ func (m *Markdown) processRawHTML() {
 			segment := raw.Segments.At(i)
 			switch txt.CollapseSpaces(strings.ToLower(string(segment.Value(m.content)))) {
 			case "<br>", "<br/>", "<br />":
-				m.flushText()
 				m.flushAndIssueLineBreak()
+				if next := m.node.NextSibling(); next != nil {
+					if t, ok2 := next.(*ast.Text); ok2 {
+						t.SetSoftLineBreak(false)
+					}
+				}
 			case "<hr>", "<hr/>", "<hr />":
-				m.flushText()
 				m.flushAndIssueLineBreak()
 				m.processThematicBreak()
-				m.flushText()
 				m.flushAndIssueLineBreak()
 			}
 		}

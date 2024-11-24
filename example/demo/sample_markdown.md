@@ -11,7 +11,9 @@ To create a heading, add one to six `#` before your heading text. The number of 
 ```
 
 # The largest heading
+
 ## The second largest heading
+
 ###### The smallest heading
 
 Alternatively, for level 1 headings, you can add any number of `=` characters underneath a heading title.
@@ -52,15 +54,7 @@ While this one will start a new paragraph.
 
 ### Line Breaks
 
-You can use two or more spaces for line breaks, or you can insert `<br>` at the end.
-
-```
-First line with two spaces at the end
-Second line
-```
-
-First line with two spaces at the end
-Second line
+You can insert `<br>` to force a line break.
 
 ```
 First line<br>
@@ -84,7 +78,7 @@ But this is not.
 
 This is *italic text*.
 
-So is _this_.
+So is *this*.
 
 But this is not.
 
@@ -100,7 +94,7 @@ But this is not.
 
 This is **bold text**.
 
-So is __this__.
+So is **this**.
 
 But this is not.
 
@@ -116,7 +110,7 @@ But this is not.
 
 This is ***bold & italic text***.
 
-So is ___this___.
+So is ***this***.
 
 But this is not.
 
@@ -178,7 +172,7 @@ Some text with
 
 ### Links
 
-Standard web links within the text are normally detected and converted automatically, such as https://gurpscharactersheet.com. You can, however, give them your own text to display by wrapping the link text in brackets `[ ]` and then wrapping the URL in parentheses `( )`.
+Standard web links within the text are normally detected and converted automatically, such as <https://gurpscharactersheet.com>. You can, however, give them your own text to display by wrapping the link text in brackets `[ ]` and then wrapping the URL in parentheses `( )`.
 
 ```
 Come visit [GCS](https://gurpscharactersheet.com)!
@@ -293,11 +287,13 @@ To create a horizontal rule, use three or more asterisks `***`, dashes `---` or 
 ```
 ---
 ```
+
 ---
 
 ```
 ___
 ```
+
 ___
 
 ### Tables
