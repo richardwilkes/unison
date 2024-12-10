@@ -12,9 +12,9 @@ require (
 	github.com/richardwilkes/toolbox v1.122.0
 	github.com/yuin/goldmark v1.7.8
 	github.com/zeebo/xxh3 v1.0.2
-	golang.org/x/image v0.22.0
-	golang.org/x/sys v0.27.0
-	golang.org/x/text v0.20.0
+	golang.org/x/image v0.23.0
+	golang.org/x/sys v0.28.0
+	golang.org/x/text v0.21.0
 )
 
 require (
@@ -24,11 +24,11 @@ require (
 	github.com/miekg/dns v1.1.62 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
-	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
+	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d // indirect
 	golang.org/x/mod v0.22.0 // indirect
-	golang.org/x/net v0.31.0 // indirect
-	golang.org/x/sync v0.9.0 // indirect
-	golang.org/x/tools v0.27.0 // indirect
+	golang.org/x/net v0.32.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/tools v0.28.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

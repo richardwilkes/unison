@@ -27,6 +27,7 @@ type TableColumnHeader[T TableRowConstraint[T]] interface {
 	Paneler
 	SortState() SortState
 	SetSortState(state SortState)
+	Less() func(a, b string) bool // May return nil -- if so, the Less() from the table header will be used
 }
 
 // DefaultTableColumnHeaderTheme holds the default TableColumnHeaderTheme values for TableColumnHeaders. Modifying this
@@ -45,12 +46,13 @@ var DefaultTableColumnHeaderTheme = LabelTheme{
 // DefaultTableColumnHeader provides a default table column header panel.
 type DefaultTableColumnHeader[T TableRowConstraint[T]] struct {
 	*Label
+	less          func(a, b string) bool
 	sortIndicator *DrawableSVG
 	sortState     SortState
 }
 
-// NewTableColumnHeader creates a new table column header panel.
-func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *DefaultTableColumnHeader[T] {
+// NewTableColumnHeader creates a new table column header panel. May pass nil for 'less' to use the table header's Less.
+func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string, less func(a, b string) bool) *DefaultTableColumnHeader[T] {
 	h := &DefaultTableColumnHeader[T]{
 		Label: NewLabel(),
 		sortState: SortState{
@@ -58,6 +60,7 @@ func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string) *Defau
 			Ascending: true,
 			Sortable:  true,
 		},
+		less: less,
 	}
 	h.Self = h
 	h.LabelTheme = DefaultTableColumnHeaderTheme
@@ -148,4 +151,9 @@ func (h *DefaultTableColumnHeader[T]) DefaultMouseUp(where Point, _ int, _ Modif
 		}
 	}
 	return true
+}
+
+// Less returns the less function to use for this column, or nil if the table header's Less should be used.
+func (h *DefaultTableColumnHeader[T]) Less() func(a, b string) bool {
+	return h.less
 }

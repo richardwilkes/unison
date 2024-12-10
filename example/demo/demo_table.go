@@ -96,10 +96,10 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 		func(from, to *unison.Table[*demoRow]) bool { return from == to }, nil, nil)
 
 	header := unison.NewTableHeader[*demoRow](table,
-		unison.NewTableColumnHeader[*demoRow]("", ""),
-		unison.NewTableColumnHeader[*demoRow]("First", ""),
-		unison.NewTableColumnHeader[*demoRow]("Second", ""),
-		unison.NewTableColumnHeader[*demoRow]("xyz", ""),
+		unison.NewTableColumnHeader[*demoRow]("", "", nil),
+		unison.NewTableColumnHeader[*demoRow]("First", "", nil),
+		unison.NewTableColumnHeader[*demoRow]("Second", "", nil),
+		unison.NewTableColumnHeader[*demoRow]("xyz", "", nil),
 	)
 	header.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.Fill,

@@ -447,7 +447,11 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 				d2 := rows[j].CellDataForSort(hdr.index)
 				if d1 != d2 {
 					ascending := hdr.header.SortState().Ascending
-					if h.Less(d1, d2) {
+					less := hdr.header.Less()
+					if less == nil {
+						less = h.Less
+					}
+					if less(d1, d2) {
 						return ascending
 					}
 					return !ascending
