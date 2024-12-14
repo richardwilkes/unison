@@ -60,7 +60,7 @@ func (d *Display) FitRectOnto(r Rect) Rect {
 	}
 	bottom := d.Usable.Bottom()
 	if r.Bottom() > bottom {
-		r.X = bottom - r.Height
+		r.Y = bottom - r.Height
 	}
 	if r.Y < d.Usable.Y {
 		r.Y = d.Usable.Y
