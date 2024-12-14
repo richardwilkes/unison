@@ -551,6 +551,28 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 			f.handleHome(f.multiLine, mod.ShiftDown())
 		case KeyUp:
 			f.handleHome(false, mod.ShiftDown())
+		default:
+			// Handle cut/copy/paste/select all commands directly in case no menu is present
+			if mod == OSMenuCmdModifier() {
+				switch keyCode {
+				case KeyA:
+					if f.CanSelectAll() {
+						f.SelectAll()
+					}
+				case KeyX:
+					if f.CanCut() {
+						f.Cut()
+					}
+				case KeyC:
+					if f.CanCopy() {
+						f.Copy()
+					}
+				case KeyV:
+					if f.CanPaste() {
+						f.Paste()
+					}
+				}
+			}
 		}
 		return false
 	}
