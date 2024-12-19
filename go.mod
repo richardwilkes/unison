@@ -9,7 +9,7 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lafriks/go-svg v0.5.1-0.20240818203135-3a6c390fc116
 	github.com/richardwilkes/json v0.3.0
-	github.com/richardwilkes/toolbox v1.122.0
+	github.com/richardwilkes/toolbox v1.122.1
 	github.com/yuin/goldmark v1.7.8
 	github.com/zeebo/xxh3 v1.0.2
 	golang.org/x/image v0.23.0
@@ -24,9 +24,9 @@ require (
 	github.com/miekg/dns v1.1.62 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
-	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d // indirect
+	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/mod v0.22.0 // indirect
-	golang.org/x/net v0.32.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/tools v0.28.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
