@@ -28,9 +28,9 @@ import (
 var _ UndoManagerProvider = &Window{}
 
 var (
-	// DefaultTitleIcons are the default title icons that will be used for all newly created windows. The image closest to
-	// the size desired by the system will be selected and used, scaling if needed. If no images are specified, the system's
-	// default icon will be used.
+	// DefaultTitleIcons are the default title icons that will be used for all newly created windows. The image closest
+	// to the size desired by the system will be selected and used, scaling if needed. If no images are specified, the
+	// system's default icon will be used.
 	DefaultTitleIcons []*Image
 	windowMap         = make(map[*glfw.Window]*Window)
 	windowList        []*Window

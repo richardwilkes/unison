@@ -29,7 +29,7 @@ type Paneler interface {
 // set the Self field to the final object. Failure to do so may result in incorrect behavior.
 type Panel struct {
 	InputCallbacks
-	Self                                any
+	Self                                Paneler
 	layoutData                          any
 	layout                              Layout
 	sizer                               Sizer
