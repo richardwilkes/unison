@@ -100,8 +100,9 @@ var strokeJoins = map[svg.JoinMode]strokejoin.Enum{
 
 // DrawableSVG makes an SVG conform to the Drawable interface.
 type DrawableSVG struct {
-	SVG  *SVG
-	Size Size
+	SVG             *SVG
+	Size            Size
+	RotationDegrees float32
 }
 
 // SVG holds an SVG.
@@ -375,5 +376,13 @@ func (s *DrawableSVG) LogicalSize() Size {
 // If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
 // within the source SVG. Be sure to set the Paint's style (fill or stroke) as desired.
 func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, opts *SamplingOptions, paint *Paint) {
+	if s.RotationDegrees != 0 {
+		canvas.Save()
+		defer canvas.Restore()
+		center := rect.Center()
+		canvas.Translate(center.X, center.Y)
+		canvas.Rotate(s.RotationDegrees)
+		canvas.Translate(-center.X, -center.Y)
+	}
 	s.SVG.DrawInRectPreservingAspectRatio(canvas, rect, opts, paint)
 }
