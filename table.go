@@ -123,6 +123,7 @@ type Table[T TableRowConstraint[T]] struct {
 	selNeedsPrune            bool
 	wasDragged               bool
 	dividerDrag              bool
+	hasHierarchy             bool
 }
 
 // NewTable creates a new Table control.
@@ -185,6 +186,14 @@ func (t *Table[T]) CurrentDrawRowRange() (start, endBefore int) {
 		return t.startRow, t.endBeforeRow
 	}
 	return 0, len(t.rowCache)
+}
+
+// CurrentHierarchyIndent returns the current hierarchy indent, which will be 0 if the table has no containers.
+func (t *Table[T]) CurrentHierarchyIndent() float32 {
+	if t.hasHierarchy {
+		return t.HierarchyIndent
+	}
+	return 0
 }
 
 // DefaultDraw provides the default drawing.
@@ -275,29 +284,31 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 			cellRect := rect.Inset(t.Padding)
 			row := t.rowCache[r].row
 			if t.Columns[c].ID == t.HierarchyColumnID {
-				if row.CanHaveChildren() {
-					const disclosureIndent = 2
-					disclosureSize := min(t.HierarchyIndent, t.MinimumRowHeight) - disclosureIndent*2
-					canvas.Save()
-					left := cellRect.X + t.HierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
-					top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
-					dSize := Size{Width: disclosureSize, Height: disclosureSize}
-					t.hitRects = append(t.hitRects,
-						t.newTableHitRect(Rect{Point: Point{X: left, Y: top}, Size: dSize}, row))
-					canvas.Translate(left, top)
-					if row.IsOpen() {
-						offset := disclosureSize / 2
-						canvas.Translate(offset, offset)
-						canvas.Rotate(90)
-						canvas.Translate(-offset, -offset)
+				if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+					if row.CanHaveChildren() {
+						const disclosureIndent = 2
+						disclosureSize := min(hierarchyIndent, t.MinimumRowHeight) - disclosureIndent*2
+						canvas.Save()
+						left := cellRect.X + hierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
+						top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
+						dSize := Size{Width: disclosureSize, Height: disclosureSize}
+						t.hitRects = append(t.hitRects,
+							t.newTableHitRect(Rect{Point: Point{X: left, Y: top}, Size: dSize}, row))
+						canvas.Translate(left, top)
+						if row.IsOpen() {
+							offset := disclosureSize / 2
+							canvas.Translate(offset, offset)
+							canvas.Rotate(90)
+							canvas.Translate(-offset, -offset)
+						}
+						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas, Rect{Size: dSize}, nil,
+							fg.Paint(canvas, cellRect, paintstyle.Fill))
+						canvas.Restore()
 					}
-					CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas, Rect{Size: dSize}, nil,
-						fg.Paint(canvas, cellRect, paintstyle.Fill))
-					canvas.Restore()
+					indent := hierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left
+					cellRect.X += indent
+					cellRect.Width -= indent
 				}
-				indent := t.HierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left
-				cellRect.X += indent
-				cellRect.Width -= indent
 			}
 			cell := row.ColumnCell(r, c, fg, bg, selected, indirectlySelected, focused).AsPanel()
 			t.installCell(cell, cellRect)
@@ -438,7 +449,9 @@ func (t *Table[T]) CellWidth(row, col int) float32 {
 	}
 	width := t.Columns[col].Current - (t.Padding.Left + t.Padding.Right)
 	if t.Columns[col].ID == t.HierarchyColumnID {
-		width -= t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
+		if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+			width -= hierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
+		}
 	}
 	return width
 }
@@ -463,7 +476,9 @@ func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
 	left += t.Padding.Left
 	right -= t.Padding.Right
 	if t.Columns[col].ID == t.HierarchyColumnID {
-		left += t.HierarchyIndent + t.Padding.Left
+		if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+			left += hierarchyIndent + t.Padding.Left
+		}
 	}
 	if right < left {
 		right = left
@@ -499,11 +514,13 @@ func (t *Table[T]) CellFrame(row, col int) Rect {
 		Size:  Size{Width: t.Columns[col].Current, Height: t.rowCache[row].height},
 	}.Inset(t.Padding)
 	if t.Columns[col].ID == t.HierarchyColumnID {
-		indent := t.HierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
-		rect.X += indent
-		rect.Width -= indent
-		if rect.Width < 1 {
-			rect.Width = 1
+		if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+			indent := hierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
+			rect.X += indent
+			rect.Width -= indent
+			if rect.Width < 1 {
+				rect.Width = 1
+			}
 		}
 	}
 	return rect
@@ -714,13 +731,15 @@ func (t *Table[T]) DefaultMouseDown(where Point, button, clickCount int, mod Mod
 					t.columnResizeBase = t.Columns[over].Current
 					t.columnResizeOverhead = t.Padding.Left + t.Padding.Right
 					if t.Columns[over].ID == t.HierarchyColumnID {
-						depth := 0
-						for _, cache := range t.rowCache {
-							if depth < cache.depth {
-								depth = cache.depth
+						if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+							depth := 0
+							for _, cache := range t.rowCache {
+								if depth < cache.depth {
+									depth = cache.depth
+								}
 							}
+							t.columnResizeOverhead += t.Padding.Left + hierarchyIndent*float32(depth+1)
 						}
-						t.columnResizeOverhead += t.Padding.Left + t.HierarchyIndent*float32(depth+1)
 					}
 					return true
 				}
@@ -1256,10 +1275,19 @@ func (t *Table[T]) SetRootRows(rows []T) {
 func (t *Table[T]) SyncToModel() {
 	rowCount := 0
 	roots := t.RootRows()
+	t.hasHierarchy = false
 	if t.filteredRows != nil {
 		rowCount = len(t.filteredRows)
+		for _, row := range t.filteredRows {
+			if !t.hasHierarchy && row.CanHaveChildren() {
+				t.hasHierarchy = true
+			}
+		}
 	} else {
 		for _, row := range roots {
+			if !t.hasHierarchy && row.CanHaveChildren() {
+				t.hasHierarchy = true
+			}
 			rowCount += t.countOpenRowChildrenRecursively(row)
 		}
 	}
@@ -1311,7 +1339,9 @@ func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 		}
 		w -= t.Padding.Left + t.Padding.Right
 		if t.Columns[col].ID == t.HierarchyColumnID {
-			w -= t.Padding.Left + t.HierarchyIndent*float32(depth+1)
+			if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+				w -= t.Padding.Left + hierarchyIndent*float32(depth+1)
+			}
 		}
 		size := t.cellPrefSize(rowData, row, col, w)
 		size.Height += t.Padding.Top + t.Padding.Bottom
@@ -1356,7 +1386,9 @@ func (t *Table[T]) SizeColumnsToFitWithExcessIn(columnID int) {
 			}
 			pref.Width += t.Padding.Left + t.Padding.Right
 			if t.Columns[col].ID == t.HierarchyColumnID {
-				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
+				if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+					pref.Width += t.Padding.Left + hierarchyIndent*float32(cache.depth+1)
+				}
 			}
 			if current[col] < pref.Width {
 				current[col] = pref.Width
@@ -1402,7 +1434,9 @@ func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 			}
 			pref.Width += t.Padding.Left + t.Padding.Right
 			if t.Columns[col].ID == t.HierarchyColumnID {
-				pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
+				if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+					pref.Width += t.Padding.Left + hierarchyIndent*float32(cache.depth+1)
+				}
 			}
 			if current[col] < pref.Width {
 				current[col] = pref.Width
@@ -1444,7 +1478,9 @@ func (t *Table[T]) SizeColumnToFit(col int, adjust bool) {
 		}
 		pref.Width += t.Padding.Left + t.Padding.Right
 		if t.Columns[col].ID == t.HierarchyColumnID {
-			pref.Width += t.Padding.Left + t.HierarchyIndent*float32(cache.depth+1)
+			if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+				pref.Width += t.Padding.Left + hierarchyIndent*float32(cache.depth+1)
+			}
 		}
 		if current < pref.Width {
 			current = pref.Width

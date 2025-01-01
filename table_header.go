@@ -276,13 +276,15 @@ func (h *TableHeader[T]) DefaultMouseDown(where Point, button, clickCount int, m
 				h.columnResizeBase = h.table.Columns[over].Current
 				h.columnResizeOverhead = h.table.Padding.Left + h.table.Padding.Right
 				if h.table.Columns[over].ID == h.table.HierarchyColumnID {
-					depth := 0
-					for _, cache := range h.table.rowCache {
-						if depth < cache.depth {
-							depth = cache.depth
+					if hierarchyIndent := h.table.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+						depth := 0
+						for _, cache := range h.table.rowCache {
+							if depth < cache.depth {
+								depth = cache.depth
+							}
 						}
+						h.columnResizeOverhead += h.table.Padding.Left + hierarchyIndent*float32(depth+1)
 					}
-					h.columnResizeOverhead += h.table.Padding.Left + h.table.HierarchyIndent*float32(depth+1)
 				}
 				return true
 			}

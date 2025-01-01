@@ -88,7 +88,9 @@ func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any)
 						d.TargetParent = row
 						d.TargetIndex = 0
 						if hierarchyColumnIndex != -1 {
-							d.left += d.Table.HierarchyIndent
+							if hierarchyIndent := d.Table.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+								d.left += hierarchyIndent
+							}
 						}
 					} else {
 						// Row is not a container; add as sibling below this row
