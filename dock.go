@@ -463,9 +463,9 @@ func (d *Dock) NextDockableFor(dockable Dockable) Dockable {
 	return result
 }
 
-// PreviousDockableFor returns the logical previous Dockable in the Dock given the one passed in as a starting point. The
-// returned value may be the same as the starting point if there are no other Dockables. Passing in nil will result in
-// the last Dockable found being returned.
+// PreviousDockableFor returns the logical previous Dockable in the Dock given the one passed in as a starting point.
+// The returned value may be the same as the starting point if there are no other Dockables. Passing in nil will result
+// in the last Dockable found being returned.
 func (d *Dock) PreviousDockableFor(dockable Dockable) Dockable {
 	var previous, result Dockable
 	d.layout.ForEachDockContainer(func(container *DockContainer) bool {
