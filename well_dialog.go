@@ -21,20 +21,27 @@ import (
 )
 
 type wellDialog struct {
-	well            *Well
-	originalInk     Ink
-	ink             Ink
-	dialog          *Dialog
-	panel           *Panel
-	redField        *Field
-	greenField      *Field
-	blueField       *Field
-	alphaField      *Field
-	hueField        *Field
-	saturationField *Field
-	brightnessField *Field
-	cssField        *Field
-	syncing         bool
+	well             *Well
+	originalInk      Ink
+	ink              Ink
+	dialog           *Dialog
+	panel            *Panel
+	redSlider        *Slider
+	redField         *Field
+	greenSlider      *Slider
+	greenField       *Field
+	blueSlider       *Slider
+	blueField        *Field
+	alphaSlider      *Slider
+	alphaField       *Field
+	hueSlider        *Slider
+	hueField         *Field
+	saturationSlider *Slider
+	saturationField  *Field
+	brightnessSlider *Slider
+	brightnessField  *Field
+	cssField         *Field
+	syncing          bool
 }
 
 // TODO: Implement gradient selection
@@ -83,6 +90,7 @@ func showWellDialog(w *Well) {
 	if w.Mask&ColorWellMask != 0 {
 		d.addColorSelector(right)
 	}
+	d.sync()
 
 	var err error
 	d.dialog, err = NewDialog(nil, nil, d.panel, []*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()})
@@ -151,70 +159,34 @@ func (d *wellDialog) addColorSelector(parent *Panel) {
 	default:
 	}
 
-	left := NewPanel()
-	left.SetLayout(&FlexLayout{
-		Columns:  3,
+	panel := NewPanel()
+	panel.SetLayout(&FlexLayout{
+		Columns:  4,
 		HSpacing: StdHSpacing,
 		VSpacing: StdVSpacing,
 	})
-	left.SetLayoutData(&FlexLayoutData{
+	panel.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
-	parent.AddChild(left)
-
-	d.redField = d.addChannelField(left, i18n.Text("Red:"), color.Red(), func(value int, color Color) Color {
-		return color.SetRed(value)
-	})
-	d.greenField = d.addChannelField(left, i18n.Text("Green:"), color.Green(), func(value int, color Color) Color {
-		return color.SetGreen(value)
-	})
-	d.blueField = d.addChannelField(left, i18n.Text("Blue:"), color.Blue(), func(value int, color Color) Color {
-		return color.SetBlue(value)
-	})
-	d.alphaField = d.addChannelField(left, i18n.Text("Alpha:"), color.Alpha(), func(value int, color Color) Color {
-		return color.SetAlpha(value)
-	})
-
-	right := NewPanel()
-	right.SetBorder(NewEmptyBorder(Insets{Left: 2 * StdHSpacing}))
-	right.SetLayout(&FlexLayout{
-		Columns:  3,
-		HSpacing: StdHSpacing,
-		VSpacing: StdVSpacing,
-	})
-	right.SetLayoutData(&FlexLayoutData{
-		HAlign: align.Fill,
-		HGrab:  true,
-	})
-	parent.AddChild(right)
-
-	d.hueField = d.addHueField(right, color)
-	d.saturationField = d.addPercentageField(right, i18n.Text("Saturation:"), color.Saturation(), func(value float32, color Color) Color {
-		return color.SetSaturation(value)
-	})
-	d.brightnessField = d.addPercentageField(right, i18n.Text("Brightness:"), color.Brightness(), func(value float32, color Color) Color {
-		return color.SetBrightness(value)
-	})
-
-	bottom := NewPanel()
-	bottom.SetBorder(NewEmptyBorder(Insets{Top: 2 * StdHSpacing}))
-	bottom.SetLayout(&FlexLayout{
-		Columns:  2,
-		HSpacing: StdHSpacing,
-		VSpacing: StdVSpacing,
-	})
-	bottom.SetLayoutData(&FlexLayoutData{
-		HSpan:  2,
-		HAlign: align.Fill,
-		HGrab:  true,
-	})
-	parent.AddChild(bottom)
-
-	d.cssField = d.addCSSField(bottom, color)
+	d.redSlider, d.redField = d.addChannelField(panel, i18n.Text("Red"), color.Red(),
+		func(value int, color Color) Color { return color.SetRed(value) })
+	d.greenSlider, d.greenField = d.addChannelField(panel, i18n.Text("Green"), color.Green(),
+		func(value int, color Color) Color { return color.SetGreen(value) })
+	d.blueSlider, d.blueField = d.addChannelField(panel, i18n.Text("Blue"), color.Blue(),
+		func(value int, color Color) Color { return color.SetBlue(value) })
+	d.alphaSlider, d.alphaField = d.addChannelField(panel, i18n.Text("Alpha"), color.Alpha(),
+		func(value int, color Color) Color { return color.SetAlpha(value) })
+	d.hueSlider, d.hueField = d.addHueField(panel, color)
+	d.saturationSlider, d.saturationField = d.addPercentageField(panel, i18n.Text("Saturation"), color.Saturation(),
+		func(value float32, color Color) Color { return color.SetSaturation(value) })
+	d.brightnessSlider, d.brightnessField = d.addPercentageField(panel, i18n.Text("Brightness"), color.Brightness(),
+		func(value float32, color Color) Color { return color.SetBrightness(value) })
+	d.cssField = d.addCSSField(panel, color)
+	parent.AddChild(panel)
 }
 
-func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adjuster func(value int, color Color) Color) *Field {
+func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adjuster func(value int, color Color) Color) (*Slider, *Field) {
 	l := NewLabel()
 	l.SetTitle(title)
 	l.HAlign = align.End
@@ -223,6 +195,27 @@ func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adj
 		VAlign: align.Middle,
 	})
 	parent.AddChild(l)
+
+	slider := NewSlider(0, 255, float32(value))
+	slider.ValueSnapCallback = func(v float32) float32 { return float32(int(v + 0.5)) }
+	slider.ValueChangedCallback = func() {
+		if !d.syncing {
+			color, ok := d.ink.(Color)
+			if !ok {
+				color = Black
+			}
+			d.ink = adjuster(int(slider.Value()), color)
+			d.dialog.Button(ModalResponseCancel).RequestFocus()
+			d.sync()
+		}
+	}
+	slider.SetLayoutData(&FlexLayoutData{
+		HAlign: align.Fill,
+		VAlign: align.Middle,
+		HGrab:  true,
+	})
+	parent.AddChild(slider)
+
 	field := NewField()
 	field.SetText(strconv.Itoa(value))
 	field.Watermark = "0"
@@ -230,7 +223,6 @@ func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adj
 	field.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		VAlign: align.Middle,
-		HGrab:  true,
 	})
 	field.ValidateCallback = func() bool {
 		text := strings.TrimSpace(field.Text())
@@ -261,6 +253,7 @@ func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adj
 		return true
 	}
 	parent.AddChild(field)
+
 	l = NewLabel()
 	l.SetTitle(i18n.Text("0-255 or 0-100%"))
 	l.SetEnabled(false)
@@ -268,67 +261,78 @@ func (d *wellDialog) addChannelField(parent *Panel, title string, value int, adj
 		VAlign: align.Middle,
 	})
 	parent.AddChild(l)
-	return field
+	return slider, field
 }
 
-func (d *wellDialog) addHueField(parent *Panel, color Color) *Field {
+func (d *wellDialog) addHueField(parent *Panel, color Color) (*Slider, *Field) {
 	l := NewLabel()
-	l.SetTitle(i18n.Text("Hue:"))
+	l.SetTitle(i18n.Text("Hue"))
 	l.HAlign = align.End
 	l.SetLayoutData(&FlexLayoutData{
 		HAlign: align.End,
 		VAlign: align.Middle,
 	})
 	parent.AddChild(l)
-	field := NewField()
-	field.SetText(strconv.Itoa(int(color.Hue()*360 + 0.5)))
-	field.Watermark = "0"
-	field.SetMinimumTextWidthUsing("360", "100%")
-	field.SetLayoutData(&FlexLayoutData{
+
+	slider := NewSlider(0, 359, color.Hue())
+	slider.ValueChangedCallback = func() {
+		if !d.syncing {
+			c, ok := d.ink.(Color)
+			if !ok {
+				c = Black
+			}
+			d.ink = c.SetHue(slider.Value() / 360)
+			d.dialog.Button(ModalResponseCancel).RequestFocus()
+			d.sync()
+		}
+	}
+	slider.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
+	})
+	parent.AddChild(slider)
+
+	field := NewField()
+	field.SetText(strconv.Itoa(int(color.Hue()*360 + 0.5)))
+	field.Watermark = "0"
+	field.SetMinimumTextWidthUsing("359")
+	field.SetLayoutData(&FlexLayoutData{
+		HAlign: align.Fill,
+		VAlign: align.Middle,
 	})
 	field.ValidateCallback = func() bool {
 		text := strings.TrimSpace(field.Text())
 		if text == "" {
 			text = "0"
 		}
-		var percentage float32
-		if strings.HasSuffix(text, "%") {
-			var err error
-			if percentage, err = extractColorPercentage(text); err != nil {
-				return false
-			}
-		} else {
-			v, err := strconv.Atoi(text)
-			if err != nil || v < 0 || v > 360 {
-				return false
-			}
-			percentage = float32(v) / 360
+		v, err := strconv.Atoi(text)
+		if err != nil || v < 0 || v > 360 {
+			return false
 		}
 		if !d.syncing {
 			c, ok := d.ink.(Color)
 			if !ok {
 				c = Black
 			}
-			d.ink = c.SetHue(percentage)
+			d.ink = c.SetHue(float32(v) / 360)
 			d.sync()
 		}
 		return true
 	}
 	parent.AddChild(field)
+
 	l = NewLabel()
-	l.SetTitle(i18n.Text("0-360 or 0-100%"))
+	l.SetTitle(i18n.Text("0-359"))
 	l.SetEnabled(false)
 	l.SetLayoutData(&FlexLayoutData{
 		VAlign: align.Middle,
 	})
 	parent.AddChild(l)
-	return field
+	return slider, field
 }
 
-func (d *wellDialog) addPercentageField(parent *Panel, title string, value float32, adjuster func(value float32, color Color) Color) *Field {
+func (d *wellDialog) addPercentageField(parent *Panel, title string, value float32, adjuster func(value float32, color Color) Color) (*Slider, *Field) {
 	l := NewLabel()
 	l.SetTitle(title)
 	l.HAlign = align.End
@@ -337,6 +341,26 @@ func (d *wellDialog) addPercentageField(parent *Panel, title string, value float
 		VAlign: align.Middle,
 	})
 	parent.AddChild(l)
+
+	slider := NewSlider(0, 1, value)
+	slider.ValueChangedCallback = func() {
+		if !d.syncing {
+			color, ok := d.ink.(Color)
+			if !ok {
+				color = Black
+			}
+			d.ink = adjuster(slider.Value(), color)
+			d.dialog.Button(ModalResponseCancel).RequestFocus()
+			d.sync()
+		}
+	}
+	slider.SetLayoutData(&FlexLayoutData{
+		HAlign: align.Fill,
+		VAlign: align.Middle,
+		HGrab:  true,
+	})
+	parent.AddChild(slider)
+
 	field := NewField()
 	field.SetText(strconv.Itoa(int(value*100+0.5)) + "%")
 	field.Watermark = "0%"
@@ -344,7 +368,6 @@ func (d *wellDialog) addPercentageField(parent *Panel, title string, value float
 	field.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		VAlign: align.Middle,
-		HGrab:  true,
 	})
 	field.ValidateCallback = func() bool {
 		text := strings.TrimSpace(field.Text())
@@ -369,6 +392,7 @@ func (d *wellDialog) addPercentageField(parent *Panel, title string, value float
 		return true
 	}
 	parent.AddChild(field)
+
 	l = NewLabel()
 	l.SetTitle(i18n.Text("0-100%"))
 	l.SetEnabled(false)
@@ -376,22 +400,24 @@ func (d *wellDialog) addPercentageField(parent *Panel, title string, value float
 		VAlign: align.Middle,
 	})
 	parent.AddChild(l)
-	return field
+	return slider, field
 }
 
 func (d *wellDialog) addCSSField(parent *Panel, color Color) *Field {
 	l := NewLabel()
-	l.SetTitle(i18n.Text("CSS:"))
+	l.SetTitle(i18n.Text("CSS"))
 	l.HAlign = align.End
 	l.SetLayoutData(&FlexLayoutData{
 		HAlign: align.End,
 		VAlign: align.Middle,
 	})
 	parent.AddChild(l)
+
 	field := NewField()
 	field.SetText(color.String())
 	field.Watermark = "CSS"
 	field.SetLayoutData(&FlexLayoutData{
+		HSpan:  3,
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -407,26 +433,16 @@ func (d *wellDialog) addCSSField(parent *Panel, color Color) *Field {
 		}
 		return true
 	}
+	field.Tooltip = NewTooltipWithText(`One of:
+- predefined color name, e.g. "Yellow"
+- rgb(), e.g. "rgb(255, 255, 0)"
+- rgba(), e.g. "rgba(255, 255, 0, 0.3)"
+- short hexadecimal colors, e.g. "#FF0"
+- long hexadecimal colors, e.g. "#FFFF00"
+- hsl(), e.g. "hsl(120, 100%, 50%)"
+- hsla(), e.g. "hsla(120, 100%, 50%, 0.3)"`)
+	field.TooltipImmediate = true
 	parent.AddChild(field)
-	for _, txt := range []string{
-		i18n.Text(`- predefined color name, e.g. "Yellow"`),
-		i18n.Text(`- rgb(), e.g. "rgb(255, 255, 0)"`),
-		i18n.Text(`- rgba(), e.g. "rgba(255, 255, 0, 0.3)"`),
-		i18n.Text(`- short hexadecimal colors, e.g. "#FF0"`),
-		i18n.Text(`- long hexadecimal colors, e.g. "#FFFF00"`),
-		i18n.Text(`- hsl(), e.g. "hsl(120, 100%, 50%)"`),
-		i18n.Text(`- hsla(), e.g. "hsla(120, 100%, 50%, 0.3)"`),
-	} {
-		parent.AddChild(NewLabel())
-		l = NewLabel()
-		l.SetTitle(txt)
-		l.SetEnabled(false)
-		l.SetBorder(NewEmptyBorder(Insets{Left: StdHSpacing}))
-		l.SetLayoutData(&FlexLayoutData{
-			VAlign: align.Middle,
-		})
-		parent.AddChild(l)
-	}
 	return field
 }
 
@@ -434,12 +450,46 @@ func (d *wellDialog) sync() {
 	d.syncing = true
 	switch t := d.ink.(type) {
 	case Color:
-		d.syncText(d.redField, strconv.Itoa(t.Red()))
-		d.syncText(d.greenField, strconv.Itoa(t.Green()))
-		d.syncText(d.blueField, strconv.Itoa(t.Blue()))
+		red := t.Red()
+		green := t.Green()
+		blue := t.Blue()
+		d.redSlider.SetValue(float32(red))
+		d.redSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, RGB(0, green, blue),
+			RGB(255, green, blue))
+		d.syncText(d.redField, strconv.Itoa(red))
+		d.greenSlider.SetValue(float32(green))
+		d.greenSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, RGB(red, 0, blue),
+			RGB(red, 255, blue))
+		d.syncText(d.greenField, strconv.Itoa(green))
+		d.blueSlider.SetValue(float32(blue))
+		d.blueSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, RGB(red, green, 0),
+			RGB(red, green, 255))
+		d.syncText(d.blueField, strconv.Itoa(blue))
+		d.alphaSlider.SetValue(float32(t.Alpha()))
+		d.alphaSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, ARGB(0, red, green, blue),
+			ARGB(1, red, green, blue))
 		d.syncText(d.alphaField, strconv.Itoa(t.Alpha()))
+		hue, saturation, brightness := t.HSB()
+		d.hueSlider.SetValue(t.Hue() * 360)
+		colors := make([]ColorProvider, 360)
+		for i := range colors {
+			colors[i] = HSB(float32(i)/float32(len(colors)-1), saturation, brightness)
+		}
+		d.hueSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, colors...)
 		d.syncText(d.hueField, strconv.Itoa(int(t.Hue()*360+0.5)))
+		colors = make([]ColorProvider, 101)
+		for i := range colors {
+			colors[i] = HSB(hue, float32(i)/float32(len(colors)-1), brightness)
+		}
+		d.saturationSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, colors...)
+		d.saturationSlider.SetValue(t.Saturation())
 		d.syncText(d.saturationField, strconv.Itoa(int(t.Saturation()*100+0.5))+"%")
+		d.brightnessSlider.SetValue(t.Brightness())
+		colors = make([]ColorProvider, 101)
+		for i := range colors {
+			colors[i] = HSB(hue, saturation, float32(i)/float32(len(colors)-1))
+		}
+		d.brightnessSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, colors...)
 		d.syncText(d.brightnessField, strconv.Itoa(int(t.Brightness()*100+0.5))+"%")
 		d.syncText(d.cssField, t.String())
 	default:

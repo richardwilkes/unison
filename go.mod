@@ -13,7 +13,7 @@ require (
 	github.com/yuin/goldmark v1.7.8
 	github.com/zeebo/xxh3 v1.0.2
 	golang.org/x/image v0.23.0
-	golang.org/x/sys v0.28.0
+	golang.org/x/sys v0.29.0
 	golang.org/x/text v0.21.0
 )
 
@@ -24,11 +24,11 @@ require (
 	github.com/miekg/dns v1.1.62 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
-	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
+	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
 	golang.org/x/mod v0.22.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/tools v0.28.0 // indirect
+	golang.org/x/tools v0.29.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

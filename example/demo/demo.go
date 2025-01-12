@@ -471,12 +471,12 @@ func createTextFieldsPanel() *unison.Panel {
 		HSpacing: unison.StdHSpacing,
 		VSpacing: unison.StdVSpacing,
 	})
-	createTextField("Field 1:", "First Text Field", panel)
-	createTextField("Field 2:", "Second Text Field (disabled)", panel).SetEnabled(false)
-	field := createTextField("Longer Label:", "", panel)
+	createTextField("Field 1", "First Text Field", panel)
+	createTextField("Field 2", "Second Text Field (disabled)", panel).SetEnabled(false)
+	field := createTextField("Longer Label", "", panel)
 	field.Watermark = "Password Field"
 	field.ObscurementRune = '●'
-	field = createTextField("Field 4:", "", panel)
+	field = createTextField("Field 4", "", panel)
 	field.HAlign = align.End
 	field.Watermark = "Enter only numbers"
 	field.ValidateCallback = func() bool {
@@ -487,7 +487,7 @@ func createTextFieldsPanel() *unison.Panel {
 		}
 		return true
 	}
-	createMultiLineTextField("Field 5:", "One\nTwo\nThree", panel)
+	createMultiLineTextField("Field 5", "One\nTwo\nThree", panel)
 	return panel
 }
 
