@@ -7,7 +7,7 @@ require (
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20240506104042-037f3cc74f2a
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lafriks/go-svg v0.5.1-0.20240818203135-3a6c390fc116
+	github.com/lafriks/go-svg v0.5.1
 	github.com/richardwilkes/json v0.3.0
 	github.com/richardwilkes/toolbox v1.122.1
 	github.com/yuin/goldmark v1.7.8
