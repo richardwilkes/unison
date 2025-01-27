@@ -57,7 +57,7 @@ func addWindowsIcon(cfg *Config, rs *winres.ResourceSet) error {
 		return errs.Wrap(err)
 	}
 	for _, fi := range cfg.FileInfo {
-		if fi.Icon == "" {
+		if fi.Rank != "Owner" {
 			continue
 		}
 		docImg, err := loadPNG(fi.Icon)
