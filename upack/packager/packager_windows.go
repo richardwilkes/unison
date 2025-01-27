@@ -131,8 +131,9 @@ func generateDistribution(cfg *Config) (err error) {
 			return errs.Wrap(err)
 		}
 	}
+	exeName := cfg.ExecutableName + ".exe"
 	var in, out *os.File
-	if in, err = os.Open(cfg.ExecutableName); err != nil {
+	if in, err = os.Open(exeName); err != nil {
 		return errs.Wrap(err)
 	}
 	defer func() {
@@ -157,7 +158,7 @@ func generateDistribution(cfg *Config) (err error) {
 	}()
 	var fw io.Writer
 	hdr := &zip.FileHeader{
-		Name:     cfg.ExecutableName + ".exe",
+		Name:     exeName,
 		Method:   zip.Deflate,
 		Modified: time.Now(),
 	}
