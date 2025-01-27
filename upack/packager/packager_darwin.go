@@ -91,6 +91,15 @@ func writePlist(cfg *Config, targetPath string) error {
 	for _, f := range cfg.FileInfo {
 		f.IconName = fs.BaseName(f.Icon) + ".icns"
 	}
+	exportCount := 0
+	importCount := 0
+	for _, one := range cfg.FileInfo {
+		if one.Rank == "Owner" {
+			exportCount++
+		} else {
+			importCount++
+		}
+	}
 	type tmplData struct {
 		FinderAppName        string
 		AppCmdName           string
@@ -103,6 +112,8 @@ func writePlist(cfg *Config, targetPath string) error {
 		Copyright            string
 		CategoryUTI          string
 		FileInfo             []*FileData
+		ExportCount          int
+		ImportCount          int
 	}
 	var w bytes.Buffer
 	if err = tmpl.Execute(&w, &tmplData{
@@ -117,6 +128,8 @@ func writePlist(cfg *Config, targetPath string) error {
 		Copyright:            cfg.copyright(),
 		CategoryUTI:          cfg.Mac.CategoryUTI,
 		FileInfo:             cfg.FileInfo,
+		ExportCount:          exportCount,
+		ImportCount:          importCount,
 	}); err != nil {
 		return errs.Wrap(err)
 	}
@@ -251,6 +264,7 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+{{- if .FileInfo}}
     <key>CFBundleDocumentTypes</key>
     <array>
 {{- range .FileInfo}}
@@ -272,6 +286,7 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
         </dict>
 {{- end}}
     </array>
+{{- if .ExportCount}}
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 {{- range .FileInfo}}
@@ -308,6 +323,8 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 {{- end}}
 {{- end}}
 	</array>
+{{- end}}
+{{- if .ImportCount}}
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 {{- range .FileInfo}}
@@ -342,6 +359,8 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 {{- end}}
 {{- end}}
 	</array>
+{{- end}}
+{{- end}}
 </dict>
 </plist>
 `
