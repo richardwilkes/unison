@@ -12,13 +12,13 @@ package unison
 import (
 	"context"
 	"image"
-	"strconv"
-	"sync"
+	"runtime"
+	"time"
 	"unsafe"
+	"weak"
 
 	"github.com/richardwilkes/toolbox"
 	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/softref"
 	"github.com/richardwilkes/toolbox/xio"
 	"github.com/richardwilkes/toolbox/xmath"
 	"github.com/richardwilkes/toolbox/xmath/hashhelper"
@@ -27,12 +27,18 @@ import (
 )
 
 var (
-	_       Drawable = &Image{}
-	imgPool          = softref.NewPool()
+	_           Drawable = &Image{}
+	imgCache             = make(map[uint64]weak.Pointer[Image])
+	imageCtxMap          = make(map[skia.DirectContext]map[uint64]skia.Image)
 )
 
 // Image holds a reference to an image.
-type Image softref.SoftRef
+type Image struct {
+	skiaImg           skia.Image
+	skiaNonTextureImg skia.Image
+	hash              uint64
+	scale             float32
+}
 
 // NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. The http.DefaultClient
 // will be used if the data is remote.
@@ -132,42 +138,42 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 	return NewImageFromPixels(width, height, pixels, 1)
 }
 
-func newImage(img skia.Image, scale float32, hash uint64) (*Image, error) {
-	imgRef := &imageRef{
-		hash:  hash,
-		key:   strconv.FormatUint(hash, 36),
-		img:   img,
-		scale: scale,
+func newImage(skiaImg skia.Image, scale float32, hash uint64) (*Image, error) {
+	if existing, ok := imgCache[hash]; ok {
+		if actual := existing.Value(); actual != nil {
+			ReleaseOnUIThread(func() {
+				skia.ImageUnref(skiaImg)
+			})
+			return actual, nil
+		}
 	}
-	ref, existedPreviously := imgPool.NewSoftRef(imgRef)
-	if existedPreviously {
-		imgRef.Release()
+	img := &Image{
+		skiaImg: skiaImg,
+		hash:    hash,
+		scale:   scale,
 	}
-	return (*Image)(ref), nil
-}
-
-func (img *Image) ref() *imageRef {
-	if ref, ok := img.Resource.(*imageRef); ok {
-		return ref
-	}
-	return nil
+	imgCache[hash] = weak.Make(img)
+	runtime.AddCleanup(img, func(si skia.Image) {
+		ReleaseOnUIThread(func() {
+			skia.ImageUnref(si)
+		})
+	}, img.skiaImg)
+	return img, nil
 }
 
 // Size returns the size, in pixels, of the image. These dimensions will always be whole numbers > 0 for valid images.
 func (img *Image) Size() Size {
-	ref := img.ref()
 	return Size{
-		Width:  float32(skia.ImageGetWidth(ref.img)),
-		Height: float32(skia.ImageGetHeight(ref.img)),
+		Width:  float32(skia.ImageGetWidth(img.skiaImg)),
+		Height: float32(skia.ImageGetHeight(img.skiaImg)),
 	}
 }
 
 // LogicalSize returns the logical (device-independent) size.
 func (img *Image) LogicalSize() Size {
-	ref := img.ref()
 	return Size{
-		Width:  float32(skia.ImageGetWidth(ref.img)) * ref.scale,
-		Height: float32(skia.ImageGetHeight(ref.img)) * ref.scale,
+		Width:  float32(skia.ImageGetWidth(img.skiaImg)) * img.scale,
+		Height: float32(skia.ImageGetHeight(img.skiaImg)) * img.scale,
 	}
 }
 
@@ -178,21 +184,20 @@ func (img *Image) DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOption
 
 // Scale returns the internal scaling factor for this image.
 func (img *Image) Scale() float32 {
-	return img.ref().scale
+	return img.scale
 }
 
 // ToNRGBA creates an image.NRGBA from the image.
 func (img *Image) ToNRGBA() (*image.NRGBA, error) {
-	imgData := img.ref().img
-	width := skia.ImageGetWidth(imgData)
-	height := skia.ImageGetHeight(imgData)
+	width := skia.ImageGetWidth(img.skiaImg)
+	height := skia.ImageGetHeight(img.skiaImg)
 	pixels := make([]byte, width*height*4)
-	if !skia.ImageReadPixels(imgData, &skia.ImageInfo{
-		Colorspace: skia.ImageGetColorSpace(imgData),
+	if !skia.ImageReadPixels(img.skiaImg, &skia.ImageInfo{
+		Colorspace: skia.ImageGetColorSpace(img.skiaImg),
 		Width:      int32(width),
 		Height:     int32(height),
 		ColorType:  skia.ColorTypeRGBA8888,
-		AlphaType:  skia.ImageGetAlphaType(imgData),
+		AlphaType:  skia.ImageGetAlphaType(img.skiaImg),
 	}, pixels, width*4, 0, 0, skia.ImageCachingHintDisallow) {
 		return nil, errs.New("unable to read raw pixels from image")
 	}
@@ -206,7 +211,7 @@ func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 // ToPNG creates PNG data from the image. 'compressionLevel' should in the range 0-9 and is equivalent to
 // the zlib compression level. A typical compression level is 6 and is equivalent to the zlib default.
 func (img *Image) ToPNG(compressionLevel int) ([]byte, error) {
-	data := skia.EncodePNG(nil, img.ref().img, compressionLevel)
+	data := skia.EncodePNG(nil, img.skiaImg, compressionLevel)
 	if data == nil {
 		return nil, errs.New("unable to create PNG from image")
 	}
@@ -218,7 +223,7 @@ func (img *Image) ToPNG(compressionLevel int) ([]byte, error) {
 
 // ToJPEG creates JPEG data from the image. quality should be greater than 0 and equal to or less than 100.
 func (img *Image) ToJPEG(quality int) ([]byte, error) {
-	data := skia.EncodeJPEG(nil, img.ref().img, quality)
+	data := skia.EncodeJPEG(nil, img.skiaImg, quality)
 	if data == nil {
 		return nil, errs.New("unable to create JPEG from image")
 	}
@@ -230,7 +235,7 @@ func (img *Image) ToJPEG(quality int) ([]byte, error) {
 
 // ToWebp creates Webp data from the image. quality should be greater than 0 and equal to or less than 100.
 func (img *Image) ToWebp(quality float32, lossy bool) ([]byte, error) {
-	data := skia.EncodeWebp(nil, img.ref().img, quality, lossy)
+	data := skia.EncodeWebp(nil, img.skiaImg, quality, lossy)
 	if data == nil {
 		return nil, errs.New("unable to create WEBP from image")
 	}
@@ -240,78 +245,56 @@ func (img *Image) ToWebp(quality float32, lossy bool) ([]byte, error) {
 	return buffer, nil
 }
 
-func releaseImagesForContext(ctx skia.DirectContext) {
+// Hash returns a hash of the image data.
+func (img *Image) Hash() uint64 {
+	return img.hash
+}
+
+func (img *Image) skiaImageForCanvas(canvas *Canvas) skia.Image {
+	if canvas == nil || canvas.surface == nil || canvas.surface.context == nil {
+		if img.skiaNonTextureImg != nil {
+			return img.skiaNonTextureImg
+		}
+		img.skiaNonTextureImg = skia.ImageMakeNonTextureImage(img.skiaImg)
+		if img.skiaNonTextureImg == nil {
+			return img.skiaImg
+		}
+		runtime.AddCleanup(img, func(si skia.Image) {
+			ReleaseOnUIThread(func() {
+				skia.ImageUnref(si)
+			})
+		}, img.skiaNonTextureImg)
+		return img.skiaNonTextureImg
+	}
+	m, ok := imageCtxMap[canvas.surface.context]
+	if !ok {
+		m = make(map[uint64]skia.Image)
+		imageCtxMap[canvas.surface.context] = m
+	}
+	var si skia.Image
+	if si, ok = m[img.hash]; ok {
+		return si
+	}
+	si = skia.ImageTextureFromImage(canvas.surface.context, img.skiaImg, false, true)
+	if si == nil {
+		return img.skiaImg
+	}
+	m[img.hash] = si
+	return si
+}
+
+func releaseSkiaImagesForContext(ctx skia.DirectContext) {
 	if m, ok := imageCtxMap[ctx]; ok {
 		delete(imageCtxMap, ctx)
 		for _, img := range m {
 			skia.ImageUnref(img)
 		}
 	}
-}
-
-var (
-	imageCtxMapLock sync.Mutex
-	imageCtxMap     = make(map[skia.DirectContext]map[uint64]skia.Image)
-)
-
-type imageRef struct {
-	img   skia.Image
-	key   string
-	hash  uint64
-	scale float32
-}
-
-func (ref *imageRef) contextImg(s *surface) skia.Image {
-	imageCtxMapLock.Lock()
-	defer imageCtxMapLock.Unlock()
-	var ctx skia.DirectContext
-	if s != nil {
-		ctx = s.context
-	}
-	m, ok := imageCtxMap[ctx]
-	if !ok {
-		m = make(map[uint64]skia.Image)
-		imageCtxMap[ctx] = m
-	}
-	i, ok2 := m[ref.hash]
-	if !ok2 {
-		if ctx == nil {
-			i = skia.ImageMakeNonTextureImage(ref.img)
-		} else {
-			i = skia.ImageTextureFromImage(ctx, ref.img, false, true)
-		}
-		if i != nil {
-			m[ref.hash] = i
-		} else {
-			errs.Log(errs.New("failed to create texture from image"))
-			i = ref.img
-		}
-	}
-	return i
-}
-
-func (ref *imageRef) Key() string {
-	return ref.key
-}
-
-func (ref *imageRef) Release() {
-	imageCtxMapLock.Lock()
-	var list []skia.Image
-	for _, m := range imageCtxMap {
-		if img, ok := m[ref.hash]; ok {
-			list = append(list, img)
-			delete(m, ref.hash)
-		}
-	}
-	imageCtxMapLock.Unlock()
-	list = append(list, ref.img)
-	ref.img = nil
-	// We have to do the actual release on the UI thread
-	InvokeTask(func() {
-		for _, img := range list {
-			skia.ImageUnref(img)
-		}
-	})
+	InvokeTaskAfter(func() {
+		// Encourage unused images to be cleaned up
+		runtime.GC()
+		runtime.GC()
+	}, time.Millisecond)
 }
 
 func hashImageData(width, height int, scale float32, data []byte) uint64 {

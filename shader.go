@@ -103,15 +103,8 @@ func NewTurbulencePerlinNoiseShader(baseFreqX, baseFreqY, seed float32, numOctav
 // NewImageShader creates a new image Shader. If canvas is not nil, a hardware-accellerated image will be used if
 // possible.
 func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY tilemode.Enum, sampling *SamplingOptions, matrix Matrix) *Shader {
-	var image skia.Image
-	ref := img.ref()
-	if canvas == nil {
-		image = ref.img
-	} else {
-		image = ref.contextImg(canvas.surface)
-	}
-	return newShader(skia.ImageMakeShader(image, skia.TileMode(tileModeX), skia.TileMode(tileModeY),
-		sampling.skSamplingOptions(), matrix))
+	return newShader(skia.ImageMakeShader(img.skiaImageForCanvas(canvas), skia.TileMode(tileModeX),
+		skia.TileMode(tileModeY), sampling.skSamplingOptions(), matrix))
 }
 
 // NewWithLocalMatrix creates a new copy of this shader with a local matrix applied.

@@ -85,7 +85,7 @@ func (s *surface) partialDispose() {
 func (s *surface) dispose() {
 	s.partialDispose()
 	if s.context != nil {
-		releaseImagesForContext(s.context)
+		releaseSkiaImagesForContext(s.context)
 		skia.ContextAbandonContext(s.context)
 		skia.ContextUnref(s.context)
 		s.context = nil

@@ -118,28 +118,15 @@ func NewDropShadowOnlyImageFilter(dx, dy, sigmaX, sigmaY float32, color Color, i
 // NewImageSourceImageFilter returns a new image source image filter. If canvas is not nil, a hardware-accellerated
 // image will be used if possible.
 func NewImageSourceImageFilter(canvas *Canvas, img *Image, srcRect, dstRect Rect, sampling *SamplingOptions) *ImageFilter {
-	var image skia.Image
-	ref := img.ref()
-	if canvas == nil {
-		image = ref.img
-	} else {
-		image = ref.contextImg(canvas.surface)
-	}
-	return newImageFilter(skia.ImageFilterNewImageSource(image, srcRect, dstRect,
+	return newImageFilter(skia.ImageFilterNewImageSource(img.skiaImageForCanvas(canvas), srcRect, dstRect,
 		sampling.skSamplingOptions()))
 }
 
 // NewImageSourceDefaultImageFilter returns a new image source image filter that uses the default quality and the full
 // image size. If canvas is not nil, a hardware-accellerated image will be used if possible.
 func NewImageSourceDefaultImageFilter(canvas *Canvas, img *Image, sampling *SamplingOptions) *ImageFilter {
-	var image skia.Image
-	ref := img.ref()
-	if canvas == nil {
-		image = ref.img
-	} else {
-		image = ref.contextImg(canvas.surface)
-	}
-	return newImageFilter(skia.ImageFilterNewImageSourceDefault(image, sampling.skSamplingOptions()))
+	return newImageFilter(skia.ImageFilterNewImageSourceDefault(img.skiaImageForCanvas(canvas),
+		sampling.skSamplingOptions()))
 }
 
 // NewMagnifierImageFilter returns a new magnifier image filter. input may be nil, in which case the source bitmap will

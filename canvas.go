@@ -166,7 +166,7 @@ func (c *Canvas) DrawImageInRect(img *Image, rect Rect, sampling *SamplingOption
 // DrawImageRectInRect draws a portion of the image into the area specified, scaling if necessary. srcRect should be in
 // raw pixel coordinates, not logical coordinates. dstRect should be in logical coordinates. paint may be nil.
 func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect Rect, sampling *SamplingOptions, paint *Paint) {
-	skia.CanvasDrawImageRect(c.canvas, img.ref().contextImg(c.surface), srcRect, dstRect, sampling.skSamplingOptions(),
+	skia.CanvasDrawImageRect(c.canvas, img.skiaImageForCanvas(c), srcRect, dstRect, sampling.skSamplingOptions(),
 		paint.paintOrNil())
 }
 
@@ -174,7 +174,7 @@ func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect Rect, sampling
 // sections: four sides, four corners, and the center. Corners are unmodified or scaled down proportionately if their
 // sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. paint may be nil.
 func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect Rect, filter filtermode.Enum, paint *Paint) {
-	skia.CanvasDrawImageNine(c.canvas, img.ref().contextImg(c.surface), centerRect, dstRect, skia.FilterMode(filter),
+	skia.CanvasDrawImageNine(c.canvas, img.skiaImageForCanvas(c), centerRect, dstRect, skia.FilterMode(filter),
 		paint.paintOrNil())
 }
 
