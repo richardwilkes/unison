@@ -31,11 +31,11 @@ func newShader(shader skia.Shader) *Shader {
 		return nil
 	}
 	s := &Shader{shader: shader}
-	runtime.SetFinalizer(s, func(obj *Shader) {
+	runtime.AddCleanup(s, func(ss skia.Shader) {
 		ReleaseOnUIThread(func() {
-			skia.ShaderUnref(obj.shader)
+			skia.ShaderUnref(ss)
 		})
-	})
+	}, s.shader)
 	return s
 }
 

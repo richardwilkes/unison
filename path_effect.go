@@ -27,11 +27,11 @@ func newPathEffect(effect skia.PathEffect) *PathEffect {
 		return nil
 	}
 	e := &PathEffect{effect: effect}
-	runtime.SetFinalizer(e, func(obj *PathEffect) {
+	runtime.AddCleanup(e, func(se skia.PathEffect) {
 		ReleaseOnUIThread(func() {
-			skia.PathEffectUnref(obj.effect)
+			skia.PathEffectUnref(se)
 		})
-	})
+	}, e.effect)
 	return e
 }
 

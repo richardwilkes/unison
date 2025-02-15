@@ -26,11 +26,11 @@ type Paint struct {
 
 func newPaint(paint skia.Paint) *Paint {
 	p := &Paint{paint: paint}
-	runtime.SetFinalizer(p, func(obj *Paint) {
+	runtime.AddCleanup(p, func(sp skia.Paint) {
 		ReleaseOnUIThread(func() {
-			skia.PaintDelete(obj.paint)
+			skia.PaintDelete(sp)
 		})
-	})
+	}, p.paint)
 	return p
 }
 

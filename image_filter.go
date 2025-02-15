@@ -27,11 +27,11 @@ func newImageFilter(filter skia.ImageFilter) *ImageFilter {
 		return nil
 	}
 	f := &ImageFilter{filter: filter}
-	runtime.SetFinalizer(f, func(obj *ImageFilter) {
+	runtime.AddCleanup(f, func(sf skia.ImageFilter) {
 		ReleaseOnUIThread(func() {
-			skia.ImageFilterUnref(obj.filter)
+			skia.ImageFilterUnref(sf)
 		})
-	})
+	}, f.filter)
 	return f
 }
 

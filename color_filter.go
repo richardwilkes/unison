@@ -27,11 +27,11 @@ func newColorFilter(filter skia.ColorFilter) *ColorFilter {
 		return nil
 	}
 	f := &ColorFilter{filter: filter}
-	runtime.SetFinalizer(f, func(obj *ColorFilter) {
+	runtime.AddCleanup(f, func(sf skia.ColorFilter) {
 		ReleaseOnUIThread(func() {
-			skia.ColorFilterUnref(obj.filter)
+			skia.ColorFilterUnref(sf)
 		})
-	})
+	}, f.filter)
 	return f
 }
 

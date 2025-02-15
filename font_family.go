@@ -86,11 +86,11 @@ func MatchFontFamily(family string) *FontFamily {
 		name: family,
 		set:  skia.FontMgrMatchFamily(skia.FontMgrRefDefault(), family),
 	}
-	runtime.SetFinalizer(f, func(obj *FontFamily) {
+	runtime.AddCleanup(f, func(set skia.FontStyleSet) {
 		ReleaseOnUIThread(func() {
-			skia.FontStyleSetUnref(obj.set)
+			skia.FontStyleSetUnref(set)
 		})
-	})
+	}, f.set)
 	return f
 }
 

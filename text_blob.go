@@ -25,10 +25,10 @@ func newTextBlob(textBlob skia.TextBlob) *TextBlob {
 		return nil
 	}
 	tb := &TextBlob{blob: textBlob}
-	runtime.SetFinalizer(tb, func(obj *TextBlob) {
+	runtime.AddCleanup(tb, func(sb skia.TextBlob) {
 		ReleaseOnUIThread(func() {
-			skia.TextBlobUnref(obj.blob)
+			skia.TextBlobUnref(sb)
 		})
-	})
+	}, tb.blob)
 	return tb
 }

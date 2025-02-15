@@ -26,11 +26,11 @@ func newMaskFilter(filter skia.MaskFilter) *MaskFilter {
 		return nil
 	}
 	f := &MaskFilter{filter: filter}
-	runtime.SetFinalizer(f, func(obj *MaskFilter) {
+	runtime.AddCleanup(f, func(sf skia.MaskFilter) {
 		ReleaseOnUIThread(func() {
-			skia.MaskFilterUnref(obj.filter)
+			skia.MaskFilterUnref(sf)
 		})
-	})
+	}, f.filter)
 	return f
 }
 

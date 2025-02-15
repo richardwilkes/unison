@@ -198,11 +198,11 @@ func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
 	// any changes away from no font hinting (0) on all supported platforms.
 	skia.FontSetHinting(font.font, 0)
 	skia.FontGetMetrics(font.font, &font.metrics)
-	runtime.SetFinalizer(font, func(obj *fontImpl) {
+	runtime.AddCleanup(font, func(sf skia.Font) {
 		ReleaseOnUIThread(func() {
-			skia.FontDelete(obj.font)
+			skia.FontDelete(sf)
 		})
-	})
+	}, font.font)
 	return font
 }
 

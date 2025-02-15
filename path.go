@@ -33,11 +33,11 @@ type Path struct {
 
 func newPath(path skia.Path) *Path {
 	p := &Path{path: path}
-	runtime.SetFinalizer(p, func(obj *Path) {
+	runtime.AddCleanup(p, func(sp skia.Path) {
 		ReleaseOnUIThread(func() {
-			skia.PathDelete(obj.path)
+			skia.PathDelete(sp)
 		})
-	})
+	}, p.path)
 	return p
 }
 
