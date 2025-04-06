@@ -9,7 +9,7 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lafriks/go-svg v0.5.1
 	github.com/richardwilkes/json v0.3.0
-	github.com/richardwilkes/toolbox v1.122.2
+	github.com/richardwilkes/toolbox v1.123.0
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.7.8
 	github.com/zeebo/xxh3 v1.0.2
