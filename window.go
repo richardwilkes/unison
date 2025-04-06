@@ -637,8 +637,8 @@ func (w *Window) adjustContentRectForMinMax(rect Rect) Rect {
 // LocalContentRect returns the boundaries in local coordinates of the window's content area.
 func (w *Window) LocalContentRect() Rect {
 	r := w.ContentRect()
-	r.Point.X = 0
-	r.Point.Y = 0
+	r.X = 0
+	r.Y = 0
 	return r
 }
 

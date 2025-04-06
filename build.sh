@@ -65,7 +65,7 @@ if [ "$TEST"x == "1x" ]; then
 	else
 		echo -e "\033[33mTesting...\033[0m"
 	fi
-	go test $RACE ./...
+	go test $RACE ./... | grep -v "no test files"
 fi
 
 # Install the packager

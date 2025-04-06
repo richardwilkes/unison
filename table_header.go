@@ -56,7 +56,7 @@ func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...T
 	}
 	h.Self = h
 	h.SetSizer(h.DefaultSizes)
-	h.SetBorder(h.TableHeaderTheme.HeaderBorder)
+	h.SetBorder(h.HeaderBorder)
 	h.DrawCallback = h.DefaultDraw
 	h.UpdateCursorCallback = h.DefaultUpdateCursorCallback
 	h.UpdateTooltipCallback = h.DefaultUpdateTooltipCallback
@@ -70,7 +70,7 @@ func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...T
 
 // DefaultSizes provides the default sizing.
 func (h *TableHeader[T]) DefaultSizes(_ Size) (minSize, prefSize, maxSize Size) {
-	prefSize.Width = h.table.FrameRect().Size.Width
+	prefSize.Width = h.table.FrameRect().Width
 	prefSize.Height = h.heightForColumns()
 	if border := h.Border(); border != nil {
 		insets := border.Insets()

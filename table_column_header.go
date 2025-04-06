@@ -80,7 +80,7 @@ func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (minSize, prefSize
 
 	// Account for the potential sort indicator
 	baseline := h.Font.Baseline()
-	prefSize.Width += h.LabelTheme.Gap + baseline
+	prefSize.Width += h.Gap + baseline
 	if prefSize.Height < baseline {
 		prefSize.Height = baseline
 	}
@@ -96,13 +96,13 @@ func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (minSize, prefSize
 func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	r := h.ContentRect(false)
 	if h.sortIndicator != nil {
-		r.Width -= h.LabelTheme.Gap + h.sortIndicator.LogicalSize().Width
+		r.Width -= h.Gap + h.sortIndicator.LogicalSize().Width
 	}
 	DrawLabel(canvas, r, h.HAlign, h.VAlign, h.Font, h.Text, h.OnBackgroundInk, nil, h.Drawable, h.Side, h.Gap,
 		!h.Enabled())
 	if h.sortIndicator != nil {
 		size := h.sortIndicator.LogicalSize()
-		r.X = r.Right() + h.LabelTheme.Gap
+		r.X = r.Right() + h.Gap
 		r.Y += (r.Height - size.Height) / 2
 		r.Size = size
 		paint := h.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)

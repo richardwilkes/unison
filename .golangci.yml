@@ -1,124 +1,9 @@
+version: '2'
 run:
-  timeout: 5m
-  tests: true
   modules-download-mode: readonly
-output:
-  print-issued-lines: true
-  print-linter-name: true
-  sort-results: true
-linters-settings:
-  depguard:
-    rules:
-      main:
-        deny:
-          - pkg: github.com/satori/go.uuid
-            desc: Use github.com/google/uuid or github.com/gofrs/uuid instead
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-    exclude-functions:
-      - fmt.Fprint
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - (fmt.State).Write
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
-    disabled-checks:
-      - sloppyReassign
-  gofumpt:
-    extra-rules: true
-  gosec:
-    excludes:
-      - G103
-      - G115
-      - G204
-      - G301
-      - G302
-      - G303
-      - G304
-      - G306
-      - G307
-  govet:
-    enable-all: true
-    disable:
-      - composites
-    settings:
-      shadow:
-        strict: true
-      printf:
-        funcs:
-          - Errorf
-          - Warnf
-          - Infof
-          - Debugf
-          - Fatalf
-          - StartRootSpanf
-          - StartSubSpanf
-          - EndWithMsgf
-          - Newf
-          - NewWithCausef
-  misspell:
-    locale: US
-  prealloc:
-    simple: true
-    range-loops: true
-    for-loops: false
-  revive:
-    rules:
-      - name: blank-imports
-        disabled: false
-      - name: context-as-argument
-        disabled: false
-      - name: context-keys-type
-        disabled: false
-      - name: dot-imports
-        disabled: false
-      - name: error-return
-        disabled: false
-      - name: error-strings
-        disabled: false
-      - name: error-naming
-        disabled: false
-      - name: exported
-        disabled: false
-      - name: if-return
-        disabled: false
-      - name: increment-decrement
-        disabled: false
-      - name: var-naming
-        disabled: false
-      - name: var-declaration
-        disabled: false
-      - name: package-comments
-        disabled: true
-      - name: range
-        disabled: false
-      - name: receiver-naming
-        disabled: false
-      - name: time-naming
-        disabled: false
-      - name: unexported-return
-        disabled: false
-      - name: indent-error-flow
-        disabled: false
-      - name: errorf
-        disabled: false
-      - name: unused-parameter
-        disabled: false
-        arguments:
-          - allowRegex: "^_"
-  staticcheck:
-    checks: ["all", "-SA3000"]
+  tests: true
 linters:
-  disable-all: true
+  default: none
   enable:
     - copyloopvar
     - depguard
@@ -126,10 +11,7 @@ linters:
     - errorlint
     - goconst
     - gocritic
-    - gofumpt
-    - goimports
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - misspell
@@ -138,15 +20,157 @@ linters:
     - predeclared
     - revive
     - staticcheck
-    - typecheck
     - unconvert
     - unused
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: github.com/satori/go.uuid
+              desc: Use github.com/google/uuid or github.com/gofrs/uuid instead
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - encoding/binary.Write
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (fmt.State).Write
+        - (*bufio.Writer).WriteByte
+        - (*bufio.Writer).WriteRune
+        - (*bufio.Writer).WriteString
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).Insert
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).InsertByte
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).InsertRune
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).InsertString
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).Write
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).WriteByte
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).WriteRune
+        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).WriteString
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocritic:
+      disabled-checks:
+        - sloppyReassign
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    gosec:
+      excludes:
+        - G103
+        - G104
+        - G110
+        - G115
+        - G204
+        - G301
+        - G302
+        - G303
+        - G304
+        - G306
+        - G307
+        - G601
+    govet:
+      disable:
+        - composites
+      enable-all: true
+      settings:
+        printf:
+          funcs:
+            - Errorf
+            - Warnf
+            - Infof
+            - Debugf
+            - Fatalf
+            - StartRootSpanf
+            - StartSubSpanf
+            - EndWithMsgf
+            - Newf
+            - NewWithCausef
+        shadow:
+          strict: true
+    misspell:
+      locale: US
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+    revive:
+      rules:
+        - name: blank-imports
+          disabled: false
+        - name: context-as-argument
+          disabled: false
+        - name: context-keys-type
+          disabled: false
+        - name: dot-imports
+          disabled: false
+        - name: error-return
+          disabled: false
+        - name: error-strings
+          disabled: false
+        - name: error-naming
+          disabled: false
+        - name: exported
+          disabled: false
+        - name: if-return
+          disabled: false
+        - name: increment-decrement
+          disabled: false
+        - name: var-naming
+          disabled: false
+        - name: var-declaration
+          disabled: false
+        - name: package-comments
+          disabled: true
+        - name: range
+          disabled: false
+        - name: receiver-naming
+          disabled: false
+        - name: time-naming
+          disabled: false
+        - name: unexported-return
+          disabled: false
+        - name: indent-error-flow
+          disabled: false
+        - name: errorf
+          disabled: false
+        - name: unused-parameter
+          arguments:
+            - allowRegex: ^_
+          disabled: false
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -SA3000
+        - -SA5008
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - internal/ns/
+      - internal/skia/
+      - internal/w32/
 issues:
   max-same-issues: 0
-  exclude-use-default: false
-  exclude-dirs:
-    - internal/ns
-    - internal/skia
-    - internal/w32
-  exclude:
-    - "package-comments: should have a package comment"
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

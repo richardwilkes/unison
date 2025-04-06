@@ -90,7 +90,7 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 			l.LabelTheme = DefaultTooltipTheme.Label
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()
 			desc.Size--
-			l.LabelTheme.Font = desc.Font()
+			l.Font = desc.Font()
 			l.SetTitle(str)
 			tip.AddChild(l)
 		}

@@ -64,7 +64,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	d.DataDragOverCallback = d.DefaultDataDragOver
 	d.DataDragExitCallback = d.DefaultDataDragExit
 	d.DataDragDropCallback = d.DefaultDataDrop
-	d.SetBorder(d.DockHeaderTheme.HeaderBorder)
+	d.SetBorder(d.HeaderBorder)
 	d.SetLayout(d)
 	for _, dockable := range dc.Dockables() {
 		d.AddChild(newDockTab(dockable))
@@ -314,7 +314,7 @@ func createDockHeaderButton() *Button {
 
 func (d *dockHeader) adjustToMaximizedState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Restore() }
-	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
+	fSize := d.maximizeRestoreButton.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowRestoreSVG,
 		Size: Size{Width: fSize, Height: fSize},
@@ -324,7 +324,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 
 func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Maximize(d.owner) }
-	fSize := d.maximizeRestoreButton.ButtonTheme.Font.Baseline()
+	fSize := d.maximizeRestoreButton.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowMaximizeSVG,
 		Size: Size{Width: fSize, Height: fSize},

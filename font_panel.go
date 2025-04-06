@@ -52,7 +52,7 @@ func NewFontPanel() *FontPanel {
 	p.fontFamilyPopup.SelectionChangedCallback = func(popup *PopupMenu[string]) {
 		if family, ok := popup.Selected(); ok {
 			if family != p.fontDescriptor.Family {
-				p.fontDescriptor.FontFaceDescriptor.Family = family
+				p.fontDescriptor.Family = family
 				p.adjustForCurrentFontFamily()
 				p.fontModified()
 			}

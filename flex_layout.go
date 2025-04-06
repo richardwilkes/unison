@@ -95,16 +95,18 @@ func (f *FlexLayout) layout(target *Panel, location Point, hint Size, move, useM
 			}
 			if move {
 				if totalSize.Width < hint.Width {
-					if f.HAlign == align.Middle {
+					switch f.HAlign {
+					case align.Middle:
 						location.X += xmath.Round((hint.Width - totalSize.Width) / 2)
-					} else if f.HAlign == align.End {
+					case align.End:
 						location.X += hint.Width - totalSize.Width
 					}
 				}
 				if totalSize.Height < hint.Height {
-					if f.VAlign == align.Middle {
+					switch f.VAlign {
+					case align.Middle:
 						location.Y += xmath.Round((hint.Height - totalSize.Height) / 2)
-					} else if f.VAlign == align.End {
+					case align.End:
 						location.Y += hint.Height - totalSize.Height
 					}
 				}

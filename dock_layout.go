@@ -220,12 +220,12 @@ func dockOrder(s side.Enum) (p1, p2 int) {
 
 // Remove a node. Returns true if the node was found and removed.
 func (d *DockLayout) Remove(node DockLayoutNode) bool {
-	switch {
-	case node == d.nodes[0]:
+	switch node {
+	case d.nodes[0]:
 		d.nodes[0] = nil
 		d.pullUp(d.nodes[1])
 		return true
-	case node == d.nodes[1]:
+	case d.nodes[1]:
 		d.nodes[1] = nil
 		d.pullUp(d.nodes[0])
 		return true

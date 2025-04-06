@@ -242,7 +242,7 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.block = m.AsPanel()
 	m.textRow = nil
 	m.text = nil
-	m.decoration = m.TextDecoration.Clone()
+	m.decoration = m.Clone()
 	m.index = 0
 	m.ordered = false
 	m.node = goldmark.New(goldmark.WithExtensions(extension.GFM)).Parser().Parse(text.NewReader(m.content))

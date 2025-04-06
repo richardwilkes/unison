@@ -86,7 +86,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	}
 	t.Self = t
 	t.DrawCallback = t.draw
-	t.SetBorder(t.DockTabTheme.TabBorder)
+	t.SetBorder(t.TabBorder)
 	flex := &FlexLayout{
 		Columns:  1,
 		HSpacing: t.Gap,
