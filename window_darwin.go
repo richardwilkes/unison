@@ -50,8 +50,8 @@ func (w *Window) SetContentRect(rect Rect) {
 	}
 }
 
-func (w *Window) convertMouseLocation(x, y float64) Point {
-	return Point{X: float32(x), Y: float32(y)}
+func (w *Window) convertRawMouseLocationForPlatform(where Point) Point {
+	return where
 }
 
 func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {

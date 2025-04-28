@@ -251,7 +251,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	})
 	w.wnd.SetMouseButtonCallback(w.mouseButtonCallback)
 	w.wnd.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {
-		where := w.convertMouseLocation(x, y)
+		where := w.convertRawMouseLocation(x, y)
 		if w.inMouseDown {
 			w.mouseDrag(where, w.lastButton, w.lastKeyModifiers)
 		} else {
@@ -841,9 +841,13 @@ func (w *Window) Resizable() bool {
 // MouseLocation returns the current mouse location relative to this window.
 func (w *Window) MouseLocation() Point {
 	if w.IsValid() {
-		return w.convertMouseLocation(w.wnd.GetCursorPos())
+		return w.convertRawMouseLocation(w.wnd.GetCursorPos())
 	}
 	return Point{}
+}
+
+func (w *Window) convertRawMouseLocation(x, y float64) Point {
+	return w.convertRawMouseLocationForPlatform(Point{X: float32(x), Y: float32(y)})
 }
 
 // BackingScale returns the scale of the backing store for this window.

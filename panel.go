@@ -538,8 +538,7 @@ func (p *Panel) PanelAt(pt Point) *Panel {
 	for _, child := range p.children {
 		if !child.Hidden {
 			if r := child.FrameRect(); pt.In(r) {
-				scale := child.Scale()
-				return child.PanelAt(pt.Sub(r.Point).Div(scale))
+				return child.PanelAt(pt.Sub(r.Point).Div(child.Scale()))
 			}
 		}
 	}

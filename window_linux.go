@@ -77,15 +77,13 @@ func (w *Window) SetContentRect(rect Rect) {
 	}
 }
 
-func (w *Window) convertMouseLocation(x, y float64) Point {
+func (w *Window) convertRawMouseLocationForPlatform(where Point) Point {
 	if w.IsValid() {
-		pt := Point{X: float32(x), Y: float32(y)}
 		sx, sy := w.wnd.GetContentScale()
-		pt.X /= sx
-		pt.Y /= sy
-		return pt
+		where.X /= sx
+		where.Y /= sy
 	}
-	return Point{}
+	return where
 }
 
 func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {
