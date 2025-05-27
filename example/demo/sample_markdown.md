@@ -14,7 +14,13 @@ To create a heading, add one to six `#` before your heading text. The number of 
 
 ## The second largest heading
 
-###### The smallest heading
+### The third largest heading
+
+#### The fourth largest heading
+
+##### The fifth largest heading
+
+###### The sixth (and smallest) heading
 
 Alternatively, for level 1 headings, you can add any number of `=` characters underneath a heading title.
 

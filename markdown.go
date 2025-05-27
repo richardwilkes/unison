@@ -82,17 +82,18 @@ func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
 		fd = font.Descriptor()
 	}
 	fd.Weight = weight.Black
+	// 20% relative growth per level
 	switch level {
 	case 1:
-		fd.Size *= 2.5
+		fd.Size *= 2.48832
 	case 2:
-		fd.Size *= 2
+		fd.Size *= 2.0736
 	case 3:
-		fd.Size *= 1.75
+		fd.Size *= 1.728
 	case 4:
-		fd.Size *= 1.5
+		fd.Size *= 1.44
 	case 5:
-		fd.Size *= 1.25
+		fd.Size *= 1.2
 	default:
 	}
 	return fd
