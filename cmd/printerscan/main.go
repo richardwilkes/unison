@@ -26,8 +26,8 @@ import (
 )
 
 func main() {
-	xos.AppName = "Printer Scanner"
-	xos.AppCmdName = "printer-scanner"
+	xos.AppName = "Printer Scan"
+	xos.AppCmdName = "printerscan"
 	xos.License = "Mozilla Public License, version 2.0"
 	xos.CopyrightStartYear = "2021"
 	xos.CopyrightHolder = "Richard A. Wilkes"
@@ -69,7 +69,7 @@ func scan(duration time.Duration, output string) {
 			continue
 		}
 		for k, v := range a.Attributes {
-			slog.Info("attribute", "key", k, "value", v)
+			slog.Info("attribute", k, v)
 		}
 	}
 }

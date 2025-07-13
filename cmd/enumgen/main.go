@@ -9,10 +9,11 @@
 
 package main
 
-//go:generate go run enumgen.go
+//go:generate go run main.go
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"go/format"
 	"io"
@@ -22,17 +23,17 @@ import (
 	"text/template"
 	"unicode"
 
+	"github.com/richardwilkes/toolbox/v2/xfilepath"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
 
-const (
-	rootDir   = ".."
-	genSuffix = "_gen.go"
-	enumTmpl  = "enum.go.tmpl"
-)
+const genSuffix = "_gen.go"
+
+//go:embed enum.go.tmpl
+var enumTmplData string
 
 type enumValue struct {
 	Name          string
@@ -57,8 +58,20 @@ type enumInfo struct {
 }
 
 func main() {
-	removeExistingGenFiles()
-	processSourceTemplate(enumTmpl, &enumInfo{
+	wd, err := os.Getwd()
+	xos.ExitIfErr(err)
+	originalWD := wd
+	if xfilepath.BaseName(wd) == "enumgen" {
+		wd = filepath.Dir(wd)
+		if xfilepath.BaseName(wd) == "cmd" {
+			wd = filepath.Dir(wd)
+		}
+	}
+	if xfilepath.BaseName(wd) != "unison" {
+		xos.ExitWithMsg("unexpected working directory: " + originalWD)
+	}
+	removeExistingGenFiles(wd)
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/align",
 		Name: "align",
 		Desc: "specifies how to align an object within its available space",
@@ -69,7 +82,7 @@ func main() {
 			{Key: "fill"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/arcsize",
 		Name: "arcsize",
 		Desc: "holds the relative size of an arc",
@@ -78,7 +91,7 @@ func main() {
 			{Key: "large"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/behavior",
 		Name: "behavior",
 		Desc: "controls how auto-sizing of the scroll content's preferred size is handled",
@@ -89,7 +102,7 @@ func main() {
 			{Key: "hinted-fill", Comment: "Uses hints to try and fix the content to the view size, but if the resulting content is smaller than the available space, expands it"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/blendmode",
 		Name: "blendmode",
 		Desc: "holds the mode used for blending pixels",
@@ -125,7 +138,7 @@ func main() {
 			{Key: "luminosity"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/blur",
 		Name: "blur",
 		Desc: "holds the type of blur to apply",
@@ -136,7 +149,7 @@ func main() {
 			{Key: "inner"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/check",
 		Name: "check",
 		Desc: "represents the current state of something like a check box or mark",
@@ -146,7 +159,7 @@ func main() {
 			{Key: "mixed"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/colorchannel",
 		Name: "colorchannel",
 		Desc: "specifies a specific channel within an RGBA color",
@@ -157,7 +170,7 @@ func main() {
 			{Key: "alpha"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/direction",
 		Name: "direction",
 		Desc: "holds the direction of a path",
@@ -166,7 +179,7 @@ func main() {
 			{Key: "counter-clockwise"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:      "enums/filtermode",
 		Name:     "filtermode",
 		Desc:     "holds the type of sampling to be done",
@@ -176,7 +189,7 @@ func main() {
 			{Key: "linear", Comment: "Interpolate between 2x2 sample points (bilinear interpolation)"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/imgfmt",
 		Name: "imgfmt",
 		Desc: "holds the type of encoding an image was stored with",
@@ -191,7 +204,7 @@ func main() {
 			{Key: "webp", NoLocalize: true, ForceUpper: true},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/invertstyle",
 		Name: "invertstyle",
 		Desc: "holds the type of image inversion",
@@ -201,7 +214,7 @@ func main() {
 			{Key: "lightness"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:      "enums/mipmapmode",
 		Name:     "mipmapmode",
 		Desc:     "holds the type of mipmapping to be done",
@@ -212,7 +225,7 @@ func main() {
 			{Key: "linear", Comment: "Interpolate between the two nearest levels"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/paintstyle",
 		Name: "paintstyle",
 		Desc: "holds the type of painting to do",
@@ -222,7 +235,7 @@ func main() {
 			{Key: "stroke-and-fill"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/patheffect",
 		Name: "patheffect",
 		Desc: "holds the 1D path effect",
@@ -232,7 +245,7 @@ func main() {
 			{Key: "morph"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/pathop",
 		Name: "pathop",
 		Desc: "holds the possible operations that can be performed on a pair of paths",
@@ -244,7 +257,7 @@ func main() {
 			{Key: "reverse-difference"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/pointmode",
 		Name: "pointmode",
 		Desc: "controls how Canvas.DrawPoints() renders the points passed to it",
@@ -254,7 +267,7 @@ func main() {
 			{Key: "polygon"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/side",
 		Name: "side",
 		Desc: "specifies which side an object should be on",
@@ -265,7 +278,7 @@ func main() {
 			{Key: "right"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/slant",
 		Name: "slant",
 		Desc: "holds the slant of a font",
@@ -275,7 +288,7 @@ func main() {
 			{Key: "oblique"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:       "enums/spacing",
 		Name:      "spacing",
 		Desc:      "holds the text spacing of a font",
@@ -292,7 +305,7 @@ func main() {
 			{Key: "ultra-expanded"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/strokecap",
 		Name: "strokecap",
 		Desc: "holds the style for rendering the endpoint of a stroked line",
@@ -302,7 +315,7 @@ func main() {
 			{Key: "square"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/strokejoin",
 		Name: "strokejoin",
 		Desc: "holds the method for drawing the junction between connected line segments",
@@ -312,7 +325,7 @@ func main() {
 			{Key: "bevel"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/thememode",
 		Name: "thememode",
 		Desc: "holds the theme display mode",
@@ -322,7 +335,7 @@ func main() {
 			{Key: "light"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/tilemode",
 		Name: "tilemode",
 		Desc: "holds the type of tiling to perform",
@@ -333,7 +346,7 @@ func main() {
 			{Key: "decal"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/trimmode",
 		Name: "trimmode",
 		Desc: "holds the type of trim",
@@ -342,7 +355,7 @@ func main() {
 			{Key: "inverted"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:           "enums/weight",
 		Name:          "weight",
 		Desc:          "holds the wegith of a font",
@@ -363,7 +376,7 @@ func main() {
 			{Key: "extra-black"},
 		},
 	})
-	processSourceTemplate(enumTmpl, &enumInfo{
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/filltype",
 		Name: "filltype",
 		Desc: "holds the type of fill operation to perform, which affects how overlapping contours interact with each other",
@@ -376,7 +389,7 @@ func main() {
 	})
 }
 
-func removeExistingGenFiles() {
+func removeExistingGenFiles(rootDir string) {
 	root, err := filepath.Abs(rootDir)
 	xos.ExitIfErr(err)
 	xos.ExitIfErr(filepath.Walk(root, func(path string, info os.FileInfo, _ error) error {
@@ -394,8 +407,8 @@ func removeExistingGenFiles() {
 	}))
 }
 
-func processSourceTemplate(tmplName string, info *enumInfo) {
-	tmpl, err := template.New(tmplName).Funcs(template.FuncMap{
+func processSourceTemplate(rootDir string, info *enumInfo) {
+	tmpl, err := template.New("enum.go.tmpl").Funcs(template.FuncMap{
 		"add":          add,
 		"emptyIfTrue":  emptyIfTrue,
 		"fileLeaf":     filepath.Base,
@@ -404,10 +417,10 @@ func processSourceTemplate(tmplName string, info *enumInfo) {
 		"toCamelCase":  xstrings.ToCamelCase,
 		"toIdentifier": toIdentifier,
 		"wrapComment":  wrapComment,
-	}).ParseFiles(tmplName)
+	}).Parse(enumTmplData)
 	xos.ExitIfErr(err)
 	var buffer bytes.Buffer
-	writeGeneratedFromComment(&buffer, tmplName)
+	writeGeneratedFromComment(&buffer, "enum.go.tmpl")
 	xos.ExitIfErr(tmpl.Execute(&buffer, info))
 	var data []byte
 	if data, err = format.Source(buffer.Bytes()); err != nil {

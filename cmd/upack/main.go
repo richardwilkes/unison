@@ -16,7 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xslog"
 	"github.com/richardwilkes/toolbox/v2/xyaml"
-	"github.com/richardwilkes/unison/upack/packager"
+	"github.com/richardwilkes/unison/cmd/upack/packager"
 )
 
 func main() {

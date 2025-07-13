@@ -16,7 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xslog"
 	"github.com/richardwilkes/unison"
-	"github.com/richardwilkes/unison/example/demo"
+	"github.com/richardwilkes/unison/cmd/example/demo"
 )
 
 func main() {

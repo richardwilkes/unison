@@ -24,10 +24,10 @@ only Go 1.24+ will be considered as I make further changes.
 
 ## Example
 
-An example application can be found in the `example` directory:
+An example application can be found in the `cmd/example` directory:
 
 ```sh
-go run example/main.go
+go run ./cmd/example/main.go
 ```
 
 ## Notes
