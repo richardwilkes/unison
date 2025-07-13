@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/tilemode"
 	"github.com/richardwilkes/unison/internal/skia"
@@ -57,28 +58,28 @@ func NewBlendShader(blendMode blendmode.Enum, dst, src *Shader) *Shader {
 }
 
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.
-func NewLinearGradientShader(start, end Point, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
+func NewLinearGradientShader(start, end geom.Point, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
 	return newShader(skia.ShaderNewLinearGradient(start, end,
 		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // NewRadialGradientShader creates a new radial gradient Shader. matrix may be nil.
-func NewRadialGradientShader(center Point, radius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
+func NewRadialGradientShader(center geom.Point, radius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
 	return newShader(skia.ShaderNewRadialGradient(center, radius,
 		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // NewSweepGradientShader creates a new sweep gradient Shader. matrix may be nil.
-func NewSweepGradientShader(center Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
+func NewSweepGradientShader(center geom.Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
 	return newShader(skia.ShaderNewSweepGradient(center, startAngle, endAngle,
 		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
 }
 
 // New2PtConicalGradientShader creates a new 2-point conical gradient Shader. matrix may be nil.
-func New2PtConicalGradientShader(startPt, endPt Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix Matrix) *Shader {
+func New2PtConicalGradientShader(startPt, endPt geom.Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
 	return newShader(skia.ShaderNewTwoPointConicalGradient(startPt, endPt, startRadius, endRadius,
 		unsafe.Slice((*skia.Color)(unsafe.Pointer(&colors[0])), len(colors)),
 		colorPos, skia.TileMode(tileMode), matrix))
@@ -102,13 +103,13 @@ func NewTurbulencePerlinNoiseShader(baseFreqX, baseFreqY, seed float32, numOctav
 
 // NewImageShader creates a new image Shader. If canvas is not nil, a hardware-accellerated image will be used if
 // possible.
-func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY tilemode.Enum, sampling *SamplingOptions, matrix Matrix) *Shader {
+func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY tilemode.Enum, sampling *SamplingOptions, matrix geom.Matrix) *Shader {
 	return newShader(skia.ImageMakeShader(img.skiaImageForCanvas(canvas), skia.TileMode(tileModeX),
 		skia.TileMode(tileModeY), sampling.skSamplingOptions(), matrix))
 }
 
 // NewWithLocalMatrix creates a new copy of this shader with a local matrix applied.
-func (s *Shader) NewWithLocalMatrix(matrix Matrix) *Shader {
+func (s *Shader) NewWithLocalMatrix(matrix geom.Matrix) *Shader {
 	return newShader(skia.ShaderWithLocalMatrix(s.shader, matrix))
 }
 

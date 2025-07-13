@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 )
@@ -39,7 +40,7 @@ func init() {
 }
 
 // NewDemoColorsWindow creates and displays our demo colors window.
-func NewDemoColorsWindow(where unison.Point) (*unison.Window, error) {
+func NewDemoColorsWindow(where geom.Point) (*unison.Window, error) {
 	if colorsWindow != nil {
 		if colorsWindow.IsVisible() {
 			return colorsWindow, nil
@@ -59,7 +60,7 @@ func NewDemoColorsWindow(where unison.Point) (*unison.Window, error) {
 
 	content := wnd.Content()
 	content.SetLayout(&unison.FlexLayout{Columns: 1})
-	content.SetBorder(unison.NewEmptyBorder(unison.NewUniformInsets(20)))
+	content.SetBorder(unison.NewEmptyBorder(geom.NewUniformInsets(20)))
 
 	// Create the colors panel
 	colorsPanel := unison.NewPanel()
@@ -87,7 +88,7 @@ func NewDemoColorsWindow(where unison.Point) (*unison.Window, error) {
 		}
 		unison.GlobalClipboard.SetText(buffer.String())
 	}
-	goCodeButton.SetBorder(unison.NewEmptyBorder(unison.Insets{Top: 20}))
+	goCodeButton.SetBorder(unison.NewEmptyBorder(geom.Insets{Top: 20}))
 	goCodeButton.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Middle})
 	content.AddChild(goCodeButton)
 

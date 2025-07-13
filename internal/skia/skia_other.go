@@ -27,7 +27,7 @@ import "C"
 import (
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 const ColorTypeN32 = ColorTypeRGBA8888
@@ -65,14 +65,14 @@ type (
 	WStream              = *C.sk_wstream_t
 )
 
-func fromGeomMatrix(m *geom.Matrix[float32]) *C.sk_matrix_t {
+func fromGeomMatrix(m *geom.Matrix) *C.sk_matrix_t {
 	if m == nil {
 		return nil
 	}
 	return (*C.sk_matrix_t)(unsafe.Pointer(&Matrix{Matrix: *m, Persp2: 1}))
 }
 
-func fromGeomRect(r *geom.Rect[float32]) *C.sk_rect_t {
+func fromGeomRect(r *geom.Rect) *C.sk_rect_t {
 	if r == nil {
 		return nil
 	}
@@ -168,7 +168,7 @@ func CanvasSkew(canvas Canvas, sx, sy float32) {
 	C.sk_canvas_skew(canvas, C.float(sx), C.float(sy))
 }
 
-func CanvasConcat(canvas Canvas, matrix geom.Matrix[float32]) {
+func CanvasConcat(canvas Canvas, matrix geom.Matrix) {
 	C.sk_canvas_concat(canvas, fromGeomMatrix(&matrix))
 }
 
@@ -176,13 +176,13 @@ func CanvasResetMatrix(canvas Canvas) {
 	C.sk_canvas_reset_matrix(canvas)
 }
 
-func CanvasGetTotalMatrix(canvas Canvas) geom.Matrix[float32] {
+func CanvasGetTotalMatrix(canvas Canvas) geom.Matrix {
 	var matrix Matrix
 	C.sk_canvas_get_total_matrix(canvas, (*C.sk_matrix_t)(unsafe.Pointer(&matrix)))
 	return matrix.Matrix
 }
 
-func CanvasSetMatrix(canvas Canvas, matrix geom.Matrix[float32]) {
+func CanvasSetMatrix(canvas Canvas, matrix geom.Matrix) {
 	C.sk_canvas_set_matrix(canvas, fromGeomMatrix(&matrix))
 }
 
@@ -190,7 +190,7 @@ func CanvasQuickRejectPath(canvas Canvas, path Path) bool {
 	return bool(C.sk_canvas_quick_reject_path(canvas, path))
 }
 
-func CanvasQuickRejectRect(canvas Canvas, rect geom.Rect[float32]) bool {
+func CanvasQuickRejectRect(canvas Canvas, rect geom.Rect) bool {
 	return bool(C.sk_canvas_quick_reject_rect(canvas, fromGeomRect(&rect)))
 }
 
@@ -202,11 +202,11 @@ func CanvasDrawPaint(canvas Canvas, paint Paint) {
 	C.sk_canvas_draw_paint(canvas, paint)
 }
 
-func CanvasDrawRect(canvas Canvas, rect geom.Rect[float32], paint Paint) {
+func CanvasDrawRect(canvas Canvas, rect geom.Rect, paint Paint) {
 	C.sk_canvas_draw_rect(canvas, fromGeomRect(&rect), paint)
 }
 
-func CanvasDrawRoundRect(canvas Canvas, rect geom.Rect[float32], radiusX, radiusY float32, paint Paint) {
+func CanvasDrawRoundRect(canvas Canvas, rect geom.Rect, radiusX, radiusY float32, paint Paint) {
 	C.sk_canvas_draw_round_rect(canvas, fromGeomRect(&rect), C.float(radiusX), C.float(radiusY), paint)
 }
 
@@ -214,7 +214,7 @@ func CanvasDrawCircle(canvas Canvas, centerX, centerY, radius float32, paint Pai
 	C.sk_canvas_draw_circle(canvas, C.float(centerX), C.float(centerY), C.float(radius), paint)
 }
 
-func CanvasDrawOval(canvas Canvas, rect geom.Rect[float32], paint Paint) {
+func CanvasDrawOval(canvas Canvas, rect geom.Rect, paint Paint) {
 	C.sk_canvas_draw_oval(canvas, fromGeomRect(&rect), paint)
 }
 
@@ -222,12 +222,12 @@ func CanvasDrawPath(canvas Canvas, path Path, paint Paint) {
 	C.sk_canvas_draw_path(canvas, path, paint)
 }
 
-func CanvasDrawImageRect(canvas Canvas, img Image, srcRect, dstRect geom.Rect[float32], sampling SamplingOptions, paint Paint) {
+func CanvasDrawImageRect(canvas Canvas, img Image, srcRect, dstRect geom.Rect, sampling SamplingOptions, paint Paint) {
 	C.sk_canvas_draw_image_rect(canvas, img, fromGeomRect(&srcRect), fromGeomRect(&dstRect), sampling, paint,
 		C.SRC_RECT_CONSTRAINT_STRICT)
 }
 
-func CanvasDrawImageNine(canvas Canvas, img Image, centerRect, dstRect geom.Rect[float32], filter FilterMode, paint Paint) {
+func CanvasDrawImageNine(canvas Canvas, img Image, centerRect, dstRect geom.Rect, filter FilterMode, paint Paint) {
 	centerRect = centerRect.Align()
 	C.sk_canvas_draw_image_nine(canvas, img, (*C.sk_irect_t)(unsafe.Pointer(&IRect{
 		Left:   int32(centerRect.X),
@@ -245,7 +245,7 @@ func CanvasDrawPoint(canvas Canvas, x, y float32, paint Paint) {
 	C.sk_canvas_draw_point(canvas, C.float(x), C.float(y), paint)
 }
 
-func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Point[float32], paint Paint) {
+func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Point, paint Paint) {
 	C.sk_canvas_draw_points(canvas, C.sk_point_mode_t(mode), C.size_t(len(pts)),
 		(*C.sk_point_t)(unsafe.Pointer(&pts[0])), paint)
 }
@@ -254,7 +254,7 @@ func CanvasDrawLine(canvas Canvas, sx, sy, ex, ey float32, paint Paint) {
 	C.sk_canvas_draw_line(canvas, C.float(sx), C.float(sy), C.float(ex), C.float(ey), paint)
 }
 
-func CanvasDrawArc(canvas Canvas, oval geom.Rect[float32], startAngle, sweepAngle float32, useCenter bool, paint Paint) {
+func CanvasDrawArc(canvas Canvas, oval geom.Rect, startAngle, sweepAngle float32, useCenter bool, paint Paint) {
 	C.sk_canvas_draw_arc(canvas, fromGeomRect(&oval), C.float(startAngle), C.float(sweepAngle), C.bool(useCenter), paint)
 }
 
@@ -268,7 +268,7 @@ func CanvasDrawTextBlob(canvas Canvas, txt TextBlob, x, y float32, paint Paint) 
 	C.sk_canvas_draw_text_blob(canvas, txt, C.float(x), C.float(y), paint)
 }
 
-func CanavasClipRectWithOperation(canvas Canvas, rect geom.Rect[float32], op ClipOp, antialias bool) {
+func CanavasClipRectWithOperation(canvas Canvas, rect geom.Rect, op ClipOp, antialias bool) {
 	C.sk_canvas_clip_rect_with_operation(canvas, fromGeomRect(&rect), C.sk_clip_op_t(op), C.bool(antialias))
 }
 
@@ -276,7 +276,7 @@ func CanavasClipPathWithOperation(canvas Canvas, path Path, op ClipOp, antialias
 	C.sk_canvas_clip_path_with_operation(canvas, path, C.sk_clip_op_t(op), C.bool(antialias))
 }
 
-func CanvasGetLocalClipBounds(canvas Canvas) geom.Rect[float32] {
+func CanvasGetLocalClipBounds(canvas Canvas) geom.Rect {
 	var r Rect
 	C.sk_canvas_get_local_clip_bounds(canvas, (*C.sk_rect_t)(unsafe.Pointer(&r)))
 	return toGeomRect(r)
@@ -598,7 +598,7 @@ func ImageMakeNonTextureImage(img Image) Image {
 	return C.sk_image_make_non_texture_image(img)
 }
 
-func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling SamplingOptions, matrix geom.Matrix[float32]) Shader {
+func ImageMakeShader(img Image, tileModeX, tileModeY TileMode, sampling SamplingOptions, matrix geom.Matrix) Shader {
 	return C.sk_image_make_shader(img, C.sk_tile_mode_t(tileModeX), C.sk_tile_mode_t(tileModeY), sampling,
 		fromGeomMatrix(&matrix))
 }
@@ -611,17 +611,17 @@ func ImageUnref(img Image) {
 	C.sk_image_unref(img)
 }
 
-func ImageFilterNewArithmetic(k1, k2, k3, k4 float32, enforcePMColor bool, background, foreground ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewArithmetic(k1, k2, k3, k4 float32, enforcePMColor bool, background, foreground ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_arithmetic(C.float(k1), C.float(k2), C.float(k3), C.float(k4), C.bool(enforcePMColor),
 		background, foreground, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewBlur(sigmaX, sigmaY float32, tileMode TileMode, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewBlur(sigmaX, sigmaY float32, tileMode TileMode, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_blur(C.float(sigmaX), C.float(sigmaY), C.sk_tile_mode_t(tileMode), input,
 		fromGeomRect(cropRect))
 }
 
-func ImageFilterNewColorFilter(colorFilter ColorFilter, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewColorFilter(colorFilter ColorFilter, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_color_filter(colorFilter, input, fromGeomRect(cropRect))
 }
 
@@ -629,22 +629,22 @@ func ImageFilterNewCompose(outer, inner ImageFilter) ImageFilter {
 	return C.sk_imagefilter_new_compose(outer, inner)
 }
 
-func ImageFilterNewDisplacementMapEffect(xChannelSelector, yChannelSelector ColorChannel, scale float32, displacement, color ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDisplacementMapEffect(xChannelSelector, yChannelSelector ColorChannel, scale float32, displacement, color ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_displacement_map_effect(C.sk_color_channel_t(xChannelSelector),
 		C.sk_color_channel_t(yChannelSelector), C.float(scale), displacement, color, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_drop_shadow(C.float(dx), C.float(dy), C.float(sigmaX), C.float(sigmaY),
 		C.sk_color_t(color), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY float32, color Color, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_drop_shadow_only(C.float(dx), C.float(dy), C.float(sigmaX), C.float(sigmaY),
 		C.sk_color_t(color), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewImageSource(img Image, srcRect, dstRect geom.Rect[float32], sampling SamplingOptions) ImageFilter {
+func ImageFilterNewImageSource(img Image, srcRect, dstRect geom.Rect, sampling SamplingOptions) ImageFilter {
 	return C.sk_imagefilter_new_image_source(img, fromGeomRect(&srcRect), fromGeomRect(&dstRect), sampling)
 }
 
@@ -652,68 +652,68 @@ func ImageFilterNewImageSourceDefault(img Image, sampling SamplingOptions) Image
 	return C.sk_imagefilter_new_image_source_default(img, sampling)
 }
 
-func ImageFilterNewMagnifier(lensBounds geom.Rect[float32], zoomAmount, inset float32, sampling SamplingOptions, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewMagnifier(lensBounds geom.Rect, zoomAmount, inset float32, sampling SamplingOptions, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_magnifier(fromGeomRect(&lensBounds), C.float(zoomAmount), C.float(inset), sampling, input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewMatrixConvolution(size *ISize, kernel []float32, gain, bias float32, offset *IPoint, tileMode TileMode, convolveAlpha bool, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_matrix_convolution((*C.sk_isize_t)(unsafe.Pointer(size)),
 		(*C.float)(unsafe.Pointer(&kernel[0])), C.float(gain), C.float(bias), (*C.sk_ipoint_t)(unsafe.Pointer(offset)),
 		C.sk_tile_mode_t(tileMode), C.bool(convolveAlpha), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewMatrixTransform(matrix geom.Matrix[float32], sampling SamplingOptions, input ImageFilter) ImageFilter {
+func ImageFilterNewMatrixTransform(matrix geom.Matrix, sampling SamplingOptions, input ImageFilter) ImageFilter {
 	return C.sk_imagefilter_new_matrix_transform(fromGeomMatrix(&matrix), sampling, input)
 }
 
-func ImageFilterNewMerge(filters []ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewMerge(filters []ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_merge((**C.sk_image_filter_t)(unsafe.Pointer(&filters[0])), C.int(len(filters)),
 		fromGeomRect(cropRect))
 }
 
-func ImageFilterNewOffset(dx, dy float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewOffset(dx, dy float32, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_offset(C.float(dx), C.float(dy), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewTile(src, dst geom.Rect[float32], input ImageFilter) ImageFilter {
+func ImageFilterNewTile(src, dst geom.Rect, input ImageFilter) ImageFilter {
 	return C.sk_imagefilter_new_tile(fromGeomRect(&src), fromGeomRect(&dst), input)
 }
 
-func ImageFilterNewDilate(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDilate(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_dilate(C.int(radiusX), C.int(radiusY), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewErode(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewErode(radiusX, radiusY int, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_erode(C.int(radiusX), C.int(radiusY), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewDistantLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDistantLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_distant_lit_diffuse((*C.sk_point3_t)(unsafe.Pointer(pt)), C.sk_color_t(color),
 		C.float(scale), C.float(reflectivity), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewPointLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewPointLitDiffuse(pt *Point3, color Color, scale, reflectivity float32, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_point_lit_diffuse((*C.sk_point3_t)(unsafe.Pointer(pt)), C.sk_color_t(color),
 		C.float(scale), C.float(reflectivity), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewSpotLitDiffuse(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity float32, color Color, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_spot_lit_diffuse((*C.sk_point3_t)(unsafe.Pointer(pt)),
 		(*C.sk_point3_t)(unsafe.Pointer(targetPt)), C.float(specularExponent), C.float(cutoffAngle),
 		C.sk_color_t(color), C.float(scale), C.float(reflectivity), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewDistantLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewDistantLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_distant_lit_specular((*C.sk_point3_t)(unsafe.Pointer(pt)), C.sk_color_t(color),
 		C.float(scale), C.float(reflectivity), C.float(shine), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewPointLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewPointLitSpecular(pt *Point3, color Color, scale, reflectivity, shine float32, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_point_lit_specular((*C.sk_point3_t)(unsafe.Pointer(pt)), C.sk_color_t(color),
 		C.float(scale), C.float(reflectivity), C.float(shine), input, fromGeomRect(cropRect))
 }
 
-func ImageFilterNewSpotLitSpecular(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color Color, input ImageFilter, cropRect *geom.Rect[float32]) ImageFilter {
+func ImageFilterNewSpotLitSpecular(pt, targetPt *Point3, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color Color, input ImageFilter, cropRect *geom.Rect) ImageFilter {
 	return C.sk_imagefilter_new_spot_lit_specular((*C.sk_point3_t)(unsafe.Pointer(pt)),
 		(*C.sk_point3_t)(unsafe.Pointer(targetPt)), C.float(specularExponent), C.float(cutoffAngle),
 		C.sk_color_t(color), C.float(scale), C.float(reflectivity), C.float(shine), input,
@@ -896,7 +896,7 @@ func PaintSetPathEffect(paint Paint, effect PathEffect) {
 	C.sk_paint_set_path_effect(paint, effect)
 }
 
-func PaintGetFillPath(paint Paint, inPath, outPath Path, cullRect *geom.Rect[float32], resScale float32) bool {
+func PaintGetFillPath(paint Paint, inPath, outPath Path, cullRect *geom.Rect, resScale float32) bool {
 	return bool(C.sk_paint_get_fill_path(paint, inPath, outPath, fromGeomRect(cullRect), C.float(resScale)))
 }
 
@@ -931,7 +931,7 @@ func PathArcToWithPoints(path Path, x1, y1, x2, y2, radius float32) {
 	C.sk_path_arc_to_with_points(path, C.float(x1), C.float(y1), C.float(x2), C.float(y2), C.float(radius))
 }
 
-func PathArcToWithOval(path Path, rect geom.Rect[float32], startAngle, sweepAngle float32, forceMoveTo bool) {
+func PathArcToWithOval(path Path, rect geom.Rect, startAngle, sweepAngle float32, forceMoveTo bool) {
 	C.sk_path_arc_to_with_oval(path, fromGeomRect(&rect), C.float(startAngle), C.float(sweepAngle),
 		C.bool(forceMoveTo))
 }
@@ -941,13 +941,13 @@ func PathRArcTo(path Path, dx, dy, rx, ry, rotation float32, arcSize ArcSize, di
 		C.sk_path_direction_t(direction), C.float(dx), C.float(dy))
 }
 
-func PathGetBounds(path Path) geom.Rect[float32] {
+func PathGetBounds(path Path) geom.Rect {
 	var r Rect
 	C.sk_path_get_bounds(path, (*C.sk_rect_t)(unsafe.Pointer(&r)))
 	return toGeomRect(r)
 }
 
-func PathComputeTightBounds(path Path) geom.Rect[float32] {
+func PathComputeTightBounds(path Path) geom.Rect {
 	var r Rect
 	C.sk_path_compute_tight_bounds(path, (*C.sk_rect_t)(unsafe.Pointer(&r)))
 	return toGeomRect(r)
@@ -997,7 +997,7 @@ func PathRMoveTo(path Path, x, y float32) {
 	C.sk_path_rmove_to(path, C.float(x), C.float(y))
 }
 
-func PathAddOval(path Path, rect geom.Rect[float32], direction Direction) {
+func PathAddOval(path Path, rect geom.Rect, direction Direction) {
 	C.sk_path_add_oval(path, fromGeomRect(&rect), C.sk_path_direction_t(direction))
 }
 
@@ -1009,7 +1009,7 @@ func PathAddPathReverse(path, other Path) {
 	C.sk_path_add_path_reverse(path, other)
 }
 
-func PathAddPathMatrix(path, other Path, matrix geom.Matrix[float32], mode PathAddMode) {
+func PathAddPathMatrix(path, other Path, matrix geom.Matrix, mode PathAddMode) {
 	C.sk_path_add_path_matrix(path, other, fromGeomMatrix(&matrix), C.sk_path_add_mode_t(mode))
 }
 
@@ -1017,7 +1017,7 @@ func PathAddPathOffset(path, other Path, offsetX, offsetY float32, mode PathAddM
 	C.sk_path_add_path_offset(path, other, C.float(offsetX), C.float(offsetY), C.sk_path_add_mode_t(mode))
 }
 
-func PathAddPoly(path Path, pts []geom.Point[float32], closePath bool) {
+func PathAddPoly(path Path, pts []geom.Point, closePath bool) {
 	C.sk_path_add_poly(path, (*C.sk_point_t)(unsafe.Pointer(&pts[0])), C.int(len(pts)), C.bool(closePath))
 }
 
@@ -1025,20 +1025,20 @@ func PathQuadTo(path Path, cpx, cpy, x, y float32) {
 	C.sk_path_quad_to(path, C.float(cpx), C.float(cpy), C.float(x), C.float(y))
 }
 
-func PathAddRect(path Path, rect geom.Rect[float32], direction Direction) {
+func PathAddRect(path Path, rect geom.Rect, direction Direction) {
 	C.sk_path_add_rect(path, fromGeomRect(&rect), C.sk_path_direction_t(direction))
 }
 
-func PathAddRoundedRect(path Path, rect geom.Rect[float32], radiusX, radiusY float32, direction Direction) {
+func PathAddRoundedRect(path Path, rect geom.Rect, radiusX, radiusY float32, direction Direction) {
 	C.sk_path_add_rounded_rect(path, fromGeomRect(&rect), C.float(radiusX), C.float(radiusY),
 		C.sk_path_direction_t(direction))
 }
 
-func PathTransform(path Path, matrix geom.Matrix[float32]) {
+func PathTransform(path Path, matrix geom.Matrix) {
 	C.sk_path_transform(path, fromGeomMatrix(&matrix))
 }
 
-func PathTransformToDest(path, dstPath Path, matrix geom.Matrix[float32]) {
+func PathTransformToDest(path, dstPath Path, matrix geom.Matrix) {
 	C.sk_path_transform_to_dest(path, fromGeomMatrix(&matrix), dstPath)
 }
 
@@ -1054,8 +1054,8 @@ func PathContains(path Path, x, y float32) bool {
 	return bool(C.sk_path_contains(path, C.float(x), C.float(y)))
 }
 
-func PathGetLastPoint(path Path) geom.Point[float32] {
-	var pt geom.Point[float32]
+func PathGetLastPoint(path Path) geom.Point {
+	var pt geom.Point
 	C.sk_path_get_last_point(path, (*C.sk_point_t)(unsafe.Pointer(&pt)))
 	return pt
 }
@@ -1092,11 +1092,11 @@ func PathEffectCreate1dPath(path Path, advance, phase float32, style PathEffect1
 	return C.sk_path_effect_create_1d_path(path, C.float(advance), C.float(phase), C.sk_path_effect_1d_style_t(style))
 }
 
-func PathEffectCreate2dLine(width float32, matrix geom.Matrix[float32]) PathEffect {
+func PathEffectCreate2dLine(width float32, matrix geom.Matrix) PathEffect {
 	return C.sk_path_effect_create_2d_line(C.float(32), fromGeomMatrix(&matrix))
 }
 
-func PathEffectCreate2dPath(matrix geom.Matrix[float32], path Path) PathEffect {
+func PathEffectCreate2dPath(matrix geom.Matrix, path Path) PathEffect {
 	return C.sk_path_effect_create_2d_path(fromGeomMatrix(&matrix), path)
 }
 
@@ -1124,8 +1124,8 @@ func ShaderNewBlend(blendMode BlendMode, dst, src Shader) Shader {
 	return C.sk_shader_new_blend(C.sk_blend_mode_t(blendMode), dst, src)
 }
 
-func ShaderNewLinearGradient(start, end geom.Point[float32], colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix[float32]) Shader {
-	pts := make([]geom.Point[float32], 2)
+func ShaderNewLinearGradient(start, end geom.Point, colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix) Shader {
+	pts := make([]geom.Point, 2)
 	pts[0] = start
 	pts[1] = end
 	return C.sk_shader_new_linear_gradient((*C.sk_point_t)(unsafe.Pointer(&pts[0])),
@@ -1133,19 +1133,19 @@ func ShaderNewLinearGradient(start, end geom.Point[float32], colors []Color, col
 		C.sk_tile_mode_t(tileMode), fromGeomMatrix(&matrix))
 }
 
-func ShaderNewRadialGradient(center geom.Point[float32], radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix[float32]) Shader {
+func ShaderNewRadialGradient(center geom.Point, radius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix) Shader {
 	return C.sk_shader_new_radial_gradient((*C.sk_point_t)(unsafe.Pointer(&center)), C.float(radius),
 		(*C.sk_color_t)(unsafe.Pointer(&colors[0])), (*C.float)(unsafe.Pointer(&colorPos[0])), C.int(len(colors)),
 		C.sk_tile_mode_t(tileMode), fromGeomMatrix(&matrix))
 }
 
-func ShaderNewSweepGradient(center geom.Point[float32], startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix[float32]) Shader {
+func ShaderNewSweepGradient(center geom.Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix) Shader {
 	return C.sk_shader_new_sweep_gradient((*C.sk_point_t)(unsafe.Pointer(&center)),
 		(*C.sk_color_t)(unsafe.Pointer(&colors[0])), (*C.float)(unsafe.Pointer(&colorPos[0])), C.int(len(colors)),
 		C.sk_tile_mode_t(tileMode), C.float(startAngle), C.float(endAngle), fromGeomMatrix(&matrix))
 }
 
-func ShaderNewTwoPointConicalGradient(startPt, endPt geom.Point[float32], startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix[float32]) Shader {
+func ShaderNewTwoPointConicalGradient(startPt, endPt geom.Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode TileMode, matrix geom.Matrix) Shader {
 	return C.sk_shader_new_two_point_conical_gradient((*C.sk_point_t)(unsafe.Pointer(&startPt)),
 		C.float(startRadius), (*C.sk_point_t)(unsafe.Pointer(&endPt)), C.float(endRadius),
 		(*C.sk_color_t)(unsafe.Pointer(&colors[0])), (*C.float)(unsafe.Pointer(&colorPos[0])), C.int(len(colors)),
@@ -1162,7 +1162,7 @@ func ShaderNewPerlinNoiseTurbulence(baseFreqX, baseFreqY, seed float32, numOctav
 		C.float(seed), (*C.sk_isize_t)(unsafe.Pointer(&size)))
 }
 
-func ShaderWithLocalMatrix(shader Shader, matrix geom.Matrix[float32]) Shader {
+func ShaderWithLocalMatrix(shader Shader, matrix geom.Matrix) Shader {
 	return C.sk_shader_with_local_matrix(shader, fromGeomMatrix(&matrix))
 }
 
@@ -1228,7 +1228,7 @@ func TextBlobMakeFromText(text string, font Font) TextBlob {
 	return C.sk_textblob_make_from_text(unsafe.Pointer(&b[0]), C.size_t(len(b)), font, C.sk_text_encoding_t(TextEncodingUTF8))
 }
 
-func TextBlobGetBounds(txt TextBlob) geom.Rect[float32] {
+func TextBlobGetBounds(txt TextBlob) geom.Rect {
 	var r Rect
 	C.sk_textblob_get_bounds(txt, (*C.sk_rect_t)(unsafe.Pointer(&r)))
 	return toGeomRect(r)

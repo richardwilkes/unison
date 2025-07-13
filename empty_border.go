@@ -9,23 +9,25 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/v2/geom"
+
 var _ Border = &EmptyBorder{}
 
 // EmptyBorder provides and empty border with the specified insets.
 type EmptyBorder struct {
-	insets Insets
+	insets geom.Insets
 }
 
 // NewEmptyBorder creates a new empty border with the specified insets.
-func NewEmptyBorder(insets Insets) *EmptyBorder {
+func NewEmptyBorder(insets geom.Insets) *EmptyBorder {
 	return &EmptyBorder{insets: insets}
 }
 
 // Insets returns the insets describing the space the border occupies on each side.
-func (b *EmptyBorder) Insets() Insets {
+func (b *EmptyBorder) Insets() geom.Insets {
 	return b.insets
 }
 
 // Draw the border into rect.
-func (b *EmptyBorder) Draw(_ *Canvas, _ Rect) {
+func (b *EmptyBorder) Draw(_ *Canvas, _ geom.Rect) {
 }

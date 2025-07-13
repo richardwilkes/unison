@@ -11,6 +11,8 @@ package unison
 
 import (
 	"fmt"
+
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 var _ CellFactory = &DefaultCellFactory{}
@@ -38,7 +40,7 @@ func (f *DefaultCellFactory) CellHeight() float32 {
 // CreateCell implements CellFactory.
 func (f *DefaultCellFactory) CreateCell(_ Paneler, element any, _ int, foreground, _ Ink, _, _ bool) Paneler {
 	txtLabel := NewLabel()
-	txtLabel.SetBorder(NewEmptyBorder(Insets{Top: StdVSpacing, Left: StdHSpacing, Bottom: StdVSpacing, Right: StdHSpacing}))
+	txtLabel.SetBorder(NewEmptyBorder(geom.Insets{Top: StdVSpacing, Left: StdHSpacing, Bottom: StdVSpacing, Right: StdHSpacing}))
 	txtLabel.Font = FieldFont
 	txtLabel.OnBackgroundInk = foreground
 	txtLabel.SetTitle(fmt.Sprintf("%v", element))

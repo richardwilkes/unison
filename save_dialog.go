@@ -13,8 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xfilepath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 var lastWorkingDir = ""
@@ -45,11 +46,11 @@ func ValidateSaveFilePath(filePath, requiredExtension string, forcePrompt bool) 
 			requiredExtension = "." + requiredExtension
 		}
 		if filepath.Ext(revisedPath) != requiredExtension {
-			revisedPath = fs.TrimExtension(revisedPath) + requiredExtension
+			revisedPath = xfilepath.TrimExtension(revisedPath) + requiredExtension
 		}
 	}
-	if fs.FileExists(revisedPath) {
-		if forcePrompt || !fs.FileExists(filePath) { // forced or the native dialog didn't see it because the extension wasn't applied
+	if xos.FileExists(revisedPath) {
+		if forcePrompt || !xos.FileExists(filePath) { // forced or the native dialog didn't see it because the extension wasn't applied
 			if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), revisedPath); result != ModalResponseOK {
 				return "", false
 			}

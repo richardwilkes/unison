@@ -15,8 +15,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/richardwilkes/toolbox/desktop"
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
@@ -26,7 +27,7 @@ import (
 var windowCounter int
 
 // NewDemoWindow creates and displays our demo window.
-func NewDemoWindow(where unison.Point) (*unison.Window, error) {
+func NewDemoWindow(where geom.Point) (*unison.Window, error) {
 	// Create the window
 	windowCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Demo #%d", windowCounter))
@@ -39,7 +40,7 @@ func NewDemoWindow(where unison.Point) (*unison.Window, error) {
 
 	// Put some empty space around the edges of our window and apply a single column layout.
 	content := wnd.Content()
-	content.SetBorder(unison.NewEmptyBorder(unison.NewUniformInsets(10)))
+	content.SetBorder(unison.NewEmptyBorder(geom.NewUniformInsets(10)))
 	content.SetLayout(&unison.FlexLayout{
 		Columns:  1,
 		HSpacing: unison.StdHSpacing,
@@ -275,7 +276,7 @@ func createSVGButton(svg *unison.SVG, actionText string, panel *unison.Panel) *u
 func createSpacer(width float32, panel *unison.Panel) {
 	spacer := &unison.Panel{}
 	spacer.Self = spacer
-	spacer.SetSizer(func(_ unison.Size) (minSize, prefSize, maxSize unison.Size) {
+	spacer.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
 		minSize.Width = width
 		prefSize.Width = width
 		maxSize.Width = width
@@ -295,19 +296,19 @@ func createLinksPanel() *unison.Panel {
 	// Add some links
 	panel.AddChild(unison.NewLink("Apple", "Open the Apple home page", "", unison.DefaultLinkTheme,
 		func(_ unison.Paneler, _ string) {
-			if err := desktop.Open("https://www.apple.com"); err != nil {
+			if err := xos.OpenBrowser("https://www.apple.com"); err != nil {
 				errs.Log(err)
 			}
 		}))
 	panel.AddChild(unison.NewLink("Google", "Open the Google home page", "", unison.DefaultLinkTheme,
 		func(_ unison.Paneler, _ string) {
-			if err := desktop.Open("https://www.google.com"); err != nil {
+			if err := xos.OpenBrowser("https://www.google.com"); err != nil {
 				errs.Log(err)
 			}
 		}))
 	panel.AddChild(unison.NewLink("Microsoft", "Open the Microsoft home page", "", unison.DefaultLinkTheme,
 		func(_ unison.Paneler, _ string) {
-			if err := desktop.Open("https://www.microsoft.com"); err != nil {
+			if err := xos.OpenBrowser("https://www.microsoft.com"); err != nil {
 				errs.Log(err)
 			}
 		}))
@@ -571,11 +572,11 @@ func createListPanel(companion unison.Paneler) *unison.Panel {
 	lst.DoubleClickCallback = func() {
 		slog.Info("Double-clicked on the list")
 	}
-	_, prefSize, _ := lst.Sizes(unison.Size{})
-	lst.SetFrameRect(unison.Rect{Size: prefSize})
+	_, prefSize, _ := lst.Sizes(geom.Size{})
+	lst.SetFrameRect(geom.Rect{Size: prefSize})
 	scroller := unison.NewScrollPanel()
 	scroller.SetContent(lst, behavior.Fill, behavior.Fill)
-	_, prefSize, _ = companion.AsPanel().Sizes(unison.Size{})
+	_, prefSize, _ = companion.AsPanel().Sizes(geom.Size{})
 	scroller.SetLayoutData(&unison.FlexLayoutData{
 		SizeHint: prefSize,
 		HAlign:   align.Fill,
@@ -597,15 +598,15 @@ func createImagePanel() *unison.Label {
 		errs.Log(err)
 	} else {
 		size := logoImg.LogicalSize()
-		cursor = unison.NewCursor(logoImg, unison.Point{
+		cursor = unison.NewCursor(logoImg, geom.Point{
 			X: size.Width / 2,
 			Y: size.Height / 2,
 		})
 	}
-	imgPanel.UpdateCursorCallback = func(_ unison.Point) *unison.Cursor { return cursor }
+	imgPanel.UpdateCursorCallback = func(_ geom.Point) *unison.Cursor { return cursor }
 
 	// Add a tooltip that shows the current mouse coordinates
-	imgPanel.UpdateTooltipCallback = func(where unison.Point, suggestedAvoidInRoot unison.Rect) unison.Rect {
+	imgPanel.UpdateTooltipCallback = func(where geom.Point, suggestedAvoidInRoot geom.Rect) geom.Rect {
 		imgPanel.Tooltip = unison.NewTooltipWithText(where.String())
 		suggestedAvoidInRoot.X = where.X - 16
 		suggestedAvoidInRoot.Y = where.Y - 16
@@ -623,8 +624,8 @@ func createImagePanel() *unison.Label {
 	}
 
 	// Set the set of the widget to match its preferred size
-	_, prefSize, _ := imgPanel.Sizes(unison.Size{})
-	imgPanel.SetFrameRect(unison.Rect{Size: prefSize})
+	_, prefSize, _ := imgPanel.Sizes(geom.Size{})
+	imgPanel.SetFrameRect(geom.Rect{Size: prefSize})
 
 	return imgPanel
 }
@@ -647,8 +648,8 @@ func createWellsPanel(imgPanel *unison.Label) *unison.Panel {
 		ink := well1.Ink()
 		if pattern, ok := ink.(*unison.Pattern); ok {
 			imgPanel.Drawable = pattern.Image
-			_, pSize, _ := imgPanel.Sizes(unison.Size{})
-			imgPanel.SetFrameRect(unison.Rect{Size: pSize})
+			_, pSize, _ := imgPanel.Sizes(geom.Size{})
+			imgPanel.SetFrameRect(geom.Rect{Size: pSize})
 			imgPanel.MarkForRedraw()
 		}
 	}

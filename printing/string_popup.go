@@ -12,7 +12,7 @@ package printing
 import (
 	"strings"
 
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"golang.org/x/text/cases"

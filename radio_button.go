@@ -12,7 +12,8 @@ package unison
 import (
 	"time"
 
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
@@ -99,7 +100,7 @@ func (r *RadioButton) SetGroup(group *Group) {
 }
 
 // DefaultSizes provides the default sizing.
-func (r *RadioButton) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (r *RadioButton) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize = r.circleAndLabelSize()
 	if border := r.Border(); border != nil {
 		prefSize = prefSize.Add(border.Insets().Size())
@@ -108,10 +109,10 @@ func (r *RadioButton) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) 
 	return prefSize, prefSize, MaxSize(prefSize)
 }
 
-func (r *RadioButton) circleAndLabelSize() Size {
+func (r *RadioButton) circleAndLabelSize() geom.Size {
 	circleSize := r.circleSize()
 	if r.Drawable == nil && r.Text.Empty() {
-		return Size{Width: circleSize, Height: circleSize}
+		return geom.Size{Width: circleSize, Height: circleSize}
 	}
 	size, _ := LabelContentSizes(r.Text, r.Drawable, r.Font, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize
@@ -132,7 +133,7 @@ func (r *RadioButton) DefaultFocusGained() {
 }
 
 // DefaultDraw provides the default drawing.
-func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
+func (r *RadioButton) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	rect := r.ContentRect(false)
 	size := r.circleAndLabelSize()
 	switch r.HAlign {
@@ -183,7 +184,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ Rect) {
 	rect.Height = circleSize
 	DrawEllipseBase(canvas, rect, thickness, bg, edge)
 	if r.group.Selected(r) {
-		rect = rect.Inset(NewUniformInsets(0.5 + 0.2*circleSize))
+		rect = rect.Inset(geom.NewUniformInsets(0.5 + 0.2*circleSize))
 		paint := fg.Paint(canvas, rect, paintstyle.Fill)
 		if !r.Enabled() {
 			paint.SetColorFilter(Grayscale30Filter())
@@ -208,14 +209,14 @@ func (r *RadioButton) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (r *RadioButton) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
+func (r *RadioButton) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
 	r.Pressed = true
 	r.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (r *RadioButton) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
+func (r *RadioButton) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	if pressed := where.In(r.ContentRect(false)); pressed != r.Pressed {
 		r.Pressed = pressed
 		r.MarkForRedraw()
@@ -224,7 +225,7 @@ func (r *RadioButton) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (r *RadioButton) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
+func (r *RadioButton) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
 	if where.In(r.ContentRect(false)) {
@@ -246,7 +247,7 @@ func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) boo
 }
 
 // DefaultUpdateCursor provides the default cursor for radio buttons.
-func (r *RadioButton) DefaultUpdateCursor(_ Point) *Cursor {
+func (r *RadioButton) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	if !r.Enabled() {
 		return ArrowCursor()
 	}

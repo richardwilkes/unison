@@ -10,7 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
@@ -65,7 +65,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, va
 	var h func(ns.MenuItem)
 	if handler != nil {
 		h = func(mi ns.MenuItem) {
-			toolbox.Call(func() { handler(&macMenuItem{factory: f, item: mi}) })
+			xos.SafeCall(func() { handler(&macMenuItem{factory: f, item: mi}) }, nil)
 		}
 	}
 	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
@@ -75,7 +75,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, va
 			}
 			if validator != nil {
 				var result bool
-				toolbox.Call(func() { result = validator(&macMenuItem{factory: f, item: mi}) })
+				xos.SafeCall(func() { result = validator(&macMenuItem{factory: f, item: mi}) }, nil)
 				return result
 			}
 			return true

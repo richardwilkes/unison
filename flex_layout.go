@@ -10,7 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/align"
 )
 
@@ -18,7 +19,7 @@ var _ Layout = &FlexLayout{}
 
 // FlexLayout lays out the children of its Layoutable based on the FlexLayoutData assigned to each child.
 type FlexLayout struct {
-	sizingCache  map[*Panel]map[Size]*flexSizingCacheData
+	sizingCache  map[*Panel]map[geom.Size]*flexSizingCacheData
 	rows         int
 	Columns      int
 	HSpacing     float32
@@ -29,17 +30,17 @@ type FlexLayout struct {
 }
 
 type flexSizingCacheData struct {
-	minSize  Size
-	prefSize Size
-	maxSize  Size
+	minSize  geom.Size
+	prefSize geom.Size
+	maxSize  geom.Size
 }
 
 // FlexLayoutData is used to control how an object is laid out by the FlexLayout layout.
 type FlexLayoutData struct {
-	cacheSize    Size
-	minCacheSize Size
-	SizeHint     Size
-	MinSize      Size
+	cacheSize    geom.Size
+	minCacheSize geom.Size
+	SizeHint     geom.Size
+	MinSize      geom.Size
 	HSpan        int
 	VSpan        int
 	HAlign       align.Enum
@@ -49,29 +50,29 @@ type FlexLayoutData struct {
 }
 
 // LayoutSizes implements the Layout interface.
-func (f *FlexLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size) {
-	f.sizingCache = make(map[*Panel]map[Size]*flexSizingCacheData)
-	var insets Size
+func (f *FlexLayout) LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
+	f.sizingCache = make(map[*Panel]map[geom.Size]*flexSizingCacheData)
+	var insets geom.Size
 	if b := target.Border(); b != nil {
 		insets = b.Insets().Size()
-		hint = hint.Sub(insets).Max(Size{})
+		hint = hint.Sub(insets).Max(geom.Size{})
 	}
-	prefSize = f.layout(target, Point{}, hint, false, false).Add(insets)
-	return f.layout(target, Point{}, hint, false, true).Add(insets), prefSize, MaxSize(prefSize)
+	prefSize = f.layout(target, geom.Point{}, hint, false, false).Add(insets)
+	return f.layout(target, geom.Point{}, hint, false, true).Add(insets), prefSize, MaxSize(prefSize)
 }
 
 // PerformLayout implements the Layout interface.
 func (f *FlexLayout) PerformLayout(target *Panel) {
-	f.sizingCache = make(map[*Panel]map[Size]*flexSizingCacheData)
-	var insets Insets
+	f.sizingCache = make(map[*Panel]map[geom.Size]*flexSizingCacheData)
+	var insets geom.Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
-	f.layout(target, Point{X: insets.Left, Y: insets.Top}, target.ContentRect(true).Size.Sub(insets.Size()), true, false)
+	f.layout(target, geom.Point{X: insets.Left, Y: insets.Top}, target.ContentRect(true).Size.Sub(insets.Size()), true, false)
 }
 
-func (f *FlexLayout) layout(target *Panel, location Point, hint Size, move, useMinimumSize bool) Size {
-	var totalSize Size
+func (f *FlexLayout) layout(target *Panel, location geom.Point, hint geom.Size, move, useMinimumSize bool) geom.Size {
+	var totalSize geom.Size
 	if f.Columns > 0 {
 		children := f.prepChildren(target, useMinimumSize)
 		if len(children) > 0 {
@@ -117,10 +118,10 @@ func (f *FlexLayout) layout(target *Panel, location Point, hint Size, move, useM
 	return totalSize
 }
 
-func (f *FlexLayout) sizingCacheData(panel *Panel, hint Size) *flexSizingCacheData {
+func (f *FlexLayout) sizingCacheData(panel *Panel, hint geom.Size) *flexSizingCacheData {
 	m, ok := f.sizingCache[panel]
 	if !ok {
-		m = make(map[Size]*flexSizingCacheData)
+		m = make(map[geom.Size]*flexSizingCacheData)
 		f.sizingCache[panel] = m
 	}
 	var data *flexSizingCacheData
@@ -134,7 +135,7 @@ func (f *FlexLayout) sizingCacheData(panel *Panel, hint Size) *flexSizingCacheDa
 }
 
 func (f *FlexLayout) prepChildren(target *Panel, useMinimumSize bool) []*Panel {
-	var hint Size
+	var hint geom.Size
 	children := target.Children()
 	for _, child := range children {
 		getDataFromTarget(child).computeCacheSize(f.sizingCacheData(child, hint), hint, useMinimumSize)
@@ -439,7 +440,7 @@ func (f *FlexLayout) wrap(width float32, grid [][]*Panel, widths []float32, useM
 						}
 						currentWidth += float32(hSpan-1) * f.HSpacing
 						if currentWidth != data.cacheSize.Width && data.HAlign == align.Fill || data.cacheSize.Width > currentWidth {
-							hint := Size{Width: max(data.minCacheSize.Width, currentWidth)}
+							hint := geom.Size{Width: max(data.minCacheSize.Width, currentWidth)}
 							data.computeCacheSize(f.sizingCacheData(grid[i][j], hint), hint, useMinimumSize)
 							minimumHeight := data.MinSize.Height
 							if data.VGrab && minimumHeight > 0 && data.cacheSize.Height < minimumHeight {
@@ -599,7 +600,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 	return heights
 }
 
-func (f *FlexLayout) positionChildren(location Point, grid [][]*Panel, widths, heights []float32) {
+func (f *FlexLayout) positionChildren(location geom.Point, grid [][]*Panel, widths, heights []float32) {
 	gridY := location.Y
 	for i := 0; i < f.rows; i++ {
 		gridX := location.X
@@ -641,7 +642,7 @@ func (f *FlexLayout) positionChildren(location Point, grid [][]*Panel, widths, h
 				}
 				child := grid[i][j]
 				if child != nil {
-					child.SetFrameRect(Rect{Point: Point{X: childX, Y: childY}, Size: Size{Width: childWidth, Height: childHeight}})
+					child.SetFrameRect(geom.Rect{Point: geom.Point{X: childX, Y: childY}, Size: geom.Size{Width: childWidth, Height: childHeight}})
 				}
 			}
 			gridX += widths[j] + f.HSpacing
@@ -650,7 +651,7 @@ func (f *FlexLayout) positionChildren(location Point, grid [][]*Panel, widths, h
 	}
 }
 
-func (f *FlexLayoutData) computeCacheSize(sizing *flexSizingCacheData, hint Size, useMinimumSize bool) {
+func (f *FlexLayoutData) computeCacheSize(sizing *flexSizingCacheData, hint geom.Size, useMinimumSize bool) {
 	f.cacheSize.Width = 0
 	f.cacheSize.Height = 0
 	f.minCacheSize.Width = 0

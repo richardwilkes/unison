@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -19,7 +20,7 @@ var _ Border = &LineBorder{}
 // LineBorder private a lined border.
 type LineBorder struct {
 	ink          Ink
-	insets       Insets
+	insets       geom.Insets
 	cornerRadius float32
 	noInset      bool
 }
@@ -27,7 +28,7 @@ type LineBorder struct {
 // NewLineBorder creates a new line border. The cornerRadius specifies the amount of rounding to use on the corners. The
 // insets represent how thick the border will be drawn on that edge. If noInset is true, the Insets() method will return
 // zeroes.
-func NewLineBorder(ink Ink, cornerRadius float32, insets Insets, noInset bool) *LineBorder {
+func NewLineBorder(ink Ink, cornerRadius float32, insets geom.Insets, noInset bool) *LineBorder {
 	return &LineBorder{
 		insets:       insets,
 		ink:          ink,
@@ -37,15 +38,15 @@ func NewLineBorder(ink Ink, cornerRadius float32, insets Insets, noInset bool) *
 }
 
 // Insets returns the insets describing the space the border occupies on each side.
-func (b *LineBorder) Insets() Insets {
+func (b *LineBorder) Insets() geom.Insets {
 	if b.noInset {
-		return Insets{}
+		return geom.Insets{}
 	}
 	return b.insets
 }
 
 // Draw the border into rect.
-func (b *LineBorder) Draw(canvas *Canvas, rect Rect) {
+func (b *LineBorder) Draw(canvas *Canvas, rect geom.Rect) {
 	clip := rect.Inset(b.insets)
 	path := NewPath()
 	path.SetFillType(filltype.EvenOdd)

@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xio"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows/registry"

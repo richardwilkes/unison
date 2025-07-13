@@ -12,9 +12,8 @@ package unison
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 // UndoManagerProvider defines the method a provider of UndoManager should define.
@@ -24,14 +23,14 @@ type UndoManagerProvider interface {
 
 // UndoManager provides management of an undo/redo stack.
 type UndoManager struct {
-	recoveryHandler errs.RecoveryHandler
+	recoveryHandler func(error)
 	edits           []Undoable
 	costLimit       int
 	index           int // points to the currently applied edit
 }
 
 // NewUndoManager creates a new undo/redo manager.
-func NewUndoManager(costLimit int, recoveryHandler errs.RecoveryHandler) *UndoManager {
+func NewUndoManager(costLimit int, recoveryHandler func(error)) *UndoManager {
 	if costLimit < 1 {
 		costLimit = 1
 	}
@@ -111,7 +110,7 @@ func (m *UndoManager) CanUndo() bool {
 // Undo rewinds the current state by one edit.
 func (m *UndoManager) Undo() {
 	if m.CanUndo() {
-		toolbox.CallWithHandler(m.undo, m.recoveryHandler)
+		xos.SafeCall(m.undo, m.recoveryHandler)
 	}
 }
 
@@ -141,7 +140,7 @@ func (m *UndoManager) CanRedo() bool {
 // Redo re-applies the current state by one edit.
 func (m *UndoManager) Redo() {
 	if m.CanRedo() {
-		toolbox.CallWithHandler(m.redo, m.recoveryHandler)
+		xos.SafeCall(m.redo, m.recoveryHandler)
 	}
 }
 
@@ -173,7 +172,7 @@ func (m *UndoManager) Clear() {
 }
 
 func (m *UndoManager) release(edit Undoable) {
-	toolbox.CallWithHandler(edit.Release, m.recoveryHandler)
+	xos.SafeCall(edit.Release, m.recoveryHandler)
 }
 
 func (m *UndoManager) cost(edit Undoable) int {

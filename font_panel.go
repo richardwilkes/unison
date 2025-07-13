@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -170,9 +170,7 @@ func (p *FontPanel) adjustFontSize(value float32) {
 
 func (p *FontPanel) fontModified() {
 	if p.FontModifiedCallback != nil {
-		toolbox.Call(func() {
-			p.FontModifiedCallback(p.fontDescriptor)
-		})
+		xos.SafeCall(func() { p.FontModifiedCallback(p.fontDescriptor) }, nil)
 	}
 }
 

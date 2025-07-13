@@ -41,14 +41,14 @@ linters:
         - (*bufio.Writer).WriteByte
         - (*bufio.Writer).WriteRune
         - (*bufio.Writer).WriteString
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).Insert
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).InsertByte
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).InsertRune
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).InsertString
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).Write
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).WriteByte
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).WriteRune
-        - (*github.com/richardwilkes/toolbox/xio.ByteBuffer).WriteString
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).Insert
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).InsertByte
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).InsertRune
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).InsertString
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).Write
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).WriteByte
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).WriteRune
+        - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).WriteString
     goconst:
       min-len: 3
       min-occurrences: 3

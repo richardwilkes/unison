@@ -10,8 +10,9 @@
 package demo
 
 import (
-	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 )
@@ -36,7 +37,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 
 		// Put some empty space around the edges of our window and apply a single column layout.
 		content := aboutWindow.Content()
-		content.SetBorder(unison.NewEmptyBorder(unison.NewUniformInsets(24)))
+		content.SetBorder(unison.NewEmptyBorder(geom.NewUniformInsets(24)))
 		content.SetLayout(&unison.FlexLayout{
 			Columns:  1,
 			HSpacing: unison.StdHSpacing,
@@ -46,7 +47,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 		// Put the name of the app in a large font at the top
 		title := unison.NewLabel()
 		title.Font = unison.EmphasizedSystemFont.Face().Font(24)
-		title.SetTitle(cmdline.AppName)
+		title.SetTitle(xos.AppName)
 		title.SetLayoutData(&unison.FlexLayoutData{
 			HSpan:  1,
 			VSpan:  1,

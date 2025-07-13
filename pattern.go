@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/tilemode"
 )
@@ -19,15 +20,15 @@ var _ Ink = &Pattern{}
 // Pattern holds the information necessary to draw an image in a pattern.
 type Pattern struct {
 	Image           *Image
-	Offset          Point
-	Scale           Point
+	Offset          geom.Point
+	Scale           geom.Point
 	TileModeX       tilemode.Enum
 	TileModeY       tilemode.Enum
 	SamplingOptions SamplingOptions
 }
 
 // Paint returns a Paint for this Pattern.
-func (p *Pattern) Paint(canvas *Canvas, _ Rect, style paintstyle.Enum) *Paint {
+func (p *Pattern) Paint(canvas *Canvas, _ geom.Rect, style paintstyle.Enum) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	scale := p.Scale
@@ -40,7 +41,7 @@ func (p *Pattern) Paint(canvas *Canvas, _ Rect, style paintstyle.Enum) *Paint {
 	imgScale := p.Image.Scale()
 	paint.SetColor(Black)
 	paint.SetShader(NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
-		Matrix{
+		geom.Matrix{
 			ScaleX: scale.X * imgScale,
 			ScaleY: scale.Y * imgScale,
 			TransX: p.Offset.X,

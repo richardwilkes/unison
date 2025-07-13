@@ -17,11 +17,12 @@ import (
 	"unsafe"
 	"weak"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xio"
-	"github.com/richardwilkes/toolbox/xmath"
-	"github.com/richardwilkes/toolbox/xmath/hashhelper"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xhash"
+	"github.com/richardwilkes/toolbox/v2/xhttp"
+	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/internal/skia"
 	"github.com/zeebo/xxh3"
 )
@@ -49,7 +50,7 @@ func NewImageFromFilePathOrURL(filePathOrURL string, scale float32) (*Image, err
 // NewImageFromFilePathOrURLWithContext creates a new image from data retrieved from the file path or URL. The
 // http.DefaultClient will be used if the data is remote.
 func NewImageFromFilePathOrURLWithContext(ctx context.Context, filePathOrURL string, scale float32) (*Image, error) {
-	data, err := xio.RetrieveDataWithContext(ctx, filePathOrURL)
+	data, err := xhttp.RetrieveData(ctx, nil, filePathOrURL)
 	if err != nil {
 		return nil, errs.NewWithCause(filePathOrURL, err)
 	}
@@ -115,9 +116,9 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		surface: s,
 	}
 	c.RestoreToCount(1)
-	c.SetMatrix(NewScaleMatrix(scale, scale))
+	c.SetMatrix(geom.NewScaleMatrix(scale, scale))
 	c.Save()
-	toolbox.Call(func() { draw(c) })
+	xos.SafeCall(func() { draw(c) }, nil)
 	c.Restore()
 	c.Flush()
 	defer s.dispose()
@@ -162,23 +163,23 @@ func newImage(skiaImg skia.Image, scale float32, hash uint64) (*Image, error) {
 }
 
 // Size returns the size, in pixels, of the image. These dimensions will always be whole numbers > 0 for valid images.
-func (img *Image) Size() Size {
-	return Size{
+func (img *Image) Size() geom.Size {
+	return geom.Size{
 		Width:  float32(skia.ImageGetWidth(img.skiaImg)),
 		Height: float32(skia.ImageGetHeight(img.skiaImg)),
 	}
 }
 
 // LogicalSize returns the logical (device-independent) size.
-func (img *Image) LogicalSize() Size {
-	return Size{
+func (img *Image) LogicalSize() geom.Size {
+	return geom.Size{
 		Width:  float32(skia.ImageGetWidth(img.skiaImg)) * img.scale,
 		Height: float32(skia.ImageGetHeight(img.skiaImg)) * img.scale,
 	}
 }
 
 // DrawInRect draws this image in the given rectangle.
-func (img *Image) DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOptions, paint *Paint) {
+func (img *Image) DrawInRect(canvas *Canvas, rect geom.Rect, sampling *SamplingOptions, paint *Paint) {
 	canvas.DrawImageInRect(img, rect, sampling, paint)
 }
 
@@ -299,9 +300,9 @@ func releaseSkiaImagesForContext(ctx skia.DirectContext) {
 
 func hashImageData(width, height int, scale float32, data []byte) uint64 {
 	hasher := xxh3.New()
-	hashhelper.Float32(hasher, scale)
-	hashhelper.Num32(hasher, uint32(width))
-	hashhelper.Num32(hasher, uint32(height))
+	xhash.Float32(hasher, scale)
+	xhash.Num32(hasher, uint32(width))
+	xhash.Num32(hasher, uint32(height))
 	_, _ = hasher.Write(data) //nolint:errcheck // No real chance of failure here
 	return hasher.Sum64()
 }

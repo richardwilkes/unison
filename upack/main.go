@@ -10,41 +10,39 @@
 package main
 
 import (
-	"os"
-	"strconv"
+	"flag"
 
-	"github.com/richardwilkes/toolbox/atexit"
-	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/xflag"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xslog"
+	"github.com/richardwilkes/toolbox/v2/xyaml"
 	"github.com/richardwilkes/unison/upack/packager"
 )
 
 func main() {
-	cmdline.AppName = "Unison Packager"
-	cmdline.AppCmdName = "upack"
-	cmdline.License = "Mozilla Public License, version 2.0"
-	cmdline.CopyrightStartYear = "2025"
-	cmdline.CopyrightHolder = "Richard A. Wilkes"
-	cmdline.AppIdentifier = "com.trollworks.unison.packager"
-	cl := cmdline.New(false)
-	cl.Description = "A tool for packaging Unison apps for distribution."
-	cl.UsageSuffix = "<config-file>"
-	var release string
-	var createDist bool
-	cl.NewGeneralOption(&release).SetName("release").SetSingle('r').SetArg("version").
-		SetUsage(`The release version to package (e.g. "1.2.3") to package.`)
-	cl.NewGeneralOption(&createDist).SetName("dist").SetSingle('d').
-		SetUsage(`Enable creation of a distribution package.`)
-	args := cl.Parse(os.Args[1:])
+	xos.AppName = "Unison Packager"
+	xos.AppCmdName = "upack"
+	xos.License = "Mozilla Public License, version 2.0"
+	xos.CopyrightStartYear = "2021"
+	xos.CopyrightHolder = "Richard A. Wilkes"
+	xos.AppIdentifier = "com.trollworks.unison.packager"
+	xflag.SetUsage(nil, "A tool for packaging Unison apps for distribution.", "<config-file>")
+	release := flag.String("release", "", "The release `version` to package (e.g. '1.2.3') to package")
+	flag.StringVar(release, "r", "", "Short `version` of -release")
+	createDist := flag.Bool("dist", false, "Enable creation of a distribution package")
+	flag.BoolVar(createDist, "d", false, "Short version of -dist")
+	logCfg := xslog.Config{Console: true}
+	logCfg.AddFlags()
+	xflag.Parse()
+	args := flag.Args()
 	if len(args) != 1 {
-		cl.FatalMsg("Expected a single argument specifying the configuration file to use, got " +
-			strconv.Itoa(len(args)))
+		xos.ExitWithMsg("must provide exactly one argument specifying the configuration file")
 	}
-	if release == "" {
-		cl.FatalMsg("A release version must be specified.")
+	if *release == "" {
+		xos.ExitWithMsg("must specify a release version")
 	}
 	var cfg packager.Config
-	cl.FatalIfError(fs.LoadYAML(args[0], &cfg))
-	cl.FatalIfError(packager.Package(&cfg, release, createDist))
-	atexit.Exit(0)
+	xos.ExitIfErr(xyaml.Load(args[0], &cfg))
+	xos.ExitIfErr(packager.Package(&cfg, *release, *createDist))
+	xos.Exit(0)
 }

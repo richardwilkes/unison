@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/fatal"
-	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -35,7 +35,7 @@ func (fd FontDescriptor) Font() Font {
 	f := fd.Face()
 	if f == nil {
 		if fd.Family == DefaultSystemFamilyName {
-			fatal.IfErr(errs.New("default system font family is unavailable"))
+			xos.ExitIfErr(errs.New("default system font family is unavailable"))
 		}
 		other := fd
 		other.Family = DefaultSystemFamilyName
@@ -56,7 +56,7 @@ func (fd FontDescriptor) MarshalText() (text []byte, err error) {
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
 func (fd *FontDescriptor) UnmarshalText(text []byte) error {
-	parts := strings.Split(txt.CollapseSpaces(string(text)), " ")
+	parts := strings.Split(xstrings.CollapseSpaces(string(text)), " ")
 	if len(parts) < 5 {
 		return errs.Newf("invalid font descriptor: %s", string(text))
 	}

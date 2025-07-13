@@ -13,7 +13,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 type (
@@ -152,8 +152,8 @@ type Rect struct {
 	Bottom float32
 }
 
-func toGeomRect(r Rect) geom.Rect[float32] {
-	return geom.Rect[float32]{Point: geom.NewPoint(r.Left, r.Top), Size: geom.NewSize(r.Right-r.Left, r.Bottom-r.Top)}
+func toGeomRect(r Rect) geom.Rect {
+	return geom.Rect{Point: geom.NewPoint(r.Left, r.Top), Size: geom.NewSize(r.Right-r.Left, r.Bottom-r.Top)}
 }
 
 type IRect struct {
@@ -164,7 +164,7 @@ type IRect struct {
 }
 
 type Matrix struct {
-	geom.Matrix[float32]
+	geom.Matrix
 	Persp0 float32
 	Persp1 float32
 	Persp2 float32

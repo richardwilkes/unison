@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 )
 
 type linuxOpenDialog struct {

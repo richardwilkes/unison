@@ -13,7 +13,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 )
 
 // Text holds data necessary to draw a string using font fallbacks where necessary.
@@ -22,7 +23,7 @@ type Text struct {
 	runes       []rune
 	decorations []*TextDecoration
 	widths      []float32
-	extents     Size
+	extents     geom.Size
 	baseline    float32
 	emptyHeight float32
 }
@@ -39,7 +40,7 @@ func NewTextFromRunes(runes []rune, decoration *TextDecoration) *Text {
 		runes:       make([]rune, 0, len(runes)),
 		decorations: make([]*TextDecoration, 0, len(runes)),
 		widths:      make([]float32, 0, len(runes)),
-		extents:     Size{Width: -1},
+		extents:     geom.Size{Width: -1},
 		baseline:    decoration.Font.Baseline(),
 		emptyHeight: decoration.Font.LineHeight() + xmath.Abs(decoration.BaselineOffset),
 	}
@@ -136,7 +137,7 @@ func (t *Text) Slice(i, j int) *Text {
 		runes:       t.runes[i:j],
 		decorations: t.decorations[i:j],
 		widths:      t.widths[i:j],
-		extents:     Size{Width: -1},
+		extents:     geom.Size{Width: -1},
 		baseline:    t.baseline,
 		emptyHeight: t.emptyHeight,
 	}
@@ -159,7 +160,7 @@ func (t *Text) String() string {
 }
 
 // Extents returns the width and height.
-func (t *Text) Extents() Size {
+func (t *Text) Extents() geom.Size {
 	t.cache()
 	return t.extents
 }

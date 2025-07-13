@@ -12,7 +12,8 @@ package demo
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -129,9 +130,9 @@ func init() {
 	}
 }
 
-func initialWindowLocation() unison.Point {
+func initialWindowLocation() geom.Point {
 	// Try to position the new window to the right of the currently active window
-	var pt unison.Point
+	var pt geom.Point
 	if w := unison.ActiveWindow(); w != nil {
 		r := w.FrameRect()
 		pt.X = r.X + r.Width

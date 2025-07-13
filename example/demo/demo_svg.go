@@ -13,6 +13,7 @@ import (
 	_ "embed"
 	"fmt"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -26,7 +27,7 @@ var (
 )
 
 // NewDemoSVGWindow creates and displays our demo SVG window.
-func NewDemoSVGWindow(where unison.Point) (*unison.Window, error) {
+func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
 	// Create the window
 	svgCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("SVG #%d", svgCounter))
@@ -47,7 +48,7 @@ func NewDemoSVGWindow(where unison.Point) (*unison.Window, error) {
 	}
 	panel := unison.NewPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		MinSize: unison.NewSize(50, 50),
+		MinSize: geom.NewSize(50, 50),
 		HSpan:   1,
 		VSpan:   1,
 		HAlign:  align.Fill,
@@ -55,13 +56,13 @@ func NewDemoSVGWindow(where unison.Point) (*unison.Window, error) {
 		HGrab:   true,
 		VGrab:   true,
 	})
-	panel.DrawCallback = func(gc *unison.Canvas, dirty unison.Rect) {
+	panel.DrawCallback = func(gc *unison.Canvas, dirty geom.Rect) {
 		gc.DrawRect(dirty, unison.ThemeSurface.Dark.Paint(gc, dirty, paintstyle.Fill))
 		svg.DrawInRectPreservingAspectRatio(gc, panel.ContentRect(false), nil, nil)
 	}
 	content.AddChild(panel)
 
-	wnd.SetFrameRect(unison.Rect{Point: where, Size: unison.NewSize(400, 400)})
+	wnd.SetFrameRect(geom.Rect{Point: where, Size: geom.NewSize(400, 400)})
 	wnd.ToFront()
 
 	return wnd, nil

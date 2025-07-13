@@ -13,8 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 var (
@@ -36,7 +35,7 @@ func InvokeTaskAfter(f func(), after time.Duration) {
 	time.AfterFunc(after, func() { InvokeTask(f) })
 }
 
-func processNextTask(recoveryHandler errs.RecoveryHandler) {
+func processNextTask(recoveryHandler func(error)) {
 	var f func()
 	needsPost := false
 	taskQueueLock.Lock()
@@ -48,7 +47,7 @@ func processNextTask(recoveryHandler errs.RecoveryHandler) {
 	}
 	taskQueueLock.Unlock()
 	if f != nil {
-		toolbox.CallWithHandler(f, recoveryHandler)
+		xos.SafeCall(f, recoveryHandler)
 		if needsPost {
 			postEmptyEvent()
 		}

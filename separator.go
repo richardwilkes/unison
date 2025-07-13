@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/unison/enums/paintstyle"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+)
 
 // DefaultSeparatorTheme holds the default SeparatorTheme values for Separators. Modifying this data will not alter
 // existing Separators, but will alter any Separators created in the future.
@@ -40,7 +43,7 @@ func NewSeparator() *Separator {
 }
 
 // DefaultSizes provides the default sizing.
-func (s *Separator) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (s *Separator) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	if s.Vertical {
 		if hint.Height < 1 {
 			prefSize.Height = 1
@@ -74,7 +77,7 @@ func (s *Separator) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (s *Separator) DefaultDraw(canvas *Canvas, _ Rect) {
+func (s *Separator) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	rect := s.ContentRect(false)
 	if s.Vertical {
 		if rect.Width > 1 {

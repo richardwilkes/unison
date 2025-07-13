@@ -17,9 +17,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xio"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 )
@@ -94,8 +95,8 @@ func (d *JobDialog) RunModal() bool {
 	dlg.Window().SetTitle(i18n.Text("Print"))
 	d.dialog = dlg
 	d.dialog.Button(unison.ModalResponseOK).SetEnabled(false)
-	dlg.Window().MinMaxContentSizeCallback = func() (minSize, maxSize unison.Size) {
-		_, pref, _ := dlg.Window().Content().Parent().Sizes(unison.Size{})
+	dlg.Window().MinMaxContentSizeCallback = func() (minSize, maxSize geom.Size) {
+		_, pref, _ := dlg.Window().Content().Parent().Sizes(geom.Size{})
 		return pref, pref
 	}
 	dlg.Window().Pack()
@@ -144,7 +145,7 @@ func (d *JobDialog) createContent() unison.Paneler {
 	left.SetLayoutData(&unison.FlexLayoutData{HGrab: true})
 	bottom.AddChild(left)
 	d.img = unison.NewLabel()
-	d.img.SetBorder(unison.NewEmptyBorder(unison.Insets{Left: unison.StdHSpacing}))
+	d.img.SetBorder(unison.NewEmptyBorder(geom.Insets{Left: unison.StdHSpacing}))
 	d.img.SetLayoutData(&unison.FlexLayoutData{
 		HAlign: align.Middle,
 		VAlign: align.Middle,
@@ -165,7 +166,7 @@ func (d *JobDialog) createContent() unison.Paneler {
 
 func (d *JobDialog) createPrinterPopup(parent *unison.Panel) {
 	d.printers = unison.NewPopupMenu[*Printer]()
-	d.printers.SetBorder(unison.NewEmptyBorder(unison.Insets{Bottom: unison.StdVSpacing * 4}))
+	d.printers.SetBorder(unison.NewEmptyBorder(geom.Insets{Bottom: unison.StdVSpacing * 4}))
 	d.printers.SetLayoutData(&unison.FlexLayoutData{
 		HSpan:  2,
 		HAlign: align.Middle,

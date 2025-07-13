@@ -22,8 +22,8 @@ import (
 	"text/template"
 	"unicode"
 
-	"github.com/richardwilkes/toolbox/fatal"
-	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -40,7 +40,6 @@ type enumValue struct {
 	String        string
 	Alt           string
 	Comment       string
-	OldKeys       []string
 	Default       bool
 	NoLocalize    bool
 	EmptyStringOK bool
@@ -379,8 +378,8 @@ func main() {
 
 func removeExistingGenFiles() {
 	root, err := filepath.Abs(rootDir)
-	fatal.IfErr(err)
-	fatal.IfErr(filepath.Walk(root, func(path string, info os.FileInfo, _ error) error {
+	xos.ExitIfErr(err)
+	xos.ExitIfErr(filepath.Walk(root, func(path string, info os.FileInfo, _ error) error {
 		name := info.Name()
 		if info.IsDir() {
 			if name == ".git" {
@@ -388,7 +387,7 @@ func removeExistingGenFiles() {
 			}
 		} else {
 			if strings.HasSuffix(name, genSuffix) {
-				fatal.IfErr(os.Remove(path))
+				xos.ExitIfErr(os.Remove(path))
 			}
 		}
 		return nil
@@ -400,29 +399,29 @@ func processSourceTemplate(tmplName string, info *enumInfo) {
 		"add":          add,
 		"emptyIfTrue":  emptyIfTrue,
 		"fileLeaf":     filepath.Base,
-		"firstToLower": txt.FirstToLower,
+		"firstToLower": xstrings.FirstToLower,
 		"join":         join,
-		"toCamelCase":  txt.ToCamelCase,
+		"toCamelCase":  xstrings.ToCamelCase,
 		"toIdentifier": toIdentifier,
 		"wrapComment":  wrapComment,
 	}).ParseFiles(tmplName)
-	fatal.IfErr(err)
+	xos.ExitIfErr(err)
 	var buffer bytes.Buffer
 	writeGeneratedFromComment(&buffer, tmplName)
-	fatal.IfErr(tmpl.Execute(&buffer, info))
+	xos.ExitIfErr(tmpl.Execute(&buffer, info))
 	var data []byte
 	if data, err = format.Source(buffer.Bytes()); err != nil {
 		fmt.Println("unable to format source file: " + filepath.Join(info.Pkg, info.Name+genSuffix))
 		data = buffer.Bytes()
 	}
 	dir := filepath.Join(rootDir, info.Pkg)
-	fatal.IfErr(os.MkdirAll(dir, 0o750))
-	fatal.IfErr(os.WriteFile(filepath.Join(dir, info.Name+genSuffix), data, 0o640))
+	xos.ExitIfErr(os.MkdirAll(dir, 0o750))
+	xos.ExitIfErr(os.WriteFile(filepath.Join(dir, info.Name+genSuffix), data, 0o640))
 }
 
 func writeGeneratedFromComment(w io.Writer, tmplName string) {
 	_, err := fmt.Fprintf(w, "// Code generated from \"%s\" - DO NOT EDIT.\n\n", tmplName)
-	fatal.IfErr(err)
+	xos.ExitIfErr(err)
 }
 
 func add(a, b int) int {
@@ -441,7 +440,7 @@ func join(values []string) string {
 }
 
 func (e *enumInfo) LocalType() string {
-	return txt.FirstToLower(toIdentifier(e.Name)) + "Data"
+	return xstrings.FirstToLower(toIdentifier(e.Name)) + "Data"
 }
 
 func (e *enumInfo) BaseType() string {
@@ -472,15 +471,6 @@ func (e *enumInfo) IDFor(v enumValue) string { //nolint:gocritic // OK to pass l
 func (e *enumInfo) HasAlt() bool {
 	for _, one := range e.Values {
 		if one.Alt != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (e *enumInfo) HasOldKeys() bool {
-	for _, one := range e.Values {
-		if len(one.OldKeys) != 0 {
 			return true
 		}
 	}
@@ -568,5 +558,5 @@ func toIdentifier(in string) string {
 }
 
 func wrapComment(in string, cols int) string {
-	return txt.Wrap("// ", in, cols)
+	return xstrings.Wrap("// ", in, cols)
 }

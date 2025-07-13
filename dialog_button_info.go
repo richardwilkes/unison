@@ -10,7 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 )
 

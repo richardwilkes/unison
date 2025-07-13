@@ -13,7 +13,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 )
 
@@ -34,17 +35,17 @@ const DialogClientDataKey = "dialog"
 var DefaultDialogTheme = DialogTheme{
 	ErrorIcon: &DrawableSVG{
 		SVG:  CircledExclamationSVG,
-		Size: Size{Width: 48, Height: 48},
+		Size: geom.Size{Width: 48, Height: 48},
 	},
 	ErrorIconInk: ThemeError,
 	WarningIcon: &DrawableSVG{
 		SVG:  TriangleExclamationSVG,
-		Size: Size{Width: 48, Height: 48},
+		Size: geom.Size{Width: 48, Height: 48},
 	},
 	WarningIconInk: ThemeWarning,
 	QuestionIcon: &DrawableSVG{
 		SVG:  CircledQuestionSVG,
-		Size: Size{Width: 48, Height: 48},
+		Size: geom.Size{Width: 48, Height: 48},
 	},
 	QuestionIconInk: ThemeOnSurface,
 }
@@ -76,7 +77,7 @@ type Dialog struct {
 // always have te FloatingWindowOption() set.
 func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo, windowOptions ...WindowOption) (*Dialog, error) {
 	d := &Dialog{buttons: make(map[int]*buttonData)}
-	var frame Rect
+	var frame geom.Rect
 	if focused := ActiveWindow(); focused != nil {
 		frame = focused.FrameRect()
 	} else {
@@ -92,14 +93,14 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	}
 	d.wnd.ClientData()[DialogClientDataKey] = d
 	content := d.wnd.Content()
-	content.SetBorder(NewEmptyBorder(NewUniformInsets(2 * StdHSpacing)))
+	content.SetBorder(NewEmptyBorder(geom.NewUniformInsets(2 * StdHSpacing)))
 	columns := 1
 	if icon != nil {
 		columns++
 		iconLabel := NewLabel()
 		iconLabel.Drawable = icon
 		iconLabel.OnBackgroundInk = iconInk
-		iconLabel.SetBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing, Right: StdHSpacing}))
+		iconLabel.SetBorder(NewEmptyBorder(geom.Insets{Bottom: 2 * StdHSpacing, Right: StdHSpacing}))
 		iconLabel.SetLayoutData(&FlexLayoutData{})
 		content.AddChild(iconLabel)
 	}
@@ -110,9 +111,9 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	})
 	p := msgPanel.AsPanel()
 	if b := p.Border(); b != nil {
-		p.SetBorder(NewCompoundBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing}), b))
+		p.SetBorder(NewCompoundBorder(NewEmptyBorder(geom.Insets{Bottom: 2 * StdHSpacing}), b))
 	} else {
-		p.SetBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing}))
+		p.SetBorder(NewEmptyBorder(geom.Insets{Bottom: 2 * StdHSpacing}))
 	}
 	p.SetLayoutData(&FlexLayoutData{
 		HSpan:  1,
@@ -210,7 +211,7 @@ func NewMessagePanel(primary, detail string) *Panel {
 	breakTextIntoLabels(panel, primary, EmphasizedSystemFont, false)
 	breakTextIntoLabels(panel, detail, SystemFont, true)
 	panel.SetLayoutData(&FlexLayoutData{
-		MinSize: Size{Width: 200},
+		MinSize: geom.Size{Width: 200},
 		HSpan:   1,
 		VSpan:   1,
 		VAlign:  align.Middle,
@@ -233,7 +234,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove boo
 					l.SetTitle(part)
 					if returns > 1 || addSpaceAbove {
 						addSpaceAbove = false
-						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
+						l.SetBorder(NewEmptyBorder(geom.Insets{Top: StdHSpacing}))
 					}
 					panel.AddChild(l)
 					text = text[i+1:]
@@ -245,7 +246,7 @@ func breakTextIntoLabels(panel *Panel, text string, font Font, addSpaceAbove boo
 					l.Font = font
 					l.SetTitle(text)
 					if returns > 1 || addSpaceAbove {
-						l.SetBorder(NewEmptyBorder(Insets{Top: StdHSpacing}))
+						l.SetBorder(NewEmptyBorder(geom.Insets{Top: StdHSpacing}))
 					}
 					panel.AddChild(l)
 				}

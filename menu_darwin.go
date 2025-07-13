@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
@@ -148,7 +149,7 @@ func (m *macMenu) Count() int {
 	return m.menu.NumberOfItems()
 }
 
-func (m *macMenu) Popup(where Rect, itemIndex int) {
+func (m *macMenu) Popup(where geom.Rect, itemIndex int) {
 	if w := ActiveWindow(); w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {
 			wnd := ns.Window(w.wnd.GetCocoaWindow())

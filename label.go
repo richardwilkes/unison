@@ -10,8 +10,9 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
@@ -72,7 +73,7 @@ func (l *Label) SetTitle(text string) {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *Label) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (l *Label) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize, _ = LabelContentSizes(l.Text, l.Drawable, l.Font, l.Side, l.Gap)
 	if b := l.Border(); b != nil {
 		prefSize = prefSize.Add(b.Insets().Size())
@@ -82,7 +83,7 @@ func (l *Label) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (l *Label) DefaultDraw(canvas *Canvas, _ Rect) {
+func (l *Label) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.OnBackgroundInk, l.BackgroundInk,
 		l.Drawable, l.Side, l.Gap, !l.Enabled())
 }
@@ -90,7 +91,7 @@ func (l *Label) DefaultDraw(canvas *Canvas, _ Rect) {
 // LabelContentSizes returns the preferred size of a label, as well as the preferred size of the text within the label.
 // When no drawable is present, the two values will be the same. Provided as a standalone function so that other types
 // of panels can make use of it.
-func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide side.Enum, gap float32) (size, txtSize Size) {
+func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide side.Enum, gap float32) (size, txtSize geom.Size) {
 	empty := text.Empty()
 	if empty && drawable == nil {
 		txtSize.Height = font.LineHeight()
@@ -118,8 +119,8 @@ func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide si
 }
 
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect Rect, hAlign, vAlign align.Enum, font Font, text *Text, onBackgroundInk, backgroundInk Ink, drawable Drawable, drawableSide side.Enum, imgGap float32, applyDisabledFilter bool) {
-	if !toolbox.IsNil(backgroundInk) {
+func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font Font, text *Text, onBackgroundInk, backgroundInk Ink, drawable Drawable, drawableSide side.Enum, imgGap float32, applyDisabledFilter bool) {
+	if !xreflect.IsNil(backgroundInk) {
 		canvas.DrawRect(rect, backgroundInk.Paint(canvas, rect, paintstyle.Fill))
 	}
 	empty := text.Empty()

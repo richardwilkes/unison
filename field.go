@@ -11,12 +11,13 @@ package unison
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
@@ -79,7 +80,7 @@ type Field struct {
 	selectionStart     int
 	selectionEnd       int
 	selectionAnchor    int
-	scrollOffset       Point
+	scrollOffset       geom.Point
 	linesBuiltFor      float32
 	ObscurementRune    rune
 	AutoScroll         bool
@@ -171,8 +172,8 @@ func (f *Field) SetMinimumTextWidthUsing(candidates ...string) {
 }
 
 // DefaultSizes provides the default sizing.
-func (f *Field) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
-	var insets Insets
+func (f *Field) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
+	var insets geom.Insets
 	if b := f.Border(); b != nil {
 		insets = b.Insets()
 	}
@@ -280,7 +281,7 @@ func (f *Field) obscureIfNeeded(in []rune) []rune {
 }
 
 // DefaultDraw provides the default drawing.
-func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
+func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	var bg, fg Ink
 	enabled := f.Enabled()
 	switch {
@@ -360,9 +361,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 					OnBackgroundInk: f.OnSelectionInk,
 				})
 				right := left + t.Width()
-				selRect := Rect{
-					Point: Point{X: left, Y: textTop},
-					Size:  Size{Width: right - left, Height: textHeight},
+				selRect := geom.Rect{
+					Point: geom.Point{X: left, Y: textTop},
+					Size:  geom.Size{Width: right - left, Height: textHeight},
 				}
 				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill))
 				t.Draw(canvas, left, textBaseLine)
@@ -383,9 +384,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ Rect) {
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
 				if f.showCursor {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]), &TextDecoration{Font: f.Font})
-					canvas.DrawRect(Rect{
-						Point: Point{X: textLeft + t.Width() + f.scrollOffset.X - 0.5, Y: textTop},
-						Size:  Size{Width: 1, Height: textHeight},
+					canvas.DrawRect(geom.Rect{
+						Point: geom.Point{X: textLeft + t.Width() + f.scrollOffset.X - 0.5, Y: textTop},
+						Size:  geom.Size{Width: 1, Height: textHeight},
 					}, fg.Paint(canvas, rect, paintstyle.Fill))
 				}
 				f.scheduleBlink()
@@ -438,7 +439,7 @@ func (f *Field) DefaultFocusLost() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mod Modifiers) bool {
 	f.undoID = NextUndoID()
 	wasFocused := f.Focused()
 	f.RequestFocus()
@@ -455,7 +456,7 @@ func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 			selectAll := false
 			if !wasFocused {
 				if f.InitialClickSelectsAll != nil {
-					toolbox.Call(func() { selectAll = f.InitialClickSelectsAll(f) })
+					xos.SafeCall(func() { selectAll = f.InitialClickSelectsAll(f) }, nil)
 				}
 			}
 			if selectAll {
@@ -485,7 +486,7 @@ func (f *Field) DefaultMouseDown(where Point, button, clickCount int, mod Modifi
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (f *Field) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
+func (f *Field) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	oldAnchor := f.selectionAnchor
 	pos := f.ToSelectionIndex(where)
 	var start, end int
@@ -529,7 +530,7 @@ func (f *Field) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultUpdateCursor provides the default cursor update handling.
-func (f *Field) DefaultUpdateCursor(_ Point) *Cursor {
+func (f *Field) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	if f.Enabled() {
 		return TextCursor()
 	}
@@ -994,7 +995,7 @@ func (f *Field) Text() string {
 // SetText sets the content of the field.
 func (f *Field) SetText(text string) {
 	runes := f.sanitize([]rune(text))
-	if !txt.RunesEqual(runes, f.runes) {
+	if !slices.Equal(runes, f.runes) {
 		before := f.GetFieldState()
 		f.runes = runes
 		f.linesBuiltFor = -1
@@ -1114,16 +1115,16 @@ func (f *Field) ScrollSelectionIntoView() {
 		pos = f.selectionStart
 	}
 	pt := f.FromSelectionIndex(pos)
-	f.ScrollRectIntoView(Rect{Point: Point{X: pt.X - 1, Y: pt.Y}, Size: Size{Width: 3, Height: f.lineHeightAt(pt.Y)}})
+	f.ScrollRectIntoView(geom.Rect{Point: geom.Point{X: pt.X - 1, Y: pt.Y}, Size: geom.Size{Width: 3, Height: f.lineHeightAt(pt.Y)}})
 }
 
 // ScrollOffset returns the current autoscroll offset.
-func (f *Field) ScrollOffset() Point {
+func (f *Field) ScrollOffset() geom.Point {
 	return f.scrollOffset
 }
 
 // SetScrollOffset sets the autoscroll offset to the specified value.
-func (f *Field) SetScrollOffset(offset Point) {
+func (f *Field) SetScrollOffset(offset geom.Point) {
 	if f.AutoScroll && f.scrollOffset != offset {
 		f.scrollOffset = offset
 		f.MarkForRedraw()
@@ -1203,11 +1204,11 @@ func (f *Field) autoScroll() {
 	}
 }
 
-func (f *Field) textLeft(text *Text, bounds Rect) float32 {
+func (f *Field) textLeft(text *Text, bounds geom.Rect) float32 {
 	return f.textLeftForWidth(text.Width(), bounds)
 }
 
-func (f *Field) textLeftForWidth(width float32, bounds Rect) float32 {
+func (f *Field) textLeftForWidth(width float32, bounds geom.Rect) float32 {
 	left := bounds.X
 	switch f.HAlign {
 	case align.Middle:
@@ -1221,7 +1222,7 @@ func (f *Field) textLeftForWidth(width float32, bounds Rect) float32 {
 }
 
 // ToSelectionIndex returns the rune index for the coordinates.
-func (f *Field) ToSelectionIndex(where Point) int {
+func (f *Field) ToSelectionIndex(where geom.Point) int {
 	if len(f.runes) == 0 {
 		return 0
 	}
@@ -1232,7 +1233,7 @@ func (f *Field) ToSelectionIndex(where Point) int {
 }
 
 // FromSelectionIndex returns a location in local coordinates for the specified rune index.
-func (f *Field) FromSelectionIndex(index int) Point {
+func (f *Field) FromSelectionIndex(index int) geom.Point {
 	f.prepareLinesForCurrentWidth()
 	index = max(min(index, len(f.runes)), 0)
 	rect := f.ContentRect(false)
@@ -1245,13 +1246,13 @@ func (f *Field) FromSelectionIndex(index int) Point {
 			length++
 		}
 		if !f.multiLine || index < start+length {
-			return Point{X: f.textLeft(line, rect) + line.PositionForRuneIndex(index-start) + f.scrollOffset.X, Y: y}
+			return geom.Point{X: f.textLeft(line, rect) + line.PositionForRuneIndex(index-start) + f.scrollOffset.X, Y: y}
 		}
 		lastHeight = max(line.Height(), f.Font.LineHeight())
 		y += lastHeight
 		start += length
 	}
-	return Point{X: f.textLeftForWidth(0, rect) + f.scrollOffset.X, Y: y - lastHeight}
+	return geom.Point{X: f.textLeftForWidth(0, rect) + f.scrollOffset.X, Y: y - lastHeight}
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {
@@ -1363,7 +1364,7 @@ func (f *Field) GetFieldState() *FieldState {
 // callback.
 func (f *Field) ApplyFieldState(state *FieldState) {
 	runes := f.sanitize([]rune(state.Text))
-	if !txt.RunesEqual(runes, f.runes) {
+	if !slices.Equal(runes, f.runes) {
 		f.runes = runes
 		f.linesBuiltFor = -1
 	}

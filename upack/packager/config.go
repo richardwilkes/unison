@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/xfilepath"
 )
 
 // FileData holds information about a file type for macOS.
@@ -54,7 +54,7 @@ type Config struct {
 
 func (c *Config) prepare(version string) {
 	c.version = version
-	c.ExecutableName = fs.BaseName(c.ExecutableName)
+	c.ExecutableName = xfilepath.BaseName(c.ExecutableName)
 }
 
 func (c *Config) finderAppName() string {

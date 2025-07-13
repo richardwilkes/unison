@@ -12,7 +12,7 @@ package unison
 import (
 	"net/url"
 
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 

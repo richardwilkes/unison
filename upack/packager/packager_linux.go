@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 func prepareBinary(_ *Config) error {
@@ -18,7 +18,7 @@ func prepareBinary(_ *Config) error {
 
 func generateDistribution(cfg *Config) (err error) {
 	dstPath := cfg.ExecutableName + "-" + cfg.version + "-linux-" + runtime.GOARCH + ".tgz"
-	if fs.FileExists(dstPath) {
+	if xos.FileExists(dstPath) {
 		if err := os.Remove(dstPath); err != nil {
 			return errs.Wrap(err)
 		}

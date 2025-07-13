@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/v2/geom"
+
 var _ Layout = &dockContainerContent{}
 
 type dockContainerContent struct {
@@ -60,7 +62,7 @@ func (d *dockContainerContent) SetCurrentIndex(index int) {
 	}
 }
 
-func (d *dockContainerContent) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSize Size) {
+func (d *dockContainerContent) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	for _, c := range d.Children() {
 		min2, pref2, max2 := c.AsPanel().Sizes(hint)
 		minSize = minSize.Max(min2)

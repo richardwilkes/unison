@@ -12,7 +12,8 @@ package unison
 import (
 	"slices"
 
-	"github.com/richardwilkes/toolbox/tid"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -22,7 +23,7 @@ type TableDrop[T TableRowConstraint[T], U any] struct {
 	Table                  *Table[T]
 	TableDragData          *TableDragData[T]
 	AllDragData            map[string]any
-	originalDrawOver       func(*Canvas, Rect)
+	originalDrawOver       func(*Canvas, geom.Rect)
 	shouldMoveDataCallback func(from, to *Table[T]) bool
 	willDropCallback       func(from, to *Table[T], move bool) *UndoEdit[U]
 	didDropCallback        func(undo *UndoEdit[U], from, to *Table[T], move bool)
@@ -35,12 +36,12 @@ type TableDrop[T TableRowConstraint[T], U any] struct {
 }
 
 // DrawOverCallback handles drawing the drop zone feedback.
-func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect Rect) {
+func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect geom.Rect) {
 	if d.originalDrawOver != nil {
 		d.originalDrawOver(gc, rect)
 	}
 	if d.inDragOver {
-		r := d.Table.ContentRect(false).Inset(NewUniformInsets(1))
+		r := d.Table.ContentRect(false).Inset(geom.NewUniformInsets(1))
 		paint := ThemeWarning.Paint(gc, r, paintstyle.Stroke)
 		paint.SetStrokeWidth(2)
 		paint.SetColorFilter(Alpha30Filter())
@@ -52,7 +53,7 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect Rect) {
 }
 
 // DataDragOverCallback handles determining if a given drag is one that we are interested in.
-func (d *TableDrop[T, U]) DataDragOverCallback(where Point, data map[string]any) bool {
+func (d *TableDrop[T, U]) DataDragOverCallback(where geom.Point, data map[string]any) bool {
 	if d.Table.filteredRows != nil {
 		return false
 	}
@@ -162,7 +163,7 @@ func (d *TableDrop[T, U]) DataDragExitCallback() {
 }
 
 // DataDragDropCallback handles processing a drop.
-func (d *TableDrop[T, U]) DataDragDropCallback(_ Point, data map[string]any) {
+func (d *TableDrop[T, U]) DataDragDropCallback(_ geom.Point, data map[string]any) {
 	var savedScrollX, savedScrollY float32
 	if scroller := d.Table.ScrollRoot(); scroller != nil {
 		savedScrollX, savedScrollY = scroller.Position()

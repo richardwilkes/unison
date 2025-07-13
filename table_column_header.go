@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
@@ -75,7 +76,7 @@ func NewTableColumnHeader[T TableRowConstraint[T]](title, tooltip string, less f
 }
 
 // DefaultSizes provides the default sizing.
-func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize, _ = LabelContentSizes(h.Text, h.Drawable, h.Font, h.Side, h.Gap)
 
 	// Account for the potential sort indicator
@@ -93,7 +94,7 @@ func (h *DefaultTableColumnHeader[T]) DefaultSizes(hint Size) (minSize, prefSize
 }
 
 // DefaultDraw provides the default drawing.
-func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ Rect) {
+func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := h.ContentRect(false)
 	if h.sortIndicator != nil {
 		r.Width -= h.Gap + h.sortIndicator.LogicalSize().Width
@@ -127,12 +128,12 @@ func (h *DefaultTableColumnHeader[T]) SetSortState(state SortState) {
 			if h.sortState.Ascending {
 				h.sortIndicator = &DrawableSVG{
 					SVG:  SortAscendingSVG,
-					Size: Size{Width: baseline, Height: baseline},
+					Size: geom.Size{Width: baseline, Height: baseline},
 				}
 			} else {
 				h.sortIndicator = &DrawableSVG{
 					SVG:  SortDescendingSVG,
-					Size: Size{Width: baseline, Height: baseline},
+					Size: geom.Size{Width: baseline, Height: baseline},
 				}
 			}
 		} else {
@@ -143,7 +144,7 @@ func (h *DefaultTableColumnHeader[T]) SetSortState(state SortState) {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *DefaultTableColumnHeader[T]) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
+func (h *DefaultTableColumnHeader[T]) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	if h.sortState.Sortable && where.In(h.ContentRect(false)) {
 		if header, ok := h.Parent().Self.(*TableHeader[T]); ok {
 			header.SortOn(h)

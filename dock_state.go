@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 )
 
 // Possible values for the DockState Type field.
@@ -55,7 +55,7 @@ func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string
 	case *DockLayout:
 		children := make([]*DockState, 0, 2)
 		for _, n := range t.nodes {
-			if !toolbox.IsNil(n) {
+			if !xreflect.IsNil(n) {
 				children = append(children, collectDockState(n, keyFromDockable))
 			}
 		}
@@ -85,7 +85,7 @@ func (d *DockState) apply(node DockLayoutNode, keyToDockable func(string) Dockab
 	switch t := node.(type) {
 	case *DockContainer:
 		for _, child := range d.Children {
-			if dockable := resolveDockable(keyToDockable(child.Key)); !toolbox.IsNil(dockable) {
+			if dockable := resolveDockable(keyToDockable(child.Key)); !xreflect.IsNil(dockable) {
 				t.content.AddChild(dockable)
 				t.header.AddChild(newDockTab(dockable))
 			}

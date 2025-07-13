@@ -13,7 +13,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -128,7 +129,7 @@ func (w *Well) SetInk(ink Ink) {
 }
 
 // DefaultSizes provides the default sizing.
-func (w *Well) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (w *Well) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize.Width = 4 + w.ContentSize
 	prefSize.Height = 4 + w.ContentSize
 	if border := w.Border(); border != nil {
@@ -145,7 +146,7 @@ func (w *Well) DefaultFocusGained() {
 }
 
 // DefaultDraw provides the default drawing.
-func (w *Well) DefaultDraw(canvas *Canvas, _ Rect) {
+func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := w.ContentRect(false)
 	var bg Ink
 	switch {
@@ -162,7 +163,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ Rect) {
 		edge = w.SelectionInk
 	}
 	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, edge)
-	r = r.Inset(NewUniformInsets(wellInset))
+	r = r.Inset(geom.NewUniformInsets(wellInset))
 	radius := w.CornerRadius - (wellInset - 2)
 	if pattern, ok := w.ink.(*Pattern); ok {
 		canvas.Save()
@@ -184,14 +185,14 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (w *Well) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
 	w.Pressed = true
 	w.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (w *Well) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	rect := w.ContentRect(false)
 	if pressed := where.In(rect); pressed != w.Pressed {
 		w.Pressed = pressed
@@ -201,7 +202,7 @@ func (w *Well) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (w *Well) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	w.Pressed = false
 	w.MarkForRedraw()
 	if where.In(w.ContentRect(false)) {
@@ -267,7 +268,7 @@ func (w *Well) loadImage(imageSpec string) (*Image, error) {
 }
 
 // DefaultUpdateCursor provides the default cursor for wells.
-func (w *Well) DefaultUpdateCursor(_ Point) *Cursor {
+func (w *Well) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	if !w.Enabled() {
 		return ArrowCursor()
 	}

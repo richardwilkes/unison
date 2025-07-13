@@ -12,9 +12,10 @@ package demo
 import (
 	"strconv"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/fatal"
-	"github.com/richardwilkes/toolbox/tid"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/tid"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison"
 )
 
@@ -36,7 +37,7 @@ type demoRow struct {
 func (d *demoRow) CloneForTarget(target unison.Paneler, newParent *demoRow) *demoRow {
 	table, ok := target.(*unison.Table[*demoRow])
 	if !ok {
-		fatal.IfErr(errs.New("invalid target"))
+		xos.ExitIfErr(errs.New("invalid target"))
 	}
 	clone := *d
 	clone.table = table
@@ -103,7 +104,7 @@ func (d *demoRow) ColumnCell(row, col int, foreground, _ unison.Ink, _, _, _ boo
 			addWrappedText(wrapper, "A little note…", foreground,
 				unison.LabelFont.Face().Font(unison.LabelFont.Size()-1), width)
 		}
-		wrapper.UpdateTooltipCallback = func(_ unison.Point, _ unison.Rect) unison.Rect {
+		wrapper.UpdateTooltipCallback = func(_ geom.Point, _ geom.Rect) geom.Rect {
 			wrapper.Tooltip = unison.NewTooltipWithText("A tooltip for the cell")
 			return wrapper.RectToRoot(wrapper.ContentRect(true))
 		}

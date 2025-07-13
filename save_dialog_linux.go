@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xfilepath"
 )
 
 type linuxSaveDialog struct {
@@ -81,7 +81,7 @@ func (d *linuxSaveDialog) RunModal() bool {
 
 func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
 	ext, allowed := d.prepExt()
-	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/"+fs.TrimExtension(d.InitialFileName())+ext)
+	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/"+xfilepath.TrimExtension(d.InitialFileName())+ext)
 	if len(allowed) != 0 {
 		list := strings.Join(allowed, " ")
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
@@ -101,7 +101,7 @@ func (d *linuxSaveDialog) runZenity(zenity string) bool {
 		cmd.Args = append(cmd.Args, "--confirm-overwrite")
 	}
 	ext, allowed := d.prepExt()
-	cmd.Args = append(cmd.Args, "--filename="+d.InitialDirectory()+"/"+fs.TrimExtension(d.InitialFileName())+ext)
+	cmd.Args = append(cmd.Args, "--filename="+d.InitialDirectory()+"/"+xfilepath.TrimExtension(d.InitialFileName())+ext)
 	if len(allowed) != 0 {
 		cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
 	}

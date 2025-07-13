@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/v2/geom"
+
 var (
 	_ Layout         = &DockContainer{}
 	_ DockLayoutNode = &DockContainer{}
@@ -18,7 +20,7 @@ var (
 type Dockable interface {
 	Paneler
 	// TitleIcon returns an Drawable representing this Dockable.
-	TitleIcon(suggestedSize Size) Drawable
+	TitleIcon(suggestedSize geom.Size) Drawable
 	// Title returns the title of this Dockable.
 	Title() string
 	// Tooltip returns the tooltip of this Dockable.
@@ -240,17 +242,17 @@ func (d *DockContainer) Close(dockable Dockable) {
 }
 
 // PreferredSize implements DockLayoutNode.
-func (d *DockContainer) PreferredSize() Size {
-	_, pref, _ := d.LayoutSizes(d.AsPanel(), Size{})
+func (d *DockContainer) PreferredSize() geom.Size {
+	_, pref, _ := d.LayoutSizes(d.AsPanel(), geom.Size{})
 	return pref
 }
 
 // LayoutSizes implements Layout.
-func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size) {
-	minSize, prefSize, maxSize = d.header.Sizes(Size{Width: hint.Width})
+func (d *DockContainer) LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
+	minSize, prefSize, maxSize = d.header.Sizes(geom.Size{Width: hint.Width})
 	minSize.Height = prefSize.Height
 	maxSize.Height = prefSize.Height
-	min2, pref2, max2 := d.content.Sizes(Size{Width: hint.Width, Height: max(hint.Height-prefSize.Height, 0)})
+	min2, pref2, max2 := d.content.Sizes(geom.Size{Width: hint.Width, Height: max(hint.Height-prefSize.Height, 0)})
 	minSize.Width = min2.Width
 	prefSize.Width = pref2.Width
 	maxSize.Width = max2.Width
@@ -266,7 +268,7 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint Size) (minSize, prefSize
 // PerformLayout implements Layout.
 func (d *DockContainer) PerformLayout(_ *Panel) {
 	r := d.ContentRect(false)
-	_, pref, _ := d.header.Sizes(Size{Width: r.Width})
+	_, pref, _ := d.header.Sizes(geom.Size{Width: r.Width})
 	hr := r
 	hr.Height = pref.Height
 	d.header.SetFrameRect(hr)

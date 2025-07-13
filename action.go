@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 var (
@@ -51,7 +51,7 @@ func (a *Action) Enabled(src any) bool {
 		return true
 	}
 	result := false
-	toolbox.Call(func() { result = a.EnabledCallback(a, src) })
+	xos.SafeCall(func() { result = a.EnabledCallback(a, src) }, nil)
 	return result
 }
 
@@ -66,7 +66,7 @@ func (a *Action) enabled(item MenuItem) bool {
 // Execute the action. Calls Enabled() to verify execution is permitted.
 func (a *Action) Execute(src any) {
 	if a.ExecuteCallback != nil && a.Enabled(src) {
-		toolbox.Call(func() { a.ExecuteCallback(a, src) })
+		xos.SafeCall(func() { a.ExecuteCallback(a, src) }, nil)
 	}
 }
 

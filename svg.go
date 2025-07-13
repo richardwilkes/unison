@@ -16,9 +16,9 @@ import (
 	"strings"
 
 	"github.com/lafriks/go-svg"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/fatal"
-	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
@@ -101,14 +101,14 @@ var strokeJoins = map[svg.JoinMode]strokejoin.Enum{
 // DrawableSVG makes an SVG conform to the Drawable interface.
 type DrawableSVG struct {
 	SVG             *SVG
-	Size            Size
+	Size            geom.Size
 	RotationDegrees float32
 }
 
 // SVG holds an SVG.
 type SVG struct {
 	paths []*svgPath
-	size  Size
+	size  geom.Size
 }
 
 type svgPath struct {
@@ -159,9 +159,9 @@ func SVGOptionIgnoreUnsupported() SVGOption {
 // parameter.
 //
 // Note: It is probably better to use one of the other Must... methods that take the full SVG content.
-func MustSVG(size Size, svgPathStr string) *SVG {
+func MustSVG(size geom.Size, svgPathStr string) *SVG {
 	s, err := NewSVG(size, svgPathStr)
-	fatal.IfErr(err)
+	xos.ExitIfErr(err)
 	return s
 }
 
@@ -169,7 +169,7 @@ func MustSVG(size Size, svgPathStr string) *SVG {
 // element). The 'size' should be gotten from the original SVG's 'viewBox' parameter.
 //
 // Note: It is probably better to use one of the other New... methods that take the full SVG content.
-func NewSVG(size Size, svgPathStr string) (*SVG, error) {
+func NewSVG(size geom.Size, svgPathStr string) (*SVG, error) {
 	path, err := NewPathFromSVGString(svgPathStr)
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func NewSVG(size Size, svgPathStr string) (*SVG, error) {
 // attribute and any "d" attributes from enclosed SVG "path" elements.
 func MustSVGFromContentString(content string, options ...SVGOption) *SVG {
 	s, err := NewSVGFromContentString(content, options...)
-	fatal.IfErr(err)
+	xos.ExitIfErr(err)
 	return s
 }
 
@@ -201,7 +201,7 @@ func NewSVGFromContentString(content string, options ...SVGOption) (*SVG, error)
 // and any "d" attributes from enclosed SVG "path" elements.
 func MustSVGFromReader(r io.Reader, options ...SVGOption) *SVG {
 	s, err := NewSVGFromReader(r, options...)
-	fatal.IfErr(err)
+	xos.ExitIfErr(err)
 	return s
 }
 
@@ -222,7 +222,7 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 		return nil, errs.Wrap(err)
 	}
 
-	s.size = NewSize(float32(sData.ViewBox.W), float32(sData.ViewBox.H))
+	s.size = geom.NewSize(float32(sData.ViewBox.W), float32(sData.ViewBox.H))
 	s.paths = make([]*svgPath, len(sData.SvgPaths))
 	for i := range sData.SvgPaths {
 		p := NewPath()
@@ -251,7 +251,7 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 		}
 
 		if sData.SvgPaths[i].Style.Transform != svg.Identity {
-			p.Transform(geom.Matrix[float32]{
+			p.Transform(geom.Matrix{
 				ScaleX: float32(sData.SvgPaths[i].Style.Transform.A),
 				SkewX:  float32(sData.SvgPaths[i].Style.Transform.C),
 				TransX: float32(sData.SvgPaths[i].Style.Transform.E),
@@ -313,15 +313,15 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 }
 
 // Size returns the original size.
-func (s *SVG) Size() Size {
+func (s *SVG) Size() geom.Size {
 	return s.size
 }
 
 // OffsetToCenterWithinScaledSize returns the scaled offset values to use to keep the image centered within the given
 // size.
-func (s *SVG) OffsetToCenterWithinScaledSize(size Size) Point {
+func (s *SVG) OffsetToCenterWithinScaledSize(size geom.Size) geom.Point {
 	scale := min(size.Width/s.size.Width, size.Height/s.size.Height)
-	return Point{X: (size.Width - s.size.Width*scale) / 2, Y: (size.Height - s.size.Height*scale) / 2}
+	return geom.Point{X: (size.Width - s.size.Width*scale) / 2, Y: (size.Height - s.size.Height*scale) / 2}
 }
 
 // AspectRatio returns the SVG's width to height ratio.
@@ -332,7 +332,7 @@ func (s *SVG) AspectRatio() float32 {
 // DrawInRect draws this SVG resized to fit in the given rectangle. If paint is not nil, the SVG paths will be drawn
 // with the provided paint, ignoring any fill or stroke attributes within the source SVG. Be sure to set the Paint's
 // style (fill or stroke) as desired.
-func (s *SVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, paint *Paint) {
+func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, paint *Paint) {
 	canvas.Save()
 	defer canvas.Restore()
 	offset := s.OffsetToCenterWithinScaledSize(rect.Size)
@@ -355,7 +355,7 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, paint *P
 // DrawInRectPreservingAspectRatio draws this SVG resized to fit in the given rectangle, preserving the aspect ratio.
 // If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
 // within the source SVG. Be sure to set the Paint's style (fill or stroke) as desired.
-func (s *SVG) DrawInRectPreservingAspectRatio(canvas *Canvas, rect Rect, opts *SamplingOptions, paint *Paint) {
+func (s *SVG) DrawInRectPreservingAspectRatio(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, paint *Paint) {
 	ratio := s.AspectRatio()
 	w := rect.Width
 	h := w / ratio
@@ -363,11 +363,11 @@ func (s *SVG) DrawInRectPreservingAspectRatio(canvas *Canvas, rect Rect, opts *S
 		h = rect.Height
 		w = h * ratio
 	}
-	s.DrawInRect(canvas, NewRect(rect.X+(rect.Width-w)/2, rect.Y+(rect.Height-h)/2, w, h), opts, paint)
+	s.DrawInRect(canvas, geom.NewRect(rect.X+(rect.Width-w)/2, rect.Y+(rect.Height-h)/2, w, h), opts, paint)
 }
 
 // LogicalSize implements the Drawable interface.
-func (s *DrawableSVG) LogicalSize() Size {
+func (s *DrawableSVG) LogicalSize() geom.Size {
 	return s.Size
 }
 
@@ -375,7 +375,7 @@ func (s *DrawableSVG) LogicalSize() Size {
 //
 // If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
 // within the source SVG. Be sure to set the Paint's style (fill or stroke) as desired.
-func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect Rect, opts *SamplingOptions, paint *Paint) {
+func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, paint *Paint) {
 	if s.RotationDegrees != 0 {
 		canvas.Save()
 		defer canvas.Restore()

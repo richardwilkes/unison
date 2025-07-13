@@ -13,8 +13,9 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -90,7 +91,7 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 }
 
 // DefaultSizes provides the default sizing.
-func (p *PopupMenu[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (p *PopupMenu[T]) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize, _ = LabelContentSizes(nil, nil, p.Font, 0, 0)
 	for _, one := range p.items {
 		if one.separator {
@@ -125,7 +126,7 @@ func (p *PopupMenu[T]) DefaultFocusGained() {
 }
 
 // DefaultDraw provides the default drawing.
-func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
+func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	thickness := float32(1)
 	edge := p.EdgeInk
 	if p.Focused() || p.pressed {
@@ -134,7 +135,7 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ Rect) {
 	}
 	rect := p.ContentRect(false)
 	DrawRoundedRectBase(canvas, rect, p.CornerRadius, thickness, p.BackgroundInk, edge)
-	rect = rect.Inset(NewUniformInsets(1.5))
+	rect = rect.Inset(geom.NewUniformInsets(1.5))
 	rect.X += p.HMargin
 	rect.Y += p.VMargin
 	rect.Width -= p.HMargin * 2
@@ -194,7 +195,7 @@ func (p *PopupMenu[T]) Text() string {
 // Click performs any animation associated with a click and triggers the popup menu to appear.
 func (p *PopupMenu[T]) Click() {
 	if p.WillShowMenuCallback != nil {
-		toolbox.Call(func() { p.WillShowMenuCallback(p) })
+		xos.SafeCall(func() { p.WillShowMenuCallback(p) }, nil)
 	}
 	hasItem := false
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
@@ -415,14 +416,14 @@ func (p *PopupMenu[T]) SelectIndex(index ...int) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (p *PopupMenu[T]) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
 	p.pressed = true
 	p.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag is the default implementation of the MouseDragCallback.
-func (p *PopupMenu[T]) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	if p.pressed != where.In(p.ContentRect(true)) {
 		p.pressed = !p.pressed
 		p.MarkForRedraw()
@@ -431,7 +432,7 @@ func (p *PopupMenu[T]) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp is the default implementation of the MouseUpCallback.
-func (p *PopupMenu[T]) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	if where.In(p.ContentRect(true)) {
 		p.Click()
 	}
@@ -450,7 +451,7 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bo
 }
 
 // DefaultUpdateCursor provides the default cursor for popup menus.
-func (p *PopupMenu[T]) DefaultUpdateCursor(_ Point) *Cursor {
+func (p *PopupMenu[T]) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	if !p.Enabled() {
 		return ArrowCursor()
 	}

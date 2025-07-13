@@ -13,8 +13,10 @@ import (
 	"slices"
 	"time"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/collection/bitset"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -50,8 +52,8 @@ type List[T any] struct {
 	DoubleClickCallback  func()
 	NewSelectionCallback func()
 	Factory              CellFactory
-	Selection            *xmath.BitSet
-	savedSelection       *xmath.BitSet
+	Selection            *bitset.BitSet
+	savedSelection       *bitset.BitSet
 	rows                 []T
 	ListTheme
 	Panel
@@ -69,8 +71,8 @@ func NewList[T any]() *List[T] {
 	l := &List[T]{
 		ListTheme:      DefaultListTheme,
 		Factory:        &DefaultCellFactory{},
-		Selection:      &xmath.BitSet{},
-		savedSelection: &xmath.BitSet{},
+		Selection:      &bitset.BitSet{},
+		savedSelection: &bitset.BitSet{},
 		anchor:         -1,
 		lastSel:        -1,
 		allowMultiple:  true,
@@ -178,13 +180,13 @@ func (l *List[T]) RemoveRange(from, to int) {
 }
 
 // DefaultSizes provides the default sizing.
-func (l *List[T]) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (l *List[T]) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	maxSize = MaxSize(maxSize)
 	height := xmath.Ceil(l.Factory.CellHeight())
 	if height < 1 {
 		height = 0
 	}
-	size := Size{Width: hint.Width, Height: height}
+	size := geom.Size{Width: hint.Width, Height: height}
 	for row := range l.rows {
 		cell := l.cell(row)
 		_, cPref, cMax := cell.Sizes(size)
@@ -257,14 +259,14 @@ func (l *List[T]) cell(row int) *Panel {
 }
 
 // RowRect returns the rectangle for the specified row.
-func (l *List[T]) RowRect(row int) Rect {
+func (l *List[T]) RowRect(row int) geom.Rect {
 	if row < 0 || row >= len(l.rows) {
-		return Rect{}
+		return geom.Rect{}
 	}
 	rect := l.ContentRect(false)
 	cellHeight := xmath.Ceil(l.Factory.CellHeight())
 	if cellHeight < 1 {
-		_, pref, _ := l.cell(row).Sizes(Size{})
+		_, pref, _ := l.cell(row).Sizes(geom.Size{})
 		cellHeight = pref.Ceil().Height
 	}
 	rect.Y += cellHeight * float32(row)
@@ -273,7 +275,7 @@ func (l *List[T]) RowRect(row int) Rect {
 }
 
 // DefaultDraw provides the default drawing.
-func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
+func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	rect := l.ContentRect(false)
 	intersect := rect.Intersect(dirty)
 	canvas.DrawRect(intersect, l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill))
@@ -285,14 +287,14 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 		for row < count && y < yMax {
 			fg, bg, selected, focused := l.cellParams(row)
 			cell := l.Factory.CreateCell(l, l.rows[row], row, fg, bg, selected, focused).AsPanel()
-			cellRect := Rect{Point: Point{X: rect.X, Y: y}, Size: Size{Width: rect.Width, Height: cellHeight}}
+			cellRect := geom.Rect{Point: geom.Point{X: rect.X, Y: y}, Size: geom.Size{Width: rect.Width, Height: cellHeight}}
 			if cellHeight < 1 {
-				_, pref, _ := cell.Sizes(Size{})
+				_, pref, _ := cell.Sizes(geom.Size{})
 				cellRect.Height = pref.Ceil().Height
 			}
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
-			r := Rect{Point: Point{X: rect.X, Y: cellRect.Y}, Size: Size{Width: rect.Width, Height: cellRect.Height}}
+			r := geom.Rect{Point: geom.Point{X: rect.X, Y: cellRect.Y}, Size: geom.Size{Width: rect.Width, Height: cellRect.Height}}
 			canvas.DrawRect(r, bg.Paint(canvas, r, paintstyle.Fill))
 			canvas.Save()
 			tl := cellRect.Point
@@ -309,7 +311,7 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (l *List[T]) DefaultMouseDown(where Point, _, clickCount int, mod Modifiers) bool {
+func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mod Modifiers) bool {
 	l.suppressScroll = true
 	l.RequestFocus()
 	l.suppressScroll = false
@@ -345,7 +347,7 @@ func (l *List[T]) DefaultMouseDown(where Point, _, clickCount int, mod Modifiers
 			l.lastSel = index
 			l.anchor = index
 			if clickCount == 2 && l.DoubleClickCallback != nil {
-				toolbox.Call(l.DoubleClickCallback)
+				xos.SafeCall(l.DoubleClickCallback, nil)
 				return true
 			}
 		default:
@@ -362,7 +364,7 @@ func (l *List[T]) DefaultMouseDown(where Point, _, clickCount int, mod Modifiers
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (l *List[T]) DefaultMouseDrag(where Point, _ int, mod Modifiers) bool {
+func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mod Modifiers) bool {
 	if l.pressed {
 		l.wasDragged = true
 		l.Selection.Copy(l.savedSelection)
@@ -394,7 +396,7 @@ func (l *List[T]) DefaultMouseDrag(where Point, _ int, mod Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (l *List[T]) DefaultMouseUp(_ Point, _ int, _ Modifiers) bool {
+func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
 		if !l.wasDragged && l.lastSel != -1 {
@@ -404,7 +406,7 @@ func (l *List[T]) DefaultMouseUp(_ Point, _ int, _ Modifiers) bool {
 			l.MarkForRedraw()
 		}
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
-			toolbox.Call(l.NewSelectionCallback)
+			xos.SafeCall(l.NewSelectionCallback, nil)
 		}
 	}
 	l.savedSelection = nil
@@ -415,7 +417,7 @@ func (l *List[T]) DefaultMouseUp(_ Point, _ int, _ Modifiers) bool {
 func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 	if IsControlAction(keyCode, mod) {
 		if l.DoubleClickCallback != nil && l.Selection.Count() > 0 {
-			toolbox.Call(l.DoubleClickCallback)
+			xos.SafeCall(l.DoubleClickCallback, nil)
 		}
 		return true
 	}
@@ -432,7 +434,7 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 		}
 		l.Select(mod.ShiftDown(), first)
 		if l.NewSelectionCallback != nil {
-			toolbox.Call(l.NewSelectionCallback)
+			xos.SafeCall(l.NewSelectionCallback, nil)
 		}
 		l.ScrollRectIntoView(l.RowRect(first))
 	case KeyDown:
@@ -442,19 +444,19 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 		}
 		l.Select(mod.ShiftDown(), last)
 		if l.NewSelectionCallback != nil {
-			toolbox.Call(l.NewSelectionCallback)
+			xos.SafeCall(l.NewSelectionCallback, nil)
 		}
 		l.ScrollRectIntoView(l.RowRect(last))
 	case KeyHome:
 		l.Select(mod.ShiftDown(), 0)
 		if l.NewSelectionCallback != nil {
-			toolbox.Call(l.NewSelectionCallback)
+			xos.SafeCall(l.NewSelectionCallback, nil)
 		}
 		l.ScrollRectIntoView(l.RowRect(0))
 	case KeyEnd:
 		l.Select(mod.ShiftDown(), len(l.rows)-1)
 		if l.NewSelectionCallback != nil {
-			toolbox.Call(l.NewSelectionCallback)
+			xos.SafeCall(l.NewSelectionCallback, nil)
 		}
 		l.ScrollRectIntoView(l.RowRect(len(l.rows) - 1))
 	default:
@@ -548,7 +550,7 @@ func (l *List[T]) rowAt(y float32) (row int, top float32) {
 	cellHeight := xmath.Ceil(l.Factory.CellHeight())
 	if cellHeight < 1 {
 		for row < count {
-			_, pref, _ := l.cell(row).Sizes(Size{})
+			_, pref, _ := l.cell(row).Sizes(geom.Size{})
 			pref = pref.Ceil()
 			if top+pref.Height >= y {
 				break

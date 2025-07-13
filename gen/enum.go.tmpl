@@ -14,8 +14,7 @@ import (
     "strings"
     {{- if .NeedI18N}}
 
-	"github.com/richardwilkes/toolbox/i18n"{{end}}
-	{{if .HasOldKeys}}"github.com/richardwilkes/toolbox/txt"{{end}}
+	"github.com/richardwilkes/toolbox/v2/i18n"{{end}}
 )
 
 // Possible values.
@@ -63,19 +62,6 @@ func (e Enum) Key() string {
     }
 }
 
-{{if .HasOldKeys -}}
-func (e Enum) oldKeys() []string {
-    switch e {
-    {{- range .Values}}
-    case {{$info.IDFor .}}:
-        return {{if .OldKeys}}[]string{ {{join .OldKeys}} }{{else}}nil{{end}}
-    {{- end}}
-    default:
-        return {{$info.IDFor $info.Default}}.oldKeys()
-    }
-}
-{{- end}}
-
 // String implements fmt.Stringer.
 func (e Enum) String() string {
     switch e {
@@ -116,7 +102,7 @@ func (e *Enum) UnmarshalText(text []byte) error {
 // Extract the value from a string.
 func Extract(str string) Enum {
     for _, e := range All {
-        if strings.EqualFold(e.Key(), str){{if .HasOldKeys}} || txt.CaselessSliceContains(e.oldKeys(), str){{end}} {
+        if strings.EqualFold(e.Key(), str) {
             return e
         }
     }

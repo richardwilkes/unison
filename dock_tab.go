@@ -12,7 +12,8 @@ package unison
 import (
 	"strings"
 
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -35,7 +36,7 @@ var DefaultDockTabTheme = DockTabTheme{
 	OnTabFocusedInk: ThemeOnFocus,
 	TabCurrentInk:   ThemeDeepestFocus,
 	OnTabCurrentInk: ThemeOnDeepestFocus,
-	TabBorder:       NewEmptyBorder(Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}),
+	TabBorder:       NewEmptyBorder(geom.Insets{Top: 2, Left: 4, Bottom: 2, Right: 4}),
 	Gap:             4,
 	LabelTheme:      defaultDockLabelTheme(),
 	ButtonTheme:     defaultDockButtonTheme(),
@@ -104,7 +105,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		fSize := t.LabelTheme.Font.Baseline()
 		t.button.Drawable = &DrawableSVG{
 			SVG:  CircledXSVG,
-			Size: Size{Width: fSize, Height: fSize},
+			Size: geom.Size{Width: fSize, Height: fSize},
 		}
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: align.End, VAlign: align.Middle})
 		t.AddChild(t.button)
@@ -120,7 +121,7 @@ func newDockTab(dockable Dockable) *dockTab {
 
 func (t *dockTab) TitleIcon() Drawable {
 	fSize := t.title.Font.Baseline()
-	return t.dockable.TitleIcon(Size{Width: fSize, Height: fSize})
+	return t.dockable.TitleIcon(geom.Size{Width: fSize, Height: fSize})
 }
 
 func (t *dockTab) fullTitle() string {
@@ -147,7 +148,7 @@ func (t *dockTab) updateTitle() {
 	}
 }
 
-func (t *dockTab) draw(gc *Canvas, _ Rect) {
+func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 	var bg, fg Ink
 	if t.pressed {
 		bg = t.TabFocusedInk
@@ -193,7 +194,7 @@ func (t *dockTab) attemptClose() bool {
 	return false
 }
 
-func (t *dockTab) updateTooltip(_ Point, suggestedAvoidInRoot Rect) Rect {
+func (t *dockTab) updateTooltip(_ geom.Point, suggestedAvoidInRoot geom.Rect) geom.Rect {
 	if tip := t.dockable.Tooltip(); tip != "" {
 		t.Tooltip = NewTooltipWithText(t.dockable.Tooltip())
 	} else {
@@ -202,7 +203,7 @@ func (t *dockTab) updateTooltip(_ Point, suggestedAvoidInRoot Rect) Rect {
 	return suggestedAvoidInRoot
 }
 
-func (t *dockTab) mouseDown(where Point, button, clickCount int, _ Modifiers) bool {
+func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifiers) bool {
 	if button == ButtonRight && clickCount == 1 && !t.Window().InDrag() {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			if len(dc.Dockables()) > 1 {
@@ -214,9 +215,9 @@ func (t *dockTab) mouseDown(where Point, button, clickCount int, _ Modifiers) bo
 				cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close All Tabs"), KeyBinding{}, nil, func(MenuItem) {
 					dc.AttemptCloseAll()
 				}))
-				cm.Popup(Rect{
+				cm.Popup(geom.Rect{
 					Point: t.PointToRoot(where),
-					Size: Size{
+					Size: geom.Size{
 						Width:  1,
 						Height: 1,
 					},
@@ -231,7 +232,7 @@ func (t *dockTab) mouseDown(where Point, button, clickCount int, _ Modifiers) bo
 	return true
 }
 
-func (t *dockTab) mouseDrag(where Point, _ int, _ Modifiers) bool {
+func (t *dockTab) mouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	if !t.pressed {
 		return true
 	}
@@ -243,14 +244,14 @@ func (t *dockTab) mouseDrag(where Point, _ int, _ Modifiers) bool {
 				Data:     map[string]any{dc.Dock.DragKey: t.dockable},
 				Drawable: icon,
 				Ink:      t.title.OnBackgroundInk,
-				Offset:   Point{X: -size.Width / 2, Y: -size.Height / 2},
+				Offset:   geom.Point{X: -size.Width / 2, Y: -size.Height / 2},
 			})
 		}
 	}
 	return true
 }
 
-func (t *dockTab) mouseUp(where Point, _ int, _ Modifiers) bool {
+func (t *dockTab) mouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	if !t.pressed {
 		return true
 	}

@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -22,8 +23,8 @@ type dragDrawable struct {
 // NewTableDragDrawable creates a new drawable for a table row drag.
 func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *SVG, singularName, pluralName string) Drawable {
 	label := NewLabel()
-	label.DrawCallback = func(gc *Canvas, rect Rect) {
-		r := rect.Inset(NewUniformInsets(1))
+	label.DrawCallback = func(gc *Canvas, rect geom.Rect) {
+		r := rect.Inset(geom.NewUniformInsets(1))
 		corner := r.Height / 2
 		gc.SaveWithOpacity(0.7)
 		gc.DrawRoundedRect(r, corner, corner, data.Table.SelectionInk.Paint(gc, r, paintstyle.Fill))
@@ -32,7 +33,7 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		label.DefaultDraw(gc, rect)
 	}
 	label.OnBackgroundInk = data.Table.OnSelectionInk
-	label.SetBorder(NewEmptyBorder(Insets{
+	label.SetBorder(NewEmptyBorder(geom.Insets{
 		Top:    4,
 		Left:   label.Font.LineHeight(),
 		Bottom: 4,
@@ -47,18 +48,18 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		baseline := label.Font.Baseline()
 		label.Drawable = &DrawableSVG{
 			SVG:  svg,
-			Size: Size{Width: baseline, Height: baseline},
+			Size: geom.Size{Width: baseline, Height: baseline},
 		}
 	}
-	_, pref, _ := label.Sizes(Size{})
-	label.SetFrameRect(Rect{Size: pref})
+	_, pref, _ := label.Sizes(geom.Size{})
+	label.SetFrameRect(geom.Rect{Size: pref})
 	return &dragDrawable{label: label}
 }
 
-func (d *dragDrawable) LogicalSize() Size {
+func (d *dragDrawable) LogicalSize() geom.Size {
 	return d.label.FrameRect().Size
 }
 
-func (d *dragDrawable) DrawInRect(canvas *Canvas, rect Rect, _ *SamplingOptions, _ *Paint) {
+func (d *dragDrawable) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, _ *Paint) {
 	d.label.Draw(canvas, rect)
 }

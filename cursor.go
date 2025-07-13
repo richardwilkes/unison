@@ -13,7 +13,8 @@ import (
 	"image"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"golang.org/x/image/draw"
 )
 
@@ -83,13 +84,13 @@ func TextCursor() *Cursor {
 func retrieveCursor(img *Image, cursor **Cursor) *Cursor {
 	if *cursor == nil {
 		size := img.LogicalSize()
-		*cursor = NewCursor(img, Point{X: size.Width / 2, Y: size.Height / 2})
+		*cursor = NewCursor(img, geom.Point{X: size.Width / 2, Y: size.Height / 2})
 	}
 	return *cursor
 }
 
 // NewCursor creates a new custom cursor from an image.
-func NewCursor(img *Image, hotSpot Point) *Cursor {
+func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 	nrgba, err := img.ToNRGBA()
 	if err != nil {
 		errs.Log(err)

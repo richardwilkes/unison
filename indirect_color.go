@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/unison/enums/paintstyle"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+)
 
 var _ ColorProvider = &IndirectColor{}
 
@@ -19,7 +22,7 @@ type IndirectColor struct {
 }
 
 // Paint returns a Paint for this IndirectColor. Here to satisfy the Ink interface.
-func (c *IndirectColor) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint {
+func (c *IndirectColor) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	return c.Target.Paint(canvas, rect, style)
 }
 

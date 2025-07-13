@@ -12,8 +12,9 @@ package unison
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
@@ -61,7 +62,7 @@ var DefaultMenuItemTheme = MenuItemTheme{
 	SelectionColor:    ThemeFocus,
 	OnSelectionColor:  ThemeOnFocus,
 	ItemBorder:        NewEmptyBorder(StdInsets()),
-	SeparatorBorder:   NewEmptyBorder(NewVerticalInsets(4)),
+	SeparatorBorder:   NewEmptyBorder(geom.NewVerticalInsets(4)),
 	KeyGap:            16,
 }
 
@@ -176,14 +177,14 @@ func (mi *menuItem) newPanel() *Panel {
 	return mi.panel
 }
 
-func (mi *menuItem) mouseDown(_ Point, _, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
 	if mi.subMenu != nil {
 		mi.showSubMenu()
 	}
 	return true
 }
 
-func (mi *menuItem) mouseUp(where Point, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	if mi.subMenu == nil && where.In(mi.panel.ContentRect(true)) {
 		mi.execute()
 	}
@@ -220,7 +221,7 @@ func (mi *menuItem) scrollIntoView() {
 	mi.panel.ScrollIntoView()
 }
 
-func (mi *menuItem) mouseEnter(_ Point, _ Modifiers) bool {
+func (mi *menuItem) mouseEnter(_ geom.Point, _ Modifiers) bool {
 	if mi.menu != nil {
 		for _, item := range mi.menu.items {
 			if item.over {
@@ -237,7 +238,7 @@ func (mi *menuItem) mouseEnter(_ Point, _ Modifiers) bool {
 	return false
 }
 
-func (mi *menuItem) mouseMove(_ Point, _ Modifiers) bool {
+func (mi *menuItem) mouseMove(_ geom.Point, _ Modifiers) bool {
 	stopAt := mi.menu
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu
@@ -254,7 +255,7 @@ func (mi *menuItem) mouseExit() bool {
 	return false
 }
 
-func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
+func (mi *menuItem) sizer(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	if mi.isSeparator {
 		prefSize.Height = 1
 	} else {
@@ -265,7 +266,7 @@ func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 		if !mi.isRoot() {
 			prefSize.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
 		}
-		if !mi.keyBinding.KeyCode.ShouldOmit() {
+		if !mi.keyBinding.KeyCode.IsZero() {
 			keys := mi.keyBinding.String()
 			if keys != "" {
 				size := NewText(keys, &TextDecoration{
@@ -281,7 +282,7 @@ func (mi *menuItem) sizer(hint Size) (minSize, prefSize, maxSize Size) {
 	return prefSize, prefSize, prefSize
 }
 
-func (mi *menuItem) paint(gc *Canvas, rect Rect) {
+func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 	var fg, bg Ink
 	if !mi.over || !mi.enabled {
 		fg = DefaultMenuItemTheme.OnBackgroundColor
@@ -319,7 +320,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				r.Width = baseline
 				r.Height = baseline
 				r.Y += (rect.Height - baseline) / 2
-				drawable := &DrawableSVG{Size: Size{Width: baseline, Height: baseline}}
+				drawable := &DrawableSVG{Size: geom.Size{Width: baseline, Height: baseline}}
 				if mi.state == check.On {
 					drawable.SVG = CheckmarkSVG
 				} else {
@@ -327,7 +328,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 				}
 				drawable.DrawInRect(gc, r, nil, fg.Paint(gc, r, paintstyle.Fill))
 			}
-			if !mi.keyBinding.KeyCode.ShouldOmit() {
+			if !mi.keyBinding.KeyCode.IsZero() {
 				keys := mi.keyBinding.String()
 				if keys != "" {
 					t = NewText(keys, &TextDecoration{
@@ -344,7 +345,7 @@ func (mi *menuItem) paint(gc *Canvas, rect Rect) {
 			rect.Width = baseline
 			drawable := &DrawableSVG{
 				SVG:  ChevronRightSVG,
-				Size: Size{Width: baseline, Height: baseline},
+				Size: geom.Size{Width: baseline, Height: baseline},
 			}
 			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, paintstyle.Fill))
 		}
@@ -365,7 +366,7 @@ func (mi *menuItem) validate() {
 		mi.enabled = true
 		if mi.validator != nil {
 			mi.enabled = false
-			toolbox.Call(func() { mi.enabled = mi.validator(mi) })
+			xos.SafeCall(func() { mi.enabled = mi.validator(mi) }, nil)
 		}
 	}
 }
@@ -376,6 +377,6 @@ func (mi *menuItem) execute() {
 	}
 	mi.menu.closeMenuStack()
 	if mi.enabled && mi.handler != nil {
-		toolbox.Call(func() { mi.handler(mi) })
+		xos.SafeCall(func() { mi.handler(mi) }, nil)
 	}
 }

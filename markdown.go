@@ -19,12 +19,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/desktop"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/txt"
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/slant"
@@ -76,7 +77,7 @@ func init() {
 // DefaultMarkdownTheme.Font.
 func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
 	var fd FontDescriptor
-	if toolbox.IsNil(font) {
+	if xreflect.IsNil(font) {
 		fd = DefaultMarkdownTheme.Font.Descriptor()
 	} else {
 		fd = font.Descriptor()
@@ -103,7 +104,7 @@ func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
 // MonospacedFont.
 func DeriveMarkdownCodeBlockFont(font Font) FontDescriptor {
 	var fd FontDescriptor
-	if toolbox.IsNil(font) {
+	if xreflect.IsNil(font) {
 		fd = MonospacedFont.Descriptor()
 	} else {
 		fd = font.Descriptor()
@@ -374,7 +375,7 @@ func (m *Markdown) processCodeBlock() {
 	m.maxLineWidth -= m.CodeAndQuotePadding * 2
 
 	p := NewPanel()
-	p.DrawCallback = func(gc *Canvas, rect Rect) {
+	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, paintstyle.Fill))
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
@@ -382,7 +383,7 @@ func (m *Markdown) processCodeBlock() {
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
-	p.SetBorder(NewEmptyBorder(NewUniformInsets(m.CodeAndQuotePadding)))
+	p.SetBorder(NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)))
 	m.block.AddChild(p)
 	m.block = p
 	lines := m.node.Lines()
@@ -409,7 +410,7 @@ func (m *Markdown) processBlockquote() {
 	m.maxLineWidth -= m.QuoteBarThickness + m.CodeAndQuotePadding*2
 
 	p := NewPanel()
-	p.DrawCallback = func(gc *Canvas, rect Rect) {
+	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, paintstyle.Fill))
 	}
 	p.SetLayout(&FlexLayout{
@@ -421,8 +422,8 @@ func (m *Markdown) processBlockquote() {
 		HGrab:  true,
 	})
 	p.SetBorder(NewCompoundBorder(
-		NewLineBorder(m.QuoteBarColor, 0, Insets{Left: m.QuoteBarThickness}, false),
-		NewEmptyBorder(NewUniformInsets(m.CodeAndQuotePadding)),
+		NewLineBorder(m.QuoteBarColor, 0, geom.Insets{Left: m.QuoteBarThickness}, false),
+		NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)),
 	))
 	m.block.AddChild(p)
 	m.block = p
@@ -498,7 +499,7 @@ func (m *Markdown) processTable() {
 				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
 			}
 			p := NewPanel()
-			p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, NewUniformInsets(1), false))
+			p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, geom.NewUniformInsets(1), false))
 			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
 			m.block.AddChild(p)
 			m.block = p
@@ -604,7 +605,7 @@ func (m *Markdown) hasNonEmptyContentInTree(node ast.Node) bool {
 	}
 	if node.HasChildren() {
 		child := node.FirstChild()
-		for !toolbox.IsNil(child) {
+		for !xreflect.IsNil(child) {
 			if m.hasNonEmptyContentInTree(child) {
 				return true
 			}
@@ -632,7 +633,7 @@ func (m *Markdown) processTableCell() {
 			}
 		}
 		p := NewPanel()
-		p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, NewUniformInsets(1), false))
+		p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, geom.NewUniformInsets(1), false))
 		p.SetLayout(&FlexLayout{
 			Columns: 1,
 			HAlign:  hAlign,
@@ -740,7 +741,7 @@ func (m *Markdown) processRawHTML() {
 		count := raw.Segments.Len()
 		for i := 0; i < count; i++ {
 			segment := raw.Segments.At(i)
-			switch txt.CollapseSpaces(strings.ToLower(string(segment.Value(m.content)))) {
+			switch xstrings.CollapseSpaces(strings.ToLower(string(segment.Value(m.content)))) {
 			case "<br>", "<br/>", "<br />":
 				m.flushAndIssueLineBreak()
 				if next := m.node.NextSibling(); next != nil {
@@ -905,7 +906,7 @@ func (m *Markdown) processImage() {
 			size := max(m.decoration.Font.Size(), 24)
 			label.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
-				Size: Size{Width: size, Height: size},
+				Size: geom.Size{Width: size, Height: size},
 			}
 		} else {
 			label.Drawable = m.constrainImage(img)
@@ -979,7 +980,7 @@ func (m *Markdown) flushText() {
 	if m.text != nil && len(m.text.Runes()) != 0 {
 		remaining := m.maxLineWidth
 		if m.textRow != nil {
-			_, prefSize, _ := m.textRow.Sizes(Size{Width: m.maxLineWidth})
+			_, prefSize, _ := m.textRow.Sizes(geom.Size{Width: m.maxLineWidth})
 			remaining -= prefSize.Width
 		}
 		minWidth := m.decoration.Font.SimpleWidth("W")
@@ -1020,7 +1021,7 @@ func (m *Markdown) finishTextRow() {
 // links.
 func DefaultMarkdownLinkHandler(_ Paneler, target string) {
 	if HasURLPrefix(target) {
-		if err := desktop.Open(target); err != nil {
+		if err := xos.OpenBrowser(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
 		}
 	}

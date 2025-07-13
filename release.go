@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 var (
@@ -56,7 +56,7 @@ func processReleaseQueue() {
 			funcs := list
 			InvokeTask(func() {
 				for _, f := range funcs {
-					toolbox.Call(f)
+					xos.SafeCall(f, nil)
 				}
 			})
 			allocation[pos] = len(list)

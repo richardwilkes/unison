@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/v2/geom"
+
 const (
 	// DefaultMaxSize is the default size that should be used for a maximum dimension if the target has no real
 	// preference and can be expanded beyond its preferred size. This is intentionally not something very large to allow
@@ -25,18 +27,18 @@ const (
 
 // Sizer returns minimum, preferred, and maximum sizes. The hint will contain
 // values other than zero for a dimension that has already been determined.
-type Sizer func(hint Size) (minSize, prefSize, maxSize Size)
+type Sizer func(hint geom.Size) (minSize, prefSize, maxSize geom.Size)
 
 // Layout defines methods that all layouts must provide.
 type Layout interface {
-	LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size)
+	LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size)
 	PerformLayout(target *Panel)
 }
 
 // MaxSize returns the size that is at least as large as DefaultMaxSize in
 // both dimensions, but larger if the size that is passed in is larger.
-func MaxSize(size Size) Size {
-	return Size{
+func MaxSize(size geom.Size) geom.Size {
+	return geom.Size{
 		Width:  max(DefaultMaxSize, size.Width),
 		Height: max(DefaultMaxSize, size.Height),
 	}

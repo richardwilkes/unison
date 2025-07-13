@@ -10,13 +10,13 @@
 package unison
 
 import (
+	"maps"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
 
-	"github.com/richardwilkes/toolbox/collection/dict"
-	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -56,22 +56,22 @@ func FontFamiliesNoCache() []string {
 	defer cachedFontFamiliesLock.Unlock()
 	fm := skia.FontMgrRefDefault()
 	count := skia.FontMgrCountFamilies(fm)
-	names := make(map[string]bool)
+	names := make(map[string]struct{}, count+len(internalFonts))
 	ss := skia.StringNewEmpty()
 	for i := 0; i < count; i++ {
 		skia.FontMgrGetFamilyName(fm, i, ss)
-		names[skia.StringGetString(ss)] = true
+		names[skia.StringGetString(ss)] = struct{}{}
 	}
 	skia.StringDelete(ss)
 	internalFontLock.RLock()
 	for k := range internalFonts {
-		names[k] = true
+		names[k] = struct{}{}
 	}
 	internalFontLock.RUnlock()
-	families := dict.Keys(names)
-	slices.SortFunc(families, func(a, b string) int { return txt.NaturalCmp(a, b, true) })
-	cachedFontFamilies = families
-	return families
+	cachedFontFamilies = slices.SortedFunc(maps.Keys(names), func(a, b string) int {
+		return xstrings.NaturalCmp(a, b, true)
+	})
+	return cachedFontFamilies
 }
 
 // MatchFontFamily returns a FontFamily for the specified family name. If no such family name exists, Count() will be 0.
