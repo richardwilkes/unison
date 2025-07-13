@@ -60,7 +60,8 @@ func addWindowsIcon(cfg *Config, rs *winres.ResourceSet) error {
 		if fi.Rank != "Owner" {
 			continue
 		}
-		docImg, err := loadPNG(fi.Icon)
+		var docImg image.Image
+		docImg, err = loadPNG(fi.Icon)
 		if err != nil {
 			return err
 		}
@@ -127,7 +128,7 @@ func addWindowsVersion(cfg *Config, rs *winres.ResourceSet) error {
 func generateDistribution(cfg *Config) (err error) {
 	dstPath := cfg.ExecutableName + "-" + cfg.version + "-windows-" + runtime.GOARCH + ".zip"
 	if xos.FileExists(dstPath) {
-		if err := os.Remove(dstPath); err != nil {
+		if err = os.Remove(dstPath); err != nil {
 			return errs.Wrap(err)
 		}
 	}
