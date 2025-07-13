@@ -19,7 +19,7 @@ func prepareBinary(_ *Config) error {
 func generateDistribution(cfg *Config) (err error) {
 	dstPath := cfg.ExecutableName + "-" + cfg.version + "-linux-" + runtime.GOARCH + ".tgz"
 	if xos.FileExists(dstPath) {
-		if err := os.Remove(dstPath); err != nil {
+		if err = os.Remove(dstPath); err != nil {
 			return errs.Wrap(err)
 		}
 	}
@@ -58,7 +58,7 @@ func generateDistribution(cfg *Config) (err error) {
 	w := tar.NewWriter(gw)
 	if err = w.WriteHeader(&tar.Header{
 		Name:    cfg.ExecutableName,
-		Size:    int64(fi.Size()),
+		Size:    fi.Size(),
 		Mode:    0o755,
 		ModTime: time.Now(),
 	}); err != nil {

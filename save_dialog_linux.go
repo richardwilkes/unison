@@ -13,12 +13,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xfilepath"
 )
 
@@ -108,9 +110,9 @@ func (d *linuxSaveDialog) runZenity(zenity string) bool {
 	return d.runModal(cmd, "|")
 }
 
-func (d *linuxSaveDialog) prepExt() (string, []string) {
-	ext := ""
-	allowed := d.fallback.AllowedExtensions()
+func (d *linuxSaveDialog) prepExt() (ext string, allowed []string) {
+	ext = ""
+	allowed = d.fallback.AllowedExtensions()
 	if len(allowed) != 0 {
 		ext = "." + allowed[0]
 		revised := make([]string, len(allowed))
@@ -127,7 +129,7 @@ func (d *linuxSaveDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
 	if err != nil {
 		errs.Log(err)
 	}
-	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
+	wnd.SetFrameRect(geom.NewRect(-10000, -10000, 1, 1))
 	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
 	return wnd.RunModal() == ModalResponseOK
 }
@@ -147,6 +149,10 @@ func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 	if cmd.ProcessState.ExitCode() != 0 {
 		return
 	}
-	d.fallback.(*fileDialog).paths = strings.Split(strings.TrimSuffix(string(out), "\n"), splitOn)
+	if dialog, ok := d.fallback.(*fileDialog); ok {
+		dialog.paths = strings.Split(strings.TrimSuffix(string(out), "\n"), splitOn)
+	} else {
+		slog.Error("unable to access dialog to store path")
+	}
 	code = ModalResponseOK
 }

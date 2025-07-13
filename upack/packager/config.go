@@ -57,14 +57,14 @@ func (c *Config) prepare(version string) {
 	c.ExecutableName = xfilepath.BaseName(c.ExecutableName)
 }
 
-func (c *Config) finderAppName() string {
+func (c *Config) finderAppName() string { //nolint:unused // This is used only on some platforms
 	if c.Mac.FinderAppName != "" {
 		return c.Mac.FinderAppName
 	}
 	return c.ExecutableName
 }
 
-func (c *Config) shortAppVersion() string {
+func (c *Config) shortAppVersion() string { //nolint:unused // This is used only on some platforms
 	shortVersion := strings.TrimSuffix(c.version, ".0")
 	if strings.IndexByte(shortVersion, '.') == -1 {
 		return c.version
@@ -72,13 +72,13 @@ func (c *Config) shortAppVersion() string {
 	return shortVersion
 }
 
-func (c *Config) macMinSysVersion() string {
+func (c *Config) macMinSysVersion() string { //nolint:unused // This is used only on some platforms
 	if runtime.GOARCH == "arm64" {
 		return c.Mac.MinimumSystemVersionARM64
 	}
 	return c.Mac.MinimumSystemVersionAMD64
 }
 
-func (c *Config) copyright() string {
+func (c *Config) copyright() string { //nolint:unused // This is used only on some platforms
 	return fmt.Sprintf("©%s by %s", c.CopyrightYears, c.CopyrightHolder)
 }

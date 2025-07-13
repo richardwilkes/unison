@@ -21,7 +21,7 @@ func Package(cfg *Config, version string, createDist bool) error {
 	return nil
 }
 
-func copyFile(from, to string, mode fs.FileMode) error {
+func copyFile(from, to string, mode fs.FileMode) error { //nolint:unused // This is used only on some platforms
 	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 		return errs.Wrap(err)
 	}
