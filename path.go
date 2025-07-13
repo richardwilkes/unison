@@ -229,7 +229,7 @@ func (p *Path) Poly(pts []geom.Point, closePath bool) {
 // Polygon appends the polygon to the path.
 func (p *Path) Polygon(polygon poly.Polygon) {
 	for _, contour := range polygon {
-		p.Poly(contour.Points(), true)
+		p.Poly(contour, true)
 	}
 }
 

@@ -31,8 +31,8 @@ github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646/go.mod h1:jpp1/29i3P1S
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/richardwilkes/toolbox/v2 v2.0.0 h1:faqvrCSDUU+7nHZPVHLKtNYyn9b1Tm+8Qhh+Rx1JYGw=
-github.com/richardwilkes/toolbox/v2 v2.0.0/go.mod h1:1fub4t6J8oPX9PjRR3BhxUeytHfLLJNBYUvQwGs2yBM=
+github.com/richardwilkes/toolbox/v2 v2.2.0 h1:aF/E5Oy9DQpgSljkmfqf17DJYcZp8eVYMAXcWPhlJaQ=
+github.com/richardwilkes/toolbox/v2 v2.2.0/go.mod h1:vfMoaAtW+oSIkzE1peI53X2GnERw8QTA/QBfXwbTH54=
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
 github.com/rogpeppe/go-internal v1.8.0 h1:FCbCCtXNOY3UtUuHUYaghJg4y7Fd14rXifAYUAtL9R8=
 github.com/rogpeppe/go-internal v1.8.0/go.mod h1:WmiCO8CzOY8rg0OYDC4/i/2WRWAB6poM+XZ2dLUbcbE=
