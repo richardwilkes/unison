@@ -12,6 +12,7 @@ package unison
 import (
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/side"
 )
@@ -97,7 +98,7 @@ func NewSVGButton(svg *SVG) *Button {
 	baseline := b.Font.Baseline()
 	b.Drawable = &DrawableSVG{
 		SVG:  svg,
-		Size: NewSize(baseline, baseline).Ceil(),
+		Size: geom.NewSize(baseline, baseline).Ceil(),
 	}
 	return b
 }
@@ -120,7 +121,7 @@ func (b *Button) SetGroup(group *Group) {
 }
 
 // DefaultSizes provides the default sizing.
-func (b *Button) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (b *Button) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize, _ = LabelContentSizes(b.Text, b.Drawable, b.Font, b.Side, b.Gap)
 	if border := b.Border(); border != nil {
 		prefSize = prefSize.Add(border.Insets().Size())
@@ -158,7 +159,7 @@ func (b *Button) DefaultFocusGained() {
 }
 
 // DefaultDraw provides the default drawing.
-func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
+func (b *Button) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	var fg, bg Ink
 	switch {
 	case b.Pressed || (b.Sticky && b.group.Selected(b)):
@@ -186,9 +187,9 @@ func (b *Button) DefaultDraw(canvas *Canvas, _ Rect) {
 			edge = b.SelectionInk
 		}
 		DrawRoundedRectBase(canvas, r, b.CornerRadius, thickness, bg, edge)
-		r = r.Inset(NewUniformInsets(thickness + 0.5))
+		r = r.Inset(geom.NewUniformInsets(thickness + 0.5))
 	}
-	r = r.Inset(NewSymmetricInsets(b.HorizontalMargin(), b.VerticalMargin()))
+	r = r.Inset(geom.NewSymmetricInsets(b.HorizontalMargin(), b.VerticalMargin()))
 	defer b.Text.RestoreDecorations(b.Text.AdjustDecorations(func(d *TextDecoration) {
 		d.BackgroundInk = nil
 		d.OnBackgroundInk = fg
@@ -212,14 +213,14 @@ func (b *Button) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (b *Button) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
 	b.Pressed = true
 	b.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (b *Button) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	if pressed := where.In(b.ContentRect(false)); pressed != b.Pressed {
 		b.Pressed = pressed
 		b.MarkForRedraw()
@@ -228,7 +229,7 @@ func (b *Button) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (b *Button) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	if where.In(b.ContentRect(false)) {
@@ -250,7 +251,7 @@ func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 }
 
 // DefaultUpdateCursor provides the default cursor for buttons.
-func (b *Button) DefaultUpdateCursor(_ Point) *Cursor {
+func (b *Button) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	if !b.Enabled() {
 		return ArrowCursor()
 	}

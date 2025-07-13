@@ -12,6 +12,7 @@ package unison
 import (
 	"slices"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 )
@@ -51,7 +52,7 @@ type Menu interface {
 	// Count of menu items in this menu.
 	Count() int
 	// Popup the menu at the specified position within the active window.
-	Popup(where Rect, itemIndex int)
+	Popup(where geom.Rect, itemIndex int)
 	// Dispose releases any OS resources associated with this menu.
 	Dispose()
 }
@@ -59,8 +60,8 @@ type Menu interface {
 // DefaultMenuTheme holds the default MenuTheme values for Menus. Modifying this data will not alter existing Menus,
 // but will alter any Menus created in the future.
 var DefaultMenuTheme = MenuTheme{
-	BarBorder:  NewLineBorder(ThemeSurfaceEdge, 0, Insets{Bottom: 1}, false),
-	MenuBorder: NewLineBorder(ThemeSurfaceEdge, 0, NewUniformInsets(1), false),
+	BarBorder:  NewLineBorder(ThemeSurfaceEdge, 0, geom.Insets{Bottom: 1}, false),
+	MenuBorder: NewLineBorder(ThemeSurfaceEdge, 0, geom.NewUniformInsets(1), false),
 }
 
 // MenuTheme holds theming data for a Menu.
@@ -200,7 +201,7 @@ func (m *menu) Count() int {
 	return len(m.items)
 }
 
-func (m *menu) Popup(where Rect, itemIndex int) {
+func (m *menu) Popup(where geom.Rect, itemIndex int) {
 	if m.popupPanel == nil {
 		m.createPopup()
 		if itemIndex >= 0 && itemIndex < len(m.items) {
@@ -218,7 +219,7 @@ func (m *menu) Popup(where Rect, itemIndex int) {
 	}
 }
 
-func (m *menu) ensureInWindow(where Rect) {
+func (m *menu) ensureInWindow(where geom.Rect) {
 	fr := m.popupPanel.Parent().ContentRect(true)
 	if where.Width > fr.Width {
 		where.Width = fr.Width
@@ -367,7 +368,7 @@ func (m *menu) doExitEnter(previousIndex int) {
 		if previousIndex >= 0 && previousIndex < len(m.items) {
 			m.items[previousIndex].mouseExit()
 		}
-		m.items[m.popupPanel.itemIndex].mouseEnter(Point{}, 0) // params are unused
+		m.items[m.popupPanel.itemIndex].mouseEnter(geom.Point{}, 0) // params are unused
 		m.items[m.popupPanel.itemIndex].scrollIntoView()
 		if subMenu := m.items[m.popupPanel.itemIndex].subMenu; subMenu != nil {
 			subMenu.setKeyIndex(0)
@@ -378,7 +379,7 @@ func (m *menu) doExitEnter(previousIndex int) {
 func (m *menu) setKeyIndex(index int) {
 	m.popupPanel.itemIndex = index
 	if index >= 0 && index < len(m.items) {
-		m.items[index].mouseEnter(Point{}, 0) // params are unused
+		m.items[index].mouseEnter(geom.Point{}, 0) // params are unused
 		m.items[index].scrollIntoView()
 	}
 }
@@ -399,7 +400,7 @@ func (m *menu) postLostFocus(w *Window) {
 	})
 }
 
-func (m *menu) preMouseDown(w *Window, where Point) bool {
+func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
 	if w.root.menuBar != nil {
 		for _, one := range w.root.openMenuPanels {
 			if where.In(one.FrameRect()) {
@@ -419,7 +420,7 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 		m.updater(m)
 	}
 	for _, mi := range m.items {
-		if !mi.keyBinding.KeyCode.ShouldOmit() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mod {
+		if !mi.keyBinding.KeyCode.IsZero() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mod {
 			mi.validate()
 			if mi.enabled {
 				mi.execute()

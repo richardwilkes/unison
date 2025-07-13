@@ -12,20 +12,21 @@ package unison
 import (
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 // DrawRectBase fills and strokes a rectangle.
-func DrawRectBase(canvas *Canvas, rect Rect, fillInk, strokeInk Ink) {
+func DrawRectBase(canvas *Canvas, rect geom.Rect, fillInk, strokeInk Ink) {
 	canvas.DrawRect(rect, fillInk.Paint(canvas, rect, paintstyle.Fill))
-	rect = rect.Inset(NewUniformInsets(0.5))
+	rect = rect.Inset(geom.NewUniformInsets(0.5))
 	canvas.DrawRect(rect, strokeInk.Paint(canvas, rect, paintstyle.Stroke))
 }
 
 // DrawRoundedRectBase fills and strokes a rounded rectangle.
-func DrawRoundedRectBase(canvas *Canvas, rect Rect, cornerRadius, thickness float32, fillInk, strokeInk Ink) {
+func DrawRoundedRectBase(canvas *Canvas, rect geom.Rect, cornerRadius, thickness float32, fillInk, strokeInk Ink) {
 	canvas.DrawRoundedRect(rect, cornerRadius, cornerRadius, fillInk.Paint(canvas, rect, paintstyle.Fill))
-	rect = rect.Inset(NewUniformInsets(thickness / 2))
+	rect = rect.Inset(geom.NewUniformInsets(thickness / 2))
 	cornerRadius = max(cornerRadius-thickness/2, 0)
 	p := strokeInk.Paint(canvas, rect, paintstyle.Stroke)
 	p.SetStrokeWidth(thickness)
@@ -33,9 +34,9 @@ func DrawRoundedRectBase(canvas *Canvas, rect Rect, cornerRadius, thickness floa
 }
 
 // DrawEllipseBase fills and strokes an ellipse.
-func DrawEllipseBase(canvas *Canvas, rect Rect, thickness float32, fillInk, strokeInk Ink) {
+func DrawEllipseBase(canvas *Canvas, rect geom.Rect, thickness float32, fillInk, strokeInk Ink) {
 	canvas.DrawOval(rect, fillInk.Paint(canvas, rect, paintstyle.Fill))
-	rect = rect.Inset(NewUniformInsets(thickness / 2))
+	rect = rect.Inset(geom.NewUniformInsets(thickness / 2))
 	p := strokeInk.Paint(canvas, rect, paintstyle.Stroke)
 	p.SetStrokeWidth(thickness)
 	canvas.DrawOval(rect, p)

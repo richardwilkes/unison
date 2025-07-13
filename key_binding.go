@@ -11,11 +11,7 @@ package unison
 
 import (
 	"strings"
-
-	"github.com/richardwilkes/json"
 )
-
-var _ json.Omitter = KeyBinding{}
 
 // KeyBinding holds a key code and/or modifier.
 type KeyBinding struct {
@@ -70,7 +66,7 @@ func (b KeyBinding) String() string {
 	return b.Modifiers.String() + b.KeyCode.String()
 }
 
-// ShouldOmit implements json.Omitter.
-func (b KeyBinding) ShouldOmit() bool {
-	return b.Modifiers == 0 && b.KeyCode.ShouldOmit()
+// IsZero implements json.isZero.
+func (b KeyBinding) IsZero() bool {
+	return b.Modifiers == 0 && b.KeyCode.IsZero()
 }

@@ -12,6 +12,7 @@ package unison
 import (
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -105,7 +106,7 @@ func (p *ProgressBar) SetMaximum(value float32) {
 }
 
 // DefaultSizes provides the default sizing.
-func (p *ProgressBar) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (p *ProgressBar) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	minSize.Width = 80
 	minSize.Height = p.PreferredBarHeight
 	prefSize.Width = 100
@@ -122,7 +123,7 @@ func (p *ProgressBar) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) 
 }
 
 // DefaultDraw provides the default drawing.
-func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ Rect) {
+func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	bounds := p.ContentRect(false)
 	meter := bounds
 	meter.Width = 0
@@ -150,12 +151,12 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ Rect) {
 		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, p.CornerRadius,
 			p.FillInk.Paint(canvas, trimmedMeter, paintstyle.Fill))
 	}
-	bounds = bounds.Inset(NewUniformInsets(p.EdgeThickness / 2))
+	bounds = bounds.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
 	paint := p.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
 	paint.SetStrokeWidth(p.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, p.CornerRadius, paint)
 	if meter.Width > 0 {
-		meter = meter.Inset(NewUniformInsets(p.EdgeThickness / 2))
+		meter = meter.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
 		canvas.DrawRoundedRect(meter, p.CornerRadius, p.CornerRadius, paint)
 	}
 	if p.maximum == 0 {

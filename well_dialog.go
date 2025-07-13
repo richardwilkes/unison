@@ -13,8 +13,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/imgfmt"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -60,7 +61,7 @@ func showWellDialog(w *Well) {
 	})
 
 	left := NewPanel()
-	left.SetBorder(NewEmptyBorder(Insets{Right: 2 * StdHSpacing}))
+	left.SetBorder(NewEmptyBorder(geom.Insets{Right: 2 * StdHSpacing}))
 	left.SetLayoutData(&FlexLayoutData{})
 	left.SetLayout(&FlexLayout{
 		Columns:  1,
@@ -144,7 +145,7 @@ func (d *wellDialog) addPatternSelector(parent *Panel) {
 		}
 	}
 	if d.well.Mask&^PatternWellMask != 0 {
-		b.SetBorder(NewEmptyBorder(Insets{Bottom: 2 * StdHSpacing}))
+		b.SetBorder(NewEmptyBorder(geom.Insets{Bottom: 2 * StdHSpacing}))
 	}
 	parent.AddChild(b)
 }
@@ -454,19 +455,19 @@ func (d *wellDialog) sync() {
 		green := t.Green()
 		blue := t.Blue()
 		d.redSlider.SetValue(float32(red))
-		d.redSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, RGB(0, green, blue),
+		d.redSlider.FillInk = NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, RGB(0, green, blue),
 			RGB(255, green, blue))
 		d.syncText(d.redField, strconv.Itoa(red))
 		d.greenSlider.SetValue(float32(green))
-		d.greenSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, RGB(red, 0, blue),
+		d.greenSlider.FillInk = NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, RGB(red, 0, blue),
 			RGB(red, 255, blue))
 		d.syncText(d.greenField, strconv.Itoa(green))
 		d.blueSlider.SetValue(float32(blue))
-		d.blueSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, RGB(red, green, 0),
+		d.blueSlider.FillInk = NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, RGB(red, green, 0),
 			RGB(red, green, 255))
 		d.syncText(d.blueField, strconv.Itoa(blue))
 		d.alphaSlider.SetValue(float32(t.Alpha()))
-		d.alphaSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, ARGB(0, red, green, blue),
+		d.alphaSlider.FillInk = NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, ARGB(0, red, green, blue),
 			ARGB(1, red, green, blue))
 		d.syncText(d.alphaField, strconv.Itoa(t.Alpha()))
 		hue, saturation, brightness := t.HSB()
@@ -475,13 +476,13 @@ func (d *wellDialog) sync() {
 		for i := range colors {
 			colors[i] = HSB(float32(i)/float32(len(colors)-1), saturation, brightness)
 		}
-		d.hueSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, colors...)
+		d.hueSlider.FillInk = NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, colors...)
 		d.syncText(d.hueField, strconv.Itoa(int(t.Hue()*360+0.5)))
 		colors = make([]ColorProvider, 101)
 		for i := range colors {
 			colors[i] = HSB(hue, float32(i)/float32(len(colors)-1), brightness)
 		}
-		d.saturationSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, colors...)
+		d.saturationSlider.FillInk = NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, colors...)
 		d.saturationSlider.SetValue(t.Saturation())
 		d.syncText(d.saturationField, strconv.Itoa(int(t.Saturation()*100+0.5))+"%")
 		d.brightnessSlider.SetValue(t.Brightness())
@@ -489,7 +490,7 @@ func (d *wellDialog) sync() {
 		for i := range colors {
 			colors[i] = HSB(hue, saturation, float32(i)/float32(len(colors)-1))
 		}
-		d.brightnessSlider.FillInk = NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, colors...)
+		d.brightnessSlider.FillInk = NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, colors...)
 		d.syncText(d.brightnessField, strconv.Itoa(int(t.Brightness()*100+0.5))+"%")
 		d.syncText(d.cssField, t.String())
 	default:
@@ -512,19 +513,19 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 		VAlign: align.Middle,
 	})
 	if spaceBefore > 0 {
-		label.SetBorder(NewEmptyBorder(Insets{Top: spaceBefore}))
+		label.SetBorder(NewEmptyBorder(geom.Insets{Top: spaceBefore}))
 	}
 	parent.AddChild(label)
 
 	preview := NewPanel()
 	preview.SetBorder(NewCompoundBorder(
-		NewLineBorder(ThemeOnSurface, 0, NewUniformInsets(1), false),
-		NewLineBorder(ThemeSurface, 0, NewUniformInsets(1), false),
+		NewLineBorder(ThemeOnSurface, 0, geom.NewUniformInsets(1), false),
+		NewLineBorder(ThemeSurface, 0, geom.NewUniformInsets(1), false),
 	))
 	preview.SetLayoutData(&FlexLayoutData{
-		SizeHint: Size{Width: 64, Height: 64},
+		SizeHint: geom.Size{Width: 64, Height: 64},
 	})
-	preview.DrawCallback = func(canvas *Canvas, _ Rect) {
+	preview.DrawCallback = func(canvas *Canvas, _ geom.Rect) {
 		r := preview.ContentRect(false)
 		ink := inkRetriever()
 		if pattern, ok := ink.(*Pattern); ok {

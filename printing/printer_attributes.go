@@ -11,8 +11,7 @@ package printing
 
 import (
 	"github.com/OpenPrinting/goipp"
-	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 )
 
 // Possible orientations
@@ -211,11 +210,9 @@ func orientationFromKey(key string) int {
 
 // MinimumMargins returns the minimum margins for a page, given in hundreths of millimeters (the equivalent of 1/2540's
 // of an inch).
-func (a *PrinterAttributes) MinimumMargins() geom.Insets[int] {
-	return geom.Insets[int]{
-		Top:    a.Integer("media-top-margin-supported", 0),
-		Left:   a.Integer("media-left-margin-supported", 0),
-		Bottom: a.Integer("media-bottom-margin-supported", 0),
-		Right:  a.Integer("media-right-margin-supported", 0),
-	}
+func (a *PrinterAttributes) MinimumMargins() (top, left, bottom, right int) {
+	return a.Integer("media-top-margin-supported", 0),
+		a.Integer("media-left-margin-supported", 0),
+		a.Integer("media-bottom-margin-supported", 0),
+		a.Integer("media-right-margin-supported", 0)
 }

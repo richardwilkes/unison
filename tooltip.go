@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -21,7 +22,7 @@ import (
 var DefaultTooltipTheme = TooltipTheme{
 	BackgroundInk: ThemeTooltip,
 	BaseBorder: NewCompoundBorder(
-		NewLineBorder(ThemeTooltipEdge, 0, NewUniformInsets(1), false),
+		NewLineBorder(ThemeTooltipEdge, 0, geom.NewUniformInsets(1), false),
 		NewEmptyBorder(StdInsets()),
 	),
 	Label:     defaultToolTipLabelTheme(),
@@ -48,7 +49,7 @@ type TooltipTheme struct {
 
 type tooltipSequencer struct {
 	window   *Window
-	avoid    Rect
+	avoid    geom.Rect
 	sequence int
 }
 
@@ -56,7 +57,7 @@ type tooltipSequencer struct {
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
-	tip.DrawCallback = func(canvas *Canvas, _ Rect) {
+	tip.DrawCallback = func(canvas *Canvas, _ geom.Rect) {
 		r := tip.ContentRect(true)
 		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	}
@@ -101,8 +102,8 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 func (ts *tooltipSequencer) show() {
 	if ts.window.tooltipSequence == ts.sequence && ts.window.Focused() {
 		tip := ts.window.lastTooltip
-		_, pref, _ := tip.Sizes(Size{})
-		rect := Rect{Point: Point{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
+		_, pref, _ := tip.Sizes(geom.Size{})
+		rect := geom.Rect{Point: geom.Point{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
 		if rect.X < 0 {
 			rect.X = 0
 		}
@@ -111,7 +112,7 @@ func (ts *tooltipSequencer) show() {
 		}
 		viewSize := ts.window.root.ContentRect(true).Size
 		if viewSize.Width < rect.Width {
-			_, pref, _ = tip.Sizes(Size{Width: viewSize.Width})
+			_, pref, _ = tip.Sizes(geom.Size{Width: viewSize.Width})
 			if viewSize.Width < pref.Width {
 				rect.X = 0
 				rect.Width = viewSize.Width

@@ -10,7 +10,7 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/tid"
+	"github.com/richardwilkes/toolbox/v2/tid"
 )
 
 // TableModel provides access to the root nodes of the table's data underlying model.

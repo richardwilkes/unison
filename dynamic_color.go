@@ -12,7 +12,8 @@ package unison
 import (
 	"slices"
 
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -43,7 +44,7 @@ func (c *DynamicColor) GetColor() Color {
 }
 
 // Paint returns a Paint for this DynamicColor. Here to satisfy the Ink interface.
-func (c *DynamicColor) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint {
+func (c *DynamicColor) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	return c.Color.Paint(canvas, rect, style)
 }
 
@@ -69,7 +70,7 @@ func RebuildDynamicColors() {
 	if needDynamicColorUpdate {
 		needDynamicColorUpdate = false
 		for _, color := range dynamicColors {
-			toolbox.Call(func() { color.Color = color.Rebuilder() })
+			xos.SafeCall(func() { color.Color = color.Rebuilder() }, nil)
 		}
 	}
 }

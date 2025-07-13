@@ -10,7 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -48,8 +49,8 @@ func (d *TextDecoration) Clone() *TextDecoration {
 
 // DrawText draws the given text using this TextDecoration.
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
-	r := Rect{Point: Point{X: x, Y: y - d.Font.Baseline()}, Size: Size{Width: width, Height: d.Font.LineHeight()}}
-	if !toolbox.IsNil(d.BackgroundInk) {
+	r := geom.Rect{Point: geom.Point{X: x, Y: y - d.Font.Baseline()}, Size: geom.Size{Width: width, Height: d.Font.LineHeight()}}
+	if !xreflect.IsNil(d.BackgroundInk) {
 		canvas.DrawRect(r, d.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	}
 	y += d.BaselineOffset

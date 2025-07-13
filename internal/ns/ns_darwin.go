@@ -395,9 +395,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xio/fs"
-	"github.com/richardwilkes/toolbox/xmath/geom"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 type EventModifierFlags uint
@@ -526,7 +526,7 @@ type URL C.CFURLRef
 
 func NewFileURL(str string) URL {
 	var isDir C.uchar
-	if strings.HasSuffix(str, "/") || fs.IsDir(str) {
+	if strings.HasSuffix(str, "/") || xos.IsDir(str) {
 		isDir = 1
 	}
 	return URL(C.CFURLCreateFromFileSystemRepresentation(0, (*C.uint8)(unsafe.Pointer(unsafe.StringData(str))),
@@ -654,7 +654,7 @@ func (w Window) ContentView() View {
 
 type View C.NSViewRef
 
-func (v View) Frame() geom.Rect[float32] {
+func (v View) Frame() geom.Rect {
 	var frame C.NSRect
 	C.viewFrame(C.NSViewRef(v), &frame)
 	return geom.NewRect(float32(frame.origin.x), float32(frame.origin.y), float32(frame.size.width),
@@ -708,7 +708,7 @@ func (m Menu) Title() string {
 	return String(C.menuTitle(C.NSMenuRef(m))).String()
 }
 
-func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom.Rect[float32]) {
+func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom.Rect) {
 	C.menuPopup(C.NSWindowRef(wnd), C.NSMenuRef(menu), C.NSMenuItemRef(item), C.CGRect{
 		origin: C.CGPoint{
 			x: C.double(bounds.X),

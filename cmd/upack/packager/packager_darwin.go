@@ -15,10 +15,11 @@ import (
 	"sync"
 	"text/template"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/formats/icon/icns"
-	"github.com/richardwilkes/toolbox/xio"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xfilepath"
+	"github.com/richardwilkes/toolbox/v2/ximage/icns"
+	"github.com/richardwilkes/toolbox/v2/xio"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 func prepareBinary(cfg *Config) error {
@@ -61,7 +62,7 @@ func createICNS(srcIconPath, dstDirPath string) (err error) {
 		return err
 	}
 	var f *os.File
-	f, err = os.Create(filepath.Join(dstDirPath, fs.BaseName(srcIconPath)) + ".icns")
+	f, err = os.Create(filepath.Join(dstDirPath, xfilepath.BaseName(srcIconPath)) + ".icns")
 	if err != nil {
 		return errs.Wrap(err)
 	}
@@ -89,7 +90,7 @@ func writePlist(cfg *Config, targetPath string) error {
 		return errs.Wrap(err)
 	}
 	for _, f := range cfg.FileInfo {
-		f.IconName = fs.BaseName(f.Icon) + ".icns"
+		f.IconName = xfilepath.BaseName(f.Icon) + ".icns"
 	}
 	exportCount := 0
 	importCount := 0
@@ -121,7 +122,7 @@ func writePlist(cfg *Config, targetPath string) error {
 		AppCmdName:           cfg.ExecutableName,
 		SpokenName:           cfg.FullName,
 		AppID:                cfg.Mac.AppID,
-		AppIcon:              fs.BaseName(cfg.AppIcon) + ".icns",
+		AppIcon:              xfilepath.BaseName(cfg.AppIcon) + ".icns",
 		AppVersion:           cfg.version,
 		ShortVersion:         cfg.shortAppVersion(),
 		MinimumSystemVersion: cfg.macMinSysVersion(),
@@ -141,7 +142,7 @@ func writePlist(cfg *Config, targetPath string) error {
 
 func generateDistribution(cfg *Config) error {
 	dstPath := cfg.ExecutableName + "-" + cfg.version + "-macos-" + runtime.GOARCH + ".dmg"
-	if fs.FileExists(dstPath) {
+	if xos.FileExists(dstPath) {
 		if err := os.Remove(dstPath); err != nil {
 			return errs.Wrap(err)
 		}

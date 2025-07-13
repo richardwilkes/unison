@@ -13,21 +13,22 @@ import (
 	"runtime"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 var lastPrimaryDisplay *Display
 
 // Display holds information about each available active display.
 type Display struct {
-	Name        string  // The name of the display
-	Frame       Rect    // The position of the display in the global screen coordinate system
-	Usable      Rect    // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
-	ScaleX      float32 // The horizontal scale of content
-	ScaleY      float32 // The vertical scale of content
-	RefreshRate int     // The refresh rate, in Hz
-	WidthMM     int     // The display's physical width, in millimeters
-	HeightMM    int     // The display's physical height, in millimeters
+	Name        string    // The name of the display
+	Frame       geom.Rect // The position of the display in the global screen coordinate system
+	Usable      geom.Rect // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
+	ScaleX      float32   // The horizontal scale of content
+	ScaleY      float32   // The vertical scale of content
+	RefreshRate int       // The refresh rate, in Hz
+	WidthMM     int       // The display's physical width, in millimeters
+	HeightMM    int       // The display's physical height, in millimeters
 }
 
 // PPI returns the pixels-per-inch for the display. Some operating systems do not provide accurate information, either
@@ -41,7 +42,7 @@ func (d *Display) PPI() int {
 
 // FitRectOnto returns a rectangle that fits onto this display, trying to preserve its position and size as much as
 // possible.
-func (d *Display) FitRectOnto(r Rect) Rect {
+func (d *Display) FitRectOnto(r geom.Rect) geom.Rect {
 	if d == nil {
 		return r
 	}
@@ -70,7 +71,7 @@ func (d *Display) FitRectOnto(r Rect) Rect {
 
 // BestDisplayForRect returns the display with the greatest overlap with the rectangle, or the primary display if there
 // is no overlap.
-func BestDisplayForRect(r Rect) *Display {
+func BestDisplayForRect(r geom.Rect) *Display {
 	var bestArea float32
 	var bestDisplay *Display
 	for _, display := range AllDisplays() {
@@ -128,15 +129,15 @@ func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
 	mmx, mmy := monitor.GetPhysicalSize()
 	display := &Display{
 		Name:        monitor.GetName(),
-		Frame:       NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
-		Usable:      NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
+		Frame:       geom.NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
+		Usable:      geom.NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
 		ScaleX:      sx,
 		ScaleY:      sy,
 		RefreshRate: vidMode.RefreshRate,
 		WidthMM:     mmx,
 		HeightMM:    mmy,
 	}
-	if runtime.GOOS != toolbox.MacOS {
+	if runtime.GOOS != xos.MacOS {
 		display.Frame.X /= sx
 		display.Frame.Y /= sy
 		display.Frame.Width /= sx

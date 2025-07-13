@@ -12,7 +12,8 @@ package demo
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/tid"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
@@ -23,7 +24,7 @@ const topLevelRowsToMake = 100
 var tableCounter int
 
 // NewDemoTableWindow creates and displays our demo table window.
-func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
+func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
 	// Create the window
 	tableCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Table #%d", tableCounter))
@@ -46,7 +47,7 @@ func NewDemoTableWindow(where unison.Point) (*unison.Window, error) {
 		table.Columns[i].Minimum = 20
 		table.Columns[i].Maximum = 10000
 	}
-	_, checkColSize, _ := unison.NewCheckBox().Sizes(unison.Size{})
+	_, checkColSize, _ := unison.NewCheckBox().Sizes(geom.Size{})
 	table.Columns[0].Minimum = checkColSize.Width
 	table.Columns[0].Maximum = checkColSize.Width
 	rows := make([]*demoRow, topLevelRowsToMake)

@@ -9,6 +9,8 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/v2/geom"
+
 const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
 
 type previousFocusCallbacks struct {
@@ -19,9 +21,19 @@ type previousFocusCallbacks struct {
 // Border defines methods required of all border providers.
 type Border interface {
 	// Insets returns the insets describing the space the border occupies on each side.
-	Insets() Insets
+	Insets() geom.Insets
 	// Draw the border into rect.
-	Draw(canvas *Canvas, rect Rect)
+	Draw(canvas *Canvas, rect geom.Rect)
+}
+
+// StdInsets returns insets preset to the standard spacing.
+func StdInsets() geom.Insets {
+	return geom.Insets{
+		Top:    StdVSpacing,
+		Left:   StdHSpacing,
+		Bottom: StdVSpacing,
+		Right:  StdHSpacing,
+	}
 }
 
 // NewDefaultFieldBorder creates the default border for a field.
@@ -36,8 +48,8 @@ func NewDefaultFieldBorder(focused bool) Border {
 		ink = ThemeSurfaceEdge
 	}
 	return NewCompoundBorder(
-		NewLineBorder(ink, 0, NewUniformInsets(2-adj), false),
-		NewEmptyBorder(Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}),
+		NewLineBorder(ink, 0, geom.NewUniformInsets(2-adj), false),
+		NewEmptyBorder(geom.Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}),
 	)
 }
 

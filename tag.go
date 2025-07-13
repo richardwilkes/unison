@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
@@ -75,7 +76,7 @@ func (t *Tag) SetTitle(text string) {
 }
 
 // DefaultSizes provides the default sizing.
-func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (t *Tag) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize, _ = LabelContentSizes(t.Text, t.Drawable, t.Font, t.Side, t.Gap)
 	if b := t.Border(); b != nil {
 		prefSize = prefSize.Add(b.Insets().Size())
@@ -87,7 +88,7 @@ func (t *Tag) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 }
 
 // DefaultDraw provides the default drawing.
-func (t *Tag) DefaultDraw(canvas *Canvas, _ Rect) {
+func (t *Tag) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := t.ContentRect(false)
 	canvas.DrawRoundedRect(r, t.RadiusX, t.RadiusY, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	r.X += t.SideInset

@@ -12,7 +12,8 @@ package unison
 import (
 	"time"
 
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -97,7 +98,7 @@ func (c *CheckBox) DefaultFocusGained() {
 }
 
 // DefaultSizes provides the default sizing.
-func (c *CheckBox) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (c *CheckBox) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize = c.boxAndLabelSize()
 	if border := c.Border(); border != nil {
 		prefSize = prefSize.Add(border.Insets().Size())
@@ -106,10 +107,10 @@ func (c *CheckBox) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 	return prefSize, prefSize, MaxSize(prefSize)
 }
 
-func (c *CheckBox) boxAndLabelSize() Size {
+func (c *CheckBox) boxAndLabelSize() geom.Size {
 	boxSize := c.boxSize()
 	if c.Drawable == nil && c.Text.Empty() {
-		return Size{Width: boxSize, Height: boxSize}
+		return geom.Size{Width: boxSize, Height: boxSize}
 	}
 	size, _ := LabelContentSizes(c.Text, c.Drawable, c.Font, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize
@@ -124,7 +125,7 @@ func (c *CheckBox) boxSize() float32 {
 }
 
 // DefaultDraw provides the default drawing.
-func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
+func (c *CheckBox) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	contentRect := c.ContentRect(false)
 	rect := contentRect
 	size := c.boxAndLabelSize()
@@ -172,7 +173,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ Rect) {
 		edge = c.SelectionInk
 	}
 	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, edge)
-	rect = rect.Inset(NewUniformInsets(0.5))
+	rect = rect.Inset(geom.NewUniformInsets(0.5))
 	if c.State == check.Off {
 		return
 	}
@@ -217,14 +218,14 @@ func (c *CheckBox) updateState() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (c *CheckBox) DefaultMouseDown(_ Point, _, _ int, _ Modifiers) bool {
+func (c *CheckBox) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
 	c.Pressed = true
 	c.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (c *CheckBox) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
+func (c *CheckBox) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	if pressed := where.In(c.ContentRect(false)); pressed != c.Pressed {
 		c.Pressed = pressed
 		c.MarkForRedraw()
@@ -233,7 +234,7 @@ func (c *CheckBox) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (c *CheckBox) DefaultMouseUp(where Point, _ int, _ Modifiers) bool {
+func (c *CheckBox) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
 	if where.In(c.ContentRect(false)) {
@@ -255,7 +256,7 @@ func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 }
 
 // DefaultUpdateCursor provides the default cursor for check boxes.
-func (c *CheckBox) DefaultUpdateCursor(_ Point) *Cursor {
+func (c *CheckBox) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	if !c.Enabled() {
 		return ArrowCursor()
 	}

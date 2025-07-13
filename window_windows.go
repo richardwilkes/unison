@@ -9,12 +9,15 @@
 
 package unison
 
-import "github.com/go-gl/glfw/v3.3/glfw"
+import (
+	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/toolbox/v2/geom"
+)
 
-func (w *Window) frameRect() Rect {
+func (w *Window) frameRect() geom.Rect {
 	if w.IsValid() {
 		left, top, right, bottom := w.wnd.GetFrameSize()
-		r := NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+		r := geom.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
 		sx, sy := w.wnd.GetContentScale()
 		r.X /= sx
 		r.Y /= sy
@@ -22,15 +25,15 @@ func (w *Window) frameRect() Rect {
 		r.Height /= sy
 		return r
 	}
-	return NewRect(0, 0, 1, 1)
+	return geom.NewRect(0, 0, 1, 1)
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
-func (w *Window) ContentRect() Rect {
+func (w *Window) ContentRect() geom.Rect {
 	if w.IsValid() {
 		x, y := w.wnd.GetPos()
 		width, height := w.wnd.GetSize()
-		r := NewRect(float32(x), float32(y), float32(width), float32(height))
+		r := geom.NewRect(float32(x), float32(y), float32(width), float32(height))
 		sx, sy := w.wnd.GetContentScale()
 		r.X /= sx
 		r.Y /= sy
@@ -38,12 +41,12 @@ func (w *Window) ContentRect() Rect {
 		r.Height /= sy
 		return r
 	}
-	return NewRect(0, 0, 1, 1)
+	return geom.NewRect(0, 0, 1, 1)
 }
 
 // SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
 // rect and then applying it to the window.
-func (w *Window) SetContentRect(rect Rect) {
+func (w *Window) SetContentRect(rect geom.Rect) {
 	if w.IsValid() {
 		rect = w.adjustContentRectForMinMax(rect)
 		sx, sy := w.wnd.GetContentScale()
@@ -58,7 +61,7 @@ func (w *Window) SetContentRect(rect Rect) {
 	}
 }
 
-func (w *Window) convertRawMouseLocationForPlatform(where Point) Point {
+func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point {
 	if w.IsValid() {
 		sx, sy := w.wnd.GetContentScale()
 		where.X /= sx

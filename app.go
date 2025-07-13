@@ -16,10 +16,8 @@ import (
 	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/atexit"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/fatal"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/skia"
 )
@@ -29,7 +27,7 @@ var (
 	startupFinishedCallback           func()
 	openFilesCallback                 func([]string) //nolint:unused // Not all platforms use this
 	themeChangedCallback              func()
-	recoveryCallback                  errs.RecoveryHandler
+	recoveryCallback                  func(error)
 	quitAfterLastWindowClosedCallback func() bool
 	allowQuitCallback                 func() bool
 	quittingCallback                  func()
@@ -83,7 +81,7 @@ func ThemeChangedCallback(f func()) StartupOption {
 
 // RecoveryCallback will cause f to be called should a task invoked via task.InvokeTask() or task.InvokeTaskAfter()
 // panic. If no recovery callback is set, the panic will be logged via errs.Log(err).
-func RecoveryCallback(f errs.RecoveryHandler) StartupOption {
+func RecoveryCallback(f func(error)) StartupOption {
 	return func(_ startupOption) error {
 		recoveryCallback = f
 		return nil
@@ -129,13 +127,13 @@ func NoGlobalMenuBar() StartupOption {
 // calls into unison can be made prior to Start() being called unless explicitly stated otherwise.
 func Start(options ...StartupOption) {
 	for _, option := range options {
-		fatal.IfErr(option(startupOption{}))
+		xos.ExitIfErr(option(startupOption{}))
 	}
 	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
 	glfw.InitHint(glfw.CocoaChdirResources, glfw.False)
-	fatal.IfErr(glfw.Init())
-	atexit.Register(quitting)
-	atexit.Register(func() {
+	xos.ExitIfErr(glfw.Init())
+	xos.RunAtExit(quitting)
+	xos.RunAtExit(func() {
 		quitLock.Lock()
 		calledAtExit = true
 		quitLock.Unlock()
@@ -171,7 +169,7 @@ func finishStartup() {
 	RebuildDynamicColors()
 	platformLateInit()
 	if startupFinishedCallback != nil {
-		toolbox.Call(startupFinishedCallback)
+		xos.SafeCall(startupFinishedCallback, nil)
 	}
 	platformFinishedStartup()
 }
@@ -182,7 +180,7 @@ func finishStartup() {
 func ThemeChanged() {
 	MarkDynamicColorsForRebuild()
 	if themeChangedCallback != nil {
-		toolbox.Call(themeChangedCallback)
+		xos.SafeCall(themeChangedCallback, nil)
 	}
 	for _, wnd := range Windows() {
 		wnd.MarkForRedraw()
@@ -191,7 +189,7 @@ func ThemeChanged() {
 
 func uiTaskRecovery(err error) {
 	if recoveryCallback != nil {
-		toolbox.Call(func() { recoveryCallback(err) })
+		xos.SafeCall(func() { recoveryCallback(err) }, nil)
 	} else {
 		errs.Log(err)
 	}
@@ -200,7 +198,7 @@ func uiTaskRecovery(err error) {
 func quitAfterLastWindowClosed() bool {
 	if quitAfterLastWindowClosedCallback != nil {
 		quit := true
-		toolbox.Call(func() { quit = quitAfterLastWindowClosedCallback() })
+		xos.SafeCall(func() { quit = quitAfterLastWindowClosedCallback() }, nil)
 		return quit
 	}
 	return true
@@ -209,7 +207,7 @@ func quitAfterLastWindowClosed() bool {
 func allowQuit() bool {
 	if allowQuitCallback != nil {
 		allow := true
-		toolbox.Call(func() { allow = allowQuitCallback() })
+		xos.SafeCall(func() { allow = allowQuitCallback() }, nil)
 		return allow
 	}
 	return true
@@ -221,16 +219,16 @@ func quitting() {
 	quittingCallback = nil
 	quitLock.Unlock()
 	if callback != nil {
-		toolbox.Call(callback)
+		xos.SafeCall(callback, nil)
 	}
-	// atexit.Exit() is called here once to ensure registered atexit hooks are actually called, as OS's may directly
+	// xos.Exit() is called here once to ensure registered exit hooks are actually called, as OS's may directly
 	// terminate the app after returning from this function.
 	quitLock.Lock()
 	calledExit := calledAtExit
 	calledAtExit = true
 	quitLock.Unlock()
 	if !calledExit {
-		atexit.Exit(0)
+		xos.Exit(0)
 	}
 	glfw.Terminate()
 }

@@ -12,6 +12,7 @@ package demo
 import (
 	"fmt"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/side"
@@ -20,7 +21,7 @@ import (
 var dockCounter int
 
 // NewDemoDockWindow creates and displays our demo dock window.
-func NewDemoDockWindow(where unison.Point) (*unison.Window, error) {
+func NewDemoDockWindow(where geom.Point) (*unison.Window, error) {
 	// Create the window
 	dockCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Dock #%d", dockCounter))

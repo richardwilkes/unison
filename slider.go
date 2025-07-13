@@ -10,7 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -90,7 +91,7 @@ func (s *Slider) SetValue(value float32) {
 	if s.value != value {
 		s.value = value
 		if s.ValueChangedCallback != nil {
-			toolbox.Call(s.ValueChangedCallback)
+			xos.SafeCall(s.ValueChangedCallback, nil)
 		}
 		s.MarkForRedraw()
 	}
@@ -135,7 +136,7 @@ func (s *Slider) SetMaximum(value float32) {
 }
 
 // DefaultSizes provides the default sizing.
-func (s *Slider) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (s *Slider) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	minSize.Width = s.MarkerSize
 	minSize.Height = s.MarkerSize
 	prefSize.Width = s.MarkerSize + 100 + s.EdgeThickness*2
@@ -152,12 +153,12 @@ func (s *Slider) DefaultSizes(hint Size) (minSize, prefSize, maxSize Size) {
 }
 
 // DefaultDrawBackground provides the default background drawing.
-func (s *Slider) DefaultDrawBackground(canvas *Canvas, bounds Rect) {
+func (s *Slider) DefaultDrawBackground(canvas *Canvas, bounds geom.Rect) {
 	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.CornerRadius, s.FillInk.Paint(canvas, bounds, paintstyle.Fill))
 }
 
 // DefaultDraw provides the default drawing.
-func (s *Slider) DefaultDraw(canvas *Canvas, _ Rect) {
+func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	bounds := s.ContentRect(false)
 	minSize := s.MarkerSize + s.EdgeThickness*2
 	if bounds.Width >= bounds.Height {
@@ -202,7 +203,7 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *Slider) DefaultMouseDown(where Point, button, _ int, mod Modifiers) bool {
+func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mod Modifiers) bool {
 	s.pressed = true
 	s.DefaultMouseDrag(where, button, mod)
 	s.MarkForRedraw()
@@ -210,7 +211,7 @@ func (s *Slider) DefaultMouseDown(where Point, button, _ int, mod Modifiers) boo
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *Slider) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
+func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	bounds := s.ContentRect(false)
 	var minimum, maximum, pos float32
 	inset := s.EdgeThickness + s.MarkerSize/2
@@ -236,7 +237,7 @@ func (s *Slider) DefaultMouseDrag(where Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *Slider) DefaultMouseUp(where Point, button int, mod Modifiers) bool {
+func (s *Slider) DefaultMouseUp(where geom.Point, button int, mod Modifiers) bool {
 	s.DefaultMouseDrag(where, button, mod)
 	s.pressed = false
 	s.MarkForRedraw()

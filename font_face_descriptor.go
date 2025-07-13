@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -62,7 +62,7 @@ func (ffd FontFaceDescriptor) MarshalText() (text []byte, err error) {
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
 func (ffd *FontFaceDescriptor) UnmarshalText(text []byte) error {
-	parts := strings.Split(txt.CollapseSpaces(string(text)), " ")
+	parts := strings.Split(xstrings.CollapseSpaces(string(text)), " ")
 	if len(parts) < 4 {
 		return errs.Newf("invalid font face descriptor: %s", string(text))
 	}

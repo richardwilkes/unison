@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -98,7 +99,7 @@ func (t *ThemeColor) GetColor() Color {
 }
 
 // Paint returns a Paint for this ThemeColor. Here to satisfy the Ink interface.
-func (t *ThemeColor) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint {
+func (t *ThemeColor) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	return t.GetColor().Paint(canvas, rect, style)
 }
 
@@ -159,7 +160,7 @@ func (t *DerivedThemeColor) GetColor() Color {
 }
 
 // Paint returns a Paint for this ThemeColor. Here to satisfy the Ink interface.
-func (t *DerivedThemeColor) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint {
+func (t *DerivedThemeColor) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	return t.GetColor().Paint(canvas, rect, style)
 }
 

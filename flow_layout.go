@@ -12,6 +12,7 @@ package unison
 import (
 	"math"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 )
 
@@ -24,8 +25,8 @@ type FlowLayout struct {
 }
 
 // LayoutSizes implements Layout.
-func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, maxSize Size) {
-	var insets Insets
+func (f *FlowLayout) LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
+	var insets geom.Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
@@ -36,14 +37,14 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, m
 		hint.Height = math.MaxFloat32
 	}
 	width := hint.Width - insets.Width()
-	pt := Point{X: insets.Left, Y: insets.Top}
-	result := Size{Width: pt.Y, Height: pt.Y}
+	pt := geom.Point{X: insets.Left, Y: insets.Top}
+	result := geom.Size{Width: pt.Y, Height: pt.Y}
 	availWidth := width
 	availHeight := hint.Height - insets.Height()
 	var maxHeight float32
-	var largestChildMin Size
+	var largestChildMin geom.Size
 	for _, child := range target.Children() {
-		minSize, prefSize, _ = child.Sizes(Size{})
+		minSize, prefSize, _ = child.Sizes(geom.Size{})
 		if largestChildMin.Width < minSize.Width {
 			largestChildMin.Width = minSize.Width
 		}
@@ -71,7 +72,7 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, m
 				}
 			}
 			savedWidth := prefSize.Width
-			minSize, prefSize, _ = child.Sizes(Size{Width: prefSize.Width})
+			minSize, prefSize, _ = child.Sizes(geom.Size{Width: prefSize.Width})
 			prefSize.Width = savedWidth
 			if prefSize.Height > availHeight {
 				if minSize.Height <= availHeight {
@@ -112,21 +113,21 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint Size) (minSize, prefSize, m
 
 // PerformLayout implements Layout.
 func (f *FlowLayout) PerformLayout(target *Panel) {
-	var insets Insets
+	var insets geom.Insets
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
 	size := target.ContentRect(true).Size
 	width := size.Width - insets.Width()
-	pt := Point{X: insets.Left, Y: insets.Top}
+	pt := geom.Point{X: insets.Left, Y: insets.Top}
 	availWidth := width
 	availHeight := size.Height - insets.Height()
 	var maxHeight float32
 	children := target.Children()
-	rects := make([]Rect, len(children))
+	rects := make([]geom.Rect, len(children))
 	start := 0
 	for i, child := range children {
-		minSize, prefSize, _ := child.Sizes(Size{})
+		minSize, prefSize, _ := child.Sizes(geom.Size{})
 		if prefSize.Width > availWidth {
 			switch {
 			case minSize.Width <= availWidth:
@@ -152,7 +153,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 				}
 			}
 			savedWidth := prefSize.Width
-			minSize, prefSize, _ = child.Sizes(Size{Width: prefSize.Width})
+			minSize, prefSize, _ = child.Sizes(geom.Size{Width: prefSize.Width})
 			prefSize.Width = savedWidth
 			if prefSize.Height > availHeight {
 				if minSize.Height <= availHeight {
@@ -162,7 +163,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 				}
 			}
 		}
-		rects[i] = Rect{Point: pt, Size: prefSize}
+		rects[i] = geom.Rect{Point: pt, Size: prefSize}
 		if maxHeight < prefSize.Height {
 			maxHeight = prefSize.Height
 		}
@@ -184,7 +185,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 	}
 }
 
-func (f *FlowLayout) applyRects(children []*Panel, rects []Rect, maxHeight float32) {
+func (f *FlowLayout) applyRects(children []*Panel, rects []geom.Rect, maxHeight float32) {
 	for i, child := range children {
 		vAlign, ok := child.LayoutData().(align.Enum)
 		if !ok {

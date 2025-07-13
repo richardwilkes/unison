@@ -12,6 +12,7 @@ package unison
 import (
 	"runtime"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/patheffect"
 	"github.com/richardwilkes/unison/enums/trimmode"
 	"github.com/richardwilkes/unison/internal/skia"
@@ -68,12 +69,12 @@ func New1dPathPathEffect(path *Path, advance, phase float32, style patheffect.En
 }
 
 // New2dLinePathEffect creates a new 2D line PathEffect.
-func New2dLinePathEffect(width float32, matrix Matrix) *PathEffect {
+func New2dLinePathEffect(width float32, matrix geom.Matrix) *PathEffect {
 	return newPathEffect(skia.PathEffectCreate2dLine(width, matrix))
 }
 
 // New2dPathEffect creates a new 2D PathEffect.
-func New2dPathEffect(matrix Matrix, path *Path) *PathEffect {
+func New2dPathEffect(matrix geom.Matrix, path *Path) *PathEffect {
 	return newPathEffect(skia.PathEffectCreate2dPath(matrix, path.path))
 }
 

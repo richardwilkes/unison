@@ -14,7 +14,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
 
@@ -34,24 +36,24 @@ type Panel struct {
 	layout                              Layout
 	sizer                               Sizer
 	border                              Border
-	DrawCallback                        func(gc *Canvas, rect Rect)
-	DrawOverCallback                    func(gc *Canvas, rect Rect)
-	UpdateCursorCallback                func(where Point) *Cursor
-	UpdateTooltipCallback               func(where Point, suggestedAvoidInRoot Rect) Rect
+	DrawCallback                        func(gc *Canvas, rect geom.Rect)
+	DrawOverCallback                    func(gc *Canvas, rect geom.Rect)
+	UpdateCursorCallback                func(where geom.Point) *Cursor
+	UpdateTooltipCallback               func(where geom.Point, suggestedAvoidInRoot geom.Rect) geom.Rect
 	FrameChangeCallback                 func()
 	FrameChangeInChildHierarchyCallback func(panel *Panel)
-	ScrollRectIntoViewCallback          func(rect Rect) bool
+	ScrollRectIntoViewCallback          func(rect geom.Rect) bool
 	ParentChangedCallback               func()
 	FocusChangeInHierarchyCallback      func(from, to *Panel)
 	// DataDragOverCallback is called when a data drag is over a potential drop target. Return true to stop further
 	// handling or false to propagate up to parents.
-	DataDragOverCallback func(where Point, data map[string]any) bool
+	DataDragOverCallback func(where geom.Point, data map[string]any) bool
 	// DataDragExitCallback is called when a previous call to DataDragOverCallback returned true and the data drag
 	// leaves the component.
 	DataDragExitCallback func()
 	// DataDragDropCallback is called when a data drag is dropped and a previous call to DataDragOverCallback returned
 	// true.
-	DataDragDropCallback func(where Point, data map[string]any)
+	DataDragDropCallback func(where geom.Point, data map[string]any)
 	Tooltip              *Panel
 	parent               *Panel
 	canPerformMap        map[int]func(any) bool
@@ -59,7 +61,7 @@ type Panel struct {
 	data                 map[string]any
 	RefKey               string
 	children             []*Panel
-	frame                Rect
+	frame                geom.Rect
 	scale                float32
 	NeedsLayout          bool
 	focusable            bool
@@ -82,7 +84,7 @@ func (p *Panel) AsPanel() *Panel {
 
 // Is returns true if this panel is the other panel.
 func (p *Panel) Is(other Paneler) bool {
-	if p != nil && !toolbox.IsNil(other) {
+	if p != nil && !xreflect.IsNil(other) {
 		p2 := other.AsPanel()
 		return p2 != nil && p.Self == p2.Self
 	}
@@ -128,7 +130,7 @@ func (p *Panel) IndexOfChild(child Paneler) int {
 
 // AddChild adds child to this panel, removing it from any previous parent it may have had.
 func (p *Panel) AddChild(child Paneler) {
-	if toolbox.IsNil(child) {
+	if xreflect.IsNil(child) {
 		return
 	}
 	c := child.AsPanel()
@@ -144,7 +146,7 @@ func (p *Panel) AddChild(child Paneler) {
 // AddChildAtIndex adds child to this panel at the index, removing it from any previous parent it may have had. Passing
 // in a negative value for the index will add it to the end.
 func (p *Panel) AddChildAtIndex(child Paneler, index int) {
-	if toolbox.IsNil(child) {
+	if xreflect.IsNil(child) {
 		return
 	}
 	c := child.AsPanel()
@@ -244,7 +246,7 @@ func (p *Panel) SetScale(scale float32) {
 }
 
 // FrameRect returns the location and size of the panel in its parent's coordinate system.
-func (p *Panel) FrameRect() Rect {
+func (p *Panel) FrameRect() geom.Rect {
 	scale := p.Scale()
 	r := p.frame
 	r.Width *= scale
@@ -253,7 +255,7 @@ func (p *Panel) FrameRect() Rect {
 }
 
 // SetFrameRect sets the location and size of the panel in its parent's coordinate system.
-func (p *Panel) SetFrameRect(rect Rect) {
+func (p *Panel) SetFrameRect(rect geom.Rect) {
 	scale := p.Scale()
 	rect.Width /= scale
 	rect.Height /= scale
@@ -282,8 +284,8 @@ func (p *Panel) SetFrameRect(rect Rect) {
 }
 
 // ContentRect returns the location and size of the panel in local coordinates.
-func (p *Panel) ContentRect(includeBorder bool) Rect {
-	r := Rect{Size: p.frame.Size}
+func (p *Panel) ContentRect(includeBorder bool) geom.Rect {
+	r := geom.Rect{Size: p.frame.Size}
 	if !includeBorder && p.border != nil {
 		r = r.Inset(p.border.Insets())
 	}
@@ -298,7 +300,7 @@ func (p *Panel) Border() Border {
 // SetBorder sets the border for this panel. May be nil.
 func (p *Panel) SetBorder(b Border) {
 	if p.border != b {
-		if toolbox.IsNil(b) {
+		if xreflect.IsNil(b) {
 			p.border = nil
 		} else {
 			p.border = b
@@ -321,7 +323,7 @@ func (p *Panel) SetSizer(sizer Sizer) {
 // Sizes returns the minimum, preferred, and maximum sizes the panel wishes to be. It does this by first asking the
 // panel's layout. If no layout is present, then the panel's sizer is asked. If no sizer is present, then it finally
 // uses a default set of sizes that are used for all panels.
-func (p *Panel) Sizes(hint Size) (minSize, prefSize, maxSize Size) {
+func (p *Panel) Sizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	scale := p.Scale()
 	hint.Width /= scale
 	hint.Height /= scale
@@ -331,7 +333,7 @@ func (p *Panel) Sizes(hint Size) (minSize, prefSize, maxSize Size) {
 	case p.sizer != nil:
 		minSize, prefSize, maxSize = p.sizer(hint)
 	default:
-		return minSize, prefSize, Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
+		return minSize, prefSize, geom.Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
 	}
 	minSize.Width *= scale
 	minSize.Height *= scale
@@ -344,8 +346,8 @@ func (p *Panel) Sizes(hint Size) (minSize, prefSize, maxSize Size) {
 
 // Pack resizes the panel to its preferred size.
 func (p *Panel) Pack() {
-	_, pref, _ := p.Sizes(Size{})
-	p.SetFrameRect(Rect{Point: p.frame.Point, Size: pref})
+	_, pref, _ := p.Sizes(geom.Size{})
+	p.SetFrameRect(geom.Rect{Point: p.frame.Point, Size: pref})
 }
 
 // Layout returns the Layout for this panel, if any.
@@ -424,11 +426,11 @@ func (p *Panel) FlushDrawing() {
 }
 
 // Draw is called by its owning window when a panel needs to be drawn. The canvas has already had its clip set to rect.
-func (p *Panel) Draw(gc *Canvas, rect Rect) {
+func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 	if p.Hidden {
 		return
 	}
-	rect = rect.Intersect(Rect{Size: p.frame.Size})
+	rect = rect.Intersect(geom.Rect{Size: p.frame.Size})
 	if !rect.Empty() {
 		gc.Save()
 		scale := p.Scale()
@@ -534,7 +536,7 @@ func (p *Panel) LastFocusableChild() *Panel {
 }
 
 // PanelAt returns the leaf-most child panel containing the point, or this panel if no child is found.
-func (p *Panel) PanelAt(pt Point) *Panel {
+func (p *Panel) PanelAt(pt geom.Point) *Panel {
 	for _, child := range p.children {
 		if !child.Hidden {
 			if r := child.FrameRect(); pt.In(r) {
@@ -547,7 +549,7 @@ func (p *Panel) PanelAt(pt Point) *Panel {
 
 // PointToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
-func (p *Panel) PointToRoot(pt Point) Point {
+func (p *Panel) PointToRoot(pt geom.Point) geom.Point {
 	panel := p
 	for panel != nil {
 		pt = pt.Mul(panel.Scale()).Add(panel.frame.Point)
@@ -558,7 +560,7 @@ func (p *Panel) PointToRoot(pt Point) Point {
 
 // PointFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local
 // coordinates.
-func (p *Panel) PointFromRoot(pt Point) Point {
+func (p *Panel) PointFromRoot(pt geom.Point) geom.Point {
 	list := make([]*Panel, 0, 32)
 	panel := p
 	for panel != nil {
@@ -573,13 +575,13 @@ func (p *Panel) PointFromRoot(pt Point) Point {
 }
 
 // PointTo converts panel-local coordinates into another panel's coordinates.
-func (p *Panel) PointTo(pt Point, target *Panel) Point {
+func (p *Panel) PointTo(pt geom.Point, target *Panel) geom.Point {
 	return target.PointFromRoot(p.PointToRoot(pt))
 }
 
 // RectToRoot converts panel-local coordinates into root coordinates, which when rooted within a window, will be
 // window-local coordinates.
-func (p *Panel) RectToRoot(rect Rect) Rect {
+func (p *Panel) RectToRoot(rect geom.Rect) geom.Rect {
 	pt := p.PointToRoot(rect.BottomRight())
 	rect.Point = p.PointToRoot(rect.Point)
 	rect.Width = pt.X - rect.X
@@ -588,7 +590,7 @@ func (p *Panel) RectToRoot(rect Rect) Rect {
 }
 
 // RectFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local coordinates.
-func (p *Panel) RectFromRoot(rect Rect) Rect {
+func (p *Panel) RectFromRoot(rect geom.Rect) geom.Rect {
 	pt := p.PointFromRoot(rect.BottomRight())
 	rect.Point = p.PointFromRoot(rect.Point)
 	rect.Width = pt.X - rect.X
@@ -597,7 +599,7 @@ func (p *Panel) RectFromRoot(rect Rect) Rect {
 }
 
 // RectTo converts panel-local coordinates into another panel's coordinates.
-func (p *Panel) RectTo(rect Rect, target *Panel) Rect {
+func (p *Panel) RectTo(rect geom.Rect, target *Panel) geom.Rect {
 	return target.RectFromRoot(p.RectToRoot(rect))
 }
 
@@ -609,7 +611,7 @@ func (p *Panel) ScrollIntoView() {
 
 // ScrollRectIntoView attempts to scroll the rect (in coordinates local to this Panel) into the current view if it is
 // not already there, using scroll areas in this Panel's hierarchy.
-func (p *Panel) ScrollRectIntoView(rect Rect) {
+func (p *Panel) ScrollRectIntoView(rect geom.Rect) {
 	look := p
 	for look != nil {
 		if look.ScrollRectIntoViewCallback != nil {
@@ -643,7 +645,7 @@ func (p *Panel) UpdateCursorNow() {
 }
 
 // IsDragGesture returns true if a gesture to start a drag operation was made.
-func (p *Panel) IsDragGesture(where Point) bool {
+func (p *Panel) IsDragGesture(where geom.Point) bool {
 	if w := p.Window(); w != nil {
 		return w.IsDragGesture(p.PointToRoot(where))
 	}
@@ -705,7 +707,7 @@ func (p *Panel) CanPerformCmd(src any, id int) bool {
 	for current != nil {
 		if f, ok := current.canPerformMap[id]; ok {
 			enabled := false
-			toolbox.Call(func() { enabled = f(src) })
+			xos.SafeCall(func() { enabled = f(src) }, nil)
 			return enabled
 		}
 		current = current.parent
@@ -720,7 +722,7 @@ func (p *Panel) PerformCmd(src any, id int) {
 		current := p
 		for current != nil {
 			if f, ok := current.performMap[id]; ok {
-				toolbox.Call(func() { f(src) })
+				xos.SafeCall(func() { f(src) }, nil)
 				return
 			}
 			current = current.parent
@@ -773,7 +775,7 @@ func AncestorOrSelf[T any](paneler Paneler) T {
 
 // AncestorIs returns true if the paneler has the given ancestor.
 func AncestorIs(paneler, ancestor Paneler) bool {
-	if toolbox.IsNil(paneler) || toolbox.IsNil(ancestor) {
+	if xreflect.IsNil(paneler) || xreflect.IsNil(ancestor) {
 		return false
 	}
 	target := ancestor.AsPanel().Self
@@ -789,7 +791,7 @@ func AncestorIs(paneler, ancestor Paneler) bool {
 
 // AncestorIsOrSelf returns true if the paneler has the given ancestor or is the ancestor.
 func AncestorIsOrSelf(paneler, ancestor Paneler) bool {
-	if toolbox.IsNil(paneler) || toolbox.IsNil(ancestor) {
+	if xreflect.IsNil(paneler) || xreflect.IsNil(ancestor) {
 		return false
 	}
 	target := ancestor.AsPanel().Self

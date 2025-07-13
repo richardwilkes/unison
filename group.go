@@ -12,7 +12,7 @@ package unison
 import (
 	"slices"
 
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 )
 
 // Grouper is the interface that a panel must implement to be part of a group.
@@ -73,7 +73,7 @@ func (sg *Group) Remove(panel Grouper) {
 
 // Selected returns true if the panel is currently selected.
 func (sg *Group) Selected(panel Grouper) bool {
-	if sg == nil || toolbox.IsNil(panel) {
+	if sg == nil || xreflect.IsNil(panel) {
 		return false
 	}
 	return panel.AsPanel().Is(sg.selected)
@@ -84,9 +84,9 @@ func (sg *Group) Select(panel Grouper) {
 	if sg == nil {
 		return
 	}
-	panelIsNil := toolbox.IsNil(panel)
+	panelIsNil := xreflect.IsNil(panel)
 	if (panelIsNil || panel.Group() == sg) && sg.selected != panel {
-		if !toolbox.IsNil(sg.selected) {
+		if !xreflect.IsNil(sg.selected) {
 			sg.selected.AsPanel().MarkForRedraw()
 		}
 		if panelIsNil {

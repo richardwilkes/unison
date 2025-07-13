@@ -9,29 +9,31 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/v2/geom"
+
 var _ Drawable = &SizedDrawable{}
 
 // Drawable represents a drawable object.
 type Drawable interface {
 	// LogicalSize returns the logical size of this object.
-	LogicalSize() Size
+	LogicalSize() geom.Size
 
 	// DrawInRect draws this object in the given rectangle.
-	DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOptions, paint *Paint)
+	DrawInRect(canvas *Canvas, rect geom.Rect, sampling *SamplingOptions, paint *Paint)
 }
 
 // SizedDrawable allows the Drawable's logical size to be overridden.
 type SizedDrawable struct {
 	Drawable Drawable
-	Size     Size
+	Size     geom.Size
 }
 
 // LogicalSize implements Drawable.
-func (d *SizedDrawable) LogicalSize() Size {
+func (d *SizedDrawable) LogicalSize() geom.Size {
 	return d.Size
 }
 
 // DrawInRect implements Drawable.
-func (d *SizedDrawable) DrawInRect(canvas *Canvas, rect Rect, sampling *SamplingOptions, paint *Paint) {
+func (d *SizedDrawable) DrawInRect(canvas *Canvas, rect geom.Rect, sampling *SamplingOptions, paint *Paint) {
 	d.Drawable.DrawInRect(canvas, rect, sampling, paint)
 }

@@ -11,31 +11,30 @@ package main
 
 import (
 	_ "embed"
-	"log/slog"
-	"os"
 
-	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/fatal"
-	"github.com/richardwilkes/toolbox/log/tracelog"
+	"github.com/richardwilkes/toolbox/v2/xflag"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xslog"
 	"github.com/richardwilkes/unison"
-	"github.com/richardwilkes/unison/example/demo"
+	"github.com/richardwilkes/unison/cmd/example/demo"
 )
 
 func main() {
-	cmdline.AppName = "Example"
-	cmdline.AppCmdName = "example"
-	cmdline.CopyrightStartYear = "2021"
-	cmdline.CopyrightHolder = "Richard A. Wilkes"
-	cmdline.AppIdentifier = "com.trollworks.unison.example"
+	xos.AppName = "Example"
+	xos.AppCmdName = "example"
+	xos.CopyrightStartYear = "2021"
+	xos.CopyrightHolder = "Richard A. Wilkes"
+	xos.AppIdentifier = "com.trollworks.unison.example"
+	xflag.SetUsage(nil, "Demo of some of the features of Unison", "")
 
 	unison.AttachConsole()
 
-	cl := cmdline.New(true)
-	cl.Parse(os.Args[1:])
-	slog.SetDefault(slog.New(tracelog.New(nil)))
+	logCfg := xslog.Config{Console: true}
+	logCfg.AddFlags()
+	xflag.Parse()
 
 	unison.Start(unison.StartupFinishedCallback(func() {
 		_, err := demo.NewDemoWindow(unison.PrimaryDisplay().Usable.Point)
-		fatal.IfErr(err)
+		xos.ExitIfErr(err)
 	})) // Never returns
 }

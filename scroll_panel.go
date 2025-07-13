@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -188,7 +189,7 @@ func (s *ScrollPanel) SetPosition(h, v float32) {
 }
 
 // DefaultDraw provides the default drawing.
-func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ Rect) {
+func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := s.ContentRect(true)
 	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 }
@@ -245,7 +246,7 @@ func (s *ScrollPanel) scrollViewByPage(direction float32, horizontal bool) {
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
-func (s *ScrollPanel) DefaultMouseWheel(_, delta Point, _ Modifiers) bool {
+func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ Modifiers) bool {
 	multiplier := s.MouseWheelMultiplier()
 	if delta.Y != 0 {
 		dy := delta.Y
@@ -265,7 +266,7 @@ func (s *ScrollPanel) DefaultMouseWheel(_, delta Point, _ Modifiers) bool {
 }
 
 // DefaultScrollRectIntoView provides the default scroll rect into contentView handling.
-func (s *ScrollPanel) DefaultScrollRectIntoView(rect Rect) bool {
+func (s *ScrollPanel) DefaultScrollRectIntoView(rect geom.Rect) bool {
 	viewRect := s.contentView.FrameRect()
 	viewRect.X = 0
 	viewRect.Y = 0
@@ -338,14 +339,14 @@ func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
 }
 
 // LayoutSizes implements the Layout interface.
-func (s *ScrollPanel) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSize Size) {
+func (s *ScrollPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	if s.content != nil {
 		_, prefSize, _ = s.content.AsPanel().Sizes(hint)
 	}
 	minSize.Width = s.verticalBar.MinimumThickness
 	minSize.Height = s.horizontalBar.MinimumThickness
 	if s.columnHeaderView != nil {
-		_, p, _ := s.columnHeader.AsPanel().Sizes(Size{Width: hint.Width})
+		_, p, _ := s.columnHeader.AsPanel().Sizes(geom.Size{Width: hint.Width})
 		minSize.Height += p.Height
 		prefSize.Height += p.Height
 		if border := s.columnHeaderView.Border(); border != nil {
@@ -355,7 +356,7 @@ func (s *ScrollPanel) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSi
 		}
 	}
 	if s.rowHeaderView != nil {
-		_, p, _ := s.rowHeader.AsPanel().Sizes(Size{Height: hint.Height})
+		_, p, _ := s.rowHeader.AsPanel().Sizes(geom.Size{Height: hint.Height})
 		minSize.Width += p.Width
 		prefSize.Width += p.Width
 		if border := s.rowHeaderView.Border(); border != nil {
@@ -384,7 +385,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	r.Y = 0
 	columnHeaderTop := r.Y
 	if s.columnHeaderView != nil {
-		_, p, _ := s.columnHeader.AsPanel().Sizes(Size{Width: r.Width})
+		_, p, _ := s.columnHeader.AsPanel().Sizes(geom.Size{Width: r.Width})
 		height := min(r.Height, p.Height)
 		if border := s.columnHeaderView.Border(); border != nil {
 			insets := border.Insets()
@@ -394,7 +395,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		r.Height -= height
 	}
 	if s.rowHeaderView != nil {
-		_, p, _ := s.rowHeader.AsPanel().Sizes(Size{Height: r.Height})
+		_, p, _ := s.rowHeader.AsPanel().Sizes(geom.Size{Height: r.Height})
 		row := r
 		row.Width = min(r.Width, p.Width)
 		if border := s.rowHeaderView.Border(); border != nil {
@@ -406,7 +407,7 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		r.Width -= row.Width
 	}
 	if s.columnHeaderView != nil {
-		_, p, _ := s.columnHeader.AsPanel().Sizes(Size{Width: r.Width})
+		_, p, _ := s.columnHeader.AsPanel().Sizes(geom.Size{Width: r.Width})
 		col := r
 		col.Y = columnHeaderTop
 		col.Height = min(r.Height, p.Height)
@@ -420,9 +421,9 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 	if border := s.contentView.Border(); border != nil {
 		viewContent = viewContent.Inset(border.Insets())
 	}
-	var contentSize Size
+	var contentSize geom.Size
 	if s.content != nil {
-		var hint Size
+		var hint geom.Size
 		if s.widthBehavior == behavior.Follow || s.widthBehavior == behavior.HintedFill {
 			hint.Width = viewContent.Width
 		}
@@ -466,13 +467,13 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		width -= s.verticalBar.MinimumThickness
 		height -= s.horizontalBar.MinimumThickness
 	}
-	s.verticalBar.SetFrameRect(Rect{
-		Point: Point{X: viewContent.Right() - s.verticalBar.MinimumThickness, Y: viewContent.Y},
-		Size:  Size{Width: s.verticalBar.MinimumThickness, Height: height},
+	s.verticalBar.SetFrameRect(geom.Rect{
+		Point: geom.Point{X: viewContent.Right() - s.verticalBar.MinimumThickness, Y: viewContent.Y},
+		Size:  geom.Size{Width: s.verticalBar.MinimumThickness, Height: height},
 	})
-	s.horizontalBar.SetFrameRect(Rect{
-		Point: Point{X: viewContent.X, Y: viewContent.Bottom() - s.horizontalBar.MinimumThickness},
-		Size:  Size{Width: width, Height: s.horizontalBar.MinimumThickness},
+	s.horizontalBar.SetFrameRect(geom.Rect{
+		Point: geom.Point{X: viewContent.X, Y: viewContent.Bottom() - s.horizontalBar.MinimumThickness},
+		Size:  geom.Size{Width: width, Height: s.horizontalBar.MinimumThickness},
 	})
 	s.contentView.SetFrameRect(r)
 	if s.columnHeaderView != nil {

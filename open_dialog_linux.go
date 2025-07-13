@@ -12,13 +12,15 @@ package unison
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 )
 
 type linuxOpenDialog struct {
@@ -160,7 +162,7 @@ func (d *linuxOpenDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
 	if err != nil {
 		errs.Log(err)
 	}
-	wnd.SetFrameRect(NewRect(-10000, -10000, 1, 1))
+	wnd.SetFrameRect(geom.NewRect(-10000, -10000, 1, 1))
 	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
 	return wnd.RunModal() == ModalResponseOK
 }
@@ -180,6 +182,10 @@ func (d *linuxOpenDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 	if cmd.ProcessState.ExitCode() != 0 {
 		return
 	}
-	d.fallback.(*fileDialog).paths = strings.Split(strings.TrimSuffix(string(out), "\n"), splitOn)
+	if dialog, ok := d.fallback.(*fileDialog); ok {
+		dialog.paths = strings.Split(strings.TrimSuffix(string(out), "\n"), splitOn)
+	} else {
+		slog.Error("unable to access dialog to store path")
+	}
 	code = ModalResponseOK
 }

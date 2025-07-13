@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/tilemode"
 )
@@ -33,27 +34,27 @@ func (s Stop) String() string {
 // are both greater than 0, then the gradient will be a radial one instead of a linear one.
 type Gradient struct {
 	Stops       []Stop
-	Start       Point
+	Start       geom.Point
 	StartRadius float32
-	End         Point
+	End         geom.Point
 	EndRadius   float32
 }
 
 // NewHorizontalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole
 // range.
 func NewHorizontalEvenlySpacedGradient(colors ...ColorProvider) *Gradient {
-	return NewEvenlySpacedGradient(Point{}, Point{X: 1}, 0, 0, colors...)
+	return NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, colors...)
 }
 
 // NewVerticalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole
 // range.
 func NewVerticalEvenlySpacedGradient(colors ...ColorProvider) *Gradient {
-	return NewEvenlySpacedGradient(Point{}, Point{Y: 1}, 0, 0, colors...)
+	return NewEvenlySpacedGradient(geom.Point{}, geom.Point{Y: 1}, 0, 0, colors...)
 }
 
 // NewEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole range. start
 // and end should hold values from 0 to 1, representing the percentage position within the area that will be filled.
-func NewEvenlySpacedGradient(start, end Point, startRadius, endRadius float32, colors ...ColorProvider) *Gradient {
+func NewEvenlySpacedGradient(start, end geom.Point, startRadius, endRadius float32, colors ...ColorProvider) *Gradient {
 	gradient := &Gradient{
 		Start:       start,
 		StartRadius: startRadius,
@@ -86,7 +87,7 @@ func NewEvenlySpacedGradient(start, end Point, startRadius, endRadius float32, c
 }
 
 // Paint returns a Paint for this Gradient.
-func (g *Gradient) Paint(_ *Canvas, rect Rect, style paintstyle.Enum) *Paint {
+func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	paint.SetColor(Black)
@@ -96,20 +97,20 @@ func (g *Gradient) Paint(_ *Canvas, rect Rect, style paintstyle.Enum) *Paint {
 		colors[i] = g.Stops[i].Color.GetColor()
 		colorPos[i] = g.Stops[i].Location
 	}
-	start := Point{
+	start := geom.Point{
 		X: rect.X + rect.Width*g.Start.X,
 		Y: rect.Y + rect.Height*g.Start.Y,
 	}
-	end := Point{
+	end := geom.Point{
 		X: rect.X + rect.Width*g.End.X,
 		Y: rect.Y + rect.Height*g.End.Y,
 	}
 	var shader *Shader
 	if g.StartRadius > 0 && g.EndRadius > 0 {
 		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, colors, colorPos, tilemode.Clamp,
-			NewIdentityMatrix())
+			geom.NewIdentityMatrix())
 	} else {
-		shader = NewLinearGradientShader(start, end, colors, colorPos, tilemode.Clamp, NewIdentityMatrix())
+		shader = NewLinearGradientShader(start, end, colors, colorPos, tilemode.Clamp, geom.NewIdentityMatrix())
 	}
 	paint.SetShader(shader)
 	return paint

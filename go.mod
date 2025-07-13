@@ -8,11 +8,11 @@ require (
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lafriks/go-svg v0.5.1
-	github.com/richardwilkes/json v0.3.0
-	github.com/richardwilkes/toolbox v1.125.0
+	github.com/richardwilkes/toolbox/v2 v2.0.0
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.7.12
 	github.com/zeebo/xxh3 v1.0.2
+	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
 	golang.org/x/image v0.28.0
 	golang.org/x/sys v0.33.0
 	golang.org/x/text v0.26.0

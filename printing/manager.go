@@ -11,15 +11,15 @@ package printing
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/grandcat/zeroconf"
-	"github.com/richardwilkes/toolbox/collection/dict"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/txt"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xstrings"
 )
 
 // PrintManager holds the data needed by the print manager.
@@ -38,15 +38,14 @@ func (p *PrintManager) LookupPrinter(id PrinterID) *Printer {
 // Printers returns the previously discovered available printers, sorted by name.
 func (p *PrintManager) Printers() []*Printer {
 	p.lock.RLock()
-	printers := dict.Values(p.printers)
+	printers := maps.Values(p.printers)
 	p.lock.RUnlock()
-	slices.SortFunc(printers, func(a, b *Printer) int {
-		if result := txt.NaturalCmp(a.Name, b.Name, true); result != 0 {
+	return slices.SortedFunc(printers, func(a, b *Printer) int {
+		if result := xstrings.NaturalCmp(a.Name, b.Name, true); result != 0 {
 			return result
 		}
-		return txt.NaturalCmp(a.ID, b.ID, true)
+		return xstrings.NaturalCmp(a.ID, b.ID, true)
 	})
-	return printers
 }
 
 // ScanForPrinters first clears the previously known set of printers, then creates a goroutine to scan for printers,

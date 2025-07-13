@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/tc-hib/winres"
 	"github.com/tc-hib/winres/version"
 )
@@ -60,7 +60,8 @@ func addWindowsIcon(cfg *Config, rs *winres.ResourceSet) error {
 		if fi.Rank != "Owner" {
 			continue
 		}
-		docImg, err := loadPNG(fi.Icon)
+		var docImg image.Image
+		docImg, err = loadPNG(fi.Icon)
 		if err != nil {
 			return err
 		}
@@ -126,8 +127,8 @@ func addWindowsVersion(cfg *Config, rs *winres.ResourceSet) error {
 
 func generateDistribution(cfg *Config) (err error) {
 	dstPath := cfg.ExecutableName + "-" + cfg.version + "-windows-" + runtime.GOARCH + ".zip"
-	if fs.FileExists(dstPath) {
-		if err := os.Remove(dstPath); err != nil {
+	if xos.FileExists(dstPath) {
+		if err = os.Remove(dstPath); err != nil {
 			return errs.Wrap(err)
 		}
 	}

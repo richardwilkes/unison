@@ -15,11 +15,8 @@ import (
 	"strings"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/json"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 )
-
-var _ json.Omitter = KeyCode(0)
 
 // KeyCode holds a virtual key code.
 type KeyCode int16
@@ -313,7 +310,7 @@ func KeyCodeFromKey(key string) KeyCode {
 
 // Key returns a string version of the KeyCode for the purpose of serialization.
 func (k KeyCode) Key() string {
-	if k.ShouldOmit() {
+	if k.IsZero() {
 		return ""
 	}
 	if v, ok := keyCodeToKey[k]; ok {
@@ -323,7 +320,7 @@ func (k KeyCode) Key() string {
 }
 
 func (k KeyCode) String() string {
-	if k.ShouldOmit() {
+	if k.IsZero() {
 		return ""
 	}
 	switch k {
@@ -572,7 +569,7 @@ func (k KeyCode) String() string {
 	}
 }
 
-// ShouldOmit implements json.Omitter.
-func (k KeyCode) ShouldOmit() bool {
+// IsZero implements json.isZero.
+func (k KeyCode) IsZero() bool {
 	return k == 0 || k == KeyNone
 }

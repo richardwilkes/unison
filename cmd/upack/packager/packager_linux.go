@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 func prepareBinary(_ *Config) error {
@@ -18,8 +18,8 @@ func prepareBinary(_ *Config) error {
 
 func generateDistribution(cfg *Config) (err error) {
 	dstPath := cfg.ExecutableName + "-" + cfg.version + "-linux-" + runtime.GOARCH + ".tgz"
-	if fs.FileExists(dstPath) {
-		if err := os.Remove(dstPath); err != nil {
+	if xos.FileExists(dstPath) {
+		if err = os.Remove(dstPath); err != nil {
 			return errs.Wrap(err)
 		}
 	}
@@ -58,7 +58,7 @@ func generateDistribution(cfg *Config) (err error) {
 	w := tar.NewWriter(gw)
 	if err = w.WriteHeader(&tar.Header{
 		Name:    cfg.ExecutableName,
-		Size:    int64(fi.Size()),
+		Size:    fi.Size(),
 		Mode:    0o755,
 		ModTime: time.Now(),
 	}); err != nil {

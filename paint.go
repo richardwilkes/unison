@@ -12,6 +12,7 @@ package unison
 import (
 	"runtime"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/strokecap"
@@ -222,7 +223,7 @@ func (p *Paint) FillPath(path *Path, resScale float32) (result *Path, hairline b
 // outside of the rect. resScale determines the precision used. Values >1 increase precision, while those <1 reduce
 // precision to favor speed and size. If hairline returns true, the path represents a hairline, otherwise it represents
 // a fill.
-func (p *Paint) FillPathWithCull(path *Path, cullRect *Rect, resScale float32) (result *Path, hairline bool) {
+func (p *Paint) FillPathWithCull(path *Path, cullRect *geom.Rect, resScale float32) (result *Path, hairline bool) {
 	result = NewPath()
 	isFill := skia.PaintGetFillPath(p.paint, path.path, result.path, cullRect, resScale)
 	return result, !isFill

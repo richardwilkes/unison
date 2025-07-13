@@ -10,7 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -20,7 +21,7 @@ type PDFMetaData = skia.MetaData
 // PageProvider defines the methods required of a PDF producer.
 type PageProvider interface {
 	HasPage(pageNumber int) bool
-	PageSize() Size
+	PageSize() geom.Size
 	DrawPage(canvas *Canvas, pageNumber int) error
 }
 

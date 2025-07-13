@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/unison/enums/paintstyle"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/paintstyle"
+)
 
 var (
 	_ Ink = &IndirectInk{}
@@ -18,7 +21,7 @@ var (
 
 // Ink holds a color, pattern, or gradient to draw with.
 type Ink interface {
-	Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint
+	Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint
 }
 
 // IndirectInk an ink that references another ink.
@@ -27,7 +30,7 @@ type IndirectInk struct {
 }
 
 // Paint implements Ink.
-func (i *IndirectInk) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint {
+func (i *IndirectInk) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	return i.Target.Paint(canvas, rect, style)
 }
 
@@ -38,7 +41,7 @@ type ColorFilteredInk struct {
 }
 
 // Paint implements Ink.
-func (c *ColorFilteredInk) Paint(canvas *Canvas, rect Rect, style paintstyle.Enum) *Paint {
+func (c *ColorFilteredInk) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	paint := c.OriginalInk.Paint(canvas, rect, style)
 	if c.ColorFilter != nil {
 		paint.SetColorFilter(c.ColorFilter)

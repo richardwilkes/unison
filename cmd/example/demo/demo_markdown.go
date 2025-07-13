@@ -13,6 +13,7 @@ import (
 	_ "embed"
 	"fmt"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
@@ -24,7 +25,7 @@ var sampleMarkdown string
 var markdownCounter int
 
 // NewDemoMarkdownWindow creates and displays our demo markdown window.
-func NewDemoMarkdownWindow(where unison.Point) (*unison.Window, error) {
+func NewDemoMarkdownWindow(where geom.Point) (*unison.Window, error) {
 	// Create the window
 	markdownCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Markdown #%d", markdownCounter))
@@ -37,7 +38,7 @@ func NewDemoMarkdownWindow(where unison.Point) (*unison.Window, error) {
 
 	content := wnd.Content()
 	content.SetLayout(&unison.FlexLayout{Columns: 1})
-	content.SetBorder(unison.NewEmptyBorder(unison.NewSymmetricInsets(unison.StdHSpacing, unison.StdVSpacing)))
+	content.SetBorder(unison.NewEmptyBorder(geom.NewSymmetricInsets(unison.StdHSpacing, unison.StdVSpacing)))
 
 	// Create the markdown view
 	markdown := unison.NewMarkdown(true)

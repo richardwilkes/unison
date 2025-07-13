@@ -10,6 +10,7 @@
 package demo
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -40,7 +41,7 @@ func NewDockablePanel(title, tip string, background unison.Color) *DockablePanel
 	d.LostFocusCallback = d.MarkForRedraw
 	d.MouseDownCallback = d.mouseDown
 	d.SetFocusable(true)
-	d.SetSizer(func(_ unison.Size) (minSize, prefSize, maxSize unison.Size) {
+	d.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
 		prefSize.Width = 200
 		prefSize.Height = 100
 		return minSize, prefSize, unison.MaxSize(maxSize)
@@ -48,7 +49,7 @@ func NewDockablePanel(title, tip string, background unison.Color) *DockablePanel
 	return d
 }
 
-func (d *DockablePanel) draw(gc *unison.Canvas, rect unison.Rect) {
+func (d *DockablePanel) draw(gc *unison.Canvas, rect geom.Rect) {
 	gc.DrawRect(rect, d.Color.Paint(gc, rect, paintstyle.Fill))
 	if d.Focused() {
 		txt := unison.NewText("Focused", &unison.TextDecoration{
@@ -61,7 +62,7 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect unison.Rect) {
 	}
 }
 
-func (d *DockablePanel) mouseDown(_ unison.Point, _, _ int, _ unison.Modifiers) bool {
+func (d *DockablePanel) mouseDown(_ geom.Point, _, _ int, _ unison.Modifiers) bool {
 	if !d.Focused() {
 		d.RequestFocus()
 		d.MarkForRedraw()
@@ -70,7 +71,7 @@ func (d *DockablePanel) mouseDown(_ unison.Point, _, _ int, _ unison.Modifiers) 
 }
 
 // TitleIcon implements Dockable.
-func (d *DockablePanel) TitleIcon(suggestedSize unison.Size) unison.Drawable {
+func (d *DockablePanel) TitleIcon(suggestedSize geom.Size) unison.Drawable {
 	return &unison.DrawableSVG{
 		SVG:  unison.DocumentSVG,
 		Size: suggestedSize,

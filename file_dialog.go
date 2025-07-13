@@ -15,9 +15,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xio/fs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xfilepath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 )
@@ -166,11 +168,11 @@ func (d *fileDialog) createContent() *Panel {
 	d.fileList.DoubleClickCallback = d.fileListDoubleClickHandler
 	d.rebuildFileList()
 	d.scroller = NewScrollPanel()
-	d.scroller.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, NewUniformInsets(1), false))
+	d.scroller.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, geom.NewUniformInsets(1), false))
 	d.scroller.SetContent(d.fileList, behavior.Follow, behavior.Fill)
 	content.AddChild(d.scroller)
 	d.scroller.SetLayoutData(&FlexLayoutData{
-		MinSize: Size{Width: 300, Height: 200},
+		MinSize: geom.Size{Width: 300, Height: 200},
 		HSpan:   1,
 		VSpan:   1,
 		HAlign:  align.Fill,
@@ -325,10 +327,10 @@ func (d *fileDialog) fileNameFieldModified(_, _ *FieldState) {
 				}
 			}
 			if !found {
-				text = fs.TrimExtension(text) + "." + d.readable[0]
+				text = xfilepath.TrimExtension(text) + "." + d.readable[0]
 			}
 		default:
-			text = fs.TrimExtension(text) + "." + d.currentExt
+			text = xfilepath.TrimExtension(text) + "." + d.currentExt
 		}
 	}
 	d.paths = []string{filepath.Join(d.currentDir, text)}
@@ -365,8 +367,8 @@ func (d *fileDialog) rebuildFileList() {
 		d.fileList.Append(&fileListItem{entry: entry})
 	}
 	if d.fileList.Parent() != nil {
-		_, pref, _ := d.fileList.Sizes(Size{})
-		d.fileList.SetFrameRect(Rect{Size: pref})
+		_, pref, _ := d.fileList.Sizes(geom.Size{})
+		d.fileList.SetFrameRect(geom.Rect{Size: pref})
 		d.scroller.SetPosition(0, 0)
 	}
 }
@@ -528,7 +530,7 @@ func resolveToAcceptableAbsDir(dir string) string {
 }
 
 func dirToAbsDirOnly(dir string) string {
-	if d, err := filepath.Abs(dir); err == nil && fs.IsDir(d) {
+	if d, err := filepath.Abs(dir); err == nil && xos.IsDir(d) {
 		return d
 	}
 	return ""

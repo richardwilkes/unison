@@ -12,8 +12,8 @@ package unison
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/i18n"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/check"
 )
 
@@ -64,7 +64,7 @@ func InsertStdMenus(m Menu, aboutHandler, prefsHandler func(MenuItem), updater f
 // NewAppMenu creates a standard 'App' menu. Really only intended for macOS, although other platforms can use it if
 // desired.
 func NewAppMenu(f MenuFactory, aboutHandler, prefsHandler func(MenuItem), updater func(Menu)) Menu {
-	m := f.NewMenu(AppMenuID, cmdline.AppName, updater)
+	m := f.NewMenu(AppMenuID, xos.AppName, updater)
 	InsertAboutItem(m, -1, aboutHandler)
 	m.InsertSeparator(-1, false)
 	InsertPreferencesItem(m, -1, prefsHandler)
@@ -76,7 +76,7 @@ func NewAppMenu(f MenuFactory, aboutHandler, prefsHandler func(MenuItem), update
 
 // InsertAboutItem creates the standard "About" menu item that will call the provided handler when chosen.
 func InsertAboutItem(m Menu, atIndex int, aboutHandler func(MenuItem)) {
-	m.InsertItem(atIndex, m.Factory().NewItem(AboutItemID, fmt.Sprintf(i18n.Text("About %s"), cmdline.AppName), KeyBinding{},
+	m.InsertItem(atIndex, m.Factory().NewItem(AboutItemID, fmt.Sprintf(i18n.Text("About %s"), xos.AppName), KeyBinding{},
 		func(MenuItem) bool { return aboutHandler != nil }, aboutHandler))
 }
 

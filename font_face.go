@@ -14,8 +14,8 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/richardwilkes/toolbox/txt"
-	"github.com/richardwilkes/toolbox/xmath"
+	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -90,7 +90,7 @@ func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
 			}
 		}
 	}
-	sorter := func(a, b FontFaceDescriptor) int { return txt.NaturalCmp(a.String(), b.String(), true) }
+	sorter := func(a, b FontFaceDescriptor) int { return xstrings.NaturalCmp(a.String(), b.String(), true) }
 	slices.SortFunc(all, sorter)
 	slices.SortFunc(monospaced, sorter)
 	return
@@ -237,7 +237,7 @@ func (f *FontFace) UnitsPerEm() int {
 func (f *FontFace) Less(other *FontFace) bool {
 	f1 := f.Family()
 	f2 := other.Family()
-	if txt.NaturalLess(f1, f2, true) {
+	if xstrings.NaturalLess(f1, f2, true) {
 		return true
 	}
 	if f1 != f2 {

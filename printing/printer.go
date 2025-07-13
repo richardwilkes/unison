@@ -21,10 +21,10 @@ import (
 	"time"
 
 	"github.com/OpenPrinting/goipp"
-	"github.com/richardwilkes/toolbox"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/i18n"
-	"github.com/richardwilkes/toolbox/xio"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xio"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 // PrinterID identifies a specific printer.
@@ -166,7 +166,7 @@ func (p *Printer) printerURI() string {
 func (p *Printer) newRequest(id uint32, op goipp.Op) *goipp.Message {
 	req := goipp.NewRequest(goipp.DefaultVersion, op, id)
 	req.Operation.Add(goipp.MakeAttribute("printer-uri", goipp.TagURI, goipp.String(p.printerURI())))
-	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(toolbox.CurrentUserName())))
+	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(xos.CurrentUserName())))
 	req.Operation.Add(goipp.MakeAttribute("attributes-charset", goipp.TagCharset, goipp.String("utf-8")))
 	req.Operation.Add(goipp.MakeAttribute("attributes-natural-language", goipp.TagLanguage, goipp.String("en-US")))
 	return req

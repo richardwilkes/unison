@@ -11,7 +11,8 @@ package unison
 
 import (
 	"github.com/go-gl/gl/v3.2-core/gl"
-	"github.com/richardwilkes/toolbox/errs"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -25,12 +26,12 @@ type surface struct {
 	context skia.DirectContext
 	backend skia.BackendRenderTarget
 	surface skia.Surface
-	size    Size
+	size    geom.Size
 	scaleX  float32
 	scaleY  float32
 }
 
-func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Canvas, error) {
+func (s *surface) prepareCanvas(size geom.Size, _ geom.Rect, scaleX, scaleY float32) (*Canvas, error) {
 	if s.size != size || scaleX != s.scaleX || scaleY != s.scaleY {
 		s.partialDispose()
 		s.size = size
@@ -61,7 +62,7 @@ func (s *surface) prepareCanvas(size Size, _ Rect, scaleX, scaleY float32) (*Can
 	}
 	skia.ContextReset(s.context)
 	c.RestoreToCount(1)
-	c.SetMatrix(NewScaleMatrix(scaleX, scaleY))
+	c.SetMatrix(geom.NewScaleMatrix(scaleX, scaleY))
 	return c, nil
 }
 

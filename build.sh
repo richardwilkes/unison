@@ -39,7 +39,7 @@ done
 
 # Generate the source
 echo -e "\033[33mGenerating...\033[0m"
-go generate ./gen/enumgen.go
+go generate ./cmd/enumgen/main.go
 
 # Build the Go code
 echo -e "\033[33mBuilding Go code...\033[0m"
@@ -70,4 +70,4 @@ fi
 
 # Install the packager
 echo -e "\033[33mInstalling upack...\033[0m"
-go install -v ./upack
+go install -v ./cmd/upack

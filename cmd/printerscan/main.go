@@ -11,35 +11,45 @@ package main
 
 import (
 	"context"
+	"flag"
 	"io"
 	"log"
 	"log/slog"
 	"os"
 	"time"
 
-	"github.com/richardwilkes/toolbox/atexit"
-	"github.com/richardwilkes/toolbox/cmdline"
-	"github.com/richardwilkes/toolbox/errs"
-	"github.com/richardwilkes/toolbox/fatal"
-	"github.com/richardwilkes/toolbox/xio"
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xflag"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xslog"
 	"github.com/richardwilkes/unison/printing"
 )
 
 func main() {
-	cl := cmdline.New(true)
-	duration := 5 * time.Second
-	cl.NewGeneralOption(&duration).SetName("duration").SetSingle('d').SetUsage("The amount of time to scan for printers as well as the amount of time to wait for a response when querying for attributes")
-	output := "scan-results.txt"
-	cl.NewGeneralOption(&output).SetName("output").SetSingle('o').SetUsage("The file to write to")
-	cl.Parse(os.Args[1:])
-	scan(duration, output)
-	atexit.Exit(0)
+	xos.AppName = "Printer Scan"
+	xos.AppCmdName = "printerscan"
+	xos.License = "Mozilla Public License, version 2.0"
+	xos.CopyrightStartYear = "2021"
+	xos.CopyrightHolder = "Richard A. Wilkes"
+	xos.AppIdentifier = "com.trollworks.unison.printer.scanner"
+	xflag.SetUsage(nil, "A tool for scanning for printers on the network.", "")
+	duration := flag.Duration("duration", 5*time.Second,
+		"The amount of `time` to scan for printers as well as the amount of time to wait for a response when querying for attributes")
+	defOutput := "scan-results.txt"
+	outputDesc := "The file to write to"
+	output := flag.String("output", defOutput, outputDesc)
+	flag.StringVar(output, "o", defOutput, outputDesc)
+	logCfg := xslog.Config{Console: true}
+	logCfg.AddFlags()
+	xflag.Parse()
+	scan(*duration, *output)
+	xos.Exit(0)
 }
 
 func scan(duration time.Duration, output string) {
 	f, err := os.Create(output)
-	fatal.IfErr(err)
-	log.SetOutput(&xio.TeeWriter{Writers: []io.Writer{f, os.Stdout}})
+	xos.ExitIfErr(err)
+	log.SetOutput(io.MultiWriter(f, os.Stdout))
 	pm := &printing.PrintManager{}
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
@@ -59,7 +69,7 @@ func scan(duration time.Duration, output string) {
 			continue
 		}
 		for k, v := range a.Attributes {
-			slog.Info("attribute", "key", k, "value", v)
+			slog.Info("attribute", k, v)
 		}
 	}
 }

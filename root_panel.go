@@ -12,7 +12,8 @@ package unison
 import (
 	"slices"
 
-	"github.com/richardwilkes/toolbox"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 var _ Layout = &rootPanel{}
@@ -113,11 +114,11 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 	}
 }
 
-func (p *rootPanel) LayoutSizes(_ *Panel, hint Size) (minSize, prefSize, maxSize Size) {
+func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	minSize, prefSize, maxSize = p.contentPanel.Sizes(hint)
 	if p.menuBarPanel != nil {
-		_, barSize, _ := p.menuBarPanel.Sizes(Size{})
-		for _, size := range []*Size{&minSize, &prefSize, &maxSize} {
+		_, barSize, _ := p.menuBarPanel.Sizes(geom.Size{})
+		for _, size := range []*geom.Size{&minSize, &prefSize, &maxSize} {
 			size.Height += barSize.Height
 			if size.Width < barSize.Width {
 				size.Width = barSize.Width
@@ -132,8 +133,8 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	rect.X = 0
 	rect.Y = 0
 	if p.menuBarPanel != nil {
-		_, size, _ := p.menuBarPanel.Sizes(Size{})
-		p.menuBarPanel.SetFrameRect(Rect{Size: Size{Width: rect.Width, Height: size.Height}})
+		_, size, _ := p.menuBarPanel.Sizes(geom.Size{})
+		p.menuBarPanel.SetFrameRect(geom.Rect{Size: geom.Size{Width: rect.Width, Height: size.Height}})
 		rect.Y += size.Height
 		rect.Height -= size.Height
 	}
@@ -148,7 +149,7 @@ func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers, repe
 	}
 	if p.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mod) })
+		xos.SafeCall(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mod) }, nil)
 		return stop
 	}
 	return false
@@ -157,7 +158,7 @@ func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers, repe
 func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 	if p.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mod) })
+		xos.SafeCall(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mod) }, nil)
 		return stop
 	}
 	return false
@@ -166,16 +167,16 @@ func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 func (p *rootPanel) preRuneTyped(wnd *Window, ch rune) bool {
 	if p.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = p.menuBar.preRuneTyped(wnd, ch) })
+		xos.SafeCall(func() { stop = p.menuBar.preRuneTyped(wnd, ch) }, nil)
 		return stop
 	}
 	return false
 }
 
-func (p *rootPanel) preMouseDown(wnd *Window, where Point) bool {
+func (p *rootPanel) preMouseDown(wnd *Window, where geom.Point) bool {
 	if p.menuBar != nil {
 		stop := false
-		toolbox.Call(func() { stop = p.menuBar.preMouseDown(wnd, where) })
+		xos.SafeCall(func() { stop = p.menuBar.preMouseDown(wnd, where) }, nil)
 		return stop
 	}
 	return false
@@ -183,6 +184,6 @@ func (p *rootPanel) preMouseDown(wnd *Window, where Point) bool {
 
 func (p *rootPanel) preMoved(wnd *Window) {
 	if p.menuBar != nil {
-		toolbox.Call(func() { p.menuBar.preMoved(wnd) })
+		xos.SafeCall(func() { p.menuBar.preMoved(wnd) }, nil)
 	}
 }
