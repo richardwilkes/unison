@@ -249,10 +249,10 @@ func (d *DockContainer) PreferredSize() geom.Size {
 
 // LayoutSizes implements Layout.
 func (d *DockContainer) LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
-	minSize, prefSize, maxSize = d.header.Sizes(geom.Size{Width: hint.Width})
+	minSize, prefSize, maxSize = d.header.Sizes(geom.NewSize(hint.Width, 0))
 	minSize.Height = prefSize.Height
 	maxSize.Height = prefSize.Height
-	min2, pref2, max2 := d.content.Sizes(geom.Size{Width: hint.Width, Height: max(hint.Height-prefSize.Height, 0)})
+	min2, pref2, max2 := d.content.Sizes(geom.NewSize(hint.Width, max(hint.Height-prefSize.Height, 0)))
 	minSize.Width = min2.Width
 	prefSize.Width = pref2.Width
 	maxSize.Width = max2.Width
@@ -268,7 +268,7 @@ func (d *DockContainer) LayoutSizes(target *Panel, hint geom.Size) (minSize, pre
 // PerformLayout implements Layout.
 func (d *DockContainer) PerformLayout(_ *Panel) {
 	r := d.ContentRect(false)
-	_, pref, _ := d.header.Sizes(geom.Size{Width: r.Width})
+	_, pref, _ := d.header.Sizes(geom.NewSize(r.Width, 0))
 	hr := r
 	hr.Height = pref.Height
 	d.header.SetFrameRect(hr)

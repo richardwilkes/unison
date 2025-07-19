@@ -77,7 +77,7 @@ func (h *TableHeader[T]) DefaultSizes(_ geom.Size) (minSize, prefSize, maxSize g
 		insets := border.Insets()
 		prefSize.Height += insets.Height()
 	}
-	return geom.Size{Width: 16, Height: prefSize.Height}, prefSize, prefSize
+	return geom.NewSize(16, prefSize.Height), prefSize, prefSize
 }
 
 // ColumnFrame returns the frame of the given column.
@@ -93,10 +93,8 @@ func (h *TableHeader[T]) ColumnFrame(col int) geom.Rect {
 			x++
 		}
 	}
-	return geom.Rect{
-		Point: geom.Point{X: x, Y: insets.Top},
-		Size:  geom.Size{Width: h.table.Columns[col].Current, Height: h.FrameRect().Height - insets.Height()},
-	}.Inset(h.table.Padding)
+	return geom.NewRect(x, insets.Top, h.table.Columns[col].Current, h.FrameRect().Height-insets.Height()).
+		Inset(h.table.Padding)
 }
 
 func (h *TableHeader[T]) heightForColumns() float32 {
@@ -108,7 +106,7 @@ func (h *TableHeader[T]) heightForColumns() float32 {
 		}
 		w -= h.table.Padding.Left + h.table.Padding.Right
 		if i < len(h.ColumnHeaders) {
-			_, cpref, _ := h.ColumnHeaders[i].AsPanel().Sizes(geom.Size{Width: w})
+			_, cpref, _ := h.ColumnHeaders[i].AsPanel().Sizes(geom.NewSize(w, 0))
 			cpref.Height += h.table.Padding.Top + h.table.Padding.Bottom
 			if height < cpref.Height {
 				height = cpref.Height

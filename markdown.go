@@ -836,7 +836,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			scale := 1 / PrimaryDisplay().ScaleX
+			scale := 1 / PrimaryDisplay().Scale.X
 			if img, err = NewImageFromFilePathOrURLWithContext(ctx, revisedTarget, scale); err != nil {
 				result <- nil
 				errs.Log(err, "path", revisedTarget, "scale", scale)
@@ -906,7 +906,7 @@ func (m *Markdown) processImage() {
 			size := max(m.decoration.Font.Size(), 24)
 			label.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
-				Size: geom.Size{Width: size, Height: size},
+				Size: geom.NewSize(size, size),
 			}
 		} else {
 			label.Drawable = m.constrainImage(img)
@@ -980,7 +980,7 @@ func (m *Markdown) flushText() {
 	if m.text != nil && len(m.text.Runes()) != 0 {
 		remaining := m.maxLineWidth
 		if m.textRow != nil {
-			_, prefSize, _ := m.textRow.Sizes(geom.Size{Width: m.maxLineWidth})
+			_, prefSize, _ := m.textRow.Sizes(geom.NewSize(m.maxLineWidth, 0))
 			remaining -= prefSize.Width
 		}
 		minWidth := m.decoration.Font.SimpleWidth("W")

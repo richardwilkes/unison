@@ -84,7 +84,7 @@ func TextCursor() *Cursor {
 func retrieveCursor(img *Image, cursor **Cursor) *Cursor {
 	if *cursor == nil {
 		size := img.LogicalSize()
-		*cursor = NewCursor(img, geom.Point{X: size.Width / 2, Y: size.Height / 2})
+		*cursor = NewCursor(img, geom.NewPoint(size.Width/2, size.Height/2))
 	}
 	return *cursor
 }

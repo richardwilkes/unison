@@ -105,7 +105,7 @@ func newDockTab(dockable Dockable) *dockTab {
 		fSize := t.LabelTheme.Font.Baseline()
 		t.button.Drawable = &DrawableSVG{
 			SVG:  CircledXSVG,
-			Size: geom.Size{Width: fSize, Height: fSize},
+			Size: geom.NewSize(fSize, fSize),
 		}
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: align.End, VAlign: align.Middle})
 		t.AddChild(t.button)
@@ -121,7 +121,7 @@ func newDockTab(dockable Dockable) *dockTab {
 
 func (t *dockTab) TitleIcon() Drawable {
 	fSize := t.title.Font.Baseline()
-	return t.dockable.TitleIcon(geom.Size{Width: fSize, Height: fSize})
+	return t.dockable.TitleIcon(geom.NewSize(fSize, fSize))
 }
 
 func (t *dockTab) fullTitle() string {
@@ -215,13 +215,8 @@ func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifier
 				cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close All Tabs"), KeyBinding{}, nil, func(MenuItem) {
 					dc.AttemptCloseAll()
 				}))
-				cm.Popup(geom.Rect{
-					Point: t.PointToRoot(where),
-					Size: geom.Size{
-						Width:  1,
-						Height: 1,
-					},
-				}, 0)
+				where = t.PointToRoot(where)
+				cm.Popup(geom.NewRect(where.X, where.Y, 1, 1), 0)
 				cm.Dispose()
 				return true
 			}
@@ -244,7 +239,7 @@ func (t *dockTab) mouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 				Data:     map[string]any{dc.Dock.DragKey: t.dockable},
 				Drawable: icon,
 				Ink:      t.title.OnBackgroundInk,
-				Offset:   geom.Point{X: -size.Width / 2, Y: -size.Height / 2},
+				Offset:   geom.NewPoint(-size.Width/2, -size.Height/2),
 			})
 		}
 	}

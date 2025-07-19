@@ -372,7 +372,7 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 			dc.Hidden = dc != d.dock.MaximizedContainer
 			return false
 		})
-		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom.Rect{Point: d.frame.Point, Size: size})
+		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	case d.Full():
 		available := size.Height
 		if d.Horizontal {
@@ -393,21 +393,17 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 			primary = d.divider
 		}
 		if d.Horizontal {
-			d.nodes[0].SetFrameRect(geom.Rect{Point: d.frame.Point, Size: geom.Size{Width: primary, Height: size.Height}})
-			d.nodes[1].SetFrameRect(geom.Rect{
-				Point: geom.Point{X: d.frame.X + primary + dividerSize, Y: d.frame.Y},
-				Size:  geom.Size{Width: available - primary, Height: size.Height},
-			})
+			d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, primary, size.Height))
+			d.nodes[1].SetFrameRect(geom.NewRect(d.frame.X+primary+dividerSize, d.frame.Y, available-primary,
+				size.Height))
 		} else {
-			d.nodes[0].SetFrameRect(geom.Rect{Point: d.frame.Point, Size: geom.Size{Width: size.Width, Height: primary}})
-			d.nodes[1].SetFrameRect(geom.Rect{
-				Point: geom.Point{X: d.frame.X, Y: d.frame.Y + primary + dividerSize},
-				Size:  geom.Size{Width: size.Width, Height: available - primary},
-			})
+			d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, primary))
+			d.nodes[1].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y+primary+dividerSize, size.Width,
+				available-primary))
 		}
 	case d.nodes[0] != nil:
-		d.nodes[0].SetFrameRect(geom.Rect{Point: d.frame.Point, Size: size})
+		d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	case d.nodes[1] != nil:
-		d.nodes[1].SetFrameRect(geom.Rect{Point: d.frame.Point, Size: size})
+		d.nodes[1].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
 	}
 }

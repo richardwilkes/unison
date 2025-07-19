@@ -153,7 +153,7 @@ type Rect struct {
 }
 
 func toGeomRect(r Rect) geom.Rect {
-	return geom.Rect{Point: geom.NewPoint(r.Left, r.Top), Size: geom.NewSize(r.Right-r.Left, r.Bottom-r.Top)}
+	return geom.NewRect(r.Left, r.Top, r.Right-r.Left, r.Bottom-r.Top)
 }
 
 type IRect struct {

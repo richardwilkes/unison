@@ -60,7 +60,7 @@ func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r geom.Rect) {
 	y := r.Y + (r.Height-gripLength)/2
 	paint := d.GripInk.Paint(canvas, r, paintstyle.Fill)
 	for yy := y; yy < y+gripLength; yy += d.GripHeight + d.GripGap {
-		canvas.DrawRect(geom.Rect{Point: geom.Point{X: x, Y: yy}, Size: geom.Size{Width: d.GripWidth, Height: d.GripHeight}}, paint)
+		canvas.DrawRect(geom.NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
 	}
 	x = r.X + 0.5
 	canvas.DrawLine(x, r.Y, x, r.Bottom(), paint)
@@ -75,7 +75,7 @@ func (d *DockTheme) DrawVerticalGripper(canvas *Canvas, r geom.Rect) {
 	y := r.Y + (r.Height-d.GripWidth)/2
 	paint := d.GripInk.Paint(canvas, r, paintstyle.Fill)
 	for xx := x; xx < x+gripLength; xx += d.GripHeight + d.GripGap {
-		canvas.DrawRect(geom.Rect{Point: geom.Point{X: xx, Y: y}, Size: geom.Size{Width: d.GripHeight, Height: d.GripWidth}}, paint)
+		canvas.DrawRect(geom.NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
 	}
 	y = r.Y + 0.5
 	canvas.DrawLine(r.X, y, r.Right(), y, paint)

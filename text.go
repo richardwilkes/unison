@@ -40,7 +40,7 @@ func NewTextFromRunes(runes []rune, decoration *TextDecoration) *Text {
 		runes:       make([]rune, 0, len(runes)),
 		decorations: make([]*TextDecoration, 0, len(runes)),
 		widths:      make([]float32, 0, len(runes)),
-		extents:     geom.Size{Width: -1},
+		extents:     geom.NewSize(-1, 0),
 		baseline:    decoration.Font.Baseline(),
 		emptyHeight: decoration.Font.LineHeight() + xmath.Abs(decoration.BaselineOffset),
 	}
@@ -137,7 +137,7 @@ func (t *Text) Slice(i, j int) *Text {
 		runes:       t.runes[i:j],
 		decorations: t.decorations[i:j],
 		widths:      t.widths[i:j],
-		extents:     geom.Size{Width: -1},
+		extents:     geom.NewSize(-1, 0),
 		baseline:    t.baseline,
 		emptyHeight: t.emptyHeight,
 	}

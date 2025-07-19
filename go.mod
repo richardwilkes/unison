@@ -12,7 +12,7 @@ require (
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.7.12
 	github.com/zeebo/xxh3 v1.0.2
-	golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc
+	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
 	golang.org/x/image v0.29.0
 	golang.org/x/sys v0.34.0
 	golang.org/x/text v0.27.0

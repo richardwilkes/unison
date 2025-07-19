@@ -321,7 +321,7 @@ func (s *SVG) Size() geom.Size {
 // size.
 func (s *SVG) OffsetToCenterWithinScaledSize(size geom.Size) geom.Point {
 	scale := min(size.Width/s.size.Width, size.Height/s.size.Height)
-	return geom.Point{X: (size.Width - s.size.Width*scale) / 2, Y: (size.Height - s.size.Height*scale) / 2}
+	return geom.NewPoint((size.Width-s.size.Width*scale)/2, (size.Height-s.size.Height*scale)/2)
 }
 
 // AspectRatio returns the SVG's width to height ratio.

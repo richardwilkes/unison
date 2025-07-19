@@ -37,8 +37,8 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSi
 		hint.Height = math.MaxFloat32
 	}
 	width := hint.Width - insets.Width()
-	pt := geom.Point{X: insets.Left, Y: insets.Top}
-	result := geom.Size{Width: pt.Y, Height: pt.Y}
+	pt := geom.NewPoint(insets.Left, insets.Top)
+	result := geom.NewSize(pt.Y, pt.Y)
 	availWidth := width
 	availHeight := hint.Height - insets.Height()
 	var maxHeight float32
@@ -72,7 +72,7 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSi
 				}
 			}
 			savedWidth := prefSize.Width
-			minSize, prefSize, _ = child.Sizes(geom.Size{Width: prefSize.Width})
+			minSize, prefSize, _ = child.Sizes(geom.NewSize(prefSize.Width, 0))
 			prefSize.Width = savedWidth
 			if prefSize.Height > availHeight {
 				if minSize.Height <= availHeight {
@@ -119,7 +119,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 	}
 	size := target.ContentRect(true).Size
 	width := size.Width - insets.Width()
-	pt := geom.Point{X: insets.Left, Y: insets.Top}
+	pt := geom.NewPoint(insets.Left, insets.Top)
 	availWidth := width
 	availHeight := size.Height - insets.Height()
 	var maxHeight float32
@@ -153,7 +153,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 				}
 			}
 			savedWidth := prefSize.Width
-			minSize, prefSize, _ = child.Sizes(geom.Size{Width: prefSize.Width})
+			minSize, prefSize, _ = child.Sizes(geom.NewSize(prefSize.Width, 0))
 			prefSize.Width = savedWidth
 			if prefSize.Height > availHeight {
 				if minSize.Height <= availHeight {
@@ -163,7 +163,7 @@ func (f *FlowLayout) PerformLayout(target *Panel) {
 				}
 			}
 		}
-		rects[i] = geom.Rect{Point: pt, Size: prefSize}
+		rects[i] = geom.NewRect(pt.X, pt.Y, prefSize.Width, prefSize.Height)
 		if maxHeight < prefSize.Height {
 			maxHeight = prefSize.Height
 		}

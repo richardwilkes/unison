@@ -292,9 +292,8 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 						canvas.Save()
 						left := cellRect.X + hierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
 						top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
-						dSize := geom.Size{Width: disclosureSize, Height: disclosureSize}
 						t.hitRects = append(t.hitRects,
-							t.newTableHitRect(geom.Rect{Point: geom.Point{X: left, Y: top}, Size: dSize}, row))
+							t.newTableHitRect(geom.NewRect(left, top, disclosureSize, disclosureSize), row))
 						canvas.Translate(left, top)
 						if row.IsOpen() {
 							offset := disclosureSize / 2
@@ -302,7 +301,8 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 							canvas.Rotate(90)
 							canvas.Translate(-offset, -offset)
 						}
-						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas, geom.Rect{Size: dSize}, nil,
+						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
+							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil,
 							fg.Paint(canvas, cellRect, paintstyle.Fill))
 						canvas.Restore()
 					}
@@ -510,10 +510,7 @@ func (t *Table[T]) CellFrame(row, col int) geom.Rect {
 			y++
 		}
 	}
-	rect := geom.Rect{
-		Point: geom.Point{X: x, Y: y},
-		Size:  geom.Size{Width: t.Columns[col].Current, Height: t.rowCache[row].height},
-	}.Inset(t.Padding)
+	rect := geom.NewRect(x, y, t.Columns[col].Current, t.rowCache[row].height).Inset(t.Padding)
 	if t.Columns[col].ID == t.HierarchyColumnID {
 		if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
 			indent := hierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
@@ -1357,7 +1354,7 @@ func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) geom.Size {
 	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
 	cell := rowData.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
-	_, size, _ := cell.Sizes(geom.Size{Width: widthConstraint})
+	_, size, _ := cell.Sizes(geom.NewSize(widthConstraint, 0))
 	return size
 }
 
@@ -1643,7 +1640,7 @@ func (t *Table[T]) InstallDragSupport(svg *SVG, dragKey, singularName, pluralNam
 				Data:     map[string]any{dragKey: data},
 				Drawable: drawable,
 				Ink:      t.OnBackgroundInk,
-				Offset:   geom.Point{X: 0, Y: -size.Height / 2},
+				Offset:   geom.NewPoint(0, -size.Height/2),
 			})
 		}
 		return false

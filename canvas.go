@@ -157,7 +157,7 @@ func (c *Canvas) DrawPath(path *Path, paint *Paint) {
 
 // DrawImage draws the image at the specified location using its logical size. paint may be nil.
 func (c *Canvas) DrawImage(img *Image, x, y float32, sampling *SamplingOptions, paint *Paint) {
-	c.DrawImageInRect(img, geom.Rect{Point: geom.Point{X: x, Y: y}, Size: img.LogicalSize()}, sampling, paint)
+	c.DrawImageInRect(img, geom.Rect{Point: geom.NewPoint(x, y), Size: img.LogicalSize()}, sampling, paint)
 }
 
 // DrawImageInRect draws the image into the area specified by the rect, scaling if necessary. paint may be nil.

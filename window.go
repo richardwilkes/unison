@@ -266,7 +266,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	})
 	w.wnd.SetScrollCallback(func(_ *glfw.Window, xoff, yoff float64) {
-		w.mouseWheel(w.MouseLocation(), geom.Point{X: float32(xoff), Y: float32(yoff)}, w.lastKeyModifiers)
+		w.mouseWheel(w.MouseLocation(), geom.NewPoint(float32(xoff), float32(yoff)), w.lastKeyModifiers)
 	})
 	w.wnd.SetKeyCallback(w.keyCallbackForGLFW)
 	w.wnd.SetCharCallback(func(_ *glfw.Window, ch rune) {
@@ -847,7 +847,7 @@ func (w *Window) MouseLocation() geom.Point {
 }
 
 func (w *Window) convertRawMouseLocation(x, y float64) geom.Point {
-	return w.convertRawMouseLocationForPlatform(geom.Point{X: float32(x), Y: float32(y)})
+	return w.convertRawMouseLocationForPlatform(geom.NewPoint(float32(x), float32(y)))
 }
 
 // BackingScale returns the scale of the backing store for this window.

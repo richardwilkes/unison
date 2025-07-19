@@ -112,7 +112,7 @@ func (r *RadioButton) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize g
 func (r *RadioButton) circleAndLabelSize() geom.Size {
 	circleSize := r.circleSize()
 	if r.Drawable == nil && r.Text.Empty() {
-		return geom.Size{Width: circleSize, Height: circleSize}
+		return geom.NewSize(circleSize, circleSize)
 	}
 	size, _ := LabelContentSizes(r.Text, r.Drawable, r.Font, r.Side, r.Gap)
 	size.Width += r.Gap + circleSize

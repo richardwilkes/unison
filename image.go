@@ -164,18 +164,13 @@ func newImage(skiaImg skia.Image, scale float32, hash uint64) (*Image, error) {
 
 // Size returns the size, in pixels, of the image. These dimensions will always be whole numbers > 0 for valid images.
 func (img *Image) Size() geom.Size {
-	return geom.Size{
-		Width:  float32(skia.ImageGetWidth(img.skiaImg)),
-		Height: float32(skia.ImageGetHeight(img.skiaImg)),
-	}
+	return geom.NewSize(float32(skia.ImageGetWidth(img.skiaImg)), float32(skia.ImageGetHeight(img.skiaImg)))
 }
 
 // LogicalSize returns the logical (device-independent) size.
 func (img *Image) LogicalSize() geom.Size {
-	return geom.Size{
-		Width:  float32(skia.ImageGetWidth(img.skiaImg)) * img.scale,
-		Height: float32(skia.ImageGetHeight(img.skiaImg)) * img.scale,
-	}
+	return geom.NewSize(float32(skia.ImageGetWidth(img.skiaImg))*img.scale,
+		float32(skia.ImageGetHeight(img.skiaImg))*img.scale)
 }
 
 // DrawInRect draws this image in the given rectangle.

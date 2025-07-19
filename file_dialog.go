@@ -172,7 +172,7 @@ func (d *fileDialog) createContent() *Panel {
 	d.scroller.SetContent(d.fileList, behavior.Follow, behavior.Fill)
 	content.AddChild(d.scroller)
 	d.scroller.SetLayoutData(&FlexLayoutData{
-		MinSize: geom.Size{Width: 300, Height: 200},
+		MinSize: geom.NewSize(300, 200),
 		HSpan:   1,
 		VSpan:   1,
 		HAlign:  align.Fill,

@@ -49,7 +49,7 @@ func (d *TextDecoration) Clone() *TextDecoration {
 
 // DrawText draws the given text using this TextDecoration.
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
-	r := geom.Rect{Point: geom.Point{X: x, Y: y - d.Font.Baseline()}, Size: geom.Size{Width: width, Height: d.Font.LineHeight()}}
+	r := geom.NewRect(x, y-d.Font.Baseline(), width, d.Font.LineHeight())
 	if !xreflect.IsNil(d.BackgroundInk) {
 		canvas.DrawRect(r, d.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	}

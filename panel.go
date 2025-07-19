@@ -325,29 +325,21 @@ func (p *Panel) SetSizer(sizer Sizer) {
 // uses a default set of sizes that are used for all panels.
 func (p *Panel) Sizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	scale := p.Scale()
-	hint.Width /= scale
-	hint.Height /= scale
 	switch {
 	case p.layout != nil:
-		minSize, prefSize, maxSize = p.layout.LayoutSizes(p, hint)
+		minSize, prefSize, maxSize = p.layout.LayoutSizes(p, hint.Div(scale))
 	case p.sizer != nil:
-		minSize, prefSize, maxSize = p.sizer(hint)
+		minSize, prefSize, maxSize = p.sizer(hint.Div(scale))
 	default:
-		return minSize, prefSize, geom.Size{Width: DefaultMaxSize, Height: DefaultMaxSize}
+		return minSize, prefSize, geom.NewSize(DefaultMaxSize, DefaultMaxSize)
 	}
-	minSize.Width *= scale
-	minSize.Height *= scale
-	prefSize.Width *= scale
-	prefSize.Height *= scale
-	maxSize.Width *= scale
-	maxSize.Height *= scale
-	return
+	return minSize.Mul(scale), prefSize.Mul(scale), maxSize.Mul(scale)
 }
 
 // Pack resizes the panel to its preferred size.
 func (p *Panel) Pack() {
 	_, pref, _ := p.Sizes(geom.Size{})
-	p.SetFrameRect(geom.Rect{Point: p.frame.Point, Size: pref})
+	p.SetFrameRect(geom.NewRect(p.frame.X, p.frame.Y, pref.Width, pref.Height))
 }
 
 // Layout returns the Layout for this panel, if any.

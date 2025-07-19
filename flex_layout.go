@@ -68,7 +68,8 @@ func (f *FlexLayout) PerformLayout(target *Panel) {
 	if b := target.Border(); b != nil {
 		insets = b.Insets()
 	}
-	f.layout(target, geom.Point{X: insets.Left, Y: insets.Top}, target.ContentRect(true).Size.Sub(insets.Size()), true, false)
+	f.layout(target, geom.NewPoint(insets.Left, insets.Top), target.ContentRect(true).Size.Sub(insets.Size()), true,
+		false)
 }
 
 func (f *FlexLayout) layout(target *Panel, location geom.Point, hint geom.Size, move, useMinimumSize bool) geom.Size {
@@ -440,7 +441,7 @@ func (f *FlexLayout) wrap(width float32, grid [][]*Panel, widths []float32, useM
 						}
 						currentWidth += float32(hSpan-1) * f.HSpacing
 						if currentWidth != data.cacheSize.Width && data.HAlign == align.Fill || data.cacheSize.Width > currentWidth {
-							hint := geom.Size{Width: max(data.minCacheSize.Width, currentWidth)}
+							hint := geom.NewSize(max(data.minCacheSize.Width, currentWidth), 0)
 							data.computeCacheSize(f.sizingCacheData(grid[i][j], hint), hint, useMinimumSize)
 							minimumHeight := data.MinSize.Height
 							if data.VGrab && minimumHeight > 0 && data.cacheSize.Height < minimumHeight {
@@ -642,7 +643,7 @@ func (f *FlexLayout) positionChildren(location geom.Point, grid [][]*Panel, widt
 				}
 				child := grid[i][j]
 				if child != nil {
-					child.SetFrameRect(geom.Rect{Point: geom.Point{X: childX, Y: childY}, Size: geom.Size{Width: childWidth, Height: childHeight}})
+					child.SetFrameRect(geom.NewRect(childX, childY, childWidth, childHeight))
 				}
 			}
 			gridX += widths[j] + f.HSpacing

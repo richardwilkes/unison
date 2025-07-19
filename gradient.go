@@ -43,13 +43,13 @@ type Gradient struct {
 // NewHorizontalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole
 // range.
 func NewHorizontalEvenlySpacedGradient(colors ...ColorProvider) *Gradient {
-	return NewEvenlySpacedGradient(geom.Point{}, geom.Point{X: 1}, 0, 0, colors...)
+	return NewEvenlySpacedGradient(geom.Point{}, geom.NewPoint(1, 0), 0, 0, colors...)
 }
 
 // NewVerticalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole
 // range.
 func NewVerticalEvenlySpacedGradient(colors ...ColorProvider) *Gradient {
-	return NewEvenlySpacedGradient(geom.Point{}, geom.Point{Y: 1}, 0, 0, colors...)
+	return NewEvenlySpacedGradient(geom.Point{}, geom.NewPoint(0, 1), 0, 0, colors...)
 }
 
 // NewEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole range. start
@@ -97,14 +97,8 @@ func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Pain
 		colors[i] = g.Stops[i].Color.GetColor()
 		colorPos[i] = g.Stops[i].Location
 	}
-	start := geom.Point{
-		X: rect.X + rect.Width*g.Start.X,
-		Y: rect.Y + rect.Height*g.Start.Y,
-	}
-	end := geom.Point{
-		X: rect.X + rect.Width*g.End.X,
-		Y: rect.Y + rect.Height*g.End.Y,
-	}
+	start := geom.NewPoint(rect.X+rect.Width*g.Start.X, rect.Y+rect.Height*g.Start.Y)
+	end := geom.NewPoint(rect.X+rect.Width*g.End.X, rect.Y+rect.Height*g.End.Y)
 	var shader *Shader
 	if g.StartRadius > 0 && g.EndRadius > 0 {
 		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, colors, colorPos, tilemode.Clamp,

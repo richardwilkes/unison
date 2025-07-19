@@ -134,7 +134,7 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	rect.Y = 0
 	if p.menuBarPanel != nil {
 		_, size, _ := p.menuBarPanel.Sizes(geom.Size{})
-		p.menuBarPanel.SetFrameRect(geom.Rect{Size: geom.Size{Width: rect.Width, Height: size.Height}})
+		p.menuBarPanel.SetFrameRect(geom.NewRect(0, 0, rect.Width, size.Height))
 		rect.Y += size.Height
 		rect.Height -= size.Height
 	}

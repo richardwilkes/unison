@@ -18,12 +18,9 @@ import (
 func (w *Window) frameRect() geom.Rect {
 	if w.IsValid() {
 		left, top, right, bottom := w.wnd.GetFrameSize()
-		return geom.Rect{
-			Point: geom.Point{X: float32(left), Y: float32(top)},
-			Size:  geom.Size{Width: float32(right - left), Height: float32(bottom - top)},
-		}
+		return geom.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
 	}
-	return geom.Rect{Size: geom.Size{Width: 1, Height: 1}}
+	return geom.NewRect(0, 0, 1, 1)
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
@@ -31,12 +28,9 @@ func (w *Window) ContentRect() geom.Rect {
 	if w.IsValid() {
 		x, y := w.wnd.GetPos()
 		width, height := w.wnd.GetSize()
-		return geom.Rect{
-			Point: geom.Point{X: float32(x), Y: float32(y)},
-			Size:  geom.Size{Width: float32(width), Height: float32(height)},
-		}
+		return geom.NewRect(float32(x), float32(y), float32(width), float32(height))
 	}
-	return geom.Rect{Size: geom.Size{Width: 1, Height: 1}}
+	return geom.NewRect(0, 0, 1, 1)
 }
 
 // SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame

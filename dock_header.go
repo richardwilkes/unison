@@ -275,10 +275,8 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 			dt.Hidden = true
 		} else {
 			dt.Hidden = false
-			dt.SetFrameRect(geom.Rect{
-				Point: geom.Point{X: x, Y: contentRect.Y + (contentRect.Height-tabSizes[i].Height)/2},
-				Size:  tabSizes[i],
-			}.Align())
+			dt.SetFrameRect(geom.NewRect(x, contentRect.Y+(contentRect.Height-tabSizes[i].Height)/2,
+				tabSizes[i].Width, tabSizes[i].Height).Align())
 			x += tabSizes[i].Width + d.TabGap
 		}
 	}
@@ -288,10 +286,8 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 			b.Hidden = true
 		} else {
 			b.Hidden = false
-			b.SetFrameRect(geom.Rect{
-				Point: geom.Point{X: x, Y: contentRect.Y + (contentRect.Height-buttonSizes[i].Height)/2},
-				Size:  buttonSizes[i],
-			}.Align())
+			b.SetFrameRect(geom.NewRect(x, contentRect.Y+(contentRect.Height-buttonSizes[i].Height)/2,
+				buttonSizes[i].Width, buttonSizes[i].Height).Align())
 			x += buttonSizes[i].Width + d.TabGap
 		}
 	}
@@ -318,7 +314,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 	fSize := d.maximizeRestoreButton.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowRestoreSVG,
-		Size: geom.Size{Width: fSize, Height: fSize},
+		Size: geom.NewSize(fSize, fSize),
 	}
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Restore"))
 }
@@ -328,7 +324,7 @@ func (d *dockHeader) adjustToRestoredState() {
 	fSize := d.maximizeRestoreButton.Font.Baseline()
 	d.maximizeRestoreButton.Drawable = &DrawableSVG{
 		SVG:  WindowMaximizeSVG,
-		Size: geom.Size{Width: fSize, Height: fSize},
+		Size: geom.NewSize(fSize, fSize),
 	}
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))
 }

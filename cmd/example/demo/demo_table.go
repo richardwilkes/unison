@@ -39,7 +39,7 @@ func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
 	content.SetLayout(&unison.FlexLayout{Columns: 1})
 
 	// Create the table
-	table := unison.NewTable[*demoRow](&unison.SimpleTableModel[*demoRow]{})
+	table := unison.NewTable(&unison.SimpleTableModel[*demoRow]{})
 	table.HierarchyColumnID = 1
 	table.Columns = make([]unison.ColumnInfo, 4)
 	for i := range table.Columns {
@@ -96,7 +96,7 @@ func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
 	unison.InstallDropSupport[*demoRow, any](table, "demoRow",
 		func(from, to *unison.Table[*demoRow]) bool { return from == to }, nil, nil)
 
-	header := unison.NewTableHeader[*demoRow](table,
+	header := unison.NewTableHeader(table,
 		unison.NewTableColumnHeader[*demoRow]("", "", nil),
 		unison.NewTableColumnHeader[*demoRow]("First", "", nil),
 		unison.NewTableColumnHeader[*demoRow]("Second", "", nil),

@@ -38,8 +38,5 @@ type Layout interface {
 // MaxSize returns the size that is at least as large as DefaultMaxSize in
 // both dimensions, but larger if the size that is passed in is larger.
 func MaxSize(size geom.Size) geom.Size {
-	return geom.Size{
-		Width:  max(DefaultMaxSize, size.Width),
-		Height: max(DefaultMaxSize, size.Height),
-	}
+	return geom.NewSize(max(DefaultMaxSize, size.Width), max(DefaultMaxSize, size.Height))
 }

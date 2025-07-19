@@ -103,7 +103,7 @@ func (ts *tooltipSequencer) show() {
 	if ts.window.tooltipSequence == ts.sequence && ts.window.Focused() {
 		tip := ts.window.lastTooltip
 		_, pref, _ := tip.Sizes(geom.Size{})
-		rect := geom.Rect{Point: geom.Point{X: ts.avoid.X, Y: ts.avoid.Bottom() + 1}, Size: pref}
+		rect := geom.NewRect(ts.avoid.X, ts.avoid.Bottom()+1, pref.Width, pref.Height)
 		if rect.X < 0 {
 			rect.X = 0
 		}
@@ -112,7 +112,7 @@ func (ts *tooltipSequencer) show() {
 		}
 		viewSize := ts.window.root.ContentRect(true).Size
 		if viewSize.Width < rect.Width {
-			_, pref, _ = tip.Sizes(geom.Size{Width: viewSize.Width})
+			_, pref, _ = tip.Sizes(geom.NewSize(viewSize.Width, 0))
 			if viewSize.Width < pref.Width {
 				rect.X = 0
 				rect.Width = viewSize.Width

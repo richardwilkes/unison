@@ -110,7 +110,7 @@ func (c *CheckBox) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom
 func (c *CheckBox) boxAndLabelSize() geom.Size {
 	boxSize := c.boxSize()
 	if c.Drawable == nil && c.Text.Empty() {
-		return geom.Size{Width: boxSize, Height: boxSize}
+		return geom.NewSize(boxSize, boxSize)
 	}
 	size, _ := LabelContentSizes(c.Text, c.Drawable, c.Font, c.Side, c.Gap)
 	size.Width += c.Gap + boxSize

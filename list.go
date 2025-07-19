@@ -186,7 +186,7 @@ func (l *List[T]) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.
 	if height < 1 {
 		height = 0
 	}
-	size := geom.Size{Width: hint.Width, Height: height}
+	size := geom.NewSize(hint.Width, height)
 	for row := range l.rows {
 		cell := l.cell(row)
 		_, cPref, cMax := cell.Sizes(size)
@@ -287,14 +287,14 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		for row < count && y < yMax {
 			fg, bg, selected, focused := l.cellParams(row)
 			cell := l.Factory.CreateCell(l, l.rows[row], row, fg, bg, selected, focused).AsPanel()
-			cellRect := geom.Rect{Point: geom.Point{X: rect.X, Y: y}, Size: geom.Size{Width: rect.Width, Height: cellHeight}}
+			cellRect := geom.NewRect(rect.X, y, rect.Width, cellHeight)
 			if cellHeight < 1 {
 				_, pref, _ := cell.Sizes(geom.Size{})
 				cellRect.Height = pref.Ceil().Height
 			}
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
-			r := geom.Rect{Point: geom.Point{X: rect.X, Y: cellRect.Y}, Size: geom.Size{Width: rect.Width, Height: cellRect.Height}}
+			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
 			canvas.DrawRect(r, bg.Paint(canvas, r, paintstyle.Fill))
 			canvas.Save()
 			tl := cellRect.Point

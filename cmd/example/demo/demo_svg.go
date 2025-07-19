@@ -62,7 +62,7 @@ func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
 	}
 	content.AddChild(panel)
 
-	wnd.SetFrameRect(geom.Rect{Point: where, Size: geom.NewSize(400, 400)})
+	wnd.SetFrameRect(geom.NewRect(where.X, where.Y, 400, 400))
 	wnd.ToFront()
 
 	return wnd, nil

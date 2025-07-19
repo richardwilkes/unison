@@ -134,14 +134,14 @@ func (s *ScrollBar) Thumb() geom.Rect {
 		if size < s.MinimumThumb {
 			size = s.MinimumThumb
 		}
-		return geom.Rect{Point: geom.Point{X: start}, Size: geom.Size{Width: size, Height: r.Height - s.ThumbIndent}}
+		return geom.NewRect(start, 0, size, r.Height-s.ThumbIndent)
 	}
 	start := r.Height * (s.value / s.maximum)
 	size := r.Height * (s.extent / s.maximum)
 	if size < s.MinimumThumb {
 		size = s.MinimumThumb
 	}
-	return geom.Rect{Point: geom.Point{Y: start}, Size: geom.Size{Width: r.Width - s.ThumbIndent, Height: size}}
+	return geom.NewRect(0, start, r.Width-s.ThumbIndent, size)
 }
 
 // DefaultSizes provides the default sizing.

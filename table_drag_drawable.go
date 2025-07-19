@@ -48,7 +48,7 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		baseline := label.Font.Baseline()
 		label.Drawable = &DrawableSVG{
 			SVG:  svg,
-			Size: geom.Size{Width: baseline, Height: baseline},
+			Size: geom.NewSize(baseline, baseline),
 		}
 	}
 	_, pref, _ := label.Sizes(geom.Size{})

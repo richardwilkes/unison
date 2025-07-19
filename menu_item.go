@@ -320,7 +320,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				r.Width = baseline
 				r.Height = baseline
 				r.Y += (rect.Height - baseline) / 2
-				drawable := &DrawableSVG{Size: geom.Size{Width: baseline, Height: baseline}}
+				drawable := &DrawableSVG{Size: geom.NewSize(baseline, baseline)}
 				if mi.state == check.On {
 					drawable.SVG = CheckmarkSVG
 				} else {
@@ -345,7 +345,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 			rect.Width = baseline
 			drawable := &DrawableSVG{
 				SVG:  ChevronRightSVG,
-				Size: geom.Size{Width: baseline, Height: baseline},
+				Size: geom.NewSize(baseline, baseline),
 			}
 			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, paintstyle.Fill))
 		}

@@ -361,10 +361,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 					OnBackgroundInk: f.OnSelectionInk,
 				})
 				right := left + t.Width()
-				selRect := geom.Rect{
-					Point: geom.Point{X: left, Y: textTop},
-					Size:  geom.Size{Width: right - left, Height: textHeight},
-				}
+				selRect := geom.NewRect(left, textTop, right-left, textHeight)
 				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill))
 				t.Draw(canvas, left, textBaseLine)
 				if selEnd < end {
@@ -381,13 +378,13 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				line.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = ink })
 				line.Draw(canvas, textLeft+f.scrollOffset.X, textBaseLine)
 			}
-			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end || (!f.multiLine && f.selectionEnd <= end)) {
+			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end ||
+				(!f.multiLine && f.selectionEnd <= end)) {
 				if f.showCursor {
-					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]), &TextDecoration{Font: f.Font})
-					canvas.DrawRect(geom.Rect{
-						Point: geom.Point{X: textLeft + t.Width() + f.scrollOffset.X - 0.5, Y: textTop},
-						Size:  geom.Size{Width: 1, Height: textHeight},
-					}, fg.Paint(canvas, rect, paintstyle.Fill))
+					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]),
+						&TextDecoration{Font: f.Font})
+					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
+						fg.Paint(canvas, rect, paintstyle.Fill))
 				}
 				f.scheduleBlink()
 			}
@@ -1115,7 +1112,7 @@ func (f *Field) ScrollSelectionIntoView() {
 		pos = f.selectionStart
 	}
 	pt := f.FromSelectionIndex(pos)
-	f.ScrollRectIntoView(geom.Rect{Point: geom.Point{X: pt.X - 1, Y: pt.Y}, Size: geom.Size{Width: 3, Height: f.lineHeightAt(pt.Y)}})
+	f.ScrollRectIntoView(geom.NewRect(pt.X-1, pt.Y, 3, f.lineHeightAt(pt.Y)))
 }
 
 // ScrollOffset returns the current autoscroll offset.
@@ -1246,13 +1243,13 @@ func (f *Field) FromSelectionIndex(index int) geom.Point {
 			length++
 		}
 		if !f.multiLine || index < start+length {
-			return geom.Point{X: f.textLeft(line, rect) + line.PositionForRuneIndex(index-start) + f.scrollOffset.X, Y: y}
+			return geom.NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-start)+f.scrollOffset.X, y)
 		}
 		lastHeight = max(line.Height(), f.Font.LineHeight())
 		y += lastHeight
 		start += length
 	}
-	return geom.Point{X: f.textLeftForWidth(0, rect) + f.scrollOffset.X, Y: y - lastHeight}
+	return geom.NewPoint(f.textLeftForWidth(0, rect)+f.scrollOffset.X, y-lastHeight)
 }
 
 func (f *Field) findWordAt(pos int) (start, end int) {

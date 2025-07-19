@@ -35,17 +35,17 @@ const DialogClientDataKey = "dialog"
 var DefaultDialogTheme = DialogTheme{
 	ErrorIcon: &DrawableSVG{
 		SVG:  CircledExclamationSVG,
-		Size: geom.Size{Width: 48, Height: 48},
+		Size: geom.NewSize(48, 48),
 	},
 	ErrorIconInk: ThemeError,
 	WarningIcon: &DrawableSVG{
 		SVG:  TriangleExclamationSVG,
-		Size: geom.Size{Width: 48, Height: 48},
+		Size: geom.NewSize(48, 48),
 	},
 	WarningIconInk: ThemeWarning,
 	QuestionIcon: &DrawableSVG{
 		SVG:  CircledQuestionSVG,
-		Size: geom.Size{Width: 48, Height: 48},
+		Size: geom.NewSize(48, 48),
 	},
 	QuestionIconInk: ThemeOnSurface,
 }
@@ -211,7 +211,7 @@ func NewMessagePanel(primary, detail string) *Panel {
 	breakTextIntoLabels(panel, primary, EmphasizedSystemFont, false)
 	breakTextIntoLabels(panel, detail, SystemFont, true)
 	panel.SetLayoutData(&FlexLayoutData{
-		MinSize: geom.Size{Width: 200},
+		MinSize: geom.NewSize(200, 0),
 		HSpan:   1,
 		VSpan:   1,
 		VAlign:  align.Middle,
