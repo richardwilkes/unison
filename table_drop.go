@@ -48,7 +48,7 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect geom.Rect) {
 		gc.DrawRect(r, paint)
 		paint.SetColorFilter(nil)
 		paint.SetPathEffect(DashEffect())
-		gc.DrawLine(d.left, d.top, r.Right(), d.top, paint)
+		gc.DrawLine(geom.NewPoint(d.left, d.top), geom.NewPoint(r.Right(), d.top), paint)
 	}
 }
 

@@ -27,16 +27,14 @@ type surface struct {
 	backend skia.BackendRenderTarget
 	surface skia.Surface
 	size    geom.Size
-	scaleX  float32
-	scaleY  float32
+	scale   geom.Point
 }
 
-func (s *surface) prepareCanvas(size geom.Size, _ geom.Rect, scaleX, scaleY float32) (*Canvas, error) {
-	if s.size != size || scaleX != s.scaleX || scaleY != s.scaleY {
+func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, error) {
+	if s.size != size || scale != s.scale {
 		s.partialDispose()
 		s.size = size
-		s.scaleX = scaleX
-		s.scaleY = scaleY
+		s.scale = scale
 	}
 	if s.surface == nil {
 		if s.context == nil {
@@ -44,7 +42,7 @@ func (s *surface) prepareCanvas(size geom.Size, _ geom.Rect, scaleX, scaleY floa
 		}
 		var fbo int32
 		gl.GetIntegerv(gl.FRAMEBUFFER_BINDING, &fbo)
-		if s.backend = skia.BackendRenderTargetNewGL(int(size.Width*scaleX), int(size.Height*scaleY), 1, 8,
+		if s.backend = skia.BackendRenderTargetNewGL(int(size.Width*scale.X), int(size.Height*scale.Y), 1, 8,
 			&skia.GLFrameBufferInfo{
 				Fboid:  uint32(fbo),
 				Format: gl.RGBA8,
@@ -62,7 +60,7 @@ func (s *surface) prepareCanvas(size geom.Size, _ geom.Rect, scaleX, scaleY floa
 	}
 	skia.ContextReset(s.context)
 	c.RestoreToCount(1)
-	c.SetMatrix(geom.NewScaleMatrix(scaleX, scaleY))
+	c.SetMatrix(geom.NewScaleMatrixPt(scale))
 	return c, nil
 }
 

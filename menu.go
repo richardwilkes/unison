@@ -60,8 +60,8 @@ type Menu interface {
 // DefaultMenuTheme holds the default MenuTheme values for Menus. Modifying this data will not alter existing Menus,
 // but will alter any Menus created in the future.
 var DefaultMenuTheme = MenuTheme{
-	BarBorder:  NewLineBorder(ThemeSurfaceEdge, 0, geom.Insets{Bottom: 1}, false),
-	MenuBorder: NewLineBorder(ThemeSurfaceEdge, 0, geom.NewUniformInsets(1), false),
+	BarBorder:  NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.Insets{Bottom: 1}, false),
+	MenuBorder: NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false),
 }
 
 // MenuTheme holds theming data for a Menu.

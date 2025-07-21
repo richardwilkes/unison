@@ -241,8 +241,8 @@ func CanvasDrawColor(canvas Canvas, color Color, mode BlendMode) {
 	C.sk_canvas_draw_color(canvas, C.sk_color_t(color), C.sk_blend_mode_t(mode))
 }
 
-func CanvasDrawPoint(canvas Canvas, x, y float32, paint Paint) {
-	C.sk_canvas_draw_point(canvas, C.float(x), C.float(y), paint)
+func CanvasDrawPoint(canvas Canvas, pt geom.Point, paint Paint) {
+	C.sk_canvas_draw_point(canvas, C.float(pt.X), C.float(pt.Y), paint)
 }
 
 func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Point, paint Paint) {
@@ -258,14 +258,14 @@ func CanvasDrawArc(canvas Canvas, oval geom.Rect, startAngle, sweepAngle float32
 	C.sk_canvas_draw_arc(canvas, fromGeomRect(&oval), C.float(startAngle), C.float(sweepAngle), C.bool(useCenter), paint)
 }
 
-func CanvasDrawSimpleText(canvas Canvas, str string, x, y float32, font Font, paint Paint) {
+func CanvasDrawSimpleText(canvas Canvas, str string, pt geom.Point, font Font, paint Paint) {
 	b := []byte(str)
 	C.sk_canvas_draw_simple_text(canvas, unsafe.Pointer(&b[0]), C.size_t(len(b)),
-		C.sk_text_encoding_t(TextEncodingUTF8), C.float(x), C.float(y), font, paint)
+		C.sk_text_encoding_t(TextEncodingUTF8), C.float(pt.X), C.float(pt.Y), font, paint)
 }
 
-func CanvasDrawTextBlob(canvas Canvas, txt TextBlob, x, y float32, paint Paint) {
-	C.sk_canvas_draw_text_blob(canvas, txt, C.float(x), C.float(y), paint)
+func CanvasDrawTextBlob(canvas Canvas, txt TextBlob, pt geom.Point, paint Paint) {
+	C.sk_canvas_draw_text_blob(canvas, txt, C.float(pt.X), C.float(pt.Y), paint)
 }
 
 func CanavasClipRectWithOperation(canvas Canvas, rect geom.Rect, op ClipOp, antialias bool) {

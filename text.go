@@ -263,24 +263,25 @@ func (t *Text) RestoreDecorations(m map[*TextDecoration]TextDecoration) {
 }
 
 // Draw the Text at the given location. y is where the baseline of the text will be placed.
-func (t *Text) Draw(canvas *Canvas, x, y float32) {
+func (t *Text) Draw(canvas *Canvas, pt geom.Point) {
 	if len(t.decorations) == 0 {
 		return
 	}
 	start := 0
 	current := t.decorations[0]
-	nx := x
+	nx := pt.X
+	pt.Y += current.BaselineOffset
 	for i, d := range t.decorations {
 		if i != 0 && !current.Equivalent(d) {
-			current.DrawText(canvas, string(t.runes[start:i]), x, y+current.BaselineOffset, nx-x)
+			current.DrawText(canvas, string(t.runes[start:i]), pt, nx-pt.X)
 			current = d
-			x = nx
+			pt.X = nx
 			start = i
 		}
 		nx += t.widths[i]
 	}
 	if start < len(t.decorations) {
-		current.DrawText(canvas, string(t.runes[start:]), x, y+current.BaselineOffset, nx-x)
+		current.DrawText(canvas, string(t.runes[start:]), pt, nx-pt.X)
 	}
 }
 

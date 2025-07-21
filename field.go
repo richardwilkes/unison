@@ -320,7 +320,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 					ColorFilter: Alpha30Filter(),
 				},
 			})
-			text.Draw(canvas, f.textLeft(text, rect), textTop+text.Baseline())
+			text.Draw(canvas, geom.NewPoint(f.textLeft(text, rect), textTop+text.Baseline()))
 		}
 		if !hasSelectionRange && enabled && focused {
 			if f.showCursor {
@@ -349,7 +349,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 						Font:            f.Font,
 						OnBackgroundInk: ink,
 					})
-					t.Draw(canvas, left, textBaseLine)
+					t.Draw(canvas, geom.NewPoint(left, textBaseLine))
 					left += t.Width()
 				}
 				e := selEnd
@@ -363,7 +363,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				right := left + t.Width()
 				selRect := geom.NewRect(left, textTop, right-left, textHeight)
 				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill))
-				t.Draw(canvas, left, textBaseLine)
+				t.Draw(canvas, geom.NewPoint(left, textBaseLine))
 				if selEnd < end {
 					e = end
 					if f.endsWithLineFeed[i] == hardLineEnding {
@@ -372,11 +372,11 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 					NewTextFromRunes(f.obscureIfNeeded(f.runes[selEnd:e]), &TextDecoration{
 						Font:            f.Font,
 						OnBackgroundInk: ink,
-					}).Draw(canvas, right, textBaseLine)
+					}).Draw(canvas, geom.NewPoint(right, textBaseLine))
 				}
 			} else {
 				line.AdjustDecorations(func(decoration *TextDecoration) { decoration.OnBackgroundInk = ink })
-				line.Draw(canvas, textLeft+f.scrollOffset.X, textBaseLine)
+				line.Draw(canvas, geom.NewPoint(textLeft+f.scrollOffset.X, textBaseLine))
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end ||
 				(!f.multiLine && f.selectionEnd <= end)) {

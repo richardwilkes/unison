@@ -175,7 +175,7 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			cell := h.ColumnHeaders[c].AsPanel()
 			h.installCell(cell, cellRect)
 			canvas.Save()
-			canvas.Translate(cellRect.X, cellRect.Y)
+			canvas.Translate(cellRect.Point)
 			cellRect.X = 0
 			cellRect.Y = 0
 			cell.Draw(canvas, cellRect)

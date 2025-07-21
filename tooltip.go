@@ -22,7 +22,7 @@ import (
 var DefaultTooltipTheme = TooltipTheme{
 	BackgroundInk: ThemeTooltip,
 	BaseBorder: NewCompoundBorder(
-		NewLineBorder(ThemeTooltipEdge, 0, geom.NewUniformInsets(1), false),
+		NewLineBorder(ThemeTooltipEdge, geom.Size{}, geom.NewUniformInsets(1), false),
 		NewEmptyBorder(StdInsets()),
 	),
 	Label:     defaultToolTipLabelTheme(),

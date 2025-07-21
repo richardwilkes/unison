@@ -299,7 +299,7 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			canvas.Save()
 			tl := cellRect.Point
 			dirty.Point = dirty.Point.Sub(tl)
-			canvas.Translate(cellRect.X, cellRect.Y)
+			canvas.Translate(cellRect.Point)
 			cellRect.X = 0
 			cellRect.Y = 0
 			cell.Draw(canvas, dirty)

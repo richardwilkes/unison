@@ -30,10 +30,9 @@ var DefaultTagTheme = TagTheme{
 		BackgroundInk:   ThemeOnSurface,
 		OnBackgroundInk: ThemeSurface,
 	},
+	Radius:    geom.NewUniformSize(6),
 	Gap:       StdIconGap,
 	SideInset: 3,
-	RadiusX:   6,
-	RadiusY:   6,
 	HAlign:    align.Start,
 	VAlign:    align.Middle,
 	Side:      side.Left,
@@ -42,10 +41,9 @@ var DefaultTagTheme = TagTheme{
 // TagTheme holds theming data for a Tag.
 type TagTheme struct {
 	TextDecoration
+	Radius    geom.Size
 	Gap       float32
 	SideInset float32
-	RadiusX   float32
-	RadiusY   float32
 	HAlign    align.Enum
 	VAlign    align.Enum
 	Side      side.Enum
@@ -90,7 +88,7 @@ func (t *Tag) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size
 // DefaultDraw provides the default drawing.
 func (t *Tag) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := t.ContentRect(false)
-	canvas.DrawRoundedRect(r, t.RadiusX, t.RadiusY, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
+	canvas.DrawRoundedRect(r, t.Radius, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	r.X += t.SideInset
 	r.Width -= t.SideInset * 2
 	DrawLabel(canvas, r, t.HAlign, t.VAlign, t.Font, t.Text, t.OnBackgroundInk, nil, t.Drawable, t.Side, t.Gap,

@@ -149,42 +149,40 @@ func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font F
 	rect.Size = size
 
 	// Determine drawable and text areas
-	imgX := rect.X
-	imgY := rect.Y
-	txtX := rect.X
-	txtY := rect.Y
+	imgPt := rect.Point
+	txtPt := rect.Point
 	if !empty && drawable != nil {
 		logicalSize := drawable.LogicalSize()
 		switch drawableSide {
 		case side.Top:
-			txtY += logicalSize.Height + imgGap
+			txtPt.Y += logicalSize.Height + imgGap
 			if logicalSize.Width > txtSize.Width {
-				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
+				txtPt.X = xmath.Floor(txtPt.X + (logicalSize.Width-txtSize.Width)/2)
 			} else {
-				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
+				imgPt.X = xmath.Floor(imgPt.X + (txtSize.Width-logicalSize.Width)/2)
 			}
 		case side.Left:
-			txtX += logicalSize.Width + imgGap
+			txtPt.X += logicalSize.Width + imgGap
 			if logicalSize.Height > txtSize.Height {
-				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
+				txtPt.Y = xmath.Floor(txtPt.Y + (logicalSize.Height-txtSize.Height)/2)
 			} else {
-				imgY = xmath.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
+				imgPt.Y = xmath.Floor(imgPt.Y + (txtSize.Height-logicalSize.Height)/2)
 			}
 		case side.Bottom:
-			imgY += rect.Height - logicalSize.Height
-			txtY = imgY - (imgGap + txtSize.Height)
+			imgPt.Y += rect.Height - logicalSize.Height
+			txtPt.Y = imgPt.Y - (imgGap + txtSize.Height)
 			if logicalSize.Width > txtSize.Width {
-				txtX = xmath.Floor(txtX + (logicalSize.Width-txtSize.Width)/2)
+				txtPt.X = xmath.Floor(txtPt.X + (logicalSize.Width-txtSize.Width)/2)
 			} else {
-				imgX = xmath.Floor(imgX + (txtSize.Width-logicalSize.Width)/2)
+				imgPt.X = xmath.Floor(imgPt.X + (txtSize.Width-logicalSize.Width)/2)
 			}
 		case side.Right:
-			imgX += rect.Width - logicalSize.Width
-			txtX = imgX - (imgGap + txtSize.Width)
+			imgPt.X += rect.Width - logicalSize.Width
+			txtPt.X = imgPt.X - (imgGap + txtSize.Width)
 			if logicalSize.Height > txtSize.Height {
-				txtY = xmath.Floor(txtY + (logicalSize.Height-txtSize.Height)/2)
+				txtPt.Y = xmath.Floor(txtPt.Y + (logicalSize.Height-txtSize.Height)/2)
 			} else {
-				imgY = xmath.Floor(imgY + (txtSize.Height-logicalSize.Height)/2)
+				imgPt.Y = xmath.Floor(imgPt.Y + (txtSize.Height-logicalSize.Height)/2)
 			}
 		}
 	}
@@ -192,8 +190,7 @@ func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font F
 	canvas.Save()
 	canvas.ClipRect(rect, pathop.Intersect, false)
 	if drawable != nil {
-		rect.X = imgX
-		rect.Y = imgY
+		rect.Point = imgPt
 		rect.Size = drawable.LogicalSize()
 		fg := onBackgroundInk
 		if applyDisabledFilter {
@@ -213,7 +210,8 @@ func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font F
 				}
 			}))
 		}
-		text.Draw(canvas, txtX, txtY+text.Baseline())
+		txtPt.Y += text.Baseline()
+		text.Draw(canvas, txtPt)
 	}
 	canvas.Restore()
 }

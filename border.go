@@ -48,7 +48,7 @@ func NewDefaultFieldBorder(focused bool) Border {
 		ink = ThemeSurfaceEdge
 	}
 	return NewCompoundBorder(
-		NewLineBorder(ink, 0, geom.NewUniformInsets(2-adj), false),
+		NewLineBorder(ink, geom.Size{}, geom.NewUniformInsets(2-adj), false),
 		NewEmptyBorder(geom.Insets{Top: 2 + adj, Left: 2 + adj, Bottom: 1 + adj, Right: 2 + adj}),
 	)
 }

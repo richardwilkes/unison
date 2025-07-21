@@ -39,7 +39,7 @@ var DefaultWellTheme = WellTheme{
 	SelectionInk:       ThemeFocus,
 	ImageScale:         0.5,
 	ContentSize:        20,
-	CornerRadius:       4,
+	CornerRadius:       geom.NewUniformSize(4),
 	ClickAnimationTime: 100 * time.Millisecond,
 	ImageLoadTimeout:   30 * time.Second,
 	Mask:               ColorWellMask | GradientWellMask | PatternWellMask,
@@ -54,7 +54,7 @@ type WellTheme struct {
 	ImageLoadTimeout   time.Duration
 	ImageScale         float32
 	ContentSize        float32
-	CornerRadius       float32
+	CornerRadius       geom.Size
 	Mask               WellMask
 }
 
@@ -164,24 +164,24 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	}
 	DrawRoundedRectBase(canvas, r, w.CornerRadius, thickness, bg, edge)
 	r = r.Inset(geom.NewUniformInsets(wellInset))
-	radius := w.CornerRadius - (wellInset - 2)
+	radius := w.CornerRadius.Sub(geom.NewUniformSize(wellInset - 2))
 	if pattern, ok := w.ink.(*Pattern); ok {
 		canvas.Save()
 		path := NewPath()
-		path.RoundedRect(r, radius, radius)
+		path.RoundedRect(r, radius)
 		canvas.ClipPath(path, pathop.Intersect, true)
 		canvas.DrawImageInRect(pattern.Image, r, nil, nil)
 		canvas.Restore()
 	} else {
-		canvas.DrawRoundedRect(r, radius, radius, w.ink.Paint(canvas, r, paintstyle.Fill))
+		canvas.DrawRoundedRect(r, radius, w.ink.Paint(canvas, r, paintstyle.Fill))
 	}
 	if !w.Enabled() {
 		p := Black.Paint(canvas, r, paintstyle.Stroke)
 		p.SetBlendMode(blendmode.Xor)
-		canvas.DrawLine(r.X+1, r.Y+1, r.Right()-1, r.Bottom()-1, p)
-		canvas.DrawLine(r.X+1, r.Bottom()-1, r.Right()-1, r.Y+1, p)
+		canvas.DrawLine(geom.NewPoint(r.X+1, r.Y+1), geom.NewPoint(r.Right()-1, r.Bottom()-1), p)
+		canvas.DrawLine(geom.NewPoint(r.X+1, r.Bottom()-1), geom.NewPoint(r.Right()-1, r.Y+1), p)
 	}
-	canvas.DrawRoundedRect(r, radius, radius, edge.Paint(canvas, r, paintstyle.Stroke))
+	canvas.DrawRoundedRect(r, radius, edge.Paint(canvas, r, paintstyle.Stroke))
 }
 
 // DefaultMouseDown provides the default mouse down handling.

@@ -174,14 +174,14 @@ func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 	}
 	r := t.ContentRect(true)
 	p := NewPath()
-	p.MoveTo(0, r.Height)
-	p.LineTo(0, 6)
-	p.CubicTo(0, 6, 0, 1, 6, 1)
+	p.MoveTo(geom.NewPoint(0, r.Height))
+	p.LineTo(geom.NewPoint(0, 6))
+	p.CubicTo(geom.NewPoint(0, 6), geom.NewPoint(0, 1), geom.NewPoint(6, 1))
 	rightCornerStart := r.Width - 7
-	p.LineTo(rightCornerStart, 1)
+	p.LineTo(geom.NewPoint(rightCornerStart, 1))
 	right := r.Width - 1
-	p.CubicTo(rightCornerStart, 1, right, 1, right, 7)
-	p.LineTo(right, r.Height)
+	p.CubicTo(geom.NewPoint(rightCornerStart, 1), geom.NewPoint(right, 1), geom.NewPoint(right, 7))
+	p.LineTo(geom.NewPoint(right, r.Height))
 	p.Close()
 	gc.DrawPath(p, bg.Paint(gc, r, paintstyle.Fill))
 	gc.DrawPath(p, t.EdgeInk.Paint(gc, r, paintstyle.Stroke))

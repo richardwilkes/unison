@@ -25,7 +25,7 @@ var DefaultDockHeaderTheme = DockHeaderTheme{
 	BackgroundInk: ThemeSurface,
 	DropAreaInk:   ThemeWarning,
 	HeaderBorder: NewCompoundBorder(
-		NewLineBorder(ThemeSurfaceEdge, 0, geom.Insets{Bottom: 1}, false),
+		NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.Insets{Bottom: 1}, false),
 		NewEmptyBorder(geom.NewHorizontalInsets(4)),
 	),
 	MinimumTabWidth: 50,

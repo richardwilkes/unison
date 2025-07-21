@@ -63,9 +63,9 @@ func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r geom.Rect) {
 		canvas.DrawRect(geom.NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
 	}
 	x = r.X + 0.5
-	canvas.DrawLine(x, r.Y, x, r.Bottom(), paint)
+	canvas.DrawLine(geom.NewPoint(x, r.Y), geom.NewPoint(x, r.Bottom()), paint)
 	x = r.Right() - 0.5
-	canvas.DrawLine(x, r.Y, x, r.Bottom(), paint)
+	canvas.DrawLine(geom.NewPoint(x, r.Y), geom.NewPoint(x, r.Bottom()), paint)
 }
 
 // DrawVerticalGripper draws the vertical divider gripper.
@@ -78,9 +78,9 @@ func (d *DockTheme) DrawVerticalGripper(canvas *Canvas, r geom.Rect) {
 		canvas.DrawRect(geom.NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
 	}
 	y = r.Y + 0.5
-	canvas.DrawLine(r.X, y, r.Right(), y, paint)
+	canvas.DrawLine(geom.NewPoint(r.X, y), geom.NewPoint(r.Right(), y), paint)
 	y = r.Bottom() - 0.5
-	canvas.DrawLine(r.X, y, r.Right(), y, paint)
+	canvas.DrawLine(geom.NewPoint(r.X, y), geom.NewPoint(r.Right(), y), paint)
 }
 
 // Dock provides an area where Dockable panels can be displayed and rearranged.

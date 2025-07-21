@@ -851,11 +851,11 @@ func (w *Window) convertRawMouseLocation(x, y float64) geom.Point {
 }
 
 // BackingScale returns the scale of the backing store for this window.
-func (w *Window) BackingScale() (x, y float32) {
+func (w *Window) BackingScale() geom.Point {
 	if w.IsValid() {
-		return w.wnd.GetContentScale()
+		return geom.NewPoint(w.wnd.GetContentScale())
 	}
-	return 1, 1
+	return geom.NewPoint(1, 1)
 }
 
 // Draw the window contents.
@@ -867,7 +867,7 @@ func (w *Window) Draw(c *Canvas) {
 			w.root.Draw(c, w.LocalContentRect())
 			if w.InDrag() {
 				c.Save()
-				c.Translate(w.dragDataLocation.X+w.dragData.Offset.X, w.dragDataLocation.Y+w.dragData.Offset.Y)
+				c.Translate(w.dragDataLocation.Add(w.dragData.Offset))
 				r := geom.Rect{Size: w.dragData.Drawable.LogicalSize()}
 				c.ClipRect(r, pathop.Intersect, false)
 				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions,
@@ -881,15 +881,15 @@ func (w *Window) Draw(c *Canvas) {
 func (w *Window) draw() {
 	RebuildDynamicColors()
 	if w.IsValid() {
-		sx, sy := w.BackingScale()
+		scale := w.BackingScale()
 		w.wnd.MakeContextCurrent()
 		if !glInited {
 			xos.ExitIfErr(gl.Init())
 			glInited = true
 		}
-		c, err := w.surface.prepareCanvas(w.ContentRect().Size, w.LocalContentRect(), sx, sy)
+		c, err := w.surface.prepareCanvas(w.ContentRect().Size, scale)
 		if err != nil {
-			errs.Log(err, "size", w.ContentRect().Size, "rect", w.LocalContentRect(), "scaleX", sx, "scaleY", sy)
+			errs.Log(err, "size", w.ContentRect().Size, "scale", scale)
 			return
 		}
 		start := time.Now()

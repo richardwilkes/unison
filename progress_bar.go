@@ -22,10 +22,10 @@ var DefaultProgressBarTheme = ProgressBarTheme{
 	BackgroundInk:      ThemeSurface,
 	FillInk:            ThemeFocus,
 	EdgeInk:            ThemeSurfaceEdge,
+	CornerRadius:       geom.NewUniformSize(8),
 	TickSpeed:          time.Second / 30,
 	FullTraversalSpeed: time.Second,
 	PreferredBarHeight: 8,
-	CornerRadius:       8,
 	IndeterminateWidth: 15,
 	EdgeThickness:      1,
 }
@@ -37,8 +37,8 @@ type ProgressBarTheme struct {
 	EdgeInk            Ink
 	TickSpeed          time.Duration
 	FullTraversalSpeed time.Duration
+	CornerRadius       geom.Size
 	PreferredBarHeight float32
-	CornerRadius       float32
 	IndeterminateWidth float32
 	EdgeThickness      float32
 }
@@ -142,22 +142,20 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	} else if p.current > 0 {
 		meter.Width = bounds.Width * (p.current / p.maximum)
 	}
-	canvas.DrawRoundedRect(bounds, p.CornerRadius, p.CornerRadius,
-		p.BackgroundInk.Paint(canvas, bounds, paintstyle.Fill))
+	canvas.DrawRoundedRect(bounds, p.CornerRadius, p.BackgroundInk.Paint(canvas, bounds, paintstyle.Fill))
 	if meter.Width > 0 {
 		trimmedMeter := meter
 		trimmedMeter.X += 0.5
 		trimmedMeter.Width--
-		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, p.CornerRadius,
-			p.FillInk.Paint(canvas, trimmedMeter, paintstyle.Fill))
+		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, p.FillInk.Paint(canvas, trimmedMeter, paintstyle.Fill))
 	}
 	bounds = bounds.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
 	paint := p.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
 	paint.SetStrokeWidth(p.EdgeThickness)
-	canvas.DrawRoundedRect(bounds, p.CornerRadius, p.CornerRadius, paint)
+	canvas.DrawRoundedRect(bounds, p.CornerRadius, paint)
 	if meter.Width > 0 {
 		meter = meter.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
-		canvas.DrawRoundedRect(meter, p.CornerRadius, p.CornerRadius, paint)
+		canvas.DrawRoundedRect(meter, p.CornerRadius, paint)
 	}
 	if p.maximum == 0 {
 		InvokeTaskAfter(p.MarkForRedraw, p.TickSpeed)

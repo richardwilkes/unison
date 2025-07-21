@@ -58,7 +58,7 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect geom.Rect) {
 		})
 		r := d.ContentRect(false)
 		size := txt.Extents()
-		txt.Draw(gc, r.X+(r.Width-size.Width)/2, r.Y+(r.Height-size.Height)/2+txt.Baseline())
+		txt.Draw(gc, r.Point.Add(geom.NewPoint((r.Width-size.Width)/2, (r.Height-size.Height)/2+txt.Baseline())))
 	}
 }
 

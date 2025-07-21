@@ -519,8 +519,8 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 
 	preview := NewPanel()
 	preview.SetBorder(NewCompoundBorder(
-		NewLineBorder(ThemeOnSurface, 0, geom.NewUniformInsets(1), false),
-		NewLineBorder(ThemeSurface, 0, geom.NewUniformInsets(1), false),
+		NewLineBorder(ThemeOnSurface, geom.Size{}, geom.NewUniformInsets(1), false),
+		NewLineBorder(ThemeSurface, geom.Size{}, geom.NewUniformInsets(1), false),
 	))
 	preview.SetLayoutData(&FlexLayoutData{
 		SizeHint: geom.NewSize(64, 64),

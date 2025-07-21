@@ -68,13 +68,13 @@ func (c *Canvas) RestoreToCount(count int) {
 }
 
 // Translate the coordinate system.
-func (c *Canvas) Translate(dx, dy float32) {
-	skia.CanvasTranslate(c.canvas, dx, dy)
+func (c *Canvas) Translate(delta geom.Point) {
+	skia.CanvasTranslate(c.canvas, delta.X, delta.Y)
 }
 
 // Scale the coordinate system.
-func (c *Canvas) Scale(x, y float32) {
-	skia.CanvasScale(c.canvas, x, y)
+func (c *Canvas) Scale(scale geom.Point) {
+	skia.CanvasScale(c.canvas, scale.X, scale.Y)
 }
 
 // Rotate the coordinate system.
@@ -82,10 +82,10 @@ func (c *Canvas) Rotate(degrees float32) {
 	skia.CanvasRotateRadians(c.canvas, degrees*xmath.DegreesToRadians)
 }
 
-// Skew the coordinate system. A positive value of sx skews the drawing right as y-axis values increase; a positive
-// value of sy skews the drawing down as x-axis values increase.
-func (c *Canvas) Skew(sx, sy float32) {
-	skia.CanvasSkew(c.canvas, sx, sy)
+// Skew the coordinate system. A positive value of skew.X skews the drawing right as y-axis values increase; a positive
+// value of skew.Y skews the drawing down as x-axis values increase.
+func (c *Canvas) Skew(skew geom.Point) {
+	skia.CanvasSkew(c.canvas, skew.X, skew.Y)
 }
 
 // Concat the matrix.
@@ -136,13 +136,13 @@ func (c *Canvas) DrawRect(rect geom.Rect, paint *Paint) {
 }
 
 // DrawRoundedRect draws a rounded rectangle with Paint.
-func (c *Canvas) DrawRoundedRect(rect geom.Rect, radiusX, radiusY float32, paint *Paint) {
-	skia.CanvasDrawRoundRect(c.canvas, rect, radiusX, radiusY, paint.paint)
+func (c *Canvas) DrawRoundedRect(rect geom.Rect, radius geom.Size, paint *Paint) {
+	skia.CanvasDrawRoundRect(c.canvas, rect, radius.Width, radius.Height, paint.paint)
 }
 
 // DrawCircle draws the circle with Paint.
-func (c *Canvas) DrawCircle(cx, cy, radius float32, paint *Paint) {
-	skia.CanvasDrawCircle(c.canvas, cx, cy, radius, paint.paint)
+func (c *Canvas) DrawCircle(center geom.Point, radius float32, paint *Paint) {
+	skia.CanvasDrawCircle(c.canvas, center.X, center.Y, radius, paint.paint)
 }
 
 // DrawOval draws the oval with Paint.
@@ -156,8 +156,8 @@ func (c *Canvas) DrawPath(path *Path, paint *Paint) {
 }
 
 // DrawImage draws the image at the specified location using its logical size. paint may be nil.
-func (c *Canvas) DrawImage(img *Image, x, y float32, sampling *SamplingOptions, paint *Paint) {
-	c.DrawImageInRect(img, geom.Rect{Point: geom.NewPoint(x, y), Size: img.LogicalSize()}, sampling, paint)
+func (c *Canvas) DrawImage(img *Image, upperLeft geom.Point, sampling *SamplingOptions, paint *Paint) {
+	c.DrawImageInRect(img, geom.Rect{Point: upperLeft, Size: img.LogicalSize()}, sampling, paint)
 }
 
 // DrawImageInRect draws the image into the area specified by the rect, scaling if necessary. paint may be nil.
@@ -186,8 +186,8 @@ func (c *Canvas) DrawColor(color Color, mode blendmode.Enum) {
 }
 
 // DrawPoint draws a point.
-func (c *Canvas) DrawPoint(x, y float32, paint *Paint) {
-	skia.CanvasDrawPoint(c.canvas, x, y, paint.paint)
+func (c *Canvas) DrawPoint(pt geom.Point, paint *Paint) {
+	skia.CanvasDrawPoint(c.canvas, pt, paint.paint)
 }
 
 // DrawPoints draws the points using the given mode.
@@ -196,8 +196,8 @@ func (c *Canvas) DrawPoints(pts []geom.Point, paint *Paint, mode pointmode.Enum)
 }
 
 // DrawLine draws a line.
-func (c *Canvas) DrawLine(sx, sy, ex, ey float32, paint *Paint) {
-	skia.CanvasDrawLine(c.canvas, sx, sy, ex, ey, paint.paint)
+func (c *Canvas) DrawLine(start, end geom.Point, paint *Paint) {
+	skia.CanvasDrawLine(c.canvas, start.X, start.Y, end.X, end.Y, paint.paint)
 }
 
 // DrawPolygon draws a polygon.
@@ -216,16 +216,16 @@ func (c *Canvas) DrawArc(oval geom.Rect, startAngle, sweepAngle float32, paint *
 }
 
 // DrawSimpleString draws a string. It does not do any processing of embedded line endings nor tabs. It also does not do
-// any font fallback. y is the baseline for the text.
-func (c *Canvas) DrawSimpleString(str string, x, y float32, font Font, paint *Paint) {
+// any font fallback. pt.Y is the baseline for the text.
+func (c *Canvas) DrawSimpleString(str string, pt geom.Point, font Font, paint *Paint) {
 	if str != "" {
-		skia.CanvasDrawSimpleText(c.canvas, str, x, y, font.skiaFont(), paint.paint)
+		skia.CanvasDrawSimpleText(c.canvas, str, pt, font.skiaFont(), paint.paint)
 	}
 }
 
 // DrawTextBlob draws text from a text blob.
-func (c *Canvas) DrawTextBlob(blob *TextBlob, x, y float32, paint *Paint) {
-	skia.CanvasDrawTextBlob(c.canvas, blob.blob, x, y, paint.paint)
+func (c *Canvas) DrawTextBlob(blob *TextBlob, pt geom.Point, paint *Paint) {
+	skia.CanvasDrawTextBlob(c.canvas, blob.blob, pt, paint.paint)
 }
 
 // ClipRect replaces the clip with the intersection of difference of the current clip and rect.

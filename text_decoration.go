@@ -48,24 +48,24 @@ func (d *TextDecoration) Clone() *TextDecoration {
 }
 
 // DrawText draws the given text using this TextDecoration.
-func (d *TextDecoration) DrawText(canvas *Canvas, text string, x, y, width float32) {
-	r := geom.NewRect(x, y-d.Font.Baseline(), width, d.Font.LineHeight())
+func (d *TextDecoration) DrawText(canvas *Canvas, text string, pt geom.Point, width float32) {
+	r := geom.NewRect(pt.X, pt.Y-d.Font.Baseline(), width, d.Font.LineHeight())
 	if !xreflect.IsNil(d.BackgroundInk) {
 		canvas.DrawRect(r, d.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
 	}
-	y += d.BaselineOffset
+	pt.Y += d.BaselineOffset
 	paint := d.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)
-	canvas.DrawSimpleString(text, x, y, d.Font, paint)
+	canvas.DrawSimpleString(text, pt, d.Font, paint)
 	if d.Underline || d.StrikeThrough {
-		y++
+		pt.Y++
 		if d.StrikeThrough {
-			yy := y + 0.5 - d.Font.Baseline()/2
+			yy := pt.Y + 0.5 - d.Font.Baseline()/2
 			paint.SetStrokeWidth(1)
-			canvas.DrawLine(x, yy, x+width, yy, paint)
+			canvas.DrawLine(geom.NewPoint(pt.X, yy), geom.NewPoint(pt.X+width, yy), paint)
 		}
 		if d.Underline {
 			paint.SetStrokeWidth(1)
-			canvas.DrawLine(x, y+1, x+width, y+1, paint)
+			canvas.DrawLine(geom.NewPoint(pt.X, pt.Y+1), geom.NewPoint(pt.X+width, pt.Y+1), paint)
 		}
 	}
 }

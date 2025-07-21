@@ -21,14 +21,14 @@ var _ Border = &LineBorder{}
 type LineBorder struct {
 	ink          Ink
 	insets       geom.Insets
-	cornerRadius float32
+	cornerRadius geom.Size
 	noInset      bool
 }
 
 // NewLineBorder creates a new line border. The cornerRadius specifies the amount of rounding to use on the corners. The
 // insets represent how thick the border will be drawn on that edge. If noInset is true, the Insets() method will return
 // zeroes.
-func NewLineBorder(ink Ink, cornerRadius float32, insets geom.Insets, noInset bool) *LineBorder {
+func NewLineBorder(ink Ink, cornerRadius geom.Size, insets geom.Insets, noInset bool) *LineBorder {
 	return &LineBorder{
 		insets:       insets,
 		ink:          ink,
@@ -50,10 +50,10 @@ func (b *LineBorder) Draw(canvas *Canvas, rect geom.Rect) {
 	clip := rect.Inset(b.insets)
 	path := NewPath()
 	path.SetFillType(filltype.EvenOdd)
-	if b.cornerRadius > 0 {
-		path.RoundedRect(rect, b.cornerRadius, b.cornerRadius)
-		radius := max(b.cornerRadius-((b.insets.Width()+b.insets.Height())/4), 1)
-		path.RoundedRect(clip, radius, radius)
+	if b.cornerRadius.Width > 0 || b.cornerRadius.Height > 0 {
+		path.RoundedRect(rect, b.cornerRadius)
+		path.RoundedRect(clip, b.cornerRadius.Sub(geom.NewUniformSize((b.insets.Width()+b.insets.Height())/4)).
+			Max(geom.NewUniformSize(1)))
 	} else {
 		path.Rect(rect)
 		path.Rect(clip)

@@ -422,7 +422,7 @@ func (m *Markdown) processBlockquote() {
 		HGrab:  true,
 	})
 	p.SetBorder(NewCompoundBorder(
-		NewLineBorder(m.QuoteBarColor, 0, geom.Insets{Left: m.QuoteBarThickness}, false),
+		NewLineBorder(m.QuoteBarColor, geom.Size{}, geom.Insets{Left: m.QuoteBarThickness}, false),
 		NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)),
 	))
 	m.block.AddChild(p)
@@ -499,7 +499,7 @@ func (m *Markdown) processTable() {
 				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
 			}
 			p := NewPanel()
-			p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, geom.NewUniformInsets(1), false))
+			p.SetBorder(NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false))
 			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
 			m.block.AddChild(p)
 			m.block = p
@@ -633,7 +633,7 @@ func (m *Markdown) processTableCell() {
 			}
 		}
 		p := NewPanel()
-		p.SetBorder(NewLineBorder(ThemeSurfaceEdge, 0, geom.NewUniformInsets(1), false))
+		p.SetBorder(NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false))
 		p.SetLayout(&FlexLayout{
 			Columns: 1,
 			HAlign:  hAlign,

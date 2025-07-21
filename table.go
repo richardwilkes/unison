@@ -294,12 +294,13 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 						top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
 						t.hitRects = append(t.hitRects,
 							t.newTableHitRect(geom.NewRect(left, top, disclosureSize, disclosureSize), row))
-						canvas.Translate(left, top)
+						canvas.Translate(geom.NewPoint(left, top))
 						if row.IsOpen() {
 							offset := disclosureSize / 2
-							canvas.Translate(offset, offset)
+							offsetPt := geom.NewPoint(offset, offset)
+							canvas.Translate(offsetPt)
 							canvas.Rotate(90)
-							canvas.Translate(-offset, -offset)
+							canvas.Translate(offsetPt.Neg())
 						}
 						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
 							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil,
@@ -314,7 +315,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			cell := row.ColumnCell(r, c, fg, bg, selected, indirectlySelected, focused).AsPanel()
 			t.installCell(cell, cellRect)
 			canvas.Save()
-			canvas.Translate(cellRect.X, cellRect.Y)
+			canvas.Translate(cellRect.Point)
 			cellRect.X = 0
 			cellRect.Y = 0
 			cell.Draw(canvas, cellRect)

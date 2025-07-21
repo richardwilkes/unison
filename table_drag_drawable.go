@@ -25,10 +25,10 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 	label := NewLabel()
 	label.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		r := rect.Inset(geom.NewUniformInsets(1))
-		corner := r.Height / 2
+		corner := geom.NewUniformSize(r.Height / 2)
 		gc.SaveWithOpacity(0.7)
-		gc.DrawRoundedRect(r, corner, corner, data.Table.SelectionInk.Paint(gc, r, paintstyle.Fill))
-		gc.DrawRoundedRect(r, corner, corner, data.Table.OnSelectionInk.Paint(gc, r, paintstyle.Stroke))
+		gc.DrawRoundedRect(r, corner, data.Table.SelectionInk.Paint(gc, r, paintstyle.Fill))
+		gc.DrawRoundedRect(r, corner, data.Table.OnSelectionInk.Paint(gc, r, paintstyle.Stroke))
 		gc.Restore()
 		label.DefaultDraw(gc, rect)
 	}

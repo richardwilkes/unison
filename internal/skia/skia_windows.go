@@ -836,8 +836,9 @@ func CanvasDrawColor(canvas Canvas, color Color, mode BlendMode) {
 	skCanvasDrawColorProc.Call(uintptr(canvas), uintptr(color), uintptr(mode))
 }
 
-func CanvasDrawPoint(canvas Canvas, x, y float32, paint Paint) {
-	skCanvasDrawPointProc.Call(uintptr(canvas), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(paint))
+func CanvasDrawPoint(canvas Canvas, pt geom.Point, paint Paint) {
+	skCanvasDrawPointProc.Call(uintptr(canvas), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)),
+		uintptr(paint))
 }
 
 func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Point, paint Paint) {
@@ -855,16 +856,16 @@ func CanvasDrawArc(canvas Canvas, oval geom.Rect, startAngle, sweepAngle float32
 		uintptr(math.Float32bits(sweepAngle)), boolToUintptr(useCenter), uintptr(paint))
 }
 
-func CanvasDrawSimpleText(canvas Canvas, str string, x, y float32, font Font, paint Paint) {
+func CanvasDrawSimpleText(canvas Canvas, str string, pt geom.Point, font Font, paint Paint) {
 	b := []byte(str)
 	skCanvasDrawSimpleTextProc.Call(uintptr(canvas), uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)),
-		uintptr(TextEncodingUTF8), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(font),
+		uintptr(TextEncodingUTF8), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)), uintptr(font),
 		uintptr(paint))
 }
 
-func CanvasDrawTextBlob(canvas Canvas, txt TextBlob, x, y float32, paint Paint) {
-	skCanvasDrawTextBlobProc.Call(uintptr(canvas), uintptr(txt), uintptr(math.Float32bits(x)),
-		uintptr(math.Float32bits(y)), uintptr(paint))
+func CanvasDrawTextBlob(canvas Canvas, txt TextBlob, pt geom.Point, paint Paint) {
+	skCanvasDrawTextBlobProc.Call(uintptr(canvas), uintptr(txt), uintptr(math.Float32bits(pt.X)),
+		uintptr(math.Float32bits(pt.Y)), uintptr(paint))
 }
 
 func CanavasClipRectWithOperation(canvas Canvas, rect geom.Rect, op ClipOp, antialias bool) {

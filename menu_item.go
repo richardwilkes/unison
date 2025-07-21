@@ -301,7 +301,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 	}
 	rect = mi.panel.ContentRect(false)
 	if mi.isSeparator {
-		gc.DrawLine(rect.X, rect.Y, rect.Right(), rect.Y, fg.Paint(gc, rect, paintstyle.Fill))
+		gc.DrawLine(rect.Point, geom.NewPoint(rect.Right(), rect.Y), fg.Paint(gc, rect, paintstyle.Fill))
 	} else {
 		t := NewText(mi.Title(), &TextDecoration{
 			Font:            DefaultMenuItemTheme.TitleFont,
@@ -313,7 +313,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 		if !mi.isRoot() {
 			shifted = baseline + 2
 		}
-		t.Draw(gc, rect.X+shifted, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
+		t.Draw(gc, geom.NewPoint(rect.X+shifted, xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline()))
 		if mi.subMenu == nil {
 			if !mi.isRoot() && mi.state != check.Off {
 				r := rect
@@ -336,8 +336,8 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 						OnBackgroundInk: fg,
 					})
 					size = t.Extents()
-					t.Draw(gc, xmath.Floor(rect.Right()-size.Width),
-						xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline())
+					t.Draw(gc, geom.NewPoint(xmath.Floor(rect.Right()-size.Width),
+						xmath.Floor(rect.Y+(rect.Height-size.Height)/2)+t.Baseline()))
 				}
 			}
 		} else if !mi.isRoot() {

@@ -231,19 +231,19 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 			// When converting to a float, the values are divided by 64.
 			switch op := op.(type) {
 			case svg.OpMoveTo:
-				p.MoveTo(float32(op.X)/64, float32(op.Y)/64)
+				p.MoveTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
 			case svg.OpLineTo:
-				p.LineTo(float32(op.X)/64, float32(op.Y)/64)
+				p.LineTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
 			case svg.OpQuadTo:
 				p.QuadTo(
-					float32(op[0].X)/64, float32(op[0].Y)/64,
-					float32(op[1].X)/64, float32(op[1].Y)/64,
+					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
+					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
 				)
 			case svg.OpCubicTo:
 				p.CubicTo(
-					float32(op[0].X)/64, float32(op[0].Y)/64,
-					float32(op[1].X)/64, float32(op[1].Y)/64,
-					float32(op[2].X)/64, float32(op[2].Y)/64,
+					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
+					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
+					geom.NewPoint(float32(op[2].X)/64, float32(op[2].Y)/64),
 				)
 			case svg.OpClose:
 				p.Close()
@@ -336,8 +336,8 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 	canvas.Save()
 	defer canvas.Restore()
 	offset := s.OffsetToCenterWithinScaledSize(rect.Size)
-	canvas.Translate(rect.X+offset.X, rect.Y+offset.Y)
-	canvas.Scale(rect.Width/s.size.Width, rect.Height/s.size.Height)
+	canvas.Translate(rect.Point.Add(offset))
+	canvas.Scale(geom.PointFromSize(rect.Size.DivSize(s.size)))
 	for _, path := range s.paths {
 		if paint == nil {
 			if path.fillPaint != nil {
@@ -380,9 +380,9 @@ func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect geom.Rect, opts *SamplingO
 		canvas.Save()
 		defer canvas.Restore()
 		center := rect.Center()
-		canvas.Translate(center.X, center.Y)
+		canvas.Translate(center)
 		canvas.Rotate(s.RotationDegrees)
-		canvas.Translate(-center.X, -center.Y)
+		canvas.Translate(center.Neg())
 	}
 	s.SVG.DrawInRectPreservingAspectRatio(canvas, rect, opts, paint)
 }

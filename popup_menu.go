@@ -33,7 +33,7 @@ var DefaultPopupMenuTheme = PopupMenuTheme{
 	EdgeInk:        ThemeSurfaceEdge,
 	SelectionInk:   ThemeFocus,
 	OnSelectionInk: ThemeOnFocus,
-	CornerRadius:   4,
+	CornerRadius:   geom.NewUniformSize(4),
 	HMargin:        8,
 	VMargin:        1,
 }
@@ -44,7 +44,7 @@ type PopupMenuTheme struct {
 	SelectionInk   Ink
 	OnSelectionInk Ink
 	TextDecoration
-	CornerRadius float32
+	CornerRadius geom.Size
 	HMargin      float32
 	VMargin      float32
 }
@@ -147,9 +147,9 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		!p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()
-	path.MoveTo(rect.Right(), rect.Y+(rect.Height-triHeight)/2)
-	path.LineTo(rect.Right()-triWidth, rect.Y+(rect.Height-triHeight)/2)
-	path.LineTo(rect.Right()-triWidth/2, rect.Y+(rect.Height-triHeight)/2+triHeight)
+	path.MoveTo(geom.NewPoint(rect.Right(), rect.Y+(rect.Height-triHeight)/2))
+	path.LineTo(geom.NewPoint(rect.Right()-triWidth, rect.Y+(rect.Height-triHeight)/2))
+	path.LineTo(geom.NewPoint(rect.Right()-triWidth/2, rect.Y+(rect.Height-triHeight)/2+triHeight))
 	path.Close()
 	paint := p.OnBackgroundInk.Paint(canvas, rect, paintstyle.Fill)
 	if !p.Enabled() {

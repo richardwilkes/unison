@@ -62,7 +62,7 @@ type Panel struct {
 	RefKey               string
 	children             []*Panel
 	frame                geom.Rect
-	scale                float32
+	scale                geom.Point
 	NeedsLayout          bool
 	focusable            bool
 	disabled             bool
@@ -233,15 +233,18 @@ func (p *Panel) Window() *Window {
 
 // Scale returns the scale that has been applied to this panel. This will be automatically applied, transforming the
 // graphics and mouse events.
-func (p *Panel) Scale() float32 {
-	if p.scale <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
-		p.scale = 1
+func (p *Panel) Scale() geom.Point {
+	if p.scale.X <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
+		p.scale.X = 1
+	}
+	if p.scale.Y <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
+		p.scale.Y = 1
 	}
 	return p.scale
 }
 
 // SetScale sets the scale for this panel and the panels in the hierarchy below it.
-func (p *Panel) SetScale(scale float32) {
+func (p *Panel) SetScale(scale geom.Point) {
 	p.scale = scale
 }
 
@@ -249,16 +252,16 @@ func (p *Panel) SetScale(scale float32) {
 func (p *Panel) FrameRect() geom.Rect {
 	scale := p.Scale()
 	r := p.frame
-	r.Width *= scale
-	r.Height *= scale
+	r.Width *= scale.X
+	r.Height *= scale.Y
 	return r
 }
 
 // SetFrameRect sets the location and size of the panel in its parent's coordinate system.
 func (p *Panel) SetFrameRect(rect geom.Rect) {
 	scale := p.Scale()
-	rect.Width /= scale
-	rect.Height /= scale
+	rect.Width /= scale.X
+	rect.Height /= scale.Y
 	moved := p.frame.X != rect.X || p.frame.Y != rect.Y
 	resized := p.frame.Width != rect.Width || p.frame.Height != rect.Height
 	if moved || resized {
@@ -327,13 +330,13 @@ func (p *Panel) Sizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	scale := p.Scale()
 	switch {
 	case p.layout != nil:
-		minSize, prefSize, maxSize = p.layout.LayoutSizes(p, hint.Div(scale))
+		minSize, prefSize, maxSize = p.layout.LayoutSizes(p, hint.DivPt(scale))
 	case p.sizer != nil:
-		minSize, prefSize, maxSize = p.sizer(hint.Div(scale))
+		minSize, prefSize, maxSize = p.sizer(hint.DivPt(scale))
 	default:
 		return minSize, prefSize, geom.NewSize(DefaultMaxSize, DefaultMaxSize)
 	}
-	return minSize.Mul(scale), prefSize.Mul(scale), maxSize.Mul(scale)
+	return minSize.MulPt(scale), prefSize.MulPt(scale), maxSize.MulPt(scale)
 }
 
 // Pack resizes the panel to its preferred size.
@@ -426,7 +429,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 	if !rect.Empty() {
 		gc.Save()
 		scale := p.Scale()
-		gc.Scale(scale, scale)
+		gc.Scale(scale)
 		gc.ClipRect(rect, pathop.Intersect, false)
 		if p.DrawCallback != nil {
 			gc.Save()
@@ -439,10 +442,10 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 				childFrame := child.FrameRect()
 				if adjusted := rect.Intersect(childFrame); !adjusted.Empty() {
 					gc.Save()
-					gc.Translate(childFrame.X, childFrame.Y)
+					gc.Translate(childFrame.Point)
 					scale = child.Scale()
-					adjusted.Point = adjusted.Point.Sub(childFrame.Point).Div(scale)
-					adjusted.Size = adjusted.Size.Div(scale)
+					adjusted.Point = adjusted.Point.Sub(childFrame.Point).DivPt(scale)
+					adjusted.Size = adjusted.Size.DivPt(scale)
 					child.Draw(gc, adjusted)
 					gc.Restore()
 				}
@@ -532,7 +535,7 @@ func (p *Panel) PanelAt(pt geom.Point) *Panel {
 	for _, child := range p.children {
 		if !child.Hidden {
 			if r := child.FrameRect(); pt.In(r) {
-				return child.PanelAt(pt.Sub(r.Point).Div(child.Scale()))
+				return child.PanelAt(pt.Sub(r.Point).DivPt(child.Scale()))
 			}
 		}
 	}
@@ -544,7 +547,7 @@ func (p *Panel) PanelAt(pt geom.Point) *Panel {
 func (p *Panel) PointToRoot(pt geom.Point) geom.Point {
 	panel := p
 	for panel != nil {
-		pt = pt.Mul(panel.Scale()).Add(panel.frame.Point)
+		pt = pt.MulPt(panel.Scale()).Add(panel.frame.Point)
 		panel = panel.parent
 	}
 	return pt
@@ -561,7 +564,7 @@ func (p *Panel) PointFromRoot(pt geom.Point) geom.Point {
 	}
 	for i := len(list) - 1; i >= 0; i-- {
 		panel = list[i]
-		pt = pt.Sub(panel.frame.Point).Div(panel.Scale())
+		pt = pt.Sub(panel.frame.Point).DivPt(panel.Scale())
 	}
 	return pt
 }
@@ -612,8 +615,8 @@ func (p *Panel) ScrollRectIntoView(rect geom.Rect) {
 			}
 		}
 		scale := look.Scale()
-		pt := rect.BottomRight().Mul(scale)
-		rect.Point = rect.Point.Mul(scale)
+		pt := rect.BottomRight().MulPt(scale)
+		rect.Point = rect.Point.MulPt(scale)
 		rect.Width = pt.X - rect.X
 		rect.Height = pt.Y - rect.Y
 		rect.Point = rect.Point.Add(look.frame.Point)

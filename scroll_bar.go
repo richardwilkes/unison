@@ -19,20 +19,20 @@ import (
 var DefaultScrollBarTheme = ScrollBarTheme{
 	EdgeInk:          ThemeSurfaceEdge,
 	ThumbInk:         ThemeFocus,
+	CornerRadius:     geom.NewUniformSize(4),
 	MinimumThickness: 11,
 	MinimumThumb:     16,
 	ThumbIndent:      3,
-	CornerRadius:     4,
 }
 
 // ScrollBarTheme holds theming data for a ScrollBar.
 type ScrollBarTheme struct {
 	EdgeInk          Ink
 	ThumbInk         Ink
+	CornerRadius     geom.Size
 	MinimumThickness float32
 	MinimumThumb     float32
 	ThumbIndent      float32
-	CornerRadius     float32
 }
 
 // ScrollBar holds the data necessary for tracking a scroll bar's state.
@@ -169,8 +169,8 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, _ geom.Rect) {
 		if !s.overThumb {
 			p.SetColorFilter(Alpha30Filter())
 		}
-		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, p)
-		gc.DrawRoundedRect(thumb, s.CornerRadius, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, paintstyle.Stroke))
+		gc.DrawRoundedRect(thumb, s.CornerRadius, p)
+		gc.DrawRoundedRect(thumb, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, paintstyle.Stroke))
 	}
 }
 

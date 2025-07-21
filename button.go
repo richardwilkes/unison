@@ -30,8 +30,8 @@ var DefaultButtonTheme = ButtonTheme{
 	EdgeInk:             ThemeSurfaceEdge,
 	SelectionInk:        ThemeFocus,
 	OnSelectionInk:      ThemeOnFocus,
+	CornerRadius:        geom.NewUniformSize(4),
 	Gap:                 StdIconGap,
-	CornerRadius:        4,
 	HMargin:             8,
 	VMargin:             1,
 	DrawableOnlyHMargin: 3,
@@ -49,8 +49,8 @@ type ButtonTheme struct {
 	SelectionInk   Ink
 	OnSelectionInk Ink
 	TextDecoration
+	CornerRadius        geom.Size
 	Gap                 float32
-	CornerRadius        float32
 	HMargin             float32
 	VMargin             float32
 	DrawableOnlyHMargin float32

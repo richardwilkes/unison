@@ -75,20 +75,21 @@ func (p *Path) SetFillType(fillType filltype.Enum) {
 }
 
 // ArcTo appends an arc. rotation is in degrees.
-func (p *Path) ArcTo(x, y, rx, ry, rotation float32, arcSize arcsize.Enum, dir direction.Enum) {
-	skia.PathArcTo(p.path, x, y, rx, ry, rotation, skia.ArcSize(arcSize), skia.Direction(dir))
+func (p *Path) ArcTo(pt geom.Point, radius geom.Size, rotation float32, arcSize arcsize.Enum, dir direction.Enum) {
+	skia.PathArcTo(p.path, pt.X, pt.Y, radius.Width, radius.Height, rotation, skia.ArcSize(arcSize),
+		skia.Direction(dir))
 }
 
-// ArcToFromTangent appends an arc. The arc is contained by the tangent from the current point to (x1, y1) and the
-// tangent from (x1, y1) to (x2, y2). The arc is part of the circle sized to radius, positioned so it touches both
-// tangent lines.
-func (p *Path) ArcToFromTangent(x1, y1, x2, y2, radius float32) {
-	skia.PathArcToWithPoints(p.path, x1, y1, x2, y2, radius)
+// ArcToFromTangent appends an arc. The arc is contained by the tangent from the current point to pt1 and the tangent
+// from pt1 to pt2. The arc is part of the circle sized to radius, positioned so it touches both tangent lines.
+func (p *Path) ArcToFromTangent(pt1, pt2 geom.Point, radius float32) {
+	skia.PathArcToWithPoints(p.path, pt1.X, pt1.Y, pt2.X, pt2.Y, radius)
 }
 
 // ArcToRelative appends an arc. The destination point is relative to the current point. rotation is in degrees.
-func (p *Path) ArcToRelative(dx, dy, rx, ry, rotation float32, arcSize arcsize.Enum, dir direction.Enum) {
-	skia.PathRArcTo(p.path, dx, dy, rx, ry, rotation, skia.ArcSize(arcSize), skia.Direction(dir))
+func (p *Path) ArcToRelative(destPt geom.Point, radius geom.Size, rotation float32, arcSize arcsize.Enum, dir direction.Enum) {
+	skia.PathRArcTo(p.path, destPt.X, destPt.Y, radius.Width, radius.Height, rotation, skia.ArcSize(arcSize),
+		skia.Direction(dir))
 }
 
 // ArcToOval appends an arc bounded by an oval. Both startAngle and sweepAngle are in degrees. A positive sweepAngle
@@ -113,14 +114,14 @@ func (p *Path) ComputeTightBounds() geom.Rect {
 
 // Circle adds a circle to the path with a clockwise direction. The circle is a complete contour, i.e. it starts with a
 // MoveTo and ends with a Close operation.
-func (p *Path) Circle(x, y, radius float32) {
-	skia.PathAddCircle(p.path, x, y, radius, skia.Direction(direction.Clockwise))
+func (p *Path) Circle(center geom.Point, radius float32) {
+	skia.PathAddCircle(p.path, center.X, center.Y, radius, skia.Direction(direction.Clockwise))
 }
 
 // CircleWithDirection adds a circle to the path. The circle is a complete contour, i.e. it starts with a MoveTo and
 // ends with a Close operation.
-func (p *Path) CircleWithDirection(x, y, radius float32, dir direction.Enum) {
-	skia.PathAddCircle(p.path, x, y, radius, skia.Direction(dir))
+func (p *Path) CircleWithDirection(center geom.Point, radius float32, dir direction.Enum) {
+	skia.PathAddCircle(p.path, center.X, center.Y, radius, skia.Direction(dir))
 }
 
 // Clone this path.
@@ -134,43 +135,43 @@ func (p *Path) Close() {
 }
 
 // ConicTo appends a conic curve.
-func (p *Path) ConicTo(cpx, cpy, x, y, weight float32) {
-	skia.PathConicTo(p.path, cpx, cpy, x, y, weight)
+func (p *Path) ConicTo(ctrlPt, endPt geom.Point, weight float32) {
+	skia.PathConicTo(p.path, ctrlPt.X, ctrlPt.Y, endPt.X, endPt.Y, weight)
 }
 
 // ConicToRelative appends a conic curve. The control point and end point are relative to the current point.
-func (p *Path) ConicToRelative(cpdx, cpdy, dx, dy, weight float32) {
-	skia.PathRConicTo(p.path, cpdx, cpdy, dx, dy, weight)
+func (p *Path) ConicToRelative(ctrlPt, endPt geom.Point, weight float32) {
+	skia.PathRConicTo(p.path, ctrlPt.X, ctrlPt.Y, endPt.X, endPt.Y, weight)
 }
 
 // CubicTo appends a cubic curve.
-func (p *Path) CubicTo(cp1x, cp1y, cp2x, cp2y, x, y float32) {
-	skia.PathCubicTo(p.path, cp1x, cp1y, cp2x, cp2y, x, y)
+func (p *Path) CubicTo(cp1, cp2, endPt geom.Point) {
+	skia.PathCubicTo(p.path, cp1.X, cp1.Y, cp2.X, cp2.Y, endPt.X, endPt.Y)
 }
 
 // CubicToRelative appends a cubic curve. The control point and end point are relative to the current point.
-func (p *Path) CubicToRelative(cp1dx, cp1dy, cp2dx, cp2dy, dx, dy float32) {
-	skia.PathRCubicTo(p.path, cp1dx, cp1dy, cp2dx, cp2dy, dx, dy)
+func (p *Path) CubicToRelative(cp1, cp2, endPt geom.Point) {
+	skia.PathRCubicTo(p.path, cp1.X, cp1.Y, cp2.X, cp2.Y, endPt.X, endPt.Y)
 }
 
 // LineTo appends a straight line segment.
-func (p *Path) LineTo(x, y float32) {
-	skia.PathLineTo(p.path, x, y)
+func (p *Path) LineTo(pt geom.Point) {
+	skia.PathLineTo(p.path, pt.X, pt.Y)
 }
 
 // LineToRelative appends a straight line segment. The end point is relative to the current point.
-func (p *Path) LineToRelative(x, y float32) {
-	skia.PathRLineTo(p.path, x, y)
+func (p *Path) LineToRelative(pt geom.Point) {
+	skia.PathRLineTo(p.path, pt.X, pt.Y)
 }
 
 // MoveTo begins a new contour at the specified point.
-func (p *Path) MoveTo(x, y float32) {
-	skia.PathMoveTo(p.path, x, y)
+func (p *Path) MoveTo(pt geom.Point) {
+	skia.PathMoveTo(p.path, pt.X, pt.Y)
 }
 
 // MoveToRelative begins a new contour at the specified point, which is relative to the current point.
-func (p *Path) MoveToRelative(x, y float32) {
-	skia.PathRMoveTo(p.path, x, y)
+func (p *Path) MoveToRelative(pt geom.Point) {
+	skia.PathRMoveTo(p.path, pt.X, pt.Y)
 }
 
 // Oval adds an oval to the path with a clockwise direction. The oval is a complete contour, i.e. it starts with a
@@ -203,8 +204,8 @@ func (p *Path) PathRotated(path *Path, degrees float32, extend bool) {
 
 // PathScaled appends a path after scaling it. If extend is true, a line from the current point to the start of the
 // added path is created.
-func (p *Path) PathScaled(path *Path, sx, sy float32, extend bool) {
-	skia.PathAddPathMatrix(p.path, path.path, geom.NewScaleMatrix(sx, sy), pathAddMode(extend))
+func (p *Path) PathScaled(path *Path, pt geom.Point, extend bool) {
+	skia.PathAddPathMatrix(p.path, path.path, geom.NewScaleMatrixPt(pt), pathAddMode(extend))
 }
 
 // PathTransformed appends a path after transforming it. If extend is true, a line from the current point to the start
@@ -215,8 +216,8 @@ func (p *Path) PathTransformed(path *Path, matrix geom.Matrix, extend bool) {
 
 // PathTranslated appends a path after translating it with the given offset. If extend is true, a line from the current
 // point to the start of the added path is created.
-func (p *Path) PathTranslated(path *Path, offsetX, offsetY float32, extend bool) {
-	skia.PathAddPathOffset(p.path, path.path, offsetX, offsetY, pathAddMode(extend))
+func (p *Path) PathTranslated(path *Path, offset geom.Point, extend bool) {
+	skia.PathAddPathOffset(p.path, path.path, offset.X, offset.Y, pathAddMode(extend))
 }
 
 // Poly appends the line segments represented by pts to the path.
@@ -234,8 +235,8 @@ func (p *Path) Polygon(polygon poly.Polygon) {
 }
 
 // QuadTo appends a quadratic curve.
-func (p *Path) QuadTo(cpx, cpy, x, y float32) {
-	skia.PathQuadTo(p.path, cpx, cpy, x, y)
+func (p *Path) QuadTo(ctrlPt, endPt geom.Point) {
+	skia.PathQuadTo(p.path, ctrlPt.X, ctrlPt.Y, endPt.X, endPt.Y)
 }
 
 // Rect adds a rectangle to the path with a clockwise direction. The rectangle is a complete contour, i.e. it starts
@@ -252,14 +253,14 @@ func (p *Path) RectWithDirection(bounds geom.Rect, dir direction.Enum) {
 
 // RoundedRect adds a rectangle with curved corners to the path with a clockwise direction. The rectangle is a complete
 // contour, i.e. it starts with a MoveTo and ends with a Close operation.
-func (p *Path) RoundedRect(bounds geom.Rect, radiusX, radiusY float32) {
-	skia.PathAddRoundedRect(p.path, bounds, radiusX, radiusY, skia.Direction(direction.Clockwise))
+func (p *Path) RoundedRect(bounds geom.Rect, radius geom.Size) {
+	skia.PathAddRoundedRect(p.path, bounds, radius.Width, radius.Height, skia.Direction(direction.Clockwise))
 }
 
 // RoundedRectWithDirection adds a rectangle with curved corners to the path. The rectangle is a complete contour, i.e.
 // it starts with a MoveTo and ends with a Close operation.
-func (p *Path) RoundedRectWithDirection(bounds geom.Rect, radiusX, radiusY float32, dir direction.Enum) {
-	skia.PathAddRoundedRect(p.path, bounds, radiusX, radiusY, skia.Direction(dir))
+func (p *Path) RoundedRectWithDirection(bounds geom.Rect, radius geom.Size, dir direction.Enum) {
+	skia.PathAddRoundedRect(p.path, bounds, radius.Width, radius.Height, skia.Direction(dir))
 }
 
 // Rotate the path.
@@ -268,8 +269,8 @@ func (p *Path) Rotate(degrees float32) {
 }
 
 // Scale the path.
-func (p *Path) Scale(sx, sy float32) {
-	skia.PathTransform(p.path, geom.NewScaleMatrix(sx, sy))
+func (p *Path) Scale(scale geom.Point) {
+	skia.PathTransform(p.path, geom.NewScaleMatrixPt(scale))
 }
 
 // Transform the path by the provided matrix.
@@ -278,8 +279,8 @@ func (p *Path) Transform(matrix geom.Matrix) {
 }
 
 // Translate the path.
-func (p *Path) Translate(x, y float32) {
-	skia.PathTransform(p.path, geom.NewTranslationMatrix(x, y))
+func (p *Path) Translate(pt geom.Point) {
+	skia.PathTransform(p.path, geom.NewTranslationMatrixPt(pt))
 }
 
 // NewRotated creates a copy of this path and then rotates it.
@@ -290,9 +291,9 @@ func (p *Path) NewRotated(degrees float32) *Path {
 }
 
 // NewScaled creates a copy of this path and then scales it.
-func (p *Path) NewScaled(sx, sy float32) *Path {
+func (p *Path) NewScaled(scale geom.Point) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, geom.NewScaleMatrix(sx, sy))
+	skia.PathTransformToDest(p.path, path.path, geom.NewScaleMatrixPt(scale))
 	return path
 }
 
@@ -304,9 +305,9 @@ func (p *Path) NewTransformed(matrix geom.Matrix) *Path {
 }
 
 // NewTranslated creates a copy of this path and then translates it.
-func (p *Path) NewTranslated(x, y float32) *Path {
+func (p *Path) NewTranslated(pt geom.Point) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, geom.NewTranslationMatrix(x, y))
+	skia.PathTransformToDest(p.path, path.path, geom.NewTranslationMatrixPt(pt))
 	return path
 }
 
@@ -322,8 +323,8 @@ func (p *Path) Rewind() {
 }
 
 // Contains returns true if the point is within the path, taking into account the FillType.
-func (p *Path) Contains(x, y float32) bool {
-	return skia.PathContains(p.path, x, y)
+func (p *Path) Contains(pt geom.Point) bool {
+	return skia.PathContains(p.path, pt.X, pt.Y)
 }
 
 // CurrentPt returns the current point.

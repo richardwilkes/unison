@@ -32,9 +32,9 @@ var DefaultCheckBoxTheme = CheckBoxTheme{
 	OnSelectionInk:     ThemeOnFocus,
 	ControlInk:         ThemeAboveSurface,
 	OnControlInk:       ThemeOnAboveSurface,
-	Gap:                StdIconGap,
-	CornerRadius:       4,
 	ClickAnimationTime: 100 * time.Millisecond,
+	CornerRadius:       geom.NewUniformSize(4),
+	Gap:                StdIconGap,
 	HAlign:             align.Start,
 	VAlign:             align.Middle,
 	Side:               side.Left,
@@ -48,9 +48,9 @@ type CheckBoxTheme struct {
 	ControlInk     Ink
 	OnControlInk   Ink
 	TextDecoration
-	Gap                float32
-	CornerRadius       float32
 	ClickAnimationTime time.Duration
+	CornerRadius       geom.Size
+	Gap                float32
 	HAlign             align.Enum
 	VAlign             align.Enum
 	Side               side.Enum
@@ -184,13 +184,13 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	}
 	if c.State == check.On {
 		path := NewPath()
-		path.MoveTo(rect.X+rect.Width*0.25, rect.Y+rect.Height*0.55)
-		path.LineTo(rect.X+rect.Width*0.45, rect.Y+rect.Height*0.7)
-		path.LineTo(rect.X+rect.Width*0.75, rect.Y+rect.Height*0.3)
+		path.MoveTo(geom.NewPoint(rect.X+rect.Width*0.25, rect.Y+rect.Height*0.55))
+		path.LineTo(geom.NewPoint(rect.X+rect.Width*0.45, rect.Y+rect.Height*0.7))
+		path.LineTo(geom.NewPoint(rect.X+rect.Width*0.75, rect.Y+rect.Height*0.3))
 		canvas.DrawPath(path, paint)
 	} else {
-		canvas.DrawLine(rect.X+rect.Width*0.25, rect.Y+rect.Height*0.5, rect.X+rect.Width*0.7, rect.Y+rect.Height*0.5,
-			paint)
+		canvas.DrawLine(rect.Point.Add(geom.NewPoint(rect.Width*0.25, rect.Height*0.5)),
+			rect.Point.Add(geom.NewPoint(rect.Width*0.7, rect.Height*0.5)), paint)
 	}
 }
 

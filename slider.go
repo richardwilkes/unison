@@ -21,8 +21,8 @@ var DefaultSliderTheme = SliderTheme{
 	FillInk:       ThemeSurface,
 	EdgeInk:       ThemeSurfaceEdge,
 	MarkerColor:   ThemeFocus,
+	CornerRadius:  geom.NewUniformSize(8),
 	MarkerSize:    12,
-	CornerRadius:  8,
 	EdgeThickness: 1,
 }
 
@@ -31,8 +31,8 @@ type SliderTheme struct {
 	FillInk       Ink
 	EdgeInk       Ink
 	MarkerColor   ColorProvider
+	CornerRadius  geom.Size
 	MarkerSize    float32
-	CornerRadius  float32
 	EdgeThickness float32
 }
 
@@ -154,7 +154,7 @@ func (s *Slider) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.S
 
 // DefaultDrawBackground provides the default background drawing.
 func (s *Slider) DefaultDrawBackground(canvas *Canvas, bounds geom.Rect) {
-	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.CornerRadius, s.FillInk.Paint(canvas, bounds, paintstyle.Fill))
+	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.FillInk.Paint(canvas, bounds, paintstyle.Fill))
 }
 
 // DefaultDraw provides the default drawing.
@@ -174,10 +174,10 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		bounds.Y += s.EdgeThickness
 		bounds.Height -= s.EdgeThickness * 2
 	}
-	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.CornerRadius, s.FillInk.Paint(canvas, bounds, paintstyle.Fill))
+	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.FillInk.Paint(canvas, bounds, paintstyle.Fill))
 	edgePaint := s.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
 	edgePaint.SetStrokeWidth(s.EdgeThickness)
-	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.CornerRadius, edgePaint)
+	canvas.DrawRoundedRect(bounds, s.CornerRadius, edgePaint)
 	center := bounds.Center()
 	var multiplier float32
 	if meterRange := s.maximum - s.minimum; meterRange > 0 {
@@ -198,8 +198,8 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		inner = s.MarkerColor.Paint(canvas, bounds, paintstyle.Stroke)
 		inner.SetStrokeWidth(1)
 	}
-	canvas.DrawCircle(center.X, center.Y, s.MarkerSize/2-2, outer)
-	canvas.DrawCircle(center.X, center.Y, s.MarkerSize/2-2, inner)
+	canvas.DrawCircle(center, s.MarkerSize/2-2, outer)
+	canvas.DrawCircle(center, s.MarkerSize/2-2, inner)
 }
 
 // DefaultMouseDown provides the default mouse down handling.
