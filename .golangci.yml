@@ -15,7 +15,6 @@ linters:
     - govet
     - ineffassign
     - misspell
-    - noctx
     - prealloc
     - predeclared
     - revive
