@@ -37,7 +37,7 @@ func CreatePDF(s Stream, md *PDFMetaData, pageProvider PageProvider) error {
 	pageNumber := 1
 	for pageProvider.HasPage(pageNumber) {
 		size := pageProvider.PageSize()
-		canvas := &Canvas{canvas: skia.DocumentBeginPage(d, size.Width, size.Height)}
+		canvas := &Canvas{canvas: skia.DocumentBeginPage(d, size)}
 		if err := pageProvider.DrawPage(canvas, pageNumber); err != nil {
 			skia.DocumentAbort(d)
 			return errs.Wrap(err)

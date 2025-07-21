@@ -69,12 +69,12 @@ func (c *Canvas) RestoreToCount(count int) {
 
 // Translate the coordinate system.
 func (c *Canvas) Translate(delta geom.Point) {
-	skia.CanvasTranslate(c.canvas, delta.X, delta.Y)
+	skia.CanvasTranslate(c.canvas, delta)
 }
 
 // Scale the coordinate system.
 func (c *Canvas) Scale(scale geom.Point) {
-	skia.CanvasScale(c.canvas, scale.X, scale.Y)
+	skia.CanvasScale(c.canvas, scale)
 }
 
 // Rotate the coordinate system.
@@ -85,7 +85,7 @@ func (c *Canvas) Rotate(degrees float32) {
 // Skew the coordinate system. A positive value of skew.X skews the drawing right as y-axis values increase; a positive
 // value of skew.Y skews the drawing down as x-axis values increase.
 func (c *Canvas) Skew(skew geom.Point) {
-	skia.CanvasSkew(c.canvas, skew.X, skew.Y)
+	skia.CanvasSkew(c.canvas, skew)
 }
 
 // Concat the matrix.
@@ -137,12 +137,12 @@ func (c *Canvas) DrawRect(rect geom.Rect, paint *Paint) {
 
 // DrawRoundedRect draws a rounded rectangle with Paint.
 func (c *Canvas) DrawRoundedRect(rect geom.Rect, radius geom.Size, paint *Paint) {
-	skia.CanvasDrawRoundRect(c.canvas, rect, radius.Width, radius.Height, paint.paint)
+	skia.CanvasDrawRoundRect(c.canvas, rect, radius, paint.paint)
 }
 
 // DrawCircle draws the circle with Paint.
 func (c *Canvas) DrawCircle(center geom.Point, radius float32, paint *Paint) {
-	skia.CanvasDrawCircle(c.canvas, center.X, center.Y, radius, paint.paint)
+	skia.CanvasDrawCircle(c.canvas, center, radius, paint.paint)
 }
 
 // DrawOval draws the oval with Paint.
@@ -197,7 +197,7 @@ func (c *Canvas) DrawPoints(pts []geom.Point, paint *Paint, mode pointmode.Enum)
 
 // DrawLine draws a line.
 func (c *Canvas) DrawLine(start, end geom.Point, paint *Paint) {
-	skia.CanvasDrawLine(c.canvas, start.X, start.Y, end.X, end.Y, paint.paint)
+	skia.CanvasDrawLine(c.canvas, start, end, paint.paint)
 }
 
 // DrawPolygon draws a polygon.

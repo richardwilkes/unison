@@ -152,20 +152,20 @@ func CanvasRestoreToCount(canvas Canvas, count int) {
 	C.sk_canvas_restore_to_count(canvas, C.int(count))
 }
 
-func CanvasTranslate(canvas Canvas, dx, dy float32) {
-	C.sk_canvas_translate(canvas, C.float(dx), C.float(dy))
+func CanvasTranslate(canvas Canvas, offset geom.Point) {
+	C.sk_canvas_translate(canvas, C.float(offset.X), C.float(offset.Y))
 }
 
-func CanvasScale(canvas Canvas, xScale, yScale float32) {
-	C.sk_canvas_scale(canvas, C.float(xScale), C.float(yScale))
+func CanvasScale(canvas Canvas, scale geom.Point) {
+	C.sk_canvas_scale(canvas, C.float(scale.X), C.float(scale.Y))
 }
 
 func CanvasRotateRadians(canvas Canvas, radians float32) {
 	C.sk_canvas_rotate_radians(canvas, C.float(radians))
 }
 
-func CanvasSkew(canvas Canvas, sx, sy float32) {
-	C.sk_canvas_skew(canvas, C.float(sx), C.float(sy))
+func CanvasSkew(canvas Canvas, skew geom.Point) {
+	C.sk_canvas_skew(canvas, C.float(skew.X), C.float(skew.Y))
 }
 
 func CanvasConcat(canvas Canvas, matrix geom.Matrix) {
@@ -206,12 +206,12 @@ func CanvasDrawRect(canvas Canvas, rect geom.Rect, paint Paint) {
 	C.sk_canvas_draw_rect(canvas, fromGeomRect(&rect), paint)
 }
 
-func CanvasDrawRoundRect(canvas Canvas, rect geom.Rect, radiusX, radiusY float32, paint Paint) {
-	C.sk_canvas_draw_round_rect(canvas, fromGeomRect(&rect), C.float(radiusX), C.float(radiusY), paint)
+func CanvasDrawRoundRect(canvas Canvas, rect geom.Rect, radius geom.Size, paint Paint) {
+	C.sk_canvas_draw_round_rect(canvas, fromGeomRect(&rect), C.float(radius.Width), C.float(radius.Height), paint)
 }
 
-func CanvasDrawCircle(canvas Canvas, centerX, centerY, radius float32, paint Paint) {
-	C.sk_canvas_draw_circle(canvas, C.float(centerX), C.float(centerY), C.float(radius), paint)
+func CanvasDrawCircle(canvas Canvas, center geom.Point, radius float32, paint Paint) {
+	C.sk_canvas_draw_circle(canvas, C.float(center.X), C.float(center.Y), C.float(radius), paint)
 }
 
 func CanvasDrawOval(canvas Canvas, rect geom.Rect, paint Paint) {
@@ -250,8 +250,8 @@ func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Point, paint Pai
 		(*C.sk_point_t)(unsafe.Pointer(&pts[0])), paint)
 }
 
-func CanvasDrawLine(canvas Canvas, sx, sy, ex, ey float32, paint Paint) {
-	C.sk_canvas_draw_line(canvas, C.float(sx), C.float(sy), C.float(ex), C.float(ey), paint)
+func CanvasDrawLine(canvas Canvas, start, end geom.Point, paint Paint) {
+	C.sk_canvas_draw_line(canvas, C.float(start.X), C.float(start.Y), C.float(end.X), C.float(end.Y), paint)
 }
 
 func CanvasDrawArc(canvas Canvas, oval geom.Rect, startAngle, sweepAngle float32, useCenter bool, paint Paint) {
@@ -360,8 +360,8 @@ func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
 	return C.sk_document_make_pdf(stream, (*C.sk_metadata_t)(unsafe.Pointer(&md)))
 }
 
-func DocumentBeginPage(doc Document, width, height float32) Canvas {
-	return C.sk_document_begin_page(doc, C.float(width), C.float(height))
+func DocumentBeginPage(doc Document, size geom.Size) Canvas {
+	return C.sk_document_begin_page(doc, C.float(size.Width), C.float(size.Height))
 }
 
 func DocumentEndPage(doc Document) {
@@ -953,8 +953,8 @@ func PathComputeTightBounds(path Path) geom.Rect {
 	return toGeomRect(r)
 }
 
-func PathAddCircle(path Path, x, y, radius float32, direction Direction) {
-	C.sk_path_add_circle(path, C.float(x), C.float(y), C.float(radius), C.sk_path_direction_t(direction))
+func PathAddCircle(path Path, center geom.Point, radius float32, direction Direction) {
+	C.sk_path_add_circle(path, C.float(center.X), C.float(center.Y), C.float(radius), C.sk_path_direction_t(direction))
 }
 
 func PathClone(path Path) Path {
@@ -965,36 +965,38 @@ func PathClose(path Path) {
 	C.sk_path_close(path)
 }
 
-func PathConicTo(path Path, cpx, cpy, x, y, weight float32) {
-	C.sk_path_conic_to(path, C.float(cpx), C.float(cpy), C.float(x), C.float(y), C.float(weight))
+func PathConicTo(path Path, ctrlPt, endPt geom.Point, weight float32) {
+	C.sk_path_conic_to(path, C.float(ctrlPt.X), C.float(ctrlPt.Y), C.float(endPt.X), C.float(endPt.Y), C.float(weight))
 }
 
-func PathRConicTo(path Path, cpdx, cpdy, dx, dy, weight float32) {
-	C.sk_path_rconic_to(path, C.float(cpdx), C.float(cpdy), C.float(dx), C.float(dy), C.float(weight))
+func PathRConicTo(path Path, ctrlPt, endPt geom.Point, weight float32) {
+	C.sk_path_rconic_to(path, C.float(ctrlPt.X), C.float(ctrlPt.Y), C.float(endPt.X), C.float(endPt.Y), C.float(weight))
 }
 
-func PathCubicTo(path Path, cp1x, cp1y, cp2x, cp2y, x, y float32) {
-	C.sk_path_cubic_to(path, C.float(cp1x), C.float(cp1y), C.float(cp2x), C.float(cp2y), C.float(x), C.float(y))
+func PathCubicTo(path Path, cp1, cp2, end geom.Point) {
+	C.sk_path_cubic_to(path, C.float(cp1.X), C.float(cp1.Y), C.float(cp2.X), C.float(cp2.Y), C.float(end.X),
+		C.float(end.Y))
 }
 
-func PathRCubicTo(path Path, cp1dx, cp1dy, cp2dx, cp2dy, dx, dy float32) {
-	C.sk_path_rcubic_to(path, C.float(cp1dx), C.float(cp1dy), C.float(cp2dx), C.float(cp2dy), C.float(dx), C.float(dy))
+func PathRCubicTo(path Path, cp1, cp2, end geom.Point) {
+	C.sk_path_rcubic_to(path, C.float(cp1.X), C.float(cp1.Y), C.float(cp2.X), C.float(cp2.Y), C.float(end.X),
+		C.float(end.Y))
 }
 
-func PathLineTo(path Path, x, y float32) {
-	C.sk_path_line_to(path, C.float(x), C.float(y))
+func PathLineTo(path Path, pt geom.Point) {
+	C.sk_path_line_to(path, C.float(pt.X), C.float(pt.Y))
 }
 
-func PathRLineTo(path Path, x, y float32) {
-	C.sk_path_rline_to(path, C.float(x), C.float(y))
+func PathRLineTo(path Path, pt geom.Point) {
+	C.sk_path_rline_to(path, C.float(pt.X), C.float(pt.Y))
 }
 
-func PathMoveTo(path Path, x, y float32) {
-	C.sk_path_move_to(path, C.float(x), C.float(y))
+func PathMoveTo(path Path, pt geom.Point) {
+	C.sk_path_move_to(path, C.float(pt.X), C.float(pt.Y))
 }
 
-func PathRMoveTo(path Path, x, y float32) {
-	C.sk_path_rmove_to(path, C.float(x), C.float(y))
+func PathRMoveTo(path Path, pt geom.Point) {
+	C.sk_path_rmove_to(path, C.float(pt.X), C.float(pt.Y))
 }
 
 func PathAddOval(path Path, rect geom.Rect, direction Direction) {
@@ -1013,24 +1015,24 @@ func PathAddPathMatrix(path, other Path, matrix geom.Matrix, mode PathAddMode) {
 	C.sk_path_add_path_matrix(path, other, fromGeomMatrix(&matrix), C.sk_path_add_mode_t(mode))
 }
 
-func PathAddPathOffset(path, other Path, offsetX, offsetY float32, mode PathAddMode) {
-	C.sk_path_add_path_offset(path, other, C.float(offsetX), C.float(offsetY), C.sk_path_add_mode_t(mode))
+func PathAddPathOffset(path, other Path, offset geom.Point, mode PathAddMode) {
+	C.sk_path_add_path_offset(path, other, C.float(offset.X), C.float(offset.Y), C.sk_path_add_mode_t(mode))
 }
 
 func PathAddPoly(path Path, pts []geom.Point, closePath bool) {
 	C.sk_path_add_poly(path, (*C.sk_point_t)(unsafe.Pointer(&pts[0])), C.int(len(pts)), C.bool(closePath))
 }
 
-func PathQuadTo(path Path, cpx, cpy, x, y float32) {
-	C.sk_path_quad_to(path, C.float(cpx), C.float(cpy), C.float(x), C.float(y))
+func PathQuadTo(path Path, ctrlPt, endPt geom.Point) {
+	C.sk_path_quad_to(path, C.float(ctrlPt.X), C.float(ctrlPt.Y), C.float(endPt.X), C.float(endPt.Y))
 }
 
 func PathAddRect(path Path, rect geom.Rect, direction Direction) {
 	C.sk_path_add_rect(path, fromGeomRect(&rect), C.sk_path_direction_t(direction))
 }
 
-func PathAddRoundedRect(path Path, rect geom.Rect, radiusX, radiusY float32, direction Direction) {
-	C.sk_path_add_rounded_rect(path, fromGeomRect(&rect), C.float(radiusX), C.float(radiusY),
+func PathAddRoundedRect(path Path, rect geom.Rect, radius geom.Size, direction Direction) {
+	C.sk_path_add_rounded_rect(path, fromGeomRect(&rect), C.float(radius.Width), C.float(radius.Height),
 		C.sk_path_direction_t(direction))
 }
 
@@ -1050,8 +1052,8 @@ func PathRewind(path Path) {
 	C.sk_path_rewind(path)
 }
 
-func PathContains(path Path, x, y float32) bool {
-	return bool(C.sk_path_contains(path, C.float(x), C.float(y)))
+func PathContains(path Path, pt geom.Point) bool {
+	return bool(C.sk_path_contains(path, C.float(pt.X), C.float(pt.Y)))
 }
 
 func PathGetLastPoint(path Path) geom.Point {

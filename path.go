@@ -115,13 +115,13 @@ func (p *Path) ComputeTightBounds() geom.Rect {
 // Circle adds a circle to the path with a clockwise direction. The circle is a complete contour, i.e. it starts with a
 // MoveTo and ends with a Close operation.
 func (p *Path) Circle(center geom.Point, radius float32) {
-	skia.PathAddCircle(p.path, center.X, center.Y, radius, skia.Direction(direction.Clockwise))
+	skia.PathAddCircle(p.path, center, radius, skia.Direction(direction.Clockwise))
 }
 
 // CircleWithDirection adds a circle to the path. The circle is a complete contour, i.e. it starts with a MoveTo and
 // ends with a Close operation.
 func (p *Path) CircleWithDirection(center geom.Point, radius float32, dir direction.Enum) {
-	skia.PathAddCircle(p.path, center.X, center.Y, radius, skia.Direction(dir))
+	skia.PathAddCircle(p.path, center, radius, skia.Direction(dir))
 }
 
 // Clone this path.
@@ -136,42 +136,42 @@ func (p *Path) Close() {
 
 // ConicTo appends a conic curve.
 func (p *Path) ConicTo(ctrlPt, endPt geom.Point, weight float32) {
-	skia.PathConicTo(p.path, ctrlPt.X, ctrlPt.Y, endPt.X, endPt.Y, weight)
+	skia.PathConicTo(p.path, ctrlPt, endPt, weight)
 }
 
 // ConicToRelative appends a conic curve. The control point and end point are relative to the current point.
 func (p *Path) ConicToRelative(ctrlPt, endPt geom.Point, weight float32) {
-	skia.PathRConicTo(p.path, ctrlPt.X, ctrlPt.Y, endPt.X, endPt.Y, weight)
+	skia.PathRConicTo(p.path, ctrlPt, endPt, weight)
 }
 
 // CubicTo appends a cubic curve.
 func (p *Path) CubicTo(cp1, cp2, endPt geom.Point) {
-	skia.PathCubicTo(p.path, cp1.X, cp1.Y, cp2.X, cp2.Y, endPt.X, endPt.Y)
+	skia.PathCubicTo(p.path, cp1, cp2, endPt)
 }
 
 // CubicToRelative appends a cubic curve. The control point and end point are relative to the current point.
 func (p *Path) CubicToRelative(cp1, cp2, endPt geom.Point) {
-	skia.PathRCubicTo(p.path, cp1.X, cp1.Y, cp2.X, cp2.Y, endPt.X, endPt.Y)
+	skia.PathRCubicTo(p.path, cp1, cp2, endPt)
 }
 
 // LineTo appends a straight line segment.
 func (p *Path) LineTo(pt geom.Point) {
-	skia.PathLineTo(p.path, pt.X, pt.Y)
+	skia.PathLineTo(p.path, pt)
 }
 
 // LineToRelative appends a straight line segment. The end point is relative to the current point.
 func (p *Path) LineToRelative(pt geom.Point) {
-	skia.PathRLineTo(p.path, pt.X, pt.Y)
+	skia.PathRLineTo(p.path, pt)
 }
 
 // MoveTo begins a new contour at the specified point.
 func (p *Path) MoveTo(pt geom.Point) {
-	skia.PathMoveTo(p.path, pt.X, pt.Y)
+	skia.PathMoveTo(p.path, pt)
 }
 
 // MoveToRelative begins a new contour at the specified point, which is relative to the current point.
 func (p *Path) MoveToRelative(pt geom.Point) {
-	skia.PathRMoveTo(p.path, pt.X, pt.Y)
+	skia.PathRMoveTo(p.path, pt)
 }
 
 // Oval adds an oval to the path with a clockwise direction. The oval is a complete contour, i.e. it starts with a
@@ -217,7 +217,7 @@ func (p *Path) PathTransformed(path *Path, matrix geom.Matrix, extend bool) {
 // PathTranslated appends a path after translating it with the given offset. If extend is true, a line from the current
 // point to the start of the added path is created.
 func (p *Path) PathTranslated(path *Path, offset geom.Point, extend bool) {
-	skia.PathAddPathOffset(p.path, path.path, offset.X, offset.Y, pathAddMode(extend))
+	skia.PathAddPathOffset(p.path, path.path, offset, pathAddMode(extend))
 }
 
 // Poly appends the line segments represented by pts to the path.
@@ -236,7 +236,7 @@ func (p *Path) Polygon(polygon poly.Polygon) {
 
 // QuadTo appends a quadratic curve.
 func (p *Path) QuadTo(ctrlPt, endPt geom.Point) {
-	skia.PathQuadTo(p.path, ctrlPt.X, ctrlPt.Y, endPt.X, endPt.Y)
+	skia.PathQuadTo(p.path, ctrlPt, endPt)
 }
 
 // Rect adds a rectangle to the path with a clockwise direction. The rectangle is a complete contour, i.e. it starts
@@ -254,13 +254,13 @@ func (p *Path) RectWithDirection(bounds geom.Rect, dir direction.Enum) {
 // RoundedRect adds a rectangle with curved corners to the path with a clockwise direction. The rectangle is a complete
 // contour, i.e. it starts with a MoveTo and ends with a Close operation.
 func (p *Path) RoundedRect(bounds geom.Rect, radius geom.Size) {
-	skia.PathAddRoundedRect(p.path, bounds, radius.Width, radius.Height, skia.Direction(direction.Clockwise))
+	skia.PathAddRoundedRect(p.path, bounds, radius, skia.Direction(direction.Clockwise))
 }
 
 // RoundedRectWithDirection adds a rectangle with curved corners to the path. The rectangle is a complete contour, i.e.
 // it starts with a MoveTo and ends with a Close operation.
 func (p *Path) RoundedRectWithDirection(bounds geom.Rect, radius geom.Size, dir direction.Enum) {
-	skia.PathAddRoundedRect(p.path, bounds, radius.Width, radius.Height, skia.Direction(dir))
+	skia.PathAddRoundedRect(p.path, bounds, radius, skia.Direction(dir))
 }
 
 // Rotate the path.
@@ -324,7 +324,7 @@ func (p *Path) Rewind() {
 
 // Contains returns true if the point is within the path, taking into account the FillType.
 func (p *Path) Contains(pt geom.Point) bool {
-	return skia.PathContains(p.path, pt.X, pt.Y)
+	return skia.PathContains(p.path, pt)
 }
 
 // CurrentPt returns the current point.

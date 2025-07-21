@@ -743,20 +743,21 @@ func CanvasRestoreToCount(canvas Canvas, count int) {
 	skCanvasRestoreToCountProc.Call(uintptr(canvas), uintptr(count))
 }
 
-func CanvasTranslate(canvas Canvas, dx, dy float32) {
-	skCanvasTranslateProc.Call(uintptr(canvas), uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)))
+func CanvasTranslate(canvas Canvas, offset geom.Point) {
+	skCanvasTranslateProc.Call(uintptr(canvas), uintptr(math.Float32bits(offset.X)),
+		uintptr(math.Float32bits(offset.Y)))
 }
 
-func CanvasScale(canvas Canvas, xScale, yScale float32) {
-	skCanvasScaleProc.Call(uintptr(canvas), uintptr(math.Float32bits(xScale)), uintptr(math.Float32bits(yScale)))
+func CanvasScale(canvas Canvas, scale geom.Point) {
+	skCanvasScaleProc.Call(uintptr(canvas), uintptr(math.Float32bits(scale.X)), uintptr(math.Float32bits(scale.Y)))
 }
 
 func CanvasRotateRadians(canvas Canvas, radians float32) {
 	skCanvasRotateRadiansProc.Call(uintptr(canvas), uintptr(math.Float32bits(radians)))
 }
 
-func CanvasSkew(canvas Canvas, sx, sy float32) {
-	skCanvasSkewProc.Call(uintptr(canvas), uintptr(math.Float32bits(sx)), uintptr(math.Float32bits(sy)))
+func CanvasSkew(canvas Canvas, skew geom.Point) {
+	skCanvasSkewProc.Call(uintptr(canvas), uintptr(math.Float32bits(skew.X)), uintptr(math.Float32bits(skew.Y)))
 }
 
 func CanvasConcat(canvas Canvas, matrix geom.Matrix) {
@@ -799,14 +800,14 @@ func CanvasDrawRect(canvas Canvas, rect geom.Rect, paint Paint) {
 	skCanvasDrawRectProc.Call(uintptr(canvas), fromGeomRect(&rect), uintptr(paint))
 }
 
-func CanvasDrawRoundRect(canvas Canvas, rect geom.Rect, radiusX, radiusY float32, paint Paint) {
-	skCanvasDrawRoundRectProc.Call(uintptr(canvas), fromGeomRect(&rect), uintptr(math.Float32bits(radiusX)),
-		uintptr(math.Float32bits(radiusY)), uintptr(paint))
+func CanvasDrawRoundRect(canvas Canvas, rect geom.Rect, radius geom.Size, paint Paint) {
+	skCanvasDrawRoundRectProc.Call(uintptr(canvas), fromGeomRect(&rect), uintptr(math.Float32bits(radius.Width)),
+		uintptr(math.Float32bits(radius.Height)), uintptr(paint))
 }
 
-func CanvasDrawCircle(canvas Canvas, centerX, centerY, radius float32, paint Paint) {
-	skCanvasDrawCircleProc.Call(uintptr(canvas), uintptr(math.Float32bits(centerX)), uintptr(math.Float32bits(centerY)),
-		uintptr(math.Float32bits(radius)), uintptr(paint))
+func CanvasDrawCircle(canvas Canvas, center geom.Point, radius float32, paint Paint) {
+	skCanvasDrawCircleProc.Call(uintptr(canvas), uintptr(math.Float32bits(center.X)),
+		uintptr(math.Float32bits(center.Y)), uintptr(math.Float32bits(radius)), uintptr(paint))
 }
 
 func CanvasDrawOval(canvas Canvas, rect geom.Rect, paint Paint) {
@@ -846,9 +847,9 @@ func CanvasDrawPoints(canvas Canvas, mode PointMode, pts []geom.Point, paint Pai
 		uintptr(unsafe.Pointer(&pts[0])), uintptr(paint))
 }
 
-func CanvasDrawLine(canvas Canvas, sx, sy, ex, ey float32, paint Paint) {
-	skCanvasDrawLineProc.Call(uintptr(canvas), uintptr(math.Float32bits(sx)), uintptr(math.Float32bits(sy)),
-		uintptr(math.Float32bits(ex)), uintptr(math.Float32bits(ey)), uintptr(paint))
+func CanvasDrawLine(canvas Canvas, start, end geom.Point, paint Paint) {
+	skCanvasDrawLineProc.Call(uintptr(canvas), uintptr(math.Float32bits(start.X)), uintptr(math.Float32bits(start.Y)),
+		uintptr(math.Float32bits(end.X)), uintptr(math.Float32bits(end.Y)), uintptr(paint))
 }
 
 func CanvasDrawArc(canvas Canvas, oval geom.Rect, startAngle, sweepAngle float32, useCenter bool, paint Paint) {
@@ -977,8 +978,9 @@ func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
 	return Document(r1)
 }
 
-func DocumentBeginPage(doc Document, width, height float32) Canvas {
-	r1, _, _ := skDocumentBeginPageProc.Call(uintptr(doc), uintptr(math.Float32bits(width)), uintptr(math.Float32bits(height)))
+func DocumentBeginPage(doc Document, size geom.Size) Canvas {
+	r1, _, _ := skDocumentBeginPageProc.Call(uintptr(doc), uintptr(math.Float32bits(size.Width)),
+		uintptr(math.Float32bits(size.Height)))
 	return Canvas(r1)
 }
 
@@ -1681,8 +1683,8 @@ func PathComputeTightBounds(path Path) geom.Rect {
 	return toGeomRect(r)
 }
 
-func PathAddCircle(path Path, x, y, radius float32, direction Direction) {
-	skPathAddCircleProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)),
+func PathAddCircle(path Path, center geom.Point, radius float32, direction Direction) {
+	skPathAddCircleProc.Call(uintptr(path), uintptr(math.Float32bits(center.X)), uintptr(math.Float32bits(center.Y)),
 		uintptr(math.Float32bits(radius)), uintptr(direction))
 }
 
@@ -1695,42 +1697,42 @@ func PathClose(path Path) {
 	skPathCloseProc.Call(uintptr(path))
 }
 
-func PathConicTo(path Path, cpx, cpy, x, y, weight float32) {
-	skPathConicToProc.Call(uintptr(path), uintptr(math.Float32bits(cpx)), uintptr(math.Float32bits(cpy)),
-		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), uintptr(math.Float32bits(weight)))
+func PathConicTo(path Path, ctrlPt, endPt geom.Point, weight float32) {
+	skPathConicToProc.Call(uintptr(path), uintptr(math.Float32bits(ctrlPt.X)), uintptr(math.Float32bits(ctrlPt.Y)),
+		uintptr(math.Float32bits(endPt.X)), uintptr(math.Float32bits(endPt.Y)), uintptr(math.Float32bits(weight)))
 }
 
-func PathRConicTo(path Path, cpdx, cpdy, dx, dy, weight float32) {
-	skPathRConicToProc.Call(uintptr(path), uintptr(math.Float32bits(cpdx)), uintptr(math.Float32bits(cpdy)),
-		uintptr(math.Float32bits(dx)), uintptr(math.Float32bits(dy)), uintptr(math.Float32bits(weight)))
+func PathRConicTo(path Path, ctrlPt, endPt geom.Point, weight float32) {
+	skPathRConicToProc.Call(uintptr(path), uintptr(math.Float32bits(ctrlPt.X)), uintptr(math.Float32bits(ctrlPt.Y)),
+		uintptr(math.Float32bits(endPt.X)), uintptr(math.Float32bits(endPt.Y)), uintptr(math.Float32bits(weight)))
 }
 
-func PathCubicTo(path Path, cp1x, cp1y, cp2x, cp2y, x, y float32) {
-	skPathCubicToProc.Call(uintptr(path), uintptr(math.Float32bits(cp1x)), uintptr(math.Float32bits(cp1y)),
-		uintptr(math.Float32bits(cp2x)), uintptr(math.Float32bits(cp2y)), uintptr(math.Float32bits(x)),
-		uintptr(math.Float32bits(y)))
+func PathCubicTo(path Path, cp1, cp2, endPt geom.Point) {
+	skPathCubicToProc.Call(uintptr(path), uintptr(math.Float32bits(cp1.X)), uintptr(math.Float32bits(cp1.Y)),
+		uintptr(math.Float32bits(cp2.X)), uintptr(math.Float32bits(cp2.Y)), uintptr(math.Float32bits(endPt.X)),
+		uintptr(math.Float32bits(endPt.Y)))
 }
 
-func PathRCubicTo(path Path, cp1dx, cp1dy, cp2dx, cp2dy, dx, dy float32) {
-	skPathRCubicToProc.Call(uintptr(path), uintptr(math.Float32bits(cp1dx)), uintptr(math.Float32bits(cp1dy)),
-		uintptr(math.Float32bits(cp2dx)), uintptr(math.Float32bits(cp2dy)), uintptr(math.Float32bits(dx)),
-		uintptr(math.Float32bits(dy)))
+func PathRCubicTo(path Path, cp1, cp2, endPt geom.Point) {
+	skPathRCubicToProc.Call(uintptr(path), uintptr(math.Float32bits(cp1.X)), uintptr(math.Float32bits(cp1.Y)),
+		uintptr(math.Float32bits(cp2.X)), uintptr(math.Float32bits(cp2.Y)), uintptr(math.Float32bits(endPt.X)),
+		uintptr(math.Float32bits(endPt.Y)))
 }
 
-func PathLineTo(path Path, x, y float32) {
-	skPathLineToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+func PathLineTo(path Path, pt geom.Point) {
+	skPathLineToProc.Call(uintptr(path), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)))
 }
 
-func PathRLineTo(path Path, x, y float32) {
-	skPathRLineToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+func PathRLineTo(path Path, pt geom.Point) {
+	skPathRLineToProc.Call(uintptr(path), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)))
 }
 
-func PathMoveTo(path Path, x, y float32) {
-	skPathMoveToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+func PathMoveTo(path Path, pt geom.Point) {
+	skPathMoveToProc.Call(uintptr(path), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)))
 }
 
-func PathRMoveTo(path Path, x, y float32) {
-	skPathRMoveToProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+func PathRMoveTo(path Path, pt geom.Point) {
+	skPathRMoveToProc.Call(uintptr(path), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)))
 }
 
 func PathAddOval(path Path, rect geom.Rect, direction Direction) {
@@ -1749,27 +1751,27 @@ func PathAddPathMatrix(path, other Path, matrix geom.Matrix, mode PathAddMode) {
 	skPathAddPathMatrixProc.Call(uintptr(path), uintptr(other), fromGeomMatrix(&matrix), uintptr(mode))
 }
 
-func PathAddPathOffset(path, other Path, offsetX, offsetY float32, mode PathAddMode) {
-	skPathAddPathOffsetProc.Call(uintptr(path), uintptr(other), uintptr(math.Float32bits(offsetX)),
-		uintptr(math.Float32bits(offsetY)), uintptr(mode))
+func PathAddPathOffset(path, other Path, offset geom.Point, mode PathAddMode) {
+	skPathAddPathOffsetProc.Call(uintptr(path), uintptr(other), uintptr(math.Float32bits(offset.X)),
+		uintptr(math.Float32bits(offset.Y)), uintptr(mode))
 }
 
 func PathAddPoly(path Path, pts []geom.Point, closePath bool) {
 	skPathAddPolyProc.Call(uintptr(path), uintptr(unsafe.Pointer(&pts[0])), uintptr(len(pts)), boolToUintptr(closePath))
 }
 
-func PathQuadTo(path Path, cpx, cpy, x, y float32) {
-	skPathQuadToProc.Call(uintptr(path), uintptr(math.Float32bits(cpx)), uintptr(math.Float32bits(cpy)),
-		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+func PathQuadTo(path Path, ctrlPt, endPt geom.Point) {
+	skPathQuadToProc.Call(uintptr(path), uintptr(math.Float32bits(ctrlPt.X)), uintptr(math.Float32bits(ctrlPt.Y)),
+		uintptr(math.Float32bits(endPt.X)), uintptr(math.Float32bits(endPt.Y)))
 }
 
 func PathAddRect(path Path, rect geom.Rect, direction Direction) {
 	skPathAddRectProc.Call(uintptr(path), fromGeomRect(&rect), uintptr(direction))
 }
 
-func PathAddRoundedRect(path Path, rect geom.Rect, radiusX, radiusY float32, direction Direction) {
-	skPathAddRoundedRectProc.Call(uintptr(path), fromGeomRect(&rect), uintptr(math.Float32bits(radiusX)),
-		uintptr(math.Float32bits(radiusY)), uintptr(direction))
+func PathAddRoundedRect(path Path, rect geom.Rect, radius geom.Size, direction Direction) {
+	skPathAddRoundedRectProc.Call(uintptr(path), fromGeomRect(&rect), uintptr(math.Float32bits(radius.Width)),
+		uintptr(math.Float32bits(radius.Height)), uintptr(direction))
 }
 
 func PathTransform(path Path, matrix geom.Matrix) {
@@ -1788,8 +1790,8 @@ func PathRewind(path Path) {
 	skPathRewindProc.Call(uintptr(path))
 }
 
-func PathContains(path Path, x, y float32) bool {
-	r1, _, _ := skPathContainsProc.Call(uintptr(path), uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)))
+func PathContains(path Path, pt geom.Point) bool {
+	r1, _, _ := skPathContainsProc.Call(uintptr(path), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)))
 	return r1 != 0
 }
 
