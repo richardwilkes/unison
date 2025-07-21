@@ -37,7 +37,7 @@ var DefaultWellTheme = WellTheme{
 	BackgroundInk:      ThemeAboveSurface,
 	EdgeInk:            ThemeSurfaceEdge,
 	SelectionInk:       ThemeFocus,
-	ImageScale:         0.5,
+	ImageScale:         geom.NewPoint(0.5, 0.5),
 	ContentSize:        20,
 	CornerRadius:       geom.NewUniformSize(4),
 	ClickAnimationTime: 100 * time.Millisecond,
@@ -52,7 +52,7 @@ type WellTheme struct {
 	SelectionInk       Ink
 	ClickAnimationTime time.Duration
 	ImageLoadTimeout   time.Duration
-	ImageScale         float32
+	ImageScale         geom.Point
 	ContentSize        float32
 	CornerRadius       geom.Size
 	Mask               WellMask
@@ -60,7 +60,7 @@ type WellTheme struct {
 
 // Well represents a control that holds and lets a user choose an ink.
 type Well struct {
-	ImageFromSpecCallback func(ctx context.Context, filePathOrURL string, scale float32) (*Image, error)
+	ImageFromSpecCallback func(ctx context.Context, filePathOrURL string, scale geom.Point) (*Image, error)
 	InkChangedCallback    func()
 	ClickCallback         func()
 	ValidateImageCallback func(*Image) *Image

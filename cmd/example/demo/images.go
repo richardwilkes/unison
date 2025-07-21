@@ -12,6 +12,7 @@ package demo
 import (
 	_ "embed" // Used to embed the images
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -25,7 +26,7 @@ var (
 func ClassicAppleLogoImage() (*unison.Image, error) {
 	if classicAppleLogoImage == nil {
 		var err error
-		if classicAppleLogoImage, err = unison.NewImageFromBytes(classicAppleLogoPngBytes, 0.5); err != nil {
+		if classicAppleLogoImage, err = unison.NewImageFromBytes(classicAppleLogoPngBytes, geom.NewPoint(0.5, 0.5)); err != nil {
 			return nil, err
 		}
 	}
@@ -42,7 +43,7 @@ var (
 func MountainsImage() (*unison.Image, error) {
 	if mountainsImage == nil {
 		var err error
-		if mountainsImage, err = unison.NewImageFromBytes(mountainsJpgBytes, 0.5); err != nil {
+		if mountainsImage, err = unison.NewImageFromBytes(mountainsJpgBytes, geom.NewPoint(0.5, 0.5)); err != nil {
 			return nil, err
 		}
 	}

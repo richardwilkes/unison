@@ -12,6 +12,7 @@ package unison
 import (
 	_ "embed"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
@@ -25,7 +26,7 @@ var (
 func MoveCursorImage() *Image {
 	if moveCursorImage == nil {
 		var err error
-		moveCursorImage, err = NewImageFromBytes(moveCursorImageData, 0.5)
+		moveCursorImage, err = NewImageFromBytes(moveCursorImageData, geom.NewPoint(0.5, 0.5))
 		xos.ExitIfErr(err)
 	}
 	return moveCursorImage
@@ -41,7 +42,7 @@ var (
 func ResizeHorizontalCursorImage() *Image {
 	if resizeHorizontalCursorImage == nil {
 		var err error
-		resizeHorizontalCursorImage, err = NewImageFromBytes(resizeHorizontalCursorImageData, 0.5)
+		resizeHorizontalCursorImage, err = NewImageFromBytes(resizeHorizontalCursorImageData, geom.NewPoint(0.5, 0.5))
 		xos.ExitIfErr(err)
 	}
 	return resizeHorizontalCursorImage
@@ -57,7 +58,8 @@ var (
 func ResizeLeftDiagonalCursorImage() *Image {
 	if resizeLeftDiagonalCursorImage == nil {
 		var err error
-		resizeLeftDiagonalCursorImage, err = NewImageFromBytes(resizeLeftDiagonalCursorImageData, 0.5)
+		resizeLeftDiagonalCursorImage, err = NewImageFromBytes(resizeLeftDiagonalCursorImageData,
+			geom.NewPoint(0.5, 0.5))
 		xos.ExitIfErr(err)
 	}
 	return resizeLeftDiagonalCursorImage
@@ -73,7 +75,8 @@ var (
 func ResizeRightDiagonalCursorImage() *Image {
 	if resizeRightDiagonalCursorImage == nil {
 		var err error
-		resizeRightDiagonalCursorImage, err = NewImageFromBytes(resizeRightDiagonalCursorImageData, 0.5)
+		resizeRightDiagonalCursorImage, err = NewImageFromBytes(resizeRightDiagonalCursorImageData,
+			geom.NewPoint(0.5, 0.5))
 		xos.ExitIfErr(err)
 	}
 	return resizeRightDiagonalCursorImage
@@ -89,7 +92,7 @@ var (
 func ResizeVerticalCursorImage() *Image {
 	if resizeVerticalCursorImage == nil {
 		var err error
-		resizeVerticalCursorImage, err = NewImageFromBytes(resizeVerticalCursorImageData, 0.5)
+		resizeVerticalCursorImage, err = NewImageFromBytes(resizeVerticalCursorImageData, geom.NewPoint(0.5, 0.5))
 		xos.ExitIfErr(err)
 	}
 	return resizeVerticalCursorImage

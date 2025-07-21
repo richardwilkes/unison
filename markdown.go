@@ -836,7 +836,7 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			scale := 1 / PrimaryDisplay().Scale.X
+			scale := geom.NewPoint(1, 1).DivPt(PrimaryDisplay().Scale)
 			if img, err = NewImageFromFilePathOrURLWithContext(ctx, revisedTarget, scale); err != nil {
 				result <- nil
 				errs.Log(err, "path", revisedTarget, "scale", scale)

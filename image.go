@@ -38,18 +38,18 @@ type Image struct {
 	skiaImg           skia.Image
 	skiaNonTextureImg skia.Image
 	hash              uint64
-	scale             float32
+	scale             geom.Point
 }
 
 // NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. The http.DefaultClient
 // will be used if the data is remote.
-func NewImageFromFilePathOrURL(filePathOrURL string, scale float32) (*Image, error) {
+func NewImageFromFilePathOrURL(filePathOrURL string, scale geom.Point) (*Image, error) {
 	return NewImageFromFilePathOrURLWithContext(context.Background(), filePathOrURL, scale)
 }
 
 // NewImageFromFilePathOrURLWithContext creates a new image from data retrieved from the file path or URL. The
 // http.DefaultClient will be used if the data is remote.
-func NewImageFromFilePathOrURLWithContext(ctx context.Context, filePathOrURL string, scale float32) (*Image, error) {
+func NewImageFromFilePathOrURLWithContext(ctx context.Context, filePathOrURL string, scale geom.Point) (*Image, error) {
 	data, err := xhttp.RetrieveData(ctx, nil, filePathOrURL)
 	if err != nil {
 		return nil, errs.NewWithCause(filePathOrURL, err)
@@ -58,8 +58,8 @@ func NewImageFromFilePathOrURLWithContext(ctx context.Context, filePathOrURL str
 }
 
 // NewImageFromBytes creates a new image from raw bytes.
-func NewImageFromBytes(buffer []byte, scale float32) (*Image, error) {
-	if scale <= 0 {
+func NewImageFromBytes(buffer []byte, scale geom.Point) (*Image, error) {
+	if scale.X <= 0 || scale.Y <= 0 {
 		return nil, errs.New("invalid scale")
 	}
 	if len(buffer) < 1 {
@@ -75,11 +75,11 @@ func NewImageFromBytes(buffer []byte, scale float32) (*Image, error) {
 }
 
 // NewImageFromPixels creates a new image from pixel data.
-func NewImageFromPixels(width, height int, pixels []byte, scale float32) (*Image, error) {
-	if scale <= 0 {
+func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Image, error) {
+	if scale.X <= 0 || scale.Y <= 0 {
 		return nil, errs.New("invalid scale")
 	}
-	if width < 1 || height < 1 || scale <= 0 || len(pixels) != width*height*4 {
+	if width < 1 || height < 1 || len(pixels) != width*height*4 {
 		return nil, errs.New("invalid image data")
 	}
 	data := skia.DataNewWithCopy(pixels)
@@ -136,10 +136,10 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		return nil, errs.New("unable to read raw pixels from image")
 	}
 	skia.ImageUnref(img)
-	return NewImageFromPixels(width, height, pixels, 1)
+	return NewImageFromPixels(width, height, pixels, geom.NewPoint(1, 1))
 }
 
-func newImage(skiaImg skia.Image, scale float32, hash uint64) (*Image, error) {
+func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error) {
 	if existing, ok := imgCache[hash]; ok {
 		if actual := existing.Value(); actual != nil {
 			ReleaseOnUIThread(func() {
@@ -169,8 +169,8 @@ func (img *Image) Size() geom.Size {
 
 // LogicalSize returns the logical (device-independent) size.
 func (img *Image) LogicalSize() geom.Size {
-	return geom.NewSize(float32(skia.ImageGetWidth(img.skiaImg))*img.scale,
-		float32(skia.ImageGetHeight(img.skiaImg))*img.scale)
+	return geom.NewSize(float32(skia.ImageGetWidth(img.skiaImg))*img.scale.X,
+		float32(skia.ImageGetHeight(img.skiaImg))*img.scale.Y)
 }
 
 // DrawInRect draws this image in the given rectangle.
@@ -179,7 +179,7 @@ func (img *Image) DrawInRect(canvas *Canvas, rect geom.Rect, sampling *SamplingO
 }
 
 // Scale returns the internal scaling factor for this image.
-func (img *Image) Scale() float32 {
+func (img *Image) Scale() geom.Point {
 	return img.scale
 }
 
@@ -293,9 +293,10 @@ func releaseSkiaImagesForContext(ctx skia.DirectContext) {
 	}, time.Millisecond)
 }
 
-func hashImageData(width, height int, scale float32, data []byte) uint64 {
+func hashImageData(width, height int, scale geom.Point, data []byte) uint64 {
 	hasher := xxh3.New()
-	xhash.Float32(hasher, scale)
+	xhash.Float32(hasher, scale.X)
+	xhash.Float32(hasher, scale.Y)
 	xhash.Num32(hasher, uint32(width))
 	xhash.Num32(hasher, uint32(height))
 	_, _ = hasher.Write(data) //nolint:errcheck // No real chance of failure here

@@ -278,7 +278,7 @@ func (d *JobDialog) retrieveIcon() *unison.Image {
 			return nil
 		}
 		var img *unison.Image
-		if img, err = unison.NewImageFromBytes(content, 0.5); err != nil {
+		if img, err = unison.NewImageFromBytes(content, geom.NewPoint(0.5, 0.5)); err != nil {
 			errs.Log(errs.NewWithCause("unable to create image from data for link", err), linkAttr, link)
 			return nil
 		}

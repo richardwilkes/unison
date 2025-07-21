@@ -38,12 +38,12 @@ func (p *Pattern) Paint(canvas *Canvas, _ geom.Rect, style paintstyle.Enum) *Pai
 	if scale.Y <= 0 {
 		scale.Y = 1
 	}
-	imgScale := p.Image.Scale()
+	scale = scale.MulPt(p.Image.Scale())
 	paint.SetColor(Black)
 	paint.SetShader(NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
 		geom.Matrix{
-			ScaleX: scale.X * imgScale,
-			ScaleY: scale.Y * imgScale,
+			ScaleX: scale.X,
+			ScaleY: scale.Y,
 			TransX: p.Offset.X,
 			TransY: p.Offset.Y,
 		}))
