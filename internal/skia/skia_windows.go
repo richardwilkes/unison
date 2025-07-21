@@ -2035,9 +2035,9 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 	return TextBlob(r1)
 }
 
-func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, x, y float32) {
+func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, pt geom.Point) {
 	r1, _, _ := skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
-		uintptr(math.Float32bits(x)), uintptr(math.Float32bits(y)), 0)
+		uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)), 0)
 	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
 	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.Glyphs)), len(glyphs)), glyphs)
 }

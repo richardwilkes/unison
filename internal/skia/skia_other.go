@@ -1257,8 +1257,8 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 	return C.sk_textblob_builder_make(builder)
 }
 
-func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, x, y float32) {
-	buffer := C.sk_textblob_builder_alloc_run(builder, font, C.int(len(glyphs)), C.float(x), C.float(y), nil)
+func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, pt geom.Point) {
+	buffer := C.sk_textblob_builder_alloc_run(builder, font, C.int(len(glyphs)), C.float(pt.X), C.float(pt.Y), nil)
 	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.glyphs)), len(glyphs)), glyphs)
 }
 
