@@ -11,10 +11,8 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/geom/poly"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/blendmode"
-	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/filtermode"
 	"github.com/richardwilkes/unison/enums/pathop"
 	"github.com/richardwilkes/unison/enums/pointmode"
@@ -198,14 +196,6 @@ func (c *Canvas) DrawPoints(pts []geom.Point, paint *Paint, mode pointmode.Enum)
 // DrawLine draws a line.
 func (c *Canvas) DrawLine(start, end geom.Point, paint *Paint) {
 	skia.CanvasDrawLine(c.canvas, start, end, paint.paint)
-}
-
-// DrawPolygon draws a polygon.
-func (c *Canvas) DrawPolygon(polygon poly.Polygon, mode filltype.Enum, paint *Paint) {
-	path := NewPath()
-	path.SetFillType(mode)
-	path.Polygon(polygon)
-	c.DrawPath(path, paint)
 }
 
 // DrawArc draws an arc. startAngle and sweepAngle are in degrees. If useCenter is true, this will draw a wedge that

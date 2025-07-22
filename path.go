@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/geom/poly"
 	"github.com/richardwilkes/unison/enums/arcsize"
 	"github.com/richardwilkes/unison/enums/direction"
 	"github.com/richardwilkes/unison/enums/filltype"
@@ -224,13 +223,6 @@ func (p *Path) PathTranslated(path *Path, offset geom.Point, extend bool) {
 func (p *Path) Poly(pts []geom.Point, closePath bool) {
 	if len(pts) > 0 {
 		skia.PathAddPoly(p.path, pts, closePath)
-	}
-}
-
-// Polygon appends the polygon to the path.
-func (p *Path) Polygon(polygon poly.Polygon) {
-	for _, contour := range polygon {
-		p.Poly(contour, true)
 	}
 }
 

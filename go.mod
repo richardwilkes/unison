@@ -8,7 +8,7 @@ require (
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lafriks/go-svg v0.5.1
-	github.com/richardwilkes/toolbox/v2 v2.2.1-0.20250720231922-7ecdd530286f
+	github.com/richardwilkes/toolbox/v2 v2.2.1-0.20250722020335-9382bba8e608
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.7.12
 	github.com/zeebo/xxh3 v1.0.2
