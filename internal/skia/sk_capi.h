@@ -873,6 +873,7 @@ extern "C"
 	SK_C_API int sk_path_get_points(const sk_path_t *cpath, sk_point_t *points, int max);
 	SK_C_API sk_path_fill_type_t sk_path_get_filltype(sk_path_t *cpath);
 	SK_C_API bool sk_path_get_last_point(const sk_path_t *cpath, sk_point_t *point);
+	SK_C_API bool sk_path_is_empty(const sk_path_t *cpath);
 	SK_C_API void sk_path_line_to(sk_path_t *cpath, float x, float y);
 	SK_C_API void sk_path_move_to(sk_path_t *cpath, float x, float y);
 	SK_C_API sk_path_t *sk_path_new(void);

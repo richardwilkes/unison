@@ -222,6 +222,7 @@ var (
 	skPaintSetPathEffectProc                       *syscall.Proc
 	skPaintGetFillPathProc                         *syscall.Proc
 	skPathNewProc                                  *syscall.Proc
+	skPathIsEmptyProc                              *syscall.Proc
 	skPathParseSVGStringProc                       *syscall.Proc
 	skPathToSVGStringProc                          *syscall.Proc
 	skPathGetFillTypeProc                          *syscall.Proc
@@ -526,6 +527,7 @@ func init() {
 	skPaintSetPathEffectProc = skia.MustFindProc("sk_paint_set_path_effect")
 	skPaintGetFillPathProc = skia.MustFindProc("sk_paint_get_fill_path")
 	skPathNewProc = skia.MustFindProc("sk_path_new")
+	skPathIsEmptyProc = skia.MustFindProc("sk_path_is_empty")
 	skPathParseSVGStringProc = skia.MustFindProc("sk_path_parse_svg_string")
 	skPathToSVGStringProc = skia.MustFindProc("sk_path_to_svg_string")
 	skPathGetFillTypeProc = skia.MustFindProc("sk_path_get_filltype")
@@ -1626,6 +1628,11 @@ func PaintGetFillPath(paint Paint, inPath, outPath Path, cullRect *geom.Rect, re
 func PathNew() Path {
 	r1, _, _ := skPathNewProc.Call()
 	return Path(r1)
+}
+
+func PathIsEmpty(path Path) bool {
+	r1, _, _ := skPathIsEmptyProc.Call(uintptr(path))
+	return r1 != 0
 }
 
 func PathParseSVGString(path Path, svg string) bool {
