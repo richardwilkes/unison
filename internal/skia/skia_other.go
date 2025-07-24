@@ -904,6 +904,10 @@ func PathNew() Path {
 	return C.sk_path_new()
 }
 
+func PathIsEmpty(path Path) bool {
+	return bool(C.sk_path_is_empty(path))
+}
+
 func PathParseSVGString(path Path, svg string) bool {
 	cstr := C.CString(svg)
 	defer C.free(unsafe.Pointer(cstr))

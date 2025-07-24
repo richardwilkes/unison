@@ -56,6 +56,11 @@ func NewPathFromSVGString(svg string) (*Path, error) {
 	return p, nil
 }
 
+// Empty returns true if the path is empty.
+func (p *Path) Empty() bool {
+	return skia.PathIsEmpty(p.path)
+}
+
 // ToSVGString returns an SVG string that represents this path.
 func (p *Path) ToSVGString(useAbsoluteValues bool) string {
 	ss := skia.PathToSVGString(p.path, useAbsoluteValues)
