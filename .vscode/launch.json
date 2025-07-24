@@ -9,7 +9,7 @@
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",
-			"program": "example/main.go"
+			"program": "cmd/example/main.go"
 		}
 	]
 }
