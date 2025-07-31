@@ -146,6 +146,9 @@ func DockableHasFocus(dockable Dockable) bool {
 // to be added at the end.
 func (d *DockContainer) Stack(dockable Dockable, index int) {
 	dockable = resolveDockable(dockable)
+	if existing := d.content.IndexOfChild(dockable); existing != -1 && existing < index {
+		index--
+	}
 	if dc := Ancestor[*DockContainer](dockable); dc != nil {
 		if dc == d && len(d.content.Children()) == 1 {
 			d.AcquireFocus()
