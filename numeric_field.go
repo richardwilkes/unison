@@ -15,11 +15,11 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/v2/i18n"
-	"golang.org/x/exp/constraints"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 )
 
 // NumericField holds a numeric value that can be edited.
-type NumericField[T constraints.Integer | constraints.Float] struct {
+type NumericField[T xmath.Integer | xmath.Float] struct {
 	*Field
 	Format     func(T) string
 	Extract    func(s string) (T, error)
@@ -30,7 +30,7 @@ type NumericField[T constraints.Integer | constraints.Float] struct {
 
 // NewNumericField creates a new field that holds a numeric value and limits its input to a specific range of values.
 // The format and extract functions allow the field to be presented as something other than numbers.
-func NewNumericField[T constraints.Integer | constraints.Float](current, minimum, maximum T, format func(T) string, extract func(s string) (T, error), prototypes func(minimum, maximum T) []T) *NumericField[T] {
+func NewNumericField[T xmath.Integer | xmath.Float](current, minimum, maximum T, format func(T) string, extract func(s string) (T, error), prototypes func(minimum, maximum T) []T) *NumericField[T] {
 	f := &NumericField[T]{
 		Field:      NewField(),
 		Prototypes: prototypes,

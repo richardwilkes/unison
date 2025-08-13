@@ -184,12 +184,12 @@ func run(cmd *exec.Cmd) error {
 	if err != nil {
 		return errs.Wrap(err)
 	}
-	go copyPipe(stdout, os.Stdout, &wg)
+	wg.Go(func() { copyPipe(stdout, os.Stdout) })
 	var stderr io.ReadCloser
 	if stderr, err = cmd.StderrPipe(); err != nil {
 		return errs.Wrap(err)
 	}
-	go copyPipe(stderr, os.Stderr, &wg)
+	wg.Go(func() { copyPipe(stderr, os.Stderr) })
 	if err = cmd.Start(); err != nil {
 		return errs.Wrap(err)
 	}
@@ -200,13 +200,10 @@ func run(cmd *exec.Cmd) error {
 	return nil
 }
 
-func copyPipe(r io.Reader, w io.Writer, wg *sync.WaitGroup) {
-	go func() {
-		defer wg.Done()
-		if _, err := io.Copy(w, r); err != nil && !errors.Is(err, io.EOF) {
-			slog.Warn("unable to copy pipe", "error", err)
-		}
-	}()
+func copyPipe(r io.Reader, w io.Writer) {
+	if _, err := io.Copy(w, r); err != nil && !errors.Is(err, io.EOF) {
+		slog.Warn("unable to copy pipe", "error", err)
+	}
 }
 
 func createDiskImage(cfg *Config, dstPath string) error {
