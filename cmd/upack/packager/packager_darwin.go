@@ -179,7 +179,6 @@ func signApp(cfg *Config) error {
 
 func run(cmd *exec.Cmd) error {
 	var wg sync.WaitGroup
-	wg.Add(2)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return errs.Wrap(err)
