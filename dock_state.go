@@ -84,10 +84,10 @@ func (d *DockState) Apply(dock *Dock, keyToDockable func(string) Dockable) {
 func (d *DockState) apply(node DockLayoutNode, keyToDockable func(string) Dockable) {
 	switch t := node.(type) {
 	case *DockContainer:
-		for _, child := range d.Children {
+		for i, child := range d.Children {
 			if dockable := resolveDockable(keyToDockable(child.Key)); !xreflect.IsNil(dockable) {
 				t.content.AddChild(dockable)
-				t.header.AddChild(newDockTab(dockable))
+				t.header.addTab(dockable, i)
 			}
 		}
 		t.content.SetCurrentIndex(d.CurrentIndex - 1)
