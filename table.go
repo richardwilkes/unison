@@ -125,6 +125,7 @@ type Table[T TableRowConstraint[T]] struct {
 	wasDragged               bool
 	dividerDrag              bool
 	hasHierarchy             bool
+	noScrollOnFocus          bool
 }
 
 // NewTable creates a new Table control.
@@ -557,13 +558,15 @@ func (t *Table[T]) newTableHitRect(rect geom.Rect, row T) tableHitRect {
 
 // DefaultFocusGained provides the default focus gained handling.
 func (t *Table[T]) DefaultFocusGained() {
-	switch {
-	case t.interactionRow != -1:
-		t.ScrollRowIntoView(t.interactionRow)
-	case t.lastMouseMotionRow != -1:
-		t.ScrollRowIntoView(t.lastMouseMotionRow)
-	default:
-		t.ScrollIntoView()
+	if !t.noScrollOnFocus {
+		switch {
+		case t.interactionRow != -1:
+			t.ScrollRowIntoView(t.interactionRow)
+		case t.lastMouseMotionRow != -1:
+			t.ScrollRowIntoView(t.lastMouseMotionRow)
+		default:
+			t.ScrollIntoView()
+		}
 	}
 	t.MarkForRedraw()
 }
@@ -710,7 +713,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 	if t.Window().InDrag() {
 		return false
 	}
-	t.RequestFocus()
+	t.RequestFocusWithoutScroll()
 	t.wasDragged = false
 	t.dividerDrag = false
 	t.lastSel = ""
@@ -1689,4 +1692,11 @@ func RowContainsRow[T TableRowConstraint[T]](ancestor, descendant T) bool {
 		descendant = descendant.Parent()
 	}
 	return descendant == ancestor
+}
+
+// RequestFocusWithoutScroll requests focus for the table without scrolling to the selection or interaction row.
+func (t *Table[T]) RequestFocusWithoutScroll() {
+	t.noScrollOnFocus = true
+	t.RequestFocus()
+	t.noScrollOnFocus = false
 }
