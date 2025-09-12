@@ -365,8 +365,8 @@ func (t *Table[T]) cell(row, col int) *Panel {
 
 func (t *Table[T]) installCell(cell *Panel, frame geom.Rect) {
 	cell.SetFrameRect(frame)
-	cell.ValidateLayout()
 	cell.parent = t.AsPanel()
+	cell.ValidateLayout()
 }
 
 func (t *Table[T]) uninstallCell(cell *Panel) {
