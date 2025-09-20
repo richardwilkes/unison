@@ -263,21 +263,18 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 		sp := &svgPath{Path: p}
 
 		if sData.SvgPaths[i].Style.FillerColor != nil && sData.SvgPaths[i].Style.FillOpacity != 0 {
-			sp.fillPaint = NewPaint()
-			sp.fillPaint.SetStyle(paintstyle.Fill)
-			if c, ok := sData.SvgPaths[i].Style.FillerColor.(svg.PlainColor); ok {
-				alpha := uint8(float64(c.A) * sData.SvgPaths[i].Style.FillOpacity)
-				sp.fillPaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: c.R, G: c.G, B: c.B}))
-			} else if opts.ignoreUnsupported {
-				sp.fillPaint.SetColor(Black)
-			} else {
-				return nil, errs.Newf("unsupported path fill style %T", sData.SvgPaths[i].Style.FillerColor)
+			if sp.fillPaint, err = createPaintFromSVGPattern(paintstyle.Fill, sData.SvgPaths[i].Style.FillerColor,
+				sData.SvgPaths[i].Style.FillOpacity, opts.ignoreUnsupported); err != nil {
+				return nil, err
 			}
 		}
 
 		if sData.SvgPaths[i].Style.LinerColor != nil && sData.SvgPaths[i].Style.LineOpacity != 0 &&
 			sData.SvgPaths[i].Style.LineWidth != 0 {
-			sp.strokePaint = NewPaint()
+			if sp.strokePaint, err = createPaintFromSVGPattern(paintstyle.Stroke, sData.SvgPaths[i].Style.LinerColor,
+				sData.SvgPaths[i].Style.LineOpacity, opts.ignoreUnsupported); err != nil {
+				return nil, err
+			}
 			if strokeCap, ok := strokeCaps[sData.SvgPaths[i].Style.Join.TrailLineCap]; !ok {
 				if !opts.ignoreUnsupported {
 					return nil, errs.Newf("unsupported path stroke cap %s", sData.SvgPaths[i].Style.Join.TrailLineCap)
@@ -296,20 +293,62 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 			}
 			sp.strokePaint.SetStrokeMiter(float32(sData.SvgPaths[i].Style.Join.MiterLimit))
 			sp.strokePaint.SetStrokeWidth(float32(sData.SvgPaths[i].Style.LineWidth))
-			sp.strokePaint.SetStyle(paintstyle.Stroke)
-			if c, ok := sData.SvgPaths[i].Style.LinerColor.(svg.PlainColor); ok {
-				alpha := uint8(float64(c.A) * sData.SvgPaths[i].Style.FillOpacity)
-				sp.strokePaint.SetColor(ColorFromNRGBA(color.NRGBA{A: alpha, R: c.R, G: c.G, B: c.B}))
-			} else if opts.ignoreUnsupported {
-				sp.fillPaint.SetColor(Black)
-			} else {
-				return nil, errs.Newf("unsupported path stroke style %T", sData.SvgPaths[i].Style.LinerColor)
-			}
 		}
 
 		s.paths[i] = sp
 	}
 	return s, nil
+}
+
+func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacity float64, ignoreUnsupported bool) (*Paint, error) {
+	if c, ok := pattern.(svg.PlainColor); ok {
+		return convertSVGColor(c, opacity).Paint(nil, geom.Rect{}, kind), nil
+	}
+	if gr, ok := pattern.(svg.Gradient); ok {
+		grad := Gradient{
+			Stops: make([]Stop, len(gr.Stops)),
+		}
+		for i, stop := range gr.Stops {
+			grad.Stops[i] = Stop{
+				Color:    convertSVGColor(stop.StopColor, stop.Opacity),
+				Location: float32(stop.Offset),
+			}
+		}
+		switch d := gr.Direction.(type) {
+		case svg.Linear:
+			grad.Start.X = float32(d[0])
+			grad.Start.Y = float32(d[1])
+			grad.End.X = float32(d[2])
+			grad.End.Y = float32(d[3])
+		case svg.Radial:
+			grad.Start.X = float32(d[0])
+			grad.Start.Y = float32(d[1])
+			grad.End.X = float32(d[2])
+			grad.End.Y = float32(d[3])
+			grad.StartRadius = float32(d[4])
+			grad.EndRadius = float32(d[5])
+		default:
+			return nil, errs.Newf("unsupported %s gradient direction %T", kind.Key(), gr.Direction)
+		}
+		return grad.Paint(nil, geom.NewRect(float32(gr.Bounds.X), float32(gr.Bounds.Y), float32(gr.Bounds.W),
+			float32(gr.Bounds.H)), kind), nil
+	}
+	if ignoreUnsupported {
+		return Black.Paint(nil, geom.Rect{}, kind), nil
+	}
+	return nil, errs.Newf("unsupported %s style %T", kind.Key(), pattern)
+}
+
+func convertSVGColor(c color.Color, opacity float64) Color {
+	if c == nil {
+		return 0
+	}
+	if plain, ok := c.(svg.PlainColor); ok {
+		alpha := uint8(float64(plain.A) * opacity)
+		return ColorFromNRGBA(color.NRGBA{A: alpha, R: plain.R, G: plain.G, B: plain.B})
+	}
+	r, g, b, a := c.RGBA()
+	return ARGBfloat(float32((float64(a)/65535)*opacity), float32(r)/65535, float32(g)/65535, float32(b)/65535)
 }
 
 // Size returns the original size.
