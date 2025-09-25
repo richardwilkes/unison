@@ -280,7 +280,7 @@ func createSpacer(width float32, panel *unison.Panel) {
 		minSize.Width = width
 		prefSize.Width = width
 		maxSize.Width = width
-		return
+		return minSize, prefSize, maxSize
 	})
 	panel.AddChild(spacer)
 }

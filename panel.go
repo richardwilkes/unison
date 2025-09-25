@@ -683,7 +683,7 @@ func (p *Panel) InstallCmdHandlers(id int, can func(any) bool, do func(any)) (fo
 	formerDo = p.performMap[id]
 	p.canPerformMap[id] = can
 	p.performMap[id] = do
-	return
+	return formerCan, formerDo
 }
 
 // RemoveCmdHandler removes the handlers for the command with the given ID.

@@ -339,7 +339,7 @@ func (c Color) RGBA() (r, g, b, a uint32) {
 	b *= a
 	b /= 0xff
 	a |= a << 8
-	return
+	return r, g, b, a
 }
 
 // Red returns the red channel, in the range of 0-255.
@@ -531,7 +531,7 @@ func (c Color) HSB() (hue, saturation, brightness float32) {
 			hue++
 		}
 	}
-	return
+	return hue, saturation, brightness
 }
 
 // PerceivedLightness returns a value from 0-1 representing the perceived lightness. Lower values represent darker

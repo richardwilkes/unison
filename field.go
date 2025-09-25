@@ -254,7 +254,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 			endsWithLineFeed = make([]lineEndingType, len(lines))
 		}
 	}
-	return
+	return lines, endsWithLineFeed
 }
 
 func (f *Field) obscureStringIfNeeded(in string) string {

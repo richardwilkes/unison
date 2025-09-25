@@ -81,7 +81,7 @@ func createICNS(srcIconPath, dstDirPath string) (err error) {
 		}
 	}()
 	err = errs.Wrap(icns.Encode(f, img))
-	return
+	return err
 }
 
 func loadPNG(path string) (image.Image, error) {

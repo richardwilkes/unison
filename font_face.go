@@ -93,7 +93,7 @@ func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
 	sorter := func(a, b FontFaceDescriptor) int { return xstrings.NaturalCmp(a.String(), b.String(), true) }
 	slices.SortFunc(all, sorter)
 	slices.SortFunc(monospaced, sorter)
-	return
+	return all, monospaced
 }
 
 // MatchFontFace attempts to locate the FontFace with the given family and style. Will return nil if nothing suitable

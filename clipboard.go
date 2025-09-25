@@ -53,7 +53,7 @@ func (c *Clipboard) GetData(dataType string) (data any, exists bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	data, exists = c.data[dataType]
-	return
+	return data, exists
 }
 
 // SetData the data for a single type on the application clipboard, clearing out any others that were previously

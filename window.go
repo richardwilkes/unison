@@ -615,7 +615,7 @@ func (w *Window) minMaxContentSize() (minimum, maximum geom.Size) {
 		return w.MinMaxContentSizeCallback()
 	}
 	minimum, _, maximum = w.root.Sizes(geom.Size{})
-	return
+	return minimum, maximum
 }
 
 func (w *Window) adjustContentRectForMinMax(rect geom.Rect) geom.Rect {

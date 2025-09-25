@@ -123,7 +123,7 @@ func (f *FontFamily) Style(index int) (description string, weightValue weight.En
 			}
 			description = buffer.String()
 		}
-		return
+		return description, weightValue, spacingValue, slantValue
 	}
 	ss := skia.StringNewEmpty()
 	defer skia.StringDelete(ss)

@@ -125,7 +125,7 @@ func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, ma
 			}
 		}
 	}
-	return
+	return minSize, prefSize, maxSize
 }
 
 func (p *rootPanel) PerformLayout(_ *Panel) {
