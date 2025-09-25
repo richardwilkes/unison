@@ -138,8 +138,8 @@ func Start(options ...StartupOption) {
 		calledAtExit = true
 		quitLock.Unlock()
 	})
-	glfw.WindowHint(glfw.ContextVersionMajor, 3)
-	glfw.WindowHint(glfw.ContextVersionMinor, 2)
+	glfw.WindowHint(glfw.ContextVersionMajor, 4)
+	glfw.WindowHint(glfw.ContextVersionMinor, 1)
 	platformEarlyInit()
 	glfwInited.Store(true)
 	InvokeTask(finishStartup)
