@@ -260,8 +260,10 @@ func (d *dockHeader) PerformLayout(_ *Panel) {
 				}
 			}
 			if remaining > 0 {
-				// STILL not small enough... reduce the size of the current tab, too
-				tabSizes[current].Width = max(tabSizes[current].Width-remaining, d.MinimumTabWidth)
+				// STILL not small enough... reduce the size of the current tab, too, if it is present
+				if current >= 0 && current < len(tabs) {
+					tabSizes[current].Width = max(tabSizes[current].Width-remaining, d.MinimumTabWidth)
+				}
 				remaining = 0
 			}
 			extra = -remaining
