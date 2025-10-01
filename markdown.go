@@ -769,13 +769,12 @@ func (m *Markdown) processString() {
 
 func (m *Markdown) processLink() {
 	if link, ok := m.node.(*ast.Link); ok {
-		m.flushText()
-		p := m.createLink(m.extractText(link), string(link.Destination), string(link.Title))
-		m.addToTextRow(p)
+		m.addToTextRow(m.createLink(m.extractText(link), string(link.Destination), string(link.Title)))
 	}
 }
 
 func (m *Markdown) createLink(label, target, tooltip string) *Label {
+	m.flushText()
 	theme := LinkTheme{
 		LabelTheme: LabelTheme{
 			TextDecoration: *m.decoration.Clone(),
@@ -787,7 +786,12 @@ func (m *Markdown) createLink(label, target, tooltip string) *Label {
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}
-	return NewLink(label, tooltip, target, theme, m.linkHandler)
+	link := NewLink(label, tooltip, target, theme, m.linkHandler)
+	if m.text != nil {
+		_, prefSize, _ := link.Sizes(geom.Size{})
+		m.prepareToFlushText(prefSize.Width)
+	}
+	return link
 }
 
 // HasURLPrefix returns true if the target has a prefix of "http://" or "https://".
@@ -930,10 +934,8 @@ func (m *Markdown) processImage() {
 
 func (m *Markdown) processAutoLink() {
 	if link, ok := m.node.(*ast.AutoLink); ok {
-		m.flushText()
 		u := string(link.URL(m.content))
-		p := m.createLink(u, u, "")
-		m.addToTextRow(p)
+		m.addToTextRow(m.createLink(u, u, ""))
 	}
 }
 
@@ -978,18 +980,7 @@ func (m *Markdown) issueLineBreak() {
 
 func (m *Markdown) flushText() {
 	if m.text != nil && len(m.text.Runes()) != 0 {
-		remaining := m.maxLineWidth
-		if m.textRow != nil {
-			_, prefSize, _ := m.textRow.Sizes(geom.NewSize(m.maxLineWidth, 0))
-			remaining -= prefSize.Width
-		}
-		minWidth := m.decoration.Font.SimpleWidth("W")
-		if remaining < minWidth {
-			// Remaining space is less than the width of a W, so go to the next line
-			m.issueLineBreak()
-			remaining = m.maxLineWidth
-		}
-		if remaining < m.text.Width() {
+		if remaining := m.prepareToFlushText(m.decoration.Font.SimpleWidth("W")); remaining < m.text.Width() {
 			// Remaining space isn't large enough for the text we have, so put a chunk that will fit on this line, then
 			// go to the next line
 			part := m.text.BreakToWidth(remaining)[0]
@@ -1009,6 +1000,19 @@ func (m *Markdown) flushText() {
 		}
 		m.text = NewText("", m.decoration)
 	}
+}
+
+func (m *Markdown) prepareToFlushText(minRemaining float32) float32 {
+	remaining := m.maxLineWidth
+	if m.textRow != nil {
+		_, prefSize, _ := m.textRow.Sizes(geom.NewSize(m.maxLineWidth, 0))
+		remaining -= prefSize.Width
+	}
+	if remaining < minRemaining {
+		m.issueLineBreak()
+		remaining = m.maxLineWidth
+	}
+	return remaining
 }
 
 func (m *Markdown) finishTextRow() {
