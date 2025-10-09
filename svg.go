@@ -13,6 +13,7 @@ import (
 	_ "embed"
 	"image/color"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/lafriks/go-svg"
@@ -127,8 +128,9 @@ type DrawableSVG struct {
 
 // SVG holds an SVG.
 type SVG struct {
-	paths []*svgPath
-	size  geom.Size
+	paths         []*svgPath
+	size          geom.Size
+	suggestedSize geom.Size
 }
 
 type svgPath struct {
@@ -225,6 +227,17 @@ func MustSVGFromReader(r io.Reader, options ...SVGOption) *SVG {
 	return s
 }
 
+func parseNumFromSVGAttribute(attr string) (float32, bool) {
+	if attr == "" {
+		return 0, false
+	}
+	val, err := strconv.ParseFloat(attr, 32)
+	if err != nil {
+		return 0, false
+	}
+	return float32(val), true
+}
+
 // NewSVGFromReader creates a new SVG. The reader should contain valid SVG file data. Note that this only reads a very
 // small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed SVG
 // "path" elements.
@@ -243,6 +256,12 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 	}
 
 	s.size = geom.NewSize(float32(sData.ViewBox.W), float32(sData.ViewBox.H))
+	if w, ok := parseNumFromSVGAttribute(sData.Width); ok {
+		s.suggestedSize.Width = w
+	}
+	if h, ok := parseNumFromSVGAttribute(sData.Height); ok {
+		s.suggestedSize.Height = h
+	}
 	s.paths = make([]*svgPath, len(sData.SvgPaths))
 	for i := range sData.SvgPaths {
 		p := NewPath()
@@ -371,9 +390,18 @@ func convertSVGColor(c color.Color, opacity float64) Color {
 	return ARGBfloat(float32((float64(a)/65535)*opacity), float32(r)/65535, float32(g)/65535, float32(b)/65535)
 }
 
-// Size returns the original size.
+// Size returns the original (viewBox) size.
 func (s *SVG) Size() geom.Size {
 	return s.size
+}
+
+// SuggestedSize returns the suggested size, if one was specified in the SVG file via the width and height parameters.
+// If no suggested size was specified, then the original (viewBox) size is returned.
+func (s *SVG) SuggestedSize() geom.Size {
+	if s.suggestedSize.Width == 0 || s.suggestedSize.Height == 0 {
+		return s.size
+	}
+	return s.suggestedSize
 }
 
 // OffsetToCenterWithinScaledSize returns the scaled offset values to use to keep the image centered within the given

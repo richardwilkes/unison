@@ -1048,7 +1048,7 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 			}
 			d = &DrawableSVG{
 				SVG:  svg,
-				Size: svg.Size(),
+				Size: svg.SuggestedSize(),
 			}
 		} else {
 			scale := geom.NewPoint(1, 1).DivPt(PrimaryDisplay().Scale)
