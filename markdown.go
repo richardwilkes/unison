@@ -13,15 +13,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/url"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xhttp"
+	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
@@ -45,6 +50,8 @@ const DefaultMarkdownWidth = 8 * 100
 // Markdown, but will alter any Markdown created in the future.
 var DefaultMarkdownTheme MarkdownTheme
 
+const markdownListItemKey = "unison.list.item"
+
 func init() {
 	DefaultMarkdownTheme = MarkdownTheme{
 		TextDecoration: TextDecoration{
@@ -59,17 +66,21 @@ func init() {
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 5) }},
 			&DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownHeadingFont(nil, 6) }},
 		},
-		CodeBlockFont:       &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
-		CodeBackground:      ThemeAboveSurface,
-		OnCodeBackground:    ThemeOnAboveSurface,
-		QuoteBarColor:       ThemeFocus,
-		LinkInk:             DefaultLinkTheme.OnBackgroundInk,
-		LinkOnPressedInk:    DefaultLinkTheme.OnPressedInk,
-		LinkHandler:         DefaultMarkdownLinkHandler,
-		VSpacing:            10,
-		QuoteBarThickness:   2,
-		CodeAndQuotePadding: 6,
-		Slop:                4,
+		CodeBlockFont:          &DynamicFont{Resolver: func() FontDescriptor { return DeriveMarkdownCodeBlockFont(nil) }},
+		CodeBackground:         ThemeAboveSurface,
+		OnCodeBackground:       ThemeOnAboveSurface,
+		QuoteBarColor:          ThemeFocus,
+		QuoteBarNoteColor:      RGB(9, 105, 218),
+		QuoteBarTipColor:       RGB(26, 127, 55),
+		QuoteBarImportantColor: RGB(130, 80, 223),
+		QuoteBarWarningColor:   RGB(154, 103, 0),
+		QuoteBarCautionColor:   RGB(207, 34, 46),
+		LinkInk:                DefaultLinkTheme.OnBackgroundInk,
+		LinkOnPressedInk:       DefaultLinkTheme.OnPressedInk,
+		LinkHandler:            DefaultMarkdownLinkHandler,
+		QuoteBarThickness:      2,
+		CodeAndQuotePadding:    6,
+		Slop:                   4,
 	}
 }
 
@@ -82,20 +93,20 @@ func DeriveMarkdownHeadingFont(font Font, level int) FontDescriptor {
 	} else {
 		fd = font.Descriptor()
 	}
-	fd.Weight = weight.Black
-	// 20% relative growth per level
+	fd.Weight = weight.Bold
 	switch level {
 	case 1:
-		fd.Size *= 2.48832
+		fd.Size *= 2
 	case 2:
-		fd.Size *= 2.0736
+		fd.Size *= 1.5
 	case 3:
-		fd.Size *= 1.728
+		fd.Size *= 1.25
 	case 4:
-		fd.Size *= 1.44
+		fd.Size *= 1
 	case 5:
-		fd.Size *= 1.2
+		fd.Size *= 0.875
 	default:
+		fd.Size *= 0.85
 	}
 	return fd
 }
@@ -116,20 +127,24 @@ func DeriveMarkdownCodeBlockFont(font Font) FontDescriptor {
 // MarkdownTheme holds theming data for a Markdown.
 type MarkdownTheme struct {
 	TextDecoration
-	HeadingFont         [6]Font
-	CodeBlockFont       Font
-	CodeBackground      Ink
-	OnCodeBackground    Ink
-	QuoteBarColor       Ink
-	LinkInk             Ink
-	LinkOnPressedInk    Ink
-	LinkHandler         func(Paneler, string)
-	WorkingDirProvider  func(Paneler) string
-	AltLinkPrefixes     []string
-	VSpacing            float32
-	QuoteBarThickness   float32
-	CodeAndQuotePadding float32
-	Slop                float32
+	HeadingFont            [6]Font
+	CodeBlockFont          Font
+	CodeBackground         Ink
+	OnCodeBackground       Ink
+	QuoteBarColor          Ink
+	QuoteBarNoteColor      Ink
+	QuoteBarTipColor       Ink
+	QuoteBarImportantColor Ink
+	QuoteBarWarningColor   Ink
+	QuoteBarCautionColor   Ink
+	LinkInk                Ink
+	LinkOnPressedInk       Ink
+	LinkHandler            func(Paneler, string)
+	WorkingDirProvider     func(Paneler) string
+	AltLinkPrefixes        []string
+	QuoteBarThickness      float32
+	CodeAndQuotePadding    float32
+	Slop                   float32
 }
 
 // HasAnyPrefix returns true if the target has a prefix matching one of those found in prefixes.
@@ -140,6 +155,11 @@ func HasAnyPrefix(prefixes []string, target string) bool {
 		}
 	}
 	return false
+}
+
+type drawableCacheEntry struct {
+	drawable Drawable
+	targets  []*DrawablePanel
 }
 
 // Markdown provides markdown display widget.
@@ -153,15 +173,17 @@ type Markdown struct {
 	chainedFrameChangeCallback func()
 	content                    []byte
 	columnWidths               []int
-	imgCache                   map[string]*Image
+	drawableCache              map[string]*drawableCacheEntry
 	MarkdownTheme
 	Panel
-	index        int
-	columnIndex  int
-	maxWidth     float32
-	maxLineWidth float32
-	ordered      bool
-	isHeader     bool
+	drawableCacheLock sync.Mutex
+	index             int
+	columnIndex       int
+	alert             int
+	maxWidth          float32
+	maxLineWidth      float32
+	ordered           bool
+	isHeader          bool
 }
 
 // NewMarkdown creates a new markdown widget. If autoSizingFromParent is true, then the Markdown will attempt to keep
@@ -169,9 +191,9 @@ type Markdown struct {
 func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	m := &Markdown{
 		MarkdownTheme: DefaultMarkdownTheme,
-		imgCache:      make(map[string]*Image),
+		drawableCache: make(map[string]*drawableCacheEntry),
 	}
-	m.SetVSpacing(m.VSpacing)
+	m.SetLayout(&FlexLayout{Columns: 1})
 	m.Self = m
 	if autoSizingFromParent {
 		m.ParentChangedCallback = m.adjustSizeOnParentChange
@@ -198,16 +220,6 @@ func (m *Markdown) adjustToParent() {
 	if m.chainedFrameChangeCallback != nil {
 		m.chainedFrameChangeCallback()
 	}
-}
-
-// SetVSpacing sets the vertical spacing between blocks. Use this function rather than setting VSpacing directly, since
-// this will also adjust the layout to match.
-func (m *Markdown) SetVSpacing(spacing float32) {
-	m.VSpacing = spacing
-	m.SetLayout(&FlexLayout{
-		Columns:  1,
-		VSpacing: m.VSpacing,
-	})
 }
 
 // SetContent replaces the current markdown content.
@@ -328,6 +340,7 @@ func (m *Markdown) processChildren() {
 func (m *Markdown) processParagraphOrTextBlock() {
 	p := NewPanel()
 	p.SetLayout(&FlexLayout{Columns: 1})
+	p.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
 	save := m.block
 	m.block.AddChild(p)
 	m.block = p
@@ -337,6 +350,10 @@ func (m *Markdown) processParagraphOrTextBlock() {
 	m.block = save
 }
 
+func (m *Markdown) stdBottomMargin() geom.Insets {
+	return geom.Insets{Bottom: m.Font.Baseline() / 2}
+}
+
 func (m *Markdown) processHeading() {
 	if heading, ok := m.node.(*ast.Heading); ok {
 		saveDec := m.decoration
@@ -344,6 +361,15 @@ func (m *Markdown) processHeading() {
 		m.decoration = m.decoration.Clone()
 		m.decoration.Font = m.HeadingFont[min(max(heading.Level, 1), 6)-1]
 		p := NewPanel()
+		insets := m.stdBottomMargin()
+		insets.Top = m.collapseMarginWithPrevious(m.decoration.Font.Baseline())
+		if m.block == m.AsPanel() && len(m.block.Children()) == 0 {
+			insets.Top = 0
+		}
+		if heading.Level == 1 || heading.Level == 2 {
+			insets.Bottom = 0
+		}
+		p.SetBorder(NewEmptyBorder(insets))
 		p.SetLayout(&FlexLayout{Columns: 1})
 		m.block.AddChild(p)
 		m.block = p
@@ -352,7 +378,32 @@ func (m *Markdown) processHeading() {
 		m.finishTextRow()
 		m.decoration = saveDec
 		m.block = saveBlock
+		if heading.Level == 1 || heading.Level == 2 {
+			hr := NewSeparator()
+			hr.SetLayoutData(&FlexLayoutData{
+				HGrab:  true,
+				HAlign: align.Fill,
+				VAlign: align.Middle,
+			})
+			hr.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
+			m.block.AddChild(hr)
+		}
 	}
+}
+
+func (m *Markdown) collapseMarginWithPrevious(desired float32) float32 {
+	p := m.block
+	children := p.Children()
+	if len(children) != 0 {
+		p = children[len(children)-1]
+	}
+	if border := p.Border(); border != nil {
+		desired -= border.Insets().Bottom
+		if desired < 0 {
+			desired = 0
+		}
+	}
+	return desired
 }
 
 func (m *Markdown) processThematicBreak() {
@@ -362,6 +413,9 @@ func (m *Markdown) processThematicBreak() {
 		HAlign: align.Fill,
 		VAlign: align.Middle,
 	})
+	insets := m.stdBottomMargin()
+	insets.Top = m.collapseMarginWithPrevious(insets.Bottom)
+	hr.SetBorder(NewEmptyBorder(insets))
 	m.block.AddChild(hr)
 }
 
@@ -384,11 +438,19 @@ func (m *Markdown) processCodeBlock() {
 		HGrab:  true,
 	})
 	p.SetBorder(NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)))
-	m.block.AddChild(p)
+	wrapper := NewPanel()
+	wrapper.SetLayout(&FlexLayout{Columns: 1})
+	wrapper.SetLayoutData(&FlexLayoutData{
+		HAlign: align.Fill,
+		HGrab:  true,
+	})
+	wrapper.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
+	wrapper.AddChild(p)
+	m.block.AddChild(wrapper)
 	m.block = p
 	lines := m.node.Lines()
 	count := lines.Len()
-	for i := 0; i < count; i++ {
+	for i := range count {
 		segment := lines.At(i)
 		label := NewLabel()
 		label.Text = NewText(string(bytes.TrimRight(segment.Value(m.content), "\n")), m.decoration)
@@ -413,26 +475,87 @@ func (m *Markdown) processBlockquote() {
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, paintstyle.Fill))
 	}
-	p.SetLayout(&FlexLayout{
-		Columns:  1,
-		VSpacing: m.VSpacing,
-	})
+	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
-	p.SetBorder(NewCompoundBorder(
-		NewLineBorder(m.QuoteBarColor, geom.Size{}, geom.Insets{Left: m.QuoteBarThickness}, false),
-		NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)),
-	))
-	m.block.AddChild(p)
+	wrapper := NewPanel()
+	wrapper.SetLayout(&FlexLayout{Columns: 1})
+	wrapper.SetLayoutData(&FlexLayoutData{
+		HAlign: align.Fill,
+		HGrab:  true,
+	})
+	wrapper.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
+	wrapper.AddChild(p)
+	m.block.AddChild(wrapper)
 	m.block = p
+	saveAlert := m.alert
+	m.alert = 1
 	m.text = NewText("", m.decoration)
 	m.processChildren()
 	m.finishTextRow()
+	quoteBarColor := m.QuoteBarColor
+	if m.alert < 0 {
+		var str string
+		var svg *SVG
+		switch -m.alert {
+		case markdownAlertNote:
+			quoteBarColor = m.QuoteBarNoteColor
+			str = i18n.Text("Note")
+			svg = MarkdownNoteSVG
+		case markdownAlertTip:
+			quoteBarColor = m.QuoteBarTipColor
+			str = i18n.Text("Tip")
+			svg = MarkdownTipSVG
+		case markdownAlertImportant:
+			quoteBarColor = m.QuoteBarImportantColor
+			str = i18n.Text("Important")
+			svg = MarkdownImportantSVG
+		case markdownAlertWarning:
+			quoteBarColor = m.QuoteBarWarningColor
+			str = i18n.Text("Warning")
+			svg = MarkdownWarningSVG
+		case markdownAlertCaution:
+			quoteBarColor = m.QuoteBarCautionColor
+			str = i18n.Text("Caution")
+			svg = MarkdownCautionSVG
+		}
+		if str != "" {
+			label := NewLabel()
+			label.Gap *= 2
+			label.Font = m.HeadingFont[3]
+			label.OnBackgroundInk = quoteBarColor
+			label.SetTitle(str)
+			label.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
+			label.Drawable = &DrawableSVG{
+				SVG:  svg,
+				Size: geom.NewUniformSize(label.Font.Baseline()),
+			}
+			p.AddChildAtIndex(label, 0)
+		}
+	}
+	p.SetBorder(NewCompoundBorder(
+		NewLineBorder(quoteBarColor, geom.Size{}, geom.Insets{Left: m.QuoteBarThickness}, false),
+		NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)),
+	))
+	removeBottomMarginFromLastChild(p)
+	m.alert = saveAlert
 	m.decoration = saveDec
 	m.block = saveBlock
 	m.maxLineWidth = saveMaxLineWidth
+}
+
+func removeBottomMarginFromLastChild(p *Panel) {
+	if children := p.Children(); len(children) != 0 {
+		p = children[len(children)-1]
+		if border := p.Border(); border != nil {
+			if b, ok := border.(*EmptyBorder); ok {
+				b.insets.Bottom = 0
+				return
+			}
+		}
+	}
 }
 
 func (m *Markdown) processList() {
@@ -445,15 +568,28 @@ func (m *Markdown) processList() {
 		p := NewPanel()
 		p.SetLayout(&FlexLayout{
 			Columns:  2,
-			HSpacing: m.decoration.Font.SimpleWidth(" "),
+			HSpacing: m.decoration.Font.Baseline() / 3,
 		})
 		p.SetLayoutData(&FlexLayoutData{
 			HAlign: align.Fill,
 			HGrab:  true,
 		})
+		insets := m.stdBottomMargin()
+		insets.Left = m.Font.Baseline() / 2
+		p.SetBorder(NewEmptyBorder(insets))
+		var data any
+		if data, ok = m.block.ClientData()[markdownListItemKey]; ok {
+			var is bool
+			if is, ok = data.(bool); ok && is {
+				removeBottomMarginFromLastChild(m.block)
+			}
+		}
 		m.block.AddChild(p)
 		m.block = p
+		saveMaxLineWidth := m.maxLineWidth
+		m.maxLineWidth -= insets.Left
 		m.processChildren()
+		m.maxLineWidth = saveMaxLineWidth
 		m.index = saveIndex
 		m.ordered = saveOrdered
 		m.block = saveBlock
@@ -475,7 +611,6 @@ func (m *Markdown) processListItem() {
 	label.Text = NewText(bullet, m.decoration)
 	label.SetLayoutData(&FlexLayoutData{HAlign: align.End})
 	m.block.AddChild(label)
-
 	saveBlock := m.block
 	p := NewPanel()
 	p.SetLayout(&FlexLayout{Columns: 1})
@@ -483,9 +618,11 @@ func (m *Markdown) processListItem() {
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
+	p.ClientData()[markdownListItemKey] = true
 	m.block.AddChild(p)
 	m.block = p
 	m.processChildren()
+	removeBottomMarginFromLastChild(p)
 	m.block = saveBlock
 	m.maxLineWidth = saveMaxLineWidth
 }
@@ -499,7 +636,8 @@ func (m *Markdown) processTable() {
 				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
 			}
 			p := NewPanel()
-			p.SetBorder(NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false))
+			p.SetBorder(NewCompoundBorder(NewEmptyBorder(m.stdBottomMargin()),
+				NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false)))
 			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
 			m.block.AddChild(p)
 			m.block = p
@@ -685,16 +823,57 @@ func (m *Markdown) alignment(alignment astex.Alignment) align.Enum {
 	}
 }
 
+const (
+	markdownAlertNote = iota + 3
+	markdownAlertTip
+	markdownAlertImportant
+	markdownAlertWarning
+	markdownAlertCaution
+)
+
 func (m *Markdown) processText() {
 	if t, ok := m.node.(*ast.Text); ok {
 		b := util.UnescapePunctuations(t.Value(m.content))
 		b = util.ResolveNumericReferences(b)
 		str := string(util.ResolveEntityNames(b))
+		if m.alert > 0 {
+			switch m.alert {
+			case 1: // Looking for '['
+				if str == "[" {
+					m.alert = 2
+				} else {
+					m.alert = 0
+				}
+			case 2: // Looking for '!' followed by one of 'NOTE', 'TIP', 'IMPORTANT', 'WARNING', or 'CAUTION'
+				switch str {
+				case "!NOTE":
+					m.alert = markdownAlertNote
+				case "!TIP":
+					m.alert = markdownAlertTip
+				case "!IMPORTANT":
+					m.alert = markdownAlertImportant
+				case "!WARNING":
+					m.alert = markdownAlertWarning
+				case "!CAUTION":
+					m.alert = markdownAlertCaution
+				default:
+					m.alert = 0
+				}
+			case 3, 4, 5, 6, 7: // Looking for terminating ']'
+				if str == "]" {
+					m.text = NewText("", m.decoration)
+					m.alert = -m.alert
+					return
+				}
+				m.alert = 0
+			}
+		}
 		if t.SoftLineBreak() {
 			str += " "
 		}
 		m.text.AddString(str, m.decoration)
 		if t.HardLineBreak() {
+			m.alert = 0
 			m.flushAndIssueLineBreak()
 		}
 	}
@@ -708,7 +887,7 @@ func (m *Markdown) processEmphasis() {
 		if emphasis.Level == 1 {
 			fd.Slant = slant.Italic
 		} else {
-			fd.Weight = weight.Black
+			fd.Weight = weight.Bold
 		}
 		m.decoration.Font = fd.Font()
 		m.processChildren()
@@ -824,7 +1003,7 @@ func (m *Markdown) linkHandler(_ Paneler, target string) {
 	m.LinkHandler(m, target)
 }
 
-func (m *Markdown) retrieveImage(target string, label *Label) *Image {
+func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 	workingDir := ""
 	if m.WorkingDirProvider != nil {
 		workingDir = m.WorkingDirProvider(m)
@@ -834,38 +1013,83 @@ func (m *Markdown) retrieveImage(target string, label *Label) *Image {
 		errs.Log(err, "workingDir", workingDir, "target", target, "altLinkPrefixes", m.AltLinkPrefixes)
 		return nil
 	}
-	img, ok := m.imgCache[revisedTarget]
-	if !ok {
-		result := make(chan *Image, 1)
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
+	m.drawableCacheLock.Lock()
+	entry, ok := m.drawableCache[revisedTarget]
+	if ok {
+		d := entry.drawable
+		if d == nil {
+			entry.targets = append(entry.targets, panel)
+		}
+		m.drawableCacheLock.Unlock()
+		return d
+	}
+	m.drawableCache[revisedTarget] = &drawableCacheEntry{
+		targets: []*DrawablePanel{panel},
+	}
+	m.drawableCacheLock.Unlock()
+	result := make(chan Drawable, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		var d Drawable
+		if strings.ToLower(path.Ext(revisedTarget)) == ".svg" {
+			var r io.ReadCloser
+			if r, err = xhttp.StreamData(ctx, nil, revisedTarget); err != nil {
+				result <- nil
+				errs.Log(err, "path", revisedTarget)
+				return
+			}
+			defer xio.CloseIgnoringErrors(r)
+			var svg *SVG
+			if svg, err = NewSVGFromReader(r, SVGOptionIgnoreUnsupported(), SVGOptionWarnParseErrors()); err != nil {
+				result <- nil
+				errs.Log(err, "path", revisedTarget)
+				return
+			}
+			d = &DrawableSVG{
+				SVG:  svg,
+				Size: svg.Size(),
+			}
+		} else {
 			scale := geom.NewPoint(1, 1).DivPt(PrimaryDisplay().Scale)
+			var img *Image
 			if img, err = NewImageFromFilePathOrURLWithContext(ctx, revisedTarget, scale); err != nil {
 				result <- nil
 				errs.Log(err, "path", revisedTarget, "scale", scale)
-			} else {
-				result <- img
-				InvokeTask(func() {
-					m.imgCache[revisedTarget] = img
-					label.Drawable = m.constrainImage(img)
-					label.MarkForRedraw()
-					label.MarkForLayoutRecursivelyUpward()
-				})
+				return
 			}
-		}()
-		timer := time.NewTimer(time.Second)
-		select {
-		case one := <-result:
-			if one != nil {
-				img = one
-				m.imgCache[revisedTarget] = img
-			}
-		case <-timer.C:
+			d = img
 		}
-		timer.Stop()
+		result <- d
+		InvokeTask(func() { m.updateDrawable(revisedTarget, d) })
+	}()
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case one := <-result:
+		return one
+	case <-timer.C:
+		return nil
 	}
-	return img
+}
+
+func (m *Markdown) updateDrawable(target string, d Drawable) {
+	m.drawableCacheLock.Lock()
+	defer m.drawableCacheLock.Unlock()
+	entry, ok := m.drawableCache[target]
+	if !ok {
+		// This should never happen
+		return
+	}
+	entry.drawable = d
+	d = m.constrainImage(d)
+	for _, panel := range entry.targets {
+		panel.Drawable = d
+		panel.Ink = nil
+		panel.MarkForRedraw()
+		panel.MarkForLayoutRecursivelyUpward()
+	}
+	entry.targets = nil
 }
 
 func (m *Markdown) constrainImage(drawable Drawable) Drawable {
@@ -904,16 +1128,18 @@ func (m *Markdown) extractText(node ast.Node) string {
 func (m *Markdown) processImage() {
 	if image, ok := m.node.(*ast.Image); ok {
 		m.flushText()
-		label := NewLabel()
-		img := m.retrieveImage(string(image.Destination), label)
-		if img == nil {
+		panel := NewDrawablePanel()
+		d := m.retrieveImage(string(image.Destination), panel)
+		if d == nil {
 			size := max(m.decoration.Font.Size(), 24)
-			label.Drawable = &DrawableSVG{
+			panel.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
 				Size: geom.NewSize(size, size),
 			}
+			panel.Ink = m.OnBackgroundInk
 		} else {
-			label.Drawable = m.constrainImage(img)
+			panel.Drawable = m.constrainImage(d)
+			panel.Ink = nil
 		}
 		primary := m.extractText(image)
 		secondary := string(image.Title)
@@ -923,12 +1149,12 @@ func (m *Markdown) processImage() {
 		}
 		if primary != "" {
 			if secondary != "" {
-				label.Tooltip = NewTooltipWithSecondaryText(primary, secondary)
+				panel.Tooltip = NewTooltipWithSecondaryText(primary, secondary)
 			} else {
-				label.Tooltip = NewTooltipWithText(primary)
+				panel.Tooltip = NewTooltipWithText(primary)
 			}
 		}
-		m.addToTextRow(label)
+		m.addToTextRow(panel)
 	}
 }
 

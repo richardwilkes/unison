@@ -64,6 +64,26 @@ var (
 	documentSVG string
 	DocumentSVG = MustSVGFromContentString(documentSVG)
 
+	//go:embed resources/images/markdown_caution.svg
+	markdownCautionSVG string
+	MarkdownCautionSVG = MustSVGFromContentString(markdownCautionSVG)
+
+	//go:embed resources/images/markdown_important.svg
+	markdownImportantSVG string
+	MarkdownImportantSVG = MustSVGFromContentString(markdownImportantSVG)
+
+	//go:embed resources/images/markdown_note.svg
+	markdownNoteSVG string
+	MarkdownNoteSVG = MustSVGFromContentString(markdownNoteSVG)
+
+	//go:embed resources/images/markdown_tip.svg
+	markdownTipSVG string
+	MarkdownTipSVG = MustSVGFromContentString(markdownTipSVG)
+
+	//go:embed resources/images/markdown_warning.svg
+	markdownWarningSVG string
+	MarkdownWarningSVG = MustSVGFromContentString(markdownWarningSVG)
+
 	//go:embed resources/images/sort_ascending.svg
 	sortAscendingSVG string
 	SortAscendingSVG = MustSVGFromContentString(sortAscendingSVG)
