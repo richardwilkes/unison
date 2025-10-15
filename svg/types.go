@@ -6,12 +6,12 @@ import (
 
 // Bounds defines a bounding box, such as a viewport
 // or a path extent.
-type Bounds struct{ X, Y, W, H float64 }
+type Bounds struct{ X, Y, W, H float32 }
 
 // DashOptions defines the dash pattern for stroking a path.
 type DashOptions struct {
-	Dash       []float64 // values for the dash pattern (nil or an empty slice for no dashes)
-	DashOffset float64   // starting offset into the dash array
+	Dash       []float32 // values for the dash pattern (nil or an empty slice for no dashes)
+	DashOffset float32   // starting offset into the dash array
 }
 
 // JoinMode type to specify how segments join.

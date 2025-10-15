@@ -12,16 +12,16 @@ import (
 var errParamMismatch = errors.New("param mismatch")
 
 type pathParser struct {
-	pts        []float64
+	pts        []float32
 	path       Path
-	placeX     float64
-	placeY     float64
-	curX       float64
-	curY       float64
-	cntlPtX    float64
-	cntlPtY    float64
-	pathStartX float64
-	pathStartY float64
+	placeX     float32
+	placeY     float32
+	curX       float32
+	curY       float32
+	cntlPtX    float32
+	cntlPtY    float32
+	pathStartX float32
+	pathStartY float32
 	lastKey    uint8
 	inPath     bool
 }
@@ -52,7 +52,7 @@ func (c *pathParser) compilePath(svgPath string) error {
 	return nil
 }
 
-func (c *pathParser) valsToAbs(last float64) {
+func (c *pathParser) valsToAbs(last float32) {
 	for i := 0; i < len(c.pts); i++ {
 		last += c.pts[i]
 		c.pts[i] = last
@@ -347,7 +347,7 @@ func (c *pathParser) reflectControl(forQuad bool) {
 	}
 }
 
-func (c *pathParser) ellipseAt(cx, cy, rx, ry float64) {
+func (c *pathParser) ellipseAt(cx, cy, rx, ry float32) {
 	c.placeX, c.placeY = cx+rx, cy
 	c.pts = c.pts[0:0]
 	c.pts = append(c.pts, rx, ry, 0.0, 1.0, 0.0, c.placeX, c.placeY)
@@ -359,7 +359,7 @@ func (c *pathParser) ellipseAt(cx, cy, rx, ry float64) {
 	c.path.Stop(true)
 }
 
-func (c *pathParser) addArcFromA(points []float64) {
+func (c *pathParser) addArcFromA(points []float32) {
 	cx, cy := findEllipseCenter(&points[0], &points[1], points[2]*math.Pi/180, c.placeX,
 		c.placeY, points[5], points[6], points[4] == 0, points[3] == 0)
 	c.placeX, c.placeY = c.path.addArc(c.pts, cx+c.curX, cy+c.curY, c.placeX+c.curX, c.placeY+c.curY)

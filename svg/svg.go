@@ -43,9 +43,9 @@ type PathStyle struct {
 	LinerColor        Pattern
 	Dash              DashOptions
 	Join              JoinOptions
-	FillOpacity       float64
-	LineOpacity       float64
-	LineWidth         float64
+	FillOpacity       float32
+	LineOpacity       float32
+	LineWidth         float32
 	Transform         Matrix2D
 	UseNonZeroWinding bool
 }
@@ -361,7 +361,7 @@ func (p *svgParser) readStyleAttr(curStyle *PathStyle, k, v string) error {
 	case "stroke-dasharray":
 		if v != none {
 			dashes := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })
-			dList := make([]float64, len(dashes))
+			dList := make([]float32, len(dashes))
 			for i, dstr := range dashes {
 				d, err := p.parseUnitToPx(strings.TrimSpace(dstr), diagPercentage)
 				if err != nil {
@@ -534,6 +534,6 @@ func (p *svgParser) readGradientAttr(attr xml.Attr) error {
 	return nil
 }
 
-func (p *svgParser) parseUnitToPx(s string, asPerc percentageReference) (float64, error) {
+func (p *svgParser) parseUnitToPx(s string, asPerc percentageReference) (float32, error) {
 	return p.svg.ViewBox.resolveUnit(s, asPerc)
 }

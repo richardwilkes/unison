@@ -1,22 +1,21 @@
 package svg
 
 import (
-	"math"
-
+	"github.com/richardwilkes/toolbox/v2/xmath"
 	"golang.org/x/image/math/fixed"
 )
 
 // Matrix2D represents 2D matrix
 type Matrix2D struct {
-	ScaleX float64
-	SkwX   float64
-	TransX float64
-	SkwY   float64
-	ScaleY float64
-	TransY float64
+	ScaleX float32
+	SkwX   float32
+	TransX float32
+	SkwY   float32
+	ScaleY float32
+	TransY float32
 }
 
-type matrix3 [9]float64
+type matrix3 [9]float32
 
 func otherPair(i int) (a, b int) {
 	switch i {
@@ -30,7 +29,7 @@ func otherPair(i int) (a, b int) {
 	return a, b
 }
 
-func (m *matrix3) coFact(i, j int) float64 {
+func (m *matrix3) coFact(i, j int) float32 {
 	ai, bi := otherPair(i)
 	aj, bj := otherPair(j)
 	a, b, c, d := m[ai+aj*3], m[bi+bj*3], m[ai+bj*3], m[bi+aj*3]
@@ -41,7 +40,7 @@ func (m *matrix3) invert() *matrix3 {
 	var cofact matrix3
 	for i := range 3 {
 		for j := range 3 {
-			cofact[i+j*3] = m.coFact(i, j) * float64(1-(i+j%2)%2*2)
+			cofact[i+j*3] = m.coFact(i, j) * float32(1-(i+j%2)%2*2)
 		}
 	}
 	deteriminate := m[0]*cofact[0] + m[1]*cofact[1] + m[2]*cofact[2]
@@ -101,23 +100,23 @@ var Identity = Matrix2D{
 // TFixed transforms a fixed.Point26_6 by the matrix.
 func (m Matrix2D) TFixed(x fixed.Point26_6) (y fixed.Point26_6) {
 	return fixed.Point26_6{
-		X: fixed.Int26_6((float64(x.X)*m.ScaleX + float64(x.Y)*m.SkwX) + m.TransX*64),
-		Y: fixed.Int26_6((float64(x.X)*m.SkwY + float64(x.Y)*m.ScaleY) + m.TransY*64),
+		X: fixed.Int26_6((float32(x.X)*m.ScaleX + float32(x.Y)*m.SkwX) + m.TransX*64),
+		Y: fixed.Int26_6((float32(x.X)*m.SkwY + float32(x.Y)*m.ScaleY) + m.TransY*64),
 	}
 }
 
 // Transform multiples the input vector by matrix m and outputs the results vector components.
-func (m Matrix2D) Transform(x1, y1 float64) (x2, y2 float64) {
+func (m Matrix2D) Transform(x1, y1 float32) (x2, y2 float32) {
 	return x1*m.ScaleX + y1*m.SkwX + m.TransX, x1*m.SkwY + y1*m.ScaleY + m.TransY
 }
 
 // TransformVector is a modified version of Transform that ignores the translation components.
-func (m Matrix2D) TransformVector(x1, y1 float64) (x2, y2 float64) {
+func (m Matrix2D) TransformVector(x1, y1 float32) (x2, y2 float32) {
 	return x1*m.ScaleX + y1*m.SkwX, x1*m.SkwY + y1*m.ScaleY
 }
 
 // Scale matrix in x and y dimensions.
-func (m Matrix2D) Scale(x, y float64) Matrix2D {
+func (m Matrix2D) Scale(x, y float32) Matrix2D {
 	return Matrix2D{
 		ScaleX: m.ScaleX * x,
 		SkwX:   m.SkwX * x,
@@ -129,25 +128,25 @@ func (m Matrix2D) Scale(x, y float64) Matrix2D {
 }
 
 // SkewY skews the matrix in the Y dimension.
-func (m Matrix2D) SkewY(theta float64) Matrix2D {
+func (m Matrix2D) SkewY(theta float32) Matrix2D {
 	return m.Mult(Matrix2D{
 		ScaleX: 1,
-		SkwY:   math.Tan(theta),
+		SkwY:   xmath.Tan(theta),
 		ScaleY: 1,
 	})
 }
 
 // SkewX skews the matrix in the X dimension.
-func (m Matrix2D) SkewX(theta float64) Matrix2D {
+func (m Matrix2D) SkewX(theta float32) Matrix2D {
 	return m.Mult(Matrix2D{
 		ScaleX: 1,
-		SkwX:   math.Tan(theta),
+		SkwX:   xmath.Tan(theta),
 		ScaleY: 1,
 	})
 }
 
 // Translate translates the matrix to the x, y point.
-func (m Matrix2D) Translate(x, y float64) Matrix2D {
+func (m Matrix2D) Translate(x, y float32) Matrix2D {
 	return Matrix2D{
 		ScaleX: m.ScaleX,
 		SkwX:   m.SkwX,
@@ -159,12 +158,12 @@ func (m Matrix2D) Translate(x, y float64) Matrix2D {
 }
 
 // Rotate rotate the matrix by theta (in radians).
-func (m Matrix2D) Rotate(theta float64) Matrix2D {
+func (m Matrix2D) Rotate(theta float32) Matrix2D {
 	return m.Mult(Matrix2D{
-		ScaleX: math.Cos(theta),
-		SkwX:   -math.Sin(theta),
-		SkwY:   math.Sin(theta),
-		ScaleY: math.Cos(theta),
+		ScaleX: xmath.Cos(theta),
+		SkwX:   -xmath.Sin(theta),
+		SkwY:   xmath.Sin(theta),
+		ScaleY: xmath.Cos(theta),
 	})
 }
 

@@ -3,6 +3,7 @@ package svg
 import (
 	"math"
 
+	"github.com/richardwilkes/toolbox/v2/xmath"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -15,17 +16,17 @@ const (
 
 	// maxDx is the maximum radians a cubic splice is allowed to span
 	// in ellipse parametric when approximating an off-axis ellipse.
-	maxDx float64 = math.Pi / 8
+	maxDx float32 = math.Pi / 8
 )
 
-func toFixedPt(x, y float64) (p fixed.Point26_6) {
+func toFixedPt(x, y float32) (p fixed.Point26_6) {
 	return fixed.Point26_6{
 		X: fixed.Int26_6(x * 64),
 		Y: fixed.Int26_6(y * 64),
 	}
 }
 
-func (p *Path) addRect(minX, minY, maxX, maxY, rot float64) {
+func (p *Path) addRect(minX, minY, maxX, maxY, rot float32) {
 	rot *= math.Pi / 180
 	cx := (minX + maxX) / 2
 	cy := (minY + maxY) / 2
@@ -40,9 +41,9 @@ func (p *Path) addRect(minX, minY, maxX, maxY, rot float64) {
 
 // length is the distance from the origin of the point
 func length(v fixed.Point26_6) fixed.Int26_6 {
-	vx := float64(v.X)
-	vy := float64(v.Y)
-	return fixed.Int26_6(math.Sqrt(vx*vx + vy*vy))
+	vx := float32(v.X)
+	vy := float32(v.Y)
+	return fixed.Int26_6(xmath.Sqrt(vx*vx + vy*vy))
 }
 
 // addArc strokes a circular arc by approximation with bezier curves
@@ -50,8 +51,8 @@ func addArc(p *matrixAdder, a, s1, s2 fixed.Point26_6, clockwise bool, trimStart
 	// Approximate the circular arc using a set of cubic bezier curves by the method of L. Maisonobe, "Drawing an
 	// elliptical arc using polylines, quadratic or cubic Bezier curves", 2003
 	// https://www.spaceroots.org/documents/elllipse/elliptical-arc.pdf The method was simplified for circles.
-	theta1 := math.Atan2(float64(s1.Y-a.Y), float64(s1.X-a.X))
-	theta2 := math.Atan2(float64(s2.Y-a.Y), float64(s2.X-a.X))
+	theta1 := xmath.Atan2(float32(s1.Y-a.Y), float32(s1.X-a.X))
+	theta2 := xmath.Atan2(float32(s2.Y-a.Y), float32(s2.X-a.X))
 	if !clockwise {
 		for theta1 < theta2 {
 			theta1 += math.Pi * 2
@@ -63,27 +64,27 @@ func addArc(p *matrixAdder, a, s1, s2 fixed.Point26_6, clockwise bool, trimStart
 	}
 	deltaTheta := theta2 - theta1
 	if trimStart > 0 {
-		ds := (deltaTheta * float64(trimStart)) / float64(1<<tStrokeShift)
+		ds := (deltaTheta * float32(trimStart)) / float32(1<<tStrokeShift)
 		deltaTheta -= ds
 		theta1 += ds
 	}
 	if trimEnd > 0 {
-		ds := (deltaTheta * float64(trimEnd)) / float64(1<<tStrokeShift)
+		ds := (deltaTheta * float32(trimEnd)) / float32(1<<tStrokeShift)
 		deltaTheta -= ds
 	}
-	segs := int(math.Abs(deltaTheta)/(math.Pi/cubicsPerHalfCircle)) + 1
-	dTheta := deltaTheta / float64(segs)
-	tde := math.Tan(dTheta / 2)
-	alpha := fixed.Int26_6(math.Sin(dTheta) * (math.Sqrt(4+3*tde*tde) - 1) * (64.0 / 3.0)) // Math is fun!
-	r := float64(length(s1.Sub(a)))                                                        // Note r is *64
-	ldp := fixed.Point26_6{X: -fixed.Int26_6(r * math.Sin(theta1)), Y: fixed.Int26_6(r * math.Cos(theta1))}
+	segs := int(xmath.Abs(deltaTheta)/(math.Pi/cubicsPerHalfCircle)) + 1
+	dTheta := deltaTheta / float32(segs)
+	tde := xmath.Tan(dTheta / 2)
+	alpha := fixed.Int26_6(xmath.Sin(dTheta) * (xmath.Sqrt(4+3*tde*tde) - 1) * (64.0 / 3.0)) // Math is fun!
+	r := float32(length(s1.Sub(a)))                                                          // Note r is *64
+	ldp := fixed.Point26_6{X: -fixed.Int26_6(r * xmath.Sin(theta1)), Y: fixed.Int26_6(r * xmath.Cos(theta1))}
 	ds1 = ldp
 	ps1 = fixed.Point26_6{X: a.X + ldp.Y, Y: a.Y - ldp.X}
 	firstPoint(ps1)
 	s1 = ps1
 	for i := 1; i <= segs; i++ {
-		eta := theta1 + dTheta*float64(i)
-		ds2 = fixed.Point26_6{X: -fixed.Int26_6(r * math.Sin(eta)), Y: fixed.Int26_6(r * math.Cos(eta))}
+		eta := theta1 + dTheta*float32(i)
+		ds2 = fixed.Point26_6{X: -fixed.Int26_6(r * xmath.Sin(eta)), Y: fixed.Int26_6(r * xmath.Cos(eta))}
 		ps2 = fixed.Point26_6{X: a.X + ds2.Y, Y: a.Y - ds2.X} // Using deriviative to calc new pt, because circle
 		p1 := s1.Add(ldp.Mul(alpha))
 		p2 := ps2.Sub(ds2.Mul(alpha))
@@ -102,7 +103,7 @@ func roundGap(p *matrixAdder, a, tNorm, lNorm fixed.Point26_6) {
 
 // addRoundRect adds a rectangle of the indicated size, rotated around the center by rot degrees with rounded corners of
 // radius rx in the x axis and ry in the y axis.
-func (p *Path) addRoundRect(minX, minY, maxX, maxY, rx, ry, rot float64) {
+func (p *Path) addRoundRect(minX, minY, maxX, maxY, rx, ry, rot float32) {
 	if rx <= 0 || ry <= 0 {
 		p.addRect(minX, minY, maxX, maxY, rot)
 		return
@@ -138,18 +139,18 @@ func (p *Path) addRoundRect(minX, minY, maxX, maxY, rx, ry, rot float64) {
 }
 
 // addArc adds an arc to the adder p
-func (p *Path) addArc(points []float64, cx, cy, px, py float64) (lx, ly float64) {
+func (p *Path) addArc(points []float32, cx, cy, px, py float32) (lx, ly float32) {
 	rotX := points[2] * math.Pi / 180 // Convert degress to radians
 	largeArc := points[3] != 0
 	sweep := points[4] != 0
-	startAngle := math.Atan2(py-cy, px-cx) - rotX
-	endAngle := math.Atan2(points[6]-cy, points[5]-cx) - rotX
+	startAngle := xmath.Atan2(py-cy, px-cx) - rotX
+	endAngle := xmath.Atan2(points[6]-cy, points[5]-cx) - rotX
 	deltaTheta := endAngle - startAngle
-	arcBig := math.Abs(deltaTheta) > math.Pi
+	arcBig := xmath.Abs(deltaTheta) > math.Pi
 
 	// Approximate ellipse using cubic bezeir splines
-	etaStart := math.Atan2(math.Sin(startAngle)/points[1], math.Cos(startAngle)/points[0])
-	etaEnd := math.Atan2(math.Sin(endAngle)/points[1], math.Cos(endAngle)/points[0])
+	etaStart := xmath.Atan2(xmath.Sin(startAngle)/points[1], xmath.Cos(startAngle)/points[0])
+	etaEnd := xmath.Atan2(xmath.Sin(endAngle)/points[1], xmath.Cos(endAngle)/points[0])
 	deltaEta := etaEnd - etaStart
 	if (arcBig && !largeArc) || (!arcBig && largeArc) { // Go has no boolean XOR
 		if deltaEta < 0 {
@@ -167,19 +168,19 @@ func (p *Path) addArc(points []float64, cx, cy, px, py float64) (lx, ly float64)
 	}
 
 	// Round up to determine number of cubic splines to approximate bezier curve
-	segs := int(math.Abs(deltaEta)/maxDx) + 1
-	dEta := deltaEta / float64(segs) // span of each segment
+	segs := int(xmath.Abs(deltaEta)/maxDx) + 1
+	dEta := deltaEta / float32(segs) // span of each segment
 	// Approximate the ellipse using a set of cubic bezier curves by the method of
 	// L. Maisonobe, "Drawing an elliptical arc using polylines, quadratic
 	// or cubic Bezier curves", 2003
 	// https://www.spaceroots.org/documents/elllipse/elliptical-arc.pdf
-	tde := math.Tan(dEta / 2)
-	alpha := math.Sin(dEta) * (math.Sqrt(4+3*tde*tde) - 1) / 3 // Math is fun!
+	tde := xmath.Tan(dEta / 2)
+	alpha := xmath.Sin(dEta) * (xmath.Sqrt(4+3*tde*tde) - 1) / 3 // Math is fun!
 	lx, ly = px, py
-	sinTheta, cosTheta := math.Sin(rotX), math.Cos(rotX)
+	sinTheta, cosTheta := xmath.Sin(rotX), xmath.Cos(rotX)
 	ldx, ldy := ellipsePrime(points[0], points[1], sinTheta, cosTheta, etaStart)
 	for i := 1; i <= segs; i++ {
-		eta := etaStart + dEta*float64(i)
+		eta := etaStart + dEta*float32(i)
 		if i == segs {
 			px, py = points[5], points[6] // Just makes the end point exact; no roundoff error
 		} else {
@@ -194,16 +195,16 @@ func (p *Path) addArc(points []float64, cx, cy, px, py float64) (lx, ly float64)
 }
 
 // ellipsePrime gives tangent vectors for parameterized elipse; a, b, radii, eta parameter
-func ellipsePrime(a, b, sinTheta, cosTheta, eta float64) (px, py float64) {
-	bCosEta := b * math.Cos(eta)
-	aSinEta := a * math.Sin(eta)
+func ellipsePrime(a, b, sinTheta, cosTheta, eta float32) (px, py float32) {
+	bCosEta := b * xmath.Cos(eta)
+	aSinEta := a * xmath.Sin(eta)
 	return -aSinEta*cosTheta - bCosEta*sinTheta, -aSinEta*sinTheta + bCosEta*cosTheta
 }
 
 // ellipsePointAt gives points for parameterized elipse; a, b, radii, eta parameter, center cx, cy
-func ellipsePointAt(a, b, sinTheta, cosTheta, eta, cx, cy float64) (px, py float64) {
-	aCosEta := a * math.Cos(eta)
-	bSinEta := b * math.Sin(eta)
+func ellipsePointAt(a, b, sinTheta, cosTheta, eta, cx, cy float32) (px, py float32) {
+	aCosEta := a * xmath.Cos(eta)
+	bSinEta := b * xmath.Sin(eta)
 	return cx + aCosEta*cosTheta - bSinEta*sinTheta, cy + aCosEta*sinTheta + bSinEta*cosTheta
 }
 
@@ -214,8 +215,8 @@ func ellipsePointAt(a, b, sinTheta, cosTheta, eta, cx, cy float64) (px, py float
 // to reduce the problem to finding the center of a circle that includes the origin
 // and an arbitrary point. The center of the circle is then transformed
 // back to the original coordinates and returned.
-func findEllipseCenter(ra, rb *float64, rotX, startX, startY, endX, endY float64, sweep, smallArc bool) (cx, cy float64) {
-	cos, sin := math.Cos(rotX), math.Sin(rotX)
+func findEllipseCenter(ra, rb *float32, rotX, startX, startY, endX, endY float32, sweep, smallArc bool) (cx, cy float32) {
+	cos, sin := xmath.Cos(rotX), xmath.Sin(rotX)
 
 	// Move origin to start point
 	nx, ny := endX-startX, endY-startY
@@ -228,11 +229,11 @@ func findEllipseCenter(ra, rb *float64, rotX, startX, startY, endX, endY float64
 	midX, midY := nx/2, ny/2
 	midlenSq := midX*midX + midY*midY
 
-	var hr float64
+	var hr float32
 	if *rb**rb < midlenSq {
 		// Requested ellipse does not exist; scale ra, rb to fit. Length of
 		// span is greater than max width of ellipse, must scale *ra, *rb
-		nrb := math.Sqrt(midlenSq)
+		nrb := xmath.Sqrt(midlenSq)
 		if *ra == *rb {
 			*ra = nrb // prevents roundoff
 		} else {
@@ -240,7 +241,7 @@ func findEllipseCenter(ra, rb *float64, rotX, startX, startY, endX, endY float64
 		}
 		*rb = nrb
 	} else {
-		hr = math.Sqrt(*rb**rb-midlenSq) / math.Sqrt(midlenSq)
+		hr = xmath.Sqrt(*rb**rb-midlenSq) / xmath.Sqrt(midlenSq)
 	}
 	// Notice that if hr is zero, both answers are the same.
 	if (sweep && smallArc) || (!sweep && !smallArc) {

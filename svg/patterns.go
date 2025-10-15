@@ -158,8 +158,8 @@ const (
 // GradStop represents a stop in the SVG 2.0 gradient specification
 type GradStop struct {
 	StopColor color.Color
-	Offset    float64
-	Opacity   float64
+	Offset    float32
+	Opacity   float32
 }
 
 // Gradient holds a description of an SVG 2.0 gradient
@@ -178,8 +178,8 @@ func (g *Gradient) isPattern() {}
 // is not modified, but a matrix accounting for both the bounding box and the gradient matrix is returned.
 func (g *Gradient) ApplyPathExtent(extent fixed.Rectangle26_6) Matrix2D {
 	if g.Units == ObjectBoundingBox {
-		mnx, mny := float64(extent.Min.X)/64, float64(extent.Min.Y)/64
-		mxx, mxy := float64(extent.Max.X)/64, float64(extent.Max.Y)/64
+		mnx, mny := float32(extent.Min.X)/64, float32(extent.Min.Y)/64
+		mxx, mxy := float32(extent.Max.X)/64, float32(extent.Max.Y)/64
 		g.Bounds.X, g.Bounds.Y = mnx, mny
 		g.Bounds.W, g.Bounds.H = mxx-mnx, mxy-mny
 		return Identity.Scale(g.Bounds.W, g.Bounds.H).Mult(g.Matrix)
@@ -192,12 +192,12 @@ type gradientDirection interface {
 }
 
 // Linear holds x1, y1, x2, y2
-type Linear [4]float64
+type Linear [4]float32
 
 func (Linear) isRadial() bool { return false }
 
 // Radial holds cx, cy, fx, fy, r, fr
-type Radial [6]float64
+type Radial [6]float32
 
 func (Radial) isRadial() bool { return true }
 

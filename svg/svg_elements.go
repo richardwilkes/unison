@@ -41,7 +41,7 @@ func svgF(c *svgParser, attrs []xml.Attr) error {
 	c.svg.ViewBox.Y = 0
 	c.svg.ViewBox.W = 0
 	c.svg.ViewBox.H = 0
-	var width, height float64
+	var width, height float32
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
@@ -75,7 +75,7 @@ func svgF(c *svgParser, attrs []xml.Attr) error {
 }
 
 func rectF(c *svgParser, attrs []xml.Attr) error {
-	var x, y, w, h, rx, ry float64
+	var x, y, w, h, rx, ry float32
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
@@ -140,7 +140,7 @@ func maskF(c *svgParser, attrs []xml.Attr) error {
 }
 
 func circleF(c *svgParser, attrs []xml.Attr) error {
-	var cx, cy, rx, ry float64
+	var cx, cy, rx, ry float32
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
@@ -168,7 +168,7 @@ func circleF(c *svgParser, attrs []xml.Attr) error {
 }
 
 func lineF(c *svgParser, attrs []xml.Attr) error {
-	var x1, x2, y1, y2 float64
+	var x1, x2, y1, y2 float32
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
@@ -461,7 +461,7 @@ func appendStyleAttrs(attrs []xml.Attr, names ...string) ([]xml.Attr, error) {
 func useF(c *svgParser, attrs []xml.Attr) error {
 	var (
 		href string
-		x, y float64
+		x, y float32
 		err  error
 	)
 	for _, attr := range attrs {

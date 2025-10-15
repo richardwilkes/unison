@@ -215,7 +215,7 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 		return nil, errs.Wrap(err)
 	}
 
-	s.size = geom.NewSize(float32(sData.ViewBox.W), float32(sData.ViewBox.H))
+	s.size = geom.NewSize(sData.ViewBox.W, sData.ViewBox.H)
 	if w, ok := parseNumFromSVGAttribute(sData.Width); ok {
 		s.suggestedSize.Width = w
 	}
@@ -256,12 +256,12 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 
 		if sData.Paths[i].Style.Transform != svg.Identity {
 			p.Transform(geom.Matrix{
-				ScaleX: float32(sData.Paths[i].Style.Transform.ScaleX),
-				SkewX:  float32(sData.Paths[i].Style.Transform.SkwX),
-				TransX: float32(sData.Paths[i].Style.Transform.TransX),
-				SkewY:  float32(sData.Paths[i].Style.Transform.SkwY),
-				ScaleY: float32(sData.Paths[i].Style.Transform.ScaleY),
-				TransY: float32(sData.Paths[i].Style.Transform.TransY),
+				ScaleX: sData.Paths[i].Style.Transform.ScaleX,
+				SkewX:  sData.Paths[i].Style.Transform.SkwX,
+				TransX: sData.Paths[i].Style.Transform.TransX,
+				SkewY:  sData.Paths[i].Style.Transform.SkwY,
+				ScaleY: sData.Paths[i].Style.Transform.ScaleY,
+				TransY: sData.Paths[i].Style.Transform.TransY,
 			})
 		}
 		sp := &svgPath{Path: p}
@@ -292,7 +292,7 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 				sp.strokePaint.SetStrokeJoin(strokeJoin)
 			}
 			sp.strokePaint.SetStrokeMiter(float32(sData.Paths[i].Style.Join.MiterLimit))
-			sp.strokePaint.SetStrokeWidth(float32(sData.Paths[i].Style.LineWidth))
+			sp.strokePaint.SetStrokeWidth(sData.Paths[i].Style.LineWidth)
 		}
 
 		s.paths[i] = sp
@@ -300,7 +300,7 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 	return s, nil
 }
 
-func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacity float64) (*Paint, error) {
+func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacity float32) (*Paint, error) {
 	if c, ok := pattern.(svg.PlainColor); ok {
 		return convertSVGColor(c, opacity).Paint(nil, geom.Rect{}, kind), nil
 	}
@@ -311,26 +311,26 @@ func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacit
 		for i, stop := range gr.Stops {
 			grad.Stops[i] = Stop{
 				Color:    convertSVGColor(stop.StopColor, stop.Opacity),
-				Location: float32(stop.Offset),
+				Location: stop.Offset,
 			}
 		}
 		switch d := gr.Direction.(type) {
 		case svg.Linear:
-			grad.Start.X = float32(d[0])
-			grad.Start.Y = float32(d[1])
-			grad.End.X = float32(d[2])
-			grad.End.Y = float32(d[3])
+			grad.Start.X = d[0]
+			grad.Start.Y = d[1]
+			grad.End.X = d[2]
+			grad.End.Y = d[3]
 		case svg.Radial:
-			grad.Start.X = float32(d[0])
-			grad.Start.Y = float32(d[1])
-			grad.End.X = float32(d[2])
-			grad.End.Y = float32(d[3])
-			grad.StartRadius = float32(d[4])
-			grad.EndRadius = float32(d[5])
+			grad.Start.X = d[0]
+			grad.Start.Y = d[1]
+			grad.End.X = d[2]
+			grad.End.Y = d[3]
+			grad.StartRadius = d[4]
+			grad.EndRadius = d[5]
 		default:
 			return nil, errs.Newf("unsupported %s gradient direction %T", kind.Key(), gr.Direction)
 		}
-		bounds := geom.NewRect(float32(gr.Bounds.X), float32(gr.Bounds.Y), float32(gr.Bounds.W), float32(gr.Bounds.H))
+		bounds := geom.NewRect(gr.Bounds.X, gr.Bounds.Y, gr.Bounds.W, gr.Bounds.H)
 		grad.Start.X = (grad.Start.X - bounds.X) / bounds.Width
 		grad.Start.Y = (grad.Start.Y - bounds.Y) / bounds.Height
 		grad.End.X = (grad.End.X - bounds.X) / bounds.Width
@@ -341,16 +341,16 @@ func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacit
 	return Black.Paint(nil, geom.Rect{}, kind), nil
 }
 
-func convertSVGColor(c color.Color, opacity float64) Color {
+func convertSVGColor(c color.Color, opacity float32) Color {
 	if c == nil {
 		return 0
 	}
 	if plain, ok := c.(svg.PlainColor); ok {
-		alpha := uint8(float64(plain.A) * opacity)
+		alpha := uint8(float32(plain.A) * opacity)
 		return ColorFromNRGBA(color.NRGBA{A: alpha, R: plain.R, G: plain.G, B: plain.B})
 	}
 	r, g, b, a := c.RGBA()
-	return ARGBfloat(float32((float64(a)/65535)*opacity), float32(r)/65535, float32(g)/65535, float32(b)/65535)
+	return ARGBfloat((float32(a)/65535)*opacity, float32(r)/65535, float32(g)/65535, float32(b)/65535)
 }
 
 // Size returns the original (viewBox) size.
