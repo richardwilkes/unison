@@ -98,12 +98,6 @@ func (viewBox Bounds) resolveUnit(s string, asPerc percentageReference) (float64
 	return value, nil
 }
 
-// parseUnit converts a length with a unit into its value in 'px'
-// percentage are supported, and refer to the current ViewBox
-func (c *cursor) parseUnit(s string, asPerc percentageReference) (float64, error) {
-	return c.svg.ViewBox.resolveUnit(s, asPerc)
-}
-
 func parseBasicFloat(s string) (float64, error) {
 	value, _, err := parseUnit(s)
 	return value, err

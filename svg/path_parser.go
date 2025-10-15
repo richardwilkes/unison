@@ -11,8 +11,7 @@ import (
 
 var errParamMismatch = errors.New("param mismatch")
 
-// pathCursor is used to parse SVG format path strings into a Path
-type pathCursor struct {
+type pathParser struct {
 	pts        []float64
 	path       Path
 	placeX     float64
@@ -27,17 +26,13 @@ type pathCursor struct {
 	inPath     bool
 }
 
-func (c *pathCursor) init() {
+func (c *pathParser) compilePath(svgPath string) error {
 	c.placeX = 0
 	c.placeY = 0
 	c.pts = c.pts[0:0]
 	c.lastKey = ' '
 	c.path.Clear()
 	c.inPath = false
-}
-
-func (c *pathCursor) compilePath(svgPath string) error {
-	c.init()
 	lastIndex := -1
 	for i, v := range svgPath {
 		if unicode.IsLetter(v) && v != 'e' {
@@ -57,14 +52,14 @@ func (c *pathCursor) compilePath(svgPath string) error {
 	return nil
 }
 
-func (c *pathCursor) valsToAbs(last float64) {
+func (c *pathParser) valsToAbs(last float64) {
 	for i := 0; i < len(c.pts); i++ {
 		last += c.pts[i]
 		c.pts[i] = last
 	}
 }
 
-func (c *pathCursor) pointsToAbs(sz int) {
+func (c *pathParser) pointsToAbs(sz int) {
 	lastX := c.placeX
 	lastY := c.placeY
 	for j := 0; j < len(c.pts); j += sz {
@@ -77,7 +72,7 @@ func (c *pathCursor) pointsToAbs(sz int) {
 	}
 }
 
-func (c *pathCursor) hasSetsOrMore(sz int, rel bool) bool {
+func (c *pathParser) hasSetsOrMore(sz int, rel bool) bool {
 	if len(c.pts) < sz || len(c.pts)%sz != 0 {
 		return false
 	}
@@ -87,7 +82,7 @@ func (c *pathCursor) hasSetsOrMore(sz int, rel bool) bool {
 	return true
 }
 
-func (c *pathCursor) addPoints(dataPoints string) error {
+func (c *pathParser) addPoints(dataPoints string) error {
 	lastIndex := -1
 	c.pts = c.pts[0:0]
 	lr := ' '
@@ -116,7 +111,7 @@ func (c *pathCursor) addPoints(dataPoints string) error {
 	return nil
 }
 
-func (c *pathCursor) readFloatIntoPts(numStr string) error {
+func (c *pathParser) readFloatIntoPts(numStr string) error {
 	last := 0
 	isFirst := true
 	for i, n := range numStr {
@@ -142,7 +137,7 @@ func (c *pathCursor) readFloatIntoPts(numStr string) error {
 	return nil
 }
 
-func (c *pathCursor) addSegment(segString string) error {
+func (c *pathParser) addSegment(segString string) error {
 	if err := c.addPoints(segString[1:]); err != nil {
 		return err
 	}
@@ -342,7 +337,7 @@ func (c *pathCursor) addSegment(segString string) error {
 	return nil
 }
 
-func (c *pathCursor) reflectControl(forQuad bool) {
+func (c *pathParser) reflectControl(forQuad bool) {
 	if (forQuad && (c.lastKey == 'q' || c.lastKey == 'Q' || c.lastKey == 'T' || c.lastKey == 't')) ||
 		(!forQuad && (c.lastKey == 'c' || c.lastKey == 'C' || c.lastKey == 's' || c.lastKey == 'S')) {
 		c.cntlPtX = c.placeX*2 - c.cntlPtX
@@ -352,7 +347,7 @@ func (c *pathCursor) reflectControl(forQuad bool) {
 	}
 }
 
-func (c *pathCursor) ellipseAt(cx, cy, rx, ry float64) {
+func (c *pathParser) ellipseAt(cx, cy, rx, ry float64) {
 	c.placeX, c.placeY = cx+rx, cy
 	c.pts = c.pts[0:0]
 	c.pts = append(c.pts, rx, ry, 0.0, 1.0, 0.0, c.placeX, c.placeY)
@@ -364,7 +359,7 @@ func (c *pathCursor) ellipseAt(cx, cy, rx, ry float64) {
 	c.path.Stop(true)
 }
 
-func (c *pathCursor) addArcFromA(points []float64) {
+func (c *pathParser) addArcFromA(points []float64) {
 	cx, cy := findEllipseCenter(&points[0], &points[1], points[2]*math.Pi/180, c.placeX,
 		c.placeY, points[5], points[6], points[4] == 0, points[3] == 0)
 	c.placeX, c.placeY = c.path.addArc(c.pts, cx+c.curX, cy+c.curY, c.placeX+c.curX, c.placeY+c.curY)

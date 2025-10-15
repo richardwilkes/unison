@@ -21,6 +21,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
@@ -221,10 +222,15 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 	if h, ok := parseNumFromSVGAttribute(sData.Height); ok {
 		s.suggestedSize.Height = h
 	}
-	s.paths = make([]*svgPath, len(sData.SvgPaths))
-	for i := range sData.SvgPaths {
+	s.paths = make([]*svgPath, len(sData.Paths))
+	for i := range sData.Paths {
 		p := NewPath()
-		for _, op := range sData.SvgPaths[i].Path {
+		if sData.Paths[i].Style.UseNonZeroWinding {
+			p.SetFillType(filltype.Winding)
+		} else {
+			p.SetFillType(filltype.EvenOdd)
+		}
+		for _, op := range sData.Paths[i].Path {
 			// The coordinates used in svg.Operation are of type fixed.Int26_6, which has a fractional part of 6 bits.
 			// When converting to a float, the values are divided by 64.
 			switch op := op.(type) {
@@ -248,45 +254,45 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 			}
 		}
 
-		if sData.SvgPaths[i].Style.Transform != svg.Identity {
+		if sData.Paths[i].Style.Transform != svg.Identity {
 			p.Transform(geom.Matrix{
-				ScaleX: float32(sData.SvgPaths[i].Style.Transform.ScaleX),
-				SkewX:  float32(sData.SvgPaths[i].Style.Transform.SkwX),
-				TransX: float32(sData.SvgPaths[i].Style.Transform.TransX),
-				SkewY:  float32(sData.SvgPaths[i].Style.Transform.SkwY),
-				ScaleY: float32(sData.SvgPaths[i].Style.Transform.ScaleY),
-				TransY: float32(sData.SvgPaths[i].Style.Transform.TransY),
+				ScaleX: float32(sData.Paths[i].Style.Transform.ScaleX),
+				SkewX:  float32(sData.Paths[i].Style.Transform.SkwX),
+				TransX: float32(sData.Paths[i].Style.Transform.TransX),
+				SkewY:  float32(sData.Paths[i].Style.Transform.SkwY),
+				ScaleY: float32(sData.Paths[i].Style.Transform.ScaleY),
+				TransY: float32(sData.Paths[i].Style.Transform.TransY),
 			})
 		}
 		sp := &svgPath{Path: p}
 
-		if sData.SvgPaths[i].Style.FillerColor != nil && sData.SvgPaths[i].Style.FillOpacity != 0 {
-			if sp.fillPaint, err = createPaintFromSVGPattern(paintstyle.Fill, sData.SvgPaths[i].Style.FillerColor,
-				sData.SvgPaths[i].Style.FillOpacity); err != nil {
+		if sData.Paths[i].Style.FillerColor != nil && sData.Paths[i].Style.FillOpacity != 0 {
+			if sp.fillPaint, err = createPaintFromSVGPattern(paintstyle.Fill, sData.Paths[i].Style.FillerColor,
+				sData.Paths[i].Style.FillOpacity); err != nil {
 				return nil, err
 			}
 		}
 
-		if sData.SvgPaths[i].Style.LinerColor != nil && sData.SvgPaths[i].Style.LineOpacity != 0 &&
-			sData.SvgPaths[i].Style.LineWidth != 0 {
-			if sp.strokePaint, err = createPaintFromSVGPattern(paintstyle.Stroke, sData.SvgPaths[i].Style.LinerColor,
-				sData.SvgPaths[i].Style.LineOpacity); err != nil {
+		if sData.Paths[i].Style.LinerColor != nil && sData.Paths[i].Style.LineOpacity != 0 &&
+			sData.Paths[i].Style.LineWidth != 0 {
+			if sp.strokePaint, err = createPaintFromSVGPattern(paintstyle.Stroke, sData.Paths[i].Style.LinerColor,
+				sData.Paths[i].Style.LineOpacity); err != nil {
 				return nil, err
 			}
-			if strokeCap, ok := strokeCaps[sData.SvgPaths[i].Style.Join.TrailLineCap]; !ok {
-				slog.Warn("svg: unsupported path stroke cap", "cap", sData.SvgPaths[i].Style.Join.TrailLineCap)
+			if strokeCap, ok := strokeCaps[sData.Paths[i].Style.Join.TrailLineCap]; !ok {
+				slog.Warn("svg: unsupported path stroke cap", "cap", sData.Paths[i].Style.Join.TrailLineCap)
 				sp.strokePaint.SetStrokeCap(strokecap.Butt)
 			} else {
 				sp.strokePaint.SetStrokeCap(strokeCap)
 			}
-			if strokeJoin, ok := strokeJoins[sData.SvgPaths[i].Style.Join.LineJoin]; !ok {
-				slog.Warn("svg: unsupported path stroke join", "join", sData.SvgPaths[i].Style.Join.LineJoin)
+			if strokeJoin, ok := strokeJoins[sData.Paths[i].Style.Join.LineJoin]; !ok {
+				slog.Warn("svg: unsupported path stroke join", "join", sData.Paths[i].Style.Join.LineJoin)
 				sp.strokePaint.SetStrokeJoin(strokejoin.Round)
 			} else {
 				sp.strokePaint.SetStrokeJoin(strokeJoin)
 			}
-			sp.strokePaint.SetStrokeMiter(float32(sData.SvgPaths[i].Style.Join.MiterLimit))
-			sp.strokePaint.SetStrokeWidth(float32(sData.SvgPaths[i].Style.LineWidth))
+			sp.strokePaint.SetStrokeMiter(float32(sData.Paths[i].Style.Join.MiterLimit))
+			sp.strokePaint.SetStrokeWidth(float32(sData.Paths[i].Style.LineWidth))
 		}
 
 		s.paths[i] = sp

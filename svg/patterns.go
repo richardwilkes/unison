@@ -1,7 +1,6 @@
 package svg
 
 import (
-	"encoding/xml"
 	"image/color"
 	"log/slog"
 	"strconv"
@@ -215,65 +214,4 @@ func GetColor(clr Pattern) color.Color {
 		return c
 	}
 	return colornames.Black
-}
-
-func localizeGradientIfNeeded(g *Gradient, defaultColor Pattern) *Gradient {
-	grad := *g
-	for _, s := range grad.Stops {
-		if s.StopColor != nil {
-			continue
-		}
-		// The stop color is nil, so we need to copy the gradient's Stop slice and fill in the default color
-		stops := append([]GradStop{}, grad.Stops...)
-		grad.Stops = stops
-		clr := GetColor(defaultColor)
-		for i, s := range stops {
-			if s.StopColor == nil {
-				grad.Stops[i].StopColor = clr
-			}
-		}
-		break
-	}
-	return &grad
-}
-
-func (c *cursor) readGradientURL(v string, defaultColor Pattern) (grad *Gradient, ok bool) {
-	if strings.HasPrefix(v, "url(") && strings.HasSuffix(v, ")") {
-		urlStr := strings.TrimSpace(v[4 : len(v)-1])
-		if strings.HasPrefix(urlStr, "#") {
-			var g *Gradient
-			g, ok = c.svg.grads[urlStr[1:]]
-			if ok {
-				grad = localizeGradientIfNeeded(g, defaultColor)
-			}
-		}
-	}
-	return grad, ok
-}
-
-func (c *cursor) readGradientAttr(attr xml.Attr) error {
-	switch attr.Name.Local {
-	case "gradientTransform":
-		var err error
-		if c.grad.Matrix, err = c.parseTransform(attr.Value); err != nil {
-			return err
-		}
-	case "gradientUnits":
-		switch strings.TrimSpace(attr.Value) {
-		case "userSpaceOnUse":
-			c.grad.Units = UserSpaceOnUse
-		case "objectBoundingBox":
-			c.grad.Units = ObjectBoundingBox
-		}
-	case "spreadMethod":
-		switch strings.TrimSpace(attr.Value) {
-		case "pad":
-			c.grad.Spread = PadSpread
-		case "reflect":
-			c.grad.Spread = ReflectSpread
-		case "repeat":
-			c.grad.Spread = RepeatSpread
-		}
-	}
-	return nil
 }

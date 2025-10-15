@@ -15,11 +15,11 @@ func init() {
 	drawFuncs["use"] = useF // Can't be done statically, since useF uses drawFuncs
 }
 
-type svgFunc func(c *cursor, attrs []xml.Attr) error
+type svgFunc func(c *svgParser, attrs []xml.Attr) error
 
 var drawFuncs = map[string]svgFunc{
 	"svg":            svgF,
-	"g":              gF,
+	"g":              nil,
 	"line":           lineF,
 	"stop":           stopF,
 	"rect":           rectF,
@@ -36,7 +36,7 @@ var drawFuncs = map[string]svgFunc{
 	"mask":           maskF,
 }
 
-func svgF(c *cursor, attrs []xml.Attr) error {
+func svgF(c *svgParser, attrs []xml.Attr) error {
 	c.svg.ViewBox.X = 0
 	c.svg.ViewBox.Y = 0
 	c.svg.ViewBox.W = 0
@@ -73,25 +73,24 @@ func svgF(c *cursor, attrs []xml.Attr) error {
 	}
 	return nil
 }
-func gF(*cursor, []xml.Attr) error { return nil } // g does nothing but push the style
 
-func rectF(c *cursor, attrs []xml.Attr) error {
+func rectF(c *svgParser, attrs []xml.Attr) error {
 	var x, y, w, h, rx, ry float64
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "x":
-			x, err = c.parseUnit(attr.Value, widthPercentage)
+			x, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "y":
-			y, err = c.parseUnit(attr.Value, heightPercentage)
+			y, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		case "width":
-			w, err = c.parseUnit(attr.Value, widthPercentage)
+			w, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "height":
-			h, err = c.parseUnit(attr.Value, heightPercentage)
+			h, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		case "rx":
-			rx, err = c.parseUnit(attr.Value, widthPercentage)
+			rx, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "ry":
-			ry, err = c.parseUnit(attr.Value, heightPercentage)
+			ry, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		}
 		if err != nil {
 			return err
@@ -111,60 +110,51 @@ func rectF(c *cursor, attrs []xml.Attr) error {
 	return nil
 }
 
-func maskF(c *cursor, attrs []xml.Attr) error {
-	var x, y, w, h float64
-	var id string
+func maskF(c *svgParser, attrs []xml.Attr) error {
+	var mask Mask
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "id":
-			id = attr.Value
-			if id == "" {
+			if attr.Value == "" {
 				return errZeroLengthID
 			}
+			mask.ID = attr.Value
 		case "x":
-			x, err = c.parseUnit(attr.Value, widthPercentage)
+			mask.Bounds.X, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "y":
-			y, err = c.parseUnit(attr.Value, heightPercentage)
+			mask.Bounds.Y, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		case "width":
-			w, err = c.parseUnit(attr.Value, widthPercentage)
+			mask.Bounds.W, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "height":
-			h, err = c.parseUnit(attr.Value, heightPercentage)
+			mask.Bounds.H, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		}
 		if err != nil {
 			return err
 		}
 	}
-
+	mask.Transform = Identity
 	c.inMask = true
-	c.mask = &Mask{
-		ID:        id,
-		X:         x,
-		Y:         y,
-		W:         w,
-		H:         h,
-		SvgPaths:  make([]StyledPath, 0),
-		Transform: Identity,
-	}
+	c.mask = &mask
 	return nil
 }
 
-func circleF(c *cursor, attrs []xml.Attr) error {
+func circleF(c *svgParser, attrs []xml.Attr) error {
 	var cx, cy, rx, ry float64
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "cx":
-			cx, err = c.parseUnit(attr.Value, widthPercentage)
+			cx, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "cy":
-			cy, err = c.parseUnit(attr.Value, heightPercentage)
+			cy, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		case "r":
-			rx, err = c.parseUnit(attr.Value, diagPercentage)
+			rx, err = c.parseUnitToPx(attr.Value, diagPercentage)
 			ry = rx
 		case "rx":
-			rx, err = c.parseUnit(attr.Value, widthPercentage)
+			rx, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "ry":
-			ry, err = c.parseUnit(attr.Value, heightPercentage)
+			ry, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		}
 		if err != nil {
 			return err
@@ -177,19 +167,19 @@ func circleF(c *cursor, attrs []xml.Attr) error {
 	return nil
 }
 
-func lineF(c *cursor, attrs []xml.Attr) error {
+func lineF(c *svgParser, attrs []xml.Attr) error {
 	var x1, x2, y1, y2 float64
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "x1":
-			x1, err = c.parseUnit(attr.Value, widthPercentage)
+			x1, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "x2":
-			x2, err = c.parseUnit(attr.Value, widthPercentage)
+			x2, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "y1":
-			y1, err = c.parseUnit(attr.Value, heightPercentage)
+			y1, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		case "y2":
-			y2, err = c.parseUnit(attr.Value, heightPercentage)
+			y2, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		}
 		if err != nil {
 			return err
@@ -206,7 +196,7 @@ func lineF(c *cursor, attrs []xml.Attr) error {
 	return nil
 }
 
-func polylineF(c *cursor, attrs []xml.Attr) error {
+func polylineF(c *svgParser, attrs []xml.Attr) error {
 	for _, attr := range attrs {
 		if attr.Name.Local != "points" {
 			continue
@@ -233,7 +223,7 @@ func polylineF(c *cursor, attrs []xml.Attr) error {
 	return nil
 }
 
-func polygonF(c *cursor, attrs []xml.Attr) error {
+func polygonF(c *svgParser, attrs []xml.Attr) error {
 	err := polylineF(c, attrs)
 	if len(c.pts) > 4 {
 		c.path.Stop(true)
@@ -241,7 +231,7 @@ func polygonF(c *cursor, attrs []xml.Attr) error {
 	return err
 }
 
-func pathF(c *cursor, attrs []xml.Attr) error {
+func pathF(c *svgParser, attrs []xml.Attr) error {
 	for _, attr := range attrs {
 		if attr.Name.Local != "d" {
 			continue
@@ -253,12 +243,12 @@ func pathF(c *cursor, attrs []xml.Attr) error {
 	return nil
 }
 
-func defsF(c *cursor, _ []xml.Attr) error {
+func defsF(c *svgParser, _ []xml.Attr) error {
 	c.inDefs = true
 	return nil
 }
 
-func linearGradientF(c *cursor, attrs []xml.Attr) error {
+func linearGradientF(c *svgParser, attrs []xml.Attr) error {
 	var err error
 	c.inGrad = true
 	// interpretation of percentage in direction depends
@@ -314,7 +304,7 @@ func linearGradientF(c *cursor, attrs []xml.Attr) error {
 	return nil
 }
 
-func radialGradientF(c *cursor, attrs []xml.Attr) error {
+func radialGradientF(c *svgParser, attrs []xml.Attr) error {
 	c.inGrad = true
 	c.grad = &Gradient{Bounds: c.svg.ViewBox, Matrix: Identity}
 	var setFx, setFy bool
@@ -390,7 +380,7 @@ func radialGradientF(c *cursor, attrs []xml.Attr) error {
 	return nil
 }
 
-func stopF(c *cursor, attrs []xml.Attr) error {
+func stopF(c *svgParser, attrs []xml.Attr) error {
 	var err error
 	if c.inGrad {
 		stop := GradStop{Opacity: 1.0}
@@ -468,7 +458,7 @@ func appendStyleAttrs(attrs []xml.Attr, names ...string) ([]xml.Attr, error) {
 	return append(attrs, styleAttrs...), nil
 }
 
-func useF(c *cursor, attrs []xml.Attr) error {
+func useF(c *svgParser, attrs []xml.Attr) error {
 	var (
 		href string
 		x, y float64
@@ -479,9 +469,9 @@ func useF(c *cursor, attrs []xml.Attr) error {
 		case "href":
 			href = attr.Value
 		case "x":
-			x, err = c.parseUnit(attr.Value, widthPercentage)
+			x, err = c.parseUnitToPx(attr.Value, widthPercentage)
 		case "y":
-			y, err = c.parseUnit(attr.Value, heightPercentage)
+			y, err = c.parseUnitToPx(attr.Value, heightPercentage)
 		}
 		if err != nil {
 			return err
