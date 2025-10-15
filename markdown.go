@@ -1041,7 +1041,7 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 			}
 			defer xio.CloseIgnoringErrors(r)
 			var svg *SVG
-			if svg, err = NewSVGFromReader(r, SVGOptionIgnoreUnsupported(), SVGOptionWarnParseErrors()); err != nil {
+			if svg, err = NewSVGFromReader(r); err != nil {
 				result <- nil
 				errs.Log(err, "path", revisedTarget)
 				return

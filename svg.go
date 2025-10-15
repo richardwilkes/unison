@@ -11,18 +11,20 @@ package unison
 
 import (
 	_ "embed"
+	"fmt"
 	"image/color"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 
-	"github.com/lafriks/go-svg"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
+	"github.com/richardwilkes/unison/svg"
 )
 
 var _ Drawable = &DrawableSVG{}
@@ -139,43 +141,6 @@ type svgPath struct {
 	strokePaint *Paint
 }
 
-// SVGOption is an option that may be passed to SVG construction functions.
-type SVGOption func(s *svgOptions) error
-
-type svgOptions struct {
-	parseErrorMode    svg.ErrorMode
-	ignoreUnsupported bool
-}
-
-// SVGOptionIgnoreParseErrors is an option that will ignore some errors when parsing an SVG.
-// If the XML is not well formed an error will still be generated.
-func SVGOptionIgnoreParseErrors() SVGOption {
-	return func(opts *svgOptions) error {
-		opts.parseErrorMode = svg.IgnoreErrorMode
-		return nil
-	}
-}
-
-// SVGOptionWarnParseErrors is an option that will issue warnings to the log for some errors when parsing an SVG.
-// If the XML is not well formed an error will still be generated.
-func SVGOptionWarnParseErrors() SVGOption {
-	return func(opts *svgOptions) error {
-		opts.parseErrorMode = svg.WarnErrorMode
-		return nil
-	}
-}
-
-// SVGOptionIgnoreUnsupported is an option that will ignore unsupported SVG features that might be encountered
-// in an SVG.
-//
-// If this option is not present, then unsupported features will result in an error when constructing the SVG.
-func SVGOptionIgnoreUnsupported() SVGOption {
-	return func(opts *svgOptions) error {
-		opts.ignoreUnsupported = true
-		return nil
-	}
-}
-
 // MustSVG creates a new SVG the given svg path string (the contents of a single "d" attribute from an SVG "path"
 // element) and panics if an error would be generated. The 'size' should be gotten from the original SVG's 'viewBox'
 // parameter.
@@ -205,8 +170,8 @@ func NewSVG(size geom.Size, svgPathStr string) (*SVG, error) {
 // MustSVGFromContentString creates a new SVG and panics if an error would be generated. The content should contain
 // valid SVG file data. Note that this only reads a very small subset of an SVG currently. Specifically, the "viewBox"
 // attribute and any "d" attributes from enclosed SVG "path" elements.
-func MustSVGFromContentString(content string, options ...SVGOption) *SVG {
-	s, err := NewSVGFromContentString(content, options...)
+func MustSVGFromContentString(content string) *SVG {
+	s, err := NewSVGFromContentString(content)
 	xos.ExitIfErr(err)
 	return s
 }
@@ -214,15 +179,15 @@ func MustSVGFromContentString(content string, options ...SVGOption) *SVG {
 // NewSVGFromContentString creates a new SVG. The content should contain valid SVG file data. Note that this only reads
 // a very small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed
 // SVG "path" elements.
-func NewSVGFromContentString(content string, options ...SVGOption) (*SVG, error) {
-	return NewSVGFromReader(strings.NewReader(content), options...)
+func NewSVGFromContentString(content string) (*SVG, error) {
+	return NewSVGFromReader(strings.NewReader(content))
 }
 
 // MustSVGFromReader creates a new SVG and panics if an error would be generated. The reader should contain valid SVG
 // file data. Note that this only reads a very small subset of an SVG currently. Specifically, the "viewBox" attribute
 // and any "d" attributes from enclosed SVG "path" elements.
-func MustSVGFromReader(r io.Reader, options ...SVGOption) *SVG {
-	s, err := NewSVGFromReader(r, options...)
+func MustSVGFromReader(r io.Reader) *SVG {
+	s, err := NewSVGFromReader(r)
 	xos.ExitIfErr(err)
 	return s
 }
@@ -241,16 +206,10 @@ func parseNumFromSVGAttribute(attr string) (float32, bool) {
 // NewSVGFromReader creates a new SVG. The reader should contain valid SVG file data. Note that this only reads a very
 // small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed SVG
 // "path" elements.
-func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
+func NewSVGFromReader(r io.Reader) (*SVG, error) {
 	s := &SVG{}
-	opts := svgOptions{parseErrorMode: svg.StrictErrorMode}
-	for _, option := range options {
-		if err := option(&opts); err != nil {
-			return nil, err
-		}
-	}
 
-	sData, err := svg.Parse(r, opts.parseErrorMode)
+	sData, err := svg.Parse(r)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -291,19 +250,19 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 
 		if sData.SvgPaths[i].Style.Transform != svg.Identity {
 			p.Transform(geom.Matrix{
-				ScaleX: float32(sData.SvgPaths[i].Style.Transform.A),
-				SkewX:  float32(sData.SvgPaths[i].Style.Transform.C),
-				TransX: float32(sData.SvgPaths[i].Style.Transform.E),
-				SkewY:  float32(sData.SvgPaths[i].Style.Transform.B),
-				ScaleY: float32(sData.SvgPaths[i].Style.Transform.D),
-				TransY: float32(sData.SvgPaths[i].Style.Transform.F),
+				ScaleX: float32(sData.SvgPaths[i].Style.Transform.ScaleX),
+				SkewX:  float32(sData.SvgPaths[i].Style.Transform.SkwX),
+				TransX: float32(sData.SvgPaths[i].Style.Transform.TransX),
+				SkewY:  float32(sData.SvgPaths[i].Style.Transform.SkwY),
+				ScaleY: float32(sData.SvgPaths[i].Style.Transform.ScaleY),
+				TransY: float32(sData.SvgPaths[i].Style.Transform.TransY),
 			})
 		}
 		sp := &svgPath{Path: p}
 
 		if sData.SvgPaths[i].Style.FillerColor != nil && sData.SvgPaths[i].Style.FillOpacity != 0 {
 			if sp.fillPaint, err = createPaintFromSVGPattern(paintstyle.Fill, sData.SvgPaths[i].Style.FillerColor,
-				sData.SvgPaths[i].Style.FillOpacity, opts.ignoreUnsupported); err != nil {
+				sData.SvgPaths[i].Style.FillOpacity); err != nil {
 				return nil, err
 			}
 		}
@@ -311,21 +270,17 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 		if sData.SvgPaths[i].Style.LinerColor != nil && sData.SvgPaths[i].Style.LineOpacity != 0 &&
 			sData.SvgPaths[i].Style.LineWidth != 0 {
 			if sp.strokePaint, err = createPaintFromSVGPattern(paintstyle.Stroke, sData.SvgPaths[i].Style.LinerColor,
-				sData.SvgPaths[i].Style.LineOpacity, opts.ignoreUnsupported); err != nil {
+				sData.SvgPaths[i].Style.LineOpacity); err != nil {
 				return nil, err
 			}
 			if strokeCap, ok := strokeCaps[sData.SvgPaths[i].Style.Join.TrailLineCap]; !ok {
-				if !opts.ignoreUnsupported {
-					return nil, errs.Newf("unsupported path stroke cap %s", sData.SvgPaths[i].Style.Join.TrailLineCap)
-				}
+				slog.Warn("svg: unsupported path stroke cap", "cap", sData.SvgPaths[i].Style.Join.TrailLineCap)
 				sp.strokePaint.SetStrokeCap(strokecap.Butt)
 			} else {
 				sp.strokePaint.SetStrokeCap(strokeCap)
 			}
 			if strokeJoin, ok := strokeJoins[sData.SvgPaths[i].Style.Join.LineJoin]; !ok {
-				if !opts.ignoreUnsupported {
-					return nil, errs.Newf("unsupported path stroke join %s", sData.SvgPaths[i].Style.Join.LineJoin)
-				}
+				slog.Warn("svg: unsupported path stroke join", "join", sData.SvgPaths[i].Style.Join.LineJoin)
 				sp.strokePaint.SetStrokeJoin(strokejoin.Round)
 			} else {
 				sp.strokePaint.SetStrokeJoin(strokeJoin)
@@ -339,11 +294,11 @@ func NewSVGFromReader(r io.Reader, options ...SVGOption) (*SVG, error) {
 	return s, nil
 }
 
-func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacity float64, ignoreUnsupported bool) (*Paint, error) {
+func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacity float64) (*Paint, error) {
 	if c, ok := pattern.(svg.PlainColor); ok {
 		return convertSVGColor(c, opacity).Paint(nil, geom.Rect{}, kind), nil
 	}
-	if gr, ok := pattern.(svg.Gradient); ok {
+	if gr, ok := pattern.(*svg.Gradient); ok {
 		grad := Gradient{
 			Stops: make([]Stop, len(gr.Stops)),
 		}
@@ -369,13 +324,15 @@ func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacit
 		default:
 			return nil, errs.Newf("unsupported %s gradient direction %T", kind.Key(), gr.Direction)
 		}
-		return grad.Paint(nil, geom.NewRect(float32(gr.Bounds.X), float32(gr.Bounds.Y), float32(gr.Bounds.W),
-			float32(gr.Bounds.H)), kind), nil
+		bounds := geom.NewRect(float32(gr.Bounds.X), float32(gr.Bounds.Y), float32(gr.Bounds.W), float32(gr.Bounds.H))
+		grad.Start.X = (grad.Start.X - bounds.X) / bounds.Width
+		grad.Start.Y = (grad.Start.Y - bounds.Y) / bounds.Height
+		grad.End.X = (grad.End.X - bounds.X) / bounds.Width
+		grad.End.Y = (grad.End.Y - bounds.Y) / bounds.Height
+		return grad.Paint(nil, bounds, kind), nil
 	}
-	if ignoreUnsupported {
-		return Black.Paint(nil, geom.Rect{}, kind), nil
-	}
-	return nil, errs.Newf("unsupported %s style %T", kind.Key(), pattern)
+	slog.Warn("svg: unsupported style", "pattern", fmt.Sprintf("%T", pattern))
+	return Black.Paint(nil, geom.Rect{}, kind), nil
 }
 
 func convertSVGColor(c color.Color, opacity float64) Color {
