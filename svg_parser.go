@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -17,6 +16,8 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/enums/arcsize"
+	"github.com/richardwilkes/unison/enums/direction"
 	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
@@ -25,7 +26,10 @@ import (
 	"golang.org/x/net/html/charset"
 )
 
-var errParamMismatch = errors.New("param mismatch")
+var (
+	errParamMismatch = errors.New("param mismatch")
+	errZeroLengthID  = errors.New("zero length id")
+)
 
 // SVGData holds data from parsed SVGs.
 type SVGData struct {
@@ -52,7 +56,7 @@ type SVGPathStyle struct {
 
 // SVGStyledPath binds a PathStyle to a Path.
 type SVGStyledPath struct {
-	Path  SVGPath
+	Path  *Path
 	Style SVGPathStyle
 }
 
@@ -146,34 +150,11 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 	// From here down converts to unison's internal representation
 	p.svg.paths = make([]*svgPath, len(svg.Paths))
 	for i := range svg.Paths {
-		p1 := NewPath()
+		p1 := svg.Paths[i].Path
 		if svg.Paths[i].Style.UseNonZeroWinding {
 			p1.SetFillType(filltype.Winding)
 		} else {
 			p1.SetFillType(filltype.EvenOdd)
-		}
-		for _, op := range svg.Paths[i].Path {
-			// The coordinates used in SVGOp are of type fixed.Int26_6, which has a fractional part of 6 bits.
-			// When converting to a float, the values are divided by 64.
-			switch op := op.(type) {
-			case SVGOpMoveTo:
-				p1.MoveTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
-			case SVGOpLineTo:
-				p1.LineTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
-			case SVGOpQuadTo:
-				p1.QuadTo(
-					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
-					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
-				)
-			case SVGOpCubicTo:
-				p1.CubicTo(
-					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
-					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
-					geom.NewPoint(float32(op[2].X)/64, float32(op[2].Y)/64),
-				)
-			case SVGOpClose:
-				p1.Close()
-			}
 		}
 
 		if !svg.Paths[i].Style.Transform.IsIdentity() {
@@ -480,15 +461,15 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	if df != nil {
 		err = df(p, se.Attr)
 	}
-	if len(p.path) > 0 {
+	if p.path != nil && !p.path.Empty() {
 		if p.inMask && p.mask != nil {
 			p.mask.SvgPaths = append(p.mask.SvgPaths,
-				SVGStyledPath{Path: append(SVGPath{}, p.path...), Style: p.styleStack[len(p.styleStack)-1]})
+				SVGStyledPath{Path: p.path, Style: p.styleStack[len(p.styleStack)-1]})
 		} else if !p.inMask {
 			p.data.Paths = append(p.data.Paths,
-				SVGStyledPath{Path: append(SVGPath{}, p.path...), Style: p.styleStack[len(p.styleStack)-1]})
+				SVGStyledPath{Path: p.path, Style: p.styleStack[len(p.styleStack)-1]})
 		}
-		p.path = p.path[:0]
+		p.path = NewPath()
 	}
 	return err
 }
@@ -542,7 +523,7 @@ func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentageReference) (floa
 
 type svgPathParser struct {
 	pts        []float32
-	path       SVGPath
+	path       *Path
 	placeX     float32
 	placeY     float32
 	curX       float32
@@ -560,7 +541,7 @@ func (c *svgPathParser) compilePath(svgPath string) error {
 	c.placeY = 0
 	c.pts = c.pts[0:0]
 	c.lastKey = ' '
-	c.path.Clear()
+	c.path = NewPath()
 	c.inPath = false
 	lastIndex := -1
 	for i, v := range svgPath {
@@ -679,7 +660,7 @@ func (c *svgPathParser) addSegment(segString string) error {
 			return errParamMismatch
 		}
 		if c.inPath {
-			c.path.Stop(true)
+			c.path.Close()
 			c.placeX = c.pathStartX
 			c.placeY = c.pathStartY
 			c.inPath = false
@@ -694,15 +675,9 @@ func (c *svgPathParser) addSegment(segString string) error {
 		c.pathStartX = c.pts[0]
 		c.pathStartY = c.pts[1]
 		c.inPath = true
-		c.path.Start(fixed.Point26_6{
-			X: fixed.Int26_6((c.pathStartX + c.curX) * 64),
-			Y: fixed.Int26_6((c.pathStartY + c.curY) * 64),
-		})
+		c.path.MoveTo(geom.NewPoint(c.pathStartX+c.curX, c.pathStartY+c.curY))
 		for i := 2; i < l-1; i += 2 {
-			c.path.Line(fixed.Point26_6{
-				X: fixed.Int26_6((c.pts[i] + c.curX) * 64),
-				Y: fixed.Int26_6((c.pts[i+1] + c.curY) * 64),
-			})
+			c.path.LineTo(geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY))
 		}
 		c.placeX = c.pts[l-2]
 		c.placeY = c.pts[l-1]
@@ -714,10 +689,7 @@ func (c *svgPathParser) addSegment(segString string) error {
 			return errParamMismatch
 		}
 		for i := 0; i < l-1; i += 2 {
-			c.path.Line(fixed.Point26_6{
-				X: fixed.Int26_6((c.pts[i] + c.curX) * 64),
-				Y: fixed.Int26_6((c.pts[i+1] + c.curY) * 64),
-			})
+			c.path.LineTo(geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY))
 		}
 		c.placeX = c.pts[l-2]
 		c.placeY = c.pts[l-1]
@@ -729,10 +701,7 @@ func (c *svgPathParser) addSegment(segString string) error {
 			return errParamMismatch
 		}
 		for _, p := range c.pts {
-			c.path.Line(fixed.Point26_6{
-				X: fixed.Int26_6((c.placeX + c.curX) * 64),
-				Y: fixed.Int26_6((p + c.curY) * 64),
-			})
+			c.path.LineTo(geom.NewPoint(c.placeX+c.curX, p+c.curY))
 		}
 		c.placeY = c.pts[l-1]
 	case 'h':
@@ -743,29 +712,17 @@ func (c *svgPathParser) addSegment(segString string) error {
 			return errParamMismatch
 		}
 		for _, p := range c.pts {
-			c.path.Line(fixed.Point26_6{
-				X: fixed.Int26_6((p + c.curX) * 64),
-				Y: fixed.Int26_6((c.placeY + c.curY) * 64),
-			})
+			c.path.LineTo(geom.NewPoint(p+c.curX, c.placeY+c.curY))
 		}
 		c.placeX = c.pts[l-1]
-	case 'q':
-		rel = true
-		fallthrough
-	case 'Q':
-		if !c.hasSetsOrMore(4, rel) {
+	case 'q', 'Q':
+		if !c.hasSetsOrMore(4, k == 'q') {
 			return errParamMismatch
 		}
 		for i := 0; i < l-3; i += 4 {
-			c.path.QuadBezier(
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+1] + c.curY) * 64),
-				},
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i+2] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+3] + c.curY) * 64),
-				},
+			c.path.QuadTo(
+				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
+				geom.NewPoint(c.pts[i+2]+c.curX, c.pts[i+3]+c.curY),
 			)
 		}
 		c.cntlPtX, c.cntlPtY = c.pts[l-4], c.pts[l-3]
@@ -780,68 +737,38 @@ func (c *svgPathParser) addSegment(segString string) error {
 		}
 		for i := 0; i < l-1; i += 2 {
 			c.reflectControl(true)
-			c.path.QuadBezier(
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.cntlPtX + c.curX) * 64),
-					Y: fixed.Int26_6((c.cntlPtY + c.curY) * 64),
-				},
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+1] + c.curY) * 64),
-				},
+			c.path.QuadTo(
+				geom.NewPoint(c.cntlPtX+c.curX, c.cntlPtY+c.curY),
+				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
 			)
 			c.lastKey = k
 			c.placeX = c.pts[i]
 			c.placeY = c.pts[i+1]
 		}
-	case 'c':
-		rel = true
-		fallthrough
-	case 'C':
-		if !c.hasSetsOrMore(6, rel) {
+	case 'c', 'C':
+		if !c.hasSetsOrMore(6, k == 'c') {
 			return errParamMismatch
 		}
 		for i := 0; i < l-5; i += 6 {
-			c.path.CubeBezier(
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+1] + c.curY) * 64),
-				},
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i+2] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+3] + c.curY) * 64),
-				},
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i+4] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+5] + c.curY) * 64),
-				},
+			c.path.CubicTo(
+				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
+				geom.NewPoint(c.pts[i+2]+c.curX, c.pts[i+3]+c.curY),
+				geom.NewPoint(c.pts[i+4]+c.curX, c.pts[i+5]+c.curY),
 			)
 		}
 		c.cntlPtX, c.cntlPtY = c.pts[l-4], c.pts[l-3]
 		c.placeX = c.pts[l-2]
 		c.placeY = c.pts[l-1]
-	case 's':
-		rel = true
-		fallthrough
-	case 'S':
-		if !c.hasSetsOrMore(4, rel) {
+	case 's', 'S':
+		if !c.hasSetsOrMore(4, k == 's') {
 			return errParamMismatch
 		}
 		for i := 0; i < l-3; i += 4 {
 			c.reflectControl(false)
-			c.path.CubeBezier(
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.cntlPtX + c.curX) * 64),
-					Y: fixed.Int26_6((c.cntlPtY + c.curY) * 64),
-				},
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+1] + c.curY) * 64),
-				},
-				fixed.Point26_6{
-					X: fixed.Int26_6((c.pts[i+2] + c.curX) * 64),
-					Y: fixed.Int26_6((c.pts[i+3] + c.curY) * 64),
-				},
+			c.path.CubicTo(
+				geom.NewPoint(c.cntlPtX+c.curX, c.cntlPtY+c.curY),
+				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
+				geom.NewPoint(c.pts[i+2]+c.curX, c.pts[i+3]+c.curY),
 			)
 			c.lastKey = k
 			c.cntlPtX, c.cntlPtY = c.pts[i], c.pts[i+1]
@@ -857,7 +784,19 @@ func (c *svgPathParser) addSegment(segString string) error {
 				c.pts[i+5] += c.placeX
 				c.pts[i+6] += c.placeY
 			}
-			c.addArcFromA(c.pts[i:])
+			x := c.pts[i+5] + c.curX
+			y := c.pts[i+6] + c.curY
+			as := arcsize.Small
+			if c.pts[i+3] != 0 {
+				as = arcsize.Large
+			}
+			dir := direction.CounterClockwise
+			if c.pts[i+4] != 0 {
+				dir = direction.Clockwise
+			}
+			c.path.ArcTo(geom.NewPoint(x, y), geom.NewSize(c.pts[i], c.pts[i+1]), c.pts[i+2], as, dir)
+			c.placeX = x
+			c.placeY = y
 		}
 	default:
 		slog.Warn("Ignoring unknown svg path command", "command", string(k))
@@ -876,393 +815,26 @@ func (c *svgPathParser) reflectControl(forQuad bool) {
 	}
 }
 
-func (c *svgPathParser) ellipseAt(cx, cy, rx, ry float32) {
-	c.placeX, c.placeY = cx+rx, cy
-	c.pts = c.pts[0:0]
-	c.pts = append(c.pts, rx, ry, 0.0, 1.0, 0.0, c.placeX, c.placeY)
-	c.path.Start(fixed.Point26_6{
-		X: fixed.Int26_6(c.placeX * 64),
-		Y: fixed.Int26_6(c.placeY * 64),
-	})
-	c.placeX, c.placeY = c.path.addArc(c.pts, cx, cy, c.placeX, c.placeY)
-	c.path.Stop(true)
-}
-
-func (c *svgPathParser) addArcFromA(points []float32) {
-	cx, cy := svgFindEllipseCenter(&points[0], &points[1], points[2]*math.Pi/180, c.placeX,
-		c.placeY, points[5], points[6], points[4] == 0, points[3] == 0)
-	c.placeX, c.placeY = c.path.addArc(c.pts, cx+c.curX, cy+c.curY, c.placeX+c.curX, c.placeY+c.curY)
-}
-
-// SVGOp groups the different SVG commands
-type SVGOp interface {
-	// SVG text representation of the command
-	fmt.Stringer
-}
-
-// SVGOpMoveTo moves the current point.
-type SVGOpMoveTo fixed.Point26_6
-
-// SVGOpLineTo draws a line from the current point,
-// and updates it.
-type SVGOpLineTo fixed.Point26_6
-
-// SVGOpQuadTo draws a quadratic Bezier curve from the current point,
-// and updates it.
-type SVGOpQuadTo [2]fixed.Point26_6
-
-// SVGOpCubicTo draws a cubic Bezier curve from the current point,
-// and updates it.
-type SVGOpCubicTo [3]fixed.Point26_6
-
-// SVGOpClose close the current path.
-type SVGOpClose struct{}
-
-func (op SVGOpMoveTo) String() string {
-	return fmt.Sprintf("M%4.3f,%4.3f", float32(op.X)/64, float32(op.Y)/64)
-}
-
-func (op SVGOpLineTo) String() string {
-	return fmt.Sprintf("L%4.3f,%4.3f", float32(op.X)/64, float32(op.Y)/64)
-}
-
-func (op SVGOpQuadTo) String() string {
-	return fmt.Sprintf("Q%4.3f,%4.3f,%4.3f,%4.3f", float32(op[0].X)/64, float32(op[0].Y)/64,
-		float32(op[1].X)/64, float32(op[1].Y)/64)
-}
-
-func (op SVGOpCubicTo) String() string {
-	return "C" + fmt.Sprintf("C%4.3f,%4.3f,%4.3f,%4.3f,%4.3f,%4.3f", float32(op[0].X)/64, float32(op[0].Y)/64,
-		float32(op[1].X)/64, float32(op[1].Y)/64, float32(op[2].X)/64, float32(op[2].Y)/64)
-}
-
-func (op SVGOpClose) String() string {
-	return "Z"
-}
-
-// SVGPath describes a sequence of basic SVG operations, which should not be nil
-// Higher-level shapes may be reduced to a path.
-type SVGPath []SVGOp
-
-// ToSVGPath returns a string representation of the path
-func (p SVGPath) ToSVGPath() string {
-	chunks := make([]string, len(p))
-	for i, op := range p {
-		chunks[i] = op.String()
-	}
-	return strings.Join(chunks, " ")
-}
-
-// String returns a readable representation of a Path.
-func (p SVGPath) String() string {
-	return p.ToSVGPath()
-}
-
-// Clear zeros the path slice
-func (p *SVGPath) Clear() {
-	*p = (*p)[:0]
-}
-
-// Start starts a new curve at the given point.
-func (p *SVGPath) Start(a fixed.Point26_6) {
-	*p = append(*p, SVGOpMoveTo{a.X, a.Y})
-}
-
-// Line adds a linear segment to the current curve.
-func (p *SVGPath) Line(b fixed.Point26_6) {
-	*p = append(*p, SVGOpLineTo{b.X, b.Y})
-}
-
-// QuadBezier adds a quadratic segment to the current curve.
-func (p *SVGPath) QuadBezier(b, c fixed.Point26_6) {
-	*p = append(*p, SVGOpQuadTo{b, c})
-}
-
-// CubeBezier adds a cubic segment to the current curve.
-func (p *SVGPath) CubeBezier(b, c, d fixed.Point26_6) {
-	*p = append(*p, SVGOpCubicTo{b, c, d})
-}
-
-// Stop joins the ends of the path
-func (p *SVGPath) Stop(closeLoop bool) {
-	if closeLoop {
-		*p = append(*p, SVGOpClose{})
-	}
-}
-
-// addRoundRect adds a rectangle of the indicated size with rounded corners of radius rx in the x axis and ry in the y
-// axis.
-func (p *SVGPath) addRoundRect(minX, minY, maxX, maxY, rx, ry float32) {
-	if rx <= 0 || ry <= 0 {
-		cx := (minX + maxX) / 2
-		cy := (minY + maxY) / 2
-		q := &svgMatrixAdder{M: geom.NewTranslationMatrix(cx, cy).Translate(-cx, -cy), path: p}
-		q.Start(toSVGFixedPt(minX, minY))
-		q.Line(toSVGFixedPt(maxX, minY))
-		q.Line(toSVGFixedPt(maxX, maxY))
-		q.Line(toSVGFixedPt(minX, maxY))
-		q.path.Stop(true)
-		return
-	}
-
-	w := maxX - minX
-	if w < rx*2 {
-		rx = w / 2
-	}
-	h := maxY - minY
-	if h < ry*2 {
-		ry = h / 2
-	}
-	stretch := rx / ry
-	midY := minY + h/2
-
-	q := &svgMatrixAdder{M: geom.NewTranslationMatrix(minX+w/2, midY).Scale(1, 1/stretch).Translate(-minX-w/2, -minY-h/2), path: p}
-	maxY = midY + h/2*stretch
-	minY = midY - h/2*stretch
-
-	q.Start(toSVGFixedPt(minX+rx, minY))
-	q.Line(toSVGFixedPt(maxX-rx, minY))
-	svgRoundGap(q, toSVGFixedPt(maxX-rx, minY+rx), toSVGFixedPt(0, -rx), toSVGFixedPt(rx, 0))
-	q.Line(toSVGFixedPt(maxX, maxY-rx))
-	svgRoundGap(q, toSVGFixedPt(maxX-rx, maxY-rx), toSVGFixedPt(rx, 0), toSVGFixedPt(0, rx))
-	q.Line(toSVGFixedPt(minX+rx, maxY))
-	svgRoundGap(q, toSVGFixedPt(minX+rx, maxY-rx), toSVGFixedPt(0, rx), toSVGFixedPt(-rx, 0))
-	q.Line(toSVGFixedPt(minX, minY+rx))
-	svgRoundGap(q, toSVGFixedPt(minX+rx, minY+rx), toSVGFixedPt(-rx, 0), toSVGFixedPt(0, -rx))
-	q.path.Stop(true)
-}
-
-// addArc adds an arc to the adder p
-func (p *SVGPath) addArc(points []float32, cx, cy, px, py float32) (lx, ly float32) {
-	rotX := points[2] * math.Pi / 180 // Convert degress to radians
-	largeArc := points[3] != 0
-	sweep := points[4] != 0
-	startAngle := xmath.Atan2(py-cy, px-cx) - rotX
-	endAngle := xmath.Atan2(points[6]-cy, points[5]-cx) - rotX
-	deltaTheta := endAngle - startAngle
-	arcBig := xmath.Abs(deltaTheta) > math.Pi
-
-	// Approximate ellipse using cubic bezeir splines
-	etaStart := xmath.Atan2(xmath.Sin(startAngle)/points[1], xmath.Cos(startAngle)/points[0])
-	etaEnd := xmath.Atan2(xmath.Sin(endAngle)/points[1], xmath.Cos(endAngle)/points[0])
-	deltaEta := etaEnd - etaStart
-	if (arcBig && !largeArc) || (!arcBig && largeArc) { // Go has no boolean XOR
-		if deltaEta < 0 {
-			deltaEta += math.Pi * 2
-		} else {
-			deltaEta -= math.Pi * 2
-		}
-	}
-	// This check might be needed if the center point of the elipse is
-	// at the midpoint of the start and end lines.
-	if deltaEta < 0 && sweep {
-		deltaEta += math.Pi * 2
-	} else if deltaEta >= 0 && !sweep {
-		deltaEta -= math.Pi * 2
-	}
-
-	// Round up to determine number of cubic splines to approximate bezier curve
-	segs := int(xmath.Abs(deltaEta)/svgMaxDx) + 1
-	dEta := deltaEta / float32(segs) // span of each segment
-	// Approximate the ellipse using a set of cubic bezier curves by the method of
-	// L. Maisonobe, "Drawing an elliptical arc using polylines, quadratic
-	// or cubic Bezier curves", 2003
-	// https://www.spaceroots.org/documents/elllipse/elliptical-arc.pdf
-	tde := xmath.Tan(dEta / 2)
-	alpha := xmath.Sin(dEta) * (xmath.Sqrt(4+3*tde*tde) - 1) / 3 // Math is fun!
-	lx, ly = px, py
-	sinTheta, cosTheta := xmath.Sin(rotX), xmath.Cos(rotX)
-	ldx, ldy := svgEllipsePrime(points[0], points[1], sinTheta, cosTheta, etaStart)
-	for i := 1; i <= segs; i++ {
-		eta := etaStart + dEta*float32(i)
-		if i == segs {
-			px, py = points[5], points[6] // Just makes the end point exact; no roundoff error
-		} else {
-			px, py = svgEllipsePointAt(points[0], points[1], sinTheta, cosTheta, eta, cx, cy)
-		}
-		dx, dy := svgEllipsePrime(points[0], points[1], sinTheta, cosTheta, eta)
-		p.CubeBezier(toSVGFixedPt(lx+alpha*ldx, ly+alpha*ldy),
-			toSVGFixedPt(px-alpha*dx, py-alpha*dy), toSVGFixedPt(px, py))
-		lx, ly, ldx, ldy = px, py, dx, dy
-	}
-	return lx, ly
-}
-
-// svgRoundGap bridges miter-limit gaps with a circular arc
-func svgRoundGap(p *svgMatrixAdder, a, tNorm, lNorm fixed.Point26_6) {
-	svgAddArc(p, a, a.Add(tNorm), a.Add(lNorm), true, 0, 0, p.Line)
-	p.Line(a.Add(lNorm)) // just to be sure line joins cleanly,
-	// last pt in stoke arc may not be precisely s2
-}
-
 // svgMatrixAdder add points to path after applying a matrix M to all points
 type svgMatrixAdder struct {
-	path *SVGPath
+	path *Path
 	M    geom.Matrix
 }
 
 // Start starts a new path.
-func (m *svgMatrixAdder) Start(a fixed.Point26_6) {
-	m.path.Start(m.transformFixed(a))
+func (m *svgMatrixAdder) Start(p geom.Point) {
+	m.path.MoveTo(m.M.TransformPoint(p))
 }
 
 // Line adds a linear segment to the current curve.
-func (m *svgMatrixAdder) Line(b fixed.Point26_6) {
-	m.path.Line(m.transformFixed(b))
+func (m *svgMatrixAdder) Line(p geom.Point) {
+	m.path.LineTo(m.M.TransformPoint(p))
 }
 
 // CubeBezier adds a cubic segment to the current curve.
-func (m *svgMatrixAdder) CubeBezier(b, c, d fixed.Point26_6) {
-	m.path.CubeBezier(m.transformFixed(b), m.transformFixed(c), m.transformFixed(d))
+func (m *svgMatrixAdder) CubeBezier(b, c, d geom.Point) {
+	m.path.CubicTo(m.M.TransformPoint(b), m.M.TransformPoint(c), m.M.TransformPoint(d))
 }
-
-// TFixed transforms a fixed.Point26_6 by the matrix.
-func (m *svgMatrixAdder) transformFixed(pt fixed.Point26_6) fixed.Point26_6 {
-	return fixed.Point26_6{
-		X: fixed.Int26_6((float32(pt.X)*m.M.ScaleX + float32(pt.Y)*m.M.SkewX) + m.M.TransX*64),
-		Y: fixed.Int26_6((float32(pt.X)*m.M.SkewY + float32(pt.Y)*m.M.ScaleY) + m.M.TransY*64),
-	}
-}
-
-const (
-	svgCubicsPerHalfCircle = 8 // Number of cubic beziers to approx half a circle
-
-	// fixed point t parameterization shift factor;
-	// (2^this)/64 is the max length of t for fixed.Int26_6
-	svgTStrokeShift = 14
-
-	// svgMaxDx is the maximum radians a cubic splice is allowed to span
-	// in ellipse parametric when approximating an off-axis ellipse.
-	svgMaxDx float32 = math.Pi / 8
-)
-
-func toSVGFixedPt(x, y float32) (p fixed.Point26_6) {
-	return fixed.Point26_6{
-		X: fixed.Int26_6(x * 64),
-		Y: fixed.Int26_6(y * 64),
-	}
-}
-
-// svgLength is the distance from the origin of the point
-func svgLength(v fixed.Point26_6) fixed.Int26_6 {
-	vx := float32(v.X)
-	vy := float32(v.Y)
-	return fixed.Int26_6(xmath.Sqrt(vx*vx + vy*vy))
-}
-
-// svgAddArc strokes a circular arc by approximation with bezier curves
-func svgAddArc(p *svgMatrixAdder, a, s1, s2 fixed.Point26_6, clockwise bool, trimStart, trimEnd fixed.Int26_6, firstPoint func(p fixed.Point26_6)) (ps1, ds1, ps2, ds2 fixed.Point26_6) {
-	// Approximate the circular arc using a set of cubic bezier curves by the method of L. Maisonobe, "Drawing an
-	// elliptical arc using polylines, quadratic or cubic Bezier curves", 2003
-	// https://www.spaceroots.org/documents/elllipse/elliptical-arc.pdf The method was simplified for circles.
-	theta1 := xmath.Atan2(float32(s1.Y-a.Y), float32(s1.X-a.X))
-	theta2 := xmath.Atan2(float32(s2.Y-a.Y), float32(s2.X-a.X))
-	if !clockwise {
-		for theta1 < theta2 {
-			theta1 += math.Pi * 2
-		}
-	} else {
-		for theta2 < theta1 {
-			theta2 += math.Pi * 2
-		}
-	}
-	deltaTheta := theta2 - theta1
-	if trimStart > 0 {
-		ds := (deltaTheta * float32(trimStart)) / float32(1<<svgTStrokeShift)
-		deltaTheta -= ds
-		theta1 += ds
-	}
-	if trimEnd > 0 {
-		ds := (deltaTheta * float32(trimEnd)) / float32(1<<svgTStrokeShift)
-		deltaTheta -= ds
-	}
-	segs := int(xmath.Abs(deltaTheta)/(math.Pi/svgCubicsPerHalfCircle)) + 1
-	dTheta := deltaTheta / float32(segs)
-	tde := xmath.Tan(dTheta / 2)
-	alpha := fixed.Int26_6(xmath.Sin(dTheta) * (xmath.Sqrt(4+3*tde*tde) - 1) * (64.0 / 3.0)) // Math is fun!
-	r := float32(svgLength(s1.Sub(a)))                                                       // Note r is *64
-	ldp := fixed.Point26_6{X: -fixed.Int26_6(r * xmath.Sin(theta1)), Y: fixed.Int26_6(r * xmath.Cos(theta1))}
-	ds1 = ldp
-	ps1 = fixed.Point26_6{X: a.X + ldp.Y, Y: a.Y - ldp.X}
-	firstPoint(ps1)
-	s1 = ps1
-	for i := 1; i <= segs; i++ {
-		eta := theta1 + dTheta*float32(i)
-		ds2 = fixed.Point26_6{X: -fixed.Int26_6(r * xmath.Sin(eta)), Y: fixed.Int26_6(r * xmath.Cos(eta))}
-		ps2 = fixed.Point26_6{X: a.X + ds2.Y, Y: a.Y - ds2.X} // Using deriviative to calc new pt, because circle
-		p1 := s1.Add(ldp.Mul(alpha))
-		p2 := ps2.Sub(ds2.Mul(alpha))
-		p.CubeBezier(p1, p2, ps2)
-		s1, ldp = ps2, ds2
-	}
-	return ps1, ds1, ps2, ds2
-}
-
-// svgEllipsePrime gives tangent vectors for parameterized elipse; a, b, radii, eta parameter
-func svgEllipsePrime(a, b, sinTheta, cosTheta, eta float32) (px, py float32) {
-	bCosEta := b * xmath.Cos(eta)
-	aSinEta := a * xmath.Sin(eta)
-	return -aSinEta*cosTheta - bCosEta*sinTheta, -aSinEta*sinTheta + bCosEta*cosTheta
-}
-
-// svgEllipsePointAt gives points for parameterized elipse; a, b, radii, eta parameter, center cx, cy
-func svgEllipsePointAt(a, b, sinTheta, cosTheta, eta, cx, cy float32) (px, py float32) {
-	aCosEta := a * xmath.Cos(eta)
-	bSinEta := b * xmath.Sin(eta)
-	return cx + aCosEta*cosTheta - bSinEta*sinTheta, cy + aCosEta*sinTheta + bSinEta*cosTheta
-}
-
-// svgFindEllipseCenter locates the center of the Ellipse if it exists. If it does not exist,
-// the radius values will be increased minimally for a solution to be possible
-// while preserving the ra to rb ratio.  ra and rb arguments are pointers that can be
-// checked after the call to see if the values changed. This method uses coordinate transformations
-// to reduce the problem to finding the center of a circle that includes the origin
-// and an arbitrary point. The center of the circle is then transformed
-// back to the original coordinates and returned.
-func svgFindEllipseCenter(ra, rb *float32, rotX, startX, startY, endX, endY float32, sweep, smallArc bool) (cx, cy float32) {
-	cos, sin := xmath.Cos(rotX), xmath.Sin(rotX)
-
-	// Move origin to start point
-	nx, ny := endX-startX, endY-startY
-
-	// Rotate ellipse x-axis to coordinate x-axis
-	nx, ny = nx*cos+ny*sin, -nx*sin+ny*cos
-	// Scale X dimension so that ra = rb
-	nx *= *rb / *ra // Now the ellipse is a circle radius rb; therefore foci and center coincide
-
-	midX, midY := nx/2, ny/2
-	midlenSq := midX*midX + midY*midY
-
-	var hr float32
-	if *rb**rb < midlenSq {
-		// Requested ellipse does not exist; scale ra, rb to fit. Length of
-		// span is greater than max width of ellipse, must scale *ra, *rb
-		nrb := xmath.Sqrt(midlenSq)
-		if *ra == *rb {
-			*ra = nrb // prevents roundoff
-		} else {
-			*ra = *ra * nrb / *rb
-		}
-		*rb = nrb
-	} else {
-		hr = xmath.Sqrt(*rb**rb-midlenSq) / xmath.Sqrt(midlenSq)
-	}
-	// Notice that if hr is zero, both answers are the same.
-	if (sweep && smallArc) || (!sweep && !smallArc) {
-		cx = midX + midY*hr
-		cy = midY - midX*hr
-	} else {
-		cx = midX - midY*hr
-		cy = midY + midX*hr
-	}
-
-	// reverse scale
-	cx *= *ra / *rb
-	// Reverse rotate and translate back to original coordinates
-	return cx*cos - cy*sin + startX, cx*sin + cy*cos + startY
-}
-
-var errZeroLengthID = errors.New("zero length id")
 
 func init() {
 	svgDrawFuncs["use"] = svgUseF // Can't be done statically, since useF uses drawFuncs
@@ -1365,7 +937,11 @@ func svgRectF(c *svgParser, attrs []xml.Attr) error {
 	if ry != 0 && rx == 0 {
 		rx = ry
 	}
-	c.path.addRoundRect(x+c.curX, y+c.curY, w+x+c.curX, h+y+c.curY, rx, ry)
+	if rx == 0 {
+		c.path.Rect(geom.NewRect(x+c.curX, y+c.curY, w, h))
+	} else {
+		c.path.RoundedRect(geom.NewRect(x+c.curX, y+c.curY, w, h), geom.NewSize(rx, ry))
+	}
 	return nil
 }
 
@@ -1419,10 +995,16 @@ func svgCircleF(c *svgParser, attrs []xml.Attr) error {
 			return err
 		}
 	}
-	if rx == 0 || ry == 0 { // not drawn, but not an error
+	if rx == 0 || ry == 0 {
 		return nil
 	}
-	c.ellipseAt(cx+c.curX, cy+c.curY, rx, ry)
+	cx += c.curX
+	cy += c.curY
+	if rx == ry {
+		c.path.Circle(geom.NewPoint(cx, cy), rx)
+	} else {
+		c.path.Oval(geom.NewRect(cx-rx, cy-ry, cx+rx, cy+ry))
+	}
 	return nil
 }
 
@@ -1444,14 +1026,8 @@ func svgLineF(c *svgParser, attrs []xml.Attr) error {
 			return err
 		}
 	}
-	c.path.Start(fixed.Point26_6{
-		X: fixed.Int26_6((x1 + c.curX) * 64),
-		Y: fixed.Int26_6((y1 + c.curY) * 64),
-	})
-	c.path.Line(fixed.Point26_6{
-		X: fixed.Int26_6((x2 + c.curX) * 64),
-		Y: fixed.Int26_6((y2 + c.curY) * 64),
-	})
+	c.path.MoveTo(geom.NewPoint(x1+c.curX, y1+c.curY))
+	c.path.LineTo(geom.NewPoint(x2+c.curX, y2+c.curY))
 	return nil
 }
 
@@ -1468,15 +1044,9 @@ func svgPolylineF(c *svgParser, attrs []xml.Attr) error {
 		}
 	}
 	if len(c.pts) > 4 {
-		c.path.Start(fixed.Point26_6{
-			X: fixed.Int26_6((c.pts[0] + c.curX) * 64),
-			Y: fixed.Int26_6((c.pts[1] + c.curY) * 64),
-		})
+		c.path.MoveTo(geom.NewPoint(c.pts[0]+c.curX, c.pts[1]+c.curY))
 		for i := 2; i < len(c.pts)-1; i += 2 {
-			c.path.Line(fixed.Point26_6{
-				X: fixed.Int26_6((c.pts[i] + c.curX) * 64),
-				Y: fixed.Int26_6((c.pts[i+1] + c.curY) * 64),
-			})
+			c.path.LineTo(geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY))
 		}
 	}
 	return nil
@@ -1485,7 +1055,7 @@ func svgPolylineF(c *svgParser, attrs []xml.Attr) error {
 func svgPolygonF(c *svgParser, attrs []xml.Attr) error {
 	err := svgPolylineF(c, attrs)
 	if len(c.pts) > 4 {
-		c.path.Stop(true)
+		c.path.Close()
 	}
 	return err
 }
