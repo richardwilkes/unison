@@ -474,6 +474,11 @@ func (c Color) SetAlphaIntensity(alpha float32) Color {
 	return ARGB(alpha, c.Red(), c.Green(), c.Blue())
 }
 
+// MultiplyAlpha returns a new color based on this color, but with the alpha channel multiplied by the specified factor.
+func (c Color) MultiplyAlpha(factor float32) Color {
+	return ARGB(c.AlphaIntensity()*factor, c.Red(), c.Green(), c.Blue())
+}
+
 // Monochrome returns true if each color component is the same, making it a shade of gray.
 func (c Color) Monochrome() bool {
 	green := c.Green()
@@ -995,6 +1000,7 @@ func init() {
 	registerColor("Moccasin", Moccasin)
 	registerColor("NavajoWhite", NavajoWhite)
 	registerColor("Navy", Navy)
+	registerColor("None", Transparent)
 	registerColor("OldLace", OldLace)
 	registerColor("Olive", Olive)
 	registerColor("OliveDrab", OliveDrab)

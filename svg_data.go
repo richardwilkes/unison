@@ -7,7 +7,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"image/color"
 	"io"
 	"log/slog"
 	"math"
@@ -18,16 +17,17 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"golang.org/x/image/colornames"
+	"github.com/richardwilkes/unison/enums/strokecap"
+	"github.com/richardwilkes/unison/enums/strokejoin"
+	"github.com/richardwilkes/unison/enums/tilemode"
 	"golang.org/x/image/math/fixed"
 	"golang.org/x/net/html/charset"
 )
 
 const (
-	none      = "none"
-	round     = "round"
-	cubic     = "cubic"
-	quadratic = "quadratic"
+	none         = "none"
+	round        = "round"
+	fiftyPercent = "50%"
 )
 
 var errParamMismatch = errors.New("param mismatch")
@@ -35,7 +35,7 @@ var errParamMismatch = errors.New("param mismatch")
 // SVGData holds data from parsed SVGs.
 type SVGData struct {
 	Masks         map[string]*SVGMask
-	grads         map[string]*SVGGradient
+	grads         map[string]*Gradient
 	defs          map[string][]svgDef
 	Paths         []SVGStyledPath
 	ViewBox       geom.Rect
@@ -46,8 +46,8 @@ type SVGData struct {
 // SVGPathStyle holds the state of the style.
 type SVGPathStyle struct {
 	Masks             []string
-	FillerColor       SVGPattern
-	LinerColor        SVGPattern
+	FillerColor       Ink
+	LinerColor        Ink
 	Dash              SVGDashOptions
 	Join              SVGJoinOptions
 	FillOpacity       float32
@@ -79,7 +79,7 @@ type svgDef struct {
 
 type svgParser struct {
 	svg        *SVGData
-	grad       *SVGGradient
+	grad       *Gradient
 	mask       *SVGMask
 	styleStack []SVGPathStyle
 	currentDef []svgDef
@@ -96,7 +96,7 @@ type svgParser struct {
 func SVGParse(stream io.Reader) (*SVGData, error) {
 	svg := &SVGData{
 		defs:      make(map[string][]svgDef),
-		grads:     make(map[string]*SVGGradient),
+		grads:     make(map[string]*Gradient),
 		Masks:     make(map[string]*SVGMask),
 		Transform: geom.NewIdentityMatrix(),
 	}
@@ -257,17 +257,15 @@ func (p *svgParser) parseSelector(v string) (string, error) {
 }
 
 func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
+	var err error
 	v = strings.TrimSpace(v)
 	switch strings.TrimSpace(strings.ToLower(k)) {
 	case "fill":
-		gradient, ok := p.readGradientURL(v, curStyle.FillerColor)
-		if ok {
+		if gradient, ok := p.readGradientURL(v, curStyle.FillerColor); ok {
 			curStyle.FillerColor = gradient
-			return nil
+		} else if curStyle.FillerColor, err = ColorDecode(v); err != nil {
+			return err
 		}
-		optCol, err := parseSVGColor(v)
-		curStyle.FillerColor = optCol.asPattern()
-		return err
 	case "fill-rule":
 		switch v {
 		case "evenodd":
@@ -280,132 +278,80 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 	case "stroke":
 		if gradient, ok := p.readGradientURL(v, curStyle.LinerColor); ok {
 			curStyle.LinerColor = gradient
-		} else {
-			optCol, err := parseSVGColor(v)
-			if err != nil {
-				return err
-			}
-			curStyle.LinerColor = optCol.asPattern()
-		}
-	case "stroke-linegap":
-		switch v {
-		case "flat":
-			curStyle.Join.LineGap = SVGFlatGap
-		case round:
-			curStyle.Join.LineGap = SVGRoundGap
-		case cubic:
-			curStyle.Join.LineGap = SVGCubicGap
-		case quadratic:
-			curStyle.Join.LineGap = SVGQuadraticGap
-		default:
-			slog.Warn("svg: unsupported value for stroke-linegap", "value", v)
-		}
-	case "stroke-leadlinecap":
-		switch v {
-		case "butt":
-			curStyle.Join.LeadLineCap = SVGButtCap
-		case round:
-			curStyle.Join.LeadLineCap = SVGRoundCap
-		case "square":
-			curStyle.Join.LeadLineCap = SVGSquareCap
-		case cubic:
-			curStyle.Join.LeadLineCap = SVGCubicCap
-		case quadratic:
-			curStyle.Join.LeadLineCap = SVGQuadraticCap
-		default:
-			slog.Warn("svg: unsupported value for <stroke-leadlinecap>", "value", v)
+		} else if curStyle.LinerColor, err = ColorDecode(v); err != nil {
+			return err
 		}
 	case "stroke-linecap":
 		switch v {
 		case "butt":
-			curStyle.Join.TrailLineCap = SVGButtCap
+			curStyle.Join.TrailLineCap = strokecap.Butt
 		case round:
-			curStyle.Join.TrailLineCap = SVGRoundCap
+			curStyle.Join.TrailLineCap = strokecap.Round
 		case "square":
-			curStyle.Join.TrailLineCap = SVGSquareCap
-		case cubic:
-			curStyle.Join.TrailLineCap = SVGCubicCap
-		case quadratic:
-			curStyle.Join.TrailLineCap = SVGQuadraticCap
+			curStyle.Join.TrailLineCap = strokecap.Square
 		default:
 			slog.Warn("svg: unsupported value for <stroke-linecap>", "value", v)
 		}
 	case "stroke-linejoin":
 		switch v {
 		case "miter":
-			curStyle.Join.LineJoin = SVGMiter
-		case "miter-clip":
-			curStyle.Join.LineJoin = SVGMiterClip
-		case "arc-clip":
-			curStyle.Join.LineJoin = SVGArcClip
+			curStyle.Join.LineJoin = strokejoin.Miter
 		case round:
-			curStyle.Join.LineJoin = SVGRound
-		case "arc":
-			curStyle.Join.LineJoin = SVGArc
+			curStyle.Join.LineJoin = strokejoin.Round
 		case "bevel":
-			curStyle.Join.LineJoin = SVGBevel
+			curStyle.Join.LineJoin = strokejoin.Bevel
 		default:
 			slog.Warn("svg: unsupported value for <stroke-linejoin>", "value", v)
 		}
 	case "stroke-miterlimit":
-		mLimit, err := svgParseBasicFloat(v)
-		if err != nil {
+		if curStyle.Join.MiterLimit, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
-		curStyle.Join.MiterLimit = fixed.Int26_6(mLimit * 64)
 	case "stroke-width":
-		width, err := p.parseUnitToPx(v, svgWidthPercentage)
-		if err != nil {
+		if curStyle.LineWidth, err = p.parseUnitToPx(v, svgWidthPercentage); err != nil {
 			return err
 		}
-		curStyle.LineWidth = width
 	case "stroke-dashoffset":
-		dashOffset, err := p.parseUnitToPx(v, svgDiagPercentage)
-		if err != nil {
+		if curStyle.Dash.DashOffset, err = p.parseUnitToPx(v, svgDiagPercentage); err != nil {
 			return err
 		}
-		curStyle.Dash.DashOffset = dashOffset
 	case "stroke-dasharray":
 		if v != none {
 			dashes := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })
 			dList := make([]float32, len(dashes))
 			for i, dstr := range dashes {
-				d, err := p.parseUnitToPx(strings.TrimSpace(dstr), svgDiagPercentage)
-				if err != nil {
+				if dList[i], err = p.parseUnitToPx(strings.TrimSpace(dstr), svgDiagPercentage); err != nil {
 					return err
 				}
-				dList[i] = d
 			}
 			curStyle.Dash.Dash = dList
 		}
 	case "opacity":
-		op, err := svgParseBasicFloat(v)
-		if err != nil {
+		var opacity float32
+		if opacity, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
-		curStyle.FillOpacity *= op
-		curStyle.LineOpacity *= op
+		curStyle.FillOpacity *= opacity
+		curStyle.LineOpacity *= opacity
 	case "stroke-opacity":
-		op, err := svgParseBasicFloat(v)
-		if err != nil {
+		var opacity float32
+		if opacity, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
-		curStyle.LineOpacity *= op
+		curStyle.LineOpacity *= opacity
 	case "fill-opacity":
-		op, err := svgParseBasicFloat(v)
-		if err != nil {
+		var opacity float32
+		if opacity, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
-		curStyle.FillOpacity *= op
+		curStyle.FillOpacity *= opacity
 	case "transform":
-		m, err := p.parseTransform(v)
-		if err != nil {
+		if curStyle.Transform, err = p.parseTransform(v); err != nil {
 			return err
 		}
-		curStyle.Transform = m
 	case "mask":
-		id, err := p.parseSelector(v)
-		if err != nil {
+		var id string
+		if id, err = p.parseSelector(v); err != nil {
 			return err
 		}
 		curStyle.Masks = append(curStyle.Masks, id)
@@ -485,24 +431,24 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	return err
 }
 
-func (p *svgParser) readGradientURL(v string, defaultColor SVGPattern) (grad *SVGGradient, ok bool) {
+func (p *svgParser) readGradientURL(v string, defaultColor Ink) (grad *Gradient, ok bool) {
 	if strings.HasPrefix(v, "url(") && strings.HasSuffix(v, ")") {
 		urlStr := strings.TrimSpace(v[4 : len(v)-1])
 		if strings.HasPrefix(urlStr, "#") {
-			var g *SVGGradient
+			var g *Gradient
 			g, ok = p.svg.grads[urlStr[1:]]
 			if ok {
 				g2 := *g
 				for _, s := range g2.Stops {
-					if s.StopColor != nil {
+					if s.Color != nil {
 						continue
 					}
-					stops := append([]SVGGradStop{}, g2.Stops...)
+					stops := append([]Stop{}, g2.Stops...)
 					g2.Stops = stops
-					clr := GetSVGColor(defaultColor)
+					c := getSVGBackgroundColor(defaultColor)
 					for i, s := range stops {
-						if s.StopColor == nil {
-							g2.Stops[i].StopColor = clr
+						if s.Color == nil {
+							g2.Stops[i].Color = c
 						}
 					}
 					break
@@ -514,31 +460,18 @@ func (p *svgParser) readGradientURL(v string, defaultColor SVGPattern) (grad *SV
 	return grad, ok
 }
 
-func (p *svgParser) readGradientAttr(attr xml.Attr) error {
-	switch attr.Name.Local {
-	case "gradientTransform":
-		var err error
-		if p.grad.Matrix, err = p.parseTransform(attr.Value); err != nil {
-			return err
+func getSVGBackgroundColor(clr Ink) Color {
+	switch c := clr.(type) {
+	case *Gradient:
+		for _, s := range c.Stops {
+			if color := s.Color.GetColor(); !color.Invisible() {
+				return color
+			}
 		}
-	case "gradientUnits":
-		switch strings.TrimSpace(attr.Value) {
-		case "userSpaceOnUse":
-			p.grad.Units = SVGUserSpaceOnUse
-		case "objectBoundingBox":
-			p.grad.Units = SVGObjectBoundingBox
-		}
-	case "spreadMethod":
-		switch strings.TrimSpace(attr.Value) {
-		case "pad":
-			p.grad.Spread = SVGPadSpread
-		case "reflect":
-			p.grad.Spread = SVGReflectSpread
-		case "repeat":
-			p.grad.Spread = SVGRepeatSpread
-		}
+	case Color:
+		return c
 	}
-	return nil
+	return Black
 }
 
 func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentageReference) (float32, error) {
@@ -1100,216 +1033,6 @@ func svgRoundGap(p *svgMatrixAdder, a, tNorm, lNorm fixed.Point26_6) {
 	// last pt in stoke arc may not be precisely s2
 }
 
-// SVGPattern groups a basic color and a gradient pattern
-// A nil value may by used to indicated that the function (fill or stroke) is off
-type SVGPattern interface {
-	isPattern()
-}
-
-// SVGPlainColor is a simple color value
-type SVGPlainColor struct {
-	color.NRGBA
-}
-
-// NewSVGPlainColor creates a new PlainColor from RGBA values
-func NewSVGPlainColor(r, g, b, a uint8) SVGPlainColor {
-	return SVGPlainColor{NRGBA: color.NRGBA{r, g, b, a}}
-}
-
-func (SVGPlainColor) isPattern() {}
-
-// enables to differentiate between black and nil color
-type svgOptionalColor struct {
-	valid bool
-	color SVGPlainColor
-}
-
-func toSVGOptColor(p SVGPlainColor) svgOptionalColor {
-	return svgOptionalColor{valid: true, color: p}
-}
-
-func (o svgOptionalColor) asColor() color.Color {
-	if o.valid {
-		return o.color
-	}
-	return nil
-}
-
-func (o svgOptionalColor) asPattern() SVGPattern {
-	if o.valid {
-		return o.color
-	}
-	return nil
-}
-
-func parseSVGColor(colorStr string) (svgOptionalColor, error) {
-	v := strings.ToLower(colorStr)
-	if strings.HasPrefix(v, "url") {
-		slog.Warn("svg: url() color is unsupported", "url", colorStr)
-		return toSVGOptColor(NewSVGPlainColor(0, 0, 0, 255)), nil
-	}
-	switch v {
-	case none:
-		return svgOptionalColor{}, nil
-	default:
-		if cn, ok := colornames.Map[v]; ok {
-			r, g, b, a := cn.RGBA()
-			return toSVGOptColor(NewSVGPlainColor(uint8(r), uint8(g), uint8(b), uint8(a))), nil
-		}
-	}
-	if cStr := strings.TrimPrefix(colorStr, "rgb("); cStr != colorStr {
-		cStr = strings.TrimSuffix(cStr, ")")
-		vals := strings.Split(cStr, ",")
-		if len(vals) != 3 {
-			return toSVGOptColor(SVGPlainColor{}), errParamMismatch
-		}
-		var cvals [3]uint8
-		for i := range cvals {
-			var err error
-			if cvals[i], err = parseSVGColorValue(vals[i]); err != nil {
-				return svgOptionalColor{}, err
-			}
-		}
-		return toSVGOptColor(NewSVGPlainColor(cvals[0], cvals[1], cvals[2], 255)), nil
-	}
-	if colorStr[0] == '#' {
-		r, g, b, err := parseSVGColorNum(colorStr)
-		if err != nil {
-			return svgOptionalColor{}, err
-		}
-		return toSVGOptColor(NewSVGPlainColor(r, g, b, 255)), nil
-	}
-	return svgOptionalColor{}, errParamMismatch
-}
-
-func parseSVGColorValue(v string) (uint8, error) {
-	if v[len(v)-1] == '%' {
-		n, err := strconv.Atoi(strings.TrimSpace(v[:len(v)-1]))
-		if err != nil {
-			return 0, err
-		}
-		return uint8(n * 255 / 100), nil
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(v))
-	if n > 255 {
-		n = 255
-	}
-	return uint8(n), err
-}
-
-func parseSVGColorNum(colorStr string) (r, g, b uint8, err error) {
-	colorStr = strings.TrimPrefix(colorStr, "#")
-	var t uint64
-	if len(colorStr) == 3 {
-		colorStr = string([]byte{
-			colorStr[0], colorStr[0],
-			colorStr[1], colorStr[1],
-			colorStr[2], colorStr[2],
-		})
-	} else if len(colorStr) != 6 {
-		return 0, 0, 0, errParamMismatch
-	}
-	for _, v := range []struct {
-		c *uint8
-		s string
-	}{
-		{&r, colorStr[0:2]},
-		{&g, colorStr[2:4]},
-		{&b, colorStr[4:6]},
-	} {
-		t, err = strconv.ParseUint(v.s, 16, 8)
-		if err != nil {
-			return r, g, b, err
-		}
-		*v.c = uint8(t)
-	}
-	return r, g, b, nil
-}
-
-// SVGGradientUnits is the type for gradient units
-type SVGGradientUnits byte
-
-// SVG bounds parameter constants
-const (
-	SVGObjectBoundingBox SVGGradientUnits = iota
-	SVGUserSpaceOnUse
-)
-
-// SVGSpreadMethod is the type for spread parameters
-type SVGSpreadMethod byte
-
-// SVG spread parameter constants
-const (
-	SVGPadSpread SVGSpreadMethod = iota
-	SVGReflectSpread
-	SVGRepeatSpread
-)
-
-// SVGGradStop represents a stop in the SVG 2.0 gradient specification
-type SVGGradStop struct {
-	StopColor color.Color
-	Offset    float32
-	Opacity   float32
-}
-
-// SVGGradient holds a description of an SVG 2.0 gradient
-type SVGGradient struct {
-	Direction svgGradientDirection
-	Stops     []SVGGradStop
-	Bounds    geom.Rect
-	Matrix    geom.Matrix
-	Spread    SVGSpreadMethod
-	Units     SVGGradientUnits
-}
-
-func (g *SVGGradient) isPattern() {}
-
-// ApplyPathExtent uses the given path extent to adjust the bounding box, if required by `Units`. The `Direction` field
-// is not modified, but a matrix accounting for both the bounding box and the gradient matrix is returned.
-func (g *SVGGradient) ApplyPathExtent(extent fixed.Rectangle26_6) geom.Matrix {
-	if g.Units == SVGObjectBoundingBox {
-		mnx := float32(extent.Min.X) / 64
-		mny := float32(extent.Min.Y) / 64
-		mxx := float32(extent.Max.X) / 64
-		mxy := float32(extent.Max.Y) / 64
-		g.Bounds.X = mnx
-		g.Bounds.Y = mny
-		g.Bounds.Width = mxx - mnx
-		g.Bounds.Height = mxy - mny
-		return geom.NewScaleMatrix(g.Bounds.Width, g.Bounds.Height).Multiply(g.Matrix)
-	}
-	return g.Matrix
-}
-
-type svgGradientDirection interface {
-	isRadial() bool
-}
-
-// SVGLinear holds x1, y1, x2, y2
-type SVGLinear [4]float32
-
-func (SVGLinear) isRadial() bool { return false }
-
-// SVGRadial holds cx, cy, fx, fy, r, fr
-type SVGRadial [6]float32
-
-func (SVGRadial) isRadial() bool { return true }
-
-// GetSVGColor is a helper function to get the background color
-func GetSVGColor(clr SVGPattern) color.Color {
-	switch c := clr.(type) {
-	case *SVGGradient:
-		for _, s := range c.Stops {
-			if s.StopColor != nil {
-				return s.StopColor
-			}
-		}
-	case SVGPlainColor:
-		return c
-	}
-	return colornames.Black
-}
-
 // svgMatrixAdder add points to path after applying a matrix M to all points
 type svgMatrixAdder struct {
 	path *SVGPath
@@ -1723,13 +1446,13 @@ func svgDefsF(c *svgParser, _ []xml.Attr) error {
 }
 
 func svgLinearGradientF(c *svgParser, attrs []xml.Attr) error {
-	var err error
+	userSpaceOnUse := false
+	x1 := "0%"
+	y1 := "0%"
+	x2 := "100%"
+	y2 := "0%"
 	c.inGrad = true
-	// interpretation of percentage in direction depends
-	// on gradientUnits: we first store the string values
-	// and resolve them in a second pass
-	directionStrings := [4]string{"0%", "0%", "100%", "0"} // default value
-	c.grad = &SVGGradient{Bounds: c.svg.ViewBox, Matrix: geom.NewIdentityMatrix()}
+	c.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "id":
@@ -1738,52 +1461,54 @@ func svgLinearGradientF(c *svgParser, attrs []xml.Attr) error {
 			}
 			c.svg.grads[attr.Value] = c.grad
 		case "x1":
-			directionStrings[0] = attr.Value
+			x1 = attr.Value
 		case "y1":
-			directionStrings[1] = attr.Value
+			y1 = attr.Value
 		case "x2":
-			directionStrings[2] = attr.Value
+			x2 = attr.Value
 		case "y2":
-			directionStrings[3] = attr.Value
+			y2 = attr.Value
 		default:
-			err = c.readGradientAttr(attr)
-		}
-		if err != nil {
-			return err
+			if err := c.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+				return err
+			}
 		}
 	}
-	// now we can resolve percentages
 	bbox := geom.NewRect(0, 0, 1, 1)
-	if c.grad.Units == SVGUserSpaceOnUse {
-		bbox = c.grad.Bounds
+	if userSpaceOnUse {
+		bbox = c.svg.ViewBox
 	}
-	var direction SVGLinear
-	direction[0], err = svgResolveUnit(bbox, directionStrings[0], svgWidthPercentage)
+	var err error
+	c.grad.Start.X, err = svgResolveUnit(bbox, x1, svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	direction[1], err = svgResolveUnit(bbox, directionStrings[1], svgHeightPercentage)
+	c.grad.Start.Y, err = svgResolveUnit(bbox, y1, svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	direction[2], err = svgResolveUnit(bbox, directionStrings[2], svgWidthPercentage)
+	c.grad.End.X, err = svgResolveUnit(bbox, x2, svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	direction[3], err = svgResolveUnit(bbox, directionStrings[3], svgHeightPercentage)
+	c.grad.End.Y, err = svgResolveUnit(bbox, y2, svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.Direction = direction
+	c.normalizeGradientStartEnd()
 	return nil
 }
 
 func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
+	userSpaceOnUse := false
+	cx := fiftyPercent
+	cy := fiftyPercent
+	fx := ""
+	fy := ""
+	r := fiftyPercent
+	fr := fiftyPercent
 	c.inGrad = true
-	c.grad = &SVGGradient{Bounds: c.svg.ViewBox, Matrix: geom.NewIdentityMatrix()}
-	var setFx, setFy bool
-	var err error
-	directionStrings := [6]string{"50%", "50%", "50%", "50%", "50%", "50%"} // default values
+	c.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "id":
@@ -1792,144 +1517,145 @@ func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
 			}
 			c.svg.grads[attr.Value] = c.grad
 		case "cx":
-			directionStrings[0] = attr.Value
+			cx = attr.Value
 		case "cy":
-			directionStrings[1] = attr.Value
+			cy = attr.Value
 		case "fx":
-			setFx = true
-			directionStrings[2] = attr.Value
+			fx = attr.Value
 		case "fy":
-			setFy = true
-			directionStrings[3] = attr.Value
+			fy = attr.Value
 		case "r":
-			directionStrings[4] = attr.Value
+			r = attr.Value
 		case "fr":
-			directionStrings[5] = attr.Value
+			fr = attr.Value
 		default:
-			err = c.readGradientAttr(attr)
+			if err := c.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+				return err
+			}
 		}
-		if err != nil {
+	}
+	if fx == "" {
+		fx = cx
+	}
+	if fy == "" {
+		fy = cy
+	}
+	bbox := geom.NewRect(0, 0, 1, 1)
+	if userSpaceOnUse {
+		bbox = c.svg.ViewBox
+	}
+	var err error
+	c.grad.Start.X, err = svgResolveUnit(bbox, cx, svgWidthPercentage)
+	if err != nil {
+		return err
+	}
+	c.grad.Start.Y, err = svgResolveUnit(bbox, cy, svgHeightPercentage)
+	if err != nil {
+		return err
+	}
+	c.grad.End.X, err = svgResolveUnit(bbox, fx, svgWidthPercentage)
+	if err != nil {
+		return err
+	}
+	c.grad.End.Y, err = svgResolveUnit(bbox, fy, svgHeightPercentage)
+	if err != nil {
+		return err
+	}
+	c.grad.StartRadius, err = svgResolveUnit(bbox, r, svgDiagPercentage)
+	if err != nil {
+		return err
+	}
+	c.grad.EndRadius, err = svgResolveUnit(bbox, fr, svgDiagPercentage)
+	if err != nil {
+		return err
+	}
+	c.normalizeGradientStartEnd()
+	return nil
+}
+
+func (p *svgParser) normalizeGradientStartEnd() {
+	p.grad.Start.X = (p.grad.Start.X - p.svg.ViewBox.X) / p.svg.ViewBox.Width
+	p.grad.Start.Y = (p.grad.Start.Y - p.svg.ViewBox.Y) / p.svg.ViewBox.Height
+	p.grad.End.X = (p.grad.End.X - p.svg.ViewBox.X) / p.svg.ViewBox.Width
+	p.grad.End.Y = (p.grad.End.Y - p.svg.ViewBox.Y) / p.svg.ViewBox.Height
+}
+
+func (p *svgParser) readCommonGradientAttrs(attr xml.Attr, userSpaceOnUse *bool) error {
+	switch attr.Name.Local {
+	case "gradientTransform":
+		var err error
+		if p.grad.Transform, err = p.parseTransform(attr.Value); err != nil {
 			return err
 		}
+	case "gradientUnits":
+		switch strings.TrimSpace(attr.Value) {
+		case "userSpaceOnUse":
+			*userSpaceOnUse = true
+		case "objectBoundingBox":
+			*userSpaceOnUse = false
+		}
+	case "spreadMethod":
+		switch strings.TrimSpace(attr.Value) {
+		case "pad":
+			p.grad.TileMode = tilemode.Clamp
+		case "reflect":
+			p.grad.TileMode = tilemode.Mirror
+		case "repeat":
+			p.grad.TileMode = tilemode.Repeat
+		}
 	}
-	if !setFx { // set fx to cx by default
-		directionStrings[2] = directionStrings[0]
-	}
-	if !setFy { // set fy to cy by default
-		directionStrings[3] = directionStrings[1]
-	}
-
-	// now we can resolve percentages
-	bbox := geom.NewRect(0, 0, 1, 1)
-	if c.grad.Units == SVGUserSpaceOnUse {
-		bbox = c.grad.Bounds
-	}
-	var direction SVGRadial
-	direction[0], err = svgResolveUnit(bbox, directionStrings[0], svgWidthPercentage)
-	if err != nil {
-		return err
-	}
-	direction[1], err = svgResolveUnit(bbox, directionStrings[1], svgHeightPercentage)
-	if err != nil {
-		return err
-	}
-	direction[2], err = svgResolveUnit(bbox, directionStrings[2], svgWidthPercentage)
-	if err != nil {
-		return err
-	}
-	direction[3], err = svgResolveUnit(bbox, directionStrings[3], svgHeightPercentage)
-	if err != nil {
-		return err
-	}
-	direction[4], err = svgResolveUnit(bbox, directionStrings[4], svgDiagPercentage)
-	if err != nil {
-		return err
-	}
-	direction[5], err = svgResolveUnit(bbox, directionStrings[5], svgDiagPercentage)
-	if err != nil {
-		return err
-	}
-
-	c.grad.Direction = direction
 	return nil
 }
 
 func svgStopF(c *svgParser, attrs []xml.Attr) error {
-	var err error
 	if c.inGrad {
-		stop := SVGGradStop{Opacity: 1.0}
-		// parse style and push into attrs
-		attrs, err = svgAppendStyleAttrs(attrs, "stop-color", "stop-opacity")
-		if err != nil {
-			return err
+		for _, attr := range attrs {
+			if attr.Name.Local != "style" {
+				continue
+			}
+			if attr.Value == "" {
+				break
+			}
+			for _, s := range strings.Split(attr.Value, ";") {
+				key, val, ok := strings.Cut(s, ":")
+				if !ok {
+					continue
+				}
+				key = strings.ToLower(strings.TrimSpace(key))
+				if key == "stop-color" || key == "stop-opacity" {
+					attrs = append(attrs, xml.Attr{
+						Name:  xml.Name{Local: key},
+						Value: strings.TrimSpace(val),
+					})
+				}
+			}
+			break
 		}
-
+		var stop Stop
+		var err error
+		opacity := float32(1.0)
 		for _, attr := range attrs {
 			switch attr.Name.Local {
 			case "offset":
-				stop.Offset, err = svgReadFraction(attr.Value)
+				if stop.Location, err = svgReadFraction(attr.Value); err != nil {
+					return err
+				}
 			case "stop-color":
-				// todo: add current color inherit
-				var optColor svgOptionalColor
-				optColor, err = parseSVGColor(attr.Value)
-				stop.StopColor = optColor.asColor()
+				if stop.Color, err = ColorDecode(attr.Value); err != nil {
+					return err
+				}
 			case "stop-opacity":
-				stop.Opacity, err = svgParseBasicFloat(attr.Value)
+				if opacity, err = svgParseBasicFloat(attr.Value); err != nil {
+					return err
+				}
 			}
-			if err != nil {
-				return err
-			}
+		}
+		if stop.Color != nil && opacity != 1 {
+			stop.Color = stop.Color.GetColor().SetAlphaIntensity(opacity)
 		}
 		c.grad.Stops = append(c.grad.Stops, stop)
 	}
 	return nil
-}
-
-// svgAppendStyleAttrs appends style attributes to the given attributes.
-func svgAppendStyleAttrs(attrs []xml.Attr, names ...string) ([]xml.Attr, error) {
-	var style string
-
-	for _, attr := range attrs {
-		if attr.Name.Local == "style" {
-			style = attr.Value
-			break
-		}
-	}
-
-	if style == "" {
-		return attrs, nil
-	}
-
-	styleEl := strings.Split(style, ";")
-	styleAttrs := make([]xml.Attr, 0, len(styleEl))
-	for _, s := range styleEl {
-		key, val, ok := strings.Cut(s, ":")
-		if !ok {
-			continue
-		}
-
-		key = strings.ToLower(strings.TrimSpace(key))
-
-		if len(names) == 0 {
-			styleAttrs = append(styleAttrs, xml.Attr{
-				Name:  xml.Name{Local: key},
-				Value: strings.TrimSpace(val),
-			})
-			continue
-		}
-
-		for _, name := range names {
-			if key == name {
-				attrs = append(attrs, xml.Attr{
-					Name:  xml.Name{Local: key},
-					Value: strings.TrimSpace(val),
-				})
-				break
-			}
-		}
-	}
-
-	return append(attrs, styleAttrs...), nil
 }
 
 func svgUseF(c *svgParser, attrs []xml.Attr) error {
@@ -1998,109 +1724,11 @@ type SVGDashOptions struct {
 	DashOffset float32   // starting offset into the dash array
 }
 
-// SVGJoinMode type to specify how segments join.
-type SVGJoinMode uint8
-
-// JoinMode constants determine how stroke segments bridge the gap at a join
-// SVGArcClip mode is like SVGMiterClip applied to arcs, and is not part of the SVG2.0
-// standard.
-const (
-	SVGArc SVGJoinMode = iota // New in SVG2
-	SVGRound
-	SVGBevel
-	SVGMiter
-	SVGMiterClip // New in SVG2
-	SVGArcClip   // Like MiterClip applied to arcs, and is not part of the SVG2.0 standard.
-)
-
-func (s SVGJoinMode) String() string {
-	switch s {
-	case SVGRound:
-		return "Round"
-	case SVGBevel:
-		return "Bevel"
-	case SVGMiter:
-		return "Miter"
-	case SVGMiterClip:
-		return "MiterClip"
-	case SVGArc:
-		return "Arc"
-	case SVGArcClip:
-		return "ArcClip"
-	default:
-		return "<unknown JoinMode>"
-	}
-}
-
-// SVGCapMode defines how to draw caps on the ends of lines
-type SVGCapMode uint8
-
-// Possible CapMode values.
-const (
-	SVGNilCap SVGCapMode = iota // default value
-	SVGButtCap
-	SVGSquareCap
-	SVGRoundCap
-	SVGCubicCap     // Not part of the SVG2.0 standard.
-	SVGQuadraticCap // Not part of the SVG2.0 standard.
-)
-
-func (c SVGCapMode) String() string {
-	switch c {
-	case SVGNilCap:
-		return "NilCap"
-	case SVGButtCap:
-		return "ButtCap"
-	case SVGSquareCap:
-		return "SquareCap"
-	case SVGRoundCap:
-		return "RoundCap"
-	case SVGCubicCap:
-		return "CubicCap"
-	case SVGQuadraticCap:
-		return "QuadraticCap"
-	default:
-		return "<unknown CapMode>"
-	}
-}
-
-// SVGGapMode defines how to bridge gaps when the miter limit is exceeded, and is not part of the SVG2.0 standard.
-type SVGGapMode uint8
-
-// Possible GapMode values.
-const (
-	SVGNilGap SVGGapMode = iota
-	SVGFlatGap
-	SVGRoundGap
-	SVGCubicGap
-	SVGQuadraticGap
-)
-
-func (g SVGGapMode) String() string {
-	switch g {
-	case SVGNilGap:
-		return "NilGap"
-	case SVGFlatGap:
-		return "FlatGap"
-	case SVGRoundGap:
-		return "RoundGap"
-	case SVGCubicGap:
-		return "CubicGap"
-	case SVGQuadraticGap:
-		return "QuadraticGap"
-	default:
-		return "<unknown GapMode>"
-	}
-}
-
 // SVGJoinOptions defines how path segments are joined and how line ends are capped.
 type SVGJoinOptions struct {
-	MiterLimit   fixed.Int26_6 // The miter cutoff value for miter, arc, miterclip and arcClip joinModes
-	LineJoin     SVGJoinMode   // JoinMode for curve segments
-	TrailLineCap SVGCapMode    // capping functions for leading and trailing line ends. If one is nil, the other function is used at both ends.
-
-	LeadLineCap SVGCapMode // not part of the standard specification
-	LineGap     SVGGapMode // not part of the standard specification. determines how a gap on the convex side of two lines joining is filled
+	MiterLimit   float32         // The miter cutoff value for miter, arc, miterclip and arcClip joinModes
+	LineJoin     strokejoin.Enum // JoinMode for curve segments
+	TrailLineCap strokecap.Enum  // capping functions for leading and trailing line ends. If one is nil, the other function is used at both ends.
 }
 
 // SVGStrokeOptions defines the options for stroking a path.
@@ -2118,11 +1746,11 @@ var SVGDefaultStyle = SVGPathStyle{
 	LineWidth:         2.0,
 	UseNonZeroWinding: true,
 	Join: SVGJoinOptions{
-		MiterLimit:   4 * 64,
-		LineJoin:     SVGBevel,
-		TrailLineCap: SVGButtCap,
+		MiterLimit:   4,
+		LineJoin:     strokejoin.Bevel,
+		TrailLineCap: strokecap.Butt,
 	},
-	FillerColor: NewSVGPlainColor(0x00, 0x00, 0x00, 0xff),
+	FillerColor: Black,
 	Transform:   geom.NewIdentityMatrix(),
 	Masks:       make([]string, 0),
 }
