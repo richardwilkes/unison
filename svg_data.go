@@ -24,12 +24,6 @@ import (
 	"golang.org/x/net/html/charset"
 )
 
-const (
-	none         = "none"
-	round        = "round"
-	fiftyPercent = "50%"
-)
-
 var errParamMismatch = errors.New("param mismatch")
 
 // SVGData holds data from parsed SVGs.
@@ -239,7 +233,7 @@ func (p *svgParser) parseTransform(v string) (geom.Matrix, error) {
 }
 
 func (p *svgParser) parseSelector(v string) (string, error) {
-	if v == "" || v == none {
+	if v == "" || v == "none" {
 		return "", nil
 	}
 	if strings.HasPrefix(v, "url(") {
@@ -285,7 +279,7 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 		switch v {
 		case "butt":
 			curStyle.Join.TrailLineCap = strokecap.Butt
-		case round:
+		case "round":
 			curStyle.Join.TrailLineCap = strokecap.Round
 		case "square":
 			curStyle.Join.TrailLineCap = strokecap.Square
@@ -296,7 +290,7 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 		switch v {
 		case "miter":
 			curStyle.Join.LineJoin = strokejoin.Miter
-		case round:
+		case "round":
 			curStyle.Join.LineJoin = strokejoin.Round
 		case "bevel":
 			curStyle.Join.LineJoin = strokejoin.Bevel
@@ -316,7 +310,7 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 			return err
 		}
 	case "stroke-dasharray":
-		if v != none {
+		if v != "none" {
 			dashes := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })
 			dList := make([]float32, len(dashes))
 			for i, dstr := range dashes {
@@ -1448,9 +1442,9 @@ func svgDefsF(c *svgParser, _ []xml.Attr) error {
 func svgLinearGradientF(c *svgParser, attrs []xml.Attr) error {
 	userSpaceOnUse := false
 	x1 := "0%"
-	y1 := "0%"
+	y1 := x1
 	x2 := "100%"
-	y2 := "0%"
+	y2 := x1
 	c.inGrad = true
 	c.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
 	for _, attr := range attrs {
@@ -1501,12 +1495,12 @@ func svgLinearGradientF(c *svgParser, attrs []xml.Attr) error {
 
 func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
 	userSpaceOnUse := false
-	cx := fiftyPercent
-	cy := fiftyPercent
+	cx := "50%"
+	cy := cx
 	fx := ""
 	fy := ""
-	r := fiftyPercent
-	fr := fiftyPercent
+	r := cx
+	fr := cx
 	c.inGrad = true
 	c.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
 	for _, attr := range attrs {
