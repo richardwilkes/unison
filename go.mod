@@ -2,6 +2,8 @@ module github.com/richardwilkes/unison
 
 go 1.25.0
 
+replace github.com/richardwilkes/toolbox/v2 => ../toolbox
+
 require (
 	github.com/OpenPrinting/goipp v1.2.0
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71
@@ -11,10 +13,10 @@ require (
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.7.13
 	github.com/zeebo/xxh3 v1.0.2
-	golang.org/x/image v0.31.0
+	golang.org/x/image v0.32.0
 	golang.org/x/net v0.45.0
 	golang.org/x/sys v0.37.0
-	golang.org/x/text v0.29.0
+	golang.org/x/text v0.30.0
 )
 
 require (
@@ -26,7 +28,7 @@ require (
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	golang.org/x/mod v0.28.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/term v0.35.0 // indirect
+	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/tools v0.37.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

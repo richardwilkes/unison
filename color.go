@@ -135,8 +135,8 @@ func MustColorDecode(buffer string) Color {
 // ColorDecode creates a Color from a string. The string may be in any of the standard CSS formats:
 //
 // - CSS predefined color name, e.g. "Yellow"
-// - CSS rgb(), e.g. "rgb(255, 255, 0)"
-// - CSS rgba(), e.g. "rgba(255, 255, 0, 0.3)"
+// - CSS rgb(), e.g. "rgb(255, 127, 0)" or "rgb(100%, 50%, 0%)"
+// - CSS rgba(), e.g. "rgba(255, 127, 0, 0.3)" or "rgba(100%, 50%, 0%, 0.3)"
 // - CSS short hexadecimal colors, e.g. "#FF0"
 // - CSS long hexadecimal colors, e.g. "#FFFF00"
 // - CCS hsl(), e.g. "hsl(120, 100%, 50%)"
@@ -182,34 +182,34 @@ func ColorDecode(buffer string) (Color, error) {
 	case strings.HasPrefix(buffer, "rgb(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[4:len(buffer)-1]), ",", 4)
 		if len(parts) == 3 {
-			red, err := strconv.Atoi(strings.TrimSpace(parts[0]))
-			if err != nil || red < 0 || red > 255 {
-				return 0, ErrColorDecode
+			red, err := extractIntegerOrPercentColorValue(parts[0])
+			if err != nil {
+				return 0, err
 			}
 			var green int
-			if green, err = strconv.Atoi(strings.TrimSpace(parts[1])); err != nil || green < 0 || green > 255 {
-				return 0, ErrColorDecode
+			if green, err = extractIntegerOrPercentColorValue(parts[1]); err != nil {
+				return 0, err
 			}
 			var blue int
-			if blue, err = strconv.Atoi(strings.TrimSpace(parts[2])); err != nil || blue < 0 || blue > 255 {
-				return 0, ErrColorDecode
+			if blue, err = extractIntegerOrPercentColorValue(parts[2]); err != nil {
+				return 0, err
 			}
 			return RGB(red, green, blue), nil
 		}
 	case strings.HasPrefix(buffer, "rgba(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[5:len(buffer)-1]), ",", 5)
 		if len(parts) == 4 {
-			red, err := strconv.Atoi(strings.TrimSpace(parts[0]))
-			if err != nil || red < 0 || red > 255 {
-				return 0, ErrColorDecode
+			red, err := extractIntegerOrPercentColorValue(parts[0])
+			if err != nil {
+				return 0, err
 			}
 			var green int
-			if green, err = strconv.Atoi(strings.TrimSpace(parts[1])); err != nil || green < 0 || green > 255 {
-				return 0, ErrColorDecode
+			if green, err = extractIntegerOrPercentColorValue(parts[1]); err != nil {
+				return 0, err
 			}
 			var blue int
-			if blue, err = strconv.Atoi(strings.TrimSpace(parts[2])); err != nil || blue < 0 || blue > 255 {
-				return 0, ErrColorDecode
+			if blue, err = extractIntegerOrPercentColorValue(parts[2]); err != nil {
+				return 0, err
 			}
 			var alpha float64
 			if alpha, err = strconv.ParseFloat(strings.TrimSpace(parts[3]), 32); err != nil || alpha < 0 || alpha > 1 {
@@ -238,8 +238,13 @@ func ColorDecode(buffer string) (Color, error) {
 		parts := strings.SplitN(strings.TrimSpace(buffer[5:len(buffer)-1]), ",", 5)
 		if len(parts) == 4 {
 			hue, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
-			if err != nil || hue < 0 || hue > 359 {
+			if err != nil {
 				return 0, ErrColorDecode
+			}
+			if hue < 0 {
+				hue = 360 - ((-hue) % 360)
+			} else if hue > 359 {
+				hue %= 360
 			}
 			var saturation float32
 			if saturation, err = extractColorPercentage(parts[1]); err != nil {
@@ -250,8 +255,13 @@ func ColorDecode(buffer string) (Color, error) {
 				return 0, ErrColorDecode
 			}
 			var alpha float64
-			if alpha, err = strconv.ParseFloat(strings.TrimSpace(parts[3]), 32); err != nil || alpha < 0 || alpha > 1 {
+			if alpha, err = strconv.ParseFloat(strings.TrimSpace(parts[3]), 32); err != nil {
 				return 0, ErrColorDecode
+			}
+			if alpha < 0 {
+				alpha = 0
+			} else if alpha > 1 {
+				alpha = 1
 			}
 			return HSBA(float32(hue)/360, saturation, brightness, float32(alpha)), nil
 		}
@@ -259,17 +269,44 @@ func ColorDecode(buffer string) (Color, error) {
 	return 0, ErrColorDecode
 }
 
-func extractColorPercentage(buffer string) (float32, error) {
-	buffer = strings.TrimSpace(buffer)
-	if strings.HasSuffix(buffer, "%") {
-		if value, err := strconv.Atoi(strings.TrimSpace(buffer[:len(buffer)-1])); err == nil {
-			percentage := float32(value) / 100
-			if percentage >= 0 && percentage <= 1 {
-				return percentage, nil
-			}
-		}
+func extractIntegerOrPercentColorValue(s string) (int, error) {
+	var isPercent bool
+	s, isPercent = strings.CutSuffix(strings.TrimSpace(s), "%")
+	v, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, ErrColorDecode
 	}
-	return 0, ErrColorDecode
+	switch {
+	case v < 0:
+		v = 0
+	case isPercent:
+		if v >= 100 {
+			v = 255
+		} else {
+			v = v * 255 / 100
+		}
+	case v > 255:
+		v = 255
+	}
+	return v, nil
+}
+
+func extractColorPercentage(s string) (float32, error) {
+	var isPercent bool
+	s, isPercent = strings.CutSuffix(strings.TrimSpace(s), "%")
+	if !isPercent {
+		return 0, ErrColorDecode
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, ErrColorDecode
+	}
+	if v < 0 {
+		v = 0
+	} else if v > 100 {
+		v = 100
+	}
+	return float32(v) / 100, nil
 }
 
 // Paint returns a Paint for this Color. Here to satisfy the Ink interface.
@@ -679,11 +716,10 @@ func (c Color) Unpremultiply() Color {
 }
 
 func normalizeHue(hue float64) float32 {
-	if hue < 0 || hue >= 360 {
-		hue = math.Mod(hue, 360)
-		if hue < 0 {
-			hue += 360
-		}
+	if hue < 0 {
+		return 360 - (float32(math.Mod(-hue, 360)))
+	} else if hue >= 360 {
+		return float32(math.Mod(hue, 360))
 	}
 	return float32(hue)
 }

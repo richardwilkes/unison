@@ -53,5 +53,5 @@ func TestOKLCH(t *testing.T) {
 	l, c, h = unison.Blue.OKLCH()
 	chk.Equal(float32(0.45201373), l)
 	chk.Equal(float32(0.31321436), c)
-	chk.Equal(float32(264.0520206), h)
+	chk.Equal(float32(264.052), h)
 }

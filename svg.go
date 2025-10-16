@@ -25,7 +25,6 @@ import (
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
-	"github.com/richardwilkes/unison/svg"
 )
 
 var _ Drawable = &DrawableSVG{}
@@ -109,17 +108,17 @@ var (
 	WindowRestoreSVG = MustSVGFromContentString(windowRestoreSVG)
 )
 
-var strokeCaps = map[svg.CapMode]strokecap.Enum{
-	svg.NilCap:    strokecap.Butt,
-	svg.ButtCap:   strokecap.Butt,
-	svg.SquareCap: strokecap.Square,
-	svg.RoundCap:  strokecap.Round,
+var strokeCaps = map[SVGCapMode]strokecap.Enum{
+	SVGNilCap:    strokecap.Butt,
+	SVGButtCap:   strokecap.Butt,
+	SVGSquareCap: strokecap.Square,
+	SVGRoundCap:  strokecap.Round,
 }
 
-var strokeJoins = map[svg.JoinMode]strokejoin.Enum{
-	svg.Round: strokejoin.Round,
-	svg.Bevel: strokejoin.Bevel,
-	svg.Miter: strokejoin.Miter,
+var strokeJoins = map[SVGJoinMode]strokejoin.Enum{
+	SVGRound: strokejoin.Round,
+	SVGBevel: strokejoin.Bevel,
+	SVGMiter: strokejoin.Miter,
 }
 
 // DrawableSVG makes an SVG conform to the Drawable interface.
@@ -210,7 +209,7 @@ func parseNumFromSVGAttribute(attr string) (float32, bool) {
 func NewSVGFromReader(r io.Reader) (*SVG, error) {
 	s := &SVG{}
 
-	sData, err := svg.Parse(r)
+	sData, err := SVGParse(r)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -231,38 +230,31 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 			p.SetFillType(filltype.EvenOdd)
 		}
 		for _, op := range sData.Paths[i].Path {
-			// The coordinates used in svg.Operation are of type fixed.Int26_6, which has a fractional part of 6 bits.
+			// The coordinates used in SVGOp are of type fixed.Int26_6, which has a fractional part of 6 bits.
 			// When converting to a float, the values are divided by 64.
 			switch op := op.(type) {
-			case svg.OpMoveTo:
+			case SVGOpMoveTo:
 				p.MoveTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
-			case svg.OpLineTo:
+			case SVGOpLineTo:
 				p.LineTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
-			case svg.OpQuadTo:
+			case SVGOpQuadTo:
 				p.QuadTo(
 					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
 					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
 				)
-			case svg.OpCubicTo:
+			case SVGOpCubicTo:
 				p.CubicTo(
 					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
 					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
 					geom.NewPoint(float32(op[2].X)/64, float32(op[2].Y)/64),
 				)
-			case svg.OpClose:
+			case SVGOpClose:
 				p.Close()
 			}
 		}
 
-		if sData.Paths[i].Style.Transform != svg.Identity {
-			p.Transform(geom.Matrix{
-				ScaleX: sData.Paths[i].Style.Transform.ScaleX,
-				SkewX:  sData.Paths[i].Style.Transform.SkwX,
-				TransX: sData.Paths[i].Style.Transform.TransX,
-				SkewY:  sData.Paths[i].Style.Transform.SkwY,
-				ScaleY: sData.Paths[i].Style.Transform.ScaleY,
-				TransY: sData.Paths[i].Style.Transform.TransY,
-			})
+		if !sData.Paths[i].Style.Transform.IsIdentity() {
+			p.Transform(sData.Paths[i].Style.Transform)
 		}
 		sp := &svgPath{Path: p}
 
@@ -300,11 +292,11 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 	return s, nil
 }
 
-func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacity float32) (*Paint, error) {
-	if c, ok := pattern.(svg.PlainColor); ok {
+func createPaintFromSVGPattern(kind paintstyle.Enum, pattern SVGPattern, opacity float32) (*Paint, error) {
+	if c, ok := pattern.(SVGPlainColor); ok {
 		return convertSVGColor(c, opacity).Paint(nil, geom.Rect{}, kind), nil
 	}
-	if gr, ok := pattern.(*svg.Gradient); ok {
+	if gr, ok := pattern.(*SVGGradient); ok {
 		grad := Gradient{
 			Stops: make([]Stop, len(gr.Stops)),
 		}
@@ -315,12 +307,12 @@ func createPaintFromSVGPattern(kind paintstyle.Enum, pattern svg.Pattern, opacit
 			}
 		}
 		switch d := gr.Direction.(type) {
-		case svg.Linear:
+		case SVGLinear:
 			grad.Start.X = d[0]
 			grad.Start.Y = d[1]
 			grad.End.X = d[2]
 			grad.End.Y = d[3]
-		case svg.Radial:
+		case SVGRadial:
 			grad.Start.X = d[0]
 			grad.Start.Y = d[1]
 			grad.End.X = d[2]
@@ -345,7 +337,7 @@ func convertSVGColor(c color.Color, opacity float32) Color {
 	if c == nil {
 		return 0
 	}
-	if plain, ok := c.(svg.PlainColor); ok {
+	if plain, ok := c.(SVGPlainColor); ok {
 		alpha := uint8(float32(plain.A) * opacity)
 		return ColorFromNRGBA(color.NRGBA{A: alpha, R: plain.R, G: plain.G, B: plain.B})
 	}
