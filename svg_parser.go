@@ -22,7 +22,6 @@ import (
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
 	"github.com/richardwilkes/unison/enums/tilemode"
-	"golang.org/x/image/math/fixed"
 	"golang.org/x/net/html/charset"
 )
 
@@ -42,15 +41,18 @@ type SVGData struct {
 
 // SVGPathStyle holds the state of the style.
 type SVGPathStyle struct {
-	Masks             []string
 	FillerColor       Ink
 	LinerColor        Ink
-	Dash              SVGDashOptions
-	Join              SVGJoinOptions
+	Masks             []string  // Currently unused
+	Dash              []float32 // Currently unused
+	DashOffset        float32   // Currently unused
+	MiterLimit        float32
 	FillOpacity       float32
 	LineOpacity       float32
 	LineWidth         float32
 	Transform         geom.Matrix
+	StrokeJoin        strokejoin.Enum
+	StrokeCap         strokecap.Enum
 	UseNonZeroWinding bool
 }
 
@@ -169,9 +171,9 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 		if svg.Paths[i].Style.LinerColor != nil && svg.Paths[i].Style.LineOpacity != 0 &&
 			svg.Paths[i].Style.LineWidth != 0 {
 			sp.stroke = createPaintFromSVGPattern(svg.Paths[i].Style.LinerColor, svg.Paths[i].Style.LineOpacity)
-			sp.strokeCap = svg.Paths[i].Style.Join.TrailLineCap
-			sp.strokeJoin = svg.Paths[i].Style.Join.LineJoin
-			sp.strokeMiter = svg.Paths[i].Style.Join.MiterLimit
+			sp.strokeCap = svg.Paths[i].Style.StrokeCap
+			sp.strokeJoin = svg.Paths[i].Style.StrokeJoin
+			sp.strokeMiter = svg.Paths[i].Style.MiterLimit
 			sp.strokeWidth = svg.Paths[i].Style.LineWidth
 		}
 
@@ -327,27 +329,27 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 	case "stroke-linecap":
 		switch v {
 		case "butt":
-			curStyle.Join.TrailLineCap = strokecap.Butt
+			curStyle.StrokeCap = strokecap.Butt
 		case "round":
-			curStyle.Join.TrailLineCap = strokecap.Round
+			curStyle.StrokeCap = strokecap.Round
 		case "square":
-			curStyle.Join.TrailLineCap = strokecap.Square
+			curStyle.StrokeCap = strokecap.Square
 		default:
 			slog.Warn("svg: unsupported value for <stroke-linecap>", "value", v)
 		}
 	case "stroke-linejoin":
 		switch v {
 		case "miter":
-			curStyle.Join.LineJoin = strokejoin.Miter
+			curStyle.StrokeJoin = strokejoin.Miter
 		case "round":
-			curStyle.Join.LineJoin = strokejoin.Round
+			curStyle.StrokeJoin = strokejoin.Round
 		case "bevel":
-			curStyle.Join.LineJoin = strokejoin.Bevel
+			curStyle.StrokeJoin = strokejoin.Bevel
 		default:
 			slog.Warn("svg: unsupported value for <stroke-linejoin>", "value", v)
 		}
 	case "stroke-miterlimit":
-		if curStyle.Join.MiterLimit, err = svgParseBasicFloat(v); err != nil {
+		if curStyle.MiterLimit, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
 	case "stroke-width":
@@ -355,7 +357,7 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 			return err
 		}
 	case "stroke-dashoffset":
-		if curStyle.Dash.DashOffset, err = p.parseUnitToPx(v, svgDiagPercentage); err != nil {
+		if curStyle.DashOffset, err = p.parseUnitToPx(v, svgDiagPercentage); err != nil {
 			return err
 		}
 	case "stroke-dasharray":
@@ -367,7 +369,7 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 					return err
 				}
 			}
-			curStyle.Dash.Dash = dList
+			curStyle.Dash = dList
 		}
 	case "opacity":
 		var opacity float32
@@ -522,8 +524,8 @@ func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentageReference) (floa
 }
 
 type svgPathParser struct {
-	pts        []float32
 	path       *Path
+	pts        []float32
 	placeX     float32
 	placeY     float32
 	curX       float32
@@ -813,27 +815,6 @@ func (c *svgPathParser) reflectControl(forQuad bool) {
 	} else {
 		c.cntlPtX, c.cntlPtY = c.placeX, c.placeY
 	}
-}
-
-// svgMatrixAdder add points to path after applying a matrix M to all points
-type svgMatrixAdder struct {
-	path *Path
-	M    geom.Matrix
-}
-
-// Start starts a new path.
-func (m *svgMatrixAdder) Start(p geom.Point) {
-	m.path.MoveTo(m.M.TransformPoint(p))
-}
-
-// Line adds a linear segment to the current curve.
-func (m *svgMatrixAdder) Line(p geom.Point) {
-	m.path.LineTo(m.M.TransformPoint(p))
-}
-
-// CubeBezier adds a cubic segment to the current curve.
-func (m *svgMatrixAdder) CubeBezier(b, c, d geom.Point) {
-	m.path.CubicTo(m.M.TransformPoint(b), m.M.TransformPoint(c), m.M.TransformPoint(d))
 }
 
 func init() {
@@ -1350,26 +1331,6 @@ func svgUseF(c *svgParser, attrs []xml.Attr) error {
 	return nil
 }
 
-// SVGDashOptions defines the dash pattern for stroking a path.
-type SVGDashOptions struct {
-	Dash       []float32 // values for the dash pattern (nil or an empty slice for no dashes)
-	DashOffset float32   // starting offset into the dash array
-}
-
-// SVGJoinOptions defines how path segments are joined and how line ends are capped.
-type SVGJoinOptions struct {
-	MiterLimit   float32         // The miter cutoff value for miter, arc, miterclip and arcClip joinModes
-	LineJoin     strokejoin.Enum // JoinMode for curve segments
-	TrailLineCap strokecap.Enum  // capping functions for leading and trailing line ends. If one is nil, the other function is used at both ends.
-}
-
-// SVGStrokeOptions defines the options for stroking a path.
-type SVGStrokeOptions struct {
-	Dash      SVGDashOptions
-	Join      SVGJoinOptions
-	LineWidth fixed.Int26_6 // width of the line
-}
-
 // SVGDefaultStyle sets the default PathStyle to fill black, winding rule,
 // full opacity, no stroke, ButtCap line end and Bevel line connect.
 var SVGDefaultStyle = SVGPathStyle{
@@ -1377,14 +1338,11 @@ var SVGDefaultStyle = SVGPathStyle{
 	LineOpacity:       1.0,
 	LineWidth:         2.0,
 	UseNonZeroWinding: true,
-	Join: SVGJoinOptions{
-		MiterLimit:   4,
-		LineJoin:     strokejoin.Bevel,
-		TrailLineCap: strokecap.Butt,
-	},
-	FillerColor: Black,
-	Transform:   geom.NewIdentityMatrix(),
-	Masks:       make([]string, 0),
+	MiterLimit:        4,
+	StrokeJoin:        strokejoin.Bevel,
+	StrokeCap:         strokecap.Butt,
+	FillerColor:       Black,
+	Transform:         geom.NewIdentityMatrix(),
 }
 
 var svgRoot2 = xmath.Sqrt(2)
