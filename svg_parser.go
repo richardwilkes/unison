@@ -30,76 +30,83 @@ var (
 	errZeroLengthID  = errors.New("zero length id")
 )
 
-// SVGData holds data from parsed SVGs.
-type SVGData struct {
-	Masks     map[string]*SVGMask
+type svgData struct {
+	masks     map[string]*svgMask
 	grads     map[string]*Gradient
 	defs      map[string][]svgDef
-	Paths     []SVGStyledPath
-	Transform geom.Matrix
+	paths     []svgStyledPath
+	transform geom.Matrix
 }
 
-// SVGPathStyle holds the state of the style.
-type SVGPathStyle struct {
-	FillerColor       Ink
-	LinerColor        Ink
-	Masks             []string  // Currently unused
-	Dash              []float32 // Currently unused
-	DashOffset        float32   // Currently unused
-	MiterLimit        float32
-	FillOpacity       float32
-	LineOpacity       float32
-	LineWidth         float32
-	Transform         geom.Matrix
-	StrokeJoin        strokejoin.Enum
-	StrokeCap         strokecap.Enum
-	UseNonZeroWinding bool
+type svgPathStyle struct {
+	fillInk           Ink
+	strokeInk         Ink
+	masks             []string // Currently unused
+	dash              []float32
+	dashOffset        float32
+	fillOpacity       float32
+	strokeOpacity     float32
+	strokeWidth       float32
+	strokeMiter       float32
+	transform         geom.Matrix
+	strokeJoin        strokejoin.Enum
+	strokeCap         strokecap.Enum
+	useNonZeroWinding bool
 }
 
-// SVGStyledPath binds a PathStyle to a Path.
-type SVGStyledPath struct {
-	Path  *Path
-	Style SVGPathStyle
+type svgStyledPath struct {
+	path  *Path
+	style svgPathStyle
 }
 
-// SVGMask is the element that defines a mask for the referenced elements.
-type SVGMask struct {
-	ID        string
-	SvgPaths  []SVGStyledPath
-	Bounds    geom.Rect
-	Transform geom.Matrix
+type svgMask struct {
+	id        string
+	paths     []svgStyledPath
+	bounds    geom.Rect
+	transform geom.Matrix
 }
 
 type svgDef struct {
-	ID    string
-	Tag   string
-	Attrs []xml.Attr
+	id    string
+	tag   string
+	attrs []xml.Attr
 }
 
 type svgParser struct {
 	svg        *SVG
-	data       *SVGData
+	data       *svgData
 	grad       *Gradient
-	mask       *SVGMask
-	styleStack []SVGPathStyle
+	mask       *svgMask
+	styleStack []svgPathStyle
 	currentDef []svgDef
-	svgPathParser
-	inGrad bool
-	inDefs bool
-	inMask bool
+	path       *Path
+	pts        []float32
+	placeX     float32
+	placeY     float32
+	curX       float32
+	curY       float32
+	cntlPtX    float32
+	cntlPtY    float32
+	pathStartX float32
+	pathStartY float32
+	lastKey    uint8
+	inPath     bool
+	inGrad     bool
+	inDefs     bool
+	inMask     bool
 }
 
 func parseSVG(stream io.Reader) (*SVG, error) {
-	svg := &SVGData{
+	svg := &svgData{
 		defs:      make(map[string][]svgDef),
 		grads:     make(map[string]*Gradient),
-		Masks:     make(map[string]*SVGMask),
-		Transform: geom.NewIdentityMatrix(),
+		masks:     make(map[string]*svgMask),
+		transform: geom.NewIdentityMatrix(),
 	}
 	p := &svgParser{
 		svg:        &SVG{},
 		data:       svg,
-		styleStack: []SVGPathStyle{SVGDefaultStyle},
+		styleStack: []svgPathStyle{SVGDefaultStyle},
 	}
 	d := xml.NewDecoder(stream)
 	d.CharsetReader = charset.NewReaderLabel
@@ -129,17 +136,17 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 			switch se.Name.Local {
 			case "g":
 				if p.inDefs {
-					p.currentDef = append(p.currentDef, svgDef{Tag: "endg"})
+					p.currentDef = append(p.currentDef, svgDef{tag: "endg"})
 				}
 			case "mask":
 				if p.mask != nil {
-					p.data.Masks[p.mask.ID] = p.mask
+					p.data.masks[p.mask.id] = p.mask
 					p.mask = nil
 				}
 				p.inMask = false
 			case "defs":
 				if len(p.currentDef) > 0 {
-					p.data.defs[p.currentDef[0].ID] = p.currentDef
+					p.data.defs[p.currentDef[0].id] = p.currentDef
 					p.currentDef = make([]svgDef, 0)
 				}
 				p.inDefs = false
@@ -150,31 +157,34 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 	}
 
 	// From here down converts to unison's internal representation
-	p.svg.paths = make([]*svgPath, len(svg.Paths))
-	for i := range svg.Paths {
-		p1 := svg.Paths[i].Path
-		if svg.Paths[i].Style.UseNonZeroWinding {
+	p.svg.paths = make([]*svgPath, len(svg.paths))
+	for i := range svg.paths {
+		p1 := svg.paths[i].path
+		if svg.paths[i].style.useNonZeroWinding {
 			p1.SetFillType(filltype.Winding)
 		} else {
 			p1.SetFillType(filltype.EvenOdd)
 		}
 
-		if !svg.Paths[i].Style.Transform.IsIdentity() {
-			p1.Transform(svg.Paths[i].Style.Transform)
+		if !svg.paths[i].style.transform.IsIdentity() {
+			p1.Transform(svg.paths[i].style.transform)
 		}
-		sp := &svgPath{Path: p1}
+		sp := &svgPath{path: p1}
 
-		if svg.Paths[i].Style.FillerColor != nil && svg.Paths[i].Style.FillOpacity != 0 {
-			sp.fill = createPaintFromSVGPattern(svg.Paths[i].Style.FillerColor, svg.Paths[i].Style.FillOpacity)
+		if svg.paths[i].style.fillInk != nil && svg.paths[i].style.fillOpacity != 0 {
+			sp.fillInk = createInkForSVG(svg.paths[i].style.fillInk, svg.paths[i].style.fillOpacity)
 		}
 
-		if svg.Paths[i].Style.LinerColor != nil && svg.Paths[i].Style.LineOpacity != 0 &&
-			svg.Paths[i].Style.LineWidth != 0 {
-			sp.stroke = createPaintFromSVGPattern(svg.Paths[i].Style.LinerColor, svg.Paths[i].Style.LineOpacity)
-			sp.strokeCap = svg.Paths[i].Style.StrokeCap
-			sp.strokeJoin = svg.Paths[i].Style.StrokeJoin
-			sp.strokeMiter = svg.Paths[i].Style.MiterLimit
-			sp.strokeWidth = svg.Paths[i].Style.LineWidth
+		if svg.paths[i].style.strokeInk != nil && svg.paths[i].style.strokeOpacity != 0 &&
+			svg.paths[i].style.strokeWidth != 0 {
+			if len(svg.paths[i].style.dash) != 0 {
+				sp.dash = NewDashPathEffect(svg.paths[i].style.dash, svg.paths[i].style.dashOffset)
+			}
+			sp.strokeInk = createInkForSVG(svg.paths[i].style.strokeInk, svg.paths[i].style.strokeOpacity)
+			sp.strokeCap = svg.paths[i].style.strokeCap
+			sp.strokeJoin = svg.paths[i].style.strokeJoin
+			sp.strokeMiter = svg.paths[i].style.strokeMiter
+			sp.strokeWidth = svg.paths[i].style.strokeWidth
 		}
 
 		p.svg.paths[i] = sp
@@ -182,7 +192,7 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 	return p.svg, nil
 }
 
-func createPaintFromSVGPattern(pattern Ink, opacity float32) Ink {
+func createInkForSVG(pattern Ink, opacity float32) Ink {
 	switch t := pattern.(type) {
 	case Color:
 		return t.MultiplyAlpha(opacity)
@@ -262,7 +272,7 @@ func (p *svgParser) readTransformAttr(op string, m geom.Matrix) (geom.Matrix, er
 
 func (p *svgParser) parseTransform(v string) (geom.Matrix, error) {
 	s := strings.Split(v, ")")
-	m := p.styleStack[len(p.styleStack)-1].Transform
+	m := p.styleStack[len(p.styleStack)-1].transform
 	for i := len(s) - 1; i >= 0; i-- {
 		t := strings.TrimSpace(s[i])
 		if t == "" {
@@ -301,63 +311,63 @@ func (p *svgParser) parseSelector(v string) (string, error) {
 	return "", errs.Newf("unsupported selector: %s", v)
 }
 
-func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
+func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 	var err error
 	v = strings.TrimSpace(v)
 	switch strings.TrimSpace(strings.ToLower(k)) {
 	case "fill":
-		if gradient, ok := p.readGradientURL(v, curStyle.FillerColor); ok {
-			curStyle.FillerColor = gradient
-		} else if curStyle.FillerColor, err = ColorDecode(v); err != nil {
+		if gradient, ok := p.readGradientURL(v, curStyle.fillInk); ok {
+			curStyle.fillInk = gradient
+		} else if curStyle.fillInk, err = ColorDecode(v); err != nil {
 			return err
 		}
 	case "fill-rule":
 		switch v {
 		case "evenodd":
-			curStyle.UseNonZeroWinding = false
+			curStyle.useNonZeroWinding = false
 		case "nonzero":
-			curStyle.UseNonZeroWinding = true
+			curStyle.useNonZeroWinding = true
 		default:
 			slog.Warn("svg: unsupported value for fill-rule", "value", v)
 		}
 	case "stroke":
-		if gradient, ok := p.readGradientURL(v, curStyle.LinerColor); ok {
-			curStyle.LinerColor = gradient
-		} else if curStyle.LinerColor, err = ColorDecode(v); err != nil {
+		if gradient, ok := p.readGradientURL(v, curStyle.strokeInk); ok {
+			curStyle.strokeInk = gradient
+		} else if curStyle.strokeInk, err = ColorDecode(v); err != nil {
 			return err
 		}
 	case "stroke-linecap":
 		switch v {
 		case "butt":
-			curStyle.StrokeCap = strokecap.Butt
+			curStyle.strokeCap = strokecap.Butt
 		case "round":
-			curStyle.StrokeCap = strokecap.Round
+			curStyle.strokeCap = strokecap.Round
 		case "square":
-			curStyle.StrokeCap = strokecap.Square
+			curStyle.strokeCap = strokecap.Square
 		default:
 			slog.Warn("svg: unsupported value for <stroke-linecap>", "value", v)
 		}
 	case "stroke-linejoin":
 		switch v {
 		case "miter":
-			curStyle.StrokeJoin = strokejoin.Miter
+			curStyle.strokeJoin = strokejoin.Miter
 		case "round":
-			curStyle.StrokeJoin = strokejoin.Round
+			curStyle.strokeJoin = strokejoin.Round
 		case "bevel":
-			curStyle.StrokeJoin = strokejoin.Bevel
+			curStyle.strokeJoin = strokejoin.Bevel
 		default:
 			slog.Warn("svg: unsupported value for <stroke-linejoin>", "value", v)
 		}
 	case "stroke-miterlimit":
-		if curStyle.MiterLimit, err = svgParseBasicFloat(v); err != nil {
+		if curStyle.strokeMiter, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
 	case "stroke-width":
-		if curStyle.LineWidth, err = p.parseUnitToPx(v, svgWidthPercentage); err != nil {
+		if curStyle.strokeWidth, err = p.parseUnitToPx(v, svgWidthPercentage); err != nil {
 			return err
 		}
 	case "stroke-dashoffset":
-		if curStyle.DashOffset, err = p.parseUnitToPx(v, svgDiagPercentage); err != nil {
+		if curStyle.dashOffset, err = p.parseUnitToPx(v, svgDiagPercentage); err != nil {
 			return err
 		}
 	case "stroke-dasharray":
@@ -369,29 +379,29 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 					return err
 				}
 			}
-			curStyle.Dash = dList
+			curStyle.dash = dList
 		}
 	case "opacity":
 		var opacity float32
 		if opacity, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
-		curStyle.FillOpacity *= opacity
-		curStyle.LineOpacity *= opacity
+		curStyle.fillOpacity *= opacity
+		curStyle.strokeOpacity *= opacity
 	case "stroke-opacity":
 		var opacity float32
 		if opacity, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
-		curStyle.LineOpacity *= opacity
+		curStyle.strokeOpacity *= opacity
 	case "fill-opacity":
 		var opacity float32
 		if opacity, err = svgParseBasicFloat(v); err != nil {
 			return err
 		}
-		curStyle.FillOpacity *= opacity
+		curStyle.fillOpacity *= opacity
 	case "transform":
-		if curStyle.Transform, err = p.parseTransform(v); err != nil {
+		if curStyle.transform, err = p.parseTransform(v); err != nil {
 			return err
 		}
 	case "mask":
@@ -399,7 +409,7 @@ func (p *svgParser) readStyleAttr(curStyle *SVGPathStyle, k, v string) error {
 		if id, err = p.parseSelector(v); err != nil {
 			return err
 		}
-		curStyle.Masks = append(curStyle.Masks, id)
+		curStyle.masks = append(curStyle.masks, id)
 	}
 	return nil
 }
@@ -415,9 +425,9 @@ func (p *svgParser) pushStyle(attrs []xml.Attr) error {
 		}
 	}
 	s := p.styleStack[len(p.styleStack)-1]
-	if len(s.Masks) != 0 {
+	if len(s.masks) != 0 {
 		// Make a copy of the current masks, so that we don't modify the one below us on the stack
-		s.Masks = append([]string{}, s.Masks...)
+		s.masks = append([]string{}, s.masks...)
 	}
 	for _, pair := range pairs {
 		kv := strings.Split(pair, ":")
@@ -444,13 +454,13 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 			}
 		}
 		if id != "" && len(p.currentDef) > 0 {
-			p.data.defs[p.currentDef[0].ID] = p.currentDef
+			p.data.defs[p.currentDef[0].id] = p.currentDef
 			p.currentDef = make([]svgDef, 0)
 		}
 		p.currentDef = append(p.currentDef, svgDef{
-			ID:    id,
-			Tag:   se.Name.Local,
-			Attrs: se.Attr,
+			id:    id,
+			tag:   se.Name.Local,
+			attrs: se.Attr,
 		})
 		return nil
 	}
@@ -465,11 +475,11 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	}
 	if p.path != nil && !p.path.Empty() {
 		if p.inMask && p.mask != nil {
-			p.mask.SvgPaths = append(p.mask.SvgPaths,
-				SVGStyledPath{Path: p.path, Style: p.styleStack[len(p.styleStack)-1]})
+			p.mask.paths = append(p.mask.paths,
+				svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
 		} else if !p.inMask {
-			p.data.Paths = append(p.data.Paths,
-				SVGStyledPath{Path: p.path, Style: p.styleStack[len(p.styleStack)-1]})
+			p.data.paths = append(p.data.paths,
+				svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
 		}
 		p.path = NewPath()
 	}
@@ -523,33 +533,18 @@ func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentageReference) (floa
 	return svgResolveUnit(p.svg.viewBox, s, asPerc)
 }
 
-type svgPathParser struct {
-	path       *Path
-	pts        []float32
-	placeX     float32
-	placeY     float32
-	curX       float32
-	curY       float32
-	cntlPtX    float32
-	cntlPtY    float32
-	pathStartX float32
-	pathStartY float32
-	lastKey    uint8
-	inPath     bool
-}
-
-func (c *svgPathParser) compilePath(svgPath string) error {
-	c.placeX = 0
-	c.placeY = 0
-	c.pts = c.pts[0:0]
-	c.lastKey = ' '
-	c.path = NewPath()
-	c.inPath = false
+func (p *svgParser) compilePath(svgPath string) error {
+	p.placeX = 0
+	p.placeY = 0
+	p.pts = p.pts[0:0]
+	p.lastKey = ' '
+	p.path = NewPath()
+	p.inPath = false
 	lastIndex := -1
 	for i, v := range svgPath {
 		if unicode.IsLetter(v) && v != 'e' {
 			if lastIndex != -1 {
-				if err := c.addSegment(svgPath[lastIndex:i]); err != nil {
+				if err := p.addSegment(svgPath[lastIndex:i]); err != nil {
 					return err
 				}
 			}
@@ -557,51 +552,51 @@ func (c *svgPathParser) compilePath(svgPath string) error {
 		}
 	}
 	if lastIndex != -1 {
-		if err := c.addSegment(svgPath[lastIndex:]); err != nil {
+		if err := p.addSegment(svgPath[lastIndex:]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *svgPathParser) valsToAbs(last float32) {
-	for i := 0; i < len(c.pts); i++ {
-		last += c.pts[i]
-		c.pts[i] = last
+func (p *svgParser) valsToAbs(last float32) {
+	for i := 0; i < len(p.pts); i++ {
+		last += p.pts[i]
+		p.pts[i] = last
 	}
 }
 
-func (c *svgPathParser) pointsToAbs(sz int) {
-	lastX := c.placeX
-	lastY := c.placeY
-	for j := 0; j < len(c.pts); j += sz {
+func (p *svgParser) pointsToAbs(sz int) {
+	lastX := p.placeX
+	lastY := p.placeY
+	for j := 0; j < len(p.pts); j += sz {
 		for i := 0; i < sz; i += 2 {
-			c.pts[i+j] += lastX
-			c.pts[i+1+j] += lastY
+			p.pts[i+j] += lastX
+			p.pts[i+1+j] += lastY
 		}
-		lastX = c.pts[(j+sz)-2]
-		lastY = c.pts[(j+sz)-1]
+		lastX = p.pts[(j+sz)-2]
+		lastY = p.pts[(j+sz)-1]
 	}
 }
 
-func (c *svgPathParser) hasSetsOrMore(sz int, rel bool) bool {
-	if len(c.pts) < sz || len(c.pts)%sz != 0 {
+func (p *svgParser) hasSetsOrMore(sz int, rel bool) bool {
+	if len(p.pts) < sz || len(p.pts)%sz != 0 {
 		return false
 	}
 	if rel {
-		c.pointsToAbs(sz)
+		p.pointsToAbs(sz)
 	}
 	return true
 }
 
-func (c *svgPathParser) addPoints(dataPoints string) error {
+func (p *svgParser) addPoints(dataPoints string) error {
 	lastIndex := -1
-	c.pts = c.pts[0:0]
+	p.pts = p.pts[0:0]
 	lr := ' '
 	for i, r := range dataPoints {
 		if !unicode.IsNumber(r) && r != '.' && (r != '-' || lr != 'e') && r != 'e' {
 			if lastIndex != -1 {
-				if err := c.readFloatIntoPts(dataPoints[lastIndex:i]); err != nil {
+				if err := p.readFloatIntoPts(dataPoints[lastIndex:i]); err != nil {
 					return err
 				}
 			}
@@ -616,14 +611,14 @@ func (c *svgPathParser) addPoints(dataPoints string) error {
 		lr = r
 	}
 	if lastIndex != -1 && lastIndex != len(dataPoints) {
-		if err := c.readFloatIntoPts(dataPoints[lastIndex:]); err != nil {
+		if err := p.readFloatIntoPts(dataPoints[lastIndex:]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *svgPathParser) readFloatIntoPts(numStr string) error {
+func (p *svgParser) readFloatIntoPts(numStr string) error {
 	last := 0
 	isFirst := true
 	for i, n := range numStr {
@@ -638,182 +633,182 @@ func (c *svgPathParser) readFloatIntoPts(numStr string) error {
 		if err != nil {
 			return err
 		}
-		c.pts = append(c.pts, f)
+		p.pts = append(p.pts, f)
 		last = i
 	}
 	f, err := svgParseBasicFloat(numStr[last:])
 	if err != nil {
 		return err
 	}
-	c.pts = append(c.pts, f)
+	p.pts = append(p.pts, f)
 	return nil
 }
 
-func (c *svgPathParser) addSegment(segString string) error {
-	if err := c.addPoints(segString[1:]); err != nil {
+func (p *svgParser) addSegment(segString string) error {
+	if err := p.addPoints(segString[1:]); err != nil {
 		return err
 	}
-	l := len(c.pts)
+	l := len(p.pts)
 	k := segString[0]
 	rel := false
 	switch k {
 	case 'Z', 'z':
-		if len(c.pts) != 0 {
+		if len(p.pts) != 0 {
 			return errParamMismatch
 		}
-		if c.inPath {
-			c.path.Close()
-			c.placeX = c.pathStartX
-			c.placeY = c.pathStartY
-			c.inPath = false
+		if p.inPath {
+			p.path.Close()
+			p.placeX = p.pathStartX
+			p.placeY = p.pathStartY
+			p.inPath = false
 		}
 	case 'm':
 		rel = true
 		fallthrough
 	case 'M':
-		if !c.hasSetsOrMore(2, rel) {
+		if !p.hasSetsOrMore(2, rel) {
 			return errParamMismatch
 		}
-		c.pathStartX = c.pts[0]
-		c.pathStartY = c.pts[1]
-		c.inPath = true
-		c.path.MoveTo(geom.NewPoint(c.pathStartX+c.curX, c.pathStartY+c.curY))
+		p.pathStartX = p.pts[0]
+		p.pathStartY = p.pts[1]
+		p.inPath = true
+		p.path.MoveTo(geom.NewPoint(p.pathStartX+p.curX, p.pathStartY+p.curY))
 		for i := 2; i < l-1; i += 2 {
-			c.path.LineTo(geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY))
+			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
 		}
-		c.placeX = c.pts[l-2]
-		c.placeY = c.pts[l-1]
+		p.placeX = p.pts[l-2]
+		p.placeY = p.pts[l-1]
 	case 'l':
 		rel = true
 		fallthrough
 	case 'L':
-		if !c.hasSetsOrMore(2, rel) {
+		if !p.hasSetsOrMore(2, rel) {
 			return errParamMismatch
 		}
 		for i := 0; i < l-1; i += 2 {
-			c.path.LineTo(geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY))
+			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
 		}
-		c.placeX = c.pts[l-2]
-		c.placeY = c.pts[l-1]
+		p.placeX = p.pts[l-2]
+		p.placeY = p.pts[l-1]
 	case 'v':
-		c.valsToAbs(c.placeY)
+		p.valsToAbs(p.placeY)
 		fallthrough
 	case 'V':
-		if !c.hasSetsOrMore(1, false) {
+		if !p.hasSetsOrMore(1, false) {
 			return errParamMismatch
 		}
-		for _, p := range c.pts {
-			c.path.LineTo(geom.NewPoint(c.placeX+c.curX, p+c.curY))
+		for _, pt := range p.pts {
+			p.path.LineTo(geom.NewPoint(p.placeX+p.curX, pt+p.curY))
 		}
-		c.placeY = c.pts[l-1]
+		p.placeY = p.pts[l-1]
 	case 'h':
-		c.valsToAbs(c.placeX)
+		p.valsToAbs(p.placeX)
 		fallthrough
 	case 'H':
-		if !c.hasSetsOrMore(1, false) {
+		if !p.hasSetsOrMore(1, false) {
 			return errParamMismatch
 		}
-		for _, p := range c.pts {
-			c.path.LineTo(geom.NewPoint(p+c.curX, c.placeY+c.curY))
+		for _, pt := range p.pts {
+			p.path.LineTo(geom.NewPoint(pt+p.curX, p.placeY+p.curY))
 		}
-		c.placeX = c.pts[l-1]
+		p.placeX = p.pts[l-1]
 	case 'q', 'Q':
-		if !c.hasSetsOrMore(4, k == 'q') {
+		if !p.hasSetsOrMore(4, k == 'q') {
 			return errParamMismatch
 		}
 		for i := 0; i < l-3; i += 4 {
-			c.path.QuadTo(
-				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
-				geom.NewPoint(c.pts[i+2]+c.curX, c.pts[i+3]+c.curY),
+			p.path.QuadTo(
+				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
+				geom.NewPoint(p.pts[i+2]+p.curX, p.pts[i+3]+p.curY),
 			)
 		}
-		c.cntlPtX, c.cntlPtY = c.pts[l-4], c.pts[l-3]
-		c.placeX = c.pts[l-2]
-		c.placeY = c.pts[l-1]
+		p.cntlPtX, p.cntlPtY = p.pts[l-4], p.pts[l-3]
+		p.placeX = p.pts[l-2]
+		p.placeY = p.pts[l-1]
 	case 't':
 		rel = true
 		fallthrough
 	case 'T':
-		if !c.hasSetsOrMore(2, rel) {
+		if !p.hasSetsOrMore(2, rel) {
 			return errParamMismatch
 		}
 		for i := 0; i < l-1; i += 2 {
-			c.reflectControl(true)
-			c.path.QuadTo(
-				geom.NewPoint(c.cntlPtX+c.curX, c.cntlPtY+c.curY),
-				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
+			p.reflectControl(true)
+			p.path.QuadTo(
+				geom.NewPoint(p.cntlPtX+p.curX, p.cntlPtY+p.curY),
+				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
 			)
-			c.lastKey = k
-			c.placeX = c.pts[i]
-			c.placeY = c.pts[i+1]
+			p.lastKey = k
+			p.placeX = p.pts[i]
+			p.placeY = p.pts[i+1]
 		}
 	case 'c', 'C':
-		if !c.hasSetsOrMore(6, k == 'c') {
+		if !p.hasSetsOrMore(6, k == 'c') {
 			return errParamMismatch
 		}
 		for i := 0; i < l-5; i += 6 {
-			c.path.CubicTo(
-				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
-				geom.NewPoint(c.pts[i+2]+c.curX, c.pts[i+3]+c.curY),
-				geom.NewPoint(c.pts[i+4]+c.curX, c.pts[i+5]+c.curY),
+			p.path.CubicTo(
+				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
+				geom.NewPoint(p.pts[i+2]+p.curX, p.pts[i+3]+p.curY),
+				geom.NewPoint(p.pts[i+4]+p.curX, p.pts[i+5]+p.curY),
 			)
 		}
-		c.cntlPtX, c.cntlPtY = c.pts[l-4], c.pts[l-3]
-		c.placeX = c.pts[l-2]
-		c.placeY = c.pts[l-1]
+		p.cntlPtX, p.cntlPtY = p.pts[l-4], p.pts[l-3]
+		p.placeX = p.pts[l-2]
+		p.placeY = p.pts[l-1]
 	case 's', 'S':
-		if !c.hasSetsOrMore(4, k == 's') {
+		if !p.hasSetsOrMore(4, k == 's') {
 			return errParamMismatch
 		}
 		for i := 0; i < l-3; i += 4 {
-			c.reflectControl(false)
-			c.path.CubicTo(
-				geom.NewPoint(c.cntlPtX+c.curX, c.cntlPtY+c.curY),
-				geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY),
-				geom.NewPoint(c.pts[i+2]+c.curX, c.pts[i+3]+c.curY),
+			p.reflectControl(false)
+			p.path.CubicTo(
+				geom.NewPoint(p.cntlPtX+p.curX, p.cntlPtY+p.curY),
+				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
+				geom.NewPoint(p.pts[i+2]+p.curX, p.pts[i+3]+p.curY),
 			)
-			c.lastKey = k
-			c.cntlPtX, c.cntlPtY = c.pts[i], c.pts[i+1]
-			c.placeX = c.pts[i+2]
-			c.placeY = c.pts[i+3]
+			p.lastKey = k
+			p.cntlPtX, p.cntlPtY = p.pts[i], p.pts[i+1]
+			p.placeX = p.pts[i+2]
+			p.placeY = p.pts[i+3]
 		}
 	case 'a', 'A':
-		if !c.hasSetsOrMore(7, false) {
+		if !p.hasSetsOrMore(7, false) {
 			return errParamMismatch
 		}
 		for i := 0; i < l-6; i += 7 {
 			if k == 'a' {
-				c.pts[i+5] += c.placeX
-				c.pts[i+6] += c.placeY
+				p.pts[i+5] += p.placeX
+				p.pts[i+6] += p.placeY
 			}
-			x := c.pts[i+5] + c.curX
-			y := c.pts[i+6] + c.curY
+			x := p.pts[i+5] + p.curX
+			y := p.pts[i+6] + p.curY
 			as := arcsize.Small
-			if c.pts[i+3] != 0 {
+			if p.pts[i+3] != 0 {
 				as = arcsize.Large
 			}
 			dir := direction.CounterClockwise
-			if c.pts[i+4] != 0 {
+			if p.pts[i+4] != 0 {
 				dir = direction.Clockwise
 			}
-			c.path.ArcTo(geom.NewPoint(x, y), geom.NewSize(c.pts[i], c.pts[i+1]), c.pts[i+2], as, dir)
-			c.placeX = x
-			c.placeY = y
+			p.path.ArcTo(geom.NewPoint(x, y), geom.NewSize(p.pts[i], p.pts[i+1]), p.pts[i+2], as, dir)
+			p.placeX = x
+			p.placeY = y
 		}
 	default:
 		slog.Warn("Ignoring unknown svg path command", "command", string(k))
 	}
-	c.lastKey = k
+	p.lastKey = k
 	return nil
 }
 
-func (c *svgPathParser) reflectControl(forQuad bool) {
-	if (forQuad && (c.lastKey == 'q' || c.lastKey == 'Q' || c.lastKey == 'T' || c.lastKey == 't')) ||
-		(!forQuad && (c.lastKey == 'c' || c.lastKey == 'C' || c.lastKey == 's' || c.lastKey == 'S')) {
-		c.cntlPtX = c.placeX*2 - c.cntlPtX
-		c.cntlPtY = c.placeY*2 - c.cntlPtY
+func (p *svgParser) reflectControl(forQuad bool) {
+	if (forQuad && (p.lastKey == 'q' || p.lastKey == 'Q' || p.lastKey == 'T' || p.lastKey == 't')) ||
+		(!forQuad && (p.lastKey == 'c' || p.lastKey == 'C' || p.lastKey == 's' || p.lastKey == 'S')) {
+		p.cntlPtX = p.placeX*2 - p.cntlPtX
+		p.cntlPtY = p.placeY*2 - p.cntlPtY
 	} else {
-		c.cntlPtX, c.cntlPtY = c.placeX, c.placeY
+		p.cntlPtX, p.cntlPtY = p.placeX, p.placeY
 	}
 }
 
@@ -821,7 +816,7 @@ func init() {
 	svgDrawFuncs["use"] = svgUseF // Can't be done statically, since useF uses drawFuncs
 }
 
-type svgFunc func(c *svgParser, attrs []xml.Attr) error
+type svgFunc func(p *svgParser, attrs []xml.Attr) error
 
 var svgDrawFuncs = map[string]svgFunc{
 	"svg":            svgF,
@@ -886,23 +881,23 @@ func svgF(p *svgParser, attrs []xml.Attr) error {
 	return nil
 }
 
-func svgRectF(c *svgParser, attrs []xml.Attr) error {
+func svgRectF(p *svgParser, attrs []xml.Attr) error {
 	var x, y, w, h, rx, ry float32
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "x":
-			x, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			x, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "y":
-			y, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			y, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		case "width":
-			w, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			w, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "height":
-			h, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			h, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		case "rx":
-			rx, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			rx, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "ry":
-			ry, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			ry, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		}
 		if err != nil {
 			return err
@@ -919,15 +914,15 @@ func svgRectF(c *svgParser, attrs []xml.Attr) error {
 		rx = ry
 	}
 	if rx == 0 {
-		c.path.Rect(geom.NewRect(x+c.curX, y+c.curY, w, h))
+		p.path.Rect(geom.NewRect(x+p.curX, y+p.curY, w, h))
 	} else {
-		c.path.RoundedRect(geom.NewRect(x+c.curX, y+c.curY, w, h), geom.NewSize(rx, ry))
+		p.path.RoundedRect(geom.NewRect(x+p.curX, y+p.curY, w, h), geom.NewSize(rx, ry))
 	}
 	return nil
 }
 
-func svgMaskF(c *svgParser, attrs []xml.Attr) error {
-	var mask SVGMask
+func svgMaskF(p *svgParser, attrs []xml.Attr) error {
+	var mask svgMask
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
@@ -935,42 +930,42 @@ func svgMaskF(c *svgParser, attrs []xml.Attr) error {
 			if attr.Value == "" {
 				return errZeroLengthID
 			}
-			mask.ID = attr.Value
+			mask.id = attr.Value
 		case "x":
-			mask.Bounds.X, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			mask.bounds.X, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "y":
-			mask.Bounds.Y, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			mask.bounds.Y, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		case "width":
-			mask.Bounds.Width, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			mask.bounds.Width, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "height":
-			mask.Bounds.Height, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			mask.bounds.Height, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		}
 		if err != nil {
 			return err
 		}
 	}
-	mask.Transform = geom.NewIdentityMatrix()
-	c.inMask = true
-	c.mask = &mask
+	mask.transform = geom.NewIdentityMatrix()
+	p.inMask = true
+	p.mask = &mask
 	return nil
 }
 
-func svgCircleF(c *svgParser, attrs []xml.Attr) error {
+func svgCircleF(p *svgParser, attrs []xml.Attr) error {
 	var cx, cy, rx, ry float32
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "cx":
-			cx, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			cx, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "cy":
-			cy, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			cy, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		case "r":
-			rx, err = c.parseUnitToPx(attr.Value, svgDiagPercentage)
+			rx, err = p.parseUnitToPx(attr.Value, svgDiagPercentage)
 			ry = rx
 		case "rx":
-			rx, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			rx, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "ry":
-			ry, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			ry, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		}
 		if err != nil {
 			return err
@@ -979,82 +974,82 @@ func svgCircleF(c *svgParser, attrs []xml.Attr) error {
 	if rx == 0 || ry == 0 {
 		return nil
 	}
-	cx += c.curX
-	cy += c.curY
+	cx += p.curX
+	cy += p.curY
 	if rx == ry {
-		c.path.Circle(geom.NewPoint(cx, cy), rx)
+		p.path.Circle(geom.NewPoint(cx, cy), rx)
 	} else {
-		c.path.Oval(geom.NewRect(cx-rx, cy-ry, cx+rx, cy+ry))
+		p.path.Oval(geom.NewRect(cx-rx, cy-ry, cx+rx, cy+ry))
 	}
 	return nil
 }
 
-func svgLineF(c *svgParser, attrs []xml.Attr) error {
+func svgLineF(p *svgParser, attrs []xml.Attr) error {
 	var x1, x2, y1, y2 float32
 	var err error
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "x1":
-			x1, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			x1, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "x2":
-			x2, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			x2, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "y1":
-			y1, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			y1, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		case "y2":
-			y2, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			y2, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		}
 		if err != nil {
 			return err
 		}
 	}
-	c.path.MoveTo(geom.NewPoint(x1+c.curX, y1+c.curY))
-	c.path.LineTo(geom.NewPoint(x2+c.curX, y2+c.curY))
+	p.path.MoveTo(geom.NewPoint(x1+p.curX, y1+p.curY))
+	p.path.LineTo(geom.NewPoint(x2+p.curX, y2+p.curY))
 	return nil
 }
 
-func svgPolylineF(c *svgParser, attrs []xml.Attr) error {
+func svgPolylineF(p *svgParser, attrs []xml.Attr) error {
 	for _, attr := range attrs {
 		if attr.Name.Local != "points" {
 			continue
 		}
-		if err := c.addPoints(attr.Value); err != nil {
+		if err := p.addPoints(attr.Value); err != nil {
 			return err
 		}
-		if len(c.pts)%2 != 0 {
+		if len(p.pts)%2 != 0 {
 			return errors.New("polygon has odd number of points")
 		}
 	}
-	if len(c.pts) > 4 {
-		c.path.MoveTo(geom.NewPoint(c.pts[0]+c.curX, c.pts[1]+c.curY))
-		for i := 2; i < len(c.pts)-1; i += 2 {
-			c.path.LineTo(geom.NewPoint(c.pts[i]+c.curX, c.pts[i+1]+c.curY))
+	if len(p.pts) > 4 {
+		p.path.MoveTo(geom.NewPoint(p.pts[0]+p.curX, p.pts[1]+p.curY))
+		for i := 2; i < len(p.pts)-1; i += 2 {
+			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
 		}
 	}
 	return nil
 }
 
-func svgPolygonF(c *svgParser, attrs []xml.Attr) error {
-	err := svgPolylineF(c, attrs)
-	if len(c.pts) > 4 {
-		c.path.Close()
+func svgPolygonF(p *svgParser, attrs []xml.Attr) error {
+	err := svgPolylineF(p, attrs)
+	if len(p.pts) > 4 {
+		p.path.Close()
 	}
 	return err
 }
 
-func svgPathF(c *svgParser, attrs []xml.Attr) error {
+func svgPathF(p *svgParser, attrs []xml.Attr) error {
 	for _, attr := range attrs {
 		if attr.Name.Local != "d" {
 			continue
 		}
-		if err := c.compilePath(attr.Value); err != nil {
+		if err := p.compilePath(attr.Value); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func svgDefsF(c *svgParser, _ []xml.Attr) error {
-	c.inDefs = true
+func svgDefsF(p *svgParser, _ []xml.Attr) error {
+	p.inDefs = true
 	return nil
 }
 
@@ -1220,8 +1215,8 @@ func (p *svgParser) readCommonGradientAttrs(attr xml.Attr, userSpaceOnUse *bool)
 	return nil
 }
 
-func svgStopF(c *svgParser, attrs []xml.Attr) error {
-	if c.inGrad {
+func svgStopF(p *svgParser, attrs []xml.Attr) error {
+	if p.inGrad {
 		for _, attr := range attrs {
 			if attr.Name.Local != "style" {
 				continue
@@ -1266,12 +1261,12 @@ func svgStopF(c *svgParser, attrs []xml.Attr) error {
 		if stop.Color != nil && opacity != 1 {
 			stop.Color = stop.Color.GetColor().SetAlphaIntensity(opacity)
 		}
-		c.grad.Stops = append(c.grad.Stops, stop)
+		p.grad.Stops = append(p.grad.Stops, stop)
 	}
 	return nil
 }
 
-func svgUseF(c *svgParser, attrs []xml.Attr) error {
+func svgUseF(p *svgParser, attrs []xml.Attr) error {
 	var (
 		href string
 		x, y float32
@@ -1282,17 +1277,17 @@ func svgUseF(c *svgParser, attrs []xml.Attr) error {
 		case "href":
 			href = attr.Value
 		case "x":
-			x, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			x, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "y":
-			y, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			y, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
 		}
 		if err != nil {
 			return err
 		}
 	}
-	c.curX, c.curY = x, y
+	p.curX, p.curY = x, y
 	defer func() {
-		c.curX, c.curY = 0, 0
+		p.curX, p.curY = 0, 0
 	}()
 	if href == "" {
 		return errors.New("only use tags with href is supported")
@@ -1300,32 +1295,32 @@ func svgUseF(c *svgParser, attrs []xml.Attr) error {
 	if !strings.HasPrefix(href, "#") {
 		return errors.New("only the ID CSS selector is supported")
 	}
-	defs, ok := c.data.defs[href[1:]]
+	defs, ok := p.data.defs[href[1:]]
 	if !ok {
 		return errors.New("href ID in use statement was not found in saved defs")
 	}
 	for _, def := range defs {
-		if def.Tag == "endg" {
+		if def.tag == "endg" {
 			// pop style
-			c.styleStack = c.styleStack[:len(c.styleStack)-1]
+			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 			continue
 		}
-		if err = c.pushStyle(def.Attrs); err != nil {
+		if err = p.pushStyle(def.attrs); err != nil {
 			return err
 		}
 		var df svgFunc
-		if df, ok = svgDrawFuncs[def.Tag]; !ok {
-			slog.Warn("svg: cannot process svg element", "element", def.Tag)
+		if df, ok = svgDrawFuncs[def.tag]; !ok {
+			slog.Warn("svg: cannot process svg element", "element", def.tag)
 			return nil
 		}
 		if df != nil {
-			if err = df(c, def.Attrs); err != nil {
+			if err = df(p, def.attrs); err != nil {
 				return err
 			}
 		}
-		if def.Tag != "g" {
+		if def.tag != "g" {
 			// pop style
-			c.styleStack = c.styleStack[:len(c.styleStack)-1]
+			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 		}
 	}
 	return nil
@@ -1333,16 +1328,16 @@ func svgUseF(c *svgParser, attrs []xml.Attr) error {
 
 // SVGDefaultStyle sets the default PathStyle to fill black, winding rule,
 // full opacity, no stroke, ButtCap line end and Bevel line connect.
-var SVGDefaultStyle = SVGPathStyle{
-	FillOpacity:       1.0,
-	LineOpacity:       1.0,
-	LineWidth:         2.0,
-	UseNonZeroWinding: true,
-	MiterLimit:        4,
-	StrokeJoin:        strokejoin.Bevel,
-	StrokeCap:         strokecap.Butt,
-	FillerColor:       Black,
-	Transform:         geom.NewIdentityMatrix(),
+var SVGDefaultStyle = svgPathStyle{
+	fillOpacity:       1.0,
+	strokeOpacity:     1.0,
+	strokeWidth:       2.0,
+	useNonZeroWinding: true,
+	strokeMiter:       4,
+	strokeJoin:        strokejoin.Bevel,
+	strokeCap:         strokecap.Butt,
+	fillInk:           Black,
+	transform:         geom.NewIdentityMatrix(),
 }
 
 var svgRoot2 = xmath.Sqrt(2)

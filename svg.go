@@ -118,13 +118,14 @@ type SVG struct {
 }
 
 type svgPath struct {
-	*Path
-	fill        Ink
-	stroke      Ink
-	strokeCap   strokecap.Enum
-	strokeJoin  strokejoin.Enum
+	path        *Path
+	fillInk     Ink
+	strokeInk   Ink
+	dash        *PathEffect
 	strokeMiter float32
 	strokeWidth float32
+	strokeCap   strokecap.Enum
+	strokeJoin  strokejoin.Enum
 }
 
 // MustSVGFromContentString creates a new SVG and panics if an error would be generated. The content should contain
@@ -194,19 +195,22 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 	canvas.Scale(geom.PointFromSize(rect.Size.DivSize(s.viewBox.Size)))
 	for _, path := range s.paths {
 		if paint == nil {
-			if path.fill != nil {
-				canvas.DrawPath(path.Path, path.fill.Paint(canvas, s.viewBox, paintstyle.Fill))
+			if path.fillInk != nil {
+				canvas.DrawPath(path.path, path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill))
 			}
-			if path.stroke != nil {
-				p := path.stroke.Paint(canvas, s.viewBox, paintstyle.Stroke)
+			if path.strokeInk != nil {
+				p := path.strokeInk.Paint(canvas, s.viewBox, paintstyle.Stroke)
 				p.SetStrokeCap(path.strokeCap)
 				p.SetStrokeJoin(path.strokeJoin)
 				p.SetStrokeMiter(path.strokeMiter)
 				p.SetStrokeWidth(path.strokeWidth)
-				canvas.DrawPath(path.Path, p)
+				if path.dash != nil {
+					p.SetPathEffect(path.dash)
+				}
+				canvas.DrawPath(path.path, p)
 			}
 		} else {
-			canvas.DrawPath(path.Path, paint)
+			canvas.DrawPath(path.path, paint)
 		}
 	}
 }
