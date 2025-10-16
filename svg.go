@@ -17,7 +17,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
@@ -151,85 +150,11 @@ func MustSVGFromReader(r io.Reader) *SVG {
 
 // NewSVGFromReader creates a new SVG. The reader should contain valid SVG file data.
 func NewSVGFromReader(r io.Reader) (*SVG, error) {
-	s := &SVG{}
-
-	sData, err := SVGParse(r)
+	s, err := parseSVG(r)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
-
-	s.viewBox = sData.ViewBox
-	s.suggestedSize = sData.SuggestedSize
-	s.paths = make([]*svgPath, len(sData.Paths))
-	for i := range sData.Paths {
-		p := NewPath()
-		if sData.Paths[i].Style.UseNonZeroWinding {
-			p.SetFillType(filltype.Winding)
-		} else {
-			p.SetFillType(filltype.EvenOdd)
-		}
-		for _, op := range sData.Paths[i].Path {
-			// The coordinates used in SVGOp are of type fixed.Int26_6, which has a fractional part of 6 bits.
-			// When converting to a float, the values are divided by 64.
-			switch op := op.(type) {
-			case SVGOpMoveTo:
-				p.MoveTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
-			case SVGOpLineTo:
-				p.LineTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
-			case SVGOpQuadTo:
-				p.QuadTo(
-					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
-					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
-				)
-			case SVGOpCubicTo:
-				p.CubicTo(
-					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
-					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
-					geom.NewPoint(float32(op[2].X)/64, float32(op[2].Y)/64),
-				)
-			case SVGOpClose:
-				p.Close()
-			}
-		}
-
-		if !sData.Paths[i].Style.Transform.IsIdentity() {
-			p.Transform(sData.Paths[i].Style.Transform)
-		}
-		sp := &svgPath{Path: p}
-
-		if sData.Paths[i].Style.FillerColor != nil && sData.Paths[i].Style.FillOpacity != 0 {
-			sp.fill = createPaintFromSVGPattern(sData.Paths[i].Style.FillerColor, sData.Paths[i].Style.FillOpacity)
-		}
-
-		if sData.Paths[i].Style.LinerColor != nil && sData.Paths[i].Style.LineOpacity != 0 &&
-			sData.Paths[i].Style.LineWidth != 0 {
-			sp.stroke = createPaintFromSVGPattern(sData.Paths[i].Style.LinerColor, sData.Paths[i].Style.LineOpacity)
-			sp.strokeCap = sData.Paths[i].Style.Join.TrailLineCap
-			sp.strokeJoin = sData.Paths[i].Style.Join.LineJoin
-			sp.strokeMiter = sData.Paths[i].Style.Join.MiterLimit
-			sp.strokeWidth = sData.Paths[i].Style.LineWidth
-		}
-
-		s.paths[i] = sp
-	}
 	return s, nil
-}
-
-func createPaintFromSVGPattern(pattern Ink, opacity float32) Ink {
-	switch t := pattern.(type) {
-	case Color:
-		c := t.GetColor()
-		return c.MultiplyAlpha(opacity)
-	case *Gradient:
-		t = t.Clone()
-		for i := range t.Stops {
-			c := t.Stops[i].Color.GetColor()
-			t.Stops[i].Color = c.MultiplyAlpha(opacity)
-		}
-		return t
-	default:
-		return Black
-	}
 }
 
 // Size returns the original (viewBox) size.

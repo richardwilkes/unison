@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
 	"github.com/richardwilkes/unison/enums/tilemode"
@@ -28,13 +29,11 @@ var errParamMismatch = errors.New("param mismatch")
 
 // SVGData holds data from parsed SVGs.
 type SVGData struct {
-	Masks         map[string]*SVGMask
-	grads         map[string]*Gradient
-	defs          map[string][]svgDef
-	Paths         []SVGStyledPath
-	ViewBox       geom.Rect
-	SuggestedSize geom.Size
-	Transform     geom.Matrix
+	Masks     map[string]*SVGMask
+	grads     map[string]*Gradient
+	defs      map[string][]svgDef
+	Paths     []SVGStyledPath
+	Transform geom.Matrix
 }
 
 // SVGPathStyle holds the state of the style.
@@ -72,7 +71,8 @@ type svgDef struct {
 }
 
 type svgParser struct {
-	svg        *SVGData
+	svg        *SVG
+	data       *SVGData
 	grad       *Gradient
 	mask       *SVGMask
 	styleStack []SVGPathStyle
@@ -83,11 +83,7 @@ type svgParser struct {
 	inMask bool
 }
 
-// SVGParse reads the Icon from the given io.Reader
-// This only supports a sub-set of SVG, but
-// is enough to draw many svgs. errMode determines if the svg ignores, errors out, or logs a warning
-// if it does not handle an element found in the svg file.
-func SVGParse(stream io.Reader) (*SVGData, error) {
+func parseSVG(stream io.Reader) (*SVG, error) {
 	svg := &SVGData{
 		defs:      make(map[string][]svgDef),
 		grads:     make(map[string]*Gradient),
@@ -95,8 +91,9 @@ func SVGParse(stream io.Reader) (*SVGData, error) {
 		Transform: geom.NewIdentityMatrix(),
 	}
 	p := &svgParser{
+		svg:        &SVG{},
+		data:       svg,
 		styleStack: []SVGPathStyle{SVGDefaultStyle},
-		svg:        svg,
 	}
 	d := xml.NewDecoder(stream)
 	d.CharsetReader = charset.NewReaderLabel
@@ -104,22 +101,22 @@ func SVGParse(stream io.Reader) (*SVGData, error) {
 	for {
 		t, err := d.Token()
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				if !seenTag {
-					return nil, errs.New("invalid svg data")
-				}
-				return svg, nil
+			if !errors.Is(err, io.EOF) {
+				return nil, err
 			}
-			return svg, err
+			if !seenTag {
+				return nil, errs.New("invalid svg data")
+			}
+			break
 		}
 		switch se := t.(type) {
 		case xml.StartElement:
 			seenTag = true
 			if err = p.pushStyle(se.Attr); err != nil {
-				return svg, err
+				return nil, err
 			}
 			if err = p.readStartElement(se); err != nil {
-				return svg, err
+				return nil, err
 			}
 		case xml.EndElement:
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
@@ -130,13 +127,13 @@ func SVGParse(stream io.Reader) (*SVGData, error) {
 				}
 			case "mask":
 				if p.mask != nil {
-					p.svg.Masks[p.mask.ID] = p.mask
+					p.data.Masks[p.mask.ID] = p.mask
 					p.mask = nil
 				}
 				p.inMask = false
 			case "defs":
 				if len(p.currentDef) > 0 {
-					p.svg.defs[p.currentDef[0].ID] = p.currentDef
+					p.data.defs[p.currentDef[0].ID] = p.currentDef
 					p.currentDef = make([]svgDef, 0)
 				}
 				p.inDefs = false
@@ -144,6 +141,77 @@ func SVGParse(stream io.Reader) (*SVGData, error) {
 				p.inGrad = false
 			}
 		}
+	}
+
+	// From here down converts to unison's internal representation
+	p.svg.paths = make([]*svgPath, len(svg.Paths))
+	for i := range svg.Paths {
+		p1 := NewPath()
+		if svg.Paths[i].Style.UseNonZeroWinding {
+			p1.SetFillType(filltype.Winding)
+		} else {
+			p1.SetFillType(filltype.EvenOdd)
+		}
+		for _, op := range svg.Paths[i].Path {
+			// The coordinates used in SVGOp are of type fixed.Int26_6, which has a fractional part of 6 bits.
+			// When converting to a float, the values are divided by 64.
+			switch op := op.(type) {
+			case SVGOpMoveTo:
+				p1.MoveTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
+			case SVGOpLineTo:
+				p1.LineTo(geom.NewPoint(float32(op.X)/64, float32(op.Y)/64))
+			case SVGOpQuadTo:
+				p1.QuadTo(
+					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
+					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
+				)
+			case SVGOpCubicTo:
+				p1.CubicTo(
+					geom.NewPoint(float32(op[0].X)/64, float32(op[0].Y)/64),
+					geom.NewPoint(float32(op[1].X)/64, float32(op[1].Y)/64),
+					geom.NewPoint(float32(op[2].X)/64, float32(op[2].Y)/64),
+				)
+			case SVGOpClose:
+				p1.Close()
+			}
+		}
+
+		if !svg.Paths[i].Style.Transform.IsIdentity() {
+			p1.Transform(svg.Paths[i].Style.Transform)
+		}
+		sp := &svgPath{Path: p1}
+
+		if svg.Paths[i].Style.FillerColor != nil && svg.Paths[i].Style.FillOpacity != 0 {
+			sp.fill = createPaintFromSVGPattern(svg.Paths[i].Style.FillerColor, svg.Paths[i].Style.FillOpacity)
+		}
+
+		if svg.Paths[i].Style.LinerColor != nil && svg.Paths[i].Style.LineOpacity != 0 &&
+			svg.Paths[i].Style.LineWidth != 0 {
+			sp.stroke = createPaintFromSVGPattern(svg.Paths[i].Style.LinerColor, svg.Paths[i].Style.LineOpacity)
+			sp.strokeCap = svg.Paths[i].Style.Join.TrailLineCap
+			sp.strokeJoin = svg.Paths[i].Style.Join.LineJoin
+			sp.strokeMiter = svg.Paths[i].Style.Join.MiterLimit
+			sp.strokeWidth = svg.Paths[i].Style.LineWidth
+		}
+
+		p.svg.paths[i] = sp
+	}
+	return p.svg, nil
+}
+
+func createPaintFromSVGPattern(pattern Ink, opacity float32) Ink {
+	switch t := pattern.(type) {
+	case Color:
+		return t.MultiplyAlpha(opacity)
+	case *Gradient:
+		t = t.Clone()
+		for i := range t.Stops {
+			c := t.Stops[i].Color.GetColor()
+			t.Stops[i].Color = c.MultiplyAlpha(opacity)
+		}
+		return t
+	default:
+		return Black
 	}
 }
 
@@ -393,7 +461,7 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 			}
 		}
 		if id != "" && len(p.currentDef) > 0 {
-			p.svg.defs[p.currentDef[0].ID] = p.currentDef
+			p.data.defs[p.currentDef[0].ID] = p.currentDef
 			p.currentDef = make([]svgDef, 0)
 		}
 		p.currentDef = append(p.currentDef, svgDef{
@@ -417,7 +485,7 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 			p.mask.SvgPaths = append(p.mask.SvgPaths,
 				SVGStyledPath{Path: append(SVGPath{}, p.path...), Style: p.styleStack[len(p.styleStack)-1]})
 		} else if !p.inMask {
-			p.svg.Paths = append(p.svg.Paths,
+			p.data.Paths = append(p.data.Paths,
 				SVGStyledPath{Path: append(SVGPath{}, p.path...), Style: p.styleStack[len(p.styleStack)-1]})
 		}
 		p.path = p.path[:0]
@@ -430,7 +498,7 @@ func (p *svgParser) readGradientURL(v string, defaultColor Ink) (grad *Gradient,
 		urlStr := strings.TrimSpace(v[4 : len(v)-1])
 		if strings.HasPrefix(urlStr, "#") {
 			var g *Gradient
-			g, ok = p.svg.grads[urlStr[1:]]
+			g, ok = p.data.grads[urlStr[1:]]
 			if ok {
 				g2 := *g
 				for _, s := range g2.Stops {
@@ -469,7 +537,7 @@ func getSVGBackgroundColor(clr Ink) Color {
 }
 
 func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentageReference) (float32, error) {
-	return svgResolveUnit(p.svg.ViewBox, s, asPerc)
+	return svgResolveUnit(p.svg.viewBox, s, asPerc)
 }
 
 type svgPathParser struct {
@@ -1221,46 +1289,46 @@ var svgDrawFuncs = map[string]svgFunc{
 	"mask":           svgMaskF,
 }
 
-func svgF(c *svgParser, attrs []xml.Attr) error {
-	c.svg.ViewBox = geom.Rect{}
+func svgF(p *svgParser, attrs []xml.Attr) error {
+	p.svg.viewBox = geom.Rect{}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "viewBox":
-			if err := c.addPoints(attr.Value); err != nil {
+			if err := p.addPoints(attr.Value); err != nil {
 				return err
 			}
-			if len(c.pts) != 4 {
+			if len(p.pts) != 4 {
 				return errParamMismatch
 			}
-			c.svg.ViewBox.X = c.pts[0]
-			c.svg.ViewBox.Y = c.pts[1]
-			c.svg.ViewBox.Width = c.pts[2]
-			c.svg.ViewBox.Height = c.pts[3]
+			p.svg.viewBox.X = p.pts[0]
+			p.svg.viewBox.Y = p.pts[1]
+			p.svg.viewBox.Width = p.pts[2]
+			p.svg.viewBox.Height = p.pts[3]
 		case "width": //nolint:goconst // Can't use const named width
 			width, err := svgParseBasicFloat(attr.Value)
 			if err != nil {
 				return err
 			}
-			c.svg.SuggestedSize.Width = width
+			p.svg.suggestedSize.Width = width
 		case "height": //nolint:goconst // Can't use const named height
 			height, err := svgParseBasicFloat(attr.Value)
 			if err != nil {
 				return err
 			}
-			c.svg.SuggestedSize.Height = height
+			p.svg.suggestedSize.Height = height
 		}
 	}
-	if c.svg.ViewBox.Width == 0 {
-		c.svg.ViewBox.Width = c.svg.SuggestedSize.Width
+	if p.svg.viewBox.Width == 0 {
+		p.svg.viewBox.Width = p.svg.suggestedSize.Width
 	}
-	if c.svg.SuggestedSize.Width == 0 {
-		c.svg.SuggestedSize.Width = c.svg.ViewBox.Width
+	if p.svg.suggestedSize.Width == 0 {
+		p.svg.suggestedSize.Width = p.svg.viewBox.Width
 	}
-	if c.svg.ViewBox.Height == 0 {
-		c.svg.ViewBox.Height = c.svg.SuggestedSize.Height
+	if p.svg.viewBox.Height == 0 {
+		p.svg.viewBox.Height = p.svg.suggestedSize.Height
 	}
-	if c.svg.SuggestedSize.Height == 0 {
-		c.svg.SuggestedSize.Height = c.svg.ViewBox.Height
+	if p.svg.suggestedSize.Height == 0 {
+		p.svg.suggestedSize.Height = p.svg.viewBox.Height
 	}
 	return nil
 }
@@ -1439,21 +1507,21 @@ func svgDefsF(c *svgParser, _ []xml.Attr) error {
 	return nil
 }
 
-func svgLinearGradientF(c *svgParser, attrs []xml.Attr) error {
+func svgLinearGradientF(p *svgParser, attrs []xml.Attr) error {
 	userSpaceOnUse := false
 	x1 := "0%"
 	y1 := x1
 	x2 := "100%"
 	y2 := x1
-	c.inGrad = true
-	c.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
+	p.inGrad = true
+	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "id":
 			if attr.Value == "" {
 				return errZeroLengthID
 			}
-			c.svg.grads[attr.Value] = c.grad
+			p.data.grads[attr.Value] = p.grad
 		case "x1":
 			x1 = attr.Value
 		case "y1":
@@ -1463,37 +1531,37 @@ func svgLinearGradientF(c *svgParser, attrs []xml.Attr) error {
 		case "y2":
 			y2 = attr.Value
 		default:
-			if err := c.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
 				return err
 			}
 		}
 	}
 	bbox := geom.NewRect(0, 0, 1, 1)
 	if userSpaceOnUse {
-		bbox = c.svg.ViewBox
+		bbox = p.svg.viewBox
 	}
 	var err error
-	c.grad.Start.X, err = svgResolveUnit(bbox, x1, svgWidthPercentage)
+	p.grad.Start.X, err = svgResolveUnit(bbox, x1, svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.Start.Y, err = svgResolveUnit(bbox, y1, svgHeightPercentage)
+	p.grad.Start.Y, err = svgResolveUnit(bbox, y1, svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.End.X, err = svgResolveUnit(bbox, x2, svgWidthPercentage)
+	p.grad.End.X, err = svgResolveUnit(bbox, x2, svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.End.Y, err = svgResolveUnit(bbox, y2, svgHeightPercentage)
+	p.grad.End.Y, err = svgResolveUnit(bbox, y2, svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	c.normalizeGradientStartEnd()
+	p.normalizeGradientStartEnd()
 	return nil
 }
 
-func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
+func svgRadialGradientF(p *svgParser, attrs []xml.Attr) error {
 	userSpaceOnUse := false
 	cx := "50%"
 	cy := cx
@@ -1501,15 +1569,15 @@ func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
 	fy := ""
 	r := cx
 	fr := cx
-	c.inGrad = true
-	c.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
+	p.inGrad = true
+	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "id":
 			if attr.Value == "" {
 				return errZeroLengthID
 			}
-			c.svg.grads[attr.Value] = c.grad
+			p.data.grads[attr.Value] = p.grad
 		case "cx":
 			cx = attr.Value
 		case "cy":
@@ -1523,7 +1591,7 @@ func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
 		case "fr":
 			fr = attr.Value
 		default:
-			if err := c.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
 				return err
 			}
 		}
@@ -1536,42 +1604,42 @@ func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
 	}
 	bbox := geom.NewRect(0, 0, 1, 1)
 	if userSpaceOnUse {
-		bbox = c.svg.ViewBox
+		bbox = p.svg.viewBox
 	}
 	var err error
-	c.grad.Start.X, err = svgResolveUnit(bbox, cx, svgWidthPercentage)
+	p.grad.Start.X, err = svgResolveUnit(bbox, cx, svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.Start.Y, err = svgResolveUnit(bbox, cy, svgHeightPercentage)
+	p.grad.Start.Y, err = svgResolveUnit(bbox, cy, svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.End.X, err = svgResolveUnit(bbox, fx, svgWidthPercentage)
+	p.grad.End.X, err = svgResolveUnit(bbox, fx, svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.End.Y, err = svgResolveUnit(bbox, fy, svgHeightPercentage)
+	p.grad.End.Y, err = svgResolveUnit(bbox, fy, svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.StartRadius, err = svgResolveUnit(bbox, r, svgDiagPercentage)
+	p.grad.StartRadius, err = svgResolveUnit(bbox, r, svgDiagPercentage)
 	if err != nil {
 		return err
 	}
-	c.grad.EndRadius, err = svgResolveUnit(bbox, fr, svgDiagPercentage)
+	p.grad.EndRadius, err = svgResolveUnit(bbox, fr, svgDiagPercentage)
 	if err != nil {
 		return err
 	}
-	c.normalizeGradientStartEnd()
+	p.normalizeGradientStartEnd()
 	return nil
 }
 
 func (p *svgParser) normalizeGradientStartEnd() {
-	p.grad.Start.X = (p.grad.Start.X - p.svg.ViewBox.X) / p.svg.ViewBox.Width
-	p.grad.Start.Y = (p.grad.Start.Y - p.svg.ViewBox.Y) / p.svg.ViewBox.Height
-	p.grad.End.X = (p.grad.End.X - p.svg.ViewBox.X) / p.svg.ViewBox.Width
-	p.grad.End.Y = (p.grad.End.Y - p.svg.ViewBox.Y) / p.svg.ViewBox.Height
+	p.grad.Start.X = (p.grad.Start.X - p.svg.viewBox.X) / p.svg.viewBox.Width
+	p.grad.Start.Y = (p.grad.Start.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
+	p.grad.End.X = (p.grad.End.X - p.svg.viewBox.X) / p.svg.viewBox.Width
+	p.grad.End.Y = (p.grad.End.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
 }
 
 func (p *svgParser) readCommonGradientAttrs(attr xml.Attr, userSpaceOnUse *bool) error {
@@ -1681,7 +1749,7 @@ func svgUseF(c *svgParser, attrs []xml.Attr) error {
 	if !strings.HasPrefix(href, "#") {
 		return errors.New("only the ID CSS selector is supported")
 	}
-	defs, ok := c.svg.defs[href[1:]]
+	defs, ok := c.data.defs[href[1:]]
 	if !ok {
 		return errors.New("href ID in use statement was not found in saved defs")
 	}
