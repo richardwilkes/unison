@@ -15,7 +15,6 @@ import (
 	"image/color"
 	"io"
 	"log/slog"
-	"strconv"
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -192,17 +191,6 @@ func MustSVGFromReader(r io.Reader) *SVG {
 	return s
 }
 
-func parseNumFromSVGAttribute(attr string) (float32, bool) {
-	if attr == "" {
-		return 0, false
-	}
-	val, err := strconv.ParseFloat(attr, 32)
-	if err != nil {
-		return 0, false
-	}
-	return float32(val), true
-}
-
 // NewSVGFromReader creates a new SVG. The reader should contain valid SVG file data. Note that this only reads a very
 // small subset of an SVG currently. Specifically, the "viewBox" attribute and any "d" attributes from enclosed SVG
 // "path" elements.
@@ -214,13 +202,8 @@ func NewSVGFromReader(r io.Reader) (*SVG, error) {
 		return nil, errs.Wrap(err)
 	}
 
-	s.size = geom.NewSize(sData.ViewBox.W, sData.ViewBox.H)
-	if w, ok := parseNumFromSVGAttribute(sData.Width); ok {
-		s.suggestedSize.Width = w
-	}
-	if h, ok := parseNumFromSVGAttribute(sData.Height); ok {
-		s.suggestedSize.Height = h
-	}
+	s.size = sData.ViewBox.Size
+	s.suggestedSize = sData.SuggestedSize
 	s.paths = make([]*svgPath, len(sData.Paths))
 	for i := range sData.Paths {
 		p := NewPath()
@@ -322,12 +305,11 @@ func createPaintFromSVGPattern(kind paintstyle.Enum, pattern SVGPattern, opacity
 		default:
 			return nil, errs.Newf("unsupported %s gradient direction %T", kind.Key(), gr.Direction)
 		}
-		bounds := geom.NewRect(gr.Bounds.X, gr.Bounds.Y, gr.Bounds.W, gr.Bounds.H)
-		grad.Start.X = (grad.Start.X - bounds.X) / bounds.Width
-		grad.Start.Y = (grad.Start.Y - bounds.Y) / bounds.Height
-		grad.End.X = (grad.End.X - bounds.X) / bounds.Width
-		grad.End.Y = (grad.End.Y - bounds.Y) / bounds.Height
-		return grad.Paint(nil, bounds, kind), nil
+		grad.Start.X = (grad.Start.X - gr.Bounds.X) / gr.Bounds.Width
+		grad.Start.Y = (grad.Start.Y - gr.Bounds.Y) / gr.Bounds.Height
+		grad.End.X = (grad.End.X - gr.Bounds.X) / gr.Bounds.Width
+		grad.End.Y = (grad.End.Y - gr.Bounds.Y) / gr.Bounds.Height
+		return grad.Paint(nil, gr.Bounds, kind), nil
 	}
 	slog.Warn("svg: unsupported style", "pattern", fmt.Sprintf("%T", pattern))
 	return Black.Paint(nil, geom.Rect{}, kind), nil

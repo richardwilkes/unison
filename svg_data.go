@@ -34,14 +34,13 @@ var errParamMismatch = errors.New("param mismatch")
 
 // SVGData holds data from parsed SVGs.
 type SVGData struct {
-	Masks     map[string]*SVGMask
-	grads     map[string]*SVGGradient
-	defs      map[string][]svgDef
-	Width     string
-	Height    string
-	Paths     []SVGStyledPath
-	ViewBox   SVGBounds
-	Transform geom.Matrix
+	Masks         map[string]*SVGMask
+	grads         map[string]*SVGGradient
+	defs          map[string][]svgDef
+	Paths         []SVGStyledPath
+	ViewBox       geom.Rect
+	SuggestedSize geom.Size
+	Transform     geom.Matrix
 }
 
 // SVGPathStyle holds the state of the style.
@@ -68,7 +67,7 @@ type SVGStyledPath struct {
 type SVGMask struct {
 	ID        string
 	SvgPaths  []SVGStyledPath
-	Bounds    SVGBounds
+	Bounds    geom.Rect
 	Transform geom.Matrix
 }
 
@@ -543,7 +542,7 @@ func (p *svgParser) readGradientAttr(attr xml.Attr) error {
 }
 
 func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentageReference) (float32, error) {
-	return p.svg.ViewBox.resolveUnit(s, asPerc)
+	return svgResolveUnit(p.svg.ViewBox, s, asPerc)
 }
 
 type svgPathParser struct {
@@ -1257,7 +1256,7 @@ type SVGGradStop struct {
 type SVGGradient struct {
 	Direction svgGradientDirection
 	Stops     []SVGGradStop
-	Bounds    SVGBounds
+	Bounds    geom.Rect
 	Matrix    geom.Matrix
 	Spread    SVGSpreadMethod
 	Units     SVGGradientUnits
@@ -1269,11 +1268,15 @@ func (g *SVGGradient) isPattern() {}
 // is not modified, but a matrix accounting for both the bounding box and the gradient matrix is returned.
 func (g *SVGGradient) ApplyPathExtent(extent fixed.Rectangle26_6) geom.Matrix {
 	if g.Units == SVGObjectBoundingBox {
-		mnx, mny := float32(extent.Min.X)/64, float32(extent.Min.Y)/64
-		mxx, mxy := float32(extent.Max.X)/64, float32(extent.Max.Y)/64
-		g.Bounds.X, g.Bounds.Y = mnx, mny
-		g.Bounds.W, g.Bounds.H = mxx-mnx, mxy-mny
-		return geom.NewScaleMatrix(g.Bounds.W, g.Bounds.H).Multiply(g.Matrix)
+		mnx := float32(extent.Min.X) / 64
+		mny := float32(extent.Min.Y) / 64
+		mxx := float32(extent.Max.X) / 64
+		mxy := float32(extent.Max.Y) / 64
+		g.Bounds.X = mnx
+		g.Bounds.Y = mny
+		g.Bounds.Width = mxx - mnx
+		g.Bounds.Height = mxy - mny
+		return geom.NewScaleMatrix(g.Bounds.Width, g.Bounds.Height).Multiply(g.Matrix)
 	}
 	return g.Matrix
 }
@@ -1502,39 +1505,45 @@ var svgDrawFuncs = map[string]svgFunc{
 }
 
 func svgF(c *svgParser, attrs []xml.Attr) error {
-	c.svg.ViewBox.X = 0
-	c.svg.ViewBox.Y = 0
-	c.svg.ViewBox.W = 0
-	c.svg.ViewBox.H = 0
-	var width, height float32
-	var err error
+	c.svg.ViewBox = geom.Rect{}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "viewBox":
-			err = c.addPoints(attr.Value)
+			if err := c.addPoints(attr.Value); err != nil {
+				return err
+			}
 			if len(c.pts) != 4 {
 				return errParamMismatch
 			}
 			c.svg.ViewBox.X = c.pts[0]
 			c.svg.ViewBox.Y = c.pts[1]
-			c.svg.ViewBox.W = c.pts[2]
-			c.svg.ViewBox.H = c.pts[3]
+			c.svg.ViewBox.Width = c.pts[2]
+			c.svg.ViewBox.Height = c.pts[3]
 		case "width": //nolint:goconst // Can't use const named width
-			c.svg.Width = attr.Value
-			width, err = svgParseBasicFloat(attr.Value)
+			width, err := svgParseBasicFloat(attr.Value)
+			if err != nil {
+				return err
+			}
+			c.svg.SuggestedSize.Width = width
 		case "height": //nolint:goconst // Can't use const named height
-			c.svg.Height = attr.Value
-			height, err = svgParseBasicFloat(attr.Value)
-		}
-		if err != nil {
-			return err
+			height, err := svgParseBasicFloat(attr.Value)
+			if err != nil {
+				return err
+			}
+			c.svg.SuggestedSize.Height = height
 		}
 	}
-	if c.svg.ViewBox.W == 0 {
-		c.svg.ViewBox.W = width
+	if c.svg.ViewBox.Width == 0 {
+		c.svg.ViewBox.Width = c.svg.SuggestedSize.Width
 	}
-	if c.svg.ViewBox.H == 0 {
-		c.svg.ViewBox.H = height
+	if c.svg.SuggestedSize.Width == 0 {
+		c.svg.SuggestedSize.Width = c.svg.ViewBox.Width
+	}
+	if c.svg.ViewBox.Height == 0 {
+		c.svg.ViewBox.Height = c.svg.SuggestedSize.Height
+	}
+	if c.svg.SuggestedSize.Height == 0 {
+		c.svg.SuggestedSize.Height = c.svg.ViewBox.Height
 	}
 	return nil
 }
@@ -1590,9 +1599,9 @@ func svgMaskF(c *svgParser, attrs []xml.Attr) error {
 		case "y":
 			mask.Bounds.Y, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
 		case "width":
-			mask.Bounds.W, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
+			mask.Bounds.Width, err = c.parseUnitToPx(attr.Value, svgWidthPercentage)
 		case "height":
-			mask.Bounds.H, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
+			mask.Bounds.Height, err = c.parseUnitToPx(attr.Value, svgHeightPercentage)
 		}
 		if err != nil {
 			return err
@@ -1744,24 +1753,24 @@ func svgLinearGradientF(c *svgParser, attrs []xml.Attr) error {
 		}
 	}
 	// now we can resolve percentages
-	bbox := SVGBounds{W: 1, H: 1} // default is ObjectBoundingBox
+	bbox := geom.NewRect(0, 0, 1, 1)
 	if c.grad.Units == SVGUserSpaceOnUse {
 		bbox = c.grad.Bounds
 	}
 	var direction SVGLinear
-	direction[0], err = bbox.resolveUnit(directionStrings[0], svgWidthPercentage)
+	direction[0], err = svgResolveUnit(bbox, directionStrings[0], svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	direction[1], err = bbox.resolveUnit(directionStrings[1], svgHeightPercentage)
+	direction[1], err = svgResolveUnit(bbox, directionStrings[1], svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	direction[2], err = bbox.resolveUnit(directionStrings[2], svgWidthPercentage)
+	direction[2], err = svgResolveUnit(bbox, directionStrings[2], svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	direction[3], err = bbox.resolveUnit(directionStrings[3], svgHeightPercentage)
+	direction[3], err = svgResolveUnit(bbox, directionStrings[3], svgHeightPercentage)
 	if err != nil {
 		return err
 	}
@@ -1811,32 +1820,32 @@ func svgRadialGradientF(c *svgParser, attrs []xml.Attr) error {
 	}
 
 	// now we can resolve percentages
-	bbox := SVGBounds{W: 1, H: 1} // default is ObjectBoundingBox
+	bbox := geom.NewRect(0, 0, 1, 1)
 	if c.grad.Units == SVGUserSpaceOnUse {
 		bbox = c.grad.Bounds
 	}
 	var direction SVGRadial
-	direction[0], err = bbox.resolveUnit(directionStrings[0], svgWidthPercentage)
+	direction[0], err = svgResolveUnit(bbox, directionStrings[0], svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	direction[1], err = bbox.resolveUnit(directionStrings[1], svgHeightPercentage)
+	direction[1], err = svgResolveUnit(bbox, directionStrings[1], svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	direction[2], err = bbox.resolveUnit(directionStrings[2], svgWidthPercentage)
+	direction[2], err = svgResolveUnit(bbox, directionStrings[2], svgWidthPercentage)
 	if err != nil {
 		return err
 	}
-	direction[3], err = bbox.resolveUnit(directionStrings[3], svgHeightPercentage)
+	direction[3], err = svgResolveUnit(bbox, directionStrings[3], svgHeightPercentage)
 	if err != nil {
 		return err
 	}
-	direction[4], err = bbox.resolveUnit(directionStrings[4], svgDiagPercentage)
+	direction[4], err = svgResolveUnit(bbox, directionStrings[4], svgDiagPercentage)
 	if err != nil {
 		return err
 	}
-	direction[5], err = bbox.resolveUnit(directionStrings[5], svgDiagPercentage)
+	direction[5], err = svgResolveUnit(bbox, directionStrings[5], svgDiagPercentage)
 	if err != nil {
 		return err
 	}
@@ -1982,10 +1991,6 @@ func svgUseF(c *svgParser, attrs []xml.Attr) error {
 	}
 	return nil
 }
-
-// SVGBounds defines a bounding box, such as a viewport
-// or a path extent.
-type SVGBounds struct{ X, Y, W, H float32 }
 
 // SVGDashOptions defines the dash pattern for stroking a path.
 type SVGDashOptions struct {
@@ -2163,16 +2168,13 @@ const (
 	svgDiagPercentage
 )
 
-// resolveUnit converts a length with a unit into its value in 'px'
-// percentage are supported, and refer to the viewBox
-// `asPerc` is only applied when `s` contains a percentage.
-func (viewBox SVGBounds) resolveUnit(s string, asPerc svgPercentageReference) (float32, error) {
+func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentageReference) (float32, error) {
 	value, isPercentage, err := svgParseUnit(s)
 	if err != nil {
 		return 0, err
 	}
 	if isPercentage {
-		w, h := viewBox.W, viewBox.H
+		w, h := viewBox.Width, viewBox.Height
 		switch asPerc {
 		case svgWidthPercentage:
 			return value / 100 * w, nil
