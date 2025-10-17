@@ -358,7 +358,7 @@ func (s *DrawableSVG) LogicalSize() geom.Size {
 // DrawInRect implements the Drawable interface.
 //
 // If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
-// within the source SVG. Be sure to set the Paint's style (fill or stroke) as desired.
+// within the source SVG.
 func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, paint *Paint) {
 	if s.RotationDegrees != 0 {
 		canvas.Save()
@@ -1468,13 +1468,13 @@ func (p *svgParser) handleSVGElement(attrs []xml.Attr) error {
 			p.svg.viewBox.Y = p.pts[1]
 			p.svg.viewBox.Width = p.pts[2]
 			p.svg.viewBox.Height = p.pts[3]
-		case "width": //nolint:goconst // Can't use const named width
+		case "width":
 			width, err := svgParseBasicFloat(attr.Value)
 			if err != nil {
 				return err
 			}
 			p.svg.suggestedSize.Width = width
-		case "height": //nolint:goconst // Can't use const named height
+		case "height":
 			height, err := svgParseBasicFloat(attr.Value)
 			if err != nil {
 				return err
