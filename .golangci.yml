@@ -50,7 +50,7 @@ linters:
         - (*github.com/richardwilkes/toolbox/v2/xbytes.InsertBuffer).WriteString
     goconst:
       min-len: 3
-      min-occurrences: 3
+      min-occurrences: 4
     gocritic:
       disabled-checks:
         - sloppyReassign

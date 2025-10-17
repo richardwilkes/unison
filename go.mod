@@ -7,14 +7,14 @@ require (
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/lafriks/go-svg v0.5.1
-	github.com/richardwilkes/toolbox/v2 v2.6.0
+	github.com/richardwilkes/toolbox/v2 v2.7.0
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.7.13
 	github.com/zeebo/xxh3 v1.0.2
-	golang.org/x/image v0.31.0
+	golang.org/x/image v0.32.0
+	golang.org/x/net v0.46.0
 	golang.org/x/sys v0.37.0
-	golang.org/x/text v0.29.0
+	golang.org/x/text v0.30.0
 )
 
 require (
@@ -24,11 +24,10 @@ require (
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
-	golang.org/x/mod v0.28.0 // indirect
-	golang.org/x/net v0.45.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/term v0.35.0 // indirect
-	golang.org/x/tools v0.37.0 // indirect
+	golang.org/x/term v0.36.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

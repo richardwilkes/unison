@@ -38,6 +38,8 @@ type Gradient struct {
 	StartRadius float32
 	End         geom.Point
 	EndRadius   float32
+	Transform   geom.Matrix
+	TileMode    tilemode.Enum
 }
 
 // NewHorizontalEvenlySpacedGradient creates a new gradient with the specified colors evenly spread across the whole
@@ -60,6 +62,7 @@ func NewEvenlySpacedGradient(start, end geom.Point, startRadius, endRadius float
 		StartRadius: startRadius,
 		End:         end,
 		EndRadius:   endRadius,
+		Transform:   geom.NewIdentityMatrix(),
 		Stops:       make([]Stop, len(colors)),
 	}
 	switch len(colors) {
@@ -86,28 +89,35 @@ func NewEvenlySpacedGradient(start, end geom.Point, startRadius, endRadius float
 	return gradient
 }
 
+// Clone creates a copy of this Gradient.
+func (g *Gradient) Clone() *Gradient {
+	clone := *g
+	clone.Stops = make([]Stop, len(g.Stops))
+	copy(clone.Stops, g.Stops)
+	return &clone
+}
+
 // Paint returns a Paint for this Gradient.
 func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
-	paint := NewPaint()
-	paint.SetStyle(style)
-	paint.SetColor(Black)
-	colors := make([]Color, len(g.Stops))
-	colorPos := make([]float32, len(g.Stops))
+	p := NewPaint()
+	p.SetStyle(style)
+	p.SetColor(Black)
+	c := make([]Color, len(g.Stops))
+	locs := make([]float32, len(g.Stops))
 	for i := range g.Stops {
-		colors[i] = g.Stops[i].Color.GetColor()
-		colorPos[i] = g.Stops[i].Location
+		c[i] = g.Stops[i].Color.GetColor()
+		locs[i] = g.Stops[i].Location
 	}
 	start := geom.NewPoint(rect.X+rect.Width*g.Start.X, rect.Y+rect.Height*g.Start.Y)
 	end := geom.NewPoint(rect.X+rect.Width*g.End.X, rect.Y+rect.Height*g.End.Y)
 	var shader *Shader
 	if g.StartRadius > 0 && g.EndRadius > 0 {
-		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, colors, colorPos, tilemode.Clamp,
-			geom.NewIdentityMatrix())
+		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, c, locs, g.TileMode, g.Transform)
 	} else {
-		shader = NewLinearGradientShader(start, end, colors, colorPos, tilemode.Clamp, geom.NewIdentityMatrix())
+		shader = NewLinearGradientShader(start, end, c, locs, g.TileMode, g.Transform)
 	}
-	paint.SetShader(shader)
-	return paint
+	p.SetShader(shader)
+	return p
 }
 
 // Reversed creates a copy of the current Gradient and inverts the locations of each color stop in that copy.

@@ -57,7 +57,7 @@ func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
 		VGrab:   true,
 	})
 	panel.DrawCallback = func(gc *unison.Canvas, dirty geom.Rect) {
-		gc.DrawRect(dirty, unison.ThemeSurface.Dark.Paint(gc, dirty, paintstyle.Fill))
+		gc.DrawRect(dirty, unison.Gray.Paint(gc, dirty, paintstyle.Fill))
 		svg.DrawInRectPreservingAspectRatio(gc, panel.ContentRect(false), nil, nil)
 	}
 	content.AddChild(panel)

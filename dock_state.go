@@ -42,10 +42,15 @@ func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string
 	case *DockContainer:
 		children := make([]*DockState, 0, len(t.Dockables()))
 		for _, d := range t.Dockables() {
-			children = append(children, &DockState{
-				Type: DockableType,
-				Key:  keyFromDockable(d),
-			})
+			if key := keyFromDockable(d); key != "" {
+				children = append(children, &DockState{
+					Type: DockableType,
+					Key:  key,
+				})
+			}
+		}
+		if len(children) == 0 {
+			return nil
 		}
 		return &DockState{
 			Type:         ContainerType,
@@ -56,7 +61,9 @@ func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string
 		children := make([]*DockState, 0, 2)
 		for _, n := range t.nodes {
 			if !xreflect.IsNil(n) {
-				children = append(children, collectDockState(n, keyFromDockable))
+				if s := collectDockState(n, keyFromDockable); s != nil {
+					children = append(children, s)
+				}
 			}
 		}
 		return &DockState{
