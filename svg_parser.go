@@ -28,6 +28,38 @@ import (
 var (
 	errParamMismatch = errors.New("param mismatch")
 	errZeroLengthID  = errors.New("zero length id")
+	defaultSVGStyle  = svgPathStyle{
+		fillOpacity:       1.0,
+		strokeOpacity:     1.0,
+		strokeWidth:       2.0,
+		useNonZeroWinding: true,
+		strokeMiter:       4,
+		strokeJoin:        strokejoin.Bevel,
+		strokeCap:         strokecap.Butt,
+		fillInk:           Black,
+		transform:         geom.NewIdentityMatrix(),
+	}
+	svgUnits = []struct {
+		suffix     string
+		multiplier float64
+	}{
+		{"px", 1},
+		{"cm", 96.0 / 2.54},
+		{"mm", 96.0 / 25.4},
+		{"pt", 96.0 / 72.0},
+		{"in", 96.0},
+		{"Q", 96.0 / 40.0},
+		{"pc", 96.0 / 6.0},
+		{"%", 1},
+	}
+)
+
+type svgPercentRef uint8
+
+const (
+	svgPercentWidth svgPercentRef = iota
+	svgPercentHeight
+	svgPercentDiag
 )
 
 type svgData struct {
@@ -106,7 +138,7 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 	p := &svgParser{
 		svg:        &SVG{},
 		data:       svg,
-		styleStack: []svgPathStyle{SVGDefaultStyle},
+		styleStack: []svgPathStyle{defaultSVGStyle},
 		path:       NewPath(),
 	}
 	d := xml.NewDecoder(stream)
@@ -377,11 +409,11 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 			return err
 		}
 	case "stroke-width":
-		if curStyle.strokeWidth, err = p.parseUnitToPx(v, svgWidthPercentage); err != nil {
+		if curStyle.strokeWidth, err = p.parseUnitToPx(v, svgPercentWidth); err != nil {
 			return err
 		}
 	case "stroke-dashoffset":
-		if curStyle.dashOffset, err = p.parseUnitToPx(v, svgDiagPercentage); err != nil {
+		if curStyle.dashOffset, err = p.parseUnitToPx(v, svgPercentDiag); err != nil {
 			return err
 		}
 	case "stroke-dasharray":
@@ -389,7 +421,7 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 			dashes := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })
 			dList := make([]float32, len(dashes))
 			for i, dstr := range dashes {
-				if dList[i], err = p.parseUnitToPx(strings.TrimSpace(dstr), svgDiagPercentage); err != nil {
+				if dList[i], err = p.parseUnitToPx(strings.TrimSpace(dstr), svgPercentDiag); err != nil {
 					return err
 				}
 			}
@@ -478,14 +510,8 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 		})
 		return nil
 	}
-	df, ok := svgDrawFuncs[se.Name.Local]
-	if !ok {
-		slog.Warn("svg: cannot process svg element", "element", se.Name.Local)
-		return nil
-	}
-	var err error
-	if df != nil {
-		err = df(p, se.Attr)
+	if err := p.executeDrawFunc(se.Name.Local, se.Attr); err != nil {
+		return err
 	}
 	if !p.path.Empty() {
 		if p.inMask && p.mask != nil {
@@ -497,7 +523,7 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 		}
 		p.path = NewPath()
 	}
-	return err
+	return nil
 }
 
 func (p *svgParser) readGradientURL(v string, defaultColor Ink) (grad *Gradient, ok bool) {
@@ -543,7 +569,7 @@ func getSVGBackgroundColor(clr Ink) Color {
 	return Black
 }
 
-func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentageReference) (float32, error) {
+func (p *svgParser) parseUnitToPx(s string, asPerc svgPercentRef) (float32, error) {
 	return svgResolveUnit(p.svg.viewBox, s, asPerc)
 }
 
@@ -826,231 +852,50 @@ func (p *svgParser) reflectControl(forQuad bool) {
 	}
 }
 
-func init() {
-	svgDrawFuncs["use"] = svgUseF // Can't be done statically, since useF uses drawFuncs
-}
-
-type svgFunc func(p *svgParser, attrs []xml.Attr) error
-
-var svgDrawFuncs = map[string]svgFunc{
-	"svg":            svgF,
-	"g":              nil,
-	"line":           svgLineF,
-	"stop":           svgStopF,
-	"rect":           svgRectF,
-	"circle":         svgCircleF,
-	"ellipse":        svgCircleF, // circleF handles ellipse also
-	"polyline":       svgPolylineF,
-	"polygon":        svgPolygonF,
-	"path":           svgPathF,
-	"desc":           nil,
-	"defs":           svgDefsF,
-	"title":          nil,
-	"linearGradient": svgLinearGradientF,
-	"radialGradient": svgRadialGradientF,
-	"mask":           svgMaskF,
-}
-
-func svgF(p *svgParser, attrs []xml.Attr) error {
-	p.svg.viewBox = geom.Rect{}
-	for _, attr := range attrs {
-		switch attr.Name.Local {
-		case "viewBox":
-			if err := p.addPoints(attr.Value); err != nil {
-				return err
-			}
-			if len(p.pts) != 4 {
-				return errParamMismatch
-			}
-			p.svg.viewBox.X = p.pts[0]
-			p.svg.viewBox.Y = p.pts[1]
-			p.svg.viewBox.Width = p.pts[2]
-			p.svg.viewBox.Height = p.pts[3]
-		case "width": //nolint:goconst // Can't use const named width
-			width, err := svgParseBasicFloat(attr.Value)
-			if err != nil {
-				return err
-			}
-			p.svg.suggestedSize.Width = width
-		case "height": //nolint:goconst // Can't use const named height
-			height, err := svgParseBasicFloat(attr.Value)
-			if err != nil {
-				return err
-			}
-			p.svg.suggestedSize.Height = height
-		}
-	}
-	if p.svg.viewBox.Width == 0 {
-		p.svg.viewBox.Width = p.svg.suggestedSize.Width
-	}
-	if p.svg.suggestedSize.Width == 0 {
-		p.svg.suggestedSize.Width = p.svg.viewBox.Width
-	}
-	if p.svg.viewBox.Height == 0 {
-		p.svg.viewBox.Height = p.svg.suggestedSize.Height
-	}
-	if p.svg.suggestedSize.Height == 0 {
-		p.svg.suggestedSize.Height = p.svg.viewBox.Height
-	}
-	return nil
-}
-
-func svgRectF(p *svgParser, attrs []xml.Attr) error {
-	var x, y, w, h, rx, ry float32
-	var err error
-	for _, attr := range attrs {
-		switch attr.Name.Local {
-		case "x":
-			x, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "y":
-			y, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		case "width":
-			w, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "height":
-			h, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		case "rx":
-			rx, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "ry":
-			ry, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		}
-		if err != nil {
+func (p *svgParser) executeDrawFunc(name string, attrs []xml.Attr) error {
+	switch name {
+	case "path":
+		return p.handlePathElement(attrs)
+	case "defs":
+		p.inDefs = true
+		return nil
+	case "stop":
+		return p.handleStopElement(attrs)
+	case "linearGradient":
+		return p.handleLinearGradientElement(attrs)
+	case "radialGradient":
+		return p.handleRadialGradientElement(attrs)
+	case "rect":
+		return p.handleRectElement(attrs)
+	case "circle", "ellipse":
+		return p.handleCircleElement(attrs)
+	case "line":
+		return p.handleLineElement(attrs)
+	case "polyline":
+		return p.handlePolylineElement(attrs)
+	case "polygon":
+		if err := p.handlePolylineElement(attrs); err != nil {
 			return err
 		}
-	}
-	if w == 0 || h == 0 {
+		if len(p.pts) > 4 {
+			p.path.Close()
+		}
+		return nil
+	case "svg":
+		return p.handleSVGElement(attrs)
+	case "use":
+		return p.handleUseElement(attrs)
+	case "mask":
+		return p.handleMaskElement(attrs)
+	case "g", "desc", "title":
+		return nil
+	default:
+		slog.Warn("svg: cannot process element", "element", name)
 		return nil
 	}
-	// If only one of rx or ry is specified, the other should be same
-	if rx != 0 && ry == 0 {
-		ry = rx
-	}
-	if ry != 0 && rx == 0 {
-		rx = ry
-	}
-	if rx == 0 {
-		p.path.Rect(geom.NewRect(x+p.curX, y+p.curY, w, h))
-	} else {
-		p.path.RoundedRect(geom.NewRect(x+p.curX, y+p.curY, w, h), geom.NewSize(rx, ry))
-	}
-	return nil
 }
 
-func svgMaskF(p *svgParser, attrs []xml.Attr) error {
-	var mask svgMask
-	var err error
-	for _, attr := range attrs {
-		switch attr.Name.Local {
-		case "id":
-			if attr.Value == "" {
-				return errZeroLengthID
-			}
-			mask.id = attr.Value
-		case "x":
-			mask.bounds.X, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "y":
-			mask.bounds.Y, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		case "width":
-			mask.bounds.Width, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "height":
-			mask.bounds.Height, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	mask.transform = geom.NewIdentityMatrix()
-	p.inMask = true
-	p.mask = &mask
-	return nil
-}
-
-func svgCircleF(p *svgParser, attrs []xml.Attr) error {
-	var cx, cy, rx, ry float32
-	var err error
-	for _, attr := range attrs {
-		switch attr.Name.Local {
-		case "cx":
-			cx, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "cy":
-			cy, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		case "r":
-			rx, err = p.parseUnitToPx(attr.Value, svgDiagPercentage)
-			ry = rx
-		case "rx":
-			rx, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "ry":
-			ry, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	if rx == 0 || ry == 0 {
-		return nil
-	}
-	cx += p.curX
-	cy += p.curY
-	if rx == ry {
-		p.path.Circle(geom.NewPoint(cx, cy), rx)
-	} else {
-		p.path.Oval(geom.NewRect(cx-rx, cy-ry, rx*2, ry*2))
-	}
-	return nil
-}
-
-func svgLineF(p *svgParser, attrs []xml.Attr) error {
-	var x1, x2, y1, y2 float32
-	var err error
-	for _, attr := range attrs {
-		switch attr.Name.Local {
-		case "x1":
-			x1, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "x2":
-			x2, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
-		case "y1":
-			y1, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		case "y2":
-			y2, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	p.path.MoveTo(geom.NewPoint(x1+p.curX, y1+p.curY))
-	p.path.LineTo(geom.NewPoint(x2+p.curX, y2+p.curY))
-	return nil
-}
-
-func svgPolylineF(p *svgParser, attrs []xml.Attr) error {
-	for _, attr := range attrs {
-		if attr.Name.Local != "points" {
-			continue
-		}
-		if err := p.addPoints(attr.Value); err != nil {
-			return err
-		}
-		if len(p.pts)%2 != 0 {
-			return errors.New("polygon has odd number of points")
-		}
-	}
-	if len(p.pts) > 4 {
-		p.path.MoveTo(geom.NewPoint(p.pts[0]+p.curX, p.pts[1]+p.curY))
-		for i := 2; i < len(p.pts)-1; i += 2 {
-			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
-		}
-	}
-	return nil
-}
-
-func svgPolygonF(p *svgParser, attrs []xml.Attr) error {
-	err := svgPolylineF(p, attrs)
-	if len(p.pts) > 4 {
-		p.path.Close()
-	}
-	return err
-}
-
-func svgPathF(p *svgParser, attrs []xml.Attr) error {
+func (p *svgParser) handlePathElement(attrs []xml.Attr) error {
 	for _, attr := range attrs {
 		if attr.Name.Local != "d" {
 			continue
@@ -1062,174 +907,7 @@ func svgPathF(p *svgParser, attrs []xml.Attr) error {
 	return nil
 }
 
-func svgDefsF(p *svgParser, _ []xml.Attr) error {
-	p.inDefs = true
-	return nil
-}
-
-func svgLinearGradientF(p *svgParser, attrs []xml.Attr) error {
-	userSpaceOnUse := false
-	x1 := "0%"
-	y1 := x1
-	x2 := "100%"
-	y2 := x1
-	p.inGrad = true
-	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
-	for _, attr := range attrs {
-		switch attr.Name.Local {
-		case "id":
-			if attr.Value == "" {
-				return errZeroLengthID
-			}
-			p.data.grads[attr.Value] = p.grad
-		case "x1":
-			x1 = attr.Value
-		case "y1":
-			y1 = attr.Value
-		case "x2":
-			x2 = attr.Value
-		case "y2":
-			y2 = attr.Value
-		default:
-			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
-				return err
-			}
-		}
-	}
-	bbox := geom.NewRect(0, 0, 1, 1)
-	if userSpaceOnUse {
-		bbox = p.svg.viewBox
-	}
-	var err error
-	p.grad.Start.X, err = svgResolveUnit(bbox, x1, svgWidthPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.Start.Y, err = svgResolveUnit(bbox, y1, svgHeightPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.End.X, err = svgResolveUnit(bbox, x2, svgWidthPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.End.Y, err = svgResolveUnit(bbox, y2, svgHeightPercentage)
-	if err != nil {
-		return err
-	}
-	p.normalizeGradientStartEnd()
-	return nil
-}
-
-func svgRadialGradientF(p *svgParser, attrs []xml.Attr) error {
-	userSpaceOnUse := false
-	cx := "50%"
-	cy := cx
-	fx := ""
-	fy := ""
-	r := cx
-	fr := cx
-	p.inGrad = true
-	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
-	for _, attr := range attrs {
-		switch attr.Name.Local {
-		case "id":
-			if attr.Value == "" {
-				return errZeroLengthID
-			}
-			p.data.grads[attr.Value] = p.grad
-		case "cx":
-			cx = attr.Value
-		case "cy":
-			cy = attr.Value
-		case "fx":
-			fx = attr.Value
-		case "fy":
-			fy = attr.Value
-		case "r":
-			r = attr.Value
-		case "fr":
-			fr = attr.Value
-		default:
-			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
-				return err
-			}
-		}
-	}
-	if fx == "" {
-		fx = cx
-	}
-	if fy == "" {
-		fy = cy
-	}
-	bbox := geom.NewRect(0, 0, 1, 1)
-	if userSpaceOnUse {
-		bbox = p.svg.viewBox
-	}
-	var err error
-	p.grad.Start.X, err = svgResolveUnit(bbox, cx, svgWidthPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.Start.Y, err = svgResolveUnit(bbox, cy, svgHeightPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.End.X, err = svgResolveUnit(bbox, fx, svgWidthPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.End.Y, err = svgResolveUnit(bbox, fy, svgHeightPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.StartRadius, err = svgResolveUnit(bbox, r, svgDiagPercentage)
-	if err != nil {
-		return err
-	}
-	p.grad.EndRadius, err = svgResolveUnit(bbox, fr, svgDiagPercentage)
-	if err != nil {
-		return err
-	}
-	p.normalizeGradientStartEnd()
-	return nil
-}
-
-func (p *svgParser) normalizeGradientStartEnd() {
-	p.grad.Start.X = (p.grad.Start.X - p.svg.viewBox.X) / p.svg.viewBox.Width
-	p.grad.Start.Y = (p.grad.Start.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
-	p.grad.End.X = (p.grad.End.X - p.svg.viewBox.X) / p.svg.viewBox.Width
-	p.grad.End.Y = (p.grad.End.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
-}
-
-func (p *svgParser) readCommonGradientAttrs(attr xml.Attr, userSpaceOnUse *bool) error {
-	switch attr.Name.Local {
-	case "gradientTransform":
-		var err error
-		if p.grad.Transform, err = p.parseTransform(attr.Value); err != nil {
-			return err
-		}
-	case "gradientUnits":
-		switch strings.TrimSpace(attr.Value) {
-		case "userSpaceOnUse":
-			*userSpaceOnUse = true
-		case "objectBoundingBox":
-			*userSpaceOnUse = false
-		}
-	case "spreadMethod":
-		switch strings.TrimSpace(attr.Value) {
-		case "pad":
-			p.grad.TileMode = tilemode.Clamp
-		case "reflect":
-			p.grad.TileMode = tilemode.Mirror
-		case "repeat":
-			p.grad.TileMode = tilemode.Repeat
-		}
-	}
-	return nil
-}
-
-func svgStopF(p *svgParser, attrs []xml.Attr) error {
+func (p *svgParser) handleStopElement(attrs []xml.Attr) error {
 	if p.inGrad {
 		for _, attr := range attrs {
 			if attr.Name.Local != "style" {
@@ -1280,7 +958,304 @@ func svgStopF(p *svgParser, attrs []xml.Attr) error {
 	return nil
 }
 
-func svgUseF(p *svgParser, attrs []xml.Attr) error {
+func (p *svgParser) handleLinearGradientElement(attrs []xml.Attr) error {
+	userSpaceOnUse := false
+	x1 := "0%"
+	y1 := x1
+	x2 := "100%"
+	y2 := x1
+	p.inGrad = true
+	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
+	for _, attr := range attrs {
+		switch attr.Name.Local {
+		case "id":
+			if attr.Value == "" {
+				return errZeroLengthID
+			}
+			p.data.grads[attr.Value] = p.grad
+		case "x1":
+			x1 = attr.Value
+		case "y1":
+			y1 = attr.Value
+		case "x2":
+			x2 = attr.Value
+		case "y2":
+			y2 = attr.Value
+		default:
+			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+				return err
+			}
+		}
+	}
+	bbox := geom.NewRect(0, 0, 1, 1)
+	if userSpaceOnUse {
+		bbox = p.svg.viewBox
+	}
+	var err error
+	p.grad.Start.X, err = svgResolveUnit(bbox, x1, svgPercentWidth)
+	if err != nil {
+		return err
+	}
+	p.grad.Start.Y, err = svgResolveUnit(bbox, y1, svgPercentHeight)
+	if err != nil {
+		return err
+	}
+	p.grad.End.X, err = svgResolveUnit(bbox, x2, svgPercentWidth)
+	if err != nil {
+		return err
+	}
+	p.grad.End.Y, err = svgResolveUnit(bbox, y2, svgPercentHeight)
+	if err != nil {
+		return err
+	}
+	p.normalizeGradientStartEnd()
+	return nil
+}
+
+func (p *svgParser) normalizeGradientStartEnd() {
+	p.grad.Start.X = (p.grad.Start.X - p.svg.viewBox.X) / p.svg.viewBox.Width
+	p.grad.Start.Y = (p.grad.Start.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
+	p.grad.End.X = (p.grad.End.X - p.svg.viewBox.X) / p.svg.viewBox.Width
+	p.grad.End.Y = (p.grad.End.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
+}
+
+func (p *svgParser) handleRadialGradientElement(attrs []xml.Attr) error {
+	userSpaceOnUse := false
+	cx := "50%"
+	cy := cx
+	fx := ""
+	fy := ""
+	r := cx
+	fr := cx
+	p.inGrad = true
+	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
+	for _, attr := range attrs {
+		switch attr.Name.Local {
+		case "id":
+			if attr.Value == "" {
+				return errZeroLengthID
+			}
+			p.data.grads[attr.Value] = p.grad
+		case "cx":
+			cx = attr.Value
+		case "cy":
+			cy = attr.Value
+		case "fx":
+			fx = attr.Value
+		case "fy":
+			fy = attr.Value
+		case "r":
+			r = attr.Value
+		case "fr":
+			fr = attr.Value
+		default:
+			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+				return err
+			}
+		}
+	}
+	if fx == "" {
+		fx = cx
+	}
+	if fy == "" {
+		fy = cy
+	}
+	bbox := geom.NewRect(0, 0, 1, 1)
+	if userSpaceOnUse {
+		bbox = p.svg.viewBox
+	}
+	var err error
+	p.grad.Start.X, err = svgResolveUnit(bbox, cx, svgPercentWidth)
+	if err != nil {
+		return err
+	}
+	p.grad.Start.Y, err = svgResolveUnit(bbox, cy, svgPercentHeight)
+	if err != nil {
+		return err
+	}
+	p.grad.End.X, err = svgResolveUnit(bbox, fx, svgPercentWidth)
+	if err != nil {
+		return err
+	}
+	p.grad.End.Y, err = svgResolveUnit(bbox, fy, svgPercentHeight)
+	if err != nil {
+		return err
+	}
+	p.grad.StartRadius, err = svgResolveUnit(bbox, r, svgPercentDiag)
+	if err != nil {
+		return err
+	}
+	p.grad.EndRadius, err = svgResolveUnit(bbox, fr, svgPercentDiag)
+	if err != nil {
+		return err
+	}
+	p.normalizeGradientStartEnd()
+	return nil
+}
+
+func (p *svgParser) handleRectElement(attrs []xml.Attr) error {
+	var x, y, w, h, rx, ry float32
+	var err error
+	for _, attr := range attrs {
+		switch attr.Name.Local {
+		case "x":
+			x, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "y":
+			y, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		case "width":
+			w, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "height":
+			h, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		case "rx":
+			rx, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "ry":
+			ry, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if w == 0 || h == 0 {
+		return nil
+	}
+	// If only one of rx or ry is specified, the other should be same
+	if rx != 0 && ry == 0 {
+		ry = rx
+	}
+	if ry != 0 && rx == 0 {
+		rx = ry
+	}
+	if rx == 0 {
+		p.path.Rect(geom.NewRect(x+p.curX, y+p.curY, w, h))
+	} else {
+		p.path.RoundedRect(geom.NewRect(x+p.curX, y+p.curY, w, h), geom.NewSize(rx, ry))
+	}
+	return nil
+}
+
+func (p *svgParser) handleCircleElement(attrs []xml.Attr) error {
+	var cx, cy, rx, ry float32
+	var err error
+	for _, attr := range attrs {
+		switch attr.Name.Local {
+		case "cx":
+			cx, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "cy":
+			cy, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		case "r":
+			rx, err = p.parseUnitToPx(attr.Value, svgPercentDiag)
+			ry = rx
+		case "rx":
+			rx, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "ry":
+			ry, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if rx == 0 || ry == 0 {
+		return nil
+	}
+	cx += p.curX
+	cy += p.curY
+	if rx == ry {
+		p.path.Circle(geom.NewPoint(cx, cy), rx)
+	} else {
+		p.path.Oval(geom.NewRect(cx-rx, cy-ry, rx*2, ry*2))
+	}
+	return nil
+}
+
+func (p *svgParser) handleLineElement(attrs []xml.Attr) error {
+	var x1, x2, y1, y2 float32
+	var err error
+	for _, attr := range attrs {
+		switch attr.Name.Local {
+		case "x1":
+			x1, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "x2":
+			x2, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "y1":
+			y1, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		case "y2":
+			y2, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	p.path.MoveTo(geom.NewPoint(x1+p.curX, y1+p.curY))
+	p.path.LineTo(geom.NewPoint(x2+p.curX, y2+p.curY))
+	return nil
+}
+
+func (p *svgParser) handlePolylineElement(attrs []xml.Attr) error {
+	for _, attr := range attrs {
+		if attr.Name.Local != "points" {
+			continue
+		}
+		if err := p.addPoints(attr.Value); err != nil {
+			return err
+		}
+		if len(p.pts)%2 != 0 {
+			return errors.New("polygon has odd number of points")
+		}
+	}
+	if len(p.pts) > 4 {
+		p.path.MoveTo(geom.NewPoint(p.pts[0]+p.curX, p.pts[1]+p.curY))
+		for i := 2; i < len(p.pts)-1; i += 2 {
+			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
+		}
+	}
+	return nil
+}
+
+func (p *svgParser) handleSVGElement(attrs []xml.Attr) error {
+	p.svg.viewBox = geom.Rect{}
+	for _, attr := range attrs {
+		switch attr.Name.Local {
+		case "viewBox":
+			if err := p.addPoints(attr.Value); err != nil {
+				return err
+			}
+			if len(p.pts) != 4 {
+				return errParamMismatch
+			}
+			p.svg.viewBox.X = p.pts[0]
+			p.svg.viewBox.Y = p.pts[1]
+			p.svg.viewBox.Width = p.pts[2]
+			p.svg.viewBox.Height = p.pts[3]
+		case "width": //nolint:goconst // Can't use const named width
+			width, err := svgParseBasicFloat(attr.Value)
+			if err != nil {
+				return err
+			}
+			p.svg.suggestedSize.Width = width
+		case "height": //nolint:goconst // Can't use const named height
+			height, err := svgParseBasicFloat(attr.Value)
+			if err != nil {
+				return err
+			}
+			p.svg.suggestedSize.Height = height
+		}
+	}
+	if p.svg.viewBox.Width == 0 {
+		p.svg.viewBox.Width = p.svg.suggestedSize.Width
+	}
+	if p.svg.suggestedSize.Width == 0 {
+		p.svg.suggestedSize.Width = p.svg.viewBox.Width
+	}
+	if p.svg.viewBox.Height == 0 {
+		p.svg.viewBox.Height = p.svg.suggestedSize.Height
+	}
+	if p.svg.suggestedSize.Height == 0 {
+		p.svg.suggestedSize.Height = p.svg.viewBox.Height
+	}
+	return nil
+}
+
+func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 	var (
 		href string
 		x, y float32
@@ -1291,9 +1266,9 @@ func svgUseF(p *svgParser, attrs []xml.Attr) error {
 		case "href":
 			href = attr.Value
 		case "x":
-			x, err = p.parseUnitToPx(attr.Value, svgWidthPercentage)
+			x, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
 		case "y":
-			y, err = p.parseUnitToPx(attr.Value, svgHeightPercentage)
+			y, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
 		}
 		if err != nil {
 			return err
@@ -1315,62 +1290,78 @@ func svgUseF(p *svgParser, attrs []xml.Attr) error {
 	}
 	for _, def := range defs {
 		if def.tag == "endg" {
-			// pop style
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 			continue
 		}
 		if err = p.pushStyle(def.attrs); err != nil {
 			return err
 		}
-		var df svgFunc
-		if df, ok = svgDrawFuncs[def.tag]; !ok {
-			slog.Warn("svg: cannot process element", "element", def.tag)
-			return nil
-		}
-		if df != nil {
-			if err = df(p, def.attrs); err != nil {
-				return err
-			}
+		if err = p.executeDrawFunc(def.tag, def.attrs); err != nil {
+			return err
 		}
 		if def.tag != "g" {
-			// pop style
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 		}
 	}
 	return nil
 }
 
-// SVGDefaultStyle sets the default PathStyle to fill black, winding rule,
-// full opacity, no stroke, ButtCap line end and Bevel line connect.
-var SVGDefaultStyle = svgPathStyle{
-	fillOpacity:       1.0,
-	strokeOpacity:     1.0,
-	strokeWidth:       2.0,
-	useNonZeroWinding: true,
-	strokeMiter:       4,
-	strokeJoin:        strokejoin.Bevel,
-	strokeCap:         strokecap.Butt,
-	fillInk:           Black,
-	transform:         geom.NewIdentityMatrix(),
+func (p *svgParser) handleMaskElement(attrs []xml.Attr) error {
+	var mask svgMask
+	var err error
+	for _, attr := range attrs {
+		switch attr.Name.Local {
+		case "id":
+			if attr.Value == "" {
+				return errZeroLengthID
+			}
+			mask.id = attr.Value
+		case "x":
+			mask.bounds.X, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "y":
+			mask.bounds.Y, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		case "width":
+			mask.bounds.Width, err = p.parseUnitToPx(attr.Value, svgPercentWidth)
+		case "height":
+			mask.bounds.Height, err = p.parseUnitToPx(attr.Value, svgPercentHeight)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	mask.transform = geom.NewIdentityMatrix()
+	p.inMask = true
+	p.mask = &mask
+	return nil
 }
 
-var svgRoot2 = xmath.Sqrt(2)
-
-var svgUnits = []struct {
-	suffix     string
-	multiplier float64
-}{
-	{"px", 1},
-	{"cm", 96.0 / 2.54},
-	{"mm", 96.0 / 25.4},
-	{"pt", 96.0 / 72.0},
-	{"in", 96.0},
-	{"Q", 96.0 / 40.0},
-	{"pc", 96.0 / 6.0},
-	{"%", 1},
+func (p *svgParser) readCommonGradientAttrs(attr xml.Attr, userSpaceOnUse *bool) error {
+	switch attr.Name.Local {
+	case "gradientTransform":
+		var err error
+		if p.grad.Transform, err = p.parseTransform(attr.Value); err != nil {
+			return err
+		}
+	case "gradientUnits":
+		switch strings.TrimSpace(attr.Value) {
+		case "userSpaceOnUse":
+			*userSpaceOnUse = true
+		case "objectBoundingBox":
+			*userSpaceOnUse = false
+		}
+	case "spreadMethod":
+		switch strings.TrimSpace(attr.Value) {
+		case "pad":
+			p.grad.TileMode = tilemode.Clamp
+		case "reflect":
+			p.grad.TileMode = tilemode.Mirror
+		case "repeat":
+			p.grad.TileMode = tilemode.Repeat
+		}
+	}
+	return nil
 }
 
-// convert the unit to pixels. Return true if it is a %
 func svgParseUnit(s string) (f float32, isPercent bool, err error) {
 	multiplier := 1.0
 	s = strings.TrimSpace(s)
@@ -1387,15 +1378,7 @@ func svgParseUnit(s string) (f float32, isPercent bool, err error) {
 	return float32(out * multiplier), isPercent, err
 }
 
-type svgPercentageReference uint8
-
-const (
-	svgWidthPercentage svgPercentageReference = iota
-	svgHeightPercentage
-	svgDiagPercentage
-)
-
-func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentageReference) (float32, error) {
+func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentRef) (float32, error) {
 	value, isPercentage, err := svgParseUnit(s)
 	if err != nil {
 		return 0, err
@@ -1403,12 +1386,12 @@ func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentageReference) 
 	if isPercentage {
 		w, h := viewBox.Width, viewBox.Height
 		switch asPerc {
-		case svgWidthPercentage:
+		case svgPercentWidth:
 			return value / 100 * w, nil
-		case svgHeightPercentage:
+		case svgPercentHeight:
 			return value / 100 * h, nil
-		case svgDiagPercentage:
-			normalizedDiag := xmath.Sqrt(w*w+h*h) / svgRoot2
+		case svgPercentDiag:
+			normalizedDiag := xmath.Sqrt(w*w+h*h) / xmath.Sqrt(2)
 			return value / 100 * normalizedDiag, nil
 		}
 	}
