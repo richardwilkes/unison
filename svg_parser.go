@@ -107,6 +107,7 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 		svg:        &SVG{},
 		data:       svg,
 		styleStack: []svgPathStyle{SVGDefaultStyle},
+		path:       NewPath(),
 	}
 	d := xml.NewDecoder(stream)
 	d.CharsetReader = charset.NewReaderLabel
@@ -311,13 +312,26 @@ func (p *svgParser) parseSelector(v string) (string, error) {
 	return "", errs.Newf("unsupported selector: %s", v)
 }
 
+func swapGradientForColorIfNeeded(g *Gradient) Ink {
+	switch len(g.Stops) {
+	case 0:
+		slog.Warn("svg: gradient has no stops, using black")
+		return Black
+	case 1:
+		slog.Warn("svg: gradient has only one stop, using solid color")
+		return g.Stops[0].Color.GetColor()
+	default:
+		return g
+	}
+}
+
 func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 	var err error
 	v = strings.TrimSpace(v)
 	switch strings.TrimSpace(strings.ToLower(k)) {
 	case "fill":
 		if gradient, ok := p.readGradientURL(v, curStyle.fillInk); ok {
-			curStyle.fillInk = gradient
+			curStyle.fillInk = swapGradientForColorIfNeeded(gradient)
 		} else if curStyle.fillInk, err = ColorDecode(v); err != nil {
 			return err
 		}
@@ -332,7 +346,7 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 		}
 	case "stroke":
 		if gradient, ok := p.readGradientURL(v, curStyle.strokeInk); ok {
-			curStyle.strokeInk = gradient
+			curStyle.strokeInk = swapGradientForColorIfNeeded(gradient)
 		} else if curStyle.strokeInk, err = ColorDecode(v); err != nil {
 			return err
 		}
@@ -473,7 +487,7 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	if df != nil {
 		err = df(p, se.Attr)
 	}
-	if p.path != nil && !p.path.Empty() {
+	if !p.path.Empty() {
 		if p.inMask && p.mask != nil {
 			p.mask.paths = append(p.mask.paths,
 				svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
@@ -796,7 +810,7 @@ func (p *svgParser) addSegment(segString string) error {
 			p.placeY = y
 		}
 	default:
-		slog.Warn("Ignoring unknown svg path command", "command", string(k))
+		slog.Warn("svg: ignoring unknown path command", "command", string(k))
 	}
 	p.lastKey = k
 	return nil
@@ -979,7 +993,7 @@ func svgCircleF(p *svgParser, attrs []xml.Attr) error {
 	if rx == ry {
 		p.path.Circle(geom.NewPoint(cx, cy), rx)
 	} else {
-		p.path.Oval(geom.NewRect(cx-rx, cy-ry, cx+rx, cy+ry))
+		p.path.Oval(geom.NewRect(cx-rx, cy-ry, rx*2, ry*2))
 	}
 	return nil
 }
@@ -1310,7 +1324,7 @@ func svgUseF(p *svgParser, attrs []xml.Attr) error {
 		}
 		var df svgFunc
 		if df, ok = svgDrawFuncs[def.tag]; !ok {
-			slog.Warn("svg: cannot process svg element", "element", def.tag)
+			slog.Warn("svg: cannot process element", "element", def.tag)
 			return nil
 		}
 		if df != nil {
