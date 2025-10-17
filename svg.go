@@ -118,18 +118,7 @@ var (
 var (
 	errParamMismatch = errors.New("param mismatch")
 	errZeroLengthID  = errors.New("zero length id")
-	defaultSVGStyle  = svgPathStyle{
-		fillOpacity:       1.0,
-		strokeOpacity:     1.0,
-		strokeWidth:       2.0,
-		useNonZeroWinding: true,
-		strokeMiter:       4,
-		strokeJoin:        strokejoin.Bevel,
-		strokeCap:         strokecap.Butt,
-		fillInk:           Black,
-		transform:         geom.NewIdentityMatrix(),
-	}
-	svgUnits = []struct {
+	svgUnits         = []struct {
 		suffix     string
 		multiplier float64
 	}{
@@ -379,10 +368,20 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 		transform: geom.NewIdentityMatrix(),
 	}
 	p := &svgParser{
-		svg:        &SVG{},
-		data:       svg,
-		styleStack: []svgPathStyle{defaultSVGStyle},
-		path:       NewPath(),
+		svg:  &SVG{},
+		data: svg,
+		styleStack: []svgPathStyle{{
+			fillInk:           Black,
+			fillOpacity:       1,
+			strokeOpacity:     1,
+			strokeWidth:       1,
+			strokeMiter:       4,
+			transform:         geom.NewIdentityMatrix(),
+			strokeJoin:        strokejoin.Miter,
+			strokeCap:         strokecap.Butt,
+			useNonZeroWinding: true,
+		}},
+		path: NewPath(),
 	}
 	d := xml.NewDecoder(stream)
 	d.CharsetReader = charset.NewReaderLabel
