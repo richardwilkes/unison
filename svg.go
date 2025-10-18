@@ -158,6 +158,17 @@ type svgPath struct {
 	strokeJoin  strokejoin.Enum
 }
 
+type svgGradient struct {
+	gradient       *Gradient
+	sx             string
+	sy             string
+	sr             string
+	ex             string
+	ey             string
+	er             string
+	userSpaceOnUse bool
+}
+
 type svgPercentRef uint8
 
 const (
@@ -168,9 +179,9 @@ const (
 
 type svgData struct {
 	masks     map[string]*svgMask
-	grads     map[string]*Gradient
+	grads     map[string]*svgGradient
 	defs      map[string][]svgDef
-	paths     []svgStyledPath
+	paths     []*svgStyledPath
 	transform geom.Matrix
 }
 
@@ -197,7 +208,7 @@ type svgStyledPath struct {
 
 type svgMask struct {
 	id        string
-	paths     []svgStyledPath
+	paths     []*svgStyledPath
 	bounds    geom.Rect
 	transform geom.Matrix
 }
@@ -211,7 +222,7 @@ type svgDef struct {
 type svgParser struct {
 	svg        *SVG
 	data       *svgData
-	grad       *Gradient
+	grad       *svgGradient
 	mask       *svgMask
 	styleStack []svgPathStyle
 	currentDef []svgDef
@@ -363,7 +374,7 @@ func (s *DrawableSVG) DrawInRect(canvas *Canvas, rect geom.Rect, opts *SamplingO
 func parseSVG(stream io.Reader) (*SVG, error) {
 	svg := &svgData{
 		defs:      make(map[string][]svgDef),
-		grads:     make(map[string]*Gradient),
+		grads:     make(map[string]*svgGradient),
 		masks:     make(map[string]*svgMask),
 		transform: geom.NewIdentityMatrix(),
 	}
@@ -443,16 +454,21 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 		if !svg.paths[i].style.transform.IsIdentity() {
 			p1.Transform(svg.paths[i].style.transform)
 		}
+		var err error
 		sp := &svgPath{path: p1}
 		if svg.paths[i].style.fillInk != nil && svg.paths[i].style.fillOpacity != 0 {
-			sp.fillInk = createInkForSVG(svg.paths[i].style.fillInk, svg.paths[i].style.fillOpacity)
+			if sp.fillInk, err = p.createInkForSVG(svg.paths[i].path, svg.paths[i].style.fillInk, svg.paths[i].style.fillOpacity); err != nil {
+				return nil, err
+			}
 		}
 		if svg.paths[i].style.strokeInk != nil && svg.paths[i].style.strokeOpacity != 0 &&
 			svg.paths[i].style.strokeWidth != 0 {
 			if len(svg.paths[i].style.dash) != 0 {
 				sp.dash = NewDashPathEffect(svg.paths[i].style.dash, svg.paths[i].style.dashOffset)
 			}
-			sp.strokeInk = createInkForSVG(svg.paths[i].style.strokeInk, svg.paths[i].style.strokeOpacity)
+			if sp.strokeInk, err = p.createInkForSVG(svg.paths[i].path, svg.paths[i].style.strokeInk, svg.paths[i].style.strokeOpacity); err != nil {
+				return nil, err
+			}
 			sp.strokeCap = svg.paths[i].style.strokeCap
 			sp.strokeJoin = svg.paths[i].style.strokeJoin
 			sp.strokeMiter = svg.paths[i].style.strokeMiter
@@ -466,19 +482,63 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 	return p.svg, nil
 }
 
-func createInkForSVG(pattern Ink, opacity float32) Ink {
-	switch t := pattern.(type) {
+func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, error) {
+	switch t := ink.(type) {
 	case Color:
-		return t.MultiplyAlpha(opacity)
+		return t.MultiplyAlpha(opacity), nil
 	case *Gradient:
-		t = t.Clone()
-		for i := range t.Stops {
-			c := t.Stops[i].Color.GetColor()
-			t.Stops[i].Color = c.MultiplyAlpha(opacity)
+		panic("what?")
+	case *svgGradient:
+		g := t.gradient.Clone()
+		for i := range g.Stops {
+			c := g.Stops[i].Color.GetColor()
+			g.Stops[i].Color = c.MultiplyAlpha(opacity)
 		}
-		return t
+		bbox := p.svg.viewBox
+		if !t.userSpaceOnUse {
+			bbox = path.ComputeTightBounds()
+		}
+		var err error
+		g.Start.X, err = svgResolveUnit(bbox, t.sx, svgPercentWidth)
+		if err != nil {
+			return nil, err
+		}
+		g.Start.Y, err = svgResolveUnit(bbox, t.sy, svgPercentHeight)
+		if err != nil {
+			return nil, err
+		}
+		g.End.X, err = svgResolveUnit(bbox, t.ex, svgPercentWidth)
+		if err != nil {
+			return nil, err
+		}
+		g.End.Y, err = svgResolveUnit(bbox, t.ey, svgPercentHeight)
+		if err != nil {
+			return nil, err
+		}
+		if t.sr != "" || t.er != "" {
+			g.StartRadius, err = svgResolveUnit(bbox, t.sr, svgPercentDiag)
+			if err != nil {
+				return nil, err
+			}
+			g.EndRadius, err = svgResolveUnit(bbox, t.er, svgPercentDiag)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if !t.userSpaceOnUse {
+			g.Start = g.Transform.TransformPoint(g.Start)
+			g.End = g.Transform.TransformPoint(g.End)
+			g.Start = g.Start.Add(bbox.Point)
+			g.End = g.End.Add(bbox.Point)
+			inverted := g.Transform.Invert()
+			g.Start = inverted.TransformPoint(g.Start)
+			g.End = inverted.TransformPoint(g.End)
+		}
+		g.Start = g.Start.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
+		g.End = g.End.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
+		return g, nil
 	default:
-		return Black
+		return Black, nil
 	}
 }
 
@@ -585,14 +645,14 @@ func (p *svgParser) parseSelector(v string) (string, error) {
 	return "", errs.Newf("unsupported selector: %s", v)
 }
 
-func swapGradientForColorIfNeeded(g *Gradient) Ink {
-	switch len(g.Stops) {
+func swapGradientForColorIfNeeded(g *svgGradient) Ink {
+	switch len(g.gradient.Stops) {
 	case 0:
 		slog.Warn("svg: gradient has no stops, using black")
 		return Black
 	case 1:
 		slog.Warn("svg: gradient has only one stop, using solid color")
-		return g.Stops[0].Color.GetColor()
+		return g.gradient.Stops[0].Color.GetColor()
 	default:
 		return g
 	}
@@ -646,7 +706,7 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 			slog.Warn("svg: unsupported value for <stroke-linejoin>", "value", v)
 		}
 	case "stroke-miterlimit":
-		if curStyle.strokeMiter, err = svgParseBasicFloat(v); err != nil {
+		if curStyle.strokeMiter, _, err = svgParseUnit(v); err != nil {
 			return err
 		}
 	case "stroke-width":
@@ -670,20 +730,20 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 		}
 	case "opacity":
 		var opacity float32
-		if opacity, err = svgParseBasicFloat(v); err != nil {
+		if opacity, _, err = svgParseUnit(v); err != nil {
 			return err
 		}
 		curStyle.fillOpacity *= opacity
 		curStyle.strokeOpacity *= opacity
 	case "stroke-opacity":
 		var opacity float32
-		if opacity, err = svgParseBasicFloat(v); err != nil {
+		if opacity, _, err = svgParseUnit(v); err != nil {
 			return err
 		}
 		curStyle.strokeOpacity *= opacity
 	case "fill-opacity":
 		var opacity float32
-		if opacity, err = svgParseBasicFloat(v); err != nil {
+		if opacity, _, err = svgParseUnit(v); err != nil {
 			return err
 		}
 		curStyle.fillOpacity *= opacity
@@ -756,40 +816,38 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	}
 	if !p.path.Empty() {
 		if p.inMask && p.mask != nil {
-			p.mask.paths = append(p.mask.paths,
-				svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
+			p.mask.paths = append(p.mask.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
 		} else if !p.inMask {
-			p.data.paths = append(p.data.paths,
-				svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
+			p.data.paths = append(p.data.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
 		}
 		p.path = NewPath()
 	}
 	return nil
 }
 
-func (p *svgParser) readGradientURL(v string, defaultColor Ink) (grad *Gradient, ok bool) {
+func (p *svgParser) readGradientURL(v string, defaultColor Ink) (grad *svgGradient, ok bool) {
 	if strings.HasPrefix(v, "url(") && strings.HasSuffix(v, ")") {
-		urlStr := strings.TrimSpace(v[4 : len(v)-1])
-		if strings.HasPrefix(urlStr, "#") {
-			var g *Gradient
-			g, ok = p.data.grads[urlStr[1:]]
-			if ok {
-				g2 := *g
-				for _, s := range g2.Stops {
+		if v, ok = strings.CutPrefix(strings.TrimSpace(v[4:len(v)-1]), "#"); ok {
+			var sg *svgGradient
+			if sg, ok = p.data.grads[v]; ok {
+				g := *sg.gradient
+				for _, s := range g.Stops {
 					if s.Color != nil {
 						continue
 					}
-					stops := append([]Stop{}, g2.Stops...)
-					g2.Stops = stops
+					stops := append([]Stop{}, g.Stops...)
+					g.Stops = stops
 					c := getSVGBackgroundColor(defaultColor)
 					for i, s := range stops {
 						if s.Color == nil {
-							g2.Stops[i].Color = c
+							g.Stops[i].Color = c
 						}
 					}
 					break
 				}
-				grad = &g2
+				sg2 := *sg
+				sg2.gradient = &g
+				grad = &sg2
 			}
 		}
 	}
@@ -910,14 +968,14 @@ func (p *svgParser) readFloatIntoPts(numStr string) error {
 			isFirst = false
 			continue
 		}
-		f, err := svgParseBasicFloat(numStr[last:i])
+		f, _, err := svgParseUnit(numStr[last:i])
 		if err != nil {
 			return err
 		}
 		p.pts = append(p.pts, f)
 		last = i
 	}
-	f, err := svgParseBasicFloat(numStr[last:])
+	f, _, err := svgParseUnit(numStr[last:])
 	if err != nil {
 		return err
 	}
@@ -1186,7 +1244,7 @@ func (p *svgParser) handleStopElement(attrs []xml.Attr) error {
 					return err
 				}
 			case "stop-opacity":
-				if opacity, err = svgParseBasicFloat(attr.Value); err != nil {
+				if opacity, _, err = svgParseUnit(attr.Value); err != nil {
 					return err
 				}
 			}
@@ -1194,19 +1252,22 @@ func (p *svgParser) handleStopElement(attrs []xml.Attr) error {
 		if stop.Color != nil && opacity != 1 {
 			stop.Color = stop.Color.GetColor().SetAlphaIntensity(opacity)
 		}
-		p.grad.Stops = append(p.grad.Stops, stop)
+		p.grad.gradient.Stops = append(p.grad.gradient.Stops, stop)
 	}
 	return nil
 }
 
 func (p *svgParser) handleLinearGradientElement(attrs []xml.Attr) error {
-	userSpaceOnUse := false
-	x1 := "0%"
-	y1 := x1
-	x2 := "100%"
-	y2 := x1
 	p.inGrad = true
-	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
+	p.grad = &svgGradient{
+		gradient: &Gradient{
+			Transform: geom.NewIdentityMatrix(),
+		},
+		sx: "0%",
+		sy: "0%",
+		ex: "100%",
+		ey: "100%",
+	}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "id":
@@ -1215,61 +1276,62 @@ func (p *svgParser) handleLinearGradientElement(attrs []xml.Attr) error {
 			}
 			p.data.grads[attr.Value] = p.grad
 		case "x1":
-			x1 = attr.Value
+			p.grad.sx = attr.Value
 		case "y1":
-			y1 = attr.Value
+			p.grad.sy = attr.Value
 		case "x2":
-			x2 = attr.Value
+			p.grad.ex = attr.Value
 		case "y2":
-			y2 = attr.Value
+			p.grad.ey = attr.Value
 		default:
-			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+			if err := p.readCommonGradientAttrs(attr); err != nil {
 				return err
 			}
 		}
 	}
-	bbox := geom.NewRect(0, 0, 1, 1)
-	if userSpaceOnUse {
-		bbox = p.svg.viewBox
-	}
-	var err error
-	p.grad.Start.X, err = svgResolveUnit(bbox, x1, svgPercentWidth)
-	if err != nil {
-		return err
-	}
-	p.grad.Start.Y, err = svgResolveUnit(bbox, y1, svgPercentHeight)
-	if err != nil {
-		return err
-	}
-	p.grad.End.X, err = svgResolveUnit(bbox, x2, svgPercentWidth)
-	if err != nil {
-		return err
-	}
-	p.grad.End.Y, err = svgResolveUnit(bbox, y2, svgPercentHeight)
-	if err != nil {
-		return err
-	}
-	p.normalizeGradientStartEnd()
 	return nil
 }
 
-func (p *svgParser) normalizeGradientStartEnd() {
-	p.grad.Start.X = (p.grad.Start.X - p.svg.viewBox.X) / p.svg.viewBox.Width
-	p.grad.Start.Y = (p.grad.Start.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
-	p.grad.End.X = (p.grad.End.X - p.svg.viewBox.X) / p.svg.viewBox.Width
-	p.grad.End.Y = (p.grad.End.Y - p.svg.viewBox.Y) / p.svg.viewBox.Height
+func (p *svgParser) readCommonGradientAttrs(attr xml.Attr) error {
+	switch attr.Name.Local {
+	case "gradientTransform":
+		var err error
+		if p.grad.gradient.Transform, err = p.parseTransform(attr.Value); err != nil {
+			return err
+		}
+	case "gradientUnits":
+		switch strings.TrimSpace(attr.Value) {
+		case "userSpaceOnUse":
+			p.grad.userSpaceOnUse = true
+		case "objectBoundingBox":
+			p.grad.userSpaceOnUse = false
+		}
+	case "spreadMethod":
+		switch strings.TrimSpace(attr.Value) {
+		case "pad":
+			p.grad.gradient.TileMode = tilemode.Clamp
+		case "reflect":
+			p.grad.gradient.TileMode = tilemode.Mirror
+		case "repeat":
+			p.grad.gradient.TileMode = tilemode.Repeat
+		}
+	}
+	return nil
 }
 
 func (p *svgParser) handleRadialGradientElement(attrs []xml.Attr) error {
-	userSpaceOnUse := false
-	cx := "50%"
-	cy := cx
-	fx := ""
-	fy := ""
-	r := cx
-	fr := cx
 	p.inGrad = true
-	p.grad = &Gradient{Transform: geom.NewIdentityMatrix()}
+	const fiftyPercent = "50%"
+	p.grad = &svgGradient{
+		gradient: &Gradient{
+			Transform: geom.NewIdentityMatrix(),
+		},
+		sr: fiftyPercent,
+		sx: fiftyPercent,
+		ex: fiftyPercent,
+		ey: fiftyPercent,
+		er: fiftyPercent,
+	}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "id":
@@ -1278,59 +1340,29 @@ func (p *svgParser) handleRadialGradientElement(attrs []xml.Attr) error {
 			}
 			p.data.grads[attr.Value] = p.grad
 		case "cx":
-			cx = attr.Value
+			p.grad.ex = attr.Value
 		case "cy":
-			cy = attr.Value
+			p.grad.ey = attr.Value
 		case "fx":
-			fx = attr.Value
+			p.grad.sx = attr.Value
 		case "fy":
-			fy = attr.Value
+			p.grad.sy = attr.Value
 		case "r":
-			r = attr.Value
+			p.grad.er = attr.Value
 		case "fr":
-			fr = attr.Value
+			p.grad.sr = attr.Value
 		default:
-			if err := p.readCommonGradientAttrs(attr, &userSpaceOnUse); err != nil {
+			if err := p.readCommonGradientAttrs(attr); err != nil {
 				return err
 			}
 		}
 	}
-	if fx == "" {
-		fx = cx
+	if p.grad.sx == "" {
+		p.grad.sx = p.grad.ex
 	}
-	if fy == "" {
-		fy = cy
+	if p.grad.sy == "" {
+		p.grad.sy = p.grad.ey
 	}
-	bbox := geom.NewRect(0, 0, 1, 1)
-	if userSpaceOnUse {
-		bbox = p.svg.viewBox
-	}
-	var err error
-	p.grad.Start.X, err = svgResolveUnit(bbox, cx, svgPercentWidth)
-	if err != nil {
-		return err
-	}
-	p.grad.Start.Y, err = svgResolveUnit(bbox, cy, svgPercentHeight)
-	if err != nil {
-		return err
-	}
-	p.grad.End.X, err = svgResolveUnit(bbox, fx, svgPercentWidth)
-	if err != nil {
-		return err
-	}
-	p.grad.End.Y, err = svgResolveUnit(bbox, fy, svgPercentHeight)
-	if err != nil {
-		return err
-	}
-	p.grad.StartRadius, err = svgResolveUnit(bbox, r, svgPercentDiag)
-	if err != nil {
-		return err
-	}
-	p.grad.EndRadius, err = svgResolveUnit(bbox, fr, svgPercentDiag)
-	if err != nil {
-		return err
-	}
-	p.normalizeGradientStartEnd()
 	return nil
 }
 
@@ -1468,13 +1500,13 @@ func (p *svgParser) handleSVGElement(attrs []xml.Attr) error {
 			p.svg.viewBox.Width = p.pts[2]
 			p.svg.viewBox.Height = p.pts[3]
 		case "width":
-			width, err := svgParseBasicFloat(attr.Value)
+			width, _, err := svgParseUnit(attr.Value)
 			if err != nil {
 				return err
 			}
 			p.svg.suggestedSize.Width = width
 		case "height":
-			height, err := svgParseBasicFloat(attr.Value)
+			height, _, err := svgParseUnit(attr.Value)
 			if err != nil {
 				return err
 			}
@@ -1576,33 +1608,6 @@ func (p *svgParser) handleMaskElement(attrs []xml.Attr) error {
 	return nil
 }
 
-func (p *svgParser) readCommonGradientAttrs(attr xml.Attr, userSpaceOnUse *bool) error {
-	switch attr.Name.Local {
-	case "gradientTransform":
-		var err error
-		if p.grad.Transform, err = p.parseTransform(attr.Value); err != nil {
-			return err
-		}
-	case "gradientUnits":
-		switch strings.TrimSpace(attr.Value) {
-		case "userSpaceOnUse":
-			*userSpaceOnUse = true
-		case "objectBoundingBox":
-			*userSpaceOnUse = false
-		}
-	case "spreadMethod":
-		switch strings.TrimSpace(attr.Value) {
-		case "pad":
-			p.grad.TileMode = tilemode.Clamp
-		case "reflect":
-			p.grad.TileMode = tilemode.Mirror
-		case "repeat":
-			p.grad.TileMode = tilemode.Repeat
-		}
-	}
-	return nil
-}
-
 func svgParseUnit(s string) (f float32, isPercent bool, err error) {
 	multiplier := 1.0
 	s = strings.TrimSpace(s)
@@ -1625,7 +1630,8 @@ func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentRef) (float32,
 		return 0, err
 	}
 	if isPercentage {
-		w, h := viewBox.Width, viewBox.Height
+		w := viewBox.Width
+		h := viewBox.Height
 		switch asPerc {
 		case svgPercentWidth:
 			return value / 100 * w, nil
@@ -1639,11 +1645,6 @@ func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentRef) (float32,
 	return value, nil
 }
 
-func svgParseBasicFloat(s string) (float32, error) {
-	value, _, err := svgParseUnit(s)
-	return value, err
-}
-
 func svgReadFraction(v string) (f float32, err error) {
 	v = strings.TrimSpace(v)
 	d := float32(1.0)
@@ -1651,6 +1652,11 @@ func svgReadFraction(v string) (f float32, err error) {
 		d = 100
 		v = strings.TrimSuffix(v, "%")
 	}
-	f, err = svgParseBasicFloat(v)
+	f, _, err = svgParseUnit(v)
 	return f / d, err
+}
+
+func (s *svgGradient) Paint(_ *Canvas, _ geom.Rect, _ paintstyle.Enum) *Paint {
+	// Unused, just here so we can pretend it is an Ink until we convert it to an actual Gradient
+	return nil
 }
