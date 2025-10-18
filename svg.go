@@ -28,6 +28,7 @@ import (
 	"github.com/richardwilkes/unison/enums/direction"
 	"github.com/richardwilkes/unison/enums/filltype"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/pathop"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
 	"github.com/richardwilkes/unison/enums/tilemode"
@@ -149,6 +150,7 @@ type SVG struct {
 
 type svgPath struct {
 	path        *Path
+	mask        *Path
 	fillInk     Ink
 	strokeInk   Ink
 	dash        *PathEffect
@@ -188,7 +190,7 @@ type svgData struct {
 type svgPathStyle struct {
 	fillInk           Ink
 	strokeInk         Ink
-	masks             []string // Currently unused
+	masks             []string
 	dash              []float32
 	dashOffset        float32
 	fillOpacity       float32
@@ -207,10 +209,9 @@ type svgStyledPath struct {
 }
 
 type svgMask struct {
-	id        string
-	paths     []*svgStyledPath
-	bounds    geom.Rect
-	transform geom.Matrix
+	id     string
+	paths  []*svgStyledPath
+	bounds geom.Rect
 }
 
 type svgDef struct {
@@ -315,6 +316,10 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 	canvas.Translate(rect.Point.Add(offset))
 	canvas.Scale(geom.PointFromSize(rect.Size.DivSize(s.viewBox.Size)))
 	for _, path := range s.paths {
+		if path.mask != nil {
+			canvas.Save()
+			canvas.ClipPath(path.mask, pathop.Intersect, true)
+		}
 		if paint == nil {
 			if path.fillInk != nil {
 				canvas.DrawPath(path.path, path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill))
@@ -332,6 +337,9 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 			}
 		} else {
 			canvas.DrawPath(path.path, paint)
+		}
+		if path.mask != nil {
+			canvas.Restore()
 		}
 	}
 }
@@ -442,44 +450,62 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 		}
 	}
 
-	// From here down converts to unison's internal representation
-	p.svg.paths = make([]*svgPath, len(svg.paths))
-	for i := range svg.paths {
-		p1 := svg.paths[i].path
-		if svg.paths[i].style.useNonZeroWinding {
-			p1.SetFillType(filltype.Winding)
-		} else {
-			p1.SetFillType(filltype.EvenOdd)
-		}
-		if !svg.paths[i].style.transform.IsIdentity() {
-			p1.Transform(svg.paths[i].style.transform)
-		}
+	// Convert to unison's internal representation
+	p.svg.paths = make([]*svgPath, 0, len(svg.paths))
+	for _, pp := range svg.paths {
 		var err error
-		sp := &svgPath{path: p1}
-		if svg.paths[i].style.fillInk != nil && svg.paths[i].style.fillOpacity != 0 {
-			if sp.fillInk, err = p.createInkForSVG(svg.paths[i].path, svg.paths[i].style.fillInk, svg.paths[i].style.fillOpacity); err != nil {
+		mp := &svgPath{path: svgPreparePath(pp.path, &pp.style)}
+		if pp.style.fillInk != nil && pp.style.fillOpacity != 0 {
+			if mp.fillInk, err = p.createInkForSVG(pp.path, pp.style.fillInk, pp.style.fillOpacity); err != nil {
 				return nil, err
 			}
 		}
-		if svg.paths[i].style.strokeInk != nil && svg.paths[i].style.strokeOpacity != 0 &&
-			svg.paths[i].style.strokeWidth != 0 {
-			if len(svg.paths[i].style.dash) != 0 {
-				sp.dash = NewDashPathEffect(svg.paths[i].style.dash, svg.paths[i].style.dashOffset)
+		if pp.style.strokeInk != nil && pp.style.strokeOpacity != 0 && pp.style.strokeWidth != 0 {
+			if len(pp.style.dash) != 0 {
+				mp.dash = NewDashPathEffect(pp.style.dash, pp.style.dashOffset)
 			}
-			if sp.strokeInk, err = p.createInkForSVG(svg.paths[i].path, svg.paths[i].style.strokeInk, svg.paths[i].style.strokeOpacity); err != nil {
+			if mp.strokeInk, err = p.createInkForSVG(pp.path, pp.style.strokeInk, pp.style.strokeOpacity); err != nil {
 				return nil, err
 			}
-			sp.strokeCap = svg.paths[i].style.strokeCap
-			sp.strokeJoin = svg.paths[i].style.strokeJoin
-			sp.strokeMiter = svg.paths[i].style.strokeMiter
-			sp.strokeWidth = svg.paths[i].style.strokeWidth
+			mp.strokeCap = pp.style.strokeCap
+			mp.strokeJoin = pp.style.strokeJoin
+			mp.strokeMiter = pp.style.strokeMiter
+			mp.strokeWidth = pp.style.strokeWidth
 		}
-		p.svg.paths[i] = sp
-		if len(svg.paths[i].style.masks) != 0 {
-			slog.Warn("svg: masks are not currently supported")
+		var singleMask *Path
+		for _, id := range pp.style.masks {
+			mask, ok := svg.masks[id]
+			if !ok {
+				continue
+			}
+			for _, sp := range mask.paths {
+				sm := svgPreparePath(sp.path, &sp.style)
+				if singleMask == nil {
+					singleMask = sm
+				} else if !singleMask.Intersect(sm) {
+					return nil, errs.New("svg: failed to combine mask paths")
+				}
+			}
 		}
+		if singleMask != nil && !singleMask.Empty() {
+			mp.mask = singleMask
+		}
+		p.svg.paths = append(p.svg.paths, mp)
 	}
 	return p.svg, nil
+}
+
+func svgPreparePath(path *Path, style *svgPathStyle) *Path {
+	path = path.Clone()
+	if style.useNonZeroWinding {
+		path.SetFillType(filltype.Winding)
+	} else {
+		path.SetFillType(filltype.EvenOdd)
+	}
+	if !style.transform.IsIdentity() {
+		path.Transform(style.transform)
+	}
+	return path
 }
 
 func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, error) {
@@ -1602,7 +1628,6 @@ func (p *svgParser) handleMaskElement(attrs []xml.Attr) error {
 			return err
 		}
 	}
-	mask.transform = geom.NewIdentityMatrix()
 	p.inMask = true
 	p.mask = &mask
 	return nil
