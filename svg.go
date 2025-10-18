@@ -512,8 +512,6 @@ func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, 
 	switch t := ink.(type) {
 	case Color:
 		return t.MultiplyAlpha(opacity), nil
-	case *Gradient:
-		panic("what?")
 	case *svgGradient:
 		g := t.gradient.Clone()
 		for i := range g.Stops {
