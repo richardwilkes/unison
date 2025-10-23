@@ -145,6 +145,7 @@ type MarkdownTheme struct {
 	QuoteBarThickness      float32
 	CodeAndQuotePadding    float32
 	Slop                   float32
+	StripBottomEmptyMargin bool
 }
 
 // HasAnyPrefix returns true if the target has a prefix matching one of those found in prefixes.
@@ -261,6 +262,20 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.ordered = false
 	m.node = goldmark.New(goldmark.WithExtensions(extension.GFM)).Parser().Parse(text.NewReader(m.content))
 	m.walk(m.node)
+	if m.StripBottomEmptyMargin && len(m.children) > 0 {
+		if border := m.children[len(m.children)-1].Border(); border != nil {
+			switch b := border.(type) {
+			case *EmptyBorder:
+				b.insets.Bottom = 0
+			case *CompoundBorder:
+				if len(b.borders) != 0 {
+					if eb, ok := b.borders[0].(*EmptyBorder); ok {
+						eb.insets.Bottom = 0
+					}
+				}
+			}
+		}
+	}
 	m.MarkForLayoutAndRedraw()
 }
 
