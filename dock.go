@@ -22,6 +22,7 @@ import (
 // will alter any Docks created in the future.
 var DefaultDockTheme = DockTheme{
 	BackgroundInk: ThemeSurface,
+	DividerInk:    ThemeDeepBelowSurface,
 	GripInk:       ThemeSurfaceEdge,
 	DropAreaInk:   ThemeWarning,
 	GripCount:     5,
@@ -34,6 +35,7 @@ var DefaultDockTheme = DockTheme{
 // DockTheme holds theming data for a Dock.
 type DockTheme struct {
 	BackgroundInk Ink
+	DividerInk    Ink
 	GripInk       Ink
 	DropAreaInk   Ink
 	GripCount     int
@@ -55,6 +57,7 @@ func (d *DockTheme) DockDividerSize() float32 {
 
 // DrawHorizontalGripper draws the horizontal divider gripper.
 func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r geom.Rect) {
+	canvas.DrawRect(r, d.DividerInk.Paint(canvas, r, paintstyle.Fill))
 	gripLength := d.DockGripLength()
 	x := r.X + (r.Width-d.GripWidth)/2
 	y := r.Y + (r.Height-gripLength)/2
@@ -70,6 +73,7 @@ func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r geom.Rect) {
 
 // DrawVerticalGripper draws the vertical divider gripper.
 func (d *DockTheme) DrawVerticalGripper(canvas *Canvas, r geom.Rect) {
+	canvas.DrawRect(r, d.DividerInk.Paint(canvas, r, paintstyle.Fill))
 	gripLength := d.DockGripLength()
 	x := r.X + (r.Width-gripLength)/2
 	y := r.Y + (r.Height-d.GripWidth)/2
