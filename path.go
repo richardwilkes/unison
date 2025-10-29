@@ -203,13 +203,13 @@ func (p *Path) PathReverse(path *Path) {
 // PathRotated appends a path after rotating it. If extend is true, a line from the current point to the start of the
 // added path is created.
 func (p *Path) PathRotated(path *Path, degrees float32, extend bool) {
-	skia.PathAddPathMatrix(p.path, path.path, geom.NewRotationByDegreesMatrix(degrees), pathAddMode(extend))
+	skia.PathAddPathMatrix(p.path, path.path, geom.NewRotationMatrix(degrees), pathAddMode(extend))
 }
 
 // PathScaled appends a path after scaling it. If extend is true, a line from the current point to the start of the
 // added path is created.
 func (p *Path) PathScaled(path *Path, pt geom.Point, extend bool) {
-	skia.PathAddPathMatrix(p.path, path.path, geom.NewScaleMatrixPt(pt), pathAddMode(extend))
+	skia.PathAddPathMatrix(p.path, path.path, geom.NewScaleMatrix(pt.X, pt.Y), pathAddMode(extend))
 }
 
 // PathTransformed appends a path after transforming it. If extend is true, a line from the current point to the start
@@ -262,12 +262,12 @@ func (p *Path) RoundedRectWithDirection(bounds geom.Rect, radius geom.Size, dir 
 
 // Rotate the path.
 func (p *Path) Rotate(degrees float32) {
-	skia.PathTransform(p.path, geom.NewRotationByDegreesMatrix(degrees))
+	skia.PathTransform(p.path, geom.NewRotationMatrix(degrees))
 }
 
 // Scale the path.
 func (p *Path) Scale(scale geom.Point) {
-	skia.PathTransform(p.path, geom.NewScaleMatrixPt(scale))
+	skia.PathTransform(p.path, geom.NewScaleMatrix(scale.X, scale.Y))
 }
 
 // Transform the path by the provided matrix.
@@ -277,20 +277,20 @@ func (p *Path) Transform(matrix geom.Matrix) {
 
 // Translate the path.
 func (p *Path) Translate(pt geom.Point) {
-	skia.PathTransform(p.path, geom.NewTranslationMatrixPt(pt))
+	skia.PathTransform(p.path, geom.NewTranslationMatrix(pt.X, pt.Y))
 }
 
 // NewRotated creates a copy of this path and then rotates it.
 func (p *Path) NewRotated(degrees float32) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, geom.NewRotationByDegreesMatrix(degrees))
+	skia.PathTransformToDest(p.path, path.path, geom.NewRotationMatrix(degrees))
 	return path
 }
 
 // NewScaled creates a copy of this path and then scales it.
 func (p *Path) NewScaled(scale geom.Point) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, geom.NewScaleMatrixPt(scale))
+	skia.PathTransformToDest(p.path, path.path, geom.NewScaleMatrix(scale.X, scale.Y))
 	return path
 }
 
@@ -304,7 +304,7 @@ func (p *Path) NewTransformed(matrix geom.Matrix) *Path {
 // NewTranslated creates a copy of this path and then translates it.
 func (p *Path) NewTranslated(pt geom.Point) *Path {
 	path := NewPath()
-	skia.PathTransformToDest(p.path, path.path, geom.NewTranslationMatrixPt(pt))
+	skia.PathTransformToDest(p.path, path.path, geom.NewTranslationMatrix(pt.X, pt.Y))
 	return path
 }
 

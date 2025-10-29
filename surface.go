@@ -60,7 +60,7 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 	}
 	skia.ContextReset(s.context)
 	c.RestoreToCount(1)
-	c.SetMatrix(geom.NewScaleMatrixPt(scale))
+	c.SetMatrix(geom.NewScaleMatrix(scale.X, scale.Y))
 	return c, nil
 }
 

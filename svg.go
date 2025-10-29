@@ -315,6 +315,7 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 	offset := s.OffsetToCenterWithinScaledSize(rect.Size)
 	canvas.Translate(rect.Point.Add(offset))
 	canvas.Scale(geom.PointFromSize(rect.Size.DivSize(s.viewBox.Size)))
+	canvas.Translate(s.viewBox.Neg())
 	for _, path := range s.paths {
 		if path.mask != nil {
 			canvas.Save()
@@ -567,45 +568,47 @@ func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, 
 }
 
 func (p *svgParser) readTransformAttr(op string, m geom.Matrix) (geom.Matrix, error) {
+	// SVG uses right-multiply instead of left-multiply like the geom package does, so we have to do things a bit more
+	// awkwardly.
 	switch strings.ToLower(strings.TrimSpace(op)) {
 	case "rotate":
 		switch len(p.pts) {
 		case 1:
-			return m.RotateByDegrees(p.pts[0]), nil
+			return m.Multiply(geom.NewRotationMatrix(p.pts[0])), nil
 		case 3:
-			return m.Translate(p.pts[1], p.pts[2]).RotateByDegrees(p.pts[0]).Translate(-p.pts[1], -p.pts[2]), nil
+			return m.Multiply(geom.NewTranslationMatrix(-p.pts[1], -p.pts[2]).Rotate(p.pts[0]).Translate(p.pts[1], p.pts[2])), nil
 		default:
 			return m, errParamMismatch
 		}
 	case "translate":
 		switch len(p.pts) {
 		case 1:
-			return m.Translate(p.pts[0], 0), nil
+			return m.Multiply(geom.NewTranslationMatrix(p.pts[0], 0)), nil
 		case 2:
-			return m.Translate(p.pts[0], p.pts[1]), nil
+			return m.Multiply(geom.NewTranslationMatrix(p.pts[0], p.pts[1])), nil
 		default:
 			return m, errParamMismatch
 		}
 	case "skewx":
 		switch len(p.pts) {
 		case 1:
-			return m.SkewByDegrees(p.pts[0], 0), nil
+			return m.Multiply(geom.NewSkewMatrix(p.pts[0], 0)), nil
 		default:
 			return m, errParamMismatch
 		}
 	case "skewy":
 		switch len(p.pts) {
 		case 1:
-			return m.SkewByDegrees(0, p.pts[0]), nil
+			return m.Multiply(geom.NewSkewMatrix(0, p.pts[0])), nil
 		default:
 			return m, errParamMismatch
 		}
 	case "scale":
 		switch len(p.pts) {
 		case 1:
-			return m.Scale(p.pts[0], p.pts[0]), nil
+			return m.Multiply(geom.NewScaleMatrix(p.pts[0], p.pts[0])), nil
 		case 2:
-			return m.Scale(p.pts[0], p.pts[1]), nil
+			return m.Multiply(geom.NewScaleMatrix(p.pts[0], p.pts[1])), nil
 		default:
 			return m, errParamMismatch
 		}
