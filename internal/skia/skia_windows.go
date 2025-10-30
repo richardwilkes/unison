@@ -782,12 +782,12 @@ func CanvasSetMatrix(canvas Canvas, matrix geom.Matrix) {
 
 func CanvasQuickRejectPath(canvas Canvas, path Path) bool {
 	r1, _, _ := skCanvasQuickRejectPathProc.Call(uintptr(canvas), uintptr(path))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func CanvasQuickRejectRect(canvas Canvas, rect geom.Rect) bool {
 	r1, _, _ := skCanvasQuickRejectRectProc.Call(uintptr(canvas), fromGeomRect(&rect))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func CanvasClear(canvas Canvas, color Color) {
@@ -892,12 +892,12 @@ func CanvasGetSurface(canvas Canvas) Surface {
 
 func CanvasIsClipEmpty(canvas Canvas) bool {
 	r1, _, _ := skCanvasIsClipEmptyProc.Call(uintptr(canvas))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func CanvasIsClipRect(canvas Canvas) bool {
 	r1, _, _ := skCanvasIsClipRectProc.Call(uintptr(canvas))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func ColorFilterNewMode(color Color, blendMode BlendMode) ColorFilter {
@@ -1010,7 +1010,7 @@ func DynamicMemoryWStreamAsWStream(s DynamicMemoryWStream) WStream {
 
 func DynamicMemoryWStreamWrite(s DynamicMemoryWStream, data []byte) bool {
 	r1, _, _ := skDynamicMemoryWStreamWriteProc.Call(uintptr(s), uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func DynamicMemoryWStreamBytesWritten(s DynamicMemoryWStream) int {
@@ -1041,7 +1041,7 @@ func FileWStreamAsWStream(s FileWStream) WStream {
 
 func FileWStreamWrite(s FileWStream, data []byte) bool {
 	r1, _, _ := skFileWStreamWriteProc.Call(uintptr(s), uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func FileWStreamBytesWritten(s FileWStream) int {
@@ -1247,7 +1247,7 @@ func ImageGetAlphaType(img Image) AlphaType {
 func ImageReadPixels(img Image, info *ImageInfo, pixels []byte, dstRowBytes, srcX, srcY int, cachingHint ImageCachingHint) bool {
 	r1, _, _ := skImageReadPixelsProc.Call(uintptr(img), uintptr(unsafe.Pointer(info)),
 		uintptr(unsafe.Pointer(&pixels[0])), uintptr(dstRowBytes), uintptr(srcX), uintptr(srcY), uintptr(cachingHint))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func ImageMakeNonTextureImage(img Image) Image {
@@ -1463,7 +1463,7 @@ func OpBuilderAdd(builder OpBuilder, path Path, op PathOp) {
 
 func OpBuilderResolve(builder OpBuilder, path Path) bool {
 	r1, _, _ := skOpBuilderResolveProc.Call(uintptr(builder), uintptr(path))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func OpBuilderDestroy(builder OpBuilder) {
@@ -1477,7 +1477,7 @@ func PaintNew() Paint {
 
 func PaintEquivalent(left, right Paint) bool {
 	r1, _, _ := skPaintEquivalentProc.Call(uintptr(left), uintptr(right))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PaintDelete(paint Paint) {
@@ -1495,7 +1495,7 @@ func PaintReset(paint Paint) {
 
 func PaintIsAntialias(paint Paint) bool {
 	r1, _, _ := skPaintIsAntialiasProc.Call(uintptr(paint))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PaintSetAntialias(paint Paint, enabled bool) {
@@ -1504,7 +1504,7 @@ func PaintSetAntialias(paint Paint, enabled bool) {
 
 func PaintIsDither(paint Paint) bool {
 	r1, _, _ := skPaintIsDitherProc.Call(uintptr(paint))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PaintSetDither(paint Paint, enabled bool) {
@@ -1622,7 +1622,7 @@ func PaintSetPathEffect(paint Paint, effect PathEffect) {
 func PaintGetFillPath(paint Paint, inPath, outPath Path, cullRect *geom.Rect, resScale float32) bool {
 	r1, _, _ := skPaintGetFillPathProc.Call(uintptr(paint), uintptr(inPath), uintptr(outPath), fromGeomRect(cullRect),
 		uintptr(math.Float32bits(resScale)))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PathNew() Path {
@@ -1632,14 +1632,14 @@ func PathNew() Path {
 
 func PathIsEmpty(path Path) bool {
 	r1, _, _ := skPathIsEmptyProc.Call(uintptr(path))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PathParseSVGString(path Path, svg string) bool {
 	buffer := make([]byte, len(svg)+1)
 	copy(buffer, svg)
 	r1, _, _ := skPathParseSVGStringProc.Call(uintptr(path), uintptr(unsafe.Pointer(&buffer[0])))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PathToSVGString(path Path, absolute bool) String {
@@ -1799,7 +1799,7 @@ func PathRewind(path Path) {
 
 func PathContains(path Path, pt geom.Point) bool {
 	r1, _, _ := skPathContainsProc.Call(uintptr(path), uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PathGetLastPoint(path Path) geom.Point {
@@ -1814,12 +1814,12 @@ func PathDelete(path Path) {
 
 func PathCompute(path, other Path, op PathOp) bool {
 	r1, _, _ := skPathOpProc.Call(uintptr(path), uintptr(other), uintptr(op), uintptr(path))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PathSimplify(path Path) bool {
 	r1, _, _ := skPathSimplifyProc.Call(uintptr(path), uintptr(path))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func PathEffectCreateCompose(outer, inner PathEffect) PathEffect {
@@ -2068,7 +2068,7 @@ func TypeFaceGetFontStyle(face TypeFace) FontStyle {
 
 func TypeFaceIsFixedPitch(face TypeFace) bool {
 	r1, _, _ := skTypeFaceIsFixedPitchProc.Call(uintptr(face))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 func TypeFaceGetFamilyName(face TypeFace) String {
