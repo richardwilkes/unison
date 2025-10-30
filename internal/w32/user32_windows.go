@@ -57,13 +57,13 @@ const (
 // CloseClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-closeclipboard
 func CloseClipboard() bool {
 	b, _, _ := closeClipboardProc.Call()
-	return b != 0
+	return b&0xff != 0
 }
 
 // EmptyClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-emptyclipboard
 func EmptyClipboard() bool {
 	b, _, _ := emptyClipboardProc.Call()
-	return b != 0
+	return b&0xff != 0
 }
 
 // EnumClipboardFormats https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats
@@ -105,13 +105,13 @@ func GetSysColor(index int) uint32 {
 // MessageBeep https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messagebeep
 func MessageBeep(beepType BeepType) bool {
 	b, _, _ := messageBeepProc.Call(uintptr(beepType))
-	return b != 0
+	return b&0xff != 0
 }
 
 // OpenClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openclipboard
 func OpenClipboard(newOwner HWND) bool {
 	b, _, _ := openClipboardProc.Call(uintptr(newOwner))
-	return b != 0
+	return b&0xff != 0
 }
 
 // SetClipboardData https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setclipboarddata

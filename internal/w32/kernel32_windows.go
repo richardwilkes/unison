@@ -32,7 +32,7 @@ var (
 // AttachConsole https://docs.microsoft.com/en-us/windows/console/attachconsole
 func AttachConsole(processID uint32) bool {
 	r1, _, _ := attachConsoleProc.Call(uintptr(processID))
-	return r1 != 0
+	return r1&0xff != 0
 }
 
 // GlobalAlloc https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalalloc
@@ -55,5 +55,5 @@ func GlobalLock(handle syscall.Handle) uintptr {
 // GlobalUnlock https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalunlock
 func GlobalUnlock(handle syscall.Handle) bool {
 	b, _, _ := globalUnlockProc.Call(uintptr(handle))
-	return b != 0
+	return b&0xff != 0
 }

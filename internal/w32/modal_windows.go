@@ -29,5 +29,5 @@ func (obj *ModalWindow) vmt() *vmtModalWindow {
 
 func (obj *ModalWindow) Show() bool {
 	r1, _, _ := syscall.SyscallN(obj.vmt().Show, uintptr(unsafe.Pointer(obj)), 0)
-	return r1 == 0
+	return r1&0xff == 0
 }
