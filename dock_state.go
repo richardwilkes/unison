@@ -23,12 +23,12 @@ const (
 
 // DockState holds a snapshot of the arrangement of Dockables within a Dock.
 type DockState struct {
-	Type         string       `json:"type"`                    // One of LayoutType, ContainerType or DockableType
-	Key          string       `json:"key,omitempty"`           // Only valid when Type == DockableType
-	Children     []*DockState `json:"children,omitempty"`      // Only valid when Type != DockableType
-	CurrentIndex int          `json:"current_index,omitempty"` // Only valid when Type == ContainerType
-	Divider      float32      `json:"divider,omitempty"`       // Only valid when Type == LayoutType
-	Horizontal   bool         `json:"horizontal,omitempty"`    // Only valid when Type == LayoutType
+	Type         string       `json:"type"`                   // One of LayoutType, ContainerType or DockableType
+	Key          string       `json:"key,omitzero"`           // Only valid when Type == DockableType
+	Children     []*DockState `json:"children,omitzero"`      // Only valid when Type != DockableType
+	CurrentIndex int          `json:"current_index,omitzero"` // Only valid when Type == ContainerType
+	Divider      float32      `json:"divider,omitzero"`       // Only valid when Type == LayoutType
+	Horizontal   bool         `json:"horizontal,omitzero"`    // Only valid when Type == LayoutType
 }
 
 // NewDockState creates a new DockState for the given Dock. keyFromDockable will be passed each Dockable within the Dock
