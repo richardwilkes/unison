@@ -12,7 +12,7 @@ package unison
 import (
 	"time"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 

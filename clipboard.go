@@ -12,7 +12,7 @@ package unison
 import (
 	"sync"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/glfw"
 )
 
 // GlobalClipboard holds the global clipboard.

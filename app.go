@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
@@ -129,8 +129,6 @@ func Start(options ...StartupOption) {
 	for _, option := range options {
 		xos.ExitIfErr(option(startupOption{}))
 	}
-	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
-	glfw.InitHint(glfw.CocoaChdirResources, glfw.False)
 	xos.ExitIfErr(glfw.Init())
 	xos.RunAtExit(quitting)
 	xos.RunAtExit(func() {
@@ -138,8 +136,6 @@ func Start(options ...StartupOption) {
 		calledAtExit = true
 		quitLock.Unlock()
 	})
-	glfw.WindowHint(glfw.ContextVersionMajor, 3)
-	glfw.WindowHint(glfw.ContextVersionMinor, 2)
 	platformEarlyInit()
 	glfwInited.Store(true)
 	InvokeTask(finishStartup)

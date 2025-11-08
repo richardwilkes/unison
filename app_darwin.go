@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 

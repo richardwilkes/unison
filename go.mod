@@ -1,12 +1,12 @@
 module github.com/richardwilkes/unison
 
-go 1.25.0
+go 1.25.3
 
 require (
 	github.com/OpenPrinting/goipp v1.2.0
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728
 	github.com/grandcat/zeroconf v1.0.0
+	github.com/richardwilkes/glfw v0.0.0-20251108201229-927d91794299
 	github.com/richardwilkes/toolbox/v2 v2.8.0
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.7.13

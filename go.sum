@@ -5,8 +5,6 @@ github.com/cenkalti/backoff v2.2.1+incompatible/go.mod h1:90ReRw6GdpyfrHakVjL/QH
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71 h1:5BVwOaUSBTlVZowGO6VZGw2H/zl9nrd3eCZfYV+NfQA=
 github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71/go.mod h1:9YTyiznxEY1fVinfM7RvRcjRHbw2xLBJ3AAGIT0I4Nw=
-github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728 h1:RkGhqHxEVAvPM0/R+8g7XRwQnHatO0KAuVcwHo8q9W8=
-github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728/go.mod h1:SyRD8YfuKk+ZXlDqYiqe1qMSqjNgtHzBTG810KUagMc=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/grandcat/zeroconf v1.0.0 h1:uHhahLBKqwWBV6WZUDAT71044vwOTL+McW0mBJvo6kE=
@@ -29,6 +27,8 @@ github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646/go.mod h1:jpp1/29i3P1S
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+github.com/richardwilkes/glfw v0.0.0-20251108201229-927d91794299 h1:Npc0KBfwuXuMNFOt0YxxXEOGO3phNUNHBtSRUdkLHyU=
+github.com/richardwilkes/glfw v0.0.0-20251108201229-927d91794299/go.mod h1:SQZ93q38sRhQccq6AYo4n4X6KKMEg8R1IhuAKwcEN8M=
 github.com/richardwilkes/toolbox/v2 v2.8.0 h1:XsLxBKAbS2/KdW2hz3dp1YcqXFtcsIM3UDua7p0aiik=
 github.com/richardwilkes/toolbox/v2 v2.8.0/go.mod h1:RDvOon2cBRXL4+1HOVT7YsHbIbpOgPjK7ntYFNpXnRs=
 github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTEfhy4qGm1nDQc=
