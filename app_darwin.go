@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/unison/internal/ns"
 )
 
@@ -24,10 +23,6 @@ var (
 )
 
 func platformEarlyInit() {
-	// macOS requires both of these hints to be set
-	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
-	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-
 	ns.InstallAppDelegate(func(paths []string) {
 		pendingFilesLock.Lock()
 		defer pendingFilesLock.Unlock()
