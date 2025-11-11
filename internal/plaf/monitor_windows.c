@@ -172,7 +172,7 @@ void _glfwPollMonitorsWin32(void)
                 return;
             }
 
-            _glfwInputMonitor(monitor, GLFW_CONNECTED, type);
+            _glfwInputMonitor(monitor, CONNECTED, type);
 
             type = _GLFW_INSERT_LAST;
         }
@@ -202,14 +202,14 @@ void _glfwPollMonitorsWin32(void)
                 return;
             }
 
-            _glfwInputMonitor(monitor, GLFW_CONNECTED, type);
+            _glfwInputMonitor(monitor, CONNECTED, type);
         }
     }
 
     for (i = 0;  i < disconnectedCount;  i++)
     {
         if (disconnected[i])
-            _glfwInputMonitor(disconnected[i], GLFW_DISCONNECTED, 0);
+            _glfwInputMonitor(disconnected[i], DISCONNECTED, 0);
     }
 
     _glfw_free(disconnected);
@@ -217,10 +217,10 @@ void _glfwPollMonitorsWin32(void)
 
 // Change the current video mode
 //
-void _glfwSetVideoModeWin32(_GLFWmonitor* monitor, const GLFWvidmode* desired)
+void _glfwSetVideoModeWin32(_GLFWmonitor* monitor, const VideoMode* desired)
 {
-    GLFWvidmode current;
-    const GLFWvidmode* best;
+    VideoMode current;
+    const VideoMode* best;
     DEVMODEW dm;
     LONG result;
 
@@ -267,7 +267,7 @@ void _glfwSetVideoModeWin32(_GLFWmonitor* monitor, const GLFWvidmode* desired)
         else if (result == DISP_CHANGE_RESTART)
             description = "Computer restart required";
 
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Failed to set video mode: %s", description);
+        _glfwInputError(ERR_PLATFORM_ERROR, "Win32: Failed to set video mode: %s", description);
     }
 }
 
@@ -296,7 +296,7 @@ void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* ys
     {
         if (GetDpiForMonitor(handle, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) != S_OK)
         {
-            _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Failed to query monitor DPI");
+            _glfwInputError(ERR_PLATFORM_ERROR, "Win32: Failed to query monitor DPI");
             return;
         }
     }
@@ -363,17 +363,17 @@ void _glfwGetMonitorWorkareaWin32(_GLFWmonitor* monitor,
         *height = mi.rcWork.bottom - mi.rcWork.top;
 }
 
-GLFWvidmode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count)
+VideoMode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count)
 {
     int modeIndex = 0, size = 0;
-    GLFWvidmode* result = NULL;
+    VideoMode* result = NULL;
 
     *count = 0;
 
     for (;;)
     {
         int i;
-        GLFWvidmode mode;
+        VideoMode mode;
         DEVMODEW dm;
 
         ZeroMemory(&dm, sizeof(dm));
@@ -422,7 +422,7 @@ GLFWvidmode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count)
         if (*count == size)
         {
             size += 128;
-            result = (GLFWvidmode*) _glfw_realloc(result, size * sizeof(GLFWvidmode));
+            result = (VideoMode*) _glfw_realloc(result, size * sizeof(VideoMode));
         }
 
         (*count)++;
@@ -432,7 +432,7 @@ GLFWvidmode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count)
     if (!*count)
     {
         // HACK: Report the current mode if no valid modes were found
-        result = _glfw_calloc(1, sizeof(GLFWvidmode));
+        result = _glfw_calloc(1, sizeof(VideoMode));
         _glfwGetVideoModeWin32(monitor, result);
         *count = 1;
     }
@@ -440,7 +440,7 @@ GLFWvidmode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count)
     return result;
 }
 
-GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, GLFWvidmode* mode)
+GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode)
 {
     DEVMODEW dm;
     ZeroMemory(&dm, sizeof(dm));
@@ -448,7 +448,7 @@ GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, GLFWvidmode* mode)
 
     if (!EnumDisplaySettingsW(monitor->win32.adapterName, ENUM_CURRENT_SETTINGS, &dm))
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Failed to query display settings");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Win32: Failed to query display settings");
         return false;
     }
 
@@ -463,7 +463,7 @@ GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, GLFWvidmode* mode)
     return true;
 }
 
-GLFWbool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GLFWgammaramp* ramp)
+GLFWbool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GammaRamp* ramp)
 {
     HDC dc;
     WORD values[3][256];
@@ -481,14 +481,14 @@ GLFWbool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GLFWgammaramp* ramp)
     return true;
 }
 
-void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GLFWgammaramp* ramp)
+void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GammaRamp* ramp)
 {
     HDC dc;
     WORD values[3][256];
 
     if (ramp->size != 256)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Gamma ramp size must be 256");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Win32: Gamma ramp size must be 256");
         return;
     }
 

@@ -43,13 +43,13 @@ static int extensionSupportedNSGL(const char* extension)
     return false;
 }
 
-static GLFWglproc getProcAddressNSGL(const char* procname)
+static glFunc getProcAddressNSGL(const char* procname)
 {
     CFStringRef symbolName = CFStringCreateWithCString(kCFAllocatorDefault,
                                                        procname,
                                                        kCFStringEncodingASCII);
 
-    GLFWglproc symbol = CFBundleGetFunctionPointerForName(_glfw.nsgl.framework,
+    glFunc symbol = CFBundleGetFunctionPointerForName(_glfw.nsgl.framework,
                                                           symbolName);
 
     CFRelease(symbolName);
@@ -83,7 +83,7 @@ GLFWbool _glfwInitNSGL(void) {
 	}
     _glfw.nsgl.framework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
     if (_glfw.nsgl.framework == NULL) {
-        _glfwInputError(GLFW_API_UNAVAILABLE, "NSGL: Failed to locate OpenGL framework");
+        _glfwInputError(ERR_API_UNAVAILABLE, "NSGL: Failed to locate OpenGL framework");
         return false;
     }
     return true;
@@ -105,14 +105,14 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
     {
         if (ctxconfig->major == 3 && ctxconfig->minor < 2)
         {
-            _glfwInputError(GLFW_VERSION_UNAVAILABLE, "NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
+            _glfwInputError(ERR_VERSION_UNAVAILABLE, "NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
             return false;
         }
     }
 
-    if (ctxconfig->major >= 3 && ctxconfig->profile == GLFW_OPENGL_COMPAT_PROFILE)
+    if (ctxconfig->major >= 3 && ctxconfig->profile == OPENGL_PROFILE_COMPAT)
     {
-        _glfwInputError(GLFW_VERSION_UNAVAILABLE, "NSGL: The compatibility profile is not available on macOS");
+        _glfwInputError(ERR_VERSION_UNAVAILABLE, "NSGL: The compatibility profile is not available on macOS");
         return false;
     }
 
@@ -161,13 +161,13 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
 
     if (ctxconfig->major <= 2)
     {
-        if (fbconfig->auxBuffers != GLFW_DONT_CARE)
+        if (fbconfig->auxBuffers != DONT_CARE)
             SET_ATTRIB(NSOpenGLPFAAuxBuffers, fbconfig->auxBuffers);
 
-        if (fbconfig->accumRedBits != GLFW_DONT_CARE &&
-            fbconfig->accumGreenBits != GLFW_DONT_CARE &&
-            fbconfig->accumBlueBits != GLFW_DONT_CARE &&
-            fbconfig->accumAlphaBits != GLFW_DONT_CARE)
+        if (fbconfig->accumRedBits != DONT_CARE &&
+            fbconfig->accumGreenBits != DONT_CARE &&
+            fbconfig->accumBlueBits != DONT_CARE &&
+            fbconfig->accumAlphaBits != DONT_CARE)
         {
             const int accumBits = fbconfig->accumRedBits +
                                   fbconfig->accumGreenBits +
@@ -178,9 +178,9 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
         }
     }
 
-    if (fbconfig->redBits != GLFW_DONT_CARE &&
-        fbconfig->greenBits != GLFW_DONT_CARE &&
-        fbconfig->blueBits != GLFW_DONT_CARE)
+    if (fbconfig->redBits != DONT_CARE &&
+        fbconfig->greenBits != DONT_CARE &&
+        fbconfig->blueBits != DONT_CARE)
     {
         int colorBits = fbconfig->redBits +
                         fbconfig->greenBits +
@@ -195,19 +195,19 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
         SET_ATTRIB(NSOpenGLPFAColorSize, colorBits);
     }
 
-    if (fbconfig->alphaBits != GLFW_DONT_CARE)
+    if (fbconfig->alphaBits != DONT_CARE)
         SET_ATTRIB(NSOpenGLPFAAlphaSize, fbconfig->alphaBits);
 
-    if (fbconfig->depthBits != GLFW_DONT_CARE)
+    if (fbconfig->depthBits != DONT_CARE)
         SET_ATTRIB(NSOpenGLPFADepthSize, fbconfig->depthBits);
 
-    if (fbconfig->stencilBits != GLFW_DONT_CARE)
+    if (fbconfig->stencilBits != DONT_CARE)
         SET_ATTRIB(NSOpenGLPFAStencilSize, fbconfig->stencilBits);
 
     if (fbconfig->doublebuffer)
         ADD_ATTRIB(NSOpenGLPFADoubleBuffer);
 
-    if (fbconfig->samples != GLFW_DONT_CARE)
+    if (fbconfig->samples != DONT_CARE)
     {
         if (fbconfig->samples == 0)
         {
@@ -232,7 +232,7 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
         [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
     if (window->context.nsgl.pixelFormat == nil)
     {
-        _glfwInputError(GLFW_FORMAT_UNAVAILABLE, "NSGL: Failed to find a suitable pixel format");
+        _glfwInputError(ERR_FORMAT_UNAVAILABLE, "NSGL: Failed to find a suitable pixel format");
         return false;
     }
 
@@ -246,7 +246,7 @@ GLFWbool _glfwCreateContextNSGL(_GLFWwindow* window,
                                    shareContext:share];
     if (window->context.nsgl.object == nil)
     {
-        _glfwInputError(GLFW_VERSION_UNAVAILABLE, "NSGL: Failed to create OpenGL context");
+        _glfwInputError(ERR_VERSION_UNAVAILABLE, "NSGL: Failed to create OpenGL context");
         return false;
     }
 

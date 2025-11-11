@@ -18,7 +18,7 @@ void _glfwPlatformFreeModule(void* module)
     dlclose(module);
 }
 
-GLFWproc _glfwPlatformGetModuleSymbol(void* module, const char* name)
+moduleFunc _glfwPlatformGetModuleSymbol(void* module, const char* name)
 {
     return dlsym(module, name);
 }

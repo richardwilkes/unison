@@ -25,128 +25,128 @@ type Key int
 // but re-arranged to map to 7-bit ASCII for printable keys (function keys are
 // put in the 256+ range).
 const (
-	KeyUnknown      Key = C.GLFW_KEY_UNKNOWN
-	KeySpace        Key = C.GLFW_KEY_SPACE
-	KeyApostrophe   Key = C.GLFW_KEY_APOSTROPHE
-	KeyComma        Key = C.GLFW_KEY_COMMA
-	KeyMinus        Key = C.GLFW_KEY_MINUS
-	KeyPeriod       Key = C.GLFW_KEY_PERIOD
-	KeySlash        Key = C.GLFW_KEY_SLASH
-	Key0            Key = C.GLFW_KEY_0
-	Key1            Key = C.GLFW_KEY_1
-	Key2            Key = C.GLFW_KEY_2
-	Key3            Key = C.GLFW_KEY_3
-	Key4            Key = C.GLFW_KEY_4
-	Key5            Key = C.GLFW_KEY_5
-	Key6            Key = C.GLFW_KEY_6
-	Key7            Key = C.GLFW_KEY_7
-	Key8            Key = C.GLFW_KEY_8
-	Key9            Key = C.GLFW_KEY_9
-	KeySemicolon    Key = C.GLFW_KEY_SEMICOLON
-	KeyEqual        Key = C.GLFW_KEY_EQUAL
-	KeyA            Key = C.GLFW_KEY_A
-	KeyB            Key = C.GLFW_KEY_B
-	KeyC            Key = C.GLFW_KEY_C
-	KeyD            Key = C.GLFW_KEY_D
-	KeyE            Key = C.GLFW_KEY_E
-	KeyF            Key = C.GLFW_KEY_F
-	KeyG            Key = C.GLFW_KEY_G
-	KeyH            Key = C.GLFW_KEY_H
-	KeyI            Key = C.GLFW_KEY_I
-	KeyJ            Key = C.GLFW_KEY_J
-	KeyK            Key = C.GLFW_KEY_K
-	KeyL            Key = C.GLFW_KEY_L
-	KeyM            Key = C.GLFW_KEY_M
-	KeyN            Key = C.GLFW_KEY_N
-	KeyO            Key = C.GLFW_KEY_O
-	KeyP            Key = C.GLFW_KEY_P
-	KeyQ            Key = C.GLFW_KEY_Q
-	KeyR            Key = C.GLFW_KEY_R
-	KeyS            Key = C.GLFW_KEY_S
-	KeyT            Key = C.GLFW_KEY_T
-	KeyU            Key = C.GLFW_KEY_U
-	KeyV            Key = C.GLFW_KEY_V
-	KeyW            Key = C.GLFW_KEY_W
-	KeyX            Key = C.GLFW_KEY_X
-	KeyY            Key = C.GLFW_KEY_Y
-	KeyZ            Key = C.GLFW_KEY_Z
-	KeyLeftBracket  Key = C.GLFW_KEY_LEFT_BRACKET
-	KeyBackslash    Key = C.GLFW_KEY_BACKSLASH
-	KeyRightBracket Key = C.GLFW_KEY_RIGHT_BRACKET
-	KeyGraveAccent  Key = C.GLFW_KEY_GRAVE_ACCENT
-	KeyWorld1       Key = C.GLFW_KEY_WORLD_1
-	KeyWorld2       Key = C.GLFW_KEY_WORLD_2
-	KeyEscape       Key = C.GLFW_KEY_ESCAPE
-	KeyEnter        Key = C.GLFW_KEY_ENTER
-	KeyTab          Key = C.GLFW_KEY_TAB
-	KeyBackspace    Key = C.GLFW_KEY_BACKSPACE
-	KeyInsert       Key = C.GLFW_KEY_INSERT
-	KeyDelete       Key = C.GLFW_KEY_DELETE
-	KeyRight        Key = C.GLFW_KEY_RIGHT
-	KeyLeft         Key = C.GLFW_KEY_LEFT
-	KeyDown         Key = C.GLFW_KEY_DOWN
-	KeyUp           Key = C.GLFW_KEY_UP
-	KeyPageUp       Key = C.GLFW_KEY_PAGE_UP
-	KeyPageDown     Key = C.GLFW_KEY_PAGE_DOWN
-	KeyHome         Key = C.GLFW_KEY_HOME
-	KeyEnd          Key = C.GLFW_KEY_END
-	KeyCapsLock     Key = C.GLFW_KEY_CAPS_LOCK
-	KeyScrollLock   Key = C.GLFW_KEY_SCROLL_LOCK
-	KeyNumLock      Key = C.GLFW_KEY_NUM_LOCK
-	KeyPrintScreen  Key = C.GLFW_KEY_PRINT_SCREEN
-	KeyPause        Key = C.GLFW_KEY_PAUSE
-	KeyF1           Key = C.GLFW_KEY_F1
-	KeyF2           Key = C.GLFW_KEY_F2
-	KeyF3           Key = C.GLFW_KEY_F3
-	KeyF4           Key = C.GLFW_KEY_F4
-	KeyF5           Key = C.GLFW_KEY_F5
-	KeyF6           Key = C.GLFW_KEY_F6
-	KeyF7           Key = C.GLFW_KEY_F7
-	KeyF8           Key = C.GLFW_KEY_F8
-	KeyF9           Key = C.GLFW_KEY_F9
-	KeyF10          Key = C.GLFW_KEY_F10
-	KeyF11          Key = C.GLFW_KEY_F11
-	KeyF12          Key = C.GLFW_KEY_F12
-	KeyF13          Key = C.GLFW_KEY_F13
-	KeyF14          Key = C.GLFW_KEY_F14
-	KeyF15          Key = C.GLFW_KEY_F15
-	KeyF16          Key = C.GLFW_KEY_F16
-	KeyF17          Key = C.GLFW_KEY_F17
-	KeyF18          Key = C.GLFW_KEY_F18
-	KeyF19          Key = C.GLFW_KEY_F19
-	KeyF20          Key = C.GLFW_KEY_F20
-	KeyF21          Key = C.GLFW_KEY_F21
-	KeyF22          Key = C.GLFW_KEY_F22
-	KeyF23          Key = C.GLFW_KEY_F23
-	KeyF24          Key = C.GLFW_KEY_F24
-	KeyF25          Key = C.GLFW_KEY_F25
-	KeyKP0          Key = C.GLFW_KEY_KP_0
-	KeyKP1          Key = C.GLFW_KEY_KP_1
-	KeyKP2          Key = C.GLFW_KEY_KP_2
-	KeyKP3          Key = C.GLFW_KEY_KP_3
-	KeyKP4          Key = C.GLFW_KEY_KP_4
-	KeyKP5          Key = C.GLFW_KEY_KP_5
-	KeyKP6          Key = C.GLFW_KEY_KP_6
-	KeyKP7          Key = C.GLFW_KEY_KP_7
-	KeyKP8          Key = C.GLFW_KEY_KP_8
-	KeyKP9          Key = C.GLFW_KEY_KP_9
-	KeyKPDecimal    Key = C.GLFW_KEY_KP_DECIMAL
-	KeyKPDivide     Key = C.GLFW_KEY_KP_DIVIDE
-	KeyKPMultiply   Key = C.GLFW_KEY_KP_MULTIPLY
-	KeyKPSubtract   Key = C.GLFW_KEY_KP_SUBTRACT
-	KeyKPAdd        Key = C.GLFW_KEY_KP_ADD
-	KeyKPEnter      Key = C.GLFW_KEY_KP_ENTER
-	KeyKPEqual      Key = C.GLFW_KEY_KP_EQUAL
-	KeyLeftShift    Key = C.GLFW_KEY_LEFT_SHIFT
-	KeyLeftControl  Key = C.GLFW_KEY_LEFT_CONTROL
-	KeyLeftAlt      Key = C.GLFW_KEY_LEFT_ALT
-	KeyLeftSuper    Key = C.GLFW_KEY_LEFT_SUPER
-	KeyRightShift   Key = C.GLFW_KEY_RIGHT_SHIFT
-	KeyRightControl Key = C.GLFW_KEY_RIGHT_CONTROL
-	KeyRightAlt     Key = C.GLFW_KEY_RIGHT_ALT
-	KeyRightSuper   Key = C.GLFW_KEY_RIGHT_SUPER
-	KeyMenu         Key = C.GLFW_KEY_MENU
-	KeyLast         Key = C.GLFW_KEY_LAST
+	KeyUnknown      Key = C.KEY_UNKNOWN
+	KeySpace        Key = C.KEY_SPACE
+	KeyApostrophe   Key = C.KEY_APOSTROPHE
+	KeyComma        Key = C.KEY_COMMA
+	KeyMinus        Key = C.KEY_MINUS
+	KeyPeriod       Key = C.KEY_PERIOD
+	KeySlash        Key = C.KEY_SLASH
+	Key0            Key = C.KEY_0
+	Key1            Key = C.KEY_1
+	Key2            Key = C.KEY_2
+	Key3            Key = C.KEY_3
+	Key4            Key = C.KEY_4
+	Key5            Key = C.KEY_5
+	Key6            Key = C.KEY_6
+	Key7            Key = C.KEY_7
+	Key8            Key = C.KEY_8
+	Key9            Key = C.KEY_9
+	KeySemicolon    Key = C.KEY_SEMICOLON
+	KeyEqual        Key = C.KEY_EQUAL
+	KeyA            Key = C.KEY_A
+	KeyB            Key = C.KEY_B
+	KeyC            Key = C.KEY_C
+	KeyD            Key = C.KEY_D
+	KeyE            Key = C.KEY_E
+	KeyF            Key = C.KEY_F
+	KeyG            Key = C.KEY_G
+	KeyH            Key = C.KEY_H
+	KeyI            Key = C.KEY_I
+	KeyJ            Key = C.KEY_J
+	KeyK            Key = C.KEY_K
+	KeyL            Key = C.KEY_L
+	KeyM            Key = C.KEY_M
+	KeyN            Key = C.KEY_N
+	KeyO            Key = C.KEY_O
+	KeyP            Key = C.KEY_P
+	KeyQ            Key = C.KEY_Q
+	KeyR            Key = C.KEY_R
+	KeyS            Key = C.KEY_S
+	KeyT            Key = C.KEY_T
+	KeyU            Key = C.KEY_U
+	KeyV            Key = C.KEY_V
+	KeyW            Key = C.KEY_W
+	KeyX            Key = C.KEY_X
+	KeyY            Key = C.KEY_Y
+	KeyZ            Key = C.KEY_Z
+	KeyLeftBracket  Key = C.KEY_LEFT_BRACKET
+	KeyBackslash    Key = C.KEY_BACKSLASH
+	KeyRightBracket Key = C.KEY_RIGHT_BRACKET
+	KeyGraveAccent  Key = C.KEY_GRAVE_ACCENT
+	KeyWorld1       Key = C.KEY_WORLD_1
+	KeyWorld2       Key = C.KEY_WORLD_2
+	KeyEscape       Key = C.KEY_ESCAPE
+	KeyEnter        Key = C.KEY_ENTER
+	KeyTab          Key = C.KEY_TAB
+	KeyBackspace    Key = C.KEY_BACKSPACE
+	KeyInsert       Key = C.KEY_INSERT
+	KeyDelete       Key = C.KEY_DELETE
+	KeyRight        Key = C.KEY_RIGHT
+	KeyLeft         Key = C.KEY_LEFT
+	KeyDown         Key = C.KEY_DOWN
+	KeyUp           Key = C.KEY_UP
+	KeyPageUp       Key = C.KEY_PAGE_UP
+	KeyPageDown     Key = C.KEY_PAGE_DOWN
+	KeyHome         Key = C.KEY_HOME
+	KeyEnd          Key = C.KEY_END
+	KeyCapsLock     Key = C.KEY_CAPS_LOCK
+	KeyScrollLock   Key = C.KEY_SCROLL_LOCK
+	KeyNumLock      Key = C.KEY_NUM_LOCK
+	KeyPrintScreen  Key = C.KEY_PRINT_SCREEN
+	KeyPause        Key = C.KEY_PAUSE
+	KeyF1           Key = C.KEY_F1
+	KeyF2           Key = C.KEY_F2
+	KeyF3           Key = C.KEY_F3
+	KeyF4           Key = C.KEY_F4
+	KeyF5           Key = C.KEY_F5
+	KeyF6           Key = C.KEY_F6
+	KeyF7           Key = C.KEY_F7
+	KeyF8           Key = C.KEY_F8
+	KeyF9           Key = C.KEY_F9
+	KeyF10          Key = C.KEY_F10
+	KeyF11          Key = C.KEY_F11
+	KeyF12          Key = C.KEY_F12
+	KeyF13          Key = C.KEY_F13
+	KeyF14          Key = C.KEY_F14
+	KeyF15          Key = C.KEY_F15
+	KeyF16          Key = C.KEY_F16
+	KeyF17          Key = C.KEY_F17
+	KeyF18          Key = C.KEY_F18
+	KeyF19          Key = C.KEY_F19
+	KeyF20          Key = C.KEY_F20
+	KeyF21          Key = C.KEY_F21
+	KeyF22          Key = C.KEY_F22
+	KeyF23          Key = C.KEY_F23
+	KeyF24          Key = C.KEY_F24
+	KeyF25          Key = C.KEY_F25
+	KeyKP0          Key = C.KEY_KP_0
+	KeyKP1          Key = C.KEY_KP_1
+	KeyKP2          Key = C.KEY_KP_2
+	KeyKP3          Key = C.KEY_KP_3
+	KeyKP4          Key = C.KEY_KP_4
+	KeyKP5          Key = C.KEY_KP_5
+	KeyKP6          Key = C.KEY_KP_6
+	KeyKP7          Key = C.KEY_KP_7
+	KeyKP8          Key = C.KEY_KP_8
+	KeyKP9          Key = C.KEY_KP_9
+	KeyKPDecimal    Key = C.KEY_KP_DECIMAL
+	KeyKPDivide     Key = C.KEY_KP_DIVIDE
+	KeyKPMultiply   Key = C.KEY_KP_MULTIPLY
+	KeyKPSubtract   Key = C.KEY_KP_SUBTRACT
+	KeyKPAdd        Key = C.KEY_KP_ADD
+	KeyKPEnter      Key = C.KEY_KP_ENTER
+	KeyKPEqual      Key = C.KEY_KP_EQUAL
+	KeyLeftShift    Key = C.KEY_LEFT_SHIFT
+	KeyLeftControl  Key = C.KEY_LEFT_CONTROL
+	KeyLeftAlt      Key = C.KEY_LEFT_ALT
+	KeyLeftSuper    Key = C.KEY_LEFT_SUPER
+	KeyRightShift   Key = C.KEY_RIGHT_SHIFT
+	KeyRightControl Key = C.KEY_RIGHT_CONTROL
+	KeyRightAlt     Key = C.KEY_RIGHT_ALT
+	KeyRightSuper   Key = C.KEY_RIGHT_SUPER
+	KeyMenu         Key = C.KEY_MENU
+	KeyLast         Key = C.KEY_LAST
 )
 
 // ModifierKey corresponds to a modifier key.
@@ -154,12 +154,12 @@ type ModifierKey int
 
 // Modifier keys.
 const (
-	ModShift    ModifierKey = C.GLFW_MOD_SHIFT
-	ModControl  ModifierKey = C.GLFW_MOD_CONTROL
-	ModAlt      ModifierKey = C.GLFW_MOD_ALT
-	ModSuper    ModifierKey = C.GLFW_MOD_SUPER
-	ModCapsLock ModifierKey = C.GLFW_MOD_CAPS_LOCK
-	ModNumLock  ModifierKey = C.GLFW_MOD_NUM_LOCK
+	ModShift    ModifierKey = C.MOD_SHIFT
+	ModControl  ModifierKey = C.MOD_CONTROL
+	ModAlt      ModifierKey = C.MOD_ALT
+	ModSuper    ModifierKey = C.MOD_SUPER
+	ModCapsLock ModifierKey = C.MOD_CAPS_LOCK
+	ModNumLock  ModifierKey = C.MOD_NUM_LOCK
 )
 
 // MouseButton corresponds to a mouse button.
@@ -167,18 +167,18 @@ type MouseButton int
 
 // Mouse buttons.
 const (
-	MouseButton1      MouseButton = C.GLFW_MOUSE_BUTTON_1
-	MouseButton2      MouseButton = C.GLFW_MOUSE_BUTTON_2
-	MouseButton3      MouseButton = C.GLFW_MOUSE_BUTTON_3
-	MouseButton4      MouseButton = C.GLFW_MOUSE_BUTTON_4
-	MouseButton5      MouseButton = C.GLFW_MOUSE_BUTTON_5
-	MouseButton6      MouseButton = C.GLFW_MOUSE_BUTTON_6
-	MouseButton7      MouseButton = C.GLFW_MOUSE_BUTTON_7
-	MouseButton8      MouseButton = C.GLFW_MOUSE_BUTTON_8
-	MouseButtonLast   MouseButton = C.GLFW_MOUSE_BUTTON_LAST
-	MouseButtonLeft   MouseButton = C.GLFW_MOUSE_BUTTON_LEFT
-	MouseButtonRight  MouseButton = C.GLFW_MOUSE_BUTTON_RIGHT
-	MouseButtonMiddle MouseButton = C.GLFW_MOUSE_BUTTON_MIDDLE
+	MouseButton1      MouseButton = C.MOUSE_BUTTON_1
+	MouseButton2      MouseButton = C.MOUSE_BUTTON_2
+	MouseButton3      MouseButton = C.MOUSE_BUTTON_3
+	MouseButton4      MouseButton = C.MOUSE_BUTTON_4
+	MouseButton5      MouseButton = C.MOUSE_BUTTON_5
+	MouseButton6      MouseButton = C.MOUSE_BUTTON_6
+	MouseButton7      MouseButton = C.MOUSE_BUTTON_7
+	MouseButton8      MouseButton = C.MOUSE_BUTTON_8
+	MouseButtonLast   MouseButton = C.MOUSE_BUTTON_LAST
+	MouseButtonLeft   MouseButton = C.MOUSE_BUTTON_LEFT
+	MouseButtonRight  MouseButton = C.MOUSE_BUTTON_RIGHT
+	MouseButtonMiddle MouseButton = C.MOUSE_BUTTON_MIDDLE
 )
 
 // StandardCursor corresponds to a standard cursor icon.
@@ -186,12 +186,12 @@ type StandardCursor int
 
 // Standard cursors
 const (
-	ArrowCursor     StandardCursor = C.GLFW_ARROW_CURSOR
-	IBeamCursor     StandardCursor = C.GLFW_IBEAM_CURSOR
-	CrosshairCursor StandardCursor = C.GLFW_CROSSHAIR_CURSOR
-	HandCursor      StandardCursor = C.GLFW_HAND_CURSOR
-	HResizeCursor   StandardCursor = C.GLFW_HRESIZE_CURSOR
-	VResizeCursor   StandardCursor = C.GLFW_VRESIZE_CURSOR
+	ArrowCursor     StandardCursor = C.STD_CURSOR_ARROW
+	IBeamCursor     StandardCursor = C.STD_CURSOR_IBEAM
+	CrosshairCursor StandardCursor = C.STD_CURSOR_CROSSHAIR
+	HandCursor      StandardCursor = C.STD_CURSOR_POINTING_HAND
+	HResizeCursor   StandardCursor = C.STD_CURSOR_HORIZONTAL_RESIZE
+	VResizeCursor   StandardCursor = C.STD_CURSOR_VERTICAL_RESIZE
 )
 
 // Action corresponds to a key or button action.
@@ -199,9 +199,9 @@ type Action int
 
 // Action types.
 const (
-	Release Action = C.GLFW_RELEASE // The key or button was released.
-	Press   Action = C.GLFW_PRESS   // The key or button was pressed.
-	Repeat  Action = C.GLFW_REPEAT  // The key was held down until it repeated.
+	Release Action = C.INPUT_RELEASE // The key or button was released.
+	Press   Action = C.INPUT_PRESS   // The key or button was pressed.
+	Repeat  Action = C.INPUT_REPEAT  // The key was held down until it repeated.
 )
 
 // InputMode corresponds to an input mode.
@@ -209,18 +209,19 @@ type InputMode int
 
 // Input modes.
 const (
-	CursorMode             InputMode = C.GLFW_CURSOR               // See Cursor mode values
-	StickyKeysMode         InputMode = C.GLFW_STICKY_KEYS          // Value can be either 1 or 0
-	StickyMouseButtonsMode InputMode = C.GLFW_STICKY_MOUSE_BUTTONS // Value can be either 1 or 0
-	LockKeyMods            InputMode = C.GLFW_LOCK_KEY_MODS        // Value can be either 1 or 0
-	RawMouseMotion         InputMode = C.GLFW_RAW_MOUSE_MOTION     // Value can be either 1 or 0
+	InputModeCursor                InputMode = C.INPUT_MODE_CURSOR                  // See Cursor mode values
+	InputModeStickyKeys            InputMode = C.INPUT_MODE_STICKY_KEYS             // Value can be either 1 or 0
+	InputModeStickyMouseButtons    InputMode = C.INPUT_MODE_STICKY_MOUSE_BUTTONS    // Value can be either 1 or 0
+	InputModeLockKeyMods           InputMode = C.INPUT_MODE_LOCK_KEY_MODS           // Value can be either 1 or 0
+	InputModeRawMouseMotion        InputMode = C.INPUT_MODE_RAW_MOUSE_MOTION        // Value can be either 1 or 0
+	InputModeUnlimitedMouseButtons InputMode = C.INPUT_MODE_UNLIMITED_MOUSE_BUTTONS // Value can be either 1 or 0
 )
 
 // Cursor mode values.
 const (
-	CursorNormal   int = C.GLFW_CURSOR_NORMAL
-	CursorHidden   int = C.GLFW_CURSOR_HIDDEN
-	CursorDisabled int = C.GLFW_CURSOR_DISABLED
+	CursorNormal   int = C.CURSOR_NORMAL
+	CursorHidden   int = C.CURSOR_HIDDEN
+	CursorDisabled int = C.CURSOR_DISABLED
 )
 
 // Cursor represents a cursor.
@@ -398,9 +399,9 @@ type KeyCallback func(w *Window, key Key, scancode int, action Action, mods Modi
 func (w *Window) SetKeyCallback(cbfun KeyCallback) (previous KeyCallback) {
 	previous = w.fKeyHolder
 	w.fKeyHolder = cbfun
-	var callback C.GLFWkeyfun
+	var callback C.keyFunc
 	if cbfun != nil {
-		callback = C.GLFWkeyfun(C.goKeyCallback)
+		callback = C.keyFunc(C.goKeyCallback)
 	}
 	C.glfwSetKeyCallback(w.data, callback)
 	panicError()
@@ -427,9 +428,9 @@ type CharCallback func(w *Window, char rune)
 func (w *Window) SetCharCallback(cbfun CharCallback) (previous CharCallback) {
 	previous = w.fCharHolder
 	w.fCharHolder = cbfun
-	var callback C.GLFWcharfun
+	var callback C.charFunc
 	if cbfun != nil {
-		callback = C.GLFWcharfun(C.goCharCallback)
+		callback = C.charFunc(C.goCharCallback)
 	}
 	C.glfwSetCharCallback(w.data, callback)
 	panicError()
@@ -454,9 +455,9 @@ type CharModsCallback func(w *Window, char rune, mods ModifierKey)
 func (w *Window) SetCharModsCallback(cbfun CharModsCallback) (previous CharModsCallback) {
 	previous = w.fCharModsHolder
 	w.fCharModsHolder = cbfun
-	var callback C.GLFWcharmodsfun
+	var callback C.charModsFunc
 	if cbfun != nil {
-		callback = C.GLFWcharmodsfun(C.goCharModsCallback)
+		callback = C.charModsFunc(C.goCharModsCallback)
 	}
 	C.glfwSetCharModsCallback(w.data, callback)
 	panicError()
@@ -477,9 +478,9 @@ type MouseButtonCallback func(w *Window, button MouseButton, action Action, mods
 func (w *Window) SetMouseButtonCallback(cbfun MouseButtonCallback) (previous MouseButtonCallback) {
 	previous = w.fMouseButtonHolder
 	w.fMouseButtonHolder = cbfun
-	var callback C.GLFWmousebuttonfun
+	var callback C.mouseButtonFunc
 	if cbfun != nil {
-		callback = C.GLFWmousebuttonfun(C.goMouseButtonCallback)
+		callback = C.mouseButtonFunc(C.goMouseButtonCallback)
 	}
 	C.glfwSetMouseButtonCallback(w.data, callback)
 	panicError()
@@ -495,9 +496,9 @@ type CursorPosCallback func(w *Window, xpos float64, ypos float64)
 func (w *Window) SetCursorPosCallback(cbfun CursorPosCallback) (previous CursorPosCallback) {
 	previous = w.fCursorPosHolder
 	w.fCursorPosHolder = cbfun
-	var callback C.GLFWcursorposfun
+	var callback C.cursorPosFunc
 	if cbfun != nil {
-		callback = C.GLFWcursorposfun(C.goCursorPosCallback)
+		callback = C.cursorPosFunc(C.goCursorPosCallback)
 	}
 	C.glfwSetCursorPosCallback(w.data, callback)
 	panicError()
@@ -512,9 +513,9 @@ type CursorEnterCallback func(w *Window, entered bool)
 func (w *Window) SetCursorEnterCallback(cbfun CursorEnterCallback) (previous CursorEnterCallback) {
 	previous = w.fCursorEnterHolder
 	w.fCursorEnterHolder = cbfun
-	var callback C.GLFWcursorenterfun
+	var callback C.cursorEnterFunc
 	if cbfun != nil {
-		callback = C.GLFWcursorenterfun(C.goCursorEnterCallback)
+		callback = C.cursorEnterFunc(C.goCursorEnterCallback)
 	}
 	C.glfwSetCursorEnterCallback(w.data, callback)
 	panicError()
@@ -529,9 +530,9 @@ type ScrollCallback func(w *Window, xoff float64, yoff float64)
 func (w *Window) SetScrollCallback(cbfun ScrollCallback) (previous ScrollCallback) {
 	previous = w.fScrollHolder
 	w.fScrollHolder = cbfun
-	var callback C.GLFWscrollfun
+	var callback C.scrollFunc
 	if cbfun != nil {
-		callback = C.GLFWscrollfun(C.goScrollCallback)
+		callback = C.scrollFunc(C.goScrollCallback)
 	}
 	C.glfwSetScrollCallback(w.data, callback)
 	panicError()
@@ -546,9 +547,9 @@ type DropCallback func(w *Window, names []string)
 func (w *Window) SetDropCallback(cbfun DropCallback) (previous DropCallback) {
 	previous = w.fDropHolder
 	w.fDropHolder = cbfun
-	var callback C.GLFWdropfun
+	var callback C.dropFunc
 	if cbfun != nil {
-		callback = C.GLFWdropfun(C.goDropCallback)
+		callback = C.dropFunc(C.goDropCallback)
 	}
 	C.glfwSetDropCallback(w.data, callback)
 	panicError()

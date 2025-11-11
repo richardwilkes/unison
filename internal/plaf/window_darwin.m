@@ -41,7 +41,7 @@ static void showCursor(_GLFWwindow* window)
 //
 static void updateCursorImage(_GLFWwindow* window)
 {
-    if (window->cursorMode == GLFW_CURSOR_NORMAL)
+    if (window->cursorMode == CURSOR_NORMAL)
     {
         showCursor(window);
 
@@ -58,7 +58,7 @@ static void updateCursorImage(_GLFWwindow* window)
 //
 static void updateCursorMode(_GLFWwindow* window)
 {
-    if (window->cursorMode == GLFW_CURSOR_DISABLED)
+    if (window->cursorMode == CURSOR_DISABLED)
     {
         _glfw.ns.disabledCursorWindow = window;
         _glfwGetCursorPosCocoa(window,
@@ -115,15 +115,15 @@ static int translateFlags(NSUInteger flags)
     int mods = 0;
 
     if (flags & NSEventModifierFlagShift)
-        mods |= GLFW_MOD_SHIFT;
+        mods |= MOD_SHIFT;
     if (flags & NSEventModifierFlagControl)
-        mods |= GLFW_MOD_CONTROL;
+        mods |= MOD_CONTROL;
     if (flags & NSEventModifierFlagOption)
-        mods |= GLFW_MOD_ALT;
+        mods |= MOD_ALT;
     if (flags & NSEventModifierFlagCommand)
-        mods |= GLFW_MOD_SUPER;
+        mods |= MOD_SUPER;
     if (flags & NSEventModifierFlagCapsLock)
-        mods |= GLFW_MOD_CAPS_LOCK;
+        mods |= MOD_CAPS_LOCK;
 
     return mods;
 }
@@ -133,7 +133,7 @@ static int translateFlags(NSUInteger flags)
 static int translateKey(unsigned int key)
 {
     if (key >= sizeof(_glfw.ns.keycodes) / sizeof(_glfw.ns.keycodes[0]))
-        return GLFW_KEY_UNKNOWN;
+        return KEY_UNKNOWN;
 
     return _glfw.ns.keycodes[key];
 }
@@ -144,19 +144,19 @@ static NSUInteger translateKeyToModifierFlag(int key)
 {
     switch (key)
     {
-        case GLFW_KEY_LEFT_SHIFT:
-        case GLFW_KEY_RIGHT_SHIFT:
+        case KEY_LEFT_SHIFT:
+        case KEY_RIGHT_SHIFT:
             return NSEventModifierFlagShift;
-        case GLFW_KEY_LEFT_CONTROL:
-        case GLFW_KEY_RIGHT_CONTROL:
+        case KEY_LEFT_CONTROL:
+        case KEY_RIGHT_CONTROL:
             return NSEventModifierFlagControl;
-        case GLFW_KEY_LEFT_ALT:
-        case GLFW_KEY_RIGHT_ALT:
+        case KEY_LEFT_ALT:
+        case KEY_RIGHT_ALT:
             return NSEventModifierFlagOption;
-        case GLFW_KEY_LEFT_SUPER:
-        case GLFW_KEY_RIGHT_SUPER:
+        case KEY_LEFT_SUPER:
+        case KEY_RIGHT_SUPER:
             return NSEventModifierFlagCommand;
-        case GLFW_KEY_CAPS_LOCK:
+        case KEY_CAPS_LOCK:
             return NSEventModifierFlagCapsLock;
     }
 
@@ -359,8 +359,8 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 - (void)mouseDown:(NSEvent *)event
 {
     _glfwInputMouseClick(window,
-                         GLFW_MOUSE_BUTTON_LEFT,
-                         GLFW_PRESS,
+                         MOUSE_BUTTON_LEFT,
+                         INPUT_PRESS,
                          translateFlags([event modifierFlags]));
 }
 
@@ -372,14 +372,14 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 - (void)mouseUp:(NSEvent *)event
 {
     _glfwInputMouseClick(window,
-                         GLFW_MOUSE_BUTTON_LEFT,
-                         GLFW_RELEASE,
+                         MOUSE_BUTTON_LEFT,
+                         INPUT_RELEASE,
                          translateFlags([event modifierFlags]));
 }
 
 - (void)mouseMoved:(NSEvent *)event
 {
-    if (window->cursorMode == GLFW_CURSOR_DISABLED)
+    if (window->cursorMode == CURSOR_DISABLED)
     {
         const double dx = [event deltaX] - window->ns.cursorWarpDeltaX;
         const double dy = [event deltaY] - window->ns.cursorWarpDeltaY;
@@ -404,8 +404,8 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 - (void)rightMouseDown:(NSEvent *)event
 {
     _glfwInputMouseClick(window,
-                         GLFW_MOUSE_BUTTON_RIGHT,
-                         GLFW_PRESS,
+                         MOUSE_BUTTON_RIGHT,
+                         INPUT_PRESS,
                          translateFlags([event modifierFlags]));
 }
 
@@ -417,8 +417,8 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 - (void)rightMouseUp:(NSEvent *)event
 {
     _glfwInputMouseClick(window,
-                         GLFW_MOUSE_BUTTON_RIGHT,
-                         GLFW_RELEASE,
+                         MOUSE_BUTTON_RIGHT,
+                         INPUT_RELEASE,
                          translateFlags([event modifierFlags]));
 }
 
@@ -426,7 +426,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 {
     _glfwInputMouseClick(window,
                          (int) [event buttonNumber],
-                         GLFW_PRESS,
+                         INPUT_PRESS,
                          translateFlags([event modifierFlags]));
 }
 
@@ -439,13 +439,13 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 {
     _glfwInputMouseClick(window,
                          (int) [event buttonNumber],
-                         GLFW_RELEASE,
+                         INPUT_RELEASE,
                          translateFlags([event modifierFlags]));
 }
 
 - (void)mouseExited:(NSEvent *)event
 {
-    if (window->cursorMode == GLFW_CURSOR_HIDDEN)
+    if (window->cursorMode == CURSOR_HIDDEN)
         showCursor(window);
 
     _glfwInputCursorEnter(window, false);
@@ -453,7 +453,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)mouseEntered:(NSEvent *)event
 {
-    if (window->cursorMode == GLFW_CURSOR_HIDDEN)
+    if (window->cursorMode == CURSOR_HIDDEN)
         hideCursor(window);
 
     _glfwInputCursorEnter(window, true);
@@ -519,7 +519,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
     const int key = translateKey([event keyCode]);
     const int mods = translateFlags([event modifierFlags]);
 
-    _glfwInputKey(window, key, [event keyCode], GLFW_PRESS, mods);
+    _glfwInputKey(window, key, [event keyCode], INPUT_PRESS, mods);
 
     [self interpretKeyEvents:@[event]];
 }
@@ -535,13 +535,13 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
     if (keyFlag & modifierFlags)
     {
-        if (window->keys[key] == GLFW_PRESS)
-            action = GLFW_RELEASE;
+        if (window->keys[key] == INPUT_PRESS)
+            action = INPUT_RELEASE;
         else
-            action = GLFW_PRESS;
+            action = INPUT_PRESS;
     }
     else
-        action = GLFW_RELEASE;
+        action = INPUT_RELEASE;
 
     _glfwInputKey(window, key, [event keyCode], action, mods);
 }
@@ -550,7 +550,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 {
     const int key = translateKey([event keyCode]);
     const int mods = translateFlags([event modifierFlags]);
-    _glfwInputKey(window, key, [event keyCode], GLFW_RELEASE, mods);
+    _glfwInputKey(window, key, [event keyCode], INPUT_RELEASE, mods);
 }
 
 - (void)scrollWheel:(NSEvent *)event
@@ -666,7 +666,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
     NSString* characters;
     NSEvent* event = [NSApp currentEvent];
     const int mods = translateFlags([event modifierFlags]);
-    const int plain = !(mods & GLFW_MOD_SUPER);
+    const int plain = !(mods & MOD_SUPER);
 
     if ([string isKindOfClass:[NSAttributedString class]])
         characters = [string string];
@@ -733,7 +733,7 @@ static GLFWbool createNativeWindow(_GLFWwindow* window,
     window->ns.delegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
     if (window->ns.delegate == nil)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Cocoa: Failed to create window delegate");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window delegate");
         return false;
     }
 
@@ -741,7 +741,7 @@ static GLFWbool createNativeWindow(_GLFWwindow* window,
 
     if (window->monitor)
     {
-        GLFWvidmode mode;
+        VideoMode mode;
         int xpos, ypos;
 
         _glfwGetVideoModeCocoa(window->monitor, &mode);
@@ -751,8 +751,8 @@ static GLFWbool createNativeWindow(_GLFWwindow* window,
     }
     else
     {
-        if (wndconfig->xpos == GLFW_ANY_POSITION ||
-            wndconfig->ypos == GLFW_ANY_POSITION)
+        if (wndconfig->xpos == ANY_POSITION ||
+            wndconfig->ypos == ANY_POSITION)
         {
             contentRect = NSMakeRect(0, 0, wndconfig->width, wndconfig->height);
         }
@@ -784,7 +784,7 @@ static GLFWbool createNativeWindow(_GLFWwindow* window,
 
     if (window->ns.object == nil)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Cocoa: Failed to create window");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window");
         return false;
     }
 
@@ -792,8 +792,8 @@ static GLFWbool createNativeWindow(_GLFWwindow* window,
         [window->ns.object setLevel:NSMainMenuWindowLevel + 1];
     else
     {
-        if (wndconfig->xpos == GLFW_ANY_POSITION ||
-            wndconfig->ypos == GLFW_ANY_POSITION)
+        if (wndconfig->xpos == ANY_POSITION ||
+            wndconfig->ypos == ANY_POSITION)
         {
             [(NSWindow*) window->ns.object center];
             _glfw.ns.cascadePoint =
@@ -957,9 +957,9 @@ void _glfwSetWindowTitleCocoa(_GLFWwindow* window, const char* title)
 }
 
 void _glfwSetWindowIconCocoa(_GLFWwindow* window,
-                             int count, const GLFWimage* images)
+                             int count, const ImageData* images)
 {
-    _glfwInputError(GLFW_FEATURE_UNAVAILABLE, "Cocoa: Regular windows do not have icons on macOS");
+    _glfwInputError(ERR_FEATURE_UNAVAILABLE, "Cocoa: Regular windows do not have icons on macOS");
 }
 
 void _glfwGetWindowPosCocoa(_GLFWwindow* window, int* xpos, int* ypos)
@@ -1031,12 +1031,12 @@ void _glfwSetWindowSizeLimitsCocoa(_GLFWwindow* window,
 {
     @autoreleasepool {
 
-    if (minwidth == GLFW_DONT_CARE || minheight == GLFW_DONT_CARE)
+    if (minwidth == DONT_CARE || minheight == DONT_CARE)
         [window->ns.object setContentMinSize:NSMakeSize(0, 0)];
     else
         [window->ns.object setContentMinSize:NSMakeSize(minwidth, minheight)];
 
-    if (maxwidth == GLFW_DONT_CARE || maxheight == GLFW_DONT_CARE)
+    if (maxwidth == DONT_CARE || maxheight == DONT_CARE)
         [window->ns.object setContentMaxSize:NSMakeSize(DBL_MAX, DBL_MAX)];
     else
         [window->ns.object setContentMaxSize:NSMakeSize(maxwidth, maxheight)];
@@ -1047,7 +1047,7 @@ void _glfwSetWindowSizeLimitsCocoa(_GLFWwindow* window,
 void _glfwSetWindowAspectRatioCocoa(_GLFWwindow* window, int numer, int denom)
 {
     @autoreleasepool {
-    if (numer == GLFW_DONT_CARE || denom == GLFW_DONT_CARE)
+    if (numer == DONT_CARE || denom == DONT_CARE)
         [window->ns.object setResizeIncrements:NSMakeSize(1.0, 1.0)];
     else
         [window->ns.object setContentAspectRatio:NSMakeSize(numer, denom)];
@@ -1245,22 +1245,22 @@ void _glfwSetWindowMonitorCocoa(_GLFWwindow* window,
                                                             styleMask:styleMask];
         [window->ns.object setFrame:frameRect display:YES];
 
-        if (window->numer != GLFW_DONT_CARE &&
-            window->denom != GLFW_DONT_CARE)
+        if (window->numer != DONT_CARE &&
+            window->denom != DONT_CARE)
         {
             [window->ns.object setContentAspectRatio:NSMakeSize(window->numer,
                                                                 window->denom)];
         }
 
-        if (window->minwidth != GLFW_DONT_CARE &&
-            window->minheight != GLFW_DONT_CARE)
+        if (window->minwidth != DONT_CARE &&
+            window->minheight != DONT_CARE)
         {
             [window->ns.object setContentMinSize:NSMakeSize(window->minwidth,
                                                             window->minheight)];
         }
 
-        if (window->maxwidth != GLFW_DONT_CARE &&
-            window->maxheight != GLFW_DONT_CARE)
+        if (window->maxwidth != DONT_CARE &&
+            window->maxheight != DONT_CARE)
         {
             [window->ns.object setContentMaxSize:NSMakeSize(window->maxwidth,
                                                             window->maxheight)];
@@ -1431,7 +1431,7 @@ void _glfwSetWindowOpacityCocoa(_GLFWwindow* window, float opacity)
 
 void _glfwSetRawMouseMotionCocoa(_GLFWwindow *window, GLFWbool enabled)
 {
-    _glfwInputError(GLFW_FEATURE_UNIMPLEMENTED, "Cocoa: Raw mouse motion not yet implemented");
+    _glfwInputError(ERR_FEATURE_UNIMPLEMENTED, "Cocoa: Raw mouse motion not yet implemented");
 }
 
 GLFWbool _glfwRawMouseMotionSupportedCocoa(void)
@@ -1557,7 +1557,7 @@ void _glfwSetCursorPosCocoa(_GLFWwindow* window, double x, double y)
 
     // HACK: Calling this right after setting the cursor position prevents macOS
     //       from freezing the cursor for a fraction of a second afterwards
-    if (window->cursorMode != GLFW_CURSOR_DISABLED)
+    if (window->cursorMode != CURSOR_DISABLED)
         CGAssociateMouseAndMouseCursorPosition(true);
 
     } // autoreleasepool
@@ -1567,9 +1567,9 @@ void _glfwSetCursorModeCocoa(_GLFWwindow* window, int mode)
 {
     @autoreleasepool {
 
-    if (mode == GLFW_CURSOR_CAPTURED)
+    if (mode == CURSOR_CAPTURED)
     {
-        _glfwInputError(GLFW_FEATURE_UNIMPLEMENTED, "Cocoa: Captured cursor mode not yet implemented");
+        _glfwInputError(ERR_FEATURE_UNIMPLEMENTED, "Cocoa: Captured cursor mode not yet implemented");
     }
 
     if (_glfwWindowFocusedCocoa(window))
@@ -1584,12 +1584,12 @@ const char* _glfwGetScancodeNameCocoa(int scancode)
 
     if (scancode < 0 || scancode > 0xff)
     {
-        _glfwInputError(GLFW_INVALID_VALUE, "Invalid scancode %i", scancode);
+        _glfwInputError(ERR_INVALID_VALUE, "Invalid scancode %i", scancode);
         return NULL;
     }
 
     const int key = _glfw.ns.keycodes[scancode];
-    if (key == GLFW_KEY_UNKNOWN)
+    if (key == KEY_UNKNOWN)
         return NULL;
 
     UInt32 deadKeyState = 0;
@@ -1634,7 +1634,7 @@ int _glfwGetKeyScancodeCocoa(int key)
 }
 
 GLFWbool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
-                                const GLFWimage* image,
+                                const ImageData* image,
                                 int xhot, int yhot)
 {
     @autoreleasepool {
@@ -1680,60 +1680,27 @@ GLFWbool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
 GLFWbool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape)
 {
     @autoreleasepool {
-
-    SEL cursorSelector = NULL;
-
-    // HACK: Try to use a private message
-    switch (shape)
-    {
-        case GLFW_RESIZE_EW_CURSOR:
-            cursorSelector = NSSelectorFromString(@"_windowResizeEastWestCursor");
-            break;
-        case GLFW_RESIZE_NS_CURSOR:
-            cursorSelector = NSSelectorFromString(@"_windowResizeNorthSouthCursor");
-            break;
-        case GLFW_RESIZE_NWSE_CURSOR:
-            cursorSelector = NSSelectorFromString(@"_windowResizeNorthWestSouthEastCursor");
-            break;
-        case GLFW_RESIZE_NESW_CURSOR:
-            cursorSelector = NSSelectorFromString(@"_windowResizeNorthEastSouthWestCursor");
-            break;
-    }
-
-    if (cursorSelector && [NSCursor respondsToSelector:cursorSelector])
-    {
-        id object = [NSCursor performSelector:cursorSelector];
-        if ([object isKindOfClass:[NSCursor class]])
-            cursor->ns.object = object;
-    }
-
     if (!cursor->ns.object)
     {
         switch (shape)
         {
-            case GLFW_ARROW_CURSOR:
+            case STD_CURSOR_ARROW:
                 cursor->ns.object = [NSCursor arrowCursor];
                 break;
-            case GLFW_IBEAM_CURSOR:
+            case STD_CURSOR_IBEAM:
                 cursor->ns.object = [NSCursor IBeamCursor];
                 break;
-            case GLFW_CROSSHAIR_CURSOR:
+            case STD_CURSOR_CROSSHAIR:
                 cursor->ns.object = [NSCursor crosshairCursor];
                 break;
-            case GLFW_POINTING_HAND_CURSOR:
+            case STD_CURSOR_POINTING_HAND:
                 cursor->ns.object = [NSCursor pointingHandCursor];
                 break;
-            case GLFW_RESIZE_EW_CURSOR:
+            case STD_CURSOR_HORIZONTAL_RESIZE:
                 cursor->ns.object = [NSCursor resizeLeftRightCursor];
                 break;
-            case GLFW_RESIZE_NS_CURSOR:
+            case STD_CURSOR_VERTICAL_RESIZE:
                 cursor->ns.object = [NSCursor resizeUpDownCursor];
-                break;
-            case GLFW_RESIZE_ALL_CURSOR:
-                cursor->ns.object = [NSCursor closedHandCursor];
-                break;
-            case GLFW_NOT_ALLOWED_CURSOR:
-                cursor->ns.object = [NSCursor operationNotAllowedCursor];
                 break;
         }
     }

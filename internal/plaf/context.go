@@ -83,7 +83,7 @@ func ExtensionSupported(extension string) bool {
 // or extension function, if it is supported by the current context.
 //
 // A context must be current on the calling thread. Calling this function
-// without a current context will cause a GLFW_NO_CURRENT_CONTEXT error.
+// without a current context will cause a ERR_NO_CURRENT_CONTEXT error.
 //
 // This function is used to provide GL proc resolving capabilities to an
 // external C library.

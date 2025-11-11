@@ -15,7 +15,7 @@ _GLFWlibrary _glfw = { false };
 // These are outside of _glfw so they can be used before initialization and
 // after termination without special handling when _glfw is cleared to zero
 //
-static GLFWerrorfun _glfwErrorCallback;
+static errorFunc _glfwErrorCallback;
 
 // Terminate the library
 //
@@ -160,7 +160,7 @@ void* _glfw_calloc(size_t count, size_t size)
 
         if (count > SIZE_MAX / size)
         {
-            _glfwInputError(GLFW_INVALID_VALUE, "Allocation size overflow");
+            _glfwInputError(ERR_INVALID_VALUE, "Allocation size overflow");
             return NULL;
         }
 
@@ -169,7 +169,7 @@ void* _glfw_calloc(size_t count, size_t size)
             return memset(block, 0, count * size);
         else
         {
-            _glfwInputError(GLFW_OUT_OF_MEMORY, "Out of memory");
+            _glfwInputError(ERR_OUT_OF_MEMORY, "Out of memory");
             return NULL;
         }
     }
@@ -186,7 +186,7 @@ void* _glfw_realloc(void* block, size_t size)
             return resized;
         else
         {
-            _glfwInputError(GLFW_OUT_OF_MEMORY, "Out of memory");
+            _glfwInputError(ERR_OUT_OF_MEMORY, "Out of memory");
             return NULL;
         }
     }
@@ -212,7 +212,7 @@ void _glfw_free(void* block)
 
 // Notifies shared code of an error
 void _glfwInputError(int code, const char* format, ...) {
-	char description[_GLFW_MESSAGE_SIZE];
+	char description[ERROR_MSG_SIZE];
 	va_list vl;
 
 	va_start(vl, format);
@@ -234,7 +234,7 @@ ErrorResponse* createErrorResponse(int code, const char* format, ...) {
 	ErrorResponse* errResp = (ErrorResponse*)malloc(sizeof(ErrorResponse));
 	errResp->code = code;
 	va_start(args, format);
-	vsnprintf(errResp->desc, _GLFW_MESSAGE_SIZE, format, args);
+	vsnprintf(errResp->desc, ERROR_MSG_SIZE, format, args);
 	va_end(args);
 	errResp->desc[sizeof(errResp->desc) - 1] = '\0';
 	return errResp;
@@ -264,8 +264,8 @@ void glfwTerminate(void) {
 	}
 }
 
-GLFWerrorfun glfwSetErrorCallback(GLFWerrorfun cbfun)
+errorFunc glfwSetErrorCallback(errorFunc cbfun)
 {
-    _GLFW_SWAP(GLFWerrorfun, _glfwErrorCallback, cbfun);
+    _GLFW_SWAP(errorFunc, _glfwErrorCallback, cbfun);
     return cbfun;
 }

@@ -55,85 +55,85 @@ type Hint int
 
 // Window related hints/attributes.
 const (
-	Focused                Hint = C.GLFW_FOCUSED                 // Specifies whether the window will be given input focus when created. This hint is ignored for full screen and initially hidden windows.
-	Iconified              Hint = C.GLFW_ICONIFIED               // Specifies whether the window will be minimized.
-	Maximized              Hint = C.GLFW_MAXIMIZED               // Specifies whether the window is maximized.
-	Visible                Hint = C.GLFW_VISIBLE                 // Specifies whether the window will be initially visible.
-	Hovered                Hint = C.GLFW_HOVERED                 // Specifies whether the cursor is currently directly over the content area of the window, with no other windows between. See Cursor enter/leave events for details.
-	Resizable              Hint = C.GLFW_RESIZABLE               // Specifies whether the window will be resizable by the user.
-	Decorated              Hint = C.GLFW_DECORATED               // Specifies whether the window will have window decorations such as a border, a close widget, etc.
-	Floating               Hint = C.GLFW_FLOATING                // Specifies whether the window will be always-on-top.
-	AutoIconify            Hint = C.GLFW_AUTO_ICONIFY            // Specifies whether fullscreen windows automatically iconify (and restore the previous video mode) on focus loss.
-	CenterCursor           Hint = C.GLFW_CENTER_CURSOR           // Specifies whether the cursor should be centered over newly created full screen windows. This hint is ignored for windowed mode windows.
-	TransparentFramebuffer Hint = C.GLFW_TRANSPARENT_FRAMEBUFFER // Specifies whether the framebuffer should be transparent.
-	FocusOnShow            Hint = C.GLFW_FOCUS_ON_SHOW           // Specifies whether the window will be given input focus when glfwShowWindow is called.
-	ScaleToMonitor         Hint = C.GLFW_SCALE_TO_MONITOR        // Specified whether the window content area should be resized based on the monitor content scale of any monitor it is placed on. This includes the initial placement when the window is created.
+	Focused                Hint = C.WINDOW_ATTR_HINT_FOCUSED                 // Specifies whether the window will be given input focus when created. This hint is ignored for full screen and initially hidden windows.
+	Iconified              Hint = C.WINDOW_ATTR_ICONIFIED                    // Specifies whether the window will be minimized.
+	Maximized              Hint = C.WINDOW_ATTR_HINT_MAXIMIZED               // Specifies whether the window is maximized.
+	Visible                Hint = C.WINDOW_ATTR_HINT_VISIBLE                 // Specifies whether the window will be initially visible.
+	Hovered                Hint = C.WINDOW_ATTR_HOVERED                      // Specifies whether the cursor is currently directly over the content area of the window, with no other windows between. See Cursor enter/leave events for details.
+	Resizable              Hint = C.WINDOW_ATTR_HINT_RESIZABLE               // Specifies whether the window will be resizable by the user.
+	Decorated              Hint = C.WINDOW_ATTR_HINT_DECORATED               // Specifies whether the window will have window decorations such as a border, a close widget, etc.
+	Floating               Hint = C.WINDOW_ATTR_HINT_FLOATING                // Specifies whether the window will be always-on-top.
+	AutoIconify            Hint = C.WINDOW_ATTR_HINT_AUTO_ICONIFY            // Specifies whether fullscreen windows automatically iconify (and restore the previous video mode) on focus loss.
+	CenterCursor           Hint = C.WINDOW_HINT_CENTER_CURSOR                // Specifies whether the cursor should be centered over newly created full screen windows. This hint is ignored for windowed mode windows.
+	TransparentFramebuffer Hint = C.WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER // Specifies whether the framebuffer should be transparent.
+	FocusOnShow            Hint = C.WINDOW_ATTR_HINT_FOCUS_ON_SHOW           // Specifies whether the window will be given input focus when glfwShowWindow is called.
+	ScaleToMonitor         Hint = C.WINDOW_HINT_SCALE_TO_MONITOR             // Specified whether the window content area should be resized based on the monitor content scale of any monitor it is placed on. This includes the initial placement when the window is created.
 )
 
 // Context related hints.
 const (
-	ContextRobustness       Hint = C.GLFW_CONTEXT_ROBUSTNESS       // Specifies the robustness strategy to be used by the context.
-	ContextReleaseBehavior  Hint = C.GLFW_CONTEXT_RELEASE_BEHAVIOR // Specifies the release behavior to be used by the context.
-	OpenGLForwardCompatible Hint = C.GLFW_OPENGL_FORWARD_COMPAT    // Specifies whether the OpenGL context should be forward-compatible. Hard constraint.
-	OpenGLDebugContext      Hint = C.GLFW_OPENGL_DEBUG_CONTEXT     // Specifies whether to create a debug OpenGL context, which may have additional error and performance issue reporting functionality. If OpenGL ES is requested, this hint is ignored.
-	OpenGLProfile           Hint = C.GLFW_OPENGL_PROFILE           // Specifies which OpenGL profile to create the context for. Hard constraint.
+	ContextRobustness       Hint = C.WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS       // Specifies the robustness strategy to be used by the context.
+	ContextReleaseBehavior  Hint = C.WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR // Specifies the release behavior to be used by the context.
+	OpenGLForwardCompatible Hint = C.WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT    // Specifies whether the OpenGL context should be forward-compatible. Hard constraint.
+	OpenGLDebugContext      Hint = C.WINDOW_ATTR_HINT_CONTEXT_DEBUG            // Specifies whether to create a debug OpenGL context, which may have additional error and performance issue reporting functionality. If OpenGL ES is requested, this hint is ignored.
+	OpenGLProfile           Hint = C.WINDOW_ATTR_HINT_OPENGL_PROFILE           // Specifies which OpenGL profile to create the context for. Hard constraint.
 )
 
 // Framebuffer related hints.
 const (
-	ContextRevision        Hint = C.GLFW_CONTEXT_REVISION
-	RedBits                Hint = C.GLFW_RED_BITS                 // Specifies the desired bit depth of the default framebuffer.
-	GreenBits              Hint = C.GLFW_GREEN_BITS               // Specifies the desired bit depth of the default framebuffer.
-	BlueBits               Hint = C.GLFW_BLUE_BITS                // Specifies the desired bit depth of the default framebuffer.
-	AlphaBits              Hint = C.GLFW_ALPHA_BITS               // Specifies the desired bit depth of the default framebuffer.
-	DepthBits              Hint = C.GLFW_DEPTH_BITS               // Specifies the desired bit depth of the default framebuffer.
-	StencilBits            Hint = C.GLFW_STENCIL_BITS             // Specifies the desired bit depth of the default framebuffer.
-	AccumRedBits           Hint = C.GLFW_ACCUM_RED_BITS           // Specifies the desired bit depth of the accumulation buffer.
-	AccumGreenBits         Hint = C.GLFW_ACCUM_GREEN_BITS         // Specifies the desired bit depth of the accumulation buffer.
-	AccumBlueBits          Hint = C.GLFW_ACCUM_BLUE_BITS          // Specifies the desired bit depth of the accumulation buffer.
-	AccumAlphaBits         Hint = C.GLFW_ACCUM_ALPHA_BITS         // Specifies the desired bit depth of the accumulation buffer.
-	AuxBuffers             Hint = C.GLFW_AUX_BUFFERS              // Specifies the desired number of auxiliary buffers.
-	Samples                Hint = C.GLFW_SAMPLES                  // Specifies the desired number of samples to use for multisampling. Zero disables multisampling.
-	SRGBCapable            Hint = C.GLFW_SRGB_CAPABLE             // Specifies whether the framebuffer should be sRGB capable.
-	RefreshRate            Hint = C.GLFW_REFRESH_RATE             // Specifies the desired refresh rate for full screen windows. If set to zero, the highest available refresh rate will be used. This hint is ignored for windowed mode windows.
-	DoubleBuffer           Hint = C.GLFW_DOUBLEBUFFER             // Specifies whether the framebuffer should be double buffered. You nearly always want to use double buffering. This is a hard constraint.
-	CocoaGraphicsSwitching Hint = C.GLFW_COCOA_GRAPHICS_SWITCHING // Specifies whether to in Automatic Graphics Switching, i.e. to allow the system to choose the integrated GPU for the OpenGL context and move it between GPUs if necessary or whether to force it to always run on the discrete GPU.
-	CocoaRetinaFramebuffer Hint = C.GLFW_COCOA_RETINA_FRAMEBUFFER // Specifies whether to use full resolution framebuffers on Retina displays.
+	ContextRevision        Hint = C.WINDOW_ATTR_CONTEXT_REVISION
+	RedBits                Hint = C.WINDOW_HINT_RED_BITS                 // Specifies the desired bit depth of the default framebuffer.
+	GreenBits              Hint = C.WINDOW_HINT_GREEN_BITS               // Specifies the desired bit depth of the default framebuffer.
+	BlueBits               Hint = C.WINDOW_HINT_BLUE_BITS                // Specifies the desired bit depth of the default framebuffer.
+	AlphaBits              Hint = C.WINDOW_HINT_ALPHA_BITS               // Specifies the desired bit depth of the default framebuffer.
+	DepthBits              Hint = C.WINDOW_HINT_DEPTH_BITS               // Specifies the desired bit depth of the default framebuffer.
+	StencilBits            Hint = C.WINDOW_HINT_STENCIL_BITS             // Specifies the desired bit depth of the default framebuffer.
+	AccumRedBits           Hint = C.WINDOW_HINT_ACCUM_RED_BITS           // Specifies the desired bit depth of the accumulation buffer.
+	AccumGreenBits         Hint = C.WINDOW_HINT_ACCUM_GREEN_BITS         // Specifies the desired bit depth of the accumulation buffer.
+	AccumBlueBits          Hint = C.WINDOW_HINT_ACCUM_BLUE_BITS          // Specifies the desired bit depth of the accumulation buffer.
+	AccumAlphaBits         Hint = C.WINDOW_HINT_ACCUM_ALPHA_BITS         // Specifies the desired bit depth of the accumulation buffer.
+	AuxBuffers             Hint = C.WINDOW_HINT_AUX_BUFFERS              // Specifies the desired number of auxiliary buffers.
+	Samples                Hint = C.WINDOW_HINT_SAMPLES                  // Specifies the desired number of samples to use for multisampling. Zero disables multisampling.
+	SRGBCapable            Hint = C.WINDOW_HINT_SRGB_CAPABLE             // Specifies whether the framebuffer should be sRGB capable.
+	RefreshRate            Hint = C.WINDOW_HINT_REFRESH_RATE             // Specifies the desired refresh rate for full screen windows. If set to zero, the highest available refresh rate will be used. This hint is ignored for windowed mode windows.
+	DoubleBuffer           Hint = C.WINDOW_ATTR_HINT_DOUBLE_BUFFER       // Specifies whether the framebuffer should be double buffered. You nearly always want to use double buffering. This is a hard constraint.
+	CocoaGraphicsSwitching Hint = C.WINDOW_HINT_COCOA_GRAPHICS_SWITCHING // Specifies whether to in Automatic Graphics Switching, i.e. to allow the system to choose the integrated GPU for the OpenGL context and move it between GPUs if necessary or whether to force it to always run on the discrete GPU.
+	ScaleFramebuffer       Hint = C.WINDOW_HINT_SCALE_FRAMEBUFFER        // Specifies whether to use full resolution framebuffers on Retina displays.
 )
 
 // Naming related hints. (Use with glfw.WindowHintString)
 const (
-	CocoaFrameNAME  Hint = C.GLFW_COCOA_FRAME_NAME  // Specifies the UTF-8 encoded name to use for autosaving the window frame, or if empty disables frame autosaving for the window.
-	X11ClassName    Hint = C.GLFW_X11_CLASS_NAME    // Specifies the desired ASCII encoded class parts of the ICCCM WM_CLASS window property.nd instance parts of the ICCCM WM_CLASS window property.
-	X11InstanceName Hint = C.GLFW_X11_INSTANCE_NAME // Specifies the desired ASCII encoded instance parts of the ICCCM WM_CLASS window property.nd instance parts of the ICCCM WM_CLASS window property.
+	CocoaFrameName  Hint = C.WINDOW_HINT_COCOA_FRAME_NAME  // Specifies the UTF-8 encoded name to use for autosaving the window frame, or if empty disables frame autosaving for the window.
+	X11ClassName    Hint = C.WINDOW_HINT_X11_CLASS_NAME    // Specifies the desired ASCII encoded class parts of the ICCCM WM_CLASS window property.nd instance parts of the ICCCM WM_CLASS window property.
+	X11InstanceName Hint = C.WINDOW_HINT_X11_INSTANCE_NAME // Specifies the desired ASCII encoded instance parts of the ICCCM WM_CLASS window property.nd instance parts of the ICCCM WM_CLASS window property.
 )
 
 // Values for the ContextRobustness hint.
 const (
-	NoRobustness        int = C.GLFW_NO_ROBUSTNESS
-	NoResetNotification int = C.GLFW_NO_RESET_NOTIFICATION
-	LoseContextOnReset  int = C.GLFW_LOSE_CONTEXT_ON_RESET
-)
-
-// Values for ContextReleaseBehavior hint.
-const (
-	AnyReleaseBehavior   int = C.GLFW_ANY_RELEASE_BEHAVIOR
-	ReleaseBehaviorFlush int = C.GLFW_RELEASE_BEHAVIOR_FLUSH
-	ReleaseBehaviorNone  int = C.GLFW_RELEASE_BEHAVIOR_NONE
+	ContextRobustnessNone                int = C.CONTEXT_ROBUSTNESS_NONE
+	ContextRobustnessNoResetNotification int = C.CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION
+	ContextRobustnessLoseContextOnReset  int = C.CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET
 )
 
 // Values for the OpenGLProfile hint.
 const (
-	OpenGLAnyProfile    int = C.GLFW_OPENGL_ANY_PROFILE
-	OpenGLCoreProfile   int = C.GLFW_OPENGL_CORE_PROFILE
-	OpenGLCompatProfile int = C.GLFW_OPENGL_COMPAT_PROFILE
+	OpenGLProfileAny    int = C.OPENGL_PROFILE_ANY
+	OpenGLProfileCore   int = C.OPENGL_PROFILE_CORE
+	OpenGLProfileCompat int = C.OPENGL_PROFILE_COMPAT
+)
+
+// Values for ContextReleaseBehavior hint.
+const (
+	ReleaseBehaviorAny   int = C.RELEASE_BEHAVIOR_ANY
+	ReleaseBehaviorFlush int = C.RELEASE_BEHAVIOR_FLUSH
+	ReleaseBehaviorNone  int = C.RELEASE_BEHAVIOR_NONE
 )
 
 // Other values.
 const (
 	True     int = 1 // GL_TRUE
 	False    int = 0 // GL_FALSE
-	DontCare int = C.GLFW_DONT_CARE
+	DontCare int = C.DONT_CARE
 )
 
 // Window represents a window.
@@ -325,14 +325,14 @@ func (w *Window) SetTitle(title string) {
 // images will be rescaled as needed. Good sizes include 16x16, 32x32 and 48x48.
 func (w *Window) SetIcon(images []image.Image) {
 	count := len(images)
-	cimages := make([]C.GLFWimage, count)
+	cimages := make([]C.ImageData, count)
 	freePixels := make([]func(), count)
 
 	for i, img := range images {
 		cimages[i], freePixels[i] = imageToGLFW(img)
 	}
 
-	var p *C.GLFWimage
+	var p *C.ImageData
 	if count > 0 {
 		p = &cimages[0]
 	}
@@ -639,9 +639,9 @@ type PosCallback func(w *Window, xpos int, ypos int)
 func (w *Window) SetPosCallback(cbfun PosCallback) (previous PosCallback) {
 	previous = w.fPosHolder
 	w.fPosHolder = cbfun
-	var callback C.GLFWwindowposfun
+	var callback C.windowPosFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowposfun(C.goWindowPosCallback)
+		callback = C.windowPosFunc(C.goWindowPosCallback)
 	}
 	C.glfwSetWindowPosCallback(w.data, callback)
 	panicError()
@@ -657,9 +657,9 @@ type SizeCallback func(w *Window, width int, height int)
 func (w *Window) SetSizeCallback(cbfun SizeCallback) (previous SizeCallback) {
 	previous = w.fSizeHolder
 	w.fSizeHolder = cbfun
-	var callback C.GLFWwindowsizefun
+	var callback C.windowSizeFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowsizefun(C.goWindowSizeCallback)
+		callback = C.windowSizeFunc(C.goWindowSizeCallback)
 	}
 	C.glfwSetWindowSizeCallback(w.data, callback)
 	panicError()
@@ -674,9 +674,9 @@ type FramebufferSizeCallback func(w *Window, width int, height int)
 func (w *Window) SetFramebufferSizeCallback(cbfun FramebufferSizeCallback) (previous FramebufferSizeCallback) {
 	previous = w.fFramebufferSizeHolder
 	w.fFramebufferSizeHolder = cbfun
-	var callback C.GLFWframebuffersizefun
+	var callback C.frameBufferSizeFunc
 	if cbfun != nil {
-		callback = C.GLFWframebuffersizefun(C.goFramebufferSizeCallback)
+		callback = C.frameBufferSizeFunc(C.goFramebufferSizeCallback)
 	}
 	C.glfwSetFramebufferSizeCallback(w.data, callback)
 	panicError()
@@ -698,9 +698,9 @@ type CloseCallback func(w *Window)
 func (w *Window) SetCloseCallback(cbfun CloseCallback) (previous CloseCallback) {
 	previous = w.fCloseHolder
 	w.fCloseHolder = cbfun
-	var callback C.GLFWwindowclosefun
+	var callback C.windowCloseFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowclosefun(C.goWindowCloseCallback)
+		callback = C.windowCloseFunc(C.goWindowCloseCallback)
 	}
 	C.glfwSetWindowCloseCallback(w.data, callback)
 	panicError()
@@ -718,9 +718,9 @@ type MaximizeCallback func(w *Window, maximized bool)
 func (w *Window) SetMaximizeCallback(cbfun MaximizeCallback) MaximizeCallback {
 	previous := w.fMaximizeHolder
 	w.fMaximizeHolder = cbfun
-	var callback C.GLFWwindowmaximizefun
+	var callback C.windowMaximizeFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowmaximizefun(C.goWindowMaximizeCallback)
+		callback = C.windowMaximizeFunc(C.goWindowMaximizeCallback)
 	}
 	C.glfwSetWindowMaximizeCallback(w.data, callback)
 	panicError()
@@ -739,9 +739,9 @@ type ContentScaleCallback func(w *Window, x float32, y float32)
 func (w *Window) SetContentScaleCallback(cbfun ContentScaleCallback) ContentScaleCallback {
 	previous := w.fContentScaleHolder
 	w.fContentScaleHolder = cbfun
-	var callback C.GLFWwindowcontentscalefun
+	var callback C.windowContextScaleFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowcontentscalefun(C.goWindowContentScaleCallback)
+		callback = C.windowContextScaleFunc(C.goWindowContentScaleCallback)
 	}
 	C.glfwSetWindowContentScaleCallback(w.data, callback)
 	panicError()
@@ -761,9 +761,9 @@ type RefreshCallback func(w *Window)
 func (w *Window) SetRefreshCallback(cbfun RefreshCallback) (previous RefreshCallback) {
 	previous = w.fRefreshHolder
 	w.fRefreshHolder = cbfun
-	var callback C.GLFWwindowrefreshfun
+	var callback C.windowRefreshFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowrefreshfun(C.goWindowRefreshCallback)
+		callback = C.windowRefreshFunc(C.goWindowRefreshCallback)
 	}
 	C.glfwSetWindowRefreshCallback(w.data, callback)
 	panicError()
@@ -782,9 +782,9 @@ type FocusCallback func(w *Window, focused bool)
 func (w *Window) SetFocusCallback(cbfun FocusCallback) (previous FocusCallback) {
 	previous = w.fFocusHolder
 	w.fFocusHolder = cbfun
-	var callback C.GLFWwindowfocusfun
+	var callback C.windowFocusFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowfocusfun(C.goWindowFocusCallback)
+		callback = C.windowFocusFunc(C.goWindowFocusCallback)
 	}
 	C.glfwSetWindowFocusCallback(w.data, callback)
 	panicError()
@@ -799,9 +799,9 @@ type IconifyCallback func(w *Window, iconified bool)
 func (w *Window) SetIconifyCallback(cbfun IconifyCallback) (previous IconifyCallback) {
 	previous = w.fIconifyHolder
 	w.fIconifyHolder = cbfun
-	var callback C.GLFWwindowiconifyfun
+	var callback C.windowIconifyFunc
 	if cbfun != nil {
-		callback = C.GLFWwindowiconifyfun(C.goWindowIconifyCallback)
+		callback = C.windowIconifyFunc(C.goWindowIconifyCallback)
 	}
 	C.glfwSetWindowIconifyCallback(w.data, callback)
 	panicError()

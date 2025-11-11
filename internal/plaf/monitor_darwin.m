@@ -111,10 +111,10 @@ static GLFWbool modeIsGood(CGDisplayModeRef mode)
 
 // Convert Core Graphics display mode to GLFW video mode
 //
-static GLFWvidmode vidmodeFromCGDisplayMode(CGDisplayModeRef mode,
+static VideoMode vidmodeFromCGDisplayMode(CGDisplayModeRef mode,
                                             double fallbackRefreshRate)
 {
-    GLFWvidmode result;
+    VideoMode result;
     result.redBits = 8;
     result.greenBits = 8;
     result.blueBits = 8;
@@ -309,13 +309,13 @@ void _glfwPollMonitorsCocoa(void)
             monitor->ns.fallbackRefreshRate = getFallbackRefreshRate(displays[i]);
         CGDisplayModeRelease(mode);
 
-        _glfwInputMonitor(monitor, GLFW_CONNECTED, _GLFW_INSERT_LAST);
+        _glfwInputMonitor(monitor, CONNECTED, _GLFW_INSERT_LAST);
     }
 
     for (uint32_t i = 0;  i < disconnectedCount;  i++)
     {
         if (disconnected[i])
-            _glfwInputMonitor(disconnected[i], GLFW_DISCONNECTED, 0);
+            _glfwInputMonitor(disconnected[i], DISCONNECTED, 0);
     }
 
     _glfw_free(disconnected);
@@ -324,12 +324,12 @@ void _glfwPollMonitorsCocoa(void)
 
 // Change the current video mode
 //
-void _glfwSetVideoModeCocoa(_GLFWmonitor* monitor, const GLFWvidmode* desired)
+void _glfwSetVideoModeCocoa(_GLFWmonitor* monitor, const VideoMode* desired)
 {
-    GLFWvidmode current;
+    VideoMode current;
     _glfwGetVideoModeCocoa(monitor, &current);
 
-    const GLFWvidmode* best = _glfwChooseVideoMode(monitor, desired);
+    const VideoMode* best = _glfwChooseVideoMode(monitor, desired);
     if (_glfwCompareVideoModes(&current, best) == 0)
         return;
 
@@ -343,7 +343,7 @@ void _glfwSetVideoModeCocoa(_GLFWmonitor* monitor, const GLFWvidmode* desired)
         if (!modeIsGood(dm))
             continue;
 
-        const GLFWvidmode mode =
+        const VideoMode mode =
             vidmodeFromCGDisplayMode(dm, monitor->ns.fallbackRefreshRate);
         if (_glfwCompareVideoModes(best, &mode) == 0)
         {
@@ -411,7 +411,7 @@ void _glfwGetMonitorContentScaleCocoa(_GLFWmonitor* monitor,
 
     if (!monitor->ns.screen)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Cocoa: Cannot query content scale without screen");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Cannot query content scale without screen");
     }
 
     const NSRect points = [monitor->ns.screen frame];
@@ -433,7 +433,7 @@ void _glfwGetMonitorWorkareaCocoa(_GLFWmonitor* monitor,
 
     if (!monitor->ns.screen)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Cocoa: Cannot query workarea without screen");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Cannot query workarea without screen");
     }
 
     const NSRect frameRect = [monitor->ns.screen visibleFrame];
@@ -450,7 +450,7 @@ void _glfwGetMonitorWorkareaCocoa(_GLFWmonitor* monitor,
     } // autoreleasepool
 }
 
-GLFWvidmode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count)
+VideoMode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count)
 {
     @autoreleasepool {
 
@@ -458,7 +458,7 @@ GLFWvidmode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count)
 
     CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->ns.displayID, NULL);
     const CFIndex found = CFArrayGetCount(modes);
-    GLFWvidmode* result = _glfw_calloc(found, sizeof(GLFWvidmode));
+    VideoMode* result = _glfw_calloc(found, sizeof(VideoMode));
 
     for (CFIndex i = 0;  i < found;  i++)
     {
@@ -466,7 +466,7 @@ GLFWvidmode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count)
         if (!modeIsGood(dm))
             continue;
 
-        const GLFWvidmode mode =
+        const VideoMode mode =
             vidmodeFromCGDisplayMode(dm, monitor->ns.fallbackRefreshRate);
         CFIndex j;
 
@@ -490,14 +490,14 @@ GLFWvidmode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count)
     } // autoreleasepool
 }
 
-GLFWbool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, GLFWvidmode *mode)
+GLFWbool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, VideoMode *mode)
 {
     @autoreleasepool {
 
     CGDisplayModeRef native = CGDisplayCopyDisplayMode(monitor->ns.displayID);
     if (!native)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Cocoa: Failed to query display mode");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to query display mode");
         return false;
     }
 
@@ -508,7 +508,7 @@ GLFWbool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, GLFWvidmode *mode)
     } // autoreleasepool
 }
 
-GLFWbool _glfwGetGammaRampCocoa(_GLFWmonitor* monitor, GLFWgammaramp* ramp)
+GLFWbool _glfwGetGammaRampCocoa(_GLFWmonitor* monitor, GammaRamp* ramp)
 {
     @autoreleasepool {
 
@@ -537,7 +537,7 @@ GLFWbool _glfwGetGammaRampCocoa(_GLFWmonitor* monitor, GLFWgammaramp* ramp)
     } // autoreleasepool
 }
 
-void _glfwSetGammaRampCocoa(_GLFWmonitor* monitor, const GLFWgammaramp* ramp)
+void _glfwSetGammaRampCocoa(_GLFWmonitor* monitor, const GammaRamp* ramp)
 {
     @autoreleasepool {
 

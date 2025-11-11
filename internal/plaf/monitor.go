@@ -28,8 +28,8 @@ type GammaRamp struct {
 
 // PeripheralEvent events.
 const (
-	Connected    PeripheralEvent = C.GLFW_CONNECTED
-	Disconnected PeripheralEvent = C.GLFW_DISCONNECTED
+	Connected    PeripheralEvent = C.CONNECTED
+	Disconnected PeripheralEvent = C.DISCONNECTED
 )
 
 // VidMode describes a single video mode.
@@ -165,9 +165,9 @@ type MonitorCallback func(monitor *Monitor, event PeripheralEvent)
 func SetMonitorCallback(cbfun MonitorCallback) MonitorCallback {
 	previous := fMonitorHolder
 	fMonitorHolder = cbfun
-	var callback C.GLFWmonitorfun
+	var callback C.monitorFunc
 	if cbfun != nil {
-		callback = C.GLFWmonitorfun(C.goMonitorCallback)
+		callback = C.monitorFunc(C.goMonitorCallback)
 	}
 	C.glfwSetMonitorCallback(callback)
 	return previous
@@ -187,7 +187,7 @@ func (m *Monitor) GetVideoModes() []*VidMode {
 	}
 
 	v := make([]*VidMode, length)
-	list := unsafe.Slice((*C.GLFWvidmode)(vC), length)
+	list := unsafe.Slice((*C.VideoMode)(vC), length)
 
 	for i := 0; i < length; i++ {
 		t := list[i]
@@ -235,7 +235,7 @@ func (m *Monitor) GetGammaRamp() *GammaRamp {
 // SetGammaRamp sets the current gamma ramp for the monitor.
 func (m *Monitor) SetGammaRamp(ramp *GammaRamp) {
 	length := len(ramp.Red)
-	rampC := (*C.GLFWgammaramp)(C.malloc(C.size_t(unsafe.Sizeof(C.GLFWgammaramp{}))))
+	rampC := (*C.GammaRamp)(C.malloc(C.size_t(unsafe.Sizeof(C.GammaRamp{}))))
 	rampC.size = C.uint(length)
 	rampC.red = (*C.ushort)(C.malloc(C.size_t(2 * length)))
 	rampC.green = (*C.ushort)(C.malloc(C.size_t(2 * length)))

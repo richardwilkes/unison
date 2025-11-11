@@ -927,14 +927,14 @@ func (w *Window) FlushDrawing() {
 // HideCursor hides the cursor.
 func (w *Window) HideCursor() {
 	if w.IsValid() {
-		w.wnd.SetInputMode(plaf.CursorMode, plaf.CursorHidden)
+		w.wnd.SetInputMode(plaf.InputModeCursor, plaf.CursorHidden)
 	}
 }
 
 // ShowCursor shows the cursor.
 func (w *Window) ShowCursor() {
 	if w.IsValid() {
-		w.wnd.SetInputMode(plaf.CursorMode, plaf.CursorNormal)
+		w.wnd.SetInputMode(plaf.InputModeCursor, plaf.CursorNormal)
 	}
 }
 

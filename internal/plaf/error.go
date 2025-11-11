@@ -20,13 +20,13 @@ type ErrorCode int
 // Error codes that are translated to panics and the programmer should not
 // expect to handle.
 const (
-	notInitialized   ErrorCode = C.GLFW_NOT_INITIALIZED    // GLFW has not been initialized.
-	noCurrentContext ErrorCode = C.GLFW_NO_CURRENT_CONTEXT // No context is current.
-	invalidEnum      ErrorCode = C.GLFW_INVALID_ENUM       // One of the enum parameters for the function was given an invalid enum.
-	invalidValue     ErrorCode = C.GLFW_INVALID_VALUE      // One of the parameters for the function was given an invalid value.
-	outOfMemory      ErrorCode = C.GLFW_OUT_OF_MEMORY      // A memory allocation failed.
-	platformError    ErrorCode = C.GLFW_PLATFORM_ERROR     // A platform-specific error occurred that does not match any of the more specific categories.
-	noWindowContext  ErrorCode = C.GLFW_NO_WINDOW_CONTEXT  // A window that does not have an OpenGL or OpenGL ES context was passed to a function that requires it to have one.
+	notInitialized   ErrorCode = C.ERR_NOT_INITIALIZED    // GLFW has not been initialized.
+	noCurrentContext ErrorCode = C.ERR_NO_CURRENT_CONTEXT // No context is current.
+	invalidEnum      ErrorCode = C.ERR_INVALID_ENUM       // One of the enum parameters for the function was given an invalid enum.
+	invalidValue     ErrorCode = C.ERR_INVALID_VALUE      // One of the parameters for the function was given an invalid value.
+	outOfMemory      ErrorCode = C.ERR_OUT_OF_MEMORY      // A memory allocation failed.
+	platformError    ErrorCode = C.ERR_PLATFORM_ERROR     // A platform-specific error occurred that does not match any of the more specific categories.
+	noWindowContext  ErrorCode = C.ERR_NO_WINDOW_CONTEXT  // A window that does not have an OpenGL or OpenGL ES context was passed to a function that requires it to have one.
 )
 
 const (
@@ -42,7 +42,7 @@ const (
 	// via a WGL or GLX extension. OS X does not provide OpenGL ES at all. The
 	// Mesa EGL, OpenGL and OpenGL ES libraries do not interface with the
 	// Nvidia binary driver.
-	APIUnavailable ErrorCode = C.GLFW_API_UNAVAILABLE
+	APIUnavailable ErrorCode = C.ERR_API_UNAVAILABLE
 
 	// VersionUnavailable is the error code used when the requested OpenGL or
 	// OpenGL ES (including any requested profile or context option) is not
@@ -55,9 +55,9 @@ const (
 	//
 	// Future invalid OpenGL and OpenGL ES versions, for example OpenGL 4.8 if
 	// 5.0 comes out before the 4.x series gets that far, also fail with this
-	// error and not GLFW_INVALID_VALUE, because GLFW cannot know what future
+	// error and not ERR_INVALID_VALUE, because GLFW cannot know what future
 	// versions will exist.
-	VersionUnavailable ErrorCode = C.GLFW_VERSION_UNAVAILABLE
+	VersionUnavailable ErrorCode = C.ERR_VERSION_UNAVAILABLE
 
 	// FormatUnavailable is the error code used for both window creation and
 	// clipboard querying format errors.
@@ -71,9 +71,9 @@ const (
 	// If emitted when querying the clipboard, the contents of the clipboard
 	// could not be converted to the requested format. You should ignore the
 	// error or report it to the user, as appropriate.
-	FormatUnavailable ErrorCode = C.GLFW_FORMAT_UNAVAILABLE
+	FormatUnavailable ErrorCode = C.ERR_FORMAT_UNAVAILABLE
 
-	FeatureUnavailable ErrorCode = C.GLFW_FEATURE_UNAVAILABLE
+	FeatureUnavailable ErrorCode = C.ERR_FEATURE_UNAVAILABLE
 )
 
 func (e ErrorCode) String() string {
@@ -134,7 +134,7 @@ var lastError = make(chan *Error, 1)
 
 // Set the glfw callback internally
 func init() {
-	C.glfwSetErrorCallback(C.GLFWerrorfun(C.goErrorCallback))
+	C.glfwSetErrorCallback(C.errorFunc(C.goErrorCallback))
 }
 
 // flushErrors is called by Terminate before it actually calls C.glfwTerminate,

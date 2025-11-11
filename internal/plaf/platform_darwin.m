@@ -9,120 +9,120 @@ static void createKeyTables(void) {
 	memset(_glfw.ns.keycodes, -1, sizeof(_glfw.ns.keycodes));
 	memset(_glfw.ns.scancodes, -1, sizeof(_glfw.ns.scancodes));
 
-	_glfw.ns.keycodes[0x1D] = GLFW_KEY_0;
-	_glfw.ns.keycodes[0x12] = GLFW_KEY_1;
-	_glfw.ns.keycodes[0x13] = GLFW_KEY_2;
-	_glfw.ns.keycodes[0x14] = GLFW_KEY_3;
-	_glfw.ns.keycodes[0x15] = GLFW_KEY_4;
-	_glfw.ns.keycodes[0x17] = GLFW_KEY_5;
-	_glfw.ns.keycodes[0x16] = GLFW_KEY_6;
-	_glfw.ns.keycodes[0x1A] = GLFW_KEY_7;
-	_glfw.ns.keycodes[0x1C] = GLFW_KEY_8;
-	_glfw.ns.keycodes[0x19] = GLFW_KEY_9;
-	_glfw.ns.keycodes[0x00] = GLFW_KEY_A;
-	_glfw.ns.keycodes[0x0B] = GLFW_KEY_B;
-	_glfw.ns.keycodes[0x08] = GLFW_KEY_C;
-	_glfw.ns.keycodes[0x02] = GLFW_KEY_D;
-	_glfw.ns.keycodes[0x0E] = GLFW_KEY_E;
-	_glfw.ns.keycodes[0x03] = GLFW_KEY_F;
-	_glfw.ns.keycodes[0x05] = GLFW_KEY_G;
-	_glfw.ns.keycodes[0x04] = GLFW_KEY_H;
-	_glfw.ns.keycodes[0x22] = GLFW_KEY_I;
-	_glfw.ns.keycodes[0x26] = GLFW_KEY_J;
-	_glfw.ns.keycodes[0x28] = GLFW_KEY_K;
-	_glfw.ns.keycodes[0x25] = GLFW_KEY_L;
-	_glfw.ns.keycodes[0x2E] = GLFW_KEY_M;
-	_glfw.ns.keycodes[0x2D] = GLFW_KEY_N;
-	_glfw.ns.keycodes[0x1F] = GLFW_KEY_O;
-	_glfw.ns.keycodes[0x23] = GLFW_KEY_P;
-	_glfw.ns.keycodes[0x0C] = GLFW_KEY_Q;
-	_glfw.ns.keycodes[0x0F] = GLFW_KEY_R;
-	_glfw.ns.keycodes[0x01] = GLFW_KEY_S;
-	_glfw.ns.keycodes[0x11] = GLFW_KEY_T;
-	_glfw.ns.keycodes[0x20] = GLFW_KEY_U;
-	_glfw.ns.keycodes[0x09] = GLFW_KEY_V;
-	_glfw.ns.keycodes[0x0D] = GLFW_KEY_W;
-	_glfw.ns.keycodes[0x07] = GLFW_KEY_X;
-	_glfw.ns.keycodes[0x10] = GLFW_KEY_Y;
-	_glfw.ns.keycodes[0x06] = GLFW_KEY_Z;
+	_glfw.ns.keycodes[0x1D] = KEY_0;
+	_glfw.ns.keycodes[0x12] = KEY_1;
+	_glfw.ns.keycodes[0x13] = KEY_2;
+	_glfw.ns.keycodes[0x14] = KEY_3;
+	_glfw.ns.keycodes[0x15] = KEY_4;
+	_glfw.ns.keycodes[0x17] = KEY_5;
+	_glfw.ns.keycodes[0x16] = KEY_6;
+	_glfw.ns.keycodes[0x1A] = KEY_7;
+	_glfw.ns.keycodes[0x1C] = KEY_8;
+	_glfw.ns.keycodes[0x19] = KEY_9;
+	_glfw.ns.keycodes[0x00] = KEY_A;
+	_glfw.ns.keycodes[0x0B] = KEY_B;
+	_glfw.ns.keycodes[0x08] = KEY_C;
+	_glfw.ns.keycodes[0x02] = KEY_D;
+	_glfw.ns.keycodes[0x0E] = KEY_E;
+	_glfw.ns.keycodes[0x03] = KEY_F;
+	_glfw.ns.keycodes[0x05] = KEY_G;
+	_glfw.ns.keycodes[0x04] = KEY_H;
+	_glfw.ns.keycodes[0x22] = KEY_I;
+	_glfw.ns.keycodes[0x26] = KEY_J;
+	_glfw.ns.keycodes[0x28] = KEY_K;
+	_glfw.ns.keycodes[0x25] = KEY_L;
+	_glfw.ns.keycodes[0x2E] = KEY_M;
+	_glfw.ns.keycodes[0x2D] = KEY_N;
+	_glfw.ns.keycodes[0x1F] = KEY_O;
+	_glfw.ns.keycodes[0x23] = KEY_P;
+	_glfw.ns.keycodes[0x0C] = KEY_Q;
+	_glfw.ns.keycodes[0x0F] = KEY_R;
+	_glfw.ns.keycodes[0x01] = KEY_S;
+	_glfw.ns.keycodes[0x11] = KEY_T;
+	_glfw.ns.keycodes[0x20] = KEY_U;
+	_glfw.ns.keycodes[0x09] = KEY_V;
+	_glfw.ns.keycodes[0x0D] = KEY_W;
+	_glfw.ns.keycodes[0x07] = KEY_X;
+	_glfw.ns.keycodes[0x10] = KEY_Y;
+	_glfw.ns.keycodes[0x06] = KEY_Z;
 
-	_glfw.ns.keycodes[0x27] = GLFW_KEY_APOSTROPHE;
-	_glfw.ns.keycodes[0x2A] = GLFW_KEY_BACKSLASH;
-	_glfw.ns.keycodes[0x2B] = GLFW_KEY_COMMA;
-	_glfw.ns.keycodes[0x18] = GLFW_KEY_EQUAL;
-	_glfw.ns.keycodes[0x32] = GLFW_KEY_GRAVE_ACCENT;
-	_glfw.ns.keycodes[0x21] = GLFW_KEY_LEFT_BRACKET;
-	_glfw.ns.keycodes[0x1B] = GLFW_KEY_MINUS;
-	_glfw.ns.keycodes[0x2F] = GLFW_KEY_PERIOD;
-	_glfw.ns.keycodes[0x1E] = GLFW_KEY_RIGHT_BRACKET;
-	_glfw.ns.keycodes[0x29] = GLFW_KEY_SEMICOLON;
-	_glfw.ns.keycodes[0x2C] = GLFW_KEY_SLASH;
-	_glfw.ns.keycodes[0x0A] = GLFW_KEY_WORLD_1;
+	_glfw.ns.keycodes[0x27] = KEY_APOSTROPHE;
+	_glfw.ns.keycodes[0x2A] = KEY_BACKSLASH;
+	_glfw.ns.keycodes[0x2B] = KEY_COMMA;
+	_glfw.ns.keycodes[0x18] = KEY_EQUAL;
+	_glfw.ns.keycodes[0x32] = KEY_GRAVE_ACCENT;
+	_glfw.ns.keycodes[0x21] = KEY_LEFT_BRACKET;
+	_glfw.ns.keycodes[0x1B] = KEY_MINUS;
+	_glfw.ns.keycodes[0x2F] = KEY_PERIOD;
+	_glfw.ns.keycodes[0x1E] = KEY_RIGHT_BRACKET;
+	_glfw.ns.keycodes[0x29] = KEY_SEMICOLON;
+	_glfw.ns.keycodes[0x2C] = KEY_SLASH;
+	_glfw.ns.keycodes[0x0A] = KEY_WORLD_1;
 
-	_glfw.ns.keycodes[0x33] = GLFW_KEY_BACKSPACE;
-	_glfw.ns.keycodes[0x39] = GLFW_KEY_CAPS_LOCK;
-	_glfw.ns.keycodes[0x75] = GLFW_KEY_DELETE;
-	_glfw.ns.keycodes[0x7D] = GLFW_KEY_DOWN;
-	_glfw.ns.keycodes[0x77] = GLFW_KEY_END;
-	_glfw.ns.keycodes[0x24] = GLFW_KEY_ENTER;
-	_glfw.ns.keycodes[0x35] = GLFW_KEY_ESCAPE;
-	_glfw.ns.keycodes[0x7A] = GLFW_KEY_F1;
-	_glfw.ns.keycodes[0x78] = GLFW_KEY_F2;
-	_glfw.ns.keycodes[0x63] = GLFW_KEY_F3;
-	_glfw.ns.keycodes[0x76] = GLFW_KEY_F4;
-	_glfw.ns.keycodes[0x60] = GLFW_KEY_F5;
-	_glfw.ns.keycodes[0x61] = GLFW_KEY_F6;
-	_glfw.ns.keycodes[0x62] = GLFW_KEY_F7;
-	_glfw.ns.keycodes[0x64] = GLFW_KEY_F8;
-	_glfw.ns.keycodes[0x65] = GLFW_KEY_F9;
-	_glfw.ns.keycodes[0x6D] = GLFW_KEY_F10;
-	_glfw.ns.keycodes[0x67] = GLFW_KEY_F11;
-	_glfw.ns.keycodes[0x6F] = GLFW_KEY_F12;
-	_glfw.ns.keycodes[0x69] = GLFW_KEY_PRINT_SCREEN;
-	_glfw.ns.keycodes[0x6B] = GLFW_KEY_F14;
-	_glfw.ns.keycodes[0x71] = GLFW_KEY_F15;
-	_glfw.ns.keycodes[0x6A] = GLFW_KEY_F16;
-	_glfw.ns.keycodes[0x40] = GLFW_KEY_F17;
-	_glfw.ns.keycodes[0x4F] = GLFW_KEY_F18;
-	_glfw.ns.keycodes[0x50] = GLFW_KEY_F19;
-	_glfw.ns.keycodes[0x5A] = GLFW_KEY_F20;
-	_glfw.ns.keycodes[0x73] = GLFW_KEY_HOME;
-	_glfw.ns.keycodes[0x72] = GLFW_KEY_INSERT;
-	_glfw.ns.keycodes[0x7B] = GLFW_KEY_LEFT;
-	_glfw.ns.keycodes[0x3A] = GLFW_KEY_LEFT_ALT;
-	_glfw.ns.keycodes[0x3B] = GLFW_KEY_LEFT_CONTROL;
-	_glfw.ns.keycodes[0x38] = GLFW_KEY_LEFT_SHIFT;
-	_glfw.ns.keycodes[0x37] = GLFW_KEY_LEFT_SUPER;
-	_glfw.ns.keycodes[0x6E] = GLFW_KEY_MENU;
-	_glfw.ns.keycodes[0x47] = GLFW_KEY_NUM_LOCK;
-	_glfw.ns.keycodes[0x79] = GLFW_KEY_PAGE_DOWN;
-	_glfw.ns.keycodes[0x74] = GLFW_KEY_PAGE_UP;
-	_glfw.ns.keycodes[0x7C] = GLFW_KEY_RIGHT;
-	_glfw.ns.keycodes[0x3D] = GLFW_KEY_RIGHT_ALT;
-	_glfw.ns.keycodes[0x3E] = GLFW_KEY_RIGHT_CONTROL;
-	_glfw.ns.keycodes[0x3C] = GLFW_KEY_RIGHT_SHIFT;
-	_glfw.ns.keycodes[0x36] = GLFW_KEY_RIGHT_SUPER;
-	_glfw.ns.keycodes[0x31] = GLFW_KEY_SPACE;
-	_glfw.ns.keycodes[0x30] = GLFW_KEY_TAB;
-	_glfw.ns.keycodes[0x7E] = GLFW_KEY_UP;
+	_glfw.ns.keycodes[0x33] = KEY_BACKSPACE;
+	_glfw.ns.keycodes[0x39] = KEY_CAPS_LOCK;
+	_glfw.ns.keycodes[0x75] = KEY_DELETE;
+	_glfw.ns.keycodes[0x7D] = KEY_DOWN;
+	_glfw.ns.keycodes[0x77] = KEY_END;
+	_glfw.ns.keycodes[0x24] = KEY_ENTER;
+	_glfw.ns.keycodes[0x35] = KEY_ESCAPE;
+	_glfw.ns.keycodes[0x7A] = KEY_F1;
+	_glfw.ns.keycodes[0x78] = KEY_F2;
+	_glfw.ns.keycodes[0x63] = KEY_F3;
+	_glfw.ns.keycodes[0x76] = KEY_F4;
+	_glfw.ns.keycodes[0x60] = KEY_F5;
+	_glfw.ns.keycodes[0x61] = KEY_F6;
+	_glfw.ns.keycodes[0x62] = KEY_F7;
+	_glfw.ns.keycodes[0x64] = KEY_F8;
+	_glfw.ns.keycodes[0x65] = KEY_F9;
+	_glfw.ns.keycodes[0x6D] = KEY_F10;
+	_glfw.ns.keycodes[0x67] = KEY_F11;
+	_glfw.ns.keycodes[0x6F] = KEY_F12;
+	_glfw.ns.keycodes[0x69] = KEY_PRINT_SCREEN;
+	_glfw.ns.keycodes[0x6B] = KEY_F14;
+	_glfw.ns.keycodes[0x71] = KEY_F15;
+	_glfw.ns.keycodes[0x6A] = KEY_F16;
+	_glfw.ns.keycodes[0x40] = KEY_F17;
+	_glfw.ns.keycodes[0x4F] = KEY_F18;
+	_glfw.ns.keycodes[0x50] = KEY_F19;
+	_glfw.ns.keycodes[0x5A] = KEY_F20;
+	_glfw.ns.keycodes[0x73] = KEY_HOME;
+	_glfw.ns.keycodes[0x72] = KEY_INSERT;
+	_glfw.ns.keycodes[0x7B] = KEY_LEFT;
+	_glfw.ns.keycodes[0x3A] = KEY_LEFT_ALT;
+	_glfw.ns.keycodes[0x3B] = KEY_LEFT_CONTROL;
+	_glfw.ns.keycodes[0x38] = KEY_LEFT_SHIFT;
+	_glfw.ns.keycodes[0x37] = KEY_LEFT_SUPER;
+	_glfw.ns.keycodes[0x6E] = KEY_MENU;
+	_glfw.ns.keycodes[0x47] = KEY_NUM_LOCK;
+	_glfw.ns.keycodes[0x79] = KEY_PAGE_DOWN;
+	_glfw.ns.keycodes[0x74] = KEY_PAGE_UP;
+	_glfw.ns.keycodes[0x7C] = KEY_RIGHT;
+	_glfw.ns.keycodes[0x3D] = KEY_RIGHT_ALT;
+	_glfw.ns.keycodes[0x3E] = KEY_RIGHT_CONTROL;
+	_glfw.ns.keycodes[0x3C] = KEY_RIGHT_SHIFT;
+	_glfw.ns.keycodes[0x36] = KEY_RIGHT_SUPER;
+	_glfw.ns.keycodes[0x31] = KEY_SPACE;
+	_glfw.ns.keycodes[0x30] = KEY_TAB;
+	_glfw.ns.keycodes[0x7E] = KEY_UP;
 
-	_glfw.ns.keycodes[0x52] = GLFW_KEY_KP_0;
-	_glfw.ns.keycodes[0x53] = GLFW_KEY_KP_1;
-	_glfw.ns.keycodes[0x54] = GLFW_KEY_KP_2;
-	_glfw.ns.keycodes[0x55] = GLFW_KEY_KP_3;
-	_glfw.ns.keycodes[0x56] = GLFW_KEY_KP_4;
-	_glfw.ns.keycodes[0x57] = GLFW_KEY_KP_5;
-	_glfw.ns.keycodes[0x58] = GLFW_KEY_KP_6;
-	_glfw.ns.keycodes[0x59] = GLFW_KEY_KP_7;
-	_glfw.ns.keycodes[0x5B] = GLFW_KEY_KP_8;
-	_glfw.ns.keycodes[0x5C] = GLFW_KEY_KP_9;
-	_glfw.ns.keycodes[0x45] = GLFW_KEY_KP_ADD;
-	_glfw.ns.keycodes[0x41] = GLFW_KEY_KP_DECIMAL;
-	_glfw.ns.keycodes[0x4B] = GLFW_KEY_KP_DIVIDE;
-	_glfw.ns.keycodes[0x4C] = GLFW_KEY_KP_ENTER;
-	_glfw.ns.keycodes[0x51] = GLFW_KEY_KP_EQUAL;
-	_glfw.ns.keycodes[0x43] = GLFW_KEY_KP_MULTIPLY;
-	_glfw.ns.keycodes[0x4E] = GLFW_KEY_KP_SUBTRACT;
+	_glfw.ns.keycodes[0x52] = KEY_KP_0;
+	_glfw.ns.keycodes[0x53] = KEY_KP_1;
+	_glfw.ns.keycodes[0x54] = KEY_KP_2;
+	_glfw.ns.keycodes[0x55] = KEY_KP_3;
+	_glfw.ns.keycodes[0x56] = KEY_KP_4;
+	_glfw.ns.keycodes[0x57] = KEY_KP_5;
+	_glfw.ns.keycodes[0x58] = KEY_KP_6;
+	_glfw.ns.keycodes[0x59] = KEY_KP_7;
+	_glfw.ns.keycodes[0x5B] = KEY_KP_8;
+	_glfw.ns.keycodes[0x5C] = KEY_KP_9;
+	_glfw.ns.keycodes[0x45] = KEY_KP_ADD;
+	_glfw.ns.keycodes[0x41] = KEY_KP_DECIMAL;
+	_glfw.ns.keycodes[0x4B] = KEY_KP_DIVIDE;
+	_glfw.ns.keycodes[0x4C] = KEY_KP_ENTER;
+	_glfw.ns.keycodes[0x51] = KEY_KP_EQUAL;
+	_glfw.ns.keycodes[0x43] = KEY_KP_MULTIPLY;
+	_glfw.ns.keycodes[0x4E] = KEY_KP_SUBTRACT;
 
 	for (int scancode = 0;  scancode < 256;  scancode++) {
 		// Store the reverse translation for faster key name lookup
@@ -150,7 +150,7 @@ static void updateUnicodeData(void) {
 static ErrorResponse* initializeTIS(void) {
 	_glfw.ns.tis.bundle = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.HIToolbox"));
 	if (!_glfw.ns.tis.bundle) {
-		return createErrorResponse(GLFW_PLATFORM_ERROR, "Failed to load HIToolbox.framework");
+		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load HIToolbox.framework");
 	}
 	CFStringRef* kPropertyUnicodeKeyLayoutData = CFBundleGetDataPointerForName(_glfw.ns.tis.bundle,
 		CFSTR("kTISPropertyUnicodeKeyLayoutData"));
@@ -163,7 +163,7 @@ static ErrorResponse* initializeTIS(void) {
 		!TISCopyCurrentKeyboardLayoutInputSource ||
 		!TISGetInputSourceProperty ||
 		!LMGetKbdType) {
-		return createErrorResponse(GLFW_PLATFORM_ERROR, "Failed to load TIS API symbols");
+		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load TIS API symbols");
 	}
 	_glfw.ns.tis.kPropertyUnicodeKeyLayoutData = *kPropertyUnicodeKeyLayoutData;
 	updateUnicodeData();
@@ -286,7 +286,7 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 		_glfw.ns.delegate = [[GLFWApplicationDelegate alloc] init];
 		if (_glfw.ns.delegate == nil) {
 			_terminate();
-			return createErrorResponse(GLFW_PLATFORM_ERROR, "Failed to create application delegate");
+			return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to create application delegate");
 		}
 
 		[NSApp setDelegate:_glfw.ns.delegate];
@@ -313,7 +313,7 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 		_glfw.ns.eventSource = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		if (!_glfw.ns.eventSource) {
 			_terminate();
-			return createErrorResponse(GLFW_PLATFORM_ERROR, "Failed to create event source");
+			return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to create event source");
 		}
 
 		CGEventSourceSetLocalEventsSuppressionInterval(_glfw.ns.eventSource, 0.0);

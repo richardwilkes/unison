@@ -22,8 +22,8 @@ func bytes(origin []byte) (pointer *uint8, free func()) {
 	return (*uint8)(ptr), func() { C.free(ptr) }
 }
 
-// imageToGLFW converts img to be compatible with C.GLFWimage.
-func imageToGLFW(img image.Image) (r C.GLFWimage, free func()) {
+// imageToGLFW converts img to be compatible with C.ImageData.
+func imageToGLFW(img image.Image) (r C.ImageData, free func()) {
 	b := img.Bounds()
 
 	r.width = C.int(b.Dx())

@@ -346,8 +346,8 @@ typedef struct _GLFWlibraryWin32
     HDEVNOTIFY          deviceNotificationHandle;
     int                 acquiredMonitorCount;
     short int           keycodes[512];
-    short int           scancodes[GLFW_KEY_LAST + 1];
-    char                keynames[GLFW_KEY_LAST + 1][5];
+    short int           scancodes[KEY_LAST + 1];
+    char                keynames[KEY_LAST + 1][5];
     // Where to place the cursor when re-enabled
     double              restoreCursorPosX, restoreCursorPosY;
     // The window whose disabled cursor mode is active
@@ -430,14 +430,14 @@ void _glfwInputErrorWin32(int error, const char* description);
 void _glfwUpdateKeyNamesWin32(void);
 
 void _glfwPollMonitorsWin32(void);
-void _glfwSetVideoModeWin32(_GLFWmonitor* monitor, const GLFWvidmode* desired);
+void _glfwSetVideoModeWin32(_GLFWmonitor* monitor, const VideoMode* desired);
 void _glfwRestoreVideoModeWin32(_GLFWmonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 
 GLFWbool _glfwCreateWindowWin32(_GLFWwindow* window, const _GLFWwndconfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
 void _glfwDestroyWindowWin32(_GLFWwindow* window);
 void _glfwSetWindowTitleWin32(_GLFWwindow* window, const char* title);
-void _glfwSetWindowIconWin32(_GLFWwindow* window, int count, const GLFWimage* images);
+void _glfwSetWindowIconWin32(_GLFWwindow* window, int count, const ImageData* images);
 void _glfwGetWindowPosWin32(_GLFWwindow* window, int* xpos, int* ypos);
 void _glfwSetWindowPosWin32(_GLFWwindow* window, int xpos, int ypos);
 void _glfwGetWindowSizeWin32(_GLFWwindow* window, int* width, int* height);
@@ -481,7 +481,7 @@ void _glfwSetCursorPosWin32(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeWin32(_GLFWwindow* window, int mode);
 const char* _glfwGetScancodeNameWin32(int scancode);
 int _glfwGetKeyScancodeWin32(int key);
-GLFWbool _glfwCreateCursorWin32(_GLFWcursor* cursor, const GLFWimage* image, int xhot, int yhot);
+GLFWbool _glfwCreateCursorWin32(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
 GLFWbool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape);
 void _glfwDestroyCursorWin32(_GLFWcursor* cursor);
 void _glfwSetCursorWin32(_GLFWwindow* window, _GLFWcursor* cursor);
@@ -490,10 +490,10 @@ void _glfwFreeMonitorWin32(_GLFWmonitor* monitor);
 void _glfwGetMonitorPosWin32(_GLFWmonitor* monitor, int* xpos, int* ypos);
 void _glfwGetMonitorContentScaleWin32(_GLFWmonitor* monitor, float* xscale, float* yscale);
 void _glfwGetMonitorWorkareaWin32(_GLFWmonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-GLFWvidmode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count);
-GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, GLFWvidmode* mode);
-GLFWbool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GLFWgammaramp* ramp);
-void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GLFWgammaramp* ramp);
+VideoMode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count);
+GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode);
+GLFWbool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GammaRamp* ramp);
+void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GammaRamp* ramp);
 
 GLFWbool _glfwInitWGL(void);
 void _glfwTerminateWGL(void);

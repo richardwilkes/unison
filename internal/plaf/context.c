@@ -20,30 +20,30 @@ GLFWbool _glfwIsValidContextConfig(const _GLFWctxconfig* ctxconfig)
 {
 	if (ctxconfig->profile)
 	{
-		if (ctxconfig->profile != GLFW_OPENGL_CORE_PROFILE &&
-			ctxconfig->profile != GLFW_OPENGL_COMPAT_PROFILE)
+		if (ctxconfig->profile != OPENGL_PROFILE_CORE &&
+			ctxconfig->profile != OPENGL_PROFILE_COMPAT)
 		{
-			_glfwInputError(GLFW_INVALID_ENUM, "Invalid OpenGL profile 0x%08X", ctxconfig->profile);
+			_glfwInputError(ERR_INVALID_ENUM, "Invalid OpenGL profile 0x%08X", ctxconfig->profile);
 			return false;
 		}
 	}
 
     if (ctxconfig->robustness)
     {
-        if (ctxconfig->robustness != GLFW_NO_RESET_NOTIFICATION &&
-            ctxconfig->robustness != GLFW_LOSE_CONTEXT_ON_RESET)
+        if (ctxconfig->robustness != CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION &&
+            ctxconfig->robustness != CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET)
         {
-            _glfwInputError(GLFW_INVALID_ENUM, "Invalid context robustness mode 0x%08X", ctxconfig->robustness);
+            _glfwInputError(ERR_INVALID_ENUM, "Invalid context robustness mode 0x%08X", ctxconfig->robustness);
             return false;
         }
     }
 
     if (ctxconfig->release)
     {
-        if (ctxconfig->release != GLFW_RELEASE_BEHAVIOR_NONE &&
-            ctxconfig->release != GLFW_RELEASE_BEHAVIOR_FLUSH)
+        if (ctxconfig->release != RELEASE_BEHAVIOR_NONE &&
+            ctxconfig->release != RELEASE_BEHAVIOR_FLUSH)
         {
-            _glfwInputError(GLFW_INVALID_ENUM, "Invalid context release behavior 0x%08X", ctxconfig->release);
+            _glfwInputError(ERR_INVALID_ENUM, "Invalid context release behavior 0x%08X", ctxconfig->release);
             return false;
         }
     }
@@ -106,19 +106,19 @@ const _GLFWfbconfig* _glfwChooseFBConfig(const _GLFWfbconfig* desired,
         {
             colorDiff = 0;
 
-            if (desired->redBits != GLFW_DONT_CARE)
+            if (desired->redBits != DONT_CARE)
             {
                 colorDiff += (desired->redBits - current->redBits) *
                              (desired->redBits - current->redBits);
             }
 
-            if (desired->greenBits != GLFW_DONT_CARE)
+            if (desired->greenBits != DONT_CARE)
             {
                 colorDiff += (desired->greenBits - current->greenBits) *
                              (desired->greenBits - current->greenBits);
             }
 
-            if (desired->blueBits != GLFW_DONT_CARE)
+            if (desired->blueBits != DONT_CARE)
             {
                 colorDiff += (desired->blueBits - current->blueBits) *
                              (desired->blueBits - current->blueBits);
@@ -129,49 +129,49 @@ const _GLFWfbconfig* _glfwChooseFBConfig(const _GLFWfbconfig* desired,
         {
             extraDiff = 0;
 
-            if (desired->alphaBits != GLFW_DONT_CARE)
+            if (desired->alphaBits != DONT_CARE)
             {
                 extraDiff += (desired->alphaBits - current->alphaBits) *
                              (desired->alphaBits - current->alphaBits);
             }
 
-            if (desired->depthBits != GLFW_DONT_CARE)
+            if (desired->depthBits != DONT_CARE)
             {
                 extraDiff += (desired->depthBits - current->depthBits) *
                              (desired->depthBits - current->depthBits);
             }
 
-            if (desired->stencilBits != GLFW_DONT_CARE)
+            if (desired->stencilBits != DONT_CARE)
             {
                 extraDiff += (desired->stencilBits - current->stencilBits) *
                              (desired->stencilBits - current->stencilBits);
             }
 
-            if (desired->accumRedBits != GLFW_DONT_CARE)
+            if (desired->accumRedBits != DONT_CARE)
             {
                 extraDiff += (desired->accumRedBits - current->accumRedBits) *
                              (desired->accumRedBits - current->accumRedBits);
             }
 
-            if (desired->accumGreenBits != GLFW_DONT_CARE)
+            if (desired->accumGreenBits != DONT_CARE)
             {
                 extraDiff += (desired->accumGreenBits - current->accumGreenBits) *
                              (desired->accumGreenBits - current->accumGreenBits);
             }
 
-            if (desired->accumBlueBits != GLFW_DONT_CARE)
+            if (desired->accumBlueBits != DONT_CARE)
             {
                 extraDiff += (desired->accumBlueBits - current->accumBlueBits) *
                              (desired->accumBlueBits - current->accumBlueBits);
             }
 
-            if (desired->accumAlphaBits != GLFW_DONT_CARE)
+            if (desired->accumAlphaBits != DONT_CARE)
             {
                 extraDiff += (desired->accumAlphaBits - current->accumAlphaBits) *
                              (desired->accumAlphaBits - current->accumAlphaBits);
             }
 
-            if (desired->samples != GLFW_DONT_CARE)
+            if (desired->samples != DONT_CARE)
             {
                 extraDiff += (desired->samples - current->samples) *
                              (desired->samples - current->samples);
@@ -226,7 +226,7 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
         window->context.getProcAddress("glGetString");
     if (!window->context.GetIntegerv || !window->context.GetString)
     {
-        _glfwInputError(GLFW_PLATFORM_ERROR, "Entry point retrieval is broken");
+        _glfwInputError(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
         glfwMakeContextCurrent((GLFWwindow*) previous);
         return false;
     }
@@ -234,7 +234,7 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
     version = (const char*) window->context.GetString(GL_VERSION);
     if (!version)
     {
-		_glfwInputError(GLFW_PLATFORM_ERROR, "OpenGL version string retrieval is broken");
+		_glfwInputError(ERR_PLATFORM_ERROR, "OpenGL version string retrieval is broken");
         glfwMakeContextCurrent((GLFWwindow*) previous);
         return false;
     }
@@ -244,7 +244,7 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
                 &window->context.minor,
                 &window->context.revision))
     {
-		_glfwInputError(GLFW_PLATFORM_ERROR, "No version found in OpenGL version string");
+		_glfwInputError(ERR_PLATFORM_ERROR, "No version found in OpenGL version string");
         glfwMakeContextCurrent((GLFWwindow*) previous);
         return false;
     }
@@ -260,7 +260,7 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
         // For API consistency, we emulate the behavior of the
         // {GLX|WGL}_ARB_create_context extension and fail here
 
-		_glfwInputError(GLFW_VERSION_UNAVAILABLE, "Requested OpenGL version %i.%i, got version %i.%i", ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
+		_glfwInputError(ERR_VERSION_UNAVAILABLE, "Requested OpenGL version %i.%i, got version %i.%i", ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
         glfwMakeContextCurrent((GLFWwindow*) previous);
         return false;
     }
@@ -275,7 +275,7 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
             window->context.getProcAddress("glGetStringi");
         if (!window->context.GetStringi)
         {
-            _glfwInputError(GLFW_PLATFORM_ERROR, "Entry point retrieval is broken");
+            _glfwInputError(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
             glfwMakeContextCurrent((GLFWwindow*) previous);
             return false;
         }
@@ -305,9 +305,9 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
 		window->context.GetIntegerv(GL_CONTEXT_PROFILE_MASK, &mask);
 
 		if (mask & GL_CONTEXT_COMPATIBILITY_PROFILE_BIT)
-			window->context.profile = GLFW_OPENGL_COMPAT_PROFILE;
+			window->context.profile = OPENGL_PROFILE_COMPAT;
 		else if (mask & GL_CONTEXT_CORE_PROFILE_BIT)
-			window->context.profile = GLFW_OPENGL_CORE_PROFILE;
+			window->context.profile = OPENGL_PROFILE_CORE;
 	}
 
 	// Read back robustness strategy
@@ -321,9 +321,9 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
 									&strategy);
 
 		if (strategy == GL_LOSE_CONTEXT_ON_RESET_ARB)
-			window->context.robustness = GLFW_LOSE_CONTEXT_ON_RESET;
+			window->context.robustness = CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET;
 		else if (strategy == GL_NO_RESET_NOTIFICATION_ARB)
-			window->context.robustness = GLFW_NO_RESET_NOTIFICATION;
+			window->context.robustness = CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION;
 	}
 
     if (glfwExtensionSupported("GL_KHR_context_flush_control"))
@@ -332,9 +332,9 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
         window->context.GetIntegerv(GL_CONTEXT_RELEASE_BEHAVIOR, &behavior);
 
         if (behavior == GL_NONE)
-            window->context.release = GLFW_RELEASE_BEHAVIOR_NONE;
+            window->context.release = RELEASE_BEHAVIOR_NONE;
         else if (behavior == GL_CONTEXT_RELEASE_BEHAVIOR_FLUSH)
-            window->context.release = GLFW_RELEASE_BEHAVIOR_FLUSH;
+            window->context.release = RELEASE_BEHAVIOR_FLUSH;
     }
 
     // Clearing the front buffer to black to avoid garbage pixels left over from
@@ -415,7 +415,7 @@ void glfwSwapInterval(int interval)
 {
     if (!_glfw.contextSlot)
     {
-        _glfwInputError(GLFW_NO_CURRENT_CONTEXT, "Cannot set swap interval without a current OpenGL or OpenGL ES context");
+        _glfwInputError(ERR_NO_CURRENT_CONTEXT, "Cannot set swap interval without a current OpenGL or OpenGL ES context");
         return;
     }
     _glfw.contextSlot->context.swapInterval(interval);
@@ -425,13 +425,13 @@ int glfwExtensionSupported(const char* extension)
 {
     if (!_glfw.contextSlot)
     {
-        _glfwInputError(GLFW_NO_CURRENT_CONTEXT, "Cannot query extension without a current OpenGL or OpenGL ES context");
+        _glfwInputError(ERR_NO_CURRENT_CONTEXT, "Cannot query extension without a current OpenGL or OpenGL ES context");
         return false;
     }
 
     if (*extension == '\0')
     {
-        _glfwInputError(GLFW_INVALID_VALUE, "Extension name cannot be an empty string");
+        _glfwInputError(ERR_INVALID_VALUE, "Extension name cannot be an empty string");
         return false;
     }
 
@@ -449,7 +449,7 @@ int glfwExtensionSupported(const char* extension)
             const char* en = (const char*)_glfw.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
             if (!en)
             {
-                _glfwInputError(GLFW_PLATFORM_ERROR, "Extension string retrieval is broken");
+                _glfwInputError(ERR_PLATFORM_ERROR, "Extension string retrieval is broken");
                 return false;
             }
 
@@ -464,7 +464,7 @@ int glfwExtensionSupported(const char* extension)
         const char* extensions = (const char*)_glfw.contextSlot->context.GetString(GL_EXTENSIONS);
         if (!extensions)
         {
-            _glfwInputError(GLFW_PLATFORM_ERROR, "Extension string retrieval is broken");
+            _glfwInputError(ERR_PLATFORM_ERROR, "Extension string retrieval is broken");
             return false;
         }
 
@@ -476,11 +476,11 @@ int glfwExtensionSupported(const char* extension)
     return _glfw.contextSlot->context.extensionSupported(extension);
 }
 
-GLFWglproc glfwGetProcAddress(const char* procname)
+glFunc glfwGetProcAddress(const char* procname)
 {
     if (!_glfw.contextSlot)
     {
-        _glfwInputError(GLFW_NO_CURRENT_CONTEXT, "Cannot query entry point without a current OpenGL or OpenGL ES context");
+        _glfwInputError(ERR_NO_CURRENT_CONTEXT, "Cannot query entry point without a current OpenGL or OpenGL ES context");
         return NULL;
     }
     return _glfw.contextSlot->context.getProcAddress(procname);
