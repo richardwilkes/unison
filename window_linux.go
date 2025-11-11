@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 func (w *Window) frameRect() geom.Rect {
