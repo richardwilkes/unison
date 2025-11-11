@@ -12,9 +12,9 @@ package unison
 import (
 	"image"
 
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/plaf"
 	"golang.org/x/image/draw"
 )
 
@@ -30,12 +30,12 @@ var (
 )
 
 // Cursor provides a graphical cursor for the mouse location.
-type Cursor = glfw.Cursor
+type Cursor = plaf.Cursor
 
 // ArrowCursor returns the standard arrow cursor.
 func ArrowCursor() *Cursor {
 	if arrowCursor == nil {
-		arrowCursor = glfw.CreateStandardCursor(glfw.ArrowCursor)
+		arrowCursor = plaf.CreateStandardCursor(plaf.ArrowCursor)
 	}
 	return arrowCursor
 }
@@ -43,7 +43,7 @@ func ArrowCursor() *Cursor {
 // PointingCursor returns the standard pointing cursor.
 func PointingCursor() *Cursor {
 	if pointingCursor == nil {
-		pointingCursor = glfw.CreateStandardCursor(glfw.HandCursor)
+		pointingCursor = plaf.CreateStandardCursor(plaf.HandCursor)
 	}
 	return pointingCursor
 }
@@ -76,7 +76,7 @@ func ResizeVerticalCursor() *Cursor {
 // TextCursor returns the standard text cursor.
 func TextCursor() *Cursor {
 	if textCursor == nil {
-		textCursor = glfw.CreateStandardCursor(glfw.IBeamCursor)
+		textCursor = plaf.CreateStandardCursor(plaf.IBeamCursor)
 	}
 	return textCursor
 }
@@ -97,7 +97,7 @@ func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 		return ArrowCursor()
 	}
 
-	// glfw doesn't take the high resolution cursors properly, so scale them down, if needed
+	// plaf doesn't take the high resolution cursors properly, so scale them down, if needed
 	logicalSize := img.LogicalSize()
 	size := img.Size()
 	if logicalSize != size {
@@ -107,5 +107,5 @@ func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 		nrgba = dst
 	}
 
-	return glfw.CreateCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
+	return plaf.CreateCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
 }

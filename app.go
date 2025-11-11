@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
+	"github.com/richardwilkes/unison/internal/plaf"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -31,7 +31,7 @@ var (
 	quitAfterLastWindowClosedCallback func() bool
 	allowQuitCallback                 func() bool
 	quittingCallback                  func()
-	glfwInited                        atomic.Bool
+	plafInited                        atomic.Bool
 	noGlobalMenuBar                   bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
@@ -129,7 +129,7 @@ func Start(options ...StartupOption) {
 	for _, option := range options {
 		xos.ExitIfErr(option(startupOption{}))
 	}
-	xos.ExitIfErr(glfw.Init())
+	xos.ExitIfErr(plaf.Init())
 	xos.RunAtExit(quitting)
 	xos.RunAtExit(func() {
 		quitLock.Lock()
@@ -137,7 +137,7 @@ func Start(options ...StartupOption) {
 		quitLock.Unlock()
 	})
 	platformEarlyInit()
-	glfwInited.Store(true)
+	plafInited.Store(true)
 	InvokeTask(finishStartup)
 	for {
 		processEvents()
@@ -145,7 +145,7 @@ func Start(options ...StartupOption) {
 }
 
 func processEvents() {
-	glfw.WaitEvents()
+	plaf.WaitEvents()
 	processNextTask(uiTaskRecovery)
 	if len(redrawSet) > 0 {
 		set := redrawSet
@@ -226,7 +226,7 @@ func quitting() {
 	if !calledExit {
 		xos.Exit(0)
 	}
-	glfw.Terminate()
+	plaf.Terminate()
 }
 
 // AttemptQuit initiates the termination sequence.
@@ -290,7 +290,7 @@ func DragGestureParameters() (minDelay time.Duration, minMouseDrift float32) {
 }
 
 func postEmptyEvent() {
-	if glfwInited.Load() {
-		glfw.PostEmptyEvent()
+	if plafInited.Load() {
+		plaf.PostEmptyEvent()
 	}
 }

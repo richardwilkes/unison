@@ -12,7 +12,6 @@ package unison
 import (
 	"time"
 
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
@@ -87,14 +86,14 @@ func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point
 	return where
 }
 
-func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {
+func (w *Window) keyCallbackForPlatform(_ *plaf.Window, key plaf.Key, _ int, action plaf.Action, mods plaf.ModifierKey) {
 	if w.okToProcess() {
-		if action == glfw.Release {
-			mods &= ^keyToModifierForGLFW(key)
+		if action == plaf.Release {
+			mods &= ^keyToModifierForPlatform(key)
 		} else {
-			mods |= keyToModifierForGLFW(key)
+			mods |= keyToModifierForPlatform(key)
 		}
-		w.commonKeyCallbackForGLFW(key, action, mods)
+		w.commonKeyCallbackForPlatform(key, action, mods)
 	}
 }
 
@@ -105,16 +104,16 @@ func (w *Window) CurrentKeyModifiers() Modifiers {
 	return w.LastKeyModifiers()
 }
 
-func keyToModifierForGLFW(key glfw.Key) glfw.ModifierKey {
+func keyToModifierForPlatform(key plaf.Key) plaf.ModifierKey {
 	switch key {
-	case glfw.KeyLeftControl, glfw.KeyRightControl:
-		return glfw.ModControl
-	case glfw.KeyLeftShift, glfw.KeyRightShift:
-		return glfw.ModShift
-	case glfw.KeyLeftAlt, glfw.KeyRightAlt:
-		return glfw.ModAlt
-	case glfw.KeyLeftSuper, glfw.KeyRightSuper:
-		return glfw.ModSuper
+	case plaf.KeyLeftControl, plaf.KeyRightControl:
+		return plaf.ModControl
+	case plaf.KeyLeftShift, plaf.KeyRightShift:
+		return plaf.ModShift
+	case plaf.KeyLeftAlt, plaf.KeyRightAlt:
+		return plaf.ModAlt
+	case plaf.KeyLeftSuper, plaf.KeyRightSuper:
+		return plaf.ModSuper
 	default:
 		return 0
 	}

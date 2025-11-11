@@ -12,9 +12,9 @@ package unison
 import (
 	"runtime"
 
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 var lastPrimaryDisplay *Display
@@ -94,9 +94,9 @@ func BestDisplayForRect(r geom.Rect) *Display {
 
 // PrimaryDisplay returns the primary display.
 func PrimaryDisplay() *Display {
-	if monitor := glfw.GetPrimaryMonitor(); monitor == nil {
+	if monitor := plaf.GetPrimaryMonitor(); monitor == nil {
 		// On macOS, I've had cases where the monitor list has been emptied after some time has passed. Appears to be a
-		// bug in glfw, but we can try to work around it by just using the last primary monitor we found.
+		// bug in plaf, but we can try to work around it by just using the last primary monitor we found.
 		if lastPrimaryDisplay == nil {
 			return nil
 		}
@@ -112,7 +112,7 @@ func PrimaryDisplay() *Display {
 
 // AllDisplays returns all displays.
 func AllDisplays() []*Display {
-	monitors := glfw.GetMonitors()
+	monitors := plaf.GetMonitors()
 	displays := make([]*Display, len(monitors))
 	for i, monitor := range monitors {
 		displays[i] = convertMonitorToDisplay(monitor)
@@ -120,7 +120,7 @@ func AllDisplays() []*Display {
 	return displays
 }
 
-func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
+func convertMonitorToDisplay(monitor *plaf.Monitor) *Display {
 	x, y := monitor.GetPos()
 	vidMode := monitor.GetVideoMode()
 	workX, workY, workWidth, workHeight := monitor.GetWorkarea()

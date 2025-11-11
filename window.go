@@ -16,13 +16,13 @@ import (
 	"time"
 
 	"github.com/go-gl/gl/v3.2-core/gl"
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
+	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 var _ UndoManagerProvider = &Window{}
@@ -32,7 +32,7 @@ var (
 	// to the size desired by the system will be selected and used, scaling if needed. If no images are specified, the
 	// system's default icon will be used.
 	DefaultTitleIcons []*Image
-	windowMap         = make(map[*glfw.Window]*Window)
+	windowMap         = make(map[*plaf.Window]*Window)
 	windowList        []*Window
 	modalStack        []*Window
 	glInited          = false
@@ -65,7 +65,7 @@ type Window struct {
 	DragIntoWindowWillStart func()
 	// DragIntoWindowFinished is called just after a drag into the window completes, whether a drop occurs or not.
 	DragIntoWindowFinished func()
-	wnd                    *glfw.Window
+	wnd                    *plaf.Window
 	surface                *surface
 	root                   *rootPanel
 	focus                  *Panel
@@ -204,41 +204,41 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			return nil, err
 		}
 	}
-	glfw.WindowHint(glfw.Visible, glfw.False)
-	glfw.WindowHint(glfw.Resizable, glfwEnabled(!w.notResizable))
-	glfw.WindowHint(glfw.Decorated, glfwEnabled(!w.undecorated))
-	glfw.WindowHint(glfw.Floating, glfwEnabled(w.floating))
-	glfw.WindowHint(glfw.AutoIconify, glfw.False)
-	glfw.WindowHint(glfw.TransparentFramebuffer, glfw.False)
-	glfw.WindowHint(glfw.FocusOnShow, glfw.False)
-	glfw.WindowHint(glfw.ScaleToMonitor, glfw.False)
+	plaf.WindowHint(plaf.Visible, plaf.False)
+	plaf.WindowHint(plaf.Resizable, plafEnabled(!w.notResizable))
+	plaf.WindowHint(plaf.Decorated, plafEnabled(!w.undecorated))
+	plaf.WindowHint(plaf.Floating, plafEnabled(w.floating))
+	plaf.WindowHint(plaf.AutoIconify, plaf.False)
+	plaf.WindowHint(plaf.TransparentFramebuffer, plaf.False)
+	plaf.WindowHint(plaf.FocusOnShow, plaf.False)
+	plaf.WindowHint(plaf.ScaleToMonitor, plaf.False)
 	var err error
 	xos.SafeCall(func() {
-		w.wnd, err = glfw.CreateWindow(1, 1, title, nil, nil)
+		w.wnd, err = plaf.CreateWindow(1, 1, title, nil, nil)
 	}, func(panicErr error) {
 		err = panicErr
 	})
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
-	w.wnd.SetRefreshCallback(func(_ *glfw.Window) {
+	w.wnd.SetRefreshCallback(func(_ *plaf.Window) {
 		delete(redrawSet, w)
 		w.draw()
 	})
-	w.wnd.SetPosCallback(func(_ *glfw.Window, _, _ int) {
+	w.wnd.SetPosCallback(func(_ *plaf.Window, _, _ int) {
 		w.moved()
 	})
-	w.wnd.SetSizeCallback(func(_ *glfw.Window, width, height int) {
+	w.wnd.SetSizeCallback(func(_ *plaf.Window, width, height int) {
 		if width > 0 && height > 0 {
 			w.resized()
 		}
 	})
-	w.wnd.SetCloseCallback(func(_ *glfw.Window) {
+	w.wnd.SetCloseCallback(func(_ *plaf.Window) {
 		if w.okToProcess() {
 			w.AttemptClose()
 		}
 	})
-	w.wnd.SetFocusCallback(func(_ *glfw.Window, focused bool) {
+	w.wnd.SetFocusCallback(func(_ *plaf.Window, focused bool) {
 		if focused {
 			if w.okToProcess() {
 				w.gainedFocus()
@@ -250,7 +250,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	})
 	w.wnd.SetMouseButtonCallback(w.mouseButtonCallback)
-	w.wnd.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {
+	w.wnd.SetCursorPosCallback(func(_ *plaf.Window, x, y float64) {
 		where := w.convertRawMouseLocation(x, y)
 		if w.inMouseDown {
 			w.mouseDrag(where, w.lastButton, w.lastKeyModifiers)
@@ -258,25 +258,25 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			w.mouseMove(where, w.lastKeyModifiers)
 		}
 	})
-	w.wnd.SetCursorEnterCallback(func(_ *glfw.Window, entered bool) {
+	w.wnd.SetCursorEnterCallback(func(_ *plaf.Window, entered bool) {
 		if entered {
 			w.mouseEnter(w.MouseLocation(), w.lastKeyModifiers)
 		} else {
 			w.mouseExit()
 		}
 	})
-	w.wnd.SetScrollCallback(func(_ *glfw.Window, xoff, yoff float64) {
+	w.wnd.SetScrollCallback(func(_ *plaf.Window, xoff, yoff float64) {
 		w.mouseWheel(w.MouseLocation(), geom.NewPoint(float32(xoff), float32(yoff)), w.lastKeyModifiers)
 	})
-	w.wnd.SetKeyCallback(w.keyCallbackForGLFW)
-	w.wnd.SetCharCallback(func(_ *glfw.Window, ch rune) {
+	w.wnd.SetKeyCallback(w.keyCallbackForPlatform)
+	w.wnd.SetCharCallback(func(_ *plaf.Window, ch rune) {
 		if w.okToProcess() {
 			w.runeTyped(ch)
 		}
 	})
-	// Real drag & drop support can't really be added due to the way glfw has already hooked in for their primitive
+	// Real drag & drop support can't really be added due to the way plaf has already hooked in for their primitive
 	// file drop capability... so we'll just live with that for now.
-	w.wnd.SetDropCallback(func(_ *glfw.Window, files []string) {
+	w.wnd.SetDropCallback(func(_ *plaf.Window, files []string) {
 		if w.okToProcess() {
 			w.fileDrop(files)
 		}
@@ -290,14 +290,14 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	return w, nil
 }
 
-func (w *Window) commonKeyCallbackForGLFW(key glfw.Key, action glfw.Action, mods glfw.ModifierKey) {
+func (w *Window) commonKeyCallbackForPlatform(key plaf.Key, action plaf.Action, mods plaf.ModifierKey) {
 	w.lastKeyModifiers = Modifiers(mods)
 	switch action {
-	case glfw.Press:
+	case plaf.Press:
 		w.keyDown(KeyCode(key), Modifiers(mods), false)
-	case glfw.Release:
+	case plaf.Release:
 		w.keyUp(KeyCode(key), Modifiers(mods))
-	case glfw.Repeat:
+	case plaf.Repeat:
 		w.keyDown(KeyCode(key), Modifiers(mods), true)
 	}
 }
@@ -307,21 +307,21 @@ func (w *Window) LastKeyModifiers() Modifiers {
 	return w.lastKeyModifiers
 }
 
-func glfwEnabled(enabled bool) int {
+func plafEnabled(enabled bool) int {
 	if enabled {
-		return glfw.True
+		return plaf.True
 	}
-	return glfw.False
+	return plaf.False
 }
 
-func (w *Window) mouseButtonCallback(_ *glfw.Window, button glfw.MouseButton, action glfw.Action, mods glfw.ModifierKey) {
+func (w *Window) mouseButtonCallback(_ *plaf.Window, button plaf.MouseButton, action plaf.Action, mods plaf.ModifierKey) {
 	if !w.okToProcess() {
 		modalStack[len(modalStack)-1].mouseButtonCallback(nil, button, action, mods)
 		return
 	}
 	w.lastKeyModifiers = Modifiers(mods)
 	where := w.MouseLocation()
-	if action == glfw.Press {
+	if action == plaf.Press {
 		maxDelay, maxMouseDrift := DoubleClickParameters()
 		now := time.Now()
 		if int(button) == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
@@ -785,7 +785,7 @@ func collectFocusables(current, target *Panel, focusables []*Panel) (match int, 
 // IsVisible returns true if the window is currently being shown.
 func (w *Window) IsVisible() bool {
 	if w.IsValid() {
-		return w.wnd.GetAttrib(glfw.Visible) == glfw.True
+		return w.wnd.GetAttrib(plaf.Visible) == plaf.True
 	}
 	return false
 }
@@ -927,14 +927,14 @@ func (w *Window) FlushDrawing() {
 // HideCursor hides the cursor.
 func (w *Window) HideCursor() {
 	if w.IsValid() {
-		w.wnd.SetInputMode(glfw.CursorMode, glfw.CursorHidden)
+		w.wnd.SetInputMode(plaf.CursorMode, plaf.CursorHidden)
 	}
 }
 
 // ShowCursor shows the cursor.
 func (w *Window) ShowCursor() {
 	if w.IsValid() {
-		w.wnd.SetInputMode(glfw.CursorMode, glfw.CursorNormal)
+		w.wnd.SetInputMode(plaf.CursorMode, plaf.CursorNormal)
 	}
 }
 

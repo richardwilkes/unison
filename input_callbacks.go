@@ -10,15 +10,15 @@
 package unison
 
 import (
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 // Constants for mouse buttons.
 const (
-	ButtonLeft   = int(glfw.MouseButtonLeft)
-	ButtonRight  = int(glfw.MouseButtonRight)
-	ButtonMiddle = int(glfw.MouseButtonMiddle)
+	ButtonLeft   = int(plaf.MouseButtonLeft)
+	ButtonRight  = int(plaf.MouseButtonRight)
+	ButtonMiddle = int(plaf.MouseButtonMiddle)
 )
 
 // InputCallbacks holds the callbacks that client code can hook into for user input events.

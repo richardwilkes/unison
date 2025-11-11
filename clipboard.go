@@ -12,7 +12,7 @@ package unison
 import (
 	"sync"
 
-	"github.com/richardwilkes/glfw"
+	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 // GlobalClipboard holds the global clipboard.
@@ -25,7 +25,7 @@ type ClipboardData struct {
 }
 
 // Clipboard provides access to the system clipboard as well as an internal, application-only, clipboard. Currently, due
-// to limitations in the underlying glfw libraries, only strings may be set onto and retrieved from the system
+// to limitations in the underlying plaf libraries, only strings may be set onto and retrieved from the system
 // clipboard. The internal clipboard accepts any type of data and is passed around via interface. Due to this, you may
 // want to consider serializing and unserializing your data into bytes to pass it through the clipboard, to avoid
 // accidental mutations.
@@ -36,12 +36,12 @@ type Clipboard struct {
 
 // GetText returns text from the current clipboard data. This reads from the system clipboard.
 func (c *Clipboard) GetText() string {
-	return glfw.GetClipboardString()
+	return plaf.GetClipboardString()
 }
 
 // SetText sets text as the current clipboard data. This modifies the system clipboard.
 func (c *Clipboard) SetText(str string) {
-	glfw.SetClipboardString(str)
+	plaf.SetClipboardString(str)
 	c.lock.Lock()
 	c.data = nil
 	c.lock.Unlock()
@@ -65,9 +65,9 @@ func (c *Clipboard) SetData(dataType string, data any) {
 	c.data[dataType] = data
 	c.lock.Unlock()
 	if s, ok := data.(string); ok {
-		glfw.SetClipboardString(s)
+		plaf.SetClipboardString(s)
 	} else {
-		glfw.SetClipboardString("")
+		plaf.SetClipboardString("")
 	}
 }
 
@@ -87,5 +87,5 @@ func (c *Clipboard) SetMultipleData(pairs []ClipboardData) {
 		}
 	}
 	c.lock.Unlock()
-	glfw.SetClipboardString(str)
+	plaf.SetClipboardString(str)
 }

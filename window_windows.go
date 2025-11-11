@@ -10,8 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/glfw"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 func (w *Window) frameRect() geom.Rect {
@@ -70,9 +70,9 @@ func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point
 	return where
 }
 
-func (w *Window) keyCallbackForGLFW(_ *glfw.Window, key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {
+func (w *Window) keyCallbackForPlatform(_ *plaf.Window, key plaf.Key, _ int, action plaf.Action, mods plaf.ModifierKey) {
 	if w.okToProcess() {
-		w.commonKeyCallbackForGLFW(key, action, mods)
+		w.commonKeyCallbackForPlatform(key, action, mods)
 	}
 }
 
