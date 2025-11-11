@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(_GLFW_COCOA)
+#if defined(PLAF_DARWIN)
 
 #include <limits.h>
 #include <math.h>
@@ -572,4 +572,4 @@ CGDirectDisplayID glfwGetCocoaMonitor(GLFWmonitor* handle)
     return monitor->ns.displayID;
 }
 
-#endif // _GLFW_COCOA
+#endif // PLAF_DARWIN

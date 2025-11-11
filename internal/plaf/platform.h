@@ -10,20 +10,20 @@ extern "C" {
 #include <stdbool.h>
 
 #if !defined(APIENTRY)
-	#if defined(_WIN32)
+	#if defined(PLAF_WINDOWS)
 		#define APIENTRY __stdcall
 	#else
 		#define APIENTRY
 	#endif
 #endif
 
-#if !defined(WINGDIAPI) && defined(_WIN32)
+#if !defined(WINGDIAPI) && defined(PLAF_WINDOWS)
 	#define WINGDIAPI __declspec(dllimport)
 	#define GLFW_WINGDIAPI_DEFINED
 #endif
 
 // Some Windows GLU headers need this.
-#if !defined(CALLBACK) && defined(_WIN32)
+#if !defined(CALLBACK) && defined(PLAF_WINDOWS)
 	#define CALLBACK __stdcall
 	#define GLFW_CALLBACK_DEFINED
 #endif
@@ -2252,7 +2252,7 @@ GLFWwindow* glfwCreateWindow(int width, int height, const char* title, GLFWmonit
  */
 void glfwDestroyWindow(GLFWwindow* window);
 
-#if defined(_GLFW_COCOA)
+#if defined(PLAF_DARWIN)
 /*! @brief Returns the `NSWindow` of the specified window.
  *
  *  @return The `NSWindow` of the specified window, or `nil` if an
@@ -4767,7 +4767,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
  #error "You must not define these; define zero or more _GLFW_<platform> macros instead"
 #endif
 
-#if defined(_GLFW_WIN32)
+#if defined(PLAF_WINDOWS)
  #include "platform_windows.h"
 #else
  #define GLFW_WIN32_WINDOW_STATE
@@ -4778,7 +4778,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
  #define GLFW_WGL_LIBRARY_CONTEXT_STATE
 #endif
 
-#if defined(_GLFW_COCOA)
+#if defined(PLAF_DARWIN)
  #include "platform_darwin.h"
 #else
  #define GLFW_COCOA_WINDOW_STATE
@@ -4789,7 +4789,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
  #define GLFW_NSGL_LIBRARY_CONTEXT_STATE
 #endif
 
-#if defined(_GLFW_X11)
+#if defined(PLAF_LINUX)
  #include "platform_linux.h"
 #else
  #define GLFW_X11_WINDOW_STATE
@@ -4830,7 +4830,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
         GLFW_NSGL_LIBRARY_CONTEXT_STATE \
         GLFW_GLX_LIBRARY_CONTEXT_STATE
 
-#if defined(_WIN32)
+#if defined(PLAF_WINDOWS)
  #define GLFW_BUILD_WIN32_MODULE
 #else
  #define GLFW_BUILD_POSIX_MODULE

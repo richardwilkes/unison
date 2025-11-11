@@ -1,4 +1,4 @@
-#if defined(_GLFW_X11)
+#if defined(PLAF_LINUX)
 
 #include "platform.h"
 #include <string.h>
@@ -1494,4 +1494,4 @@ void platformTerminate(void)
 	}
 }
 
-#endif // _GLFW_X11
+#endif // PLAF_LINUX

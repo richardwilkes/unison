@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(_GLFW_COCOA)
+#if defined(PLAF_DARWIN)
 
 #include <unistd.h>
 #include <math.h>
@@ -282,4 +282,4 @@ id glfwGetNSGLContext(GLFWwindow* handle)
     return window->context.nsgl.object;
 }
 
-#endif // _GLFW_COCOA
+#endif // PLAF_DARWIN

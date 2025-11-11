@@ -1,4 +1,4 @@
-#if defined(_GLFW_COCOA)
+#if defined(PLAF_DARWIN)
 
 #include "platform.h"
 
@@ -1783,4 +1783,4 @@ id glfwGetCocoaView(GLFWwindow* handle)
     return window->ns.view;
 }
 
-#endif // _GLFW_COCOA
+#endif // PLAF_DARWIN

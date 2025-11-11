@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(_GLFW_X11)
+#if defined(PLAF_LINUX)
 
 #include <X11/cursorfont.h>
 #include <X11/Xmd.h>
@@ -2825,4 +2825,4 @@ Window glfwGetX11Window(GLFWwindow* handle)
     return window->x11.handle;
 }
 
-#endif // _GLFW_X11
+#endif // PLAF_LINUX

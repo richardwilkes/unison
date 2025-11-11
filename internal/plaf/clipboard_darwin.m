@@ -1,4 +1,4 @@
-#if defined(_GLFW_COCOA)
+#if defined(PLAF_DARWIN)
 
 #include "platform.h"
 
@@ -26,4 +26,4 @@ void setClipboardString(const char* string) {
 	}
 }
 
-#endif // _GLFW_COCOA
+#endif // PLAF_DARWIN

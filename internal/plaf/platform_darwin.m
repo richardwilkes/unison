@@ -1,4 +1,4 @@
-#if defined(_GLFW_COCOA)
+#if defined(PLAF_DARWIN)
 
 #include "platform.h"
 #include <sys/param.h> // For MAXPATHLEN
@@ -365,4 +365,4 @@ void platformTerminate(void) {
 	} // autoreleasepool
 }
 
-#endif // _GLFW_COCOA
+#endif // PLAF_DARWIN

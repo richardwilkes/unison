@@ -1,4 +1,4 @@
-#if defined(_GLFW_WIN32)
+#if defined(PLAF_WINDOWS)
 
 #include "platform.h"
 
@@ -73,4 +73,4 @@ void setClipboardString(const char* string) {
 	CloseClipboard();
 }
 
-#endif // _GLFW_WIN32
+#endif // PLAF_WINDOWS

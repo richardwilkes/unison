@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(_GLFW_WIN32)
+#if defined(PLAF_WINDOWS)
 
 #include <string.h>
 #include <limits.h>
@@ -518,4 +518,4 @@ const char* glfwGetWin32Monitor(GLFWmonitor* handle)
     return monitor->win32.publicDisplayName;
 }
 
-#endif // _GLFW_WIN32
+#endif // PLAF_WINDOWS
