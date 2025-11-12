@@ -1456,18 +1456,6 @@ IntBool _glfwCreateWindowWin32(_GLFWwindow* window,
         _glfwFocusWindowWin32(window);
         acquireMonitor(window);
         fitToMonitor(window);
-
-        if (wndconfig->centerCursor)
-            _glfwCenterCursorInContentArea(window);
-    }
-    else
-    {
-        if (wndconfig->visible)
-        {
-            _glfwShowWindowWin32(window);
-            if (wndconfig->focused)
-                _glfwFocusWindowWin32(window);
-        }
     }
 
     return true;

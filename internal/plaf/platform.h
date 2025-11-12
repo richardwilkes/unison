@@ -184,17 +184,15 @@ extern "C" {
 #define DISCONNECTED 0x00040002
 
 // Window attributes and/or hints
-#define WINDOW_ATTR_HINT_FOCUSED                   0x00020001
+#define WINDOW_ATTR_FOCUSED                        0x00020001
 #define WINDOW_ATTR_ICONIFIED                      0x00020002
 #define WINDOW_ATTR_HINT_RESIZABLE                 0x00020003
-#define WINDOW_ATTR_HINT_VISIBLE                   0x00020004
+#define WINDOW_ATTR_VISIBLE                        0x00020004
 #define WINDOW_ATTR_HINT_DECORATED                 0x00020005
 #define WINDOW_ATTR_HINT_FLOATING                  0x00020007
 #define WINDOW_ATTR_HINT_MAXIMIZED                 0x00020008
-#define WINDOW_HINT_CENTER_CURSOR                  0x00020009
 #define WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER   0x0002000A
 #define WINDOW_ATTR_HOVERED                        0x0002000B
-#define WINDOW_ATTR_HINT_FOCUS_ON_SHOW             0x0002000C
 #define WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH         0x0002000D
 #define WINDOW_HINT_POSITION_X                     0x0002000E
 #define WINDOW_HINT_POSITION_Y                     0x0002000F
@@ -224,9 +222,6 @@ extern "C" {
 #define WINDOW_ATTR_HINT_CONTEXT_ERROR_SUPPRESSION 0x0002200A
 #define WINDOW_HINT_SCALE_TO_MONITOR               0x0002200C
 #define WINDOW_HINT_SCALE_FRAMEBUFFER              0x0002200D
-#define WINDOW_HINT_COCOA_GRAPHICS_SWITCHING       0x00023003
-#define WINDOW_HINT_X11_CLASS_NAME                 0x00024001
-#define WINDOW_HINT_X11_INSTANCE_NAME              0x00024002
 
 // Context robustness values
 #define CONTEXT_ROBUSTNESS_NONE                   0
@@ -512,13 +507,9 @@ typedef struct WindowConfig {
 	int         width;
 	int         height;
 	IntBool     resizable;
-	IntBool     visible;
 	IntBool     decorated;
-	IntBool     focused;
 	IntBool     floating;
 	IntBool     maximized;
-	IntBool     centerCursor;
-	IntBool     focusOnShow;
 	IntBool     mousePassthrough;
 	IntBool     scaleToMonitor;
 	IntBool     scaleFramebuffer;
@@ -657,9 +648,6 @@ struct _GLFWctxconfig
 	int           robustness;
 	int           release;
 	_GLFWwindow*  share;
-	struct {
-		IntBool  offline;
-	} nsgl;
 };
 
 // Framebuffer configuration
@@ -726,7 +714,6 @@ struct _GLFWwindow
 	IntBool            resizable;
 	IntBool            decorated;
 	IntBool            floating;
-	IntBool            focusOnShow;
 	IntBool            mousePassthrough;
 	IntBool            shouldClose;
 	void*               userPointer;
@@ -1683,14 +1670,6 @@ void glfwWindowHintString(int hint, const char* value);
  *  query the final size, position or other attributes directly after window
  *  creation.
  *
- *  @remark __X11:__ The class part of the `WM_CLASS` window property will by
- *  default be set to the window title passed to this function.  The instance
- *  part will use the contents of the `RESOURCE_NAME` environment variable, if
- *  present and not empty, or fall back to the window title.  Set the
- *  [WINDOW_HINT_X11_CLASS_NAME](@ref GLFW_X11_CLASS_NAME_hint) and
- *  [WINDOW_HINT_X11_INSTANCE_NAME](@ref GLFW_X11_INSTANCE_NAME_hint) window hints to
- *  override this.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_creation
@@ -2343,11 +2322,6 @@ void glfwMaximizeWindow(GLFWwindow* window);
  *  hidden.  If the window is already visible or is in full screen mode, this
  *  function does nothing.
  *
- *  By default, windowed mode windows are focused when shown
- *  Set the [WINDOW_ATTR_HINT_FOCUS_ON_SHOW](@ref GLFW_FOCUS_ON_SHOW_hint) window hint
- *  to change this behavior for all newly created windows, or change the
- *  behavior for an existing window with @ref glfwSetWindowAttrib.
- *
  *  @param[in] window The window to make visible.
  *
  *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
@@ -2390,18 +2364,6 @@ void glfwHideWindow(GLFWwindow* window);
  *
  *  This function brings the specified window to front and sets input focus.
  *  The window should already be visible and not iconified.
- *
- *  By default, both windowed and full screen mode windows are focused when
- *  initially created.  Set the [WINDOW_ATTR_HINT_FOCUSED](@ref GLFW_FOCUSED_hint) to
- *  disable this behavior.
- *
- *  Also by default, windowed mode windows are focused when shown
- *  with @ref glfwShowWindow. Set the
- *  [WINDOW_ATTR_HINT_FOCUS_ON_SHOW](@ref GLFW_FOCUS_ON_SHOW_hint) to disable this behavior.
- *
- *  __Do not use this function__ to steal focus from other applications unless
- *  you are certain that is what the user wants.  Focus stealing can be
- *  extremely disruptive.
  *
  *  For a less disruptive way of getting the user's attention, see
  *  [attention requests](@ref window_attention).
@@ -2565,7 +2527,6 @@ int glfwGetWindowAttrib(GLFWwindow* window, int attrib);
  *  The supported attributes are [WINDOW_ATTR_HINT_DECORATED](@ref GLFW_DECORATED_attrib),
  *  [WINDOW_ATTR_HINT_RESIZABLE](@ref GLFW_RESIZABLE_attrib),
  *  [WINDOW_ATTR_HINT_FLOATING](@ref GLFW_FLOATING_attrib),
- *  [WINDOW_ATTR_HINT_FOCUS_ON_SHOW](@ref GLFW_FOCUS_ON_SHOW_attrib).
  *  [WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH](@ref GLFW_MOUSE_PASSTHROUGH_attrib)
  *
  *  Some of these attributes are ignored for full screen windows.  The new

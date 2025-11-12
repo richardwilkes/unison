@@ -55,17 +55,14 @@ type Hint int
 
 // Window related hints/attributes.
 const (
-	Focused                Hint = C.WINDOW_ATTR_HINT_FOCUSED                 // Specifies whether the window will be given input focus when created. This hint is ignored for full screen and initially hidden windows.
 	Iconified              Hint = C.WINDOW_ATTR_ICONIFIED                    // Specifies whether the window will be minimized.
 	Maximized              Hint = C.WINDOW_ATTR_HINT_MAXIMIZED               // Specifies whether the window is maximized.
-	Visible                Hint = C.WINDOW_ATTR_HINT_VISIBLE                 // Specifies whether the window will be initially visible.
+	Visible                Hint = C.WINDOW_ATTR_VISIBLE                      // Specifies whether the window will be initially visible.
 	Hovered                Hint = C.WINDOW_ATTR_HOVERED                      // Specifies whether the cursor is currently directly over the content area of the window, with no other windows between. See Cursor enter/leave events for details.
 	Resizable              Hint = C.WINDOW_ATTR_HINT_RESIZABLE               // Specifies whether the window will be resizable by the user.
 	Decorated              Hint = C.WINDOW_ATTR_HINT_DECORATED               // Specifies whether the window will have window decorations such as a border, a close widget, etc.
 	Floating               Hint = C.WINDOW_ATTR_HINT_FLOATING                // Specifies whether the window will be always-on-top.
-	CenterCursor           Hint = C.WINDOW_HINT_CENTER_CURSOR                // Specifies whether the cursor should be centered over newly created full screen windows. This hint is ignored for windowed mode windows.
 	TransparentFramebuffer Hint = C.WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER // Specifies whether the framebuffer should be transparent.
-	FocusOnShow            Hint = C.WINDOW_ATTR_HINT_FOCUS_ON_SHOW           // Specifies whether the window will be given input focus when glfwShowWindow is called.
 	ScaleToMonitor         Hint = C.WINDOW_HINT_SCALE_TO_MONITOR             // Specified whether the window content area should be resized based on the monitor content scale of any monitor it is placed on. This includes the initial placement when the window is created.
 )
 
@@ -80,24 +77,23 @@ const (
 
 // Framebuffer related hints.
 const (
-	ContextRevision        Hint = C.WINDOW_ATTR_CONTEXT_REVISION
-	RedBits                Hint = C.WINDOW_HINT_RED_BITS                 // Specifies the desired bit depth of the default framebuffer.
-	GreenBits              Hint = C.WINDOW_HINT_GREEN_BITS               // Specifies the desired bit depth of the default framebuffer.
-	BlueBits               Hint = C.WINDOW_HINT_BLUE_BITS                // Specifies the desired bit depth of the default framebuffer.
-	AlphaBits              Hint = C.WINDOW_HINT_ALPHA_BITS               // Specifies the desired bit depth of the default framebuffer.
-	DepthBits              Hint = C.WINDOW_HINT_DEPTH_BITS               // Specifies the desired bit depth of the default framebuffer.
-	StencilBits            Hint = C.WINDOW_HINT_STENCIL_BITS             // Specifies the desired bit depth of the default framebuffer.
-	AccumRedBits           Hint = C.WINDOW_HINT_ACCUM_RED_BITS           // Specifies the desired bit depth of the accumulation buffer.
-	AccumGreenBits         Hint = C.WINDOW_HINT_ACCUM_GREEN_BITS         // Specifies the desired bit depth of the accumulation buffer.
-	AccumBlueBits          Hint = C.WINDOW_HINT_ACCUM_BLUE_BITS          // Specifies the desired bit depth of the accumulation buffer.
-	AccumAlphaBits         Hint = C.WINDOW_HINT_ACCUM_ALPHA_BITS         // Specifies the desired bit depth of the accumulation buffer.
-	AuxBuffers             Hint = C.WINDOW_HINT_AUX_BUFFERS              // Specifies the desired number of auxiliary buffers.
-	Samples                Hint = C.WINDOW_HINT_SAMPLES                  // Specifies the desired number of samples to use for multisampling. Zero disables multisampling.
-	SRGBCapable            Hint = C.WINDOW_HINT_SRGB_CAPABLE             // Specifies whether the framebuffer should be sRGB capable.
-	RefreshRate            Hint = C.WINDOW_HINT_REFRESH_RATE             // Specifies the desired refresh rate for full screen windows. If set to zero, the highest available refresh rate will be used. This hint is ignored for windowed mode windows.
-	DoubleBuffer           Hint = C.WINDOW_ATTR_HINT_DOUBLE_BUFFER       // Specifies whether the framebuffer should be double buffered. You nearly always want to use double buffering. This is a hard constraint.
-	CocoaGraphicsSwitching Hint = C.WINDOW_HINT_COCOA_GRAPHICS_SWITCHING // Specifies whether to in Automatic Graphics Switching, i.e. to allow the system to choose the integrated GPU for the OpenGL context and move it between GPUs if necessary or whether to force it to always run on the discrete GPU.
-	ScaleFramebuffer       Hint = C.WINDOW_HINT_SCALE_FRAMEBUFFER        // Specifies whether to use full resolution framebuffers on Retina displays.
+	ContextRevision  Hint = C.WINDOW_ATTR_CONTEXT_REVISION
+	RedBits          Hint = C.WINDOW_HINT_RED_BITS           // Specifies the desired bit depth of the default framebuffer.
+	GreenBits        Hint = C.WINDOW_HINT_GREEN_BITS         // Specifies the desired bit depth of the default framebuffer.
+	BlueBits         Hint = C.WINDOW_HINT_BLUE_BITS          // Specifies the desired bit depth of the default framebuffer.
+	AlphaBits        Hint = C.WINDOW_HINT_ALPHA_BITS         // Specifies the desired bit depth of the default framebuffer.
+	DepthBits        Hint = C.WINDOW_HINT_DEPTH_BITS         // Specifies the desired bit depth of the default framebuffer.
+	StencilBits      Hint = C.WINDOW_HINT_STENCIL_BITS       // Specifies the desired bit depth of the default framebuffer.
+	AccumRedBits     Hint = C.WINDOW_HINT_ACCUM_RED_BITS     // Specifies the desired bit depth of the accumulation buffer.
+	AccumGreenBits   Hint = C.WINDOW_HINT_ACCUM_GREEN_BITS   // Specifies the desired bit depth of the accumulation buffer.
+	AccumBlueBits    Hint = C.WINDOW_HINT_ACCUM_BLUE_BITS    // Specifies the desired bit depth of the accumulation buffer.
+	AccumAlphaBits   Hint = C.WINDOW_HINT_ACCUM_ALPHA_BITS   // Specifies the desired bit depth of the accumulation buffer.
+	AuxBuffers       Hint = C.WINDOW_HINT_AUX_BUFFERS        // Specifies the desired number of auxiliary buffers.
+	Samples          Hint = C.WINDOW_HINT_SAMPLES            // Specifies the desired number of samples to use for multisampling. Zero disables multisampling.
+	SRGBCapable      Hint = C.WINDOW_HINT_SRGB_CAPABLE       // Specifies whether the framebuffer should be sRGB capable.
+	RefreshRate      Hint = C.WINDOW_HINT_REFRESH_RATE       // Specifies the desired refresh rate for full screen windows. If set to zero, the highest available refresh rate will be used. This hint is ignored for windowed mode windows.
+	DoubleBuffer     Hint = C.WINDOW_ATTR_HINT_DOUBLE_BUFFER // Specifies whether the framebuffer should be double buffered. You nearly always want to use double buffering. This is a hard constraint.
+	ScaleFramebuffer Hint = C.WINDOW_HINT_SCALE_FRAMEBUFFER  // Specifies whether to use full resolution framebuffers on Retina displays.
 )
 
 // Values for the ContextRobustness hint.
@@ -208,11 +204,7 @@ func WindowHint(target Hint, hint int) {
 // icon will be used instead.
 //
 // Mac OS X: The GLFW window has no icon, as it is not a document window, but the
-// dock icon will be the same as the application bundle's icon. Also, the first
-// time a window is opened the menu bar is populated with common commands like
-// Hide, Quit and About. The (minimal) about dialog uses information from the
-// application's bundle. For more information on bundles, see the Bundle
-// Programming Guide provided by Apple.
+// dock icon will be the same as the application bundle's icon.
 //
 // This function may only be called from the main thread.
 func CreateWindow(width, height int, title string, monitor *Monitor, share *Window) (*Window, error) {

@@ -160,7 +160,6 @@ GLFWwindow* glfwCreateWindow(int width, int height,
     window->resizable        = wndconfig.resizable;
     window->decorated        = wndconfig.decorated;
     window->floating         = wndconfig.floating;
-    window->focusOnShow      = wndconfig.focusOnShow;
     window->mousePassthrough = wndconfig.mousePassthrough;
     window->cursorMode       = CURSOR_NORMAL;
 
@@ -195,14 +194,10 @@ void glfwDefaultWindowHints(void)
 	_glfw.hints.context.profile = OPENGL_PROFILE_CORE;
 #endif
 
-    // The default is a focused, visible, resizable window with decorations
+    // The default is a resizable window with decorations
     memset(&_glfw.hints.window, 0, sizeof(_glfw.hints.window));
     _glfw.hints.window.resizable    = true;
-    _glfw.hints.window.visible      = true;
     _glfw.hints.window.decorated    = true;
-    _glfw.hints.window.focused      = true;
-    _glfw.hints.window.centerCursor = true;
-    _glfw.hints.window.focusOnShow  = true;
     _glfw.hints.window.xpos         = ANY_POSITION;
     _glfw.hints.window.ypos         = ANY_POSITION;
     _glfw.hints.window.scaleFramebuffer = true;
@@ -276,17 +271,11 @@ void glfwWindowHint(int hint, int value)
         case WINDOW_ATTR_HINT_DECORATED:
             _glfw.hints.window.decorated = value ? true : false;
             return;
-        case WINDOW_ATTR_HINT_FOCUSED:
-            _glfw.hints.window.focused = value ? true : false;
-            return;
         case WINDOW_ATTR_HINT_FLOATING:
             _glfw.hints.window.floating = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_MAXIMIZED:
             _glfw.hints.window.maximized = value ? true : false;
-            return;
-        case WINDOW_ATTR_HINT_VISIBLE:
-            _glfw.hints.window.visible = value ? true : false;
             return;
         case WINDOW_HINT_POSITION_X:
             _glfw.hints.window.xpos = value;
@@ -294,20 +283,11 @@ void glfwWindowHint(int hint, int value)
         case WINDOW_HINT_POSITION_Y:
             _glfw.hints.window.ypos = value;
             return;
-        case WINDOW_HINT_COCOA_GRAPHICS_SWITCHING:
-            _glfw.hints.context.nsgl.offline = value ? true : false;
-            return;
         case WINDOW_HINT_SCALE_TO_MONITOR:
             _glfw.hints.window.scaleToMonitor = value ? true : false;
             return;
         case WINDOW_HINT_SCALE_FRAMEBUFFER:
             _glfw.hints.window.scaleFramebuffer = value ? true : false;
-            return;
-        case WINDOW_HINT_CENTER_CURSOR:
-            _glfw.hints.window.centerCursor = value ? true : false;
-            return;
-        case WINDOW_ATTR_HINT_FOCUS_ON_SHOW:
-            _glfw.hints.window.focusOnShow = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
             _glfw.hints.window.mousePassthrough = value ? true : false;
@@ -603,13 +583,9 @@ void glfwMaximizeWindow(GLFWwindow* handle)
 void glfwShowWindow(GLFWwindow* handle)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    if (window->monitor)
-        return;
-
-    _glfw.platform.showWindow(window);
-
-    if (window->focusOnShow)
-        _glfw.platform.focusWindow(window);
+    if (!window->monitor) {
+	    _glfw.platform.showWindow(window);
+	}
 }
 
 void glfwRequestWindowAttention(GLFWwindow* handle)
@@ -638,18 +614,16 @@ int glfwGetWindowAttrib(GLFWwindow* handle, int attrib)
     _GLFWwindow* window = (_GLFWwindow*) handle;
     switch (attrib)
     {
-        case WINDOW_ATTR_HINT_FOCUSED:
+        case WINDOW_ATTR_FOCUSED:
             return _glfw.platform.windowFocused(window);
         case WINDOW_ATTR_ICONIFIED:
             return _glfw.platform.windowIconified(window);
-        case WINDOW_ATTR_HINT_VISIBLE:
+        case WINDOW_ATTR_VISIBLE:
             return _glfw.platform.windowVisible(window);
         case WINDOW_ATTR_HINT_MAXIMIZED:
             return _glfw.platform.windowMaximized(window);
         case WINDOW_ATTR_HOVERED:
             return _glfw.platform.windowHovered(window);
-        case WINDOW_ATTR_HINT_FOCUS_ON_SHOW:
-            return window->focusOnShow;
         case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
             return window->mousePassthrough;
         case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
@@ -709,10 +683,6 @@ void glfwSetWindowAttrib(GLFWwindow* handle, int attrib, int value)
             window->floating = value;
             if (!window->monitor)
                 _glfw.platform.setWindowFloating(window, value);
-            return;
-
-        case WINDOW_ATTR_HINT_FOCUS_ON_SHOW:
-            window->focusOnShow = value;
             return;
 
         case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:

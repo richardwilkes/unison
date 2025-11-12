@@ -140,16 +140,6 @@ IntBool _glfwCreateContextNSGL(_GLFWwindow* window,
     ADD_ATTRIB(NSOpenGLPFAAccelerated);
     ADD_ATTRIB(NSOpenGLPFAClosestPolicy);
 
-    if (ctxconfig->nsgl.offline)
-    {
-        ADD_ATTRIB(NSOpenGLPFAAllowOfflineRenderers);
-        // NOTE: This replaces the NSSupportsAutomaticGraphicsSwitching key in
-        //       Info.plist for unbundled applications
-        // HACK: This assumes that NSOpenGLPixelFormat will remain
-        //       a straightforward wrapper of its CGL counterpart
-        ADD_ATTRIB(kCGLPFASupportsAutomaticGraphicsSwitching);
-    }
-
     if (ctxconfig->major >= 4)
     {
         SET_ATTRIB(NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion4_1Core);

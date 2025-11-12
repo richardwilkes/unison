@@ -1753,18 +1753,6 @@ IntBool _glfwCreateWindowX11(_GLFWwindow* window,
         _glfwShowWindowX11(window);
         updateWindowMode(window);
         acquireMonitor(window);
-
-        if (wndconfig->centerCursor)
-            _glfwCenterCursorInContentArea(window);
-    }
-    else
-    {
-        if (wndconfig->visible)
-        {
-            _glfwShowWindowX11(window);
-            if (wndconfig->focused)
-                _glfwFocusWindowX11(window);
-        }
     }
 
     XFlush(_glfw.x11.display);

@@ -889,18 +889,6 @@ IntBool _glfwCreateWindowCocoa(_GLFWwindow* window,
         _glfwShowWindowCocoa(window);
         _glfwFocusWindowCocoa(window);
         acquireMonitor(window);
-
-        if (wndconfig->centerCursor)
-            _glfwCenterCursorInContentArea(window);
-    }
-    else
-    {
-        if (wndconfig->visible)
-        {
-            _glfwShowWindowCocoa(window);
-            if (wndconfig->focused)
-                _glfwFocusWindowCocoa(window);
-        }
     }
 
     return true;
