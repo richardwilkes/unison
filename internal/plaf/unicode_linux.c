@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLAF_LINUX)
+#if defined(PLATFORM_LINUX)
 
 /*
  * Marcus: This code was originally written by Markus G. Kuhn.
@@ -912,4 +912,4 @@ uint32_t _glfwKeySym2Unicode(unsigned int keysym)
     return GLFW_INVALID_CODEPOINT;
 }
 
-#endif // PLAF_LINUX
+#endif // PLATFORM_LINUX

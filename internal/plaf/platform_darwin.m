@@ -1,4 +1,4 @@
-#if defined(PLAF_DARWIN)
+#if defined(PLATFORM_DARWIN)
 
 #include "platform.h"
 #include <sys/param.h> // For MAXPATHLEN
@@ -365,4 +365,4 @@ void platformTerminate(void) {
 	} // autoreleasepool
 }
 
-#endif // PLAF_DARWIN
+#endif // PLATFORM_DARWIN

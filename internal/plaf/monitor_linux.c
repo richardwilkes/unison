@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLAF_LINUX)
+#if defined(PLATFORM_LINUX)
 
 #include <limits.h>
 #include <string.h>
@@ -590,4 +590,4 @@ RROutput glfwGetX11Monitor(GLFWmonitor* handle)
     return monitor->x11.output;
 }
 
-#endif // PLAF_LINUX
+#endif // PLATFORM_LINUX

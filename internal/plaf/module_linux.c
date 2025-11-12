@@ -1,4 +1,4 @@
-#if defined(PLAF_LINUX)
+#if defined(PLATFORM_LINUX)
 
 #include "platform.h"
 #include <dlfcn.h>

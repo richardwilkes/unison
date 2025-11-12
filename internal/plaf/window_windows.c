@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLAF_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
 
 #include <limits.h>
 #include <string.h>
@@ -572,9 +572,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
                 enableCursor(window);
             else if (window->cursorMode == CURSOR_CAPTURED)
                 releaseCursor();
-
-            if (window->monitor && window->autoIconify)
-                _glfwIconifyWindowWin32(window);
 
             _glfwInputWindowFocus(window, false);
             return 0;
@@ -2259,4 +2256,4 @@ HWND glfwGetWin32Window(GLFWwindow* handle)
     return window->win32.handle;
 }
 
-#endif // PLAF_WINDOWS
+#endif // PLATFORM_WINDOWS

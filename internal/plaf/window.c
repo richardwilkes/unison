@@ -159,7 +159,6 @@ GLFWwindow* glfwCreateWindow(int width, int height,
     window->monitor          = (_GLFWmonitor*) monitor;
     window->resizable        = wndconfig.resizable;
     window->decorated        = wndconfig.decorated;
-    window->autoIconify      = wndconfig.autoIconify;
     window->floating         = wndconfig.floating;
     window->focusOnShow      = wndconfig.focusOnShow;
     window->mousePassthrough = wndconfig.mousePassthrough;
@@ -190,7 +189,7 @@ void glfwDefaultWindowHints(void)
     memset(&_glfw.hints.context, 0, sizeof(_glfw.hints.context));
     _glfw.hints.context.major  = 3;
     _glfw.hints.context.minor  = 2;
-#if defined(PLAF_DARWIN)
+#if defined(PLATFORM_DARWIN)
 	// These don't appear to be necessary to set on macOS anymore, but keeping for now
 	_glfw.hints.context.forward = true;
 	_glfw.hints.context.profile = OPENGL_PROFILE_CORE;
@@ -202,15 +201,13 @@ void glfwDefaultWindowHints(void)
     _glfw.hints.window.visible      = true;
     _glfw.hints.window.decorated    = true;
     _glfw.hints.window.focused      = true;
-    _glfw.hints.window.autoIconify  = true;
     _glfw.hints.window.centerCursor = true;
     _glfw.hints.window.focusOnShow  = true;
     _glfw.hints.window.xpos         = ANY_POSITION;
     _glfw.hints.window.ypos         = ANY_POSITION;
     _glfw.hints.window.scaleFramebuffer = true;
 
-    // The default is 24 bits of color, 24 bits of depth and 8 bits of stencil,
-    // double buffered
+    // The default is 24 bits of color, 24 bits of depth and 8 bits of stencil, double buffered
     memset(&_glfw.hints.framebuffer, 0, sizeof(_glfw.hints.framebuffer));
     _glfw.hints.framebuffer.redBits      = 8;
     _glfw.hints.framebuffer.greenBits    = 8;
@@ -281,9 +278,6 @@ void glfwWindowHint(int hint, int value)
             return;
         case WINDOW_ATTR_HINT_FOCUSED:
             _glfw.hints.window.focused = value ? true : false;
-            return;
-        case WINDOW_ATTR_HINT_AUTO_ICONIFY:
-            _glfw.hints.window.autoIconify = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_FLOATING:
             _glfw.hints.window.floating = value ? true : false;
@@ -666,8 +660,6 @@ int glfwGetWindowAttrib(GLFWwindow* handle, int attrib)
             return window->decorated;
         case WINDOW_ATTR_HINT_FLOATING:
             return window->floating;
-        case WINDOW_ATTR_HINT_AUTO_ICONIFY:
-            return window->autoIconify;
         case WINDOW_ATTR_HINT_DOUBLE_BUFFER:
             return window->doublebuffer;
         case WINDOW_ATTR_HINT_CONTEXT_VERSION_MAJOR:
@@ -701,10 +693,6 @@ void glfwSetWindowAttrib(GLFWwindow* handle, int attrib, int value)
 
     switch (attrib)
     {
-        case WINDOW_ATTR_HINT_AUTO_ICONIFY:
-            window->autoIconify = value;
-            return;
-
         case WINDOW_ATTR_HINT_RESIZABLE:
             window->resizable = value;
             if (!window->monitor)

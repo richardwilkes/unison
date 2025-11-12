@@ -1,4 +1,4 @@
-#if defined(PLAF_DARWIN)
+#if defined(PLATFORM_DARWIN)
 
 #include "platform.h"
 
@@ -26,4 +26,4 @@ void setClipboardString(const char* string) {
 	}
 }
 
-#endif // PLAF_DARWIN
+#endif // PLATFORM_DARWIN

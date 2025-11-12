@@ -1,4 +1,4 @@
-#if defined(PLAF_LINUX)
+#if defined(PLATFORM_LINUX)
 
 #include "platform.h"
 #include <string.h>
@@ -1494,4 +1494,4 @@ void platformTerminate(void)
 	}
 }
 
-#endif // PLAF_LINUX
+#endif // PLATFORM_LINUX

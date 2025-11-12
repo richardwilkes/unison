@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLAF_LINUX)
+#if defined(PLATFORM_LINUX)
 
 #include <string.h>
 
@@ -611,4 +611,4 @@ int glfwGetGLXFBConfig(GLFWwindow* handle, GLXFBConfig* config)
     return true;
 }
 
-#endif // PLAF_LINUX
+#endif // PLATFORM_LINUX

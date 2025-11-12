@@ -1,4 +1,4 @@
-#if defined(PLAF_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
 
 #include "platform.h"
 
@@ -578,4 +578,4 @@ void platformTerminate(void)
 	freeLibraries();
 }
 
-#endif // PLAF_WINDOWS
+#endif // PLATFORM_WINDOWS

@@ -1,4 +1,4 @@
-#if defined(PLAF_DARWIN)
+#if defined(PLATFORM_DARWIN)
 
 #include "platform.h"
 
@@ -271,9 +271,6 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)windowDidResignKey:(NSNotification *)notification
 {
-    if (window->monitor && window->autoIconify)
-        _glfwIconifyWindowCocoa(window);
-
     _glfwInputWindowFocus(window, false);
 }
 
@@ -1747,4 +1744,4 @@ id glfwGetCocoaView(GLFWwindow* handle)
     return window->ns.view;
 }
 
-#endif // PLAF_DARWIN
+#endif // PLATFORM_DARWIN

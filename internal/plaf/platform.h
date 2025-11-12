@@ -10,14 +10,14 @@ extern "C" {
 #include <stdbool.h>
 
 #if !defined(APIENTRY)
-	#if defined(PLAF_WINDOWS)
+	#if defined(PLATFORM_WINDOWS)
 		#define APIENTRY __stdcall
 	#else
 		#define APIENTRY
 	#endif
 #endif
 
-#if defined(PLAF_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
 	#if !defined(WINGDIAPI)
 		#define WINGDIAPI __declspec(dllimport)
 		#define GLFW_WINGDIAPI_DEFINED
@@ -189,7 +189,6 @@ extern "C" {
 #define WINDOW_ATTR_HINT_RESIZABLE                 0x00020003
 #define WINDOW_ATTR_HINT_VISIBLE                   0x00020004
 #define WINDOW_ATTR_HINT_DECORATED                 0x00020005
-#define WINDOW_ATTR_HINT_AUTO_ICONIFY              0x00020006
 #define WINDOW_ATTR_HINT_FLOATING                  0x00020007
 #define WINDOW_ATTR_HINT_MAXIMIZED                 0x00020008
 #define WINDOW_HINT_CENTER_CURSOR                  0x00020009
@@ -507,7 +506,7 @@ typedef struct ImageData {
 	unsigned char* pixels;
 } ImageData;
 
-struct WindowConfig {
+typedef struct WindowConfig {
 	int         xpos;
 	int         ypos;
 	int         width;
@@ -516,7 +515,6 @@ struct WindowConfig {
 	IntBool     visible;
 	IntBool     decorated;
 	IntBool     focused;
-	IntBool     autoIconify;
 	IntBool     floating;
 	IntBool     maximized;
 	IntBool     centerCursor;
@@ -524,7 +522,7 @@ struct WindowConfig {
 	IntBool     mousePassthrough;
 	IntBool     scaleToMonitor;
 	IntBool     scaleFramebuffer;
-};
+} WindowConfig;
 
 
 /*************************************************************************
@@ -561,7 +559,6 @@ struct WindowConfig {
 
 typedef void (*moduleFunc)(void);
 
-typedef struct WindowConfig   WindowConfig;
 typedef struct _GLFWctxconfig   _GLFWctxconfig;
 typedef struct _GLFWfbconfig    _GLFWfbconfig;
 typedef struct _GLFWcontext     _GLFWcontext;
@@ -601,7 +598,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGPROC)(GLenum);
 typedef void (APIENTRY * PFNGLGETINTEGERVPROC)(GLenum,GLint*);
 typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
 
-#if defined(PLAF_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
  #include "platform_windows.h"
 #else
  #define GLFW_WIN32_WINDOW_STATE
@@ -612,7 +609,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
  #define GLFW_WGL_LIBRARY_CONTEXT_STATE
 #endif
 
-#if defined(PLAF_DARWIN)
+#if defined(PLATFORM_DARWIN)
  #include "platform_darwin.h"
 #else
  #define GLFW_COCOA_WINDOW_STATE
@@ -623,7 +620,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
  #define GLFW_NSGL_LIBRARY_CONTEXT_STATE
 #endif
 
-#if defined(PLAF_LINUX)
+#if defined(PLATFORM_LINUX)
  #include "platform_linux.h"
 #else
  #define GLFW_X11_WINDOW_STATE
@@ -728,7 +725,6 @@ struct _GLFWwindow
 	// Window settings and state
 	IntBool            resizable;
 	IntBool            decorated;
-	IntBool            autoIconify;
 	IntBool            floating;
 	IntBool            focusOnShow;
 	IntBool            mousePassthrough;
@@ -1735,7 +1731,7 @@ GLFWwindow* glfwCreateWindow(int width, int height, const char* title, GLFWmonit
  */
 void glfwDestroyWindow(GLFWwindow* window);
 
-#if defined(PLAF_DARWIN)
+#if defined(PLATFORM_DARWIN)
 /*! @brief Returns the `NSWindow` of the specified window.
  *
  *  @return The `NSWindow` of the specified window, or `nil` if an
@@ -2569,7 +2565,6 @@ int glfwGetWindowAttrib(GLFWwindow* window, int attrib);
  *  The supported attributes are [WINDOW_ATTR_HINT_DECORATED](@ref GLFW_DECORATED_attrib),
  *  [WINDOW_ATTR_HINT_RESIZABLE](@ref GLFW_RESIZABLE_attrib),
  *  [WINDOW_ATTR_HINT_FLOATING](@ref GLFW_FLOATING_attrib),
- *  [WINDOW_ATTR_HINT_AUTO_ICONIFY](@ref GLFW_AUTO_ICONIFY_attrib) and
  *  [WINDOW_ATTR_HINT_FOCUS_ON_SHOW](@ref GLFW_FOCUS_ON_SHOW_attrib).
  *  [WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH](@ref GLFW_MOUSE_PASSTHROUGH_attrib)
  *

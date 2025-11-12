@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLAF_LINUX)
+#if defined(PLATFORM_LINUX)
 
 #include <X11/cursorfont.h>
 #include <X11/Xmd.h>
@@ -1539,9 +1539,6 @@ static void processEvent(XEvent *event)
             if (window->x11.ic)
                 XUnsetICFocus(window->x11.ic);
 
-            if (window->monitor && window->autoIconify)
-                _glfwIconifyWindowX11(window);
-
             _glfwInputWindowFocus(window, false);
             return;
         }
@@ -2780,4 +2777,4 @@ Window glfwGetX11Window(GLFWwindow* handle)
     return window->x11.handle;
 }
 
-#endif // PLAF_LINUX
+#endif // PLATFORM_LINUX

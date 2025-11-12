@@ -63,7 +63,6 @@ const (
 	Resizable              Hint = C.WINDOW_ATTR_HINT_RESIZABLE               // Specifies whether the window will be resizable by the user.
 	Decorated              Hint = C.WINDOW_ATTR_HINT_DECORATED               // Specifies whether the window will have window decorations such as a border, a close widget, etc.
 	Floating               Hint = C.WINDOW_ATTR_HINT_FLOATING                // Specifies whether the window will be always-on-top.
-	AutoIconify            Hint = C.WINDOW_ATTR_HINT_AUTO_ICONIFY            // Specifies whether fullscreen windows automatically iconify (and restore the previous video mode) on focus loss.
 	CenterCursor           Hint = C.WINDOW_HINT_CENTER_CURSOR                // Specifies whether the cursor should be centered over newly created full screen windows. This hint is ignored for windowed mode windows.
 	TransparentFramebuffer Hint = C.WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER // Specifies whether the framebuffer should be transparent.
 	FocusOnShow            Hint = C.WINDOW_ATTR_HINT_FOCUS_ON_SHOW           // Specifies whether the window will be given input focus when glfwShowWindow is called.
@@ -573,7 +572,7 @@ func (w *Window) GetAttrib(attrib Hint) int {
 
 // SetAttrib function sets the value of an attribute of the specified window.
 //
-// The supported attributes are Decorated, Resizeable, Floating and AutoIconify.
+// The supported attributes are Decorated, Resizeable, and Floating.
 //
 // Some of these attributes are ignored for full screen windows. The new value
 // will take effect if the window is later made windowed.

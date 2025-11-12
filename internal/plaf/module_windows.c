@@ -1,4 +1,4 @@
-#if defined(PLAF_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
 
 #include "platform.h"
 
