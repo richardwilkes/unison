@@ -10,7 +10,7 @@
 
 // Notifies shared code that a window has lost or received input focus
 //
-void _glfwInputWindowFocus(_GLFWwindow* window, GLFWbool focused)
+void _glfwInputWindowFocus(_GLFWwindow* window, IntBool focused)
 {
     if (window->callbacks.focus)
         window->callbacks.focus((GLFWwindow*) window, focused);
@@ -56,7 +56,7 @@ void _glfwInputWindowSize(_GLFWwindow* window, int width, int height)
 
 // Notifies shared code that a window has been iconified or restored
 //
-void _glfwInputWindowIconify(_GLFWwindow* window, GLFWbool iconified)
+void _glfwInputWindowIconify(_GLFWwindow* window, IntBool iconified)
 {
     if (window->callbacks.iconify)
         window->callbacks.iconify((GLFWwindow*) window, iconified);
@@ -64,7 +64,7 @@ void _glfwInputWindowIconify(_GLFWwindow* window, GLFWbool iconified)
 
 // Notifies shared code that a window has been maximized or restored
 //
-void _glfwInputWindowMaximize(_GLFWwindow* window, GLFWbool maximized)
+void _glfwInputWindowMaximize(_GLFWwindow* window, IntBool maximized)
 {
     if (window->callbacks.maximize)
         window->callbacks.maximize((GLFWwindow*) window, maximized);
@@ -124,7 +124,7 @@ GLFWwindow* glfwCreateWindow(int width, int height,
 {
     _GLFWfbconfig fbconfig;
     _GLFWctxconfig ctxconfig;
-    _GLFWwndconfig wndconfig;
+    WindowConfig wndconfig;
     _GLFWwindow* window;
 
     if (width <= 0 || height <= 0)
@@ -300,12 +300,6 @@ void glfwWindowHint(int hint, int value)
         case WINDOW_HINT_POSITION_Y:
             _glfw.hints.window.ypos = value;
             return;
-        case WINDOW_HINT_WIN32_KEYBOARD_MENU:
-            _glfw.hints.window.win32.keymenu = value ? true : false;
-            return;
-        case WINDOW_HINT_WIN32_SHOWDEFAULT:
-            _glfw.hints.window.win32.showDefault = value ? true : false;
-            return;
         case WINDOW_HINT_COCOA_GRAPHICS_SWITCHING:
             _glfw.hints.context.nsgl.offline = value ? true : false;
             return;
@@ -354,27 +348,6 @@ void glfwWindowHint(int hint, int value)
     }
 
     _glfwInputError(ERR_INVALID_ENUM, "Invalid window hint 0x%08X", hint);
-}
-
-void glfwWindowHintString(int hint, const char* value)
-{
-    switch (hint)
-    {
-        case WINDOW_HINT_COCOA_FRAME_NAME:
-            strncpy(_glfw.hints.window.ns.frameName, value,
-                    sizeof(_glfw.hints.window.ns.frameName) - 1);
-            return;
-        case WINDOW_HINT_X11_CLASS_NAME:
-            strncpy(_glfw.hints.window.x11.className, value,
-                    sizeof(_glfw.hints.window.x11.className) - 1);
-            return;
-        case WINDOW_HINT_X11_INSTANCE_NAME:
-            strncpy(_glfw.hints.window.x11.instanceName, value,
-                    sizeof(_glfw.hints.window.x11.instanceName) - 1);
-            return;
-    }
-
-    _glfwInputError(ERR_INVALID_ENUM, "Invalid window hint string 0x%08X", hint);
 }
 
 void glfwDestroyWindow(GLFWwindow* handle)
@@ -814,7 +787,7 @@ windowPosFunc glfwSetWindowPosCallback(GLFWwindow* handle,
                                                   windowPosFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowPosFunc, window->callbacks.pos, cbfun);
+    SWAP(windowPosFunc, window->callbacks.pos, cbfun);
     return cbfun;
 }
 
@@ -822,7 +795,7 @@ windowSizeFunc glfwSetWindowSizeCallback(GLFWwindow* handle,
                                                     windowSizeFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowSizeFunc, window->callbacks.size, cbfun);
+    SWAP(windowSizeFunc, window->callbacks.size, cbfun);
     return cbfun;
 }
 
@@ -830,7 +803,7 @@ windowCloseFunc glfwSetWindowCloseCallback(GLFWwindow* handle,
                                                       windowCloseFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowCloseFunc, window->callbacks.close, cbfun);
+    SWAP(windowCloseFunc, window->callbacks.close, cbfun);
     return cbfun;
 }
 
@@ -838,7 +811,7 @@ windowRefreshFunc glfwSetWindowRefreshCallback(GLFWwindow* handle,
                                                           windowRefreshFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowRefreshFunc, window->callbacks.refresh, cbfun);
+    SWAP(windowRefreshFunc, window->callbacks.refresh, cbfun);
     return cbfun;
 }
 
@@ -846,7 +819,7 @@ windowFocusFunc glfwSetWindowFocusCallback(GLFWwindow* handle,
                                                       windowFocusFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowFocusFunc, window->callbacks.focus, cbfun);
+    SWAP(windowFocusFunc, window->callbacks.focus, cbfun);
     return cbfun;
 }
 
@@ -854,7 +827,7 @@ windowIconifyFunc glfwSetWindowIconifyCallback(GLFWwindow* handle,
                                                           windowIconifyFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowIconifyFunc, window->callbacks.iconify, cbfun);
+    SWAP(windowIconifyFunc, window->callbacks.iconify, cbfun);
     return cbfun;
 }
 
@@ -862,7 +835,7 @@ windowMaximizeFunc glfwSetWindowMaximizeCallback(GLFWwindow* handle,
                                                             windowMaximizeFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowMaximizeFunc, window->callbacks.maximize, cbfun);
+    SWAP(windowMaximizeFunc, window->callbacks.maximize, cbfun);
     return cbfun;
 }
 
@@ -870,7 +843,7 @@ frameBufferSizeFunc glfwSetFramebufferSizeCallback(GLFWwindow* handle,
                                                               frameBufferSizeFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(frameBufferSizeFunc, window->callbacks.fbsize, cbfun);
+    SWAP(frameBufferSizeFunc, window->callbacks.fbsize, cbfun);
     return cbfun;
 }
 
@@ -878,7 +851,7 @@ windowContextScaleFunc glfwSetWindowContentScaleCallback(GLFWwindow* handle,
                                                                     windowContextScaleFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(windowContextScaleFunc, window->callbacks.scale, cbfun);
+    SWAP(windowContextScaleFunc, window->callbacks.scale, cbfun);
     return cbfun;
 }
 

@@ -35,7 +35,7 @@ static int compareVideoModes(const void* fp, const void* sp)
 
 // Retrieves the available modes for the specified monitor
 //
-static GLFWbool refreshVideoModes(_GLFWmonitor* monitor)
+static IntBool refreshVideoModes(_GLFWmonitor* monitor)
 {
     int modeCount;
     VideoMode* modes;
@@ -355,7 +355,7 @@ void* glfwGetMonitorUserPointer(GLFWmonitor* handle)
 
 monitorFunc glfwSetMonitorCallback(monitorFunc cbfun)
 {
-    _GLFW_SWAP(monitorFunc, _glfw.callbacks.monitor, cbfun);
+    SWAP(monitorFunc, _glfw.callbacks.monitor, cbfun);
     return cbfun;
 }
 

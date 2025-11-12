@@ -16,7 +16,7 @@
 // exists and whether all relevant options have supported and non-conflicting
 // values
 //
-GLFWbool _glfwIsValidContextConfig(const _GLFWctxconfig* ctxconfig)
+IntBool _glfwIsValidContextConfig(const _GLFWctxconfig* ctxconfig)
 {
 	if (ctxconfig->profile)
 	{
@@ -209,7 +209,7 @@ const _GLFWfbconfig* _glfwChooseFBConfig(const _GLFWfbconfig* desired,
 
 // Retrieves the attributes of the current context
 //
-GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
+IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
                                     const _GLFWctxconfig* ctxconfig)
 {
     int i;
@@ -354,7 +354,7 @@ GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
 
 // Searches an extension string for the specified extension
 //
-GLFWbool _glfwStringInExtensionString(const char* string, const char* extensions)
+IntBool _glfwStringInExtensionString(const char* string, const char* extensions)
 {
     const char* start = extensions;
 

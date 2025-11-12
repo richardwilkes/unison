@@ -225,12 +225,9 @@ extern "C" {
 #define WINDOW_ATTR_HINT_CONTEXT_ERROR_SUPPRESSION 0x0002200A
 #define WINDOW_HINT_SCALE_TO_MONITOR               0x0002200C
 #define WINDOW_HINT_SCALE_FRAMEBUFFER              0x0002200D
-#define WINDOW_HINT_COCOA_FRAME_NAME               0x00023002
 #define WINDOW_HINT_COCOA_GRAPHICS_SWITCHING       0x00023003
 #define WINDOW_HINT_X11_CLASS_NAME                 0x00024001
 #define WINDOW_HINT_X11_INSTANCE_NAME              0x00024002
-#define WINDOW_HINT_WIN32_KEYBOARD_MENU            0x00025001
-#define WINDOW_HINT_WIN32_SHOWDEFAULT              0x00025002
 
 // Context robustness values
 #define CONTEXT_ROBUSTNESS_NONE                   0
@@ -451,6 +448,8 @@ extern "C" {
  */
 #define ERR_PLATFORM_UNAVAILABLE   0x0001000E
 
+typedef int IntBool;
+
 // Forward declarations
 typedef struct GLFWcursor GLFWcursor;
 typedef struct GLFWmonitor GLFWmonitor;
@@ -480,34 +479,52 @@ typedef void (*windowSizeFunc)(GLFWwindow* window, int width, int height);
 
 // An error response
 typedef struct ErrorResponse {
-    int  code;
-    char desc[ERROR_MSG_SIZE];
+	int  code;
+	char desc[ERROR_MSG_SIZE];
 } ErrorResponse;
 
 // A single video mode
 typedef struct VideoMode {
-    int width;
-    int height;
-    int redBits;
-    int greenBits;
-    int blueBits;
-    int refreshRate;
+	int width;
+	int height;
+	int redBits;
+	int greenBits;
+	int blueBits;
+	int refreshRate;
 } VideoMode;
 
 // Gamma ramp for a monitor
 typedef struct GammaRamp {
-    unsigned short* red;
-    unsigned short* green;
-    unsigned short* blue;
-    unsigned int    size;
+	unsigned short* red;
+	unsigned short* green;
+	unsigned short* blue;
+	unsigned int    size;
 } GammaRamp;
 
-// Image data
 typedef struct ImageData {
-    int            width;
-    int            height;
-    unsigned char* pixels;
+	int            width;
+	int            height;
+	unsigned char* pixels;
 } ImageData;
+
+struct WindowConfig {
+	int         xpos;
+	int         ypos;
+	int         width;
+	int         height;
+	IntBool     resizable;
+	IntBool     visible;
+	IntBool     decorated;
+	IntBool     focused;
+	IntBool     autoIconify;
+	IntBool     floating;
+	IntBool     maximized;
+	IntBool     centerCursor;
+	IntBool     focusOnShow;
+	IntBool     mousePassthrough;
+	IntBool     scaleToMonitor;
+	IntBool     scaleFramebuffer;
+};
 
 
 /*************************************************************************
@@ -542,10 +559,9 @@ typedef struct ImageData {
 #define _GLFW_INSERT_FIRST      0
 #define _GLFW_INSERT_LAST       1
 
-typedef int GLFWbool;
 typedef void (*moduleFunc)(void);
 
-typedef struct _GLFWwndconfig   _GLFWwndconfig;
+typedef struct WindowConfig   WindowConfig;
 typedef struct _GLFWctxconfig   _GLFWctxconfig;
 typedef struct _GLFWfbconfig    _GLFWfbconfig;
 typedef struct _GLFWcontext     _GLFWcontext;
@@ -554,9 +570,6 @@ typedef struct _GLFWplatform    _GLFWplatform;
 typedef struct _GLFWlibrary     _GLFWlibrary;
 typedef struct _GLFWmonitor     _GLFWmonitor;
 typedef struct _GLFWcursor      _GLFWcursor;
-typedef struct _GLFWmapelement  _GLFWmapelement;
-typedef struct _GLFWtls         _GLFWtls;
-typedef struct _GLFWmutex       _GLFWmutex;
 
 #define GL_VERSION 0x1f02
 #define GL_NONE 0
@@ -587,11 +600,6 @@ typedef void (APIENTRY * PFNGLCLEARPROC)(GLbitfield);
 typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGPROC)(GLenum);
 typedef void (APIENTRY * PFNGLGETINTEGERVPROC)(GLenum,GLint*);
 typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
-
-#if defined(GLFW_BUILD_WIN32_MODULE) || \
-    defined(GLFW_BUILD_POSIX_MODULE)
- #error "You must not define these; define zero or more _GLFW_<platform> macros instead"
-#endif
 
 #if defined(PLAF_WINDOWS)
  #include "platform_windows.h"
@@ -626,90 +634,14 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
  #define GLFW_GLX_LIBRARY_CONTEXT_STATE
 #endif
 
-#define GLFW_PLATFORM_WINDOW_STATE \
-        GLFW_WIN32_WINDOW_STATE \
-        GLFW_COCOA_WINDOW_STATE \
-        GLFW_X11_WINDOW_STATE
-
-#define GLFW_PLATFORM_MONITOR_STATE \
-        GLFW_WIN32_MONITOR_STATE \
-        GLFW_COCOA_MONITOR_STATE \
-        GLFW_X11_MONITOR_STATE
-
-#define GLFW_PLATFORM_CURSOR_STATE \
-        GLFW_WIN32_CURSOR_STATE \
-        GLFW_COCOA_CURSOR_STATE \
-        GLFW_X11_CURSOR_STATE
-
-#define GLFW_PLATFORM_LIBRARY_WINDOW_STATE \
-        GLFW_WIN32_LIBRARY_WINDOW_STATE \
-        GLFW_COCOA_LIBRARY_WINDOW_STATE \
-        GLFW_X11_LIBRARY_WINDOW_STATE
-
-#define GLFW_PLATFORM_CONTEXT_STATE \
-        GLFW_WGL_CONTEXT_STATE \
-        GLFW_NSGL_CONTEXT_STATE \
-        GLFW_GLX_CONTEXT_STATE
-
-#define GLFW_PLATFORM_LIBRARY_CONTEXT_STATE \
-        GLFW_WGL_LIBRARY_CONTEXT_STATE \
-        GLFW_NSGL_LIBRARY_CONTEXT_STATE \
-        GLFW_GLX_LIBRARY_CONTEXT_STATE
-
-#if defined(PLAF_WINDOWS)
- #define GLFW_BUILD_WIN32_MODULE
-#else
- #define GLFW_BUILD_POSIX_MODULE
-#endif
-
 // Swaps the provided pointers
-#define _GLFW_SWAP(type, x, y) \
-    {                          \
-        type t;                \
-        t = x;                 \
-        x = y;                 \
-        y = t;                 \
-    }
-
-// Window configuration
-//
-// Parameters relating to the creation of the window but not directly related
-// to the framebuffer.  This is used to pass window creation parameters from
-// shared code to the platform API.
-//
-struct _GLFWwndconfig
-{
-    int           xpos;
-    int           ypos;
-    int           width;
-    int           height;
-    GLFWbool      resizable;
-    GLFWbool      visible;
-    GLFWbool      decorated;
-    GLFWbool      focused;
-    GLFWbool      autoIconify;
-    GLFWbool      floating;
-    GLFWbool      maximized;
-    GLFWbool      centerCursor;
-    GLFWbool      focusOnShow;
-    GLFWbool      mousePassthrough;
-    GLFWbool      scaleToMonitor;
-    GLFWbool      scaleFramebuffer;
-    struct {
-        char      frameName[256];
-    } ns;
-    struct {
-        char      className[256];
-        char      instanceName[256];
-    } x11;
-    struct {
-        GLFWbool  keymenu;
-        GLFWbool  showDefault;
-    } win32;
-    struct {
-        char      appId[256];
-    } wl;
-};
+#define SWAP(type, x, y) \
+	{                          \
+		type t;                \
+		t = x;                 \
+		x = y;                 \
+		y = t;                 \
+	}
 
 // Context configuration
 //
@@ -719,18 +651,18 @@ struct _GLFWwndconfig
 //
 struct _GLFWctxconfig
 {
-    int           major;
-    int           minor;
-    GLFWbool      forward;
-    GLFWbool      debug;
-    GLFWbool      noerror;
-    int           profile;
-    int           robustness;
-    int           release;
-    _GLFWwindow*  share;
-    struct {
-        GLFWbool  offline;
-    } nsgl;
+	int           major;
+	int           minor;
+	IntBool      forward;
+	IntBool      debug;
+	IntBool      noerror;
+	int           profile;
+	int           robustness;
+	int           release;
+	_GLFWwindow*  share;
+	struct {
+		IntBool  offline;
+	} nsgl;
 };
 
 // Framebuffer configuration
@@ -743,241 +675,248 @@ struct _GLFWctxconfig
 //
 struct _GLFWfbconfig
 {
-    int         redBits;
-    int         greenBits;
-    int         blueBits;
-    int         alphaBits;
-    int         depthBits;
-    int         stencilBits;
-    int         accumRedBits;
-    int         accumGreenBits;
-    int         accumBlueBits;
-    int         accumAlphaBits;
-    int         auxBuffers;
-    int         samples;
-    GLFWbool    sRGB;
-    GLFWbool    doublebuffer;
-    GLFWbool    transparent;
-    uintptr_t   handle;
+	int         redBits;
+	int         greenBits;
+	int         blueBits;
+	int         alphaBits;
+	int         depthBits;
+	int         stencilBits;
+	int         accumRedBits;
+	int         accumGreenBits;
+	int         accumBlueBits;
+	int         accumAlphaBits;
+	int         auxBuffers;
+	int         samples;
+	IntBool    sRGB;
+	IntBool    doublebuffer;
+	IntBool    transparent;
+	uintptr_t   handle;
 };
 
 // Context structure
 //
 struct _GLFWcontext
 {
-    int                 major, minor, revision;
-    GLFWbool            forward, debug, noerror;
-    int                 profile;
-    int                 robustness;
-    int                 release;
+	int                 major, minor, revision;
+	IntBool            forward, debug, noerror;
+	int                 profile;
+	int                 robustness;
+	int                 release;
 
-    PFNGLGETSTRINGIPROC  GetStringi;
-    PFNGLGETINTEGERVPROC GetIntegerv;
-    PFNGLGETSTRINGPROC   GetString;
+	PFNGLGETSTRINGIPROC  GetStringi;
+	PFNGLGETINTEGERVPROC GetIntegerv;
+	PFNGLGETSTRINGPROC   GetString;
 
-    void (*makeCurrent)(_GLFWwindow*);
-    void (*swapBuffers)(_GLFWwindow*);
-    void (*swapInterval)(int);
-    int (*extensionSupported)(const char*);
-    glFunc (*getProcAddress)(const char*);
-    void (*destroy)(_GLFWwindow*);
+	void (*makeCurrent)(_GLFWwindow*);
+	void (*swapBuffers)(_GLFWwindow*);
+	void (*swapInterval)(int);
+	int (*extensionSupported)(const char*);
+	glFunc (*getProcAddress)(const char*);
+	void (*destroy)(_GLFWwindow*);
 
-    // This is defined in platform.h
-    GLFW_PLATFORM_CONTEXT_STATE
+	GLFW_WGL_CONTEXT_STATE
+	GLFW_NSGL_CONTEXT_STATE
+	GLFW_GLX_CONTEXT_STATE
 };
 
 // Window and context structure
 //
 struct _GLFWwindow
 {
-    struct _GLFWwindow* next;
+	struct _GLFWwindow* next;
 
-    // Window settings and state
-    GLFWbool            resizable;
-    GLFWbool            decorated;
-    GLFWbool            autoIconify;
-    GLFWbool            floating;
-    GLFWbool            focusOnShow;
-    GLFWbool            mousePassthrough;
-    GLFWbool            shouldClose;
-    void*               userPointer;
-    GLFWbool            doublebuffer;
-    VideoMode         videoMode;
-    _GLFWmonitor*       monitor;
-    _GLFWcursor*        cursor;
-    char*               title;
+	// Window settings and state
+	IntBool            resizable;
+	IntBool            decorated;
+	IntBool            autoIconify;
+	IntBool            floating;
+	IntBool            focusOnShow;
+	IntBool            mousePassthrough;
+	IntBool            shouldClose;
+	void*               userPointer;
+	IntBool            doublebuffer;
+	VideoMode         videoMode;
+	_GLFWmonitor*       monitor;
+	_GLFWcursor*        cursor;
+	char*               title;
 
-    int                 minwidth, minheight;
-    int                 maxwidth, maxheight;
-    int                 numer, denom;
+	int                 minwidth, minheight;
+	int                 maxwidth, maxheight;
+	int                 numer, denom;
 
-    GLFWbool            stickyKeys;
-    GLFWbool            stickyMouseButtons;
-    GLFWbool            lockKeyMods;
-    GLFWbool            disableMouseButtonLimit;
-    int                 cursorMode;
-    char                mouseButtons[MOUSE_BUTTON_LAST + 1];
-    char                keys[KEY_LAST + 1];
-    // Virtual cursor position when cursor is disabled
-    double              virtualCursorPosX, virtualCursorPosY;
-    GLFWbool            rawMouseMotion;
+	IntBool            stickyKeys;
+	IntBool            stickyMouseButtons;
+	IntBool            lockKeyMods;
+	IntBool            disableMouseButtonLimit;
+	int                 cursorMode;
+	char                mouseButtons[MOUSE_BUTTON_LAST + 1];
+	char                keys[KEY_LAST + 1];
+	// Virtual cursor position when cursor is disabled
+	double              virtualCursorPosX, virtualCursorPosY;
+	IntBool            rawMouseMotion;
 
-    _GLFWcontext        context;
+	_GLFWcontext        context;
 
-    struct {
-        windowPosFunc          pos;
-        windowSizeFunc         size;
-        windowCloseFunc        close;
-        windowRefreshFunc      refresh;
-        windowFocusFunc        focus;
-        windowIconifyFunc      iconify;
-        windowMaximizeFunc     maximize;
-        frameBufferSizeFunc    fbsize;
-        windowContextScaleFunc scale;
-        mouseButtonFunc        mouseButton;
-        cursorPosFunc          cursorPos;
-        cursorEnterFunc        cursorEnter;
-        scrollFunc             scroll;
-        keyFunc                key;
-        charFunc               character;
-        charModsFunc           charmods;
-        dropFunc               drop;
-    } callbacks;
+	struct {
+		windowPosFunc          pos;
+		windowSizeFunc         size;
+		windowCloseFunc        close;
+		windowRefreshFunc      refresh;
+		windowFocusFunc        focus;
+		windowIconifyFunc      iconify;
+		windowMaximizeFunc     maximize;
+		frameBufferSizeFunc    fbsize;
+		windowContextScaleFunc scale;
+		mouseButtonFunc        mouseButton;
+		cursorPosFunc          cursorPos;
+		cursorEnterFunc        cursorEnter;
+		scrollFunc             scroll;
+		keyFunc                key;
+		charFunc               character;
+		charModsFunc           charmods;
+		dropFunc               drop;
+	} callbacks;
 
-    // This is defined in platform.h
-    GLFW_PLATFORM_WINDOW_STATE
+	GLFW_WIN32_WINDOW_STATE
+	GLFW_COCOA_WINDOW_STATE
+	GLFW_X11_WINDOW_STATE
 };
 
 // Monitor structure
 //
 struct _GLFWmonitor
 {
-    char            name[128];
-    void*           userPointer;
+	char            name[128];
+	void*           userPointer;
 
-    // Physical dimensions in millimeters.
-    int             widthMM, heightMM;
+	// Physical dimensions in millimeters.
+	int             widthMM, heightMM;
 
-    // The window whose video mode is current on this monitor
-    _GLFWwindow*    window;
+	// The window whose video mode is current on this monitor
+	_GLFWwindow*    window;
 
-    VideoMode*    modes;
-    int             modeCount;
-    VideoMode     currentMode;
+	VideoMode*    modes;
+	int             modeCount;
+	VideoMode     currentMode;
 
-    GammaRamp   originalRamp;
-    GammaRamp   currentRamp;
+	GammaRamp   originalRamp;
+	GammaRamp   currentRamp;
 
-    // This is defined in platform.h
-    GLFW_PLATFORM_MONITOR_STATE
+	GLFW_WIN32_MONITOR_STATE
+	GLFW_COCOA_MONITOR_STATE
+	GLFW_X11_MONITOR_STATE
 };
 
 // Cursor structure
 //
 struct _GLFWcursor
 {
-    _GLFWcursor*    next;
-    // This is defined in platform.h
-    GLFW_PLATFORM_CURSOR_STATE
+	_GLFWcursor* next;
+	GLFW_WIN32_CURSOR_STATE
+	GLFW_COCOA_CURSOR_STATE
+	GLFW_X11_CURSOR_STATE
 };
 
 // Platform API structure
 //
 struct _GLFWplatform
 {
-    // input
-    void (*getCursorPos)(_GLFWwindow*,double*,double*);
-    void (*setCursorPos)(_GLFWwindow*,double,double);
-    void (*setCursorMode)(_GLFWwindow*,int);
-    void (*setRawMouseMotion)(_GLFWwindow*,GLFWbool);
-    GLFWbool (*rawMouseMotionSupported)(void);
-    GLFWbool (*createCursor)(_GLFWcursor*,const ImageData*,int,int);
-    GLFWbool (*createStandardCursor)(_GLFWcursor*,int);
-    void (*destroyCursor)(_GLFWcursor*);
-    void (*setCursor)(_GLFWwindow*,_GLFWcursor*);
-    const char* (*getScancodeName)(int);
-    int (*getKeyScancode)(int);
-    // monitor
-    void (*freeMonitor)(_GLFWmonitor*);
-    void (*getMonitorPos)(_GLFWmonitor*,int*,int*);
-    void (*getMonitorContentScale)(_GLFWmonitor*,float*,float*);
-    void (*getMonitorWorkarea)(_GLFWmonitor*,int*,int*,int*,int*);
-    VideoMode* (*getVideoModes)(_GLFWmonitor*,int*);
-    GLFWbool (*getVideoMode)(_GLFWmonitor*,VideoMode*);
-    GLFWbool (*getGammaRamp)(_GLFWmonitor*,GammaRamp*);
-    void (*setGammaRamp)(_GLFWmonitor*,const GammaRamp*);
-    // window
-    GLFWbool (*createWindow)(_GLFWwindow*,const _GLFWwndconfig*,const _GLFWctxconfig*,const _GLFWfbconfig*);
-    void (*destroyWindow)(_GLFWwindow*);
-    void (*setWindowTitle)(_GLFWwindow*,const char*);
-    void (*setWindowIcon)(_GLFWwindow*,int,const ImageData*);
-    void (*getWindowPos)(_GLFWwindow*,int*,int*);
-    void (*setWindowPos)(_GLFWwindow*,int,int);
-    void (*getWindowSize)(_GLFWwindow*,int*,int*);
-    void (*setWindowSize)(_GLFWwindow*,int,int);
-    void (*setWindowSizeLimits)(_GLFWwindow*,int,int,int,int);
-    void (*setWindowAspectRatio)(_GLFWwindow*,int,int);
-    void (*getFramebufferSize)(_GLFWwindow*,int*,int*);
-    void (*getWindowFrameSize)(_GLFWwindow*,int*,int*,int*,int*);
-    void (*getWindowContentScale)(_GLFWwindow*,float*,float*);
-    void (*iconifyWindow)(_GLFWwindow*);
-    void (*restoreWindow)(_GLFWwindow*);
-    void (*maximizeWindow)(_GLFWwindow*);
-    void (*showWindow)(_GLFWwindow*);
-    void (*hideWindow)(_GLFWwindow*);
-    void (*requestWindowAttention)(_GLFWwindow*);
-    void (*focusWindow)(_GLFWwindow*);
-    void (*setWindowMonitor)(_GLFWwindow*,_GLFWmonitor*,int,int,int,int,int);
-    GLFWbool (*windowFocused)(_GLFWwindow*);
-    GLFWbool (*windowIconified)(_GLFWwindow*);
-    GLFWbool (*windowVisible)(_GLFWwindow*);
-    GLFWbool (*windowMaximized)(_GLFWwindow*);
-    GLFWbool (*windowHovered)(_GLFWwindow*);
-    GLFWbool (*framebufferTransparent)(_GLFWwindow*);
-    float (*getWindowOpacity)(_GLFWwindow*);
-    void (*setWindowResizable)(_GLFWwindow*,GLFWbool);
-    void (*setWindowDecorated)(_GLFWwindow*,GLFWbool);
-    void (*setWindowFloating)(_GLFWwindow*,GLFWbool);
-    void (*setWindowOpacity)(_GLFWwindow*,float);
-    void (*setWindowMousePassthrough)(_GLFWwindow*,GLFWbool);
-    void (*pollEvents)(void);
-    void (*waitEvents)(void);
-    void (*waitEventsTimeout)(double);
-    void (*postEmptyEvent)(void);
+	// input
+	void (*getCursorPos)(_GLFWwindow*,double*,double*);
+	void (*setCursorPos)(_GLFWwindow*,double,double);
+	void (*setCursorMode)(_GLFWwindow*,int);
+	void (*setRawMouseMotion)(_GLFWwindow*,IntBool);
+	IntBool (*rawMouseMotionSupported)(void);
+	IntBool (*createCursor)(_GLFWcursor*,const ImageData*,int,int);
+	IntBool (*createStandardCursor)(_GLFWcursor*,int);
+	void (*destroyCursor)(_GLFWcursor*);
+	void (*setCursor)(_GLFWwindow*,_GLFWcursor*);
+	const char* (*getScancodeName)(int);
+	int (*getKeyScancode)(int);
+	// monitor
+	void (*freeMonitor)(_GLFWmonitor*);
+	void (*getMonitorPos)(_GLFWmonitor*,int*,int*);
+	void (*getMonitorContentScale)(_GLFWmonitor*,float*,float*);
+	void (*getMonitorWorkarea)(_GLFWmonitor*,int*,int*,int*,int*);
+	VideoMode* (*getVideoModes)(_GLFWmonitor*,int*);
+	IntBool (*getVideoMode)(_GLFWmonitor*,VideoMode*);
+	IntBool (*getGammaRamp)(_GLFWmonitor*,GammaRamp*);
+	void (*setGammaRamp)(_GLFWmonitor*,const GammaRamp*);
+	// window
+	IntBool (*createWindow)(_GLFWwindow*,const WindowConfig*,const _GLFWctxconfig*,const _GLFWfbconfig*);
+	void (*destroyWindow)(_GLFWwindow*);
+	void (*setWindowTitle)(_GLFWwindow*,const char*);
+	void (*setWindowIcon)(_GLFWwindow*,int,const ImageData*);
+	void (*getWindowPos)(_GLFWwindow*,int*,int*);
+	void (*setWindowPos)(_GLFWwindow*,int,int);
+	void (*getWindowSize)(_GLFWwindow*,int*,int*);
+	void (*setWindowSize)(_GLFWwindow*,int,int);
+	void (*setWindowSizeLimits)(_GLFWwindow*,int,int,int,int);
+	void (*setWindowAspectRatio)(_GLFWwindow*,int,int);
+	void (*getFramebufferSize)(_GLFWwindow*,int*,int*);
+	void (*getWindowFrameSize)(_GLFWwindow*,int*,int*,int*,int*);
+	void (*getWindowContentScale)(_GLFWwindow*,float*,float*);
+	void (*iconifyWindow)(_GLFWwindow*);
+	void (*restoreWindow)(_GLFWwindow*);
+	void (*maximizeWindow)(_GLFWwindow*);
+	void (*showWindow)(_GLFWwindow*);
+	void (*hideWindow)(_GLFWwindow*);
+	void (*requestWindowAttention)(_GLFWwindow*);
+	void (*focusWindow)(_GLFWwindow*);
+	void (*setWindowMonitor)(_GLFWwindow*,_GLFWmonitor*,int,int,int,int,int);
+	IntBool (*windowFocused)(_GLFWwindow*);
+	IntBool (*windowIconified)(_GLFWwindow*);
+	IntBool (*windowVisible)(_GLFWwindow*);
+	IntBool (*windowMaximized)(_GLFWwindow*);
+	IntBool (*windowHovered)(_GLFWwindow*);
+	IntBool (*framebufferTransparent)(_GLFWwindow*);
+	float (*getWindowOpacity)(_GLFWwindow*);
+	void (*setWindowResizable)(_GLFWwindow*,IntBool);
+	void (*setWindowDecorated)(_GLFWwindow*,IntBool);
+	void (*setWindowFloating)(_GLFWwindow*,IntBool);
+	void (*setWindowOpacity)(_GLFWwindow*,float);
+	void (*setWindowMousePassthrough)(_GLFWwindow*,IntBool);
+	void (*pollEvents)(void);
+	void (*waitEvents)(void);
+	void (*waitEventsTimeout)(double);
+	void (*postEmptyEvent)(void);
 };
 
 // Library global data
 //
 struct _GLFWlibrary
 {
-    GLFWbool            initialized;
+	IntBool            initialized;
 
-    _GLFWplatform       platform;
-    char*               clipboardString;
-
-    struct {
-        _GLFWfbconfig   framebuffer;
-        _GLFWwndconfig  window;
-        _GLFWctxconfig  context;
-        int             refreshRate;
-    } hints;
-
-    _GLFWcursor*        cursorListHead;
-    _GLFWwindow*        windowListHead;
-
-    _GLFWmonitor**      monitors;
-    int                 monitorCount;
-
-    ErrorResponse       errorSlot;
-    _GLFWwindow*        contextSlot;
+	_GLFWplatform       platform;
+	char*               clipboardString;
 
 	struct {
-        monitorFunc  monitor;
-    } callbacks;
+		_GLFWfbconfig   framebuffer;
+		WindowConfig  window;
+		_GLFWctxconfig  context;
+		int             refreshRate;
+	} hints;
 
-    // These are defined in platform.h
-    GLFW_PLATFORM_LIBRARY_WINDOW_STATE
-    GLFW_PLATFORM_LIBRARY_CONTEXT_STATE
+	_GLFWcursor*        cursorListHead;
+	_GLFWwindow*        windowListHead;
+
+	_GLFWmonitor**      monitors;
+	int                 monitorCount;
+
+	ErrorResponse       errorSlot;
+	_GLFWwindow*        contextSlot;
+
+	struct {
+		monitorFunc  monitor;
+	} callbacks;
+
+	GLFW_WIN32_LIBRARY_WINDOW_STATE
+	GLFW_COCOA_LIBRARY_WINDOW_STATE
+	GLFW_X11_LIBRARY_WINDOW_STATE
+	GLFW_WGL_LIBRARY_CONTEXT_STATE
+	GLFW_NSGL_LIBRARY_CONTEXT_STATE
+	GLFW_GLX_LIBRARY_CONTEXT_STATE
 };
 
 // Global state shared between compilation units of GLFW
@@ -1739,10 +1678,6 @@ void glfwWindowHintString(int hint, const char* value);
  *  tree.
  *
  *  [hidpi-guide]: https://developer.apple.com/library/mac/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Explained/Explained.html
- *
- *  @remark __macOS:__ When activating frame autosaving with
- *  [WINDOW_HINT_COCOA_FRAME_NAME](@ref GLFW_COCOA_FRAME_NAME_hint), the specified
- *  window size and position may be overridden by previously saved values.
  *
  *  @remark __X11:__ Some window managers will not respect the placement of
  *  initially hidden windows.
@@ -4252,26 +4187,26 @@ moduleFunc _glfwPlatformGetModuleSymbol(void* module, const char* name);
 //////                         GLFW event API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-void _glfwInputWindowFocus(_GLFWwindow* window, GLFWbool focused);
+void _glfwInputWindowFocus(_GLFWwindow* window, IntBool focused);
 void _glfwInputWindowPos(_GLFWwindow* window, int xpos, int ypos);
 void _glfwInputWindowSize(_GLFWwindow* window, int width, int height);
 void _glfwInputFramebufferSize(_GLFWwindow* window, int width, int height);
 void _glfwInputWindowContentScale(_GLFWwindow* window,
-                                  float xscale, float yscale);
-void _glfwInputWindowIconify(_GLFWwindow* window, GLFWbool iconified);
-void _glfwInputWindowMaximize(_GLFWwindow* window, GLFWbool maximized);
+								  float xscale, float yscale);
+void _glfwInputWindowIconify(_GLFWwindow* window, IntBool iconified);
+void _glfwInputWindowMaximize(_GLFWwindow* window, IntBool maximized);
 void _glfwInputWindowDamage(_GLFWwindow* window);
 void _glfwInputWindowCloseRequest(_GLFWwindow* window);
 void _glfwInputWindowMonitor(_GLFWwindow* window, _GLFWmonitor* monitor);
 
 void _glfwInputKey(_GLFWwindow* window,
-                   int key, int scancode, int action, int mods);
+				   int key, int scancode, int action, int mods);
 void _glfwInputChar(_GLFWwindow* window,
-                    uint32_t codepoint, int mods, GLFWbool plain);
+					uint32_t codepoint, int mods, IntBool plain);
 void _glfwInputScroll(_GLFWwindow* window, double xoffset, double yoffset);
 void _glfwInputMouseClick(_GLFWwindow* window, int button, int action, int mods);
 void _glfwInputCursorPos(_GLFWwindow* window, double xpos, double ypos);
-void _glfwInputCursorEnter(_GLFWwindow* window, GLFWbool entered);
+void _glfwInputCursorEnter(_GLFWwindow* window, IntBool entered);
 void _glfwInputDrop(_GLFWwindow* window, int count, const char** names);
 
 void _glfwInputMonitor(_GLFWmonitor* monitor, int action, int placement);
@@ -4279,7 +4214,7 @@ void _glfwInputMonitorWindow(_GLFWmonitor* monitor, _GLFWwindow* window);
 
 #if defined(__GNUC__)
 void _glfwInputError(int code, const char* format, ...)
-    __attribute__((format(printf, 2, 3)));
+	__attribute__((format(printf, 2, 3)));
 ErrorResponse* createErrorResponse(int code, const char* format, ...) __attribute__((format(printf, 2, 3)));
 #else
 void _glfwInputError(int code, const char* format, ...);
@@ -4291,16 +4226,16 @@ ErrorResponse* createErrorResponse(int code, const char* format, ...);
 //////                       GLFW internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-GLFWbool _glfwStringInExtensionString(const char* string, const char* extensions);
+IntBool _glfwStringInExtensionString(const char* string, const char* extensions);
 const _GLFWfbconfig* _glfwChooseFBConfig(const _GLFWfbconfig* desired,
-                                         const _GLFWfbconfig* alternatives,
-                                         unsigned int count);
-GLFWbool _glfwRefreshContextAttribs(_GLFWwindow* window,
-                                    const _GLFWctxconfig* ctxconfig);
-GLFWbool _glfwIsValidContextConfig(const _GLFWctxconfig* ctxconfig);
+										 const _GLFWfbconfig* alternatives,
+										 unsigned int count);
+IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
+									const _GLFWctxconfig* ctxconfig);
+IntBool _glfwIsValidContextConfig(const _GLFWctxconfig* ctxconfig);
 
 const VideoMode* _glfwChooseVideoMode(_GLFWmonitor* monitor,
-                                        const VideoMode* desired);
+										const VideoMode* desired);
 int _glfwCompareVideoModes(const VideoMode* first, const VideoMode* second);
 _GLFWmonitor* _glfwAllocMonitor(const char* name, int widthMM, int heightMM);
 void _glfwFreeMonitor(_GLFWmonitor* monitor);

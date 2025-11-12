@@ -25,7 +25,7 @@ void _glfwInputKey(_GLFWwindow* window, int key, int scancode, int action, int m
 {
     if (key >= 0 && key <= KEY_LAST)
     {
-        GLFWbool repeated = false;
+        IntBool repeated = false;
 
         if (action == INPUT_RELEASE && window->keys[key] == INPUT_RELEASE)
             return;
@@ -52,7 +52,7 @@ void _glfwInputKey(_GLFWwindow* window, int key, int scancode, int action, int m
 // Notifies shared code of a Unicode codepoint input event
 // The 'plain' parameter determines whether to emit a regular character event
 //
-void _glfwInputChar(_GLFWwindow* window, uint32_t codepoint, int mods, GLFWbool plain)
+void _glfwInputChar(_GLFWwindow* window, uint32_t codepoint, int mods, IntBool plain)
 {
     if (codepoint < 32 || (codepoint > 126 && codepoint < 160))
         return;
@@ -117,7 +117,7 @@ void _glfwInputCursorPos(_GLFWwindow* window, double xpos, double ypos)
 
 // Notifies shared code of a cursor enter/leave event
 //
-void _glfwInputCursorEnter(_GLFWwindow* window, GLFWbool entered)
+void _glfwInputCursorEnter(_GLFWwindow* window, IntBool entered)
 {
     if (window->callbacks.cursorEnter)
         window->callbacks.cursorEnter((GLFWwindow*) window, entered);
@@ -500,21 +500,21 @@ void glfwSetCursor(GLFWwindow* windowHandle, GLFWcursor* cursorHandle)
 keyFunc glfwSetKeyCallback(GLFWwindow* handle, keyFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(keyFunc, window->callbacks.key, cbfun);
+    SWAP(keyFunc, window->callbacks.key, cbfun);
     return cbfun;
 }
 
 charFunc glfwSetCharCallback(GLFWwindow* handle, charFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(charFunc, window->callbacks.character, cbfun);
+    SWAP(charFunc, window->callbacks.character, cbfun);
     return cbfun;
 }
 
 charModsFunc glfwSetCharModsCallback(GLFWwindow* handle, charModsFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(charModsFunc, window->callbacks.charmods, cbfun);
+    SWAP(charModsFunc, window->callbacks.charmods, cbfun);
     return cbfun;
 }
 
@@ -522,7 +522,7 @@ mouseButtonFunc glfwSetMouseButtonCallback(GLFWwindow* handle,
                                                       mouseButtonFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(mouseButtonFunc, window->callbacks.mouseButton, cbfun);
+    SWAP(mouseButtonFunc, window->callbacks.mouseButton, cbfun);
     return cbfun;
 }
 
@@ -530,7 +530,7 @@ cursorPosFunc glfwSetCursorPosCallback(GLFWwindow* handle,
                                                   cursorPosFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(cursorPosFunc, window->callbacks.cursorPos, cbfun);
+    SWAP(cursorPosFunc, window->callbacks.cursorPos, cbfun);
     return cbfun;
 }
 
@@ -538,7 +538,7 @@ cursorEnterFunc glfwSetCursorEnterCallback(GLFWwindow* handle,
                                                       cursorEnterFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(cursorEnterFunc, window->callbacks.cursorEnter, cbfun);
+    SWAP(cursorEnterFunc, window->callbacks.cursorEnter, cbfun);
     return cbfun;
 }
 
@@ -546,13 +546,13 @@ scrollFunc glfwSetScrollCallback(GLFWwindow* handle,
                                             scrollFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(scrollFunc, window->callbacks.scroll, cbfun);
+    SWAP(scrollFunc, window->callbacks.scroll, cbfun);
     return cbfun;
 }
 
 dropFunc glfwSetDropCallback(GLFWwindow* handle, dropFunc cbfun)
 {
     _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFW_SWAP(dropFunc, window->callbacks.drop, cbfun);
+    SWAP(dropFunc, window->callbacks.drop, cbfun);
     return cbfun;
 }

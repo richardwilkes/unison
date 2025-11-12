@@ -9,7 +9,7 @@
 
 // Returns whether the cursor is in the content area of the specified window
 //
-static GLFWbool cursorInContentArea(_GLFWwindow* window)
+static IntBool cursorInContentArea(_GLFWwindow* window)
 {
     const NSPoint pos = [window->ns.object mouseLocationOutsideOfEventStream];
     return [window->ns.view mouse:pos inRect:[window->ns.view frame]];
@@ -726,8 +726,8 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 // Create the Cocoa window
 //
-static GLFWbool createNativeWindow(_GLFWwindow* window,
-                                   const _GLFWwndconfig* wndconfig,
+static IntBool createNativeWindow(_GLFWwindow* window,
+                                   const WindowConfig* wndconfig,
                                    const _GLFWfbconfig* fbconfig)
 {
     window->ns.delegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
@@ -822,9 +822,6 @@ static GLFWbool createNativeWindow(_GLFWwindow* window,
             [window->ns.object zoom:nil];
     }
 
-    if (strlen(wndconfig->ns.frameName))
-        [window->ns.object setFrameAutosaveName:@(wndconfig->ns.frameName)];
-
     window->ns.view = [[GLFWContentView alloc] initWithGlfwWindow:window];
     window->ns.scaleFramebuffer = wndconfig->scaleFramebuffer;
 
@@ -868,8 +865,8 @@ float _glfwTransformYCocoa(float y)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-GLFWbool _glfwCreateWindowCocoa(_GLFWwindow* window,
-                                const _GLFWwndconfig* wndconfig,
+IntBool _glfwCreateWindowCocoa(_GLFWwindow* window,
+                                const WindowConfig* wndconfig,
                                 const _GLFWctxconfig* ctxconfig,
                                 const _GLFWfbconfig* fbconfig)
 {
@@ -1294,28 +1291,28 @@ void _glfwSetWindowMonitorCocoa(_GLFWwindow* window,
     } // autoreleasepool
 }
 
-GLFWbool _glfwWindowFocusedCocoa(_GLFWwindow* window)
+IntBool _glfwWindowFocusedCocoa(_GLFWwindow* window)
 {
     @autoreleasepool {
     return [window->ns.object isKeyWindow];
     } // autoreleasepool
 }
 
-GLFWbool _glfwWindowIconifiedCocoa(_GLFWwindow* window)
+IntBool _glfwWindowIconifiedCocoa(_GLFWwindow* window)
 {
     @autoreleasepool {
     return [window->ns.object isMiniaturized];
     } // autoreleasepool
 }
 
-GLFWbool _glfwWindowVisibleCocoa(_GLFWwindow* window)
+IntBool _glfwWindowVisibleCocoa(_GLFWwindow* window)
 {
     @autoreleasepool {
     return [window->ns.object isVisible];
     } // autoreleasepool
 }
 
-GLFWbool _glfwWindowMaximizedCocoa(_GLFWwindow* window)
+IntBool _glfwWindowMaximizedCocoa(_GLFWwindow* window)
 {
     @autoreleasepool {
 
@@ -1327,7 +1324,7 @@ GLFWbool _glfwWindowMaximizedCocoa(_GLFWwindow* window)
     } // autoreleasepool
 }
 
-GLFWbool _glfwWindowHoveredCocoa(_GLFWwindow* window)
+IntBool _glfwWindowHoveredCocoa(_GLFWwindow* window)
 {
     @autoreleasepool {
 
@@ -1345,14 +1342,14 @@ GLFWbool _glfwWindowHoveredCocoa(_GLFWwindow* window)
     } // autoreleasepool
 }
 
-GLFWbool _glfwFramebufferTransparentCocoa(_GLFWwindow* window)
+IntBool _glfwFramebufferTransparentCocoa(_GLFWwindow* window)
 {
     @autoreleasepool {
     return ![window->ns.object isOpaque] && ![window->ns.view isOpaque];
     } // autoreleasepool
 }
 
-void _glfwSetWindowResizableCocoa(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowResizableCocoa(_GLFWwindow* window, IntBool enabled)
 {
     @autoreleasepool {
 
@@ -1376,7 +1373,7 @@ void _glfwSetWindowResizableCocoa(_GLFWwindow* window, GLFWbool enabled)
     } // autoreleasepool
 }
 
-void _glfwSetWindowDecoratedCocoa(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowDecoratedCocoa(_GLFWwindow* window, IntBool enabled)
 {
     @autoreleasepool {
 
@@ -1398,7 +1395,7 @@ void _glfwSetWindowDecoratedCocoa(_GLFWwindow* window, GLFWbool enabled)
     } // autoreleasepool
 }
 
-void _glfwSetWindowFloatingCocoa(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowFloatingCocoa(_GLFWwindow* window, IntBool enabled)
 {
     @autoreleasepool {
     if (enabled)
@@ -1408,7 +1405,7 @@ void _glfwSetWindowFloatingCocoa(_GLFWwindow* window, GLFWbool enabled)
     } // autoreleasepool
 }
 
-void _glfwSetWindowMousePassthroughCocoa(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowMousePassthroughCocoa(_GLFWwindow* window, IntBool enabled)
 {
     @autoreleasepool {
     [window->ns.object setIgnoresMouseEvents:enabled];
@@ -1429,12 +1426,12 @@ void _glfwSetWindowOpacityCocoa(_GLFWwindow* window, float opacity)
     } // autoreleasepool
 }
 
-void _glfwSetRawMouseMotionCocoa(_GLFWwindow *window, GLFWbool enabled)
+void _glfwSetRawMouseMotionCocoa(_GLFWwindow *window, IntBool enabled)
 {
     _glfwInputError(ERR_FEATURE_UNIMPLEMENTED, "Cocoa: Raw mouse motion not yet implemented");
 }
 
-GLFWbool _glfwRawMouseMotionSupportedCocoa(void)
+IntBool _glfwRawMouseMotionSupportedCocoa(void)
 {
     return false;
 }
@@ -1633,7 +1630,7 @@ int _glfwGetKeyScancodeCocoa(int key)
     return _glfw.ns.scancodes[key];
 }
 
-GLFWbool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
+IntBool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
                                 const ImageData* image,
                                 int xhot, int yhot)
 {
@@ -1677,7 +1674,7 @@ GLFWbool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
     } // autoreleasepool
 }
 
-GLFWbool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape)
+IntBool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape)
 {
     @autoreleasepool {
     if (!cursor->ns.object)

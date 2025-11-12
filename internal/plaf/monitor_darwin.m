@@ -97,7 +97,7 @@ static char* getMonitorName(CGDirectDisplayID displayID, NSScreen* screen)
 
 // Check whether the display mode should be included in enumeration
 //
-static GLFWbool modeIsGood(CGDisplayModeRef mode)
+static IntBool modeIsGood(CGDisplayModeRef mode)
 {
     uint32_t flags = CGDisplayModeGetIOFlags(mode);
     if (!(flags & kDisplayModeValidFlag) || !(flags & kDisplayModeSafeFlag))
@@ -490,7 +490,7 @@ VideoMode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count)
     } // autoreleasepool
 }
 
-GLFWbool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, VideoMode *mode)
+IntBool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, VideoMode *mode)
 {
     @autoreleasepool {
 
@@ -508,7 +508,7 @@ GLFWbool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, VideoMode *mode)
     } // autoreleasepool
 }
 
-GLFWbool _glfwGetGammaRampCocoa(_GLFWmonitor* monitor, GammaRamp* ramp)
+IntBool _glfwGetGammaRampCocoa(_GLFWmonitor* monitor, GammaRamp* ramp)
 {
     @autoreleasepool {
 

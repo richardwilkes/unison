@@ -20,7 +20,7 @@ static int getGLXFBConfigAttrib(GLXFBConfig fbconfig, int attrib)
 
 // Return the GLXFBConfig most closely matching the specified hints
 //
-static GLFWbool chooseGLXFBConfig(const _GLFWfbconfig* desired,
+static IntBool chooseGLXFBConfig(const _GLFWfbconfig* desired,
                                   GLXFBConfig* result)
 {
     GLXFBConfig* nativeConfigs;
@@ -28,7 +28,7 @@ static GLFWbool chooseGLXFBConfig(const _GLFWfbconfig* desired,
     const _GLFWfbconfig* closest;
     int nativeCount, usableCount;
     const char* vendor;
-    GLFWbool trustWindowBit = true;
+    IntBool trustWindowBit = true;
 
     // HACK: This is a (hopefully temporary) workaround for Chromium
     //       (VirtualBox GL) not setting the window bit on any GLXFBConfigs
@@ -215,7 +215,7 @@ static void destroyContextGLX(_GLFWwindow* window)
 
 // Initialize GLX
 //
-GLFWbool _glfwInitGLX(void)
+IntBool _glfwInitGLX(void)
 {
     const char* sonames[] =
     {
@@ -387,7 +387,7 @@ void _glfwTerminateGLX(void)
 
 // Create the OpenGL or OpenGL ES context
 //
-GLFWbool _glfwCreateContextGLX(_GLFWwindow* window,
+IntBool _glfwCreateContextGLX(_GLFWwindow* window,
                                const _GLFWctxconfig* ctxconfig,
                                const _GLFWfbconfig* fbconfig)
 {
@@ -559,7 +559,7 @@ GLFWbool _glfwCreateContextGLX(_GLFWwindow* window,
 
 // Returns the Visual and depth of the chosen GLXFBConfig
 //
-GLFWbool _glfwChooseVisualGLX(const _GLFWwndconfig* wndconfig,
+IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
                               const _GLFWctxconfig* ctxconfig,
                               const _GLFWfbconfig* fbconfig,
                               Visual** visual, int* depth)

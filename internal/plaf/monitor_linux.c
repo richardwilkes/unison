@@ -9,7 +9,7 @@
 
 // Check whether the display mode should be included in enumeration
 //
-static GLFWbool modeIsGood(const XRRModeInfo* mi)
+static IntBool modeIsGood(const XRRModeInfo* mi)
 {
     return (mi->modeFlags & RR_Interlace) == 0;
 }
@@ -463,7 +463,7 @@ VideoMode* _glfwGetVideoModesX11(_GLFWmonitor* monitor, int* count)
     return result;
 }
 
-GLFWbool _glfwGetVideoModeX11(_GLFWmonitor* monitor, VideoMode* mode)
+IntBool _glfwGetVideoModeX11(_GLFWmonitor* monitor, VideoMode* mode)
 {
     if (_glfw.x11.randr.available && !_glfw.x11.randr.monitorBroken)
     {
@@ -502,7 +502,7 @@ GLFWbool _glfwGetVideoModeX11(_GLFWmonitor* monitor, VideoMode* mode)
     return true;
 }
 
-GLFWbool _glfwGetGammaRampX11(_GLFWmonitor* monitor, GammaRamp* ramp)
+IntBool _glfwGetGammaRampX11(_GLFWmonitor* monitor, GammaRamp* ramp)
 {
     if (_glfw.x11.randr.available && !_glfw.x11.randr.gammaBroken)
     {

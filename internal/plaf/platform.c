@@ -266,6 +266,6 @@ void glfwTerminate(void) {
 
 errorFunc glfwSetErrorCallback(errorFunc cbfun)
 {
-    _GLFW_SWAP(errorFunc, _glfwErrorCallback, cbfun);
+    SWAP(errorFunc, _glfwErrorCallback, cbfun);
     return cbfun;
 }

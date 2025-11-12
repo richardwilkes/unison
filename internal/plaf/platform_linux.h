@@ -448,17 +448,17 @@ typedef struct _GLFWlibraryGLX
     PFNGLXSWAPINTERVALSGIPROC           SwapIntervalSGI;
     PFNGLXSWAPINTERVALEXTPROC           SwapIntervalEXT;
     PFNGLXCREATECONTEXTATTRIBSARBPROC   CreateContextAttribsARB;
-    GLFWbool        SGI_swap_control;
-    GLFWbool        EXT_swap_control;
-    GLFWbool        ARB_multisample;
-    GLFWbool        ARB_framebuffer_sRGB;
-    GLFWbool        EXT_framebuffer_sRGB;
-    GLFWbool        ARB_create_context;
-    GLFWbool        ARB_create_context_profile;
-    GLFWbool        ARB_create_context_robustness;
-    GLFWbool        EXT_create_context_es2_profile;
-    GLFWbool        ARB_create_context_no_error;
-    GLFWbool        ARB_context_flush_control;
+    IntBool        SGI_swap_control;
+    IntBool        EXT_swap_control;
+    IntBool        ARB_multisample;
+    IntBool        ARB_framebuffer_sRGB;
+    IntBool        EXT_framebuffer_sRGB;
+    IntBool        ARB_create_context;
+    IntBool        ARB_create_context_profile;
+    IntBool        ARB_create_context_robustness;
+    IntBool        EXT_create_context_es2_profile;
+    IntBool        ARB_create_context_no_error;
+    IntBool        ARB_context_flush_control;
 } _GLFWlibraryGLX;
 
 // X11-specific per-window data
@@ -470,12 +470,12 @@ typedef struct _GLFWwindowX11
     Window          parent;
     XIC             ic;
 
-    GLFWbool        overrideRedirect;
-    GLFWbool        iconified;
-    GLFWbool        maximized;
+    IntBool        overrideRedirect;
+    IntBool        iconified;
+    IntBool        maximized;
 
     // Whether the visual supports framebuffer transparency
-    GLFWbool        transparent;
+    IntBool        transparent;
 
     // Cached position and size used to filter out duplicate events
     int             width, height;
@@ -583,7 +583,7 @@ typedef struct _GLFWlibraryX11
 
     struct {
         void*       handle;
-        GLFWbool    utf8;
+        IntBool    utf8;
         PFN_XAllocClassHint AllocClassHint;
         PFN_XAllocSizeHints AllocSizeHints;
         PFN_XAllocWMHints AllocWMHints;
@@ -680,14 +680,14 @@ typedef struct _GLFWlibraryX11
     } xrm;
 
     struct {
-        GLFWbool    available;
+        IntBool    available;
         void*       handle;
         int         eventBase;
         int         errorBase;
         int         major;
         int         minor;
-        GLFWbool    gammaBroken;
-        GLFWbool    monitorBroken;
+        IntBool    gammaBroken;
+        IntBool    monitorBroken;
         PFN_XRRAllocGamma AllocGamma;
         PFN_XRRFreeCrtcInfo FreeCrtcInfo;
         PFN_XRRFreeGamma FreeGamma;
@@ -708,8 +708,8 @@ typedef struct _GLFWlibraryX11
     } randr;
 
     struct {
-        GLFWbool     available;
-        GLFWbool     detectable;
+        IntBool     available;
+        IntBool     detectable;
         int          majorOpcode;
         int          eventBase;
         int          errorBase;
@@ -752,7 +752,7 @@ typedef struct _GLFWlibraryX11
     } xcursor;
 
     struct {
-        GLFWbool    available;
+        IntBool    available;
         void*       handle;
         int         major;
         int         minor;
@@ -767,7 +767,7 @@ typedef struct _GLFWlibraryX11
     } x11xcb;
 
     struct {
-        GLFWbool    available;
+        IntBool    available;
         void*       handle;
         int         eventBase;
         int         errorBase;
@@ -778,7 +778,7 @@ typedef struct _GLFWlibraryX11
     } vidmode;
 
     struct {
-        GLFWbool    available;
+        IntBool    available;
         void*       handle;
         int         majorOpcode;
         int         eventBase;
@@ -790,7 +790,7 @@ typedef struct _GLFWlibraryX11
     } xi;
 
     struct {
-        GLFWbool    available;
+        IntBool    available;
         void*       handle;
         int         major;
         int         minor;
@@ -802,7 +802,7 @@ typedef struct _GLFWlibraryX11
     } xrender;
 
     struct {
-        GLFWbool    available;
+        IntBool    available;
         void*       handle;
         int         major;
         int         minor;
@@ -835,7 +835,7 @@ typedef struct _GLFWcursorX11
     Cursor handle;
 } _GLFWcursorX11;
 
-GLFWbool _glfwCreateWindowX11(_GLFWwindow* window, const _GLFWwndconfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
+IntBool _glfwCreateWindowX11(_GLFWwindow* window, const WindowConfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
 void _glfwDestroyWindowX11(_GLFWwindow* window);
 void _glfwSetWindowTitleX11(_GLFWwindow* window, const char* title);
 void _glfwSetWindowIconX11(_GLFWwindow* window, int count, const ImageData* images);
@@ -856,21 +856,21 @@ void _glfwHideWindowX11(_GLFWwindow* window);
 void _glfwRequestWindowAttentionX11(_GLFWwindow* window);
 void _glfwFocusWindowX11(_GLFWwindow* window);
 void _glfwSetWindowMonitorX11(_GLFWwindow* window, _GLFWmonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-GLFWbool _glfwWindowFocusedX11(_GLFWwindow* window);
-GLFWbool _glfwWindowIconifiedX11(_GLFWwindow* window);
-GLFWbool _glfwWindowVisibleX11(_GLFWwindow* window);
-GLFWbool _glfwWindowMaximizedX11(_GLFWwindow* window);
-GLFWbool _glfwWindowHoveredX11(_GLFWwindow* window);
-GLFWbool _glfwFramebufferTransparentX11(_GLFWwindow* window);
-void _glfwSetWindowResizableX11(_GLFWwindow* window, GLFWbool enabled);
-void _glfwSetWindowDecoratedX11(_GLFWwindow* window, GLFWbool enabled);
-void _glfwSetWindowFloatingX11(_GLFWwindow* window, GLFWbool enabled);
+IntBool _glfwWindowFocusedX11(_GLFWwindow* window);
+IntBool _glfwWindowIconifiedX11(_GLFWwindow* window);
+IntBool _glfwWindowVisibleX11(_GLFWwindow* window);
+IntBool _glfwWindowMaximizedX11(_GLFWwindow* window);
+IntBool _glfwWindowHoveredX11(_GLFWwindow* window);
+IntBool _glfwFramebufferTransparentX11(_GLFWwindow* window);
+void _glfwSetWindowResizableX11(_GLFWwindow* window, IntBool enabled);
+void _glfwSetWindowDecoratedX11(_GLFWwindow* window, IntBool enabled);
+void _glfwSetWindowFloatingX11(_GLFWwindow* window, IntBool enabled);
 float _glfwGetWindowOpacityX11(_GLFWwindow* window);
 void _glfwSetWindowOpacityX11(_GLFWwindow* window, float opacity);
-void _glfwSetWindowMousePassthroughX11(_GLFWwindow* window, GLFWbool enabled);
+void _glfwSetWindowMousePassthroughX11(_GLFWwindow* window, IntBool enabled);
 
-void _glfwSetRawMouseMotionX11(_GLFWwindow *window, GLFWbool enabled);
-GLFWbool _glfwRawMouseMotionSupportedX11(void);
+void _glfwSetRawMouseMotionX11(_GLFWwindow *window, IntBool enabled);
+IntBool _glfwRawMouseMotionSupportedX11(void);
 
 void _glfwPollEventsX11(void);
 void _glfwWaitEventsX11(void);
@@ -882,8 +882,8 @@ void _glfwSetCursorPosX11(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeX11(_GLFWwindow* window, int mode);
 const char* _glfwGetScancodeNameX11(int scancode);
 int _glfwGetKeyScancodeX11(int key);
-GLFWbool _glfwCreateCursorX11(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
-GLFWbool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape);
+IntBool _glfwCreateCursorX11(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
+IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape);
 void _glfwDestroyCursorX11(_GLFWcursor* cursor);
 void _glfwSetCursorX11(_GLFWwindow* window, _GLFWcursor* cursor);
 
@@ -892,8 +892,8 @@ void _glfwGetMonitorPosX11(_GLFWmonitor* monitor, int* xpos, int* ypos);
 void _glfwGetMonitorContentScaleX11(_GLFWmonitor* monitor, float* xscale, float* yscale);
 void _glfwGetMonitorWorkareaX11(_GLFWmonitor* monitor, int* xpos, int* ypos, int* width, int* height);
 VideoMode* _glfwGetVideoModesX11(_GLFWmonitor* monitor, int* count);
-GLFWbool _glfwGetVideoModeX11(_GLFWmonitor* monitor, VideoMode* mode);
-GLFWbool _glfwGetGammaRampX11(_GLFWmonitor* monitor, GammaRamp* ramp);
+IntBool _glfwGetVideoModeX11(_GLFWmonitor* monitor, VideoMode* mode);
+IntBool _glfwGetGammaRampX11(_GLFWmonitor* monitor, GammaRamp* ramp);
 void _glfwSetGammaRampX11(_GLFWmonitor* monitor, const GammaRamp* ramp);
 
 void _glfwPollMonitorsX11(void);
@@ -906,7 +906,7 @@ unsigned long _glfwGetWindowPropertyX11(Window window,
                                         Atom property,
                                         Atom type,
                                         unsigned char** value);
-GLFWbool _glfwIsVisualTransparentX11(Visual* visual);
+IntBool _glfwIsVisualTransparentX11(Visual* visual);
 
 void _glfwGrabErrorHandlerX11(void);
 void _glfwReleaseErrorHandlerX11(void);
@@ -915,14 +915,14 @@ void _glfwInputErrorX11(int error, const char* message);
 void _glfwPushSelectionToManagerX11(void);
 void _glfwCreateInputContextX11(_GLFWwindow* window);
 
-GLFWbool _glfwInitGLX(void);
-GLFWbool _glfwCreateContextGLX(_GLFWwindow* window,
+IntBool _glfwInitGLX(void);
+IntBool _glfwCreateContextGLX(_GLFWwindow* window,
                                const _GLFWctxconfig* ctxconfig,
                                const _GLFWfbconfig* fbconfig);
 void _glfwDestroyContextGLX(_GLFWwindow* window);
-GLFWbool _glfwChooseVisualGLX(const _GLFWwndconfig* wndconfig,
+IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
                               const _GLFWctxconfig* ctxconfig,
                               const _GLFWfbconfig* fbconfig,
                               Visual** visual, int* depth);
 
-GLFWbool waitForX11Event(double timeout);
+IntBool waitForX11Event(double timeout);

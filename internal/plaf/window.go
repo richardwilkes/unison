@@ -101,13 +101,6 @@ const (
 	ScaleFramebuffer       Hint = C.WINDOW_HINT_SCALE_FRAMEBUFFER        // Specifies whether to use full resolution framebuffers on Retina displays.
 )
 
-// Naming related hints. (Use with glfw.WindowHintString)
-const (
-	CocoaFrameName  Hint = C.WINDOW_HINT_COCOA_FRAME_NAME  // Specifies the UTF-8 encoded name to use for autosaving the window frame, or if empty disables frame autosaving for the window.
-	X11ClassName    Hint = C.WINDOW_HINT_X11_CLASS_NAME    // Specifies the desired ASCII encoded class parts of the ICCCM WM_CLASS window property.nd instance parts of the ICCCM WM_CLASS window property.
-	X11InstanceName Hint = C.WINDOW_HINT_X11_INSTANCE_NAME // Specifies the desired ASCII encoded instance parts of the ICCCM WM_CLASS window property.nd instance parts of the ICCCM WM_CLASS window property.
-)
-
 // Values for the ContextRobustness hint.
 const (
 	ContextRobustnessNone                int = C.CONTEXT_ROBUSTNESS_NONE
@@ -190,28 +183,6 @@ func DefaultWindowHints() {
 func WindowHint(target Hint, hint int) {
 	C.glfwWindowHint(C.int(target), C.int(hint))
 	panicError()
-}
-
-// WindowHintString sets hints for the next call to CreateWindow. The hints,
-// once set, retain their values until changed by a call to this function or
-// DefaultWindowHints, or until the library is terminated.
-//
-// Only string type hints can be set with this function. Integer value hints are
-// set with WindowHint.
-//
-// This function does not check whether the specified hint values are valid. If
-// you set hints to invalid values this will instead be reported by the next
-// call to CreateWindow.
-//
-// Some hints are platform specific. These may be set on any platform but they
-// will only affect their specific platform. Other platforms will ignore them.
-// Setting these hints requires no platform specific headers or functions.
-//
-// This function must only be called from the main thread.
-func WindowHintString(hint Hint, value string) {
-	str := C.CString(value)
-	defer C.free(unsafe.Pointer(str))
-	C.glfwWindowHintString(C.int(hint), str)
 }
 
 // CreateWindow creates a window and its associated context. Most of the options

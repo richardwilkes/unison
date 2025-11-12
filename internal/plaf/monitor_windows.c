@@ -440,7 +440,7 @@ VideoMode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count)
     return result;
 }
 
-GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode)
+IntBool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode)
 {
     DEVMODEW dm;
     ZeroMemory(&dm, sizeof(dm));
@@ -463,7 +463,7 @@ GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode)
     return true;
 }
 
-GLFWbool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GammaRamp* ramp)
+IntBool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GammaRamp* ramp)
 {
     HDC dc;
     WORD values[3][256];

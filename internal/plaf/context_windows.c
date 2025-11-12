@@ -334,7 +334,7 @@ static void destroyContextWGL(_GLFWwindow* window)
 
 // Initialize WGL
 //
-GLFWbool _glfwInitWGL(void)
+IntBool _glfwInitWGL(void)
 {
     PIXELFORMATDESCRIPTOR pfd;
     HGLRC prc, rc;
@@ -464,7 +464,7 @@ void _glfwTerminateWGL(void)
 
 // Create the OpenGL or OpenGL ES context
 //
-GLFWbool _glfwCreateContextWGL(_GLFWwindow* window,
+IntBool _glfwCreateContextWGL(_GLFWwindow* window,
                                const _GLFWctxconfig* ctxconfig,
                                const _GLFWfbconfig* fbconfig)
 {

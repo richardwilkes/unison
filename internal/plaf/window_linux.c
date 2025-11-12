@@ -28,7 +28,7 @@
 
 #define _GLFW_XDND_VERSION 5
 
-GLFWbool _glfwPoll(struct pollfd* fds, nfds_t count, double timeout)
+IntBool _glfwPoll(struct pollfd* fds, nfds_t count, double timeout)
 {
     for (;;)
     {
@@ -44,7 +44,7 @@ GLFWbool _glfwPoll(struct pollfd* fds, nfds_t count, double timeout)
 // This avoids blocking other threads via the per-display Xlib lock that also
 // covers GLX functions
 //
-GLFWbool waitForX11Event(double timeout)
+IntBool waitForX11Event(double timeout)
 {
     struct pollfd fd = { ConnectionNumber(_glfw.x11.display), POLLIN };
 
@@ -61,7 +61,7 @@ GLFWbool waitForX11Event(double timeout)
 // This avoids blocking other threads via the per-display Xlib lock that also
 // covers GLX functions
 //
-static GLFWbool waitForAnyEvent(double timeout)
+static IntBool waitForAnyEvent(double timeout)
 {
     enum { XLIB_FD, PIPE_FD, INOTIFY_FD };
     struct pollfd fds[] =
@@ -116,7 +116,7 @@ static void drainEmptyEvents(void)
 // Waits until a VisibilityNotify event arrives for the specified window or the
 // timeout period elapses (ICCCM section 4.2.2)
 //
-static GLFWbool waitForVisibilityNotify(_GLFWwindow* window)
+static IntBool waitForVisibilityNotify(_GLFWwindow* window)
 {
     XEvent dummy;
     while (!XCheckTypedWindowEvent(_glfw.x11.display,
@@ -509,8 +509,8 @@ static void inputContextDestroyCallback(XIC ic, XPointer clientData, XPointer ca
 
 // Create the X11 window (and its colormap)
 //
-static GLFWbool createNativeWindow(_GLFWwindow* window,
-                                   const _GLFWwndconfig* wndconfig,
+static IntBool createNativeWindow(_GLFWwindow* window,
+                                   const WindowConfig* wndconfig,
                                    Visual* visual, int depth)
 {
     int width = wndconfig->width;
@@ -681,36 +681,6 @@ static GLFWbool createNativeWindow(_GLFWwindow* window,
 
         XSetWMNormalHints(_glfw.x11.display, window->x11.handle, hints);
         XFree(hints);
-    }
-
-    // Set ICCCM WM_CLASS property
-    {
-        XClassHint* hint = XAllocClassHint();
-
-        if (strlen(wndconfig->x11.instanceName) &&
-            strlen(wndconfig->x11.className))
-        {
-            hint->res_name = (char*) wndconfig->x11.instanceName;
-            hint->res_class = (char*) wndconfig->x11.className;
-        }
-        else
-        {
-            const char* resourceName = getenv("RESOURCE_NAME");
-            if (resourceName && strlen(resourceName))
-                hint->res_name = (char*) resourceName;
-            else if (strlen(window->title))
-                hint->res_name = (char*) window->title;
-            else
-                hint->res_name = (char*) "glfw-application";
-
-            if (strlen(window->title))
-                hint->res_class = (char*) window->title;
-            else
-                hint->res_class = (char*) "GLFW-Application";
-        }
-
-        XSetClassHint(_glfw.x11.display, window->x11.handle, hint);
-        XFree(hint);
     }
 
     // Announce support for Xdnd (drag and drop)
@@ -1369,7 +1339,7 @@ static void processEvent(XEvent *event)
                 // A drag operation has entered the window
                 unsigned long count;
                 Atom* formats = NULL;
-                const GLFWbool list = event->xclient.data.l[1] & 1;
+                const IntBool list = event->xclient.data.l[1] & 1;
 
                 _glfw.x11.xdnd.source  = event->xclient.data.l[0];
                 _glfw.x11.xdnd.version = event->xclient.data.l[1] >> 24;
@@ -1593,7 +1563,7 @@ static void processEvent(XEvent *event)
                 if (state != IconicState && state != NormalState)
                     return;
 
-                const GLFWbool iconified = (state == IconicState);
+                const IntBool iconified = (state == IconicState);
                 if (window->x11.iconified != iconified)
                 {
                     if (window->monitor)
@@ -1610,7 +1580,7 @@ static void processEvent(XEvent *event)
             }
             else if (event->xproperty.atom == _glfw.x11.NET_WM_STATE)
             {
-                const GLFWbool maximized = _glfwWindowMaximizedX11(window);
+                const IntBool maximized = _glfwWindowMaximizedX11(window);
                 if (window->x11.maximized != maximized)
                 {
                     window->x11.maximized = maximized;
@@ -1659,7 +1629,7 @@ unsigned long _glfwGetWindowPropertyX11(Window window,
     return itemCount;
 }
 
-GLFWbool _glfwIsVisualTransparentX11(Visual* visual)
+IntBool _glfwIsVisualTransparentX11(Visual* visual)
 {
     if (!_glfw.x11.xrender.available)
         return false;
@@ -1749,8 +1719,8 @@ void _glfwCreateInputContextX11(_GLFWwindow* window)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-GLFWbool _glfwCreateWindowX11(_GLFWwindow* window,
-                              const _GLFWwndconfig* wndconfig,
+IntBool _glfwCreateWindowX11(_GLFWwindow* window,
+                              const WindowConfig* wndconfig,
                               const _GLFWctxconfig* ctxconfig,
                               const _GLFWfbconfig* fbconfig)
 {
@@ -2279,7 +2249,7 @@ void _glfwSetWindowMonitorX11(_GLFWwindow* window,
     XFlush(_glfw.x11.display);
 }
 
-GLFWbool _glfwWindowFocusedX11(_GLFWwindow* window)
+IntBool _glfwWindowFocusedX11(_GLFWwindow* window)
 {
     Window focused;
     int state;
@@ -2288,22 +2258,22 @@ GLFWbool _glfwWindowFocusedX11(_GLFWwindow* window)
     return window->x11.handle == focused;
 }
 
-GLFWbool _glfwWindowIconifiedX11(_GLFWwindow* window)
+IntBool _glfwWindowIconifiedX11(_GLFWwindow* window)
 {
     return getWindowState(window) == IconicState;
 }
 
-GLFWbool _glfwWindowVisibleX11(_GLFWwindow* window)
+IntBool _glfwWindowVisibleX11(_GLFWwindow* window)
 {
     XWindowAttributes wa;
     XGetWindowAttributes(_glfw.x11.display, window->x11.handle, &wa);
     return wa.map_state == IsViewable;
 }
 
-GLFWbool _glfwWindowMaximizedX11(_GLFWwindow* window)
+IntBool _glfwWindowMaximizedX11(_GLFWwindow* window)
 {
     Atom* states;
-    GLFWbool maximized = false;
+    IntBool maximized = false;
 
     if (!_glfw.x11.NET_WM_STATE ||
         !_glfw.x11.NET_WM_STATE_MAXIMIZED_VERT ||
@@ -2334,7 +2304,7 @@ GLFWbool _glfwWindowMaximizedX11(_GLFWwindow* window)
     return maximized;
 }
 
-GLFWbool _glfwWindowHoveredX11(_GLFWwindow* window)
+IntBool _glfwWindowHoveredX11(_GLFWwindow* window)
 {
     Window w = _glfw.x11.root;
     while (w)
@@ -2362,7 +2332,7 @@ GLFWbool _glfwWindowHoveredX11(_GLFWwindow* window)
     return false;
 }
 
-GLFWbool _glfwFramebufferTransparentX11(_GLFWwindow* window)
+IntBool _glfwFramebufferTransparentX11(_GLFWwindow* window)
 {
     if (!window->x11.transparent)
         return false;
@@ -2370,14 +2340,14 @@ GLFWbool _glfwFramebufferTransparentX11(_GLFWwindow* window)
     return XGetSelectionOwner(_glfw.x11.display, _glfw.x11.NET_WM_CM_Sx) != None;
 }
 
-void _glfwSetWindowResizableX11(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowResizableX11(_GLFWwindow* window, IntBool enabled)
 {
     int width, height;
     _glfwGetWindowSizeX11(window, &width, &height);
     updateNormalHints(window, width, height);
 }
 
-void _glfwSetWindowDecoratedX11(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowDecoratedX11(_GLFWwindow* window, IntBool enabled)
 {
     struct
     {
@@ -2399,7 +2369,7 @@ void _glfwSetWindowDecoratedX11(_GLFWwindow* window, GLFWbool enabled)
                     sizeof(hints) / sizeof(long));
 }
 
-void _glfwSetWindowFloatingX11(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowFloatingX11(_GLFWwindow* window, IntBool enabled)
 {
     if (!_glfw.x11.NET_WM_STATE || !_glfw.x11.NET_WM_STATE_ABOVE)
         return;
@@ -2466,7 +2436,7 @@ void _glfwSetWindowFloatingX11(_GLFWwindow* window, GLFWbool enabled)
     XFlush(_glfw.x11.display);
 }
 
-void _glfwSetWindowMousePassthroughX11(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowMousePassthroughX11(_GLFWwindow* window, IntBool enabled)
 {
     if (!_glfw.x11.xshape.available)
         return;
@@ -2516,7 +2486,7 @@ void _glfwSetWindowOpacityX11(_GLFWwindow* window, float opacity)
                     PropModeReplace, (unsigned char*) &value, 1);
 }
 
-void _glfwSetRawMouseMotionX11(_GLFWwindow *window, GLFWbool enabled)
+void _glfwSetRawMouseMotionX11(_GLFWwindow *window, IntBool enabled)
 {
     if (!_glfw.x11.xi.available)
         return;
@@ -2530,7 +2500,7 @@ void _glfwSetRawMouseMotionX11(_GLFWwindow *window, GLFWbool enabled)
         disableRawMouseMotion(window);
 }
 
-GLFWbool _glfwRawMouseMotionSupportedX11(void)
+IntBool _glfwRawMouseMotionSupportedX11(void)
 {
     return _glfw.x11.xi.available;
 }
@@ -2686,7 +2656,7 @@ int _glfwGetKeyScancodeX11(int key)
     return _glfw.x11.scancodes[key];
 }
 
-GLFWbool _glfwCreateCursorX11(_GLFWcursor* cursor,
+IntBool _glfwCreateCursorX11(_GLFWcursor* cursor,
                               const ImageData* image,
                               int xhot, int yhot)
 {
@@ -2697,7 +2667,7 @@ GLFWbool _glfwCreateCursorX11(_GLFWcursor* cursor,
     return true;
 }
 
-GLFWbool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape)
+IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape)
 {
     if (_glfw.x11.xcursor.handle)
     {

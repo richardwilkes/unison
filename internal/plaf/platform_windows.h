@@ -294,18 +294,18 @@ typedef struct _GLFWlibraryWGL
     PFNWGLGETEXTENSIONSSTRINGEXTPROC    GetExtensionsStringEXT;
     PFNWGLGETEXTENSIONSSTRINGARBPROC    GetExtensionsStringARB;
     PFNWGLCREATECONTEXTATTRIBSARBPROC   CreateContextAttribsARB;
-    GLFWbool                            EXT_swap_control;
-    GLFWbool                            EXT_colorspace;
-    GLFWbool                            ARB_multisample;
-    GLFWbool                            ARB_framebuffer_sRGB;
-    GLFWbool                            EXT_framebuffer_sRGB;
-    GLFWbool                            ARB_pixel_format;
-    GLFWbool                            ARB_create_context;
-    GLFWbool                            ARB_create_context_profile;
-    GLFWbool                            EXT_create_context_es2_profile;
-    GLFWbool                            ARB_create_context_robustness;
-    GLFWbool                            ARB_create_context_no_error;
-    GLFWbool                            ARB_context_flush_control;
+    IntBool                            EXT_swap_control;
+    IntBool                            EXT_colorspace;
+    IntBool                            ARB_multisample;
+    IntBool                            ARB_framebuffer_sRGB;
+    IntBool                            EXT_framebuffer_sRGB;
+    IntBool                            ARB_pixel_format;
+    IntBool                            ARB_create_context;
+    IntBool                            ARB_create_context_profile;
+    IntBool                            EXT_create_context_es2_profile;
+    IntBool                            ARB_create_context_robustness;
+    IntBool                            ARB_create_context_no_error;
+    IntBool                            ARB_context_flush_control;
 } _GLFWlibraryWGL;
 
 // Win32-specific per-window data
@@ -316,15 +316,13 @@ typedef struct _GLFWwindowWin32
     HICON               bigIcon;
     HICON               smallIcon;
 
-    GLFWbool            cursorTracked;
-    GLFWbool            frameAction;
-    GLFWbool            iconified;
-    GLFWbool            maximized;
+    IntBool            cursorTracked;
+    IntBool            frameAction;
+    IntBool            iconified;
+    IntBool            maximized;
     // Whether to enable framebuffer transparency on DWM
-    GLFWbool            transparent;
-    GLFWbool            scaleToMonitor;
-    GLFWbool            keymenu;
-    GLFWbool            showDefault;
+    IntBool            transparent;
+    IntBool            scaleToMonitor;
 
     // Cached size used to filter out duplicate events
     int                 width, height;
@@ -411,8 +409,8 @@ typedef struct _GLFWmonitorWin32
     WCHAR               displayName[32];
     char                publicAdapterName[32];
     char                publicDisplayName[32];
-    GLFWbool            modesPruned;
-    GLFWbool            modeChanged;
+    IntBool            modesPruned;
+    IntBool            modeChanged;
 } _GLFWmonitorWin32;
 
 // Win32-specific per-cursor data
@@ -434,7 +432,7 @@ void _glfwSetVideoModeWin32(_GLFWmonitor* monitor, const VideoMode* desired);
 void _glfwRestoreVideoModeWin32(_GLFWmonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 
-GLFWbool _glfwCreateWindowWin32(_GLFWwindow* window, const _GLFWwndconfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
+IntBool _glfwCreateWindowWin32(_GLFWwindow* window, const WindowConfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
 void _glfwDestroyWindowWin32(_GLFWwindow* window);
 void _glfwSetWindowTitleWin32(_GLFWwindow* window, const char* title);
 void _glfwSetWindowIconWin32(_GLFWwindow* window, int count, const ImageData* images);
@@ -455,21 +453,21 @@ void _glfwHideWindowWin32(_GLFWwindow* window);
 void _glfwRequestWindowAttentionWin32(_GLFWwindow* window);
 void _glfwFocusWindowWin32(_GLFWwindow* window);
 void _glfwSetWindowMonitorWin32(_GLFWwindow* window, _GLFWmonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-GLFWbool _glfwWindowFocusedWin32(_GLFWwindow* window);
-GLFWbool _glfwWindowIconifiedWin32(_GLFWwindow* window);
-GLFWbool _glfwWindowVisibleWin32(_GLFWwindow* window);
-GLFWbool _glfwWindowMaximizedWin32(_GLFWwindow* window);
-GLFWbool _glfwWindowHoveredWin32(_GLFWwindow* window);
-GLFWbool _glfwFramebufferTransparentWin32(_GLFWwindow* window);
-void _glfwSetWindowResizableWin32(_GLFWwindow* window, GLFWbool enabled);
-void _glfwSetWindowDecoratedWin32(_GLFWwindow* window, GLFWbool enabled);
-void _glfwSetWindowFloatingWin32(_GLFWwindow* window, GLFWbool enabled);
-void _glfwSetWindowMousePassthroughWin32(_GLFWwindow* window, GLFWbool enabled);
+IntBool _glfwWindowFocusedWin32(_GLFWwindow* window);
+IntBool _glfwWindowIconifiedWin32(_GLFWwindow* window);
+IntBool _glfwWindowVisibleWin32(_GLFWwindow* window);
+IntBool _glfwWindowMaximizedWin32(_GLFWwindow* window);
+IntBool _glfwWindowHoveredWin32(_GLFWwindow* window);
+IntBool _glfwFramebufferTransparentWin32(_GLFWwindow* window);
+void _glfwSetWindowResizableWin32(_GLFWwindow* window, IntBool enabled);
+void _glfwSetWindowDecoratedWin32(_GLFWwindow* window, IntBool enabled);
+void _glfwSetWindowFloatingWin32(_GLFWwindow* window, IntBool enabled);
+void _glfwSetWindowMousePassthroughWin32(_GLFWwindow* window, IntBool enabled);
 float _glfwGetWindowOpacityWin32(_GLFWwindow* window);
 void _glfwSetWindowOpacityWin32(_GLFWwindow* window, float opacity);
 
-void _glfwSetRawMouseMotionWin32(_GLFWwindow *window, GLFWbool enabled);
-GLFWbool _glfwRawMouseMotionSupportedWin32(void);
+void _glfwSetRawMouseMotionWin32(_GLFWwindow *window, IntBool enabled);
+IntBool _glfwRawMouseMotionSupportedWin32(void);
 
 void _glfwPollEventsWin32(void);
 void _glfwWaitEventsWin32(void);
@@ -481,8 +479,8 @@ void _glfwSetCursorPosWin32(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeWin32(_GLFWwindow* window, int mode);
 const char* _glfwGetScancodeNameWin32(int scancode);
 int _glfwGetKeyScancodeWin32(int key);
-GLFWbool _glfwCreateCursorWin32(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
-GLFWbool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape);
+IntBool _glfwCreateCursorWin32(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
+IntBool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape);
 void _glfwDestroyCursorWin32(_GLFWcursor* cursor);
 void _glfwSetCursorWin32(_GLFWwindow* window, _GLFWcursor* cursor);
 
@@ -491,12 +489,12 @@ void _glfwGetMonitorPosWin32(_GLFWmonitor* monitor, int* xpos, int* ypos);
 void _glfwGetMonitorContentScaleWin32(_GLFWmonitor* monitor, float* xscale, float* yscale);
 void _glfwGetMonitorWorkareaWin32(_GLFWmonitor* monitor, int* xpos, int* ypos, int* width, int* height);
 VideoMode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count);
-GLFWbool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode);
-GLFWbool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GammaRamp* ramp);
+IntBool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode);
+IntBool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GammaRamp* ramp);
 void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GammaRamp* ramp);
 
-GLFWbool _glfwInitWGL(void);
+IntBool _glfwInitWGL(void);
 void _glfwTerminateWGL(void);
-GLFWbool _glfwCreateContextWGL(_GLFWwindow* window,
+IntBool _glfwCreateContextWGL(_GLFWwindow* window,
                                const _GLFWctxconfig* ctxconfig,
                                const _GLFWfbconfig* fbconfig);

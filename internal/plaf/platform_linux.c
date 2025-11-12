@@ -407,9 +407,9 @@ static void createKeyTables(void)
 
 // Check whether the IM has a usable style
 //
-static GLFWbool hasUsableInputMethodStyle(void)
+static IntBool hasUsableInputMethodStyle(void)
 {
-	GLFWbool found = false;
+	IntBool found = false;
 	XIMStyles* styles = NULL;
 
 	if (XGetIMValues(_glfw.x11.im, XNQueryInputStyle, &styles, NULL) != NULL)

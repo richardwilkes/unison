@@ -69,7 +69,7 @@ static const ImageData* chooseImage(int count, const ImageData* images,
 
 // Creates an RGBA icon or cursor
 //
-static HICON createIcon(const ImageData* image, int xhot, int yhot, GLFWbool icon)
+static HICON createIcon(const ImageData* image, int xhot, int yhot, IntBool icon)
 {
     int i;
     HDC dc;
@@ -285,7 +285,7 @@ static void enableCursor(_GLFWwindow* window)
 
 // Returns whether the cursor is in the content area of the specified window
 //
-static GLFWbool cursorInContentArea(_GLFWwindow* window)
+static IntBool cursorInContentArea(_GLFWwindow* window)
 {
     RECT area;
     POINT pos;
@@ -503,7 +503,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
             if (_glfwIsWindows10Version1607OrGreaterWin32())
             {
                 const CREATESTRUCTW* cs = (const CREATESTRUCTW*) lParam;
-                const _GLFWwndconfig* wndconfig = cs->lpCreateParams;
+                const WindowConfig* wndconfig = cs->lpCreateParams;
 
                 // On per-monitor DPI aware V1 systems, only enable
                 // non-client scaling for windows that scale the client area
@@ -599,12 +599,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
                 // User trying to access application menu using ALT?
                 case SC_KEYMENU:
-                {
-                    if (!window->win32.keymenu)
-                        return 0;
-
-                    break;
-                }
+                    return 0;
             }
             break;
         }
@@ -645,10 +640,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
                 window->win32.highSurrogate = 0;
                 _glfwInputChar(window, codepoint, getKeyMods(), uMsg != WM_SYSCHAR);
             }
-
-            if (uMsg == WM_SYSCHAR && window->win32.keymenu)
-                break;
-
             return 0;
         }
 
@@ -985,8 +976,8 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
         {
             const int width = LOWORD(lParam);
             const int height = HIWORD(lParam);
-            const GLFWbool iconified = wParam == SIZE_MINIMIZED;
-            const GLFWbool maximized = wParam == SIZE_MAXIMIZED ||
+            const IntBool iconified = wParam == SIZE_MINIMIZED;
+            const IntBool maximized = wParam == SIZE_MAXIMIZED ||
                                        (window->win32.maximized &&
                                         wParam != SIZE_RESTORED);
 
@@ -1234,7 +1225,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 // Creates the GLFW window
 //
 static int createNativeWindow(_GLFWwindow* window,
-                              const _GLFWwndconfig* wndconfig,
+                              const WindowConfig* wndconfig,
                               const _GLFWfbconfig* fbconfig)
 {
     int frameX, frameY, frameWidth, frameHeight;
@@ -1370,8 +1361,6 @@ static int createNativeWindow(_GLFWwindow* window,
     ChangeWindowMessageFilterEx(window->win32.handle, WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
 
     window->win32.scaleToMonitor = wndconfig->scaleToMonitor;
-    window->win32.keymenu = wndconfig->win32.keymenu;
-    window->win32.showDefault = wndconfig->win32.showDefault;
 
     if (!window->monitor)
     {
@@ -1444,8 +1433,8 @@ static int createNativeWindow(_GLFWwindow* window,
     return true;
 }
 
-GLFWbool _glfwCreateWindowWin32(_GLFWwindow* window,
-                                const _GLFWwndconfig* wndconfig,
+IntBool _glfwCreateWindowWin32(_GLFWwindow* window,
+                                const WindowConfig* wndconfig,
                                 const _GLFWctxconfig* ctxconfig,
                                 const _GLFWfbconfig* fbconfig)
 {
@@ -1733,25 +1722,8 @@ void _glfwMaximizeWindowWin32(_GLFWwindow* window)
         maximizeWindowManually(window);
 }
 
-void _glfwShowWindowWin32(_GLFWwindow* window)
-{
-    int showCommand = SW_SHOWNA;
-
-    if (window->win32.showDefault)
-    {
-        // NOTE: GLFW windows currently do not seem to match the Windows 10 definition of
-        //       a main window, so even SW_SHOWDEFAULT does nothing
-        //       This definition is undocumented and can change (source: Raymond Chen)
-        // HACK: Apply the STARTUPINFO show command manually if available
-        STARTUPINFOW si = { sizeof(si) };
-        GetStartupInfoW(&si);
-        if (si.dwFlags & STARTF_USESHOWWINDOW)
-            showCommand = si.wShowWindow;
-
-        window->win32.showDefault = false;
-    }
-
-    ShowWindow(window->win32.handle, showCommand);
+void _glfwShowWindowWin32(_GLFWwindow* window) {
+    ShowWindow(window->win32.handle, SW_SHOWNA);
 }
 
 void _glfwHideWindowWin32(_GLFWwindow* window)
@@ -1881,32 +1853,32 @@ void _glfwSetWindowMonitorWin32(_GLFWwindow* window,
     }
 }
 
-GLFWbool _glfwWindowFocusedWin32(_GLFWwindow* window)
+IntBool _glfwWindowFocusedWin32(_GLFWwindow* window)
 {
     return window->win32.handle == GetActiveWindow();
 }
 
-GLFWbool _glfwWindowIconifiedWin32(_GLFWwindow* window)
+IntBool _glfwWindowIconifiedWin32(_GLFWwindow* window)
 {
     return IsIconic(window->win32.handle);
 }
 
-GLFWbool _glfwWindowVisibleWin32(_GLFWwindow* window)
+IntBool _glfwWindowVisibleWin32(_GLFWwindow* window)
 {
     return IsWindowVisible(window->win32.handle);
 }
 
-GLFWbool _glfwWindowMaximizedWin32(_GLFWwindow* window)
+IntBool _glfwWindowMaximizedWin32(_GLFWwindow* window)
 {
     return IsZoomed(window->win32.handle);
 }
 
-GLFWbool _glfwWindowHoveredWin32(_GLFWwindow* window)
+IntBool _glfwWindowHoveredWin32(_GLFWwindow* window)
 {
     return cursorInContentArea(window);
 }
 
-GLFWbool _glfwFramebufferTransparentWin32(_GLFWwindow* window)
+IntBool _glfwFramebufferTransparentWin32(_GLFWwindow* window)
 {
     BOOL composition, opaque;
     DWORD color;
@@ -1930,24 +1902,24 @@ GLFWbool _glfwFramebufferTransparentWin32(_GLFWwindow* window)
     return true;
 }
 
-void _glfwSetWindowResizableWin32(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowResizableWin32(_GLFWwindow* window, IntBool enabled)
 {
     updateWindowStyles(window);
 }
 
-void _glfwSetWindowDecoratedWin32(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowDecoratedWin32(_GLFWwindow* window, IntBool enabled)
 {
     updateWindowStyles(window);
 }
 
-void _glfwSetWindowFloatingWin32(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowFloatingWin32(_GLFWwindow* window, IntBool enabled)
 {
     const HWND after = enabled ? HWND_TOPMOST : HWND_NOTOPMOST;
     SetWindowPos(window->win32.handle, after, 0, 0, 0, 0,
                  SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
 }
 
-void _glfwSetWindowMousePassthroughWin32(_GLFWwindow* window, GLFWbool enabled)
+void _glfwSetWindowMousePassthroughWin32(_GLFWwindow* window, IntBool enabled)
 {
     COLORREF key = 0;
     BYTE alpha = 0;
@@ -2013,7 +1985,7 @@ void _glfwSetWindowOpacityWin32(_GLFWwindow* window, float opacity)
     }
 }
 
-void _glfwSetRawMouseMotionWin32(_GLFWwindow *window, GLFWbool enabled)
+void _glfwSetRawMouseMotionWin32(_GLFWwindow *window, IntBool enabled)
 {
     if (_glfw.win32.disabledCursorWindow != window)
         return;
@@ -2024,7 +1996,7 @@ void _glfwSetRawMouseMotionWin32(_GLFWwindow *window, GLFWbool enabled)
         disableRawMouseMotion(window);
 }
 
-GLFWbool _glfwRawMouseMotionSupportedWin32(void)
+IntBool _glfwRawMouseMotionSupportedWin32(void)
 {
     return true;
 }
@@ -2217,7 +2189,7 @@ int _glfwGetKeyScancodeWin32(int key)
     return _glfw.win32.scancodes[key];
 }
 
-GLFWbool _glfwCreateCursorWin32(_GLFWcursor* cursor,
+IntBool _glfwCreateCursorWin32(_GLFWcursor* cursor,
                                 const ImageData* image,
                                 int xhot, int yhot)
 {
@@ -2228,7 +2200,7 @@ GLFWbool _glfwCreateCursorWin32(_GLFWcursor* cursor,
     return true;
 }
 
-GLFWbool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape)
+IntBool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape)
 {
     int id = 0;
 
