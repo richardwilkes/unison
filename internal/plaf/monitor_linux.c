@@ -288,22 +288,14 @@ void _glfwFreeMonitorX11(_GLFWmonitor* monitor)
 
 void _glfwGetMonitorPosX11(_GLFWmonitor* monitor, int* xpos, int* ypos)
 {
-    if (_glfw.x11.randr.available && !_glfw.x11.randr.monitorBroken)
-    {
-        XRRScreenResources* sr =
-            XRRGetScreenResourcesCurrent(_glfw.x11.display, _glfw.x11.root);
+    if (_glfw.x11.randr.available && !_glfw.x11.randr.monitorBroken) {
+        XRRScreenResources* sr = XRRGetScreenResourcesCurrent(_glfw.x11.display, _glfw.x11.root);
         XRRCrtcInfo* ci = XRRGetCrtcInfo(_glfw.x11.display, sr, monitor->x11.crtc);
-
-        if (ci)
-        {
-            if (xpos)
-                *xpos = ci->x;
-            if (ypos)
-                *ypos = ci->y;
-
+        if (ci) {
+            *xpos = ci->x;
+            *ypos = ci->y;
             XRRFreeCrtcInfo(ci);
         }
-
         XRRFreeScreenResources(sr);
     }
 }
@@ -571,23 +563,6 @@ void _glfwSetGammaRampX11(_GLFWmonitor* monitor, const GammaRamp* ramp)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "X11: Gamma ramp access not supported by server");
     }
-}
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                        GLFW native API                       //////
-//////////////////////////////////////////////////////////////////////////
-
-RRCrtc glfwGetX11Adapter(GLFWmonitor* handle)
-{
-    _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    return monitor->x11.crtc;
-}
-
-RROutput glfwGetX11Monitor(GLFWmonitor* handle)
-{
-    _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    return monitor->x11.output;
 }
 
 #endif // PLATFORM_LINUX

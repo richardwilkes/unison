@@ -237,16 +237,9 @@ void _glfwFreeMonitorCocoa(_GLFWmonitor* monitor)
 
 void _glfwGetMonitorPosCocoa(_GLFWmonitor* monitor, int* xpos, int* ypos)
 {
-    @autoreleasepool {
-
     const CGRect bounds = CGDisplayBounds(monitor->ns.displayID);
-
-    if (xpos)
-        *xpos = (int) bounds.origin.x;
-    if (ypos)
-        *ypos = (int) bounds.origin.y;
-
-    } // autoreleasepool
+    *xpos = (int) bounds.origin.x;
+    *ypos = (int) bounds.origin.y;
 }
 
 void _glfwGetMonitorContentScaleCocoa(_GLFWmonitor* monitor,
@@ -403,17 +396,6 @@ void _glfwSetGammaRampCocoa(_GLFWmonitor* monitor, const GammaRamp* ramp)
     _glfw_free(values);
 
     } // autoreleasepool
-}
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                        GLFW native API                       //////
-//////////////////////////////////////////////////////////////////////////
-
-CGDirectDisplayID glfwGetCocoaMonitor(GLFWmonitor* handle)
-{
-    _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    return monitor->ns.displayID;
 }
 
 #endif // PLATFORM_DARWIN

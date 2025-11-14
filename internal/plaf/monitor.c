@@ -280,13 +280,9 @@ GLFWmonitor* glfwGetPrimaryMonitor(void)
     return (GLFWmonitor*) _glfw.monitors[0];
 }
 
-void glfwGetMonitorPos(GLFWmonitor* handle, int* xpos, int* ypos)
-{
-    if (xpos)
-        *xpos = 0;
-    if (ypos)
-        *ypos = 0;
-
+void glfwGetMonitorPos(GLFWmonitor* handle, int* xpos, int* ypos) {
+    *xpos = 0;
+    *ypos = 0;
     _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
     _glfw.platform.getMonitorPos(monitor, xpos, ypos);
 }

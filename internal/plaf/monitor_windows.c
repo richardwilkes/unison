@@ -323,21 +323,13 @@ void _glfwFreeMonitorWin32(_GLFWmonitor* monitor)
 {
 }
 
-void _glfwGetMonitorPosWin32(_GLFWmonitor* monitor, int* xpos, int* ypos)
-{
+void _glfwGetMonitorPosWin32(_GLFWmonitor* monitor, int* xpos, int* ypos) {
     DEVMODEW dm;
     ZeroMemory(&dm, sizeof(dm));
     dm.dmSize = sizeof(dm);
-
-    EnumDisplaySettingsExW(monitor->win32.adapterName,
-                           ENUM_CURRENT_SETTINGS,
-                           &dm,
-                           EDS_ROTATEDMODE);
-
-    if (xpos)
-        *xpos = dm.dmPosition.x;
-    if (ypos)
-        *ypos = dm.dmPosition.y;
+    EnumDisplaySettingsExW(monitor->win32.adapterName, ENUM_CURRENT_SETTINGS, &dm, EDS_ROTATEDMODE);
+    *xpos = dm.dmPosition.x;
+    *ypos = dm.dmPosition.y;
 }
 
 void _glfwGetMonitorContentScaleWin32(_GLFWmonitor* monitor,
@@ -499,23 +491,6 @@ void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GammaRamp* ramp)
     dc = CreateDCW(L"DISPLAY", monitor->win32.adapterName, NULL, NULL);
     SetDeviceGammaRamp(dc, values);
     DeleteDC(dc);
-}
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                        GLFW native API                       //////
-//////////////////////////////////////////////////////////////////////////
-
-const char* glfwGetWin32Adapter(GLFWmonitor* handle)
-{
-    _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    return monitor->win32.publicAdapterName;
-}
-
-const char* glfwGetWin32Monitor(GLFWmonitor* handle)
-{
-    _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    return monitor->win32.publicDisplayName;
 }
 
 #endif // PLATFORM_WINDOWS
