@@ -397,8 +397,6 @@ typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(Display*,GLXFBConfig,GLX
 #define glXCreateWindow _glfw.glx.CreateWindow
 #define glXDestroyWindow _glfw.glx.DestroyWindow
 
-#include "xkb_unicode.h"
-
 #define GLFW_X11_WINDOW_STATE           _GLFWwindowX11 x11;
 #define GLFW_X11_LIBRARY_WINDOW_STATE   _GLFWlibraryX11 x11;
 #define GLFW_X11_MONITOR_STATE          _GLFWmonitorX11 x11;
