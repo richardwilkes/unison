@@ -74,9 +74,9 @@ func SwapInterval(interval int) {
 func ExtensionSupported(extension string) bool {
 	e := C.CString(extension)
 	defer C.free(unsafe.Pointer(e))
-	ret := glfwbool(C.glfwExtensionSupported(e))
+	ret := C.glfwExtensionSupported(e)
 	panicError()
-	return ret
+	return ret != 0
 }
 
 // GetProcAddress returns the address of the specified OpenGL or OpenGL ES core

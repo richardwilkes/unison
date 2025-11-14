@@ -24,8 +24,7 @@ func goCharModsCallback(window unsafe.Pointer, ch C.uint, mods C.int) {
 //export goCursorEnterCallback
 func goCursorEnterCallback(window unsafe.Pointer, entered C.int) {
 	w := windows.get((*C.GLFWwindow)(window))
-	hasEntered := glfwbool(entered)
-	w.fCursorEnterHolder(w, hasEntered)
+	w.fCursorEnterHolder(w, entered != 0)
 }
 
 //export goCursorPosCallback
@@ -104,21 +103,19 @@ func goWindowContentScaleCallback(window unsafe.Pointer, x, y C.float) {
 //export goWindowFocusCallback
 func goWindowFocusCallback(window unsafe.Pointer, focused C.int) {
 	w := windows.get((*C.GLFWwindow)(window))
-	isFocused := glfwbool(focused)
-	w.fFocusHolder(w, isFocused)
+	w.fFocusHolder(w, focused != 0)
 }
 
 //export goWindowIconifyCallback
 func goWindowIconifyCallback(window unsafe.Pointer, iconified C.int) {
-	isIconified := glfwbool(iconified)
 	w := windows.get((*C.GLFWwindow)(window))
-	w.fIconifyHolder(w, isIconified)
+	w.fIconifyHolder(w, iconified != 0)
 }
 
 //export goWindowMaximizeCallback
 func goWindowMaximizeCallback(window unsafe.Pointer, maximized C.int) {
 	w := windows.get((*C.GLFWwindow)(window))
-	w.fMaximizeHolder(w, glfwbool(maximized))
+	w.fMaximizeHolder(w, maximized != 0)
 }
 
 //export goWindowPosCallback
