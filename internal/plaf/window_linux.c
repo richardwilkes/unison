@@ -1247,7 +1247,7 @@ static void updateCursorImage(_GLFWwindow* window)
         if (window->cursor)
         {
             XDefineCursor(_glfw.x11.display, window->x11.handle,
-                          window->cursor->x11.handle);
+                          window->cursor->x11Cursor);
         }
         else
             XUndefineCursor(_glfw.x11.display, window->x11.handle);
@@ -3487,8 +3487,8 @@ IntBool _glfwCreateCursorX11(_GLFWcursor* cursor,
                               const ImageData* image,
                               int xhot, int yhot)
 {
-    cursor->x11.handle = _glfwCreateNativeCursorX11(image, xhot, yhot);
-    if (!cursor->x11.handle)
+    cursor->x11Cursor = _glfwCreateNativeCursorX11(image, xhot, yhot);
+    if (!cursor->x11Cursor)
         return false;
 
     return true;
@@ -3529,13 +3529,13 @@ IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape)
             XcursorImage* image = XcursorLibraryLoadImage(name, theme, size);
             if (image)
             {
-                cursor->x11.handle = XcursorImageLoadCursor(_glfw.x11.display, image);
+                cursor->x11Cursor = XcursorImageLoadCursor(_glfw.x11.display, image);
                 XcursorImageDestroy(image);
             }
         }
     }
 
-    if (!cursor->x11.handle)
+    if (!cursor->x11Cursor)
     {
         unsigned int native = 0;
 
@@ -3564,8 +3564,8 @@ IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape)
                 return false;
         }
 
-        cursor->x11.handle = XCreateFontCursor(_glfw.x11.display, native);
-        if (!cursor->x11.handle)
+        cursor->x11Cursor = XCreateFontCursor(_glfw.x11.display, native);
+        if (!cursor->x11Cursor)
         {
             _glfwInputError(ERR_PLATFORM_ERROR, "X11: Failed to create standard cursor");
             return false;
@@ -3577,8 +3577,8 @@ IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape)
 
 void _glfwDestroyCursorX11(_GLFWcursor* cursor)
 {
-    if (cursor->x11.handle)
-        XFreeCursor(_glfw.x11.display, cursor->x11.handle);
+    if (cursor->x11Cursor)
+        XFreeCursor(_glfw.x11.display, cursor->x11Cursor);
 }
 
 void _glfwSetCursorX11(_GLFWwindow* window, _GLFWcursor* cursor)

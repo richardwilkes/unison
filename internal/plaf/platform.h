@@ -791,11 +791,11 @@ struct _GLFWmonitor
 struct _GLFWcursor {
 	_GLFWcursor*     next;
 #if defined(PLATFORM_DARWIN)
-    _GLFWcursorNS    ns;
+    NSCursor*        nsCursor;
 #elif defined(PLATFORM_LINUX)
-    _GLFWcursorX11   x11;
+	Cursor           x11Cursor;
 #elif defined(PLATFORM_WINDOWS)
-	_GLFWcursorWin32 win32;
+	HCURSOR		     win32Cursor;
 #endif
 };
 

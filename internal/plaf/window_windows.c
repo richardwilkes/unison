@@ -195,7 +195,7 @@ static void updateCursorImage(_GLFWwindow* window)
         window->cursorMode == CURSOR_CAPTURED)
     {
         if (window->cursor)
-            SetCursor(window->cursor->win32.handle);
+            SetCursor(window->cursor->win32Cursor);
         else
             SetCursor(LoadCursorW(NULL, IDC_ARROW));
     }
@@ -2163,8 +2163,8 @@ IntBool _glfwCreateCursorWin32(_GLFWcursor* cursor,
                                 const ImageData* image,
                                 int xhot, int yhot)
 {
-    cursor->win32.handle = (HCURSOR) createIcon(image, xhot, yhot, false);
-    if (!cursor->win32.handle)
+    cursor->win32Cursor = (HCURSOR) createIcon(image, xhot, yhot, false);
+    if (!cursor->win32Cursor)
         return false;
 
     return true;
@@ -2199,10 +2199,10 @@ IntBool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape)
             return false;
     }
 
-    cursor->win32.handle = LoadImageW(NULL,
+    cursor->win32Cursor = LoadImageW(NULL,
                                       MAKEINTRESOURCEW(id), IMAGE_CURSOR, 0, 0,
                                       LR_DEFAULTSIZE | LR_SHARED);
-    if (!cursor->win32.handle)
+    if (!cursor->win32Cursor)
     {
         _glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to create standard cursor");
         return false;
@@ -2213,8 +2213,8 @@ IntBool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape)
 
 void _glfwDestroyCursorWin32(_GLFWcursor* cursor)
 {
-    if (cursor->win32.handle)
-        DestroyIcon((HICON) cursor->win32.handle);
+    if (cursor->win32Cursor)
+        DestroyIcon((HICON) cursor->win32Cursor);
 }
 
 void _glfwSetCursorWin32(_GLFWwindow* window, _GLFWcursor* cursor)

@@ -824,13 +824,6 @@ typedef struct _GLFWmonitorX11
     int             index;
 } _GLFWmonitorX11;
 
-// X11-specific per-cursor data
-//
-typedef struct _GLFWcursorX11
-{
-    Cursor handle;
-} _GLFWcursorX11;
-
 IntBool _glfwCreateWindowX11(_GLFWwindow* window, const WindowConfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
 void _glfwDestroyWindowX11(_GLFWwindow* window);
 void _glfwSetWindowTitleX11(_GLFWwindow* window, const char* title);

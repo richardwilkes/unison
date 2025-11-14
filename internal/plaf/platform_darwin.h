@@ -82,13 +82,6 @@ typedef struct _GLFWmonitorNS
     id                  screen;
 } _GLFWmonitorNS;
 
-// Cocoa-specific per-cursor data
-//
-typedef struct _GLFWcursorNS
-{
-    id              object;
-} _GLFWcursorNS;
-
 IntBool _glfwCreateWindowCocoa(_GLFWwindow* window, const WindowConfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
 void _glfwDestroyWindowCocoa(_GLFWwindow* window);
 void _glfwSetWindowTitleCocoa(_GLFWwindow* window, const char* title);

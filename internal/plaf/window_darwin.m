@@ -46,7 +46,7 @@ static void updateCursorImage(_GLFWwindow* window)
         showCursor(window);
 
         if (window->cursor)
-            [(NSCursor*) window->cursor->ns.object set];
+            [window->cursor->nsCursor set];
         else
             [[NSCursor arrowCursor] set];
     }
@@ -1524,8 +1524,7 @@ void _glfwSetCursorPosCocoa(_GLFWwindow* window, double x, double y)
 
     if (window->monitor)
     {
-        CGDisplayMoveCursorToPoint(window->monitor->ns.displayID,
-                                   CGPointMake(x, y));
+        CGDisplayMoveCursorToPoint(window->monitor->ns.displayID, CGPointMake(x, y));
     }
     else
     {
@@ -1533,8 +1532,7 @@ void _glfwSetCursorPosCocoa(_GLFWwindow* window, double x, double y)
         const NSRect globalRect = [window->ns.object convertRectToScreen:localRect];
         const NSPoint globalPoint = globalRect.origin;
 
-        CGWarpMouseCursorPosition(CGPointMake(globalPoint.x,
-                                              _glfwTransformYCocoa(globalPoint.y)));
+        CGWarpMouseCursorPosition(CGPointMake(globalPoint.x, _glfwTransformYCocoa(globalPoint.y)));
     }
 
     // HACK: Calling this right after setting the cursor position prevents macOS
@@ -1595,13 +1593,13 @@ IntBool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
     native = [[NSImage alloc] initWithSize:NSMakeSize(image->width, image->height)];
     [native addRepresentation:rep];
 
-    cursor->ns.object = [[NSCursor alloc] initWithImage:native
+    cursor->nsCursor = [[NSCursor alloc] initWithImage:native
                                                 hotSpot:NSMakePoint(xhot, yhot)];
 
     [native release];
     [rep release];
 
-    if (cursor->ns.object == nil)
+    if (cursor->nsCursor == nil)
         return false;
 
     return true;
@@ -1612,38 +1610,38 @@ IntBool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
 IntBool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape)
 {
     @autoreleasepool {
-    if (!cursor->ns.object)
+    if (!cursor->nsCursor)
     {
         switch (shape)
         {
             case STD_CURSOR_ARROW:
-                cursor->ns.object = [NSCursor arrowCursor];
+                cursor->nsCursor = [NSCursor arrowCursor];
                 break;
             case STD_CURSOR_IBEAM:
-                cursor->ns.object = [NSCursor IBeamCursor];
+                cursor->nsCursor = [NSCursor IBeamCursor];
                 break;
             case STD_CURSOR_CROSSHAIR:
-                cursor->ns.object = [NSCursor crosshairCursor];
+                cursor->nsCursor = [NSCursor crosshairCursor];
                 break;
             case STD_CURSOR_POINTING_HAND:
-                cursor->ns.object = [NSCursor pointingHandCursor];
+                cursor->nsCursor = [NSCursor pointingHandCursor];
                 break;
             case STD_CURSOR_HORIZONTAL_RESIZE:
-                cursor->ns.object = [NSCursor resizeLeftRightCursor];
+                cursor->nsCursor = [NSCursor resizeLeftRightCursor];
                 break;
             case STD_CURSOR_VERTICAL_RESIZE:
-                cursor->ns.object = [NSCursor resizeUpDownCursor];
+                cursor->nsCursor = [NSCursor resizeUpDownCursor];
                 break;
         }
     }
 
-    if (!cursor->ns.object)
+    if (!cursor->nsCursor)
     {
         _glfwInputError(GLFW_CURSOR_UNAVAILABLE, "Cocoa: Standard cursor shape unavailable");
         return false;
     }
 
-    [cursor->ns.object retain];
+    [cursor->nsCursor retain];
     return true;
 
     } // autoreleasepool
@@ -1651,10 +1649,10 @@ IntBool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape)
 
 void _glfwDestroyCursorCocoa(_GLFWcursor* cursor)
 {
-    @autoreleasepool {
-    if (cursor->ns.object)
-        [(NSCursor*) cursor->ns.object release];
-    } // autoreleasepool
+    if (cursor->nsCursor) {
+        [cursor->nsCursor release];
+		cursor->nsCursor = nil;
+	}
 }
 
 void _glfwSetCursorCocoa(_GLFWwindow* window, _GLFWcursor* cursor)
