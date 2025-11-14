@@ -261,7 +261,6 @@ typedef BOOL (WINAPI * PFN_wglShareLists)(HGLRC,HGLRC);
 #define GLFW_WIN32_WINDOW_STATE         _GLFWwindowWin32  win32;
 #define GLFW_WIN32_LIBRARY_WINDOW_STATE _GLFWlibraryWin32 win32;
 #define GLFW_WIN32_MONITOR_STATE        _GLFWmonitorWin32 win32;
-#define GLFW_WIN32_CURSOR_STATE         _GLFWcursorWin32  win32;
 
 #define GLFW_WGL_CONTEXT_STATE          _GLFWcontextWGL wgl;
 #define GLFW_WGL_LIBRARY_CONTEXT_STATE  _GLFWlibraryWGL wgl;

@@ -594,7 +594,6 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
 #else
  #define GLFW_WIN32_WINDOW_STATE
  #define GLFW_WIN32_MONITOR_STATE
- #define GLFW_WIN32_CURSOR_STATE
  #define GLFW_WIN32_LIBRARY_WINDOW_STATE
  #define GLFW_WGL_CONTEXT_STATE
  #define GLFW_WGL_LIBRARY_CONTEXT_STATE
@@ -605,7 +604,6 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
 #else
  #define GLFW_COCOA_WINDOW_STATE
  #define GLFW_COCOA_MONITOR_STATE
- #define GLFW_COCOA_CURSOR_STATE
  #define GLFW_COCOA_LIBRARY_WINDOW_STATE
  #define GLFW_NSGL_CONTEXT_STATE
  #define GLFW_NSGL_LIBRARY_CONTEXT_STATE
@@ -616,7 +614,6 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
 #else
  #define GLFW_X11_WINDOW_STATE
  #define GLFW_X11_MONITOR_STATE
- #define GLFW_X11_CURSOR_STATE
  #define GLFW_X11_LIBRARY_WINDOW_STATE
  #define GLFW_GLX_CONTEXT_STATE
  #define GLFW_GLX_LIBRARY_CONTEXT_STATE
@@ -790,12 +787,15 @@ struct _GLFWmonitor
 
 // Cursor structure
 //
-struct _GLFWcursor
-{
-	_GLFWcursor* next;
-	GLFW_WIN32_CURSOR_STATE
-	GLFW_COCOA_CURSOR_STATE
-	GLFW_X11_CURSOR_STATE
+struct _GLFWcursor {
+	_GLFWcursor*     next;
+#if defined(PLATFORM_DARWIN)
+    _GLFWcursorNS    ns;
+#elif defined(PLATFORM_LINUX)
+    _GLFWcursorX11   x11;
+#elif defined(PLATFORM_WINDOWS)
+	_GLFWcursorWin32 win32;
+#endif
 };
 
 // Platform API structure

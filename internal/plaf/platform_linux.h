@@ -400,7 +400,6 @@ typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(Display*,GLXFBConfig,GLX
 #define GLFW_X11_WINDOW_STATE           _GLFWwindowX11 x11;
 #define GLFW_X11_LIBRARY_WINDOW_STATE   _GLFWlibraryX11 x11;
 #define GLFW_X11_MONITOR_STATE          _GLFWmonitorX11 x11;
-#define GLFW_X11_CURSOR_STATE           _GLFWcursorX11 x11;
 
 #define GLFW_GLX_CONTEXT_STATE          _GLFWcontextGLX glx;
 #define GLFW_GLX_LIBRARY_CONTEXT_STATE  _GLFWlibraryGLX glx;
