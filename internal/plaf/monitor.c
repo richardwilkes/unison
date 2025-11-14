@@ -341,18 +341,6 @@ const char* glfwGetMonitorName(GLFWmonitor* handle)
     return monitor->name;
 }
 
-void glfwSetMonitorUserPointer(GLFWmonitor* handle, void* pointer)
-{
-    _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    monitor->userPointer = pointer;
-}
-
-void* glfwGetMonitorUserPointer(GLFWmonitor* handle)
-{
-    _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    return monitor->userPointer;
-}
-
 monitorFunc glfwSetMonitorCallback(monitorFunc cbfun)
 {
     SWAP(monitorFunc, _glfw.callbacks.monitor, cbfun);
@@ -392,8 +380,9 @@ void glfwSetGamma(GLFWmonitor* handle, float gamma)
     }
 
     original = glfwGetGammaRamp(handle);
-    if (!original)
+    if (!original) {
         return;
+	}
 
     values = _glfw_calloc(original->size, sizeof(unsigned short));
 
@@ -429,20 +418,15 @@ const GammaRamp* glfwGetGammaRamp(GLFWmonitor* handle)
     return &monitor->currentRamp;
 }
 
-void glfwSetGammaRamp(GLFWmonitor* handle, const GammaRamp* ramp)
-{
+void glfwSetGammaRamp(GLFWmonitor* handle, const GammaRamp* ramp) {
     _GLFWmonitor* monitor = (_GLFWmonitor*) handle;
-    if (ramp->size <= 0)
-    {
+    if (ramp->size <= 0) {
         _glfwInputError(ERR_INVALID_VALUE, "Invalid gamma ramp size %i", ramp->size);
         return;
     }
-
-    if (!monitor->originalRamp.size)
-    {
+    if (!monitor->originalRamp.size) {
         if (!_glfw.platform.getGammaRamp(monitor, &monitor->originalRamp))
             return;
     }
-
     _glfw.platform.setGammaRamp(monitor, ramp);
 }

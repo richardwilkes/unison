@@ -1,7 +1,6 @@
 #include <stdint.h>
 
 #include <Carbon/Carbon.h>
-#include <IOKit/hid/IOHIDLib.h>
 
 // NOTE: All of NSGL was deprecated in the 10.14 SDK
 //       This disables the pointless warnings for every symbol we use
@@ -80,7 +79,6 @@ typedef struct _GLFWlibraryNS
     id                  delegate;
     IntBool            cursorHidden;
     TISInputSourceRef   inputSource;
-    IOHIDManagerRef     hidManager;
     id                  unicodeData;
     id                  helper;
     id                  keyUpMonitor;
@@ -112,7 +110,6 @@ typedef struct _GLFWmonitorNS
     CGDisplayModeRef    previousMode;
     uint32_t            unitNumber;
     id                  screen;
-    double              fallbackRefreshRate;
 } _GLFWmonitorNS;
 
 // Cocoa-specific per-cursor data

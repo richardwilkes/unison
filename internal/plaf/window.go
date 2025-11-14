@@ -577,21 +577,6 @@ func (w *Window) SetAttrib(attrib Hint, value int) {
 	C.glfwSetWindowAttrib(w.data, C.int(attrib), C.int(value))
 }
 
-// SetUserPointer sets the user-defined pointer of the window. The current value
-// is retained until the window is destroyed. The initial value is nil.
-func (w *Window) SetUserPointer(pointer unsafe.Pointer) {
-	C.glfwSetWindowUserPointer(w.data, pointer)
-	panicError()
-}
-
-// GetUserPointer returns the current value of the user-defined pointer of the
-// window. The initial value is nil.
-func (w *Window) GetUserPointer() unsafe.Pointer {
-	ret := C.glfwGetWindowUserPointer(w.data)
-	panicError()
-	return ret
-}
-
 // PosCallback is the window position callback.
 type PosCallback func(w *Window, xpos, ypos int)
 

@@ -107,28 +107,6 @@ func (m *Monitor) GetContentScale() (x, y float32) {
 	return float32(cX), float32(cY)
 }
 
-// SetUserPointer sets the user-defined pointer of the monitor. The current value
-// is retained until the monitor is disconnected. The initial value is nil.
-//
-// This function may be called from the monitor callback, even for a monitor
-// that is being disconnected.
-//
-// This function may be called from any thread. Access is not synchronized.
-func (m *Monitor) SetUserPointer(pointer unsafe.Pointer) {
-	C.glfwSetMonitorUserPointer(m.data, pointer)
-}
-
-// GetUserPointer returns the current value of the user-defined pointer of the
-// monitor. The initial value is nil.
-//
-// This function may be called from the monitor callback, even for a monitor
-// that is being disconnected.
-//
-// This function may be called from any thread. Access is not synchronized.
-func (m *Monitor) GetUserPointer() unsafe.Pointer {
-	return C.glfwGetMonitorUserPointer(m.data)
-}
-
 // GetPhysicalSize returns the size, in millimeters, of the display area of the
 // monitor.
 //

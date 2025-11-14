@@ -716,7 +716,6 @@ struct _GLFWwindow
 	IntBool            floating;
 	IntBool            mousePassthrough;
 	IntBool            shouldClose;
-	void*               userPointer;
 	IntBool            doublebuffer;
 	VideoMode         videoMode;
 	_GLFWmonitor*       monitor;
@@ -770,7 +769,6 @@ struct _GLFWwindow
 struct _GLFWmonitor
 {
 	char            name[128];
-	void*           userPointer;
 
 	// Physical dimensions in millimeters.
 	int             widthMM, heightMM;
@@ -1229,56 +1227,6 @@ void glfwGetMonitorContentScale(GLFWmonitor* monitor, float* xscale, float* ysca
  *  @ingroup monitor
  */
 const char* glfwGetMonitorName(GLFWmonitor* monitor);
-
-/*! @brief Sets the user pointer of the specified monitor.
- *
- *  This function sets the user-defined pointer of the specified monitor.  The
- *  current value is retained until the monitor is disconnected.  The initial
- *  value is `NULL`.
- *
- *  This function may be called from the monitor callback, even for a monitor
- *  that is being disconnected.
- *
- *  @param[in] monitor The monitor whose pointer to set.
- *  @param[in] pointer The new value.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
- *  @thread_safety This function may be called from any thread.  Access is not
- *  synchronized.
- *
- *  @sa @ref monitor_userptr
- *  @sa @ref glfwGetMonitorUserPointer
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup monitor
- */
-void glfwSetMonitorUserPointer(GLFWmonitor* monitor, void* pointer);
-
-/*! @brief Returns the user pointer of the specified monitor.
- *
- *  This function returns the current value of the user-defined pointer of the
- *  specified monitor.  The initial value is `NULL`.
- *
- *  This function may be called from the monitor callback, even for a monitor
- *  that is being disconnected.
- *
- *  @param[in] monitor The monitor whose pointer to return.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
- *  @thread_safety This function may be called from any thread.  Access is not
- *  synchronized.
- *
- *  @sa @ref monitor_userptr
- *  @sa @ref glfwSetMonitorUserPointer
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup monitor
- */
-void* glfwGetMonitorUserPointer(GLFWmonitor* monitor);
 
 /*! @brief Sets the monitor configuration callback.
  *
@@ -2556,50 +2504,6 @@ int glfwGetWindowAttrib(GLFWwindow* window, int attrib);
  *  @ingroup window
  */
 void glfwSetWindowAttrib(GLFWwindow* window, int attrib, int value);
-
-/*! @brief Sets the user pointer of the specified window.
- *
- *  This function sets the user-defined pointer of the specified window.  The
- *  current value is retained until the window is destroyed.  The initial value
- *  is `NULL`.
- *
- *  @param[in] window The window whose pointer to set.
- *  @param[in] pointer The new value.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
- *  @thread_safety This function may be called from any thread.  Access is not
- *  synchronized.
- *
- *  @sa @ref window_userptr
- *  @sa @ref glfwGetWindowUserPointer
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
-void glfwSetWindowUserPointer(GLFWwindow* window, void* pointer);
-
-/*! @brief Returns the user pointer of the specified window.
- *
- *  This function returns the current value of the user-defined pointer of the
- *  specified window.  The initial value is `NULL`.
- *
- *  @param[in] window The window whose pointer to return.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
- *  @thread_safety This function may be called from any thread.  Access is not
- *  synchronized.
- *
- *  @sa @ref window_userptr
- *  @sa @ref glfwSetWindowUserPointer
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
-void* glfwGetWindowUserPointer(GLFWwindow* window);
 
 /*! @brief Sets the position callback for the specified window.
  *

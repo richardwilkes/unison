@@ -1,98 +1,23 @@
-#include "platform.h"
-
 #if defined(PLATFORM_DARWIN)
+
+#include "platform.h"
 
 #include <limits.h>
 #include <math.h>
 
-#include <IOKit/graphics/IOGraphicsLib.h>
 #include <ApplicationServices/ApplicationServices.h>
 
 
 // Get the name of the specified display, or NULL
 //
-static char* getMonitorName(CGDirectDisplayID displayID, NSScreen* screen)
-{
-    // IOKit doesn't work on Apple Silicon anymore
-    // Luckily, 10.15 introduced -[NSScreen localizedName].
-    // Use it if available, and fall back to IOKit otherwise.
-    if (screen)
-    {
-        if ([screen respondsToSelector:@selector(localizedName)])
-        {
-            NSString* name = [screen valueForKey:@"localizedName"];
-            if (name)
-                return _glfw_strdup([name UTF8String]);
-        }
+static char* getMonitorName(CGDirectDisplayID displayID, NSScreen* screen) {
+    if (screen) {
+		NSString* name = [screen valueForKey:@"localizedName"];
+		if (name) {
+			return _glfw_strdup([name UTF8String]);
+		}
     }
-
-    io_iterator_t it;
-    io_service_t service;
-    CFDictionaryRef info;
-
-    if (IOServiceGetMatchingServices(MACH_PORT_NULL,
-                                     IOServiceMatching("IODisplayConnect"),
-                                     &it) != 0)
-    {
-        // This may happen if a desktop Mac is running headless
-        return _glfw_strdup("Display");
-    }
-
-    while ((service = IOIteratorNext(it)) != 0)
-    {
-        info = IODisplayCreateInfoDictionary(service,
-                                             kIODisplayOnlyPreferredName);
-
-        CFNumberRef vendorIDRef =
-            CFDictionaryGetValue(info, CFSTR(kDisplayVendorID));
-        CFNumberRef productIDRef =
-            CFDictionaryGetValue(info, CFSTR(kDisplayProductID));
-        if (!vendorIDRef || !productIDRef)
-        {
-            CFRelease(info);
-            continue;
-        }
-
-        unsigned int vendorID, productID;
-        CFNumberGetValue(vendorIDRef, kCFNumberIntType, &vendorID);
-        CFNumberGetValue(productIDRef, kCFNumberIntType, &productID);
-
-        if (CGDisplayVendorNumber(displayID) == vendorID &&
-            CGDisplayModelNumber(displayID) == productID)
-        {
-            // Info dictionary is used and freed below
-            break;
-        }
-
-        CFRelease(info);
-    }
-
-    IOObjectRelease(it);
-
-    if (!service)
-        return _glfw_strdup("Display");
-
-    CFDictionaryRef names =
-        CFDictionaryGetValue(info, CFSTR(kDisplayProductName));
-
-    CFStringRef nameRef;
-
-    if (!names || !CFDictionaryGetValueIfPresent(names, CFSTR("en_US"),
-                                                 (const void**) &nameRef))
-    {
-        // This may happen if a desktop Mac is running headless
-        CFRelease(info);
-        return _glfw_strdup("Display");
-    }
-
-    const CFIndex size =
-        CFStringGetMaximumSizeForEncoding(CFStringGetLength(nameRef),
-                                          kCFStringEncodingUTF8);
-    char* name = _glfw_calloc(size + 1, 1);
-    CFStringGetCString(nameRef, name, size, kCFStringEncodingUTF8);
-
-    CFRelease(info);
-    return name;
+    return _glfw_strdup("Display");
 }
 
 // Check whether the display mode should be included in enumeration
@@ -111,8 +36,7 @@ static IntBool modeIsGood(CGDisplayModeRef mode)
 
 // Convert Core Graphics display mode to GLFW video mode
 //
-static VideoMode vidmodeFromCGDisplayMode(CGDisplayModeRef mode,
-                                            double fallbackRefreshRate)
+static VideoMode vidmodeFromCGDisplayMode(CGDisplayModeRef mode)
 {
     VideoMode result;
     result.redBits = 8;
@@ -121,10 +45,6 @@ static VideoMode vidmodeFromCGDisplayMode(CGDisplayModeRef mode,
     result.width = (int) CGDisplayModeGetWidth(mode);
     result.height = (int) CGDisplayModeGetHeight(mode);
     result.refreshRate = (int) round(CGDisplayModeGetRefreshRate(mode));
-
-    if (result.refreshRate == 0)
-        result.refreshRate = (int) round(fallbackRefreshRate);
-
     return result;
 }
 
@@ -159,74 +79,6 @@ static void endFadeReservation(CGDisplayFadeReservationToken token)
                       FALSE);
         CGReleaseDisplayFadeReservation(token);
     }
-}
-
-// Returns the display refresh rate queried from the I/O registry
-//
-static double getFallbackRefreshRate(CGDirectDisplayID displayID)
-{
-    double refreshRate = 60.0;
-
-    io_iterator_t it;
-    io_service_t service;
-
-    if (IOServiceGetMatchingServices(MACH_PORT_NULL,
-                                     IOServiceMatching("IOFramebuffer"),
-                                     &it) != 0)
-    {
-        return refreshRate;
-    }
-
-    while ((service = IOIteratorNext(it)) != 0)
-    {
-        const CFNumberRef indexRef =
-            IORegistryEntryCreateCFProperty(service,
-                                            CFSTR("IOFramebufferOpenGLIndex"),
-                                            kCFAllocatorDefault,
-                                            kNilOptions);
-        if (!indexRef)
-            continue;
-
-        uint32_t index = 0;
-        CFNumberGetValue(indexRef, kCFNumberIntType, &index);
-        CFRelease(indexRef);
-
-        if (CGOpenGLDisplayMaskToDisplayID(1 << index) != displayID)
-            continue;
-
-        const CFNumberRef clockRef =
-            IORegistryEntryCreateCFProperty(service,
-                                            CFSTR("IOFBCurrentPixelClock"),
-                                            kCFAllocatorDefault,
-                                            kNilOptions);
-        const CFNumberRef countRef =
-            IORegistryEntryCreateCFProperty(service,
-                                            CFSTR("IOFBCurrentPixelCount"),
-                                            kCFAllocatorDefault,
-                                            kNilOptions);
-
-        uint32_t clock = 0, count = 0;
-
-        if (clockRef)
-        {
-            CFNumberGetValue(clockRef, kCFNumberIntType, &clock);
-            CFRelease(clockRef);
-        }
-
-        if (countRef)
-        {
-            CFNumberGetValue(countRef, kCFNumberIntType, &count);
-            CFRelease(countRef);
-        }
-
-        if (clock > 0 && count > 0)
-            refreshRate = clock / (double) count;
-
-        break;
-    }
-
-    IOObjectRelease(it);
-    return refreshRate;
 }
 
 
@@ -303,12 +155,6 @@ void _glfwPollMonitorsCocoa(void)
         monitor->ns.screen     = screen;
 
         _glfw_free(name);
-
-        CGDisplayModeRef mode = CGDisplayCopyDisplayMode(displays[i]);
-        if (CGDisplayModeGetRefreshRate(mode) == 0.0)
-            monitor->ns.fallbackRefreshRate = getFallbackRefreshRate(displays[i]);
-        CGDisplayModeRelease(mode);
-
         _glfwInputMonitor(monitor, CONNECTED, _GLFW_INSERT_LAST);
     }
 
@@ -343,8 +189,7 @@ void _glfwSetVideoModeCocoa(_GLFWmonitor* monitor, const VideoMode* desired)
         if (!modeIsGood(dm))
             continue;
 
-        const VideoMode mode =
-            vidmodeFromCGDisplayMode(dm, monitor->ns.fallbackRefreshRate);
+        const VideoMode mode = vidmodeFromCGDisplayMode(dm);
         if (_glfwCompareVideoModes(best, &mode) == 0)
         {
             native = dm;
@@ -466,8 +311,7 @@ VideoMode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count)
         if (!modeIsGood(dm))
             continue;
 
-        const VideoMode mode =
-            vidmodeFromCGDisplayMode(dm, monitor->ns.fallbackRefreshRate);
+        const VideoMode mode = vidmodeFromCGDisplayMode(dm);
         CFIndex j;
 
         for (j = 0;  j < *count;  j++)
@@ -501,7 +345,7 @@ IntBool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, VideoMode *mode)
         return false;
     }
 
-    *mode = vidmodeFromCGDisplayMode(native, monitor->ns.fallbackRefreshRate);
+    *mode = vidmodeFromCGDisplayMode(native);
     CGDisplayModeRelease(native);
     return true;
 

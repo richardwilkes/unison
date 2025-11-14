@@ -729,18 +729,6 @@ void glfwSetWindowMonitor(GLFWwindow* wh,
                                     refreshRate);
 }
 
-void glfwSetWindowUserPointer(GLFWwindow* handle, void* pointer)
-{
-    _GLFWwindow* window = (_GLFWwindow*) handle;
-    window->userPointer = pointer;
-}
-
-void* glfwGetWindowUserPointer(GLFWwindow* handle)
-{
-    _GLFWwindow* window = (_GLFWwindow*) handle;
-    return window->userPointer;
-}
-
 windowPosFunc glfwSetWindowPosCallback(GLFWwindow* handle,
                                                   windowPosFunc cbfun)
 {
