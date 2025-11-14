@@ -73,6 +73,7 @@ const (
 	// error or report it to the user, as appropriate.
 	FormatUnavailable ErrorCode = C.ERR_FORMAT_UNAVAILABLE
 
+	// FeatureUnavailable is the error code used when a platform does not support a requested feature.
 	FeatureUnavailable ErrorCode = C.ERR_FEATURE_UNAVAILABLE
 )
 
@@ -105,8 +106,8 @@ func (e ErrorCode) String() string {
 
 // Error holds error code and description.
 type Error struct {
-	Code ErrorCode
 	Desc string
+	Code ErrorCode
 }
 
 func convertErrorResponse(errResp *C.ErrorResponse) error {

@@ -48,7 +48,10 @@ func goDropCallback(window unsafe.Pointer, count C.int, names **C.char) {
 //export goErrorCallback
 func goErrorCallback(code C.int, desc *C.char) {
 	flushErrors()
-	err := &Error{ErrorCode(code), C.GoString(desc)}
+	err := &Error{
+		Desc: C.GoString(desc),
+		Code: ErrorCode(code),
+	}
 	select {
 	case lastError <- err:
 	default:
@@ -93,7 +96,7 @@ func goWindowCloseCallback(window unsafe.Pointer) {
 }
 
 //export goWindowContentScaleCallback
-func goWindowContentScaleCallback(window unsafe.Pointer, x C.float, y C.float) {
+func goWindowContentScaleCallback(window unsafe.Pointer, x, y C.float) {
 	w := windows.get((*C.GLFWwindow)(window))
 	w.fContentScaleHolder(w, float32(x), float32(y))
 }

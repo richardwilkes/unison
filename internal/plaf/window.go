@@ -23,8 +23,8 @@ import (
 
 // Internal window list stuff
 type windowList struct {
-	l sync.Mutex
 	m map[*C.GLFWwindow]*Window
+	l sync.Mutex
 }
 
 var windows = windowList{m: map[*C.GLFWwindow]*Window{}}
@@ -129,21 +129,21 @@ type Window struct {
 	data *C.GLFWwindow
 
 	// Window.
-	fPosHolder             func(w *Window, xpos int, ypos int)
-	fSizeHolder            func(w *Window, width int, height int)
-	fFramebufferSizeHolder func(w *Window, width int, height int)
+	fPosHolder             func(w *Window, xpos, ypos int)
+	fSizeHolder            func(w *Window, width, height int)
+	fFramebufferSizeHolder func(w *Window, width, height int)
 	fCloseHolder           func(w *Window)
 	fMaximizeHolder        func(w *Window, maximized bool)
-	fContentScaleHolder    func(w *Window, x float32, y float32)
+	fContentScaleHolder    func(w *Window, x, y float32)
 	fRefreshHolder         func(w *Window)
 	fFocusHolder           func(w *Window, focused bool)
 	fIconifyHolder         func(w *Window, iconified bool)
 
 	// Input.
 	fMouseButtonHolder func(w *Window, button MouseButton, action Action, mod ModifierKey)
-	fCursorPosHolder   func(w *Window, xpos float64, ypos float64)
+	fCursorPosHolder   func(w *Window, xpos, ypos float64)
 	fCursorEnterHolder func(w *Window, entered bool)
-	fScrollHolder      func(w *Window, xoff float64, yoff float64)
+	fScrollHolder      func(w *Window, xoff, yoff float64)
 	fKeyHolder         func(w *Window, key Key, scancode int, action Action, mods ModifierKey)
 	fCharHolder        func(w *Window, char rune)
 	fCharModsHolder    func(w *Window, char rune, mods ModifierKey)
@@ -411,10 +411,10 @@ func (w *Window) GetFrameSize() (left, top, right, bottom int) {
 // important for text and any UI elements.
 //
 // This function may only be called from the main thread.
-func (w *Window) GetContentScale() (float32, float32) {
-	var x, y C.float
-	C.glfwGetWindowContentScale(w.data, &x, &y)
-	return float32(x), float32(y)
+func (w *Window) GetContentScale() (x, y float32) {
+	var cX, cY C.float
+	C.glfwGetWindowContentScale(w.data, &cX, &cY)
+	return float32(cX), float32(cY)
 }
 
 // GetOpacity function returns the opacity of the window, including any
@@ -445,7 +445,7 @@ func (w *Window) SetOpacity(opacity float32) {
 	C.glfwSetWindowOpacity(w.data, C.float(opacity))
 }
 
-// RequestWindowAttention funciton requests user attention to the specified
+// RequestAttention function requests user attention to the specified
 // window. On platforms where this is not supported, attention is requested to
 // the application as a whole.
 //
@@ -593,7 +593,7 @@ func (w *Window) GetUserPointer() unsafe.Pointer {
 }
 
 // PosCallback is the window position callback.
-type PosCallback func(w *Window, xpos int, ypos int)
+type PosCallback func(w *Window, xpos, ypos int)
 
 // SetPosCallback sets the position callback of the window, which is called
 // when the window is moved. The callback is provided with the screen position
@@ -611,7 +611,7 @@ func (w *Window) SetPosCallback(cbfun PosCallback) (previous PosCallback) {
 }
 
 // SizeCallback is the window size callback.
-type SizeCallback func(w *Window, width int, height int)
+type SizeCallback func(w *Window, width, height int)
 
 // SetSizeCallback sets the size callback of the window, which is called when
 // the window is resized. The callback is provided with the size, in screen
@@ -629,7 +629,7 @@ func (w *Window) SetSizeCallback(cbfun SizeCallback) (previous SizeCallback) {
 }
 
 // FramebufferSizeCallback is the framebuffer size callback.
-type FramebufferSizeCallback func(w *Window, width int, height int)
+type FramebufferSizeCallback func(w *Window, width, height int)
 
 // SetFramebufferSizeCallback sets the framebuffer resize callback of the specified
 // window, which is called when the framebuffer of the specified window is resized.
@@ -691,7 +691,7 @@ func (w *Window) SetMaximizeCallback(cbfun MaximizeCallback) MaximizeCallback {
 
 // ContentScaleCallback is the function signature for window content scale
 // callback functions.
-type ContentScaleCallback func(w *Window, x float32, y float32)
+type ContentScaleCallback func(w *Window, x, y float32)
 
 // SetContentScaleCallback function sets the window content scale callback of
 // the specified window, which is called when the content scale of the specified

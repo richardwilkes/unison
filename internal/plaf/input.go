@@ -343,21 +343,18 @@ func (w *Window) SetCursorPos(xpos, ypos float64) {
 // Like all other coordinate systems in GLFW, the X-axis points to the right and the Y-axis points down.
 func CreateCursor(img image.Image, xhot, yhot int) *Cursor {
 	imgC, free := imageToGLFW(img)
-
-	c := C.glfwCreateCursor(&imgC, C.int(xhot), C.int(yhot))
-
+	cursor := C.glfwCreateCursor(&imgC, C.int(xhot), C.int(yhot))
 	free()
 	panicError()
-
-	return &Cursor{c}
+	return &Cursor{cursor}
 }
 
 // CreateStandardCursor returns a cursor with a standard shape,
 // that can be set for a window with SetCursor.
 func CreateStandardCursor(shape StandardCursor) *Cursor {
-	c := C.glfwCreateStandardCursor(C.int(shape))
+	cursor := C.glfwCreateStandardCursor(C.int(shape))
 	panicError()
-	return &Cursor{c}
+	return &Cursor{cursor}
 }
 
 // Destroy destroys a cursor previously created with CreateCursor.
@@ -488,7 +485,7 @@ func (w *Window) SetMouseButtonCallback(cbfun MouseButtonCallback) (previous Mou
 }
 
 // CursorPosCallback the cursor position callback.
-type CursorPosCallback func(w *Window, xpos float64, ypos float64)
+type CursorPosCallback func(w *Window, xpos, ypos float64)
 
 // SetCursorPosCallback sets the cursor position callback which is called
 // when the cursor is moved. The callback is provided with the position relative
@@ -523,7 +520,7 @@ func (w *Window) SetCursorEnterCallback(cbfun CursorEnterCallback) (previous Cur
 }
 
 // ScrollCallback is the scroll callback.
-type ScrollCallback func(w *Window, xoff float64, yoff float64)
+type ScrollCallback func(w *Window, xoff, yoff float64)
 
 // SetScrollCallback sets the scroll callback which is called when a scrolling
 // device is used, such as a mouse wheel or scrolling area of a touchpad.

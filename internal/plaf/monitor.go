@@ -53,7 +53,7 @@ func GetMonitors() []*Monitor {
 		return nil
 	}
 	m := make([]*Monitor, length)
-	list := unsafe.Slice((**C.GLFWmonitor)(mC), length)
+	list := unsafe.Slice(mC, length)
 	for i := 0; i < length; i++ {
 		m[i] = &Monitor{data: list[i]}
 	}
@@ -91,8 +91,7 @@ func (m *Monitor) GetPos() (x, y int) {
 func (m *Monitor) GetWorkarea() (x, y, width, height int) {
 	var cX, cY, cWidth, cHeight C.int
 	C.glfwGetMonitorWorkarea(m.data, &cX, &cY, &cWidth, &cHeight)
-	x, y, width, height = int(cX), int(cY), int(cWidth), int(cHeight)
-	return
+	return int(cX), int(cY), int(cWidth), int(cHeight)
 }
 
 // GetContentScale function retrieves the content scale for the specified monitor.
@@ -102,10 +101,10 @@ func (m *Monitor) GetWorkarea() (x, y, width, height int) {
 // and any UI elements.
 //
 // This function must only be called from the main thread.
-func (m *Monitor) GetContentScale() (float32, float32) {
-	var x, y C.float
-	C.glfwGetMonitorContentScale(m.data, &x, &y)
-	return float32(x), float32(y)
+func (m *Monitor) GetContentScale() (x, y float32) {
+	var cX, cY C.float
+	C.glfwGetMonitorContentScale(m.data, &cX, &cY)
+	return float32(cX), float32(cY)
 }
 
 // SetUserPointer sets the user-defined pointer of the monitor. The current value
@@ -130,7 +129,7 @@ func (m *Monitor) GetUserPointer() unsafe.Pointer {
 	return C.glfwGetMonitorUserPointer(m.data)
 }
 
-// GetPhysicalSize returns the size, in millimetres, of the display area of the
+// GetPhysicalSize returns the size, in millimeters, of the display area of the
 // monitor.
 //
 // Note: Some operating systems do not provide accurate information, either
@@ -187,7 +186,7 @@ func (m *Monitor) GetVideoModes() []*VidMode {
 	}
 
 	v := make([]*VidMode, length)
-	list := unsafe.Slice((*C.VideoMode)(vC), length)
+	list := unsafe.Slice(vC, length)
 
 	for i := 0; i < length; i++ {
 		t := list[i]
