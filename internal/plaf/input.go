@@ -284,15 +284,6 @@ func (w *Window) GetKey(key Key) Action {
 	return ret
 }
 
-// GetKeyName returns the localized name of the specified printable key.
-//
-// If the key is glfw.KeyUnknown, the scancode is used, otherwise the scancode is ignored.
-func GetKeyName(key Key, scancode int) string {
-	ret := C.glfwGetKeyName(C.int(key), C.int(scancode))
-	panicError()
-	return C.GoString(ret)
-}
-
 // GetMouseButton returns the last state reported for the specified mouse button.
 //
 // If the StickyMouseButtons input mode is enabled, this function returns Press

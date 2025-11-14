@@ -482,7 +482,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 	platform->createStandardCursor = _glfwCreateStandardCursorWin32;
 	platform->destroyCursor = _glfwDestroyCursorWin32;
 	platform->setCursor = _glfwSetCursorWin32;
-	platform->getScancodeName = _glfwGetScancodeNameWin32;
 	platform->getKeyScancode = _glfwGetKeyScancodeWin32;
 	platform->freeMonitor = _glfwFreeMonitorWin32;
 	platform->getMonitorPos = _glfwGetMonitorPosWin32;

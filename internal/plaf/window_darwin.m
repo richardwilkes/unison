@@ -1560,56 +1560,6 @@ void _glfwSetCursorModeCocoa(_GLFWwindow* window, int mode)
     } // autoreleasepool
 }
 
-const char* _glfwGetScancodeNameCocoa(int scancode)
-{
-    @autoreleasepool {
-
-    if (scancode < 0 || scancode > 0xff)
-    {
-        _glfwInputError(ERR_INVALID_VALUE, "Invalid scancode %i", scancode);
-        return NULL;
-    }
-
-    const int key = _glfw.ns.keycodes[scancode];
-    if (key == KEY_UNKNOWN)
-        return NULL;
-
-    UInt32 deadKeyState = 0;
-    UniChar characters[4];
-    UniCharCount characterCount = 0;
-
-    if (UCKeyTranslate([(NSData*) _glfw.ns.unicodeData bytes],
-                       scancode,
-                       kUCKeyActionDisplay,
-                       0,
-                       LMGetKbdType(),
-                       kUCKeyTranslateNoDeadKeysBit,
-                       &deadKeyState,
-                       sizeof(characters) / sizeof(characters[0]),
-                       &characterCount,
-                       characters) != noErr)
-    {
-        return NULL;
-    }
-
-    if (!characterCount)
-        return NULL;
-
-    CFStringRef string = CFStringCreateWithCharactersNoCopy(kCFAllocatorDefault,
-                                                            characters,
-                                                            characterCount,
-                                                            kCFAllocatorNull);
-    CFStringGetCString(string,
-                       _glfw.ns.keynames[key],
-                       sizeof(_glfw.ns.keynames[key]),
-                       kCFStringEncodingUTF8);
-    CFRelease(string);
-
-    return _glfw.ns.keynames[key];
-
-    } // autoreleasepool
-}
-
 int _glfwGetKeyScancodeCocoa(int key)
 {
     return _glfw.ns.scancodes[key];

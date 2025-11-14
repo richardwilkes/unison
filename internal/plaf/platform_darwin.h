@@ -1,40 +1,22 @@
 #include <stdint.h>
 
-#include <Carbon/Carbon.h>
-
 // NOTE: All of NSGL was deprecated in the 10.14 SDK
 //       This disables the pointless warnings for every symbol we use
 #ifndef GL_SILENCE_DEPRECATION
 #define GL_SILENCE_DEPRECATION
 #endif
 
-#if defined(__OBJC__)
 #import <Cocoa/Cocoa.h>
-#else
-typedef void* id;
-#endif
 
-#define GLFW_COCOA_WINDOW_STATE         _GLFWwindowNS  ns;
 #define GLFW_COCOA_LIBRARY_WINDOW_STATE _GLFWlibraryNS ns;
 #define GLFW_COCOA_MONITOR_STATE        _GLFWmonitorNS ns;
 
 #define GLFW_NSGL_CONTEXT_STATE         _GLFWcontextNSGL nsgl;
 #define GLFW_NSGL_LIBRARY_CONTEXT_STATE _GLFWlibraryNSGL nsgl;
 
-// HIToolbox.framework pointer typedefs
-#define kTISPropertyUnicodeKeyLayoutData _glfw.ns.tis.kPropertyUnicodeKeyLayoutData
-typedef TISInputSourceRef (*PFN_TISCopyCurrentKeyboardLayoutInputSource)(void);
-#define TISCopyCurrentKeyboardLayoutInputSource _glfw.ns.tis.CopyCurrentKeyboardLayoutInputSource
-typedef void* (*PFN_TISGetInputSourceProperty)(TISInputSourceRef,CFStringRef);
-#define TISGetInputSourceProperty _glfw.ns.tis.GetInputSourceProperty
-typedef UInt8 (*PFN_LMGetKbdType)(void);
-#define LMGetKbdType _glfw.ns.tis.GetKbdType
-
-
 // NSGL-specific per-context data
 //
-typedef struct _GLFWcontextNSGL
-{
+typedef struct _GLFWcontextNSGL {
     id                pixelFormat;
     id                object;
 } _GLFWcontextNSGL;
@@ -77,9 +59,6 @@ typedef struct _GLFWlibraryNS
     CGEventSourceRef    eventSource;
     id                  delegate;
     IntBool            cursorHidden;
-    TISInputSourceRef   inputSource;
-    id                  unicodeData;
-    id                  helper;
     id                  keyUpMonitor;
     id                  nibObjects;
 
@@ -91,14 +70,6 @@ typedef struct _GLFWlibraryNS
     double              restoreCursorPosX, restoreCursorPosY;
     // The window whose disabled cursor mode is active
     _GLFWwindow*        disabledCursorWindow;
-
-    struct {
-        CFBundleRef     bundle;
-        PFN_TISCopyCurrentKeyboardLayoutInputSource CopyCurrentKeyboardLayoutInputSource;
-        PFN_TISGetInputSourceProperty GetInputSourceProperty;
-        PFN_LMGetKbdType GetKbdType;
-        CFStringRef     kPropertyUnicodeKeyLayoutData;
-    } tis;
 } _GLFWlibraryNS;
 
 // Cocoa-specific per-monitor data
@@ -163,7 +134,6 @@ void _glfwPostEmptyEventCocoa(void);
 void _glfwGetCursorPosCocoa(_GLFWwindow* window, double* xpos, double* ypos);
 void _glfwSetCursorPosCocoa(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeCocoa(_GLFWwindow* window, int mode);
-const char* _glfwGetScancodeNameCocoa(int scancode);
 int _glfwGetKeyScancodeCocoa(int key);
 IntBool _glfwCreateCursorCocoa(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
 IntBool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape);

@@ -3478,38 +3478,6 @@ void _glfwSetCursorModeX11(_GLFWwindow* window, int mode)
     XFlush(_glfw.x11.display);
 }
 
-const char* _glfwGetScancodeNameX11(int scancode)
-{
-    if (!_glfw.x11.xkb.available)
-        return NULL;
-
-    if (scancode < 0 || scancode > 0xff)
-    {
-        _glfwInputError(ERR_INVALID_VALUE, "Invalid scancode %i", scancode);
-        return NULL;
-    }
-
-    const int key = _glfw.x11.keycodes[scancode];
-    if (key == KEY_UNKNOWN)
-        return NULL;
-
-    const KeySym keysym = XkbKeycodeToKeysym(_glfw.x11.display,
-                                             scancode, _glfw.x11.xkb.group, 0);
-    if (keysym == NoSymbol)
-        return NULL;
-
-    const uint32_t codepoint = keySym2Unicode(keysym);
-    if (codepoint == GLFW_INVALID_CODEPOINT)
-        return NULL;
-
-    const size_t count = _glfwEncodeUTF8(_glfw.x11.keynames[key], codepoint);
-    if (count == 0)
-        return NULL;
-
-    _glfw.x11.keynames[key][count] = '\0';
-    return _glfw.x11.keynames[key];
-}
-
 int _glfwGetKeyScancodeX11(int key)
 {
     return _glfw.x11.scancodes[key];

@@ -284,29 +284,6 @@ int glfwRawMouseMotionSupported(void)
     return _glfw.platform.rawMouseMotionSupported();
 }
 
-const char* glfwGetKeyName(int key, int scancode)
-{
-    if (key != KEY_UNKNOWN)
-    {
-        if (key < KEY_SPACE || key > KEY_LAST)
-        {
-            _glfwInputError(ERR_INVALID_ENUM, "Invalid key %i", key);
-            return NULL;
-        }
-
-        if (key != KEY_KP_EQUAL &&
-            (key < KEY_KP_0 || key > KEY_KP_ADD) &&
-            (key < KEY_APOSTROPHE || key > KEY_WORLD_2))
-        {
-            return NULL;
-        }
-
-        scancode = _glfw.platform.getKeyScancode(key);
-    }
-
-    return _glfw.platform.getScancodeName(scancode);
-}
-
 int glfwGetKeyScancode(int key)
 {
     if (key < KEY_SPACE || key > KEY_LAST)

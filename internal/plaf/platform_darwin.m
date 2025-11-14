@@ -132,58 +132,6 @@ static void createKeyTables(void) {
 	}
 }
 
-// Retrieve Unicode data for the current keyboard layout.
-static void updateUnicodeData(void) {
-	if (_glfw.ns.inputSource) {
-		CFRelease(_glfw.ns.inputSource);
-		_glfw.ns.inputSource = NULL;
-		_glfw.ns.unicodeData = nil;
-	}
-	_glfw.ns.inputSource = TISCopyCurrentKeyboardLayoutInputSource();
-	if (_glfw.ns.inputSource) {
-		_glfw.ns.unicodeData = TISGetInputSourceProperty(_glfw.ns.inputSource, kTISPropertyUnicodeKeyLayoutData);
-	}
-}
-
-// Load HIToolbox.framework and the TIS symbols we need from it.
-// This works only because Cocoa has already loaded it properly.
-static ErrorResponse* initializeTIS(void) {
-	_glfw.ns.tis.bundle = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.HIToolbox"));
-	if (!_glfw.ns.tis.bundle) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load HIToolbox.framework");
-	}
-	CFStringRef* kPropertyUnicodeKeyLayoutData = CFBundleGetDataPointerForName(_glfw.ns.tis.bundle,
-		CFSTR("kTISPropertyUnicodeKeyLayoutData"));
-	_glfw.ns.tis.CopyCurrentKeyboardLayoutInputSource = CFBundleGetFunctionPointerForName(_glfw.ns.tis.bundle,
-		CFSTR("TISCopyCurrentKeyboardLayoutInputSource"));
-	_glfw.ns.tis.GetInputSourceProperty = CFBundleGetFunctionPointerForName(_glfw.ns.tis.bundle,
-		CFSTR("TISGetInputSourceProperty"));
-	_glfw.ns.tis.GetKbdType = CFBundleGetFunctionPointerForName(_glfw.ns.tis.bundle, CFSTR("LMGetKbdType"));
-	if (!kPropertyUnicodeKeyLayoutData ||
-		!TISCopyCurrentKeyboardLayoutInputSource ||
-		!TISGetInputSourceProperty ||
-		!LMGetKbdType) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load TIS API symbols");
-	}
-	_glfw.ns.tis.kPropertyUnicodeKeyLayoutData = *kPropertyUnicodeKeyLayoutData;
-	updateUnicodeData();
-	return NULL;
-}
-
-@interface GLFWHelper : NSObject
-@end
-
-@implementation GLFWHelper
-
-- (void)selectedKeyboardInputSourceChanged:(NSObject* )object {
-    updateUnicodeData();
-}
-
-- (void)doNothing:(id)object {
-}
-
-@end // GLFWHelper
-
 @interface GLFWApplicationDelegate : NSObject <NSApplicationDelegate>
 @end
 
@@ -229,7 +177,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 	platform->createStandardCursor = _glfwCreateStandardCursorCocoa;
 	platform->destroyCursor = _glfwDestroyCursorCocoa;
 	platform->setCursor = _glfwSetCursorCocoa;
-	platform->getScancodeName = _glfwGetScancodeNameCocoa;
 	platform->getKeyScancode = _glfwGetKeyScancodeCocoa;
 	platform->freeMonitor = _glfwFreeMonitorCocoa;
 	platform->getMonitorPos = _glfwGetMonitorPosCocoa;
@@ -278,9 +225,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 	platform->postEmptyEvent = _glfwPostEmptyEventCocoa;
 
 	@autoreleasepool {
-		_glfw.ns.helper = [[GLFWHelper alloc] init];
-
-		[NSThread detachNewThreadSelector:@selector(doNothing:) toTarget:_glfw.ns.helper withObject:nil];
 		[NSApplication sharedApplication];
 
 		_glfw.ns.delegate = [[GLFWApplicationDelegate alloc] init];
@@ -304,10 +248,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 		NSDictionary* defaults = @{@"ApplePressAndHoldEnabled":@NO};
 		[[NSUserDefaults standardUserDefaults] registerDefaults:defaults];
 
-		[[NSNotificationCenter defaultCenter] addObserver:_glfw.ns.helper
-			selector:@selector(selectedKeyboardInputSourceChanged:)
-			name:NSTextInputContextKeyboardSelectionDidChangeNotification object:nil];
-
 		createKeyTables();
 
 		_glfw.ns.eventSource = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
@@ -317,12 +257,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 		}
 
 		CGEventSourceSetLocalEventsSuppressionInterval(_glfw.ns.eventSource, 0.0);
-
-		ErrorResponse* errRsp = initializeTIS();
-		if (errRsp != NULL) {
-			_terminate();
-			return errRsp;
-		}
 
 		_glfwPollMonitorsCocoa();
 
@@ -337,11 +271,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 
 void platformTerminate(void) {
 	@autoreleasepool {
-		if (_glfw.ns.inputSource) {
-			CFRelease(_glfw.ns.inputSource);
-			_glfw.ns.inputSource = NULL;
-			_glfw.ns.unicodeData = nil;
-		}
 		if (_glfw.ns.eventSource) {
 			CFRelease(_glfw.ns.eventSource);
 			_glfw.ns.eventSource = NULL;
@@ -350,13 +279,6 @@ void platformTerminate(void) {
 			[NSApp setDelegate:nil];
 			[_glfw.ns.delegate release];
 			_glfw.ns.delegate = nil;
-		}
-		if (_glfw.ns.helper) {
-			[[NSNotificationCenter defaultCenter] removeObserver:_glfw.ns.helper
-				name:NSTextInputContextKeyboardSelectionDidChangeNotification object:nil];
-			[[NSNotificationCenter defaultCenter] removeObserver:_glfw.ns.helper];
-			[_glfw.ns.helper release];
-			_glfw.ns.helper = nil;
 		}
 		if (_glfw.ns.keyUpMonitor) {
 			[NSEvent removeMonitor:_glfw.ns.keyUpMonitor];

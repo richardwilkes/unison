@@ -397,7 +397,6 @@ typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(Display*,GLXFBConfig,GLX
 #define glXCreateWindow _glfw.glx.CreateWindow
 #define glXDestroyWindow _glfw.glx.DestroyWindow
 
-#define GLFW_X11_WINDOW_STATE           _GLFWwindowX11 x11;
 #define GLFW_X11_LIBRARY_WINDOW_STATE   _GLFWlibraryX11 x11;
 #define GLFW_X11_MONITOR_STATE          _GLFWmonitorX11 x11;
 
@@ -877,7 +876,6 @@ void _glfwPostEmptyEventX11(void);
 void _glfwGetCursorPosX11(_GLFWwindow* window, double* xpos, double* ypos);
 void _glfwSetCursorPosX11(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeX11(_GLFWwindow* window, int mode);
-const char* _glfwGetScancodeNameX11(int scancode);
 int _glfwGetKeyScancodeX11(int key);
 IntBool _glfwCreateCursorX11(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
 IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape);
