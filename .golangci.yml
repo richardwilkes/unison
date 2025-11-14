@@ -53,6 +53,7 @@ linters:
       min-occurrences: 4
     gocritic:
       disabled-checks:
+        - dupImport
         - sloppyReassign
       enabled-tags:
         - diagnostic
@@ -152,12 +153,8 @@ linters:
   exclusions:
     generated: lax
     paths:
-      - third_party$
-      - builtin$
-      - examples$
       - internal/ns/
       - internal/skia/
-      - internal/w32/
 issues:
   max-same-issues: 0
 formatters:
