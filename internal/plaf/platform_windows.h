@@ -346,10 +346,6 @@ typedef struct _GLFWlibraryWin32
     char                keynames[KEY_LAST + 1][5];
     // Where to place the cursor when re-enabled
     double              restoreCursorPosX, restoreCursorPosY;
-    // The window whose disabled cursor mode is active
-    _GLFWwindow*        disabledCursorWindow;
-    // The window the cursor is captured in
-    _GLFWwindow*        capturedCursorWindow;
     RAWINPUT*           rawInput;
     int                 rawInputSize;
     UINT                mouseTrailSize;
@@ -464,16 +460,11 @@ void _glfwSetWindowMousePassthroughWin32(_GLFWwindow* window, IntBool enabled);
 float _glfwGetWindowOpacityWin32(_GLFWwindow* window);
 void _glfwSetWindowOpacityWin32(_GLFWwindow* window, float opacity);
 
-void _glfwSetRawMouseMotionWin32(_GLFWwindow *window, IntBool enabled);
-IntBool _glfwRawMouseMotionSupportedWin32(void);
-
 void _glfwPollEventsWin32(void);
 void _glfwWaitEventsWin32(void);
 void _glfwWaitEventsTimeoutWin32(double timeout);
 void _glfwPostEmptyEventWin32(void);
 
-void _glfwGetCursorPosWin32(_GLFWwindow* window, double* xpos, double* ypos);
-void _glfwSetCursorPosWin32(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeWin32(_GLFWwindow* window, int mode);
 int _glfwGetKeyScancodeWin32(int key);
 IntBool _glfwCreateCursorWin32(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);

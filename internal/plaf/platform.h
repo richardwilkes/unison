@@ -8,6 +8,8 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
+#include <float.h>
 
 #if !defined(APIENTRY)
 	#if defined(PLATFORM_WINDOWS)
@@ -249,8 +251,6 @@ extern "C" {
 // Cursor mode values
 #define CURSOR_NORMAL   0x00034001
 #define CURSOR_HIDDEN   0x00034002
-#define CURSOR_DISABLED 0x00034003
-#define CURSOR_CAPTURED 0x00034004
 
 // Standard cursor IDs
 #define STD_CURSOR_ARROW             0x00036001
@@ -729,7 +729,6 @@ struct _GLFWwindow
 	char                keys[KEY_LAST + 1];
 	// Virtual cursor position when cursor is disabled
 	double              virtualCursorPosX, virtualCursorPosY;
-	IntBool            rawMouseMotion;
 
 	_GLFWcontext        context;
 
@@ -804,11 +803,7 @@ struct _GLFWcursor {
 struct _GLFWplatform
 {
 	// input
-	void (*getCursorPos)(_GLFWwindow*,double*,double*);
-	void (*setCursorPos)(_GLFWwindow*,double,double);
 	void (*setCursorMode)(_GLFWwindow*,int);
-	void (*setRawMouseMotion)(_GLFWwindow*,IntBool);
-	IntBool (*rawMouseMotionSupported)(void);
 	IntBool (*createCursor)(_GLFWcursor*,const ImageData*,int,int);
 	IntBool (*createStandardCursor)(_GLFWcursor*,int);
 	void (*destroyCursor)(_GLFWcursor*);
@@ -2979,11 +2974,6 @@ int glfwGetInputMode(GLFWwindow* window, int mode);
  *  - `CURSOR_NORMAL` makes the cursor visible and behaving normally.
  *  - `CURSOR_HIDDEN` makes the cursor invisible when it is over the
  *    content area of the window but does not restrict the cursor from leaving.
- *  - `CURSOR_DISABLED` hides and grabs the cursor, providing virtual
- *    and unlimited cursor movement.  This is useful for implementing for
- *    example 3D camera controls.
- *  - `CURSOR_CAPTURED` makes the cursor visible and confines it to the
- *    content area of the window.
  *
  *  If the mode is `INPUT_MODE_STICKY_KEYS`, the value must be either `true` to
  *  enable sticky keys, or `false` to disable it.  If sticky keys are
@@ -3005,12 +2995,6 @@ int glfwGetInputMode(GLFWwindow* window, int mode);
  *  callbacks that receive modifier bits will also have the @ref
  *  MOD_CAPS_LOCK bit set when the event was generated with Caps Lock on,
  *  and the @ref MOD_NUM_LOCK bit when Num Lock was on.
- *
- *  If the mode is `INPUT_MODE_RAW_MOUSE_MOTION`, the value must be either `true`
- *  to enable raw (unscaled and unaccelerated) mouse motion when the cursor is
- *  disabled, or `false` to disable it.  If raw motion is not supported,
- *  attempting to set this will emit @ref ERR_FEATURE_UNAVAILABLE.  Call @ref
- *  glfwRawMouseMotionSupported to check for support.
  *
  *  If the mode is `INPUT_MODE_UNLIMITED_MOUSE_BUTTONS`, the value must be either
  *  `true` to disable the mouse button limit when calling the mouse button
@@ -3036,35 +3020,6 @@ int glfwGetInputMode(GLFWwindow* window, int mode);
  *  @ingroup input
  */
 void glfwSetInputMode(GLFWwindow* window, int mode, int value);
-
-/*! @brief Returns whether raw mouse motion is supported.
- *
- *  This function returns whether raw mouse motion is supported on the current
- *  system.  This status does not change after GLFW has been initialized so you
- *  only need to check this once.  If you attempt to enable raw motion on
- *  a system that does not support it, @ref ERR_PLATFORM_ERROR will be emitted.
- *
- *  Raw mouse motion is closer to the actual motion of the mouse across
- *  a surface.  It is not affected by the scaling and acceleration applied to
- *  the motion of the desktop cursor.  That processing is suitable for a cursor
- *  while raw motion is better for controlling for example a 3D camera.  Because
- *  of this, raw mouse motion is only provided when the cursor is disabled.
- *
- *  @return `true` if raw mouse motion is supported on the current machine,
- *  or `false` otherwise.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref raw_mouse_motion
- *  @sa @ref glfwSetInputMode
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup input
- */
-int glfwRawMouseMotionSupported(void);
 
 /*! @brief Returns the platform-specific scancode of the specified key.
  *
@@ -3164,80 +3119,11 @@ int glfwGetKey(GLFWwindow* window, int key);
  */
 int glfwGetMouseButton(GLFWwindow* window, int button);
 
-/*! @brief Retrieves the position of the cursor relative to the content area of
- *  the window.
- *
- *  This function returns the position of the cursor, in screen coordinates,
- *  relative to the upper-left corner of the content area of the specified
- *  window.
- *
- *  If the cursor is disabled (with `CURSOR_DISABLED`) then the cursor
- *  position is unbounded and limited only by the minimum and maximum values of
- *  a `double`.
- *
- *  The coordinate can be converted to their integer equivalents with the
- *  `floor` function.  Casting directly to an integer type works for positive
- *  coordinates, but fails for negative ones.
- *
- *  Any or all of the position arguments may be `NULL`.  If an error occurs, all
- *  non-`NULL` position arguments will be set to zero.
- *
- *  @param[in] window The desired window.
- *  @param[out] xpos Where to store the cursor x-coordinate, relative to the
- *  left edge of the content area, or `NULL`.
- *  @param[out] ypos Where to store the cursor y-coordinate, relative to the to
- *  top edge of the content area, or `NULL`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_pos
- *  @sa @ref glfwSetCursorPos
- *
- *  @since Added in version 3.0.  Replaces `glfwGetMousePos`.
- *
- *  @ingroup input
- */
 void glfwGetCursorPos(GLFWwindow* window, double* xpos, double* ypos);
-
-/*! @brief Sets the position of the cursor, relative to the content area of the
- *  window.
- *
- *  This function sets the position, in screen coordinates, of the cursor
- *  relative to the upper-left corner of the content area of the specified
- *  window.  The window must have input focus.  If the window does not have
- *  input focus when this function is called, it fails silently.
- *
- *  __Do not use this function__ to implement things like camera controls.  GLFW
- *  already provides the `CURSOR_DISABLED` cursor mode that hides the
- *  cursor, transparently re-centers it and provides unconstrained cursor
- *  motion.  See @ref glfwSetInputMode for more information.
- *
- *  If the cursor mode is `CURSOR_DISABLED` then the cursor position is
- *  unconstrained and limited only by the minimum and maximum values of
- *  a `double`.
- *
- *  @param[in] window The desired window.
- *  @param[in] xpos The desired x-coordinate, relative to the left edge of the
- *  content area.
- *  @param[in] ypos The desired y-coordinate, relative to the top edge of the
- *  content area.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_PLATFORM_ERROR and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_pos
- *  @sa @ref glfwGetCursorPos
- *
- *  @since Added in version 3.0.  Replaces `glfwSetMousePos`.
- *
- *  @ingroup input
- */
+void getCursorPosInternal(_GLFWwindow* window, double* xpos, double* ypos);
 void glfwSetCursorPos(GLFWwindow* window, double xpos, double ypos);
+void setCursorPosInternal(_GLFWwindow* window, double xpos, double ypos);
+void updateCursorImage(_GLFWwindow* window);
 
 /*! @brief Creates a custom cursor.
  *

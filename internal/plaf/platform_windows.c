@@ -473,11 +473,7 @@ BOOL _glfwIsWindows10BuildOrGreaterWin32(WORD build)
 
 ErrorResponse* platformInit(_GLFWplatform* platform)
 {
-	platform->getCursorPos = _glfwGetCursorPosWin32;
-	platform->setCursorPos = _glfwSetCursorPosWin32;
 	platform->setCursorMode = _glfwSetCursorModeWin32;
-	platform->setRawMouseMotion = _glfwSetRawMouseMotionWin32;
-	platform->rawMouseMotionSupported = _glfwRawMouseMotionSupportedWin32;
 	platform->createCursor = _glfwCreateCursorWin32;
 	platform->createStandardCursor = _glfwCreateStandardCursorWin32;
 	platform->destroyCursor = _glfwDestroyCursorWin32;

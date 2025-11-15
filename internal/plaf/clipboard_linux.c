@@ -2,7 +2,6 @@
 
 #include "platform.h"
 #include <limits.h>
-#include <string.h>
 
 // Returns whether it is a property event for the specified selection transfer.
 static Bool isSelPropNewValueNotify(Display* display, XEvent* event, XPointer pointer) {

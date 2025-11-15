@@ -1,7 +1,6 @@
 #if defined(PLATFORM_LINUX)
 
 #include "platform.h"
-#include <string.h>
 #include <limits.h>
 #include <stdio.h>
 #include <locale.h>
@@ -1107,11 +1106,7 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 	_glfw.x11.display = display;
 	_glfw.x11.xlib.handle = module;
 
-	platform->getCursorPos = _glfwGetCursorPosX11;
-	platform->setCursorPos = _glfwSetCursorPosX11;
 	platform->setCursorMode = _glfwSetCursorModeX11;
-	platform->setRawMouseMotion = _glfwSetRawMouseMotionX11;
-	platform->rawMouseMotionSupported = _glfwRawMouseMotionSupportedX11;
 	platform->createCursor = _glfwCreateCursorX11;
 	platform->createStandardCursor = _glfwCreateStandardCursorX11;
 	platform->destroyCursor = _glfwDestroyCursorX11;

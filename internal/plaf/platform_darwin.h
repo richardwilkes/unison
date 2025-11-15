@@ -68,8 +68,6 @@ typedef struct _GLFWlibraryNS
     CGPoint             cascadePoint;
     // Where to place the cursor when re-enabled
     double              restoreCursorPosX, restoreCursorPosY;
-    // The window whose disabled cursor mode is active
-    _GLFWwindow*        disabledCursorWindow;
 } _GLFWlibraryNS;
 
 // Cocoa-specific per-monitor data
@@ -116,16 +114,11 @@ float _glfwGetWindowOpacityCocoa(_GLFWwindow* window);
 void _glfwSetWindowOpacityCocoa(_GLFWwindow* window, float opacity);
 void _glfwSetWindowMousePassthroughCocoa(_GLFWwindow* window, IntBool enabled);
 
-void _glfwSetRawMouseMotionCocoa(_GLFWwindow *window, IntBool enabled);
-IntBool _glfwRawMouseMotionSupportedCocoa(void);
-
 void _glfwPollEventsCocoa(void);
 void _glfwWaitEventsCocoa(void);
 void _glfwWaitEventsTimeoutCocoa(double timeout);
 void _glfwPostEmptyEventCocoa(void);
 
-void _glfwGetCursorPosCocoa(_GLFWwindow* window, double* xpos, double* ypos);
-void _glfwSetCursorPosCocoa(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeCocoa(_GLFWwindow* window, int mode);
 int _glfwGetKeyScancodeCocoa(int key);
 IntBool _glfwCreateCursorCocoa(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);

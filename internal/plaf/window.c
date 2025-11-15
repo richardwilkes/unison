@@ -1,8 +1,5 @@
 #include "platform.h"
 
-#include <string.h>
-#include <float.h>
-
 
 //////////////////////////////////////////////////////////////////////////
 //////                         GLFW event API                       //////

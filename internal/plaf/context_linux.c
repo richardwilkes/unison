@@ -2,8 +2,6 @@
 
 #if defined(PLATFORM_LINUX)
 
-#include <string.h>
-
 #ifndef GLXBadProfileARB
  #define GLXBadProfileARB 13
 #endif

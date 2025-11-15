@@ -2,7 +2,6 @@
 
 #if defined(PLATFORM_WINDOWS)
 
-#include <string.h>
 #include <limits.h>
 #include <wchar.h>
 

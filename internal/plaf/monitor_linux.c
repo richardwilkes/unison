@@ -3,7 +3,6 @@
 #if defined(PLATFORM_LINUX)
 
 #include <limits.h>
-#include <string.h>
 #include <math.h>
 
 

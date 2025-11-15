@@ -517,8 +517,6 @@ typedef struct _GLFWlibraryX11
     short int       scancodes[KEY_LAST + 1];
     // Where to place the cursor when re-enabled
     double          restoreCursorPosX, restoreCursorPosY;
-    // The window whose disabled cursor mode is active
-    _GLFWwindow*    disabledCursorWindow;
     int             emptyEventPipe[2];
 
     // Window manager atoms
@@ -858,16 +856,11 @@ float _glfwGetWindowOpacityX11(_GLFWwindow* window);
 void _glfwSetWindowOpacityX11(_GLFWwindow* window, float opacity);
 void _glfwSetWindowMousePassthroughX11(_GLFWwindow* window, IntBool enabled);
 
-void _glfwSetRawMouseMotionX11(_GLFWwindow *window, IntBool enabled);
-IntBool _glfwRawMouseMotionSupportedX11(void);
-
 void _glfwPollEventsX11(void);
 void _glfwWaitEventsX11(void);
 void _glfwWaitEventsTimeoutX11(double timeout);
 void _glfwPostEmptyEventX11(void);
 
-void _glfwGetCursorPosX11(_GLFWwindow* window, double* xpos, double* ypos);
-void _glfwSetCursorPosX11(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeX11(_GLFWwindow* window, int mode);
 int _glfwGetKeyScancodeX11(int key);
 IntBool _glfwCreateCursorX11(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);

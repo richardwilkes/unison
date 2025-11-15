@@ -168,11 +168,7 @@ static void createKeyTables(void) {
 @end // GLFWApplicationDelegate
 
 ErrorResponse* platformInit(_GLFWplatform* platform) {
-	platform->getCursorPos = _glfwGetCursorPosCocoa;
-	platform->setCursorPos = _glfwSetCursorPosCocoa;
 	platform->setCursorMode = _glfwSetCursorModeCocoa;
-	platform->setRawMouseMotion = _glfwSetRawMouseMotionCocoa;
-	platform->rawMouseMotionSupported = _glfwRawMouseMotionSupportedCocoa;
 	platform->createCursor = _glfwCreateCursorCocoa;
 	platform->createStandardCursor = _glfwCreateStandardCursorCocoa;
 	platform->destroyCursor = _glfwDestroyCursorCocoa;

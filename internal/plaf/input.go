@@ -213,15 +213,13 @@ const (
 	InputModeStickyKeys            InputMode = C.INPUT_MODE_STICKY_KEYS             // Value can be either 1 or 0
 	InputModeStickyMouseButtons    InputMode = C.INPUT_MODE_STICKY_MOUSE_BUTTONS    // Value can be either 1 or 0
 	InputModeLockKeyMods           InputMode = C.INPUT_MODE_LOCK_KEY_MODS           // Value can be either 1 or 0
-	InputModeRawMouseMotion        InputMode = C.INPUT_MODE_RAW_MOUSE_MOTION        // Value can be either 1 or 0
 	InputModeUnlimitedMouseButtons InputMode = C.INPUT_MODE_UNLIMITED_MOUSE_BUTTONS // Value can be either 1 or 0
 )
 
 // Cursor mode values.
 const (
-	CursorNormal   int = C.CURSOR_NORMAL
-	CursorHidden   int = C.CURSOR_HIDDEN
-	CursorDisabled int = C.CURSOR_DISABLED
+	CursorNormal int = C.CURSOR_NORMAL
+	CursorHidden int = C.CURSOR_HIDDEN
 )
 
 // Cursor represents a cursor.
@@ -240,22 +238,6 @@ func (w *Window) GetInputMode(mode InputMode) int {
 func (w *Window) SetInputMode(mode InputMode, value int) {
 	C.glfwSetInputMode(w.data, C.int(mode), C.int(value))
 	panicError()
-}
-
-// RawMouseMotionSupported returns whether raw mouse motion is supported on the
-// current system. This status does not change after GLFW has been initialized
-// so you only need to check this once. If you attempt to enable raw motion on
-// a system that does not support it, PlatformError will be emitted.
-//
-// Raw mouse motion is closer to the actual motion of the mouse across a
-// surface. It is not affected by the scaling and acceleration applied to the
-// motion of the desktop cursor. That processing is suitable for a cursor while
-// raw motion is better for controlling for example a 3D camera. Because of
-// this, raw mouse motion is only provided when the cursor is disabled.
-//
-// This function must only be called from the main thread.
-func RawMouseMotionSupported() bool {
-	return int(C.glfwRawMouseMotionSupported()) == True
 }
 
 // GetKeyScancode function returns the platform-specific scancode of the
@@ -293,32 +275,6 @@ func (w *Window) GetMouseButton(button MouseButton) Action {
 	ret := Action(C.glfwGetMouseButton(w.data, C.int(button)))
 	panicError()
 	return ret
-}
-
-// GetCursorPos returns the last reported position of the cursor.
-//
-// If the cursor is disabled (with CursorDisabled) then the cursor position is
-// unbounded and limited only by the minimum and maximum values of a double.
-//
-// The coordinate can be converted to their integer equivalents with the floor
-// function. Casting directly to an integer type works for positive coordinates,
-// but fails for negative ones.
-func (w *Window) GetCursorPos() (x, y float64) {
-	var xpos, ypos C.double
-	C.glfwGetCursorPos(w.data, &xpos, &ypos)
-	panicError()
-	return float64(xpos), float64(ypos)
-}
-
-// SetCursorPos sets the position of the cursor. The specified window must
-// be focused. If the window does not have focus when this function is called,
-// it fails silently.
-//
-// If the cursor is disabled (with CursorDisabled) then the cursor position is
-// unbounded and limited only by the minimum and maximum values of a double.
-func (w *Window) SetCursorPos(xpos, ypos float64) {
-	C.glfwSetCursorPos(w.data, C.double(xpos), C.double(ypos))
-	panicError()
 }
 
 // CreateCursor creates a new custom cursor image that can be set for a window with SetCursor.
