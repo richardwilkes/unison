@@ -4,14 +4,6 @@
 
 #import <QuartzCore/CAMetalLayer.h>
 
-// Returns whether the cursor is in the content area of the specified window
-//
-static IntBool cursorInContentArea(_GLFWwindow* window)
-{
-	const NSPoint pos = [window->ns.object mouseLocationOutsideOfEventStream];
-	return [window->ns.view mouse:pos inRect:[window->ns.view frame]];
-}
-
 // Hides the cursor if not already hidden
 //
 static void hideCursor(_GLFWwindow* window)
@@ -1452,7 +1444,7 @@ int _glfwGetKeyScancodeCocoa(int key)
 	return _glfw.ns.scancodes[key];
 }
 
-IntBool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
+IntBool _glfwCreateCursorCocoa(plafCursor* cursor,
 								const ImageData* image,
 								int xhot, int yhot)
 {
@@ -1496,7 +1488,7 @@ IntBool _glfwCreateCursorCocoa(_GLFWcursor* cursor,
 	} // autoreleasepool
 }
 
-IntBool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape)
+IntBool _glfwCreateStandardCursorCocoa(plafCursor* cursor, int shape)
 {
 	@autoreleasepool {
 	if (!cursor->nsCursor)
@@ -1536,20 +1528,12 @@ IntBool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape)
 	} // autoreleasepool
 }
 
-void _glfwDestroyCursorCocoa(_GLFWcursor* cursor)
+void _glfwDestroyCursorCocoa(plafCursor* cursor)
 {
 	if (cursor->nsCursor) {
 		[cursor->nsCursor release];
 		cursor->nsCursor = nil;
 	}
-}
-
-void _glfwSetCursorCocoa(_GLFWwindow* window, _GLFWcursor* cursor)
-{
-	@autoreleasepool {
-	if (cursorInContentArea(window))
-		updateCursorImage(window);
-	} // autoreleasepool
 }
 
 

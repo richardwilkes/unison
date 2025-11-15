@@ -69,3 +69,38 @@ void setCursorPosInternal(_GLFWwindow* window, double xpos, double ypos) {
 	SetCursorPos(pos.x, pos.y);
 #endif
 }
+
+#if defined(PLATFORM_DARWIN)
+IntBool cursorInContentArea(_GLFWwindow* window) {
+	const NSPoint pos = [window->ns.object mouseLocationOutsideOfEventStream];
+	return [window->ns.view mouse:pos inRect:[window->ns.view frame]];
+}
+#elif defined (PLATFORM_WINDOWS)
+IntBool cursorInContentArea(_GLFWwindow* window) {
+	POINT pos;
+	if (!GetCursorPos(&pos))
+		return false;
+	if (WindowFromPoint(pos) != window->win32.handle)
+		return false;
+	RECT area;
+	GetClientRect(window->win32.handle, &area);
+	ClientToScreen(window->win32.handle, (POINT*)&area.left);
+	ClientToScreen(window->win32.handle, (POINT*)&area.right);
+	return PtInRect(&area, pos);
+}
+#endif
+
+void glfwSetCursor(GLFWwindow* windowHandle, plafCursor* cursor) {
+	_GLFWwindow* window = (_GLFWwindow*) windowHandle;
+	window->cursor = cursor;
+#if defined(PLATFORM_DARWIN) || defined(PLATFORM_WINDOWS)
+	if (cursorInContentArea(window)) {
+		updateCursorImage(window);
+	}
+#elif defined(PLATFORM_LINUX)
+	if (window->cursorMode == CURSOR_NORMAL) {
+		updateCursorImage(window);
+		XFlush(_glfw.x11.display);
+	}
+#endif
+}

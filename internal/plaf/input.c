@@ -305,33 +305,28 @@ int glfwGetMouseButton(GLFWwindow* handle, int button)
 	return (int) window->mouseButtons[button];
 }
 
-GLFWcursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot)
+plafCursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot)
 {
-	_GLFWcursor* cursor;
-
-	if (image->width <= 0 || image->height <= 0)
-	{
+	if (image->width <= 0 || image->height <= 0) {
 		_glfwInputError(ERR_INVALID_VALUE, "Invalid image dimensions for cursor");
 		return NULL;
 	}
 
-	cursor = _glfw_calloc(1, sizeof(_GLFWcursor));
+	plafCursor* cursor = _glfw_calloc(1, sizeof(plafCursor));
 	cursor->next = _glfw.cursorListHead;
 	_glfw.cursorListHead = cursor;
 
 	if (!_glfw.platform.createCursor(cursor, image, xhot, yhot))
 	{
-		glfwDestroyCursor((GLFWcursor*) cursor);
+		glfwDestroyCursor(cursor);
 		return NULL;
 	}
 
-	return (GLFWcursor*) cursor;
+	return cursor;
 }
 
-GLFWcursor* glfwCreateStandardCursor(int shape)
+plafCursor* glfwCreateStandardCursor(int shape)
 {
-	_GLFWcursor* cursor;
-
 	if (shape != STD_CURSOR_ARROW &&
 		shape != STD_CURSOR_IBEAM &&
 		shape != STD_CURSOR_CROSSHAIR &&
@@ -343,23 +338,21 @@ GLFWcursor* glfwCreateStandardCursor(int shape)
 		return NULL;
 	}
 
-	cursor = _glfw_calloc(1, sizeof(_GLFWcursor));
+	plafCursor* cursor = _glfw_calloc(1, sizeof(plafCursor));
 	cursor->next = _glfw.cursorListHead;
 	_glfw.cursorListHead = cursor;
 
 	if (!_glfw.platform.createStandardCursor(cursor, shape))
 	{
-		glfwDestroyCursor((GLFWcursor*) cursor);
+		glfwDestroyCursor(cursor);
 		return NULL;
 	}
 
-	return (GLFWcursor*) cursor;
+	return cursor;
 }
 
-void glfwDestroyCursor(GLFWcursor* handle)
+void glfwDestroyCursor(plafCursor* cursor)
 {
-	_GLFWcursor* cursor = (_GLFWcursor*) handle;
-
 	if (cursor == NULL)
 		return;
 
@@ -378,7 +371,7 @@ void glfwDestroyCursor(GLFWcursor* handle)
 
 	// Unlink cursor from global linked list
 	{
-		_GLFWcursor** prev = &_glfw.cursorListHead;
+		plafCursor** prev = &_glfw.cursorListHead;
 
 		while (*prev != cursor)
 			prev = &((*prev)->next);
@@ -387,14 +380,6 @@ void glfwDestroyCursor(GLFWcursor* handle)
 	}
 
 	_glfw_free(cursor);
-}
-
-void glfwSetCursor(GLFWwindow* windowHandle, GLFWcursor* cursorHandle)
-{
-	_GLFWwindow* window = (_GLFWwindow*) windowHandle;
-	_GLFWcursor* cursor = (_GLFWcursor*) cursorHandle;
-	window->cursor = cursor;
-	_glfw.platform.setCursor(window, cursor);
 }
 
 keyFunc glfwSetKeyCallback(GLFWwindow* handle, keyFunc cbfun)

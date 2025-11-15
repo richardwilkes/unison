@@ -3257,7 +3257,7 @@ int _glfwGetKeyScancodeX11(int key)
 	return _glfw.x11.scancodes[key];
 }
 
-IntBool _glfwCreateCursorX11(_GLFWcursor* cursor,
+IntBool _glfwCreateCursorX11(plafCursor* cursor,
 							  const ImageData* image,
 							  int xhot, int yhot)
 {
@@ -3268,7 +3268,7 @@ IntBool _glfwCreateCursorX11(_GLFWcursor* cursor,
 	return true;
 }
 
-IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape)
+IntBool _glfwCreateStandardCursorX11(plafCursor* cursor, int shape)
 {
 	if (_glfw.x11.xcursor.handle)
 	{
@@ -3349,19 +3349,10 @@ IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape)
 	return true;
 }
 
-void _glfwDestroyCursorX11(_GLFWcursor* cursor)
+void _glfwDestroyCursorX11(plafCursor* cursor)
 {
 	if (cursor->x11Cursor)
 		XFreeCursor(_glfw.x11.display, cursor->x11Cursor);
-}
-
-void _glfwSetCursorX11(_GLFWwindow* window, _GLFWcursor* cursor)
-{
-	if (window->cursorMode == CURSOR_NORMAL)
-	{
-		updateCursorImage(window);
-		XFlush(_glfw.x11.display);
-	}
 }
 
 

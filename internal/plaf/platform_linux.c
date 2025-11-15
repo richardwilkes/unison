@@ -1110,7 +1110,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 	platform->createCursor = _glfwCreateCursorX11;
 	platform->createStandardCursor = _glfwCreateStandardCursorX11;
 	platform->destroyCursor = _glfwDestroyCursorX11;
-	platform->setCursor = _glfwSetCursorX11;
 	platform->getKeyScancode = _glfwGetKeyScancodeX11;
 	platform->freeMonitor = _glfwFreeMonitorX11;
 	platform->getMonitorPos = _glfwGetMonitorPosX11;

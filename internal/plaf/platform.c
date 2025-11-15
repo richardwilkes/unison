@@ -26,7 +26,7 @@ void _terminate(void) {
 		glfwDestroyWindow((GLFWwindow*) _glfw.windowListHead);
 	}
 	while (_glfw.cursorListHead) {
-		glfwDestroyCursor((GLFWcursor*) _glfw.cursorListHead);
+		glfwDestroyCursor(_glfw.cursorListHead);
 	}
 	for (i = 0;  i < _glfw.monitorCount;  i++) {
 		_GLFWmonitor* monitor = _glfw.monitors[i];

@@ -172,7 +172,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform) {
 	platform->createCursor = _glfwCreateCursorCocoa;
 	platform->createStandardCursor = _glfwCreateStandardCursorCocoa;
 	platform->destroyCursor = _glfwDestroyCursorCocoa;
-	platform->setCursor = _glfwSetCursorCocoa;
 	platform->getKeyScancode = _glfwGetKeyScancodeCocoa;
 	platform->freeMonitor = _glfwFreeMonitorCocoa;
 	platform->getMonitorPos = _glfwGetMonitorPosCocoa;

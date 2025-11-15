@@ -214,26 +214,6 @@ static void enableCursor(_GLFWwindow* window)
 	updateCursorImage(window);
 }
 
-// Returns whether the cursor is in the content area of the specified window
-//
-static IntBool cursorInContentArea(_GLFWwindow* window)
-{
-	RECT area;
-	POINT pos;
-
-	if (!GetCursorPos(&pos))
-		return false;
-
-	if (WindowFromPoint(pos) != window->win32.handle)
-		return false;
-
-	GetClientRect(window->win32.handle, &area);
-	ClientToScreen(window->win32.handle, (POINT*) &area.left);
-	ClientToScreen(window->win32.handle, (POINT*) &area.right);
-
-	return PtInRect(&area, pos);
-}
-
 // Update native window styles to match attributes
 //
 static void updateWindowStyles(const _GLFWwindow* window)
@@ -1874,7 +1854,7 @@ int _glfwGetKeyScancodeWin32(int key)
 	return _glfw.win32.scancodes[key];
 }
 
-IntBool _glfwCreateCursorWin32(_GLFWcursor* cursor,
+IntBool _glfwCreateCursorWin32(plafCursor* cursor,
 								const ImageData* image,
 								int xhot, int yhot)
 {
@@ -1885,7 +1865,7 @@ IntBool _glfwCreateCursorWin32(_GLFWcursor* cursor,
 	return true;
 }
 
-IntBool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape)
+IntBool _glfwCreateStandardCursorWin32(plafCursor* cursor, int shape)
 {
 	int id = 0;
 
@@ -1926,16 +1906,10 @@ IntBool _glfwCreateStandardCursorWin32(_GLFWcursor* cursor, int shape)
 	return true;
 }
 
-void _glfwDestroyCursorWin32(_GLFWcursor* cursor)
+void _glfwDestroyCursorWin32(plafCursor* cursor)
 {
 	if (cursor->win32Cursor)
 		DestroyIcon((HICON) cursor->win32Cursor);
-}
-
-void _glfwSetCursorWin32(_GLFWwindow* window, _GLFWcursor* cursor)
-{
-	if (cursorInContentArea(window))
-		updateCursorImage(window);
 }
 
 HWND glfwGetWin32Window(GLFWwindow* handle)

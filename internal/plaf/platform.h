@@ -445,7 +445,7 @@ extern "C" {
 typedef int IntBool;
 
 // Forward declarations
-typedef struct GLFWcursor GLFWcursor;
+typedef struct plafCursor plafCursor;
 typedef struct GLFWmonitor GLFWmonitor;
 typedef struct GLFWwindow GLFWwindow;
 
@@ -557,7 +557,6 @@ typedef struct _GLFWwindow      _GLFWwindow;
 typedef struct _GLFWplatform    _GLFWplatform;
 typedef struct _GLFWlibrary     _GLFWlibrary;
 typedef struct _GLFWmonitor     _GLFWmonitor;
-typedef struct _GLFWcursor      _GLFWcursor;
 
 #define GL_VERSION 0x1f02
 #define GL_NONE 0
@@ -713,7 +712,7 @@ struct _GLFWwindow
 	IntBool            doublebuffer;
 	VideoMode         videoMode;
 	_GLFWmonitor*       monitor;
-	_GLFWcursor*        cursor;
+	plafCursor*        cursor;
 	char*               title;
 
 	int                 minwidth, minheight;
@@ -787,8 +786,8 @@ struct _GLFWmonitor
 
 // Cursor structure
 //
-struct _GLFWcursor {
-	_GLFWcursor*     next;
+struct plafCursor {
+	plafCursor*     next;
 #if defined(PLATFORM_DARWIN)
     NSCursor*        nsCursor;
 #elif defined(PLATFORM_LINUX)
@@ -804,10 +803,10 @@ struct _GLFWplatform
 {
 	// input
 	void (*setCursorMode)(_GLFWwindow*,int);
-	IntBool (*createCursor)(_GLFWcursor*,const ImageData*,int,int);
-	IntBool (*createStandardCursor)(_GLFWcursor*,int);
-	void (*destroyCursor)(_GLFWcursor*);
-	void (*setCursor)(_GLFWwindow*,_GLFWcursor*);
+	IntBool (*createCursor)(plafCursor*,const ImageData*,int,int);
+	IntBool (*createStandardCursor)(plafCursor*,int);
+	void (*destroyCursor)(plafCursor*);
+	void (*setCursor)(_GLFWwindow*,plafCursor*);
 	int (*getKeyScancode)(int);
 	// monitor
 	void (*freeMonitor)(_GLFWmonitor*);
@@ -874,7 +873,7 @@ struct _GLFWlibrary
 		int             refreshRate;
 	} hints;
 
-	_GLFWcursor*        cursorListHead;
+	plafCursor*        cursorListHead;
 	_GLFWwindow*        windowListHead;
 
 	_GLFWmonitor**      monitors;
@@ -3120,10 +3119,9 @@ int glfwGetKey(GLFWwindow* window, int key);
 int glfwGetMouseButton(GLFWwindow* window, int button);
 
 void glfwGetCursorPos(GLFWwindow* window, double* xpos, double* ypos);
-void getCursorPosInternal(_GLFWwindow* window, double* xpos, double* ypos);
 void glfwSetCursorPos(GLFWwindow* window, double xpos, double ypos);
 void setCursorPosInternal(_GLFWwindow* window, double xpos, double ypos);
-void updateCursorImage(_GLFWwindow* window);
+void glfwSetCursor(GLFWwindow* window, plafCursor* cursor);
 
 /*! @brief Creates a custom cursor.
  *
@@ -3161,7 +3159,7 @@ void updateCursorImage(_GLFWwindow* window);
  *
  *  @ingroup input
  */
-GLFWcursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot);
+plafCursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot);
 
 /*! @brief Creates a cursor with a standard shape.
  *
@@ -3205,7 +3203,7 @@ GLFWcursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot);
  *
  *  @ingroup input
  */
-GLFWcursor* glfwCreateStandardCursor(int shape);
+plafCursor* glfwCreateStandardCursor(int shape);
 
 /*! @brief Destroys a cursor.
  *
@@ -3232,34 +3230,7 @@ GLFWcursor* glfwCreateStandardCursor(int shape);
  *
  *  @ingroup input
  */
-void glfwDestroyCursor(GLFWcursor* cursor);
-
-/*! @brief Sets the cursor for the window.
- *
- *  This function sets the cursor image to be used when the cursor is over the
- *  content area of the specified window.  The set cursor will only be visible
- *  when the [cursor mode](@ref cursor_mode) of the window is
- *  `CURSOR_NORMAL`.
- *
- *  On some platforms, the set cursor may not be visible unless the window also
- *  has input focus.
- *
- *  @param[in] window The window to set the cursor for.
- *  @param[in] cursor The cursor to set, or `NULL` to switch back to the default
- *  arrow cursor.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_object
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup input
- */
-void glfwSetCursor(GLFWwindow* window, GLFWcursor* cursor);
+void glfwDestroyCursor(plafCursor* cursor);
 
 /*! @brief Sets the key callback.
  *
@@ -3935,6 +3906,13 @@ void* _glfw_realloc(void* pointer, size_t size);
 void _glfw_free(void* pointer);
 
 void _glfwTerminateGLX(void);
+
+// TODO: Remove once these can be made static in the cursor.c file
+void getCursorPosInternal(_GLFWwindow* window, double* xpos, double* ypos);
+void updateCursorImage(_GLFWwindow* window);
+#if defined(PLATFORM_DARWIN) || defined(PLATFORM_WINDOWS)
+IntBool cursorInContentArea(_GLFWwindow* window);
+#endif
 
 #ifdef __cplusplus
 }

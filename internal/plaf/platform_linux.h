@@ -863,10 +863,9 @@ void _glfwPostEmptyEventX11(void);
 
 void _glfwSetCursorModeX11(_GLFWwindow* window, int mode);
 int _glfwGetKeyScancodeX11(int key);
-IntBool _glfwCreateCursorX11(_GLFWcursor* cursor, const ImageData* image, int xhot, int yhot);
-IntBool _glfwCreateStandardCursorX11(_GLFWcursor* cursor, int shape);
-void _glfwDestroyCursorX11(_GLFWcursor* cursor);
-void _glfwSetCursorX11(_GLFWwindow* window, _GLFWcursor* cursor);
+IntBool _glfwCreateCursorX11(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
+IntBool _glfwCreateStandardCursorX11(plafCursor* cursor, int shape);
+void _glfwDestroyCursorX11(plafCursor* cursor);
 
 void _glfwFreeMonitorX11(_GLFWmonitor* monitor);
 void _glfwGetMonitorPosX11(_GLFWmonitor* monitor, int* xpos, int* ypos);

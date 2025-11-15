@@ -224,7 +224,7 @@ const (
 
 // Cursor represents a cursor.
 type Cursor struct {
-	data *C.GLFWcursor
+	data *C.plafCursor
 }
 
 // GetInputMode returns the value of an input option of the window.
