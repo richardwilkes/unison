@@ -1,4 +1,4 @@
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 
 #include "platform.h"
 
@@ -26,4 +26,4 @@ void setClipboardString(const char* string) {
 	}
 }
 
-#endif // PLATFORM_DARWIN
+#endif // __APPLE__

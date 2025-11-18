@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(_WIN32)
 
 // Return the value corresponding to the specified attribute
 //
@@ -655,4 +655,4 @@ HGLRC glfwGetWGLContext(GLFWwindow* handle)
 	return window->context.wgl.handle;
 }
 
-#endif // PLATFORM_WINDOWS
+#endif // _WIN32

@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 
 #include <unistd.h>
 #include <math.h>
@@ -272,4 +272,4 @@ id glfwGetNSGLContext(GLFWwindow* handle)
     return window->context.nsgl.object;
 }
 
-#endif // PLATFORM_DARWIN
+#endif // __APPLE__

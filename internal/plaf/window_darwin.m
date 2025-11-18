@@ -1,4 +1,4 @@
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 
 #include "platform.h"
 
@@ -1553,4 +1553,4 @@ id glfwGetCocoaView(GLFWwindow* handle)
 	return window->ns.view;
 }
 
-#endif // PLATFORM_DARWIN
+#endif // __APPLE__

@@ -1,4 +1,4 @@
-#if defined(PLATFORM_WINDOWS)
+#if defined(_WIN32)
 
 #include "platform.h"
 
@@ -572,4 +572,4 @@ void platformTerminate(void)
 	freeLibraries();
 }
 
-#endif // PLATFORM_WINDOWS
+#endif // _WIN32

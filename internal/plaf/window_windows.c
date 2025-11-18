@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(_WIN32)
 
 #include <limits.h>
 #include <windowsx.h>
@@ -1918,4 +1918,4 @@ HWND glfwGetWin32Window(GLFWwindow* handle)
 	return window->win32.handle;
 }
 
-#endif // PLATFORM_WINDOWS
+#endif // _WIN32

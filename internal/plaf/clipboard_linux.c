@@ -1,4 +1,4 @@
-#if defined(PLATFORM_LINUX)
+#if defined(__linux__)
 
 #include "platform.h"
 #include <limits.h>
@@ -116,4 +116,4 @@ void setClipboardString(const char* string) {
 	XSetSelectionOwner(_glfw.x11.display, _glfw.x11.CLIPBOARD, _glfw.x11.helperWindowHandle, CurrentTime);
 }
 
-#endif // PLATFORM_LINUX
+#endif // __linux__

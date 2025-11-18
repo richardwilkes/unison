@@ -1,3 +1,4 @@
+#if defined(_WIN32)
 // We don't need all the fancy stuff
 #ifndef NOMINMAX
  #define NOMINMAX
@@ -485,3 +486,5 @@ void _glfwTerminateWGL(void);
 IntBool _glfwCreateContextWGL(_GLFWwindow* window,
                                const _GLFWctxconfig* ctxconfig,
                                const _GLFWfbconfig* fbconfig);
+
+#endif // _WIN32

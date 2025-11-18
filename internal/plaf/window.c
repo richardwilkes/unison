@@ -185,7 +185,7 @@ void glfwDefaultWindowHints(void)
     memset(&_glfw.hints.context, 0, sizeof(_glfw.hints.context));
     _glfw.hints.context.major  = 3;
     _glfw.hints.context.minor  = 2;
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 	// These don't appear to be necessary to set on macOS anymore, but keeping for now
 	_glfw.hints.context.forward = true;
 	_glfw.hints.context.profile = OPENGL_PROFILE_CORE;

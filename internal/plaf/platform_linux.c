@@ -1,4 +1,4 @@
-#if defined(PLATFORM_LINUX)
+#if defined(__linux__)
 
 #include "platform.h"
 #include <limits.h>
@@ -1487,4 +1487,4 @@ void platformTerminate(void)
 	}
 }
 
-#endif // PLATFORM_LINUX
+#endif // __linux__

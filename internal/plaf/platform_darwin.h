@@ -1,3 +1,4 @@
+#if defined(__APPLE__)
 #include <stdint.h>
 
 // NOTE: All of NSGL was deprecated in the 10.14 SDK
@@ -146,3 +147,5 @@ IntBool _glfwCreateContextNSGL(_GLFWwindow* window,
                                 const _GLFWctxconfig* ctxconfig,
                                 const _GLFWfbconfig* fbconfig);
 void _glfwDestroyContextNSGL(_GLFWwindow* window);
+
+#endif // __APPLE__

@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLATFORM_LINUX)
+#if defined(__linux__)
 
 #include <X11/cursorfont.h>
 #include <X11/Xmd.h>
@@ -3371,4 +3371,4 @@ Window glfwGetX11Window(GLFWwindow* handle)
 	return window->x11.handle;
 }
 
-#endif // PLATFORM_LINUX
+#endif // __linux__

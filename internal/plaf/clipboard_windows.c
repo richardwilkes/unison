@@ -1,4 +1,4 @@
-#if defined(PLATFORM_WINDOWS)
+#if defined(_WIN32)
 
 #include "platform.h"
 
@@ -73,4 +73,4 @@ void setClipboardString(const char* string) {
 	CloseClipboard();
 }
 
-#endif // PLATFORM_WINDOWS
+#endif // _WIN32

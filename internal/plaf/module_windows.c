@@ -1,4 +1,4 @@
-#if defined(PLATFORM_WINDOWS)
+#if defined(_WIN32)
 
 #include "platform.h"
 

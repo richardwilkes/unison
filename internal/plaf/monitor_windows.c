@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(_WIN32)
 
 #include <limits.h>
 #include <wchar.h>
@@ -492,4 +492,4 @@ void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GammaRamp* ramp)
     DeleteDC(dc);
 }
 
-#endif // PLATFORM_WINDOWS
+#endif // _WIN32

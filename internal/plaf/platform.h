@@ -12,14 +12,14 @@ extern "C" {
 #include <float.h>
 
 #if !defined(APIENTRY)
-	#if defined(PLATFORM_WINDOWS)
+	#if defined(_WIN32)
 		#define APIENTRY __stdcall
 	#else
 		#define APIENTRY
 	#endif
 #endif
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(_WIN32)
 	#if !defined(WINGDIAPI)
 		#define WINGDIAPI __declspec(dllimport)
 		#define GLFW_WINGDIAPI_DEFINED
@@ -588,16 +588,7 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGPROC)(GLenum);
 typedef void (APIENTRY * PFNGLGETINTEGERVPROC)(GLenum,GLint*);
 typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
 
-#if defined(PLATFORM_WINDOWS)
- #include "platform_windows.h"
-#else
- #define GLFW_WIN32_MONITOR_STATE
- #define GLFW_WIN32_LIBRARY_WINDOW_STATE
- #define GLFW_WGL_CONTEXT_STATE
- #define GLFW_WGL_LIBRARY_CONTEXT_STATE
-#endif
-
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
  #include "platform_darwin.h"
 #else
  #define GLFW_COCOA_MONITOR_STATE
@@ -606,13 +597,22 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
  #define GLFW_NSGL_LIBRARY_CONTEXT_STATE
 #endif
 
-#if defined(PLATFORM_LINUX)
+#if defined(__linux__)
  #include "platform_linux.h"
 #else
  #define GLFW_X11_MONITOR_STATE
  #define GLFW_X11_LIBRARY_WINDOW_STATE
  #define GLFW_GLX_CONTEXT_STATE
  #define GLFW_GLX_LIBRARY_CONTEXT_STATE
+#endif
+
+#if defined(_WIN32)
+ #include "platform_windows.h"
+#else
+ #define GLFW_WIN32_MONITOR_STATE
+ #define GLFW_WIN32_LIBRARY_WINDOW_STATE
+ #define GLFW_WGL_CONTEXT_STATE
+ #define GLFW_WGL_LIBRARY_CONTEXT_STATE
 #endif
 
 // Swaps the provided pointers
@@ -751,11 +751,11 @@ struct _GLFWwindow
 		dropFunc               drop;
 	} callbacks;
 
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 	_GLFWwindowNS    ns;
-#elif defined(PLATFORM_LINUX)
+#elif defined(__linux__)
 	_GLFWwindowX11   x11;
-#elif defined(PLATFORM_WINDOWS)
+#elif defined(_WIN32)
 	_GLFWwindowWin32 win32;
 #endif
 };
@@ -788,11 +788,11 @@ struct _GLFWmonitor
 //
 struct plafCursor {
 	plafCursor*     next;
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
     NSCursor*        nsCursor;
-#elif defined(PLATFORM_LINUX)
+#elif defined(__linux__)
 	Cursor           x11Cursor;
-#elif defined(PLATFORM_WINDOWS)
+#elif defined(_WIN32)
 	HCURSOR		     win32Cursor;
 #endif
 };
@@ -1652,7 +1652,7 @@ GLFWwindow* glfwCreateWindow(int width, int height, const char* title, GLFWmonit
  */
 void glfwDestroyWindow(GLFWwindow* window);
 
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 /*! @brief Returns the `NSWindow` of the specified window.
  *
  *  @return The `NSWindow` of the specified window, or `nil` if an
@@ -3910,7 +3910,8 @@ void _glfwTerminateGLX(void);
 // TODO: Remove once these can be made static in the cursor.c file
 void getCursorPosInternal(_GLFWwindow* window, double* xpos, double* ypos);
 void updateCursorImage(_GLFWwindow* window);
-#if defined(PLATFORM_DARWIN) || defined(PLATFORM_WINDOWS)
+void setCursorInternal(_GLFWwindow* window);
+#if defined(__APPLE__) || defined(_WIN32)
 IntBool cursorInContentArea(_GLFWwindow* window);
 #endif
 

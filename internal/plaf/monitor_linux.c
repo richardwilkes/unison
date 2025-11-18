@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLATFORM_LINUX)
+#if defined(__linux__)
 
 #include <limits.h>
 #include <math.h>
@@ -564,4 +564,4 @@ void _glfwSetGammaRampX11(_GLFWmonitor* monitor, const GammaRamp* ramp)
     }
 }
 
-#endif // PLATFORM_LINUX
+#endif // __linux__

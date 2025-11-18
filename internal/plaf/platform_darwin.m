@@ -1,4 +1,4 @@
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 
 #include "platform.h"
 #include <sys/param.h> // For MAXPATHLEN
@@ -282,4 +282,4 @@ void platformTerminate(void) {
 	} // autoreleasepool
 }
 
-#endif // PLATFORM_DARWIN
+#endif // __APPLE__

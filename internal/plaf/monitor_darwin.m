@@ -1,4 +1,4 @@
-#if defined(PLATFORM_DARWIN)
+#if defined(__APPLE__)
 
 #include "platform.h"
 
@@ -398,4 +398,4 @@ void _glfwSetGammaRampCocoa(_GLFWmonitor* monitor, const GammaRamp* ramp)
     } // autoreleasepool
 }
 
-#endif // PLATFORM_DARWIN
+#endif // __APPLE__

@@ -1,6 +1,6 @@
 #include "platform.h"
 
-#if defined(PLATFORM_LINUX)
+#if defined(__linux__)
 
 #ifndef GLXBadProfileARB
  #define GLXBadProfileARB 13
@@ -609,4 +609,4 @@ int glfwGetGLXFBConfig(GLFWwindow* handle, GLXFBConfig* config)
     return true;
 }
 
-#endif // PLATFORM_LINUX
+#endif // __linux__

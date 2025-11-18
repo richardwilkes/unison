@@ -1,3 +1,4 @@
+#if defined(__linux__)
 #include <unistd.h>
 #include <signal.h>
 #include <stdint.h>
@@ -906,3 +907,5 @@ IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
                               Visual** visual, int* depth);
 
 IntBool waitForX11Event(double timeout);
+
+#endif // __linux__
