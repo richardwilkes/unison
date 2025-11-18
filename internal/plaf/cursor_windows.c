@@ -14,10 +14,11 @@ void getCursorPosInternal(plafWindow* window, double* xpos, double* ypos) {
 }
 
 void setCursorPosInternal(plafWindow* window, double xpos, double ypos) {
-	window->x11.warpCursorPosX = (int)xpos;
-	window->x11.warpCursorPosY = (int)ypos;
-	_glfw.x11.xlib.WarpPointer(_glfw.x11.display, None, window->x11.handle, 0, 0, 0, 0, (int)xpos, (int)ypos);
-	_glfw.x11.xlib.Flush(_glfw.x11.display);
+	POINT pos = { (int)xpos, (int)ypos };
+	window->win32.lastCursorPosX = pos.x;
+	window->win32.lastCursorPosY = pos.y;
+	ClientToScreen(window->win32.handle, &pos);
+	SetCursorPos(pos.x, pos.y);
 }
 
 IntBool cursorInContentArea(plafWindow* window) {
