@@ -238,7 +238,6 @@ typedef GLXContext (*PFNGLXCREATECONTEXTATTRIBSARBPROC)(Display*,GLXFBConfig,GLX
 //
 typedef struct _GLFWcontextGLX
 {
-    GLXContext      handle;
     GLXWindow       window;
     GLXFBConfig     fbconfig;
 } _GLFWcontextGLX;

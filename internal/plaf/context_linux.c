@@ -292,7 +292,7 @@ IntBool _glfwInitGLX(void)
 
 	int errorBase;
 	int eventBase;
-    if (!_glfw.glxQueryExtension(_glfw.x11.display, &errorBase, &eventBase)) {
+    if (!_glfw.glxQueryExtension(_glfw.x11.display, &_glfw.glxErrorBase, &eventBase)) {
         _glfwInputError(ERR_API_UNAVAILABLE, "GLX: GLX extension not found");
         return false;
     }
@@ -505,7 +505,7 @@ IntBool _glfwCreateContextGLX(plafWindow* window,
         //       violation of the extension spec
         if (!window->context.glxHandle)
         {
-            if (_glfw.x11.errorCode == errorBase + GLXBadProfileARB &&
+            if (_glfw.x11.errorCode == _glfw.glxErrorBase + GLXBadProfileARB &&
                 ctxconfig->profile == OPENGL_PROFILE_ANY &&
                 ctxconfig->forward == false)
             {

@@ -687,6 +687,12 @@ struct plafCtx
 	GLFW_WGL_CONTEXT_STATE
 	GLFW_NSGL_CONTEXT_STATE
 	GLFW_GLX_CONTEXT_STATE
+
+#if defined(__APPLE__)
+#elif defined(__linux__)
+    GLXContext      glxHandle;
+#elif defined(_WIN32)
+#endif
 };
 
 // Window and context structure
@@ -897,6 +903,7 @@ struct _GLFWlibrary
 #if defined(__APPLE__)
 	CFBundleRef     nsglFramework;
 #elif defined(__linux__)
+	int                                 glxErrorBase;
     void*                               glxHandle;
     PFNGLXGETFBCONFIGSPROC              glxGetFBConfigs;
     PFNGLXGETFBCONFIGATTRIBPROC         glxGetFBConfigAttrib;
