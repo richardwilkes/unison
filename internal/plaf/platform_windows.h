@@ -252,12 +252,6 @@ typedef struct _GLFWlibraryWin32
 
     struct {
         HINSTANCE                       instance;
-        PFN_XInputGetCapabilities       GetCapabilities;
-        PFN_XInputGetState              GetState;
-    } xinput;
-
-    struct {
-        HINSTANCE                       instance;
         PFN_EnableNonClientDpiScaling   EnableNonClientDpiScaling_;
         PFN_SetProcessDpiAwarenessContext SetProcessDpiAwarenessContext_;
         PFN_GetDpiForWindow             GetDpiForWindow_;
