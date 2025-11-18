@@ -14,7 +14,7 @@
 // exists and whether all relevant options have supported and non-conflicting
 // values
 //
-IntBool _glfwIsValidContextConfig(const _GLFWctxconfig* ctxconfig)
+IntBool _glfwIsValidContextConfig(const plafCtxCfg* ctxconfig)
 {
 	if (ctxconfig->profile)
 	{
@@ -51,16 +51,16 @@ IntBool _glfwIsValidContextConfig(const _GLFWctxconfig* ctxconfig)
 
 // Chooses the framebuffer config that best matches the desired one
 //
-const _GLFWfbconfig* _glfwChooseFBConfig(const _GLFWfbconfig* desired,
-                                         const _GLFWfbconfig* alternatives,
+const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired,
+                                         const plafFrameBufferCfg* alternatives,
                                          unsigned int count)
 {
     unsigned int i;
     unsigned int missing, leastMissing = UINT_MAX;
     unsigned int colorDiff, leastColorDiff = UINT_MAX;
     unsigned int extraDiff, leastExtraDiff = UINT_MAX;
-    const _GLFWfbconfig* current;
-    const _GLFWfbconfig* closest = NULL;
+    const plafFrameBufferCfg* current;
+    const plafFrameBufferCfg* closest = NULL;
 
     for (i = 0;  i < count;  i++)
     {
@@ -207,14 +207,14 @@ const _GLFWfbconfig* _glfwChooseFBConfig(const _GLFWfbconfig* desired,
 
 // Retrieves the attributes of the current context
 //
-IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
-                                    const _GLFWctxconfig* ctxconfig)
+IntBool _glfwRefreshContextAttribs(plafWindow* window,
+                                    const plafCtxCfg* ctxconfig)
 {
     int i;
-    _GLFWwindow* previous = _glfw.contextSlot;
+    plafWindow* previous = _glfw.contextSlot;
     const char* version;
 
-    glfwMakeContextCurrent((GLFWwindow*) window);
+    glfwMakeContextCurrent((plafWindow*) window);
     if (_glfw.contextSlot != window)
         return false;
 
@@ -225,7 +225,7 @@ IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
     if (!window->context.GetIntegerv || !window->context.GetString)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
-        glfwMakeContextCurrent((GLFWwindow*) previous);
+        glfwMakeContextCurrent((plafWindow*) previous);
         return false;
     }
 
@@ -233,7 +233,7 @@ IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
     if (!version)
     {
 		_glfwInputError(ERR_PLATFORM_ERROR, "OpenGL version string retrieval is broken");
-        glfwMakeContextCurrent((GLFWwindow*) previous);
+        glfwMakeContextCurrent((plafWindow*) previous);
         return false;
     }
 
@@ -243,7 +243,7 @@ IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
                 &window->context.revision))
     {
 		_glfwInputError(ERR_PLATFORM_ERROR, "No version found in OpenGL version string");
-        glfwMakeContextCurrent((GLFWwindow*) previous);
+        glfwMakeContextCurrent((plafWindow*) previous);
         return false;
     }
 
@@ -259,7 +259,7 @@ IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
         // {GLX|WGL}_ARB_create_context extension and fail here
 
 		_glfwInputError(ERR_VERSION_UNAVAILABLE, "Requested OpenGL version %i.%i, got version %i.%i", ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
-        glfwMakeContextCurrent((GLFWwindow*) previous);
+        glfwMakeContextCurrent((plafWindow*) previous);
         return false;
     }
 
@@ -274,7 +274,7 @@ IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
         if (!window->context.GetStringi)
         {
             _glfwInputError(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
-            glfwMakeContextCurrent((GLFWwindow*) previous);
+            glfwMakeContextCurrent((plafWindow*) previous);
             return false;
         }
     }
@@ -346,7 +346,7 @@ IntBool _glfwRefreshContextAttribs(_GLFWwindow* window,
             window->context.swapBuffers(window);
     }
 
-    glfwMakeContextCurrent((GLFWwindow*) previous);
+    glfwMakeContextCurrent((plafWindow*) previous);
     return true;
 }
 
@@ -383,10 +383,10 @@ IntBool _glfwStringInExtensionString(const char* string, const char* extensions)
 //////                        GLFW public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-void glfwMakeContextCurrent(GLFWwindow* handle)
+void glfwMakeContextCurrent(plafWindow* handle)
 {
-    _GLFWwindow* window = (_GLFWwindow*) handle;
-    _GLFWwindow* previous = _glfw.contextSlot;
+    plafWindow* window = (plafWindow*) handle;
+    plafWindow* previous = _glfw.contextSlot;
 
     if (previous)
     {
@@ -398,14 +398,14 @@ void glfwMakeContextCurrent(GLFWwindow* handle)
         window->context.makeCurrent(window);
 }
 
-GLFWwindow* glfwGetCurrentContext(void)
+plafWindow* glfwGetCurrentContext(void)
 {
-    return (GLFWwindow*)_glfw.contextSlot;
+    return (plafWindow*)_glfw.contextSlot;
 }
 
-void glfwSwapBuffers(GLFWwindow* handle)
+void glfwSwapBuffers(plafWindow* handle)
 {
-    _GLFWwindow* window = (_GLFWwindow*) handle;
+    plafWindow* window = (plafWindow*) handle;
     window->context.swapBuffers(window);
 }
 

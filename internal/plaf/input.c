@@ -19,7 +19,7 @@
 
 // Notifies shared code of a physical key event
 //
-void _glfwInputKey(_GLFWwindow* window, int key, int scancode, int action, int mods)
+void _glfwInputKey(plafWindow* window, int key, int scancode, int action, int mods)
 {
 	if (key >= 0 && key <= KEY_LAST)
 	{
@@ -44,13 +44,13 @@ void _glfwInputKey(_GLFWwindow* window, int key, int scancode, int action, int m
 		mods &= ~(MOD_CAPS_LOCK | MOD_NUM_LOCK);
 
 	if (window->callbacks.key)
-		window->callbacks.key((GLFWwindow*) window, key, scancode, action, mods);
+		window->callbacks.key((plafWindow*) window, key, scancode, action, mods);
 }
 
 // Notifies shared code of a Unicode codepoint input event
 // The 'plain' parameter determines whether to emit a regular character event
 //
-void _glfwInputChar(_GLFWwindow* window, uint32_t codepoint, int mods, IntBool plain)
+void _glfwInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool plain)
 {
 	if (codepoint < 32 || (codepoint > 126 && codepoint < 160))
 		return;
@@ -59,26 +59,26 @@ void _glfwInputChar(_GLFWwindow* window, uint32_t codepoint, int mods, IntBool p
 		mods &= ~(MOD_CAPS_LOCK | MOD_NUM_LOCK);
 
 	if (window->callbacks.charmods)
-		window->callbacks.charmods((GLFWwindow*) window, codepoint, mods);
+		window->callbacks.charmods((plafWindow*) window, codepoint, mods);
 
 	if (plain)
 	{
 		if (window->callbacks.character)
-			window->callbacks.character((GLFWwindow*) window, codepoint);
+			window->callbacks.character((plafWindow*) window, codepoint);
 	}
 }
 
 // Notifies shared code of a scroll event
 //
-void _glfwInputScroll(_GLFWwindow* window, double xoffset, double yoffset)
+void _glfwInputScroll(plafWindow* window, double xoffset, double yoffset)
 {
 	if (window->callbacks.scroll)
-		window->callbacks.scroll((GLFWwindow*) window, xoffset, yoffset);
+		window->callbacks.scroll((plafWindow*) window, xoffset, yoffset);
 }
 
 // Notifies shared code of a mouse button click event
 //
-void _glfwInputMouseClick(_GLFWwindow* window, int button, int action, int mods)
+void _glfwInputMouseClick(plafWindow* window, int button, int action, int mods)
 {
 	if (button < 0 || (!window->disableMouseButtonLimit && button > MOUSE_BUTTON_LAST))
 		return;
@@ -95,13 +95,13 @@ void _glfwInputMouseClick(_GLFWwindow* window, int button, int action, int mods)
 	}
 
 	if (window->callbacks.mouseButton)
-		window->callbacks.mouseButton((GLFWwindow*) window, button, action, mods);
+		window->callbacks.mouseButton((plafWindow*) window, button, action, mods);
 }
 
 // Notifies shared code of a cursor motion event
 // The position is specified in content area relative screen coordinates
 //
-void _glfwInputCursorPos(_GLFWwindow* window, double xpos, double ypos)
+void _glfwInputCursorPos(plafWindow* window, double xpos, double ypos)
 {
 	if (window->virtualCursorPosX == xpos && window->virtualCursorPosY == ypos)
 		return;
@@ -110,23 +110,23 @@ void _glfwInputCursorPos(_GLFWwindow* window, double xpos, double ypos)
 	window->virtualCursorPosY = ypos;
 
 	if (window->callbacks.cursorPos)
-		window->callbacks.cursorPos((GLFWwindow*) window, xpos, ypos);
+		window->callbacks.cursorPos((plafWindow*) window, xpos, ypos);
 }
 
 // Notifies shared code of a cursor enter/leave event
 //
-void _glfwInputCursorEnter(_GLFWwindow* window, IntBool entered)
+void _glfwInputCursorEnter(plafWindow* window, IntBool entered)
 {
 	if (window->callbacks.cursorEnter)
-		window->callbacks.cursorEnter((GLFWwindow*) window, entered);
+		window->callbacks.cursorEnter((plafWindow*) window, entered);
 }
 
 // Notifies shared code of files or directories dropped on a window
 //
-void _glfwInputDrop(_GLFWwindow* window, int count, const char** paths)
+void _glfwInputDrop(plafWindow* window, int count, const char** paths)
 {
 	if (window->callbacks.drop)
-		window->callbacks.drop((GLFWwindow*) window, count, paths);
+		window->callbacks.drop((plafWindow*) window, count, paths);
 }
 
 
@@ -136,7 +136,7 @@ void _glfwInputDrop(_GLFWwindow* window, int count, const char** paths)
 
 // Center the cursor in the content area of the specified window
 //
-void _glfwCenterCursorInContentArea(_GLFWwindow* window)
+void _glfwCenterCursorInContentArea(plafWindow* window)
 {
 	int width, height;
 
@@ -149,9 +149,9 @@ void _glfwCenterCursorInContentArea(_GLFWwindow* window)
 //////                        GLFW public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-int glfwGetInputMode(GLFWwindow* handle, int mode)
+int glfwGetInputMode(plafWindow* handle, int mode)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	switch (mode)
 	{
 		case INPUT_MODE_CURSOR:
@@ -170,9 +170,9 @@ int glfwGetInputMode(GLFWwindow* handle, int mode)
 	return 0;
 }
 
-void glfwSetInputMode(GLFWwindow* handle, int mode, int value)
+void glfwSetInputMode(plafWindow* handle, int mode, int value)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	switch (mode)
 	{
 		case INPUT_MODE_CURSOR:
@@ -265,9 +265,9 @@ int glfwGetKeyScancode(int key)
 	return _glfw.platform.getKeyScancode(key);
 }
 
-int glfwGetKey(GLFWwindow* handle, int key)
+int glfwGetKey(plafWindow* handle, int key)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 
 	if (key < KEY_SPACE || key > KEY_LAST)
 	{
@@ -285,9 +285,9 @@ int glfwGetKey(GLFWwindow* handle, int key)
 	return (int) window->keys[key];
 }
 
-int glfwGetMouseButton(GLFWwindow* handle, int button)
+int glfwGetMouseButton(plafWindow* handle, int button)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 
 	if (button < MOUSE_BUTTON_1 || button > MOUSE_BUTTON_LAST)
 	{
@@ -358,12 +358,12 @@ void glfwDestroyCursor(plafCursor* cursor)
 
 	// Make sure the cursor is not being used by any window
 	{
-		_GLFWwindow* window;
+		plafWindow* window;
 
 		for (window = _glfw.windowListHead;  window;  window = window->next)
 		{
 			if (window->cursor == cursor)
-				glfwSetCursor((GLFWwindow*) window, NULL);
+				glfwSetCursor((plafWindow*) window, NULL);
 		}
 	}
 
@@ -382,62 +382,62 @@ void glfwDestroyCursor(plafCursor* cursor)
 	_glfw_free(cursor);
 }
 
-keyFunc glfwSetKeyCallback(GLFWwindow* handle, keyFunc cbfun)
+keyFunc glfwSetKeyCallback(plafWindow* handle, keyFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(keyFunc, window->callbacks.key, cbfun);
 	return cbfun;
 }
 
-charFunc glfwSetCharCallback(GLFWwindow* handle, charFunc cbfun)
+charFunc glfwSetCharCallback(plafWindow* handle, charFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(charFunc, window->callbacks.character, cbfun);
 	return cbfun;
 }
 
-charModsFunc glfwSetCharModsCallback(GLFWwindow* handle, charModsFunc cbfun)
+charModsFunc glfwSetCharModsCallback(plafWindow* handle, charModsFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(charModsFunc, window->callbacks.charmods, cbfun);
 	return cbfun;
 }
 
-mouseButtonFunc glfwSetMouseButtonCallback(GLFWwindow* handle,
+mouseButtonFunc glfwSetMouseButtonCallback(plafWindow* handle,
 													  mouseButtonFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(mouseButtonFunc, window->callbacks.mouseButton, cbfun);
 	return cbfun;
 }
 
-cursorPosFunc glfwSetCursorPosCallback(GLFWwindow* handle,
+cursorPosFunc glfwSetCursorPosCallback(plafWindow* handle,
 												  cursorPosFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(cursorPosFunc, window->callbacks.cursorPos, cbfun);
 	return cbfun;
 }
 
-cursorEnterFunc glfwSetCursorEnterCallback(GLFWwindow* handle,
+cursorEnterFunc glfwSetCursorEnterCallback(plafWindow* handle,
 													  cursorEnterFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(cursorEnterFunc, window->callbacks.cursorEnter, cbfun);
 	return cbfun;
 }
 
-scrollFunc glfwSetScrollCallback(GLFWwindow* handle,
+scrollFunc glfwSetScrollCallback(plafWindow* handle,
 											scrollFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(scrollFunc, window->callbacks.scroll, cbfun);
 	return cbfun;
 }
 
-dropFunc glfwSetDropCallback(GLFWwindow* handle, dropFunc cbfun)
+dropFunc glfwSetDropCallback(plafWindow* handle, dropFunc cbfun)
 {
-	_GLFWwindow* window = (_GLFWwindow*) handle;
+	plafWindow* window = (plafWindow*) handle;
 	SWAP(dropFunc, window->callbacks.drop, cbfun);
 	return cbfun;
 }

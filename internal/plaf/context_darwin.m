@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <math.h>
 
-static void makeContextCurrentNSGL(_GLFWwindow* window)
+static void makeContextCurrentNSGL(plafWindow* window)
 {
     @autoreleasepool {
 
@@ -19,7 +19,7 @@ static void makeContextCurrentNSGL(_GLFWwindow* window)
     } // autoreleasepool
 }
 
-static void swapBuffersNSGL(_GLFWwindow* window)
+static void swapBuffersNSGL(plafWindow* window)
 {
     @autoreleasepool {
 
@@ -45,19 +45,13 @@ static int extensionSupportedNSGL(const char* extension)
 
 static glFunc getProcAddressNSGL(const char* procname)
 {
-    CFStringRef symbolName = CFStringCreateWithCString(kCFAllocatorDefault,
-                                                       procname,
-                                                       kCFStringEncodingASCII);
-
-    glFunc symbol = CFBundleGetFunctionPointerForName(_glfw.nsgl.framework,
-                                                          symbolName);
-
+    CFStringRef symbolName = CFStringCreateWithCString(kCFAllocatorDefault, procname, kCFStringEncodingASCII);
+    glFunc symbol = CFBundleGetFunctionPointerForName(_glfw.nsglFramework, symbolName);
     CFRelease(symbolName);
-
     return symbol;
 }
 
-static void destroyContextNSGL(_GLFWwindow* window)
+static void destroyContextNSGL(plafWindow* window)
 {
     @autoreleasepool {
 
@@ -78,11 +72,11 @@ static void destroyContextNSGL(_GLFWwindow* window)
 // Initialize OpenGL support
 //
 IntBool _glfwInitNSGL(void) {
-    if (_glfw.nsgl.framework) {
+    if (_glfw.nsglFramework) {
         return true;
 	}
-    _glfw.nsgl.framework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
-    if (_glfw.nsgl.framework == NULL) {
+    _glfw.nsglFramework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
+    if (_glfw.nsglFramework == NULL) {
         _glfwInputError(ERR_API_UNAVAILABLE, "NSGL: Failed to locate OpenGL framework");
         return false;
     }
@@ -97,9 +91,9 @@ void _glfwTerminateNSGL(void)
 
 // Create the OpenGL context
 //
-IntBool _glfwCreateContextNSGL(_GLFWwindow* window,
-                                const _GLFWctxconfig* ctxconfig,
-                                const _GLFWfbconfig* fbconfig)
+IntBool _glfwCreateContextNSGL(plafWindow* window,
+                                const plafCtxCfg* ctxconfig,
+                                const plafFrameBufferCfg* fbconfig)
 {
     if (ctxconfig->major > 2)
     {
@@ -266,9 +260,9 @@ IntBool _glfwCreateContextNSGL(_GLFWwindow* window,
 //////                        GLFW native API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-id glfwGetNSGLContext(GLFWwindow* handle)
+id glfwGetNSGLContext(plafWindow* handle)
 {
-    _GLFWwindow* window = (_GLFWwindow*) handle;
+    plafWindow* window = (plafWindow*) handle;
     return window->context.nsgl.object;
 }
 

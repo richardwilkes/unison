@@ -32,40 +32,6 @@ static ErrorResponse* loadLibraries(void)
 	_glfw.win32.user32.GetSystemMetricsForDpi_ = (PFN_GetSystemMetricsForDpi)
 		_glfwPlatformGetModuleSymbol(_glfw.win32.user32.instance, "GetSystemMetricsForDpi");
 
-	_glfw.win32.dinput8.instance = _glfwPlatformLoadModule("dinput8.dll");
-	if (_glfw.win32.dinput8.instance)
-	{
-		_glfw.win32.dinput8.Create = (PFN_DirectInput8Create)
-			_glfwPlatformGetModuleSymbol(_glfw.win32.dinput8.instance, "DirectInput8Create");
-	}
-
-	{
-		int i;
-		const char* names[] =
-		{
-			"xinput1_4.dll",
-			"xinput1_3.dll",
-			"xinput9_1_0.dll",
-			"xinput1_2.dll",
-			"xinput1_1.dll",
-			NULL
-		};
-
-		for (i = 0;  names[i];  i++)
-		{
-			_glfw.win32.xinput.instance = _glfwPlatformLoadModule(names[i]);
-			if (_glfw.win32.xinput.instance)
-			{
-				_glfw.win32.xinput.GetCapabilities = (PFN_XInputGetCapabilities)
-					_glfwPlatformGetModuleSymbol(_glfw.win32.xinput.instance, "XInputGetCapabilities");
-				_glfw.win32.xinput.GetState = (PFN_XInputGetState)
-					_glfwPlatformGetModuleSymbol(_glfw.win32.xinput.instance, "XInputGetState");
-
-				break;
-			}
-		}
-	}
-
 	_glfw.win32.dwmapi.instance = _glfwPlatformLoadModule("dwmapi.dll");
 	if (_glfw.win32.dwmapi.instance)
 	{
@@ -102,12 +68,6 @@ static ErrorResponse* loadLibraries(void)
 //
 static void freeLibraries(void)
 {
-	if (_glfw.win32.xinput.instance)
-		_glfwPlatformFreeModule(_glfw.win32.xinput.instance);
-
-	if (_glfw.win32.dinput8.instance)
-		_glfwPlatformFreeModule(_glfw.win32.dinput8.instance);
-
 	if (_glfw.win32.user32.instance)
 		_glfwPlatformFreeModule(_glfw.win32.user32.instance);
 
@@ -453,7 +413,7 @@ BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp)
 	// HACK: Use RtlVerifyVersionInfo instead of VerifyVersionInfoW as the
 	//       latter lies unless the user knew to embed a non-default manifest
 	//       announcing support for Windows 10 via supportedOS GUID
-	return RtlVerifyVersionInfo(&osvi, mask, cond) == 0;
+	return _glfw.win32.ntdll.RtlVerifyVersionInfo_(&osvi, mask, cond) == 0;
 }
 
 // Checks whether we are on at least the specified build of Windows 10
@@ -468,7 +428,7 @@ BOOL _glfwIsWindows10BuildOrGreaterWin32(WORD build)
 	// HACK: Use RtlVerifyVersionInfo instead of VerifyVersionInfoW as the
 	//       latter lies unless the user knew to embed a non-default manifest
 	//       announcing support for Windows 10 via supportedOS GUID
-	return RtlVerifyVersionInfo(&osvi, mask, cond) == 0;
+	return _glfw.win32.ntdll.RtlVerifyVersionInfo_(&osvi, mask, cond) == 0;
 }
 
 ErrorResponse* platformInit(_GLFWplatform* platform)
@@ -534,9 +494,9 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 	_glfwUpdateKeyNamesWin32();
 
 	if (_glfwIsWindows10Version1703OrGreaterWin32())
-		SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+		_glfw.win32.user32.SetProcessDpiAwarenessContext_(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 	else if (IsWindows8Point1OrGreater())
-		SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+		_glfw.win32.shcore.SetProcessDpiAwareness_(PROCESS_PER_MONITOR_DPI_AWARE);
 	else
 		SetProcessDPIAware();
 

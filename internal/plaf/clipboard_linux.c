@@ -33,7 +33,7 @@ const char* getClipboardString(void) {
 
 	selectionString = &_glfw.clipboardString;
 
-	if (XGetSelectionOwner(_glfw.x11.display, _glfw.x11.CLIPBOARD) == _glfw.x11.helperWindowHandle) {
+	if (_glfw.x11.xlib.GetSelectionOwner(_glfw.x11.display, _glfw.x11.CLIPBOARD) == _glfw.x11.helperWindowHandle) {
 		return *selectionString;
 	}
 
@@ -47,10 +47,10 @@ const char* getClipboardString(void) {
 		unsigned long itemCount, bytesAfter;
 		XEvent notification, dummy;
 
-		XConvertSelection(_glfw.x11.display, _glfw.x11.CLIPBOARD, targets[i], _glfw.x11.GLFW_SELECTION,
+		_glfw.x11.xlib.ConvertSelection(_glfw.x11.display, _glfw.x11.CLIPBOARD, targets[i], _glfw.x11.GLFW_SELECTION,
 			_glfw.x11.helperWindowHandle, CurrentTime);
 
-		while (!XCheckTypedWindowEvent(_glfw.x11.display, _glfw.x11.helperWindowHandle, SelectionNotify,
+		while (!_glfw.x11.xlib.CheckTypedWindowEvent(_glfw.x11.display, _glfw.x11.helperWindowHandle, SelectionNotify,
 			&notification)) {
 			waitForX11Event(-1);
 		}
@@ -59,9 +59,9 @@ const char* getClipboardString(void) {
 			continue;
 		}
 
-		XCheckIfEvent(_glfw.x11.display, &dummy, isSelPropNewValueNotify, (XPointer) &notification);
+		_glfw.x11.xlib.CheckIfEvent(_glfw.x11.display, &dummy, isSelPropNewValueNotify, (XPointer) &notification);
 
-		XGetWindowProperty(_glfw.x11.display, notification.xselection.requestor, notification.xselection.property, 0,
+		_glfw.x11.xlib.GetWindowProperty(_glfw.x11.display, notification.xselection.requestor, notification.xselection.property, 0,
 			LONG_MAX, True, AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter,
 			(unsigned char**) &data);
 
@@ -70,12 +70,12 @@ const char* getClipboardString(void) {
 			char* string = NULL;
 
 			for (;;) {
-				while (!XCheckIfEvent(_glfw.x11.display, &dummy, isSelPropNewValueNotify, (XPointer) &notification)) {
+				while (!_glfw.x11.xlib.CheckIfEvent(_glfw.x11.display, &dummy, isSelPropNewValueNotify, (XPointer) &notification)) {
 					waitForX11Event(-1);
 				}
 
-				XFree(data);
-				XGetWindowProperty(_glfw.x11.display, notification.xselection.requestor,
+				_glfw.x11.xlib.Free(data);
+				_glfw.x11.xlib.GetWindowProperty(_glfw.x11.display, notification.xselection.requestor,
 					notification.xselection.property, 0, LONG_MAX, True, AnyPropertyType, &actualType, &actualFormat,
 					&itemCount, &bytesAfter, (unsigned char**) &data);
 
@@ -102,7 +102,7 @@ const char* getClipboardString(void) {
 			*selectionString = (targets[i] == XA_STRING) ? convertLatin1toUTF8(data) : _glfw_strdup(data);
 		}
 
-		XFree(data);
+		_glfw.x11.xlib.Free(data);
 		if (*selectionString) {
 			break;
 		}
@@ -113,7 +113,7 @@ const char* getClipboardString(void) {
 void setClipboardString(const char* string) {
 	_glfw_free(_glfw.clipboardString);
 	_glfw.clipboardString = _glfw_strdup(string);
-	XSetSelectionOwner(_glfw.x11.display, _glfw.x11.CLIPBOARD, _glfw.x11.helperWindowHandle, CurrentTime);
+	_glfw.x11.xlib.SetSelectionOwner(_glfw.x11.display, _glfw.x11.CLIPBOARD, _glfw.x11.helperWindowHandle, CurrentTime);
 }
 
 #endif // __linux__

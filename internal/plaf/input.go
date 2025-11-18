@@ -3,14 +3,14 @@ package plaf
 /*
 #include "platform.h"
 
-void goCharCallback(GLFWwindow *window, unsigned int ch);
-void goCharModsCallback(GLFWwindow *window, unsigned int ch, int mods);
-void goCursorEnterCallback(GLFWwindow *window, int entered);
-void goCursorPosCallback(GLFWwindow *window, double xpos, double ypos);
-void goDropCallback(GLFWwindow *window, int count, char **names);
-void goKeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
-void goMouseButtonCallback(GLFWwindow *window, int button, int action, int mods);
-void goScrollCallback(GLFWwindow *window, double xoff, double yoff);
+void goCharCallback(plafWindow *window, unsigned int ch);
+void goCharModsCallback(plafWindow *window, unsigned int ch, int mods);
+void goCursorEnterCallback(plafWindow *window, int entered);
+void goCursorPosCallback(plafWindow *window, double xpos, double ypos);
+void goDropCallback(plafWindow *window, int count, char **names);
+void goKeyCallback(plafWindow *window, int key, int scancode, int action, int mods);
+void goMouseButtonCallback(plafWindow *window, int button, int action, int mods);
+void goScrollCallback(plafWindow *window, double xoff, double yoff);
 */
 import "C"
 

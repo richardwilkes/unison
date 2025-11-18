@@ -23,13 +23,13 @@ void _terminate(void) {
 
 	memset(&_glfw.callbacks, 0, sizeof(_glfw.callbacks));
 	while (_glfw.windowListHead) {
-		glfwDestroyWindow((GLFWwindow*) _glfw.windowListHead);
+		glfwDestroyWindow((plafWindow*) _glfw.windowListHead);
 	}
 	while (_glfw.cursorListHead) {
 		glfwDestroyCursor(_glfw.cursorListHead);
 	}
 	for (i = 0;  i < _glfw.monitorCount;  i++) {
-		_GLFWmonitor* monitor = _glfw.monitors[i];
+		plafMonitor* monitor = _glfw.monitors[i];
 		if (monitor->originalRamp.size) {
 			_glfw.platform.setGammaRamp(monitor, &monitor->originalRamp);
 		}

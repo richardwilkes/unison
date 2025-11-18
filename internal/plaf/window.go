@@ -3,15 +3,15 @@ package plaf
 /*
 #include "platform.h"
 
-void goFramebufferSizeCallback(GLFWwindow *window, int width, int height);
-void goWindowCloseCallback(GLFWwindow *window);
-void goWindowContentScaleCallback(GLFWwindow *window, float x, float y);
-void goWindowFocusCallback(GLFWwindow *window, int focused);
-void goWindowIconifyCallback(GLFWwindow *window, int iconified);
-void goWindowMaximizeCallback(GLFWwindow *window, int maximized);
-void goWindowPosCallback(GLFWwindow *window, int xpos, int ypos);
-void goWindowRefreshCallback(GLFWwindow *window);
-void goWindowSizeCallback(GLFWwindow *window, int width, int height);
+void goFramebufferSizeCallback(plafWindow *window, int width, int height);
+void goWindowCloseCallback(plafWindow *window);
+void goWindowContentScaleCallback(plafWindow *window, float x, float y);
+void goWindowFocusCallback(plafWindow *window, int focused);
+void goWindowIconifyCallback(plafWindow *window, int iconified);
+void goWindowMaximizeCallback(plafWindow *window, int maximized);
+void goWindowPosCallback(plafWindow *window, int xpos, int ypos);
+void goWindowRefreshCallback(plafWindow *window);
+void goWindowSizeCallback(plafWindow *window, int width, int height);
 */
 import "C"
 
@@ -23,11 +23,11 @@ import (
 
 // Internal window list stuff
 type windowList struct {
-	m map[*C.GLFWwindow]*Window
+	m map[*C.plafWindow]*Window
 	l sync.Mutex
 }
 
-var windows = windowList{m: map[*C.GLFWwindow]*Window{}}
+var windows = windowList{m: map[*C.plafWindow]*Window{}}
 
 func (w *windowList) put(wnd *Window) {
 	w.l.Lock()
@@ -35,13 +35,13 @@ func (w *windowList) put(wnd *Window) {
 	w.m[wnd.data] = wnd
 }
 
-func (w *windowList) remove(wnd *C.GLFWwindow) {
+func (w *windowList) remove(wnd *C.plafWindow) {
 	w.l.Lock()
 	defer w.l.Unlock()
 	delete(w.m, wnd)
 }
 
-func (w *windowList) get(wnd *C.GLFWwindow) *Window {
+func (w *windowList) get(wnd *C.plafWindow) *Window {
 	w.l.Lock()
 	defer w.l.Unlock()
 	return w.m[wnd]
@@ -126,7 +126,7 @@ const (
 
 // Window represents a window.
 type Window struct {
-	data *C.GLFWwindow
+	data *C.plafWindow
 
 	// Window.
 	fPosHolder             func(w *Window, xpos, ypos int)
@@ -150,16 +150,16 @@ type Window struct {
 	fDropHolder        func(w *Window, names []string)
 }
 
-// Handle returns a *C.GLFWwindow reference (i.e. the GLFW window itself).
+// Handle returns a *C.plafWindow reference (i.e. the GLFW window itself).
 // This can be used for passing the GLFW window handle to external libraries.
 func (w *Window) Handle() unsafe.Pointer {
 	return unsafe.Pointer(w.data)
 }
 
-// GoWindow creates a Window from a *C.GLFWwindow reference.
+// GoWindow creates a Window from a *C.plafWindow reference.
 // Used when an external C library is calling your Go handlers.
 func GoWindow(window unsafe.Pointer) *Window {
-	return &Window{data: (*C.GLFWwindow)(window)}
+	return &Window{data: (*C.plafWindow)(window)}
 }
 
 // DefaultWindowHints resets all window hints to their default values.
@@ -209,8 +209,8 @@ func WindowHint(target Hint, hint int) {
 // This function may only be called from the main thread.
 func CreateWindow(width, height int, title string, monitor *Monitor, share *Window) (*Window, error) {
 	var (
-		m *C.GLFWmonitor
-		s *C.GLFWwindow
+		m *C.plafMonitor
+		s *C.plafWindow
 	)
 
 	t := C.CString(title)
@@ -544,7 +544,7 @@ func (w *Window) GetMonitor() *Monitor {
 // restores any previous window settings such as whether it is decorated, floating,
 // resizable, has size or aspect ratio limits, etc..
 func (w *Window) SetMonitor(monitor *Monitor, xpos, ypos, width, height, refreshRate int) {
-	var m *C.GLFWmonitor
+	var m *C.plafMonitor
 	if monitor == nil {
 		m = nil
 	} else {

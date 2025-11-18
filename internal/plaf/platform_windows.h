@@ -42,7 +42,6 @@
 #include <windows.h>
 #include <dwmapi.h>
 #include <dinput.h>
-#include <xinput.h>
 #include <dbt.h>
 
 // HACK: Define macros that some windows.h variants don't
@@ -105,40 +104,6 @@ typedef enum
 #define _glfwIsWindows10Version1703OrGreaterWin32() \
     _glfwIsWindows10BuildOrGreaterWin32(15063)
 
-// HACK: Define macros that some xinput.h variants don't
-#ifndef XINPUT_CAPS_WIRELESS
- #define XINPUT_CAPS_WIRELESS 0x0002
-#endif
-#ifndef XINPUT_DEVSUBTYPE_WHEEL
- #define XINPUT_DEVSUBTYPE_WHEEL 0x02
-#endif
-#ifndef XINPUT_DEVSUBTYPE_ARCADE_STICK
- #define XINPUT_DEVSUBTYPE_ARCADE_STICK 0x03
-#endif
-#ifndef XINPUT_DEVSUBTYPE_FLIGHT_STICK
- #define XINPUT_DEVSUBTYPE_FLIGHT_STICK 0x04
-#endif
-#ifndef XINPUT_DEVSUBTYPE_DANCE_PAD
- #define XINPUT_DEVSUBTYPE_DANCE_PAD 0x05
-#endif
-#ifndef XINPUT_DEVSUBTYPE_GUITAR
- #define XINPUT_DEVSUBTYPE_GUITAR 0x06
-#endif
-#ifndef XINPUT_DEVSUBTYPE_DRUM_KIT
- #define XINPUT_DEVSUBTYPE_DRUM_KIT 0x08
-#endif
-#ifndef XINPUT_DEVSUBTYPE_ARCADE_PAD
- #define XINPUT_DEVSUBTYPE_ARCADE_PAD 0x13
-#endif
-#ifndef XUSER_MAX_COUNT
- #define XUSER_MAX_COUNT 4
-#endif
-
-// HACK: Define macros that some dinput.h variants don't
-#ifndef DIDFT_OPTIONAL
- #define DIDFT_OPTIONAL 0x80000000
-#endif
-
 #define WGL_NUMBER_PIXEL_FORMATS_ARB 0x2000
 #define WGL_SUPPORT_OPENGL_ARB 0x2010
 #define WGL_DRAW_TO_WINDOW_ARB 0x2001
@@ -189,47 +154,25 @@ typedef enum
 #define ERROR_INVALID_PROFILE_ARB 0x2096
 #define ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB 0x2054
 
-// xinput.dll function pointer typedefs
-typedef DWORD (WINAPI * PFN_XInputGetCapabilities)(DWORD,DWORD,XINPUT_CAPABILITIES*);
-typedef DWORD (WINAPI * PFN_XInputGetState)(DWORD,XINPUT_STATE*);
-#define XInputGetCapabilities _glfw.win32.xinput.GetCapabilities
-#define XInputGetState _glfw.win32.xinput.GetState
-
-// dinput8.dll function pointer typedefs
-typedef HRESULT (WINAPI * PFN_DirectInput8Create)(HINSTANCE,DWORD,REFIID,LPVOID*,LPUNKNOWN);
-#define DirectInput8Create _glfw.win32.dinput8.Create
-
 // user32.dll function pointer typedefs
 typedef BOOL (WINAPI * PFN_EnableNonClientDpiScaling)(HWND);
 typedef BOOL (WINAPI * PFN_SetProcessDpiAwarenessContext)(HANDLE);
 typedef UINT (WINAPI * PFN_GetDpiForWindow)(HWND);
 typedef BOOL (WINAPI * PFN_AdjustWindowRectExForDpi)(LPRECT,DWORD,BOOL,DWORD,UINT);
 typedef int (WINAPI * PFN_GetSystemMetricsForDpi)(int,UINT);
-#define EnableNonClientDpiScaling _glfw.win32.user32.EnableNonClientDpiScaling_
-#define SetProcessDpiAwarenessContext _glfw.win32.user32.SetProcessDpiAwarenessContext_
-#define GetDpiForWindow _glfw.win32.user32.GetDpiForWindow_
-#define AdjustWindowRectExForDpi _glfw.win32.user32.AdjustWindowRectExForDpi_
-#define GetSystemMetricsForDpi _glfw.win32.user32.GetSystemMetricsForDpi_
 
 // dwmapi.dll function pointer typedefs
 typedef HRESULT (WINAPI * PFN_DwmIsCompositionEnabled)(BOOL*);
 typedef HRESULT (WINAPI * PFN_DwmFlush)(VOID);
 typedef HRESULT(WINAPI * PFN_DwmEnableBlurBehindWindow)(HWND,const DWM_BLURBEHIND*);
 typedef HRESULT (WINAPI * PFN_DwmGetColorizationColor)(DWORD*,BOOL*);
-#define DwmIsCompositionEnabled _glfw.win32.dwmapi.IsCompositionEnabled
-#define DwmFlush _glfw.win32.dwmapi.Flush
-#define DwmEnableBlurBehindWindow _glfw.win32.dwmapi.EnableBlurBehindWindow
-#define DwmGetColorizationColor _glfw.win32.dwmapi.GetColorizationColor
 
 // shcore.dll function pointer typedefs
 typedef HRESULT (WINAPI * PFN_SetProcessDpiAwareness)(PROCESS_DPI_AWARENESS);
 typedef HRESULT (WINAPI * PFN_GetDpiForMonitor)(HMONITOR,MONITOR_DPI_TYPE,UINT*,UINT*);
-#define SetProcessDpiAwareness _glfw.win32.shcore.SetProcessDpiAwareness_
-#define GetDpiForMonitor _glfw.win32.shcore.GetDpiForMonitor_
 
 // ntdll.dll function pointer typedefs
 typedef LONG (WINAPI * PFN_RtlVerifyVersionInfo)(OSVERSIONINFOEXW*,ULONG,ULONGLONG);
-#define RtlVerifyVersionInfo _glfw.win32.ntdll.RtlVerifyVersionInfo_
 
 // WGL extension pointer typedefs
 typedef BOOL (WINAPI * PFNWGLSWAPINTERVALEXTPROC)(int);
@@ -237,11 +180,6 @@ typedef BOOL (WINAPI * PFNWGLGETPIXELFORMATATTRIBIVARBPROC)(HDC,int,int,UINT,con
 typedef const char* (WINAPI * PFNWGLGETEXTENSIONSSTRINGEXTPROC)(void);
 typedef const char* (WINAPI * PFNWGLGETEXTENSIONSSTRINGARBPROC)(HDC);
 typedef HGLRC (WINAPI * PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC,HGLRC,const int*);
-#define wglSwapIntervalEXT _glfw.wgl.SwapIntervalEXT
-#define wglGetPixelFormatAttribivARB _glfw.wgl.GetPixelFormatAttribivARB
-#define wglGetExtensionsStringEXT _glfw.wgl.GetExtensionsStringEXT
-#define wglGetExtensionsStringARB _glfw.wgl.GetExtensionsStringARB
-#define wglCreateContextAttribsARB _glfw.wgl.CreateContextAttribsARB
 
 // opengl32.dll function pointer typedefs
 typedef HGLRC (WINAPI * PFN_wglCreateContext)(HDC);
@@ -251,19 +189,10 @@ typedef HDC (WINAPI * PFN_wglGetCurrentDC)(void);
 typedef HGLRC (WINAPI * PFN_wglGetCurrentContext)(void);
 typedef BOOL (WINAPI * PFN_wglMakeCurrent)(HDC,HGLRC);
 typedef BOOL (WINAPI * PFN_wglShareLists)(HGLRC,HGLRC);
-#define wglCreateContext _glfw.wgl.CreateContext
-#define wglDeleteContext _glfw.wgl.DeleteContext
-#define wglGetProcAddress _glfw.wgl.GetProcAddress
-#define wglGetCurrentDC _glfw.wgl.GetCurrentDC
-#define wglGetCurrentContext _glfw.wgl.GetCurrentContext
-#define wglMakeCurrent _glfw.wgl.MakeCurrent
-#define wglShareLists _glfw.wgl.ShareLists
 
 #define GLFW_WIN32_LIBRARY_WINDOW_STATE _GLFWlibraryWin32 win32;
-#define GLFW_WIN32_MONITOR_STATE        _GLFWmonitorWin32 win32;
 
 #define GLFW_WGL_CONTEXT_STATE          _GLFWcontextWGL wgl;
-#define GLFW_WGL_LIBRARY_CONTEXT_STATE  _GLFWlibraryWGL wgl;
 
 
 // WGL-specific per-context data
@@ -274,38 +203,6 @@ typedef struct _GLFWcontextWGL
     HGLRC     handle;
     int       interval;
 } _GLFWcontextWGL;
-
-// WGL-specific global data
-//
-typedef struct _GLFWlibraryWGL
-{
-    HINSTANCE                           instance;
-    PFN_wglCreateContext                CreateContext;
-    PFN_wglDeleteContext                DeleteContext;
-    PFN_wglGetProcAddress               GetProcAddress;
-    PFN_wglGetCurrentDC                 GetCurrentDC;
-    PFN_wglGetCurrentContext            GetCurrentContext;
-    PFN_wglMakeCurrent                  MakeCurrent;
-    PFN_wglShareLists                   ShareLists;
-
-    PFNWGLSWAPINTERVALEXTPROC           SwapIntervalEXT;
-    PFNWGLGETPIXELFORMATATTRIBIVARBPROC GetPixelFormatAttribivARB;
-    PFNWGLGETEXTENSIONSSTRINGEXTPROC    GetExtensionsStringEXT;
-    PFNWGLGETEXTENSIONSSTRINGARBPROC    GetExtensionsStringARB;
-    PFNWGLCREATECONTEXTATTRIBSARBPROC   CreateContextAttribsARB;
-    IntBool                            EXT_swap_control;
-    IntBool                            EXT_colorspace;
-    IntBool                            ARB_multisample;
-    IntBool                            ARB_framebuffer_sRGB;
-    IntBool                            EXT_framebuffer_sRGB;
-    IntBool                            ARB_pixel_format;
-    IntBool                            ARB_create_context;
-    IntBool                            ARB_create_context_profile;
-    IntBool                            EXT_create_context_es2_profile;
-    IntBool                            ARB_create_context_robustness;
-    IntBool                            ARB_create_context_no_error;
-    IntBool                            ARB_context_flush_control;
-} _GLFWlibraryWGL;
 
 // Win32-specific per-window data
 //
@@ -355,12 +252,6 @@ typedef struct _GLFWlibraryWin32
 
     struct {
         HINSTANCE                       instance;
-        PFN_DirectInput8Create          Create;
-        IDirectInput8W*                 api;
-    } dinput8;
-
-    struct {
-        HINSTANCE                       instance;
         PFN_XInputGetCapabilities       GetCapabilities;
         PFN_XInputGetState              GetState;
     } xinput;
@@ -394,20 +285,6 @@ typedef struct _GLFWlibraryWin32
     } ntdll;
 } _GLFWlibraryWin32;
 
-// Win32-specific per-monitor data
-//
-typedef struct _GLFWmonitorWin32
-{
-    HMONITOR            handle;
-    // This size matches the static size of DISPLAY_DEVICE.DeviceName
-    WCHAR               adapterName[32];
-    WCHAR               displayName[32];
-    char                publicAdapterName[32];
-    char                publicDisplayName[32];
-    IntBool            modesPruned;
-    IntBool            modeChanged;
-} _GLFWmonitorWin32;
-
 // Win32-specific per-cursor data
 //
 typedef struct _GLFWcursorWin32
@@ -423,68 +300,68 @@ void _glfwInputErrorWin32(int error, const char* description);
 void _glfwUpdateKeyNamesWin32(void);
 
 void _glfwPollMonitorsWin32(void);
-void _glfwSetVideoModeWin32(_GLFWmonitor* monitor, const VideoMode* desired);
-void _glfwRestoreVideoModeWin32(_GLFWmonitor* monitor);
+void _glfwSetVideoModeWin32(plafMonitor* monitor, const VideoMode* desired);
+void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 
-IntBool _glfwCreateWindowWin32(_GLFWwindow* window, const WindowConfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
-void _glfwDestroyWindowWin32(_GLFWwindow* window);
-void _glfwSetWindowTitleWin32(_GLFWwindow* window, const char* title);
-void _glfwSetWindowIconWin32(_GLFWwindow* window, int count, const ImageData* images);
-void _glfwGetWindowPosWin32(_GLFWwindow* window, int* xpos, int* ypos);
-void _glfwSetWindowPosWin32(_GLFWwindow* window, int xpos, int ypos);
-void _glfwGetWindowSizeWin32(_GLFWwindow* window, int* width, int* height);
-void _glfwSetWindowSizeWin32(_GLFWwindow* window, int width, int height);
-void _glfwSetWindowSizeLimitsWin32(_GLFWwindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void _glfwSetWindowAspectRatioWin32(_GLFWwindow* window, int numer, int denom);
-void _glfwGetFramebufferSizeWin32(_GLFWwindow* window, int* width, int* height);
-void _glfwGetWindowFrameSizeWin32(_GLFWwindow* window, int* left, int* top, int* right, int* bottom);
-void _glfwGetWindowContentScaleWin32(_GLFWwindow* window, float* xscale, float* yscale);
-void _glfwIconifyWindowWin32(_GLFWwindow* window);
-void _glfwRestoreWindowWin32(_GLFWwindow* window);
-void _glfwMaximizeWindowWin32(_GLFWwindow* window);
-void _glfwShowWindowWin32(_GLFWwindow* window);
-void _glfwHideWindowWin32(_GLFWwindow* window);
-void _glfwRequestWindowAttentionWin32(_GLFWwindow* window);
-void _glfwFocusWindowWin32(_GLFWwindow* window);
-void _glfwSetWindowMonitorWin32(_GLFWwindow* window, _GLFWmonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-IntBool _glfwWindowFocusedWin32(_GLFWwindow* window);
-IntBool _glfwWindowIconifiedWin32(_GLFWwindow* window);
-IntBool _glfwWindowVisibleWin32(_GLFWwindow* window);
-IntBool _glfwWindowMaximizedWin32(_GLFWwindow* window);
-IntBool _glfwWindowHoveredWin32(_GLFWwindow* window);
-IntBool _glfwFramebufferTransparentWin32(_GLFWwindow* window);
-void _glfwSetWindowResizableWin32(_GLFWwindow* window, IntBool enabled);
-void _glfwSetWindowDecoratedWin32(_GLFWwindow* window, IntBool enabled);
-void _glfwSetWindowFloatingWin32(_GLFWwindow* window, IntBool enabled);
-void _glfwSetWindowMousePassthroughWin32(_GLFWwindow* window, IntBool enabled);
-float _glfwGetWindowOpacityWin32(_GLFWwindow* window);
-void _glfwSetWindowOpacityWin32(_GLFWwindow* window, float opacity);
+IntBool _glfwCreateWindowWin32(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _glfwDestroyWindowWin32(plafWindow* window);
+void _glfwSetWindowTitleWin32(plafWindow* window, const char* title);
+void _glfwSetWindowIconWin32(plafWindow* window, int count, const ImageData* images);
+void _glfwGetWindowPosWin32(plafWindow* window, int* xpos, int* ypos);
+void _glfwSetWindowPosWin32(plafWindow* window, int xpos, int ypos);
+void _glfwGetWindowSizeWin32(plafWindow* window, int* width, int* height);
+void _glfwSetWindowSizeWin32(plafWindow* window, int width, int height);
+void _glfwSetWindowSizeLimitsWin32(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
+void _glfwSetWindowAspectRatioWin32(plafWindow* window, int numer, int denom);
+void _glfwGetFramebufferSizeWin32(plafWindow* window, int* width, int* height);
+void _glfwGetWindowFrameSizeWin32(plafWindow* window, int* left, int* top, int* right, int* bottom);
+void _glfwGetWindowContentScaleWin32(plafWindow* window, float* xscale, float* yscale);
+void _glfwIconifyWindowWin32(plafWindow* window);
+void _glfwRestoreWindowWin32(plafWindow* window);
+void _glfwMaximizeWindowWin32(plafWindow* window);
+void _glfwShowWindowWin32(plafWindow* window);
+void _glfwHideWindowWin32(plafWindow* window);
+void _glfwRequestWindowAttentionWin32(plafWindow* window);
+void _glfwFocusWindowWin32(plafWindow* window);
+void _glfwSetWindowMonitorWin32(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
+IntBool _glfwWindowFocusedWin32(plafWindow* window);
+IntBool _glfwWindowIconifiedWin32(plafWindow* window);
+IntBool _glfwWindowVisibleWin32(plafWindow* window);
+IntBool _glfwWindowMaximizedWin32(plafWindow* window);
+IntBool _glfwWindowHoveredWin32(plafWindow* window);
+IntBool _glfwFramebufferTransparentWin32(plafWindow* window);
+void _glfwSetWindowResizableWin32(plafWindow* window, IntBool enabled);
+void _glfwSetWindowDecoratedWin32(plafWindow* window, IntBool enabled);
+void _glfwSetWindowFloatingWin32(plafWindow* window, IntBool enabled);
+void _glfwSetWindowMousePassthroughWin32(plafWindow* window, IntBool enabled);
+float _glfwGetWindowOpacityWin32(plafWindow* window);
+void _glfwSetWindowOpacityWin32(plafWindow* window, float opacity);
 
 void _glfwPollEventsWin32(void);
 void _glfwWaitEventsWin32(void);
 void _glfwWaitEventsTimeoutWin32(double timeout);
 void _glfwPostEmptyEventWin32(void);
 
-void _glfwSetCursorModeWin32(_GLFWwindow* window, int mode);
+void _glfwSetCursorModeWin32(plafWindow* window, int mode);
 int _glfwGetKeyScancodeWin32(int key);
 IntBool _glfwCreateCursorWin32(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
 IntBool _glfwCreateStandardCursorWin32(plafCursor* cursor, int shape);
 void _glfwDestroyCursorWin32(plafCursor* cursor);
 
-void _glfwFreeMonitorWin32(_GLFWmonitor* monitor);
-void _glfwGetMonitorPosWin32(_GLFWmonitor* monitor, int* xpos, int* ypos);
-void _glfwGetMonitorContentScaleWin32(_GLFWmonitor* monitor, float* xscale, float* yscale);
-void _glfwGetMonitorWorkareaWin32(_GLFWmonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-VideoMode* _glfwGetVideoModesWin32(_GLFWmonitor* monitor, int* count);
-IntBool _glfwGetVideoModeWin32(_GLFWmonitor* monitor, VideoMode* mode);
-IntBool _glfwGetGammaRampWin32(_GLFWmonitor* monitor, GammaRamp* ramp);
-void _glfwSetGammaRampWin32(_GLFWmonitor* monitor, const GammaRamp* ramp);
+void _glfwFreeMonitorWin32(plafMonitor* monitor);
+void _glfwGetMonitorPosWin32(plafMonitor* monitor, int* xpos, int* ypos);
+void _glfwGetMonitorContentScaleWin32(plafMonitor* monitor, float* xscale, float* yscale);
+void _glfwGetMonitorWorkareaWin32(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
+VideoMode* _glfwGetVideoModesWin32(plafMonitor* monitor, int* count);
+IntBool _glfwGetVideoModeWin32(plafMonitor* monitor, VideoMode* mode);
+IntBool _glfwGetGammaRampWin32(plafMonitor* monitor, GammaRamp* ramp);
+void _glfwSetGammaRampWin32(plafMonitor* monitor, const GammaRamp* ramp);
 
 IntBool _glfwInitWGL(void);
 void _glfwTerminateWGL(void);
-IntBool _glfwCreateContextWGL(_GLFWwindow* window,
-                               const _GLFWctxconfig* ctxconfig,
-                               const _GLFWfbconfig* fbconfig);
+IntBool _glfwCreateContextWGL(plafWindow* window,
+                               const plafCtxCfg* ctxconfig,
+                               const plafFrameBufferCfg* fbconfig);
 
 #endif // _WIN32

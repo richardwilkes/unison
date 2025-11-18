@@ -3,7 +3,7 @@ package plaf
 /*
 #include "platform.h"
 
-void goMonitorCallback(GLFWmonitor* monitor, int event);
+void goMonitorCallback(plafMonitor* monitor, int event);
 */
 import "C"
 
@@ -13,7 +13,7 @@ import (
 
 // Monitor represents a monitor.
 type Monitor struct {
-	data *C.GLFWmonitor
+	data *C.plafMonitor
 }
 
 // PeripheralEvent corresponds to a peripheral (Monitor) configuration event.

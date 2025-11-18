@@ -138,14 +138,14 @@ static void createKeyTables(void) {
 @implementation GLFWApplicationDelegate
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
-    for (_GLFWwindow* window = _glfw.windowListHead;  window;  window = window->next) {
+    for (plafWindow* window = _glfw.windowListHead;  window;  window = window->next) {
         _glfwInputWindowCloseRequest(window);
 	}
     return NSTerminateCancel;
 }
 
 - (void)applicationDidChangeScreenParameters:(NSNotification *) notification {
-    for (_GLFWwindow* window = _glfw.windowListHead;  window;  window = window->next) {
+    for (plafWindow* window = _glfw.windowListHead;  window;  window = window->next) {
 		[window->context.nsgl.object update];
     }
     _glfwPollMonitorsCocoa();

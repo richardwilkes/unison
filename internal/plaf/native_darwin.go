@@ -5,7 +5,7 @@ package plaf
 
 // workaround wrappers needed due to a cgo and/or LLVM bug.
 // See: https://github.com/go-gl/glfw/issues/136
-void *workaround_glfwGetCocoaWindow(GLFWwindow *w) {
+void *workaround_glfwGetCocoaWindow(plafWindow *w) {
 	return (void *)glfwGetCocoaWindow(w);
 }
 */
