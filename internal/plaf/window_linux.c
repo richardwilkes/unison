@@ -1797,8 +1797,12 @@ static void processEvent(XEvent *event)
 				Time diff = event->xkey.time - window->x11.keyPressTimes[keycode];
 				if (diff == event->xkey.time || (diff > 0 && diff < ((Time)1 << 31)))
 				{
-					if (keycode)
+					if (keycode) {
 						_glfwInputKey(window, key, keycode, INPUT_PRESS, mods);
+						if (!window->x11.handle) {
+							return; // Window was disposed of
+						}
+					}
 
 					window->x11.keyPressTimes[keycode] = event->xkey.time;
 				}
