@@ -35,6 +35,8 @@ extern "C" {
 	#include <X11/extensions/Xinerama.h>
 	#include <X11/extensions/shape.h>
 #elif defined(_WIN32)
+	#define DIRECTINPUT_VERSION 0x0800
+	#define OEMRESOURCE
 	#ifndef NOMINMAX
 		#define NOMINMAX
 	#endif
@@ -56,8 +58,6 @@ extern "C" {
 		#undef _WIN32_WINNT
 		#define _WIN32_WINNT 0x0601
 	#endif
-	#define DIRECTINPUT_VERSION 0x0800
-	#define OEMRESOURCE
 
 	#include <wctype.h>
 	#include <windows.h>
