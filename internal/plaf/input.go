@@ -154,12 +154,12 @@ type ModifierKey int
 
 // Modifier keys.
 const (
-	ModShift    ModifierKey = C.MOD_SHIFT
-	ModControl  ModifierKey = C.MOD_CONTROL
-	ModAlt      ModifierKey = C.MOD_ALT
-	ModSuper    ModifierKey = C.MOD_SUPER
-	ModCapsLock ModifierKey = C.MOD_CAPS_LOCK
-	ModNumLock  ModifierKey = C.MOD_NUM_LOCK
+	ModShift    ModifierKey = C.KEYMOD_SHIFT
+	ModControl  ModifierKey = C.KEYMOD_CONTROL
+	ModAlt      ModifierKey = C.KEYMOD_ALT
+	ModSuper    ModifierKey = C.KEYMOD_SUPER
+	ModCapsLock ModifierKey = C.KEYMOD_CAPS_LOCK
+	ModNumLock  ModifierKey = C.KEYMOD_NUM_LOCK
 )
 
 // MouseButton corresponds to a mouse button.

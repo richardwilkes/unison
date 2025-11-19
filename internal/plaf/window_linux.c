@@ -1021,17 +1021,17 @@ static int translateState(int state)
 	int mods = 0;
 
 	if (state & ShiftMask)
-		mods |= MOD_SHIFT;
+		mods |= KEYMOD_SHIFT;
 	if (state & ControlMask)
-		mods |= MOD_CONTROL;
+		mods |= KEYMOD_CONTROL;
 	if (state & Mod1Mask)
-		mods |= MOD_ALT;
+		mods |= KEYMOD_ALT;
 	if (state & Mod4Mask)
-		mods |= MOD_SUPER;
+		mods |= KEYMOD_SUPER;
 	if (state & LockMask)
-		mods |= MOD_CAPS_LOCK;
+		mods |= KEYMOD_CAPS_LOCK;
 	if (state & Mod2Mask)
-		mods |= MOD_NUM_LOCK;
+		mods |= KEYMOD_NUM_LOCK;
 
 	return mods;
 }
@@ -1775,7 +1775,7 @@ static void processEvent(XEvent *event)
 		{
 			const int key = translateKey(keycode);
 			const int mods = translateState(event->xkey.state);
-			const int plain = !(mods & (MOD_CONTROL | MOD_ALT));
+			const int plain = !(mods & (KEYMOD_CONTROL | KEYMOD_ALT));
 
 			if (window->x11.ic)
 			{

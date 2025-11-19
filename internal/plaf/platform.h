@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef _PLATFORM_H
+#define _PLATFORM_H
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -227,12 +230,12 @@ extern "C" {
 #define KEY_LAST          KEY_MENU
 
 // Modifier key flags
-#define MOD_SHIFT     0x0001
-#define MOD_CONTROL   0x0002
-#define MOD_ALT       0x0004
-#define MOD_SUPER     0x0008
-#define MOD_CAPS_LOCK 0x0010
-#define MOD_NUM_LOCK  0x0020
+#define KEYMOD_SHIFT     0x0001
+#define KEYMOD_CONTROL   0x0002
+#define KEYMOD_ALT       0x0004
+#define KEYMOD_SUPER     0x0008
+#define KEYMOD_CAPS_LOCK 0x0010
+#define KEYMOD_NUM_LOCK  0x0020
 
 // Mouse button IDs
 #define MOUSE_BUTTON_1         0
@@ -3371,8 +3374,8 @@ int glfwGetInputMode(plafWindow* window, int mode);
  *  If the mode is `INPUT_MODE_LOCK_KEY_MODS`, the value must be either `true` to
  *  enable lock key modifier bits, or `false` to disable them.  If enabled,
  *  callbacks that receive modifier bits will also have the @ref
- *  MOD_CAPS_LOCK bit set when the event was generated with Caps Lock on,
- *  and the @ref MOD_NUM_LOCK bit when Num Lock was on.
+ *  KEYMOD_CAPS_LOCK bit set when the event was generated with Caps Lock on,
+ *  and the @ref KEYMOD_NUM_LOCK bit when Num Lock was on.
  *
  *  If the mode is `INPUT_MODE_UNLIMITED_MOUSE_BUTTONS`, the value must be either
  *  `true` to disable the mouse button limit when calling the mouse button
@@ -4365,4 +4368,6 @@ void _glfwDestroyContextNSGL(plafWindow* window);
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif

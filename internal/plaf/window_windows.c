@@ -276,17 +276,17 @@ static int getKeyMods(void)
 	int mods = 0;
 
 	if (GetKeyState(VK_SHIFT) & 0x8000)
-		mods |= MOD_SHIFT;
+		mods |= KEYMOD_SHIFT;
 	if (GetKeyState(VK_CONTROL) & 0x8000)
-		mods |= MOD_CONTROL;
+		mods |= KEYMOD_CONTROL;
 	if (GetKeyState(VK_MENU) & 0x8000)
-		mods |= MOD_ALT;
+		mods |= KEYMOD_ALT;
 	if ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000)
-		mods |= MOD_SUPER;
+		mods |= KEYMOD_SUPER;
 	if (GetKeyState(VK_CAPITAL) & 1)
-		mods |= MOD_CAPS_LOCK;
+		mods |= KEYMOD_CAPS_LOCK;
 	if (GetKeyState(VK_NUMLOCK) & 1)
-		mods |= MOD_NUM_LOCK;
+		mods |= KEYMOD_NUM_LOCK;
 
 	return mods;
 }

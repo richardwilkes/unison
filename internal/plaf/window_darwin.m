@@ -85,15 +85,15 @@ static int translateFlags(NSUInteger flags)
 	int mods = 0;
 
 	if (flags & NSEventModifierFlagShift)
-		mods |= MOD_SHIFT;
+		mods |= KEYMOD_SHIFT;
 	if (flags & NSEventModifierFlagControl)
-		mods |= MOD_CONTROL;
+		mods |= KEYMOD_CONTROL;
 	if (flags & NSEventModifierFlagOption)
-		mods |= MOD_ALT;
+		mods |= KEYMOD_ALT;
 	if (flags & NSEventModifierFlagCommand)
-		mods |= MOD_SUPER;
+		mods |= KEYMOD_SUPER;
 	if (flags & NSEventModifierFlagCapsLock)
-		mods |= MOD_CAPS_LOCK;
+		mods |= KEYMOD_CAPS_LOCK;
 
 	return mods;
 }
@@ -610,7 +610,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	NSString* characters;
 	NSEvent* event = [NSApp currentEvent];
 	const int mods = translateFlags([event modifierFlags]);
-	const int plain = !(mods & MOD_SUPER);
+	const int plain = !(mods & KEYMOD_SUPER);
 
 	if ([string isKindOfClass:[NSAttributedString class]])
 		characters = [string string];

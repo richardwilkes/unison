@@ -5,13 +5,6 @@
 // Internal key state used for sticky keys
 #define _GLFW_STICK 3
 
-#define MOD_MASK (MOD_SHIFT | \
-					   MOD_CONTROL | \
-					   MOD_ALT | \
-					   MOD_SUPER | \
-					   MOD_CAPS_LOCK | \
-					   MOD_NUM_LOCK)
-
 
 //////////////////////////////////////////////////////////////////////////
 //////                         GLFW event API                       //////
@@ -41,7 +34,7 @@ void _glfwInputKey(plafWindow* window, int key, int scancode, int action, int mo
 	}
 
 	if (!window->lockKeyMods)
-		mods &= ~(MOD_CAPS_LOCK | MOD_NUM_LOCK);
+		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
 
 	if (window->callbacks.key)
 		window->callbacks.key((plafWindow*) window, key, scancode, action, mods);
@@ -56,7 +49,7 @@ void _glfwInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool pl
 		return;
 
 	if (!window->lockKeyMods)
-		mods &= ~(MOD_CAPS_LOCK | MOD_NUM_LOCK);
+		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
 
 	if (window->callbacks.charmods)
 		window->callbacks.charmods((plafWindow*) window, codepoint, mods);
@@ -84,7 +77,7 @@ void _glfwInputMouseClick(plafWindow* window, int button, int action, int mods)
 		return;
 
 	if (!window->lockKeyMods)
-		mods &= ~(MOD_CAPS_LOCK | MOD_NUM_LOCK);
+		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
 
 	if (button <= MOUSE_BUTTON_LAST)
 	{
