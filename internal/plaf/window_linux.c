@@ -1723,7 +1723,7 @@ static void processEvent(XEvent *event)
 		}
 	}
 
-	if (_glfw.x11.xkb.available)
+	if (_glfw.xkbAvailable)
 	{
 		if (event->type == _glfw.xkbEventBase + XkbEventCode)
 		{
@@ -2758,9 +2758,9 @@ void _glfwGetWindowFrameSizeX11(plafWindow* window,
 void _glfwGetWindowContentScaleX11(plafWindow* window, float* xscale, float* yscale)
 {
 	if (xscale)
-		*xscale = _glfw.x11.contentScaleX;
+		*xscale = _glfw.x11ContentScaleX;
 	if (yscale)
-		*yscale = _glfw.x11.contentScaleY;
+		*yscale = _glfw.x11ContentScaleY;
 }
 
 void _glfwIconifyWindowX11(plafWindow* window)

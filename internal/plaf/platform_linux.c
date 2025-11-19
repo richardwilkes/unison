@@ -186,7 +186,7 @@ static void createKeyTables(void)
 	memset(_glfw.x11Keycodes, -1, sizeof(_glfw.x11Keycodes));
 	memset(_glfw.x11Scancodes, -1, sizeof(_glfw.x11Scancodes));
 
-	if (_glfw.x11.xkb.available)
+	if (_glfw.xkbAvailable)
 	{
 		// Use XKB to determine physical key locations independently of the
 		// current keyboard layout
@@ -728,10 +728,10 @@ static void initExtensions(void)
 	int errorBase;
 	int major = 1;
 	int minor = 0;
-	_glfw.x11.xkb.available =
+	_glfw.xkbAvailable =
 		_glfw.xkbQueryExtension(_glfw.x11Display, &majorOpcode, &_glfw.xkbEventBase, &errorBase, &major, &minor);
 
-	if (_glfw.x11.xkb.available)
+	if (_glfw.xkbAvailable)
 	{
 		Bool supported;
 
