@@ -26,17 +26,13 @@ extern "C" {
 	#define APIENTRY
 
 	#include <unistd.h>
-	#include <signal.h>
-	// TODO: See if we can remove any of these X11 includes
 	#include <X11/Xlib.h>
-	#include <X11/keysym.h>
 	#include <X11/Xatom.h>
 	#include <X11/Xresource.h>
 	#include <X11/Xcursor/Xcursor.h>
 	#include <X11/extensions/Xrandr.h>
 	#include <X11/XKBlib.h>
 	#include <X11/extensions/Xinerama.h>
-	#include <X11/extensions/XInput2.h>
 	#include <X11/extensions/shape.h>
 #elif defined(_WIN32)
 	#ifndef NOMINMAX
