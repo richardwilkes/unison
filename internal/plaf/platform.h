@@ -4359,7 +4359,159 @@ void _glfwTerminateNSGL(void);
 IntBool _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _glfwDestroyContextNSGL(plafWindow* window);
 #elif defined(__linux__)
+IntBool _glfwCreateWindowX11(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _glfwDestroyWindowX11(plafWindow* window);
+void _glfwSetWindowTitleX11(plafWindow* window, const char* title);
+void _glfwSetWindowIconX11(plafWindow* window, int count, const ImageData* images);
+void _glfwGetWindowPosX11(plafWindow* window, int* xpos, int* ypos);
+void _glfwSetWindowPosX11(plafWindow* window, int xpos, int ypos);
+void _glfwGetWindowSizeX11(plafWindow* window, int* width, int* height);
+void _glfwSetWindowSizeX11(plafWindow* window, int width, int height);
+void _glfwSetWindowSizeLimitsX11(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
+void _glfwSetWindowAspectRatioX11(plafWindow* window, int numer, int denom);
+void _glfwGetFramebufferSizeX11(plafWindow* window, int* width, int* height);
+void _glfwGetWindowFrameSizeX11(plafWindow* window, int* left, int* top, int* right, int* bottom);
+void _glfwGetWindowContentScaleX11(plafWindow* window, float* xscale, float* yscale);
+void _glfwIconifyWindowX11(plafWindow* window);
+void _glfwRestoreWindowX11(plafWindow* window);
+void _glfwMaximizeWindowX11(plafWindow* window);
+void _glfwShowWindowX11(plafWindow* window);
+void _glfwHideWindowX11(plafWindow* window);
+void _glfwRequestWindowAttentionX11(plafWindow* window);
+void _glfwFocusWindowX11(plafWindow* window);
+void _glfwSetWindowMonitorX11(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
+IntBool _glfwWindowFocusedX11(plafWindow* window);
+IntBool _glfwWindowIconifiedX11(plafWindow* window);
+IntBool _glfwWindowVisibleX11(plafWindow* window);
+IntBool _glfwWindowMaximizedX11(plafWindow* window);
+IntBool _glfwWindowHoveredX11(plafWindow* window);
+IntBool _glfwFramebufferTransparentX11(plafWindow* window);
+void _glfwSetWindowResizableX11(plafWindow* window, IntBool enabled);
+void _glfwSetWindowDecoratedX11(plafWindow* window, IntBool enabled);
+void _glfwSetWindowFloatingX11(plafWindow* window, IntBool enabled);
+float _glfwGetWindowOpacityX11(plafWindow* window);
+void _glfwSetWindowOpacityX11(plafWindow* window, float opacity);
+void _glfwSetWindowMousePassthroughX11(plafWindow* window, IntBool enabled);
+
+void _glfwPollEventsX11(void);
+void _glfwWaitEventsX11(void);
+void _glfwWaitEventsTimeoutX11(double timeout);
+void _glfwPostEmptyEventX11(void);
+
+void _glfwSetCursorModeX11(plafWindow* window, int mode);
+int _glfwGetKeyScancodeX11(int key);
+IntBool _glfwCreateCursorX11(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
+IntBool _glfwCreateStandardCursorX11(plafCursor* cursor, int shape);
+void _glfwDestroyCursorX11(plafCursor* cursor);
+
+void _glfwFreeMonitorX11(plafMonitor* monitor);
+void _glfwGetMonitorPosX11(plafMonitor* monitor, int* xpos, int* ypos);
+void _glfwGetMonitorContentScaleX11(plafMonitor* monitor, float* xscale, float* yscale);
+void _glfwGetMonitorWorkareaX11(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
+VideoMode* _glfwGetVideoModesX11(plafMonitor* monitor, int* count);
+IntBool _glfwGetVideoModeX11(plafMonitor* monitor, VideoMode* mode);
+IntBool _glfwGetGammaRampX11(plafMonitor* monitor, GammaRamp* ramp);
+void _glfwSetGammaRampX11(plafMonitor* monitor, const GammaRamp* ramp);
+
+void _glfwPollMonitorsX11(void);
+void _glfwSetVideoModeX11(plafMonitor* monitor, const VideoMode* desired);
+void _glfwRestoreVideoModeX11(plafMonitor* monitor);
+
+Cursor _glfwCreateNativeCursorX11(const ImageData* image, int xhot, int yhot);
+
+unsigned long _glfwGetWindowPropertyX11(Window window,
+                                        Atom property,
+                                        Atom type,
+                                        unsigned char** value);
+IntBool _glfwIsVisualTransparentX11(Visual* visual);
+
+void _glfwGrabErrorHandlerX11(void);
+void _glfwReleaseErrorHandlerX11(void);
+void _glfwInputErrorX11(int error, const char* message);
+
+void _glfwPushSelectionToManagerX11(void);
+void _glfwCreateInputContextX11(plafWindow* window);
+
+IntBool _glfwInitGLX(void);
+IntBool _glfwCreateContextGLX(plafWindow* window,
+                               const plafCtxCfg* ctxconfig,
+                               const plafFrameBufferCfg* fbconfig);
+void _glfwDestroyContextGLX(plafWindow* window);
+IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
+                              const plafCtxCfg* ctxconfig,
+                              const plafFrameBufferCfg* fbconfig,
+                              Visual** visual, int* depth);
+
+IntBool waitForX11Event(double timeout);
 #elif defined(_WIN32)
+WCHAR* _glfwCreateWideStringFromUTF8Win32(const char* src);
+char* _glfwCreateUTF8FromWideStringWin32(const WCHAR* src);
+BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp);
+BOOL _glfwIsWindows10BuildOrGreaterWin32(WORD build);
+void _glfwInputErrorWin32(int error, const char* description);
+
+void _glfwPollMonitorsWin32(void);
+void _glfwSetVideoModeWin32(plafMonitor* monitor, const VideoMode* desired);
+void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
+void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
+
+IntBool _glfwCreateWindowWin32(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _glfwDestroyWindowWin32(plafWindow* window);
+void _glfwSetWindowTitleWin32(plafWindow* window, const char* title);
+void _glfwSetWindowIconWin32(plafWindow* window, int count, const ImageData* images);
+void _glfwGetWindowPosWin32(plafWindow* window, int* xpos, int* ypos);
+void _glfwSetWindowPosWin32(plafWindow* window, int xpos, int ypos);
+void _glfwGetWindowSizeWin32(plafWindow* window, int* width, int* height);
+void _glfwSetWindowSizeWin32(plafWindow* window, int width, int height);
+void _glfwSetWindowSizeLimitsWin32(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
+void _glfwSetWindowAspectRatioWin32(plafWindow* window, int numer, int denom);
+void _glfwGetFramebufferSizeWin32(plafWindow* window, int* width, int* height);
+void _glfwGetWindowFrameSizeWin32(plafWindow* window, int* left, int* top, int* right, int* bottom);
+void _glfwGetWindowContentScaleWin32(plafWindow* window, float* xscale, float* yscale);
+void _glfwIconifyWindowWin32(plafWindow* window);
+void _glfwRestoreWindowWin32(plafWindow* window);
+void _glfwMaximizeWindowWin32(plafWindow* window);
+void _glfwShowWindowWin32(plafWindow* window);
+void _glfwHideWindowWin32(plafWindow* window);
+void _glfwRequestWindowAttentionWin32(plafWindow* window);
+void _glfwFocusWindowWin32(plafWindow* window);
+void _glfwSetWindowMonitorWin32(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
+IntBool _glfwWindowFocusedWin32(plafWindow* window);
+IntBool _glfwWindowIconifiedWin32(plafWindow* window);
+IntBool _glfwWindowVisibleWin32(plafWindow* window);
+IntBool _glfwWindowMaximizedWin32(plafWindow* window);
+IntBool _glfwWindowHoveredWin32(plafWindow* window);
+IntBool _glfwFramebufferTransparentWin32(plafWindow* window);
+void _glfwSetWindowResizableWin32(plafWindow* window, IntBool enabled);
+void _glfwSetWindowDecoratedWin32(plafWindow* window, IntBool enabled);
+void _glfwSetWindowFloatingWin32(plafWindow* window, IntBool enabled);
+void _glfwSetWindowMousePassthroughWin32(plafWindow* window, IntBool enabled);
+float _glfwGetWindowOpacityWin32(plafWindow* window);
+void _glfwSetWindowOpacityWin32(plafWindow* window, float opacity);
+
+void _glfwPollEventsWin32(void);
+void _glfwWaitEventsWin32(void);
+void _glfwWaitEventsTimeoutWin32(double timeout);
+void _glfwPostEmptyEventWin32(void);
+
+void _glfwSetCursorModeWin32(plafWindow* window, int mode);
+int _glfwGetKeyScancodeWin32(int key);
+IntBool _glfwCreateCursorWin32(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
+IntBool _glfwCreateStandardCursorWin32(plafCursor* cursor, int shape);
+void _glfwDestroyCursorWin32(plafCursor* cursor);
+
+void _glfwFreeMonitorWin32(plafMonitor* monitor);
+void _glfwGetMonitorPosWin32(plafMonitor* monitor, int* xpos, int* ypos);
+void _glfwGetMonitorContentScaleWin32(plafMonitor* monitor, float* xscale, float* yscale);
+void _glfwGetMonitorWorkareaWin32(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
+VideoMode* _glfwGetVideoModesWin32(plafMonitor* monitor, int* count);
+IntBool _glfwGetVideoModeWin32(plafMonitor* monitor, VideoMode* mode);
+IntBool _glfwGetGammaRampWin32(plafMonitor* monitor, GammaRamp* ramp);
+void _glfwSetGammaRampWin32(plafMonitor* monitor, const GammaRamp* ramp);
+
+IntBool _glfwInitWGL(void);
+void _glfwTerminateWGL(void);
+IntBool _glfwCreateContextWGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 #endif
 
 #ifdef __cplusplus
