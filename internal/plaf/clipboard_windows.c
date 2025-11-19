@@ -9,7 +9,7 @@ const char* getClipboardString(void) {
 	WCHAR* buffer;
 	int tries = 0;
 
-	while (!OpenClipboard(_glfw.win32.helperWindowHandle)) {
+	while (!OpenClipboard(_glfw.win32HelperWindowHandle)) {
 		Sleep(1);
 		if (++tries == MAX_OPEN_CLIPBOARD_TRIES) {
 			return NULL;
@@ -60,7 +60,7 @@ void setClipboardString(const char* string) {
 	MultiByteToWideChar(CP_UTF8, 0, string, -1, buffer, characterCount);
 	GlobalUnlock(object);
 
-	while (!OpenClipboard(_glfw.win32.helperWindowHandle)) {
+	while (!OpenClipboard(_glfw.win32HelperWindowHandle)) {
 		Sleep(1);
 		if (++tries == MAX_OPEN_CLIPBOARD_TRIES) {
 			GlobalFree(object);

@@ -1,71 +1,6 @@
 #if defined(_WIN32)
-// We don't need all the fancy stuff
-#ifndef NOMINMAX
- #define NOMINMAX
-#endif
-
-#ifndef VC_EXTRALEAN
- #define VC_EXTRALEAN
-#endif
-
-#ifndef WIN32_LEAN_AND_MEAN
- #define WIN32_LEAN_AND_MEAN
-#endif
-
-// This is a workaround for the fact that platform.h needs to export APIENTRY (for
-// example to allow applications to correctly declare a GL_KHR_debug callback)
-// but windows.h assumes no one will define APIENTRY before it does
-#undef APIENTRY
-
-// GLFW on Windows is Unicode only and does not work in MBCS mode
-#ifndef UNICODE
- #define UNICODE
-#endif
-
-// GLFW requires Windows 7 or later
-#if WINVER < 0x0601
- #undef WINVER
- #define WINVER 0x0601
-#endif
-#if _WIN32_WINNT < 0x0601
- #undef _WIN32_WINNT
- #define _WIN32_WINNT 0x0601
-#endif
-
-// GLFW uses DirectInput8 interfaces
-#define DIRECTINPUT_VERSION 0x0800
-
-// GLFW uses OEM cursor resources
-#define OEMRESOURCE
-
-#include <wctype.h>
-#include <windows.h>
-#include <dwmapi.h>
-#include <dinput.h>
-#include <dbt.h>
 
 // HACK: Define macros that some windows.h variants don't
-#ifndef WM_COPYGLOBALDATA
- #define WM_COPYGLOBALDATA 0x0049
-#endif
-#ifndef WM_DPICHANGED
- #define WM_DPICHANGED 0x02E0
-#endif
-#ifndef EDS_ROTATEDMODE
- #define EDS_ROTATEDMODE 0x00000004
-#endif
-#ifndef _WIN32_WINNT_WINBLUE
- #define _WIN32_WINNT_WINBLUE 0x0603
-#endif
-#ifndef _WIN32_WINNT_WIN8
- #define _WIN32_WINNT_WIN8 0x0602
-#endif
-#ifndef WM_GETDPISCALEDSIZE
- #define WM_GETDPISCALEDSIZE 0x02e4
-#endif
-#ifndef USER_DEFAULT_SCREEN_DPI
- #define USER_DEFAULT_SCREEN_DPI 96
-#endif
 
 #ifndef DPI_ENUMS_DECLARED
 typedef enum
@@ -190,20 +125,6 @@ typedef HGLRC (WINAPI * PFN_wglGetCurrentContext)(void);
 typedef BOOL (WINAPI * PFN_wglMakeCurrent)(HDC,HGLRC);
 typedef BOOL (WINAPI * PFN_wglShareLists)(HGLRC,HGLRC);
 
-#define GLFW_WIN32_LIBRARY_WINDOW_STATE _GLFWlibraryWin32 win32;
-
-#define GLFW_WGL_CONTEXT_STATE          _GLFWcontextWGL wgl;
-
-
-// WGL-specific per-context data
-//
-typedef struct _GLFWcontextWGL
-{
-    HDC       dc;
-    HGLRC     handle;
-    int       interval;
-} _GLFWcontextWGL;
-
 // Win32-specific per-window data
 //
 typedef struct _GLFWwindowWin32
@@ -229,56 +150,6 @@ typedef struct _GLFWwindowWin32
     WCHAR               highSurrogate;
 } _GLFWwindowWin32;
 
-// Win32-specific global data
-//
-typedef struct _GLFWlibraryWin32
-{
-    HINSTANCE           instance;
-    HWND                helperWindowHandle;
-    ATOM                helperWindowClass;
-    ATOM                mainWindowClass;
-    HDEVNOTIFY          deviceNotificationHandle;
-    int                 acquiredMonitorCount;
-    short int           keycodes[512];
-    short int           scancodes[KEY_LAST + 1];
-    char                keynames[KEY_LAST + 1][5];
-    // Where to place the cursor when re-enabled
-    double              restoreCursorPosX, restoreCursorPosY;
-    RAWINPUT*           rawInput;
-    int                 rawInputSize;
-    UINT                mouseTrailSize;
-    // The cursor handle to use to hide the cursor (NULL or a transparent cursor)
-    HCURSOR             blankCursor;
-
-    struct {
-        HINSTANCE                       instance;
-        PFN_EnableNonClientDpiScaling   EnableNonClientDpiScaling_;
-        PFN_SetProcessDpiAwarenessContext SetProcessDpiAwarenessContext_;
-        PFN_GetDpiForWindow             GetDpiForWindow_;
-        PFN_AdjustWindowRectExForDpi    AdjustWindowRectExForDpi_;
-        PFN_GetSystemMetricsForDpi      GetSystemMetricsForDpi_;
-    } user32;
-
-    struct {
-        HINSTANCE                       instance;
-        PFN_DwmIsCompositionEnabled     IsCompositionEnabled;
-        PFN_DwmFlush                    Flush;
-        PFN_DwmEnableBlurBehindWindow   EnableBlurBehindWindow;
-        PFN_DwmGetColorizationColor     GetColorizationColor;
-    } dwmapi;
-
-    struct {
-        HINSTANCE                       instance;
-        PFN_SetProcessDpiAwareness      SetProcessDpiAwareness_;
-        PFN_GetDpiForMonitor            GetDpiForMonitor_;
-    } shcore;
-
-    struct {
-        HINSTANCE                       instance;
-        PFN_RtlVerifyVersionInfo        RtlVerifyVersionInfo_;
-    } ntdll;
-} _GLFWlibraryWin32;
-
 // Win32-specific per-cursor data
 //
 typedef struct _GLFWcursorWin32
@@ -291,7 +162,6 @@ char* _glfwCreateUTF8FromWideStringWin32(const WCHAR* src);
 BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp);
 BOOL _glfwIsWindows10BuildOrGreaterWin32(WORD build);
 void _glfwInputErrorWin32(int error, const char* description);
-void _glfwUpdateKeyNamesWin32(void);
 
 void _glfwPollMonitorsWin32(void);
 void _glfwSetVideoModeWin32(plafMonitor* monitor, const VideoMode* desired);
@@ -354,8 +224,6 @@ void _glfwSetGammaRampWin32(plafMonitor* monitor, const GammaRamp* ramp);
 
 IntBool _glfwInitWGL(void);
 void _glfwTerminateWGL(void);
-IntBool _glfwCreateContextWGL(plafWindow* window,
-                               const plafCtxCfg* ctxconfig,
-                               const plafFrameBufferCfg* fbconfig);
+IntBool _glfwCreateContextWGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 
 #endif // _WIN32

@@ -162,8 +162,8 @@ static void applyAspectRatio(plafWindow* window, int edge, RECT* area)
 
 	if (_glfwIsWindows10Version1607OrGreaterWin32())
 	{
-		_glfw.win32.user32.AdjustWindowRectExForDpi_(&frame, style, FALSE, exStyle,
-								 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+		_glfw.win32User32AdjustWindowRectExForDpi_(&frame, style, FALSE, exStyle,
+								 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 	}
 	else
 		AdjustWindowRectEx(&frame, style, FALSE, exStyle);
@@ -202,16 +202,8 @@ void updateCursorImage(plafWindow* window)
 		// NOTE: Via Remote Desktop, setting the cursor to NULL does not hide it.
 		// HACK: When running locally, it is set to NULL, but when connected via Remote
 		//       Desktop, this is a transparent cursor.
-		SetCursor(_glfw.win32.blankCursor);
+		SetCursor(_glfw.win32BlankCursor);
 	}
-}
-
-// Exit disabled cursor mode for the specified window
-//
-static void enableCursor(plafWindow* window)
-{
-	setCursorPosInternal(window, _glfw.win32.restoreCursorPosX, _glfw.win32.restoreCursorPosY);
-	updateCursorImage(window);
 }
 
 // Update native window styles to match attributes
@@ -227,9 +219,9 @@ static void updateWindowStyles(const plafWindow* window)
 
 	if (_glfwIsWindows10Version1607OrGreaterWin32())
 	{
-		_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, style, FALSE,
+		_glfw.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE,
 								 getWindowExStyle(window),
-								 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+								 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 	}
 	else
 		AdjustWindowRectEx(&rect, style, FALSE, getWindowExStyle(window));
@@ -250,11 +242,11 @@ static void updateFramebufferTransparency(const plafWindow* window)
 	BOOL composition, opaque;
 	DWORD color;
 
-	if (FAILED(_glfw.win32.dwmapi.IsCompositionEnabled(&composition)) || !composition)
+	if (FAILED(_glfw.win32DwmIsCompositionEnabled(&composition)) || !composition)
 	   return;
 
 	if (IsWindows8OrGreater() ||
-		(SUCCEEDED(_glfw.win32.dwmapi.GetColorizationColor(&color, &opaque)) && !opaque))
+		(SUCCEEDED(_glfw.win32DwmGetColorizationColor(&color, &opaque)) && !opaque))
 	{
 		HRGN region = CreateRectRgn(0, 0, -1, -1);
 		DWM_BLURBEHIND bb = {0};
@@ -262,7 +254,7 @@ static void updateFramebufferTransparency(const plafWindow* window)
 		bb.hRgnBlur = region;
 		bb.fEnable = TRUE;
 
-		_glfw.win32.dwmapi.EnableBlurBehindWindow(window->win32.handle, &bb);
+		_glfw.win32DwmEnableBlurBehindWindow(window->win32.handle, &bb);
 		DeleteObject(region);
 	}
 	else
@@ -273,7 +265,7 @@ static void updateFramebufferTransparency(const plafWindow* window)
 		//       of replacing it
 		DWM_BLURBEHIND bb = {0};
 		bb.dwFlags = DWM_BB_ENABLE;
-		_glfw.win32.dwmapi.EnableBlurBehindWindow(window->win32.handle, &bb);
+		_glfw.win32DwmEnableBlurBehindWindow(window->win32.handle, &bb);
 	}
 }
 
@@ -315,18 +307,18 @@ static void fitToMonitor(plafWindow* window)
 //
 static void acquireMonitor(plafWindow* window)
 {
-	if (!_glfw.win32.acquiredMonitorCount)
+	if (!_glfw.win32AcquiredMonitorCount)
 	{
 		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
 
 		// HACK: When mouse trails are enabled the cursor becomes invisible when
 		//       the OpenGL ICD switches to page flipping
-		SystemParametersInfoW(SPI_GETMOUSETRAILS, 0, &_glfw.win32.mouseTrailSize, 0);
+		SystemParametersInfoW(SPI_GETMOUSETRAILS, 0, &_glfw.win32MouseTrailSize, 0);
 		SystemParametersInfoW(SPI_SETMOUSETRAILS, 0, 0, 0);
 	}
 
 	if (!window->monitor->window)
-		_glfw.win32.acquiredMonitorCount++;
+		_glfw.win32AcquiredMonitorCount++;
 
 	_glfwSetVideoModeWin32(window->monitor, &window->videoMode);
 	_glfwInputMonitorWindow(window->monitor, window);
@@ -339,13 +331,13 @@ static void releaseMonitor(plafWindow* window)
 	if (window->monitor->window != window)
 		return;
 
-	_glfw.win32.acquiredMonitorCount--;
-	if (!_glfw.win32.acquiredMonitorCount)
+	_glfw.win32AcquiredMonitorCount--;
+	if (!_glfw.win32AcquiredMonitorCount)
 	{
 		SetThreadExecutionState(ES_CONTINUOUS);
 
 		// HACK: Restore mouse trail length saved in acquireMonitor
-		SystemParametersInfoW(SPI_SETMOUSETRAILS, _glfw.win32.mouseTrailSize, 0, 0);
+		SystemParametersInfoW(SPI_SETMOUSETRAILS, _glfw.win32MouseTrailSize, 0, 0);
 	}
 
 	_glfwInputMonitorWindow(window->monitor, NULL);
@@ -381,9 +373,9 @@ static void maximizeWindowManually(plafWindow* window)
 
 		if (_glfwIsWindows10Version1607OrGreaterWin32())
 		{
-			const UINT dpi = _glfw.win32.user32.GetDpiForWindow_(window->win32.handle);
-			_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle, dpi);
-			OffsetRect(&rect, 0, _glfw.win32.user32.GetSystemMetricsForDpi_(SM_CYCAPTION, dpi));
+			const UINT dpi = _glfw.win32User32GetDpiForWindow_(window->win32.handle);
+			_glfw.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle, dpi);
+			OffsetRect(&rect, 0, _glfw.win32User32GetSystemMetricsForDpi_(SM_CYCAPTION, dpi));
 		}
 		else
 		{
@@ -421,7 +413,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				// We need WM_GETDPISCALEDSIZE from V2 to keep the client
 				// area static when the non-client area is scaled
 				if (wndconfig && wndconfig->scaleToMonitor)
-					_glfw.win32.user32.EnableNonClientDpiScaling_(hWnd);
+					_glfw.win32User32EnableNonClientDpiScaling_(hWnd);
 			}
 		}
 
@@ -505,7 +497,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 		case WM_INPUTLANGCHANGE:
 		{
-			_glfwUpdateKeyNamesWin32();
 			break;
 		}
 
@@ -579,7 +570,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			if (scancode == 0x136)
 				scancode = 0x36;
 
-			key = _glfw.win32.keycodes[scancode];
+			key = _glfw.win32Keycodes[scancode];
 
 			// The Ctrl keys require special handling
 			if (wParam == VK_CONTROL)
@@ -842,8 +833,8 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 			if (_glfwIsWindows10Version1607OrGreaterWin32())
 			{
-				_glfw.win32.user32.AdjustWindowRectExForDpi_(&frame, style, FALSE, exStyle,
-										 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+				_glfw.win32User32AdjustWindowRectExForDpi_(&frame, style, FALSE, exStyle,
+										 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 			}
 			else
 				AdjustWindowRectEx(&frame, style, FALSE, exStyle);
@@ -922,10 +913,10 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				RECT source = {0}, target = {0};
 				SIZE* size = (SIZE*) lParam;
 
-				_glfw.win32.user32.AdjustWindowRectExForDpi_(&source, getWindowStyle(window),
+				_glfw.win32User32AdjustWindowRectExForDpi_(&source, getWindowStyle(window),
 										 FALSE, getWindowExStyle(window),
-										 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
-				_glfw.win32.user32.AdjustWindowRectExForDpi_(&target, getWindowStyle(window),
+										 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
+				_glfw.win32User32AdjustWindowRectExForDpi_(&target, getWindowStyle(window),
 										 FALSE, getWindowExStyle(window),
 										 LOWORD(wParam));
 
@@ -1023,12 +1014,12 @@ static int createNativeWindow(plafWindow* window,
 	DWORD style = getWindowStyle(window);
 	DWORD exStyle = getWindowExStyle(window);
 
-	if (!_glfw.win32.mainWindowClass)
+	if (!_glfw.win32MainWindowClass)
 	{
 		WNDCLASSEXW wc = { sizeof(wc) };
 		wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 		wc.lpfnWndProc   = windowProc;
-		wc.hInstance     = _glfw.win32.instance;
+		wc.hInstance     = _glfw.win32Instance;
 		wc.hCursor       = LoadCursorW(NULL, IDC_ARROW);
 #if defined(_GLFW_WNDCLASSNAME)
 		wc.lpszClassName = _GLFW_WNDCLASSNAME;
@@ -1047,8 +1038,8 @@ static int createNativeWindow(plafWindow* window,
 								  0, 0, LR_DEFAULTSIZE | LR_SHARED);
 		}
 
-		_glfw.win32.mainWindowClass = RegisterClassExW(&wc);
-		if (!_glfw.win32.mainWindowClass)
+		_glfw.win32MainWindowClass = RegisterClassExW(&wc);
+		if (!_glfw.win32MainWindowClass)
 		{
 			_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to register window class");
 			return false;
@@ -1060,7 +1051,7 @@ static int createNativeWindow(plafWindow* window,
 		// NOTE: On Remote Desktop, setting the cursor to NULL does not hide it
 		// HACK: Create a transparent cursor and always set that instead of NULL
 		//       When not on Remote Desktop, this handle is NULL and normal hiding is used
-		if (!_glfw.win32.blankCursor)
+		if (!_glfw.win32BlankCursor)
 		{
 			const int cursorWidth = GetSystemMetrics(SM_CXCURSOR);
 			const int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
@@ -1075,10 +1066,10 @@ static int createNativeWindow(plafWindow* window,
 			cursorPixels[3] = 1;
 
 			const ImageData cursorImage = { cursorWidth, cursorHeight, cursorPixels };
-			_glfw.win32.blankCursor = createIcon(&cursorImage, 0, 0, FALSE);
+			_glfw.win32BlankCursor = createIcon(&cursorImage, 0, 0, FALSE);
 			_glfw_free(cursorPixels);
 
-			if (!_glfw.win32.blankCursor)
+			if (!_glfw.win32BlankCursor)
 				return false;
 		}
 	}
@@ -1126,14 +1117,14 @@ static int createNativeWindow(plafWindow* window,
 		return false;
 
 	window->win32.handle = CreateWindowExW(exStyle,
-										   MAKEINTATOM(_glfw.win32.mainWindowClass),
+										   MAKEINTATOM(_glfw.win32MainWindowClass),
 										   wideTitle,
 										   style,
 										   frameX, frameY,
 										   frameWidth, frameHeight,
 										   NULL, // No parent window
 										   NULL, // No window menu
-										   _glfw.win32.instance,
+										   _glfw.win32Instance,
 										   (LPVOID) wndconfig);
 
 	_glfw_free(wideTitle);
@@ -1178,8 +1169,8 @@ static int createNativeWindow(plafWindow* window,
 
 		if (_glfwIsWindows10Version1607OrGreaterWin32())
 		{
-			_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle,
-									 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+			_glfw.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle,
+									 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 		}
 		else
 			AdjustWindowRectEx(&rect, style, FALSE, exStyle);
@@ -1341,9 +1332,9 @@ void _glfwSetWindowPosWin32(plafWindow* window, int xpos, int ypos)
 
 	if (_glfwIsWindows10Version1607OrGreaterWin32())
 	{
-		_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
+		_glfw.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
 								 FALSE, getWindowExStyle(window),
-								 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+								 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 	}
 	else
 	{
@@ -1382,9 +1373,9 @@ void _glfwSetWindowSizeWin32(plafWindow* window, int width, int height)
 
 		if (_glfwIsWindows10Version1607OrGreaterWin32())
 		{
-			_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
+			_glfw.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
 									 FALSE, getWindowExStyle(window),
-									 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+									 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 		}
 		else
 		{
@@ -1449,9 +1440,9 @@ void _glfwGetWindowFrameSizeWin32(plafWindow* window,
 
 	if (_glfwIsWindows10Version1607OrGreaterWin32())
 	{
-		_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
+		_glfw.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
 								 FALSE, getWindowExStyle(window),
-								 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+								 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 	}
 	else
 	{
@@ -1537,9 +1528,9 @@ void _glfwSetWindowMonitorWin32(plafWindow* window,
 
 			if (_glfwIsWindows10Version1607OrGreaterWin32())
 			{
-				_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
+				_glfw.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
 										 FALSE, getWindowExStyle(window),
-										 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+										 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 			}
 			else
 			{
@@ -1608,9 +1599,9 @@ void _glfwSetWindowMonitorWin32(plafWindow* window,
 
 		if (_glfwIsWindows10Version1607OrGreaterWin32())
 		{
-			_glfw.win32.user32.AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
+			_glfw.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
 									 FALSE, getWindowExStyle(window),
-									 _glfw.win32.user32.GetDpiForWindow_(window->win32.handle));
+									 _glfw.win32User32GetDpiForWindow_(window->win32.handle));
 		}
 		else
 		{
@@ -1658,7 +1649,7 @@ IntBool _glfwFramebufferTransparentWin32(plafWindow* window)
 	if (!window->win32.transparent)
 		return false;
 
-	if (FAILED(_glfw.win32.dwmapi.IsCompositionEnabled(&composition)) || !composition)
+	if (FAILED(_glfw.win32DwmIsCompositionEnabled(&composition)) || !composition)
 		return false;
 
 	if (!IsWindows8OrGreater())
@@ -1667,7 +1658,7 @@ IntBool _glfwFramebufferTransparentWin32(plafWindow* window)
 		//       colorization color is opaque, because otherwise the window
 		//       contents is blended additively with the previous frame instead
 		//       of replacing it
-		if (FAILED(_glfw.win32.dwmapi.GetColorizationColor(&color, &opaque)) || opaque)
+		if (FAILED(_glfw.win32DwmGetColorizationColor(&color, &opaque)) || opaque)
 			return false;
 	}
 
@@ -1811,7 +1802,7 @@ void _glfwPollEventsWin32(void)
 			{
 				const int vk = keys[i][0];
 				const int key = keys[i][1];
-				const int scancode = _glfw.win32.scancodes[key];
+				const int scancode = _glfw.win32Scancodes[key];
 
 				if ((GetKeyState(vk) & 0x8000))
 					continue;
@@ -1840,7 +1831,7 @@ void _glfwWaitEventsTimeoutWin32(double timeout)
 
 void _glfwPostEmptyEventWin32(void)
 {
-	PostMessageW(_glfw.win32.helperWindowHandle, WM_NULL, 0, 0);
+	PostMessageW(_glfw.win32HelperWindowHandle, WM_NULL, 0, 0);
 }
 
 void _glfwSetCursorModeWin32(plafWindow* window, int mode)
@@ -1851,7 +1842,7 @@ void _glfwSetCursorModeWin32(plafWindow* window, int mode)
 
 int _glfwGetKeyScancodeWin32(int key)
 {
-	return _glfw.win32.scancodes[key];
+	return _glfw.win32Scancodes[key];
 }
 
 IntBool _glfwCreateCursorWin32(plafCursor* cursor,

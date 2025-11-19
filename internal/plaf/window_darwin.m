@@ -8,10 +8,10 @@
 //
 static void hideCursor(plafWindow* window)
 {
-	if (!_glfw.ns.cursorHidden)
+	if (!_glfw.nsCursorHidden)
 	{
 		[NSCursor hide];
-		_glfw.ns.cursorHidden = true;
+		_glfw.nsCursorHidden = true;
 	}
 }
 
@@ -19,10 +19,10 @@ static void hideCursor(plafWindow* window)
 //
 static void showCursor(plafWindow* window)
 {
-	if (_glfw.ns.cursorHidden)
+	if (_glfw.nsCursorHidden)
 	{
 		[NSCursor unhide];
-		_glfw.ns.cursorHidden = false;
+		_glfw.nsCursorHidden = false;
 	}
 }
 
@@ -62,7 +62,7 @@ static void acquireMonitor(plafWindow* window)
 									bounds.size.width,
 									bounds.size.height);
 
-	[window->ns.object setFrame:frame display:YES];
+	[window->nsWindow setFrame:frame display:YES];
 
 	_glfwInputMonitorWindow(window->monitor, window);
 }
@@ -102,10 +102,10 @@ static int translateFlags(NSUInteger flags)
 //
 static int translateKey(unsigned int key)
 {
-	if (key >= sizeof(_glfw.ns.keycodes) / sizeof(_glfw.ns.keycodes[0]))
+	if (key >= sizeof(_glfw.nsKeycodes) / sizeof(_glfw.nsKeycodes[0]))
 		return KEY_UNKNOWN;
 
-	return _glfw.ns.keycodes[key];
+	return _glfw.nsKeycodes[key];
 }
 
 // Translate a GLFW keycode to a Cocoa modifier flag
@@ -170,38 +170,38 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)windowDidResize:(NSNotification *)notification
 {
-	[window->context.nsgl.object update];
+	[window->context.nsglCtx update];
 
-	const int maximized = [window->ns.object isZoomed];
-	if (window->ns.maximized != maximized)
+	const int maximized = [window->nsWindow isZoomed];
+	if (window->nsMaximized != maximized)
 	{
-		window->ns.maximized = maximized;
+		window->nsMaximized = maximized;
 		_glfwInputWindowMaximize(window, maximized);
 	}
 
-	const NSRect contentRect = [window->ns.view frame];
-	const NSRect fbRect = [window->ns.view convertRectToBacking:contentRect];
+	const NSRect contentRect = [window->nsView frame];
+	const NSRect fbRect = [window->nsView convertRectToBacking:contentRect];
 
-	if (fbRect.size.width != window->ns.fbWidth ||
-		fbRect.size.height != window->ns.fbHeight)
+	if (fbRect.size.width != window->nsFrameBufferWidth ||
+		fbRect.size.height != window->nsFrameBufferHeight)
 	{
-		window->ns.fbWidth  = fbRect.size.width;
-		window->ns.fbHeight = fbRect.size.height;
+		window->nsFrameBufferWidth  = fbRect.size.width;
+		window->nsFrameBufferHeight = fbRect.size.height;
 		_glfwInputFramebufferSize(window, fbRect.size.width, fbRect.size.height);
 	}
 
-	if (contentRect.size.width != window->ns.width ||
-		contentRect.size.height != window->ns.height)
+	if (contentRect.size.width != window->nsWidth ||
+		contentRect.size.height != window->nsHeight)
 	{
-		window->ns.width  = contentRect.size.width;
-		window->ns.height = contentRect.size.height;
+		window->nsWidth  = contentRect.size.width;
+		window->nsHeight = contentRect.size.height;
 		_glfwInputWindowSize(window, contentRect.size.width, contentRect.size.height);
 	}
 }
 
 - (void)windowDidMove:(NSNotification *)notification
 {
-	[window->context.nsgl.object update];
+	[window->context.nsglCtx update];
 
 	int x, y;
 	_glfwGetWindowPosCocoa(window, &x, &y);
@@ -281,7 +281,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (BOOL)isOpaque
 {
-	return [window->ns.object isOpaque];
+	return [window->nsWindow isOpaque];
 }
 
 - (BOOL)canBecomeKeyView
@@ -301,7 +301,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)updateLayer
 {
-	[window->context.nsgl.object update];
+	[window->context.nsglCtx update];
 	_glfwInputWindowDamage(window);
 }
 
@@ -338,13 +338,11 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)mouseMoved:(NSEvent *)event
 {
-	const NSRect contentRect = [window->ns.view frame];
+	const NSRect contentRect = [window->nsView frame];
 	// NOTE: The returned location uses base 0,1 not 0,0
 	const NSPoint pos = [event locationInWindow];
 
 	_glfwInputCursorPos(window, pos.x, contentRect.size.height - pos.y);
-	window->ns.cursorWarpDeltaX = 0;
-	window->ns.cursorWarpDeltaY = 0;
 }
 
 - (void)rightMouseDown:(NSEvent *)event
@@ -407,26 +405,26 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)viewDidChangeBackingProperties
 {
-	const NSRect contentRect = [window->ns.view frame];
-	const NSRect fbRect = [window->ns.view convertRectToBacking:contentRect];
+	const NSRect contentRect = [window->nsView frame];
+	const NSRect fbRect = [window->nsView convertRectToBacking:contentRect];
 	const float xscale = fbRect.size.width / contentRect.size.width;
 	const float yscale = fbRect.size.height / contentRect.size.height;
 
-	if (xscale != window->ns.xscale || yscale != window->ns.yscale)
+	if (xscale != window->nsXScale || yscale != window->nsYScale)
 	{
-		// if (window->ns.scaleFramebuffer && window->ns.layer)
-		// 	[window->ns.layer setContentsScale:[window->ns.object backingScaleFactor]];
+		// if (window->nsScaleFramebuffer && window->ns.layer)
+		// 	[window->ns.layer setContentsScale:[window->nsWindow backingScaleFactor]];
 
-		window->ns.xscale = xscale;
-		window->ns.yscale = yscale;
+		window->nsXScale = xscale;
+		window->nsYScale = yscale;
 		_glfwInputWindowContentScale(window, xscale, yscale);
 	}
 
-	if (fbRect.size.width != window->ns.fbWidth ||
-		fbRect.size.height != window->ns.fbHeight)
+	if (fbRect.size.width != window->nsFrameBufferWidth ||
+		fbRect.size.height != window->nsFrameBufferHeight)
 	{
-		window->ns.fbWidth  = fbRect.size.width;
-		window->ns.fbHeight = fbRect.size.height;
+		window->nsFrameBufferWidth  = fbRect.size.width;
+		window->nsFrameBufferHeight = fbRect.size.height;
 		_glfwInputFramebufferSize(window, fbRect.size.width, fbRect.size.height);
 	}
 }
@@ -523,7 +521,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (BOOL)performDragOperation:(id <NSDraggingInfo>)sender
 {
-	const NSRect contentRect = [window->ns.view frame];
+	const NSRect contentRect = [window->nsView frame];
 	// NOTE: The returned location uses base 0,1 not 0,0
 	const NSPoint pos = [sender draggingLocation];
 	_glfwInputCursorPos(window, pos.x, contentRect.size.height - pos.y);
@@ -603,7 +601,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 - (NSRect)firstRectForCharacterRange:(NSRange)range
 						 actualRange:(NSRangePointer)actualRange
 {
-	const NSRect frame = [window->ns.view frame];
+	const NSRect frame = [window->nsView frame];
 	return NSMakeRect(frame.origin.x, frame.origin.y, 0.0, 0.0);
 }
 
@@ -676,8 +674,8 @@ static IntBool createNativeWindow(plafWindow* window,
 								   const WindowConfig* wndconfig,
 								   const plafFrameBufferCfg* fbconfig)
 {
-	window->ns.delegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
-	if (window->ns.delegate == nil)
+	window->nsDelegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
+	if (window->nsDelegate == nil)
 	{
 		_glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window delegate");
 		return false;
@@ -722,29 +720,27 @@ static IntBool createNativeWindow(plafWindow* window,
 			styleMask |= NSWindowStyleMaskResizable;
 	}
 
-	window->ns.object = [[GLFWWindow alloc]
+	window->nsWindow = [[GLFWWindow alloc]
 		initWithContentRect:contentRect
 				  styleMask:styleMask
 					backing:NSBackingStoreBuffered
 					  defer:NO];
 
-	if (window->ns.object == nil)
+	if (window->nsWindow == nil)
 	{
 		_glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window");
 		return false;
 	}
 
 	if (window->monitor)
-		[window->ns.object setLevel:NSMainMenuWindowLevel + 1];
+		[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
 	else
 	{
 		if (wndconfig->xpos == ANY_POSITION ||
 			wndconfig->ypos == ANY_POSITION)
 		{
-			[(NSWindow*) window->ns.object center];
-			_glfw.ns.cascadePoint =
-				NSPointToCGPoint([window->ns.object cascadeTopLeftFromPoint:
-								NSPointFromCGPoint(_glfw.ns.cascadePoint)]);
+			[(NSWindow*) window->nsWindow center];
+			_glfw.nsCascadePoint = NSPointToCGPoint([window->nsWindow cascadeTopLeftFromPoint: NSPointFromCGPoint(_glfw.nsCascadePoint)]);
 		}
 
 		if (wndconfig->resizable)
@@ -752,44 +748,44 @@ static IntBool createNativeWindow(plafWindow* window,
 			const NSWindowCollectionBehavior behavior =
 				NSWindowCollectionBehaviorFullScreenPrimary |
 				NSWindowCollectionBehaviorManaged;
-			[window->ns.object setCollectionBehavior:behavior];
+			[window->nsWindow setCollectionBehavior:behavior];
 		}
 		else
 		{
 			const NSWindowCollectionBehavior behavior =
 				NSWindowCollectionBehaviorFullScreenNone;
-			[window->ns.object setCollectionBehavior:behavior];
+			[window->nsWindow setCollectionBehavior:behavior];
 		}
 
 		if (wndconfig->floating)
-			[window->ns.object setLevel:NSFloatingWindowLevel];
+			[window->nsWindow setLevel:NSFloatingWindowLevel];
 
 		if (wndconfig->maximized)
-			[window->ns.object zoom:nil];
+			[window->nsWindow zoom:nil];
 	}
 
-	window->ns.view = [[GLFWContentView alloc] initWithGlfwWindow:window];
-	window->ns.scaleFramebuffer = wndconfig->scaleFramebuffer;
+	window->nsView = [[GLFWContentView alloc] initWithGlfwWindow:window];
+	window->nsScaleFramebuffer = wndconfig->scaleFramebuffer;
 
 	if (fbconfig->transparent)
 	{
-		[window->ns.object setOpaque:NO];
-		[window->ns.object setHasShadow:NO];
-		[window->ns.object setBackgroundColor:[NSColor clearColor]];
+		[window->nsWindow setOpaque:NO];
+		[window->nsWindow setHasShadow:NO];
+		[window->nsWindow setBackgroundColor:[NSColor clearColor]];
 	}
 
-	[window->ns.object setContentView:window->ns.view];
-	[window->ns.object makeFirstResponder:window->ns.view];
-	[window->ns.object setTitle:@(window->title)];
-	[window->ns.object setDelegate:(id<NSWindowDelegate>)window->ns.delegate];
-	[window->ns.object setAcceptsMouseMovedEvents:YES];
-	[window->ns.object setRestorable:NO];
+	[window->nsWindow setContentView:window->nsView];
+	[window->nsWindow makeFirstResponder:window->nsView];
+	[window->nsWindow setTitle:@(window->title)];
+	[window->nsWindow setDelegate:(id<NSWindowDelegate>)window->nsDelegate];
+	[window->nsWindow setAcceptsMouseMovedEvents:YES];
+	[window->nsWindow setRestorable:NO];
 
-	if ([window->ns.object respondsToSelector:@selector(setTabbingMode:)])
-		[window->ns.object setTabbingMode:NSWindowTabbingModeDisallowed];
+	if ([window->nsWindow respondsToSelector:@selector(setTabbingMode:)])
+		[window->nsWindow setTabbingMode:NSWindowTabbingModeDisallowed];
 
-	_glfwGetWindowSizeCocoa(window, &window->ns.width, &window->ns.height);
-	_glfwGetFramebufferSizeCocoa(window, &window->ns.fbWidth, &window->ns.fbHeight);
+	_glfwGetWindowSizeCocoa(window, &window->nsWidth, &window->nsHeight);
+	_glfwGetFramebufferSizeCocoa(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
 
 	return true;
 }
@@ -849,7 +845,7 @@ void _glfwDestroyWindowCocoa(plafWindow* window)
 {
 	@autoreleasepool {
 
-	[window->ns.object orderOut:nil];
+	[window->nsWindow orderOut:nil];
 
 	if (window->monitor)
 		releaseMonitor(window);
@@ -857,15 +853,15 @@ void _glfwDestroyWindowCocoa(plafWindow* window)
 	if (window->context.destroy)
 		window->context.destroy(window);
 
-	[window->ns.object setDelegate:nil];
-	[window->ns.delegate release];
-	window->ns.delegate = nil;
+	[window->nsWindow setDelegate:nil];
+	[window->nsDelegate release];
+	window->nsDelegate = nil;
 
-	[window->ns.view release];
-	window->ns.view = nil;
+	[window->nsView release];
+	window->nsView = nil;
 
-	[window->ns.object close];
-	window->ns.object = nil;
+	[window->nsWindow close];
+	window->nsWindow = nil;
 
 	// HACK: Allow Cocoa to catch up before returning
 	_glfwPollEventsCocoa();
@@ -877,10 +873,10 @@ void _glfwSetWindowTitleCocoa(plafWindow* window, const char* title)
 {
 	@autoreleasepool {
 	NSString* string = @(title);
-	[window->ns.object setTitle:string];
+	[window->nsWindow setTitle:string];
 	// HACK: Set the miniwindow title explicitly as setTitle: doesn't update it
 	//       if the window lacks NSWindowStyleMaskTitled
-	[window->ns.object setMiniwindowTitle:string];
+	[window->nsWindow setMiniwindowTitle:string];
 	} // autoreleasepool
 }
 
@@ -895,7 +891,7 @@ void _glfwGetWindowPosCocoa(plafWindow* window, int* xpos, int* ypos)
 	@autoreleasepool {
 
 	const NSRect contentRect =
-		[window->ns.object contentRectForFrameRect:[window->ns.object frame]];
+		[window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
 
 	if (xpos)
 		*xpos = contentRect.origin.x;
@@ -909,10 +905,10 @@ void _glfwSetWindowPosCocoa(plafWindow* window, int x, int y)
 {
 	@autoreleasepool {
 
-	const NSRect contentRect = [window->ns.view frame];
+	const NSRect contentRect = [window->nsView frame];
 	const NSRect dummyRect = NSMakeRect(x, _glfwTransformYCocoa(y + contentRect.size.height - 1), 0, 0);
-	const NSRect frameRect = [window->ns.object frameRectForContentRect:dummyRect];
-	[window->ns.object setFrameOrigin:frameRect.origin];
+	const NSRect frameRect = [window->nsWindow frameRectForContentRect:dummyRect];
+	[window->nsWindow setFrameOrigin:frameRect.origin];
 
 	} // autoreleasepool
 }
@@ -921,7 +917,7 @@ void _glfwGetWindowSizeCocoa(plafWindow* window, int* width, int* height)
 {
 	@autoreleasepool {
 
-	const NSRect contentRect = [window->ns.view frame];
+	const NSRect contentRect = [window->nsView frame];
 
 	if (width)
 		*width = contentRect.size.width;
@@ -943,10 +939,10 @@ void _glfwSetWindowSizeCocoa(plafWindow* window, int width, int height)
 	else
 	{
 		NSRect contentRect =
-			[window->ns.object contentRectForFrameRect:[window->ns.object frame]];
+			[window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
 		contentRect.origin.y += contentRect.size.height - height;
 		contentRect.size = NSMakeSize(width, height);
-		[window->ns.object setFrame:[window->ns.object frameRectForContentRect:contentRect] display:YES];
+		[window->nsWindow setFrame:[window->nsWindow frameRectForContentRect:contentRect] display:YES];
 	}
 
 	} // autoreleasepool
@@ -959,14 +955,14 @@ void _glfwSetWindowSizeLimitsCocoa(plafWindow* window,
 	@autoreleasepool {
 
 	if (minwidth == DONT_CARE || minheight == DONT_CARE)
-		[window->ns.object setContentMinSize:NSMakeSize(0, 0)];
+		[window->nsWindow setContentMinSize:NSMakeSize(0, 0)];
 	else
-		[window->ns.object setContentMinSize:NSMakeSize(minwidth, minheight)];
+		[window->nsWindow setContentMinSize:NSMakeSize(minwidth, minheight)];
 
 	if (maxwidth == DONT_CARE || maxheight == DONT_CARE)
-		[window->ns.object setContentMaxSize:NSMakeSize(DBL_MAX, DBL_MAX)];
+		[window->nsWindow setContentMaxSize:NSMakeSize(DBL_MAX, DBL_MAX)];
 	else
-		[window->ns.object setContentMaxSize:NSMakeSize(maxwidth, maxheight)];
+		[window->nsWindow setContentMaxSize:NSMakeSize(maxwidth, maxheight)];
 
 	} // autoreleasepool
 }
@@ -975,9 +971,9 @@ void _glfwSetWindowAspectRatioCocoa(plafWindow* window, int numer, int denom)
 {
 	@autoreleasepool {
 	if (numer == DONT_CARE || denom == DONT_CARE)
-		[window->ns.object setResizeIncrements:NSMakeSize(1.0, 1.0)];
+		[window->nsWindow setResizeIncrements:NSMakeSize(1.0, 1.0)];
 	else
-		[window->ns.object setContentAspectRatio:NSMakeSize(numer, denom)];
+		[window->nsWindow setContentAspectRatio:NSMakeSize(numer, denom)];
 	} // autoreleasepool
 }
 
@@ -985,8 +981,8 @@ void _glfwGetFramebufferSizeCocoa(plafWindow* window, int* width, int* height)
 {
 	@autoreleasepool {
 
-	const NSRect contentRect = [window->ns.view frame];
-	const NSRect fbRect = [window->ns.view convertRectToBacking:contentRect];
+	const NSRect contentRect = [window->nsView frame];
+	const NSRect fbRect = [window->nsView convertRectToBacking:contentRect];
 
 	if (width)
 		*width = (int) fbRect.size.width;
@@ -1002,8 +998,8 @@ void _glfwGetWindowFrameSizeCocoa(plafWindow* window,
 {
 	@autoreleasepool {
 
-	const NSRect contentRect = [window->ns.view frame];
-	const NSRect frameRect = [window->ns.object frameRectForContentRect:contentRect];
+	const NSRect contentRect = [window->nsView frame];
+	const NSRect frameRect = [window->nsWindow frameRectForContentRect:contentRect];
 
 	if (left)
 		*left = contentRect.origin.x - frameRect.origin.x;
@@ -1024,8 +1020,8 @@ void _glfwGetWindowContentScaleCocoa(plafWindow* window,
 {
 	@autoreleasepool {
 
-	const NSRect points = [window->ns.view frame];
-	const NSRect pixels = [window->ns.view convertRectToBacking:points];
+	const NSRect points = [window->nsView frame];
+	const NSRect pixels = [window->nsView convertRectToBacking:points];
 
 	if (xscale)
 		*xscale = (float) (pixels.size.width / points.size.width);
@@ -1038,39 +1034,39 @@ void _glfwGetWindowContentScaleCocoa(plafWindow* window,
 void _glfwIconifyWindowCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	[window->ns.object miniaturize:nil];
+	[window->nsWindow miniaturize:nil];
 	} // autoreleasepool
 }
 
 void _glfwRestoreWindowCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	if ([window->ns.object isMiniaturized])
-		[window->ns.object deminiaturize:nil];
-	else if ([window->ns.object isZoomed])
-		[window->ns.object zoom:nil];
+	if ([window->nsWindow isMiniaturized])
+		[window->nsWindow deminiaturize:nil];
+	else if ([window->nsWindow isZoomed])
+		[window->nsWindow zoom:nil];
 	} // autoreleasepool
 }
 
 void _glfwMaximizeWindowCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	if (![window->ns.object isZoomed])
-		[window->ns.object zoom:nil];
+	if (![window->nsWindow isZoomed])
+		[window->nsWindow zoom:nil];
 	} // autoreleasepool
 }
 
 void _glfwShowWindowCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	[window->ns.object orderFront:nil];
+	[window->nsWindow orderFront:nil];
 	} // autoreleasepool
 }
 
 void _glfwHideWindowCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	[window->ns.object orderOut:nil];
+	[window->nsWindow orderOut:nil];
 	} // autoreleasepool
 }
 
@@ -1089,7 +1085,7 @@ void _glfwFocusWindowCocoa(plafWindow* window)
 	//       being activated, but should probably not be done every time any
 	//       window is shown
 	[NSApp activateIgnoringOtherApps:YES];
-	[window->ns.object makeKeyAndOrderFront:nil];
+	[window->nsWindow makeKeyAndOrderFront:nil];
 	} // autoreleasepool
 }
 
@@ -1111,9 +1107,9 @@ void _glfwSetWindowMonitorCocoa(plafWindow* window,
 		else
 		{
 			const NSRect contentRect = NSMakeRect(xpos, _glfwTransformYCocoa(ypos + height - 1), width, height);
-			const NSUInteger styleMask = [window->ns.object styleMask];
+			const NSUInteger styleMask = [window->nsWindow styleMask];
 			const NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
-			[window->ns.object setFrame:frameRect display:YES];
+			[window->nsWindow setFrame:frameRect display:YES];
 		}
 
 		return;
@@ -1128,7 +1124,7 @@ void _glfwSetWindowMonitorCocoa(plafWindow* window,
 	// TODO: Solve this in a less terrible way
 	_glfwPollEventsCocoa();
 
-	NSUInteger styleMask = [window->ns.object styleMask];
+	NSUInteger styleMask = [window->nsWindow styleMask];
 
 	if (window->monitor)
 	{
@@ -1149,14 +1145,14 @@ void _glfwSetWindowMonitorCocoa(plafWindow* window,
 			styleMask &= ~NSWindowStyleMaskResizable;
 	}
 
-	[window->ns.object setStyleMask:styleMask];
+	[window->nsWindow setStyleMask:styleMask];
 	// HACK: Changing the style mask can cause the first responder to be cleared
-	[window->ns.object makeFirstResponder:window->ns.view];
+	[window->nsWindow makeFirstResponder:window->nsView];
 
 	if (window->monitor)
 	{
-		[window->ns.object setLevel:NSMainMenuWindowLevel + 1];
-		[window->ns.object setHasShadow:NO];
+		[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
+		[window->nsWindow setHasShadow:NO];
 
 		acquireMonitor(window);
 	}
@@ -1165,52 +1161,52 @@ void _glfwSetWindowMonitorCocoa(plafWindow* window,
 		NSRect contentRect = NSMakeRect(xpos, _glfwTransformYCocoa(ypos + height - 1),
 										width, height);
 		NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
-		[window->ns.object setFrame:frameRect display:YES];
+		[window->nsWindow setFrame:frameRect display:YES];
 
 		if (window->numer != DONT_CARE &&
 			window->denom != DONT_CARE)
 		{
-			[window->ns.object setContentAspectRatio:NSMakeSize(window->numer,
+			[window->nsWindow setContentAspectRatio:NSMakeSize(window->numer,
 																window->denom)];
 		}
 
 		if (window->minwidth != DONT_CARE &&
 			window->minheight != DONT_CARE)
 		{
-			[window->ns.object setContentMinSize:NSMakeSize(window->minwidth,
+			[window->nsWindow setContentMinSize:NSMakeSize(window->minwidth,
 															window->minheight)];
 		}
 
 		if (window->maxwidth != DONT_CARE &&
 			window->maxheight != DONT_CARE)
 		{
-			[window->ns.object setContentMaxSize:NSMakeSize(window->maxwidth,
+			[window->nsWindow setContentMaxSize:NSMakeSize(window->maxwidth,
 															window->maxheight)];
 		}
 
 		if (window->floating)
-			[window->ns.object setLevel:NSFloatingWindowLevel];
+			[window->nsWindow setLevel:NSFloatingWindowLevel];
 		else
-			[window->ns.object setLevel:NSNormalWindowLevel];
+			[window->nsWindow setLevel:NSNormalWindowLevel];
 
 		if (window->resizable)
 		{
 			const NSWindowCollectionBehavior behavior =
 				NSWindowCollectionBehaviorFullScreenPrimary |
 				NSWindowCollectionBehaviorManaged;
-			[window->ns.object setCollectionBehavior:behavior];
+			[window->nsWindow setCollectionBehavior:behavior];
 		}
 		else
 		{
 			const NSWindowCollectionBehavior behavior =
 				NSWindowCollectionBehaviorFullScreenNone;
-			[window->ns.object setCollectionBehavior:behavior];
+			[window->nsWindow setCollectionBehavior:behavior];
 		}
 
-		[window->ns.object setHasShadow:YES];
+		[window->nsWindow setHasShadow:YES];
 		// HACK: Clearing NSWindowStyleMaskTitled resets and disables the window
 		//       title property but the miniwindow title property is unaffected
-		[window->ns.object setTitle:[window->ns.object miniwindowTitle]];
+		[window->nsWindow setTitle:[window->nsWindow miniwindowTitle]];
 	}
 
 	} // autoreleasepool
@@ -1219,21 +1215,21 @@ void _glfwSetWindowMonitorCocoa(plafWindow* window,
 IntBool _glfwWindowFocusedCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	return [window->ns.object isKeyWindow];
+	return [window->nsWindow isKeyWindow];
 	} // autoreleasepool
 }
 
 IntBool _glfwWindowIconifiedCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	return [window->ns.object isMiniaturized];
+	return [window->nsWindow isMiniaturized];
 	} // autoreleasepool
 }
 
 IntBool _glfwWindowVisibleCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	return [window->ns.object isVisible];
+	return [window->nsWindow isVisible];
 	} // autoreleasepool
 }
 
@@ -1242,7 +1238,7 @@ IntBool _glfwWindowMaximizedCocoa(plafWindow* window)
 	@autoreleasepool {
 
 	if (window->resizable)
-		return [window->ns.object isZoomed];
+		return [window->nsWindow isZoomed];
 	else
 		return false;
 
@@ -1256,13 +1252,13 @@ IntBool _glfwWindowHoveredCocoa(plafWindow* window)
 	const NSPoint point = [NSEvent mouseLocation];
 
 	if ([NSWindow windowNumberAtPoint:point belowWindowWithWindowNumber:0] !=
-		[window->ns.object windowNumber])
+		[window->nsWindow windowNumber])
 	{
 		return false;
 	}
 
 	return NSMouseInRect(point,
-		[window->ns.object convertRectToScreen:[window->ns.view frame]], NO);
+		[window->nsWindow convertRectToScreen:[window->nsView frame]], NO);
 
 	} // autoreleasepool
 }
@@ -1270,7 +1266,7 @@ IntBool _glfwWindowHoveredCocoa(plafWindow* window)
 IntBool _glfwFramebufferTransparentCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	return ![window->ns.object isOpaque] && ![window->ns.view isOpaque];
+	return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
 	} // autoreleasepool
 }
 
@@ -1278,21 +1274,21 @@ void _glfwSetWindowResizableCocoa(plafWindow* window, IntBool enabled)
 {
 	@autoreleasepool {
 
-	const NSUInteger styleMask = [window->ns.object styleMask];
+	const NSUInteger styleMask = [window->nsWindow styleMask];
 	if (enabled)
 	{
-		[window->ns.object setStyleMask:(styleMask | NSWindowStyleMaskResizable)];
+		[window->nsWindow setStyleMask:(styleMask | NSWindowStyleMaskResizable)];
 		const NSWindowCollectionBehavior behavior =
 			NSWindowCollectionBehaviorFullScreenPrimary |
 			NSWindowCollectionBehaviorManaged;
-		[window->ns.object setCollectionBehavior:behavior];
+		[window->nsWindow setCollectionBehavior:behavior];
 	}
 	else
 	{
-		[window->ns.object setStyleMask:(styleMask & ~NSWindowStyleMaskResizable)];
+		[window->nsWindow setStyleMask:(styleMask & ~NSWindowStyleMaskResizable)];
 		const NSWindowCollectionBehavior behavior =
 			NSWindowCollectionBehaviorFullScreenNone;
-		[window->ns.object setCollectionBehavior:behavior];
+		[window->nsWindow setCollectionBehavior:behavior];
 	}
 
 	} // autoreleasepool
@@ -1302,7 +1298,7 @@ void _glfwSetWindowDecoratedCocoa(plafWindow* window, IntBool enabled)
 {
 	@autoreleasepool {
 
-	NSUInteger styleMask = [window->ns.object styleMask];
+	NSUInteger styleMask = [window->nsWindow styleMask];
 	if (enabled)
 	{
 		styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable);
@@ -1314,8 +1310,8 @@ void _glfwSetWindowDecoratedCocoa(plafWindow* window, IntBool enabled)
 		styleMask &= ~(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable);
 	}
 
-	[window->ns.object setStyleMask:styleMask];
-	[window->ns.object makeFirstResponder:window->ns.view];
+	[window->nsWindow setStyleMask:styleMask];
+	[window->nsWindow makeFirstResponder:window->nsView];
 
 	} // autoreleasepool
 }
@@ -1324,30 +1320,30 @@ void _glfwSetWindowFloatingCocoa(plafWindow* window, IntBool enabled)
 {
 	@autoreleasepool {
 	if (enabled)
-		[window->ns.object setLevel:NSFloatingWindowLevel];
+		[window->nsWindow setLevel:NSFloatingWindowLevel];
 	else
-		[window->ns.object setLevel:NSNormalWindowLevel];
+		[window->nsWindow setLevel:NSNormalWindowLevel];
 	} // autoreleasepool
 }
 
 void _glfwSetWindowMousePassthroughCocoa(plafWindow* window, IntBool enabled)
 {
 	@autoreleasepool {
-	[window->ns.object setIgnoresMouseEvents:enabled];
+	[window->nsWindow setIgnoresMouseEvents:enabled];
 	}
 }
 
 float _glfwGetWindowOpacityCocoa(plafWindow* window)
 {
 	@autoreleasepool {
-	return (float) [window->ns.object alphaValue];
+	return (float) [window->nsWindow alphaValue];
 	} // autoreleasepool
 }
 
 void _glfwSetWindowOpacityCocoa(plafWindow* window, float opacity)
 {
 	@autoreleasepool {
-	[window->ns.object setAlphaValue:opacity];
+	[window->nsWindow setAlphaValue:opacity];
 	} // autoreleasepool
 }
 
@@ -1435,7 +1431,7 @@ void _glfwSetCursorModeCocoa(plafWindow* window, int mode)
 
 int _glfwGetKeyScancodeCocoa(int key)
 {
-	return _glfw.ns.scancodes[key];
+	return _glfw.nsScancodes[key];
 }
 
 IntBool _glfwCreateCursorCocoa(plafCursor* cursor,
@@ -1538,13 +1534,13 @@ void _glfwDestroyCursorCocoa(plafCursor* cursor)
 id glfwGetCocoaWindow(plafWindow* handle)
 {
 	plafWindow* window = (plafWindow*) handle;
-	return window->ns.object;
+	return window->nsWindow;
 }
 
 id glfwGetCocoaView(plafWindow* handle)
 {
 	plafWindow* window = (plafWindow*) handle;
-	return window->ns.view;
+	return window->nsView;
 }
 
 #endif // __APPLE__

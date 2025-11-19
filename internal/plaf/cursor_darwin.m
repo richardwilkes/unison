@@ -2,22 +2,20 @@
 #include "platform.h"
 
 void getCursorPosInternal(plafWindow* window, double* xpos, double* ypos) {
-	const NSPoint pos = [window->ns.object mouseLocationOutsideOfEventStream];
+	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
 	*xpos = pos.x;
-	*ypos = [window->ns.view frame].size.height - pos.y;
+	*ypos = [window->nsView frame].size.height - pos.y;
 }
 
 void setCursorPosInternal(plafWindow* window, double xpos, double ypos) {
 	updateCursorImage(window);
-	const NSRect contentRect = [window->ns.view frame];
-	const NSPoint pos = [window->ns.object mouseLocationOutsideOfEventStream];
-	window->ns.cursorWarpDeltaX += xpos - pos.x;
-	window->ns.cursorWarpDeltaY += ypos - contentRect.size.height + pos.y;
+	const NSRect contentRect = [window->nsView frame];
+	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
 	if (window->monitor) {
 		CGDisplayMoveCursorToPoint(window->monitor->nsDisplayID, CGPointMake(xpos, ypos));
 	} else {
 		const NSRect localRect = NSMakeRect(xpos, contentRect.size.height - ypos - 1, 0, 0);
-		const NSRect globalRect = [window->ns.object convertRectToScreen:localRect];
+		const NSRect globalRect = [window->nsWindow convertRectToScreen:localRect];
 		const NSPoint globalPoint = globalRect.origin;
 		CGWarpMouseCursorPosition(CGPointMake(globalPoint.x, _glfwTransformYCocoa(globalPoint.y)));
 	}
@@ -25,8 +23,8 @@ void setCursorPosInternal(plafWindow* window, double xpos, double ypos) {
 }
 
 IntBool cursorInContentArea(plafWindow* window) {
-	const NSPoint pos = [window->ns.object mouseLocationOutsideOfEventStream];
-	return [window->ns.view mouse:pos inRect:[window->ns.view frame]];
+	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
+	return [window->nsView mouse:pos inRect:[window->nsView frame]];
 }
 
 void setCursorInternal(plafWindow* window) {

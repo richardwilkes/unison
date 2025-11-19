@@ -40,7 +40,7 @@ static int choosePixelFormatWGL(plafWindow* window,
     int attribs[40];
     int values[sizeof(attribs) / sizeof(attribs[0])];
 
-    nativeCount = DescribePixelFormat(window->context.wgl.dc,
+    nativeCount = DescribePixelFormat(window->context.wglDC,
                                       1,
                                       sizeof(PIXELFORMATDESCRIPTOR),
                                       NULL);
@@ -82,7 +82,7 @@ static int choosePixelFormatWGL(plafWindow* window,
         const int attrib = WGL_NUMBER_PIXEL_FORMATS_ARB;
         int extensionCount;
 
-        if (!_glfw.wglGetPixelFormatAttribivARB(window->context.wgl.dc, 1, 0, 1, &attrib, &extensionCount))
+        if (!_glfw.wglGetPixelFormatAttribivARB(window->context.wglDC, 1, 0, 1, &attrib, &extensionCount))
         {
             _glfwInputErrorWin32(ERR_PLATFORM_ERROR, "WGL: Failed to retrieve pixel format attribute");
             return 0;
@@ -102,7 +102,7 @@ static int choosePixelFormatWGL(plafWindow* window,
         {
             // Get pixel format attributes through "modern" extension
 
-            if (!_glfw.wglGetPixelFormatAttribivARB(window->context.wgl.dc, pixelFormat, 0, attribCount, attribs, values))
+            if (!_glfw.wglGetPixelFormatAttribivARB(window->context.wglDC, pixelFormat, 0, attribCount, attribs, values))
             {
                 _glfwInputErrorWin32(ERR_PLATFORM_ERROR, "WGL: Failed to retrieve pixel format attributes");
 
@@ -156,7 +156,7 @@ static int choosePixelFormatWGL(plafWindow* window,
 
             PIXELFORMATDESCRIPTOR pfd;
 
-            if (!DescribePixelFormat(window->context.wgl.dc,
+            if (!DescribePixelFormat(window->context.wglDC,
                                      pixelFormat,
                                      sizeof(PIXELFORMATDESCRIPTOR),
                                      &pfd))
@@ -235,7 +235,7 @@ static void makeContextCurrentWGL(plafWindow* window)
 {
     if (window)
     {
-        if (_glfw.wglMakeCurrent(window->context.wgl.dc, window->context.wgl.handle))
+        if (_glfw.wglMakeCurrent(window->context.wglDC, window->context.wglGLRC))
 			_glfw.contextSlot = window;
         else
         {
@@ -262,21 +262,21 @@ static void swapBuffersWGL(plafWindow* window)
         {
             BOOL enabled = FALSE;
 
-            if (SUCCEEDED(_glfw.win32.dwmapi.IsCompositionEnabled(&enabled)) && enabled)
+            if (SUCCEEDED(_glfw.win32DwmIsCompositionEnabled(&enabled)) && enabled)
             {
-                int count = abs(window->context.wgl.interval);
+                int count = abs(window->context.wglInterval);
                 while (count--)
-                    _glfw.win32.dwmapi.Flush();
+                    _glfw.win32DwmFlush();
             }
         }
     }
 
-    SwapBuffers(window->context.wgl.dc);
+    SwapBuffers(window->context.wglDC);
 }
 
 static void swapIntervalWGL(int interval)
 {
-    _glfw.contextSlot->context.wgl.interval = interval;
+    _glfw.contextSlot->context.wglInterval = interval;
 
     if (!_glfw.contextSlot->monitor)
     {
@@ -286,7 +286,7 @@ static void swapIntervalWGL(int interval)
         {
             BOOL enabled = FALSE;
 
-            if (SUCCEEDED(_glfw.win32.dwmapi.IsCompositionEnabled(&enabled)) && enabled)
+            if (SUCCEEDED(_glfw.win32DwmIsCompositionEnabled(&enabled)) && enabled)
                 interval = 0;
         }
     }
@@ -321,10 +321,10 @@ static glFunc getProcAddressWGL(const char* procname)
 
 static void destroyContextWGL(plafWindow* window)
 {
-    if (window->context.wgl.handle)
+    if (window->context.wglGLRC)
     {
-        _glfw.wglDeleteContext(window->context.wgl.handle);
-        window->context.wgl.handle = NULL;
+        _glfw.wglDeleteContext(window->context.wglGLRC);
+        window->context.wglGLRC = NULL;
     }
 }
 
@@ -366,7 +366,7 @@ IntBool _glfwInitWGL(void)
     // NOTE: This code will accept the Microsoft GDI ICD; accelerated context
     //       creation failure occurs during manual pixel format enumeration
 
-    dc = GetDC(_glfw.win32.helperWindowHandle);
+    dc = GetDC(_glfw.win32HelperWindowHandle);
 
     ZeroMemory(&pfd, sizeof(pfd));
     pfd.nSize = sizeof(pfd);
@@ -466,10 +466,10 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
     HGLRC share = NULL;
 
     if (ctxconfig->share)
-        share = ctxconfig->share->context.wgl.handle;
+        share = ctxconfig->share->context.wglGLRC;
 
-    window->context.wgl.dc = GetDC(window->win32.handle);
-    if (!window->context.wgl.dc)
+    window->context.wglDC = GetDC(window->win32.handle);
+    if (!window->context.wglDC)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "WGL: Failed to retrieve DC for window");
         return false;
@@ -479,14 +479,14 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
     if (!pixelFormat)
         return false;
 
-    if (!DescribePixelFormat(window->context.wgl.dc,
+    if (!DescribePixelFormat(window->context.wglDC,
                              pixelFormat, sizeof(pfd), &pfd))
     {
         _glfwInputErrorWin32(ERR_PLATFORM_ERROR, "WGL: Failed to retrieve PFD for selected pixel format");
         return false;
     }
 
-    if (!SetPixelFormat(window->context.wgl.dc, pixelFormat, &pfd))
+    if (!SetPixelFormat(window->context.wglDC, pixelFormat, &pfd))
     {
         _glfwInputErrorWin32(ERR_PLATFORM_ERROR, "WGL: Failed to set selected pixel format");
         return false;
@@ -584,9 +584,9 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
 
         SET_ATTRIB(0, 0);
 
-        window->context.wgl.handle =
-            _glfw.wglCreateContextAttribsARB(window->context.wgl.dc, share, attribs);
-        if (!window->context.wgl.handle)
+        window->context.wglGLRC =
+            _glfw.wglCreateContextAttribsARB(window->context.wglDC, share, attribs);
+        if (!window->context.wglGLRC)
         {
             const DWORD error = GetLastError();
 
@@ -612,8 +612,8 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
     }
     else
     {
-        window->context.wgl.handle = _glfw.wglCreateContext(window->context.wgl.dc);
-        if (!window->context.wgl.handle)
+        window->context.wglGLRC = _glfw.wglCreateContext(window->context.wglDC);
+        if (!window->context.wglGLRC)
         {
             _glfwInputErrorWin32(ERR_VERSION_UNAVAILABLE, "WGL: Failed to create OpenGL context");
             return false;
@@ -621,7 +621,7 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
 
         if (share)
         {
-            if (!_glfw.wglShareLists(share, window->context.wgl.handle))
+            if (!_glfw.wglShareLists(share, window->context.wglGLRC))
             {
                 _glfwInputErrorWin32(ERR_PLATFORM_ERROR, "WGL: Failed to enable sharing with specified OpenGL context");
                 return false;
@@ -644,7 +644,7 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
 HGLRC glfwGetWGLContext(plafWindow* handle)
 {
     plafWindow* window = (plafWindow*) handle;
-	return window->context.wgl.handle;
+	return window->context.wglGLRC;
 }
 
 #endif // _WIN32

@@ -12,7 +12,7 @@
 static int getGLXFBConfigAttrib(GLXFBConfig fbconfig, int attrib)
 {
     int value;
-    _glfw.glxGetFBConfigAttrib(_glfw.x11.display, fbconfig, attrib, &value);
+    _glfw.glxGetFBConfigAttrib(_glfw.x11Display, fbconfig, attrib, &value);
     return value;
 }
 
@@ -30,12 +30,12 @@ static IntBool chooseGLXFBConfig(const plafFrameBufferCfg* desired,
 
     // HACK: This is a (hopefully temporary) workaround for Chromium
     //       (VirtualBox GL) not setting the window bit on any GLXFBConfigs
-    vendor = _glfw.glxGetClientString(_glfw.x11.display, GLX_VENDOR);
+    vendor = _glfw.glxGetClientString(_glfw.x11Display, GLX_VENDOR);
     if (vendor && strcmp(vendor, "Chromium") == 0)
         trustWindowBit = false;
 
     nativeConfigs =
-        _glfw.glxGetFBConfigs(_glfw.x11.display, _glfw.x11.screen, &nativeCount);
+        _glfw.glxGetFBConfigs(_glfw.x11Display, _glfw.x11Screen, &nativeCount);
     if (!nativeConfigs || !nativeCount)
     {
         _glfwInputError(ERR_API_UNAVAILABLE, "GLX: No GLXFBConfigs returned");
@@ -66,11 +66,11 @@ static IntBool chooseGLXFBConfig(const plafFrameBufferCfg* desired,
 
         if (desired->transparent)
         {
-            XVisualInfo* vi = _glfw.glxGetVisualFromFBConfig(_glfw.x11.display, n);
+            XVisualInfo* vi = _glfw.glxGetVisualFromFBConfig(_glfw.x11Display, n);
             if (vi)
             {
                 u->transparent = _glfwIsVisualTransparentX11(vi->visual);
-                _glfw.x11.xlib.Free(vi);
+                _glfw.xlibFree(vi);
             }
         }
 
@@ -103,7 +103,7 @@ static IntBool chooseGLXFBConfig(const plafFrameBufferCfg* desired,
     if (closest)
         *result = (GLXFBConfig) closest->handle;
 
-    _glfw.x11.xlib.Free(nativeConfigs);
+    _glfw.xlibFree(nativeConfigs);
     _glfw_free(usableConfigs);
 
     return closest != NULL;
@@ -115,7 +115,7 @@ static GLXContext createLegacyContextGLX(plafWindow* window,
                                          GLXFBConfig fbconfig,
                                          GLXContext share)
 {
-    return _glfw.glxCreateNewContext(_glfw.x11.display,
+    return _glfw.glxCreateNewContext(_glfw.x11Display,
                                fbconfig,
                                GLX_RGBA_TYPE,
                                share,
@@ -126,8 +126,8 @@ static void makeContextCurrentGLX(plafWindow* window)
 {
     if (window)
     {
-        if (!_glfw.glxMakeCurrent(_glfw.x11.display,
-                            window->context.glx.window,
+        if (!_glfw.glxMakeCurrent(_glfw.x11Display,
+                            window->context.glxWindow,
                             window->context.glxHandle))
         {
             _glfwInputError(ERR_PLATFORM_ERROR, "GLX: Failed to make context current");
@@ -136,7 +136,7 @@ static void makeContextCurrentGLX(plafWindow* window)
     }
     else
     {
-        if (!_glfw.glxMakeCurrent(_glfw.x11.display, None, NULL))
+        if (!_glfw.glxMakeCurrent(_glfw.x11Display, None, NULL))
         {
             _glfwInputError(ERR_PLATFORM_ERROR, "GLX: Failed to clear current context");
             return;
@@ -147,15 +147,15 @@ static void makeContextCurrentGLX(plafWindow* window)
 
 static void swapBuffersGLX(plafWindow* window)
 {
-    _glfw.glxSwapBuffers(_glfw.x11.display, window->context.glx.window);
+    _glfw.glxSwapBuffers(_glfw.x11Display, window->context.glxWindow);
 }
 
 static void swapIntervalGLX(int interval)
 {
     if (_glfw.glxEXT_swap_control)
     {
-        _glfw.glxSwapIntervalEXT(_glfw.x11.display,
-                                  _glfw.contextSlot->context.glx.window,
+        _glfw.glxSwapIntervalEXT(_glfw.x11Display,
+                                  _glfw.contextSlot->context.glxWindow,
                                   interval);
     }
     else if (_glfw.glxSGI_swap_control)
@@ -168,7 +168,7 @@ static void swapIntervalGLX(int interval)
 static int extensionSupportedGLX(const char* extension)
 {
     const char* extensions =
-        _glfw.glxQueryExtensionsString(_glfw.x11.display, _glfw.x11.screen);
+        _glfw.glxQueryExtensionsString(_glfw.x11Display, _glfw.x11Screen);
     if (extensions)
     {
         if (_glfwStringInExtensionString(extension, extensions))
@@ -193,15 +193,15 @@ static glFunc getProcAddressGLX(const char* procname)
 
 static void destroyContextGLX(plafWindow* window)
 {
-    if (window->context.glx.window)
+    if (window->context.glxWindow)
     {
-        _glfw.glxDestroyWindow(_glfw.x11.display, window->context.glx.window);
-        window->context.glx.window = None;
+        _glfw.glxDestroyWindow(_glfw.x11Display, window->context.glxWindow);
+        window->context.glxWindow = None;
     }
 
     if (window->context.glxHandle)
     {
-        _glfw.glxDestroyContext(_glfw.x11.display, window->context.glxHandle);
+        _glfw.glxDestroyContext(_glfw.x11Display, window->context.glxHandle);
         window->context.glxHandle = NULL;
     }
 }
@@ -292,14 +292,14 @@ IntBool _glfwInitGLX(void)
 
 	int errorBase;
 	int eventBase;
-    if (!_glfw.glxQueryExtension(_glfw.x11.display, &_glfw.glxErrorBase, &eventBase)) {
+    if (!_glfw.glxQueryExtension(_glfw.x11Display, &_glfw.glxErrorBase, &eventBase)) {
         _glfwInputError(ERR_API_UNAVAILABLE, "GLX: GLX extension not found");
         return false;
     }
 
 	int major;
 	int minor;
-    if (!_glfw.glxQueryVersion(_glfw.x11.display, &major, &minor)) {
+    if (!_glfw.glxQueryVersion(_glfw.x11Display, &major, &minor)) {
         _glfwInputError(ERR_API_UNAVAILABLE, "GLX: Failed to query GLX version");
         return false;
     }
@@ -493,7 +493,7 @@ IntBool _glfwCreateContextGLX(plafWindow* window,
         SET_ATTRIB(None, None);
 
         window->context.glxHandle =
-            _glfw.glxCreateContextAttribsARB(_glfw.x11.display,
+            _glfw.glxCreateContextAttribsARB(_glfw.x11Display,
                                               native,
                                               share,
                                               True,
@@ -505,7 +505,7 @@ IntBool _glfwCreateContextGLX(plafWindow* window,
         //       violation of the extension spec
         if (!window->context.glxHandle)
         {
-            if (_glfw.x11.errorCode == _glfw.glxErrorBase + GLXBadProfileARB &&
+            if (_glfw.x11ErrorCode == _glfw.glxErrorBase + GLXBadProfileARB &&
                 ctxconfig->profile == OPENGL_PROFILE_ANY &&
                 ctxconfig->forward == false)
             {
@@ -528,14 +528,14 @@ IntBool _glfwCreateContextGLX(plafWindow* window,
         return false;
     }
 
-    window->context.glx.window = _glfw.glxCreateWindow(_glfw.x11.display, native, window->x11.handle, NULL);
-    if (!window->context.glx.window)
+    window->context.glxWindow = _glfw.glxCreateWindow(_glfw.x11Display, native, window->x11.handle, NULL);
+    if (!window->context.glxWindow)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "GLX: Failed to create window");
         return false;
     }
 
-    window->context.glx.fbconfig = native;
+    window->context.glxFBConfig = native;
 
     window->context.makeCurrent = makeContextCurrentGLX;
     window->context.swapBuffers = swapBuffersGLX;
@@ -565,7 +565,7 @@ IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
         return false;
     }
 
-    result = _glfw.glxGetVisualFromFBConfig(_glfw.x11.display, native);
+    result = _glfw.glxGetVisualFromFBConfig(_glfw.x11Display, native);
     if (!result)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "GLX: Failed to retrieve Visual for GLXFBConfig");
@@ -575,7 +575,7 @@ IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
     *visual = result->visual;
     *depth  = result->depth;
 
-    _glfw.x11.xlib.Free(result);
+    _glfw.xlibFree(result);
     return true;
 }
 
@@ -593,13 +593,13 @@ GLXContext glfwGetGLXContext(plafWindow* handle)
 GLXWindow glfwGetGLXWindow(plafWindow* handle)
 {
     plafWindow* window = (plafWindow*) handle;
-    return window->context.glx.window;
+    return window->context.glxWindow;
 }
 
 int glfwGetGLXFBConfig(plafWindow* handle, GLXFBConfig* config)
 {
     plafWindow* window = (plafWindow*) handle;
-    *config = window->context.glx.fbconfig;
+    *config = window->context.glxFBConfig;
     return true;
 }
 

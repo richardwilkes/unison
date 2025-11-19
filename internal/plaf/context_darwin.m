@@ -10,7 +10,7 @@ static void makeContextCurrentNSGL(plafWindow* window)
     @autoreleasepool {
 
     if (window)
-        [window->context.nsgl.object makeCurrentContext];
+        [window->context.nsglCtx makeCurrentContext];
     else
         [NSOpenGLContext clearCurrentContext];
 
@@ -23,7 +23,7 @@ static void swapBuffersNSGL(plafWindow* window)
 {
     @autoreleasepool {
 
-    [window->context.nsgl.object flushBuffer];
+    [window->context.nsglCtx flushBuffer];
 
     } // autoreleasepool
 }
@@ -32,7 +32,7 @@ static void swapIntervalNSGL(int interval)
 {
     @autoreleasepool {
 
-    	[_glfw.contextSlot->context.nsgl.object setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
+    	[_glfw.contextSlot->context.nsglCtx setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
 
     } // autoreleasepool
 }
@@ -55,11 +55,11 @@ static void destroyContextNSGL(plafWindow* window)
 {
     @autoreleasepool {
 
-    [window->context.nsgl.pixelFormat release];
-    window->context.nsgl.pixelFormat = nil;
+    [window->context.nsglPixelFormat release];
+    window->context.nsglPixelFormat = nil;
 
-    [window->context.nsgl.object release];
-    window->context.nsgl.object = nil;
+    [window->context.nsglCtx release];
+    window->context.nsglCtx = nil;
 
     } // autoreleasepool
 }
@@ -212,9 +212,9 @@ IntBool _glfwCreateContextNSGL(plafWindow* window,
 #undef ADD_ATTRIB
 #undef SET_ATTRIB
 
-    window->context.nsgl.pixelFormat =
+    window->context.nsglPixelFormat =
         [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
-    if (window->context.nsgl.pixelFormat == nil)
+    if (window->context.nsglPixelFormat == nil)
     {
         _glfwInputError(ERR_FORMAT_UNAVAILABLE, "NSGL: Failed to find a suitable pixel format");
         return false;
@@ -223,12 +223,10 @@ IntBool _glfwCreateContextNSGL(plafWindow* window,
     NSOpenGLContext* share = nil;
 
     if (ctxconfig->share)
-        share = ctxconfig->share->context.nsgl.object;
+        share = ctxconfig->share->context.nsglCtx;
 
-    window->context.nsgl.object =
-        [[NSOpenGLContext alloc] initWithFormat:window->context.nsgl.pixelFormat
-                                   shareContext:share];
-    if (window->context.nsgl.object == nil)
+    window->context.nsglCtx = [[NSOpenGLContext alloc] initWithFormat:window->context.nsglPixelFormat shareContext:share];
+    if (window->context.nsglCtx == nil)
     {
         _glfwInputError(ERR_VERSION_UNAVAILABLE, "NSGL: Failed to create OpenGL context");
         return false;
@@ -237,13 +235,13 @@ IntBool _glfwCreateContextNSGL(plafWindow* window,
     if (fbconfig->transparent)
     {
         GLint opaque = 0;
-        [window->context.nsgl.object setValues:&opaque
+        [window->context.nsglCtx setValues:&opaque
                                   forParameter:NSOpenGLContextParameterSurfaceOpacity];
     }
 
-    [window->ns.view setWantsBestResolutionOpenGLSurface:window->ns.scaleFramebuffer];
+    [window->nsView setWantsBestResolutionOpenGLSurface:window->nsScaleFramebuffer];
 
-    [window->context.nsgl.object setView:window->ns.view];
+    [window->context.nsglCtx setView:window->nsView];
 
     window->context.makeCurrent = makeContextCurrentNSGL;
     window->context.swapBuffers = swapBuffersNSGL;
@@ -263,7 +261,7 @@ IntBool _glfwCreateContextNSGL(plafWindow* window,
 id glfwGetNSGLContext(plafWindow* handle)
 {
     plafWindow* window = (plafWindow*) handle;
-    return window->context.nsgl.object;
+    return window->context.nsglCtx;
 }
 
 #endif // __APPLE__

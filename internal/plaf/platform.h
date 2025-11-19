@@ -11,15 +11,82 @@ extern "C" {
 #include <string.h>
 #include <float.h>
 
-#if !defined(APIENTRY)
-	#if defined(_WIN32)
-		#define APIENTRY __stdcall
-	#else
-		#define APIENTRY
+#if defined(__APPLE__)
+	#define APIENTRY
+	// NOTE: All of NSGL was deprecated in the 10.14 SDK. This disables the pointless warnings for every symbol we use.
+	#ifndef GL_SILENCE_DEPRECATION
+		#define GL_SILENCE_DEPRECATION
 	#endif
-#endif
 
-#if defined(_WIN32)
+	#import <Cocoa/Cocoa.h>
+#elif defined(__linux__)
+	#define APIENTRY
+
+	#include <unistd.h>
+	#include <signal.h>
+	// TODO: See if we can remove any of these X11 includes
+	#include <X11/Xlib.h>
+	#include <X11/keysym.h>
+	#include <X11/Xatom.h>
+	#include <X11/Xresource.h>
+	#include <X11/Xcursor/Xcursor.h>
+	#include <X11/extensions/Xrandr.h>
+	#include <X11/XKBlib.h>
+	#include <X11/extensions/Xinerama.h>
+	#include <X11/extensions/XInput2.h>
+	#include <X11/extensions/shape.h>
+#elif defined(_WIN32)
+	#ifndef NOMINMAX
+		#define NOMINMAX
+	#endif
+	#ifndef VC_EXTRALEAN
+		#define VC_EXTRALEAN
+	#endif
+	#ifndef WIN32_LEAN_AND_MEAN
+		#define WIN32_LEAN_AND_MEAN
+	#endif
+	#ifndef UNICODE
+		#define UNICODE
+	#endif
+	// Require Windows 7 or later
+	#if WINVER < 0x0601
+		#undef WINVER
+		#define WINVER 0x0601
+	#endif
+	#if _WIN32_WINNT < 0x0601
+		#undef _WIN32_WINNT
+		#define _WIN32_WINNT 0x0601
+	#endif
+	#define DIRECTINPUT_VERSION 0x0800
+	#define OEMRESOURCE
+
+	#include <wctype.h>
+	#include <windows.h>
+	#include <dwmapi.h>
+	#include <dinput.h>
+	#include <dbt.h>
+
+	#ifndef WM_COPYGLOBALDATA
+		#define WM_COPYGLOBALDATA 0x0049
+	#endif
+	#ifndef WM_DPICHANGED
+		#define WM_DPICHANGED 0x02E0
+	#endif
+	#ifndef EDS_ROTATEDMODE
+		#define EDS_ROTATEDMODE 0x00000004
+	#endif
+	#ifndef _WIN32_WINNT_WINBLUE
+		#define _WIN32_WINNT_WINBLUE 0x0603
+	#endif
+	#ifndef _WIN32_WINNT_WIN8
+		#define _WIN32_WINNT_WIN8 0x0602
+	#endif
+	#ifndef WM_GETDPISCALEDSIZE
+		#define WM_GETDPISCALEDSIZE 0x02e4
+	#endif
+	#ifndef USER_DEFAULT_SCREEN_DPI
+		#define USER_DEFAULT_SCREEN_DPI 96
+	#endif
 	#if !defined(WINGDIAPI)
 		#define WINGDIAPI __declspec(dllimport)
 		#define GLFW_WINGDIAPI_DEFINED
@@ -586,25 +653,10 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGPROC)(GLenum);
 typedef void (APIENTRY * PFNGLGETINTEGERVPROC)(GLenum,GLint*);
 typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
 
-#if defined(__APPLE__)
- #include "platform_darwin.h"
-#else
- #define GLFW_COCOA_LIBRARY_WINDOW_STATE
- #define GLFW_NSGL_CONTEXT_STATE
-#endif
-
 #if defined(__linux__)
- #include "platform_linux.h"
-#else
- #define GLFW_X11_LIBRARY_WINDOW_STATE
- #define GLFW_GLX_CONTEXT_STATE
-#endif
-
-#if defined(_WIN32)
- #include "platform_windows.h"
-#else
- #define GLFW_WIN32_LIBRARY_WINDOW_STATE
- #define GLFW_WGL_CONTEXT_STATE
+	#include "platform_linux.h"
+#elif defined(_WIN32)
+	#include "platform_windows.h"
 #endif
 
 // Swaps the provided pointers
@@ -683,15 +735,17 @@ struct plafCtx
 	int (*extensionSupported)(const char*);
 	glFunc (*getProcAddress)(const char*);
 	void (*destroy)(plafWindow*);
-
-	GLFW_WGL_CONTEXT_STATE
-	GLFW_NSGL_CONTEXT_STATE
-	GLFW_GLX_CONTEXT_STATE
-
 #if defined(__APPLE__)
+	NSOpenGLPixelFormat* nsglPixelFormat;
+	NSOpenGLContext*     nsglCtx;
 #elif defined(__linux__)
-    GLXContext      glxHandle;
+	GLXContext      glxHandle;
+	GLXWindow       glxWindow;
+	GLXFBConfig     glxFBConfig;
 #elif defined(_WIN32)
+	HDC       wglDC;
+	HGLRC     wglGLRC;
+	int       wglInterval;
 #endif
 };
 
@@ -724,8 +778,8 @@ struct plafWindow
 	int                 cursorMode;
 	char                mouseButtons[MOUSE_BUTTON_LAST + 1];
 	char                keys[KEY_LAST + 1];
-	// Virtual cursor position when cursor is disabled
-	double              virtualCursorPosX, virtualCursorPosY;
+	double              virtualCursorPosX;
+	double              virtualCursorPosY;
 
 	plafCtx        context;
 
@@ -750,7 +804,19 @@ struct plafWindow
 	} callbacks;
 
 #if defined(__APPLE__)
-	_GLFWwindowNS    ns;
+    NSWindow *  nsWindow;
+    NSObject *  nsDelegate;
+    NSView *    nsView;
+    IntBool        nsMaximized;
+    IntBool        nsScaleFramebuffer;
+
+    // Cached window properties to filter out duplicate events
+    int             nsWidth;
+	int             nsHeight;
+    int             nsFrameBufferWidth;
+	int             nsFrameBufferHeight;
+    float           nsXScale;
+	float           nsYScale;
 #elif defined(__linux__)
 	_GLFWwindowX11   x11;
 #elif defined(_WIN32)
@@ -763,10 +829,8 @@ struct plafWindow
 struct plafMonitor
 {
 	char              name[128];
-	// Physical dimensions in millimeters.
 	int               widthMM;
 	int               heightMM;
-	// The window whose video mode is current on this monitor
 	plafWindow*       window;
 	VideoMode*        modes;
 	int               modeCount;
@@ -774,23 +838,23 @@ struct plafMonitor
 	GammaRamp         originalRamp;
 	GammaRamp         currentRamp;
 #if defined(__APPLE__)
-    CGDirectDisplayID nsDisplayID;
-    CGDisplayModeRef  nsPreviousMode;
-    uint32_t          nsUnitNumber;
-    NSScreen*         nsScreen;
+	CGDirectDisplayID nsDisplayID;
+	CGDisplayModeRef  nsPreviousMode;
+	uint32_t          nsUnitNumber;
+	NSScreen*         nsScreen;
 #elif defined(__linux__)
-    RROutput          x11Output;
-    RRCrtc            x11Crtc;
-    RRMode            x11OldMode;
-    int               x11Index;
+	RROutput          x11Output;
+	RRCrtc            x11Crtc;
+	RRMode            x11OldMode;
+	int               x11Index;
 #elif defined(_WIN32)
-    HMONITOR          win32Handle;
-    WCHAR             win32AdapterName[32];
-    WCHAR             win32DisplayName[32];
-    char              win32PublicAdapterName[32];
-    char              win32PublicDisplayName[32];
-    IntBool           win32ModesPruned;
-    IntBool           win32ModeChanged;
+	HMONITOR          win32Handle;
+	WCHAR             win32AdapterName[32];
+	WCHAR             win32DisplayName[32];
+	char              win32PublicAdapterName[32];
+	char              win32PublicDisplayName[32];
+	IntBool           win32ModesPruned;
+	IntBool           win32ModeChanged;
 #endif
 };
 
@@ -799,7 +863,7 @@ struct plafMonitor
 struct plafCursor {
 	plafCursor*     next;
 #if defined(__APPLE__)
-    NSCursor*        nsCursor;
+	NSCursor*        nsCursor;
 #elif defined(__linux__)
 	Cursor           x11Cursor;
 #elif defined(_WIN32)
@@ -896,67 +960,316 @@ struct _GLFWlibrary
 		monitorFunc  monitor;
 	} callbacks;
 
-	GLFW_WIN32_LIBRARY_WINDOW_STATE
-	GLFW_COCOA_LIBRARY_WINDOW_STATE
-	GLFW_X11_LIBRARY_WINDOW_STATE
-
 #if defined(__APPLE__)
-	CFBundleRef     nsglFramework;
+	CGEventSourceRef                     nsEventSource;
+	id                                   nsDelegate;
+	IntBool                              nsCursorHidden;
+	id                                   nsKeyUpMonitor;
+	short int                            nsKeycodes[256];
+	short int                            nsScancodes[KEY_LAST + 1];
+	CGPoint                              nsCascadePoint;
+	CFBundleRef                          nsglFramework;
 #elif defined(__linux__)
-	int                                 glxErrorBase;
-    void*                               glxHandle;
-    PFNGLXGETFBCONFIGSPROC              glxGetFBConfigs;
-    PFNGLXGETFBCONFIGATTRIBPROC         glxGetFBConfigAttrib;
-    PFNGLXGETCLIENTSTRINGPROC           glxGetClientString;
-    PFNGLXQUERYEXTENSIONPROC            glxQueryExtension;
-    PFNGLXQUERYVERSIONPROC              glxQueryVersion;
-    PFNGLXDESTROYCONTEXTPROC            glxDestroyContext;
-    PFNGLXMAKECURRENTPROC               glxMakeCurrent;
-    PFNGLXSWAPBUFFERSPROC               glxSwapBuffers;
-    PFNGLXQUERYEXTENSIONSSTRINGPROC     glxQueryExtensionsString;
-    PFNGLXCREATENEWCONTEXTPROC          glxCreateNewContext;
-    PFNGLXGETVISUALFROMFBCONFIGPROC     glxGetVisualFromFBConfig;
-    PFNGLXCREATEWINDOWPROC              glxCreateWindow;
-    PFNGLXDESTROYWINDOWPROC             glxDestroyWindow;
-    PFNGLXGETPROCADDRESSPROC            glxGetProcAddress;
-    PFNGLXGETPROCADDRESSPROC            glxGetProcAddressARB;
-    PFNGLXSWAPINTERVALSGIPROC           glxSwapIntervalSGI;
-    PFNGLXSWAPINTERVALEXTPROC           glxSwapIntervalEXT;
-    PFNGLXCREATECONTEXTATTRIBSARBPROC   glxCreateContextAttribsARB;
-    IntBool                             glxSGI_swap_control;
-    IntBool                             glxEXT_swap_control;
-    IntBool                             glxARB_multisample;
-    IntBool                             glxARB_framebuffer_sRGB;
-    IntBool                             glxEXT_framebuffer_sRGB;
-    IntBool                             glxARB_create_context;
-    IntBool                             glxARB_create_context_profile;
-    IntBool                             glxARB_create_context_robustness;
-    IntBool                             glxARB_create_context_no_error;
-    IntBool                             glxARB_context_flush_control;
+	Display*                             x11Display;
+	int                                  x11Screen;
+	Window                               x11Root;
+	float                                x11ContentScaleX;
+	float                                x11ContentScaleY;
+	Window                               x11HelperWindowHandle;
+	Cursor                               x11HiddenCursorHandle;
+	XContext                             x11Context;
+	XIM                                  x11IM;
+	XErrorHandler                        x11ErrorHandler;
+	int                                  x11ErrorCode;
+	short int                            x11Keycodes[256];
+	short int                            x11Scancodes[KEY_LAST + 1];
+	int                                  x11EmptyEventPipe[2];
+	Atom                                 x11NET_SUPPORTED;
+	Atom                                 x11NET_SUPPORTING_WM_CHECK;
+	Atom                                 x11WM_PROTOCOLS;
+	Atom                                 x11WM_STATE;
+	Atom                                 x11WM_DELETE_WINDOW;
+	Atom                                 x11NET_WM_NAME;
+	Atom                                 x11NET_WM_ICON_NAME;
+	Atom                                 x11NET_WM_ICON;
+	Atom                                 x11NET_WM_PID;
+	Atom                                 x11NET_WM_PING;
+	Atom                                 x11NET_WM_WINDOW_TYPE;
+	Atom                                 x11NET_WM_WINDOW_TYPE_NORMAL;
+	Atom                                 x11NET_WM_STATE;
+	Atom                                 x11NET_WM_STATE_ABOVE;
+	Atom                                 x11NET_WM_STATE_FULLSCREEN;
+	Atom                                 x11NET_WM_STATE_MAXIMIZED_VERT;
+	Atom                                 x11NET_WM_STATE_MAXIMIZED_HORZ;
+	Atom                                 x11NET_WM_STATE_DEMANDS_ATTENTION;
+	Atom                                 x11NET_WM_BYPASS_COMPOSITOR;
+	Atom                                 x11NET_WM_FULLSCREEN_MONITORS;
+	Atom                                 x11NET_WM_WINDOW_OPACITY;
+	Atom                                 x11NET_WM_CM_Sx;
+	Atom                                 x11NET_WORKAREA;
+	Atom                                 x11NET_CURRENT_DESKTOP;
+	Atom                                 x11NET_ACTIVE_WINDOW;
+	Atom                                 x11NET_FRAME_EXTENTS;
+	Atom                                 x11NET_REQUEST_FRAME_EXTENTS;
+	Atom                                 x11MOTIF_WM_HINTS;
+	Atom                                 x11DnDAware;
+	Atom                                 x11DnDEnter;
+	Atom                                 x11DnDPosition;
+	Atom                                 x11DnDStatus;
+	Atom                                 x11DnDActionCopy;
+	Atom                                 x11DnDDrop;
+	Atom                                 x11DnDFinished;
+	Atom                                 x11DnDSelection;
+	Atom                                 x11DnDTypeList;
+	Atom                                 x11Text_uri_list;
+	Atom                                 x11ClipTARGETS;
+	Atom                                 x11ClipMULTIPLE;
+	Atom                                 x11ClipINCR;
+	Atom                                 x11ClipCLIPBOARD;
+	Atom                                 x11ClipCLIPBOARD_MANAGER;
+	Atom                                 x11ClipSAVE_TARGETS;
+	Atom                                 x11ClipNULL_;
+	Atom                                 x11ClipUTF8_STRING;
+	Atom                                 x11ClipATOM_PAIR;
+	Atom                                 x11ClipSELECTION;
+	void*                                xlibHandle;
+	IntBool                              xlibUTF8;
+	PFN_XAllocSizeHints                  xlibAllocSizeHints;
+	PFN_XAllocWMHints                    xlibAllocWMHints;
+	PFN_XChangeProperty                  xlibChangeProperty;
+	PFN_XChangeWindowAttributes          xlibChangeWindowAttributes;
+	PFN_XCheckIfEvent                    xlibCheckIfEvent;
+	PFN_XCheckTypedWindowEvent           xlibCheckTypedWindowEvent;
+	PFN_XCloseDisplay                    xlibCloseDisplay;
+	PFN_XCloseIM                         xlibCloseIM;
+	PFN_XConvertSelection                xlibConvertSelection;
+	PFN_XCreateColormap                  xlibCreateColormap;
+	PFN_XCreateFontCursor                xlibCreateFontCursor;
+	PFN_XCreateIC                        xlibCreateIC;
+	PFN_XCreateRegion                    xlibCreateRegion;
+	PFN_XCreateWindow                    xlibCreateWindow;
+	PFN_XDefineCursor                    xlibDefineCursor;
+	PFN_XDeleteContext                   xlibDeleteContext;
+	PFN_XDeleteProperty                  xlibDeleteProperty;
+	PFN_XDestroyIC                       xlibDestroyIC;
+	PFN_XDestroyRegion                   xlibDestroyRegion;
+	PFN_XDestroyWindow                   xlibDestroyWindow;
+	PFN_XDisplayKeycodes                 xlibDisplayKeycodes;
+	PFN_XEventsQueued                    xlibEventsQueued;
+	PFN_XFilterEvent                     xlibFilterEvent;
+	PFN_XFindContext                     xlibFindContext;
+	PFN_XFlush                           xlibFlush;
+	PFN_XFree                            xlibFree;
+	PFN_XFreeColormap                    xlibFreeColormap;
+	PFN_XFreeCursor                      xlibFreeCursor;
+	PFN_XFreeEventData                   xlibFreeEventData;
+	PFN_XGetErrorText                    xlibGetErrorText;
+	PFN_XGetICValues                     xlibGetICValues;
+	PFN_XGetIMValues                     xlibGetIMValues;
+	PFN_XGetInputFocus                   xlibGetInputFocus;
+	PFN_XGetKeyboardMapping              xlibGetKeyboardMapping;
+	PFN_XGetScreenSaver                  xlibGetScreenSaver;
+	PFN_XGetSelectionOwner               xlibGetSelectionOwner;
+	PFN_XGetWMNormalHints                xlibGetWMNormalHints;
+	PFN_XGetWindowAttributes             xlibGetWindowAttributes;
+	PFN_XGetWindowProperty               xlibGetWindowProperty;
+	PFN_XIconifyWindow                   xlibIconifyWindow;
+	PFN_XInternAtom                      xlibInternAtom;
+	PFN_XLookupString                    xlibLookupString;
+	PFN_XMapRaised                       xlibMapRaised;
+	PFN_XMapWindow                       xlibMapWindow;
+	PFN_XMoveResizeWindow                xlibMoveResizeWindow;
+	PFN_XMoveWindow                      xlibMoveWindow;
+	PFN_XNextEvent                       xlibNextEvent;
+	PFN_XOpenIM                          xlibOpenIM;
+	PFN_XPeekEvent                       xlibPeekEvent;
+	PFN_XPending                         xlibPending;
+	PFN_XQueryExtension                  xlibQueryExtension;
+	PFN_XQueryPointer                    xlibQueryPointer;
+	PFN_XRaiseWindow                     xlibRaiseWindow;
+	PFN_XRegisterIMInstantiateCallback   xlibRegisterIMInstantiateCallback;
+	PFN_XResizeWindow                    xlibResizeWindow;
+	PFN_XResourceManagerString           xlibResourceManagerString;
+	PFN_XSaveContext                     xlibSaveContext;
+	PFN_XSelectInput                     xlibSelectInput;
+	PFN_XSendEvent                       xlibSendEvent;
+	PFN_XSetErrorHandler                 xlibSetErrorHandler;
+	PFN_XSetICFocus                      xlibSetICFocus;
+	PFN_XSetIMValues                     xlibSetIMValues;
+	PFN_XSetInputFocus                   xlibSetInputFocus;
+	PFN_XSetLocaleModifiers              xlibSetLocaleModifiers;
+	PFN_XSetScreenSaver                  xlibSetScreenSaver;
+	PFN_XSetSelectionOwner               xlibSetSelectionOwner;
+	PFN_XSetWMHints                      xlibSetWMHints;
+	PFN_XSetWMNormalHints                xlibSetWMNormalHints;
+	PFN_XSetWMProtocols                  xlibSetWMProtocols;
+	PFN_XSupportsLocale                  xlibSupportsLocale;
+	PFN_XSync                            xlibSync;
+	PFN_XTranslateCoordinates            xlibTranslateCoordinates;
+	PFN_XUndefineCursor                  xlibUndefineCursor;
+	PFN_XUnmapWindow                     xlibUnmapWindow;
+	PFN_XUnsetICFocus                    xlibUnsetICFocus;
+	PFN_XWarpPointer                     xlibWarpPointer;
+	PFN_XUnregisterIMInstantiateCallback xlibUnregisterIMInstantiateCallback;
+	PFN_Xutf8LookupString                xlibUTF8LookupString;
+	PFN_Xutf8SetWMProperties             xlibUTF8SetWMProperties;
+	PFN_XrmDestroyDatabase               xrmDestroyDatabase;
+	PFN_XrmGetResource                   xrmGetResource;
+	PFN_XrmGetStringDatabase             xrmGetStringDatabase;
+	IntBool                              randrAvailable;
+	void*                                randrHandle;
+	int                                  randrEventBase;
+	IntBool                              randrGammaBroken;
+	IntBool                              randrMonitorBroken;
+	PFN_XRRAllocGamma                    randrAllocGamma;
+	PFN_XRRFreeCrtcInfo                  randrFreeCrtcInfo;
+	PFN_XRRFreeGamma                     randrFreeGamma;
+	PFN_XRRFreeOutputInfo                randrFreeOutputInfo;
+	PFN_XRRFreeScreenResources           randrFreeScreenResources;
+	PFN_XRRGetCrtcGamma                  randrGetCrtcGamma;
+	PFN_XRRGetCrtcGammaSize              randrGetCrtcGammaSize;
+	PFN_XRRGetCrtcInfo                   randrGetCrtcInfo;
+	PFN_XRRGetOutputInfo                 randrGetOutputInfo;
+	PFN_XRRGetOutputPrimary              randrGetOutputPrimary;
+	PFN_XRRGetScreenResourcesCurrent     randrGetScreenResourcesCurrent;
+	PFN_XRRQueryExtension                randrQueryExtension;
+	PFN_XRRQueryVersion                  randrQueryVersion;
+	PFN_XRRSelectInput                   randrSelectInput;
+	PFN_XRRSetCrtcConfig                 randrSetCrtcConfig;
+	PFN_XRRSetCrtcGamma                  randrSetCrtcGamma;
+	PFN_XRRUpdateConfiguration           randrUpdateConfiguration;
+	IntBool                              xkbAvailable;
+	IntBool                              xkbDetectable;
+	int                                  xkbEventBase;
+	unsigned int                         xkbGroup;
+	PFN_XkbFreeKeyboard                  xkbFreeKeyboard;
+	PFN_XkbFreeNames                     xkbFreeNames;
+	PFN_XkbGetMap                        xkbGetMap;
+	PFN_XkbGetNames                      xkbGetNames;
+	PFN_XkbGetState                      xkbGetState;
+	PFN_XkbQueryExtension                xkbQueryExtension;
+	PFN_XkbSelectEventDetails            xkbSelectEventDetails;
+	PFN_XkbSetDetectableAutoRepeat       xkbSetDetectableAutoRepeat;
+	int                                  xsaverCount;
+	int                                  xsaverTimeout;
+	int                                  xsaverInterval;
+	int                                  xsaverBlanking;
+	int                                  xsaverExposure;
+	int                                  xdndVersion;
+	Window                               xdndSource;
+	Atom                                 xdndFormat;
+	void*                                xcursorHandle;
+	PFN_XcursorImageCreate               xcursorImageCreate;
+	PFN_XcursorImageDestroy              xcursorImageDestroy;
+	PFN_XcursorImageLoadCursor           xcursorImageLoadCursor;
+	PFN_XcursorGetTheme                  xcursorGetTheme;
+	PFN_XcursorGetDefaultSize            xcursorGetDefaultSize;
+	PFN_XcursorLibraryLoadImage          xcursorLibraryLoadImage;
+	IntBool                              xineramaAvailable;
+	void*                                xineramaHandle;
+	PFN_XineramaIsActive                 xineramaIsActive;
+	PFN_XineramaQueryExtension           xineramaQueryExtension;
+	PFN_XineramaQueryScreens             xineramaQueryScreens;
+	IntBool                              xvidmodeAvailable;
+	void*                                xvidmodeHandle;
+	PFN_XF86VidModeQueryExtension        xvidmodeQueryExtension;
+	PFN_XF86VidModeGetGammaRamp          xvidmodeGetGammaRamp;
+	PFN_XF86VidModeSetGammaRamp          xvidmodeSetGammaRamp;
+	PFN_XF86VidModeGetGammaRampSize      xvidmodeGetGammaRampSize;
+	IntBool                              xiAvailable;
+	void*                                xiHandle;
+	PFN_XIQueryVersion                   xiQueryVersion;
+	IntBool                              xrenderAvailable;
+	void*                                xrenderHandle;
+	PFN_XRenderQueryExtension            xrenderQueryExtension;
+	PFN_XRenderQueryVersion              xrenderQueryVersion;
+	PFN_XRenderFindVisualFormat          xrenderFindVisualFormat;
+	IntBool                              xshapeAvailable;
+	void*                                xshapeHandle;
+	PFN_XShapeQueryExtension             xshapeQueryExtension;
+	PFN_XShapeQueryVersion               xshapeQueryVersion;
+	PFN_XShapeCombineRegion              xshapeShapeCombineRegion;
+	PFN_XShapeCombineMask                xshapeShapeCombineMask;
+	int                                  glxErrorBase;
+	void*                                glxHandle;
+	PFNGLXGETFBCONFIGSPROC               glxGetFBConfigs;
+	PFNGLXGETFBCONFIGATTRIBPROC          glxGetFBConfigAttrib;
+	PFNGLXGETCLIENTSTRINGPROC            glxGetClientString;
+	PFNGLXQUERYEXTENSIONPROC             glxQueryExtension;
+	PFNGLXQUERYVERSIONPROC               glxQueryVersion;
+	PFNGLXDESTROYCONTEXTPROC             glxDestroyContext;
+	PFNGLXMAKECURRENTPROC                glxMakeCurrent;
+	PFNGLXSWAPBUFFERSPROC                glxSwapBuffers;
+	PFNGLXQUERYEXTENSIONSSTRINGPROC      glxQueryExtensionsString;
+	PFNGLXCREATENEWCONTEXTPROC           glxCreateNewContext;
+	PFNGLXGETVISUALFROMFBCONFIGPROC      glxGetVisualFromFBConfig;
+	PFNGLXCREATEWINDOWPROC               glxCreateWindow;
+	PFNGLXDESTROYWINDOWPROC              glxDestroyWindow;
+	PFNGLXGETPROCADDRESSPROC             glxGetProcAddress;
+	PFNGLXGETPROCADDRESSPROC             glxGetProcAddressARB;
+	PFNGLXSWAPINTERVALSGIPROC            glxSwapIntervalSGI;
+	PFNGLXSWAPINTERVALEXTPROC            glxSwapIntervalEXT;
+	PFNGLXCREATECONTEXTATTRIBSARBPROC    glxCreateContextAttribsARB;
+	IntBool                              glxSGI_swap_control;
+	IntBool                              glxEXT_swap_control;
+	IntBool                              glxARB_multisample;
+	IntBool                              glxARB_framebuffer_sRGB;
+	IntBool                              glxEXT_framebuffer_sRGB;
+	IntBool                              glxARB_create_context;
+	IntBool                              glxARB_create_context_profile;
+	IntBool                              glxARB_create_context_robustness;
+	IntBool                              glxARB_create_context_no_error;
+	IntBool                              glxARB_context_flush_control;
 #elif defined(_WIN32)
-    HINSTANCE                           wglInstance;
-    PFN_wglCreateContext                wglCreateContext;
-    PFN_wglDeleteContext                wglDeleteContext;
-    PFN_wglGetProcAddress               wglGetProcAddress;
-    PFN_wglGetCurrentDC                 wglGetCurrentDC;
-    PFN_wglGetCurrentContext            wglGetCurrentContext;
-    PFN_wglMakeCurrent                  wglMakeCurrent;
-    PFN_wglShareLists                   wglShareLists;
-    PFNWGLSWAPINTERVALEXTPROC           wglSwapIntervalEXT;
-    PFNWGLGETPIXELFORMATATTRIBIVARBPROC wglGetPixelFormatAttribivARB;
-    PFNWGLGETEXTENSIONSSTRINGEXTPROC    wglGetExtensionsStringEXT;
-    PFNWGLGETEXTENSIONSSTRINGARBPROC    wglGetExtensionsStringARB;
-    PFNWGLCREATECONTEXTATTRIBSARBPROC   wglCreateContextAttribsARB;
-    IntBool                             wglEXT_swap_control;
-    IntBool                             wglARB_multisample;
-    IntBool                             wglARB_framebuffer_sRGB;
-    IntBool                             wglEXT_framebuffer_sRGB;
-    IntBool                             wglARB_pixel_format;
-    IntBool                             wglARB_create_context;
-    IntBool                             wglARB_create_context_profile;
-    IntBool                             wglARB_create_context_robustness;
-    IntBool                             wglARB_create_context_no_error;
-    IntBool                             wglARB_context_flush_control;
+	HINSTANCE                            win32Instance;
+	HWND                                 win32HelperWindowHandle;
+	ATOM                                 win32HelperWindowClass;
+	ATOM                                 win32MainWindowClass;
+	HDEVNOTIFY                           win32DeviceNotificationHandle;
+	int                                  win32AcquiredMonitorCount;
+	short int                            win32Keycodes[512];
+	short int                            win32Scancodes[KEY_LAST + 1];
+	UINT                                 win32MouseTrailSize;
+	HCURSOR                              win32BlankCursor;
+	HINSTANCE                            win32User32Instance;
+	PFN_EnableNonClientDpiScaling        win32User32EnableNonClientDpiScaling_;
+	PFN_SetProcessDpiAwarenessContext    win32User32SetProcessDpiAwarenessContext_;
+	PFN_GetDpiForWindow                  win32User32GetDpiForWindow_;
+	PFN_AdjustWindowRectExForDpi         win32User32AdjustWindowRectExForDpi_;
+	PFN_GetSystemMetricsForDpi           win32User32GetSystemMetricsForDpi_;
+	HINSTANCE                            win32DwmInstance;
+	PFN_DwmIsCompositionEnabled          win32DwmIsCompositionEnabled;
+	PFN_DwmFlush                         win32DwmFlush;
+	PFN_DwmEnableBlurBehindWindow        win32DwmEnableBlurBehindWindow;
+	PFN_DwmGetColorizationColor          win32DwmGetColorizationColor;
+	HINSTANCE                            win32ShCoreInstance;
+	PFN_SetProcessDpiAwareness           win32ShCoreSetProcessDpiAwareness_;
+	PFN_GetDpiForMonitor                 win32ShCoreGetDpiForMonitor_;
+	HINSTANCE                            win32NTInstance;
+	PFN_RtlVerifyVersionInfo             win32NTRtlVerifyVersionInfo_;
+	HINSTANCE                            wglInstance;
+	PFN_wglCreateContext                 wglCreateContext;
+	PFN_wglDeleteContext                 wglDeleteContext;
+	PFN_wglGetProcAddress                wglGetProcAddress;
+	PFN_wglGetCurrentDC                  wglGetCurrentDC;
+	PFN_wglGetCurrentContext             wglGetCurrentContext;
+	PFN_wglMakeCurrent                   wglMakeCurrent;
+	PFN_wglShareLists                    wglShareLists;
+	PFNWGLSWAPINTERVALEXTPROC            wglSwapIntervalEXT;
+	PFNWGLGETPIXELFORMATATTRIBIVARBPROC  wglGetPixelFormatAttribivARB;
+	PFNWGLGETEXTENSIONSSTRINGEXTPROC     wglGetExtensionsStringEXT;
+	PFNWGLGETEXTENSIONSSTRINGARBPROC     wglGetExtensionsStringARB;
+	PFNWGLCREATECONTEXTATTRIBSARBPROC    wglCreateContextAttribsARB;
+	IntBool                              wglEXT_swap_control;
+	IntBool                              wglARB_multisample;
+	IntBool                              wglARB_framebuffer_sRGB;
+	IntBool                              wglEXT_framebuffer_sRGB;
+	IntBool                              wglARB_pixel_format;
+	IntBool                              wglARB_create_context;
+	IntBool                              wglARB_create_context_profile;
+	IntBool                              wglARB_create_context_robustness;
+	IntBool                              wglARB_create_context_no_error;
+	IntBool                              wglARB_context_flush_control;
 #endif
 };
 
@@ -3979,6 +4292,75 @@ void updateCursorImage(plafWindow* window);
 void setCursorInternal(plafWindow* window);
 #if defined(__APPLE__) || defined(_WIN32)
 IntBool cursorInContentArea(plafWindow* window);
+#endif
+
+#if defined(__APPLE__)
+IntBool _glfwCreateWindowCocoa(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _glfwDestroyWindowCocoa(plafWindow* window);
+void _glfwSetWindowTitleCocoa(plafWindow* window, const char* title);
+void _glfwSetWindowIconCocoa(plafWindow* window, int count, const ImageData* images);
+void _glfwGetWindowPosCocoa(plafWindow* window, int* xpos, int* ypos);
+void _glfwSetWindowPosCocoa(plafWindow* window, int xpos, int ypos);
+void _glfwGetWindowSizeCocoa(plafWindow* window, int* width, int* height);
+void _glfwSetWindowSizeCocoa(plafWindow* window, int width, int height);
+void _glfwSetWindowSizeLimitsCocoa(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
+void _glfwSetWindowAspectRatioCocoa(plafWindow* window, int numer, int denom);
+void _glfwGetFramebufferSizeCocoa(plafWindow* window, int* width, int* height);
+void _glfwGetWindowFrameSizeCocoa(plafWindow* window, int* left, int* top, int* right, int* bottom);
+void _glfwGetWindowContentScaleCocoa(plafWindow* window, float* xscale, float* yscale);
+void _glfwIconifyWindowCocoa(plafWindow* window);
+void _glfwRestoreWindowCocoa(plafWindow* window);
+void _glfwMaximizeWindowCocoa(plafWindow* window);
+void _glfwShowWindowCocoa(plafWindow* window);
+void _glfwHideWindowCocoa(plafWindow* window);
+void _glfwRequestWindowAttentionCocoa(plafWindow* window);
+void _glfwFocusWindowCocoa(plafWindow* window);
+void _glfwSetWindowMonitorCocoa(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
+IntBool _glfwWindowFocusedCocoa(plafWindow* window);
+IntBool _glfwWindowIconifiedCocoa(plafWindow* window);
+IntBool _glfwWindowVisibleCocoa(plafWindow* window);
+IntBool _glfwWindowMaximizedCocoa(plafWindow* window);
+IntBool _glfwWindowHoveredCocoa(plafWindow* window);
+IntBool _glfwFramebufferTransparentCocoa(plafWindow* window);
+void _glfwSetWindowResizableCocoa(plafWindow* window, IntBool enabled);
+void _glfwSetWindowDecoratedCocoa(plafWindow* window, IntBool enabled);
+void _glfwSetWindowFloatingCocoa(plafWindow* window, IntBool enabled);
+float _glfwGetWindowOpacityCocoa(plafWindow* window);
+void _glfwSetWindowOpacityCocoa(plafWindow* window, float opacity);
+void _glfwSetWindowMousePassthroughCocoa(plafWindow* window, IntBool enabled);
+
+void _glfwPollEventsCocoa(void);
+void _glfwWaitEventsCocoa(void);
+void _glfwWaitEventsTimeoutCocoa(double timeout);
+void _glfwPostEmptyEventCocoa(void);
+
+void _glfwSetCursorModeCocoa(plafWindow* window, int mode);
+int _glfwGetKeyScancodeCocoa(int key);
+IntBool _glfwCreateCursorCocoa(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
+IntBool _glfwCreateStandardCursorCocoa(plafCursor* cursor, int shape);
+void _glfwDestroyCursorCocoa(plafCursor* cursor);
+
+void _glfwFreeMonitorCocoa(plafMonitor* monitor);
+void _glfwGetMonitorPosCocoa(plafMonitor* monitor, int* xpos, int* ypos);
+void _glfwGetMonitorContentScaleCocoa(plafMonitor* monitor, float* xscale, float* yscale);
+void _glfwGetMonitorWorkareaCocoa(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
+VideoMode* _glfwGetVideoModesCocoa(plafMonitor* monitor, int* count);
+IntBool _glfwGetVideoModeCocoa(plafMonitor* monitor, VideoMode* mode);
+IntBool _glfwGetGammaRampCocoa(plafMonitor* monitor, GammaRamp* ramp);
+void _glfwSetGammaRampCocoa(plafMonitor* monitor, const GammaRamp* ramp);
+
+void _glfwPollMonitorsCocoa(void);
+void _glfwSetVideoModeCocoa(plafMonitor* monitor, const VideoMode* desired);
+void _glfwRestoreVideoModeCocoa(plafMonitor* monitor);
+
+float _glfwTransformYCocoa(float y);
+
+IntBool _glfwInitNSGL(void);
+void _glfwTerminateNSGL(void);
+IntBool _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _glfwDestroyContextNSGL(plafWindow* window);
+#elif defined(__linux__)
+#elif defined(_WIN32)
 #endif
 
 #ifdef __cplusplus

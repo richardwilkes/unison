@@ -291,7 +291,7 @@ void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* ys
 
     if (IsWindows8Point1OrGreater())
     {
-        if (_glfw.win32.shcore.GetDpiForMonitor_(handle, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) != S_OK)
+        if (_glfw.win32ShCoreGetDpiForMonitor_(handle, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) != S_OK)
         {
             _glfwInputError(ERR_PLATFORM_ERROR, "Win32: Failed to query monitor DPI");
             return;
