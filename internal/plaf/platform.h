@@ -4322,6 +4322,7 @@ IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp);
 void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
 IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode);
 VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count);
+void _glfwSetVideoMode(plafMonitor* monitor, const VideoMode* desired);
 void _glfwDestroyCursor(plafCursor* cursor);
 IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape);
 void glfwSetCursorMode(plafWindow* window, int mode);
@@ -4402,7 +4403,6 @@ void _glfwWaitEventsTimeoutCocoa(double timeout);
 void _glfwPostEmptyEventCocoa(void);
 
 void _glfwPollMonitorsCocoa(void);
-void _glfwSetVideoModeCocoa(plafMonitor* monitor, const VideoMode* desired);
 void _glfwRestoreVideoModeCocoa(plafMonitor* monitor);
 
 float _glfwTransformYCocoa(float y);
@@ -4452,7 +4452,6 @@ void _glfwWaitEventsTimeoutX11(double timeout);
 void _glfwPostEmptyEventX11(void);
 
 void _glfwPollMonitorsX11(void);
-void _glfwSetVideoModeX11(plafMonitor* monitor, const VideoMode* desired);
 void _glfwRestoreVideoModeX11(plafMonitor* monitor);
 
 Cursor _glfwCreateNativeCursorX11(const ImageData* image, int xhot, int yhot);
@@ -4489,7 +4488,6 @@ BOOL IsWindows10BuildOrGreater(WORD build);
 void _glfwInputErrorWin32(int error, const char* description);
 
 void _glfwPollMonitorsWin32(void);
-void _glfwSetVideoModeWin32(plafMonitor* monitor, const VideoMode* desired);
 void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 

@@ -55,7 +55,7 @@ static void updateCursorMode(plafWindow* window)
 //
 static void acquireMonitor(plafWindow* window)
 {
-	_glfwSetVideoModeCocoa(window->monitor, &window->videoMode);
+	_glfwSetVideoMode(window->monitor, &window->videoMode);
 	const CGRect bounds = CGDisplayBounds(window->monitor->nsDisplayID);
 	const NSRect frame = NSMakeRect(bounds.origin.x,
 									_glfwTransformYCocoa(bounds.origin.y + bounds.size.height - 1),

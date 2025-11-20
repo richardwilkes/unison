@@ -170,7 +170,7 @@ void _glfwPollMonitorsCocoa(void)
 
 // Change the current video mode
 //
-void _glfwSetVideoModeCocoa(plafMonitor* monitor, const VideoMode* desired)
+void _glfwSetVideoMode(plafMonitor* monitor, const VideoMode* desired)
 {
 	VideoMode current;
 	_glfwGetVideoMode(monitor, &current);

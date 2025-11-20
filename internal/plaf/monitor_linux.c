@@ -193,7 +193,7 @@ void _glfwPollMonitorsX11(void)
 
 // Set the current video mode for the specified monitor
 //
-void _glfwSetVideoModeX11(plafMonitor* monitor, const VideoMode* desired)
+void _glfwSetVideoMode(plafMonitor* monitor, const VideoMode* desired)
 {
 	if (_glfw.randrAvailable && !_glfw.randrMonitorBroken)
 	{
@@ -435,7 +435,7 @@ VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count)
 	return result;
 }
 
-IntBool _glfwGetVideoModeX11(plafMonitor* monitor, VideoMode* mode) {
+IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode) {
 	if (_glfw.randrAvailable && !_glfw.randrMonitorBroken)
 	{
 		XRRScreenResources* sr = _glfw.randrGetScreenResourcesCurrent(_glfw.x11Display, _glfw.x11Root);

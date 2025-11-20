@@ -1624,7 +1624,7 @@ static void acquireMonitor(plafWindow* window)
 	if (!window->monitor->window)
 		_glfw.xsaverCount++;
 
-	_glfwSetVideoModeX11(window->monitor, &window->videoMode);
+	_glfwSetVideoMode(window->monitor, &window->videoMode);
 
 	if (window->x11OverrideRedirect)
 	{

@@ -206,7 +206,7 @@ void _glfwPollMonitorsWin32(void)
 
 // Change the current video mode
 //
-void _glfwSetVideoModeWin32(plafMonitor* monitor, const VideoMode* desired)
+void _glfwSetVideoMode(plafMonitor* monitor, const VideoMode* desired)
 {
 	VideoMode current;
 	const VideoMode* best;
