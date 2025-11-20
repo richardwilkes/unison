@@ -2624,7 +2624,7 @@ void _glfwSetWindowPos(plafWindow* window, int x, int y) {
 		_glfw.xlibFree(hints);
 	}
 
-	_glfw.xlibMoveWindow(_glfw.x11Display, window->x11Window, xpos, ypos);
+	_glfw.xlibMoveWindow(_glfw.x11Display, window->x11Window, x, y);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
@@ -2670,7 +2670,6 @@ void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 }
 
 void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
-{
 	_glfwGetWindowSize(window, width, height);
 }
 
