@@ -363,7 +363,7 @@ BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp)
 
 // Checks whether we are on at least the specified build of Windows 10
 //
-BOOL _glfwIsWindows10BuildOrGreaterWin32(WORD build)
+BOOL IsWindows10BuildOrGreater(WORD build)
 {
 	OSVERSIONINFOEXW osvi = { sizeof(osvi), 10, 0, build };
 	DWORD mask = VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER;
@@ -437,12 +437,11 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 
 	createKeyTables();
 
-	if (_glfwIsWindows10Version1703OrGreaterWin32())
+	if (IsWindows10Version1703OrGreater())
 		_glfw.win32User32SetProcessDpiAwarenessContext_(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-	else if (IsWindows8Point1OrGreater())
+	else {
 		_glfw.win32ShCoreSetProcessDpiAwareness_(PROCESS_PER_MONITOR_DPI_AWARE);
-	else
-		SetProcessDPIAware();
+	}
 
 	errRsp = createHelperWindow();
 	if (errRsp) {

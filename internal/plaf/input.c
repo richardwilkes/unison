@@ -36,8 +36,8 @@ void _glfwInputKey(plafWindow* window, int key, int scancode, int action, int mo
 	if (!window->lockKeyMods)
 		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
 
-	if (window->callbacks.key)
-		window->callbacks.key((plafWindow*) window, key, scancode, action, mods);
+	if (window->keyCallback)
+		window->keyCallback((plafWindow*) window, key, scancode, action, mods);
 }
 
 // Notifies shared code of a Unicode codepoint input event
@@ -51,13 +51,13 @@ void _glfwInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool pl
 	if (!window->lockKeyMods)
 		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
 
-	if (window->callbacks.charmods)
-		window->callbacks.charmods((plafWindow*) window, codepoint, mods);
+	if (window->charModsCallback)
+		window->charModsCallback((plafWindow*) window, codepoint, mods);
 
 	if (plain)
 	{
-		if (window->callbacks.character)
-			window->callbacks.character((plafWindow*) window, codepoint);
+		if (window->charCallback)
+			window->charCallback((plafWindow*) window, codepoint);
 	}
 }
 
@@ -65,8 +65,8 @@ void _glfwInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool pl
 //
 void _glfwInputScroll(plafWindow* window, double xoffset, double yoffset)
 {
-	if (window->callbacks.scroll)
-		window->callbacks.scroll((plafWindow*) window, xoffset, yoffset);
+	if (window->scrollCallback)
+		window->scrollCallback((plafWindow*) window, xoffset, yoffset);
 }
 
 // Notifies shared code of a mouse button click event
@@ -87,8 +87,8 @@ void _glfwInputMouseClick(plafWindow* window, int button, int action, int mods)
 			window->mouseButtons[button] = (char) action;
 	}
 
-	if (window->callbacks.mouseButton)
-		window->callbacks.mouseButton((plafWindow*) window, button, action, mods);
+	if (window->mouseButtonCallback)
+		window->mouseButtonCallback((plafWindow*) window, button, action, mods);
 }
 
 // Notifies shared code of a cursor motion event
@@ -102,24 +102,24 @@ void _glfwInputCursorPos(plafWindow* window, double xpos, double ypos)
 	window->virtualCursorPosX = xpos;
 	window->virtualCursorPosY = ypos;
 
-	if (window->callbacks.cursorPos)
-		window->callbacks.cursorPos((plafWindow*) window, xpos, ypos);
+	if (window->cursorPosCallback)
+		window->cursorPosCallback((plafWindow*) window, xpos, ypos);
 }
 
 // Notifies shared code of a cursor enter/leave event
 //
 void _glfwInputCursorEnter(plafWindow* window, IntBool entered)
 {
-	if (window->callbacks.cursorEnter)
-		window->callbacks.cursorEnter((plafWindow*) window, entered);
+	if (window->cursorEnterCallback)
+		window->cursorEnterCallback((plafWindow*) window, entered);
 }
 
 // Notifies shared code of files or directories dropped on a window
 //
 void _glfwInputDrop(plafWindow* window, int count, const char** paths)
 {
-	if (window->callbacks.drop)
-		window->callbacks.drop((plafWindow*) window, count, paths);
+	if (window->dropCallback)
+		window->dropCallback((plafWindow*) window, count, paths);
 }
 
 
@@ -378,21 +378,21 @@ void glfwDestroyCursor(plafCursor* cursor)
 keyFunc glfwSetKeyCallback(plafWindow* handle, keyFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(keyFunc, window->callbacks.key, cbfun);
+	SWAP(keyFunc, window->keyCallback, cbfun);
 	return cbfun;
 }
 
 charFunc glfwSetCharCallback(plafWindow* handle, charFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(charFunc, window->callbacks.character, cbfun);
+	SWAP(charFunc, window->charCallback, cbfun);
 	return cbfun;
 }
 
 charModsFunc glfwSetCharModsCallback(plafWindow* handle, charModsFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(charModsFunc, window->callbacks.charmods, cbfun);
+	SWAP(charModsFunc, window->charModsCallback, cbfun);
 	return cbfun;
 }
 
@@ -400,7 +400,7 @@ mouseButtonFunc glfwSetMouseButtonCallback(plafWindow* handle,
 													  mouseButtonFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(mouseButtonFunc, window->callbacks.mouseButton, cbfun);
+	SWAP(mouseButtonFunc, window->mouseButtonCallback, cbfun);
 	return cbfun;
 }
 
@@ -408,7 +408,7 @@ cursorPosFunc glfwSetCursorPosCallback(plafWindow* handle,
 												  cursorPosFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(cursorPosFunc, window->callbacks.cursorPos, cbfun);
+	SWAP(cursorPosFunc, window->cursorPosCallback, cbfun);
 	return cbfun;
 }
 
@@ -416,7 +416,7 @@ cursorEnterFunc glfwSetCursorEnterCallback(plafWindow* handle,
 													  cursorEnterFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(cursorEnterFunc, window->callbacks.cursorEnter, cbfun);
+	SWAP(cursorEnterFunc, window->cursorEnterCallback, cbfun);
 	return cbfun;
 }
 
@@ -424,13 +424,13 @@ scrollFunc glfwSetScrollCallback(plafWindow* handle,
 											scrollFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(scrollFunc, window->callbacks.scroll, cbfun);
+	SWAP(scrollFunc, window->scrollCallback, cbfun);
 	return cbfun;
 }
 
 dropFunc glfwSetDropCallback(plafWindow* handle, dropFunc cbfun)
 {
 	plafWindow* window = (plafWindow*) handle;
-	SWAP(dropFunc, window->callbacks.drop, cbfun);
+	SWAP(dropFunc, window->dropCallback, cbfun);
 	return cbfun;
 }

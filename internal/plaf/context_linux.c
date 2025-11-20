@@ -528,7 +528,7 @@ IntBool _glfwCreateContextGLX(plafWindow* window,
         return false;
     }
 
-    window->context.glxWindow = _glfw.glxCreateWindow(_glfw.x11Display, native, window->x11.handle, NULL);
+    window->context.glxWindow = _glfw.glxCreateWindow(_glfw.x11Display, native, window->x11Window, NULL);
     if (!window->context.glxWindow)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "GLX: Failed to create window");

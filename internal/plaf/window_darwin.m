@@ -173,9 +173,9 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	[window->context.nsglCtx update];
 
 	const int maximized = [window->nsWindow isZoomed];
-	if (window->nsMaximized != maximized)
+	if (window->maximized != maximized)
 	{
-		window->nsMaximized = maximized;
+		window->maximized = maximized;
 		_glfwInputWindowMaximize(window, maximized);
 	}
 
@@ -190,11 +190,11 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 		_glfwInputFramebufferSize(window, fbRect.size.width, fbRect.size.height);
 	}
 
-	if (contentRect.size.width != window->nsWidth ||
-		contentRect.size.height != window->nsHeight)
+	if (contentRect.size.width != window->width ||
+		contentRect.size.height != window->height)
 	{
-		window->nsWidth  = contentRect.size.width;
-		window->nsHeight = contentRect.size.height;
+		window->width  = contentRect.size.width;
+		window->height = contentRect.size.height;
 		_glfwInputWindowSize(window, contentRect.size.width, contentRect.size.height);
 	}
 }
@@ -784,7 +784,7 @@ static IntBool createNativeWindow(plafWindow* window,
 	if ([window->nsWindow respondsToSelector:@selector(setTabbingMode:)])
 		[window->nsWindow setTabbingMode:NSWindowTabbingModeDisallowed];
 
-	_glfwGetWindowSizeCocoa(window, &window->nsWidth, &window->nsHeight);
+	_glfwGetWindowSizeCocoa(window, &window->width, &window->height);
 	_glfwGetFramebufferSizeCocoa(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
 
 	return true;

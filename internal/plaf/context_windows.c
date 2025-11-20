@@ -255,42 +255,12 @@ static void makeContextCurrentWGL(plafWindow* window)
 
 static void swapBuffersWGL(plafWindow* window)
 {
-    if (!window->monitor)
-    {
-        // HACK: Use DwmFlush when desktop composition is enabled on Windows 7
-        if (!IsWindows8OrGreater())
-        {
-            BOOL enabled = FALSE;
-
-            if (SUCCEEDED(_glfw.win32DwmIsCompositionEnabled(&enabled)) && enabled)
-            {
-                int count = abs(window->context.wglInterval);
-                while (count--)
-                    _glfw.win32DwmFlush();
-            }
-        }
-    }
-
     SwapBuffers(window->context.wglDC);
 }
 
 static void swapIntervalWGL(int interval)
 {
     _glfw.contextSlot->context.wglInterval = interval;
-
-    if (!_glfw.contextSlot->monitor)
-    {
-        // HACK: Disable WGL swap interval when desktop composition is enabled on
-        //       Windows 7 to avoid interfering with DWM vsync
-        if (!IsWindows8OrGreater())
-        {
-            BOOL enabled = FALSE;
-
-            if (SUCCEEDED(_glfw.win32DwmIsCompositionEnabled(&enabled)) && enabled)
-                interval = 0;
-        }
-    }
-
     if (_glfw.wglEXT_swap_control)
         _glfw.wglSwapIntervalEXT(interval);
 }
@@ -468,7 +438,7 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
     if (ctxconfig->share)
         share = ctxconfig->share->context.wglGLRC;
 
-    window->context.wglDC = GetDC(window->win32.handle);
+    window->context.wglDC = GetDC(window->win32Window);
     if (!window->context.wglDC)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "WGL: Failed to retrieve DC for window");

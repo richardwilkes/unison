@@ -9,8 +9,8 @@
 //
 void _glfwInputWindowFocus(plafWindow* window, IntBool focused)
 {
-    if (window->callbacks.focus)
-        window->callbacks.focus((plafWindow*) window, focused);
+    if (window->focusCallback)
+        window->focusCallback((plafWindow*) window, focused);
 
     if (!focused)
     {
@@ -38,8 +38,8 @@ void _glfwInputWindowFocus(plafWindow* window, IntBool focused)
 //
 void _glfwInputWindowPos(plafWindow* window, int x, int y)
 {
-    if (window->callbacks.pos)
-        window->callbacks.pos((plafWindow*) window, x, y);
+    if (window->posCallback)
+        window->posCallback((plafWindow*) window, x, y);
 }
 
 // Notifies shared code that a window has been resized
@@ -47,24 +47,24 @@ void _glfwInputWindowPos(plafWindow* window, int x, int y)
 //
 void _glfwInputWindowSize(plafWindow* window, int width, int height)
 {
-    if (window->callbacks.size)
-        window->callbacks.size((plafWindow*) window, width, height);
+    if (window->sizeCallback)
+        window->sizeCallback((plafWindow*) window, width, height);
 }
 
 // Notifies shared code that a window has been iconified or restored
 //
 void _glfwInputWindowIconify(plafWindow* window, IntBool iconified)
 {
-    if (window->callbacks.iconify)
-        window->callbacks.iconify((plafWindow*) window, iconified);
+    if (window->iconifyCallback)
+        window->iconifyCallback((plafWindow*) window, iconified);
 }
 
 // Notifies shared code that a window has been maximized or restored
 //
 void _glfwInputWindowMaximize(plafWindow* window, IntBool maximized)
 {
-    if (window->callbacks.maximize)
-        window->callbacks.maximize((plafWindow*) window, maximized);
+    if (window->maximizeCallback)
+        window->maximizeCallback((plafWindow*) window, maximized);
 }
 
 // Notifies shared code that a window framebuffer has been resized
@@ -72,8 +72,8 @@ void _glfwInputWindowMaximize(plafWindow* window, IntBool maximized)
 //
 void _glfwInputFramebufferSize(plafWindow* window, int width, int height)
 {
-    if (window->callbacks.fbsize)
-        window->callbacks.fbsize((plafWindow*) window, width, height);
+    if (window->fbsizeCallback)
+        window->fbsizeCallback((plafWindow*) window, width, height);
 }
 
 // Notifies shared code that a window content scale has changed
@@ -81,16 +81,16 @@ void _glfwInputFramebufferSize(plafWindow* window, int width, int height)
 //
 void _glfwInputWindowContentScale(plafWindow* window, float xscale, float yscale)
 {
-    if (window->callbacks.scale)
-        window->callbacks.scale((plafWindow*) window, xscale, yscale);
+    if (window->scaleCallback)
+        window->scaleCallback((plafWindow*) window, xscale, yscale);
 }
 
 // Notifies shared code that the window contents needs updating
 //
 void _glfwInputWindowDamage(plafWindow* window)
 {
-    if (window->callbacks.refresh)
-        window->callbacks.refresh((plafWindow*) window);
+    if (window->refreshCallback)
+        window->refreshCallback((plafWindow*) window);
 }
 
 // Notifies shared code that the user wishes to close a window
@@ -99,8 +99,8 @@ void _glfwInputWindowCloseRequest(plafWindow* window)
 {
     window->shouldClose = true;
 
-    if (window->callbacks.close)
-        window->callbacks.close((plafWindow*) window);
+    if (window->closeCallback)
+        window->closeCallback((plafWindow*) window);
 }
 
 // Notifies shared code that a window has changed its desired monitor
@@ -131,9 +131,9 @@ plafWindow* glfwCreateWindow(int width, int height,
         return NULL;
     }
 
-    fbconfig  = _glfw.hints.framebuffer;
-    ctxconfig = _glfw.hints.context;
-    wndconfig = _glfw.hints.window;
+    fbconfig  = _glfw.frameBufferCfg;
+    ctxconfig = _glfw.contextCfg;
+    wndconfig = _glfw.windowCfg;
 
     wndconfig.width   = width;
     wndconfig.height  = height;
@@ -151,7 +151,7 @@ plafWindow* glfwCreateWindow(int width, int height,
     window->videoMode.redBits     = fbconfig.redBits;
     window->videoMode.greenBits   = fbconfig.greenBits;
     window->videoMode.blueBits    = fbconfig.blueBits;
-    window->videoMode.refreshRate = _glfw.hints.refreshRate;
+    window->videoMode.refreshRate = _glfw.desiredRefreshRate;
 
     window->monitor          = monitor;
     window->resizable        = wndconfig.resizable;
@@ -182,35 +182,35 @@ plafWindow* glfwCreateWindow(int width, int height,
 void glfwDefaultWindowHints(void)
 {
     // The default is OpenGL with minimum version 1.0
-    memset(&_glfw.hints.context, 0, sizeof(_glfw.hints.context));
-    _glfw.hints.context.major  = 3;
-    _glfw.hints.context.minor  = 2;
+    memset(&_glfw.contextCfg, 0, sizeof(_glfw.contextCfg));
+    _glfw.contextCfg.major  = 3;
+    _glfw.contextCfg.minor  = 2;
 #if defined(__APPLE__)
 	// These don't appear to be necessary to set on macOS anymore, but keeping for now
-	_glfw.hints.context.forward = true;
-	_glfw.hints.context.profile = OPENGL_PROFILE_CORE;
+	_glfw.contextCfg.forward = true;
+	_glfw.contextCfg.profile = OPENGL_PROFILE_CORE;
 #endif
 
     // The default is a resizable window with decorations
-    memset(&_glfw.hints.window, 0, sizeof(_glfw.hints.window));
-    _glfw.hints.window.resizable    = true;
-    _glfw.hints.window.decorated    = true;
-    _glfw.hints.window.xpos         = ANY_POSITION;
-    _glfw.hints.window.ypos         = ANY_POSITION;
-    _glfw.hints.window.scaleFramebuffer = true;
+    memset(&_glfw.windowCfg, 0, sizeof(_glfw.windowCfg));
+    _glfw.windowCfg.resizable    = true;
+    _glfw.windowCfg.decorated    = true;
+    _glfw.windowCfg.xpos         = ANY_POSITION;
+    _glfw.windowCfg.ypos         = ANY_POSITION;
+    _glfw.windowCfg.scaleFramebuffer = true;
 
     // The default is 24 bits of color, 24 bits of depth and 8 bits of stencil, double buffered
-    memset(&_glfw.hints.framebuffer, 0, sizeof(_glfw.hints.framebuffer));
-    _glfw.hints.framebuffer.redBits      = 8;
-    _glfw.hints.framebuffer.greenBits    = 8;
-    _glfw.hints.framebuffer.blueBits     = 8;
-    _glfw.hints.framebuffer.alphaBits    = 8;
-    _glfw.hints.framebuffer.depthBits    = 24;
-    _glfw.hints.framebuffer.stencilBits  = 8;
-    _glfw.hints.framebuffer.doublebuffer = true;
+    memset(&_glfw.frameBufferCfg, 0, sizeof(_glfw.frameBufferCfg));
+    _glfw.frameBufferCfg.redBits      = 8;
+    _glfw.frameBufferCfg.greenBits    = 8;
+    _glfw.frameBufferCfg.blueBits     = 8;
+    _glfw.frameBufferCfg.alphaBits    = 8;
+    _glfw.frameBufferCfg.depthBits    = 24;
+    _glfw.frameBufferCfg.stencilBits  = 8;
+    _glfw.frameBufferCfg.doublebuffer = true;
 
     // The default is to select the highest available refresh rate
-    _glfw.hints.refreshRate = DONT_CARE;
+    _glfw.desiredRefreshRate = DONT_CARE;
 }
 
 void glfwWindowHint(int hint, int value)
@@ -218,103 +218,103 @@ void glfwWindowHint(int hint, int value)
     switch (hint)
     {
         case WINDOW_HINT_RED_BITS:
-            _glfw.hints.framebuffer.redBits = value;
+            _glfw.frameBufferCfg.redBits = value;
             return;
         case WINDOW_HINT_GREEN_BITS:
-            _glfw.hints.framebuffer.greenBits = value;
+            _glfw.frameBufferCfg.greenBits = value;
             return;
         case WINDOW_HINT_BLUE_BITS:
-            _glfw.hints.framebuffer.blueBits = value;
+            _glfw.frameBufferCfg.blueBits = value;
             return;
         case WINDOW_HINT_ALPHA_BITS:
-            _glfw.hints.framebuffer.alphaBits = value;
+            _glfw.frameBufferCfg.alphaBits = value;
             return;
         case WINDOW_HINT_DEPTH_BITS:
-            _glfw.hints.framebuffer.depthBits = value;
+            _glfw.frameBufferCfg.depthBits = value;
             return;
         case WINDOW_HINT_STENCIL_BITS:
-            _glfw.hints.framebuffer.stencilBits = value;
+            _glfw.frameBufferCfg.stencilBits = value;
             return;
         case WINDOW_HINT_ACCUM_RED_BITS:
-            _glfw.hints.framebuffer.accumRedBits = value;
+            _glfw.frameBufferCfg.accumRedBits = value;
             return;
         case WINDOW_HINT_ACCUM_GREEN_BITS:
-            _glfw.hints.framebuffer.accumGreenBits = value;
+            _glfw.frameBufferCfg.accumGreenBits = value;
             return;
         case WINDOW_HINT_ACCUM_BLUE_BITS:
-            _glfw.hints.framebuffer.accumBlueBits = value;
+            _glfw.frameBufferCfg.accumBlueBits = value;
             return;
         case WINDOW_HINT_ACCUM_ALPHA_BITS:
-            _glfw.hints.framebuffer.accumAlphaBits = value;
+            _glfw.frameBufferCfg.accumAlphaBits = value;
             return;
         case WINDOW_HINT_AUX_BUFFERS:
-            _glfw.hints.framebuffer.auxBuffers = value;
+            _glfw.frameBufferCfg.auxBuffers = value;
             return;
         case WINDOW_ATTR_HINT_DOUBLE_BUFFER:
-            _glfw.hints.framebuffer.doublebuffer = value ? true : false;
+            _glfw.frameBufferCfg.doublebuffer = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
-            _glfw.hints.framebuffer.transparent = value ? true : false;
+            _glfw.frameBufferCfg.transparent = value ? true : false;
             return;
         case WINDOW_HINT_SAMPLES:
-            _glfw.hints.framebuffer.samples = value;
+            _glfw.frameBufferCfg.samples = value;
             return;
         case WINDOW_HINT_SRGB_CAPABLE:
-            _glfw.hints.framebuffer.sRGB = value ? true : false;
+            _glfw.frameBufferCfg.sRGB = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_RESIZABLE:
-            _glfw.hints.window.resizable = value ? true : false;
+            _glfw.windowCfg.resizable = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_DECORATED:
-            _glfw.hints.window.decorated = value ? true : false;
+            _glfw.windowCfg.decorated = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_FLOATING:
-            _glfw.hints.window.floating = value ? true : false;
+            _glfw.windowCfg.floating = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_MAXIMIZED:
-            _glfw.hints.window.maximized = value ? true : false;
+            _glfw.windowCfg.maximized = value ? true : false;
             return;
         case WINDOW_HINT_POSITION_X:
-            _glfw.hints.window.xpos = value;
+            _glfw.windowCfg.xpos = value;
             return;
         case WINDOW_HINT_POSITION_Y:
-            _glfw.hints.window.ypos = value;
+            _glfw.windowCfg.ypos = value;
             return;
         case WINDOW_HINT_SCALE_TO_MONITOR:
-            _glfw.hints.window.scaleToMonitor = value ? true : false;
+            _glfw.windowCfg.scaleToMonitor = value ? true : false;
             return;
         case WINDOW_HINT_SCALE_FRAMEBUFFER:
-            _glfw.hints.window.scaleFramebuffer = value ? true : false;
+            _glfw.windowCfg.scaleFramebuffer = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
-            _glfw.hints.window.mousePassthrough = value ? true : false;
+            _glfw.windowCfg.mousePassthrough = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_CONTEXT_VERSION_MAJOR:
-            _glfw.hints.context.major = value;
+            _glfw.contextCfg.major = value;
             return;
         case WINDOW_ATTR_HINT_CONTEXT_VERSION_MINOR:
-            _glfw.hints.context.minor = value;
+            _glfw.contextCfg.minor = value;
             return;
         case WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS:
-            _glfw.hints.context.robustness = value;
+            _glfw.contextCfg.robustness = value;
             return;
         case WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT:
-            _glfw.hints.context.forward = value ? true : false;
+            _glfw.contextCfg.forward = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_CONTEXT_DEBUG:
-            _glfw.hints.context.debug = value ? true : false;
+            _glfw.contextCfg.debug = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_CONTEXT_ERROR_SUPPRESSION:
-            _glfw.hints.context.noerror = value ? true : false;
+            _glfw.contextCfg.noerror = value ? true : false;
             return;
         case WINDOW_ATTR_HINT_OPENGL_PROFILE:
-            _glfw.hints.context.profile = value;
+            _glfw.contextCfg.profile = value;
             return;
         case WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR:
-            _glfw.hints.context.release = value;
+            _glfw.contextCfg.release = value;
             return;
         case WINDOW_HINT_REFRESH_RATE:
-            _glfw.hints.refreshRate = value;
+            _glfw.desiredRefreshRate = value;
             return;
     }
 
@@ -330,7 +330,23 @@ void glfwDestroyWindow(plafWindow* handle)
         return;
 
     // Clear all callbacks to avoid exposing a half torn-down window object
-    memset(&window->callbacks, 0, sizeof(window->callbacks));
+	window->posCallback = NULL;
+	window->sizeCallback = NULL;
+	window->closeCallback = NULL;
+	window->refreshCallback = NULL;
+	window->focusCallback = NULL;
+	window->iconifyCallback = NULL;
+	window->maximizeCallback = NULL;
+	window->fbsizeCallback = NULL;
+	window->scaleCallback = NULL;
+	window->mouseButtonCallback = NULL;
+	window->cursorPosCallback = NULL;
+	window->cursorEnterCallback = NULL;
+	window->scrollCallback = NULL;
+	window->keyCallback = NULL;
+	window->charCallback = NULL;
+	window->charModsCallback = NULL;
+	window->dropCallback = NULL;
 
     // The window's context must not be current when the window is destroyed
     if (window == _glfw.contextSlot)
@@ -729,7 +745,7 @@ windowPosFunc glfwSetWindowPosCallback(plafWindow* handle,
                                                   windowPosFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowPosFunc, window->callbacks.pos, cbfun);
+    SWAP(windowPosFunc, window->posCallback, cbfun);
     return cbfun;
 }
 
@@ -737,7 +753,7 @@ windowSizeFunc glfwSetWindowSizeCallback(plafWindow* handle,
                                                     windowSizeFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowSizeFunc, window->callbacks.size, cbfun);
+    SWAP(windowSizeFunc, window->sizeCallback, cbfun);
     return cbfun;
 }
 
@@ -745,7 +761,7 @@ windowCloseFunc glfwSetWindowCloseCallback(plafWindow* handle,
                                                       windowCloseFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowCloseFunc, window->callbacks.close, cbfun);
+    SWAP(windowCloseFunc, window->closeCallback, cbfun);
     return cbfun;
 }
 
@@ -753,7 +769,7 @@ windowRefreshFunc glfwSetWindowRefreshCallback(plafWindow* handle,
                                                           windowRefreshFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowRefreshFunc, window->callbacks.refresh, cbfun);
+    SWAP(windowRefreshFunc, window->refreshCallback, cbfun);
     return cbfun;
 }
 
@@ -761,7 +777,7 @@ windowFocusFunc glfwSetWindowFocusCallback(plafWindow* handle,
                                                       windowFocusFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowFocusFunc, window->callbacks.focus, cbfun);
+    SWAP(windowFocusFunc, window->focusCallback, cbfun);
     return cbfun;
 }
 
@@ -769,7 +785,7 @@ windowIconifyFunc glfwSetWindowIconifyCallback(plafWindow* handle,
                                                           windowIconifyFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowIconifyFunc, window->callbacks.iconify, cbfun);
+    SWAP(windowIconifyFunc, window->iconifyCallback, cbfun);
     return cbfun;
 }
 
@@ -777,7 +793,7 @@ windowMaximizeFunc glfwSetWindowMaximizeCallback(plafWindow* handle,
                                                             windowMaximizeFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowMaximizeFunc, window->callbacks.maximize, cbfun);
+    SWAP(windowMaximizeFunc, window->maximizeCallback, cbfun);
     return cbfun;
 }
 
@@ -785,7 +801,7 @@ frameBufferSizeFunc glfwSetFramebufferSizeCallback(plafWindow* handle,
                                                               frameBufferSizeFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(frameBufferSizeFunc, window->callbacks.fbsize, cbfun);
+    SWAP(frameBufferSizeFunc, window->fbsizeCallback, cbfun);
     return cbfun;
 }
 
@@ -793,7 +809,7 @@ windowContextScaleFunc glfwSetWindowContentScaleCallback(plafWindow* handle,
                                                                     windowContextScaleFunc cbfun)
 {
     plafWindow* window = (plafWindow*) handle;
-    SWAP(windowContextScaleFunc, window->callbacks.scale, cbfun);
+    SWAP(windowContextScaleFunc, window->scaleCallback, cbfun);
     return cbfun;
 }
 

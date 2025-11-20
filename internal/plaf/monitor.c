@@ -110,8 +110,8 @@ void _glfwInputMonitor(plafMonitor* monitor, int action, int placement)
         }
     }
 
-    if (_glfw.callbacks.monitor)
-        _glfw.callbacks.monitor(monitor, action);
+    if (_glfw.monitorCallback)
+        _glfw.monitorCallback(monitor, action);
 
     if (action == DISCONNECTED)
         _glfwFreeMonitor(monitor);
@@ -331,7 +331,7 @@ const char* glfwGetMonitorName(plafMonitor* monitor)
 
 monitorFunc glfwSetMonitorCallback(monitorFunc cbfun)
 {
-    SWAP(monitorFunc, _glfw.callbacks.monitor, cbfun);
+    SWAP(monitorFunc, _glfw.monitorCallback, cbfun);
     return cbfun;
 }
 

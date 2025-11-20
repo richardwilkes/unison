@@ -21,7 +21,7 @@ static errorFunc _glfwErrorCallback;
 void _terminate(void) {
 	int i;
 
-	memset(&_glfw.callbacks, 0, sizeof(_glfw.callbacks));
+	_glfw.monitorCallback = NULL;
 	while (_glfw.windowListHead) {
 		glfwDestroyWindow((plafWindow*) _glfw.windowListHead);
 	}
