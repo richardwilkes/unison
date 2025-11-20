@@ -1439,8 +1439,7 @@ void _glfwGetWindowFrameSizeWin32(plafWindow* window,
 
 void _glfwGetWindowContentScaleWin32(plafWindow* window, float* xscale, float* yscale)
 {
-	const HANDLE handle = MonitorFromWindow(window->win32Window,
-											MONITOR_DEFAULTTONEAREST);
+	const HANDLE handle = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
 	_glfwGetHMONITORContentScaleWin32(handle, xscale, yscale);
 }
 
@@ -1856,9 +1855,7 @@ void _glfwDestroyCursor(plafCursor* cursor) {
 		DestroyIcon((HICON) cursor->win32Cursor);
 }
 
-HWND glfwGetWin32Window(plafWindow* handle)
-{
-	plafWindow* window = (plafWindow*) handle;
+HWND glfwGetWin32Window(plafWindow* window) {
 	return window->win32Window;
 }
 

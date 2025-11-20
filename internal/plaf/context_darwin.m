@@ -258,9 +258,7 @@ IntBool _glfwCreateContextNSGL(plafWindow* window,
 //////                        GLFW native API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-id glfwGetNSGLContext(plafWindow* handle)
-{
-    plafWindow* window = (plafWindow*) handle;
+id glfwGetNSGLContext(plafWindow* window) {
     return window->context.nsglCtx;
 }
 

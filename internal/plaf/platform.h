@@ -1176,16 +1176,6 @@ struct plafCursor {
 
 // Platform API structure
 struct _GLFWplatform {
-	// monitor
-	void (*freeMonitor)(plafMonitor*);
-	void (*getMonitorPos)(plafMonitor*,int*,int*);
-	void (*getMonitorContentScale)(plafMonitor*,float*,float*);
-	void (*getMonitorWorkarea)(plafMonitor*,int*,int*,int*,int*);
-	VideoMode* (*getVideoModes)(plafMonitor*,int*);
-	IntBool (*getVideoMode)(plafMonitor*,VideoMode*);
-	IntBool (*getGammaRamp)(plafMonitor*,GammaRamp*);
-	void (*setGammaRamp)(plafMonitor*,const GammaRamp*);
-	// window
 	IntBool (*createWindow)(plafWindow*,const WindowConfig*,const plafCtxCfg*,const plafFrameBufferCfg*);
 	void (*destroyWindow)(plafWindow*);
 	void (*setWindowTitle)(plafWindow*,const char*);
@@ -1731,60 +1721,7 @@ plafMonitor** glfwGetMonitors(int* count);
  */
 plafMonitor* glfwGetPrimaryMonitor(void);
 
-/*! @brief Returns the position of the monitor's viewport on the virtual screen.
- *
- *  This function returns the position, in screen coordinates, of the upper-left
- *  corner of the specified monitor.
- *
- *  Any or all of the position arguments may be `NULL`.  If an error occurs, all
- *  non-`NULL` position arguments will be set to zero.
- *
- *  @param[in] monitor The monitor to query.
- *  @param[out] xpos Where to store the monitor x-coordinate, or `NULL`.
- *  @param[out] ypos Where to store the monitor y-coordinate, or `NULL`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_properties
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 void glfwGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos);
-
-/*! @brief Retrieves the work area of the monitor.
- *
- *  This function returns the position, in screen coordinates, of the upper-left
- *  corner of the work area of the specified monitor along with the work area
- *  size in screen coordinates. The work area is defined as the area of the
- *  monitor not occluded by the window system task bar where present. If no
- *  task bar exists then the work area is the monitor resolution in screen
- *  coordinates.
- *
- *  Any or all of the position and size arguments may be `NULL`.  If an error
- *  occurs, all non-`NULL` position and size arguments will be set to zero.
- *
- *  @param[in] monitor The monitor to query.
- *  @param[out] xpos Where to store the monitor x-coordinate, or `NULL`.
- *  @param[out] ypos Where to store the monitor y-coordinate, or `NULL`.
- *  @param[out] width Where to store the monitor width, or `NULL`.
- *  @param[out] height Where to store the monitor height, or `NULL`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_workarea
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup monitor
- */
 void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
 
 /*! @brief Returns the physical size of the monitor.
@@ -1822,36 +1759,6 @@ void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
  */
 void glfwGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM);
 
-/*! @brief Retrieves the content scale for the specified monitor.
- *
- *  This function retrieves the content scale for the specified monitor.  The
- *  content scale is the ratio between the current DPI and the platform's
- *  default DPI.  This is especially important for text and any UI elements.  If
- *  the pixel dimensions of your UI scaled by this look appropriate on your
- *  machine then it should appear at a reasonable size on other machines
- *  regardless of their DPI and scaling settings.  This relies on the system DPI
- *  and scaling settings being somewhat correct.
- *
- *  The content scale may depend on both the monitor resolution and pixel
- *  density and on user settings.  It may be very different from the raw DPI
- *  calculated from the physical size and current resolution.
- *
- *  @param[in] monitor The monitor to query.
- *  @param[out] xscale Where to store the x-axis content scale, or `NULL`.
- *  @param[out] yscale Where to store the y-axis content scale, or `NULL`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_scale
- *  @sa @ref glfwGetWindowContentScale
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup monitor
- */
 void glfwGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale);
 
 /*! @brief Returns the name of the specified monitor.
@@ -1910,66 +1817,7 @@ const char* glfwGetMonitorName(plafMonitor* monitor);
  */
 monitorFunc glfwSetMonitorCallback(monitorFunc callback);
 
-/*! @brief Returns the available video modes for the specified monitor.
- *
- *  This function returns an array of all video modes supported by the specified
- *  monitor.  The returned array is sorted in ascending order, first by color
- *  bit depth (the sum of all channel depths), then by resolution area (the
- *  product of width and height), then resolution width and finally by refresh
- *  rate.
- *
- *  @param[in] monitor The monitor to query.
- *  @param[out] count Where to store the number of video modes in the returned
- *  array.  This is set to zero if an error occurred.
- *  @return An array of video modes, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @pointer_lifetime The returned array is allocated and freed by GLFW.  You
- *  should not free it yourself.  It is valid until the specified monitor is
- *  disconnected, this function is called again for that monitor or the library
- *  is terminated.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_modes
- *  @sa @ref glfwGetVideoMode
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Changed to return an array of modes for a specific monitor.
- *
- *  @ingroup monitor
- */
 const VideoMode* glfwGetVideoModes(plafMonitor* monitor, int* count);
-
-/*! @brief Returns the current mode of the specified monitor.
- *
- *  This function returns the current video mode of the specified monitor.  If
- *  you have created a full screen window for that monitor, the return value
- *  will depend on whether that window is iconified.
- *
- *  @param[in] monitor The monitor to query.
- *  @return The current mode of the monitor, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @pointer_lifetime The returned array is allocated and freed by GLFW.  You
- *  should not free it yourself.  It is valid until the specified monitor is
- *  disconnected or the library is terminated.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_modes
- *  @sa @ref glfwGetVideoModes
- *
- *  @since Added in version 3.0.  Replaces `glfwGetDesktopMode`.
- *
- *  @ingroup monitor
- */
 const VideoMode* glfwGetVideoMode(plafMonitor* monitor);
 
 /*! @brief Generates a gamma ramp and sets it for the specified monitor.
@@ -2002,68 +1850,7 @@ const VideoMode* glfwGetVideoMode(plafMonitor* monitor);
  */
 void glfwSetGamma(plafMonitor* monitor, float gamma);
 
-/*! @brief Returns the current gamma ramp for the specified monitor.
- *
- *  This function returns the current gamma ramp of the specified monitor.
- *
- *  @param[in] monitor The monitor to query.
- *  @return The current gamma ramp, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref ERR_PLATFORM_ERROR
- *  and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
- *
- *  @pointer_lifetime The returned structure and its arrays are allocated and
- *  freed by GLFW.  You should not free them yourself.  They are valid until the
- *  specified monitor is disconnected, this function is called again for that
- *  monitor or the library is terminated.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_gamma
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 const GammaRamp* glfwGetGammaRamp(plafMonitor* monitor);
-
-/*! @brief Sets the current gamma ramp for the specified monitor.
- *
- *  This function sets the current gamma ramp for the specified monitor.  The
- *  original gamma ramp for that monitor is saved by GLFW the first time this
- *  function is called and is restored by @ref glfwTerminate.
- *
- *  The software controlled gamma ramp is applied _in addition_ to the hardware
- *  gamma correction, which today is usually an approximation of sRGB gamma.
- *  This means that setting a perfectly linear ramp, or gamma 1.0, will produce
- *  the default (usually sRGB-like) behavior.
- *
- *  For gamma correct rendering with OpenGL or OpenGL ES, see the @ref
- *  WINDOW_HINT_SRGB_CAPABLE hint.
- *
- *  @param[in] monitor The monitor whose gamma ramp to set.
- *  @param[in] ramp The gamma ramp to use.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref ERR_PLATFORM_ERROR
- *  and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
- *
- *  @remark The size of the specified gamma ramp should match the size of the
- *  current ramp for that monitor.
- *
- *  @remark __Win32:__ The gamma ramp size must be 256.
- *
- *  @pointer_lifetime The specified gamma ramp is copied before this function
- *  returns.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_gamma
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 void glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
 
 /*! @brief Resets all window hints to their default values.
@@ -2772,7 +2559,6 @@ void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right,
  *
  *  @sa @ref window_scale
  *  @sa @ref glfwSetWindowContentScaleCallback
- *  @sa @ref glfwGetMonitorContentScale
  *
  *  @since Added in version 3.3.
  *
@@ -4532,6 +4318,10 @@ ErrorResponse* createErrorResponse(int code, const char* format, ...);
 //////                       GLFW internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
+IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp);
+void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
+IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode);
+VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count);
 void _glfwDestroyCursor(plafCursor* cursor);
 IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape);
 void glfwSetCursorMode(plafWindow* window, int mode);
@@ -4611,15 +4401,6 @@ void _glfwWaitEventsCocoa(void);
 void _glfwWaitEventsTimeoutCocoa(double timeout);
 void _glfwPostEmptyEventCocoa(void);
 
-void _glfwFreeMonitorCocoa(plafMonitor* monitor);
-void _glfwGetMonitorPosCocoa(plafMonitor* monitor, int* xpos, int* ypos);
-void _glfwGetMonitorContentScaleCocoa(plafMonitor* monitor, float* xscale, float* yscale);
-void _glfwGetMonitorWorkareaCocoa(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-VideoMode* _glfwGetVideoModesCocoa(plafMonitor* monitor, int* count);
-IntBool _glfwGetVideoModeCocoa(plafMonitor* monitor, VideoMode* mode);
-IntBool _glfwGetGammaRampCocoa(plafMonitor* monitor, GammaRamp* ramp);
-void _glfwSetGammaRampCocoa(plafMonitor* monitor, const GammaRamp* ramp);
-
 void _glfwPollMonitorsCocoa(void);
 void _glfwSetVideoModeCocoa(plafMonitor* monitor, const VideoMode* desired);
 void _glfwRestoreVideoModeCocoa(plafMonitor* monitor);
@@ -4669,15 +4450,6 @@ void _glfwPollEventsX11(void);
 void _glfwWaitEventsX11(void);
 void _glfwWaitEventsTimeoutX11(double timeout);
 void _glfwPostEmptyEventX11(void);
-
-void _glfwFreeMonitorX11(plafMonitor* monitor);
-void _glfwGetMonitorPosX11(plafMonitor* monitor, int* xpos, int* ypos);
-void _glfwGetMonitorContentScaleX11(plafMonitor* monitor, float* xscale, float* yscale);
-void _glfwGetMonitorWorkareaX11(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-VideoMode* _glfwGetVideoModesX11(plafMonitor* monitor, int* count);
-IntBool _glfwGetVideoModeX11(plafMonitor* monitor, VideoMode* mode);
-IntBool _glfwGetGammaRampX11(plafMonitor* monitor, GammaRamp* ramp);
-void _glfwSetGammaRampX11(plafMonitor* monitor, const GammaRamp* ramp);
 
 void _glfwPollMonitorsX11(void);
 void _glfwSetVideoModeX11(plafMonitor* monitor, const VideoMode* desired);
@@ -4759,15 +4531,6 @@ void _glfwPollEventsWin32(void);
 void _glfwWaitEventsWin32(void);
 void _glfwWaitEventsTimeoutWin32(double timeout);
 void _glfwPostEmptyEventWin32(void);
-
-void _glfwFreeMonitorWin32(plafMonitor* monitor);
-void _glfwGetMonitorPosWin32(plafMonitor* monitor, int* xpos, int* ypos);
-void _glfwGetMonitorContentScaleWin32(plafMonitor* monitor, float* xscale, float* yscale);
-void _glfwGetMonitorWorkareaWin32(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-VideoMode* _glfwGetVideoModesWin32(plafMonitor* monitor, int* count);
-IntBool _glfwGetVideoModeWin32(plafMonitor* monitor, VideoMode* mode);
-IntBool _glfwGetGammaRampWin32(plafMonitor* monitor, GammaRamp* ramp);
-void _glfwSetGammaRampWin32(plafMonitor* monitor, const GammaRamp* ramp);
 
 IntBool _glfwInitWGL(void);
 void _glfwTerminateWGL(void);

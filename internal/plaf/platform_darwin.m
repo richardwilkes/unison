@@ -168,14 +168,6 @@ static void createKeyTables(void) {
 @end // GLFWApplicationDelegate
 
 ErrorResponse* platformInit(_GLFWplatform* platform) {
-	platform->freeMonitor = _glfwFreeMonitorCocoa;
-	platform->getMonitorPos = _glfwGetMonitorPosCocoa;
-	platform->getMonitorContentScale = _glfwGetMonitorContentScaleCocoa;
-	platform->getMonitorWorkarea = _glfwGetMonitorWorkareaCocoa;
-	platform->getVideoModes = _glfwGetVideoModesCocoa;
-	platform->getVideoMode = _glfwGetVideoModeCocoa;
-	platform->getGammaRamp = _glfwGetGammaRampCocoa;
-	platform->setGammaRamp = _glfwSetGammaRampCocoa;
 	platform->createWindow = _glfwCreateWindowCocoa;
 	platform->destroyWindow = _glfwDestroyWindowCocoa;
 	platform->setWindowTitle = _glfwSetWindowTitleCocoa;

@@ -378,14 +378,6 @@ BOOL IsWindows10BuildOrGreater(WORD build)
 
 ErrorResponse* platformInit(_GLFWplatform* platform)
 {
-	platform->freeMonitor = _glfwFreeMonitorWin32;
-	platform->getMonitorPos = _glfwGetMonitorPosWin32;
-	platform->getMonitorContentScale = _glfwGetMonitorContentScaleWin32;
-	platform->getMonitorWorkarea = _glfwGetMonitorWorkareaWin32;
-	platform->getVideoModes = _glfwGetVideoModesWin32;
-	platform->getVideoMode = _glfwGetVideoModeWin32;
-	platform->getGammaRamp = _glfwGetGammaRampWin32;
-	platform->setGammaRamp = _glfwSetGammaRampWin32;
 	platform->createWindow = _glfwCreateWindowWin32;
 	platform->destroyWindow = _glfwDestroyWindowWin32;
 	platform->setWindowTitle = _glfwSetWindowTitleWin32;

@@ -214,7 +214,7 @@ void _glfwSetVideoModeWin32(plafMonitor* monitor, const VideoMode* desired)
 	LONG result;
 
 	best = _glfwChooseVideoMode(monitor, desired);
-	_glfwGetVideoModeWin32(monitor, &current);
+	_glfwGetVideoMode(monitor, &current);
 	if (_glfwCompareVideoModes(&current, best) == 0)
 		return;
 
@@ -276,10 +276,8 @@ void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* ys
 {
 	UINT xdpi, ydpi;
 
-	if (xscale)
-		*xscale = 0.f;
-	if (yscale)
-		*yscale = 0.f;
+	*xscale = 0.f;
+	*yscale = 0.f;
 
 	if (_glfw.win32ShCoreGetDpiForMonitor_(handle, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) != S_OK)
 	{
@@ -287,10 +285,8 @@ void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* ys
 		return;
 	}
 
-	if (xscale)
-		*xscale = xdpi / (float) USER_DEFAULT_SCREEN_DPI;
-	if (yscale)
-		*yscale = ydpi / (float) USER_DEFAULT_SCREEN_DPI;
+	*xscale = xdpi / (float) USER_DEFAULT_SCREEN_DPI;
+	*yscale = ydpi / (float) USER_DEFAULT_SCREEN_DPI;
 }
 
 
@@ -298,11 +294,7 @@ void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* ys
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-void _glfwFreeMonitorWin32(plafMonitor* monitor)
-{
-}
-
-void _glfwGetMonitorPosWin32(plafMonitor* monitor, int* xpos, int* ypos) {
+void glfwGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos) {
 	DEVMODEW dm;
 	ZeroMemory(&dm, sizeof(dm));
 	dm.dmSize = sizeof(dm);
@@ -311,30 +303,20 @@ void _glfwGetMonitorPosWin32(plafMonitor* monitor, int* xpos, int* ypos) {
 	*ypos = dm.dmPosition.y;
 }
 
-void _glfwGetMonitorContentScaleWin32(plafMonitor* monitor,
-									  float* xscale, float* yscale)
-{
+void glfwGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale) {
 	_glfwGetHMONITORContentScaleWin32(monitor->win32Handle, xscale, yscale);
 }
 
-void _glfwGetMonitorWorkareaWin32(plafMonitor* monitor,
-								  int* xpos, int* ypos,
-								  int* width, int* height)
-{
+void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height) {
 	MONITORINFO mi = { sizeof(mi) };
 	GetMonitorInfoW(monitor->win32Handle, &mi);
-
-	if (xpos)
-		*xpos = mi.rcWork.left;
-	if (ypos)
-		*ypos = mi.rcWork.top;
-	if (width)
-		*width = mi.rcWork.right - mi.rcWork.left;
-	if (height)
-		*height = mi.rcWork.bottom - mi.rcWork.top;
+	*xpos = mi.rcWork.left;
+	*ypos = mi.rcWork.top;
+	*width = mi.rcWork.right - mi.rcWork.left;
+	*height = mi.rcWork.bottom - mi.rcWork.top;
 }
 
-VideoMode* _glfwGetVideoModesWin32(plafMonitor* monitor, int* count)
+VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count)
 {
 	int modeIndex = 0, size = 0;
 	VideoMode* result = NULL;
@@ -404,15 +386,14 @@ VideoMode* _glfwGetVideoModesWin32(plafMonitor* monitor, int* count)
 	{
 		// HACK: Report the current mode if no valid modes were found
 		result = _glfw_calloc(1, sizeof(VideoMode));
-		_glfwGetVideoModeWin32(monitor, result);
+		_glfwGetVideoMode(monitor, result);
 		*count = 1;
 	}
 
 	return result;
 }
 
-IntBool _glfwGetVideoModeWin32(plafMonitor* monitor, VideoMode* mode)
-{
+IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode) {
 	DEVMODEW dm;
 	ZeroMemory(&dm, sizeof(dm));
 	dm.dmSize = sizeof(dm);
@@ -434,8 +415,7 @@ IntBool _glfwGetVideoModeWin32(plafMonitor* monitor, VideoMode* mode)
 	return true;
 }
 
-IntBool _glfwGetGammaRampWin32(plafMonitor* monitor, GammaRamp* ramp)
-{
+IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp) {
 	HDC dc;
 	WORD values[3][256];
 
@@ -452,8 +432,7 @@ IntBool _glfwGetGammaRampWin32(plafMonitor* monitor, GammaRamp* ramp)
 	return true;
 }
 
-void _glfwSetGammaRampWin32(plafMonitor* monitor, const GammaRamp* ramp)
-{
+void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
 	HDC dc;
 	WORD values[3][256];
 

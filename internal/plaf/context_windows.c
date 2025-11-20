@@ -611,9 +611,7 @@ IntBool _glfwCreateContextWGL(plafWindow* window,
 
 #undef SET_ATTRIB
 
-HGLRC glfwGetWGLContext(plafWindow* handle)
-{
-    plafWindow* window = (plafWindow*) handle;
+HGLRC glfwGetWGLContext(plafWindow* window) {
 	return window->context.wglGLRC;
 }
 

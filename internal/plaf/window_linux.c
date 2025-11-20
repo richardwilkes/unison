@@ -1632,8 +1632,8 @@ static void acquireMonitor(plafWindow* window)
 		VideoMode mode;
 
 		// Manually position the window over its monitor
-		_glfwGetMonitorPosX11(window->monitor, &xpos, &ypos);
-		_glfwGetVideoModeX11(window->monitor, &mode);
+		glfwGetMonitorPos(window->monitor, &xpos, &ypos);
+		_glfwGetVideoMode(window->monitor, &mode);
 
 		_glfw.xlibMoveResizeWindow(_glfw.x11Display, window->x11Window,
 						  xpos, ypos, mode.width, mode.height);
@@ -3335,14 +3335,11 @@ void _glfwDestroyCursor(plafCursor* cursor) {
 //////                        GLFW native API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-Display* glfwGetX11Display(void)
-{
+Display* glfwGetX11Display(void) {
 	return _glfw.x11Display;
 }
 
-Window glfwGetX11Window(plafWindow* handle)
-{
-	plafWindow* window = (plafWindow*) handle;
+Window glfwGetX11Window(plafWindow* window) {
 	return window->x11Window;
 }
 

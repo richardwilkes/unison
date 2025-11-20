@@ -1069,14 +1069,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 	_glfw.x11Display = display;
 	_glfw.xlibHandle = module;
 
-	platform->freeMonitor = _glfwFreeMonitorX11;
-	platform->getMonitorPos = _glfwGetMonitorPosX11;
-	platform->getMonitorContentScale = _glfwGetMonitorContentScaleX11;
-	platform->getMonitorWorkarea = _glfwGetMonitorWorkareaX11;
-	platform->getVideoModes = _glfwGetVideoModesX11;
-	platform->getVideoMode = _glfwGetVideoModeX11;
-	platform->getGammaRamp = _glfwGetGammaRampX11;
-	platform->setGammaRamp = _glfwSetGammaRampX11;
 	platform->createWindow = _glfwCreateWindowX11;
 	platform->destroyWindow = _glfwDestroyWindowX11;
 	platform->setWindowTitle = _glfwSetWindowTitleX11;

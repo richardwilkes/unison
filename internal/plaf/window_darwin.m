@@ -688,8 +688,8 @@ static IntBool createNativeWindow(plafWindow* window,
 		VideoMode mode;
 		int xpos, ypos;
 
-		_glfwGetVideoModeCocoa(window->monitor, &mode);
-		_glfwGetMonitorPosCocoa(window->monitor, &xpos, &ypos);
+		_glfwGetVideoMode(window->monitor, &mode);
+		glfwGetMonitorPos(window->monitor, &xpos, &ypos);
 
 		contentRect = NSMakeRect(xpos, ypos, mode.width, mode.height);
 	}
@@ -1520,15 +1520,11 @@ void _glfwDestroyCursor(plafCursor* cursor) {
 //////                        GLFW native API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-id glfwGetCocoaWindow(plafWindow* handle)
-{
-	plafWindow* window = (plafWindow*) handle;
+id glfwGetCocoaWindow(plafWindow* window) {
 	return window->nsWindow;
 }
 
-id glfwGetCocoaView(plafWindow* handle)
-{
-	plafWindow* window = (plafWindow*) handle;
+id glfwGetCocoaView(plafWindow* window) {
 	return window->nsView;
 }
 

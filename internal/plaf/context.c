@@ -207,14 +207,12 @@ const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired,
 
 // Retrieves the attributes of the current context
 //
-IntBool _glfwRefreshContextAttribs(plafWindow* window,
-                                    const plafCtxCfg* ctxconfig)
-{
+IntBool _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig) {
     int i;
     plafWindow* previous = _glfw.contextSlot;
     const char* version;
 
-    glfwMakeContextCurrent((plafWindow*) window);
+    glfwMakeContextCurrent(window);
     if (_glfw.contextSlot != window)
         return false;
 
@@ -225,7 +223,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
     if (!window->context.GetIntegerv || !window->context.GetString)
     {
         _glfwInputError(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
-        glfwMakeContextCurrent((plafWindow*) previous);
+        glfwMakeContextCurrent(previous);
         return false;
     }
 
@@ -233,7 +231,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
     if (!version)
     {
 		_glfwInputError(ERR_PLATFORM_ERROR, "OpenGL version string retrieval is broken");
-        glfwMakeContextCurrent((plafWindow*) previous);
+        glfwMakeContextCurrent(previous);
         return false;
     }
 
@@ -243,7 +241,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
                 &window->context.revision))
     {
 		_glfwInputError(ERR_PLATFORM_ERROR, "No version found in OpenGL version string");
-        glfwMakeContextCurrent((plafWindow*) previous);
+        glfwMakeContextCurrent(previous);
         return false;
     }
 
@@ -259,7 +257,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
         // {GLX|WGL}_ARB_create_context extension and fail here
 
 		_glfwInputError(ERR_VERSION_UNAVAILABLE, "Requested OpenGL version %i.%i, got version %i.%i", ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
-        glfwMakeContextCurrent((plafWindow*) previous);
+        glfwMakeContextCurrent(previous);
         return false;
     }
 
@@ -274,7 +272,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
         if (!window->context.GetStringi)
         {
             _glfwInputError(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
-            glfwMakeContextCurrent((plafWindow*) previous);
+            glfwMakeContextCurrent(previous);
             return false;
         }
     }
@@ -346,7 +344,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
             window->context.swapBuffers(window);
     }
 
-    glfwMakeContextCurrent((plafWindow*) previous);
+    glfwMakeContextCurrent(previous);
     return true;
 }
 
@@ -383,9 +381,7 @@ IntBool _glfwStringInExtensionString(const char* string, const char* extensions)
 //////                        GLFW public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-void glfwMakeContextCurrent(plafWindow* handle)
-{
-    plafWindow* window = (plafWindow*) handle;
+void glfwMakeContextCurrent(plafWindow* window) {
     plafWindow* previous = _glfw.contextSlot;
 
     if (previous)
@@ -400,12 +396,10 @@ void glfwMakeContextCurrent(plafWindow* handle)
 
 plafWindow* glfwGetCurrentContext(void)
 {
-    return (plafWindow*)_glfw.contextSlot;
+    return _glfw.contextSlot;
 }
 
-void glfwSwapBuffers(plafWindow* handle)
-{
-    plafWindow* window = (plafWindow*) handle;
+void glfwSwapBuffers(plafWindow* window) {
     window->context.swapBuffers(window);
 }
 

@@ -584,21 +584,15 @@ IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
 //////                        GLFW native API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-GLXContext glfwGetGLXContext(plafWindow* handle)
-{
-    plafWindow* window = (plafWindow*) handle;
+GLXContext glfwGetGLXContext(plafWindow* window) {
     return window->context.glxHandle;
 }
 
-GLXWindow glfwGetGLXWindow(plafWindow* handle)
-{
-    plafWindow* window = (plafWindow*) handle;
+GLXWindow glfwGetGLXWindow(plafWindow* window) {
     return window->context.glxWindow;
 }
 
-int glfwGetGLXFBConfig(plafWindow* handle, GLXFBConfig* config)
-{
-    plafWindow* window = (plafWindow*) handle;
+int glfwGetGLXFBConfig(plafWindow* window, GLXFBConfig* config) {
     *config = window->context.glxFBConfig;
     return true;
 }

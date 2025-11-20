@@ -17,7 +17,7 @@ void _terminate(void) {
 
 	_glfw.monitorCallback = NULL;
 	while (_glfw.windowListHead) {
-		glfwDestroyWindow((plafWindow*) _glfw.windowListHead);
+		glfwDestroyWindow(_glfw.windowListHead);
 	}
 	while (_glfw.cursorListHead) {
 		glfwDestroyCursor(_glfw.cursorListHead);
@@ -25,7 +25,7 @@ void _terminate(void) {
 	for (i = 0;  i < _glfw.monitorCount;  i++) {
 		plafMonitor* monitor = _glfw.monitors[i];
 		if (monitor->originalRamp.size) {
-			_glfw.platform.setGammaRamp(monitor, &monitor->originalRamp);
+			_glfwSetGammaRamp(monitor, &monitor->originalRamp);
 		}
 		_glfwFreeMonitor(monitor);
 	}

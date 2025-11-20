@@ -41,7 +41,7 @@ static IntBool refreshVideoModes(plafMonitor* monitor)
     if (monitor->modes)
         return true;
 
-    modes = _glfw.platform.getVideoModes(monitor, &modeCount);
+    modes = _glfwGetVideoModes(monitor, &modeCount);
     if (!modes)
         return false;
 
@@ -144,19 +144,13 @@ plafMonitor* _glfwAllocMonitor(const char* name, int widthMM, int heightMM)
 }
 
 // Frees a monitor object and any data associated with it
-//
-void _glfwFreeMonitor(plafMonitor* monitor)
-{
-    if (monitor == NULL)
-        return;
-
-    _glfw.platform.freeMonitor(monitor);
-
-    _glfwFreeGammaArrays(&monitor->originalRamp);
-    _glfwFreeGammaArrays(&monitor->currentRamp);
-
-    _glfw_free(monitor->modes);
-    _glfw_free(monitor);
+void _glfwFreeMonitor(plafMonitor* monitor) {
+    if (monitor != NULL) {
+    	_glfwFreeGammaArrays(&monitor->originalRamp);
+    	_glfwFreeGammaArrays(&monitor->currentRamp);
+    	_glfw_free(monitor->modes);
+    	_glfw_free(monitor);
+	}
 }
 
 // Allocates red, green and blue value arrays of the specified size
@@ -278,28 +272,6 @@ plafMonitor* glfwGetPrimaryMonitor(void)
     return _glfw.monitors[0];
 }
 
-void glfwGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos) {
-    *xpos = 0;
-    *ypos = 0;
-    _glfw.platform.getMonitorPos(monitor, xpos, ypos);
-}
-
-void glfwGetMonitorWorkarea(plafMonitor* monitor,
-                                    int* xpos, int* ypos,
-                                    int* width, int* height)
-{
-    if (xpos)
-        *xpos = 0;
-    if (ypos)
-        *ypos = 0;
-    if (width)
-        *width = 0;
-    if (height)
-        *height = 0;
-
-    _glfw.platform.getMonitorWorkarea(monitor, xpos, ypos, width, height);
-}
-
 void glfwGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM)
 {
     if (widthMM)
@@ -311,17 +283,6 @@ void glfwGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightM
         *widthMM = monitor->widthMM;
     if (heightMM)
         *heightMM = monitor->heightMM;
-}
-
-void glfwGetMonitorContentScale(plafMonitor* monitor,
-                                        float* xscale, float* yscale)
-{
-    if (xscale)
-        *xscale = 0.f;
-    if (yscale)
-        *yscale = 0.f;
-
-    _glfw.platform.getMonitorContentScale(monitor, xscale, yscale);
 }
 
 const char* glfwGetMonitorName(plafMonitor* monitor)
@@ -345,10 +306,10 @@ const VideoMode* glfwGetVideoModes(plafMonitor* monitor, int* count)
     return monitor->modes;
 }
 
-const VideoMode* glfwGetVideoMode(plafMonitor* monitor)
-{
-    if (!_glfw.platform.getVideoMode(monitor, &monitor->currentMode))
+const VideoMode* glfwGetVideoMode(plafMonitor* monitor) {
+    if (!_glfwGetVideoMode(monitor, &monitor->currentMode)) {
         return NULL;
+	}
     return &monitor->currentMode;
 }
 
@@ -395,11 +356,11 @@ void glfwSetGamma(plafMonitor* monitor, float gamma)
     _glfw_free(values);
 }
 
-const GammaRamp* glfwGetGammaRamp(plafMonitor* monitor)
-{
+const GammaRamp* glfwGetGammaRamp(plafMonitor* monitor) {
     _glfwFreeGammaArrays(&monitor->currentRamp);
-    if (!_glfw.platform.getGammaRamp(monitor, &monitor->currentRamp))
+    if (!_glfwGetGammaRamp(monitor, &monitor->currentRamp)) {
         return NULL;
+	}
     return &monitor->currentRamp;
 }
 
@@ -409,8 +370,8 @@ void glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
         return;
     }
     if (!monitor->originalRamp.size) {
-        if (!_glfw.platform.getGammaRamp(monitor, &monitor->originalRamp))
+        if (!_glfwGetGammaRamp(monitor, &monitor->originalRamp))
             return;
     }
-    _glfw.platform.setGammaRamp(monitor, ramp);
+    _glfwSetGammaRamp(monitor, ramp);
 }
