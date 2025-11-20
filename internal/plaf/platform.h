@@ -958,12 +958,6 @@ typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGPROC)(GLenum);
 typedef void (APIENTRY * PFNGLGETINTEGERVPROC)(GLenum,GLint*);
 typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGIPROC)(GLenum,GLuint);
 
-#if defined(__linux__)
-	#include "platform_linux.h"
-#elif defined(_WIN32)
-	#include "platform_windows.h"
-#endif
-
 // Swaps the provided pointers
 #define SWAP(type, x, y) \
 	{                          \
