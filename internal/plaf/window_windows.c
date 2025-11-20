@@ -1296,7 +1296,7 @@ void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 }
 
 void _glfwSetWindowPos(plafWindow* window, int x, int y) {
-	RECT rect = { xpos, ypos, xpos, ypos };
+	RECT rect = { x, y, x, y };
 
 	if (IsWindows10Version1607OrGreater())
 	{
@@ -1386,7 +1386,6 @@ void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 }
 
 void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
-{
 	_glfwGetWindowSize(window, width, height);
 }
 
