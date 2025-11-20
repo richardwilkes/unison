@@ -14,6 +14,12 @@ extern "C" {
 #include <string.h>
 #include <float.h>
 
+typedef int GLint;
+typedef unsigned int GLuint;
+typedef unsigned int GLenum;
+typedef unsigned int GLbitfield;
+typedef unsigned char GLubyte;
+
 #if defined(__APPLE__)
 	#define APIENTRY
 	// NOTE: All of NSGL was deprecated in the 10.14 SDK. This disables the pointless warnings for every symbol we use.
@@ -946,12 +952,6 @@ typedef struct _GLFWlibrary     _GLFWlibrary;
 #define GL_CONTEXT_RELEASE_BEHAVIOR 0x82fb
 #define GL_CONTEXT_RELEASE_BEHAVIOR_FLUSH 0x82fc
 #define GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR 0x00000008
-
-typedef int GLint;
-typedef unsigned int GLuint;
-typedef unsigned int GLenum;
-typedef unsigned int GLbitfield;
-typedef unsigned char GLubyte;
 
 typedef void (APIENTRY * PFNGLCLEARPROC)(GLbitfield);
 typedef const GLubyte* (APIENTRY * PFNGLGETSTRINGPROC)(GLenum);
