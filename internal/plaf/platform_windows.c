@@ -237,7 +237,7 @@ static ErrorResponse* createHelperWindow(void)
 	WNDCLASSEXW wc = { sizeof(wc) };
 
 	wc.style         = CS_OWNDC;
-	wc.lpfnWndProc   = (WND) helperWindowProc;
+	wc.lpfnWndProc   = (WNDPROC) helperWindowProc;
 	wc.hInstance     = _glfw.win32Instance;
 	wc.lpszClassName = L"GLFW3 Helper";
 
