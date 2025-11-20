@@ -923,8 +923,8 @@ typedef struct WindowConfig {
 
 /* ------------------------- Internal ----------------------- */
 
-#define _GLFW_INSERT_FIRST      0
-#define _GLFW_INSERT_LAST       1
+#define MONITOR_INSERT_FIRST      0
+#define MONITOR_INSERT_LAST       1
 
 typedef void (*moduleFunc)(void);
 
@@ -932,7 +932,7 @@ typedef struct plafCtxCfg         plafCtxCfg;
 typedef struct plafFrameBufferCfg plafFrameBufferCfg;
 typedef struct plafCtx            plafCtx;
 typedef struct _GLFWplatform      _GLFWplatform;
-typedef struct _GLFWlibrary       _GLFWlibrary;
+typedef struct plafLib            plafLib;
 
 #define GL_VERSION 0x1f02
 #define GL_NONE 0
@@ -1176,13 +1176,6 @@ struct plafCursor {
 
 // Platform API structure
 struct _GLFWplatform {
-	// input
-	void (*setCursorMode)(plafWindow*,int);
-	IntBool (*createCursor)(plafCursor*,const ImageData*,int,int);
-	IntBool (*createStandardCursor)(plafCursor*,int);
-	void (*destroyCursor)(plafCursor*);
-	void (*setCursor)(plafWindow*,plafCursor*);
-	int (*getKeyScancode)(int);
 	// monitor
 	void (*freeMonitor)(plafMonitor*);
 	void (*getMonitorPos)(plafMonitor*,int*,int*);
@@ -1233,7 +1226,7 @@ struct _GLFWplatform {
 };
 
 // Library global data
-struct _GLFWlibrary
+struct plafLib
 {
 	IntBool                             initialized;
 	_GLFWplatform                       platform;
@@ -1249,13 +1242,13 @@ struct _GLFWlibrary
 	ErrorResponse                       errorSlot;
 	plafWindow*                         contextSlot;
 	monitorFunc                         monitorCallback;
+	short int                           scanCodes[KEY_LAST + 1];
 #if defined(__APPLE__)
 	CGEventSourceRef                    nsEventSource;
 	id                                  nsDelegate;
 	IntBool                             nsCursorHidden;
 	id                                  nsKeyUpMonitor;
 	short int                           nsKeycodes[256];
-	short int                           nsScancodes[KEY_LAST + 1];
 	CGPoint                             nsCascadePoint;
 	CFBundleRef                         nsglFramework;
 #elif defined(__linux__)
@@ -1271,7 +1264,6 @@ struct _GLFWlibrary
 	XErrorHandler                       x11ErrorHandler;
 	int                                 x11ErrorCode;
 	short int                           x11Keycodes[256];
-	short int                           x11Scancodes[KEY_LAST + 1];
 	int                                 x11EmptyEventPipe[2];
 	Atom                                x11NET_SUPPORTED;
 	Atom                                x11NET_SUPPORTING_WM_CHECK;
@@ -1517,7 +1509,6 @@ struct _GLFWlibrary
 	HDEVNOTIFY                          win32DeviceNotificationHandle;
 	int                                 win32AcquiredMonitorCount;
 	short int                           win32Keycodes[512];
-	short int                           win32Scancodes[KEY_LAST + 1];
 	UINT                                win32MouseTrailSize;
 	HCURSOR                             win32BlankCursor;
 	HINSTANCE                           win32User32Instance;
@@ -1562,9 +1553,8 @@ struct _GLFWlibrary
 #endif
 };
 
-// Global state shared between compilation units of GLFW
-//
-extern _GLFWlibrary _glfw;
+// Global state
+extern plafLib _glfw;
 
 
 
@@ -3788,7 +3778,6 @@ int glfwGetMouseButton(plafWindow* window, int button);
 
 void glfwGetCursorPos(plafWindow* window, double* xpos, double* ypos);
 void glfwSetCursorPos(plafWindow* window, double xpos, double ypos);
-void setCursorPosInternal(plafWindow* window, double xpos, double ypos);
 void glfwSetCursor(plafWindow* window, plafCursor* cursor);
 
 /*! @brief Creates a custom cursor.
@@ -4543,16 +4532,16 @@ ErrorResponse* createErrorResponse(int code, const char* format, ...);
 //////                       GLFW internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
+void _glfwDestroyCursor(plafCursor* cursor);
+IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape);
+void glfwSetCursorMode(plafWindow* window, int mode);
+IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
 IntBool _glfwStringInExtensionString(const char* string, const char* extensions);
-const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired,
-										 const plafFrameBufferCfg* alternatives,
-										 unsigned int count);
-IntBool _glfwRefreshContextAttribs(plafWindow* window,
-									const plafCtxCfg* ctxconfig);
+const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
+IntBool _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
 IntBool _glfwIsValidContextConfig(const plafCtxCfg* ctxconfig);
 
-const VideoMode* _glfwChooseVideoMode(plafMonitor* monitor,
-										const VideoMode* desired);
+const VideoMode* _glfwChooseVideoMode(plafMonitor* monitor, const VideoMode* desired);
 int _glfwCompareVideoModes(const VideoMode* first, const VideoMode* second);
 plafMonitor* _glfwAllocMonitor(const char* name, int widthMM, int heightMM);
 void _glfwFreeMonitor(plafMonitor* monitor);
@@ -4575,10 +4564,9 @@ void _glfw_free(void* pointer);
 
 void _glfwTerminateGLX(void);
 
-// TODO: Remove once these can be made static in the cursor.c file
-void getCursorPosInternal(plafWindow* window, double* xpos, double* ypos);
 void updateCursorImage(plafWindow* window);
-void setCursorInternal(plafWindow* window);
+void _glfwSetCursor(plafWindow* window);
+void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos);
 #if defined(__APPLE__) || defined(_WIN32)
 IntBool cursorInContentArea(plafWindow* window);
 #endif
@@ -4622,12 +4610,6 @@ void _glfwPollEventsCocoa(void);
 void _glfwWaitEventsCocoa(void);
 void _glfwWaitEventsTimeoutCocoa(double timeout);
 void _glfwPostEmptyEventCocoa(void);
-
-void _glfwSetCursorModeCocoa(plafWindow* window, int mode);
-int _glfwGetKeyScancodeCocoa(int key);
-IntBool _glfwCreateCursorCocoa(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
-IntBool _glfwCreateStandardCursorCocoa(plafCursor* cursor, int shape);
-void _glfwDestroyCursorCocoa(plafCursor* cursor);
 
 void _glfwFreeMonitorCocoa(plafMonitor* monitor);
 void _glfwGetMonitorPosCocoa(plafMonitor* monitor, int* xpos, int* ypos);
@@ -4687,12 +4669,6 @@ void _glfwPollEventsX11(void);
 void _glfwWaitEventsX11(void);
 void _glfwWaitEventsTimeoutX11(double timeout);
 void _glfwPostEmptyEventX11(void);
-
-void _glfwSetCursorModeX11(plafWindow* window, int mode);
-int _glfwGetKeyScancodeX11(int key);
-IntBool _glfwCreateCursorX11(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
-IntBool _glfwCreateStandardCursorX11(plafCursor* cursor, int shape);
-void _glfwDestroyCursorX11(plafCursor* cursor);
 
 void _glfwFreeMonitorX11(plafMonitor* monitor);
 void _glfwGetMonitorPosX11(plafMonitor* monitor, int* xpos, int* ypos);
@@ -4783,12 +4759,6 @@ void _glfwPollEventsWin32(void);
 void _glfwWaitEventsWin32(void);
 void _glfwWaitEventsTimeoutWin32(double timeout);
 void _glfwPostEmptyEventWin32(void);
-
-void _glfwSetCursorModeWin32(plafWindow* window, int mode);
-int _glfwGetKeyScancodeWin32(int key);
-IntBool _glfwCreateCursorWin32(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
-IntBool _glfwCreateStandardCursorWin32(plafCursor* cursor, int shape);
-void _glfwDestroyCursorWin32(plafCursor* cursor);
 
 void _glfwFreeMonitorWin32(plafMonitor* monitor);
 void _glfwGetMonitorPosWin32(plafMonitor* monitor, int* xpos, int* ypos);

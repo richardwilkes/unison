@@ -1,13 +1,13 @@
 #if defined(__APPLE__)
 #include "platform.h"
 
-void getCursorPosInternal(plafWindow* window, double* xpos, double* ypos) {
+void glfwGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
 	*xpos = pos.x;
 	*ypos = [window->nsView frame].size.height - pos.y;
 }
 
-void setCursorPosInternal(plafWindow* window, double xpos, double ypos) {
+void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	updateCursorImage(window);
 	const NSRect contentRect = [window->nsView frame];
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
@@ -27,7 +27,7 @@ IntBool cursorInContentArea(plafWindow* window) {
 	return [window->nsView mouse:pos inRect:[window->nsView frame]];
 }
 
-void setCursorInternal(plafWindow* window) {
+void _glfwSetCursor(plafWindow* window) {
 	if (cursorInContentArea(window)) {
 		updateCursorImage(window);
 	}

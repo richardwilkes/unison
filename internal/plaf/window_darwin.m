@@ -1419,8 +1419,7 @@ void _glfwPostEmptyEventCocoa(void)
 	} // autoreleasepool
 }
 
-void _glfwSetCursorModeCocoa(plafWindow* window, int mode)
-{
+void glfwSetCursorMode(plafWindow* window, int mode) {
 	@autoreleasepool {
 
 	if (_glfwWindowFocusedCocoa(window))
@@ -1429,15 +1428,7 @@ void _glfwSetCursorModeCocoa(plafWindow* window, int mode)
 	} // autoreleasepool
 }
 
-int _glfwGetKeyScancodeCocoa(int key)
-{
-	return _glfw.nsScancodes[key];
-}
-
-IntBool _glfwCreateCursorCocoa(plafCursor* cursor,
-								const ImageData* image,
-								int xhot, int yhot)
-{
+IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot) {
 	@autoreleasepool {
 
 	NSImage* native;
@@ -1478,8 +1469,7 @@ IntBool _glfwCreateCursorCocoa(plafCursor* cursor,
 	} // autoreleasepool
 }
 
-IntBool _glfwCreateStandardCursorCocoa(plafCursor* cursor, int shape)
-{
+IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 	@autoreleasepool {
 	if (!cursor->nsCursor)
 	{
@@ -1518,8 +1508,7 @@ IntBool _glfwCreateStandardCursorCocoa(plafCursor* cursor, int shape)
 	} // autoreleasepool
 }
 
-void _glfwDestroyCursorCocoa(plafCursor* cursor)
-{
+void _glfwDestroyCursor(plafCursor* cursor) {
 	if (cursor->nsCursor) {
 		[cursor->nsCursor release];
 		cursor->nsCursor = nil;

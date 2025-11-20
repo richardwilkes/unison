@@ -113,7 +113,7 @@ void _glfwPollMonitorsWin32(void)
 
 	for (adapterIndex = 0;  ;  adapterIndex++)
 	{
-		int type = _GLFW_INSERT_LAST;
+		int type = MONITOR_INSERT_LAST;
 
 		ZeroMemory(&adapter, sizeof(adapter));
 		adapter.cb = sizeof(adapter);
@@ -125,7 +125,7 @@ void _glfwPollMonitorsWin32(void)
 			continue;
 
 		if (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE)
-			type = _GLFW_INSERT_FIRST;
+			type = MONITOR_INSERT_FIRST;
 
 		for (displayIndex = 0;  ;  displayIndex++)
 		{
@@ -163,7 +163,7 @@ void _glfwPollMonitorsWin32(void)
 
 			_glfwInputMonitor(monitor, CONNECTED, type);
 
-			type = _GLFW_INSERT_LAST;
+			type = MONITOR_INSERT_LAST;
 		}
 
 		// HACK: If an active adapter does not have any display devices

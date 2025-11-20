@@ -1766,7 +1766,7 @@ void _glfwPollEventsWin32(void)
 			{
 				const int vk = keys[i][0];
 				const int key = keys[i][1];
-				const int scancode = _glfw.win32Scancodes[key];
+				const int scancode = _glfw.scanCodes[key];
 
 				if ((GetKeyState(vk) & 0x8000))
 					continue;
@@ -1798,21 +1798,12 @@ void _glfwPostEmptyEventWin32(void)
 	PostMessageW(_glfw.win32HelperWindowHandle, WM_NULL, 0, 0);
 }
 
-void _glfwSetCursorModeWin32(plafWindow* window, int mode)
-{
+void glfwSetCursorMode(plafWindow* window, int mode) {
 	if (cursorInContentArea(window))
 		updateCursorImage(window);
 }
 
-int _glfwGetKeyScancodeWin32(int key)
-{
-	return _glfw.win32Scancodes[key];
-}
-
-IntBool _glfwCreateCursorWin32(plafCursor* cursor,
-								const ImageData* image,
-								int xhot, int yhot)
-{
+IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot) {
 	cursor->win32Cursor = (HCURSOR) createIcon(image, xhot, yhot, false);
 	if (!cursor->win32Cursor)
 		return false;
@@ -1820,8 +1811,7 @@ IntBool _glfwCreateCursorWin32(plafCursor* cursor,
 	return true;
 }
 
-IntBool _glfwCreateStandardCursorWin32(plafCursor* cursor, int shape)
-{
+IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 	int id = 0;
 
 	switch (shape)
@@ -1861,8 +1851,7 @@ IntBool _glfwCreateStandardCursorWin32(plafCursor* cursor, int shape)
 	return true;
 }
 
-void _glfwDestroyCursorWin32(plafCursor* cursor)
-{
+void _glfwDestroyCursor(plafCursor* cursor) {
 	if (cursor->win32Cursor)
 		DestroyIcon((HICON) cursor->win32Cursor);
 }

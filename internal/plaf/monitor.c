@@ -70,7 +70,7 @@ void _glfwInputMonitor(plafMonitor* monitor, int action, int placement)
             _glfw_realloc(_glfw.monitors,
                           sizeof(plafMonitor*) * _glfw.monitorCount);
 
-        if (placement == _GLFW_INSERT_FIRST)
+        if (placement == MONITOR_INSERT_FIRST)
         {
             memmove(_glfw.monitors + 1,
                     _glfw.monitors,

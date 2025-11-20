@@ -157,9 +157,9 @@ void _glfwPollMonitorsX11(void)
             }
 
             if (monitor->x11Output == primary)
-                type = _GLFW_INSERT_FIRST;
+                type = MONITOR_INSERT_FIRST;
             else
-                type = _GLFW_INSERT_LAST;
+                type = MONITOR_INSERT_LAST;
 
             _glfwInputMonitor(monitor, CONNECTED, type);
 
@@ -187,7 +187,7 @@ void _glfwPollMonitorsX11(void)
 
         _glfwInputMonitor(_glfwAllocMonitor("Display", widthMM, heightMM),
                           CONNECTED,
-                          _GLFW_INSERT_FIRST);
+                          MONITOR_INSERT_FIRST);
     }
 }
 

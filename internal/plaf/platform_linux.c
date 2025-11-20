@@ -184,7 +184,7 @@ static void createKeyTables(void)
 	int scancodeMin, scancodeMax;
 
 	memset(_glfw.x11Keycodes, -1, sizeof(_glfw.x11Keycodes));
-	memset(_glfw.x11Scancodes, -1, sizeof(_glfw.x11Scancodes));
+	memset(_glfw.scanCodes, -1, sizeof(_glfw.scanCodes));
 
 	if (_glfw.xkbAvailable)
 	{
@@ -398,7 +398,7 @@ static void createKeyTables(void)
 
 		// Store the reverse translation for faster key name lookup
 		if (_glfw.x11Keycodes[scancode] > 0)
-			_glfw.x11Scancodes[_glfw.x11Keycodes[scancode]] = scancode;
+			_glfw.scanCodes[_glfw.x11Keycodes[scancode]] = scancode;
 	}
 
 	_glfw.xlibFree(keysyms);
@@ -1069,11 +1069,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 	_glfw.x11Display = display;
 	_glfw.xlibHandle = module;
 
-	platform->setCursorMode = _glfwSetCursorModeX11;
-	platform->createCursor = _glfwCreateCursorX11;
-	platform->createStandardCursor = _glfwCreateStandardCursorX11;
-	platform->destroyCursor = _glfwDestroyCursorX11;
-	platform->getKeyScancode = _glfwGetKeyScancodeX11;
 	platform->freeMonitor = _glfwFreeMonitorX11;
 	platform->getMonitorPos = _glfwGetMonitorPosX11;
 	platform->getMonitorContentScale = _glfwGetMonitorContentScaleX11;

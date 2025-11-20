@@ -134,7 +134,7 @@ void _glfwCenterCursorInContentArea(plafWindow* window)
 	int width, height;
 
 	_glfw.platform.getWindowSize(window, &width, &height);
-	setCursorPosInternal(window, width / 2.0, height / 2.0);
+	_glfwSetCursorPos(window, width / 2.0, height / 2.0);
 }
 
 
@@ -182,8 +182,8 @@ void glfwSetInputMode(plafWindow* handle, int mode, int value)
 
 			window->cursorMode = value;
 
-			getCursorPosInternal(window, &window->virtualCursorPosX, &window->virtualCursorPosY);
-			_glfw.platform.setCursorMode(window, value);
+			glfwGetCursorPos(window, &window->virtualCursorPosX, &window->virtualCursorPosY);
+			glfwSetCursorMode(window, value);
 			return;
 		}
 
@@ -255,7 +255,7 @@ int glfwGetKeyScancode(int key)
 		return -1;
 	}
 
-	return _glfw.platform.getKeyScancode(key);
+	return _glfw.scanCodes[key];
 }
 
 int glfwGetKey(plafWindow* handle, int key)
@@ -309,8 +309,7 @@ plafCursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot)
 	cursor->next = _glfw.cursorListHead;
 	_glfw.cursorListHead = cursor;
 
-	if (!_glfw.platform.createCursor(cursor, image, xhot, yhot))
-	{
+	if (!_glfwCreateCursor(cursor, image, xhot, yhot)) {
 		glfwDestroyCursor(cursor);
 		return NULL;
 	}
@@ -335,8 +334,7 @@ plafCursor* glfwCreateStandardCursor(int shape)
 	cursor->next = _glfw.cursorListHead;
 	_glfw.cursorListHead = cursor;
 
-	if (!_glfw.platform.createStandardCursor(cursor, shape))
-	{
+	if (!_glfwCreateStandardCursor(cursor, shape)) {
 		glfwDestroyCursor(cursor);
 		return NULL;
 	}
@@ -360,7 +358,7 @@ void glfwDestroyCursor(plafCursor* cursor)
 		}
 	}
 
-	_glfw.platform.destroyCursor(cursor);
+	_glfwDestroyCursor(cursor);
 
 	// Unlink cursor from global linked list
 	{

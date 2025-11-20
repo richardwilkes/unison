@@ -1,22 +1,16 @@
 #include "platform.h"
 
-void glfwGetCursorPos(plafWindow* handle, double* xpos, double* ypos) {
-	getCursorPosInternal((plafWindow*) handle, xpos, ypos);
-}
-
-void glfwSetCursorPos(plafWindow* handle, double xpos, double ypos) {
-	plafWindow* window = (plafWindow*) handle;
+void glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	if (xpos != xpos || xpos < -DBL_MAX || xpos > DBL_MAX || ypos != ypos || ypos < -DBL_MAX || ypos > DBL_MAX) {
 		return;
 	}
 	if (!_glfw.platform.windowFocused(window)) {
 		return;
 	}
-	setCursorPosInternal(window, xpos, ypos);
+	_glfwSetCursorPos(window, xpos, ypos);
 }
 
-void glfwSetCursor(plafWindow* windowHandle, plafCursor* cursor) {
-	plafWindow* window = (plafWindow*) windowHandle;
+void glfwSetCursor(plafWindow* window, plafCursor* cursor) {
 	window->cursor = cursor;
-	setCursorInternal(window);
+	_glfwSetCursor(window);
 }

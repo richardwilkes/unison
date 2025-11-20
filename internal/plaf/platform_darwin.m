@@ -7,7 +7,7 @@
 // Create key code translation tables.
 static void createKeyTables(void) {
 	memset(_glfw.nsKeycodes, -1, sizeof(_glfw.nsKeycodes));
-	memset(_glfw.nsScancodes, -1, sizeof(_glfw.nsScancodes));
+	memset(_glfw.scanCodes, -1, sizeof(_glfw.scanCodes));
 
 	_glfw.nsKeycodes[0x1D] = KEY_0;
 	_glfw.nsKeycodes[0x12] = KEY_1;
@@ -127,7 +127,7 @@ static void createKeyTables(void) {
 	for (int scancode = 0;  scancode < 256;  scancode++) {
 		// Store the reverse translation for faster key name lookup
 		if (_glfw.nsKeycodes[scancode] >= 0) {
-			_glfw.nsScancodes[_glfw.nsKeycodes[scancode]] = scancode;
+			_glfw.scanCodes[_glfw.nsKeycodes[scancode]] = scancode;
 		}
 	}
 }
@@ -168,11 +168,6 @@ static void createKeyTables(void) {
 @end // GLFWApplicationDelegate
 
 ErrorResponse* platformInit(_GLFWplatform* platform) {
-	platform->setCursorMode = _glfwSetCursorModeCocoa;
-	platform->createCursor = _glfwCreateCursorCocoa;
-	platform->createStandardCursor = _glfwCreateStandardCursorCocoa;
-	platform->destroyCursor = _glfwDestroyCursorCocoa;
-	platform->getKeyScancode = _glfwGetKeyScancodeCocoa;
 	platform->freeMonitor = _glfwFreeMonitorCocoa;
 	platform->getMonitorPos = _glfwGetMonitorPosCocoa;
 	platform->getMonitorContentScale = _glfwGetMonitorContentScaleCocoa;

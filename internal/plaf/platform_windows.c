@@ -88,7 +88,7 @@ static void createKeyTables(void)
 	int scancode;
 
 	memset(_glfw.win32Keycodes, -1, sizeof(_glfw.win32Keycodes));
-	memset(_glfw.win32Scancodes, -1, sizeof(_glfw.win32Scancodes));
+	memset(_glfw.scanCodes, -1, sizeof(_glfw.scanCodes));
 
 	_glfw.win32Keycodes[0x00B] = KEY_0;
 	_glfw.win32Keycodes[0x002] = KEY_1;
@@ -215,7 +215,7 @@ static void createKeyTables(void)
 	for (scancode = 0;  scancode < 512;  scancode++)
 	{
 		if (_glfw.win32Keycodes[scancode] > 0)
-			_glfw.win32Scancodes[_glfw.win32Keycodes[scancode]] = scancode;
+			_glfw.scanCodes[_glfw.win32Keycodes[scancode]] = scancode;
 	}
 }
 
@@ -378,11 +378,6 @@ BOOL IsWindows10BuildOrGreater(WORD build)
 
 ErrorResponse* platformInit(_GLFWplatform* platform)
 {
-	platform->setCursorMode = _glfwSetCursorModeWin32;
-	platform->createCursor = _glfwCreateCursorWin32;
-	platform->createStandardCursor = _glfwCreateStandardCursorWin32;
-	platform->destroyCursor = _glfwDestroyCursorWin32;
-	platform->getKeyScancode = _glfwGetKeyScancodeWin32;
 	platform->freeMonitor = _glfwFreeMonitorWin32;
 	platform->getMonitorPos = _glfwGetMonitorPosWin32;
 	platform->getMonitorContentScale = _glfwGetMonitorContentScaleWin32;

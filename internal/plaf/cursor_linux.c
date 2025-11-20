@@ -1,7 +1,7 @@
 #if defined(__linux__)
 #include "platform.h"
 
-void getCursorPosInternal(plafWindow* window, double* xpos, double* ypos) {
+void glfwGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 	Window root, child;
 	int rootX, rootY, childX, childY;
 	unsigned int mask;
@@ -10,14 +10,14 @@ void getCursorPosInternal(plafWindow* window, double* xpos, double* ypos) {
 	*ypos = childY;
 }
 
-void setCursorPosInternal(plafWindow* window, double xpos, double ypos) {
+void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	window->x11WarpCursorPosX = (int)xpos;
 	window->x11WarpCursorPosY = (int)ypos;
 	_glfw.xlibWarpPointer(_glfw.x11Display, None, window->x11Window, 0, 0, 0, 0, (int)xpos, (int)ypos);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void setCursorInternal(plafWindow* window) {
+void _glfwSetCursor(plafWindow* window) {
 	if (window->cursorMode == CURSOR_NORMAL) {
 		updateCursorImage(window);
 		_glfw.xlibFlush(_glfw.x11Display);

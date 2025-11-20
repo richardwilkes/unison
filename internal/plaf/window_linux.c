@@ -3232,21 +3232,12 @@ void _glfwPostEmptyEventX11(void)
 	writeEmptyEvent();
 }
 
-void _glfwSetCursorModeX11(plafWindow* window, int mode)
-{
+void glfwSetCursorMode(plafWindow* window, int mode) {
 	updateCursorImage(window);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-int _glfwGetKeyScancodeX11(int key)
-{
-	return _glfw.x11Scancodes[key];
-}
-
-IntBool _glfwCreateCursorX11(plafCursor* cursor,
-							  const ImageData* image,
-							  int xhot, int yhot)
-{
+IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot) {
 	cursor->x11Cursor = _glfwCreateNativeCursorX11(image, xhot, yhot);
 	if (!cursor->x11Cursor)
 		return false;
@@ -3254,8 +3245,7 @@ IntBool _glfwCreateCursorX11(plafCursor* cursor,
 	return true;
 }
 
-IntBool _glfwCreateStandardCursorX11(plafCursor* cursor, int shape)
-{
+IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 	if (_glfw.xcursorHandle)
 	{
 		char* theme = _glfw.xcursorGetTheme(_glfw.x11Display);
@@ -3335,8 +3325,7 @@ IntBool _glfwCreateStandardCursorX11(plafCursor* cursor, int shape)
 	return true;
 }
 
-void _glfwDestroyCursorX11(plafCursor* cursor)
-{
+void _glfwDestroyCursor(plafCursor* cursor) {
 	if (cursor->x11Cursor)
 		_glfw.xlibFreeCursor(_glfw.x11Display, cursor->x11Cursor);
 }

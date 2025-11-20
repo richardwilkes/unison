@@ -155,7 +155,7 @@ void _glfwPollMonitorsCocoa(void)
         monitor->nsScreen     = screen;
 
         _glfw_free(name);
-        _glfwInputMonitor(monitor, CONNECTED, _GLFW_INSERT_LAST);
+        _glfwInputMonitor(monitor, CONNECTED, MONITOR_INSERT_LAST);
     }
 
     for (uint32_t i = 0;  i < disconnectedCount;  i++)

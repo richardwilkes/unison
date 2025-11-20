@@ -3,13 +3,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-
-// NOTE: The global variables below comprise all mutable global data in GLFW
-//       Any other mutable global variable is a bug
-
-// This contains all mutable state shared between compilation units of GLFW
-//
-_GLFWlibrary _glfw = { false };
+plafLib _glfw = { false };
 
 // These are outside of _glfw so they can be used before initialization and
 // after termination without special handling when _glfw is cleared to zero

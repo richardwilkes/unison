@@ -20,8 +20,7 @@ void _glfwInputWindowFocus(plafWindow* window, IntBool focused)
         {
             if (window->keys[key] == INPUT_PRESS)
             {
-                const int scancode = _glfw.platform.getKeyScancode(key);
-                _glfwInputKey(window, key, scancode, INPUT_RELEASE, 0);
+                _glfwInputKey(window, key, _glfw.scanCodes[key], INPUT_RELEASE, 0);
             }
         }
 
