@@ -218,9 +218,9 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
     if (_glfw.contextSlot != window)
         return false;
 
-    window->context.GetIntegerv = (PFNGLGETINTEGERVPROC)
+    window->context.GetIntegerv = (FN_GLGETINTEGERV)
         window->context.getProcAddress("glGetIntegerv");
-    window->context.GetString = (PFNGLGETSTRINGPROC)
+    window->context.GetString = (FN_GLGETSTRING)
         window->context.getProcAddress("glGetString");
     if (!window->context.GetIntegerv || !window->context.GetString)
     {
@@ -269,7 +269,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
         // We cache it here instead of in glfwExtensionSupported mostly to alert
         // users as early as possible that their build may be broken
 
-        window->context.GetStringi = (PFNGLGETSTRINGIPROC)
+        window->context.GetStringi = (FN_GLGETSTRINGI)
             window->context.getProcAddress("glGetStringi");
         if (!window->context.GetStringi)
         {
@@ -338,7 +338,7 @@ IntBool _glfwRefreshContextAttribs(plafWindow* window,
     // Clearing the front buffer to black to avoid garbage pixels left over from
     // previous uses of our bit of VRAM
     {
-        PFNGLCLEARPROC glClear = (PFNGLCLEARPROC)
+        FN_GLCLEAR glClear = (FN_GLCLEAR)
             window->context.getProcAddress("glClear");
         glClear(GL_COLOR_BUFFER_BIT);
 

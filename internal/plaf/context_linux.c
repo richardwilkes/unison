@@ -239,31 +239,31 @@ IntBool _glfwInitGLX(void)
         return false;
     }
 
-    _glfw.glxGetFBConfigs = (PFNGLXGETFBCONFIGSPROC)
+    _glfw.glxGetFBConfigs = (FN_GLXGETFBCONFIGS)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXGetFBConfigs");
-    _glfw.glxGetFBConfigAttrib = (PFNGLXGETFBCONFIGATTRIBPROC)
+    _glfw.glxGetFBConfigAttrib = (FN_GLXGETFBCONFIGATTRIB)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXGetFBConfigAttrib");
-    _glfw.glxGetClientString = (PFNGLXGETCLIENTSTRINGPROC)
+    _glfw.glxGetClientString = (FN_GLXGETCLIENTSTRING)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXGetClientString");
-    _glfw.glxQueryExtension = (PFNGLXQUERYEXTENSIONPROC)
+    _glfw.glxQueryExtension = (FN_GLXQUERYEXTENSION)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXQueryExtension");
-    _glfw.glxQueryVersion = (PFNGLXQUERYVERSIONPROC)
+    _glfw.glxQueryVersion = (FN_GLXQUERYVERSION)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXQueryVersion");
-    _glfw.glxDestroyContext = (PFNGLXDESTROYCONTEXTPROC)
+    _glfw.glxDestroyContext = (FN_GLXDESTROYCONTEXT)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXDestroyContext");
-    _glfw.glxMakeCurrent = (PFNGLXMAKECURRENTPROC)
+    _glfw.glxMakeCurrent = (FN_GLXMAKECURRENT)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXMakeCurrent");
-    _glfw.glxSwapBuffers = (PFNGLXSWAPBUFFERSPROC)
+    _glfw.glxSwapBuffers = (FN_GLXSWAPBUFFERS)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXSwapBuffers");
-    _glfw.glxQueryExtensionsString = (PFNGLXQUERYEXTENSIONSSTRINGPROC)
+    _glfw.glxQueryExtensionsString = (FN_GLXQUERYEXTENSIONSSTRING)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXQueryExtensionsString");
-    _glfw.glxCreateNewContext = (PFNGLXCREATENEWCONTEXTPROC)
+    _glfw.glxCreateNewContext = (FN_GLXCREATENEWCONTEXT)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXCreateNewContext");
-    _glfw.glxCreateWindow = (PFNGLXCREATEWINDOWPROC)
+    _glfw.glxCreateWindow = (FN_GLXCREATEWINDOW)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXCreateWindow");
-    _glfw.glxDestroyWindow = (PFNGLXDESTROYWINDOWPROC)
+    _glfw.glxDestroyWindow = (FN_GLXDESTROYWINDOW)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXDestroyWindow");
-    _glfw.glxGetVisualFromFBConfig = (PFNGLXGETVISUALFROMFBCONFIGPROC)
+    _glfw.glxGetVisualFromFBConfig = (FN_GLXGETVISUALFROMFBCONFIG)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXGetVisualFromFBConfig");
 
     if (!_glfw.glxGetFBConfigs ||
@@ -285,9 +285,9 @@ IntBool _glfwInitGLX(void)
     }
 
     // NOTE: Unlike GLX 1.3 entry points these are not required to be present
-    _glfw.glxGetProcAddress = (PFNGLXGETPROCADDRESSPROC)
+    _glfw.glxGetProcAddress = (FN_GLXGETPROCADDRESS)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXGetProcAddress");
-    _glfw.glxGetProcAddressARB = (PFNGLXGETPROCADDRESSPROC)
+    _glfw.glxGetProcAddressARB = (FN_GLXGETPROCADDRESS)
         _glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXGetProcAddressARB");
 
 	int errorBase;
@@ -310,7 +310,7 @@ IntBool _glfwInitGLX(void)
 
     if (extensionSupportedGLX("GLX_EXT_swap_control"))
     {
-        _glfw.glxSwapIntervalEXT = (PFNGLXSWAPINTERVALEXTPROC)
+        _glfw.glxSwapIntervalEXT = (FN_GLXSWAPINTERVALEXT)
             getProcAddressGLX("glXSwapIntervalEXT");
 
         if (_glfw.glxSwapIntervalEXT)
@@ -319,7 +319,7 @@ IntBool _glfwInitGLX(void)
 
     if (extensionSupportedGLX("GLX_SGI_swap_control"))
     {
-        _glfw.glxSwapIntervalSGI = (PFNGLXSWAPINTERVALSGIPROC)
+        _glfw.glxSwapIntervalSGI = (FN_GLXSWAPINTERVALSGI)
             getProcAddressGLX("glXSwapIntervalSGI");
 
         if (_glfw.glxSwapIntervalSGI)
@@ -337,7 +337,7 @@ IntBool _glfwInitGLX(void)
 
     if (extensionSupportedGLX("GLX_ARB_create_context"))
     {
-        _glfw.glxCreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)
+        _glfw.glxCreateContextAttribsARB = (FN_GLXCREATECONTEXTATTRIBSARB)
             getProcAddressGLX("glXCreateContextAttribsARB");
 
         if (_glfw.glxCreateContextAttribsARB)

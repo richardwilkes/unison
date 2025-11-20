@@ -21,43 +21,43 @@ static ErrorResponse* loadLibraries(void)
 		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load user32.dll");
 	}
 
-	_glfw.win32User32EnableNonClientDpiScaling_ = (PFN_EnableNonClientDpiScaling)
+	_glfw.win32User32EnableNonClientDpiScaling_ = (FN_EnableNonClientDpiScaling)
 		_glfwPlatformGetModuleSymbol(_glfw.win32User32Instance, "EnableNonClientDpiScaling");
-	_glfw.win32User32SetProcessDpiAwarenessContext_ = (PFN_SetProcessDpiAwarenessContext)
+	_glfw.win32User32SetProcessDpiAwarenessContext_ = (FN_SetProcessDpiAwarenessContext)
 		_glfwPlatformGetModuleSymbol(_glfw.win32User32Instance, "SetProcessDpiAwarenessContext");
-	_glfw.win32User32GetDpiForWindow_ = (PFN_GetDpiForWindow)
+	_glfw.win32User32GetDpiForWindow_ = (FN_GetDpiForWindow)
 		_glfwPlatformGetModuleSymbol(_glfw.win32User32Instance, "GetDpiForWindow");
-	_glfw.win32User32AdjustWindowRectExForDpi_ = (PFN_AdjustWindowRectExForDpi)
+	_glfw.win32User32AdjustWindowRectExForDpi_ = (FN_AdjustWindowRectExForDpi)
 		_glfwPlatformGetModuleSymbol(_glfw.win32User32Instance, "AdjustWindowRectExForDpi");
-	_glfw.win32User32GetSystemMetricsForDpi_ = (PFN_GetSystemMetricsForDpi)
+	_glfw.win32User32GetSystemMetricsForDpi_ = (FN_GetSystemMetricsForDpi)
 		_glfwPlatformGetModuleSymbol(_glfw.win32User32Instance, "GetSystemMetricsForDpi");
 
 	_glfw.win32DwmInstance = _glfwPlatformLoadModule("dwmapi.dll");
 	if (_glfw.win32DwmInstance)
 	{
-		_glfw.win32DwmIsCompositionEnabled = (PFN_DwmIsCompositionEnabled)
+		_glfw.win32DwmIsCompositionEnabled = (FN_DwmIsCompositionEnabled)
 			_glfwPlatformGetModuleSymbol(_glfw.win32DwmInstance, "DwmIsCompositionEnabled");
-		_glfw.win32DwmFlush = (PFN_DwmFlush)
+		_glfw.win32DwmFlush = (FN_DwmFlush)
 			_glfwPlatformGetModuleSymbol(_glfw.win32DwmInstance, "DwmFlush");
-		_glfw.win32DwmEnableBlurBehindWindow = (PFN_DwmEnableBlurBehindWindow)
+		_glfw.win32DwmEnableBlurBehindWindow = (FN_DwmEnableBlurBehindWindow)
 			_glfwPlatformGetModuleSymbol(_glfw.win32DwmInstance, "DwmEnableBlurBehindWindow");
-		_glfw.win32DwmGetColorizationColor = (PFN_DwmGetColorizationColor)
+		_glfw.win32DwmGetColorizationColor = (FN_DwmGetColorizationColor)
 			_glfwPlatformGetModuleSymbol(_glfw.win32DwmInstance, "DwmGetColorizationColor");
 	}
 
 	_glfw.win32ShCoreInstance = _glfwPlatformLoadModule("shcore.dll");
 	if (_glfw.win32ShCoreInstance)
 	{
-		_glfw.win32ShCoreSetProcessDpiAwareness_ = (PFN_SetProcessDpiAwareness)
+		_glfw.win32ShCoreSetProcessDpiAwareness_ = (FN_SetProcessDpiAwareness)
 			_glfwPlatformGetModuleSymbol(_glfw.win32ShCoreInstance, "SetProcessDpiAwareness");
-		_glfw.win32ShCoreGetDpiForMonitor_ = (PFN_GetDpiForMonitor)
+		_glfw.win32ShCoreGetDpiForMonitor_ = (FN_GetDpiForMonitor)
 			_glfwPlatformGetModuleSymbol(_glfw.win32ShCoreInstance, "GetDpiForMonitor");
 	}
 
 	_glfw.win32NTInstance = _glfwPlatformLoadModule("ntdll.dll");
 	if (_glfw.win32NTInstance)
 	{
-		_glfw.win32NTRtlVerifyVersionInfo_ = (PFN_RtlVerifyVersionInfo)
+		_glfw.win32NTRtlVerifyVersionInfo_ = (FN_RtlVerifyVersionInfo)
 			_glfwPlatformGetModuleSymbol(_glfw.win32NTInstance, "RtlVerifyVersionInfo");
 	}
 
@@ -237,7 +237,7 @@ static ErrorResponse* createHelperWindow(void)
 	WNDCLASSEXW wc = { sizeof(wc) };
 
 	wc.style         = CS_OWNDC;
-	wc.lpfnWndProc   = (WNDPROC) helperWindowProc;
+	wc.lpfnWndProc   = (WND) helperWindowProc;
 	wc.hInstance     = _glfw.win32Instance;
 	wc.lpszClassName = L"GLFW3 Helper";
 

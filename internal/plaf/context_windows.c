@@ -316,19 +316,19 @@ IntBool _glfwInitWGL(void)
         return false;
     }
 
-    _glfw.wglCreateContext = (PFN_wglCreateContext)
+    _glfw.wglCreateContext = (FN_wglCreateContext)
         _glfwPlatformGetModuleSymbol(_glfw.wglInstance, "wglCreateContext");
-    _glfw.wglDeleteContext = (PFN_wglDeleteContext)
+    _glfw.wglDeleteContext = (FN_wglDeleteContext)
         _glfwPlatformGetModuleSymbol(_glfw.wglInstance, "wglDeleteContext");
-    _glfw.wglGetProcAddress = (PFN_wglGetProcAddress)
+    _glfw.wglGetProcAddress = (FN_wglGetProcAddress)
         _glfwPlatformGetModuleSymbol(_glfw.wglInstance, "wglGetProcAddress");
-    _glfw.wglGetCurrentDC = (PFN_wglGetCurrentDC)
+    _glfw.wglGetCurrentDC = (FN_wglGetCurrentDC)
         _glfwPlatformGetModuleSymbol(_glfw.wglInstance, "wglGetCurrentDC");
-    _glfw.wglGetCurrentContext = (PFN_wglGetCurrentContext)
+    _glfw.wglGetCurrentContext = (FN_wglGetCurrentContext)
         _glfwPlatformGetModuleSymbol(_glfw.wglInstance, "wglGetCurrentContext");
-    _glfw.wglMakeCurrent = (PFN_wglMakeCurrent)
+    _glfw.wglMakeCurrent = (FN_wglMakeCurrent)
         _glfwPlatformGetModuleSymbol(_glfw.wglInstance, "wglMakeCurrent");
-    _glfw.wglShareLists = (PFN_wglShareLists)
+    _glfw.wglShareLists = (FN_wglShareLists)
         _glfwPlatformGetModuleSymbol(_glfw.wglInstance, "wglShareLists");
 
     // NOTE: A dummy context has to be created for opengl32.dll to load the
@@ -371,15 +371,15 @@ IntBool _glfwInitWGL(void)
 
     // NOTE: Functions must be loaded first as they're needed to retrieve the
     //       extension string that tells us whether the functions are supported
-    _glfw.wglGetExtensionsStringEXT = (PFNWGLGETEXTENSIONSSTRINGEXTPROC)
+    _glfw.wglGetExtensionsStringEXT = (FN_WGLGETEXTENSIONSSTRINGEXT)
         _glfw.wglGetProcAddress("wglGetExtensionsStringEXT");
-    _glfw.wglGetExtensionsStringARB = (PFNWGLGETEXTENSIONSSTRINGARBPROC)
+    _glfw.wglGetExtensionsStringARB = (FN_WGLGETEXTENSIONSSTRINGARB)
         _glfw.wglGetProcAddress("wglGetExtensionsStringARB");
-    _glfw.wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)
+    _glfw.wglCreateContextAttribsARB = (FN_WGLCREATECONTEXTATTRIBSARB)
         _glfw.wglGetProcAddress("wglCreateContextAttribsARB");
-    _glfw.wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)
+    _glfw.wglSwapIntervalEXT = (FN_WGLSWAPINTERVALEXT)
         _glfw.wglGetProcAddress("wglSwapIntervalEXT");
-    _glfw.wglGetPixelFormatAttribivARB = (PFNWGLGETPIXELFORMATATTRIBIVARBPROC)
+    _glfw.wglGetPixelFormatAttribivARB = (FN_WGLGETPIXELFORMATATTRIBIVARB)
         _glfw.wglGetProcAddress("wglGetPixelFormatAttribivARB");
 
     // NOTE: WGL_ARB_extensions_string and WGL_EXT_extensions_string are not
