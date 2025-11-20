@@ -27,87 +27,78 @@ static char* convertLatin1toUTF8(const char* src) {
 }
 
 const char* getClipboardString(void) {
-	char** selectionString = NULL;
-	const Atom targets[] = { _glfw.x11ClipUTF8_STRING, XA_STRING };
-	const size_t targetCount = sizeof(targets) / sizeof(targets[0]);
+	if (_glfw.xlibGetSelectionOwner(_glfw.x11Display, _glfw.x11ClipCLIPBOARD) != _glfw.x11HelperWindowHandle) {
+		_glfw_free(_glfw.clipboardString);
+		_glfw.clipboardString = NULL;
 
-	selectionString = &_glfw.clipboardString;
+		const Atom targets[] = { _glfw.x11ClipUTF8_STRING, XA_STRING };
+		const size_t targetCount = sizeof(targets) / sizeof(targets[0]);
+		for (size_t i = 0;  i < targetCount;  i++) {
+			_glfw.xlibConvertSelection(_glfw.x11Display, _glfw.x11ClipCLIPBOARD, targets[i], _glfw.x11ClipSELECTION,
+				_glfw.x11HelperWindowHandle, CurrentTime);
 
-	if (_glfw.xlibGetSelectionOwner(_glfw.x11Display, _glfw.x11ClipCLIPBOARD) == _glfw.x11HelperWindowHandle) {
-		return *selectionString;
-	}
-
-	_glfw_free(*selectionString);
-	*selectionString = NULL;
-
-	for (size_t i = 0;  i < targetCount;  i++) {
-		char* data;
-		Atom actualType;
-		int actualFormat;
-		unsigned long itemCount, bytesAfter;
-		XEvent notification, dummy;
-
-		_glfw.xlibConvertSelection(_glfw.x11Display, _glfw.x11ClipCLIPBOARD, targets[i], _glfw.x11ClipSELECTION,
-			_glfw.x11HelperWindowHandle, CurrentTime);
-
-		while (!_glfw.xlibCheckTypedWindowEvent(_glfw.x11Display, _glfw.x11HelperWindowHandle, SelectionNotify,
-			&notification)) {
-			waitForX11Event(-1);
-		}
-
-		if (notification.xselection.property == None) {
-			continue;
-		}
-
-		_glfw.xlibCheckIfEvent(_glfw.x11Display, &dummy, isSelPropNewValueNotify, (XPointer) &notification);
-
-		_glfw.xlibGetWindowProperty(_glfw.x11Display, notification.xselection.requestor, notification.xselection.property, 0,
-			LONG_MAX, True, AnyPropertyType, &actualType, &actualFormat, &itemCount, &bytesAfter,
-			(unsigned char**) &data);
-
-		if (actualType == _glfw.x11ClipINCR) {
-			size_t size = 1;
-			char* string = NULL;
-
-			for (;;) {
-				while (!_glfw.xlibCheckIfEvent(_glfw.x11Display, &dummy, isSelPropNewValueNotify, (XPointer) &notification)) {
-					waitForX11Event(-1);
-				}
-
-				_glfw.xlibFree(data);
-				_glfw.xlibGetWindowProperty(_glfw.x11Display, notification.xselection.requestor,
-					notification.xselection.property, 0, LONG_MAX, True, AnyPropertyType, &actualType, &actualFormat,
-					&itemCount, &bytesAfter, (unsigned char**) &data);
-
-				if (itemCount) {
-					size += itemCount;
-					string = _glfw_realloc(string, size);
-					string[size - itemCount - 1] = '\0';
-					strcat(string, data);
-				}
-
-				if (!itemCount) {
-					if (string) {
-						if (targets[i] == XA_STRING) {
-							*selectionString = convertLatin1toUTF8(string);
-							_glfw_free(string);
-						} else {
-							*selectionString = string;
-						}
-					}
-					break;
-				}
+			XEvent notification;
+			while (!_glfw.xlibCheckTypedWindowEvent(_glfw.x11Display, _glfw.x11HelperWindowHandle, SelectionNotify,
+				&notification)) {
+				waitForX11Event(-1);
 			}
-		} else if (actualType == targets[i]) {
-			*selectionString = (targets[i] == XA_STRING) ? convertLatin1toUTF8(data) : _glfw_strdup(data);
-		}
 
-		_glfw.xlibFree(data);
-		if (*selectionString) {
-			break;
+			if (notification.xselection.property == None) {
+				continue;
+			}
+
+			XEvent dummy;
+			_glfw.xlibCheckIfEvent(_glfw.x11Display, &dummy, isSelPropNewValueNotify, (XPointer)&notification);
+
+			Atom actualType;
+			int actualFormat;
+			unsigned long itemCount;
+			unsigned long bytesAfter;
+			char* data;
+			_glfw.xlibGetWindowProperty(_glfw.x11Display, notification.xselection.requestor,
+				notification.xselection.property, 0, LONG_MAX, True, AnyPropertyType, &actualType, &actualFormat,
+				&itemCount, &bytesAfter, (unsigned char**)&data);
+			if (actualType == _glfw.x11ClipINCR) {
+				size_t size = 1;
+				char* string = NULL;
+				for (;;) {
+					while (!_glfw.xlibCheckIfEvent(_glfw.x11Display, &dummy, isSelPropNewValueNotify,
+						(XPointer) &notification)) {
+						waitForX11Event(-1);
+					}
+
+					_glfw.xlibFree(data);
+					_glfw.xlibGetWindowProperty(_glfw.x11Display, notification.xselection.requestor,
+						notification.xselection.property, 0, LONG_MAX, True, AnyPropertyType, &actualType,
+						&actualFormat, &itemCount, &bytesAfter, (unsigned char**)&data);
+
+					if (itemCount) {
+						size += itemCount;
+						string = _glfw_realloc(string, size);
+						string[size - itemCount - 1] = '\0';
+						strcat(string, data);
+					} else {
+						if (string) {
+							if (targets[i] == XA_STRING) {
+								_glfw.clipboardString = convertLatin1toUTF8(string);
+								_glfw_free(string);
+							} else {
+								_glfw.clipboardString = string;
+							}
+						}
+						break;
+					}
+				}
+			} else if (actualType == targets[i]) {
+				_glfw.clipboardString = (targets[i] == XA_STRING) ? convertLatin1toUTF8(data) : _glfw_strdup(data);
+			}
+			_glfw.xlibFree(data);
+			if (_glfw.clipboardString) {
+				break;
+			}
 		}
 	}
-	return *selectionString;
+	return _glfw.clipboardString;
 }
 
 void setClipboardString(const char* string) {
