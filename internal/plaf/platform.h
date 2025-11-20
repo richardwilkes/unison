@@ -1176,24 +1176,6 @@ struct plafCursor {
 
 // Platform API structure
 struct _GLFWplatform {
-	IntBool (*createWindow)(plafWindow*,const WindowConfig*,const plafCtxCfg*,const plafFrameBufferCfg*);
-	void (*destroyWindow)(plafWindow*);
-	void (*setWindowTitle)(plafWindow*,const char*);
-	void (*setWindowIcon)(plafWindow*,int,const ImageData*);
-	void (*getWindowPos)(plafWindow*,int*,int*);
-	void (*setWindowPos)(plafWindow*,int,int);
-	void (*getWindowSize)(plafWindow*,int*,int*);
-	void (*setWindowSize)(plafWindow*,int,int);
-	void (*setWindowSizeLimits)(plafWindow*,int,int,int,int);
-	void (*setWindowAspectRatio)(plafWindow*,int,int);
-	void (*getFramebufferSize)(plafWindow*,int*,int*);
-	void (*getWindowFrameSize)(plafWindow*,int*,int*,int*,int*);
-	void (*getWindowContentScale)(plafWindow*,float*,float*);
-	void (*iconifyWindow)(plafWindow*);
-	void (*restoreWindow)(plafWindow*);
-	void (*maximizeWindow)(plafWindow*);
-	void (*showWindow)(plafWindow*);
-	void (*hideWindow)(plafWindow*);
 	void (*requestWindowAttention)(plafWindow*);
 	void (*focusWindow)(plafWindow*);
 	void (*setWindowMonitor)(plafWindow*,plafMonitor*,int,int,int,int,int);
@@ -2622,59 +2604,7 @@ float glfwGetWindowOpacity(plafWindow* window);
  */
 void glfwSetWindowOpacity(plafWindow* window, float opacity);
 
-/*! @brief Iconifies the specified window.
- *
- *  This function iconifies (minimizes) the specified window if it was
- *  previously restored.  If the window is already iconified, this function does
- *  nothing.
- *
- *  If the specified window is a full screen window, GLFW restores the original
- *  video mode of the monitor.  The window's desired video mode is set again
- *  when the window is restored.
- *
- *  @param[in] window The window to iconify.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_iconify
- *  @sa @ref glfwRestoreWindow
- *  @sa @ref glfwMaximizeWindow
- *
- *  @since Added in version 2.1.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup window
- */
 void glfwIconifyWindow(plafWindow* window);
-
-/*! @brief Restores the specified window.
- *
- *  This function restores the specified window if it was previously iconified
- *  (minimized) or maximized.  If the window is already restored, this function
- *  does nothing.
- *
- *  If the specified window is an iconified full screen window, its desired
- *  video mode is set again for its monitor when the window is restored.
- *
- *  @param[in] window The window to restore.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_iconify
- *  @sa @ref glfwIconifyWindow
- *  @sa @ref glfwMaximizeWindow
- *
- *  @since Added in version 2.1.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup window
- */
 void glfwRestoreWindow(plafWindow* window);
 
 /*! @brief Maximizes the specified window.
@@ -2691,10 +2621,6 @@ void glfwRestoreWindow(plafWindow* window);
  *
  *  @par Thread Safety
  *  This function may only be called from the main thread.
- *
- *  @sa @ref window_iconify
- *  @sa @ref glfwIconifyWindow
- *  @sa @ref glfwRestoreWindow
  *
  *  @since Added in GLFW 3.2.
  *
@@ -4318,6 +4244,23 @@ ErrorResponse* createErrorResponse(int code, const char* format, ...);
 //////                       GLFW internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
+IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _glfwSetWindowTitle(plafWindow* window, const char* title);
+void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images);
+void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos);
+void _glfwSetWindowPos(plafWindow* window, int xpos, int ypos);
+void _glfwGetWindowSize(plafWindow* window, int* width, int* height);
+void _glfwSetWindowSize(plafWindow* window, int width, int height);
+void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
+void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom);
+void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height);
+void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
+void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
+void _glfwMaximizeWindow(plafWindow* window);
+void _glfwShowWindow(plafWindow* window);
+void _glfwHideWindow(plafWindow* window);
+void _glfwDestroyWindow(plafWindow* window);
+
 IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp);
 void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
 IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode);
@@ -4363,24 +4306,6 @@ IntBool cursorInContentArea(plafWindow* window);
 #endif
 
 #if defined(__APPLE__)
-IntBool _glfwCreateWindowCocoa(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _glfwDestroyWindowCocoa(plafWindow* window);
-void _glfwSetWindowTitleCocoa(plafWindow* window, const char* title);
-void _glfwSetWindowIconCocoa(plafWindow* window, int count, const ImageData* images);
-void _glfwGetWindowPosCocoa(plafWindow* window, int* xpos, int* ypos);
-void _glfwSetWindowPosCocoa(plafWindow* window, int xpos, int ypos);
-void _glfwGetWindowSizeCocoa(plafWindow* window, int* width, int* height);
-void _glfwSetWindowSizeCocoa(plafWindow* window, int width, int height);
-void _glfwSetWindowSizeLimitsCocoa(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void _glfwSetWindowAspectRatioCocoa(plafWindow* window, int numer, int denom);
-void _glfwGetFramebufferSizeCocoa(plafWindow* window, int* width, int* height);
-void _glfwGetWindowFrameSizeCocoa(plafWindow* window, int* left, int* top, int* right, int* bottom);
-void _glfwGetWindowContentScaleCocoa(plafWindow* window, float* xscale, float* yscale);
-void _glfwIconifyWindowCocoa(plafWindow* window);
-void _glfwRestoreWindowCocoa(plafWindow* window);
-void _glfwMaximizeWindowCocoa(plafWindow* window);
-void _glfwShowWindowCocoa(plafWindow* window);
-void _glfwHideWindowCocoa(plafWindow* window);
 void _glfwRequestWindowAttentionCocoa(plafWindow* window);
 void _glfwFocusWindowCocoa(plafWindow* window);
 void _glfwSetWindowMonitorCocoa(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
@@ -4412,24 +4337,6 @@ void _glfwTerminateNSGL(void);
 IntBool _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _glfwDestroyContextNSGL(plafWindow* window);
 #elif defined(__linux__)
-IntBool _glfwCreateWindowX11(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _glfwDestroyWindowX11(plafWindow* window);
-void _glfwSetWindowTitleX11(plafWindow* window, const char* title);
-void _glfwSetWindowIconX11(plafWindow* window, int count, const ImageData* images);
-void _glfwGetWindowPosX11(plafWindow* window, int* xpos, int* ypos);
-void _glfwSetWindowPosX11(plafWindow* window, int xpos, int ypos);
-void _glfwGetWindowSizeX11(plafWindow* window, int* width, int* height);
-void _glfwSetWindowSizeX11(plafWindow* window, int width, int height);
-void _glfwSetWindowSizeLimitsX11(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void _glfwSetWindowAspectRatioX11(plafWindow* window, int numer, int denom);
-void _glfwGetFramebufferSizeX11(plafWindow* window, int* width, int* height);
-void _glfwGetWindowFrameSizeX11(plafWindow* window, int* left, int* top, int* right, int* bottom);
-void _glfwGetWindowContentScaleX11(plafWindow* window, float* xscale, float* yscale);
-void _glfwIconifyWindowX11(plafWindow* window);
-void _glfwRestoreWindowX11(plafWindow* window);
-void _glfwMaximizeWindowX11(plafWindow* window);
-void _glfwShowWindowX11(plafWindow* window);
-void _glfwHideWindowX11(plafWindow* window);
 void _glfwRequestWindowAttentionX11(plafWindow* window);
 void _glfwFocusWindowX11(plafWindow* window);
 void _glfwSetWindowMonitorX11(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
@@ -4491,24 +4398,6 @@ void _glfwPollMonitorsWin32(void);
 void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 
-IntBool _glfwCreateWindowWin32(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _glfwDestroyWindowWin32(plafWindow* window);
-void _glfwSetWindowTitleWin32(plafWindow* window, const char* title);
-void _glfwSetWindowIconWin32(plafWindow* window, int count, const ImageData* images);
-void _glfwGetWindowPosWin32(plafWindow* window, int* xpos, int* ypos);
-void _glfwSetWindowPosWin32(plafWindow* window, int xpos, int ypos);
-void _glfwGetWindowSizeWin32(plafWindow* window, int* width, int* height);
-void _glfwSetWindowSizeWin32(plafWindow* window, int width, int height);
-void _glfwSetWindowSizeLimitsWin32(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void _glfwSetWindowAspectRatioWin32(plafWindow* window, int numer, int denom);
-void _glfwGetFramebufferSizeWin32(plafWindow* window, int* width, int* height);
-void _glfwGetWindowFrameSizeWin32(plafWindow* window, int* left, int* top, int* right, int* bottom);
-void _glfwGetWindowContentScaleWin32(plafWindow* window, float* xscale, float* yscale);
-void _glfwIconifyWindowWin32(plafWindow* window);
-void _glfwRestoreWindowWin32(plafWindow* window);
-void _glfwMaximizeWindowWin32(plafWindow* window);
-void _glfwShowWindowWin32(plafWindow* window);
-void _glfwHideWindowWin32(plafWindow* window);
 void _glfwRequestWindowAttentionWin32(plafWindow* window);
 void _glfwFocusWindowWin32(plafWindow* window);
 void _glfwSetWindowMonitorWin32(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);

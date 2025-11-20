@@ -133,7 +133,7 @@ void _glfwCenterCursorInContentArea(plafWindow* window)
 {
 	int width, height;
 
-	_glfw.platform.getWindowSize(window, &width, &height);
+	_glfwGetWindowSize(window, &width, &height);
 	_glfwSetCursorPos(window, width / 2.0, height / 2.0);
 }
 

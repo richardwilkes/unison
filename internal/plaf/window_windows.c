@@ -1186,16 +1186,12 @@ static int createNativeWindow(plafWindow* window,
 		window->win32Transparent = true;
 	}
 
-	_glfwGetWindowSizeWin32(window, &window->width, &window->height);
+	_glfwGetWindowSize(window, &window->width, &window->height);
 
 	return true;
 }
 
-IntBool _glfwCreateWindowWin32(plafWindow* window,
-								const WindowConfig* wndconfig,
-								const plafCtxCfg* ctxconfig,
-								const plafFrameBufferCfg* fbconfig)
-{
+IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	if (!createNativeWindow(window, wndconfig, fbconfig))
 		return false;
 
@@ -1213,7 +1209,7 @@ IntBool _glfwCreateWindowWin32(plafWindow* window,
 
 	if (window->monitor)
 	{
-		_glfwShowWindowWin32(window);
+		_glfwShowWindow(window);
 		_glfwFocusWindowWin32(window);
 		acquireMonitor(window);
 		fitToMonitor(window);
@@ -1222,8 +1218,7 @@ IntBool _glfwCreateWindowWin32(plafWindow* window,
 	return true;
 }
 
-void _glfwDestroyWindowWin32(plafWindow* window)
-{
+void _glfwDestroyWindow(plafWindow* window) {
 	if (window->monitor)
 		releaseMonitor(window);
 
@@ -1244,8 +1239,7 @@ void _glfwDestroyWindowWin32(plafWindow* window)
 		DestroyIcon(window->win32SmallIcon);
 }
 
-void _glfwSetWindowTitleWin32(plafWindow* window, const char* title)
-{
+void _glfwSetWindowTitle(plafWindow* window, const char* title) {
 	WCHAR* wideTitle = _glfwCreateWideStringFromUTF8Win32(title);
 	if (!wideTitle)
 		return;
@@ -1254,8 +1248,7 @@ void _glfwSetWindowTitleWin32(plafWindow* window, const char* title)
 	_glfw_free(wideTitle);
 }
 
-void _glfwSetWindowIconWin32(plafWindow* window, int count, const ImageData* images)
-{
+void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images) {
 	HICON bigIcon = NULL, smallIcon = NULL;
 
 	if (count)
@@ -1292,8 +1285,7 @@ void _glfwSetWindowIconWin32(plafWindow* window, int count, const ImageData* ima
 	}
 }
 
-void _glfwGetWindowPosWin32(plafWindow* window, int* xpos, int* ypos)
-{
+void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	POINT pos = { 0, 0 };
 	ClientToScreen(window->win32Window, &pos);
 
@@ -1303,8 +1295,7 @@ void _glfwGetWindowPosWin32(plafWindow* window, int* xpos, int* ypos)
 		*ypos = pos.y;
 }
 
-void _glfwSetWindowPosWin32(plafWindow* window, int xpos, int ypos)
-{
+void _glfwSetWindowPos(plafWindow* window, int x, int y) {
 	RECT rect = { xpos, ypos, xpos, ypos };
 
 	if (IsWindows10Version1607OrGreater())
@@ -1323,8 +1314,7 @@ void _glfwSetWindowPosWin32(plafWindow* window, int xpos, int ypos)
 				 SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
 }
 
-void _glfwGetWindowSizeWin32(plafWindow* window, int* width, int* height)
-{
+void _glfwGetWindowSize(plafWindow* window, int* width, int* height) {
 	RECT area;
 	GetClientRect(window->win32Window, &area);
 
@@ -1334,8 +1324,7 @@ void _glfwGetWindowSizeWin32(plafWindow* window, int* width, int* height)
 		*height = area.bottom;
 }
 
-void _glfwSetWindowSizeWin32(plafWindow* window, int width, int height)
-{
+void _glfwSetWindowSize(plafWindow* window, int width, int height) {
 	if (window->monitor)
 	{
 		if (window->monitor->window == window)
@@ -1366,10 +1355,7 @@ void _glfwSetWindowSizeWin32(plafWindow* window, int width, int height)
 	}
 }
 
-void _glfwSetWindowSizeLimitsWin32(plafWindow* window,
-								   int minwidth, int minheight,
-								   int maxwidth, int maxheight)
-{
+void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
 	RECT area;
 
 	if ((minwidth == DONT_CARE || minheight == DONT_CARE) &&
@@ -1385,8 +1371,7 @@ void _glfwSetWindowSizeLimitsWin32(plafWindow* window,
 			   area.bottom - area.top, TRUE);
 }
 
-void _glfwSetWindowAspectRatioWin32(plafWindow* window, int numer, int denom)
-{
+void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 	RECT area;
 
 	if (numer == DONT_CARE || denom == DONT_CARE)
@@ -1400,19 +1385,16 @@ void _glfwSetWindowAspectRatioWin32(plafWindow* window, int numer, int denom)
 			   area.bottom - area.top, TRUE);
 }
 
-void _glfwGetFramebufferSizeWin32(plafWindow* window, int* width, int* height)
+void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 {
-	_glfwGetWindowSizeWin32(window, width, height);
+	_glfwGetWindowSize(window, width, height);
 }
 
-void _glfwGetWindowFrameSizeWin32(plafWindow* window,
-								  int* left, int* top,
-								  int* right, int* bottom)
-{
+void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
 	RECT rect;
 	int width, height;
 
-	_glfwGetWindowSizeWin32(window, &width, &height);
+	_glfwGetWindowSize(window, &width, &height);
 	SetRect(&rect, 0, 0, width, height);
 
 	if (IsWindows10Version1607OrGreater())
@@ -1437,36 +1419,31 @@ void _glfwGetWindowFrameSizeWin32(plafWindow* window,
 		*bottom = rect.bottom - height;
 }
 
-void _glfwGetWindowContentScaleWin32(plafWindow* window, float* xscale, float* yscale)
-{
+void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
 	const HANDLE handle = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
 	_glfwGetHMONITORContentScaleWin32(handle, xscale, yscale);
 }
 
-void _glfwIconifyWindowWin32(plafWindow* window)
-{
+void glfwIconifyWindow(plafWindow* window) {
 	ShowWindow(window->win32Window, SW_MINIMIZE);
 }
 
-void _glfwRestoreWindowWin32(plafWindow* window)
-{
+void glfwRestoreWindow(plafWindow* window) {
 	ShowWindow(window->win32Window, SW_RESTORE);
 }
 
-void _glfwMaximizeWindowWin32(plafWindow* window)
-{
+void _glfwMaximizeWindow(plafWindow* window) {
 	if (IsWindowVisible(window->win32Window))
 		ShowWindow(window->win32Window, SW_MAXIMIZE);
 	else
 		maximizeWindowManually(window);
 }
 
-void _glfwShowWindowWin32(plafWindow* window) {
+void _glfwShowWindow(plafWindow* window) {
 	ShowWindow(window->win32Window, SW_SHOWNA);
 }
 
-void _glfwHideWindowWin32(plafWindow* window)
-{
+void _glfwHideWindow(plafWindow* window) {
 	ShowWindow(window->win32Window, SW_HIDE);
 }
 

@@ -204,7 +204,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	[window->context.nsglCtx update];
 
 	int x, y;
-	_glfwGetWindowPosCocoa(window, &x, &y);
+	_glfwGetWindowPos(window, &x, &y);
 	_glfwInputWindowPos(window, x, y);
 }
 
@@ -784,8 +784,8 @@ static IntBool createNativeWindow(plafWindow* window,
 	if ([window->nsWindow respondsToSelector:@selector(setTabbingMode:)])
 		[window->nsWindow setTabbingMode:NSWindowTabbingModeDisallowed];
 
-	_glfwGetWindowSizeCocoa(window, &window->width, &window->height);
-	_glfwGetFramebufferSizeCocoa(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
+	_glfwGetWindowSize(window, &window->width, &window->height);
+	_glfwGetFramebufferSize(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
 
 	return true;
 }
@@ -807,11 +807,7 @@ float _glfwTransformYCocoa(float y)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-IntBool _glfwCreateWindowCocoa(plafWindow* window,
-								const WindowConfig* wndconfig,
-								const plafCtxCfg* ctxconfig,
-								const plafFrameBufferCfg* fbconfig)
-{
+IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	@autoreleasepool {
 
 	if (!createNativeWindow(window, wndconfig, fbconfig))
@@ -831,7 +827,7 @@ IntBool _glfwCreateWindowCocoa(plafWindow* window,
 
 	if (window->monitor)
 	{
-		_glfwShowWindowCocoa(window);
+		_glfwShowWindow(window);
 		_glfwFocusWindowCocoa(window);
 		acquireMonitor(window);
 	}
@@ -841,8 +837,7 @@ IntBool _glfwCreateWindowCocoa(plafWindow* window,
 	} // autoreleasepool
 }
 
-void _glfwDestroyWindowCocoa(plafWindow* window)
-{
+void _glfwDestroyWindow(plafWindow* window) {
 	@autoreleasepool {
 
 	[window->nsWindow orderOut:nil];
@@ -869,8 +864,7 @@ void _glfwDestroyWindowCocoa(plafWindow* window)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowTitleCocoa(plafWindow* window, const char* title)
-{
+void _glfwSetWindowTitle(plafWindow* window, const char* title) {
 	@autoreleasepool {
 	NSString* string = @(title);
 	[window->nsWindow setTitle:string];
@@ -880,14 +874,11 @@ void _glfwSetWindowTitleCocoa(plafWindow* window, const char* title)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowIconCocoa(plafWindow* window,
-							 int count, const ImageData* images)
-{
+void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images) {
 	_glfwInputError(ERR_FEATURE_UNAVAILABLE, "Cocoa: Regular windows do not have icons on macOS");
 }
 
-void _glfwGetWindowPosCocoa(plafWindow* window, int* xpos, int* ypos)
-{
+void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	@autoreleasepool {
 
 	const NSRect contentRect =
@@ -901,8 +892,7 @@ void _glfwGetWindowPosCocoa(plafWindow* window, int* xpos, int* ypos)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowPosCocoa(plafWindow* window, int x, int y)
-{
+void _glfwSetWindowPos(plafWindow* window, int x, int y) {
 	@autoreleasepool {
 
 	const NSRect contentRect = [window->nsView frame];
@@ -913,8 +903,7 @@ void _glfwSetWindowPosCocoa(plafWindow* window, int x, int y)
 	} // autoreleasepool
 }
 
-void _glfwGetWindowSizeCocoa(plafWindow* window, int* width, int* height)
-{
+void _glfwGetWindowSize(plafWindow* window, int* width, int* height) {
 	@autoreleasepool {
 
 	const NSRect contentRect = [window->nsView frame];
@@ -927,8 +916,7 @@ void _glfwGetWindowSizeCocoa(plafWindow* window, int* width, int* height)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowSizeCocoa(plafWindow* window, int width, int height)
-{
+void _glfwSetWindowSize(plafWindow* window, int width, int height) {
 	@autoreleasepool {
 
 	if (window->monitor)
@@ -948,10 +936,7 @@ void _glfwSetWindowSizeCocoa(plafWindow* window, int width, int height)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowSizeLimitsCocoa(plafWindow* window,
-								   int minwidth, int minheight,
-								   int maxwidth, int maxheight)
-{
+void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
 	@autoreleasepool {
 
 	if (minwidth == DONT_CARE || minheight == DONT_CARE)
@@ -967,8 +952,7 @@ void _glfwSetWindowSizeLimitsCocoa(plafWindow* window,
 	} // autoreleasepool
 }
 
-void _glfwSetWindowAspectRatioCocoa(plafWindow* window, int numer, int denom)
-{
+void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 	@autoreleasepool {
 	if (numer == DONT_CARE || denom == DONT_CARE)
 		[window->nsWindow setResizeIncrements:NSMakeSize(1.0, 1.0)];
@@ -977,8 +961,7 @@ void _glfwSetWindowAspectRatioCocoa(plafWindow* window, int numer, int denom)
 	} // autoreleasepool
 }
 
-void _glfwGetFramebufferSizeCocoa(plafWindow* window, int* width, int* height)
-{
+void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	@autoreleasepool {
 
 	const NSRect contentRect = [window->nsView frame];
@@ -992,10 +975,7 @@ void _glfwGetFramebufferSizeCocoa(plafWindow* window, int* width, int* height)
 	} // autoreleasepool
 }
 
-void _glfwGetWindowFrameSizeCocoa(plafWindow* window,
-								  int* left, int* top,
-								  int* right, int* bottom)
-{
+void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
 	@autoreleasepool {
 
 	const NSRect contentRect = [window->nsView frame];
@@ -1015,9 +995,7 @@ void _glfwGetWindowFrameSizeCocoa(plafWindow* window,
 	} // autoreleasepool
 }
 
-void _glfwGetWindowContentScaleCocoa(plafWindow* window,
-									 float* xscale, float* yscale)
-{
+void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
 	@autoreleasepool {
 
 	const NSRect points = [window->nsView frame];
@@ -1031,15 +1009,13 @@ void _glfwGetWindowContentScaleCocoa(plafWindow* window,
 	} // autoreleasepool
 }
 
-void _glfwIconifyWindowCocoa(plafWindow* window)
-{
+void glfwIconifyWindow(plafWindow* window) {
 	@autoreleasepool {
 	[window->nsWindow miniaturize:nil];
 	} // autoreleasepool
 }
 
-void _glfwRestoreWindowCocoa(plafWindow* window)
-{
+void glfwRestoreWindow(plafWindow* window) {
 	@autoreleasepool {
 	if ([window->nsWindow isMiniaturized])
 		[window->nsWindow deminiaturize:nil];
@@ -1048,23 +1024,20 @@ void _glfwRestoreWindowCocoa(plafWindow* window)
 	} // autoreleasepool
 }
 
-void _glfwMaximizeWindowCocoa(plafWindow* window)
-{
+void _glfwMaximizeWindow(plafWindow* window) {
 	@autoreleasepool {
 	if (![window->nsWindow isZoomed])
 		[window->nsWindow zoom:nil];
 	} // autoreleasepool
 }
 
-void _glfwShowWindowCocoa(plafWindow* window)
-{
+void _glfwShowWindow(plafWindow* window) {
 	@autoreleasepool {
 	[window->nsWindow orderFront:nil];
 	} // autoreleasepool
 }
 
-void _glfwHideWindowCocoa(plafWindow* window)
-{
+void _glfwHideWindow(plafWindow* window) {
 	@autoreleasepool {
 	[window->nsWindow orderOut:nil];
 	} // autoreleasepool

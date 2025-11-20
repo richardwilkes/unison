@@ -90,10 +90,10 @@ void _glfwInputMonitor(plafMonitor* monitor, int action, int placement)
             if (window->monitor == monitor)
             {
                 int width, height, xoff, yoff;
-                _glfw.platform.getWindowSize(window, &width, &height);
+                _glfwGetWindowSize(window, &width, &height);
                 _glfw.platform.setWindowMonitor(window, NULL, 0, 0, width, height, 0);
-                _glfw.platform.getWindowFrameSize(window, &xoff, &yoff, NULL, NULL);
-                _glfw.platform.setWindowPos(window, xoff, yoff);
+                _glfwGetWindowFrameSize(window, &xoff, &yoff, NULL, NULL);
+                _glfwSetWindowPos(window, xoff, yoff);
             }
         }
 

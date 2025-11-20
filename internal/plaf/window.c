@@ -169,8 +169,7 @@ plafWindow* glfwCreateWindow(int width, int height,
 	window->denom       = DONT_CARE;
 	window->title       = _glfw_strdup(title);
 
-	if (!_glfw.platform.createWindow(window, &wndconfig, &ctxconfig, &fbconfig))
-	{
+	if (!_glfwCreateWindow(window, &wndconfig, &ctxconfig, &fbconfig)) {
 		glfwDestroyWindow(window);
 		return NULL;
 	}
@@ -349,7 +348,7 @@ void glfwDestroyWindow(plafWindow* window)
 	if (window == _glfw.contextSlot)
 		glfwMakeContextCurrent(NULL);
 
-	_glfw.platform.destroyWindow(window);
+	_glfwDestroyWindow(window);
 
 	// Unlink window from global linked list
 	{
@@ -380,8 +379,7 @@ const char* glfwGetWindowTitle(plafWindow* window) {
 void glfwSetWindowTitle(plafWindow* window, const char* title) {
 	char* prev = window->title;
 	window->title = _glfw_strdup(title);
-
-	_glfw.platform.setWindowTitle(window, title);
+	_glfwSetWindowTitle(window, window->title);
 	_glfw_free(prev);
 }
 
@@ -404,7 +402,7 @@ void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images)
 		}
 	}
 
-	_glfw.platform.setWindowIcon(window, count, images);
+	_glfwSetWindowIcon(window, count, images);
 }
 
 void glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
@@ -412,13 +410,14 @@ void glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 		*xpos = 0;
 	if (ypos)
 		*ypos = 0;
-	_glfw.platform.getWindowPos(window, xpos, ypos);
+	_glfwGetWindowPos(window, xpos, ypos);
 }
 
 void glfwSetWindowPos(plafWindow* window, int xpos, int ypos) {
-	if (window->monitor)
+	if (window->monitor) {
 		return;
-	_glfw.platform.setWindowPos(window, xpos, ypos);
+	}
+	_glfwSetWindowPos(window, xpos, ypos);
 }
 
 void glfwGetWindowSize(plafWindow* window, int* width, int* height) {
@@ -426,13 +425,13 @@ void glfwGetWindowSize(plafWindow* window, int* width, int* height) {
 		*width = 0;
 	if (height)
 		*height = 0;
-	_glfw.platform.getWindowSize(window, width, height);
+	_glfwGetWindowSize(window, width, height);
 }
 
 void glfwSetWindowSize(plafWindow* window, int width, int height) {
 	window->videoMode.width  = width;
 	window->videoMode.height = height;
-	_glfw.platform.setWindowSize(window, width, height);
+	_glfwSetWindowSize(window, width, height);
 }
 
 void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight)
@@ -464,9 +463,7 @@ void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
 	if (window->monitor || !window->resizable)
 		return;
 
-	_glfw.platform.setWindowSizeLimits(window,
-									   minwidth, minheight,
-									   maxwidth, maxheight);
+	_glfwSetWindowSizeLimits(window, minwidth, minheight, maxwidth, maxheight);
 }
 
 void glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
@@ -485,7 +482,7 @@ void glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 	if (window->monitor || !window->resizable)
 		return;
 
-	_glfw.platform.setWindowAspectRatio(window, numer, denom);
+	_glfwSetWindowAspectRatio(window, numer, denom);
 }
 
 void glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
@@ -493,7 +490,7 @@ void glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 		*width = 0;
 	if (height)
 		*height = 0;
-	_glfw.platform.getFramebufferSize(window, width, height);
+	_glfwGetFramebufferSize(window, width, height);
 }
 
 void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
@@ -505,7 +502,7 @@ void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right,
 		*right = 0;
 	if (bottom)
 		*bottom = 0;
-	_glfw.platform.getWindowFrameSize(window, left, top, right, bottom);
+	_glfwGetWindowFrameSize(window, left, top, right, bottom);
 }
 
 void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
@@ -513,7 +510,7 @@ void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale)
 		*xscale = 0.f;
 	if (yscale)
 		*yscale = 0.f;
-	_glfw.platform.getWindowContentScale(window, xscale, yscale);
+	_glfwGetWindowContentScale(window, xscale, yscale);
 }
 
 float glfwGetWindowOpacity(plafWindow* window) {
@@ -530,24 +527,16 @@ void glfwSetWindowOpacity(plafWindow* window, float opacity) {
 	_glfw.platform.setWindowOpacity(window, opacity);
 }
 
-void glfwIconifyWindow(plafWindow* window) {
-	_glfw.platform.iconifyWindow(window);
-}
-
-void glfwRestoreWindow(plafWindow* window) {
-	_glfw.platform.restoreWindow(window);
-}
-
 void glfwMaximizeWindow(plafWindow* window) {
 	if (window->monitor)
 		return;
 
-	_glfw.platform.maximizeWindow(window);
+	_glfwMaximizeWindow(window);
 }
 
 void glfwShowWindow(plafWindow* window) {
 	if (!window->monitor) {
-		_glfw.platform.showWindow(window);
+		_glfwShowWindow(window);
 	}
 }
 
@@ -559,7 +548,7 @@ void glfwHideWindow(plafWindow* window) {
 	if (window->monitor)
 		return;
 
-	_glfw.platform.hideWindow(window);
+	_glfwHideWindow(window);
 }
 
 void glfwFocusWindow(plafWindow* window) {

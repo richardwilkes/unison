@@ -1451,9 +1451,9 @@ static IntBool createNativeWindow(plafWindow* window,
 	if (_glfw.x11IM)
 		_glfwCreateInputContextX11(window);
 
-	_glfwSetWindowTitleX11(window, window->title);
-	_glfwGetWindowPosX11(window, &window->x11XPos, &window->x11YPos);
-	_glfwGetWindowSizeX11(window, &window->width, &window->height);
+	_glfwSetWindowTitle(window, window->title);
+	_glfwGetWindowPos(window, &window->x11XPos, &window->x11YPos);
+	_glfwGetWindowSize(window, &window->width, &window->height);
 
 	return true;
 }
@@ -2451,11 +2451,7 @@ void _glfwCreateInputContextX11(plafWindow* window)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-IntBool _glfwCreateWindowX11(plafWindow* window,
-							  const WindowConfig* wndconfig,
-							  const plafCtxCfg* ctxconfig,
-							  const plafFrameBufferCfg* fbconfig)
-{
+IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	Visual* visual = NULL;
 	int depth;
 
@@ -2485,7 +2481,7 @@ IntBool _glfwCreateWindowX11(plafWindow* window,
 
 	if (window->monitor)
 	{
-		_glfwShowWindowX11(window);
+		_glfwShowWindow(window);
 		updateWindowMode(window);
 		acquireMonitor(window);
 	}
@@ -2494,8 +2490,7 @@ IntBool _glfwCreateWindowX11(plafWindow* window,
 	return true;
 }
 
-void _glfwDestroyWindowX11(plafWindow* window)
-{
+void _glfwDestroyWindow(plafWindow* window) {
 	if (window->monitor)
 		releaseMonitor(window);
 
@@ -2525,8 +2520,7 @@ void _glfwDestroyWindowX11(plafWindow* window)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwSetWindowTitleX11(plafWindow* window, const char* title)
-{
+void _glfwSetWindowTitle(plafWindow* window, const char* title) {
 	if (_glfw.xlibUTF8)
 	{
 		_glfw.xlibUTF8SetWMProperties(_glfw.x11Display,
@@ -2549,8 +2543,7 @@ void _glfwSetWindowTitleX11(plafWindow* window, const char* title)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwSetWindowIconX11(plafWindow* window, int count, const ImageData* images)
-{
+void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images) {
 	if (count)
 	{
 		int longCount = 0;
@@ -2599,8 +2592,7 @@ void _glfwSetWindowIconX11(plafWindow* window, int count, const ImageData* image
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwGetWindowPosX11(plafWindow* window, int* xpos, int* ypos)
-{
+void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	Window dummy;
 	int x, y;
 
@@ -2613,8 +2605,7 @@ void _glfwGetWindowPosX11(plafWindow* window, int* xpos, int* ypos)
 		*ypos = y;
 }
 
-void _glfwSetWindowPosX11(plafWindow* window, int xpos, int ypos)
-{
+void _glfwSetWindowPos(plafWindow* window, int x, int y) {
 	// HACK: Explicitly setting PPosition to any value causes some WMs, notably
 	//       Compiz and Metacity, to honor the position of unmapped windows
 	if (!_glfwWindowVisibleX11(window))
@@ -2637,8 +2628,7 @@ void _glfwSetWindowPosX11(plafWindow* window, int xpos, int ypos)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwGetWindowSizeX11(plafWindow* window, int* width, int* height)
-{
+void _glfwGetWindowSize(plafWindow* window, int* width, int* height) {
 	XWindowAttributes attribs;
 	_glfw.xlibGetWindowAttributes(_glfw.x11Display, window->x11Window, &attribs);
 
@@ -2648,8 +2638,7 @@ void _glfwGetWindowSizeX11(plafWindow* window, int* width, int* height)
 		*height = attribs.height;
 }
 
-void _glfwSetWindowSizeX11(plafWindow* window, int width, int height)
-{
+void _glfwSetWindowSize(plafWindow* window, int width, int height) {
 	if (window->monitor)
 	{
 		if (window->monitor->window == window)
@@ -2666,33 +2655,26 @@ void _glfwSetWindowSizeX11(plafWindow* window, int width, int height)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwSetWindowSizeLimitsX11(plafWindow* window,
-								 int minwidth, int minheight,
-								 int maxwidth, int maxheight)
-{
+void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
 	int width, height;
-	_glfwGetWindowSizeX11(window, &width, &height);
+	_glfwGetWindowSize(window, &width, &height);
 	updateNormalHints(window, width, height);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwSetWindowAspectRatioX11(plafWindow* window, int numer, int denom)
-{
+void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 	int width, height;
-	_glfwGetWindowSizeX11(window, &width, &height);
+	_glfwGetWindowSize(window, &width, &height);
 	updateNormalHints(window, width, height);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwGetFramebufferSizeX11(plafWindow* window, int* width, int* height)
+void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 {
-	_glfwGetWindowSizeX11(window, width, height);
+	_glfwGetWindowSize(window, width, height);
 }
 
-void _glfwGetWindowFrameSizeX11(plafWindow* window,
-								int* left, int* top,
-								int* right, int* bottom)
-{
+void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
 	long* extents = NULL;
 
 	if (window->monitor || !window->decorated)
@@ -2748,16 +2730,14 @@ void _glfwGetWindowFrameSizeX11(plafWindow* window,
 		_glfw.xlibFree(extents);
 }
 
-void _glfwGetWindowContentScaleX11(plafWindow* window, float* xscale, float* yscale)
-{
+void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
 	if (xscale)
 		*xscale = _glfw.x11ContentScaleX;
 	if (yscale)
 		*yscale = _glfw.x11ContentScaleY;
 }
 
-void _glfwIconifyWindowX11(plafWindow* window)
-{
+void glfwIconifyWindow(plafWindow* window) {
 	if (window->x11OverrideRedirect)
 	{
 		// Override-redirect windows cannot be iconified or restored, as those
@@ -2770,8 +2750,7 @@ void _glfwIconifyWindowX11(plafWindow* window)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwRestoreWindowX11(plafWindow* window)
-{
+void glfwRestoreWindow(plafWindow* window) {
 	if (window->x11OverrideRedirect)
 	{
 		// Override-redirect windows cannot be iconified or restored, as those
@@ -2803,8 +2782,7 @@ void _glfwRestoreWindowX11(plafWindow* window)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwMaximizeWindowX11(plafWindow* window)
-{
+void _glfwMaximizeWindow(plafWindow* window) {
 	if (!_glfw.x11NET_WM_STATE ||
 		!_glfw.x11NET_WM_STATE_MAXIMIZED_VERT ||
 		!_glfw.x11NET_WM_STATE_MAXIMIZED_HORZ)
@@ -2868,8 +2846,7 @@ void _glfwMaximizeWindowX11(plafWindow* window)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwShowWindowX11(plafWindow* window)
-{
+void _glfwShowWindow(plafWindow* window) {
 	if (_glfwWindowVisibleX11(window))
 		return;
 
@@ -2877,8 +2854,7 @@ void _glfwShowWindowX11(plafWindow* window)
 	waitForVisibilityNotify(window);
 }
 
-void _glfwHideWindowX11(plafWindow* window)
-{
+void _glfwHideWindow(plafWindow* window) {
 	_glfw.xlibUnmapWindow(_glfw.x11Display, window->x11Window);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
@@ -3059,7 +3035,7 @@ IntBool _glfwFramebufferTransparentX11(plafWindow* window)
 void _glfwSetWindowResizableX11(plafWindow* window, IntBool enabled)
 {
 	int width, height;
-	_glfwGetWindowSizeX11(window, &width, &height);
+	_glfwGetWindowSize(window, &width, &height);
 	updateNormalHints(window, width, height);
 }
 

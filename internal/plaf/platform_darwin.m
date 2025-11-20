@@ -168,24 +168,6 @@ static void createKeyTables(void) {
 @end // GLFWApplicationDelegate
 
 ErrorResponse* platformInit(_GLFWplatform* platform) {
-	platform->createWindow = _glfwCreateWindowCocoa;
-	platform->destroyWindow = _glfwDestroyWindowCocoa;
-	platform->setWindowTitle = _glfwSetWindowTitleCocoa;
-	platform->setWindowIcon = _glfwSetWindowIconCocoa;
-	platform->getWindowPos = _glfwGetWindowPosCocoa;
-	platform->setWindowPos = _glfwSetWindowPosCocoa;
-	platform->getWindowSize = _glfwGetWindowSizeCocoa;
-	platform->setWindowSize = _glfwSetWindowSizeCocoa;
-	platform->setWindowSizeLimits = _glfwSetWindowSizeLimitsCocoa;
-	platform->setWindowAspectRatio = _glfwSetWindowAspectRatioCocoa;
-	platform->getFramebufferSize = _glfwGetFramebufferSizeCocoa;
-	platform->getWindowFrameSize = _glfwGetWindowFrameSizeCocoa;
-	platform->getWindowContentScale = _glfwGetWindowContentScaleCocoa;
-	platform->iconifyWindow = _glfwIconifyWindowCocoa;
-	platform->restoreWindow = _glfwRestoreWindowCocoa;
-	platform->maximizeWindow = _glfwMaximizeWindowCocoa;
-	platform->showWindow = _glfwShowWindowCocoa;
-	platform->hideWindow = _glfwHideWindowCocoa;
 	platform->requestWindowAttention = _glfwRequestWindowAttentionCocoa;
 	platform->focusWindow = _glfwFocusWindowCocoa;
 	platform->setWindowMonitor = _glfwSetWindowMonitorCocoa;

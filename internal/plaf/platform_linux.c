@@ -1069,24 +1069,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 	_glfw.x11Display = display;
 	_glfw.xlibHandle = module;
 
-	platform->createWindow = _glfwCreateWindowX11;
-	platform->destroyWindow = _glfwDestroyWindowX11;
-	platform->setWindowTitle = _glfwSetWindowTitleX11;
-	platform->setWindowIcon = _glfwSetWindowIconX11;
-	platform->getWindowPos = _glfwGetWindowPosX11;
-	platform->setWindowPos = _glfwSetWindowPosX11;
-	platform->getWindowSize = _glfwGetWindowSizeX11;
-	platform->setWindowSize = _glfwSetWindowSizeX11;
-	platform->setWindowSizeLimits = _glfwSetWindowSizeLimitsX11;
-	platform->setWindowAspectRatio = _glfwSetWindowAspectRatioX11;
-	platform->getFramebufferSize = _glfwGetFramebufferSizeX11;
-	platform->getWindowFrameSize = _glfwGetWindowFrameSizeX11;
-	platform->getWindowContentScale = _glfwGetWindowContentScaleX11;
-	platform->iconifyWindow = _glfwIconifyWindowX11;
-	platform->restoreWindow = _glfwRestoreWindowX11;
-	platform->maximizeWindow = _glfwMaximizeWindowX11;
-	platform->showWindow = _glfwShowWindowX11;
-	platform->hideWindow = _glfwHideWindowX11;
 	platform->requestWindowAttention = _glfwRequestWindowAttentionX11;
 	platform->focusWindow = _glfwFocusWindowX11;
 	platform->setWindowMonitor = _glfwSetWindowMonitorX11;

@@ -378,24 +378,6 @@ BOOL IsWindows10BuildOrGreater(WORD build)
 
 ErrorResponse* platformInit(_GLFWplatform* platform)
 {
-	platform->createWindow = _glfwCreateWindowWin32;
-	platform->destroyWindow = _glfwDestroyWindowWin32;
-	platform->setWindowTitle = _glfwSetWindowTitleWin32;
-	platform->setWindowIcon = _glfwSetWindowIconWin32;
-	platform->getWindowPos = _glfwGetWindowPosWin32;
-	platform->setWindowPos = _glfwSetWindowPosWin32;
-	platform->getWindowSize = _glfwGetWindowSizeWin32;
-	platform->setWindowSize = _glfwSetWindowSizeWin32;
-	platform->setWindowSizeLimits = _glfwSetWindowSizeLimitsWin32;
-	platform->setWindowAspectRatio = _glfwSetWindowAspectRatioWin32;
-	platform->getFramebufferSize = _glfwGetFramebufferSizeWin32;
-	platform->getWindowFrameSize = _glfwGetWindowFrameSizeWin32;
-	platform->getWindowContentScale = _glfwGetWindowContentScaleWin32;
-	platform->iconifyWindow = _glfwIconifyWindowWin32;
-	platform->restoreWindow = _glfwRestoreWindowWin32;
-	platform->maximizeWindow = _glfwMaximizeWindowWin32;
-	platform->showWindow = _glfwShowWindowWin32;
-	platform->hideWindow = _glfwHideWindowWin32;
 	platform->requestWindowAttention = _glfwRequestWindowAttentionWin32;
 	platform->focusWindow = _glfwFocusWindowWin32;
 	platform->setWindowMonitor = _glfwSetWindowMonitorWin32;
