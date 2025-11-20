@@ -242,7 +242,7 @@ ErrorResponse* glfwInit(void) {
         return NULL;
 	}
 	memset(&_glfw, 0, sizeof(_glfw));
-	ErrorResponse* errRsp = platformInit(&_glfw.platform);
+	ErrorResponse* errRsp = platformInit();
 	if (errRsp != NULL) {
 		return errRsp;
 	}

@@ -4,7 +4,7 @@ void glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	if (xpos != xpos || xpos < -DBL_MAX || xpos > DBL_MAX || ypos != ypos || ypos < -DBL_MAX || ypos > DBL_MAX) {
 		return;
 	}
-	if (!_glfw.platform.windowFocused(window)) {
+	if (!_glfwWindowFocused(window)) {
 		return;
 	}
 	_glfwSetCursorPos(window, xpos, ypos);

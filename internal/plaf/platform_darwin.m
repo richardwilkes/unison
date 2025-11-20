@@ -155,7 +155,7 @@ static void createKeyTables(void) {
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    _glfwPostEmptyEventCocoa();
+    glfwPostEmptyEvent();
     [NSApp stop:nil];
 }
 
@@ -167,27 +167,7 @@ static void createKeyTables(void) {
 
 @end // GLFWApplicationDelegate
 
-ErrorResponse* platformInit(_GLFWplatform* platform) {
-	platform->requestWindowAttention = _glfwRequestWindowAttentionCocoa;
-	platform->focusWindow = _glfwFocusWindowCocoa;
-	platform->setWindowMonitor = _glfwSetWindowMonitorCocoa;
-	platform->windowFocused = _glfwWindowFocusedCocoa;
-	platform->windowIconified = _glfwWindowIconifiedCocoa;
-	platform->windowVisible = _glfwWindowVisibleCocoa;
-	platform->windowMaximized = _glfwWindowMaximizedCocoa;
-	platform->windowHovered = _glfwWindowHoveredCocoa;
-	platform->framebufferTransparent = _glfwFramebufferTransparentCocoa;
-	platform->getWindowOpacity = _glfwGetWindowOpacityCocoa;
-	platform->setWindowResizable = _glfwSetWindowResizableCocoa;
-	platform->setWindowDecorated = _glfwSetWindowDecoratedCocoa;
-	platform->setWindowFloating = _glfwSetWindowFloatingCocoa;
-	platform->setWindowOpacity = _glfwSetWindowOpacityCocoa;
-	platform->setWindowMousePassthrough = _glfwSetWindowMousePassthroughCocoa;
-	platform->pollEvents = _glfwPollEventsCocoa;
-	platform->waitEvents = _glfwWaitEventsCocoa;
-	platform->waitEventsTimeout = _glfwWaitEventsTimeoutCocoa;
-	platform->postEmptyEvent = _glfwPostEmptyEventCocoa;
-
+ErrorResponse* platformInit(void) {
 	@autoreleasepool {
 		[NSApplication sharedApplication];
 

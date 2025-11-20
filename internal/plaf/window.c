@@ -513,10 +513,6 @@ void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale)
 	_glfwGetWindowContentScale(window, xscale, yscale);
 }
 
-float glfwGetWindowOpacity(plafWindow* window) {
-	return _glfw.platform.getWindowOpacity(window);
-}
-
 void glfwSetWindowOpacity(plafWindow* window, float opacity) {
 	if (opacity != opacity || opacity < 0.f || opacity > 1.f)
 	{
@@ -524,7 +520,7 @@ void glfwSetWindowOpacity(plafWindow* window, float opacity) {
 		return;
 	}
 
-	_glfw.platform.setWindowOpacity(window, opacity);
+	_glfwSetWindowOpacity(window, opacity);
 }
 
 void glfwMaximizeWindow(plafWindow* window) {
@@ -540,10 +536,6 @@ void glfwShowWindow(plafWindow* window) {
 	}
 }
 
-void glfwRequestWindowAttention(plafWindow* window) {
-	_glfw.platform.requestWindowAttention(window);
-}
-
 void glfwHideWindow(plafWindow* window) {
 	if (window->monitor)
 		return;
@@ -551,27 +543,23 @@ void glfwHideWindow(plafWindow* window) {
 	_glfwHideWindow(window);
 }
 
-void glfwFocusWindow(plafWindow* window) {
-	_glfw.platform.focusWindow(window);
-}
-
 int glfwGetWindowAttrib(plafWindow* window, int attrib) {
 	switch (attrib)
 	{
 		case WINDOW_ATTR_FOCUSED:
-			return _glfw.platform.windowFocused(window);
+			return _glfwWindowFocused(window);
 		case WINDOW_ATTR_ICONIFIED:
-			return _glfw.platform.windowIconified(window);
+			return _glfwWindowIconified(window);
 		case WINDOW_ATTR_VISIBLE:
-			return _glfw.platform.windowVisible(window);
+			return _glfwWindowVisible(window);
 		case WINDOW_ATTR_HINT_MAXIMIZED:
-			return _glfw.platform.windowMaximized(window);
+			return _glfwWindowMaximized(window);
 		case WINDOW_ATTR_HOVERED:
-			return _glfw.platform.windowHovered(window);
+			return _glfwWindowHovered(window);
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
 			return window->mousePassthrough;
 		case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
-			return _glfw.platform.framebufferTransparent(window);
+			return _glfwFramebufferTransparent(window);
 		case WINDOW_ATTR_HINT_RESIZABLE:
 			return window->resizable;
 		case WINDOW_ATTR_HINT_DECORATED:
@@ -612,24 +600,24 @@ void glfwSetWindowAttrib(plafWindow* window, int attrib, int value) {
 		case WINDOW_ATTR_HINT_RESIZABLE:
 			window->resizable = value;
 			if (!window->monitor)
-				_glfw.platform.setWindowResizable(window, value);
+				_glfwSetWindowResizable(window, value);
 			return;
 
 		case WINDOW_ATTR_HINT_DECORATED:
 			window->decorated = value;
 			if (!window->monitor)
-				_glfw.platform.setWindowDecorated(window, value);
+				_glfwSetWindowDecorated(window, value);
 			return;
 
 		case WINDOW_ATTR_HINT_FLOATING:
 			window->floating = value;
 			if (!window->monitor)
-				_glfw.platform.setWindowFloating(window, value);
+				_glfwSetWindowFloating(window, value);
 			return;
 
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
 			window->mousePassthrough = value;
-			_glfw.platform.setWindowMousePassthrough(window, value);
+			_glfwSetWindowMousePassthrough(window, value);
 			return;
 	}
 
@@ -656,7 +644,7 @@ void glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, in
 	window->videoMode.width       = width;
 	window->videoMode.height      = height;
 	window->videoMode.refreshRate = refreshRate;
-	_glfw.platform.setWindowMonitor(window, monitor, xpos, ypos, width, height, refreshRate);
+	_glfwSetWindowMonitor(window, monitor, xpos, ypos, width, height, refreshRate);
 }
 
 windowPosFunc glfwSetWindowPosCallback(plafWindow* window, windowPosFunc cbfun) {
@@ -704,16 +692,6 @@ windowContextScaleFunc glfwSetWindowContentScaleCallback(plafWindow* window, win
 	return cbfun;
 }
 
-void glfwPollEvents(void)
-{
-	_glfw.platform.pollEvents();
-}
-
-void glfwWaitEvents(void)
-{
-	_glfw.platform.waitEvents();
-}
-
 void glfwWaitEventsTimeout(double timeout)
 {
 	if (timeout != timeout || timeout < 0.0 || timeout > DBL_MAX)
@@ -721,11 +699,5 @@ void glfwWaitEventsTimeout(double timeout)
 		_glfwInputError(ERR_INVALID_VALUE, "Invalid time %f", timeout);
 		return;
 	}
-
-	_glfw.platform.waitEventsTimeout(timeout);
-}
-
-void glfwPostEmptyEvent(void)
-{
-	_glfw.platform.postEmptyEvent();
+	_glfwWaitEventsTimeout(timeout);
 }

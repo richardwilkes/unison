@@ -823,12 +823,12 @@ IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, con
 		return false;
 
 	if (wndconfig->mousePassthrough)
-		_glfwSetWindowMousePassthroughCocoa(window, true);
+		_glfwSetWindowMousePassthrough(window, true);
 
 	if (window->monitor)
 	{
 		_glfwShowWindow(window);
-		_glfwFocusWindowCocoa(window);
+		glfwFocusWindow(window);
 		acquireMonitor(window);
 	}
 
@@ -859,7 +859,7 @@ void _glfwDestroyWindow(plafWindow* window) {
 	window->nsWindow = nil;
 
 	// HACK: Allow Cocoa to catch up before returning
-	_glfwPollEventsCocoa();
+	glfwPollEvents();
 
 	} // autoreleasepool
 }
@@ -1043,15 +1043,13 @@ void _glfwHideWindow(plafWindow* window) {
 	} // autoreleasepool
 }
 
-void _glfwRequestWindowAttentionCocoa(plafWindow* window)
-{
+void glfwRequestWindowAttention(plafWindow* window) {
 	@autoreleasepool {
 	[NSApp requestUserAttention:NSInformationalRequest];
 	} // autoreleasepool
 }
 
-void _glfwFocusWindowCocoa(plafWindow* window)
-{
+void glfwFocusWindow(plafWindow* window) {
 	@autoreleasepool {
 	// Make us the active application
 	// HACK: This is here to prevent applications using only hidden windows from
@@ -1062,12 +1060,7 @@ void _glfwFocusWindowCocoa(plafWindow* window)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowMonitorCocoa(plafWindow* window,
-								plafMonitor* monitor,
-								int xpos, int ypos,
-								int width, int height,
-								int refreshRate)
-{
+void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
 	@autoreleasepool {
 
 	if (window->monitor == monitor)
@@ -1095,7 +1088,7 @@ void _glfwSetWindowMonitorCocoa(plafWindow* window,
 
 	// HACK: Allow the state cached in Cocoa to catch up to reality
 	// TODO: Solve this in a less terrible way
-	_glfwPollEventsCocoa();
+	glfwPollEvents();
 
 	NSUInteger styleMask = [window->nsWindow styleMask];
 
@@ -1185,29 +1178,25 @@ void _glfwSetWindowMonitorCocoa(plafWindow* window,
 	} // autoreleasepool
 }
 
-IntBool _glfwWindowFocusedCocoa(plafWindow* window)
-{
+IntBool _glfwWindowFocused(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isKeyWindow];
 	} // autoreleasepool
 }
 
-IntBool _glfwWindowIconifiedCocoa(plafWindow* window)
-{
+IntBool _glfwWindowIconified(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isMiniaturized];
 	} // autoreleasepool
 }
 
-IntBool _glfwWindowVisibleCocoa(plafWindow* window)
-{
+IntBool _glfwWindowVisible(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isVisible];
 	} // autoreleasepool
 }
 
-IntBool _glfwWindowMaximizedCocoa(plafWindow* window)
-{
+IntBool _glfwWindowMaximized(plafWindow* window) {
 	@autoreleasepool {
 
 	if (window->resizable)
@@ -1218,8 +1207,7 @@ IntBool _glfwWindowMaximizedCocoa(plafWindow* window)
 	} // autoreleasepool
 }
 
-IntBool _glfwWindowHoveredCocoa(plafWindow* window)
-{
+IntBool _glfwWindowHovered(plafWindow* window) {
 	@autoreleasepool {
 
 	const NSPoint point = [NSEvent mouseLocation];
@@ -1236,15 +1224,13 @@ IntBool _glfwWindowHoveredCocoa(plafWindow* window)
 	} // autoreleasepool
 }
 
-IntBool _glfwFramebufferTransparentCocoa(plafWindow* window)
-{
+IntBool _glfwFramebufferTransparent(plafWindow* window) {
 	@autoreleasepool {
 	return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
 	} // autoreleasepool
 }
 
-void _glfwSetWindowResizableCocoa(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowResizable(plafWindow* window, IntBool enabled) {
 	@autoreleasepool {
 
 	const NSUInteger styleMask = [window->nsWindow styleMask];
@@ -1267,8 +1253,7 @@ void _glfwSetWindowResizableCocoa(plafWindow* window, IntBool enabled)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowDecoratedCocoa(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowDecorated(plafWindow* window, IntBool enabled) {
 	@autoreleasepool {
 
 	NSUInteger styleMask = [window->nsWindow styleMask];
@@ -1289,8 +1274,7 @@ void _glfwSetWindowDecoratedCocoa(plafWindow* window, IntBool enabled)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowFloatingCocoa(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowFloating(plafWindow* window, IntBool enabled) {
 	@autoreleasepool {
 	if (enabled)
 		[window->nsWindow setLevel:NSFloatingWindowLevel];
@@ -1299,29 +1283,25 @@ void _glfwSetWindowFloatingCocoa(plafWindow* window, IntBool enabled)
 	} // autoreleasepool
 }
 
-void _glfwSetWindowMousePassthroughCocoa(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowMousePassthrough(plafWindow* window, IntBool enabled) {
 	@autoreleasepool {
 	[window->nsWindow setIgnoresMouseEvents:enabled];
 	}
 }
 
-float _glfwGetWindowOpacityCocoa(plafWindow* window)
-{
+float glfwGetWindowOpacity(plafWindow* window) {
 	@autoreleasepool {
 	return (float) [window->nsWindow alphaValue];
 	} // autoreleasepool
 }
 
-void _glfwSetWindowOpacityCocoa(plafWindow* window, float opacity)
-{
+void _glfwSetWindowOpacity(plafWindow* window, float opacity) {
 	@autoreleasepool {
 	[window->nsWindow setAlphaValue:opacity];
 	} // autoreleasepool
 }
 
-void _glfwPollEventsCocoa(void)
-{
+void glfwPollEvents(void) {
 	@autoreleasepool {
 
 	for (;;)
@@ -1339,8 +1319,7 @@ void _glfwPollEventsCocoa(void)
 	} // autoreleasepool
 }
 
-void _glfwWaitEventsCocoa(void)
-{
+void glfwWaitEvents(void) {
 	@autoreleasepool {
 
 	// I wanted to pass NO to dequeue:, and rely on PollEvents to
@@ -1352,13 +1331,12 @@ void _glfwWaitEventsCocoa(void)
 										  dequeue:YES];
 	[NSApp sendEvent:event];
 
-	_glfwPollEventsCocoa();
+	glfwPollEvents();
 
 	} // autoreleasepool
 }
 
-void _glfwWaitEventsTimeoutCocoa(double timeout)
-{
+void _glfwWaitEventsTimeout(double timeout) {
 	@autoreleasepool {
 
 	NSDate* date = [NSDate dateWithTimeIntervalSinceNow:timeout];
@@ -1369,13 +1347,12 @@ void _glfwWaitEventsTimeoutCocoa(double timeout)
 	if (event)
 		[NSApp sendEvent:event];
 
-	_glfwPollEventsCocoa();
+	glfwPollEvents();
 
 	} // autoreleasepool
 }
 
-void _glfwPostEmptyEventCocoa(void)
-{
+void glfwPostEmptyEvent(void) {
 	@autoreleasepool {
 
 	NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
@@ -1395,7 +1372,7 @@ void _glfwPostEmptyEventCocoa(void)
 void glfwSetCursorMode(plafWindow* window, int mode) {
 	@autoreleasepool {
 
-	if (_glfwWindowFocusedCocoa(window))
+	if (_glfwWindowFocused(window))
 		updateCursorMode(window);
 
 	} // autoreleasepool

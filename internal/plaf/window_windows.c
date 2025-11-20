@@ -602,7 +602,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			{
 				// HACK: Release both Shift keys on Shift up event, as when both
 				//       are pressed the first release does not emit any event
-				// NOTE: The other half of this is in _glfwPollEventsWin32
+				// NOTE: The other half of this is in glfwPollEvents
 				_glfwInputKey(window, KEY_LEFT_SHIFT, scancode, action, mods);
 				_glfwInputKey(window, KEY_RIGHT_SHIFT, scancode, action, mods);
 			}
@@ -1205,12 +1205,12 @@ IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, con
 		return false;
 
 	if (wndconfig->mousePassthrough)
-		_glfwSetWindowMousePassthroughWin32(window, true);
+		_glfwSetWindowMousePassthrough(window, true);
 
 	if (window->monitor)
 	{
 		_glfwShowWindow(window);
-		_glfwFocusWindowWin32(window);
+		glfwFocusWindow(window);
 		acquireMonitor(window);
 		fitToMonitor(window);
 	}
@@ -1446,24 +1446,17 @@ void _glfwHideWindow(plafWindow* window) {
 	ShowWindow(window->win32Window, SW_HIDE);
 }
 
-void _glfwRequestWindowAttentionWin32(plafWindow* window)
-{
+void glfwRequestWindowAttention(plafWindow* window) {
 	FlashWindow(window->win32Window, TRUE);
 }
 
-void _glfwFocusWindowWin32(plafWindow* window)
-{
+void glfwFocusWindow(plafWindow* window) {
 	BringWindowToTop(window->win32Window);
 	SetForegroundWindow(window->win32Window);
 	SetFocus(window->win32Window);
 }
 
-void _glfwSetWindowMonitorWin32(plafWindow* window,
-								plafMonitor* monitor,
-								int xpos, int ypos,
-								int width, int height,
-								int refreshRate)
-{
+void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
 	if (window->monitor == monitor)
 	{
 		if (monitor)
@@ -1568,32 +1561,27 @@ void _glfwSetWindowMonitorWin32(plafWindow* window,
 	}
 }
 
-IntBool _glfwWindowFocusedWin32(plafWindow* window)
-{
+IntBool _glfwWindowFocused(plafWindow* window) {
 	return window->win32Window == GetActiveWindow();
 }
 
-IntBool _glfwWindowIconifiedWin32(plafWindow* window)
-{
+IntBool _glfwWindowIconified(plafWindow* window) {
 	return IsIconic(window->win32Window);
 }
 
-IntBool _glfwWindowVisibleWin32(plafWindow* window)
-{
+IntBool _glfwWindowVisible(plafWindow* window) {
 	return IsWindowVisible(window->win32Window);
 }
 
-IntBool _glfwWindowMaximizedWin32(plafWindow* window)
-{
+IntBool _glfwWindowMaximized(plafWindow* window) {
 	return IsZoomed(window->win32Window);
 }
 
-IntBool _glfwWindowHoveredWin32(plafWindow* window)
-{
+IntBool _glfwWindowHovered(plafWindow* window) {
 	return cursorInContentArea(window);
 }
 
-IntBool _glfwFramebufferTransparentWin32(plafWindow* window) {
+IntBool _glfwFramebufferTransparent(plafWindow* window) {
 	BOOL composition;
 	if (!window->win32Transparent) {
 		return false;
@@ -1604,25 +1592,21 @@ IntBool _glfwFramebufferTransparentWin32(plafWindow* window) {
 	return true;
 }
 
-void _glfwSetWindowResizableWin32(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowResizable(plafWindow* window, IntBool enabled) {
 	updateWindowStyles(window);
 }
 
-void _glfwSetWindowDecoratedWin32(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowDecorated(plafWindow* window, IntBool enabled) {
 	updateWindowStyles(window);
 }
 
-void _glfwSetWindowFloatingWin32(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowFloating(plafWindow* window, IntBool enabled) {
 	const HWND after = enabled ? HWND_TOPMOST : HWND_NOTOPMOST;
 	SetWindowPos(window->win32Window, after, 0, 0, 0, 0,
 				 SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
 }
 
-void _glfwSetWindowMousePassthroughWin32(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowMousePassthrough(plafWindow* window, IntBool enabled) {
 	COLORREF key = 0;
 	BYTE alpha = 0;
 	DWORD flags = 0;
@@ -1651,8 +1635,7 @@ void _glfwSetWindowMousePassthroughWin32(plafWindow* window, IntBool enabled)
 		SetLayeredWindowAttributes(window->win32Window, key, alpha, flags);
 }
 
-float _glfwGetWindowOpacityWin32(plafWindow* window)
-{
+float glfwGetWindowOpacity(plafWindow* window) {
 	BYTE alpha;
 	DWORD flags;
 
@@ -1666,8 +1649,7 @@ float _glfwGetWindowOpacityWin32(plafWindow* window)
 	return 1.f;
 }
 
-void _glfwSetWindowOpacityWin32(plafWindow* window, float opacity)
-{
+void _glfwSetWindowOpacity(plafWindow* window, float opacity) {
 	LONG exStyle = GetWindowLongW(window->win32Window, GWL_EXSTYLE);
 	if (opacity < 1.f || (exStyle & WS_EX_TRANSPARENT))
 	{
@@ -1687,8 +1669,7 @@ void _glfwSetWindowOpacityWin32(plafWindow* window, float opacity)
 	}
 }
 
-void _glfwPollEventsWin32(void)
-{
+void glfwPollEvents(void) {
 	MSG msg;
 	HWND handle;
 	plafWindow* window;
@@ -1754,22 +1735,17 @@ void _glfwPollEventsWin32(void)
 	}
 }
 
-void _glfwWaitEventsWin32(void)
-{
+void glfwWaitEvents(void) {
 	WaitMessage();
-
-	_glfwPollEventsWin32();
+	glfwPollEvents();
 }
 
-void _glfwWaitEventsTimeoutWin32(double timeout)
-{
+void _glfwWaitEventsTimeout(double timeout) {
 	MsgWaitForMultipleObjects(0, NULL, FALSE, (DWORD) (timeout * 1e3), QS_ALLINPUT);
-
-	_glfwPollEventsWin32();
+	glfwPollEvents();
 }
 
-void _glfwPostEmptyEventWin32(void)
-{
+void glfwPostEmptyEvent(void) {
 	PostMessageW(_glfw.win32HelperWindowHandle, WM_NULL, 0, 0);
 }
 

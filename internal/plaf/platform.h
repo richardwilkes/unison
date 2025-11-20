@@ -931,7 +931,6 @@ typedef void (*moduleFunc)(void);
 typedef struct plafCtxCfg         plafCtxCfg;
 typedef struct plafFrameBufferCfg plafFrameBufferCfg;
 typedef struct plafCtx            plafCtx;
-typedef struct _GLFWplatform      _GLFWplatform;
 typedef struct plafLib            plafLib;
 
 #define GL_VERSION 0x1f02
@@ -1174,34 +1173,10 @@ struct plafCursor {
 #endif
 };
 
-// Platform API structure
-struct _GLFWplatform {
-	void (*requestWindowAttention)(plafWindow*);
-	void (*focusWindow)(plafWindow*);
-	void (*setWindowMonitor)(plafWindow*,plafMonitor*,int,int,int,int,int);
-	IntBool (*windowFocused)(plafWindow*);
-	IntBool (*windowIconified)(plafWindow*);
-	IntBool (*windowVisible)(plafWindow*);
-	IntBool (*windowMaximized)(plafWindow*);
-	IntBool (*windowHovered)(plafWindow*);
-	IntBool (*framebufferTransparent)(plafWindow*);
-	float (*getWindowOpacity)(plafWindow*);
-	void (*setWindowResizable)(plafWindow*,IntBool);
-	void (*setWindowDecorated)(plafWindow*,IntBool);
-	void (*setWindowFloating)(plafWindow*,IntBool);
-	void (*setWindowOpacity)(plafWindow*,float);
-	void (*setWindowMousePassthrough)(plafWindow*,IntBool);
-	void (*pollEvents)(void);
-	void (*waitEvents)(void);
-	void (*waitEventsTimeout)(double);
-	void (*postEmptyEvent)(void);
-};
-
 // Library global data
 struct plafLib
 {
 	IntBool                             initialized;
-	_GLFWplatform                       platform;
 	char*                               clipboardString;
 	plafFrameBufferCfg                  frameBufferCfg;
 	WindowConfig                        windowCfg;
@@ -2548,31 +2523,6 @@ void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right,
  */
 void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
 
-/*! @brief Returns the opacity of the whole window.
- *
- *  This function returns the opacity of the window, including any decorations.
- *
- *  The opacity (or alpha) value is a positive finite number between zero and
- *  one, where zero is fully transparent and one is fully opaque.  If the system
- *  does not support whole window transparency, this function always returns one.
- *
- *  The initial opacity value for newly created windows is one.
- *
- *  @param[in] window The window to query.
- *  @return The opacity value of the specified window.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_transparency
- *  @sa @ref glfwSetWindowOpacity
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
 float glfwGetWindowOpacity(plafWindow* window);
 
 /*! @brief Sets the opacity of the whole window.
@@ -2594,9 +2544,6 @@ float glfwGetWindowOpacity(plafWindow* window);
  *  ERR_PLATFORM_ERROR and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
  *
  *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_transparency
- *  @sa @ref glfwGetWindowOpacity
  *
  *  @since Added in version 3.3.
  *
@@ -2672,55 +2619,7 @@ void glfwShowWindow(plafWindow* window);
  */
 void glfwHideWindow(plafWindow* window);
 
-/*! @brief Brings the specified window to front and sets input focus.
- *
- *  This function brings the specified window to front and sets input focus.
- *  The window should already be visible and not iconified.
- *
- *  For a less disruptive way of getting the user's attention, see
- *  [attention requests](@ref window_attention).
- *
- *  @param[in] window The window to give input focus.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_focus
- *  @sa @ref window_attention
- *
- *  @since Added in version 3.2.
- *
- *  @ingroup window
- */
 void glfwFocusWindow(plafWindow* window);
-
-/*! @brief Requests user attention to the specified window.
- *
- *  This function requests user attention to the specified window.  On
- *  platforms where this is not supported, attention is requested to the
- *  application as a whole.
- *
- *  Once the user has given attention, usually by focusing the window or
- *  application, the system will end the request automatically.
- *
- *  @param[in] window The window to request attention to.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @remark __macOS:__ Attention is requested to the application as a whole, not the
- *  specific window.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_attention
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
 void glfwRequestWindowAttention(plafWindow* window);
 
 /*! @brief Returns the monitor that the window uses for full screen mode.
@@ -3160,83 +3059,7 @@ frameBufferSizeFunc glfwSetFramebufferSizeCallback(plafWindow* window, frameBuff
  */
 windowContextScaleFunc glfwSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc callback);
 
-/*! @brief Processes all pending events.
- *
- *  This function processes only those events that are already in the event
- *  queue and then returns immediately.  Processing events will cause the window
- *  and input callbacks associated with those events to be called.
- *
- *  On some platforms, a window move, resize or menu operation will cause event
- *  processing to block.  This is due to how event processing is designed on
- *  those platforms.  You can use the
- *  [window refresh callback](@ref window_refresh) to redraw the contents of
- *  your window when necessary during such operations.
- *
- *  Do not assume that callbacks you set will _only_ be called in response to
- *  event processing functions like this one.  While it is necessary to poll for
- *  events, window systems that require GLFW to register callbacks of its own
- *  can pass events to GLFW in response to many window system function calls.
- *  GLFW will pass those events on to the application callbacks before
- *  returning.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @reentrancy This function must not be called from a callback.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref events
- *  @sa @ref glfwWaitEvents
- *  @sa @ref glfwWaitEventsTimeout
- *
- *  @since Added in version 1.0.
- *
- *  @ingroup window
- */
 void glfwPollEvents(void);
-
-/*! @brief Waits until events are queued and processes them.
- *
- *  This function puts the calling thread to sleep until at least one event is
- *  available in the event queue.  Once one or more events are available,
- *  it behaves exactly like @ref glfwPollEvents, i.e. the events in the queue
- *  are processed and the function then returns immediately.  Processing events
- *  will cause the window and input callbacks associated with those events to be
- *  called.
- *
- *  Since not all events are associated with callbacks, this function may return
- *  without a callback having been called even if you are monitoring all
- *  callbacks.
- *
- *  On some platforms, a window move, resize or menu operation will cause event
- *  processing to block.  This is due to how event processing is designed on
- *  those platforms.  You can use the
- *  [window refresh callback](@ref window_refresh) to redraw the contents of
- *  your window when necessary during such operations.
- *
- *  Do not assume that callbacks you set will _only_ be called in response to
- *  event processing functions like this one.  While it is necessary to poll for
- *  events, window systems that require GLFW to register callbacks of its own
- *  can pass events to GLFW in response to many window system function calls.
- *  GLFW will pass those events on to the application callbacks before
- *  returning.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @reentrancy This function must not be called from a callback.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref events
- *  @sa @ref glfwPollEvents
- *  @sa @ref glfwWaitEventsTimeout
- *
- *  @since Added in version 2.5.
- *
- *  @ingroup window
- */
 void glfwWaitEvents(void);
 
 /*! @brief Waits with timeout until events are queued and processes them.
@@ -3275,35 +3098,9 @@ void glfwWaitEvents(void);
  *  @reentrancy This function must not be called from a callback.
  *
  *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref events
- *  @sa @ref glfwPollEvents
- *  @sa @ref glfwWaitEvents
- *
- *  @since Added in version 3.2.
- *
- *  @ingroup window
  */
 void glfwWaitEventsTimeout(double timeout);
 
-/*! @brief Posts an empty event to the event queue.
- *
- *  This function posts an empty event from the current thread to the event
- *  queue, causing @ref glfwWaitEvents or @ref glfwWaitEventsTimeout to return.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref events
- *  @sa @ref glfwWaitEvents
- *  @sa @ref glfwWaitEventsTimeout
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup window
- */
 void glfwPostEmptyEvent(void);
 
 /*! @brief Returns the value of an input option for the specified window.
@@ -4189,7 +3986,7 @@ glFunc glfwGetProcAddress(const char* procname);
 
 void _terminate(void);
 
-ErrorResponse* platformInit(_GLFWplatform* platform);
+ErrorResponse* platformInit(void);
 void platformTerminate(void);
 
 //////////////////////////////////////////////////////////////////////////
@@ -4259,7 +4056,21 @@ void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale
 void _glfwMaximizeWindow(plafWindow* window);
 void _glfwShowWindow(plafWindow* window);
 void _glfwHideWindow(plafWindow* window);
+void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
+IntBool _glfwWindowFocused(plafWindow* window);
+IntBool _glfwWindowIconified(plafWindow* window);
+IntBool _glfwWindowVisible(plafWindow* window);
+IntBool _glfwWindowMaximized(plafWindow* window);
+IntBool _glfwWindowHovered(plafWindow* window);
+IntBool _glfwFramebufferTransparent(plafWindow* window);
+void _glfwSetWindowResizable(plafWindow* window, IntBool enabled);
+void _glfwSetWindowDecorated(plafWindow* window, IntBool enabled);
+void _glfwSetWindowFloating(plafWindow* window, IntBool enabled);
+void _glfwSetWindowOpacity(plafWindow* window, float opacity);
+void _glfwSetWindowMousePassthrough(plafWindow* window, IntBool enabled);
 void _glfwDestroyWindow(plafWindow* window);
+
+void _glfwWaitEventsTimeout(double timeout);
 
 IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp);
 void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
@@ -4306,27 +4117,6 @@ IntBool cursorInContentArea(plafWindow* window);
 #endif
 
 #if defined(__APPLE__)
-void _glfwRequestWindowAttentionCocoa(plafWindow* window);
-void _glfwFocusWindowCocoa(plafWindow* window);
-void _glfwSetWindowMonitorCocoa(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-IntBool _glfwWindowFocusedCocoa(plafWindow* window);
-IntBool _glfwWindowIconifiedCocoa(plafWindow* window);
-IntBool _glfwWindowVisibleCocoa(plafWindow* window);
-IntBool _glfwWindowMaximizedCocoa(plafWindow* window);
-IntBool _glfwWindowHoveredCocoa(plafWindow* window);
-IntBool _glfwFramebufferTransparentCocoa(plafWindow* window);
-void _glfwSetWindowResizableCocoa(plafWindow* window, IntBool enabled);
-void _glfwSetWindowDecoratedCocoa(plafWindow* window, IntBool enabled);
-void _glfwSetWindowFloatingCocoa(plafWindow* window, IntBool enabled);
-float _glfwGetWindowOpacityCocoa(plafWindow* window);
-void _glfwSetWindowOpacityCocoa(plafWindow* window, float opacity);
-void _glfwSetWindowMousePassthroughCocoa(plafWindow* window, IntBool enabled);
-
-void _glfwPollEventsCocoa(void);
-void _glfwWaitEventsCocoa(void);
-void _glfwWaitEventsTimeoutCocoa(double timeout);
-void _glfwPostEmptyEventCocoa(void);
-
 void _glfwPollMonitorsCocoa(void);
 void _glfwRestoreVideoModeCocoa(plafMonitor* monitor);
 
@@ -4337,36 +4127,12 @@ void _glfwTerminateNSGL(void);
 IntBool _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _glfwDestroyContextNSGL(plafWindow* window);
 #elif defined(__linux__)
-void _glfwRequestWindowAttentionX11(plafWindow* window);
-void _glfwFocusWindowX11(plafWindow* window);
-void _glfwSetWindowMonitorX11(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-IntBool _glfwWindowFocusedX11(plafWindow* window);
-IntBool _glfwWindowIconifiedX11(plafWindow* window);
-IntBool _glfwWindowVisibleX11(plafWindow* window);
-IntBool _glfwWindowMaximizedX11(plafWindow* window);
-IntBool _glfwWindowHoveredX11(plafWindow* window);
-IntBool _glfwFramebufferTransparentX11(plafWindow* window);
-void _glfwSetWindowResizableX11(plafWindow* window, IntBool enabled);
-void _glfwSetWindowDecoratedX11(plafWindow* window, IntBool enabled);
-void _glfwSetWindowFloatingX11(plafWindow* window, IntBool enabled);
-float _glfwGetWindowOpacityX11(plafWindow* window);
-void _glfwSetWindowOpacityX11(plafWindow* window, float opacity);
-void _glfwSetWindowMousePassthroughX11(plafWindow* window, IntBool enabled);
-
-void _glfwPollEventsX11(void);
-void _glfwWaitEventsX11(void);
-void _glfwWaitEventsTimeoutX11(double timeout);
-void _glfwPostEmptyEventX11(void);
-
 void _glfwPollMonitorsX11(void);
 void _glfwRestoreVideoModeX11(plafMonitor* monitor);
 
 Cursor _glfwCreateNativeCursorX11(const ImageData* image, int xhot, int yhot);
 
-unsigned long _glfwGetWindowPropertyX11(Window window,
-										Atom property,
-										Atom type,
-										unsigned char** value);
+unsigned long _glfwGetWindowPropertyX11(Window window, Atom property, Atom type, unsigned char** value);
 IntBool _glfwIsVisualTransparentX11(Visual* visual);
 
 void _glfwGrabErrorHandlerX11(void);
@@ -4377,14 +4143,9 @@ void _glfwPushSelectionToManagerX11(void);
 void _glfwCreateInputContextX11(plafWindow* window);
 
 IntBool _glfwInitGLX(void);
-IntBool _glfwCreateContextGLX(plafWindow* window,
-							   const plafCtxCfg* ctxconfig,
-							   const plafFrameBufferCfg* fbconfig);
+IntBool _glfwCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _glfwDestroyContextGLX(plafWindow* window);
-IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig,
-							  const plafCtxCfg* ctxconfig,
-							  const plafFrameBufferCfg* fbconfig,
-							  Visual** visual, int* depth);
+IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
 
 IntBool waitForX11Event(double timeout);
 #elif defined(_WIN32)
@@ -4397,27 +4158,6 @@ void _glfwInputErrorWin32(int error, const char* description);
 void _glfwPollMonitorsWin32(void);
 void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
-
-void _glfwRequestWindowAttentionWin32(plafWindow* window);
-void _glfwFocusWindowWin32(plafWindow* window);
-void _glfwSetWindowMonitorWin32(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-IntBool _glfwWindowFocusedWin32(plafWindow* window);
-IntBool _glfwWindowIconifiedWin32(plafWindow* window);
-IntBool _glfwWindowVisibleWin32(plafWindow* window);
-IntBool _glfwWindowMaximizedWin32(plafWindow* window);
-IntBool _glfwWindowHoveredWin32(plafWindow* window);
-IntBool _glfwFramebufferTransparentWin32(plafWindow* window);
-void _glfwSetWindowResizableWin32(plafWindow* window, IntBool enabled);
-void _glfwSetWindowDecoratedWin32(plafWindow* window, IntBool enabled);
-void _glfwSetWindowFloatingWin32(plafWindow* window, IntBool enabled);
-void _glfwSetWindowMousePassthroughWin32(plafWindow* window, IntBool enabled);
-float _glfwGetWindowOpacityWin32(plafWindow* window);
-void _glfwSetWindowOpacityWin32(plafWindow* window, float opacity);
-
-void _glfwPollEventsWin32(void);
-void _glfwWaitEventsWin32(void);
-void _glfwWaitEventsTimeoutWin32(double timeout);
-void _glfwPostEmptyEventWin32(void);
 
 IntBool _glfwInitWGL(void);
 void _glfwTerminateWGL(void);

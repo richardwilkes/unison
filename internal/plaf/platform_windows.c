@@ -376,28 +376,7 @@ BOOL IsWindows10BuildOrGreater(WORD build)
 	return _glfw.win32NTRtlVerifyVersionInfo_(&osvi, mask, cond) == 0;
 }
 
-ErrorResponse* platformInit(_GLFWplatform* platform)
-{
-	platform->requestWindowAttention = _glfwRequestWindowAttentionWin32;
-	platform->focusWindow = _glfwFocusWindowWin32;
-	platform->setWindowMonitor = _glfwSetWindowMonitorWin32;
-	platform->windowFocused = _glfwWindowFocusedWin32;
-	platform->windowIconified = _glfwWindowIconifiedWin32;
-	platform->windowVisible = _glfwWindowVisibleWin32;
-	platform->windowMaximized = _glfwWindowMaximizedWin32;
-	platform->windowHovered = _glfwWindowHoveredWin32;
-	platform->framebufferTransparent = _glfwFramebufferTransparentWin32;
-	platform->getWindowOpacity = _glfwGetWindowOpacityWin32;
-	platform->setWindowResizable = _glfwSetWindowResizableWin32;
-	platform->setWindowDecorated = _glfwSetWindowDecoratedWin32;
-	platform->setWindowFloating = _glfwSetWindowFloatingWin32;
-	platform->setWindowOpacity = _glfwSetWindowOpacityWin32;
-	platform->setWindowMousePassthrough = _glfwSetWindowMousePassthroughWin32;
-	platform->pollEvents = _glfwPollEventsWin32;
-	platform->waitEvents = _glfwWaitEventsWin32;
-	platform->waitEventsTimeout = _glfwWaitEventsTimeoutWin32;
-	platform->postEmptyEvent = _glfwPostEmptyEventWin32;
-
+ErrorResponse* platformInit(void) {
 	ErrorResponse* errRsp = loadLibraries();
 	if (errRsp) {
 		_terminate();

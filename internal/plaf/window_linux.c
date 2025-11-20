@@ -1330,7 +1330,7 @@ static IntBool createNativeWindow(plafWindow* window,
 				 (XPointer) window);
 
 	if (!wndconfig->decorated)
-		_glfwSetWindowDecoratedX11(window, false);
+		_glfwSetWindowDecorated(window, false);
 
 	if (_glfw.x11NET_WM_STATE && !window->monitor)
 	{
@@ -2312,7 +2312,7 @@ static void processEvent(XEvent *event)
 			}
 			else if (event->xproperty.atom == _glfw.x11NET_WM_STATE)
 			{
-				const IntBool maximized = _glfwWindowMaximizedX11(window);
+				const IntBool maximized = _glfwWindowMaximized(window);
 				if (window->maximized != maximized)
 				{
 					window->maximized = maximized;
@@ -2477,7 +2477,7 @@ IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, con
 		return false;
 
 	if (wndconfig->mousePassthrough)
-		_glfwSetWindowMousePassthroughX11(window, true);
+		_glfwSetWindowMousePassthrough(window, true);
 
 	if (window->monitor)
 	{
@@ -2608,7 +2608,7 @@ void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 void _glfwSetWindowPos(plafWindow* window, int x, int y) {
 	// HACK: Explicitly setting PPosition to any value causes some WMs, notably
 	//       Compiz and Metacity, to honor the position of unmapped windows
-	if (!_glfwWindowVisibleX11(window))
+	if (!_glfwWindowVisible(window))
 	{
 		long supplied;
 		XSizeHints* hints = _glfw.xlibAllocSizeHints();
@@ -2682,7 +2682,7 @@ void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right
 	if (_glfw.x11NET_FRAME_EXTENTS == None)
 		return;
 
-	if (!_glfwWindowVisibleX11(window) &&
+	if (!_glfwWindowVisible(window) &&
 		_glfw.x11NET_REQUEST_FRAME_EXTENTS)
 	{
 		XEvent event;
@@ -2758,12 +2758,12 @@ void glfwRestoreWindow(plafWindow* window) {
 		return;
 	}
 
-	if (_glfwWindowIconifiedX11(window))
+	if (_glfwWindowIconified(window))
 	{
 		_glfw.xlibMapWindow(_glfw.x11Display, window->x11Window);
 		waitForVisibilityNotify(window);
 	}
-	else if (_glfwWindowVisibleX11(window))
+	else if (_glfwWindowVisible(window))
 	{
 		if (_glfw.x11NET_WM_STATE &&
 			_glfw.x11NET_WM_STATE_MAXIMIZED_VERT &&
@@ -2789,7 +2789,7 @@ void _glfwMaximizeWindow(plafWindow* window) {
 		return;
 	}
 
-	if (_glfwWindowVisibleX11(window))
+	if (_glfwWindowVisible(window))
 	{
 		sendEventToWM(window,
 					_glfw.x11NET_WM_STATE,
@@ -2846,7 +2846,7 @@ void _glfwMaximizeWindow(plafWindow* window) {
 }
 
 void _glfwShowWindow(plafWindow* window) {
-	if (_glfwWindowVisibleX11(window))
+	if (_glfwWindowVisible(window))
 		return;
 
 	_glfw.xlibMapWindow(_glfw.x11Display, window->x11Window);
@@ -2858,8 +2858,7 @@ void _glfwHideWindow(plafWindow* window) {
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwRequestWindowAttentionX11(plafWindow* window)
-{
+void glfwRequestWindowAttention(plafWindow* window) {
 	if (!_glfw.x11NET_WM_STATE || !_glfw.x11NET_WM_STATE_DEMANDS_ATTENTION)
 		return;
 
@@ -2870,11 +2869,10 @@ void _glfwRequestWindowAttentionX11(plafWindow* window)
 				  0, 1, 0);
 }
 
-void _glfwFocusWindowX11(plafWindow* window)
-{
+void glfwFocusWindow(plafWindow* window) {
 	if (_glfw.x11NET_ACTIVE_WINDOW)
 		sendEventToWM(window, _glfw.x11NET_ACTIVE_WINDOW, 1, 0, 0, 0, 0);
-	else if (_glfwWindowVisibleX11(window))
+	else if (_glfwWindowVisible(window))
 	{
 		_glfw.xlibRaiseWindow(_glfw.x11Display, window->x11Window);
 		_glfw.xlibSetInputFocus(_glfw.x11Display, window->x11Window, RevertToParent, CurrentTime);
@@ -2883,12 +2881,7 @@ void _glfwFocusWindowX11(plafWindow* window)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwSetWindowMonitorX11(plafWindow* window,
-							  plafMonitor* monitor,
-							  int xpos, int ypos,
-							  int width, int height,
-							  int refreshRate)
-{
+void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
 	if (window->monitor == monitor)
 	{
 		if (monitor)
@@ -2911,8 +2904,8 @@ void _glfwSetWindowMonitorX11(plafWindow* window,
 
 	if (window->monitor)
 	{
-		_glfwSetWindowDecoratedX11(window, window->decorated);
-		_glfwSetWindowFloatingX11(window, window->floating);
+		_glfwSetWindowDecorated(window, window->decorated);
+		_glfwSetWindowFloating(window, window->floating);
 		releaseMonitor(window);
 	}
 
@@ -2921,7 +2914,7 @@ void _glfwSetWindowMonitorX11(plafWindow* window,
 
 	if (window->monitor)
 	{
-		if (!_glfwWindowVisibleX11(window))
+		if (!_glfwWindowVisible(window))
 		{
 			_glfw.xlibMapRaised(_glfw.x11Display, window->x11Window);
 			waitForVisibilityNotify(window);
@@ -2940,8 +2933,7 @@ void _glfwSetWindowMonitorX11(plafWindow* window,
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-IntBool _glfwWindowFocusedX11(plafWindow* window)
-{
+IntBool _glfwWindowFocused(plafWindow* window) {
 	Window focused;
 	int state;
 
@@ -2949,20 +2941,17 @@ IntBool _glfwWindowFocusedX11(plafWindow* window)
 	return window->x11Window == focused;
 }
 
-IntBool _glfwWindowIconifiedX11(plafWindow* window)
-{
+IntBool _glfwWindowIconified(plafWindow* window) {
 	return getWindowState(window) == IconicState;
 }
 
-IntBool _glfwWindowVisibleX11(plafWindow* window)
-{
+IntBool _glfwWindowVisible(plafWindow* window) {
 	XWindowAttributes wa;
 	_glfw.xlibGetWindowAttributes(_glfw.x11Display, window->x11Window, &wa);
 	return wa.map_state == IsViewable;
 }
 
-IntBool _glfwWindowMaximizedX11(plafWindow* window)
-{
+IntBool _glfwWindowMaximized(plafWindow* window) {
 	Atom* states;
 	IntBool maximized = false;
 
@@ -2995,8 +2984,7 @@ IntBool _glfwWindowMaximizedX11(plafWindow* window)
 	return maximized;
 }
 
-IntBool _glfwWindowHoveredX11(plafWindow* window)
-{
+IntBool _glfwWindowHovered(plafWindow* window) {
 	Window w = _glfw.x11Root;
 	while (w)
 	{
@@ -3023,23 +3011,20 @@ IntBool _glfwWindowHoveredX11(plafWindow* window)
 	return false;
 }
 
-IntBool _glfwFramebufferTransparentX11(plafWindow* window)
-{
+IntBool _glfwFramebufferTransparent(plafWindow* window) {
 	if (!window->x11Transparent)
 		return false;
 
 	return _glfw.xlibGetSelectionOwner(_glfw.x11Display, _glfw.x11NET_WM_CM_Sx) != None;
 }
 
-void _glfwSetWindowResizableX11(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowResizable(plafWindow* window, IntBool enabled) {
 	int width, height;
 	_glfwGetWindowSize(window, &width, &height);
 	updateNormalHints(window, width, height);
 }
 
-void _glfwSetWindowDecoratedX11(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowDecorated(plafWindow* window, IntBool enabled) {
 	struct
 	{
 		unsigned long flags;
@@ -3060,12 +3045,11 @@ void _glfwSetWindowDecoratedX11(plafWindow* window, IntBool enabled)
 					sizeof(hints) / sizeof(long));
 }
 
-void _glfwSetWindowFloatingX11(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowFloating(plafWindow* window, IntBool enabled) {
 	if (!_glfw.x11NET_WM_STATE || !_glfw.x11NET_WM_STATE_ABOVE)
 		return;
 
-	if (_glfwWindowVisibleX11(window))
+	if (_glfwWindowVisible(window))
 	{
 		const long action = enabled ? _NET_WM_STATE_ADD : _NET_WM_STATE_REMOVE;
 		sendEventToWM(window,
@@ -3127,8 +3111,7 @@ void _glfwSetWindowFloatingX11(plafWindow* window, IntBool enabled)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwSetWindowMousePassthroughX11(plafWindow* window, IntBool enabled)
-{
+void _glfwSetWindowMousePassthrough(plafWindow* window, IntBool enabled) {
 	if (!_glfw.xshapeAvailable)
 		return;
 
@@ -3144,8 +3127,7 @@ void _glfwSetWindowMousePassthroughX11(plafWindow* window, IntBool enabled)
 	}
 }
 
-float _glfwGetWindowOpacityX11(plafWindow* window)
-{
+float glfwGetWindowOpacity(plafWindow* window) {
 	float opacity = 1.f;
 
 	if (_glfw.xlibGetSelectionOwner(_glfw.x11Display, _glfw.x11NET_WM_CM_Sx))
@@ -3167,16 +3149,14 @@ float _glfwGetWindowOpacityX11(plafWindow* window)
 	return opacity;
 }
 
-void _glfwSetWindowOpacityX11(plafWindow* window, float opacity)
-{
+void _glfwSetWindowOpacity(plafWindow* window, float opacity) {
 	const CARD32 value = (CARD32) (0xffffffffu * (double) opacity);
 	_glfw.xlibChangeProperty(_glfw.x11Display, window->x11Window,
 					_glfw.x11NET_WM_WINDOW_OPACITY, XA_CARDINAL, 32,
 					PropModeReplace, (unsigned char*) &value, 1);
 }
 
-void _glfwPollEventsX11(void)
-{
+void glfwPollEvents(void) {
 	drainEmptyEvents();
 	_glfw.xlibPending(_glfw.x11Display);
 
@@ -3190,20 +3170,17 @@ void _glfwPollEventsX11(void)
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwWaitEventsX11(void)
-{
+void glfwWaitEvents(void) {
 	waitForAnyEvent(-1);
-	_glfwPollEventsX11();
+	glfwPollEvents();
 }
 
-void _glfwWaitEventsTimeoutX11(double timeout)
-{
+void _glfwWaitEventsTimeout(double timeout) {
 	waitForAnyEvent(timeout);
-	_glfwPollEventsX11();
+	glfwPollEvents();
 }
 
-void _glfwPostEmptyEventX11(void)
-{
+void glfwPostEmptyEvent(void) {
 	writeEmptyEvent();
 }
 

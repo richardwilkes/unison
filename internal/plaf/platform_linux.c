@@ -1027,8 +1027,7 @@ Cursor _glfwCreateNativeCursorX11(const ImageData* image, int xhot, int yhot)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-ErrorResponse* platformInit(_GLFWplatform* platform)
-{
+ErrorResponse* platformInit(void) {
 	// HACK: If the application has left the locale as "C" then both wide
 	//       character text input and explicit UTF-8 input via XIM will break
 	//       This sets the CTYPE part of the current locale from the environment
@@ -1068,26 +1067,6 @@ ErrorResponse* platformInit(_GLFWplatform* platform)
 
 	_glfw.x11Display = display;
 	_glfw.xlibHandle = module;
-
-	platform->requestWindowAttention = _glfwRequestWindowAttentionX11;
-	platform->focusWindow = _glfwFocusWindowX11;
-	platform->setWindowMonitor = _glfwSetWindowMonitorX11;
-	platform->windowFocused = _glfwWindowFocusedX11;
-	platform->windowIconified = _glfwWindowIconifiedX11;
-	platform->windowVisible = _glfwWindowVisibleX11;
-	platform->windowMaximized = _glfwWindowMaximizedX11;
-	platform->windowHovered = _glfwWindowHoveredX11;
-	platform->framebufferTransparent = _glfwFramebufferTransparentX11;
-	platform->getWindowOpacity = _glfwGetWindowOpacityX11;
-	platform->setWindowResizable = _glfwSetWindowResizableX11;
-	platform->setWindowDecorated = _glfwSetWindowDecoratedX11;
-	platform->setWindowFloating = _glfwSetWindowFloatingX11;
-	platform->setWindowOpacity = _glfwSetWindowOpacityX11;
-	platform->setWindowMousePassthrough = _glfwSetWindowMousePassthroughX11;
-	platform->pollEvents = _glfwPollEventsX11;
-	platform->waitEvents = _glfwWaitEventsX11;
-	platform->waitEventsTimeout = _glfwWaitEventsTimeoutX11;
-	platform->postEmptyEvent = _glfwPostEmptyEventX11;
 
 	_glfw.xlibAllocSizeHints = (FN_XAllocSizeHints)
 		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XAllocSizeHints");
