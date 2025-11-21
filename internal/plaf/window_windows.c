@@ -547,7 +547,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			if (scancode == 0x136)
 				scancode = 0x36;
 
-			key = _glfw.win32Keycodes[scancode];
+			if (scancode < 0 || scancode >= MAX_KEY_CODES) {
+				key = KEY_UNKNOWN;
+			} else {
+				key = _glfw.keyCodes[scancode];
+			}
 
 			// The Ctrl keys require special handling
 			if (wParam == VK_CONTROL)

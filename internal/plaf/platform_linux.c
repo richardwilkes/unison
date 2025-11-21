@@ -183,7 +183,7 @@ static void createKeyTables(void)
 {
 	int scancodeMin, scancodeMax;
 
-	memset(_glfw.x11Keycodes, -1, sizeof(_glfw.x11Keycodes));
+	memset(_glfw.keyCodes, -1, sizeof(_glfw.keyCodes));
 	memset(_glfw.scanCodes, -1, sizeof(_glfw.scanCodes));
 
 	if (_glfw.xkbAvailable)
@@ -371,7 +371,7 @@ static void createKeyTables(void)
 				}
 			}
 
-			_glfw.x11Keycodes[scancode] = key;
+			_glfw.keyCodes[scancode] = key;
 		}
 
 		_glfw.xkbFreeNames(desc, XkbKeyNamesMask, True);
@@ -390,15 +390,15 @@ static void createKeyTables(void)
 	{
 		// Translate the un-translated key codes using traditional X11 KeySym
 		// lookups
-		if (_glfw.x11Keycodes[scancode] < 0)
+		if (_glfw.keyCodes[scancode] < 0)
 		{
 			const size_t base = (scancode - scancodeMin) * width;
-			_glfw.x11Keycodes[scancode] = translateKeySyms(&keysyms[base], width);
+			_glfw.keyCodes[scancode] = translateKeySyms(&keysyms[base], width);
 		}
 
 		// Store the reverse translation for faster key name lookup
-		if (_glfw.x11Keycodes[scancode] > 0)
-			_glfw.scanCodes[_glfw.x11Keycodes[scancode]] = scancode;
+		if (_glfw.keyCodes[scancode] > 0)
+			_glfw.scanCodes[_glfw.keyCodes[scancode]] = scancode;
 	}
 
 	_glfw.xlibFree(keysyms);

@@ -507,6 +507,7 @@ typedef unsigned char GLubyte;
 #define KEY_RIGHT_SUPER   347
 #define KEY_MENU          348
 #define KEY_LAST          KEY_MENU
+#define MAX_KEY_CODES     512
 
 // Modifier key flags
 #define KEYMOD_SHIFT     0x0001
@@ -955,12 +956,12 @@ struct plafLib
 	plafWindow*                         contextSlot;
 	monitorFunc                         monitorCallback;
 	short int                           scanCodes[KEY_LAST + 1];
+	short int                           keyCodes[MAX_KEY_CODES];
 #if defined(__APPLE__)
 	CGEventSourceRef                    nsEventSource;
 	id                                  nsDelegate;
 	IntBool                             nsCursorHidden;
 	id                                  nsKeyUpMonitor;
-	short int                           nsKeycodes[256];
 	CGPoint                             nsCascadePoint;
 	CFBundleRef                         nsglFramework;
 #elif defined(__linux__)
@@ -975,7 +976,6 @@ struct plafLib
 	XIM                                 x11IM;
 	XErrorHandler                       x11ErrorHandler;
 	int                                 x11ErrorCode;
-	short int                           x11Keycodes[256];
 	int                                 x11EmptyEventPipe[2];
 	Atom                                x11NET_SUPPORTED;
 	Atom                                x11NET_SUPPORTING_WM_CHECK;
@@ -1220,7 +1220,6 @@ struct plafLib
 	ATOM                                win32MainWindowClass;
 	HDEVNOTIFY                          win32DeviceNotificationHandle;
 	int                                 win32AcquiredMonitorCount;
-	short int                           win32Keycodes[512];
 	UINT                                win32MouseTrailSize;
 	HCURSOR                             win32BlankCursor;
 	HINSTANCE                           win32User32Instance;

@@ -100,12 +100,11 @@ static int translateFlags(NSUInteger flags)
 
 // Translates a macOS keycode to a GLFW keycode
 //
-static int translateKey(unsigned int key)
-{
-	if (key >= sizeof(_glfw.nsKeycodes) / sizeof(_glfw.nsKeycodes[0]))
+static int translateKey(unsigned int key) {
+	if (key >= MAX_KEY_CODES) {
 		return KEY_UNKNOWN;
-
-	return _glfw.nsKeycodes[key];
+	}
+	return _glfw.keyCodes[key];
 }
 
 // Translate a GLFW keycode to a Cocoa modifier flag

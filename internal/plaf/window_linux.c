@@ -1037,14 +1037,11 @@ static int translateState(int state)
 }
 
 // Translates an X11 key code to a GLFW key token
-//
-static int translateKey(int scancode)
-{
-	// Use the pre-filled LUT (see createKeyTables() in x11_init.c)
-	if (scancode < 0 || scancode > 255)
+static int translateKey(int scancode) {
+	if (scancode < 0 || scancode >= MAX_KEY_CODES) {
 		return KEY_UNKNOWN;
-
-	return _glfw.x11Keycodes[scancode];
+	}
+	return _glfw.keyCodes[scancode];
 }
 
 // Sends an EWMH or ICCCM event to the window manager
