@@ -294,10 +294,6 @@ typedef unsigned char GLubyte;
 	#ifndef USER_DEFAULT_SCREEN_DPI
 		#define USER_DEFAULT_SCREEN_DPI 96
 	#endif
-	#if !defined(WINGDIAPI)
-		#define WINGDIAPI __declspec(dllimport)
-		#define GLFW_WINGDIAPI_DEFINED
-	#endif
 	#if !defined(CALLBACK)
 		#define CALLBACK __stdcall
 		#define GLFW_CALLBACK_DEFINED
@@ -724,22 +720,9 @@ typedef struct WindowConfig {
 
 /* ------------------- BEGIN SYSTEM/COMPILER SPECIFIC -------------------- */
 
-#ifdef GLFW_WINGDIAPI_DEFINED
- #undef WINGDIAPI
- #undef GLFW_WINGDIAPI_DEFINED
-#endif
-
 #ifdef GLFW_CALLBACK_DEFINED
  #undef CALLBACK
  #undef GLFW_CALLBACK_DEFINED
-#endif
-
-/* Some OpenGL related headers need GLAPIENTRY, but it is unconditionally
- * defined by some gl.h variants (OpenBSD) so define it after if needed.
- */
-#ifndef GLAPIENTRY
- #define GLAPIENTRY APIENTRY
- #define GLFW_GLAPIENTRY_DEFINED
 #endif
 
 /* -------------------- END SYSTEM/COMPILER SPECIFIC --------------------- */
