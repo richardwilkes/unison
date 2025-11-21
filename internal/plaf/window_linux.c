@@ -3200,7 +3200,7 @@ Display* glfwGetX11Display(void) {
 }
 
 void* glfwGetNativeWindow(plafWindow* window) {
-	return window->x11Window;
+	return (void*)window->x11Window;
 }
 
 #endif // __linux__
