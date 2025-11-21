@@ -174,7 +174,7 @@ ErrorResponse* platformInit(void) {
 		_glfw.nsDelegate = [[GLFWApplicationDelegate alloc] init];
 		if (_glfw.nsDelegate == nil) {
 			_terminate();
-			return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to create application delegate");
+			return createErrorResponse("Failed to create application delegate");
 		}
 
 		[NSApp setDelegate:_glfw.nsDelegate];
@@ -197,7 +197,7 @@ ErrorResponse* platformInit(void) {
 		_glfw.nsEventSource = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		if (!_glfw.nsEventSource) {
 			_terminate();
-			return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to create event source");
+			return createErrorResponse("Failed to create event source");
 		}
 
 		CGEventSourceSetLocalEventsSuppressionInterval(_glfw.nsEventSource, 0.0);

@@ -672,7 +672,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
 	window->nsDelegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
 	if (!window->nsDelegate) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window delegate");
+		return createErrorResponse("Cocoa: Failed to create window delegate");
 	}
 
 	NSRect contentRect;
@@ -706,7 +706,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 	window->nsWindow = [[GLFWWindow alloc] initWithContentRect:contentRect styleMask:styleMask
 		backing:NSBackingStoreBuffered defer:NO];
 	if (!window->nsWindow) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window");
+		return createErrorResponse("Cocoa: Failed to create window");
 	}
 
 	if (window->monitor) {
@@ -848,7 +848,7 @@ void _glfwSetWindowTitle(plafWindow* window, const char* title) {
 }
 
 void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images) {
-	_glfwInputError(ERR_FEATURE_UNAVAILABLE, "Cocoa: Regular windows do not have icons on macOS");
+	// Windows don't have icons on macOS
 }
 
 void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
@@ -1395,7 +1395,7 @@ IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 
 	if (!cursor->nsCursor)
 	{
-		_glfwInputError(GLFW_CURSOR_UNAVAILABLE, "Cocoa: Standard cursor shape unavailable");
+		_glfwInputError("Cocoa: Standard cursor shape unavailable");
 		return false;
 	}
 

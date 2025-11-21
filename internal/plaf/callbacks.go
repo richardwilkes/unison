@@ -4,6 +4,7 @@ package plaf
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"unsafe"
@@ -45,12 +46,9 @@ func goDropCallback(window unsafe.Pointer, count C.int, names **C.char) {
 }
 
 //export goErrorCallback
-func goErrorCallback(code C.int, desc *C.char) {
+func goErrorCallback(desc *C.char) {
 	flushErrors()
-	err := &Error{
-		Desc: C.GoString(desc),
-		Code: ErrorCode(code),
-	}
+	err := errors.New(C.GoString(desc))
 	select {
 	case lastError <- err:
 	default:

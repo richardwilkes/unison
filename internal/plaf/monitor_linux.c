@@ -455,7 +455,7 @@ IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode) {
 
 		if (!mi)
 		{
-			_glfwInputError(ERR_PLATFORM_ERROR, "X11: Failed to query video mode");
+			_glfwInputError("X11: Failed to query video mode");
 			return false;
 		}
 	}
@@ -501,7 +501,7 @@ IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp) {
 	}
 	else
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "X11: Gamma ramp access not supported by server");
+		_glfwInputError("X11: Gamma ramp access not supported by server");
 		return false;
 	}
 }
@@ -511,7 +511,7 @@ void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
 	{
 		if (_glfw.randrGetCrtcGammaSize(_glfw.x11Display, monitor->x11Crtc) != ramp->size)
 		{
-			_glfwInputError(ERR_PLATFORM_ERROR, "X11: Gamma ramp size must match current ramp size");
+			_glfwInputError("X11: Gamma ramp size must match current ramp size");
 			return;
 		}
 
@@ -535,7 +535,7 @@ void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
 	}
 	else
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "X11: Gamma ramp access not supported by server");
+		_glfwInputError("X11: Gamma ramp access not supported by server");
 	}
 }
 

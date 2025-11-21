@@ -16,19 +16,19 @@
 ErrorResponse * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
 	if (ctxconfig->profile) {
 		if (ctxconfig->profile != OPENGL_PROFILE_CORE && ctxconfig->profile != OPENGL_PROFILE_COMPAT) {
-			return createErrorResponse(ERR_INVALID_ENUM, "Invalid OpenGL profile 0x%08X", ctxconfig->profile);
+			return createErrorResponse("Invalid OpenGL profile 0x%08X", ctxconfig->profile);
 		}
 	}
 	if (ctxconfig->robustness) {
 		if (ctxconfig->robustness != CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION &&
 			ctxconfig->robustness != CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET) {
-			return createErrorResponse(ERR_INVALID_ENUM, "Invalid context robustness mode 0x%08X",
+			return createErrorResponse("Invalid context robustness mode 0x%08X",
 				 ctxconfig->robustness);
 		}
 	}
 	if (ctxconfig->release) {
 		if (ctxconfig->release != RELEASE_BEHAVIOR_NONE && ctxconfig->release != RELEASE_BEHAVIOR_FLUSH) {
-			return createErrorResponse(ERR_INVALID_ENUM, "Invalid context release behavior 0x%08X", ctxconfig->release);
+			return createErrorResponse("Invalid context release behavior 0x%08X", ctxconfig->release);
 		}
 	}
 	return NULL;
@@ -202,24 +202,24 @@ ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* 
 	window->context.GetString = (FN_GLGETSTRING)window->context.getProcAddress("glGetString");
 	if (!window->context.GetIntegerv || !window->context.GetString) {
 		glfwMakeContextCurrent(previous);
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
+		return createErrorResponse("Entry point retrieval is broken");
 	}
 
 	const char* version = (const char*) window->context.GetString(GL_VERSION);
 	if (!version) {
 		glfwMakeContextCurrent(previous);
-		return createErrorResponse(ERR_PLATFORM_ERROR, "OpenGL version string retrieval is broken");
+		return createErrorResponse("OpenGL version string retrieval is broken");
 	}
 
 	if (!sscanf(version, "%d.%d.%d", &window->context.major, &window->context.minor, &window->context.revision)) {
 		glfwMakeContextCurrent(previous);
-		return createErrorResponse(ERR_PLATFORM_ERROR, "No version found in OpenGL version string");
+		return createErrorResponse("No version found in OpenGL version string");
 	}
 
 	if (window->context.major < ctxconfig->major ||
 		(window->context.major == ctxconfig->major && window->context.minor < ctxconfig->minor)) {
 		glfwMakeContextCurrent(previous);
-		return createErrorResponse(ERR_VERSION_UNAVAILABLE, "Requested OpenGL version %i.%i, got version %i.%i",
+		return createErrorResponse("Requested OpenGL version %i.%i, got version %i.%i",
 			ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
 	}
 
@@ -227,7 +227,7 @@ ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* 
 		window->context.GetStringi = (FN_GLGETSTRINGI)window->context.getProcAddress("glGetStringi");
 		if (!window->context.GetStringi) {
 			glfwMakeContextCurrent(previous);
-			return createErrorResponse(ERR_PLATFORM_ERROR, "Entry point retrieval is broken");
+			return createErrorResponse("Entry point retrieval is broken");
 		}
 	}
 
@@ -346,7 +346,7 @@ void glfwSwapInterval(int interval)
 {
 	if (!_glfw.contextSlot)
 	{
-		_glfwInputError(ERR_NO_CURRENT_CONTEXT, "Cannot set swap interval without a current OpenGL or OpenGL ES context");
+		_glfwInputError("Cannot set swap interval without a current OpenGL or OpenGL ES context");
 		return;
 	}
 	_glfw.contextSlot->context.swapInterval(interval);
@@ -356,13 +356,13 @@ int glfwExtensionSupported(const char* extension)
 {
 	if (!_glfw.contextSlot)
 	{
-		_glfwInputError(ERR_NO_CURRENT_CONTEXT, "Cannot query extension without a current OpenGL or OpenGL ES context");
+		_glfwInputError("Cannot query extension without a current OpenGL or OpenGL ES context");
 		return false;
 	}
 
 	if (*extension == '\0')
 	{
-		_glfwInputError(ERR_INVALID_VALUE, "Extension name cannot be an empty string");
+		_glfwInputError("Extension name cannot be an empty string");
 		return false;
 	}
 
@@ -380,7 +380,7 @@ int glfwExtensionSupported(const char* extension)
 			const char* en = (const char*)_glfw.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
 			if (!en)
 			{
-				_glfwInputError(ERR_PLATFORM_ERROR, "Extension string retrieval is broken");
+				_glfwInputError("Extension string retrieval is broken");
 				return false;
 			}
 
@@ -395,7 +395,7 @@ int glfwExtensionSupported(const char* extension)
 		const char* extensions = (const char*)_glfw.contextSlot->context.GetString(GL_EXTENSIONS);
 		if (!extensions)
 		{
-			_glfwInputError(ERR_PLATFORM_ERROR, "Extension string retrieval is broken");
+			_glfwInputError("Extension string retrieval is broken");
 			return false;
 		}
 
@@ -411,7 +411,7 @@ glFunc glfwGetProcAddress(const char* procname)
 {
 	if (!_glfw.contextSlot)
 	{
-		_glfwInputError(ERR_NO_CURRENT_CONTEXT, "Cannot query entry point without a current OpenGL or OpenGL ES context");
+		_glfwInputError("Cannot query entry point without a current OpenGL or OpenGL ES context");
 		return NULL;
 	}
 	return _glfw.contextSlot->context.getProcAddress(procname);

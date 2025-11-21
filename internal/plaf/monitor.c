@@ -322,7 +322,7 @@ void glfwSetGamma(plafMonitor* monitor, float gamma)
 
     if (gamma != gamma || gamma <= 0.f || gamma > FLT_MAX)
     {
-        _glfwInputError(ERR_INVALID_VALUE, "Invalid gamma value %f", gamma);
+        _glfwInputError("Invalid gamma value %f", gamma);
         return;
     }
 
@@ -366,7 +366,7 @@ const GammaRamp* glfwGetGammaRamp(plafMonitor* monitor) {
 
 void glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
     if (ramp->size <= 0) {
-        _glfwInputError(ERR_INVALID_VALUE, "Invalid gamma ramp size %i", ramp->size);
+        _glfwInputError("Invalid gamma ramp size %i", ramp->size);
         return;
     }
     if (!monitor->originalRamp.size) {

@@ -74,7 +74,7 @@ ErrorResponse* _glfwInitNSGL(void) {
 	}
 	_glfw.nsglFramework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
 	if (_glfw.nsglFramework == NULL) {
-		return createErrorResponse(ERR_API_UNAVAILABLE, "NSGL: Failed to locate OpenGL framework");
+		return createErrorResponse("NSGL: Failed to locate OpenGL framework");
 	}
 	return NULL;
 }
@@ -89,11 +89,11 @@ void _glfwTerminateNSGL(void)
 ErrorResponse* _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	if (ctxconfig->major > 2) {
 		if (ctxconfig->major == 3 && ctxconfig->minor < 2) {
-			return createErrorResponse(ERR_VERSION_UNAVAILABLE, "NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
+			return createErrorResponse("NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
 		}
 	}
 	if (ctxconfig->major >= 3 && ctxconfig->profile == OPENGL_PROFILE_COMPAT) {
-		return createErrorResponse(ERR_VERSION_UNAVAILABLE, "NSGL: The compatibility profile is not available on macOS");
+		return createErrorResponse("NSGL: The compatibility profile is not available on macOS");
 	}
 
 	// Context robustness modes (GL_KHR_robustness) are not supported by
@@ -182,7 +182,7 @@ ErrorResponse* _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxc
 
 	window->context.nsglPixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
 	if (!window->context.nsglPixelFormat) {
-		return createErrorResponse(ERR_FORMAT_UNAVAILABLE, "NSGL: Failed to find a suitable pixel format");
+		return createErrorResponse("NSGL: Failed to find a suitable pixel format");
 	}
 
 	NSOpenGLContext* share = nil;
@@ -193,7 +193,7 @@ ErrorResponse* _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxc
 	window->context.nsglCtx = [[NSOpenGLContext alloc]
 		initWithFormat:window->context.nsglPixelFormat shareContext:share];
 	if (!window->context.nsglCtx) {
-		return createErrorResponse(ERR_VERSION_UNAVAILABLE, "NSGL: Failed to create OpenGL context");
+		return createErrorResponse("NSGL: Failed to create OpenGL context");
 	}
 
 	if (fbconfig->transparent) {

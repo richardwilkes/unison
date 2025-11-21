@@ -1292,7 +1292,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 		InputOutput, visual, CWBorderPixel | CWColormap | CWEventMask, &wa);
 	_glfwReleaseErrorHandlerX11();
 	if (!window->x11Window) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "X11: Failed to create window");
+		return createErrorResponse("X11: Failed to create window");
 	}
 	_glfw.xlibSaveContext(_glfw.x11Display, window->x11Window, _glfw.x11Context, (XPointer)window);
 	if (!wndconfig->decorated) {
@@ -1340,7 +1340,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 	// Set ICCCM WM_HINTS property
 	XWMHints* hints = _glfw.xlibAllocWMHints();
 	if (!hints) {
-		return createErrorResponse(ERR_OUT_OF_MEMORY, "X11: Failed to allocate WM hints");
+		return createErrorResponse("X11: Failed to allocate WM hints");
 	}
 	hints->flags = StateHint;
 	hints->initial_state = NormalState;
@@ -1350,7 +1350,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 	// Set ICCCM WM_NORMAL_HINTS property
 	XSizeHints* sizeHints = _glfw.xlibAllocSizeHints();
 	if (!sizeHints) {
-		return createErrorResponse(ERR_OUT_OF_MEMORY, "X11: Failed to allocate size hints");
+		return createErrorResponse("X11: Failed to allocate size hints");
 	}
 	if (!wndconfig->resizable) {
 		sizeHints->flags |= (PMinSize | PMaxSize);
@@ -2635,7 +2635,7 @@ void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right
 		{
 			if (!waitForX11Event(0.5))
 			{
-				_glfwInputError(ERR_PLATFORM_ERROR, "X11: The window manager has a broken _NET_REQUEST_FRAME_EXTENTS implementation; please report this issue");
+				_glfwInputError("X11: The window manager has a broken _NET_REQUEST_FRAME_EXTENTS implementation; please report this issue");
 				return;
 			}
 		}
@@ -2672,7 +2672,7 @@ void glfwIconifyWindow(plafWindow* window) {
 	{
 		// Override-redirect windows cannot be iconified or restored, as those
 		// tasks are performed by the window manager
-		_glfwInputError(ERR_PLATFORM_ERROR, "X11: Iconification of full screen windows requires a WM that supports EWMH full screen");
+		_glfwInputError("X11: Iconification of full screen windows requires a WM that supports EWMH full screen");
 		return;
 	}
 
@@ -2685,7 +2685,7 @@ void glfwRestoreWindow(plafWindow* window) {
 	{
 		// Override-redirect windows cannot be iconified or restored, as those
 		// tasks are performed by the window manager
-		_glfwInputError(ERR_PLATFORM_ERROR, "X11: Iconification of full screen windows requires a WM that supports EWMH full screen");
+		_glfwInputError("X11: Iconification of full screen windows requires a WM that supports EWMH full screen");
 		return;
 	}
 
@@ -3193,14 +3193,14 @@ IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 				native = XC_sb_v_double_arrow;
 				break;
 			default:
-				_glfwInputError(GLFW_CURSOR_UNAVAILABLE, "X11: Standard cursor shape unavailable");
+				_glfwInputError("X11: Standard cursor shape unavailable");
 				return false;
 		}
 
 		cursor->x11Cursor = _glfw.xlibCreateFontCursor(_glfw.x11Display, native);
 		if (!cursor->x11Cursor)
 		{
-			_glfwInputError(ERR_PLATFORM_ERROR, "X11: Failed to create standard cursor");
+			_glfwInputError("X11: Failed to create standard cursor");
 			return false;
 		}
 	}

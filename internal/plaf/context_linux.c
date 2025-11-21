@@ -38,7 +38,7 @@ static IntBool chooseGLXFBConfig(const plafFrameBufferCfg* desired,
 		_glfw.glxGetFBConfigs(_glfw.x11Display, _glfw.x11Screen, &nativeCount);
 	if (!nativeConfigs || !nativeCount)
 	{
-		_glfwInputError(ERR_API_UNAVAILABLE, "GLX: No GLXFBConfigs returned");
+		_glfwInputError("GLX: No GLXFBConfigs returned");
 		return false;
 	}
 
@@ -125,11 +125,11 @@ static GLXContext createLegacyContextGLX(plafWindow* window,
 static ErrorResponse* makeContextCurrentGLX(plafWindow* window) {
 	if (window) {
 		if (!_glfw.glxMakeCurrent(_glfw.x11Display, window->context.glxWindow, window->context.glxHandle)) {
-			return createErrorResponse(ERR_PLATFORM_ERROR, "GLX: Failed to make context current");
+			return createErrorResponse("GLX: Failed to make context current");
 		}
 	} else {
 		if (!_glfw.glxMakeCurrent(_glfw.x11Display, None, NULL)) {
-			return createErrorResponse(ERR_PLATFORM_ERROR, "GLX: Failed to clear current context");
+			return createErrorResponse("GLX: Failed to clear current context");
 		}
 	}
 	_glfw.contextSlot = window;
@@ -216,7 +216,7 @@ ErrorResponse* _glfwInitGLX(void) {
 			break;
 	}
 	if (!_glfw.glxHandle) {
-		return createErrorResponse(ERR_API_UNAVAILABLE, "GLX: Failed to load GLX");
+		return createErrorResponse("GLX: Failed to load GLX");
 	}
 
 	_glfw.glxGetFBConfigs = (FN_GLXGETFBCONFIGS)_glfwPlatformGetModuleSymbol(_glfw.glxHandle, "glXGetFBConfigs");
@@ -246,7 +246,7 @@ ErrorResponse* _glfwInitGLX(void) {
 		!_glfw.glxCreateWindow ||
 		!_glfw.glxDestroyWindow ||
 		!_glfw.glxGetVisualFromFBConfig) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "GLX: Failed to load required entry points");
+		return createErrorResponse("GLX: Failed to load required entry points");
 	}
 
 	// NOTE: Unlike GLX 1.3 entry points these are not required to be present
@@ -256,16 +256,16 @@ ErrorResponse* _glfwInitGLX(void) {
 	int errorBase;
 	int eventBase;
 	if (!_glfw.glxQueryExtension(_glfw.x11Display, &_glfw.glxErrorBase, &eventBase)) {
-		return createErrorResponse(ERR_API_UNAVAILABLE, "GLX: GLX extension not found");
+		return createErrorResponse("GLX: GLX extension not found");
 	}
 
 	int major;
 	int minor;
 	if (!_glfw.glxQueryVersion(_glfw.x11Display, &major, &minor)) {
-		return createErrorResponse(ERR_API_UNAVAILABLE, "GLX: Failed to query GLX version");
+		return createErrorResponse("GLX: Failed to query GLX version");
 	}
 	if (major == 1 && minor < 3) {
-		return createErrorResponse(ERR_API_UNAVAILABLE, "GLX: GLX version 1.3 is required");
+		return createErrorResponse("GLX: GLX version 1.3 is required");
 	}
 
 	if (extensionSupportedGLX("GLX_EXT_swap_control")) {
@@ -349,20 +349,18 @@ ErrorResponse* _glfwCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxco
 	}
 
 	if (!chooseGLXFBConfig(fbconfig, &native)) {
-		return createErrorResponse(ERR_FORMAT_UNAVAILABLE, "GLX: Failed to find a suitable GLXFBConfig");
+		return createErrorResponse("GLX: Failed to find a suitable GLXFBConfig");
 	}
 
 	if (ctxconfig->forward) {
 		if (!_glfw.glxARB_create_context) {
-			return createErrorResponse(ERR_VERSION_UNAVAILABLE,
-				"GLX: Forward compatibility requested but GLX_ARB_create_context_profile is unavailable");
+			return createErrorResponse("GLX: Forward compatibility requested but GLX_ARB_create_context_profile is unavailable");
 		}
 	}
 
 	if (ctxconfig->profile) {
 		if (!_glfw.glxARB_create_context || !_glfw.glxARB_create_context_profile) {
-			return createErrorResponse(ERR_VERSION_UNAVAILABLE,
-				"GLX: An OpenGL profile requested but GLX_ARB_create_context_profile is unavailable");
+			return createErrorResponse("GLX: An OpenGL profile requested but GLX_ARB_create_context_profile is unavailable");
 		}
 	}
 
@@ -449,12 +447,12 @@ ErrorResponse* _glfwCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxco
 	_glfwReleaseErrorHandlerX11();
 
 	if (!window->context.glxHandle) {
-		return createErrorResponse(ERR_VERSION_UNAVAILABLE, "GLX: Failed to create context");
+		return createErrorResponse("GLX: Failed to create context");
 	}
 
 	window->context.glxWindow = _glfw.glxCreateWindow(_glfw.x11Display, native, window->x11Window, NULL);
 	if (!window->context.glxWindow) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "GLX: Failed to create window");
+		return createErrorResponse("GLX: Failed to create window");
 	}
 
 	window->context.glxFBConfig = native;
@@ -473,11 +471,11 @@ ErrorResponse* _glfwCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxco
 ErrorResponse* _glfwChooseVisualGLX(const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
 	GLXFBConfig native;
 	if (!chooseGLXFBConfig(fbconfig, &native)) {
-		return createErrorResponse(ERR_FORMAT_UNAVAILABLE, "GLX: Failed to find a suitable GLXFBConfig");
+		return createErrorResponse("GLX: Failed to find a suitable GLXFBConfig");
 	}
 	XVisualInfo* result = _glfw.glxGetVisualFromFBConfig(_glfw.x11Display, native);
 	if (!result) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "GLX: Failed to retrieve Visual for GLXFBConfig");
+		return createErrorResponse("GLX: Failed to retrieve Visual for GLXFBConfig");
 	}
 	*visual = result->visual;
 	*depth  = result->depth;

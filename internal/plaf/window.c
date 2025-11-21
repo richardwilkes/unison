@@ -115,7 +115,7 @@ void _glfwInputWindowMonitor(plafWindow* window, plafMonitor* monitor)
 
  ErrorResponse* glfwCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
 	if (width <= 0 || height <= 0) {
-		return createErrorResponse(ERR_INVALID_VALUE, "Invalid window size %ix%i", width, height);
+		return createErrorResponse("Invalid window size %ix%i", width, height);
 	}
 
 	plafCtxCfg ctxconfig = _glfw.contextCfg;
@@ -304,7 +304,7 @@ void glfwWindowHint(int hint, int value)
 			return;
 	}
 
-	_glfwInputError(ERR_INVALID_ENUM, "Invalid window hint 0x%08X", hint);
+	_glfwInputError("Invalid window hint 0x%08X", hint);
 }
 
 void glfwDestroyWindow(plafWindow* window)
@@ -378,7 +378,7 @@ void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images)
 
 	if (count < 0)
 	{
-		_glfwInputError(ERR_INVALID_VALUE, "Invalid image count for window icon");
+		_glfwInputError("Invalid image count for window icon");
 		return;
 	}
 
@@ -386,7 +386,7 @@ void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images)
 	{
 		if (images[i].width <= 0 || images[i].height <= 0)
 		{
-			_glfwInputError(ERR_INVALID_VALUE, "Invalid image dimensions for window icon");
+			_glfwInputError("Invalid image dimensions for window icon");
 			return;
 		}
 	}
@@ -429,7 +429,7 @@ void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
 	{
 		if (minwidth < 0 || minheight < 0)
 		{
-			_glfwInputError(ERR_INVALID_VALUE, "Invalid window minimum size %ix%i", minwidth, minheight);
+			_glfwInputError("Invalid window minimum size %ix%i", minwidth, minheight);
 			return;
 		}
 	}
@@ -439,7 +439,7 @@ void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
 		if (maxwidth < 0 || maxheight < 0 ||
 			maxwidth < minwidth || maxheight < minheight)
 		{
-			_glfwInputError(ERR_INVALID_VALUE, "Invalid window maximum size %ix%i", maxwidth, maxheight);
+			_glfwInputError("Invalid window maximum size %ix%i", maxwidth, maxheight);
 			return;
 		}
 	}
@@ -460,7 +460,7 @@ void glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 	{
 		if (numer <= 0 || denom <= 0)
 		{
-			_glfwInputError(ERR_INVALID_VALUE, "Invalid window aspect ratio %i:%i", numer, denom);
+			_glfwInputError("Invalid window aspect ratio %i:%i", numer, denom);
 			return;
 		}
 	}
@@ -505,7 +505,7 @@ void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale)
 void glfwSetWindowOpacity(plafWindow* window, float opacity) {
 	if (opacity != opacity || opacity < 0.f || opacity > 1.f)
 	{
-		_glfwInputError(ERR_INVALID_VALUE, "Invalid window opacity %f", opacity);
+		_glfwInputError("Invalid window opacity %f", opacity);
 		return;
 	}
 
@@ -577,7 +577,7 @@ int glfwGetWindowAttrib(plafWindow* window, int attrib) {
 			return window->context.noerror;
 	}
 
-	_glfwInputError(ERR_INVALID_ENUM, "Invalid window attribute 0x%08X", attrib);
+	_glfwInputError("Invalid window attribute 0x%08X", attrib);
 	return 0;
 }
 
@@ -610,7 +610,7 @@ void glfwSetWindowAttrib(plafWindow* window, int attrib, int value) {
 			return;
 	}
 
-	_glfwInputError(ERR_INVALID_ENUM, "Invalid window attribute 0x%08X", attrib);
+	_glfwInputError("Invalid window attribute 0x%08X", attrib);
 }
 
 plafMonitor* glfwGetWindowMonitor(plafWindow* window) {
@@ -620,13 +620,13 @@ plafMonitor* glfwGetWindowMonitor(plafWindow* window) {
 void glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
 	if (width <= 0 || height <= 0)
 	{
-		_glfwInputError(ERR_INVALID_VALUE, "Invalid window size %ix%i", width, height);
+		_glfwInputError("Invalid window size %ix%i", width, height);
 		return;
 	}
 
 	if (refreshRate < 0 && refreshRate != DONT_CARE)
 	{
-		_glfwInputError(ERR_INVALID_VALUE, "Invalid refresh rate %i", refreshRate);
+		_glfwInputError("Invalid refresh rate %i", refreshRate);
 		return;
 	}
 
@@ -685,7 +685,7 @@ void glfwWaitEventsTimeout(double timeout)
 {
 	if (timeout != timeout || timeout < 0.0 || timeout > DBL_MAX)
 	{
-		_glfwInputError(ERR_INVALID_VALUE, "Invalid time %f", timeout);
+		_glfwInputError("Invalid time %f", timeout);
 		return;
 	}
 	_glfwWaitEventsTimeout(timeout);

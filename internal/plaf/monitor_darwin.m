@@ -243,7 +243,7 @@ void glfwGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* ysca
 
 	if (!monitor->nsScreen)
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Cannot query content scale without screen");
+		_glfwInputError("Cocoa: Cannot query content scale without screen");
 	}
 
 	const NSRect points = [monitor->nsScreen frame];
@@ -260,7 +260,7 @@ void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
 
 	if (!monitor->nsScreen)
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Cannot query workarea without screen");
+		_glfwInputError("Cocoa: Cannot query workarea without screen");
 	}
 
 	const NSRect frameRect = [monitor->nsScreen visibleFrame];
@@ -318,7 +318,7 @@ IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode *mode) {
 	CGDisplayModeRef native = CGDisplayCopyDisplayMode(monitor->nsDisplayID);
 	if (!native)
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to query display mode");
+		_glfwInputError("Cocoa: Failed to query display mode");
 		return false;
 	}
 

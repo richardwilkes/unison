@@ -158,7 +158,7 @@ int glfwGetInputMode(plafWindow* window, int mode)
 			return window->disableMouseButtonLimit;
 	}
 
-	_glfwInputError(ERR_INVALID_ENUM, "Invalid input mode 0x%08X", mode);
+	_glfwInputError("Invalid input mode 0x%08X", mode);
 	return 0;
 }
 
@@ -171,7 +171,7 @@ void glfwSetInputMode(plafWindow* window, int mode, int value)
 			if (value != CURSOR_NORMAL &&
 				value != CURSOR_HIDDEN)
 			{
-				_glfwInputError(ERR_INVALID_ENUM, "Invalid cursor mode 0x%08X", value);
+				_glfwInputError("Invalid cursor mode 0x%08X", value);
 				return;
 			}
 
@@ -242,14 +242,14 @@ void glfwSetInputMode(plafWindow* window, int mode, int value)
 		}
 	}
 
-	_glfwInputError(ERR_INVALID_ENUM, "Invalid input mode 0x%08X", mode);
+	_glfwInputError("Invalid input mode 0x%08X", mode);
 }
 
 int glfwGetKeyScancode(int key)
 {
 	if (key < KEY_SPACE || key > KEY_LAST)
 	{
-		_glfwInputError(ERR_INVALID_ENUM, "Invalid key %i", key);
+		_glfwInputError("Invalid key %i", key);
 		return -1;
 	}
 
@@ -260,7 +260,7 @@ int glfwGetKey(plafWindow* window, int key)
 {
 	if (key < KEY_SPACE || key > KEY_LAST)
 	{
-		_glfwInputError(ERR_INVALID_ENUM, "Invalid key %i", key);
+		_glfwInputError("Invalid key %i", key);
 		return INPUT_RELEASE;
 	}
 
@@ -278,7 +278,7 @@ int glfwGetMouseButton(plafWindow* window, int button)
 {
 	if (button < MOUSE_BUTTON_1 || button > MOUSE_BUTTON_LAST)
 	{
-		_glfwInputError(ERR_INVALID_ENUM, "Invalid mouse button %i", button);
+		_glfwInputError("Invalid mouse button %i", button);
 		return INPUT_RELEASE;
 	}
 
@@ -295,7 +295,7 @@ int glfwGetMouseButton(plafWindow* window, int button)
 plafCursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot)
 {
 	if (image->width <= 0 || image->height <= 0) {
-		_glfwInputError(ERR_INVALID_VALUE, "Invalid image dimensions for cursor");
+		_glfwInputError("Invalid image dimensions for cursor");
 		return NULL;
 	}
 
@@ -320,7 +320,7 @@ plafCursor* glfwCreateStandardCursor(int shape)
 		shape != STD_CURSOR_HORIZONTAL_RESIZE &&
 		shape != STD_CURSOR_VERTICAL_RESIZE)
 	{
-		_glfwInputError(ERR_INVALID_ENUM, "Invalid standard cursor 0x%08X", shape);
+		_glfwInputError("Invalid standard cursor 0x%08X", shape);
 		return NULL;
 	}
 

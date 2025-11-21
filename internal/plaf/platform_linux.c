@@ -924,7 +924,7 @@ static ErrorResponse* createEmptyEventPipe(void)
 {
 	if (pipe(_glfw.x11EmptyEventPipe) != 0)
 	{
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to create empty event pipe: %s", strerror(errno));
+		return createErrorResponse("Failed to create empty event pipe: %s", strerror(errno));
 	}
 
 	for (int i = 0; i < 2; i++)
@@ -936,7 +936,7 @@ static ErrorResponse* createEmptyEventPipe(void)
 			fcntl(_glfw.x11EmptyEventPipe[i], F_SETFL, sf | O_NONBLOCK) == -1 ||
 			fcntl(_glfw.x11EmptyEventPipe[i], F_SETFD, df | FD_CLOEXEC) == -1)
 		{
-			return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to set flags for empty event pipe: %s", strerror(errno));
+			return createErrorResponse("Failed to set flags for empty event pipe: %s", strerror(errno));
 		}
 	}
 
@@ -975,17 +975,6 @@ void _glfwReleaseErrorHandlerX11(void)
 	_glfw.xlibSync(_glfw.x11Display, False);
 	_glfw.xlibSetErrorHandler(_glfw.x11ErrorHandler);
 	_glfw.x11ErrorHandler = NULL;
-}
-
-// Reports the specified error, appending information about the last X error
-//
-void _glfwInputErrorX11(int error, const char* message)
-{
-	char buffer[ERROR_MSG_SIZE];
-	_glfw.xlibGetErrorText(_glfw.x11Display, _glfw.x11ErrorCode,
-				  buffer, sizeof(buffer));
-
-	_glfwInputError(error, "%s: %s", message, buffer);
 }
 
 // Creates a native cursor object from the specified image and hotspot
@@ -1038,7 +1027,7 @@ ErrorResponse* platformInit(void) {
 	void* module = _glfwPlatformLoadModule("libX11.so.6");
 	if (!module)
 	{
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load Xlib");
+		return createErrorResponse("Failed to load Xlib");
 	}
 
 	FN_XInitThreads XInitThreads = (FN_XInitThreads)_glfwPlatformGetModuleSymbol(module, "XInitThreads");
@@ -1046,7 +1035,7 @@ ErrorResponse* platformInit(void) {
 	FN_XOpenDisplay XOpenDisplay = (FN_XOpenDisplay)_glfwPlatformGetModuleSymbol(module, "XOpenDisplay");
 	if (!XInitThreads || !XrmInitialize || !XOpenDisplay) {
 		_glfwPlatformFreeModule(module);
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load Xlib entry point");
+		return createErrorResponse("Failed to load Xlib entry point");
 	}
 
 	XInitThreads();
@@ -1057,9 +1046,9 @@ ErrorResponse* platformInit(void) {
 		ErrorResponse* errRsp;
 		const char* name = getenv("DISPLAY");
 		if (name) {
-			errRsp = createErrorResponse(ERR_PLATFORM_UNAVAILABLE, "Failed to open display %s", name);
+			errRsp = createErrorResponse("Failed to open display %s", name);
 		} else {
-			errRsp = createErrorResponse(ERR_PLATFORM_UNAVAILABLE, "The DISPLAY environment variable is missing");
+			errRsp = createErrorResponse("The DISPLAY environment variable is missing");
 		}
 		_glfwPlatformFreeModule(module);
 		return errRsp;

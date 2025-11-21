@@ -153,7 +153,7 @@ void* _glfw_calloc(size_t count, size_t size)
 
         if (count > SIZE_MAX / size)
         {
-            _glfwInputError(ERR_INVALID_VALUE, "Allocation size overflow");
+            _glfwInputError("Allocation size overflow");
             return NULL;
         }
 
@@ -162,7 +162,7 @@ void* _glfw_calloc(size_t count, size_t size)
             return memset(block, 0, count * size);
         else
         {
-            _glfwInputError(ERR_OUT_OF_MEMORY, "Out of memory");
+            _glfwInputError("Out of memory");
             return NULL;
         }
     }
@@ -179,7 +179,7 @@ void* _glfw_realloc(void* block, size_t size)
             return resized;
         else
         {
-            _glfwInputError(ERR_OUT_OF_MEMORY, "Out of memory");
+            _glfwInputError("Out of memory");
             return NULL;
         }
     }
@@ -204,7 +204,7 @@ void _glfw_free(void* block)
 //////////////////////////////////////////////////////////////////////////
 
 // Notifies shared code of an error
-void _glfwInputError(int code, const char* format, ...) {
+void _glfwInputError(const char* format, ...) {
 	char description[ERROR_MSG_SIZE];
 	va_list vl;
 
@@ -214,19 +214,17 @@ void _glfwInputError(int code, const char* format, ...) {
 
 	description[sizeof(description) - 1] = '\0';
 
-	_glfw.errorSlot.code = code;
 	strcpy(_glfw.errorSlot.desc, description);
 
 	if (_glfwErrorCallback) {
-		_glfwErrorCallback(code, description);
+		_glfwErrorCallback(description);
 	}
 }
 
-ErrorResponse* createErrorResponse(int code, const char* format, ...) {
+ErrorResponse* createErrorResponse(const char* format, ...) {
 	va_list args;
 	ErrorResponse* errResp = (ErrorResponse*)malloc(sizeof(ErrorResponse));
 	errResp->next = NULL;
-	errResp->code = code;
 	va_start(args, format);
 	vsnprintf(errResp->desc, ERROR_MSG_SIZE, format, args);
 	va_end(args);

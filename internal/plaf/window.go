@@ -304,7 +304,7 @@ func (w *Window) SetIcon(images []image.Image) {
 		v()
 	}
 
-	acceptError(invalidValue, FeatureUnavailable)
+	acceptError()
 }
 
 // GetPos returns the position, in screen coordinates, of the upper-left

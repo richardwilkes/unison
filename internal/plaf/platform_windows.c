@@ -12,13 +12,13 @@ static ErrorResponse* loadLibraries(void)
 							(const WCHAR*) &_glfw,
 							(HMODULE*) &_glfw.win32Instance))
 	{
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to retrieve own module handle");
+		return createErrorResponse("Failed to retrieve own module handle");
 	}
 
 	_glfw.win32User32Instance = _glfwPlatformLoadModule("user32.dll");
 	if (!_glfw.win32User32Instance)
 	{
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to load user32.dll");
+		return createErrorResponse("Failed to load user32.dll");
 	}
 
 	_glfw.win32User32EnableNonClientDpiScaling_ = (FN_EnableNonClientDpiScaling)
@@ -244,7 +244,7 @@ static ErrorResponse* createHelperWindow(void)
 	_glfw.win32HelperWindowClass = RegisterClassExW(&wc);
 	if (!_glfw.win32HelperWindowClass)
 	{
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to register helper window class");
+		return createErrorResponse("Failed to register helper window class");
 	}
 
 	_glfw.win32HelperWindowHandle =
@@ -259,7 +259,7 @@ static ErrorResponse* createHelperWindow(void)
 
 	if (!_glfw.win32HelperWindowHandle)
 	{
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Failed to create helper window");
+		return createErrorResponse("Failed to create helper window");
 	}
 
 	// HACK: The command to the first ShowWindow call is ignored if the parent
@@ -322,27 +322,6 @@ char* _glfwCreateUTF8FromWideStringWin32(const WCHAR* src) {
 		return NULL;
 	}
 	return target;
-}
-
-// Reports the specified error, appending information about the last Win32 error
-//
-void _glfwInputErrorWin32(int error, const char* description)
-{
-	WCHAR buffer[ERROR_MSG_SIZE] = L"";
-	char message[ERROR_MSG_SIZE] = "";
-
-	FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM |
-					   FORMAT_MESSAGE_IGNORE_INSERTS |
-					   FORMAT_MESSAGE_MAX_WIDTH_MASK,
-				   NULL,
-				   GetLastError() & 0xffff,
-				   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-				   buffer,
-				   sizeof(buffer) / sizeof(WCHAR),
-				   NULL);
-	WideCharToMultiByte(CP_UTF8, 0, buffer, -1, message, sizeof(message), NULL, NULL);
-
-	_glfwInputError(error, "%s: %s", description, message);
 }
 
 // Replacement for IsWindowsVersionOrGreater, as we cannot rely on the

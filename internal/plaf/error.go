@@ -3,158 +3,39 @@ package plaf
 /*
 #include "platform.h"
 
-void goErrorCallback(int error_code, const char* description);
+void goErrorCallback(const char* description);
 */
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"unsafe"
 )
-
-// ErrorCode corresponds to an error code.
-type ErrorCode int
-
-// Error codes that are translated to panics and the programmer should not
-// expect to handle.
-const (
-	notInitialized   ErrorCode = C.ERR_NOT_INITIALIZED    // GLFW has not been initialized.
-	noCurrentContext ErrorCode = C.ERR_NO_CURRENT_CONTEXT // No context is current.
-	invalidEnum      ErrorCode = C.ERR_INVALID_ENUM       // One of the enum parameters for the function was given an invalid enum.
-	invalidValue     ErrorCode = C.ERR_INVALID_VALUE      // One of the parameters for the function was given an invalid value.
-	outOfMemory      ErrorCode = C.ERR_OUT_OF_MEMORY      // A memory allocation failed.
-	platformError    ErrorCode = C.ERR_PLATFORM_ERROR     // A platform-specific error occurred that does not match any of the more specific categories.
-	noWindowContext  ErrorCode = C.ERR_NO_WINDOW_CONTEXT  // A window that does not have an OpenGL or OpenGL ES context was passed to a function that requires it to have one.
-)
-
-const (
-	// APIUnavailable is the error code used when GLFW could not find support
-	// for the requested client API on the system.
-	//
-	// The installed graphics driver does not support the requested client API,
-	// or does not support it via the chosen context creation backend. Below
-	// are a few examples.
-	//
-	// Some pre-installed Windows graphics drivers do not support OpenGL. AMD
-	// only supports OpenGL ES via EGL, while Nvidia and Intel only supports it
-	// via a WGL or GLX extension. OS X does not provide OpenGL ES at all. The
-	// Mesa EGL, OpenGL and OpenGL ES libraries do not interface with the
-	// Nvidia binary driver.
-	APIUnavailable ErrorCode = C.ERR_API_UNAVAILABLE
-
-	// VersionUnavailable is the error code used when the requested OpenGL or
-	// OpenGL ES (including any requested profile or context option) is not
-	// available on this machine.
-	//
-	// The machine does not support your requirements. If your application is
-	// sufficiently flexible, downgrade your requirements and try again.
-	// Otherwise, inform the user that their machine does not match your
-	// requirements.
-	//
-	// Future invalid OpenGL and OpenGL ES versions, for example OpenGL 4.8 if
-	// 5.0 comes out before the 4.x series gets that far, also fail with this
-	// error and not ERR_INVALID_VALUE, because GLFW cannot know what future
-	// versions will exist.
-	VersionUnavailable ErrorCode = C.ERR_VERSION_UNAVAILABLE
-
-	// FormatUnavailable is the error code used for both window creation and
-	// clipboard querying format errors.
-	//
-	// If emitted during window creation, the requested pixel format is not
-	// supported. This means one or more hard constraints did not match any of
-	// the available pixel formats. If your application is sufficiently
-	// flexible, downgrade your requirements and try again. Otherwise, inform
-	// the user that their machine does not match your requirements.
-	//
-	// If emitted when querying the clipboard, the contents of the clipboard
-	// could not be converted to the requested format. You should ignore the
-	// error or report it to the user, as appropriate.
-	FormatUnavailable ErrorCode = C.ERR_FORMAT_UNAVAILABLE
-
-	// FeatureUnavailable is the error code used when a platform does not support a requested feature.
-	FeatureUnavailable ErrorCode = C.ERR_FEATURE_UNAVAILABLE
-)
-
-func (e ErrorCode) String() string {
-	switch e {
-	case notInitialized:
-		return "NotInitialized"
-	case noCurrentContext:
-		return "NoCurrentContext"
-	case invalidEnum:
-		return "InvalidEnum"
-	case invalidValue:
-		return "InvalidValue"
-	case outOfMemory:
-		return "OutOfMemory"
-	case platformError:
-		return "PlatformError"
-	case noWindowContext:
-		return "NoWindowContext"
-	case APIUnavailable:
-		return "APIUnavailable"
-	case VersionUnavailable:
-		return "VersionUnavailable"
-	case FormatUnavailable:
-		return "FormatUnavailable"
-	default:
-		return fmt.Sprintf("ErrorCode(%d)", e)
-	}
-}
-
-// Error holds error code and description.
-type Error struct {
-	Next *Error
-	Desc string
-	Code ErrorCode
-}
 
 func convertErrorResponse(errResp *C.ErrorResponse) error {
 	if errResp == nil {
 		return nil
 	}
-	return _convertErrorResponse(errResp)
-}
-
-func _convertErrorResponse(errResp *C.ErrorResponse) *Error {
-	if errResp == nil {
-		return nil
-	}
-	err := &Error{
-		Next: _convertErrorResponse(errResp.next),
-		Code: ErrorCode(errResp.code),
-		Desc: C.GoString(&errResp.desc[0]),
-	}
+	s := C.GoString(&errResp.desc[0])
+	next := errResp.next
 	C.free(unsafe.Pointer(errResp))
-	return err
-}
-
-// Error prints the error code and description in a readable format.
-func (e *Error) Error() string {
-	if e.Next == nil {
-		return fmt.Sprintf("%s: %s", e.Code.String(), e.Desc)
-	}
-	var buffer strings.Builder
-	i := 1
-	next := e
-	for next != nil {
-		if i != 0 {
-			buffer.WriteString("\n")
+	if next != nil {
+		s = "Multiple errors:\n- " + s
+		for next != nil {
+			s += "\n- " + C.GoString(&next.desc[0])
+			errResp = next
+			next = next.next
+			C.free(unsafe.Pointer(errResp))
 		}
-		fmt.Fprintf(&buffer, "%d: %s: %s", i, next.Code.String(), next.Desc)
-		next = next.Next
 	}
-	return buffer.String()
+	return errors.New(s)
 }
-
-// Note: There are many cryptic caveats to proper error handling here.
-// See: https://github.com/go-gl/glfw3/pull/86
 
 // Holds the value of the last error.
-var lastError = make(chan *Error, 1)
+var lastError = make(chan error, 1)
 
 // Set the glfw callback internally
 func init() {
@@ -165,64 +46,29 @@ func init() {
 // this ensures that any uncaught errors buffered in lastError are printed
 // before the program exits.
 func flushErrors() {
-	err := fetchError()
-	if err != nil {
+	if err := fetchError(); err != nil {
 		fmt.Fprintln(os.Stderr, "go-gl/glfw: internal error: an uncaught error has occurred:", err)
 		fmt.Fprintln(os.Stderr, "go-gl/glfw: Please report this in the Go package issue tracker.")
 	}
 }
 
-// acceptError fetches the next error from the error channel, it accepts only
-// errors with one of the given error codes. If any other error is encountered,
-// a panic will occur.
-//
-// Platform errors are always printed, for information why please see:
-//
-//	https://github.com/go-gl/glfw/issues/127
-func acceptError(codes ...ErrorCode) error {
-	// Grab the next error, if there is one.
-	err := fetchError()
-	if err == nil {
-		return nil
-	}
-
-	// Only if the error has the specific error code accepted by the caller, do
-	// we return the error.
-	for _, code := range codes {
-		if err.Code == code {
-			return err
-		}
-	}
-
-	// The error isn't accepted by the caller. If the error code is not a code
-	// defined in the GLFW C documentation as a programmer error, then the
-	// caller should have accepted it. This is effectively a bug in this
-	// package.
-	switch err.Code {
-	case platformError:
+func acceptError() {
+	if err := fetchError(); err != nil {
 		log.Println(err)
-		return nil
-	case notInitialized, noCurrentContext, invalidEnum, invalidValue, outOfMemory, noWindowContext:
-		panic(err)
-	default:
-		fmt.Fprintln(os.Stderr, "go-gl/glfw: internal error: an invalid error was not accepted by the caller:", err)
-		fmt.Fprintln(os.Stderr, "go-gl/glfw: Please report this in the Go package issue tracker.")
-		panic(err)
 	}
 }
 
 // panicError is a helper used by functions which expect no errors (except
 // programmer errors) to occur. It will panic if it finds any such error.
 func panicError() {
-	err := acceptError()
-	if err != nil {
+	if err := fetchError(); err != nil {
 		panic(err)
 	}
 }
 
 // fetchError fetches the next error from the error channel, it does not block
 // and returns nil if there is no error present.
-func fetchError() *Error {
+func fetchError() error {
 	select {
 	case err := <-lastError:
 		return err

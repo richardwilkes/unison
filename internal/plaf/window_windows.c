@@ -102,14 +102,14 @@ static HICON createIcon(const ImageData* image, int xhot, int yhot, IntBool icon
 
 	if (!color)
 	{
-		_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to create RGBA bitmap");
+		_glfwInputError("Win32: Failed to create RGBA bitmap");
 		return NULL;
 	}
 
 	mask = CreateBitmap(image->width, image->height, 1, 1, NULL);
 	if (!mask)
 	{
-		_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to create mask bitmap");
+		_glfwInputError("Win32: Failed to create mask bitmap");
 		DeleteObject(color);
 		return NULL;
 	}
@@ -140,11 +140,11 @@ static HICON createIcon(const ImageData* image, int xhot, int yhot, IntBool icon
 	{
 		if (icon)
 		{
-			_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to create icon");
+			_glfwInputError("Win32: Failed to create icon");
 		}
 		else
 		{
-			_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to create cursor");
+			_glfwInputError("Win32: Failed to create cursor");
 		}
 	}
 
@@ -998,7 +998,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 		}
 		_glfw.win32MainWindowClass = RegisterClassExW(&wc);
 		if (!_glfw.win32MainWindowClass) {
-			return createErrorResponse(ERR_PLATFORM_ERROR, "Win32: Failed to register window class");
+			return createErrorResponse("Win32: Failed to register window class");
 		}
 	}
 
@@ -1011,7 +1011,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 			const int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
 			unsigned char* cursorPixels = _glfw_calloc(cursorWidth * cursorHeight, 4);
 			if (!cursorPixels) {
-				return createErrorResponse(ERR_OUT_OF_MEMORY, "Win32: Failed to allocate blank cursor pixels");
+				return createErrorResponse("Win32: Failed to allocate blank cursor pixels");
 			}
 
 			// NOTE: Windows checks whether the image is fully transparent and if so
@@ -1024,7 +1024,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 			_glfw_free(cursorPixels);
 
 			if (!_glfw.win32BlankCursor) {
-				return createErrorResponse(ERR_PLATFORM_ERROR, "Win32: Failed to create blank cursor");
+				return createErrorResponse("Win32: Failed to create blank cursor");
 			}
 		}
 	}
@@ -1063,7 +1063,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 
 	wideTitle = _glfwCreateWideStringFromUTF8Win32(window->title);
 	if (!wideTitle) {
-		return createErrorResponse(ERR_OUT_OF_MEMORY, "Win32: Failed to allocate title");
+		return createErrorResponse("Win32: Failed to allocate title");
 	}
 
 	window->win32Window = CreateWindowExW(exStyle, MAKEINTATOM(_glfw.win32MainWindowClass), wideTitle, style, frameX,
@@ -1072,7 +1072,7 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 	_glfw_free(wideTitle);
 
 	if (!window->win32Window) {
-		return createErrorResponse(ERR_PLATFORM_ERROR, "Win32: Failed to create window");
+		return createErrorResponse("Win32: Failed to create window");
 	}
 
 	SetPropW(window->win32Window, L"GLFW", window);
@@ -1738,7 +1738,7 @@ IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 			id = OCR_SIZENS;
 			break;
 		default:
-			_glfwInputError(ERR_PLATFORM_ERROR, "Win32: Unknown standard cursor");
+			_glfwInputError("Win32: Unknown standard cursor");
 			return false;
 	}
 
@@ -1747,7 +1747,7 @@ IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 									  LR_DEFAULTSIZE | LR_SHARED);
 	if (!cursor->win32Cursor)
 	{
-		_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to create standard cursor");
+		_glfwInputError("Win32: Failed to create standard cursor");
 		return false;
 	}
 

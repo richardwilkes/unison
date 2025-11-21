@@ -256,7 +256,7 @@ void _glfwSetVideoMode(plafMonitor* monitor, const VideoMode* desired)
 		else if (result == DISP_CHANGE_RESTART)
 			description = "Computer restart required";
 
-		_glfwInputError(ERR_PLATFORM_ERROR, "Win32: Failed to set video mode: %s", description);
+		_glfwInputError("Win32: Failed to set video mode: %s", description);
 	}
 }
 
@@ -281,7 +281,7 @@ void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* ys
 
 	if (_glfw.win32ShCoreGetDpiForMonitor_(handle, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) != S_OK)
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Win32: Failed to query monitor DPI");
+		_glfwInputError("Win32: Failed to query monitor DPI");
 		return;
 	}
 
@@ -400,7 +400,7 @@ IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode) {
 
 	if (!EnumDisplaySettingsW(monitor->win32AdapterName, ENUM_CURRENT_SETTINGS, &dm))
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Win32: Failed to query display settings");
+		_glfwInputError("Win32: Failed to query display settings");
 		return false;
 	}
 
@@ -438,7 +438,7 @@ void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
 
 	if (ramp->size != 256)
 	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Win32: Gamma ramp size must be 256");
+		_glfwInputError("Win32: Gamma ramp size must be 256");
 		return;
 	}
 

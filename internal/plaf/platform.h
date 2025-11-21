@@ -644,182 +644,6 @@ typedef unsigned char GLubyte;
 
 #define ERROR_MSG_SIZE 1024
 
-
-
-// Error codes
-/*! @brief GLFW has not been initialized.
- *
- *  This occurs if a GLFW function was called that must not be called unless the
- *  library is [initialized](@ref intro_init).
- *
- *  @analysis Application programmer error.  Initialize GLFW before calling any
- *  function that requires initialization.
- */
-#define ERR_NOT_INITIALIZED        0x00010001
-/*! @brief No context is current for this thread.
- *
- *  This occurs if a GLFW function was called that needs and operates on the
- *  current OpenGL or OpenGL ES context but no context is current on the calling
- *  thread.  One such function is @ref glfwSwapInterval.
- *
- *  @analysis Application programmer error.  Ensure a context is current before
- *  calling functions that require a current context.
- */
-#define ERR_NO_CURRENT_CONTEXT     0x00010002
-/*! @brief One of the arguments to the function was an invalid enum value.
- *
- *  One of the arguments to the function was an invalid enum value, for example
- *  requesting @ref WINDOW_HINT_RED_BITS with @ref glfwGetWindowAttrib.
- *
- *  @analysis Application programmer error.  Fix the offending call.
- */
-#define ERR_INVALID_ENUM           0x00010003
-/*! @brief One of the arguments to the function was an invalid value.
- *
- *  One of the arguments to the function was an invalid value, for example
- *  requesting a non-existent OpenGL or OpenGL ES version like 2.7.
- *
- *  Requesting a valid but unavailable OpenGL or OpenGL ES version will instead
- *  result in a @ref ERR_VERSION_UNAVAILABLE error.
- *
- *  @analysis Application programmer error.  Fix the offending call.
- */
-#define ERR_INVALID_VALUE          0x00010004
-/*! @brief A memory allocation failed.
- *
- *  A memory allocation failed.
- *
- *  @analysis A bug in GLFW or the underlying operating system.  Report the bug
- *  to our [issue tracker](https://github.com/glfw/glfw/issues).
- */
-#define ERR_OUT_OF_MEMORY          0x00010005
-/*! @brief GLFW could not find support for the requested API on the system.
- *
- *  GLFW could not find support for the requested API on the system.
- *
- *  @analysis The installed graphics driver does not support the requested
- *  API, or does not support it via the chosen context creation API.
- *  Below are a few examples.
- *
- *  @par
- *  Some pre-installed Windows graphics drivers do not support OpenGL.  AMD only
- *  supports OpenGL ES via EGL, while Nvidia and Intel only support it via
- *  a WGL or GLX extension.  macOS does not provide OpenGL ES at all.  The Mesa
- *  EGL, OpenGL and OpenGL ES libraries do not interface with the Nvidia binary
- *  driver.
- */
-#define ERR_API_UNAVAILABLE        0x00010006
-/*! @brief The requested OpenGL or OpenGL ES version is not available.
- *
- *  The requested OpenGL or OpenGL ES version (including any requested context
- *  or framebuffer hints) is not available on this machine.
- *
- *  @analysis The machine does not support your requirements.  If your
- *  application is sufficiently flexible, downgrade your requirements and try
- *  again.  Otherwise, inform the user that their machine does not match your
- *  requirements.
- *
- *  @par
- *  Future invalid OpenGL and OpenGL ES versions, for example OpenGL 4.8 if 5.0
- *  comes out before the 4.x series gets that far, also fail with this error and
- *  not @ref ERR_INVALID_VALUE, because GLFW cannot know what future versions
- *  will exist.
- */
-#define ERR_VERSION_UNAVAILABLE    0x00010007
-/*! @brief A platform-specific error occurred that does not match any of the
- *  more specific categories.
- *
- *  A platform-specific error occurred that does not match any of the more
- *  specific categories.
- *
- *  @analysis A bug or configuration error in GLFW, the underlying operating
- *  system or its drivers, or a lack of required resources.  Report the issue to
- *  our [issue tracker](https://github.com/glfw/glfw/issues).
- */
-#define ERR_PLATFORM_ERROR         0x00010008
-/*! @brief The requested format is not supported or available.
- *
- *  If emitted during window creation, the requested pixel format is not
- *  supported.
- *
- *  If emitted when querying the clipboard, the contents of the clipboard could
- *  not be converted to the requested format.
- *
- *  @analysis If emitted during window creation, one or more
- *  [hard constraints](@ref window_hints_hard) did not match any of the
- *  available pixel formats.  If your application is sufficiently flexible,
- *  downgrade your requirements and try again.  Otherwise, inform the user that
- *  their machine does not match your requirements.
- *
- *  @par
- *  If emitted when querying the clipboard, ignore the error or report it to
- *  the user, as appropriate.
- */
-#define ERR_FORMAT_UNAVAILABLE     0x00010009
-/*! @brief The specified window does not have an OpenGL or OpenGL ES context.
- *
- *  A window that does not have an OpenGL or OpenGL ES context was passed to
- *  a function that requires it to have one.
- *
- *  @analysis Application programmer error.  Fix the offending call.
- */
-#define ERR_NO_WINDOW_CONTEXT      0x0001000A
-/*! @brief The specified cursor shape is not available.
- *
- *  The specified standard cursor shape is not available, either because the
- *  current platform cursor theme does not provide it or because it is not
- *  available on the platform.
- *
- *  @analysis Platform or system settings limitation.  Pick another
- *  [standard cursor shape](@ref shapes) or create a
- *  [custom cursor](@ref cursor_custom).
- */
-#define GLFW_CURSOR_UNAVAILABLE     0x0001000B
-/*! @brief The requested feature is not provided by the platform.
- *
- *  The requested feature is not provided by the platform, so GLFW is unable to
- *  implement it.  The documentation for each function notes if it could emit
- *  this error.
- *
- *  @analysis Platform or platform version limitation.  The error can be ignored
- *  unless the feature is critical to the application.
- *
- *  @par
- *  A function call that emits this error has no effect other than the error and
- *  updating any existing out parameters.
- */
-#define ERR_FEATURE_UNAVAILABLE    0x0001000C
-/*! @brief The requested feature is not implemented for the platform.
- *
- *  The requested feature has not yet been implemented in GLFW for this platform.
- *
- *  @analysis An incomplete implementation of GLFW for this platform, hopefully
- *  fixed in a future release.  The error can be ignored unless the feature is
- *  critical to the application.
- *
- *  @par
- *  A function call that emits this error has no effect other than the error and
- *  updating any existing out parameters.
- */
-#define ERR_FEATURE_UNIMPLEMENTED  0x0001000D
-/*! @brief Platform unavailable or no matching platform was found.
- *
- *  If emitted during initialization, no matching platform was found.
- *
- *  If emitted by a native access function, GLFW was initialized for a different platform
- *  than the function is for.
- *
- *  @analysis Failure to detect any platform usually only happens on non-macOS Unix
- *  systems, either when no window system is running or the program was run from
- *  a terminal that does not have the necessary environment variables.  Fall back to
- *  a different platform if possible or notify the user that no usable platform was
- *  detected.
- *
- *  Failure to detect a specific platform may have the same cause as above or be because
- *  support for that platform was not compiled in.
- */
-#define ERR_PLATFORM_UNAVAILABLE   0x0001000E
-
 typedef int IntBool;
 
 // Forward declarations
@@ -833,7 +657,7 @@ typedef void (*charModsFunc)(plafWindow* window, unsigned int codepoint, int mod
 typedef void (*cursorEnterFunc)(plafWindow* window, int entered);
 typedef void (*cursorPosFunc)(plafWindow* window, double xpos, double ypos);
 typedef void (*dropFunc)(plafWindow* window, int path_count, const char* paths[]);
-typedef void (*errorFunc)(int error_code, const char* description);
+typedef void (*errorFunc)(const char* description);
 typedef void (*frameBufferSizeFunc)(plafWindow* window, int width, int height);
 typedef void (*glFunc)(void);
 typedef void (*keyFunc)(plafWindow* window, int key, int scancode, int action, int mods);
@@ -852,7 +676,6 @@ typedef void (*windowSizeFunc)(plafWindow* window, int width, int height);
 // An error response
 typedef struct ErrorResponse {
 	struct ErrorResponse* next;
-	int                   code;
 	char                  desc[ERROR_MSG_SIZE];
 } ErrorResponse;
 
@@ -1544,8 +1367,6 @@ void plafTerminate(void);
  *  For more information about the callback parameters, see the
  *  [callback pointer type](@ref errorFunc).
  *
- *  @errors None.
- *
  *  @remark This function may be called before @ref plafInit.
  *
  *  @thread_safety This function must only be called from the main thread.
@@ -1570,8 +1391,6 @@ errorFunc glfwSetErrorCallback(errorFunc callback);
  *  @return An array of monitor handles, or `NULL` if no monitors were found or
  *  if an [error](@ref error_handling) occurred.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @pointer_lifetime The returned array is allocated and freed by GLFW.  You
  *  should not free it yourself.  It is guaranteed to be valid only until the
  *  monitor configuration changes or the library is terminated.
@@ -1595,8 +1414,6 @@ plafMonitor** glfwGetMonitors(int* count);
  *
  *  @return The primary monitor, or `NULL` if no monitors were found or if an
  *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -1635,8 +1452,6 @@ void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
  *  @param[out] heightMM Where to store the height, in millimetres, of the
  *  monitor's display area, or `NULL`.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @remark __Win32:__ On Windows 8 and earlier the physical size is calculated from
  *  the current resolution and system DPI instead of querying the monitor EDID data.
  *
@@ -1661,8 +1476,6 @@ void glfwGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* ysca
  *  @param[in] monitor The monitor to query.
  *  @return The UTF-8 encoded name of the monitor, or `NULL` if an
  *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @pointer_lifetime The returned string is allocated and freed by GLFW.  You
  *  should not free it yourself.  It is valid until the specified monitor is
@@ -1696,8 +1509,6 @@ const char* glfwGetMonitorName(plafMonitor* monitor);
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref monitorFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref monitor_event
@@ -1728,9 +1539,6 @@ const VideoMode* glfwGetVideoMode(plafMonitor* monitor);
  *  @param[in] monitor The monitor whose gamma ramp to set.
  *  @param[in] gamma The desired exponent.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref ERR_INVALID_VALUE,
- *  @ref ERR_PLATFORM_ERROR and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref monitor_gamma
@@ -1748,8 +1556,6 @@ void glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
  *
  *  This function resets all window hints to their
  *  [default values](@ref window_hints_values).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -1783,9 +1589,6 @@ void glfwDefaultWindowHints(void);
  *  @param[in] hint The [window hint](@ref window_hints) to set.
  *  @param[in] value The new value of the window hint.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_INVALID_ENUM.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_hints
@@ -1818,9 +1621,6 @@ void glfwWindowHint(int hint, int value);
  *  @param[in] hint The [window hint](@ref window_hints) to set.
  *  @param[in] value The new value of the window hint.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_INVALID_ENUM.
- *
  *  @pointer_lifetime The specified string is copied before this function
  *  returns.
  *
@@ -1848,9 +1648,6 @@ ErrorResponse* glfwCreateWindow(int width, int height, const char* title, plafMo
  *
  *  @param[in] window The window to destroy.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
  *  @note The context of the specified window must not be current on any other
  *  thread when this function is called.
  *
@@ -1873,9 +1670,6 @@ void glfwDestroyWindow(plafWindow* window);
  *  @return The `NSWindow` of the specified window, or `nil` if an
  *  [error](@ref error_handling) occurred.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_UNAVAILABLE.
- *
  *  @thread_safety This function may be called from any thread.  Access is not
  *  synchronized.
  *
@@ -1892,8 +1686,6 @@ id glfwGetCocoaWindow(plafWindow* window);
  *
  *  @param[in] window The window to query.
  *  @return The value of the close flag.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function may be called from any thread.  Access is not
  *  synchronized.
@@ -1915,8 +1707,6 @@ int glfwWindowShouldClose(plafWindow* window);
  *  @param[in] window The window whose flag to change.
  *  @param[in] value The new value.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function may be called from any thread.  Access is not
  *  synchronized.
  *
@@ -1937,8 +1727,6 @@ void glfwSetWindowShouldClose(plafWindow* window, int value);
  *  @param[in] window The window to query.
  *  @return The UTF-8 encoded window title, or `NULL` if an
  *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @remark The returned title is currently a copy of the title last set by @ref
  *  glfwCreateWindow or @ref glfwSetWindowTitle.  It does not include any
@@ -1967,9 +1755,6 @@ const char* glfwGetWindowTitle(plafWindow* window);
  *
  *  @param[in] window The window whose title to change.
  *  @param[in] title The UTF-8 encoded window title.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @remark __macOS:__ The window title will not be updated until the next time you
  *  process events.
@@ -2007,10 +1792,6 @@ void glfwSetWindowTitle(plafWindow* window, const char* title);
  *  @param[in] images The images to create the icon from.  This is ignored if
  *  count is zero.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_VALUE, @ref ERR_PLATFORM_ERROR and @ref
- *  ERR_FEATURE_UNAVAILABLE (see remarks).
- *
  *  @pointer_lifetime The specified image data is copied before this function
  *  returns.
  *
@@ -2045,9 +1826,6 @@ void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images);
  *  @param[out] ypos Where to store the y-coordinate of the upper-left corner of
  *  the content area, or `NULL`.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_PLATFORM_ERROR and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_pos
@@ -2075,9 +1853,6 @@ void glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos);
  *  @param[in] xpos The x-coordinate of the upper-left corner of the content area.
  *  @param[in] ypos The y-coordinate of the upper-left corner of the content area.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_PLATFORM_ERROR and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_pos
@@ -2104,9 +1879,6 @@ void glfwSetWindowPos(plafWindow* window, int xpos, int ypos);
  *  content area, or `NULL`.
  *  @param[out] height Where to store the height, in screen coordinates, of the
  *  content area, or `NULL`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2142,9 +1914,6 @@ void glfwGetWindowSize(plafWindow* window, int* width, int* height);
  *  area, or `DONT_CARE`.
  *  @param[in] maxheight The maximum height, in screen coordinates, of the
  *  content area, or `DONT_CARE`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_VALUE and @ref ERR_PLATFORM_ERROR.
  *
  *  @remark If you set size limits and an aspect ratio that conflict, the
  *  results are undefined.
@@ -2183,9 +1952,6 @@ void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
  *  @param[in] denom The denominator of the desired aspect ratio, or
  *  `DONT_CARE`.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_VALUE and @ref ERR_PLATFORM_ERROR.
- *
  *  @remark If you set size limits and an aspect ratio that conflict, the
  *  results are undefined.
  *
@@ -2222,9 +1988,6 @@ void glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom);
  *  @param[in] height The desired height, in screen coordinates, of the window
  *  content area.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_size
@@ -2252,9 +2015,6 @@ void glfwSetWindowSize(plafWindow* window, int width, int height);
  *  or `NULL`.
  *  @param[out] height Where to store the height, in pixels, of the framebuffer,
  *  or `NULL`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2291,9 +2051,6 @@ void glfwGetFramebufferSize(plafWindow* window, int* width, int* height);
  *  @param[out] bottom Where to store the size, in screen coordinates, of the
  *  bottom edge of the window frame, or `NULL`.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_size
@@ -2321,9 +2078,6 @@ void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right,
  *  @param[in] window The window to query.
  *  @param[out] xscale Where to store the x-axis content scale, or `NULL`.
  *  @param[out] yscale Where to store the y-axis content scale, or `NULL`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2353,9 +2107,6 @@ float glfwGetWindowOpacity(plafWindow* window);
  *  @param[in] window The window to set the opacity for.
  *  @param[in] opacity The desired opacity of the specified window.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_PLATFORM_ERROR and @ref ERR_FEATURE_UNAVAILABLE (see remarks).
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @since Added in version 3.3.
@@ -2376,9 +2127,6 @@ void glfwRestoreWindow(plafWindow* window);
  *
  *  @param[in] window The window to maximize.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
  *  @par Thread Safety
  *  This function may only be called from the main thread.
  *
@@ -2395,9 +2143,6 @@ void glfwMaximizeWindow(plafWindow* window);
  *  function does nothing.
  *
  *  @param[in] window The window to make visible.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2417,9 +2162,6 @@ void glfwShowWindow(plafWindow* window);
  *  nothing.
  *
  *  @param[in] window The window to hide.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2443,8 +2185,6 @@ void glfwRequestWindowAttention(plafWindow* window);
  *  @param[in] window The window to query.
  *  @return The monitor, or `NULL` if the window is in windowed mode or an
  *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2490,9 +2230,6 @@ plafMonitor* glfwGetWindowMonitor(plafWindow* window);
  *  @param[in] refreshRate The desired refresh rate, in Hz, of the video mode,
  *  or `DONT_CARE`.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
- *
  *  @remark The OpenGL or OpenGL ES context will not be destroyed or otherwise
  *  affected by any resizing or mode switching, although you may need to update
  *  your viewport if the framebuffer size has changed.
@@ -2520,9 +2257,6 @@ void glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, in
  *  return.
  *  @return The value of the attribute, or zero if an
  *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_ENUM and @ref ERR_PLATFORM_ERROR.
  *
  *  @remark Framebuffer related hints are not window attributes.  See @ref
  *  window_attribs_fb for more information.
@@ -2563,10 +2297,6 @@ int glfwGetWindowAttrib(plafWindow* window, int attrib);
  *  @param[in] attrib A supported window attribute.
  *  @param[in] value `true` or `false`.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_ENUM, @ref ERR_INVALID_VALUE, @ref ERR_PLATFORM_ERROR and @ref
- *  ERR_FEATURE_UNAVAILABLE (see remarks).
- *
  *  @remark Calling @ref glfwGetWindowAttrib will always return the latest
  *  value, even if that value is ignored by the current mode of the window.
  *
@@ -2601,8 +2331,6 @@ void glfwSetWindowAttrib(plafWindow* window, int attrib, int value);
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref windowPosFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_pos
@@ -2631,8 +2359,6 @@ windowPosFunc glfwSetWindowPosCallback(plafWindow* window, windowPosFunc callbac
  *  @endcode
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref windowSizeFunc).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2669,8 +2395,6 @@ windowSizeFunc glfwSetWindowSizeCallback(plafWindow* window, windowSizeFunc call
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref windowCloseFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @remark __macOS:__ Selecting Quit from the application menu will trigger the
  *  close callback for all windows.
  *
@@ -2703,8 +2427,6 @@ windowCloseFunc glfwSetWindowCloseCallback(plafWindow* window, windowCloseFunc c
  *  void function_name(plafWindow* window);
  *  @endcode
  *  For more information about the callback parameters, see the [function pointer type](@ref windowRefreshFunc).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2739,8 +2461,6 @@ windowRefreshFunc glfwSetWindowRefreshCallback(plafWindow* window, windowRefresh
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref windowFocusFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_focus
@@ -2768,8 +2488,6 @@ windowFocusFunc glfwSetWindowFocusCallback(plafWindow* window, windowFocusFunc c
  *  @endcode
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref windowIconifyFunc).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2799,8 +2517,6 @@ windowIconifyFunc glfwSetWindowIconifyCallback(plafWindow* window, windowIconify
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref windowMaximizeFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_maximize
@@ -2829,8 +2545,6 @@ windowMaximizeFunc glfwSetWindowMaximizeCallback(plafWindow* window, windowMaxim
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref frameBufferSizeFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref window_fbsize
@@ -2858,8 +2572,6 @@ frameBufferSizeFunc glfwSetFramebufferSizeCallback(plafWindow* window, frameBuff
  *  @endcode
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref windowContextScaleFunc).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2905,9 +2617,6 @@ void glfwWaitEvents(void);
  *
  *  @param[in] timeout The maximum amount of time, in seconds, to wait.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_VALUE and @ref ERR_PLATFORM_ERROR.
- *
  *  @reentrancy This function must not be called from a callback.
  *
  *  @thread_safety This function must only be called from the main thread.
@@ -2927,9 +2636,6 @@ void glfwPostEmptyEvent(void);
  *  @param[in] mode One of `INPUT_MODE_CURSOR`, `INPUT_MODE_STICKY_KEYS`,
  *  `INPUT_MODE_STICKY_MOUSE_BUTTONS`, `INPUT_MODE_LOCK_KEY_MODS` or
  *  `INPUT_MODE_RAW_MOUSE_MOTION`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_INVALID_ENUM.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -2986,10 +2692,6 @@ int glfwGetInputMode(plafWindow* window, int mode);
  *  `INPUT_MODE_RAW_MOUSE_MOTION`.
  *  @param[in] value The new value of the specified input mode.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_ENUM, @ref ERR_PLATFORM_ERROR and @ref
- *  ERR_FEATURE_UNAVAILABLE (see above).
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref glfwGetInputMode
@@ -3013,9 +2715,6 @@ void glfwSetInputMode(plafWindow* window, int mode, int value);
  *  @return The platform-specific scancode for the key, or `-1` if the key is
  *  not supported on the current platform or an [error](@ref error_handling)
  *  occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_INVALID_ENUM.
  *
  *  @thread_safety This function may be called from any thread.
  *
@@ -3052,9 +2751,6 @@ int glfwGetKeyScancode(int key);
  *  not a valid key for this function.
  *  @return One of `INPUT_PRESS` or `INPUT_RELEASE`.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_INVALID_ENUM.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref input_key
@@ -3083,9 +2779,6 @@ int glfwGetKey(plafWindow* window, int key);
  *  @param[in] window The desired window.
  *  @param[in] button The desired [mouse button token](@ref buttons).
  *  @return One of `INPUT_PRESS` or `INPUT_RELEASE`.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_INVALID_ENUM.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -3121,9 +2814,6 @@ void glfwSetCursor(plafWindow* window, plafCursor* cursor);
  *  @param[in] yhot The desired y-coordinate, in pixels, of the cursor hotspot.
  *  @return The handle of the created cursor, or `NULL` if an
  *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_VALUE and @ref ERR_PLATFORM_ERROR.
  *
  *  @pointer_lifetime The specified image data is copied before this function
  *  returns.
@@ -3169,10 +2859,6 @@ plafCursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot);
  *  @return A new cursor ready to use or `NULL` if an
  *  [error](@ref error_handling) occurred.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_ENUM, @ref GLFW_CURSOR_UNAVAILABLE and @ref
- *  ERR_PLATFORM_ERROR.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref cursor_standard
@@ -3194,9 +2880,6 @@ plafCursor* glfwCreateStandardCursor(int shape);
  *  reverted to the default cursor.  This does not affect the cursor mode.
  *
  *  @param[in] cursor The cursor object to destroy.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @reentrancy This function must not be called from a callback.
  *
@@ -3248,8 +2931,6 @@ void glfwDestroyCursor(plafCursor* cursor);
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref keyFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref input_key
@@ -3290,8 +2971,6 @@ keyFunc glfwSetKeyCallback(plafWindow* window, keyFunc callback);
  *  @endcode
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref charFunc).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -3334,8 +3013,6 @@ charFunc glfwSetCharCallback(plafWindow* window, charFunc callback);
  *
  *  @deprecated Scheduled for removal in version 4.0.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref input_char
@@ -3375,8 +3052,6 @@ charModsFunc glfwSetCharModsCallback(plafWindow* window, charModsFunc callback);
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref mouseButtonFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref input_mouse_button
@@ -3408,8 +3083,6 @@ mouseButtonFunc glfwSetMouseButtonCallback(plafWindow* window, mouseButtonFunc c
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref cursorPosFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref cursor_pos
@@ -3438,8 +3111,6 @@ cursorPosFunc glfwSetCursorPosCallback(plafWindow* window, cursorPosFunc callbac
  *  @endcode
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref cursorEnterFunc).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -3472,8 +3143,6 @@ cursorEnterFunc glfwSetCursorEnterCallback(plafWindow* window, cursorEnterFunc c
  *  @endcode
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref scrollFunc).
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -3508,8 +3177,6 @@ scrollFunc glfwSetScrollCallback(plafWindow* window, scrollFunc callback);
  *  For more information about the callback parameters, see the
  *  [function pointer type](@ref dropFunc).
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function must only be called from the main thread.
  *
  *  @sa @ref path_drop
@@ -3526,9 +3193,6 @@ dropFunc glfwSetDropCallback(plafWindow* window, dropFunc callback);
  *  string.
  *
  *  @param[in] string A UTF-8 encoded string.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED and @ref
- *  ERR_PLATFORM_ERROR.
  *
  *  @remark __Win32:__ The clipboard on Windows has a single global lock for reading and
  *  writing.  GLFW tries to acquire it a few times, which is almost always enough.  If it
@@ -3558,9 +3222,6 @@ void setClipboardString(const char* string);
  *
  *  @return The contents of the clipboard as a UTF-8 encoded string, or `NULL`
  *  if an [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_FORMAT_UNAVAILABLE and @ref ERR_PLATFORM_ERROR.
  *
  *  @remark __Win32:__ The clipboard on Windows has a single global lock for reading and
  *  writing.  GLFW tries to acquire it a few times, which is almost always enough.  If it
@@ -3592,8 +3253,6 @@ ErrorResponse* glfwMakeContextCurrent(plafWindow* window);
  *  @return The window whose context is current, or `NULL` if no window's
  *  context is current.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED.
- *
  *  @thread_safety This function may be called from any thread.
  *
  *  @sa @ref context_current
@@ -3617,9 +3276,6 @@ plafWindow* glfwGetCurrentContext(void);
  *  error.
  *
  *  @param[in] window The window whose buffers to swap.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_NO_WINDOW_CONTEXT and @ref ERR_PLATFORM_ERROR.
  *
  *  @thread_safety This function may be called from any thread.
  *
@@ -3652,9 +3308,6 @@ void glfwSwapBuffers(plafWindow* window);
  *
  *  @param[in] interval The minimum number of screen updates to wait for
  *  until the buffers are swapped by @ref glfwSwapBuffers.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_NO_CURRENT_CONTEXT and @ref ERR_PLATFORM_ERROR.
  *
  *  @remark This function is not called during context creation, leaving the
  *  swap interval set to whatever is the default for that API.  This is done
@@ -3695,10 +3348,6 @@ void glfwSwapInterval(int interval);
  *  @return `true` if the extension is available, or `false`
  *  otherwise.
  *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_NO_CURRENT_CONTEXT, @ref ERR_INVALID_VALUE and @ref
- *  ERR_PLATFORM_ERROR.
- *
  *  @thread_safety This function may be called from any thread.
  *
  *  @sa @ref context_glext
@@ -3723,9 +3372,6 @@ int glfwExtensionSupported(const char* extension);
  *  @param[in] procname The ASCII encoded name of the function.
  *  @return The address of the function, or `NULL` if an
  *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_NO_CURRENT_CONTEXT and @ref ERR_PLATFORM_ERROR.
  *
  *  @remark The address of a given function is not guaranteed to be the same
  *  between contexts.
@@ -3798,12 +3444,12 @@ void _glfwInputMonitor(plafMonitor* monitor, int action, int placement);
 void _glfwInputMonitorWindow(plafMonitor* monitor, plafWindow* window);
 
 #if defined(__GNUC__)
-void _glfwInputError(int code, const char* format, ...)
-	__attribute__((format(printf, 2, 3)));
-ErrorResponse* createErrorResponse(int code, const char* format, ...) __attribute__((format(printf, 2, 3)));
+void _glfwInputError(const char* format, ...)
+	__attribute__((format(printf, 1, 2)));
+ErrorResponse* createErrorResponse(const char* format, ...) __attribute__((format(printf, 1, 2)));
 #else
-void _glfwInputError(int code, const char* format, ...);
-ErrorResponse* createErrorResponse(int code, const char* format, ...);
+void _glfwInputError(const char* format, ...);
+ErrorResponse* createErrorResponse(const char* format, ...);
 #endif
 
 
@@ -3907,7 +3553,6 @@ IntBool _glfwIsVisualTransparentX11(Visual* visual);
 
 void _glfwGrabErrorHandlerX11(void);
 void _glfwReleaseErrorHandlerX11(void);
-void _glfwInputErrorX11(int error, const char* message);
 
 void _glfwPushSelectionToManagerX11(void);
 void _glfwCreateInputContextX11(plafWindow* window);
@@ -3923,7 +3568,6 @@ WCHAR* _glfwCreateWideStringFromUTF8Win32(const char* src);
 char* _glfwCreateUTF8FromWideStringWin32(const WCHAR* src);
 BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp);
 BOOL IsWindows10BuildOrGreater(WORD build);
-void _glfwInputErrorWin32(int error, const char* description);
 
 void _glfwPollMonitorsWin32(void);
 void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
