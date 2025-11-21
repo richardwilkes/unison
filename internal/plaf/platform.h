@@ -257,14 +257,14 @@ typedef unsigned char GLubyte;
 	#ifndef UNICODE
 		#define UNICODE
 	#endif
-	// Require Windows 7 or later
-	#if WINVER < 0x0601
+	// Require Windows 10 or later
+	#if WINVER < 0x0A00
 		#undef WINVER
-		#define WINVER 0x0601
+		#define WINVER 0x0A00
 	#endif
-	#if _WIN32_WINNT < 0x0601
+	#if _WIN32_WINNT < 0x0A00
 		#undef _WIN32_WINNT
-		#define _WIN32_WINNT 0x0601
+		#define _WIN32_WINNT 0x0A00
 	#endif
 
 	#include <wctype.h>
@@ -275,28 +275,6 @@ typedef unsigned char GLubyte;
 
 	#ifndef WM_COPYGLOBALDATA
 		#define WM_COPYGLOBALDATA 0x0049
-	#endif
-	#ifndef WM_DPICHANGED
-		#define WM_DPICHANGED 0x02E0
-	#endif
-	#ifndef EDS_ROTATEDMODE
-		#define EDS_ROTATEDMODE 0x00000004
-	#endif
-	#ifndef _WIN32_WINNT_WINBLUE
-		#define _WIN32_WINNT_WINBLUE 0x0603
-	#endif
-	#ifndef _WIN32_WINNT_WIN8
-		#define _WIN32_WINNT_WIN8 0x0602
-	#endif
-	#ifndef WM_GETDPISCALEDSIZE
-		#define WM_GETDPISCALEDSIZE 0x02e4
-	#endif
-	#ifndef USER_DEFAULT_SCREEN_DPI
-		#define USER_DEFAULT_SCREEN_DPI 96
-	#endif
-	#if !defined(CALLBACK)
-		#define CALLBACK __stdcall
-		#define GLFW_CALLBACK_DEFINED
 	#endif
 	#ifndef DPI_ENUMS_DECLARED
 		typedef enum {
@@ -310,9 +288,6 @@ typedef unsigned char GLubyte;
 			MDT_RAW_DPI = 2,
 			MDT_DEFAULT = MDT_EFFECTIVE_DPI
 		} MONITOR_DPI_TYPE;
-	#endif
-	#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
-		#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((HANDLE) -4)
 	#endif
 	// Windows 10 Anniversary Update
 	#define IsWindows10Version1607OrGreater() IsWindows10BuildOrGreater(14393)
@@ -712,21 +687,6 @@ typedef struct WindowConfig {
 	IntBool scaleToMonitor;
 	IntBool scaleFramebuffer;
 } WindowConfig;
-
-
-/*************************************************************************
- * Global definition cleanup
- *************************************************************************/
-
-/* ------------------- BEGIN SYSTEM/COMPILER SPECIFIC -------------------- */
-
-#ifdef GLFW_CALLBACK_DEFINED
- #undef CALLBACK
- #undef GLFW_CALLBACK_DEFINED
-#endif
-
-/* -------------------- END SYSTEM/COMPILER SPECIFIC --------------------- */
-
 
 /* ------------------------- Internal ----------------------- */
 
