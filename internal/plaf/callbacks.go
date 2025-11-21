@@ -104,10 +104,10 @@ func goWindowFocusCallback(window unsafe.Pointer, focused C.int) {
 	w.fFocusHolder(w, focused != 0)
 }
 
-//export goWindowIconifyCallback
-func goWindowIconifyCallback(window unsafe.Pointer, iconified C.int) {
+//export goWindowMinimizeCallback
+func goWindowMinimizeCallback(window unsafe.Pointer, minimized C.int) {
 	w := windows.get((*C.plafWindow)(window))
-	w.fIconifyHolder(w, iconified != 0)
+	w.fMinimizeHolder(w, minimized != 0)
 }
 
 //export goWindowMaximizeCallback

@@ -7,7 +7,7 @@ void goFramebufferSizeCallback(plafWindow *window, int width, int height);
 void goWindowCloseCallback(plafWindow *window);
 void goWindowContentScaleCallback(plafWindow *window, float x, float y);
 void goWindowFocusCallback(plafWindow *window, int focused);
-void goWindowIconifyCallback(plafWindow *window, int iconified);
+void goWindowMinimizeCallback(plafWindow *window, int minimized);
 void goWindowMaximizeCallback(plafWindow *window, int maximized);
 void goWindowPosCallback(plafWindow *window, int xpos, int ypos);
 void goWindowRefreshCallback(plafWindow *window);
@@ -55,7 +55,7 @@ type Hint int
 
 // Window related hints/attributes.
 const (
-	Iconified              Hint = C.WINDOW_ATTR_ICONIFIED                    // Specifies whether the window will be minimized.
+	Minimized              Hint = C.WINDOW_ATTR_MINIMIZED                    // Specifies whether the window will be minimized.
 	Maximized              Hint = C.WINDOW_ATTR_HINT_MAXIMIZED               // Specifies whether the window is maximized.
 	Visible                Hint = C.WINDOW_ATTR_VISIBLE                      // Specifies whether the window will be initially visible.
 	Hovered                Hint = C.WINDOW_ATTR_HOVERED                      // Specifies whether the cursor is currently directly over the content area of the window, with no other windows between. See Cursor enter/leave events for details.
@@ -137,7 +137,7 @@ type Window struct {
 	fContentScaleHolder    func(w *Window, x, y float32)
 	fRefreshHolder         func(w *Window)
 	fFocusHolder           func(w *Window, focused bool)
-	fIconifyHolder         func(w *Window, iconified bool)
+	fMinimizeHolder        func(w *Window, minimized bool)
 
 	// Input.
 	fMouseButtonHolder func(w *Window, button MouseButton, action Action, mod ModifierKey)
@@ -148,12 +148,6 @@ type Window struct {
 	fCharHolder        func(w *Window, char rune)
 	fCharModsHolder    func(w *Window, char rune, mods ModifierKey)
 	fDropHolder        func(w *Window, names []string)
-}
-
-// Handle returns a *C.plafWindow reference (i.e. the GLFW window itself).
-// This can be used for passing the GLFW window handle to external libraries.
-func (w *Window) Handle() unsafe.Pointer {
-	return unsafe.Pointer(w.data)
 }
 
 // GoWindow creates a Window from a *C.plafWindow reference.
@@ -368,20 +362,6 @@ func (w *Window) SetSizeLimits(minw, minh, maxw, maxh int) {
 	panicError()
 }
 
-// SetAspectRatio sets the required aspect ratio of the client area of the specified window.
-// If the window is full screen or not resizable, this function does nothing.
-//
-// The aspect ratio is specified as a numerator and a denominator and both values must be greater
-// than zero. For example, the common 16:9 aspect ratio is specified as 16 and 9, respectively.
-//
-// If the numerator and denominator is set to glfw.DontCare then the aspect ratio limit is disabled.
-//
-// The aspect ratio is applied immediately and may cause the window to be resized.
-func (w *Window) SetAspectRatio(numer, denom int) {
-	C.glfwSetWindowAspectRatio(w.data, C.int(numer), C.int(denom))
-	panicError()
-}
-
 // GetFramebufferSize retrieves the size, in pixels, of the framebuffer of the
 // specified window.
 func (w *Window) GetFramebufferSize() (width, height int) {
@@ -458,7 +438,7 @@ func (w *Window) RequestAttention() {
 }
 
 // Focus brings the specified window to front and sets input focus.
-// The window should already be visible and not iconified.
+// The window should already be visible and not minimized.
 //
 // By default, both windowed and full screen mode windows are focused when initially created.
 // Set the glfw.Focused to disable this behavior.
@@ -469,14 +449,22 @@ func (w *Window) Focus() {
 	C.glfwFocusWindow(w.data)
 }
 
-// Iconify iconifies/minimizes the window, if it was previously restored. If it
-// is a full screen window, the original monitor resolution is restored until the
-// window is restored. If the window is already iconified, this function does
-// nothing.
+// HideCursor hides the cursor.
+func (w *Window) HideCursor() {
+	C.glfwHideCursor(w.data)
+}
+
+// ShowCursor shows the cursor.
+func (w *Window) ShowCursor() {
+	C.glfwShowCursor(w.data)
+}
+
+// Minimize the window, if it was previously restored. If it is a full screen window, the original monitor resolution is
+// restored until the window is restored. If the window is already minimized, this function does nothing.
 //
 // This function may only be called from the main thread.
-func (w *Window) Iconify() {
-	C.glfwIconifyWindow(w.data)
+func (w *Window) Minimize() {
+	C.glfwMinimizeWindow(w.data)
 }
 
 // Maximize maximizes the specified window if it was previously not maximized.
@@ -487,7 +475,7 @@ func (w *Window) Maximize() {
 	C.glfwMaximizeWindow(w.data)
 }
 
-// Restore restores the window, if it was previously iconified/minimized. If it
+// Restore restores the window, if it was previously minimized. If it
 // is a full screen window, the resolution chosen for the window is restored on
 // the selected monitor. If the window is already restored, this function does
 // nothing.
@@ -738,21 +726,26 @@ func (w *Window) SetFocusCallback(cbfun FocusCallback) (previous FocusCallback) 
 	return previous
 }
 
-// IconifyCallback is the window iconification callback.
-type IconifyCallback func(w *Window, iconified bool)
+// MinimizeCallback is the window minimize callback.
+type MinimizeCallback func(w *Window, minimized bool)
 
-// SetIconifyCallback sets the iconification callback of the window, which is
-// called when the window is iconified or restored.
-func (w *Window) SetIconifyCallback(cbfun IconifyCallback) (previous IconifyCallback) {
-	previous = w.fIconifyHolder
-	w.fIconifyHolder = cbfun
-	var callback C.windowIconifyFunc
+// SetMinimizeCallback sets the minimize callback of the window, which is called when the window is minimized or
+// restored.
+func (w *Window) SetMinimizeCallback(cbfun MinimizeCallback) (previous MinimizeCallback) {
+	previous = w.fMinimizeHolder
+	w.fMinimizeHolder = cbfun
+	var callback C.windowMinimizeFunc
 	if cbfun != nil {
-		callback = C.windowIconifyFunc(C.goWindowIconifyCallback)
+		callback = C.windowMinimizeFunc(C.goWindowMinimizeCallback)
 	}
-	C.glfwSetWindowIconifyCallback(w.data, callback)
+	C.glfwSetWindowMinimizeCallback(w.data, callback)
 	panicError()
 	return previous
+}
+
+// NativeWindow returns the underlying native window.
+func (w *Window) NativeWindow() unsafe.Pointer {
+	return C.glfwGetNativeWindow(w.data)
 }
 
 // PollEvents processes only those events that have already been received and

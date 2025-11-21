@@ -5,50 +5,33 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 // Hides the cursor if not already hidden
-//
-static void hideCursor(plafWindow* window)
-{
-	if (!_glfw.nsCursorHidden)
-	{
+static void hideCursor(plafWindow* window) {
+	if (!_glfw.nsCursorHidden) {
 		[NSCursor hide];
 		_glfw.nsCursorHidden = true;
 	}
 }
 
 // Shows the cursor if not already shown
-//
-static void showCursor(plafWindow* window)
-{
-	if (_glfw.nsCursorHidden)
-	{
+static void showCursor(plafWindow* window) {
+	if (_glfw.nsCursorHidden) {
 		[NSCursor unhide];
 		_glfw.nsCursorHidden = false;
 	}
 }
 
-// Updates the cursor image according to its cursor mode
-//
-void updateCursorImage(plafWindow* window)
-{
-	if (window->cursorMode == CURSOR_NORMAL)
-	{
-		showCursor(window);
-
-		if (window->cursor)
-			[window->cursor->nsCursor set];
-		else
-			[[NSCursor arrowCursor] set];
-	}
-	else
+// Updates the cursor image according to its cursor mode.
+void updateCursorImage(plafWindow* window) {
+	if (window->cursorHidden) {
 		hideCursor(window);
-}
-
-// Apply chosen cursor mode to a focused window
-//
-static void updateCursorMode(plafWindow* window)
-{
-	if (cursorInContentArea(window))
-		updateCursorImage(window);
+	} else {
+		showCursor(window);
+		if (window->cursor) {
+			[window->cursor->nsCursor set];
+		} else {
+			[[NSCursor arrowCursor] set];
+		}
+	}
 }
 
 // Make the specified window and its video mode active on its monitor
@@ -212,7 +195,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	if (window->monitor)
 		releaseMonitor(window);
 
-	_glfwInputWindowIconify(window, true);
+	_glfwInputWindowMinimize(window, true);
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification
@@ -220,14 +203,14 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	if (window->monitor)
 		acquireMonitor(window);
 
-	_glfwInputWindowIconify(window, false);
+	_glfwInputWindowMinimize(window, false);
 }
 
-- (void)windowDidBecomeKey:(NSNotification *)notification
-{
-
+- (void)windowDidBecomeKey:(NSNotification *)notification {
 	_glfwInputWindowFocus(window, true);
-	updateCursorMode(window);
+	if (cursorInContentArea(window)) {
+		updateCursorImage(window);
+	}
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification
@@ -386,19 +369,17 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 						 translateFlags([event modifierFlags]));
 }
 
-- (void)mouseExited:(NSEvent *)event
-{
-	if (window->cursorMode == CURSOR_HIDDEN)
+- (void)mouseExited:(NSEvent *)event {
+	if (window->cursorHidden) {
 		showCursor(window);
-
+	}
 	_glfwInputCursorEnter(window, false);
 }
 
-- (void)mouseEntered:(NSEvent *)event
-{
-	if (window->cursorMode == CURSOR_HIDDEN)
+- (void)mouseEntered:(NSEvent *)event {
+	if (window->cursorHidden) {
 		hideCursor(window);
-
+	}
 	_glfwInputCursorEnter(window, true);
 }
 
@@ -924,15 +905,6 @@ void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, i
 	}
 }
 
-void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
-	@autoreleasepool {
-	if (numer == DONT_CARE || denom == DONT_CARE)
-		[window->nsWindow setResizeIncrements:NSMakeSize(1.0, 1.0)];
-	else
-		[window->nsWindow setContentAspectRatio:NSMakeSize(numer, denom)];
-	}
-}
-
 void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	@autoreleasepool {
 
@@ -981,7 +953,7 @@ void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale
 	}
 }
 
-void glfwIconifyWindow(plafWindow* window) {
+void glfwMinimizeWindow(plafWindow* window) {
 	@autoreleasepool {
 	[window->nsWindow miniaturize:nil];
 	}
@@ -1156,7 +1128,7 @@ IntBool _glfwWindowFocused(plafWindow* window) {
 	}
 }
 
-IntBool _glfwWindowIconified(plafWindow* window) {
+IntBool _glfwWindowMinimized(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isMiniaturized];
 	}
@@ -1315,12 +1287,13 @@ void glfwPostEmptyEvent(void) {
 	}
 }
 
-void glfwSetCursorMode(plafWindow* window, int mode) {
+void glfwUpdateCursor(plafWindow* window) {
 	@autoreleasepool {
-
-	if (_glfwWindowFocused(window))
-		updateCursorMode(window);
-
+		if (_glfwWindowFocused(window)) {
+			if (cursorInContentArea(window)) {
+				updateCursorImage(window);
+			}
+		}
 	}
 }
 
@@ -1416,7 +1389,7 @@ void _glfwDestroyCursor(plafCursor* cursor) {
 //////                        GLFW native API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-id glfwGetCocoaWindow(plafWindow* window) {
+void* glfwGetNativeWindow(plafWindow* window) {
 	return window->nsWindow;
 }
 

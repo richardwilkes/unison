@@ -2,9 +2,6 @@
 
 #include <math.h>
 
-// Internal key state used for sticky keys
-#define _GLFW_STICK 3
-
 
 //////////////////////////////////////////////////////////////////////////
 //////                         GLFW event API                       //////
@@ -24,18 +21,11 @@ void _glfwInputKey(plafWindow* window, int key, int scancode, int action, int mo
 		if (action == INPUT_PRESS && window->keys[key] == INPUT_PRESS)
 			repeated = true;
 
-		if (action == INPUT_RELEASE && window->stickyKeys)
-			window->keys[key] = _GLFW_STICK;
-		else
-			window->keys[key] = (char) action;
+		window->keys[key] = (char) action;
 
 		if (repeated)
 			action = INPUT_REPEAT;
 	}
-
-	if (!window->lockKeyMods)
-		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
-
 	if (window->keyCallback)
 		window->keyCallback(window, key, scancode, action, mods);
 }
@@ -47,10 +37,6 @@ void _glfwInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool pl
 {
 	if (codepoint < 32 || (codepoint > 126 && codepoint < 160))
 		return;
-
-	if (!window->lockKeyMods)
-		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
-
 	if (window->charModsCallback)
 		window->charModsCallback(window, codepoint, mods);
 
@@ -73,20 +59,9 @@ void _glfwInputScroll(plafWindow* window, double xoffset, double yoffset)
 //
 void _glfwInputMouseClick(plafWindow* window, int button, int action, int mods)
 {
-	if (button < 0 || (!window->disableMouseButtonLimit && button > MOUSE_BUTTON_LAST))
+	if (button < 0 || button > MOUSE_BUTTON_LAST)
 		return;
-
-	if (!window->lockKeyMods)
-		mods &= ~(KEYMOD_CAPS_LOCK | KEYMOD_NUM_LOCK);
-
-	if (button <= MOUSE_BUTTON_LAST)
-	{
-		if (action == INPUT_RELEASE && window->stickyMouseButtons)
-			window->mouseButtons[button] = _GLFW_STICK;
-		else
-			window->mouseButtons[button] = (char) action;
-	}
-
+	window->mouseButtons[button] = (char) action;
 	if (window->mouseButtonCallback)
 		window->mouseButtonCallback(window, button, action, mods);
 }
@@ -142,107 +117,19 @@ void _glfwCenterCursorInContentArea(plafWindow* window)
 //////                        GLFW public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-int glfwGetInputMode(plafWindow* window, int mode)
-{
-	switch (mode)
-	{
-		case INPUT_MODE_CURSOR:
-			return window->cursorMode;
-		case INPUT_MODE_STICKY_KEYS:
-			return window->stickyKeys;
-		case INPUT_MODE_STICKY_MOUSE_BUTTONS:
-			return window->stickyMouseButtons;
-		case INPUT_MODE_LOCK_KEY_MODS:
-			return window->lockKeyMods;
-		case INPUT_MODE_UNLIMITED_MOUSE_BUTTONS:
-			return window->disableMouseButtonLimit;
+void glfwHideCursor(plafWindow* window) {
+	if (!window->cursorHidden) {
+		window->cursorHidden = true;
+		glfwGetCursorPos(window, &window->virtualCursorPosX, &window->virtualCursorPosY);
+		glfwUpdateCursor(window);
 	}
-
-	_glfwInputError("Invalid input mode 0x%08X", mode);
-	return 0;
 }
 
-void glfwSetInputMode(plafWindow* window, int mode, int value)
-{
-	switch (mode)
-	{
-		case INPUT_MODE_CURSOR:
-		{
-			if (value != CURSOR_NORMAL &&
-				value != CURSOR_HIDDEN)
-			{
-				_glfwInputError("Invalid cursor mode 0x%08X", value);
-				return;
-			}
-
-			if (window->cursorMode == value)
-				return;
-
-			window->cursorMode = value;
-
-			glfwGetCursorPos(window, &window->virtualCursorPosX, &window->virtualCursorPosY);
-			glfwSetCursorMode(window, value);
-			return;
-		}
-
-		case INPUT_MODE_STICKY_KEYS:
-		{
-			value = value ? true : false;
-			if (window->stickyKeys == value)
-				return;
-
-			if (!value)
-			{
-				int i;
-
-				// Release all sticky keys
-				for (i = 0;  i <= KEY_LAST;  i++)
-				{
-					if (window->keys[i] == _GLFW_STICK)
-						window->keys[i] = INPUT_RELEASE;
-				}
-			}
-
-			window->stickyKeys = value;
-			return;
-		}
-
-		case INPUT_MODE_STICKY_MOUSE_BUTTONS:
-		{
-			value = value ? true : false;
-			if (window->stickyMouseButtons == value)
-				return;
-
-			if (!value)
-			{
-				int i;
-
-				// Release all sticky mouse buttons
-				for (i = 0;  i <= MOUSE_BUTTON_LAST;  i++)
-				{
-					if (window->mouseButtons[i] == _GLFW_STICK)
-						window->mouseButtons[i] = INPUT_RELEASE;
-				}
-			}
-
-			window->stickyMouseButtons = value;
-			return;
-		}
-
-		case INPUT_MODE_LOCK_KEY_MODS:
-		{
-			window->lockKeyMods = value ? true : false;
-			return;
-		}
-
-		case INPUT_MODE_UNLIMITED_MOUSE_BUTTONS:
-		{
-			window->disableMouseButtonLimit = value ? true : false;
-			return;
-		}
+void glfwShowCursor(plafWindow* window) {
+	if (window->cursorHidden) {
+		window->cursorHidden = false;
+		glfwUpdateCursor(window);
 	}
-
-	_glfwInputError("Invalid input mode 0x%08X", mode);
 }
 
 int glfwGetKeyScancode(int key)
@@ -263,14 +150,6 @@ int glfwGetKey(plafWindow* window, int key)
 		_glfwInputError("Invalid key %i", key);
 		return INPUT_RELEASE;
 	}
-
-	if (window->keys[key] == _GLFW_STICK)
-	{
-		// Sticky mode: release key now
-		window->keys[key] = INPUT_RELEASE;
-		return INPUT_PRESS;
-	}
-
 	return (int) window->keys[key];
 }
 
@@ -281,14 +160,6 @@ int glfwGetMouseButton(plafWindow* window, int button)
 		_glfwInputError("Invalid mouse button %i", button);
 		return INPUT_RELEASE;
 	}
-
-	if (window->mouseButtons[button] == _GLFW_STICK)
-	{
-		// Sticky mode: release mouse button now
-		window->mouseButtons[button] = INPUT_RELEASE;
-		return INPUT_PRESS;
-	}
-
 	return (int) window->mouseButtons[button];
 }
 

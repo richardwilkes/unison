@@ -967,8 +967,7 @@ static IntBool waitForVisibilityNotify(plafWindow* window)
 	return true;
 }
 
-// Returns whether the window is iconified
-//
+// Returns whether the window is minimized
 static int getWindowState(plafWindow* window)
 {
 	int result = WithdrawnState;
@@ -1149,7 +1148,7 @@ static void updateWindowMode(plafWindow* window)
 			// window manager ignore the window completely (ICCCM, section 4)
 			// The good thing is that this makes undecorated full screen windows
 			// easy to do; the bad thing is that we have to do everything
-			// manually and some things (like iconify/restore) won't work at
+			// manually and some things (like minimize/restore) won't work at
 			// all, as those are tasks usually performed by the window manager
 
 			XSetWindowAttributes attributes;
@@ -1233,23 +1232,15 @@ static uint32_t decodeUTF8(const char** s)
 }
 
 // Updates the cursor image according to its cursor mode
-//
-void updateCursorImage(plafWindow* window)
-{
-	if (window->cursorMode == CURSOR_NORMAL)
-	{
-		if (window->cursor)
-		{
-			_glfw.xlibDefineCursor(_glfw.x11Display, window->x11Window,
-						  window->cursor->x11Cursor);
-		}
-		else
+void updateCursorImage(plafWindow* window) {
+	if (window->cursorHidden) {
+		_glfw.xlibDefineCursor(_glfw.x11Display, window->x11Window, _glfw.x11HiddenCursorHandle);
+	} else {
+		if (window->cursor) {
+			_glfw.xlibDefineCursor(_glfw.x11Display, window->x11Window, window->cursor->x11Cursor);
+		} else {
 			_glfw.xlibUndefineCursor(_glfw.x11Display, window->x11Window);
-	}
-	else
-	{
-		_glfw.xlibDefineCursor(_glfw.x11Display, window->x11Window,
-					  _glfw.x11HiddenCursorHandle);
+		}
 	}
 }
 
@@ -1879,15 +1870,11 @@ static void processEvent(XEvent *event)
 
 		case EnterNotify:
 		{
-			// XEnterWindowEvent is XCrossingEvent
 			const int x = event->xcrossing.x;
 			const int y = event->xcrossing.y;
-
-			// HACK: This is a workaround for WMs (KWM, Fluxbox) that otherwise
-			//       ignore the defined cursor for hidden cursor mode
-			if (window->cursorMode == CURSOR_HIDDEN)
+			if (window->cursorHidden) {
 				updateCursorImage(window);
-
+			}
 			_glfwInputCursorEnter(window, true);
 			_glfwInputCursorPos(window, x, y);
 			return;
@@ -2216,19 +2203,19 @@ static void processEvent(XEvent *event)
 				if (state != IconicState && state != NormalState)
 					return;
 
-				const IntBool iconified = (state == IconicState);
-				if (window->x11Iconified != iconified)
+				const IntBool minimized = (state == IconicState);
+				if (window->x11Minimized != minimized)
 				{
 					if (window->monitor)
 					{
-						if (iconified)
+						if (minimized)
 							releaseMonitor(window);
 						else
 							acquireMonitor(window);
 					}
 
-					window->x11Iconified = iconified;
-					_glfwInputWindowIconify(window, iconified);
+					window->x11Minimized = minimized;
+					_glfwInputWindowMinimize(window, minimized);
 				}
 			}
 			else if (event->xproperty.atom == _glfw.x11NET_WM_STATE)
@@ -2590,13 +2577,6 @@ void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, i
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
-void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
-	int width, height;
-	_glfwGetWindowSize(window, &width, &height);
-	updateNormalHints(window, width, height);
-	_glfw.xlibFlush(_glfw.x11Display);
-}
-
 void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	_glfwGetWindowSize(window, width, height);
 }
@@ -2664,29 +2644,29 @@ void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale
 		*yscale = _glfw.x11ContentScaleY;
 }
 
-void glfwIconifyWindow(plafWindow* window) {
+void glfwMinimizeWindow(plafWindow* window) {
 	if (window->x11OverrideRedirect)
 	{
-		// Override-redirect windows cannot be iconified or restored, as those
+		// Override-redirect windows cannot be minimized or restored, as those
 		// tasks are performed by the window manager
-		_glfwInputError("X11: Iconification of full screen windows requires a WM that supports EWMH full screen");
+		_glfwInputError("X11: Minimization of full screen windows requires a WM that supports EWMH full screen");
 		return;
 	}
 
-	_glfw.xlibIconifyWindow(_glfw.x11Display, window->x11Window, _glfw.x11Screen);
+	_glfw.xlibMinimizeWindow(_glfw.x11Display, window->x11Window, _glfw.x11Screen);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
 
 void glfwRestoreWindow(plafWindow* window) {
 	if (window->x11OverrideRedirect)
 	{
-		// Override-redirect windows cannot be iconified or restored, as those
+		// Override-redirect windows cannot be minimized or restored, as those
 		// tasks are performed by the window manager
-		_glfwInputError("X11: Iconification of full screen windows requires a WM that supports EWMH full screen");
+		_glfwInputError("X11: Minimization of full screen windows requires a WM that supports EWMH full screen");
 		return;
 	}
 
-	if (_glfwWindowIconified(window))
+	if (_glfwWindowMinimized(window))
 	{
 		_glfw.xlibMapWindow(_glfw.x11Display, window->x11Window);
 		waitForVisibilityNotify(window);
@@ -2869,7 +2849,7 @@ IntBool _glfwWindowFocused(plafWindow* window) {
 	return window->x11Window == focused;
 }
 
-IntBool _glfwWindowIconified(plafWindow* window) {
+IntBool _glfwWindowMinimized(plafWindow* window) {
 	return getWindowState(window) == IconicState;
 }
 
@@ -3112,7 +3092,7 @@ void glfwPostEmptyEvent(void) {
 	writeEmptyEvent();
 }
 
-void glfwSetCursorMode(plafWindow* window, int mode) {
+void glfwUpdateCursor(plafWindow* window) {
 	updateCursorImage(window);
 	_glfw.xlibFlush(_glfw.x11Display);
 }
@@ -3219,7 +3199,7 @@ Display* glfwGetX11Display(void) {
 	return _glfw.x11Display;
 }
 
-Window glfwGetX11Window(plafWindow* window) {
+void* glfwGetNativeWindow(plafWindow* window) {
 	return window->x11Window;
 }
 

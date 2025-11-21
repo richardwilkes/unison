@@ -124,7 +124,7 @@ typedef unsigned char GLubyte;
 	typedef Status (* FN_XGetWMNormalHints)(Display*,Window,XSizeHints*,long*);
 	typedef Status (* FN_XGetWindowAttributes)(Display*,Window,XWindowAttributes*);
 	typedef int (* FN_XGetWindowProperty)(Display*,Window,Atom,long,long,Bool,Atom,Atom*,int*,unsigned long*,unsigned long*,unsigned char**);
-	typedef Status (* FN_XIconifyWindow)(Display*,Window,int);
+	typedef Status (* FN_XMinimizeWindow)(Display*,Window,int);
 	typedef Status (* FN_XInitThreads)(void);
 	typedef Atom (* FN_XInternAtom)(Display*,const char*,Bool);
 	typedef int (* FN_XLookupString)(XKeyEvent*,char*,int,KeySym*,XComposeStatus*);
@@ -537,7 +537,7 @@ typedef unsigned char GLubyte;
 
 // Window attributes and/or hints
 #define WINDOW_ATTR_FOCUSED                        0x00020001
-#define WINDOW_ATTR_ICONIFIED                      0x00020002
+#define WINDOW_ATTR_MINIMIZED                      0x00020002
 #define WINDOW_ATTR_HINT_RESIZABLE                 0x00020003
 #define WINDOW_ATTR_VISIBLE                        0x00020004
 #define WINDOW_ATTR_HINT_DECORATED                 0x00020005
@@ -590,18 +590,6 @@ typedef unsigned char GLubyte;
 #define RELEASE_BEHAVIOR_FLUSH 0x00035001
 #define RELEASE_BEHAVIOR_NONE  0x00035002
 
-// Input modes
-#define INPUT_MODE_CURSOR                  0x00033001
-#define INPUT_MODE_STICKY_KEYS             0x00033002
-#define INPUT_MODE_STICKY_MOUSE_BUTTONS    0x00033003
-#define INPUT_MODE_LOCK_KEY_MODS           0x00033004
-#define INPUT_MODE_RAW_MOUSE_MOTION        0x00033005
-#define INPUT_MODE_UNLIMITED_MOUSE_BUTTONS 0x00033006
-
-// Cursor mode values
-#define CURSOR_NORMAL   0x00034001
-#define CURSOR_HIDDEN   0x00034002
-
 // Standard cursor IDs
 #define STD_CURSOR_ARROW             0x00036001
 #define STD_CURSOR_IBEAM             0x00036002
@@ -639,7 +627,7 @@ typedef void (*scrollFunc)(plafWindow* window, double xoffset, double yoffset);
 typedef void (*windowCloseFunc)(plafWindow* window);
 typedef void (*windowContextScaleFunc)(plafWindow* window, float xscale, float yscale);
 typedef void (*windowFocusFunc)(plafWindow* window, int focused);
-typedef void (*windowIconifyFunc)(plafWindow* window, int iconified);
+typedef void (*windowMinimizeFunc)(plafWindow* window, int minimize);
 typedef void (*windowMaximizeFunc)(plafWindow* window, int maximized);
 typedef void (*windowPosFunc)(plafWindow* window, int xpos, int ypos); // coordinates are content area upper-left
 typedef void (*windowRefreshFunc)(plafWindow* window);
@@ -833,11 +821,7 @@ struct plafWindow {
 	int                    maxheight;
 	int                    numer;
 	int                    denom;
-	IntBool                stickyKeys;
-	IntBool                stickyMouseButtons;
-	IntBool                lockKeyMods;
-	IntBool                disableMouseButtonLimit;
-	int                    cursorMode;
+	IntBool                cursorHidden;
 	char                   mouseButtons[MOUSE_BUTTON_LAST + 1];
 	char                   keys[KEY_LAST + 1];
 	double                 virtualCursorPosX;
@@ -848,7 +832,7 @@ struct plafWindow {
 	windowCloseFunc        closeCallback;
 	windowRefreshFunc      refreshCallback;
 	windowFocusFunc        focusCallback;
-	windowIconifyFunc      iconifyCallback;
+	windowMinimizeFunc     minimizeCallback;
 	windowMaximizeFunc     maximizeCallback;
 	frameBufferSizeFunc    fbsizeCallback;
 	windowContextScaleFunc scaleCallback;
@@ -875,7 +859,7 @@ struct plafWindow {
 	Window                 x11Parent;
 	XIC                    x11IC;
 	IntBool                x11OverrideRedirect;
-	IntBool                x11Iconified;
+	IntBool                x11Minimized;
 	IntBool                x11Transparent;
 	int                    x11XPos;
 	int                    x11YPos;
@@ -888,7 +872,7 @@ struct plafWindow {
 	HICON                  win32SmallIcon;
 	IntBool                win32CursorTracked;
 	IntBool                win32FrameAction;
-	IntBool                win32Iconified;
+	IntBool                win32Minimized;
 	IntBool                win32Transparent;
 	IntBool                win32ScaleToMonitor;
 	WCHAR                  win32HighSurrogate;
@@ -940,8 +924,7 @@ struct plafCursor {
 };
 
 // Library global data
-struct plafLib
-{
+struct plafLib {
 	IntBool                             initialized;
 	char*                               clipboardString;
 	plafFrameBufferCfg                  frameBufferCfg;
@@ -1066,7 +1049,7 @@ struct plafLib
 	FN_XGetWMNormalHints                xlibGetWMNormalHints;
 	FN_XGetWindowAttributes             xlibGetWindowAttributes;
 	FN_XGetWindowProperty               xlibGetWindowProperty;
-	FN_XIconifyWindow                   xlibIconifyWindow;
+	FN_XMinimizeWindow                   xlibMinimizeWindow;
 	FN_XInternAtom                      xlibInternAtom;
 	FN_XLookupString                    xlibLookupString;
 	FN_XMapRaised                       xlibMapRaised;
@@ -1267,1382 +1250,79 @@ struct plafLib
 // Global state
 extern plafLib _glfw;
 
-
-
-
-
 /*************************************************************************
  * GLFW API functions
  *************************************************************************/
 
+// Setup & teardown
 ErrorResponse* plafInit(void);
 void plafTerminate(void);
-
-/*! @brief Sets the error callback.
- *
- *  This function sets the error callback, which is called with an error code
- *  and a human-readable description each time a GLFW error occurs.
- *
- *  The error code is set before the callback is called.  Calling @ref
- *  glfwGetError from the error callback will return the same value as the error
- *  code argument.
- *
- *  The error callback is called on the thread where the error occurred.  If you
- *  are using GLFW from multiple threads, your error callback needs to be
- *  written accordingly.
- *
- *  Because the description string may have been generated specifically for that
- *  error, it is not guaranteed to be valid after the callback has returned.  If
- *  you wish to use it after the callback returns, you need to make a copy.
- *
- *  Once set, the error callback remains set even after the library has been
- *  terminated.
- *
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set.
- *
- *  @callback_signature
- *  @code
- *  void callback_name(int error_code, const char* description)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [callback pointer type](@ref errorFunc).
- *
- *  @remark This function may be called before @ref plafInit.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref error_handling
- *  @sa @ref glfwGetError
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup init
- */
 errorFunc glfwSetErrorCallback(errorFunc callback);
 
-/*! @brief Returns the currently connected monitors.
- *
- *  This function returns an array of handles for all currently connected
- *  monitors.  The primary monitor is always first in the returned array.  If no
- *  monitors were found, this function returns `NULL`.
- *
- *  @param[out] count Where to store the number of monitors in the returned
- *  array.  This is set to zero if an error occurred.
- *  @return An array of monitor handles, or `NULL` if no monitors were found or
- *  if an [error](@ref error_handling) occurred.
- *
- *  @pointer_lifetime The returned array is allocated and freed by GLFW.  You
- *  should not free it yourself.  It is guaranteed to be valid only until the
- *  monitor configuration changes or the library is terminated.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_monitors
- *  @sa @ref monitor_event
- *  @sa @ref glfwGetPrimaryMonitor
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
+// Monitors
 plafMonitor** glfwGetMonitors(int* count);
-
-/*! @brief Returns the primary monitor.
- *
- *  This function returns the primary monitor.  This is usually the monitor
- *  where elements like the task bar or global menu bar are located.
- *
- *  @return The primary monitor, or `NULL` if no monitors were found or if an
- *  [error](@ref error_handling) occurred.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @remark The primary monitor is always first in the array returned by @ref
- *  glfwGetMonitors.
- *
- *  @sa @ref monitor_monitors
- *  @sa @ref glfwGetMonitors
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 plafMonitor* glfwGetPrimaryMonitor(void);
-
 void glfwGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos);
 void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-
-/*! @brief Returns the physical size of the monitor.
- *
- *  This function returns the size, in millimetres, of the display area of the
- *  specified monitor.
- *
- *  Some platforms do not provide accurate monitor size information, either
- *  because the monitor [EDID][] data is incorrect or because the driver does
- *  not report it accurately.
- *
- *  [EDID]: https://en.wikipedia.org/wiki/Extended_display_identification_data
- *
- *  Any or all of the size arguments may be `NULL`.  If an error occurs, all
- *  non-`NULL` size arguments will be set to zero.
- *
- *  @param[in] monitor The monitor to query.
- *  @param[out] widthMM Where to store the width, in millimetres, of the
- *  monitor's display area, or `NULL`.
- *  @param[out] heightMM Where to store the height, in millimetres, of the
- *  monitor's display area, or `NULL`.
- *
- *  @remark __Win32:__ On Windows 8 and earlier the physical size is calculated from
- *  the current resolution and system DPI instead of querying the monitor EDID data.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_properties
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 void glfwGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM);
-
 void glfwGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale);
-
-/*! @brief Returns the name of the specified monitor.
- *
- *  This function returns a human-readable name, encoded as UTF-8, of the
- *  specified monitor.  The name typically reflects the make and model of the
- *  monitor and is not guaranteed to be unique among the connected monitors.
- *
- *  @param[in] monitor The monitor to query.
- *  @return The UTF-8 encoded name of the monitor, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @pointer_lifetime The returned string is allocated and freed by GLFW.  You
- *  should not free it yourself.  It is valid until the specified monitor is
- *  disconnected or the library is terminated.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_properties
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 const char* glfwGetMonitorName(plafMonitor* monitor);
-
-/*! @brief Sets the monitor configuration callback.
- *
- *  This function sets the monitor configuration callback, or removes the
- *  currently set callback.  This is called when a monitor is connected to or
- *  disconnected from the system.
- *
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafMonitor* monitor, int event)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref monitorFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_event
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 monitorFunc glfwSetMonitorCallback(monitorFunc callback);
-
 const VideoMode* glfwGetVideoModes(plafMonitor* monitor, int* count);
 const VideoMode* glfwGetVideoMode(plafMonitor* monitor);
-
-/*! @brief Generates a gamma ramp and sets it for the specified monitor.
- *
- *  This function generates an appropriately sized gamma ramp from the specified
- *  exponent and then calls @ref glfwSetGammaRamp with it.  The value must be
- *  a finite number greater than zero.
- *
- *  The software controlled gamma ramp is applied _in addition_ to the hardware
- *  gamma correction, which today is usually an approximation of sRGB gamma.
- *  This means that setting a perfectly linear ramp, or gamma 1.0, will produce
- *  the default (usually sRGB-like) behavior.
- *
- *  For gamma correct rendering with OpenGL or OpenGL ES, see the @ref
- *  WINDOW_HINT_SRGB_CAPABLE hint.
- *
- *  @param[in] monitor The monitor whose gamma ramp to set.
- *  @param[in] gamma The desired exponent.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref monitor_gamma
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup monitor
- */
 void glfwSetGamma(plafMonitor* monitor, float gamma);
-
 const GammaRamp* glfwGetGammaRamp(plafMonitor* monitor);
 void glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
 
-/*! @brief Resets all window hints to their default values.
- *
- *  This function resets all window hints to their
- *  [default values](@ref window_hints_values).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_hints
- *  @sa @ref glfwWindowHint
- *  @sa @ref glfwWindowHintString
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
+// Windows
 void glfwDefaultWindowHints(void);
-
-/*! @brief Sets the specified window hint to the desired value.
- *
- *  This function sets hints for the next call to @ref glfwCreateWindow.  The
- *  hints, once set, retain their values until changed by a call to this
- *  function or @ref glfwDefaultWindowHints, or until the library is terminated.
- *
- *  Only integer value hints can be set with this function.  String value hints
- *  are set with @ref glfwWindowHintString.
- *
- *  This function does not check whether the specified hint values are valid.
- *  If you set hints to invalid values this will instead be reported by the next
- *  call to @ref glfwCreateWindow.
- *
- *  Some hints are platform specific.  These may be set on any platform but they
- *  will only affect their specific platform.  Other platforms will ignore them.
- *  Setting these hints requires no platform specific headers or functions.
- *
- *  @param[in] hint The [window hint](@ref window_hints) to set.
- *  @param[in] value The new value of the window hint.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_hints
- *  @sa @ref glfwWindowHintString
- *  @sa @ref glfwDefaultWindowHints
- *
- *  @since Added in version 3.0.  Replaces `glfwOpenWindowHint`.
- *
- *  @ingroup window
- */
 void glfwWindowHint(int hint, int value);
-
-/*! @brief Sets the specified window hint to the desired value.
- *
- *  This function sets hints for the next call to @ref glfwCreateWindow.  The
- *  hints, once set, retain their values until changed by a call to this
- *  function or @ref glfwDefaultWindowHints, or until the library is terminated.
- *
- *  Only string type hints can be set with this function.  Integer value hints
- *  are set with @ref glfwWindowHint.
- *
- *  This function does not check whether the specified hint values are valid.
- *  If you set hints to invalid values this will instead be reported by the next
- *  call to @ref glfwCreateWindow.
- *
- *  Some hints are platform specific.  These may be set on any platform but they
- *  will only affect their specific platform.  Other platforms will ignore them.
- *  Setting these hints requires no platform specific headers or functions.
- *
- *  @param[in] hint The [window hint](@ref window_hints) to set.
- *  @param[in] value The new value of the window hint.
- *
- *  @pointer_lifetime The specified string is copied before this function
- *  returns.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_hints
- *  @sa @ref glfwWindowHint
- *  @sa @ref glfwDefaultWindowHints
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
-void glfwWindowHintString(int hint, const char* value);
-
 ErrorResponse* glfwCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow);
-
-/*! @brief Destroys the specified window and its context.
- *
- *  This function destroys the specified window and its context.  On calling
- *  this function, no further callbacks will be called for that window.
- *
- *  If the context of the specified window is current on the main thread, it is
- *  detached before being destroyed.
- *
- *  @param[in] window The window to destroy.
- *
- *  @note The context of the specified window must not be current on any other
- *  thread when this function is called.
- *
- *  @reentrancy This function must not be called from a callback.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_creation
- *  @sa @ref glfwCreateWindow
- *
- *  @since Added in version 3.0.  Replaces `glfwCloseWindow`.
- *
- *  @ingroup window
- */
-void glfwDestroyWindow(plafWindow* window);
-
-#if defined(__APPLE__)
-/*! @brief Returns the `NSWindow` of the specified window.
- *
- *  @return The `NSWindow` of the specified window, or `nil` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @thread_safety This function may be called from any thread.  Access is not
- *  synchronized.
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup native
- */
-id glfwGetCocoaWindow(plafWindow* window);
-#endif
-
-/*! @brief Checks the close flag of the specified window.
- *
- *  This function returns the value of the close flag of the specified window.
- *
- *  @param[in] window The window to query.
- *  @return The value of the close flag.
- *
- *  @thread_safety This function may be called from any thread.  Access is not
- *  synchronized.
- *
- *  @sa @ref window_close
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
+void* glfwGetNativeWindow(plafWindow* window);
 int glfwWindowShouldClose(plafWindow* window);
-
-/*! @brief Sets the close flag of the specified window.
- *
- *  This function sets the value of the close flag of the specified window.
- *  This can be used to override the user's attempt to close the window, or
- *  to signal that it should be closed.
- *
- *  @param[in] window The window whose flag to change.
- *  @param[in] value The new value.
- *
- *  @thread_safety This function may be called from any thread.  Access is not
- *  synchronized.
- *
- *  @sa @ref window_close
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
 void glfwSetWindowShouldClose(plafWindow* window, int value);
-
-/*! @brief Returns the title of the specified window.
- *
- *  This function returns the window title, encoded as UTF-8, of the specified
- *  window.  This is the title set previously by @ref glfwCreateWindow
- *  or @ref glfwSetWindowTitle.
- *
- *  @param[in] window The window to query.
- *  @return The UTF-8 encoded window title, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @remark The returned title is currently a copy of the title last set by @ref
- *  glfwCreateWindow or @ref glfwSetWindowTitle.  It does not include any
- *  additional text which may be appended by the platform or another program.
- *
- *  @pointer_lifetime The returned string is allocated and freed by GLFW.  You
- *  should not free it yourself.  It is valid until the next call to @ref
- *  glfwGetWindowTitle or @ref glfwSetWindowTitle, or until the library is
- *  terminated.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_title
- *  @sa @ref glfwSetWindowTitle
- *
- *  @since Added in version 3.4.
- *
- *  @ingroup window
- */
 const char* glfwGetWindowTitle(plafWindow* window);
-
-/*! @brief Sets the title of the specified window.
- *
- *  This function sets the window title, encoded as UTF-8, of the specified
- *  window.
- *
- *  @param[in] window The window whose title to change.
- *  @param[in] title The UTF-8 encoded window title.
- *
- *  @remark __macOS:__ The window title will not be updated until the next time you
- *  process events.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_title
- *  @sa @ref glfwGetWindowTitle
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup window
- */
 void glfwSetWindowTitle(plafWindow* window, const char* title);
-
-/*! @brief Sets the icon for the specified window.
- *
- *  This function sets the icon of the specified window.  If passed an array of
- *  candidate images, those of or closest to the sizes desired by the system are
- *  selected.  If no images are specified, the window reverts to its default
- *  icon.
- *
- *  The pixels are 32-bit, little-endian, non-premultiplied RGBA, i.e. eight
- *  bits per channel with the red channel first.  They are arranged canonically
- *  as packed sequential rows, starting from the top-left corner.
- *
- *  The desired image sizes varies depending on platform and system settings.
- *  The selected images will be rescaled as needed.  Good sizes include 16x16,
- *  32x32 and 48x48.
- *
- *  @param[in] window The window whose icon to set.
- *  @param[in] count The number of images in the specified array, or zero to
- *  revert to the default window icon.
- *  @param[in] images The images to create the icon from.  This is ignored if
- *  count is zero.
- *
- *  @pointer_lifetime The specified image data is copied before this function
- *  returns.
- *
- *  @remark __macOS:__ Regular windows do not have icons on macOS.  This function
- *  will emit @ref ERR_FEATURE_UNAVAILABLE.  The dock icon will be the same as
- *  the application bundle's icon.  For more information on bundles, see the
- *  [Bundle Programming Guide][bundle-guide] in the Mac Developer Library.
- *
- *  [bundle-guide]: https://developer.apple.com/library/mac/documentation/CoreFoundation/Conceptual/CFBundles/
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_icon
- *
- *  @since Added in version 3.2.
- *
- *  @ingroup window
- */
 void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images);
-
-/*! @brief Retrieves the position of the content area of the specified window.
- *
- *  This function retrieves the position, in screen coordinates, of the
- *  upper-left corner of the content area of the specified window.
- *
- *  Any or all of the position arguments may be `NULL`.  If an error occurs, all
- *  non-`NULL` position arguments will be set to zero.
- *
- *  @param[in] window The window to query.
- *  @param[out] xpos Where to store the x-coordinate of the upper-left corner of
- *  the content area, or `NULL`.
- *  @param[out] ypos Where to store the y-coordinate of the upper-left corner of
- *  the content area, or `NULL`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_pos
- *  @sa @ref glfwSetWindowPos
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
 void glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos);
-
-/*! @brief Sets the position of the content area of the specified window.
- *
- *  This function sets the position, in screen coordinates, of the upper-left
- *  corner of the content area of the specified windowed mode window.  If the
- *  window is a full screen window, this function does nothing.
- *
- *  __Do not use this function__ to move an already visible window unless you
- *  have very good reasons for doing so, as it will confuse and annoy the user.
- *
- *  The window manager may put limits on what positions are allowed.  GLFW
- *  cannot and should not override these limits.
- *
- *  @param[in] window The window to query.
- *  @param[in] xpos The x-coordinate of the upper-left corner of the content area.
- *  @param[in] ypos The y-coordinate of the upper-left corner of the content area.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_pos
- *  @sa @ref glfwGetWindowPos
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup window
- */
 void glfwSetWindowPos(plafWindow* window, int xpos, int ypos);
-
-/*! @brief Retrieves the size of the content area of the specified window.
- *
- *  This function retrieves the size, in screen coordinates, of the content area
- *  of the specified window.  If you wish to retrieve the size of the
- *  framebuffer of the window in pixels, see @ref glfwGetFramebufferSize.
- *
- *  Any or all of the size arguments may be `NULL`.  If an error occurs, all
- *  non-`NULL` size arguments will be set to zero.
- *
- *  @param[in] window The window whose size to retrieve.
- *  @param[out] width Where to store the width, in screen coordinates, of the
- *  content area, or `NULL`.
- *  @param[out] height Where to store the height, in screen coordinates, of the
- *  content area, or `NULL`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_size
- *  @sa @ref glfwSetWindowSize
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup window
- */
 void glfwGetWindowSize(plafWindow* window, int* width, int* height);
-
-/*! @brief Sets the size limits of the specified window.
- *
- *  This function sets the size limits of the content area of the specified
- *  window.  If the window is full screen, the size limits only take effect
- *  once it is made windowed.  If the window is not resizable, this function
- *  does nothing.
- *
- *  The size limits are applied immediately to a windowed mode window and may
- *  cause it to be resized.
- *
- *  The maximum dimensions must be greater than or equal to the minimum
- *  dimensions and all must be greater than or equal to zero.
- *
- *  @param[in] window The window to set limits for.
- *  @param[in] minwidth The minimum width, in screen coordinates, of the content
- *  area, or `DONT_CARE`.
- *  @param[in] minheight The minimum height, in screen coordinates, of the
- *  content area, or `DONT_CARE`.
- *  @param[in] maxwidth The maximum width, in screen coordinates, of the content
- *  area, or `DONT_CARE`.
- *  @param[in] maxheight The maximum height, in screen coordinates, of the
- *  content area, or `DONT_CARE`.
- *
- *  @remark If you set size limits and an aspect ratio that conflict, the
- *  results are undefined.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_sizelimits
- *  @sa @ref glfwSetWindowAspectRatio
- *
- *  @since Added in version 3.2.
- *
- *  @ingroup window
- */
 void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-
-/*! @brief Sets the aspect ratio of the specified window.
- *
- *  This function sets the required aspect ratio of the content area of the
- *  specified window.  If the window is full screen, the aspect ratio only takes
- *  effect once it is made windowed.  If the window is not resizable, this
- *  function does nothing.
- *
- *  The aspect ratio is specified as a numerator and a denominator and both
- *  values must be greater than zero.  For example, the common 16:9 aspect ratio
- *  is specified as 16 and 9, respectively.
- *
- *  If the numerator and denominator is set to `DONT_CARE` then the aspect
- *  ratio limit is disabled.
- *
- *  The aspect ratio is applied immediately to a windowed mode window and may
- *  cause it to be resized.
- *
- *  @param[in] window The window to set limits for.
- *  @param[in] numer The numerator of the desired aspect ratio, or
- *  `DONT_CARE`.
- *  @param[in] denom The denominator of the desired aspect ratio, or
- *  `DONT_CARE`.
- *
- *  @remark If you set size limits and an aspect ratio that conflict, the
- *  results are undefined.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_sizelimits
- *  @sa @ref glfwSetWindowSizeLimits
- *
- *  @since Added in version 3.2.
- *
- *  @ingroup window
- */
-void glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom);
-
-/*! @brief Sets the size of the content area of the specified window.
- *
- *  This function sets the size, in screen coordinates, of the content area of
- *  the specified window.
- *
- *  For full screen windows, this function updates the resolution of its desired
- *  video mode and switches to the video mode closest to it, without affecting
- *  the window's context.  As the context is unaffected, the bit depths of the
- *  framebuffer remain unchanged.
- *
- *  If you wish to update the refresh rate of the desired video mode in addition
- *  to its resolution, see @ref glfwSetWindowMonitor.
- *
- *  The window manager may put limits on what sizes are allowed.  GLFW cannot
- *  and should not override these limits.
- *
- *  @param[in] window The window to resize.
- *  @param[in] width The desired width, in screen coordinates, of the window
- *  content area.
- *  @param[in] height The desired height, in screen coordinates, of the window
- *  content area.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_size
- *  @sa @ref glfwGetWindowSize
- *  @sa @ref glfwSetWindowMonitor
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup window
- */
 void glfwSetWindowSize(plafWindow* window, int width, int height);
-
-/*! @brief Retrieves the size of the framebuffer of the specified window.
- *
- *  This function retrieves the size, in pixels, of the framebuffer of the
- *  specified window.  If you wish to retrieve the size of the window in screen
- *  coordinates, see @ref glfwGetWindowSize.
- *
- *  Any or all of the size arguments may be `NULL`.  If an error occurs, all
- *  non-`NULL` size arguments will be set to zero.
- *
- *  @param[in] window The window whose framebuffer to query.
- *  @param[out] width Where to store the width, in pixels, of the framebuffer,
- *  or `NULL`.
- *  @param[out] height Where to store the height, in pixels, of the framebuffer,
- *  or `NULL`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_fbsize
- *  @sa @ref glfwSetFramebufferSizeCallback
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
 void glfwGetFramebufferSize(plafWindow* window, int* width, int* height);
-
-/*! @brief Retrieves the size of the frame of the window.
- *
- *  This function retrieves the size, in screen coordinates, of each edge of the
- *  frame of the specified window.  This size includes the title bar, if the
- *  window has one.  The size of the frame may vary depending on the
- *  [window-related hints](@ref window_hints_wnd) used to create it.
- *
- *  Because this function retrieves the size of each window frame edge and not
- *  the offset along a particular coordinate axis, the retrieved values will
- *  always be zero or positive.
- *
- *  Any or all of the size arguments may be `NULL`.  If an error occurs, all
- *  non-`NULL` size arguments will be set to zero.
- *
- *  @param[in] window The window whose frame size to query.
- *  @param[out] left Where to store the size, in screen coordinates, of the left
- *  edge of the window frame, or `NULL`.
- *  @param[out] top Where to store the size, in screen coordinates, of the top
- *  edge of the window frame, or `NULL`.
- *  @param[out] right Where to store the size, in screen coordinates, of the
- *  right edge of the window frame, or `NULL`.
- *  @param[out] bottom Where to store the size, in screen coordinates, of the
- *  bottom edge of the window frame, or `NULL`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_size
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup window
- */
 void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
-
-/*! @brief Retrieves the content scale for the specified window.
- *
- *  This function retrieves the content scale for the specified window.  The
- *  content scale is the ratio between the current DPI and the platform's
- *  default DPI.  This is especially important for text and any UI elements.  If
- *  the pixel dimensions of your UI scaled by this look appropriate on your
- *  machine then it should appear at a reasonable size on other machines
- *  regardless of their DPI and scaling settings.  This relies on the system DPI
- *  and scaling settings being somewhat correct.
- *
- *  On platforms where each monitors can have its own content scale, the window
- *  content scale will depend on which monitor the system considers the window
- *  to be on.
- *
- *  @param[in] window The window to query.
- *  @param[out] xscale Where to store the x-axis content scale, or `NULL`.
- *  @param[out] yscale Where to store the y-axis content scale, or `NULL`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_scale
- *  @sa @ref glfwSetWindowContentScaleCallback
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
 void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
-
 float glfwGetWindowOpacity(plafWindow* window);
-
-/*! @brief Sets the opacity of the whole window.
- *
- *  This function sets the opacity of the window, including any decorations.
- *
- *  The opacity (or alpha) value is a positive finite number between zero and
- *  one, where zero is fully transparent and one is fully opaque.
- *
- *  The initial opacity value for newly created windows is one.
- *
- *  A window created with framebuffer transparency may not use whole window
- *  transparency.  The results of doing this are undefined.
- *
- *  @param[in] window The window to set the opacity for.
- *  @param[in] opacity The desired opacity of the specified window.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
 void glfwSetWindowOpacity(plafWindow* window, float opacity);
-
-void glfwIconifyWindow(plafWindow* window);
-void glfwRestoreWindow(plafWindow* window);
-
-/*! @brief Maximizes the specified window.
- *
- *  This function maximizes the specified window if it was previously not
- *  maximized.  If the window is already maximized, this function does nothing.
- *
- *  If the specified window is a full screen window, this function does nothing.
- *
- *  @param[in] window The window to maximize.
- *
- *  @par Thread Safety
- *  This function may only be called from the main thread.
- *
- *  @since Added in GLFW 3.2.
- *
- *  @ingroup window
- */
+void glfwMinimizeWindow(plafWindow* window);
 void glfwMaximizeWindow(plafWindow* window);
-
-/*! @brief Makes the specified window visible.
- *
- *  This function makes the specified window visible if it was previously
- *  hidden.  If the window is already visible or is in full screen mode, this
- *  function does nothing.
- *
- *  @param[in] window The window to make visible.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_hide
- *  @sa @ref glfwHideWindow
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
+void glfwRestoreWindow(plafWindow* window);
 void glfwShowWindow(plafWindow* window);
-
-/*! @brief Hides the specified window.
- *
- *  This function hides the specified window if it was previously visible.  If
- *  the window is already hidden or is in full screen mode, this function does
- *  nothing.
- *
- *  @param[in] window The window to hide.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_hide
- *  @sa @ref glfwShowWindow
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
 void glfwHideWindow(plafWindow* window);
-
 void glfwFocusWindow(plafWindow* window);
 void glfwRequestWindowAttention(plafWindow* window);
-
-/*! @brief Returns the monitor that the window uses for full screen mode.
- *
- *  This function returns the handle of the monitor that the specified window is
- *  in full screen on.
- *
- *  @param[in] window The window to query.
- *  @return The monitor, or `NULL` if the window is in windowed mode or an
- *  [error](@ref error_handling) occurred.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_monitor
- *  @sa @ref glfwSetWindowMonitor
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
 plafMonitor* glfwGetWindowMonitor(plafWindow* window);
-
-/*! @brief Sets the mode, monitor, video mode and placement of a window.
- *
- *  This function sets the monitor that the window uses for full screen mode or,
- *  if the monitor is `NULL`, makes it windowed mode.
- *
- *  When setting a monitor, this function updates the width, height and refresh
- *  rate of the desired video mode and switches to the video mode closest to it.
- *  The window position is ignored when setting a monitor.
- *
- *  When the monitor is `NULL`, the position, width and height are used to
- *  place the window content area.  The refresh rate is ignored when no monitor
- *  is specified.
- *
- *  If you only wish to update the resolution of a full screen window or the
- *  size of a windowed mode window, see @ref glfwSetWindowSize.
- *
- *  When a window transitions from full screen to windowed mode, this function
- *  restores any previous window settings such as whether it is decorated,
- *  floating, resizable, has size or aspect ratio limits, etc.
- *
- *  @param[in] window The window whose monitor, size or video mode to set.
- *  @param[in] monitor The desired monitor, or `NULL` to set windowed mode.
- *  @param[in] xpos The desired x-coordinate of the upper-left corner of the
- *  content area.
- *  @param[in] ypos The desired y-coordinate of the upper-left corner of the
- *  content area.
- *  @param[in] width The desired with, in screen coordinates, of the content
- *  area or video mode.
- *  @param[in] height The desired height, in screen coordinates, of the content
- *  area or video mode.
- *  @param[in] refreshRate The desired refresh rate, in Hz, of the video mode,
- *  or `DONT_CARE`.
- *
- *  @remark The OpenGL or OpenGL ES context will not be destroyed or otherwise
- *  affected by any resizing or mode switching, although you may need to update
- *  your viewport if the framebuffer size has changed.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_monitor
- *  @sa @ref window_full_screen
- *  @sa @ref glfwGetWindowMonitor
- *  @sa @ref glfwSetWindowSize
- *
- *  @since Added in version 3.2.
- *
- *  @ingroup window
- */
 void glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-
-/*! @brief Returns an attribute of the specified window.
- *
- *  This function returns the value of an attribute of the specified window or
- *  its OpenGL or OpenGL ES context.
- *
- *  @param[in] window The window to query.
- *  @param[in] attrib The [window attribute](@ref window_attribs) whose value to
- *  return.
- *  @return The value of the attribute, or zero if an
- *  [error](@ref error_handling) occurred.
- *
- *  @remark Framebuffer related hints are not window attributes.  See @ref
- *  window_attribs_fb for more information.
- *
- *  @remark Zero is a valid value for many window and context related
- *  attributes so you cannot use a return value of zero as an indication of
- *  errors.  However, this function should not fail as long as it is passed
- *  valid arguments and the library has been [initialized](@ref intro_init).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_attribs
- *  @sa @ref glfwSetWindowAttrib
- *
- *  @since Added in version 3.0.  Replaces `glfwGetWindowParam` and
- *  `glfwGetGLVersion`.
- *
- *  @ingroup window
- */
 int glfwGetWindowAttrib(plafWindow* window, int attrib);
-
-/*! @brief Sets an attribute of the specified window.
- *
- *  This function sets the value of an attribute of the specified window.
- *
- *  The supported attributes are [WINDOW_ATTR_HINT_DECORATED](@ref GLFW_DECORATED_attrib),
- *  [WINDOW_ATTR_HINT_RESIZABLE](@ref GLFW_RESIZABLE_attrib),
- *  [WINDOW_ATTR_HINT_FLOATING](@ref GLFW_FLOATING_attrib),
- *  [WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH](@ref GLFW_MOUSE_PASSTHROUGH_attrib)
- *
- *  Some of these attributes are ignored for full screen windows.  The new
- *  value will take effect if the window is later made windowed.
- *
- *  Some of these attributes are ignored for windowed mode windows.  The new
- *  value will take effect if the window is later made full screen.
- *
- *  @param[in] window The window to set the attribute for.
- *  @param[in] attrib A supported window attribute.
- *  @param[in] value `true` or `false`.
- *
- *  @remark Calling @ref glfwGetWindowAttrib will always return the latest
- *  value, even if that value is ignored by the current mode of the window.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_attribs
- *  @sa @ref glfwGetWindowAttrib
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
 void glfwSetWindowAttrib(plafWindow* window, int attrib, int value);
-
-/*! @brief Sets the position callback for the specified window.
- *
- *  This function sets the position callback of the specified window, which is
- *  called when the window is moved.  The callback is provided with the
- *  position, in screen coordinates, of the upper-left corner of the content
- *  area of the window.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int xpos, int ypos)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref windowPosFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_pos
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
+void glfwHideCursor(plafWindow* window);
+void glfwShowCursor(plafWindow* window);
 windowPosFunc glfwSetWindowPosCallback(plafWindow* window, windowPosFunc callback);
-
-/*! @brief Sets the size callback for the specified window.
- *
- *  This function sets the size callback of the specified window, which is
- *  called when the window is resized.  The callback is provided with the size,
- *  in screen coordinates, of the content area of the window.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int width, int height)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref windowSizeFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_size
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter and return value.
- *
- *  @ingroup window
- */
 windowSizeFunc glfwSetWindowSizeCallback(plafWindow* window, windowSizeFunc callback);
-
-/*! @brief Sets the close callback for the specified window.
- *
- *  This function sets the close callback of the specified window, which is
- *  called when the user attempts to close the window, for example by clicking
- *  the close widget in the title bar.
- *
- *  The close flag is set before this callback is called, but you can modify it
- *  at any time with @ref glfwSetWindowShouldClose.
- *
- *  The close callback is not triggered by @ref glfwDestroyWindow.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref windowCloseFunc).
- *
- *  @remark __macOS:__ Selecting Quit from the application menu will trigger the
- *  close callback for all windows.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_close
- *
- *  @since Added in version 2.5.
- *  __GLFW 3:__ Added window handle parameter and return value.
- *
- *  @ingroup window
- */
 windowCloseFunc glfwSetWindowCloseCallback(plafWindow* window, windowCloseFunc callback);
-
-/*! @brief Sets the refresh callback for the specified window.
- *
- *  This function sets the refresh callback of the specified window, which is called when the content area of the window
- *  needs to be redrawn, for example if the window has been exposed after having been covered by another window.
- *
- *  On compositing window systems where the window contents are saved off-screen, this callback may be called only very
- *  infrequently or never at all.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the library had not been [initialized](@ref
- *  intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window);
- *  @endcode
- *  For more information about the callback parameters, see the [function pointer type](@ref windowRefreshFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_refresh
- *
- *  @since Added in version 2.5. __GLFW 3:__ Added window handle parameter and return value.
- *
- *  @ingroup window
- */
 windowRefreshFunc glfwSetWindowRefreshCallback(plafWindow* window, windowRefreshFunc callback);
-
-/*! @brief Sets the focus callback for the specified window.
- *
- *  This function sets the focus callback of the specified window, which is
- *  called when the window gains or loses input focus.
- *
- *  After the focus callback is called for a window that lost input focus,
- *  synthetic key and mouse button release events will be generated for all such
- *  that had been pressed.  For more information, see @ref glfwSetKeyCallback
- *  and @ref glfwSetMouseButtonCallback.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int focused)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref windowFocusFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_focus
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
 windowFocusFunc glfwSetWindowFocusCallback(plafWindow* window, windowFocusFunc callback);
-
-/*! @brief Sets the iconify callback for the specified window.
- *
- *  This function sets the iconification callback of the specified window, which
- *  is called when the window is iconified or restored.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int iconified)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref windowIconifyFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_iconify
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
-windowIconifyFunc glfwSetWindowIconifyCallback(plafWindow* window, windowIconifyFunc callback);
-
-/*! @brief Sets the maximize callback for the specified window.
- *
- *  This function sets the maximization callback of the specified window, which
- *  is called when the window is maximized or restored.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int maximized)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref windowMaximizeFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_maximize
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
+windowMinimizeFunc glfwSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc callback);
 windowMaximizeFunc glfwSetWindowMaximizeCallback(plafWindow* window, windowMaximizeFunc callback);
-
-/*! @brief Sets the framebuffer resize callback for the specified window.
- *
- *  This function sets the framebuffer resize callback of the specified window,
- *  which is called when the framebuffer of the specified window is resized.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int width, int height)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref frameBufferSizeFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_fbsize
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup window
- */
 frameBufferSizeFunc glfwSetFramebufferSizeCallback(plafWindow* window, frameBufferSizeFunc callback);
-
-/*! @brief Sets the window content scale callback for the specified window.
- *
- *  This function sets the window content scale callback of the specified window,
- *  which is called when the content scale of the specified window changes.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, float xscale, float yscale)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref windowContextScaleFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_scale
- *  @sa @ref glfwGetWindowContentScale
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup window
- */
 windowContextScaleFunc glfwSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc callback);
+void glfwDestroyWindow(plafWindow* window);
 
+// Events
 void glfwPollEvents(void);
 void glfwWaitEvents(void);
-
-/*! @brief Waits with timeout until events are queued and processes them.
- *
- *  This function puts the calling thread to sleep until at least one event is
- *  available in the event queue, or until the specified timeout is reached.  If
- *  one or more events are available, it behaves exactly like @ref
- *  glfwPollEvents, i.e. the events in the queue are processed and the function
- *  then returns immediately.  Processing events will cause the window and input
- *  callbacks associated with those events to be called.
- *
- *  The timeout value must be a positive finite number.
- *
- *  Since not all events are associated with callbacks, this function may return
- *  without a callback having been called even if you are monitoring all
- *  callbacks.
- *
- *  On some platforms, a window move, resize or menu operation will cause event
- *  processing to block.  This is due to how event processing is designed on
- *  those platforms.  You can use the
- *  [window refresh callback](@ref window_refresh) to redraw the contents of
- *  your window when necessary during such operations.
- *
- *  Do not assume that callbacks you set will _only_ be called in response to
- *  event processing functions like this one.  While it is necessary to poll for
- *  events, window systems that require GLFW to register callbacks of its own
- *  can pass events to GLFW in response to many window system function calls.
- *  GLFW will pass those events on to the application callbacks before
- *  returning.
- *
- *  @param[in] timeout The maximum amount of time, in seconds, to wait.
- *
- *  @reentrancy This function must not be called from a callback.
- *
- *  @thread_safety This function must only be called from the main thread.
- */
 void glfwWaitEventsTimeout(double timeout);
-
 void glfwPostEmptyEvent(void);
-
-/*! @brief Returns the value of an input option for the specified window.
- *
- *  This function returns the value of an input option for the specified window.
- *  The mode must be one of @ref INPUT_MODE_CURSOR, @ref INPUT_MODE_STICKY_KEYS,
- *  @ref INPUT_MODE_STICKY_MOUSE_BUTTONS, @ref INPUT_MODE_LOCK_KEY_MODS or
- *  @ref INPUT_MODE_RAW_MOUSE_MOTION.
- *
- *  @param[in] window The window to query.
- *  @param[in] mode One of `INPUT_MODE_CURSOR`, `INPUT_MODE_STICKY_KEYS`,
- *  `INPUT_MODE_STICKY_MOUSE_BUTTONS`, `INPUT_MODE_LOCK_KEY_MODS` or
- *  `INPUT_MODE_RAW_MOUSE_MOTION`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref glfwSetInputMode
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup input
- */
-int glfwGetInputMode(plafWindow* window, int mode);
-
-/*! @brief Sets an input option for the specified window.
- *
- *  This function sets an input mode option for the specified window.  The mode
- *  must be one of @ref INPUT_MODE_CURSOR, @ref INPUT_MODE_STICKY_KEYS,
- *  @ref INPUT_MODE_STICKY_MOUSE_BUTTONS, @ref INPUT_MODE_LOCK_KEY_MODS
- *  @ref INPUT_MODE_RAW_MOUSE_MOTION, or @ref INPUT_MODE_UNLIMITED_MOUSE_BUTTONS.
- *
- *  If the mode is `INPUT_MODE_CURSOR`, the value must be one of the following cursor
- *  modes:
- *  - `CURSOR_NORMAL` makes the cursor visible and behaving normally.
- *  - `CURSOR_HIDDEN` makes the cursor invisible when it is over the
- *    content area of the window but does not restrict the cursor from leaving.
- *
- *  If the mode is `INPUT_MODE_STICKY_KEYS`, the value must be either `true` to
- *  enable sticky keys, or `false` to disable it.  If sticky keys are
- *  enabled, a key press will ensure that @ref glfwGetKey returns `INPUT_PRESS`
- *  the next time it is called even if the key had been released before the
- *  call.  This is useful when you are only interested in whether keys have been
- *  pressed but not when or in which order.
- *
- *  If the mode is `INPUT_MODE_STICKY_MOUSE_BUTTONS`, the value must be either
- *  `true` to enable sticky mouse buttons, or `false` to disable it.
- *  If sticky mouse buttons are enabled, a mouse button press will ensure that
- *  @ref glfwGetMouseButton returns `INPUT_PRESS` the next time it is called even
- *  if the mouse button had been released before the call.  This is useful when
- *  you are only interested in whether mouse buttons have been pressed but not
- *  when or in which order.
- *
- *  If the mode is `INPUT_MODE_LOCK_KEY_MODS`, the value must be either `true` to
- *  enable lock key modifier bits, or `false` to disable them.  If enabled,
- *  callbacks that receive modifier bits will also have the @ref
- *  KEYMOD_CAPS_LOCK bit set when the event was generated with Caps Lock on,
- *  and the @ref KEYMOD_NUM_LOCK bit when Num Lock was on.
- *
- *  If the mode is `INPUT_MODE_UNLIMITED_MOUSE_BUTTONS`, the value must be either
- *  `true` to disable the mouse button limit when calling the mouse button
- *  callback, or `false` to limit the mouse buttons sent to the callback
- *  to the mouse button token values up to `MOUSE_BUTTON_LAST`.
- *
- *  @param[in] window The window whose input mode to set.
- *  @param[in] mode One of `INPUT_MODE_CURSOR`, `INPUT_MODE_STICKY_KEYS`,
- *  `INPUT_MODE_STICKY_MOUSE_BUTTONS`, `INPUT_MODE_LOCK_KEY_MODS` or
- *  `INPUT_MODE_RAW_MOUSE_MOTION`.
- *  @param[in] value The new value of the specified input mode.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref glfwGetInputMode
- *
- *  @since Added in version 3.0.  Replaces `glfwEnable` and `glfwDisable`.
- *
- *  @ingroup input
- */
-void glfwSetInputMode(plafWindow* window, int mode, int value);
 
 /*! @brief Returns the platform-specific scancode of the specified key.
  *
@@ -3366,7 +2046,7 @@ void _glfwInputWindowSize(plafWindow* window, int width, int height);
 void _glfwInputFramebufferSize(plafWindow* window, int width, int height);
 void _glfwInputWindowContentScale(plafWindow* window,
 								  float xscale, float yscale);
-void _glfwInputWindowIconify(plafWindow* window, IntBool iconified);
+void _glfwInputWindowMinimize(plafWindow* window, IntBool minimized);
 void _glfwInputWindowMaximize(plafWindow* window, IntBool maximized);
 void _glfwInputWindowDamage(plafWindow* window);
 void _glfwInputWindowCloseRequest(plafWindow* window);
@@ -3407,7 +2087,6 @@ void _glfwSetWindowPos(plafWindow* window, int xpos, int ypos);
 void _glfwGetWindowSize(plafWindow* window, int* width, int* height);
 void _glfwSetWindowSize(plafWindow* window, int width, int height);
 void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom);
 void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height);
 void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
 void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
@@ -3416,7 +2095,7 @@ void _glfwShowWindow(plafWindow* window);
 void _glfwHideWindow(plafWindow* window);
 void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
 IntBool _glfwWindowFocused(plafWindow* window);
-IntBool _glfwWindowIconified(plafWindow* window);
+IntBool _glfwWindowMinimized(plafWindow* window);
 IntBool _glfwWindowVisible(plafWindow* window);
 IntBool _glfwWindowMaximized(plafWindow* window);
 IntBool _glfwWindowHovered(plafWindow* window);
@@ -3437,7 +2116,7 @@ VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count);
 void _glfwSetVideoMode(plafMonitor* monitor, const VideoMode* desired);
 void _glfwDestroyCursor(plafCursor* cursor);
 IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape);
-void glfwSetCursorMode(plafWindow* window, int mode);
+void glfwUpdateCursor(plafWindow* window);
 IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
 IntBool _glfwStringInExtensionString(const char* string, const char* extensions);
 const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);

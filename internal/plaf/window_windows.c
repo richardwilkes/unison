@@ -187,29 +187,20 @@ static void applyAspectRatio(plafWindow* window, int edge, RECT* area)
 }
 
 // Updates the cursor image according to its cursor mode
-//
-void updateCursorImage(plafWindow* window)
-{
-	if (window->cursorMode == CURSOR_NORMAL)
-	{
-		if (window->cursor)
-			SetCursor(window->cursor->win32Cursor);
-		else
-			SetCursor(LoadCursorW(NULL, IDC_ARROW));
-	}
-	else
-	{
-		// NOTE: Via Remote Desktop, setting the cursor to NULL does not hide it.
-		// HACK: When running locally, it is set to NULL, but when connected via Remote
-		//       Desktop, this is a transparent cursor.
+void updateCursorImage(plafWindow* window) {
+	if (window->cursorHidden) {
 		SetCursor(_glfw.win32BlankCursor);
+	} else {
+		if (window->cursor) {
+			SetCursor(window->cursor->win32Cursor);
+		} else {
+			SetCursor(LoadCursorW(NULL, IDC_ARROW));
+		}
 	}
 }
 
 // Update native window styles to match attributes
-//
-static void updateWindowStyles(const plafWindow* window)
-{
+static void updateWindowStyles(const plafWindow* window) {
 	RECT rect;
 	DWORD style = GetWindowLongW(window->win32Window, GWL_STYLE);
 	style &= ~(WS_OVERLAPPEDWINDOW | WS_POPUP);
@@ -740,13 +731,13 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		{
 			const int width = LOWORD(lParam);
 			const int height = HIWORD(lParam);
-			const IntBool iconified = wParam == SIZE_MINIMIZED;
+			const IntBool minimized = wParam == SIZE_MINIMIZED;
 			const IntBool maximized = wParam == SIZE_MAXIMIZED ||
 									   (window->maximized &&
 										wParam != SIZE_RESTORED);
 
-			if (window->win32Iconified != iconified)
-				_glfwInputWindowIconify(window, iconified);
+			if (window->win32Minimized != minimized)
+				_glfwInputWindowMinimize(window, minimized);
 
 			if (window->maximized != maximized)
 				_glfwInputWindowMaximize(window, maximized);
@@ -760,9 +751,9 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				_glfwInputWindowSize(window, width, height);
 			}
 
-			if (window->monitor && window->win32Iconified != iconified)
+			if (window->monitor && window->win32Minimized != minimized)
 			{
-				if (iconified)
+				if (minimized)
 					releaseMonitor(window);
 				else
 				{
@@ -771,7 +762,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				}
 			}
 
-			window->win32Iconified = iconified;
+			window->win32Minimized = minimized;
 			window->maximized = maximized;
 			return 0;
 		}
@@ -1327,20 +1318,6 @@ void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, i
 			   area.bottom - area.top, TRUE);
 }
 
-void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
-	RECT area;
-
-	if (numer == DONT_CARE || denom == DONT_CARE)
-		return;
-
-	GetWindowRect(window->win32Window, &area);
-	applyAspectRatio(window, WMSZ_BOTTOMRIGHT, &area);
-	MoveWindow(window->win32Window,
-			   area.left, area.top,
-			   area.right - area.left,
-			   area.bottom - area.top, TRUE);
-}
-
 void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	_glfwGetWindowSize(window, width, height);
 }
@@ -1379,7 +1356,7 @@ void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale
 	_glfwGetHMONITORContentScaleWin32(handle, xscale, yscale);
 }
 
-void glfwIconifyWindow(plafWindow* window) {
+void glfwMinimizeWindow(plafWindow* window) {
 	ShowWindow(window->win32Window, SW_MINIMIZE);
 }
 
@@ -1521,7 +1498,7 @@ IntBool _glfwWindowFocused(plafWindow* window) {
 	return window->win32Window == GetActiveWindow();
 }
 
-IntBool _glfwWindowIconified(plafWindow* window) {
+IntBool _glfwWindowMinimized(plafWindow* window) {
 	return IsIconic(window->win32Window);
 }
 
@@ -1705,9 +1682,10 @@ void glfwPostEmptyEvent(void) {
 	PostMessageW(_glfw.win32HelperWindowHandle, WM_NULL, 0, 0);
 }
 
-void glfwSetCursorMode(plafWindow* window, int mode) {
-	if (cursorInContentArea(window))
+void glfwUpdateCursor(plafWindow* window) {
+	if (cursorInContentArea(window)) {
 		updateCursorImage(window);
+	}
 }
 
 IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot) {
@@ -1763,7 +1741,7 @@ void _glfwDestroyCursor(plafCursor* cursor) {
 		DestroyIcon((HICON) cursor->win32Cursor);
 }
 
-HWND glfwGetWin32Window(plafWindow* window) {
+void* glfwGetNativeWindow(plafWindow* window) {
 	return window->win32Window;
 }
 

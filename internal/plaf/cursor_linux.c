@@ -18,7 +18,7 @@ void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
 }
 
 void _glfwSetCursor(plafWindow* window) {
-	if (window->cursorMode == CURSOR_NORMAL) {
+	if (!window->cursorHidden) {
 		updateCursorImage(window);
 		_glfw.xlibFlush(_glfw.x11Display);
 	}

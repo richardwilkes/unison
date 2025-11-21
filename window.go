@@ -819,7 +819,7 @@ func (w *Window) ToFront() {
 // Minimize performs the minimize function on the window.
 func (w *Window) Minimize() {
 	if w.IsValid() {
-		w.wnd.Iconify()
+		w.wnd.Minimize()
 	}
 }
 
@@ -927,20 +927,20 @@ func (w *Window) FlushDrawing() {
 // HideCursor hides the cursor.
 func (w *Window) HideCursor() {
 	if w.IsValid() {
-		w.wnd.SetInputMode(plaf.InputModeCursor, plaf.CursorHidden)
+		w.wnd.HideCursor()
 	}
 }
 
 // ShowCursor shows the cursor.
 func (w *Window) ShowCursor() {
 	if w.IsValid() {
-		w.wnd.SetInputMode(plaf.InputModeCursor, plaf.CursorNormal)
+		w.wnd.ShowCursor()
 	}
 }
 
 // HideCursorUntilMouseMoves hides the cursor until the mouse is moved.
 func (w *Window) HideCursorUntilMouseMoves() {
-	if !w.cursorHidden {
+	if !w.cursorHidden { // TODO: Rename!
 		w.cursorHidden = true
 		w.HideCursor()
 	}

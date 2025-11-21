@@ -1135,7 +1135,7 @@ ErrorResponse* platformInit(void) {
 		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetWindowAttributes");
 	_glfw.xlibGetWindowProperty = (FN_XGetWindowProperty)
 		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetWindowProperty");
-	_glfw.xlibIconifyWindow = (FN_XIconifyWindow)
+	_glfw.xlibMinimizeWindow = (FN_XMinimizeWindow)
 		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XIconifyWindow");
 	_glfw.xlibInternAtom = (FN_XInternAtom)
 		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XInternAtom");

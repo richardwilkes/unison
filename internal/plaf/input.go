@@ -204,40 +204,9 @@ const (
 	Repeat  Action = C.INPUT_REPEAT  // The key was held down until it repeated.
 )
 
-// InputMode corresponds to an input mode.
-type InputMode int
-
-// Input modes.
-const (
-	InputModeCursor                InputMode = C.INPUT_MODE_CURSOR                  // See Cursor mode values
-	InputModeStickyKeys            InputMode = C.INPUT_MODE_STICKY_KEYS             // Value can be either 1 or 0
-	InputModeStickyMouseButtons    InputMode = C.INPUT_MODE_STICKY_MOUSE_BUTTONS    // Value can be either 1 or 0
-	InputModeLockKeyMods           InputMode = C.INPUT_MODE_LOCK_KEY_MODS           // Value can be either 1 or 0
-	InputModeUnlimitedMouseButtons InputMode = C.INPUT_MODE_UNLIMITED_MOUSE_BUTTONS // Value can be either 1 or 0
-)
-
-// Cursor mode values.
-const (
-	CursorNormal int = C.CURSOR_NORMAL
-	CursorHidden int = C.CURSOR_HIDDEN
-)
-
 // Cursor represents a cursor.
 type Cursor struct {
 	data *C.plafCursor
-}
-
-// GetInputMode returns the value of an input option of the window.
-func (w *Window) GetInputMode(mode InputMode) int {
-	ret := int(C.glfwGetInputMode(w.data, C.int(mode)))
-	panicError()
-	return ret
-}
-
-// SetInputMode sets an input option for the window.
-func (w *Window) SetInputMode(mode InputMode, value int) {
-	C.glfwSetInputMode(w.data, C.int(mode), C.int(value))
-	panicError()
 }
 
 // GetKeyScancode function returns the platform-specific scancode of the

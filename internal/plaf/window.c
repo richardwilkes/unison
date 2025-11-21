@@ -50,12 +50,12 @@ void _glfwInputWindowSize(plafWindow* window, int width, int height)
 		window->sizeCallback(window, width, height);
 }
 
-// Notifies shared code that a window has been iconified or restored
+// Notifies shared code that a window has been minimized or restored
 //
-void _glfwInputWindowIconify(plafWindow* window, IntBool iconified)
+void _glfwInputWindowMinimize(plafWindow* window, IntBool minimized)
 {
-	if (window->iconifyCallback)
-		window->iconifyCallback(window, iconified);
+	if (window->minimizeCallback)
+		window->minimizeCallback(window, minimized);
 }
 
 // Notifies shared code that a window has been maximized or restored
@@ -145,7 +145,6 @@ void _glfwInputWindowMonitor(plafWindow* window, plafMonitor* monitor)
 	window->decorated             = wndconfig.decorated;
 	window->floating              = wndconfig.floating;
 	window->mousePassthrough      = wndconfig.mousePassthrough;
-	window->cursorMode            = CURSOR_NORMAL;
 	window->doublebuffer          = fbconfig.doublebuffer;
 	window->minwidth              = DONT_CARE;
 	window->minheight             = DONT_CARE;
@@ -319,7 +318,7 @@ void glfwDestroyWindow(plafWindow* window)
 	window->closeCallback = NULL;
 	window->refreshCallback = NULL;
 	window->focusCallback = NULL;
-	window->iconifyCallback = NULL;
+	window->minimizeCallback = NULL;
 	window->maximizeCallback = NULL;
 	window->fbsizeCallback = NULL;
 	window->scaleCallback = NULL;
@@ -455,25 +454,6 @@ void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
 	_glfwSetWindowSizeLimits(window, minwidth, minheight, maxwidth, maxheight);
 }
 
-void glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
-	if (numer != DONT_CARE && denom != DONT_CARE)
-	{
-		if (numer <= 0 || denom <= 0)
-		{
-			_glfwInputError("Invalid window aspect ratio %i:%i", numer, denom);
-			return;
-		}
-	}
-
-	window->numer = numer;
-	window->denom = denom;
-
-	if (window->monitor || !window->resizable)
-		return;
-
-	_glfwSetWindowAspectRatio(window, numer, denom);
-}
-
 void glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	if (width)
 		*width = 0;
@@ -537,8 +517,8 @@ int glfwGetWindowAttrib(plafWindow* window, int attrib) {
 	{
 		case WINDOW_ATTR_FOCUSED:
 			return _glfwWindowFocused(window);
-		case WINDOW_ATTR_ICONIFIED:
-			return _glfwWindowIconified(window);
+		case WINDOW_ATTR_MINIMIZED:
+			return _glfwWindowMinimized(window);
 		case WINDOW_ATTR_VISIBLE:
 			return _glfwWindowVisible(window);
 		case WINDOW_ATTR_HINT_MAXIMIZED:
@@ -661,8 +641,8 @@ windowFocusFunc glfwSetWindowFocusCallback(plafWindow* window, windowFocusFunc c
 	return cbfun;
 }
 
-windowIconifyFunc glfwSetWindowIconifyCallback(plafWindow* window, windowIconifyFunc cbfun) {
-	SWAP(windowIconifyFunc, window->iconifyCallback, cbfun);
+windowMinimizeFunc glfwSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc cbfun) {
+	SWAP(windowMinimizeFunc, window->minimizeCallback, cbfun);
 	return cbfun;
 }
 
