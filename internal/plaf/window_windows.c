@@ -1142,12 +1142,12 @@ ErrorResponse* _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconf
 		return err;
 	}
 
-	err = glfwInitWGL();
+	err = _glfwInitWGL();
 	if (err) {
 		return err;
 	}
 
-	err = _glfwCreateContextWGL(window, ctxconfig, fbconfig)
+	err = _glfwCreateContextWGL(window, ctxconfig, fbconfig);
 	if (err) {
 		return err;
 	}
