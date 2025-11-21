@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"unsafe"
 )
 
@@ -106,6 +107,7 @@ func (e ErrorCode) String() string {
 
 // Error holds error code and description.
 type Error struct {
+	Next *Error
 	Desc string
 	Code ErrorCode
 }
@@ -114,7 +116,15 @@ func convertErrorResponse(errResp *C.ErrorResponse) error {
 	if errResp == nil {
 		return nil
 	}
+	return _convertErrorResponse(errResp)
+}
+
+func _convertErrorResponse(errResp *C.ErrorResponse) *Error {
+	if errResp == nil {
+		return nil
+	}
 	err := &Error{
+		Next: _convertErrorResponse(errResp.next),
 		Code: ErrorCode(errResp.code),
 		Desc: C.GoString(&errResp.desc[0]),
 	}
@@ -124,7 +134,20 @@ func convertErrorResponse(errResp *C.ErrorResponse) error {
 
 // Error prints the error code and description in a readable format.
 func (e *Error) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code.String(), e.Desc)
+	if e.Next == nil {
+		return fmt.Sprintf("%s: %s", e.Code.String(), e.Desc)
+	}
+	var buffer strings.Builder
+	i := 1
+	next := e
+	for next != nil {
+		if i != 0 {
+			buffer.WriteString("\n")
+		}
+		fmt.Fprintf(&buffer, "%d: %s: %s", i, next.Code.String(), next.Desc)
+		next = next.Next
+	}
+	return buffer.String()
 }
 
 // Note: There are many cryptic caveats to proper error handling here.
@@ -138,7 +161,7 @@ func init() {
 	C.glfwSetErrorCallback(C.errorFunc(C.goErrorCallback))
 }
 
-// flushErrors is called by Terminate before it actually calls C.glfwTerminate,
+// flushErrors is called by Terminate before it actually calls C.plafTerminate,
 // this ensures that any uncaught errors buffered in lastError are printed
 // before the program exits.
 func flushErrors() {

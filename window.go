@@ -879,7 +879,10 @@ func (w *Window) draw() {
 	RebuildDynamicColors()
 	if w.IsValid() {
 		scale := w.BackingScale()
-		w.wnd.MakeContextCurrent()
+		if err := w.wnd.MakeContextCurrent(); err != nil {
+			errs.Log(err)
+			return
+		}
 		if !glInited {
 			xos.ExitIfErr(gl.Init())
 			glInited = true

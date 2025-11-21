@@ -669,39 +669,24 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 
 // Create the Cocoa window
-//
-static IntBool createNativeWindow(plafWindow* window,
-								   const WindowConfig* wndconfig,
-								   const plafFrameBufferCfg* fbconfig)
-{
+static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
 	window->nsDelegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
-	if (window->nsDelegate == nil)
-	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window delegate");
-		return false;
+	if (!window->nsDelegate) {
+		return createErrorResponse(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window delegate");
 	}
 
 	NSRect contentRect;
-
-	if (window->monitor)
-	{
+	if (window->monitor) {
 		VideoMode mode;
-		int xpos, ypos;
-
+		int xpos;
+		int ypos;
 		_glfwGetVideoMode(window->monitor, &mode);
 		glfwGetMonitorPos(window->monitor, &xpos, &ypos);
-
 		contentRect = NSMakeRect(xpos, ypos, mode.width, mode.height);
-	}
-	else
-	{
-		if (wndconfig->xpos == ANY_POSITION ||
-			wndconfig->ypos == ANY_POSITION)
-		{
+	} else {
+		if (wndconfig->xpos == ANY_POSITION || wndconfig->ypos == ANY_POSITION) {
 			contentRect = NSMakeRect(0, 0, wndconfig->width, wndconfig->height);
-		}
-		else
-		{
+		} else {
 			const int xpos = wndconfig->xpos;
 			const int ypos = _glfwTransformYCocoa(wndconfig->ypos + wndconfig->height - 1);
 			contentRect = NSMakeRect(xpos, ypos, wndconfig->width, wndconfig->height);
@@ -709,66 +694,49 @@ static IntBool createNativeWindow(plafWindow* window,
 	}
 
 	NSUInteger styleMask = NSWindowStyleMaskMiniaturizable;
-
-	if (window->monitor || !window->decorated)
+	if (window->monitor || !window->decorated) {
 		styleMask |= NSWindowStyleMaskBorderless;
-	else
-	{
+	} else {
 		styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable);
-
-		if (window->resizable)
+		if (window->resizable) {
 			styleMask |= NSWindowStyleMaskResizable;
+		}
 	}
 
-	window->nsWindow = [[GLFWWindow alloc]
-		initWithContentRect:contentRect
-				  styleMask:styleMask
-					backing:NSBackingStoreBuffered
-					  defer:NO];
-
-	if (window->nsWindow == nil)
-	{
-		_glfwInputError(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window");
-		return false;
+	window->nsWindow = [[GLFWWindow alloc] initWithContentRect:contentRect styleMask:styleMask
+		backing:NSBackingStoreBuffered defer:NO];
+	if (!window->nsWindow) {
+		return createErrorResponse(ERR_PLATFORM_ERROR, "Cocoa: Failed to create window");
 	}
 
-	if (window->monitor)
+	if (window->monitor) {
 		[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
-	else
-	{
-		if (wndconfig->xpos == ANY_POSITION ||
-			wndconfig->ypos == ANY_POSITION)
-		{
+	} else {
+		if (wndconfig->xpos == ANY_POSITION || wndconfig->ypos == ANY_POSITION) {
 			[(NSWindow*) window->nsWindow center];
 			_glfw.nsCascadePoint = NSPointToCGPoint([window->nsWindow cascadeTopLeftFromPoint: NSPointFromCGPoint(_glfw.nsCascadePoint)]);
 		}
 
-		if (wndconfig->resizable)
-		{
-			const NSWindowCollectionBehavior behavior =
-				NSWindowCollectionBehaviorFullScreenPrimary |
-				NSWindowCollectionBehaviorManaged;
-			[window->nsWindow setCollectionBehavior:behavior];
-		}
-		else
-		{
-			const NSWindowCollectionBehavior behavior =
-				NSWindowCollectionBehaviorFullScreenNone;
-			[window->nsWindow setCollectionBehavior:behavior];
+		if (wndconfig->resizable) {
+			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary |
+				NSWindowCollectionBehaviorManaged];
+		} else {
+			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
 		}
 
-		if (wndconfig->floating)
+		if (wndconfig->floating) {
 			[window->nsWindow setLevel:NSFloatingWindowLevel];
+		}
 
-		if (wndconfig->maximized)
+		if (wndconfig->maximized) {
 			[window->nsWindow zoom:nil];
+		}
 	}
 
 	window->nsView = [[GLFWContentView alloc] initWithGlfwWindow:window];
 	window->nsScaleFramebuffer = wndconfig->scaleFramebuffer;
 
-	if (fbconfig->transparent)
-	{
+	if (fbconfig->transparent) {
 		[window->nsWindow setOpaque:NO];
 		[window->nsWindow setHasShadow:NO];
 		[window->nsWindow setBackgroundColor:[NSColor clearColor]];
@@ -781,13 +749,13 @@ static IntBool createNativeWindow(plafWindow* window,
 	[window->nsWindow setAcceptsMouseMovedEvents:YES];
 	[window->nsWindow setRestorable:NO];
 
-	if ([window->nsWindow respondsToSelector:@selector(setTabbingMode:)])
+	if ([window->nsWindow respondsToSelector:@selector(setTabbingMode:)]) {
 		[window->nsWindow setTabbingMode:NSWindowTabbingModeDisallowed];
+	}
 
 	_glfwGetWindowSize(window, &window->width, &window->height);
 	_glfwGetFramebufferSize(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
-
-	return true;
+	return NULL;
 }
 
 
@@ -807,34 +775,39 @@ float _glfwTransformYCocoa(float y)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+ErrorResponse* _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	@autoreleasepool {
+		ErrorResponse* err = createNativeWindow(window, wndconfig, fbconfig);
+		if (err) {
+			return err;
+		}
 
-	if (!createNativeWindow(window, wndconfig, fbconfig))
-		return false;
+		err = _glfwInitNSGL();
+		if (err) {
+			return err;
+		}
 
-	if (!_glfwInitNSGL())
-		return false;
+		err = _glfwCreateContextNSGL(window, ctxconfig, fbconfig);
+		if (err) {
+			return err;
+		}
 
-	if (!_glfwCreateContextNSGL(window, ctxconfig, fbconfig))
-		return false;
+		err = _glfwRefreshContextAttribs(window, ctxconfig);
+		if (err) {
+			return err;
+		}
 
-	if (!_glfwRefreshContextAttribs(window, ctxconfig))
-		return false;
+		if (wndconfig->mousePassthrough) {
+			_glfwSetWindowMousePassthrough(window, true);
+		}
 
-	if (wndconfig->mousePassthrough)
-		_glfwSetWindowMousePassthrough(window, true);
-
-	if (window->monitor)
-	{
-		_glfwShowWindow(window);
-		glfwFocusWindow(window);
-		acquireMonitor(window);
+		if (window->monitor) {
+			_glfwShowWindow(window);
+			glfwFocusWindow(window);
+			acquireMonitor(window);
+		}
+		return NULL;
 	}
-
-	return true;
-
-	} // autoreleasepool
 }
 
 void _glfwDestroyWindow(plafWindow* window) {
@@ -861,7 +834,7 @@ void _glfwDestroyWindow(plafWindow* window) {
 	// HACK: Allow Cocoa to catch up before returning
 	glfwPollEvents();
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowTitle(plafWindow* window, const char* title) {
@@ -871,7 +844,7 @@ void _glfwSetWindowTitle(plafWindow* window, const char* title) {
 	// HACK: Set the miniwindow title explicitly as setTitle: doesn't update it
 	//       if the window lacks NSWindowStyleMaskTitled
 	[window->nsWindow setMiniwindowTitle:string];
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images) {
@@ -889,7 +862,7 @@ void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	if (ypos)
 		*ypos = _glfwTransformYCocoa(contentRect.origin.y + contentRect.size.height - 1);
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowPos(plafWindow* window, int x, int y) {
@@ -900,7 +873,7 @@ void _glfwSetWindowPos(plafWindow* window, int x, int y) {
 	const NSRect frameRect = [window->nsWindow frameRectForContentRect:dummyRect];
 	[window->nsWindow setFrameOrigin:frameRect.origin];
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwGetWindowSize(plafWindow* window, int* width, int* height) {
@@ -913,7 +886,7 @@ void _glfwGetWindowSize(plafWindow* window, int* width, int* height) {
 	if (height)
 		*height = contentRect.size.height;
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowSize(plafWindow* window, int width, int height) {
@@ -933,7 +906,7 @@ void _glfwSetWindowSize(plafWindow* window, int width, int height) {
 		[window->nsWindow setFrame:[window->nsWindow frameRectForContentRect:contentRect] display:YES];
 	}
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
@@ -949,7 +922,7 @@ void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, i
 	else
 		[window->nsWindow setContentMaxSize:NSMakeSize(maxwidth, maxheight)];
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
@@ -958,7 +931,7 @@ void _glfwSetWindowAspectRatio(plafWindow* window, int numer, int denom) {
 		[window->nsWindow setResizeIncrements:NSMakeSize(1.0, 1.0)];
 	else
 		[window->nsWindow setContentAspectRatio:NSMakeSize(numer, denom)];
-	} // autoreleasepool
+	}
 }
 
 void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
@@ -972,7 +945,7 @@ void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	if (height)
 		*height = (int) fbRect.size.height;
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
@@ -992,7 +965,7 @@ void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right
 	if (bottom)
 		*bottom = contentRect.origin.y - frameRect.origin.y;
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
@@ -1006,13 +979,13 @@ void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale
 	if (yscale)
 		*yscale = (float) (pixels.size.height / points.size.height);
 
-	} // autoreleasepool
+	}
 }
 
 void glfwIconifyWindow(plafWindow* window) {
 	@autoreleasepool {
 	[window->nsWindow miniaturize:nil];
-	} // autoreleasepool
+	}
 }
 
 void glfwRestoreWindow(plafWindow* window) {
@@ -1021,43 +994,43 @@ void glfwRestoreWindow(plafWindow* window) {
 		[window->nsWindow deminiaturize:nil];
 	else if ([window->nsWindow isZoomed])
 		[window->nsWindow zoom:nil];
-	} // autoreleasepool
+	}
 }
 
 void _glfwMaximizeWindow(plafWindow* window) {
 	@autoreleasepool {
 	if (![window->nsWindow isZoomed])
 		[window->nsWindow zoom:nil];
-	} // autoreleasepool
+	}
 }
 
 void _glfwShowWindow(plafWindow* window) {
 	@autoreleasepool {
-	[window->nsWindow orderFront:nil];
-	} // autoreleasepool
+		[window->nsWindow orderFront:nil];
+	}
 }
 
 void _glfwHideWindow(plafWindow* window) {
 	@autoreleasepool {
 	[window->nsWindow orderOut:nil];
-	} // autoreleasepool
+	}
 }
 
 void glfwRequestWindowAttention(plafWindow* window) {
 	@autoreleasepool {
 	[NSApp requestUserAttention:NSInformationalRequest];
-	} // autoreleasepool
+	}
 }
 
 void glfwFocusWindow(plafWindow* window) {
 	@autoreleasepool {
-	// Make us the active application
-	// HACK: This is here to prevent applications using only hidden windows from
-	//       being activated, but should probably not be done every time any
-	//       window is shown
-	[NSApp activateIgnoringOtherApps:YES];
-	[window->nsWindow makeKeyAndOrderFront:nil];
-	} // autoreleasepool
+		// Make us the active application
+		// HACK: This is here to prevent applications using only hidden windows from
+		//       being activated, but should probably not be done every time any
+		//       window is shown
+		[NSApp activateIgnoringOtherApps:YES];
+		[window->nsWindow makeKeyAndOrderFront:nil];
+	}
 }
 
 void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
@@ -1175,25 +1148,25 @@ void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 		[window->nsWindow setTitle:[window->nsWindow miniwindowTitle]];
 	}
 
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwWindowFocused(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isKeyWindow];
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwWindowIconified(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isMiniaturized];
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwWindowVisible(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isVisible];
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwWindowMaximized(plafWindow* window) {
@@ -1204,7 +1177,7 @@ IntBool _glfwWindowMaximized(plafWindow* window) {
 	else
 		return false;
 
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwWindowHovered(plafWindow* window) {
@@ -1221,13 +1194,13 @@ IntBool _glfwWindowHovered(plafWindow* window) {
 	return NSMouseInRect(point,
 		[window->nsWindow convertRectToScreen:[window->nsView frame]], NO);
 
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwFramebufferTransparent(plafWindow* window) {
 	@autoreleasepool {
 	return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowResizable(plafWindow* window, IntBool enabled) {
@@ -1250,7 +1223,7 @@ void _glfwSetWindowResizable(plafWindow* window, IntBool enabled) {
 		[window->nsWindow setCollectionBehavior:behavior];
 	}
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowDecorated(plafWindow* window, IntBool enabled) {
@@ -1271,7 +1244,7 @@ void _glfwSetWindowDecorated(plafWindow* window, IntBool enabled) {
 	[window->nsWindow setStyleMask:styleMask];
 	[window->nsWindow makeFirstResponder:window->nsView];
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowFloating(plafWindow* window, IntBool enabled) {
@@ -1280,93 +1253,67 @@ void _glfwSetWindowFloating(plafWindow* window, IntBool enabled) {
 		[window->nsWindow setLevel:NSFloatingWindowLevel];
 	else
 		[window->nsWindow setLevel:NSNormalWindowLevel];
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowMousePassthrough(plafWindow* window, IntBool enabled) {
 	@autoreleasepool {
-	[window->nsWindow setIgnoresMouseEvents:enabled];
+		[window->nsWindow setIgnoresMouseEvents:enabled];
 	}
 }
 
 float glfwGetWindowOpacity(plafWindow* window) {
 	@autoreleasepool {
 	return (float) [window->nsWindow alphaValue];
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetWindowOpacity(plafWindow* window, float opacity) {
 	@autoreleasepool {
 	[window->nsWindow setAlphaValue:opacity];
-	} // autoreleasepool
+	}
 }
 
 void glfwPollEvents(void) {
 	@autoreleasepool {
-
-	for (;;)
-	{
-		NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny
-											untilDate:[NSDate distantPast]
-											   inMode:NSDefaultRunLoopMode
-											  dequeue:YES];
-		if (event == nil)
-			break;
-
-		[NSApp sendEvent:event];
+		for (;;) {
+			NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast]
+				inMode:NSDefaultRunLoopMode dequeue:YES];
+			if (event == nil) {
+				break;
+			}
+			[NSApp sendEvent:event];
+		}
 	}
-
-	} // autoreleasepool
 }
 
 void glfwWaitEvents(void) {
 	@autoreleasepool {
-
-	// I wanted to pass NO to dequeue:, and rely on PollEvents to
-	// dequeue and send.  For reasons not at all clear to me, passing
-	// NO to dequeue: causes this method never to return.
-	NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
-										untilDate:[NSDate distantFuture]
-										   inMode:NSDefaultRunLoopMode
-										  dequeue:YES];
-	[NSApp sendEvent:event];
-
-	glfwPollEvents();
-
-	} // autoreleasepool
+		NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantFuture]
+			inMode:NSDefaultRunLoopMode dequeue:YES];
+		[NSApp sendEvent:event];
+		glfwPollEvents();
+	}
 }
 
 void _glfwWaitEventsTimeout(double timeout) {
 	@autoreleasepool {
-
-	NSDate* date = [NSDate dateWithTimeIntervalSinceNow:timeout];
-	NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny
-										untilDate:date
-										   inMode:NSDefaultRunLoopMode
-										  dequeue:YES];
-	if (event)
-		[NSApp sendEvent:event];
-
-	glfwPollEvents();
-
-	} // autoreleasepool
+		NSDate* date = [NSDate dateWithTimeIntervalSinceNow:timeout];
+		NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:date inMode:NSDefaultRunLoopMode
+			dequeue:YES];
+		if (event) {
+			[NSApp sendEvent:event];
+		}
+		glfwPollEvents();
+	}
 }
 
 void glfwPostEmptyEvent(void) {
 	@autoreleasepool {
-
-	NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
-										location:NSMakePoint(0, 0)
-								   modifierFlags:0
-									   timestamp:0
-									windowNumber:0
-										 context:nil
-										 subtype:0
-										   data1:0
-										   data2:0];
-	[NSApp postEvent:event atStart:YES];
-
-	} // autoreleasepool
+		NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSMakePoint(0, 0)
+			modifierFlags:0 timestamp:0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
+		[NSApp postEvent:event atStart:YES];
+	}
 }
 
 void glfwSetCursorMode(plafWindow* window, int mode) {
@@ -1375,7 +1322,7 @@ void glfwSetCursorMode(plafWindow* window, int mode) {
 	if (_glfwWindowFocused(window))
 		updateCursorMode(window);
 
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot) {
@@ -1416,7 +1363,7 @@ IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, 
 
 	return true;
 
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
@@ -1455,7 +1402,7 @@ IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape) {
 	[cursor->nsCursor retain];
 	return true;
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwDestroyCursor(plafCursor* cursor) {

@@ -272,16 +272,12 @@ static int getKeyMods(void)
 	return mods;
 }
 
-static void fitToMonitor(plafWindow* window)
-{
+static void fitToMonitor(plafWindow* window) {
 	MONITORINFO mi = { sizeof(mi) };
 	GetMonitorInfoW(window->monitor->win32Handle, &mi);
-	SetWindowPos(window->win32Window, HWND_TOPMOST,
-				 mi.rcMonitor.left,
-				 mi.rcMonitor.top,
-				 mi.rcMonitor.right - mi.rcMonitor.left,
-				 mi.rcMonitor.bottom - mi.rcMonitor.top,
-				 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+	SetWindowPos(window->win32Window, HWND_TOPMOST, mi.rcMonitor.left, mi.rcMonitor.top,
+		mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
+		SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
 }
 
 // Make the specified window and its video mode active on its monitor
@@ -981,61 +977,42 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 }
 
 // Creates the GLFW window
-//
-static int createNativeWindow(plafWindow* window,
-							  const WindowConfig* wndconfig,
-							  const plafFrameBufferCfg* fbconfig)
-{
+static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
 	int frameX, frameY, frameWidth, frameHeight;
 	WCHAR* wideTitle;
 	DWORD style = getWindowStyle(window);
 	DWORD exStyle = getWindowExStyle(window);
 
-	if (!_glfw.win32MainWindowClass)
-	{
+	if (!_glfw.win32MainWindowClass) {
 		WNDCLASSEXW wc = { sizeof(wc) };
 		wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 		wc.lpfnWndProc   = windowProc;
 		wc.hInstance     = _glfw.win32Instance;
 		wc.hCursor       = LoadCursorW(NULL, IDC_ARROW);
-#if defined(_GLFW_WNDCLASSNAME)
-		wc.lpszClassName = _GLFW_WNDCLASSNAME;
-#else
-		wc.lpszClassName = L"GLFW30";
-#endif
+		wc.lpszClassName = L"Unison";
 		// Load user-provided icon if available
-		wc.hIcon = LoadImageW(GetModuleHandleW(NULL),
-							  L"GLFW_ICON", IMAGE_ICON,
-							  0, 0, LR_DEFAULTSIZE | LR_SHARED);
-		if (!wc.hIcon)
-		{
+		wc.hIcon = LoadImageW(GetModuleHandleW(NULL), L"GLFW_ICON", IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
+		if (!wc.hIcon) {
 			// No user-provided icon found, load default icon
-			wc.hIcon = LoadImageW(NULL,
-								  IDI_APPLICATION, IMAGE_ICON,
-								  0, 0, LR_DEFAULTSIZE | LR_SHARED);
+			wc.hIcon = LoadImageW(NULL, IDI_APPLICATION, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
 		}
-
 		_glfw.win32MainWindowClass = RegisterClassExW(&wc);
-		if (!_glfw.win32MainWindowClass)
-		{
-			_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to register window class");
-			return false;
+		if (!_glfw.win32MainWindowClass) {
+			return createErrorResponse(ERR_PLATFORM_ERROR, "Win32: Failed to register window class");
 		}
 	}
 
-	if (GetSystemMetrics(SM_REMOTESESSION))
-	{
+	if (GetSystemMetrics(SM_REMOTESESSION)) {
 		// NOTE: On Remote Desktop, setting the cursor to NULL does not hide it
 		// HACK: Create a transparent cursor and always set that instead of NULL
 		//       When not on Remote Desktop, this handle is NULL and normal hiding is used
-		if (!_glfw.win32BlankCursor)
-		{
+		if (!_glfw.win32BlankCursor) {
 			const int cursorWidth = GetSystemMetrics(SM_CXCURSOR);
 			const int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
-
 			unsigned char* cursorPixels = _glfw_calloc(cursorWidth * cursorHeight, 4);
-			if (!cursorPixels)
-				return false;
+			if (!cursorPixels) {
+				return createErrorResponse(ERR_OUT_OF_MEMORY, "Win32: Failed to allocate blank cursor pixels");
+			}
 
 			// NOTE: Windows checks whether the image is fully transparent and if so
 			//       just ignores the alpha channel and makes the whole cursor opaque
@@ -1046,13 +1023,13 @@ static int createNativeWindow(plafWindow* window,
 			_glfw.win32BlankCursor = createIcon(&cursorImage, 0, 0, FALSE);
 			_glfw_free(cursorPixels);
 
-			if (!_glfw.win32BlankCursor)
-				return false;
+			if (!_glfw.win32BlankCursor) {
+				return createErrorResponse(ERR_PLATFORM_ERROR, "Win32: Failed to create blank cursor");
+			}
 		}
 	}
 
-	if (window->monitor)
-	{
+	if (window->monitor) {
 		MONITORINFO mi = { sizeof(mi) };
 		GetMonitorInfoW(window->monitor->win32Handle, &mi);
 
@@ -1063,99 +1040,75 @@ static int createNativeWindow(plafWindow* window,
 		frameY = mi.rcMonitor.top;
 		frameWidth  = mi.rcMonitor.right - mi.rcMonitor.left;
 		frameHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
-	}
-	else
-	{
+	} else {
 		RECT rect = { 0, 0, wndconfig->width, wndconfig->height };
 
 		window->maximized = wndconfig->maximized;
-		if (wndconfig->maximized)
+		if (wndconfig->maximized) {
 			style |= WS_MAXIMIZE;
+		}
 
 		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 
-		if (wndconfig->xpos == ANY_POSITION && wndconfig->ypos == ANY_POSITION)
-		{
+		if (wndconfig->xpos == ANY_POSITION && wndconfig->ypos == ANY_POSITION) {
 			frameX = CW_USEDEFAULT;
 			frameY = CW_USEDEFAULT;
-		}
-		else
-		{
+		} else {
 			frameX = wndconfig->xpos + rect.left;
 			frameY = wndconfig->ypos + rect.top;
 		}
-
 		frameWidth  = rect.right - rect.left;
 		frameHeight = rect.bottom - rect.top;
 	}
 
 	wideTitle = _glfwCreateWideStringFromUTF8Win32(window->title);
-	if (!wideTitle)
-		return false;
+	if (!wideTitle) {
+		return createErrorResponse(ERR_OUT_OF_MEMORY, "Win32: Failed to allocate title");
+	}
 
-	window->win32Window = CreateWindowExW(exStyle,
-										   MAKEINTATOM(_glfw.win32MainWindowClass),
-										   wideTitle,
-										   style,
-										   frameX, frameY,
-										   frameWidth, frameHeight,
-										   NULL, // No parent window
-										   NULL, // No window menu
-										   _glfw.win32Instance,
-										   (LPVOID) wndconfig);
+	window->win32Window = CreateWindowExW(exStyle, MAKEINTATOM(_glfw.win32MainWindowClass), wideTitle, style, frameX,
+		frameY, frameWidth, frameHeight, NULL, NULL, _glfw.win32Instance, (LPVOID) wndconfig);
 
 	_glfw_free(wideTitle);
 
-	if (!window->win32Window)
-	{
-		_glfwInputErrorWin32(ERR_PLATFORM_ERROR, "Win32: Failed to create window");
-		return false;
+	if (!window->win32Window) {
+		return createErrorResponse(ERR_PLATFORM_ERROR, "Win32: Failed to create window");
 	}
 
 	SetPropW(window->win32Window, L"GLFW", window);
-
 	ChangeWindowMessageFilterEx(window->win32Window, WM_DROPFILES, MSGFLT_ALLOW, NULL);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYDATA, MSGFLT_ALLOW, NULL);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
 
 	window->win32ScaleToMonitor = wndconfig->scaleToMonitor;
 
-	if (!window->monitor)
-	{
+	if (!window->monitor) {
 		RECT rect = { 0, 0, wndconfig->width, wndconfig->height };
 		WINDOWPLACEMENT wp = { sizeof(wp) };
-		const HMONITOR mh = MonitorFromWindow(window->win32Window,
-											  MONITOR_DEFAULTTONEAREST);
+		const HMONITOR mh = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
 
 		// Adjust window rect to account for DPI scaling of the window frame and
 		// (if enabled) DPI scaling of the content area
 		// This cannot be done until we know what monitor the window was placed on
 		// Only update the restored window rect as the window may be maximized
-
-		if (wndconfig->scaleToMonitor)
-		{
+		if (wndconfig->scaleToMonitor) {
 			float xscale, yscale;
 			_glfwGetHMONITORContentScaleWin32(mh, &xscale, &yscale);
-
-			if (xscale > 0.f && yscale > 0.f)
-			{
+			if (xscale > 0.f && yscale > 0.f) {
 				rect.right = (int) (rect.right * xscale);
 				rect.bottom = (int) (rect.bottom * yscale);
 			}
 		}
 
-		if (IsWindows10Version1607OrGreater())
-		{
+		if (IsWindows10Version1607OrGreater()) {
 			_glfw.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle,
-									 _glfw.win32User32GetDpiForWindow_(window->win32Window));
-		}
-		else
+				_glfw.win32User32GetDpiForWindow_(window->win32Window));
+		} else {
 			AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+		}
 
 		GetWindowPlacement(window->win32Window, &wp);
-		OffsetRect(&rect,
-				   wp.rcNormalPosition.left - rect.left,
-				   wp.rcNormalPosition.top - rect.top);
+		OffsetRect(&rect, wp.rcNormalPosition.left - rect.left, wp.rcNormalPosition.top - rect.top);
 
 		wp.rcNormalPosition = rect;
 		wp.showCmd = SW_HIDE;
@@ -1164,58 +1117,57 @@ static int createNativeWindow(plafWindow* window,
 		// Adjust rect of maximized undecorated window, because by default Windows will
 		// make such a window cover the whole monitor instead of its workarea
 
-		if (wndconfig->maximized && !wndconfig->decorated)
-		{
+		if (wndconfig->maximized && !wndconfig->decorated) {
 			MONITORINFO mi = { sizeof(mi) };
 			GetMonitorInfoW(mh, &mi);
-
-			SetWindowPos(window->win32Window, HWND_TOP,
-						 mi.rcWork.left,
-						 mi.rcWork.top,
-						 mi.rcWork.right - mi.rcWork.left,
-						 mi.rcWork.bottom - mi.rcWork.top,
-						 SWP_NOACTIVATE | SWP_NOZORDER);
+			SetWindowPos(window->win32Window, HWND_TOP, mi.rcWork.left, mi.rcWork.top,
+				mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top, SWP_NOACTIVATE | SWP_NOZORDER);
 		}
 	}
 
 	DragAcceptFiles(window->win32Window, TRUE);
 
-	if (fbconfig->transparent)
-	{
+	if (fbconfig->transparent) {
 		updateFramebufferTransparency(window);
 		window->win32Transparent = true;
 	}
 
 	_glfwGetWindowSize(window, &window->width, &window->height);
-
-	return true;
+	return NULL;
 }
 
-IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
-	if (!createNativeWindow(window, wndconfig, fbconfig))
-		return false;
+ErrorResponse* _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+	ErrorResponse* err = createNativeWindow(window, wndconfig, fbconfig);
+	if (err) {
+		return err;
+	}
 
-	if (!_glfwInitWGL())
-		return false;
+	err = glfwInitWGL();
+	if (err) {
+		return err;
+	}
 
-		if (!_glfwCreateContextWGL(window, ctxconfig, fbconfig))
-		return false;
+	err = _glfwCreateContextWGL(window, ctxconfig, fbconfig)
+	if (err) {
+		return err;
+	}
 
-	if (!_glfwRefreshContextAttribs(window, ctxconfig))
-		return false;
+	err = _glfwRefreshContextAttribs(window, ctxconfig);
+	if (err) {
+		return err;
+	}
 
-	if (wndconfig->mousePassthrough)
+	if (wndconfig->mousePassthrough) {
 		_glfwSetWindowMousePassthrough(window, true);
+	}
 
-	if (window->monitor)
-	{
+	if (window->monitor) {
 		_glfwShowWindow(window);
 		glfwFocusWindow(window);
 		acquireMonitor(window);
 		fitToMonitor(window);
 	}
-
-	return true;
+	return err;
 }
 
 void _glfwDestroyWindow(plafWindow* window) {

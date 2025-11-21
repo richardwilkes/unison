@@ -113,68 +113,56 @@ void _glfwInputWindowMonitor(plafWindow* window, plafMonitor* monitor)
 //////                        GLFW public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-plafWindow* glfwCreateWindow(int width, int height,
-									 const char* title,
-									 plafMonitor* monitor,
-									 plafWindow* share)
-{
-	plafFrameBufferCfg fbconfig;
-	plafCtxCfg ctxconfig;
-	WindowConfig wndconfig;
-	plafWindow* window;
-
-	if (width <= 0 || height <= 0)
-	{
-		_glfwInputError(ERR_INVALID_VALUE, "Invalid window size %ix%i", width, height);
-
-		return NULL;
+ ErrorResponse* glfwCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
+	if (width <= 0 || height <= 0) {
+		return createErrorResponse(ERR_INVALID_VALUE, "Invalid window size %ix%i", width, height);
 	}
 
-	fbconfig  = _glfw.frameBufferCfg;
-	ctxconfig = _glfw.contextCfg;
-	wndconfig = _glfw.windowCfg;
+	plafCtxCfg ctxconfig = _glfw.contextCfg;
+	ctxconfig.share      = share;
+	ErrorResponse* err   = plafCheckContextConfig(&ctxconfig);
+	if (err) {
+		return err;
+	}
 
-	wndconfig.width   = width;
-	wndconfig.height  = height;
-	ctxconfig.share   = share;
+	plafFrameBufferCfg fbconfig = _glfw.frameBufferCfg;
 
-	if (!_glfwIsValidContextConfig(&ctxconfig))
-		return NULL;
+	WindowConfig wndconfig = _glfw.windowCfg;
+	wndconfig.width        = width;
+	wndconfig.height       = height;
 
-	window = _glfw_calloc(1, sizeof(plafWindow));
-	window->next = _glfw.windowListHead;
-	_glfw.windowListHead = window;
-
+	plafWindow* window = _glfw_calloc(1, sizeof(plafWindow));
+	window->next                  = _glfw.windowListHead;
+	_glfw.windowListHead          = window;
 	window->videoMode.width       = width;
 	window->videoMode.height      = height;
 	window->videoMode.redBits     = fbconfig.redBits;
 	window->videoMode.greenBits   = fbconfig.greenBits;
 	window->videoMode.blueBits    = fbconfig.blueBits;
 	window->videoMode.refreshRate = _glfw.desiredRefreshRate;
+	window->monitor               = monitor;
+	window->resizable             = wndconfig.resizable;
+	window->decorated             = wndconfig.decorated;
+	window->floating              = wndconfig.floating;
+	window->mousePassthrough      = wndconfig.mousePassthrough;
+	window->cursorMode            = CURSOR_NORMAL;
+	window->doublebuffer          = fbconfig.doublebuffer;
+	window->minwidth              = DONT_CARE;
+	window->minheight             = DONT_CARE;
+	window->maxwidth              = DONT_CARE;
+	window->maxheight             = DONT_CARE;
+	window->numer                 = DONT_CARE;
+	window->denom                 = DONT_CARE;
+	window->title                 = _glfw_strdup(title);
 
-	window->monitor          = monitor;
-	window->resizable        = wndconfig.resizable;
-	window->decorated        = wndconfig.decorated;
-	window->floating         = wndconfig.floating;
-	window->mousePassthrough = wndconfig.mousePassthrough;
-	window->cursorMode       = CURSOR_NORMAL;
-
-	window->doublebuffer = fbconfig.doublebuffer;
-
-	window->minwidth    = DONT_CARE;
-	window->minheight   = DONT_CARE;
-	window->maxwidth    = DONT_CARE;
-	window->maxheight   = DONT_CARE;
-	window->numer       = DONT_CARE;
-	window->denom       = DONT_CARE;
-	window->title       = _glfw_strdup(title);
-
-	if (!_glfwCreateWindow(window, &wndconfig, &ctxconfig, &fbconfig)) {
+	err = _glfwCreateWindow(window, &wndconfig, &ctxconfig, &fbconfig);
+	if (err) {
 		glfwDestroyWindow(window);
-		return NULL;
+		return err;
 	}
 
-	return window;
+	*outWindow = window;
+	return NULL;
 }
 
 void glfwDefaultWindowHints(void)
@@ -345,8 +333,9 @@ void glfwDestroyWindow(plafWindow* window)
 	window->dropCallback = NULL;
 
 	// The window's context must not be current when the window is destroyed
-	if (window == _glfw.contextSlot)
+	if (window == _glfw.contextSlot) {
 		glfwMakeContextCurrent(NULL);
+	}
 
 	_glfwDestroyWindow(window);
 

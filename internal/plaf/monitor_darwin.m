@@ -252,7 +252,7 @@ void glfwGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* ysca
 	*xscale = (float) (pixels.size.width / points.size.width);
 	*yscale = (float) (pixels.size.height / points.size.height);
 
-	} // autoreleasepool
+	}
 }
 
 void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height) {
@@ -270,7 +270,7 @@ void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
 	*width = frameRect.size.width;
 	*height = frameRect.size.height;
 
-	} // autoreleasepool
+	}
 }
 
 VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count)
@@ -309,7 +309,7 @@ VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count)
 	CFRelease(modes);
 	return result;
 
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode *mode) {
@@ -326,7 +326,7 @@ IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode *mode) {
 	CGDisplayModeRelease(native);
 	return true;
 
-	} // autoreleasepool
+	}
 }
 
 IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp) {
@@ -354,7 +354,7 @@ IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp) {
 	_glfw_free(values);
 	return true;
 
-	} // autoreleasepool
+	}
 }
 
 void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
@@ -377,7 +377,7 @@ void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp) {
 
 	_glfw_free(values);
 
-	} // autoreleasepool
+	}
 }
 
 #endif // __APPLE__

@@ -224,9 +224,9 @@ func CreateWindow(width, height int, title string, monitor *Monitor, share *Wind
 		s = share.data
 	}
 
-	w := C.glfwCreateWindow(C.int(width), C.int(height), t, m, s)
-	if w == nil {
-		return nil, acceptError(APIUnavailable, VersionUnavailable)
+	var w *C.plafWindow
+	if err := convertErrorResponse(C.glfwCreateWindow(C.int(width), C.int(height), t, m, s, &w)); err != nil {
+		return nil, err
 	}
 
 	wnd := &Window{data: w}

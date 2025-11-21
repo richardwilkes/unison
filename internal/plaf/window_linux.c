@@ -1265,197 +1265,121 @@ static void inputContextDestroyCallback(XIC ic, XPointer clientData, XPointer ca
 }
 
 // Create the X11 window (and its colormap)
-//
-static IntBool createNativeWindow(plafWindow* window,
-								   const WindowConfig* wndconfig,
-								   Visual* visual, int depth)
-{
+static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig* wndconfig, Visual* visual, int depth) {
 	int width = wndconfig->width;
 	int height = wndconfig->height;
-
-	if (wndconfig->scaleToMonitor)
-	{
+	if (wndconfig->scaleToMonitor) {
 		width *= _glfw.x11ContentScaleX;
 		height *= _glfw.x11ContentScaleY;
 	}
-
-	int xpos = 0, ypos = 0;
-
-	if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION)
-	{
+	int xpos = 0;
+	int ypos = 0;
+	if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION) {
 		xpos = wndconfig->xpos;
 		ypos = wndconfig->ypos;
 	}
-
-	// Create a colormap based on the visual used by the current context
-	window->x11Colormap = _glfw.xlibCreateColormap(_glfw.x11Display,
-										   _glfw.x11Root,
-										   visual,
-										   AllocNone);
-
+	window->x11Colormap = _glfw.xlibCreateColormap(_glfw.x11Display, _glfw.x11Root, visual, AllocNone);
 	window->x11Transparent = _glfwIsVisualTransparentX11(visual);
-
 	XSetWindowAttributes wa = { 0 };
 	wa.colormap = window->x11Colormap;
 	wa.event_mask = StructureNotifyMask | KeyPressMask | KeyReleaseMask |
 					PointerMotionMask | ButtonPressMask | ButtonReleaseMask |
 					ExposureMask | FocusChangeMask | VisibilityChangeMask |
 					EnterWindowMask | LeaveWindowMask | PropertyChangeMask;
-
 	_glfwGrabErrorHandlerX11();
-
 	window->x11Parent = _glfw.x11Root;
-	window->x11Window = _glfw.xlibCreateWindow(_glfw.x11Display,
-									   _glfw.x11Root,
-									   xpos, ypos,
-									   width, height,
-									   0,      // Border width
-									   depth,  // Color depth
-									   InputOutput,
-									   visual,
-									   CWBorderPixel | CWColormap | CWEventMask,
-									   &wa);
-
+	window->x11Window = _glfw.xlibCreateWindow(_glfw.x11Display, _glfw.x11Root, xpos, ypos, width, height, 0, depth,
+		InputOutput, visual, CWBorderPixel | CWColormap | CWEventMask, &wa);
 	_glfwReleaseErrorHandlerX11();
-
-	if (!window->x11Window)
-	{
-		_glfwInputErrorX11(ERR_PLATFORM_ERROR, "X11: Failed to create window");
-		return false;
+	if (!window->x11Window) {
+		return createErrorResponse(ERR_PLATFORM_ERROR, "X11: Failed to create window");
 	}
-
-	_glfw.xlibSaveContext(_glfw.x11Display,
-				 window->x11Window,
-				 _glfw.x11Context,
-				 (XPointer) window);
-
-	if (!wndconfig->decorated)
+	_glfw.xlibSaveContext(_glfw.x11Display, window->x11Window, _glfw.x11Context, (XPointer)window);
+	if (!wndconfig->decorated) {
 		_glfwSetWindowDecorated(window, false);
-
-	if (_glfw.x11NET_WM_STATE && !window->monitor)
-	{
+	}
+	if (_glfw.x11NET_WM_STATE && !window->monitor) {
 		Atom states[3];
 		int count = 0;
-
-		if (wndconfig->floating)
-		{
-			if (_glfw.x11NET_WM_STATE_ABOVE)
+		if (wndconfig->floating) {
+			if (_glfw.x11NET_WM_STATE_ABOVE) {
 				states[count++] = _glfw.x11NET_WM_STATE_ABOVE;
+			}
 		}
-
-		if (wndconfig->maximized)
-		{
-			if (_glfw.x11NET_WM_STATE_MAXIMIZED_VERT &&
-				_glfw.x11NET_WM_STATE_MAXIMIZED_HORZ)
-			{
+		if (wndconfig->maximized) {
+			if (_glfw.x11NET_WM_STATE_MAXIMIZED_VERT && _glfw.x11NET_WM_STATE_MAXIMIZED_HORZ) {
 				states[count++] = _glfw.x11NET_WM_STATE_MAXIMIZED_VERT;
 				states[count++] = _glfw.x11NET_WM_STATE_MAXIMIZED_HORZ;
 				window->maximized = true;
 			}
 		}
-
-		if (count)
-		{
-			_glfw.xlibChangeProperty(_glfw.x11Display, window->x11Window,
-							_glfw.x11NET_WM_STATE, XA_ATOM, 32,
-							PropModeReplace, (unsigned char*) states, count);
+		if (count) {
+			_glfw.xlibChangeProperty(_glfw.x11Display, window->x11Window, _glfw.x11NET_WM_STATE, XA_ATOM, 32,
+				PropModeReplace, (unsigned char*) states, count);
 		}
 	}
 
 	// Declare the WM protocols supported by GLFW
-	{
-		Atom protocols[] =
-		{
-			_glfw.x11WM_DELETE_WINDOW,
-			_glfw.x11NET_WM_PING
-		};
-
-		_glfw.xlibSetWMProtocols(_glfw.x11Display, window->x11Window,
-						protocols, sizeof(protocols) / sizeof(Atom));
-	}
+	Atom protocols[] = {
+		_glfw.x11WM_DELETE_WINDOW,
+		_glfw.x11NET_WM_PING
+	};
+	_glfw.xlibSetWMProtocols(_glfw.x11Display, window->x11Window, protocols, sizeof(protocols) / sizeof(Atom));
 
 	// Declare our PID
-	{
-		const long pid = getpid();
+	const long pid = getpid();
+	_glfw.xlibChangeProperty(_glfw.x11Display,  window->x11Window, _glfw.x11NET_WM_PID, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char*) &pid, 1);
 
-		_glfw.xlibChangeProperty(_glfw.x11Display,  window->x11Window,
-						_glfw.x11NET_WM_PID, XA_CARDINAL, 32,
-						PropModeReplace,
-						(unsigned char*) &pid, 1);
-	}
-
-	if (_glfw.x11NET_WM_WINDOW_TYPE && _glfw.x11NET_WM_WINDOW_TYPE_NORMAL)
-	{
+	if (_glfw.x11NET_WM_WINDOW_TYPE && _glfw.x11NET_WM_WINDOW_TYPE_NORMAL) {
 		Atom type = _glfw.x11NET_WM_WINDOW_TYPE_NORMAL;
-		_glfw.xlibChangeProperty(_glfw.x11Display,  window->x11Window,
-						_glfw.x11NET_WM_WINDOW_TYPE, XA_ATOM, 32,
-						PropModeReplace, (unsigned char*) &type, 1);
+		_glfw.xlibChangeProperty(_glfw.x11Display,  window->x11Window, _glfw.x11NET_WM_WINDOW_TYPE, XA_ATOM, 32,
+			PropModeReplace, (unsigned char*) &type, 1);
 	}
 
 	// Set ICCCM WM_HINTS property
-	{
-		XWMHints* hints = _glfw.xlibAllocWMHints();
-		if (!hints)
-		{
-			_glfwInputError(ERR_OUT_OF_MEMORY, "X11: Failed to allocate WM hints");
-			return false;
-		}
-
-		hints->flags = StateHint;
-		hints->initial_state = NormalState;
-
-		_glfw.xlibSetWMHints(_glfw.x11Display, window->x11Window, hints);
-		_glfw.xlibFree(hints);
+	XWMHints* hints = _glfw.xlibAllocWMHints();
+	if (!hints) {
+		return createErrorResponse(ERR_OUT_OF_MEMORY, "X11: Failed to allocate WM hints");
 	}
+	hints->flags = StateHint;
+	hints->initial_state = NormalState;
+	_glfw.xlibSetWMHints(_glfw.x11Display, window->x11Window, hints);
+	_glfw.xlibFree(hints);
 
 	// Set ICCCM WM_NORMAL_HINTS property
-	{
-		XSizeHints* hints = _glfw.xlibAllocSizeHints();
-		if (!hints)
-		{
-			_glfwInputError(ERR_OUT_OF_MEMORY, "X11: Failed to allocate size hints");
-			return false;
-		}
-
-		if (!wndconfig->resizable)
-		{
-			hints->flags |= (PMinSize | PMaxSize);
-			hints->min_width  = hints->max_width  = width;
-			hints->min_height = hints->max_height = height;
-		}
-
-		// HACK: Explicitly setting PPosition to any value causes some WMs, notably
-		//       Compiz and Metacity, to honor the position of unmapped windows
-		if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION)
-		{
-			hints->flags |= PPosition;
-			hints->x = 0;
-			hints->y = 0;
-		}
-
-		hints->flags |= PWinGravity;
-		hints->win_gravity = StaticGravity;
-
-		_glfw.xlibSetWMNormalHints(_glfw.x11Display, window->x11Window, hints);
-		_glfw.xlibFree(hints);
+	XSizeHints* hints = _glfw.xlibAllocSizeHints();
+	if (!hints) {
+		return createErrorResponse(ERR_OUT_OF_MEMORY, "X11: Failed to allocate size hints");
 	}
+	if (!wndconfig->resizable) {
+		hints->flags |= (PMinSize | PMaxSize);
+		hints->min_width  = hints->max_width  = width;
+		hints->min_height = hints->max_height = height;
+	}
+	if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION) {
+		hints->flags |= PPosition;
+		hints->x = 0;
+		hints->y = 0;
+	}
+	hints->flags |= PWinGravity;
+	hints->win_gravity = StaticGravity;
+	_glfw.xlibSetWMNormalHints(_glfw.x11Display, window->x11Window, hints);
+	_glfw.xlibFree(hints);
 
 	// Announce support for Xdnd (drag and drop)
-	{
-		const Atom version = _GLFW_XDND_VERSION;
-		_glfw.xlibChangeProperty(_glfw.x11Display, window->x11Window,
-						_glfw.x11DnDAware, XA_ATOM, 32,
-						PropModeReplace, (unsigned char*) &version, 1);
-	}
+	const Atom version = _GLFW_XDND_VERSION;
+	_glfw.xlibChangeProperty(_glfw.x11Display, window->x11Window, _glfw.x11DnDAware, XA_ATOM, 32, PropModeReplace,
+		(unsigned char*) &version, 1);
 
-	if (_glfw.x11IM)
+	if (_glfw.x11IM) {
 		_glfwCreateInputContextX11(window);
-
+	}
 	_glfwSetWindowTitle(window, window->title);
 	_glfwGetWindowPos(window, &window->x11XPos, &window->x11YPos);
 	_glfwGetWindowSize(window, &window->width, &window->height);
 
-	return true;
+	return NULL;
 }
 
 // Set the specified property to the selection converted to the requested target
@@ -2451,43 +2375,50 @@ void _glfwCreateInputContextX11(plafWindow* window)
 //////                       GLFW platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+ErrorResponse* _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+	ErrorResponse* err = _glfwInitGLX();
+	if (err) {
+		return err;
+	}
+
 	Visual* visual = NULL;
 	int depth;
-
-	if (!_glfwInitGLX())
-		return false;
-
-	if (!_glfwChooseVisualGLX(wndconfig, ctxconfig, fbconfig, &visual, &depth))
-		return false;
-
-	if (!visual)
-	{
+	err = _glfwChooseVisualGLX(wndconfig, ctxconfig, fbconfig, &visual, &depth);
+	if (err) {
+		return err;
+	}
+	if (!visual) {
 		visual = DefaultVisual(_glfw.x11Display, _glfw.x11Screen);
 		depth = DefaultDepth(_glfw.x11Display, _glfw.x11Screen);
 	}
 
-	if (!createNativeWindow(window, wndconfig, visual, depth))
-		return false;
+	err = createNativeWindow(window, wndconfig, visual, depth);
+	if (err) {
+		return err;
+	}
 
-	if (!_glfwCreateContextGLX(window, ctxconfig, fbconfig))
-		return false;
+	err = _glfwCreateContextGLX(window, ctxconfig, fbconfig)
+	if (err) {
+		return err;
+	}
 
-	if (!_glfwRefreshContextAttribs(window, ctxconfig))
-		return false;
+	err = _glfwRefreshContextAttribs(window, ctxconfig);
+	if (err) {
+		return err;
+	}
 
-	if (wndconfig->mousePassthrough)
+	if (wndconfig->mousePassthrough) {
 		_glfwSetWindowMousePassthrough(window, true);
+	}
 
-	if (window->monitor)
-	{
+	if (window->monitor) {
 		_glfwShowWindow(window);
 		updateWindowMode(window);
 		acquireMonitor(window);
 	}
 
 	_glfw.xlibFlush(_glfw.x11Display);
-	return true;
+	return NULL;
 }
 
 void _glfwDestroyWindow(plafWindow* window) {

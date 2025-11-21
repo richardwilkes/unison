@@ -225,6 +225,7 @@ void _glfwInputError(int code, const char* format, ...) {
 ErrorResponse* createErrorResponse(int code, const char* format, ...) {
 	va_list args;
 	ErrorResponse* errResp = (ErrorResponse*)malloc(sizeof(ErrorResponse));
+	errResp->next = NULL;
 	errResp->code = code;
 	va_start(args, format);
 	vsnprintf(errResp->desc, ERROR_MSG_SIZE, format, args);
@@ -237,7 +238,7 @@ ErrorResponse* createErrorResponse(int code, const char* format, ...) {
 //////                        GLFW public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-ErrorResponse* glfwInit(void) {
+ErrorResponse* plafInit(void) {
     if (_glfw.initialized) {
         return NULL;
 	}
@@ -251,7 +252,7 @@ ErrorResponse* glfwInit(void) {
     return NULL;
 }
 
-void glfwTerminate(void) {
+void plafTerminate(void) {
 	if (_glfw.initialized) {
 		_terminate();
 	}

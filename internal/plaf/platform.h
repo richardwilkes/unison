@@ -851,8 +851,9 @@ typedef void (*windowSizeFunc)(plafWindow* window, int width, int height);
 
 // An error response
 typedef struct ErrorResponse {
-	int  code;
-	char desc[ERROR_MSG_SIZE];
+	struct ErrorResponse* next;
+	int                   code;
+	char                  desc[ERROR_MSG_SIZE];
 } ErrorResponse;
 
 // A single video mode
@@ -971,7 +972,6 @@ typedef const GLubyte* (APIENTRY * FN_GLGETSTRINGI)(GLenum,GLuint);
 // Parameters relating to the creation of the context but not directly related
 // to the framebuffer.  This is used to pass context creation parameters from
 // shared code to the platform API.
-//
 struct plafCtxCfg {
 	int         major;
 	int         minor;
@@ -991,7 +991,6 @@ struct plafCtxCfg {
 //
 // It is used to pass framebuffer parameters from shared code to the platform
 // API and also to enumerate and select available framebuffer configs.
-//
 struct plafFrameBufferCfg {
 	int       redBits;
 	int       greenBits;
@@ -1025,12 +1024,12 @@ struct plafCtx {
 	FN_GLGETSTRINGI      GetStringi;
 	FN_GLGETINTEGERV     GetIntegerv;
 	FN_GLGETSTRING       GetString;
-	void (*makeCurrent)(plafWindow*);
-	void (*swapBuffers)(plafWindow*);
-	void (*swapInterval)(int);
-	int (*extensionSupported)(const char*);
-	glFunc (*getProcAddress)(const char*);
-	void (*destroy)(plafWindow*);
+	ErrorResponse*       (*makeCurrent)(plafWindow*);
+	void                 (*swapBuffers)(plafWindow*);
+	void                 (*swapInterval)(int);
+	int                  (*extensionSupported)(const char*);
+	glFunc               (*getProcAddress)(const char*);
+	void                 (*destroy)(plafWindow*);
 #if defined(__APPLE__)
 	NSOpenGLPixelFormat* nsglPixelFormat;
 	NSOpenGLContext*     nsglCtx;
@@ -1511,73 +1510,8 @@ extern plafLib _glfw;
  * GLFW API functions
  *************************************************************************/
 
-/*! @brief Initializes the GLFW library.
- *
- *  This function initializes the GLFW library.  Before most GLFW functions can
- *  be used, GLFW must be initialized, and before an application terminates GLFW
- *  should be terminated in order to free any resources allocated during or
- *  after initialization.
- *
- *  If this function fails, it calls @ref glfwTerminate before returning.  If it
- *  succeeds, you should call @ref glfwTerminate before the application exits.
- *
- *  Additional calls to this function after successful initialization but before
- *  termination will return `true` immediately.
- *
- *  @return `true` if successful, or `false` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_PLATFORM_UNAVAILABLE and @ref
- *  ERR_PLATFORM_ERROR.
- *
- *  @remark __X11:__ This function will set the `LC_CTYPE` category of the
- *  application locale according to the current environment if that category is
- *  still "C".  This is because the "C" locale breaks Unicode text input.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref intro_init
- *  @sa @ref glfwTerminate
- *
- *  @since Added in version 1.0.
- *
- *  @ingroup init
- */
-ErrorResponse* glfwInit(void);
-
-/*! @brief Terminates the GLFW library.
- *
- *  This function destroys all remaining windows and cursors, restores any
- *  modified gamma ramps and frees any other allocated resources.  Once this
- *  function is called, you must again call @ref glfwInit successfully before
- *  you will be able to use most GLFW functions.
- *
- *  If GLFW has been successfully initialized, this function should be called
- *  before the application exits.  If initialization fails, there is no need to
- *  call this function, as it is called by @ref glfwInit before it returns
- *  failure.
- *
- *  This function has no effect if GLFW is not initialized.
- *
- *  @errors Possible errors include @ref ERR_PLATFORM_ERROR.
- *
- *  @remark This function may be called before @ref glfwInit.
- *
- *  @warning The contexts of any remaining windows must not be current on any
- *  other thread when this function is called.
- *
- *  @reentrancy This function must not be called from a callback.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref intro_init
- *  @sa @ref glfwInit
- *
- *  @since Added in version 1.0.
- *
- *  @ingroup init
- */
-void glfwTerminate(void);
+ErrorResponse* plafInit(void);
+void plafTerminate(void);
 
 /*! @brief Sets the error callback.
  *
@@ -1612,7 +1546,7 @@ void glfwTerminate(void);
  *
  *  @errors None.
  *
- *  @remark This function may be called before @ref glfwInit.
+ *  @remark This function may be called before @ref plafInit.
  *
  *  @thread_safety This function must only be called from the main thread.
  *
@@ -1902,128 +1836,7 @@ void glfwWindowHint(int hint, int value);
  */
 void glfwWindowHintString(int hint, const char* value);
 
-/*! @brief Creates a window and its associated context.
- *
- *  This function creates a window and its associated OpenGL or OpenGL ES
- *  context.  Most of the options controlling how the window and its context
- *  should be created are specified with [window hints](@ref window_hints).
- *
- *  Successful creation does not change which context is current.  Before you
- *  can use the newly created context, you need to
- *  [make it current](@ref context_current).  For information about the `share`
- *  parameter, see @ref context_sharing.
- *
- *  The created window, framebuffer and context may differ from what you
- *  requested, as not all parameters and hints are
- *  [hard constraints](@ref window_hints_hard).  This includes the size of the
- *  window, especially for full screen windows.  To query the actual attributes
- *  of the created window, framebuffer and context, see @ref
- *  glfwGetWindowAttrib, @ref glfwGetWindowSize and @ref glfwGetFramebufferSize.
- *
- *  To create a full screen window, you need to specify the monitor the window
- *  will cover.  If no monitor is specified, the window will be windowed mode.
- *  Unless you have a way for the user to choose a specific monitor, it is
- *  recommended that you pick the primary monitor.  For more information on how
- *  to query connected monitors, see @ref monitor_monitors.
- *
- *  For full screen windows, the specified size becomes the resolution of the
- *  window's _desired video mode_.  As long as a full screen window is not
- *  iconified, the supported video mode most closely matching the desired video
- *  mode is set for the specified monitor.  For more information about full
- *  screen windows, including the creation of so called _windowed full screen_
- *  or _borderless full screen_ windows, see @ref window_windowed_full_screen.
- *
- *  Once you have created the window, you can switch it between windowed and
- *  full screen mode with @ref glfwSetWindowMonitor.  This will not affect its
- *  OpenGL or OpenGL ES context.
- *
- *  By default, newly created windows use the placement recommended by the
- *  window system.  To create the window at a specific position, set the @ref
- *  WINDOW_HINT_POSITION_X and @ref WINDOW_HINT_POSITION_Y window hints before creation.  To
- *  restore the default behavior, set either or both hints back to
- *  `ANY_POSITION`.
- *
- *  As long as at least one full screen window is not iconified, the screensaver
- *  is prohibited from starting.
- *
- *  Window systems put limits on window sizes.  Very large or very small window
- *  dimensions may be overridden by the window system on creation.  Check the
- *  actual [size](@ref window_size) after creation.
- *
- *  The [swap interval](@ref buffer_swap) is not set during window creation and
- *  the initial value may vary depending on driver settings and defaults.
- *
- *  @param[in] width The desired width, in screen coordinates, of the window.
- *  This must be greater than zero.
- *  @param[in] height The desired height, in screen coordinates, of the window.
- *  This must be greater than zero.
- *  @param[in] title The initial, UTF-8 encoded window title.
- *  @param[in] monitor The monitor to use for full screen mode, or `NULL` for
- *  windowed mode.
- *  @param[in] share The window whose context to share resources with, or `NULL`
- *  to not share resources.
- *  @return The handle of the created window, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_INVALID_ENUM, @ref ERR_INVALID_VALUE, @ref ERR_API_UNAVAILABLE, @ref
- *  ERR_VERSION_UNAVAILABLE, @ref ERR_FORMAT_UNAVAILABLE, @ref
- *  ERR_NO_WINDOW_CONTEXT and @ref ERR_PLATFORM_ERROR.
- *
- *  @remark __Win32:__ Window creation will fail if the Microsoft GDI software
- *  OpenGL implementation is the only one available.
- *
- *  @remark __Win32:__ If the executable has an icon resource named `GLFW_ICON,` it
- *  will be set as the initial icon for the window.  If no such icon is present,
- *  the `IDI_APPLICATION` icon will be used instead.  To set a different icon,
- *  see @ref glfwSetWindowIcon.
- *
- *  @remark __Win32:__ The context to share resources with must not be current on
- *  any other thread.
- *
- *  @remark __macOS:__ The OS only supports core profile contexts for OpenGL
- *  versions 3.2 and later.  Before creating an OpenGL context of version 3.2 or
- *  later you must set the [WINDOW_ATTR_HINT_OPENGL_PROFILE](@ref GLFW_OPENGL_PROFILE_hint)
- *  hint accordingly.  OpenGL 3.0 and 3.1 contexts are not supported at all
- *  on macOS.
- *
- *  @remark __macOS:__ The GLFW window has no icon, as it is not a document
- *  window, but the dock icon will be the same as the application bundle's icon.
- *  For more information on bundles, see the
- *  [Bundle Programming Guide][bundle-guide] in the Mac Developer Library.
- *
- *  [bundle-guide]: https://developer.apple.com/library/mac/documentation/CoreFoundation/Conceptual/CFBundles/
- *
- *  @remark __macOS:__  The window frame will not be rendered at full resolution
- *  on Retina displays unless the
- *  [WINDOW_HINT_SCALE_FRAMEBUFFER](@ref GLFW_SCALE_FRAMEBUFFER_hint)
- *  hint is `true` and the `NSHighResolutionCapable` key is enabled in the
- *  application bundle's `Info.plist`.  For more information, see
- *  [High Resolution Guidelines for OS X][hidpi-guide] in the Mac Developer
- *  Library.  The GLFW test and example programs use a custom `Info.plist`
- *  template for this, which can be found as `CMake/Info.plist.in` in the source
- *  tree.
- *
- *  [hidpi-guide]: https://developer.apple.com/library/mac/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Explained/Explained.html
- *
- *  @remark __X11:__ Some window managers will not respect the placement of
- *  initially hidden windows.
- *
- *  @remark __X11:__ Due to the asynchronous nature of X11, it may take a moment for
- *  a window to reach its requested state.  This means you may not be able to
- *  query the final size, position or other attributes directly after window
- *  creation.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref window_creation
- *  @sa @ref glfwDestroyWindow
- *
- *  @since Added in version 3.0.  Replaces `glfwOpenWindow`.
- *
- *  @ingroup window
- */
-plafWindow* glfwCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share);
+ErrorResponse* glfwCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow);
 
 /*! @brief Destroys the specified window and its context.
  *
@@ -3293,7 +3106,7 @@ void glfwSetCursor(plafWindow* window, plafCursor* cursor);
  *
  *  Creates a new custom cursor image that can be set for a window with @ref
  *  glfwSetCursor.  The cursor can be destroyed with @ref glfwDestroyCursor.
- *  Any remaining cursors are destroyed by @ref glfwTerminate.
+ *  Any remaining cursors are destroyed by @ref plafTerminate.
  *
  *  The pixels are 32-bit, little-endian, non-premultiplied RGBA, i.e. eight
  *  bits per channel with the red channel first.  They are arranged canonically
@@ -3375,7 +3188,7 @@ plafCursor* glfwCreateStandardCursor(int shape);
  *
  *  This function destroys a cursor previously created with @ref
  *  glfwCreateCursor.  Any remaining cursors will be destroyed by @ref
- *  glfwTerminate.
+ *  plafTerminate.
  *
  *  If the specified cursor is current for any window, that window will be
  *  reverted to the default cursor.  This does not affect the cursor mode.
@@ -3769,50 +3582,7 @@ void setClipboardString(const char* string);
  */
 const char* getClipboardString(void);
 
-/*! @brief Makes the context of the specified window current for the calling
- *  thread.
- *
- *  This function makes the OpenGL or OpenGL ES context of the specified window
- *  current on the calling thread.  It can also detach the current context from
- *  the calling thread without making a new one current by passing in `NULL`.
- *
- *  A context must only be made current on a single thread at a time and each
- *  thread can have only a single current context at a time.  Making a context
- *  current detaches any previously current context on the calling thread.
- *
- *  When moving a context between threads, you must detach it (make it
- *  non-current) on the old thread before making it current on the new one.
- *
- *  By default, making a context non-current implicitly forces a pipeline flush.
- *  On machines that support `GL_KHR_context_flush_control`, you can control
- *  whether a context performs this flush by setting the
- *  [WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR](@ref GLFW_CONTEXT_RELEASE_BEHAVIOR_hint)
- *  hint.
- *
- *  The specified window must have an OpenGL or OpenGL ES context.  Specifying
- *  a window without a context will generate a @ref ERR_NO_WINDOW_CONTEXT
- *  error.
- *
- *  @param[in] window The window whose context to make current, or `NULL` to
- *  detach the current context.
- *
- *  @remarks If the previously current context was created via a different
- *  context creation API than the one passed to this function, GLFW will still
- *  detach the previous one from its API before making the new one current.
- *
- *  @errors Possible errors include @ref ERR_NOT_INITIALIZED, @ref
- *  ERR_NO_WINDOW_CONTEXT and @ref ERR_PLATFORM_ERROR.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref context_current
- *  @sa @ref glfwGetCurrentContext
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup context
- */
-void glfwMakeContextCurrent(plafWindow* window);
+ErrorResponse* glfwMakeContextCurrent(plafWindow* window);
 
 /*! @brief Returns the window whose context is current on the calling thread.
  *
@@ -4041,7 +3811,7 @@ ErrorResponse* createErrorResponse(int code, const char* format, ...);
 //////                       GLFW internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-IntBool _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+ErrorResponse* _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _glfwSetWindowTitle(plafWindow* window, const char* title);
 void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images);
 void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos);
@@ -4083,8 +3853,8 @@ void glfwSetCursorMode(plafWindow* window, int mode);
 IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
 IntBool _glfwStringInExtensionString(const char* string, const char* extensions);
 const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
-IntBool _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
-IntBool _glfwIsValidContextConfig(const plafCtxCfg* ctxconfig);
+ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
+ErrorResponse* plafCheckContextConfig(const plafCtxCfg* ctxconfig);
 
 const VideoMode* _glfwChooseVideoMode(plafMonitor* monitor, const VideoMode* desired);
 int _glfwCompareVideoModes(const VideoMode* first, const VideoMode* second);
@@ -4122,9 +3892,9 @@ void _glfwRestoreVideoModeCocoa(plafMonitor* monitor);
 
 float _glfwTransformYCocoa(float y);
 
-IntBool _glfwInitNSGL(void);
+ErrorResponse* _glfwInitNSGL(void);
 void _glfwTerminateNSGL(void);
-IntBool _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+ErrorResponse* _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _glfwDestroyContextNSGL(plafWindow* window);
 #elif defined(__linux__)
 void _glfwPollMonitorsX11(void);
@@ -4142,10 +3912,10 @@ void _glfwInputErrorX11(int error, const char* message);
 void _glfwPushSelectionToManagerX11(void);
 void _glfwCreateInputContextX11(plafWindow* window);
 
-IntBool _glfwInitGLX(void);
-IntBool _glfwCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+ErrorResponse* _glfwInitGLX(void);
+ErrorResponse* _glfwCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _glfwDestroyContextGLX(plafWindow* window);
-IntBool _glfwChooseVisualGLX(const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
+ErrorResponse* _glfwChooseVisualGLX(const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
 
 IntBool waitForX11Event(double timeout);
 #elif defined(_WIN32)
@@ -4159,9 +3929,9 @@ void _glfwPollMonitorsWin32(void);
 void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
 void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 
-IntBool _glfwInitWGL(void);
+ErrorResponse* _glfwInitWGL(void);
 void _glfwTerminateWGL(void);
-IntBool _glfwCreateContextWGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+ErrorResponse* _glfwCreateContextWGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 #endif
 
 #ifdef __cplusplus

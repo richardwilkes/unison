@@ -210,7 +210,7 @@ ErrorResponse* platformInit(void) {
 
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		return NULL;
-    } // autoreleasepool
+    }
 }
 
 void platformTerminate(void) {
@@ -228,7 +228,7 @@ void platformTerminate(void) {
 			[NSEvent removeMonitor:_glfw.nsKeyUpMonitor];
 		}
 		_glfwTerminateNSGL();
-	} // autoreleasepool
+	}
 }
 
 #endif // __APPLE__
