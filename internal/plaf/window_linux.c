@@ -1348,24 +1348,24 @@ static ErrorResponse* createNativeWindow(plafWindow* window, const WindowConfig*
 	_glfw.xlibFree(hints);
 
 	// Set ICCCM WM_NORMAL_HINTS property
-	XSizeHints* hints = _glfw.xlibAllocSizeHints();
-	if (!hints) {
+	XSizeHints* sizeHints = _glfw.xlibAllocSizeHints();
+	if (!sizeHints) {
 		return createErrorResponse(ERR_OUT_OF_MEMORY, "X11: Failed to allocate size hints");
 	}
 	if (!wndconfig->resizable) {
-		hints->flags |= (PMinSize | PMaxSize);
-		hints->min_width  = hints->max_width  = width;
-		hints->min_height = hints->max_height = height;
+		sizeHints->flags |= (PMinSize | PMaxSize);
+		sizeHints->min_width  = sizeHints->max_width  = width;
+		sizeHints->min_height = sizeHints->max_height = height;
 	}
 	if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION) {
-		hints->flags |= PPosition;
-		hints->x = 0;
-		hints->y = 0;
+		sizeHints->flags |= PPosition;
+		sizeHints->x = 0;
+		sizeHints->y = 0;
 	}
-	hints->flags |= PWinGravity;
-	hints->win_gravity = StaticGravity;
-	_glfw.xlibSetWMNormalHints(_glfw.x11Display, window->x11Window, hints);
-	_glfw.xlibFree(hints);
+	sizeHints->flags |= PWinGravity;
+	sizeHints->win_gravity = StaticGravity;
+	_glfw.xlibSetWMNormalHints(_glfw.x11Display, window->x11Window, sizeHints);
+	_glfw.xlibFree(sizeHints);
 
 	// Announce support for Xdnd (drag and drop)
 	const Atom version = _GLFW_XDND_VERSION;
@@ -2397,7 +2397,7 @@ ErrorResponse* _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconf
 		return err;
 	}
 
-	err = _glfwCreateContextGLX(window, ctxconfig, fbconfig)
+	err = _glfwCreateContextGLX(window, ctxconfig, fbconfig);
 	if (err) {
 		return err;
 	}
