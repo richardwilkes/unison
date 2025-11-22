@@ -1358,6 +1358,9 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 bool _plafStringInExtensionString(const char* string, const char* extensions);
 const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
 void _plafTerminateOpenGL(void);
+#if defined(__linux__)
+bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* result);
+#endif
 
 // Utility
 size_t _plafEncodeUTF8(char* s, uint32_t codepoint);

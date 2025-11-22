@@ -11,8 +11,7 @@ static int getGLXFBConfigAttrib(GLXFBConfig fbconfig, int attrib)
 }
 
 // Return the GLXFBConfig most closely matching the specified hints
-//
-static bool chooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* result) {
+bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* result) {
 	GLXFBConfig* nativeConfigs;
 	plafFrameBufferCfg* usableConfigs;
 	const plafFrameBufferCfg* closest;
@@ -306,13 +305,14 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 		shareCtx = share->context.glxHandle;
 	}
 
-	if (!chooseGLXFBConfig(fbconfig, &native)) {
+	if (!_plafChooseGLXFBConfig(fbconfig, &native)) {
 		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
 	}
 
 	_plafGrabErrorHandler();
 
 	if (_plaf.glxARB_create_context) {
+		int index = 0;
 		SET_ATTRIB(GLX_CONTEXT_MAJOR_VERSION_ARB, 3);
 		SET_ATTRIB(GLX_CONTEXT_MINOR_VERSION_ARB, 2);
 		SET_ATTRIB(None, None);

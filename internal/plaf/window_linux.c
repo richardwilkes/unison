@@ -1230,7 +1230,7 @@ static uint32_t decodeUTF8(const char** s)
 // Returns the Visual and depth of the chosen GLXFBConfig
 static plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
 	GLXFBConfig native;
-	if (!chooseGLXFBConfig(fbconfig, &native)) {
+	if (!_plafChooseGLXFBConfig(fbconfig, &native)) {
 		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
 	}
 	XVisualInfo* result = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, native);
