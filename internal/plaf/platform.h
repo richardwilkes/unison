@@ -51,15 +51,9 @@ typedef unsigned char GLubyte;
 	#define GLX_SAMPLES 0x186a1
 	#define GLX_VISUAL_ID 0x800b
 	#define GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20b2
-	#define GLX_CONTEXT_DEBUG_BIT_ARB 0x00000001
-	#define GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
-	#define GLX_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
-	#define GLX_CONTEXT_PROFILE_MASK_ARB 0x9126
-	#define GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x00000002
 	#define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
 	#define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
 	#define GLX_CONTEXT_FLAGS_ARB 0x2094
-	#define GLX_CONTEXT_ES2_PROFILE_BIT_EXT 0x00000004
 	#define GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x00000004
 	#define GLX_LOSE_CONTEXT_ON_RESET_ARB 0x8252
 	#define GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
@@ -314,15 +308,9 @@ typedef unsigned char GLubyte;
 	#define WGL_DOUBLE_BUFFER_ARB 0x2011
 	#define WGL_SAMPLES_ARB 0x2042
 	#define WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20a9
-	#define WGL_CONTEXT_DEBUG_BIT_ARB 0x00000001
-	#define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x00000002
-	#define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
-	#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
-	#define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
 	#define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
 	#define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
 	#define WGL_CONTEXT_FLAGS_ARB 0x2094
-	#define WGL_CONTEXT_ES2_PROFILE_BIT_EXT 0x00000004
 	#define WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x00000004
 	#define WGL_LOSE_CONTEXT_ON_RESET_ARB 0x8252
 	#define WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
@@ -330,7 +318,6 @@ typedef unsigned char GLubyte;
 	#define WGL_COLORSPACE_EXT 0x309d
 	#define WGL_COLORSPACE_SRGB_EXT 0x3089
 	#define ERROR_INVALID_VERSION_ARB 0x2095
-	#define ERROR_INVALID_PROFILE_ARB 0x2096
 	#define ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB 0x2054
 
 	// user32.dll function pointer typedefs
@@ -555,9 +542,6 @@ typedef unsigned char GLubyte;
 #define WINDOW_ATTR_HINT_CONTEXT_VERSION_MINOR     0x00022003
 #define WINDOW_ATTR_CONTEXT_REVISION               0x00022004
 #define WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS        0x00022005
-#define WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT     0x00022006
-#define WINDOW_ATTR_HINT_CONTEXT_DEBUG             0x00022007
-#define WINDOW_ATTR_HINT_OPENGL_PROFILE            0x00022008
 #define WINDOW_HINT_SCALE_TO_MONITOR               0x0002200C
 #define WINDOW_HINT_SCALE_FRAMEBUFFER              0x0002200D
 
@@ -565,11 +549,6 @@ typedef unsigned char GLubyte;
 #define CONTEXT_ROBUSTNESS_NONE                   0
 #define CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION  0x00031001
 #define CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET  0x00031002
-
-// OpenGL profile values
-#define OPENGL_PROFILE_ANY     0
-#define OPENGL_PROFILE_CORE    0x00032001
-#define OPENGL_PROFILE_COMPAT  0x00032002
 
 // Standard cursor IDs
 #define STD_CURSOR_ARROW             0x00036001
@@ -674,11 +653,6 @@ typedef struct plafLib            plafLib;
 #define GL_EXTENSIONS 0x1f03
 #define GL_NUM_EXTENSIONS 0x821d
 #define GL_CONTEXT_FLAGS 0x821e
-#define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x00000001
-#define GL_CONTEXT_FLAG_DEBUG_BIT 0x00000002
-#define GL_CONTEXT_PROFILE_MASK 0x9126
-#define GL_CONTEXT_COMPATIBILITY_PROFILE_BIT 0x00000002
-#define GL_CONTEXT_CORE_PROFILE_BIT 0x00000001
 #define GL_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
 #define GL_LOSE_CONTEXT_ON_RESET_ARB 0x8252
 #define GL_NO_RESET_NOTIFICATION_ARB 0x8261
@@ -706,9 +680,6 @@ typedef const GLubyte* (APIENTRY * FN_GLGETSTRINGI)(GLenum,GLuint);
 struct plafCtxCfg {
 	int         major;
 	int         minor;
-	bool        forward;
-	bool        debug;
-	int         profile;
 	int         robustness;
 	int         release;
 	plafWindow* share;
@@ -745,9 +716,6 @@ struct plafCtx {
 	int                  major;
 	int                  minor;
 	int                  revision;
-	bool                 forward;
-	bool                 debug;
-	int                  profile;
 	int                  robustness;
 	int                  release;
 	FN_GLGETSTRINGI      GetStringi;
@@ -1165,7 +1133,6 @@ struct plafLib {
 	bool                                glxARB_framebuffer_sRGB;
 	bool                                glxEXT_framebuffer_sRGB;
 	bool                                glxARB_create_context;
-	bool                                glxARB_create_context_profile;
 	bool                                glxARB_create_context_robustness;
 #elif defined(_WIN32)
 	HINSTANCE                           win32Instance;
@@ -1211,7 +1178,6 @@ struct plafLib {
 	bool                                wglEXT_framebuffer_sRGB;
 	bool                                wglARB_pixel_format;
 	bool                                wglARB_create_context;
-	bool                                wglARB_create_context_profile;
 	bool                                wglARB_create_context_robustness;
 #endif
 };

@@ -14,11 +14,6 @@
 // exists and whether all relevant options have supported and non-conflicting
 // values
 plafError * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
-	if (ctxconfig->profile) {
-		if (ctxconfig->profile != OPENGL_PROFILE_CORE && ctxconfig->profile != OPENGL_PROFILE_COMPAT) {
-			return _plafNewError("Invalid OpenGL profile 0x%08X", ctxconfig->profile);
-		}
-	}
 	if (ctxconfig->robustness) {
 		if (ctxconfig->robustness != CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION &&
 			ctxconfig->robustness != CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET) {
@@ -223,27 +218,6 @@ plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxc
 		if (!window->context.GetStringi) {
 			plafMakeContextCurrent(previous);
 			return _plafNewError("Entry point retrieval is broken");
-		}
-	}
-
-	if (window->context.major >= 3) {
-		GLint flags;
-		window->context.GetIntegerv(GL_CONTEXT_FLAGS, &flags);
-		if (flags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) {
-			window->context.forward = true;
-		}
-		if (flags & GL_CONTEXT_FLAG_DEBUG_BIT) {
-			window->context.debug = true;
-		}
-	}
-
-	if (window->context.major >= 4 || (window->context.major == 3 && window->context.minor >= 2)) {
-		GLint mask;
-		window->context.GetIntegerv(GL_CONTEXT_PROFILE_MASK, &mask);
-		if (mask & GL_CONTEXT_COMPATIBILITY_PROFILE_BIT) {
-			window->context.profile = OPENGL_PROFILE_COMPAT;
-		} else if (mask & GL_CONTEXT_CORE_PROFILE_BIT) {
-			window->context.profile = OPENGL_PROFILE_CORE;
 		}
 	}
 

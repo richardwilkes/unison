@@ -2,13 +2,7 @@
 
 #if defined(__linux__)
 
-#ifndef GLXBadProfileARB
- #define GLXBadProfileARB 13
-#endif
-
-
 // Returns the specified attribute of the specified GLXFBConfig
-//
 static int getGLXFBConfigAttrib(GLXFBConfig fbconfig, int attrib)
 {
 	int value;
@@ -301,10 +295,6 @@ plafError* _plafInitOpenGL(void) {
 	if (extensionSupportedGLX("GLX_ARB_create_context_robustness")) {
 		_plaf.glxARB_create_context_robustness = true;
 	}
-
-	if (extensionSupportedGLX("GLX_ARB_create_context_profile")) {
-		_plaf.glxARB_create_context_profile = true;
-	}
 	return NULL;
 }
 
@@ -338,36 +328,10 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
 	}
 
-	if (ctxconfig->forward) {
-		if (!_plaf.glxARB_create_context) {
-			return _plafNewError("GLX: Forward compatibility requested but GLX_ARB_create_context_profile is unavailable");
-		}
-	}
-
-	if (ctxconfig->profile) {
-		if (!_plaf.glxARB_create_context || !_plaf.glxARB_create_context_profile) {
-			return _plafNewError("GLX: An OpenGL profile requested but GLX_ARB_create_context_profile is unavailable");
-		}
-	}
-
 	_plafGrabErrorHandler();
 
 	if (_plaf.glxARB_create_context) {
-		int index = 0, mask = 0, flags = 0;
-
-		if (ctxconfig->forward) {
-			flags |= GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
-		}
-
-		if (ctxconfig->profile == OPENGL_PROFILE_CORE) {
-			mask |= GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (ctxconfig->profile == OPENGL_PROFILE_COMPAT) {
-			mask |= GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
-		}
-
-		if (ctxconfig->debug) {
-			flags |= GLX_CONTEXT_DEBUG_BIT_ARB;
-		}
+		int index = 0, flags = 0;
 
 		if (ctxconfig->robustness) {
 			if (_plaf.glxARB_create_context_robustness) {
@@ -388,10 +352,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 			SET_ATTRIB(GLX_CONTEXT_MINOR_VERSION_ARB, ctxconfig->minor);
 		}
 
-		if (mask) {
-			SET_ATTRIB(GLX_CONTEXT_PROFILE_MASK_ARB, mask);
-		}
-
 		if (flags) {
 			SET_ATTRIB(GLX_CONTEXT_FLAGS_ARB, flags);
 		}
@@ -399,17 +359,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 		SET_ATTRIB(None, None);
 
 		window->context.glxHandle = _plaf.glxCreateContextAttribsARB(_plaf.x11Display, native, share, True, attribs);
-
-		// HACK: This is a fallback for broken versions of the Mesa
-		//       implementation of GLX_ARB_create_context_profile that fail
-		//       default 1.0 context creation with a GLXBadProfileARB error in
-		//       violation of the extension spec
-		if (!window->context.glxHandle) {
-			if (_plaf.x11ErrorCode == _plaf.glxErrorBase + GLXBadProfileARB &&
-				ctxconfig->profile == OPENGL_PROFILE_ANY && ctxconfig->forward == false) {
-				window->context.glxHandle = createLegacyContextGLX(window, native, share);
-			}
-		}
 	} else {
 		window->context.glxHandle = createLegacyContextGLX(window, native, share);
 	}

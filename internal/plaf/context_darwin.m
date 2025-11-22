@@ -84,27 +84,6 @@ void _plafTerminateOpenGL(void) {
 
 // Create the OpenGL context
 plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
-	if (ctxconfig->major > 2) {
-		if (ctxconfig->major == 3 && ctxconfig->minor < 2) {
-			return _plafNewError("NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
-		}
-	}
-	if (ctxconfig->major >= 3 && ctxconfig->profile == OPENGL_PROFILE_COMPAT) {
-		return _plafNewError("NSGL: The compatibility profile is not available on macOS");
-	}
-
-	// Context robustness modes (GL_KHR_robustness) are not supported by
-	// macOS but are not a hard constraint, so ignore and continue
-
-	// Context release behaviors (GL_KHR_context_flush_control) are not
-	// supported by macOS but are not a hard constraint, so ignore and continue
-
-	// Debug contexts (GL_KHR_debug) are not supported by macOS but are not
-	// a hard constraint, so ignore and continue
-
-	// No-error contexts (GL_KHR_no_error) are not supported by macOS but
-	// are not a hard constraint, so ignore and continue
-
 #define ADD_ATTRIB(a) \
 { \
 	attribs[index++] = a; \
@@ -116,12 +95,7 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 
 	ADD_ATTRIB(NSOpenGLPFAAccelerated);
 	ADD_ATTRIB(NSOpenGLPFAClosestPolicy);
-
-	if (ctxconfig->major >= 4) {
-		SET_ATTRIB(NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion4_1Core);
-	} else if (ctxconfig->major >= 3) {
-		SET_ATTRIB(NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core);
-	}
+	SET_ATTRIB(NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core);
 
 	if (ctxconfig->major <= 2) {
 		if (fbconfig->auxBuffers != DONT_CARE) {

@@ -66,10 +66,7 @@ const (
 
 // Context related hints.
 const (
-	ContextRobustness       Hint = C.WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS    // Specifies the robustness strategy to be used by the context.
-	OpenGLForwardCompatible Hint = C.WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT // Specifies whether the OpenGL context should be forward-compatible. Hard constraint.
-	OpenGLDebugContext      Hint = C.WINDOW_ATTR_HINT_CONTEXT_DEBUG         // Specifies whether to create a debug OpenGL context, which may have additional error and performance issue reporting functionality. If OpenGL ES is requested, this hint is ignored.
-	OpenGLProfile           Hint = C.WINDOW_ATTR_HINT_OPENGL_PROFILE        // Specifies which OpenGL profile to create the context for. Hard constraint.
+	ContextRobustness Hint = C.WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS // Specifies the robustness strategy to be used by the context.
 )
 
 // Framebuffer related hints.
@@ -98,13 +95,6 @@ const (
 	ContextRobustnessNone                int = C.CONTEXT_ROBUSTNESS_NONE
 	ContextRobustnessNoResetNotification int = C.CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION
 	ContextRobustnessLoseContextOnReset  int = C.CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET
-)
-
-// Values for the OpenGLProfile hint.
-const (
-	OpenGLProfileAny    int = C.OPENGL_PROFILE_ANY
-	OpenGLProfileCore   int = C.OPENGL_PROFILE_CORE
-	OpenGLProfileCompat int = C.OPENGL_PROFILE_COMPAT
 )
 
 // Other values.

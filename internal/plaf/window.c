@@ -157,17 +157,11 @@ void _plafInputWindowCloseRequest(plafWindow* window)
 	return NULL;
 }
 
-void plafDefaultWindowHints(void)
-{
+void plafDefaultWindowHints(void) {
 	// The default is OpenGL with minimum version 1.0
 	memset(&_plaf.contextCfg, 0, sizeof(_plaf.contextCfg));
 	_plaf.contextCfg.major  = 3;
 	_plaf.contextCfg.minor  = 2;
-#if defined(__APPLE__)
-	// These don't appear to be necessary to set on macOS anymore, but keeping for now
-	_plaf.contextCfg.forward = true;
-	_plaf.contextCfg.profile = OPENGL_PROFILE_CORE;
-#endif
 
 	// The default is a resizable window with decorations
 	memset(&_plaf.windowCfg, 0, sizeof(_plaf.windowCfg));
@@ -272,15 +266,6 @@ void plafWindowHint(int hint, int value)
 			return;
 		case WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS:
 			_plaf.contextCfg.robustness = value;
-			return;
-		case WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT:
-			_plaf.contextCfg.forward = value ? true : false;
-			return;
-		case WINDOW_ATTR_HINT_CONTEXT_DEBUG:
-			_plaf.contextCfg.debug = value ? true : false;
-			return;
-		case WINDOW_ATTR_HINT_OPENGL_PROFILE:
-			_plaf.contextCfg.profile = value;
 			return;
 		case WINDOW_HINT_REFRESH_RATE:
 			_plaf.desiredRefreshRate = value;
@@ -522,12 +507,6 @@ int plafGetWindowAttrib(plafWindow* window, int attrib) {
 			return window->context.revision;
 		case WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS:
 			return window->context.robustness;
-		case WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT:
-			return window->context.forward;
-		case WINDOW_ATTR_HINT_CONTEXT_DEBUG:
-			return window->context.debug;
-		case WINDOW_ATTR_HINT_OPENGL_PROFILE:
-			return window->context.profile;
 	}
 
 	_plafInputError("Invalid window attribute 0x%08X", attrib);

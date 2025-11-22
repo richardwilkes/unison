@@ -360,7 +360,6 @@ plafError* _plafInitOpenGL(void) {
 	_plaf.wglARB_framebuffer_sRGB = extensionSupportedWGL("WGL_ARB_framebuffer_sRGB");
 	_plaf.wglEXT_framebuffer_sRGB = extensionSupportedWGL("WGL_EXT_framebuffer_sRGB");
 	_plaf.wglARB_create_context = extensionSupportedWGL("WGL_ARB_create_context");
-	_plaf.wglARB_create_context_profile = extensionSupportedWGL("WGL_ARB_create_context_profile");
 	_plaf.wglARB_create_context_robustness = extensionSupportedWGL("WGL_ARB_create_context_robustness");
 	_plaf.wglEXT_swap_control = extensionSupportedWGL("WGL_EXT_swap_control");
 	_plaf.wglARB_pixel_format = extensionSupportedWGL("WGL_ARB_pixel_format");
@@ -413,34 +412,8 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 		return _plafNewError("WGL: Failed to set selected pixel format");
 	}
 
-	if (ctxconfig->forward) {
-		if (!_plaf.wglARB_create_context) {
-			return _plafNewError("WGL: A forward compatible OpenGL context requested but WGL_ARB_create_context is unavailable");
-		}
-	}
-
-	if (ctxconfig->profile) {
-		if (!_plaf.wglARB_create_context_profile) {
-			return _plafNewError("WGL: OpenGL profile requested but WGL_ARB_create_context_profile is unavailable");
-		}
-	}
-
 	if (_plaf.wglARB_create_context) {
-		int index = 0, mask = 0, flags = 0;
-
-		if (ctxconfig->forward) {
-			flags |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
-		}
-
-		if (ctxconfig->profile == OPENGL_PROFILE_CORE) {
-			mask |= WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
-		} else if (ctxconfig->profile == OPENGL_PROFILE_COMPAT) {
-			mask |= WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
-		}
-
-		if (ctxconfig->debug) {
-			flags |= WGL_CONTEXT_DEBUG_BIT_ARB;
-		}
+		int index = 0, flags = 0;
 
 		if (ctxconfig->robustness) {
 			if (_plaf.wglARB_create_context_robustness) {
@@ -465,10 +438,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 			SET_ATTRIB(WGL_CONTEXT_FLAGS_ARB, flags);
 		}
 
-		if (mask) {
-			SET_ATTRIB(WGL_CONTEXT_PROFILE_MASK_ARB, mask);
-		}
-
 		SET_ATTRIB(0, 0);
 
 		window->context.wglGLRC = _plaf.wglCreateContextAttribsARB(window->context.wglDC, share, attribs);
@@ -476,8 +445,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 			const DWORD error = GetLastError();
 			if (error == (0xc0070000 | ERROR_INVALID_VERSION_ARB)) {
 				return _plafNewError("WGL: Driver does not support OpenGL version %i.%i", ctxconfig->major, ctxconfig->minor);
-			} else if (error == (0xc0070000 | ERROR_INVALID_PROFILE_ARB)) {
-				return _plafNewError("WGL: Driver does not support the requested OpenGL profile");
 			} else if (error == (0xc0070000 | ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB)) {
 				return _plafNewError("WGL: The share context is not compatible with the requested context");
 			}
