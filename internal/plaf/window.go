@@ -55,8 +55,6 @@ type Hint int
 
 // Window related hints/attributes.
 const (
-	Minimized              Hint = C.WINDOW_ATTR_MINIMIZED                    // Specifies whether the window will be minimized.
-	Maximized              Hint = C.WINDOW_ATTR_HINT_MAXIMIZED               // Specifies whether the window is maximized.
 	Visible                Hint = C.WINDOW_ATTR_VISIBLE                      // Specifies whether the window will be initially visible.
 	Hovered                Hint = C.WINDOW_ATTR_HOVERED                      // Specifies whether the cursor is currently directly over the content area of the window, with no other windows between. See Cursor enter/leave events for details.
 	Resizable              Hint = C.WINDOW_ATTR_HINT_RESIZABLE               // Specifies whether the window will be resizable by the user.
@@ -464,12 +462,22 @@ func (w *Window) ShowCursor() {
 	C.plafShowCursor(w.data)
 }
 
+// IsMinimized returns true if the window is currently minimized.
+func (w *Window) IsMinimized() bool {
+	return bool(C.plafIsWindowMinimized(w.data))
+}
+
 // Minimize the window, if it was previously restored. If it is a full screen window, the original monitor resolution is
 // restored until the window is restored. If the window is already minimized, this function does nothing.
 //
 // This function may only be called from the main thread.
 func (w *Window) Minimize() {
 	C.plafMinimizeWindow(w.data)
+}
+
+// IsMaximized returns true if the window is currently maximized.
+func (w *Window) IsMaximized() bool {
+	return bool(C.plafIsWindowMaximized(w.data))
 }
 
 // Maximize maximizes the specified window if it was previously not maximized.

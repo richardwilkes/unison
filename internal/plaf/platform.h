@@ -535,13 +535,10 @@ typedef unsigned char GLubyte;
 #define DISCONNECTED 0x00040002
 
 // Window attributes and/or hints
-#define WINDOW_ATTR_FOCUSED                        0x00020001
-#define WINDOW_ATTR_MINIMIZED                      0x00020002
 #define WINDOW_ATTR_HINT_RESIZABLE                 0x00020003
 #define WINDOW_ATTR_VISIBLE                        0x00020004
 #define WINDOW_ATTR_HINT_DECORATED                 0x00020005
 #define WINDOW_ATTR_HINT_FLOATING                  0x00020007
-#define WINDOW_ATTR_HINT_MAXIMIZED                 0x00020008
 #define WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER   0x0002000A
 #define WINDOW_ATTR_HOVERED                        0x0002000B
 #define WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH         0x0002000D
@@ -626,7 +623,7 @@ typedef void (*windowContextScaleFunc)(plafWindow* window, float xscale, float y
 typedef void (*windowFocusFunc)(plafWindow* window, int focused);
 typedef void (*windowMinimizeFunc)(plafWindow* window, int minimize);
 typedef void (*windowMaximizeFunc)(plafWindow* window, int maximized);
-typedef void (*windowPosFunc)(plafWindow* window, int xpos, int ypos); // coordinates are content area upper-left
+typedef void (*windowPosFunc)(plafWindow* window, int xpos, int ypos);
 typedef void (*windowRefreshFunc)(plafWindow* window);
 typedef void (*windowSizeFunc)(plafWindow* window, int width, int height);
 
@@ -668,7 +665,6 @@ typedef struct plafWindowConfig {
 	bool resizable;
 	bool decorated;
 	bool floating;
-	bool maximized;
 	bool mousePassthrough;
 	bool scaleToMonitor;
 	bool scaleFramebuffer;
@@ -1290,7 +1286,9 @@ void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right,
 void plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
 float plafGetWindowOpacity(plafWindow* window);
 void plafSetWindowOpacity(plafWindow* window, float opacity);
+bool plafIsWindowMinimized(plafWindow* window);
 void plafMinimizeWindow(plafWindow* window);
+bool plafIsWindowMaximized(plafWindow* window);
 void plafMaximizeWindow(plafWindow* window);
 void plafRestoreWindow(plafWindow* window);
 void plafShowWindow(plafWindow* window);
@@ -1420,9 +1418,7 @@ void _plafMaximizeWindow(plafWindow* window);
 void _plafShowWindow(plafWindow* window);
 void _plafHideWindow(plafWindow* window);
 void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-bool _plafWindowMinimized(plafWindow* window);
 bool _plafWindowVisible(plafWindow* window);
-bool _plafWindowMaximized(plafWindow* window);
 bool _plafWindowHovered(plafWindow* window);
 bool _plafFramebufferTransparent(plafWindow* window);
 void _plafSetWindowResizable(plafWindow* window, bool enabled);

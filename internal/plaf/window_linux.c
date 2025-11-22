@@ -1290,13 +1290,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 				states[count++] = _plaf.x11NET_WM_STATE_ABOVE;
 			}
 		}
-		if (wndconfig->maximized) {
-			if (_plaf.x11NET_WM_STATE_MAXIMIZED_VERT && _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ) {
-				states[count++] = _plaf.x11NET_WM_STATE_MAXIMIZED_VERT;
-				states[count++] = _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ;
-				window->maximized = true;
-			}
-		}
 		if (count) {
 			_plaf.xlibChangeProperty(_plaf.x11Display, window->x11Window, _plaf.x11NET_WM_STATE, XA_ATOM, 32,
 				PropModeReplace, (unsigned char*) states, count);
@@ -2166,40 +2159,33 @@ static void processEvent(XEvent *event)
 
 		case PropertyNotify:
 		{
-			if (event->xproperty.state != PropertyNewValue)
+			if (event->xproperty.state != PropertyNewValue) {
 				return;
-
-			if (event->xproperty.atom == _plaf.x11WM_STATE)
-			{
+			}
+			if (event->xproperty.atom == _plaf.x11WM_STATE) {
 				const int state = getWindowState(window);
-				if (state != IconicState && state != NormalState)
+				if (state != IconicState && state != NormalState) {
 					return;
-
+				}
 				const bool minimized = (state == IconicState);
-				if (window->x11Minimized != minimized)
-				{
-					if (window->monitor)
-					{
-						if (minimized)
+				if (window->x11Minimized != minimized) {
+					if (window->monitor) {
+						if (minimized) {
 							releaseMonitor(window);
-						else
+						} else {
 							acquireMonitor(window);
+						}
 					}
-
 					window->x11Minimized = minimized;
 					_plafInputWindowMinimize(window, minimized);
 				}
-			}
-			else if (event->xproperty.atom == _plaf.x11NET_WM_STATE)
-			{
-				const bool maximized = _plafWindowMaximized(window);
-				if (window->maximized != maximized)
-				{
+			} else if (event->xproperty.atom == _plaf.x11NET_WM_STATE) {
+				const bool maximized = plafIsWindowMaximized(window);
+				if (window->maximized != maximized) {
 					window->maximized = maximized;
 					_plafInputWindowMaximize(window, maximized);
 				}
 			}
-
 			return;
 		}
 
@@ -2637,8 +2623,7 @@ void plafRestoreWindow(plafWindow* window) {
 		return;
 	}
 
-	if (_plafWindowMinimized(window))
-	{
+	if (plafIsWindowMinimized(window)) {
 		_plaf.xlibMapWindow(_plaf.x11Display, window->x11Window);
 		waitForVisibilityNotify(window);
 	}
@@ -2819,7 +2804,7 @@ bool plafIsWindowFocused(plafWindow* window) {
 	return window->x11Window == focused;
 }
 
-bool _plafWindowMinimized(plafWindow* window) {
+bool plafIsWindowMinimized(plafWindow* window) {
 	return getWindowState(window) == IconicState;
 }
 
@@ -2829,7 +2814,7 @@ bool _plafWindowVisible(plafWindow* window) {
 	return wa.map_state == IsViewable;
 }
 
-bool _plafWindowMaximized(plafWindow* window) {
+bool plafIsWindowMaximized(plafWindow* window) {
 	Atom* states;
 	bool maximized = false;
 

@@ -249,9 +249,6 @@ void plafWindowHint(int hint, int value)
 		case WINDOW_ATTR_HINT_FLOATING:
 			_plaf.windowCfg.floating = value ? true : false;
 			return;
-		case WINDOW_ATTR_HINT_MAXIMIZED:
-			_plaf.windowCfg.maximized = value ? true : false;
-			return;
 		case WINDOW_HINT_POSITION_X:
 			_plaf.windowCfg.xpos = value;
 			return;
@@ -506,16 +503,9 @@ void plafHideWindow(plafWindow* window) {
 }
 
 int plafGetWindowAttrib(plafWindow* window, int attrib) {
-	switch (attrib)
-	{
-		case WINDOW_ATTR_FOCUSED:
-			return plafIsWindowFocused(window);
-		case WINDOW_ATTR_MINIMIZED:
-			return _plafWindowMinimized(window);
+	switch (attrib) {
 		case WINDOW_ATTR_VISIBLE:
 			return _plafWindowVisible(window);
-		case WINDOW_ATTR_HINT_MAXIMIZED:
-			return _plafWindowMaximized(window);
 		case WINDOW_ATTR_HOVERED:
 			return _plafWindowHovered(window);
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:

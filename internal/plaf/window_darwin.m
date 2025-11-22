@@ -568,10 +568,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		if (wndconfig->floating) {
 			[window->nsWindow setLevel:NSFloatingWindowLevel];
 		}
-
-		if (wndconfig->maximized) {
-			[window->nsWindow zoom:nil];
-		}
 	}
 
 	window->nsView = [[MacContentView alloc] initWithPlafWindow:window];
@@ -989,26 +985,24 @@ bool plafIsWindowFocused(plafWindow* window) {
 	}
 }
 
-bool _plafWindowMinimized(plafWindow* window) {
+bool plafIsWindowMinimized(plafWindow* window) {
 	@autoreleasepool {
-	return [window->nsWindow isMiniaturized];
+		return [window->nsWindow isMiniaturized];
 	}
 }
 
 bool _plafWindowVisible(plafWindow* window) {
 	@autoreleasepool {
-	return [window->nsWindow isVisible];
+		return [window->nsWindow isVisible];
 	}
 }
 
-bool _plafWindowMaximized(plafWindow* window) {
+bool plafIsWindowMaximized(plafWindow* window) {
 	@autoreleasepool {
-
-	if (window->resizable)
-		return [window->nsWindow isZoomed];
-	else
+		if (window->resizable) {
+			return [window->nsWindow isZoomed];
+		}
 		return false;
-
 	}
 }
 

@@ -732,27 +732,25 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			const bool minimized = wParam == SIZE_MINIMIZED;
 			const bool maximized = wParam == SIZE_MAXIMIZED || (window->maximized && wParam != SIZE_RESTORED);
 
-			if (window->win32Minimized != minimized)
+			if (window->win32Minimized != minimized) {
 				_plafInputWindowMinimize(window, minimized);
+			}
 
-			if (window->maximized != maximized)
+			if (window->maximized != maximized) {
 				_plafInputWindowMaximize(window, maximized);
+			}
 
-			if (width != window->width || height != window->height)
-			{
+			if (width != window->width || height != window->height) {
 				window->width = width;
 				window->height = height;
-
 				_plafInputFramebufferSize(window, width, height);
 				_plafInputWindowSize(window, width, height);
 			}
 
-			if (window->monitor && window->win32Minimized != minimized)
-			{
-				if (minimized)
+			if (window->monitor && window->win32Minimized != minimized) {
+				if (minimized) {
 					releaseMonitor(window);
-				else
-				{
+				} else {
 					acquireMonitor(window);
 					fitToMonitor(window);
 				}
@@ -1033,12 +1031,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		frameHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
 	} else {
 		RECT rect = { 0, 0, wndconfig->width, wndconfig->height };
-
-		window->maximized = wndconfig->maximized;
-		if (wndconfig->maximized) {
-			style |= WS_MAXIMIZE;
-		}
-
 		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 
 		if (wndconfig->xpos == ANY_POSITION && wndconfig->ypos == ANY_POSITION) {
@@ -1104,16 +1096,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		wp.rcNormalPosition = rect;
 		wp.showCmd = SW_HIDE;
 		SetWindowPlacement(window->win32Window, &wp);
-
-		// Adjust rect of maximized undecorated window, because by default Windows will
-		// make such a window cover the whole monitor instead of its workarea
-
-		if (wndconfig->maximized && !wndconfig->decorated) {
-			MONITORINFO mi = { sizeof(mi) };
-			GetMonitorInfoW(mh, &mi);
-			SetWindowPos(window->win32Window, HWND_TOP, mi.rcWork.left, mi.rcWork.top,
-				mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top, SWP_NOACTIVATE | SWP_NOZORDER);
-		}
 	}
 
 	DragAcceptFiles(window->win32Window, TRUE);
@@ -1494,7 +1476,7 @@ bool plafIsWindowFocused(plafWindow* window) {
 	return window->win32Window == GetActiveWindow();
 }
 
-bool _plafWindowMinimized(plafWindow* window) {
+bool plafIsWindowMinimized(plafWindow* window) {
 	return IsIconic(window->win32Window);
 }
 
@@ -1502,7 +1484,7 @@ bool _plafWindowVisible(plafWindow* window) {
 	return IsWindowVisible(window->win32Window);
 }
 
-bool _plafWindowMaximized(plafWindow* window) {
+bool plafIsWindowMaximized(plafWindow* window) {
 	return IsZoomed(window->win32Window);
 }
 
