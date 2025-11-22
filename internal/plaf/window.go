@@ -66,11 +66,10 @@ const (
 
 // Context related hints.
 const (
-	ContextRobustness       Hint = C.WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS       // Specifies the robustness strategy to be used by the context.
-	ContextReleaseBehavior  Hint = C.WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR // Specifies the release behavior to be used by the context.
-	OpenGLForwardCompatible Hint = C.WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT    // Specifies whether the OpenGL context should be forward-compatible. Hard constraint.
-	OpenGLDebugContext      Hint = C.WINDOW_ATTR_HINT_CONTEXT_DEBUG            // Specifies whether to create a debug OpenGL context, which may have additional error and performance issue reporting functionality. If OpenGL ES is requested, this hint is ignored.
-	OpenGLProfile           Hint = C.WINDOW_ATTR_HINT_OPENGL_PROFILE           // Specifies which OpenGL profile to create the context for. Hard constraint.
+	ContextRobustness       Hint = C.WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS    // Specifies the robustness strategy to be used by the context.
+	OpenGLForwardCompatible Hint = C.WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT // Specifies whether the OpenGL context should be forward-compatible. Hard constraint.
+	OpenGLDebugContext      Hint = C.WINDOW_ATTR_HINT_CONTEXT_DEBUG         // Specifies whether to create a debug OpenGL context, which may have additional error and performance issue reporting functionality. If OpenGL ES is requested, this hint is ignored.
+	OpenGLProfile           Hint = C.WINDOW_ATTR_HINT_OPENGL_PROFILE        // Specifies which OpenGL profile to create the context for. Hard constraint.
 )
 
 // Framebuffer related hints.
@@ -106,13 +105,6 @@ const (
 	OpenGLProfileAny    int = C.OPENGL_PROFILE_ANY
 	OpenGLProfileCore   int = C.OPENGL_PROFILE_CORE
 	OpenGLProfileCompat int = C.OPENGL_PROFILE_COMPAT
-)
-
-// Values for ContextReleaseBehavior hint.
-const (
-	ReleaseBehaviorAny   int = C.RELEASE_BEHAVIOR_ANY
-	ReleaseBehaviorFlush int = C.RELEASE_BEHAVIOR_FLUSH
-	ReleaseBehaviorNone  int = C.RELEASE_BEHAVIOR_NONE
 )
 
 // Other values.

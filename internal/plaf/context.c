@@ -26,11 +26,6 @@ plafError * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
 				 ctxconfig->robustness);
 		}
 	}
-	if (ctxconfig->release) {
-		if (ctxconfig->release != RELEASE_BEHAVIOR_NONE && ctxconfig->release != RELEASE_BEHAVIOR_FLUSH) {
-			return _plafNewError("Invalid context release behavior 0x%08X", ctxconfig->release);
-		}
-	}
 	return NULL;
 }
 
@@ -240,9 +235,6 @@ plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxc
 		if (flags & GL_CONTEXT_FLAG_DEBUG_BIT) {
 			window->context.debug = true;
 		}
-		if (flags & GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR) {
-			window->context.noerror = true;
-		}
 	}
 
 	if (window->context.major >= 4 || (window->context.major == 3 && window->context.minor >= 2)) {
@@ -262,16 +254,6 @@ plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxc
 			window->context.robustness = CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET;
 		} else if (strategy == GL_NO_RESET_NOTIFICATION_ARB) {
 			window->context.robustness = CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION;
-		}
-	}
-
-	if (plafExtensionSupported("GL_KHR_context_flush_control")) {
-		GLint behavior;
-		window->context.GetIntegerv(GL_CONTEXT_RELEASE_BEHAVIOR, &behavior);
-		if (behavior == GL_NONE) {
-			window->context.release = RELEASE_BEHAVIOR_NONE;
-		} else if (behavior == GL_CONTEXT_RELEASE_BEHAVIOR_FLUSH) {
-			window->context.release = RELEASE_BEHAVIOR_FLUSH;
 		}
 	}
 

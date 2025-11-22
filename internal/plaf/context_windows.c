@@ -362,10 +362,8 @@ plafError* _plafInitOpenGL(void) {
 	_plaf.wglARB_create_context = extensionSupportedWGL("WGL_ARB_create_context");
 	_plaf.wglARB_create_context_profile = extensionSupportedWGL("WGL_ARB_create_context_profile");
 	_plaf.wglARB_create_context_robustness = extensionSupportedWGL("WGL_ARB_create_context_robustness");
-	_plaf.wglARB_create_context_no_error = extensionSupportedWGL("WGL_ARB_create_context_no_error");
 	_plaf.wglEXT_swap_control = extensionSupportedWGL("WGL_EXT_swap_control");
 	_plaf.wglARB_pixel_format = extensionSupportedWGL("WGL_ARB_pixel_format");
-	_plaf.wglARB_context_flush_control = extensionSupportedWGL("WGL_ARB_context_flush_control");
 
 	_plaf.wglMakeCurrent(pdc, prc);
 	_plaf.wglDeleteContext(rc);
@@ -452,22 +450,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 					SET_ATTRIB(WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_LOSE_CONTEXT_ON_RESET_ARB);
 				}
 				flags |= WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-			}
-		}
-
-		if (ctxconfig->release) {
-			if (_plaf.wglARB_context_flush_control) {
-				if (ctxconfig->release == RELEASE_BEHAVIOR_NONE) {
-					SET_ATTRIB(WGL_CONTEXT_RELEASE_BEHAVIOR_ARB, WGL_CONTEXT_RELEASE_BEHAVIOR_NONE_ARB);
-				} else if (ctxconfig->release == RELEASE_BEHAVIOR_FLUSH) {
-					SET_ATTRIB(WGL_CONTEXT_RELEASE_BEHAVIOR_ARB, WGL_CONTEXT_RELEASE_BEHAVIOR_FLUSH_ARB);
-				}
-			}
-		}
-
-		if (ctxconfig->noerror) {
-			if (_plaf.wglARB_create_context_no_error) {
-				SET_ATTRIB(WGL_CONTEXT_OPENGL_NO_ERROR_ARB, true);
 			}
 		}
 

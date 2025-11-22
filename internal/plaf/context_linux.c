@@ -305,14 +305,6 @@ plafError* _plafInitOpenGL(void) {
 	if (extensionSupportedGLX("GLX_ARB_create_context_profile")) {
 		_plaf.glxARB_create_context_profile = true;
 	}
-
-	if (extensionSupportedGLX("GLX_ARB_create_context_no_error")) {
-		_plaf.glxARB_create_context_no_error = true;
-	}
-
-	if (extensionSupportedGLX("GLX_ARB_context_flush_control")) {
-		_plaf.glxARB_context_flush_control = true;
-	}
 	return NULL;
 }
 
@@ -385,22 +377,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 					SET_ATTRIB(GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_LOSE_CONTEXT_ON_RESET_ARB);
 				}
 				flags |= GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-			}
-		}
-
-		if (ctxconfig->release) {
-			if (_plaf.glxARB_context_flush_control) {
-				if (ctxconfig->release == RELEASE_BEHAVIOR_NONE) {
-					SET_ATTRIB(GLX_CONTEXT_RELEASE_BEHAVIOR_ARB, GLX_CONTEXT_RELEASE_BEHAVIOR_NONE_ARB);
-				} else if (ctxconfig->release == RELEASE_BEHAVIOR_FLUSH) {
-					SET_ATTRIB(GLX_CONTEXT_RELEASE_BEHAVIOR_ARB, GLX_CONTEXT_RELEASE_BEHAVIOR_FLUSH_ARB);
-				}
-			}
-		}
-
-		if (ctxconfig->noerror) {
-			if (_plaf.glxARB_create_context_no_error) {
-				SET_ATTRIB(GLX_CONTEXT_OPENGL_NO_ERROR_ARB, true);
 			}
 		}
 

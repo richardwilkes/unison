@@ -64,10 +64,6 @@ typedef unsigned char GLubyte;
 	#define GLX_LOSE_CONTEXT_ON_RESET_ARB 0x8252
 	#define GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
 	#define GLX_NO_RESET_NOTIFICATION_ARB 0x8261
-	#define GLX_CONTEXT_RELEASE_BEHAVIOR_ARB 0x2097
-	#define GLX_CONTEXT_RELEASE_BEHAVIOR_NONE_ARB 0
-	#define GLX_CONTEXT_RELEASE_BEHAVIOR_FLUSH_ARB 0x2098
-	#define GLX_CONTEXT_OPENGL_NO_ERROR_ARB 0x31b3
 
 	#include <unistd.h>
 	#include <X11/Xlib.h>
@@ -331,10 +327,6 @@ typedef unsigned char GLubyte;
 	#define WGL_LOSE_CONTEXT_ON_RESET_ARB 0x8252
 	#define WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
 	#define WGL_NO_RESET_NOTIFICATION_ARB 0x8261
-	#define WGL_CONTEXT_RELEASE_BEHAVIOR_ARB 0x2097
-	#define WGL_CONTEXT_RELEASE_BEHAVIOR_NONE_ARB 0
-	#define WGL_CONTEXT_RELEASE_BEHAVIOR_FLUSH_ARB 0x2098
-	#define WGL_CONTEXT_OPENGL_NO_ERROR_ARB 0x31b3
 	#define WGL_COLORSPACE_EXT 0x309d
 	#define WGL_COLORSPACE_SRGB_EXT 0x3089
 	#define ERROR_INVALID_VERSION_ARB 0x2095
@@ -566,8 +558,6 @@ typedef unsigned char GLubyte;
 #define WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT     0x00022006
 #define WINDOW_ATTR_HINT_CONTEXT_DEBUG             0x00022007
 #define WINDOW_ATTR_HINT_OPENGL_PROFILE            0x00022008
-#define WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR  0x00022009
-#define WINDOW_ATTR_HINT_CONTEXT_ERROR_SUPPRESSION 0x0002200A
 #define WINDOW_HINT_SCALE_TO_MONITOR               0x0002200C
 #define WINDOW_HINT_SCALE_FRAMEBUFFER              0x0002200D
 
@@ -580,11 +570,6 @@ typedef unsigned char GLubyte;
 #define OPENGL_PROFILE_ANY     0
 #define OPENGL_PROFILE_CORE    0x00032001
 #define OPENGL_PROFILE_COMPAT  0x00032002
-
-// Context release behavior values
-#define RELEASE_BEHAVIOR_ANY   0
-#define RELEASE_BEHAVIOR_FLUSH 0x00035001
-#define RELEASE_BEHAVIOR_NONE  0x00035002
 
 // Standard cursor IDs
 #define STD_CURSOR_ARROW             0x00036001
@@ -697,8 +682,6 @@ typedef struct plafLib            plafLib;
 #define GL_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
 #define GL_LOSE_CONTEXT_ON_RESET_ARB 0x8252
 #define GL_NO_RESET_NOTIFICATION_ARB 0x8261
-#define GL_CONTEXT_RELEASE_BEHAVIOR 0x82fb
-#define GL_CONTEXT_RELEASE_BEHAVIOR_FLUSH 0x82fc
 #define GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR 0x00000008
 
 typedef void (APIENTRY * FN_GLCLEAR)(GLbitfield);
@@ -725,7 +708,6 @@ struct plafCtxCfg {
 	int         minor;
 	bool        forward;
 	bool        debug;
-	bool        noerror;
 	int         profile;
 	int         robustness;
 	int         release;
@@ -765,7 +747,6 @@ struct plafCtx {
 	int                  revision;
 	bool                 forward;
 	bool                 debug;
-	bool                 noerror;
 	int                  profile;
 	int                  robustness;
 	int                  release;
@@ -1186,8 +1167,6 @@ struct plafLib {
 	bool                                glxARB_create_context;
 	bool                                glxARB_create_context_profile;
 	bool                                glxARB_create_context_robustness;
-	bool                                glxARB_create_context_no_error;
-	bool                                glxARB_context_flush_control;
 #elif defined(_WIN32)
 	HINSTANCE                           win32Instance;
 	HWND                                win32HelperWindowHandle;
@@ -1234,8 +1213,6 @@ struct plafLib {
 	bool                                wglARB_create_context;
 	bool                                wglARB_create_context_profile;
 	bool                                wglARB_create_context_robustness;
-	bool                                wglARB_create_context_no_error;
-	bool                                wglARB_context_flush_control;
 #endif
 };
 

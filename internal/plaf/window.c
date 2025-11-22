@@ -279,14 +279,8 @@ void plafWindowHint(int hint, int value)
 		case WINDOW_ATTR_HINT_CONTEXT_DEBUG:
 			_plaf.contextCfg.debug = value ? true : false;
 			return;
-		case WINDOW_ATTR_HINT_CONTEXT_ERROR_SUPPRESSION:
-			_plaf.contextCfg.noerror = value ? true : false;
-			return;
 		case WINDOW_ATTR_HINT_OPENGL_PROFILE:
 			_plaf.contextCfg.profile = value;
-			return;
-		case WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR:
-			_plaf.contextCfg.release = value;
 			return;
 		case WINDOW_HINT_REFRESH_RATE:
 			_plaf.desiredRefreshRate = value;
@@ -534,10 +528,6 @@ int plafGetWindowAttrib(plafWindow* window, int attrib) {
 			return window->context.debug;
 		case WINDOW_ATTR_HINT_OPENGL_PROFILE:
 			return window->context.profile;
-		case WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR:
-			return window->context.release;
-		case WINDOW_ATTR_HINT_CONTEXT_ERROR_SUPPRESSION:
-			return window->context.noerror;
 	}
 
 	_plafInputError("Invalid window attribute 0x%08X", attrib);
