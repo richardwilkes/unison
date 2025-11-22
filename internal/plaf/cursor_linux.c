@@ -19,7 +19,7 @@ void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 
 void _plafSetCursor(plafWindow* window) {
 	if (!window->cursorHidden) {
-		updateCursorImage(window);
+		_plafUpdateCursorImage(window);
 		_plaf.xlibFlush(_plaf.x11Display);
 	}
 }

@@ -21,7 +21,7 @@ static void showCursor(plafWindow* window) {
 }
 
 // Updates the cursor image according to its cursor mode.
-void updateCursorImage(plafWindow* window) {
+void _plafUpdateCursorImage(plafWindow* window) {
 	if (window->cursorHidden) {
 		hideCursor(window);
 	} else {
@@ -48,7 +48,7 @@ static void acquireMonitor(plafWindow* window) {
 static void releaseMonitor(plafWindow* window) {
 	if (window->monitor->window == window) {
 		window->monitor->window = NULL;
-		_plafRestoreVideoModeCocoa(window->monitor);
+		_plafRestoreVideoMode(window->monitor);
 	}
 }
 
@@ -182,8 +182,8 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
 	_plafInputWindowFocus(window, true);
-	if (cursorInContentArea(window)) {
-		updateCursorImage(window);
+	if (_plafCursorInContentArea(window)) {
+		_plafUpdateCursorImage(window);
 	}
 }
 
@@ -250,7 +250,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)cursorUpdate:(NSEvent *)event {
-	updateCursorImage(window);
+	_plafUpdateCursorImage(window);
 }
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)event {
@@ -513,7 +513,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
 	window->nsDelegate = [[MacWindowDelegate alloc] initWithPlafWindow:window];
 	if (!window->nsDelegate) {
-		return createErrorResponse("Cocoa: Failed to create window delegate");
+		return _plafNewError("Cocoa: Failed to create window delegate");
 	}
 
 	NSRect contentRect;
@@ -547,7 +547,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	window->nsWindow = [[MacWindow alloc] initWithContentRect:contentRect styleMask:styleMask
 		backing:NSBackingStoreBuffered defer:NO];
 	if (!window->nsWindow) {
-		return createErrorResponse("Cocoa: Failed to create window");
+		return _plafNewError("Cocoa: Failed to create window");
 	}
 
 	if (window->monitor) {
@@ -623,12 +623,12 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 			return err;
 		}
 
-		err = _plafInitNSGL();
+		err = _plafInitOpenGL();
 		if (err) {
 			return err;
 		}
 
-		err = _plafCreateContextNSGL(window, ctxconfig, fbconfig);
+		err = _plafCreateOpenGLContext(window, ctxconfig, fbconfig);
 		if (err) {
 			return err;
 		}
@@ -1148,11 +1148,11 @@ void plafPostEmptyEvent(void) {
 	}
 }
 
-void plafUpdateCursor(plafWindow* window) {
+void _plafUpdateCursor(plafWindow* window) {
 	@autoreleasepool {
 		if (_plafWindowFocused(window)) {
-			if (cursorInContentArea(window)) {
-				updateCursorImage(window);
+			if (_plafCursorInContentArea(window)) {
+				_plafUpdateCursorImage(window);
 			}
 		}
 	}

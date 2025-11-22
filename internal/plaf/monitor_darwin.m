@@ -88,7 +88,7 @@ static void endFadeReservation(CGDisplayFadeReservationToken token)
 
 // Poll for changes in the set of connected monitors
 //
-void _plafPollMonitorsCocoa(void)
+void _plafPollMonitors(void)
 {
 	uint32_t displayCount;
 	CGGetOnlineDisplayList(0, NULL, &displayCount);
@@ -212,7 +212,7 @@ void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired)
 
 // Restore the previously saved (original) video mode
 //
-void _plafRestoreVideoModeCocoa(plafMonitor* monitor)
+void _plafRestoreVideoMode(plafMonitor* monitor)
 {
 	if (monitor->nsPreviousMode)
 	{

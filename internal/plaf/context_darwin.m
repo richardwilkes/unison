@@ -68,32 +68,30 @@ static void destroyContextNSGL(plafWindow* window)
 //////////////////////////////////////////////////////////////////////////
 
 // Initialize OpenGL support
-plafError* _plafInitNSGL(void) {
+plafError* _plafInitOpenGL(void) {
 	if (_plaf.nsglFramework) {
 		return NULL;
 	}
 	_plaf.nsglFramework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
 	if (_plaf.nsglFramework == NULL) {
-		return createErrorResponse("NSGL: Failed to locate OpenGL framework");
+		return _plafNewError("NSGL: Failed to locate OpenGL framework");
 	}
 	return NULL;
 }
 
 // Terminate OpenGL support
-//
-void _plafTerminateNSGL(void)
-{
+void _plafTerminateOpenGL(void) {
 }
 
 // Create the OpenGL context
-plafError* _plafCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	if (ctxconfig->major > 2) {
 		if (ctxconfig->major == 3 && ctxconfig->minor < 2) {
-			return createErrorResponse("NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
+			return _plafNewError("NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
 		}
 	}
 	if (ctxconfig->major >= 3 && ctxconfig->profile == OPENGL_PROFILE_COMPAT) {
-		return createErrorResponse("NSGL: The compatibility profile is not available on macOS");
+		return _plafNewError("NSGL: The compatibility profile is not available on macOS");
 	}
 
 	// Context robustness modes (GL_KHR_robustness) are not supported by
@@ -182,7 +180,7 @@ plafError* _plafCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfi
 
 	window->context.nsglPixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
 	if (!window->context.nsglPixelFormat) {
-		return createErrorResponse("NSGL: Failed to find a suitable pixel format");
+		return _plafNewError("NSGL: Failed to find a suitable pixel format");
 	}
 
 	NSOpenGLContext* share = nil;
@@ -193,7 +191,7 @@ plafError* _plafCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfi
 	window->context.nsglCtx = [[NSOpenGLContext alloc]
 		initWithFormat:window->context.nsglPixelFormat shareContext:share];
 	if (!window->context.nsglCtx) {
-		return createErrorResponse("NSGL: Failed to create OpenGL context");
+		return _plafNewError("NSGL: Failed to create OpenGL context");
 	}
 
 	if (fbconfig->transparent) {

@@ -16,19 +16,19 @@
 plafError * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
 	if (ctxconfig->profile) {
 		if (ctxconfig->profile != OPENGL_PROFILE_CORE && ctxconfig->profile != OPENGL_PROFILE_COMPAT) {
-			return createErrorResponse("Invalid OpenGL profile 0x%08X", ctxconfig->profile);
+			return _plafNewError("Invalid OpenGL profile 0x%08X", ctxconfig->profile);
 		}
 	}
 	if (ctxconfig->robustness) {
 		if (ctxconfig->robustness != CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION &&
 			ctxconfig->robustness != CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET) {
-			return createErrorResponse("Invalid context robustness mode 0x%08X",
+			return _plafNewError("Invalid context robustness mode 0x%08X",
 				 ctxconfig->robustness);
 		}
 	}
 	if (ctxconfig->release) {
 		if (ctxconfig->release != RELEASE_BEHAVIOR_NONE && ctxconfig->release != RELEASE_BEHAVIOR_FLUSH) {
-			return createErrorResponse("Invalid context release behavior 0x%08X", ctxconfig->release);
+			return _plafNewError("Invalid context release behavior 0x%08X", ctxconfig->release);
 		}
 	}
 	return NULL;
@@ -202,24 +202,24 @@ plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxc
 	window->context.GetString = (FN_GLGETSTRING)window->context.getProcAddress("glGetString");
 	if (!window->context.GetIntegerv || !window->context.GetString) {
 		plafMakeContextCurrent(previous);
-		return createErrorResponse("Entry point retrieval is broken");
+		return _plafNewError("Entry point retrieval is broken");
 	}
 
 	const char* version = (const char*) window->context.GetString(GL_VERSION);
 	if (!version) {
 		plafMakeContextCurrent(previous);
-		return createErrorResponse("OpenGL version string retrieval is broken");
+		return _plafNewError("OpenGL version string retrieval is broken");
 	}
 
 	if (!sscanf(version, "%d.%d.%d", &window->context.major, &window->context.minor, &window->context.revision)) {
 		plafMakeContextCurrent(previous);
-		return createErrorResponse("No version found in OpenGL version string");
+		return _plafNewError("No version found in OpenGL version string");
 	}
 
 	if (window->context.major < ctxconfig->major ||
 		(window->context.major == ctxconfig->major && window->context.minor < ctxconfig->minor)) {
 		plafMakeContextCurrent(previous);
-		return createErrorResponse("Requested OpenGL version %i.%i, got version %i.%i",
+		return _plafNewError("Requested OpenGL version %i.%i, got version %i.%i",
 			ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
 	}
 
@@ -227,7 +227,7 @@ plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxc
 		window->context.GetStringi = (FN_GLGETSTRINGI)window->context.getProcAddress("glGetStringi");
 		if (!window->context.GetStringi) {
 			plafMakeContextCurrent(previous);
-			return createErrorResponse("Entry point retrieval is broken");
+			return _plafNewError("Entry point retrieval is broken");
 		}
 	}
 

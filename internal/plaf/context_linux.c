@@ -69,7 +69,7 @@ static IntBool chooseGLXFBConfig(const plafFrameBufferCfg* desired,
 			XVisualInfo* vi = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, n);
 			if (vi)
 			{
-				u->transparent = _plafIsVisualTransparentX11(vi->visual);
+				u->transparent = _plafIsVisualTransparent(vi->visual);
 				_plaf.xlibFree(vi);
 			}
 		}
@@ -125,11 +125,11 @@ static GLXContext createLegacyContextGLX(plafWindow* window,
 static plafError* makeContextCurrentGLX(plafWindow* window) {
 	if (window) {
 		if (!_plaf.glxMakeCurrent(_plaf.x11Display, window->context.glxWindow, window->context.glxHandle)) {
-			return createErrorResponse("GLX: Failed to make context current");
+			return _plafNewError("GLX: Failed to make context current");
 		}
 	} else {
 		if (!_plaf.glxMakeCurrent(_plaf.x11Display, None, NULL)) {
-			return createErrorResponse("GLX: Failed to clear current context");
+			return _plafNewError("GLX: Failed to clear current context");
 		}
 	}
 	_plaf.contextSlot = window;
@@ -200,7 +200,7 @@ static void destroyContextGLX(plafWindow* window)
 //////////////////////////////////////////////////////////////////////////
 
 // Initialize GLX
-plafError* _plafInitGLX(void) {
+plafError* _plafInitOpenGL(void) {
 	if (_plaf.glxHandle) {
 		return NULL;
 	}
@@ -216,7 +216,7 @@ plafError* _plafInitGLX(void) {
 			break;
 	}
 	if (!_plaf.glxHandle) {
-		return createErrorResponse("GLX: Failed to load GLX");
+		return _plafNewError("GLX: Failed to load GLX");
 	}
 
 	_plaf.glxGetFBConfigs = (FN_GLXGETFBCONFIGS)_plafGetModuleSymbol(_plaf.glxHandle, "glXGetFBConfigs");
@@ -246,7 +246,7 @@ plafError* _plafInitGLX(void) {
 		!_plaf.glxCreateWindow ||
 		!_plaf.glxDestroyWindow ||
 		!_plaf.glxGetVisualFromFBConfig) {
-		return createErrorResponse("GLX: Failed to load required entry points");
+		return _plafNewError("GLX: Failed to load required entry points");
 	}
 
 	// NOTE: Unlike GLX 1.3 entry points these are not required to be present
@@ -256,16 +256,16 @@ plafError* _plafInitGLX(void) {
 	int errorBase;
 	int eventBase;
 	if (!_plaf.glxQueryExtension(_plaf.x11Display, &_plaf.glxErrorBase, &eventBase)) {
-		return createErrorResponse("GLX: GLX extension not found");
+		return _plafNewError("GLX: GLX extension not found");
 	}
 
 	int major;
 	int minor;
 	if (!_plaf.glxQueryVersion(_plaf.x11Display, &major, &minor)) {
-		return createErrorResponse("GLX: Failed to query GLX version");
+		return _plafNewError("GLX: Failed to query GLX version");
 	}
 	if (major == 1 && minor < 3) {
-		return createErrorResponse("GLX: GLX version 1.3 is required");
+		return _plafNewError("GLX: GLX version 1.3 is required");
 	}
 
 	if (extensionSupportedGLX("GLX_EXT_swap_control")) {
@@ -321,12 +321,9 @@ plafError* _plafInitGLX(void) {
 
 // Terminate GLX
 //
-void _plafTerminateGLX(void)
-{
+void _plafTerminateOpenGL(void) {
 	// NOTE: This function must not call any X11 functions, as it is called after XCloseDisplay
-
-	if (_plaf.glxHandle)
-	{
+	if (_plaf.glxHandle) {
 		_plafFreeModule(_plaf.glxHandle);
 		_plaf.glxHandle = NULL;
 	}
@@ -339,7 +336,7 @@ void _plafTerminateGLX(void)
 }
 
 // Create the OpenGL or OpenGL ES context
-plafError* _plafCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	int attribs[40];
 	GLXFBConfig native = NULL;
 	GLXContext share = NULL;
@@ -349,22 +346,22 @@ plafError* _plafCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig
 	}
 
 	if (!chooseGLXFBConfig(fbconfig, &native)) {
-		return createErrorResponse("GLX: Failed to find a suitable GLXFBConfig");
+		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
 	}
 
 	if (ctxconfig->forward) {
 		if (!_plaf.glxARB_create_context) {
-			return createErrorResponse("GLX: Forward compatibility requested but GLX_ARB_create_context_profile is unavailable");
+			return _plafNewError("GLX: Forward compatibility requested but GLX_ARB_create_context_profile is unavailable");
 		}
 	}
 
 	if (ctxconfig->profile) {
 		if (!_plaf.glxARB_create_context || !_plaf.glxARB_create_context_profile) {
-			return createErrorResponse("GLX: An OpenGL profile requested but GLX_ARB_create_context_profile is unavailable");
+			return _plafNewError("GLX: An OpenGL profile requested but GLX_ARB_create_context_profile is unavailable");
 		}
 	}
 
-	_plafGrabErrorHandlerX11();
+	_plafGrabErrorHandler();
 
 	if (_plaf.glxARB_create_context) {
 		int index = 0, mask = 0, flags = 0;
@@ -444,15 +441,15 @@ plafError* _plafCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig
 		window->context.glxHandle = createLegacyContextGLX(window, native, share);
 	}
 
-	_plafReleaseErrorHandlerX11();
+	_plafReleaseErrorHandler();
 
 	if (!window->context.glxHandle) {
-		return createErrorResponse("GLX: Failed to create context");
+		return _plafNewError("GLX: Failed to create context");
 	}
 
 	window->context.glxWindow = _plaf.glxCreateWindow(_plaf.x11Display, native, window->x11Window, NULL);
 	if (!window->context.glxWindow) {
-		return createErrorResponse("GLX: Failed to create window");
+		return _plafNewError("GLX: Failed to create window");
 	}
 
 	window->context.glxFBConfig = native;
@@ -468,14 +465,14 @@ plafError* _plafCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig
 #undef SET_ATTRIB
 
 // Returns the Visual and depth of the chosen GLXFBConfig
-plafError* _plafChooseVisualGLX(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
+plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
 	GLXFBConfig native;
 	if (!chooseGLXFBConfig(fbconfig, &native)) {
-		return createErrorResponse("GLX: Failed to find a suitable GLXFBConfig");
+		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
 	}
 	XVisualInfo* result = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, native);
 	if (!result) {
-		return createErrorResponse("GLX: Failed to retrieve Visual for GLXFBConfig");
+		return _plafNewError("GLX: Failed to retrieve Visual for GLXFBConfig");
 	}
 	*visual = result->visual;
 	*depth  = result->depth;

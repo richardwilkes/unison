@@ -148,7 +148,7 @@ static void createKeyTables(void) {
     for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
 		[window->context.nsglCtx update];
     }
-    _plafPollMonitorsCocoa();
+    _plafPollMonitors();
 }
 
 - (void)applicationWillFinishLaunching:(NSNotification *)notification {
@@ -161,7 +161,7 @@ static void createKeyTables(void) {
 
 - (void)applicationDidHide:(NSNotification *)notification {
     for (int i = 0;  i < _plaf.monitorCount;  i++) {
-        _plafRestoreVideoModeCocoa(_plaf.monitors[i]);
+        _plafRestoreVideoMode(_plaf.monitors[i]);
 	}
 }
 
@@ -174,7 +174,7 @@ plafError* _plafInit(void) {
 		_plaf.nsDelegate = [[PLAFApplicationDelegate alloc] init];
 		if (_plaf.nsDelegate == nil) {
 			plafTerminate();
-			return createErrorResponse("Failed to create application delegate");
+			return _plafNewError("Failed to create application delegate");
 		}
 
 		[NSApp setDelegate:_plaf.nsDelegate];
@@ -197,12 +197,12 @@ plafError* _plafInit(void) {
 		_plaf.nsEventSource = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		if (!_plaf.nsEventSource) {
 			plafTerminate();
-			return createErrorResponse("Failed to create event source");
+			return _plafNewError("Failed to create event source");
 		}
 
 		CGEventSourceSetLocalEventsSuppressionInterval(_plaf.nsEventSource, 0.0);
 
-		_plafPollMonitorsCocoa();
+		_plafPollMonitors();
 
 		if (![[NSRunningApplication currentApplication] isFinishedLaunching]) {
 			[NSApp run];
@@ -227,7 +227,7 @@ void _plafTerminate(void) {
 		if (_plaf.nsKeyUpMonitor) {
 			[NSEvent removeMonitor:_plaf.nsKeyUpMonitor];
 		}
-		_plafTerminateNSGL();
+		_plafTerminateOpenGL();
 	}
 }
 

@@ -26,7 +26,7 @@ const char* plafGetClipboardString(void) {
 	}
 
 	_plaf_free(_plaf.clipboardString);
-	_plaf.clipboardString = _plafCreateUTF8FromWideStringWin32(buffer);
+	_plaf.clipboardString = _plafCreateUTF8FromWideString(buffer);
 
 	GlobalUnlock(object);
 	CloseClipboard();

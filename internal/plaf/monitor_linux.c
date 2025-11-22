@@ -68,7 +68,7 @@ static plafVideoMode vidmodeFromModeInfo(const XRRModeInfo* mi,
 
 // Poll for changes in the set of connected monitors
 //
-void _plafPollMonitorsX11(void)
+void _plafPollMonitors(void)
 {
 	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
 	{
@@ -245,7 +245,7 @@ void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired)
 
 // Restore the saved (original) video mode for the specified monitor
 //
-void _plafRestoreVideoModeX11(plafMonitor* monitor)
+void _plafRestoreVideoMode(plafMonitor* monitor)
 {
 	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
 	{
@@ -335,12 +335,12 @@ void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
 		Atom* extents = NULL;
 		Atom* desktop = NULL;
 		const unsigned long extentCount =
-			_plafGetWindowPropertyX11(_plaf.x11Root,
+			_plafGetWindowProperty(_plaf.x11Root,
 									  _plaf.x11NET_WORKAREA,
 									  XA_CARDINAL,
 									  (unsigned char**) &extents);
 
-		if (_plafGetWindowPropertyX11(_plaf.x11Root,
+		if (_plafGetWindowProperty(_plaf.x11Root,
 									  _plaf.x11NET_CURRENT_DESKTOP,
 									  XA_CARDINAL,
 									  (unsigned char**) &desktop) > 0)

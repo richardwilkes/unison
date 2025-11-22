@@ -141,11 +141,6 @@ int _plaf_min(int a, int b)
 	return a < b ? a : b;
 }
 
-int _plaf_max(int a, int b)
-{
-	return a > b ? a : b;
-}
-
 void* _plaf_calloc(size_t count, size_t size)
 {
 	if (count && size)
@@ -222,7 +217,7 @@ void _plafInputError(const char* format, ...) {
 	}
 }
 
-plafError* createErrorResponse(const char* format, ...) {
+plafError* _plafNewError(const char* format, ...) {
 	va_list args;
 	plafError* errResp = (plafError*)malloc(sizeof(plafError));
 	errResp->next = NULL;

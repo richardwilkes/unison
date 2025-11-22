@@ -12,13 +12,13 @@ static plafError* loadLibraries(void)
 							(const WCHAR*) &_plaf,
 							(HMODULE*) &_plaf.win32Instance))
 	{
-		return createErrorResponse("Failed to retrieve own module handle");
+		return _plafNewError("Failed to retrieve own module handle");
 	}
 
 	_plaf.win32User32Instance = _plafLoadModule("user32.dll");
 	if (!_plaf.win32User32Instance)
 	{
-		return createErrorResponse("Failed to load user32.dll");
+		return _plafNewError("Failed to load user32.dll");
 	}
 
 	_plaf.win32User32EnableNonClientDpiScaling_ = (FN_EnableNonClientDpiScaling)
@@ -221,7 +221,7 @@ static void createKeyTables(void)
 static LRESULT CALLBACK helperWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	if (uMsg == WM_DISPLAYCHANGE) {
-		_plafPollMonitorsWin32();
+		_plafPollMonitors();
 	}
 	return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
@@ -241,7 +241,7 @@ static plafError* createHelperWindow(void)
 	_plaf.win32HelperWindowClass = RegisterClassExW(&wc);
 	if (!_plaf.win32HelperWindowClass)
 	{
-		return createErrorResponse("Failed to register helper window class");
+		return _plafNewError("Failed to register helper window class");
 	}
 
 	_plaf.win32HelperWindowHandle =
@@ -256,7 +256,7 @@ static plafError* createHelperWindow(void)
 
 	if (!_plaf.win32HelperWindowHandle)
 	{
-		return createErrorResponse("Failed to create helper window");
+		return _plafNewError("Failed to create helper window");
 	}
 
 	// HACK: The command to the first ShowWindow call is ignored if the parent
@@ -293,22 +293,10 @@ static plafError* createHelperWindow(void)
 
 // Returns a wide string version of the specified UTF-8 string
 //
-WCHAR* _plafCreateWideStringFromUTF8Win32(const char* src) {
-	int count = MultiByteToWideChar(CP_UTF8, 0, src, -1, NULL, 0);
-	if (!count) {
-		return NULL;
-	}
-	WCHAR* target = _plaf_calloc(count, sizeof(WCHAR));
-	if (!MultiByteToWideChar(CP_UTF8, 0, src, -1, target, count)) {
-		_plaf_free(target);
-		return NULL;
-	}
-	return target;
-}
 
 // Returns a UTF-8 string version of the specified wide string
 //
-char* _plafCreateUTF8FromWideStringWin32(const WCHAR* src) {
+char* _plafCreateUTF8FromWideString(const WCHAR* src) {
 	int size = WideCharToMultiByte(CP_UTF8, 0, src, -1, NULL, 0, NULL, NULL);
 	if (!size) {
 		return NULL;
@@ -321,25 +309,9 @@ char* _plafCreateUTF8FromWideStringWin32(const WCHAR* src) {
 	return target;
 }
 
-// Replacement for IsWindowsVersionOrGreater, as we cannot rely on the
-// application having a correct embedded manifest
-//
-BOOL _plafIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp)
-{
-	OSVERSIONINFOEXW osvi = { sizeof(osvi), major, minor, 0, 0, {0}, sp };
-	DWORD mask = VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR;
-	ULONGLONG cond = VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL);
-	cond = VerSetConditionMask(cond, VER_MINORVERSION, VER_GREATER_EQUAL);
-	cond = VerSetConditionMask(cond, VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
-	// HACK: Use RtlVerifyVersionInfo instead of VerifyVersionInfoW as the
-	//       latter lies unless the user knew to embed a non-default manifest
-	//       announcing support for Windows 10 via supportedOS GUID
-	return _plaf.win32NTRtlVerifyVersionInfo_(&osvi, mask, cond) == 0;
-}
-
 // Checks whether we are on at least the specified build of Windows 10
 //
-BOOL IsWindows10BuildOrGreater(WORD build)
+BOOL _plafIsWindows10BuildOrGreater(WORD build)
 {
 	OSVERSIONINFOEXW osvi = { sizeof(osvi), 10, 0, build };
 	DWORD mask = VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER;
@@ -373,7 +345,7 @@ plafError* _plafInit(void) {
 		return errRsp;
 	}
 
-	_plafPollMonitorsWin32();
+	_plafPollMonitors();
 	return NULL;
 }
 
@@ -393,7 +365,7 @@ void _plafTerminate(void)
 		UnregisterClassW(MAKEINTATOM(_plaf.win32MainWindowClass), _plaf.win32Instance);
 
 
-	_plafTerminateWGL();
+	_plafTerminateOpenGL();
 
 	freeLibraries();
 }

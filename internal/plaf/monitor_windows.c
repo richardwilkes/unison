@@ -39,9 +39,9 @@ static plafMonitor* createMonitor(DISPLAY_DEVICEW* adapter,
 	RECT rect;
 
 	if (display)
-		name = _plafCreateUTF8FromWideStringWin32(display->DeviceString);
+		name = _plafCreateUTF8FromWideString(display->DeviceString);
 	else
-		name = _plafCreateUTF8FromWideStringWin32(adapter->DeviceString);
+		name = _plafCreateUTF8FromWideString(adapter->DeviceString);
 	if (!name)
 		return NULL;
 
@@ -95,7 +95,7 @@ static plafMonitor* createMonitor(DISPLAY_DEVICEW* adapter,
 
 // Poll for changes in the set of connected monitors
 //
-void _plafPollMonitorsWin32(void)
+void _plafPollMonitors(void)
 {
 	int i, disconnectedCount;
 	plafMonitor** disconnected = NULL;
@@ -262,7 +262,7 @@ void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired)
 
 // Restore the previously saved (original) video mode
 //
-void _plafRestoreVideoModeWin32(plafMonitor* monitor)
+void _plafRestoreVideoMode(plafMonitor* monitor)
 {
 	if (monitor->win32ModeChanged)
 	{
@@ -272,7 +272,7 @@ void _plafRestoreVideoModeWin32(plafMonitor* monitor)
 	}
 }
 
-void _plafGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale)
+void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale)
 {
 	UINT xdpi, ydpi;
 
@@ -304,7 +304,7 @@ void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos) {
 }
 
 void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale) {
-	_plafGetHMONITORContentScaleWin32(monitor->win32Handle, xscale, yscale);
+	_plafGetHMONITORContentScale(monitor->win32Handle, xscale, yscale);
 }
 
 void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height) {

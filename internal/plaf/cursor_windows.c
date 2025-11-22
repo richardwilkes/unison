@@ -19,7 +19,7 @@ void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	SetCursorPos(pos.x, pos.y);
 }
 
-IntBool cursorInContentArea(plafWindow* window) {
+IntBool _plafCursorInContentArea(plafWindow* window) {
 	POINT pos;
 	if (!GetCursorPos(&pos))
 		return false;
@@ -33,8 +33,8 @@ IntBool cursorInContentArea(plafWindow* window) {
 }
 
 void _plafSetCursor(plafWindow* window) {
-	if (cursorInContentArea(window)) {
-		updateCursorImage(window);
+	if (_plafCursorInContentArea(window)) {
+		_plafUpdateCursorImage(window);
 	}
 }
 

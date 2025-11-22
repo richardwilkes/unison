@@ -290,9 +290,9 @@ typedef unsigned char GLubyte;
 		} MONITOR_DPI_TYPE;
 	#endif
 	// Windows 10 Anniversary Update
-	#define IsWindows10Version1607OrGreater() IsWindows10BuildOrGreater(14393)
+	#define IsWindows10Version1607OrGreater() _plafIsWindows10BuildOrGreater(14393)
 	// Windows 10 Creators Update
-	#define IsWindows10Version1703OrGreater() IsWindows10BuildOrGreater(15063)
+	#define IsWindows10Version1703OrGreater() _plafIsWindows10BuildOrGreater(15063)
 	#define WGL_NUMBER_PIXEL_FORMATS_ARB 0x2000
 	#define WGL_SUPPORT_OPENGL_ARB 0x2010
 	#define WGL_DRAW_TO_WINDOW_ARB 0x2001
@@ -1363,6 +1363,13 @@ void _plafTerminate(void);
 void* _plafLoadModule(const char* path);
 void _plafFreeModule(void* module);
 moduleFunc _plafGetModuleSymbol(void* module, const char* name);
+#if defined(__GNUC__)
+void _plafInputError(const char* format, ...) __attribute__((format(printf, 1, 2)));
+plafError* _plafNewError(const char* format, ...) __attribute__((format(printf, 1, 2)));
+#else
+void _plafInputError(const char* format, ...);
+plafError* _plafNewError(const char* format, ...);
+#endif
 
 // Monitors
 plafMonitor* _plafAllocMonitor(const char* name, int widthMM, int heightMM);
@@ -1378,50 +1385,29 @@ const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoM
 int _plafCompareVideoModes(const plafVideoMode* first, const plafVideoMode* second);
 void _plafSplitBPP(int bpp, int* red, int* green, int* blue);
 void _plafMonitorNotify(plafMonitor* monitor, int action, int placement);
+void _plafPollMonitors(void);
+void _plafRestoreVideoMode(plafMonitor* monitor);
+#if defined(_WIN32)
+void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale);
+#endif
 
 // Windows
-
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                         PLAF event API                       //////
-//////////////////////////////////////////////////////////////////////////
-
 void _plafInputWindowFocus(plafWindow* window, IntBool focused);
 void _plafInputWindowPos(plafWindow* window, int xpos, int ypos);
 void _plafInputWindowSize(plafWindow* window, int width, int height);
 void _plafInputFramebufferSize(plafWindow* window, int width, int height);
-void _plafInputWindowContentScale(plafWindow* window,
-								  float xscale, float yscale);
+void _plafInputWindowContentScale(plafWindow* window, float xscale, float yscale);
 void _plafInputWindowMinimize(plafWindow* window, IntBool minimized);
 void _plafInputWindowMaximize(plafWindow* window, IntBool maximized);
 void _plafInputWindowDamage(plafWindow* window);
 void _plafInputWindowCloseRequest(plafWindow* window);
-
-void _plafInputKey(plafWindow* window,
-				   int key, int scancode, int action, int mods);
-void _plafInputChar(plafWindow* window,
-					uint32_t codepoint, int mods, IntBool plain);
+void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mods);
+void _plafInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool plain);
 void _plafInputScroll(plafWindow* window, double xoffset, double yoffset);
 void _plafInputMouseClick(plafWindow* window, int button, int action, int mods);
 void _plafInputCursorPos(plafWindow* window, double xpos, double ypos);
 void _plafInputCursorEnter(plafWindow* window, IntBool entered);
 void _plafInputDrop(plafWindow* window, int count, const char** names);
-
-#if defined(__GNUC__)
-void _plafInputError(const char* format, ...)
-	__attribute__((format(printf, 1, 2)));
-plafError* createErrorResponse(const char* format, ...) __attribute__((format(printf, 1, 2)));
-#else
-void _plafInputError(const char* format, ...);
-plafError* createErrorResponse(const char* format, ...);
-#endif
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                       PLAF internal API                      //////
-//////////////////////////////////////////////////////////////////////////
-
 plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _plafSetWindowTitle(plafWindow* window, const char* title);
 void _plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images);
@@ -1448,86 +1434,65 @@ void _plafSetWindowDecorated(plafWindow* window, IntBool enabled);
 void _plafSetWindowFloating(plafWindow* window, IntBool enabled);
 void _plafSetWindowOpacity(plafWindow* window, float opacity);
 void _plafSetWindowMousePassthrough(plafWindow* window, IntBool enabled);
-void _plafDestroyWindow(plafWindow* window);
-
-void _plafWaitEventsTimeout(double timeout);
-
-void _plafDestroyCursor(plafCursor* cursor);
-IntBool _plafCreateStandardCursor(plafCursor* cursor, int shape);
-void plafUpdateCursor(plafWindow* window);
-IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot);
-IntBool _plafStringInExtensionString(const char* string, const char* extensions);
-const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
+void _plafUpdateCursor(plafWindow* window);
 plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
-plafError* plafCheckContextConfig(const plafCtxCfg* ctxconfig);
-
-
-void _plafCenterCursorInContentArea(plafWindow* window);
-
-size_t _plafEncodeUTF8(char* s, uint32_t codepoint);
-char** _plafParseUriList(char* text, int* count);
-
-char* _plaf_strdup(const char* src);
-int _plaf_min(int a, int b);
-int _plaf_max(int a, int b);
-
-void* _plaf_calloc(size_t count, size_t size);
-void* _plaf_realloc(void* pointer, size_t size);
-void _plaf_free(void* pointer);
-
-void _plafTerminateGLX(void);
-
-void updateCursorImage(plafWindow* window);
 void _plafSetCursor(plafWindow* window);
 void _plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 #if defined(__APPLE__) || defined(_WIN32)
-IntBool cursorInContentArea(plafWindow* window);
+IntBool _plafCursorInContentArea(plafWindow* window);
+#endif
+void _plafUpdateCursorImage(plafWindow* window);
+void _plafDestroyWindow(plafWindow* window);
+#if defined(__linux__)
+void _plafCreateInputContext(plafWindow* window);
+unsigned long _plafGetWindowProperty(Window window, Atom property, Atom type, unsigned char** value);
+IntBool _plafIsVisualTransparent(Visual* visual);
+plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
 #endif
 
-#if defined(__APPLE__)
-void _plafPollMonitorsCocoa(void);
-void _plafRestoreVideoModeCocoa(plafMonitor* monitor);
+// Events
+void _plafWaitEventsTimeout(double timeout);
+#if defined(__linux__)
+IntBool _plafWaitForX11Event(double timeout);
+#endif
 
-float _plafTransformYCocoa(float y);
-
-plafError* _plafInitNSGL(void);
-void _plafTerminateNSGL(void);
-plafError* _plafCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _plafDestroyContextNSGL(plafWindow* window);
-#elif defined(__linux__)
-void _plafPollMonitorsX11(void);
-void _plafRestoreVideoModeX11(plafMonitor* monitor);
-
+// Cursors
+void _plafDestroyCursor(plafCursor* cursor);
+IntBool _plafCreateStandardCursor(plafCursor* cursor, int shape);
+IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot);
+#if defined(__linux__)
 Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot);
+#endif
 
-unsigned long _plafGetWindowPropertyX11(Window window, Atom property, Atom type, unsigned char** value);
-IntBool _plafIsVisualTransparentX11(Visual* visual);
+// Clipboard
+#if defined(__linux__)
+void _plafPushSelectionToManager(void);
+#endif
 
-void _plafGrabErrorHandlerX11(void);
-void _plafReleaseErrorHandlerX11(void);
+// OpenGL
+plafError* _plafInitOpenGL(void);
+plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+IntBool _plafStringInExtensionString(const char* string, const char* extensions);
+const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
+plafError* plafCheckContextConfig(const plafCtxCfg* ctxconfig);
+void _plafTerminateOpenGL(void);
 
-void _plafPushSelectionToManagerX11(void);
-void _plafCreateInputContextX11(plafWindow* window);
-
-plafError* _plafInitGLX(void);
-plafError* _plafCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _plafDestroyContextGLX(plafWindow* window);
-plafError* _plafChooseVisualGLX(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
-
-IntBool waitForX11Event(double timeout);
+// Utility
+size_t _plafEncodeUTF8(char* s, uint32_t codepoint);
+char** _plafParseUriList(char* text, int* count);
+char* _plaf_strdup(const char* src);
+int _plaf_min(int a, int b);
+void* _plaf_calloc(size_t count, size_t size);
+void* _plaf_realloc(void* pointer, size_t size);
+void _plaf_free(void* pointer);
+#if defined(__APPLE__)
+float _plafTransformYCocoa(float y);
+#elif defined(__linux__)
+void _plafGrabErrorHandler(void);
+void _plafReleaseErrorHandler(void);
 #elif defined(_WIN32)
-WCHAR* _plafCreateWideStringFromUTF8Win32(const char* src);
-char* _plafCreateUTF8FromWideStringWin32(const WCHAR* src);
-BOOL _plafIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp);
-BOOL IsWindows10BuildOrGreater(WORD build);
-
-void _plafPollMonitorsWin32(void);
-void _plafRestoreVideoModeWin32(plafMonitor* monitor);
-void _plafGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
-
-plafError* _plafInitWGL(void);
-void _plafTerminateWGL(void);
-plafError* _plafCreateContextWGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+char* _plafCreateUTF8FromWideString(const WCHAR* src);
+BOOL _plafIsWindows10BuildOrGreater(WORD build);
 #endif
 
 #ifdef __cplusplus

@@ -457,7 +457,7 @@ static void inputMethodInstantiateCallback(Display* display,
 		_plaf.xlibSetIMValues(_plaf.x11IM, XNDestroyCallback, &callback, NULL);
 
 		for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next)
-			_plafCreateInputContextX11(window);
+			_plafCreateInputContext(window);
 	}
 }
 
@@ -485,7 +485,7 @@ static void detectEWMH(void)
 	// First we read the _NET_SUPPORTING_WM_CHECK property on the root window
 
 	Window* windowFromRoot = NULL;
-	if (!_plafGetWindowPropertyX11(_plaf.x11Root,
+	if (!_plafGetWindowProperty(_plaf.x11Root,
 								   _plaf.x11NET_SUPPORTING_WM_CHECK,
 								   XA_WINDOW,
 								   (unsigned char**) &windowFromRoot))
@@ -493,23 +493,23 @@ static void detectEWMH(void)
 		return;
 	}
 
-	_plafGrabErrorHandlerX11();
+	_plafGrabErrorHandler();
 
 	// If it exists, it should be the XID of a top-level window
 	// Then we look for the same property on that window
 
 	Window* windowFromChild = NULL;
-	if (!_plafGetWindowPropertyX11(*windowFromRoot,
+	if (!_plafGetWindowProperty(*windowFromRoot,
 								   _plaf.x11NET_SUPPORTING_WM_CHECK,
 								   XA_WINDOW,
 								   (unsigned char**) &windowFromChild))
 	{
-		_plafReleaseErrorHandlerX11();
+		_plafReleaseErrorHandler();
 		_plaf.xlibFree(windowFromRoot);
 		return;
 	}
 
-	_plafReleaseErrorHandlerX11();
+	_plafReleaseErrorHandler();
 
 	// If the property exists, it should contain the XID of the window
 
@@ -530,7 +530,7 @@ static void detectEWMH(void)
 
 	Atom* supportedAtoms = NULL;
 	const unsigned long atomCount =
-		_plafGetWindowPropertyX11(_plaf.x11Root,
+		_plafGetWindowProperty(_plaf.x11Root,
 								  _plaf.x11NET_SUPPORTED,
 								  XA_ATOM,
 								  (unsigned char**) &supportedAtoms);
@@ -924,7 +924,7 @@ static plafError* createEmptyEventPipe(void)
 {
 	if (pipe(_plaf.x11EmptyEventPipe) != 0)
 	{
-		return createErrorResponse("Failed to create empty event pipe: %s", strerror(errno));
+		return _plafNewError("Failed to create empty event pipe: %s", strerror(errno));
 	}
 
 	for (int i = 0; i < 2; i++)
@@ -936,7 +936,7 @@ static plafError* createEmptyEventPipe(void)
 			fcntl(_plaf.x11EmptyEventPipe[i], F_SETFL, sf | O_NONBLOCK) == -1 ||
 			fcntl(_plaf.x11EmptyEventPipe[i], F_SETFD, df | FD_CLOEXEC) == -1)
 		{
-			return createErrorResponse("Failed to set flags for empty event pipe: %s", strerror(errno));
+			return _plafNewError("Failed to set flags for empty event pipe: %s", strerror(errno));
 		}
 	}
 
@@ -961,7 +961,7 @@ static int errorHandler(Display *display, XErrorEvent* event)
 
 // Sets the X error handler callback
 //
-void _plafGrabErrorHandlerX11(void)
+void _plafGrabErrorHandler(void)
 {
 	_plaf.x11ErrorCode = Success;
 	_plaf.x11ErrorHandler = _plaf.xlibSetErrorHandler(errorHandler);
@@ -969,7 +969,7 @@ void _plafGrabErrorHandlerX11(void)
 
 // Clears the X error handler callback
 //
-void _plafReleaseErrorHandlerX11(void)
+void _plafReleaseErrorHandler(void)
 {
 	// Synchronize to make sure all commands are processed
 	_plaf.xlibSync(_plaf.x11Display, False);
@@ -1027,7 +1027,7 @@ plafError* _plafInit(void) {
 	void* module = _plafLoadModule("libX11.so.6");
 	if (!module)
 	{
-		return createErrorResponse("Failed to load Xlib");
+		return _plafNewError("Failed to load Xlib");
 	}
 
 	FN_XInitThreads XInitThreads = (FN_XInitThreads)_plafGetModuleSymbol(module, "XInitThreads");
@@ -1035,7 +1035,7 @@ plafError* _plafInit(void) {
 	FN_XOpenDisplay XOpenDisplay = (FN_XOpenDisplay)_plafGetModuleSymbol(module, "XOpenDisplay");
 	if (!XInitThreads || !XrmInitialize || !XOpenDisplay) {
 		_plafFreeModule(module);
-		return createErrorResponse("Failed to load Xlib entry point");
+		return _plafNewError("Failed to load Xlib entry point");
 	}
 
 	XInitThreads();
@@ -1046,9 +1046,9 @@ plafError* _plafInit(void) {
 		plafError* errRsp;
 		const char* name = getenv("DISPLAY");
 		if (name) {
-			errRsp = createErrorResponse("Failed to open display %s", name);
+			errRsp = _plafNewError("Failed to open display %s", name);
 		} else {
-			errRsp = createErrorResponse("The DISPLAY environment variable is missing");
+			errRsp = _plafNewError("The DISPLAY environment variable is missing");
 		}
 		_plafFreeModule(module);
 		return errRsp;
@@ -1269,7 +1269,7 @@ plafError* _plafInit(void) {
 									   NULL);
 	}
 
-	_plafPollMonitorsX11();
+	_plafPollMonitors();
 	return NULL;
 }
 
@@ -1280,7 +1280,7 @@ void _plafTerminate(void)
 		if (_plaf.xlibGetSelectionOwner(_plaf.x11Display, _plaf.x11ClipCLIPBOARD) ==
 			_plaf.x11HelperWindowHandle)
 		{
-			_plafPushSelectionToManagerX11();
+			_plafPushSelectionToManager();
 		}
 
 		_plaf.xlibDestroyWindow(_plaf.x11Display, _plaf.x11HelperWindowHandle);
@@ -1348,7 +1348,7 @@ void _plafTerminate(void)
 
 	// NOTE: These need to be unloaded after XCloseDisplay, as they register
 	//       cleanup callbacks that get called by that function
-	_plafTerminateGLX();
+	_plafTerminateOpenGL();
 
 	if (_plaf.xlibHandle)
 	{

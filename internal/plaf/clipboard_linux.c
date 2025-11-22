@@ -40,7 +40,7 @@ const char* plafGetClipboardString(void) {
 			XEvent notification;
 			while (!_plaf.xlibCheckTypedWindowEvent(_plaf.x11Display, _plaf.x11HelperWindowHandle, SelectionNotify,
 				&notification)) {
-				waitForX11Event(-1);
+				_plafWaitForX11Event(-1);
 			}
 
 			if (notification.xselection.property == None) {
@@ -64,7 +64,7 @@ const char* plafGetClipboardString(void) {
 				for (;;) {
 					while (!_plaf.xlibCheckIfEvent(_plaf.x11Display, &dummy, isSelPropNewValueNotify,
 						(XPointer) &notification)) {
-						waitForX11Event(-1);
+						_plafWaitForX11Event(-1);
 					}
 
 					_plaf.xlibFree(data);

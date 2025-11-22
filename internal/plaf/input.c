@@ -102,16 +102,6 @@ void _plafInputDrop(plafWindow* window, int count, const char** paths)
 //////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-// Center the cursor in the content area of the specified window
-//
-void _plafCenterCursorInContentArea(plafWindow* window)
-{
-	int width, height;
-
-	_plafGetWindowSize(window, &width, &height);
-	_plafSetCursorPos(window, width / 2.0, height / 2.0);
-}
-
 
 //////////////////////////////////////////////////////////////////////////
 //////                        PLAF public API                       //////
@@ -121,14 +111,14 @@ void plafHideCursor(plafWindow* window) {
 	if (!window->cursorHidden) {
 		window->cursorHidden = true;
 		plafGetCursorPos(window, &window->virtualCursorPosX, &window->virtualCursorPosY);
-		plafUpdateCursor(window);
+		_plafUpdateCursor(window);
 	}
 }
 
 void plafShowCursor(plafWindow* window) {
 	if (window->cursorHidden) {
 		window->cursorHidden = false;
-		plafUpdateCursor(window);
+		_plafUpdateCursor(window);
 	}
 }
 

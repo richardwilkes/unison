@@ -8,7 +8,7 @@ void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 }
 
 void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
-	updateCursorImage(window);
+	_plafUpdateCursorImage(window);
 	const NSRect contentRect = [window->nsView frame];
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
 	if (window->monitor) {
@@ -22,14 +22,14 @@ void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	CGAssociateMouseAndMouseCursorPosition(true);
 }
 
-IntBool cursorInContentArea(plafWindow* window) {
+IntBool _plafCursorInContentArea(plafWindow* window) {
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
 	return [window->nsView mouse:pos inRect:[window->nsView frame]];
 }
 
 void _plafSetCursor(plafWindow* window) {
-	if (cursorInContentArea(window)) {
-		updateCursorImage(window);
+	if (_plafCursorInContentArea(window)) {
+		_plafUpdateCursorImage(window);
 	}
 }
 

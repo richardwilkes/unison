@@ -108,7 +108,7 @@ void _plafInputWindowCloseRequest(plafWindow* window)
 
  plafError* plafCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
 	if (width <= 0 || height <= 0) {
-		return createErrorResponse("Invalid window size %ix%i", width, height);
+		return _plafNewError("Invalid window size %ix%i", width, height);
 	}
 
 	plafCtxCfg ctxconfig = _plaf.contextCfg;

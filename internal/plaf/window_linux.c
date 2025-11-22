@@ -881,7 +881,7 @@ IntBool _plafPoll(struct pollfd* fds, nfds_t count, double timeout)
 // This avoids blocking other threads via the per-display Xlib lock that also
 // covers GLX functions
 //
-IntBool waitForX11Event(double timeout)
+IntBool _plafWaitForX11Event(double timeout)
 {
 	struct pollfd fd = { ConnectionNumber(_plaf.x11Display), POLLIN };
 
@@ -961,7 +961,7 @@ static IntBool waitForVisibilityNotify(plafWindow* window)
 								   VisibilityNotify,
 								   &dummy))
 	{
-		if (!waitForX11Event(0.1))
+		if (!_plafWaitForX11Event(0.1))
 			return false;
 	}
 	return true;
@@ -976,7 +976,7 @@ static int getWindowState(plafWindow* window)
 		Window icon;
 	} *state = NULL;
 
-	if (_plafGetWindowPropertyX11(window->x11Window,
+	if (_plafGetWindowProperty(window->x11Window,
 								  _plaf.x11WM_STATE,
 								  _plaf.x11WM_STATE,
 								  (unsigned char**) &state) >= 2)
@@ -1232,7 +1232,7 @@ static uint32_t decodeUTF8(const char** s)
 }
 
 // Updates the cursor image according to its cursor mode
-void updateCursorImage(plafWindow* window) {
+void _plafUpdateCursorImage(plafWindow* window) {
 	if (window->cursorHidden) {
 		_plaf.xlibDefineCursor(_plaf.x11Display, window->x11Window, _plaf.x11HiddenCursorHandle);
 	} else {
@@ -1267,20 +1267,20 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		ypos = wndconfig->ypos;
 	}
 	window->x11Colormap = _plaf.xlibCreateColormap(_plaf.x11Display, _plaf.x11Root, visual, AllocNone);
-	window->x11Transparent = _plafIsVisualTransparentX11(visual);
+	window->x11Transparent = _plafIsVisualTransparent(visual);
 	XSetWindowAttributes wa = { 0 };
 	wa.colormap = window->x11Colormap;
 	wa.event_mask = StructureNotifyMask | KeyPressMask | KeyReleaseMask |
 					PointerMotionMask | ButtonPressMask | ButtonReleaseMask |
 					ExposureMask | FocusChangeMask | VisibilityChangeMask |
 					EnterWindowMask | LeaveWindowMask | PropertyChangeMask;
-	_plafGrabErrorHandlerX11();
+	_plafGrabErrorHandler();
 	window->x11Parent = _plaf.x11Root;
 	window->x11Window = _plaf.xlibCreateWindow(_plaf.x11Display, _plaf.x11Root, xpos, ypos, width, height, 0, depth,
 		InputOutput, visual, CWBorderPixel | CWColormap | CWEventMask, &wa);
-	_plafReleaseErrorHandlerX11();
+	_plafReleaseErrorHandler();
 	if (!window->x11Window) {
-		return createErrorResponse("X11: Failed to create window");
+		return _plafNewError("X11: Failed to create window");
 	}
 	_plaf.xlibSaveContext(_plaf.x11Display, window->x11Window, _plaf.x11Context, (XPointer)window);
 	if (!wndconfig->decorated) {
@@ -1328,7 +1328,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	// Set ICCCM WM_HINTS property
 	XWMHints* hints = _plaf.xlibAllocWMHints();
 	if (!hints) {
-		return createErrorResponse("X11: Failed to allocate WM hints");
+		return _plafNewError("X11: Failed to allocate WM hints");
 	}
 	hints->flags = StateHint;
 	hints->initial_state = NormalState;
@@ -1338,7 +1338,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	// Set ICCCM WM_NORMAL_HINTS property
 	XSizeHints* sizeHints = _plaf.xlibAllocSizeHints();
 	if (!sizeHints) {
-		return createErrorResponse("X11: Failed to allocate size hints");
+		return _plafNewError("X11: Failed to allocate size hints");
 	}
 	if (!wndconfig->resizable) {
 		sizeHints->flags |= (PMinSize | PMaxSize);
@@ -1361,7 +1361,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		(unsigned char*) &version, 1);
 
 	if (_plaf.x11IM) {
-		_plafCreateInputContextX11(window);
+		_plafCreateInputContext(window);
 	}
 	_plafSetWindowTitle(window, window->title);
 	_plafGetWindowPos(window, &window->x11XPos, &window->x11YPos);
@@ -1413,7 +1413,7 @@ static Atom writeTargetToProperty(const XSelectionRequestEvent* request)
 
 		Atom* targets;
 		const unsigned long count =
-			_plafGetWindowPropertyX11(request->requestor,
+			_plafGetWindowProperty(request->requestor,
 									  request->property,
 									  _plaf.x11ClipATOM_PAIR,
 									  (unsigned char**) &targets);
@@ -1543,7 +1543,7 @@ static void acquireMonitor(plafWindow* window) {
 static void releaseMonitor(plafWindow* window) {
 	if (window->monitor->window == window) {
 		window->monitor->window = NULL;
-		_plafRestoreVideoModeX11(window->monitor);
+		_plafRestoreVideoMode(window->monitor);
 		_plaf.xsaverCount--;
 		if (_plaf.xsaverCount == 0) {
 			// Restore old screen saver settings
@@ -1606,7 +1606,7 @@ static void processEvent(XEvent *event)
 		if (event->type == _plaf.randrEventBase + RRNotify)
 		{
 			_plaf.randrUpdateConfiguration(event);
-			_plafPollMonitorsX11();
+			_plafPollMonitors();
 			return;
 		}
 	}
@@ -1849,7 +1849,7 @@ static void processEvent(XEvent *event)
 			const int x = event->xcrossing.x;
 			const int y = event->xcrossing.y;
 			if (window->cursorHidden) {
-				updateCursorImage(window);
+				_plafUpdateCursorImage(window);
 			}
 			_plafInputCursorEnter(window, true);
 			_plafInputCursorPos(window, x, y);
@@ -1900,7 +1900,7 @@ static void processEvent(XEvent *event)
 			//       the position into root (screen) coordinates
 			if (!event->xany.send_event && window->x11Parent != _plaf.x11Root)
 			{
-				_plafGrabErrorHandlerX11();
+				_plafGrabErrorHandler();
 
 				Window dummy;
 				_plaf.xlibTranslateCoordinates(_plaf.x11Display,
@@ -1910,7 +1910,7 @@ static void processEvent(XEvent *event)
 									  &xpos, &ypos,
 									  &dummy);
 
-				_plafReleaseErrorHandlerX11();
+				_plafReleaseErrorHandler();
 				if (_plaf.x11ErrorCode == BadWindow)
 					return;
 			}
@@ -1979,7 +1979,7 @@ static void processEvent(XEvent *event)
 
 				if (list)
 				{
-					count = _plafGetWindowPropertyX11(_plaf.xdndSource,
+					count = _plafGetWindowProperty(_plaf.xdndSource,
 													  _plaf.x11DnDTypeList,
 													  XA_ATOM,
 													  (unsigned char**) &formats);
@@ -2089,7 +2089,7 @@ static void processEvent(XEvent *event)
 				// The converted data from the drag operation has arrived
 				char* data;
 				const unsigned long result =
-					_plafGetWindowPropertyX11(event->xselection.requestor,
+					_plafGetWindowProperty(event->xselection.requestor,
 											  event->xselection.property,
 											  event->xselection.target,
 											  (unsigned char**) &data);
@@ -2220,7 +2220,7 @@ static void processEvent(XEvent *event)
 // Retrieve a single window property of the specified type
 // Inspired by fghGetWindowProperty from freeglut
 //
-unsigned long _plafGetWindowPropertyX11(Window window,
+unsigned long _plafGetWindowProperty(Window window,
 										Atom property,
 										Atom type,
 										unsigned char** value)
@@ -2245,7 +2245,7 @@ unsigned long _plafGetWindowPropertyX11(Window window,
 	return itemCount;
 }
 
-IntBool _plafIsVisualTransparentX11(Visual* visual)
+IntBool _plafIsVisualTransparent(Visual* visual)
 {
 	if (!_plaf.xrenderAvailable)
 		return false;
@@ -2256,7 +2256,7 @@ IntBool _plafIsVisualTransparentX11(Visual* visual)
 
 // Push contents of our selection to clipboard manager
 //
-void _plafPushSelectionToManagerX11(void)
+void _plafPushSelectionToManager(void)
 {
 	_plaf.xlibConvertSelection(_plaf.x11Display,
 					  _plaf.x11ClipCLIPBOARD_MANAGER,
@@ -2294,11 +2294,11 @@ void _plafPushSelectionToManagerX11(void)
 			}
 		}
 
-		waitForX11Event(-1);
+		_plafWaitForX11Event(-1);
 	}
 }
 
-void _plafCreateInputContextX11(plafWindow* window)
+void _plafCreateInputContext(plafWindow* window)
 {
 	XIMCallback callback;
 	callback.callback = (XIMProc) inputContextDestroyCallback;
@@ -2336,14 +2336,14 @@ void _plafCreateInputContextX11(plafWindow* window)
 //////////////////////////////////////////////////////////////////////////
 
 plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
-	plafError* err = _plafInitGLX();
+	plafError* err = _plafInitOpenGL();
 	if (err) {
 		return err;
 	}
 
 	Visual* visual = NULL;
 	int depth;
-	err = _plafChooseVisualGLX(wndconfig, ctxconfig, fbconfig, &visual, &depth);
+	err = _plafChooseVisual(wndconfig, ctxconfig, fbconfig, &visual, &depth);
 	if (err) {
 		return err;
 	}
@@ -2357,7 +2357,7 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 		return err;
 	}
 
-	err = _plafCreateContextGLX(window, ctxconfig, fbconfig);
+	err = _plafCreateOpenGLContext(window, ctxconfig, fbconfig);
 	if (err) {
 		return err;
 	}
@@ -2586,7 +2586,7 @@ void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right
 							  isFrameExtentsEvent,
 							  (XPointer) window))
 		{
-			if (!waitForX11Event(0.5))
+			if (!_plafWaitForX11Event(0.5))
 			{
 				_plafInputError("X11: The window manager has a broken _NET_REQUEST_FRAME_EXTENTS implementation; please report this issue");
 				return;
@@ -2594,7 +2594,7 @@ void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right
 		}
 	}
 
-	if (_plafGetWindowPropertyX11(window->x11Window,
+	if (_plafGetWindowProperty(window->x11Window,
 								  _plaf.x11NET_FRAME_EXTENTS,
 								  XA_CARDINAL,
 								  (unsigned char**) &extents) == 4)
@@ -2686,7 +2686,7 @@ void _plafMaximizeWindow(plafWindow* window) {
 	{
 		Atom* states = NULL;
 		unsigned long count =
-			_plafGetWindowPropertyX11(window->x11Window,
+			_plafGetWindowProperty(window->x11Window,
 									  _plaf.x11NET_WM_STATE,
 									  XA_ATOM,
 									  (unsigned char**) &states);
@@ -2846,7 +2846,7 @@ IntBool _plafWindowMaximized(plafWindow* window) {
 	}
 
 	const unsigned long count =
-		_plafGetWindowPropertyX11(window->x11Window,
+		_plafGetWindowProperty(window->x11Window,
 								  _plaf.x11NET_WM_STATE,
 								  XA_ATOM,
 								  (unsigned char**) &states);
@@ -2875,13 +2875,13 @@ IntBool _plafWindowHovered(plafWindow* window) {
 		int rootX, rootY, childX, childY;
 		unsigned int mask;
 
-		_plafGrabErrorHandlerX11();
+		_plafGrabErrorHandler();
 
 		const Bool result = _plaf.xlibQueryPointer(_plaf.x11Display, w,
 										  &root, &w, &rootX, &rootY,
 										  &childX, &childY, &mask);
 
-		_plafReleaseErrorHandlerX11();
+		_plafReleaseErrorHandler();
 
 		if (_plaf.x11ErrorCode == BadWindow)
 			w = _plaf.x11Root;
@@ -2945,7 +2945,7 @@ void _plafSetWindowFloating(plafWindow* window, IntBool enabled) {
 	{
 		Atom* states = NULL;
 		const unsigned long count =
-			_plafGetWindowPropertyX11(window->x11Window,
+			_plafGetWindowProperty(window->x11Window,
 									  _plaf.x11NET_WM_STATE,
 									  XA_ATOM,
 									  (unsigned char**) &states);
@@ -3017,7 +3017,7 @@ float plafGetWindowOpacity(plafWindow* window) {
 	{
 		CARD32* value = NULL;
 
-		if (_plafGetWindowPropertyX11(window->x11Window,
+		if (_plafGetWindowProperty(window->x11Window,
 									  _plaf.x11NET_WM_WINDOW_OPACITY,
 									  XA_CARDINAL,
 									  (unsigned char**) &value))
@@ -3067,8 +3067,8 @@ void plafPostEmptyEvent(void) {
 	writeEmptyEvent();
 }
 
-void plafUpdateCursor(plafWindow* window) {
-	updateCursorImage(window);
+void _plafUpdateCursor(plafWindow* window) {
+	_plafUpdateCursorImage(window);
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 

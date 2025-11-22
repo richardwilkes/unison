@@ -6,6 +6,19 @@
 #include <windowsx.h>
 #include <shellapi.h>
 
+static WCHAR* createWideStringFromUTF8(const char* src) {
+	int count = MultiByteToWideChar(CP_UTF8, 0, src, -1, NULL, 0);
+	if (!count) {
+		return NULL;
+	}
+	WCHAR* target = _plaf_calloc(count, sizeof(WCHAR));
+	if (!MultiByteToWideChar(CP_UTF8, 0, src, -1, target, count)) {
+		_plaf_free(target);
+		return NULL;
+	}
+	return target;
+}
+
 // Returns the window style for the specified window
 //
 static DWORD getWindowStyle(const plafWindow* window)
@@ -187,7 +200,7 @@ static void applyAspectRatio(plafWindow* window, int edge, RECT* area)
 }
 
 // Updates the cursor image according to its cursor mode
-void updateCursorImage(plafWindow* window) {
+void _plafUpdateCursorImage(plafWindow* window) {
 	if (window->cursorHidden) {
 		SetCursor(_plaf.win32BlankCursor);
 	} else {
@@ -294,7 +307,7 @@ static void releaseMonitor(plafWindow* window) {
 			SystemParametersInfoW(SPI_SETMOUSETRAILS, _plaf.win32MouseTrailSize, 0, 0);
 		}
 		window->monitor->window = NULL;
-		_plafRestoreVideoModeWin32(window->monitor);
+		_plafRestoreVideoMode(window->monitor);
 	}
 }
 
@@ -912,7 +925,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		{
 			if (LOWORD(lParam) == HTCLIENT)
 			{
-				updateCursorImage(window);
+				_plafUpdateCursorImage(window);
 				return TRUE;
 			}
 
@@ -938,7 +951,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				WCHAR* buffer = _plaf_calloc((size_t) length + 1, sizeof(WCHAR));
 
 				DragQueryFileW(drop, i, buffer, length + 1);
-				paths[i] = _plafCreateUTF8FromWideStringWin32(buffer);
+				paths[i] = _plafCreateUTF8FromWideString(buffer);
 
 				_plaf_free(buffer);
 			}
@@ -979,7 +992,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		}
 		_plaf.win32MainWindowClass = RegisterClassExW(&wc);
 		if (!_plaf.win32MainWindowClass) {
-			return createErrorResponse("Win32: Failed to register window class");
+			return _plafNewError("Win32: Failed to register window class");
 		}
 	}
 
@@ -992,7 +1005,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 			const int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
 			unsigned char* cursorPixels = _plaf_calloc(cursorWidth * cursorHeight, 4);
 			if (!cursorPixels) {
-				return createErrorResponse("Win32: Failed to allocate blank cursor pixels");
+				return _plafNewError("Win32: Failed to allocate blank cursor pixels");
 			}
 
 			// NOTE: Windows checks whether the image is fully transparent and if so
@@ -1005,7 +1018,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 			_plaf_free(cursorPixels);
 
 			if (!_plaf.win32BlankCursor) {
-				return createErrorResponse("Win32: Failed to create blank cursor");
+				return _plafNewError("Win32: Failed to create blank cursor");
 			}
 		}
 	}
@@ -1042,9 +1055,9 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		frameHeight = rect.bottom - rect.top;
 	}
 
-	wideTitle = _plafCreateWideStringFromUTF8Win32(window->title);
+	wideTitle = createWideStringFromUTF8(window->title);
 	if (!wideTitle) {
-		return createErrorResponse("Win32: Failed to allocate title");
+		return _plafNewError("Win32: Failed to allocate title");
 	}
 
 	window->win32Window = CreateWindowExW(exStyle, MAKEINTATOM(_plaf.win32MainWindowClass), wideTitle, style, frameX,
@@ -1053,7 +1066,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	_plaf_free(wideTitle);
 
 	if (!window->win32Window) {
-		return createErrorResponse("Win32: Failed to create window");
+		return _plafNewError("Win32: Failed to create window");
 	}
 
 	SetPropW(window->win32Window, L"PLAF", window);
@@ -1074,7 +1087,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		// Only update the restored window rect as the window may be maximized
 		if (wndconfig->scaleToMonitor) {
 			float xscale, yscale;
-			_plafGetHMONITORContentScaleWin32(mh, &xscale, &yscale);
+			_plafGetHMONITORContentScale(mh, &xscale, &yscale);
 			if (xscale > 0.f && yscale > 0.f) {
 				rect.right = (int) (rect.right * xscale);
 				rect.bottom = (int) (rect.bottom * yscale);
@@ -1123,12 +1136,12 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 		return err;
 	}
 
-	err = _plafInitWGL();
+	err = _plafInitOpenGL();
 	if (err) {
 		return err;
 	}
 
-	err = _plafCreateContextWGL(window, ctxconfig, fbconfig);
+	err = _plafCreateOpenGLContext(window, ctxconfig, fbconfig);
 	if (err) {
 		return err;
 	}
@@ -1173,7 +1186,7 @@ void _plafDestroyWindow(plafWindow* window) {
 }
 
 void _plafSetWindowTitle(plafWindow* window, const char* title) {
-	WCHAR* wideTitle = _plafCreateWideStringFromUTF8Win32(title);
+	WCHAR* wideTitle = createWideStringFromUTF8(title);
 	if (!wideTitle)
 		return;
 
@@ -1339,7 +1352,7 @@ void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right
 
 void _plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
 	const HANDLE handle = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
-	_plafGetHMONITORContentScaleWin32(handle, xscale, yscale);
+	_plafGetHMONITORContentScale(handle, xscale, yscale);
 }
 
 void plafMinimizeWindow(plafWindow* window) {
@@ -1497,7 +1510,7 @@ IntBool _plafWindowMaximized(plafWindow* window) {
 }
 
 IntBool _plafWindowHovered(plafWindow* window) {
-	return cursorInContentArea(window);
+	return _plafCursorInContentArea(window);
 }
 
 IntBool _plafFramebufferTransparent(plafWindow* window) {
@@ -1668,9 +1681,9 @@ void plafPostEmptyEvent(void) {
 	PostMessageW(_plaf.win32HelperWindowHandle, WM_NULL, 0, 0);
 }
 
-void plafUpdateCursor(plafWindow* window) {
-	if (cursorInContentArea(window)) {
-		updateCursorImage(window);
+void _plafUpdateCursor(plafWindow* window) {
+	if (_plafCursorInContentArea(window)) {
+		_plafUpdateCursorImage(window);
 	}
 }
 
