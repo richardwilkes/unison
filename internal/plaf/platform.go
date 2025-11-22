@@ -2,7 +2,9 @@ package plaf
 
 //#include "platform.h"
 import "C"
-import "unsafe"
+import (
+	"unsafe"
+)
 
 // Init initializes the PLAF library. Before most PLAF functions can be used,
 // PLAF must be initialized, and before a program terminates PLAF should be

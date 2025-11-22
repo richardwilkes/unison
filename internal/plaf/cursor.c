@@ -4,7 +4,7 @@ void plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	if (xpos != xpos || xpos < -DBL_MAX || xpos > DBL_MAX || ypos != ypos || ypos < -DBL_MAX || ypos > DBL_MAX) {
 		return;
 	}
-	if (!_plafWindowFocused(window)) {
+	if (!plafIsWindowFocused(window)) {
 		return;
 	}
 	_plafSetCursorPos(window, xpos, ypos);

@@ -235,7 +235,8 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			w.AttemptClose()
 		}
 	})
-	w.wnd.SetFocusCallback(func(_ *plaf.Window, focused bool) {
+	w.wnd.SetFocusCallback(func(pw *plaf.Window, focused bool) {
+		fmt.Printf("focus callback: focused = %v, actual = %v\n", focused, pw.IsFocused())
 		if focused {
 			if w.okToProcess() {
 				w.gainedFocus()

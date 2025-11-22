@@ -509,7 +509,7 @@ int plafGetWindowAttrib(plafWindow* window, int attrib) {
 	switch (attrib)
 	{
 		case WINDOW_ATTR_FOCUSED:
-			return _plafWindowFocused(window);
+			return plafIsWindowFocused(window);
 		case WINDOW_ATTR_MINIMIZED:
 			return _plafWindowMinimized(window);
 		case WINDOW_ATTR_VISIBLE:

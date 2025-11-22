@@ -1493,7 +1493,7 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 	}
 }
 
-IntBool _plafWindowFocused(plafWindow* window) {
+bool plafIsWindowFocused(plafWindow* window) {
 	return window->win32Window == GetActiveWindow();
 }
 

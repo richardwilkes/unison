@@ -983,9 +983,9 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 	}
 }
 
-IntBool _plafWindowFocused(plafWindow* window) {
+bool plafIsWindowFocused(plafWindow* window) {
 	@autoreleasepool {
-	return [window->nsWindow isKeyWindow];
+		return [window->nsWindow isKeyWindow];
 	}
 }
 
@@ -1150,7 +1150,7 @@ void plafPostEmptyEvent(void) {
 
 void _plafUpdateCursor(plafWindow* window) {
 	@autoreleasepool {
-		if (_plafWindowFocused(window)) {
+		if (plafIsWindowFocused(window)) {
 			if (_plafCursorInContentArea(window)) {
 				_plafUpdateCursorImage(window);
 			}

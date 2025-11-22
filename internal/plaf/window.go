@@ -425,6 +425,10 @@ func (w *Window) SetOpacity(opacity float32) {
 	C.plafSetWindowOpacity(w.data, C.float(opacity))
 }
 
+func (w *Window) IsFocused() bool {
+	return bool(C.plafIsWindowFocused(w.data))
+}
+
 // RequestAttention function requests user attention to the specified
 // window. On platforms where this is not supported, attention is requested to
 // the application as a whole.

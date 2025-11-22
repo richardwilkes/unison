@@ -2816,7 +2816,7 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
-IntBool _plafWindowFocused(plafWindow* window) {
+bool plafIsWindowFocused(plafWindow* window) {
 	Window focused;
 	int state;
 
