@@ -22,8 +22,7 @@ static char* getMonitorName(CGDirectDisplayID displayID, NSScreen* screen) {
 
 // Check whether the display mode should be included in enumeration
 //
-static IntBool modeIsGood(CGDisplayModeRef mode)
-{
+static bool modeIsGood(CGDisplayModeRef mode) {
 	uint32_t flags = CGDisplayModeGetIOFlags(mode);
 	if (!(flags & kDisplayModeValidFlag) || !(flags & kDisplayModeSafeFlag))
 		return false;
@@ -312,7 +311,7 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count)
 	}
 }
 
-IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode *mode) {
+bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode *mode) {
 	@autoreleasepool {
 
 	CGDisplayModeRef native = CGDisplayCopyDisplayMode(monitor->nsDisplayID);
@@ -329,7 +328,7 @@ IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode *mode) {
 	}
 }
 
-IntBool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
+bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
 	@autoreleasepool {
 
 	uint32_t size = CGDisplayGammaTableCapacity(monitor->nsDisplayID);

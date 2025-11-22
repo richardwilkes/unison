@@ -8,8 +8,7 @@
 
 // Check whether the display mode should be included in enumeration
 //
-static IntBool modeIsGood(const XRRModeInfo* mi)
-{
+static bool modeIsGood(const XRRModeInfo* mi) {
 	return (mi->modeFlags & RR_Interlace) == 0;
 }
 
@@ -434,7 +433,7 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count)
 	return result;
 }
 
-IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
+bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
 	{
 		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
@@ -470,7 +469,7 @@ IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	return true;
 }
 
-IntBool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
+bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
 	if (_plaf.randrAvailable && !_plaf.randrGammaBroken)
 	{
 		const size_t size = _plaf.randrGetCrtcGammaSize(_plaf.x11Display, monitor->x11Crtc);

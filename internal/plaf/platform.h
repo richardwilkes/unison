@@ -603,8 +603,6 @@ typedef unsigned char GLubyte;
 
 #define ERROR_MSG_SIZE 1024
 
-typedef int IntBool;
-
 // Forward declarations
 typedef struct plafCursor plafCursor;
 typedef struct plafMonitor plafMonitor;
@@ -663,17 +661,17 @@ typedef struct plafImageData {
 } plafImageData;
 
 typedef struct plafWindowConfig {
-	int     xpos;
-	int     ypos;
-	int     width;
-	int     height;
-	IntBool resizable;
-	IntBool decorated;
-	IntBool floating;
-	IntBool maximized;
-	IntBool mousePassthrough;
-	IntBool scaleToMonitor;
-	IntBool scaleFramebuffer;
+	int  xpos;
+	int  ypos;
+	int  width;
+	int  height;
+	bool resizable;
+	bool decorated;
+	bool floating;
+	bool maximized;
+	bool mousePassthrough;
+	bool scaleToMonitor;
+	bool scaleFramebuffer;
 } plafWindowConfig;
 
 /* ------------------------- Internal ----------------------- */
@@ -729,9 +727,9 @@ typedef const GLubyte* (APIENTRY * FN_GLGETSTRINGI)(GLenum,GLuint);
 struct plafCtxCfg {
 	int         major;
 	int         minor;
-	IntBool     forward;
-	IntBool     debug;
-	IntBool     noerror;
+	bool        forward;
+	bool        debug;
+	bool        noerror;
 	int         profile;
 	int         robustness;
 	int         release;
@@ -758,9 +756,9 @@ struct plafFrameBufferCfg {
 	int       accumAlphaBits;
 	int       auxBuffers;
 	int       samples;
-	IntBool   sRGB;
-	IntBool   doublebuffer;
-	IntBool   transparent;
+	bool      sRGB;
+	bool      doublebuffer;
+	bool      transparent;
 	uintptr_t handle;
 };
 
@@ -769,9 +767,9 @@ struct plafCtx {
 	int                  major;
 	int                  minor;
 	int                  revision;
-	IntBool              forward;
-	IntBool              debug;
-	IntBool              noerror;
+	bool                 forward;
+	bool                 debug;
+	bool                 noerror;
 	int                  profile;
 	int                  robustness;
 	int                  release;
@@ -801,13 +799,14 @@ struct plafCtx {
 // Window and context structure
 struct plafWindow {
 	struct plafWindow*     next;
-	IntBool                resizable;
-	IntBool                decorated;
-	IntBool                floating;
-	IntBool                maximized;
-	IntBool                mousePassthrough;
-	IntBool                shouldClose;
-	IntBool                doublebuffer;
+	bool                   resizable;
+	bool                   decorated;
+	bool                   floating;
+	bool                   maximized;
+	bool                   mousePassthrough;
+	bool                   shouldClose;
+	bool                   doublebuffer;
+	bool                   cursorHidden;
 	plafVideoMode          videoMode;
 	plafMonitor*           monitor;
 	plafCursor*            cursor;
@@ -820,7 +819,6 @@ struct plafWindow {
 	int                    maxheight;
 	int                    numer;
 	int                    denom;
-	IntBool                cursorHidden;
 	char                   mouseButtons[MOUSE_BUTTON_LAST + 1];
 	char                   keys[KEY_LAST + 1];
 	double                 virtualCursorPosX;
@@ -847,7 +845,7 @@ struct plafWindow {
 	NSWindow *             nsWindow;
 	NSObject *             nsDelegate;
 	NSView *               nsView;
-	IntBool                nsScaleFramebuffer;
+	bool                   nsScaleFramebuffer;
 	int                    nsFrameBufferWidth;
 	int                    nsFrameBufferHeight;
 	float                  nsXScale;
@@ -857,9 +855,9 @@ struct plafWindow {
 	Window                 x11Window;
 	Window                 x11Parent;
 	XIC                    x11IC;
-	IntBool                x11OverrideRedirect;
-	IntBool                x11Minimized;
-	IntBool                x11Transparent;
+	bool                   x11OverrideRedirect;
+	bool                   x11Minimized;
+	bool                   x11Transparent;
 	int                    x11XPos;
 	int                    x11YPos;
 	int                    x11WarpCursorPosX;
@@ -869,11 +867,11 @@ struct plafWindow {
 	HWND                   win32Window;
 	HICON                  win32BigIcon;
 	HICON                  win32SmallIcon;
-	IntBool                win32CursorTracked;
-	IntBool                win32FrameAction;
-	IntBool                win32Minimized;
-	IntBool                win32Transparent;
-	IntBool                win32ScaleToMonitor;
+	bool                   win32CursorTracked;
+	bool                   win32FrameAction;
+	bool                   win32Minimized;
+	bool                   win32Transparent;
+	bool                   win32ScaleToMonitor;
 	WCHAR                  win32HighSurrogate;
 #endif
 };
@@ -905,8 +903,8 @@ struct plafMonitor {
 	WCHAR             win32DisplayName[32];
 	char              win32PublicAdapterName[32];
 	char              win32PublicDisplayName[32];
-	IntBool           win32ModesPruned;
-	IntBool           win32ModeChanged;
+	bool              win32ModesPruned;
+	bool              win32ModeChanged;
 #endif
 };
 
@@ -924,7 +922,7 @@ struct plafCursor {
 
 // Library global data
 struct plafLib {
-	IntBool                             initialized;
+	bool                                initialized;
 	char*                               clipboardString;
 	plafFrameBufferCfg                  frameBufferCfg;
 	plafWindowConfig                    windowCfg;
@@ -942,7 +940,7 @@ struct plafLib {
 #if defined(__APPLE__)
 	CGEventSourceRef                    nsEventSource;
 	id                                  nsDelegate;
-	IntBool                             nsCursorHidden;
+	bool                                nsCursorHidden;
 	id                                  nsKeyUpMonitor;
 	CGPoint                             nsCascadePoint;
 	CFBundleRef                         nsglFramework;
@@ -1008,7 +1006,7 @@ struct plafLib {
 	Atom                                x11ClipATOM_PAIR;
 	Atom                                x11ClipSELECTION;
 	void*                               xlibHandle;
-	IntBool                             xlibUTF8;
+	bool                                xlibUTF8;
 	FN_XAllocSizeHints                  xlibAllocSizeHints;
 	FN_XAllocWMHints                    xlibAllocWMHints;
 	FN_XChangeProperty                  xlibChangeProperty;
@@ -1090,11 +1088,11 @@ struct plafLib {
 	FN_XrmDestroyDatabase               xrmDestroyDatabase;
 	FN_XrmGetResource                   xrmGetResource;
 	FN_XrmGetStringDatabase             xrmGetStringDatabase;
-	IntBool                             randrAvailable;
+	bool                                randrAvailable;
 	void*                               randrHandle;
 	int                                 randrEventBase;
-	IntBool                             randrGammaBroken;
-	IntBool                             randrMonitorBroken;
+	bool                                randrGammaBroken;
+	bool                                randrMonitorBroken;
 	FN_XRRAllocGamma                    randrAllocGamma;
 	FN_XRRFreeCrtcInfo                  randrFreeCrtcInfo;
 	FN_XRRFreeGamma                     randrFreeGamma;
@@ -1112,8 +1110,8 @@ struct plafLib {
 	FN_XRRSetCrtcConfig                 randrSetCrtcConfig;
 	FN_XRRSetCrtcGamma                  randrSetCrtcGamma;
 	FN_XRRUpdateConfiguration           randrUpdateConfiguration;
-	IntBool                             xkbAvailable;
-	IntBool                             xkbDetectable;
+	bool                                xkbAvailable;
+	bool                                xkbDetectable;
 	int                                 xkbEventBase;
 	unsigned int                        xkbGroup;
 	FN_XkbFreeKeyboard                  xkbFreeKeyboard;
@@ -1139,26 +1137,26 @@ struct plafLib {
 	FN_XcursorGetTheme                  xcursorGetTheme;
 	FN_XcursorGetDefaultSize            xcursorGetDefaultSize;
 	FN_XcursorLibraryLoadImage          xcursorLibraryLoadImage;
-	IntBool                             xineramaAvailable;
+	bool                                xineramaAvailable;
 	void*                               xineramaHandle;
 	FN_XineramaIsActive                 xineramaIsActive;
 	FN_XineramaQueryExtension           xineramaQueryExtension;
 	FN_XineramaQueryScreens             xineramaQueryScreens;
-	IntBool                             xvidmodeAvailable;
+	bool                                xvidmodeAvailable;
 	void*                               xvidmodeHandle;
 	FN_XF86VidModeQueryExtension        xvidmodeQueryExtension;
 	FN_XF86VidModeGetGammaRamp          xvidmodeGetGammaRamp;
 	FN_XF86VidModeSetGammaRamp          xvidmodeSetGammaRamp;
 	FN_XF86VidModeGetGammaRampSize      xvidmodeGetGammaRampSize;
-	IntBool                             xiAvailable;
+	bool                                xiAvailable;
 	void*                               xiHandle;
 	FN_XIQueryVersion                   xiQueryVersion;
-	IntBool                             xrenderAvailable;
+	bool                                xrenderAvailable;
 	void*                               xrenderHandle;
 	FN_XRenderQueryExtension            xrenderQueryExtension;
 	FN_XRenderQueryVersion              xrenderQueryVersion;
 	FN_XRenderFindVisualFormat          xrenderFindVisualFormat;
-	IntBool                             xshapeAvailable;
+	bool                                xshapeAvailable;
 	void*                               xshapeHandle;
 	FN_XShapeQueryExtension             xshapeQueryExtension;
 	FN_XShapeQueryVersion               xshapeQueryVersion;
@@ -1184,16 +1182,16 @@ struct plafLib {
 	FN_GLXSWAPINTERVALSGI               glxSwapIntervalSGI;
 	FN_GLXSWAPINTERVALEXT               glxSwapIntervalEXT;
 	FN_GLXCREATECONTEXTATTRIBSARB       glxCreateContextAttribsARB;
-	IntBool                             glxSGI_swap_control;
-	IntBool                             glxEXT_swap_control;
-	IntBool                             glxARB_multisample;
-	IntBool                             glxARB_framebuffer_sRGB;
-	IntBool                             glxEXT_framebuffer_sRGB;
-	IntBool                             glxARB_create_context;
-	IntBool                             glxARB_create_context_profile;
-	IntBool                             glxARB_create_context_robustness;
-	IntBool                             glxARB_create_context_no_error;
-	IntBool                             glxARB_context_flush_control;
+	bool                                glxSGI_swap_control;
+	bool                                glxEXT_swap_control;
+	bool                                glxARB_multisample;
+	bool                                glxARB_framebuffer_sRGB;
+	bool                                glxEXT_framebuffer_sRGB;
+	bool                                glxARB_create_context;
+	bool                                glxARB_create_context_profile;
+	bool                                glxARB_create_context_robustness;
+	bool                                glxARB_create_context_no_error;
+	bool                                glxARB_context_flush_control;
 #elif defined(_WIN32)
 	HINSTANCE                           win32Instance;
 	HWND                                win32HelperWindowHandle;
@@ -1232,16 +1230,16 @@ struct plafLib {
 	FN_WGLGETEXTENSIONSSTRINGEXT        wglGetExtensionsStringEXT;
 	FN_WGLGETEXTENSIONSSTRINGARB        wglGetExtensionsStringARB;
 	FN_WGLCREATECONTEXTATTRIBSARB       wglCreateContextAttribsARB;
-	IntBool                             wglEXT_swap_control;
-	IntBool                             wglARB_multisample;
-	IntBool                             wglARB_framebuffer_sRGB;
-	IntBool                             wglEXT_framebuffer_sRGB;
-	IntBool                             wglARB_pixel_format;
-	IntBool                             wglARB_create_context;
-	IntBool                             wglARB_create_context_profile;
-	IntBool                             wglARB_create_context_robustness;
-	IntBool                             wglARB_create_context_no_error;
-	IntBool                             wglARB_context_flush_control;
+	bool                                wglEXT_swap_control;
+	bool                                wglARB_multisample;
+	bool                                wglARB_framebuffer_sRGB;
+	bool                                wglEXT_framebuffer_sRGB;
+	bool                                wglARB_pixel_format;
+	bool                                wglARB_create_context;
+	bool                                wglARB_create_context_profile;
+	bool                                wglARB_create_context_robustness;
+	bool                                wglARB_create_context_no_error;
+	bool                                wglARB_context_flush_control;
 #endif
 };
 
@@ -1375,10 +1373,10 @@ plafMonitor* _plafAllocMonitor(const char* name, int widthMM, int heightMM);
 void _plafFreeMonitor(plafMonitor* monitor);
 void _plafAllocGammaArrays(plafGammaRamp* ramp, unsigned int size);
 void _plafFreeGammaArrays(plafGammaRamp* ramp);
-IntBool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp);
+bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp);
 void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count);
-IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode);
+bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode);
 void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
 const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
 int _plafCompareVideoModes(const plafVideoMode* first, const plafVideoMode* second);
@@ -1391,21 +1389,21 @@ void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale)
 #endif
 
 // Windows
-void _plafInputWindowFocus(plafWindow* window, IntBool focused);
+void _plafInputWindowFocus(plafWindow* window, bool focused);
 void _plafInputWindowPos(plafWindow* window, int xpos, int ypos);
 void _plafInputWindowSize(plafWindow* window, int width, int height);
 void _plafInputFramebufferSize(plafWindow* window, int width, int height);
 void _plafInputWindowContentScale(plafWindow* window, float xscale, float yscale);
-void _plafInputWindowMinimize(plafWindow* window, IntBool minimized);
-void _plafInputWindowMaximize(plafWindow* window, IntBool maximized);
+void _plafInputWindowMinimize(plafWindow* window, bool minimized);
+void _plafInputWindowMaximize(plafWindow* window, bool maximized);
 void _plafInputWindowDamage(plafWindow* window);
 void _plafInputWindowCloseRequest(plafWindow* window);
 void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mods);
-void _plafInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool plain);
+void _plafInputChar(plafWindow* window, uint32_t codepoint, int mods, bool plain);
 void _plafInputScroll(plafWindow* window, double xoffset, double yoffset);
 void _plafInputMouseClick(plafWindow* window, int button, int action, int mods);
 void _plafInputCursorPos(plafWindow* window, double xpos, double ypos);
-void _plafInputCursorEnter(plafWindow* window, IntBool entered);
+void _plafInputCursorEnter(plafWindow* window, bool entered);
 void _plafInputDrop(plafWindow* window, int count, const char** names);
 plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 void _plafSetWindowTitle(plafWindow* window, const char* title);
@@ -1422,42 +1420,42 @@ void _plafMaximizeWindow(plafWindow* window);
 void _plafShowWindow(plafWindow* window);
 void _plafHideWindow(plafWindow* window);
 void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-IntBool _plafWindowMinimized(plafWindow* window);
-IntBool _plafWindowVisible(plafWindow* window);
-IntBool _plafWindowMaximized(plafWindow* window);
-IntBool _plafWindowHovered(plafWindow* window);
-IntBool _plafFramebufferTransparent(plafWindow* window);
-void _plafSetWindowResizable(plafWindow* window, IntBool enabled);
-void _plafSetWindowDecorated(plafWindow* window, IntBool enabled);
-void _plafSetWindowFloating(plafWindow* window, IntBool enabled);
+bool _plafWindowMinimized(plafWindow* window);
+bool _plafWindowVisible(plafWindow* window);
+bool _plafWindowMaximized(plafWindow* window);
+bool _plafWindowHovered(plafWindow* window);
+bool _plafFramebufferTransparent(plafWindow* window);
+void _plafSetWindowResizable(plafWindow* window, bool enabled);
+void _plafSetWindowDecorated(plafWindow* window, bool enabled);
+void _plafSetWindowFloating(plafWindow* window, bool enabled);
 void _plafSetWindowOpacity(plafWindow* window, float opacity);
-void _plafSetWindowMousePassthrough(plafWindow* window, IntBool enabled);
+void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled);
 void _plafUpdateCursor(plafWindow* window);
 plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
 void _plafSetCursor(plafWindow* window);
 void _plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 #if defined(__APPLE__) || defined(_WIN32)
-IntBool _plafCursorInContentArea(plafWindow* window);
+bool _plafCursorInContentArea(plafWindow* window);
 #endif
 void _plafUpdateCursorImage(plafWindow* window);
 void _plafDestroyWindow(plafWindow* window);
 #if defined(__linux__)
 void _plafCreateInputContext(plafWindow* window);
 unsigned long _plafGetWindowProperty(Window window, Atom property, Atom type, unsigned char** value);
-IntBool _plafIsVisualTransparent(Visual* visual);
+bool _plafIsVisualTransparent(Visual* visual);
 plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
 #endif
 
 // Events
 void _plafWaitEventsTimeout(double timeout);
 #if defined(__linux__)
-IntBool _plafWaitForX11Event(double timeout);
+bool _plafWaitForX11Event(double timeout);
 #endif
 
 // Cursors
 void _plafDestroyCursor(plafCursor* cursor);
-IntBool _plafCreateStandardCursor(plafCursor* cursor, int shape);
-IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot);
+bool _plafCreateStandardCursor(plafCursor* cursor, int shape);
+bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot);
 #if defined(__linux__)
 Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot);
 #endif
@@ -1470,7 +1468,7 @@ void _plafPushSelectionToManager(void);
 // OpenGL
 plafError* _plafInitOpenGL(void);
 plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-IntBool _plafStringInExtensionString(const char* string, const char* extensions);
+bool _plafStringInExtensionString(const char* string, const char* extensions);
 const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
 plafError* plafCheckContextConfig(const plafCtxCfg* ctxconfig);
 void _plafTerminateOpenGL(void);

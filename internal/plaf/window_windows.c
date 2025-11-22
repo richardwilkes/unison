@@ -81,8 +81,7 @@ static const plafImageData* chooseImage(int count, const plafImageData* images,
 
 // Creates an RGBA icon or cursor
 //
-static HICON createIcon(const plafImageData* image, int xhot, int yhot, IntBool icon)
-{
+static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool icon) {
 	int i;
 	HDC dc;
 	HICON handle;
@@ -730,10 +729,8 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		{
 			const int width = LOWORD(lParam);
 			const int height = HIWORD(lParam);
-			const IntBool minimized = wParam == SIZE_MINIMIZED;
-			const IntBool maximized = wParam == SIZE_MAXIMIZED ||
-									   (window->maximized &&
-										wParam != SIZE_RESTORED);
+			const bool minimized = wParam == SIZE_MINIMIZED;
+			const bool maximized = wParam == SIZE_MAXIMIZED || (window->maximized && wParam != SIZE_RESTORED);
 
 			if (window->win32Minimized != minimized)
 				_plafInputWindowMinimize(window, minimized);
@@ -1497,23 +1494,23 @@ bool plafIsWindowFocused(plafWindow* window) {
 	return window->win32Window == GetActiveWindow();
 }
 
-IntBool _plafWindowMinimized(plafWindow* window) {
+bool _plafWindowMinimized(plafWindow* window) {
 	return IsIconic(window->win32Window);
 }
 
-IntBool _plafWindowVisible(plafWindow* window) {
+bool _plafWindowVisible(plafWindow* window) {
 	return IsWindowVisible(window->win32Window);
 }
 
-IntBool _plafWindowMaximized(plafWindow* window) {
+bool _plafWindowMaximized(plafWindow* window) {
 	return IsZoomed(window->win32Window);
 }
 
-IntBool _plafWindowHovered(plafWindow* window) {
+bool _plafWindowHovered(plafWindow* window) {
 	return _plafCursorInContentArea(window);
 }
 
-IntBool _plafFramebufferTransparent(plafWindow* window) {
+bool _plafFramebufferTransparent(plafWindow* window) {
 	BOOL composition;
 	if (!window->win32Transparent) {
 		return false;
@@ -1524,21 +1521,21 @@ IntBool _plafFramebufferTransparent(plafWindow* window) {
 	return true;
 }
 
-void _plafSetWindowResizable(plafWindow* window, IntBool enabled) {
+void _plafSetWindowResizable(plafWindow* window, bool enabled) {
 	updateWindowStyles(window);
 }
 
-void _plafSetWindowDecorated(plafWindow* window, IntBool enabled) {
+void _plafSetWindowDecorated(plafWindow* window, bool enabled) {
 	updateWindowStyles(window);
 }
 
-void _plafSetWindowFloating(plafWindow* window, IntBool enabled) {
+void _plafSetWindowFloating(plafWindow* window, bool enabled) {
 	const HWND after = enabled ? HWND_TOPMOST : HWND_NOTOPMOST;
 	SetWindowPos(window->win32Window, after, 0, 0, 0, 0,
 				 SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
 }
 
-void _plafSetWindowMousePassthrough(plafWindow* window, IntBool enabled) {
+void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 	COLORREF key = 0;
 	BYTE alpha = 0;
 	DWORD flags = 0;
@@ -1687,7 +1684,7 @@ void _plafUpdateCursor(plafWindow* window) {
 	}
 }
 
-IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
+bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
 	cursor->win32Cursor = (HCURSOR) createIcon(image, xhot, yhot, false);
 	if (!cursor->win32Cursor)
 		return false;
@@ -1695,7 +1692,7 @@ IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xh
 	return true;
 }
 
-IntBool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
+bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 	int id = 0;
 
 	switch (shape)

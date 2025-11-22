@@ -989,19 +989,19 @@ bool plafIsWindowFocused(plafWindow* window) {
 	}
 }
 
-IntBool _plafWindowMinimized(plafWindow* window) {
+bool _plafWindowMinimized(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isMiniaturized];
 	}
 }
 
-IntBool _plafWindowVisible(plafWindow* window) {
+bool _plafWindowVisible(plafWindow* window) {
 	@autoreleasepool {
 	return [window->nsWindow isVisible];
 	}
 }
 
-IntBool _plafWindowMaximized(plafWindow* window) {
+bool _plafWindowMaximized(plafWindow* window) {
 	@autoreleasepool {
 
 	if (window->resizable)
@@ -1012,30 +1012,23 @@ IntBool _plafWindowMaximized(plafWindow* window) {
 	}
 }
 
-IntBool _plafWindowHovered(plafWindow* window) {
+bool _plafWindowHovered(plafWindow* window) {
 	@autoreleasepool {
-
-	const NSPoint point = [NSEvent mouseLocation];
-
-	if ([NSWindow windowNumberAtPoint:point belowWindowWithWindowNumber:0] !=
-		[window->nsWindow windowNumber])
-	{
-		return false;
-	}
-
-	return NSMouseInRect(point,
-		[window->nsWindow convertRectToScreen:[window->nsView frame]], NO);
-
+		const NSPoint point = [NSEvent mouseLocation];
+		if ([NSWindow windowNumberAtPoint:point belowWindowWithWindowNumber:0] != [window->nsWindow windowNumber]) {
+			return false;
+		}
+		return NSMouseInRect(point, [window->nsWindow convertRectToScreen:[window->nsView frame]], NO);
 	}
 }
 
-IntBool _plafFramebufferTransparent(plafWindow* window) {
+bool _plafFramebufferTransparent(plafWindow* window) {
 	@autoreleasepool {
-	return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
+		return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
 	}
 }
 
-void _plafSetWindowResizable(plafWindow* window, IntBool enabled) {
+void _plafSetWindowResizable(plafWindow* window, bool enabled) {
 	@autoreleasepool {
 
 	const NSUInteger styleMask = [window->nsWindow styleMask];
@@ -1058,7 +1051,7 @@ void _plafSetWindowResizable(plafWindow* window, IntBool enabled) {
 	}
 }
 
-void _plafSetWindowDecorated(plafWindow* window, IntBool enabled) {
+void _plafSetWindowDecorated(plafWindow* window, bool enabled) {
 	@autoreleasepool {
 
 	NSUInteger styleMask = [window->nsWindow styleMask];
@@ -1079,7 +1072,7 @@ void _plafSetWindowDecorated(plafWindow* window, IntBool enabled) {
 	}
 }
 
-void _plafSetWindowFloating(plafWindow* window, IntBool enabled) {
+void _plafSetWindowFloating(plafWindow* window, bool enabled) {
 	@autoreleasepool {
 	if (enabled)
 		[window->nsWindow setLevel:NSFloatingWindowLevel];
@@ -1088,7 +1081,7 @@ void _plafSetWindowFloating(plafWindow* window, IntBool enabled) {
 	}
 }
 
-void _plafSetWindowMousePassthrough(plafWindow* window, IntBool enabled) {
+void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 	@autoreleasepool {
 		[window->nsWindow setIgnoresMouseEvents:enabled];
 	}
@@ -1158,7 +1151,7 @@ void _plafUpdateCursor(plafWindow* window) {
 	}
 }
 
-IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
+bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
 	@autoreleasepool {
 
 	NSImage* native;
@@ -1199,7 +1192,7 @@ IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xh
 	}
 }
 
-IntBool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
+bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 	@autoreleasepool {
 	if (!cursor->nsCursor)
 	{

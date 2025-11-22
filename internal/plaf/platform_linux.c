@@ -406,9 +406,8 @@ static void createKeyTables(void)
 
 // Check whether the IM has a usable style
 //
-static IntBool hasUsableInputMethodStyle(void)
-{
-	IntBool found = false;
+static bool hasUsableInputMethodStyle(void) {
+	bool found = false;
 	XIMStyles* styles = NULL;
 
 	if (_plaf.xlibGetIMValues(_plaf.x11IM, XNQueryInputStyle, &styles, NULL) != NULL)

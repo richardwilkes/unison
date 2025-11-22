@@ -425,6 +425,7 @@ func (w *Window) SetOpacity(opacity float32) {
 	C.plafSetWindowOpacity(w.data, C.float(opacity))
 }
 
+// IsFocused returns true if the window currently has the keyboard focus.
 func (w *Window) IsFocused() bool {
 	return bool(C.plafIsWindowFocused(w.data))
 }

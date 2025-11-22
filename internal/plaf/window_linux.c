@@ -865,8 +865,7 @@ static const struct codepair {
   { 0xffbd /*XKB_KEY_KP_Equal*/,     '=' }
 };
 
-IntBool _plafPoll(struct pollfd* fds, nfds_t count, double timeout)
-{
+bool _plafPoll(struct pollfd* fds, nfds_t count, double timeout) {
 	for (;;)
 	{
 		const int result = poll(fds, count, timeout < 0 ? -1 : (int)(timeout * 1000.0));
@@ -881,8 +880,7 @@ IntBool _plafPoll(struct pollfd* fds, nfds_t count, double timeout)
 // This avoids blocking other threads via the per-display Xlib lock that also
 // covers GLX functions
 //
-IntBool _plafWaitForX11Event(double timeout)
-{
+bool _plafWaitForX11Event(double timeout) {
 	struct pollfd fd = { ConnectionNumber(_plaf.x11Display), POLLIN };
 
 	while (!_plaf.xlibPending(_plaf.x11Display))
@@ -898,8 +896,7 @@ IntBool _plafWaitForX11Event(double timeout)
 // This avoids blocking other threads via the per-display Xlib lock that also
 // covers GLX functions
 //
-static IntBool waitForAnyEvent(double timeout)
-{
+static bool waitForAnyEvent(double timeout) {
 	enum { XLIB_FD, PIPE_FD, INOTIFY_FD };
 	struct pollfd fds[] =
 	{
@@ -953,8 +950,7 @@ static void drainEmptyEvents(void)
 // Waits until a VisibilityNotify event arrives for the specified window or the
 // timeout period elapses (ICCCM section 4.2.2)
 //
-static IntBool waitForVisibilityNotify(plafWindow* window)
-{
+static bool waitForVisibilityNotify(plafWindow* window) {
 	XEvent dummy;
 	while (!_plaf.xlibCheckTypedWindowEvent(_plaf.x11Display,
 								   window->x11Window,
@@ -1968,7 +1964,7 @@ static void processEvent(XEvent *event)
 				// A drag operation has entered the window
 				unsigned long count;
 				Atom* formats = NULL;
-				const IntBool list = event->xclient.data.l[1] & 1;
+				const bool list = event->xclient.data.l[1] & 1;
 
 				_plaf.xdndSource  = event->xclient.data.l[0];
 				_plaf.xdndVersion = event->xclient.data.l[1] >> 24;
@@ -2179,7 +2175,7 @@ static void processEvent(XEvent *event)
 				if (state != IconicState && state != NormalState)
 					return;
 
-				const IntBool minimized = (state == IconicState);
+				const bool minimized = (state == IconicState);
 				if (window->x11Minimized != minimized)
 				{
 					if (window->monitor)
@@ -2196,7 +2192,7 @@ static void processEvent(XEvent *event)
 			}
 			else if (event->xproperty.atom == _plaf.x11NET_WM_STATE)
 			{
-				const IntBool maximized = _plafWindowMaximized(window);
+				const bool maximized = _plafWindowMaximized(window);
 				if (window->maximized != maximized)
 				{
 					window->maximized = maximized;
@@ -2245,8 +2241,7 @@ unsigned long _plafGetWindowProperty(Window window,
 	return itemCount;
 }
 
-IntBool _plafIsVisualTransparent(Visual* visual)
-{
+bool _plafIsVisualTransparent(Visual* visual) {
 	if (!_plaf.xrenderAvailable)
 		return false;
 
@@ -2824,19 +2819,19 @@ bool plafIsWindowFocused(plafWindow* window) {
 	return window->x11Window == focused;
 }
 
-IntBool _plafWindowMinimized(plafWindow* window) {
+bool _plafWindowMinimized(plafWindow* window) {
 	return getWindowState(window) == IconicState;
 }
 
-IntBool _plafWindowVisible(plafWindow* window) {
+bool _plafWindowVisible(plafWindow* window) {
 	XWindowAttributes wa;
 	_plaf.xlibGetWindowAttributes(_plaf.x11Display, window->x11Window, &wa);
 	return wa.map_state == IsViewable;
 }
 
-IntBool _plafWindowMaximized(plafWindow* window) {
+bool _plafWindowMaximized(plafWindow* window) {
 	Atom* states;
-	IntBool maximized = false;
+	bool maximized = false;
 
 	if (!_plaf.x11NET_WM_STATE ||
 		!_plaf.x11NET_WM_STATE_MAXIMIZED_VERT ||
@@ -2867,7 +2862,7 @@ IntBool _plafWindowMaximized(plafWindow* window) {
 	return maximized;
 }
 
-IntBool _plafWindowHovered(plafWindow* window) {
+bool _plafWindowHovered(plafWindow* window) {
 	Window w = _plaf.x11Root;
 	while (w)
 	{
@@ -2894,20 +2889,20 @@ IntBool _plafWindowHovered(plafWindow* window) {
 	return false;
 }
 
-IntBool _plafFramebufferTransparent(plafWindow* window) {
+bool _plafFramebufferTransparent(plafWindow* window) {
 	if (!window->x11Transparent)
 		return false;
 
 	return _plaf.xlibGetSelectionOwner(_plaf.x11Display, _plaf.x11NET_WM_CM_Sx) != None;
 }
 
-void _plafSetWindowResizable(plafWindow* window, IntBool enabled) {
+void _plafSetWindowResizable(plafWindow* window, bool enabled) {
 	int width, height;
 	_plafGetWindowSize(window, &width, &height);
 	updateNormalHints(window, width, height);
 }
 
-void _plafSetWindowDecorated(plafWindow* window, IntBool enabled) {
+void _plafSetWindowDecorated(plafWindow* window, bool enabled) {
 	struct
 	{
 		unsigned long flags;
@@ -2928,7 +2923,7 @@ void _plafSetWindowDecorated(plafWindow* window, IntBool enabled) {
 					sizeof(hints) / sizeof(long));
 }
 
-void _plafSetWindowFloating(plafWindow* window, IntBool enabled) {
+void _plafSetWindowFloating(plafWindow* window, bool enabled) {
 	if (!_plaf.x11NET_WM_STATE || !_plaf.x11NET_WM_STATE_ABOVE)
 		return;
 
@@ -2994,7 +2989,7 @@ void _plafSetWindowFloating(plafWindow* window, IntBool enabled) {
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
-void _plafSetWindowMousePassthrough(plafWindow* window, IntBool enabled) {
+void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 	if (!_plaf.xshapeAvailable)
 		return;
 
@@ -3072,7 +3067,7 @@ void _plafUpdateCursor(plafWindow* window) {
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
-IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
+bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
 	cursor->x11Cursor = _plafCreateNativeCursorX11(image, xhot, yhot);
 	if (!cursor->x11Cursor)
 		return false;
@@ -3080,7 +3075,7 @@ IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xh
 	return true;
 }
 
-IntBool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
+bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 	if (_plaf.xcursorHandle)
 	{
 		char* theme = _plaf.xcursorGetTheme(_plaf.x11Display);

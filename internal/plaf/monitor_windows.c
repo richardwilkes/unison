@@ -390,7 +390,7 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count)
 	return result;
 }
 
-IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
+bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	DEVMODEW dm;
 	ZeroMemory(&dm, sizeof(dm));
 	dm.dmSize = sizeof(dm);
@@ -409,7 +409,7 @@ IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	return true;
 }
 
-IntBool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
+bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
 	HDC dc;
 	WORD values[3][256];
 

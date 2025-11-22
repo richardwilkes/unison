@@ -22,7 +22,7 @@ void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	CGAssociateMouseAndMouseCursorPosition(true);
 }
 
-IntBool _plafCursorInContentArea(plafWindow* window) {
+bool _plafCursorInContentArea(plafWindow* window) {
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
 	return [window->nsView mouse:pos inRect:[window->nsView frame]];
 }

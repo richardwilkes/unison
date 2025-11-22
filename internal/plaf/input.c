@@ -8,12 +8,10 @@
 //////////////////////////////////////////////////////////////////////////
 
 // Notifies shared code of a physical key event
-//
-void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mods)
-{
+void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mods) {
 	if (key >= 0 && key <= KEY_LAST)
 	{
-		IntBool repeated = false;
+		bool repeated = false;
 
 		if (action == INPUT_RELEASE && window->keys[key] == INPUT_RELEASE)
 			return;
@@ -33,8 +31,7 @@ void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mo
 // Notifies shared code of a Unicode codepoint input event
 // The 'plain' parameter determines whether to emit a regular character event
 //
-void _plafInputChar(plafWindow* window, uint32_t codepoint, int mods, IntBool plain)
-{
+void _plafInputChar(plafWindow* window, uint32_t codepoint, int mods, bool plain) {
 	if (codepoint < 32 || (codepoint > 126 && codepoint < 160))
 		return;
 	if (window->charModsCallback)
@@ -83,8 +80,7 @@ void _plafInputCursorPos(plafWindow* window, double xpos, double ypos)
 
 // Notifies shared code of a cursor enter/leave event
 //
-void _plafInputCursorEnter(plafWindow* window, IntBool entered)
-{
+void _plafInputCursorEnter(plafWindow* window, bool entered) {
 	if (window->cursorEnterCallback)
 		window->cursorEnterCallback(window, entered);
 }

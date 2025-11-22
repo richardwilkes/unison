@@ -285,8 +285,7 @@ plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxc
 
 // Searches an extension string for the specified extension
 //
-IntBool _plafStringInExtensionString(const char* string, const char* extensions)
-{
+bool _plafStringInExtensionString(const char* string, const char* extensions) {
 	const char* start = extensions;
 
 	for (;;)

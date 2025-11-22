@@ -18,15 +18,13 @@ static int getGLXFBConfigAttrib(GLXFBConfig fbconfig, int attrib)
 
 // Return the GLXFBConfig most closely matching the specified hints
 //
-static IntBool chooseGLXFBConfig(const plafFrameBufferCfg* desired,
-								  GLXFBConfig* result)
-{
+static bool chooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* result) {
 	GLXFBConfig* nativeConfigs;
 	plafFrameBufferCfg* usableConfigs;
 	const plafFrameBufferCfg* closest;
 	int nativeCount, usableCount;
 	const char* vendor;
-	IntBool trustWindowBit = true;
+	bool trustWindowBit = true;
 
 	// HACK: This is a (hopefully temporary) workaround for Chromium
 	//       (VirtualBox GL) not setting the window bit on any GLXFBConfigs
@@ -156,7 +154,7 @@ static void swapIntervalGLX(int interval)
 	}
 }
 
-static IntBool extensionSupportedGLX(const char* extension) {
+static bool extensionSupportedGLX(const char* extension) {
 	const char* extensions = _plaf.glxQueryExtensionsString(_plaf.x11Display, _plaf.x11Screen);
 	if (extensions) {
 		if (_plafStringInExtensionString(extension, extensions)) {

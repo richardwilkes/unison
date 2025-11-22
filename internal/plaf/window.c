@@ -7,7 +7,7 @@
 
 // Notifies shared code that a window has lost or received input focus
 //
-void _plafInputWindowFocus(plafWindow* window, IntBool focused)
+void _plafInputWindowFocus(plafWindow* window, bool focused)
 {
 	if (window->focusCallback)
 		window->focusCallback(window, focused);
@@ -52,7 +52,7 @@ void _plafInputWindowSize(plafWindow* window, int width, int height)
 
 // Notifies shared code that a window has been minimized or restored
 //
-void _plafInputWindowMinimize(plafWindow* window, IntBool minimized)
+void _plafInputWindowMinimize(plafWindow* window, bool minimized)
 {
 	if (window->minimizeCallback)
 		window->minimizeCallback(window, minimized);
@@ -60,7 +60,7 @@ void _plafInputWindowMinimize(plafWindow* window, IntBool minimized)
 
 // Notifies shared code that a window has been maximized or restored
 //
-void _plafInputWindowMaximize(plafWindow* window, IntBool maximized)
+void _plafInputWindowMaximize(plafWindow* window, bool maximized)
 {
 	if (window->maximizeCallback)
 		window->maximizeCallback(window, maximized);

@@ -33,8 +33,7 @@ static int compareVideoModes(const void* fp, const void* sp)
 
 // Retrieves the available modes for the specified monitor
 //
-static IntBool refreshVideoModes(plafMonitor* monitor)
-{
+static bool refreshVideoModes(plafMonitor* monitor) {
     int modeCount;
     plafVideoMode* modes;
 
