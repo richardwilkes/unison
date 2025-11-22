@@ -2,7 +2,7 @@
 
 #include "platform.h"
 
-const char* getClipboardString(void) {
+const char* plafGetClipboardString(void) {
 	@autoreleasepool {
 		NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
 		if (![[pasteboard types] containsObject:NSPasteboardTypeString]) {
@@ -12,13 +12,13 @@ const char* getClipboardString(void) {
 		if (!object) {
 			return NULL;
 		}
-		_glfw_free(_glfw.clipboardString);
-		_glfw.clipboardString = _glfw_strdup([object UTF8String]);
-		return _glfw.clipboardString;
+		_plaf_free(_plaf.clipboardString);
+		_plaf.clipboardString = _plaf_strdup([object UTF8String]);
+		return _plaf.clipboardString;
 	}
 }
 
-void setClipboardString(const char* string) {
+void plafSetClipboardString(const char* string) {
 	@autoreleasepool {
 		NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
 		[pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];

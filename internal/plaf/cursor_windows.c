@@ -1,7 +1,7 @@
 #if defined(_WIN32)
 #include "platform.h"
 
-void glfwGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
+void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 	POINT pos;
 	if (GetCursorPos(&pos)) {
 		ScreenToClient(window->win32Window, &pos);
@@ -13,7 +13,7 @@ void glfwGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 	}
 }
 
-void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
+void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	POINT pos = { (int)xpos, (int)ypos };
 	ClientToScreen(window->win32Window, &pos);
 	SetCursorPos(pos.x, pos.y);
@@ -32,7 +32,7 @@ IntBool cursorInContentArea(plafWindow* window) {
 	return PtInRect(&area, pos);
 }
 
-void _glfwSetCursor(plafWindow* window) {
+void _plafSetCursor(plafWindow* window) {
 	if (cursorInContentArea(window)) {
 		updateCursorImage(window);
 	}

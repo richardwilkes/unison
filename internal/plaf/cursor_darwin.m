@@ -1,13 +1,13 @@
 #if defined(__APPLE__)
 #include "platform.h"
 
-void glfwGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
+void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
 	*xpos = pos.x;
 	*ypos = [window->nsView frame].size.height - pos.y;
 }
 
-void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
+void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	updateCursorImage(window);
 	const NSRect contentRect = [window->nsView frame];
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
@@ -17,7 +17,7 @@ void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos) {
 		const NSRect localRect = NSMakeRect(xpos, contentRect.size.height - ypos - 1, 0, 0);
 		const NSRect globalRect = [window->nsWindow convertRectToScreen:localRect];
 		const NSPoint globalPoint = globalRect.origin;
-		CGWarpMouseCursorPosition(CGPointMake(globalPoint.x, _glfwTransformYCocoa(globalPoint.y)));
+		CGWarpMouseCursorPosition(CGPointMake(globalPoint.x, _plafTransformYCocoa(globalPoint.y)));
 	}
 	CGAssociateMouseAndMouseCursorPosition(true);
 }
@@ -27,7 +27,7 @@ IntBool cursorInContentArea(plafWindow* window) {
 	return [window->nsView mouse:pos inRect:[window->nsView frame]];
 }
 
-void _glfwSetCursor(plafWindow* window) {
+void _plafSetCursor(plafWindow* window) {
 	if (cursorInContentArea(window)) {
 		updateCursorImage(window);
 	}

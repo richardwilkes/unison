@@ -3,17 +3,17 @@
 #include "platform.h"
 #include <dlfcn.h>
 
-void* _glfwPlatformLoadModule(const char* path)
+void* _plafLoadModule(const char* path)
 {
     return dlopen(path, RTLD_LAZY | RTLD_LOCAL);
 }
 
-void _glfwPlatformFreeModule(void* module)
+void _plafFreeModule(void* module)
 {
     dlclose(module);
 }
 
-moduleFunc _glfwPlatformGetModuleSymbol(void* module, const char* name)
+moduleFunc _plafGetModuleSymbol(void* module, const char* name)
 {
     return dlsym(module, name);
 }

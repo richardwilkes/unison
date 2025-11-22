@@ -47,7 +47,7 @@ var fMonitorHolder func(monitor *Monitor, event PeripheralEvent)
 // GetMonitors returns a slice of handles for all currently connected monitors.
 func GetMonitors() []*Monitor {
 	var length int
-	mC := C.glfwGetMonitors((*C.int)(unsafe.Pointer(&length)))
+	mC := C.plafGetMonitors((*C.int)(unsafe.Pointer(&length)))
 	panicError()
 	if mC == nil {
 		return nil
@@ -63,7 +63,7 @@ func GetMonitors() []*Monitor {
 // GetPrimaryMonitor returns the primary monitor. This is usually the monitor
 // where elements like the Windows task bar or the OS X menu bar is located.
 func GetPrimaryMonitor() *Monitor {
-	m := C.glfwGetPrimaryMonitor()
+	m := C.plafGetPrimaryMonitor()
 	panicError()
 	if m == nil {
 		return nil
@@ -75,7 +75,7 @@ func GetPrimaryMonitor() *Monitor {
 // corner of the monitor.
 func (m *Monitor) GetPos() (x, y int) {
 	var xpos, ypos C.int
-	C.glfwGetMonitorPos(m.data, &xpos, &ypos)
+	C.plafGetMonitorPos(m.data, &xpos, &ypos)
 	panicError()
 	return int(xpos), int(ypos)
 }
@@ -90,7 +90,7 @@ func (m *Monitor) GetPos() (x, y int) {
 // This function must only be called from the main thread.
 func (m *Monitor) GetWorkarea() (x, y, width, height int) {
 	var cX, cY, cWidth, cHeight C.int
-	C.glfwGetMonitorWorkarea(m.data, &cX, &cY, &cWidth, &cHeight)
+	C.plafGetMonitorWorkarea(m.data, &cX, &cY, &cWidth, &cHeight)
 	return int(cX), int(cY), int(cWidth), int(cHeight)
 }
 
@@ -103,7 +103,7 @@ func (m *Monitor) GetWorkarea() (x, y, width, height int) {
 // This function must only be called from the main thread.
 func (m *Monitor) GetContentScale() (x, y float32) {
 	var cX, cY C.float
-	C.glfwGetMonitorContentScale(m.data, &cX, &cY)
+	C.plafGetMonitorContentScale(m.data, &cX, &cY)
 	return float32(cX), float32(cY)
 }
 
@@ -115,14 +115,14 @@ func (m *Monitor) GetContentScale() (x, y float32) {
 // report it accurately.
 func (m *Monitor) GetPhysicalSize() (width, height int) {
 	var wi, h C.int
-	C.glfwGetMonitorPhysicalSize(m.data, &wi, &h)
+	C.plafGetMonitorPhysicalSize(m.data, &wi, &h)
 	panicError()
 	return int(wi), int(h)
 }
 
 // GetName returns a human-readable name of the monitor, encoded as UTF-8.
 func (m *Monitor) GetName() string {
-	mn := C.glfwGetMonitorName(m.data)
+	mn := C.plafGetMonitorName(m.data)
 	panicError()
 	if mn == nil {
 		return ""
@@ -146,7 +146,7 @@ func SetMonitorCallback(cbfun MonitorCallback) MonitorCallback {
 	if cbfun != nil {
 		callback = C.monitorFunc(C.goMonitorCallback)
 	}
-	C.glfwSetMonitorCallback(callback)
+	C.plafSetMonitorCallback(callback)
 	return previous
 }
 
@@ -157,7 +157,7 @@ func SetMonitorCallback(cbfun MonitorCallback) MonitorCallback {
 func (m *Monitor) GetVideoModes() []*VidMode {
 	var length int
 
-	vC := C.glfwGetVideoModes(m.data, (*C.int)(unsafe.Pointer(&length)))
+	vC := C.plafGetVideoModes(m.data, (*C.int)(unsafe.Pointer(&length)))
 	panicError()
 	if vC == nil {
 		return nil
@@ -177,7 +177,7 @@ func (m *Monitor) GetVideoModes() []*VidMode {
 // are using a full screen window, the return value will therefore depend on
 // whether it is focused.
 func (m *Monitor) GetVideoMode() *VidMode {
-	t := C.glfwGetVideoMode(m.data)
+	t := C.plafGetVideoMode(m.data)
 	if t == nil {
 		return nil
 	}
@@ -187,13 +187,13 @@ func (m *Monitor) GetVideoMode() *VidMode {
 
 // SetGamma generates a gamma ramp from the specified exponent and then calls SetGamma with it.
 func (m *Monitor) SetGamma(gamma float32) {
-	C.glfwSetGamma(m.data, C.float(gamma))
+	C.plafSetGamma(m.data, C.float(gamma))
 	panicError()
 }
 
 // GetGammaRamp retrieves the current gamma ramp of the monitor.
 func (m *Monitor) GetGammaRamp() *GammaRamp {
-	rampC := C.glfwGetGammaRamp(m.data)
+	rampC := C.plafGetGammaRamp(m.data)
 	panicError()
 	if rampC == nil {
 		return nil
@@ -212,7 +212,7 @@ func (m *Monitor) GetGammaRamp() *GammaRamp {
 // SetGammaRamp sets the current gamma ramp for the monitor.
 func (m *Monitor) SetGammaRamp(ramp *GammaRamp) {
 	length := len(ramp.Red)
-	rampC := (*C.GammaRamp)(C.malloc(C.size_t(unsafe.Sizeof(C.GammaRamp{}))))
+	rampC := (*C.plafGammaRamp)(C.malloc(C.size_t(unsafe.Sizeof(C.plafGammaRamp{}))))
 	rampC.size = C.uint(length)
 	rampC.red = (*C.ushort)(C.malloc(C.size_t(2 * length)))
 	rampC.green = (*C.ushort)(C.malloc(C.size_t(2 * length)))
@@ -220,7 +220,7 @@ func (m *Monitor) SetGammaRamp(ramp *GammaRamp) {
 	copy(unsafe.Slice((*uint16)(rampC.red), length), ramp.Red)
 	copy(unsafe.Slice((*uint16)(rampC.green), length), ramp.Green)
 	copy(unsafe.Slice((*uint16)(rampC.blue), length), ramp.Blue)
-	C.glfwSetGammaRamp(m.data, rampC)
+	C.plafSetGammaRamp(m.data, rampC)
 	C.free(unsafe.Pointer(rampC.red))
 	C.free(unsafe.Pointer(rampC.green))
 	C.free(unsafe.Pointer(rampC.blue))

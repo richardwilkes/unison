@@ -8,8 +8,8 @@ import (
 	"image/draw"
 )
 
-// imageToGLFW converts img to be compatible with C.ImageData.
-func imageToGLFW(img image.Image) (r C.ImageData, free func()) {
+// imageToPLAF converts img to be compatible with C.plafImageData.
+func imageToPLAF(img image.Image) (r C.plafImageData, free func()) {
 	b := img.Bounds()
 	r.width = C.int(b.Dx())
 	r.height = C.int(b.Dy())

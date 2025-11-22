@@ -4,8 +4,8 @@ package plaf
 import "C"
 import "unsafe"
 
-// Init initializes the GLFW library. Before most GLFW functions can be used,
-// GLFW must be initialized, and before a program terminates GLFW should be
+// Init initializes the PLAF library. Before most PLAF functions can be used,
+// PLAF must be initialized, and before a program terminates PLAF should be
 // terminated in order to free any resources allocated during or after
 // initialization.
 //
@@ -20,10 +20,10 @@ func Init() error {
 
 // Terminate destroys all remaining windows, frees any allocated resources and
 // sets the library to an uninitialized state. Once this is called, you must
-// again call Init successfully before you will be able to use most GLFW
+// again call Init successfully before you will be able to use most PLAF
 // functions.
 //
-// If GLFW has been successfully initialized, this function should be called
+// If PLAF has been successfully initialized, this function should be called
 // before the program exits. If initialization fails, there is no need to call
 // this function, as it is called by Init before it returns failure.
 //
@@ -38,7 +38,7 @@ func Terminate() {
 //
 // This function may only be called from the main thread.
 func GetClipboardString() string {
-	cs := C.getClipboardString()
+	cs := C.plafGetClipboardString()
 	if cs == nil {
 		return ""
 	}
@@ -52,5 +52,5 @@ func GetClipboardString() string {
 func SetClipboardString(str string) {
 	cp := C.CString(str)
 	defer C.free(unsafe.Pointer(cp))
-	C.setClipboardString(cp)
+	C.plafSetClipboardString(cp)
 }

@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-func convertErrorResponse(errResp *C.ErrorResponse) error {
+func convertErrorResponse(errResp *C.plafError) error {
 	if errResp == nil {
 		return nil
 	}
@@ -37,9 +37,9 @@ func convertErrorResponse(errResp *C.ErrorResponse) error {
 // Holds the value of the last error.
 var lastError = make(chan error, 1)
 
-// Set the glfw callback internally
+// Set the plaf callback internally
 func init() {
-	C.glfwSetErrorCallback(C.errorFunc(C.goErrorCallback))
+	C.plafSetErrorCallback(C.errorFunc(C.goErrorCallback))
 }
 
 // flushErrors is called by Terminate before it actually calls C.plafTerminate,
@@ -47,8 +47,8 @@ func init() {
 // before the program exits.
 func flushErrors() {
 	if err := fetchError(); err != nil {
-		fmt.Fprintln(os.Stderr, "go-gl/glfw: internal error: an uncaught error has occurred:", err)
-		fmt.Fprintln(os.Stderr, "go-gl/glfw: Please report this in the Go package issue tracker.")
+		fmt.Fprintln(os.Stderr, "go-gl/plaf: internal error: an uncaught error has occurred:", err)
+		fmt.Fprintln(os.Stderr, "go-gl/plaf: Please report this in the Go package issue tracker.")
 	}
 }
 

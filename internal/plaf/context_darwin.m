@@ -5,14 +5,14 @@
 #include <unistd.h>
 #include <math.h>
 
-static ErrorResponse* makeContextCurrentNSGL(plafWindow* window) {
+static plafError* makeContextCurrentNSGL(plafWindow* window) {
 	@autoreleasepool {
 		if (window) {
 			[window->context.nsglCtx makeCurrentContext];
 		} else {
 			[NSOpenGLContext clearCurrentContext];
 		}
-		_glfw.contextSlot = window;
+		_plaf.contextSlot = window;
 	}
 	return NULL;
 }
@@ -30,7 +30,7 @@ static void swapIntervalNSGL(int interval)
 {
 	@autoreleasepool {
 
-		[_glfw.contextSlot->context.nsglCtx setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
+		[_plaf.contextSlot->context.nsglCtx setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
 
 	}
 }
@@ -44,7 +44,7 @@ static int extensionSupportedNSGL(const char* extension)
 static glFunc getProcAddressNSGL(const char* procname)
 {
 	CFStringRef symbolName = CFStringCreateWithCString(kCFAllocatorDefault, procname, kCFStringEncodingASCII);
-	glFunc symbol = CFBundleGetFunctionPointerForName(_glfw.nsglFramework, symbolName);
+	glFunc symbol = CFBundleGetFunctionPointerForName(_plaf.nsglFramework, symbolName);
 	CFRelease(symbolName);
 	return symbol;
 }
@@ -64,16 +64,16 @@ static void destroyContextNSGL(plafWindow* window)
 
 
 //////////////////////////////////////////////////////////////////////////
-//////                       GLFW internal API                      //////
+//////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
 // Initialize OpenGL support
-ErrorResponse* _glfwInitNSGL(void) {
-	if (_glfw.nsglFramework) {
+plafError* _plafInitNSGL(void) {
+	if (_plaf.nsglFramework) {
 		return NULL;
 	}
-	_glfw.nsglFramework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
-	if (_glfw.nsglFramework == NULL) {
+	_plaf.nsglFramework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
+	if (_plaf.nsglFramework == NULL) {
 		return createErrorResponse("NSGL: Failed to locate OpenGL framework");
 	}
 	return NULL;
@@ -81,12 +81,12 @@ ErrorResponse* _glfwInitNSGL(void) {
 
 // Terminate OpenGL support
 //
-void _glfwTerminateNSGL(void)
+void _plafTerminateNSGL(void)
 {
 }
 
 // Create the OpenGL context
-ErrorResponse* _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
 	if (ctxconfig->major > 2) {
 		if (ctxconfig->major == 3 && ctxconfig->minor < 2) {
 			return createErrorResponse("NSGL: The targeted version of macOS does not support OpenGL 3.0 or 3.1 but may support 3.2 and above");
@@ -215,10 +215,10 @@ ErrorResponse* _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxc
 
 
 //////////////////////////////////////////////////////////////////////////
-//////                        GLFW native API                       //////
+//////                        PLAF native API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-id glfwGetNSGLContext(plafWindow* window) {
+id plafGetNSGLContext(plafWindow* window) {
 	return window->context.nsglCtx;
 }
 

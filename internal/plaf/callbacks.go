@@ -52,8 +52,8 @@ func goErrorCallback(desc *C.char) {
 	select {
 	case lastError <- err:
 	default:
-		fmt.Fprintln(os.Stderr, "go-gl/glfw: internal error: an uncaught error has occurred:", err)
-		fmt.Fprintln(os.Stderr, "go-gl/glfw: Please report this in the Go package issue tracker.")
+		fmt.Fprintln(os.Stderr, "go-gl/plaf: internal error: an uncaught error has occurred:", err)
+		fmt.Fprintln(os.Stderr, "go-gl/plaf: Please report this in the Go package issue tracker.")
 	}
 }
 

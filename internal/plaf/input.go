@@ -215,7 +215,7 @@ type Cursor struct {
 // If the key is KeyUnknown or does not exist on the keyboard this method will
 // return -1.
 func GetKeyScancode(key Key) int {
-	return int(C.glfwGetKeyScancode(C.int(key)))
+	return int(C.plafGetKeyScancode(C.int(key)))
 }
 
 // GetKey returns the last reported state of a keyboard key. The returned state
@@ -230,7 +230,7 @@ func GetKeyScancode(key Key) int {
 // use on the standard US keyboard layout. If you want to input text, use the
 // Unicode character callback instead.
 func (w *Window) GetKey(key Key) Action {
-	ret := Action(C.glfwGetKey(w.data, C.int(key)))
+	ret := Action(C.plafGetKey(w.data, C.int(key)))
 	panicError()
 	return ret
 }
@@ -241,7 +241,7 @@ func (w *Window) GetKey(key Key) Action {
 // the first time you call this function after a mouse button has been pressed,
 // even if the mouse button has already been released.
 func (w *Window) GetMouseButton(button MouseButton) Action {
-	ret := Action(C.glfwGetMouseButton(w.data, C.int(button)))
+	ret := Action(C.plafGetMouseButton(w.data, C.int(button)))
 	panicError()
 	return ret
 }
@@ -256,10 +256,10 @@ func (w *Window) GetMouseButton(button MouseButton) Action {
 // type is not *image.NRGBA, it will be converted to it.
 //
 // The cursor hotspot is specified in pixels, relative to the upper-left corner of the cursor image.
-// Like all other coordinate systems in GLFW, the X-axis points to the right and the Y-axis points down.
+// Like all other coordinate systems in PLAF, the X-axis points to the right and the Y-axis points down.
 func CreateCursor(img image.Image, xhot, yhot int) *Cursor {
-	imgC, free := imageToGLFW(img)
-	cursor := C.glfwCreateCursor(&imgC, C.int(xhot), C.int(yhot))
+	imgC, free := imageToPLAF(img)
+	cursor := C.plafCreateCursor(&imgC, C.int(xhot), C.int(yhot))
 	free()
 	panicError()
 	return &Cursor{cursor}
@@ -268,7 +268,7 @@ func CreateCursor(img image.Image, xhot, yhot int) *Cursor {
 // CreateStandardCursor returns a cursor with a standard shape,
 // that can be set for a window with SetCursor.
 func CreateStandardCursor(shape StandardCursor) *Cursor {
-	cursor := C.glfwCreateStandardCursor(C.int(shape))
+	cursor := C.plafCreateStandardCursor(C.int(shape))
 	panicError()
 	return &Cursor{cursor}
 }
@@ -276,7 +276,7 @@ func CreateStandardCursor(shape StandardCursor) *Cursor {
 // Destroy destroys a cursor previously created with CreateCursor.
 // Any remaining cursors will be destroyed by Terminate.
 func (c *Cursor) Destroy() {
-	C.glfwDestroyCursor(c.data)
+	C.plafDestroyCursor(c.data)
 	panicError()
 }
 
@@ -287,9 +287,9 @@ func (c *Cursor) Destroy() {
 // On some platforms, the set cursor may not be visible unless the window also has input focus.
 func (w *Window) SetCursor(c *Cursor) {
 	if c == nil {
-		C.glfwSetCursor(w.data, nil)
+		C.plafSetCursor(w.data, nil)
 	} else {
-		C.glfwSetCursor(w.data, c.data)
+		C.plafSetCursor(w.data, c.data)
 	}
 	panicError()
 }
@@ -316,7 +316,7 @@ func (w *Window) SetKeyCallback(cbfun KeyCallback) (previous KeyCallback) {
 	if cbfun != nil {
 		callback = C.keyFunc(C.goKeyCallback)
 	}
-	C.glfwSetKeyCallback(w.data, callback)
+	C.plafSetKeyCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -345,7 +345,7 @@ func (w *Window) SetCharCallback(cbfun CharCallback) (previous CharCallback) {
 	if cbfun != nil {
 		callback = C.charFunc(C.goCharCallback)
 	}
-	C.glfwSetCharCallback(w.data, callback)
+	C.plafSetCharCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -372,7 +372,7 @@ func (w *Window) SetCharModsCallback(cbfun CharModsCallback) (previous CharModsC
 	if cbfun != nil {
 		callback = C.charModsFunc(C.goCharModsCallback)
 	}
-	C.glfwSetCharModsCallback(w.data, callback)
+	C.plafSetCharModsCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -395,7 +395,7 @@ func (w *Window) SetMouseButtonCallback(cbfun MouseButtonCallback) (previous Mou
 	if cbfun != nil {
 		callback = C.mouseButtonFunc(C.goMouseButtonCallback)
 	}
-	C.glfwSetMouseButtonCallback(w.data, callback)
+	C.plafSetMouseButtonCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -413,7 +413,7 @@ func (w *Window) SetCursorPosCallback(cbfun CursorPosCallback) (previous CursorP
 	if cbfun != nil {
 		callback = C.cursorPosFunc(C.goCursorPosCallback)
 	}
-	C.glfwSetCursorPosCallback(w.data, callback)
+	C.plafSetCursorPosCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -430,7 +430,7 @@ func (w *Window) SetCursorEnterCallback(cbfun CursorEnterCallback) (previous Cur
 	if cbfun != nil {
 		callback = C.cursorEnterFunc(C.goCursorEnterCallback)
 	}
-	C.glfwSetCursorEnterCallback(w.data, callback)
+	C.plafSetCursorEnterCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -447,7 +447,7 @@ func (w *Window) SetScrollCallback(cbfun ScrollCallback) (previous ScrollCallbac
 	if cbfun != nil {
 		callback = C.scrollFunc(C.goScrollCallback)
 	}
-	C.glfwSetScrollCallback(w.data, callback)
+	C.plafSetScrollCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -464,7 +464,7 @@ func (w *Window) SetDropCallback(cbfun DropCallback) (previous DropCallback) {
 	if cbfun != nil {
 		callback = C.dropFunc(C.goDropCallback)
 	}
-	C.glfwSetDropCallback(w.data, callback)
+	C.plafSetDropCallback(w.data, callback)
 	panicError()
 	return previous
 }

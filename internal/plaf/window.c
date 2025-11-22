@@ -2,12 +2,12 @@
 
 
 //////////////////////////////////////////////////////////////////////////
-//////                         GLFW event API                       //////
+//////                         PLAF event API                       //////
 //////////////////////////////////////////////////////////////////////////
 
 // Notifies shared code that a window has lost or received input focus
 //
-void _glfwInputWindowFocus(plafWindow* window, IntBool focused)
+void _plafInputWindowFocus(plafWindow* window, IntBool focused)
 {
 	if (window->focusCallback)
 		window->focusCallback(window, focused);
@@ -20,14 +20,14 @@ void _glfwInputWindowFocus(plafWindow* window, IntBool focused)
 		{
 			if (window->keys[key] == INPUT_PRESS)
 			{
-				_glfwInputKey(window, key, _glfw.scanCodes[key], INPUT_RELEASE, 0);
+				_plafInputKey(window, key, _plaf.scanCodes[key], INPUT_RELEASE, 0);
 			}
 		}
 
 		for (button = 0;  button <= MOUSE_BUTTON_LAST;  button++)
 		{
 			if (window->mouseButtons[button] == INPUT_PRESS)
-				_glfwInputMouseClick(window, button, INPUT_RELEASE, 0);
+				_plafInputMouseClick(window, button, INPUT_RELEASE, 0);
 		}
 	}
 }
@@ -35,7 +35,7 @@ void _glfwInputWindowFocus(plafWindow* window, IntBool focused)
 // Notifies shared code that a window has moved
 // The position is specified in content area relative screen coordinates
 //
-void _glfwInputWindowPos(plafWindow* window, int x, int y)
+void _plafInputWindowPos(plafWindow* window, int x, int y)
 {
 	if (window->posCallback)
 		window->posCallback(window, x, y);
@@ -44,7 +44,7 @@ void _glfwInputWindowPos(plafWindow* window, int x, int y)
 // Notifies shared code that a window has been resized
 // The size is specified in screen coordinates
 //
-void _glfwInputWindowSize(plafWindow* window, int width, int height)
+void _plafInputWindowSize(plafWindow* window, int width, int height)
 {
 	if (window->sizeCallback)
 		window->sizeCallback(window, width, height);
@@ -52,7 +52,7 @@ void _glfwInputWindowSize(plafWindow* window, int width, int height)
 
 // Notifies shared code that a window has been minimized or restored
 //
-void _glfwInputWindowMinimize(plafWindow* window, IntBool minimized)
+void _plafInputWindowMinimize(plafWindow* window, IntBool minimized)
 {
 	if (window->minimizeCallback)
 		window->minimizeCallback(window, minimized);
@@ -60,7 +60,7 @@ void _glfwInputWindowMinimize(plafWindow* window, IntBool minimized)
 
 // Notifies shared code that a window has been maximized or restored
 //
-void _glfwInputWindowMaximize(plafWindow* window, IntBool maximized)
+void _plafInputWindowMaximize(plafWindow* window, IntBool maximized)
 {
 	if (window->maximizeCallback)
 		window->maximizeCallback(window, maximized);
@@ -69,7 +69,7 @@ void _glfwInputWindowMaximize(plafWindow* window, IntBool maximized)
 // Notifies shared code that a window framebuffer has been resized
 // The size is specified in pixels
 //
-void _glfwInputFramebufferSize(plafWindow* window, int width, int height)
+void _plafInputFramebufferSize(plafWindow* window, int width, int height)
 {
 	if (window->fbsizeCallback)
 		window->fbsizeCallback(window, width, height);
@@ -78,7 +78,7 @@ void _glfwInputFramebufferSize(plafWindow* window, int width, int height)
 // Notifies shared code that a window content scale has changed
 // The scale is specified as the ratio between the current and default DPI
 //
-void _glfwInputWindowContentScale(plafWindow* window, float xscale, float yscale)
+void _plafInputWindowContentScale(plafWindow* window, float xscale, float yscale)
 {
 	if (window->scaleCallback)
 		window->scaleCallback(window, xscale, yscale);
@@ -86,7 +86,7 @@ void _glfwInputWindowContentScale(plafWindow* window, float xscale, float yscale
 
 // Notifies shared code that the window contents needs updating
 //
-void _glfwInputWindowDamage(plafWindow* window)
+void _plafInputWindowDamage(plafWindow* window)
 {
 	if (window->refreshCallback)
 		window->refreshCallback(window);
@@ -94,7 +94,7 @@ void _glfwInputWindowDamage(plafWindow* window)
 
 // Notifies shared code that the user wishes to close a window
 //
-void _glfwInputWindowCloseRequest(plafWindow* window)
+void _plafInputWindowCloseRequest(plafWindow* window)
 {
 	window->shouldClose = true;
 
@@ -102,44 +102,37 @@ void _glfwInputWindowCloseRequest(plafWindow* window)
 		window->closeCallback(window);
 }
 
-// Notifies shared code that a window has changed its desired monitor
-//
-void _glfwInputWindowMonitor(plafWindow* window, plafMonitor* monitor)
-{
-	window->monitor = monitor;
-}
-
 //////////////////////////////////////////////////////////////////////////
-//////                        GLFW public API                       //////
+//////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
- ErrorResponse* glfwCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
+ plafError* plafCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
 	if (width <= 0 || height <= 0) {
 		return createErrorResponse("Invalid window size %ix%i", width, height);
 	}
 
-	plafCtxCfg ctxconfig = _glfw.contextCfg;
+	plafCtxCfg ctxconfig = _plaf.contextCfg;
 	ctxconfig.share      = share;
-	ErrorResponse* err   = plafCheckContextConfig(&ctxconfig);
+	plafError* err   = plafCheckContextConfig(&ctxconfig);
 	if (err) {
 		return err;
 	}
 
-	plafFrameBufferCfg fbconfig = _glfw.frameBufferCfg;
+	plafFrameBufferCfg fbconfig = _plaf.frameBufferCfg;
 
-	WindowConfig wndconfig = _glfw.windowCfg;
+	plafWindowConfig wndconfig = _plaf.windowCfg;
 	wndconfig.width        = width;
 	wndconfig.height       = height;
 
-	plafWindow* window = _glfw_calloc(1, sizeof(plafWindow));
-	window->next                  = _glfw.windowListHead;
-	_glfw.windowListHead          = window;
+	plafWindow* window = _plaf_calloc(1, sizeof(plafWindow));
+	window->next                  = _plaf.windowListHead;
+	_plaf.windowListHead          = window;
 	window->videoMode.width       = width;
 	window->videoMode.height      = height;
 	window->videoMode.redBits     = fbconfig.redBits;
 	window->videoMode.greenBits   = fbconfig.greenBits;
 	window->videoMode.blueBits    = fbconfig.blueBits;
-	window->videoMode.refreshRate = _glfw.desiredRefreshRate;
+	window->videoMode.refreshRate = _plaf.desiredRefreshRate;
 	window->monitor               = monitor;
 	window->resizable             = wndconfig.resizable;
 	window->decorated             = wndconfig.decorated;
@@ -152,11 +145,11 @@ void _glfwInputWindowMonitor(plafWindow* window, plafMonitor* monitor)
 	window->maxheight             = DONT_CARE;
 	window->numer                 = DONT_CARE;
 	window->denom                 = DONT_CARE;
-	window->title                 = _glfw_strdup(title);
+	window->title                 = _plaf_strdup(title);
 
-	err = _glfwCreateWindow(window, &wndconfig, &ctxconfig, &fbconfig);
+	err = _plafCreateWindow(window, &wndconfig, &ctxconfig, &fbconfig);
 	if (err) {
-		glfwDestroyWindow(window);
+		plafDestroyWindow(window);
 		return err;
 	}
 
@@ -164,149 +157,149 @@ void _glfwInputWindowMonitor(plafWindow* window, plafMonitor* monitor)
 	return NULL;
 }
 
-void glfwDefaultWindowHints(void)
+void plafDefaultWindowHints(void)
 {
 	// The default is OpenGL with minimum version 1.0
-	memset(&_glfw.contextCfg, 0, sizeof(_glfw.contextCfg));
-	_glfw.contextCfg.major  = 3;
-	_glfw.contextCfg.minor  = 2;
+	memset(&_plaf.contextCfg, 0, sizeof(_plaf.contextCfg));
+	_plaf.contextCfg.major  = 3;
+	_plaf.contextCfg.minor  = 2;
 #if defined(__APPLE__)
 	// These don't appear to be necessary to set on macOS anymore, but keeping for now
-	_glfw.contextCfg.forward = true;
-	_glfw.contextCfg.profile = OPENGL_PROFILE_CORE;
+	_plaf.contextCfg.forward = true;
+	_plaf.contextCfg.profile = OPENGL_PROFILE_CORE;
 #endif
 
 	// The default is a resizable window with decorations
-	memset(&_glfw.windowCfg, 0, sizeof(_glfw.windowCfg));
-	_glfw.windowCfg.resizable    = true;
-	_glfw.windowCfg.decorated    = true;
-	_glfw.windowCfg.xpos         = ANY_POSITION;
-	_glfw.windowCfg.ypos         = ANY_POSITION;
-	_glfw.windowCfg.scaleFramebuffer = true;
+	memset(&_plaf.windowCfg, 0, sizeof(_plaf.windowCfg));
+	_plaf.windowCfg.resizable    = true;
+	_plaf.windowCfg.decorated    = true;
+	_plaf.windowCfg.xpos         = ANY_POSITION;
+	_plaf.windowCfg.ypos         = ANY_POSITION;
+	_plaf.windowCfg.scaleFramebuffer = true;
 
 	// The default is 24 bits of color, 24 bits of depth and 8 bits of stencil, double buffered
-	memset(&_glfw.frameBufferCfg, 0, sizeof(_glfw.frameBufferCfg));
-	_glfw.frameBufferCfg.redBits      = 8;
-	_glfw.frameBufferCfg.greenBits    = 8;
-	_glfw.frameBufferCfg.blueBits     = 8;
-	_glfw.frameBufferCfg.alphaBits    = 8;
-	_glfw.frameBufferCfg.depthBits    = 24;
-	_glfw.frameBufferCfg.stencilBits  = 8;
-	_glfw.frameBufferCfg.doublebuffer = true;
+	memset(&_plaf.frameBufferCfg, 0, sizeof(_plaf.frameBufferCfg));
+	_plaf.frameBufferCfg.redBits      = 8;
+	_plaf.frameBufferCfg.greenBits    = 8;
+	_plaf.frameBufferCfg.blueBits     = 8;
+	_plaf.frameBufferCfg.alphaBits    = 8;
+	_plaf.frameBufferCfg.depthBits    = 24;
+	_plaf.frameBufferCfg.stencilBits  = 8;
+	_plaf.frameBufferCfg.doublebuffer = true;
 
 	// The default is to select the highest available refresh rate
-	_glfw.desiredRefreshRate = DONT_CARE;
+	_plaf.desiredRefreshRate = DONT_CARE;
 }
 
-void glfwWindowHint(int hint, int value)
+void plafWindowHint(int hint, int value)
 {
 	switch (hint)
 	{
 		case WINDOW_HINT_RED_BITS:
-			_glfw.frameBufferCfg.redBits = value;
+			_plaf.frameBufferCfg.redBits = value;
 			return;
 		case WINDOW_HINT_GREEN_BITS:
-			_glfw.frameBufferCfg.greenBits = value;
+			_plaf.frameBufferCfg.greenBits = value;
 			return;
 		case WINDOW_HINT_BLUE_BITS:
-			_glfw.frameBufferCfg.blueBits = value;
+			_plaf.frameBufferCfg.blueBits = value;
 			return;
 		case WINDOW_HINT_ALPHA_BITS:
-			_glfw.frameBufferCfg.alphaBits = value;
+			_plaf.frameBufferCfg.alphaBits = value;
 			return;
 		case WINDOW_HINT_DEPTH_BITS:
-			_glfw.frameBufferCfg.depthBits = value;
+			_plaf.frameBufferCfg.depthBits = value;
 			return;
 		case WINDOW_HINT_STENCIL_BITS:
-			_glfw.frameBufferCfg.stencilBits = value;
+			_plaf.frameBufferCfg.stencilBits = value;
 			return;
 		case WINDOW_HINT_ACCUM_RED_BITS:
-			_glfw.frameBufferCfg.accumRedBits = value;
+			_plaf.frameBufferCfg.accumRedBits = value;
 			return;
 		case WINDOW_HINT_ACCUM_GREEN_BITS:
-			_glfw.frameBufferCfg.accumGreenBits = value;
+			_plaf.frameBufferCfg.accumGreenBits = value;
 			return;
 		case WINDOW_HINT_ACCUM_BLUE_BITS:
-			_glfw.frameBufferCfg.accumBlueBits = value;
+			_plaf.frameBufferCfg.accumBlueBits = value;
 			return;
 		case WINDOW_HINT_ACCUM_ALPHA_BITS:
-			_glfw.frameBufferCfg.accumAlphaBits = value;
+			_plaf.frameBufferCfg.accumAlphaBits = value;
 			return;
 		case WINDOW_HINT_AUX_BUFFERS:
-			_glfw.frameBufferCfg.auxBuffers = value;
+			_plaf.frameBufferCfg.auxBuffers = value;
 			return;
 		case WINDOW_ATTR_HINT_DOUBLE_BUFFER:
-			_glfw.frameBufferCfg.doublebuffer = value ? true : false;
+			_plaf.frameBufferCfg.doublebuffer = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
-			_glfw.frameBufferCfg.transparent = value ? true : false;
+			_plaf.frameBufferCfg.transparent = value ? true : false;
 			return;
 		case WINDOW_HINT_SAMPLES:
-			_glfw.frameBufferCfg.samples = value;
+			_plaf.frameBufferCfg.samples = value;
 			return;
 		case WINDOW_HINT_SRGB_CAPABLE:
-			_glfw.frameBufferCfg.sRGB = value ? true : false;
+			_plaf.frameBufferCfg.sRGB = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_RESIZABLE:
-			_glfw.windowCfg.resizable = value ? true : false;
+			_plaf.windowCfg.resizable = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_DECORATED:
-			_glfw.windowCfg.decorated = value ? true : false;
+			_plaf.windowCfg.decorated = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_FLOATING:
-			_glfw.windowCfg.floating = value ? true : false;
+			_plaf.windowCfg.floating = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_MAXIMIZED:
-			_glfw.windowCfg.maximized = value ? true : false;
+			_plaf.windowCfg.maximized = value ? true : false;
 			return;
 		case WINDOW_HINT_POSITION_X:
-			_glfw.windowCfg.xpos = value;
+			_plaf.windowCfg.xpos = value;
 			return;
 		case WINDOW_HINT_POSITION_Y:
-			_glfw.windowCfg.ypos = value;
+			_plaf.windowCfg.ypos = value;
 			return;
 		case WINDOW_HINT_SCALE_TO_MONITOR:
-			_glfw.windowCfg.scaleToMonitor = value ? true : false;
+			_plaf.windowCfg.scaleToMonitor = value ? true : false;
 			return;
 		case WINDOW_HINT_SCALE_FRAMEBUFFER:
-			_glfw.windowCfg.scaleFramebuffer = value ? true : false;
+			_plaf.windowCfg.scaleFramebuffer = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
-			_glfw.windowCfg.mousePassthrough = value ? true : false;
+			_plaf.windowCfg.mousePassthrough = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_CONTEXT_VERSION_MAJOR:
-			_glfw.contextCfg.major = value;
+			_plaf.contextCfg.major = value;
 			return;
 		case WINDOW_ATTR_HINT_CONTEXT_VERSION_MINOR:
-			_glfw.contextCfg.minor = value;
+			_plaf.contextCfg.minor = value;
 			return;
 		case WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS:
-			_glfw.contextCfg.robustness = value;
+			_plaf.contextCfg.robustness = value;
 			return;
 		case WINDOW_ATTR_HINT_OPENGL_FORWARD_COMPAT:
-			_glfw.contextCfg.forward = value ? true : false;
+			_plaf.contextCfg.forward = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_CONTEXT_DEBUG:
-			_glfw.contextCfg.debug = value ? true : false;
+			_plaf.contextCfg.debug = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_CONTEXT_ERROR_SUPPRESSION:
-			_glfw.contextCfg.noerror = value ? true : false;
+			_plaf.contextCfg.noerror = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_OPENGL_PROFILE:
-			_glfw.contextCfg.profile = value;
+			_plaf.contextCfg.profile = value;
 			return;
 		case WINDOW_ATTR_HINT_CONTEXT_RELEASE_BEHAVIOR:
-			_glfw.contextCfg.release = value;
+			_plaf.contextCfg.release = value;
 			return;
 		case WINDOW_HINT_REFRESH_RATE:
-			_glfw.desiredRefreshRate = value;
+			_plaf.desiredRefreshRate = value;
 			return;
 	}
 
-	_glfwInputError("Invalid window hint 0x%08X", hint);
+	_plafInputError("Invalid window hint 0x%08X", hint);
 }
 
-void glfwDestroyWindow(plafWindow* window)
+void plafDestroyWindow(plafWindow* window)
 {
 	// Allow closing of NULL (to match the behavior of free)
 	if (window == NULL)
@@ -332,15 +325,15 @@ void glfwDestroyWindow(plafWindow* window)
 	window->dropCallback = NULL;
 
 	// The window's context must not be current when the window is destroyed
-	if (window == _glfw.contextSlot) {
-		glfwMakeContextCurrent(NULL);
+	if (window == _plaf.contextSlot) {
+		plafMakeContextCurrent(NULL);
 	}
 
-	_glfwDestroyWindow(window);
+	_plafDestroyWindow(window);
 
 	// Unlink window from global linked list
 	{
-		plafWindow** prev = &_glfw.windowListHead;
+		plafWindow** prev = &_plaf.windowListHead;
 
 		while (*prev != window)
 			prev = &((*prev)->next);
@@ -348,36 +341,36 @@ void glfwDestroyWindow(plafWindow* window)
 		*prev = window->next;
 	}
 
-	_glfw_free(window->title);
-	_glfw_free(window);
+	_plaf_free(window->title);
+	_plaf_free(window);
 }
 
-int glfwWindowShouldClose(plafWindow* window) {
+int plafWindowShouldClose(plafWindow* window) {
 	return window->shouldClose;
 }
 
-void glfwSetWindowShouldClose(plafWindow* window, int value) {
+void plafSetWindowShouldClose(plafWindow* window, int value) {
 	window->shouldClose = value;
 }
 
-const char* glfwGetWindowTitle(plafWindow* window) {
+const char* plafGetWindowTitle(plafWindow* window) {
 	return window->title;
 }
 
-void glfwSetWindowTitle(plafWindow* window, const char* title) {
+void plafSetWindowTitle(plafWindow* window, const char* title) {
 	char* prev = window->title;
-	window->title = _glfw_strdup(title);
-	_glfwSetWindowTitle(window, window->title);
-	_glfw_free(prev);
+	window->title = _plaf_strdup(title);
+	_plafSetWindowTitle(window, window->title);
+	_plaf_free(prev);
 }
 
-void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images)
+void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images)
 {
 	int i;
 
 	if (count < 0)
 	{
-		_glfwInputError("Invalid image count for window icon");
+		_plafInputError("Invalid image count for window icon");
 		return;
 	}
 
@@ -385,50 +378,50 @@ void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images)
 	{
 		if (images[i].width <= 0 || images[i].height <= 0)
 		{
-			_glfwInputError("Invalid image dimensions for window icon");
+			_plafInputError("Invalid image dimensions for window icon");
 			return;
 		}
 	}
 
-	_glfwSetWindowIcon(window, count, images);
+	_plafSetWindowIcon(window, count, images);
 }
 
-void glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
+void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	if (xpos)
 		*xpos = 0;
 	if (ypos)
 		*ypos = 0;
-	_glfwGetWindowPos(window, xpos, ypos);
+	_plafGetWindowPos(window, xpos, ypos);
 }
 
-void glfwSetWindowPos(plafWindow* window, int xpos, int ypos) {
+void plafSetWindowPos(plafWindow* window, int xpos, int ypos) {
 	if (window->monitor) {
 		return;
 	}
-	_glfwSetWindowPos(window, xpos, ypos);
+	_plafSetWindowPos(window, xpos, ypos);
 }
 
-void glfwGetWindowSize(plafWindow* window, int* width, int* height) {
+void plafGetWindowSize(plafWindow* window, int* width, int* height) {
 	if (width)
 		*width = 0;
 	if (height)
 		*height = 0;
-	_glfwGetWindowSize(window, width, height);
+	_plafGetWindowSize(window, width, height);
 }
 
-void glfwSetWindowSize(plafWindow* window, int width, int height) {
+void plafSetWindowSize(plafWindow* window, int width, int height) {
 	window->videoMode.width  = width;
 	window->videoMode.height = height;
-	_glfwSetWindowSize(window, width, height);
+	_plafSetWindowSize(window, width, height);
 }
 
-void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight)
+void plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight)
 {
 	if (minwidth != DONT_CARE && minheight != DONT_CARE)
 	{
 		if (minwidth < 0 || minheight < 0)
 		{
-			_glfwInputError("Invalid window minimum size %ix%i", minwidth, minheight);
+			_plafInputError("Invalid window minimum size %ix%i", minwidth, minheight);
 			return;
 		}
 	}
@@ -438,7 +431,7 @@ void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
 		if (maxwidth < 0 || maxheight < 0 ||
 			maxwidth < minwidth || maxheight < minheight)
 		{
-			_glfwInputError("Invalid window maximum size %ix%i", maxwidth, maxheight);
+			_plafInputError("Invalid window maximum size %ix%i", maxwidth, maxheight);
 			return;
 		}
 	}
@@ -451,18 +444,18 @@ void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
 	if (window->monitor || !window->resizable)
 		return;
 
-	_glfwSetWindowSizeLimits(window, minwidth, minheight, maxwidth, maxheight);
+	_plafSetWindowSizeLimits(window, minwidth, minheight, maxwidth, maxheight);
 }
 
-void glfwGetFramebufferSize(plafWindow* window, int* width, int* height) {
+void plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	if (width)
 		*width = 0;
 	if (height)
 		*height = 0;
-	_glfwGetFramebufferSize(window, width, height);
+	_plafGetFramebufferSize(window, width, height);
 }
 
-void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
+void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
 	if (left)
 		*left = 0;
 	if (top)
@@ -471,64 +464,64 @@ void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right,
 		*right = 0;
 	if (bottom)
 		*bottom = 0;
-	_glfwGetWindowFrameSize(window, left, top, right, bottom);
+	_plafGetWindowFrameSize(window, left, top, right, bottom);
 }
 
-void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
+void plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
 	if (xscale)
 		*xscale = 0.f;
 	if (yscale)
 		*yscale = 0.f;
-	_glfwGetWindowContentScale(window, xscale, yscale);
+	_plafGetWindowContentScale(window, xscale, yscale);
 }
 
-void glfwSetWindowOpacity(plafWindow* window, float opacity) {
+void plafSetWindowOpacity(plafWindow* window, float opacity) {
 	if (opacity != opacity || opacity < 0.f || opacity > 1.f)
 	{
-		_glfwInputError("Invalid window opacity %f", opacity);
+		_plafInputError("Invalid window opacity %f", opacity);
 		return;
 	}
 
-	_glfwSetWindowOpacity(window, opacity);
+	_plafSetWindowOpacity(window, opacity);
 }
 
-void glfwMaximizeWindow(plafWindow* window) {
+void plafMaximizeWindow(plafWindow* window) {
 	if (window->monitor)
 		return;
 
-	_glfwMaximizeWindow(window);
+	_plafMaximizeWindow(window);
 }
 
-void glfwShowWindow(plafWindow* window) {
+void plafShowWindow(plafWindow* window) {
 	if (!window->monitor) {
-		_glfwShowWindow(window);
+		_plafShowWindow(window);
 	}
 }
 
-void glfwHideWindow(plafWindow* window) {
+void plafHideWindow(plafWindow* window) {
 	if (window->monitor)
 		return;
 
-	_glfwHideWindow(window);
+	_plafHideWindow(window);
 }
 
-int glfwGetWindowAttrib(plafWindow* window, int attrib) {
+int plafGetWindowAttrib(plafWindow* window, int attrib) {
 	switch (attrib)
 	{
 		case WINDOW_ATTR_FOCUSED:
-			return _glfwWindowFocused(window);
+			return _plafWindowFocused(window);
 		case WINDOW_ATTR_MINIMIZED:
-			return _glfwWindowMinimized(window);
+			return _plafWindowMinimized(window);
 		case WINDOW_ATTR_VISIBLE:
-			return _glfwWindowVisible(window);
+			return _plafWindowVisible(window);
 		case WINDOW_ATTR_HINT_MAXIMIZED:
-			return _glfwWindowMaximized(window);
+			return _plafWindowMaximized(window);
 		case WINDOW_ATTR_HOVERED:
-			return _glfwWindowHovered(window);
+			return _plafWindowHovered(window);
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
 			return window->mousePassthrough;
 		case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
-			return _glfwFramebufferTransparent(window);
+			return _plafFramebufferTransparent(window);
 		case WINDOW_ATTR_HINT_RESIZABLE:
 			return window->resizable;
 		case WINDOW_ATTR_HINT_DECORATED:
@@ -557,11 +550,11 @@ int glfwGetWindowAttrib(plafWindow* window, int attrib) {
 			return window->context.noerror;
 	}
 
-	_glfwInputError("Invalid window attribute 0x%08X", attrib);
+	_plafInputError("Invalid window attribute 0x%08X", attrib);
 	return 0;
 }
 
-void glfwSetWindowAttrib(plafWindow* window, int attrib, int value) {
+void plafSetWindowAttrib(plafWindow* window, int attrib, int value) {
 	value = value ? true : false;
 
 	switch (attrib)
@@ -569,104 +562,104 @@ void glfwSetWindowAttrib(plafWindow* window, int attrib, int value) {
 		case WINDOW_ATTR_HINT_RESIZABLE:
 			window->resizable = value;
 			if (!window->monitor)
-				_glfwSetWindowResizable(window, value);
+				_plafSetWindowResizable(window, value);
 			return;
 
 		case WINDOW_ATTR_HINT_DECORATED:
 			window->decorated = value;
 			if (!window->monitor)
-				_glfwSetWindowDecorated(window, value);
+				_plafSetWindowDecorated(window, value);
 			return;
 
 		case WINDOW_ATTR_HINT_FLOATING:
 			window->floating = value;
 			if (!window->monitor)
-				_glfwSetWindowFloating(window, value);
+				_plafSetWindowFloating(window, value);
 			return;
 
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
 			window->mousePassthrough = value;
-			_glfwSetWindowMousePassthrough(window, value);
+			_plafSetWindowMousePassthrough(window, value);
 			return;
 	}
 
-	_glfwInputError("Invalid window attribute 0x%08X", attrib);
+	_plafInputError("Invalid window attribute 0x%08X", attrib);
 }
 
-plafMonitor* glfwGetWindowMonitor(plafWindow* window) {
+plafMonitor* plafGetWindowMonitor(plafWindow* window) {
 	return window->monitor;
 }
 
-void glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
+void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
 	if (width <= 0 || height <= 0)
 	{
-		_glfwInputError("Invalid window size %ix%i", width, height);
+		_plafInputError("Invalid window size %ix%i", width, height);
 		return;
 	}
 
 	if (refreshRate < 0 && refreshRate != DONT_CARE)
 	{
-		_glfwInputError("Invalid refresh rate %i", refreshRate);
+		_plafInputError("Invalid refresh rate %i", refreshRate);
 		return;
 	}
 
 	window->videoMode.width       = width;
 	window->videoMode.height      = height;
 	window->videoMode.refreshRate = refreshRate;
-	_glfwSetWindowMonitor(window, monitor, xpos, ypos, width, height, refreshRate);
+	_plafSetWindowMonitor(window, monitor, xpos, ypos, width, height, refreshRate);
 }
 
-windowPosFunc glfwSetWindowPosCallback(plafWindow* window, windowPosFunc cbfun) {
+windowPosFunc plafSetWindowPosCallback(plafWindow* window, windowPosFunc cbfun) {
 	SWAP(windowPosFunc, window->posCallback, cbfun);
 	return cbfun;
 }
 
-windowSizeFunc glfwSetWindowSizeCallback(plafWindow* window, windowSizeFunc cbfun) {
+windowSizeFunc plafSetWindowSizeCallback(plafWindow* window, windowSizeFunc cbfun) {
 	SWAP(windowSizeFunc, window->sizeCallback, cbfun);
 	return cbfun;
 }
 
-windowCloseFunc glfwSetWindowCloseCallback(plafWindow* window, windowCloseFunc cbfun) {
+windowCloseFunc plafSetWindowCloseCallback(plafWindow* window, windowCloseFunc cbfun) {
 	SWAP(windowCloseFunc, window->closeCallback, cbfun);
 	return cbfun;
 }
 
-windowRefreshFunc glfwSetWindowRefreshCallback(plafWindow* window, windowRefreshFunc cbfun) {
+windowRefreshFunc plafSetWindowRefreshCallback(plafWindow* window, windowRefreshFunc cbfun) {
 	SWAP(windowRefreshFunc, window->refreshCallback, cbfun);
 	return cbfun;
 }
 
-windowFocusFunc glfwSetWindowFocusCallback(plafWindow* window, windowFocusFunc cbfun) {
+windowFocusFunc plafSetWindowFocusCallback(plafWindow* window, windowFocusFunc cbfun) {
 	SWAP(windowFocusFunc, window->focusCallback, cbfun);
 	return cbfun;
 }
 
-windowMinimizeFunc glfwSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc cbfun) {
+windowMinimizeFunc plafSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc cbfun) {
 	SWAP(windowMinimizeFunc, window->minimizeCallback, cbfun);
 	return cbfun;
 }
 
-windowMaximizeFunc glfwSetWindowMaximizeCallback(plafWindow* window, windowMaximizeFunc cbfun) {
+windowMaximizeFunc plafSetWindowMaximizeCallback(plafWindow* window, windowMaximizeFunc cbfun) {
 	SWAP(windowMaximizeFunc, window->maximizeCallback, cbfun);
 	return cbfun;
 }
 
-frameBufferSizeFunc glfwSetFramebufferSizeCallback(plafWindow* window, frameBufferSizeFunc cbfun) {
+frameBufferSizeFunc plafSetFramebufferSizeCallback(plafWindow* window, frameBufferSizeFunc cbfun) {
 	SWAP(frameBufferSizeFunc, window->fbsizeCallback, cbfun);
 	return cbfun;
 }
 
-windowContextScaleFunc glfwSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc cbfun) {
+windowContextScaleFunc plafSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc cbfun) {
 	SWAP(windowContextScaleFunc, window->scaleCallback, cbfun);
 	return cbfun;
 }
 
-void glfwWaitEventsTimeout(double timeout)
+void plafWaitEventsTimeout(double timeout)
 {
 	if (timeout != timeout || timeout < 0.0 || timeout > DBL_MAX)
 	{
-		_glfwInputError("Invalid time %f", timeout);
+		_plafInputError("Invalid time %f", timeout);
 		return;
 	}
-	_glfwWaitEventsTimeout(timeout);
+	_plafWaitEventsTimeout(timeout);
 }

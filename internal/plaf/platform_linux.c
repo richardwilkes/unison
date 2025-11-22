@@ -9,7 +9,7 @@
 #include <errno.h>
 
 
-// Translate the X11 KeySyms for a key to a GLFW key code
+// Translate the X11 KeySyms for a key to a PLAF key code
 // NOTE: This is only used as a fallback, in case the XKB method fails
 //       It is layout-dependent and will fail partially on most non-US layouts
 //
@@ -183,16 +183,16 @@ static void createKeyTables(void)
 {
 	int scancodeMin, scancodeMax;
 
-	memset(_glfw.keyCodes, -1, sizeof(_glfw.keyCodes));
-	memset(_glfw.scanCodes, -1, sizeof(_glfw.scanCodes));
+	memset(_plaf.keyCodes, -1, sizeof(_plaf.keyCodes));
+	memset(_plaf.scanCodes, -1, sizeof(_plaf.scanCodes));
 
-	if (_glfw.xkbAvailable)
+	if (_plaf.xkbAvailable)
 	{
 		// Use XKB to determine physical key locations independently of the
 		// current keyboard layout
 
-		XkbDescPtr desc = _glfw.xkbGetMap(_glfw.x11Display, 0, XkbUseCoreKbd);
-		_glfw.xkbGetNames(_glfw.x11Display, XkbKeyNamesMask | XkbKeyAliasesMask, desc);
+		XkbDescPtr desc = _plaf.xkbGetMap(_plaf.x11Display, 0, XkbUseCoreKbd);
+		_plaf.xkbGetNames(_plaf.x11Display, XkbKeyNamesMask | XkbKeyAliasesMask, desc);
 
 		scancodeMin = desc->min_key_code;
 		scancodeMax = desc->max_key_code;
@@ -326,12 +326,12 @@ static void createKeyTables(void)
 			{ KEY_MENU, "MENU" }
 		};
 
-		// Find the X11 key code -> GLFW key code mapping
+		// Find the X11 key code -> PLAF key code mapping
 		for (int scancode = scancodeMin;  scancode <= scancodeMax;  scancode++)
 		{
 			int key = KEY_UNKNOWN;
 
-			// Map the key name to a GLFW key code. Note: We use the US
+			// Map the key name to a PLAF key code. Note: We use the US
 			// keyboard layout. Because function keys aren't mapped correctly
 			// when using traditional KeySym translations, they are mapped
 			// here instead.
@@ -371,17 +371,17 @@ static void createKeyTables(void)
 				}
 			}
 
-			_glfw.keyCodes[scancode] = key;
+			_plaf.keyCodes[scancode] = key;
 		}
 
-		_glfw.xkbFreeNames(desc, XkbKeyNamesMask, True);
-		_glfw.xkbFreeKeyboard(desc, 0, True);
+		_plaf.xkbFreeNames(desc, XkbKeyNamesMask, True);
+		_plaf.xkbFreeKeyboard(desc, 0, True);
 	}
 	else
-		_glfw.xlibDisplayKeycodes(_glfw.x11Display, &scancodeMin, &scancodeMax);
+		_plaf.xlibDisplayKeycodes(_plaf.x11Display, &scancodeMin, &scancodeMax);
 
 	int width;
-	KeySym* keysyms = _glfw.xlibGetKeyboardMapping(_glfw.x11Display,
+	KeySym* keysyms = _plaf.xlibGetKeyboardMapping(_plaf.x11Display,
 										  scancodeMin,
 										  scancodeMax - scancodeMin + 1,
 										  &width);
@@ -390,18 +390,18 @@ static void createKeyTables(void)
 	{
 		// Translate the un-translated key codes using traditional X11 KeySym
 		// lookups
-		if (_glfw.keyCodes[scancode] < 0)
+		if (_plaf.keyCodes[scancode] < 0)
 		{
 			const size_t base = (scancode - scancodeMin) * width;
-			_glfw.keyCodes[scancode] = translateKeySyms(&keysyms[base], width);
+			_plaf.keyCodes[scancode] = translateKeySyms(&keysyms[base], width);
 		}
 
 		// Store the reverse translation for faster key name lookup
-		if (_glfw.keyCodes[scancode] > 0)
-			_glfw.scanCodes[_glfw.keyCodes[scancode]] = scancode;
+		if (_plaf.keyCodes[scancode] > 0)
+			_plaf.scanCodes[_plaf.keyCodes[scancode]] = scancode;
 	}
 
-	_glfw.xlibFree(keysyms);
+	_plaf.xlibFree(keysyms);
 }
 
 // Check whether the IM has a usable style
@@ -411,7 +411,7 @@ static IntBool hasUsableInputMethodStyle(void)
 	IntBool found = false;
 	XIMStyles* styles = NULL;
 
-	if (_glfw.xlibGetIMValues(_glfw.x11IM, XNQueryInputStyle, &styles, NULL) != NULL)
+	if (_plaf.xlibGetIMValues(_plaf.x11IM, XNQueryInputStyle, &styles, NULL) != NULL)
 		return false;
 
 	for (unsigned int i = 0;  i < styles->count_styles;  i++)
@@ -423,41 +423,41 @@ static IntBool hasUsableInputMethodStyle(void)
 		}
 	}
 
-	_glfw.xlibFree(styles);
+	_plaf.xlibFree(styles);
 	return found;
 }
 
 static void inputMethodDestroyCallback(XIM im, XPointer clientData, XPointer callData)
 {
-	_glfw.x11IM = NULL;
+	_plaf.x11IM = NULL;
 }
 
 static void inputMethodInstantiateCallback(Display* display,
 										   XPointer clientData,
 										   XPointer callData)
 {
-	if (_glfw.x11IM)
+	if (_plaf.x11IM)
 		return;
 
-	_glfw.x11IM = _glfw.xlibOpenIM(_glfw.x11Display, 0, NULL, NULL);
-	if (_glfw.x11IM)
+	_plaf.x11IM = _plaf.xlibOpenIM(_plaf.x11Display, 0, NULL, NULL);
+	if (_plaf.x11IM)
 	{
 		if (!hasUsableInputMethodStyle())
 		{
-			_glfw.xlibCloseIM(_glfw.x11IM);
-			_glfw.x11IM = NULL;
+			_plaf.xlibCloseIM(_plaf.x11IM);
+			_plaf.x11IM = NULL;
 		}
 	}
 
-	if (_glfw.x11IM)
+	if (_plaf.x11IM)
 	{
 		XIMCallback callback;
 		callback.callback = (XIMProc) inputMethodDestroyCallback;
 		callback.client_data = NULL;
-		_glfw.xlibSetIMValues(_glfw.x11IM, XNDestroyCallback, &callback, NULL);
+		_plaf.xlibSetIMValues(_plaf.x11IM, XNDestroyCallback, &callback, NULL);
 
-		for (plafWindow* window = _glfw.windowListHead;  window;  window = window->next)
-			_glfwCreateInputContextX11(window);
+		for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next)
+			_plafCreateInputContextX11(window);
 	}
 }
 
@@ -467,7 +467,7 @@ static Atom getAtomIfSupported(Atom* supportedAtoms,
 							   unsigned long atomCount,
 							   const char* atomName)
 {
-	const Atom atom = _glfw.xlibInternAtom(_glfw.x11Display, atomName, False);
+	const Atom atom = _plaf.xlibInternAtom(_plaf.x11Display, atomName, False);
 
 	for (unsigned long i = 0;  i < atomCount;  i++)
 	{
@@ -485,43 +485,43 @@ static void detectEWMH(void)
 	// First we read the _NET_SUPPORTING_WM_CHECK property on the root window
 
 	Window* windowFromRoot = NULL;
-	if (!_glfwGetWindowPropertyX11(_glfw.x11Root,
-								   _glfw.x11NET_SUPPORTING_WM_CHECK,
+	if (!_plafGetWindowPropertyX11(_plaf.x11Root,
+								   _plaf.x11NET_SUPPORTING_WM_CHECK,
 								   XA_WINDOW,
 								   (unsigned char**) &windowFromRoot))
 	{
 		return;
 	}
 
-	_glfwGrabErrorHandlerX11();
+	_plafGrabErrorHandlerX11();
 
 	// If it exists, it should be the XID of a top-level window
 	// Then we look for the same property on that window
 
 	Window* windowFromChild = NULL;
-	if (!_glfwGetWindowPropertyX11(*windowFromRoot,
-								   _glfw.x11NET_SUPPORTING_WM_CHECK,
+	if (!_plafGetWindowPropertyX11(*windowFromRoot,
+								   _plaf.x11NET_SUPPORTING_WM_CHECK,
 								   XA_WINDOW,
 								   (unsigned char**) &windowFromChild))
 	{
-		_glfwReleaseErrorHandlerX11();
-		_glfw.xlibFree(windowFromRoot);
+		_plafReleaseErrorHandlerX11();
+		_plaf.xlibFree(windowFromRoot);
 		return;
 	}
 
-	_glfwReleaseErrorHandlerX11();
+	_plafReleaseErrorHandlerX11();
 
 	// If the property exists, it should contain the XID of the window
 
 	if (*windowFromRoot != *windowFromChild)
 	{
-		_glfw.xlibFree(windowFromRoot);
-		_glfw.xlibFree(windowFromChild);
+		_plaf.xlibFree(windowFromRoot);
+		_plaf.xlibFree(windowFromChild);
 		return;
 	}
 
-	_glfw.xlibFree(windowFromRoot);
-	_glfw.xlibFree(windowFromChild);
+	_plaf.xlibFree(windowFromRoot);
+	_plaf.xlibFree(windowFromChild);
 
 	// We are now fairly sure that an EWMH-compliant WM is currently running
 	// We can now start querying the WM about what features it supports by
@@ -530,197 +530,197 @@ static void detectEWMH(void)
 
 	Atom* supportedAtoms = NULL;
 	const unsigned long atomCount =
-		_glfwGetWindowPropertyX11(_glfw.x11Root,
-								  _glfw.x11NET_SUPPORTED,
+		_plafGetWindowPropertyX11(_plaf.x11Root,
+								  _plaf.x11NET_SUPPORTED,
 								  XA_ATOM,
 								  (unsigned char**) &supportedAtoms);
 
 	// See which of the atoms we support that are supported by the WM
 
-	_glfw.x11NET_WM_STATE =
+	_plaf.x11NET_WM_STATE =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_STATE");
-	_glfw.x11NET_WM_STATE_ABOVE =
+	_plaf.x11NET_WM_STATE_ABOVE =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_STATE_ABOVE");
-	_glfw.x11NET_WM_STATE_FULLSCREEN =
+	_plaf.x11NET_WM_STATE_FULLSCREEN =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_STATE_FULLSCREEN");
-	_glfw.x11NET_WM_STATE_MAXIMIZED_VERT =
+	_plaf.x11NET_WM_STATE_MAXIMIZED_VERT =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_STATE_MAXIMIZED_VERT");
-	_glfw.x11NET_WM_STATE_MAXIMIZED_HORZ =
+	_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_STATE_MAXIMIZED_HORZ");
-	_glfw.x11NET_WM_STATE_DEMANDS_ATTENTION =
+	_plaf.x11NET_WM_STATE_DEMANDS_ATTENTION =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_STATE_DEMANDS_ATTENTION");
-	_glfw.x11NET_WM_FULLSCREEN_MONITORS =
+	_plaf.x11NET_WM_FULLSCREEN_MONITORS =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_FULLSCREEN_MONITORS");
-	_glfw.x11NET_WM_WINDOW_TYPE =
+	_plaf.x11NET_WM_WINDOW_TYPE =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_WINDOW_TYPE");
-	_glfw.x11NET_WM_WINDOW_TYPE_NORMAL =
+	_plaf.x11NET_WM_WINDOW_TYPE_NORMAL =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WM_WINDOW_TYPE_NORMAL");
-	_glfw.x11NET_WORKAREA =
+	_plaf.x11NET_WORKAREA =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_WORKAREA");
-	_glfw.x11NET_CURRENT_DESKTOP =
+	_plaf.x11NET_CURRENT_DESKTOP =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_CURRENT_DESKTOP");
-	_glfw.x11NET_ACTIVE_WINDOW =
+	_plaf.x11NET_ACTIVE_WINDOW =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_ACTIVE_WINDOW");
-	_glfw.x11NET_FRAME_EXTENTS =
+	_plaf.x11NET_FRAME_EXTENTS =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_FRAME_EXTENTS");
-	_glfw.x11NET_REQUEST_FRAME_EXTENTS =
+	_plaf.x11NET_REQUEST_FRAME_EXTENTS =
 		getAtomIfSupported(supportedAtoms, atomCount, "_NET_REQUEST_FRAME_EXTENTS");
 
 	if (supportedAtoms)
-		_glfw.xlibFree(supportedAtoms);
+		_plaf.xlibFree(supportedAtoms);
 }
 
 // Look for and initialize supported X11 extensions
 //
 static void initExtensions(void)
 {
-	_glfw.xvidmodeHandle = _glfwPlatformLoadModule("libXxf86vm.so.1");
-	if (_glfw.xvidmodeHandle)
+	_plaf.xvidmodeHandle = _plafLoadModule("libXxf86vm.so.1");
+	if (_plaf.xvidmodeHandle)
 	{
-		_glfw.xvidmodeQueryExtension = (FN_XF86VidModeQueryExtension)
-			_glfwPlatformGetModuleSymbol(_glfw.xvidmodeHandle, "XF86VidModeQueryExtension");
-		_glfw.xvidmodeGetGammaRamp = (FN_XF86VidModeGetGammaRamp)
-			_glfwPlatformGetModuleSymbol(_glfw.xvidmodeHandle, "XF86VidModeGetGammaRamp");
-		_glfw.xvidmodeSetGammaRamp = (FN_XF86VidModeSetGammaRamp)
-			_glfwPlatformGetModuleSymbol(_glfw.xvidmodeHandle, "XF86VidModeSetGammaRamp");
-		_glfw.xvidmodeGetGammaRampSize = (FN_XF86VidModeGetGammaRampSize)
-			_glfwPlatformGetModuleSymbol(_glfw.xvidmodeHandle, "XF86VidModeGetGammaRampSize");
+		_plaf.xvidmodeQueryExtension = (FN_XF86VidModeQueryExtension)
+			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeQueryExtension");
+		_plaf.xvidmodeGetGammaRamp = (FN_XF86VidModeGetGammaRamp)
+			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeGetGammaRamp");
+		_plaf.xvidmodeSetGammaRamp = (FN_XF86VidModeSetGammaRamp)
+			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeSetGammaRamp");
+		_plaf.xvidmodeGetGammaRampSize = (FN_XF86VidModeGetGammaRampSize)
+			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeGetGammaRampSize");
 
 		int eventBase;
 		int errorBase;
-		_glfw.xvidmodeAvailable = _glfw.xvidmodeQueryExtension(_glfw.x11Display, &eventBase, &errorBase);
+		_plaf.xvidmodeAvailable = _plaf.xvidmodeQueryExtension(_plaf.x11Display, &eventBase, &errorBase);
 	}
 
-	_glfw.xiHandle = _glfwPlatformLoadModule("libXi.so.6");
-	if (_glfw.xiHandle)
+	_plaf.xiHandle = _plafLoadModule("libXi.so.6");
+	if (_plaf.xiHandle)
 	{
-		_glfw.xiQueryVersion = (FN_XIQueryVersion)
-			_glfwPlatformGetModuleSymbol(_glfw.xiHandle, "XIQueryVersion");
+		_plaf.xiQueryVersion = (FN_XIQueryVersion)
+			_plafGetModuleSymbol(_plaf.xiHandle, "XIQueryVersion");
 
 		int majorOpcode;
 		int eventBase;
 		int errorBase;
-		if (_glfw.xlibQueryExtension(_glfw.x11Display, "XInputExtension", &majorOpcode, &eventBase, &errorBase)) {
+		if (_plaf.xlibQueryExtension(_plaf.x11Display, "XInputExtension", &majorOpcode, &eventBase, &errorBase)) {
 			int major = 2;
 			int minor = 0;
-			if (_glfw.xiQueryVersion(_glfw.x11Display, &major, &minor) == Success) {
-				_glfw.xiAvailable = true;
+			if (_plaf.xiQueryVersion(_plaf.x11Display, &major, &minor) == Success) {
+				_plaf.xiAvailable = true;
 			}
 		}
 	}
-	_glfw.randrHandle = _glfwPlatformLoadModule("libXrandr.so.2");
-	if (_glfw.randrHandle)
+	_plaf.randrHandle = _plafLoadModule("libXrandr.so.2");
+	if (_plaf.randrHandle)
 	{
-		_glfw.randrAllocGamma = (FN_XRRAllocGamma)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRAllocGamma");
-		_glfw.randrFreeGamma = (FN_XRRFreeGamma)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRFreeGamma");
-		_glfw.randrFreeCrtcInfo = (FN_XRRFreeCrtcInfo)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRFreeCrtcInfo");
-		_glfw.randrFreeOutputInfo = (FN_XRRFreeOutputInfo)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRFreeOutputInfo");
-		_glfw.randrFreeScreenResources = (FN_XRRFreeScreenResources)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRFreeScreenResources");
-		_glfw.randrGetCrtcGamma = (FN_XRRGetCrtcGamma)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRGetCrtcGamma");
-		_glfw.randrGetCrtcGammaSize = (FN_XRRGetCrtcGammaSize)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRGetCrtcGammaSize");
-		_glfw.randrGetCrtcInfo = (FN_XRRGetCrtcInfo)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRGetCrtcInfo");
-		_glfw.randrGetOutputInfo = (FN_XRRGetOutputInfo)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRGetOutputInfo");
-		_glfw.randrGetOutputPrimary = (FN_XRRGetOutputPrimary)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRGetOutputPrimary");
-		_glfw.randrGetScreenResourcesCurrent = (FN_XRRGetScreenResourcesCurrent)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRGetScreenResourcesCurrent");
-		_glfw.randrQueryExtension = (FN_XRRQueryExtension)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRQueryExtension");
-		_glfw.randrQueryVersion = (FN_XRRQueryVersion)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRQueryVersion");
-		_glfw.randrSelectInput = (FN_XRRSelectInput)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRSelectInput");
-		_glfw.randrSetCrtcConfig = (FN_XRRSetCrtcConfig)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRSetCrtcConfig");
-		_glfw.randrSetCrtcGamma = (FN_XRRSetCrtcGamma)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRSetCrtcGamma");
-		_glfw.randrUpdateConfiguration = (FN_XRRUpdateConfiguration)
-			_glfwPlatformGetModuleSymbol(_glfw.randrHandle, "XRRUpdateConfiguration");
+		_plaf.randrAllocGamma = (FN_XRRAllocGamma)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRAllocGamma");
+		_plaf.randrFreeGamma = (FN_XRRFreeGamma)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeGamma");
+		_plaf.randrFreeCrtcInfo = (FN_XRRFreeCrtcInfo)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeCrtcInfo");
+		_plaf.randrFreeOutputInfo = (FN_XRRFreeOutputInfo)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeOutputInfo");
+		_plaf.randrFreeScreenResources = (FN_XRRFreeScreenResources)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeScreenResources");
+		_plaf.randrGetCrtcGamma = (FN_XRRGetCrtcGamma)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetCrtcGamma");
+		_plaf.randrGetCrtcGammaSize = (FN_XRRGetCrtcGammaSize)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetCrtcGammaSize");
+		_plaf.randrGetCrtcInfo = (FN_XRRGetCrtcInfo)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetCrtcInfo");
+		_plaf.randrGetOutputInfo = (FN_XRRGetOutputInfo)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetOutputInfo");
+		_plaf.randrGetOutputPrimary = (FN_XRRGetOutputPrimary)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetOutputPrimary");
+		_plaf.randrGetScreenResourcesCurrent = (FN_XRRGetScreenResourcesCurrent)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetScreenResourcesCurrent");
+		_plaf.randrQueryExtension = (FN_XRRQueryExtension)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRQueryExtension");
+		_plaf.randrQueryVersion = (FN_XRRQueryVersion)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRQueryVersion");
+		_plaf.randrSelectInput = (FN_XRRSelectInput)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRSelectInput");
+		_plaf.randrSetCrtcConfig = (FN_XRRSetCrtcConfig)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRSetCrtcConfig");
+		_plaf.randrSetCrtcGamma = (FN_XRRSetCrtcGamma)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRSetCrtcGamma");
+		_plaf.randrUpdateConfiguration = (FN_XRRUpdateConfiguration)
+			_plafGetModuleSymbol(_plaf.randrHandle, "XRRUpdateConfiguration");
 
 		int errorBase;
-		if (_glfw.randrQueryExtension(_glfw.x11Display,
-							  &_glfw.randrEventBase,
+		if (_plaf.randrQueryExtension(_plaf.x11Display,
+							  &_plaf.randrEventBase,
 							  &errorBase))
 		{
 			int major;
 			int minor;
-			if (_glfw.randrQueryVersion(_glfw.x11Display, &major, &minor))
+			if (_plaf.randrQueryVersion(_plaf.x11Display, &major, &minor))
 			{
-				// The GLFW RandR path requires at least version 1.3
+				// The PLAF RandR path requires at least version 1.3
 				if (major > 1 || minor >= 3)
-					_glfw.randrAvailable = true;
+					_plaf.randrAvailable = true;
 			}
 		}
 	}
 
-	if (_glfw.randrAvailable)
+	if (_plaf.randrAvailable)
 	{
-		XRRScreenResources* sr = _glfw.randrGetScreenResourcesCurrent(_glfw.x11Display, _glfw.x11Root);
+		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
 
-		if (!sr->ncrtc || !_glfw.randrGetCrtcGammaSize(_glfw.x11Display, sr->crtcs[0]))
+		if (!sr->ncrtc || !_plaf.randrGetCrtcGammaSize(_plaf.x11Display, sr->crtcs[0]))
 		{
 			// This is likely an older Nvidia driver with broken gamma support
 			// Flag it as useless and fall back to xf86vm gamma, if available
-			_glfw.randrGammaBroken = true;
+			_plaf.randrGammaBroken = true;
 		}
 
 		if (!sr->ncrtc)
 		{
 			// A system without CRTCs is likely a system with broken RandR
 			// Disable the RandR monitor path and fall back to core functions
-			_glfw.randrMonitorBroken = true;
+			_plaf.randrMonitorBroken = true;
 		}
 
-		_glfw.randrFreeScreenResources(sr);
+		_plaf.randrFreeScreenResources(sr);
 	}
 
-	if (_glfw.randrAvailable && !_glfw.randrMonitorBroken)
+	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
 	{
-		_glfw.randrSelectInput(_glfw.x11Display, _glfw.x11Root, RROutputChangeNotifyMask);
+		_plaf.randrSelectInput(_plaf.x11Display, _plaf.x11Root, RROutputChangeNotifyMask);
 	}
 
-	_glfw.xcursorHandle = _glfwPlatformLoadModule("libXcursor.so.1");
-	if (_glfw.xcursorHandle)
+	_plaf.xcursorHandle = _plafLoadModule("libXcursor.so.1");
+	if (_plaf.xcursorHandle)
 	{
-		_glfw.xcursorImageCreate = (FN_XcursorImageCreate)
-			_glfwPlatformGetModuleSymbol(_glfw.xcursorHandle, "XcursorImageCreate");
-		_glfw.xcursorImageDestroy = (FN_XcursorImageDestroy)
-			_glfwPlatformGetModuleSymbol(_glfw.xcursorHandle, "XcursorImageDestroy");
-		_glfw.xcursorImageLoadCursor = (FN_XcursorImageLoadCursor)
-			_glfwPlatformGetModuleSymbol(_glfw.xcursorHandle, "XcursorImageLoadCursor");
-		_glfw.xcursorGetTheme = (FN_XcursorGetTheme)
-			_glfwPlatformGetModuleSymbol(_glfw.xcursorHandle, "XcursorGetTheme");
-		_glfw.xcursorGetDefaultSize = (FN_XcursorGetDefaultSize)
-			_glfwPlatformGetModuleSymbol(_glfw.xcursorHandle, "XcursorGetDefaultSize");
-		_glfw.xcursorLibraryLoadImage = (FN_XcursorLibraryLoadImage)
-			_glfwPlatformGetModuleSymbol(_glfw.xcursorHandle, "XcursorLibraryLoadImage");
+		_plaf.xcursorImageCreate = (FN_XcursorImageCreate)
+			_plafGetModuleSymbol(_plaf.xcursorHandle, "XcursorImageCreate");
+		_plaf.xcursorImageDestroy = (FN_XcursorImageDestroy)
+			_plafGetModuleSymbol(_plaf.xcursorHandle, "XcursorImageDestroy");
+		_plaf.xcursorImageLoadCursor = (FN_XcursorImageLoadCursor)
+			_plafGetModuleSymbol(_plaf.xcursorHandle, "XcursorImageLoadCursor");
+		_plaf.xcursorGetTheme = (FN_XcursorGetTheme)
+			_plafGetModuleSymbol(_plaf.xcursorHandle, "XcursorGetTheme");
+		_plaf.xcursorGetDefaultSize = (FN_XcursorGetDefaultSize)
+			_plafGetModuleSymbol(_plaf.xcursorHandle, "XcursorGetDefaultSize");
+		_plaf.xcursorLibraryLoadImage = (FN_XcursorLibraryLoadImage)
+			_plafGetModuleSymbol(_plaf.xcursorHandle, "XcursorLibraryLoadImage");
 	}
 
-	_glfw.xineramaHandle = _glfwPlatformLoadModule("libXinerama.so.1");
-	if (_glfw.xineramaHandle)
+	_plaf.xineramaHandle = _plafLoadModule("libXinerama.so.1");
+	if (_plaf.xineramaHandle)
 	{
-		_glfw.xineramaIsActive = (FN_XineramaIsActive)
-			_glfwPlatformGetModuleSymbol(_glfw.xineramaHandle, "XineramaIsActive");
-		_glfw.xineramaQueryExtension = (FN_XineramaQueryExtension)
-			_glfwPlatformGetModuleSymbol(_glfw.xineramaHandle, "XineramaQueryExtension");
-		_glfw.xineramaQueryScreens = (FN_XineramaQueryScreens)
-			_glfwPlatformGetModuleSymbol(_glfw.xineramaHandle, "XineramaQueryScreens");
+		_plaf.xineramaIsActive = (FN_XineramaIsActive)
+			_plafGetModuleSymbol(_plaf.xineramaHandle, "XineramaIsActive");
+		_plaf.xineramaQueryExtension = (FN_XineramaQueryExtension)
+			_plafGetModuleSymbol(_plaf.xineramaHandle, "XineramaQueryExtension");
+		_plaf.xineramaQueryScreens = (FN_XineramaQueryScreens)
+			_plafGetModuleSymbol(_plaf.xineramaHandle, "XineramaQueryScreens");
 
 			int major;
 			int minor;
-		if (_glfw.xineramaQueryExtension(_glfw.x11Display,  &major, &minor))
+		if (_plaf.xineramaQueryExtension(_plaf.x11Display,  &major, &minor))
 		{
-			if (_glfw.xineramaIsActive(_glfw.x11Display))
-				_glfw.xineramaAvailable = true;
+			if (_plaf.xineramaIsActive(_plaf.x11Display))
+				_plaf.xineramaAvailable = true;
 		}
 	}
 
@@ -728,71 +728,71 @@ static void initExtensions(void)
 	int errorBase;
 	int major = 1;
 	int minor = 0;
-	_glfw.xkbAvailable =
-		_glfw.xkbQueryExtension(_glfw.x11Display, &majorOpcode, &_glfw.xkbEventBase, &errorBase, &major, &minor);
+	_plaf.xkbAvailable =
+		_plaf.xkbQueryExtension(_plaf.x11Display, &majorOpcode, &_plaf.xkbEventBase, &errorBase, &major, &minor);
 
-	if (_glfw.xkbAvailable)
+	if (_plaf.xkbAvailable)
 	{
 		Bool supported;
 
-		if (_glfw.xkbSetDetectableAutoRepeat(_glfw.x11Display, True, &supported))
+		if (_plaf.xkbSetDetectableAutoRepeat(_plaf.x11Display, True, &supported))
 		{
 			if (supported)
-				_glfw.xkbDetectable = true;
+				_plaf.xkbDetectable = true;
 		}
 
 		XkbStateRec state;
-		if (_glfw.xkbGetState(_glfw.x11Display, XkbUseCoreKbd, &state) == Success)
-			_glfw.xkbGroup = (unsigned int)state.group;
+		if (_plaf.xkbGetState(_plaf.x11Display, XkbUseCoreKbd, &state) == Success)
+			_plaf.xkbGroup = (unsigned int)state.group;
 
-		_glfw.xkbSelectEventDetails(_glfw.x11Display, XkbUseCoreKbd, XkbStateNotify,
+		_plaf.xkbSelectEventDetails(_plaf.x11Display, XkbUseCoreKbd, XkbStateNotify,
 							  XkbGroupStateMask, XkbGroupStateMask);
 	}
 
-	_glfw.xrenderHandle = _glfwPlatformLoadModule("libXrender.so.1");
-	if (_glfw.xrenderHandle)
+	_plaf.xrenderHandle = _plafLoadModule("libXrender.so.1");
+	if (_plaf.xrenderHandle)
 	{
-		_glfw.xrenderQueryExtension = (FN_XRenderQueryExtension)
-			_glfwPlatformGetModuleSymbol(_glfw.xrenderHandle, "XRenderQueryExtension");
-		_glfw.xrenderQueryVersion = (FN_XRenderQueryVersion)
-			_glfwPlatformGetModuleSymbol(_glfw.xrenderHandle, "XRenderQueryVersion");
-		_glfw.xrenderFindVisualFormat = (FN_XRenderFindVisualFormat)
-			_glfwPlatformGetModuleSymbol(_glfw.xrenderHandle, "XRenderFindVisualFormat");
+		_plaf.xrenderQueryExtension = (FN_XRenderQueryExtension)
+			_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderQueryExtension");
+		_plaf.xrenderQueryVersion = (FN_XRenderQueryVersion)
+			_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderQueryVersion");
+		_plaf.xrenderFindVisualFormat = (FN_XRenderFindVisualFormat)
+			_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderFindVisualFormat");
 
 		int errorBase;
 		int eventBase;
-		if (_glfw.xrenderQueryExtension(_glfw.x11Display, &errorBase, &eventBase))
+		if (_plaf.xrenderQueryExtension(_plaf.x11Display, &errorBase, &eventBase))
 		{
 			int major;
 			int minor;
-			if (_glfw.xrenderQueryVersion(_glfw.x11Display, &major, &minor))
+			if (_plaf.xrenderQueryVersion(_plaf.x11Display, &major, &minor))
 			{
-				_glfw.xrenderAvailable = true;
+				_plaf.xrenderAvailable = true;
 			}
 		}
 	}
 
-	_glfw.xshapeHandle = _glfwPlatformLoadModule("libXext.so.6");
-	if (_glfw.xshapeHandle)
+	_plaf.xshapeHandle = _plafLoadModule("libXext.so.6");
+	if (_plaf.xshapeHandle)
 	{
-		_glfw.xshapeQueryExtension = (FN_XShapeQueryExtension)
-			_glfwPlatformGetModuleSymbol(_glfw.xshapeHandle, "XShapeQueryExtension");
-		_glfw.xshapeShapeCombineRegion = (FN_XShapeCombineRegion)
-			_glfwPlatformGetModuleSymbol(_glfw.xshapeHandle, "XShapeCombineRegion");
-		_glfw.xshapeQueryVersion = (FN_XShapeQueryVersion)
-			_glfwPlatformGetModuleSymbol(_glfw.xshapeHandle, "XShapeQueryVersion");
-		_glfw.xshapeShapeCombineMask = (FN_XShapeCombineMask)
-			_glfwPlatformGetModuleSymbol(_glfw.xshapeHandle, "XShapeCombineMask");
+		_plaf.xshapeQueryExtension = (FN_XShapeQueryExtension)
+			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeQueryExtension");
+		_plaf.xshapeShapeCombineRegion = (FN_XShapeCombineRegion)
+			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeCombineRegion");
+		_plaf.xshapeQueryVersion = (FN_XShapeQueryVersion)
+			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeQueryVersion");
+		_plaf.xshapeShapeCombineMask = (FN_XShapeCombineMask)
+			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeCombineMask");
 
 		int errorBase;
 		int eventBase;
-		if (_glfw.xshapeQueryExtension(_glfw.x11Display, &errorBase, &eventBase))
+		if (_plaf.xshapeQueryExtension(_plaf.x11Display, &errorBase, &eventBase))
 		{
 			int major;
 			int minor;
-			if (_glfw.xshapeQueryVersion(_glfw.x11Display, &major, &minor))
+			if (_plaf.xshapeQueryVersion(_plaf.x11Display, &major, &minor))
 			{
-				_glfw.xshapeAvailable = true;
+				_plaf.xshapeAvailable = true;
 			}
 		}
 	}
@@ -803,57 +803,57 @@ static void initExtensions(void)
 	createKeyTables();
 
 	// String format atoms
-	_glfw.x11ClipNULL_ = _glfw.xlibInternAtom(_glfw.x11Display, "NULL", False);
-	_glfw.x11ClipUTF8_STRING = _glfw.xlibInternAtom(_glfw.x11Display, "UTF8_STRING", False);
-	_glfw.x11ClipATOM_PAIR = _glfw.xlibInternAtom(_glfw.x11Display, "ATOM_PAIR", False);
+	_plaf.x11ClipNULL_ = _plaf.xlibInternAtom(_plaf.x11Display, "NULL", False);
+	_plaf.x11ClipUTF8_STRING = _plaf.xlibInternAtom(_plaf.x11Display, "UTF8_STRING", False);
+	_plaf.x11ClipATOM_PAIR = _plaf.xlibInternAtom(_plaf.x11Display, "ATOM_PAIR", False);
 
 	// Custom selection property atom
-	_glfw.x11ClipSELECTION = _glfw.xlibInternAtom(_glfw.x11Display, "GLFW_SELECTION", False);
+	_plaf.x11ClipSELECTION = _plaf.xlibInternAtom(_plaf.x11Display, "PLAF_SELECTION", False);
 
 	// ICCCM standard clipboard atoms
-	_glfw.x11ClipTARGETS = _glfw.xlibInternAtom(_glfw.x11Display, "TARGETS", False);
-	_glfw.x11ClipMULTIPLE = _glfw.xlibInternAtom(_glfw.x11Display, "MULTIPLE", False);
-	_glfw.x11ClipINCR = _glfw.xlibInternAtom(_glfw.x11Display, "INCR", False);
-	_glfw.x11ClipCLIPBOARD = _glfw.xlibInternAtom(_glfw.x11Display, "CLIPBOARD", False);
+	_plaf.x11ClipTARGETS = _plaf.xlibInternAtom(_plaf.x11Display, "TARGETS", False);
+	_plaf.x11ClipMULTIPLE = _plaf.xlibInternAtom(_plaf.x11Display, "MULTIPLE", False);
+	_plaf.x11ClipINCR = _plaf.xlibInternAtom(_plaf.x11Display, "INCR", False);
+	_plaf.x11ClipCLIPBOARD = _plaf.xlibInternAtom(_plaf.x11Display, "CLIPBOARD", False);
 
 	// Clipboard manager atoms
-	_glfw.x11ClipCLIPBOARD_MANAGER = _glfw.xlibInternAtom(_glfw.x11Display, "CLIPBOARD_MANAGER", False);
-	_glfw.x11ClipSAVE_TARGETS = _glfw.xlibInternAtom(_glfw.x11Display, "SAVE_TARGETS", False);
+	_plaf.x11ClipCLIPBOARD_MANAGER = _plaf.xlibInternAtom(_plaf.x11Display, "CLIPBOARD_MANAGER", False);
+	_plaf.x11ClipSAVE_TARGETS = _plaf.xlibInternAtom(_plaf.x11Display, "SAVE_TARGETS", False);
 
 	// Xdnd (drag and drop) atoms
-	_glfw.x11DnDAware = _glfw.xlibInternAtom(_glfw.x11Display, "XdndAware", False);
-	_glfw.x11DnDEnter = _glfw.xlibInternAtom(_glfw.x11Display, "XdndEnter", False);
-	_glfw.x11DnDPosition = _glfw.xlibInternAtom(_glfw.x11Display, "XdndPosition", False);
-	_glfw.x11DnDStatus = _glfw.xlibInternAtom(_glfw.x11Display, "XdndStatus", False);
-	_glfw.x11DnDActionCopy = _glfw.xlibInternAtom(_glfw.x11Display, "XdndActionCopy", False);
-	_glfw.x11DnDDrop = _glfw.xlibInternAtom(_glfw.x11Display, "XdndDrop", False);
-	_glfw.x11DnDFinished = _glfw.xlibInternAtom(_glfw.x11Display, "XdndFinished", False);
-	_glfw.x11DnDSelection = _glfw.xlibInternAtom(_glfw.x11Display, "XdndSelection", False);
-	_glfw.x11DnDTypeList = _glfw.xlibInternAtom(_glfw.x11Display, "XdndTypeList", False);
-	_glfw.x11Text_uri_list = _glfw.xlibInternAtom(_glfw.x11Display, "text/uri-list", False);
+	_plaf.x11DnDAware = _plaf.xlibInternAtom(_plaf.x11Display, "XdndAware", False);
+	_plaf.x11DnDEnter = _plaf.xlibInternAtom(_plaf.x11Display, "XdndEnter", False);
+	_plaf.x11DnDPosition = _plaf.xlibInternAtom(_plaf.x11Display, "XdndPosition", False);
+	_plaf.x11DnDStatus = _plaf.xlibInternAtom(_plaf.x11Display, "XdndStatus", False);
+	_plaf.x11DnDActionCopy = _plaf.xlibInternAtom(_plaf.x11Display, "XdndActionCopy", False);
+	_plaf.x11DnDDrop = _plaf.xlibInternAtom(_plaf.x11Display, "XdndDrop", False);
+	_plaf.x11DnDFinished = _plaf.xlibInternAtom(_plaf.x11Display, "XdndFinished", False);
+	_plaf.x11DnDSelection = _plaf.xlibInternAtom(_plaf.x11Display, "XdndSelection", False);
+	_plaf.x11DnDTypeList = _plaf.xlibInternAtom(_plaf.x11Display, "XdndTypeList", False);
+	_plaf.x11Text_uri_list = _plaf.xlibInternAtom(_plaf.x11Display, "text/uri-list", False);
 
 	// ICCCM, EWMH and Motif window property atoms
 	// These can be set safely even without WM support
 	// The EWMH atoms that require WM support are handled in detectEWMH
-	_glfw.x11WM_PROTOCOLS = _glfw.xlibInternAtom(_glfw.x11Display, "WM_PROTOCOLS", False);
-	_glfw.x11WM_STATE = _glfw.xlibInternAtom(_glfw.x11Display, "WM_STATE", False);
-	_glfw.x11WM_DELETE_WINDOW = _glfw.xlibInternAtom(_glfw.x11Display, "WM_DELETE_WINDOW", False);
-	_glfw.x11NET_SUPPORTED = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_SUPPORTED", False);
-	_glfw.x11NET_SUPPORTING_WM_CHECK = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_SUPPORTING_WM_CHECK", False);
-	_glfw.x11NET_WM_ICON = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_WM_ICON", False);
-	_glfw.x11NET_WM_PING = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_WM_PING", False);
-	_glfw.x11NET_WM_PID = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_WM_PID", False);
-	_glfw.x11NET_WM_NAME = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_WM_NAME", False);
-	_glfw.x11NET_WM_ICON_NAME = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_WM_ICON_NAME", False);
-	_glfw.x11NET_WM_BYPASS_COMPOSITOR = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_WM_BYPASS_COMPOSITOR", False);
-	_glfw.x11NET_WM_WINDOW_OPACITY = _glfw.xlibInternAtom(_glfw.x11Display, "_NET_WM_WINDOW_OPACITY", False);
-	_glfw.x11MOTIF_WM_HINTS = _glfw.xlibInternAtom(_glfw.x11Display, "_MOTIF_WM_HINTS", False);
+	_plaf.x11WM_PROTOCOLS = _plaf.xlibInternAtom(_plaf.x11Display, "WM_PROTOCOLS", False);
+	_plaf.x11WM_STATE = _plaf.xlibInternAtom(_plaf.x11Display, "WM_STATE", False);
+	_plaf.x11WM_DELETE_WINDOW = _plaf.xlibInternAtom(_plaf.x11Display, "WM_DELETE_WINDOW", False);
+	_plaf.x11NET_SUPPORTED = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_SUPPORTED", False);
+	_plaf.x11NET_SUPPORTING_WM_CHECK = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_SUPPORTING_WM_CHECK", False);
+	_plaf.x11NET_WM_ICON = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_WM_ICON", False);
+	_plaf.x11NET_WM_PING = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_WM_PING", False);
+	_plaf.x11NET_WM_PID = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_WM_PID", False);
+	_plaf.x11NET_WM_NAME = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_WM_NAME", False);
+	_plaf.x11NET_WM_ICON_NAME = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_WM_ICON_NAME", False);
+	_plaf.x11NET_WM_BYPASS_COMPOSITOR = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_WM_BYPASS_COMPOSITOR", False);
+	_plaf.x11NET_WM_WINDOW_OPACITY = _plaf.xlibInternAtom(_plaf.x11Display, "_NET_WM_WINDOW_OPACITY", False);
+	_plaf.x11MOTIF_WM_HINTS = _plaf.xlibInternAtom(_plaf.x11Display, "_MOTIF_WM_HINTS", False);
 
 	// The compositing manager selection name contains the screen number
 	{
 		char name[32];
-		snprintf(name, sizeof(name), "_NET_WM_CM_S%u", _glfw.x11Screen);
-		_glfw.x11NET_WM_CM_Sx = _glfw.xlibInternAtom(_glfw.x11Display, name, False);
+		snprintf(name, sizeof(name), "_NET_WM_CM_S%u", _plaf.x11Screen);
+		_plaf.x11NET_WM_CM_Sx = _plaf.xlibInternAtom(_plaf.x11Display, name, False);
 	}
 
 	// Detect whether an EWMH-conformant window manager is running
@@ -872,22 +872,22 @@ static void getSystemContentScale(float* xscale, float* yscale)
 	// NOTE: Basing the scale on Xft.dpi where available should provide the most
 	//       consistent user experience (matches Qt, Gtk, etc), although not
 	//       always the most accurate one
-	char* rms = _glfw.xlibResourceManagerString(_glfw.x11Display);
+	char* rms = _plaf.xlibResourceManagerString(_plaf.x11Display);
 	if (rms)
 	{
-		XrmDatabase db = _glfw.xrmGetStringDatabase(rms);
+		XrmDatabase db = _plaf.xrmGetStringDatabase(rms);
 		if (db)
 		{
 			XrmValue value;
 			char* type = NULL;
 
-			if (_glfw.xrmGetResource(db, "Xft.dpi", "Xft.Dpi", &type, &value))
+			if (_plaf.xrmGetResource(db, "Xft.dpi", "Xft.Dpi", &type, &value))
 			{
 				if (type && strcmp(type, "String") == 0)
 					xdpi = ydpi = atof(value.addr);
 			}
 
-			_glfw.xrmDestroyDatabase(db);
+			_plaf.xrmDestroyDatabase(db);
 		}
 	}
 
@@ -900,8 +900,8 @@ static void getSystemContentScale(float* xscale, float* yscale)
 static Cursor createHiddenCursor(void)
 {
 	unsigned char pixels[16 * 16 * 4] = { 0 };
-	ImageData image = { 16, 16, pixels };
-	return _glfwCreateNativeCursorX11(&image, 0, 0);
+	plafImageData image = { 16, 16, pixels };
+	return _plafCreateNativeCursorX11(&image, 0, 0);
 }
 
 // Create a helper window for IPC
@@ -911,30 +911,30 @@ static Window createHelperWindow(void)
 	XSetWindowAttributes wa;
 	wa.event_mask = PropertyChangeMask;
 
-	return _glfw.xlibCreateWindow(_glfw.x11Display, _glfw.x11Root,
+	return _plaf.xlibCreateWindow(_plaf.x11Display, _plaf.x11Root,
 						 0, 0, 1, 1, 0, 0,
 						 InputOnly,
-						 DefaultVisual(_glfw.x11Display, _glfw.x11Screen),
+						 DefaultVisual(_plaf.x11Display, _plaf.x11Screen),
 						 CWEventMask, &wa);
 }
 
 // Create the pipe for empty events without assumuing the OS has pipe2(2)
 //
-static ErrorResponse* createEmptyEventPipe(void)
+static plafError* createEmptyEventPipe(void)
 {
-	if (pipe(_glfw.x11EmptyEventPipe) != 0)
+	if (pipe(_plaf.x11EmptyEventPipe) != 0)
 	{
 		return createErrorResponse("Failed to create empty event pipe: %s", strerror(errno));
 	}
 
 	for (int i = 0; i < 2; i++)
 	{
-		const int sf = fcntl(_glfw.x11EmptyEventPipe[i], F_GETFL, 0);
-		const int df = fcntl(_glfw.x11EmptyEventPipe[i], F_GETFD, 0);
+		const int sf = fcntl(_plaf.x11EmptyEventPipe[i], F_GETFL, 0);
+		const int df = fcntl(_plaf.x11EmptyEventPipe[i], F_GETFD, 0);
 
 		if (sf == -1 || df == -1 ||
-			fcntl(_glfw.x11EmptyEventPipe[i], F_SETFL, sf | O_NONBLOCK) == -1 ||
-			fcntl(_glfw.x11EmptyEventPipe[i], F_SETFD, df | FD_CLOEXEC) == -1)
+			fcntl(_plaf.x11EmptyEventPipe[i], F_SETFL, sf | O_NONBLOCK) == -1 ||
+			fcntl(_plaf.x11EmptyEventPipe[i], F_SETFD, df | FD_CLOEXEC) == -1)
 		{
 			return createErrorResponse("Failed to set flags for empty event pipe: %s", strerror(errno));
 		}
@@ -947,46 +947,46 @@ static ErrorResponse* createEmptyEventPipe(void)
 //
 static int errorHandler(Display *display, XErrorEvent* event)
 {
-	if (_glfw.x11Display != display)
+	if (_plaf.x11Display != display)
 		return 0;
 
-	_glfw.x11ErrorCode = event->error_code;
+	_plaf.x11ErrorCode = event->error_code;
 	return 0;
 }
 
 
 //////////////////////////////////////////////////////////////////////////
-//////                       GLFW internal API                      //////
+//////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
 // Sets the X error handler callback
 //
-void _glfwGrabErrorHandlerX11(void)
+void _plafGrabErrorHandlerX11(void)
 {
-	_glfw.x11ErrorCode = Success;
-	_glfw.x11ErrorHandler = _glfw.xlibSetErrorHandler(errorHandler);
+	_plaf.x11ErrorCode = Success;
+	_plaf.x11ErrorHandler = _plaf.xlibSetErrorHandler(errorHandler);
 }
 
 // Clears the X error handler callback
 //
-void _glfwReleaseErrorHandlerX11(void)
+void _plafReleaseErrorHandlerX11(void)
 {
 	// Synchronize to make sure all commands are processed
-	_glfw.xlibSync(_glfw.x11Display, False);
-	_glfw.xlibSetErrorHandler(_glfw.x11ErrorHandler);
-	_glfw.x11ErrorHandler = NULL;
+	_plaf.xlibSync(_plaf.x11Display, False);
+	_plaf.xlibSetErrorHandler(_plaf.x11ErrorHandler);
+	_plaf.x11ErrorHandler = NULL;
 }
 
 // Creates a native cursor object from the specified image and hotspot
 //
-Cursor _glfwCreateNativeCursorX11(const ImageData* image, int xhot, int yhot)
+Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot)
 {
 	Cursor cursor;
 
-	if (!_glfw.xcursorHandle)
+	if (!_plaf.xcursorHandle)
 		return None;
 
-	XcursorImage* native = _glfw.xcursorImageCreate(image->width, image->height);
+	XcursorImage* native = _plaf.xcursorImageCreate(image->width, image->height);
 	if (native == NULL)
 		return None;
 
@@ -1006,17 +1006,17 @@ Cursor _glfwCreateNativeCursorX11(const ImageData* image, int xhot, int yhot)
 				  ((unsigned char) ((source[2] * alpha) / 255) <<  0);
 	}
 
-	cursor = _glfw.xcursorImageLoadCursor(_glfw.x11Display, native);
-	_glfw.xcursorImageDestroy(native);
+	cursor = _plaf.xcursorImageLoadCursor(_plaf.x11Display, native);
+	_plaf.xcursorImageDestroy(native);
 
 	return cursor;
 }
 
 //////////////////////////////////////////////////////////////////////////
-//////                       GLFW platform API                      //////
+//////                       PLAF platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-ErrorResponse* platformInit(void) {
+plafError* _plafInit(void) {
 	// HACK: If the application has left the locale as "C" then both wide
 	//       character text input and explicit UTF-8 input via XIM will break
 	//       This sets the CTYPE part of the current locale from the environment
@@ -1024,17 +1024,17 @@ ErrorResponse* platformInit(void) {
 	if (strcmp(setlocale(LC_CTYPE, NULL), "C") == 0)
 		setlocale(LC_CTYPE, "");
 
-	void* module = _glfwPlatformLoadModule("libX11.so.6");
+	void* module = _plafLoadModule("libX11.so.6");
 	if (!module)
 	{
 		return createErrorResponse("Failed to load Xlib");
 	}
 
-	FN_XInitThreads XInitThreads = (FN_XInitThreads)_glfwPlatformGetModuleSymbol(module, "XInitThreads");
-	FN_XrmInitialize XrmInitialize = (FN_XrmInitialize)_glfwPlatformGetModuleSymbol(module, "XrmInitialize");
-	FN_XOpenDisplay XOpenDisplay = (FN_XOpenDisplay)_glfwPlatformGetModuleSymbol(module, "XOpenDisplay");
+	FN_XInitThreads XInitThreads = (FN_XInitThreads)_plafGetModuleSymbol(module, "XInitThreads");
+	FN_XrmInitialize XrmInitialize = (FN_XrmInitialize)_plafGetModuleSymbol(module, "XrmInitialize");
+	FN_XOpenDisplay XOpenDisplay = (FN_XOpenDisplay)_plafGetModuleSymbol(module, "XOpenDisplay");
 	if (!XInitThreads || !XrmInitialize || !XOpenDisplay) {
-		_glfwPlatformFreeModule(module);
+		_plafFreeModule(module);
 		return createErrorResponse("Failed to load Xlib entry point");
 	}
 
@@ -1043,323 +1043,323 @@ ErrorResponse* platformInit(void) {
 
 	Display* display = XOpenDisplay(NULL);
 	if (!display) {
-		ErrorResponse* errRsp;
+		plafError* errRsp;
 		const char* name = getenv("DISPLAY");
 		if (name) {
 			errRsp = createErrorResponse("Failed to open display %s", name);
 		} else {
 			errRsp = createErrorResponse("The DISPLAY environment variable is missing");
 		}
-		_glfwPlatformFreeModule(module);
+		_plafFreeModule(module);
 		return errRsp;
 	}
 
-	_glfw.x11Display = display;
-	_glfw.xlibHandle = module;
+	_plaf.x11Display = display;
+	_plaf.xlibHandle = module;
 
-	_glfw.xlibAllocSizeHints = (FN_XAllocSizeHints)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XAllocSizeHints");
-	_glfw.xlibAllocWMHints = (FN_XAllocWMHints)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XAllocWMHints");
-	_glfw.xlibChangeProperty = (FN_XChangeProperty)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XChangeProperty");
-	_glfw.xlibChangeWindowAttributes = (FN_XChangeWindowAttributes)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XChangeWindowAttributes");
-	_glfw.xlibCheckIfEvent = (FN_XCheckIfEvent)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCheckIfEvent");
-	_glfw.xlibCheckTypedWindowEvent = (FN_XCheckTypedWindowEvent)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCheckTypedWindowEvent");
-	_glfw.xlibCloseDisplay = (FN_XCloseDisplay)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCloseDisplay");
-	_glfw.xlibCloseIM = (FN_XCloseIM)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCloseIM");
-	_glfw.xlibConvertSelection = (FN_XConvertSelection)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XConvertSelection");
-	_glfw.xlibCreateColormap = (FN_XCreateColormap)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCreateColormap");
-	_glfw.xlibCreateFontCursor = (FN_XCreateFontCursor)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCreateFontCursor");
-	_glfw.xlibCreateIC = (FN_XCreateIC)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCreateIC");
-	_glfw.xlibCreateRegion = (FN_XCreateRegion)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCreateRegion");
-	_glfw.xlibCreateWindow = (FN_XCreateWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XCreateWindow");
-	_glfw.xlibDefineCursor = (FN_XDefineCursor)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XDefineCursor");
-	_glfw.xlibDeleteContext = (FN_XDeleteContext)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XDeleteContext");
-	_glfw.xlibDeleteProperty = (FN_XDeleteProperty)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XDeleteProperty");
-	_glfw.xlibDestroyIC = (FN_XDestroyIC)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XDestroyIC");
-	_glfw.xlibDestroyRegion = (FN_XDestroyRegion)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XDestroyRegion");
-	_glfw.xlibDestroyWindow = (FN_XDestroyWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XDestroyWindow");
-	_glfw.xlibDisplayKeycodes = (FN_XDisplayKeycodes)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XDisplayKeycodes");
-	_glfw.xlibEventsQueued = (FN_XEventsQueued)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XEventsQueued");
-	_glfw.xlibFilterEvent = (FN_XFilterEvent)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XFilterEvent");
-	_glfw.xlibFindContext = (FN_XFindContext)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XFindContext");
-	_glfw.xlibFlush = (FN_XFlush)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XFlush");
-	_glfw.xlibFree = (FN_XFree)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XFree");
-	_glfw.xlibFreeColormap = (FN_XFreeColormap)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XFreeColormap");
-	_glfw.xlibFreeCursor = (FN_XFreeCursor)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XFreeCursor");
-	_glfw.xlibFreeEventData = (FN_XFreeEventData)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XFreeEventData");
-	_glfw.xlibGetErrorText = (FN_XGetErrorText)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetErrorText");
-	_glfw.xlibGetICValues = (FN_XGetICValues)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetICValues");
-	_glfw.xlibGetIMValues = (FN_XGetIMValues)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetIMValues");
-	_glfw.xlibGetInputFocus = (FN_XGetInputFocus)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetInputFocus");
-	_glfw.xlibGetKeyboardMapping = (FN_XGetKeyboardMapping)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetKeyboardMapping");
-	_glfw.xlibGetScreenSaver = (FN_XGetScreenSaver)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetScreenSaver");
-	_glfw.xlibGetSelectionOwner = (FN_XGetSelectionOwner)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetSelectionOwner");
-	_glfw.xlibGetWMNormalHints = (FN_XGetWMNormalHints)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetWMNormalHints");
-	_glfw.xlibGetWindowAttributes = (FN_XGetWindowAttributes)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetWindowAttributes");
-	_glfw.xlibGetWindowProperty = (FN_XGetWindowProperty)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XGetWindowProperty");
-	_glfw.xlibMinimizeWindow = (FN_XMinimizeWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XIconifyWindow");
-	_glfw.xlibInternAtom = (FN_XInternAtom)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XInternAtom");
-	_glfw.xlibLookupString = (FN_XLookupString)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XLookupString");
-	_glfw.xlibMapRaised = (FN_XMapRaised)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XMapRaised");
-	_glfw.xlibMapWindow = (FN_XMapWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XMapWindow");
-	_glfw.xlibMoveResizeWindow = (FN_XMoveResizeWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XMoveResizeWindow");
-	_glfw.xlibMoveWindow = (FN_XMoveWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XMoveWindow");
-	_glfw.xlibNextEvent = (FN_XNextEvent)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XNextEvent");
-	_glfw.xlibOpenIM = (FN_XOpenIM)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XOpenIM");
-	_glfw.xlibPeekEvent = (FN_XPeekEvent)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XPeekEvent");
-	_glfw.xlibPending = (FN_XPending)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XPending");
-	_glfw.xlibQueryExtension = (FN_XQueryExtension)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XQueryExtension");
-	_glfw.xlibQueryPointer = (FN_XQueryPointer)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XQueryPointer");
-	_glfw.xlibRaiseWindow = (FN_XRaiseWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XRaiseWindow");
-	_glfw.xlibRegisterIMInstantiateCallback = (FN_XRegisterIMInstantiateCallback)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XRegisterIMInstantiateCallback");
-	_glfw.xlibResizeWindow = (FN_XResizeWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XResizeWindow");
-	_glfw.xlibResourceManagerString = (FN_XResourceManagerString)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XResourceManagerString");
-	_glfw.xlibSaveContext = (FN_XSaveContext)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSaveContext");
-	_glfw.xlibSelectInput = (FN_XSelectInput)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSelectInput");
-	_glfw.xlibSendEvent = (FN_XSendEvent)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSendEvent");
-	_glfw.xlibSetErrorHandler = (FN_XSetErrorHandler)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetErrorHandler");
-	_glfw.xlibSetICFocus = (FN_XSetICFocus)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetICFocus");
-	_glfw.xlibSetIMValues = (FN_XSetIMValues)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetIMValues");
-	_glfw.xlibSetInputFocus = (FN_XSetInputFocus)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetInputFocus");
-	_glfw.xlibSetLocaleModifiers = (FN_XSetLocaleModifiers)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetLocaleModifiers");
-	_glfw.xlibSetScreenSaver = (FN_XSetScreenSaver)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetScreenSaver");
-	_glfw.xlibSetSelectionOwner = (FN_XSetSelectionOwner)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetSelectionOwner");
-	_glfw.xlibSetWMHints = (FN_XSetWMHints)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetWMHints");
-	_glfw.xlibSetWMNormalHints = (FN_XSetWMNormalHints)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetWMNormalHints");
-	_glfw.xlibSetWMProtocols = (FN_XSetWMProtocols)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSetWMProtocols");
-	_glfw.xlibSupportsLocale = (FN_XSupportsLocale)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSupportsLocale");
-	_glfw.xlibSync = (FN_XSync)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XSync");
-	_glfw.xlibTranslateCoordinates = (FN_XTranslateCoordinates)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XTranslateCoordinates");
-	_glfw.xlibUndefineCursor = (FN_XUndefineCursor)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XUndefineCursor");
-	_glfw.xlibUnmapWindow = (FN_XUnmapWindow)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XUnmapWindow");
-	_glfw.xlibUnsetICFocus = (FN_XUnsetICFocus)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XUnsetICFocus");
-	_glfw.xlibWarpPointer = (FN_XWarpPointer)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XWarpPointer");
-	_glfw.xkbFreeKeyboard = (FN_XkbFreeKeyboard)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbFreeKeyboard");
-	_glfw.xkbFreeNames = (FN_XkbFreeNames)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbFreeNames");
-	_glfw.xkbGetMap = (FN_XkbGetMap)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbGetMap");
-	_glfw.xkbGetNames = (FN_XkbGetNames)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbGetNames");
-	_glfw.xkbGetState = (FN_XkbGetState)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbGetState");
-	_glfw.xkbQueryExtension = (FN_XkbQueryExtension)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbQueryExtension");
-	_glfw.xkbSelectEventDetails = (FN_XkbSelectEventDetails)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbSelectEventDetails");
-	_glfw.xkbSetDetectableAutoRepeat = (FN_XkbSetDetectableAutoRepeat)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XkbSetDetectableAutoRepeat");
-	_glfw.xrmDestroyDatabase = (FN_XrmDestroyDatabase)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XrmDestroyDatabase");
-	_glfw.xrmGetResource = (FN_XrmGetResource)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XrmGetResource");
-	_glfw.xrmGetStringDatabase = (FN_XrmGetStringDatabase)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XrmGetStringDatabase");
-	_glfw.xlibUnregisterIMInstantiateCallback = (FN_XUnregisterIMInstantiateCallback)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "XUnregisterIMInstantiateCallback");
-	_glfw.xlibUTF8LookupString = (FN_Xutf8LookupString)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "Xutf8LookupString");
-	_glfw.xlibUTF8SetWMProperties = (FN_Xutf8SetWMProperties)
-		_glfwPlatformGetModuleSymbol(_glfw.xlibHandle, "Xutf8SetWMProperties");
+	_plaf.xlibAllocSizeHints = (FN_XAllocSizeHints)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocSizeHints");
+	_plaf.xlibAllocWMHints = (FN_XAllocWMHints)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocWMHints");
+	_plaf.xlibChangeProperty = (FN_XChangeProperty)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XChangeProperty");
+	_plaf.xlibChangeWindowAttributes = (FN_XChangeWindowAttributes)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XChangeWindowAttributes");
+	_plaf.xlibCheckIfEvent = (FN_XCheckIfEvent)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCheckIfEvent");
+	_plaf.xlibCheckTypedWindowEvent = (FN_XCheckTypedWindowEvent)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCheckTypedWindowEvent");
+	_plaf.xlibCloseDisplay = (FN_XCloseDisplay)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCloseDisplay");
+	_plaf.xlibCloseIM = (FN_XCloseIM)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCloseIM");
+	_plaf.xlibConvertSelection = (FN_XConvertSelection)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XConvertSelection");
+	_plaf.xlibCreateColormap = (FN_XCreateColormap)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateColormap");
+	_plaf.xlibCreateFontCursor = (FN_XCreateFontCursor)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateFontCursor");
+	_plaf.xlibCreateIC = (FN_XCreateIC)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateIC");
+	_plaf.xlibCreateRegion = (FN_XCreateRegion)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateRegion");
+	_plaf.xlibCreateWindow = (FN_XCreateWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateWindow");
+	_plaf.xlibDefineCursor = (FN_XDefineCursor)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XDefineCursor");
+	_plaf.xlibDeleteContext = (FN_XDeleteContext)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XDeleteContext");
+	_plaf.xlibDeleteProperty = (FN_XDeleteProperty)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XDeleteProperty");
+	_plaf.xlibDestroyIC = (FN_XDestroyIC)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyIC");
+	_plaf.xlibDestroyRegion = (FN_XDestroyRegion)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyRegion");
+	_plaf.xlibDestroyWindow = (FN_XDestroyWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyWindow");
+	_plaf.xlibDisplayKeycodes = (FN_XDisplayKeycodes)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XDisplayKeycodes");
+	_plaf.xlibEventsQueued = (FN_XEventsQueued)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XEventsQueued");
+	_plaf.xlibFilterEvent = (FN_XFilterEvent)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XFilterEvent");
+	_plaf.xlibFindContext = (FN_XFindContext)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XFindContext");
+	_plaf.xlibFlush = (FN_XFlush)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XFlush");
+	_plaf.xlibFree = (FN_XFree)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XFree");
+	_plaf.xlibFreeColormap = (FN_XFreeColormap)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeColormap");
+	_plaf.xlibFreeCursor = (FN_XFreeCursor)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeCursor");
+	_plaf.xlibFreeEventData = (FN_XFreeEventData)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeEventData");
+	_plaf.xlibGetErrorText = (FN_XGetErrorText)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetErrorText");
+	_plaf.xlibGetICValues = (FN_XGetICValues)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetICValues");
+	_plaf.xlibGetIMValues = (FN_XGetIMValues)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetIMValues");
+	_plaf.xlibGetInputFocus = (FN_XGetInputFocus)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetInputFocus");
+	_plaf.xlibGetKeyboardMapping = (FN_XGetKeyboardMapping)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetKeyboardMapping");
+	_plaf.xlibGetScreenSaver = (FN_XGetScreenSaver)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetScreenSaver");
+	_plaf.xlibGetSelectionOwner = (FN_XGetSelectionOwner)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetSelectionOwner");
+	_plaf.xlibGetWMNormalHints = (FN_XGetWMNormalHints)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWMNormalHints");
+	_plaf.xlibGetWindowAttributes = (FN_XGetWindowAttributes)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWindowAttributes");
+	_plaf.xlibGetWindowProperty = (FN_XGetWindowProperty)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWindowProperty");
+	_plaf.xlibMinimizeWindow = (FN_XMinimizeWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XIconifyWindow");
+	_plaf.xlibInternAtom = (FN_XInternAtom)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XInternAtom");
+	_plaf.xlibLookupString = (FN_XLookupString)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XLookupString");
+	_plaf.xlibMapRaised = (FN_XMapRaised)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XMapRaised");
+	_plaf.xlibMapWindow = (FN_XMapWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XMapWindow");
+	_plaf.xlibMoveResizeWindow = (FN_XMoveResizeWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XMoveResizeWindow");
+	_plaf.xlibMoveWindow = (FN_XMoveWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XMoveWindow");
+	_plaf.xlibNextEvent = (FN_XNextEvent)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XNextEvent");
+	_plaf.xlibOpenIM = (FN_XOpenIM)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XOpenIM");
+	_plaf.xlibPeekEvent = (FN_XPeekEvent)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XPeekEvent");
+	_plaf.xlibPending = (FN_XPending)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XPending");
+	_plaf.xlibQueryExtension = (FN_XQueryExtension)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XQueryExtension");
+	_plaf.xlibQueryPointer = (FN_XQueryPointer)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XQueryPointer");
+	_plaf.xlibRaiseWindow = (FN_XRaiseWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XRaiseWindow");
+	_plaf.xlibRegisterIMInstantiateCallback = (FN_XRegisterIMInstantiateCallback)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XRegisterIMInstantiateCallback");
+	_plaf.xlibResizeWindow = (FN_XResizeWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XResizeWindow");
+	_plaf.xlibResourceManagerString = (FN_XResourceManagerString)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XResourceManagerString");
+	_plaf.xlibSaveContext = (FN_XSaveContext)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSaveContext");
+	_plaf.xlibSelectInput = (FN_XSelectInput)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSelectInput");
+	_plaf.xlibSendEvent = (FN_XSendEvent)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSendEvent");
+	_plaf.xlibSetErrorHandler = (FN_XSetErrorHandler)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetErrorHandler");
+	_plaf.xlibSetICFocus = (FN_XSetICFocus)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetICFocus");
+	_plaf.xlibSetIMValues = (FN_XSetIMValues)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetIMValues");
+	_plaf.xlibSetInputFocus = (FN_XSetInputFocus)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetInputFocus");
+	_plaf.xlibSetLocaleModifiers = (FN_XSetLocaleModifiers)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetLocaleModifiers");
+	_plaf.xlibSetScreenSaver = (FN_XSetScreenSaver)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetScreenSaver");
+	_plaf.xlibSetSelectionOwner = (FN_XSetSelectionOwner)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetSelectionOwner");
+	_plaf.xlibSetWMHints = (FN_XSetWMHints)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMHints");
+	_plaf.xlibSetWMNormalHints = (FN_XSetWMNormalHints)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMNormalHints");
+	_plaf.xlibSetWMProtocols = (FN_XSetWMProtocols)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMProtocols");
+	_plaf.xlibSupportsLocale = (FN_XSupportsLocale)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSupportsLocale");
+	_plaf.xlibSync = (FN_XSync)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XSync");
+	_plaf.xlibTranslateCoordinates = (FN_XTranslateCoordinates)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XTranslateCoordinates");
+	_plaf.xlibUndefineCursor = (FN_XUndefineCursor)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XUndefineCursor");
+	_plaf.xlibUnmapWindow = (FN_XUnmapWindow)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XUnmapWindow");
+	_plaf.xlibUnsetICFocus = (FN_XUnsetICFocus)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XUnsetICFocus");
+	_plaf.xlibWarpPointer = (FN_XWarpPointer)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XWarpPointer");
+	_plaf.xkbFreeKeyboard = (FN_XkbFreeKeyboard)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbFreeKeyboard");
+	_plaf.xkbFreeNames = (FN_XkbFreeNames)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbFreeNames");
+	_plaf.xkbGetMap = (FN_XkbGetMap)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetMap");
+	_plaf.xkbGetNames = (FN_XkbGetNames)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetNames");
+	_plaf.xkbGetState = (FN_XkbGetState)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetState");
+	_plaf.xkbQueryExtension = (FN_XkbQueryExtension)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbQueryExtension");
+	_plaf.xkbSelectEventDetails = (FN_XkbSelectEventDetails)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbSelectEventDetails");
+	_plaf.xkbSetDetectableAutoRepeat = (FN_XkbSetDetectableAutoRepeat)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbSetDetectableAutoRepeat");
+	_plaf.xrmDestroyDatabase = (FN_XrmDestroyDatabase)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XrmDestroyDatabase");
+	_plaf.xrmGetResource = (FN_XrmGetResource)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XrmGetResource");
+	_plaf.xrmGetStringDatabase = (FN_XrmGetStringDatabase)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XrmGetStringDatabase");
+	_plaf.xlibUnregisterIMInstantiateCallback = (FN_XUnregisterIMInstantiateCallback)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "XUnregisterIMInstantiateCallback");
+	_plaf.xlibUTF8LookupString = (FN_Xutf8LookupString)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8LookupString");
+	_plaf.xlibUTF8SetWMProperties = (FN_Xutf8SetWMProperties)
+		_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8SetWMProperties");
 
-	if (_glfw.xlibUTF8LookupString && _glfw.xlibUTF8SetWMProperties)
-		_glfw.xlibUTF8 = true;
+	if (_plaf.xlibUTF8LookupString && _plaf.xlibUTF8SetWMProperties)
+		_plaf.xlibUTF8 = true;
 
-	_glfw.x11Screen = DefaultScreen(_glfw.x11Display);
-	_glfw.x11Root = RootWindow(_glfw.x11Display, _glfw.x11Screen);
-	_glfw.x11Context = XUniqueContext();
+	_plaf.x11Screen = DefaultScreen(_plaf.x11Display);
+	_plaf.x11Root = RootWindow(_plaf.x11Display, _plaf.x11Screen);
+	_plaf.x11Context = XUniqueContext();
 
-	getSystemContentScale(&_glfw.x11ContentScaleX, &_glfw.x11ContentScaleY);
+	getSystemContentScale(&_plaf.x11ContentScaleX, &_plaf.x11ContentScaleY);
 
-	ErrorResponse* errRsp = createEmptyEventPipe();
+	plafError* errRsp = createEmptyEventPipe();
 	if (errRsp) {
-		_terminate();
+		plafTerminate();
 		return errRsp;
 	}
 
 	initExtensions();
 
-	_glfw.x11HelperWindowHandle = createHelperWindow();
-	_glfw.x11HiddenCursorHandle = createHiddenCursor();
+	_plaf.x11HelperWindowHandle = createHelperWindow();
+	_plaf.x11HiddenCursorHandle = createHiddenCursor();
 
-	if (_glfw.xlibSupportsLocale() && _glfw.xlibUTF8)
+	if (_plaf.xlibSupportsLocale() && _plaf.xlibUTF8)
 	{
-		_glfw.xlibSetLocaleModifiers("");
+		_plaf.xlibSetLocaleModifiers("");
 
 		// If an IM is already present our callback will be called right away
-		_glfw.xlibRegisterIMInstantiateCallback(_glfw.x11Display,
+		_plaf.xlibRegisterIMInstantiateCallback(_plaf.x11Display,
 									   NULL, NULL, NULL,
 									   inputMethodInstantiateCallback,
 									   NULL);
 	}
 
-	_glfwPollMonitorsX11();
+	_plafPollMonitorsX11();
 	return NULL;
 }
 
-void platformTerminate(void)
+void _plafTerminate(void)
 {
-	if (_glfw.x11HelperWindowHandle)
+	if (_plaf.x11HelperWindowHandle)
 	{
-		if (_glfw.xlibGetSelectionOwner(_glfw.x11Display, _glfw.x11ClipCLIPBOARD) ==
-			_glfw.x11HelperWindowHandle)
+		if (_plaf.xlibGetSelectionOwner(_plaf.x11Display, _plaf.x11ClipCLIPBOARD) ==
+			_plaf.x11HelperWindowHandle)
 		{
-			_glfwPushSelectionToManagerX11();
+			_plafPushSelectionToManagerX11();
 		}
 
-		_glfw.xlibDestroyWindow(_glfw.x11Display, _glfw.x11HelperWindowHandle);
-		_glfw.x11HelperWindowHandle = None;
+		_plaf.xlibDestroyWindow(_plaf.x11Display, _plaf.x11HelperWindowHandle);
+		_plaf.x11HelperWindowHandle = None;
 	}
 
-	if (_glfw.x11HiddenCursorHandle)
+	if (_plaf.x11HiddenCursorHandle)
 	{
-		_glfw.xlibFreeCursor(_glfw.x11Display, _glfw.x11HiddenCursorHandle);
-		_glfw.x11HiddenCursorHandle = (Cursor) 0;
+		_plaf.xlibFreeCursor(_plaf.x11Display, _plaf.x11HiddenCursorHandle);
+		_plaf.x11HiddenCursorHandle = (Cursor) 0;
 	}
 
-	_glfw.xlibUnregisterIMInstantiateCallback(_glfw.x11Display,
+	_plaf.xlibUnregisterIMInstantiateCallback(_plaf.x11Display,
 									 NULL, NULL, NULL,
 									 inputMethodInstantiateCallback,
 									 NULL);
 
-	if (_glfw.x11IM)
+	if (_plaf.x11IM)
 	{
-		_glfw.xlibCloseIM(_glfw.x11IM);
-		_glfw.x11IM = NULL;
+		_plaf.xlibCloseIM(_plaf.x11IM);
+		_plaf.x11IM = NULL;
 	}
 
-	if (_glfw.x11Display)
+	if (_plaf.x11Display)
 	{
-		_glfw.xlibCloseDisplay(_glfw.x11Display);
-		_glfw.x11Display = NULL;
+		_plaf.xlibCloseDisplay(_plaf.x11Display);
+		_plaf.x11Display = NULL;
 	}
 
-	if (_glfw.xcursorHandle)
+	if (_plaf.xcursorHandle)
 	{
-		_glfwPlatformFreeModule(_glfw.xcursorHandle);
-		_glfw.xcursorHandle = NULL;
+		_plafFreeModule(_plaf.xcursorHandle);
+		_plaf.xcursorHandle = NULL;
 	}
 
-	if (_glfw.randrHandle)
+	if (_plaf.randrHandle)
 	{
-		_glfwPlatformFreeModule(_glfw.randrHandle);
-		_glfw.randrHandle = NULL;
+		_plafFreeModule(_plaf.randrHandle);
+		_plaf.randrHandle = NULL;
 	}
 
-	if (_glfw.xineramaHandle)
+	if (_plaf.xineramaHandle)
 	{
-		_glfwPlatformFreeModule(_glfw.xineramaHandle);
-		_glfw.xineramaHandle = NULL;
+		_plafFreeModule(_plaf.xineramaHandle);
+		_plaf.xineramaHandle = NULL;
 	}
 
-	if (_glfw.xrenderHandle)
+	if (_plaf.xrenderHandle)
 	{
-		_glfwPlatformFreeModule(_glfw.xrenderHandle);
-		_glfw.xrenderHandle = NULL;
+		_plafFreeModule(_plaf.xrenderHandle);
+		_plaf.xrenderHandle = NULL;
 	}
 
-	if (_glfw.xvidmodeHandle)
+	if (_plaf.xvidmodeHandle)
 	{
-		_glfwPlatformFreeModule(_glfw.xvidmodeHandle);
-		_glfw.xvidmodeHandle = NULL;
+		_plafFreeModule(_plaf.xvidmodeHandle);
+		_plaf.xvidmodeHandle = NULL;
 	}
 
-	if (_glfw.xiHandle)
+	if (_plaf.xiHandle)
 	{
-		_glfwPlatformFreeModule(_glfw.xiHandle);
-		_glfw.xiHandle = NULL;
+		_plafFreeModule(_plaf.xiHandle);
+		_plaf.xiHandle = NULL;
 	}
 
 	// NOTE: These need to be unloaded after XCloseDisplay, as they register
 	//       cleanup callbacks that get called by that function
-	_glfwTerminateGLX();
+	_plafTerminateGLX();
 
-	if (_glfw.xlibHandle)
+	if (_plaf.xlibHandle)
 	{
-		_glfwPlatformFreeModule(_glfw.xlibHandle);
-		_glfw.xlibHandle = NULL;
+		_plafFreeModule(_plaf.xlibHandle);
+		_plaf.xlibHandle = NULL;
 	}
 
-	if (_glfw.x11EmptyEventPipe[0] || _glfw.x11EmptyEventPipe[1])
+	if (_plaf.x11EmptyEventPipe[0] || _plaf.x11EmptyEventPipe[1])
 	{
-		close(_glfw.x11EmptyEventPipe[0]);
-		close(_glfw.x11EmptyEventPipe[1]);
+		close(_plaf.x11EmptyEventPipe[0]);
+		close(_plaf.x11EmptyEventPipe[1]);
 	}
 }
 

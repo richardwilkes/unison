@@ -404,9 +404,7 @@ func (p *Panel) MarkForLayoutAndRedraw() {
 	p.MarkForRedraw()
 }
 
-// MarkForRedraw finds the parent window and marks it for drawing at the next update. Note that currently I have found
-// no way to get glfw to both only redraw a subset of the window AND retain the previous contents of that window, such
-// that incremental updates can be done. So... we just redraw everything in the window every time.
+// MarkForRedraw finds the parent window and marks it for drawing at the next update.
 func (p *Panel) MarkForRedraw() {
 	if w := p.Window(); w != nil {
 		w.MarkForRedraw()

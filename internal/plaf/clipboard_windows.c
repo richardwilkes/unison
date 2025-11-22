@@ -4,9 +4,9 @@
 
 #define MAX_OPEN_CLIPBOARD_TRIES 3
 
-const char* getClipboardString(void) {
+const char* plafGetClipboardString(void) {
 	int tries = 0;
-	while (!OpenClipboard(_glfw.win32HelperWindowHandle)) {
+	while (!OpenClipboard(_plaf.win32HelperWindowHandle)) {
 		Sleep(1);
 		if (++tries == MAX_OPEN_CLIPBOARD_TRIES) {
 			return NULL;
@@ -25,15 +25,15 @@ const char* getClipboardString(void) {
 		return NULL;
 	}
 
-	_glfw_free(_glfw.clipboardString);
-	_glfw.clipboardString = _glfwCreateUTF8FromWideStringWin32(buffer);
+	_plaf_free(_plaf.clipboardString);
+	_plaf.clipboardString = _plafCreateUTF8FromWideStringWin32(buffer);
 
 	GlobalUnlock(object);
 	CloseClipboard();
-	return _glfw.clipboardString;
+	return _plaf.clipboardString;
 }
 
-void setClipboardString(const char* string) {
+void plafSetClipboardString(const char* string) {
 	int characterCount = MultiByteToWideChar(CP_UTF8, 0, string, -1, NULL, 0);
 	if (!characterCount) {
 		return;
@@ -54,7 +54,7 @@ void setClipboardString(const char* string) {
 	GlobalUnlock(object);
 
 	int tries = 0;
-	while (!OpenClipboard(_glfw.win32HelperWindowHandle)) {
+	while (!OpenClipboard(_plaf.win32HelperWindowHandle)) {
 		Sleep(1);
 		if (++tries == MAX_OPEN_CLIPBOARD_TRIES) {
 			GlobalFree(object);

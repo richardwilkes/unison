@@ -160,7 +160,7 @@ func GoWindow(window unsafe.Pointer) *Window {
 //
 // This function may only be called from the main thread.
 func DefaultWindowHints() {
-	C.glfwDefaultWindowHints()
+	C.plafDefaultWindowHints()
 	panicError()
 }
 
@@ -170,7 +170,7 @@ func DefaultWindowHints() {
 //
 // This function may only be called from the main thread.
 func WindowHint(target Hint, hint int) {
-	C.glfwWindowHint(C.int(target), C.int(hint))
+	C.plafWindowHint(C.int(target), C.int(hint))
 	panicError()
 }
 
@@ -193,11 +193,11 @@ func WindowHint(target Hint, hint int) {
 //
 // If a fullscreen window is active, the screensaver is prohibited from starting.
 //
-// Windows: If the executable has an icon resource named GLFW_ICON, it will be
+// Windows: If the executable has an icon resource named PLAF_ICON, it will be
 // set as the icon for the window. If no such icon is present, the IDI_WINLOGO
 // icon will be used instead.
 //
-// Mac OS X: The GLFW window has no icon, as it is not a document window, but the
+// Mac OS X: The PLAF window has no icon, as it is not a document window, but the
 // dock icon will be the same as the application bundle's icon.
 //
 // This function may only be called from the main thread.
@@ -219,7 +219,7 @@ func CreateWindow(width, height int, title string, monitor *Monitor, share *Wind
 	}
 
 	var w *C.plafWindow
-	if err := convertErrorResponse(C.glfwCreateWindow(C.int(width), C.int(height), t, m, s, &w)); err != nil {
+	if err := convertErrorResponse(C.plafCreateWindow(C.int(width), C.int(height), t, m, s, &w)); err != nil {
 		return nil, err
 	}
 
@@ -234,13 +234,13 @@ func CreateWindow(width, height int, title string, monitor *Monitor, share *Wind
 // This function may only be called from the main thread.
 func (w *Window) Destroy() {
 	windows.remove(w.data)
-	C.glfwDestroyWindow(w.data)
+	C.plafDestroyWindow(w.data)
 	panicError()
 }
 
 // ShouldClose reports the value of the close flag of the specified window.
 func (w *Window) ShouldClose() bool {
-	ret := C.glfwWindowShouldClose(w.data)
+	ret := C.plafWindowShouldClose(w.data)
 	panicError()
 	return ret != 0
 }
@@ -250,9 +250,9 @@ func (w *Window) ShouldClose() bool {
 // should be closed.
 func (w *Window) SetShouldClose(value bool) {
 	if !value {
-		C.glfwSetWindowShouldClose(w.data, C.int(False))
+		C.plafSetWindowShouldClose(w.data, C.int(False))
 	} else {
-		C.glfwSetWindowShouldClose(w.data, C.int(True))
+		C.plafSetWindowShouldClose(w.data, C.int(True))
 	}
 	panicError()
 }
@@ -263,7 +263,7 @@ func (w *Window) SetShouldClose(value bool) {
 func (w *Window) SetTitle(title string) {
 	t := C.CString(title)
 	defer C.free(unsafe.Pointer(t))
-	C.glfwSetWindowTitle(w.data, t)
+	C.plafSetWindowTitle(w.data, t)
 	panicError()
 }
 
@@ -281,18 +281,18 @@ func (w *Window) SetTitle(title string) {
 // images will be rescaled as needed. Good sizes include 16x16, 32x32 and 48x48.
 func (w *Window) SetIcon(images []image.Image) {
 	count := len(images)
-	cimages := make([]C.ImageData, count)
+	cimages := make([]C.plafImageData, count)
 	freePixels := make([]func(), count)
 
 	for i, img := range images {
-		cimages[i], freePixels[i] = imageToGLFW(img)
+		cimages[i], freePixels[i] = imageToPLAF(img)
 	}
 
-	var p *C.ImageData
+	var p *C.plafImageData
 	if count > 0 {
 		p = &cimages[0]
 	}
-	C.glfwSetWindowIcon(w.data, C.int(count), p)
+	C.plafSetWindowIcon(w.data, C.int(count), p)
 
 	for _, v := range freePixels {
 		v()
@@ -305,7 +305,7 @@ func (w *Window) SetIcon(images []image.Image) {
 // corner of the client area of the window.
 func (w *Window) GetPos() (x, y int) {
 	var xpos, ypos C.int
-	C.glfwGetWindowPos(w.data, &xpos, &ypos)
+	C.plafGetWindowPos(w.data, &xpos, &ypos)
 	panicError()
 	return int(xpos), int(ypos)
 }
@@ -325,7 +325,7 @@ func (w *Window) GetPos() (x, y int) {
 //
 // This function may only be called from the main thread.
 func (w *Window) SetPos(xpos, ypos int) {
-	C.glfwSetWindowPos(w.data, C.int(xpos), C.int(ypos))
+	C.plafSetWindowPos(w.data, C.int(xpos), C.int(ypos))
 	panicError()
 }
 
@@ -333,7 +333,7 @@ func (w *Window) SetPos(xpos, ypos int) {
 // specified window.
 func (w *Window) GetSize() (width, height int) {
 	var wi, h C.int
-	C.glfwGetWindowSize(w.data, &wi, &h)
+	C.plafGetWindowSize(w.data, &wi, &h)
 	panicError()
 	return int(wi), int(h)
 }
@@ -349,7 +349,7 @@ func (w *Window) GetSize() (width, height int) {
 //
 // This function may only be called from the main thread.
 func (w *Window) SetSize(width, height int) {
-	C.glfwSetWindowSize(w.data, C.int(width), C.int(height))
+	C.plafSetWindowSize(w.data, C.int(width), C.int(height))
 	panicError()
 }
 
@@ -358,7 +358,7 @@ func (w *Window) SetSize(width, height int) {
 //
 // The size limits are applied immediately and may cause the window to be resized.
 func (w *Window) SetSizeLimits(minw, minh, maxw, maxh int) {
-	C.glfwSetWindowSizeLimits(w.data, C.int(minw), C.int(minh), C.int(maxw), C.int(maxh))
+	C.plafSetWindowSizeLimits(w.data, C.int(minw), C.int(minh), C.int(maxw), C.int(maxh))
 	panicError()
 }
 
@@ -366,7 +366,7 @@ func (w *Window) SetSizeLimits(minw, minh, maxw, maxh int) {
 // specified window.
 func (w *Window) GetFramebufferSize() (width, height int) {
 	var wi, h C.int
-	C.glfwGetFramebufferSize(w.data, &wi, &h)
+	C.plafGetFramebufferSize(w.data, &wi, &h)
 	panicError()
 	return int(wi), int(h)
 }
@@ -379,7 +379,7 @@ func (w *Window) GetFramebufferSize() (width, height int) {
 // along a particular coordinate axis, the retrieved values will always be zero or positive.
 func (w *Window) GetFrameSize() (left, top, right, bottom int) {
 	var l, t, r, b C.int
-	C.glfwGetWindowFrameSize(w.data, &l, &t, &r, &b)
+	C.plafGetWindowFrameSize(w.data, &l, &t, &r, &b)
 	panicError()
 	return int(l), int(t), int(r), int(b)
 }
@@ -393,7 +393,7 @@ func (w *Window) GetFrameSize() (left, top, right, bottom int) {
 // This function may only be called from the main thread.
 func (w *Window) GetContentScale() (x, y float32) {
 	var cX, cY C.float
-	C.glfwGetWindowContentScale(w.data, &cX, &cY)
+	C.plafGetWindowContentScale(w.data, &cX, &cY)
 	return float32(cX), float32(cY)
 }
 
@@ -408,7 +408,7 @@ func (w *Window) GetContentScale() (x, y float32) {
 //
 // This function may only be called from the main thread.
 func (w *Window) GetOpacity() float32 {
-	return float32(C.glfwGetWindowOpacity(w.data))
+	return float32(C.plafGetWindowOpacity(w.data))
 }
 
 // SetOpacity function sets the opacity of the window, including any
@@ -422,7 +422,7 @@ func (w *Window) GetOpacity() float32 {
 //
 // This function may only be called from the main thread.
 func (w *Window) SetOpacity(opacity float32) {
-	C.glfwSetWindowOpacity(w.data, C.float(opacity))
+	C.plafSetWindowOpacity(w.data, C.float(opacity))
 }
 
 // RequestAttention function requests user attention to the specified
@@ -434,29 +434,29 @@ func (w *Window) SetOpacity(opacity float32) {
 //
 // This function must only be called from the main thread.
 func (w *Window) RequestAttention() {
-	C.glfwRequestWindowAttention(w.data)
+	C.plafRequestWindowAttention(w.data)
 }
 
 // Focus brings the specified window to front and sets input focus.
 // The window should already be visible and not minimized.
 //
 // By default, both windowed and full screen mode windows are focused when initially created.
-// Set the glfw.Focused to disable this behavior.
+// Set the plaf.Focused to disable this behavior.
 //
 // Do not use this function to steal focus from other applications unless you are certain that
 // is what the user wants. Focus stealing can be extremely disruptive.
 func (w *Window) Focus() {
-	C.glfwFocusWindow(w.data)
+	C.plafFocusWindow(w.data)
 }
 
 // HideCursor hides the cursor.
 func (w *Window) HideCursor() {
-	C.glfwHideCursor(w.data)
+	C.plafHideCursor(w.data)
 }
 
 // ShowCursor shows the cursor.
 func (w *Window) ShowCursor() {
-	C.glfwShowCursor(w.data)
+	C.plafShowCursor(w.data)
 }
 
 // Minimize the window, if it was previously restored. If it is a full screen window, the original monitor resolution is
@@ -464,7 +464,7 @@ func (w *Window) ShowCursor() {
 //
 // This function may only be called from the main thread.
 func (w *Window) Minimize() {
-	C.glfwMinimizeWindow(w.data)
+	C.plafMinimizeWindow(w.data)
 }
 
 // Maximize maximizes the specified window if it was previously not maximized.
@@ -472,7 +472,7 @@ func (w *Window) Minimize() {
 //
 // If the specified window is a full screen window, this function does nothing.
 func (w *Window) Maximize() {
-	C.glfwMaximizeWindow(w.data)
+	C.plafMaximizeWindow(w.data)
 }
 
 // Restore restores the window, if it was previously minimized. If it
@@ -482,7 +482,7 @@ func (w *Window) Maximize() {
 //
 // This function may only be called from the main thread.
 func (w *Window) Restore() {
-	C.glfwRestoreWindow(w.data)
+	C.plafRestoreWindow(w.data)
 }
 
 // Show makes the window visible, if it was previously hidden. If the window is
@@ -490,7 +490,7 @@ func (w *Window) Restore() {
 //
 // This function may only be called from the main thread.
 func (w *Window) Show() {
-	C.glfwShowWindow(w.data)
+	C.plafShowWindow(w.data)
 	panicError()
 }
 
@@ -499,7 +499,7 @@ func (w *Window) Show() {
 //
 // This function may only be called from the main thread.
 func (w *Window) Hide() {
-	C.glfwHideWindow(w.data)
+	C.plafHideWindow(w.data)
 	panicError()
 }
 
@@ -508,7 +508,7 @@ func (w *Window) Hide() {
 //
 // Returns nil if the window is in windowed mode.
 func (w *Window) GetMonitor() *Monitor {
-	m := C.glfwGetWindowMonitor(w.data)
+	m := C.plafGetWindowMonitor(w.data)
 	panicError()
 	if m == nil {
 		return nil
@@ -538,14 +538,14 @@ func (w *Window) SetMonitor(monitor *Monitor, xpos, ypos, width, height, refresh
 	} else {
 		m = monitor.data
 	}
-	C.glfwSetWindowMonitor(w.data, m, C.int(xpos), C.int(ypos), C.int(width), C.int(height), C.int(refreshRate))
+	C.plafSetWindowMonitor(w.data, m, C.int(xpos), C.int(ypos), C.int(width), C.int(height), C.int(refreshRate))
 	panicError()
 }
 
 // GetAttrib returns an attribute of the window. There are many attributes,
 // some related to the window and others to its context.
 func (w *Window) GetAttrib(attrib Hint) int {
-	ret := int(C.glfwGetWindowAttrib(w.data, C.int(attrib)))
+	ret := int(C.plafGetWindowAttrib(w.data, C.int(attrib)))
 	panicError()
 	return ret
 }
@@ -562,7 +562,7 @@ func (w *Window) GetAttrib(attrib Hint) int {
 //
 // This function may only be called from the main thread.
 func (w *Window) SetAttrib(attrib Hint, value int) {
-	C.glfwSetWindowAttrib(w.data, C.int(attrib), C.int(value))
+	C.plafSetWindowAttrib(w.data, C.int(attrib), C.int(value))
 }
 
 // PosCallback is the window position callback.
@@ -578,7 +578,7 @@ func (w *Window) SetPosCallback(cbfun PosCallback) (previous PosCallback) {
 	if cbfun != nil {
 		callback = C.windowPosFunc(C.goWindowPosCallback)
 	}
-	C.glfwSetWindowPosCallback(w.data, callback)
+	C.plafSetWindowPosCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -596,7 +596,7 @@ func (w *Window) SetSizeCallback(cbfun SizeCallback) (previous SizeCallback) {
 	if cbfun != nil {
 		callback = C.windowSizeFunc(C.goWindowSizeCallback)
 	}
-	C.glfwSetWindowSizeCallback(w.data, callback)
+	C.plafSetWindowSizeCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -613,7 +613,7 @@ func (w *Window) SetFramebufferSizeCallback(cbfun FramebufferSizeCallback) (prev
 	if cbfun != nil {
 		callback = C.frameBufferSizeFunc(C.goFramebufferSizeCallback)
 	}
-	C.glfwSetFramebufferSizeCallback(w.data, callback)
+	C.plafSetFramebufferSizeCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -637,7 +637,7 @@ func (w *Window) SetCloseCallback(cbfun CloseCallback) (previous CloseCallback) 
 	if cbfun != nil {
 		callback = C.windowCloseFunc(C.goWindowCloseCallback)
 	}
-	C.glfwSetWindowCloseCallback(w.data, callback)
+	C.plafSetWindowCloseCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -657,7 +657,7 @@ func (w *Window) SetMaximizeCallback(cbfun MaximizeCallback) MaximizeCallback {
 	if cbfun != nil {
 		callback = C.windowMaximizeFunc(C.goWindowMaximizeCallback)
 	}
-	C.glfwSetWindowMaximizeCallback(w.data, callback)
+	C.plafSetWindowMaximizeCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -678,7 +678,7 @@ func (w *Window) SetContentScaleCallback(cbfun ContentScaleCallback) ContentScal
 	if cbfun != nil {
 		callback = C.windowContextScaleFunc(C.goWindowContentScaleCallback)
 	}
-	C.glfwSetWindowContentScaleCallback(w.data, callback)
+	C.plafSetWindowContentScaleCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -700,7 +700,7 @@ func (w *Window) SetRefreshCallback(cbfun RefreshCallback) (previous RefreshCall
 	if cbfun != nil {
 		callback = C.windowRefreshFunc(C.goWindowRefreshCallback)
 	}
-	C.glfwSetWindowRefreshCallback(w.data, callback)
+	C.plafSetWindowRefreshCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -721,7 +721,7 @@ func (w *Window) SetFocusCallback(cbfun FocusCallback) (previous FocusCallback) 
 	if cbfun != nil {
 		callback = C.windowFocusFunc(C.goWindowFocusCallback)
 	}
-	C.glfwSetWindowFocusCallback(w.data, callback)
+	C.plafSetWindowFocusCallback(w.data, callback)
 	panicError()
 	return previous
 }
@@ -738,14 +738,14 @@ func (w *Window) SetMinimizeCallback(cbfun MinimizeCallback) (previous MinimizeC
 	if cbfun != nil {
 		callback = C.windowMinimizeFunc(C.goWindowMinimizeCallback)
 	}
-	C.glfwSetWindowMinimizeCallback(w.data, callback)
+	C.plafSetWindowMinimizeCallback(w.data, callback)
 	panicError()
 	return previous
 }
 
 // NativeWindow returns the underlying native window.
 func (w *Window) NativeWindow() unsafe.Pointer {
-	return C.glfwGetNativeWindow(w.data)
+	return C.plafGetNativeWindow(w.data)
 }
 
 // PollEvents processes only those events that have already been received and
@@ -756,7 +756,7 @@ func (w *Window) NativeWindow() unsafe.Pointer {
 //
 // This function may only be called from the main thread.
 func PollEvents() {
-	C.glfwPollEvents()
+	C.plafPollEvents()
 	panicError()
 }
 
@@ -774,7 +774,7 @@ func PollEvents() {
 //
 // This function may only be called from the main thread.
 func WaitEvents() {
-	C.glfwWaitEvents()
+	C.plafWaitEvents()
 	panicError()
 }
 
@@ -799,7 +799,7 @@ func WaitEvents() {
 // If no windows exist, this function returns immediately. For synchronization of threads in
 // applications that do not create windows, use native Go primitives.
 func WaitEventsTimeout(timeout float64) {
-	C.glfwWaitEventsTimeout(C.double(timeout))
+	C.plafWaitEventsTimeout(C.double(timeout))
 	panicError()
 }
 
@@ -811,6 +811,6 @@ func WaitEventsTimeout(timeout float64) {
 //
 // This function may be called from secondary threads.
 func PostEmptyEvent() {
-	C.glfwPostEmptyEvent()
+	C.plafPostEmptyEvent()
 	panicError()
 }

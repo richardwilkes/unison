@@ -320,7 +320,7 @@ void appOpenURLsCallback(CFArrayRef urls);
 	[underlyingAppDelegate applicationDidHide:notification];
 }
 
-// All of the methods above this point are just pass-throughs to glfw. If glfw adds more methods, corresponding
+// All of the methods above this point are just pass-throughs to plaf. If plaf adds more methods, corresponding
 // additions should be made here.
 
 - (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {

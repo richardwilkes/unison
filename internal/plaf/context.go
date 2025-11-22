@@ -8,23 +8,23 @@ import (
 )
 
 // MakeContextCurrent makes the context of the window current.
-// Originally GLFW 3 passes a null pointer to detach the context.
+// Originally PLAF 3 passes a null pointer to detach the context.
 // But since we're using receivers, DetachCurrentContext should
 // be used instead.
 //
 // used by unison
 func (w *Window) MakeContextCurrent() error {
-	return convertErrorResponse(C.glfwMakeContextCurrent(w.data))
+	return convertErrorResponse(C.plafMakeContextCurrent(w.data))
 }
 
 // DetachCurrentContext detaches the current context.
 func DetachCurrentContext() error {
-	return convertErrorResponse(C.glfwMakeContextCurrent(nil))
+	return convertErrorResponse(C.plafMakeContextCurrent(nil))
 }
 
 // GetCurrentContext returns the window whose context is current.
 func GetCurrentContext() *Window {
-	w := C.glfwGetCurrentContext()
+	w := C.plafGetCurrentContext()
 	panicError()
 	if w == nil {
 		return nil
@@ -38,7 +38,7 @@ func GetCurrentContext() *Window {
 //
 // used by unison
 func (w *Window) SwapBuffers() {
-	C.glfwSwapBuffers(w.data)
+	C.plafSwapBuffers(w.data)
 	panicError()
 }
 
@@ -57,7 +57,7 @@ func (w *Window) SwapBuffers() {
 // Some GPU drivers do not honor the requested swap interval, either because of
 // user settings that override the request or due to bugs in the driver.
 func SwapInterval(interval int) {
-	C.glfwSwapInterval(C.int(interval))
+	C.plafSwapInterval(C.int(interval))
 	panicError()
 }
 
@@ -72,7 +72,7 @@ func SwapInterval(interval int) {
 func ExtensionSupported(extension string) bool {
 	e := C.CString(extension)
 	defer C.free(unsafe.Pointer(e))
-	ret := C.glfwExtensionSupported(e)
+	ret := C.plafExtensionSupported(e)
 	panicError()
 	return ret != 0
 }
@@ -88,7 +88,7 @@ func ExtensionSupported(extension string) bool {
 func GetProcAddress(procname string) unsafe.Pointer {
 	p := C.CString(procname)
 	defer C.free(unsafe.Pointer(p))
-	ret := unsafe.Pointer(C.glfwGetProcAddress(p))
+	ret := unsafe.Pointer(C.plafGetProcAddress(p))
 	panicError()
 	return ret
 }

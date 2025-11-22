@@ -5,7 +5,7 @@
 
 
 //////////////////////////////////////////////////////////////////////////
-//////                       GLFW internal API                      //////
+//////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
 // Checks whether the desired context attributes are valid
@@ -13,7 +13,7 @@
 // This function checks things like whether the specified client API version
 // exists and whether all relevant options have supported and non-conflicting
 // values
-ErrorResponse * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
+plafError * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
 	if (ctxconfig->profile) {
 		if (ctxconfig->profile != OPENGL_PROFILE_CORE && ctxconfig->profile != OPENGL_PROFILE_COMPAT) {
 			return createErrorResponse("Invalid OpenGL profile 0x%08X", ctxconfig->profile);
@@ -36,7 +36,7 @@ ErrorResponse * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
 
 // Chooses the framebuffer config that best matches the desired one
 //
-const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired,
+const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
 										 const plafFrameBufferCfg* alternatives,
 										 unsigned int count)
 {
@@ -191,9 +191,9 @@ const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired,
 }
 
 // Retrieves the attributes of the current context
-ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig) {
-	plafWindow* previous = _glfw.contextSlot;
-	ErrorResponse* err = glfwMakeContextCurrent(window);
+plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig) {
+	plafWindow* previous = _plaf.contextSlot;
+	plafError* err = plafMakeContextCurrent(window);
 	if (err) {
 		return err;
 	}
@@ -201,24 +201,24 @@ ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* 
 	window->context.GetIntegerv = (FN_GLGETINTEGERV)window->context.getProcAddress("glGetIntegerv");
 	window->context.GetString = (FN_GLGETSTRING)window->context.getProcAddress("glGetString");
 	if (!window->context.GetIntegerv || !window->context.GetString) {
-		glfwMakeContextCurrent(previous);
+		plafMakeContextCurrent(previous);
 		return createErrorResponse("Entry point retrieval is broken");
 	}
 
 	const char* version = (const char*) window->context.GetString(GL_VERSION);
 	if (!version) {
-		glfwMakeContextCurrent(previous);
+		plafMakeContextCurrent(previous);
 		return createErrorResponse("OpenGL version string retrieval is broken");
 	}
 
 	if (!sscanf(version, "%d.%d.%d", &window->context.major, &window->context.minor, &window->context.revision)) {
-		glfwMakeContextCurrent(previous);
+		plafMakeContextCurrent(previous);
 		return createErrorResponse("No version found in OpenGL version string");
 	}
 
 	if (window->context.major < ctxconfig->major ||
 		(window->context.major == ctxconfig->major && window->context.minor < ctxconfig->minor)) {
-		glfwMakeContextCurrent(previous);
+		plafMakeContextCurrent(previous);
 		return createErrorResponse("Requested OpenGL version %i.%i, got version %i.%i",
 			ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
 	}
@@ -226,7 +226,7 @@ ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* 
 	if (window->context.major >= 3) {
 		window->context.GetStringi = (FN_GLGETSTRINGI)window->context.getProcAddress("glGetStringi");
 		if (!window->context.GetStringi) {
-			glfwMakeContextCurrent(previous);
+			plafMakeContextCurrent(previous);
 			return createErrorResponse("Entry point retrieval is broken");
 		}
 	}
@@ -255,7 +255,7 @@ ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* 
 		}
 	}
 
-	if (glfwExtensionSupported("GL_ARB_robustness")) {
+	if (plafExtensionSupported("GL_ARB_robustness")) {
 		GLint strategy;
 		window->context.GetIntegerv(GL_RESET_NOTIFICATION_STRATEGY_ARB, &strategy);
 		if (strategy == GL_LOSE_CONTEXT_ON_RESET_ARB) {
@@ -265,7 +265,7 @@ ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* 
 		}
 	}
 
-	if (glfwExtensionSupported("GL_KHR_context_flush_control")) {
+	if (plafExtensionSupported("GL_KHR_context_flush_control")) {
 		GLint behavior;
 		window->context.GetIntegerv(GL_CONTEXT_RELEASE_BEHAVIOR, &behavior);
 		if (behavior == GL_NONE) {
@@ -280,12 +280,12 @@ ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* 
 	if (window->doublebuffer) {
 		window->context.swapBuffers(window);
 	}
-	return glfwMakeContextCurrent(previous);
+	return plafMakeContextCurrent(previous);
 }
 
 // Searches an extension string for the specified extension
 //
-IntBool _glfwStringInExtensionString(const char* string, const char* extensions)
+IntBool _plafStringInExtensionString(const char* string, const char* extensions)
 {
 	const char* start = extensions;
 
@@ -313,18 +313,18 @@ IntBool _glfwStringInExtensionString(const char* string, const char* extensions)
 
 
 //////////////////////////////////////////////////////////////////////////
-//////                        GLFW public API                       //////
+//////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-ErrorResponse* glfwMakeContextCurrent(plafWindow* window) {
-	ErrorResponse* err = NULL;
-	if (_glfw.contextSlot) {
+plafError* plafMakeContextCurrent(plafWindow* window) {
+	plafError* err = NULL;
+	if (_plaf.contextSlot) {
 		if (!window) {
-			err = _glfw.contextSlot->context.makeCurrent(NULL);
+			err = _plaf.contextSlot->context.makeCurrent(NULL);
 		}
 	}
 	if (window) {
-		ErrorResponse* err2 = window->context.makeCurrent(window);
+		plafError* err2 = window->context.makeCurrent(window);
 		if (err2) {
 			err2->next = err;
 			err = err2;
@@ -333,54 +333,54 @@ ErrorResponse* glfwMakeContextCurrent(plafWindow* window) {
 	return err;
 }
 
-plafWindow* glfwGetCurrentContext(void)
+plafWindow* plafGetCurrentContext(void)
 {
-	return _glfw.contextSlot;
+	return _plaf.contextSlot;
 }
 
-void glfwSwapBuffers(plafWindow* window) {
+void plafSwapBuffers(plafWindow* window) {
 	window->context.swapBuffers(window);
 }
 
-void glfwSwapInterval(int interval)
+void plafSwapInterval(int interval)
 {
-	if (!_glfw.contextSlot)
+	if (!_plaf.contextSlot)
 	{
-		_glfwInputError("Cannot set swap interval without a current OpenGL or OpenGL ES context");
+		_plafInputError("Cannot set swap interval without a current OpenGL or OpenGL ES context");
 		return;
 	}
-	_glfw.contextSlot->context.swapInterval(interval);
+	_plaf.contextSlot->context.swapInterval(interval);
 }
 
-int glfwExtensionSupported(const char* extension)
+int plafExtensionSupported(const char* extension)
 {
-	if (!_glfw.contextSlot)
+	if (!_plaf.contextSlot)
 	{
-		_glfwInputError("Cannot query extension without a current OpenGL or OpenGL ES context");
+		_plafInputError("Cannot query extension without a current OpenGL or OpenGL ES context");
 		return false;
 	}
 
 	if (*extension == '\0')
 	{
-		_glfwInputError("Extension name cannot be an empty string");
+		_plafInputError("Extension name cannot be an empty string");
 		return false;
 	}
 
-	if (_glfw.contextSlot->context.major >= 3)
+	if (_plaf.contextSlot->context.major >= 3)
 	{
 		int i;
 		GLint count;
 
 		// Check if extension is in the modern OpenGL extensions string list
 
-		_glfw.contextSlot->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
+		_plaf.contextSlot->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
 
 		for (i = 0;  i < count;  i++)
 		{
-			const char* en = (const char*)_glfw.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
+			const char* en = (const char*)_plaf.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
 			if (!en)
 			{
-				_glfwInputError("Extension string retrieval is broken");
+				_plafInputError("Extension string retrieval is broken");
 				return false;
 			}
 
@@ -392,27 +392,27 @@ int glfwExtensionSupported(const char* extension)
 	{
 		// Check if extension is in the old style OpenGL extensions string
 
-		const char* extensions = (const char*)_glfw.contextSlot->context.GetString(GL_EXTENSIONS);
+		const char* extensions = (const char*)_plaf.contextSlot->context.GetString(GL_EXTENSIONS);
 		if (!extensions)
 		{
-			_glfwInputError("Extension string retrieval is broken");
+			_plafInputError("Extension string retrieval is broken");
 			return false;
 		}
 
-		if (_glfwStringInExtensionString(extension, extensions))
+		if (_plafStringInExtensionString(extension, extensions))
 			return true;
 	}
 
 	// Check if extension is in the platform-specific string
-	return _glfw.contextSlot->context.extensionSupported(extension);
+	return _plaf.contextSlot->context.extensionSupported(extension);
 }
 
-glFunc glfwGetProcAddress(const char* procname)
+glFunc plafGetProcAddress(const char* procname)
 {
-	if (!_glfw.contextSlot)
+	if (!_plaf.contextSlot)
 	{
-		_glfwInputError("Cannot query entry point without a current OpenGL or OpenGL ES context");
+		_plafInputError("Cannot query entry point without a current OpenGL or OpenGL ES context");
 		return NULL;
 	}
-	return _glfw.contextSlot->context.getProcAddress(procname);
+	return _plaf.contextSlot->context.getProcAddress(procname);
 }

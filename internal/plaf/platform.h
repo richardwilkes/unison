@@ -352,7 +352,7 @@ typedef unsigned char GLubyte;
 	// dwmapi.dll function pointer typedefs
 	typedef HRESULT (WINAPI * FN_DwmIsCompositionEnabled)(BOOL*);
 	typedef HRESULT (WINAPI * FN_DwmFlush)(VOID);
-	typedef HRESULT(WINAPI * FN_DwmEnableBlurBehindWindow)(HWND,const DWM_BLURBEHIND*);
+	typedef HRESULT (WINAPI * FN_DwmEnableBlurBehindWindow)(HWND,const DWM_BLURBEHIND*);
 	typedef HRESULT (WINAPI * FN_DwmGetColorizationColor)(DWORD*,BOOL*);
 
 	// shcore.dll function pointer typedefs
@@ -634,36 +634,36 @@ typedef void (*windowRefreshFunc)(plafWindow* window);
 typedef void (*windowSizeFunc)(plafWindow* window, int width, int height);
 
 // An error response
-typedef struct ErrorResponse {
-	struct ErrorResponse* next;
-	char                  desc[ERROR_MSG_SIZE];
-} ErrorResponse;
+typedef struct plafError {
+	struct plafError* next;
+	char              desc[ERROR_MSG_SIZE];
+} plafError;
 
 // A single video mode
-typedef struct VideoMode {
+typedef struct plafVideoMode {
 	int width;
 	int height;
 	int redBits;
 	int greenBits;
 	int blueBits;
 	int refreshRate;
-} VideoMode;
+} plafVideoMode;
 
 // Gamma ramp for a monitor
-typedef struct GammaRamp {
+typedef struct plafGammaRamp {
 	unsigned short* red;
 	unsigned short* green;
 	unsigned short* blue;
 	unsigned int    size;
-} GammaRamp;
+} plafGammaRamp;
 
-typedef struct ImageData {
+typedef struct plafImageData {
 	int            width;
 	int            height;
 	unsigned char* pixels;
-} ImageData;
+} plafImageData;
 
-typedef struct WindowConfig {
+typedef struct plafWindowConfig {
 	int     xpos;
 	int     ypos;
 	int     width;
@@ -675,7 +675,7 @@ typedef struct WindowConfig {
 	IntBool mousePassthrough;
 	IntBool scaleToMonitor;
 	IntBool scaleFramebuffer;
-} WindowConfig;
+} plafWindowConfig;
 
 /* ------------------------- Internal ----------------------- */
 
@@ -779,7 +779,7 @@ struct plafCtx {
 	FN_GLGETSTRINGI      GetStringi;
 	FN_GLGETINTEGERV     GetIntegerv;
 	FN_GLGETSTRING       GetString;
-	ErrorResponse*       (*makeCurrent)(plafWindow*);
+	plafError*           (*makeCurrent)(plafWindow*);
 	void                 (*swapBuffers)(plafWindow*);
 	void                 (*swapInterval)(int);
 	int                  (*extensionSupported)(const char*);
@@ -809,7 +809,7 @@ struct plafWindow {
 	IntBool                mousePassthrough;
 	IntBool                shouldClose;
 	IntBool                doublebuffer;
-	VideoMode              videoMode;
+	plafVideoMode          videoMode;
 	plafMonitor*           monitor;
 	plafCursor*            cursor;
 	char*                  title;
@@ -885,11 +885,11 @@ struct plafMonitor {
 	int               widthMM;
 	int               heightMM;
 	plafWindow*       window;
-	VideoMode*        modes;
+	plafVideoMode*    modes;
 	int               modeCount;
-	VideoMode         currentMode;
-	GammaRamp         originalRamp;
-	GammaRamp         currentRamp;
+	plafVideoMode     currentMode;
+	plafGammaRamp     originalRamp;
+	plafGammaRamp     currentRamp;
 #if defined(__APPLE__)
 	CGDirectDisplayID nsDisplayID;
 	CGDisplayModeRef  nsPreviousMode;
@@ -928,14 +928,14 @@ struct plafLib {
 	IntBool                             initialized;
 	char*                               clipboardString;
 	plafFrameBufferCfg                  frameBufferCfg;
-	WindowConfig                        windowCfg;
+	plafWindowConfig                    windowCfg;
 	plafCtxCfg                          contextCfg;
 	int                                 desiredRefreshRate;
 	plafCursor*                         cursorListHead;
 	plafWindow*                         windowListHead;
 	plafMonitor**                       monitors;
 	int                                 monitorCount;
-	ErrorResponse                       errorSlot;
+	plafError                           errorSlot;
 	plafWindow*                         contextSlot;
 	monitorFunc                         monitorCallback;
 	short int                           scanCodes[KEY_LAST + 1];
@@ -1049,7 +1049,7 @@ struct plafLib {
 	FN_XGetWMNormalHints                xlibGetWMNormalHints;
 	FN_XGetWindowAttributes             xlibGetWindowAttributes;
 	FN_XGetWindowProperty               xlibGetWindowProperty;
-	FN_XMinimizeWindow                   xlibMinimizeWindow;
+	FN_XMinimizeWindow                  xlibMinimizeWindow;
 	FN_XInternAtom                      xlibInternAtom;
 	FN_XLookupString                    xlibLookupString;
 	FN_XMapRaised                       xlibMapRaised;
@@ -1248,955 +1248,286 @@ struct plafLib {
 };
 
 // Global state
-extern plafLib _glfw;
+extern plafLib _plaf;
 
 /*************************************************************************
- * GLFW API functions
+ * Public API functions
  *************************************************************************/
 
 // Setup & teardown
-ErrorResponse* plafInit(void);
+plafError* plafInit(void);
 void plafTerminate(void);
-errorFunc glfwSetErrorCallback(errorFunc callback);
+errorFunc plafSetErrorCallback(errorFunc callback);
 
 // Monitors
-plafMonitor** glfwGetMonitors(int* count);
-plafMonitor* glfwGetPrimaryMonitor(void);
-void glfwGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos);
-void glfwGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-void glfwGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM);
-void glfwGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale);
-const char* glfwGetMonitorName(plafMonitor* monitor);
-monitorFunc glfwSetMonitorCallback(monitorFunc callback);
-const VideoMode* glfwGetVideoModes(plafMonitor* monitor, int* count);
-const VideoMode* glfwGetVideoMode(plafMonitor* monitor);
-void glfwSetGamma(plafMonitor* monitor, float gamma);
-const GammaRamp* glfwGetGammaRamp(plafMonitor* monitor);
-void glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
+plafMonitor** plafGetMonitors(int* count);
+plafMonitor* plafGetPrimaryMonitor(void);
+void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos);
+void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
+void plafGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM);
+void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale);
+const char* plafGetMonitorName(plafMonitor* monitor);
+monitorFunc plafSetMonitorCallback(monitorFunc callback);
+const plafVideoMode* plafGetVideoModes(plafMonitor* monitor, int* count);
+const plafVideoMode* plafGetVideoMode(plafMonitor* monitor);
+void plafSetGamma(plafMonitor* monitor, float gamma);
+const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor);
+void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 
 // Windows
-void glfwDefaultWindowHints(void);
-void glfwWindowHint(int hint, int value);
-ErrorResponse* glfwCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow);
-void* glfwGetNativeWindow(plafWindow* window);
-int glfwWindowShouldClose(plafWindow* window);
-void glfwSetWindowShouldClose(plafWindow* window, int value);
-const char* glfwGetWindowTitle(plafWindow* window);
-void glfwSetWindowTitle(plafWindow* window, const char* title);
-void glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images);
-void glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos);
-void glfwSetWindowPos(plafWindow* window, int xpos, int ypos);
-void glfwGetWindowSize(plafWindow* window, int* width, int* height);
-void glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void glfwSetWindowSize(plafWindow* window, int width, int height);
-void glfwGetFramebufferSize(plafWindow* window, int* width, int* height);
-void glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
-void glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
-float glfwGetWindowOpacity(plafWindow* window);
-void glfwSetWindowOpacity(plafWindow* window, float opacity);
-void glfwMinimizeWindow(plafWindow* window);
-void glfwMaximizeWindow(plafWindow* window);
-void glfwRestoreWindow(plafWindow* window);
-void glfwShowWindow(plafWindow* window);
-void glfwHideWindow(plafWindow* window);
-void glfwFocusWindow(plafWindow* window);
-void glfwRequestWindowAttention(plafWindow* window);
-plafMonitor* glfwGetWindowMonitor(plafWindow* window);
-void glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-int glfwGetWindowAttrib(plafWindow* window, int attrib);
-void glfwSetWindowAttrib(plafWindow* window, int attrib, int value);
-void glfwHideCursor(plafWindow* window);
-void glfwShowCursor(plafWindow* window);
-windowPosFunc glfwSetWindowPosCallback(plafWindow* window, windowPosFunc callback);
-windowSizeFunc glfwSetWindowSizeCallback(plafWindow* window, windowSizeFunc callback);
-windowCloseFunc glfwSetWindowCloseCallback(plafWindow* window, windowCloseFunc callback);
-windowRefreshFunc glfwSetWindowRefreshCallback(plafWindow* window, windowRefreshFunc callback);
-windowFocusFunc glfwSetWindowFocusCallback(plafWindow* window, windowFocusFunc callback);
-windowMinimizeFunc glfwSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc callback);
-windowMaximizeFunc glfwSetWindowMaximizeCallback(plafWindow* window, windowMaximizeFunc callback);
-frameBufferSizeFunc glfwSetFramebufferSizeCallback(plafWindow* window, frameBufferSizeFunc callback);
-windowContextScaleFunc glfwSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc callback);
-void glfwDestroyWindow(plafWindow* window);
+void plafDefaultWindowHints(void);
+void plafWindowHint(int hint, int value);
+plafError* plafCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow);
+void* plafGetNativeWindow(plafWindow* window);
+int plafWindowShouldClose(plafWindow* window);
+void plafSetWindowShouldClose(plafWindow* window, int value);
+const char* plafGetWindowTitle(plafWindow* window);
+void plafSetWindowTitle(plafWindow* window, const char* title);
+void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images);
+void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);
+void plafSetWindowPos(plafWindow* window, int xpos, int ypos);
+void plafGetWindowSize(plafWindow* window, int* width, int* height);
+void plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
+void plafSetWindowSize(plafWindow* window, int width, int height);
+void plafGetFramebufferSize(plafWindow* window, int* width, int* height);
+void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
+void plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
+float plafGetWindowOpacity(plafWindow* window);
+void plafSetWindowOpacity(plafWindow* window, float opacity);
+void plafMinimizeWindow(plafWindow* window);
+void plafMaximizeWindow(plafWindow* window);
+void plafRestoreWindow(plafWindow* window);
+void plafShowWindow(plafWindow* window);
+void plafHideWindow(plafWindow* window);
+void plafFocusWindow(plafWindow* window);
+void plafRequestWindowAttention(plafWindow* window);
+plafMonitor* plafGetWindowMonitor(plafWindow* window);
+void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
+int plafGetWindowAttrib(plafWindow* window, int attrib);
+void plafSetWindowAttrib(plafWindow* window, int attrib, int value);
+void plafHideCursor(plafWindow* window);
+void plafShowCursor(plafWindow* window);
+int plafGetKey(plafWindow* window, int key);
+int plafGetMouseButton(plafWindow* window, int button);
+void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos);
+void plafSetCursorPos(plafWindow* window, double xpos, double ypos);
+void plafSetCursor(plafWindow* window, plafCursor* cursor);
+void plafSwapBuffers(plafWindow* window);
+plafError* plafMakeContextCurrent(plafWindow* window);
+windowPosFunc plafSetWindowPosCallback(plafWindow* window, windowPosFunc callback);
+windowSizeFunc plafSetWindowSizeCallback(plafWindow* window, windowSizeFunc callback);
+windowCloseFunc plafSetWindowCloseCallback(plafWindow* window, windowCloseFunc callback);
+windowRefreshFunc plafSetWindowRefreshCallback(plafWindow* window, windowRefreshFunc callback);
+windowFocusFunc plafSetWindowFocusCallback(plafWindow* window, windowFocusFunc callback);
+windowMinimizeFunc plafSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc callback);
+windowMaximizeFunc plafSetWindowMaximizeCallback(plafWindow* window, windowMaximizeFunc callback);
+frameBufferSizeFunc plafSetFramebufferSizeCallback(plafWindow* window, frameBufferSizeFunc callback);
+windowContextScaleFunc plafSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc callback);
+keyFunc plafSetKeyCallback(plafWindow* window, keyFunc callback);
+charFunc plafSetCharCallback(plafWindow* window, charFunc callback);
+charModsFunc plafSetCharModsCallback(plafWindow* window, charModsFunc callback);
+mouseButtonFunc plafSetMouseButtonCallback(plafWindow* window, mouseButtonFunc callback);
+cursorPosFunc plafSetCursorPosCallback(plafWindow* window, cursorPosFunc callback);
+cursorEnterFunc plafSetCursorEnterCallback(plafWindow* window, cursorEnterFunc callback);
+scrollFunc plafSetScrollCallback(plafWindow* window, scrollFunc callback);
+dropFunc plafSetDropCallback(plafWindow* window, dropFunc callback);
+void plafDestroyWindow(plafWindow* window);
+plafWindow* plafGetCurrentContext(void);
+int plafGetKeyScancode(int key);
 
 // Events
-void glfwPollEvents(void);
-void glfwWaitEvents(void);
-void glfwWaitEventsTimeout(double timeout);
-void glfwPostEmptyEvent(void);
+void plafPollEvents(void);
+void plafWaitEvents(void);
+void plafWaitEventsTimeout(double timeout);
+void plafPostEmptyEvent(void);
 
-/*! @brief Returns the platform-specific scancode of the specified key.
- *
- *  This function returns the platform-specific scancode of the specified key.
- *
- *  If the specified [key token](@ref keys) corresponds to a physical key not
- *  supported on the current platform then this method will return `-1`.
- *  Calling this function with anything other than a key token will return `-1`
- *  and generate a @ref ERR_INVALID_ENUM error.
- *
- *  @param[in] key Any [key token](@ref keys).
- *  @return The platform-specific scancode for the key, or `-1` if the key is
- *  not supported on the current platform or an [error](@ref error_handling)
- *  occurred.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref input_key
- *
- *  @since Added in version 3.3.
- *
- *  @ingroup input
- */
-int glfwGetKeyScancode(int key);
+// Cursors
+plafCursor* plafCreateCursor(const plafImageData* image, int xhot, int yhot);
+plafCursor* plafCreateStandardCursor(int shape);
+void plafDestroyCursor(plafCursor* cursor);
 
-/*! @brief Returns the last reported state of a keyboard key for the specified
- *  window.
- *
- *  This function returns the last state reported for the specified key to the
- *  specified window.  The returned state is one of `INPUT_PRESS` or
- *  `INPUT_RELEASE`.  The action `INPUT_REPEAT` is only reported to the key callback.
- *
- *  If the @ref INPUT_MODE_STICKY_KEYS input mode is enabled, this function returns
- *  `INPUT_PRESS` the first time you call it for a key that was pressed, even if
- *  that key has already been released.
- *
- *  The key functions deal with physical keys, with [key tokens](@ref keys)
- *  named after their use on the standard US keyboard layout.  If you want to
- *  input text, use the Unicode character callback instead.
- *
- *  The [modifier key bit masks](@ref mods) are not key tokens and cannot be
- *  used with this function.
- *
- *  __Do not use this function__ to implement [text input](@ref input_char).
- *
- *  @param[in] window The desired window.
- *  @param[in] key The desired [keyboard key](@ref keys).  `KEY_UNKNOWN` is
- *  not a valid key for this function.
- *  @return One of `INPUT_PRESS` or `INPUT_RELEASE`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref input_key
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup input
- */
-int glfwGetKey(plafWindow* window, int key);
+// Clipboard
+const char* plafGetClipboardString(void);
+void plafSetClipboardString(const char* string);
 
-/*! @brief Returns the last reported state of a mouse button for the specified
- *  window.
- *
- *  This function returns the last state reported for the specified mouse button
- *  to the specified window.  The returned state is one of `INPUT_PRESS` or
- *  `INPUT_RELEASE`.
- *
- *  If the @ref INPUT_MODE_STICKY_MOUSE_BUTTONS input mode is enabled, this function
- *  returns `INPUT_PRESS` the first time you call it for a mouse button that was
- *  pressed, even if that mouse button has already been released.
- *
- *  The @ref INPUT_MODE_UNLIMITED_MOUSE_BUTTONS input mode does not effect the
- *  limit on buttons which can be polled with this function.
- *
- *  @param[in] window The desired window.
- *  @param[in] button The desired [mouse button token](@ref buttons).
- *  @return One of `INPUT_PRESS` or `INPUT_RELEASE`.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref input_mouse_button
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup input
- */
-int glfwGetMouseButton(plafWindow* window, int button);
-
-void glfwGetCursorPos(plafWindow* window, double* xpos, double* ypos);
-void glfwSetCursorPos(plafWindow* window, double xpos, double ypos);
-void glfwSetCursor(plafWindow* window, plafCursor* cursor);
-
-/*! @brief Creates a custom cursor.
- *
- *  Creates a new custom cursor image that can be set for a window with @ref
- *  glfwSetCursor.  The cursor can be destroyed with @ref glfwDestroyCursor.
- *  Any remaining cursors are destroyed by @ref plafTerminate.
- *
- *  The pixels are 32-bit, little-endian, non-premultiplied RGBA, i.e. eight
- *  bits per channel with the red channel first.  They are arranged canonically
- *  as packed sequential rows, starting from the top-left corner.
- *
- *  The cursor hotspot is specified in pixels, relative to the upper-left corner
- *  of the cursor image.  Like all other coordinate systems in GLFW, the X-axis
- *  points to the right and the Y-axis points down.
- *
- *  @param[in] image The desired cursor image.
- *  @param[in] xhot The desired x-coordinate, in pixels, of the cursor hotspot.
- *  @param[in] yhot The desired y-coordinate, in pixels, of the cursor hotspot.
- *  @return The handle of the created cursor, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @pointer_lifetime The specified image data is copied before this function
- *  returns.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_object
- *  @sa @ref glfwDestroyCursor
- *  @sa @ref glfwCreateStandardCursor
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup input
- */
-plafCursor* glfwCreateCursor(const ImageData* image, int xhot, int yhot);
-
-/*! @brief Creates a cursor with a standard shape.
- *
- *  Returns a cursor with a standard shape, that can be set for a window with
- *  @ref glfwSetCursor.  The images for these cursors come from the system
- *  cursor theme and their exact appearance will vary between platforms.
- *
- *  Most of these shapes are guaranteed to exist on every supported platform but
- *  a few may not be present.  See the table below for details.
- *
- *  Cursor shape                   | Windows | macOS | X11
- *  ------------------------------ | ------- | ----- | ------
- *  @ref STD_CURSOR_ARROW         | Yes     | Yes   | Yes
- *  @ref STD_CURSOR_IBEAM         | Yes     | Yes   | Yes
- *  @ref STD_CURSOR_CROSSHAIR     | Yes     | Yes   | Yes
- *  @ref STD_CURSOR_POINTING_HAND | Yes     | Yes   | Yes
- *  @ref STD_CURSOR_HORIZONTAL_RESIZE     | Yes     | Yes   | Yes
- *  @ref STD_CURSOR_VERTICAL_RESIZE     | Yes     | Yes   | Yes
- *
- *  1) This uses a private system API and may fail in the future.
- *
- *  2) This uses a newer standard that not all cursor themes support.
- *
- *  If the requested shape is not available, this function emits a @ref
- *  GLFW_CURSOR_UNAVAILABLE error and returns `NULL`.
- *
- *  @param[in] shape One of the [standard shapes](@ref shapes).
- *  @return A new cursor ready to use or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_standard
- *  @sa @ref glfwCreateCursor
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup input
- */
-plafCursor* glfwCreateStandardCursor(int shape);
-
-/*! @brief Destroys a cursor.
- *
- *  This function destroys a cursor previously created with @ref
- *  glfwCreateCursor.  Any remaining cursors will be destroyed by @ref
- *  plafTerminate.
- *
- *  If the specified cursor is current for any window, that window will be
- *  reverted to the default cursor.  This does not affect the cursor mode.
- *
- *  @param[in] cursor The cursor object to destroy.
- *
- *  @reentrancy This function must not be called from a callback.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_object
- *  @sa @ref glfwCreateCursor
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup input
- */
-void glfwDestroyCursor(plafCursor* cursor);
-
-/*! @brief Sets the key callback.
- *
- *  This function sets the key callback of the specified window, which is called
- *  when a key is pressed, repeated or released.
- *
- *  The key functions deal with physical keys, with layout independent
- *  [key tokens](@ref keys) named after their values in the standard US keyboard
- *  layout.  If you want to input text, use the
- *  [character callback](@ref glfwSetCharCallback) instead.
- *
- *  When a window loses input focus, it will generate synthetic key release
- *  events for all pressed keys with associated key tokens.  You can tell these
- *  events from user-generated events by the fact that the synthetic ones are
- *  generated after the focus loss event has been processed, i.e. after the
- *  [window focus callback](@ref glfwSetWindowFocusCallback) has been called.
- *
- *  The scancode of a key is specific to that platform or sometimes even to that
- *  machine.  Scancodes are intended to allow users to bind keys that don't have
- *  a GLFW key token.  Such keys have `key` set to `KEY_UNKNOWN`, their
- *  state is not saved and so it cannot be queried with @ref glfwGetKey.
- *
- *  Sometimes GLFW needs to generate synthetic key events, in which case the
- *  scancode may be zero.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new key callback, or `NULL` to remove the currently
- *  set callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int key, int scancode, int action, int mods)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref keyFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref input_key
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter and return value.
- *
- *  @ingroup input
- */
-keyFunc glfwSetKeyCallback(plafWindow* window, keyFunc callback);
-
-/*! @brief Sets the Unicode character callback.
- *
- *  This function sets the character callback of the specified window, which is
- *  called when a Unicode character is input.
- *
- *  The character callback is intended for Unicode text input.  As it deals with
- *  characters, it is keyboard layout dependent, whereas the
- *  [key callback](@ref glfwSetKeyCallback) is not.  Characters do not map 1:1
- *  to physical keys, as a key may produce zero, one or more characters.  If you
- *  want to know whether a specific physical key was pressed or released, see
- *  the key callback instead.
- *
- *  The character callback behaves as system text input normally does and will
- *  not be called if modifier keys are held down that would prevent normal text
- *  input on that platform, for example a Super (Command) key on macOS or Alt key
- *  on Windows.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, unsigned int codepoint)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref charFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref input_char
- *
- *  @since Added in version 2.4.
- *  __GLFW 3:__ Added window handle parameter and return value.
- *
- *  @ingroup input
- */
-charFunc glfwSetCharCallback(plafWindow* window, charFunc callback);
-
-/*! @brief Sets the Unicode character with modifiers callback.
- *
- *  This function sets the character with modifiers callback of the specified
- *  window, which is called when a Unicode character is input regardless of what
- *  modifier keys are used.
- *
- *  The character with modifiers callback is intended for implementing custom
- *  Unicode character input.  For regular Unicode text input, see the
- *  [character callback](@ref glfwSetCharCallback).  Like the character
- *  callback, the character with modifiers callback deals with characters and is
- *  keyboard layout dependent.  Characters do not map 1:1 to physical keys, as
- *  a key may produce zero, one or more characters.  If you want to know whether
- *  a specific physical key was pressed or released, see the
- *  [key callback](@ref glfwSetKeyCallback) instead.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or an
- *  [error](@ref error_handling) occurred.
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, unsigned int codepoint, int mods)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref charModsFunc).
- *
- *  @deprecated Scheduled for removal in version 4.0.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref input_char
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup input
- */
-charModsFunc glfwSetCharModsCallback(plafWindow* window, charModsFunc callback);
-
-/*! @brief Sets the mouse button callback.
- *
- *  This function sets the mouse button callback of the specified window, which
- *  is called when a mouse button is pressed or released.
- *
- *  When a window loses input focus, it will generate synthetic mouse button
- *  release events for all pressed mouse buttons with associated button tokens.
- *  You can tell these events from user-generated events by the fact that the
- *  synthetic ones are generated after the focus loss event has been processed,
- *  i.e. after the [window focus callback](@ref glfwSetWindowFocusCallback) has
- *  been called.
- *
- *  The reported `button` value can be higher than `MOUSE_BUTTON_LAST` if
- *  the button does not have an associated [button token](@ref buttons) and the
- *  @ref INPUT_MODE_UNLIMITED_MOUSE_BUTTONS input mode is set.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int button, int action, int mods)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref mouseButtonFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref input_mouse_button
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter and return value.
- *
- *  @ingroup input
- */
-mouseButtonFunc glfwSetMouseButtonCallback(plafWindow* window, mouseButtonFunc callback);
-
-/*! @brief Sets the cursor position callback.
- *
- *  This function sets the cursor position callback of the specified window,
- *  which is called when the cursor is moved.  The callback is provided with the
- *  position, in screen coordinates, relative to the upper-left corner of the
- *  content area of the window.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, double xpos, double ypos);
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref cursorPosFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_pos
- *
- *  @since Added in version 3.0.  Replaces `glfwSetMousePosCallback`.
- *
- *  @ingroup input
- */
-cursorPosFunc glfwSetCursorPosCallback(plafWindow* window, cursorPosFunc callback);
-
-/*! @brief Sets the cursor enter/leave callback.
- *
- *  This function sets the cursor boundary crossing callback of the specified
- *  window, which is called when the cursor enters or leaves the content area of
- *  the window.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new callback, or `NULL` to remove the currently set
- *  callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int entered)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref cursorEnterFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref cursor_enter
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup input
- */
-cursorEnterFunc glfwSetCursorEnterCallback(plafWindow* window, cursorEnterFunc callback);
-
-/*! @brief Sets the scroll callback.
- *
- *  This function sets the scroll callback of the specified window, which is
- *  called when a scrolling device is used, such as a mouse wheel or scrolling
- *  area of a touchpad.
- *
- *  The scroll callback receives all scrolling input, like that from a mouse
- *  wheel or a touchpad scrolling area.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new scroll callback, or `NULL` to remove the
- *  currently set callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, double xoffset, double yoffset)
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref scrollFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref scrolling
- *
- *  @since Added in version 3.0.  Replaces `glfwSetMouseWheelCallback`.
- *
- *  @ingroup input
- */
-scrollFunc glfwSetScrollCallback(plafWindow* window, scrollFunc callback);
-
-/*! @brief Sets the path drop callback.
- *
- *  This function sets the path drop callback of the specified window, which is
- *  called when one or more dragged paths are dropped on the window.
- *
- *  Because the path array and its strings may have been generated specifically
- *  for that event, they are not guaranteed to be valid after the callback has
- *  returned.  If you wish to use them after the callback returns, you need to
- *  make a deep copy.
- *
- *  @param[in] window The window whose callback to set.
- *  @param[in] callback The new file drop callback, or `NULL` to remove the
- *  currently set callback.
- *  @return The previously set callback, or `NULL` if no callback was set or the
- *  library had not been [initialized](@ref intro_init).
- *
- *  @callback_signature
- *  @code
- *  void function_name(plafWindow* window, int path_count, const char* paths[])
- *  @endcode
- *  For more information about the callback parameters, see the
- *  [function pointer type](@ref dropFunc).
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref path_drop
- *
- *  @since Added in version 3.1.
- *
- *  @ingroup input
- */
-dropFunc glfwSetDropCallback(plafWindow* window, dropFunc callback);
-
-/*! @brief Sets the clipboard to the specified string.
- *
- *  This function sets the system clipboard to the specified, UTF-8 encoded
- *  string.
- *
- *  @param[in] string A UTF-8 encoded string.
- *
- *  @remark __Win32:__ The clipboard on Windows has a single global lock for reading and
- *  writing.  GLFW tries to acquire it a few times, which is almost always enough.  If it
- *  cannot acquire the lock then this function emits @ref ERR_PLATFORM_ERROR and returns.
- *  It is safe to try this multiple times.
- *
- *  @pointer_lifetime The specified string is copied before this function
- *  returns.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref clipboard
- *  @sa @ref glfwGetClipboardString
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup input
- */
-void setClipboardString(const char* string);
-
-/*! @brief Returns the contents of the clipboard as a string.
- *
- *  This function returns the contents of the system clipboard, if it contains
- *  or is convertible to a UTF-8 encoded string.  If the clipboard is empty or
- *  if its contents cannot be converted, `NULL` is returned and a @ref
- *  ERR_FORMAT_UNAVAILABLE error is generated.
- *
- *  @return The contents of the clipboard as a UTF-8 encoded string, or `NULL`
- *  if an [error](@ref error_handling) occurred.
- *
- *  @remark __Win32:__ The clipboard on Windows has a single global lock for reading and
- *  writing.  GLFW tries to acquire it a few times, which is almost always enough.  If it
- *  cannot acquire the lock then this function emits @ref ERR_PLATFORM_ERROR and returns.
- *  It is safe to try this multiple times.
- *
- *  @pointer_lifetime The returned string is allocated and freed by GLFW.  You
- *  should not free it yourself.  It is valid until the next call to @ref
- *  glfwGetClipboardString or @ref glfwSetClipboardString, or until the library
- *  is terminated.
- *
- *  @thread_safety This function must only be called from the main thread.
- *
- *  @sa @ref clipboard
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup input
- */
-const char* getClipboardString(void);
-
-ErrorResponse* glfwMakeContextCurrent(plafWindow* window);
-
-/*! @brief Returns the window whose context is current on the calling thread.
- *
- *  This function returns the window whose OpenGL or OpenGL ES context is
- *  current on the calling thread.
- *
- *  @return The window whose context is current, or `NULL` if no window's
- *  context is current.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref context_current
- *  @sa @ref glfwMakeContextCurrent
- *
- *  @since Added in version 3.0.
- *
- *  @ingroup context
- */
-plafWindow* glfwGetCurrentContext(void);
-
-/*! @brief Swaps the front and back buffers of the specified window.
- *
- *  This function swaps the front and back buffers of the specified window when
- *  rendering with OpenGL.  If the swap interval is greater than
- *  zero, the GPU driver waits the specified number of screen updates before
- *  swapping the buffers.
- *
- *  The specified window must have an OpenGL context.  Specifying
- *  a window without a context will generate a @ref ERR_NO_WINDOW_CONTEXT
- *  error.
- *
- *  @param[in] window The window whose buffers to swap.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref buffer_swap
- *  @sa @ref glfwSwapInterval
- *
- *  @since Added in version 1.0.
- *  __GLFW 3:__ Added window handle parameter.
- *
- *  @ingroup window
- */
-void glfwSwapBuffers(plafWindow* window);
-
-/*! @brief Sets the swap interval for the current context.
- *
- *  This function sets the swap interval for the current OpenGL or OpenGL ES
- *  context, i.e. the number of screen updates to wait from the time @ref
- *  glfwSwapBuffers was called before swapping the buffers and returning.  This
- *  is sometimes called _vertical synchronization_, _vertical retrace
- *  synchronization_ or just _vsync_.
- *
- *  A context that supports either of the `WGL_EXT_swap_control_tear` and
- *  `GLX_EXT_swap_control_tear` extensions also accepts _negative_ swap
- *  intervals, which allows the driver to swap immediately even if a frame
- *  arrives a little bit late.  You can check for these extensions with @ref
- *  glfwExtensionSupported.
- *
- *  A context must be current on the calling thread.  Calling this function
- *  without a current context will cause a @ref ERR_NO_CURRENT_CONTEXT error.
- *
- *  @param[in] interval The minimum number of screen updates to wait for
- *  until the buffers are swapped by @ref glfwSwapBuffers.
- *
- *  @remark This function is not called during context creation, leaving the
- *  swap interval set to whatever is the default for that API.  This is done
- *  because some swap interval extensions used by GLFW do not allow the swap
- *  interval to be reset to zero once it has been set to a non-zero value.
- *
- *  @remark Some GPU drivers do not honor the requested swap interval, either
- *  because of a user setting that overrides the application's request or due to
- *  bugs in the driver.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref buffer_swap
- *  @sa @ref glfwSwapBuffers
- *
- *  @since Added in version 1.0.
- *
- *  @ingroup context
- */
-void glfwSwapInterval(int interval);
-
-/*! @brief Returns whether the specified extension is available.
- *
- *  This function returns whether the specified
- *  [API extension](@ref context_glext) is supported by the current OpenGL or
- *  OpenGL ES context.  It searches both for client API extension and context
- *  creation API extensions.
- *
- *  A context must be current on the calling thread.  Calling this function
- *  without a current context will cause a @ref ERR_NO_CURRENT_CONTEXT error.
- *
- *  As this functions retrieves and searches one or more extension strings each
- *  call, it is recommended that you cache its results if it is going to be used
- *  frequently.  The extension strings will not change during the lifetime of
- *  a context, so there is no danger in doing this.
- *
- *  @param[in] extension The ASCII encoded name of the extension.
- *  @return `true` if the extension is available, or `false`
- *  otherwise.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref context_glext
- *  @sa @ref glfwGetProcAddress
- *
- *  @since Added in version 1.0.
- *
- *  @ingroup context
- */
-int glfwExtensionSupported(const char* extension);
-
-/*! @brief Returns the address of the specified function for the current
- *  context.
- *
- *  This function returns the address of the specified OpenGL or OpenGL ES
- *  [core or extension function](@ref context_glext), if it is supported
- *  by the current context.
- *
- *  A context must be current on the calling thread.  Calling this function
- *  without a current context will cause a @ref ERR_NO_CURRENT_CONTEXT error.
- *
- *  @param[in] procname The ASCII encoded name of the function.
- *  @return The address of the function, or `NULL` if an
- *  [error](@ref error_handling) occurred.
- *
- *  @remark The address of a given function is not guaranteed to be the same
- *  between contexts.
- *
- *  @remark This function may return a non-`NULL` address despite the
- *  associated version or extension not being available.  Always check the
- *  context version or extension string first.
- *
- *  @pointer_lifetime The returned function pointer is valid until the context
- *  is destroyed or the library is terminated.
- *
- *  @thread_safety This function may be called from any thread.
- *
- *  @sa @ref context_glext
- *  @sa @ref glfwExtensionSupported
- *
- *  @since Added in version 1.0.
- *
- *  @ingroup context
- */
-glFunc glfwGetProcAddress(const char* procname);
-
-
-
-
+// OpenGL
+void plafSwapInterval(int interval);
+int plafExtensionSupported(const char* extension);
+glFunc plafGetProcAddress(const char* procname);
 
 // --------- Internal API below ---------
 
-void _terminate(void);
+// Setup & teardown
+plafError* _plafInit(void);
+void _plafTerminate(void);
+void* _plafLoadModule(const char* path);
+void _plafFreeModule(void* module);
+moduleFunc _plafGetModuleSymbol(void* module, const char* name);
 
-ErrorResponse* platformInit(void);
-void platformTerminate(void);
+// Monitors
+plafMonitor* _plafAllocMonitor(const char* name, int widthMM, int heightMM);
+void _plafFreeMonitor(plafMonitor* monitor);
+void _plafAllocGammaArrays(plafGammaRamp* ramp, unsigned int size);
+void _plafFreeGammaArrays(plafGammaRamp* ramp);
+IntBool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp);
+void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
+plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count);
+IntBool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode);
+void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
+const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
+int _plafCompareVideoModes(const plafVideoMode* first, const plafVideoMode* second);
+void _plafSplitBPP(int bpp, int* red, int* green, int* blue);
+void _plafMonitorNotify(plafMonitor* monitor, int action, int placement);
+
+// Windows
+
+
 
 //////////////////////////////////////////////////////////////////////////
-//////                       GLFW platform API                      //////
+//////                         PLAF event API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-void* _glfwPlatformLoadModule(const char* path);
-void _glfwPlatformFreeModule(void* module);
-moduleFunc _glfwPlatformGetModuleSymbol(void* module, const char* name);
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                         GLFW event API                       //////
-//////////////////////////////////////////////////////////////////////////
-
-void _glfwInputWindowFocus(plafWindow* window, IntBool focused);
-void _glfwInputWindowPos(plafWindow* window, int xpos, int ypos);
-void _glfwInputWindowSize(plafWindow* window, int width, int height);
-void _glfwInputFramebufferSize(plafWindow* window, int width, int height);
-void _glfwInputWindowContentScale(plafWindow* window,
+void _plafInputWindowFocus(plafWindow* window, IntBool focused);
+void _plafInputWindowPos(plafWindow* window, int xpos, int ypos);
+void _plafInputWindowSize(plafWindow* window, int width, int height);
+void _plafInputFramebufferSize(plafWindow* window, int width, int height);
+void _plafInputWindowContentScale(plafWindow* window,
 								  float xscale, float yscale);
-void _glfwInputWindowMinimize(plafWindow* window, IntBool minimized);
-void _glfwInputWindowMaximize(plafWindow* window, IntBool maximized);
-void _glfwInputWindowDamage(plafWindow* window);
-void _glfwInputWindowCloseRequest(plafWindow* window);
-void _glfwInputWindowMonitor(plafWindow* window, plafMonitor* monitor);
+void _plafInputWindowMinimize(plafWindow* window, IntBool minimized);
+void _plafInputWindowMaximize(plafWindow* window, IntBool maximized);
+void _plafInputWindowDamage(plafWindow* window);
+void _plafInputWindowCloseRequest(plafWindow* window);
 
-void _glfwInputKey(plafWindow* window,
+void _plafInputKey(plafWindow* window,
 				   int key, int scancode, int action, int mods);
-void _glfwInputChar(plafWindow* window,
+void _plafInputChar(plafWindow* window,
 					uint32_t codepoint, int mods, IntBool plain);
-void _glfwInputScroll(plafWindow* window, double xoffset, double yoffset);
-void _glfwInputMouseClick(plafWindow* window, int button, int action, int mods);
-void _glfwInputCursorPos(plafWindow* window, double xpos, double ypos);
-void _glfwInputCursorEnter(plafWindow* window, IntBool entered);
-void _glfwInputDrop(plafWindow* window, int count, const char** names);
-
-void _glfwInputMonitor(plafMonitor* monitor, int action, int placement);
-void _glfwInputMonitorWindow(plafMonitor* monitor, plafWindow* window);
+void _plafInputScroll(plafWindow* window, double xoffset, double yoffset);
+void _plafInputMouseClick(plafWindow* window, int button, int action, int mods);
+void _plafInputCursorPos(plafWindow* window, double xpos, double ypos);
+void _plafInputCursorEnter(plafWindow* window, IntBool entered);
+void _plafInputDrop(plafWindow* window, int count, const char** names);
 
 #if defined(__GNUC__)
-void _glfwInputError(const char* format, ...)
+void _plafInputError(const char* format, ...)
 	__attribute__((format(printf, 1, 2)));
-ErrorResponse* createErrorResponse(const char* format, ...) __attribute__((format(printf, 1, 2)));
+plafError* createErrorResponse(const char* format, ...) __attribute__((format(printf, 1, 2)));
 #else
-void _glfwInputError(const char* format, ...);
-ErrorResponse* createErrorResponse(const char* format, ...);
+void _plafInputError(const char* format, ...);
+plafError* createErrorResponse(const char* format, ...);
 #endif
 
 
 //////////////////////////////////////////////////////////////////////////
-//////                       GLFW internal API                      //////
+//////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-ErrorResponse* _glfwCreateWindow(plafWindow* window, const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _glfwSetWindowTitle(plafWindow* window, const char* title);
-void _glfwSetWindowIcon(plafWindow* window, int count, const ImageData* images);
-void _glfwGetWindowPos(plafWindow* window, int* xpos, int* ypos);
-void _glfwSetWindowPos(plafWindow* window, int xpos, int ypos);
-void _glfwGetWindowSize(plafWindow* window, int* width, int* height);
-void _glfwSetWindowSize(plafWindow* window, int width, int height);
-void _glfwSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void _glfwGetFramebufferSize(plafWindow* window, int* width, int* height);
-void _glfwGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
-void _glfwGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
-void _glfwMaximizeWindow(plafWindow* window);
-void _glfwShowWindow(plafWindow* window);
-void _glfwHideWindow(plafWindow* window);
-void _glfwSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-IntBool _glfwWindowFocused(plafWindow* window);
-IntBool _glfwWindowMinimized(plafWindow* window);
-IntBool _glfwWindowVisible(plafWindow* window);
-IntBool _glfwWindowMaximized(plafWindow* window);
-IntBool _glfwWindowHovered(plafWindow* window);
-IntBool _glfwFramebufferTransparent(plafWindow* window);
-void _glfwSetWindowResizable(plafWindow* window, IntBool enabled);
-void _glfwSetWindowDecorated(plafWindow* window, IntBool enabled);
-void _glfwSetWindowFloating(plafWindow* window, IntBool enabled);
-void _glfwSetWindowOpacity(plafWindow* window, float opacity);
-void _glfwSetWindowMousePassthrough(plafWindow* window, IntBool enabled);
-void _glfwDestroyWindow(plafWindow* window);
+plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _plafSetWindowTitle(plafWindow* window, const char* title);
+void _plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images);
+void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);
+void _plafSetWindowPos(plafWindow* window, int xpos, int ypos);
+void _plafGetWindowSize(plafWindow* window, int* width, int* height);
+void _plafSetWindowSize(plafWindow* window, int width, int height);
+void _plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
+void _plafGetFramebufferSize(plafWindow* window, int* width, int* height);
+void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
+void _plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
+void _plafMaximizeWindow(plafWindow* window);
+void _plafShowWindow(plafWindow* window);
+void _plafHideWindow(plafWindow* window);
+void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
+IntBool _plafWindowFocused(plafWindow* window);
+IntBool _plafWindowMinimized(plafWindow* window);
+IntBool _plafWindowVisible(plafWindow* window);
+IntBool _plafWindowMaximized(plafWindow* window);
+IntBool _plafWindowHovered(plafWindow* window);
+IntBool _plafFramebufferTransparent(plafWindow* window);
+void _plafSetWindowResizable(plafWindow* window, IntBool enabled);
+void _plafSetWindowDecorated(plafWindow* window, IntBool enabled);
+void _plafSetWindowFloating(plafWindow* window, IntBool enabled);
+void _plafSetWindowOpacity(plafWindow* window, float opacity);
+void _plafSetWindowMousePassthrough(plafWindow* window, IntBool enabled);
+void _plafDestroyWindow(plafWindow* window);
 
-void _glfwWaitEventsTimeout(double timeout);
+void _plafWaitEventsTimeout(double timeout);
 
-IntBool _glfwGetGammaRamp(plafMonitor* monitor, GammaRamp* ramp);
-void _glfwSetGammaRamp(plafMonitor* monitor, const GammaRamp* ramp);
-IntBool _glfwGetVideoMode(plafMonitor* monitor, VideoMode* mode);
-VideoMode* _glfwGetVideoModes(plafMonitor* monitor, int* count);
-void _glfwSetVideoMode(plafMonitor* monitor, const VideoMode* desired);
-void _glfwDestroyCursor(plafCursor* cursor);
-IntBool _glfwCreateStandardCursor(plafCursor* cursor, int shape);
-void glfwUpdateCursor(plafWindow* window);
-IntBool _glfwCreateCursor(plafCursor* cursor, const ImageData* image, int xhot, int yhot);
-IntBool _glfwStringInExtensionString(const char* string, const char* extensions);
-const plafFrameBufferCfg* _glfwChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
-ErrorResponse* _glfwRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
-ErrorResponse* plafCheckContextConfig(const plafCtxCfg* ctxconfig);
+void _plafDestroyCursor(plafCursor* cursor);
+IntBool _plafCreateStandardCursor(plafCursor* cursor, int shape);
+void plafUpdateCursor(plafWindow* window);
+IntBool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot);
+IntBool _plafStringInExtensionString(const char* string, const char* extensions);
+const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
+plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
+plafError* plafCheckContextConfig(const plafCtxCfg* ctxconfig);
 
-const VideoMode* _glfwChooseVideoMode(plafMonitor* monitor, const VideoMode* desired);
-int _glfwCompareVideoModes(const VideoMode* first, const VideoMode* second);
-plafMonitor* _glfwAllocMonitor(const char* name, int widthMM, int heightMM);
-void _glfwFreeMonitor(plafMonitor* monitor);
-void _glfwAllocGammaArrays(GammaRamp* ramp, unsigned int size);
-void _glfwFreeGammaArrays(GammaRamp* ramp);
-void _glfwSplitBPP(int bpp, int* red, int* green, int* blue);
 
-void _glfwCenterCursorInContentArea(plafWindow* window);
+void _plafCenterCursorInContentArea(plafWindow* window);
 
-size_t _glfwEncodeUTF8(char* s, uint32_t codepoint);
-char** _glfwParseUriList(char* text, int* count);
+size_t _plafEncodeUTF8(char* s, uint32_t codepoint);
+char** _plafParseUriList(char* text, int* count);
 
-char* _glfw_strdup(const char* src);
-int _glfw_min(int a, int b);
-int _glfw_max(int a, int b);
+char* _plaf_strdup(const char* src);
+int _plaf_min(int a, int b);
+int _plaf_max(int a, int b);
 
-void* _glfw_calloc(size_t count, size_t size);
-void* _glfw_realloc(void* pointer, size_t size);
-void _glfw_free(void* pointer);
+void* _plaf_calloc(size_t count, size_t size);
+void* _plaf_realloc(void* pointer, size_t size);
+void _plaf_free(void* pointer);
 
-void _glfwTerminateGLX(void);
+void _plafTerminateGLX(void);
 
 void updateCursorImage(plafWindow* window);
-void _glfwSetCursor(plafWindow* window);
-void _glfwSetCursorPos(plafWindow* window, double xpos, double ypos);
+void _plafSetCursor(plafWindow* window);
+void _plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 #if defined(__APPLE__) || defined(_WIN32)
 IntBool cursorInContentArea(plafWindow* window);
 #endif
 
 #if defined(__APPLE__)
-void _glfwPollMonitorsCocoa(void);
-void _glfwRestoreVideoModeCocoa(plafMonitor* monitor);
+void _plafPollMonitorsCocoa(void);
+void _plafRestoreVideoModeCocoa(plafMonitor* monitor);
 
-float _glfwTransformYCocoa(float y);
+float _plafTransformYCocoa(float y);
 
-ErrorResponse* _glfwInitNSGL(void);
-void _glfwTerminateNSGL(void);
-ErrorResponse* _glfwCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _glfwDestroyContextNSGL(plafWindow* window);
+plafError* _plafInitNSGL(void);
+void _plafTerminateNSGL(void);
+plafError* _plafCreateContextNSGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _plafDestroyContextNSGL(plafWindow* window);
 #elif defined(__linux__)
-void _glfwPollMonitorsX11(void);
-void _glfwRestoreVideoModeX11(plafMonitor* monitor);
+void _plafPollMonitorsX11(void);
+void _plafRestoreVideoModeX11(plafMonitor* monitor);
 
-Cursor _glfwCreateNativeCursorX11(const ImageData* image, int xhot, int yhot);
+Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot);
 
-unsigned long _glfwGetWindowPropertyX11(Window window, Atom property, Atom type, unsigned char** value);
-IntBool _glfwIsVisualTransparentX11(Visual* visual);
+unsigned long _plafGetWindowPropertyX11(Window window, Atom property, Atom type, unsigned char** value);
+IntBool _plafIsVisualTransparentX11(Visual* visual);
 
-void _glfwGrabErrorHandlerX11(void);
-void _glfwReleaseErrorHandlerX11(void);
+void _plafGrabErrorHandlerX11(void);
+void _plafReleaseErrorHandlerX11(void);
 
-void _glfwPushSelectionToManagerX11(void);
-void _glfwCreateInputContextX11(plafWindow* window);
+void _plafPushSelectionToManagerX11(void);
+void _plafCreateInputContextX11(plafWindow* window);
 
-ErrorResponse* _glfwInitGLX(void);
-ErrorResponse* _glfwCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
-void _glfwDestroyContextGLX(plafWindow* window);
-ErrorResponse* _glfwChooseVisualGLX(const WindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
+plafError* _plafInitGLX(void);
+plafError* _plafCreateContextGLX(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+void _plafDestroyContextGLX(plafWindow* window);
+plafError* _plafChooseVisualGLX(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
 
 IntBool waitForX11Event(double timeout);
 #elif defined(_WIN32)
-WCHAR* _glfwCreateWideStringFromUTF8Win32(const char* src);
-char* _glfwCreateUTF8FromWideStringWin32(const WCHAR* src);
-BOOL _glfwIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp);
+WCHAR* _plafCreateWideStringFromUTF8Win32(const char* src);
+char* _plafCreateUTF8FromWideStringWin32(const WCHAR* src);
+BOOL _plafIsWindowsVersionOrGreaterWin32(WORD major, WORD minor, WORD sp);
 BOOL IsWindows10BuildOrGreater(WORD build);
 
-void _glfwPollMonitorsWin32(void);
-void _glfwRestoreVideoModeWin32(plafMonitor* monitor);
-void _glfwGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
+void _plafPollMonitorsWin32(void);
+void _plafRestoreVideoModeWin32(plafMonitor* monitor);
+void _plafGetHMONITORContentScaleWin32(HMONITOR handle, float* xscale, float* yscale);
 
-ErrorResponse* _glfwInitWGL(void);
-void _glfwTerminateWGL(void);
-ErrorResponse* _glfwCreateContextWGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+plafError* _plafInitWGL(void);
+void _plafTerminateWGL(void);
+plafError* _plafCreateContextWGL(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
 #endif
 
 #ifdef __cplusplus

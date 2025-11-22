@@ -2,17 +2,17 @@
 
 #include "platform.h"
 
-void* _glfwPlatformLoadModule(const char* path)
+void* _plafLoadModule(const char* path)
 {
     return LoadLibraryA(path);
 }
 
-void _glfwPlatformFreeModule(void* module)
+void _plafFreeModule(void* module)
 {
     FreeLibrary((HMODULE) module);
 }
 
-moduleFunc _glfwPlatformGetModuleSymbol(void* module, const char* name)
+moduleFunc _plafGetModuleSymbol(void* module, const char* name)
 {
     return (moduleFunc) GetProcAddress((HMODULE) module, name);
 }
