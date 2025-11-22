@@ -32,8 +32,7 @@ static bool chooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* re
 	if (vendor && strcmp(vendor, "Chromium") == 0)
 		trustWindowBit = false;
 
-	nativeConfigs =
-		_plaf.glxGetFBConfigs(_plaf.x11Display, _plaf.x11Screen, &nativeCount);
+	nativeConfigs = _plaf.glxGetFBConfigs(_plaf.x11Display, _plaf.x11Screen, &nativeCount);
 	if (!nativeConfigs || !nativeCount)
 	{
 		_plafInputError("GLX: No GLXFBConfigs returned");

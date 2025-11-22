@@ -779,7 +779,7 @@ struct plafCtx {
 	plafError*           (*makeCurrent)(plafWindow*);
 	void                 (*swapBuffers)(plafWindow*);
 	void                 (*swapInterval)(int);
-	int                  (*extensionSupported)(const char*);
+	bool                 (*extensionSupported)(const char*);
 	glFunc               (*getProcAddress)(const char*);
 	void                 (*destroy)(plafWindow*);
 #if defined(__APPLE__)
@@ -1349,7 +1349,7 @@ void plafSetClipboardString(const char* string);
 
 // OpenGL
 void plafSwapInterval(int interval);
-int plafExtensionSupported(const char* extension);
+bool plafExtensionSupported(const char* extension);
 glFunc plafGetProcAddress(const char* procname);
 
 // --------- Internal API below ---------

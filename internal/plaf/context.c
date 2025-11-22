@@ -351,8 +351,7 @@ void plafSwapInterval(int interval)
 	_plaf.contextSlot->context.swapInterval(interval);
 }
 
-int plafExtensionSupported(const char* extension)
-{
+bool plafExtensionSupported(const char* extension) {
 	if (!_plaf.contextSlot)
 	{
 		_plafInputError("Cannot query extension without a current OpenGL or OpenGL ES context");

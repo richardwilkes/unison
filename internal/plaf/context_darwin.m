@@ -35,8 +35,7 @@ static void swapIntervalNSGL(int interval)
 	}
 }
 
-static int extensionSupportedNSGL(const char* extension)
-{
+static bool extensionSupportedNSGL(const char* extension) {
 	// There are no NSGL extensions
 	return false;
 }

@@ -260,8 +260,7 @@ static void swapIntervalWGL(int interval)
 		_plaf.wglSwapIntervalEXT(interval);
 }
 
-static int extensionSupportedWGL(const char* extension)
-{
+static bool extensionSupportedWGL(const char* extension) {
 	const char* extensions = NULL;
 
 	if (_plaf.wglGetExtensionsStringARB)

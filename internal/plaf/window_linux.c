@@ -2872,9 +2872,7 @@ bool _plafWindowHovered(plafWindow* window) {
 
 		_plafGrabErrorHandler();
 
-		const Bool result = _plaf.xlibQueryPointer(_plaf.x11Display, w,
-										  &root, &w, &rootX, &rootY,
-										  &childX, &childY, &mask);
+		const Bool result = _plaf.xlibQueryPointer(_plaf.x11Display, w, &root, &w, &rootX, &rootY, &childX, &childY, &mask);
 
 		_plafReleaseErrorHandler();
 

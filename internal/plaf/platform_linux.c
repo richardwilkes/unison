@@ -727,15 +727,11 @@ static void initExtensions(void)
 	int errorBase;
 	int major = 1;
 	int minor = 0;
-	_plaf.xkbAvailable =
-		_plaf.xkbQueryExtension(_plaf.x11Display, &majorOpcode, &_plaf.xkbEventBase, &errorBase, &major, &minor);
+	_plaf.xkbAvailable = _plaf.xkbQueryExtension(_plaf.x11Display, &majorOpcode, &_plaf.xkbEventBase, &errorBase, &major, &minor);
 
-	if (_plaf.xkbAvailable)
-	{
+	if (_plaf.xkbAvailable) {
 		Bool supported;
-
-		if (_plaf.xkbSetDetectableAutoRepeat(_plaf.x11Display, True, &supported))
-		{
+		if (_plaf.xkbSetDetectableAutoRepeat(_plaf.x11Display, True, &supported)) {
 			if (supported)
 				_plaf.xkbDetectable = true;
 		}
@@ -744,8 +740,7 @@ static void initExtensions(void)
 		if (_plaf.xkbGetState(_plaf.x11Display, XkbUseCoreKbd, &state) == Success)
 			_plaf.xkbGroup = (unsigned int)state.group;
 
-		_plaf.xkbSelectEventDetails(_plaf.x11Display, XkbUseCoreKbd, XkbStateNotify,
-							  XkbGroupStateMask, XkbGroupStateMask);
+		_plaf.xkbSelectEventDetails(_plaf.x11Display, XkbUseCoreKbd, XkbStateNotify, XkbGroupStateMask, XkbGroupStateMask);
 	}
 
 	_plaf.xrenderHandle = _plafLoadModule("libXrender.so.1");

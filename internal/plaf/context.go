@@ -74,7 +74,7 @@ func ExtensionSupported(extension string) bool {
 	defer C.free(unsafe.Pointer(e))
 	ret := C.plafExtensionSupported(e)
 	panicError()
-	return ret != 0
+	return bool(ret)
 }
 
 // GetProcAddress returns the address of the specified OpenGL or OpenGL ES core
