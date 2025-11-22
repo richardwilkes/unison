@@ -1227,6 +1227,22 @@ static uint32_t decodeUTF8(const char** s)
 	return codepoint - offsets[count - 1];
 }
 
+// Returns the Visual and depth of the chosen GLXFBConfig
+static plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
+	GLXFBConfig native;
+	if (!chooseGLXFBConfig(fbconfig, &native)) {
+		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
+	}
+	XVisualInfo* result = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, native);
+	if (!result) {
+		return _plafNewError("GLX: Failed to retrieve Visual for GLXFBConfig");
+	}
+	*visual = result->visual;
+	*depth  = result->depth;
+	_plaf.xlibFree(result);
+	return NULL;
+}
+
 // Updates the cursor image according to its cursor mode
 void _plafUpdateCursorImage(plafWindow* window) {
 	if (window->cursorHidden) {
@@ -2316,7 +2332,7 @@ void _plafCreateInputContext(plafWindow* window)
 //////                       PLAF platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	plafError* err = _plafInitOpenGL();
 	if (err) {
 		return err;
@@ -2324,7 +2340,7 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 
 	Visual* visual = NULL;
 	int depth;
-	err = _plafChooseVisual(wndconfig, ctxconfig, fbconfig, &visual, &depth);
+	err = _plafChooseVisual(wndconfig, fbconfig, &visual, &depth);
 	if (err) {
 		return err;
 	}
@@ -2338,12 +2354,12 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 		return err;
 	}
 
-	err = _plafCreateOpenGLContext(window, ctxconfig, fbconfig);
+	err = _plafCreateOpenGLContext(window, share, fbconfig);
 	if (err) {
 		return err;
 	}
 
-	err = _plafRefreshContextAttribs(window, ctxconfig);
+	err = _plafRefreshContextAttribs(window);
 	if (err) {
 		return err;
 	}

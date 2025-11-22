@@ -8,22 +8,6 @@
 //////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-// Checks whether the desired context attributes are valid
-//
-// This function checks things like whether the specified client API version
-// exists and whether all relevant options have supported and non-conflicting
-// values
-plafError * plafCheckContextConfig(const plafCtxCfg* ctxconfig) {
-	if (ctxconfig->robustness) {
-		if (ctxconfig->robustness != CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION &&
-			ctxconfig->robustness != CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET) {
-			return _plafNewError("Invalid context robustness mode 0x%08X",
-				 ctxconfig->robustness);
-		}
-	}
-	return NULL;
-}
-
 // Chooses the framebuffer config that best matches the desired one
 //
 const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
@@ -181,7 +165,7 @@ const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
 }
 
 // Retrieves the attributes of the current context
-plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig) {
+plafError* _plafRefreshContextAttribs(plafWindow* window) {
 	plafWindow* previous = _plaf.contextSlot;
 	plafError* err = plafMakeContextCurrent(window);
 	if (err) {
@@ -201,34 +185,21 @@ plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxc
 		return _plafNewError("OpenGL version string retrieval is broken");
 	}
 
-	if (!sscanf(version, "%d.%d.%d", &window->context.major, &window->context.minor, &window->context.revision)) {
+	int major = 0;
+	int minor = 0;
+	if (!sscanf(version, "%d.%d", &major, &minor)) {
 		plafMakeContextCurrent(previous);
 		return _plafNewError("No version found in OpenGL version string");
 	}
-
-	if (window->context.major < ctxconfig->major ||
-		(window->context.major == ctxconfig->major && window->context.minor < ctxconfig->minor)) {
+	if (major < 3 || (major == 3 && minor < 2)) {
 		plafMakeContextCurrent(previous);
-		return _plafNewError("Requested OpenGL version %i.%i, got version %i.%i",
-			ctxconfig->major, ctxconfig->minor, window->context.major, window->context.minor);
+		return _plafNewError("Requested OpenGL version 3.2, got version %i.%i", major, minor);
 	}
 
-	if (window->context.major >= 3) {
-		window->context.GetStringi = (FN_GLGETSTRINGI)window->context.getProcAddress("glGetStringi");
-		if (!window->context.GetStringi) {
-			plafMakeContextCurrent(previous);
-			return _plafNewError("Entry point retrieval is broken");
-		}
-	}
-
-	if (plafExtensionSupported("GL_ARB_robustness")) {
-		GLint strategy;
-		window->context.GetIntegerv(GL_RESET_NOTIFICATION_STRATEGY_ARB, &strategy);
-		if (strategy == GL_LOSE_CONTEXT_ON_RESET_ARB) {
-			window->context.robustness = CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET;
-		} else if (strategy == GL_NO_RESET_NOTIFICATION_ARB) {
-			window->context.robustness = CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION;
-		}
+	window->context.GetStringi = (FN_GLGETSTRINGI)window->context.getProcAddress("glGetStringi");
+	if (!window->context.GetStringi) {
+		plafMakeContextCurrent(previous);
+		return _plafNewError("Entry point retrieval is broken");
 	}
 
 	FN_GLCLEAR glClear = (FN_GLCLEAR)window->context.getProcAddress("glClear");
@@ -308,53 +279,28 @@ void plafSwapInterval(int interval)
 }
 
 bool plafExtensionSupported(const char* extension) {
-	if (!_plaf.contextSlot)
-	{
+	if (!_plaf.contextSlot) {
 		_plafInputError("Cannot query extension without a current OpenGL or OpenGL ES context");
 		return false;
 	}
 
-	if (*extension == '\0')
-	{
+	if (*extension == '\0') {
 		_plafInputError("Extension name cannot be an empty string");
 		return false;
 	}
 
-	if (_plaf.contextSlot->context.major >= 3)
-	{
-		int i;
-		GLint count;
-
-		// Check if extension is in the modern OpenGL extensions string list
-
-		_plaf.contextSlot->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
-
-		for (i = 0;  i < count;  i++)
-		{
-			const char* en = (const char*)_plaf.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
-			if (!en)
-			{
-				_plafInputError("Extension string retrieval is broken");
-				return false;
-			}
-
-			if (strcmp(en, extension) == 0)
-				return true;
-		}
-	}
-	else
-	{
-		// Check if extension is in the old style OpenGL extensions string
-
-		const char* extensions = (const char*)_plaf.contextSlot->context.GetString(GL_EXTENSIONS);
-		if (!extensions)
-		{
+	// Check if extension is in the OpenGL extensions string list
+	GLint count;
+	_plaf.contextSlot->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
+	for (int i = 0;  i < count;  i++) {
+		const char* en = (const char*)_plaf.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
+		if (!en) {
 			_plafInputError("Extension string retrieval is broken");
 			return false;
 		}
-
-		if (_plafStringInExtensionString(extension, extensions))
+		if (strcmp(en, extension) == 0) {
 			return true;
+		}
 	}
 
 	// Check if extension is in the platform-specific string

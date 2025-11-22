@@ -30,10 +30,7 @@ static int findPixelFormatAttribValueWGL(const int* attribs,
 
 // Return a list of available and usable framebuffer configs
 //
-static int choosePixelFormatWGL(plafWindow* window,
-								const plafCtxCfg* ctxconfig,
-								const plafFrameBufferCfg* fbconfig)
-{
+static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fbconfig) {
 	plafFrameBufferCfg* usableConfigs;
 	const plafFrameBufferCfg* closest;
 	int i, pixelFormat, nativeCount, usableCount = 0, attribCount = 0;
@@ -360,7 +357,6 @@ plafError* _plafInitOpenGL(void) {
 	_plaf.wglARB_framebuffer_sRGB = extensionSupportedWGL("WGL_ARB_framebuffer_sRGB");
 	_plaf.wglEXT_framebuffer_sRGB = extensionSupportedWGL("WGL_EXT_framebuffer_sRGB");
 	_plaf.wglARB_create_context = extensionSupportedWGL("WGL_ARB_create_context");
-	_plaf.wglARB_create_context_robustness = extensionSupportedWGL("WGL_ARB_create_context_robustness");
 	_plaf.wglEXT_swap_control = extensionSupportedWGL("WGL_EXT_swap_control");
 	_plaf.wglARB_pixel_format = extensionSupportedWGL("WGL_ARB_pixel_format");
 
@@ -384,14 +380,14 @@ void _plafTerminateOpenGL(void) {
 }
 
 // Create the OpenGL or OpenGL ES context
-plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	int attribs[40];
 	int pixelFormat;
 	PIXELFORMATDESCRIPTOR pfd;
-	HGLRC share = NULL;
+	HGLRC shareCtx = NULL;
 
-	if (ctxconfig->share) {
-		share = ctxconfig->share->context.wglGLRC;
+	if (share) {
+		shareCtx = share->context.wglGLRC;
 	}
 
 	window->context.wglDC = GetDC(window->win32Window);
@@ -399,7 +395,7 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 		return _plafNewError("WGL: Failed to retrieve DC for window");
 	}
 
-	pixelFormat = choosePixelFormatWGL(window, ctxconfig, fbconfig);
+	pixelFormat = choosePixelFormatWGL(window, fbconfig);
 	if (!pixelFormat) {
 		return _plafNewError("WGL: Failed to choose pixel format for window");
 	}
@@ -413,38 +409,14 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 	}
 
 	if (_plaf.wglARB_create_context) {
-		int index = 0, flags = 0;
-
-		if (ctxconfig->robustness) {
-			if (_plaf.wglARB_create_context_robustness) {
-				if (ctxconfig->robustness == CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION) {
-					SET_ATTRIB(WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_NO_RESET_NOTIFICATION_ARB);
-				} else if (ctxconfig->robustness == CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET) {
-					SET_ATTRIB(WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, WGL_LOSE_CONTEXT_ON_RESET_ARB);
-				}
-				flags |= WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-			}
-		}
-
-		// NOTE: Only request an explicitly versioned context when necessary, as
-		//       explicitly requesting version 1.0 does not always return the
-		//       highest version supported by the driver
-		if (ctxconfig->major != 1 || ctxconfig->minor != 0) {
-			SET_ATTRIB(WGL_CONTEXT_MAJOR_VERSION_ARB, ctxconfig->major);
-			SET_ATTRIB(WGL_CONTEXT_MINOR_VERSION_ARB, ctxconfig->minor);
-		}
-
-		if (flags) {
-			SET_ATTRIB(WGL_CONTEXT_FLAGS_ARB, flags);
-		}
-
+		SET_ATTRIB(WGL_CONTEXT_MAJOR_VERSION_ARB, 3);
+		SET_ATTRIB(WGL_CONTEXT_MINOR_VERSION_ARB, 2);
 		SET_ATTRIB(0, 0);
-
-		window->context.wglGLRC = _plaf.wglCreateContextAttribsARB(window->context.wglDC, share, attribs);
+		window->context.wglGLRC = _plaf.wglCreateContextAttribsARB(window->context.wglDC, shareCtx, attribs);
 		if (!window->context.wglGLRC) {
 			const DWORD error = GetLastError();
 			if (error == (0xc0070000 | ERROR_INVALID_VERSION_ARB)) {
-				return _plafNewError("WGL: Driver does not support OpenGL version %i.%i", ctxconfig->major, ctxconfig->minor);
+				return _plafNewError("WGL: Driver does not support OpenGL version 3.2");
 			} else if (error == (0xc0070000 | ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB)) {
 				return _plafNewError("WGL: The share context is not compatible with the requested context");
 			}

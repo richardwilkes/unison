@@ -612,7 +612,7 @@ float _plafTransformYCocoa(float y)
 //////                       PLAF platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	@autoreleasepool {
 		plafError* err = createNativeWindow(window, wndconfig, fbconfig);
 		if (err) {
@@ -624,12 +624,12 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 			return err;
 		}
 
-		err = _plafCreateOpenGLContext(window, ctxconfig, fbconfig);
+		err = _plafCreateOpenGLContext(window, share, fbconfig);
 		if (err) {
 			return err;
 		}
 
-		err = _plafRefreshContextAttribs(window, ctxconfig);
+		err = _plafRefreshContextAttribs(window);
 		if (err) {
 			return err;
 		}

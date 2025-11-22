@@ -100,19 +100,6 @@ static bool chooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* re
 	return closest != NULL;
 }
 
-// Create the OpenGL context using legacy API
-//
-static GLXContext createLegacyContextGLX(plafWindow* window,
-										 GLXFBConfig fbconfig,
-										 GLXContext share)
-{
-	return _plaf.glxCreateNewContext(_plaf.x11Display,
-							   fbconfig,
-							   GLX_RGBA_TYPE,
-							   share,
-							   True);
-}
-
 static plafError* makeContextCurrentGLX(plafWindow* window) {
 	if (window) {
 		if (!_plaf.glxMakeCurrent(_plaf.x11Display, window->context.glxWindow, window->context.glxHandle)) {
@@ -291,10 +278,6 @@ plafError* _plafInitOpenGL(void) {
 			_plaf.glxARB_create_context = true;
 		}
 	}
-
-	if (extensionSupportedGLX("GLX_ARB_create_context_robustness")) {
-		_plaf.glxARB_create_context_robustness = true;
-	}
 	return NULL;
 }
 
@@ -315,13 +298,12 @@ void _plafTerminateOpenGL(void) {
 }
 
 // Create the OpenGL or OpenGL ES context
-plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	int attribs[40];
 	GLXFBConfig native = NULL;
-	GLXContext share = NULL;
-
-	if (ctxconfig->share) {
-		share = ctxconfig->share->context.glxHandle;
+	GLXContext shareCtx = NULL;
+	if (share) {
+		shareCtx = share->context.glxHandle;
 	}
 
 	if (!chooseGLXFBConfig(fbconfig, &native)) {
@@ -331,36 +313,12 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 	_plafGrabErrorHandler();
 
 	if (_plaf.glxARB_create_context) {
-		int index = 0, flags = 0;
-
-		if (ctxconfig->robustness) {
-			if (_plaf.glxARB_create_context_robustness) {
-				if (ctxconfig->robustness == CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION) {
-					SET_ATTRIB(GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_NO_RESET_NOTIFICATION_ARB);
-				} else if (ctxconfig->robustness == CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET) {
-					SET_ATTRIB(GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_LOSE_CONTEXT_ON_RESET_ARB);
-				}
-				flags |= GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB;
-			}
-		}
-
-		// NOTE: Only request an explicitly versioned context when necessary, as
-		//       explicitly requesting version 1.0 does not always return the
-		//       highest version supported by the driver
-		if (ctxconfig->major != 1 || ctxconfig->minor != 0) {
-			SET_ATTRIB(GLX_CONTEXT_MAJOR_VERSION_ARB, ctxconfig->major);
-			SET_ATTRIB(GLX_CONTEXT_MINOR_VERSION_ARB, ctxconfig->minor);
-		}
-
-		if (flags) {
-			SET_ATTRIB(GLX_CONTEXT_FLAGS_ARB, flags);
-		}
-
+		SET_ATTRIB(GLX_CONTEXT_MAJOR_VERSION_ARB, 3);
+		SET_ATTRIB(GLX_CONTEXT_MINOR_VERSION_ARB, 2);
 		SET_ATTRIB(None, None);
-
-		window->context.glxHandle = _plaf.glxCreateContextAttribsARB(_plaf.x11Display, native, share, True, attribs);
+		window->context.glxHandle = _plaf.glxCreateContextAttribsARB(_plaf.x11Display, native, shareCtx, True, attribs);
 	} else {
-		window->context.glxHandle = createLegacyContextGLX(window, native, share);
+		window->context.glxHandle = _plaf.glxCreateNewContext(_plaf.x11Display, native, GLX_RGBA_TYPE, shareCtx, True);
 	}
 
 	_plafReleaseErrorHandler();
@@ -386,21 +344,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 
 #undef SET_ATTRIB
 
-// Returns the Visual and depth of the chosen GLXFBConfig
-plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
-	GLXFBConfig native;
-	if (!chooseGLXFBConfig(fbconfig, &native)) {
-		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
-	}
-	XVisualInfo* result = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, native);
-	if (!result) {
-		return _plafNewError("GLX: Failed to retrieve Visual for GLXFBConfig");
-	}
-	*visual = result->visual;
-	*depth  = result->depth;
-	_plaf.xlibFree(result);
-	return NULL;
-}
 
 
 //////////////////////////////////////////////////////////////////////////

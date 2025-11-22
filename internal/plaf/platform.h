@@ -49,15 +49,9 @@ typedef unsigned char GLubyte;
 	#define GLX_ACCUM_BLUE_SIZE 16
 	#define GLX_ACCUM_ALPHA_SIZE 17
 	#define GLX_SAMPLES 0x186a1
-	#define GLX_VISUAL_ID 0x800b
 	#define GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20b2
 	#define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
 	#define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
-	#define GLX_CONTEXT_FLAGS_ARB 0x2094
-	#define GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x00000004
-	#define GLX_LOSE_CONTEXT_ON_RESET_ARB 0x8252
-	#define GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
-	#define GLX_NO_RESET_NOTIFICATION_ARB 0x8261
 
 	#include <unistd.h>
 	#include <X11/Xlib.h>
@@ -310,13 +304,6 @@ typedef unsigned char GLubyte;
 	#define WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20a9
 	#define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
 	#define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
-	#define WGL_CONTEXT_FLAGS_ARB 0x2094
-	#define WGL_CONTEXT_ROBUST_ACCESS_BIT_ARB 0x00000004
-	#define WGL_LOSE_CONTEXT_ON_RESET_ARB 0x8252
-	#define WGL_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
-	#define WGL_NO_RESET_NOTIFICATION_ARB 0x8261
-	#define WGL_COLORSPACE_EXT 0x309d
-	#define WGL_COLORSPACE_SRGB_EXT 0x3089
 	#define ERROR_INVALID_VERSION_ARB 0x2095
 	#define ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB 0x2054
 
@@ -538,17 +525,8 @@ typedef unsigned char GLubyte;
 #define WINDOW_HINT_SRGB_CAPABLE                   0x0002100E
 #define WINDOW_HINT_REFRESH_RATE                   0x0002100F
 #define WINDOW_ATTR_HINT_DOUBLE_BUFFER             0x00021010
-#define WINDOW_ATTR_HINT_CONTEXT_VERSION_MAJOR     0x00022002
-#define WINDOW_ATTR_HINT_CONTEXT_VERSION_MINOR     0x00022003
-#define WINDOW_ATTR_CONTEXT_REVISION               0x00022004
-#define WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS        0x00022005
 #define WINDOW_HINT_SCALE_TO_MONITOR               0x0002200C
 #define WINDOW_HINT_SCALE_FRAMEBUFFER              0x0002200D
-
-// Context robustness values
-#define CONTEXT_ROBUSTNESS_NONE                   0
-#define CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION  0x00031001
-#define CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET  0x00031002
 
 // Standard cursor IDs
 #define STD_CURSOR_ARROW             0x00036001
@@ -641,22 +619,14 @@ typedef struct plafWindowConfig {
 
 typedef void (*moduleFunc)(void);
 
-typedef struct plafCtxCfg         plafCtxCfg;
 typedef struct plafFrameBufferCfg plafFrameBufferCfg;
 typedef struct plafCtx            plafCtx;
 typedef struct plafLib            plafLib;
 
 #define GL_VERSION 0x1f02
-#define GL_NONE 0
 #define GL_COLOR_BUFFER_BIT 0x00004000
-#define GL_UNSIGNED_BYTE 0x1401
 #define GL_EXTENSIONS 0x1f03
 #define GL_NUM_EXTENSIONS 0x821d
-#define GL_CONTEXT_FLAGS 0x821e
-#define GL_RESET_NOTIFICATION_STRATEGY_ARB 0x8256
-#define GL_LOSE_CONTEXT_ON_RESET_ARB 0x8252
-#define GL_NO_RESET_NOTIFICATION_ARB 0x8261
-#define GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR 0x00000008
 
 typedef void (APIENTRY * FN_GLCLEAR)(GLbitfield);
 typedef const GLubyte* (APIENTRY * FN_GLGETSTRING)(GLenum);
@@ -671,19 +641,6 @@ typedef const GLubyte* (APIENTRY * FN_GLGETSTRINGI)(GLenum,GLuint);
 		x = y;                 \
 		y = t;                 \
 	}
-
-// Context configuration
-//
-// Parameters relating to the creation of the context but not directly related
-// to the framebuffer.  This is used to pass context creation parameters from
-// shared code to the platform API.
-struct plafCtxCfg {
-	int         major;
-	int         minor;
-	int         robustness;
-	int         release;
-	plafWindow* share;
-};
 
 // Framebuffer configuration
 //
@@ -713,11 +670,6 @@ struct plafFrameBufferCfg {
 
 // Context structure
 struct plafCtx {
-	int                  major;
-	int                  minor;
-	int                  revision;
-	int                  robustness;
-	int                  release;
 	FN_GLGETSTRINGI      GetStringi;
 	FN_GLGETINTEGERV     GetIntegerv;
 	FN_GLGETSTRING       GetString;
@@ -871,7 +823,6 @@ struct plafLib {
 	char*                               clipboardString;
 	plafFrameBufferCfg                  frameBufferCfg;
 	plafWindowConfig                    windowCfg;
-	plafCtxCfg                          contextCfg;
 	int                                 desiredRefreshRate;
 	plafCursor*                         cursorListHead;
 	plafWindow*                         windowListHead;
@@ -1133,7 +1084,6 @@ struct plafLib {
 	bool                                glxARB_framebuffer_sRGB;
 	bool                                glxEXT_framebuffer_sRGB;
 	bool                                glxARB_create_context;
-	bool                                glxARB_create_context_robustness;
 #elif defined(_WIN32)
 	HINSTANCE                           win32Instance;
 	HWND                                win32HelperWindowHandle;
@@ -1178,7 +1128,6 @@ struct plafLib {
 	bool                                wglEXT_framebuffer_sRGB;
 	bool                                wglARB_pixel_format;
 	bool                                wglARB_create_context;
-	bool                                wglARB_create_context_robustness;
 #endif
 };
 
@@ -1346,7 +1295,7 @@ void _plafInputMouseClick(plafWindow* window, int button, int action, int mods);
 void _plafInputCursorPos(plafWindow* window, double xpos, double ypos);
 void _plafInputCursorEnter(plafWindow* window, bool entered);
 void _plafInputDrop(plafWindow* window, int count, const char** names);
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig);
 void _plafSetWindowTitle(plafWindow* window, const char* title);
 void _plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images);
 void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);
@@ -1370,7 +1319,7 @@ void _plafSetWindowFloating(plafWindow* window, bool enabled);
 void _plafSetWindowOpacity(plafWindow* window, float opacity);
 void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled);
 void _plafUpdateCursor(plafWindow* window);
-plafError* _plafRefreshContextAttribs(plafWindow* window, const plafCtxCfg* ctxconfig);
+plafError* _plafRefreshContextAttribs(plafWindow* window);
 void _plafSetCursor(plafWindow* window);
 void _plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 #if defined(__APPLE__) || defined(_WIN32)
@@ -1382,7 +1331,6 @@ void _plafDestroyWindow(plafWindow* window);
 void _plafCreateInputContext(plafWindow* window);
 unsigned long _plafGetWindowProperty(Window window, Atom property, Atom type, unsigned char** value);
 bool _plafIsVisualTransparent(Visual* visual);
-plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth);
 #endif
 
 // Events
@@ -1406,10 +1354,9 @@ void _plafPushSelectionToManager(void);
 
 // OpenGL
 plafError* _plafInitOpenGL(void);
-plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig);
+plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig);
 bool _plafStringInExtensionString(const char* string, const char* extensions);
 const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
-plafError* plafCheckContextConfig(const plafCtxCfg* ctxconfig);
 void _plafTerminateOpenGL(void);
 
 // Utility

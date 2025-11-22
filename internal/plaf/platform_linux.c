@@ -593,8 +593,7 @@ static void initExtensions(void)
 	_plaf.xiHandle = _plafLoadModule("libXi.so.6");
 	if (_plaf.xiHandle)
 	{
-		_plaf.xiQueryVersion = (FN_XIQueryVersion)
-			_plafGetModuleSymbol(_plaf.xiHandle, "XIQueryVersion");
+		_plaf.xiQueryVersion = (FN_XIQueryVersion)_plafGetModuleSymbol(_plaf.xiHandle, "XIQueryVersion");
 
 		int majorOpcode;
 		int eventBase;
@@ -652,11 +651,11 @@ static void initExtensions(void)
 		{
 			int major;
 			int minor;
-			if (_plaf.randrQueryVersion(_plaf.x11Display, &major, &minor))
-			{
+			if (_plaf.randrQueryVersion(_plaf.x11Display, &major, &minor)) {
 				// The PLAF RandR path requires at least version 1.3
-				if (major > 1 || minor >= 3)
+				if (major > 1 || minor >= 3) {
 					_plaf.randrAvailable = true;
+				}
 			}
 		}
 	}
@@ -714,12 +713,12 @@ static void initExtensions(void)
 		_plaf.xineramaQueryScreens = (FN_XineramaQueryScreens)
 			_plafGetModuleSymbol(_plaf.xineramaHandle, "XineramaQueryScreens");
 
-			int major;
-			int minor;
-		if (_plaf.xineramaQueryExtension(_plaf.x11Display,  &major, &minor))
-		{
-			if (_plaf.xineramaIsActive(_plaf.x11Display))
+		int major;
+		int minor;
+		if (_plaf.xineramaQueryExtension(_plaf.x11Display,  &major, &minor)) {
+			if (_plaf.xineramaIsActive(_plaf.x11Display)) {
 				_plaf.xineramaAvailable = true;
+			}
 		}
 	}
 
@@ -727,7 +726,8 @@ static void initExtensions(void)
 	int errorBase;
 	int major = 1;
 	int minor = 0;
-	_plaf.xkbAvailable = _plaf.xkbQueryExtension(_plaf.x11Display, &majorOpcode, &_plaf.xkbEventBase, &errorBase, &major, &minor);
+	_plaf.xkbAvailable = _plaf.xkbQueryExtension(_plaf.x11Display, &majorOpcode, &_plaf.xkbEventBase, &errorBase,
+		&major, &minor);
 
 	if (_plaf.xkbAvailable) {
 		Bool supported;
@@ -744,48 +744,35 @@ static void initExtensions(void)
 	}
 
 	_plaf.xrenderHandle = _plafLoadModule("libXrender.so.1");
-	if (_plaf.xrenderHandle)
-	{
-		_plaf.xrenderQueryExtension = (FN_XRenderQueryExtension)
-			_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderQueryExtension");
-		_plaf.xrenderQueryVersion = (FN_XRenderQueryVersion)
-			_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderQueryVersion");
-		_plaf.xrenderFindVisualFormat = (FN_XRenderFindVisualFormat)
-			_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderFindVisualFormat");
+	if (_plaf.xrenderHandle) {
+		_plaf.xrenderQueryExtension = (FN_XRenderQueryExtension)_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderQueryExtension");
+		_plaf.xrenderQueryVersion = (FN_XRenderQueryVersion)_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderQueryVersion");
+		_plaf.xrenderFindVisualFormat = (FN_XRenderFindVisualFormat)_plafGetModuleSymbol(_plaf.xrenderHandle, "XRenderFindVisualFormat");
 
 		int errorBase;
 		int eventBase;
-		if (_plaf.xrenderQueryExtension(_plaf.x11Display, &errorBase, &eventBase))
-		{
+		if (_plaf.xrenderQueryExtension(_plaf.x11Display, &errorBase, &eventBase)) {
 			int major;
 			int minor;
-			if (_plaf.xrenderQueryVersion(_plaf.x11Display, &major, &minor))
-			{
+			if (_plaf.xrenderQueryVersion(_plaf.x11Display, &major, &minor)) {
 				_plaf.xrenderAvailable = true;
 			}
 		}
 	}
 
 	_plaf.xshapeHandle = _plafLoadModule("libXext.so.6");
-	if (_plaf.xshapeHandle)
-	{
-		_plaf.xshapeQueryExtension = (FN_XShapeQueryExtension)
-			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeQueryExtension");
-		_plaf.xshapeShapeCombineRegion = (FN_XShapeCombineRegion)
-			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeCombineRegion");
-		_plaf.xshapeQueryVersion = (FN_XShapeQueryVersion)
-			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeQueryVersion");
-		_plaf.xshapeShapeCombineMask = (FN_XShapeCombineMask)
-			_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeCombineMask");
+	if (_plaf.xshapeHandle) {
+		_plaf.xshapeQueryExtension = (FN_XShapeQueryExtension)_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeQueryExtension");
+		_plaf.xshapeShapeCombineRegion = (FN_XShapeCombineRegion)_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeCombineRegion");
+		_plaf.xshapeQueryVersion = (FN_XShapeQueryVersion)_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeQueryVersion");
+		_plaf.xshapeShapeCombineMask = (FN_XShapeCombineMask)_plafGetModuleSymbol(_plaf.xshapeHandle, "XShapeCombineMask");
 
 		int errorBase;
 		int eventBase;
-		if (_plaf.xshapeQueryExtension(_plaf.x11Display, &errorBase, &eventBase))
-		{
+		if (_plaf.xshapeQueryExtension(_plaf.x11Display, &errorBase, &eventBase)) {
 			int major;
 			int minor;
-			if (_plaf.xshapeQueryVersion(_plaf.x11Display, &major, &minor))
-			{
+			if (_plaf.xshapeQueryVersion(_plaf.x11Display, &major, &minor)) {
 				_plaf.xshapeAvailable = true;
 			}
 		}

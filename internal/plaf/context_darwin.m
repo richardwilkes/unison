@@ -83,7 +83,7 @@ void _plafTerminateOpenGL(void) {
 }
 
 // Create the OpenGL context
-plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 #define ADD_ATTRIB(a) \
 { \
 	attribs[index++] = a; \
@@ -97,17 +97,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 	ADD_ATTRIB(NSOpenGLPFAClosestPolicy);
 	SET_ATTRIB(NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core);
 
-	if (ctxconfig->major <= 2) {
-		if (fbconfig->auxBuffers != DONT_CARE) {
-			SET_ATTRIB(NSOpenGLPFAAuxBuffers, fbconfig->auxBuffers);
-		}
-		if (fbconfig->accumRedBits != DONT_CARE && fbconfig->accumGreenBits != DONT_CARE &&
-			fbconfig->accumBlueBits != DONT_CARE && fbconfig->accumAlphaBits != DONT_CARE) {
-			const int accumBits = fbconfig->accumRedBits + fbconfig->accumGreenBits + fbconfig->accumBlueBits +
-				fbconfig->accumAlphaBits;
-			SET_ATTRIB(NSOpenGLPFAAccumSize, accumBits);
-		}
-	}
 	if (fbconfig->redBits != DONT_CARE && fbconfig->greenBits != DONT_CARE && fbconfig->blueBits != DONT_CARE) {
 		int colorBits = fbconfig->redBits + fbconfig->greenBits + fbconfig->blueBits;
 		// macOS needs non-zero color size, so set reasonable values
@@ -156,13 +145,13 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, const plafCtxCfg* ctxcon
 		return _plafNewError("NSGL: Failed to find a suitable pixel format");
 	}
 
-	NSOpenGLContext* share = nil;
-	if (ctxconfig->share) {
-		share = ctxconfig->share->context.nsglCtx;
+	NSOpenGLContext* shareCtx = nil;
+	if (share) {
+		shareCtx = share->context.nsglCtx;
 	}
 
 	window->context.nsglCtx = [[NSOpenGLContext alloc]
-		initWithFormat:window->context.nsglPixelFormat shareContext:share];
+		initWithFormat:window->context.nsglPixelFormat shareContext:shareCtx];
 	if (!window->context.nsglCtx) {
 		return _plafNewError("NSGL: Failed to create OpenGL context");
 	}

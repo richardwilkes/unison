@@ -1109,7 +1109,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	return NULL;
 }
 
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafCtxCfg* ctxconfig, const plafFrameBufferCfg* fbconfig) {
+plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	plafError* err = createNativeWindow(window, wndconfig, fbconfig);
 	if (err) {
 		return err;
@@ -1120,12 +1120,12 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 		return err;
 	}
 
-	err = _plafCreateOpenGLContext(window, ctxconfig, fbconfig);
+	err = _plafCreateOpenGLContext(window, share, fbconfig);
 	if (err) {
 		return err;
 	}
 
-	err = _plafRefreshContextAttribs(window, ctxconfig);
+	err = _plafRefreshContextAttribs(window);
 	if (err) {
 		return err;
 	}

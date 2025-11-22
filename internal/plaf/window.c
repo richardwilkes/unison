@@ -111,13 +111,6 @@ void _plafInputWindowCloseRequest(plafWindow* window)
 		return _plafNewError("Invalid window size %ix%i", width, height);
 	}
 
-	plafCtxCfg ctxconfig = _plaf.contextCfg;
-	ctxconfig.share      = share;
-	plafError* err   = plafCheckContextConfig(&ctxconfig);
-	if (err) {
-		return err;
-	}
-
 	plafFrameBufferCfg fbconfig = _plaf.frameBufferCfg;
 
 	plafWindowConfig wndconfig = _plaf.windowCfg;
@@ -147,7 +140,7 @@ void _plafInputWindowCloseRequest(plafWindow* window)
 	window->denom                 = DONT_CARE;
 	window->title                 = _plaf_strdup(title);
 
-	err = _plafCreateWindow(window, &wndconfig, &ctxconfig, &fbconfig);
+	plafError* err = _plafCreateWindow(window, &wndconfig, share, &fbconfig);
 	if (err) {
 		plafDestroyWindow(window);
 		return err;
@@ -158,11 +151,6 @@ void _plafInputWindowCloseRequest(plafWindow* window)
 }
 
 void plafDefaultWindowHints(void) {
-	// The default is OpenGL with minimum version 1.0
-	memset(&_plaf.contextCfg, 0, sizeof(_plaf.contextCfg));
-	_plaf.contextCfg.major  = 3;
-	_plaf.contextCfg.minor  = 2;
-
 	// The default is a resizable window with decorations
 	memset(&_plaf.windowCfg, 0, sizeof(_plaf.windowCfg));
 	_plaf.windowCfg.resizable    = true;
@@ -257,15 +245,6 @@ void plafWindowHint(int hint, int value)
 			return;
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
 			_plaf.windowCfg.mousePassthrough = value ? true : false;
-			return;
-		case WINDOW_ATTR_HINT_CONTEXT_VERSION_MAJOR:
-			_plaf.contextCfg.major = value;
-			return;
-		case WINDOW_ATTR_HINT_CONTEXT_VERSION_MINOR:
-			_plaf.contextCfg.minor = value;
-			return;
-		case WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS:
-			_plaf.contextCfg.robustness = value;
 			return;
 		case WINDOW_HINT_REFRESH_RATE:
 			_plaf.desiredRefreshRate = value;
@@ -499,14 +478,6 @@ int plafGetWindowAttrib(plafWindow* window, int attrib) {
 			return window->floating;
 		case WINDOW_ATTR_HINT_DOUBLE_BUFFER:
 			return window->doublebuffer;
-		case WINDOW_ATTR_HINT_CONTEXT_VERSION_MAJOR:
-			return window->context.major;
-		case WINDOW_ATTR_HINT_CONTEXT_VERSION_MINOR:
-			return window->context.minor;
-		case WINDOW_ATTR_CONTEXT_REVISION:
-			return window->context.revision;
-		case WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS:
-			return window->context.robustness;
 	}
 
 	_plafInputError("Invalid window attribute 0x%08X", attrib);

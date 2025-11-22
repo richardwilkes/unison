@@ -64,14 +64,8 @@ const (
 	ScaleToMonitor         Hint = C.WINDOW_HINT_SCALE_TO_MONITOR             // Specified whether the window content area should be resized based on the monitor content scale of any monitor it is placed on. This includes the initial placement when the window is created.
 )
 
-// Context related hints.
-const (
-	ContextRobustness Hint = C.WINDOW_ATTR_HINT_CONTEXT_ROBUSTNESS // Specifies the robustness strategy to be used by the context.
-)
-
 // Framebuffer related hints.
 const (
-	ContextRevision  Hint = C.WINDOW_ATTR_CONTEXT_REVISION
 	RedBits          Hint = C.WINDOW_HINT_RED_BITS           // Specifies the desired bit depth of the default framebuffer.
 	GreenBits        Hint = C.WINDOW_HINT_GREEN_BITS         // Specifies the desired bit depth of the default framebuffer.
 	BlueBits         Hint = C.WINDOW_HINT_BLUE_BITS          // Specifies the desired bit depth of the default framebuffer.
@@ -88,13 +82,6 @@ const (
 	RefreshRate      Hint = C.WINDOW_HINT_REFRESH_RATE       // Specifies the desired refresh rate for full screen windows. If set to zero, the highest available refresh rate will be used. This hint is ignored for windowed mode windows.
 	DoubleBuffer     Hint = C.WINDOW_ATTR_HINT_DOUBLE_BUFFER // Specifies whether the framebuffer should be double buffered. You nearly always want to use double buffering. This is a hard constraint.
 	ScaleFramebuffer Hint = C.WINDOW_HINT_SCALE_FRAMEBUFFER  // Specifies whether to use full resolution framebuffers on Retina displays.
-)
-
-// Values for the ContextRobustness hint.
-const (
-	ContextRobustnessNone                int = C.CONTEXT_ROBUSTNESS_NONE
-	ContextRobustnessNoResetNotification int = C.CONTEXT_ROBUSTNESS_NO_RESET_NOTIFICATION
-	ContextRobustnessLoseContextOnReset  int = C.CONTEXT_ROBUSTNESS_LOSE_CONTEXT_ON_RESET
 )
 
 // Other values.
