@@ -1057,186 +1057,95 @@ plafError* _plafInit(void) {
 	_plaf.x11Display = display;
 	_plaf.xlibHandle = module;
 
-	_plaf.xlibAllocSizeHints = (FN_XAllocSizeHints)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocSizeHints");
-	_plaf.xlibAllocWMHints = (FN_XAllocWMHints)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocWMHints");
-	_plaf.xlibChangeProperty = (FN_XChangeProperty)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XChangeProperty");
-	_plaf.xlibChangeWindowAttributes = (FN_XChangeWindowAttributes)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XChangeWindowAttributes");
-	_plaf.xlibCheckIfEvent = (FN_XCheckIfEvent)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCheckIfEvent");
-	_plaf.xlibCheckTypedWindowEvent = (FN_XCheckTypedWindowEvent)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCheckTypedWindowEvent");
-	_plaf.xlibCloseDisplay = (FN_XCloseDisplay)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCloseDisplay");
-	_plaf.xlibCloseIM = (FN_XCloseIM)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCloseIM");
-	_plaf.xlibConvertSelection = (FN_XConvertSelection)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XConvertSelection");
-	_plaf.xlibCreateColormap = (FN_XCreateColormap)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateColormap");
-	_plaf.xlibCreateFontCursor = (FN_XCreateFontCursor)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateFontCursor");
-	_plaf.xlibCreateIC = (FN_XCreateIC)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateIC");
-	_plaf.xlibCreateRegion = (FN_XCreateRegion)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateRegion");
-	_plaf.xlibCreateWindow = (FN_XCreateWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateWindow");
-	_plaf.xlibDefineCursor = (FN_XDefineCursor)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XDefineCursor");
-	_plaf.xlibDeleteContext = (FN_XDeleteContext)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XDeleteContext");
-	_plaf.xlibDeleteProperty = (FN_XDeleteProperty)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XDeleteProperty");
-	_plaf.xlibDestroyIC = (FN_XDestroyIC)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyIC");
-	_plaf.xlibDestroyRegion = (FN_XDestroyRegion)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyRegion");
-	_plaf.xlibDestroyWindow = (FN_XDestroyWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyWindow");
-	_plaf.xlibDisplayKeycodes = (FN_XDisplayKeycodes)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XDisplayKeycodes");
-	_plaf.xlibEventsQueued = (FN_XEventsQueued)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XEventsQueued");
-	_plaf.xlibFilterEvent = (FN_XFilterEvent)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XFilterEvent");
-	_plaf.xlibFindContext = (FN_XFindContext)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XFindContext");
-	_plaf.xlibFlush = (FN_XFlush)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XFlush");
-	_plaf.xlibFree = (FN_XFree)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XFree");
-	_plaf.xlibFreeColormap = (FN_XFreeColormap)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeColormap");
-	_plaf.xlibFreeCursor = (FN_XFreeCursor)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeCursor");
-	_plaf.xlibFreeEventData = (FN_XFreeEventData)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeEventData");
-	_plaf.xlibGetErrorText = (FN_XGetErrorText)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetErrorText");
-	_plaf.xlibGetICValues = (FN_XGetICValues)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetICValues");
-	_plaf.xlibGetIMValues = (FN_XGetIMValues)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetIMValues");
-	_plaf.xlibGetInputFocus = (FN_XGetInputFocus)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetInputFocus");
-	_plaf.xlibGetKeyboardMapping = (FN_XGetKeyboardMapping)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetKeyboardMapping");
-	_plaf.xlibGetScreenSaver = (FN_XGetScreenSaver)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetScreenSaver");
-	_plaf.xlibGetSelectionOwner = (FN_XGetSelectionOwner)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetSelectionOwner");
-	_plaf.xlibGetWMNormalHints = (FN_XGetWMNormalHints)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWMNormalHints");
-	_plaf.xlibGetWindowAttributes = (FN_XGetWindowAttributes)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWindowAttributes");
-	_plaf.xlibGetWindowProperty = (FN_XGetWindowProperty)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWindowProperty");
-	_plaf.xlibMinimizeWindow = (FN_XMinimizeWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XIconifyWindow");
-	_plaf.xlibInternAtom = (FN_XInternAtom)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XInternAtom");
-	_plaf.xlibLookupString = (FN_XLookupString)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XLookupString");
-	_plaf.xlibMapRaised = (FN_XMapRaised)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XMapRaised");
-	_plaf.xlibMapWindow = (FN_XMapWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XMapWindow");
-	_plaf.xlibMoveResizeWindow = (FN_XMoveResizeWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XMoveResizeWindow");
-	_plaf.xlibMoveWindow = (FN_XMoveWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XMoveWindow");
-	_plaf.xlibNextEvent = (FN_XNextEvent)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XNextEvent");
-	_plaf.xlibOpenIM = (FN_XOpenIM)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XOpenIM");
-	_plaf.xlibPeekEvent = (FN_XPeekEvent)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XPeekEvent");
-	_plaf.xlibPending = (FN_XPending)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XPending");
-	_plaf.xlibQueryExtension = (FN_XQueryExtension)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XQueryExtension");
-	_plaf.xlibQueryPointer = (FN_XQueryPointer)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XQueryPointer");
-	_plaf.xlibRaiseWindow = (FN_XRaiseWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XRaiseWindow");
-	_plaf.xlibRegisterIMInstantiateCallback = (FN_XRegisterIMInstantiateCallback)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XRegisterIMInstantiateCallback");
-	_plaf.xlibResizeWindow = (FN_XResizeWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XResizeWindow");
-	_plaf.xlibResourceManagerString = (FN_XResourceManagerString)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XResourceManagerString");
-	_plaf.xlibSaveContext = (FN_XSaveContext)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSaveContext");
-	_plaf.xlibSelectInput = (FN_XSelectInput)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSelectInput");
-	_plaf.xlibSendEvent = (FN_XSendEvent)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSendEvent");
-	_plaf.xlibSetErrorHandler = (FN_XSetErrorHandler)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetErrorHandler");
-	_plaf.xlibSetICFocus = (FN_XSetICFocus)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetICFocus");
-	_plaf.xlibSetIMValues = (FN_XSetIMValues)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetIMValues");
-	_plaf.xlibSetInputFocus = (FN_XSetInputFocus)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetInputFocus");
-	_plaf.xlibSetLocaleModifiers = (FN_XSetLocaleModifiers)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetLocaleModifiers");
-	_plaf.xlibSetScreenSaver = (FN_XSetScreenSaver)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetScreenSaver");
-	_plaf.xlibSetSelectionOwner = (FN_XSetSelectionOwner)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetSelectionOwner");
-	_plaf.xlibSetWMHints = (FN_XSetWMHints)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMHints");
-	_plaf.xlibSetWMNormalHints = (FN_XSetWMNormalHints)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMNormalHints");
-	_plaf.xlibSetWMProtocols = (FN_XSetWMProtocols)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMProtocols");
-	_plaf.xlibSupportsLocale = (FN_XSupportsLocale)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSupportsLocale");
-	_plaf.xlibSync = (FN_XSync)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XSync");
-	_plaf.xlibTranslateCoordinates = (FN_XTranslateCoordinates)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XTranslateCoordinates");
-	_plaf.xlibUndefineCursor = (FN_XUndefineCursor)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XUndefineCursor");
-	_plaf.xlibUnmapWindow = (FN_XUnmapWindow)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XUnmapWindow");
-	_plaf.xlibUnsetICFocus = (FN_XUnsetICFocus)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XUnsetICFocus");
-	_plaf.xlibWarpPointer = (FN_XWarpPointer)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XWarpPointer");
-	_plaf.xkbFreeKeyboard = (FN_XkbFreeKeyboard)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbFreeKeyboard");
-	_plaf.xkbFreeNames = (FN_XkbFreeNames)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbFreeNames");
-	_plaf.xkbGetMap = (FN_XkbGetMap)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetMap");
-	_plaf.xkbGetNames = (FN_XkbGetNames)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetNames");
-	_plaf.xkbGetState = (FN_XkbGetState)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetState");
-	_plaf.xkbQueryExtension = (FN_XkbQueryExtension)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbQueryExtension");
-	_plaf.xkbSelectEventDetails = (FN_XkbSelectEventDetails)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbSelectEventDetails");
-	_plaf.xkbSetDetectableAutoRepeat = (FN_XkbSetDetectableAutoRepeat)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XkbSetDetectableAutoRepeat");
-	_plaf.xrmDestroyDatabase = (FN_XrmDestroyDatabase)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XrmDestroyDatabase");
-	_plaf.xrmGetResource = (FN_XrmGetResource)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XrmGetResource");
-	_plaf.xrmGetStringDatabase = (FN_XrmGetStringDatabase)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XrmGetStringDatabase");
-	_plaf.xlibUnregisterIMInstantiateCallback = (FN_XUnregisterIMInstantiateCallback)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "XUnregisterIMInstantiateCallback");
-	_plaf.xlibUTF8LookupString = (FN_Xutf8LookupString)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8LookupString");
-	_plaf.xlibUTF8SetWMProperties = (FN_Xutf8SetWMProperties)
-		_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8SetWMProperties");
+	_plaf.xlibAllocSizeHints = (FN_XAllocSizeHints)_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocSizeHints");
+	_plaf.xlibAllocWMHints = (FN_XAllocWMHints)_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocWMHints");
+	_plaf.xlibChangeProperty = (FN_XChangeProperty)_plafGetModuleSymbol(_plaf.xlibHandle, "XChangeProperty");
+	_plaf.xlibChangeWindowAttributes = (FN_XChangeWindowAttributes)_plafGetModuleSymbol(_plaf.xlibHandle, "XChangeWindowAttributes");
+	_plaf.xlibCheckIfEvent = (FN_XCheckIfEvent)_plafGetModuleSymbol(_plaf.xlibHandle, "XCheckIfEvent");
+	_plaf.xlibCheckTypedWindowEvent = (FN_XCheckTypedWindowEvent)_plafGetModuleSymbol(_plaf.xlibHandle, "XCheckTypedWindowEvent");
+	_plaf.xlibCloseDisplay = (FN_XCloseDisplay)_plafGetModuleSymbol(_plaf.xlibHandle, "XCloseDisplay");
+	_plaf.xlibCloseIM = (FN_XCloseIM)_plafGetModuleSymbol(_plaf.xlibHandle, "XCloseIM");
+	_plaf.xlibConvertSelection = (FN_XConvertSelection)_plafGetModuleSymbol(_plaf.xlibHandle, "XConvertSelection");
+	_plaf.xlibCreateColormap = (FN_XCreateColormap)_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateColormap");
+	_plaf.xlibCreateFontCursor = (FN_XCreateFontCursor)_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateFontCursor");
+	_plaf.xlibCreateIC = (FN_XCreateIC)_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateIC");
+	_plaf.xlibCreateRegion = (FN_XCreateRegion)_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateRegion");
+	_plaf.xlibCreateWindow = (FN_XCreateWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XCreateWindow");
+	_plaf.xlibDefineCursor = (FN_XDefineCursor)_plafGetModuleSymbol(_plaf.xlibHandle, "XDefineCursor");
+	_plaf.xlibDeleteContext = (FN_XDeleteContext)_plafGetModuleSymbol(_plaf.xlibHandle, "XDeleteContext");
+	_plaf.xlibDeleteProperty = (FN_XDeleteProperty)_plafGetModuleSymbol(_plaf.xlibHandle, "XDeleteProperty");
+	_plaf.xlibDestroyIC = (FN_XDestroyIC)_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyIC");
+	_plaf.xlibDestroyRegion = (FN_XDestroyRegion)_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyRegion");
+	_plaf.xlibDestroyWindow = (FN_XDestroyWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XDestroyWindow");
+	_plaf.xlibDisplayKeycodes = (FN_XDisplayKeycodes)_plafGetModuleSymbol(_plaf.xlibHandle, "XDisplayKeycodes");
+	_plaf.xlibEventsQueued = (FN_XEventsQueued)_plafGetModuleSymbol(_plaf.xlibHandle, "XEventsQueued");
+	_plaf.xlibFilterEvent = (FN_XFilterEvent)_plafGetModuleSymbol(_plaf.xlibHandle, "XFilterEvent");
+	_plaf.xlibFindContext = (FN_XFindContext)_plafGetModuleSymbol(_plaf.xlibHandle, "XFindContext");
+	_plaf.xlibFlush = (FN_XFlush)_plafGetModuleSymbol(_plaf.xlibHandle, "XFlush");
+	_plaf.xlibFree = (FN_XFree)_plafGetModuleSymbol(_plaf.xlibHandle, "XFree");
+	_plaf.xlibFreeColormap = (FN_XFreeColormap)_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeColormap");
+	_plaf.xlibFreeCursor = (FN_XFreeCursor)_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeCursor");
+	_plaf.xlibFreeEventData = (FN_XFreeEventData)_plafGetModuleSymbol(_plaf.xlibHandle, "XFreeEventData");
+	_plaf.xlibGetICValues = (FN_XGetICValues)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetICValues");
+	_plaf.xlibGetIMValues = (FN_XGetIMValues)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetIMValues");
+	_plaf.xlibGetInputFocus = (FN_XGetInputFocus)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetInputFocus");
+	_plaf.xlibGetKeyboardMapping = (FN_XGetKeyboardMapping)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetKeyboardMapping");
+	_plaf.xlibGetScreenSaver = (FN_XGetScreenSaver)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetScreenSaver");
+	_plaf.xlibGetSelectionOwner = (FN_XGetSelectionOwner)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetSelectionOwner");
+	_plaf.xlibGetWMNormalHints = (FN_XGetWMNormalHints)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWMNormalHints");
+	_plaf.xlibGetWindowAttributes = (FN_XGetWindowAttributes)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWindowAttributes");
+	_plaf.xlibGetWindowProperty = (FN_XGetWindowProperty)_plafGetModuleSymbol(_plaf.xlibHandle, "XGetWindowProperty");
+	_plaf.xlibMinimizeWindow = (FN_XMinimizeWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XIconifyWindow");
+	_plaf.xlibInternAtom = (FN_XInternAtom)_plafGetModuleSymbol(_plaf.xlibHandle, "XInternAtom");
+	_plaf.xlibLookupString = (FN_XLookupString)_plafGetModuleSymbol(_plaf.xlibHandle, "XLookupString");
+	_plaf.xlibMapRaised = (FN_XMapRaised)_plafGetModuleSymbol(_plaf.xlibHandle, "XMapRaised");
+	_plaf.xlibMapWindow = (FN_XMapWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XMapWindow");
+	_plaf.xlibMoveResizeWindow = (FN_XMoveResizeWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XMoveResizeWindow");
+	_plaf.xlibMoveWindow = (FN_XMoveWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XMoveWindow");
+	_plaf.xlibNextEvent = (FN_XNextEvent)_plafGetModuleSymbol(_plaf.xlibHandle, "XNextEvent");
+	_plaf.xlibOpenIM = (FN_XOpenIM)_plafGetModuleSymbol(_plaf.xlibHandle, "XOpenIM");
+	_plaf.xlibPeekEvent = (FN_XPeekEvent)_plafGetModuleSymbol(_plaf.xlibHandle, "XPeekEvent");
+	_plaf.xlibPending = (FN_XPending)_plafGetModuleSymbol(_plaf.xlibHandle, "XPending");
+	_plaf.xlibQueryExtension = (FN_XQueryExtension)_plafGetModuleSymbol(_plaf.xlibHandle, "XQueryExtension");
+	_plaf.xlibQueryPointer = (FN_XQueryPointer)_plafGetModuleSymbol(_plaf.xlibHandle, "XQueryPointer");
+	_plaf.xlibRaiseWindow = (FN_XRaiseWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XRaiseWindow");
+	_plaf.xlibRegisterIMInstantiateCallback = (FN_XRegisterIMInstantiateCallback)_plafGetModuleSymbol(_plaf.xlibHandle, "XRegisterIMInstantiateCallback");
+	_plaf.xlibResizeWindow = (FN_XResizeWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XResizeWindow");
+	_plaf.xlibResourceManagerString = (FN_XResourceManagerString)_plafGetModuleSymbol(_plaf.xlibHandle, "XResourceManagerString");
+	_plaf.xlibSaveContext = (FN_XSaveContext)_plafGetModuleSymbol(_plaf.xlibHandle, "XSaveContext");
+	_plaf.xlibSelectInput = (FN_XSelectInput)_plafGetModuleSymbol(_plaf.xlibHandle, "XSelectInput");
+	_plaf.xlibSendEvent = (FN_XSendEvent)_plafGetModuleSymbol(_plaf.xlibHandle, "XSendEvent");
+	_plaf.xlibSetErrorHandler = (FN_XSetErrorHandler)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetErrorHandler");
+	_plaf.xlibSetICFocus = (FN_XSetICFocus)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetICFocus");
+	_plaf.xlibSetIMValues = (FN_XSetIMValues)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetIMValues");
+	_plaf.xlibSetInputFocus = (FN_XSetInputFocus)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetInputFocus");
+	_plaf.xlibSetLocaleModifiers = (FN_XSetLocaleModifiers)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetLocaleModifiers");
+	_plaf.xlibSetScreenSaver = (FN_XSetScreenSaver)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetScreenSaver");
+	_plaf.xlibSetSelectionOwner = (FN_XSetSelectionOwner)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetSelectionOwner");
+	_plaf.xlibSetWMHints = (FN_XSetWMHints)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMHints");
+	_plaf.xlibSetWMNormalHints = (FN_XSetWMNormalHints)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMNormalHints");
+	_plaf.xlibSetWMProtocols = (FN_XSetWMProtocols)_plafGetModuleSymbol(_plaf.xlibHandle, "XSetWMProtocols");
+	_plaf.xlibSupportsLocale = (FN_XSupportsLocale)_plafGetModuleSymbol(_plaf.xlibHandle, "XSupportsLocale");
+	_plaf.xlibSync = (FN_XSync)_plafGetModuleSymbol(_plaf.xlibHandle, "XSync");
+	_plaf.xlibTranslateCoordinates = (FN_XTranslateCoordinates)_plafGetModuleSymbol(_plaf.xlibHandle, "XTranslateCoordinates");
+	_plaf.xlibUndefineCursor = (FN_XUndefineCursor)_plafGetModuleSymbol(_plaf.xlibHandle, "XUndefineCursor");
+	_plaf.xlibUnmapWindow = (FN_XUnmapWindow)_plafGetModuleSymbol(_plaf.xlibHandle, "XUnmapWindow");
+	_plaf.xlibUnsetICFocus = (FN_XUnsetICFocus)_plafGetModuleSymbol(_plaf.xlibHandle, "XUnsetICFocus");
+	_plaf.xlibWarpPointer = (FN_XWarpPointer)_plafGetModuleSymbol(_plaf.xlibHandle, "XWarpPointer");
+	_plaf.xkbFreeKeyboard = (FN_XkbFreeKeyboard)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbFreeKeyboard");
+	_plaf.xkbFreeNames = (FN_XkbFreeNames)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbFreeNames");
+	_plaf.xkbGetMap = (FN_XkbGetMap)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetMap");
+	_plaf.xkbGetNames = (FN_XkbGetNames)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetNames");
+	_plaf.xkbGetState = (FN_XkbGetState)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbGetState");
+	_plaf.xkbQueryExtension = (FN_XkbQueryExtension)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbQueryExtension");
+	_plaf.xkbSelectEventDetails = (FN_XkbSelectEventDetails)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbSelectEventDetails");
+	_plaf.xkbSetDetectableAutoRepeat = (FN_XkbSetDetectableAutoRepeat)_plafGetModuleSymbol(_plaf.xlibHandle, "XkbSetDetectableAutoRepeat");
+	_plaf.xrmDestroyDatabase = (FN_XrmDestroyDatabase)_plafGetModuleSymbol(_plaf.xlibHandle, "XrmDestroyDatabase");
+	_plaf.xrmGetResource = (FN_XrmGetResource)_plafGetModuleSymbol(_plaf.xlibHandle, "XrmGetResource");
+	_plaf.xrmGetStringDatabase = (FN_XrmGetStringDatabase)_plafGetModuleSymbol(_plaf.xlibHandle, "XrmGetStringDatabase");
+	_plaf.xlibUnregisterIMInstantiateCallback = (FN_XUnregisterIMInstantiateCallback)_plafGetModuleSymbol(_plaf.xlibHandle, "XUnregisterIMInstantiateCallback");
+	_plaf.xlibUTF8LookupString = (FN_Xutf8LookupString)_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8LookupString");
+	_plaf.xlibUTF8SetWMProperties = (FN_Xutf8SetWMProperties)_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8SetWMProperties");
 
 	if (_plaf.xlibUTF8LookupString && _plaf.xlibUTF8SetWMProperties)
 		_plaf.xlibUTF8 = true;

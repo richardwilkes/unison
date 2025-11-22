@@ -114,7 +114,6 @@ typedef unsigned char GLubyte;
 	typedef int (* FN_XFreeColormap)(Display*,Colormap);
 	typedef int (* FN_XFreeCursor)(Display*,Cursor);
 	typedef void (*FN_XFreeEventData)(Display*,XGenericEventCookie*);
-	typedef int (* FN_XGetErrorText)(Display*,int,char*,int);
 	typedef char* (* FN_XGetICValues)(XIC,...);
 	typedef char* (* FN_XGetIMValues)(XIM,...);
 	typedef int (* FN_XGetInputFocus)(Display*,Window*,int*);
@@ -1039,7 +1038,6 @@ struct plafLib {
 	FN_XFreeColormap                    xlibFreeColormap;
 	FN_XFreeCursor                      xlibFreeCursor;
 	FN_XFreeEventData                   xlibFreeEventData;
-	FN_XGetErrorText                    xlibGetErrorText;
 	FN_XGetICValues                     xlibGetICValues;
 	FN_XGetIMValues                     xlibGetIMValues;
 	FN_XGetInputFocus                   xlibGetInputFocus;
