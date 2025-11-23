@@ -153,10 +153,10 @@ void _plafInputWindowCloseRequest(plafWindow* window)
 void plafDefaultWindowHints(void) {
 	// The default is a resizable window with decorations
 	memset(&_plaf.windowCfg, 0, sizeof(_plaf.windowCfg));
-	_plaf.windowCfg.resizable    = true;
-	_plaf.windowCfg.decorated    = true;
-	_plaf.windowCfg.xpos         = ANY_POSITION;
-	_plaf.windowCfg.ypos         = ANY_POSITION;
+	_plaf.windowCfg.resizable        = true;
+	_plaf.windowCfg.decorated        = true;
+	_plaf.windowCfg.xpos             = ANY_POSITION;
+	_plaf.windowCfg.ypos             = ANY_POSITION;
 	_plaf.windowCfg.scaleFramebuffer = true;
 
 	// The default is 24 bits of color, 24 bits of depth and 8 bits of stencil, double buffered
@@ -167,7 +167,6 @@ void plafDefaultWindowHints(void) {
 	_plaf.frameBufferCfg.alphaBits    = 8;
 	_plaf.frameBufferCfg.depthBits    = 24;
 	_plaf.frameBufferCfg.stencilBits  = 8;
-	_plaf.frameBufferCfg.doublebuffer = true;
 
 	// The default is to select the highest available refresh rate
 	_plaf.desiredRefreshRate = DONT_CARE;
