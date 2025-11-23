@@ -1268,10 +1268,6 @@ static void inputContextDestroyCallback(XIC ic, XPointer clientData, XPointer ca
 static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, Visual* visual, int depth) {
 	int width = wndconfig->width;
 	int height = wndconfig->height;
-	if (wndconfig->scaleToMonitor) {
-		width *= _plaf.x11ContentScaleX;
-		height *= _plaf.x11ContentScaleY;
-	}
 	int xpos = 0;
 	int ypos = 0;
 	if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION) {

@@ -364,23 +364,8 @@ static void maximizeWindowManually(plafWindow* window)
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	plafWindow* window = GetPropW(hWnd, L"PLAF");
 	if (!window) {
-		if (uMsg == WM_NCCREATE) {
-			if (IsWindows10Version1607OrGreater()) {
-				const CREATESTRUCTW* cs = (const CREATESTRUCTW*) lParam;
-				const plafWindowConfig* wndconfig = cs->lpCreateParams;
-
-				// On per-monitor DPI aware V1 systems, only enable
-				// non-client scaling for windows that scale the client area
-				// We need WM_GETDPISCALEDSIZE from V2 to keep the client
-				// area static when the non-client area is scaled
-				//if (wndconfig && wndconfig->scaleToMonitor) {
-					_plaf.win32User32EnableNonClientDpiScaling_(hWnd);
-				//}
-			}
-		}
 		return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 	}
-
 	switch (uMsg) {
 		case WM_MOUSEACTIVATE:
 			// Postpone cursor disabling when the window was activated by clicking a caption button
@@ -926,30 +911,14 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		RECT rect = { 0, 0, wndconfig->width, wndconfig->height };
 		WINDOWPLACEMENT wp = { sizeof(wp) };
 		const HMONITOR mh = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
-
-		// Adjust window rect to account for DPI scaling of the window frame and
-		// (if enabled) DPI scaling of the content area
-		// This cannot be done until we know what monitor the window was placed on
-		// Only update the restored window rect as the window may be maximized
-		// if (wndconfig->scaleToMonitor) {
-			float xscale, yscale;
-			_plafGetHMONITORContentScale(mh, &xscale, &yscale);
-			if (xscale > 0.f && yscale > 0.f) {
-				rect.right = (int) (rect.right * xscale);
-				rect.bottom = (int) (rect.bottom * yscale);
-			}
-		// }
-
 		if (IsWindows10Version1607OrGreater()) {
 			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle,
 				_plaf.win32User32GetDpiForWindow_(window->win32Window));
 		} else {
 			AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 		}
-
 		GetWindowPlacement(window->win32Window, &wp);
 		OffsetRect(&rect, wp.rcNormalPosition.left - rect.left, wp.rcNormalPosition.top - rect.top);
-
 		wp.rcNormalPosition = rect;
 		wp.showCmd = SW_HIDE;
 		SetWindowPlacement(window->win32Window, &wp);
