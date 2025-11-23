@@ -94,7 +94,7 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 			if (!findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_SUPPORT_OPENGL_ARB) ||
 				!findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_DRAW_TO_WINDOW_ARB) ||
 				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_PIXEL_TYPE_ARB) != WGL_TYPE_RGBA_ARB ||
-				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCELERATION_ARB) == WGL_NO_ACCELERATION_ARB {
+				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCELERATION_ARB) == WGL_NO_ACCELERATION_ARB) {
 				continue;
 			}
 			u->redBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_RED_BITS_ARB);
