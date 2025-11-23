@@ -2,6 +2,27 @@
 
 #if defined(__linux__)
 
+#define GLX_VENDOR 1
+#define GLX_RED_SIZE 8
+#define GLX_GREEN_SIZE 9
+#define GLX_BLUE_SIZE 10
+#define GLX_ALPHA_SIZE 11
+#define GLX_DEPTH_SIZE 12
+#define GLX_STENCIL_SIZE 13
+#define GLX_ACCUM_RED_SIZE 14
+#define GLX_ACCUM_GREEN_SIZE 15
+#define GLX_ACCUM_BLUE_SIZE 16
+#define GLX_ACCUM_ALPHA_SIZE 17
+#define GLX_RGBA_BIT 0x00000001
+#define GLX_WINDOW_BIT 0x00000001
+#define GLX_DRAWABLE_TYPE 0x8010
+#define GLX_RENDER_TYPE 0x8011
+#define GLX_RGBA_TYPE 0x8014
+#define GLX_SAMPLES 0x186a1
+#define GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20b2
+#define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
+#define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
+
 // Returns the specified attribute of the specified GLXFBConfig
 static int getGLXFBConfigAttrib(GLXFBConfig fbconfig, int attrib)
 {
@@ -141,9 +162,9 @@ static bool extensionSupportedGLX(const char* extension) {
 static glFunc getProcAddressGLX(const char* procname)
 {
 	if (_plaf.glxGetProcAddress)
-		return _plaf.glxGetProcAddress((const GLubyte*) procname);
+		return _plaf.glxGetProcAddress((const unsigned char*) procname);
 	else if (_plaf.glxGetProcAddressARB)
-		return _plaf.glxGetProcAddressARB((const GLubyte*) procname);
+		return _plaf.glxGetProcAddressARB((const unsigned char*) procname);
 	else
 	{
 		// NOTE: glvnd provides GLX 1.4, so this can only happen with libGL

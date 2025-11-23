@@ -81,7 +81,7 @@ plafError* _plafRefreshContextAttribs(plafWindow* window) {
 		return _plafNewError("Entry point retrieval is broken");
 	}
 
-	const char* version = (const char*) window->context.GetString(GL_VERSION);
+	const char* version = window->context.GetString(GL_VERSION);
 	if (!version) {
 		plafMakeContextCurrent(previous);
 		return _plafNewError("OpenGL version string retrieval is broken");
@@ -190,10 +190,10 @@ bool plafExtensionSupported(const char* extension) {
 	}
 
 	// Check if extension is in the OpenGL extensions string list
-	GLint count;
+	int count;
 	_plaf.contextSlot->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
 	for (int i = 0;  i < count;  i++) {
-		const char* en = (const char*)_plaf.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
+		const char* en = _plaf.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
 		if (!en) {
 			_plafInputError("Extension string retrieval is broken");
 			return false;

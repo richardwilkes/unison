@@ -124,7 +124,7 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	}
 
 	if (fbconfig->transparent) {
-		GLint opaque = 0;
+		int opaque = 0;
 		[window->context.nsglCtx setValues:&opaque forParameter:NSOpenGLContextParameterSurfaceOpacity];
 	}
 

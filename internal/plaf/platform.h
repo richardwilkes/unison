@@ -14,12 +14,6 @@ extern "C" {
 #include <string.h>
 #include <float.h>
 
-typedef int GLint;
-typedef unsigned int GLuint;
-typedef unsigned int GLenum;
-typedef unsigned int GLbitfield;
-typedef unsigned char GLubyte;
-
 #if defined(__APPLE__)
 	#define APIENTRY
 	// NOTE: All of NSGL was deprecated in the 10.14 SDK. This disables the pointless warnings for every symbol we use.
@@ -30,26 +24,6 @@ typedef unsigned char GLubyte;
 	#import <Cocoa/Cocoa.h>
 #elif defined(__linux__)
 	#define APIENTRY
-	#define GLX_VENDOR 1
-	#define GLX_RGBA_BIT 0x00000001
-	#define GLX_WINDOW_BIT 0x00000001
-	#define GLX_DRAWABLE_TYPE 0x8010
-	#define GLX_RENDER_TYPE 0x8011
-	#define GLX_RGBA_TYPE 0x8014
-	#define GLX_RED_SIZE 8
-	#define GLX_GREEN_SIZE 9
-	#define GLX_BLUE_SIZE 10
-	#define GLX_ALPHA_SIZE 11
-	#define GLX_DEPTH_SIZE 12
-	#define GLX_STENCIL_SIZE 13
-	#define GLX_ACCUM_RED_SIZE 14
-	#define GLX_ACCUM_GREEN_SIZE 15
-	#define GLX_ACCUM_BLUE_SIZE 16
-	#define GLX_ACCUM_ALPHA_SIZE 17
-	#define GLX_SAMPLES 0x186a1
-	#define GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20b2
-	#define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
-	#define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
 
 	#include <unistd.h>
 	#include <X11/Xlib.h>
@@ -215,7 +189,7 @@ typedef unsigned char GLubyte;
 	typedef const char* (*FN_GLXQUERYEXTENSIONSSTRING)(Display*,int);
 	typedef GLXFBConfig* (*FN_GLXGETFBCONFIGS)(Display*,int,int*);
 	typedef GLXContext (*FN_GLXCREATENEWCONTEXT)(Display*,GLXFBConfig,int,GLXContext,Bool);
-	typedef __GLXextproc (* FN_GLXGETPROCADDRESS)(const GLubyte *procName);
+	typedef __GLXextproc (* FN_GLXGETPROCADDRESS)(const char* procName);
 	typedef void (*FN_GLXSWAPINTERVALEXT)(Display*,GLXDrawable,int);
 	typedef XVisualInfo* (*FN_GLXGETVISUALFROMFBCONFIG)(Display*,GLXFBConfig);
 	typedef GLXWindow (*FN_GLXCREATEWINDOW)(Display*,GLXFBConfig,Window,const int*);
@@ -274,34 +248,6 @@ typedef unsigned char GLubyte;
 	#define IsWindows10Version1607OrGreater() _plafIsWindows10BuildOrGreater(14393)
 	// Windows 10 Creators Update
 	#define IsWindows10Version1703OrGreater() _plafIsWindows10BuildOrGreater(15063)
-	#define WGL_NUMBER_PIXEL_FORMATS_ARB 0x2000
-	#define WGL_SUPPORT_OPENGL_ARB 0x2010
-	#define WGL_DRAW_TO_WINDOW_ARB 0x2001
-	#define WGL_PIXEL_TYPE_ARB 0x2013
-	#define WGL_TYPE_RGBA_ARB 0x202b
-	#define WGL_ACCELERATION_ARB 0x2003
-	#define WGL_NO_ACCELERATION_ARB 0x2025
-	#define WGL_RED_BITS_ARB 0x2015
-	#define WGL_RED_SHIFT_ARB 0x2016
-	#define WGL_GREEN_BITS_ARB 0x2017
-	#define WGL_GREEN_SHIFT_ARB 0x2018
-	#define WGL_BLUE_BITS_ARB 0x2019
-	#define WGL_BLUE_SHIFT_ARB 0x201a
-	#define WGL_ALPHA_BITS_ARB 0x201b
-	#define WGL_ALPHA_SHIFT_ARB 0x201c
-	#define WGL_ACCUM_BITS_ARB 0x201d
-	#define WGL_ACCUM_RED_BITS_ARB 0x201e
-	#define WGL_ACCUM_GREEN_BITS_ARB 0x201f
-	#define WGL_ACCUM_BLUE_BITS_ARB 0x2020
-	#define WGL_ACCUM_ALPHA_BITS_ARB 0x2021
-	#define WGL_DEPTH_BITS_ARB 0x2022
-	#define WGL_STENCIL_BITS_ARB 0x2023
-	#define WGL_SAMPLES_ARB 0x2042
-	#define WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20a9
-	#define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
-	#define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
-	#define ERROR_INVALID_VERSION_ARB 0x2095
-	#define ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB 0x2054
 
 	// user32.dll function pointer typedefs
 	typedef BOOL (WINAPI * FN_EnableNonClientDpiScaling)(HWND);
@@ -606,10 +552,10 @@ typedef struct plafLib            plafLib;
 #define GL_EXTENSIONS 0x1f03
 #define GL_NUM_EXTENSIONS 0x821d
 
-typedef void (APIENTRY * FN_GLCLEAR)(GLbitfield);
-typedef const GLubyte* (APIENTRY * FN_GLGETSTRING)(GLenum);
-typedef void (APIENTRY * FN_GLGETINTEGERV)(GLenum,GLint*);
-typedef const GLubyte* (APIENTRY * FN_GLGETSTRINGI)(GLenum,GLuint);
+typedef void (APIENTRY * FN_GLCLEAR)(unsigned int);
+typedef const char* (APIENTRY * FN_GLGETSTRING)(unsigned int);
+typedef void (APIENTRY * FN_GLGETINTEGERV)(unsigned int,int*);
+typedef const char* (APIENTRY * FN_GLGETSTRINGI)(unsigned int,unsigned int);
 
 // Swaps the provided pointers
 #define SWAP(type, x, y) \
