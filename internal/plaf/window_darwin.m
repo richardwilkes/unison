@@ -181,14 +181,14 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
-	_plafInputWindowFocus(window, true);
+	_plafNotifyOfFocusChange(window, true);
 	if (_plafCursorInContentArea(window)) {
 		_plafUpdateCursorImage(window);
 	}
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
-	_plafInputWindowFocus(window, false);
+	_plafNotifyOfFocusChange(window, false);
 }
 
 @end

@@ -2142,7 +2142,7 @@ static void processEvent(XEvent *event)
 			if (window->x11IC)
 				_plaf.xlibSetICFocus(window->x11IC);
 
-			_plafInputWindowFocus(window, true);
+			_plafNotifyOfFocusChange(window, true);
 			return;
 		}
 
@@ -2159,7 +2159,7 @@ static void processEvent(XEvent *event)
 			if (window->x11IC)
 				_plaf.xlibUnsetICFocus(window->x11IC);
 
-			_plafInputWindowFocus(window, false);
+			_plafNotifyOfFocusChange(window, false);
 			return;
 		}
 

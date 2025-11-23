@@ -1,105 +1,83 @@
 #include "platform.h"
 
-
-//////////////////////////////////////////////////////////////////////////
-//////                         PLAF event API                       //////
-//////////////////////////////////////////////////////////////////////////
-
-// Notifies shared code that a window has lost or received input focus
-//
-void _plafInputWindowFocus(plafWindow* window, bool focused)
-{
-	if (window->focusCallback)
+// Notifies that a window has lost or received input focus
+void _plafNotifyOfFocusChange(plafWindow* window, bool focused) {
+	if (window->focusCallback) {
 		window->focusCallback(window, focused);
-
-	if (!focused)
-	{
-		int key, button;
-
-		for (key = 0;  key <= KEY_LAST;  key++)
-		{
-			if (window->keys[key] == INPUT_PRESS)
-			{
+	}
+	if (!focused) {
+		for (int key = 0;  key <= KEY_LAST;  key++) {
+			if (window->keys[key] == INPUT_PRESS) {
 				_plafInputKey(window, key, _plaf.scanCodes[key], INPUT_RELEASE, 0);
 			}
 		}
-
-		for (button = 0;  button <= MOUSE_BUTTON_LAST;  button++)
-		{
-			if (window->mouseButtons[button] == INPUT_PRESS)
+		for (int button = 0;  button <= MOUSE_BUTTON_LAST;  button++) {
+			if (window->mouseButtons[button] == INPUT_PRESS) {
 				_plafInputMouseClick(window, button, INPUT_RELEASE, 0);
+			}
 		}
 	}
 }
 
 // Notifies shared code that a window has moved
 // The position is specified in content area relative screen coordinates
-//
-void _plafInputWindowPos(plafWindow* window, int x, int y)
-{
-	if (window->posCallback)
+void _plafInputWindowPos(plafWindow* window, int x, int y) {
+	if (window->posCallback) {
 		window->posCallback(window, x, y);
+	}
 }
 
 // Notifies shared code that a window has been resized
 // The size is specified in screen coordinates
-//
-void _plafInputWindowSize(plafWindow* window, int width, int height)
-{
-	if (window->sizeCallback)
+void _plafInputWindowSize(plafWindow* window, int width, int height) {
+	if (window->sizeCallback) {
 		window->sizeCallback(window, width, height);
+	}
 }
 
 // Notifies shared code that a window has been minimized or restored
-//
-void _plafInputWindowMinimize(plafWindow* window, bool minimized)
-{
-	if (window->minimizeCallback)
+void _plafInputWindowMinimize(plafWindow* window, bool minimized) {
+	if (window->minimizeCallback) {
 		window->minimizeCallback(window, minimized);
+	}
 }
 
 // Notifies shared code that a window has been maximized or restored
-//
-void _plafInputWindowMaximize(plafWindow* window, bool maximized)
-{
-	if (window->maximizeCallback)
+void _plafInputWindowMaximize(plafWindow* window, bool maximized) {
+	if (window->maximizeCallback) {
 		window->maximizeCallback(window, maximized);
+	}
 }
 
 // Notifies shared code that a window framebuffer has been resized
 // The size is specified in pixels
-//
-void _plafInputFramebufferSize(plafWindow* window, int width, int height)
-{
-	if (window->fbsizeCallback)
+void _plafInputFramebufferSize(plafWindow* window, int width, int height) {
+	if (window->fbsizeCallback) {
 		window->fbsizeCallback(window, width, height);
+	}
 }
 
 // Notifies shared code that a window content scale has changed
 // The scale is specified as the ratio between the current and default DPI
-//
-void _plafInputWindowContentScale(plafWindow* window, float xscale, float yscale)
-{
-	if (window->scaleCallback)
+void _plafInputWindowContentScale(plafWindow* window, float xscale, float yscale) {
+	if (window->scaleCallback) {
 		window->scaleCallback(window, xscale, yscale);
+	}
 }
 
 // Notifies shared code that the window contents needs updating
-//
-void _plafInputWindowDamage(plafWindow* window)
-{
-	if (window->refreshCallback)
+void _plafInputWindowDamage(plafWindow* window) {
+	if (window->refreshCallback) {
 		window->refreshCallback(window);
+	}
 }
 
 // Notifies shared code that the user wishes to close a window
-//
-void _plafInputWindowCloseRequest(plafWindow* window)
-{
+void _plafInputWindowCloseRequest(plafWindow* window) {
 	window->shouldClose = true;
-
-	if (window->closeCallback)
+	if (window->closeCallback) {
 		window->closeCallback(window);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////

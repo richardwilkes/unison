@@ -1276,7 +1276,7 @@ void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale)
 #endif
 
 // Windows
-void _plafInputWindowFocus(plafWindow* window, bool focused);
+void _plafNotifyOfFocusChange(plafWindow* window, bool focused);
 void _plafInputWindowPos(plafWindow* window, int xpos, int ypos);
 void _plafInputWindowSize(plafWindow* window, int width, int height);
 void _plafInputFramebufferSize(plafWindow* window, int width, int height);

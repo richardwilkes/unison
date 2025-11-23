@@ -49,7 +49,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 		const int attrib = WGL_NUMBER_PIXEL_FORMATS_ARB;
 		int extensionCount;
 		if (!_plaf.wglGetPixelFormatAttribivARB(window->context.wglDC, 1, 0, 1, &attrib, &extensionCount)) {
-			_plafInputError("WGL: Failed to retrieve pixel format attribute");
 			return 0;
 		}
 		nativeCount = _plaf_min(nativeCount, extensionCount);
@@ -62,7 +61,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 		if (_plaf.wglARB_pixel_format) {
 			int values[sizeof(attribs) / sizeof(attribs[0])];
 			if (!_plaf.wglGetPixelFormatAttribivARB(window->context.wglDC, pixFmt, 0, attribCount, attribs, values)) {
-				_plafInputError("WGL: Failed to retrieve pixel format attributes");
 				_plaf_free(usableConfigs);
 				return 0;
 			}
@@ -95,7 +93,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 		} else {
 			PIXELFORMATDESCRIPTOR pfd;
 			if (!DescribePixelFormat(window->context.wglDC, pixFmt, sizeof(PIXELFORMATDESCRIPTOR), &pfd)) {
-				_plafInputError("WGL: Failed to describe pixel format");
 				_plaf_free(usableConfigs);
 				return 0;
 			}
@@ -123,7 +120,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 	}
 
 	if (!usableCount) {
-		_plafInputError("WGL: The driver does not appear to support OpenGL");
 		_plaf_free(usableConfigs);
 		return 0;
 	}
@@ -131,7 +127,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 	const plafFrameBufferCfg* closest = _plafChooseFBConfig(fbconfig, usableConfigs, usableCount);
 	_plaf_free(usableConfigs);
 	if (!closest) {
-		_plafInputError("WGL: Failed to find a suitable pixel format");
 		return 0;
 	}
 	return (int)closest->handle;
@@ -154,8 +149,7 @@ static plafError* makeContextCurrentWGL(plafWindow* window) {
 	return NULL;
 }
 
-static void swapBuffersWGL(plafWindow* window)
-{
+static void swapBuffersWGL(plafWindow* window) {
 	SwapBuffers(window->context.wglDC);
 }
 

@@ -106,9 +106,7 @@ plafError* _plafRefreshContextAttribs(plafWindow* window) {
 
 	FN_GLCLEAR glClear = (FN_GLCLEAR)window->context.getProcAddress("glClear");
 	glClear(GL_COLOR_BUFFER_BIT);
-	if (window->doublebuffer) {
-		window->context.swapBuffers(window);
-	}
+	plafSwapBuffers(window);
 	return plafMakeContextCurrent(previous);
 }
 
