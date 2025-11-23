@@ -282,45 +282,33 @@ void _plafTerminateOpenGL(void) {
 	}
 }
 
-#define SET_ATTRIB(a, v) \
-{ \
-	attribs[index++] = a; \
-	attribs[index++] = v; \
-}
-
 // Create the OpenGL or OpenGL ES context
 plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
-	int attribs[40];
-	int pixelFormat;
-	PIXELFORMATDESCRIPTOR pfd;
 	HGLRC shareCtx = NULL;
-
 	if (share) {
 		shareCtx = share->context.wglGLRC;
 	}
-
 	window->context.wglDC = GetDC(window->win32Window);
 	if (!window->context.wglDC) {
 		return _plafNewError("WGL: Failed to retrieve DC for window");
 	}
-
-	pixelFormat = choosePixelFormatWGL(window, fbconfig);
+	int pixelFormat = choosePixelFormatWGL(window, fbconfig);
 	if (!pixelFormat) {
 		return _plafNewError("WGL: Failed to choose pixel format for window");
 	}
-
+	PIXELFORMATDESCRIPTOR pfd;
 	if (!DescribePixelFormat(window->context.wglDC, pixelFormat, sizeof(pfd), &pfd)) {
 		return _plafNewError("WGL: Failed to retrieve PFD for selected pixel format");
 	}
-
 	if (!SetPixelFormat(window->context.wglDC, pixelFormat, &pfd)) {
 		return _plafNewError("WGL: Failed to set selected pixel format");
 	}
-
 	if (_plaf.wglARB_create_context) {
-		SET_ATTRIB(WGL_CONTEXT_MAJOR_VERSION_ARB, 3);
-		SET_ATTRIB(WGL_CONTEXT_MINOR_VERSION_ARB, 2);
-		SET_ATTRIB(0, 0);
+		int attribs[] = {
+			WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+			WGL_CONTEXT_MINOR_VERSION_ARB, 2,
+			0
+		};
 		window->context.wglGLRC = _plaf.wglCreateContextAttribsARB(window->context.wglDC, shareCtx, attribs);
 		if (!window->context.wglGLRC) {
 			const DWORD error = GetLastError();
@@ -336,14 +324,12 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 		if (!window->context.wglGLRC) {
 			return _plafNewError("WGL: Failed to create OpenGL context");
 		}
-
 		if (shareCtx) {
 			if (!_plaf.wglShareLists(shareCtx, window->context.wglGLRC)) {
 				return _plafNewError("WGL: Failed to enable sharing with specified OpenGL context");
 			}
 		}
 	}
-
 	window->context.makeCurrent = makeContextCurrentWGL;
 	window->context.swapBuffers = swapBuffersWGL;
 	window->context.swapInterval = swapIntervalWGL;
@@ -352,8 +338,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	window->context.destroy = destroyContextWGL;
 	return NULL;
 }
-
-#undef SET_ATTRIB
 
 HGLRC plafGetWGLContext(plafWindow* window) {
 	return window->context.wglGLRC;
