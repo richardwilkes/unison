@@ -290,32 +290,23 @@ void _plafTerminateOpenGL(void) {
 	}
 }
 
-#define SET_ATTRIB(a, v) \
-{ \
-	attribs[index++] = a; \
-	attribs[index++] = v; \
-}
-
 // Create the OpenGL or OpenGL ES context
 plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
-	int attribs[40];
 	GLXFBConfig native = NULL;
 	GLXContext shareCtx = NULL;
 	if (share) {
 		shareCtx = share->context.glxHandle;
 	}
-
 	if (!_plafChooseGLXFBConfig(fbconfig, &native)) {
 		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
 	}
-
 	_plafGrabErrorHandler();
-
 	if (_plaf.glxARB_create_context) {
-		int index = 0;
-		SET_ATTRIB(GLX_CONTEXT_MAJOR_VERSION_ARB, 3);
-		SET_ATTRIB(GLX_CONTEXT_MINOR_VERSION_ARB, 2);
-		SET_ATTRIB(None, None);
+		int attribs[] = {
+			GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
+			GLX_CONTEXT_MINOR_VERSION_ARB, 2,
+			0
+		};
 		window->context.glxHandle = _plaf.glxCreateContextAttribsARB(_plaf.x11Display, native, shareCtx, True, attribs);
 	} else {
 		window->context.glxHandle = _plaf.glxCreateNewContext(_plaf.x11Display, native, GLX_RGBA_TYPE, shareCtx, True);
@@ -341,8 +332,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	window->context.destroy = destroyContextGLX;
 	return NULL;
 }
-
-#undef SET_ATTRIB
 
 
 

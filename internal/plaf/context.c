@@ -9,158 +9,60 @@
 //////////////////////////////////////////////////////////////////////////
 
 // Chooses the framebuffer config that best matches the desired one
-//
-const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
-										 const plafFrameBufferCfg* alternatives,
-										 unsigned int count)
-{
-	unsigned int i;
-	unsigned int missing, leastMissing = UINT_MAX;
-	unsigned int colorDiff, leastColorDiff = UINT_MAX;
-	unsigned int extraDiff, leastExtraDiff = UINT_MAX;
-	const plafFrameBufferCfg* current;
+const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count) {
+	int leastMissing = INT_MAX;
+	int leastColorDiff = INT_MAX;
+	int leastExtraDiff = INT_MAX;
 	const plafFrameBufferCfg* closest = NULL;
 
-	for (i = 0;  i < count;  i++)
-	{
-		current = alternatives + i;
+	for (unsigned int i = 0;  i < count;  i++) {
+		const plafFrameBufferCfg* current = alternatives + i;
 
 		// Count number of missing buffers
-		{
-			missing = 0;
-
-			if (desired->alphaBits > 0 && current->alphaBits == 0)
-				missing++;
-
-			if (desired->depthBits > 0 && current->depthBits == 0)
-				missing++;
-
-			if (desired->stencilBits > 0 && current->stencilBits == 0)
-				missing++;
-
-			if (desired->auxBuffers > 0 &&
-				current->auxBuffers < desired->auxBuffers)
-			{
-				missing += desired->auxBuffers - current->auxBuffers;
-			}
-
-			if (desired->samples > 0 && current->samples == 0)
-			{
-				// Technically, several multisampling buffers could be
-				// involved, but that's a lower level implementation detail and
-				// not important to us here, so we count them as one
-				missing++;
-			}
-
-			if (desired->transparent != current->transparent)
-				missing++;
+		int missing = 0;
+		if (current->alphaBits == 0) {
+			missing++;
 		}
-
-		// These polynomials make many small channel size differences matter
-		// less than one large channel size difference
+		if (current->depthBits == 0) {
+			missing++;
+		}
+		if (current->stencilBits == 0) {
+			missing++;
+		}
+		if (desired->transparent != current->transparent) {
+			missing++;
+		}
 
 		// Calculate color channel size difference value
-		{
-			colorDiff = 0;
-
-			if (desired->redBits != DONT_CARE)
-			{
-				colorDiff += (desired->redBits - current->redBits) *
-							 (desired->redBits - current->redBits);
-			}
-
-			if (desired->greenBits != DONT_CARE)
-			{
-				colorDiff += (desired->greenBits - current->greenBits) *
-							 (desired->greenBits - current->greenBits);
-			}
-
-			if (desired->blueBits != DONT_CARE)
-			{
-				colorDiff += (desired->blueBits - current->blueBits) *
-							 (desired->blueBits - current->blueBits);
-			}
-		}
+		int colorDiff = (desired->redBits - current->redBits) * (desired->redBits - current->redBits) +
+						(desired->greenBits - current->greenBits) * (desired->greenBits - current->greenBits) +
+						(desired->blueBits - current->blueBits) * (desired->blueBits - current->blueBits);
 
 		// Calculate non-color channel size difference value
-		{
-			extraDiff = 0;
-
-			if (desired->alphaBits != DONT_CARE)
-			{
-				extraDiff += (desired->alphaBits - current->alphaBits) *
-							 (desired->alphaBits - current->alphaBits);
-			}
-
-			if (desired->depthBits != DONT_CARE)
-			{
-				extraDiff += (desired->depthBits - current->depthBits) *
-							 (desired->depthBits - current->depthBits);
-			}
-
-			if (desired->stencilBits != DONT_CARE)
-			{
-				extraDiff += (desired->stencilBits - current->stencilBits) *
-							 (desired->stencilBits - current->stencilBits);
-			}
-
-			if (desired->accumRedBits != DONT_CARE)
-			{
-				extraDiff += (desired->accumRedBits - current->accumRedBits) *
-							 (desired->accumRedBits - current->accumRedBits);
-			}
-
-			if (desired->accumGreenBits != DONT_CARE)
-			{
-				extraDiff += (desired->accumGreenBits - current->accumGreenBits) *
-							 (desired->accumGreenBits - current->accumGreenBits);
-			}
-
-			if (desired->accumBlueBits != DONT_CARE)
-			{
-				extraDiff += (desired->accumBlueBits - current->accumBlueBits) *
-							 (desired->accumBlueBits - current->accumBlueBits);
-			}
-
-			if (desired->accumAlphaBits != DONT_CARE)
-			{
-				extraDiff += (desired->accumAlphaBits - current->accumAlphaBits) *
-							 (desired->accumAlphaBits - current->accumAlphaBits);
-			}
-
-			if (desired->samples != DONT_CARE)
-			{
-				extraDiff += (desired->samples - current->samples) *
-							 (desired->samples - current->samples);
-			}
-
-			if (desired->sRGB && !current->sRGB)
-				extraDiff++;
+		int extraDiff = (desired->alphaBits - current->alphaBits) * (desired->alphaBits - current->alphaBits) +
+			(desired->depthBits - current->depthBits) * (desired->depthBits - current->depthBits) +
+			(desired->stencilBits - current->stencilBits) * (desired->stencilBits - current->stencilBits) +
+			(desired->accumRedBits - current->accumRedBits) * (desired->accumRedBits - current->accumRedBits) +
+			(desired->accumGreenBits - current->accumGreenBits) * (desired->accumGreenBits - current->accumGreenBits) +
+			(desired->accumBlueBits - current->accumBlueBits) * (desired->accumBlueBits - current->accumBlueBits) +
+			(desired->accumAlphaBits - current->accumAlphaBits) * (desired->accumAlphaBits - current->accumAlphaBits) +
+			(desired->samples - current->samples) * (desired->samples - current->samples);
+		if (desired->sRGB && !current->sRGB) {
+			extraDiff++;
 		}
-
-		// Figure out if the current one is better than the best one found so far
-		// Least number of missing buffers is the most important heuristic,
-		// then color buffer size match and lastly size match for other buffers
-
-		if (missing < leastMissing)
+		if (missing < leastMissing) {
 			closest = current;
-		else if (missing == leastMissing)
-		{
-			if ((colorDiff < leastColorDiff) ||
-				(colorDiff == leastColorDiff && extraDiff < leastExtraDiff))
-			{
+		} else if (missing == leastMissing) {
+			if (colorDiff < leastColorDiff || (colorDiff == leastColorDiff && extraDiff < leastExtraDiff)) {
 				closest = current;
 			}
 		}
-
-		if (current == closest)
-		{
+		if (current == closest) {
 			leastMissing = missing;
 			leastColorDiff = colorDiff;
 			leastExtraDiff = extraDiff;
 		}
 	}
-
 	return closest;
 }
 

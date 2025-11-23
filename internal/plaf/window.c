@@ -175,52 +175,9 @@ void plafDefaultWindowHints(void) {
 
 void plafWindowHint(int hint, int value)
 {
-	switch (hint)
-	{
-		case WINDOW_HINT_RED_BITS:
-			_plaf.frameBufferCfg.redBits = value;
-			return;
-		case WINDOW_HINT_GREEN_BITS:
-			_plaf.frameBufferCfg.greenBits = value;
-			return;
-		case WINDOW_HINT_BLUE_BITS:
-			_plaf.frameBufferCfg.blueBits = value;
-			return;
-		case WINDOW_HINT_ALPHA_BITS:
-			_plaf.frameBufferCfg.alphaBits = value;
-			return;
-		case WINDOW_HINT_DEPTH_BITS:
-			_plaf.frameBufferCfg.depthBits = value;
-			return;
-		case WINDOW_HINT_STENCIL_BITS:
-			_plaf.frameBufferCfg.stencilBits = value;
-			return;
-		case WINDOW_HINT_ACCUM_RED_BITS:
-			_plaf.frameBufferCfg.accumRedBits = value;
-			return;
-		case WINDOW_HINT_ACCUM_GREEN_BITS:
-			_plaf.frameBufferCfg.accumGreenBits = value;
-			return;
-		case WINDOW_HINT_ACCUM_BLUE_BITS:
-			_plaf.frameBufferCfg.accumBlueBits = value;
-			return;
-		case WINDOW_HINT_ACCUM_ALPHA_BITS:
-			_plaf.frameBufferCfg.accumAlphaBits = value;
-			return;
-		case WINDOW_HINT_AUX_BUFFERS:
-			_plaf.frameBufferCfg.auxBuffers = value;
-			return;
-		case WINDOW_ATTR_HINT_DOUBLE_BUFFER:
-			_plaf.frameBufferCfg.doublebuffer = value ? true : false;
-			return;
+	switch (hint) {
 		case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
 			_plaf.frameBufferCfg.transparent = value ? true : false;
-			return;
-		case WINDOW_HINT_SAMPLES:
-			_plaf.frameBufferCfg.samples = value;
-			return;
-		case WINDOW_HINT_SRGB_CAPABLE:
-			_plaf.frameBufferCfg.sRGB = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_RESIZABLE:
 			_plaf.windowCfg.resizable = value ? true : false;

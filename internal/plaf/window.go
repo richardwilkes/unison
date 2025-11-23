@@ -64,26 +64,6 @@ const (
 	ScaleToMonitor         Hint = C.WINDOW_HINT_SCALE_TO_MONITOR             // Specified whether the window content area should be resized based on the monitor content scale of any monitor it is placed on. This includes the initial placement when the window is created.
 )
 
-// Framebuffer related hints.
-const (
-	RedBits          Hint = C.WINDOW_HINT_RED_BITS           // Specifies the desired bit depth of the default framebuffer.
-	GreenBits        Hint = C.WINDOW_HINT_GREEN_BITS         // Specifies the desired bit depth of the default framebuffer.
-	BlueBits         Hint = C.WINDOW_HINT_BLUE_BITS          // Specifies the desired bit depth of the default framebuffer.
-	AlphaBits        Hint = C.WINDOW_HINT_ALPHA_BITS         // Specifies the desired bit depth of the default framebuffer.
-	DepthBits        Hint = C.WINDOW_HINT_DEPTH_BITS         // Specifies the desired bit depth of the default framebuffer.
-	StencilBits      Hint = C.WINDOW_HINT_STENCIL_BITS       // Specifies the desired bit depth of the default framebuffer.
-	AccumRedBits     Hint = C.WINDOW_HINT_ACCUM_RED_BITS     // Specifies the desired bit depth of the accumulation buffer.
-	AccumGreenBits   Hint = C.WINDOW_HINT_ACCUM_GREEN_BITS   // Specifies the desired bit depth of the accumulation buffer.
-	AccumBlueBits    Hint = C.WINDOW_HINT_ACCUM_BLUE_BITS    // Specifies the desired bit depth of the accumulation buffer.
-	AccumAlphaBits   Hint = C.WINDOW_HINT_ACCUM_ALPHA_BITS   // Specifies the desired bit depth of the accumulation buffer.
-	AuxBuffers       Hint = C.WINDOW_HINT_AUX_BUFFERS        // Specifies the desired number of auxiliary buffers.
-	Samples          Hint = C.WINDOW_HINT_SAMPLES            // Specifies the desired number of samples to use for multisampling. Zero disables multisampling.
-	SRGBCapable      Hint = C.WINDOW_HINT_SRGB_CAPABLE       // Specifies whether the framebuffer should be sRGB capable.
-	RefreshRate      Hint = C.WINDOW_HINT_REFRESH_RATE       // Specifies the desired refresh rate for full screen windows. If set to zero, the highest available refresh rate will be used. This hint is ignored for windowed mode windows.
-	DoubleBuffer     Hint = C.WINDOW_ATTR_HINT_DOUBLE_BUFFER // Specifies whether the framebuffer should be double buffered. You nearly always want to use double buffering. This is a hard constraint.
-	ScaleFramebuffer Hint = C.WINDOW_HINT_SCALE_FRAMEBUFFER  // Specifies whether to use full resolution framebuffers on Retina displays.
-)
-
 // Other values.
 const (
 	True     int = 1 // GL_TRUE

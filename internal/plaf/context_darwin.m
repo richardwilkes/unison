@@ -84,62 +84,32 @@ void _plafTerminateOpenGL(void) {
 
 // Create the OpenGL context
 plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
-#define ADD_ATTRIB(a) \
-{ \
-	attribs[index++] = a; \
-}
-#define SET_ATTRIB(a, v) { ADD_ATTRIB(a); ADD_ATTRIB(v); }
-
-	NSOpenGLPixelFormatAttribute attribs[40];
-	int index = 0;
-
-	ADD_ATTRIB(NSOpenGLPFAAccelerated);
-	ADD_ATTRIB(NSOpenGLPFAClosestPolicy);
-	SET_ATTRIB(NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core);
-
-	if (fbconfig->redBits != DONT_CARE && fbconfig->greenBits != DONT_CARE && fbconfig->blueBits != DONT_CARE) {
-		int colorBits = fbconfig->redBits + fbconfig->greenBits + fbconfig->blueBits;
-		// macOS needs non-zero color size, so set reasonable values
-		if (colorBits == 0) {
-			colorBits = 24;
-		} else if (colorBits < 15) {
-			colorBits = 15;
-		}
-		SET_ATTRIB(NSOpenGLPFAColorSize, colorBits);
+	int colorBits = fbconfig->redBits + fbconfig->greenBits + fbconfig->blueBits;
+	if (colorBits == 0) {
+		colorBits = 24;
+	} else if (colorBits < 15) {
+		colorBits = 15;
 	}
-
-	if (fbconfig->alphaBits != DONT_CARE) {
-		SET_ATTRIB(NSOpenGLPFAAlphaSize, fbconfig->alphaBits);
+	NSOpenGLPixelFormatAttribute attribs[] = {
+		NSOpenGLPFAAccelerated,
+		NSOpenGLPFAClosestPolicy,
+		NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
+		NSOpenGLPFAColorSize, colorBits,
+		NSOpenGLPFAAlphaSize, fbconfig->alphaBits,
+		NSOpenGLPFADepthSize, fbconfig->depthBits,
+		NSOpenGLPFAStencilSize, fbconfig->stencilBits,
+		NSOpenGLPFASampleBuffers, fbconfig->samples > 0 ? 1 : 0,
+		0, 0, 0, // Reserved for the conditional ones, below
+		0
+	};
+	int i = sizeof(attribs) / sizeof(attribs[0]) - 4; // Adjust this constant if more reserved slots are added
+	if (fbconfig->samples > 0) {
+		attribs[i++] = NSOpenGLPFASamples;
+		attribs[i++] = fbconfig->samples;
 	}
-
-	if (fbconfig->depthBits != DONT_CARE) {
-		SET_ATTRIB(NSOpenGLPFADepthSize, fbconfig->depthBits);
-	}
-
-	if (fbconfig->stencilBits != DONT_CARE) {
-		SET_ATTRIB(NSOpenGLPFAStencilSize, fbconfig->stencilBits);
-	}
-
 	if (fbconfig->doublebuffer) {
-		ADD_ATTRIB(NSOpenGLPFADoubleBuffer);
+		attribs[i++] = NSOpenGLPFADoubleBuffer;
 	}
-
-	if (fbconfig->samples != DONT_CARE) {
-		if (fbconfig->samples == 0) {
-			SET_ATTRIB(NSOpenGLPFASampleBuffers, 0);
-		} else {
-			SET_ATTRIB(NSOpenGLPFASampleBuffers, 1);
-			SET_ATTRIB(NSOpenGLPFASamples, fbconfig->samples);
-		}
-	}
-
-	// NOTE: All NSOpenGLPixelFormats on the relevant cards support sRGB
-	//       framebuffer, so there's no need (and no way) to request it
-	ADD_ATTRIB(0);
-
-#undef ADD_ATTRIB
-#undef SET_ATTRIB
-
 	window->context.nsglPixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
 	if (!window->context.nsglPixelFormat) {
 		return _plafNewError("NSGL: Failed to find a suitable pixel format");
