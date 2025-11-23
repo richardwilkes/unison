@@ -138,30 +138,30 @@ static void createKeyTables(void) {
 @implementation PLAFApplicationDelegate
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
-    for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
-        _plafInputWindowCloseRequest(window);
+	for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
+		_plafInputWindowCloseRequest(window);
 	}
-    return NSTerminateCancel;
+	return NSTerminateCancel;
 }
 
 - (void)applicationDidChangeScreenParameters:(NSNotification *) notification {
-    for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
+	for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
 		[window->context.nsglCtx update];
-    }
-    _plafPollMonitors();
+	}
+	_plafPollMonitors();
 }
 
 - (void)applicationWillFinishLaunching:(NSNotification *)notification {
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    plafPostEmptyEvent();
-    [NSApp stop:nil];
+	plafPostEmptyEvent();
+	[NSApp stop:nil];
 }
 
 - (void)applicationDidHide:(NSNotification *)notification {
-    for (int i = 0;  i < _plaf.monitorCount;  i++) {
-        _plafRestoreVideoMode(_plaf.monitors[i]);
+	for (int i = 0;  i < _plaf.monitorCount;  i++) {
+		_plafRestoreVideoMode(_plaf.monitors[i]);
 	}
 }
 
@@ -210,7 +210,7 @@ plafError* _plafInit(void) {
 
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 		return NULL;
-    }
+	}
 }
 
 void _plafTerminate(void) {

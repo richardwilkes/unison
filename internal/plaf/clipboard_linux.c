@@ -5,25 +5,25 @@
 
 // Returns whether it is a property event for the specified selection transfer.
 static Bool isSelPropNewValueNotify(Display* display, XEvent* event, XPointer pointer) {
-    return event->type == PropertyNotify &&
-           event->xproperty.state == PropertyNewValue &&
-           event->xproperty.window == ((XEvent*) pointer)->xselection.requestor &&
-           event->xproperty.atom == ((XEvent*) pointer)->xselection.property;
+	return event->type == PropertyNotify &&
+		   event->xproperty.state == PropertyNewValue &&
+		   event->xproperty.window == ((XEvent*) pointer)->xselection.requestor &&
+		   event->xproperty.atom == ((XEvent*) pointer)->xselection.property;
 }
 
 // Convert the specified Latin-1 string to UTF-8
 static char* convertLatin1toUTF8(const char* src) {
-    size_t size = 1;
-    const char* sp;
-    for (sp = src;  *sp;  sp++) {
-        size += (*sp & 0x80) ? 2 : 1;
+	size_t size = 1;
+	const char* sp;
+	for (sp = src;  *sp;  sp++) {
+		size += (*sp & 0x80) ? 2 : 1;
 	}
-    char* target = _plaf_calloc(size, 1);
-    char* tp = target;
-    for (sp = src;  *sp;  sp++) {
-        tp += _plafEncodeUTF8(tp, *sp);
+	char* target = _plaf_calloc(size, 1);
+	char* tp = target;
+	for (sp = src;  *sp;  sp++) {
+		tp += _plafEncodeUTF8(tp, *sp);
 	}
-    return target;
+	return target;
 }
 
 const char* plafGetClipboardString(void) {
