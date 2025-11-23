@@ -14,10 +14,6 @@ void goScrollCallback(plafWindow *window, double xoff, double yoff);
 */
 import "C"
 
-import (
-	"image"
-)
-
 // Key corresponds to a keyboard key.
 type Key int
 
@@ -181,19 +177,6 @@ const (
 	MouseButtonMiddle MouseButton = C.MOUSE_BUTTON_MIDDLE
 )
 
-// StandardCursor corresponds to a standard cursor icon.
-type StandardCursor int
-
-// Standard cursors
-const (
-	ArrowCursor     StandardCursor = C.STD_CURSOR_ARROW
-	IBeamCursor     StandardCursor = C.STD_CURSOR_IBEAM
-	CrosshairCursor StandardCursor = C.STD_CURSOR_CROSSHAIR
-	HandCursor      StandardCursor = C.STD_CURSOR_POINTING_HAND
-	HResizeCursor   StandardCursor = C.STD_CURSOR_HORIZONTAL_RESIZE
-	VResizeCursor   StandardCursor = C.STD_CURSOR_VERTICAL_RESIZE
-)
-
 // Action corresponds to a key or button action.
 type Action int
 
@@ -203,11 +186,6 @@ const (
 	Press   Action = C.INPUT_PRESS   // The key or button was pressed.
 	Repeat  Action = C.INPUT_REPEAT  // The key was held down until it repeated.
 )
-
-// Cursor represents a cursor.
-type Cursor struct {
-	data *C.plafCursor
-}
 
 // GetKeyScancode function returns the platform-specific scancode of the
 // specified key.
@@ -246,40 +224,6 @@ func (w *Window) GetMouseButton(button MouseButton) Action {
 	return ret
 }
 
-// CreateCursor creates a new custom cursor image that can be set for a window with SetCursor.
-// The cursor can be destroyed with Destroy. Any remaining cursors are destroyed by Terminate.
-//
-// The image is ideally provided in the form of *image.NRGBA.
-// The pixels are 32-bit, little-endian, non-premultiplied RGBA, i.e. eight
-// bits per channel with the red channel first. They are arranged canonically
-// as packed sequential rows, starting from the top-left corner. If the image
-// type is not *image.NRGBA, it will be converted to it.
-//
-// The cursor hotspot is specified in pixels, relative to the upper-left corner of the cursor image.
-// Like all other coordinate systems in PLAF, the X-axis points to the right and the Y-axis points down.
-func CreateCursor(img image.Image, xhot, yhot int) *Cursor {
-	imgC, free := imageToPLAF(img)
-	cursor := C.plafCreateCursor(&imgC, C.int(xhot), C.int(yhot))
-	free()
-	panicError()
-	return &Cursor{cursor}
-}
-
-// CreateStandardCursor returns a cursor with a standard shape,
-// that can be set for a window with SetCursor.
-func CreateStandardCursor(shape StandardCursor) *Cursor {
-	cursor := C.plafCreateStandardCursor(C.int(shape))
-	panicError()
-	return &Cursor{cursor}
-}
-
-// Destroy destroys a cursor previously created with CreateCursor.
-// Any remaining cursors will be destroyed by Terminate.
-func (c *Cursor) Destroy() {
-	C.plafDestroyCursor(c.data)
-	panicError()
-}
-
 // SetCursor sets the cursor image to be used when the cursor is over the client area
 // of the specified window. The set cursor will only be visible when the cursor mode of the
 // window is CursorNormal.
@@ -292,6 +236,19 @@ func (w *Window) SetCursor(c *Cursor) {
 		C.plafSetCursor(w.data, c.data)
 	}
 	panicError()
+}
+
+// GetCursorPos returns the last reported position of the cursor.
+func (w *Window) GetCursorPos() (x, y float64) {
+	var xpos, ypos C.double
+	C.plafGetCursorPos(w.data, &xpos, &ypos)
+	return float64(xpos), float64(ypos)
+}
+
+// SetCursorPos sets the position of the cursor. The specified window must be focused. If the window does not have focus
+// when this function is called, it fails silently.
+func (w *Window) SetCursorPos(xpos, ypos float64) {
+	C.plafSetCursorPos(w.data, C.double(xpos), C.double(ypos))
 }
 
 // KeyCallback is the key callback.
