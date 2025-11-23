@@ -51,9 +51,6 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 				continue;
 		}
 
-		if (getGLXFBConfigAttrib(n, GLX_DOUBLEBUFFER) != desired->doublebuffer)
-			continue;
-
 		if (desired->transparent)
 		{
 			XVisualInfo* vi = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, n);
@@ -76,8 +73,6 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 		u->accumGreenBits = getGLXFBConfigAttrib(n, GLX_ACCUM_GREEN_SIZE);
 		u->accumBlueBits = getGLXFBConfigAttrib(n, GLX_ACCUM_BLUE_SIZE);
 		u->accumAlphaBits = getGLXFBConfigAttrib(n, GLX_ACCUM_ALPHA_SIZE);
-
-		u->auxBuffers = getGLXFBConfigAttrib(n, GLX_AUX_BUFFERS);
 
 		if (_plaf.glxARB_multisample)
 			u->samples = getGLXFBConfigAttrib(n, GLX_SAMPLES);

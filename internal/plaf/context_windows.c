@@ -38,8 +38,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 		attribs[attribCount++] = WGL_ACCUM_GREEN_BITS_ARB;
 		attribs[attribCount++] = WGL_ACCUM_BLUE_BITS_ARB;
 		attribs[attribCount++] = WGL_ACCUM_ALPHA_BITS_ARB;
-		attribs[attribCount++] = WGL_AUX_BUFFERS_ARB;
-		attribs[attribCount++] = WGL_DOUBLE_BUFFER_ARB;
 		if (_plaf.wglARB_multisample) {
 			attribs[attribCount++] = WGL_SAMPLES_ARB;
 		}
@@ -67,8 +65,7 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 			if (!findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_SUPPORT_OPENGL_ARB) ||
 				!findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_DRAW_TO_WINDOW_ARB) ||
 				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_PIXEL_TYPE_ARB) != WGL_TYPE_RGBA_ARB ||
-				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCELERATION_ARB) == WGL_NO_ACCELERATION_ARB ||
-				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_DOUBLE_BUFFER_ARB) != fbconfig->doublebuffer) {
+				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCELERATION_ARB) == WGL_NO_ACCELERATION_ARB {
 				continue;
 			}
 			u->redBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_RED_BITS_ARB);
@@ -81,7 +78,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 			u->accumGreenBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ACCUM_GREEN_BITS_ARB);
 			u->accumBlueBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ACCUM_BLUE_BITS_ARB);
 			u->accumAlphaBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ACCUM_ALPHA_BITS_ARB);
-			u->auxBuffers = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_AUX_BUFFERS_ARB);
 			if (_plaf.wglARB_multisample) {
 				u->samples = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_SAMPLES_ARB);
 			}
@@ -99,8 +95,7 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 			if (!(pfd.dwFlags & PFD_DRAW_TO_WINDOW) ||
 				!(pfd.dwFlags & PFD_SUPPORT_OPENGL) ||
 				(!(pfd.dwFlags & PFD_GENERIC_ACCELERATED) && (pfd.dwFlags & PFD_GENERIC_FORMAT)) ||
-				pfd.iPixelType != PFD_TYPE_RGBA ||
-				(!!(pfd.dwFlags & PFD_DOUBLEBUFFER) != fbconfig->doublebuffer)) {
+				pfd.iPixelType != PFD_TYPE_RGBA) {
 				continue;
 			}
 			u->redBits = pfd.cRedBits;
@@ -113,7 +108,6 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 			u->accumGreenBits = pfd.cAccumGreenBits;
 			u->accumBlueBits = pfd.cAccumBlueBits;
 			u->accumAlphaBits = pfd.cAccumAlphaBits;
-			u->auxBuffers = pfd.cAuxBuffers;
 		}
 		u->handle = pixFmt;
 		usableCount++;

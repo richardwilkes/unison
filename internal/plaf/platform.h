@@ -36,8 +36,6 @@ typedef unsigned char GLubyte;
 	#define GLX_DRAWABLE_TYPE 0x8010
 	#define GLX_RENDER_TYPE 0x8011
 	#define GLX_RGBA_TYPE 0x8014
-	#define GLX_DOUBLEBUFFER 5
-	#define GLX_AUX_BUFFERS 7
 	#define GLX_RED_SIZE 8
 	#define GLX_GREEN_SIZE 9
 	#define GLX_BLUE_SIZE 10
@@ -298,8 +296,6 @@ typedef unsigned char GLubyte;
 	#define WGL_ACCUM_ALPHA_BITS_ARB 0x2021
 	#define WGL_DEPTH_BITS_ARB 0x2022
 	#define WGL_STENCIL_BITS_ARB 0x2023
-	#define WGL_AUX_BUFFERS_ARB 0x2024
-	#define WGL_DOUBLE_BUFFER_ARB 0x2011
 	#define WGL_SAMPLES_ARB 0x2042
 	#define WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB 0x20a9
 	#define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
@@ -510,22 +506,7 @@ typedef unsigned char GLubyte;
 #define WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH         0x0002000D
 #define WINDOW_HINT_POSITION_X                     0x0002000E
 #define WINDOW_HINT_POSITION_Y                     0x0002000F
-#define WINDOW_HINT_RED_BITS                       0x00021001
-#define WINDOW_HINT_GREEN_BITS                     0x00021002
-#define WINDOW_HINT_BLUE_BITS                      0x00021003
-#define WINDOW_HINT_ALPHA_BITS                     0x00021004
-#define WINDOW_HINT_DEPTH_BITS                     0x00021005
-#define WINDOW_HINT_STENCIL_BITS                   0x00021006
-#define WINDOW_HINT_ACCUM_RED_BITS                 0x00021007
-#define WINDOW_HINT_ACCUM_GREEN_BITS               0x00021008
-#define WINDOW_HINT_ACCUM_BLUE_BITS                0x00021009
-#define WINDOW_HINT_ACCUM_ALPHA_BITS               0x0002100A
-#define WINDOW_HINT_AUX_BUFFERS                    0x0002100B
-#define WINDOW_HINT_SAMPLES                        0x0002100D
-#define WINDOW_HINT_SRGB_CAPABLE                   0x0002100E
 #define WINDOW_HINT_REFRESH_RATE                   0x0002100F
-#define WINDOW_ATTR_HINT_DOUBLE_BUFFER             0x00021010
-#define WINDOW_HINT_SCALE_FRAMEBUFFER              0x0002200D
 
 // Standard cursor IDs
 #define STD_CURSOR_ARROW             0x00036001
@@ -607,7 +588,6 @@ typedef struct plafWindowConfig {
 	bool decorated;
 	bool floating;
 	bool mousePassthrough;
-	bool scaleFramebuffer;
 } plafWindowConfig;
 
 /* ------------------------- Internal ----------------------- */
@@ -658,10 +638,8 @@ struct plafFrameBufferCfg {
 	int       accumGreenBits;
 	int       accumBlueBits;
 	int       accumAlphaBits;
-	int       auxBuffers;
 	int       samples;
 	bool      sRGB;
-	bool      doublebuffer;
 	bool      transparent;
 	uintptr_t handle;
 };
@@ -700,7 +678,6 @@ struct plafWindow {
 	bool                   maximized;
 	bool                   mousePassthrough;
 	bool                   shouldClose;
-	bool                   doublebuffer;
 	bool                   cursorHidden;
 	plafVideoMode          videoMode;
 	plafMonitor*           monitor;
@@ -740,7 +717,6 @@ struct plafWindow {
 	NSWindow *             nsWindow;
 	NSObject *             nsDelegate;
 	NSView *               nsView;
-	bool                   nsScaleFramebuffer;
 	int                    nsFrameBufferWidth;
 	int                    nsFrameBufferHeight;
 	float                  nsXScale;

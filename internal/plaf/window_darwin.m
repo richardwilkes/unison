@@ -571,7 +571,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	}
 
 	window->nsView = [[MacContentView alloc] initWithPlafWindow:window];
-	window->nsScaleFramebuffer = wndconfig->scaleFramebuffer;
 
 	if (fbconfig->transparent) {
 		[window->nsWindow setOpaque:NO];

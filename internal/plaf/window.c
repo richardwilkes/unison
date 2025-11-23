@@ -109,7 +109,6 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 	window->decorated             = wndconfig.decorated;
 	window->floating              = wndconfig.floating;
 	window->mousePassthrough      = wndconfig.mousePassthrough;
-	window->doublebuffer          = fbconfig.doublebuffer;
 	window->minwidth              = DONT_CARE;
 	window->minheight             = DONT_CARE;
 	window->maxwidth              = DONT_CARE;
@@ -135,7 +134,6 @@ void plafDefaultWindowHints(void) {
 	_plaf.windowCfg.decorated        = true;
 	_plaf.windowCfg.xpos             = ANY_POSITION;
 	_plaf.windowCfg.ypos             = ANY_POSITION;
-	_plaf.windowCfg.scaleFramebuffer = true;
 
 	// The default is 24 bits of color, 24 bits of depth and 8 bits of stencil, double buffered
 	memset(&_plaf.frameBufferCfg, 0, sizeof(_plaf.frameBufferCfg));
@@ -170,9 +168,6 @@ void plafWindowHint(int hint, int value)
 			return;
 		case WINDOW_HINT_POSITION_Y:
 			_plaf.windowCfg.ypos = value;
-			return;
-		case WINDOW_HINT_SCALE_FRAMEBUFFER:
-			_plaf.windowCfg.scaleFramebuffer = value ? true : false;
 			return;
 		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
 			_plaf.windowCfg.mousePassthrough = value ? true : false;
@@ -407,8 +402,6 @@ int plafGetWindowAttrib(plafWindow* window, int attrib) {
 			return window->decorated;
 		case WINDOW_ATTR_HINT_FLOATING:
 			return window->floating;
-		case WINDOW_ATTR_HINT_DOUBLE_BUFFER:
-			return window->doublebuffer;
 	}
 
 	_plafInputError("Invalid window attribute 0x%08X", attrib);

@@ -107,9 +107,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 		attribs[i++] = NSOpenGLPFASamples;
 		attribs[i++] = fbconfig->samples;
 	}
-	if (fbconfig->doublebuffer) {
-		attribs[i++] = NSOpenGLPFADoubleBuffer;
-	}
 	window->context.nsglPixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
 	if (!window->context.nsglPixelFormat) {
 		return _plafNewError("NSGL: Failed to find a suitable pixel format");
@@ -131,7 +128,7 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 		[window->context.nsglCtx setValues:&opaque forParameter:NSOpenGLContextParameterSurfaceOpacity];
 	}
 
-	[window->nsView setWantsBestResolutionOpenGLSurface:window->nsScaleFramebuffer];
+	[window->nsView setWantsBestResolutionOpenGLSurface:true];
 	[window->context.nsglCtx setView:window->nsView];
 
 	window->context.makeCurrent = makeContextCurrentNSGL;
