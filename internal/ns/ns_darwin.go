@@ -469,13 +469,17 @@ func (s String) Release() {
 	C.CFRelease(C.CFTypeRef(s))
 }
 
-type MutableArray C.CFMutableArrayRef
-type Array C.CFArrayRef
+type (
+	MutableArray C.CFMutableArrayRef
+	Array        C.CFArrayRef
+)
 
 func NewArrayFromStringSlice(slice []string) Array {
+	//nolint:gocritic // Spurious lint flagging due to C code
 	a := C.CFArrayCreateMutable(0, C.long(len(slice)), &C.kCFTypeArrayCallBacks)
 	for _, s := range slice {
 		str := NewString(s)
+		//nolint:govet // Spurious lint flagging due to C code
 		C.CFArrayAppendValue(a, unsafe.Pointer(str))
 		str.Release()
 	}
@@ -554,8 +558,8 @@ func (p OpenPanel) DirectoryURL() URL {
 	return URL(C.openPanelDirectoryURL(C.NSOpenPanelRef(p)))
 }
 
-func (p OpenPanel) SetDirectoryURL(url URL) {
-	C.openPanelSetDirectoryURL(C.NSOpenPanelRef(p), C.CFURLRef(url))
+func (p OpenPanel) SetDirectoryURL(theURL URL) {
+	C.openPanelSetDirectoryURL(C.NSOpenPanelRef(p), C.CFURLRef(theURL))
 }
 
 func (p OpenPanel) AllowedFileTypes() Array {
@@ -616,8 +620,8 @@ func (p SavePanel) DirectoryURL() URL {
 	return URL(C.savePanelDirectoryURL(C.NSSavePanelRef(p)))
 }
 
-func (p SavePanel) SetDirectoryURL(url URL) {
-	C.savePanelSetDirectoryURL(C.NSSavePanelRef(p), C.CFURLRef(url))
+func (p SavePanel) SetDirectoryURL(theURL URL) {
+	C.savePanelSetDirectoryURL(C.NSSavePanelRef(p), C.CFURLRef(theURL))
 }
 
 func (p SavePanel) InitialFileName() string {
@@ -733,7 +737,7 @@ func (m Menu) Release() {
 
 type MenuItem C.NSMenuItemRef
 
-func NewMenuItem(tag int, title string, keyEquivalent string, modifiers EventModifierFlags, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
+func NewMenuItem(tag int, title, keyEquivalent string, modifiers EventModifierFlags, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
 	titleStr := NewString(title)
 	keyStr := NewString(keyEquivalent)
 	item := MenuItem(C.newMenuItem(C.int(tag), C.CFStringRef(titleStr), C.CFStringRef(keyStr), C.NSEventModifierFlags(modifiers)))

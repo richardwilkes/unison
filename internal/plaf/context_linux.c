@@ -125,7 +125,7 @@ static plafError* makeContextCurrentGLX(plafWindow* window) {
 			return _plafNewError("GLX: Failed to clear current context");
 		}
 	}
-	_plaf.contextSlot = window;
+	_plaf.wndWithCurrentCtx = window;
 	return NULL;
 }
 
@@ -134,18 +134,13 @@ static void swapBuffersGLX(plafWindow* window)
 	_plaf.glxSwapBuffers(_plaf.x11Display, window->context.glxWindow);
 }
 
-static void swapIntervalGLX(int interval)
-{
-	if (_plaf.glxEXT_swap_control)
-	{
-		_plaf.glxSwapIntervalEXT(_plaf.x11Display,
-								  _plaf.contextSlot->context.glxWindow,
-								  interval);
-	}
-	else if (_plaf.glxSGI_swap_control)
-	{
-		if (interval > 0)
+static void swapIntervalGLX(int interval) {
+	if (_plaf.glxEXT_swap_control) {
+		_plaf.glxSwapIntervalEXT(_plaf.x11Display, _plaf.wndWithCurrentCtx->context.glxWindow, interval);
+	} else if (_plaf.glxSGI_swap_control) {
+		if (interval > 0) {
 			_plaf.glxSwapIntervalSGI(interval);
+		}
 	}
 }
 

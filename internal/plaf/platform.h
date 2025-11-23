@@ -747,16 +747,15 @@ struct plafLib {
 	plafWindow*                         windowListHead;
 	plafMonitor**                       monitors;
 	int                                 monitorCount;
-	plafError                           errorSlot;
-	plafWindow*                         contextSlot;
+	plafWindow*                         wndWithCurrentCtx;
 	monitorFunc                         monitorCallback;
 	short int                           scanCodes[KEY_LAST + 1];
 	short int                           keyCodes[MAX_KEY_CODES];
 #if defined(__APPLE__)
 	CGEventSourceRef                    nsEventSource;
-	id                                  nsDelegate;
+	NSObject<NSApplicationDelegate>*    nsDelegate;
 	bool                                nsCursorHidden;
-	id                                  nsKeyUpMonitor;
+	NSObject*                           nsKeyUpMonitor;
 	CGPoint                             nsCascadePoint;
 	CFBundleRef                         nsglFramework;
 #elif defined(__linux__)

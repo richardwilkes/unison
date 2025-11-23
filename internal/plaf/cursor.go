@@ -39,6 +39,7 @@ type Cursor struct {
 // Like all other coordinate systems in PLAF, the X-axis points to the right and the Y-axis points down.
 func CreateCursor(img image.Image, xhot, yhot int) *Cursor {
 	imgC, free := imageToPLAF(img)
+	//nolint:gocritic // Spurious lint flagging due to C code
 	cursor := C.plafCreateCursor(&imgC, C.int(xhot), C.int(yhot))
 	free()
 	panicError()

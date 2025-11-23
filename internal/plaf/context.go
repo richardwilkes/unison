@@ -24,12 +24,10 @@ func DetachCurrentContext() error {
 
 // GetCurrentContext returns the window whose context is current.
 func GetCurrentContext() *Window {
-	w := C.plafGetCurrentContext()
-	panicError()
-	if w == nil {
+	if C._plaf.wndWithCurrentCtx == nil {
 		return nil
 	}
-	return windows.get(w)
+	return windows.get(C._plaf.wndWithCurrentCtx)
 }
 
 // SwapBuffers swaps the front and back buffers of the window. If the

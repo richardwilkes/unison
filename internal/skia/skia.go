@@ -275,14 +275,14 @@ func (m *metaData) set(md *MetaData) {
 }
 
 type MetaData struct {
+	Creation        time.Time
+	Modified        time.Time
 	Title           string
 	Author          string
 	Subject         string
 	Keywords        string
 	Creator         string
 	Producer        string
-	Creation        time.Time
-	Modified        time.Time
 	RasterDPI       float32
 	EncodingQuality int32
 }

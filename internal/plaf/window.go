@@ -165,6 +165,7 @@ func CreateWindow(width, height int, title string, monitor *Monitor, share *Wind
 	}
 
 	var w *C.plafWindow
+	//nolint:gocritic // Spurious lint flagging due to C code
 	if err := convertErrorResponse(C.plafCreateWindow(C.int(width), C.int(height), t, m, s, &w)); err != nil {
 		return nil, err
 	}

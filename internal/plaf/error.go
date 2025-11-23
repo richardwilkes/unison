@@ -46,6 +46,7 @@ func init() {
 // this ensures that any uncaught errors buffered in lastError are printed
 // before the program exits.
 func flushErrors() {
+	//nolint:gocritic // Spurious lint flagging due to C code
 	if err := fetchError(); err != nil {
 		fmt.Fprintln(os.Stderr, "go-gl/plaf: internal error: an uncaught error has occurred:", err)
 		fmt.Fprintln(os.Stderr, "go-gl/plaf: Please report this in the Go package issue tracker.")

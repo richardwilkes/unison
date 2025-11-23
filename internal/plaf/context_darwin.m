@@ -12,26 +12,20 @@ static plafError* makeContextCurrentNSGL(plafWindow* window) {
 		} else {
 			[NSOpenGLContext clearCurrentContext];
 		}
-		_plaf.contextSlot = window;
+		_plaf.wndWithCurrentCtx = window;
 	}
 	return NULL;
 }
 
-static void swapBuffersNSGL(plafWindow* window)
-{
+static void swapBuffersNSGL(plafWindow* window) {
 	@autoreleasepool {
-
-	[window->context.nsglCtx flushBuffer];
-
+		[window->context.nsglCtx flushBuffer];
 	}
 }
 
-static void swapIntervalNSGL(int interval)
-{
+static void swapIntervalNSGL(int interval) {
 	@autoreleasepool {
-
-		[_plaf.contextSlot->context.nsglCtx setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
-
+		[_plaf.wndWithCurrentCtx->context.nsglCtx setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
 	}
 }
 
@@ -48,16 +42,12 @@ static glFunc getProcAddressNSGL(const char* procname)
 	return symbol;
 }
 
-static void destroyContextNSGL(plafWindow* window)
-{
+static void destroyContextNSGL(plafWindow* window) {
 	@autoreleasepool {
-
-	[window->context.nsglPixelFormat release];
-	window->context.nsglPixelFormat = nil;
-
-	[window->context.nsglCtx release];
-	window->context.nsglCtx = nil;
-
+		[window->context.nsglPixelFormat release];
+		window->context.nsglPixelFormat = nil;
+		[window->context.nsglCtx release];
+		window->context.nsglCtx = nil;
 	}
 }
 

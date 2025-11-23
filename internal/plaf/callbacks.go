@@ -47,8 +47,8 @@ func goDropCallback(window unsafe.Pointer, count C.int, names **C.char) {
 
 //export goErrorCallback
 func goErrorCallback(desc *C.char) {
-	flushErrors()
 	err := errors.New(C.GoString(desc))
+	flushErrors()
 	select {
 	case lastError <- err:
 	default:

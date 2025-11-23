@@ -203,15 +203,10 @@ void _plaf_free(void* block)
 void _plafInputError(const char* format, ...) {
 	char description[ERROR_MSG_SIZE];
 	va_list vl;
-
 	va_start(vl, format);
 	vsnprintf(description, sizeof(description), format, vl);
 	va_end(vl);
-
 	description[sizeof(description) - 1] = '\0';
-
-	strcpy(_plaf.errorSlot.desc, description);
-
 	if (_plafErrorCallback) {
 		_plafErrorCallback(description);
 	}

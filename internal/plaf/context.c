@@ -68,7 +68,7 @@ const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
 
 // Retrieves the attributes of the current context
 plafError* _plafRefreshContextAttribs(plafWindow* window) {
-	plafWindow* previous = _plaf.contextSlot;
+	plafWindow* previous = _plaf.wndWithCurrentCtx;
 	plafError* err = plafMakeContextCurrent(window);
 	if (err) {
 		return err;
@@ -144,9 +144,9 @@ bool _plafStringInExtensionString(const char* string, const char* extensions) {
 
 plafError* plafMakeContextCurrent(plafWindow* window) {
 	plafError* err = NULL;
-	if (_plaf.contextSlot) {
+	if (_plaf.wndWithCurrentCtx) {
 		if (!window) {
-			err = _plaf.contextSlot->context.makeCurrent(NULL);
+			err = _plaf.wndWithCurrentCtx->context.makeCurrent(NULL);
 		}
 	}
 	if (window) {
@@ -159,27 +159,22 @@ plafError* plafMakeContextCurrent(plafWindow* window) {
 	return err;
 }
 
-plafWindow* plafGetCurrentContext(void)
-{
-	return _plaf.contextSlot;
-}
-
 void plafSwapBuffers(plafWindow* window) {
 	window->context.swapBuffers(window);
 }
 
 void plafSwapInterval(int interval)
 {
-	if (!_plaf.contextSlot)
+	if (!_plaf.wndWithCurrentCtx)
 	{
 		_plafInputError("Cannot set swap interval without a current OpenGL or OpenGL ES context");
 		return;
 	}
-	_plaf.contextSlot->context.swapInterval(interval);
+	_plaf.wndWithCurrentCtx->context.swapInterval(interval);
 }
 
 bool plafExtensionSupported(const char* extension) {
-	if (!_plaf.contextSlot) {
+	if (!_plaf.wndWithCurrentCtx) {
 		_plafInputError("Cannot query extension without a current OpenGL or OpenGL ES context");
 		return false;
 	}
@@ -191,9 +186,9 @@ bool plafExtensionSupported(const char* extension) {
 
 	// Check if extension is in the OpenGL extensions string list
 	int count;
-	_plaf.contextSlot->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
+	_plaf.wndWithCurrentCtx->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
 	for (int i = 0;  i < count;  i++) {
-		const char* en = _plaf.contextSlot->context.GetStringi(GL_EXTENSIONS, i);
+		const char* en = _plaf.wndWithCurrentCtx->context.GetStringi(GL_EXTENSIONS, i);
 		if (!en) {
 			_plafInputError("Extension string retrieval is broken");
 			return false;
@@ -204,15 +199,15 @@ bool plafExtensionSupported(const char* extension) {
 	}
 
 	// Check if extension is in the platform-specific string
-	return _plaf.contextSlot->context.extensionSupported(extension);
+	return _plaf.wndWithCurrentCtx->context.extensionSupported(extension);
 }
 
 glFunc plafGetProcAddress(const char* procname)
 {
-	if (!_plaf.contextSlot)
+	if (!_plaf.wndWithCurrentCtx)
 	{
 		_plafInputError("Cannot query entry point without a current OpenGL or OpenGL ES context");
 		return NULL;
 	}
-	return _plaf.contextSlot->context.getProcAddress(procname);
+	return _plaf.wndWithCurrentCtx->context.getProcAddress(procname);
 }

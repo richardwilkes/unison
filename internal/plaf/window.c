@@ -206,7 +206,7 @@ void plafDestroyWindow(plafWindow* window)
 	window->dropCallback = NULL;
 
 	// The window's context must not be current when the window is destroyed
-	if (window == _plaf.contextSlot) {
+	if (window == _plaf.wndWithCurrentCtx) {
 		plafMakeContextCurrent(NULL);
 	}
 

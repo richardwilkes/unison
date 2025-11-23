@@ -158,13 +158,13 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 static plafError* makeContextCurrentWGL(plafWindow* window) {
 	if (window) {
 		if (_plaf.wglMakeCurrent(window->context.wglDC, window->context.wglGLRC)) {
-			_plaf.contextSlot = window;
+			_plaf.wndWithCurrentCtx = window;
 		} else {
-			_plaf.contextSlot = NULL;
+			_plaf.wndWithCurrentCtx = NULL;
 			return _plafNewError("WGL: Failed to make context current");
 		}
 	} else {
-		_plaf.contextSlot = NULL;
+		_plaf.wndWithCurrentCtx = NULL;
 		if (!_plaf.wglMakeCurrent(NULL, NULL)) {
 			return _plafNewError("WGL: Failed to clear current context");
 		}
@@ -176,11 +176,11 @@ static void swapBuffersWGL(plafWindow* window) {
 	SwapBuffers(window->context.wglDC);
 }
 
-static void swapIntervalWGL(int interval)
-{
-	_plaf.contextSlot->context.wglInterval = interval;
-	if (_plaf.wglEXT_swap_control)
+static void swapIntervalWGL(int interval) {
+	_plaf.wndWithCurrentCtx->context.wglInterval = interval;
+	if (_plaf.wglEXT_swap_control) {
 		_plaf.wglSwapIntervalEXT(interval);
+	}
 }
 
 static bool extensionSupportedWGL(const char* extension) {

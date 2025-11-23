@@ -357,6 +357,7 @@ func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
 	var md metaData
 	md.set(metadata)
+	//nolint:gocritic // Spurious lint flagging due to C code
 	return C.sk_document_make_pdf(stream, (*C.sk_metadata_t)(unsafe.Pointer(&md)))
 }
 
