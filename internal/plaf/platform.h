@@ -525,7 +525,6 @@ typedef unsigned char GLubyte;
 #define WINDOW_HINT_SRGB_CAPABLE                   0x0002100E
 #define WINDOW_HINT_REFRESH_RATE                   0x0002100F
 #define WINDOW_ATTR_HINT_DOUBLE_BUFFER             0x00021010
-#define WINDOW_HINT_SCALE_TO_MONITOR               0x0002200C
 #define WINDOW_HINT_SCALE_FRAMEBUFFER              0x0002200D
 
 // Standard cursor IDs
@@ -608,7 +607,6 @@ typedef struct plafWindowConfig {
 	bool decorated;
 	bool floating;
 	bool mousePassthrough;
-	bool scaleToMonitor;
 	bool scaleFramebuffer;
 } plafWindowConfig;
 
@@ -768,7 +766,6 @@ struct plafWindow {
 	bool                   win32FrameAction;
 	bool                   win32Minimized;
 	bool                   win32Transparent;
-	bool                   win32ScaleToMonitor;
 	WCHAR                  win32HighSurrogate;
 #endif
 };

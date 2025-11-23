@@ -361,16 +361,11 @@ static void maximizeWindowManually(plafWindow* window)
 }
 
 // Window procedure for user-created windows
-//
-static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
+static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	plafWindow* window = GetPropW(hWnd, L"PLAF");
-	if (!window)
-	{
-		if (uMsg == WM_NCCREATE)
-		{
-			if (IsWindows10Version1607OrGreater())
-			{
+	if (!window) {
+		if (uMsg == WM_NCCREATE) {
+			if (IsWindows10Version1607OrGreater()) {
 				const CREATESTRUCTW* cs = (const CREATESTRUCTW*) lParam;
 				const plafWindowConfig* wndconfig = cs->lpCreateParams;
 
@@ -378,164 +373,118 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				// non-client scaling for windows that scale the client area
 				// We need WM_GETDPISCALEDSIZE from V2 to keep the client
 				// area static when the non-client area is scaled
-				if (wndconfig && wndconfig->scaleToMonitor)
+				//if (wndconfig && wndconfig->scaleToMonitor) {
 					_plaf.win32User32EnableNonClientDpiScaling_(hWnd);
+				//}
 			}
 		}
-
 		return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 	}
 
-	switch (uMsg)
-	{
+	switch (uMsg) {
 		case WM_MOUSEACTIVATE:
-		{
-			// HACK: Postpone cursor disabling when the window was activated by
-			//       clicking a caption button
-			if (HIWORD(lParam) == WM_LBUTTONDOWN)
-			{
-				if (LOWORD(lParam) != HTCLIENT)
+			// Postpone cursor disabling when the window was activated by clicking a caption button
+			if (HIWORD(lParam) == WM_LBUTTONDOWN) {
+				if (LOWORD(lParam) != HTCLIENT) {
 					window->win32FrameAction = true;
+				}
 			}
-
 			break;
-		}
 
 		case WM_CAPTURECHANGED:
-		{
-			// HACK: Disable the cursor once the caption button action has been
-			//       completed or cancelled
-			if (lParam == 0 && window->win32FrameAction)
-			{
+			// Disable the cursor once the caption button action has been completed or cancelled
+			if (lParam == 0 && window->win32FrameAction) {
 				window->win32FrameAction = false;
 			}
-
 			break;
-		}
 
 		case WM_SETFOCUS:
-		{
 			_plafInputWindowFocus(window, true);
-
-			// HACK: Do not disable cursor while the user is interacting with
-			//       a caption button
-			if (window->win32FrameAction)
+			// Do not disable cursor while the user is interacting with a caption button
+			if (window->win32FrameAction) {
 				break;
-
+			}
 			return 0;
-		}
 
 		case WM_KILLFOCUS:
-		{
 			_plafInputWindowFocus(window, false);
 			return 0;
-		}
 
 		case WM_SYSCOMMAND:
-		{
-			switch (wParam & 0xfff0)
-			{
+			switch (wParam & 0xfff0) {
 				case SC_SCREENSAVE:
 				case SC_MONITORPOWER:
-				{
-					if (window->monitor)
-					{
+					if (window->monitor) {
 						// We are running in full screen mode, so disallow
 						// screen saver and screen blanking
 						return 0;
 					}
-					else
-						break;
-				}
+					break;
 
-				// User trying to access application menu using ALT?
-				case SC_KEYMENU:
+				case SC_KEYMENU: // User trying to access application menu using ALT?
 					return 0;
 			}
 			break;
-		}
 
 		case WM_CLOSE:
-		{
 			_plafInputWindowCloseRequest(window);
 			return 0;
-		}
 
 		case WM_INPUTLANGCHANGE:
-		{
 			break;
-		}
 
 		case WM_CHAR:
 		case WM_SYSCHAR:
-		{
-			if (wParam >= 0xd800 && wParam <= 0xdbff)
+			if (wParam >= 0xd800 && wParam <= 0xdbff) {
 				window->win32HighSurrogate = (WCHAR) wParam;
-			else
-			{
+			} else {
 				uint32_t codepoint = 0;
-
-				if (wParam >= 0xdc00 && wParam <= 0xdfff)
-				{
-					if (window->win32HighSurrogate)
-					{
+				if (wParam >= 0xdc00 && wParam <= 0xdfff) {
+					if (window->win32HighSurrogate) {
 						codepoint += (window->win32HighSurrogate - 0xd800) << 10;
 						codepoint += (WCHAR) wParam - 0xdc00;
 						codepoint += 0x10000;
 					}
-				}
-				else
+				} else {
 					codepoint = (WCHAR) wParam;
-
+				}
 				window->win32HighSurrogate = 0;
 				_plafInputChar(window, codepoint, getKeyMods(), uMsg != WM_SYSCHAR);
 			}
 			return 0;
-		}
 
 		case WM_UNICHAR:
-		{
-			if (wParam == UNICODE_NOCHAR)
-			{
-				// WM_UNICHAR is not sent by Windows, but is sent by some
-				// third-party input method engine
-				// Returning TRUE here announces support for this message
+			if (wParam == UNICODE_NOCHAR) {
+				// WM_UNICHAR is not sent by Windows, but is sent by some third-party input method engine. Returning
+				// TRUE here announces support for this message.
 				return TRUE;
 			}
-
-			_plafInputChar(window, (uint32_t) wParam, getKeyMods(), true);
+			_plafInputChar(window, (uint32_t)wParam, getKeyMods(), true);
 			return 0;
-		}
 
 		case WM_KEYDOWN:
 		case WM_SYSKEYDOWN:
 		case WM_KEYUP:
 		case WM_SYSKEYUP:
 		{
-			int key, scancode;
-			const int action = (HIWORD(lParam) & KF_UP) ? INPUT_RELEASE : INPUT_PRESS;
-			const int mods = getKeyMods();
-
-			scancode = (HIWORD(lParam) & (KF_EXTENDED | 0xff));
-			if (!scancode)
-			{
-				// NOTE: Some synthetic key messages have a scancode of zero
-				// HACK: Map the virtual key back to a usable scancode
+			int scancode = (HIWORD(lParam) & (KF_EXTENDED | 0xff));
+			if (!scancode) {
+				// Some synthetic key messages have a scancode of zero. Map the virtual key back to a usable scancode
 				scancode = MapVirtualKeyW((UINT) wParam, MAPVK_VK_TO_VSC);
 			}
-
-			// HACK: Alt+PrtSc has a different scancode than just PrtSc
-			if (scancode == 0x54)
+			// Alt+PrtSc has a different scancode than just PrtSc
+			if (scancode == 0x54) {
 				scancode = 0x137;
-
-			// HACK: Ctrl+Pause has a different scancode than just Pause
-			if (scancode == 0x146)
+			}
+			// Ctrl+Pause has a different scancode than just Pause
+			if (scancode == 0x146) {
 				scancode = 0x45;
-
-			// HACK: CJK IME sets the extended bit for right Shift
-			if (scancode == 0x136)
+			}
+			// CJK IME sets the extended bit for right Shift
+			if (scancode == 0x136) {
 				scancode = 0x36;
-
+			}
+			int key;
 			if (scancode < 0 || scancode >= MAX_KEY_CODES) {
 				key = KEY_UNKNOWN;
 			} else {
@@ -543,66 +492,46 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			}
 
 			// The Ctrl keys require special handling
-			if (wParam == VK_CONTROL)
-			{
-				if (HIWORD(lParam) & KF_EXTENDED)
-				{
+			if (wParam == VK_CONTROL) {
+				if (HIWORD(lParam) & KF_EXTENDED) {
 					// Right side keys have the extended key bit set
 					key = KEY_RIGHT_CONTROL;
-				}
-				else
-				{
-					// NOTE: Alt Gr sends Left Ctrl followed by Right Alt
-					// HACK: We only want one event for Alt Gr, so if we detect
-					//       this sequence we discard this Left Ctrl message now
-					//       and later report Right Alt normally
+				} else {
+					// Alt Gr sends Left Ctrl followed by Right Alt. We only want one event for Alt Gr, so if we detect
+					// this sequence we discard this Left Ctrl message now and later report Right Alt normally
 					MSG next;
 					const DWORD time = GetMessageTime();
-
-					if (PeekMessageW(&next, NULL, 0, 0, PM_NOREMOVE))
-					{
-						if (next.message == WM_KEYDOWN ||
-							next.message == WM_SYSKEYDOWN ||
-							next.message == WM_KEYUP ||
-							next.message == WM_SYSKEYUP)
-						{
-							if (next.wParam == VK_MENU &&
-								(HIWORD(next.lParam) & KF_EXTENDED) &&
-								next.time == time)
-							{
+					if (PeekMessageW(&next, NULL, 0, 0, PM_NOREMOVE)) {
+						if (next.message == WM_KEYDOWN || next.message == WM_SYSKEYDOWN ||
+							next.message == WM_KEYUP || next.message == WM_SYSKEYUP) {
+							if (next.wParam == VK_MENU && (HIWORD(next.lParam) & KF_EXTENDED) && next.time == time) {
 								// Next message is Right Alt down so discard this
 								break;
 							}
 						}
 					}
-
 					// This is a regular Left Ctrl message
 					key = KEY_LEFT_CONTROL;
 				}
-			}
-			else if (wParam == VK_PROCESSKEY)
-			{
-				// IME notifies that keys have been filtered by setting the
-				// virtual key-code to VK_PROCESSKEY
+			} else if (wParam == VK_PROCESSKEY) {
+				// IME notifies that keys have been filtered by setting the virtual key-code to VK_PROCESSKEY
 				break;
 			}
-
-			if (action == INPUT_RELEASE && wParam == VK_SHIFT)
-			{
-				// HACK: Release both Shift keys on Shift up event, as when both
-				//       are pressed the first release does not emit any event
+			const int action = (HIWORD(lParam) & KF_UP) ? INPUT_RELEASE : INPUT_PRESS;
+			const int mods = getKeyMods();
+			if (action == INPUT_RELEASE && wParam == VK_SHIFT) {
+				// Release both Shift keys on Shift up event, as when both
+				// are pressed the first release does not emit any event
 				// NOTE: The other half of this is in plafPollEvents
-				_plafInputKey(window, KEY_LEFT_SHIFT, scancode, action, mods);
-				_plafInputKey(window, KEY_RIGHT_SHIFT, scancode, action, mods);
-			}
-			else if (wParam == VK_SNAPSHOT)
-			{
-				// HACK: Key down is not reported for the Print Screen key
+				_plafInputKey(window, KEY_LEFT_SHIFT, scancode, INPUT_RELEASE, mods);
+				_plafInputKey(window, KEY_RIGHT_SHIFT, scancode, INPUT_RELEASE, mods);
+			} else if (wParam == VK_SNAPSHOT) {
+				// Key down is not reported for the Print Screen key
 				_plafInputKey(window, key, scancode, INPUT_PRESS, mods);
 				_plafInputKey(window, key, scancode, INPUT_RELEASE, mods);
-			}
-			else
+			} else {
 				_plafInputKey(window, key, scancode, action, mods);
+			}
 
 			break;
 		}
@@ -616,50 +545,45 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		case WM_MBUTTONUP:
 		case WM_XBUTTONUP:
 		{
-			int i, button, action;
-
-			if (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP)
+			int button;
+			if (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP) {
 				button = MOUSE_BUTTON_LEFT;
-			else if (uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP)
+			} else if (uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP) {
 				button = MOUSE_BUTTON_RIGHT;
-			else if (uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP)
+			} else if (uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP) {
 				button = MOUSE_BUTTON_MIDDLE;
-			else if (GET_XBUTTON_WPARAM(wParam) == XBUTTON1)
+			} else if (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) {
 				button = MOUSE_BUTTON_4;
-			else
+			} else {
 				button = MOUSE_BUTTON_5;
-
-			if (uMsg == WM_LBUTTONDOWN || uMsg == WM_RBUTTONDOWN ||
-				uMsg == WM_MBUTTONDOWN || uMsg == WM_XBUTTONDOWN)
-			{
+			}
+			int action;
+			if (uMsg == WM_LBUTTONDOWN || uMsg == WM_RBUTTONDOWN || uMsg == WM_MBUTTONDOWN || uMsg == WM_XBUTTONDOWN) {
 				action = INPUT_PRESS;
-			}
-			else
+			} else {
 				action = INPUT_RELEASE;
-
-			for (i = 0;  i <= MOUSE_BUTTON_LAST;  i++)
-			{
-				if (window->mouseButtons[i] == INPUT_PRESS)
-					break;
 			}
-
-			if (i > MOUSE_BUTTON_LAST)
+			int i;
+			for (i = 0;  i <= MOUSE_BUTTON_LAST;  i++) {
+				if (window->mouseButtons[i] == INPUT_PRESS) {
+					break;
+				}
+			}
+			if (i > MOUSE_BUTTON_LAST) {
 				SetCapture(hWnd);
-
-			_plafInputMouseClick(window, button, action, getKeyMods());
-
-			for (i = 0;  i <= MOUSE_BUTTON_LAST;  i++)
-			{
-				if (window->mouseButtons[i] == INPUT_PRESS)
-					break;
 			}
-
-			if (i > MOUSE_BUTTON_LAST)
+			_plafInputMouseClick(window, button, action, getKeyMods());
+			for (i = 0;  i <= MOUSE_BUTTON_LAST;  i++) { // TODO: Can this second loop be eliminated?
+				if (window->mouseButtons[i] == INPUT_PRESS) {
+					break;
+				}
+			}
+			if (i > MOUSE_BUTTON_LAST) {
 				ReleaseCapture();
-
-			if (uMsg == WM_XBUTTONDOWN || uMsg == WM_XBUTTONUP)
+			}
+			if (uMsg == WM_XBUTTONDOWN || uMsg == WM_XBUTTONUP) {
 				return TRUE;
-
+			}
 			return 0;
 		}
 
@@ -668,62 +592,46 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			const int x = GET_X_LPARAM(lParam);
 			const int y = GET_Y_LPARAM(lParam);
 
-			if (!window->win32CursorTracked)
-			{
+			if (!window->win32CursorTracked) {
 				TRACKMOUSEEVENT tme;
 				ZeroMemory(&tme, sizeof(tme));
 				tme.cbSize = sizeof(tme);
 				tme.dwFlags = TME_LEAVE;
 				tme.hwndTrack = window->win32Window;
 				TrackMouseEvent(&tme);
-
 				window->win32CursorTracked = true;
 				_plafInputCursorEnter(window, true);
 			}
-
 			_plafInputCursorPos(window, x, y);
 			return 0;
 		}
 
 		case WM_INPUT:
-		{
 			break;
-		}
 
 		case WM_MOUSELEAVE:
-		{
 			window->win32CursorTracked = false;
 			_plafInputCursorEnter(window, false);
 			return 0;
-		}
 
 		case WM_MOUSEWHEEL:
-		{
-			_plafInputScroll(window, 0.0, (SHORT) HIWORD(wParam) / (double) WHEEL_DELTA);
+			_plafInputScroll(window, 0.0, (SHORT)HIWORD(wParam) / (double)WHEEL_DELTA);
 			return 0;
-		}
 
 		case WM_MOUSEHWHEEL:
-		{
-			// NOTE: The X-axis is inverted for consistency with macOS and X11
-			_plafInputScroll(window, -((SHORT) HIWORD(wParam) / (double) WHEEL_DELTA), 0.0);
+			_plafInputScroll(window, -((SHORT)HIWORD(wParam) / (double)WHEEL_DELTA), 0.0);
 			return 0;
-		}
 
 		case WM_ENTERSIZEMOVE:
 		case WM_ENTERMENULOOP:
-		{
-			if (window->win32FrameAction)
+			if (window->win32FrameAction) { // TODO: Determine what used to be here
 				break;
-
+			}
 			break;
-		}
 
 		case WM_EXITSIZEMOVE:
 		case WM_EXITMENULOOP:
-		{
 			break;
-		}
 
 		case WM_SIZE:
 		{
@@ -762,26 +670,17 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		}
 
 		case WM_MOVE:
-		{
 			// NOTE: This cannot use LOWORD/HIWORD recommended by MSDN, as
 			// those macros do not handle negative window positions correctly
-			_plafInputWindowPos(window,
-								GET_X_LPARAM(lParam),
-								GET_Y_LPARAM(lParam));
+			_plafInputWindowPos(window, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 			return 0;
-		}
 
 		case WM_SIZING:
-		{
-			if (window->numer == DONT_CARE ||
-				window->denom == DONT_CARE)
-			{
+			if (window->numer == DONT_CARE || window->denom == DONT_CARE) {
 				break;
 			}
-
 			applyAspectRatio(window, (int) wParam, (RECT*) lParam);
 			return TRUE;
-		}
 
 		case WM_GETMINMAXINFO:
 		{
@@ -790,36 +689,30 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			const DWORD style = getWindowStyle(window);
 			const DWORD exStyle = getWindowExStyle(window);
 
-			if (window->monitor)
+			if (window->monitor) {
 				break;
+			}
 
-			if (IsWindows10Version1607OrGreater())
-			{
+			if (IsWindows10Version1607OrGreater()) {
 				_plaf.win32User32AdjustWindowRectExForDpi_(&frame, style, FALSE, exStyle,
 										 _plaf.win32User32GetDpiForWindow_(window->win32Window));
-			}
-			else
+			} else {
 				AdjustWindowRectEx(&frame, style, FALSE, exStyle);
+			}
 
-			if (window->minwidth != DONT_CARE &&
-				window->minheight != DONT_CARE)
-			{
+			if (window->minwidth != DONT_CARE && window->minheight != DONT_CARE) {
 				mmi->ptMinTrackSize.x = window->minwidth + frame.right - frame.left;
 				mmi->ptMinTrackSize.y = window->minheight + frame.bottom - frame.top;
 			}
 
-			if (window->maxwidth != DONT_CARE &&
-				window->maxheight != DONT_CARE)
-			{
+			if (window->maxwidth != DONT_CARE && window->maxheight != DONT_CARE) {
 				mmi->ptMaxTrackSize.x = window->maxwidth + frame.right - frame.left;
 				mmi->ptMaxTrackSize.y = window->maxheight + frame.bottom - frame.top;
 			}
 
-			if (!window->decorated)
-			{
+			if (!window->decorated) {
 				MONITORINFO mi;
-				const HMONITOR mh = MonitorFromWindow(window->win32Window,
-													  MONITOR_DEFAULTTONEAREST);
+				const HMONITOR mh = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
 
 				ZeroMemory(&mi, sizeof(mi));
 				mi.cbSize = sizeof(mi);
@@ -830,102 +723,68 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				mmi->ptMaxSize.x = mi.rcWork.right - mi.rcWork.left;
 				mmi->ptMaxSize.y = mi.rcWork.bottom - mi.rcWork.top;
 			}
-
 			return 0;
 		}
 
 		case WM_PAINT:
-		{
 			_plafInputWindowDamage(window);
 			break;
-		}
 
 		case WM_ERASEBKGND:
-		{
 			return TRUE;
-		}
 
 		case WM_NCACTIVATE:
 		case WM_NCPAINT:
-		{
-			// Prevent title bar from being drawn after restoring a minimized
-			// undecorated window
-			if (!window->decorated)
+			// Prevent title bar from being drawn after restoring a minimized undecorated window
+			if (!window->decorated) {
 				return TRUE;
-
+			}
 			break;
-		}
 
 		case WM_DWMCOMPOSITIONCHANGED:
 		case WM_DWMCOLORIZATIONCOLORCHANGED:
-		{
-			if (window->win32Transparent)
+			if (window->win32Transparent) {
 				updateFramebufferTransparency(window);
+			}
 			return 0;
-		}
 
 		case WM_GETDPISCALEDSIZE:
-		{
-			if (window->win32ScaleToMonitor)
-				break;
-
 			// Adjust the window size to keep the content area size constant
-			if (IsWindows10Version1703OrGreater())
-			{
-				RECT source = {0}, target = {0};
-				SIZE* size = (SIZE*) lParam;
-
-				_plaf.win32User32AdjustWindowRectExForDpi_(&source, getWindowStyle(window),
-										 FALSE, getWindowExStyle(window),
-										 _plaf.win32User32GetDpiForWindow_(window->win32Window));
-				_plaf.win32User32AdjustWindowRectExForDpi_(&target, getWindowStyle(window),
-										 FALSE, getWindowExStyle(window),
-										 LOWORD(wParam));
-
-				size->cx += (target.right - target.left) -
-							(source.right - source.left);
-				size->cy += (target.bottom - target.top) -
-							(source.bottom - source.top);
+			if (IsWindows10Version1703OrGreater()) {
+				RECT source = {0};
+				RECT target = {0};
+				_plaf.win32User32AdjustWindowRectExForDpi_(&source, getWindowStyle(window), FALSE,
+					getWindowExStyle(window), _plaf.win32User32GetDpiForWindow_(window->win32Window));
+				_plaf.win32User32AdjustWindowRectExForDpi_(&target, getWindowStyle(window), FALSE,
+					getWindowExStyle(window), LOWORD(wParam));
+				SIZE* size = (SIZE*)lParam;
+				size->cx += (target.right - target.left) - (source.right - source.left);
+				size->cy += (target.bottom - target.top) - (source.bottom - source.top);
 				return TRUE;
 			}
-
 			break;
-		}
 
 		case WM_DPICHANGED:
 		{
+			// Resize windowed mode windows that need it to compensate for non-client area scaling
+			if (!window->monitor && IsWindows10Version1703OrGreater()) {
+				RECT* suggested = (RECT*) lParam;
+				SetWindowPos(window->win32Window, HWND_TOP, suggested->left, suggested->top,
+					suggested->right - suggested->left, suggested->bottom - suggested->top,
+					SWP_NOACTIVATE | SWP_NOZORDER);
+			}
 			const float xscale = HIWORD(wParam) / (float) USER_DEFAULT_SCREEN_DPI;
 			const float yscale = LOWORD(wParam) / (float) USER_DEFAULT_SCREEN_DPI;
-
-			// Resize windowed mode windows that either permit rescaling or that
-			// need it to compensate for non-client area scaling
-			if (!window->monitor &&
-				(window->win32ScaleToMonitor ||
-				 IsWindows10Version1703OrGreater()))
-			{
-				RECT* suggested = (RECT*) lParam;
-				SetWindowPos(window->win32Window, HWND_TOP,
-							 suggested->left,
-							 suggested->top,
-							 suggested->right - suggested->left,
-							 suggested->bottom - suggested->top,
-							 SWP_NOACTIVATE | SWP_NOZORDER);
-			}
-
 			_plafInputWindowContentScale(window, xscale, yscale);
 			break;
 		}
 
 		case WM_SETCURSOR:
-		{
-			if (LOWORD(lParam) == HTCLIENT)
-			{
+			if (LOWORD(lParam) == HTCLIENT) {
 				_plafUpdateCursorImage(window);
 				return TRUE;
 			}
-
 			break;
-		}
 
 		case WM_DROPFILES:
 		{
@@ -1063,8 +922,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYDATA, MSGFLT_ALLOW, NULL);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
 
-	window->win32ScaleToMonitor = wndconfig->scaleToMonitor;
-
 	if (!window->monitor) {
 		RECT rect = { 0, 0, wndconfig->width, wndconfig->height };
 		WINDOWPLACEMENT wp = { sizeof(wp) };
@@ -1074,14 +931,14 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		// (if enabled) DPI scaling of the content area
 		// This cannot be done until we know what monitor the window was placed on
 		// Only update the restored window rect as the window may be maximized
-		if (wndconfig->scaleToMonitor) {
+		// if (wndconfig->scaleToMonitor) {
 			float xscale, yscale;
 			_plafGetHMONITORContentScale(mh, &xscale, &yscale);
 			if (xscale > 0.f && yscale > 0.f) {
 				rect.right = (int) (rect.right * xscale);
 				rect.bottom = (int) (rect.bottom * yscale);
 			}
-		}
+		// }
 
 		if (IsWindows10Version1607OrGreater()) {
 			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle,

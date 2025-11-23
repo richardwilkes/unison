@@ -208,7 +208,6 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	plaf.WindowHint(plaf.Decorated, plafEnabled(!w.undecorated))
 	plaf.WindowHint(plaf.Floating, plafEnabled(w.floating))
 	plaf.WindowHint(plaf.TransparentFramebuffer, plaf.False)
-	plaf.WindowHint(plaf.ScaleToMonitor, plaf.False)
 	var err error
 	xos.SafeCall(func() {
 		w.wnd, err = plaf.CreateWindow(1, 1, title, nil, nil)

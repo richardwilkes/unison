@@ -193,9 +193,6 @@ void plafWindowHint(int hint, int value)
 		case WINDOW_HINT_POSITION_Y:
 			_plaf.windowCfg.ypos = value;
 			return;
-		case WINDOW_HINT_SCALE_TO_MONITOR:
-			_plaf.windowCfg.scaleToMonitor = value ? true : false;
-			return;
 		case WINDOW_HINT_SCALE_FRAMEBUFFER:
 			_plaf.windowCfg.scaleFramebuffer = value ? true : false;
 			return;

@@ -61,7 +61,6 @@ const (
 	Decorated              Hint = C.WINDOW_ATTR_HINT_DECORATED               // Specifies whether the window will have window decorations such as a border, a close widget, etc.
 	Floating               Hint = C.WINDOW_ATTR_HINT_FLOATING                // Specifies whether the window will be always-on-top.
 	TransparentFramebuffer Hint = C.WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER // Specifies whether the framebuffer should be transparent.
-	ScaleToMonitor         Hint = C.WINDOW_HINT_SCALE_TO_MONITOR             // Specified whether the window content area should be resized based on the monitor content scale of any monitor it is placed on. This includes the initial placement when the window is created.
 )
 
 // Other values.
