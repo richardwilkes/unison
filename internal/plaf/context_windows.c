@@ -337,8 +337,8 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 			return _plafNewError("WGL: Failed to create OpenGL context");
 		}
 
-		if (share) {
-			if (!_plaf.wglShareLists(share, window->context.wglGLRC)) {
+		if (shareCtx) {
+			if (!_plaf.wglShareLists(shareCtx, window->context.wglGLRC)) {
 				return _plafNewError("WGL: Failed to enable sharing with specified OpenGL context");
 			}
 		}
