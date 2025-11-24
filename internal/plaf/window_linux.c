@@ -1086,14 +1086,6 @@ static void updateNormalHints(plafWindow* window, int width, int height)
 				hints->max_width = window->maxwidth;
 				hints->max_height = window->maxheight;
 			}
-
-			if (window->numer != DONT_CARE &&
-				window->denom != DONT_CARE)
-			{
-				hints->flags |= PAspect;
-				hints->min_aspect.x = hints->max_aspect.x = window->numer;
-				hints->min_aspect.y = hints->max_aspect.y = window->denom;
-			}
 		}
 		else
 		{
@@ -1639,11 +1631,7 @@ static void processEvent(XEvent *event)
 	}
 
 	plafWindow* window = NULL;
-	if (_plaf.xlibFindContext(_plaf.x11Display,
-					 event->xany.window,
-					 _plaf.x11Context,
-					 (XPointer*) &window) != 0)
-	{
+	if (_plaf.xlibFindContext(_plaf.x11Display, event->xany.window, _plaf.x11Context, (XPointer*) &window) != 0) {
 		// This is an event for a window that has already been destroyed
 		return;
 	}
@@ -1651,19 +1639,15 @@ static void processEvent(XEvent *event)
 	switch (event->type)
 	{
 		case ReparentNotify:
-		{
 			window->x11Parent = event->xreparent.parent;
 			return;
-		}
 
 		case KeyPress:
 		{
 			const int key = translateKey(keycode);
 			const int mods = translateState(event->xkey.state);
 			const int plain = !(mods & (KEYMOD_CONTROL | KEYMOD_ALT));
-
-			if (window->x11IC)
-			{
+			if (window->x11IC) {
 				// HACK: Do not report the key press events duplicated by XIM
 				//       Duplicate key releases are filtered out implicitly by
 				//       the PLAF key repeat logic in _plafInputKey
@@ -1672,63 +1656,49 @@ static void processEvent(XEvent *event)
 				//       (the server never sends a timestamp of zero)
 				// NOTE: Timestamp difference is compared to handle wrap-around
 				Time diff = event->xkey.time - window->x11KeyPressTimes[keycode];
-				if (diff == event->xkey.time || (diff > 0 && diff < ((Time)1 << 31)))
-				{
+				if (diff == event->xkey.time || (diff > 0 && diff < ((Time)1 << 31))) {
 					if (keycode) {
 						_plafInputKey(window, key, keycode, INPUT_PRESS, mods);
 						if (!window->x11Window) {
 							return; // Window was disposed of
 						}
 					}
-
 					window->x11KeyPressTimes[keycode] = event->xkey.time;
 				}
-
-				if (!filtered)
-				{
+				if (!filtered && plain) {
 					int count;
 					Status status;
 					char buffer[100];
 					char* chars = buffer;
 
-					count = _plaf.xlibUTF8LookupString(window->x11IC,
-											  &event->xkey,
-											  buffer, sizeof(buffer) - 1,
-											  NULL, &status);
-
-					if (status == XBufferOverflow)
-					{
+					count = _plaf.xlibUTF8LookupString(window->x11IC, &event->xkey, buffer, sizeof(buffer) - 1, NULL,
+						&status);
+					if (status == XBufferOverflow) {
 						chars = _plaf_calloc(count + 1, 1);
-						count = _plaf.xlibUTF8LookupString(window->x11IC,
-												  &event->xkey,
-												  chars, count,
-												  NULL, &status);
+						count = _plaf.xlibUTF8LookupString(window->x11IC, &event->xkey, chars, count, NULL, &status);
 					}
-
-					if (status == XLookupChars || status == XLookupBoth)
-					{
+					if (status == XLookupChars || status == XLookupBoth) {
 						const char* c = chars;
 						chars[count] = '\0';
-						while (c - chars < count)
-							_plafInputChar(window, decodeUTF8(&c), mods, plain);
+						while (c - chars < count) {
+							_plafInputChar(window, decodeUTF8(&c));
+						}
 					}
-
-					if (chars != buffer)
+					if (chars != buffer) {
 						_plaf_free(chars);
+					}
 				}
-			}
-			else
-			{
+			} else {
 				KeySym keysym;
 				_plaf.xlibLookupString(&event->xkey, NULL, 0, &keysym, NULL);
-
 				_plafInputKey(window, key, keycode, INPUT_PRESS, mods);
-
-				const uint32_t codepoint = keySym2Unicode(keysym);
-				if (codepoint != PLAF_INVALID_CODEPOINT)
-					_plafInputChar(window, codepoint, mods, plain);
+				if (plain) {
+					const uint32_t ch = keySym2Unicode(keysym);
+					if (codepoint != PLAF_INVALID_CODEPOINT) {
+						_plafInputChar(window, ch);
+					}
+				}
 			}
-
 			return;
 		}
 
@@ -1782,13 +1752,13 @@ static void processEvent(XEvent *event)
 
 			// Modern X provides scroll events as mouse button presses
 			else if (event->xbutton.button == Button4)
-				_plafInputScroll(window, 0.0, 1.0);
+				goScrollCallback(window, 0.0, 1.0);
 			else if (event->xbutton.button == Button5)
-				_plafInputScroll(window, 0.0, -1.0);
+				goScrollCallback(window, 0.0, -1.0);
 			else if (event->xbutton.button == Button6)
-				_plafInputScroll(window, 1.0, 0.0);
+				goScrollCallback(window, 1.0, 0.0);
 			else if (event->xbutton.button == Button7)
-				_plafInputScroll(window, -1.0, 0.0);
+				goScrollCallback(window, -1.0, 0.0);
 
 			else
 			{
@@ -1848,14 +1818,14 @@ static void processEvent(XEvent *event)
 			if (window->cursorHidden) {
 				_plafUpdateCursorImage(window);
 			}
-			_plafInputCursorEnter(window, true);
+			goCursorEnterCallback(window, true);
 			_plafInputCursorPos(window, x, y);
 			return;
 		}
 
 		case LeaveNotify:
 		{
-			_plafInputCursorEnter(window, false);
+			goCursorEnterCallback(window, false);
 			return;
 		}
 
@@ -1874,19 +1844,10 @@ static void processEvent(XEvent *event)
 
 		case ConfigureNotify:
 		{
-			if (event->xconfigure.width != window->width ||
-				event->xconfigure.height != window->height)
-			{
+			if (event->xconfigure.width != window->width || event->xconfigure.height != window->height) {
 				window->width = event->xconfigure.width;
 				window->height = event->xconfigure.height;
-
-				_plafInputFramebufferSize(window,
-										  event->xconfigure.width,
-										  event->xconfigure.height);
-
-				_plafInputWindowSize(window,
-									 event->xconfigure.width,
-									 event->xconfigure.height);
+				goWindowSizeCallback(window);
 			}
 
 			int xpos = event->xconfigure.x;
@@ -1912,14 +1873,11 @@ static void processEvent(XEvent *event)
 					return;
 			}
 
-			if (xpos != window->x11XPos || ypos != window->x11YPos)
-			{
+			if (xpos != window->x11XPos || ypos != window->x11YPos) {
 				window->x11XPos = xpos;
 				window->x11YPos = ypos;
-
-				_plafInputWindowPos(window, xpos, ypos);
+				goWindowPosCallback(window);
 			}
-
 			return;
 		}
 
@@ -2096,7 +2054,7 @@ static void processEvent(XEvent *event)
 					int count;
 					char** paths = _plafParseUriList(data, &count);
 
-					_plafInputDrop(window, count, (const char**) paths);
+					goDropCallback(window, count, paths);
 
 					for (int i = 0;  i < count;  i++)
 						_plaf_free(paths[i]);
@@ -2160,10 +2118,8 @@ static void processEvent(XEvent *event)
 		}
 
 		case Expose:
-		{
-			_plafInputWindowDamage(window);
+			goWindowDrawCallback(window);
 			return;
-		}
 
 		case PropertyNotify:
 		{
@@ -2185,13 +2141,13 @@ static void processEvent(XEvent *event)
 						}
 					}
 					window->x11Minimized = minimized;
-					_plafInputWindowMinimize(window, minimized);
+					goWindowMinimizeCallback(window, minimized);
 				}
 			} else if (event->xproperty.atom == _plaf.x11NET_WM_STATE) {
 				const bool maximized = plafIsWindowMaximized(window);
 				if (window->maximized != maximized) {
 					window->maximized = maximized;
-					_plafInputWindowMaximize(window, maximized);
+					goWindowMaximizeCallback(window, maximized);
 				}
 			}
 			return;
@@ -3038,10 +2994,7 @@ void _plafUpdateCursor(plafWindow* window) {
 
 bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
 	cursor->x11Cursor = _plafCreateNativeCursorX11(image, xhot, yhot);
-	if (!cursor->x11Cursor)
-		return false;
-
-	return true;
+	return !!cursor->x11Cursor;
 }
 
 bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
@@ -3110,8 +3063,9 @@ bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 }
 
 void _plafDestroyCursor(plafCursor* cursor) {
-	if (cursor->x11Cursor)
+	if (cursor->x11Cursor) {
 		_plaf.xlibFreeCursor(_plaf.x11Display, cursor->x11Cursor);
+	}
 }
 
 

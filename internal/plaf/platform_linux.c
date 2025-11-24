@@ -878,8 +878,7 @@ static void getSystemContentScale(float* xscale, float* yscale)
 
 // Create a blank cursor for hidden and disabled cursor modes
 //
-static Cursor createHiddenCursor(void)
-{
+static Cursor createHiddenCursor(void) {
 	unsigned char pixels[16 * 16 * 4] = { 0 };
 	plafImageData image = { 16, 16, pixels };
 	return _plafCreateNativeCursorX11(&image, 0, 0);
@@ -941,17 +940,13 @@ static int errorHandler(Display *display, XErrorEvent* event)
 //////////////////////////////////////////////////////////////////////////
 
 // Sets the X error handler callback
-//
-void _plafGrabErrorHandler(void)
-{
+void _plafGrabErrorHandler(void) {
 	_plaf.x11ErrorCode = Success;
 	_plaf.x11ErrorHandler = _plaf.xlibSetErrorHandler(errorHandler);
 }
 
 // Clears the X error handler callback
-//
-void _plafReleaseErrorHandler(void)
-{
+void _plafReleaseErrorHandler(void) {
 	// Synchronize to make sure all commands are processed
 	_plaf.xlibSync(_plaf.x11Display, False);
 	_plaf.xlibSetErrorHandler(_plaf.x11ErrorHandler);
@@ -959,37 +954,27 @@ void _plafReleaseErrorHandler(void)
 }
 
 // Creates a native cursor object from the specified image and hotspot
-//
-Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot)
-{
-	Cursor cursor;
-
-	if (!_plaf.xcursorHandle)
+Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot) {
+	if (!_plaf.xcursorHandle) {
 		return None;
-
-	XcursorImage* native = _plaf.xcursorImageCreate(image->width, image->height);
-	if (native == NULL)
+	}
+	XcursorImage* img = _plaf.xcursorImageCreate(image->width, image->height);
+	if (img == NULL) {
 		return None;
-
-	native->xhot = xhot;
-	native->yhot = yhot;
-
-	unsigned char* source = (unsigned char*) image->pixels;
-	XcursorPixel* target = native->pixels;
-
-	for (int i = 0;  i < image->width * image->height;  i++, target++, source += 4)
-	{
+	}
+	img->xhot = xhot;
+	img->yhot = yhot;
+	unsigned char* source = (unsigned char*)image->pixels;
+	XcursorPixel* target = img->pixels;
+	for (int i = 0;  i < image->width * image->height;  i++, target++, source += 4) {
 		unsigned int alpha = source[3];
-
 		*target = (alpha << 24) |
 				  ((unsigned char) ((source[0] * alpha) / 255) << 16) |
 				  ((unsigned char) ((source[1] * alpha) / 255) <<  8) |
 				  ((unsigned char) ((source[2] * alpha) / 255) <<  0);
 	}
-
-	cursor = _plaf.xcursorImageLoadCursor(_plaf.x11Display, native);
-	_plaf.xcursorImageDestroy(native);
-
+	Cursor cursor = _plaf.xcursorImageLoadCursor(_plaf.x11Display, img);
+	_plaf.xcursorImageDestroy(img);
 	return cursor;
 }
 

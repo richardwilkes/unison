@@ -143,41 +143,33 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	const int maximized = [window->nsWindow isZoomed];
 	if (window->maximized != maximized) {
 		window->maximized = maximized;
-		_plafInputWindowMaximize(window, maximized);
+		goWindowMaximizeCallback(window, maximized);
 	}
 	const NSRect contentRect = [window->nsView frame];
-	const NSRect fbRect = [window->nsView convertRectToBacking:contentRect];
-	if (fbRect.size.width != window->nsFrameBufferWidth || fbRect.size.height != window->nsFrameBufferHeight) {
-		window->nsFrameBufferWidth  = fbRect.size.width;
-		window->nsFrameBufferHeight = fbRect.size.height;
-		_plafInputFramebufferSize(window, fbRect.size.width, fbRect.size.height);
-	}
 	if (contentRect.size.width != window->width || contentRect.size.height != window->height) {
 		window->width  = contentRect.size.width;
 		window->height = contentRect.size.height;
-		_plafInputWindowSize(window, contentRect.size.width, contentRect.size.height);
+		goWindowSizeCallback(window);
 	}
 }
 
 - (void)windowDidMove:(NSNotification *)notification {
 	[window->context.nsglCtx update];
-	int x, y;
-	_plafGetWindowPos(window, &x, &y);
-	_plafInputWindowPos(window, x, y);
+	goWindowPosCallback(window);
 }
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
 	if (window->monitor) {
 		releaseMonitor(window);
 	}
-	_plafInputWindowMinimize(window, true);
+	goWindowMinimizeCallback(window, true);
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
 	if (window->monitor) {
 		acquireMonitor(window);
 	}
-	_plafInputWindowMinimize(window, false);
+	goWindowMinimizeCallback(window, false);
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
@@ -246,7 +238,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)updateLayer {
 	[window->context.nsglCtx update];
-	_plafInputWindowDamage(window);
+	goWindowDrawCallback(window);
 }
 
 - (void)cursorUpdate:(NSEvent *)event {
@@ -299,18 +291,18 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	_plafInputMouseClick(window, (int) [event buttonNumber], INPUT_RELEASE, translateFlags([event modifierFlags]));
 }
 
-- (void)mouseExited:(NSEvent *)event {
-	if (window->cursorHidden) {
-		showCursor(window);
-	}
-	_plafInputCursorEnter(window, false);
-}
-
 - (void)mouseEntered:(NSEvent *)event {
 	if (window->cursorHidden) {
 		hideCursor(window);
 	}
-	_plafInputCursorEnter(window, true);
+	goCursorEnterCallback(window, true);
+}
+
+- (void)mouseExited:(NSEvent *)event {
+	if (window->cursorHidden) {
+		showCursor(window);
+	}
+	goCursorEnterCallback(window, false);
 }
 
 - (void)viewDidChangeBackingProperties {
@@ -321,17 +313,12 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	if (xscale != window->nsXScale || yscale != window->nsYScale) {
 		window->nsXScale = xscale;
 		window->nsYScale = yscale;
-		_plafInputWindowContentScale(window, xscale, yscale);
-	}
-	if (fbRect.size.width != window->nsFrameBufferWidth || fbRect.size.height != window->nsFrameBufferHeight) {
-		window->nsFrameBufferWidth  = fbRect.size.width;
-		window->nsFrameBufferHeight = fbRect.size.height;
-		_plafInputFramebufferSize(window, fbRect.size.width, fbRect.size.height);
+		goWindowContentScaleCallback(window);
 	}
 }
 
 - (void)drawRect:(NSRect)rect {
-	_plafInputWindowDamage(window);
+	goWindowDrawCallback(window);
 }
 
 - (void)updateTrackingAreas {
@@ -386,7 +373,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 		deltaY *= 0.1;
 	}
 	if (fabs(deltaX) > 0.0 || fabs(deltaY) > 0.0) {
-		_plafInputScroll(window, deltaX, deltaY);
+		goScrollCallback(window, deltaX, deltaY);
 	}
 }
 
@@ -401,13 +388,13 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	NSPasteboard* pasteboard = [sender draggingPasteboard];
 	NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
 	NSArray* urls = [pasteboard readObjectsForClasses:@[[NSURL class]] options:options];
-	const NSUInteger count = [urls count];
+	int count = [urls count];
 	if (count) {
 		char** paths = _plaf_calloc(count, sizeof(char*));
-		for (NSUInteger i = 0;  i < count;  i++) {
+		for (int i = 0;  i < count;  i++) {
 			paths[i] = _plaf_strdup([urls[i] fileSystemRepresentation]);
 		}
-		_plafInputDrop(window, (int) count, (const char**) paths);
+		goDropCallback(window, count, paths);
 		for (NSUInteger i = 0;  i < count;  i++) {
 			_plaf_free(paths[i]);
 		}
@@ -462,10 +449,12 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
-	NSString* characters;
 	NSEvent* event = [NSApp currentEvent];
 	const int mods = translateFlags([event modifierFlags]);
-	const int plain = !(mods & KEYMOD_SUPER);
+	if (mods & KEYMOD_SUPER) {
+		return;
+	}
+	NSString* characters;
 	if ([string isKindOfClass:[NSAttributedString class]]) {
 		characters = [string string];
 	} else {
@@ -479,7 +468,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 			if (codepoint >= 0xf700 && codepoint <= 0xf7ff) {
 				continue;
 			}
-			_plafInputChar(window, codepoint, mods, plain);
+			_plafInputChar(window, codepoint);
 		}
 	}
 }
@@ -689,15 +678,11 @@ void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* image
 
 void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	@autoreleasepool {
-
-	const NSRect contentRect =
-		[window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
-
-	if (xpos)
-		*xpos = contentRect.origin.x;
-	if (ypos)
-		*ypos = _plafTransformYCocoa(contentRect.origin.y + contentRect.size.height - 1);
-
+		const NSRect contentRect = [window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
+		if (xpos)
+			*xpos = contentRect.origin.x;
+		if (ypos)
+			*ypos = _plafTransformYCocoa(contentRect.origin.y + contentRect.size.height - 1);
 	}
 }
 
@@ -929,13 +914,6 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 		NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
 		[window->nsWindow setFrame:frameRect display:YES];
 
-		if (window->numer != DONT_CARE &&
-			window->denom != DONT_CARE)
-		{
-			[window->nsWindow setContentAspectRatio:NSMakeSize(window->numer,
-																window->denom)];
-		}
-
 		if (window->minwidth != DONT_CARE &&
 			window->minheight != DONT_CARE)
 		{
@@ -979,30 +957,22 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 }
 
 bool plafIsWindowFocused(plafWindow* window) {
-	@autoreleasepool {
-		return [window->nsWindow isKeyWindow];
-	}
+	return [window->nsWindow isKeyWindow];
 }
 
 bool plafIsWindowMinimized(plafWindow* window) {
-	@autoreleasepool {
-		return [window->nsWindow isMiniaturized];
-	}
+	return [window->nsWindow isMiniaturized];
 }
 
 bool _plafWindowVisible(plafWindow* window) {
-	@autoreleasepool {
-		return [window->nsWindow isVisible];
-	}
+	return [window->nsWindow isVisible];
 }
 
 bool plafIsWindowMaximized(plafWindow* window) {
-	@autoreleasepool {
-		if (window->resizable) {
-			return [window->nsWindow isZoomed];
-		}
-		return false;
+	if (window->resizable) {
+		return [window->nsWindow isZoomed];
 	}
+	return false;
 }
 
 bool _plafWindowHovered(plafWindow* window) {
@@ -1016,9 +986,7 @@ bool _plafWindowHovered(plafWindow* window) {
 }
 
 bool _plafFramebufferTransparent(plafWindow* window) {
-	@autoreleasepool {
-		return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
-	}
+	return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
 }
 
 void _plafSetWindowResizable(plafWindow* window, bool enabled) {
@@ -1146,42 +1114,20 @@ void _plafUpdateCursor(plafWindow* window) {
 
 bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
 	@autoreleasepool {
-
-	NSImage* native;
-	NSBitmapImageRep* rep;
-
-	rep = [[NSBitmapImageRep alloc]
-		initWithBitmapDataPlanes:NULL
-					  pixelsWide:image->width
-					  pixelsHigh:image->height
-				   bitsPerSample:8
-				 samplesPerPixel:4
-						hasAlpha:YES
-						isPlanar:NO
-				  colorSpaceName:NSCalibratedRGBColorSpace
-					bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
-					 bytesPerRow:image->width * 4
-					bitsPerPixel:32];
-
-	if (rep == nil)
-		return false;
-
-	memcpy([rep bitmapData], image->pixels, image->width * image->height * 4);
-
-	native = [[NSImage alloc] initWithSize:NSMakeSize(image->width, image->height)];
-	[native addRepresentation:rep];
-
-	cursor->nsCursor = [[NSCursor alloc] initWithImage:native
-												hotSpot:NSMakePoint(xhot, yhot)];
-
-	[native release];
-	[rep release];
-
-	if (cursor->nsCursor == nil)
-		return false;
-
-	return true;
-
+		NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:image->width
+			pixelsHigh:image->height bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+			colorSpaceName:NSCalibratedRGBColorSpace bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
+			bytesPerRow:image->width * 4 bitsPerPixel:32];
+		if (rep == nil) {
+			return false;
+		}
+		memcpy([rep bitmapData], image->pixels, image->width * image->height * 4);
+		NSImage* img = [[NSImage alloc] initWithSize:NSMakeSize(image->width, image->height)];
+		[img addRepresentation:rep];
+		cursor->nsCursor = [[NSCursor alloc] initWithImage:img hotSpot:NSMakePoint(xhot, yhot)];
+		[img release];
+		[rep release];
+		return cursor->nsCursor != nil;
 	}
 }
 

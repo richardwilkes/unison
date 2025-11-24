@@ -2,9 +2,7 @@
 
 // Notifies that a window has lost or received input focus
 void _plafNotifyOfFocusChange(plafWindow* window, bool focused) {
-	if (window->focusCallback) {
-		window->focusCallback(window, focused);
-	}
+	goWindowFocusCallback(window, focused);
 	if (!focused) {
 		for (int key = 0;  key <= KEY_LAST;  key++) {
 			if (window->keys[key] == INPUT_PRESS) {
@@ -19,65 +17,10 @@ void _plafNotifyOfFocusChange(plafWindow* window, bool focused) {
 	}
 }
 
-// Notifies shared code that a window has moved
-// The position is specified in content area relative screen coordinates
-void _plafInputWindowPos(plafWindow* window, int x, int y) {
-	if (window->posCallback) {
-		window->posCallback(window, x, y);
-	}
-}
-
-// Notifies shared code that a window has been resized
-// The size is specified in screen coordinates
-void _plafInputWindowSize(plafWindow* window, int width, int height) {
-	if (window->sizeCallback) {
-		window->sizeCallback(window, width, height);
-	}
-}
-
-// Notifies shared code that a window has been minimized or restored
-void _plafInputWindowMinimize(plafWindow* window, bool minimized) {
-	if (window->minimizeCallback) {
-		window->minimizeCallback(window, minimized);
-	}
-}
-
-// Notifies shared code that a window has been maximized or restored
-void _plafInputWindowMaximize(plafWindow* window, bool maximized) {
-	if (window->maximizeCallback) {
-		window->maximizeCallback(window, maximized);
-	}
-}
-
-// Notifies shared code that a window framebuffer has been resized
-// The size is specified in pixels
-void _plafInputFramebufferSize(plafWindow* window, int width, int height) {
-	if (window->fbsizeCallback) {
-		window->fbsizeCallback(window, width, height);
-	}
-}
-
-// Notifies shared code that a window content scale has changed
-// The scale is specified as the ratio between the current and default DPI
-void _plafInputWindowContentScale(plafWindow* window, float xscale, float yscale) {
-	if (window->scaleCallback) {
-		window->scaleCallback(window, xscale, yscale);
-	}
-}
-
-// Notifies shared code that the window contents needs updating
-void _plafInputWindowDamage(plafWindow* window) {
-	if (window->refreshCallback) {
-		window->refreshCallback(window);
-	}
-}
-
 // Notifies shared code that the user wishes to close a window
 void _plafInputWindowCloseRequest(plafWindow* window) {
 	window->shouldClose = true;
-	if (window->closeCallback) {
-		window->closeCallback(window);
-	}
+	goWindowCloseCallback(window);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -113,8 +56,6 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 	window->minheight             = DONT_CARE;
 	window->maxwidth              = DONT_CARE;
 	window->maxheight             = DONT_CARE;
-	window->numer                 = DONT_CARE;
-	window->denom                 = DONT_CARE;
 	window->title                 = _plaf_strdup(title);
 
 	plafError* err = _plafCreateWindow(window, &wndconfig, share, &fbconfig);
@@ -184,23 +125,6 @@ void plafDestroyWindow(plafWindow* window) {
 	if (window == NULL) {
 		return;
 	}
-	window->posCallback = NULL;
-	window->sizeCallback = NULL;
-	window->closeCallback = NULL;
-	window->refreshCallback = NULL;
-	window->focusCallback = NULL;
-	window->minimizeCallback = NULL;
-	window->maximizeCallback = NULL;
-	window->fbsizeCallback = NULL;
-	window->scaleCallback = NULL;
-	window->mouseButtonCallback = NULL;
-	window->cursorPosCallback = NULL;
-	window->cursorEnterCallback = NULL;
-	window->scrollCallback = NULL;
-	window->keyCallback = NULL;
-	window->charCallback = NULL;
-	window->charModsCallback = NULL;
-	window->dropCallback = NULL;
 	if (window == _plaf.wndWithCurrentCtx) {
 		plafMakeContextCurrent(NULL);
 	}
@@ -427,51 +351,6 @@ void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, in
 	window->videoMode.height      = height;
 	window->videoMode.refreshRate = refreshRate;
 	_plafSetWindowMonitor(window, monitor, xpos, ypos, width, height, refreshRate);
-}
-
-windowPosFunc plafSetWindowPosCallback(plafWindow* window, windowPosFunc cbfun) {
-	SWAP(windowPosFunc, window->posCallback, cbfun);
-	return cbfun;
-}
-
-windowSizeFunc plafSetWindowSizeCallback(plafWindow* window, windowSizeFunc cbfun) {
-	SWAP(windowSizeFunc, window->sizeCallback, cbfun);
-	return cbfun;
-}
-
-windowCloseFunc plafSetWindowCloseCallback(plafWindow* window, windowCloseFunc cbfun) {
-	SWAP(windowCloseFunc, window->closeCallback, cbfun);
-	return cbfun;
-}
-
-windowRefreshFunc plafSetWindowRefreshCallback(plafWindow* window, windowRefreshFunc cbfun) {
-	SWAP(windowRefreshFunc, window->refreshCallback, cbfun);
-	return cbfun;
-}
-
-windowFocusFunc plafSetWindowFocusCallback(plafWindow* window, windowFocusFunc cbfun) {
-	SWAP(windowFocusFunc, window->focusCallback, cbfun);
-	return cbfun;
-}
-
-windowMinimizeFunc plafSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc cbfun) {
-	SWAP(windowMinimizeFunc, window->minimizeCallback, cbfun);
-	return cbfun;
-}
-
-windowMaximizeFunc plafSetWindowMaximizeCallback(plafWindow* window, windowMaximizeFunc cbfun) {
-	SWAP(windowMaximizeFunc, window->maximizeCallback, cbfun);
-	return cbfun;
-}
-
-frameBufferSizeFunc plafSetFramebufferSizeCallback(plafWindow* window, frameBufferSizeFunc cbfun) {
-	SWAP(frameBufferSizeFunc, window->fbsizeCallback, cbfun);
-	return cbfun;
-}
-
-windowContextScaleFunc plafSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc cbfun) {
-	SWAP(windowContextScaleFunc, window->scaleCallback, cbfun);
-	return cbfun;
 }
 
 void plafWaitEventsTimeout(double timeout)

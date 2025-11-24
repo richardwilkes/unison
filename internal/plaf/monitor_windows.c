@@ -7,31 +7,21 @@
 
 
 // Callback for EnumDisplayMonitors in createMonitor
-//
-static BOOL CALLBACK monitorCallback(HMONITOR handle,
-									 HDC dc,
-									 RECT* rect,
-									 LPARAM data)
-{
+static BOOL CALLBACK monitorCallback(HMONITOR handle, HDC dc, RECT* rect, LPARAM data) {
 	MONITORINFOEXW mi;
 	ZeroMemory(&mi, sizeof(mi));
 	mi.cbSize = sizeof(mi);
-
-	if (GetMonitorInfoW(handle, (MONITORINFO*) &mi))
-	{
+	if (GetMonitorInfoW(handle, (MONITORINFO*) &mi)) {
 		plafMonitor* monitor = (plafMonitor*) data;
-		if (wcscmp(mi.szDevice, monitor->win32AdapterName) == 0)
+		if (wcscmp(mi.szDevice, monitor->win32AdapterName) == 0) {
 			monitor->win32Handle = handle;
+		}
 	}
-
 	return TRUE;
 }
 
 // Create monitor from an adapter and (optionally) a display
-//
-static plafMonitor* createMonitor(DISPLAY_DEVICEW* adapter,
-								   DISPLAY_DEVICEW* display)
-{
+static plafMonitor* createMonitor(DISPLAY_DEVICEW* adapter, DISPLAY_DEVICEW* display) {
 	int widthMM, heightMM;
 	char* name;
 	HDC dc;

@@ -470,26 +470,8 @@ typedef struct plafMonitor plafMonitor;
 typedef struct plafWindow plafWindow;
 
 // Function pointer definitions
-typedef void (*charFunc)(plafWindow* window, unsigned int codepoint);
-typedef void (*charModsFunc)(plafWindow* window, unsigned int codepoint, int mods);
-typedef void (*cursorEnterFunc)(plafWindow* window, int entered);
-typedef void (*cursorPosFunc)(plafWindow* window, double xpos, double ypos);
-typedef void (*dropFunc)(plafWindow* window, int path_count, const char* paths[]);
 typedef void (*errorFunc)(const char* description);
-typedef void (*frameBufferSizeFunc)(plafWindow* window, int width, int height);
 typedef void (*glFunc)(void);
-typedef void (*keyFunc)(plafWindow* window, int key, int scancode, int action, int mods);
-typedef void (*monitorFunc)(plafMonitor* monitor, int event);
-typedef void (*mouseButtonFunc)(plafWindow* window, int button, int action, int mods);
-typedef void (*scrollFunc)(plafWindow* window, double xoffset, double yoffset);
-typedef void (*windowCloseFunc)(plafWindow* window);
-typedef void (*windowContextScaleFunc)(plafWindow* window, float xscale, float yscale);
-typedef void (*windowFocusFunc)(plafWindow* window, int focused);
-typedef void (*windowMinimizeFunc)(plafWindow* window, int minimize);
-typedef void (*windowMaximizeFunc)(plafWindow* window, int maximized);
-typedef void (*windowPosFunc)(plafWindow* window, int xpos, int ypos);
-typedef void (*windowRefreshFunc)(plafWindow* window);
-typedef void (*windowSizeFunc)(plafWindow* window, int width, int height);
 
 // An error response
 typedef struct plafError {
@@ -630,30 +612,11 @@ struct plafWindow {
 	int                    minheight;
 	int                    maxwidth;
 	int                    maxheight;
-	int                    numer;
-	int                    denom;
 	char                   mouseButtons[MOUSE_BUTTON_LAST + 1];
 	char                   keys[KEY_LAST + 1];
 	double                 virtualCursorPosX;
 	double                 virtualCursorPosY;
 	plafCtx                context;
-	windowPosFunc          posCallback;
-	windowSizeFunc         sizeCallback;
-	windowCloseFunc        closeCallback;
-	windowRefreshFunc      refreshCallback;
-	windowFocusFunc        focusCallback;
-	windowMinimizeFunc     minimizeCallback;
-	windowMaximizeFunc     maximizeCallback;
-	frameBufferSizeFunc    fbsizeCallback;
-	windowContextScaleFunc scaleCallback;
-	mouseButtonFunc        mouseButtonCallback;
-	cursorPosFunc          cursorPosCallback;
-	cursorEnterFunc        cursorEnterCallback;
-	scrollFunc             scrollCallback;
-	keyFunc                keyCallback;
-	charFunc               charCallback;
-	charModsFunc           charModsCallback;
-	dropFunc               dropCallback;
 #if defined(__APPLE__)
 	NSWindow *             nsWindow;
 	NSObject *             nsDelegate;
@@ -743,7 +706,6 @@ struct plafLib {
 	plafMonitor**                       monitors;
 	int                                 monitorCount;
 	plafWindow*                         wndWithCurrentCtx;
-	monitorFunc                         monitorCallback;
 	short int                           scanCodes[KEY_LAST + 1];
 	short int                           keyCodes[MAX_KEY_CODES];
 #if defined(__APPLE__)
@@ -1058,7 +1020,6 @@ void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
 void plafGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM);
 void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale);
 const char* plafGetMonitorName(plafMonitor* monitor);
-monitorFunc plafSetMonitorCallback(monitorFunc callback);
 const plafVideoMode* plafGetVideoModes(plafMonitor* monitor, int* count);
 const plafVideoMode* plafGetVideoMode(plafMonitor* monitor);
 void plafSetGamma(plafMonitor* monitor, float gamma);
@@ -1108,23 +1069,6 @@ void plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 void plafSetCursor(plafWindow* window, plafCursor* cursor);
 void plafSwapBuffers(plafWindow* window);
 void plafMakeContextCurrent(plafWindow* window);
-windowPosFunc plafSetWindowPosCallback(plafWindow* window, windowPosFunc callback);
-windowSizeFunc plafSetWindowSizeCallback(plafWindow* window, windowSizeFunc callback);
-windowCloseFunc plafSetWindowCloseCallback(plafWindow* window, windowCloseFunc callback);
-windowRefreshFunc plafSetWindowRefreshCallback(plafWindow* window, windowRefreshFunc callback);
-windowFocusFunc plafSetWindowFocusCallback(plafWindow* window, windowFocusFunc callback);
-windowMinimizeFunc plafSetWindowMinimizeCallback(plafWindow* window, windowMinimizeFunc callback);
-windowMaximizeFunc plafSetWindowMaximizeCallback(plafWindow* window, windowMaximizeFunc callback);
-frameBufferSizeFunc plafSetFramebufferSizeCallback(plafWindow* window, frameBufferSizeFunc callback);
-windowContextScaleFunc plafSetWindowContentScaleCallback(plafWindow* window, windowContextScaleFunc callback);
-keyFunc plafSetKeyCallback(plafWindow* window, keyFunc callback);
-charFunc plafSetCharCallback(plafWindow* window, charFunc callback);
-charModsFunc plafSetCharModsCallback(plafWindow* window, charModsFunc callback);
-mouseButtonFunc plafSetMouseButtonCallback(plafWindow* window, mouseButtonFunc callback);
-cursorPosFunc plafSetCursorPosCallback(plafWindow* window, cursorPosFunc callback);
-cursorEnterFunc plafSetCursorEnterCallback(plafWindow* window, cursorEnterFunc callback);
-scrollFunc plafSetScrollCallback(plafWindow* window, scrollFunc callback);
-dropFunc plafSetDropCallback(plafWindow* window, dropFunc callback);
 void plafDestroyWindow(plafWindow* window);
 plafWindow* plafGetCurrentContext(void);
 int plafGetKeyScancode(int key);
@@ -1145,6 +1089,24 @@ const char* plafGetClipboardString(void);
 void plafSetClipboardString(const char* string);
 
 // --------- Internal API below ---------
+
+// Go Callbacks
+void goCharCallback(plafWindow *window, unsigned int ch);
+void goCursorEnterCallback(plafWindow *window, bool entered);
+void goCursorPosCallback(plafWindow *window, double x, double y);
+void goDropCallback(plafWindow *window, int count, char **data);
+void goKeyCallback(plafWindow *window, int key, int code, int action, int mods);
+void goMonitorCallback(plafMonitor* monitor, bool connected);
+void goMouseButtonCallback(plafWindow *window, int button, int action, int mods);
+void goScrollCallback(plafWindow *window, double xOffset, double yOffset);
+void goWindowCloseCallback(plafWindow *window);
+void goWindowContentScaleCallback(plafWindow *window);
+void goWindowDrawCallback(plafWindow *window);
+void goWindowFocusCallback(plafWindow *window, bool focused);
+void goWindowMaximizeCallback(plafWindow *window, bool maximized);
+void goWindowMinimizeCallback(plafWindow *window, bool minimized);
+void goWindowPosCallback(plafWindow *window);
+void goWindowSizeCallback(plafWindow *window);
 
 // Setup & teardown
 plafError* _plafInit(void);
@@ -1182,21 +1144,11 @@ void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale)
 
 // Windows
 void _plafNotifyOfFocusChange(plafWindow* window, bool focused);
-void _plafInputWindowPos(plafWindow* window, int xpos, int ypos);
-void _plafInputWindowSize(plafWindow* window, int width, int height);
-void _plafInputFramebufferSize(plafWindow* window, int width, int height);
-void _plafInputWindowContentScale(plafWindow* window, float xscale, float yscale);
-void _plafInputWindowMinimize(plafWindow* window, bool minimized);
-void _plafInputWindowMaximize(plafWindow* window, bool maximized);
-void _plafInputWindowDamage(plafWindow* window);
 void _plafInputWindowCloseRequest(plafWindow* window);
 void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mods);
-void _plafInputChar(plafWindow* window, uint32_t codepoint, int mods, bool plain);
-void _plafInputScroll(plafWindow* window, double xoffset, double yoffset);
+void _plafInputChar(plafWindow* window, uint32_t ch);
 void _plafInputMouseClick(plafWindow* window, int button, int action, int mods);
 void _plafInputCursorPos(plafWindow* window, double xpos, double ypos);
-void _plafInputCursorEnter(plafWindow* window, bool entered);
-void _plafInputDrop(plafWindow* window, int count, const char** names);
 plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig);
 void _plafSetWindowTitle(plafWindow* window, const char* title);
 void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);

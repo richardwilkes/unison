@@ -13,16 +13,13 @@ static errorFunc _plafErrorCallback;
 // Terminate the library
 void plafTerminate(void) {
 	if (_plaf.initialized) {
-		int i;
-
-		_plaf.monitorCallback = NULL;
 		while (_plaf.windowListHead) {
 			plafDestroyWindow(_plaf.windowListHead);
 		}
 		while (_plaf.cursorListHead) {
 			plafDestroyCursor(_plaf.cursorListHead);
 		}
-		for (i = 0;  i < _plaf.monitorCount;  i++) {
+		for (int i = 0;  i < _plaf.monitorCount;  i++) {
 			plafMonitor* monitor = _plaf.monitors[i];
 			if (monitor->originalRamp.size) {
 				_plafSetGammaRamp(monitor, &monitor->originalRamp);

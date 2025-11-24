@@ -8,91 +8,50 @@
 //////////////////////////////////////////////////////////////////////////
 
 // Notifies shared code of a physical key event
-void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mods) {
-	if (key >= 0 && key <= KEY_LAST)
-	{
+void _plafInputKey(plafWindow* window, int key, int code, int action, int mods) {
+	if (key >= 0 && key <= KEY_LAST) {
 		bool repeated = false;
-
-		if (action == INPUT_RELEASE && window->keys[key] == INPUT_RELEASE)
+		if (action == INPUT_RELEASE && window->keys[key] == INPUT_RELEASE) {
 			return;
-
-		if (action == INPUT_PRESS && window->keys[key] == INPUT_PRESS)
+		}
+		if (action == INPUT_PRESS && window->keys[key] == INPUT_PRESS) {
 			repeated = true;
-
+		}
 		window->keys[key] = (char) action;
-
-		if (repeated)
+		if (repeated) {
 			action = INPUT_REPEAT;
+		}
 	}
-	if (window->keyCallback)
-		window->keyCallback(window, key, scancode, action, mods);
+	goKeyCallback(window, key, code, action, mods);
 }
 
 // Notifies shared code of a Unicode codepoint input event
-// The 'plain' parameter determines whether to emit a regular character event
-//
-void _plafInputChar(plafWindow* window, uint32_t codepoint, int mods, bool plain) {
-	if (codepoint < 32 || (codepoint > 126 && codepoint < 160))
+void _plafInputChar(plafWindow* window, uint32_t ch) {
+	if (ch < 32 || (ch > 126 && ch < 160)) {
 		return;
-	if (window->charModsCallback)
-		window->charModsCallback(window, codepoint, mods);
-
-	if (plain)
-	{
-		if (window->charCallback)
-			window->charCallback(window, codepoint);
 	}
-}
-
-// Notifies shared code of a scroll event
-//
-void _plafInputScroll(plafWindow* window, double xoffset, double yoffset)
-{
-	if (window->scrollCallback)
-		window->scrollCallback(window, xoffset, yoffset);
+	goCharCallback(window, ch);
 }
 
 // Notifies shared code of a mouse button click event
-//
-void _plafInputMouseClick(plafWindow* window, int button, int action, int mods)
-{
-	if (button < 0 || button > MOUSE_BUTTON_LAST)
+void _plafInputMouseClick(plafWindow* window, int button, int action, int mods) {
+	if (button < 0 || button > MOUSE_BUTTON_LAST) {
 		return;
+	}
 	window->mouseButtons[button] = (char) action;
-	if (window->mouseButtonCallback)
-		window->mouseButtonCallback(window, button, action, mods);
+	goMouseButtonCallback(window, button, action, mods);
 }
 
 // Notifies shared code of a cursor motion event
 // The position is specified in content area relative screen coordinates
-//
-void _plafInputCursorPos(plafWindow* window, double xpos, double ypos)
-{
-	if (window->virtualCursorPosX == xpos && window->virtualCursorPosY == ypos)
+void _plafInputCursorPos(plafWindow* window, double x, double y) {
+	if (window->virtualCursorPosX == x && window->virtualCursorPosY == y) {
 		return;
-
-	window->virtualCursorPosX = xpos;
-	window->virtualCursorPosY = ypos;
-
-	if (window->cursorPosCallback)
-		window->cursorPosCallback(window, xpos, ypos);
+	}
+	window->virtualCursorPosX = x;
+	window->virtualCursorPosY = y;
+	goCursorPosCallback(window, x, y);
 }
-
-// Notifies shared code of a cursor enter/leave event
-//
-void _plafInputCursorEnter(plafWindow* window, bool entered) {
-	if (window->cursorEnterCallback)
-		window->cursorEnterCallback(window, entered);
-}
-
-// Notifies shared code of files or directories dropped on a window
-//
-void _plafInputDrop(plafWindow* window, int count, const char** paths)
-{
-	if (window->dropCallback)
-		window->dropCallback(window, count, paths);
-}
-
 
 //////////////////////////////////////////////////////////////////////////
 //////                       PLAF internal API                      //////
@@ -118,53 +77,35 @@ void plafShowCursor(plafWindow* window) {
 	}
 }
 
-int plafGetKeyScancode(int key)
-{
-	if (key < KEY_SPACE || key > KEY_LAST)
-	{
-		_plafInputError("Invalid key %i", key);
-		return -1;
+int plafGetKeyScancode(int key) {
+	if (key < KEY_SPACE || key > KEY_LAST) {
+		return KEY_UNKNOWN;
 	}
-
 	return _plaf.scanCodes[key];
 }
 
-int plafGetKey(plafWindow* window, int key)
-{
-	if (key < KEY_SPACE || key > KEY_LAST)
-	{
-		_plafInputError("Invalid key %i", key);
+int plafGetKey(plafWindow* window, int key) {
+	if (key < KEY_SPACE || key > KEY_LAST) {
 		return INPUT_RELEASE;
 	}
-	return (int) window->keys[key];
+	return (int)window->keys[key];
 }
 
-int plafGetMouseButton(plafWindow* window, int button)
-{
-	if (button < MOUSE_BUTTON_1 || button > MOUSE_BUTTON_LAST)
-	{
-		_plafInputError("Invalid mouse button %i", button);
+int plafGetMouseButton(plafWindow* window, int button) {
+	if (button < MOUSE_BUTTON_1 || button > MOUSE_BUTTON_LAST) {
 		return INPUT_RELEASE;
 	}
-	return (int) window->mouseButtons[button];
+	return (int)window->mouseButtons[button];
 }
 
-plafCursor* plafCreateCursor(const plafImageData* image, int xhot, int yhot)
-{
-	if (image->width <= 0 || image->height <= 0) {
-		_plafInputError("Invalid image dimensions for cursor");
-		return NULL;
-	}
-
+plafCursor* plafCreateCursor(const plafImageData* image, int xhot, int yhot) {
 	plafCursor* cursor = _plaf_calloc(1, sizeof(plafCursor));
 	cursor->next = _plaf.cursorListHead;
 	_plaf.cursorListHead = cursor;
-
 	if (!_plafCreateCursor(cursor, image, xhot, yhot)) {
 		plafDestroyCursor(cursor);
 		return NULL;
 	}
-
 	return cursor;
 }
 
@@ -204,44 +145,4 @@ void plafDestroyCursor(plafCursor* cursor) {
 	}
 	*prev = cursor->next;
 	_plaf_free(cursor);
-}
-
-keyFunc plafSetKeyCallback(plafWindow* window, keyFunc cbfun) {
-	SWAP(keyFunc, window->keyCallback, cbfun);
-	return cbfun;
-}
-
-charFunc plafSetCharCallback(plafWindow* window, charFunc cbfun) {
-	SWAP(charFunc, window->charCallback, cbfun);
-	return cbfun;
-}
-
-charModsFunc plafSetCharModsCallback(plafWindow* window, charModsFunc cbfun) {
-	SWAP(charModsFunc, window->charModsCallback, cbfun);
-	return cbfun;
-}
-
-mouseButtonFunc plafSetMouseButtonCallback(plafWindow* window, mouseButtonFunc cbfun) {
-	SWAP(mouseButtonFunc, window->mouseButtonCallback, cbfun);
-	return cbfun;
-}
-
-cursorPosFunc plafSetCursorPosCallback(plafWindow* window, cursorPosFunc cbfun) {
-	SWAP(cursorPosFunc, window->cursorPosCallback, cbfun);
-	return cbfun;
-}
-
-cursorEnterFunc plafSetCursorEnterCallback(plafWindow* window, cursorEnterFunc cbfun) {
-	SWAP(cursorEnterFunc, window->cursorEnterCallback, cbfun);
-	return cbfun;
-}
-
-scrollFunc plafSetScrollCallback(plafWindow* window, scrollFunc cbfun) {
-	SWAP(scrollFunc, window->scrollCallback, cbfun);
-	return cbfun;
-}
-
-dropFunc plafSetDropCallback(plafWindow* window, dropFunc cbfun) {
-	SWAP(dropFunc, window->dropCallback, cbfun);
-	return cbfun;
 }

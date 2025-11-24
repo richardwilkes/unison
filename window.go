@@ -218,24 +218,22 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
-	w.wnd.SetRefreshCallback(func(_ *plaf.Window) {
+	w.wnd.WindowDrawCallback = func(_ *plaf.Window) {
 		delete(redrawSet, w)
 		w.draw()
-	})
-	w.wnd.SetPosCallback(func(_ *plaf.Window, _, _ int) {
+	}
+	w.wnd.WindowPosCallback = func(_ *plaf.Window) {
 		w.moved()
-	})
-	w.wnd.SetSizeCallback(func(_ *plaf.Window, width, height int) {
-		if width > 0 && height > 0 {
-			w.resized()
-		}
-	})
-	w.wnd.SetCloseCallback(func(_ *plaf.Window) {
+	}
+	w.wnd.WindowSizeCallback = func(_ *plaf.Window) {
+		w.resized()
+	}
+	w.wnd.WindowCloseCallback = func(_ *plaf.Window) {
 		if w.okToProcess() {
 			w.AttemptClose()
 		}
-	})
-	w.wnd.SetFocusCallback(func(_ *plaf.Window, focused bool) {
+	}
+	w.wnd.WindowFocusCallback = func(_ *plaf.Window, focused bool) {
 		if focused {
 			if w.okToProcess() {
 				w.gainedFocus()
@@ -245,39 +243,37 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		} else {
 			w.lostFocus()
 		}
-	})
-	w.wnd.SetMouseButtonCallback(w.mouseButtonCallback)
-	w.wnd.SetCursorPosCallback(func(_ *plaf.Window, x, y float64) {
+	}
+	w.wnd.MouseButtonCallback = w.mouseButtonCallback
+	w.wnd.CursorPosCallback = func(_ *plaf.Window, x, y float64) {
 		where := w.convertRawMouseLocation(x, y)
 		if w.inMouseDown {
 			w.mouseDrag(where, w.lastButton, w.lastKeyModifiers)
 		} else {
 			w.mouseMove(where, w.lastKeyModifiers)
 		}
-	})
-	w.wnd.SetCursorEnterCallback(func(_ *plaf.Window, entered bool) {
+	}
+	w.wnd.CursorEnterCallback = func(_ *plaf.Window, entered bool) {
 		if entered {
 			w.mouseEnter(w.MouseLocation(), w.lastKeyModifiers)
 		} else {
 			w.mouseExit()
 		}
-	})
-	w.wnd.SetScrollCallback(func(_ *plaf.Window, xoff, yoff float64) {
-		w.mouseWheel(w.MouseLocation(), geom.NewPoint(float32(xoff), float32(yoff)), w.lastKeyModifiers)
-	})
-	w.wnd.SetKeyCallback(w.keyCallbackForPlatform)
-	w.wnd.SetCharCallback(func(_ *plaf.Window, ch rune) {
+	}
+	w.wnd.ScrollCallback = func(_ *plaf.Window, xOffset, yOffset float64) {
+		w.mouseWheel(w.MouseLocation(), geom.NewPoint(float32(xOffset), float32(yOffset)), w.lastKeyModifiers)
+	}
+	w.wnd.KeyCallback = w.keyCallbackForPlatform
+	w.wnd.CharCallback = func(_ *plaf.Window, ch rune) {
 		if w.okToProcess() {
 			w.runeTyped(ch)
 		}
-	})
-	// Real drag & drop support can't really be added due to the way plaf has already hooked in for their primitive
-	// file drop capability... so we'll just live with that for now.
-	w.wnd.SetDropCallback(func(_ *plaf.Window, files []string) {
+	}
+	w.wnd.DropCallback = func(_ *plaf.Window, data []string) {
 		if w.okToProcess() {
-			w.fileDrop(files)
+			w.fileDrop(data)
 		}
-	})
+	}
 	w.valid = true
 	windowList = append(windowList, w)
 	windowMap[w.wnd] = w

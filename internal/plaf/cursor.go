@@ -61,6 +61,32 @@ func (c *Cursor) Destroy() {
 	C.plafDestroyCursor(c.data)
 }
 
+// SetCursor sets the cursor image to be used when the cursor is over the client area
+// of the specified window. The set cursor will only be visible when the cursor mode of the
+// window is CursorNormal.
+//
+// On some platforms, the set cursor may not be visible unless the window also has input focus.
+func (w *Window) SetCursor(c *Cursor) {
+	if c == nil {
+		C.plafSetCursor(w.plafWnd, nil)
+	} else {
+		C.plafSetCursor(w.plafWnd, c.data)
+	}
+}
+
+// GetCursorPos returns the last reported position of the cursor.
+func (w *Window) GetCursorPos() (x, y float64) {
+	var xpos, ypos C.double
+	C.plafGetCursorPos(w.plafWnd, &xpos, &ypos)
+	return float64(xpos), float64(ypos)
+}
+
+// SetCursorPos sets the position of the cursor. The specified window must be focused. If the window does not have focus
+// when this function is called, it fails silently.
+func (w *Window) SetCursorPos(xpos, ypos float64) {
+	C.plafSetCursorPos(w.plafWnd, C.double(xpos), C.double(ypos))
+}
+
 func imageToCImageData(img *image.NRGBA) C.plafImageData {
 	var r C.plafImageData
 	w := img.Rect.Dx()

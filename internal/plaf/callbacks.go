@@ -11,38 +11,36 @@ import (
 )
 
 //export goCharCallback
-func goCharCallback(window unsafe.Pointer, ch C.uint) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fCharHolder(w, rune(ch))
-}
-
-//export goCharModsCallback
-func goCharModsCallback(window unsafe.Pointer, ch C.uint, mods C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fCharModsHolder(w, rune(ch), ModifierKey(mods))
+func goCharCallback(window *C.plafWindow, ch C.uint) {
+	if w := windows.get(window); w != nil && w.CharCallback != nil {
+		w.CharCallback(w, rune(ch))
+	}
 }
 
 //export goCursorEnterCallback
-func goCursorEnterCallback(window unsafe.Pointer, entered C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fCursorEnterHolder(w, entered != 0)
+func goCursorEnterCallback(window *C.plafWindow, entered C.bool) {
+	if w := windows.get(window); w != nil && w.CursorEnterCallback != nil {
+		w.CursorEnterCallback(w, bool(entered))
+	}
 }
 
 //export goCursorPosCallback
-func goCursorPosCallback(window unsafe.Pointer, xpos, ypos C.double) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fCursorPosHolder(w, float64(xpos), float64(ypos))
+func goCursorPosCallback(window *C.plafWindow, x, y C.double) {
+	if w := windows.get(window); w != nil && w.CursorPosCallback != nil {
+		w.CursorPosCallback(w, float64(x), float64(y))
+	}
 }
 
 //export goDropCallback
-func goDropCallback(window unsafe.Pointer, count C.int, names **C.char) {
-	w := windows.get((*C.plafWindow)(window))
-	namesSlice := make([]string, int(count))
-	list := unsafe.Slice(names, int(count))
-	for i := range namesSlice {
-		namesSlice[i] = C.GoString(list[i])
+func goDropCallback(window *C.plafWindow, count C.int, data **C.char) {
+	if w := windows.get(window); w.DropCallback != nil {
+		dataSlice := make([]string, int(count))
+		list := unsafe.Slice(data, int(count))
+		for i := range dataSlice {
+			dataSlice[i] = C.GoString(list[i])
+		}
+		w.DropCallback(w, dataSlice)
 	}
-	w.fDropHolder(w, namesSlice)
 }
 
 //export goErrorCallback
@@ -57,79 +55,86 @@ func goErrorCallback(desc *C.char) {
 	}
 }
 
-//export goFramebufferSizeCallback
-func goFramebufferSizeCallback(window unsafe.Pointer, width, height C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fFramebufferSizeHolder(w, int(width), int(height))
-}
-
 //export goKeyCallback
-func goKeyCallback(window unsafe.Pointer, key, scancode, action, mods C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fKeyHolder(w, Key(key), int(scancode), Action(action), ModifierKey(mods))
+func goKeyCallback(window *C.plafWindow, key, scancode, action, mods C.int) {
+	if w := windows.get(window); w != nil && w.KeyCallback != nil {
+		w.KeyCallback(w, Key(key), int(scancode), Action(action), ModifierKey(mods))
+	}
 }
 
 //export goMonitorCallback
-func goMonitorCallback(monitor *C.plafMonitor, event C.int) {
-	fMonitorHolder(&Monitor{data: monitor}, PeripheralEvent(event))
+func goMonitorCallback(monitor *C.plafMonitor, connected C.bool) {
+	if MonitorCallback != nil {
+		MonitorCallback(&Monitor{data: monitor}, bool(connected))
+	}
 }
 
 //export goMouseButtonCallback
-func goMouseButtonCallback(window unsafe.Pointer, button, action, mods C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fMouseButtonHolder(w, MouseButton(button), Action(action), ModifierKey(mods))
+func goMouseButtonCallback(window *C.plafWindow, button, action, mods C.int) {
+	if w := windows.get(window); w != nil && w.MouseButtonCallback != nil {
+		w.MouseButtonCallback(w, MouseButton(button), Action(action), ModifierKey(mods))
+	}
 }
 
 //export goScrollCallback
-func goScrollCallback(window unsafe.Pointer, xoff, yoff C.double) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fScrollHolder(w, float64(xoff), float64(yoff))
+func goScrollCallback(window *C.plafWindow, xOffset, yOffset C.double) {
+	if w := windows.get(window); w != nil && w.ScrollCallback != nil {
+		w.ScrollCallback(w, float64(xOffset), float64(yOffset))
+	}
 }
 
 //export goWindowCloseCallback
-func goWindowCloseCallback(window unsafe.Pointer) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fCloseHolder(w)
+func goWindowCloseCallback(window *C.plafWindow) {
+	if w := windows.get(window); w != nil && w.WindowCloseCallback != nil {
+		w.WindowCloseCallback(w)
+	}
 }
 
 //export goWindowContentScaleCallback
-func goWindowContentScaleCallback(window unsafe.Pointer, x, y C.float) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fContentScaleHolder(w, float32(x), float32(y))
+func goWindowContentScaleCallback(window *C.plafWindow) {
+	if w := windows.get(window); w != nil && w.WindowContentScaleCallback != nil {
+		w.WindowContentScaleCallback(w)
+	}
 }
 
 //export goWindowFocusCallback
-func goWindowFocusCallback(window unsafe.Pointer, focused C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fFocusHolder(w, focused != 0)
+func goWindowFocusCallback(window *C.plafWindow, focused C.bool) {
+	if w := windows.get(window); w != nil && w.WindowFocusCallback != nil {
+		w.WindowFocusCallback(w, bool(focused))
+	}
 }
 
 //export goWindowMinimizeCallback
-func goWindowMinimizeCallback(window unsafe.Pointer, minimized C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fMinimizeHolder(w, minimized != 0)
+func goWindowMinimizeCallback(window *C.plafWindow, minimized C.bool) {
+	if w := windows.get(window); w != nil && w.WindowMinimizeCallback != nil {
+		w.WindowMinimizeCallback(w, bool(minimized))
+	}
 }
 
 //export goWindowMaximizeCallback
-func goWindowMaximizeCallback(window unsafe.Pointer, maximized C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fMaximizeHolder(w, maximized != 0)
+func goWindowMaximizeCallback(window *C.plafWindow, maximized C.bool) {
+	if w := windows.get(window); w != nil && w.WindowMaximizeCallback != nil {
+		w.WindowMaximizeCallback(w, bool(maximized))
+	}
 }
 
 //export goWindowPosCallback
-func goWindowPosCallback(window unsafe.Pointer, xpos, ypos C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fPosHolder(w, int(xpos), int(ypos))
+func goWindowPosCallback(window *C.plafWindow) {
+	if w := windows.get(window); w != nil && w.WindowPosCallback != nil {
+		w.WindowPosCallback(w)
+	}
 }
 
-//export goWindowRefreshCallback
-func goWindowRefreshCallback(window unsafe.Pointer) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fRefreshHolder(w)
+//export goWindowDrawCallback
+func goWindowDrawCallback(window *C.plafWindow) {
+	if w := windows.get(window); w != nil && w.WindowDrawCallback != nil {
+		w.WindowDrawCallback(w)
+	}
 }
 
 //export goWindowSizeCallback
-func goWindowSizeCallback(window unsafe.Pointer, width, height C.int) {
-	w := windows.get((*C.plafWindow)(window))
-	w.fSizeHolder(w, int(width), int(height))
+func goWindowSizeCallback(window *C.plafWindow) {
+	if w := windows.get(window); w != nil && w.WindowSizeCallback != nil {
+		w.WindowSizeCallback(w)
+	}
 }

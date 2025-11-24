@@ -5,7 +5,7 @@ import "C"
 
 // MakeContextCurrent makes the context of the window current.
 func (w *Window) MakeContextCurrent() {
-	C.plafMakeContextCurrent(w.data)
+	C.plafMakeContextCurrent(w.plafWnd)
 }
 
 // DetachCurrentContext detaches the current context.
@@ -23,5 +23,5 @@ func GetCurrentContext() *Window {
 
 // SwapBuffers swaps the front and back buffers of the window.
 func (w *Window) SwapBuffers() {
-	C.plafSwapBuffers(w.data)
+	C.plafSwapBuffers(w.plafWnd)
 }

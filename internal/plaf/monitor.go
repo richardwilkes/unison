@@ -1,10 +1,6 @@
 package plaf
 
-/*
-#include "platform.h"
-
-void goMonitorCallback(plafMonitor* monitor, int event);
-*/
+//#include "platform.h"
 import "C"
 
 import (
@@ -16,21 +12,12 @@ type Monitor struct {
 	data *C.plafMonitor
 }
 
-// PeripheralEvent corresponds to a peripheral (Monitor) configuration event.
-type PeripheralEvent int
-
 // GammaRamp describes the gamma ramp for a monitor.
 type GammaRamp struct {
 	Red   []uint16 // A slice of value describing the response of the red channel.
 	Green []uint16 // A slice of value describing the response of the green channel.
 	Blue  []uint16 // A slice of value describing the response of the blue channel.
 }
-
-// PeripheralEvent events.
-const (
-	Connected    PeripheralEvent = C.CONNECTED
-	Disconnected PeripheralEvent = C.DISCONNECTED
-)
 
 // VidMode describes a single video mode.
 type VidMode struct {
@@ -42,7 +29,8 @@ type VidMode struct {
 	RefreshRate int // The refresh rate, in Hz, of the video mode.
 }
 
-var fMonitorHolder func(monitor *Monitor, event PeripheralEvent)
+// MonitorCallback is called when a monitor has been connected or disconnected.
+var MonitorCallback func(monitor *Monitor, connected bool)
 
 // GetMonitors returns a slice of handles for all currently connected monitors.
 func GetMonitors() []*Monitor {
@@ -128,26 +116,6 @@ func (m *Monitor) GetName() string {
 		return ""
 	}
 	return C.GoString(mn)
-}
-
-// MonitorCallback is the signature for monitor configuration callback
-// functions.
-type MonitorCallback func(monitor *Monitor, event PeripheralEvent)
-
-// SetMonitorCallback sets the monitor configuration callback, or removes the
-// currently set callback. This is called when a monitor is connected to or
-// disconnected from the system.
-//
-// This function must only be called from the main thread.
-func SetMonitorCallback(cbfun MonitorCallback) MonitorCallback {
-	previous := fMonitorHolder
-	fMonitorHolder = cbfun
-	var callback C.monitorFunc
-	if cbfun != nil {
-		callback = C.monitorFunc(C.goMonitorCallback)
-	}
-	C.plafSetMonitorCallback(callback)
-	return previous
 }
 
 // GetVideoModes returns an array of all video modes supported by the monitor.

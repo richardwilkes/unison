@@ -80,17 +80,8 @@ static const plafImageData* chooseImage(int count, const plafImageData* images,
 }
 
 // Creates an RGBA icon or cursor
-//
 static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool icon) {
-	int i;
-	HDC dc;
-	HICON handle;
-	HBITMAP color, mask;
 	BITMAPV5HEADER bi;
-	ICONINFO ii;
-	unsigned char* target = NULL;
-	unsigned char* source = image->pixels;
-
 	ZeroMemory(&bi, sizeof(bi));
 	bi.bV5Size        = sizeof(bi);
 	bi.bV5Width       = image->width;
@@ -103,26 +94,20 @@ static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool ico
 	bi.bV5BlueMask    = 0x000000ff;
 	bi.bV5AlphaMask   = 0xff000000;
 
-	dc = GetDC(NULL);
-	color = CreateDIBSection(dc, (BITMAPINFO*) &bi, DIB_RGB_COLORS, (void**) &target, NULL, (DWORD) 0);
+	unsigned char* target = NULL;
+	HDC dc = GetDC(NULL);
+	HBITMAP color = CreateDIBSection(dc, (BITMAPINFO*)&bi, DIB_RGB_COLORS, (void**)&target, NULL, (DWORD)0);
 	ReleaseDC(NULL, dc);
-
-	if (!color)
-	{
-		_plafInputError("Win32: Failed to create RGBA bitmap");
+	if (!color) {
 		return NULL;
 	}
-
-	mask = CreateBitmap(image->width, image->height, 1, 1, NULL);
-	if (!mask)
-	{
-		_plafInputError("Win32: Failed to create mask bitmap");
+	HBITMAP mask = CreateBitmap(image->width, image->height, 1, 1, NULL);
+	if (!mask) {
 		DeleteObject(color);
 		return NULL;
 	}
-
-	for (i = 0;  i < image->width * image->height;  i++)
-	{
+	unsigned char* source = image->pixels;
+	for (int i = 0;  i < image->width * image->height;  i++) {
 		target[0] = source[2];
 		target[1] = source[1];
 		target[2] = source[0];
@@ -131,6 +116,7 @@ static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool ico
 		source += 4;
 	}
 
+	ICONINFO ii;
 	ZeroMemory(&ii, sizeof(ii));
 	ii.fIcon    = icon;
 	ii.xHotspot = xhot;
@@ -138,59 +124,10 @@ static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool ico
 	ii.hbmMask  = mask;
 	ii.hbmColor = color;
 
-	handle = CreateIconIndirect(&ii);
-
+	HICON icon = CreateIconIndirect(&ii);
 	DeleteObject(color);
 	DeleteObject(mask);
-
-	if (!handle)
-	{
-		if (icon)
-		{
-			_plafInputError("Win32: Failed to create icon");
-		}
-		else
-		{
-			_plafInputError("Win32: Failed to create cursor");
-		}
-	}
-
-	return handle;
-}
-
-// Enforce the content area aspect ratio based on which edge is being dragged
-//
-static void applyAspectRatio(plafWindow* window, int edge, RECT* area)
-{
-	RECT frame = {0};
-	const float ratio = (float) window->numer / (float) window->denom;
-	const DWORD style = getWindowStyle(window);
-	const DWORD exStyle = getWindowExStyle(window);
-
-	if (IsWindows10Version1607OrGreater())
-	{
-		_plaf.win32User32AdjustWindowRectExForDpi_(&frame, style, FALSE, exStyle,
-								 _plaf.win32User32GetDpiForWindow_(window->win32Window));
-	}
-	else
-		AdjustWindowRectEx(&frame, style, FALSE, exStyle);
-
-	if (edge == WMSZ_LEFT  || edge == WMSZ_BOTTOMLEFT ||
-		edge == WMSZ_RIGHT || edge == WMSZ_BOTTOMRIGHT)
-	{
-		area->bottom = area->top + (frame.bottom - frame.top) +
-			(int) (((area->right - area->left) - (frame.right - frame.left)) / ratio);
-	}
-	else if (edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT)
-	{
-		area->top = area->bottom - (frame.bottom - frame.top) -
-			(int) (((area->right - area->left) - (frame.right - frame.left)) / ratio);
-	}
-	else if (edge == WMSZ_TOP || edge == WMSZ_BOTTOM)
-	{
-		area->right = area->left + (frame.right - frame.left) +
-			(int) (((area->bottom - area->top) - (frame.bottom - frame.top)) * ratio);
-	}
+	return icon;
 }
 
 // Updates the cursor image according to its cursor mode
@@ -417,6 +354,8 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		case WM_SYSCHAR:
 			if (wParam >= 0xd800 && wParam <= 0xdbff) {
 				window->win32HighSurrogate = (WCHAR) wParam;
+			} else if (uMsg == WM_SYSCHAR) {
+				window->win32HighSurrogate = 0;
 			} else {
 				uint32_t codepoint = 0;
 				if (wParam >= 0xdc00 && wParam <= 0xdfff) {
@@ -429,7 +368,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 					codepoint = (WCHAR) wParam;
 				}
 				window->win32HighSurrogate = 0;
-				_plafInputChar(window, codepoint, getKeyMods(), uMsg != WM_SYSCHAR);
+				_plafInputChar(window, codepoint);
 			}
 			return 0;
 
@@ -439,7 +378,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				// TRUE here announces support for this message.
 				return TRUE;
 			}
-			_plafInputChar(window, (uint32_t)wParam, getKeyMods(), true);
+			_plafInputChar(window, (uint32_t)wParam);
 			return 0;
 
 		case WM_KEYDOWN:
@@ -580,7 +519,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				tme.hwndTrack = window->win32Window;
 				TrackMouseEvent(&tme);
 				window->win32CursorTracked = true;
-				_plafInputCursorEnter(window, true);
+				goCursorEnterCallback(window, true);
 			}
 			_plafInputCursorPos(window, x, y);
 			return 0;
@@ -591,15 +530,15 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 		case WM_MOUSELEAVE:
 			window->win32CursorTracked = false;
-			_plafInputCursorEnter(window, false);
+			goCursorEnterCallback(window, false);
 			return 0;
 
 		case WM_MOUSEWHEEL:
-			_plafInputScroll(window, 0.0, (SHORT)HIWORD(wParam) / (double)WHEEL_DELTA);
+			goScrollCallback(window, 0.0, (SHORT)HIWORD(wParam) / (double)WHEEL_DELTA);
 			return 0;
 
 		case WM_MOUSEHWHEEL:
-			_plafInputScroll(window, -((SHORT)HIWORD(wParam) / (double)WHEEL_DELTA), 0.0);
+			goScrollCallback(window, -((SHORT)HIWORD(wParam) / (double)WHEEL_DELTA), 0.0);
 			return 0;
 
 		case WM_ENTERSIZEMOVE:
@@ -621,18 +560,17 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			const bool maximized = wParam == SIZE_MAXIMIZED || (window->maximized && wParam != SIZE_RESTORED);
 
 			if (window->win32Minimized != minimized) {
-				_plafInputWindowMinimize(window, minimized);
+				goWindowMinimizeCallback(window, minimized);
 			}
 
 			if (window->maximized != maximized) {
-				_plafInputWindowMaximize(window, maximized);
+				goWindowMaximizeCallback(window, maximized);
 			}
 
 			if (width != window->width || height != window->height) {
 				window->width = width;
 				window->height = height;
-				_plafInputFramebufferSize(window, width, height);
-				_plafInputWindowSize(window, width, height);
+				goWindowSizeCallback(window);
 			}
 
 			if (window->monitor && window->win32Minimized != minimized) {
@@ -650,16 +588,10 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		}
 
 		case WM_MOVE:
-			// NOTE: This cannot use LOWORD/HIWORD recommended by MSDN, as
-			// those macros do not handle negative window positions correctly
-			_plafInputWindowPos(window, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+			goWindowPosCallback(window);
 			return 0;
 
 		case WM_SIZING:
-			if (window->numer == DONT_CARE || window->denom == DONT_CARE) {
-				break;
-			}
-			applyAspectRatio(window, (int) wParam, (RECT*) lParam);
 			return TRUE;
 
 		case WM_GETMINMAXINFO:
@@ -707,7 +639,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		}
 
 		case WM_PAINT:
-			_plafInputWindowDamage(window);
+			goWindowDrawCallback(window);
 			break;
 
 		case WM_ERASEBKGND:
@@ -745,19 +677,15 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			break;
 
 		case WM_DPICHANGED:
-		{
 			// Resize windowed mode windows that need it to compensate for non-client area scaling
 			if (!window->monitor && IsWindows10Version1703OrGreater()) {
-				RECT* suggested = (RECT*) lParam;
+				RECT* suggested = (RECT*)lParam;
 				SetWindowPos(window->win32Window, HWND_TOP, suggested->left, suggested->top,
 					suggested->right - suggested->left, suggested->bottom - suggested->top,
 					SWP_NOACTIVATE | SWP_NOZORDER);
 			}
-			const float xscale = HIWORD(wParam) / (float) USER_DEFAULT_SCREEN_DPI;
-			const float yscale = LOWORD(wParam) / (float) USER_DEFAULT_SCREEN_DPI;
-			_plafInputWindowContentScale(window, xscale, yscale);
+			goWindowContentScaleCallback(window);
 			break;
-		}
 
 		case WM_SETCURSOR:
 			if (LOWORD(lParam) == HTCLIENT) {
@@ -790,7 +718,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				_plaf_free(buffer);
 			}
 
-			_plafInputDrop(window, count, (const char**) paths);
+			goDropCallback(window, count, paths);
 
 			for (i = 0;  i < count;  i++)
 				_plaf_free(paths[i]);
@@ -1471,11 +1399,8 @@ void _plafUpdateCursor(plafWindow* window) {
 }
 
 bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
-	cursor->win32Cursor = (HCURSOR) createIcon(image, xhot, yhot, false);
-	if (!cursor->win32Cursor) {
-		return false;
-	}
-	return true;
+	cursor->win32Cursor = (HCURSOR)createIcon(image, xhot, yhot, false);
+	return !!cursor->win32Cursor;
 }
 
 bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
@@ -1510,8 +1435,9 @@ bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 }
 
 void _plafDestroyCursor(plafCursor* cursor) {
-	if (cursor->win32Cursor)
+	if (cursor->win32Cursor) {
 		DestroyIcon((HICON) cursor->win32Cursor);
+	}
 }
 
 void* plafGetNativeWindow(plafWindow* window) {
