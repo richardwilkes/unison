@@ -1694,7 +1694,7 @@ static void processEvent(XEvent *event)
 				_plafInputKey(window, key, keycode, INPUT_PRESS, mods);
 				if (plain) {
 					const uint32_t ch = keySym2Unicode(keysym);
-					if (codepoint != PLAF_INVALID_CODEPOINT) {
+					if (ch != PLAF_INVALID_CODEPOINT) {
 						_plafInputChar(window, ch);
 					}
 				}
