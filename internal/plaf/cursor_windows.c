@@ -21,10 +21,12 @@ void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 
 bool _plafCursorInContentArea(plafWindow* window) {
 	POINT pos;
-	if (!GetCursorPos(&pos))
+	if (!GetCursorPos(&pos)) {
 		return false;
-	if (WindowFromPoint(pos) != window->win32Window)
+	}
+	if (WindowFromPoint(pos) != window->win32Window) {
 		return false;
+	}
 	RECT area;
 	GetClientRect(window->win32Window, &area);
 	ClientToScreen(window->win32Window, (POINT*)&area.left);

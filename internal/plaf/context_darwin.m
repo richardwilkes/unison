@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <math.h>
 
-static plafError* makeContextCurrentNSGL(plafWindow* window) {
+static void makeContextCurrentNSGL(plafWindow* window) {
 	@autoreleasepool {
 		if (window) {
 			[window->context.nsglCtx makeCurrentContext];
@@ -14,18 +14,11 @@ static plafError* makeContextCurrentNSGL(plafWindow* window) {
 		}
 		_plaf.wndWithCurrentCtx = window;
 	}
-	return NULL;
 }
 
 static void swapBuffersNSGL(plafWindow* window) {
 	@autoreleasepool {
 		[window->context.nsglCtx flushBuffer];
-	}
-}
-
-static void swapIntervalNSGL(int interval) {
-	@autoreleasepool {
-		[_plaf.wndWithCurrentCtx->context.nsglCtx setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
 	}
 }
 
@@ -123,7 +116,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 
 	window->context.makeCurrent = makeContextCurrentNSGL;
 	window->context.swapBuffers = swapBuffersNSGL;
-	window->context.swapInterval = swapIntervalNSGL;
 	window->context.extensionSupported = extensionSupportedNSGL;
 	window->context.getProcAddress = getProcAddressNSGL;
 	window->context.destroy = destroyContextNSGL;

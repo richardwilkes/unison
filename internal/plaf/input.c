@@ -168,59 +168,41 @@ plafCursor* plafCreateCursor(const plafImageData* image, int xhot, int yhot)
 	return cursor;
 }
 
-plafCursor* plafCreateStandardCursor(int shape)
-{
+plafCursor* plafCreateStandardCursor(int shape) {
 	if (shape != STD_CURSOR_ARROW &&
 		shape != STD_CURSOR_IBEAM &&
 		shape != STD_CURSOR_CROSSHAIR &&
 		shape != STD_CURSOR_POINTING_HAND &&
 		shape != STD_CURSOR_HORIZONTAL_RESIZE &&
-		shape != STD_CURSOR_VERTICAL_RESIZE)
-	{
-		_plafInputError("Invalid standard cursor 0x%08X", shape);
+		shape != STD_CURSOR_VERTICAL_RESIZE) {
 		return NULL;
 	}
-
 	plafCursor* cursor = _plaf_calloc(1, sizeof(plafCursor));
 	cursor->next = _plaf.cursorListHead;
 	_plaf.cursorListHead = cursor;
-
 	if (!_plafCreateStandardCursor(cursor, shape)) {
 		plafDestroyCursor(cursor);
 		return NULL;
 	}
-
 	return cursor;
 }
 
-void plafDestroyCursor(plafCursor* cursor)
-{
-	if (cursor == NULL)
+void plafDestroyCursor(plafCursor* cursor) {
+	if (cursor == NULL) {
 		return;
-
-	// Make sure the cursor is not being used by any window
-	{
-		plafWindow* window;
-
-		for (window = _plaf.windowListHead;  window;  window = window->next)
-		{
-			if (window->cursor == cursor)
-				plafSetCursor(window, NULL);
+	}
+	plafWindow* window;
+	for (window = _plaf.windowListHead;  window;  window = window->next) {
+		if (window->cursor == cursor) {
+			plafSetCursor(window, NULL);
 		}
 	}
-
 	_plafDestroyCursor(cursor);
-
-	// Unlink cursor from global linked list
-	{
-		plafCursor** prev = &_plaf.cursorListHead;
-
-		while (*prev != cursor)
-			prev = &((*prev)->next);
-
-		*prev = cursor->next;
+	plafCursor** prev = &_plaf.cursorListHead;
+	while (*prev != cursor) {
+		prev = &((*prev)->next);
 	}
-
+	*prev = cursor->next;
 	_plaf_free(cursor);
 }
 

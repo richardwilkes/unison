@@ -69,10 +69,7 @@ const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
 // Retrieves the attributes of the current context
 plafError* _plafRefreshContextAttribs(plafWindow* window) {
 	plafWindow* previous = _plaf.wndWithCurrentCtx;
-	plafError* err = plafMakeContextCurrent(window);
-	if (err) {
-		return err;
-	}
+	plafMakeContextCurrent(window);
 
 	window->context.GetIntegerv = (FN_GLGETINTEGERV)window->context.getProcAddress("glGetIntegerv");
 	window->context.GetString = (FN_GLGETSTRING)window->context.getProcAddress("glGetString");
@@ -107,7 +104,8 @@ plafError* _plafRefreshContextAttribs(plafWindow* window) {
 	FN_GLCLEAR glClear = (FN_GLCLEAR)window->context.getProcAddress("glClear");
 	glClear(GL_COLOR_BUFFER_BIT);
 	plafSwapBuffers(window);
-	return plafMakeContextCurrent(previous);
+	plafMakeContextCurrent(previous);
+	return NULL;
 }
 
 // Searches an extension string for the specified extension
@@ -142,72 +140,14 @@ bool _plafStringInExtensionString(const char* string, const char* extensions) {
 //////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-plafError* plafMakeContextCurrent(plafWindow* window) {
-	plafError* err = NULL;
-	if (_plaf.wndWithCurrentCtx) {
-		if (!window) {
-			err = _plaf.wndWithCurrentCtx->context.makeCurrent(NULL);
-		}
-	}
+void plafMakeContextCurrent(plafWindow* window) {
 	if (window) {
-		plafError* err2 = window->context.makeCurrent(window);
-		if (err2) {
-			err2->next = err;
-			err = err2;
-		}
+		window->context.makeCurrent(window);
+	} else if (_plaf.wndWithCurrentCtx) {
+		_plaf.wndWithCurrentCtx->context.makeCurrent(NULL);
 	}
-	return err;
 }
 
 void plafSwapBuffers(plafWindow* window) {
 	window->context.swapBuffers(window);
-}
-
-void plafSwapInterval(int interval)
-{
-	if (!_plaf.wndWithCurrentCtx)
-	{
-		_plafInputError("Cannot set swap interval without a current OpenGL or OpenGL ES context");
-		return;
-	}
-	_plaf.wndWithCurrentCtx->context.swapInterval(interval);
-}
-
-bool plafExtensionSupported(const char* extension) {
-	if (!_plaf.wndWithCurrentCtx) {
-		_plafInputError("Cannot query extension without a current OpenGL or OpenGL ES context");
-		return false;
-	}
-
-	if (*extension == '\0') {
-		_plafInputError("Extension name cannot be an empty string");
-		return false;
-	}
-
-	// Check if extension is in the OpenGL extensions string list
-	int count;
-	_plaf.wndWithCurrentCtx->context.GetIntegerv(GL_NUM_EXTENSIONS, &count);
-	for (int i = 0;  i < count;  i++) {
-		const char* en = _plaf.wndWithCurrentCtx->context.GetStringi(GL_EXTENSIONS, i);
-		if (!en) {
-			_plafInputError("Extension string retrieval is broken");
-			return false;
-		}
-		if (strcmp(en, extension) == 0) {
-			return true;
-		}
-	}
-
-	// Check if extension is in the platform-specific string
-	return _plaf.wndWithCurrentCtx->context.extensionSupported(extension);
-}
-
-glFunc plafGetProcAddress(const char* procname)
-{
-	if (!_plaf.wndWithCurrentCtx)
-	{
-		_plafInputError("Cannot query entry point without a current OpenGL or OpenGL ES context");
-		return NULL;
-	}
-	return _plaf.wndWithCurrentCtx->context.getProcAddress(procname);
 }

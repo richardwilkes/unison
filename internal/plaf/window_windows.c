@@ -104,12 +104,7 @@ static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool ico
 	bi.bV5AlphaMask   = 0xff000000;
 
 	dc = GetDC(NULL);
-	color = CreateDIBSection(dc,
-							 (BITMAPINFO*) &bi,
-							 DIB_RGB_COLORS,
-							 (void**) &target,
-							 NULL,
-							 (DWORD) 0);
+	color = CreateDIBSection(dc, (BITMAPINFO*) &bi, DIB_RGB_COLORS, (void**) &target, NULL, (DWORD) 0);
 	ReleaseDC(NULL, dc);
 
 	if (!color)
@@ -999,38 +994,29 @@ void _plafSetWindowTitle(plafWindow* window, const char* title) {
 	_plaf_free(wideTitle);
 }
 
-void _plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images) {
-	HICON bigIcon = NULL, smallIcon = NULL;
-
-	if (count)
-	{
-		const plafImageData* bigImage = chooseImage(count, images,
-												GetSystemMetrics(SM_CXICON),
-												GetSystemMetrics(SM_CYICON));
-		const plafImageData* smallImage = chooseImage(count, images,
-												  GetSystemMetrics(SM_CXSMICON),
-												  GetSystemMetrics(SM_CYSMICON));
-
+void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images) {
+	HICON bigIcon = NULL;
+	HICON smallIcon = NULL;
+	if (count) {
+		const plafImageData* bigImage = chooseImage(count, images, GetSystemMetrics(SM_CXICON),
+			GetSystemMetrics(SM_CYICON));
+		const plafImageData* smallImage = chooseImage(count, images, GetSystemMetrics(SM_CXSMICON),
+			GetSystemMetrics(SM_CYSMICON));
 		bigIcon = createIcon(bigImage, 0, 0, true);
 		smallIcon = createIcon(smallImage, 0, 0, true);
+	} else {
+		bigIcon = (HICON)GetClassLongPtrW(window->win32Window, GCLP_HICON);
+		smallIcon = (HICON)GetClassLongPtrW(window->win32Window, GCLP_HICONSM);
 	}
-	else
-	{
-		bigIcon = (HICON) GetClassLongPtrW(window->win32Window, GCLP_HICON);
-		smallIcon = (HICON) GetClassLongPtrW(window->win32Window, GCLP_HICONSM);
-	}
-
 	SendMessageW(window->win32Window, WM_SETICON, ICON_BIG, (LPARAM) bigIcon);
 	SendMessageW(window->win32Window, WM_SETICON, ICON_SMALL, (LPARAM) smallIcon);
-
-	if (window->win32BigIcon)
+	if (window->win32BigIcon) {
 		DestroyIcon(window->win32BigIcon);
-
-	if (window->win32SmallIcon)
+	}
+	if (window->win32SmallIcon) {
 		DestroyIcon(window->win32SmallIcon);
-
-	if (count)
-	{
+	}
+	if (count) {
 		window->win32BigIcon = bigIcon;
 		window->win32SmallIcon = smallIcon;
 	}
@@ -1048,21 +1034,13 @@ void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 
 void _plafSetWindowPos(plafWindow* window, int x, int y) {
 	RECT rect = { x, y, x, y };
-
-	if (IsWindows10Version1607OrGreater())
-	{
-		_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
-								 FALSE, getWindowExStyle(window),
-								 _plaf.win32User32GetDpiForWindow_(window->win32Window));
+	if (IsWindows10Version1607OrGreater()) {
+		_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window),
+			_plaf.win32User32GetDpiForWindow_(window->win32Window));
+	} else {
+		AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
 	}
-	else
-	{
-		AdjustWindowRectEx(&rect, getWindowStyle(window),
-						   FALSE, getWindowExStyle(window));
-	}
-
-	SetWindowPos(window->win32Window, NULL, rect.left, rect.top, 0, 0,
-				 SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
+	SetWindowPos(window->win32Window, NULL, rect.left, rect.top, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
 }
 
 void _plafGetWindowSize(plafWindow* window, int* width, int* height) {
@@ -1494,17 +1472,15 @@ void _plafUpdateCursor(plafWindow* window) {
 
 bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot, int yhot) {
 	cursor->win32Cursor = (HCURSOR) createIcon(image, xhot, yhot, false);
-	if (!cursor->win32Cursor)
+	if (!cursor->win32Cursor) {
 		return false;
-
+	}
 	return true;
 }
 
 bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 	int id = 0;
-
-	switch (shape)
-	{
+	switch (shape) {
 		case STD_CURSOR_ARROW:
 			id = OCR_NORMAL;
 			break;
@@ -1524,19 +1500,12 @@ bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 			id = OCR_SIZENS;
 			break;
 		default:
-			_plafInputError("Win32: Unknown standard cursor");
 			return false;
 	}
-
-	cursor->win32Cursor = LoadImageW(NULL,
-									  MAKEINTRESOURCEW(id), IMAGE_CURSOR, 0, 0,
-									  LR_DEFAULTSIZE | LR_SHARED);
-	if (!cursor->win32Cursor)
-	{
-		_plafInputError("Win32: Failed to create standard cursor");
+	cursor->win32Cursor = LoadImageW(NULL, MAKEINTRESOURCEW(id), IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
+	if (!cursor->win32Cursor) {
 		return false;
 	}
-
 	return true;
 }
 

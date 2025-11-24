@@ -38,7 +38,6 @@ static int findPixelFormatAttribValueWGL(const int* attribs, int attribCount, co
 			return values[i];
 		}
 	}
-	_plafInputError("WGL: Unknown pixel format attribute requested");
 	return 0;
 }
 
@@ -97,21 +96,21 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 				findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCELERATION_ARB) == WGL_NO_ACCELERATION_ARB) {
 				continue;
 			}
-			u->redBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_RED_BITS_ARB);
-			u->greenBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_GREEN_BITS_ARB);
-			u->blueBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_BLUE_BITS_ARB);
-			u->alphaBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ALPHA_BITS_ARB);
-			u->depthBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_DEPTH_BITS_ARB);
-			u->stencilBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_STENCIL_BITS_ARB);
-			u->accumRedBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ACCUM_RED_BITS_ARB);
-			u->accumGreenBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ACCUM_GREEN_BITS_ARB);
-			u->accumBlueBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ACCUM_BLUE_BITS_ARB);
-			u->accumAlphaBits = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_ACCUM_ALPHA_BITS_ARB);
+			u->redBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_RED_BITS_ARB);
+			u->greenBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_GREEN_BITS_ARB);
+			u->blueBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_BLUE_BITS_ARB);
+			u->alphaBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ALPHA_BITS_ARB);
+			u->depthBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_DEPTH_BITS_ARB);
+			u->stencilBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_STENCIL_BITS_ARB);
+			u->accumRedBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCUM_RED_BITS_ARB);
+			u->accumGreenBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCUM_GREEN_BITS_ARB);
+			u->accumBlueBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCUM_BLUE_BITS_ARB);
+			u->accumAlphaBits = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_ACCUM_ALPHA_BITS_ARB);
 			if (_plaf.wglARB_multisample) {
-				u->samples = findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_SAMPLES_ARB);
+				u->samples = findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_SAMPLES_ARB);
 			}
 			if (_plaf.wglARB_framebuffer_sRGB || _plaf.wglEXT_framebuffer_sRGB) {
-				if (findPixelFormatAttribValueWGL(attribs, attribCount, values,WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB)) {
+				if (findPixelFormatAttribValueWGL(attribs, attribCount, values, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB)) {
 					u->sRGB = true;
 				}
 			}
@@ -155,32 +154,21 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 	return (int)closest->handle;
 }
 
-static plafError* makeContextCurrentWGL(plafWindow* window) {
+static void makeContextCurrentWGL(plafWindow* window) {
 	if (window) {
 		if (_plaf.wglMakeCurrent(window->context.wglDC, window->context.wglGLRC)) {
 			_plaf.wndWithCurrentCtx = window;
-		} else {
-			_plaf.wndWithCurrentCtx = NULL;
-			return _plafNewError("WGL: Failed to make context current");
+			return;
 		}
-	} else {
 		_plaf.wndWithCurrentCtx = NULL;
-		if (!_plaf.wglMakeCurrent(NULL, NULL)) {
-			return _plafNewError("WGL: Failed to clear current context");
-		}
+		return;
 	}
-	return NULL;
+	_plaf.wndWithCurrentCtx = NULL;
+	_plaf.wglMakeCurrent(NULL, NULL);
 }
 
 static void swapBuffersWGL(plafWindow* window) {
 	SwapBuffers(window->context.wglDC);
-}
-
-static void swapIntervalWGL(int interval) {
-	_plaf.wndWithCurrentCtx->context.wglInterval = interval;
-	if (_plaf.wglEXT_swap_control) {
-		_plaf.wglSwapIntervalEXT(interval);
-	}
 }
 
 static bool extensionSupportedWGL(const char* extension) {
@@ -274,7 +262,6 @@ plafError* _plafInitOpenGL(void) {
 	_plaf.wglGetExtensionsStringEXT = (FN_WGLGETEXTENSIONSSTRINGEXT)_plaf.wglGetProcAddress("wglGetExtensionsStringEXT");
 	_plaf.wglGetExtensionsStringARB = (FN_WGLGETEXTENSIONSSTRINGARB)_plaf.wglGetProcAddress("wglGetExtensionsStringARB");
 	_plaf.wglCreateContextAttribsARB = (FN_WGLCREATECONTEXTATTRIBSARB)_plaf.wglGetProcAddress("wglCreateContextAttribsARB");
-	_plaf.wglSwapIntervalEXT = (FN_WGLSWAPINTERVALEXT)_plaf.wglGetProcAddress("wglSwapIntervalEXT");
 	_plaf.wglGetPixelFormatAttribivARB = (FN_WGLGETPIXELFORMATATTRIBIVARB)_plaf.wglGetProcAddress("wglGetPixelFormatAttribivARB");
 
 	// NOTE: WGL_ARB_extensions_string and WGL_EXT_extensions_string are not
@@ -283,7 +270,6 @@ plafError* _plafInitOpenGL(void) {
 	_plaf.wglARB_framebuffer_sRGB = extensionSupportedWGL("WGL_ARB_framebuffer_sRGB");
 	_plaf.wglEXT_framebuffer_sRGB = extensionSupportedWGL("WGL_EXT_framebuffer_sRGB");
 	_plaf.wglARB_create_context = extensionSupportedWGL("WGL_ARB_create_context");
-	_plaf.wglEXT_swap_control = extensionSupportedWGL("WGL_EXT_swap_control");
 	_plaf.wglARB_pixel_format = extensionSupportedWGL("WGL_ARB_pixel_format");
 
 	_plaf.wglMakeCurrent(pdc, prc);
@@ -349,7 +335,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	}
 	window->context.makeCurrent = makeContextCurrentWGL;
 	window->context.swapBuffers = swapBuffersWGL;
-	window->context.swapInterval = swapIntervalWGL;
 	window->context.extensionSupported = extensionSupportedWGL;
 	window->context.getProcAddress = getProcAddressWGL;
 	window->context.destroy = destroyContextWGL;

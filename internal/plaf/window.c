@@ -180,13 +180,10 @@ void plafWindowHint(int hint, int value)
 	_plafInputError("Invalid window hint 0x%08X", hint);
 }
 
-void plafDestroyWindow(plafWindow* window)
-{
-	// Allow closing of NULL (to match the behavior of free)
-	if (window == NULL)
+void plafDestroyWindow(plafWindow* window) {
+	if (window == NULL) {
 		return;
-
-	// Clear all callbacks to avoid exposing a half torn-down window object
+	}
 	window->posCallback = NULL;
 	window->sizeCallback = NULL;
 	window->closeCallback = NULL;
@@ -204,24 +201,15 @@ void plafDestroyWindow(plafWindow* window)
 	window->charCallback = NULL;
 	window->charModsCallback = NULL;
 	window->dropCallback = NULL;
-
-	// The window's context must not be current when the window is destroyed
 	if (window == _plaf.wndWithCurrentCtx) {
 		plafMakeContextCurrent(NULL);
 	}
-
 	_plafDestroyWindow(window);
-
-	// Unlink window from global linked list
-	{
-		plafWindow** prev = &_plaf.windowListHead;
-
-		while (*prev != window)
-			prev = &((*prev)->next);
-
-		*prev = window->next;
+	plafWindow** prev = &_plaf.windowListHead;
+	while (*prev != window) {
+		prev = &((*prev)->next);
 	}
-
+	*prev = window->next;
 	_plaf_free(window->title);
 	_plaf_free(window);
 }
@@ -243,28 +231,6 @@ void plafSetWindowTitle(plafWindow* window, const char* title) {
 	window->title = _plaf_strdup(title);
 	_plafSetWindowTitle(window, window->title);
 	_plaf_free(prev);
-}
-
-void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images)
-{
-	int i;
-
-	if (count < 0)
-	{
-		_plafInputError("Invalid image count for window icon");
-		return;
-	}
-
-	for (i = 0; i < count; i++)
-	{
-		if (images[i].width <= 0 || images[i].height <= 0)
-		{
-			_plafInputError("Invalid image dimensions for window icon");
-			return;
-		}
-	}
-
-	_plafSetWindowIcon(window, count, images);
 }
 
 void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {

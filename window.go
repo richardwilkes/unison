@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 	"image"
+	"runtime"
 	"slices"
 	"time"
 
@@ -532,18 +533,20 @@ func (w *Window) TitleIcons() []*Image {
 
 // SetTitleIcons sets the title icon of the window. The image closest to the size desired by the system will be selected
 // and used, scaling if needed. If no images are specified, the window reverts to its default icon.
+//
+// Note that macOS no longer has window icons, so this does nothing on that platform.
 func (w *Window) SetTitleIcons(images []*Image) {
-	w.titleIcons = images
-	imgs := make([]image.Image, 0, len(images))
-	for _, img := range images {
-		if nrgba, err := img.ToNRGBA(); err != nil {
-			errs.Log(err)
-		} else {
-			w.titleIcons = append(w.titleIcons, img)
-			imgs = append(imgs, nrgba)
+	if runtime.GOOS != xos.MacOS && w.IsValid() {
+		w.titleIcons = images
+		imgs := make([]*image.NRGBA, 0, len(images))
+		for _, img := range images {
+			if nrgba, err := img.ToNRGBA(); err != nil {
+				errs.Log(err)
+			} else {
+				w.titleIcons = append(w.titleIcons, img)
+				imgs = append(imgs, nrgba)
+			}
 		}
-	}
-	if w.IsValid() {
 		w.wnd.SetIcon(imgs)
 	}
 }
@@ -878,10 +881,7 @@ func (w *Window) draw() {
 	RebuildDynamicColors()
 	if w.IsValid() {
 		scale := w.BackingScale()
-		if err := w.wnd.MakeContextCurrent(); err != nil {
-			errs.Log(err)
-			return
-		}
+		w.wnd.MakeContextCurrent()
 		if !glInited {
 			xos.ExitIfErr(gl.Init())
 			glInited = true

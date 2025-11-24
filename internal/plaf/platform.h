@@ -190,12 +190,9 @@ extern "C" {
 	typedef GLXFBConfig* (*FN_GLXGETFBCONFIGS)(Display*,int,int*);
 	typedef GLXContext (*FN_GLXCREATENEWCONTEXT)(Display*,GLXFBConfig,int,GLXContext,Bool);
 	typedef __GLXextproc (* FN_GLXGETPROCADDRESS)(const char* procName);
-	typedef void (*FN_GLXSWAPINTERVALEXT)(Display*,GLXDrawable,int);
 	typedef XVisualInfo* (*FN_GLXGETVISUALFROMFBCONFIG)(Display*,GLXFBConfig);
 	typedef GLXWindow (*FN_GLXCREATEWINDOW)(Display*,GLXFBConfig,Window,const int*);
 	typedef void (*FN_GLXDESTROYWINDOW)(Display*,GLXWindow);
-
-	typedef int (*FN_GLXSWAPINTERVALSGI)(int);
 	typedef GLXContext (*FN_GLXCREATECONTEXTATTRIBSARB)(Display*,GLXFBConfig,GLXContext,Bool,const int*);
 #elif defined(_WIN32)
 	#define DIRECTINPUT_VERSION 0x0800
@@ -270,7 +267,6 @@ extern "C" {
 	typedef LONG (WINAPI * FN_RtlVerifyVersionInfo)(OSVERSIONINFOEXW*,ULONG,ULONGLONG);
 
 	// WGL extension pointer typedefs
-	typedef BOOL (WINAPI * FN_WGLSWAPINTERVALEXT)(int);
 	typedef BOOL (WINAPI * FN_WGLGETPIXELFORMATATTRIBIVARB)(HDC,int,int,UINT,const int*,int*);
 	typedef const char* (WINAPI * FN_WGLGETEXTENSIONSSTRINGEXT)(void);
 	typedef const char* (WINAPI * FN_WGLGETEXTENSIONSSTRINGARB)(HDC);
@@ -595,9 +591,8 @@ struct plafCtx {
 	FN_GLGETSTRINGI      GetStringi;
 	FN_GLGETINTEGERV     GetIntegerv;
 	FN_GLGETSTRING       GetString;
-	plafError*           (*makeCurrent)(plafWindow*);
+	void                 (*makeCurrent)(plafWindow*);
 	void                 (*swapBuffers)(plafWindow*);
-	void                 (*swapInterval)(int);
 	bool                 (*extensionSupported)(const char*);
 	glFunc               (*getProcAddress)(const char*);
 	void                 (*destroy)(plafWindow*);
@@ -993,11 +988,7 @@ struct plafLib {
 	FN_GLXDESTROYWINDOW                 glxDestroyWindow;
 	FN_GLXGETPROCADDRESS                glxGetProcAddress;
 	FN_GLXGETPROCADDRESS                glxGetProcAddressARB;
-	FN_GLXSWAPINTERVALSGI               glxSwapIntervalSGI;
-	FN_GLXSWAPINTERVALEXT               glxSwapIntervalEXT;
 	FN_GLXCREATECONTEXTATTRIBSARB       glxCreateContextAttribsARB;
-	bool                                glxSGI_swap_control;
-	bool                                glxEXT_swap_control;
 	bool                                glxARB_multisample;
 	bool                                glxARB_framebuffer_sRGB;
 	bool                                glxEXT_framebuffer_sRGB;
@@ -1035,12 +1026,10 @@ struct plafLib {
 	FN_wglGetCurrentContext             wglGetCurrentContext;
 	FN_wglMakeCurrent                   wglMakeCurrent;
 	FN_wglShareLists                    wglShareLists;
-	FN_WGLSWAPINTERVALEXT               wglSwapIntervalEXT;
 	FN_WGLGETPIXELFORMATATTRIBIVARB     wglGetPixelFormatAttribivARB;
 	FN_WGLGETEXTENSIONSSTRINGEXT        wglGetExtensionsStringEXT;
 	FN_WGLGETEXTENSIONSSTRINGARB        wglGetExtensionsStringARB;
 	FN_WGLCREATECONTEXTATTRIBSARB       wglCreateContextAttribsARB;
-	bool                                wglEXT_swap_control;
 	bool                                wglARB_multisample;
 	bool                                wglARB_framebuffer_sRGB;
 	bool                                wglEXT_framebuffer_sRGB;
@@ -1118,7 +1107,7 @@ void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos);
 void plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 void plafSetCursor(plafWindow* window, plafCursor* cursor);
 void plafSwapBuffers(plafWindow* window);
-plafError* plafMakeContextCurrent(plafWindow* window);
+void plafMakeContextCurrent(plafWindow* window);
 windowPosFunc plafSetWindowPosCallback(plafWindow* window, windowPosFunc callback);
 windowSizeFunc plafSetWindowSizeCallback(plafWindow* window, windowSizeFunc callback);
 windowCloseFunc plafSetWindowCloseCallback(plafWindow* window, windowCloseFunc callback);
@@ -1154,11 +1143,6 @@ void plafDestroyCursor(plafCursor* cursor);
 // Clipboard
 const char* plafGetClipboardString(void);
 void plafSetClipboardString(const char* string);
-
-// OpenGL
-void plafSwapInterval(int interval);
-bool plafExtensionSupported(const char* extension);
-glFunc plafGetProcAddress(const char* procname);
 
 // --------- Internal API below ---------
 
@@ -1215,7 +1199,6 @@ void _plafInputCursorEnter(plafWindow* window, bool entered);
 void _plafInputDrop(plafWindow* window, int count, const char** names);
 plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig);
 void _plafSetWindowTitle(plafWindow* window, const char* title);
-void _plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images);
 void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);
 void _plafSetWindowPos(plafWindow* window, int xpos, int ypos);
 void _plafGetWindowSize(plafWindow* window, int* width, int* height);

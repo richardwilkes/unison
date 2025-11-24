@@ -683,7 +683,7 @@ void _plafSetWindowTitle(plafWindow* window, const char* title) {
 	}
 }
 
-void _plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images) {
+void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images) {
 	// Windows don't have icons on macOS
 }
 
@@ -1187,40 +1187,33 @@ bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot,
 
 bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 	@autoreleasepool {
-	if (!cursor->nsCursor)
-	{
-		switch (shape)
-		{
-			case STD_CURSOR_ARROW:
-				cursor->nsCursor = [NSCursor arrowCursor];
-				break;
-			case STD_CURSOR_IBEAM:
-				cursor->nsCursor = [NSCursor IBeamCursor];
-				break;
-			case STD_CURSOR_CROSSHAIR:
-				cursor->nsCursor = [NSCursor crosshairCursor];
-				break;
-			case STD_CURSOR_POINTING_HAND:
-				cursor->nsCursor = [NSCursor pointingHandCursor];
-				break;
-			case STD_CURSOR_HORIZONTAL_RESIZE:
-				cursor->nsCursor = [NSCursor resizeLeftRightCursor];
-				break;
-			case STD_CURSOR_VERTICAL_RESIZE:
-				cursor->nsCursor = [NSCursor resizeUpDownCursor];
-				break;
+		if (!cursor->nsCursor) {
+			switch (shape) {
+				case STD_CURSOR_ARROW:
+					cursor->nsCursor = [NSCursor arrowCursor];
+					break;
+				case STD_CURSOR_IBEAM:
+					cursor->nsCursor = [NSCursor IBeamCursor];
+					break;
+				case STD_CURSOR_CROSSHAIR:
+					cursor->nsCursor = [NSCursor crosshairCursor];
+					break;
+				case STD_CURSOR_POINTING_HAND:
+					cursor->nsCursor = [NSCursor pointingHandCursor];
+					break;
+				case STD_CURSOR_HORIZONTAL_RESIZE:
+					cursor->nsCursor = [NSCursor resizeLeftRightCursor];
+					break;
+				case STD_CURSOR_VERTICAL_RESIZE:
+					cursor->nsCursor = [NSCursor resizeUpDownCursor];
+					break;
+			}
 		}
-	}
-
-	if (!cursor->nsCursor)
-	{
-		_plafInputError("Cocoa: Standard cursor shape unavailable");
-		return false;
-	}
-
-	[cursor->nsCursor retain];
-	return true;
-
+		if (!cursor->nsCursor) {
+			return false;
+		}
+		[cursor->nsCursor retain];
+		return true;
 	}
 }
 

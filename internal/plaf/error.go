@@ -10,7 +10,6 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"unsafe"
 )
@@ -50,12 +49,6 @@ func flushErrors() {
 	if err := fetchError(); err != nil {
 		fmt.Fprintln(os.Stderr, "go-gl/plaf: internal error: an uncaught error has occurred:", err)
 		fmt.Fprintln(os.Stderr, "go-gl/plaf: Please report this in the Go package issue tracker.")
-	}
-}
-
-func acceptError() {
-	if err := fetchError(); err != nil {
-		log.Println(err)
 	}
 }
 

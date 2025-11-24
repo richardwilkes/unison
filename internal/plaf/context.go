@@ -3,23 +3,14 @@ package plaf
 //#include "platform.h"
 import "C"
 
-import (
-	"unsafe"
-)
-
 // MakeContextCurrent makes the context of the window current.
-// Originally PLAF 3 passes a null pointer to detach the context.
-// But since we're using receivers, DetachCurrentContext should
-// be used instead.
-//
-// used by unison
-func (w *Window) MakeContextCurrent() error {
-	return convertErrorResponse(C.plafMakeContextCurrent(w.data))
+func (w *Window) MakeContextCurrent() {
+	C.plafMakeContextCurrent(w.data)
 }
 
 // DetachCurrentContext detaches the current context.
-func DetachCurrentContext() error {
-	return convertErrorResponse(C.plafMakeContextCurrent(nil))
+func DetachCurrentContext() {
+	C.plafMakeContextCurrent(nil)
 }
 
 // GetCurrentContext returns the window whose context is current.
@@ -30,63 +21,7 @@ func GetCurrentContext() *Window {
 	return windows.get(C._plaf.wndWithCurrentCtx)
 }
 
-// SwapBuffers swaps the front and back buffers of the window. If the
-// swap interval is greater than zero, the GPU driver waits the specified number
-// of screen updates before swapping the buffers.
-//
-// used by unison
+// SwapBuffers swaps the front and back buffers of the window.
 func (w *Window) SwapBuffers() {
 	C.plafSwapBuffers(w.data)
-	panicError()
-}
-
-// SwapInterval sets the swap interval for the current context, i.e. the number
-// of screen updates to wait before swapping the buffers of a window and
-// returning from SwapBuffers. This is sometimes called
-// 'vertical synchronization', 'vertical retrace synchronization' or 'vsync'.
-//
-// Contexts that support either of the WGL_EXT_swap_control_tear and
-// GLX_EXT_swap_control_tear extensions also accept negative swap intervals,
-// which allow the driver to swap even if a frame arrives a little bit late.
-// You can check for the presence of these extensions using
-// ExtensionSupported. For more information about swap tearing,
-// see the extension specifications.
-//
-// Some GPU drivers do not honor the requested swap interval, either because of
-// user settings that override the request or due to bugs in the driver.
-func SwapInterval(interval int) {
-	C.plafSwapInterval(C.int(interval))
-	panicError()
-}
-
-// ExtensionSupported reports whether the specified OpenGL or context creation
-// API extension is supported by the current context. For example, on Windows
-// both the OpenGL and WGL extension strings are checked.
-//
-// As this functions searches one or more extension strings on each call, it is
-// recommended that you cache its results if it's going to be used frequently.
-// The extension strings will not change during the lifetime of a context, so
-// there is no danger in doing this.
-func ExtensionSupported(extension string) bool {
-	e := C.CString(extension)
-	defer C.free(unsafe.Pointer(e))
-	ret := C.plafExtensionSupported(e)
-	panicError()
-	return bool(ret)
-}
-
-// GetProcAddress returns the address of the specified OpenGL or OpenGL ES core
-// or extension function, if it is supported by the current context.
-//
-// A context must be current on the calling thread. Calling this function
-// without a current context will cause a ERR_NO_CURRENT_CONTEXT error.
-//
-// This function is used to provide GL proc resolving capabilities to an
-// external C library.
-func GetProcAddress(procname string) unsafe.Pointer {
-	p := C.CString(procname)
-	defer C.free(unsafe.Pointer(p))
-	ret := unsafe.Pointer(C.plafGetProcAddress(p))
-	panicError()
-	return ret
 }

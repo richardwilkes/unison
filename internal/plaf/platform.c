@@ -219,7 +219,7 @@ plafError* _plafNewError(const char* format, ...) {
 	va_start(args, format);
 	vsnprintf(errResp->desc, ERROR_MSG_SIZE, format, args);
 	va_end(args);
-	errResp->desc[sizeof(errResp->desc) - 1] = '\0';
+	errResp->desc[ERROR_MSG_SIZE - 1] = '\0';
 	return errResp;
 }
 

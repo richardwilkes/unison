@@ -6,6 +6,7 @@ import "C"
 import (
 	"image"
 	"image/draw"
+	"unsafe"
 )
 
 // StandardCursor corresponds to a standard cursor icon.
@@ -36,50 +37,44 @@ type Cursor struct {
 // type is not *image.NRGBA, it will be converted to it.
 //
 // The cursor hotspot is specified in pixels, relative to the upper-left corner of the cursor image.
-// Like all other coordinate systems in PLAF, the X-axis points to the right and the Y-axis points down.
-func CreateCursor(img image.Image, xhot, yhot int) *Cursor {
-	imgC, free := imageToPLAF(img)
+func CreateCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
+	if img.Rect.Dx() < 1 || img.Rect.Dy() < 1 {
+		return nil
+	}
+	imgC := imageToCImageData(img)
 	//nolint:gocritic // Spurious lint flagging due to C code
 	cursor := C.plafCreateCursor(&imgC, C.int(xhot), C.int(yhot))
-	free()
-	panicError()
+	C.free(unsafe.Pointer(imgC.pixels))
 	return &Cursor{cursor}
 }
 
-// CreateStandardCursor returns a cursor with a standard shape,
-// that can be set for a window with SetCursor.
+// CreateStandardCursor returns a cursor with a standard shape, that can be set for a window with SetCursor.
 func CreateStandardCursor(shape StandardCursor) *Cursor {
-	cursor := C.plafCreateStandardCursor(C.int(shape))
-	panicError()
-	return &Cursor{cursor}
+	if cursor := C.plafCreateStandardCursor(C.int(shape)); cursor != nil {
+		return &Cursor{cursor}
+	}
+	return nil
 }
 
-// Destroy destroys a cursor previously created with CreateCursor.
-// Any remaining cursors will be destroyed by Terminate.
+// Destroy a cursor previously created with CreateCursor.
 func (c *Cursor) Destroy() {
 	C.plafDestroyCursor(c.data)
-	panicError()
 }
 
-// imageToPLAF converts img to be compatible with C.plafImageData.
-func imageToPLAF(img image.Image) (r C.plafImageData, free func()) {
-	b := img.Bounds()
-	r.width = C.int(b.Dx())
-	r.height = C.int(b.Dy())
+func imageToCImageData(img *image.NRGBA) C.plafImageData {
+	var r C.plafImageData
+	w := img.Rect.Dx()
+	h := img.Rect.Dy()
+	r.width = C.int(w)
+	r.height = C.int(h)
 	var pixels []byte
-	if m, ok := img.(*image.NRGBA); ok && m.Stride == b.Dx()*4 {
-		pixels = m.Pix[:m.PixOffset(m.Rect.Min.X, m.Rect.Max.Y)]
+	if img.Stride == w*4 {
+		pixels = img.Pix[:img.PixOffset(img.Rect.Min.X, img.Rect.Max.Y)]
 	} else {
-		m = image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-		draw.Draw(m, m.Bounds(), img, b.Min, draw.Src)
+		m := image.NewNRGBA(image.Rect(0, 0, w, h))
+		draw.Draw(m, m.Bounds(), img, img.Rect.Min, draw.Src)
 		pixels = m.Pix
 	}
-	n := len(pixels)
-	if n == 0 {
-		r.pixels = nil
-		return r, func() {}
-	}
-	ptr := C.CBytes(pixels)
-	r.pixels = (*C.uchar)(ptr)
-	return r, func() { C.free(ptr) }
+	r.pixels = (*C.uchar)(C.CBytes(pixels))
+	return r
 }

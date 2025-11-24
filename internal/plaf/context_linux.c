@@ -38,26 +38,16 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 	const plafFrameBufferCfg* closest;
 	int nativeCount, usableCount;
 	const char* vendor;
-	bool trustWindowBit = true;
-
-	// HACK: This is a (hopefully temporary) workaround for Chromium
-	//       (VirtualBox GL) not setting the window bit on any GLXFBConfigs
-	vendor = _plaf.glxGetClientString(_plaf.x11Display, GLX_VENDOR);
-	if (vendor && strcmp(vendor, "Chromium") == 0)
-		trustWindowBit = false;
 
 	nativeConfigs = _plaf.glxGetFBConfigs(_plaf.x11Display, _plaf.x11Screen, &nativeCount);
-	if (!nativeConfigs || !nativeCount)
-	{
-		_plafInputError("GLX: No GLXFBConfigs returned");
+	if (!nativeConfigs || !nativeCount) {
 		return false;
 	}
 
 	usableConfigs = _plaf_calloc(nativeCount, sizeof(plafFrameBufferCfg));
 	usableCount = 0;
 
-	for (int i = 0;  i < nativeCount;  i++)
-	{
+	for (int i = 0;  i < nativeCount;  i++) {
 		const GLXFBConfig n = nativeConfigs[i];
 		plafFrameBufferCfg* u = usableConfigs + usableCount;
 
@@ -66,10 +56,8 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 			continue;
 
 		// Only consider window GLXFBConfigs
-		if (!(getGLXFBConfigAttrib(n, GLX_DRAWABLE_TYPE) & GLX_WINDOW_BIT))
-		{
-			if (trustWindowBit)
-				continue;
+		if (!(getGLXFBConfigAttrib(n, GLX_DRAWABLE_TYPE) & GLX_WINDOW_BIT)) {
+			continue;
 		}
 
 		if (desired->transparent)
@@ -115,33 +103,22 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 	return closest != NULL;
 }
 
-static plafError* makeContextCurrentGLX(plafWindow* window) {
+static void makeContextCurrentGLX(plafWindow* window) {
 	if (window) {
-		if (!_plaf.glxMakeCurrent(_plaf.x11Display, window->context.glxWindow, window->context.glxHandle)) {
-			return _plafNewError("GLX: Failed to make context current");
+		if (_plaf.glxMakeCurrent(_plaf.x11Display, window->context.glxWindow, window->context.glxHandle)) {
+			_plaf.wndWithCurrentCtx = window;
+			return;
 		}
-	} else {
-		if (!_plaf.glxMakeCurrent(_plaf.x11Display, None, NULL)) {
-			return _plafNewError("GLX: Failed to clear current context");
-		}
+		_plaf.wndWithCurrentCtx = NULL;
+		return;
 	}
-	_plaf.wndWithCurrentCtx = window;
-	return NULL;
+	_plaf.wndWithCurrentCtx = NULL;
+	_plaf.glxMakeCurrent(_plaf.x11Display, None, NULL);
 }
 
 static void swapBuffersGLX(plafWindow* window)
 {
 	_plaf.glxSwapBuffers(_plaf.x11Display, window->context.glxWindow);
-}
-
-static void swapIntervalGLX(int interval) {
-	if (_plaf.glxEXT_swap_control) {
-		_plaf.glxSwapIntervalEXT(_plaf.x11Display, _plaf.wndWithCurrentCtx->context.glxWindow, interval);
-	} else if (_plaf.glxSGI_swap_control) {
-		if (interval > 0) {
-			_plaf.glxSwapIntervalSGI(interval);
-		}
-	}
 }
 
 static bool extensionSupportedGLX(const char* extension) {
@@ -256,20 +233,6 @@ plafError* _plafInitOpenGL(void) {
 		return _plafNewError("GLX: GLX version 1.3 is required");
 	}
 
-	if (extensionSupportedGLX("GLX_EXT_swap_control")) {
-		_plaf.glxSwapIntervalEXT = (FN_GLXSWAPINTERVALEXT)getProcAddressGLX("glXSwapIntervalEXT");
-		if (_plaf.glxSwapIntervalEXT) {
-			_plaf.glxEXT_swap_control = true;
-		}
-	}
-
-	if (extensionSupportedGLX("GLX_SGI_swap_control")) {
-		_plaf.glxSwapIntervalSGI = (FN_GLXSWAPINTERVALSGI)getProcAddressGLX("glXSwapIntervalSGI");
-		if (_plaf.glxSwapIntervalSGI) {
-			_plaf.glxSGI_swap_control = true;
-		}
-	}
-
 	if (extensionSupportedGLX("GLX_ARB_multisample")) {
 		_plaf.glxARB_multisample = true;
 	}
@@ -337,7 +300,6 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	window->context.glxFBConfig = native;
 	window->context.makeCurrent = makeContextCurrentGLX;
 	window->context.swapBuffers = swapBuffersGLX;
-	window->context.swapInterval = swapIntervalGLX;
 	window->context.extensionSupported = extensionSupportedGLX;
 	window->context.getProcAddress = getProcAddressGLX;
 	window->context.destroy = destroyContextGLX;

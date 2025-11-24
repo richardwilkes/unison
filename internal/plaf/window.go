@@ -226,26 +226,21 @@ func (w *Window) SetTitle(title string) {
 //
 // The desired image sizes varies depending on platform and system settings. The selected
 // images will be rescaled as needed. Good sizes include 16x16, 32x32 and 48x48.
-func (w *Window) SetIcon(images []image.Image) {
-	count := len(images)
-	cimages := make([]C.plafImageData, count)
-	freePixels := make([]func(), count)
-
-	for i, img := range images {
-		cimages[i], freePixels[i] = imageToPLAF(img)
+func (w *Window) SetIcon(images []*image.NRGBA) {
+	cImgs := make([]C.plafImageData, 0, len(images))
+	for _, img := range images {
+		if img.Rect.Dx() > 0 && img.Rect.Dy() > 0 {
+			cImgs = append(cImgs, imageToCImageData(img))
+		}
 	}
-
-	var p *C.plafImageData
-	if count > 0 {
-		p = &cimages[0]
+	if len(cImgs) == 0 {
+		C.plafSetWindowIcon(w.data, 0, nil)
+	} else {
+		C.plafSetWindowIcon(w.data, C.int(len(images)), &cImgs[0])
+		for i := range cImgs {
+			C.free(unsafe.Pointer(cImgs[i].pixels))
+		}
 	}
-	C.plafSetWindowIcon(w.data, C.int(count), p)
-
-	for _, v := range freePixels {
-		v()
-	}
-
-	acceptError()
 }
 
 // GetPos returns the position, in screen coordinates, of the upper-left

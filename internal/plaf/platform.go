@@ -3,10 +3,6 @@ package plaf
 //#include "platform.h"
 import "C"
 
-import (
-	"unsafe"
-)
-
 // Init initializes the PLAF library. Before most PLAF functions can be used,
 // PLAF must be initialized, and before a program terminates PLAF should be
 // terminated in order to free any resources allocated during or after
@@ -34,26 +30,4 @@ func Init() error {
 func Terminate() {
 	flushErrors()
 	C.plafTerminate()
-}
-
-// GetClipboardString returns the contents of the system clipboard, if it
-// contains or is convertible to a UTF-8 encoded string.
-//
-// This function may only be called from the main thread.
-func GetClipboardString() string {
-	cs := C.plafGetClipboardString()
-	if cs == nil {
-		return ""
-	}
-	return C.GoString(cs)
-}
-
-// SetClipboardString sets the system clipboard to the specified UTF-8 encoded
-// string.
-//
-// This function may only be called from the main thread.
-func SetClipboardString(str string) {
-	cp := C.CString(str)
-	defer C.free(unsafe.Pointer(cp))
-	C.plafSetClipboardString(cp)
 }

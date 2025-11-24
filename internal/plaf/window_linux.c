@@ -972,11 +972,7 @@ static int getWindowState(plafWindow* window)
 		Window icon;
 	} *state = NULL;
 
-	if (_plafGetWindowProperty(window->x11Window,
-								  _plaf.x11WM_STATE,
-								  _plaf.x11WM_STATE,
-								  (unsigned char**) &state) >= 2)
-	{
+	if (_plafGetWindowProperty(window->x11Window, _plaf.x11WM_STATE, _plaf.x11WM_STATE, (unsigned char**) &state) >= 2) {
 		result = state->state;
 	}
 
@@ -2427,52 +2423,30 @@ void _plafSetWindowTitle(plafWindow* window, const char* title) {
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
-void _plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images) {
-	if (count)
-	{
+void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images) {
+	if (count) {
 		int longCount = 0;
-
-		for (int i = 0;  i < count;  i++)
+		for (int i = 0;  i < count;  i++) {
 			longCount += 2 + images[i].width * images[i].height;
-
+		}
 		unsigned long* icon = _plaf_calloc(longCount, sizeof(unsigned long));
 		unsigned long* target = icon;
-
-		for (int i = 0;  i < count;  i++)
-		{
+		for (int i = 0;  i < count;  i++) {
 			*target++ = images[i].width;
 			*target++ = images[i].height;
-
-			for (int j = 0;  j < images[i].width * images[i].height;  j++)
-			{
+			for (int j = 0;  j < images[i].width * images[i].height;  j++) {
 				*target++ = (((unsigned long) images[i].pixels[j * 4 + 0]) << 16) |
 							(((unsigned long) images[i].pixels[j * 4 + 1]) <<  8) |
 							(((unsigned long) images[i].pixels[j * 4 + 2]) <<  0) |
 							(((unsigned long) images[i].pixels[j * 4 + 3]) << 24);
 			}
 		}
-
-		// NOTE: XChangeProperty expects 32-bit values like the image data above to be
-		//       placed in the 32 least significant bits of individual longs.  This is
-		//       true even if long is 64-bit and a WM protocol calls for "packed" data.
-		//       This is because of a historical mistake that then became part of the Xlib
-		//       ABI.  Xlib will pack these values into a regular array of 32-bit values
-		//       before sending it over the wire.
-		_plaf.xlibChangeProperty(_plaf.x11Display, window->x11Window,
-						_plaf.x11NET_WM_ICON,
-						XA_CARDINAL, 32,
-						PropModeReplace,
-						(unsigned char*) icon,
-						longCount);
-
+		_plaf.xlibChangeProperty(_plaf.x11Display, window->x11Window, _plaf.x11NET_WM_ICON, XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char*)icon, longCount);
 		_plaf_free(icon);
+	} else {
+		_plaf.xlibDeleteProperty(_plaf.x11Display, window->x11Window, _plaf.x11NET_WM_ICON);
 	}
-	else
-	{
-		_plaf.xlibDeleteProperty(_plaf.x11Display, window->x11Window,
-						_plaf.x11NET_WM_ICON);
-	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
@@ -3071,16 +3045,11 @@ bool _plafCreateCursor(plafCursor* cursor, const plafImageData* image, int xhot,
 }
 
 bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
-	if (_plaf.xcursorHandle)
-	{
+	if (_plaf.xcursorHandle) {
 		char* theme = _plaf.xcursorGetTheme(_plaf.x11Display);
-		if (theme)
-		{
-			const int size = _plaf.xcursorGetDefaultSize(_plaf.x11Display);
+		if (theme) {
 			const char* name = NULL;
-
-			switch (shape)
-			{
+			switch (shape) {
 				case STD_CURSOR_ARROW:
 					name = "default";
 					break;
@@ -3100,22 +3069,17 @@ bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 					name = "ns-resize";
 					break;
 			}
-
+			const int size = _plaf.xcursorGetDefaultSize(_plaf.x11Display);
 			XcursorImage* image = _plaf.xcursorLibraryLoadImage(name, theme, size);
-			if (image)
-			{
+			if (image) {
 				cursor->x11Cursor = _plaf.xcursorImageLoadCursor(_plaf.x11Display, image);
 				_plaf.xcursorImageDestroy(image);
 			}
 		}
 	}
-
-	if (!cursor->x11Cursor)
-	{
+	if (!cursor->x11Cursor) {
 		unsigned int native = 0;
-
-		switch (shape)
-		{
+		switch (shape) {
 			case STD_CURSOR_ARROW:
 				native = XC_left_ptr;
 				break;
@@ -3135,18 +3099,13 @@ bool _plafCreateStandardCursor(plafCursor* cursor, int shape) {
 				native = XC_sb_v_double_arrow;
 				break;
 			default:
-				_plafInputError("X11: Standard cursor shape unavailable");
 				return false;
 		}
-
 		cursor->x11Cursor = _plaf.xlibCreateFontCursor(_plaf.x11Display, native);
-		if (!cursor->x11Cursor)
-		{
-			_plafInputError("X11: Failed to create standard cursor");
+		if (!cursor->x11Cursor) {
 			return false;
 		}
 	}
-
 	return true;
 }
 
