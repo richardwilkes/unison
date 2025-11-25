@@ -3,6 +3,7 @@
 #if defined(__linux__)
 
 #define GLX_VENDOR 1
+#define GLX_DOUBLEBUFFER 5
 #define GLX_RED_SIZE 8
 #define GLX_GREEN_SIZE 9
 #define GLX_BLUE_SIZE 10
@@ -57,6 +58,11 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 
 		// Only consider window GLXFBConfigs
 		if (!(getGLXFBConfigAttrib(n, GLX_DRAWABLE_TYPE) & GLX_WINDOW_BIT)) {
+			continue;
+		}
+
+		// Only consider double-buffered GLXFBConfigs
+		if (!getGLXFBConfigAttrib(n, GLX_DOUBLEBUFFER)) {
 			continue;
 		}
 
@@ -116,8 +122,7 @@ static void makeContextCurrentGLX(plafWindow* window) {
 	_plaf.glxMakeCurrent(_plaf.x11Display, None, NULL);
 }
 
-static void swapBuffersGLX(plafWindow* window)
-{
+static void swapBuffersGLX(plafWindow* window) {
 	_plaf.glxSwapBuffers(_plaf.x11Display, window->context.glxWindow);
 }
 

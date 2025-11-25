@@ -315,13 +315,6 @@ func (w *Window) LastKeyModifiers() Modifiers {
 	return w.lastKeyModifiers
 }
 
-func plafEnabled(enabled bool) int {
-	if enabled {
-		return plaf.True
-	}
-	return plaf.False
-}
-
 func (w *Window) mouseButtonCallback(_ *plaf.Window, button plaf.MouseButton, action plaf.Action, mods plaf.ModifierKey) {
 	if !w.okToProcess() {
 		modalStack[len(modalStack)-1].mouseButtonCallback(nil, button, action, mods)
