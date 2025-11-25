@@ -124,10 +124,10 @@ static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool ico
 	ii.hbmMask  = mask;
 	ii.hbmColor = color;
 
-	HICON icon = CreateIconIndirect(&ii);
+	HICON result = CreateIconIndirect(&ii);
 	DeleteObject(color);
 	DeleteObject(mask);
-	return icon;
+	return result;
 }
 
 // Updates the cursor image according to its cursor mode
