@@ -224,14 +224,9 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		Floating:         w.floating,
 		MousePassThrough: false,
 	}
-	var err error
-	xos.SafeCall(func() {
-		w.wnd, err = plaf.CreateWindow(title, &cfg, nil, nil)
-	}, func(panicErr error) {
-		err = panicErr
-	})
-	if err != nil {
-		return nil, errs.Wrap(err)
+	w.wnd = plaf.CreateWindow(title, &cfg, nil, nil)
+	if w.wnd == nil {
+		return nil, errs.New("unable to create window")
 	}
 	w.wnd.WindowDrawCallback = func(_ *plaf.Window) {
 		delete(redrawSet, w)

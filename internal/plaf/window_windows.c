@@ -811,7 +811,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	}
 
 	window->win32Window = CreateWindowExW(exStyle, MAKEINTATOM(_plaf.win32MainWindowClass), wideTitle, style, frameX,
-		frameY, frameWidth, frameHeight, NULL, NULL, _plaf.win32Instance, (LPVOID) wndconfig);
+		frameY, frameWidth, frameHeight, NULL, NULL, _plaf.win32Instance, NULL);
 
 	_plaf_free(wideTitle);
 

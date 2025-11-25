@@ -27,11 +27,9 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 //////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
- plafError* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
+ plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share) {
 	plafFrameBufferCfg fbconfig = _plaf.frameBufferCfg;
 	fbconfig.transparent        = wndCfg->transparent; // TODO: only use one of these
-
-	plafWindowConfig wndconfig = *wndCfg;
 
 	plafWindow* window            = _plaf_calloc(1, sizeof(plafWindow));
 	window->next                  = _plaf.windowListHead;
@@ -43,24 +41,22 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 	window->videoMode.blueBits    = fbconfig.blueBits;
 	window->videoMode.refreshRate = _plaf.desiredRefreshRate;
 	window->monitor               = monitor;
-	window->resizable             = wndconfig.resizable;
-	window->decorated             = wndconfig.decorated;
-	window->floating              = wndconfig.floating;
-	window->mousePassthrough      = wndconfig.mousePassthrough;
+	window->resizable             = wndCfg->resizable;
+	window->decorated             = wndCfg->decorated;
+	window->floating              = wndCfg->floating;
+	window->mousePassthrough      = wndCfg->mousePassthrough;
 	window->minwidth              = DONT_CARE;
 	window->minheight             = DONT_CARE;
 	window->maxwidth              = DONT_CARE;
 	window->maxheight             = DONT_CARE;
 	window->title                 = _plaf_strdup(title);
 
-	plafError* err = _plafCreateWindow(window, &wndconfig, share, &fbconfig);
+	plafError* err = _plafCreateWindow(window, wndCfg, share, &fbconfig);
 	if (err) {
 		plafDestroyWindow(window);
-		return err;
+		return NULL;
 	}
-
-	*outWindow = window;
-	return NULL;
+	return window;
 }
 
 void plafDestroyWindow(plafWindow* window) {

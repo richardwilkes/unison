@@ -1216,7 +1216,7 @@ static uint32_t decodeUTF8(const char** s)
 }
 
 // Returns the Visual and depth of the chosen GLXFBConfig
-static plafError* _plafChooseVisual(const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
+static plafError* _plafChooseVisual(const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
 	GLXFBConfig native;
 	if (!_plafChooseGLXFBConfig(fbconfig, &native)) {
 		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
@@ -2264,7 +2264,7 @@ plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconf
 
 	Visual* visual = NULL;
 	int depth;
-	err = _plafChooseVisual(wndconfig, fbconfig, &visual, &depth);
+	err = _plafChooseVisual(fbconfig, &visual, &depth);
 	if (err) {
 		return err;
 	}

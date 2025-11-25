@@ -71,12 +71,6 @@ type Window struct {
 	WindowSizeCallback         func(w *Window)
 }
 
-// GoWindow creates a Window from a *C.plafWindow reference.
-// Used when an external C library is calling your Go handlers.
-func GoWindow(window unsafe.Pointer) *Window {
-	return &Window{plafWnd: (*C.plafWindow)(window)}
-}
-
 // CreateWindow creates a window and its associated context. Most of the options
 // controlling how the window and its context should be created are specified
 // through Hint.
@@ -104,32 +98,24 @@ func GoWindow(window unsafe.Pointer) *Window {
 // dock icon will be the same as the application bundle's icon.
 //
 // This function may only be called from the main thread.
-func CreateWindow(title string, cfg *WindowConfig, monitor *Monitor, share *Window) (*Window, error) {
-	var (
-		m *C.plafMonitor
-		s *C.plafWindow
-	)
-
+func CreateWindow(title string, cfg *WindowConfig, monitor *Monitor, share *Window) *Window {
 	t := C.CString(title)
 	defer C.free(unsafe.Pointer(t))
-
+	var m *C.plafMonitor
 	if monitor != nil {
 		m = monitor.data
 	}
-
+	var s *C.plafWindow
 	if share != nil {
 		s = share.plafWnd
 	}
-
-	var w *C.plafWindow
-	//nolint:gocritic // Spurious lint flagging due to C code
-	if err := convertErrorResponse(C.plafCreateWindow(t, (*C.plafWindowConfig)(unsafe.Pointer(cfg)), m, s, &w)); err != nil {
-		return nil, err
+	w := C.plafCreateWindow(t, (*C.plafWindowConfig)(unsafe.Pointer(cfg)), m, s)
+	if w == nil {
+		return nil
 	}
-
 	wnd := &Window{plafWnd: w}
 	windows.put(wnd)
-	return wnd, nil
+	return wnd
 }
 
 // Destroy destroys the specified window and its context. On calling this

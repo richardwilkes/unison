@@ -1011,7 +1011,7 @@ const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor);
 void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 
 // Windows
-plafError* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow);
+plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share);
 void* plafGetNativeWindow(plafWindow* window);
 int plafWindowShouldClose(plafWindow* window);
 void plafSetWindowShouldClose(plafWindow* window, int value);
