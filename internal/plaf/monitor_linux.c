@@ -190,52 +190,35 @@ void _plafPollMonitors(void)
 }
 
 // Set the current video mode for the specified monitor
-//
-void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired)
-{
-	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
-	{
+void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
+	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken) {
 		plafVideoMode current;
-		RRMode native = None;
-
 		const plafVideoMode* best = _plafChooseVideoMode(monitor, desired);
-		_plafGetVideoMode(monitor, &current);
-		if (_plafCompareVideoModes(&current, best) == 0)
+		if (_plafGetVideoMode(monitor, &current) && _plafCompareVideoModes(&current, best) == 0) {
 			return;
-
+		}
 		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
 		XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, monitor->x11Crtc);
 		XRROutputInfo* oi = _plaf.randrGetOutputInfo(_plaf.x11Display, sr, monitor->x11Output);
-
-		for (int i = 0;  i < oi->nmode;  i++)
-		{
+		RRMode native = None;
+		for (int i = 0;  i < oi->nmode;  i++) {
 			const XRRModeInfo* mi = getModeInfo(sr, oi->modes[i]);
-			if (!modeIsGood(mi))
+			if (!modeIsGood(mi)) {
 				continue;
-
+			}
 			const plafVideoMode mode = vidmodeFromModeInfo(mi, ci);
-			if (_plafCompareVideoModes(best, &mode) == 0)
-			{
+			if (_plafCompareVideoModes(best, &mode) == 0) {
 				native = mi->id;
 				break;
 			}
 		}
-
-		if (native)
-		{
-			if (monitor->x11OldMode == None)
+		if (native) {
+			if (monitor->x11OldMode == None) {
 				monitor->x11OldMode = ci->mode;
-
-			_plaf.randrSetCrtcConfig(_plaf.x11Display,
-							 sr, monitor->x11Crtc,
-							 CurrentTime,
-							 ci->x, ci->y,
-							 native,
-							 ci->rotation,
-							 ci->outputs,
-							 ci->noutput);
+			}
+			_plaf.randrSetCrtcConfig(_plaf.x11Display, sr, monitor->x11Crtc, CurrentTime, ci->x, ci->y, native,
+				ci->rotation, ci->outputs, ci->noutput);
 		}
-
 		_plaf.randrFreeOutputInfo(oi);
 		_plaf.randrFreeCrtcInfo(ci);
 		_plaf.randrFreeScreenResources(sr);
@@ -298,241 +281,169 @@ void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* ysca
 
 void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height) {
 	int areaX = 0, areaY = 0, areaWidth = 0, areaHeight = 0;
-
-	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
-	{
+	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken) {
 		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
 		XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, monitor->x11Crtc);
-
 		areaX = ci->x;
 		areaY = ci->y;
-
 		const XRRModeInfo* mi = getModeInfo(sr, ci->mode);
-
-		if (ci->rotation == RR_Rotate_90 || ci->rotation == RR_Rotate_270)
-		{
+		if (ci->rotation == RR_Rotate_90 || ci->rotation == RR_Rotate_270) {
 			areaWidth  = mi->height;
 			areaHeight = mi->width;
-		}
-		else
-		{
+		} else {
 			areaWidth  = mi->width;
 			areaHeight = mi->height;
 		}
-
 		_plaf.randrFreeCrtcInfo(ci);
 		_plaf.randrFreeScreenResources(sr);
-	}
-	else
-	{
+	} else {
 		areaWidth  = DisplayWidth(_plaf.x11Display, _plaf.x11Screen);
 		areaHeight = DisplayHeight(_plaf.x11Display, _plaf.x11Screen);
 	}
-
-	if (_plaf.x11NET_WORKAREA && _plaf.x11NET_CURRENT_DESKTOP)
-	{
+	if (_plaf.x11NET_WORKAREA && _plaf.x11NET_CURRENT_DESKTOP) {
 		Atom* extents = NULL;
 		Atom* desktop = NULL;
-		const unsigned long extentCount =
-			_plafGetWindowProperty(_plaf.x11Root,
-									  _plaf.x11NET_WORKAREA,
-									  XA_CARDINAL,
-									  (unsigned char**) &extents);
-
-		if (_plafGetWindowProperty(_plaf.x11Root,
-									  _plaf.x11NET_CURRENT_DESKTOP,
-									  XA_CARDINAL,
-									  (unsigned char**) &desktop) > 0)
-		{
-			if (extentCount >= 4 && *desktop < extentCount / 4)
-			{
+		const unsigned long extentCount = _plafGetWindowProperty(_plaf.x11Root, _plaf.x11NET_WORKAREA, XA_CARDINAL,
+			(unsigned char**) &extents);
+		if (_plafGetWindowProperty(_plaf.x11Root, _plaf.x11NET_CURRENT_DESKTOP, XA_CARDINAL,
+			(unsigned char**) &desktop) > 0) {
+			if (extentCount >= 4 && *desktop < extentCount / 4) {
 				const int globalX = extents[*desktop * 4 + 0];
 				const int globalY = extents[*desktop * 4 + 1];
 				const int globalWidth  = extents[*desktop * 4 + 2];
 				const int globalHeight = extents[*desktop * 4 + 3];
-
-				if (areaX < globalX)
-				{
+				if (areaX < globalX) {
 					areaWidth -= globalX - areaX;
 					areaX = globalX;
 				}
-
-				if (areaY < globalY)
-				{
+				if (areaY < globalY) {
 					areaHeight -= globalY - areaY;
 					areaY = globalY;
 				}
-
-				if (areaX + areaWidth > globalX + globalWidth)
+				if (areaX + areaWidth > globalX + globalWidth) {
 					areaWidth = globalX - areaX + globalWidth;
-				if (areaY + areaHeight > globalY + globalHeight)
+				}
+				if (areaY + areaHeight > globalY + globalHeight) {
 					areaHeight = globalY - areaY + globalHeight;
+				}
 			}
 		}
-
-		if (extents)
+		if (extents) {
 			_plaf.xlibFree(extents);
-		if (desktop)
+		}
+		if (desktop) {
 			_plaf.xlibFree(desktop);
+		}
 	}
-
 	*xpos = areaX;
 	*ypos = areaY;
 	*width = areaWidth;
 	*height = areaHeight;
 }
 
-plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count)
-{
+plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 	plafVideoMode* result;
-
-	*count = 0;
-
-	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
-	{
+	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken) {
+		*count = 0;
 		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
 		XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, monitor->x11Crtc);
 		XRROutputInfo* oi = _plaf.randrGetOutputInfo(_plaf.x11Display, sr, monitor->x11Output);
-
 		result = _plaf_calloc(oi->nmode, sizeof(plafVideoMode));
-
-		for (int i = 0;  i < oi->nmode;  i++)
-		{
+		for (int i = 0;  i < oi->nmode;  i++) {
 			const XRRModeInfo* mi = getModeInfo(sr, oi->modes[i]);
-			if (!modeIsGood(mi))
+			if (!modeIsGood(mi)) {
 				continue;
-
+			}
 			const plafVideoMode mode = vidmodeFromModeInfo(mi, ci);
 			int j;
-
-			for (j = 0;  j < *count;  j++)
-			{
-				if (_plafCompareVideoModes(result + j, &mode) == 0)
+			for (j = 0;  j < *count;  j++) {
+				if (_plafCompareVideoModes(result + j, &mode) == 0) {
 					break;
+				}
 			}
-
 			// Skip duplicate modes
-			if (j < *count)
+			if (j < *count) {
 				continue;
-
+			}
 			(*count)++;
 			result[*count - 1] = mode;
 		}
-
 		_plaf.randrFreeOutputInfo(oi);
 		_plaf.randrFreeCrtcInfo(ci);
 		_plaf.randrFreeScreenResources(sr);
-	}
-	else
-	{
+	} else {
 		*count = 1;
 		result = _plaf_calloc(1, sizeof(plafVideoMode));
-		_plafGetVideoMode(monitor, result);
+		if (_plafGetVideoMode(monitor, result)) {
+			*count = 1;
+		} else {
+			*count = 0;
+			_plaf_free(result);
+			result = NULL;
+		}
 	}
-
 	return result;
 }
 
 bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
-	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
-	{
+	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken) {
 		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
 		const XRRModeInfo* mi = NULL;
-
 		XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, monitor->x11Crtc);
-		if (ci)
-		{
+		if (ci) {
 			mi = getModeInfo(sr, ci->mode);
-			if (mi)
+			if (mi) {
 				*mode = vidmodeFromModeInfo(mi, ci);
-
+			}
 			_plaf.randrFreeCrtcInfo(ci);
 		}
-
 		_plaf.randrFreeScreenResources(sr);
-
-		if (!mi)
-		{
-			_plafInputError("X11: Failed to query video mode");
+		if (!mi) {
 			return false;
 		}
-	}
-	else
-	{
+	} else {
 		mode->width = DisplayWidth(_plaf.x11Display, _plaf.x11Screen);
 		mode->height = DisplayHeight(_plaf.x11Display, _plaf.x11Screen);
 		mode->refreshRate = 0;
-
 		_plafSplitBPP(DefaultDepth(_plaf.x11Display, _plaf.x11Screen), &mode->redBits, &mode->greenBits, &mode->blueBits);
 	}
-
 	return true;
 }
 
 bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
-	if (_plaf.randrAvailable && !_plaf.randrGammaBroken)
-	{
+	if (_plaf.randrAvailable && !_plaf.randrGammaBroken) {
 		const size_t size = _plaf.randrGetCrtcGammaSize(_plaf.x11Display, monitor->x11Crtc);
 		XRRCrtcGamma* gamma = _plaf.randrGetCrtcGamma(_plaf.x11Display, monitor->x11Crtc);
-
 		_plafAllocGammaArrays(ramp, size);
-
 		memcpy(ramp->red,   gamma->red,   size * sizeof(unsigned short));
 		memcpy(ramp->green, gamma->green, size * sizeof(unsigned short));
 		memcpy(ramp->blue,  gamma->blue,  size * sizeof(unsigned short));
-
 		_plaf.randrFreeGamma(gamma);
 		return true;
 	}
-	else if (_plaf.xvidmodeAvailable)
-	{
+	if (_plaf.xvidmodeAvailable) {
 		int size;
 		_plaf.xvidmodeGetGammaRampSize(_plaf.x11Display, _plaf.x11Screen, &size);
-
 		_plafAllocGammaArrays(ramp, size);
-
-		_plaf.xvidmodeGetGammaRamp(_plaf.x11Display,
-								_plaf.x11Screen,
-								ramp->size, ramp->red, ramp->green, ramp->blue);
+		_plaf.xvidmodeGetGammaRamp(_plaf.x11Display, _plaf.x11Screen, ramp->size, ramp->red, ramp->green, ramp->blue);
 		return true;
 	}
-	else
-	{
-		_plafInputError("X11: Gamma ramp access not supported by server");
-		return false;
-	}
+	return false;
 }
 
 void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
-	if (_plaf.randrAvailable && !_plaf.randrGammaBroken)
-	{
-		if (_plaf.randrGetCrtcGammaSize(_plaf.x11Display, monitor->x11Crtc) != ramp->size)
-		{
-			_plafInputError("X11: Gamma ramp size must match current ramp size");
+	if (_plaf.randrAvailable && !_plaf.randrGammaBroken) {
+		if (_plaf.randrGetCrtcGammaSize(_plaf.x11Display, monitor->x11Crtc) != ramp->size) {
 			return;
 		}
-
 		XRRCrtcGamma* gamma = _plaf.randrAllocGamma(ramp->size);
-
 		memcpy(gamma->red,   ramp->red,   ramp->size * sizeof(unsigned short));
 		memcpy(gamma->green, ramp->green, ramp->size * sizeof(unsigned short));
 		memcpy(gamma->blue,  ramp->blue,  ramp->size * sizeof(unsigned short));
-
 		_plaf.randrSetCrtcGamma(_plaf.x11Display, monitor->x11Crtc, gamma);
 		_plaf.randrFreeGamma(gamma);
-	}
-	else if (_plaf.xvidmodeAvailable)
-	{
-		_plaf.xvidmodeSetGammaRamp(_plaf.x11Display,
-								_plaf.x11Screen,
-								ramp->size,
-								(unsigned short*) ramp->red,
-								(unsigned short*) ramp->green,
-								(unsigned short*) ramp->blue);
-	}
-	else
-	{
-		_plafInputError("X11: Gamma ramp access not supported by server");
+	} else if (_plaf.xvidmodeAvailable) {
+		_plaf.xvidmodeSetGammaRamp(_plaf.x11Display, _plaf.x11Screen, ramp->size, ramp->red, ramp->green, ramp->blue);
 	}
 }
 

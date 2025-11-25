@@ -1512,8 +1512,9 @@ static void acquireMonitor(plafWindow* window) {
 		plafVideoMode mode;
 		// Manually position the window over its monitor
 		plafGetMonitorPos(window->monitor, &xpos, &ypos);
-		_plafGetVideoMode(window->monitor, &mode);
-		_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window, xpos, ypos, mode.width, mode.height);
+		if (_plafGetVideoMode(window->monitor, &mode)) {
+			_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window, xpos, ypos, mode.width, mode.height);
+		}
 	}
 	window->monitor->window = window;
 }
@@ -2156,28 +2157,13 @@ static void processEvent(XEvent *event)
 // Retrieve a single window property of the specified type
 // Inspired by fghGetWindowProperty from freeglut
 //
-unsigned long _plafGetWindowProperty(Window window,
-										Atom property,
-										Atom type,
-										unsigned char** value)
-{
+unsigned long _plafGetWindowProperty(Window window, Atom property, Atom type, unsigned char** value) {
 	Atom actualType;
 	int actualFormat;
-	unsigned long itemCount, bytesAfter;
-
-	_plaf.xlibGetWindowProperty(_plaf.x11Display,
-					   window,
-					   property,
-					   0,
-					   LONG_MAX,
-					   False,
-					   type,
-					   &actualType,
-					   &actualFormat,
-					   &itemCount,
-					   &bytesAfter,
-					   value);
-
+	unsigned long itemCount;
+	unsigned long bytesAfter;
+	_plaf.xlibGetWindowProperty(_plaf.x11Display, window, property, 0, LONG_MAX, False, type, &actualType,
+		&actualFormat, &itemCount, &bytesAfter, value);
 	return itemCount;
 }
 

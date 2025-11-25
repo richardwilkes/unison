@@ -510,7 +510,9 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		plafVideoMode mode;
 		int xpos;
 		int ypos;
-		_plafGetVideoMode(window->monitor, &mode);
+		if (!_plafGetVideoMode(window->monitor, &mode)) {
+			return _plafNewError("unable to determine current video mode");
+		}
 		plafGetMonitorPos(window->monitor, &xpos, &ypos);
 		contentRect = NSMakeRect(xpos, ypos, mode.width, mode.height);
 	} else {

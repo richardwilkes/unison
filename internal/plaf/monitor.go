@@ -4,6 +4,9 @@ package plaf
 import "C"
 
 import (
+	"log/slog"
+	"math"
+	"runtime"
 	"unsafe"
 )
 
@@ -14,9 +17,9 @@ type Monitor struct {
 
 // GammaRamp describes the gamma ramp for a monitor.
 type GammaRamp struct {
-	Red   []uint16 // A slice of value describing the response of the red channel.
-	Green []uint16 // A slice of value describing the response of the green channel.
-	Blue  []uint16 // A slice of value describing the response of the blue channel.
+	Red   []uint16
+	Green []uint16
+	Blue  []uint16
 }
 
 // VidMode describes a single video mode.
@@ -34,135 +37,126 @@ var MonitorCallback func(monitor *Monitor, connected bool)
 
 // GetMonitors returns a slice of handles for all currently connected monitors.
 func GetMonitors() []*Monitor {
-	var length int
-	mC := C.plafGetMonitors((*C.int)(unsafe.Pointer(&length)))
-	panicError()
-	if mC == nil {
+	count := int(C._plaf.monitorCount)
+	if count == 0 {
 		return nil
 	}
-	m := make([]*Monitor, length)
-	list := unsafe.Slice(mC, length)
-	for i := 0; i < length; i++ {
+	m := make([]*Monitor, count)
+	list := unsafe.Slice(C._plaf.monitors, count)
+	for i := range count {
 		m[i] = &Monitor{data: list[i]}
 	}
 	return m
 }
 
-// GetPrimaryMonitor returns the primary monitor. This is usually the monitor
-// where elements like the Windows task bar or the OS X menu bar is located.
+// GetPrimaryMonitor returns the primary monitor. This is usually the monitor where elements like the Windows task bar
+// or the OS X menu bar is located.
 func GetPrimaryMonitor() *Monitor {
-	m := C.plafGetPrimaryMonitor()
-	panicError()
-	if m == nil {
+	if C._plaf.monitorCount == 0 {
 		return nil
 	}
-	return &Monitor{m}
+	return &Monitor{data: *C._plaf.monitors}
 }
 
-// GetPos returns the position, in screen coordinates, of the upper-left
-// corner of the monitor.
+// GetPos returns the position, in screen coordinates, of the upper-left corner of the monitor.
 func (m *Monitor) GetPos() (x, y int) {
-	var xpos, ypos C.int
-	C.plafGetMonitorPos(m.data, &xpos, &ypos)
-	panicError()
-	return int(xpos), int(ypos)
+	var cx, cy C.int
+	C.plafGetMonitorPos(m.data, &cx, &cy)
+	return int(cx), int(cy)
 }
 
-// GetWorkarea returns the position, in screen coordinates, of the upper-left
-// corner of the work area of the specified monitor along with the work area
-// size in screen coordinates. The work area is defined as the area of the
-// monitor not occluded by the operating system task bar where present. If no
-// task bar exists then the work area is the monitor resolution in screen
-// coordinates.
-//
-// This function must only be called from the main thread.
+// GetWorkarea returns the position, in screen coordinates, of the upper-left corner of the work area of the specified
+// monitor along with the work area size in screen coordinates. The work area is defined as the area of the monitor not
+// occluded by the operating system task bar where present. If no task bar exists then the work area is the monitor
+// resolution in screen coordinates.
 func (m *Monitor) GetWorkarea() (x, y, width, height int) {
 	var cX, cY, cWidth, cHeight C.int
 	C.plafGetMonitorWorkarea(m.data, &cX, &cY, &cWidth, &cHeight)
 	return int(cX), int(cY), int(cWidth), int(cHeight)
 }
 
-// GetContentScale function retrieves the content scale for the specified monitor.
-// The content scale is the ratio between the current DPI and the platform's
-// default DPI. If you scale all pixel dimensions by this scale then your content
-// should appear at an appropriate size. This is especially important for text
-// and any UI elements.
-//
-// This function must only be called from the main thread.
+// GetContentScale function retrieves the content scale for the specified monitor. The content scale is the ratio
+// between the current DPI and the platform's default DPI. If you scale all pixel dimensions by this scale then your
+// content should appear at an appropriate size. This is especially important for text and any UI elements.
 func (m *Monitor) GetContentScale() (x, y float32) {
 	var cX, cY C.float
 	C.plafGetMonitorContentScale(m.data, &cX, &cY)
 	return float32(cX), float32(cY)
 }
 
-// GetPhysicalSize returns the size, in millimeters, of the display area of the
-// monitor.
+// GetPhysicalSize returns the size, in millimeters, of the display area of the monitor.
 //
-// Note: Some operating systems do not provide accurate information, either
-// because the monitor's EDID data is incorrect, or because the driver does not
-// report it accurately.
+// Note: Some operating systems do not provide accurate information, either because the monitor's EDID data is
+// incorrect, or because the driver does not report it accurately.
 func (m *Monitor) GetPhysicalSize() (width, height int) {
-	var wi, h C.int
-	C.plafGetMonitorPhysicalSize(m.data, &wi, &h)
-	panicError()
-	return int(wi), int(h)
+	return int(m.data.widthMM), int(m.data.heightMM)
 }
 
 // GetName returns a human-readable name of the monitor, encoded as UTF-8.
 func (m *Monitor) GetName() string {
-	mn := C.plafGetMonitorName(m.data)
-	panicError()
-	if mn == nil {
+	if m.data.name[0] == 0 {
 		return ""
 	}
-	return C.GoString(mn)
+	return C.GoString(&m.data.name[0])
 }
 
-// GetVideoModes returns an array of all video modes supported by the monitor.
-// The returned array is sorted in ascending order, first by color bit depth
-// (the sum of all channel depths) and then by resolution area (the product of
-// width and height).
+// GetVideoModes returns an array of all video modes supported by the monitor. The returned array is sorted in ascending
+// order, first by color bit depth (the sum of all channel depths) and then by resolution area (the product of width and
+// height).
 func (m *Monitor) GetVideoModes() []*VidMode {
-	var length int
-
-	vC := C.plafGetVideoModes(m.data, (*C.int)(unsafe.Pointer(&length)))
-	panicError()
-	if vC == nil {
+	if !C.plafRefreshVideoModes(m.data) || m.data.modes == nil {
 		return nil
 	}
-
-	v := make([]*VidMode, length)
-	list := unsafe.Slice(vC, length)
-
-	for i := 0; i < length; i++ {
-		t := list[i]
-		v[i] = &VidMode{int(t.width), int(t.height), int(t.redBits), int(t.greenBits), int(t.blueBits), int(t.refreshRate)}
+	count := int(m.data.modeCount)
+	result := make([]*VidMode, count)
+	list := unsafe.Slice(m.data.modes, count)
+	for i := range count {
+		result[i] = &VidMode{
+			Width:       int(list[i].width),
+			Height:      int(list[i].height),
+			RedBits:     int(list[i].redBits),
+			GreenBits:   int(list[i].greenBits),
+			BlueBits:    int(list[i].blueBits),
+			RefreshRate: int(list[i].refreshRate),
+		}
 	}
-	return v
+	return result
 }
 
-// GetVideoMode returns the current video mode of the monitor. If you
-// are using a full screen window, the return value will therefore depend on
-// whether it is focused.
+// GetVideoMode returns the current video mode of the monitor. If you are using a full screen window, the return value
+// will therefore depend on whether it is focused.
 func (m *Monitor) GetVideoMode() *VidMode {
 	t := C.plafGetVideoMode(m.data)
 	if t == nil {
 		return nil
 	}
-	panicError()
 	return &VidMode{int(t.width), int(t.height), int(t.redBits), int(t.greenBits), int(t.blueBits), int(t.refreshRate)}
 }
 
 // SetGamma generates a gamma ramp from the specified exponent and then calls SetGamma with it.
-func (m *Monitor) SetGamma(gamma float32) {
-	C.plafSetGamma(m.data, C.float(gamma))
-	panicError()
+func (m *Monitor) SetGamma(gamma float64) {
+	if gamma != gamma || gamma <= 0 || gamma > math.MaxFloat64 {
+		slog.Warn("SetGamma: ignoring invalid gamma value", "gamma", gamma)
+		return
+	}
+	ramp := m.GetGammaRamp()
+	if ramp == nil {
+		slog.Warn("SetGamma: unable to get existing gamma ramp")
+		return
+	}
+	channel := make([]uint16, len(ramp.Red))
+	for i := range channel {
+		channel[i] = uint16(min(math.Pow(float64(i)/float64(len(channel)-1), 1/gamma), 65535))
+	}
+	ramp.Red = channel
+	ramp.Green = channel
+	ramp.Blue = channel
+	m.SetGammaRamp(ramp)
 }
 
 // GetGammaRamp retrieves the current gamma ramp of the monitor.
 func (m *Monitor) GetGammaRamp() *GammaRamp {
 	rampC := C.plafGetGammaRamp(m.data)
-	panicError()
 	if rampC == nil {
 		return nil
 	}
@@ -180,18 +174,16 @@ func (m *Monitor) GetGammaRamp() *GammaRamp {
 // SetGammaRamp sets the current gamma ramp for the monitor.
 func (m *Monitor) SetGammaRamp(ramp *GammaRamp) {
 	length := len(ramp.Red)
-	rampC := (*C.plafGammaRamp)(C.malloc(C.size_t(unsafe.Sizeof(C.plafGammaRamp{}))))
-	rampC.size = C.uint(length)
-	rampC.red = (*C.ushort)(C.malloc(C.size_t(2 * length)))
-	rampC.green = (*C.ushort)(C.malloc(C.size_t(2 * length)))
-	rampC.blue = (*C.ushort)(C.malloc(C.size_t(2 * length)))
-	copy(unsafe.Slice((*uint16)(rampC.red), length), ramp.Red)
-	copy(unsafe.Slice((*uint16)(rampC.green), length), ramp.Green)
-	copy(unsafe.Slice((*uint16)(rampC.blue), length), ramp.Blue)
-	C.plafSetGammaRamp(m.data, rampC)
-	C.free(unsafe.Pointer(rampC.red))
-	C.free(unsafe.Pointer(rampC.green))
-	C.free(unsafe.Pointer(rampC.blue))
-	C.free(unsafe.Pointer(rampC))
-	panicError()
+	if length == 0 || length != len(ramp.Green) || length != len(ramp.Blue) {
+		slog.Warn("SetGammaRamp: ignoring invalid ramp")
+		return
+	}
+	cRamp := &C.plafGammaRamp{
+		red:   (*C.ushort)(&ramp.Red[0]),
+		green: (*C.ushort)(&ramp.Green[0]),
+		blue:  (*C.ushort)(&ramp.Blue[0]),
+		size:  C.uint(length),
+	}
+	C.plafSetGammaRamp(m.data, cRamp)
+	runtime.KeepAlive(cRamp)
 }

@@ -123,6 +123,10 @@ func AllDisplays() []*Display {
 func convertMonitorToDisplay(monitor *plaf.Monitor) *Display {
 	x, y := monitor.GetPos()
 	vidMode := monitor.GetVideoMode()
+	if vidMode == nil {
+		var v plaf.VidMode
+		vidMode = &v
+	}
 	workX, workY, workWidth, workHeight := monitor.GetWorkarea()
 	sx, sy := monitor.GetContentScale()
 	mmx, mmy := monitor.GetPhysicalSize()

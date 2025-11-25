@@ -3,55 +3,6 @@
 #include <math.h>
 #include <limits.h>
 
-
-// Lexically compare video modes, used by qsort
-static int compareVideoModes(const void* fp, const void* sp)
-{
-	const plafVideoMode* fm = fp;
-	const plafVideoMode* sm = sp;
-	const int fbpp = fm->redBits + fm->greenBits + fm->blueBits;
-	const int sbpp = sm->redBits + sm->greenBits + sm->blueBits;
-	const int farea = fm->width * fm->height;
-	const int sarea = sm->width * sm->height;
-
-	// First sort on color bits per pixel
-	if (fbpp != sbpp)
-		return fbpp - sbpp;
-
-	// Then sort on screen area
-	if (farea != sarea)
-		return farea - sarea;
-
-	// Then sort on width
-	if (fm->width != sm->width)
-		return fm->width - sm->width;
-
-	// Lastly sort on refresh rate
-	return fm->refreshRate - sm->refreshRate;
-}
-
-// Retrieves the available modes for the specified monitor
-static bool refreshVideoModes(plafMonitor* monitor) {
-	int modeCount;
-	plafVideoMode* modes;
-
-	if (monitor->modes)
-		return true;
-
-	modes = _plafGetVideoModes(monitor, &modeCount);
-	if (!modes)
-		return false;
-
-	qsort(modes, modeCount, sizeof(plafVideoMode), compareVideoModes);
-
-	_plaf_free(monitor->modes);
-	monitor->modes = modes;
-	monitor->modeCount = modeCount;
-
-	return true;
-}
-
-
 //////////////////////////////////////////////////////////////////////////
 //////                         PLAF event API                       //////
 //////////////////////////////////////////////////////////////////////////
@@ -143,7 +94,7 @@ const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoM
 	const plafVideoMode* current;
 	const plafVideoMode* closest = NULL;
 
-	if (!refreshVideoModes(monitor))
+	if (!plafRefreshVideoModes(monitor))
 		return NULL;
 
 	for (i = 0;  i < monitor->modeCount;  i++)
@@ -183,10 +134,26 @@ const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoM
 	return closest;
 }
 
-// Performs lexical comparison between two @ref plafVideoMode structures
-int _plafCompareVideoModes(const plafVideoMode* fm, const plafVideoMode* sm)
-{
-	return compareVideoModes(fm, sm);
+// Performs lexical comparison between two plafVideoMode structures
+int _plafCompareVideoModes(const plafVideoMode* fm, const plafVideoMode* sm) {
+	// First sort on color bits per pixel
+	const int fbpp = fm->redBits + fm->greenBits + fm->blueBits;
+	const int sbpp = sm->redBits + sm->greenBits + sm->blueBits;
+	if (fbpp != sbpp) {
+		return fbpp - sbpp;
+	}
+	// Then sort on screen area
+	const int farea = fm->width * fm->height;
+	const int sarea = sm->width * sm->height;
+	if (farea != sarea) {
+		return farea - sarea;
+	}
+	// Then sort on width
+	if (fm->width != sm->width) {
+		return fm->width - sm->width;
+	}
+	// Lastly sort on refresh rate
+	return fm->refreshRate - sm->refreshRate;
 }
 
 // Splits a color depth into red, green and blue bit depths
@@ -214,45 +181,18 @@ void _plafSplitBPP(int bpp, int* red, int* green, int* blue)
 //////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-plafMonitor** plafGetMonitors(int* count)
-{
-	*count = _plaf.monitorCount;
-	return (plafMonitor**) _plaf.monitors;
-}
-
-plafMonitor* plafGetPrimaryMonitor(void)
-{
-	if (!_plaf.monitorCount)
-		return NULL;
-	return _plaf.monitors[0];
-}
-
-void plafGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM)
-{
-	if (widthMM)
-		*widthMM = 0;
-	if (heightMM)
-		*heightMM = 0;
-
-	if (widthMM)
-		*widthMM = monitor->widthMM;
-	if (heightMM)
-		*heightMM = monitor->heightMM;
-}
-
-const char* plafGetMonitorName(plafMonitor* monitor)
-{
-	return monitor->name;
-}
-
-const plafVideoMode* plafGetVideoModes(plafMonitor* monitor, int* count)
-{
-	if (!refreshVideoModes(monitor)) {
-		*count = 0;
-		return NULL;
+bool plafRefreshVideoModes(plafMonitor* monitor) {
+	if (monitor->modes) {
+		return true;
 	}
-	*count = monitor->modeCount;
-	return monitor->modes;
+	int modeCount;
+	monitor->modes = _plafGetVideoModes(monitor, &modeCount);
+	if (!monitor->modes) {
+		return false;
+	}
+	qsort(monitor->modes, modeCount, sizeof(plafVideoMode), (int (*)(const void *,const void *))_plafCompareVideoModes);
+	monitor->modeCount = modeCount;
+	return true;
 }
 
 const plafVideoMode* plafGetVideoMode(plafMonitor* monitor) {
@@ -260,49 +200,6 @@ const plafVideoMode* plafGetVideoMode(plafMonitor* monitor) {
 		return NULL;
 	}
 	return &monitor->currentMode;
-}
-
-void plafSetGamma(plafMonitor* monitor, float gamma)
-{
-	unsigned int i;
-	unsigned short* values;
-	plafGammaRamp ramp;
-	const plafGammaRamp* original;
-
-	if (gamma != gamma || gamma <= 0.f || gamma > FLT_MAX)
-	{
-		_plafInputError("Invalid gamma value %f", gamma);
-		return;
-	}
-
-	original = plafGetGammaRamp(monitor);
-	if (!original) {
-		return;
-	}
-
-	values = _plaf_calloc(original->size, sizeof(unsigned short));
-
-	for (i = 0;  i < original->size;  i++)
-	{
-		float value;
-
-		// Calculate intensity
-		value = i / (float) (original->size - 1);
-		// Apply gamma curve
-		value = powf(value, 1.f / gamma) * 65535.f + 0.5f;
-		// Clamp to value range
-		value = fminf(value, 65535.f);
-
-		values[i] = (unsigned short) value;
-	}
-
-	ramp.red = values;
-	ramp.green = values;
-	ramp.blue = values;
-	ramp.size = original->size;
-
-	plafSetGammaRamp(monitor, &ramp);
-	_plaf_free(values);
 }
 
 const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor) {
@@ -314,13 +211,10 @@ const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor) {
 }
 
 void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
-	if (ramp->size <= 0) {
-		_plafInputError("Invalid gamma ramp size %i", ramp->size);
-		return;
-	}
 	if (!monitor->originalRamp.size) {
-		if (!_plafGetGammaRamp(monitor, &monitor->originalRamp))
+		if (!_plafGetGammaRamp(monitor, &monitor->originalRamp)) {
 			return;
+		}
 	}
 	_plafSetGammaRamp(monitor, ramp);
 }

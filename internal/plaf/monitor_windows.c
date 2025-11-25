@@ -195,58 +195,25 @@ void _plafPollMonitors(void)
 }
 
 // Change the current video mode
-//
-void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired)
-{
+void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
+	const plafVideoMode* best = _plafChooseVideoMode(monitor, desired);
 	plafVideoMode current;
-	const plafVideoMode* best;
-	DEVMODEW dm;
-	LONG result;
-
-	best = _plafChooseVideoMode(monitor, desired);
-	_plafGetVideoMode(monitor, &current);
-	if (_plafCompareVideoModes(&current, best) == 0)
+	if (_plafGetVideoMode(monitor, &current) && _plafCompareVideoModes(&current, best) == 0) {
 		return;
-
+	}
+	DEVMODEW dm;
 	ZeroMemory(&dm, sizeof(dm));
 	dm.dmSize = sizeof(dm);
-	dm.dmFields           = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL |
-							DM_DISPLAYFREQUENCY;
+	dm.dmFields           = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
 	dm.dmPelsWidth        = best->width;
 	dm.dmPelsHeight       = best->height;
 	dm.dmBitsPerPel       = best->redBits + best->greenBits + best->blueBits;
 	dm.dmDisplayFrequency = best->refreshRate;
-
-	if (dm.dmBitsPerPel < 15 || dm.dmBitsPerPel >= 24)
+	if (dm.dmBitsPerPel < 15 || dm.dmBitsPerPel >= 24) {
 		dm.dmBitsPerPel = 32;
-
-	result = ChangeDisplaySettingsExW(monitor->win32AdapterName,
-									  &dm,
-									  NULL,
-									  CDS_FULLSCREEN,
-									  NULL);
-	if (result == DISP_CHANGE_SUCCESSFUL)
+	}
+	if (ChangeDisplaySettingsExW(monitor->win32AdapterName, &dm, NULL, CDS_FULLSCREEN, NULL) == DISP_CHANGE_SUCCESSFUL) {
 		monitor->win32ModeChanged = true;
-	else
-	{
-		const char* description = "Unknown error";
-
-		if (result == DISP_CHANGE_BADDUALVIEW)
-			description = "The system uses DualView";
-		else if (result == DISP_CHANGE_BADFLAGS)
-			description = "Invalid flags";
-		else if (result == DISP_CHANGE_BADMODE)
-			description = "Graphics mode not supported";
-		else if (result == DISP_CHANGE_BADPARAM)
-			description = "Invalid parameter";
-		else if (result == DISP_CHANGE_FAILED)
-			description = "Graphics mode failed";
-		else if (result == DISP_CHANGE_NOTUPDATED)
-			description = "Failed to write to registry";
-		else if (result == DISP_CHANGE_RESTART)
-			description = "Computer restart required";
-
-		_plafInputError("Win32: Failed to set video mode: %s", description);
 	}
 }
 
@@ -262,21 +229,18 @@ void _plafRestoreVideoMode(plafMonitor* monitor)
 	}
 }
 
-void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale)
-{
-	UINT xdpi, ydpi;
-
-	*xscale = 0.f;
-	*yscale = 0.f;
-
-	if (_plaf.win32ShCoreGetDpiForMonitor_(handle, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) != S_OK)
-	{
-		_plafInputError("Win32: Failed to query monitor DPI");
-		return;
+void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale) {
+	*xscale = 0;
+	*yscale = 0;
+	UINT xdpi;
+	UINT ydpi;
+	if (_plaf.win32ShCoreGetDpiForMonitor_(handle, MDT_EFFECTIVE_DPI, &xdpi, &ydpi) == S_OK) {
+		*xscale = xdpi / (float) USER_DEFAULT_SCREEN_DPI;
+		*yscale = ydpi / (float) USER_DEFAULT_SCREEN_DPI;
+	} else {
+		*xscale = 1;
+		*yscale = 1;
 	}
-
-	*xscale = xdpi / (float) USER_DEFAULT_SCREEN_DPI;
-	*yscale = ydpi / (float) USER_DEFAULT_SCREEN_DPI;
 }
 
 
@@ -306,77 +270,61 @@ void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
 	*height = mi.rcWork.bottom - mi.rcWork.top;
 }
 
-plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count)
-{
+plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 	int modeIndex = 0, size = 0;
 	plafVideoMode* result = NULL;
-
 	*count = 0;
-
-	for (;;)
-	{
-		int i;
-		plafVideoMode mode;
+	for (;;) {
 		DEVMODEW dm;
-
 		ZeroMemory(&dm, sizeof(dm));
 		dm.dmSize = sizeof(dm);
-
-		if (!EnumDisplaySettingsW(monitor->win32AdapterName, modeIndex, &dm))
+		if (!EnumDisplaySettingsW(monitor->win32AdapterName, modeIndex, &dm)) {
 			break;
-
+		}
 		modeIndex++;
-
 		// Skip modes with less than 15 BPP
-		if (dm.dmBitsPerPel < 15)
+		if (dm.dmBitsPerPel < 15) {
 			continue;
-
+		}
+		plafVideoMode mode;
 		mode.width  = dm.dmPelsWidth;
 		mode.height = dm.dmPelsHeight;
 		mode.refreshRate = dm.dmDisplayFrequency;
 		_plafSplitBPP(dm.dmBitsPerPel, &mode.redBits, &mode.greenBits, &mode.blueBits);
-
-		for (i = 0;  i < *count;  i++)
-		{
-			if (_plafCompareVideoModes(result + i, &mode) == 0)
+		int i;
+		for (i = 0;  i < *count;  i++) {
+			if (_plafCompareVideoModes(result + i, &mode) == 0) {
 				break;
+			}
 		}
-
 		// Skip duplicate modes
-		if (i < *count)
+		if (i < *count) {
 			continue;
-
-		if (monitor->win32ModesPruned)
-		{
+		}
+		if (monitor->win32ModesPruned) {
 			// Skip modes not supported by the connected displays
-			if (ChangeDisplaySettingsExW(monitor->win32AdapterName,
-										 &dm,
-										 NULL,
-										 CDS_TEST,
-										 NULL) != DISP_CHANGE_SUCCESSFUL)
-			{
+			if (ChangeDisplaySettingsExW(monitor->win32AdapterName, &dm, NULL, CDS_TEST, NULL) != DISP_CHANGE_SUCCESSFUL) {
 				continue;
 			}
 		}
-
-		if (*count == size)
-		{
+		if (*count == size) {
 			size += 128;
 			result = (plafVideoMode*) _plaf_realloc(result, size * sizeof(plafVideoMode));
 		}
-
 		(*count)++;
 		result[*count - 1] = mode;
 	}
-
-	if (!*count)
-	{
-		// HACK: Report the current mode if no valid modes were found
+	if (!*count) {
+		// Report the current mode if no valid modes were found
 		result = _plaf_calloc(1, sizeof(plafVideoMode));
-		_plafGetVideoMode(monitor, result);
-		*count = 1;
+		if (_plafGetVideoMode(monitor, result)) {
+			*count = 1;
+		} else {
+			*count = 0;
+			_plaf_free(result);
+			result = NULL;
+		}
 	}
-
 	return result;
 }
 
@@ -384,53 +332,38 @@ bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	DEVMODEW dm;
 	ZeroMemory(&dm, sizeof(dm));
 	dm.dmSize = sizeof(dm);
-
-	if (!EnumDisplaySettingsW(monitor->win32AdapterName, ENUM_CURRENT_SETTINGS, &dm))
-	{
-		_plafInputError("Win32: Failed to query display settings");
+	if (!EnumDisplaySettingsW(monitor->win32AdapterName, ENUM_CURRENT_SETTINGS, &dm)) {
 		return false;
 	}
-
 	mode->width  = dm.dmPelsWidth;
 	mode->height = dm.dmPelsHeight;
 	mode->refreshRate = dm.dmDisplayFrequency;
 	_plafSplitBPP(dm.dmBitsPerPel, &mode->redBits, &mode->greenBits, &mode->blueBits);
-
 	return true;
 }
 
 bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
 	HDC dc;
-	WORD values[3][256];
-
 	dc = CreateDCW(L"DISPLAY", monitor->win32AdapterName, NULL, NULL);
+	WORD values[3][256];
 	GetDeviceGammaRamp(dc, values);
 	DeleteDC(dc);
-
 	_plafAllocGammaArrays(ramp, 256);
-
-	memcpy(ramp->red,   values[0], sizeof(values[0]));
+	memcpy(ramp->red, values[0], sizeof(values[0]));
 	memcpy(ramp->green, values[1], sizeof(values[1]));
-	memcpy(ramp->blue,  values[2], sizeof(values[2]));
-
+	memcpy(ramp->blue, values[2], sizeof(values[2]));
 	return true;
 }
 
 void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
-	HDC dc;
-	WORD values[3][256];
-
-	if (ramp->size != 256)
-	{
-		_plafInputError("Win32: Gamma ramp size must be 256");
+	if (ramp->size != 256) {
 		return;
 	}
-
+	WORD values[3][256];
 	memcpy(values[0], ramp->red,   sizeof(values[0]));
 	memcpy(values[1], ramp->green, sizeof(values[1]));
 	memcpy(values[2], ramp->blue,  sizeof(values[2]));
-
-	dc = CreateDCW(L"DISPLAY", monitor->win32AdapterName, NULL, NULL);
+	HDC dc = CreateDCW(L"DISPLAY", monitor->win32AdapterName, NULL, NULL);
 	SetDeviceGammaRamp(dc, values);
 	DeleteDC(dc);
 }

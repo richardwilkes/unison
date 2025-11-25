@@ -1002,16 +1002,11 @@ void plafTerminate(void);
 errorFunc plafSetErrorCallback(errorFunc callback);
 
 // Monitors
-plafMonitor** plafGetMonitors(int* count);
-plafMonitor* plafGetPrimaryMonitor(void);
 void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos);
 void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-void plafGetMonitorPhysicalSize(plafMonitor* monitor, int* widthMM, int* heightMM);
 void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale);
-const char* plafGetMonitorName(plafMonitor* monitor);
-const plafVideoMode* plafGetVideoModes(plafMonitor* monitor, int* count);
+bool plafRefreshVideoModes(plafMonitor* monitor);
 const plafVideoMode* plafGetVideoMode(plafMonitor* monitor);
-void plafSetGamma(plafMonitor* monitor, float gamma);
 const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor);
 void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 

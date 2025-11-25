@@ -168,44 +168,34 @@ void _plafPollMonitors(void)
 }
 
 // Change the current video mode
-//
-void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired)
-{
-	plafVideoMode current;
-	_plafGetVideoMode(monitor, &current);
-
+void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
 	const plafVideoMode* best = _plafChooseVideoMode(monitor, desired);
-	if (_plafCompareVideoModes(&current, best) == 0)
+	plafVideoMode current;
+	if (_plafGetVideoMode(monitor, &current) && _plafCompareVideoModes(&current, best) == 0) {
 		return;
-
+	}
 	CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->nsDisplayID, NULL);
 	const CFIndex count = CFArrayGetCount(modes);
 	CGDisplayModeRef native = NULL;
-
-	for (CFIndex i = 0;  i < count;  i++)
-	{
+	for (CFIndex i = 0;  i < count;  i++) {
 		CGDisplayModeRef dm = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
-		if (!modeIsGood(dm))
+		if (!modeIsGood(dm)) {
 			continue;
-
+		}
 		const plafVideoMode mode = vidmodeFromCGDisplayMode(dm);
-		if (_plafCompareVideoModes(best, &mode) == 0)
-		{
+		if (_plafCompareVideoModes(best, &mode) == 0) {
 			native = dm;
 			break;
 		}
 	}
-
-	if (native)
-	{
-		if (monitor->nsPreviousMode == NULL)
+	if (native) {
+		if (monitor->nsPreviousMode == NULL) {
 			monitor->nsPreviousMode = CGDisplayCopyDisplayMode(monitor->nsDisplayID);
-
+		}
 		CGDisplayFadeReservationToken token = beginFadeReservation();
 		CGDisplaySetDisplayMode(monitor->nsDisplayID, native, NULL);
 		endFadeReservation(token);
 	}
-
 	CFRelease(modes);
 }
 
@@ -238,144 +228,101 @@ void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos)
 }
 
 void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale) {
-	@autoreleasepool {
-
-	if (!monitor->nsScreen)
-	{
-		_plafInputError("Cocoa: Cannot query content scale without screen");
-	}
-
-	const NSRect points = [monitor->nsScreen frame];
-	const NSRect pixels = [monitor->nsScreen convertRectToBacking:points];
-
-	*xscale = (float) (pixels.size.width / points.size.width);
-	*yscale = (float) (pixels.size.height / points.size.height);
-
+	if (monitor->nsScreen) {
+		const NSRect points = [monitor->nsScreen frame];
+		const NSRect pixels = [monitor->nsScreen convertRectToBacking:points];
+		*xscale = (float) (pixels.size.width / points.size.width);
+		*yscale = (float) (pixels.size.height / points.size.height);
+	} else {
+		*xscale = 1;
+		*yscale = 1;
 	}
 }
 
 void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height) {
-	@autoreleasepool {
-
-	if (!monitor->nsScreen)
-	{
-		_plafInputError("Cocoa: Cannot query workarea without screen");
-	}
-
-	const NSRect frameRect = [monitor->nsScreen visibleFrame];
-
-	*xpos = frameRect.origin.x;
-	*ypos = _plafTransformYCocoa(frameRect.origin.y + frameRect.size.height - 1);
-	*width = frameRect.size.width;
-	*height = frameRect.size.height;
-
+	if (monitor->nsScreen) {
+		const NSRect frameRect = [monitor->nsScreen visibleFrame];
+		*xpos = frameRect.origin.x;
+		*ypos = _plafTransformYCocoa(frameRect.origin.y + frameRect.size.height - 1);
+		*width = frameRect.size.width;
+		*height = frameRect.size.height;
+	} else {
+		*xpos = 0;
+		*ypos = 0;
+		*width = 0;
+		*height = 0;
 	}
 }
 
-plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count)
-{
+plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 	@autoreleasepool {
-
-	*count = 0;
-
-	CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->nsDisplayID, NULL);
-	const CFIndex found = CFArrayGetCount(modes);
-	plafVideoMode* result = _plaf_calloc(found, sizeof(plafVideoMode));
-
-	for (CFIndex i = 0;  i < found;  i++)
-	{
-		CGDisplayModeRef dm = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
-		if (!modeIsGood(dm))
-			continue;
-
-		const plafVideoMode mode = vidmodeFromCGDisplayMode(dm);
-		CFIndex j;
-
-		for (j = 0;  j < *count;  j++)
-		{
-			if (_plafCompareVideoModes(result + j, &mode) == 0)
-				break;
+		*count = 0;
+		CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->nsDisplayID, NULL);
+		const CFIndex found = CFArrayGetCount(modes);
+		plafVideoMode* result = _plaf_calloc(found, sizeof(plafVideoMode));
+		for (CFIndex i = 0;  i < found;  i++) {
+			CGDisplayModeRef dm = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
+			if (!modeIsGood(dm)) {
+				continue;
+			}
+			const plafVideoMode mode = vidmodeFromCGDisplayMode(dm);
+			CFIndex j;
+			for (j = 0;  j < *count;  j++) {
+				if (_plafCompareVideoModes(result + j, &mode) == 0) {
+					break;
+				}
+			}
+			// Skip duplicate modes
+			if (j < *count) {
+				continue;
+			}
+			(*count)++;
+			result[*count - 1] = mode;
 		}
-
-		// Skip duplicate modes
-		if (j < *count)
-			continue;
-
-		(*count)++;
-		result[*count - 1] = mode;
-	}
-
-	CFRelease(modes);
-	return result;
-
+		CFRelease(modes);
+		return result;
 	}
 }
 
 bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode *mode) {
 	@autoreleasepool {
-
-	CGDisplayModeRef native = CGDisplayCopyDisplayMode(monitor->nsDisplayID);
-	if (!native)
-	{
-		_plafInputError("Cocoa: Failed to query display mode");
-		return false;
-	}
-
-	*mode = vidmodeFromCGDisplayMode(native);
-	CGDisplayModeRelease(native);
-	return true;
-
+		CGDisplayModeRef native = CGDisplayCopyDisplayMode(monitor->nsDisplayID);
+		if (!native) {
+			return false;
+		}
+		*mode = vidmodeFromCGDisplayMode(native);
+		CGDisplayModeRelease(native);
+		return true;
 	}
 }
 
 bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
 	@autoreleasepool {
-
-	uint32_t size = CGDisplayGammaTableCapacity(monitor->nsDisplayID);
-	CGGammaValue* values = _plaf_calloc(size * 3, sizeof(CGGammaValue));
-
-	CGGetDisplayTransferByTable(monitor->nsDisplayID,
-								size,
-								values,
-								values + size,
-								values + size * 2,
-								&size);
-
-	_plafAllocGammaArrays(ramp, size);
-
-	for (uint32_t i = 0; i < size; i++)
-	{
-		ramp->red[i]   = (unsigned short) (values[i] * 65535);
-		ramp->green[i] = (unsigned short) (values[i + size] * 65535);
-		ramp->blue[i]  = (unsigned short) (values[i + size * 2] * 65535);
-	}
-
-	_plaf_free(values);
-	return true;
-
+		uint32_t size = CGDisplayGammaTableCapacity(monitor->nsDisplayID);
+		CGGammaValue* values = _plaf_calloc(size * 3, sizeof(CGGammaValue));
+		CGGetDisplayTransferByTable(monitor->nsDisplayID, size, values, values + size, values + size * 2, &size);
+		_plafAllocGammaArrays(ramp, size);
+		for (uint32_t i = 0; i < size; i++) {
+			ramp->red[i]   = (unsigned short) (values[i] * 65535);
+			ramp->green[i] = (unsigned short) (values[i + size] * 65535);
+			ramp->blue[i]  = (unsigned short) (values[i + size * 2] * 65535);
+		}
+		_plaf_free(values);
+		return true;
 	}
 }
 
 void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
 	@autoreleasepool {
-
-	CGGammaValue* values = _plaf_calloc(ramp->size * 3, sizeof(CGGammaValue));
-
-	for (unsigned int i = 0;  i < ramp->size;  i++)
-	{
-		values[i]                  = ramp->red[i] / 65535.f;
-		values[i + ramp->size]     = ramp->green[i] / 65535.f;
-		values[i + ramp->size * 2] = ramp->blue[i] / 65535.f;
-	}
-
-	CGSetDisplayTransferByTable(monitor->nsDisplayID,
-								ramp->size,
-								values,
-								values + ramp->size,
-								values + ramp->size * 2);
-
-	_plaf_free(values);
-
+		CGGammaValue* values = _plaf_calloc(ramp->size * 3, sizeof(CGGammaValue));
+		for (unsigned int i = 0;  i < ramp->size;  i++) {
+			values[i]                  = ramp->red[i] / 65535.f;
+			values[i + ramp->size]     = ramp->green[i] / 65535.f;
+			values[i + ramp->size * 2] = ramp->blue[i] / 65535.f;
+		}
+		CGSetDisplayTransferByTable(monitor->nsDisplayID, ramp->size, values, values + ramp->size,
+			values + ramp->size * 2);
+		_plaf_free(values);
 	}
 }
 
