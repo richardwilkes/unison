@@ -1135,7 +1135,7 @@ void _plafInputKey(plafWindow* window, int key, int scancode, int action, int mo
 void _plafInputChar(plafWindow* window, uint32_t ch);
 void _plafInputMouseClick(plafWindow* window, int button, int action, int mods);
 void _plafInputCursorPos(plafWindow* window, double xpos, double ypos);
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig);
+bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig);
 void _plafSetWindowTitle(plafWindow* window, const char* title);
 void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);
 void _plafSetWindowPos(plafWindow* window, int xpos, int ypos);
@@ -1155,7 +1155,7 @@ void _plafSetWindowFloating(plafWindow* window, bool enabled);
 void _plafSetWindowOpacity(plafWindow* window, float opacity);
 void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled);
 void _plafUpdateCursor(plafWindow* window);
-plafError* _plafRefreshContextAttribs(plafWindow* window);
+bool _plafRefreshContextAttribs(plafWindow* window);
 void _plafSetCursor(plafWindow* window);
 void _plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 #if defined(__APPLE__) || defined(_WIN32)
@@ -1189,8 +1189,8 @@ void _plafPushSelectionToManager(void);
 #endif
 
 // OpenGL
-plafError* _plafInitOpenGL(void);
-plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig);
+bool _plafInitOpenGL(void);
+bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig);
 bool _plafStringInExtensionString(const char* string, const char* extensions);
 const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired, const plafFrameBufferCfg* alternatives, unsigned int count);
 void _plafTerminateOpenGL(void);

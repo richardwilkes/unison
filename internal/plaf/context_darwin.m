@@ -50,15 +50,15 @@ static void destroyContextNSGL(plafWindow* window) {
 //////////////////////////////////////////////////////////////////////////
 
 // Initialize OpenGL support
-plafError* _plafInitOpenGL(void) {
+bool _plafInitOpenGL(void) {
 	if (_plaf.nsglFramework) {
-		return NULL;
+		return true;
 	}
 	_plaf.nsglFramework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
 	if (_plaf.nsglFramework == NULL) {
-		return _plafNewError("NSGL: Failed to locate OpenGL framework");
+		return false;
 	}
-	return NULL;
+	return true;
 }
 
 // Terminate OpenGL support
@@ -66,7 +66,7 @@ void _plafTerminateOpenGL(void) {
 }
 
 // Create the OpenGL context
-plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
+bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	int colorBits = fbconfig->redBits + fbconfig->greenBits + fbconfig->blueBits;
 	if (colorBits == 0) {
 		colorBits = 24;
@@ -92,34 +92,29 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	}
 	window->context.nsglPixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:attribs];
 	if (!window->context.nsglPixelFormat) {
-		return _plafNewError("NSGL: Failed to find a suitable pixel format");
+		return false;
 	}
-
 	NSOpenGLContext* shareCtx = nil;
 	if (share) {
 		shareCtx = share->context.nsglCtx;
 	}
-
 	window->context.nsglCtx = [[NSOpenGLContext alloc]
 		initWithFormat:window->context.nsglPixelFormat shareContext:shareCtx];
 	if (!window->context.nsglCtx) {
-		return _plafNewError("NSGL: Failed to create OpenGL context");
+		return false;
 	}
-
 	if (fbconfig->transparent) {
 		int opaque = 0;
 		[window->context.nsglCtx setValues:&opaque forParameter:NSOpenGLContextParameterSurfaceOpacity];
 	}
-
 	[window->nsView setWantsBestResolutionOpenGLSurface:true];
 	[window->context.nsglCtx setView:window->nsView];
-
 	window->context.makeCurrent = makeContextCurrentNSGL;
 	window->context.swapBuffers = swapBuffersNSGL;
 	window->context.extensionSupported = extensionSupportedNSGL;
 	window->context.getProcAddress = getProcAddressNSGL;
 	window->context.destroy = destroyContextNSGL;
-	return NULL;
+	return true;
 }
 
 

@@ -67,7 +67,7 @@ const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
 }
 
 // Retrieves the attributes of the current context
-plafError* _plafRefreshContextAttribs(plafWindow* window) {
+bool _plafRefreshContextAttribs(plafWindow* window) {
 	plafWindow* previous = _plaf.wndWithCurrentCtx;
 	plafMakeContextCurrent(window);
 
@@ -75,37 +75,37 @@ plafError* _plafRefreshContextAttribs(plafWindow* window) {
 	window->context.GetString = (FN_GLGETSTRING)window->context.getProcAddress("glGetString");
 	if (!window->context.GetIntegerv || !window->context.GetString) {
 		plafMakeContextCurrent(previous);
-		return _plafNewError("Entry point retrieval is broken");
+		return false;
 	}
 
 	const char* version = window->context.GetString(GL_VERSION);
 	if (!version) {
 		plafMakeContextCurrent(previous);
-		return _plafNewError("OpenGL version string retrieval is broken");
+		return false;
 	}
 
 	int major = 0;
 	int minor = 0;
 	if (!sscanf(version, "%d.%d", &major, &minor)) {
 		plafMakeContextCurrent(previous);
-		return _plafNewError("No version found in OpenGL version string");
+		return false;
 	}
 	if (major < 3 || (major == 3 && minor < 2)) {
 		plafMakeContextCurrent(previous);
-		return _plafNewError("Requested OpenGL version 3.2, got version %i.%i", major, minor);
+		return false;
 	}
 
 	window->context.GetStringi = (FN_GLGETSTRINGI)window->context.getProcAddress("glGetStringi");
 	if (!window->context.GetStringi) {
 		plafMakeContextCurrent(previous);
-		return _plafNewError("Entry point retrieval is broken");
+		return false;
 	}
 
 	FN_GLCLEAR glClear = (FN_GLCLEAR)window->context.getProcAddress("glClear");
 	glClear(GL_COLOR_BUFFER_BIT);
 	plafSwapBuffers(window);
 	plafMakeContextCurrent(previous);
-	return NULL;
+	return true;
 }
 
 // Searches an extension string for the specified extension

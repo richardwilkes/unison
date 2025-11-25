@@ -28,9 +28,8 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 //////////////////////////////////////////////////////////////////////////
 
  plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share) {
-	plafFrameBufferCfg fbconfig = _plaf.frameBufferCfg;
-	fbconfig.transparent        = wndCfg->transparent; // TODO: only use one of these
-
+	plafFrameBufferCfg fbconfig   = _plaf.frameBufferCfg;
+	fbconfig.transparent          = wndCfg->transparent; // TODO: only use one of these
 	plafWindow* window            = _plaf_calloc(1, sizeof(plafWindow));
 	window->next                  = _plaf.windowListHead;
 	_plaf.windowListHead          = window;
@@ -50,9 +49,7 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 	window->maxwidth              = DONT_CARE;
 	window->maxheight             = DONT_CARE;
 	window->title                 = _plaf_strdup(title);
-
-	plafError* err = _plafCreateWindow(window, wndCfg, share, &fbconfig);
-	if (err) {
+	if (!_plafCreateWindow(window, wndCfg, share, &fbconfig)) {
 		plafDestroyWindow(window);
 		return NULL;
 	}

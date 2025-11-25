@@ -1215,22 +1215,6 @@ static uint32_t decodeUTF8(const char** s)
 	return codepoint - offsets[count - 1];
 }
 
-// Returns the Visual and depth of the chosen GLXFBConfig
-static plafError* _plafChooseVisual(const plafFrameBufferCfg* fbconfig, Visual** visual, int* depth) {
-	GLXFBConfig native;
-	if (!_plafChooseGLXFBConfig(fbconfig, &native)) {
-		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
-	}
-	XVisualInfo* result = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, native);
-	if (!result) {
-		return _plafNewError("GLX: Failed to retrieve Visual for GLXFBConfig");
-	}
-	*visual = result->visual;
-	*depth  = result->depth;
-	_plaf.xlibFree(result);
-	return NULL;
-}
-
 // Updates the cursor image according to its cursor mode
 void _plafUpdateCursorImage(plafWindow* window) {
 	if (window->cursorHidden) {
@@ -1253,7 +1237,7 @@ static void inputContextDestroyCallback(XIC ic, XPointer clientData, XPointer ca
 }
 
 // Create the X11 window (and its colormap)
-static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, Visual* visual, int depth) {
+static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, Visual* visual, int depth) {
 	window->x11Colormap = _plaf.xlibCreateColormap(_plaf.x11Display, _plaf.x11Root, visual, AllocNone);
 	window->x11Transparent = _plafIsVisualTransparent(visual);
 	XSetWindowAttributes wa = { 0 };
@@ -1264,11 +1248,11 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 					EnterWindowMask | LeaveWindowMask | PropertyChangeMask;
 	_plafGrabErrorHandler();
 	window->x11Parent = _plaf.x11Root;
-	window->x11Window = _plaf.xlibCreateWindow(_plaf.x11Display, _plaf.x11Root, 0, 0, 1, 1, 0, depth,
-		InputOutput, visual, CWBorderPixel | CWColormap | CWEventMask, &wa);
+	window->x11Window = _plaf.xlibCreateWindow(_plaf.x11Display, _plaf.x11Root, 0, 0, 1, 1, 0, depth, InputOutput,
+		visual, CWBorderPixel | CWColormap | CWEventMask, &wa);
 	_plafReleaseErrorHandler();
 	if (!window->x11Window) {
-		return _plafNewError("X11: Failed to create window");
+		return false;
 	}
 	_plaf.xlibSaveContext(_plaf.x11Display, window->x11Window, _plaf.x11Context, (XPointer)window);
 	if (!wndconfig->decorated) {
@@ -1309,7 +1293,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	// Set ICCCM WM_HINTS property
 	XWMHints* hints = _plaf.xlibAllocWMHints();
 	if (!hints) {
-		return _plafNewError("X11: Failed to allocate WM hints");
+		return false;
 	}
 	hints->flags = StateHint;
 	hints->initial_state = NormalState;
@@ -1319,7 +1303,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	// Set ICCCM WM_NORMAL_HINTS property
 	XSizeHints* sizeHints = _plaf.xlibAllocSizeHints();
 	if (!sizeHints) {
-		return _plafNewError("X11: Failed to allocate size hints");
+		return false;
 	}
 	if (!wndconfig->resizable) {
 		sizeHints->flags |= (PMinSize | PMaxSize);
@@ -1345,8 +1329,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	_plafSetWindowTitle(window, window->title);
 	_plafGetWindowPos(window, &window->x11XPos, &window->x11YPos);
 	_plafGetWindowSize(window, &window->width, &window->height);
-
-	return NULL;
+	return true;
 }
 
 // Set the specified property to the selection converted to the requested target
@@ -2256,50 +2239,46 @@ void _plafCreateInputContext(plafWindow* window)
 //////                       PLAF platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
-	plafError* err = _plafInitOpenGL();
-	if (err) {
-		return err;
+bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
+	if (!_plafInitOpenGL()) {
+		return false;
 	}
-
-	Visual* visual = NULL;
+	GLXFBConfig native;
+	if (!_plafChooseGLXFBConfig(fbconfig, &native)) {
+		return false;
+	}
+	XVisualInfo* visualInfo = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, native);
+	if (!result) {
+		return false;
+	}
 	int depth;
-	err = _plafChooseVisual(fbconfig, &visual, &depth);
-	if (err) {
-		return err;
-	}
+	Visual* visual = visualInfo->visual;
+	_plaf.xlibFree(visualInfo);
 	if (!visual) {
 		visual = DefaultVisual(_plaf.x11Display, _plaf.x11Screen);
 		depth = DefaultDepth(_plaf.x11Display, _plaf.x11Screen);
+	} else {
+		depth = visualInfo->depth;
 	}
-
-	err = createNativeWindow(window, wndconfig, visual, depth);
-	if (err) {
-		return err;
+	if (!createNativeWindow(window, wndconfig, visual, depth)) {
+		return false;
 	}
-
-	err = _plafCreateOpenGLContext(window, share, fbconfig);
-	if (err) {
-		return err;
+	if (!_plafCreateOpenGLContext(window, share, fbconfig)) {
+		return false;
 	}
-
-	err = _plafRefreshContextAttribs(window);
-	if (err) {
-		return err;
+	if (!_plafRefreshContextAttribs(window)) {
+		return false;
 	}
-
 	if (wndconfig->mousePassthrough) {
 		_plafSetWindowMousePassthrough(window, true);
 	}
-
 	if (window->monitor) {
 		_plafShowWindow(window);
 		updateWindowMode(window);
 		acquireMonitor(window);
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
-	return NULL;
+	return true;
 }
 
 void _plafDestroyWindow(plafWindow* window) {

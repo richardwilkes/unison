@@ -732,13 +732,9 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 	return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
 
-// Creates the PLAF window
-static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
-	int frameX, frameY, frameWidth, frameHeight;
-	WCHAR* wideTitle;
+static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
 	DWORD style = getWindowStyle(window);
 	DWORD exStyle = getWindowExStyle(window);
-
 	if (!_plaf.win32MainWindowClass) {
 		WNDCLASSEXW wc = { sizeof(wc) };
 		wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
@@ -754,44 +750,30 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		}
 		_plaf.win32MainWindowClass = RegisterClassExW(&wc);
 		if (!_plaf.win32MainWindowClass) {
-			return _plafNewError("Win32: Failed to register window class");
+			return false;
 		}
 	}
-
-	if (GetSystemMetrics(SM_REMOTESESSION)) {
-		// NOTE: On Remote Desktop, setting the cursor to NULL does not hide it
-		// HACK: Create a transparent cursor and always set that instead of NULL
-		//       When not on Remote Desktop, this handle is NULL and normal hiding is used
+	if (GetSystemMetrics(SM_REMOTESESSION) && !_plaf.win32BlankCursor) {
+		const int cursorWidth = GetSystemMetrics(SM_CXCURSOR);
+		const int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
+		unsigned char* cursorPixels = _plaf_calloc(cursorWidth * cursorHeight, 4);
+		if (!cursorPixels) {
+			return false;
+		}
+		// Windows checks whether the image is fully transparent and if so just ignores the alpha channel and makes the
+		// whole cursor opaque, so make one pixel slightly less transparent
+		cursorPixels[3] = 1;
+		const plafImageData cursorImage = { cursorWidth, cursorHeight, cursorPixels };
+		_plaf.win32BlankCursor = createIcon(&cursorImage, 0, 0, FALSE);
+		_plaf_free(cursorPixels);
 		if (!_plaf.win32BlankCursor) {
-			const int cursorWidth = GetSystemMetrics(SM_CXCURSOR);
-			const int cursorHeight = GetSystemMetrics(SM_CYCURSOR);
-			unsigned char* cursorPixels = _plaf_calloc(cursorWidth * cursorHeight, 4);
-			if (!cursorPixels) {
-				return _plafNewError("Win32: Failed to allocate blank cursor pixels");
-			}
-
-			// NOTE: Windows checks whether the image is fully transparent and if so
-			//       just ignores the alpha channel and makes the whole cursor opaque
-			// HACK: Make one pixel slightly less transparent
-			cursorPixels[3] = 1;
-
-			const plafImageData cursorImage = { cursorWidth, cursorHeight, cursorPixels };
-			_plaf.win32BlankCursor = createIcon(&cursorImage, 0, 0, FALSE);
-			_plaf_free(cursorPixels);
-
-			if (!_plaf.win32BlankCursor) {
-				return _plafNewError("Win32: Failed to create blank cursor");
-			}
+			return false;
 		}
 	}
-
+	int frameX, frameY, frameWidth, frameHeight;
 	if (window->monitor) {
 		MONITORINFO mi = { sizeof(mi) };
 		GetMonitorInfoW(window->monitor->win32Handle, &mi);
-
-		// NOTE: This window placement is temporary and approximate, as the
-		//       correct position and size cannot be known until the monitor
-		//       video mode has been picked in _plafSetVideoModeWin32
 		frameX = mi.rcMonitor.left;
 		frameY = mi.rcMonitor.top;
 		frameWidth  = mi.rcMonitor.right - mi.rcMonitor.left;
@@ -804,26 +786,20 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		frameWidth  = rect.right - rect.left;
 		frameHeight = rect.bottom - rect.top;
 	}
-
-	wideTitle = createWideStringFromUTF8(window->title);
+	WCHAR* wideTitle = createWideStringFromUTF8(window->title);
 	if (!wideTitle) {
-		return _plafNewError("Win32: Failed to allocate title");
+		return false;
 	}
-
 	window->win32Window = CreateWindowExW(exStyle, MAKEINTATOM(_plaf.win32MainWindowClass), wideTitle, style, frameX,
 		frameY, frameWidth, frameHeight, NULL, NULL, _plaf.win32Instance, NULL);
-
 	_plaf_free(wideTitle);
-
 	if (!window->win32Window) {
-		return _plafNewError("Win32: Failed to create window");
+		return false;
 	}
-
 	SetPropW(window->win32Window, L"PLAF", window);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_DROPFILES, MSGFLT_ALLOW, NULL);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYDATA, MSGFLT_ALLOW, NULL);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
-
 	if (!window->monitor) {
 		RECT rect = { 0, 0, 1, 1 };
 		WINDOWPLACEMENT wp = { sizeof(wp) };
@@ -840,50 +816,39 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		wp.showCmd = SW_HIDE;
 		SetWindowPlacement(window->win32Window, &wp);
 	}
-
 	DragAcceptFiles(window->win32Window, TRUE);
-
 	if (fbconfig->transparent) {
 		updateFramebufferTransparency(window);
 		window->win32Transparent = true;
 	}
-
 	_plafGetWindowSize(window, &window->width, &window->height);
-	return NULL;
+	return true;
 }
 
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
+bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	plafError* err = createNativeWindow(window, wndconfig, fbconfig);
 	if (err) {
 		return err;
 	}
-
-	err = _plafInitOpenGL();
-	if (err) {
-		return err;
+	if (!_plafInitOpenGL()) {
+		return false;
 	}
-
-	err = _plafCreateOpenGLContext(window, share, fbconfig);
-	if (err) {
-		return err;
+	if (!_plafCreateOpenGLContext(window, share, fbconfig)) {
+		return false;
 	}
-
-	err = _plafRefreshContextAttribs(window);
-	if (err) {
-		return err;
+	if (!_plafRefreshContextAttribs(window)) {
+		return false;
 	}
-
 	if (wndconfig->mousePassthrough) {
 		_plafSetWindowMousePassthrough(window, true);
 	}
-
 	if (window->monitor) {
 		_plafShowWindow(window);
 		plafFocusWindow(window);
 		acquireMonitor(window);
 		fitToMonitor(window);
 	}
-	return err;
+	return true;
 }
 
 void _plafDestroyWindow(plafWindow* window) {

@@ -204,15 +204,14 @@ static void destroyContextWGL(plafWindow* window)
 }
 
 // Initialize WGL
-plafError* _plafInitOpenGL(void) {
+bool _plafInitOpenGL(void) {
 	if (_plaf.wglInstance) {
-		return NULL;
+		return true;
 	}
 	_plaf.wglInstance = _plafLoadModule("opengl32.dll");
 	if (!_plaf.wglInstance) {
-		return _plafNewError("WGL: Failed to load opengl32.dll");
+		return false;
 	}
-
 	_plaf.wglCreateContext = (FN_wglCreateContext)_plafGetModuleSymbol(_plaf.wglInstance, "wglCreateContext");
 	_plaf.wglDeleteContext = (FN_wglDeleteContext)_plafGetModuleSymbol(_plaf.wglInstance, "wglDeleteContext");
 	_plaf.wglGetProcAddress = (FN_wglGetProcAddress)_plafGetModuleSymbol(_plaf.wglInstance, "wglGetProcAddress");
@@ -220,61 +219,40 @@ plafError* _plafInitOpenGL(void) {
 	_plaf.wglGetCurrentContext = (FN_wglGetCurrentContext)_plafGetModuleSymbol(_plaf.wglInstance, "wglGetCurrentContext");
 	_plaf.wglMakeCurrent = (FN_wglMakeCurrent)_plafGetModuleSymbol(_plaf.wglInstance, "wglMakeCurrent");
 	_plaf.wglShareLists = (FN_wglShareLists)_plafGetModuleSymbol(_plaf.wglInstance, "wglShareLists");
-
-	// NOTE: A dummy context has to be created for opengl32.dll to load the
-	//       OpenGL ICD, from which we can then query WGL extensions
-	// NOTE: This code will accept the Microsoft GDI ICD; accelerated context
-	//       creation failure occurs during manual pixel format enumeration
-
+	HDC dc = GetDC(_plaf.win32HelperWindowHandle);
 	PIXELFORMATDESCRIPTOR pfd;
-	HGLRC prc, rc;
-	HDC pdc, dc;
-
-	dc = GetDC(_plaf.win32HelperWindowHandle);
-
 	ZeroMemory(&pfd, sizeof(pfd));
 	pfd.nSize = sizeof(pfd);
 	pfd.nVersion = 1;
 	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
 	pfd.iPixelType = PFD_TYPE_RGBA;
 	pfd.cColorBits = 24;
-
 	if (!SetPixelFormat(dc, ChoosePixelFormat(dc, &pfd), &pfd)) {
-		return _plafNewError("WGL: Failed to set pixel format for dummy context");
+		return false;
 	}
-
-	rc = _plaf.wglCreateContext(dc);
+	HGLRC rc = _plaf.wglCreateContext(dc);
 	if (!rc) {
-		return _plafNewError("WGL: Failed to create dummy context");
+		return false;
 	}
-
-	pdc = _plaf.wglGetCurrentDC();
-	prc = _plaf.wglGetCurrentContext();
-
+	HDC pdc = _plaf.wglGetCurrentDC();
+	HGLRC prc = _plaf.wglGetCurrentContext();
 	if (!_plaf.wglMakeCurrent(dc, rc)) {
 		_plaf.wglMakeCurrent(pdc, prc);
 		_plaf.wglDeleteContext(rc);
-		return _plafNewError("WGL: Failed to make dummy context current");
+		return false;
 	}
-
-	// NOTE: Functions must be loaded first as they're needed to retrieve the
-	//       extension string that tells us whether the functions are supported
 	_plaf.wglGetExtensionsStringEXT = (FN_WGLGETEXTENSIONSSTRINGEXT)_plaf.wglGetProcAddress("wglGetExtensionsStringEXT");
 	_plaf.wglGetExtensionsStringARB = (FN_WGLGETEXTENSIONSSTRINGARB)_plaf.wglGetProcAddress("wglGetExtensionsStringARB");
 	_plaf.wglCreateContextAttribsARB = (FN_WGLCREATECONTEXTATTRIBSARB)_plaf.wglGetProcAddress("wglCreateContextAttribsARB");
 	_plaf.wglGetPixelFormatAttribivARB = (FN_WGLGETPIXELFORMATATTRIBIVARB)_plaf.wglGetProcAddress("wglGetPixelFormatAttribivARB");
-
-	// NOTE: WGL_ARB_extensions_string and WGL_EXT_extensions_string are not
-	//       checked below as we are already using them
 	_plaf.wglARB_multisample = extensionSupportedWGL("WGL_ARB_multisample");
 	_plaf.wglARB_framebuffer_sRGB = extensionSupportedWGL("WGL_ARB_framebuffer_sRGB");
 	_plaf.wglEXT_framebuffer_sRGB = extensionSupportedWGL("WGL_EXT_framebuffer_sRGB");
 	_plaf.wglARB_create_context = extensionSupportedWGL("WGL_ARB_create_context");
 	_plaf.wglARB_pixel_format = extensionSupportedWGL("WGL_ARB_pixel_format");
-
 	_plaf.wglMakeCurrent(pdc, prc);
 	_plaf.wglDeleteContext(rc);
-	return NULL;
+	return true;
 }
 
 // Terminate WGL
@@ -286,25 +264,25 @@ void _plafTerminateOpenGL(void) {
 }
 
 // Create the OpenGL or OpenGL ES context
-plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
+bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	HGLRC shareCtx = NULL;
 	if (share) {
 		shareCtx = share->context.wglGLRC;
 	}
 	window->context.wglDC = GetDC(window->win32Window);
 	if (!window->context.wglDC) {
-		return _plafNewError("WGL: Failed to retrieve DC for window");
+		return false;
 	}
 	int pixelFormat = choosePixelFormatWGL(window, fbconfig);
 	if (!pixelFormat) {
-		return _plafNewError("WGL: Failed to choose pixel format for window");
+		return false;
 	}
 	PIXELFORMATDESCRIPTOR pfd;
 	if (!DescribePixelFormat(window->context.wglDC, pixelFormat, sizeof(pfd), &pfd)) {
-		return _plafNewError("WGL: Failed to retrieve PFD for selected pixel format");
+		return false;
 	}
 	if (!SetPixelFormat(window->context.wglDC, pixelFormat, &pfd)) {
-		return _plafNewError("WGL: Failed to set selected pixel format");
+		return false;
 	}
 	if (_plaf.wglARB_create_context) {
 		int attribs[] = {
@@ -316,20 +294,20 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 		if (!window->context.wglGLRC) {
 			const DWORD error = GetLastError();
 			if (error == (0xc0070000 | ERROR_INVALID_VERSION_ARB)) {
-				return _plafNewError("WGL: Driver does not support OpenGL version 3.2");
+				return false;
 			} else if (error == (0xc0070000 | ERROR_INCOMPATIBLE_DEVICE_CONTEXTS_ARB)) {
-				return _plafNewError("WGL: The share context is not compatible with the requested context");
+				return false;
 			}
-			return _plafNewError("WGL: Failed to create OpenGL context");
+			return false;
 		}
 	} else {
 		window->context.wglGLRC = _plaf.wglCreateContext(window->context.wglDC);
 		if (!window->context.wglGLRC) {
-			return _plafNewError("WGL: Failed to create OpenGL context");
+			return false;
 		}
 		if (shareCtx) {
 			if (!_plaf.wglShareLists(shareCtx, window->context.wglGLRC)) {
-				return _plafNewError("WGL: Failed to enable sharing with specified OpenGL context");
+				return false;
 			}
 		}
 	}
@@ -338,7 +316,7 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	window->context.extensionSupported = extensionSupportedWGL;
 	window->context.getProcAddress = getProcAddressWGL;
 	window->context.destroy = destroyContextWGL;
-	return NULL;
+	return true;
 }
 
 HGLRC plafGetWGLContext(plafWindow* window) {

@@ -170,9 +170,9 @@ static void destroyContextGLX(plafWindow* window)
 //////////////////////////////////////////////////////////////////////////
 
 // Initialize GLX
-plafError* _plafInitOpenGL(void) {
+bool _plafInitOpenGL(void) {
 	if (_plaf.glxHandle) {
-		return NULL;
+		return true;
 	}
 	const char* sonames[] = {
 		"libGLX.so.0",
@@ -182,13 +182,13 @@ plafError* _plafInitOpenGL(void) {
 	};
 	for (int i = 0;  sonames[i];  i++) {
 		_plaf.glxHandle = _plafLoadModule(sonames[i]);
-		if (_plaf.glxHandle)
+		if (_plaf.glxHandle) {
 			break;
+		}
 	}
 	if (!_plaf.glxHandle) {
-		return _plafNewError("GLX: Failed to load GLX");
+		return false;
 	}
-
 	_plaf.glxGetFBConfigs = (FN_GLXGETFBCONFIGS)_plafGetModuleSymbol(_plaf.glxHandle, "glXGetFBConfigs");
 	_plaf.glxGetFBConfigAttrib = (FN_GLXGETFBCONFIGATTRIB)_plafGetModuleSymbol(_plaf.glxHandle, "glXGetFBConfigAttrib");
 	_plaf.glxGetClientString = (FN_GLXGETCLIENTSTRING)_plafGetModuleSymbol(_plaf.glxHandle, "glXGetClientString");
@@ -202,7 +202,6 @@ plafError* _plafInitOpenGL(void) {
 	_plaf.glxCreateWindow = (FN_GLXCREATEWINDOW)_plafGetModuleSymbol(_plaf.glxHandle, "glXCreateWindow");
 	_plaf.glxDestroyWindow = (FN_GLXDESTROYWINDOW)_plafGetModuleSymbol(_plaf.glxHandle, "glXDestroyWindow");
 	_plaf.glxGetVisualFromFBConfig = (FN_GLXGETVISUALFROMFBCONFIG)_plafGetModuleSymbol(_plaf.glxHandle, "glXGetVisualFromFBConfig");
-
 	if (!_plaf.glxGetFBConfigs ||
 		!_plaf.glxGetFBConfigAttrib ||
 		!_plaf.glxGetClientString ||
@@ -216,47 +215,39 @@ plafError* _plafInitOpenGL(void) {
 		!_plaf.glxCreateWindow ||
 		!_plaf.glxDestroyWindow ||
 		!_plaf.glxGetVisualFromFBConfig) {
-		return _plafNewError("GLX: Failed to load required entry points");
+		return false;
 	}
-
-	// NOTE: Unlike GLX 1.3 entry points these are not required to be present
 	_plaf.glxGetProcAddress = (FN_GLXGETPROCADDRESS)_plafGetModuleSymbol(_plaf.glxHandle, "glXGetProcAddress");
 	_plaf.glxGetProcAddressARB = (FN_GLXGETPROCADDRESS)_plafGetModuleSymbol(_plaf.glxHandle, "glXGetProcAddressARB");
-
 	int errorBase;
 	int eventBase;
 	if (!_plaf.glxQueryExtension(_plaf.x11Display, &_plaf.glxErrorBase, &eventBase)) {
-		return _plafNewError("GLX: GLX extension not found");
+		return false;
 	}
-
 	int major;
 	int minor;
 	if (!_plaf.glxQueryVersion(_plaf.x11Display, &major, &minor)) {
-		return _plafNewError("GLX: Failed to query GLX version");
+		return false;
 	}
 	if (major == 1 && minor < 3) {
-		return _plafNewError("GLX: GLX version 1.3 is required");
+		return false;
 	}
-
 	if (extensionSupportedGLX("GLX_ARB_multisample")) {
 		_plaf.glxARB_multisample = true;
 	}
-
 	if (extensionSupportedGLX("GLX_ARB_framebuffer_sRGB")) {
 		_plaf.glxARB_framebuffer_sRGB = true;
 	}
-
 	if (extensionSupportedGLX("GLX_EXT_framebuffer_sRGB")) {
 		_plaf.glxEXT_framebuffer_sRGB = true;
 	}
-
 	if (extensionSupportedGLX("GLX_ARB_create_context")) {
 		_plaf.glxCreateContextAttribsARB = (FN_GLXCREATECONTEXTATTRIBSARB)getProcAddressGLX("glXCreateContextAttribsARB");
 		if (_plaf.glxCreateContextAttribsARB) {
 			_plaf.glxARB_create_context = true;
 		}
 	}
-	return NULL;
+	return true;
 }
 
 // Terminate GLX
@@ -270,14 +261,14 @@ void _plafTerminateOpenGL(void) {
 }
 
 // Create the OpenGL or OpenGL ES context
-plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
+bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	GLXFBConfig native = NULL;
 	GLXContext shareCtx = NULL;
 	if (share) {
 		shareCtx = share->context.glxHandle;
 	}
 	if (!_plafChooseGLXFBConfig(fbconfig, &native)) {
-		return _plafNewError("GLX: Failed to find a suitable GLXFBConfig");
+		return false;
 	}
 	_plafGrabErrorHandler();
 	if (_plaf.glxARB_create_context) {
@@ -290,25 +281,21 @@ plafError* _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const
 	} else {
 		window->context.glxHandle = _plaf.glxCreateNewContext(_plaf.x11Display, native, GLX_RGBA_TYPE, shareCtx, True);
 	}
-
 	_plafReleaseErrorHandler();
-
 	if (!window->context.glxHandle) {
-		return _plafNewError("GLX: Failed to create context");
+		return false;
 	}
-
 	window->context.glxWindow = _plaf.glxCreateWindow(_plaf.x11Display, native, window->x11Window, NULL);
 	if (!window->context.glxWindow) {
-		return _plafNewError("GLX: Failed to create window");
+		return false;
 	}
-
 	window->context.glxFBConfig = native;
 	window->context.makeCurrent = makeContextCurrentGLX;
 	window->context.swapBuffers = swapBuffersGLX;
 	window->context.extensionSupported = extensionSupportedGLX;
 	window->context.getProcAddress = getProcAddressGLX;
 	window->context.destroy = destroyContextGLX;
-	return NULL;
+	return true;
 }
 
 

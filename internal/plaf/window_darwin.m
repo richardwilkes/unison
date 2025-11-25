@@ -499,10 +499,10 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 @end
 
 // Create the Cocoa window
-static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
+static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, const plafFrameBufferCfg* fbconfig) {
 	window->nsDelegate = [[MacWindowDelegate alloc] initWithPlafWindow:window];
 	if (!window->nsDelegate) {
-		return _plafNewError("Cocoa: Failed to create window delegate");
+		return false;
 	}
 
 	NSRect contentRect;
@@ -532,7 +532,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	window->nsWindow = [[MacWindow alloc] initWithContentRect:contentRect styleMask:styleMask
 		backing:NSBackingStoreBuffered defer:NO];
 	if (!window->nsWindow) {
-		return _plafNewError("Cocoa: Failed to create window");
+		return false;
 	}
 
 	if (window->monitor) {
@@ -544,7 +544,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		} else {
 			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
 		}
-
 		if (wndconfig->floating) {
 			[window->nsWindow setLevel:NSFloatingWindowLevel];
 		}
@@ -571,7 +570,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 
 	_plafGetWindowSize(window, &window->width, &window->height);
 	_plafGetFramebufferSize(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
-	return NULL;
+	return true;
 }
 
 
@@ -591,38 +590,29 @@ float _plafTransformYCocoa(float y)
 //////                       PLAF platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-plafError* _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
+bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	@autoreleasepool {
-		plafError* err = createNativeWindow(window, wndconfig, fbconfig);
-		if (err) {
-			return err;
+		if (!createNativeWindow(window, wndconfig, fbconfig)) {
+			return false;
 		}
-
-		err = _plafInitOpenGL();
-		if (err) {
-			return err;
+		if (!_plafInitOpenGL()) {
+			return false;
 		}
-
-		err = _plafCreateOpenGLContext(window, share, fbconfig);
-		if (err) {
-			return err;
+		if (!_plafCreateOpenGLContext(window, share, fbconfig)) {
+			return false;
 		}
-
-		err = _plafRefreshContextAttribs(window);
-		if (err) {
-			return err;
+		if (!_plafRefreshContextAttribs(window)) {
+			return false;
 		}
-
 		if (wndconfig->mousePassthrough) {
 			_plafSetWindowMousePassthrough(window, true);
 		}
-
 		if (window->monitor) {
 			_plafShowWindow(window);
 			plafFocusWindow(window);
 			acquireMonitor(window);
 		}
-		return NULL;
+		return true;
 	}
 }
 
