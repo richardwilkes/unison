@@ -27,22 +27,17 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 //////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
- plafError* plafCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
-	if (width <= 0 || height <= 0) {
-		return _plafNewError("Invalid window size %ix%i", width, height);
-	}
-
+ plafError* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow) {
 	plafFrameBufferCfg fbconfig = _plaf.frameBufferCfg;
+	fbconfig.transparent        = wndCfg->transparent; // TODO: only use one of these
 
-	plafWindowConfig wndconfig = _plaf.windowCfg;
-	wndconfig.width        = width;
-	wndconfig.height       = height;
+	plafWindowConfig wndconfig = *wndCfg;
 
-	plafWindow* window = _plaf_calloc(1, sizeof(plafWindow));
+	plafWindow* window            = _plaf_calloc(1, sizeof(plafWindow));
 	window->next                  = _plaf.windowListHead;
 	_plaf.windowListHead          = window;
-	window->videoMode.width       = width;
-	window->videoMode.height      = height;
+	window->videoMode.width       = 1;
+	window->videoMode.height      = 1;
 	window->videoMode.redBits     = fbconfig.redBits;
 	window->videoMode.greenBits   = fbconfig.greenBits;
 	window->videoMode.blueBits    = fbconfig.blueBits;
@@ -66,59 +61,6 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 
 	*outWindow = window;
 	return NULL;
-}
-
-void plafDefaultWindowHints(void) {
-	// The default is a resizable window with decorations
-	memset(&_plaf.windowCfg, 0, sizeof(_plaf.windowCfg));
-	_plaf.windowCfg.resizable        = true;
-	_plaf.windowCfg.decorated        = true;
-	_plaf.windowCfg.xpos             = ANY_POSITION;
-	_plaf.windowCfg.ypos             = ANY_POSITION;
-
-	// The default is 24 bits of color, 24 bits of depth and 8 bits of stencil, double buffered
-	memset(&_plaf.frameBufferCfg, 0, sizeof(_plaf.frameBufferCfg));
-	_plaf.frameBufferCfg.redBits      = 8;
-	_plaf.frameBufferCfg.greenBits    = 8;
-	_plaf.frameBufferCfg.blueBits     = 8;
-	_plaf.frameBufferCfg.alphaBits    = 8;
-	_plaf.frameBufferCfg.depthBits    = 24;
-	_plaf.frameBufferCfg.stencilBits  = 8;
-
-	// The default is to select the highest available refresh rate
-	_plaf.desiredRefreshRate = DONT_CARE;
-}
-
-void plafWindowHint(int hint, int value)
-{
-	switch (hint) {
-		case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
-			_plaf.frameBufferCfg.transparent = value ? true : false;
-			return;
-		case WINDOW_ATTR_HINT_RESIZABLE:
-			_plaf.windowCfg.resizable = value ? true : false;
-			return;
-		case WINDOW_ATTR_HINT_DECORATED:
-			_plaf.windowCfg.decorated = value ? true : false;
-			return;
-		case WINDOW_ATTR_HINT_FLOATING:
-			_plaf.windowCfg.floating = value ? true : false;
-			return;
-		case WINDOW_HINT_POSITION_X:
-			_plaf.windowCfg.xpos = value;
-			return;
-		case WINDOW_HINT_POSITION_Y:
-			_plaf.windowCfg.ypos = value;
-			return;
-		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
-			_plaf.windowCfg.mousePassthrough = value ? true : false;
-			return;
-		case WINDOW_HINT_REFRESH_RATE:
-			_plaf.desiredRefreshRate = value;
-			return;
-	}
-
-	_plafInputError("Invalid window hint 0x%08X", hint);
 }
 
 void plafDestroyWindow(plafWindow* window) {
@@ -276,58 +218,38 @@ void plafHideWindow(plafWindow* window) {
 	_plafHideWindow(window);
 }
 
-int plafGetWindowAttrib(plafWindow* window, int attrib) {
-	switch (attrib) {
-		case WINDOW_ATTR_VISIBLE:
-			return _plafWindowVisible(window);
-		case WINDOW_ATTR_HOVERED:
-			return _plafWindowHovered(window);
-		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
-			return window->mousePassthrough;
-		case WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER:
-			return _plafFramebufferTransparent(window);
-		case WINDOW_ATTR_HINT_RESIZABLE:
-			return window->resizable;
-		case WINDOW_ATTR_HINT_DECORATED:
-			return window->decorated;
-		case WINDOW_ATTR_HINT_FLOATING:
-			return window->floating;
+void plafSetWindowResizable(plafWindow* window, bool enabled) {
+	if (window->resizable != enabled) {
+		window->resizable = enabled;
+		if (!window->monitor) {
+			_plafSetWindowResizable(window, enabled);
+		}
 	}
-
-	_plafInputError("Invalid window attribute 0x%08X", attrib);
-	return 0;
 }
 
-void plafSetWindowAttrib(plafWindow* window, int attrib, int value) {
-	value = value ? true : false;
-
-	switch (attrib)
-	{
-		case WINDOW_ATTR_HINT_RESIZABLE:
-			window->resizable = value;
-			if (!window->monitor)
-				_plafSetWindowResizable(window, value);
-			return;
-
-		case WINDOW_ATTR_HINT_DECORATED:
-			window->decorated = value;
-			if (!window->monitor)
-				_plafSetWindowDecorated(window, value);
-			return;
-
-		case WINDOW_ATTR_HINT_FLOATING:
-			window->floating = value;
-			if (!window->monitor)
-				_plafSetWindowFloating(window, value);
-			return;
-
-		case WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH:
-			window->mousePassthrough = value;
-			_plafSetWindowMousePassthrough(window, value);
-			return;
+void plafSetWindowDecorated(plafWindow* window, bool enabled) {
+	if (window->decorated != enabled) {
+		window->decorated = enabled;
+		if (!window->monitor) {
+			_plafSetWindowDecorated(window, enabled);
+		}
 	}
+}
 
-	_plafInputError("Invalid window attribute 0x%08X", attrib);
+void plafSetWindowFloating(plafWindow* window, bool enabled) {
+	if (window->floating != enabled) {
+		window->floating = enabled;
+		if (!window->monitor) {
+			_plafSetWindowFloating(window, enabled);
+		}
+	}
+}
+
+void plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
+	if (window->mousePassthrough != enabled) {
+		window->mousePassthrough = enabled;
+		_plafSetWindowMousePassthrough(window, enabled);
+	}
 }
 
 plafMonitor* plafGetWindowMonitor(plafWindow* window) {

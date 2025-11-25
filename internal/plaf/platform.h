@@ -439,13 +439,6 @@ extern "C" {
 #define DISCONNECTED 0x00040002
 
 // Window attributes and/or hints
-#define WINDOW_ATTR_HINT_RESIZABLE                 0x00020003
-#define WINDOW_ATTR_VISIBLE                        0x00020004
-#define WINDOW_ATTR_HINT_DECORATED                 0x00020005
-#define WINDOW_ATTR_HINT_FLOATING                  0x00020007
-#define WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER   0x0002000A
-#define WINDOW_ATTR_HOVERED                        0x0002000B
-#define WINDOW_ATTR_HINT_MOUSE_PASSTHROUGH         0x0002000D
 #define WINDOW_HINT_POSITION_X                     0x0002000E
 #define WINDOW_HINT_POSITION_Y                     0x0002000F
 #define WINDOW_HINT_REFRESH_RATE                   0x0002100F
@@ -504,14 +497,11 @@ typedef struct plafImageData {
 } plafImageData;
 
 typedef struct plafWindowConfig {
-	int  xpos;
-	int  ypos;
-	int  width;
-	int  height;
-	bool resizable;
-	bool decorated;
-	bool floating;
-	bool mousePassthrough;
+	bool    resizable;
+	bool    decorated;
+	bool    transparent;
+	bool    floating;
+	bool    mousePassthrough;
 } plafWindowConfig;
 
 /* ------------------------- Internal ----------------------- */
@@ -713,7 +703,6 @@ struct plafLib {
 	NSObject<NSApplicationDelegate>*    nsDelegate;
 	bool                                nsCursorHidden;
 	NSObject*                           nsKeyUpMonitor;
-	CGPoint                             nsCascadePoint;
 	CFBundleRef                         nsglFramework;
 #elif defined(__linux__)
 	Display*                            x11Display;
@@ -1027,15 +1016,17 @@ const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor);
 void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 
 // Windows
-void plafDefaultWindowHints(void);
-void plafWindowHint(int hint, int value);
-plafError* plafCreateWindow(int width, int height, const char* title, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow);
+plafError* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share, plafWindow** outWindow);
 void* plafGetNativeWindow(plafWindow* window);
 int plafWindowShouldClose(plafWindow* window);
 void plafSetWindowShouldClose(plafWindow* window, int value);
 const char* plafGetWindowTitle(plafWindow* window);
 void plafSetWindowTitle(plafWindow* window, const char* title);
 void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images);
+void plafSetWindowResizable(plafWindow* window, bool enabled);
+void plafSetWindowDecorated(plafWindow* window, bool enabled);
+void plafSetWindowFloating(plafWindow* window, bool enabled);
+void plafSetWindowMousePassthrough(plafWindow* window, bool enabled);
 void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);
 void plafSetWindowPos(plafWindow* window, int xpos, int ypos);
 void plafGetWindowSize(plafWindow* window, int* width, int* height);
@@ -1058,8 +1049,8 @@ void plafFocusWindow(plafWindow* window);
 void plafRequestWindowAttention(plafWindow* window);
 plafMonitor* plafGetWindowMonitor(plafWindow* window);
 void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-int plafGetWindowAttrib(plafWindow* window, int attrib);
-void plafSetWindowAttrib(plafWindow* window, int attrib, int value);
+bool plafWindowVisible(plafWindow* window);
+bool plafIsFramebufferTransparent(plafWindow* window);
 void plafHideCursor(plafWindow* window);
 void plafShowCursor(plafWindow* window);
 int plafGetKey(plafWindow* window, int key);
@@ -1163,9 +1154,6 @@ void _plafMaximizeWindow(plafWindow* window);
 void _plafShowWindow(plafWindow* window);
 void _plafHideWindow(plafWindow* window);
 void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-bool _plafWindowVisible(plafWindow* window);
-bool _plafWindowHovered(plafWindow* window);
-bool _plafFramebufferTransparent(plafWindow* window);
 void _plafSetWindowResizable(plafWindow* window, bool enabled);
 void _plafSetWindowDecorated(plafWindow* window, bool enabled);
 void _plafSetWindowFloating(plafWindow* window, bool enabled);

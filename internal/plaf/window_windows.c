@@ -797,16 +797,10 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		frameWidth  = mi.rcMonitor.right - mi.rcMonitor.left;
 		frameHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
 	} else {
-		RECT rect = { 0, 0, wndconfig->width, wndconfig->height };
+		RECT rect = { 0, 0, 1, 1 };
 		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
-
-		if (wndconfig->xpos == ANY_POSITION && wndconfig->ypos == ANY_POSITION) {
-			frameX = CW_USEDEFAULT;
-			frameY = CW_USEDEFAULT;
-		} else {
-			frameX = wndconfig->xpos + rect.left;
-			frameY = wndconfig->ypos + rect.top;
-		}
+		frameX = rect.left;
+		frameY = rect.top;
 		frameWidth  = rect.right - rect.left;
 		frameHeight = rect.bottom - rect.top;
 	}
@@ -831,7 +825,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
 
 	if (!window->monitor) {
-		RECT rect = { 0, 0, wndconfig->width, wndconfig->height };
+		RECT rect = { 0, 0, 1, 1 };
 		WINDOWPLACEMENT wp = { sizeof(wp) };
 		const HMONITOR mh = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
 		if (IsWindows10Version1607OrGreater()) {
@@ -1212,7 +1206,7 @@ bool plafIsWindowMinimized(plafWindow* window) {
 	return IsIconic(window->win32Window);
 }
 
-bool _plafWindowVisible(plafWindow* window) {
+bool plafWindowVisible(plafWindow* window) {
 	return IsWindowVisible(window->win32Window);
 }
 
@@ -1220,11 +1214,7 @@ bool plafIsWindowMaximized(plafWindow* window) {
 	return IsZoomed(window->win32Window);
 }
 
-bool _plafWindowHovered(plafWindow* window) {
-	return _plafCursorInContentArea(window);
-}
-
-bool _plafFramebufferTransparent(plafWindow* window) {
+bool plafIsFramebufferTransparent(plafWindow* window) {
 	BOOL composition;
 	if (!window->win32Transparent) {
 		return false;

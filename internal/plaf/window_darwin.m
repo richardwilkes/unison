@@ -514,13 +514,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 		plafGetMonitorPos(window->monitor, &xpos, &ypos);
 		contentRect = NSMakeRect(xpos, ypos, mode.width, mode.height);
 	} else {
-		if (wndconfig->xpos == ANY_POSITION || wndconfig->ypos == ANY_POSITION) {
-			contentRect = NSMakeRect(0, 0, wndconfig->width, wndconfig->height);
-		} else {
-			const int xpos = wndconfig->xpos;
-			const int ypos = _plafTransformYCocoa(wndconfig->ypos + wndconfig->height - 1);
-			contentRect = NSMakeRect(xpos, ypos, wndconfig->width, wndconfig->height);
-		}
+		contentRect = NSMakeRect(0, 0, 1, 1);
 	}
 
 	NSUInteger styleMask = NSWindowStyleMaskMiniaturizable;
@@ -542,11 +536,6 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	if (window->monitor) {
 		[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
 	} else {
-		if (wndconfig->xpos == ANY_POSITION || wndconfig->ypos == ANY_POSITION) {
-			[(NSWindow*) window->nsWindow center];
-			_plaf.nsCascadePoint = NSPointToCGPoint([window->nsWindow cascadeTopLeftFromPoint: NSPointFromCGPoint(_plaf.nsCascadePoint)]);
-		}
-
 		if (wndconfig->resizable) {
 			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary |
 				NSWindowCollectionBehaviorManaged];
@@ -964,7 +953,7 @@ bool plafIsWindowMinimized(plafWindow* window) {
 	return [window->nsWindow isMiniaturized];
 }
 
-bool _plafWindowVisible(plafWindow* window) {
+bool plafWindowVisible(plafWindow* window) {
 	return [window->nsWindow isVisible];
 }
 
@@ -975,40 +964,21 @@ bool plafIsWindowMaximized(plafWindow* window) {
 	return false;
 }
 
-bool _plafWindowHovered(plafWindow* window) {
-	@autoreleasepool {
-		const NSPoint point = [NSEvent mouseLocation];
-		if ([NSWindow windowNumberAtPoint:point belowWindowWithWindowNumber:0] != [window->nsWindow windowNumber]) {
-			return false;
-		}
-		return NSMouseInRect(point, [window->nsWindow convertRectToScreen:[window->nsView frame]], NO);
-	}
-}
-
-bool _plafFramebufferTransparent(plafWindow* window) {
+bool plafIsFramebufferTransparent(plafWindow* window) {
 	return ![window->nsWindow isOpaque] && ![window->nsView isOpaque];
 }
 
 void _plafSetWindowResizable(plafWindow* window, bool enabled) {
 	@autoreleasepool {
-
-	const NSUInteger styleMask = [window->nsWindow styleMask];
-	if (enabled)
-	{
-		[window->nsWindow setStyleMask:(styleMask | NSWindowStyleMaskResizable)];
-		const NSWindowCollectionBehavior behavior =
-			NSWindowCollectionBehaviorFullScreenPrimary |
-			NSWindowCollectionBehaviorManaged;
-		[window->nsWindow setCollectionBehavior:behavior];
-	}
-	else
-	{
-		[window->nsWindow setStyleMask:(styleMask & ~NSWindowStyleMaskResizable)];
-		const NSWindowCollectionBehavior behavior =
-			NSWindowCollectionBehaviorFullScreenNone;
-		[window->nsWindow setCollectionBehavior:behavior];
-	}
-
+		const NSUInteger styleMask = [window->nsWindow styleMask];
+		if (enabled) {
+			[window->nsWindow setStyleMask:(styleMask | NSWindowStyleMaskResizable)];
+			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary |
+				NSWindowCollectionBehaviorManaged];
+		} else {
+			[window->nsWindow setStyleMask:(styleMask & ~NSWindowStyleMaskResizable)];
+			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
+		}
 	}
 }
 

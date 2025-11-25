@@ -48,6 +48,9 @@ type DragData struct {
 	Offset          geom.Point
 }
 
+// WindowConfig holds the desired window configuration.
+type WindowConfig = plaf.WindowConfig
+
 // Window holds window information.
 type Window struct {
 	InputCallbacks
@@ -95,6 +98,7 @@ type Window struct {
 	focused                bool
 	transient              bool
 	notResizable           bool
+	transparent            bool
 	undecorated            bool
 	floating               bool
 	inModal                bool
@@ -126,6 +130,14 @@ func UndecoratedWindowOption() WindowOption {
 func FloatingWindowOption() WindowOption {
 	return func(w *Window) error {
 		w.floating = true
+		return nil
+	}
+}
+
+// TransparentWindowOption causes the window's framebuffer to be transparent.
+func TransparentWindowOption() WindowOption {
+	return func(w *Window) error {
+		w.transparent = true
 		return nil
 	}
 }
@@ -205,13 +217,16 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			return nil, err
 		}
 	}
-	plaf.WindowHint(plaf.Resizable, plafEnabled(!w.notResizable))
-	plaf.WindowHint(plaf.Decorated, plafEnabled(!w.undecorated))
-	plaf.WindowHint(plaf.Floating, plafEnabled(w.floating))
-	plaf.WindowHint(plaf.TransparentFramebuffer, plaf.False)
+	cfg := plaf.WindowConfig{
+		Resizable:        !w.notResizable,
+		Decorated:        !w.undecorated,
+		Transparent:      w.transparent,
+		Floating:         w.floating,
+		MousePassThrough: false,
+	}
 	var err error
 	xos.SafeCall(func() {
-		w.wnd, err = plaf.CreateWindow(1, 1, title, nil, nil)
+		w.wnd, err = plaf.CreateWindow(title, &cfg, nil, nil)
 	}, func(panicErr error) {
 		err = panicErr
 	})
@@ -779,10 +794,14 @@ func collectFocusables(current, target *Panel, focusables []*Panel) (match int, 
 
 // IsVisible returns true if the window is currently being shown.
 func (w *Window) IsVisible() bool {
-	if w.IsValid() {
-		return w.wnd.GetAttrib(plaf.Visible) == plaf.True
-	}
-	return false
+	return w.IsValid() && w.wnd.IsVisible()
+}
+
+// IsTransparent returns true if the window was created with a transparent backing buffer.
+func (w *Window) IsTransparent() bool {
+	// TODO: May want to update this value at creation time in case the windowing system refused to do what was asked.
+	//       The underlying plaf.Window.IsTransparent() will determine this.
+	return w.transparent
 }
 
 // Show makes the window visible, if it was previously hidden. If the window is already visible or is in full screen
@@ -830,7 +849,7 @@ func (w *Window) Zoom() {
 
 // Resizable returns true if the window can be resized by the user.
 func (w *Window) Resizable() bool {
-	return !w.notResizable
+	return w.IsValid() && w.wnd.Resizable()
 }
 
 // MouseLocation returns the current mouse location relative to this window.
@@ -858,7 +877,9 @@ func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
 		xos.SafeCall(func() {
 			w.root.ValidateLayout()
-			c.DrawPaint(ThemeSurface.Paint(c, w.LocalContentRect(), paintstyle.Fill))
+			if !w.transparent {
+				c.DrawPaint(ThemeSurface.Paint(c, w.LocalContentRect(), paintstyle.Fill))
+			}
 			w.root.Draw(c, w.LocalContentRect())
 			if w.InDrag() {
 				c.Save()

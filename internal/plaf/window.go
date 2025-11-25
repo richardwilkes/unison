@@ -35,28 +35,21 @@ func (w *windowList) get(wnd *C.plafWindow) *Window {
 	return w.m[wnd]
 }
 
-// Hint corresponds to hints that can be set before creating a window.
-//
-// Hint also corresponds to the attributes of the window that can be get after
-// its creation.
-type Hint int
-
-// Window related hints/attributes.
-const (
-	Visible                Hint = C.WINDOW_ATTR_VISIBLE                      // Specifies whether the window will be initially visible.
-	Hovered                Hint = C.WINDOW_ATTR_HOVERED                      // Specifies whether the cursor is currently directly over the content area of the window, with no other windows between. See Cursor enter/leave events for details.
-	Resizable              Hint = C.WINDOW_ATTR_HINT_RESIZABLE               // Specifies whether the window will be resizable by the user.
-	Decorated              Hint = C.WINDOW_ATTR_HINT_DECORATED               // Specifies whether the window will have window decorations such as a border, a close widget, etc.
-	Floating               Hint = C.WINDOW_ATTR_HINT_FLOATING                // Specifies whether the window will be always-on-top.
-	TransparentFramebuffer Hint = C.WINDOW_ATTR_HINT_TRANSPARENT_FRAMEBUFFER // Specifies whether the framebuffer should be transparent.
-)
-
 // Other values.
 const (
 	True     int = 1 // GL_TRUE
 	False    int = 0 // GL_FALSE
 	DontCare int = C.DONT_CARE
 )
+
+// WindowConfig holds the desired window configuration.
+type WindowConfig struct {
+	Resizable        bool
+	Decorated        bool
+	Transparent      bool
+	Floating         bool
+	MousePassThrough bool
+}
 
 // Window represents a window.
 type Window struct {
@@ -82,24 +75,6 @@ type Window struct {
 // Used when an external C library is calling your Go handlers.
 func GoWindow(window unsafe.Pointer) *Window {
 	return &Window{plafWnd: (*C.plafWindow)(window)}
-}
-
-// DefaultWindowHints resets all window hints to their default values.
-//
-// This function may only be called from the main thread.
-func DefaultWindowHints() {
-	C.plafDefaultWindowHints()
-	panicError()
-}
-
-// WindowHint sets hints for the next call to CreateWindow. The hints,
-// once set, retain their values until changed by a call to WindowHint or
-// DefaultWindowHints, or until the library is terminated with Terminate.
-//
-// This function may only be called from the main thread.
-func WindowHint(target Hint, hint int) {
-	C.plafWindowHint(C.int(target), C.int(hint))
-	panicError()
 }
 
 // CreateWindow creates a window and its associated context. Most of the options
@@ -129,7 +104,7 @@ func WindowHint(target Hint, hint int) {
 // dock icon will be the same as the application bundle's icon.
 //
 // This function may only be called from the main thread.
-func CreateWindow(width, height int, title string, monitor *Monitor, share *Window) (*Window, error) {
+func CreateWindow(title string, cfg *WindowConfig, monitor *Monitor, share *Window) (*Window, error) {
 	var (
 		m *C.plafMonitor
 		s *C.plafWindow
@@ -148,7 +123,7 @@ func CreateWindow(width, height int, title string, monitor *Monitor, share *Wind
 
 	var w *C.plafWindow
 	//nolint:gocritic // Spurious lint flagging due to C code
-	if err := convertErrorResponse(C.plafCreateWindow(C.int(width), C.int(height), t, m, s, &w)); err != nil {
+	if err := convertErrorResponse(C.plafCreateWindow(t, (*C.plafWindowConfig)(unsafe.Pointer(cfg)), m, s, &w)); err != nil {
 		return nil, err
 	}
 
@@ -284,6 +259,11 @@ func (w *Window) SetSize(width, height int) {
 func (w *Window) SetSizeLimits(minw, minh, maxw, maxh int) {
 	C.plafSetWindowSizeLimits(w.plafWnd, C.int(minw), C.int(minh), C.int(maxw), C.int(maxh))
 	panicError()
+}
+
+// Resizable returns true if the window is allowed to be resized by the user.
+func (w *Window) Resizable() bool {
+	return w.plafWnd != nil && bool(w.plafWnd.resizable)
 }
 
 // GetFramebufferSize retrieves the size, in pixels, of the framebuffer of the
@@ -442,6 +422,16 @@ func (w *Window) Hide() {
 	panicError()
 }
 
+// IsVisible returns true if the window is currently being shown.
+func (w *Window) IsVisible() bool {
+	return bool(C.plafWindowVisible(w.plafWnd))
+}
+
+// IsTransparent returns true if the window was created with a transparent backing buffer.
+func (w *Window) IsTransparent() bool {
+	return bool(C.plafIsFramebufferTransparent(w.plafWnd))
+}
+
 // GetMonitor returns the handle of the monitor that the window is in
 // fullscreen on.
 //
@@ -479,29 +469,6 @@ func (w *Window) SetMonitor(monitor *Monitor, xpos, ypos, width, height, refresh
 	}
 	C.plafSetWindowMonitor(w.plafWnd, m, C.int(xpos), C.int(ypos), C.int(width), C.int(height), C.int(refreshRate))
 	panicError()
-}
-
-// GetAttrib returns an attribute of the window. There are many attributes,
-// some related to the window and others to its context.
-func (w *Window) GetAttrib(attrib Hint) int {
-	ret := int(C.plafGetWindowAttrib(w.plafWnd, C.int(attrib)))
-	panicError()
-	return ret
-}
-
-// SetAttrib function sets the value of an attribute of the specified window.
-//
-// The supported attributes are Decorated, Resizeable, and Floating.
-//
-// Some of these attributes are ignored for full screen windows. The new value
-// will take effect if the window is later made windowed.
-//
-// Some of these attributes are ignored for windowed mode windows. The new value
-// will take effect if the window is later made full screen.
-//
-// This function may only be called from the main thread.
-func (w *Window) SetAttrib(attrib Hint, value int) {
-	C.plafSetWindowAttrib(w.plafWnd, C.int(attrib), C.int(value))
 }
 
 // NativeWindow returns the underlying native window.

@@ -233,8 +233,15 @@ plafError* plafInit(void) {
 	if (errRsp != NULL) {
 		return errRsp;
 	}
-	plafDefaultWindowHints();
-	_plaf.initialized = true;
+	memset(&_plaf.frameBufferCfg, 0, sizeof(_plaf.frameBufferCfg));
+	_plaf.frameBufferCfg.redBits     = 8;
+	_plaf.frameBufferCfg.greenBits   = 8;
+	_plaf.frameBufferCfg.blueBits    = 8;
+	_plaf.frameBufferCfg.alphaBits   = 8;
+	_plaf.frameBufferCfg.depthBits   = 24;
+	_plaf.frameBufferCfg.stencilBits = 8;
+	_plaf.desiredRefreshRate         = DONT_CARE;
+	_plaf.initialized                = true;
 	return NULL;
 }
 

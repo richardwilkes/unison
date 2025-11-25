@@ -1254,14 +1254,6 @@ static void inputContextDestroyCallback(XIC ic, XPointer clientData, XPointer ca
 
 // Create the X11 window (and its colormap)
 static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig* wndconfig, Visual* visual, int depth) {
-	int width = wndconfig->width;
-	int height = wndconfig->height;
-	int xpos = 0;
-	int ypos = 0;
-	if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION) {
-		xpos = wndconfig->xpos;
-		ypos = wndconfig->ypos;
-	}
 	window->x11Colormap = _plaf.xlibCreateColormap(_plaf.x11Display, _plaf.x11Root, visual, AllocNone);
 	window->x11Transparent = _plafIsVisualTransparent(visual);
 	XSetWindowAttributes wa = { 0 };
@@ -1272,7 +1264,7 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 					EnterWindowMask | LeaveWindowMask | PropertyChangeMask;
 	_plafGrabErrorHandler();
 	window->x11Parent = _plaf.x11Root;
-	window->x11Window = _plaf.xlibCreateWindow(_plaf.x11Display, _plaf.x11Root, xpos, ypos, width, height, 0, depth,
+	window->x11Window = _plaf.xlibCreateWindow(_plaf.x11Display, _plaf.x11Root, 0, 0, 1, 1, 0, depth,
 		InputOutput, visual, CWBorderPixel | CWColormap | CWEventMask, &wa);
 	_plafReleaseErrorHandler();
 	if (!window->x11Window) {
@@ -1331,14 +1323,12 @@ static plafError* createNativeWindow(plafWindow* window, const plafWindowConfig*
 	}
 	if (!wndconfig->resizable) {
 		sizeHints->flags |= (PMinSize | PMaxSize);
-		sizeHints->min_width  = sizeHints->max_width  = width;
-		sizeHints->min_height = sizeHints->max_height = height;
+		sizeHints->min_width  = sizeHints->max_width  = 1;
+		sizeHints->min_height = sizeHints->max_height = 1;
 	}
-	if (wndconfig->xpos != ANY_POSITION && wndconfig->ypos != ANY_POSITION) {
-		sizeHints->flags |= PPosition;
-		sizeHints->x = 0;
-		sizeHints->y = 0;
-	}
+	sizeHints->flags |= PPosition;
+	sizeHints->x = 0;
+	sizeHints->y = 0;
 	sizeHints->flags |= PWinGravity;
 	sizeHints->win_gravity = StaticGravity;
 	_plaf.xlibSetWMNormalHints(_plaf.x11Display, window->x11Window, sizeHints);
@@ -2422,8 +2412,7 @@ void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 void _plafSetWindowPos(plafWindow* window, int x, int y) {
 	// HACK: Explicitly setting PPosition to any value causes some WMs, notably
 	//       Compiz and Metacity, to honor the position of unmapped windows
-	if (!_plafWindowVisible(window))
-	{
+	if (!plafWindowVisible(window)) {
 		long supplied;
 		XSizeHints* hints = _plaf.xlibAllocSizeHints();
 
@@ -2489,9 +2478,7 @@ void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right
 	if (_plaf.x11NET_FRAME_EXTENTS == None)
 		return;
 
-	if (!_plafWindowVisible(window) &&
-		_plaf.x11NET_REQUEST_FRAME_EXTENTS)
-	{
+	if (!plafWindowVisible(window) && _plaf.x11NET_REQUEST_FRAME_EXTENTS) {
 		XEvent event;
 
 		// Ensure _NET_FRAME_EXTENTS is set, allowing plafGetWindowFrameSize to
@@ -2557,104 +2544,67 @@ void plafMinimizeWindow(plafWindow* window) {
 }
 
 void plafRestoreWindow(plafWindow* window) {
-	if (window->x11OverrideRedirect)
-	{
+	if (window->x11OverrideRedirect) {
 		// Override-redirect windows cannot be minimized or restored, as those
 		// tasks are performed by the window manager
 		_plafInputError("X11: Minimization of full screen windows requires a WM that supports EWMH full screen");
 		return;
 	}
-
 	if (plafIsWindowMinimized(window)) {
 		_plaf.xlibMapWindow(_plaf.x11Display, window->x11Window);
 		waitForVisibilityNotify(window);
-	}
-	else if (_plafWindowVisible(window))
-	{
-		if (_plaf.x11NET_WM_STATE &&
-			_plaf.x11NET_WM_STATE_MAXIMIZED_VERT &&
-			_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ)
-		{
-			sendEventToWM(window,
-						  _plaf.x11NET_WM_STATE,
-						  _NET_WM_STATE_REMOVE,
-						  _plaf.x11NET_WM_STATE_MAXIMIZED_VERT,
-						  _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ,
-						  1, 0);
+	} else if (plafWindowVisible(window)) {
+		if (_plaf.x11NET_WM_STATE && _plaf.x11NET_WM_STATE_MAXIMIZED_VERT && _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ) {
+			sendEventToWM(window, _plaf.x11NET_WM_STATE, _NET_WM_STATE_REMOVE, _plaf.x11NET_WM_STATE_MAXIMIZED_VERT,
+				 _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ, 1, 0);
 		}
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
 void _plafMaximizeWindow(plafWindow* window) {
-	if (!_plaf.x11NET_WM_STATE ||
-		!_plaf.x11NET_WM_STATE_MAXIMIZED_VERT ||
-		!_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ)
-	{
+	if (!_plaf.x11NET_WM_STATE || !_plaf.x11NET_WM_STATE_MAXIMIZED_VERT || !_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ) {
 		return;
 	}
-
-	if (_plafWindowVisible(window))
-	{
-		sendEventToWM(window,
-					_plaf.x11NET_WM_STATE,
-					_NET_WM_STATE_ADD,
-					_plaf.x11NET_WM_STATE_MAXIMIZED_VERT,
-					_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ,
-					1, 0);
-	}
-	else
-	{
+	if (plafWindowVisible(window)) {
+		sendEventToWM(window, _plaf.x11NET_WM_STATE, _NET_WM_STATE_ADD, _plaf.x11NET_WM_STATE_MAXIMIZED_VERT,
+			_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ, 1, 0);
+	} else {
 		Atom* states = NULL;
-		unsigned long count =
-			_plafGetWindowProperty(window->x11Window,
-									  _plaf.x11NET_WM_STATE,
-									  XA_ATOM,
-									  (unsigned char**) &states);
+		unsigned long count = _plafGetWindowProperty(window->x11Window, _plaf.x11NET_WM_STATE, XA_ATOM,
+			(unsigned char**) &states);
 
 		// NOTE: We don't check for failure as this property may not exist yet
 		//       and that's fine (and we'll create it implicitly with append)
-
-		Atom missing[2] =
-		{
+		Atom missing[2] = {
 			_plaf.x11NET_WM_STATE_MAXIMIZED_VERT,
 			_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ
 		};
 		unsigned long missingCount = 2;
-
-		for (unsigned long i = 0;  i < count;  i++)
-		{
-			for (unsigned long j = 0;  j < missingCount;  j++)
-			{
-				if (states[i] == missing[j])
-				{
+		for (unsigned long i = 0;  i < count;  i++) {
+			for (unsigned long j = 0;  j < missingCount;  j++) {
+				if (states[i] == missing[j]) {
 					missing[j] = missing[missingCount - 1];
 					missingCount--;
 				}
 			}
 		}
-
-		if (states)
+		if (states) {
 			_plaf.xlibFree(states);
-
-		if (!missingCount)
+		}
+		if (!missingCount) {
 			return;
-
-		_plaf.xlibChangeProperty(_plaf.x11Display, window->x11Window,
-						_plaf.x11NET_WM_STATE, XA_ATOM, 32,
-						PropModeAppend,
-						(unsigned char*) missing,
-						missingCount);
+		}
+		_plaf.xlibChangeProperty(_plaf.x11Display, window->x11Window, _plaf.x11NET_WM_STATE, XA_ATOM, 32,
+			PropModeAppend, (unsigned char*) missing, missingCount);
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
 void _plafShowWindow(plafWindow* window) {
-	if (_plafWindowVisible(window))
+	if (plafWindowVisible(window)) {
 		return;
-
+	}
 	_plaf.xlibMapWindow(_plaf.x11Display, window->x11Window);
 	waitForVisibilityNotify(window);
 }
@@ -2676,14 +2626,12 @@ void plafRequestWindowAttention(plafWindow* window) {
 }
 
 void plafFocusWindow(plafWindow* window) {
-	if (_plaf.x11NET_ACTIVE_WINDOW)
+	if (_plaf.x11NET_ACTIVE_WINDOW) {
 		sendEventToWM(window, _plaf.x11NET_ACTIVE_WINDOW, 1, 0, 0, 0, 0);
-	else if (_plafWindowVisible(window))
-	{
+	} else if (plafWindowVisible(window)) {
 		_plaf.xlibRaiseWindow(_plaf.x11Display, window->x11Window);
 		_plaf.xlibSetInputFocus(_plaf.x11Display, window->x11Window, RevertToParent, CurrentTime);
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
@@ -2719,7 +2667,7 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 
 	if (window->monitor)
 	{
-		if (!_plafWindowVisible(window))
+		if (!plafWindowVisible(window))
 		{
 			_plaf.xlibMapRaised(_plaf.x11Display, window->x11Window);
 			waitForVisibilityNotify(window);
@@ -2750,7 +2698,7 @@ bool plafIsWindowMinimized(plafWindow* window) {
 	return getWindowState(window) == IconicState;
 }
 
-bool _plafWindowVisible(plafWindow* window) {
+bool plafWindowVisible(plafWindow* window) {
 	XWindowAttributes wa;
 	_plaf.xlibGetWindowAttributes(_plaf.x11Display, window->x11Window, &wa);
 	return wa.map_state == IsViewable;
@@ -2789,35 +2737,10 @@ bool plafIsWindowMaximized(plafWindow* window) {
 	return maximized;
 }
 
-bool _plafWindowHovered(plafWindow* window) {
-	Window w = _plaf.x11Root;
-	while (w)
-	{
-		Window root;
-		int rootX, rootY, childX, childY;
-		unsigned int mask;
-
-		_plafGrabErrorHandler();
-
-		const Bool result = _plaf.xlibQueryPointer(_plaf.x11Display, w, &root, &w, &rootX, &rootY, &childX, &childY, &mask);
-
-		_plafReleaseErrorHandler();
-
-		if (_plaf.x11ErrorCode == BadWindow)
-			w = _plaf.x11Root;
-		else if (!result)
-			return false;
-		else if (w == window->x11Window)
-			return true;
-	}
-
-	return false;
-}
-
-bool _plafFramebufferTransparent(plafWindow* window) {
-	if (!window->x11Transparent)
+bool plafIsFramebufferTransparent(plafWindow* window) {
+	if (!window->x11Transparent) {
 		return false;
-
+	}
 	return _plaf.xlibGetSelectionOwner(_plaf.x11Display, _plaf.x11NET_WM_CM_Sx) != None;
 }
 
@@ -2852,8 +2775,7 @@ void _plafSetWindowFloating(plafWindow* window, bool enabled) {
 	if (!_plaf.x11NET_WM_STATE || !_plaf.x11NET_WM_STATE_ABOVE)
 		return;
 
-	if (_plafWindowVisible(window))
-	{
+	if (plafWindowVisible(window)) {
 		const long action = enabled ? _NET_WM_STATE_ADD : _NET_WM_STATE_REMOVE;
 		sendEventToWM(window,
 					  _plaf.x11NET_WM_STATE,
