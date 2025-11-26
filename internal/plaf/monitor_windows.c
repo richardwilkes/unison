@@ -106,7 +106,8 @@ void _plafPollMonitors(void) {
 		if (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) {
 			insertFirst = true;
 		}
-		for (DWORD displayIndex = 0; ; displayIndex++) {
+		DWORD displayIndex;
+		for (displayIndex = 0; ; displayIndex++) {
 			DISPLAY_DEVICEW display;
 			ZeroMemory(&display, sizeof(display));
 			display.cb = sizeof(display);
