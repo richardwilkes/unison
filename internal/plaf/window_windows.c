@@ -1035,7 +1035,8 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 			} else {
 				AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
 			}
-			SetWindowPos(window->win32Window, HWND_TOP, rect.left, rect.top, ect.right - rect.left, rect.bottom - rect.top, SWP_NOCOPYBITS | SWP_NOACTIVATE | SWP_NOZORDER);
+			SetWindowPos(window->win32Window, HWND_TOP, rect.left, rect.top, rect.right - rect.left,
+				rect.bottom - rect.top, SWP_NOCOPYBITS | SWP_NOACTIVATE | SWP_NOZORDER);
 		}
 		return;
 	}
@@ -1155,7 +1156,7 @@ void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 }
 
 float plafGetWindowOpacity(plafWindow* window) {
-	if (GetWindowLongW(window->win32Window, GWL_EXSTYLE) & WS_EX_LAYERED)) {
+	if (GetWindowLongW(window->win32Window, GWL_EXSTYLE) & WS_EX_LAYERED) {
 		BYTE alpha;
 		DWORD flags;
 		if (GetLayeredWindowAttributes(window->win32Window, NULL, &alpha, &flags)) {
