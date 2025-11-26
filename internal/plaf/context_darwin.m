@@ -22,13 +22,7 @@ static void swapBuffersNSGL(plafWindow* window) {
 	}
 }
 
-static bool extensionSupportedNSGL(const char* extension) {
-	// There are no NSGL extensions
-	return false;
-}
-
-static glFunc getProcAddressNSGL(const char* procname)
-{
+static glFunc getProcAddressNSGL(const char* procname) {
 	CFStringRef symbolName = CFStringCreateWithCString(kCFAllocatorDefault, procname, kCFStringEncodingASCII);
 	glFunc symbol = CFBundleGetFunctionPointerForName(_plaf.nsglFramework, symbolName);
 	CFRelease(symbolName);
@@ -111,7 +105,6 @@ bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafF
 	[window->context.nsglCtx setView:window->nsView];
 	window->context.makeCurrent = makeContextCurrentNSGL;
 	window->context.swapBuffers = swapBuffersNSGL;
-	window->context.extensionSupported = extensionSupportedNSGL;
 	window->context.getProcAddress = getProcAddressNSGL;
 	window->context.destroy = destroyContextNSGL;
 	return true;

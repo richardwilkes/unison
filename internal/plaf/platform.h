@@ -508,13 +508,8 @@ typedef struct plafLib            plafLib;
 
 #define GL_VERSION 0x1f02
 #define GL_COLOR_BUFFER_BIT 0x00004000
-#define GL_EXTENSIONS 0x1f03
-#define GL_NUM_EXTENSIONS 0x821d
 
 typedef void (APIENTRY * FN_GLCLEAR)(unsigned int);
-typedef const char* (APIENTRY * FN_GLGETSTRING)(unsigned int);
-typedef void (APIENTRY * FN_GLGETINTEGERV)(unsigned int,int*);
-typedef const char* (APIENTRY * FN_GLGETSTRINGI)(unsigned int,unsigned int);
 
 // Framebuffer configuration
 //
@@ -542,12 +537,8 @@ struct plafFrameBufferCfg {
 
 // Context structure
 struct plafCtx {
-	FN_GLGETSTRINGI      GetStringi;
-	FN_GLGETINTEGERV     GetIntegerv;
-	FN_GLGETSTRING       GetString;
 	void                 (*makeCurrent)(plafWindow*);
 	void                 (*swapBuffers)(plafWindow*);
-	bool                 (*extensionSupported)(const char*);
 	glFunc               (*getProcAddress)(const char*);
 	void                 (*destroy)(plafWindow*);
 #if defined(__APPLE__)
@@ -560,7 +551,6 @@ struct plafCtx {
 #elif defined(_WIN32)
 	HDC                  wglDC;
 	HGLRC                wglGLRC;
-	int                  wglInterval;
 #endif
 };
 

@@ -313,7 +313,6 @@ bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafF
 	}
 	window->context.makeCurrent = makeContextCurrentWGL;
 	window->context.swapBuffers = swapBuffersWGL;
-	window->context.extensionSupported = extensionSupportedWGL;
 	window->context.getProcAddress = getProcAddressWGL;
 	window->context.destroy = destroyContextWGL;
 	return true;

@@ -71,19 +71,16 @@ bool _plafRefreshContextAttribs(plafWindow* window) {
 	plafWindow* previous = _plaf.wndWithCurrentCtx;
 	plafMakeContextCurrent(window);
 
-	window->context.GetIntegerv = (FN_GLGETINTEGERV)window->context.getProcAddress("glGetIntegerv");
-	window->context.GetString = (FN_GLGETSTRING)window->context.getProcAddress("glGetString");
-	if (!window->context.GetIntegerv || !window->context.GetString) {
+	const char* (APIENTRY * getString)(unsigned int) = (const char* (APIENTRY *)(unsigned int))window->context.getProcAddress("glGetString");
+	if (!getString) {
 		plafMakeContextCurrent(previous);
 		return false;
 	}
-
-	const char* version = window->context.GetString(GL_VERSION);
+	const char* version = getString(GL_VERSION);
 	if (!version) {
 		plafMakeContextCurrent(previous);
 		return false;
 	}
-
 	int major = 0;
 	int minor = 0;
 	if (!sscanf(version, "%d.%d", &major, &minor)) {
@@ -91,12 +88,6 @@ bool _plafRefreshContextAttribs(plafWindow* window) {
 		return false;
 	}
 	if (major < 3 || (major == 3 && minor < 2)) {
-		plafMakeContextCurrent(previous);
-		return false;
-	}
-
-	window->context.GetStringi = (FN_GLGETSTRINGI)window->context.getProcAddress("glGetStringi");
-	if (!window->context.GetStringi) {
 		plafMakeContextCurrent(previous);
 		return false;
 	}

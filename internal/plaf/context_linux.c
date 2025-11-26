@@ -292,7 +292,6 @@ bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafF
 	window->context.glxFBConfig = native;
 	window->context.makeCurrent = makeContextCurrentGLX;
 	window->context.swapBuffers = swapBuffersGLX;
-	window->context.extensionSupported = extensionSupportedGLX;
 	window->context.getProcAddress = getProcAddressGLX;
 	window->context.destroy = destroyContextGLX;
 	return true;
