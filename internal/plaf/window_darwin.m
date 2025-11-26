@@ -511,7 +511,7 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 		int xpos;
 		int ypos;
 		if (!_plafGetVideoMode(window->monitor, &mode)) {
-			return _plafNewError("unable to determine current video mode");
+			return false;
 		}
 		plafGetMonitorPos(window->monitor, &xpos, &ypos);
 		contentRect = NSMakeRect(xpos, ypos, mode.width, mode.height);
@@ -568,8 +568,8 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 		[window->nsWindow setTabbingMode:NSWindowTabbingModeDisallowed];
 	}
 
-	_plafGetWindowSize(window, &window->width, &window->height);
-	_plafGetFramebufferSize(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
+	plafGetWindowSize(window, &window->width, &window->height);
+	plafGetFramebufferSize(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
 	return true;
 }
 
@@ -618,38 +618,30 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 
 void _plafDestroyWindow(plafWindow* window) {
 	@autoreleasepool {
-
-	[window->nsWindow orderOut:nil];
-
-	if (window->monitor)
-		releaseMonitor(window);
-
-	if (window->context.destroy)
-		window->context.destroy(window);
-
-	[window->nsWindow setDelegate:nil];
-	[window->nsDelegate release];
-	window->nsDelegate = nil;
-
-	[window->nsView release];
-	window->nsView = nil;
-
-	[window->nsWindow close];
-	window->nsWindow = nil;
-
-	// HACK: Allow Cocoa to catch up before returning
-	plafPollEvents();
-
+		[window->nsWindow orderOut:nil];
+		if (window->monitor) {
+			releaseMonitor(window);
+		}
+		if (window->context.destroy) {
+			window->context.destroy(window);
+		}
+		[window->nsWindow setDelegate:nil];
+		[window->nsDelegate release];
+		window->nsDelegate = nil;
+		[window->nsView release];
+		window->nsView = nil;
+		[window->nsWindow close];
+		window->nsWindow = nil;
+		plafPollEvents();
 	}
 }
 
 void _plafSetWindowTitle(plafWindow* window, const char* title) {
 	@autoreleasepool {
-	NSString* string = @(title);
-	[window->nsWindow setTitle:string];
-	// HACK: Set the miniwindow title explicitly as setTitle: doesn't update it
-	//       if the window lacks NSWindowStyleMaskTitled
-	[window->nsWindow setMiniwindowTitle:string];
+		NSString* string = @(title);
+		[window->nsWindow setTitle:string];
+		// Set the miniwindow title explicitly as setTitle: doesn't update it if the window lacks NSWindowStyleMaskTitled
+		[window->nsWindow setMiniwindowTitle:string];
 	}
 }
 
@@ -657,144 +649,111 @@ void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* image
 	// Windows don't have icons on macOS
 }
 
-void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
+void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	@autoreleasepool {
 		const NSRect contentRect = [window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
-		if (xpos)
-			*xpos = contentRect.origin.x;
-		if (ypos)
-			*ypos = _plafTransformYCocoa(contentRect.origin.y + contentRect.size.height - 1);
+		*xpos = contentRect.origin.x;
+		*ypos = _plafTransformYCocoa(contentRect.origin.y + contentRect.size.height - 1);
 	}
 }
 
 void _plafSetWindowPos(plafWindow* window, int x, int y) {
 	@autoreleasepool {
-
-	const NSRect contentRect = [window->nsView frame];
-	const NSRect dummyRect = NSMakeRect(x, _plafTransformYCocoa(y + contentRect.size.height - 1), 0, 0);
-	const NSRect frameRect = [window->nsWindow frameRectForContentRect:dummyRect];
-	[window->nsWindow setFrameOrigin:frameRect.origin];
-
+		const NSRect contentRect = [window->nsView frame];
+		const NSRect dummyRect = NSMakeRect(x, _plafTransformYCocoa(y + contentRect.size.height - 1), 0, 0);
+		const NSRect frameRect = [window->nsWindow frameRectForContentRect:dummyRect];
+		[window->nsWindow setFrameOrigin:frameRect.origin];
 	}
 }
 
-void _plafGetWindowSize(plafWindow* window, int* width, int* height) {
+void plafGetWindowSize(plafWindow* window, int* width, int* height) {
 	@autoreleasepool {
-
-	const NSRect contentRect = [window->nsView frame];
-
-	if (width)
+		const NSRect contentRect = [window->nsView frame];
 		*width = contentRect.size.width;
-	if (height)
 		*height = contentRect.size.height;
-
 	}
 }
 
 void _plafSetWindowSize(plafWindow* window, int width, int height) {
 	@autoreleasepool {
-
-	if (window->monitor)
-	{
-		if (window->monitor->window == window)
-			acquireMonitor(window);
-	}
-	else
-	{
-		NSRect contentRect =
-			[window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
-		contentRect.origin.y += contentRect.size.height - height;
-		contentRect.size = NSMakeSize(width, height);
-		[window->nsWindow setFrame:[window->nsWindow frameRectForContentRect:contentRect] display:YES];
-	}
-
+		if (window->monitor) {
+			if (window->monitor->window == window) {
+				acquireMonitor(window);
+			}
+		} else {
+			NSRect contentRect = [window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
+			contentRect.origin.y += contentRect.size.height - height;
+			contentRect.size = NSMakeSize(width, height);
+			[window->nsWindow setFrame:[window->nsWindow frameRectForContentRect:contentRect] display:YES];
+		}
 	}
 }
 
 void _plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
 	@autoreleasepool {
-
-	if (minwidth == DONT_CARE || minheight == DONT_CARE)
-		[window->nsWindow setContentMinSize:NSMakeSize(0, 0)];
-	else
-		[window->nsWindow setContentMinSize:NSMakeSize(minwidth, minheight)];
-
-	if (maxwidth == DONT_CARE || maxheight == DONT_CARE)
-		[window->nsWindow setContentMaxSize:NSMakeSize(DBL_MAX, DBL_MAX)];
-	else
-		[window->nsWindow setContentMaxSize:NSMakeSize(maxwidth, maxheight)];
-
+		if (minwidth == DONT_CARE || minheight == DONT_CARE) {
+			[window->nsWindow setContentMinSize:NSMakeSize(0, 0)];
+		} else {
+			[window->nsWindow setContentMinSize:NSMakeSize(minwidth, minheight)];
+		}
+		if (maxwidth == DONT_CARE || maxheight == DONT_CARE) {
+			[window->nsWindow setContentMaxSize:NSMakeSize(DBL_MAX, DBL_MAX)];
+		} else {
+			[window->nsWindow setContentMaxSize:NSMakeSize(maxwidth, maxheight)];
+		}
 	}
 }
 
-void _plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
+void plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
 	@autoreleasepool {
-
-	const NSRect contentRect = [window->nsView frame];
-	const NSRect fbRect = [window->nsView convertRectToBacking:contentRect];
-
-	if (width)
+		const NSRect contentRect = [window->nsView frame];
+		const NSRect fbRect = [window->nsView convertRectToBacking:contentRect];
 		*width = (int) fbRect.size.width;
-	if (height)
 		*height = (int) fbRect.size.height;
-
 	}
 }
 
-void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
+void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
 	@autoreleasepool {
-
-	const NSRect contentRect = [window->nsView frame];
-	const NSRect frameRect = [window->nsWindow frameRectForContentRect:contentRect];
-
-	if (left)
+		const NSRect contentRect = [window->nsView frame];
+		const NSRect frameRect = [window->nsWindow frameRectForContentRect:contentRect];
 		*left = contentRect.origin.x - frameRect.origin.x;
-	if (top)
-		*top = frameRect.origin.y + frameRect.size.height -
-			   contentRect.origin.y - contentRect.size.height;
-	if (right)
-		*right = frameRect.origin.x + frameRect.size.width -
-				 contentRect.origin.x - contentRect.size.width;
-	if (bottom)
+		*top = frameRect.origin.y + frameRect.size.height - contentRect.origin.y - contentRect.size.height;
+		*right = frameRect.origin.x + frameRect.size.width - contentRect.origin.x - contentRect.size.width;
 		*bottom = contentRect.origin.y - frameRect.origin.y;
-
 	}
 }
 
-void _plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
+void plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
 	@autoreleasepool {
-
-	const NSRect points = [window->nsView frame];
-	const NSRect pixels = [window->nsView convertRectToBacking:points];
-
-	if (xscale)
+		const NSRect points = [window->nsView frame];
+		const NSRect pixels = [window->nsView convertRectToBacking:points];
 		*xscale = (float) (pixels.size.width / points.size.width);
-	if (yscale)
 		*yscale = (float) (pixels.size.height / points.size.height);
-
 	}
 }
 
 void plafMinimizeWindow(plafWindow* window) {
 	@autoreleasepool {
-	[window->nsWindow miniaturize:nil];
+		[window->nsWindow miniaturize:nil];
 	}
 }
 
 void plafRestoreWindow(plafWindow* window) {
 	@autoreleasepool {
-	if ([window->nsWindow isMiniaturized])
-		[window->nsWindow deminiaturize:nil];
-	else if ([window->nsWindow isZoomed])
-		[window->nsWindow zoom:nil];
+		if ([window->nsWindow isMiniaturized]) {
+			[window->nsWindow deminiaturize:nil];
+		} else if ([window->nsWindow isZoomed]) {
+			[window->nsWindow zoom:nil];
+		}
 	}
 }
 
 void _plafMaximizeWindow(plafWindow* window) {
 	@autoreleasepool {
-	if (![window->nsWindow isZoomed])
-		[window->nsWindow zoom:nil];
-	}
+		if (![window->nsWindow isZoomed])
+			[window->nsWindow zoom:nil];
+		}
 }
 
 void _plafShowWindow(plafWindow* window) {
@@ -805,22 +764,18 @@ void _plafShowWindow(plafWindow* window) {
 
 void _plafHideWindow(plafWindow* window) {
 	@autoreleasepool {
-	[window->nsWindow orderOut:nil];
+		[window->nsWindow orderOut:nil];
 	}
 }
 
 void plafRequestWindowAttention(plafWindow* window) {
 	@autoreleasepool {
-	[NSApp requestUserAttention:NSInformationalRequest];
+		[NSApp requestUserAttention:NSInformationalRequest];
 	}
 }
 
 void plafFocusWindow(plafWindow* window) {
 	@autoreleasepool {
-		// Make us the active application
-		// HACK: This is here to prevent applications using only hidden windows from
-		//       being activated, but should probably not be done every time any
-		//       window is shown
 		[NSApp activateIgnoringOtherApps:YES];
 		[window->nsWindow makeKeyAndOrderFront:nil];
 	}
@@ -828,112 +783,69 @@ void plafFocusWindow(plafWindow* window) {
 
 void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
 	@autoreleasepool {
-
-	if (window->monitor == monitor)
-	{
-		if (monitor)
-		{
-			if (monitor->window == window)
-				acquireMonitor(window);
+		if (window->monitor == monitor) {
+			if (monitor) {
+				if (monitor->window == window) {
+					acquireMonitor(window);
+				}
+			} else {
+				const NSRect contentRect = NSMakeRect(xpos, _plafTransformYCocoa(ypos + height - 1), width, height);
+				const NSUInteger styleMask = [window->nsWindow styleMask];
+				const NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
+				[window->nsWindow setFrame:frameRect display:YES];
+			}
+			return;
 		}
-		else
-		{
-			const NSRect contentRect = NSMakeRect(xpos, _plafTransformYCocoa(ypos + height - 1), width, height);
-			const NSUInteger styleMask = [window->nsWindow styleMask];
-			const NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
+		if (window->monitor) {
+			releaseMonitor(window);
+		}
+		window->monitor = monitor;
+		plafPollEvents();
+		NSUInteger styleMask = [window->nsWindow styleMask];
+		if (window->monitor) {
+			styleMask &= ~(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable);
+			styleMask |= NSWindowStyleMaskBorderless;
+		} else {
+			if (window->decorated) {
+				styleMask &= ~NSWindowStyleMaskBorderless;
+				styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable);
+			}
+			if (window->resizable) {
+				styleMask |= NSWindowStyleMaskResizable;
+			} else {
+				styleMask &= ~NSWindowStyleMaskResizable;
+			}
+		}
+		[window->nsWindow setStyleMask:styleMask];
+		[window->nsWindow makeFirstResponder:window->nsView];
+		if (window->monitor) {
+			[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
+			[window->nsWindow setHasShadow:NO];
+			acquireMonitor(window);
+		} else {
+			NSRect contentRect = NSMakeRect(xpos, _plafTransformYCocoa(ypos + height - 1), width, height);
+			NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
 			[window->nsWindow setFrame:frameRect display:YES];
+			if (window->minwidth != DONT_CARE && window->minheight != DONT_CARE) {
+				[window->nsWindow setContentMinSize:NSMakeSize(window->minwidth, window->minheight)];
+			}
+			if (window->maxwidth != DONT_CARE && window->maxheight != DONT_CARE) {
+				[window->nsWindow setContentMaxSize:NSMakeSize(window->maxwidth, window->maxheight)];
+			}
+			if (window->floating) {
+				[window->nsWindow setLevel:NSFloatingWindowLevel];
+			} else {
+				[window->nsWindow setLevel:NSNormalWindowLevel];
+			}
+			if (window->resizable) {
+				[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary |
+					NSWindowCollectionBehaviorManaged];
+			} else {
+				[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
+			}
+			[window->nsWindow setHasShadow:YES];
+			[window->nsWindow setTitle:[window->nsWindow miniwindowTitle]];
 		}
-
-		return;
-	}
-
-	if (window->monitor) {
-		releaseMonitor(window);
-	}
-	window->monitor = monitor;
-
-	// HACK: Allow the state cached in Cocoa to catch up to reality
-	// TODO: Solve this in a less terrible way
-	plafPollEvents();
-
-	NSUInteger styleMask = [window->nsWindow styleMask];
-
-	if (window->monitor)
-	{
-		styleMask &= ~(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable);
-		styleMask |= NSWindowStyleMaskBorderless;
-	}
-	else
-	{
-		if (window->decorated)
-		{
-			styleMask &= ~NSWindowStyleMaskBorderless;
-			styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable);
-		}
-
-		if (window->resizable)
-			styleMask |= NSWindowStyleMaskResizable;
-		else
-			styleMask &= ~NSWindowStyleMaskResizable;
-	}
-
-	[window->nsWindow setStyleMask:styleMask];
-	// HACK: Changing the style mask can cause the first responder to be cleared
-	[window->nsWindow makeFirstResponder:window->nsView];
-
-	if (window->monitor)
-	{
-		[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
-		[window->nsWindow setHasShadow:NO];
-
-		acquireMonitor(window);
-	}
-	else
-	{
-		NSRect contentRect = NSMakeRect(xpos, _plafTransformYCocoa(ypos + height - 1),
-										width, height);
-		NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
-		[window->nsWindow setFrame:frameRect display:YES];
-
-		if (window->minwidth != DONT_CARE &&
-			window->minheight != DONT_CARE)
-		{
-			[window->nsWindow setContentMinSize:NSMakeSize(window->minwidth,
-															window->minheight)];
-		}
-
-		if (window->maxwidth != DONT_CARE &&
-			window->maxheight != DONT_CARE)
-		{
-			[window->nsWindow setContentMaxSize:NSMakeSize(window->maxwidth,
-															window->maxheight)];
-		}
-
-		if (window->floating)
-			[window->nsWindow setLevel:NSFloatingWindowLevel];
-		else
-			[window->nsWindow setLevel:NSNormalWindowLevel];
-
-		if (window->resizable)
-		{
-			const NSWindowCollectionBehavior behavior =
-				NSWindowCollectionBehaviorFullScreenPrimary |
-				NSWindowCollectionBehaviorManaged;
-			[window->nsWindow setCollectionBehavior:behavior];
-		}
-		else
-		{
-			const NSWindowCollectionBehavior behavior =
-				NSWindowCollectionBehaviorFullScreenNone;
-			[window->nsWindow setCollectionBehavior:behavior];
-		}
-
-		[window->nsWindow setHasShadow:YES];
-		// HACK: Clearing NSWindowStyleMaskTitled resets and disables the window
-		//       title property but the miniwindow title property is unaffected
-		[window->nsWindow setTitle:[window->nsWindow miniwindowTitle]];
-	}
-
 	}
 }
 
@@ -1012,13 +924,13 @@ void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 
 float plafGetWindowOpacity(plafWindow* window) {
 	@autoreleasepool {
-	return (float) [window->nsWindow alphaValue];
+		return (float) [window->nsWindow alphaValue];
 	}
 }
 
-void _plafSetWindowOpacity(plafWindow* window, float opacity) {
+void plafSetWindowOpacity(plafWindow* window, float opacity) {
 	@autoreleasepool {
-	[window->nsWindow setAlphaValue:opacity];
+		[window->nsWindow setAlphaValue:opacity];
 	}
 }
 
@@ -1044,7 +956,7 @@ void plafWaitEvents(void) {
 	}
 }
 
-void _plafWaitEventsTimeout(double timeout) {
+void plafWaitEventsTimeout(double timeout) {
 	@autoreleasepool {
 		NSDate* date = [NSDate dateWithTimeIntervalSinceNow:timeout];
 		NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:date inMode:NSDefaultRunLoopMode

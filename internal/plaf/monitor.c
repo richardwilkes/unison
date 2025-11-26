@@ -26,9 +26,9 @@ void _plafMonitorNotify(plafMonitor* monitor, int action, int placement) {
 				int height;
 				int xOffset;
 				int yOffset;
-				_plafGetWindowSize(window, &width, &height);
+				plafGetWindowSize(window, &width, &height);
 				_plafSetWindowMonitor(window, NULL, 0, 0, width, height, 0);
-				_plafGetWindowFrameSize(window, &xOffset, &yOffset, NULL, NULL);
+				plafGetWindowFrameSize(window, &xOffset, &yOffset, &width, &height);
 				_plafSetWindowPos(window, xOffset, yOffset);
 			}
 		}

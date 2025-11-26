@@ -821,14 +821,13 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 		updateFramebufferTransparency(window);
 		window->win32Transparent = true;
 	}
-	_plafGetWindowSize(window, &window->width, &window->height);
+	plafGetWindowSize(window, &window->width, &window->height);
 	return true;
 }
 
 bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
-	plafError* err = createNativeWindow(window, wndconfig, fbconfig);
-	if (err) {
-		return err;
+	if (!createNativeWindow(window, wndconfig, fbconfig)) {
+		return false;
 	}
 	if (!_plafInitOpenGL()) {
 		return false;
@@ -852,31 +851,30 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 }
 
 void _plafDestroyWindow(plafWindow* window) {
-	if (window->monitor)
+	if (window->monitor) {
 		releaseMonitor(window);
-
-	if (window->context.destroy)
+	}
+	if (window->context.destroy) {
 		window->context.destroy(window);
-
-	if (window->win32Window)
-	{
+	}
+	if (window->win32Window) {
 		RemovePropW(window->win32Window, L"PLAF");
 		DestroyWindow(window->win32Window);
 		window->win32Window = NULL;
 	}
-
-	if (window->win32BigIcon)
+	if (window->win32BigIcon) {
 		DestroyIcon(window->win32BigIcon);
-
-	if (window->win32SmallIcon)
+	}
+	if (window->win32SmallIcon) {
 		DestroyIcon(window->win32SmallIcon);
+	}
 }
 
 void _plafSetWindowTitle(plafWindow* window, const char* title) {
 	WCHAR* wideTitle = createWideStringFromUTF8(title);
-	if (!wideTitle)
+	if (!wideTitle) {
 		return;
-
+	}
 	SetWindowTextW(window->win32Window, wideTitle);
 	_plaf_free(wideTitle);
 }
@@ -909,14 +907,11 @@ void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* image
 	}
 }
 
-void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
+void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	POINT pos = { 0, 0 };
 	ClientToScreen(window->win32Window, &pos);
-
-	if (xpos)
-		*xpos = pos.x;
-	if (ypos)
-		*ypos = pos.y;
+	*xpos = pos.x;
+	*ypos = pos.y;
 }
 
 void _plafSetWindowPos(plafWindow* window, int x, int y) {
@@ -930,97 +925,63 @@ void _plafSetWindowPos(plafWindow* window, int x, int y) {
 	SetWindowPos(window->win32Window, NULL, rect.left, rect.top, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
 }
 
-void _plafGetWindowSize(plafWindow* window, int* width, int* height) {
+void plafGetWindowSize(plafWindow* window, int* width, int* height) {
 	RECT area;
 	GetClientRect(window->win32Window, &area);
-
-	if (width)
-		*width = area.right;
-	if (height)
-		*height = area.bottom;
+	*width = area.right;
+	*height = area.bottom;
 }
 
 void _plafSetWindowSize(plafWindow* window, int width, int height) {
-	if (window->monitor)
-	{
-		if (window->monitor->window == window)
-		{
+	if (window->monitor) {
+		if (window->monitor->window == window) {
 			acquireMonitor(window);
 			fitToMonitor(window);
 		}
-	}
-	else
-	{
+	} else {
 		RECT rect = { 0, 0, width, height };
-
-		if (IsWindows10Version1607OrGreater())
-		{
-			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
-									 FALSE, getWindowExStyle(window),
-									 _plaf.win32User32GetDpiForWindow_(window->win32Window));
+		if (IsWindows10Version1607OrGreater()) {
+			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window),
+			_plaf.win32User32GetDpiForWindow_(window->win32Window));
+		} else {
+			AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
 		}
-		else
-		{
-			AdjustWindowRectEx(&rect, getWindowStyle(window),
-							   FALSE, getWindowExStyle(window));
-		}
-
-		SetWindowPos(window->win32Window, HWND_TOP,
-					 0, 0, rect.right - rect.left, rect.bottom - rect.top,
-					 SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
+		SetWindowPos(window->win32Window, HWND_TOP, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
+			SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
 	}
 }
 
 void _plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
 	RECT area;
-
-	if ((minwidth == DONT_CARE || minheight == DONT_CARE) &&
-		(maxwidth == DONT_CARE || maxheight == DONT_CARE))
-	{
+	if ((minwidth == DONT_CARE || minheight == DONT_CARE) && (maxwidth == DONT_CARE || maxheight == DONT_CARE)) {
 		return;
 	}
-
 	GetWindowRect(window->win32Window, &area);
-	MoveWindow(window->win32Window,
-			   area.left, area.top,
-			   area.right - area.left,
-			   area.bottom - area.top, TRUE);
+	MoveWindow(window->win32Window, area.left, area.top, area.right - area.left, area.bottom - area.top, TRUE);
 }
 
-void _plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
-	_plafGetWindowSize(window, width, height);
+void plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
+	plafGetWindowSize(window, width, height);
 }
 
-void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
-	RECT rect;
+void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
 	int width, height;
-
-	_plafGetWindowSize(window, &width, &height);
+	plafGetWindowSize(window, &width, &height);
+	RECT rect;
 	SetRect(&rect, 0, 0, width, height);
-
-	if (IsWindows10Version1607OrGreater())
-	{
-		_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
-								 FALSE, getWindowExStyle(window),
-								 _plaf.win32User32GetDpiForWindow_(window->win32Window));
+	if (IsWindows10Version1607OrGreater()) {
+		_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window),
+		_plaf.win32User32GetDpiForWindow_(window->win32Window));
+	} else {
+		AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
 	}
-	else
-	{
-		AdjustWindowRectEx(&rect, getWindowStyle(window),
-						   FALSE, getWindowExStyle(window));
-	}
-
-	if (left)
-		*left = -rect.left;
-	if (top)
-		*top = -rect.top;
-	if (right)
-		*right = rect.right - width;
-	if (bottom)
-		*bottom = rect.bottom - height;
+	*left = -rect.left;
+	*top = -rect.top;
+	*right = rect.right - width;
+	*bottom = rect.bottom - height;
 }
 
-void _plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
+void plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
 	const HANDLE handle = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
 	_plafGetHMONITORContentScale(handle, xscale, yscale);
 }
@@ -1034,10 +995,11 @@ void plafRestoreWindow(plafWindow* window) {
 }
 
 void _plafMaximizeWindow(plafWindow* window) {
-	if (IsWindowVisible(window->win32Window))
+	if (IsWindowVisible(window->win32Window)) {
 		ShowWindow(window->win32Window, SW_MAXIMIZE);
-	else
+	} else {
 		maximizeWindowManually(window);
+	}
 }
 
 void _plafShowWindow(plafWindow* window) {
@@ -1059,107 +1021,66 @@ void plafFocusWindow(plafWindow* window) {
 }
 
 void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
-	if (window->monitor == monitor)
-	{
-		if (monitor)
-		{
-			if (monitor->window == window)
-			{
+	if (window->monitor == monitor) {
+		if (monitor) {
+			if (monitor->window == window) {
 				acquireMonitor(window);
 				fitToMonitor(window);
 			}
-		}
-		else
-		{
+		} else {
 			RECT rect = { xpos, ypos, xpos + width, ypos + height };
-
-			if (IsWindows10Version1607OrGreater())
-			{
-				_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
-										 FALSE, getWindowExStyle(window),
-										 _plaf.win32User32GetDpiForWindow_(window->win32Window));
+			if (IsWindows10Version1607OrGreater()) {
+				_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE,
+				getWindowExStyle(window), _plaf.win32User32GetDpiForWindow_(window->win32Window));
+			} else {
+				AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
 			}
-			else
-			{
-				AdjustWindowRectEx(&rect, getWindowStyle(window),
-								   FALSE, getWindowExStyle(window));
-			}
-
-			SetWindowPos(window->win32Window, HWND_TOP,
-						 rect.left, rect.top,
-						 rect.right - rect.left, rect.bottom - rect.top,
-						 SWP_NOCOPYBITS | SWP_NOACTIVATE | SWP_NOZORDER);
+			SetWindowPos(window->win32Window, HWND_TOP, rect.left, rect.top, ect.right - rect.left, rect.bottom - rect.top, SWP_NOCOPYBITS | SWP_NOACTIVATE | SWP_NOZORDER);
 		}
-
 		return;
 	}
-
 	if (window->monitor) {
 		releaseMonitor(window);
 	}
 	window->monitor = monitor;
-
-	if (window->monitor)
-	{
+	if (window->monitor) {
 		MONITORINFO mi = { sizeof(mi) };
 		UINT flags = SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOCOPYBITS;
-
-		if (window->decorated)
-		{
+		if (window->decorated) {
 			DWORD style = GetWindowLongW(window->win32Window, GWL_STYLE);
 			style &= ~WS_OVERLAPPEDWINDOW;
 			style |= getWindowStyle(window);
 			SetWindowLongW(window->win32Window, GWL_STYLE, style);
 			flags |= SWP_FRAMECHANGED;
 		}
-
 		acquireMonitor(window);
-
 		GetMonitorInfoW(window->monitor->win32Handle, &mi);
-		SetWindowPos(window->win32Window, HWND_TOPMOST,
-					 mi.rcMonitor.left,
-					 mi.rcMonitor.top,
-					 mi.rcMonitor.right - mi.rcMonitor.left,
-					 mi.rcMonitor.bottom - mi.rcMonitor.top,
-					 flags);
-	}
-	else
-	{
+		SetWindowPos(window->win32Window, HWND_TOPMOST, mi.rcMonitor.left, mi.rcMonitor.top,
+			mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top, flags);
+	} else {
 		HWND after;
 		RECT rect = { xpos, ypos, xpos + width, ypos + height };
 		DWORD style = GetWindowLongW(window->win32Window, GWL_STYLE);
 		UINT flags = SWP_NOACTIVATE | SWP_NOCOPYBITS;
-
-		if (window->decorated)
-		{
+		if (window->decorated) {
 			style &= ~WS_POPUP;
 			style |= getWindowStyle(window);
 			SetWindowLongW(window->win32Window, GWL_STYLE, style);
-
 			flags |= SWP_FRAMECHANGED;
 		}
-
-		if (window->floating)
+		if (window->floating) {
 			after = HWND_TOPMOST;
-		else
+		} else {
 			after = HWND_NOTOPMOST;
-
-		if (IsWindows10Version1607OrGreater())
-		{
-			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window),
-									 FALSE, getWindowExStyle(window),
-									 _plaf.win32User32GetDpiForWindow_(window->win32Window));
 		}
-		else
-		{
-			AdjustWindowRectEx(&rect, getWindowStyle(window),
-							   FALSE, getWindowExStyle(window));
+		if (IsWindows10Version1607OrGreater()) {
+			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window),
+			_plaf.win32User32GetDpiForWindow_(window->win32Window));
+		} else {
+			AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
 		}
-
-		SetWindowPos(window->win32Window, after,
-					 rect.left, rect.top,
-					 rect.right - rect.left, rect.bottom - rect.top,
-					 flags);
+		SetWindowPos(window->win32Window, after, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+			flags);
 	}
 }
 
@@ -1180,10 +1101,10 @@ bool plafIsWindowMaximized(plafWindow* window) {
 }
 
 bool plafIsFramebufferTransparent(plafWindow* window) {
-	BOOL composition;
 	if (!window->win32Transparent) {
 		return false;
 	}
+	BOOL composition;
 	if (FAILED(_plaf.win32DwmIsCompositionEnabled(&composition)) || !composition) {
 		return false;
 	}
@@ -1234,34 +1155,28 @@ void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 }
 
 float plafGetWindowOpacity(plafWindow* window) {
-	BYTE alpha;
-	DWORD flags;
-
-	if ((GetWindowLongW(window->win32Window, GWL_EXSTYLE) & WS_EX_LAYERED) &&
-		GetLayeredWindowAttributes(window->win32Window, NULL, &alpha, &flags))
-	{
-		if (flags & LWA_ALPHA)
-			return alpha / 255.f;
+	if (GetWindowLongW(window->win32Window, GWL_EXSTYLE) & WS_EX_LAYERED)) {
+		BYTE alpha;
+		DWORD flags;
+		if (GetLayeredWindowAttributes(window->win32Window, NULL, &alpha, &flags)) {
+			if (flags & LWA_ALPHA) {
+				return alpha / 255.f;
+			}
+		}
 	}
-
 	return 1.f;
 }
 
-void _plafSetWindowOpacity(plafWindow* window, float opacity) {
+void plafSetWindowOpacity(plafWindow* window, float opacity) {
 	LONG exStyle = GetWindowLongW(window->win32Window, GWL_EXSTYLE);
-	if (opacity < 1.f || (exStyle & WS_EX_TRANSPARENT))
-	{
+	if (opacity < 1.f || (exStyle & WS_EX_TRANSPARENT)) {
 		const BYTE alpha = (BYTE) (255 * opacity);
 		exStyle |= WS_EX_LAYERED;
 		SetWindowLongW(window->win32Window, GWL_EXSTYLE, exStyle);
 		SetLayeredWindowAttributes(window->win32Window, 0, alpha, LWA_ALPHA);
-	}
-	else if (exStyle & WS_EX_TRANSPARENT)
-	{
+	} else if (exStyle & WS_EX_TRANSPARENT) {
 		SetLayeredWindowAttributes(window->win32Window, 0, 0, 0);
-	}
-	else
-	{
+	} else {
 		exStyle &= ~WS_EX_LAYERED;
 		SetWindowLongW(window->win32Window, GWL_EXSTYLE, exStyle);
 	}
@@ -1269,64 +1184,40 @@ void _plafSetWindowOpacity(plafWindow* window, float opacity) {
 
 void plafPollEvents(void) {
 	MSG msg;
-	HWND handle;
 	plafWindow* window;
-
-	while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
-	{
-		if (msg.message == WM_QUIT)
-		{
-			// NOTE: While PLAF does not itself post WM_QUIT, other processes
-			//       may post it to this one, for example Task Manager
-			// HACK: Treat WM_QUIT as a close on all windows
-
+	while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+		if (msg.message == WM_QUIT) {
 			window = _plaf.windowListHead;
-			while (window)
-			{
+			while (window) {
 				_plafInputWindowCloseRequest(window);
 				window = window->next;
 			}
-		}
-		else
-		{
+		} else {
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 		}
 	}
-
-	// HACK: Release modifier keys that the system did not emit KEYUP for
-	// NOTE: Shift keys on Windows tend to "stick" when both are pressed as
-	//       no key up message is generated by the first key release
-	// NOTE: Windows key is not reported as released by the Win+V hotkey
-	//       Other Win hotkeys are handled implicitly by _plafNotifyOfFocusChange
-	//       because they change the input focus
-	// NOTE: The other half of this is in the WM_*KEY* handler in windowProc
-	handle = GetActiveWindow();
-	if (handle)
-	{
+	HWND handle = GetActiveWindow();
+	if (handle) {
 		window = GetPropW(handle, L"PLAF");
-		if (window)
-		{
+		if (window) {
 			int i;
-			const int keys[4][2] =
-			{
+			const int keys[4][2] = {
 				{ VK_LSHIFT, KEY_LEFT_SHIFT },
 				{ VK_RSHIFT, KEY_RIGHT_SHIFT },
 				{ VK_LWIN, KEY_LEFT_SUPER },
 				{ VK_RWIN, KEY_RIGHT_SUPER }
 			};
-
-			for (i = 0;  i < 4;  i++)
-			{
+			for (i = 0; i < 4; i++) {
 				const int vk = keys[i][0];
 				const int key = keys[i][1];
 				const int scancode = _plaf.scanCodes[key];
-
-				if ((GetKeyState(vk) & 0x8000))
+				if ((GetKeyState(vk) & 0x8000)) {
 					continue;
-				if (window->keys[key] != INPUT_PRESS)
+				}
+				if (window->keys[key] != INPUT_PRESS) {
 					continue;
-
+				}
 				_plafInputKey(window, key, scancode, INPUT_RELEASE, getKeyMods());
 			}
 		}
@@ -1338,7 +1229,7 @@ void plafWaitEvents(void) {
 	plafPollEvents();
 }
 
-void _plafWaitEventsTimeout(double timeout) {
+void plafWaitEventsTimeout(double timeout) {
 	MsgWaitForMultipleObjects(0, NULL, FALSE, (DWORD) (timeout * 1e3), QS_ALLINPUT);
 	plafPollEvents();
 }

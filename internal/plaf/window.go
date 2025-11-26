@@ -5,6 +5,8 @@ import "C"
 
 import (
 	"image"
+	"log/slog"
+	"math"
 	"sync"
 	"unsafe"
 )
@@ -125,26 +127,18 @@ func CreateWindow(title string, cfg *WindowConfig, monitor *Monitor, share *Wind
 func (w *Window) Destroy() {
 	windows.remove(w.plafWnd)
 	C.plafDestroyWindow(w.plafWnd)
-	panicError()
 }
 
 // ShouldClose reports the value of the close flag of the specified window.
 func (w *Window) ShouldClose() bool {
-	ret := C.plafWindowShouldClose(w.plafWnd)
-	panicError()
-	return ret != 0
+	return bool(w.plafWnd.shouldClose)
 }
 
 // SetShouldClose sets the value of the close flag of the window. This can be
 // used to override the user's attempt to close the window, or to signal that it
 // should be closed.
 func (w *Window) SetShouldClose(value bool) {
-	if !value {
-		C.plafSetWindowShouldClose(w.plafWnd, C.int(False))
-	} else {
-		C.plafSetWindowShouldClose(w.plafWnd, C.int(True))
-	}
-	panicError()
+	w.plafWnd.shouldClose = C.bool(value)
 }
 
 // SetTitle sets the window title, encoded as UTF-8, of the window.
@@ -154,7 +148,6 @@ func (w *Window) SetTitle(title string) {
 	t := C.CString(title)
 	defer C.free(unsafe.Pointer(t))
 	C.plafSetWindowTitle(w.plafWnd, t)
-	panicError()
 }
 
 // SetIcon sets the icon of the specified window. If passed an array of candidate images,
@@ -191,7 +184,6 @@ func (w *Window) SetIcon(images []*image.NRGBA) {
 func (w *Window) GetPos() (x, y int) {
 	var xpos, ypos C.int
 	C.plafGetWindowPos(w.plafWnd, &xpos, &ypos)
-	panicError()
 	return int(xpos), int(ypos)
 }
 
@@ -211,16 +203,14 @@ func (w *Window) GetPos() (x, y int) {
 // This function may only be called from the main thread.
 func (w *Window) SetPos(xpos, ypos int) {
 	C.plafSetWindowPos(w.plafWnd, C.int(xpos), C.int(ypos))
-	panicError()
 }
 
 // GetSize returns the size, in screen coordinates, of the client area of the
 // specified window.
 func (w *Window) GetSize() (width, height int) {
-	var wi, h C.int
-	C.plafGetWindowSize(w.plafWnd, &wi, &h)
-	panicError()
-	return int(wi), int(h)
+	var cWidth, cHeight C.int
+	C.plafGetWindowSize(w.plafWnd, &cWidth, &cHeight)
+	return int(cWidth), int(cHeight)
 }
 
 // SetSize sets the size, in screen coordinates, of the client area of the
@@ -235,7 +225,6 @@ func (w *Window) GetSize() (width, height int) {
 // This function may only be called from the main thread.
 func (w *Window) SetSize(width, height int) {
 	C.plafSetWindowSize(w.plafWnd, C.int(width), C.int(height))
-	panicError()
 }
 
 // SetSizeLimits sets the size limits of the client area of the specified window.
@@ -244,7 +233,6 @@ func (w *Window) SetSize(width, height int) {
 // The size limits are applied immediately and may cause the window to be resized.
 func (w *Window) SetSizeLimits(minw, minh, maxw, maxh int) {
 	C.plafSetWindowSizeLimits(w.plafWnd, C.int(minw), C.int(minh), C.int(maxw), C.int(maxh))
-	panicError()
 }
 
 // Resizable returns true if the window is allowed to be resized by the user.
@@ -255,10 +243,9 @@ func (w *Window) Resizable() bool {
 // GetFramebufferSize retrieves the size, in pixels, of the framebuffer of the
 // specified window.
 func (w *Window) GetFramebufferSize() (width, height int) {
-	var wi, h C.int
-	C.plafGetFramebufferSize(w.plafWnd, &wi, &h)
-	panicError()
-	return int(wi), int(h)
+	var cWidth, cHeight C.int
+	C.plafGetFramebufferSize(w.plafWnd, &cWidth, &cHeight)
+	return int(cWidth), int(cHeight)
 }
 
 // GetFrameSize retrieves the size, in screen coordinates, of each edge of the frame
@@ -270,7 +257,6 @@ func (w *Window) GetFramebufferSize() (width, height int) {
 func (w *Window) GetFrameSize() (left, top, right, bottom int) {
 	var l, t, r, b C.int
 	C.plafGetWindowFrameSize(w.plafWnd, &l, &t, &r, &b)
-	panicError()
 	return int(l), int(t), int(r), int(b)
 }
 
@@ -312,6 +298,10 @@ func (w *Window) GetOpacity() float32 {
 //
 // This function may only be called from the main thread.
 func (w *Window) SetOpacity(opacity float32) {
+	if opacity != opacity || opacity < 0 || opacity > 1 {
+		slog.Warn("SetOpacity: ignoring invalid opacity", "opacity", opacity)
+		return
+	}
 	C.plafSetWindowOpacity(w.plafWnd, C.float(opacity))
 }
 
@@ -396,7 +386,6 @@ func (w *Window) Restore() {
 // This function may only be called from the main thread.
 func (w *Window) Show() {
 	C.plafShowWindow(w.plafWnd)
-	panicError()
 }
 
 // Hide hides the window, if it was previously visible. If the window is already
@@ -405,7 +394,6 @@ func (w *Window) Show() {
 // This function may only be called from the main thread.
 func (w *Window) Hide() {
 	C.plafHideWindow(w.plafWnd)
-	panicError()
 }
 
 // IsVisible returns true if the window is currently being shown.
@@ -423,12 +411,10 @@ func (w *Window) IsTransparent() bool {
 //
 // Returns nil if the window is in windowed mode.
 func (w *Window) GetMonitor() *Monitor {
-	m := C.plafGetWindowMonitor(w.plafWnd)
-	panicError()
-	if m == nil {
+	if w.plafWnd.monitor == nil {
 		return nil
 	}
-	return &Monitor{m}
+	return &Monitor{data: w.plafWnd.monitor}
 }
 
 // SetMonitor sets the monitor that the window uses for full screen mode or,
@@ -447,6 +433,14 @@ func (w *Window) GetMonitor() *Monitor {
 // restores any previous window settings such as whether it is decorated, floating,
 // resizable, has size or aspect ratio limits, etc..
 func (w *Window) SetMonitor(monitor *Monitor, xpos, ypos, width, height, refreshRate int) {
+	if width <= 0 || height <= 0 || (refreshRate < 0 && refreshRate != C.DONT_CARE) {
+		slog.Warn("SetMonitor: invalid size", "width", width, "height", height)
+		return
+	}
+	if refreshRate < 0 && refreshRate != C.DONT_CARE {
+		slog.Warn("SetMonitor: invalid refreshRate", "refreshRate", refreshRate)
+		return
+	}
 	var m *C.plafMonitor
 	if monitor == nil {
 		m = nil
@@ -454,7 +448,6 @@ func (w *Window) SetMonitor(monitor *Monitor, xpos, ypos, width, height, refresh
 		m = monitor.data
 	}
 	C.plafSetWindowMonitor(w.plafWnd, m, C.int(xpos), C.int(ypos), C.int(width), C.int(height), C.int(refreshRate))
-	panicError()
 }
 
 // NativeWindow returns the underlying native window.
@@ -471,7 +464,6 @@ func (w *Window) NativeWindow() unsafe.Pointer {
 // This function may only be called from the main thread.
 func PollEvents() {
 	C.plafPollEvents()
-	panicError()
 }
 
 // WaitEvents puts the calling thread to sleep until at least one event has been
@@ -489,7 +481,6 @@ func PollEvents() {
 // This function may only be called from the main thread.
 func WaitEvents() {
 	C.plafWaitEvents()
-	panicError()
 }
 
 // WaitEventsTimeout puts the calling thread to sleep until at least one event is available in the
@@ -513,8 +504,12 @@ func WaitEvents() {
 // If no windows exist, this function returns immediately. For synchronization of threads in
 // applications that do not create windows, use native Go primitives.
 func WaitEventsTimeout(timeout float64) {
-	C.plafWaitEventsTimeout(C.double(timeout))
-	panicError()
+	if timeout != timeout || timeout < 0 || timeout > math.MaxFloat64 {
+		slog.Warn("WaitEventsTimeout: invalid timeout", "timeout", timeout)
+		WaitEvents()
+	} else {
+		C.plafWaitEventsTimeout(C.double(timeout))
+	}
 }
 
 // PostEmptyEvent posts an empty event from the current thread to the main
@@ -526,5 +521,4 @@ func WaitEventsTimeout(timeout float64) {
 // This function may be called from secondary threads.
 func PostEmptyEvent() {
 	C.plafPostEmptyEvent()
-	panicError()
 }

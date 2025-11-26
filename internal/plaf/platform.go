@@ -3,6 +3,8 @@ package plaf
 //#include "platform.h"
 import "C"
 
+import "github.com/richardwilkes/toolbox/v2/errs"
+
 // Init initializes the PLAF library. Before most PLAF functions can be used,
 // PLAF must be initialized, and before a program terminates PLAF should be
 // terminated in order to free any resources allocated during or after
@@ -14,7 +16,10 @@ import "C"
 // Additional calls to this function after successful initialization but before
 // termination will succeed but will do nothing.
 func Init() error {
-	return convertErrorResponse(C.plafInit())
+	if !C.plafInit() {
+		return errs.New("unable to initialize platform")
+	}
+	return nil
 }
 
 // Terminate destroys all remaining windows, frees any allocated resources and
@@ -28,6 +33,5 @@ func Init() error {
 //
 // This function may only be called from the main thread.
 func Terminate() {
-	flushErrors()
 	C.plafTerminate()
 }

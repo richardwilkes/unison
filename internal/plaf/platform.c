@@ -5,11 +5,6 @@
 
 plafLib _plaf = { false };
 
-// These are outside of _plaf so they can be used before initialization and
-// after termination without special handling when _plaf is cleared to zero
-//
-static errorFunc _plafErrorCallback;
-
 // Terminate the library
 void plafTerminate(void) {
 	if (_plaf.initialized) {
@@ -125,113 +120,63 @@ char** _plafParseUriList(char* text, int* count)
 	return paths;
 }
 
-char* _plaf_strdup(const char* src)
-{
+char* _plaf_strdup(const char* src) {
 	const size_t length = strlen(src);
 	char* result = _plaf_calloc(length + 1, 1);
 	strcpy(result, src);
 	return result;
 }
 
-int _plaf_min(int a, int b)
-{
+int _plaf_min(int a, int b) {
 	return a < b ? a : b;
 }
 
-void* _plaf_calloc(size_t count, size_t size)
-{
-	if (count && size)
-	{
+void* _plaf_calloc(size_t count, size_t size) {
+	if (count && size) {
 		void* block;
-
-		if (count > SIZE_MAX / size)
-		{
-			_plafInputError("Allocation size overflow");
+		if (count > SIZE_MAX / size) {
 			return NULL;
 		}
-
 		block = malloc(count * size);
-		if (block)
+		if (block) {
 			return memset(block, 0, count * size);
-		else
-		{
-			_plafInputError("Out of memory");
-			return NULL;
 		}
 	}
-	else
-		return NULL;
+	return NULL;
 }
 
-void* _plaf_realloc(void* block, size_t size)
-{
-	if (block && size)
-	{
+void* _plaf_realloc(void* block, size_t size) {
+	if (block && size) {
 		void* resized = realloc(block, size);
-		if (resized)
+		if (resized) {
 			return resized;
-		else
-		{
-			_plafInputError("Out of memory");
-			return NULL;
 		}
+		return NULL;
 	}
-	else if (block)
-	{
+	if (block) {
 		_plaf_free(block);
 		return NULL;
 	}
-	else
-		return _plaf_calloc(1, size);
+	return _plaf_calloc(1, size);
 }
 
-void _plaf_free(void* block)
-{
-	if (block)
+void _plaf_free(void* block) {
+	if (block) {
 		free(block);
-}
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                         PLAF event API                       //////
-//////////////////////////////////////////////////////////////////////////
-
-// Notifies shared code of an error
-void _plafInputError(const char* format, ...) {
-	char description[ERROR_MSG_SIZE];
-	va_list vl;
-	va_start(vl, format);
-	vsnprintf(description, sizeof(description), format, vl);
-	va_end(vl);
-	description[sizeof(description) - 1] = '\0';
-	if (_plafErrorCallback) {
-		_plafErrorCallback(description);
 	}
-}
-
-plafError* _plafNewError(const char* format, ...) {
-	va_list args;
-	plafError* errResp = (plafError*)malloc(sizeof(plafError));
-	errResp->next = NULL;
-	va_start(args, format);
-	vsnprintf(errResp->desc, ERROR_MSG_SIZE, format, args);
-	va_end(args);
-	errResp->desc[ERROR_MSG_SIZE - 1] = '\0';
-	return errResp;
 }
 
 //////////////////////////////////////////////////////////////////////////
 //////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
-plafError* plafInit(void) {
+bool plafInit(void) {
 	if (_plaf.initialized) {
-		return NULL;
+		return true;
 	}
 	memset(&_plaf, 0, sizeof(_plaf));
-	plafError* errRsp = _plafInit();
-	if (errRsp != NULL) {
-		return errRsp;
+	if (!_plafInit()) {
+		return false;
 	}
 	memset(&_plaf.frameBufferCfg, 0, sizeof(_plaf.frameBufferCfg));
 	_plaf.frameBufferCfg.redBits     = 8;
@@ -242,11 +187,5 @@ plafError* plafInit(void) {
 	_plaf.frameBufferCfg.stencilBits = 8;
 	_plaf.desiredRefreshRate         = DONT_CARE;
 	_plaf.initialized                = true;
-	return NULL;
-}
-
-errorFunc plafSetErrorCallback(errorFunc cbfun)
-{
-	SWAP(errorFunc, _plafErrorCallback, cbfun);
-	return cbfun;
+	return true;
 }

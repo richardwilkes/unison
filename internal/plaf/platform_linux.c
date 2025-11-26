@@ -899,28 +899,19 @@ static Window createHelperWindow(void)
 }
 
 // Create the pipe for empty events without assumuing the OS has pipe2(2)
-//
-static plafError* createEmptyEventPipe(void)
-{
-	if (pipe(_plaf.x11EmptyEventPipe) != 0)
-	{
-		return _plafNewError("Failed to create empty event pipe: %s", strerror(errno));
+static bool createEmptyEventPipe(void) {
+	if (pipe(_plaf.x11EmptyEventPipe) != 0) {
+		return false;
 	}
-
-	for (int i = 0; i < 2; i++)
-	{
+	for (int i = 0; i < 2; i++) {
 		const int sf = fcntl(_plaf.x11EmptyEventPipe[i], F_GETFL, 0);
 		const int df = fcntl(_plaf.x11EmptyEventPipe[i], F_GETFD, 0);
-
-		if (sf == -1 || df == -1 ||
-			fcntl(_plaf.x11EmptyEventPipe[i], F_SETFL, sf | O_NONBLOCK) == -1 ||
-			fcntl(_plaf.x11EmptyEventPipe[i], F_SETFD, df | FD_CLOEXEC) == -1)
-		{
-			return _plafNewError("Failed to set flags for empty event pipe: %s", strerror(errno));
+		if (sf == -1 || df == -1 || fcntl(_plaf.x11EmptyEventPipe[i], F_SETFL, sf | O_NONBLOCK) == -1 ||
+			fcntl(_plaf.x11EmptyEventPipe[i], F_SETFD, df | FD_CLOEXEC) == -1) {
+			return false;
 		}
 	}
-
-	return NULL;
+	return true;
 }
 
 // X error handler
@@ -982,47 +973,30 @@ Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot
 //////                       PLAF platform API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-plafError* _plafInit(void) {
-	// HACK: If the application has left the locale as "C" then both wide
-	//       character text input and explicit UTF-8 input via XIM will break
-	//       This sets the CTYPE part of the current locale from the environment
-	//       in the hope that it is set to something more sane than "C"
-	if (strcmp(setlocale(LC_CTYPE, NULL), "C") == 0)
+bool _plafInit(void) {
+	if (strcmp(setlocale(LC_CTYPE, NULL), "C") == 0) {
 		setlocale(LC_CTYPE, "");
-
-	void* module = _plafLoadModule("libX11.so.6");
-	if (!module)
-	{
-		return _plafNewError("Failed to load Xlib");
 	}
-
+	void* module = _plafLoadModule("libX11.so.6");
+	if (!module) {
+		return false;
+	}
 	FN_XInitThreads XInitThreads = (FN_XInitThreads)_plafGetModuleSymbol(module, "XInitThreads");
 	FN_XrmInitialize XrmInitialize = (FN_XrmInitialize)_plafGetModuleSymbol(module, "XrmInitialize");
 	FN_XOpenDisplay XOpenDisplay = (FN_XOpenDisplay)_plafGetModuleSymbol(module, "XOpenDisplay");
 	if (!XInitThreads || !XrmInitialize || !XOpenDisplay) {
 		_plafFreeModule(module);
-		return _plafNewError("Failed to load Xlib entry point");
+		return false;
 	}
-
 	XInitThreads();
 	XrmInitialize();
-
 	Display* display = XOpenDisplay(NULL);
 	if (!display) {
-		plafError* errRsp;
-		const char* name = getenv("DISPLAY");
-		if (name) {
-			errRsp = _plafNewError("Failed to open display %s", name);
-		} else {
-			errRsp = _plafNewError("The DISPLAY environment variable is missing");
-		}
 		_plafFreeModule(module);
-		return errRsp;
+		return false;
 	}
-
 	_plaf.x11Display = display;
 	_plaf.xlibHandle = module;
-
 	_plaf.xlibAllocSizeHints = (FN_XAllocSizeHints)_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocSizeHints");
 	_plaf.xlibAllocWMHints = (FN_XAllocWMHints)_plafGetModuleSymbol(_plaf.xlibHandle, "XAllocWMHints");
 	_plaf.xlibChangeProperty = (FN_XChangeProperty)_plafGetModuleSymbol(_plaf.xlibHandle, "XChangeProperty");
@@ -1112,40 +1086,27 @@ plafError* _plafInit(void) {
 	_plaf.xlibUnregisterIMInstantiateCallback = (FN_XUnregisterIMInstantiateCallback)_plafGetModuleSymbol(_plaf.xlibHandle, "XUnregisterIMInstantiateCallback");
 	_plaf.xlibUTF8LookupString = (FN_Xutf8LookupString)_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8LookupString");
 	_plaf.xlibUTF8SetWMProperties = (FN_Xutf8SetWMProperties)_plafGetModuleSymbol(_plaf.xlibHandle, "Xutf8SetWMProperties");
-
-	if (_plaf.xlibUTF8LookupString && _plaf.xlibUTF8SetWMProperties)
+	if (_plaf.xlibUTF8LookupString && _plaf.xlibUTF8SetWMProperties) {
 		_plaf.xlibUTF8 = true;
-
+	}
 	_plaf.x11Screen = DefaultScreen(_plaf.x11Display);
 	_plaf.x11Root = RootWindow(_plaf.x11Display, _plaf.x11Screen);
 	_plaf.x11Context = XUniqueContext();
-
 	getSystemContentScale(&_plaf.x11ContentScaleX, &_plaf.x11ContentScaleY);
-
-	plafError* errRsp = createEmptyEventPipe();
-	if (errRsp) {
+	if (!createEmptyEventPipe()) {
 		plafTerminate();
-		return errRsp;
+		return false;
 	}
-
 	initExtensions();
-
 	_plaf.x11HelperWindowHandle = createHelperWindow();
 	_plaf.x11HiddenCursorHandle = createHiddenCursor();
-
-	if (_plaf.xlibSupportsLocale() && _plaf.xlibUTF8)
-	{
+	if (_plaf.xlibSupportsLocale() && _plaf.xlibUTF8) {
 		_plaf.xlibSetLocaleModifiers("");
-
-		// If an IM is already present our callback will be called right away
-		_plaf.xlibRegisterIMInstantiateCallback(_plaf.x11Display,
-									   NULL, NULL, NULL,
-									   inputMethodInstantiateCallback,
-									   NULL);
+		_plaf.xlibRegisterIMInstantiateCallback(_plaf.x11Display, NULL, NULL, NULL, inputMethodInstantiateCallback,
+			NULL);
 	}
-
 	_plafPollMonitors();
-	return NULL;
+	return true;
 }
 
 void _plafTerminate(void)

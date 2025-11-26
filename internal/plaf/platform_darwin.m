@@ -167,49 +167,38 @@ static void createKeyTables(void) {
 
 @end // PLAFApplicationDelegate
 
-plafError* _plafInit(void) {
+bool _plafInit(void) {
 	@autoreleasepool {
 		[NSApplication sharedApplication];
-
 		_plaf.nsDelegate = [[PLAFApplicationDelegate alloc] init];
 		if (_plaf.nsDelegate == nil) {
 			plafTerminate();
-			return _plafNewError("Failed to create application delegate");
+			return false;
 		}
-
 		[NSApp setDelegate:_plaf.nsDelegate];
-
 		NSEvent* (^block)(NSEvent*) = ^ NSEvent* (NSEvent* event) {
 			if ([event modifierFlags] & NSEventModifierFlagCommand) {
 				[[NSApp keyWindow] sendEvent:event];
 			}
 			return event;
 		};
-
 		_plaf.nsKeyUpMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:block];
-
 		// Press and Hold prevents some keys from emitting repeated characters
 		NSDictionary* defaults = @{@"ApplePressAndHoldEnabled":@NO};
 		[[NSUserDefaults standardUserDefaults] registerDefaults:defaults];
-
 		createKeyTables();
-
 		_plaf.nsEventSource = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		if (!_plaf.nsEventSource) {
 			plafTerminate();
-			return _plafNewError("Failed to create event source");
+			return false;
 		}
-
 		CGEventSourceSetLocalEventsSuppressionInterval(_plaf.nsEventSource, 0.0);
-
 		_plafPollMonitors();
-
 		if (![[NSRunningApplication currentApplication] isFinishedLaunching]) {
 			[NSApp run];
 		}
-
 		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-		return NULL;
+		return true;
 	}
 }
 

@@ -455,22 +455,13 @@ extern "C" {
 
 #define DONT_CARE    -1
 
-#define ERROR_MSG_SIZE 1024
-
 // Forward declarations
 typedef struct plafCursor plafCursor;
 typedef struct plafMonitor plafMonitor;
 typedef struct plafWindow plafWindow;
 
 // Function pointer definitions
-typedef void (*errorFunc)(const char* description);
 typedef void (*glFunc)(void);
-
-// An error response
-typedef struct plafError {
-	struct plafError* next;
-	char              desc[ERROR_MSG_SIZE];
-} plafError;
 
 // A single video mode
 typedef struct plafVideoMode {
@@ -524,15 +515,6 @@ typedef void (APIENTRY * FN_GLCLEAR)(unsigned int);
 typedef const char* (APIENTRY * FN_GLGETSTRING)(unsigned int);
 typedef void (APIENTRY * FN_GLGETINTEGERV)(unsigned int,int*);
 typedef const char* (APIENTRY * FN_GLGETSTRINGI)(unsigned int,unsigned int);
-
-// Swaps the provided pointers
-#define SWAP(type, x, y) \
-	{                          \
-		type t;                \
-		t = x;                 \
-		x = y;                 \
-		y = t;                 \
-	}
 
 // Framebuffer configuration
 //
@@ -997,9 +979,8 @@ extern plafLib _plaf;
  *************************************************************************/
 
 // Setup & teardown
-plafError* plafInit(void);
+bool plafInit(void);
 void plafTerminate(void);
-errorFunc plafSetErrorCallback(errorFunc callback);
 
 // Monitors
 void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos);
@@ -1013,8 +994,6 @@ void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 // Windows
 plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share);
 void* plafGetNativeWindow(plafWindow* window);
-int plafWindowShouldClose(plafWindow* window);
-void plafSetWindowShouldClose(plafWindow* window, int value);
 const char* plafGetWindowTitle(plafWindow* window);
 void plafSetWindowTitle(plafWindow* window, const char* title);
 void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images);
@@ -1042,7 +1021,6 @@ void plafHideWindow(plafWindow* window);
 bool plafIsWindowFocused(plafWindow* window);
 void plafFocusWindow(plafWindow* window);
 void plafRequestWindowAttention(plafWindow* window);
-plafMonitor* plafGetWindowMonitor(plafWindow* window);
 void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
 bool plafWindowVisible(plafWindow* window);
 bool plafIsFramebufferTransparent(plafWindow* window);
@@ -1095,18 +1073,11 @@ void goWindowPosCallback(plafWindow *window);
 void goWindowSizeCallback(plafWindow *window);
 
 // Setup & teardown
-plafError* _plafInit(void);
+bool _plafInit(void);
 void _plafTerminate(void);
 void* _plafLoadModule(const char* path);
 void _plafFreeModule(void* module);
 moduleFunc _plafGetModuleSymbol(void* module, const char* name);
-#if defined(__GNUC__)
-void _plafInputError(const char* format, ...) __attribute__((format(printf, 1, 2)));
-plafError* _plafNewError(const char* format, ...) __attribute__((format(printf, 1, 2)));
-#else
-void _plafInputError(const char* format, ...);
-plafError* _plafNewError(const char* format, ...);
-#endif
 
 // Monitors
 plafMonitor* _plafAllocMonitor(const char* name, int widthMM, int heightMM);
@@ -1137,14 +1108,9 @@ void _plafInputMouseClick(plafWindow* window, int button, int action, int mods);
 void _plafInputCursorPos(plafWindow* window, double xpos, double ypos);
 bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, plafWindow* share, const plafFrameBufferCfg* fbconfig);
 void _plafSetWindowTitle(plafWindow* window, const char* title);
-void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos);
 void _plafSetWindowPos(plafWindow* window, int xpos, int ypos);
-void _plafGetWindowSize(plafWindow* window, int* width, int* height);
 void _plafSetWindowSize(plafWindow* window, int width, int height);
 void _plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight);
-void _plafGetFramebufferSize(plafWindow* window, int* width, int* height);
-void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom);
-void _plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale);
 void _plafMaximizeWindow(plafWindow* window);
 void _plafShowWindow(plafWindow* window);
 void _plafHideWindow(plafWindow* window);
@@ -1152,7 +1118,6 @@ void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, i
 void _plafSetWindowResizable(plafWindow* window, bool enabled);
 void _plafSetWindowDecorated(plafWindow* window, bool enabled);
 void _plafSetWindowFloating(plafWindow* window, bool enabled);
-void _plafSetWindowOpacity(plafWindow* window, float opacity);
 void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled);
 void _plafUpdateCursor(plafWindow* window);
 bool _plafRefreshContextAttribs(plafWindow* window);
@@ -1170,7 +1135,6 @@ bool _plafIsVisualTransparent(Visual* visual);
 #endif
 
 // Events
-void _plafWaitEventsTimeout(double timeout);
 #if defined(__linux__)
 bool _plafWaitForX11Event(double timeout);
 #endif

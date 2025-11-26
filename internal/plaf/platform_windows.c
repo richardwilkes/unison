@@ -4,64 +4,38 @@
 
 static const GUID GUID_DEVINTERFACE_HID = {0x4d1e55b2,0xf16f,0x11cf,{0x88,0xcb,0x00,0x11,0x11,0x00,0x00,0x30}};
 
-// Load necessary libraries (DLLs)
-static plafError* loadLibraries(void)
-{
-	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-								GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-							(const WCHAR*) &_plaf,
-							(HMODULE*) &_plaf.win32Instance))
-	{
-		return _plafNewError("Failed to retrieve own module handle");
+// Load necessary libraries
+static bool loadLibraries(void) {
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		(const WCHAR*) &_plaf, (HMODULE*) &_plaf.win32Instance)) {
+		return false;
 	}
-
 	_plaf.win32User32Instance = _plafLoadModule("user32.dll");
-	if (!_plaf.win32User32Instance)
-	{
-		return _plafNewError("Failed to load user32.dll");
+	if (!_plaf.win32User32Instance) {
+		return false;
 	}
-
-	_plaf.win32User32EnableNonClientDpiScaling_ = (FN_EnableNonClientDpiScaling)
-		_plafGetModuleSymbol(_plaf.win32User32Instance, "EnableNonClientDpiScaling");
-	_plaf.win32User32SetProcessDpiAwarenessContext_ = (FN_SetProcessDpiAwarenessContext)
-		_plafGetModuleSymbol(_plaf.win32User32Instance, "SetProcessDpiAwarenessContext");
-	_plaf.win32User32GetDpiForWindow_ = (FN_GetDpiForWindow)
-		_plafGetModuleSymbol(_plaf.win32User32Instance, "GetDpiForWindow");
-	_plaf.win32User32AdjustWindowRectExForDpi_ = (FN_AdjustWindowRectExForDpi)
-		_plafGetModuleSymbol(_plaf.win32User32Instance, "AdjustWindowRectExForDpi");
-	_plaf.win32User32GetSystemMetricsForDpi_ = (FN_GetSystemMetricsForDpi)
-		_plafGetModuleSymbol(_plaf.win32User32Instance, "GetSystemMetricsForDpi");
-
+	_plaf.win32User32EnableNonClientDpiScaling_ = (FN_EnableNonClientDpiScaling)_plafGetModuleSymbol(_plaf.win32User32Instance, "EnableNonClientDpiScaling");
+	_plaf.win32User32SetProcessDpiAwarenessContext_ = (FN_SetProcessDpiAwarenessContext)_plafGetModuleSymbol(_plaf.win32User32Instance, "SetProcessDpiAwarenessContext");
+	_plaf.win32User32GetDpiForWindow_ = (FN_GetDpiForWindow)_plafGetModuleSymbol(_plaf.win32User32Instance, "GetDpiForWindow");
+	_plaf.win32User32AdjustWindowRectExForDpi_ = (FN_AdjustWindowRectExForDpi)_plafGetModuleSymbol(_plaf.win32User32Instance, "AdjustWindowRectExForDpi");
+	_plaf.win32User32GetSystemMetricsForDpi_ = (FN_GetSystemMetricsForDpi)_plafGetModuleSymbol(_plaf.win32User32Instance, "GetSystemMetricsForDpi");
 	_plaf.win32DwmInstance = _plafLoadModule("dwmapi.dll");
-	if (_plaf.win32DwmInstance)
-	{
-		_plaf.win32DwmIsCompositionEnabled = (FN_DwmIsCompositionEnabled)
-			_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmIsCompositionEnabled");
-		_plaf.win32DwmFlush = (FN_DwmFlush)
-			_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmFlush");
-		_plaf.win32DwmEnableBlurBehindWindow = (FN_DwmEnableBlurBehindWindow)
-			_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmEnableBlurBehindWindow");
-		_plaf.win32DwmGetColorizationColor = (FN_DwmGetColorizationColor)
-			_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmGetColorizationColor");
+	if (_plaf.win32DwmInstance) {
+		_plaf.win32DwmIsCompositionEnabled = (FN_DwmIsCompositionEnabled)_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmIsCompositionEnabled");
+		_plaf.win32DwmFlush = (FN_DwmFlush)_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmFlush");
+		_plaf.win32DwmEnableBlurBehindWindow = (FN_DwmEnableBlurBehindWindow)_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmEnableBlurBehindWindow");
+		_plaf.win32DwmGetColorizationColor = (FN_DwmGetColorizationColor)_plafGetModuleSymbol(_plaf.win32DwmInstance, "DwmGetColorizationColor");
 	}
-
 	_plaf.win32ShCoreInstance = _plafLoadModule("shcore.dll");
-	if (_plaf.win32ShCoreInstance)
-	{
-		_plaf.win32ShCoreSetProcessDpiAwareness_ = (FN_SetProcessDpiAwareness)
-			_plafGetModuleSymbol(_plaf.win32ShCoreInstance, "SetProcessDpiAwareness");
-		_plaf.win32ShCoreGetDpiForMonitor_ = (FN_GetDpiForMonitor)
-			_plafGetModuleSymbol(_plaf.win32ShCoreInstance, "GetDpiForMonitor");
+	if (_plaf.win32ShCoreInstance) {
+		_plaf.win32ShCoreSetProcessDpiAwareness_ = (FN_SetProcessDpiAwareness)_plafGetModuleSymbol(_plaf.win32ShCoreInstance, "SetProcessDpiAwareness");
+		_plaf.win32ShCoreGetDpiForMonitor_ = (FN_GetDpiForMonitor)_plafGetModuleSymbol(_plaf.win32ShCoreInstance, "GetDpiForMonitor");
 	}
-
 	_plaf.win32NTInstance = _plafLoadModule("ntdll.dll");
-	if (_plaf.win32NTInstance)
-	{
-		_plaf.win32NTRtlVerifyVersionInfo_ = (FN_RtlVerifyVersionInfo)
-			_plafGetModuleSymbol(_plaf.win32NTInstance, "RtlVerifyVersionInfo");
+	if (_plaf.win32NTInstance) {
+		_plaf.win32NTRtlVerifyVersionInfo_ = (FN_RtlVerifyVersionInfo)_plafGetModuleSymbol(_plaf.win32NTInstance, "RtlVerifyVersionInfo");
 	}
-
-	return NULL;
+	return true;
 }
 
 // Unload used libraries (DLLs)
@@ -227,43 +201,22 @@ static LRESULT CALLBACK helperWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LP
 }
 
 // Creates a dummy window for behind-the-scenes work
-//
-static plafError* createHelperWindow(void)
-{
-	MSG msg;
-	WNDCLASSEXW wc = { sizeof(wc) };
-
-	wc.style         = CS_OWNDC;
-	wc.lpfnWndProc   = (WNDPROC) helperWindowProc;
-	wc.hInstance     = _plaf.win32Instance;
-	wc.lpszClassName = L"PLAF3 Helper";
-
+static bool createHelperWindow(void) {
+	WNDCLASSEXW wc               = { sizeof(wc) };
+	wc.style                     = CS_OWNDC;
+	wc.lpfnWndProc               = (WNDPROC) helperWindowProc;
+	wc.hInstance                 = _plaf.win32Instance;
+	wc.lpszClassName             = L"PLAF3 Helper";
 	_plaf.win32HelperWindowClass = RegisterClassExW(&wc);
-	if (!_plaf.win32HelperWindowClass)
-	{
-		return _plafNewError("Failed to register helper window class");
+	if (!_plaf.win32HelperWindowClass) {
+		return false;
 	}
-
-	_plaf.win32HelperWindowHandle =
-		CreateWindowExW(WS_EX_OVERLAPPEDWINDOW,
-						MAKEINTATOM(_plaf.win32HelperWindowClass),
-						L"PLAF message window",
-						WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-						0, 0, 1, 1,
-						NULL, NULL,
-						_plaf.win32Instance,
-						NULL);
-
-	if (!_plaf.win32HelperWindowHandle)
-	{
-		return _plafNewError("Failed to create helper window");
+	_plaf.win32HelperWindowHandle = CreateWindowExW(WS_EX_OVERLAPPEDWINDOW, MAKEINTATOM(_plaf.win32HelperWindowClass),
+		L"PLAF message window", WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0, 0, 1, 1, NULL, NULL, _plaf.win32Instance, NULL);
+	if (!_plaf.win32HelperWindowHandle) {
+		return false;
 	}
-
-	// HACK: The command to the first ShowWindow call is ignored if the parent
-	//       process passed along a STARTUPINFO, so clear that with a no-op call
 	ShowWindow(_plaf.win32HelperWindowHandle, SW_HIDE);
-
-	// Register for HID device notifications
 	// TODO: Consider eliminating this, as we no longer need HID support, do we?
 	{
 		DEV_BROADCAST_DEVICEINTERFACE_W dbi;
@@ -271,20 +224,15 @@ static plafError* createHelperWindow(void)
 		dbi.dbcc_size = sizeof(dbi);
 		dbi.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
 		dbi.dbcc_classguid = GUID_DEVINTERFACE_HID;
-
-		_plaf.win32DeviceNotificationHandle =
-			RegisterDeviceNotificationW(_plaf.win32HelperWindowHandle,
-										(DEV_BROADCAST_HDR*) &dbi,
-										DEVICE_NOTIFY_WINDOW_HANDLE);
+		_plaf.win32DeviceNotificationHandle = RegisterDeviceNotificationW(_plaf.win32HelperWindowHandle,
+			(DEV_BROADCAST_HDR*) &dbi, DEVICE_NOTIFY_WINDOW_HANDLE);
 	}
-
-	while (PeekMessageW(&msg, _plaf.win32HelperWindowHandle, 0, 0, PM_REMOVE))
-	{
+	MSG msg;
+	while (PeekMessageW(&msg, _plaf.win32HelperWindowHandle, 0, 0, PM_REMOVE)) {
 		TranslateMessage(&msg);
 		DispatchMessageW(&msg);
 	}
-
-   return NULL;
+   return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -311,42 +259,32 @@ char* _plafCreateUTF8FromWideString(const WCHAR* src) {
 
 // Checks whether we are on at least the specified build of Windows 10
 //
-BOOL _plafIsWindows10BuildOrGreater(WORD build)
-{
+BOOL _plafIsWindows10BuildOrGreater(WORD build) {
 	OSVERSIONINFOEXW osvi = { sizeof(osvi), 10, 0, build };
 	DWORD mask = VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER;
 	ULONGLONG cond = VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL);
 	cond = VerSetConditionMask(cond, VER_MINORVERSION, VER_GREATER_EQUAL);
 	cond = VerSetConditionMask(cond, VER_BUILDNUMBER, VER_GREATER_EQUAL);
-	// HACK: Use RtlVerifyVersionInfo instead of VerifyVersionInfoW as the
-	//       latter lies unless the user knew to embed a non-default manifest
-	//       announcing support for Windows 10 via supportedOS GUID
 	return _plaf.win32NTRtlVerifyVersionInfo_(&osvi, mask, cond) == 0;
 }
 
-plafError* _plafInit(void) {
-	plafError* errRsp = loadLibraries();
-	if (errRsp) {
+bool _plafInit(void) {
+	if (!loadLibraries()) {
 		plafTerminate();
-		return errRsp;
+		return false;
 	}
-
 	createKeyTables();
-
-	if (IsWindows10Version1703OrGreater())
+	if (IsWindows10Version1703OrGreater()) {
 		_plaf.win32User32SetProcessDpiAwarenessContext_(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-	else {
+	} else {
 		_plaf.win32ShCoreSetProcessDpiAwareness_(PROCESS_PER_MONITOR_DPI_AWARE);
 	}
-
-	errRsp = createHelperWindow();
-	if (errRsp) {
+	if (!createHelperWindow()) {
 		plafTerminate();
-		return errRsp;
+		return false;
 	}
-
 	_plafPollMonitors();
-	return NULL;
+	return true;
 }
 
 void _plafTerminate(void)

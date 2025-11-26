@@ -73,14 +73,6 @@ void plafDestroyWindow(plafWindow* window) {
 	_plaf_free(window);
 }
 
-int plafWindowShouldClose(plafWindow* window) {
-	return window->shouldClose;
-}
-
-void plafSetWindowShouldClose(plafWindow* window, int value) {
-	window->shouldClose = value;
-}
-
 const char* plafGetWindowTitle(plafWindow* window) {
 	return window->title;
 }
@@ -92,27 +84,11 @@ void plafSetWindowTitle(plafWindow* window, const char* title) {
 	_plaf_free(prev);
 }
 
-void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
-	if (xpos)
-		*xpos = 0;
-	if (ypos)
-		*ypos = 0;
-	_plafGetWindowPos(window, xpos, ypos);
-}
-
 void plafSetWindowPos(plafWindow* window, int xpos, int ypos) {
 	if (window->monitor) {
 		return;
 	}
 	_plafSetWindowPos(window, xpos, ypos);
-}
-
-void plafGetWindowSize(plafWindow* window, int* width, int* height) {
-	if (width)
-		*width = 0;
-	if (height)
-		*height = 0;
-	_plafGetWindowSize(window, width, height);
 }
 
 void plafSetWindowSize(plafWindow* window, int width, int height) {
@@ -121,80 +97,31 @@ void plafSetWindowSize(plafWindow* window, int width, int height) {
 	_plafSetWindowSize(window, width, height);
 }
 
-void plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight)
-{
-	if (minwidth != DONT_CARE && minheight != DONT_CARE)
-	{
-		if (minwidth < 0 || minheight < 0)
-		{
-			_plafInputError("Invalid window minimum size %ix%i", minwidth, minheight);
+void plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
+	if (minwidth != DONT_CARE && minheight != DONT_CARE) {
+		if (minwidth < 1 || minheight < 1) {
 			return;
 		}
 	}
-
-	if (maxwidth != DONT_CARE && maxheight != DONT_CARE)
-	{
-		if (maxwidth < 0 || maxheight < 0 ||
-			maxwidth < minwidth || maxheight < minheight)
-		{
-			_plafInputError("Invalid window maximum size %ix%i", maxwidth, maxheight);
+	if (maxwidth != DONT_CARE && maxheight != DONT_CARE) {
+		if (maxwidth < 1 || maxheight < 1 || maxwidth < minwidth || maxheight < minheight) {
 			return;
 		}
 	}
-
 	window->minwidth  = minwidth;
 	window->minheight = minheight;
 	window->maxwidth  = maxwidth;
 	window->maxheight = maxheight;
-
-	if (window->monitor || !window->resizable)
+	if (window->monitor || !window->resizable) {
 		return;
-
+	}
 	_plafSetWindowSizeLimits(window, minwidth, minheight, maxwidth, maxheight);
 }
 
-void plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
-	if (width)
-		*width = 0;
-	if (height)
-		*height = 0;
-	_plafGetFramebufferSize(window, width, height);
-}
-
-void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
-	if (left)
-		*left = 0;
-	if (top)
-		*top = 0;
-	if (right)
-		*right = 0;
-	if (bottom)
-		*bottom = 0;
-	_plafGetWindowFrameSize(window, left, top, right, bottom);
-}
-
-void plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
-	if (xscale)
-		*xscale = 0.f;
-	if (yscale)
-		*yscale = 0.f;
-	_plafGetWindowContentScale(window, xscale, yscale);
-}
-
-void plafSetWindowOpacity(plafWindow* window, float opacity) {
-	if (opacity != opacity || opacity < 0.f || opacity > 1.f)
-	{
-		_plafInputError("Invalid window opacity %f", opacity);
+void plafMaximizeWindow(plafWindow* window) {
+	if (window->monitor) {
 		return;
 	}
-
-	_plafSetWindowOpacity(window, opacity);
-}
-
-void plafMaximizeWindow(plafWindow* window) {
-	if (window->monitor)
-		return;
-
 	_plafMaximizeWindow(window);
 }
 
@@ -205,9 +132,9 @@ void plafShowWindow(plafWindow* window) {
 }
 
 void plafHideWindow(plafWindow* window) {
-	if (window->monitor)
+	if (window->monitor) {
 		return;
-
+	}
 	_plafHideWindow(window);
 }
 
@@ -245,35 +172,9 @@ void plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 	}
 }
 
-plafMonitor* plafGetWindowMonitor(plafWindow* window) {
-	return window->monitor;
-}
-
 void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
-	if (width <= 0 || height <= 0)
-	{
-		_plafInputError("Invalid window size %ix%i", width, height);
-		return;
-	}
-
-	if (refreshRate < 0 && refreshRate != DONT_CARE)
-	{
-		_plafInputError("Invalid refresh rate %i", refreshRate);
-		return;
-	}
-
 	window->videoMode.width       = width;
 	window->videoMode.height      = height;
 	window->videoMode.refreshRate = refreshRate;
 	_plafSetWindowMonitor(window, monitor, xpos, ypos, width, height, refreshRate);
-}
-
-void plafWaitEventsTimeout(double timeout)
-{
-	if (timeout != timeout || timeout < 0.0 || timeout > DBL_MAX)
-	{
-		_plafInputError("Invalid time %f", timeout);
-		return;
-	}
-	_plafWaitEventsTimeout(timeout);
 }

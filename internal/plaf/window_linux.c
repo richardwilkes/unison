@@ -921,29 +921,14 @@ static bool waitForAnyEvent(double timeout) {
 	return false;
 }
 
-// Writes a byte to the empty event pipe
-//
-static void writeEmptyEvent(void)
-{
-	for (;;)
-	{
-		const char byte = 0;
-		const ssize_t result = write(_plaf.x11EmptyEventPipe[1], &byte, 1);
-		if (result == 1 || (result == -1 && errno != EINTR))
-			break;
-	}
-}
-
 // Drains available data from the empty event pipe
-//
-static void drainEmptyEvents(void)
-{
-	for (;;)
-	{
+static void drainEmptyEvents(void) {
+	for (;;) {
 		char dummy[64];
 		const ssize_t result = read(_plaf.x11EmptyEventPipe[0], dummy, sizeof(dummy));
-		if (result == -1 && errno != EINTR)
+		if (result == -1 && errno != EINTR) {
 			break;
+		}
 	}
 }
 
@@ -1057,44 +1042,29 @@ static void sendEventToWM(plafWindow* window, Atom type,
 }
 
 // Updates the normal hints according to the window settings
-//
-static void updateNormalHints(plafWindow* window, int width, int height)
-{
+static void updateNormalHints(plafWindow* window, int width, int height) {
 	XSizeHints* hints = _plaf.xlibAllocSizeHints();
-
 	long supplied;
 	_plaf.xlibGetWMNormalHints(_plaf.x11Display, window->x11Window, hints, &supplied);
-
 	hints->flags &= ~(PMinSize | PMaxSize | PAspect);
-
-	if (!window->monitor)
-	{
-		if (window->resizable)
-		{
-			if (window->minwidth != DONT_CARE &&
-				window->minheight != DONT_CARE)
-			{
+	if (!window->monitor) {
+		if (window->resizable) {
+			if (window->minwidth != DONT_CARE && window->minheight != DONT_CARE) {
 				hints->flags |= PMinSize;
 				hints->min_width = window->minwidth;
 				hints->min_height = window->minheight;
 			}
-
-			if (window->maxwidth != DONT_CARE &&
-				window->maxheight != DONT_CARE)
-			{
+			if (window->maxwidth != DONT_CARE && window->maxheight != DONT_CARE) {
 				hints->flags |= PMaxSize;
 				hints->max_width = window->maxwidth;
 				hints->max_height = window->maxheight;
 			}
-		}
-		else
-		{
+		} else {
 			hints->flags |= (PMinSize | PMaxSize);
 			hints->min_width  = hints->max_width  = width;
 			hints->min_height = hints->max_height = height;
 		}
 	}
-
 	_plaf.xlibSetWMNormalHints(_plaf.x11Display, window->x11Window, hints);
 	_plaf.xlibFree(hints);
 }
@@ -1328,7 +1298,7 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 	}
 	_plafSetWindowTitle(window, window->title);
 	_plafGetWindowPos(window, &window->x11XPos, &window->x11YPos);
-	_plafGetWindowSize(window, &window->width, &window->height);
+	plafGetWindowSize(window, &window->width, &window->height);
 	return true;
 }
 
@@ -1552,66 +1522,43 @@ static uint32_t keySym2Unicode(unsigned int keysym)
 }
 
 // Process the specified X event
-//
-static void processEvent(XEvent *event)
-{
+static void processEvent(XEvent *event) {
 	int keycode = 0;
-	Bool filtered = False;
-
-	// HACK: Save scancode as some IMs clear the field in XFilterEvent
-	if (event->type == KeyPress || event->type == KeyRelease)
+	if (event->type == KeyPress || event->type == KeyRelease) {
 		keycode = event->xkey.keycode;
-
-	filtered = _plaf.xlibFilterEvent(event, None);
-
-	if (_plaf.randrAvailable)
-	{
-		if (event->type == _plaf.randrEventBase + RRNotify)
-		{
+	}
+	Bool filtered = _plaf.xlibFilterEvent(event, None);
+	if (_plaf.randrAvailable) {
+		if (event->type == _plaf.randrEventBase + RRNotify) {
 			_plaf.randrUpdateConfiguration(event);
 			_plafPollMonitors();
 			return;
 		}
 	}
-
-	if (_plaf.xkbAvailable)
-	{
-		if (event->type == _plaf.xkbEventBase + XkbEventCode)
-		{
+	if (_plaf.xkbAvailable) {
+		if (event->type == _plaf.xkbEventBase + XkbEventCode) {
 			if (((XkbEvent*) event)->any.xkb_type == XkbStateNotify &&
-				(((XkbEvent*) event)->state.changed & XkbGroupStateMask))
-			{
+				(((XkbEvent*) event)->state.changed & XkbGroupStateMask)) {
 				_plaf.xkbGroup = ((XkbEvent*) event)->state.group;
 			}
-
 			return;
 		}
 	}
-
-	if (event->type == GenericEvent)
-	{
-		if (_plaf.xiAvailable)
-		{
+	if (event->type == GenericEvent) {
+		if (_plaf.xiAvailable) {
 			_plaf.xlibFreeEventData(_plaf.x11Display, &event->xcookie);
 		}
-
 		return;
 	}
-
-	if (event->type == SelectionRequest)
-	{
+	if (event->type == SelectionRequest) {
 		handleSelectionRequest(event);
 		return;
 	}
-
 	plafWindow* window = NULL;
 	if (_plaf.xlibFindContext(_plaf.x11Display, event->xany.window, _plaf.x11Context, (XPointer*) &window) != 0) {
-		// This is an event for a window that has already been destroyed
-		return;
+		return; // Window was disposed of
 	}
-
-	switch (event->type)
-	{
+	switch (event->type) {
 		case ReparentNotify:
 			window->x11Parent = event->xreparent.parent;
 			return;
@@ -1622,13 +1569,6 @@ static void processEvent(XEvent *event)
 			const int mods = translateState(event->xkey.state);
 			const int plain = !(mods & (KEYMOD_CONTROL | KEYMOD_ALT));
 			if (window->x11IC) {
-				// HACK: Do not report the key press events duplicated by XIM
-				//       Duplicate key releases are filtered out implicitly by
-				//       the PLAF key repeat logic in _plafInputKey
-				//       A timestamp per key is used to handle simultaneous keys
-				// NOTE: Always allow the first event for each key through
-				//       (the server never sends a timestamp of zero)
-				// NOTE: Timestamp difference is compared to handle wrap-around
 				Time diff = event->xkey.time - window->x11KeyPressTimes[keycode];
 				if (diff == event->xkey.time || (diff > 0 && diff < ((Time)1 << 31))) {
 					if (keycode) {
@@ -1640,20 +1580,18 @@ static void processEvent(XEvent *event)
 					window->x11KeyPressTimes[keycode] = event->xkey.time;
 				}
 				if (!filtered && plain) {
-					int count;
 					Status status;
 					char buffer[100];
 					char* chars = buffer;
-
-					count = _plaf.xlibUTF8LookupString(window->x11IC, &event->xkey, buffer, sizeof(buffer) - 1, NULL,
-						&status);
+					int count = _plaf.xlibUTF8LookupString(window->x11IC, &event->xkey, buffer, sizeof(buffer) - 1,
+						NULL, &status);
 					if (status == XBufferOverflow) {
 						chars = _plaf_calloc(count + 1, 1);
 						count = _plaf.xlibUTF8LookupString(window->x11IC, &event->xkey, chars, count, NULL, &status);
 					}
 					if (status == XLookupChars || status == XLookupBoth) {
-						const char* c = chars;
 						chars[count] = '\0';
+						const char* c = chars;
 						while (c - chars < count) {
 							_plafInputChar(window, decodeUTF8(&c));
 						}
@@ -1680,35 +1618,18 @@ static void processEvent(XEvent *event)
 		{
 			const int key = translateKey(keycode);
 			const int mods = translateState(event->xkey.state);
-
-			if (!_plaf.xkbDetectable)
-			{
-				// HACK: Key repeat events will arrive as KeyRelease/KeyPress
-				//       pairs with similar or identical time stamps
-				//       The key repeat logic in _plafInputKey expects only key
-				//       presses to repeat, so detect and discard release events
-				if (_plaf.xlibEventsQueued(_plaf.x11Display, QueuedAfterReading))
-				{
+			if (!_plaf.xkbDetectable) {
+				if (_plaf.xlibEventsQueued(_plaf.x11Display, QueuedAfterReading)) {
 					XEvent next;
 					_plaf.xlibPeekEvent(_plaf.x11Display, &next);
-
-					if (next.type == KeyPress &&
-						next.xkey.window == event->xkey.window &&
-						next.xkey.keycode == keycode)
-					{
-						// HACK: The time of repeat events sometimes doesn't
-						//       match that of the press event, so add an
-						//       epsilon
-						if ((next.xkey.time - event->xkey.time) < 20)
-						{
-							// This is very likely a server-generated key repeat
-							// event, so ignore it
+					if (next.type == KeyPress && next.xkey.window == event->xkey.window &&
+						next.xkey.keycode == keycode) {
+						if ((next.xkey.time - event->xkey.time) < 20) {
 							return;
 						}
 					}
 				}
 			}
-
 			_plafInputKey(window, key, keycode, INPUT_RELEASE, mods);
 			return;
 		}
@@ -1716,72 +1637,40 @@ static void processEvent(XEvent *event)
 		case ButtonPress:
 		{
 			const int mods = translateState(event->xbutton.state);
-
-			if (event->xbutton.button == Button1)
+			if (event->xbutton.button == Button1) {
 				_plafInputMouseClick(window, MOUSE_BUTTON_LEFT, INPUT_PRESS, mods);
-			else if (event->xbutton.button == Button2)
+			} else if (event->xbutton.button == Button2) {
 				_plafInputMouseClick(window, MOUSE_BUTTON_MIDDLE, INPUT_PRESS, mods);
-			else if (event->xbutton.button == Button3)
+			} else if (event->xbutton.button == Button3) {
 				_plafInputMouseClick(window, MOUSE_BUTTON_RIGHT, INPUT_PRESS, mods);
-
-			// Modern X provides scroll events as mouse button presses
-			else if (event->xbutton.button == Button4)
+			} else if (event->xbutton.button == Button4) {
 				goScrollCallback(window, 0.0, 1.0);
-			else if (event->xbutton.button == Button5)
+			} else if (event->xbutton.button == Button5) {
 				goScrollCallback(window, 0.0, -1.0);
-			else if (event->xbutton.button == Button6)
+			} else if (event->xbutton.button == Button6) {
 				goScrollCallback(window, 1.0, 0.0);
-			else if (event->xbutton.button == Button7)
+			} else if (event->xbutton.button == Button7) {
 				goScrollCallback(window, -1.0, 0.0);
-
-			else
-			{
-				// Additional buttons after 7 are treated as regular buttons
-				// We subtract 4 to fill the gap left by scroll input above
-				_plafInputMouseClick(window,
-									 event->xbutton.button - Button1 - 4,
-									 INPUT_PRESS,
-									 mods);
+			} else {
+				// Reported buttons 4-7 are actually scroll events. Shift the buttons above 7 down to fill the gap.
+				_plafInputMouseClick(window, event->xbutton.button - Button1 - 4, INPUT_PRESS, mods);
 			}
-
 			return;
 		}
 
 		case ButtonRelease:
 		{
 			const int mods = translateState(event->xbutton.state);
-
-			if (event->xbutton.button == Button1)
-			{
-				_plafInputMouseClick(window,
-									 MOUSE_BUTTON_LEFT,
-									 INPUT_RELEASE,
-									 mods);
+			if (event->xbutton.button == Button1) {
+				_plafInputMouseClick(window, MOUSE_BUTTON_LEFT, INPUT_RELEASE, mods);
+			} else if (event->xbutton.button == Button2) {
+				_plafInputMouseClick(window, MOUSE_BUTTON_MIDDLE, INPUT_RELEASE, mods);
+			} else if (event->xbutton.button == Button3) {
+				_plafInputMouseClick(window, MOUSE_BUTTON_RIGHT, INPUT_RELEASE, mods);
+			} else if (event->xbutton.button > Button7) {
+				// Reported buttons 4-7 are actually scroll events. Shift the buttons above 7 down to fill the gap.
+				_plafInputMouseClick(window, event->xbutton.button - Button1 - 4, INPUT_RELEASE, mods);
 			}
-			else if (event->xbutton.button == Button2)
-			{
-				_plafInputMouseClick(window,
-									 MOUSE_BUTTON_MIDDLE,
-									 INPUT_RELEASE,
-									 mods);
-			}
-			else if (event->xbutton.button == Button3)
-			{
-				_plafInputMouseClick(window,
-									 MOUSE_BUTTON_RIGHT,
-									 INPUT_RELEASE,
-									 mods);
-			}
-			else if (event->xbutton.button > Button7)
-			{
-				// Additional buttons after 7 are treated as regular buttons
-				// We subtract 4 to fill the gap left by scroll input above
-				_plafInputMouseClick(window,
-									 event->xbutton.button - Button1 - 4,
-									 INPUT_RELEASE,
-									 mods);
-			}
-
 			return;
 		}
 
@@ -1798,19 +1687,14 @@ static void processEvent(XEvent *event)
 		}
 
 		case LeaveNotify:
-		{
 			goCursorEnterCallback(window, false);
 			return;
-		}
 
 		case MotionNotify:
 		{
 			const int x = event->xmotion.x;
 			const int y = event->xmotion.y;
-
-			if (x != window->x11WarpCursorPosX || y != window->x11WarpCursorPosY)
-			{
-				// The cursor was moved by something other than PLAF
+			if (x != window->x11WarpCursorPosX || y != window->x11WarpCursorPosY) {
 				_plafInputCursorPos(window, x, y);
 			}
 			return;
@@ -1823,30 +1707,18 @@ static void processEvent(XEvent *event)
 				window->height = event->xconfigure.height;
 				goWindowSizeCallback(window);
 			}
-
 			int xpos = event->xconfigure.x;
 			int ypos = event->xconfigure.y;
-
-			// NOTE: ConfigureNotify events from the server are in local
-			//       coordinates, so if we are reparented we need to translate
-			//       the position into root (screen) coordinates
-			if (!event->xany.send_event && window->x11Parent != _plaf.x11Root)
-			{
+			if (!event->xany.send_event && window->x11Parent != _plaf.x11Root) {
 				_plafGrabErrorHandler();
-
 				Window dummy;
-				_plaf.xlibTranslateCoordinates(_plaf.x11Display,
-									  window->x11Parent,
-									  _plaf.x11Root,
-									  xpos, ypos,
-									  &xpos, &ypos,
-									  &dummy);
-
+				_plaf.xlibTranslateCoordinates(_plaf.x11Display, window->x11Parent, _plaf.x11Root, xpos, ypos, &xpos,
+					&ypos, &dummy);
 				_plafReleaseErrorHandler();
-				if (_plaf.x11ErrorCode == BadWindow)
+				if (_plaf.x11ErrorCode == BadWindow) {
 					return;
+				}
 			}
-
 			if (xpos != window->x11XPos || ypos != window->x11YPos) {
 				window->x11XPos = xpos;
 				window->x11YPos = ypos;
@@ -1857,103 +1729,61 @@ static void processEvent(XEvent *event)
 
 		case ClientMessage:
 		{
-			// Custom client message, probably from the window manager
-
-			if (filtered)
+			if (filtered || event->xclient.message_type == None) {
 				return;
-
-			if (event->xclient.message_type == None)
-				return;
-
-			if (event->xclient.message_type == _plaf.x11WM_PROTOCOLS)
-			{
+			}
+			if (event->xclient.message_type == _plaf.x11WM_PROTOCOLS) {
 				const Atom protocol = event->xclient.data.l[0];
-				if (protocol == None)
+				if (protocol == None) {
 					return;
-
-				if (protocol == _plaf.x11WM_DELETE_WINDOW)
-				{
-					// The window manager was asked to close the window, for
-					// example by the user pressing a 'close' window decoration
-					// button
-					_plafInputWindowCloseRequest(window);
 				}
-				else if (protocol == _plaf.x11NET_WM_PING)
-				{
-					// The window manager is pinging the application to ensure
-					// it's still responding to events
-
+				if (protocol == _plaf.x11WM_DELETE_WINDOW) {
+					_plafInputWindowCloseRequest(window);
+				} else if (protocol == _plaf.x11NET_WM_PING) {
 					XEvent reply = *event;
 					reply.xclient.window = _plaf.x11Root;
-
-					_plaf.xlibSendEvent(_plaf.x11Display, _plaf.x11Root,
-							   False,
-							   SubstructureNotifyMask | SubstructureRedirectMask,
-							   &reply);
+					_plaf.xlibSendEvent(_plaf.x11Display, _plaf.x11Root, False,
+						SubstructureNotifyMask | SubstructureRedirectMask, &reply);
 				}
-			}
-			else if (event->xclient.message_type == _plaf.x11DnDEnter)
-			{
-				// A drag operation has entered the window
+			} else if (event->xclient.message_type == _plaf.x11DnDEnter) {
+				if (_plaf.xdndVersion > _PLAF_XDND_VERSION) {
+					return;
+				}
+
 				unsigned long count;
 				Atom* formats = NULL;
-				const bool list = event->xclient.data.l[1] & 1;
-
 				_plaf.xdndSource  = event->xclient.data.l[0];
 				_plaf.xdndVersion = event->xclient.data.l[1] >> 24;
 				_plaf.xdndFormat  = None;
-
-				if (_plaf.xdndVersion > _PLAF_XDND_VERSION)
-					return;
-
-				if (list)
-				{
-					count = _plafGetWindowProperty(_plaf.xdndSource,
-													  _plaf.x11DnDTypeList,
-													  XA_ATOM,
-													  (unsigned char**) &formats);
-				}
-				else
-				{
+				const bool list = event->xclient.data.l[1] & 1;
+				if (list) {
+					count = _plafGetWindowProperty(_plaf.xdndSource, _plaf.x11DnDTypeList, XA_ATOM,
+						(unsigned char**) &formats);
+				} else {
 					count = 3;
 					formats = (Atom*) event->xclient.data.l + 2;
 				}
-
-				for (unsigned int i = 0;  i < count;  i++)
-				{
-					if (formats[i] == _plaf.x11Text_uri_list)
-					{
+				for (unsigned int i = 0;  i < count;  i++) {
+					if (formats[i] == _plaf.x11Text_uri_list) {
 						_plaf.xdndFormat = _plaf.x11Text_uri_list;
 						break;
 					}
 				}
-
-				if (list && formats)
+				if (list && formats) {
 					_plaf.xlibFree(formats);
-			}
-			else if (event->xclient.message_type == _plaf.x11DnDDrop)
-			{
-				// The drag operation has finished by dropping on the window
-				Time time = CurrentTime;
-
-				if (_plaf.xdndVersion > _PLAF_XDND_VERSION)
-					return;
-
-				if (_plaf.xdndFormat)
-				{
-					if (_plaf.xdndVersion >= 1)
-						time = event->xclient.data.l[2];
-
-					// Request the chosen format from the source window
-					_plaf.xlibConvertSelection(_plaf.x11Display,
-									  _plaf.x11DnDSelection,
-									  _plaf.xdndFormat,
-									  _plaf.x11DnDSelection,
-									  window->x11Window,
-									  time);
 				}
-				else if (_plaf.xdndVersion >= 2)
-				{
+			} else if (event->xclient.message_type == _plaf.x11DnDDrop) {
+				if (_plaf.xdndVersion > _PLAF_XDND_VERSION) {
+					return;
+				}
+				Time time = CurrentTime;
+				if (_plaf.xdndFormat) {
+					if (_plaf.xdndVersion >= 1) {
+						time = event->xclient.data.l[2];
+					}
+					_plaf.xlibConvertSelection(_plaf.x11Display, _plaf.x11DnDSelection, _plaf.xdndFormat,
+						_plaf.x11DnDSelection, window->x11Window, time);
+				} else if (_plaf.xdndVersion >= 2) {
 					XEvent reply = { ClientMessage };
 					reply.xclient.window = _plaf.xdndSource;
 					reply.xclient.message_type = _plaf.x11DnDFinished;
@@ -1961,32 +1791,20 @@ static void processEvent(XEvent *event)
 					reply.xclient.data.l[0] = window->x11Window;
 					reply.xclient.data.l[1] = 0; // The drag was rejected
 					reply.xclient.data.l[2] = None;
-
-					_plaf.xlibSendEvent(_plaf.x11Display, _plaf.xdndSource,
-							   False, NoEventMask, &reply);
+					_plaf.xlibSendEvent(_plaf.x11Display, _plaf.xdndSource, False, NoEventMask, &reply);
 					_plaf.xlibFlush(_plaf.x11Display);
 				}
-			}
-			else if (event->xclient.message_type == _plaf.x11DnDPosition)
-			{
-				// The drag operation has moved over the window
+			} else if (event->xclient.message_type == _plaf.x11DnDPosition) {
+				if (_plaf.xdndVersion > _PLAF_XDND_VERSION) {
+					return;
+				}
 				const int xabs = (event->xclient.data.l[2] >> 16) & 0xffff;
 				const int yabs = (event->xclient.data.l[2]) & 0xffff;
-				Window dummy;
 				int xpos, ypos;
-
-				if (_plaf.xdndVersion > _PLAF_XDND_VERSION)
-					return;
-
-				_plaf.xlibTranslateCoordinates(_plaf.x11Display,
-									  _plaf.x11Root,
-									  window->x11Window,
-									  xabs, yabs,
-									  &xpos, &ypos,
-									  &dummy);
-
+				Window dummy;
+				_plaf.xlibTranslateCoordinates(_plaf.x11Display, _plaf.x11Root, window->x11Window, xabs, yabs, &xpos,
+					&ypos, &dummy);
 				_plafInputCursorPos(window, xpos, ypos);
-
 				XEvent reply = { ClientMessage };
 				reply.xclient.window = _plaf.xdndSource;
 				reply.xclient.message_type = _plaf.x11DnDStatus;
@@ -1994,52 +1812,37 @@ static void processEvent(XEvent *event)
 				reply.xclient.data.l[0] = window->x11Window;
 				reply.xclient.data.l[2] = 0; // Specify an empty rectangle
 				reply.xclient.data.l[3] = 0;
-
-				if (_plaf.xdndFormat)
-				{
-					// Reply that we are ready to copy the dragged data
+				if (_plaf.xdndFormat) {
 					reply.xclient.data.l[1] = 1; // Accept with no rectangle
-					if (_plaf.xdndVersion >= 2)
+					if (_plaf.xdndVersion >= 2) {
 						reply.xclient.data.l[4] = _plaf.x11DnDActionCopy;
+					}
 				}
-
-				_plaf.xlibSendEvent(_plaf.x11Display, _plaf.xdndSource,
-						   False, NoEventMask, &reply);
+				_plaf.xlibSendEvent(_plaf.x11Display, _plaf.xdndSource, False, NoEventMask, &reply);
 				_plaf.xlibFlush(_plaf.x11Display);
 			}
-
 			return;
 		}
 
 		case SelectionNotify:
-		{
-			if (event->xselection.property == _plaf.x11DnDSelection)
-			{
+			if (event->xselection.property == _plaf.x11DnDSelection) {
 				// The converted data from the drag operation has arrived
 				char* data;
-				const unsigned long result =
-					_plafGetWindowProperty(event->xselection.requestor,
-											  event->xselection.property,
-											  event->xselection.target,
-											  (unsigned char**) &data);
-
-				if (result)
-				{
+				const unsigned long result = _plafGetWindowProperty(event->xselection.requestor,
+					event->xselection.property, event->xselection.target, (unsigned char**) &data);
+				if (result) {
 					int count;
 					char** paths = _plafParseUriList(data, &count);
-
 					goDropCallback(window, count, paths);
-
-					for (int i = 0;  i < count;  i++)
+					for (int i = 0;  i < count;  i++) {
 						_plaf_free(paths[i]);
+					}
 					_plaf_free(paths);
 				}
-
-				if (data)
+				if (data) {
 					_plaf.xlibFree(data);
-
-				if (_plaf.xdndVersion >= 2)
-				{
+				}
+				if (_plaf.xdndVersion >= 2) {
 					XEvent reply = { ClientMessage };
 					reply.xclient.window = _plaf.xdndSource;
 					reply.xclient.message_type = _plaf.x11DnDFinished;
@@ -2047,56 +1850,37 @@ static void processEvent(XEvent *event)
 					reply.xclient.data.l[0] = window->x11Window;
 					reply.xclient.data.l[1] = result;
 					reply.xclient.data.l[2] = _plaf.x11DnDActionCopy;
-
-					_plaf.xlibSendEvent(_plaf.x11Display, _plaf.xdndSource,
-							   False, NoEventMask, &reply);
+					_plaf.xlibSendEvent(_plaf.x11Display, _plaf.xdndSource, False, NoEventMask, &reply);
 					_plaf.xlibFlush(_plaf.x11Display);
 				}
 			}
-
 			return;
-		}
 
 		case FocusIn:
-		{
-			if (event->xfocus.mode == NotifyGrab ||
-				event->xfocus.mode == NotifyUngrab)
-			{
-				// Ignore focus events from popup indicator windows, window menu
-				// key chords and window dragging
+			if (event->xfocus.mode == NotifyGrab || event->xfocus.mode == NotifyUngrab) {
 				return;
 			}
-
-			if (window->x11IC)
+			if (window->x11IC) {
 				_plaf.xlibSetICFocus(window->x11IC);
-
+			}
 			_plafNotifyOfFocusChange(window, true);
 			return;
-		}
 
 		case FocusOut:
-		{
-			if (event->xfocus.mode == NotifyGrab ||
-				event->xfocus.mode == NotifyUngrab)
-			{
-				// Ignore focus events from popup indicator windows, window menu
-				// key chords and window dragging
+			if (event->xfocus.mode == NotifyGrab || event->xfocus.mode == NotifyUngrab) {
 				return;
 			}
-
-			if (window->x11IC)
+			if (window->x11IC) {
 				_plaf.xlibUnsetICFocus(window->x11IC);
-
+			}
 			_plafNotifyOfFocusChange(window, false);
 			return;
-		}
 
 		case Expose:
 			goWindowDrawCallback(window);
 			return;
 
 		case PropertyNotify:
-		{
 			if (event->xproperty.state != PropertyNewValue) {
 				return;
 			}
@@ -2125,7 +1909,6 @@ static void processEvent(XEvent *event)
 				}
 			}
 			return;
-		}
 
 		case DestroyNotify:
 			return;
@@ -2282,55 +2065,37 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 }
 
 void _plafDestroyWindow(plafWindow* window) {
-	if (window->monitor)
+	if (window->monitor) {
 		releaseMonitor(window);
-
-	if (window->x11IC)
-	{
+	}
+	if (window->x11IC) {
 		_plaf.xlibDestroyIC(window->x11IC);
 		window->x11IC = NULL;
 	}
-
-	if (window->context.destroy)
+	if (window->context.destroy) {
 		window->context.destroy(window);
-
-	if (window->x11Window)
-	{
+	}
+	if (window->x11Window) {
 		_plaf.xlibDeleteContext(_plaf.x11Display, window->x11Window, _plaf.x11Context);
 		_plaf.xlibUnmapWindow(_plaf.x11Display, window->x11Window);
 		_plaf.xlibDestroyWindow(_plaf.x11Display, window->x11Window);
-		window->x11Window = (Window) 0;
+		window->x11Window = (Window)0;
 	}
-
-	if (window->x11Colormap)
-	{
+	if (window->x11Colormap) {
 		_plaf.xlibFreeColormap(_plaf.x11Display, window->x11Colormap);
 		window->x11Colormap = (Colormap) 0;
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
 void _plafSetWindowTitle(plafWindow* window, const char* title) {
-	if (_plaf.xlibUTF8)
-	{
-		_plaf.xlibUTF8SetWMProperties(_plaf.x11Display,
-							 window->x11Window,
-							 title, title,
-							 NULL, 0,
-							 NULL, NULL, NULL);
+	if (_plaf.xlibUTF8) {
+		_plaf.xlibUTF8SetWMProperties(_plaf.x11Display, window->x11Window, title, title, NULL, 0, NULL, NULL, NULL);
 	}
-
-	_plaf.xlibChangeProperty(_plaf.x11Display,  window->x11Window,
-					_plaf.x11NET_WM_NAME, _plaf.x11ClipUTF8_STRING, 8,
-					PropModeReplace,
-					(unsigned char*) title, strlen(title));
-
-	_plaf.xlibChangeProperty(_plaf.x11Display,  window->x11Window,
-					_plaf.x11NET_WM_ICON_NAME, _plaf.x11ClipUTF8_STRING, 8,
-					PropModeReplace,
-					(unsigned char*) title, strlen(title));
-
+	_plaf.xlibChangeProperty(_plaf.x11Display,  window->x11Window, _plaf.x11NET_WM_NAME, _plaf.x11ClipUTF8_STRING, 8,
+		PropModeReplace, (unsigned char*) title, strlen(title));
+	_plaf.xlibChangeProperty(_plaf.x11Display,  window->x11Window, _plaf.x11NET_WM_ICON_NAME, _plaf.x11ClipUTF8_STRING,
+		8, PropModeReplace, (unsigned char*) title, strlen(title));
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
@@ -2361,158 +2126,103 @@ void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* image
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
-void _plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
+void plafGetWindowPos(plafWindow* window, int* xpos, int* ypos) {
 	Window dummy;
-	int x, y;
-
-	_plaf.xlibTranslateCoordinates(_plaf.x11Display, window->x11Window, _plaf.x11Root,
-						  0, 0, &x, &y, &dummy);
-
-	if (xpos)
-		*xpos = x;
-	if (ypos)
-		*ypos = y;
+	_plaf.xlibTranslateCoordinates(_plaf.x11Display, window->x11Window, _plaf.x11Root, 0, 0, xpos, ypos, &dummy);
 }
 
 void _plafSetWindowPos(plafWindow* window, int x, int y) {
-	// HACK: Explicitly setting PPosition to any value causes some WMs, notably
-	//       Compiz and Metacity, to honor the position of unmapped windows
 	if (!plafWindowVisible(window)) {
 		long supplied;
 		XSizeHints* hints = _plaf.xlibAllocSizeHints();
-
-		if (_plaf.xlibGetWMNormalHints(_plaf.x11Display, window->x11Window, hints, &supplied))
-		{
+		if (_plaf.xlibGetWMNormalHints(_plaf.x11Display, window->x11Window, hints, &supplied)) {
 			hints->flags |= PPosition;
 			hints->x = hints->y = 0;
-
 			_plaf.xlibSetWMNormalHints(_plaf.x11Display, window->x11Window, hints);
 		}
-
 		_plaf.xlibFree(hints);
 	}
-
 	_plaf.xlibMoveWindow(_plaf.x11Display, window->x11Window, x, y);
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
-void _plafGetWindowSize(plafWindow* window, int* width, int* height) {
+void plafGetWindowSize(plafWindow* window, int* width, int* height) {
 	XWindowAttributes attribs;
 	_plaf.xlibGetWindowAttributes(_plaf.x11Display, window->x11Window, &attribs);
-
-	if (width)
-		*width = attribs.width;
-	if (height)
-		*height = attribs.height;
+	*width = attribs.width;
+	*height = attribs.height;
 }
 
 void _plafSetWindowSize(plafWindow* window, int width, int height) {
-	if (window->monitor)
-	{
-		if (window->monitor->window == window)
+	if (window->monitor) {
+		if (window->monitor->window == window) {
 			acquireMonitor(window);
-	}
-	else
-	{
-		if (!window->resizable)
+		}
+	} else {
+		if (!window->resizable) {
 			updateNormalHints(window, width, height);
-
+		}
 		_plaf.xlibResizeWindow(_plaf.x11Display, window->x11Window, width, height);
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
 void _plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
 	int width, height;
-	_plafGetWindowSize(window, &width, &height);
+	plafGetWindowSize(window, &width, &height);
 	updateNormalHints(window, width, height);
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
-void _plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
-	_plafGetWindowSize(window, width, height);
+void plafGetFramebufferSize(plafWindow* window, int* width, int* height) {
+	plafGetWindowSize(window, width, height);
 }
 
-void _plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
-	long* extents = NULL;
-
-	if (window->monitor || !window->decorated)
+void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right, int* bottom) {
+	*left = 0;
+	*top = 0;
+	*right = 0;
+	*bottom = 0;
+	if (window->monitor || !window->decorated || _plaf.x11NET_FRAME_EXTENTS == None) {
 		return;
-
-	if (_plaf.x11NET_FRAME_EXTENTS == None)
-		return;
-
+	}
 	if (!plafWindowVisible(window) && _plaf.x11NET_REQUEST_FRAME_EXTENTS) {
+		// Ensure _NET_FRAME_EXTENTS is set, allowing plafGetWindowFrameSize to function before the window is mapped
+		sendEventToWM(window, _plaf.x11NET_REQUEST_FRAME_EXTENTS, 0, 0, 0, 0, 0);
 		XEvent event;
-
-		// Ensure _NET_FRAME_EXTENTS is set, allowing plafGetWindowFrameSize to
-		// function before the window is mapped
-		sendEventToWM(window, _plaf.x11NET_REQUEST_FRAME_EXTENTS,
-					  0, 0, 0, 0, 0);
-
-		// HACK: Use a timeout because earlier versions of some window managers
-		//       (at least Unity, Fluxbox and Xfwm) failed to send the reply
-		//       They have been fixed but broken versions are still in the wild
-		//       If you are affected by this and your window manager is NOT
-		//       listed above, PLEASE report it to their and our issue trackers
-		while (!_plaf.xlibCheckIfEvent(_plaf.x11Display,
-							  &event,
-							  isFrameExtentsEvent,
-							  (XPointer) window))
-		{
-			if (!_plafWaitForX11Event(0.5))
-			{
-				_plafInputError("X11: The window manager has a broken _NET_REQUEST_FRAME_EXTENTS implementation; please report this issue");
+		while (!_plaf.xlibCheckIfEvent(_plaf.x11Display, &event, isFrameExtentsEvent, (XPointer) window)) {
+			if (!_plafWaitForX11Event(0.5)) {
 				return;
 			}
 		}
 	}
-
-	if (_plafGetWindowProperty(window->x11Window,
-								  _plaf.x11NET_FRAME_EXTENTS,
-								  XA_CARDINAL,
-								  (unsigned char**) &extents) == 4)
-	{
-		if (left)
-			*left = extents[0];
-		if (top)
-			*top = extents[2];
-		if (right)
-			*right = extents[1];
-		if (bottom)
-			*bottom = extents[3];
+	long* extents = NULL;
+	if (_plafGetWindowProperty(window->x11Window, _plaf.x11NET_FRAME_EXTENTS, XA_CARDINAL, (unsigned char**) &extents) == 4) {
+		*left = extents[0];
+		*top = extents[2];
+		*right = extents[1];
+		*bottom = extents[3];
 	}
-
-	if (extents)
+	if (extents) {
 		_plaf.xlibFree(extents);
+	}
 }
 
-void _plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
-	if (xscale)
-		*xscale = _plaf.x11ContentScaleX;
-	if (yscale)
-		*yscale = _plaf.x11ContentScaleY;
+void plafGetWindowContentScale(plafWindow* window, float* xscale, float* yscale) {
+	*xscale = _plaf.x11ContentScaleX;
+	*yscale = _plaf.x11ContentScaleY;
 }
 
 void plafMinimizeWindow(plafWindow* window) {
-	if (window->x11OverrideRedirect)
-	{
-		// Override-redirect windows cannot be minimized or restored, as those
-		// tasks are performed by the window manager
-		_plafInputError("X11: Minimization of full screen windows requires a WM that supports EWMH full screen");
+	if (window->x11OverrideRedirect) {
 		return;
 	}
-
 	_plaf.xlibMinimizeWindow(_plaf.x11Display, window->x11Window, _plaf.x11Screen);
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
 void plafRestoreWindow(plafWindow* window) {
 	if (window->x11OverrideRedirect) {
-		// Override-redirect windows cannot be minimized or restored, as those
-		// tasks are performed by the window manager
-		_plafInputError("X11: Minimization of full screen windows requires a WM that supports EWMH full screen");
 		return;
 	}
 	if (plafIsWindowMinimized(window)) {
@@ -2538,9 +2248,6 @@ void _plafMaximizeWindow(plafWindow* window) {
 		Atom* states = NULL;
 		unsigned long count = _plafGetWindowProperty(window->x11Window, _plaf.x11NET_WM_STATE, XA_ATOM,
 			(unsigned char**) &states);
-
-		// NOTE: We don't check for failure as this property may not exist yet
-		//       and that's fine (and we'll create it implicitly with append)
 		Atom missing[2] = {
 			_plaf.x11NET_WM_STATE_MAXIMIZED_VERT,
 			_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ
@@ -2580,14 +2287,10 @@ void _plafHideWindow(plafWindow* window) {
 }
 
 void plafRequestWindowAttention(plafWindow* window) {
-	if (!_plaf.x11NET_WM_STATE || !_plaf.x11NET_WM_STATE_DEMANDS_ATTENTION)
+	if (!_plaf.x11NET_WM_STATE || !_plaf.x11NET_WM_STATE_DEMANDS_ATTENTION) {
 		return;
-
-	sendEventToWM(window,
-				  _plaf.x11NET_WM_STATE,
-				  _NET_WM_STATE_ADD,
-				  _plaf.x11NET_WM_STATE_DEMANDS_ATTENTION,
-				  0, 1, 0);
+	}
+	sendEventToWM(window, _plaf.x11NET_WM_STATE, _NET_WM_STATE_ADD, _plaf.x11NET_WM_STATE_DEMANDS_ATTENTION, 0, 1, 0);
 }
 
 void plafFocusWindow(plafWindow* window) {
@@ -2601,60 +2304,44 @@ void plafFocusWindow(plafWindow* window) {
 }
 
 void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
-	if (window->monitor == monitor)
-	{
-		if (monitor)
-		{
-			if (monitor->window == window)
+	if (window->monitor == monitor) {
+		if (monitor) {
+			if (monitor->window == window) {
 				acquireMonitor(window);
-		}
-		else
-		{
-			if (!window->resizable)
+			}
+		} else {
+			if (!window->resizable) {
 				updateNormalHints(window, width, height);
-
-			_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window,
-							  xpos, ypos, width, height);
+			}
+			_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window, xpos, ypos, width, height);
 		}
-
 		_plaf.xlibFlush(_plaf.x11Display);
 		return;
 	}
-
-	if (window->monitor)
-	{
+	if (window->monitor) {
 		_plafSetWindowDecorated(window, window->decorated);
 		_plafSetWindowFloating(window, window->floating);
 		releaseMonitor(window);
 	}
 	window->monitor = monitor;
 	updateNormalHints(window, width, height);
-
-	if (window->monitor)
-	{
-		if (!plafWindowVisible(window))
-		{
+	if (window->monitor) {
+		if (!plafWindowVisible(window)) {
 			_plaf.xlibMapRaised(_plaf.x11Display, window->x11Window);
 			waitForVisibilityNotify(window);
 		}
-
 		updateWindowMode(window);
 		acquireMonitor(window);
-	}
-	else
-	{
+	} else {
 		updateWindowMode(window);
-		_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window,
-						  xpos, ypos, width, height);
+		_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window, xpos, ypos, width, height);
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
 bool plafIsWindowFocused(plafWindow* window) {
 	Window focused;
 	int state;
-
 	_plaf.xlibGetInputFocus(_plaf.x11Display, &focused, &state);
 	return window->x11Window == focused;
 }
@@ -2670,35 +2357,22 @@ bool plafWindowVisible(plafWindow* window) {
 }
 
 bool plafIsWindowMaximized(plafWindow* window) {
-	Atom* states;
-	bool maximized = false;
-
-	if (!_plaf.x11NET_WM_STATE ||
-		!_plaf.x11NET_WM_STATE_MAXIMIZED_VERT ||
-		!_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ)
-	{
-		return maximized;
+	if (!_plaf.x11NET_WM_STATE || !_plaf.x11NET_WM_STATE_MAXIMIZED_VERT || !_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ) {
+		return false;
 	}
-
-	const unsigned long count =
-		_plafGetWindowProperty(window->x11Window,
-								  _plaf.x11NET_WM_STATE,
-								  XA_ATOM,
-								  (unsigned char**) &states);
-
-	for (unsigned long i = 0;  i < count;  i++)
-	{
-		if (states[i] == _plaf.x11NET_WM_STATE_MAXIMIZED_VERT ||
-			states[i] == _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ)
-		{
+	Atom* states;
+	const unsigned long count = _plafGetWindowProperty(window->x11Window, _plaf.x11NET_WM_STATE, XA_ATOM,
+		(unsigned char**) &states);
+	bool maximized = false;
+	for (unsigned long i = 0;  i < count;  i++) {
+		if (states[i] == _plaf.x11NET_WM_STATE_MAXIMIZED_VERT || states[i] == _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ) {
 			maximized = true;
 			break;
 		}
 	}
-
-	if (states)
+	if (states) {
 		_plaf.xlibFree(states);
-
+	}
 	return maximized;
 }
 
@@ -2711,7 +2385,7 @@ bool plafIsFramebufferTransparent(plafWindow* window) {
 
 void _plafSetWindowResizable(plafWindow* window, bool enabled) {
 	int width, height;
-	_plafGetWindowSize(window, &width, &height);
+	plafGetWindowSize(window, &width, &height);
 	updateNormalHints(window, width, height);
 }
 
@@ -2819,44 +2493,33 @@ void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 
 float plafGetWindowOpacity(plafWindow* window) {
 	float opacity = 1.f;
-
-	if (_plaf.xlibGetSelectionOwner(_plaf.x11Display, _plaf.x11NET_WM_CM_Sx))
-	{
+	if (_plaf.xlibGetSelectionOwner(_plaf.x11Display, _plaf.x11NET_WM_CM_Sx)) {
 		CARD32* value = NULL;
-
-		if (_plafGetWindowProperty(window->x11Window,
-									  _plaf.x11NET_WM_WINDOW_OPACITY,
-									  XA_CARDINAL,
-									  (unsigned char**) &value))
-		{
+		if (_plafGetWindowProperty(window->x11Window, _plaf.x11NET_WM_WINDOW_OPACITY, XA_CARDINAL,
+			(unsigned char**) &value)) {
 			opacity = (float) (*value / (double) 0xffffffffu);
 		}
-
-		if (value)
+		if (value) {
 			_plaf.xlibFree(value);
+		}
 	}
-
 	return opacity;
 }
 
-void _plafSetWindowOpacity(plafWindow* window, float opacity) {
-	const CARD32 value = (CARD32) (0xffffffffu * (double) opacity);
-	_plaf.xlibChangeProperty(_plaf.x11Display, window->x11Window,
-					_plaf.x11NET_WM_WINDOW_OPACITY, XA_CARDINAL, 32,
-					PropModeReplace, (unsigned char*) &value, 1);
+void plafSetWindowOpacity(plafWindow* window, float opacity) {
+	const CARD32 value = (CARD32)(0xffffffffu * (double) opacity);
+	_plaf.xlibChangeProperty(_plaf.x11Display, window->x11Window, _plaf.x11NET_WM_WINDOW_OPACITY, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char*) &value, 1);
 }
 
 void plafPollEvents(void) {
 	drainEmptyEvents();
 	_plaf.xlibPending(_plaf.x11Display);
-
-	while (QLength(_plaf.x11Display))
-	{
+	while (QLength(_plaf.x11Display)) {
 		XEvent event;
 		_plaf.xlibNextEvent(_plaf.x11Display, &event);
 		processEvent(&event);
 	}
-
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
@@ -2865,13 +2528,19 @@ void plafWaitEvents(void) {
 	plafPollEvents();
 }
 
-void _plafWaitEventsTimeout(double timeout) {
+void plafWaitEventsTimeout(double timeout) {
 	waitForAnyEvent(timeout);
 	plafPollEvents();
 }
 
 void plafPostEmptyEvent(void) {
-	writeEmptyEvent();
+	for (;;) {
+		const char byte = 0;
+		const ssize_t result = write(_plaf.x11EmptyEventPipe[1], &byte, 1);
+		if (result == 1 || (result == -1 && errno != EINTR)) {
+			break;
+		}
+	}
 }
 
 void _plafUpdateCursor(plafWindow* window) {

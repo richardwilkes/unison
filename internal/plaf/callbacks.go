@@ -4,9 +4,6 @@ package plaf
 import "C"
 
 import (
-	"errors"
-	"fmt"
-	"os"
 	"unsafe"
 )
 
@@ -40,18 +37,6 @@ func goDropCallback(window *C.plafWindow, count C.int, data **C.char) {
 			dataSlice[i] = C.GoString(list[i])
 		}
 		w.DropCallback(w, dataSlice)
-	}
-}
-
-//export goErrorCallback
-func goErrorCallback(desc *C.char) {
-	err := errors.New(C.GoString(desc))
-	flushErrors()
-	select {
-	case lastError <- err:
-	default:
-		fmt.Fprintln(os.Stderr, "go-gl/plaf: internal error: an uncaught error has occurred:", err)
-		fmt.Fprintln(os.Stderr, "go-gl/plaf: Please report this in the Go package issue tracker.")
 	}
 }
 
