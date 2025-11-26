@@ -625,10 +625,8 @@ struct plafMonitor {
 	int               x11Index;
 #elif defined(_WIN32)
 	HMONITOR          win32Handle;
-	WCHAR             win32AdapterName[32];
-	WCHAR             win32DisplayName[32];
-	char              win32PublicAdapterName[32];
-	char              win32PublicDisplayName[32];
+	WCHAR             win32Adapter[32];
+	WCHAR             win32Display[32];
 	bool              win32ModesPruned;
 	bool              win32ModeChanged;
 #endif

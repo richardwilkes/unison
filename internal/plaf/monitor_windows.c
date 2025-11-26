@@ -13,7 +13,7 @@ static BOOL CALLBACK monitorCallback(HMONITOR handle, HDC dc, RECT* rect, LPARAM
 	mi.cbSize = sizeof(mi);
 	if (GetMonitorInfoW(handle, (MONITORINFO*) &mi)) {
 		plafMonitor* monitor = (plafMonitor*) data;
-		if (wcscmp(mi.szDevice, monitor->win32AdapterName) == 0) {
+		if (wcscmp(mi.szDevice, monitor->win32Adapter) == 0) {
 			monitor->win32Handle = handle;
 		}
 	}
@@ -52,21 +52,11 @@ static plafMonitor* createMonitor(DISPLAY_DEVICEW* adapter, DISPLAY_DEVICEW* dis
 	if (adapter->StateFlags & DISPLAY_DEVICE_MODESPRUNED)
 		monitor->win32ModesPruned = true;
 
-	wcscpy(monitor->win32AdapterName, adapter->DeviceName);
-	WideCharToMultiByte(CP_UTF8, 0,
-						adapter->DeviceName, -1,
-						monitor->win32PublicAdapterName,
-						sizeof(monitor->win32PublicAdapterName),
-						NULL, NULL);
+	wcscpy(monitor->win32Adapter, adapter->DeviceName);
 
 	if (display)
 	{
-		wcscpy(monitor->win32DisplayName, display->DeviceName);
-		WideCharToMultiByte(CP_UTF8, 0,
-							display->DeviceName, -1,
-							monitor->win32PublicDisplayName,
-							sizeof(monitor->win32PublicDisplayName),
-							NULL, NULL);
+		wcscpy(monitor->win32Display, display->DeviceName);
 	}
 
 	rect.left   = dm.dmPosition.x;
@@ -118,7 +108,7 @@ void _plafPollMonitors(void) {
 				continue;
 			}
 			for (i = 0; i < disconnectedCount; i++) {
-				if (disconnected[i] && wcscmp(disconnected[i]->win32DisplayName, display.DeviceName) == 0) {
+				if (disconnected[i] && wcscmp(disconnected[i]->win32Display, display.DeviceName) == 0) {
 					disconnected[i] = NULL;
 					EnumDisplayMonitors(NULL, NULL, monitorCallback, (LPARAM)_plaf.monitors[i]);
 					break;
@@ -137,7 +127,7 @@ void _plafPollMonitors(void) {
 		}
 		if (displayIndex == 0) {
 			for (i = 0; i < disconnectedCount; i++) {
-				if (disconnected[i] && wcscmp(disconnected[i]->win32AdapterName, adapter.DeviceName) == 0) {
+				if (disconnected[i] && wcscmp(disconnected[i]->win32Adapter, adapter.DeviceName) == 0) {
 					disconnected[i] = NULL;
 					break;
 				}
@@ -179,7 +169,7 @@ void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
 	if (dm.dmBitsPerPel < 15 || dm.dmBitsPerPel >= 24) {
 		dm.dmBitsPerPel = 32;
 	}
-	if (ChangeDisplaySettingsExW(monitor->win32AdapterName, &dm, NULL, CDS_FULLSCREEN, NULL) == DISP_CHANGE_SUCCESSFUL) {
+	if (ChangeDisplaySettingsExW(monitor->win32Adapter, &dm, NULL, CDS_FULLSCREEN, NULL) == DISP_CHANGE_SUCCESSFUL) {
 		monitor->win32ModeChanged = true;
 	}
 }
@@ -190,7 +180,7 @@ void _plafRestoreVideoMode(plafMonitor* monitor)
 {
 	if (monitor->win32ModeChanged)
 	{
-		ChangeDisplaySettingsExW(monitor->win32AdapterName,
+		ChangeDisplaySettingsExW(monitor->win32Adapter,
 								 NULL, NULL, CDS_FULLSCREEN, NULL);
 		monitor->win32ModeChanged = false;
 	}
@@ -219,7 +209,7 @@ void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos) {
 	DEVMODEW dm;
 	ZeroMemory(&dm, sizeof(dm));
 	dm.dmSize = sizeof(dm);
-	EnumDisplaySettingsExW(monitor->win32AdapterName, ENUM_CURRENT_SETTINGS, &dm, EDS_ROTATEDMODE);
+	EnumDisplaySettingsExW(monitor->win32Adapter, ENUM_CURRENT_SETTINGS, &dm, EDS_ROTATEDMODE);
 	*xpos = dm.dmPosition.x;
 	*ypos = dm.dmPosition.y;
 }
@@ -245,7 +235,7 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 		DEVMODEW dm;
 		ZeroMemory(&dm, sizeof(dm));
 		dm.dmSize = sizeof(dm);
-		if (!EnumDisplaySettingsW(monitor->win32AdapterName, modeIndex, &dm)) {
+		if (!EnumDisplaySettingsW(monitor->win32Adapter, modeIndex, &dm)) {
 			break;
 		}
 		modeIndex++;
@@ -270,7 +260,7 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 		}
 		if (monitor->win32ModesPruned) {
 			// Skip modes not supported by the connected displays
-			if (ChangeDisplaySettingsExW(monitor->win32AdapterName, &dm, NULL, CDS_TEST, NULL) != DISP_CHANGE_SUCCESSFUL) {
+			if (ChangeDisplaySettingsExW(monitor->win32Adapter, &dm, NULL, CDS_TEST, NULL) != DISP_CHANGE_SUCCESSFUL) {
 				continue;
 			}
 		}
@@ -299,7 +289,7 @@ bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	DEVMODEW dm;
 	ZeroMemory(&dm, sizeof(dm));
 	dm.dmSize = sizeof(dm);
-	if (!EnumDisplaySettingsW(monitor->win32AdapterName, ENUM_CURRENT_SETTINGS, &dm)) {
+	if (!EnumDisplaySettingsW(monitor->win32Adapter, ENUM_CURRENT_SETTINGS, &dm)) {
 		return false;
 	}
 	mode->width  = dm.dmPelsWidth;
@@ -311,7 +301,7 @@ bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 
 bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
 	HDC dc;
-	dc = CreateDCW(L"DISPLAY", monitor->win32AdapterName, NULL, NULL);
+	dc = CreateDCW(L"DISPLAY", monitor->win32Adapter, NULL, NULL);
 	WORD values[3][256];
 	GetDeviceGammaRamp(dc, values);
 	DeleteDC(dc);
@@ -330,7 +320,7 @@ void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
 	memcpy(values[0], ramp->red,   sizeof(values[0]));
 	memcpy(values[1], ramp->green, sizeof(values[1]));
 	memcpy(values[2], ramp->blue,  sizeof(values[2]));
-	HDC dc = CreateDCW(L"DISPLAY", monitor->win32AdapterName, NULL, NULL);
+	HDC dc = CreateDCW(L"DISPLAY", monitor->win32Adapter, NULL, NULL);
 	SetDeviceGammaRamp(dc, values);
 	DeleteDC(dc);
 }
