@@ -14,7 +14,7 @@ void plafTerminate(void) {
 		while (_plaf.cursorListHead) {
 			plafDestroyCursor(_plaf.cursorListHead);
 		}
-		for (int i = 0;  i < _plaf.monitorCount;  i++) {
+		for (int i = 0; i < _plaf.monitorCount; i++) {
 			plafMonitor* monitor = _plaf.monitors[i];
 			if (monitor->originalRamp.size) {
 				_plafSetGammaRamp(monitor, &monitor->originalRamp);

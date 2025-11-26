@@ -184,7 +184,7 @@ static void createKeyTables(void)
 	_plaf.keyCodes[0x037] = KEY_KP_MULTIPLY;
 	_plaf.keyCodes[0x04A] = KEY_KP_SUBTRACT;
 
-	for (int scanCode = 0;  scanCode < MAX_KEY_CODES;  scanCode++) {
+	for (int scanCode = 0; scanCode < MAX_KEY_CODES; scanCode++) {
 		if (_plaf.keyCodes[scanCode] > 0)
 			_plaf.scanCodes[_plaf.keyCodes[scanCode]] = scanCode;
 	}

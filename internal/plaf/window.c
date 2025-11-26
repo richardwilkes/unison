@@ -4,12 +4,12 @@
 void _plafNotifyOfFocusChange(plafWindow* window, bool focused) {
 	goWindowFocusCallback(window, focused);
 	if (!focused) {
-		for (int key = 0;  key <= KEY_LAST;  key++) {
+		for (int key = 0; key <= KEY_LAST; key++) {
 			if (window->keys[key] == INPUT_PRESS) {
 				_plafInputKey(window, key, _plaf.scanCodes[key], INPUT_RELEASE, 0);
 			}
 		}
-		for (int button = 0;  button <= MOUSE_BUTTON_LAST;  button++) {
+		for (int button = 0; button <= MOUSE_BUTTON_LAST; button++) {
 			if (window->mouseButtons[button] == INPUT_PRESS) {
 				_plafInputMouseClick(window, button, INPUT_RELEASE, 0);
 			}

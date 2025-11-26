@@ -438,11 +438,6 @@ extern "C" {
 #define CONNECTED    0x00040001
 #define DISCONNECTED 0x00040002
 
-// Window attributes and/or hints
-#define WINDOW_HINT_POSITION_X                     0x0002000E
-#define WINDOW_HINT_POSITION_Y                     0x0002000F
-#define WINDOW_HINT_REFRESH_RATE                   0x0002100F
-
 // Standard cursor IDs
 #define STD_CURSOR_ARROW             0x00036001
 #define STD_CURSOR_IBEAM             0x00036002
@@ -450,8 +445,6 @@ extern "C" {
 #define STD_CURSOR_POINTING_HAND     0x00036004
 #define STD_CURSOR_HORIZONTAL_RESIZE 0x00036005
 #define STD_CURSOR_VERTICAL_RESIZE   0x00036006
-
-#define ANY_POSITION 0x80000000
 
 #define DONT_CARE    -1
 
@@ -496,9 +489,6 @@ typedef struct plafWindowConfig {
 } plafWindowConfig;
 
 /* ------------------------- Internal ----------------------- */
-
-#define MONITOR_INSERT_FIRST      0
-#define MONITOR_INSERT_LAST       1
 
 typedef void (*moduleFunc)(void);
 
@@ -1082,7 +1072,7 @@ void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
 const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
 int _plafCompareVideoModes(const plafVideoMode* first, const plafVideoMode* second);
 void _plafSplitBPP(int bpp, int* red, int* green, int* blue);
-void _plafMonitorNotify(plafMonitor* monitor, int action, int placement);
+void _plafMonitorNotify(plafMonitor* monitor, bool connected, bool insertFirst);
 void _plafPollMonitors(void);
 void _plafRestoreVideoMode(plafMonitor* monitor);
 #if defined(_WIN32)

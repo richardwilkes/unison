@@ -65,7 +65,7 @@ static const plafImageData* chooseImage(int count, const plafImageData* images,
 	int i, leastDiff = INT_MAX;
 	const plafImageData* closest = NULL;
 
-	for (i = 0;  i < count;  i++)
+	for (i = 0; i < count; i++)
 	{
 		const int currDiff = abs(images[i].width * images[i].height -
 								 width * height);
@@ -107,7 +107,7 @@ static HICON createIcon(const plafImageData* image, int xhot, int yhot, bool ico
 		return NULL;
 	}
 	unsigned char* source = image->pixels;
-	for (int i = 0;  i < image->width * image->height;  i++) {
+	for (int i = 0; i < image->width * image->height; i++) {
 		target[0] = source[2];
 		target[1] = source[1];
 		target[2] = source[0];
@@ -483,7 +483,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				action = INPUT_RELEASE;
 			}
 			int i;
-			for (i = 0;  i <= MOUSE_BUTTON_LAST;  i++) {
+			for (i = 0; i <= MOUSE_BUTTON_LAST; i++) {
 				if (window->mouseButtons[i] == INPUT_PRESS) {
 					break;
 				}
@@ -492,7 +492,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				SetCapture(hWnd);
 			}
 			_plafInputMouseClick(window, button, action, getKeyMods());
-			for (i = 0;  i <= MOUSE_BUTTON_LAST;  i++) { // TODO: Can this second loop be eliminated?
+			for (i = 0; i <= MOUSE_BUTTON_LAST; i++) { // TODO: Can this second loop be eliminated?
 				if (window->mouseButtons[i] == INPUT_PRESS) {
 					break;
 				}
@@ -707,7 +707,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			DragQueryPoint(drop, &pt);
 			_plafInputCursorPos(window, pt.x, pt.y);
 
-			for (i = 0;  i < count;  i++)
+			for (i = 0; i < count; i++)
 			{
 				const UINT length = DragQueryFileW(drop, i, NULL, 0);
 				WCHAR* buffer = _plaf_calloc((size_t) length + 1, sizeof(WCHAR));
@@ -720,7 +720,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 			goDropCallback(window, count, paths);
 
-			for (i = 0;  i < count;  i++)
+			for (i = 0; i < count; i++)
 				_plaf_free(paths[i]);
 			_plaf_free(paths);
 

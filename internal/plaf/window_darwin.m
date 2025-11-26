@@ -391,11 +391,11 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	int count = [urls count];
 	if (count) {
 		char** paths = _plaf_calloc(count, sizeof(char*));
-		for (int i = 0;  i < count;  i++) {
+		for (int i = 0; i < count; i++) {
 			paths[i] = _plaf_strdup([urls[i] fileSystemRepresentation]);
 		}
 		goDropCallback(window, count, paths);
-		for (NSUInteger i = 0;  i < count;  i++) {
+		for (NSUInteger i = 0; i < count; i++) {
 			_plaf_free(paths[i]);
 		}
 		_plaf_free(paths);

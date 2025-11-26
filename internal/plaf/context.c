@@ -15,7 +15,7 @@ const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
 	int leastExtraDiff = INT_MAX;
 	const plafFrameBufferCfg* closest = NULL;
 
-	for (unsigned int i = 0;  i < count;  i++) {
+	for (unsigned int i = 0; i < count; i++) {
 		const plafFrameBufferCfg* current = alternatives + i;
 
 		// Count number of missing buffers

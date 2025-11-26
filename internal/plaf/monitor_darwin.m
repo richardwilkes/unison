@@ -86,83 +86,61 @@ static void endFadeReservation(CGDisplayFadeReservationToken token)
 //////////////////////////////////////////////////////////////////////////
 
 // Poll for changes in the set of connected monitors
-//
-void _plafPollMonitors(void)
-{
+void _plafPollMonitors(void) {
 	uint32_t displayCount;
 	CGGetOnlineDisplayList(0, NULL, &displayCount);
 	CGDirectDisplayID* displays = _plaf_calloc(displayCount, sizeof(CGDirectDisplayID));
 	CGGetOnlineDisplayList(displayCount, displays, &displayCount);
-
-	for (int i = 0;  i < _plaf.monitorCount;  i++)
+	for (int i = 0; i < _plaf.monitorCount; i++) {
 		_plaf.monitors[i]->nsScreen = nil;
-
+	}
 	plafMonitor** disconnected = NULL;
 	uint32_t disconnectedCount = _plaf.monitorCount;
-	if (disconnectedCount)
-	{
+	if (disconnectedCount) {
 		disconnected = _plaf_calloc(_plaf.monitorCount, sizeof(plafMonitor*));
-		memcpy(disconnected,
-			   _plaf.monitors,
-			   _plaf.monitorCount * sizeof(plafMonitor*));
+		memcpy(disconnected, _plaf.monitors, _plaf.monitorCount * sizeof(plafMonitor*));
 	}
-
-	for (uint32_t i = 0;  i < displayCount;  i++)
-	{
-		if (CGDisplayIsAsleep(displays[i]))
+	for (uint32_t i = 0; i < displayCount; i++) {
+		if (CGDisplayIsAsleep(displays[i])) {
 			continue;
-
+		}
+		// For machines that have automatic graphics switching, we need to compare unit numbers instead of display IDs
 		const uint32_t unitNumber = CGDisplayUnitNumber(displays[i]);
 		NSScreen* screen = nil;
-
-		for (screen in [NSScreen screens])
-		{
+		for (screen in [NSScreen screens]) {
 			NSNumber* screenNumber = [screen deviceDescription][@"NSScreenNumber"];
-
-			// HACK: Compare unit numbers instead of display IDs to work around
-			//       display replacement on machines with automatic graphics
-			//       switching
-			if (CGDisplayUnitNumber([screenNumber unsignedIntValue]) == unitNumber)
+			if (CGDisplayUnitNumber([screenNumber unsignedIntValue]) == unitNumber) {
 				break;
+			}
 		}
-
-		// HACK: Compare unit numbers instead of display IDs to work around
-		//       display replacement on machines with automatic graphics
-		//       switching
 		uint32_t j;
-		for (j = 0;  j < disconnectedCount;  j++)
-		{
-			if (disconnected[j] && disconnected[j]->nsUnitNumber == unitNumber)
-			{
+		for (j = 0; j < disconnectedCount; j++) {
+			if (disconnected[j] && disconnected[j]->nsUnitNumber == unitNumber) {
 				disconnected[j]->nsScreen = screen;
 				disconnected[j] = NULL;
 				break;
 			}
 		}
-
-		if (j < disconnectedCount)
+		if (j < disconnectedCount) {
 			continue;
-
+		}
 		const CGSize size = CGDisplayScreenSize(displays[i]);
 		char* name = getMonitorName(displays[i], screen);
-		if (!name)
+		if (!name) {
 			continue;
-
-		plafMonitor* monitor = _plafAllocMonitor(name, size.width, size.height);
+		}
+		plafMonitor* monitor  = _plafAllocMonitor(name, size.width, size.height);
 		monitor->nsDisplayID  = displays[i];
 		monitor->nsUnitNumber = unitNumber;
 		monitor->nsScreen     = screen;
-
 		_plaf_free(name);
-		_plafMonitorNotify(monitor, CONNECTED, MONITOR_INSERT_LAST);
+		_plafMonitorNotify(monitor, true, false);
 	}
-
-	for (uint32_t i = 0;  i < disconnectedCount;  i++)
-	{
-		if (disconnected[i])
-			_plafMonitorNotify(disconnected[i], DISCONNECTED, 0);
+	for (uint32_t i = 0; i < disconnectedCount; i++) {
+		if (disconnected[i]) {
+			_plafMonitorNotify(disconnected[i], false, false);
+		}
 	}
-
 	_plaf_free(disconnected);
 	_plaf_free(displays);
 }
@@ -177,7 +155,7 @@ void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
 	CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->nsDisplayID, NULL);
 	const CFIndex count = CFArrayGetCount(modes);
 	CGDisplayModeRef native = NULL;
-	for (CFIndex i = 0;  i < count;  i++) {
+	for (CFIndex i = 0; i < count; i++) {
 		CGDisplayModeRef dm = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
 		if (!modeIsGood(dm)) {
 			continue;
@@ -260,14 +238,14 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 		CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->nsDisplayID, NULL);
 		const CFIndex found = CFArrayGetCount(modes);
 		plafVideoMode* result = _plaf_calloc(found, sizeof(plafVideoMode));
-		for (CFIndex i = 0;  i < found;  i++) {
+		for (CFIndex i = 0; i < found; i++) {
 			CGDisplayModeRef dm = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
 			if (!modeIsGood(dm)) {
 				continue;
 			}
 			const plafVideoMode mode = vidmodeFromCGDisplayMode(dm);
 			CFIndex j;
-			for (j = 0;  j < *count;  j++) {
+			for (j = 0; j < *count; j++) {
 				if (_plafCompareVideoModes(result + j, &mode) == 0) {
 					break;
 				}
@@ -315,7 +293,7 @@ bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
 void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
 	@autoreleasepool {
 		CGGammaValue* values = _plaf_calloc(ramp->size * 3, sizeof(CGGammaValue));
-		for (unsigned int i = 0;  i < ramp->size;  i++) {
+		for (unsigned int i = 0; i < ramp->size; i++) {
 			values[i]                  = ramp->red[i] / 65535.f;
 			values[i + ramp->size]     = ramp->green[i] / 65535.f;
 			values[i + ramp->size * 2] = ramp->blue[i] / 65535.f;

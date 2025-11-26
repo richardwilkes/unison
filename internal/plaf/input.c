@@ -133,7 +133,7 @@ void plafDestroyCursor(plafCursor* cursor) {
 		return;
 	}
 	plafWindow* window;
-	for (window = _plaf.windowListHead;  window;  window = window->next) {
+	for (window = _plaf.windowListHead; window; window = window->next) {
 		if (window->cursor == cursor) {
 			plafSetCursor(window, NULL);
 		}

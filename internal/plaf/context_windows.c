@@ -33,7 +33,7 @@
 
 // Return the value corresponding to the specified attribute
 static int findPixelFormatAttribValueWGL(const int* attribs, int attribCount, const int* values, int attrib) {
-	for (int i = 0;  i < attribCount;  i++) {
+	for (int i = 0; i < attribCount; i++) {
 		if (attribs[i] == attrib) {
 			return values[i];
 		}
@@ -82,7 +82,7 @@ static int choosePixelFormatWGL(plafWindow* window, const plafFrameBufferCfg* fb
 
 	int usableCount = 0;
 	plafFrameBufferCfg* usableConfigs = _plaf_calloc(nativeCount, sizeof(plafFrameBufferCfg));
-	for (int pixFmt = 1;  pixFmt <= nativeCount;  pixFmt++) {
+	for (int pixFmt = 1; pixFmt <= nativeCount; pixFmt++) {
 		plafFrameBufferCfg* u = usableConfigs + usableCount;
 		if (_plaf.wglARB_pixel_format) {
 			int values[sizeof(attribs) / sizeof(attribs[0])];

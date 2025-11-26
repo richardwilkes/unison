@@ -124,7 +124,7 @@ static void createKeyTables(void) {
 	_plaf.keyCodes[0x43] = KEY_KP_MULTIPLY;
 	_plaf.keyCodes[0x4E] = KEY_KP_SUBTRACT;
 
-	for (int scancode = 0;  scancode < MAX_KEY_CODES;  scancode++) {
+	for (int scancode = 0; scancode < MAX_KEY_CODES; scancode++) {
 		// Store the reverse translation for faster key name lookup
 		if (_plaf.keyCodes[scancode] >= 0) {
 			_plaf.scanCodes[_plaf.keyCodes[scancode]] = scancode;
@@ -138,14 +138,14 @@ static void createKeyTables(void) {
 @implementation PLAFApplicationDelegate
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
-	for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
+	for (plafWindow* window = _plaf.windowListHead; window; window = window->next) {
 		_plafInputWindowCloseRequest(window);
 	}
 	return NSTerminateCancel;
 }
 
 - (void)applicationDidChangeScreenParameters:(NSNotification *) notification {
-	for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
+	for (plafWindow* window = _plaf.windowListHead; window; window = window->next) {
 		[window->context.nsglCtx update];
 	}
 	_plafPollMonitors();
@@ -160,7 +160,7 @@ static void createKeyTables(void) {
 }
 
 - (void)applicationDidHide:(NSNotification *)notification {
-	for (int i = 0;  i < _plaf.monitorCount;  i++) {
+	for (int i = 0; i < _plaf.monitorCount; i++) {
 		_plafRestoreVideoMode(_plaf.monitors[i]);
 	}
 }

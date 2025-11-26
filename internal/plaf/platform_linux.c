@@ -327,7 +327,7 @@ static void createKeyTables(void)
 		};
 
 		// Find the X11 key code -> PLAF key code mapping
-		for (int scancode = scancodeMin;  scancode <= scancodeMax;  scancode++)
+		for (int scancode = scancodeMin; scancode <= scancodeMax; scancode++)
 		{
 			int key = KEY_UNKNOWN;
 
@@ -335,7 +335,7 @@ static void createKeyTables(void)
 			// keyboard layout. Because function keys aren't mapped correctly
 			// when using traditional KeySym translations, they are mapped
 			// here instead.
-			for (int i = 0;  i < sizeof(keymap) / sizeof(keymap[0]);  i++)
+			for (int i = 0; i < sizeof(keymap) / sizeof(keymap[0]); i++)
 			{
 				if (strncmp(desc->names->keys[scancode].name,
 							keymap[i].name,
@@ -347,7 +347,7 @@ static void createKeyTables(void)
 			}
 
 			// Fall back to key aliases in case the key name did not match
-			for (int i = 0;  i < desc->names->num_key_aliases;  i++)
+			for (int i = 0; i < desc->names->num_key_aliases; i++)
 			{
 				if (key != KEY_UNKNOWN)
 					break;
@@ -359,7 +359,7 @@ static void createKeyTables(void)
 					continue;
 				}
 
-				for (int j = 0;  j < sizeof(keymap) / sizeof(keymap[0]);  j++)
+				for (int j = 0; j < sizeof(keymap) / sizeof(keymap[0]); j++)
 				{
 					if (strncmp(desc->names->key_aliases[i].alias,
 								keymap[j].name,
@@ -386,7 +386,7 @@ static void createKeyTables(void)
 										  scancodeMax - scancodeMin + 1,
 										  &width);
 
-	for (int scancode = scancodeMin;  scancode <= scancodeMax;  scancode++)
+	for (int scancode = scancodeMin; scancode <= scancodeMax; scancode++)
 	{
 		// Translate the un-translated key codes using traditional X11 KeySym
 		// lookups
@@ -413,7 +413,7 @@ static bool hasUsableInputMethodStyle(void) {
 	if (_plaf.xlibGetIMValues(_plaf.x11IM, XNQueryInputStyle, &styles, NULL) != NULL)
 		return false;
 
-	for (unsigned int i = 0;  i < styles->count_styles;  i++)
+	for (unsigned int i = 0; i < styles->count_styles; i++)
 	{
 		if (styles->supported_styles[i] == (XIMPreeditNothing | XIMStatusNothing))
 		{
@@ -455,7 +455,7 @@ static void inputMethodInstantiateCallback(Display* display,
 		callback.client_data = NULL;
 		_plaf.xlibSetIMValues(_plaf.x11IM, XNDestroyCallback, &callback, NULL);
 
-		for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next)
+		for (plafWindow* window = _plaf.windowListHead; window; window = window->next)
 			_plafCreateInputContext(window);
 	}
 }
@@ -468,7 +468,7 @@ static Atom getAtomIfSupported(Atom* supportedAtoms,
 {
 	const Atom atom = _plaf.xlibInternAtom(_plaf.x11Display, atomName, False);
 
-	for (unsigned long i = 0;  i < atomCount;  i++)
+	for (unsigned long i = 0; i < atomCount; i++)
 	{
 		if (supportedAtoms[i] == atom)
 			return atom;
@@ -957,7 +957,7 @@ Cursor _plafCreateNativeCursorX11(const plafImageData* image, int xhot, int yhot
 	img->yhot = yhot;
 	unsigned char* source = (unsigned char*)image->pixels;
 	XcursorPixel* target = img->pixels;
-	for (int i = 0;  i < image->width * image->height;  i++, target++, source += 4) {
+	for (int i = 0; i < image->width * image->height; i++, target++, source += 4) {
 		unsigned int alpha = source[3];
 		*target = (alpha << 24) |
 				  ((unsigned char) ((source[0] * alpha) / 255) << 16) |

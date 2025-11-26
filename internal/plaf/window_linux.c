@@ -1350,11 +1350,11 @@ static Atom writeTargetToProperty(const XSelectionRequestEvent* request)
 									  _plaf.x11ClipATOM_PAIR,
 									  (unsigned char**) &targets);
 
-		for (unsigned long i = 0;  i < count;  i += 2)
+		for (unsigned long i = 0; i < count; i += 2)
 		{
 			int j;
 
-			for (j = 0;  j < formatCount;  j++)
+			for (j = 0; j < formatCount; j++)
 			{
 				if (targets[i] == formats[j])
 					break;
@@ -1408,7 +1408,7 @@ static Atom writeTargetToProperty(const XSelectionRequestEvent* request)
 
 	// Conversion to a data target was requested
 
-	for (int i = 0;  i < formatCount;  i++)
+	for (int i = 0; i < formatCount; i++)
 	{
 		if (request->target == formats[i])
 		{
@@ -1763,7 +1763,7 @@ static void processEvent(XEvent *event) {
 					count = 3;
 					formats = (Atom*) event->xclient.data.l + 2;
 				}
-				for (unsigned int i = 0;  i < count;  i++) {
+				for (unsigned int i = 0; i < count; i++) {
 					if (formats[i] == _plaf.x11Text_uri_list) {
 						_plaf.xdndFormat = _plaf.x11Text_uri_list;
 						break;
@@ -1834,7 +1834,7 @@ static void processEvent(XEvent *event) {
 					int count;
 					char** paths = _plafParseUriList(data, &count);
 					goDropCallback(window, count, paths);
-					for (int i = 0;  i < count;  i++) {
+					for (int i = 0; i < count; i++) {
 						_plaf_free(paths[i]);
 					}
 					_plaf_free(paths);
@@ -2102,15 +2102,15 @@ void _plafSetWindowTitle(plafWindow* window, const char* title) {
 void plafSetWindowIcon(plafWindow* window, int count, const plafImageData* images) {
 	if (count) {
 		int longCount = 0;
-		for (int i = 0;  i < count;  i++) {
+		for (int i = 0; i < count; i++) {
 			longCount += 2 + images[i].width * images[i].height;
 		}
 		unsigned long* icon = _plaf_calloc(longCount, sizeof(unsigned long));
 		unsigned long* target = icon;
-		for (int i = 0;  i < count;  i++) {
+		for (int i = 0; i < count; i++) {
 			*target++ = images[i].width;
 			*target++ = images[i].height;
-			for (int j = 0;  j < images[i].width * images[i].height;  j++) {
+			for (int j = 0; j < images[i].width * images[i].height; j++) {
 				*target++ = (((unsigned long) images[i].pixels[j * 4 + 0]) << 16) |
 							(((unsigned long) images[i].pixels[j * 4 + 1]) <<  8) |
 							(((unsigned long) images[i].pixels[j * 4 + 2]) <<  0) |
@@ -2253,8 +2253,8 @@ void _plafMaximizeWindow(plafWindow* window) {
 			_plaf.x11NET_WM_STATE_MAXIMIZED_HORZ
 		};
 		unsigned long missingCount = 2;
-		for (unsigned long i = 0;  i < count;  i++) {
-			for (unsigned long j = 0;  j < missingCount;  j++) {
+		for (unsigned long i = 0; i < count; i++) {
+			for (unsigned long j = 0; j < missingCount; j++) {
 				if (states[i] == missing[j]) {
 					missing[j] = missing[missingCount - 1];
 					missingCount--;
@@ -2364,7 +2364,7 @@ bool plafIsWindowMaximized(plafWindow* window) {
 	const unsigned long count = _plafGetWindowProperty(window->x11Window, _plaf.x11NET_WM_STATE, XA_ATOM,
 		(unsigned char**) &states);
 	bool maximized = false;
-	for (unsigned long i = 0;  i < count;  i++) {
+	for (unsigned long i = 0; i < count; i++) {
 		if (states[i] == _plaf.x11NET_WM_STATE_MAXIMIZED_VERT || states[i] == _plaf.x11NET_WM_STATE_MAXIMIZED_HORZ) {
 			maximized = true;
 			break;
@@ -2438,7 +2438,7 @@ void _plafSetWindowFloating(plafWindow* window, bool enabled) {
 		{
 			unsigned long i;
 
-			for (i = 0;  i < count;  i++)
+			for (i = 0; i < count; i++)
 			{
 				if (states[i] == _plaf.x11NET_WM_STATE_ABOVE)
 					break;
@@ -2455,7 +2455,7 @@ void _plafSetWindowFloating(plafWindow* window, bool enabled) {
 		}
 		else if (states)
 		{
-			for (unsigned long i = 0;  i < count;  i++)
+			for (unsigned long i = 0; i < count; i++)
 			{
 				if (states[i] == _plaf.x11NET_WM_STATE_ABOVE)
 				{

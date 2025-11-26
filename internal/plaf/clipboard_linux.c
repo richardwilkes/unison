@@ -15,12 +15,12 @@ static Bool isSelPropNewValueNotify(Display* display, XEvent* event, XPointer po
 static char* convertLatin1toUTF8(const char* src) {
 	size_t size = 1;
 	const char* sp;
-	for (sp = src;  *sp;  sp++) {
+	for (sp = src; *sp; sp++) {
 		size += (*sp & 0x80) ? 2 : 1;
 	}
 	char* target = _plaf_calloc(size, 1);
 	char* tp = target;
-	for (sp = src;  *sp;  sp++) {
+	for (sp = src; *sp; sp++) {
 		tp += _plafEncodeUTF8(tp, *sp);
 	}
 	return target;
@@ -33,7 +33,7 @@ const char* plafGetClipboardString(void) {
 
 		const Atom targets[] = { _plaf.x11ClipUTF8_STRING, XA_STRING };
 		const size_t targetCount = sizeof(targets) / sizeof(targets[0]);
-		for (size_t i = 0;  i < targetCount;  i++) {
+		for (size_t i = 0; i < targetCount; i++) {
 			_plaf.xlibConvertSelection(_plaf.x11Display, _plaf.x11ClipCLIPBOARD, targets[i], _plaf.x11ClipSELECTION,
 				_plaf.x11HelperWindowHandle, CurrentTime);
 

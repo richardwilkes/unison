@@ -84,113 +84,79 @@ static plafMonitor* createMonitor(DISPLAY_DEVICEW* adapter, DISPLAY_DEVICEW* dis
 //////////////////////////////////////////////////////////////////////////
 
 // Poll for changes in the set of connected monitors
-//
-void _plafPollMonitors(void)
-{
-	int i, disconnectedCount;
+void _plafPollMonitors(void) {
 	plafMonitor** disconnected = NULL;
-	DWORD adapterIndex, displayIndex;
-	DISPLAY_DEVICEW adapter, display;
-
-	disconnectedCount = _plaf.monitorCount;
-	if (disconnectedCount)
-	{
+	int disconnectedCount = _plaf.monitorCount;
+	if (disconnectedCount) {
 		disconnected = _plaf_calloc(_plaf.monitorCount, sizeof(plafMonitor*));
-		memcpy(disconnected,
-			   _plaf.monitors,
-			   _plaf.monitorCount * sizeof(plafMonitor*));
+		memcpy(disconnected, _plaf.monitors, _plaf.monitorCount * sizeof(plafMonitor*));
 	}
-
-	for (adapterIndex = 0;  ;  adapterIndex++)
-	{
-		int type = MONITOR_INSERT_LAST;
-
+	int i;
+	DISPLAY_DEVICEW adapter;
+	for (DWORD adapterIndex = 0; ; adapterIndex++) {
 		ZeroMemory(&adapter, sizeof(adapter));
 		adapter.cb = sizeof(adapter);
-
-		if (!EnumDisplayDevicesW(NULL, adapterIndex, &adapter, 0))
+		if (!EnumDisplayDevicesW(NULL, adapterIndex, &adapter, 0)) {
 			break;
-
-		if (!(adapter.StateFlags & DISPLAY_DEVICE_ACTIVE))
+		}
+		if (!(adapter.StateFlags & DISPLAY_DEVICE_ACTIVE)) {
 			continue;
-
-		if (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE)
-			type = MONITOR_INSERT_FIRST;
-
-		for (displayIndex = 0;  ;  displayIndex++)
-		{
+		}
+		bool insertFirst = false;
+		if (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) {
+			insertFirst = true;
+		}
+		for (DWORD displayIndex = 0; ; displayIndex++) {
+			DISPLAY_DEVICEW display;
 			ZeroMemory(&display, sizeof(display));
 			display.cb = sizeof(display);
-
-			if (!EnumDisplayDevicesW(adapter.DeviceName, displayIndex, &display, 0))
+			if (!EnumDisplayDevicesW(adapter.DeviceName, displayIndex, &display, 0)) {
 				break;
-
-			if (!(display.StateFlags & DISPLAY_DEVICE_ACTIVE))
+			}
+			if (!(display.StateFlags & DISPLAY_DEVICE_ACTIVE)) {
 				continue;
-
-			for (i = 0;  i < disconnectedCount;  i++)
-			{
-				if (disconnected[i] &&
-					wcscmp(disconnected[i]->win32DisplayName,
-						   display.DeviceName) == 0)
-				{
+			}
+			for (i = 0; i < disconnectedCount; i++) {
+				if (disconnected[i] && wcscmp(disconnected[i]->win32DisplayName, display.DeviceName) == 0) {
 					disconnected[i] = NULL;
-					// handle may have changed, update
-					EnumDisplayMonitors(NULL, NULL, monitorCallback, (LPARAM) _plaf.monitors[i]);
+					EnumDisplayMonitors(NULL, NULL, monitorCallback, (LPARAM)_plaf.monitors[i]);
 					break;
 				}
 			}
-
-			if (i < disconnectedCount)
+			if (i < disconnectedCount) {
 				continue;
-
+			}
 			plafMonitor* monitor = createMonitor(&adapter, &display);
-			if (!monitor)
-			{
+			if (!monitor) {
 				_plaf_free(disconnected);
 				return;
 			}
-
-			_plafMonitorNotify(monitor, CONNECTED, type);
-
-			type = MONITOR_INSERT_LAST;
+			_plafMonitorNotify(monitor, true, insertFirst);
+			insertFirst = false;
 		}
-
-		// HACK: If an active adapter does not have any display devices
-		//       (as sometimes happens), add it directly as a monitor
-		if (displayIndex == 0)
-		{
-			for (i = 0;  i < disconnectedCount;  i++)
-			{
-				if (disconnected[i] &&
-					wcscmp(disconnected[i]->win32AdapterName,
-						   adapter.DeviceName) == 0)
-				{
+		if (displayIndex == 0) {
+			for (i = 0; i < disconnectedCount; i++) {
+				if (disconnected[i] && wcscmp(disconnected[i]->win32AdapterName, adapter.DeviceName) == 0) {
 					disconnected[i] = NULL;
 					break;
 				}
 			}
-
-			if (i < disconnectedCount)
+			if (i < disconnectedCount) {
 				continue;
-
+			}
 			plafMonitor* monitor = createMonitor(&adapter, NULL);
-			if (!monitor)
-			{
+			if (!monitor) {
 				_plaf_free(disconnected);
 				return;
 			}
-
-			_plafMonitorNotify(monitor, CONNECTED, type);
+			_plafMonitorNotify(monitor, true, insertFirst);
 		}
 	}
-
-	for (i = 0;  i < disconnectedCount;  i++)
-	{
-		if (disconnected[i])
-			_plafMonitorNotify(disconnected[i], DISCONNECTED, 0);
+	for (i = 0; i < disconnectedCount; i++) {
+		if (disconnected[i]) {
+			_plafMonitorNotify(disconnected[i], false, false);
+		}
 	}
-
 	_plaf_free(disconnected);
 }
 
@@ -292,7 +258,7 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 		mode.refreshRate = dm.dmDisplayFrequency;
 		_plafSplitBPP(dm.dmBitsPerPel, &mode.redBits, &mode.greenBits, &mode.blueBits);
 		int i;
-		for (i = 0;  i < *count;  i++) {
+		for (i = 0; i < *count; i++) {
 			if (_plafCompareVideoModes(result + i, &mode) == 0) {
 				break;
 			}

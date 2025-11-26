@@ -26,7 +26,7 @@ static int calculateRefreshRate(const XRRModeInfo* mi)
 //
 static const XRRModeInfo* getModeInfo(const XRRScreenResources* sr, RRMode id)
 {
-	for (int i = 0;  i < sr->nmode;  i++)
+	for (int i = 0; i < sr->nmode; i++)
 	{
 		if (sr->modes[i].id == id)
 			return sr->modes + i;
@@ -66,126 +66,81 @@ static plafVideoMode vidmodeFromModeInfo(const XRRModeInfo* mi,
 //////////////////////////////////////////////////////////////////////////
 
 // Poll for changes in the set of connected monitors
-//
-void _plafPollMonitors(void)
-{
-	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken)
-	{
-		int disconnectedCount, screenCount = 0;
-		plafMonitor** disconnected = NULL;
+void _plafPollMonitors(void) {
+	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken) {
+		int screenCount = 0;
 		XineramaScreenInfo* screens = NULL;
-		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
-		RROutput primary = _plaf.randrGetOutputPrimary(_plaf.x11Display, _plaf.x11Root);
-
-		if (_plaf.xineramaAvailable)
+		if (_plaf.xineramaAvailable) {
 			screens = _plaf.xineramaQueryScreens(_plaf.x11Display, &screenCount);
-
-		disconnectedCount = _plaf.monitorCount;
-		if (disconnectedCount)
-		{
-			disconnected = _plaf_calloc(_plaf.monitorCount, sizeof(plafMonitor*));
-			memcpy(disconnected,
-				   _plaf.monitors,
-				   _plaf.monitorCount * sizeof(plafMonitor*));
 		}
-
-		for (int i = 0;  i < sr->noutput;  i++)
-		{
-			int j, type, widthMM, heightMM;
-
+		plafMonitor** disconnected = NULL;
+		int disconnectedCount = _plaf.monitorCount;
+		if (disconnectedCount) {
+			disconnected = _plaf_calloc(_plaf.monitorCount, sizeof(plafMonitor*));
+			memcpy(disconnected, _plaf.monitors, _plaf.monitorCount * sizeof(plafMonitor*));
+		}
+		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
+		for (int i = 0; i < sr->noutput; i++) {
 			XRROutputInfo* oi = _plaf.randrGetOutputInfo(_plaf.x11Display, sr, sr->outputs[i]);
-			if (oi->connection != RR_Connected || oi->crtc == None)
-			{
+			if (oi->connection != RR_Connected || oi->crtc == None) {
 				_plaf.randrFreeOutputInfo(oi);
 				continue;
 			}
-
-			for (j = 0;  j < disconnectedCount;  j++)
-			{
-				if (disconnected[j] &&
-					disconnected[j]->x11Output == sr->outputs[i])
-				{
+			int j;
+			for (j = 0; j < disconnectedCount; j++) {
+				if (disconnected[j] && disconnected[j]->x11Output == sr->outputs[i]) {
 					disconnected[j] = NULL;
 					break;
 				}
 			}
-
-			if (j < disconnectedCount)
-			{
+			if (j < disconnectedCount) {
 				_plaf.randrFreeOutputInfo(oi);
 				continue;
 			}
-
+			int widthMM;
+			int heightMM;
 			XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, oi->crtc);
-			if (ci->rotation == RR_Rotate_90 || ci->rotation == RR_Rotate_270)
-			{
+			if (ci->rotation == RR_Rotate_90 || ci->rotation == RR_Rotate_270) {
 				widthMM  = oi->mm_height;
 				heightMM = oi->mm_width;
-			}
-			else
-			{
+			} else {
 				widthMM  = oi->mm_width;
 				heightMM = oi->mm_height;
 			}
-
-			if (widthMM <= 0 || heightMM <= 0)
-			{
-				// HACK: If RandR does not provide a physical size, assume the
-				//       X11 default 96 DPI and calculate from the CRTC viewport
-				// NOTE: These members are affected by rotation, unlike the mode
-				//       info and output info members
+			if (widthMM <= 0 || heightMM <= 0) {
+				// Assume 96 DPI if we don't receive useful info
 				widthMM  = (int) (ci->width * 25.4f / 96.f);
 				heightMM = (int) (ci->height * 25.4f / 96.f);
 			}
-
 			plafMonitor* monitor = _plafAllocMonitor(oi->name, widthMM, heightMM);
 			monitor->x11Output = sr->outputs[i];
 			monitor->x11Crtc   = oi->crtc;
-
-			for (j = 0;  j < screenCount;  j++)
-			{
-				if (screens[j].x_org == ci->x &&
-					screens[j].y_org == ci->y &&
-					screens[j].width == ci->width &&
-					screens[j].height == ci->height)
-				{
+			for (j = 0; j < screenCount; j++) {
+				if (screens[j].x_org == ci->x && screens[j].y_org == ci->y && screens[j].width == ci->width &&
+					screens[j].height == ci->height) {
 					monitor->x11Index = j;
 					break;
 				}
 			}
-
-			if (monitor->x11Output == primary)
-				type = MONITOR_INSERT_FIRST;
-			else
-				type = MONITOR_INSERT_LAST;
-
-			_plafMonitorNotify(monitor, CONNECTED, type);
-
+			_plafMonitorNotify(monitor, true,
+				monitor->x11Output == _plaf.randrGetOutputPrimary(_plaf.x11Display, _plaf.x11Root));
 			_plaf.randrFreeOutputInfo(oi);
 			_plaf.randrFreeCrtcInfo(ci);
 		}
-
 		_plaf.randrFreeScreenResources(sr);
-
-		if (screens)
+		if (screens) {
 			_plaf.xlibFree(screens);
-
-		for (int i = 0;  i < disconnectedCount;  i++)
-		{
-			if (disconnected[i])
-				_plafMonitorNotify(disconnected[i], DISCONNECTED, 0);
 		}
-
+		for (int i = 0; i < disconnectedCount; i++) {
+			if (disconnected[i]) {
+				_plafMonitorNotify(disconnected[i], false, false);
+			}
+		}
 		_plaf_free(disconnected);
-	}
-	else
-	{
+	} else {
 		const int widthMM = DisplayWidthMM(_plaf.x11Display, _plaf.x11Screen);
 		const int heightMM = DisplayHeightMM(_plaf.x11Display, _plaf.x11Screen);
-
-		_plafMonitorNotify(_plafAllocMonitor("Display", widthMM, heightMM),
-						  CONNECTED,
-						  MONITOR_INSERT_FIRST);
+		_plafMonitorNotify(_plafAllocMonitor("Display", widthMM, heightMM), true, true);
 	}
 }
 
@@ -201,7 +156,7 @@ void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
 		XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, monitor->x11Crtc);
 		XRROutputInfo* oi = _plaf.randrGetOutputInfo(_plaf.x11Display, sr, monitor->x11Output);
 		RRMode native = None;
-		for (int i = 0;  i < oi->nmode;  i++) {
+		for (int i = 0; i < oi->nmode; i++) {
 			const XRRModeInfo* mi = getModeInfo(sr, oi->modes[i]);
 			if (!modeIsGood(mi)) {
 				continue;
@@ -349,14 +304,14 @@ plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
 		XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, monitor->x11Crtc);
 		XRROutputInfo* oi = _plaf.randrGetOutputInfo(_plaf.x11Display, sr, monitor->x11Output);
 		result = _plaf_calloc(oi->nmode, sizeof(plafVideoMode));
-		for (int i = 0;  i < oi->nmode;  i++) {
+		for (int i = 0; i < oi->nmode; i++) {
 			const XRRModeInfo* mi = getModeInfo(sr, oi->modes[i]);
 			if (!modeIsGood(mi)) {
 				continue;
 			}
 			const plafVideoMode mode = vidmodeFromModeInfo(mi, ci);
 			int j;
-			for (j = 0;  j < *count;  j++) {
+			for (j = 0; j < *count; j++) {
 				if (_plafCompareVideoModes(result + j, &mode) == 0) {
 					break;
 				}

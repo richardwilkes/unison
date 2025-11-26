@@ -48,7 +48,7 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 	usableConfigs = _plaf_calloc(nativeCount, sizeof(plafFrameBufferCfg));
 	usableCount = 0;
 
-	for (int i = 0;  i < nativeCount;  i++) {
+	for (int i = 0; i < nativeCount; i++) {
 		const GLXFBConfig n = nativeConfigs[i];
 		plafFrameBufferCfg* u = usableConfigs + usableCount;
 
@@ -180,7 +180,7 @@ bool _plafInitOpenGL(void) {
 		"libGL.so",
 		NULL
 	};
-	for (int i = 0;  sonames[i];  i++) {
+	for (int i = 0; sonames[i]; i++) {
 		_plaf.glxHandle = _plafLoadModule(sonames[i]);
 		if (_plaf.glxHandle) {
 			break;

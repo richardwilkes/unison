@@ -8,19 +8,19 @@
 //////////////////////////////////////////////////////////////////////////
 
 // Notifies shared code of a monitor connection or disconnection
-void _plafMonitorNotify(plafMonitor* monitor, int action, int placement) {
-	if (action == CONNECTED) {
+void _plafMonitorNotify(plafMonitor* monitor, bool connected, bool insertFirst) {
+	if (connected) {
 		_plaf.monitorCount++;
 		_plaf.monitors = _plaf_realloc(_plaf.monitors, sizeof(plafMonitor*) * _plaf.monitorCount);
-		if (placement == MONITOR_INSERT_FIRST) {
+		if (insertFirst) {
 			memmove(_plaf.monitors + 1, _plaf.monitors, ((size_t) _plaf.monitorCount - 1) * sizeof(plafMonitor*));
 			_plaf.monitors[0] = monitor;
 		} else {
 			_plaf.monitors[_plaf.monitorCount - 1] = monitor;
 		}
 		goMonitorCallback(monitor, true);
-	} else if (action == DISCONNECTED) {
-		for (plafWindow* window = _plaf.windowListHead;  window;  window = window->next) {
+	} else {
+		for (plafWindow* window = _plaf.windowListHead; window; window = window->next) {
 			if (window->monitor == monitor) {
 				int width;
 				int height;
@@ -32,7 +32,7 @@ void _plafMonitorNotify(plafMonitor* monitor, int action, int placement) {
 				_plafSetWindowPos(window, xOffset, yOffset);
 			}
 		}
-		for (int i = 0;  i < _plaf.monitorCount;  i++) {
+		for (int i = 0; i < _plaf.monitorCount; i++) {
 			if (_plaf.monitors[i] == monitor) {
 				_plaf.monitorCount--;
 				memmove(_plaf.monitors + i, _plaf.monitors + i + 1,
@@ -97,7 +97,7 @@ const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoM
 	if (!plafRefreshVideoModes(monitor))
 		return NULL;
 
-	for (i = 0;  i < monitor->modeCount;  i++)
+	for (i = 0; i < monitor->modeCount; i++)
 	{
 		current = monitor->modes + i;
 
