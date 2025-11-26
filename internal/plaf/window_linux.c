@@ -1297,7 +1297,7 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 		_plafCreateInputContext(window);
 	}
 	_plafSetWindowTitle(window, window->title);
-	_plafGetWindowPos(window, &window->x11XPos, &window->x11YPos);
+	plafGetWindowPos(window, &window->x11XPos, &window->x11YPos);
 	plafGetWindowSize(window, &window->width, &window->height);
 	return true;
 }
@@ -2031,7 +2031,7 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 		return false;
 	}
 	XVisualInfo* visualInfo = _plaf.glxGetVisualFromFBConfig(_plaf.x11Display, native);
-	if (!result) {
+	if (!visualInfo) {
 		return false;
 	}
 	int depth;
