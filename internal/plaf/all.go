@@ -25,7 +25,6 @@ import (
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/unison/internal/mac"
 )
 
 // ---------- Clipboard ----------
@@ -1261,14 +1260,5 @@ func goWindowDrawCallback(window *C.plafWindow) {
 func goWindowSizeCallback(window *C.plafWindow) {
 	if w := windows.get(window); w != nil && w.WindowSizeCallback != nil {
 		w.WindowSizeCallback(w)
-	}
-}
-
-//export goAppOpenURLsCallback
-func goAppOpenURLsCallback(a C.CFArrayRef) {
-	if OpenFilesCallback != nil {
-		if urls := mac.Array(a).ArrayOfURLToStringSlice(); len(urls) > 0 {
-			OpenFilesCallback(urls)
-		}
 	}
 }

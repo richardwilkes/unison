@@ -37,8 +37,10 @@ for arg in "$@"; do
 	esac
 done
 
-# Until https://github.com/golang/go/issues/67799 is fixed, this will suppress the annoying message about -lobjc
-export CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries"
+if [ $(uname -s) == "Darwin" ]; then
+	# Until https://github.com/golang/go/issues/67799 is fixed, this will suppress the annoying message about -lobjc
+	export CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries"
+fi
 
 # Generate the source
 echo -e "\033[33mGenerating...\033[0m"
