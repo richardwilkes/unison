@@ -226,7 +226,9 @@ func quitting() {
 	if !calledExit {
 		xos.Exit(0)
 	}
-	plaf.Terminate()
+	if err := plaf.Terminate(); err != nil {
+		errs.Log(err)
+	}
 }
 
 // AttemptQuit initiates the termination sequence.

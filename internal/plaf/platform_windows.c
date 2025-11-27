@@ -270,7 +270,6 @@ BOOL _plafIsWindows10BuildOrGreater(WORD build) {
 
 bool _plafInit(void) {
 	if (!loadLibraries()) {
-		plafTerminate();
 		return false;
 	}
 	createKeyTables();
@@ -280,7 +279,6 @@ bool _plafInit(void) {
 		_plaf.win32ShCoreSetProcessDpiAwareness_(PROCESS_PER_MONITOR_DPI_AWARE);
 	}
 	if (!createHelperWindow()) {
-		plafTerminate();
 		return false;
 	}
 	_plafPollMonitors();

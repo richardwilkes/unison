@@ -172,7 +172,6 @@ bool _plafInit(void) {
 		[NSApplication sharedApplication];
 		_plaf.nsDelegate = [[PLAFApplicationDelegate alloc] init];
 		if (_plaf.nsDelegate == nil) {
-			plafTerminate();
 			return false;
 		}
 		[NSApp setDelegate:_plaf.nsDelegate];
@@ -189,7 +188,6 @@ bool _plafInit(void) {
 		createKeyTables();
 		_plaf.nsEventSource = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 		if (!_plaf.nsEventSource) {
-			plafTerminate();
 			return false;
 		}
 		CGEventSourceSetLocalEventsSuppressionInterval(_plaf.nsEventSource, 0.0);

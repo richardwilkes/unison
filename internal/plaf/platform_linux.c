@@ -1094,7 +1094,6 @@ bool _plafInit(void) {
 	_plaf.x11Context = XUniqueContext();
 	getSystemContentScale(&_plaf.x11ContentScaleX, &_plaf.x11ContentScaleY);
 	if (!createEmptyEventPipe()) {
-		plafTerminate();
 		return false;
 	}
 	initExtensions();

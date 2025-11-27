@@ -646,7 +646,6 @@ struct plafCursor {
 
 // Library global data
 struct plafLib {
-	bool                                initialized;
 	char*                               clipboardString;
 	plafFrameBufferCfg                  frameBufferCfg;
 	plafWindowConfig                    windowCfg;
@@ -1142,7 +1141,6 @@ bool _plafChooseGLXFBConfig(const plafFrameBufferCfg* desired, GLXFBConfig* resu
 
 // Utility
 size_t _plafEncodeUTF8(char* s, uint32_t codepoint);
-char** _plafParseUriList(char* text, int* count);
 char* _plaf_strdup(const char* src);
 int _plaf_min(int a, int b);
 void* _plaf_calloc(size_t count, size_t size);

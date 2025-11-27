@@ -865,6 +865,44 @@ static const struct codepair {
   { 0xffbd /*XKB_KEY_KP_Equal*/,     '=' }
 };
 
+
+// Splits and translates a text/uri-list into separate file paths
+// NOTE: This function destroys the provided string
+static char** parseUriList(char* text, int* count) {
+	const char* prefix = "file://";
+	char** paths = NULL;
+	char* line;
+	*count = 0;
+	while ((line = strtok(text, "\r\n"))) {
+		text = NULL;
+		if (line[0] == '#') {
+			continue;
+		}
+		if (strncmp(line, prefix, strlen(prefix)) == 0) {
+			line += strlen(prefix);
+			while (*line != '/') {
+				line++;
+			}
+		}
+		(*count)++;
+		char* path = _plaf_calloc(strlen(line) + 1, 1);
+		paths = _plaf_realloc(paths, *count * sizeof(char*));
+		paths[*count - 1] = path;
+		while (*line) {
+			if (line[0] == '%' && line[1] && line[2]) {
+				const char digits[3] = { line[1], line[2], '\0' };
+				*path = (char) strtol(digits, NULL, 16);
+				line += 2;
+			} else {
+				*path = *line;
+			}
+			path++;
+			line++;
+		}
+	}
+	return paths;
+}
+
 bool _plafPoll(struct pollfd* fds, nfds_t count, double timeout) {
 	for (;;)
 	{
@@ -1832,7 +1870,7 @@ static void processEvent(XEvent *event) {
 					event->xselection.property, event->xselection.target, (unsigned char**) &data);
 				if (result) {
 					int count;
-					char** paths = _plafParseUriList(data, &count);
+					char** paths = parseUriList(data, &count);
 					goDropCallback(window, count, paths);
 					for (int i = 0; i < count; i++) {
 						_plaf_free(paths[i]);
