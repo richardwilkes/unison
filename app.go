@@ -38,6 +38,9 @@ var (
 	currentThemeMode                  = thememode.Auto
 	needPlatformDarkModeUpdate        = true
 	platformDarkModeEnabled           bool
+	pendingFilesLock                  sync.Mutex
+	pendingFilesToOpen                []string
+	okToIssueFileOpens                bool
 )
 
 type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
@@ -126,8 +129,22 @@ func NoGlobalMenuBar() StartupOption {
 // Start the application. This function does NOT return. While some calls may be safe to make, it should be assumed no
 // calls into unison can be made prior to Start() being called unless explicitly stated otherwise.
 func Start(options ...StartupOption) {
+	AttachConsole()
 	for _, option := range options {
 		xos.ExitIfErr(option(startupOption{}))
+	}
+	plaf.OpenFilesCallback = func(paths []string) {
+		pendingFilesLock.Lock()
+		defer pendingFilesLock.Unlock()
+		if okToIssueFileOpens {
+			InvokeTask(func() {
+				if openFilesCallback != nil {
+					openFilesCallback(paths)
+				}
+			})
+		} else {
+			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
+		}
 	}
 	xos.ExitIfErr(plaf.Init())
 	xos.RunAtExit(quitting)
@@ -136,7 +153,6 @@ func Start(options ...StartupOption) {
 		calledAtExit = true
 		quitLock.Unlock()
 	})
-	platformEarlyInit()
 	plafInited.Store(true)
 	InvokeTask(finishStartup)
 	for {
@@ -167,7 +183,16 @@ func finishStartup() {
 	if startupFinishedCallback != nil {
 		xos.SafeCall(startupFinishedCallback, nil)
 	}
-	platformFinishedStartup()
+	pendingFilesLock.Lock()
+	defer pendingFilesLock.Unlock()
+	okToIssueFileOpens = true
+	if len(pendingFilesToOpen) != 0 {
+		paths := pendingFilesToOpen
+		pendingFilesToOpen = nil
+		if openFilesCallback != nil {
+			openFilesCallback(paths)
+		}
+	}
 }
 
 // ThemeChanged marks dynamic colors for rebuilding, calls any installed theme change callback, and then redraws all

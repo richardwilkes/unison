@@ -5,6 +5,8 @@ import "C"
 
 import (
 	"unsafe"
+
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 //export goCharCallback
@@ -121,5 +123,18 @@ func goWindowDrawCallback(window *C.plafWindow) {
 func goWindowSizeCallback(window *C.plafWindow) {
 	if w := windows.get(window); w != nil && w.WindowSizeCallback != nil {
 		w.WindowSizeCallback(w)
+	}
+}
+
+// OpenFilesCallback is called on macOS (and no other platforms, currently) when a user double-clicks on your app's
+// documents.
+var OpenFilesCallback func([]string)
+
+//export goAppOpenURLsCallback
+func goAppOpenURLsCallback(a C.CFArrayRef) {
+	if OpenFilesCallback != nil {
+		if urls := mac.Array(a).ArrayOfURLToStringSlice(); len(urls) > 0 {
+			OpenFilesCallback(urls)
+		}
 	}
 }

@@ -12,7 +12,7 @@ package unison
 import (
 	"bytes"
 
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 // OSMenuCmdModifier returns the OS's standard menu command key modifier.
@@ -46,41 +46,41 @@ func (m Modifiers) platformString() string {
 	return buffer.String()
 }
 
-func (m Modifiers) eventModifierFlags() ns.EventModifierFlags {
-	var mods ns.EventModifierFlags
+func (m Modifiers) eventModifierFlags() mac.EventModifierFlags {
+	var mods mac.EventModifierFlags
 	if m.ShiftDown() {
-		mods |= ns.EventModifierFlagShift
+		mods |= mac.EventModifierFlagShift
 	}
 	if m.OptionDown() {
-		mods |= ns.EventModifierFlagOption
+		mods |= mac.EventModifierFlagOption
 	}
 	if m.CommandDown() {
-		mods |= ns.EventModifierFlagCommand
+		mods |= mac.EventModifierFlagCommand
 	}
 	if m.ControlDown() {
-		mods |= ns.EventModifierFlagControl
+		mods |= mac.EventModifierFlagControl
 	}
 	if m.CapsLockDown() {
-		mods |= ns.EventModifierFlagCapsLock
+		mods |= mac.EventModifierFlagCapsLock
 	}
 	return mods
 }
 
-func modifiersFromEventModifierFlags(flags ns.EventModifierFlags) Modifiers {
+func modifiersFromEventModifierFlags(flags mac.EventModifierFlags) Modifiers {
 	var mods Modifiers
-	if flags&ns.EventModifierFlagShift != 0 {
+	if flags&mac.EventModifierFlagShift != 0 {
 		mods |= ShiftModifier
 	}
-	if flags&ns.EventModifierFlagOption != 0 {
+	if flags&mac.EventModifierFlagOption != 0 {
 		mods |= OptionModifier
 	}
-	if flags&ns.EventModifierFlagCommand != 0 {
+	if flags&mac.EventModifierFlagCommand != 0 {
 		mods |= CommandModifier
 	}
-	if flags&ns.EventModifierFlagControl != 0 {
+	if flags&mac.EventModifierFlagControl != 0 {
 		mods |= ControlModifier
 	}
-	if flags&ns.EventModifierFlagCapsLock != 0 {
+	if flags&mac.EventModifierFlagCapsLock != 0 {
 		mods |= CapsLockModifier
 	}
 	return mods

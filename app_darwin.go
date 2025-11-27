@@ -10,54 +10,18 @@
 package unison
 
 import (
-	"sync"
 	"time"
 
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
-
-var (
-	pendingFilesLock   sync.Mutex
-	pendingFilesToOpen []string
-	okToIssueFileOpens bool
-)
-
-func platformEarlyInit() {
-	ns.InstallAppDelegate(func(paths []string) {
-		pendingFilesLock.Lock()
-		defer pendingFilesLock.Unlock()
-		if okToIssueFileOpens {
-			InvokeTask(func() {
-				if openFilesCallback != nil {
-					openFilesCallback(paths)
-				}
-			})
-		} else {
-			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
-		}
-	})
-}
 
 func platformLateInit() {
-	ns.InstallSystemThemeChangedCallback(ThemeChanged)
-	ns.SetActivationPolicy(ns.ActivationPolicyRegular)
-}
-
-func platformFinishedStartup() {
-	pendingFilesLock.Lock()
-	defer pendingFilesLock.Unlock()
-	okToIssueFileOpens = true
-	if len(pendingFilesToOpen) != 0 {
-		paths := pendingFilesToOpen
-		pendingFilesToOpen = nil
-		if openFilesCallback != nil {
-			openFilesCallback(paths)
-		}
-	}
+	mac.InstallSystemThemeChangedCallback(ThemeChanged)
+	mac.SetActivationPolicy(mac.ActivationPolicyRegular)
 }
 
 func platformBeep() {
-	ns.Beep()
+	mac.Beep()
 }
 
 func platformIsDarkModeTrackingPossible() bool {
@@ -65,9 +29,9 @@ func platformIsDarkModeTrackingPossible() bool {
 }
 
 func platformIsDarkModeEnabled() bool {
-	return ns.IsDarkModeEnabled()
+	return mac.IsDarkModeEnabled()
 }
 
 func platformDoubleClickInterval() time.Duration {
-	return ns.DoubleClickInterval()
+	return mac.DoubleClickInterval()
 }

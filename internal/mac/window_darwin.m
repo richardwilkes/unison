@@ -7,27 +7,8 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-package unison
+#import "macos.h"
 
-import (
-	"time"
-)
-
-func platformLateInit() {
-}
-
-func platformBeep() {
-	// TODO: Need implementation
-}
-
-func platformIsDarkModeTrackingPossible() bool {
-	return false
-}
-
-func platformIsDarkModeEnabled() bool {
-	return false
-}
-
-func platformDoubleClickInterval() time.Duration {
-	return 500 * time.Millisecond
+NSViewRef windowContentView(NSWindowRef w) {
+	return (NSViewRef)[(NSWindow *)w contentView];
 }

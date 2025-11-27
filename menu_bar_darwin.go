@@ -14,7 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 func quitMenuTitle() string {
@@ -27,10 +27,10 @@ func platformAddAppMenuEntries(m Menu) {
 	m.InsertSeparator(-1, false)
 	m.InsertItem(-1, m.Factory().NewItem(HideItemID, fmt.Sprintf(i18n.Text("Hide %s"), xos.AppName),
 		KeyBinding{KeyCode: KeyH, Modifiers: OSMenuCmdModifier()},
-		nil, func(MenuItem) { ns.HideApplication() }))
+		nil, func(MenuItem) { mac.HideApplication() }))
 	m.InsertItem(-1, m.Factory().NewItem(HideOthersItemID, i18n.Text("Hide Others"),
 		KeyBinding{KeyCode: KeyH, Modifiers: OptionModifier | OSMenuCmdModifier()},
-		nil, func(MenuItem) { ns.HideOtherApplications() }))
+		nil, func(MenuItem) { mac.HideOtherApplications() }))
 	m.InsertItem(-1, m.Factory().NewItem(ShowAllItemID, i18n.Text("Show All"), KeyBinding{}, nil,
-		func(MenuItem) { ns.UnhideAllApplications() }))
+		func(MenuItem) { mac.UnhideAllApplications() }))
 }

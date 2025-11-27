@@ -7,27 +7,12 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-package unison
+#import "macos.h"
 
-import (
-	"time"
-)
-
-func platformLateInit() {
+double doubleClickInterval(void) {
+	return [NSEvent doubleClickInterval];
 }
 
-func platformBeep() {
-	// TODO: Need implementation
-}
-
-func platformIsDarkModeTrackingPossible() bool {
-	return false
-}
-
-func platformIsDarkModeEnabled() bool {
-	return false
-}
-
-func platformDoubleClickInterval() time.Duration {
-	return 500 * time.Millisecond
+NSEventModifierFlags eventModifierFlags(void) {
+	return NSEvent.modifierFlags;
 }

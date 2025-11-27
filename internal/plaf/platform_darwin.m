@@ -165,6 +165,10 @@ static void createKeyTables(void) {
 	}
 }
 
+- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
+	goAppOpenURLsCallback((CFArrayRef)(urls));
+}
+
 @end // PLAFApplicationDelegate
 
 bool _plafInit(void) {

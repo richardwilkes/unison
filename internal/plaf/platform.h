@@ -1032,6 +1032,9 @@ void plafSetClipboardString(const char* string);
 // --------- Internal API below ---------
 
 // Go Callbacks
+#if defined(__APPLE__)
+void goAppOpenURLsCallback(CFArrayRef urls);
+#endif
 void goCharCallback(plafWindow *window, unsigned int ch);
 void goCursorEnterCallback(plafWindow *window, bool entered);
 void goCursorPosCallback(plafWindow *window, double x, double y);

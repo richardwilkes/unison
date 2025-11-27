@@ -1,0 +1,537 @@
+// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package mac
+
+// NOTE: A single Go file that imports the C package was an intentional choice here, as it dramatically reduces the
+//       compile time of the package.
+
+// Important information about memory management on macOS:
+// https://developer.apple.com/library/archive/documentation/CoreFoundation/Conceptual/CFMemoryMgmt/Concepts/Ownership.html#//apple_ref/doc/uid/20001148
+
+// #cgo CFLAGS: -x objective-c -Wno-deprecated-declarations
+// #cgo LDFLAGS: -framework Cocoa
+// #import "macos.h"
+import "C"
+
+import (
+	"net/url"
+	"strings"
+	"time"
+	"unsafe"
+
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
+)
+
+// ========== App ==========
+
+type ActivationPolicy uint
+
+const (
+	ActivationPolicyRegular ActivationPolicy = iota
+	ActivationPolicyAccessory
+	ActivationPolicyProhibited
+)
+
+func HideApplication() {
+	C.hideRunningApplication()
+}
+
+func HideOtherApplications() {
+	C.hideOtherApplications()
+}
+
+func UnhideAllApplications() {
+	C.unhideAllApplications()
+}
+
+func SetActivationPolicy(policy ActivationPolicy) {
+	C.setActivationPolicy(C.NSApplicationActivationPolicy(policy))
+}
+
+func SetMainMenu(menu Menu) {
+	C.setMainMenu(C.NSMenuRef(menu))
+}
+
+func SetServicesMenu(menu Menu) {
+	C.setServicesMenu(C.NSMenuRef(menu))
+}
+
+func SetWindowsMenu(menu Menu) {
+	C.setWindowsMenu(C.NSMenuRef(menu))
+}
+
+func SetHelpMenu(menu Menu) {
+	C.setHelpMenu(C.NSMenuRef(menu))
+}
+
+// ========== Array ==========
+
+type (
+	MutableArray C.CFMutableArrayRef
+	Array        C.CFArrayRef
+)
+
+func NewArrayFromStringSlice(slice []string) Array {
+	//nolint:gocritic // Spurious lint flagging due to C code
+	a := C.CFArrayCreateMutable(0, C.long(len(slice)), &C.kCFTypeArrayCallBacks)
+	for _, s := range slice {
+		str := NewString(s)
+		//nolint:govet // Spurious lint flagging due to C code
+		C.CFArrayAppendValue(a, unsafe.Pointer(str))
+		str.Release()
+	}
+	return Array(a)
+}
+
+func (a Array) Count() int {
+	return int(C.CFArrayGetCount(C.CFArrayRef(a)))
+}
+
+func (a Array) URLAtIndex(index int) URL {
+	return URL(C.CFArrayGetValueAtIndex(C.CFArrayRef(a), C.long(index)))
+}
+
+func (a Array) StringAtIndex(index int) String {
+	return String(C.CFArrayGetValueAtIndex(C.CFArrayRef(a), C.long(index)))
+}
+
+func (a Array) Release() {
+	C.CFRelease(C.CFTypeRef(a))
+}
+
+func (a Array) ArrayOfURLToStringSlice() []string {
+	count := a.Count()
+	result := make([]string, 0, count)
+	for i := range count {
+		urlStr := a.URLAtIndex(i).AbsoluteString()
+		u, err := url.Parse(urlStr)
+		if err != nil {
+			errs.Log(errs.NewWithCause("unable to parse URL", err), "url", urlStr)
+			continue
+		}
+		result = append(result, u.Path)
+	}
+	return result
+}
+
+func (a Array) ArrayOfStringToStringSlice() []string {
+	count := a.Count()
+	result := make([]string, 0, count)
+	for i := range count {
+		result = append(result, a.StringAtIndex(i).String())
+	}
+	return result
+}
+
+// ========== Event ==========
+
+type EventModifierFlags uint
+
+const (
+	EventModifierFlagCapsLock EventModifierFlags = 1 << (16 + iota)
+	EventModifierFlagShift
+	EventModifierFlagControl
+	EventModifierFlagOption
+	EventModifierFlagCommand
+)
+
+func DoubleClickInterval() time.Duration {
+	return time.Duration(C.doubleClickInterval()*1000) * time.Millisecond
+}
+
+func CurrentModifierFlags() EventModifierFlags {
+	return EventModifierFlags(C.eventModifierFlags())
+}
+
+// ========== Menu ==========
+
+type Menu C.NSMenuRef
+
+var menuUpdaters = make(map[Menu]func(Menu))
+
+func NewMenu(title string, updater func(Menu)) Menu {
+	s := NewString(title)
+	m := Menu(C.newMenu(C.CFStringRef(s)))
+	s.Release()
+	if updater != nil {
+		menuUpdaters[m] = updater
+	}
+	return m
+}
+
+func (m Menu) NumberOfItems() int {
+	return int(C.menuNumberOfItems(C.NSMenuRef(m)))
+}
+
+func (m Menu) ItemAtIndex(index int) MenuItem {
+	return MenuItem(C.menuItemAtIndex(C.NSMenuRef(m), C.int(index)))
+}
+
+func (m Menu) InsertItemAtIndex(item MenuItem, index int) {
+	C.menuInsertItemAtIndex(C.NSMenuRef(m), C.NSMenuItemRef(item), C.int(index))
+}
+
+func (m Menu) RemoveItemAtIndex(index int) {
+	C.menuRemoveItemAtIndex(C.NSMenuRef(m), C.int(index))
+}
+
+func (m Menu) RemoveAll() {
+	C.menuRemoveAll(C.NSMenuRef(m))
+}
+
+func (m Menu) Title() string {
+	return String(C.menuTitle(C.NSMenuRef(m))).String()
+}
+
+func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom.Rect) {
+	C.menuPopup(C.NSWindowRef(wnd), C.NSMenuRef(menu), C.NSMenuItemRef(item), C.CGRect{
+		origin: C.CGPoint{
+			x: C.double(bounds.X),
+			y: C.double(bounds.Y),
+		},
+		size: C.CGSize{
+			width:  C.double(bounds.Width),
+			height: C.double(bounds.Height),
+		},
+	})
+}
+
+func (m Menu) Release() {
+	delete(menuUpdaters, m)
+	for i := m.NumberOfItems() - 1; i >= 0; i-- {
+		item := m.ItemAtIndex(i)
+		delete(menuItemValidators, item)
+		delete(menuItemHandlers, item)
+	}
+	C.CFRelease(C.CFTypeRef(m))
+}
+
+//export goUpdateMenuCallback
+func goUpdateMenuCallback(m C.NSMenuRef) {
+	menu := Menu(m)
+	if updater, ok := menuUpdaters[menu]; ok && updater != nil {
+		updater(menu)
+	}
+}
+
+// ========== Menu Item ==========
+
+type ControlStateValue int
+
+const (
+	ControlStateValueMixed ControlStateValue = iota - 1
+	ControlStateValueOff
+	ControlStateValueOn
+)
+
+type MenuItem C.NSMenuItemRef
+
+var (
+	menuItemValidators = make(map[MenuItem]func(item MenuItem) bool)
+	menuItemHandlers   = make(map[MenuItem]func(item MenuItem))
+)
+
+func NewMenuItem(tag int, title, keyEquivalent string, modifiers EventModifierFlags, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
+	titleStr := NewString(title)
+	keyStr := NewString(keyEquivalent)
+	item := MenuItem(C.newMenuItem(C.int(tag), C.CFStringRef(titleStr), C.CFStringRef(keyStr), C.NSEventModifierFlags(modifiers)))
+	titleStr.Release()
+	keyStr.Release()
+	if validator != nil {
+		menuItemValidators[item] = validator
+	}
+	if handler != nil {
+		menuItemHandlers[item] = handler
+	}
+	return item
+}
+
+func NewSeparatorMenuItem() MenuItem {
+	return MenuItem(C.newMenuSeparatorItem())
+}
+
+func (m MenuItem) Tag() int {
+	return int(C.menuItemTag(C.NSMenuItemRef(m)))
+}
+
+func (m MenuItem) IsSeparatorItem() bool {
+	return bool(C.menuItemIsSeparator(C.NSMenuItemRef(m)))
+}
+
+func (m MenuItem) Title() string {
+	return String(C.menuItemTitle(C.NSMenuItemRef(m))).String()
+}
+
+func (m MenuItem) SetTitle(title string) {
+	titleStr := NewString(title)
+	C.menuItemSetTitle(C.NSMenuItemRef(m), C.CFStringRef(titleStr))
+	titleStr.Release()
+}
+
+func (m MenuItem) KeyBinding() (keyEquivalent string, modifiers EventModifierFlags) {
+	ref := C.NSMenuItemRef(m)
+	return String(C.menuItemKeyEquivalent(ref)).String(), EventModifierFlags(C.menuItemKeyEquivalentModifierMask(ref))
+}
+
+func (m MenuItem) SetKeyBinding(keyEquivalent string, modifiers EventModifierFlags) {
+	keyStr := NewString(keyEquivalent)
+	C.menuItemSetKeyBinding(C.NSMenuItemRef(m), C.CFStringRef(keyStr), C.NSEventModifierFlags(modifiers))
+	keyStr.Release()
+}
+
+func (m MenuItem) Menu() Menu {
+	return Menu(C.menuItemMenu(C.NSMenuItemRef(m)))
+}
+
+func (m MenuItem) SubMenu() Menu {
+	return Menu(C.menuItemSubMenu(C.NSMenuItemRef(m)))
+}
+
+func (m MenuItem) SetSubMenu(menu Menu) {
+	C.menuItemSetSubMenu(C.NSMenuItemRef(m), C.NSMenuRef(menu))
+}
+
+func (m MenuItem) State() ControlStateValue {
+	return ControlStateValue(C.menuItemState(C.NSMenuItemRef(m)))
+}
+
+func (m MenuItem) SetState(state ControlStateValue) {
+	C.menuItemSetState(C.NSMenuItemRef(m), C.NSControlStateValue(state))
+}
+
+//export goMenuItemValidateCallback
+func goMenuItemValidateCallback(mi C.NSMenuItemRef) bool {
+	item := MenuItem(mi)
+	if validator, ok := menuItemValidators[item]; ok && validator != nil {
+		return validator(item)
+	}
+	return true
+}
+
+//export goMenuItemHandleCallback
+func goMenuItemHandleCallback(mi C.NSMenuItemRef) {
+	item := MenuItem(mi)
+	if handler, ok := menuItemHandlers[item]; ok && handler != nil {
+		handler(item)
+	}
+}
+
+// ========== Open Panel ==========
+
+type OpenPanel C.NSOpenPanelRef
+
+func NewOpenPanel() OpenPanel {
+	return OpenPanel(C.newOpenPanel())
+}
+
+func (p OpenPanel) DirectoryURL() URL {
+	return URL(C.openPanelDirectoryURL(C.NSOpenPanelRef(p)))
+}
+
+func (p OpenPanel) SetDirectoryURL(theURL URL) {
+	C.openPanelSetDirectoryURL(C.NSOpenPanelRef(p), C.CFURLRef(theURL))
+}
+
+func (p OpenPanel) AllowedFileTypes() Array {
+	return Array(C.openPanelAllowedFileTypes(C.NSOpenPanelRef(p)))
+}
+
+func (p OpenPanel) SetAllowedFileTypes(types Array) {
+	C.openPanelSetAllowedFileTypes(C.NSOpenPanelRef(p), C.CFArrayRef(types))
+}
+
+func (p OpenPanel) CanChooseFiles() bool {
+	return bool(C.openPanelCanChooseFiles(C.NSOpenPanelRef(p)))
+}
+
+func (p OpenPanel) SetCanChooseFiles(set bool) {
+	C.openPanelSetCanChooseFiles(C.NSOpenPanelRef(p), C.bool(set))
+}
+
+func (p OpenPanel) CanChooseDirectories() bool {
+	return bool(C.openPanelCanChooseDirectories(C.NSOpenPanelRef(p)))
+}
+
+func (p OpenPanel) SetCanChooseDirectories(set bool) {
+	C.openPanelSetCanChooseDirectories(C.NSOpenPanelRef(p), C.bool(set))
+}
+
+func (p OpenPanel) ResolvesAliases() bool {
+	return bool(C.openPanelResolvesAliases(C.NSOpenPanelRef(p)))
+}
+
+func (p OpenPanel) SetResolvesAliases(set bool) {
+	C.openPanelSetResolvesAliases(C.NSOpenPanelRef(p), C.bool(set))
+}
+
+func (p OpenPanel) AllowsMultipleSelection() bool {
+	return bool(C.openPanelAllowsMultipleSelection(C.NSOpenPanelRef(p)))
+}
+
+func (p OpenPanel) SetAllowsMultipleSelection(set bool) {
+	C.openPanelSetAllowsMultipleSelection(C.NSOpenPanelRef(p), C.bool(set))
+}
+
+func (p OpenPanel) URLs() Array {
+	return Array(C.openPanelURLs(C.NSOpenPanelRef(p)))
+}
+
+func (p OpenPanel) RunModal() bool {
+	return bool(C.openPanelRunModal(C.NSOpenPanelRef(p)))
+}
+
+// ========== Save Panel ==========
+
+type SavePanel C.NSSavePanelRef
+
+func NewSavePanel() SavePanel {
+	return SavePanel(C.newSavePanel())
+}
+
+func (p SavePanel) DirectoryURL() URL {
+	return URL(C.savePanelDirectoryURL(C.NSSavePanelRef(p)))
+}
+
+func (p SavePanel) SetDirectoryURL(theURL URL) {
+	C.savePanelSetDirectoryURL(C.NSSavePanelRef(p), C.CFURLRef(theURL))
+}
+
+func (p SavePanel) InitialFileName() string {
+	return String(C.savePanelNameFieldStringValue(C.NSSavePanelRef(p))).String()
+}
+
+func (p SavePanel) SetInitialFileName(name string) {
+	str := NewString(name)
+	C.savePanelSetNameFieldStringValue(C.NSSavePanelRef(p), C.CFStringRef(str))
+	str.Release()
+}
+
+func (p SavePanel) AllowedFileTypes() Array {
+	return Array(C.savePanelAllowedFileTypes(C.NSSavePanelRef(p)))
+}
+
+func (p SavePanel) SetAllowedFileTypes(types Array) {
+	C.savePanelSetAllowedFileTypes(C.NSSavePanelRef(p), C.CFArrayRef(types))
+}
+
+func (p SavePanel) URL() URL {
+	return URL(C.savePanelURL(C.NSSavePanelRef(p)))
+}
+
+func (p SavePanel) RunModal() bool {
+	return bool(C.savePanelRunModal(C.NSSavePanelRef(p)))
+}
+
+// ========== Sound ==========
+
+func Beep() {
+	C.beep()
+}
+
+// ========== String ==========
+
+type String C.CFStringRef
+
+func NewString(str string) String {
+	return String(C.CFStringCreateWithBytes(0, (*C.uint8)(unsafe.Pointer(unsafe.StringData(str))), C.long(len(str)),
+		C.kCFStringEncodingUTF8, 0))
+}
+
+func (s String) String() string {
+	strPtr := C.CFStringGetCStringPtr(C.CFStringRef(s), C.kCFStringEncodingUTF8)
+	if strPtr == nil {
+		maxBytes := 4*C.CFStringGetLength(C.CFStringRef(s)) + 1
+		strPtr = (*C.char)(C.malloc(C.size_t(maxBytes)))
+		defer C.free(unsafe.Pointer(strPtr))
+		if C.CFStringGetCString(C.CFStringRef(s), strPtr, maxBytes, C.kCFStringEncodingUTF8) == 0 {
+			errs.Log(errs.New("failed to convert string"))
+			return ""
+		}
+	}
+	return C.GoString(strPtr)
+}
+
+func (s String) Release() {
+	C.CFRelease(C.CFTypeRef(s))
+}
+
+// ========== Theme ==========
+
+var systemThemeChangedCallback func()
+
+func InstallSystemThemeChangedCallback(f func()) {
+	systemThemeChangedCallback = f
+	if f != nil {
+		C.installThemeChangedCallback()
+	}
+}
+
+func IsDarkModeEnabled() bool {
+	if style := C.CFPreferencesCopyAppValue(C.CFStringRef(NewString("AppleInterfaceStyle")),
+		C.kCFPreferencesCurrentApplication); style != 0 {
+		s := String(style)
+		str := s.String()
+		s.Release()
+		return strings.Contains(strings.ToLower(str), "dark")
+	}
+	return false
+}
+
+//export goThemeChangedCallback
+func goThemeChangedCallback() {
+	if systemThemeChangedCallback != nil {
+		systemThemeChangedCallback()
+	}
+}
+
+// ========== URL ==========
+
+type URL C.CFURLRef
+
+func NewFileURL(str string) URL {
+	var isDir C.uchar
+	if strings.HasSuffix(str, "/") || xos.IsDir(str) {
+		isDir = 1
+	}
+	return URL(C.CFURLCreateFromFileSystemRepresentation(0, (*C.uint8)(unsafe.Pointer(unsafe.StringData(str))),
+		C.long(len(str)), isDir))
+}
+
+func (u URL) AbsoluteString() string {
+	other := C.CFURLCopyAbsoluteURL(C.CFURLRef(u))
+	str := String(C.CFURLGetString(other)).String()
+	URL(other).Release()
+	return str
+}
+
+func (u URL) Release() {
+	C.CFRelease(C.CFTypeRef(u))
+}
+
+// ========== View ==========
+
+type View C.NSViewRef
+
+func (v View) Frame() geom.Rect {
+	var frame C.NSRect
+	C.viewFrame(C.NSViewRef(v), &frame)
+	return geom.NewRect(float32(frame.origin.x), float32(frame.origin.y), float32(frame.size.width),
+		float32(frame.size.height))
+}
+
+// ========== Window ==========
+
+type Window C.NSWindowRef
+
+func (w Window) ContentView() View {
+	return View(C.windowContentView(C.NSWindowRef(w)))
+}

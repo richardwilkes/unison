@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 type macMenuFactory struct {
@@ -33,7 +33,7 @@ func (f *macMenuFactory) BarForWindow(_ *Window, initializer func(Menu)) Menu {
 	if f.bar == nil {
 		f.bar = f.newMenu(RootMenuID, "", nil)
 		initializer(f.bar)
-		InvokeTask(func() { ns.SetMainMenu(f.bar.menu) })
+		InvokeTask(func() { mac.SetMainMenu(f.bar.menu) })
 	}
 	return f.bar
 }
@@ -47,13 +47,13 @@ func (f *macMenuFactory) NewMenu(id int, title string, updater func(Menu)) Menu 
 }
 
 func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macMenu {
-	var u func(ns.Menu)
+	var u func(mac.Menu)
 	if updater != nil {
-		u = func(m ns.Menu) {
+		u = func(m mac.Menu) {
 			updater(&macMenu{factory: f, menu: m})
 		}
 	}
-	m := ns.NewMenu(title, u)
+	m := mac.NewMenu(title, u)
 	return &macMenu{
 		factory: f,
 		id:      id,
@@ -62,14 +62,14 @@ func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macM
 }
 
 func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
-	var h func(ns.MenuItem)
+	var h func(mac.MenuItem)
 	if handler != nil {
-		h = func(mi ns.MenuItem) {
+		h = func(mi mac.MenuItem) {
 			xos.SafeCall(func() { handler(&macMenuItem{factory: f, item: mi}) }, nil)
 		}
 	}
-	mi := ns.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
-		keyBinding.Modifiers.eventModifierFlags(), func(mi ns.MenuItem) bool {
+	mi := mac.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
+		keyBinding.Modifiers.eventModifierFlags(), func(mi mac.MenuItem) bool {
 			if DisableMenus {
 				return false
 			}

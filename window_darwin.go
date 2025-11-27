@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 	"github.com/richardwilkes/unison/internal/plaf"
 )
 
@@ -59,5 +59,5 @@ func (w *Window) keyCallbackForPlatform(_ *plaf.Window, key plaf.Key, _ int, act
 // however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
 // menu is being displayed.
 func (w *Window) CurrentKeyModifiers() Modifiers {
-	return modifiersFromEventModifierFlags(ns.CurrentModifierFlags())
+	return modifiersFromEventModifierFlags(mac.CurrentModifierFlags())
 }

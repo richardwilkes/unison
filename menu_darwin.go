@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 var _ Menu = &macMenu{}
@@ -19,7 +19,7 @@ var _ Menu = &macMenu{}
 type macMenu struct {
 	factory *macMenuFactory
 	id      int
-	menu    ns.Menu
+	menu    mac.Menu
 }
 
 func (m *macMenu) Factory() MenuFactory {
@@ -92,7 +92,7 @@ func (m *macMenu) InsertSeparator(atIndex int, onlyIfNeeded bool) {
 			}
 		}
 	}
-	m.insert(ns.NewSeparatorMenuItem(), atIndex)
+	m.insert(mac.NewSeparatorMenuItem(), atIndex)
 }
 
 func (m *macMenu) InsertItem(atIndex int, mi MenuItem) {
@@ -116,14 +116,14 @@ func (m *macMenu) insertMenu(atIndex int, subMenu *macMenu) {
 		if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
 			if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
 				if menu, ok := servicesMenu.(*macMenu); ok {
-					ns.SetServicesMenu(menu.menu)
+					mac.SetServicesMenu(menu.menu)
 				}
 			}
 		}
 	case WindowMenuID:
-		ns.SetWindowsMenu(subMenu.menu)
+		mac.SetWindowsMenu(subMenu.menu)
 	case HelpMenuID:
-		ns.SetHelpMenu(subMenu.menu)
+		mac.SetHelpMenu(subMenu.menu)
 	}
 }
 
@@ -152,7 +152,7 @@ func (m *macMenu) Count() int {
 func (m *macMenu) Popup(where geom.Rect, itemIndex int) {
 	if w := ActiveWindow(); w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {
-			wnd := ns.Window(w.wnd.NativeWindow())
+			wnd := mac.Window(w.wnd.NativeWindow())
 			view := wnd.ContentView()
 			frame := view.Frame()
 			where.X += 8
@@ -166,7 +166,7 @@ func (m *macMenu) Dispose() {
 	m.menu.Release()
 }
 
-func (m *macMenu) insert(mi ns.MenuItem, index int) {
+func (m *macMenu) insert(mi mac.MenuItem, index int) {
 	if index < 0 {
 		index = m.Count()
 	}

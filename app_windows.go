@@ -23,10 +23,6 @@ import (
 
 var appUsesLightThemeValue = uint32(1)
 
-func platformEarlyInit() {
-	AttachConsole()
-}
-
 func platformLateInit() {
 	keyPath := `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
 	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, syscall.KEY_NOTIFY|registry.QUERY_VALUE)
@@ -49,9 +45,6 @@ func platformLateInit() {
 			}
 		}
 	}()
-}
-
-func platformFinishedStartup() {
 }
 
 func platformBeep() {

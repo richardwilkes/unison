@@ -154,7 +154,7 @@ linters:
   exclusions:
     generated: lax
     paths:
-      - internal/ns/
+      - internal/mac/
       - internal/skia/
 issues:
   max-same-issues: 0
