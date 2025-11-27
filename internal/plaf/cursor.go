@@ -6,7 +6,7 @@ import "C"
 import (
 	"image"
 	"image/draw"
-	"unsafe"
+	"runtime"
 )
 
 // StandardCursor corresponds to a standard cursor icon.
@@ -24,7 +24,7 @@ const (
 
 // Cursor represents a cursor.
 type Cursor struct {
-	data *C.plafCursor
+	plafCursor *C.plafCursor
 }
 
 // CreateCursor creates a new custom cursor image that can be set for a window with SetCursor.
@@ -41,24 +41,25 @@ func CreateCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 	if img.Rect.Dx() < 1 || img.Rect.Dy() < 1 {
 		return nil
 	}
-	imgC := imageToCImageData(img)
+	var pinner runtime.Pinner
+	defer pinner.Unpin()
+	imgC := imageToCImageData(&pinner, img)
 	//nolint:gocritic // Spurious lint flagging due to C code
 	cursor := C.plafCreateCursor(&imgC, C.int(xhot), C.int(yhot))
-	C.free(unsafe.Pointer(imgC.pixels))
-	return &Cursor{cursor}
+	return &Cursor{plafCursor: cursor}
 }
 
 // CreateStandardCursor returns a cursor with a standard shape, that can be set for a window with SetCursor.
 func CreateStandardCursor(shape StandardCursor) *Cursor {
 	if cursor := C.plafCreateStandardCursor(C.int(shape)); cursor != nil {
-		return &Cursor{cursor}
+		return &Cursor{plafCursor: cursor}
 	}
 	return nil
 }
 
 // Destroy a cursor previously created with CreateCursor.
 func (c *Cursor) Destroy() {
-	C.plafDestroyCursor(c.data)
+	C.plafDestroyCursor(c.plafCursor)
 }
 
 // SetCursor sets the cursor image to be used when the cursor is over the client area
@@ -68,10 +69,11 @@ func (c *Cursor) Destroy() {
 // On some platforms, the set cursor may not be visible unless the window also has input focus.
 func (w *Window) SetCursor(c *Cursor) {
 	if c == nil {
-		C.plafSetCursor(w.plafWnd, nil)
+		w.plafWnd.cursor = nil
 	} else {
-		C.plafSetCursor(w.plafWnd, c.data)
+		w.plafWnd.cursor = c.plafCursor
 	}
+	C.plafAdjustToCursorChange(w.plafWnd)
 }
 
 // GetCursorPos returns the last reported position of the cursor.
@@ -83,11 +85,13 @@ func (w *Window) GetCursorPos() (x, y float64) {
 
 // SetCursorPos sets the position of the cursor. The specified window must be focused. If the window does not have focus
 // when this function is called, it fails silently.
-func (w *Window) SetCursorPos(xpos, ypos float64) {
-	C.plafSetCursorPos(w.plafWnd, C.double(xpos), C.double(ypos))
+func (w *Window) SetCursorPos(x, y float64) {
+	if !isInfOrNaN(x) && !isInfOrNaN(y) && w.IsFocused() {
+		C.plafSetCursorPos(w.plafWnd, C.double(x), C.double(y))
+	}
 }
 
-func imageToCImageData(img *image.NRGBA) C.plafImageData {
+func imageToCImageData(pinner *runtime.Pinner, img *image.NRGBA) C.plafImageData {
 	var r C.plafImageData
 	w := img.Rect.Dx()
 	h := img.Rect.Dy()
@@ -101,6 +105,7 @@ func imageToCImageData(img *image.NRGBA) C.plafImageData {
 		draw.Draw(m, m.Bounds(), img, img.Rect.Min, draw.Src)
 		pixels = m.Pix
 	}
-	r.pixels = (*C.uchar)(C.CBytes(pixels))
+	r.pixels = (*C.uchar)(&pixels[0])
+	pinner.Pin(r.pixels)
 	return r
 }

@@ -4,6 +4,7 @@ package plaf
 import "C"
 
 import (
+	"math"
 	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -66,4 +67,8 @@ func Terminate() error {
 	}()
 	C.plafTerminate()
 	return nil
+}
+
+func isInfOrNaN(value float64) bool {
+	return value != value || value < -math.MaxFloat64 || value > math.MaxFloat64
 }

@@ -13,7 +13,7 @@ void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 	}
 }
 
-void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
+void plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	POINT pos = { (int)xpos, (int)ypos };
 	ClientToScreen(window->win32Window, &pos);
 	SetCursorPos(pos.x, pos.y);
@@ -34,7 +34,7 @@ bool _plafCursorInContentArea(plafWindow* window) {
 	return PtInRect(&area, pos);
 }
 
-void _plafSetCursor(plafWindow* window) {
+void plafAdjustToCursorChange(plafWindow* window) {
 	if (_plafCursorInContentArea(window)) {
 		_plafUpdateCursorImage(window);
 	}

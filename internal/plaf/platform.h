@@ -1007,7 +1007,7 @@ int plafGetKey(plafWindow* window, int key);
 int plafGetMouseButton(plafWindow* window, int button);
 void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos);
 void plafSetCursorPos(plafWindow* window, double xpos, double ypos);
-void plafSetCursor(plafWindow* window, plafCursor* cursor);
+void plafAdjustToCursorChange(plafWindow* window);
 void plafSwapBuffers(plafWindow* window);
 void plafMakeContextCurrent(plafWindow* window);
 void plafDestroyWindow(plafWindow* window);
@@ -1098,8 +1098,6 @@ void _plafSetWindowFloating(plafWindow* window, bool enabled);
 void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled);
 void _plafUpdateCursor(plafWindow* window);
 bool _plafRefreshContextAttribs(plafWindow* window);
-void _plafSetCursor(plafWindow* window);
-void _plafSetCursorPos(plafWindow* window, double xpos, double ypos);
 #if defined(__APPLE__) || defined(_WIN32)
 bool _plafCursorInContentArea(plafWindow* window);
 #endif

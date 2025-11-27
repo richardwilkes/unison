@@ -7,7 +7,7 @@ void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 	*ypos = [window->nsView frame].size.height - pos.y;
 }
 
-void _plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
+void plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	_plafUpdateCursorImage(window);
 	const NSRect contentRect = [window->nsView frame];
 	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
@@ -27,7 +27,7 @@ bool _plafCursorInContentArea(plafWindow* window) {
 	return [window->nsView mouse:pos inRect:[window->nsView frame]];
 }
 
-void _plafSetCursor(plafWindow* window) {
+void plafAdjustToCursorChange(plafWindow* window) {
 	if (_plafCursorInContentArea(window)) {
 		_plafUpdateCursorImage(window);
 	}
