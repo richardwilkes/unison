@@ -167,7 +167,6 @@ func (w *Window) SetIcon(images []*image.NRGBA) {
 	var pinner runtime.Pinner
 	defer pinner.Unpin()
 	cImgs := make([]C.plafImageData, 0, len(images))
-	pinner.Pin(cImgs)
 	for _, img := range images {
 		if img.Rect.Dx() > 0 && img.Rect.Dy() > 0 {
 			cImgs = append(cImgs, imageToCImageData(&pinner, img))
@@ -177,6 +176,7 @@ func (w *Window) SetIcon(images []*image.NRGBA) {
 		C.plafSetWindowIcon(w.plafWnd, 0, nil)
 	} else {
 		C.plafSetWindowIcon(w.plafWnd, C.int(len(images)), &cImgs[0])
+		runtime.KeepAlive(cImgs)
 	}
 }
 
