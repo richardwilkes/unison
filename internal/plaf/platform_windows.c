@@ -192,8 +192,7 @@ static void createKeyTables(void)
 
 // Window procedure for the hidden helper window
 //
-static LRESULT CALLBACK helperWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
+static LRESULT CALLBACK helperWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	if (uMsg == WM_DISPLAYCHANGE) {
 		_plafPollMonitors();
 	}
@@ -217,16 +216,6 @@ static bool createHelperWindow(void) {
 		return false;
 	}
 	ShowWindow(_plaf.win32HelperWindowHandle, SW_HIDE);
-	// TODO: Consider eliminating this, as we no longer need HID support, do we?
-	{
-		DEV_BROADCAST_DEVICEINTERFACE_W dbi;
-		ZeroMemory(&dbi, sizeof(dbi));
-		dbi.dbcc_size = sizeof(dbi);
-		dbi.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
-		dbi.dbcc_classguid = GUID_DEVINTERFACE_HID;
-		_plaf.win32DeviceNotificationHandle = RegisterDeviceNotificationW(_plaf.win32HelperWindowHandle,
-			(DEV_BROADCAST_HDR*) &dbi, DEVICE_NOTIFY_WINDOW_HANDLE);
-	}
 	MSG msg;
 	while (PeekMessageW(&msg, _plaf.win32HelperWindowHandle, 0, 0, PM_REMOVE)) {
 		TranslateMessage(&msg);
@@ -239,11 +228,7 @@ static bool createHelperWindow(void) {
 //////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-// Returns a wide string version of the specified UTF-8 string
-//
-
 // Returns a UTF-8 string version of the specified wide string
-//
 char* _plafCreateUTF8FromWideString(const WCHAR* src) {
 	int size = WideCharToMultiByte(CP_UTF8, 0, src, -1, NULL, 0, NULL, NULL);
 	if (!size) {
@@ -258,7 +243,6 @@ char* _plafCreateUTF8FromWideString(const WCHAR* src) {
 }
 
 // Checks whether we are on at least the specified build of Windows 10
-//
 BOOL _plafIsWindows10BuildOrGreater(WORD build) {
 	OSVERSIONINFOEXW osvi = { sizeof(osvi), 10, 0, build };
 	DWORD mask = VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER;
@@ -289,10 +273,6 @@ void _plafTerminate(void)
 {
 	if (_plaf.win32BlankCursor)
 		DestroyIcon((HICON) _plaf.win32BlankCursor);
-
-	if (_plaf.win32DeviceNotificationHandle)
-		UnregisterDeviceNotification(_plaf.win32DeviceNotificationHandle);
-
 	if (_plaf.win32HelperWindowHandle)
 		DestroyWindow(_plaf.win32HelperWindowHandle);
 	if (_plaf.win32HelperWindowClass)

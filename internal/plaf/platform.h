@@ -908,7 +908,6 @@ struct plafLib {
 	HWND                                win32HelperWindowHandle;
 	ATOM                                win32HelperWindowClass;
 	ATOM                                win32MainWindowClass;
-	HDEVNOTIFY                          win32DeviceNotificationHandle;
 	int                                 win32AcquiredMonitorCount;
 	UINT                                win32MouseTrailSize;
 	HCURSOR                             win32BlankCursor;
