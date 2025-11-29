@@ -224,7 +224,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		Floating:         w.floating,
 		MousePassThrough: false,
 	}
-	w.wnd = plaf.CreateWindow(title, &cfg, nil, nil)
+	w.wnd = plaf.CreateWindow(title, &cfg, nil)
 	if w.wnd == nil {
 		return nil, errs.New("unable to create window")
 	}

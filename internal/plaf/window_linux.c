@@ -1085,23 +1085,21 @@ static void updateNormalHints(plafWindow* window, int width, int height) {
 	long supplied;
 	_plaf.xlibGetWMNormalHints(_plaf.x11Display, window->x11Window, hints, &supplied);
 	hints->flags &= ~(PMinSize | PMaxSize | PAspect);
-	if (!window->monitor) {
-		if (window->resizable) {
-			if (window->minwidth != DONT_CARE && window->minheight != DONT_CARE) {
-				hints->flags |= PMinSize;
-				hints->min_width = window->minwidth;
-				hints->min_height = window->minheight;
-			}
-			if (window->maxwidth != DONT_CARE && window->maxheight != DONT_CARE) {
-				hints->flags |= PMaxSize;
-				hints->max_width = window->maxwidth;
-				hints->max_height = window->maxheight;
-			}
-		} else {
-			hints->flags |= (PMinSize | PMaxSize);
-			hints->min_width  = hints->max_width  = width;
-			hints->min_height = hints->max_height = height;
+	if (window->resizable) {
+		if (window->minwidth != DONT_CARE && window->minheight != DONT_CARE) {
+			hints->flags |= PMinSize;
+			hints->min_width = window->minwidth;
+			hints->min_height = window->minheight;
 		}
+		if (window->maxwidth != DONT_CARE && window->maxheight != DONT_CARE) {
+			hints->flags |= PMaxSize;
+			hints->max_width = window->maxwidth;
+			hints->max_height = window->maxheight;
+		}
+	} else {
+		hints->flags |= (PMinSize | PMaxSize);
+		hints->min_width  = hints->max_width  = width;
+		hints->min_height = hints->max_height = height;
 	}
 	_plaf.xlibSetWMNormalHints(_plaf.x11Display, window->x11Window, hints);
 	_plaf.xlibFree(hints);
@@ -1111,93 +1109,38 @@ static void updateNormalHints(plafWindow* window, int width, int height) {
 //
 static void updateWindowMode(plafWindow* window)
 {
-	if (window->monitor)
+	if (_plaf.xineramaAvailable &&
+		_plaf.x11NET_WM_FULLSCREEN_MONITORS)
 	{
-		if (_plaf.xineramaAvailable &&
-			_plaf.x11NET_WM_FULLSCREEN_MONITORS)
-		{
-			sendEventToWM(window,
-						  _plaf.x11NET_WM_FULLSCREEN_MONITORS,
-						  window->monitor->x11Index,
-						  window->monitor->x11Index,
-						  window->monitor->x11Index,
-						  window->monitor->x11Index,
-						  0);
-		}
+		_plaf.xlibDeleteProperty(_plaf.x11Display, window->x11Window,
+						_plaf.x11NET_WM_FULLSCREEN_MONITORS);
+	}
 
-		if (_plaf.x11NET_WM_STATE && _plaf.x11NET_WM_STATE_FULLSCREEN)
-		{
-			sendEventToWM(window,
-						  _plaf.x11NET_WM_STATE,
-						  _NET_WM_STATE_ADD,
-						  _plaf.x11NET_WM_STATE_FULLSCREEN,
-						  0, 1, 0);
-		}
-		else
-		{
-			// This is the butcher's way of removing window decorations
-			// Setting the override-redirect attribute on a window makes the
-			// window manager ignore the window completely (ICCCM, section 4)
-			// The good thing is that this makes undecorated full screen windows
-			// easy to do; the bad thing is that we have to do everything
-			// manually and some things (like minimize/restore) won't work at
-			// all, as those are tasks usually performed by the window manager
-
-			XSetWindowAttributes attributes;
-			attributes.override_redirect = True;
-			_plaf.xlibChangeWindowAttributes(_plaf.x11Display,
-									window->x11Window,
-									CWOverrideRedirect,
-									&attributes);
-
-			window->x11OverrideRedirect = true;
-		}
-
-		// Enable compositor bypass
-		if (!window->x11Transparent)
-		{
-			const unsigned long value = 1;
-
-			_plaf.xlibChangeProperty(_plaf.x11Display,  window->x11Window,
-							_plaf.x11NET_WM_BYPASS_COMPOSITOR, XA_CARDINAL, 32,
-							PropModeReplace, (unsigned char*) &value, 1);
-		}
+	if (_plaf.x11NET_WM_STATE && _plaf.x11NET_WM_STATE_FULLSCREEN)
+	{
+		sendEventToWM(window,
+						_plaf.x11NET_WM_STATE,
+						_NET_WM_STATE_REMOVE,
+						_plaf.x11NET_WM_STATE_FULLSCREEN,
+						0, 1, 0);
 	}
 	else
 	{
-		if (_plaf.xineramaAvailable &&
-			_plaf.x11NET_WM_FULLSCREEN_MONITORS)
-		{
-			_plaf.xlibDeleteProperty(_plaf.x11Display, window->x11Window,
-							_plaf.x11NET_WM_FULLSCREEN_MONITORS);
-		}
+		XSetWindowAttributes attributes;
+		attributes.override_redirect = False;
+		_plaf.xlibChangeWindowAttributes(_plaf.x11Display,
+								window->x11Window,
+								CWOverrideRedirect,
+								&attributes);
 
-		if (_plaf.x11NET_WM_STATE && _plaf.x11NET_WM_STATE_FULLSCREEN)
-		{
-			sendEventToWM(window,
-						  _plaf.x11NET_WM_STATE,
-						  _NET_WM_STATE_REMOVE,
-						  _plaf.x11NET_WM_STATE_FULLSCREEN,
-						  0, 1, 0);
-		}
-		else
-		{
-			XSetWindowAttributes attributes;
-			attributes.override_redirect = False;
-			_plaf.xlibChangeWindowAttributes(_plaf.x11Display,
-									window->x11Window,
-									CWOverrideRedirect,
-									&attributes);
+		window->x11OverrideRedirect = false;
+	}
 
-			window->x11OverrideRedirect = false;
-		}
-
-		// Disable compositor bypass
-		if (!window->x11Transparent)
-		{
-			_plaf.xlibDeleteProperty(_plaf.x11Display, window->x11Window,
-							_plaf.x11NET_WM_BYPASS_COMPOSITOR);
-		}
+	// Disable compositor bypass
+	if (!window->x11Transparent)
+	{
+		_plaf.xlibDeleteProperty(_plaf.x11Display, window->x11Window,
+						_plaf.x11NET_WM_BYPASS_COMPOSITOR);
 	}
 }
 
@@ -1266,7 +1209,7 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 	if (!wndconfig->decorated) {
 		_plafSetWindowDecorated(window, false);
 	}
-	if (_plaf.x11NET_WM_STATE && !window->monitor) {
+	if (_plaf.x11NET_WM_STATE) {
 		Atom states[3];
 		int count = 0;
 		if (wndconfig->floating) {
@@ -1483,45 +1426,6 @@ static void handleSelectionRequest(XEvent* event)
 	reply.xselection.time = request->time;
 
 	_plaf.xlibSendEvent(_plaf.x11Display, request->requestor, False, 0, &reply);
-}
-
-// Make the specified window and its video mode active on its monitor
-static void acquireMonitor(plafWindow* window) {
-	if (_plaf.xsaverCount == 0) {
-		// Remember old screen saver settings
-		_plaf.xlibGetScreenSaver(_plaf.x11Display, &_plaf.xsaverTimeout, &_plaf.xsaverInterval, &_plaf.xsaverBlanking,
-			&_plaf.xsaverExposure);
-		// Disable screen saver
-		_plaf.xlibSetScreenSaver(_plaf.x11Display, 0, 0, DontPreferBlanking, DefaultExposures);
-	}
-	if (!window->monitor->window) {
-		_plaf.xsaverCount++;
-	}
-	_plafSetVideoMode(window->monitor, &window->videoMode);
-	if (window->x11OverrideRedirect) {
-		int xpos, ypos;
-		plafVideoMode mode;
-		// Manually position the window over its monitor
-		plafGetMonitorPos(window->monitor, &xpos, &ypos);
-		if (_plafGetVideoMode(window->monitor, &mode)) {
-			_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window, xpos, ypos, mode.width, mode.height);
-		}
-	}
-	window->monitor->window = window;
-}
-
-// Remove the window and restore the original video mode
-static void releaseMonitor(plafWindow* window) {
-	if (window->monitor->window == window) {
-		window->monitor->window = NULL;
-		_plafRestoreVideoMode(window->monitor);
-		_plaf.xsaverCount--;
-		if (_plaf.xsaverCount == 0) {
-			// Restore old screen saver settings
-			_plaf.xlibSetScreenSaver(_plaf.x11Display, _plaf.xsaverTimeout, _plaf.xsaverInterval, _plaf.xsaverBlanking,
-				_plaf.xsaverExposure);
-		}
-	}
 }
 
 // Convert XKB KeySym to Unicode
@@ -1929,13 +1833,6 @@ static void processEvent(XEvent *event) {
 				}
 				const bool minimized = (state == IconicState);
 				if (window->x11Minimized != minimized) {
-					if (window->monitor) {
-						if (minimized) {
-							releaseMonitor(window);
-						} else {
-							acquireMonitor(window);
-						}
-					}
 					window->x11Minimized = minimized;
 					goWindowMinimizeCallback(window, minimized);
 				}
@@ -2093,19 +1990,11 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 	if (wndconfig->mousePassthrough) {
 		_plafSetWindowMousePassthrough(window, true);
 	}
-	if (window->monitor) {
-		_plafShowWindow(window);
-		updateWindowMode(window);
-		acquireMonitor(window);
-	}
 	_plaf.xlibFlush(_plaf.x11Display);
 	return true;
 }
 
 void _plafDestroyWindow(plafWindow* window) {
-	if (window->monitor) {
-		releaseMonitor(window);
-	}
 	if (window->x11IC) {
 		_plaf.xlibDestroyIC(window->x11IC);
 		window->x11IC = NULL;
@@ -2192,16 +2081,10 @@ void plafGetWindowSize(plafWindow* window, int* width, int* height) {
 }
 
 void _plafSetWindowSize(plafWindow* window, int width, int height) {
-	if (window->monitor) {
-		if (window->monitor->window == window) {
-			acquireMonitor(window);
-		}
-	} else {
-		if (!window->resizable) {
-			updateNormalHints(window, width, height);
-		}
-		_plaf.xlibResizeWindow(_plaf.x11Display, window->x11Window, width, height);
+	if (!window->resizable) {
+		updateNormalHints(window, width, height);
 	}
+	_plaf.xlibResizeWindow(_plaf.x11Display, window->x11Window, width, height);
 	_plaf.xlibFlush(_plaf.x11Display);
 }
 
@@ -2221,7 +2104,7 @@ void plafGetWindowFrameSize(plafWindow* window, int* left, int* top, int* right,
 	*top = 0;
 	*right = 0;
 	*bottom = 0;
-	if (window->monitor || !window->decorated || _plaf.x11NET_FRAME_EXTENTS == None) {
+	if (!window->decorated || _plaf.x11NET_FRAME_EXTENTS == None) {
 		return;
 	}
 	if (!plafWindowVisible(window) && _plaf.x11NET_REQUEST_FRAME_EXTENTS) {
@@ -2337,42 +2220,6 @@ void plafFocusWindow(plafWindow* window) {
 	} else if (plafWindowVisible(window)) {
 		_plaf.xlibRaiseWindow(_plaf.x11Display, window->x11Window);
 		_plaf.xlibSetInputFocus(_plaf.x11Display, window->x11Window, RevertToParent, CurrentTime);
-	}
-	_plaf.xlibFlush(_plaf.x11Display);
-}
-
-void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
-	if (window->monitor == monitor) {
-		if (monitor) {
-			if (monitor->window == window) {
-				acquireMonitor(window);
-			}
-		} else {
-			if (!window->resizable) {
-				updateNormalHints(window, width, height);
-			}
-			_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window, xpos, ypos, width, height);
-		}
-		_plaf.xlibFlush(_plaf.x11Display);
-		return;
-	}
-	if (window->monitor) {
-		_plafSetWindowDecorated(window, window->decorated);
-		_plafSetWindowFloating(window, window->floating);
-		releaseMonitor(window);
-	}
-	window->monitor = monitor;
-	updateNormalHints(window, width, height);
-	if (window->monitor) {
-		if (!plafWindowVisible(window)) {
-			_plaf.xlibMapRaised(_plaf.x11Display, window->x11Window);
-			waitForVisibilityNotify(window);
-		}
-		updateWindowMode(window);
-		acquireMonitor(window);
-	} else {
-		updateWindowMode(window);
-		_plaf.xlibMoveResizeWindow(_plaf.x11Display, window->x11Window, xpos, ypos, width, height);
 	}
 	_plaf.xlibFlush(_plaf.x11Display);
 }

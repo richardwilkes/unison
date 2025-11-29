@@ -968,7 +968,7 @@ const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor);
 void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 
 // Windows
-plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share);
+plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafWindow* share);
 void* plafGetNativeWindow(plafWindow* window);
 const char* plafGetWindowTitle(plafWindow* window);
 void plafSetWindowTitle(plafWindow* window, const char* title);
@@ -997,7 +997,6 @@ void plafHideWindow(plafWindow* window);
 bool plafIsWindowFocused(plafWindow* window);
 void plafFocusWindow(plafWindow* window);
 void plafRequestWindowAttention(plafWindow* window);
-void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
 bool plafWindowVisible(plafWindow* window);
 bool plafIsFramebufferTransparent(plafWindow* window);
 void plafHideCursor(plafWindow* window);
@@ -1067,13 +1066,11 @@ bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp);
 void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
 plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count);
 bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode);
-void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
 const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
 int _plafCompareVideoModes(const plafVideoMode* first, const plafVideoMode* second);
 void _plafSplitBPP(int bpp, int* red, int* green, int* blue);
 void _plafMonitorNotify(plafMonitor* monitor, bool connected, bool insertFirst);
 void _plafPollMonitors(void);
-void _plafRestoreVideoMode(plafMonitor* monitor);
 #if defined(_WIN32)
 void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale);
 #endif
@@ -1093,7 +1090,6 @@ void _plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, i
 void _plafMaximizeWindow(plafWindow* window);
 void _plafShowWindow(plafWindow* window);
 void _plafHideWindow(plafWindow* window);
-void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
 void _plafSetWindowResizable(plafWindow* window, bool enabled);
 void _plafSetWindowDecorated(plafWindow* window, bool enabled);
 void _plafSetWindowFloating(plafWindow* window, bool enabled);

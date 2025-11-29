@@ -33,13 +33,20 @@ import (
 
 // ========== App ==========
 
-type ActivationPolicy uint
+func InstallMacAppDelegate() error {
+	if !C.installMacAppDelegate() {
+		return errs.New("InstallMacAppDelegate: unable to install app delegate")
+	}
+	return nil
+}
 
-const (
-	ActivationPolicyRegular ActivationPolicy = iota
-	ActivationPolicyAccessory
-	ActivationPolicyProhibited
-)
+func UninstallMacAppDelegate() {
+	C.uninstallMacAppDelegate()
+}
+
+func FinishLaunching() {
+	C.finishLaunching()
+}
 
 func HideApplication() {
 	C.hideRunningApplication()
@@ -51,10 +58,6 @@ func HideOtherApplications() {
 
 func UnhideAllApplications() {
 	C.unhideAllApplications()
-}
-
-func SetActivationPolicy(policy ActivationPolicy) {
-	C.setActivationPolicy(C.NSApplicationActivationPolicy(policy))
 }
 
 func SetMainMenu(menu Menu) {
@@ -71,6 +74,62 @@ func SetWindowsMenu(menu Menu) {
 
 func SetHelpMenu(menu Menu) {
 	C.setHelpMenu(C.NSMenuRef(menu))
+}
+
+var AppShouldTerminateCallback func()
+
+//export goAppShouldTerminateCallback
+func goAppShouldTerminateCallback() {
+	if AppShouldTerminateCallback != nil {
+		AppShouldTerminateCallback()
+	}
+}
+
+var AppDidChangeScreenParameters func()
+
+//export goAppDidChangeScreenParametersCallback
+func goAppDidChangeScreenParametersCallback() {
+	if AppDidChangeScreenParameters != nil {
+		AppDidChangeScreenParameters()
+	}
+}
+
+var AppWillFinishLaunchingCallback func()
+
+//export goAppWillFinishLaunchingCallback
+func goAppWillFinishLaunchingCallback() {
+	if AppWillFinishLaunchingCallback != nil {
+		AppWillFinishLaunchingCallback()
+	}
+}
+
+var AppDidFinishLaunchingCallback func()
+
+//export goAppDidFinishLaunchingCallback
+func goAppDidFinishLaunchingCallback() {
+	if AppDidFinishLaunchingCallback != nil {
+		AppDidFinishLaunchingCallback()
+	}
+}
+
+var AppDidHideCallback func()
+
+//export goAppDidHideCallback
+func goAppDidHideCallback() {
+	if AppDidHideCallback != nil {
+		AppDidHideCallback()
+	}
+}
+
+var OpenFilesCallback func([]string)
+
+//export goOpenURLsCallback
+func goOpenURLsCallback(a C.CFArrayRef) {
+	if OpenFilesCallback != nil {
+		if urls := Array(a).ArrayOfURLToStringSlice(); len(urls) > 0 {
+			OpenFilesCallback(urls)
+		}
+	}
 }
 
 // ========== Array ==========
@@ -132,6 +191,29 @@ func (a Array) ArrayOfStringToStringSlice() []string {
 	return result
 }
 
+// ========== Display ==========
+
+type DisplayID = C.CGDirectDisplayID
+
+func GetDisplayGammaRamp(displayID DisplayID) (r, g, b []float32) {
+	capacity := C.CGDisplayGammaTableCapacity(displayID)
+	r = make([]float32, capacity)
+	g = make([]float32, capacity)
+	b = make([]float32, capacity)
+	var actual C.uint32
+	C.CGGetDisplayTransferByTable(displayID, capacity, (*C.float)(&r[0]), (*C.float)(&g[0]), (*C.float)(&b[0]), &actual)
+	if actual != capacity {
+		r = r[:actual]
+		g = g[:actual]
+		b = b[:actual]
+	}
+	return r, g, b
+}
+
+func SetDisplayGammaRamp(displayID DisplayID, r, g, b []float32) {
+	C.CGSetDisplayTransferByTable(displayID, C.uint32(len(r)), (*C.float)(&r[0]), (*C.float)(&g[0]), (*C.float)(&b[0]))
+}
+
 // ========== Event ==========
 
 type EventModifierFlags uint
@@ -150,6 +232,14 @@ func DoubleClickInterval() time.Duration {
 
 func CurrentModifierFlags() EventModifierFlags {
 	return EventModifierFlags(C.eventModifierFlags())
+}
+
+func PostEmptyEvent() {
+	C.postEmptyEvent()
+}
+
+func StopMainEventLoop() {
+	C.stopMainEventLoop()
 }
 
 // ========== Menu ==========

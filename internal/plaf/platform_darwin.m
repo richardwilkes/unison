@@ -160,9 +160,6 @@ static void createKeyTables(void) {
 }
 
 - (void)applicationDidHide:(NSNotification *)notification {
-	for (int i = 0; i < _plaf.monitorCount; i++) {
-		_plafRestoreVideoMode(_plaf.monitors[i]);
-	}
 }
 
 - (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {

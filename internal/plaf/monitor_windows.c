@@ -151,41 +151,6 @@ void _plafPollMonitors(void) {
 	_plaf_free(disconnected);
 }
 
-// Change the current video mode
-void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
-	const plafVideoMode* best = _plafChooseVideoMode(monitor, desired);
-	plafVideoMode current;
-	if (_plafGetVideoMode(monitor, &current) && _plafCompareVideoModes(&current, best) == 0) {
-		return;
-	}
-	DEVMODEW dm;
-	ZeroMemory(&dm, sizeof(dm));
-	dm.dmSize = sizeof(dm);
-	dm.dmFields           = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
-	dm.dmPelsWidth        = best->width;
-	dm.dmPelsHeight       = best->height;
-	dm.dmBitsPerPel       = best->redBits + best->greenBits + best->blueBits;
-	dm.dmDisplayFrequency = best->refreshRate;
-	if (dm.dmBitsPerPel < 15 || dm.dmBitsPerPel >= 24) {
-		dm.dmBitsPerPel = 32;
-	}
-	if (ChangeDisplaySettingsExW(monitor->win32Adapter, &dm, NULL, CDS_FULLSCREEN, NULL) == DISP_CHANGE_SUCCESSFUL) {
-		monitor->win32ModeChanged = true;
-	}
-}
-
-// Restore the previously saved (original) video mode
-//
-void _plafRestoreVideoMode(plafMonitor* monitor)
-{
-	if (monitor->win32ModeChanged)
-	{
-		ChangeDisplaySettingsExW(monitor->win32Adapter,
-								 NULL, NULL, CDS_FULLSCREEN, NULL);
-		monitor->win32ModeChanged = false;
-	}
-}
-
 void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale) {
 	*xscale = 0;
 	*yscale = 0;

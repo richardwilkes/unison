@@ -17,10 +17,12 @@ typedef CFTypeRef NSViewRef;
 typedef CFTypeRef NSWindowRef;
 
 // App
+bool installMacAppDelegate(void);
+void uninstallMacAppDelegate(void);
+void finishLaunching(void);
 void hideRunningApplication(void);
 void hideOtherApplications(void);
 void unhideAllApplications(void);
-void setActivationPolicy(NSApplicationActivationPolicy policy);
 void setMainMenu(NSMenuRef menu);
 void setServicesMenu(NSMenuRef menu);
 void setWindowsMenu(NSMenuRef menu);
@@ -29,6 +31,8 @@ void setHelpMenu(NSMenuRef menu);
 // Event
 double doubleClickInterval(void);
 NSEventModifierFlags eventModifierFlags(void);
+void postEmptyEvent(void);
+void stopMainEventLoop(void);
 
 // Menu
 NSMenuRef newMenu(CFStringRef title);

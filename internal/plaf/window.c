@@ -27,7 +27,7 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 //////                        PLAF public API                       //////
 //////////////////////////////////////////////////////////////////////////
 
- plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafMonitor* monitor, plafWindow* share) {
+ plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafWindow* share) {
 	plafFrameBufferCfg fbconfig   = _plaf.frameBufferCfg;
 	fbconfig.transparent          = wndCfg->transparent; // TODO: only use one of these
 	plafWindow* window            = _plaf_calloc(1, sizeof(plafWindow));
@@ -39,7 +39,6 @@ void _plafInputWindowCloseRequest(plafWindow* window) {
 	window->videoMode.greenBits   = fbconfig.greenBits;
 	window->videoMode.blueBits    = fbconfig.blueBits;
 	window->videoMode.refreshRate = _plaf.desiredRefreshRate;
-	window->monitor               = monitor;
 	window->resizable             = wndCfg->resizable;
 	window->decorated             = wndCfg->decorated;
 	window->floating              = wndCfg->floating;
@@ -85,9 +84,6 @@ void plafSetWindowTitle(plafWindow* window, const char* title) {
 }
 
 void plafSetWindowPos(plafWindow* window, int xpos, int ypos) {
-	if (window->monitor) {
-		return;
-	}
 	_plafSetWindowPos(window, xpos, ypos);
 }
 
@@ -112,56 +108,42 @@ void plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, in
 	window->minheight = minheight;
 	window->maxwidth  = maxwidth;
 	window->maxheight = maxheight;
-	if (window->monitor || !window->resizable) {
+	if (!window->resizable) {
 		return;
 	}
 	_plafSetWindowSizeLimits(window, minwidth, minheight, maxwidth, maxheight);
 }
 
 void plafMaximizeWindow(plafWindow* window) {
-	if (window->monitor) {
-		return;
-	}
 	_plafMaximizeWindow(window);
 }
 
 void plafShowWindow(plafWindow* window) {
-	if (!window->monitor) {
-		_plafShowWindow(window);
-	}
+	_plafShowWindow(window);
 }
 
 void plafHideWindow(plafWindow* window) {
-	if (window->monitor) {
-		return;
-	}
 	_plafHideWindow(window);
 }
 
 void plafSetWindowResizable(plafWindow* window, bool enabled) {
 	if (window->resizable != enabled) {
 		window->resizable = enabled;
-		if (!window->monitor) {
-			_plafSetWindowResizable(window, enabled);
-		}
+		_plafSetWindowResizable(window, enabled);
 	}
 }
 
 void plafSetWindowDecorated(plafWindow* window, bool enabled) {
 	if (window->decorated != enabled) {
 		window->decorated = enabled;
-		if (!window->monitor) {
-			_plafSetWindowDecorated(window, enabled);
-		}
+		_plafSetWindowDecorated(window, enabled);
 	}
 }
 
 void plafSetWindowFloating(plafWindow* window, bool enabled) {
 	if (window->floating != enabled) {
 		window->floating = enabled;
-		if (!window->monitor) {
-			_plafSetWindowFloating(window, enabled);
-		}
+		_plafSetWindowFloating(window, enabled);
 	}
 }
 
@@ -170,11 +152,4 @@ void plafSetWindowMousePassthrough(plafWindow* window, bool enabled) {
 		window->mousePassthrough = enabled;
 		_plafSetWindowMousePassthrough(window, enabled);
 	}
-}
-
-void plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
-	window->videoMode.width       = width;
-	window->videoMode.height      = height;
-	window->videoMode.refreshRate = refreshRate;
-	_plafSetWindowMonitor(window, monitor, xpos, ypos, width, height, refreshRate);
 }

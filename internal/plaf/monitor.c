@@ -20,18 +20,6 @@ void _plafMonitorNotify(plafMonitor* monitor, bool connected, bool insertFirst) 
 		}
 		goMonitorCallback(monitor, true);
 	} else {
-		for (plafWindow* window = _plaf.windowListHead; window; window = window->next) {
-			if (window->monitor == monitor) {
-				int width;
-				int height;
-				int xOffset;
-				int yOffset;
-				plafGetWindowSize(window, &width, &height);
-				_plafSetWindowMonitor(window, NULL, 0, 0, width, height, 0);
-				plafGetWindowFrameSize(window, &xOffset, &yOffset, &width, &height);
-				_plafSetWindowPos(window, xOffset, yOffset);
-			}
-		}
 		for (int i = 0; i < _plaf.monitorCount; i++) {
 			if (_plaf.monitors[i] == monitor) {
 				_plaf.monitorCount--;

@@ -658,18 +658,14 @@ type Window struct {
 // dock icon will be the same as the application bundle's icon.
 //
 // This function may only be called from the main thread.
-func CreateWindow(title string, cfg *WindowConfig, monitor *Monitor, share *Window) *Window {
+func CreateWindow(title string, cfg *WindowConfig, share *Window) *Window {
 	t := C.CString(title)
 	defer C.free(unsafe.Pointer(t))
-	var m *C.plafMonitor
-	if monitor != nil {
-		m = monitor.data
-	}
 	var s *C.plafWindow
 	if share != nil {
 		s = share.plafWnd
 	}
-	w := C.plafCreateWindow(t, (*C.plafWindowConfig)(unsafe.Pointer(cfg)), m, s)
+	w := C.plafCreateWindow(t, (*C.plafWindowConfig)(unsafe.Pointer(cfg)), s)
 	if w == nil {
 		return nil
 	}
@@ -973,39 +969,6 @@ func (w *Window) GetMonitor() *Monitor {
 		return nil
 	}
 	return &Monitor{data: w.plafWnd.monitor}
-}
-
-// SetMonitor sets the monitor that the window uses for full screen mode or,
-// if the monitor is NULL, makes it windowed mode.
-//
-// When setting a monitor, this function updates the width, height and refresh
-// rate of the desired video mode and switches to the video mode closest to it.
-// The window position is ignored when setting a monitor.
-//
-// When the monitor is NULL, the position, width and height are used to place
-// the window client area. The refresh rate is ignored when no monitor is specified.
-// If you only wish to update the resolution of a full screen window or the size of
-// a windowed mode window, see window.SetSize.
-//
-// When a window transitions from full screen to windowed mode, this function
-// restores any previous window settings such as whether it is decorated, floating,
-// resizable, has size or aspect ratio limits, etc..
-func (w *Window) SetMonitor(monitor *Monitor, xpos, ypos, width, height, refreshRate int) {
-	if width <= 0 || height <= 0 || (refreshRate < 0 && refreshRate != C.DONT_CARE) {
-		slog.Warn("SetMonitor: invalid size", "width", width, "height", height)
-		return
-	}
-	if refreshRate < 0 && refreshRate != C.DONT_CARE {
-		slog.Warn("SetMonitor: invalid refreshRate", "refreshRate", refreshRate)
-		return
-	}
-	var m *C.plafMonitor
-	if monitor == nil {
-		m = nil
-	} else {
-		m = monitor.data
-	}
-	C.plafSetWindowMonitor(w.plafWnd, m, C.int(xpos), C.int(ypos), C.int(width), C.int(height), C.int(refreshRate))
 }
 
 // NativeWindow returns the underlying native window.

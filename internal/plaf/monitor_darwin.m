@@ -145,54 +145,6 @@ void _plafPollMonitors(void) {
 	_plaf_free(displays);
 }
 
-// Change the current video mode
-void _plafSetVideoMode(plafMonitor* monitor, const plafVideoMode* desired) {
-	const plafVideoMode* best = _plafChooseVideoMode(monitor, desired);
-	plafVideoMode current;
-	if (_plafGetVideoMode(monitor, &current) && _plafCompareVideoModes(&current, best) == 0) {
-		return;
-	}
-	CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->nsDisplayID, NULL);
-	const CFIndex count = CFArrayGetCount(modes);
-	CGDisplayModeRef native = NULL;
-	for (CFIndex i = 0; i < count; i++) {
-		CGDisplayModeRef dm = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
-		if (!modeIsGood(dm)) {
-			continue;
-		}
-		const plafVideoMode mode = vidmodeFromCGDisplayMode(dm);
-		if (_plafCompareVideoModes(best, &mode) == 0) {
-			native = dm;
-			break;
-		}
-	}
-	if (native) {
-		if (monitor->nsPreviousMode == NULL) {
-			monitor->nsPreviousMode = CGDisplayCopyDisplayMode(monitor->nsDisplayID);
-		}
-		CGDisplayFadeReservationToken token = beginFadeReservation();
-		CGDisplaySetDisplayMode(monitor->nsDisplayID, native, NULL);
-		endFadeReservation(token);
-	}
-	CFRelease(modes);
-}
-
-// Restore the previously saved (original) video mode
-//
-void _plafRestoreVideoMode(plafMonitor* monitor)
-{
-	if (monitor->nsPreviousMode)
-	{
-		CGDisplayFadeReservationToken token = beginFadeReservation();
-		CGDisplaySetDisplayMode(monitor->nsDisplayID,
-								monitor->nsPreviousMode, NULL);
-		endFadeReservation(token);
-
-		CGDisplayModeRelease(monitor->nsPreviousMode);
-		monitor->nsPreviousMode = NULL;
-	}
-}
-
 
 //////////////////////////////////////////////////////////////////////////
 //////                       PLAF platform API                      //////

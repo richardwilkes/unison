@@ -16,3 +16,15 @@ double doubleClickInterval(void) {
 NSEventModifierFlags eventModifierFlags(void) {
 	return NSEvent.modifierFlags;
 }
+
+void postEmptyEvent(void) {
+	@autoreleasepool {
+		NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSMakePoint(0, 0)
+			modifierFlags:0 timestamp:0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
+		[NSApp postEvent:event atStart:YES];
+	}
+}
+
+void stopMainEventLoop(void) {
+	[NSApp stop:nil];
+}

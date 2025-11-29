@@ -20,40 +20,25 @@ static WCHAR* createWideStringFromUTF8(const char* src) {
 }
 
 // Returns the window style for the specified window
-//
-static DWORD getWindowStyle(const plafWindow* window)
-{
-	DWORD style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
-
-	if (window->monitor)
-		style |= WS_POPUP;
-	else
-	{
-		style |= WS_SYSMENU | WS_MINIMIZEBOX;
-
-		if (window->decorated)
-		{
-			style |= WS_CAPTION;
-
-			if (window->resizable)
-				style |= WS_MAXIMIZEBOX | WS_THICKFRAME;
+static DWORD getWindowStyle(const plafWindow* window) {
+	DWORD style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_SYSMENU | WS_MINIMIZEBOX;
+	if (window->decorated) {
+		style |= WS_CAPTION;
+		if (window->resizable) {
+			style |= WS_MAXIMIZEBOX | WS_THICKFRAME;
 		}
-		else
-			style |= WS_POPUP;
+	} else {
+		style |= WS_POPUP;
 	}
-
 	return style;
 }
 
 // Returns the extended window style for the specified window
-//
-static DWORD getWindowExStyle(const plafWindow* window)
-{
+static DWORD getWindowExStyle(const plafWindow* window) {
 	DWORD style = WS_EX_APPWINDOW;
-
-	if (window->monitor || window->floating)
+	if (window->floating) {
 		style |= WS_EX_TOPMOST;
-
+	}
 	return style;
 }
 
@@ -207,41 +192,6 @@ static int getKeyMods(void)
 	return mods;
 }
 
-static void fitToMonitor(plafWindow* window) {
-	MONITORINFO mi = { sizeof(mi) };
-	GetMonitorInfoW(window->monitor->win32Handle, &mi);
-	SetWindowPos(window->win32Window, HWND_TOPMOST, mi.rcMonitor.left, mi.rcMonitor.top,
-		mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
-		SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
-}
-
-// Make the specified window and its video mode active on its monitor
-static void acquireMonitor(plafWindow* window) {
-	if (!_plaf.win32AcquiredMonitorCount) {
-		SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
-		SystemParametersInfoW(SPI_GETMOUSETRAILS, 0, &_plaf.win32MouseTrailSize, 0);
-		SystemParametersInfoW(SPI_SETMOUSETRAILS, 0, 0, 0);
-	}
-	if (!window->monitor->window) {
-		_plaf.win32AcquiredMonitorCount++;
-	}
-	_plafSetVideoMode(window->monitor, &window->videoMode);
-	window->monitor->window = window;
-}
-
-// Remove the window and restore the original video mode
-static void releaseMonitor(plafWindow* window) {
-	if (window->monitor->window == window) {
-		_plaf.win32AcquiredMonitorCount--;
-		if (!_plaf.win32AcquiredMonitorCount) {
-			SetThreadExecutionState(ES_CONTINUOUS);
-			SystemParametersInfoW(SPI_SETMOUSETRAILS, _plaf.win32MouseTrailSize, 0, 0);
-		}
-		window->monitor->window = NULL;
-		_plafRestoreVideoMode(window->monitor);
-	}
-}
-
 // Manually maximize the window, for when SW_MAXIMIZE cannot be used
 //
 static void maximizeWindowManually(plafWindow* window)
@@ -331,11 +281,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			switch (wParam & 0xfff0) {
 				case SC_SCREENSAVE:
 				case SC_MONITORPOWER:
-					if (window->monitor) {
-						// We are running in full screen mode, so disallow
-						// screen saver and screen blanking
-						return 0;
-					}
 					break;
 
 				case SC_KEYMENU: // User trying to access application menu using ALT?
@@ -573,15 +518,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 				goWindowSizeCallback(window);
 			}
 
-			if (window->monitor && window->win32Minimized != minimized) {
-				if (minimized) {
-					releaseMonitor(window);
-				} else {
-					acquireMonitor(window);
-					fitToMonitor(window);
-				}
-			}
-
 			window->win32Minimized = minimized;
 			window->maximized = maximized;
 			return 0;
@@ -600,10 +536,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 			MINMAXINFO* mmi = (MINMAXINFO*) lParam;
 			const DWORD style = getWindowStyle(window);
 			const DWORD exStyle = getWindowExStyle(window);
-
-			if (window->monitor) {
-				break;
-			}
 
 			if (IsWindows10Version1607OrGreater()) {
 				_plaf.win32User32AdjustWindowRectExForDpi_(&frame, style, FALSE, exStyle,
@@ -678,7 +610,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 		case WM_DPICHANGED:
 			// Resize windowed mode windows that need it to compensate for non-client area scaling
-			if (!window->monitor && IsWindows10Version1703OrGreater()) {
+			if (IsWindows10Version1703OrGreater()) {
 				RECT* suggested = (RECT*)lParam;
 				SetWindowPos(window->win32Window, HWND_TOP, suggested->left, suggested->top,
 					suggested->right - suggested->left, suggested->bottom - suggested->top,
@@ -771,21 +703,12 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 		}
 	}
 	int frameX, frameY, frameWidth, frameHeight;
-	if (window->monitor) {
-		MONITORINFO mi = { sizeof(mi) };
-		GetMonitorInfoW(window->monitor->win32Handle, &mi);
-		frameX = mi.rcMonitor.left;
-		frameY = mi.rcMonitor.top;
-		frameWidth  = mi.rcMonitor.right - mi.rcMonitor.left;
-		frameHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
-	} else {
-		RECT rect = { 0, 0, 1, 1 };
-		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
-		frameX = rect.left;
-		frameY = rect.top;
-		frameWidth  = rect.right - rect.left;
-		frameHeight = rect.bottom - rect.top;
-	}
+	RECT rect = { 0, 0, 1, 1 };
+	AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+	frameX = rect.left;
+	frameY = rect.top;
+	frameWidth  = rect.right - rect.left;
+	frameHeight = rect.bottom - rect.top;
 	WCHAR* wideTitle = createWideStringFromUTF8(window->title);
 	if (!wideTitle) {
 		return false;
@@ -800,22 +723,20 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 	ChangeWindowMessageFilterEx(window->win32Window, WM_DROPFILES, MSGFLT_ALLOW, NULL);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYDATA, MSGFLT_ALLOW, NULL);
 	ChangeWindowMessageFilterEx(window->win32Window, WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
-	if (!window->monitor) {
-		RECT rect = { 0, 0, 1, 1 };
-		WINDOWPLACEMENT wp = { sizeof(wp) };
-		const HMONITOR mh = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
-		if (IsWindows10Version1607OrGreater()) {
-			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle,
-				_plaf.win32User32GetDpiForWindow_(window->win32Window));
-		} else {
-			AdjustWindowRectEx(&rect, style, FALSE, exStyle);
-		}
-		GetWindowPlacement(window->win32Window, &wp);
-		OffsetRect(&rect, wp.rcNormalPosition.left - rect.left, wp.rcNormalPosition.top - rect.top);
-		wp.rcNormalPosition = rect;
-		wp.showCmd = SW_HIDE;
-		SetWindowPlacement(window->win32Window, &wp);
+	RECT rect = { 0, 0, 1, 1 };
+	WINDOWPLACEMENT wp = { sizeof(wp) };
+	const HMONITOR mh = MonitorFromWindow(window->win32Window, MONITOR_DEFAULTTONEAREST);
+	if (IsWindows10Version1607OrGreater()) {
+		_plaf.win32User32AdjustWindowRectExForDpi_(&rect, style, FALSE, exStyle,
+			_plaf.win32User32GetDpiForWindow_(window->win32Window));
+	} else {
+		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 	}
+	GetWindowPlacement(window->win32Window, &wp);
+	OffsetRect(&rect, wp.rcNormalPosition.left - rect.left, wp.rcNormalPosition.top - rect.top);
+	wp.rcNormalPosition = rect;
+	wp.showCmd = SW_HIDE;
+	SetWindowPlacement(window->win32Window, &wp);
 	DragAcceptFiles(window->win32Window, TRUE);
 	if (fbconfig->transparent) {
 		updateFramebufferTransparency(window);
@@ -841,19 +762,10 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 	if (wndconfig->mousePassthrough) {
 		_plafSetWindowMousePassthrough(window, true);
 	}
-	if (window->monitor) {
-		_plafShowWindow(window);
-		plafFocusWindow(window);
-		acquireMonitor(window);
-		fitToMonitor(window);
-	}
 	return true;
 }
 
 void _plafDestroyWindow(plafWindow* window) {
-	if (window->monitor) {
-		releaseMonitor(window);
-	}
 	if (window->context.destroy) {
 		window->context.destroy(window);
 	}
@@ -933,22 +845,15 @@ void plafGetWindowSize(plafWindow* window, int* width, int* height) {
 }
 
 void _plafSetWindowSize(plafWindow* window, int width, int height) {
-	if (window->monitor) {
-		if (window->monitor->window == window) {
-			acquireMonitor(window);
-			fitToMonitor(window);
-		}
+	RECT rect = { 0, 0, width, height };
+	if (IsWindows10Version1607OrGreater()) {
+		_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window),
+		_plaf.win32User32GetDpiForWindow_(window->win32Window));
 	} else {
-		RECT rect = { 0, 0, width, height };
-		if (IsWindows10Version1607OrGreater()) {
-			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window),
-			_plaf.win32User32GetDpiForWindow_(window->win32Window));
-		} else {
-			AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
-		}
-		SetWindowPos(window->win32Window, HWND_TOP, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
-			SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
+		AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
 	}
+	SetWindowPos(window->win32Window, HWND_TOP, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
+		SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
 }
 
 void _plafSetWindowSizeLimits(plafWindow* window, int minwidth, int minheight, int maxwidth, int maxheight) {
@@ -1018,71 +923,6 @@ void plafFocusWindow(plafWindow* window) {
 	BringWindowToTop(window->win32Window);
 	SetForegroundWindow(window->win32Window);
 	SetFocus(window->win32Window);
-}
-
-void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
-	if (window->monitor == monitor) {
-		if (monitor) {
-			if (monitor->window == window) {
-				acquireMonitor(window);
-				fitToMonitor(window);
-			}
-		} else {
-			RECT rect = { xpos, ypos, xpos + width, ypos + height };
-			if (IsWindows10Version1607OrGreater()) {
-				_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE,
-				getWindowExStyle(window), _plaf.win32User32GetDpiForWindow_(window->win32Window));
-			} else {
-				AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
-			}
-			SetWindowPos(window->win32Window, HWND_TOP, rect.left, rect.top, rect.right - rect.left,
-				rect.bottom - rect.top, SWP_NOCOPYBITS | SWP_NOACTIVATE | SWP_NOZORDER);
-		}
-		return;
-	}
-	if (window->monitor) {
-		releaseMonitor(window);
-	}
-	window->monitor = monitor;
-	if (window->monitor) {
-		MONITORINFO mi = { sizeof(mi) };
-		UINT flags = SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOCOPYBITS;
-		if (window->decorated) {
-			DWORD style = GetWindowLongW(window->win32Window, GWL_STYLE);
-			style &= ~WS_OVERLAPPEDWINDOW;
-			style |= getWindowStyle(window);
-			SetWindowLongW(window->win32Window, GWL_STYLE, style);
-			flags |= SWP_FRAMECHANGED;
-		}
-		acquireMonitor(window);
-		GetMonitorInfoW(window->monitor->win32Handle, &mi);
-		SetWindowPos(window->win32Window, HWND_TOPMOST, mi.rcMonitor.left, mi.rcMonitor.top,
-			mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top, flags);
-	} else {
-		HWND after;
-		RECT rect = { xpos, ypos, xpos + width, ypos + height };
-		DWORD style = GetWindowLongW(window->win32Window, GWL_STYLE);
-		UINT flags = SWP_NOACTIVATE | SWP_NOCOPYBITS;
-		if (window->decorated) {
-			style &= ~WS_POPUP;
-			style |= getWindowStyle(window);
-			SetWindowLongW(window->win32Window, GWL_STYLE, style);
-			flags |= SWP_FRAMECHANGED;
-		}
-		if (window->floating) {
-			after = HWND_TOPMOST;
-		} else {
-			after = HWND_NOTOPMOST;
-		}
-		if (IsWindows10Version1607OrGreater()) {
-			_plaf.win32User32AdjustWindowRectExForDpi_(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window),
-			_plaf.win32User32GetDpiForWindow_(window->win32Window));
-		} else {
-			AdjustWindowRectEx(&rect, getWindowStyle(window), FALSE, getWindowExStyle(window));
-		}
-		SetWindowPos(window->win32Window, after, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-			flags);
-	}
 }
 
 bool plafIsWindowFocused(plafWindow* window) {

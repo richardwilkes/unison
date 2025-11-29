@@ -34,24 +34,6 @@ void _plafUpdateCursorImage(plafWindow* window) {
 	}
 }
 
-// Make the specified window and its video mode active on its monitor
-static void acquireMonitor(plafWindow* window) {
-	_plafSetVideoMode(window->monitor, &window->videoMode);
-	const CGRect bounds = CGDisplayBounds(window->monitor->nsDisplayID);
-	const NSRect frame = NSMakeRect(bounds.origin.x, _plafTransformYCocoa(bounds.origin.y + bounds.size.height - 1),
-		bounds.size.width, bounds.size.height);
-	[window->nsWindow setFrame:frame display:YES];
-	window->monitor->window = window;
-}
-
-// Remove the window and restore the original video mode
-static void releaseMonitor(plafWindow* window) {
-	if (window->monitor->window == window) {
-		window->monitor->window = NULL;
-		_plafRestoreVideoMode(window->monitor);
-	}
-}
-
 // Translates macOS key modifiers into PLAF ones
 //
 static int translateFlags(NSUInteger flags)
@@ -159,16 +141,10 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
-	if (window->monitor) {
-		releaseMonitor(window);
-	}
 	goWindowMinimizeCallback(window, true);
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
-	if (window->monitor) {
-		acquireMonitor(window);
-	}
 	goWindowMinimizeCallback(window, false);
 }
 
@@ -505,22 +481,9 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 		return false;
 	}
 
-	NSRect contentRect;
-	if (window->monitor) {
-		plafVideoMode mode;
-		int xpos;
-		int ypos;
-		if (!_plafGetVideoMode(window->monitor, &mode)) {
-			return false;
-		}
-		plafGetMonitorPos(window->monitor, &xpos, &ypos);
-		contentRect = NSMakeRect(xpos, ypos, mode.width, mode.height);
-	} else {
-		contentRect = NSMakeRect(0, 0, 1, 1);
-	}
-
+	NSRect contentRect = NSMakeRect(0, 0, 1, 1);
 	NSUInteger styleMask = NSWindowStyleMaskMiniaturizable;
-	if (window->monitor || !window->decorated) {
+	if (!window->decorated) {
 		styleMask |= NSWindowStyleMaskBorderless;
 	} else {
 		styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable);
@@ -535,18 +498,14 @@ static bool createNativeWindow(plafWindow* window, const plafWindowConfig* wndco
 		return false;
 	}
 
-	if (window->monitor) {
-		[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
+	if (wndconfig->resizable) {
+		[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary |
+			NSWindowCollectionBehaviorManaged];
 	} else {
-		if (wndconfig->resizable) {
-			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary |
-				NSWindowCollectionBehaviorManaged];
-		} else {
-			[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
-		}
-		if (wndconfig->floating) {
-			[window->nsWindow setLevel:NSFloatingWindowLevel];
-		}
+		[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
+	}
+	if (wndconfig->floating) {
+		[window->nsWindow setLevel:NSFloatingWindowLevel];
 	}
 
 	window->nsView = [[MacContentView alloc] initWithPlafWindow:window];
@@ -607,11 +566,6 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 		if (wndconfig->mousePassthrough) {
 			_plafSetWindowMousePassthrough(window, true);
 		}
-		if (window->monitor) {
-			_plafShowWindow(window);
-			plafFocusWindow(window);
-			acquireMonitor(window);
-		}
 		return true;
 	}
 }
@@ -619,9 +573,6 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 void _plafDestroyWindow(plafWindow* window) {
 	@autoreleasepool {
 		[window->nsWindow orderOut:nil];
-		if (window->monitor) {
-			releaseMonitor(window);
-		}
 		if (window->context.destroy) {
 			window->context.destroy(window);
 		}
@@ -676,16 +627,10 @@ void plafGetWindowSize(plafWindow* window, int* width, int* height) {
 
 void _plafSetWindowSize(plafWindow* window, int width, int height) {
 	@autoreleasepool {
-		if (window->monitor) {
-			if (window->monitor->window == window) {
-				acquireMonitor(window);
-			}
-		} else {
-			NSRect contentRect = [window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
-			contentRect.origin.y += contentRect.size.height - height;
-			contentRect.size = NSMakeSize(width, height);
-			[window->nsWindow setFrame:[window->nsWindow frameRectForContentRect:contentRect] display:YES];
-		}
+		NSRect contentRect = [window->nsWindow contentRectForFrameRect:[window->nsWindow frame]];
+		contentRect.origin.y += contentRect.size.height - height;
+		contentRect.size = NSMakeSize(width, height);
+		[window->nsWindow setFrame:[window->nsWindow frameRectForContentRect:contentRect] display:YES];
 	}
 }
 
@@ -778,74 +723,6 @@ void plafFocusWindow(plafWindow* window) {
 	@autoreleasepool {
 		[NSApp activateIgnoringOtherApps:YES];
 		[window->nsWindow makeKeyAndOrderFront:nil];
-	}
-}
-
-void _plafSetWindowMonitor(plafWindow* window, plafMonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate) {
-	@autoreleasepool {
-		if (window->monitor == monitor) {
-			if (monitor) {
-				if (monitor->window == window) {
-					acquireMonitor(window);
-				}
-			} else {
-				const NSRect contentRect = NSMakeRect(xpos, _plafTransformYCocoa(ypos + height - 1), width, height);
-				const NSUInteger styleMask = [window->nsWindow styleMask];
-				const NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
-				[window->nsWindow setFrame:frameRect display:YES];
-			}
-			return;
-		}
-		if (window->monitor) {
-			releaseMonitor(window);
-		}
-		window->monitor = monitor;
-		plafPollEvents();
-		NSUInteger styleMask = [window->nsWindow styleMask];
-		if (window->monitor) {
-			styleMask &= ~(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable);
-			styleMask |= NSWindowStyleMaskBorderless;
-		} else {
-			if (window->decorated) {
-				styleMask &= ~NSWindowStyleMaskBorderless;
-				styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable);
-			}
-			if (window->resizable) {
-				styleMask |= NSWindowStyleMaskResizable;
-			} else {
-				styleMask &= ~NSWindowStyleMaskResizable;
-			}
-		}
-		[window->nsWindow setStyleMask:styleMask];
-		[window->nsWindow makeFirstResponder:window->nsView];
-		if (window->monitor) {
-			[window->nsWindow setLevel:NSMainMenuWindowLevel + 1];
-			[window->nsWindow setHasShadow:NO];
-			acquireMonitor(window);
-		} else {
-			NSRect contentRect = NSMakeRect(xpos, _plafTransformYCocoa(ypos + height - 1), width, height);
-			NSRect frameRect = [NSWindow frameRectForContentRect:contentRect styleMask:styleMask];
-			[window->nsWindow setFrame:frameRect display:YES];
-			if (window->minwidth != DONT_CARE && window->minheight != DONT_CARE) {
-				[window->nsWindow setContentMinSize:NSMakeSize(window->minwidth, window->minheight)];
-			}
-			if (window->maxwidth != DONT_CARE && window->maxheight != DONT_CARE) {
-				[window->nsWindow setContentMaxSize:NSMakeSize(window->maxwidth, window->maxheight)];
-			}
-			if (window->floating) {
-				[window->nsWindow setLevel:NSFloatingWindowLevel];
-			} else {
-				[window->nsWindow setLevel:NSNormalWindowLevel];
-			}
-			if (window->resizable) {
-				[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary |
-					NSWindowCollectionBehaviorManaged];
-			} else {
-				[window->nsWindow setCollectionBehavior:NSWindowCollectionBehaviorFullScreenNone];
-			}
-			[window->nsWindow setHasShadow:YES];
-			[window->nsWindow setTitle:[window->nsWindow miniwindowTitle]];
-		}
 	}
 }
 

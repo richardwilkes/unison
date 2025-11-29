@@ -155,6 +155,7 @@ linters:
     generated: lax
     paths:
       - internal/mac/
+      - internal/plaf2/
       - internal/skia/
 issues:
   max-same-issues: 0

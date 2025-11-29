@@ -10,15 +10,10 @@ void plafGetCursorPos(plafWindow* window, double* xpos, double* ypos) {
 void plafSetCursorPos(plafWindow* window, double xpos, double ypos) {
 	_plafUpdateCursorImage(window);
 	const NSRect contentRect = [window->nsView frame];
-	const NSPoint pos = [window->nsWindow mouseLocationOutsideOfEventStream];
-	if (window->monitor) {
-		CGDisplayMoveCursorToPoint(window->monitor->nsDisplayID, CGPointMake(xpos, ypos));
-	} else {
-		const NSRect localRect = NSMakeRect(xpos, contentRect.size.height - ypos - 1, 0, 0);
-		const NSRect globalRect = [window->nsWindow convertRectToScreen:localRect];
-		const NSPoint globalPoint = globalRect.origin;
-		CGWarpMouseCursorPosition(CGPointMake(globalPoint.x, _plafTransformYCocoa(globalPoint.y)));
-	}
+	const NSRect localRect = NSMakeRect(xpos, contentRect.size.height - ypos - 1, 0, 0);
+	const NSRect globalRect = [window->nsWindow convertRectToScreen:localRect];
+	const NSPoint globalPoint = globalRect.origin;
+	CGWarpMouseCursorPosition(CGPointMake(globalPoint.x, _plafTransformYCocoa(globalPoint.y)));
 	CGAssociateMouseAndMouseCursorPosition(true);
 }
 

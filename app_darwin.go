@@ -17,7 +17,6 @@ import (
 
 func platformLateInit() {
 	mac.InstallSystemThemeChangedCallback(ThemeChanged)
-	mac.SetActivationPolicy(mac.ActivationPolicyRegular)
 }
 
 func platformBeep() {
