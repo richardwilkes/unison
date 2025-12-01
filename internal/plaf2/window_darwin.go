@@ -1,19 +1,22 @@
 package plaf2
 
-import "github.com/richardwilkes/unison/internal/mac"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/mac"
+)
 
 type platformWindow struct {
 	nativeWindow   mac.Window
 	nsCursorHidden bool
 }
 
-func (w *Window) adjustToCursorChange() {
+func (w *Window) adjustToCursorChange() { // formerly plafAdjustToCursorChange
 	if w.cursorInContentArea() {
 		w.updateCursorImage()
 	}
 }
 
-func (w *Window) updateCursorImage() {
+func (w *Window) updateCursorImage() { // formerly _plafUpdateCursorImage
 	if w.cursorHidden {
 		w.hideCursor()
 	} else {
@@ -26,9 +29,15 @@ func (w *Window) updateCursorImage() {
 	}
 }
 
-func (w *Window) cursorInContentArea() bool {
+func (w *Window) cursorInContentArea() bool { // formerly _plafCursorInContentArea
 	view := w.platformWindow.nativeWindow.ContentView()
 	return view.MouseInRect(w.platformWindow.nativeWindow.MouseLocationOutsideOfEventStream(), view.Frame())
+}
+
+func (w *Window) CursorPosition() geom.Point { // formerly plafGetCursorPos
+	loc := w.platformWindow.nativeWindow.MouseLocationOutsideOfEventStream()
+	frame := w.platformWindow.nativeWindow.ContentView().Frame()
+	return geom.NewPoint(loc.X, frame.Height-loc.Y)
 }
 
 func (w *Window) hideCursor() {

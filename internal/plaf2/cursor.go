@@ -8,7 +8,7 @@ type Cursor struct {
 	nativeCursor plafCursor
 }
 
-func (c *Cursor) Destroy() {
+func (c *Cursor) Destroy() { // formerly plafDestroyCursor
 	if c == nil {
 		return
 	}

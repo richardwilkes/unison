@@ -4,7 +4,7 @@ import "github.com/richardwilkes/unison/internal/mac"
 
 type platformMonitorID = mac.DisplayID
 
-func (m *Monitor) gammaRamp() *GammaRamp {
+func (m *Monitor) gammaRamp() *GammaRamp { // formerly _plafGetGammaRamp
 	r, g, b := mac.GetDisplayGammaRamp(m.id)
 	return &GammaRamp{
 		Red:   rampToUint16(r),
@@ -21,7 +21,7 @@ func rampToUint16(in []float32) []uint16 {
 	return out
 }
 
-func (m *Monitor) setGammaRamp(ramp *GammaRamp) {
+func (m *Monitor) setGammaRamp(ramp *GammaRamp) { // formerly _plafSetGammaRamp
 	mac.SetDisplayGammaRamp(m.id, rampToFloat32(ramp.Red), rampToFloat32(ramp.Green), rampToFloat32(ramp.Blue))
 }
 
@@ -33,6 +33,6 @@ func rampToFloat32(in []uint16) []float32 {
 	return out
 }
 
-func pollMonitors() {
+func pollMonitors() { // formerly _plafPollMonitors
 	// TODO: Implement
 }

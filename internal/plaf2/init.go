@@ -38,7 +38,7 @@ type FrameBufferConfig struct {
 }
 
 // Init must be called exactly once before most things in this package may be used.
-func Init() error {
+func Init() error { // formerly plafInit
 	initTermLock.Lock()
 	if initialized {
 		initTermLock.Unlock()
@@ -65,7 +65,7 @@ func Init() error {
 }
 
 // Terminate should be called before exiting, as it destroys all remaining windows and frees any allocated resources.
-func Terminate() error {
+func Terminate() error { // formerly plafTerminate
 	initTermLock.Lock()
 	if terminating {
 		initTermLock.Unlock()

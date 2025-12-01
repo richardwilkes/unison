@@ -10,7 +10,7 @@ type Window struct {
 	cursorHidden   bool
 }
 
-func (w *Window) Destroy() {
+func (w *Window) Destroy() { // formerly plafDestroyWindow
 	if w == nil {
 		return
 	}

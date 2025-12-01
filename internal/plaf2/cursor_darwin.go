@@ -17,7 +17,7 @@ var (
 	resizeUpDownCursor    *Cursor
 )
 
-func NewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
+func NewCursor(img *image.NRGBA, xhot, yhot int) *Cursor { // formerly plafCreateCursor
 	nsCursor := mac.NewCursor(img, xhot, yhot)
 	if nsCursor == 0 {
 		return nil
@@ -27,14 +27,14 @@ func NewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 	return c
 }
 
-func (c *Cursor) destroy() {
+func (c *Cursor) destroy() { // formerly _plafDestroyCursor
 	if c.nativeCursor != 0 {
 		c.nativeCursor.Release()
 		c.nativeCursor = 0
 	}
 }
 
-func ArrowCursor() *Cursor {
+func ArrowCursor() *Cursor { // formerly plafCreateStandardCursor
 	if arrowCursor == nil {
 		arrowCursor = &Cursor{nativeCursor: mac.ArrowCursor()}
 		cursorList = append(cursorList, arrowCursor)
@@ -42,7 +42,7 @@ func ArrowCursor() *Cursor {
 	return arrowCursor
 }
 
-func IBeamCursor() *Cursor {
+func IBeamCursor() *Cursor { // formerly plafCreateStandardCursor
 	if ibeamCursor == nil {
 		ibeamCursor = &Cursor{nativeCursor: mac.IBeamCursor()}
 		cursorList = append(cursorList, ibeamCursor)
@@ -50,7 +50,7 @@ func IBeamCursor() *Cursor {
 	return ibeamCursor
 }
 
-func CrosshairCursor() *Cursor {
+func CrosshairCursor() *Cursor { // formerly plafCreateStandardCursor
 	if crosshairCursor == nil {
 		crosshairCursor = &Cursor{nativeCursor: mac.CrosshairCursor()}
 		cursorList = append(cursorList, crosshairCursor)
@@ -58,7 +58,7 @@ func CrosshairCursor() *Cursor {
 	return crosshairCursor
 }
 
-func PointingHandCursor() *Cursor {
+func PointingHandCursor() *Cursor { // formerly plafCreateStandardCursor
 	if pointingHandCursor == nil {
 		pointingHandCursor = &Cursor{nativeCursor: mac.PointingHandCursor()}
 		cursorList = append(cursorList, pointingHandCursor)
@@ -66,7 +66,7 @@ func PointingHandCursor() *Cursor {
 	return pointingHandCursor
 }
 
-func ResizeLeftRightCursor() *Cursor {
+func ResizeLeftRightCursor() *Cursor { // formerly plafCreateStandardCursor
 	if resizeLeftRightCursor == nil {
 		resizeLeftRightCursor = &Cursor{nativeCursor: mac.ResizeLeftRightCursor()}
 		cursorList = append(cursorList, resizeLeftRightCursor)
@@ -74,7 +74,7 @@ func ResizeLeftRightCursor() *Cursor {
 	return resizeLeftRightCursor
 }
 
-func ResizeUpDownCursor() *Cursor {
+func ResizeUpDownCursor() *Cursor { // formerly plafCreateStandardCursor
 	if resizeUpDownCursor == nil {
 		resizeUpDownCursor = &Cursor{nativeCursor: mac.ResizeUpDownCursor()}
 		cursorList = append(cursorList, resizeUpDownCursor)

@@ -6,7 +6,7 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-func initialize() error {
+func initialize() error { // formerly _plafInit
 	mac.AppShouldTerminateCallback = func() {
 		// TODO: Initiate termination sequence, typically closing all windows, then exiting
 	}
@@ -36,7 +36,7 @@ func initialize() error {
 	return nil
 }
 
-func terminate() error {
+func terminate() error { // formerly _plafTerminate
 	mac.UninstallMacAppDelegate()
 	return nil
 }

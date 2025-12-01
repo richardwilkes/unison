@@ -11,11 +11,11 @@ type Monitor struct {
 	id                platformMonitorID
 }
 
-func (m *Monitor) GammaRamp() *GammaRamp {
+func (m *Monitor) GammaRamp() *GammaRamp { // formerly plafGetGammaRamp
 	return m.gammaRamp()
 }
 
-func (m *Monitor) SetGammaRamp(ramp *GammaRamp) {
+func (m *Monitor) SetGammaRamp(ramp *GammaRamp) { // formerly plafSetGammaRamp
 	if !ramp.Valid() {
 		slog.Warn("Monitor.SetGammaRamp: ignoring invalid ramp")
 		return
