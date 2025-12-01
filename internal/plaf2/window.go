@@ -5,13 +5,9 @@ import "slices"
 var windowList []*Window
 
 type Window struct {
-	cursor *Cursor
-}
-
-func (w *Window) adjustToCursorChange() {
-	/* TODO
-	plafAdjustToCursorChange(window);
-	*/
+	platformWindow platformWindow
+	cursor         *Cursor
+	cursorHidden   bool
 }
 
 func (w *Window) Destroy() {

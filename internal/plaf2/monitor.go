@@ -12,7 +12,7 @@ type Monitor struct {
 }
 
 func (m *Monitor) GammaRamp() *GammaRamp {
-	return m.platformGetGammaRamp()
+	return m.gammaRamp()
 }
 
 func (m *Monitor) SetGammaRamp(ramp *GammaRamp) {
@@ -29,7 +29,7 @@ func (m *Monitor) SetGammaRamp(ramp *GammaRamp) {
 		slog.Warn("Monitor.SetGammaRamp: ignoring invalid ramp - must have same number of entries as original")
 		return
 	}
-	m.platformSetGammaRamp(ramp)
+	m.setGammaRamp(ramp)
 }
 
 type GammaRamp struct {

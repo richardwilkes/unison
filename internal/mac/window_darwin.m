@@ -12,3 +12,7 @@
 NSViewRef windowContentView(NSWindowRef w) {
 	return (NSViewRef)[(NSWindow *)w contentView];
 }
+
+CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w) {
+	return [(NSWindow *)w mouseLocationOutsideOfEventStream];
+}

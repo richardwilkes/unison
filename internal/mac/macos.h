@@ -9,6 +9,7 @@
 
 #import <Cocoa/Cocoa.h>
 
+typedef CFTypeRef NSCursorRef;
 typedef CFTypeRef NSMenuRef;
 typedef CFTypeRef NSMenuItemRef;
 typedef CFTypeRef NSOpenPanelRef;
@@ -27,6 +28,18 @@ void setMainMenu(NSMenuRef menu);
 void setServicesMenu(NSMenuRef menu);
 void setWindowsMenu(NSMenuRef menu);
 void setHelpMenu(NSMenuRef menu);
+
+// Cursor
+NSCursorRef newCursor(unsigned char* pixels, int width, int height, int xhot, int yhot);
+NSCursorRef cursorArrow(void);
+NSCursorRef cursorIBeam(void);
+NSCursorRef cursorCrosshair(void);
+NSCursorRef cursorPointingHand(void);
+NSCursorRef cursorResizeLeftRight(void);
+NSCursorRef cursorResizeUpDown(void);
+void cursorHide(void);
+void cursorShow(void);
+void cursorSet(NSCursorRef cursor);
 
 // Event
 double doubleClickInterval(void);
@@ -95,7 +108,9 @@ void beep(void);
 void installThemeChangedCallback(void);
 
 // View
-void viewFrame(NSViewRef v, NSRect *frame);
+void viewFrame(NSViewRef v, CGRect *frame);
+bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 
 // Window
 NSViewRef windowContentView(NSWindowRef w);
+CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w);

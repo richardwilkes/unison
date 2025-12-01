@@ -37,7 +37,7 @@ type FrameBufferConfig struct {
 	IsTransparent  bool
 }
 
-// Init must be called exactly once before most things in this package.
+// Init must be called exactly once before most things in this package may be used.
 func Init() error {
 	initTermLock.Lock()
 	if initialized {
@@ -61,10 +61,10 @@ func Init() error {
 		initialized = success
 		initTermLock.Unlock()
 	}()
-	return platformInit()
+	return initialize()
 }
 
-// Terminate should be called before exiting. It will destroy all remaining windows and free any allocated resources.
+// Terminate should be called before exiting, as it destroys all remaining windows and frees any allocated resources.
 func Terminate() error {
 	initTermLock.Lock()
 	if terminating {
@@ -94,5 +94,5 @@ func Terminate() error {
 			m.originalGammaRamp = nil
 		}
 	}
-	return platformTerminate()
+	return terminate()
 }

@@ -6,7 +6,7 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-func platformInit() error {
+func initialize() error {
 	mac.AppShouldTerminateCallback = func() {
 		// TODO: Initiate termination sequence, typically closing all windows, then exiting
 	}
@@ -17,7 +17,7 @@ func platformInit() error {
 			[window->context.nsglCtx update];
 			*/
 		}
-		platformPollMonitors()
+		pollMonitors()
 	}
 	mac.AppDidFinishLaunchingCallback = func() {
 		mac.PostEmptyEvent()
@@ -30,13 +30,13 @@ func platformInit() error {
 	if err := mac.InstallMacAppDelegate(); err != nil {
 		return err
 	}
-	platformCreateKeyTables()
-	platformPollMonitors()
+	createKeyTables()
+	pollMonitors()
 	mac.FinishLaunching()
 	return nil
 }
 
-func platformTerminate() error {
+func terminate() error {
 	mac.UninstallMacAppDelegate()
 	return nil
 }

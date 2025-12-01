@@ -21,6 +21,8 @@ package mac
 import "C"
 
 import (
+	"image"
+	"image/draw"
 	"net/url"
 	"strings"
 	"time"
@@ -191,6 +193,60 @@ func (a Array) ArrayOfStringToStringSlice() []string {
 	return result
 }
 
+// ========== Cursor ==========
+
+type Cursor C.NSCursorRef
+
+func NewCursor(img *image.NRGBA, xhot, yhot int) Cursor {
+	if img.Stride != img.Rect.Dx()*4 {
+		nImg := image.NewNRGBA(image.Rect(0, 0, img.Rect.Dx(), img.Rect.Dy()))
+		draw.Draw(nImg, nImg.Bounds(), img, img.Rect.Min, draw.Src)
+		img = nImg
+	}
+	return Cursor(C.newCursor((*C.uchar)(&img.Pix[0]), C.int(img.Rect.Dx()), C.int(img.Rect.Dy()), C.int(xhot),
+		C.int(yhot)))
+}
+
+func (c Cursor) Set() {
+	C.cursorSet(C.NSCursorRef(c))
+}
+
+func (c Cursor) Release() {
+	C.CFRelease(C.CFTypeRef(c))
+}
+
+func HideCursor() {
+	C.cursorHide()
+}
+
+func ShowCursor() {
+	C.cursorShow()
+}
+
+func ArrowCursor() Cursor {
+	return Cursor(C.cursorArrow())
+}
+
+func IBeamCursor() Cursor {
+	return Cursor(C.cursorIBeam())
+}
+
+func CrosshairCursor() Cursor {
+	return Cursor(C.cursorCrosshair())
+}
+
+func PointingHandCursor() Cursor {
+	return Cursor(C.cursorPointingHand())
+}
+
+func ResizeLeftRightCursor() Cursor {
+	return Cursor(C.cursorResizeLeftRight())
+}
+
+func ResizeUpDownCursor() Cursor {
+	return Cursor(C.cursorResizeUpDown())
+}
+
 // ========== Display ==========
 
 type DisplayID = C.CGDirectDisplayID
@@ -283,16 +339,7 @@ func (m Menu) Title() string {
 }
 
 func (m Menu) Popup(wnd Window, menu Menu, item MenuItem, bounds geom.Rect) {
-	C.menuPopup(C.NSWindowRef(wnd), C.NSMenuRef(menu), C.NSMenuItemRef(item), C.CGRect{
-		origin: C.CGPoint{
-			x: C.double(bounds.X),
-			y: C.double(bounds.Y),
-		},
-		size: C.CGSize{
-			width:  C.double(bounds.Width),
-			height: C.double(bounds.Height),
-		},
-	})
+	C.menuPopup(C.NSWindowRef(wnd), C.NSMenuRef(menu), C.NSMenuItemRef(item), rectToCGRect(bounds))
 }
 
 func (m Menu) Release() {
@@ -607,6 +654,36 @@ func (u URL) Release() {
 	C.CFRelease(C.CFTypeRef(u))
 }
 
+// ========== Utility ==========
+
+func pointToCGPoint(pt geom.Point) C.CGPoint {
+	return C.CGPoint{
+		x: C.double(pt.X),
+		y: C.double(pt.Y),
+	}
+}
+
+func cgPointToPoint(pt C.CGPoint) geom.Point {
+	return geom.NewPoint(float32(pt.x), float32(pt.y))
+}
+
+func rectToCGRect(r geom.Rect) C.CGRect {
+	return C.CGRect{
+		origin: C.CGPoint{
+			x: C.double(r.X),
+			y: C.double(r.Y),
+		},
+		size: C.CGSize{
+			width:  C.double(r.Width),
+			height: C.double(r.Height),
+		},
+	}
+}
+
+func cgRectToRect(r C.CGRect) geom.Rect {
+	return geom.NewRect(float32(r.origin.x), float32(r.origin.y), float32(r.size.width), float32(r.size.height))
+}
+
 // ========== View ==========
 
 type View C.NSViewRef
@@ -614,8 +691,11 @@ type View C.NSViewRef
 func (v View) Frame() geom.Rect {
 	var frame C.NSRect
 	C.viewFrame(C.NSViewRef(v), &frame)
-	return geom.NewRect(float32(frame.origin.x), float32(frame.origin.y), float32(frame.size.width),
-		float32(frame.size.height))
+	return cgRectToRect(frame)
+}
+
+func (v View) MouseInRect(mousePt geom.Point, rect geom.Rect) bool {
+	return bool(C.viewMouseInRect(C.NSViewRef(v), pointToCGPoint(mousePt), rectToCGRect(rect)))
 }
 
 // ========== Window ==========
@@ -624,4 +704,8 @@ type Window C.NSWindowRef
 
 func (w Window) ContentView() View {
 	return View(C.windowContentView(C.NSWindowRef(w)))
+}
+
+func (w Window) MouseLocationOutsideOfEventStream() geom.Point {
+	return cgPointToPoint(C.windowMouseLocationOutsideOfEventStream(C.NSWindowRef(w)))
 }

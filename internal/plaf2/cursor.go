@@ -5,6 +5,7 @@ import "slices"
 var cursorList []*Cursor
 
 type Cursor struct {
+	nativeCursor plafCursor
 }
 
 func (c *Cursor) Destroy() {
@@ -17,8 +18,6 @@ func (c *Cursor) Destroy() {
 			w.adjustToCursorChange()
 		}
 	}
-	/* TODO
-	   _plafDestroyCursor(cursor);
-	*/
 	cursorList = slices.DeleteFunc(cursorList, func(cur *Cursor) bool { return cur == c })
+	c.destroy()
 }

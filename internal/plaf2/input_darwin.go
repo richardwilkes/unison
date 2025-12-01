@@ -1,5 +1,5 @@
 package plaf2
 
-func platformCreateKeyTables() {
+func createKeyTables() {
 	// TODO: Implement
 }

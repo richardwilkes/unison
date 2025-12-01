@@ -9,6 +9,10 @@
 
 #import "macos.h"
 
-void viewFrame(NSViewRef v, NSRect *frame) {
+void viewFrame(NSViewRef v, CGRect *frame) {
 	*frame = [(NSView *)v frame];
+}
+
+bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect) {
+	return [(NSView *)v mouse:mousePt inRect:rect];
 }
