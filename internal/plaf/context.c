@@ -66,41 +66,7 @@ const plafFrameBufferCfg* _plafChooseFBConfig(const plafFrameBufferCfg* desired,
 	return closest;
 }
 
-// Retrieves the attributes of the current context
-bool _plafRefreshContextAttribs(plafWindow* window) {
-	plafWindow* previous = _plaf.wndWithCurrentCtx;
-	plafMakeContextCurrent(window);
-
-	const char* (APIENTRY * getString)(unsigned int) = (const char* (APIENTRY *)(unsigned int))window->context.getProcAddress("glGetString");
-	if (!getString) {
-		plafMakeContextCurrent(previous);
-		return false;
-	}
-	const char* version = getString(GL_VERSION);
-	if (!version) {
-		plafMakeContextCurrent(previous);
-		return false;
-	}
-	int major = 0;
-	int minor = 0;
-	if (!sscanf(version, "%d.%d", &major, &minor)) {
-		plafMakeContextCurrent(previous);
-		return false;
-	}
-	if (major < 3 || (major == 3 && minor < 2)) {
-		plafMakeContextCurrent(previous);
-		return false;
-	}
-
-	FN_GLCLEAR glClear = (FN_GLCLEAR)window->context.getProcAddress("glClear");
-	glClear(GL_COLOR_BUFFER_BIT);
-	plafSwapBuffers(window);
-	plafMakeContextCurrent(previous);
-	return true;
-}
-
 // Searches an extension string for the specified extension
-//
 bool _plafStringInExtensionString(const char* string, const char* extensions) {
 	const char* start = extensions;
 

@@ -529,7 +529,6 @@ struct plafFrameBufferCfg {
 struct plafCtx {
 	void                 (*makeCurrent)(plafWindow*);
 	void                 (*swapBuffers)(plafWindow*);
-	glFunc               (*getProcAddress)(const char*);
 	void                 (*destroy)(plafWindow*);
 #if defined(__APPLE__)
 	NSOpenGLPixelFormat* nsglPixelFormat;
@@ -1095,7 +1094,6 @@ void _plafSetWindowDecorated(plafWindow* window, bool enabled);
 void _plafSetWindowFloating(plafWindow* window, bool enabled);
 void _plafSetWindowMousePassthrough(plafWindow* window, bool enabled);
 void _plafUpdateCursor(plafWindow* window);
-bool _plafRefreshContextAttribs(plafWindow* window);
 #if defined(__APPLE__) || defined(_WIN32)
 bool _plafCursorInContentArea(plafWindow* window);
 #endif

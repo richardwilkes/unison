@@ -185,15 +185,6 @@ static bool extensionSupportedWGL(const char* extension) {
 	return _plafStringInExtensionString(extension, extensions);
 }
 
-static glFunc getProcAddressWGL(const char* procname)
-{
-	const glFunc proc = (glFunc) _plaf.wglGetProcAddress(procname);
-	if (proc)
-		return proc;
-
-	return (glFunc) _plafGetModuleSymbol(_plaf.wglInstance, procname);
-}
-
 static void destroyContextWGL(plafWindow* window)
 {
 	if (window->context.wglGLRC)
@@ -313,7 +304,6 @@ bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafF
 	}
 	window->context.makeCurrent = makeContextCurrentWGL;
 	window->context.swapBuffers = swapBuffersWGL;
-	window->context.getProcAddress = getProcAddressWGL;
 	window->context.destroy = destroyContextWGL;
 	return true;
 }

@@ -560,9 +560,6 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 		if (!_plafCreateOpenGLContext(window, share, fbconfig)) {
 			return false;
 		}
-		if (!_plafRefreshContextAttribs(window)) {
-			return false;
-		}
 		if (wndconfig->mousePassthrough) {
 			_plafSetWindowMousePassthrough(window, true);
 		}

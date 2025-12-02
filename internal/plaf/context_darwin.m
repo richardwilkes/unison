@@ -22,13 +22,6 @@ static void swapBuffersNSGL(plafWindow* window) {
 	}
 }
 
-static glFunc getProcAddressNSGL(const char* procname) {
-	CFStringRef symbolName = CFStringCreateWithCString(kCFAllocatorDefault, procname, kCFStringEncodingASCII);
-	glFunc symbol = CFBundleGetFunctionPointerForName(_plaf.nsglFramework, symbolName);
-	CFRelease(symbolName);
-	return symbol;
-}
-
 static void destroyContextNSGL(plafWindow* window) {
 	@autoreleasepool {
 		[window->context.nsglPixelFormat release];
@@ -105,7 +98,6 @@ bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafF
 	[window->context.nsglCtx setView:window->nsView];
 	window->context.makeCurrent = makeContextCurrentNSGL;
 	window->context.swapBuffers = swapBuffersNSGL;
-	window->context.getProcAddress = getProcAddressNSGL;
 	window->context.destroy = destroyContextNSGL;
 	return true;
 }

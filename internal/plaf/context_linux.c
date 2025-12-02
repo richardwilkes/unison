@@ -136,7 +136,7 @@ static bool extensionSupportedGLX(const char* extension) {
 	return false;
 }
 
-static glFunc getProcAddressGLX(const char* procname)
+static moduleFunc getProcAddressGLX(const char* procname)
 {
 	if (_plaf.glxGetProcAddress)
 		return _plaf.glxGetProcAddress((const unsigned char*) procname);
@@ -292,7 +292,6 @@ bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafF
 	window->context.glxFBConfig = native;
 	window->context.makeCurrent = makeContextCurrentGLX;
 	window->context.swapBuffers = swapBuffersGLX;
-	window->context.getProcAddress = getProcAddressGLX;
 	window->context.destroy = destroyContextGLX;
 	return true;
 }
