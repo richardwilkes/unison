@@ -88,11 +88,5 @@ func Terminate() error { // formerly plafTerminate
 	for len(cursorList) != 0 {
 		cursorList[len(cursorList)-1].Destroy()
 	}
-	for _, m := range monitorList {
-		if m.originalGammaRamp != nil {
-			m.SetGammaRamp(m.originalGammaRamp)
-			m.originalGammaRamp = nil
-		}
-	}
 	return terminate()
 }

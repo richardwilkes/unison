@@ -27,16 +27,6 @@ void plafTerminate(void) {
 	while (_plaf.cursorListHead) {
 		plafDestroyCursor(_plaf.cursorListHead);
 	}
-	for (int i = 0; i < _plaf.monitorCount; i++) {
-		plafMonitor* monitor = _plaf.monitors[i];
-		if (monitor->originalRamp.size) {
-			_plafSetGammaRamp(monitor, &monitor->originalRamp);
-		}
-		_plafFreeMonitor(monitor);
-	}
-	_plaf_free(_plaf.monitors);
-	_plaf.monitors = NULL;
-	_plaf.monitorCount = 0;
 	_plafTerminate();
 	_plaf_free(_plaf.clipboardString);
 	memset(&_plaf, 0, sizeof(_plaf));

@@ -574,17 +574,8 @@ static void detectEWMH(void)
 static void initExtensions(void)
 {
 	_plaf.xvidmodeHandle = _plafLoadModule("libXxf86vm.so.1");
-	if (_plaf.xvidmodeHandle)
-	{
-		_plaf.xvidmodeQueryExtension = (FN_XF86VidModeQueryExtension)
-			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeQueryExtension");
-		_plaf.xvidmodeGetGammaRamp = (FN_XF86VidModeGetGammaRamp)
-			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeGetGammaRamp");
-		_plaf.xvidmodeSetGammaRamp = (FN_XF86VidModeSetGammaRamp)
-			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeSetGammaRamp");
-		_plaf.xvidmodeGetGammaRampSize = (FN_XF86VidModeGetGammaRampSize)
-			_plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeGetGammaRampSize");
-
+	if (_plaf.xvidmodeHandle) {
+		_plaf.xvidmodeQueryExtension = (FN_XF86VidModeQueryExtension) _plafGetModuleSymbol(_plaf.xvidmodeHandle, "XF86VidModeQueryExtension");
 		int eventBase;
 		int errorBase;
 		_plaf.xvidmodeAvailable = _plaf.xvidmodeQueryExtension(_plaf.x11Display, &eventBase, &errorBase);
@@ -609,20 +600,12 @@ static void initExtensions(void)
 	_plaf.randrHandle = _plafLoadModule("libXrandr.so.2");
 	if (_plaf.randrHandle)
 	{
-		_plaf.randrAllocGamma = (FN_XRRAllocGamma)
-			_plafGetModuleSymbol(_plaf.randrHandle, "XRRAllocGamma");
-		_plaf.randrFreeGamma = (FN_XRRFreeGamma)
-			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeGamma");
 		_plaf.randrFreeCrtcInfo = (FN_XRRFreeCrtcInfo)
 			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeCrtcInfo");
 		_plaf.randrFreeOutputInfo = (FN_XRRFreeOutputInfo)
 			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeOutputInfo");
 		_plaf.randrFreeScreenResources = (FN_XRRFreeScreenResources)
 			_plafGetModuleSymbol(_plaf.randrHandle, "XRRFreeScreenResources");
-		_plaf.randrGetCrtcGamma = (FN_XRRGetCrtcGamma)
-			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetCrtcGamma");
-		_plaf.randrGetCrtcGammaSize = (FN_XRRGetCrtcGammaSize)
-			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetCrtcGammaSize");
 		_plaf.randrGetCrtcInfo = (FN_XRRGetCrtcInfo)
 			_plafGetModuleSymbol(_plaf.randrHandle, "XRRGetCrtcInfo");
 		_plaf.randrGetOutputInfo = (FN_XRRGetOutputInfo)
@@ -639,8 +622,6 @@ static void initExtensions(void)
 			_plafGetModuleSymbol(_plaf.randrHandle, "XRRSelectInput");
 		_plaf.randrSetCrtcConfig = (FN_XRRSetCrtcConfig)
 			_plafGetModuleSymbol(_plaf.randrHandle, "XRRSetCrtcConfig");
-		_plaf.randrSetCrtcGamma = (FN_XRRSetCrtcGamma)
-			_plafGetModuleSymbol(_plaf.randrHandle, "XRRSetCrtcGamma");
 		_plaf.randrUpdateConfiguration = (FN_XRRUpdateConfiguration)
 			_plafGetModuleSymbol(_plaf.randrHandle, "XRRUpdateConfiguration");
 
@@ -663,13 +644,6 @@ static void initExtensions(void)
 	if (_plaf.randrAvailable)
 	{
 		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
-
-		if (!sr->ncrtc || !_plaf.randrGetCrtcGammaSize(_plaf.x11Display, sr->crtcs[0]))
-		{
-			// This is likely an older Nvidia driver with broken gamma support
-			// Flag it as useless and fall back to xf86vm gamma, if available
-			_plaf.randrGammaBroken = true;
-		}
 
 		if (!sr->ncrtc)
 		{

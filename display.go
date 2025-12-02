@@ -10,33 +10,19 @@
 package unison
 
 import (
-	"runtime"
-
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/internal/plaf"
 )
 
-var lastPrimaryDisplay *Display
-
 // Display holds information about each available active display.
 type Display struct {
-	Name        string     // The name of the display
-	Frame       geom.Rect  // The position of the display in the global screen coordinate system
-	Usable      geom.Rect  // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
-	Scale       geom.Point // The scale of the content
-	RefreshRate int        // The refresh rate, in Hz
-	WidthMM     int        // The display's physical width, in millimeters
-	HeightMM    int        // The display's physical height, in millimeters
-}
-
-// PPI returns the pixels-per-inch for the display. Some operating systems do not provide accurate information, either
-// because the monitor's EDID data is incorrect, or because the driver does not report it accurately.
-func (d *Display) PPI() int {
-	if d.WidthMM > d.HeightMM {
-		return int(d.Frame.Width / (float32(d.WidthMM) / 25.4))
-	}
-	return int(d.Frame.Height / (float32(d.HeightMM) / 25.4))
+	Frame  geom.Rect  // The position of the display in the global screen coordinate system
+	Usable geom.Rect  // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
+	Scale  geom.Point // The scale of the content
+	// The pixels-per-inch for the display. This may not be accurate, either because the monitor's EDID data is
+	// incorrect, or because the driver does not report it accurately.
+	PPI     float32
+	Primary bool
 }
 
 // FitRectOnto returns a rectangle that fits onto this display, trying to preserve its position and size as much as
@@ -94,56 +80,31 @@ func BestDisplayForRect(r geom.Rect) *Display {
 
 // PrimaryDisplay returns the primary display.
 func PrimaryDisplay() *Display {
-	if monitor := plaf.GetPrimaryMonitor(); monitor == nil {
-		// On macOS, I've had cases where the monitor list has been emptied after some time has passed. Appears to be a
-		// bug in plaf, but we can try to work around it by just using the last primary monitor we found.
-		if lastPrimaryDisplay == nil {
-			return nil
-		}
-	} else {
-		lastPrimaryDisplay = convertMonitorToDisplay(monitor)
+	d := plaf.GetPrimaryDisplay()
+	if d == nil {
+		return nil
 	}
-	if lastPrimaryDisplay != nil {
-		d := *lastPrimaryDisplay
-		return &d
+	return &Display{
+		Frame:   d.Frame,
+		Usable:  d.Usable,
+		Scale:   d.Scale,
+		PPI:     d.PPI,
+		Primary: d.Primary,
 	}
-	return nil
 }
 
 // AllDisplays returns all displays.
 func AllDisplays() []*Display {
-	monitors := plaf.GetMonitors()
-	displays := make([]*Display, len(monitors))
-	for i, monitor := range monitors {
-		displays[i] = convertMonitorToDisplay(monitor)
+	all := plaf.GetDisplays()
+	displays := make([]*Display, len(all))
+	for i, d := range all {
+		displays[i] = &Display{
+			Frame:   d.Frame,
+			Usable:  d.Usable,
+			Scale:   d.Scale,
+			PPI:     d.PPI,
+			Primary: d.Primary,
+		}
 	}
 	return displays
-}
-
-func convertMonitorToDisplay(monitor *plaf.Monitor) *Display {
-	x, y := monitor.GetPos()
-	vidMode := monitor.GetVideoMode()
-	if vidMode == nil {
-		var v plaf.VidMode
-		vidMode = &v
-	}
-	workX, workY, workWidth, workHeight := monitor.GetWorkarea()
-	sx, sy := monitor.GetContentScale()
-	mmx, mmy := monitor.GetPhysicalSize()
-	display := &Display{
-		Name:        monitor.GetName(),
-		Frame:       geom.NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
-		Usable:      geom.NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
-		Scale:       geom.NewPoint(sx, sy),
-		RefreshRate: vidMode.RefreshRate,
-		WidthMM:     mmx,
-		HeightMM:    mmy,
-	}
-	if runtime.GOOS != xos.MacOS {
-		display.Frame.X /= sx
-		display.Frame.Y /= sy
-		display.Frame.Width /= sx
-		display.Frame.Height /= sy
-	}
-	return display
 }

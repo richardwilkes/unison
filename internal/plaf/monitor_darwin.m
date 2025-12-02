@@ -2,258 +2,61 @@
 
 #include "platform.h"
 
-#include <limits.h>
-#include <math.h>
+// #include <limits.h>
+// #include <math.h>
 
-#include <ApplicationServices/ApplicationServices.h>
+// #include <ApplicationServices/ApplicationServices.h>
 
-
-// Get the name of the specified display, or NULL
-//
-static char* getMonitorName(CGDirectDisplayID displayID, NSScreen* screen) {
-	if (screen) {
-		NSString* name = [screen valueForKey:@"localizedName"];
-		if (name) {
-			return _plaf_strdup([name UTF8String]);
-		}
-	}
-	return _plaf_strdup("Display");
-}
-
-// Check whether the display mode should be included in enumeration
-//
-static bool modeIsGood(CGDisplayModeRef mode) {
-	uint32_t flags = CGDisplayModeGetIOFlags(mode);
-	if (!(flags & kDisplayModeValidFlag) || !(flags & kDisplayModeSafeFlag))
+static bool convertToDisplay(CGDirectDisplayID displayID, plafDisplay* display) {
+	if (CGDisplayIsAsleep(displayID)) {
 		return false;
-	if (flags & kDisplayModeInterlacedFlag)
-		return false;
-	if (flags & kDisplayModeStretchedFlag)
-		return false;
-	return true;
-}
-
-// Convert Core Graphics display mode to PLAF video mode
-//
-static plafVideoMode vidmodeFromCGDisplayMode(CGDisplayModeRef mode)
-{
-	plafVideoMode result;
-	result.redBits = 8;
-	result.greenBits = 8;
-	result.blueBits = 8;
-	result.width = (int) CGDisplayModeGetWidth(mode);
-	result.height = (int) CGDisplayModeGetHeight(mode);
-	result.refreshRate = (int) round(CGDisplayModeGetRefreshRate(mode));
-	return result;
-}
-
-// Starts reservation for display fading
-//
-static CGDisplayFadeReservationToken beginFadeReservation(void)
-{
-	CGDisplayFadeReservationToken token = kCGDisplayFadeReservationInvalidToken;
-
-	if (CGAcquireDisplayFadeReservation(5, &token) == kCGErrorSuccess)
-	{
-		CGDisplayFade(token, 0.3,
-					  kCGDisplayBlendNormal,
-					  kCGDisplayBlendSolidColor,
-					  0.0, 0.0, 0.0,
-					  TRUE);
 	}
-
-	return token;
-}
-
-// Ends reservation for display fading
-//
-static void endFadeReservation(CGDisplayFadeReservationToken token)
-{
-	if (token != kCGDisplayFadeReservationInvalidToken)
-	{
-		CGDisplayFade(token, 0.5,
-					  kCGDisplayBlendSolidColor,
-					  kCGDisplayBlendNormal,
-					  0.0, 0.0, 0.0,
-					  FALSE);
-		CGReleaseDisplayFadeReservation(token);
-	}
-}
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                       PLAF internal API                      //////
-//////////////////////////////////////////////////////////////////////////
-
-// Poll for changes in the set of connected monitors
-void _plafPollMonitors(void) {
-	uint32_t displayCount;
-	CGGetOnlineDisplayList(0, NULL, &displayCount);
-	CGDirectDisplayID* displays = _plaf_calloc(displayCount, sizeof(CGDirectDisplayID));
-	CGGetOnlineDisplayList(displayCount, displays, &displayCount);
-	for (int i = 0; i < _plaf.monitorCount; i++) {
-		_plaf.monitors[i]->nsScreen = nil;
-	}
-	plafMonitor** disconnected = NULL;
-	uint32_t disconnectedCount = _plaf.monitorCount;
-	if (disconnectedCount) {
-		disconnected = _plaf_calloc(_plaf.monitorCount, sizeof(plafMonitor*));
-		memcpy(disconnected, _plaf.monitors, _plaf.monitorCount * sizeof(plafMonitor*));
-	}
-	for (uint32_t i = 0; i < displayCount; i++) {
-		if (CGDisplayIsAsleep(displays[i])) {
-			continue;
-		}
-		// For machines that have automatic graphics switching, we need to compare unit numbers instead of display IDs
-		const uint32_t unitNumber = CGDisplayUnitNumber(displays[i]);
+	NSScreen* screen = nil;
+	const uint32_t unitNumber = CGDisplayUnitNumber(displayID);
+	for (screen in [NSScreen screens]) {
 		NSScreen* screen = nil;
 		for (screen in [NSScreen screens]) {
 			NSNumber* screenNumber = [screen deviceDescription][@"NSScreenNumber"];
 			if (CGDisplayUnitNumber([screenNumber unsignedIntValue]) == unitNumber) {
-				break;
+				const NSRect frame = [screen frame];
+				display->FrameX = (float)frame.origin.x;
+				display->FrameY = (float)_plafTransformYCocoa(frame.origin.y + frame.size.height - 1);
+				display->FrameWidth = (float)frame.size.width;
+				display->FrameHeight = (float)frame.size.height;
+				const NSRect visible = [screen visibleFrame];
+				display->UsableX = (float)visible.origin.x;
+				display->UsableY = (float)_plafTransformYCocoa(visible.origin.y + visible.size.height - 1);
+				display->UsableWidth = (float)visible.size.width;
+				display->UsableHeight = (float)visible.size.height;
+				const NSRect pixels = [screen convertRectToBacking:frame];
+				display->ScaleX = (float)(pixels.size.width / frame.size.width);
+				display->ScaleY = (float)(pixels.size.height / frame.size.height);
+				const CGSize sizeMM = CGDisplayScreenSize(displayID);
+				display->PPI = (float)(pixels.size.width / (sizeMM.width / 25.4));
+				display->Primary = CGMainDisplayID() == displayID;
+				return true;
 			}
 		}
-		uint32_t j;
-		for (j = 0; j < disconnectedCount; j++) {
-			if (disconnected[j] && disconnected[j]->nsUnitNumber == unitNumber) {
-				disconnected[j]->nsScreen = screen;
-				disconnected[j] = NULL;
-				break;
-			}
-		}
-		if (j < disconnectedCount) {
-			continue;
-		}
-		const CGSize size = CGDisplayScreenSize(displays[i]);
-		char* name = getMonitorName(displays[i], screen);
-		if (!name) {
-			continue;
-		}
-		plafMonitor* monitor  = _plafAllocMonitor(name, size.width, size.height);
-		monitor->nsDisplayID  = displays[i];
-		monitor->nsUnitNumber = unitNumber;
-		monitor->nsScreen     = screen;
-		_plaf_free(name);
-		_plafMonitorNotify(monitor, true, false);
 	}
-	for (uint32_t i = 0; i < disconnectedCount; i++) {
-		if (disconnected[i]) {
-			_plafMonitorNotify(disconnected[i], false, false);
-		}
-	}
-	_plaf_free(disconnected);
-	_plaf_free(displays);
+	return false;
 }
 
-
-//////////////////////////////////////////////////////////////////////////
-//////                       PLAF platform API                      //////
-//////////////////////////////////////////////////////////////////////////
-
-void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos)
-{
-	const CGRect bounds = CGDisplayBounds(monitor->nsDisplayID);
-	*xpos = (int) bounds.origin.x;
-	*ypos = (int) bounds.origin.y;
+bool plafPrimaryDisplay(plafDisplay* display) {
+	return convertToDisplay(CGMainDisplayID(), display);
 }
 
-void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale) {
-	if (monitor->nsScreen) {
-		const NSRect points = [monitor->nsScreen frame];
-		const NSRect pixels = [monitor->nsScreen convertRectToBacking:points];
-		*xscale = (float) (pixels.size.width / points.size.width);
-		*yscale = (float) (pixels.size.height / points.size.height);
-	} else {
-		*xscale = 1;
-		*yscale = 1;
-	}
-}
-
-void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height) {
-	if (monitor->nsScreen) {
-		const NSRect frameRect = [monitor->nsScreen visibleFrame];
-		*xpos = frameRect.origin.x;
-		*ypos = _plafTransformYCocoa(frameRect.origin.y + frameRect.size.height - 1);
-		*width = frameRect.size.width;
-		*height = frameRect.size.height;
-	} else {
-		*xpos = 0;
-		*ypos = 0;
-		*width = 0;
-		*height = 0;
-	}
-}
-
-plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
-	@autoreleasepool {
-		*count = 0;
-		CFArrayRef modes = CGDisplayCopyAllDisplayModes(monitor->nsDisplayID, NULL);
-		const CFIndex found = CFArrayGetCount(modes);
-		plafVideoMode* result = _plaf_calloc(found, sizeof(plafVideoMode));
-		for (CFIndex i = 0; i < found; i++) {
-			CGDisplayModeRef dm = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
-			if (!modeIsGood(dm)) {
-				continue;
-			}
-			const plafVideoMode mode = vidmodeFromCGDisplayMode(dm);
-			CFIndex j;
-			for (j = 0; j < *count; j++) {
-				if (_plafCompareVideoModes(result + j, &mode) == 0) {
-					break;
-				}
-			}
-			// Skip duplicate modes
-			if (j < *count) {
-				continue;
-			}
-			(*count)++;
-			result[*count - 1] = mode;
+int plafAllDisplays(int max, plafDisplay* displays) {
+	uint32_t actual;
+	CGDirectDisplayID* displayIDs = _plaf_calloc(max, sizeof(CGDirectDisplayID));
+	CGGetActiveDisplayList(max, displayIDs, &actual);
+	CGDirectDisplayID mainDisplayID = CGMainDisplayID();
+	int count = 0;
+	for (uint32_t i = 0; i < actual; i++) {
+		if (convertToDisplay(displayIDs[i], &displays[count])) {
+			count++;
 		}
-		CFRelease(modes);
-		return result;
 	}
-}
-
-bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode *mode) {
-	@autoreleasepool {
-		CGDisplayModeRef native = CGDisplayCopyDisplayMode(monitor->nsDisplayID);
-		if (!native) {
-			return false;
-		}
-		*mode = vidmodeFromCGDisplayMode(native);
-		CGDisplayModeRelease(native);
-		return true;
-	}
-}
-
-bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
-	@autoreleasepool {
-		uint32_t size = CGDisplayGammaTableCapacity(monitor->nsDisplayID);
-		CGGammaValue* values = _plaf_calloc(size * 3, sizeof(CGGammaValue));
-		CGGetDisplayTransferByTable(monitor->nsDisplayID, size, values, values + size, values + size * 2, &size);
-		_plafAllocGammaArrays(ramp, size);
-		for (uint32_t i = 0; i < size; i++) {
-			ramp->red[i]   = (unsigned short) (values[i] * 65535);
-			ramp->green[i] = (unsigned short) (values[i + size] * 65535);
-			ramp->blue[i]  = (unsigned short) (values[i + size * 2] * 65535);
-		}
-		_plaf_free(values);
-		return true;
-	}
-}
-
-void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
-	@autoreleasepool {
-		CGGammaValue* values = _plaf_calloc(ramp->size * 3, sizeof(CGGammaValue));
-		for (unsigned int i = 0; i < ramp->size; i++) {
-			values[i]                  = ramp->red[i] / 65535.f;
-			values[i + ramp->size]     = ramp->green[i] / 65535.f;
-			values[i + ramp->size * 2] = ramp->blue[i] / 65535.f;
-		}
-		CGSetDisplayTransferByTable(monitor->nsDisplayID, ramp->size, values, values + ramp->size,
-			values + ramp->size * 2);
-		_plaf_free(values);
-	}
+	return count;
 }
 
 #endif // __APPLE__

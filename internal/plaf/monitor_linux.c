@@ -36,27 +36,15 @@ static const XRRModeInfo* getModeInfo(const XRRScreenResources* sr, RRMode id)
 }
 
 // Convert RandR mode info to PLAF video mode
-//
-static plafVideoMode vidmodeFromModeInfo(const XRRModeInfo* mi,
-									   const XRRCrtcInfo* ci)
-{
+static plafVideoMode vidmodeFromModeInfo(const XRRModeInfo* mi, const XRRCrtcInfo* ci) {
 	plafVideoMode mode;
-
-	if (ci->rotation == RR_Rotate_90 || ci->rotation == RR_Rotate_270)
-	{
+	if (ci->rotation == RR_Rotate_90 || ci->rotation == RR_Rotate_270) {
 		mode.width  = mi->height;
 		mode.height = mi->width;
-	}
-	else
-	{
+	} else {
 		mode.width  = mi->width;
 		mode.height = mi->height;
 	}
-
-	mode.refreshRate = calculateRefreshRate(mi);
-
-	_plafSplitBPP(DefaultDepth(_plaf.x11Display, _plaf.x11Screen), &mode.redBits, &mode.greenBits, &mode.blueBits);
-
 	return mode;
 }
 
@@ -232,50 +220,6 @@ void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* wid
 	*height = areaHeight;
 }
 
-plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count) {
-	plafVideoMode* result;
-	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken) {
-		*count = 0;
-		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
-		XRRCrtcInfo* ci = _plaf.randrGetCrtcInfo(_plaf.x11Display, sr, monitor->x11Crtc);
-		XRROutputInfo* oi = _plaf.randrGetOutputInfo(_plaf.x11Display, sr, monitor->x11Output);
-		result = _plaf_calloc(oi->nmode, sizeof(plafVideoMode));
-		for (int i = 0; i < oi->nmode; i++) {
-			const XRRModeInfo* mi = getModeInfo(sr, oi->modes[i]);
-			if (!modeIsGood(mi)) {
-				continue;
-			}
-			const plafVideoMode mode = vidmodeFromModeInfo(mi, ci);
-			int j;
-			for (j = 0; j < *count; j++) {
-				if (_plafCompareVideoModes(result + j, &mode) == 0) {
-					break;
-				}
-			}
-			// Skip duplicate modes
-			if (j < *count) {
-				continue;
-			}
-			(*count)++;
-			result[*count - 1] = mode;
-		}
-		_plaf.randrFreeOutputInfo(oi);
-		_plaf.randrFreeCrtcInfo(ci);
-		_plaf.randrFreeScreenResources(sr);
-	} else {
-		*count = 1;
-		result = _plaf_calloc(1, sizeof(plafVideoMode));
-		if (_plafGetVideoMode(monitor, result)) {
-			*count = 1;
-		} else {
-			*count = 0;
-			_plaf_free(result);
-			result = NULL;
-		}
-	}
-	return result;
-}
-
 bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	if (_plaf.randrAvailable && !_plaf.randrMonitorBroken) {
 		XRRScreenResources* sr = _plaf.randrGetScreenResourcesCurrent(_plaf.x11Display, _plaf.x11Root);
@@ -295,47 +239,8 @@ bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode) {
 	} else {
 		mode->width = DisplayWidth(_plaf.x11Display, _plaf.x11Screen);
 		mode->height = DisplayHeight(_plaf.x11Display, _plaf.x11Screen);
-		mode->refreshRate = 0;
-		_plafSplitBPP(DefaultDepth(_plaf.x11Display, _plaf.x11Screen), &mode->redBits, &mode->greenBits, &mode->blueBits);
 	}
 	return true;
-}
-
-bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp) {
-	if (_plaf.randrAvailable && !_plaf.randrGammaBroken) {
-		const size_t size = _plaf.randrGetCrtcGammaSize(_plaf.x11Display, monitor->x11Crtc);
-		XRRCrtcGamma* gamma = _plaf.randrGetCrtcGamma(_plaf.x11Display, monitor->x11Crtc);
-		_plafAllocGammaArrays(ramp, size);
-		memcpy(ramp->red,   gamma->red,   size * sizeof(unsigned short));
-		memcpy(ramp->green, gamma->green, size * sizeof(unsigned short));
-		memcpy(ramp->blue,  gamma->blue,  size * sizeof(unsigned short));
-		_plaf.randrFreeGamma(gamma);
-		return true;
-	}
-	if (_plaf.xvidmodeAvailable) {
-		int size;
-		_plaf.xvidmodeGetGammaRampSize(_plaf.x11Display, _plaf.x11Screen, &size);
-		_plafAllocGammaArrays(ramp, size);
-		_plaf.xvidmodeGetGammaRamp(_plaf.x11Display, _plaf.x11Screen, ramp->size, ramp->red, ramp->green, ramp->blue);
-		return true;
-	}
-	return false;
-}
-
-void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp) {
-	if (_plaf.randrAvailable && !_plaf.randrGammaBroken) {
-		if (_plaf.randrGetCrtcGammaSize(_plaf.x11Display, monitor->x11Crtc) != ramp->size) {
-			return;
-		}
-		XRRCrtcGamma* gamma = _plaf.randrAllocGamma(ramp->size);
-		memcpy(gamma->red,   ramp->red,   ramp->size * sizeof(unsigned short));
-		memcpy(gamma->green, ramp->green, ramp->size * sizeof(unsigned short));
-		memcpy(gamma->blue,  ramp->blue,  ramp->size * sizeof(unsigned short));
-		_plaf.randrSetCrtcGamma(_plaf.x11Display, monitor->x11Crtc, gamma);
-		_plaf.randrFreeGamma(gamma);
-	} else if (_plaf.xvidmodeAvailable) {
-		_plaf.xvidmodeSetGammaRamp(_plaf.x11Display, _plaf.x11Screen, ramp->size, ramp->red, ramp->green, ramp->blue);
-	}
 }
 
 #endif // __linux__

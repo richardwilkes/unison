@@ -251,25 +251,6 @@ func ResizeUpDownCursor() Cursor {
 
 type DisplayID = C.CGDirectDisplayID
 
-func GetDisplayGammaRamp(displayID DisplayID) (r, g, b []float32) {
-	capacity := C.CGDisplayGammaTableCapacity(displayID)
-	r = make([]float32, capacity)
-	g = make([]float32, capacity)
-	b = make([]float32, capacity)
-	var actual C.uint32
-	C.CGGetDisplayTransferByTable(displayID, capacity, (*C.float)(&r[0]), (*C.float)(&g[0]), (*C.float)(&b[0]), &actual)
-	if actual != capacity {
-		r = r[:actual]
-		g = g[:actual]
-		b = b[:actual]
-	}
-	return r, g, b
-}
-
-func SetDisplayGammaRamp(displayID DisplayID, r, g, b []float32) {
-	C.CGSetDisplayTransferByTable(displayID, C.uint32(len(r)), (*C.float)(&r[0]), (*C.float)(&g[0]), (*C.float)(&b[0]))
-}
-
 // ========== Event ==========
 
 type EventModifierFlags uint

@@ -134,13 +134,9 @@ extern "C" {
 	typedef int (* FN_Xutf8LookupString)(XIC,XKeyPressedEvent*,char*,int,KeySym*,Status*);
 	typedef void (*FN_Xutf8SetWMProperties)(Display*,Window,const char*,const char*,char**,int,XSizeHints*,XWMHints*,XClassHint*);
 
-	typedef XRRCrtcGamma* (* FN_XRRAllocGamma)(int);
 	typedef void (*FN_XRRFreeCrtcInfo)(XRRCrtcInfo*);
-	typedef void (*FN_XRRFreeGamma)(XRRCrtcGamma*);
 	typedef void (*FN_XRRFreeOutputInfo)(XRROutputInfo*);
 	typedef void (*FN_XRRFreeScreenResources)(XRRScreenResources*);
-	typedef XRRCrtcGamma* (* FN_XRRGetCrtcGamma)(Display*,RRCrtc);
-	typedef int (* FN_XRRGetCrtcGammaSize)(Display*,RRCrtc);
 	typedef XRRCrtcInfo* (* FN_XRRGetCrtcInfo) (Display*,XRRScreenResources*,RRCrtc);
 	typedef XRROutputInfo* (* FN_XRRGetOutputInfo)(Display*,XRRScreenResources*,RROutput);
 	typedef RROutput (* FN_XRRGetOutputPrimary)(Display*,Window);
@@ -149,7 +145,6 @@ extern "C" {
 	typedef Status (* FN_XRRQueryVersion)(Display*,int*,int*);
 	typedef void (*FN_XRRSelectInput)(Display*,Window,int);
 	typedef Status (* FN_XRRSetCrtcConfig)(Display*,XRRScreenResources*,RRCrtc,Time,int,int,RRMode,Rotation,RROutput*,int);
-	typedef void (*FN_XRRSetCrtcGamma)(Display*,RRCrtc,XRRCrtcGamma*);
 	typedef int (* FN_XRRUpdateConfiguration)(XEvent*);
 
 	typedef XcursorImage* (* FN_XcursorImageCreate)(int,int);
@@ -164,9 +159,6 @@ extern "C" {
 	typedef XineramaScreenInfo* (* FN_XineramaQueryScreens)(Display*,int*);
 
 	typedef Bool (* FN_XF86VidModeQueryExtension)(Display*,int*,int*);
-	typedef Bool (* FN_XF86VidModeGetGammaRamp)(Display*,int,int,unsigned short*,unsigned short*,unsigned short*);
-	typedef Bool (* FN_XF86VidModeSetGammaRamp)(Display*,int,int,unsigned short*,unsigned short*,unsigned short*);
-	typedef Bool (* FN_XF86VidModeGetGammaRampSize)(Display*,int,int*);
 
 	typedef Status (* FN_XIQueryVersion)(Display*,int*,int*);
 
@@ -450,7 +442,6 @@ extern "C" {
 
 // Forward declarations
 typedef struct plafCursor plafCursor;
-typedef struct plafMonitor plafMonitor;
 typedef struct plafWindow plafWindow;
 
 // Function pointer definitions
@@ -465,14 +456,6 @@ typedef struct plafVideoMode {
 	int blueBits;
 	int refreshRate;
 } plafVideoMode;
-
-// Gamma ramp for a monitor
-typedef struct plafGammaRamp {
-	unsigned short* red;
-	unsigned short* green;
-	unsigned short* blue;
-	unsigned int    size;
-} plafGammaRamp;
 
 typedef struct plafImageData {
 	int            width;
@@ -554,7 +537,6 @@ struct plafWindow {
 	bool                   shouldClose;
 	bool                   cursorHidden;
 	plafVideoMode          videoMode;
-	plafMonitor*           monitor;
 	plafCursor*            cursor;
 	char*                  title;
 	int                    width;
@@ -601,35 +583,21 @@ struct plafWindow {
 #endif
 };
 
-// Monitor structure
-struct plafMonitor {
-	char              name[128];
-	int               widthMM;
-	int               heightMM;
-	plafWindow*       window;
-	plafVideoMode*    modes;
-	int               modeCount;
-	plafVideoMode     currentMode;
-	plafGammaRamp     originalRamp;
-	plafGammaRamp     currentRamp;
-#if defined(__APPLE__)
-	CGDirectDisplayID nsDisplayID;
-	CGDisplayModeRef  nsPreviousMode;
-	uint32_t          nsUnitNumber;
-	NSScreen*         nsScreen;
-#elif defined(__linux__)
-	RROutput          x11Output;
-	RRCrtc            x11Crtc;
-	RRMode            x11OldMode;
-	int               x11Index;
-#elif defined(_WIN32)
-	HMONITOR          win32Handle;
-	WCHAR             win32Adapter[32];
-	WCHAR             win32Display[32];
-	bool              win32ModesPruned;
-	bool              win32ModeChanged;
-#endif
-};
+// Display structure
+typedef struct plafDisplay {
+	float FrameX;
+	float FrameY;
+	float FrameWidth;
+	float FrameHeight;
+	float UsableX;
+	float UsableY;
+	float UsableWidth;
+	float UsableHeight;
+	float ScaleX;
+	float ScaleY;
+	float PPI;
+	bool  Primary;
+} plafDisplay;
 
 // Cursor structure
 struct plafCursor {
@@ -651,8 +619,6 @@ struct plafLib {
 	int                                 desiredRefreshRate;
 	plafCursor*                         cursorListHead;
 	plafWindow*                         windowListHead;
-	plafMonitor**                       monitors;
-	int                                 monitorCount;
 	plafWindow*                         wndWithCurrentCtx;
 	short int                           scanCodes[KEY_LAST + 1];
 	short int                           keyCodes[MAX_KEY_CODES];
@@ -809,15 +775,10 @@ struct plafLib {
 	bool                                randrAvailable;
 	void*                               randrHandle;
 	int                                 randrEventBase;
-	bool                                randrGammaBroken;
 	bool                                randrMonitorBroken;
-	FN_XRRAllocGamma                    randrAllocGamma;
 	FN_XRRFreeCrtcInfo                  randrFreeCrtcInfo;
-	FN_XRRFreeGamma                     randrFreeGamma;
 	FN_XRRFreeOutputInfo                randrFreeOutputInfo;
 	FN_XRRFreeScreenResources           randrFreeScreenResources;
-	FN_XRRGetCrtcGamma                  randrGetCrtcGamma;
-	FN_XRRGetCrtcGammaSize              randrGetCrtcGammaSize;
 	FN_XRRGetCrtcInfo                   randrGetCrtcInfo;
 	FN_XRRGetOutputInfo                 randrGetOutputInfo;
 	FN_XRRGetOutputPrimary              randrGetOutputPrimary;
@@ -826,7 +787,6 @@ struct plafLib {
 	FN_XRRQueryVersion                  randrQueryVersion;
 	FN_XRRSelectInput                   randrSelectInput;
 	FN_XRRSetCrtcConfig                 randrSetCrtcConfig;
-	FN_XRRSetCrtcGamma                  randrSetCrtcGamma;
 	FN_XRRUpdateConfiguration           randrUpdateConfiguration;
 	bool                                xkbAvailable;
 	bool                                xkbDetectable;
@@ -863,9 +823,6 @@ struct plafLib {
 	bool                                xvidmodeAvailable;
 	void*                               xvidmodeHandle;
 	FN_XF86VidModeQueryExtension        xvidmodeQueryExtension;
-	FN_XF86VidModeGetGammaRamp          xvidmodeGetGammaRamp;
-	FN_XF86VidModeSetGammaRamp          xvidmodeSetGammaRamp;
-	FN_XF86VidModeGetGammaRampSize      xvidmodeGetGammaRampSize;
 	bool                                xiAvailable;
 	void*                               xiHandle;
 	FN_XIQueryVersion                   xiQueryVersion;
@@ -957,14 +914,9 @@ extern plafLib _plaf;
 bool plafInit(void);
 void plafTerminate(void);
 
-// Monitors
-void plafGetMonitorPos(plafMonitor* monitor, int* xpos, int* ypos);
-void plafGetMonitorWorkarea(plafMonitor* monitor, int* xpos, int* ypos, int* width, int* height);
-void plafGetMonitorContentScale(plafMonitor* monitor, float* xscale, float* yscale);
-bool plafRefreshVideoModes(plafMonitor* monitor);
-const plafVideoMode* plafGetVideoMode(plafMonitor* monitor);
-const plafGammaRamp* plafGetGammaRamp(plafMonitor* monitor);
-void plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
+// Displays
+bool plafPrimaryDisplay(plafDisplay* display);
+int plafAllDisplays(int max, plafDisplay* displays);
 
 // Windows
 plafWindow* plafCreateWindow(const char* title, plafWindowConfig* wndCfg, plafWindow* share);
@@ -1037,7 +989,6 @@ void goCursorEnterCallback(plafWindow *window, bool entered);
 void goCursorPosCallback(plafWindow *window, double x, double y);
 void goDropCallback(plafWindow *window, int count, char **data);
 void goKeyCallback(plafWindow *window, int key, int code, int action, int mods);
-void goMonitorCallback(plafMonitor* monitor, bool connected);
 void goMouseButtonCallback(plafWindow *window, int button, int action, int mods);
 void goScrollCallback(plafWindow *window, double xOffset, double yOffset);
 void goWindowCloseCallback(plafWindow *window);
@@ -1055,24 +1006,6 @@ void _plafTerminate(void);
 void* _plafLoadModule(const char* path);
 void _plafFreeModule(void* module);
 moduleFunc _plafGetModuleSymbol(void* module, const char* name);
-
-// Monitors
-plafMonitor* _plafAllocMonitor(const char* name, int widthMM, int heightMM);
-void _plafFreeMonitor(plafMonitor* monitor);
-void _plafAllocGammaArrays(plafGammaRamp* ramp, unsigned int size);
-void _plafFreeGammaArrays(plafGammaRamp* ramp);
-bool _plafGetGammaRamp(plafMonitor* monitor, plafGammaRamp* ramp);
-void _plafSetGammaRamp(plafMonitor* monitor, const plafGammaRamp* ramp);
-plafVideoMode* _plafGetVideoModes(plafMonitor* monitor, int* count);
-bool _plafGetVideoMode(plafMonitor* monitor, plafVideoMode* mode);
-const plafVideoMode* _plafChooseVideoMode(plafMonitor* monitor, const plafVideoMode* desired);
-int _plafCompareVideoModes(const plafVideoMode* first, const plafVideoMode* second);
-void _plafSplitBPP(int bpp, int* red, int* green, int* blue);
-void _plafMonitorNotify(plafMonitor* monitor, bool connected, bool insertFirst);
-void _plafPollMonitors(void);
-#if defined(_WIN32)
-void _plafGetHMONITORContentScale(HMONITOR handle, float* xscale, float* yscale);
-#endif
 
 // Windows
 void _plafNotifyOfFocusChange(plafWindow* window, bool focused);

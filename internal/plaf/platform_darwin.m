@@ -148,7 +148,6 @@ static void createKeyTables(void) {
 	for (plafWindow* window = _plaf.windowListHead; window; window = window->next) {
 		[window->context.nsglCtx update];
 	}
-	_plafPollMonitors();
 }
 
 - (void)applicationWillFinishLaunching:(NSNotification *)notification {
@@ -192,7 +191,6 @@ bool _plafInit(void) {
 			return false;
 		}
 		CGEventSourceSetLocalEventsSuppressionInterval(_plaf.nsEventSource, 0.0);
-		_plafPollMonitors();
 		if (![[NSRunningApplication currentApplication] isFinishedLaunching]) {
 			[NSApp run];
 		}
