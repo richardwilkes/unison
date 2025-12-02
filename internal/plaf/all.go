@@ -320,7 +320,7 @@ func GetKeyScancode(key Key) int {
 	return int(C.plafGetKeyScancode(C.int(key)))
 }
 
-// ---------- Monitor ----------
+// ---------- Display ----------
 
 // Display represents a display.
 type Display struct {
