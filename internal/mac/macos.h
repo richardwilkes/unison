@@ -16,6 +16,7 @@ typedef CFTypeRef NSOpenPanelRef;
 typedef CFTypeRef NSSavePanelRef;
 typedef CFTypeRef NSViewRef;
 typedef CFTypeRef NSWindowRef;
+typedef CFTypeRef NSWindowDelegateRef;
 
 // App
 bool installMacAppDelegate(void);
@@ -114,3 +115,7 @@ bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 // Window
 NSViewRef windowContentView(NSWindowRef w);
 CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w);
+void windowOrderOut(NSWindowRef w);
+NSWindowDelegateRef windowDelegate(NSWindowRef w);
+void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate);
+void windowClose(NSWindowRef w);

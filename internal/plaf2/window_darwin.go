@@ -53,3 +53,21 @@ func (w *Window) showCursor() {
 		w.platformWindow.nsCursorHidden = false
 	}
 }
+
+func (w *Window) destroy() { // formerly _plafDestroyWindow
+	w.platformWindow.nativeWindow.OrderOut()
+	/* TODO
+	if (window->context.destroy) {
+		window->context.destroy(window);
+	}
+	*/
+	delegate := w.platformWindow.nativeWindow.Delegate()
+	w.platformWindow.nativeWindow.SetDelegate(0)
+	delegate.Release()
+	w.platformWindow.nativeWindow.ContentView().Release()
+	w.platformWindow.nativeWindow.Close()
+	w.platformWindow.nativeWindow = 0
+	/* TODO
+	plafPollEvents();
+	*/
+}

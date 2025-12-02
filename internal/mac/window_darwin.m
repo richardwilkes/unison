@@ -16,3 +16,19 @@ NSViewRef windowContentView(NSWindowRef w) {
 CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w) {
 	return [(NSWindow *)w mouseLocationOutsideOfEventStream];
 }
+
+void windowOrderOut(NSWindowRef w) {
+	[(NSWindow *)w orderOut:nil];
+}
+
+NSWindowDelegateRef windowDelegate(NSWindowRef w) {
+	return (NSWindowDelegateRef)[(NSWindow *)w delegate];
+}
+
+void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate) {
+	[(NSWindow *)w setDelegate:delegate];
+}
+
+void windowClose(NSWindowRef w) {
+	[(NSWindow *)w close];
+}

@@ -698,6 +698,10 @@ func (v View) MouseInRect(mousePt geom.Point, rect geom.Rect) bool {
 	return bool(C.viewMouseInRect(C.NSViewRef(v), pointToCGPoint(mousePt), rectToCGRect(rect)))
 }
 
+func (v View) Release() {
+	C.CFRelease(C.CFTypeRef(v))
+}
+
 // ========== Window ==========
 
 type Window C.NSWindowRef
@@ -708,4 +712,28 @@ func (w Window) ContentView() View {
 
 func (w Window) MouseLocationOutsideOfEventStream() geom.Point {
 	return cgPointToPoint(C.windowMouseLocationOutsideOfEventStream(C.NSWindowRef(w)))
+}
+
+func (w Window) OrderOut() {
+	C.windowOrderOut(C.NSWindowRef(w))
+}
+
+func (w Window) Delegate() WindowDelegate {
+	return WindowDelegate(C.windowDelegate(C.NSWindowRef(w)))
+}
+
+func (w Window) SetDelegate(delegate WindowDelegate) {
+	C.windowSetDelegate(C.NSWindowRef(w), C.NSWindowDelegateRef(delegate))
+}
+
+func (w Window) Close() {
+	C.windowClose(C.NSWindowRef(w))
+}
+
+// ========== WindowDelegate ==========
+
+type WindowDelegate C.NSWindowDelegateRef
+
+func (d WindowDelegate) Release() {
+	C.CFRelease(C.CFTypeRef(d))
 }

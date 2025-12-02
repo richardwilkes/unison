@@ -15,10 +15,10 @@ func (w *Window) Destroy() { // formerly plafDestroyWindow
 		return
 	}
 	/* TODO
-	   	if (window == _plaf.wndWithCurrentCtx) {
-	   		plafMakeContextCurrent(NULL);
-	   	}
-	   _plafDestroyWindow(window);
+	if (window == _plaf.wndWithCurrentCtx) {
+		plafMakeContextCurrent(NULL);
+	}
 	*/
+	w.destroy()
 	windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 }
