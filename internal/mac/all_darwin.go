@@ -531,6 +531,22 @@ func (p OpenPanel) RunModal() bool {
 	return bool(C.openPanelRunModal(C.NSOpenPanelRef(p)))
 }
 
+// ========== Pasteboard ==========
+
+func PasteboardString() string {
+	s := C.pasteboardString()
+	if s == 0 {
+		return ""
+	}
+	return String(s).String()
+}
+
+func SetPasteboardString(str string) {
+	s := C.CString(str)
+	defer C.free(unsafe.Pointer(s))
+	C.pasteboardSetString(s)
+}
+
 // ========== Save Panel ==========
 
 type SavePanel C.NSSavePanelRef

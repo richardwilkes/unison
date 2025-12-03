@@ -92,6 +92,10 @@ void openPanelSetAllowsMultipleSelection(NSOpenPanelRef openPanel, bool set);
 CFArrayRef openPanelURLs(NSOpenPanelRef openPanel);
 bool openPanelRunModal(NSOpenPanelRef openPanel);
 
+// Pasteboard
+CFStringRef pasteboardString();
+void pasteboardSetString(const char* str);
+
 // Save Panel
 NSSavePanelRef newSavePanel();
 CFURLRef savePanelDirectoryURL(NSSavePanelRef savePanel);
