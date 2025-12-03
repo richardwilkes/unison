@@ -80,7 +80,7 @@ func BestDisplayForRect(r geom.Rect) *Display {
 
 // PrimaryDisplay returns the primary display.
 func PrimaryDisplay() *Display {
-	d := plaf.GetPrimaryDisplay()
+	d := plaf.PrimaryDisplay()
 	if d == nil {
 		return nil
 	}
@@ -95,7 +95,7 @@ func PrimaryDisplay() *Display {
 
 // AllDisplays returns all displays.
 func AllDisplays() []*Display {
-	all := plaf.GetDisplays()
+	all := plaf.ActiveDisplays()
 	displays := make([]*Display, len(all))
 	for i, d := range all {
 		displays[i] = &Display{

@@ -327,14 +327,14 @@ type Display struct {
 	Frame  geom.Rect  // The position of the display in the global screen coordinate system
 	Usable geom.Rect  // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
 	Scale  geom.Point // The scale of the content
-	// The pixels-per-inch for the display. This may not be accurate, either because the monitor's EDID data is
+	// The pixels-per-inch for the display. This may not be accurate, either because the display's EDID data is
 	// incorrect, or because the driver does not report it accurately.
 	PPI     float32
 	Primary bool
 }
 
-// GetDisplays returns all currently connected displays.
-func GetDisplays() []*Display {
+// ActiveDisplays returns all currently active displays.
+func ActiveDisplays() []*Display {
 	var d [16]C.plafDisplay
 	count := C.plafAllDisplays(16, &d[0])
 	if count == 0 {
@@ -347,9 +347,9 @@ func GetDisplays() []*Display {
 	return displays
 }
 
-// GetPrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar
-// or the OS X menu bar is located.
-func GetPrimaryDisplay() *Display {
+// PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
+// the OS X menu bar is located.
+func PrimaryDisplay() *Display {
 	var d C.plafDisplay
 	if !C.plafPrimaryDisplay(&d) {
 		return nil
@@ -771,7 +771,7 @@ func (w *Window) IsMinimized() bool {
 	return bool(C.plafIsWindowMinimized(w.plafWnd))
 }
 
-// Minimize the window, if it was previously restored. If it is a full screen window, the original monitor resolution is
+// Minimize the window, if it was previously restored. If it is a full screen window, the original display resolution is
 // restored until the window is restored. If the window is already minimized, this function does nothing.
 //
 // This function may only be called from the main thread.
@@ -794,7 +794,7 @@ func (w *Window) Maximize() {
 
 // Restore restores the window, if it was previously minimized. If it
 // is a full screen window, the resolution chosen for the window is restored on
-// the selected monitor. If the window is already restored, this function does
+// the selected display. If the window is already restored, this function does
 // nothing.
 //
 // This function may only be called from the main thread.

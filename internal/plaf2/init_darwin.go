@@ -17,7 +17,6 @@ func initialize() error { // formerly _plafInit
 			[window->context.nsglCtx update];
 			*/
 		}
-		pollMonitors()
 	}
 	mac.AppDidFinishLaunchingCallback = func() {
 		mac.PostEmptyEvent()
@@ -31,7 +30,6 @@ func initialize() error { // formerly _plafInit
 		return err
 	}
 	createKeyTables()
-	pollMonitors()
 	mac.FinishLaunching()
 	return nil
 }

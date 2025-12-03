@@ -251,6 +251,30 @@ func ResizeUpDownCursor() Cursor {
 
 type DisplayID = C.CGDirectDisplayID
 
+func ActiveDisplayList() []DisplayID {
+	var displayIDs [16]C.CGDirectDisplayID
+	var count C.uint32
+	C.CGGetActiveDisplayList(C.uint32(len(displayIDs)), &displayIDs[0], &count)
+	return displayIDs[:int(count)]
+}
+
+func MainDisplayID() DisplayID {
+	return C.CGMainDisplayID()
+}
+
+func DisplayIsAsleep(id DisplayID) bool {
+	return C.CGDisplayIsAsleep(id) != 0
+}
+
+func DisplayBounds(id DisplayID) geom.Rect {
+	return cgRectToRect(C.CGDisplayBounds(id))
+}
+
+func DisplayScreenSize(id DisplayID) geom.Size {
+	sizeMM := C.CGDisplayScreenSize(id)
+	return geom.NewSize(float32(sizeMM.width), float32(sizeMM.height))
+}
+
 // ========== Event ==========
 
 type EventModifierFlags uint
@@ -547,6 +571,32 @@ func (p SavePanel) URL() URL {
 
 func (p SavePanel) RunModal() bool {
 	return bool(C.savePanelRunModal(C.NSSavePanelRef(p)))
+}
+
+// ========== Screen ==========
+
+type Screen C.NSScreenRef
+
+func ScreenForDisplayID(id DisplayID) Screen {
+	return Screen(C.screenForDisplayID(id))
+}
+
+func (s Screen) Frame() geom.Rect {
+	var frame C.NSRect
+	C.screenFrame(C.NSScreenRef(s), &frame)
+	return cgRectToRect(frame)
+}
+
+func (s Screen) VisibleFrame() geom.Rect {
+	var frame C.NSRect
+	C.screenVisibleFrame(C.NSScreenRef(s), &frame)
+	return cgRectToRect(frame)
+}
+
+func (s Screen) ConvertRectToBacking(r geom.Rect) geom.Rect {
+	backing := rectToCGRect(r)
+	C.screenConvertRectToBacking(C.NSScreenRef(s), &backing)
+	return cgRectToRect(backing)
 }
 
 // ========== Sound ==========

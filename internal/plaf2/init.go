@@ -54,14 +54,15 @@ func Init() error { // formerly plafInit
 	}
 	initializing = true
 	initTermLock.Unlock()
-	var success bool
+	var err error
 	defer func() {
 		initTermLock.Lock()
 		initializing = false
-		initialized = success
+		initialized = err == nil
 		initTermLock.Unlock()
 	}()
-	return initialize()
+	err = initialize()
+	return err
 }
 
 // Terminate should be called before exiting, as it destroys all remaining windows and frees any allocated resources.

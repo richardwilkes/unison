@@ -14,6 +14,7 @@ typedef CFTypeRef NSMenuRef;
 typedef CFTypeRef NSMenuItemRef;
 typedef CFTypeRef NSOpenPanelRef;
 typedef CFTypeRef NSSavePanelRef;
+typedef CFTypeRef NSScreenRef;
 typedef CFTypeRef NSViewRef;
 typedef CFTypeRef NSWindowRef;
 typedef CFTypeRef NSWindowDelegateRef;
@@ -102,6 +103,12 @@ void savePanelSetAllowedFileTypes(NSSavePanelRef savePanel, CFArrayRef types);
 CFURLRef savePanelURL(NSSavePanelRef savePanel);
 bool savePanelRunModal(NSSavePanelRef savePanel);
 
+// Screen
+NSScreenRef screenForDisplayID(CGDirectDisplayID displayID);
+void screenFrame(NSScreenRef screen, CGRect* frame);
+void screenVisibleFrame(NSScreenRef screen, CGRect *frame);
+void screenConvertRectToBacking(NSScreenRef screen, CGRect *rect);
+
 // Sound
 void beep(void);
 
@@ -109,7 +116,7 @@ void beep(void);
 void installThemeChangedCallback(void);
 
 // View
-void viewFrame(NSViewRef v, CGRect *frame);
+void viewFrame(NSViewRef v, CGRect* frame);
 bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 
 // Window
