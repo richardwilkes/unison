@@ -213,7 +213,6 @@ void _plafTerminate(void) {
 		if (_plaf.nsKeyUpMonitor) {
 			[NSEvent removeMonitor:_plaf.nsKeyUpMonitor];
 		}
-		_plafTerminateOpenGL();
 	}
 }
 

@@ -13,6 +13,8 @@ typedef CFTypeRef NSCursorRef;
 typedef CFTypeRef NSMenuRef;
 typedef CFTypeRef NSMenuItemRef;
 typedef CFTypeRef NSOpenPanelRef;
+typedef CFTypeRef NSOpenGLContextRef;
+typedef CFTypeRef NSOpenGLPixelFormatRef;
 typedef CFTypeRef NSSavePanelRef;
 typedef CFTypeRef NSScreenRef;
 typedef CFTypeRef NSViewRef;
@@ -91,6 +93,15 @@ bool openPanelAllowsMultipleSelection(NSOpenPanelRef openPanel);
 void openPanelSetAllowsMultipleSelection(NSOpenPanelRef openPanel, bool set);
 CFArrayRef openPanelURLs(NSOpenPanelRef openPanel);
 bool openPanelRunModal(NSOpenPanelRef openPanel);
+
+// OpenGL Context
+NSOpenGLContextRef newOpenGLContext(NSViewRef view, NSOpenGLPixelFormatRef pixFmt, NSOpenGLContextRef shareCtx, bool transparent);
+void openGLUpdate(NSOpenGLContextRef ctx);
+void openGLMakeCurrent(NSOpenGLContextRef ctx);
+void openGLFlushBuffer(NSOpenGLContextRef ctx);
+
+// OpenGL Pixel Format
+NSOpenGLPixelFormatRef newOpenGLPixelFormat(void);
 
 // Pasteboard
 CFStringRef pasteboardString();

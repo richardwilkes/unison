@@ -36,22 +36,6 @@ static void destroyContextNSGL(plafWindow* window) {
 //////                       PLAF internal API                      //////
 //////////////////////////////////////////////////////////////////////////
 
-// Initialize OpenGL support
-bool _plafInitOpenGL(void) {
-	if (_plaf.nsglFramework) {
-		return true;
-	}
-	_plaf.nsglFramework = CFBundleGetBundleWithIdentifier(CFSTR("com.apple.opengl"));
-	if (_plaf.nsglFramework == NULL) {
-		return false;
-	}
-	return true;
-}
-
-// Terminate OpenGL support
-void _plafTerminateOpenGL(void) {
-}
-
 // Create the OpenGL context
 bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafFrameBufferCfg* fbconfig) {
 	int colorBits = fbconfig->redBits + fbconfig->greenBits + fbconfig->blueBits;
@@ -100,15 +84,6 @@ bool _plafCreateOpenGLContext(plafWindow* window, plafWindow* share, const plafF
 	window->context.swapBuffers = swapBuffersNSGL;
 	window->context.destroy = destroyContextNSGL;
 	return true;
-}
-
-
-//////////////////////////////////////////////////////////////////////////
-//////                        PLAF native API                       //////
-//////////////////////////////////////////////////////////////////////////
-
-id plafGetNSGLContext(plafWindow* window) {
-	return window->context.nsglCtx;
 }
 
 #endif // __APPLE__

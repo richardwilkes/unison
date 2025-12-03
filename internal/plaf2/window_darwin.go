@@ -7,6 +7,7 @@ import (
 
 type platformWindow struct {
 	nativeWindow   mac.Window
+	nativeView     mac.View
 	nsCursorHidden bool
 }
 
@@ -60,11 +61,7 @@ func (w *Window) Focused() bool { // formerly plafIsWindowFocused
 
 func (w *Window) destroy() { // formerly _plafDestroyWindow
 	w.platformWindow.nativeWindow.OrderOut()
-	/* TODO
-	if (window->context.destroy) {
-		window->context.destroy(window);
-	}
-	*/
+	w.platformGraphicsCtx.destroy()
 	delegate := w.platformWindow.nativeWindow.Delegate()
 	w.platformWindow.nativeWindow.SetDelegate(0)
 	delegate.Release()

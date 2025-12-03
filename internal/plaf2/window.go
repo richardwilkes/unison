@@ -5,9 +5,10 @@ import "slices"
 var windowList []*Window
 
 type Window struct {
-	platformWindow platformWindow
-	cursor         *Cursor
-	cursorHidden   bool
+	platformWindow      platformWindow
+	platformGraphicsCtx platformGraphicsContext
+	cursor              *Cursor
+	cursorHidden        bool
 }
 
 // HideCursor hides the cursor.
@@ -26,15 +27,22 @@ func (w *Window) ShowCursor() {
 	}
 }
 
+func (w *Window) makeOpenGLContextCurrent() {
+	w.platformGraphicsCtx.MakeCurrent()
+	wndWithCurrentCtx = w
+}
+
+func (w *Window) swapBuffers() {
+	w.platformGraphicsCtx.SwapBuffers()
+}
+
 func (w *Window) Destroy() { // formerly plafDestroyWindow
 	if w == nil {
 		return
 	}
-	/* TODO
-	if (window == _plaf.wndWithCurrentCtx) {
-		plafMakeContextCurrent(NULL);
+	if w == wndWithCurrentCtx {
+		ClearOpenGLCurrentContext()
 	}
-	*/
 	w.destroy()
 	windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 }

@@ -554,9 +554,6 @@ bool _plafCreateWindow(plafWindow* window, const plafWindowConfig* wndconfig, pl
 		if (!createNativeWindow(window, wndconfig, fbconfig)) {
 			return false;
 		}
-		if (!_plafInitOpenGL()) {
-			return false;
-		}
 		if (!_plafCreateOpenGLContext(window, share, fbconfig)) {
 			return false;
 		}

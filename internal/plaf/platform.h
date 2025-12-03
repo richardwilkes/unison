@@ -627,7 +627,6 @@ struct plafLib {
 	NSObject<NSApplicationDelegate>*    nsDelegate;
 	bool                                nsCursorHidden;
 	NSObject*                           nsKeyUpMonitor;
-	CFBundleRef                         nsglFramework;
 #elif defined(__linux__)
 	Display*                            x11Display;
 	int                                 x11Screen;

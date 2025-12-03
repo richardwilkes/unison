@@ -531,6 +531,47 @@ func (p OpenPanel) RunModal() bool {
 	return bool(C.openPanelRunModal(C.NSOpenPanelRef(p)))
 }
 
+// ========== OpenGL Context ==========
+
+type OpenGLContextRef C.NSOpenGLContextRef
+
+func NewOpenGLContext(view View, pixFmt OpenGLPixelFormatRef, shareCtx OpenGLContextRef, transparent bool) OpenGLContextRef {
+	return OpenGLContextRef(C.newOpenGLContext(C.NSViewRef(view), C.NSOpenGLPixelFormatRef(pixFmt),
+		C.NSOpenGLContextRef(shareCtx), C.bool(transparent)))
+}
+
+func (c OpenGLContextRef) MakeCurrent() {
+	C.openGLMakeCurrent(C.NSOpenGLContextRef(c))
+}
+
+func (c OpenGLContextRef) FlushBuffer() {
+	C.openGLFlushBuffer(C.NSOpenGLContextRef(c))
+}
+
+func (c OpenGLContextRef) Update() {
+	C.openGLUpdate(C.NSOpenGLContextRef(c))
+}
+
+func (c OpenGLContextRef) Release() {
+	C.CFRelease(C.CFTypeRef(c))
+}
+
+func ClearOpenGLCurrentContext() {
+	C.openGLMakeCurrent(0)
+}
+
+// ========== OpenGL Pixel Format ==========
+
+type OpenGLPixelFormatRef C.NSOpenGLPixelFormatRef
+
+func NewOpenGLPixelFormat() OpenGLPixelFormatRef {
+	return OpenGLPixelFormatRef(C.newOpenGLPixelFormat())
+}
+
+func (f OpenGLPixelFormatRef) Release() {
+	C.CFRelease(C.CFTypeRef(f))
+}
+
 // ========== Pasteboard ==========
 
 func PasteboardString() string {

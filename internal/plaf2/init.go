@@ -7,35 +7,11 @@ import (
 )
 
 var (
-	initTermLock            sync.Mutex
-	initialized             bool
-	initializing            bool
-	terminating             bool
-	CommonFrameBufferConfig = FrameBufferConfig{
-		RedBits:     8,
-		GreenBits:   8,
-		BlueBits:    8,
-		AlphaBits:   8,
-		DepthBits:   24,
-		StencilBits: 8,
-	}
+	initTermLock sync.Mutex
+	initialized  bool
+	initializing bool
+	terminating  bool
 )
-
-type FrameBufferConfig struct {
-	RedBits        int
-	GreenBits      int
-	BlueBits       int
-	AlphaBits      int
-	DepthBits      int
-	StencilBits    int
-	AccumRedBits   int
-	AccumGreenBits int
-	AccumBlueBits  int
-	AccumAlphaBits int
-	Samples        int
-	IsSRGB         bool
-	IsTransparent  bool
-}
 
 // Init must be called exactly once before most things in this package may be used.
 func Init() error { // formerly plafInit
