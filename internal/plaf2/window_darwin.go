@@ -16,11 +16,25 @@ func (w *Window) adjustToCursorChange() { // formerly plafAdjustToCursorChange
 	}
 }
 
+func (w *Window) updateCursor() { // formerly _plafUpdateCursor
+	if w.Focused() {
+		if w.cursorInContentArea() {
+			w.updateCursorImage()
+		}
+	}
+}
+
 func (w *Window) updateCursorImage() { // formerly _plafUpdateCursorImage
 	if w.cursorHidden {
-		w.hideCursor()
+		if !w.platformWindow.nsCursorHidden {
+			mac.HideCursor()
+			w.platformWindow.nsCursorHidden = true
+		}
 	} else {
-		w.showCursor()
+		if w.platformWindow.nsCursorHidden {
+			mac.ShowCursor()
+			w.platformWindow.nsCursorHidden = false
+		}
 		if w.cursor != nil {
 			w.cursor.nativeCursor.Set()
 		} else {
@@ -40,18 +54,8 @@ func (w *Window) CursorPosition() geom.Point { // formerly plafGetCursorPos
 	return geom.NewPoint(loc.X, frame.Height-loc.Y)
 }
 
-func (w *Window) hideCursor() {
-	if !w.platformWindow.nsCursorHidden {
-		mac.HideCursor()
-		w.platformWindow.nsCursorHidden = true
-	}
-}
-
-func (w *Window) showCursor() {
-	if w.platformWindow.nsCursorHidden {
-		mac.ShowCursor()
-		w.platformWindow.nsCursorHidden = false
-	}
+func (w *Window) Focused() bool { // formerly plafIsWindowFocused
+	return w.platformWindow.nativeWindow.Focused()
 }
 
 func (w *Window) destroy() { // formerly _plafDestroyWindow

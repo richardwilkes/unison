@@ -10,6 +10,22 @@ type Window struct {
 	cursorHidden   bool
 }
 
+// HideCursor hides the cursor.
+func (w *Window) HideCursor() {
+	if !w.cursorHidden {
+		w.cursorHidden = true
+		w.updateCursor()
+	}
+}
+
+// ShowCursor shows the cursor.
+func (w *Window) ShowCursor() {
+	if w.cursorHidden {
+		w.cursorHidden = false
+		w.updateCursor()
+	}
+}
+
 func (w *Window) Destroy() { // formerly plafDestroyWindow
 	if w == nil {
 		return

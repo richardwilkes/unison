@@ -10,25 +10,29 @@
 #import "macos.h"
 
 NSViewRef windowContentView(NSWindowRef w) {
-	return (NSViewRef)[(NSWindow *)w contentView];
+	return (NSViewRef)[(NSWindow*)w contentView];
 }
 
 CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w) {
-	return [(NSWindow *)w mouseLocationOutsideOfEventStream];
+	return [(NSWindow*)w mouseLocationOutsideOfEventStream];
 }
 
 void windowOrderOut(NSWindowRef w) {
-	[(NSWindow *)w orderOut:nil];
+	[(NSWindow*)w orderOut:nil];
 }
 
 NSWindowDelegateRef windowDelegate(NSWindowRef w) {
-	return (NSWindowDelegateRef)[(NSWindow *)w delegate];
+	return (NSWindowDelegateRef)[(NSWindow*)w delegate];
 }
 
 void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate) {
-	[(NSWindow *)w setDelegate:delegate];
+	[(NSWindow*)w setDelegate:delegate];
+}
+
+bool windowFocused(NSWindowRef w) {
+	return [(NSWindow*)w isKeyWindow];
 }
 
 void windowClose(NSWindowRef w) {
-	[(NSWindow *)w close];
+	[(NSWindow*)w close];
 }

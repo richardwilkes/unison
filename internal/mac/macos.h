@@ -125,4 +125,5 @@ CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w);
 void windowOrderOut(NSWindowRef w);
 NSWindowDelegateRef windowDelegate(NSWindowRef w);
 void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate);
+bool windowFocused(NSWindowRef w);
 void windowClose(NSWindowRef w);

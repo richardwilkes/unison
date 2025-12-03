@@ -757,6 +757,10 @@ func (w Window) SetDelegate(delegate WindowDelegate) {
 	C.windowSetDelegate(C.NSWindowRef(w), C.NSWindowDelegateRef(delegate))
 }
 
+func (w Window) Focused() bool {
+	return bool(C.windowFocused(C.NSWindowRef(w)))
+}
+
 func (w Window) Close() {
 	C.windowClose(C.NSWindowRef(w))
 }
