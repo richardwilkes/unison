@@ -1,14 +1,38 @@
 package plaf2
 
-import "slices"
+import (
+	"slices"
+)
 
 var windowList []*Window
 
+type WindowConfig struct {
+	Share            *Window
+	Title            string
+	Undecorated      bool
+	NotResizable     bool
+	Floating         bool
+	Transparent      bool
+	MousePassThrough bool
+}
+
 type Window struct {
-	platformWindow      platformWindow
-	platformGraphicsCtx platformGraphicsContext
-	cursor              *Cursor
-	cursorHidden        bool
+	plWnd        platformWindow
+	plGctx       platformGraphicsContext
+	cursor       *Cursor
+	cursorHidden bool
+}
+
+func NewWindow(cfg *WindowConfig) *Window {
+	if cfg == nil {
+		cfg = &WindowConfig{}
+	}
+	w := newWindow(cfg)
+	if w == nil {
+		return nil
+	}
+	windowList = append(windowList, w)
+	return w
 }
 
 // HideCursor hides the cursor.
@@ -28,12 +52,12 @@ func (w *Window) ShowCursor() {
 }
 
 func (w *Window) makeOpenGLContextCurrent() {
-	w.platformGraphicsCtx.MakeCurrent()
+	w.plGctx.MakeCurrent()
 	wndWithCurrentCtx = w
 }
 
 func (w *Window) swapBuffers() {
-	w.platformGraphicsCtx.SwapBuffers()
+	w.plGctx.SwapBuffers()
 }
 
 func (w *Window) Destroy() { // formerly plafDestroyWindow

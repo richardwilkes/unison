@@ -5,7 +5,7 @@ import "slices"
 var cursorList []*Cursor
 
 type Cursor struct {
-	nativeCursor plafCursor
+	plCursor plafCursor
 }
 
 func (c *Cursor) Destroy() { // formerly plafDestroyCursor

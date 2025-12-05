@@ -17,15 +17,15 @@ func (w *Window) createOpenGLContext(share *Window, transparent bool) error {
 	}
 	var shareCtx mac.OpenGLContextRef
 	if share != nil {
-		shareCtx = share.platformGraphicsCtx.ctx
+		shareCtx = share.plGctx.ctx
 	}
-	ctx := mac.NewOpenGLContext(w.platformWindow.nativeView, pixFmt, shareCtx, transparent)
+	ctx := mac.NewOpenGLContext(w.plWnd.view, pixFmt, shareCtx, transparent)
 	if ctx == 0 {
 		pixFmt.Release()
 		return errs.New("failed to create OpenGL context")
 	}
-	w.platformGraphicsCtx.pixelFormat = pixFmt
-	w.platformGraphicsCtx.ctx = ctx
+	w.plGctx.pixelFormat = pixFmt
+	w.plGctx.ctx = ctx
 	return nil
 }
 

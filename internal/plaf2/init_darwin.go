@@ -13,7 +13,7 @@ func initialize() error { // formerly _plafInit
 	mac.AppDidChangeScreenParameters = func() {
 		for _, w := range windowList {
 			slog.Info("here to temporarily ignore compiler error about unused variable w", "window", w)
-			w.platformGraphicsCtx.ctx.Update()
+			w.plGctx.ctx.Update()
 		}
 	}
 	mac.AppDidFinishLaunchingCallback = func() {
@@ -28,6 +28,7 @@ func initialize() error { // formerly _plafInit
 		return err
 	}
 	createKeyTables()
+	initWindowCallbacks()
 	mac.FinishLaunching()
 	return nil
 }

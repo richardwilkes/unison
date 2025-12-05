@@ -9,6 +9,58 @@
 
 #import "macos.h"
 
+@interface macWindow : NSWindow {
+	bool canBeKeyWindow;
+	bool canBeMainWindow;
+}
+
+- (instancetype)initWithContentRect:(CGRect)contentRect styleMask:(NSWindowStyleMask)styleMask canBeKey:(bool)keyFlag
+	canBeMain:(bool)mainFlag;
+
+@end
+
+@implementation macWindow
+
+- (instancetype)initWithContentRect:(CGRect)contentRect styleMask:(NSWindowStyleMask)styleMask canBeKey:(bool)keyFlag
+	canBeMain:(bool)mainFlag {
+	self = [super initWithContentRect:contentRect styleMask:styleMask backing:NSBackingStoreBuffered defer:NO];
+	if (self != nil) {
+		canBeKeyWindow = keyFlag;
+		canBeMainWindow = mainFlag;
+	}
+	return self;
+}
+
+- (BOOL)canBecomeKeyWindow {
+	return canBeKeyWindow;
+}
+
+- (BOOL)canBecomeMainWindow {
+	return canBeMainWindow;
+}
+
+@end
+
+NSWindowRef newWindow(CGRect contentRect, NSWindowStyleMask styleMask, bool canBeKeyWindow, bool canBeMainWindow) {
+	return (NSWindowRef)[[macWindow alloc] initWithContentRect:contentRect styleMask:styleMask canBeKey:canBeKeyWindow
+		canBeMain:canBeMainWindow];
+}
+
+void windowSetCollectionBehavior(NSWindowRef w, NSWindowCollectionBehavior behavior) {
+	[(NSWindow*)w setCollectionBehavior:behavior];
+}
+
+void windowSetWindowLevel(NSWindowRef w, NSWindowLevel level) {
+	[(NSWindow*)w setLevel:level];
+}
+
+void windowSetTransparent(NSWindowRef w) {
+	NSWindow* wnd = (NSWindow*)w;
+	[wnd setOpaque:NO];
+	[wnd setHasShadow:NO];
+	[wnd setBackgroundColor:[NSColor clearColor]];
+}
+
 NSViewRef windowContentView(NSWindowRef w) {
 	return (NSViewRef)[(NSWindow*)w contentView];
 }

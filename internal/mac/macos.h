@@ -135,6 +135,10 @@ void viewFrame(NSViewRef v, CGRect* frame);
 bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 
 // Window
+NSWindowRef newWindow(CGRect contentRect, NSWindowStyleMask styleMask, bool canBeKeyWindow, bool canBeMainWindow);
+void windowSetCollectionBehavior(NSWindowRef w, NSWindowCollectionBehavior behavior);
+void windowSetWindowLevel(NSWindowRef w, NSWindowLevel level);
+void windowSetTransparent(NSWindowRef w);
 NSViewRef windowContentView(NSWindowRef w);
 CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w);
 void windowOrderOut(NSWindowRef w);
@@ -142,3 +146,6 @@ NSWindowDelegateRef windowDelegate(NSWindowRef w);
 void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate);
 bool windowFocused(NSWindowRef w);
 void windowClose(NSWindowRef w);
+
+// Window Delegate
+NSWindowDelegateRef newWindowDelegate(NSWindowRef w);

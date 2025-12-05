@@ -792,7 +792,48 @@ func (v View) Release() {
 
 // ========== Window ==========
 
-type Window C.NSWindowRef
+type (
+	Window                   C.NSWindowRef
+	WindowStyleMask          = C.NSWindowStyleMask
+	WindowCollectionBehavior = C.NSWindowCollectionBehavior
+	WindowLevel              = C.NSWindowLevel
+)
+
+const (
+	WindowStyleMaskMiniaturizable WindowStyleMask = C.NSWindowStyleMaskMiniaturizable
+	WindowStyleMaskTitled         WindowStyleMask = C.NSWindowStyleMaskTitled
+	WindowStyleMaskClosable       WindowStyleMask = C.NSWindowStyleMaskClosable
+	WindowStyleMaskResizable      WindowStyleMask = C.NSWindowStyleMaskResizable
+	WindowStyleMaskBorderless     WindowStyleMask = C.NSWindowStyleMaskBorderless
+)
+
+const (
+	WindowCollectionBehaviorFullScreenPrimary WindowCollectionBehavior = C.NSWindowCollectionBehaviorFullScreenPrimary
+	WindowCollectionBehaviorManaged           WindowCollectionBehavior = C.NSWindowCollectionBehaviorManaged
+	WindowCollectionBehaviorFullScreenNone    WindowCollectionBehavior = C.NSWindowCollectionBehaviorFullScreenNone
+)
+
+const (
+	WindowLevelNormal    WindowLevel = C.NSNormalWindowLevel
+	WindowLevelFloating  WindowLevel = C.NSFloatingWindowLevel
+	WindowLevelPopUpMenu WindowLevel = C.NSPopUpMenuWindowLevel
+)
+
+func NewWindow(contentRect geom.Rect, styleMask WindowStyleMask, canBeKey, canBeMain bool) Window {
+	return Window(C.newWindow(rectToCGRect(contentRect), styleMask, C.bool(canBeKey), C.bool(canBeMain)))
+}
+
+func (w Window) SetCollectionBehavior(behavior WindowCollectionBehavior) {
+	C.windowSetCollectionBehavior(C.NSWindowRef(w), behavior)
+}
+
+func (w Window) SetLevel(level WindowLevel) {
+	C.windowSetWindowLevel(C.NSWindowRef(w), level)
+}
+
+func (w Window) SetTransparent() {
+	C.windowSetTransparent(C.NSWindowRef(w))
+}
 
 func (w Window) ContentView() View {
 	return View(C.windowContentView(C.NSWindowRef(w)))
@@ -826,6 +867,19 @@ func (w Window) Close() {
 
 type WindowDelegate C.NSWindowDelegateRef
 
+func NewWindowDelegate(w Window) WindowDelegate {
+	return WindowDelegate(C.newWindowDelegate(C.NSWindowRef(w)))
+}
+
 func (d WindowDelegate) Release() {
 	C.CFRelease(C.CFTypeRef(d))
+}
+
+var WindowShouldCloseCallback func(Window)
+
+//export goWindowShouldCloseCallback
+func goWindowShouldCloseCallback(w Window) {
+	if WindowShouldCloseCallback != nil {
+		WindowShouldCloseCallback(w)
+	}
 }
