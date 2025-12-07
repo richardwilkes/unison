@@ -36,12 +36,16 @@ func convertDarwinDisplay(id mac.DisplayID) *Display {
 	var display Display
 	display.Frame = screen.Frame()
 	pixels := screen.ConvertRectToBacking(display.Frame)
-	display.Frame.Y = height - (display.Frame.Y + display.Frame.Height)
+	display.Frame.Y = height - display.Frame.Bottom()
 	display.Usable = screen.VisibleFrame()
-	display.Usable.Y = height - (display.Usable.Y + display.Usable.Height)
+	display.Usable.Y = height - display.Usable.Bottom()
 	display.Scale = geom.NewPoint(pixels.Width/display.Frame.Width, pixels.Height/display.Frame.Height)
 	sizeMM := mac.DisplayScreenSize(id)
 	display.PPI = (int)(pixels.Width / (sizeMM.Width / 25.4))
 	display.Primary = id == mainDisplayID
 	return &display
+}
+
+func transformCocoaY(y float32) float32 {
+	return mac.DisplayBounds(mac.MainDisplayID()).Height - y
 }

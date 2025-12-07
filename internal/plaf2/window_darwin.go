@@ -38,43 +38,55 @@ func newWindow(cfg *WindowConfig) *Window {
 			styleMask |= mac.WindowStyleMaskResizable
 		}
 	}
-	nw := mac.NewWindow(geom.NewRect(0, 0, 1, 1), styleMask, true, true)
-	if nw == 0 {
+	w := mac.NewWindow(geom.NewRect(0, 0, 1, 1), styleMask, true, true)
+	if w == 0 {
 		return nil
 	}
 	if cfg.NotResizable {
-		nw.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenNone)
+		w.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenNone)
 	} else {
-		nw.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenPrimary | mac.WindowCollectionBehaviorManaged)
+		w.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenPrimary | mac.WindowCollectionBehaviorManaged)
 	}
 	if cfg.Floating {
-		nw.SetLevel(mac.WindowLevelFloating)
+		w.SetLevel(mac.WindowLevelFloating)
 	}
-	// TODO
-	// window->nsView = [[MacContentView alloc] initWithPlafWindow:window];
+	v := mac.NewView(w)
 	if cfg.Transparent {
-		nw.SetTransparent()
+		w.SetTransparent()
 	}
-	// TODO
-	// [window->nsWindow setContentView:window->nsView];
-	// [window->nsWindow makeFirstResponder:window->nsView];
-	// [window->nsWindow setTitle:@(window->title)];
-	//delegate :=
-	mac.NewWindowDelegate(nw)
-	// TODO
-	// [window->nsWindow setDelegate:(id<NSWindowDelegate>)window->nsDelegate];
-	// [window->nsWindow setAcceptsMouseMovedEvents:YES];
-	// [window->nsWindow setRestorable:NO];
-	// if ([window->nsWindow respondsToSelector:@selector(setTabbingMode:)]) {
-	// 	[window->nsWindow setTabbingMode:NSWindowTabbingModeDisallowed];
-	// }
-	// plafGetWindowSize(window, &window->width, &window->height);
-	// plafGetFramebufferSize(window, &window->nsFrameBufferWidth, &window->nsFrameBufferHeight);
+	w.SetContentView(v)
+	w.MakeFirstResponder(v)
+	if cfg.Title != "" {
+		w.SetTitle(cfg.Title)
+	}
+	delegate := mac.NewWindowDelegate(w)
+	w.SetDelegate(delegate)
+	w.SetAcceptsMouseMovedEvents(true)
+	w.SetRestorable(false)
+	w.SetTabbingMode(mac.WindowTabbingModeDisallowed)
 	return &Window{
 		plWnd: platformWindow{
-			wnd: nw,
+			wnd:  w,
+			view: v,
 		},
 	}
+}
+
+func (w *Window) Frame() geom.Rect {
+	frame := w.plWnd.wnd.Frame()
+	frame.Y = transformCocoaY(frame.Bottom())
+	return frame
+}
+
+func (w *Window) ContentRect() geom.Rect {
+	r := w.plWnd.wnd.ContentRectForFrameRect(w.plWnd.wnd.Frame())
+	r.Y = transformCocoaY(r.Bottom())
+	return r
+}
+
+func (w *Window) SetContentRect(rect geom.Rect) {
+	rect.Y = transformCocoaY(rect.Bottom())
+	w.plWnd.wnd.SetFrame(w.plWnd.wnd.FrameRectForContentRect(rect))
 }
 
 func (w *Window) adjustToCursorChange() { // formerly plafAdjustToCursorChange

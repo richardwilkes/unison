@@ -105,7 +105,7 @@ NSOpenGLPixelFormatRef newOpenGLPixelFormat(void);
 
 // Pasteboard
 CFStringRef pasteboardString();
-void pasteboardSetString(const char* str);
+void pasteboardSetString(CFStringRef str);
 
 // Save Panel
 NSSavePanelRef newSavePanel();
@@ -139,13 +139,24 @@ NSWindowRef newWindow(CGRect contentRect, NSWindowStyleMask styleMask, bool canB
 void windowSetCollectionBehavior(NSWindowRef w, NSWindowCollectionBehavior behavior);
 void windowSetWindowLevel(NSWindowRef w, NSWindowLevel level);
 void windowSetTransparent(NSWindowRef w);
+void windowSetTitle(NSWindowRef w, CFStringRef title);
 NSViewRef windowContentView(NSWindowRef w);
+void windowSetContentView(NSWindowRef w, NSViewRef v);
+void windowSetRestorable(NSWindowRef w, bool restorable);
+void windowMakeFirstResponder(NSWindowRef w, NSViewRef v);
+void windowSetTabbingMode(NSWindowRef w, NSWindowTabbingMode mode);
+void windowSetAcceptsMouseMovedEvents(NSWindowRef w, bool accept);
 CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w);
 void windowOrderOut(NSWindowRef w);
 NSWindowDelegateRef windowDelegate(NSWindowRef w);
 void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate);
 bool windowFocused(NSWindowRef w);
+void windowFrame(NSWindowRef w, CGRect* r);
+void windowSetFrame(NSWindowRef w, CGRect r, bool display);
+void windowContentRectForFrameRect(NSWindowRef w, CGRect* r);
+void windowFrameRectForContentRect(NSWindowRef w, CGRect* r);
 void windowClose(NSWindowRef w);
 
 // Window Delegate
+NSViewRef newView(NSWindowRef w);
 NSWindowDelegateRef newWindowDelegate(NSWindowRef w);

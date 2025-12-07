@@ -583,9 +583,9 @@ func PasteboardString() string {
 }
 
 func SetPasteboardString(str string) {
-	s := C.CString(str)
-	defer C.free(unsafe.Pointer(s))
-	C.pasteboardSetString(s)
+	s := NewString(str)
+	defer s.Release()
+	C.pasteboardSetString(C.CFStringRef(s))
 }
 
 // ========== Save Panel ==========
@@ -639,13 +639,13 @@ func ScreenForDisplayID(id DisplayID) Screen {
 }
 
 func (s Screen) Frame() geom.Rect {
-	var frame C.NSRect
+	var frame C.CGRect
 	C.screenFrame(C.NSScreenRef(s), &frame)
 	return cgRectToRect(frame)
 }
 
 func (s Screen) VisibleFrame() geom.Rect {
-	var frame C.NSRect
+	var frame C.CGRect
 	C.screenVisibleFrame(C.NSScreenRef(s), &frame)
 	return cgRectToRect(frame)
 }
@@ -776,8 +776,12 @@ func cgRectToRect(r C.CGRect) geom.Rect {
 
 type View C.NSViewRef
 
+func NewView(w Window) View {
+	return View(C.newView(C.NSWindowRef(w)))
+}
+
 func (v View) Frame() geom.Rect {
-	var frame C.NSRect
+	var frame C.CGRect
 	C.viewFrame(C.NSViewRef(v), &frame)
 	return cgRectToRect(frame)
 }
@@ -797,6 +801,7 @@ type (
 	WindowStyleMask          = C.NSWindowStyleMask
 	WindowCollectionBehavior = C.NSWindowCollectionBehavior
 	WindowLevel              = C.NSWindowLevel
+	WindowTabbingMode        = C.NSWindowTabbingMode
 )
 
 const (
@@ -819,6 +824,12 @@ const (
 	WindowLevelPopUpMenu WindowLevel = C.NSPopUpMenuWindowLevel
 )
 
+const (
+	WindowTabbingModeAutomatic  WindowTabbingMode = C.NSWindowTabbingModeAutomatic
+	WindowTabbingModeDisallowed WindowTabbingMode = C.NSWindowTabbingModeDisallowed
+	WindowTabbingModePreferred  WindowTabbingMode = C.NSWindowTabbingModePreferred
+)
+
 func NewWindow(contentRect geom.Rect, styleMask WindowStyleMask, canBeKey, canBeMain bool) Window {
 	return Window(C.newWindow(rectToCGRect(contentRect), styleMask, C.bool(canBeKey), C.bool(canBeMain)))
 }
@@ -835,8 +846,34 @@ func (w Window) SetTransparent() {
 	C.windowSetTransparent(C.NSWindowRef(w))
 }
 
+func (w Window) SetTitle(title string) {
+	str := NewString(title)
+	defer str.Release()
+	C.windowSetTitle(C.NSWindowRef(w), C.CFStringRef(str))
+}
+
 func (w Window) ContentView() View {
 	return View(C.windowContentView(C.NSWindowRef(w)))
+}
+
+func (w Window) SetContentView(v View) {
+	C.windowSetContentView(C.NSWindowRef(w), C.NSViewRef(v))
+}
+
+func (w Window) SetRestorable(restorable bool) {
+	C.windowSetRestorable(C.NSWindowRef(w), C.bool(restorable))
+}
+
+func (w Window) MakeFirstResponder(v View) {
+	C.windowMakeFirstResponder(C.NSWindowRef(w), C.NSViewRef(v))
+}
+
+func (w Window) SetTabbingMode(mode WindowTabbingMode) {
+	C.windowSetTabbingMode(C.NSWindowRef(w), mode)
+}
+
+func (w Window) SetAcceptsMouseMovedEvents(accepts bool) {
+	C.windowSetAcceptsMouseMovedEvents(C.NSWindowRef(w), C.bool(accepts))
 }
 
 func (w Window) MouseLocationOutsideOfEventStream() geom.Point {
@@ -857,6 +894,28 @@ func (w Window) SetDelegate(delegate WindowDelegate) {
 
 func (w Window) Focused() bool {
 	return bool(C.windowFocused(C.NSWindowRef(w)))
+}
+
+func (w Window) Frame() geom.Rect {
+	var frame C.CGRect
+	C.windowFrame(C.NSWindowRef(w), &frame)
+	return cgRectToRect(frame)
+}
+
+func (w Window) SetFrame(frameRect geom.Rect) {
+	C.windowSetFrame(C.NSWindowRef(w), rectToCGRect(frameRect), true)
+}
+
+func (w Window) ContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+	r := rectToCGRect(frameRect)
+	C.windowContentRectForFrameRect(C.NSWindowRef(w), &r)
+	return cgRectToRect(r)
+}
+
+func (w Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
+	r := rectToCGRect(contentRect)
+	C.windowFrameRectForContentRect(C.NSWindowRef(w), &r)
+	return cgRectToRect(r)
 }
 
 func (w Window) Close() {

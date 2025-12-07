@@ -39,9 +39,7 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 	if w.IsValid() {
 		rect = w.adjustContentRectForMinMax(rect)
 		w.wnd.SetPos(int(rect.X), int(rect.Y))
-		tx := int(rect.Width)
-		ty := int(rect.Height)
-		w.wnd.SetSize(tx, ty)
+		w.wnd.SetSize(int(rect.Width), int(rect.Height))
 	}
 }
 

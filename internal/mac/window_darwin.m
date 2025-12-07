@@ -61,8 +61,32 @@ void windowSetTransparent(NSWindowRef w) {
 	[wnd setBackgroundColor:[NSColor clearColor]];
 }
 
+void windowSetTitle(NSWindowRef w, CFStringRef title) {
+	[(NSWindow*)w setTitle:(NSString *)title];
+}
+
 NSViewRef windowContentView(NSWindowRef w) {
 	return (NSViewRef)[(NSWindow*)w contentView];
+}
+
+void windowSetContentView(NSWindowRef w, NSViewRef v) {
+	[(NSWindow*)w setContentView:(NSView*)v];
+}
+
+void windowSetRestorable(NSWindowRef w, bool restorable) {
+	[(NSWindow*)w setRestorable:restorable];
+}
+
+void windowMakeFirstResponder(NSWindowRef w, NSViewRef v) {
+	[(NSWindow*)w makeFirstResponder:(NSView*)v];
+}
+
+void windowSetTabbingMode(NSWindowRef w, NSWindowTabbingMode mode) {
+	[(NSWindow*)w setTabbingMode:mode];
+}
+
+void windowSetAcceptsMouseMovedEvents(NSWindowRef w, bool accept) {
+	[(NSWindow*)w setAcceptsMouseMovedEvents:accept];
 }
 
 CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w) {
@@ -83,6 +107,22 @@ void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate) {
 
 bool windowFocused(NSWindowRef w) {
 	return [(NSWindow*)w isKeyWindow];
+}
+
+void windowFrame(NSWindowRef w, CGRect* r) {
+	*r = [(NSWindow*)w frame];
+}
+
+void windowSetFrame(NSWindowRef w, CGRect r, bool display) {
+	[(NSWindow*)w setFrame:r display:display];
+}
+
+void windowContentRectForFrameRect(NSWindowRef w, CGRect* r) {
+	*r = [(NSWindow*)w contentRectForFrameRect:*r];
+}
+
+void windowFrameRectForContentRect(NSWindowRef w, CGRect* r) {
+	*r = [(NSWindow*)w frameRectForContentRect:*r];
 }
 
 void windowClose(NSWindowRef w) {

@@ -17,8 +17,8 @@ CFStringRef pasteboardString() {
 	return (CFStringRef)([pasteboard stringForType:NSPasteboardTypeString]);
 }
 
-void pasteboardSetString(const char* str) {
+void pasteboardSetString(CFStringRef str) {
 	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
 	[pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];
-	[pasteboard setString:@(str) forType:NSPasteboardTypeString];
+	[pasteboard setString:(NSString *)str forType:NSPasteboardTypeString];
 }
