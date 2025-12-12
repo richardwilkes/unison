@@ -896,6 +896,10 @@ func (w Window) Focused() bool {
 	return bool(C.windowFocused(C.NSWindowRef(w)))
 }
 
+func (w Window) Zoomed() bool {
+	return bool(C.windowZoomed(C.NSWindowRef(w)))
+}
+
 func (w Window) Frame() geom.Rect {
 	var frame C.CGRect
 	C.windowFrame(C.NSWindowRef(w), &frame)
@@ -937,8 +941,28 @@ func (d WindowDelegate) Release() {
 var WindowShouldCloseCallback func(Window)
 
 //export goWindowShouldCloseCallback
-func goWindowShouldCloseCallback(w Window) {
-	if WindowShouldCloseCallback != nil {
-		WindowShouldCloseCallback(w)
+func goWindowShouldCloseCallback(w Window) bool {
+	if WindowShouldCloseCallback == nil {
+		return true
+	}
+	WindowShouldCloseCallback(w)
+	return false
+}
+
+var WindowDidResizeCallback func(Window)
+
+//export goWindowDidResizeCallback
+func goWindowDidResizeCallback(w Window) {
+	if WindowDidResizeCallback != nil {
+		WindowDidResizeCallback(w)
+	}
+}
+
+var WindowDidMoveCallback func(Window)
+
+//export goWindowDidMoveCallback
+func goWindowDidMoveCallback(w Window) {
+	if WindowDidMoveCallback != nil {
+		WindowDidMoveCallback(w)
 	}
 }

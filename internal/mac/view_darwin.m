@@ -53,11 +53,13 @@
 }
 
 - (void)updateLayer {
-	//[wnd->context.nsglCtx update]; // TODO: Move into the callback
+	// TODO
+	//[wnd->context.nsglCtx update];
 	//goWindowDrawCallback(wnd);
 }
 
 - (void)cursorUpdate:(NSEvent *)event {
+	// TODO
 	//_plafUpdateCursorImage(wnd);
 }
 
@@ -66,6 +68,7 @@
 }
 
 - (void)mouseDown:(NSEvent *)event {
+	// TODO
 	//_plafInputMouseClick(wnd, MOUSE_BUTTON_LEFT, INPUT_PRESS, translateFlags([event modifierFlags]));
 }
 
@@ -74,16 +77,19 @@
 }
 
 - (void)mouseUp:(NSEvent *)event {
+	// TODO
 	//_plafInputMouseClick(wnd, MOUSE_BUTTON_LEFT, INPUT_RELEASE, translateFlags([event modifierFlags]));
 }
 
 - (void)mouseMoved:(NSEvent *)event {
+	// TODO
 	// const NSRect contentRect = [wnd->nsView frame];
 	// const NSPoint pos = [event locationInWindow];
 	// _plafInputCursorPos(wnd, pos.x, contentRect.size.height - pos.y);
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
+	// TODO
 	// _plafInputMouseClick(wnd, MOUSE_BUTTON_RIGHT, INPUT_PRESS, translateFlags([event modifierFlags]));
 }
 
@@ -92,10 +98,12 @@
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
+	// TODO
 	// _plafInputMouseClick(wnd, MOUSE_BUTTON_RIGHT, INPUT_RELEASE, translateFlags([event modifierFlags]));
 }
 
 - (void)otherMouseDown:(NSEvent *)event {
+	// TODO
 	// _plafInputMouseClick(wnd, (int) [event buttonNumber], INPUT_PRESS, translateFlags([event modifierFlags]));
 }
 
@@ -104,25 +112,28 @@
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
+	// TODO
 	// _plafInputMouseClick(wnd, (int) [event buttonNumber], INPUT_RELEASE, translateFlags([event modifierFlags]));
 }
 
 - (void)mouseEntered:(NSEvent *)event {
-	// if (wnd->cursorHidden) { // TODO: Move this logic into the callback
+	// TODO
+	// if (wnd->cursorHidden) {
 	// 	hideCursor(wnd);
 	// }
 	// goCursorEnterCallback(wnd, true);
 }
 
 - (void)mouseExited:(NSEvent *)event {
-	// if (wnd->cursorHidden) { // TODO: Move this logic into the callback
+	// TODO
+	// if (wnd->cursorHidden) {
 	// 	showCursor(wnd);
 	// }
 	// goCursorEnterCallback(wnd, false);
 }
 
 - (void)viewDidChangeBackingProperties {
-	// TODO: Move this logic into the callback
+	// TODO
 	// const NSRect contentRect = [wnd->nsView frame];
 	// const NSRect fbRect = [wnd->nsView convertRectToBacking:contentRect];
 	// const float xscale = fbRect.size.width / contentRect.size.width;
@@ -135,6 +146,7 @@
 }
 
 - (void)drawRect:(NSRect)rect {
+	// TODO
 	// goWindowDrawCallback(wnd);
 }
 
@@ -152,7 +164,7 @@
 }
 
 - (void)keyDown:(NSEvent *)event {
-	// TODO: Move translation to an inputKey callback
+	// TODO
 	// const int key = translateKey([event keyCode]);
 	// const int mods = translateFlags([event modifierFlags]);
 	// _plafInputKey(wnd, key, [event keyCode], INPUT_PRESS, mods);
@@ -160,7 +172,7 @@
 }
 
 - (void)flagsChanged:(NSEvent *)event {
-	// TODO: Move translation to an inputKey callback
+	// TODO
 	// int action;
 	// const unsigned int modifierFlags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
 	// const int key = translateKey([event keyCode]);
@@ -179,13 +191,14 @@
 }
 
 - (void)keyUp:(NSEvent *)event {
-	// TODO: Move translation to an inputKey callback
+	// TODO
 	// const int key = translateKey([event keyCode]);
 	// const int mods = translateFlags([event modifierFlags]);
 	// _plafInputKey(wnd, key, [event keyCode], INPUT_RELEASE, mods);
 }
 
 - (void)scrollWheel:(NSEvent *)event {
+	// TODO
 	// double deltaX = [event scrollingDeltaX];
 	// double deltaY = [event scrollingDeltaY];
 	// if ([event hasPreciseScrollingDeltas]) {
@@ -202,7 +215,7 @@
 }
 
 - (BOOL)performDragOperation:(id <NSDraggingInfo>)sender {
-	// TODO: Move this into a callback
+	// TODO
 	// const NSRect contentRect = [wnd->nsView frame];
 	// const NSPoint pos = [sender draggingLocation];
 	// _plafInputCursorPos(wnd, pos.x, contentRect.size.height - pos.y);

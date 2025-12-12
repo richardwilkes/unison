@@ -151,6 +151,7 @@ void windowOrderOut(NSWindowRef w);
 NSWindowDelegateRef windowDelegate(NSWindowRef w);
 void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate);
 bool windowFocused(NSWindowRef w);
+bool windowZoomed(NSWindowRef w);
 void windowFrame(NSWindowRef w, CGRect* r);
 void windowSetFrame(NSWindowRef w, CGRect r, bool display);
 void windowContentRectForFrameRect(NSWindowRef w, CGRect* r);

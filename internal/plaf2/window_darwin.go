@@ -14,16 +14,55 @@ type platformWindow struct {
 	nsCursorHidden bool
 }
 
+func findWindowByNSWindow(macWnd mac.Window) *Window {
+	if i := slices.IndexFunc(windowList, func(w *Window) bool {
+		return w.plWnd.wnd == macWnd
+	}); i != -1 {
+		return windowList[i]
+	}
+	return nil
+}
+
 func initWindowCallbacks() {
-	mac.WindowShouldCloseCallback = func(w mac.Window) {
-		if i := slices.IndexFunc(windowList, func(wnd *Window) bool {
-			return wnd.plWnd.wnd == w
-		}); i != -1 {
+	mac.WindowShouldCloseCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
 			// TODO: Initiate close sequence
 			// _plafInputWindowCloseRequest(window);
 			//windowList[i].CloseRequest()
 		} else {
-			slog.Warn("received window should close callback for unknown window", "window", w)
+			slog.Warn("received window should close callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowDidResizeCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.plGctx.ctx.Update()
+			maximized := w.plWnd.wnd.Zoomed()
+			if w.maximized != maximized {
+				w.maximized = maximized
+				if w.MaximizeCallback != nil {
+					w.MaximizeCallback(maximized)
+				}
+			}
+			r := w.plWnd.view.Frame()
+			if r.Width != w.width || r.Height != w.height {
+				w.width = r.Width
+				w.height = r.Height
+				if w.SizeCallback != nil {
+					w.SizeCallback()
+				}
+			}
+		} else {
+			slog.Warn("received window did resize callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowDidMoveCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.plGctx.ctx.Update()
+			if w.PosCallback != nil {
+				w.PosCallback()
+			}
+		} else {
+			slog.Warn("received window did move callback for unknown window", "window", macWnd)
 		}
 	}
 }

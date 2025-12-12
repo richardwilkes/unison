@@ -9,7 +9,9 @@
 
 #import "macos.h"
 
-void goWindowShouldCloseCallback(NSWindowRef w);
+bool goWindowShouldCloseCallback(NSWindowRef w);
+void goWindowDidResizeCallback(NSWindowRef w);
+void goWindowDidMoveCallback(NSWindowRef w);
 
 @interface macWindowDelegate : NSObject {
 	NSWindow* wnd;
@@ -30,39 +32,29 @@ void goWindowShouldCloseCallback(NSWindowRef w);
 }
 
 - (BOOL)windowShouldClose:(id)sender {
-	goWindowShouldCloseCallback(wnd);
-	return NO;
+	return goWindowShouldCloseCallback(wnd);
 }
 
 - (void)windowDidResize:(NSNotification *)notification {
-	// [wnd->context.nsglCtx update];
-	// const int maximized = [wnd->nsWindow isZoomed];
-	// if (wnd->maximized != maximized) {
-	// 	wnd->maximized = maximized;
-	// 	goWindowMaximizeCallback(wnd, maximized);
-	// }
-	// const NSRect contentRect = [wnd->nsView frame];
-	// if (contentRect.size.width != wnd->width || contentRect.size.height != wnd->height) {
-	// 	wnd->width  = contentRect.size.width;
-	// 	wnd->height = contentRect.size.height;
-	// 	goWindowSizeCallback(wnd);
-	// }
+	goWindowDidResizeCallback(wnd);
 }
 
 - (void)windowDidMove:(NSNotification *)notification {
-	// [wnd->context.nsglCtx update];
-	// goWindowPosCallback(wnd);
+	goWindowDidMoveCallback(wnd);
 }
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
+	// TODO
 	// goWindowMinimizeCallback(wnd, true);
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
+	// TODO
 	// goWindowMinimizeCallback(wnd, false);
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
+	// TODO
 	// _plafNotifyOfFocusChange(wnd, true);
 	// if (_plafCursorInContentArea(wnd)) {
 	// 	_plafUpdateCursorImage(wnd);
@@ -70,6 +62,7 @@ void goWindowShouldCloseCallback(NSWindowRef w);
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
+	// TODO
 	// _plafNotifyOfFocusChange(wnd, false);
 }
 

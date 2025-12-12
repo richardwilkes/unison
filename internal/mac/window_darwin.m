@@ -109,6 +109,10 @@ bool windowFocused(NSWindowRef w) {
 	return [(NSWindow*)w isKeyWindow];
 }
 
+bool windowZoomed(NSWindowRef w) {
+	return [(NSWindow*)w isZoomed];
+}
+
 void windowFrame(NSWindowRef w, CGRect* r) {
 	*r = [(NSWindow*)w frame];
 }

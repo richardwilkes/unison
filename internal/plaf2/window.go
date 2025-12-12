@@ -17,10 +17,16 @@ type WindowConfig struct {
 }
 
 type Window struct {
-	plWnd        platformWindow
-	plGctx       platformGraphicsContext
-	cursor       *Cursor
-	cursorHidden bool
+	MaximizeCallback func(maximized bool)
+	SizeCallback     func()
+	PosCallback      func()
+	plWnd            platformWindow
+	plGctx           platformGraphicsContext
+	cursor           *Cursor
+	width            float32
+	height           float32
+	cursorHidden     bool
+	maximized        bool
 }
 
 func NewWindow(cfg *WindowConfig) *Window {
