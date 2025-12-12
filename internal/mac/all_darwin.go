@@ -966,3 +966,30 @@ func goWindowDidMoveCallback(w Window) {
 		WindowDidMoveCallback(w)
 	}
 }
+
+var WindowMinimizeCallback func(Window, bool)
+
+//export goWindowDidMinimizeCallback
+func goWindowDidMinimizeCallback(w Window, minimized bool) {
+	if WindowMinimizeCallback != nil {
+		WindowMinimizeCallback(w, minimized)
+	}
+}
+
+var WindowDidBecomeKeyCallback func(Window)
+
+//export goWindowDidBecomeKeyCallback
+func goWindowDidBecomeKeyCallback(w Window) {
+	if WindowDidBecomeKeyCallback != nil {
+		WindowDidBecomeKeyCallback(w)
+	}
+}
+
+var WindowDidResignKeyCallback func(Window)
+
+//export goWindowDidResignKeyCallback
+func goWindowDidResignKeyCallback(w Window) {
+	if WindowDidResignKeyCallback != nil {
+		WindowDidResignKeyCallback(w)
+	}
+}

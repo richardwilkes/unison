@@ -12,6 +12,9 @@
 bool goWindowShouldCloseCallback(NSWindowRef w);
 void goWindowDidResizeCallback(NSWindowRef w);
 void goWindowDidMoveCallback(NSWindowRef w);
+void goWindowDidMinimizeCallback(NSWindowRef w, bool minimized);
+void goWindowDidBecomeKeyCallback(NSWindowRef w);
+void goWindowDidResignKeyCallback(NSWindowRef w);
 
 @interface macWindowDelegate : NSObject {
 	NSWindow* wnd;
@@ -44,26 +47,19 @@ void goWindowDidMoveCallback(NSWindowRef w);
 }
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
-	// TODO
-	// goWindowMinimizeCallback(wnd, true);
+	goWindowDidMinimizeCallback(wnd, true);
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
-	// TODO
-	// goWindowMinimizeCallback(wnd, false);
+	goWindowDidMinimizeCallback(wnd, false);
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
-	// TODO
-	// _plafNotifyOfFocusChange(wnd, true);
-	// if (_plafCursorInContentArea(wnd)) {
-	// 	_plafUpdateCursorImage(wnd);
-	// }
+	goWindowDidBecomeKeyCallback(wnd);
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
-	// TODO
-	// _plafNotifyOfFocusChange(wnd, false);
+	goWindowDidResignKeyCallback(wnd);
 }
 
 @end

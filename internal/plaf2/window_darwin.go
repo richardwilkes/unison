@@ -65,6 +65,32 @@ func initWindowCallbacks() {
 			slog.Warn("received window did move callback for unknown window", "window", macWnd)
 		}
 	}
+	mac.WindowMinimizeCallback = func(macWnd mac.Window, minimized bool) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			if w.MinimizeCallback != nil {
+				w.MinimizeCallback(minimized)
+			}
+		} else {
+			slog.Warn("received window minimize callback for unknown window", "window", macWnd, "minimized", minimized)
+		}
+	}
+	mac.WindowDidBecomeKeyCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.notifyOfFocusChange(true)
+			if w.cursorInContentArea() {
+				w.updateCursorImage()
+			}
+		} else {
+			slog.Warn("received window did become key callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowDidResignKeyCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.notifyOfFocusChange(false)
+		} else {
+			slog.Warn("received window did resign key callback for unknown window", "window", macWnd)
+		}
+	}
 }
 
 func newWindow(cfg *WindowConfig) *Window {
