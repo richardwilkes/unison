@@ -49,6 +49,9 @@ void cursorSet(NSCursorRef cursor);
 double doubleClickInterval(void);
 NSEventModifierFlags eventModifierFlags(void);
 void postEmptyEvent(void);
+void pollEvents(void);
+void waitEvents(void);
+void waitEventsTimeout(double timeout);
 void stopMainEventLoop(void);
 
 // Menu

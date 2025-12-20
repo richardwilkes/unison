@@ -25,6 +25,40 @@ void postEmptyEvent(void) {
 	}
 }
 
+void pollEvents(void) {
+	@autoreleasepool {
+		for (;;) {
+			NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast]
+				inMode:NSDefaultRunLoopMode dequeue:YES];
+			if (!event) {
+				break;
+			}
+			[NSApp sendEvent:event];
+		}
+	}
+}
+
+void waitEvents(void) {
+	@autoreleasepool {
+		NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantFuture]
+			inMode:NSDefaultRunLoopMode dequeue:YES];
+		[NSApp sendEvent:event];
+		pollEvents();
+	}
+}
+
+void waitEventsTimeout(double timeout) {
+	@autoreleasepool {
+		NSDate* date = [NSDate dateWithTimeIntervalSinceNow:timeout];
+		NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:date inMode:NSDefaultRunLoopMode
+			dequeue:YES];
+		if (event) {
+			[NSApp sendEvent:event];
+		}
+		pollEvents();
+	}
+}
+
 void stopMainEventLoop(void) {
 	[NSApp stop:nil];
 }

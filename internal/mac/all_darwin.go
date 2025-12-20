@@ -299,6 +299,18 @@ func PostEmptyEvent() {
 	C.postEmptyEvent()
 }
 
+func PollEvents() {
+	C.pollEvents()
+}
+
+func WaitEvents() {
+	C.waitEvents()
+}
+
+func WaitEventsTimeout(timeout float64) {
+	C.waitEventsTimeout(C.double(timeout))
+}
+
 func StopMainEventLoop() {
 	C.stopMainEventLoop()
 }
