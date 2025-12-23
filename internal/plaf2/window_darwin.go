@@ -6,6 +6,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/plaf2/modkey"
 )
 
 type platformWindow struct {
@@ -89,6 +90,20 @@ func initWindowCallbacks() {
 			w.notifyOfFocusChange(false)
 		} else {
 			slog.Warn("received window did resign key callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowCursorUpdateCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.updateCursorImage()
+		} else {
+			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, pressed bool, mods modkey.State) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			// TODO: Implement mouse button callback
+		} else {
+			slog.Warn("received window mouse click callback for unknown window", "window", macWnd)
 		}
 	}
 }
@@ -211,7 +226,5 @@ func (w *Window) destroy() { // formerly _plafDestroyWindow
 	w.plWnd.wnd.ContentView().Release()
 	w.plWnd.wnd.Close()
 	w.plWnd.wnd = 0
-	/* TODO
-	plafPollEvents();
-	*/
+	PollEvents()
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/internal/plaf2/modkey"
 )
 
 // ========== App ==========
@@ -804,6 +805,24 @@ func (v View) MouseInRect(mousePt geom.Point, rect geom.Rect) bool {
 
 func (v View) Release() {
 	C.CFRelease(C.CFTypeRef(v))
+}
+
+var WindowCursorUpdateCallback func(Window)
+
+//export goWindowCursorUpdateCallback
+func goWindowCursorUpdateCallback(w C.NSWindowRef) {
+	if WindowCursorUpdateCallback != nil {
+		WindowCursorUpdateCallback(Window(w))
+	}
+}
+
+var WindowMouseClickCallback func(macWnd Window, button int, pressed bool, mods modkey.State)
+
+//export goWindowMouseClickCallback
+func goWindowMouseClickCallback(macWnd C.NSWindowRef, button C.int, pressed C.bool, mods C.uchar) {
+	if WindowMouseClickCallback != nil {
+		WindowMouseClickCallback(Window(macWnd), int(button), bool(pressed), modkey.State(mods))
+	}
 }
 
 // ========== Window ==========

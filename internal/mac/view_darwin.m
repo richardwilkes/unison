@@ -9,6 +9,37 @@
 
 #import "macos.h"
 
+// These must match the values in the Go modkey package
+#define MODKEY_SHIFT     (1 << 0)
+#define MODKEY_CONTROL   (1 << 1)
+#define MODKEY_ALT       (1 << 2)
+#define MODKEY_SUPER     (1 << 3)
+#define MODKEY_CAPS_LOCK (1 << 4)
+#define MODKEY_NUM_LOCK  (1 << 5)
+
+void goWindowCursorUpdateCallback(NSWindowRef w);
+void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, unsigned char mods);
+
+static unsigned char translateFlags(NSUInteger flags) {
+	unsigned char mods = 0;
+	if (flags & NSEventModifierFlagShift) {
+		mods |= MODKEY_SHIFT;
+	}
+	if (flags & NSEventModifierFlagControl) {
+		mods |= MODKEY_CONTROL;
+	}
+	if (flags & NSEventModifierFlagOption) {
+		mods |= MODKEY_ALT;
+	}
+	if (flags & NSEventModifierFlagCommand) {
+		mods |= MODKEY_SUPER;
+	}
+	if (flags & NSEventModifierFlagCapsLock) {
+		mods |= MODKEY_CAPS_LOCK;
+	}
+	return mods;
+}
+
 @interface macContentView : NSView {
 	NSWindow*       wnd;
 	NSTrackingArea* trackingArea;
@@ -59,8 +90,7 @@
 }
 
 - (void)cursorUpdate:(NSEvent *)event {
-	// TODO
-	//_plafUpdateCursorImage(wnd);
+	goWindowCursorUpdateCallback(wnd);
 }
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)event {
@@ -68,8 +98,7 @@
 }
 
 - (void)mouseDown:(NSEvent *)event {
-	// TODO
-	//_plafInputMouseClick(wnd, MOUSE_BUTTON_LEFT, INPUT_PRESS, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 0, true, translateFlags([event modifierFlags]));
 }
 
 - (void)mouseDragged:(NSEvent *)event {
@@ -77,8 +106,7 @@
 }
 
 - (void)mouseUp:(NSEvent *)event {
-	// TODO
-	//_plafInputMouseClick(wnd, MOUSE_BUTTON_LEFT, INPUT_RELEASE, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 0, false, translateFlags([event modifierFlags]));
 }
 
 - (void)mouseMoved:(NSEvent *)event {
@@ -89,8 +117,7 @@
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
-	// TODO
-	// _plafInputMouseClick(wnd, MOUSE_BUTTON_RIGHT, INPUT_PRESS, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 1, true, translateFlags([event modifierFlags]));
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
@@ -98,13 +125,11 @@
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
-	// TODO
-	// _plafInputMouseClick(wnd, MOUSE_BUTTON_RIGHT, INPUT_RELEASE, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 1, false, translateFlags([event modifierFlags]));
 }
 
 - (void)otherMouseDown:(NSEvent *)event {
-	// TODO
-	// _plafInputMouseClick(wnd, (int) [event buttonNumber], INPUT_PRESS, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], true, translateFlags([event modifierFlags]));
 }
 
 - (void)otherMouseDragged:(NSEvent *)event {
@@ -112,8 +137,7 @@
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
-	// TODO
-	// _plafInputMouseClick(wnd, (int) [event buttonNumber], INPUT_RELEASE, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], false, translateFlags([event modifierFlags]));
 }
 
 - (void)mouseEntered:(NSEvent *)event {

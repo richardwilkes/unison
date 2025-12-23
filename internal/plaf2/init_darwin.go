@@ -20,8 +20,6 @@ func initialize() error { // formerly _plafInit
 		mac.PostEmptyEvent()
 		mac.StopMainEventLoop()
 	}
-	mac.AppDidHideCallback = func() {
-	}
 	// NOTE: Three additional app delegate callbacks exist: AppWillFinishLaunchingCallback, AppDidHideCallback and
 	//       OpenFilesCallback.
 	if err := mac.InstallMacAppDelegate(); err != nil {

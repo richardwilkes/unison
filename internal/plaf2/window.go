@@ -2,6 +2,8 @@ package plaf2
 
 import (
 	"slices"
+
+	"github.com/richardwilkes/unison/internal/plaf2/modkey"
 )
 
 var windowList []*Window
@@ -22,8 +24,8 @@ type Window struct {
 	MinimizeCallback    func(minimized bool)
 	MaximizeCallback    func(maximized bool)
 	FocusCallback       func(focused bool)
-	KeyCallback         func(key, code int, pressed, repeated bool, mods ModifierKey)
-	MouseButtonCallback func(button int, pressed bool, mods ModifierKey)
+	KeyCallback         func(key, code int, pressed, repeated bool, mods modkey.State)
+	MouseButtonCallback func(button int, pressed bool, mods modkey.State)
 	plWnd               platformWindow
 	plGctx              platformGraphicsContext
 	cursor              *Cursor
@@ -100,7 +102,7 @@ func (w *Window) notifyOfFocusChange(focused bool) { // formerly _plafNotifyOfFo
 	}
 }
 
-func (w *Window) inputKey(key, code int, pressed bool, mods ModifierKey) { // formerly _plafInputKey
+func (w *Window) inputKey(key, code int, pressed bool, mods modkey.State) { // formerly _plafInputKey
 	previous := w.pressedKeys[key]
 	if !pressed && !previous {
 		return
@@ -116,7 +118,7 @@ func (w *Window) inputKey(key, code int, pressed bool, mods ModifierKey) { // fo
 	}
 }
 
-func (w *Window) mouseClick(button int, pressed bool, mods ModifierKey) { // formerly _plafInputMouseClick
+func (w *Window) mouseClick(button int, pressed bool, mods modkey.State) { // formerly _plafInputMouseClick
 	w.pressedButtons[button] = pressed
 	if w.MouseButtonCallback != nil {
 		w.MouseButtonCallback(button, pressed, mods)

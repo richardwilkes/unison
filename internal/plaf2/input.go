@@ -1,18 +1,5 @@
 package plaf2
 
-// ModifierKey corresponds to a modifier key.
-type ModifierKey byte
-
-// Modifier keys.
-const (
-	ModShift ModifierKey = 1 << iota
-	ModControl
-	ModAlt
-	ModSuper
-	ModCapsLock
-	ModNumLock
-)
-
 var scanCodes = make(map[int]int)
 var keyCodes = make(map[int]int)
 
