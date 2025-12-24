@@ -10,10 +10,13 @@
 #import "macos.h"
 
 void goWindowCursorUpdateCallback(NSWindowRef w);
+void goWindowMouseEnterCallback(NSWindowRef w);
+void goWindowMouseExitCallback(NSWindowRef w);
 void goWindowMouseMovedCallback(NSWindowRef w, double x, double y);
 void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, uint mods);
 void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
+void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
 
 @interface macContentView : NSView {
 	NSWindow*       wnd;
@@ -113,32 +116,20 @@ void goWindowRedrawCallback(NSWindowRef w);
 }
 
 - (void)mouseEntered:(NSEvent *)event {
-	// TODO
-	// if (wnd->cursorHidden) {
-	// 	hideCursor(wnd);
-	// }
-	// goCursorEnterCallback(wnd, true);
+	goWindowMouseEnterCallback(wnd);
 }
 
 - (void)mouseExited:(NSEvent *)event {
-	// TODO
-	// if (wnd->cursorHidden) {
-	// 	showCursor(wnd);
-	// }
-	// goCursorEnterCallback(wnd, false);
+	goWindowMouseExitCallback(wnd);
 }
 
 - (void)viewDidChangeBackingProperties {
-	// TODO
-	// const NSRect contentRect = [wnd->nsView frame];
-	// const NSRect fbRect = [wnd->nsView convertRectToBacking:contentRect];
-	// const float xscale = fbRect.size.width / contentRect.size.width;
-	// const float yscale = fbRect.size.height / contentRect.size.height;
-	// if (xscale != wnd->nsXScale || yscale != wnd->nsYScale) {
-	// 	wnd->nsXScale = xscale;
-	// 	wnd->nsYScale = yscale;
-	// 	goWindowContentScaleCallback(wnd);
-	// }
+	const NSView* view = [wnd contentView];
+	const NSRect contentRect = [view frame];
+	const NSRect fbRect = [view convertRectToBacking:contentRect];
+	const float xscale = fbRect.size.width / contentRect.size.width;
+	const float yscale = fbRect.size.height / contentRect.size.height;
+	goWindowScaleCallback(wnd, xscale, yscale);
 }
 
 - (void)drawRect:(NSRect)rect {

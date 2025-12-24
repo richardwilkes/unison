@@ -25,8 +25,11 @@ type Window struct {
 	MaximizeCallback    func(maximized bool)
 	FocusCallback       func(focused bool)
 	KeyCallback         func(key, code int, pressed, repeated bool, mods ModifierKeys)
+	MouseEnterCallback  func()
+	MouseExitCallback   func()
 	MouseMovedCallback  func(pt geom.Point)
 	MouseButtonCallback func(button int, pressed bool, mods ModifierKeys)
+	ScaleCallback       func(scale geom.Size)
 	DrawCallback        func()
 	plWnd               platformWindow
 	plGctx              platformGraphicsContext

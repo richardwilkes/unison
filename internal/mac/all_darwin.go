@@ -947,6 +947,24 @@ func goWindowCursorUpdateCallback(w Window) {
 	}
 }
 
+var WindowMouseEnterCallback func(Window)
+
+//export goWindowMouseEnterCallback
+func goWindowMouseEnterCallback(w Window) {
+	if WindowMouseEnterCallback != nil {
+		WindowMouseEnterCallback(w)
+	}
+}
+
+var WindowMouseExitCallback func(Window)
+
+//export goWindowMouseExitCallback
+func goWindowMouseExitCallback(w Window) {
+	if WindowMouseExitCallback != nil {
+		WindowMouseExitCallback(w)
+	}
+}
+
 var WindowMouseMovedCallback func(w Window, pt geom.Point)
 
 //export goWindowMouseMovedCallback
@@ -965,7 +983,7 @@ func goWindowMouseClickCallback(w Window, button int, pressed bool, mods uint) {
 	}
 }
 
-var WindowUpdateLayerCallback func(w Window)
+var WindowUpdateLayerCallback func(Window)
 
 //export goWindowUpdateLayerCallback
 func goWindowUpdateLayerCallback(w Window) {
@@ -974,7 +992,16 @@ func goWindowUpdateLayerCallback(w Window) {
 	}
 }
 
-var WindowRedrawCallback func(w Window)
+var WindowScaleCallback func(w Window, scale geom.Size)
+
+//export goWindowScaleCallback
+func goWindowScaleCallback(w Window, xscale, yscale float32) {
+	if WindowScaleCallback != nil {
+		WindowScaleCallback(w, geom.NewSize(xscale, yscale))
+	}
+}
+
+var WindowRedrawCallback func(Window)
 
 //export goWindowRedrawCallback
 func goWindowRedrawCallback(w Window) {

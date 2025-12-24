@@ -98,6 +98,26 @@ func initWindowCallbacks() {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
+	mac.WindowMouseEnterCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.updateCursorImage()
+			if w.MouseEnterCallback != nil {
+				w.MouseEnterCallback()
+			}
+		} else {
+			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowMouseExitCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.updateCursorImage()
+			if w.MouseExitCallback != nil {
+				w.MouseExitCallback()
+			}
+		} else {
+			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
+		}
+	}
 	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, pressed bool, mods uint) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
 			w.mouseClick(button, pressed, translateFlags(mac.EventModifierFlags(mods)))
@@ -122,6 +142,15 @@ func initWindowCallbacks() {
 			}
 		} else {
 			slog.Warn("received window draw rect callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowScaleCallback = func(macWnd mac.Window, scale geom.Size) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			if w.ScaleCallback != nil {
+				w.ScaleCallback(scale)
+			}
+		} else {
+			slog.Warn("received window content scale callback for unknown window", "window", macWnd)
 		}
 	}
 }
