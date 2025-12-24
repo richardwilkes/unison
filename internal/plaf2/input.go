@@ -1,5 +1,18 @@
 package plaf2
 
+// ModifierKeys holds the state of modifier keys.
+type ModifierKeys byte
+
+// Modifier keys.
+const (
+	ModKeyShift ModifierKeys = 1 << iota
+	ModKeyControl
+	ModKeyAlt
+	ModKeySuper
+	ModKeyCapsLock
+	ModKeyNumLock
+)
+
 var scanCodes = make(map[int]int)
 var keyCodes = make(map[int]int)
 

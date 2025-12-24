@@ -31,7 +31,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/internal/plaf2/modkey"
 )
 
 // ========== App ==========
@@ -807,24 +806,6 @@ func (v View) Release() {
 	C.CFRelease(C.CFTypeRef(v))
 }
 
-var WindowCursorUpdateCallback func(Window)
-
-//export goWindowCursorUpdateCallback
-func goWindowCursorUpdateCallback(w C.NSWindowRef) {
-	if WindowCursorUpdateCallback != nil {
-		WindowCursorUpdateCallback(Window(w))
-	}
-}
-
-var WindowMouseClickCallback func(macWnd Window, button int, pressed bool, mods modkey.State)
-
-//export goWindowMouseClickCallback
-func goWindowMouseClickCallback(macWnd C.NSWindowRef, button C.int, pressed C.bool, mods C.uchar) {
-	if WindowMouseClickCallback != nil {
-		WindowMouseClickCallback(Window(macWnd), int(button), bool(pressed), modkey.State(mods))
-	}
-}
-
 // ========== Window ==========
 
 type (
@@ -955,6 +936,42 @@ func (w Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 
 func (w Window) Close() {
 	C.windowClose(C.NSWindowRef(w))
+}
+
+var WindowCursorUpdateCallback func(Window)
+
+//export goWindowCursorUpdateCallback
+func goWindowCursorUpdateCallback(w Window) {
+	if WindowCursorUpdateCallback != nil {
+		WindowCursorUpdateCallback(w)
+	}
+}
+
+var WindowMouseClickCallback func(w Window, button int, pressed bool, mods uint)
+
+//export goWindowMouseClickCallback
+func goWindowMouseClickCallback(w Window, button int, pressed bool, mods uint) {
+	if WindowMouseClickCallback != nil {
+		WindowMouseClickCallback(w, button, pressed, mods)
+	}
+}
+
+var WindowUpdateLayerCallback func(w Window)
+
+//export goWindowUpdateLayerCallback
+func goWindowUpdateLayerCallback(w Window) {
+	if WindowUpdateLayerCallback != nil {
+		WindowUpdateLayerCallback(w)
+	}
+}
+
+var WindowRedrawCallback func(w Window)
+
+//export goWindowRedrawCallback
+func goWindowRedrawCallback(w Window) {
+	if WindowRedrawCallback != nil {
+		WindowRedrawCallback(w)
+	}
 }
 
 // ========== WindowDelegate ==========

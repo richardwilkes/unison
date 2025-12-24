@@ -9,36 +9,10 @@
 
 #import "macos.h"
 
-// These must match the values in the Go modkey package
-#define MODKEY_SHIFT     (1 << 0)
-#define MODKEY_CONTROL   (1 << 1)
-#define MODKEY_ALT       (1 << 2)
-#define MODKEY_SUPER     (1 << 3)
-#define MODKEY_CAPS_LOCK (1 << 4)
-#define MODKEY_NUM_LOCK  (1 << 5)
-
 void goWindowCursorUpdateCallback(NSWindowRef w);
-void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, unsigned char mods);
-
-static unsigned char translateFlags(NSUInteger flags) {
-	unsigned char mods = 0;
-	if (flags & NSEventModifierFlagShift) {
-		mods |= MODKEY_SHIFT;
-	}
-	if (flags & NSEventModifierFlagControl) {
-		mods |= MODKEY_CONTROL;
-	}
-	if (flags & NSEventModifierFlagOption) {
-		mods |= MODKEY_ALT;
-	}
-	if (flags & NSEventModifierFlagCommand) {
-		mods |= MODKEY_SUPER;
-	}
-	if (flags & NSEventModifierFlagCapsLock) {
-		mods |= MODKEY_CAPS_LOCK;
-	}
-	return mods;
-}
+void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, uint mods);
+void goWindowUpdateLayerCallback(NSWindowRef w);
+void goWindowRedrawCallback(NSWindowRef w);
 
 @interface macContentView : NSView {
 	NSWindow*       wnd;
@@ -84,9 +58,7 @@ static unsigned char translateFlags(NSUInteger flags) {
 }
 
 - (void)updateLayer {
-	// TODO
-	//[wnd->context.nsglCtx update];
-	//goWindowDrawCallback(wnd);
+	goWindowUpdateLayerCallback(wnd);
 }
 
 - (void)cursorUpdate:(NSEvent *)event {
@@ -98,7 +70,7 @@ static unsigned char translateFlags(NSUInteger flags) {
 }
 
 - (void)mouseDown:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 0, true, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 0, true, [event modifierFlags]);
 }
 
 - (void)mouseDragged:(NSEvent *)event {
@@ -106,7 +78,7 @@ static unsigned char translateFlags(NSUInteger flags) {
 }
 
 - (void)mouseUp:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 0, false, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 0, false, [event modifierFlags]);
 }
 
 - (void)mouseMoved:(NSEvent *)event {
@@ -117,7 +89,7 @@ static unsigned char translateFlags(NSUInteger flags) {
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 1, true, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 1, true, [event modifierFlags]);
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
@@ -125,11 +97,11 @@ static unsigned char translateFlags(NSUInteger flags) {
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 1, false, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, 1, false, [event modifierFlags]);
 }
 
 - (void)otherMouseDown:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], true, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], true, [event modifierFlags]);
 }
 
 - (void)otherMouseDragged:(NSEvent *)event {
@@ -137,7 +109,7 @@ static unsigned char translateFlags(NSUInteger flags) {
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], false, translateFlags([event modifierFlags]));
+	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], false, [event modifierFlags]);
 }
 
 - (void)mouseEntered:(NSEvent *)event {
@@ -170,8 +142,7 @@ static unsigned char translateFlags(NSUInteger flags) {
 }
 
 - (void)drawRect:(NSRect)rect {
-	// TODO
-	// goWindowDrawCallback(wnd);
+	goWindowRedrawCallback(wnd);
 }
 
 - (void)updateTrackingAreas {

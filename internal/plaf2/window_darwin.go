@@ -6,7 +6,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/mac"
-	"github.com/richardwilkes/unison/internal/plaf2/modkey"
 )
 
 type platformWindow struct {
@@ -99,11 +98,30 @@ func initWindowCallbacks() {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, pressed bool, mods modkey.State) {
+	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, pressed bool, mods uint) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			// TODO: Implement mouse button callback
+			w.mouseClick(button, pressed, translateFlags(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse click callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowUpdateLayerCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.plGctx.ctx.Update()
+			if w.DrawCallback != nil {
+				w.DrawCallback()
+			}
+		} else {
+			slog.Warn("received window update layer callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowRedrawCallback = func(macWnd mac.Window) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			if w.DrawCallback != nil {
+				w.DrawCallback()
+			}
+		} else {
+			slog.Warn("received window draw rect callback for unknown window", "window", macWnd)
 		}
 	}
 }

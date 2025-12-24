@@ -1,5 +1,29 @@
 package plaf2
 
+import (
+	"github.com/richardwilkes/unison/internal/mac"
+)
+
+func translateFlags(flags mac.EventModifierFlags) ModifierKeys {
+	var mods ModifierKeys
+	if flags&mac.EventModifierFlagShift != 0 {
+		mods |= ModKeyShift
+	}
+	if flags&mac.EventModifierFlagControl != 0 {
+		mods |= ModKeyControl
+	}
+	if flags&mac.EventModifierFlagOption != 0 {
+		mods |= ModKeyAlt
+	}
+	if flags&mac.EventModifierFlagCommand != 0 {
+		mods |= ModKeySuper
+	}
+	if flags&mac.EventModifierFlagCapsLock != 0 {
+		mods |= ModKeyCapsLock
+	}
+	return mods
+}
+
 func fillKeyCodes() {
 	keyCodes[0x00] = KeyA
 	keyCodes[0x01] = KeyS
