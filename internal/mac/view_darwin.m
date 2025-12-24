@@ -10,6 +10,7 @@
 #import "macos.h"
 
 void goWindowCursorUpdateCallback(NSWindowRef w);
+void goWindowMouseMovedCallback(NSWindowRef w, double x, double y);
 void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, uint mods);
 void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
@@ -82,10 +83,9 @@ void goWindowRedrawCallback(NSWindowRef w);
 }
 
 - (void)mouseMoved:(NSEvent *)event {
-	// TODO
-	// const NSRect contentRect = [wnd->nsView frame];
-	// const NSPoint pos = [event locationInWindow];
-	// _plafInputCursorPos(wnd, pos.x, contentRect.size.height - pos.y);
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [event locationInWindow];
+	goWindowMouseMovedCallback(wnd, pos.x, contentRect.size.height - pos.y);
 }
 
 - (void)rightMouseDown:(NSEvent *)event {

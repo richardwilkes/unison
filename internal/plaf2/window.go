@@ -2,6 +2,8 @@ package plaf2
 
 import (
 	"slices"
+
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 var windowList []*Window
@@ -23,6 +25,7 @@ type Window struct {
 	MaximizeCallback    func(maximized bool)
 	FocusCallback       func(focused bool)
 	KeyCallback         func(key, code int, pressed, repeated bool, mods ModifierKeys)
+	MouseMovedCallback  func(pt geom.Point)
 	MouseButtonCallback func(button int, pressed bool, mods ModifierKeys)
 	DrawCallback        func()
 	plWnd               platformWindow
@@ -114,6 +117,12 @@ func (w *Window) inputKey(key, code int, pressed bool, mods ModifierKeys) { // f
 	}
 	if w.KeyCallback != nil {
 		w.KeyCallback(key, code, pressed, repeated, mods)
+	}
+}
+
+func (w *Window) mouseMoved(pt geom.Point) { // formerly _plafInputCursorPos
+	if w.MouseMovedCallback != nil {
+		w.MouseMovedCallback(pt)
 	}
 }
 

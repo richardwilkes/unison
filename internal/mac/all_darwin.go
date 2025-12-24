@@ -947,6 +947,15 @@ func goWindowCursorUpdateCallback(w Window) {
 	}
 }
 
+var WindowMouseMovedCallback func(w Window, pt geom.Point)
+
+//export goWindowMouseMovedCallback
+func goWindowMouseMovedCallback(w Window, x float64, y float64) {
+	if WindowMouseMovedCallback != nil {
+		WindowMouseMovedCallback(w, geom.NewPoint(float32(x), float32(y)))
+	}
+}
+
 var WindowMouseClickCallback func(w Window, button int, pressed bool, mods uint)
 
 //export goWindowMouseClickCallback
