@@ -155,6 +155,22 @@ func initWindowCallbacks() {
 			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
 		}
 	}
+	mac.WindowMouseMovedCallback = func(macWnd mac.Window, pt geom.Point) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.mouseMoved(pt)
+		} else {
+			slog.Warn("received window mouse moved callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowScrollCallback = func(macWnd mac.Window, deltaX, deltaY float32, pixels bool) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			if w.ScrollCallback != nil {
+				w.ScrollCallback(geom.NewPoint(deltaX, deltaY), pixels)
+			}
+		} else {
+			slog.Warn("received window scroll callback for unknown window", "window", macWnd)
+		}
+	}
 	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, pressed bool, mods uint) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
 			w.mouseClick(button, pressed, translateFlags(mac.EventModifierFlags(mods)))

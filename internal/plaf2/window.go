@@ -29,6 +29,7 @@ type Window struct {
 	MouseExitCallback   func()
 	MouseMovedCallback  func(pt geom.Point)
 	MouseButtonCallback func(button int, pressed bool, mods ModifierKeys)
+	ScrollCallback      func(delta geom.Point, pixels bool)
 	ScaleCallback       func(scale geom.Size)
 	DrawCallback        func()
 	plWnd               platformWindow

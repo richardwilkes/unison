@@ -986,9 +986,18 @@ func goWindowMouseExitCallback(w Window) {
 var WindowMouseMovedCallback func(w Window, pt geom.Point)
 
 //export goWindowMouseMovedCallback
-func goWindowMouseMovedCallback(w Window, x float64, y float64) {
+func goWindowMouseMovedCallback(w Window, x, y float32) {
 	if WindowMouseMovedCallback != nil {
-		WindowMouseMovedCallback(w, geom.NewPoint(float32(x), float32(y)))
+		WindowMouseMovedCallback(w, geom.NewPoint(x, y))
+	}
+}
+
+var WindowScrollCallback func(w Window, deltaX, deltaY float32, pixels bool)
+
+//export goWindowScrollCallback
+func goWindowScrollCallback(w Window, deltaX, deltaY float32, pixels bool) {
+	if WindowScrollCallback != nil {
+		WindowScrollCallback(w, deltaX, deltaY, pixels)
 	}
 }
 

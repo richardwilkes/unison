@@ -14,8 +14,9 @@ void goWindowInputFlagsCallback(NSWindowRef w, int keyCode, uint mods);
 void goWindowCursorUpdateCallback(NSWindowRef w);
 void goWindowMouseEnterCallback(NSWindowRef w);
 void goWindowMouseExitCallback(NSWindowRef w);
-void goWindowMouseMovedCallback(NSWindowRef w, double x, double y);
+void goWindowMouseMovedCallback(NSWindowRef w, float x, float y);
 void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, uint mods);
+void goWindowScrollCallback(NSWindowRef w, float x, float y, bool pixels);
 void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
 void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
@@ -90,7 +91,7 @@ void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
 - (void)mouseMoved:(NSEvent *)event {
 	const NSRect contentRect = [[wnd contentView] frame];
 	const NSPoint pos = [event locationInWindow];
-	goWindowMouseMovedCallback(wnd, pos.x, contentRect.size.height - pos.y);
+	goWindowMouseMovedCallback(wnd, (float)pos.x, (float)(contentRect.size.height - pos.y));
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
@@ -166,16 +167,8 @@ void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
 }
 
 - (void)scrollWheel:(NSEvent *)event {
-	// TODO
-	// double deltaX = [event scrollingDeltaX];
-	// double deltaY = [event scrollingDeltaY];
-	// if ([event hasPreciseScrollingDeltas]) {
-	// 	deltaX *= 0.1;
-	// 	deltaY *= 0.1;
-	// }
-	// if (fabs(deltaX) > 0.0 || fabs(deltaY) > 0.0) {
-	// 	goScrollCallback(wnd, deltaX, deltaY);
-	// }
+	goWindowScrollCallback(wnd, (float)[event scrollingDeltaX], (float)[event scrollingDeltaY],
+		[event hasPreciseScrollingDeltas]);
 }
 
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)sender {
