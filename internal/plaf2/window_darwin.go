@@ -24,6 +24,43 @@ func findWindowByNSWindow(macWnd mac.Window) *Window {
 }
 
 func initWindowCallbacks() {
+	mac.WindowInputKeyCallback = func(macWnd mac.Window, keyCode int, pressed bool, mods uint) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			w.inputKey(keyCodes[keyCode], keyCode, pressed, translateFlags(mac.EventModifierFlags(mods)))
+		} else {
+			slog.Warn("received window input key callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowInputFlagsCallback = func(macWnd mac.Window, keyCode int, mods uint) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			flags := translateFlags(mac.EventModifierFlags(mods))
+			key := keyCodes[keyCode]
+			var keyFlag ModifierKeys
+			switch key {
+			case KeyLeftShift:
+			case KeyRightShift:
+				keyFlag = ModKeyShift
+			case KeyLeftControl:
+			case KeyRightControl:
+				keyFlag = ModKeyControl
+			case KeyLeftAlt:
+			case KeyRightAlt:
+				keyFlag = ModKeyAlt
+			case KeyLeftSuper:
+			case KeyRightSuper:
+				keyFlag = ModKeySuper
+			case KeyCapsLock:
+				keyFlag = ModKeyCapsLock
+			}
+			pressed := false
+			if (keyFlag&flags) != 0 && !w.pressedKeys[key] {
+				pressed = true
+			}
+			w.inputKey(key, keyCode, pressed, flags)
+		} else {
+			slog.Warn("received window input flags callback for unknown window", "window", macWnd)
+		}
+	}
 	mac.WindowShouldCloseCallback = func(macWnd mac.Window) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
 			// TODO: Initiate close sequence

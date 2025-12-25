@@ -938,6 +938,24 @@ func (w Window) Close() {
 	C.windowClose(C.NSWindowRef(w))
 }
 
+var WindowInputKeyCallback func(w Window, keyCode int, pressed bool, mods uint)
+
+//export goWindowInputKeyCallback
+func goWindowInputKeyCallback(w Window, keyCode int, pressed bool, mods uint) {
+	if WindowInputKeyCallback != nil {
+		WindowInputKeyCallback(Window(w), keyCode, pressed, mods)
+	}
+}
+
+var WindowInputFlagsCallback func(w Window, keyCode int, mods uint)
+
+//export goWindowInputFlagsCallback
+func goWindowInputFlagsCallback(w Window, keyCode int, mods uint) {
+	if WindowInputFlagsCallback != nil {
+		WindowInputFlagsCallback(Window(w), keyCode, mods)
+	}
+}
+
 var WindowCursorUpdateCallback func(Window)
 
 //export goWindowCursorUpdateCallback

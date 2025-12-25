@@ -9,6 +9,8 @@
 
 #import "macos.h"
 
+void goWindowInputKeyCallback(NSWindowRef w, int keyCode, bool pressed, uint mods);
+void goWindowInputFlagsCallback(NSWindowRef w, int keyCode, uint mods);
 void goWindowCursorUpdateCallback(NSWindowRef w);
 void goWindowMouseEnterCallback(NSWindowRef w);
 void goWindowMouseExitCallback(NSWindowRef w);
@@ -150,37 +152,17 @@ void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
 }
 
 - (void)keyDown:(NSEvent *)event {
-	// TODO
-	// const int key = translateKey([event keyCode]);
-	// const int mods = translateFlags([event modifierFlags]);
-	// _plafInputKey(wnd, key, [event keyCode], INPUT_PRESS, mods);
-	// [self interpretKeyEvents:@[event]];
+	goWindowInputKeyCallback(wnd, [event keyCode], true, [event modifierFlags]);
+	[self interpretKeyEvents:@[event]];
 }
 
 - (void)flagsChanged:(NSEvent *)event {
-	// TODO
-	// int action;
-	// const unsigned int modifierFlags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
-	// const int key = translateKey([event keyCode]);
-	// const int mods = translateFlags(modifierFlags);
-	// const NSUInteger keyFlag = translateKeyToModifierFlag(key);
-	// if (keyFlag & modifierFlags) {
-	// 	if (wnd->keys[key] == INPUT_PRESS) {
-	// 		action = INPUT_RELEASE;
-	// 	} else {
-	// 		action = INPUT_PRESS;
-	// 	}
-	// } else {
-	// 	action = INPUT_RELEASE;
-	// }
-	// _plafInputKey(wnd, key, [event keyCode], action, mods);
+	goWindowInputFlagsCallback(wnd, [event keyCode],
+		[event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask);
 }
 
 - (void)keyUp:(NSEvent *)event {
-	// TODO
-	// const int key = translateKey([event keyCode]);
-	// const int mods = translateFlags([event modifierFlags]);
-	// _plafInputKey(wnd, key, [event keyCode], INPUT_RELEASE, mods);
+	goWindowInputKeyCallback(wnd, [event keyCode], false, [event modifierFlags]);
 }
 
 - (void)scrollWheel:(NSEvent *)event {
