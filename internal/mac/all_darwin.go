@@ -1037,6 +1037,20 @@ func goWindowRedrawCallback(w Window) {
 	}
 }
 
+var WindowDropCallback func(Window, []string)
+
+//export goWindowDropCallback
+func goWindowDropCallback(w Window, count int, paths **C.char) {
+	if WindowDropCallback != nil {
+		goPaths := make([]string, count)
+		slice := unsafe.Slice(paths, count)
+		for i, p := range slice {
+			goPaths[i] = C.GoString(p)
+		}
+		WindowDropCallback(w, goPaths)
+	}
+}
+
 // ========== WindowDelegate ==========
 
 type WindowDelegate C.NSWindowDelegateRef

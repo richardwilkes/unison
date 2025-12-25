@@ -20,6 +20,7 @@ void goWindowScrollCallback(NSWindowRef w, float x, float y, bool pixels);
 void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
 void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
+void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 
 @interface macContentView : NSView {
 	NSWindow*       wnd;
@@ -176,25 +177,24 @@ void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
 }
 
 - (BOOL)performDragOperation:(id <NSDraggingInfo>)sender {
-	// TODO
-	// const NSRect contentRect = [wnd->nsView frame];
-	// const NSPoint pos = [sender draggingLocation];
-	// _plafInputCursorPos(wnd, pos.x, contentRect.size.height - pos.y);
-	// NSPasteboard* pasteboard = [sender draggingPasteboard];
-	// NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
-	// NSArray* urls = [pasteboard readObjectsForClasses:@[[NSURL class]] options:options];
-	// int count = [urls count];
-	// if (count) {
-	// 	char** paths = _plaf_calloc(count, sizeof(char*));
-	// 	for (int i = 0; i < count; i++) {
-	// 		paths[i] = _plaf_strdup([urls[i] fileSystemRepresentation]);
-	// 	}
-	// 	goDropCallback(wnd, count, paths);
-	// 	for (NSUInteger i = 0; i < count; i++) {
-	// 		_plaf_free(paths[i]);
-	// 	}
-	// 	_plaf_free(paths);
-	// }
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [sender draggingLocation];
+	goWindowMouseMovedCallback(wnd, (float)pos.x, (float)(contentRect.size.height - pos.y));
+	NSPasteboard* pasteboard = [sender draggingPasteboard];
+	NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
+	NSArray* urls = [pasteboard readObjectsForClasses:@[[NSURL class]] options:options];
+	int count = [urls count];
+	if (count) {
+		char** paths = calloc(count, sizeof(char*));
+		for (int i = 0; i < count; i++) {
+			paths[i] = strdup([urls[i] fileSystemRepresentation]);
+		}
+		goWindowDropCallback(wnd, count, paths);
+		for (int i = 0; i < count; i++) {
+			free(paths[i]);
+		}
+		free(paths);
+	}
 	return YES;
 }
 

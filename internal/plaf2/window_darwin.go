@@ -206,6 +206,15 @@ func initWindowCallbacks() {
 			slog.Warn("received window content scale callback for unknown window", "window", macWnd)
 		}
 	}
+	mac.WindowDropCallback = func(macWnd mac.Window, filePaths []string) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			if w.DropCallback != nil {
+				w.DropCallback(filePaths)
+			}
+		} else {
+			slog.Warn("received window drop callback for unknown window", "window", macWnd)
+		}
+	}
 }
 
 func newWindow(cfg *WindowConfig) *Window {

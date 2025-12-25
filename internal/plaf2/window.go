@@ -32,6 +32,7 @@ type Window struct {
 	ScrollCallback      func(delta geom.Point, pixels bool)
 	ScaleCallback       func(scale geom.Size)
 	DrawCallback        func()
+	DropCallback        func(filePaths []string)
 	plWnd               platformWindow
 	plGctx              platformGraphicsContext
 	cursor              *Cursor
