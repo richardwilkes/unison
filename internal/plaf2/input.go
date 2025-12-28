@@ -17,7 +17,7 @@ var scanCodes = make(map[int]int)
 var keyCodes = make(map[int]int)
 
 // Key codes
-var (
+const (
 	KeyUnknown      = -1
 	KeySpace        = 32
 	KeyApostrophe   = 39

@@ -87,6 +87,10 @@ void finishLaunching(void) {
 	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 }
 
+void activateIgnoringOtherApps(void) {
+	[NSApp activateIgnoringOtherApps:YES];
+}
+
 void hideRunningApplication(void) {
 	[[NSRunningApplication currentApplication] hide];
 }

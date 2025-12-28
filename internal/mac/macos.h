@@ -25,6 +25,7 @@ typedef CFTypeRef NSWindowDelegateRef;
 bool installMacAppDelegate(void);
 void uninstallMacAppDelegate(void);
 void finishLaunching(void);
+void activateIgnoringOtherApps(void);
 void hideRunningApplication(void);
 void hideOtherApplications(void);
 void unhideAllApplications(void);
@@ -134,6 +135,7 @@ void beep(void);
 void installThemeChangedCallback(void);
 
 // View
+CGPoint viewBackingScale(NSViewRef v);
 void viewFrame(NSViewRef v, CGRect* frame);
 bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 
@@ -141,6 +143,7 @@ bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 NSWindowRef newWindow(CGRect contentRect, NSWindowStyleMask styleMask, bool canBeKeyWindow, bool canBeMainWindow);
 void windowSetCollectionBehavior(NSWindowRef w, NSWindowCollectionBehavior behavior);
 void windowSetWindowLevel(NSWindowRef w, NSWindowLevel level);
+NSWindowStyleMask windowStyleMask(NSWindowRef w);
 void windowSetTransparent(NSWindowRef w);
 void windowSetTitle(NSWindowRef w, CFStringRef title);
 NSViewRef windowContentView(NSWindowRef w);
@@ -150,15 +153,20 @@ void windowMakeFirstResponder(NSWindowRef w, NSViewRef v);
 void windowSetTabbingMode(NSWindowRef w, NSWindowTabbingMode mode);
 void windowSetAcceptsMouseMovedEvents(NSWindowRef w, bool accept);
 CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w);
+void windowMakeKeyAndOrderFront(NSWindowRef w);
 void windowOrderOut(NSWindowRef w);
 NSWindowDelegateRef windowDelegate(NSWindowRef w);
 void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate);
 bool windowFocused(NSWindowRef w);
+bool windowMiniaturized(NSWindowRef w);
+void windowMiniaturize(NSWindowRef w);
 bool windowZoomed(NSWindowRef w);
+void windowZoom(NSWindowRef w);
 void windowFrame(NSWindowRef w, CGRect* r);
 void windowSetFrame(NSWindowRef w, CGRect r, bool display);
 void windowContentRectForFrameRect(NSWindowRef w, CGRect* r);
 void windowFrameRectForContentRect(NSWindowRef w, CGRect* r);
+bool windowVisible(NSWindowRef w);
 void windowClose(NSWindowRef w);
 
 // Window Delegate

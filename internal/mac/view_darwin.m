@@ -9,8 +9,8 @@
 
 #import "macos.h"
 
-void goWindowInputKeyCallback(NSWindowRef w, int keyCode, bool pressed, uint mods);
-void goWindowInputFlagsCallback(NSWindowRef w, int keyCode, uint mods);
+void goWindowKeyPressedCallback(NSWindowRef w, NSString* ch, int key, uint mods);
+void goWindowKeyReleasedCallback(NSWindowRef w, int key, uint mods);
 void goWindowCursorUpdateCallback(NSWindowRef w);
 void goWindowMouseEnterCallback(NSWindowRef w);
 void goWindowMouseExitCallback(NSWindowRef w);
@@ -19,7 +19,7 @@ void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, uint mo
 void goWindowScrollCallback(NSWindowRef w, float x, float y, bool pixels);
 void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
-void goWindowScaleCallback(NSWindowRef w, float xScale, float yScale);
+void goWindowScaleCallback(NSWindowRef w, CGPoint scale);
 void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 
 @interface macContentView : NSView {
@@ -128,12 +128,7 @@ void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 }
 
 - (void)viewDidChangeBackingProperties {
-	const NSView* view = [wnd contentView];
-	const NSRect contentRect = [view frame];
-	const NSRect fbRect = [view convertRectToBacking:contentRect];
-	const float xscale = fbRect.size.width / contentRect.size.width;
-	const float yscale = fbRect.size.height / contentRect.size.height;
-	goWindowScaleCallback(wnd, xscale, yscale);
+	goWindowScaleCallback(wnd, viewBackingScale([wnd contentView]));
 }
 
 - (void)drawRect:(NSRect)rect {
@@ -154,17 +149,16 @@ void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 }
 
 - (void)keyDown:(NSEvent *)event {
-	goWindowInputKeyCallback(wnd, [event keyCode], true, [event modifierFlags]);
-	[self interpretKeyEvents:@[event]];
+	goWindowKeyPressedCallback(wnd, [event characters], [event keyCode], [event modifierFlags]);
+	//[self interpretKeyEvents:@[event]]; // TODO: This may not be needed
 }
 
 - (void)flagsChanged:(NSEvent *)event {
-	goWindowInputFlagsCallback(wnd, [event keyCode],
-		[event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask);
+	// TODO: Do we need to do anything here?
 }
 
 - (void)keyUp:(NSEvent *)event {
-	goWindowInputKeyCallback(wnd, [event keyCode], false, [event modifierFlags]);
+	goWindowKeyReleasedCallback(wnd, [event keyCode], [event modifierFlags]);
 }
 
 - (void)scrollWheel:(NSEvent *)event {
@@ -202,6 +196,14 @@ void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 
 NSViewRef newView(NSWindowRef w) {
 	return (NSViewRef)[[macContentView alloc] initWithWindow:(NSWindow*)w];
+}
+
+CGPoint viewBackingScale(NSViewRef v) {
+	const CGRect contentRect = CGRectMake(0, 0, 1000, 1000);
+	const CGRect fbRect = [((NSView*)v) convertRectToBacking:contentRect];
+	const float xscale = fbRect.size.width / contentRect.size.width;
+	const float yscale = fbRect.size.height / contentRect.size.height;
+	return CGPointMake(xscale, yscale);
 }
 
 void viewFrame(NSViewRef v, CGRect *frame) {

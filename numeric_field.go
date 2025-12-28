@@ -41,7 +41,6 @@ func NewNumericField[T xmath.Integer | xmath.Float](current, minimum, maximum T,
 	}
 	f.Self = f
 	f.LostFocusCallback = f.DefaultFocusLost
-	f.RuneTypedCallback = f.DefaultRuneTyped
 	f.ValidateCallback = f.DefaultValidate
 	f.SetText(f.Format(current))
 	f.adjustMinimumTextWidth()
@@ -78,15 +77,15 @@ func (f *NumericField[T]) DefaultFocusLost() {
 	f.Field.DefaultFocusLost()
 }
 
-// DefaultRuneTyped is the default implementation for the RuneTypedCallback.
-func (f *NumericField[T]) DefaultRuneTyped(ch rune) bool {
-	if !unicode.IsControl(ch) {
+// DefaultKeyDown provides the default key down handling.
+func (f *NumericField[T]) DefaultKeyDown(ch rune, keyCode KeyCode, mod Modifiers, repeat bool) bool {
+	if ch != 0 && !unicode.IsControl(ch) {
 		if _, err := f.Extract(strings.TrimSpace(string(f.RunesIfPasted([]rune{ch})))); err != nil {
 			Beep()
-			return false
+			return true
 		}
 	}
-	return f.Field.DefaultRuneTyped(ch)
+	return f.Field.DefaultKeyDown(ch, keyCode, mod, repeat)
 }
 
 // DefaultValidate is the default implementation for the ValidateCallback.

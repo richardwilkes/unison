@@ -54,6 +54,10 @@ void windowSetWindowLevel(NSWindowRef w, NSWindowLevel level) {
 	[(NSWindow*)w setLevel:level];
 }
 
+NSWindowStyleMask windowStyleMask(NSWindowRef w) {
+	return [(NSWindow*)w styleMask];
+}
+
 void windowSetTransparent(NSWindowRef w) {
 	NSWindow* wnd = (NSWindow*)w;
 	[wnd setOpaque:NO];
@@ -93,6 +97,10 @@ CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w) {
 	return [(NSWindow*)w mouseLocationOutsideOfEventStream];
 }
 
+void windowMakeKeyAndOrderFront(NSWindowRef w) {
+	[(NSWindow*)w makeKeyAndOrderFront:nil];
+}
+
 void windowOrderOut(NSWindowRef w) {
 	[(NSWindow*)w orderOut:nil];
 }
@@ -109,8 +117,20 @@ bool windowFocused(NSWindowRef w) {
 	return [(NSWindow*)w isKeyWindow];
 }
 
+bool windowMiniaturized(NSWindowRef w) {
+	return [(NSWindow*)w isMiniaturized];
+}
+
+void windowMiniaturize(NSWindowRef w) {
+	[(NSWindow*)w miniaturize:nil];
+}
+
 bool windowZoomed(NSWindowRef w) {
 	return [(NSWindow*)w isZoomed];
+}
+
+void windowZoom(NSWindowRef w) {
+	[(NSWindow*)w zoom:nil];
 }
 
 void windowFrame(NSWindowRef w, CGRect* r) {
@@ -127,6 +147,10 @@ void windowContentRectForFrameRect(NSWindowRef w, CGRect* r) {
 
 void windowFrameRectForContentRect(NSWindowRef w, CGRect* r) {
 	*r = [(NSWindow*)w frameRectForContentRect:*r];
+}
+
+bool windowVisible(NSWindowRef w) {
+	return [(NSWindow*)w isVisible];
 }
 
 void windowClose(NSWindowRef w) {

@@ -12,7 +12,7 @@ package unison
 import (
 	"sync"
 
-	"github.com/richardwilkes/unison/internal/plaf"
+	"github.com/richardwilkes/unison/internal/plaf2"
 )
 
 // GlobalClipboard holds the global clipboard.
@@ -36,12 +36,12 @@ type Clipboard struct {
 
 // GetText returns text from the current clipboard data. This reads from the system clipboard.
 func (c *Clipboard) GetText() string {
-	return plaf.GetClipboardString()
+	return plaf2.GetClipboardString()
 }
 
 // SetText sets text as the current clipboard data. This modifies the system clipboard.
 func (c *Clipboard) SetText(str string) {
-	plaf.SetClipboardString(str)
+	plaf2.SetClipboardString(str)
 	c.lock.Lock()
 	c.data = nil
 	c.lock.Unlock()
@@ -65,9 +65,9 @@ func (c *Clipboard) SetData(dataType string, data any) {
 	c.data[dataType] = data
 	c.lock.Unlock()
 	if s, ok := data.(string); ok {
-		plaf.SetClipboardString(s)
+		plaf2.SetClipboardString(s)
 	} else {
-		plaf.SetClipboardString("")
+		plaf2.SetClipboardString("")
 	}
 }
 
@@ -87,5 +87,5 @@ func (c *Clipboard) SetMultipleData(pairs []ClipboardData) {
 		}
 	}
 	c.lock.Unlock()
-	plaf.SetClipboardString(str)
+	plaf2.SetClipboardString(str)
 }

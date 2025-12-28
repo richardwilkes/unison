@@ -222,7 +222,7 @@ func (s *ScrollPanel) Sync() {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (s *ScrollPanel) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
+func (s *ScrollPanel) DefaultKeyDown(_ch rune, keyCode KeyCode, mod Modifiers, _repeat bool) bool {
 	switch keyCode {
 	case KeyPageUp:
 		s.scrollViewByPage(-1, mod.ShiftDown())

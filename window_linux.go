@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 func (w *Window) frameRect() geom.Rect {
@@ -87,9 +86,9 @@ func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point
 	return where
 }
 
-func (w *Window) keyCallbackForPlatform(_ *plaf.Window, key plaf.Key, _ int, action plaf.Action, mods plaf.ModifierKey) {
+func (w *Window) keyCallbackForPlatform(_ *plaf2.Window, key plaf2.Key, _ int, action plaf2.Action, mods plaf2.ModifierKeys) {
 	if w.okToProcess() {
-		if action == plaf.Release {
+		if action == plaf2.Release {
 			mods &= ^keyToModifierForPlatform(key)
 		} else {
 			mods |= keyToModifierForPlatform(key)
@@ -105,16 +104,16 @@ func (w *Window) CurrentKeyModifiers() Modifiers {
 	return w.LastKeyModifiers()
 }
 
-func keyToModifierForPlatform(key plaf.Key) plaf.ModifierKey {
+func keyToModifierForPlatform(key plaf2.Key) plaf2.ModifierKeys {
 	switch key {
-	case plaf.KeyLeftControl, plaf.KeyRightControl:
-		return plaf.ModControl
-	case plaf.KeyLeftShift, plaf.KeyRightShift:
-		return plaf.ModShift
-	case plaf.KeyLeftAlt, plaf.KeyRightAlt:
-		return plaf.ModAlt
-	case plaf.KeyLeftSuper, plaf.KeyRightSuper:
-		return plaf.ModSuper
+	case plaf2.KeyLeftControl, plaf2.KeyRightControl:
+		return plaf2.ModControl
+	case plaf2.KeyLeftShift, plaf2.KeyRightShift:
+		return plaf2.ModShift
+	case plaf2.KeyLeftAlt, plaf2.KeyRightAlt:
+		return plaf2.ModAlt
+	case plaf2.KeyLeftSuper, plaf2.KeyRightSuper:
+		return plaf2.ModSuper
 	default:
 		return 0
 	}

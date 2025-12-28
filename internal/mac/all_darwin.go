@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -48,6 +49,10 @@ func UninstallMacAppDelegate() {
 
 func FinishLaunching() {
 	C.finishLaunching()
+}
+
+func ActivateIgnoringOtherApps() {
+	C.activateIgnoringOtherApps()
 }
 
 func HideApplication() {
@@ -792,6 +797,10 @@ func NewView(w Window) View {
 	return View(C.newView(C.NSWindowRef(w)))
 }
 
+func (v View) BackingScale() geom.Point {
+	return cgPointToPoint(C.viewBackingScale(C.NSViewRef(v)))
+}
+
 func (v View) Frame() geom.Rect {
 	var frame C.CGRect
 	C.viewFrame(C.NSViewRef(v), &frame)
@@ -854,6 +863,10 @@ func (w Window) SetLevel(level WindowLevel) {
 	C.windowSetWindowLevel(C.NSWindowRef(w), level)
 }
 
+func (w Window) StyleMask() WindowStyleMask {
+	return WindowStyleMask(C.windowStyleMask(C.NSWindowRef(w)))
+}
+
 func (w Window) SetTransparent() {
 	C.windowSetTransparent(C.NSWindowRef(w))
 }
@@ -892,6 +905,10 @@ func (w Window) MouseLocationOutsideOfEventStream() geom.Point {
 	return cgPointToPoint(C.windowMouseLocationOutsideOfEventStream(C.NSWindowRef(w)))
 }
 
+func (w Window) MakeKeyAndOrderFront() {
+	C.windowMakeKeyAndOrderFront(C.NSWindowRef(w))
+}
+
 func (w Window) OrderOut() {
 	C.windowOrderOut(C.NSWindowRef(w))
 }
@@ -908,8 +925,20 @@ func (w Window) Focused() bool {
 	return bool(C.windowFocused(C.NSWindowRef(w)))
 }
 
+func (w Window) Miniaturized() bool {
+	return bool(C.windowMiniaturized(C.NSWindowRef(w)))
+}
+
+func (w Window) Miniaturize() {
+	C.windowMiniaturize(C.NSWindowRef(w))
+}
+
 func (w Window) Zoomed() bool {
 	return bool(C.windowZoomed(C.NSWindowRef(w)))
+}
+
+func (w Window) Zoom() {
+	C.windowZoom(C.NSWindowRef(w))
 }
 
 func (w Window) Frame() geom.Rect {
@@ -934,25 +963,33 @@ func (w Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	return cgRectToRect(r)
 }
 
+func (w Window) Visible() bool {
+	return bool(C.windowVisible(C.NSWindowRef(w)))
+}
+
 func (w Window) Close() {
 	C.windowClose(C.NSWindowRef(w))
 }
 
-var WindowInputKeyCallback func(w Window, keyCode int, pressed bool, mods uint)
+var WindowKeyPressedCallback func(w Window, ch rune, key int, mods uint)
 
-//export goWindowInputKeyCallback
-func goWindowInputKeyCallback(w Window, keyCode int, pressed bool, mods uint) {
-	if WindowInputKeyCallback != nil {
-		WindowInputKeyCallback(Window(w), keyCode, pressed, mods)
+//export goWindowKeyPressedCallback
+func goWindowKeyPressedCallback(w Window, ch String, key int, mods uint) {
+	if WindowKeyPressedCallback != nil {
+		r, _ := utf8.DecodeRuneInString(ch.String())
+		if r == utf8.RuneError {
+			r = 0
+		}
+		WindowKeyPressedCallback(w, r, key, mods)
 	}
 }
 
-var WindowInputFlagsCallback func(w Window, keyCode int, mods uint)
+var WindowKeyReleasedCallback func(w Window, key int, mods uint)
 
-//export goWindowInputFlagsCallback
-func goWindowInputFlagsCallback(w Window, keyCode int, mods uint) {
-	if WindowInputFlagsCallback != nil {
-		WindowInputFlagsCallback(Window(w), keyCode, mods)
+//export goWindowKeyReleasedCallback
+func goWindowKeyReleasedCallback(w Window, key int, mods uint) {
+	if WindowKeyReleasedCallback != nil {
+		WindowKeyReleasedCallback(w, key, mods)
 	}
 }
 
@@ -1019,12 +1056,12 @@ func goWindowUpdateLayerCallback(w Window) {
 	}
 }
 
-var WindowScaleCallback func(w Window, scale geom.Size)
+var WindowScaleCallback func(w Window, scale geom.Point)
 
 //export goWindowScaleCallback
-func goWindowScaleCallback(w Window, xscale, yscale float32) {
+func goWindowScaleCallback(w Window, scale C.CGPoint) {
 	if WindowScaleCallback != nil {
-		WindowScaleCallback(w, geom.NewSize(xscale, yscale))
+		WindowScaleCallback(w, cgPointToPoint(scale))
 	}
 }
 

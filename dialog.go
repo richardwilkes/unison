@@ -148,8 +148,8 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	})
 	content.AddChild(buttonPanel)
 	originalKeyDownCallback := content.KeyDownCallback
-	content.KeyDownCallback = func(keyCode KeyCode, mod Modifiers, repeat bool) bool {
-		if originalKeyDownCallback == nil || !originalKeyDownCallback(keyCode, mod, repeat) {
+	content.KeyDownCallback = func(ch rune, keyCode KeyCode, mod Modifiers, repeat bool) bool {
+		if originalKeyDownCallback == nil || !originalKeyDownCallback(ch, keyCode, mod, repeat) {
 			if mod&NonStickyModifiers == 0 {
 				for _, one := range d.buttons {
 					for _, kc := range one.info.KeyCodes {

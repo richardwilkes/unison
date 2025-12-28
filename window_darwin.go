@@ -12,23 +12,26 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/mac"
-	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 func (w *Window) frameRect() geom.Rect {
 	if w.IsValid() {
-		left, top, right, bottom := w.wnd.GetFrameSize()
-		return geom.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+		// TODO: This really shouldn't be necessary... but for some reason the old framework wanted a frame boundary
+		contentRect := w.wnd.NativeView().Frame()
+		frameRect := w.wnd.NativeWindow().FrameRectForContentRect(contentRect)
+		left := contentRect.X - frameRect.X
+		top := frameRect.Y + frameRect.Height - contentRect.Y - contentRect.Height
+		right := frameRect.X + frameRect.Width - contentRect.X - contentRect.Width
+		bottom := contentRect.Y - frameRect.Y
+		return geom.NewRect(left, top, right-left, bottom-top)
 	}
-	return geom.NewRect(0, 0, 1, 1)
+	return geom.NewRect(1, 1, 2, 2)
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
 func (w *Window) ContentRect() geom.Rect {
 	if w.IsValid() {
-		x, y := w.wnd.GetPos()
-		width, height := w.wnd.GetSize()
-		return geom.NewRect(float32(x), float32(y), float32(width), float32(height))
+		return w.wnd.ContentRect()
 	}
 	return geom.NewRect(0, 0, 1, 1)
 }
@@ -38,19 +41,12 @@ func (w *Window) ContentRect() geom.Rect {
 func (w *Window) SetContentRect(rect geom.Rect) {
 	if w.IsValid() {
 		rect = w.adjustContentRectForMinMax(rect)
-		w.wnd.SetPos(int(rect.X), int(rect.Y))
-		w.wnd.SetSize(int(rect.Width), int(rect.Height))
+		w.wnd.SetContentRect(rect)
 	}
 }
 
 func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point {
 	return where
-}
-
-func (w *Window) keyCallbackForPlatform(_ *plaf.Window, key plaf.Key, _ int, action plaf.Action, mods plaf.ModifierKey) {
-	if w.okToProcess() {
-		w.commonKeyCallbackForPlatform(key, action, mods)
-	}
 }
 
 // CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),

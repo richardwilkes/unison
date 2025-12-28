@@ -14,7 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/plaf"
+	"github.com/richardwilkes/unison/internal/plaf2"
 	"golang.org/x/image/draw"
 )
 
@@ -30,12 +30,12 @@ var (
 )
 
 // Cursor provides a graphical cursor for the mouse location.
-type Cursor = plaf.Cursor
+type Cursor = plaf2.Cursor
 
 // ArrowCursor returns the standard arrow cursor.
 func ArrowCursor() *Cursor {
 	if arrowCursor == nil {
-		arrowCursor = plaf.CreateStandardCursor(plaf.ArrowCursor)
+		arrowCursor = plaf2.ArrowCursor()
 	}
 	return arrowCursor
 }
@@ -43,7 +43,7 @@ func ArrowCursor() *Cursor {
 // PointingCursor returns the standard pointing cursor.
 func PointingCursor() *Cursor {
 	if pointingCursor == nil {
-		pointingCursor = plaf.CreateStandardCursor(plaf.HandCursor)
+		pointingCursor = plaf2.PointingHandCursor()
 	}
 	return pointingCursor
 }
@@ -76,7 +76,7 @@ func ResizeVerticalCursor() *Cursor {
 // TextCursor returns the standard text cursor.
 func TextCursor() *Cursor {
 	if textCursor == nil {
-		textCursor = plaf.CreateStandardCursor(plaf.IBeamCursor)
+		textCursor = plaf2.IBeamCursor()
 	}
 	return textCursor
 }
@@ -107,5 +107,5 @@ func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 		nrgba = dst
 	}
 
-	return plaf.CreateCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
+	return plaf2.NewCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
 }

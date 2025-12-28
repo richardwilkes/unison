@@ -911,7 +911,7 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mod Modifiers) b
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (t *Table[T]) DefaultKeyDown(_ch rune, keyCode KeyCode, mod Modifiers, repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		if t.DoubleClickCallback != nil && len(t.selMap) != 0 {
 			xos.SafeCall(t.DoubleClickCallback, nil)

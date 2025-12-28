@@ -7,10 +7,11 @@ import (
 )
 
 var (
-	initTermLock sync.Mutex
-	initialized  bool
-	initializing bool
-	terminating  bool
+	OpenFilesCallback func([]string)
+	initTermLock      sync.Mutex
+	initialized       bool
+	initializing      bool
+	terminating       bool
 )
 
 // Init must be called exactly once before most things in this package may be used.

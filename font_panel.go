@@ -149,7 +149,7 @@ func (p *FontPanel) DefaultValidate() bool {
 }
 
 // DefaultKeyDown provides the default key down handling for the font size field.
-func (p *FontPanel) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (p *FontPanel) DefaultKeyDown(ch rune, keyCode KeyCode, mod Modifiers, repeat bool) bool {
 	if mod.OSMenuCmdModifierDown() {
 		return false
 	}
@@ -159,7 +159,7 @@ func (p *FontPanel) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) 
 		}
 		return true
 	}
-	return p.fontSizeField.DefaultKeyDown(keyCode, mod, repeat)
+	return p.fontSizeField.DefaultKeyDown(ch, keyCode, mod, repeat)
 }
 
 // DefaultFocusLost provides the default focus lost handling for the font size field.

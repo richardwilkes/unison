@@ -11,14 +11,13 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/plaf"
 )
 
 // Constants for mouse buttons.
 const (
-	ButtonLeft   = int(plaf.MouseButtonLeft)
-	ButtonRight  = int(plaf.MouseButtonRight)
-	ButtonMiddle = int(plaf.MouseButtonMiddle)
+	ButtonLeft = iota
+	ButtonRight
+	ButtonMiddle
 )
 
 // InputCallbacks holds the callbacks that client code can hook into for user input events.
@@ -50,13 +49,10 @@ type InputCallbacks struct {
 	MouseWheelCallback func(where, delta geom.Point, mod Modifiers) bool
 	// KeyDownCallback is called when a key is pressed. Return true to stop further handling or false to propagate up to
 	// parents.
-	KeyDownCallback func(keyCode KeyCode, mod Modifiers, repeat bool) bool
+	KeyDownCallback func(ch rune, keyCode KeyCode, mod Modifiers, repeat bool) bool
 	// KeyUpCallback is called when a key is released. Return true to stop further handling or false to propagate up to
 	// parents.
 	KeyUpCallback func(keyCode KeyCode, mod Modifiers) bool
-	// RuneTypedCallback is called when a key is typed. Return true to stop further handling or false to propagate up to
-	// parents.
-	RuneTypedCallback func(ch rune) bool
 	// FileDropCallback is called when files are drag & dropped from the OS.
 	FileDropCallback func(files []string)
 }

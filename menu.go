@@ -285,7 +285,7 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 			})
 		}
 	}
-	p.KeyDownCallback = func(keyCode KeyCode, mod Modifiers, _ bool) bool {
+	p.KeyDownCallback = func(_ch rune, keyCode KeyCode, mod Modifiers, _repeat bool) bool {
 		if mod != 0 {
 			return false
 		}
@@ -413,7 +413,7 @@ func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
 	return false
 }
 
-func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
+func (m *menu) preKeyDown(wnd *Window, ch rune, keyCode KeyCode, mod Modifiers, repeat bool) bool {
 	if m.updater != nil && mod.OSMenuCmdModifierDown() {
 		// We only call the updater for key presses with the cmd modifier down. This is because the updater may be doing
 		// relatively expensive operations to setup the menu and we don't want to impact every key a user types.
@@ -429,7 +429,7 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 			return len(wnd.root.openMenuPanels) != 0
 		}
 		if mi.subMenu != nil {
-			if mi.subMenu.preKeyDown(wnd, keyCode, mod) {
+			if mi.subMenu.preKeyDown(wnd, ch, keyCode, mod, repeat) {
 				return true
 			}
 		}
@@ -438,10 +438,6 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 }
 
 func (m *menu) preKeyUp(wnd *Window, _ KeyCode, _ Modifiers) bool {
-	return len(wnd.root.openMenuPanels) != 0
-}
-
-func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 

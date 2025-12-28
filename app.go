@@ -18,7 +18,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
-	"github.com/richardwilkes/unison/internal/plaf"
+	"github.com/richardwilkes/unison/internal/plaf2"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
@@ -133,7 +133,7 @@ func Start(options ...StartupOption) {
 	for _, option := range options {
 		xos.ExitIfErr(option(startupOption{}))
 	}
-	plaf.OpenFilesCallback = func(paths []string) {
+	plaf2.OpenFilesCallback = func(paths []string) {
 		pendingFilesLock.Lock()
 		defer pendingFilesLock.Unlock()
 		if okToIssueFileOpens {
@@ -146,7 +146,7 @@ func Start(options ...StartupOption) {
 			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
 		}
 	}
-	xos.ExitIfErr(plaf.Init())
+	xos.ExitIfErr(plaf2.Init())
 	xos.RunAtExit(quitting)
 	xos.RunAtExit(func() {
 		quitLock.Lock()
@@ -161,7 +161,7 @@ func Start(options ...StartupOption) {
 }
 
 func processEvents() {
-	plaf.WaitEvents()
+	plaf2.WaitEvents()
 	processNextTask(uiTaskRecovery)
 	if len(redrawSet) > 0 {
 		set := redrawSet
@@ -251,7 +251,7 @@ func quitting() {
 	if !calledExit {
 		xos.Exit(0)
 	}
-	if err := plaf.Terminate(); err != nil {
+	if err := plaf2.Terminate(); err != nil {
 		errs.Log(err)
 	}
 }
@@ -318,6 +318,6 @@ func DragGestureParameters() (minDelay time.Duration, minMouseDrift float32) {
 
 func postEmptyEvent() {
 	if plafInited.Load() {
-		plaf.PostEmptyEvent()
+		plaf2.PostEmptyEvent()
 	}
 }

@@ -24,15 +24,17 @@ type Window struct {
 	MinimizeCallback    func(minimized bool)
 	MaximizeCallback    func(maximized bool)
 	FocusCallback       func(focused bool)
-	KeyCallback         func(key, code int, pressed, repeated bool, mods ModifierKeys)
+	KeyPressedCallback  func(ch rune, key int, mods ModifierKeys, repeated bool)
+	KeyReleasedCallback func(key int, mods ModifierKeys)
 	MouseEnterCallback  func()
 	MouseExitCallback   func()
 	MouseMovedCallback  func(pt geom.Point)
 	MouseButtonCallback func(button int, pressed bool, mods ModifierKeys)
 	ScrollCallback      func(delta geom.Point, pixels bool)
-	ScaleCallback       func(scale geom.Size)
+	ScaleCallback       func(scale geom.Point)
 	DrawCallback        func()
 	DropCallback        func(filePaths []string)
+	CloseCallback       func()
 	plWnd               platformWindow
 	plGctx              platformGraphicsContext
 	cursor              *Cursor
@@ -74,12 +76,12 @@ func (w *Window) ShowCursor() {
 	}
 }
 
-func (w *Window) makeOpenGLContextCurrent() {
+func (w *Window) MakeOpenGLContextCurrent() {
 	w.plGctx.MakeCurrent()
 	wndWithCurrentCtx = w
 }
 
-func (w *Window) swapBuffers() {
+func (w *Window) SwapBuffers() {
 	w.plGctx.SwapBuffers()
 }
 
@@ -94,7 +96,7 @@ func (w *Window) notifyOfFocusChange(focused bool) { // formerly _plafNotifyOfFo
 				keys = append(keys, key)
 			}
 			for _, key := range keys {
-				w.inputKey(key, scanCodes[key], false, 0)
+				w.keyReleased(key, 0)
 			}
 		}
 		if len(w.pressedButtons) != 0 {
@@ -109,19 +111,18 @@ func (w *Window) notifyOfFocusChange(focused bool) { // formerly _plafNotifyOfFo
 	}
 }
 
-func (w *Window) inputKey(key, code int, pressed bool, mods ModifierKeys) { // formerly _plafInputKey
-	previous := w.pressedKeys[key]
-	if !pressed && !previous {
-		return
+func (w *Window) keyPressed(ch rune, key int, mods ModifierKeys) {
+	repeated := w.pressedKeys[key]
+	w.pressedKeys[key] = true
+	if w.KeyPressedCallback != nil {
+		w.KeyPressedCallback(ch, key, mods, repeated)
 	}
-	repeated := pressed && previous
-	if pressed {
-		w.pressedKeys[key] = true
-	} else {
-		delete(w.pressedKeys, key)
-	}
-	if w.KeyCallback != nil {
-		w.KeyCallback(key, code, pressed, repeated, mods)
+}
+
+func (w *Window) keyReleased(key int, mods ModifierKeys) {
+	delete(w.pressedKeys, key)
+	if w.KeyReleasedCallback != nil {
+		w.KeyReleasedCallback(key, mods)
 	}
 }
 
@@ -135,6 +136,23 @@ func (w *Window) mouseClick(button int, pressed bool, mods ModifierKeys) { // fo
 	w.pressedButtons[button] = pressed
 	if w.MouseButtonCallback != nil {
 		w.MouseButtonCallback(button, pressed, mods)
+	}
+}
+
+func (w *Window) SetCursor(c *Cursor) {
+	if c == nil {
+		w.cursor = nil
+	} else {
+		w.cursor = c
+	}
+	w.adjustToCursorChange()
+}
+
+func (w *Window) RequestClose() {
+	if w.CloseCallback != nil {
+		w.CloseCallback()
+	} else {
+		w.Destroy()
 	}
 }
 

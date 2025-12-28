@@ -24,48 +24,53 @@ func findWindowByNSWindow(macWnd mac.Window) *Window {
 }
 
 func initWindowCallbacks() {
-	mac.WindowInputKeyCallback = func(macWnd mac.Window, keyCode int, pressed bool, mods uint) {
+	mac.WindowKeyPressedCallback = func(macWnd mac.Window, ch rune, key int, mods uint) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.inputKey(keyCodes[keyCode], keyCode, pressed, translateFlags(mac.EventModifierFlags(mods)))
+			w.keyPressed(ch, keyCodes[key], translateFlags(mac.EventModifierFlags(mods)))
 		} else {
-			slog.Warn("received window input key callback for unknown window", "window", macWnd)
+			slog.Warn("received window key pressed callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowInputFlagsCallback = func(macWnd mac.Window, keyCode int, mods uint) {
+	mac.WindowKeyReleasedCallback = func(macWnd mac.Window, key int, mods uint) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			flags := translateFlags(mac.EventModifierFlags(mods))
-			key := keyCodes[keyCode]
-			var keyFlag ModifierKeys
-			switch key {
-			case KeyLeftShift:
-			case KeyRightShift:
-				keyFlag = ModKeyShift
-			case KeyLeftControl:
-			case KeyRightControl:
-				keyFlag = ModKeyControl
-			case KeyLeftAlt:
-			case KeyRightAlt:
-				keyFlag = ModKeyAlt
-			case KeyLeftSuper:
-			case KeyRightSuper:
-				keyFlag = ModKeySuper
-			case KeyCapsLock:
-				keyFlag = ModKeyCapsLock
-			}
-			pressed := false
-			if (keyFlag&flags) != 0 && !w.pressedKeys[key] {
-				pressed = true
-			}
-			w.inputKey(key, keyCode, pressed, flags)
+			w.keyReleased(keyCodes[key], translateFlags(mac.EventModifierFlags(mods)))
 		} else {
-			slog.Warn("received window input flags callback for unknown window", "window", macWnd)
+			slog.Warn("received window key released callback for unknown window", "window", macWnd)
 		}
 	}
+	// mac.WindowInputFlagsCallback = func(macWnd mac.Window, keyCode int, mods uint) {
+	// 	if w := findWindowByNSWindow(macWnd); w != nil {
+	// 		flags := translateFlags(mac.EventModifierFlags(mods))
+	// 		key := keyCodes[keyCode]
+	// 		var keyFlag ModifierKeys
+	// 		switch key {
+	// 		case KeyLeftShift:
+	// 		case KeyRightShift:
+	// 			keyFlag = ModKeyShift
+	// 		case KeyLeftControl:
+	// 		case KeyRightControl:
+	// 			keyFlag = ModKeyControl
+	// 		case KeyLeftAlt:
+	// 		case KeyRightAlt:
+	// 			keyFlag = ModKeyAlt
+	// 		case KeyLeftSuper:
+	// 		case KeyRightSuper:
+	// 			keyFlag = ModKeySuper
+	// 		case KeyCapsLock:
+	// 			keyFlag = ModKeyCapsLock
+	// 		}
+	// 		pressed := false
+	// 		if (keyFlag&flags) != 0 && !w.pressedKeys[key] {
+	// 			pressed = true
+	// 		}
+	// 		w.inputKey(key, keyCode, pressed, flags)
+	// 	} else {
+	// 		slog.Warn("received window input flags callback for unknown window", "window", macWnd)
+	// 	}
+	// }
 	mac.WindowShouldCloseCallback = func(macWnd mac.Window) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			// TODO: Initiate close sequence
-			// _plafInputWindowCloseRequest(window);
-			//windowList[i].CloseRequest()
+			w.RequestClose()
 		} else {
 			slog.Warn("received window should close callback for unknown window", "window", macWnd)
 		}
@@ -197,13 +202,12 @@ func initWindowCallbacks() {
 			slog.Warn("received window draw rect callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowScaleCallback = func(macWnd mac.Window, scale geom.Size) {
+	mac.WindowScaleCallback = func(macWnd mac.Window, scale geom.Point) {
+		// This will be called once before the window is finished initializing, so just ignore any unknown windows here.
 		if w := findWindowByNSWindow(macWnd); w != nil {
 			if w.ScaleCallback != nil {
 				w.ScaleCallback(scale)
 			}
-		} else {
-			slog.Warn("received window content scale callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowDropCallback = func(macWnd mac.Window, filePaths []string) {
@@ -253,12 +257,26 @@ func newWindow(cfg *WindowConfig) *Window {
 	w.SetAcceptsMouseMovedEvents(true)
 	w.SetRestorable(false)
 	w.SetTabbingMode(mac.WindowTabbingModeDisallowed)
-	return &Window{
+	wnd := &Window{
 		plWnd: platformWindow{
 			wnd:  w,
 			view: v,
 		},
 	}
+	wnd.createOpenGLContext(cfg.Share, cfg.Transparent)
+	return wnd
+}
+
+func (w *Window) NativeWindow() mac.Window {
+	return w.plWnd.wnd
+}
+
+func (w *Window) NativeView() mac.View {
+	return w.plWnd.view
+}
+
+func (w *Window) SetTitle(title string) {
+	w.plWnd.wnd.SetTitle(title)
 }
 
 func (w *Window) Frame() geom.Rect {
@@ -312,18 +330,54 @@ func (w *Window) updateCursorImage() { // formerly _plafUpdateCursorImage
 }
 
 func (w *Window) cursorInContentArea() bool { // formerly _plafCursorInContentArea
-	view := w.plWnd.wnd.ContentView()
-	return view.MouseInRect(w.plWnd.wnd.MouseLocationOutsideOfEventStream(), view.Frame())
+	return w.plWnd.view.MouseInRect(w.plWnd.wnd.MouseLocationOutsideOfEventStream(), w.plWnd.view.Frame())
 }
 
 func (w *Window) CursorPosition() geom.Point { // formerly plafGetCursorPos
 	loc := w.plWnd.wnd.MouseLocationOutsideOfEventStream()
-	frame := w.plWnd.wnd.ContentView().Frame()
+	frame := w.plWnd.view.Frame()
 	return geom.NewPoint(loc.X, frame.Height-loc.Y)
+}
+
+func (w *Window) ContentScale() geom.Point {
+	return w.plWnd.view.BackingScale()
+}
+
+func (w *Window) Minimize() {
+	if !w.plWnd.wnd.Miniaturized() {
+		w.plWnd.wnd.Miniaturize()
+	}
+}
+
+func (w *Window) Maximize() {
+	if !w.plWnd.wnd.Zoomed() {
+		w.plWnd.wnd.Zoom()
+	}
 }
 
 func (w *Window) Focused() bool { // formerly plafIsWindowFocused
 	return w.plWnd.wnd.Focused()
+}
+
+func (w *Window) Focus() {
+	mac.ActivateIgnoringOtherApps()
+	w.plWnd.wnd.MakeKeyAndOrderFront()
+}
+
+func (w *Window) Visible() bool {
+	return w.plWnd.wnd.Visible()
+}
+
+func (w *Window) Show() {
+	w.plWnd.wnd.MakeKeyAndOrderFront()
+}
+
+func (w *Window) Hide() {
+	w.plWnd.wnd.OrderOut()
+}
+
+func (w *Window) Resizable() bool {
+	return w.plWnd.wnd.StyleMask()&mac.WindowStyleMaskResizable != 0
 }
 
 func (w *Window) destroy() { // formerly _plafDestroyWindow
@@ -332,7 +386,7 @@ func (w *Window) destroy() { // formerly _plafDestroyWindow
 	delegate := w.plWnd.wnd.Delegate()
 	w.plWnd.wnd.SetDelegate(0)
 	delegate.Release()
-	w.plWnd.wnd.ContentView().Release()
+	w.plWnd.view.Release()
 	w.plWnd.wnd.Close()
 	w.plWnd.wnd = 0
 	PollEvents()

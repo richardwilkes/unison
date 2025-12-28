@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/plaf"
+	"github.com/richardwilkes/unison/internal/plaf2"
 )
 
 // Display holds information about each available active display.
@@ -21,7 +21,7 @@ type Display struct {
 	Scale  geom.Point // The scale of the content
 	// The pixels-per-inch for the display. This may not be accurate, either because the monitor's EDID data is
 	// incorrect, or because the driver does not report it accurately.
-	PPI     float32
+	PPI     int
 	Primary bool
 }
 
@@ -80,7 +80,7 @@ func BestDisplayForRect(r geom.Rect) *Display {
 
 // PrimaryDisplay returns the primary display.
 func PrimaryDisplay() *Display {
-	d := plaf.PrimaryDisplay()
+	d := plaf2.PrimaryDisplay()
 	if d == nil {
 		return nil
 	}
@@ -95,7 +95,7 @@ func PrimaryDisplay() *Display {
 
 // AllDisplays returns all displays.
 func AllDisplays() []*Display {
-	all := plaf.ActiveDisplays()
+	all := plaf2.ActiveDisplays()
 	displays := make([]*Display, len(all))
 	for i, d := range all {
 		displays[i] = &Display{
