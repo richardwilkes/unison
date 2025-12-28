@@ -24,7 +24,8 @@ type Window struct {
 	MinimizeCallback    func(minimized bool)
 	MaximizeCallback    func(maximized bool)
 	FocusCallback       func(focused bool)
-	KeyPressedCallback  func(ch rune, key int, mods ModifierKeys, repeated bool)
+	KeyPressedCallback  func(key int, mods ModifierKeys, repeated bool)
+	KeyTypedCallback    func(ch rune)
 	KeyReleasedCallback func(key int, mods ModifierKeys)
 	MouseEnterCallback  func()
 	MouseExitCallback   func()
@@ -111,11 +112,11 @@ func (w *Window) notifyOfFocusChange(focused bool) { // formerly _plafNotifyOfFo
 	}
 }
 
-func (w *Window) keyPressed(ch rune, key int, mods ModifierKeys) {
+func (w *Window) keyPressed(key int, mods ModifierKeys) {
 	repeated := w.pressedKeys[key]
 	w.pressedKeys[key] = true
 	if w.KeyPressedCallback != nil {
-		w.KeyPressedCallback(ch, key, mods, repeated)
+		w.KeyPressedCallback(key, mods, repeated)
 	}
 }
 

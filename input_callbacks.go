@@ -49,7 +49,10 @@ type InputCallbacks struct {
 	MouseWheelCallback func(where, delta geom.Point, mod Modifiers) bool
 	// KeyDownCallback is called when a key is pressed. Return true to stop further handling or false to propagate up to
 	// parents.
-	KeyDownCallback func(ch rune, keyCode KeyCode, mod Modifiers, repeat bool) bool
+	KeyDownCallback func(keyCode KeyCode, mod Modifiers, repeat bool) bool
+	// RuneTypedCallback is called when a key is typed. Return true to stop further handling or false to propagate up to
+	// parents.
+	RuneTypedCallback func(ch rune) bool
 	// KeyUpCallback is called when a key is released. Return true to stop further handling or false to propagate up to
 	// parents.
 	KeyUpCallback func(keyCode KeyCode, mod Modifiers) bool

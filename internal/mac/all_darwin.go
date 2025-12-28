@@ -26,7 +26,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unicode/utf8"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -971,16 +970,21 @@ func (w Window) Close() {
 	C.windowClose(C.NSWindowRef(w))
 }
 
-var WindowKeyPressedCallback func(w Window, ch rune, key int, mods uint)
+var WindowKeyPressedCallback func(w Window, key int, mods uint)
 
 //export goWindowKeyPressedCallback
-func goWindowKeyPressedCallback(w Window, ch String, key int, mods uint) {
+func goWindowKeyPressedCallback(w Window, key int, mods uint) {
 	if WindowKeyPressedCallback != nil {
-		r, _ := utf8.DecodeRuneInString(ch.String())
-		if r == utf8.RuneError {
-			r = 0
-		}
-		WindowKeyPressedCallback(w, r, key, mods)
+		WindowKeyPressedCallback(w, key, mods)
+	}
+}
+
+var WindowKeyTypedCallback func(w Window, ch rune)
+
+//export goWindowKeyTypedCallback
+func goWindowKeyTypedCallback(w Window, ch rune) {
+	if WindowKeyTypedCallback != nil {
+		WindowKeyTypedCallback(w, ch)
 	}
 }
 

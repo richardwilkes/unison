@@ -247,7 +247,7 @@ func (c *CheckBox) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (c *CheckBox) DefaultKeyDown(_ch rune, keyCode KeyCode, mod Modifiers, _repeat bool) bool {
+func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		c.Click()
 		return true

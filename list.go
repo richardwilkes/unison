@@ -414,7 +414,7 @@ func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (l *List[T]) DefaultKeyDown(_ch rune, keyCode KeyCode, mod Modifiers, _repeat bool) bool {
+func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		if l.DoubleClickCallback != nil && l.Selection.Count() > 0 {
 			xos.SafeCall(l.DoubleClickCallback, nil)

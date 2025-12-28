@@ -214,7 +214,7 @@ func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (w *Well) DefaultKeyDown(_ch rune, keyCode KeyCode, mod Modifiers, _repeat bool) bool {
+func (w *Well) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		w.Click()
 		return true

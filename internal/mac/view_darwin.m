@@ -9,8 +9,9 @@
 
 #import "macos.h"
 
-void goWindowKeyPressedCallback(NSWindowRef w, NSString* ch, int key, uint mods);
+void goWindowKeyPressedCallback(NSWindowRef w, int key, uint mods);
 void goWindowKeyReleasedCallback(NSWindowRef w, int key, uint mods);
+void goWindowKeyTypedCallback(NSWindowRef w, uint32_t ch);
 void goWindowCursorUpdateCallback(NSWindowRef w);
 void goWindowMouseEnterCallback(NSWindowRef w);
 void goWindowMouseExitCallback(NSWindowRef w);
@@ -22,9 +23,12 @@ void goWindowRedrawCallback(NSWindowRef w);
 void goWindowScaleCallback(NSWindowRef w, CGPoint scale);
 void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 
-@interface macContentView : NSView {
-	NSWindow*       wnd;
-	NSTrackingArea* trackingArea;
+static const NSRange kEmptyRange = { NSNotFound, 0 };
+
+@interface macContentView : NSView<NSTextInputClient> {
+	NSWindow*                  wnd;
+	NSTrackingArea*            trackingArea;
+	NSMutableAttributedString* markedText;
 }
 
 - (instancetype)initWithWindow:(NSWindow*)window;
@@ -38,6 +42,7 @@ void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 	if (self != nil) {
 		wnd = window;
 		trackingArea = nil;
+		markedText = [[NSMutableAttributedString alloc] init];
 		[self updateTrackingAreas];
 		[self registerForDraggedTypes:@[NSPasteboardTypeURL]];
 	}
@@ -46,6 +51,7 @@ void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 
 - (void)dealloc {
 	[trackingArea release];
+	[markedText release];
 	[super dealloc];
 }
 
@@ -149,12 +155,8 @@ void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 }
 
 - (void)keyDown:(NSEvent *)event {
-	goWindowKeyPressedCallback(wnd, [event characters], [event keyCode], [event modifierFlags]);
-	//[self interpretKeyEvents:@[event]]; // TODO: This may not be needed
-}
-
-- (void)flagsChanged:(NSEvent *)event {
-	// TODO: Do we need to do anything here?
+	goWindowKeyPressedCallback(wnd, [event keyCode], [event modifierFlags]);
+	[self interpretKeyEvents:@[event]];
 }
 
 - (void)keyUp:(NSEvent *)event {
@@ -190,6 +192,76 @@ void goWindowDropCallback(NSWindowRef w, int count, char** paths);
 		free(paths);
 	}
 	return YES;
+}
+
+- (BOOL)hasMarkedText {
+	return [markedText length] > 0;
+}
+
+- (NSRange)markedRange {
+	if ([markedText length] > 0) {
+		return NSMakeRange(0, [markedText length] - 1);
+	}
+	return kEmptyRange;
+}
+
+- (NSRange)selectedRange {
+	return kEmptyRange;
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
+	[markedText release];
+	if ([string isKindOfClass:[NSAttributedString class]]) {
+		markedText = [[NSMutableAttributedString alloc] initWithAttributedString:string];
+	} else {
+		markedText = [[NSMutableAttributedString alloc] initWithString:string];
+	}
+}
+
+- (void)unmarkText {
+	[[markedText mutableString] setString:@""];
+}
+
+- (NSArray*)validAttributesForMarkedText {
+	return [NSArray array];
+}
+
+- (NSAttributedString*)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+	return nil;
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point {
+	return 0;
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+	const NSRect frame = [self frame];
+	return NSMakeRect(frame.origin.x, frame.origin.y, 0.0, 0.0);
+}
+
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
+	if (([[NSApp currentEvent] modifierFlags] & NSEventModifierFlagCommand) == 0) {
+		NSString* characters;
+		if ([string isKindOfClass:[NSAttributedString class]]) {
+			characters = [string string];
+		} else {
+			characters = (NSString*)string;
+		}
+		NSRange range = NSMakeRange(0, [characters length]);
+		while (range.length) {
+			uint32_t ch = 0;
+			if ([characters getBytes:&ch maxLength:sizeof(ch) usedLength:NULL
+				encoding:NSUTF32StringEncoding options:0 range:range remainingRange:&range]) {
+				if (ch >= 0xf700 && ch <= 0xf7ff) {
+					continue;
+				}
+				goWindowKeyTypedCallback(wnd, ch);
+			}
+		}
+	}
+}
+
+- (void)doCommandBySelector:(SEL)selector {
 }
 
 @end

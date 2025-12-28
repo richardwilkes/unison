@@ -119,6 +119,7 @@ func NewField() *Field {
 	f.MouseDragCallback = f.DefaultMouseDrag
 	f.UpdateCursorCallback = f.DefaultUpdateCursor
 	f.KeyDownCallback = f.DefaultKeyDown
+	f.RuneTypedCallback = f.DefaultRuneTyped
 	f.InstallCmdHandlers(CutItemID, func(_ any) bool { return f.CanCut() }, func(_ any) { f.Cut() })
 	f.InstallCmdHandlers(CopyItemID, func(_ any) bool { return f.CanCopy() }, func(_ any) { f.Copy() })
 	f.InstallCmdHandlers(PasteItemID, func(_ any) bool { return f.CanPaste() }, func(_ any) { f.Paste() })
@@ -534,7 +535,7 @@ func (f *Field) DefaultUpdateCursor(_ geom.Point) *Cursor {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (f *Field) DefaultKeyDown(ch rune, keyCode KeyCode, mod Modifiers, _repeat bool) bool {
+func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) bool {
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}
@@ -576,7 +577,6 @@ func (f *Field) DefaultKeyDown(ch rune, keyCode KeyCode, mod Modifiers, _repeat 
 	switch keyCode {
 	case KeyBackspace:
 		f.Delete()
-		return true
 	case KeyDelete:
 		if f.HasSelectionRange() {
 			f.Delete()
@@ -587,45 +587,36 @@ func (f *Field) DefaultKeyDown(ch rune, keyCode KeyCode, mod Modifiers, _repeat 
 			f.notifyOfModification(before, f.GetFieldState())
 		}
 		f.MarkForRedraw()
-		return true
 	case KeyLeft:
 		f.handleArrowLeft(mod.ShiftDown(), mod.OptionDown())
-		return true
 	case KeyRight:
 		f.handleArrowRight(mod.ShiftDown(), mod.OptionDown())
-		return true
 	case KeyEnd:
 		f.handleEnd(f.multiLine, mod.ShiftDown())
-		return true
 	case KeyPageDown:
 		if !f.multiLine {
 			return false
 		}
 		f.handleEnd(false, mod.ShiftDown())
-		return true
 	case KeyHome:
 		f.handleHome(f.multiLine, mod.ShiftDown())
-		return true
 	case KeyPageUp:
 		if !f.multiLine {
 			return false
 		}
 		f.handleHome(false, mod.ShiftDown())
-		return true
 	case KeyDown:
 		if f.multiLine {
 			f.handleArrowDown(mod.ShiftDown(), mod.OptionDown())
 		} else {
 			f.handleEnd(false, mod.ShiftDown())
 		}
-		return true
 	case KeyUp:
 		if f.multiLine {
 			f.handleArrowUp(mod.ShiftDown(), mod.OptionDown())
 		} else {
 			f.handleHome(false, mod.ShiftDown())
 		}
-		return true
 	case KeyTab:
 		return false
 	case KeyReturn, KeyNumPadEnter:
@@ -633,12 +624,17 @@ func (f *Field) DefaultKeyDown(ch rune, keyCode KeyCode, mod Modifiers, _repeat 
 		if !f.multiLine {
 			return false
 		}
-		ch = '\n'
+		f.DefaultRuneTyped('\n')
 	case KeyEscape:
 		return false
 	}
-	if ch == 0 {
-		return false
+	return true
+}
+
+// DefaultRuneTyped provides the default rune typed handling.
+func (f *Field) DefaultRuneTyped(ch rune) bool {
+	if wnd := f.Window(); wnd != nil {
+		wnd.HideCursorUntilMouseMoves()
 	}
 	if unicode.IsControl(ch) && (!f.multiLine || ch != '\n') {
 		return false

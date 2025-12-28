@@ -238,7 +238,7 @@ func (r *RadioButton) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool 
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (r *RadioButton) DefaultKeyDown(_ch rune, keyCode KeyCode, mod Modifiers, _repeat bool) bool {
+func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mod) {
 		r.Click()
 		return true

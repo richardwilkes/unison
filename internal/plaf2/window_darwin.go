@@ -24,11 +24,20 @@ func findWindowByNSWindow(macWnd mac.Window) *Window {
 }
 
 func initWindowCallbacks() {
-	mac.WindowKeyPressedCallback = func(macWnd mac.Window, ch rune, key int, mods uint) {
+	mac.WindowKeyPressedCallback = func(macWnd mac.Window, key int, mods uint) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.keyPressed(ch, keyCodes[key], translateFlags(mac.EventModifierFlags(mods)))
+			w.keyPressed(keyCodes[key], translateFlags(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window key pressed callback for unknown window", "window", macWnd)
+		}
+	}
+	mac.WindowKeyTypedCallback = func(macWnd mac.Window, ch rune) {
+		if w := findWindowByNSWindow(macWnd); w != nil {
+			if w.KeyTypedCallback != nil {
+				w.KeyTypedCallback(ch)
+			}
+		} else {
+			slog.Warn("received window key typed callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowKeyReleasedCallback = func(macWnd mac.Window, key int, mods uint) {
@@ -38,36 +47,6 @@ func initWindowCallbacks() {
 			slog.Warn("received window key released callback for unknown window", "window", macWnd)
 		}
 	}
-	// mac.WindowInputFlagsCallback = func(macWnd mac.Window, keyCode int, mods uint) {
-	// 	if w := findWindowByNSWindow(macWnd); w != nil {
-	// 		flags := translateFlags(mac.EventModifierFlags(mods))
-	// 		key := keyCodes[keyCode]
-	// 		var keyFlag ModifierKeys
-	// 		switch key {
-	// 		case KeyLeftShift:
-	// 		case KeyRightShift:
-	// 			keyFlag = ModKeyShift
-	// 		case KeyLeftControl:
-	// 		case KeyRightControl:
-	// 			keyFlag = ModKeyControl
-	// 		case KeyLeftAlt:
-	// 		case KeyRightAlt:
-	// 			keyFlag = ModKeyAlt
-	// 		case KeyLeftSuper:
-	// 		case KeyRightSuper:
-	// 			keyFlag = ModKeySuper
-	// 		case KeyCapsLock:
-	// 			keyFlag = ModKeyCapsLock
-	// 		}
-	// 		pressed := false
-	// 		if (keyFlag&flags) != 0 && !w.pressedKeys[key] {
-	// 			pressed = true
-	// 		}
-	// 		w.inputKey(key, keyCode, pressed, flags)
-	// 	} else {
-	// 		slog.Warn("received window input flags callback for unknown window", "window", macWnd)
-	// 	}
-	// }
 	mac.WindowShouldCloseCallback = func(macWnd mac.Window) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
 			w.RequestClose()

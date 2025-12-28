@@ -269,6 +269,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		w.mouseWheel(w.MouseLocation(), delta, w.lastKeyModifiers)
 	}
 	w.wnd.KeyPressedCallback = w.keyPressed
+	w.wnd.KeyTypedCallback = w.runeTyped
 	w.wnd.KeyReleasedCallback = w.keyReleased
 	w.wnd.DropCallback = func(filePaths []string) {
 		if w.okToProcess() {
@@ -1168,16 +1169,16 @@ func (w *Window) mouseWheel(where, delta geom.Point, mod Modifiers) {
 	}
 }
 
-func (w *Window) keyPressed(ch rune, key int, mods plaf2.ModifierKeys, repeat bool) {
+func (w *Window) keyPressed(key int, mods plaf2.ModifierKeys, repeat bool) {
 	keyCode := KeyCode(key)
 	modifiers := Modifiers(mods)
 	w.lastKeyModifiers = modifiers
-	if w.root.preKeyDown(w, ch, keyCode, modifiers, repeat) {
+	if w.root.preKeyDown(w, keyCode, modifiers, repeat) {
 		return
 	}
 	if w.KeyDownCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.KeyDownCallback(ch, keyCode, modifiers, repeat) }, nil)
+		xos.SafeCall(func() { stop = w.KeyDownCallback(keyCode, modifiers, repeat) }, nil)
 		if stop {
 			return
 		}
@@ -1190,7 +1191,7 @@ func (w *Window) keyPressed(ch rune, key int, mods plaf2.ModifierKeys, repeat bo
 		for panel != nil {
 			if panel.Enabled() && panel.KeyDownCallback != nil {
 				stop := false
-				xos.SafeCall(func() { stop = panel.KeyDownCallback(ch, keyCode, modifiers, repeat) }, nil)
+				xos.SafeCall(func() { stop = panel.KeyDownCallback(keyCode, modifiers, repeat) }, nil)
 				if stop {
 					w.lastKeyDownPanel = panel
 					return
@@ -1204,6 +1205,36 @@ func (w *Window) keyPressed(ch rune, key int, mods plaf2.ModifierKeys, repeat bo
 			} else {
 				w.FocusNext()
 			}
+		}
+	}
+}
+
+func (w *Window) runeTyped(ch rune) {
+	if w.root.preRuneTyped(w, ch) {
+		return
+	}
+	if w.RuneTypedCallback != nil {
+		stop := false
+		xos.SafeCall(func() { stop = w.RuneTypedCallback(ch) }, nil)
+		if stop {
+			return
+		}
+	}
+	w.ClearTooltip()
+	w.lastKeyDownPanel = nil
+	if focus := w.Focus(); focus != nil {
+		panel := focus
+		w.lastKeyDownPanel = panel
+		for panel != nil {
+			if panel.Enabled() && panel.RuneTypedCallback != nil {
+				stop := false
+				xos.SafeCall(func() { stop = panel.RuneTypedCallback(ch) }, nil)
+				if stop {
+					w.lastKeyDownPanel = panel
+					return
+				}
+			}
+			panel = panel.parent
 		}
 	}
 }
