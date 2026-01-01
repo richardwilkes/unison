@@ -12,7 +12,15 @@ package w32
 // Simple types https://docs.microsoft.com/en-us/windows/desktop/WinProg/windows-data-types
 type (
 	ClipboardFormat uint
+	HANDLE          uintptr
+	HBITMAP         uintptr
+	HCURSOR         uintptr
+	HDC             uintptr
+	HGDIOBJ         uintptr
+	HICON           uintptr
+	HINSTANCE       uintptr
 	HKEY            uintptr
 	HWND            uintptr
 	LPVOID          uintptr
+	UTF16String     *uint16
 )
