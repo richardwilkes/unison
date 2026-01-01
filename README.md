@@ -16,7 +16,7 @@ Unison requires some setup prior to being able to build correctly:
   mesa-libGL-devel libXi-devel libXxf86vm-devel` packages.
 * On Windows, you need [tdm-gcc](https://jmeubank.github.io/tdm-gcc/download/) as well as [git-scm](https://git-scm.com)
   for its bash shell.
-* See [compilation dependencies](http://www.plaf2.org/docs/latest/compile.html#compile_deps) for full details.
+* See [compilation dependencies](http://www.org/docs/latest/compile.html#compile_deps) for full details.
 
 This version of Unison was built using Go 1.25. It has been compiled under many earlier versions of Go in the past, but
 only Go 1.25+ will be considered as I make further changes.

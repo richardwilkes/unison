@@ -280,7 +280,7 @@ extern "C" {
 #define INPUT_REPEAT  2 // The key was held down until it repeated.
 
 // Key codes
-#define KEY_UNKNOWN       -1
+#define KEY_UNKNOWN       0
 #define KEY_SPACE         32
 #define KEY_APOSTROPHE    39
 #define KEY_COMMA         44

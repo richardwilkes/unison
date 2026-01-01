@@ -10,27 +10,113 @@
 package unison
 
 import (
+	"sync"
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-func platformLateInit() {
+var (
+	pendingFilesLock   sync.Mutex
+	pendingFilesToOpen []string
+	okToIssueFileOpens bool
+)
+
+func beginStartup() error {
+	mac.AppShouldTerminateCallback = func() {
+		var last *Window
+		for len(windowList) > 0 {
+			windowList[0].nativeRequestClose()
+			if len(windowList) != 0 {
+				if windowList[0] == last {
+					break
+				}
+				last = windowList[0]
+			}
+		}
+		xos.Exit(0)
+	}
+	mac.AppDidChangeScreenParameters = func() {
+		for _, w := range windowList {
+			w.glCtx.ctx.Update()
+		}
+	}
+	mac.AppDidFinishLaunchingCallback = func() {
+		mac.PostEmptyEvent()
+		mac.StopMainEventLoop()
+	}
+	mac.OpenFilesCallback = func(paths []string) {
+		pendingFilesLock.Lock()
+		defer pendingFilesLock.Unlock()
+		if okToIssueFileOpens {
+			InvokeTask(func() {
+				if openFilesCallback != nil {
+					openFilesCallback(paths)
+				}
+			})
+		} else {
+			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
+		}
+	}
+	// NOTE: Two additional app delegate callbacks exist: AppWillFinishLaunchingCallback and AppDidHideCallback.
+	if err := mac.InstallMacAppDelegate(); err != nil {
+		return err
+	}
+	fillKeyCodes()
+	initNativeWindowCallbacks()
+	mac.FinishLaunching()
+	return nil
+}
+
+func lateInit() {
 	mac.InstallSystemThemeChangedCallback(ThemeChanged)
 }
 
-func platformBeep() {
+func finalFinishStartup() {
+	pendingFilesLock.Lock()
+	defer pendingFilesLock.Unlock()
+	okToIssueFileOpens = true
+	if len(pendingFilesToOpen) != 0 {
+		paths := pendingFilesToOpen
+		pendingFilesToOpen = nil
+		if openFilesCallback != nil {
+			openFilesCallback(paths)
+		}
+	}
+}
+
+func terminate() error {
+	mac.UninstallMacAppDelegate()
+	return nil
+}
+
+func beep() {
 	mac.Beep()
 }
 
-func platformIsDarkModeTrackingPossible() bool {
+func isColorModeTrackingPossible() bool {
 	return true
 }
 
-func platformIsDarkModeEnabled() bool {
+func isDarkModeEnabled() bool {
 	return mac.IsDarkModeEnabled()
 }
 
-func platformDoubleClickInterval() time.Duration {
+func doubleClickInterval() time.Duration {
 	return mac.DoubleClickInterval()
+}
+
+func pollEvents() {
+	mac.PollEvents()
+}
+
+func waitEvents() {
+	mac.WaitEvents()
+}
+
+func postEmptyEvent() {
+	if plafInited.Load() {
+		mac.PostEmptyEvent()
+	}
 }

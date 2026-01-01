@@ -21,7 +21,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
-	"github.com/richardwilkes/unison/internal/plaf2"
 )
 
 var _ UndoManagerProvider = &Window{}
@@ -31,9 +30,9 @@ var (
 	// to the size desired by the system will be selected and used, scaling if needed. If no images are specified, the
 	// system's default icon will be used.
 	DefaultTitleIcons []*Image
-	windowMap         = make(map[*plaf2.Window]*Window)
 	windowList        []*Window
 	modalStack        []*Window
+	wndWithCurrentCtx *Window
 	glInited          = false
 )
 
@@ -47,7 +46,15 @@ type DragData struct {
 }
 
 // WindowConfig holds the desired window configuration.
-type WindowConfig = plaf2.WindowConfig
+type WindowConfig struct {
+	Share            *Window
+	Title            string
+	Undecorated      bool
+	NotResizable     bool
+	Floating         bool
+	Transparent      bool
+	MousePassThrough bool
+}
 
 // Window holds window information.
 type Window struct {
@@ -58,6 +65,10 @@ type Window struct {
 	MovedCallback func()
 	// ResizedCallback is called when the window is resized.
 	ResizedCallback func()
+	// MinimizedCallback is called when the window is about to beminimized or restored from minimization.
+	MinimizedCallback func(minimized bool)
+	// MaximizedCallback is called when the window is about to be maximized or restored from maximization.
+	MaximizeCallback func(maximized bool)
 	// AllowCloseCallback is called when the user has requested that the window be closed. Return true to permit it,
 	// false to cancel the operation. Defaults to always returning true.
 	AllowCloseCallback func() bool
@@ -67,41 +78,49 @@ type Window struct {
 	DragIntoWindowWillStart func()
 	// DragIntoWindowFinished is called just after a drag into the window completes, whether a drop occurs or not.
 	DragIntoWindowFinished func()
-	wnd                    *plaf2.Window
-	surface                *surface
-	root                   *rootPanel
-	focus                  *Panel
-	cursor                 *Cursor
-	dragDataPanel          *Panel
-	dragData               *DragData
-	lastMouseDownPanel     *Panel
-	lastMouseOverPanel     *Panel
-	lastKeyDownPanel       *Panel
-	lastTooltip            *Panel
-	lastTooltipShownAt     time.Time
-	lastButtonTime         time.Time
-	data                   map[string]any
-	title                  string
-	titleIcons             []*Image
-	lastDrawDuration       time.Duration
-	tooltipSequence        int
-	modalResultCode        int
-	lastButton             int
-	lastButtonCount        int
-	lastContentRect        geom.Rect
-	firstButtonLocation    geom.Point
-	dragDataLocation       geom.Point
-	lastKeyModifiers       Modifiers
-	valid                  bool
-	focused                bool
-	transient              bool
-	notResizable           bool
-	transparent            bool
-	undecorated            bool
-	floating               bool
-	inModal                bool
-	inMouseDown            bool
-	cursorHidden           bool
+	// ContentScaleCallback is called when the backing scale of the window changes.
+	ContentScaleCallback        func(scale geom.Point)
+	surface                     *surface
+	root                        *rootPanel
+	focus                       *Panel
+	cursor                      *Cursor
+	dragDataPanel               *Panel
+	dragData                    *DragData
+	lastMouseDownPanel          *Panel
+	lastMouseOverPanel          *Panel
+	lastKeyDownPanel            *Panel
+	lastTooltip                 *Panel
+	lastTooltipShownAt          time.Time
+	lastButtonTime              time.Time
+	pressedKeys                 map[KeyCode]bool
+	pressedButtons              map[int]bool
+	data                        map[string]any
+	title                       string
+	titleIcons                  []*Image
+	wnd                         platformWindow
+	glCtx                       glContext
+	lastDrawDuration            time.Duration
+	tooltipSequence             int
+	modalResultCode             int
+	lastButton                  int
+	lastButtonCount             int
+	lastContentRect             geom.Rect
+	firstButtonLocation         geom.Point
+	dragDataLocation            geom.Point
+	lastWidth                   float32
+	lastHeight                  float32
+	lastKeyModifiers            Modifiers
+	valid                       bool
+	focused                     bool
+	transient                   bool
+	notResizable                bool
+	transparent                 bool
+	undecorated                 bool
+	floating                    bool
+	inModal                     bool
+	inMouseDown                 bool
+	cursorHiddenUntilMouseMoves bool
+	cursorHidden                bool
 }
 
 // WindowOption holds an option for window creation.
@@ -166,7 +185,7 @@ func AllWindowsToFront() {
 		for i := len(list) - 1; i >= 0; i-- {
 			list[i].Show()
 			if i == 0 {
-				list[i].wnd.Focus()
+				list[i].acquireFocus()
 			}
 		}
 	}
@@ -215,7 +234,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			return nil, err
 		}
 	}
-	cfg := plaf2.WindowConfig{
+	cfg := WindowConfig{
 		Title:            title,
 		NotResizable:     w.notResizable,
 		Undecorated:      w.undecorated,
@@ -223,74 +242,25 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		Floating:         w.floating,
 		MousePassThrough: false,
 	}
-	w.wnd = plaf2.NewWindow(&cfg)
-	if w.wnd == nil {
+	if !w.initNativeWindow(&cfg) {
 		return nil, errs.New("unable to create window")
 	}
-	w.wnd.DrawCallback = func() {
-		delete(redrawSet, w)
-		w.draw()
-	}
-	w.wnd.PosCallback = w.moved
-	w.wnd.SizeCallback = w.resized
-	w.wnd.CloseCallback = func() {
-		if w.okToProcess() {
-			w.AttemptClose()
-		}
-	}
-	w.wnd.FocusCallback = func(focused bool) {
-		if focused {
-			if w.okToProcess() {
-				w.gainedFocus()
-			} else {
-				modalStack[len(modalStack)-1].ToFront()
-			}
-		} else {
-			w.lostFocus()
-		}
-	}
-	w.wnd.MouseButtonCallback = w.mouseButtonCallback
-	w.wnd.MouseMovedCallback = func(pt geom.Point) {
-		pt = w.convertRawMouseLocationForPlatform(pt)
-		if w.inMouseDown {
-			w.mouseDrag(pt, w.lastButton, w.lastKeyModifiers)
-		} else {
-			w.mouseMove(pt, w.lastKeyModifiers)
-		}
-	}
-	w.wnd.MouseEnterCallback = func() {
-		w.mouseEnter(w.MouseLocation(), w.lastKeyModifiers)
-	}
-	w.wnd.MouseExitCallback = w.mouseExit
-	w.wnd.ScrollCallback = func(delta geom.Point, pixels bool) {
-		if !pixels {
-			delta = delta.Mul(16)
-		}
-		w.mouseWheel(w.MouseLocation(), delta, w.lastKeyModifiers)
-	}
-	w.wnd.KeyPressedCallback = w.keyPressed
-	w.wnd.KeyTypedCallback = w.runeTyped
-	w.wnd.KeyReleasedCallback = w.keyReleased
-	w.wnd.DropCallback = func(filePaths []string) {
-		if w.okToProcess() {
-			w.fileDrop(filePaths)
-		}
-	}
-	w.valid = true
+	w.pressedKeys = make(map[KeyCode]bool)
+	w.pressedButtons = make(map[int]bool)
 	windowList = append(windowList, w)
-	windowMap[w.wnd] = w
+	w.valid = true
 	w.root = newRootPanel(w)
 	w.ValidateLayout()
 	w.SetTitleIcons(w.titleIcons)
 	return w, nil
 }
 
-func (w *Window) mouseButtonCallback(button int, pressed bool, mods plaf2.ModifierKeys) {
+func (w *Window) mouseButtonCallback(button int, pressed bool, mods Modifiers) {
 	if !w.okToProcess() {
 		modalStack[len(modalStack)-1].mouseButtonCallback(button, pressed, mods)
 		return
 	}
-	w.lastKeyModifiers = Modifiers(mods)
+	w.lastKeyModifiers = mods
 	where := w.MouseLocation()
 	if pressed {
 		maxDelay, maxMouseDrift := DoubleClickParameters()
@@ -348,24 +318,31 @@ func (w *Window) resized() {
 }
 
 func (w *Window) gainedFocus() {
-	w.focused = true
-	if len(windowList) != 0 && windowList[0] != w {
-		w.removeFromWindowList()
-		windowList = append(windowList, nil)
-		copy(windowList[1:], windowList)
-		windowList[0] = w
+	if w.okToProcess() {
+		w.focused = true
+		if len(windowList) != 0 && windowList[0] != w {
+			windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
+			windowList = append(windowList, nil)
+			copy(windowList[1:], windowList)
+			windowList[0] = w
+		}
+		w.ClearTooltip()
+		if w.focus == nil {
+			w.FocusNext()
+		}
+		if w.focus != nil {
+			w.focus.MarkForRedraw()
+		}
+		if w.GainedFocusCallback != nil {
+			w.GainedFocusCallback()
+		}
+		w.mouseEnter(w.MouseLocation(), 0)
+		if w.cursorInContentArea() {
+			w.updateCursorImage()
+		}
+	} else {
+		modalStack[len(modalStack)-1].ToFront()
 	}
-	w.ClearTooltip()
-	if w.focus == nil {
-		w.FocusNext()
-	}
-	if w.focus != nil {
-		w.focus.MarkForRedraw()
-	}
-	if w.GainedFocusCallback != nil {
-		w.GainedFocusCallback()
-	}
-	w.mouseEnter(w.MouseLocation(), 0)
 }
 
 func (w *Window) lostFocus() {
@@ -380,6 +357,24 @@ func (w *Window) lostFocus() {
 	}
 	if w.root.menuBar != nil {
 		w.root.menuBar.postLostFocus(w)
+	}
+	if len(w.pressedKeys) != 0 {
+		keys := make([]KeyCode, 0, len(w.pressedKeys))
+		for key := range w.pressedKeys {
+			keys = append(keys, key)
+		}
+		for _, key := range keys {
+			w.keyReleased(key, 0)
+		}
+	}
+	if len(w.pressedButtons) != 0 {
+		buttons := make([]int, 0, len(w.pressedButtons))
+		for button := range w.pressedButtons {
+			buttons = append(buttons, button)
+		}
+		for _, button := range buttons {
+			w.nativeMouseClick(button, false, 0)
+		}
 	}
 }
 
@@ -433,6 +428,12 @@ func (w *Window) String() string {
 	return fmt.Sprintf("Window[%s]", w.title)
 }
 
+func (w *Window) nativeRequestClose() {
+	if w.okToProcess() {
+		w.AttemptClose()
+	}
+}
+
 // AttemptClose closes the window if permitted. Returns true on success.
 func (w *Window) AttemptClose() bool {
 	// TODO: Merge this with the plaf2 version
@@ -445,16 +446,6 @@ func (w *Window) AttemptClose() bool {
 	}
 	w.Dispose()
 	return true
-}
-
-func (w *Window) removeFromWindowList() {
-	for i, wnd := range windowList {
-		if w != wnd {
-			continue
-		}
-		windowList = slices.Delete(windowList, i, i+1)
-		break
-	}
 }
 
 // Dispose of the window.
@@ -470,20 +461,28 @@ func (w *Window) Dispose() {
 	if w.root.contentPanel != nil {
 		w.root.contentPanel.RemoveFromParent()
 	}
-	w.removeFromWindowList()
-	delete(windowMap, w.wnd)
 	if w.IsValid() {
 		w.valid = false
 		w.surface.dispose()
-		w.wnd.Destroy()
-		w.wnd = nil
+		w.destroy()
 	}
-	if len(windowMap) == 0 && quitAfterLastWindowClosed() {
+	if len(windowList) == 0 && quitAfterLastWindowClosed() {
 		quitting()
 	}
 	if active != nil && active == w && len(windowList) != 0 {
 		windowList[0].ToFront()
 	}
+}
+
+func (w *Window) destroy() {
+	if w == nil {
+		return
+	}
+	if w == wndWithCurrentCtx {
+		clearOpenGLCurrentContext()
+	}
+	w.nativeDestroy()
+	windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 }
 
 // Title returns the title of this window.
@@ -496,7 +495,7 @@ func (w *Window) SetTitle(title string) {
 	if w.title != title {
 		w.title = title
 		if w.IsValid() {
-			w.wnd.SetTitle(title)
+			w.setTitle(title)
 		}
 	}
 }
@@ -760,13 +759,13 @@ func collectFocusables(current, target *Panel, focusables []*Panel) (match int, 
 
 // IsVisible returns true if the window is currently being shown.
 func (w *Window) IsVisible() bool {
-	return w.IsValid() && w.wnd.Visible()
+	return w.IsValid() && w.visible()
 }
 
 // IsTransparent returns true if the window was created with a transparent backing buffer.
 func (w *Window) IsTransparent() bool {
 	// TODO: May want to update this value at creation time in case the windowing system refused to do what was asked.
-	//       The underlying plaf2.Window.IsTransparent() will determine this.
+	//       The underlying Window.IsTransparent() will determine this.
 	return w.transparent
 }
 
@@ -774,7 +773,7 @@ func (w *Window) IsTransparent() bool {
 // mode, this function does nothing.
 func (w *Window) Show() {
 	if w.IsValid() {
-		w.wnd.Show()
+		w.show()
 		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
 		// last one we had.
 		w.SetContentRect(w.lastContentRect)
@@ -785,7 +784,7 @@ func (w *Window) Show() {
 // function does nothing.
 func (w *Window) Hide() {
 	if w.IsValid() {
-		w.wnd.Hide()
+		w.hide()
 	}
 }
 
@@ -795,33 +794,33 @@ func (w *Window) ToFront() {
 	if w.IsValid() {
 		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
-		w.wnd.Focus()
+		w.acquireFocus()
 	}
 }
 
 // Minimize performs the minimize function on the window.
 func (w *Window) Minimize() {
 	if w.IsValid() {
-		w.wnd.Minimize()
+		w.minimize()
 	}
 }
 
 // Zoom performs the zoom function on the window.
 func (w *Window) Zoom() {
 	if w.IsValid() {
-		w.wnd.Maximize()
+		w.maximize()
 	}
 }
 
 // Resizable returns true if the window can be resized by the user.
 func (w *Window) Resizable() bool {
-	return w.IsValid() && w.wnd.Resizable()
+	return w.IsValid() && !w.notResizable
 }
 
 // MouseLocation returns the current mouse location relative to this window.
 func (w *Window) MouseLocation() geom.Point {
 	if w.IsValid() {
-		return w.convertRawMouseLocationForPlatform(w.wnd.CursorPosition())
+		return w.convertRawMouseLocationForPlatform(w.cursorPosition())
 	}
 	return geom.Point{}
 }
@@ -829,7 +828,7 @@ func (w *Window) MouseLocation() geom.Point {
 // BackingScale returns the scale of the backing store for this window.
 func (w *Window) BackingScale() geom.Point {
 	if w.IsValid() {
-		return w.wnd.ContentScale()
+		return w.backingScale()
 	}
 	return geom.NewPoint(1, 1)
 }
@@ -857,10 +856,12 @@ func (w *Window) Draw(c *Canvas) {
 }
 
 func (w *Window) draw() {
+	delete(redrawSet, w)
 	RebuildDynamicColors()
 	if w.IsValid() {
 		scale := w.BackingScale()
-		w.wnd.MakeOpenGLContextCurrent()
+		w.glCtx.makeCurrent()
+		wndWithCurrentCtx = w
 		if !glInited {
 			xos.ExitIfErr(gl.Init())
 			glInited = true
@@ -876,7 +877,7 @@ func (w *Window) draw() {
 		c.Restore()
 		c.Flush()
 		w.lastDrawDuration = time.Since(start)
-		w.wnd.SwapBuffers()
+		w.glCtx.swapBuffers()
 	}
 }
 
@@ -904,29 +905,39 @@ func (w *Window) FlushDrawing() {
 
 // HideCursor hides the cursor.
 func (w *Window) HideCursor() {
-	if w.IsValid() {
-		w.wnd.HideCursor()
+	if w.IsValid() && !w.cursorHidden {
+		w.cursorHidden = true
+		w.updateCursorVisibility()
 	}
 }
 
 // ShowCursor shows the cursor.
 func (w *Window) ShowCursor() {
-	if w.IsValid() {
-		w.wnd.ShowCursor()
+	if w.IsValid() && w.cursorHidden {
+		w.cursorHidden = false
+		w.updateCursorVisibility()
+	}
+}
+
+func (w *Window) updateCursorVisibility() {
+	if w.focused {
+		if w.cursorInContentArea() {
+			w.updateCursorImage()
+		}
 	}
 }
 
 // HideCursorUntilMouseMoves hides the cursor until the mouse is moved.
 func (w *Window) HideCursorUntilMouseMoves() {
-	if !w.cursorHidden { // TODO: Rename!
-		w.cursorHidden = true
+	if !w.cursorHiddenUntilMouseMoves {
+		w.cursorHiddenUntilMouseMoves = true
 		w.HideCursor()
 	}
 }
 
 func (w *Window) restoreHiddenCursor() {
-	if w.cursorHidden {
-		w.cursorHidden = false
+	if w.cursorHiddenUntilMouseMoves {
+		w.cursorHiddenUntilMouseMoves = false
 		w.ShowCursor()
 	}
 }
@@ -998,9 +1009,14 @@ func (w *Window) updateCursor(target *Panel, where geom.Point) {
 		w.cursor = cursor
 		w.restoreHiddenCursor()
 		if w.IsValid() {
-			w.wnd.SetCursor(w.cursor)
+			w.adjustToCursorChange()
 		}
 	}
+}
+
+func (w *Window) nativeMouseClick(button int, pressed bool, mods Modifiers) {
+	w.pressedButtons[button] = pressed
+	w.mouseButtonCallback(button, pressed, mods)
 }
 
 func (w *Window) mouseDown(where geom.Point, button, clickCount int, mod Modifiers) {
@@ -1106,6 +1122,15 @@ func (w *Window) mouseEnter(where geom.Point, mod Modifiers) {
 	w.lastMouseOverPanel = panel
 }
 
+func (w *Window) nativeMouseMoved(pt geom.Point) {
+	pt = w.convertRawMouseLocationForPlatform(pt)
+	if w.inMouseDown {
+		w.mouseDrag(pt, w.lastButton, w.lastKeyModifiers)
+	} else {
+		w.mouseMove(pt, w.lastKeyModifiers)
+	}
+}
+
 func (w *Window) mouseMove(where geom.Point, mod Modifiers) {
 	w.restoreHiddenCursor()
 	panel := w.root.PanelAt(where)
@@ -1143,6 +1168,13 @@ func (w *Window) mouseExit() {
 	}
 }
 
+func (w *Window) nativeMouseWheel(delta geom.Point, pixels bool) {
+	if !pixels {
+		delta = delta.Mul(16)
+	}
+	w.mouseWheel(w.MouseLocation(), delta, w.lastKeyModifiers)
+}
+
 func (w *Window) mouseWheel(where, delta geom.Point, mod Modifiers) {
 	if w.MouseWheelCallback != nil {
 		stop := false
@@ -1169,16 +1201,16 @@ func (w *Window) mouseWheel(where, delta geom.Point, mod Modifiers) {
 	}
 }
 
-func (w *Window) keyPressed(key int, mods plaf2.ModifierKeys, repeat bool) {
-	keyCode := KeyCode(key)
-	modifiers := Modifiers(mods)
-	w.lastKeyModifiers = modifiers
-	if w.root.preKeyDown(w, keyCode, modifiers, repeat) {
+func (w *Window) keyPressed(key KeyCode, mods Modifiers) {
+	repeat := w.pressedKeys[key]
+	w.pressedKeys[key] = true
+	w.lastKeyModifiers = mods
+	if w.root.preKeyDown(w, key, mods, repeat) {
 		return
 	}
 	if w.KeyDownCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.KeyDownCallback(keyCode, modifiers, repeat) }, nil)
+		xos.SafeCall(func() { stop = w.KeyDownCallback(key, mods, repeat) }, nil)
 		if stop {
 			return
 		}
@@ -1191,7 +1223,7 @@ func (w *Window) keyPressed(key int, mods plaf2.ModifierKeys, repeat bool) {
 		for panel != nil {
 			if panel.Enabled() && panel.KeyDownCallback != nil {
 				stop := false
-				xos.SafeCall(func() { stop = panel.KeyDownCallback(keyCode, modifiers, repeat) }, nil)
+				xos.SafeCall(func() { stop = panel.KeyDownCallback(key, mods, repeat) }, nil)
 				if stop {
 					w.lastKeyDownPanel = panel
 					return
@@ -1199,8 +1231,8 @@ func (w *Window) keyPressed(key int, mods plaf2.ModifierKeys, repeat bool) {
 			}
 			panel = panel.parent
 		}
-		if keyCode == KeyTab && (modifiers&(AllModifiers&^ShiftModifier)) == 0 {
-			if modifiers.ShiftDown() {
+		if key == KeyTab && (mods&(AllModifiers&^ShiftModifier)) == 0 {
+			if mods.ShiftDown() {
 				w.FocusPrevious()
 			} else {
 				w.FocusNext()
@@ -1239,22 +1271,21 @@ func (w *Window) runeTyped(ch rune) {
 	}
 }
 
-func (w *Window) keyReleased(key int, mods plaf2.ModifierKeys) {
-	keyCode := KeyCode(key)
-	modifiers := Modifiers(mods)
-	w.lastKeyModifiers = modifiers
-	if w.root.preKeyUp(w, keyCode, modifiers) {
+func (w *Window) keyReleased(key KeyCode, mods Modifiers) {
+	delete(w.pressedKeys, key)
+	w.lastKeyModifiers = mods
+	if w.root.preKeyUp(w, key, mods) {
 		return
 	}
 	if w.KeyUpCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.KeyUpCallback(keyCode, modifiers) }, nil)
+		xos.SafeCall(func() { stop = w.KeyUpCallback(key, mods) }, nil)
 		if stop {
 			return
 		}
 	}
 	if w.lastKeyDownPanel != nil && w.lastKeyDownPanel.KeyUpCallback != nil {
-		xos.SafeCall(func() { w.lastKeyDownPanel.KeyUpCallback(keyCode, modifiers) }, nil)
+		xos.SafeCall(func() { w.lastKeyDownPanel.KeyUpCallback(key, mods) }, nil)
 	}
 }
 
@@ -1264,17 +1295,19 @@ func (w *Window) LastKeyModifiers() Modifiers {
 }
 
 func (w *Window) fileDrop(files []string) {
-	if w.FileDropCallback != nil {
-		xos.SafeCall(func() { w.FileDropCallback(files) }, nil)
-		return
-	}
-	panel := w.root.PanelAt(w.MouseLocation())
-	for panel != nil {
-		if panel.FileDropCallback != nil && panel.Enabled() {
-			xos.SafeCall(func() { panel.FileDropCallback(files) }, nil)
+	if w.okToProcess() {
+		if w.FileDropCallback != nil {
+			xos.SafeCall(func() { w.FileDropCallback(files) }, nil)
 			return
 		}
-		panel = panel.parent
+		panel := w.root.PanelAt(w.MouseLocation())
+		for panel != nil {
+			if panel.FileDropCallback != nil && panel.Enabled() {
+				xos.SafeCall(func() { panel.FileDropCallback(files) }, nil)
+				return
+			}
+			panel = panel.parent
+		}
 	}
 }
 

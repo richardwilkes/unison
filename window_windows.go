@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/plaf2"
 )
 
 func (w *Window) frameRect() geom.Rect {
@@ -70,7 +69,7 @@ func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point
 	return where
 }
 
-func (w *Window) keyCallbackForPlatform(_ *plaf2.Window, key plaf2.Key, _ int, action plaf2.Action, mods plaf2.ModifierKeys) {
+func (w *Window) keyCallbackForPlatform(_ *Window, key Key, _ int, action Action, mods ModifierKeys) {
 	if w.okToProcess() {
 		w.commonKeyCallbackForPlatform(key, action, mods)
 	}

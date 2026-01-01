@@ -18,11 +18,14 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
-	"github.com/richardwilkes/unison/internal/plaf2"
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
 var (
+	initTermLock                      sync.Mutex
+	initialized                       bool
+	initializing                      bool
+	terminating                       bool
 	redrawSet                         = make(map[*Window]struct{})
 	startupFinishedCallback           func()
 	openFilesCallback                 func([]string) //nolint:unused // Not all platforms use this
@@ -38,9 +41,6 @@ var (
 	currentThemeMode                  = thememode.Auto
 	needPlatformDarkModeUpdate        = true
 	platformDarkModeEnabled           bool
-	pendingFilesLock                  sync.Mutex
-	pendingFilesToOpen                []string
-	okToIssueFileOpens                bool
 )
 
 type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
@@ -65,7 +65,7 @@ func StartupFinishedCallback(f func()) StartupOption {
 }
 
 // OpenFilesCallback will cause f to be called when the application is asked to open one or more files by the OS or an
-// external application. By default, nothing is done with the request.
+// external application. By default, nothing is done with the request. Note that only macOS supports this feature.
 func OpenFilesCallback(f func(urls []string)) StartupOption {
 	return func(_ startupOption) error {
 		openFilesCallback = f
@@ -133,20 +133,7 @@ func Start(options ...StartupOption) {
 	for _, option := range options {
 		xos.ExitIfErr(option(startupOption{}))
 	}
-	plaf2.OpenFilesCallback = func(paths []string) {
-		pendingFilesLock.Lock()
-		defer pendingFilesLock.Unlock()
-		if okToIssueFileOpens {
-			InvokeTask(func() {
-				if openFilesCallback != nil {
-					openFilesCallback(paths)
-				}
-			})
-		} else {
-			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
-		}
-	}
-	xos.ExitIfErr(plaf2.Init())
+	xos.ExitIfErr(start())
 	xos.RunAtExit(quitting)
 	xos.RunAtExit(func() {
 		quitLock.Lock()
@@ -160,8 +147,35 @@ func Start(options ...StartupOption) {
 	}
 }
 
+func start() error {
+	initTermLock.Lock()
+	if initialized {
+		initTermLock.Unlock()
+		return errs.New("already initialized")
+	}
+	if initializing {
+		initTermLock.Unlock()
+		return errs.New("initialization already in progress")
+	}
+	if terminating {
+		initTermLock.Unlock()
+		return errs.New("termination in progress")
+	}
+	initializing = true
+	initTermLock.Unlock()
+	var err error
+	defer func() {
+		initTermLock.Lock()
+		initializing = false
+		initialized = err == nil
+		initTermLock.Unlock()
+	}()
+	err = beginStartup()
+	return err
+}
+
 func processEvents() {
-	plaf2.WaitEvents()
+	waitEvents()
 	processNextTask(uiTaskRecovery)
 	if len(redrawSet) > 0 {
 		set := redrawSet
@@ -179,20 +193,11 @@ func processEvents() {
 func finishStartup() {
 	skiaColorspace = skia.ColorSpaceNewSRGB()
 	RebuildDynamicColors()
-	platformLateInit()
+	lateInit()
 	if startupFinishedCallback != nil {
 		xos.SafeCall(startupFinishedCallback, nil)
 	}
-	pendingFilesLock.Lock()
-	defer pendingFilesLock.Unlock()
-	okToIssueFileOpens = true
-	if len(pendingFilesToOpen) != 0 {
-		paths := pendingFilesToOpen
-		pendingFilesToOpen = nil
-		if openFilesCallback != nil {
-			openFilesCallback(paths)
-		}
-	}
+	finalFinishStartup()
 }
 
 // ThemeChanged marks dynamic colors for rebuilding, calls any installed theme change callback, and then redraws all
@@ -251,9 +256,35 @@ func quitting() {
 	if !calledExit {
 		xos.Exit(0)
 	}
-	if err := plaf2.Terminate(); err != nil {
+	if err := finishQuit(); err != nil {
 		errs.Log(err)
 	}
+}
+
+func finishQuit() error {
+	initTermLock.Lock()
+	if terminating {
+		initTermLock.Unlock()
+		return errs.New("termination already in progress")
+	}
+	if !initialized {
+		initTermLock.Unlock()
+		return errs.New("initialization has not been performed")
+	}
+	terminating = true
+	initTermLock.Unlock()
+	defer func() {
+		initTermLock.Lock()
+		terminating = false
+		initTermLock.Unlock()
+	}()
+	for len(windowList) != 0 {
+		windowList[len(windowList)-1].destroy()
+	}
+	for len(cursorList) != 0 {
+		cursorList[len(cursorList)-1].Destroy()
+	}
+	return terminate()
 }
 
 // AttemptQuit initiates the termination sequence.
@@ -265,13 +296,7 @@ func AttemptQuit() {
 
 // Beep plays the system beep sound.
 func Beep() {
-	platformBeep()
-}
-
-// IsColorModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
-// platforms that return false from this function, thememode.Auto is the same as thememode.Light.
-func IsColorModeTrackingPossible() bool {
-	return platformIsDarkModeTrackingPossible()
+	beep()
 }
 
 // CurrentThemeMode returns the current theme mode state.
@@ -288,6 +313,12 @@ func SetThemeMode(mode thememode.Enum) {
 	}
 }
 
+// IsColorModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
+// platforms that return false from this function, thememode.Auto is the same as thememode.Light.
+func IsColorModeTrackingPossible() bool {
+	return isColorModeTrackingPossible()
+}
+
 // IsDarkModeEnabled returns true if the OS is currently using a "dark mode".
 func IsDarkModeEnabled() bool {
 	switch currentThemeMode {
@@ -298,7 +329,7 @@ func IsDarkModeEnabled() bool {
 	default:
 		if needPlatformDarkModeUpdate {
 			needPlatformDarkModeUpdate = false
-			platformDarkModeEnabled = platformIsDarkModeEnabled()
+			platformDarkModeEnabled = isDarkModeEnabled()
 		}
 		return platformDarkModeEnabled
 	}
@@ -307,17 +338,11 @@ func IsDarkModeEnabled() bool {
 // DoubleClickParameters returns the maximum delay between clicks and the maximum pixel drift allowed to register as a
 // double-click.
 func DoubleClickParameters() (maxDelay time.Duration, maxMouseDrift float32) {
-	return platformDoubleClickInterval(), 5
+	return doubleClickInterval(), 5
 }
 
 // DragGestureParameters returns the minimum delay before mouse movement should be recognized as a drag as well as the
 // minimum pixel drift required to trigger a drag.
 func DragGestureParameters() (minDelay time.Duration, minMouseDrift float32) {
 	return 250 * time.Millisecond, 5
-}
-
-func postEmptyEvent() {
-	if plafInited.Load() {
-		plaf2.PostEmptyEvent()
-	}
 }

@@ -1,4 +1,13 @@
-package plaf2
+// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -11,8 +20,8 @@ func PrimaryDisplay() *Display {
 	return convertDarwinDisplay(mac.MainDisplayID())
 }
 
-// ActiveDisplays returns all currently active displays.
-func ActiveDisplays() []*Display {
+// AllDisplays returns all currently active displays.
+func AllDisplays() []*Display {
 	displayIDs := mac.ActiveDisplayList()
 	result := make([]*Display, 0, len(displayIDs))
 	for _, id := range displayIDs {
@@ -41,7 +50,7 @@ func convertDarwinDisplay(id mac.DisplayID) *Display {
 	display.Usable.Y = height - display.Usable.Bottom()
 	display.Scale = geom.NewPoint(pixels.Width/display.Frame.Width, pixels.Height/display.Frame.Height)
 	sizeMM := mac.DisplayScreenSize(id)
-	display.PPI = (int)(pixels.Width / (sizeMM.Width / 25.4))
+	display.PPI = int(pixels.Width / (sizeMM.Width / 25.4))
 	display.Primary = id == mainDisplayID
 	return &display
 }

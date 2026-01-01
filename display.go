@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/plaf2"
 )
 
 // Display holds information about each available active display.
@@ -76,35 +75,4 @@ func BestDisplayForRect(r geom.Rect) *Display {
 		bestDisplay = PrimaryDisplay()
 	}
 	return bestDisplay
-}
-
-// PrimaryDisplay returns the primary display.
-func PrimaryDisplay() *Display {
-	d := plaf2.PrimaryDisplay()
-	if d == nil {
-		return nil
-	}
-	return &Display{
-		Frame:   d.Frame,
-		Usable:  d.Usable,
-		Scale:   d.Scale,
-		PPI:     d.PPI,
-		Primary: d.Primary,
-	}
-}
-
-// AllDisplays returns all displays.
-func AllDisplays() []*Display {
-	all := plaf2.ActiveDisplays()
-	displays := make([]*Display, len(all))
-	for i, d := range all {
-		displays[i] = &Display{
-			Frame:   d.Frame,
-			Usable:  d.Usable,
-			Scale:   d.Scale,
-			PPI:     d.PPI,
-			Primary: d.Primary,
-		}
-	}
-	return displays
 }

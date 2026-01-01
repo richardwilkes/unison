@@ -11,17 +11,17 @@ package unison
 
 import (
 	"image"
+	"slices"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/plaf2"
 	"golang.org/x/image/draw"
 )
 
 var (
 	arrowCursor               *Cursor
-	pointingCursor            *Cursor
 	moveCursor                *Cursor
+	pointingCursor            *Cursor
 	resizeHorizontalCursor    *Cursor
 	resizeLeftDiagonalCursor  *Cursor
 	resizeRightDiagonalCursor *Cursor
@@ -29,23 +29,11 @@ var (
 	textCursor                *Cursor
 )
 
+var cursorList []*Cursor
+
 // Cursor provides a graphical cursor for the mouse location.
-type Cursor = plaf2.Cursor
-
-// ArrowCursor returns the standard arrow cursor.
-func ArrowCursor() *Cursor {
-	if arrowCursor == nil {
-		arrowCursor = plaf2.ArrowCursor()
-	}
-	return arrowCursor
-}
-
-// PointingCursor returns the standard pointing cursor.
-func PointingCursor() *Cursor {
-	if pointingCursor == nil {
-		pointingCursor = plaf2.PointingHandCursor()
-	}
-	return pointingCursor
+type Cursor struct {
+	cursor nativeCursor
 }
 
 // MoveCursor returns the standard move cursor.
@@ -73,14 +61,6 @@ func ResizeVerticalCursor() *Cursor {
 	return retrieveCursor(ResizeVerticalCursorImage(), &resizeVerticalCursor)
 }
 
-// TextCursor returns the standard text cursor.
-func TextCursor() *Cursor {
-	if textCursor == nil {
-		textCursor = plaf2.IBeamCursor()
-	}
-	return textCursor
-}
-
 func retrieveCursor(img *Image, cursor **Cursor) *Cursor {
 	if *cursor == nil {
 		size := img.LogicalSize()
@@ -96,8 +76,7 @@ func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 		errs.Log(err)
 		return ArrowCursor()
 	}
-
-	// plaf doesn't take the high resolution cursors properly, so scale them down, if needed
+	// TODO: Look at which platforms need this scaling step.
 	logicalSize := img.LogicalSize()
 	size := img.Size()
 	if logicalSize != size {
@@ -106,6 +85,20 @@ func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 		draw.CatmullRom.Scale(dst, dstRect, nrgba, image.Rect(0, 0, int(size.Width), int(size.Height)), draw.Over, nil)
 		nrgba = dst
 	}
+	return newCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
+}
 
-	return plaf2.NewCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
+// Destroy releases the resources associated with the cursor.
+func (c *Cursor) Destroy() {
+	if c == nil {
+		return
+	}
+	for _, w := range windowList {
+		if w.cursor == c {
+			w.cursor = nil
+			w.adjustToCursorChange()
+		}
+	}
+	cursorList = slices.DeleteFunc(cursorList, func(cur *Cursor) bool { return cur == c })
+	c.destroy()
 }

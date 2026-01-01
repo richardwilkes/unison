@@ -145,7 +145,7 @@ type Key int
 // but re-arranged to map to 7-bit ASCII for printable keys (function keys are
 // put in the 256+ range).
 const (
-	KeyUnknown      Key = C.KEY_UNKNOWN
+	KeyNone         Key = C.KEY_UNKNOWN
 	KeySpace        Key = C.KEY_SPACE
 	KeyApostrophe   Key = C.KEY_APOSTROPHE
 	KeyComma        Key = C.KEY_COMMA
@@ -162,7 +162,7 @@ const (
 	Key7            Key = C.KEY_7
 	Key8            Key = C.KEY_8
 	Key9            Key = C.KEY_9
-	KeySemicolon    Key = C.KEY_SEMICOLON
+	KeySemiColon    Key = C.KEY_SEMICOLON
 	KeyEqual        Key = C.KEY_EQUAL
 	KeyA            Key = C.KEY_A
 	KeyB            Key = C.KEY_B
@@ -314,8 +314,7 @@ const (
 // GetKeyScancode function returns the platform-specific scancode of the
 // specified key.
 //
-// If the key is KeyUnknown or does not exist on the keyboard this method will
-// return -1.
+// If the key is KeyNone or does not exist on the keyboard this method will return 0.
 func GetKeyScancode(key Key) int {
 	return int(C.plafGetKeyScancode(C.int(key)))
 }

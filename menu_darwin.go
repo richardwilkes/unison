@@ -152,12 +152,10 @@ func (m *macMenu) Count() int {
 func (m *macMenu) Popup(where geom.Rect, itemIndex int) {
 	if w := ActiveWindow(); w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {
-			wnd := w.wnd.NativeWindow()
-			view := w.wnd.NativeView()
-			frame := view.Frame()
+			frame := w.wnd.view.Frame()
 			where.X += 8
 			where.Y = frame.Height - where.Bottom()
-			m.menu.Popup(wnd, m.menu, m.menu.ItemAtIndex(itemIndex), where)
+			m.menu.Popup(w.wnd.wnd, m.menu, m.menu.ItemAtIndex(itemIndex), where)
 		}
 	}
 }

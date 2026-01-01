@@ -1,43 +1,43 @@
-package plaf2
+package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-type platformGraphicsContext struct {
+type glContext struct {
 	pixelFormat mac.OpenGLPixelFormatRef
 	ctx         mac.OpenGLContextRef
 }
 
-func (w *Window) createOpenGLContext(share *Window, transparent bool) error {
+func (c *glContext) create(wnd, share *Window, transparent bool) error {
 	pixFmt := mac.NewOpenGLPixelFormat()
 	if pixFmt == 0 {
 		return errs.New("failed to create OpenGL pixel format")
 	}
 	var shareCtx mac.OpenGLContextRef
 	if share != nil {
-		shareCtx = share.plGctx.ctx
+		shareCtx = share.glCtx.ctx
 	}
-	ctx := mac.NewOpenGLContext(w.plWnd.view, pixFmt, shareCtx, transparent)
+	ctx := mac.NewOpenGLContext(wnd.wnd.view, pixFmt, shareCtx, transparent)
 	if ctx == 0 {
 		pixFmt.Release()
 		return errs.New("failed to create OpenGL context")
 	}
-	w.plGctx.pixelFormat = pixFmt
-	w.plGctx.ctx = ctx
+	c.pixelFormat = pixFmt
+	c.ctx = ctx
 	return nil
 }
 
-func (c *platformGraphicsContext) MakeCurrent() {
+func (c *glContext) makeCurrent() {
 	c.ctx.MakeCurrent()
 }
 
-func (c *platformGraphicsContext) SwapBuffers() {
+func (c *glContext) swapBuffers() {
 	c.ctx.FlushBuffer()
 }
 
-func (c *platformGraphicsContext) destroy() {
+func (c *glContext) destroy() {
 	if c.ctx != 0 {
 		c.ctx.Release()
 		c.ctx = 0
@@ -50,4 +50,5 @@ func (c *platformGraphicsContext) destroy() {
 
 func clearOpenGLCurrentContext() {
 	mac.ClearOpenGLCurrentContext()
+	wndWithCurrentCtx = nil
 }

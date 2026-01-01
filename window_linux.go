@@ -86,9 +86,9 @@ func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point
 	return where
 }
 
-func (w *Window) keyCallbackForPlatform(_ *plaf2.Window, key plaf2.Key, _ int, action plaf2.Action, mods plaf2.ModifierKeys) {
+func (w *Window) keyCallbackForPlatform(_ *Window, key Key, _ int, action Action, mods ModifierKeys) {
 	if w.okToProcess() {
-		if action == plaf2.Release {
+		if action == Release {
 			mods &= ^keyToModifierForPlatform(key)
 		} else {
 			mods |= keyToModifierForPlatform(key)
@@ -104,16 +104,16 @@ func (w *Window) CurrentKeyModifiers() Modifiers {
 	return w.LastKeyModifiers()
 }
 
-func keyToModifierForPlatform(key plaf2.Key) plaf2.ModifierKeys {
+func keyToModifierForPlatform(key Key) ModifierKeys {
 	switch key {
-	case plaf2.KeyLeftControl, plaf2.KeyRightControl:
-		return plaf2.ModControl
-	case plaf2.KeyLeftShift, plaf2.KeyRightShift:
-		return plaf2.ModShift
-	case plaf2.KeyLeftAlt, plaf2.KeyRightAlt:
-		return plaf2.ModAlt
-	case plaf2.KeyLeftSuper, plaf2.KeyRightSuper:
-		return plaf2.ModSuper
+	case KeyLeftControl, KeyRightControl:
+		return ModControl
+	case KeyLeftShift, KeyRightShift:
+		return ModShift
+	case KeyLeftAlt, KeyRightAlt:
+		return ModAlt
+	case KeyLeftSuper, KeyRightSuper:
+		return ModSuper
 	default:
 		return 0
 	}

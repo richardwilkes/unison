@@ -14,6 +14,8 @@ import (
 	"strings"
 )
 
+// TODO: Determine if I should remove NumLockModifer, as macOS doesn't really have a Num Lock key.
+
 // Possible Modifiers values.
 const (
 	ShiftModifier Modifiers = 1 << iota
