@@ -12,6 +12,18 @@ package w32
 import (
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
+
+var (
+	gdi32                   = syscall.NewLazyDLL("gdi32.dll")
+	createBitmapProc        = gdi32.NewProc("CreateBitmap")
+	createDIBSectionProc    = gdi32.NewProc("CreateDIBSection")
+	deleteObjectProc        = gdi32.NewProc("DeleteObject")
+	describePixelFormatProc = gdi32.NewProc("DescribePixelFormat")
+	setPixelFormatProc      = gdi32.NewProc("SetPixelFormat")
+	swapBuffersProc         = gdi32.NewProc("SwapBuffers")
 )
 
 // https://learn.microsoft.com/openspecs/windows_protocols/ms-emf/a5e722e3-891a-4a67-be1a-ed5a48a7fda1
@@ -62,12 +74,30 @@ type BITMAPV5HEADER struct {
 	BV5Reserved      uint32
 }
 
-var (
-	gdi32                = syscall.NewLazyDLL("gdi32.dll")
-	createBitmapProc     = gdi32.NewProc("CreateBitmap")
-	createDIBSectionProc = gdi32.NewProc("CreateDIBSection")
-	deleteObjectProc     = gdi32.NewProc("DeleteObject")
-)
+// PIXELFORMATDESCRIPTOR http://msdn.microsoft.com/en-us/library/windows/desktop/dd368826.aspx
+type PIXELFORMATDESCRIPTOR struct {
+	Size                   uint16
+	Version                uint16
+	DwFlags                uint32
+	IPixelType             byte
+	ColorBits              byte
+	RedBits, RedShift      byte
+	GreenBits, GreenShift  byte
+	BlueBits, BlueShift    byte
+	AlphaBits, AlphaShift  byte
+	AccumBits              byte
+	AccumRedBits           byte
+	AccumGreenBits         byte
+	AccumBlueBits          byte
+	AccumAlphaBits         byte
+	DepthBits, StencilBits byte
+	AuxBuffers             byte
+	ILayerType             byte
+	Reserved               byte
+	DwLayerMask            uint32
+	DwVisibleMask          uint32
+	DwDamageMask           uint32
+}
 
 // CreateBitmap https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createbitmap
 func CreateBitmap(width, height int32, planes, bitsPerPixel uint16, bits []byte) HBITMAP {
@@ -76,7 +106,8 @@ func CreateBitmap(width, height int32, planes, bitsPerPixel uint16, bits []byte)
 }
 
 // CreateDIBSection https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createdibsection
-func CreateDIBSection(hdc HDC, pbmi *BITMAPV5HEADER, iUsage uint, ppvBits **byte, hSection HANDLE, dwOffset uint) HBITMAP {
+func CreateDIBSection(hdc HDC, pbmi *BITMAPV5HEADER, iUsage uint, ppvBits **byte, hSection windows.Handle, dwOffset uint) HBITMAP {
+	pbmi.BV5Size = uint32(unsafe.Sizeof(*pbmi))
 	ret, _, _ := createDIBSectionProc.Call(uintptr(hdc), uintptr(unsafe.Pointer(pbmi)), uintptr(iUsage), uintptr(unsafe.Pointer(ppvBits)), uintptr(hSection), uintptr(dwOffset))
 	return HBITMAP(ret)
 }
@@ -84,5 +115,24 @@ func CreateDIBSection(hdc HDC, pbmi *BITMAPV5HEADER, iUsage uint, ppvBits **byte
 // DeleteObject https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-deleteobject
 func DeleteObject(hObject HGDIOBJ) bool {
 	ret, _, _ := deleteObjectProc.Call(uintptr(hObject))
+	return ret&0xff != 0
+}
+
+// DescribePixelFormat https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-describepixelformat
+func DescribePixelFormat(hdc HDC, iPixelFormat int32, nBytes uint32, ppfd *PIXELFORMATDESCRIPTOR) int32 {
+	ret, _, _ := describePixelFormatProc.Call(uintptr(hdc), uintptr(iPixelFormat), uintptr(nBytes),
+		uintptr(unsafe.Pointer(ppfd)))
+	return int32(ret)
+}
+
+// SetPixelFormat https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-setpixelformat
+func SetPixelFormat(hdc HDC, iPixelFormat int32, pfd *PIXELFORMATDESCRIPTOR) bool {
+	ret, _, _ := setPixelFormatProc.Call(uintptr(hdc), uintptr(iPixelFormat), uintptr(unsafe.Pointer(pfd)))
+	return ret&0xff != 0
+}
+
+// SwapBuffers https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-swapbuffers
+func SwapBuffers(hdc HDC) bool {
+	ret, _, _ := swapBuffersProc.Call(uintptr(hdc))
 	return ret&0xff != 0
 }

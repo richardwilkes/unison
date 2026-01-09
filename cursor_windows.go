@@ -22,21 +22,6 @@ type nativeCursor struct {
 }
 
 func newCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
-	bounds := img.Bounds()
-	w := bounds.Dx()
-	h := bounds.Dy()
-	var bi w32.BITMAPV5HEADER
-	bi.BV5Size = uint32(unsafe.Sizeof(bi))
-	bi.BV5Width = int32(w)
-	bi.BV5Height = int32(-h)
-	bi.BV5Planes = 1
-	bi.BV5BitCount = 32
-	bi.BV5Compression = w32.BI_BITFIELDS
-	bi.BV5RedMask = 0x00ff0000
-	bi.BV5GreenMask = 0x0000ff00
-	bi.BV5BlueMask = 0x000000ff
-	bi.BV5AlphaMask = 0xff000000
-
 	dc := w32.GetDC(0)
 	if dc == 0 {
 		return nil
@@ -44,7 +29,20 @@ func newCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 	defer w32.ReleaseDC(0, dc)
 
 	var ppvBits *byte
-	color := w32.CreateDIBSection(dc, &bi, w32.DIB_RGB_COLORS, &ppvBits, 0, 0)
+	bounds := img.Bounds()
+	w := bounds.Dx()
+	h := bounds.Dy()
+	color := w32.CreateDIBSection(dc, &w32.BITMAPV5HEADER{
+		BV5Width:       int32(w),
+		BV5Height:      int32(-h),
+		BV5Planes:      1,
+		BV5BitCount:    32,
+		BV5Compression: w32.BI_BITFIELDS,
+		BV5RedMask:     0x00ff0000,
+		BV5GreenMask:   0x0000ff00,
+		BV5BlueMask:    0x000000ff,
+		BV5AlphaMask:   0xff000000,
+	}, w32.DIB_RGB_COLORS, &ppvBits, 0, 0)
 	if color == 0 {
 		return nil
 	}

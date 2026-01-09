@@ -18,12 +18,21 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/w32"
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
-var appUsesLightThemeValue = uint32(1)
+var (
+	appUsesLightThemeValue = uint32(1)
+	helperWnd              windows.HWND // TODO: Create this during initialization
+)
 
-func platformLateInit() {
+func beginStartup() error {
+	// TODO: Does this need anything?
+	return nil
+}
+
+func lateInit() {
 	keyPath := `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
 	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, syscall.KEY_NOTIFY|registry.QUERY_VALUE)
 	if err != nil {
@@ -47,19 +56,28 @@ func platformLateInit() {
 	}()
 }
 
-func platformBeep() {
+func finalFinishStartup() {
+	// TODO: Does this need anything?
+}
+
+func terminate() error {
+	// TODO: Does this need anything?
+	return nil
+}
+
+func beep() {
 	w32.MessageBeep(w32.MBDefault)
 }
 
-func platformIsDarkModeTrackingPossible() bool {
+func isColorModeTrackingPossible() bool {
 	return true
 }
 
-func platformIsDarkModeEnabled() bool {
+func isDarkModeEnabled() bool {
 	return atomic.LoadUint32(&appUsesLightThemeValue) == 0
 }
 
-func platformDoubleClickInterval() time.Duration {
+func doubleClickInterval() time.Duration {
 	return w32.GetDoubleClickTime()
 }
 
@@ -82,4 +100,67 @@ func updateTheme(k registry.Key, sync bool) error {
 		}
 	}
 	return nil
+}
+
+func pollEvents() {
+	/*
+		TODO: IMPLEMENT!
+
+		MSG msg;
+		plafWindow* window;
+		while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+			if (msg.message == WM_QUIT) {
+				window = _plaf.windowListHead;
+				while (window) {
+					_plafInputWindowCloseRequest(window);
+					window = window->next;
+				}
+			} else {
+				TranslateMessage(&msg);
+				DispatchMessageW(&msg);
+			}
+		}
+		HWND handle = GetActiveWindow();
+		if (handle) {
+			window = GetPropW(handle, L"PLAF");
+			if (window) {
+				int i;
+				const int keys[4][2] = {
+					{ VK_LSHIFT, KEY_LEFT_SHIFT },
+					{ VK_RSHIFT, KEY_RIGHT_SHIFT },
+					{ VK_LWIN, KEY_LEFT_SUPER },
+					{ VK_RWIN, KEY_RIGHT_SUPER }
+				};
+				for (i = 0; i < 4; i++) {
+					const int vk = keys[i][0];
+					const int key = keys[i][1];
+					const int scancode = _plaf.scanCodes[key];
+					if ((GetKeyState(vk) & 0x8000)) {
+						continue;
+					}
+					if (window->keys[key] != INPUT_PRESS) {
+						continue;
+					}
+					_plafInputKey(window, key, scancode, INPUT_RELEASE, getKeyMods());
+				}
+			}
+		}
+	*/
+}
+
+func waitEvents() {
+	/*
+		TODO: IMPLEMENT!
+		w32.WaitMessage();
+		plafPollEvents();
+	*/
+}
+
+func postEmptyEvent() {
+	if plafInited.Load() {
+		/*
+			TODO: IMPLEMENT!
+			w32.PostMessageW(_plaf.win32HelperWindowHandle, WM_NULL, 0, 0)
+		*/
+	}
 }

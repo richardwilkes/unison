@@ -11,16 +11,23 @@ package w32
 
 // Simple types https://docs.microsoft.com/en-us/windows/desktop/WinProg/windows-data-types
 type (
+	ATOM            uintptr
 	ClipboardFormat uint
-	HANDLE          uintptr
 	HBITMAP         uintptr
+	HBRUSH          uintptr
 	HCURSOR         uintptr
 	HDC             uintptr
 	HGDIOBJ         uintptr
+	HGLRC           uintptr
 	HICON           uintptr
 	HINSTANCE       uintptr
 	HKEY            uintptr
-	HWND            uintptr
+	HMENU           uintptr
+	HMODULE         uintptr
+	HMONITOR        uintptr
+	LPARAM          uintptr
 	LPVOID          uintptr
+	LRESULT         uintptr
 	UTF16String     *uint16
+	WPARAM          uintptr
 )

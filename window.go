@@ -764,8 +764,6 @@ func (w *Window) IsVisible() bool {
 
 // IsTransparent returns true if the window was created with a transparent backing buffer.
 func (w *Window) IsTransparent() bool {
-	// TODO: May want to update this value at creation time in case the windowing system refused to do what was asked.
-	//       The underlying Window.IsTransparent() will determine this.
 	return w.transparent
 }
 

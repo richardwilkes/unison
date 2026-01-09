@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -10,7 +10,11 @@
 package w32
 
 import (
+	"runtime"
 	"syscall"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -21,18 +25,35 @@ const (
 )
 
 var (
-	kernel32          = syscall.NewLazyDLL("kernel32.dll")
-	attachConsoleProc = kernel32.NewProc("AttachConsole")
-	globalAllocProc   = kernel32.NewProc("GlobalAlloc")
-	globalFreeProc    = kernel32.NewProc("GlobalFree")
-	globalLockProc    = kernel32.NewProc("GlobalLock")
-	globalUnlockProc  = kernel32.NewProc("GlobalUnlock")
+	kernel32                = syscall.NewLazyDLL("kernel32.dll")
+	attachConsoleProc       = kernel32.NewProc("AttachConsole")
+	getModuleHandleWProc    = kernel32.NewProc("GetModuleHandleW")
+	globalAllocProc         = kernel32.NewProc("GlobalAlloc")
+	globalFreeProc          = kernel32.NewProc("GlobalFree")
+	globalLockProc          = kernel32.NewProc("GlobalLock")
+	globalUnlockProc        = kernel32.NewProc("GlobalUnlock")
+	verSetConditionMaskProc = kernel32.NewProc("VerSetConditionMask")
 )
 
 // AttachConsole https://docs.microsoft.com/en-us/windows/console/attachconsole
 func AttachConsole(processID uint32) bool {
 	r1, _, _ := attachConsoleProc.Call(uintptr(processID))
 	return r1&0xff != 0
+}
+
+// GetModuleHandleW https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlew
+func GetModuleHandleW(name string) HMODULE {
+	var moduleName *uint16
+	if name != "" {
+		utf16Name, err := windows.UTF16FromString(name)
+		if err != nil {
+			return 0
+		}
+		defer runtime.KeepAlive(utf16Name)
+		moduleName = &utf16Name[0]
+	}
+	ret, _, _ := getModuleHandleWProc.Call(uintptr(unsafe.Pointer(moduleName)))
+	return HMODULE(ret)
 }
 
 // GlobalAlloc https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalalloc
@@ -56,4 +77,10 @@ func GlobalLock(handle syscall.Handle) uintptr {
 func GlobalUnlock(handle syscall.Handle) bool {
 	b, _, _ := globalUnlockProc.Call(uintptr(handle))
 	return b&0xff != 0
+}
+
+// VerSetConditionMask https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-versetconditionmask
+func VerSetConditionMask(mask uint64, typeMask uint32, condition byte) uint64 {
+	ret, _, _ := verSetConditionMaskProc.Call(uintptr(mask), uintptr(typeMask), uintptr(condition))
+	return uint64(ret)
 }
