@@ -31,6 +31,8 @@ var (
 	dragAcceptFilesProc             = user32.NewProc("DragAcceptFiles")
 	emptyClipboardProc              = user32.NewProc("EmptyClipboard")
 	enumClipboardFormatsProc        = user32.NewProc("EnumClipboardFormats")
+	enumDisplayDevicesWProc         = user32.NewProc("EnumDisplayDevicesW")
+	enumDisplayMonitorsProc         = user32.NewProc("EnumDisplayMonitors")
 	getActiveWindowProc             = user32.NewProc("GetActiveWindow")
 	getClientRectProc               = user32.NewProc("GetClientRect")
 	getClipboardDataProc            = user32.NewProc("GetClipboardData")
@@ -38,6 +40,7 @@ var (
 	procGetDCProc                   = user32.NewProc("GetDC")
 	getDoubleClickTimeProc          = user32.NewProc("GetDoubleClickTime")
 	getDpiForWindowProc             = user32.NewProc("GetDpiForWindow")
+	getMonitorInfoWProc             = user32.NewProc("GetMonitorInfoW")
 	getSysColorProc                 = user32.NewProc("GetSysColor")
 	getWindowPlacementProc          = user32.NewProc("GetWindowPlacement")
 	loadImageWProc                  = user32.NewProc("LoadImageW")
@@ -694,6 +697,25 @@ const (
 	HWND_BOTTOM    windows.HWND = 1
 )
 
+const (
+	DISPLAY_DEVICE_ACTIVE         = 0x00000001
+	DISPLAY_DEVICE_MODESPRUNED    = 0x08000000
+	DISPLAY_DEVICE_PRIMARY_DEVICE = 0x00000004
+)
+
+const (
+	MONITORINFOF_PRIMARY = 0x00000001
+)
+
+type MONITOR_DPI_TYPE int32
+
+const (
+	MDT_EFFECTIVE_DPI MONITOR_DPI_TYPE = 0
+	MDT_ANGULAR_DPI   MONITOR_DPI_TYPE = 1
+	MDT_RAW_DPI       MONITOR_DPI_TYPE = 2
+	MDT_DEFAULT       MONITOR_DPI_TYPE = MDT_EFFECTIVE_DPI
+)
+
 // ICONINFO https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-iconinfo
 type ICONINFO struct {
 	Icon     int32 // 1 for icon, 0 for cursor.
@@ -747,6 +769,24 @@ type WINDOWPLACEMENT struct {
 	MaxPosition    POINT
 	NormalPosition RECT
 	Device         RECT
+}
+
+// DISPLAY_DEVICEW https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-display_devicew
+type DISPLAY_DEVICEW struct {
+	size         uint32
+	DeviceName   [32]uint16
+	DeviceString [128]uint16
+	StateFlags   uint32
+	DeviceID     [128]uint16
+	DeviceKey    [128]uint16
+}
+
+// MONITORINFO https://docs.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-monitorinfo
+type MONITORINFO struct {
+	size    uint32
+	Monitor RECT
+	Work    RECT
+	Flags   uint32
 }
 
 // AdjustWindowRectEx https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-adjustwindowrectex
@@ -848,6 +888,46 @@ func EnumClipboardFormats(format ClipboardFormat) ClipboardFormat {
 	return ClipboardFormat(r)
 }
 
+// EnumDisplayDevicesW https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaydevicesw
+func EnumDisplayDevicesW(device string, iDevNum uint32, dwFlags uint32, displayDevice *DISPLAY_DEVICEW) bool {
+	var lpDevice *uint16
+	if device != "" {
+		var err error
+		lpDevice, err = windows.UTF16PtrFromString(device)
+		if err != nil {
+			return false
+		}
+	}
+	displayDevice.size = uint32(unsafe.Sizeof(displayDevice))
+	b, _, _ := enumDisplayDevicesWProc.Call(uintptr(unsafe.Pointer(lpDevice)), uintptr(iDevNum),
+		uintptr(unsafe.Pointer(displayDevice)), uintptr(dwFlags))
+	runtime.KeepAlive(lpDevice)
+	return b&0xff != 0
+}
+
+// EnumDisplayMonitors https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaymonitors
+func EnumDisplayMonitors(hdc HDC, lprcClip *RECT, callback uintptr, dwData uintptr) bool {
+	ret, _, _ := enumDisplayMonitorsProc.Call(uintptr(hdc), uintptr(unsafe.Pointer(lprcClip)), callback, dwData)
+	return ret&0xff != 0
+}
+
+// NewEnumDisplayMonitorsCallback creates a new callback for EnumDisplayMonitors. There are a limited number of
+// callbacks that may be created on Windows, so allocate these once and reuse them where possible.
+func NewEnumDisplayMonitorsCallback(callback func(monitor HMONITOR, hdc HDC, bounds RECT, lParam uintptr) bool) uintptr {
+	return syscall.NewCallback(
+		func(monitor HMONITOR, hdc HDC, bounds *RECT, lParam uintptr) uintptr {
+			var r RECT
+			if bounds != nil {
+				r = *bounds
+			}
+			if callback(monitor, hdc, r, lParam) {
+				return 1
+			}
+			return 0
+		},
+	)
+}
+
 // GetActiveWindow https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getactivewindow
 func GetActiveWindow() windows.HWND {
 	hwnd, _, _ := getActiveWindowProc.Call()
@@ -888,6 +968,13 @@ func GetDoubleClickTime() time.Duration {
 func GetDpiForWindow(hwnd windows.HWND) uint32 {
 	dpi, _, _ := getDpiForWindowProc.Call(uintptr(hwnd))
 	return uint32(dpi)
+}
+
+// GetMonitorInfoW https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow
+func GetMonitorInfoW(monitor HMONITOR, monitorInfo *MONITORINFO) bool {
+	monitorInfo.size = uint32(unsafe.Sizeof(*monitorInfo))
+	b, _, _ := getMonitorInfoWProc.Call(uintptr(monitor), uintptr(unsafe.Pointer(monitorInfo)))
+	return b&0xff != 0
 }
 
 // GetSysColor https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsyscolor
