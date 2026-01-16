@@ -27,8 +27,8 @@ var (
 	closeClipboardProc              = user32.NewProc("CloseClipboard")
 	createIconIndirectProc          = user32.NewProc("CreateIconIndirect")
 	createWindowExWProc             = user32.NewProc("CreateWindowExW")
+	defWindowProcWProc              = user32.NewProc("DefWindowProcW")
 	destroyIconProc                 = user32.NewProc("DestroyIcon")
-	dragAcceptFilesProc             = user32.NewProc("DragAcceptFiles")
 	emptyClipboardProc              = user32.NewProc("EmptyClipboard")
 	enumClipboardFormatsProc        = user32.NewProc("EnumClipboardFormats")
 	enumDisplayDevicesWProc         = user32.NewProc("EnumDisplayDevicesW")
@@ -52,6 +52,7 @@ var (
 	setClipboardDataProc            = user32.NewProc("SetClipboardData")
 	setWindowPlacementProc          = user32.NewProc("SetWindowPlacement")
 	setWindowPosProc                = user32.NewProc("SetWindowPos")
+	setWindowTextWProc              = user32.NewProc("SetWindowTextW")
 )
 
 // Clipboard format types https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
@@ -861,19 +862,16 @@ func CreateWindowExW(exStyle uint32, className, windowName string, style uint32,
 	return windows.HWND(ret)
 }
 
+// DefWindowProcW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-defwindowprocw
+func DefWindowProcW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) uintptr {
+	ret, _, _ := defWindowProcWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
+	return ret
+}
+
 // DestroyIcon https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-destroyicon
 func DestroyIcon(icon HICON) bool {
 	b, _, _ := destroyIconProc.Call(uintptr(icon))
 	return b&0xff != 0
-}
-
-// DragAcceptFiles https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-dragacceptfiles
-func DragAcceptFiles(hwnd windows.HWND, accept bool) {
-	var a uint32
-	if accept {
-		a = 1
-	}
-	dragAcceptFilesProc.Call(uintptr(hwnd), uintptr(a))
 }
 
 // EmptyClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-emptyclipboard
@@ -897,11 +895,11 @@ func EnumDisplayDevicesW(device string, iDevNum uint32, dwFlags uint32, displayD
 		if err != nil {
 			return false
 		}
+		runtime.KeepAlive(lpDevice)
 	}
 	displayDevice.size = uint32(unsafe.Sizeof(displayDevice))
 	b, _, _ := enumDisplayDevicesWProc.Call(uintptr(unsafe.Pointer(lpDevice)), uintptr(iDevNum),
 		uintptr(unsafe.Pointer(displayDevice)), uintptr(dwFlags))
-	runtime.KeepAlive(lpDevice)
 	return b&0xff != 0
 }
 
@@ -1050,5 +1048,19 @@ func SetWindowPlacement(hwnd windows.HWND, placement *WINDOWPLACEMENT) bool {
 func SetWindowPos(hwnd windows.HWND, hwndInsertAfter windows.HWND, x, y, cx, cy int32, uFlags uint32) bool {
 	b, _, _ := setWindowPosProc.Call(uintptr(hwnd), uintptr(hwndInsertAfter), uintptr(x), uintptr(y),
 		uintptr(cx), uintptr(cy), uintptr(uFlags))
+	return b&0xff != 0
+}
+
+// SetWindowTextW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowtextw
+func SetWindowTextW(hwnd windows.HWND, text string) bool {
+	var lpString *uint16
+	if text != "" {
+		var err error
+		if lpString, err = windows.UTF16PtrFromString(text); err != nil {
+			return false
+		}
+		defer runtime.KeepAlive(lpString)
+	}
+	b, _, _ := setWindowTextWProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(lpString)))
 	return b&0xff != 0
 }

@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
@@ -49,14 +50,14 @@ func findWindowByHWND(wnd windows.HWND) *Window {
 	return nil
 }
 
-func (w *Window) initNativeWindow(cfg *WindowConfig) bool {
+func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	style := w.windowStyle()
 	exStyle := w.windowExStyle()
 	if mainWndClass == 0 {
 		mainInstance = w32.HINSTANCE(w32.GetModuleHandleW(""))
 		className, err := windows.UTF16FromString(wndProcClassName)
 		if err != nil {
-			return false
+			return errs.New("unable to create window class name")
 		}
 		defer runtime.KeepAlive(className)
 		mainWndClass = w32.RegisterClassExW(&w32.WNDCLASSEX{
@@ -69,7 +70,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) bool {
 				w32.LR_DEFAULT_SIZE|w32.LR_SHARED)),
 		})
 		if mainWndClass == 0 {
-			return false
+			return errs.New("unable to register window class")
 		}
 	}
 	var frameX, frameY, frameWidth, frameHeight int32
@@ -87,7 +88,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) bool {
 	w.wnd.wnd = w32.CreateWindowExW(exStyle, wndProcClassName, w.title, style, frameX, frameY, frameWidth, frameHeight,
 		0, 0, mainInstance, 0)
 	if w.wnd.wnd == 0 {
-		return false
+		return errs.New("unable to create window")
 	}
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_DROPFILES, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYDATA, w32.MSGFLT_ALLOW, nil)
@@ -116,12 +117,84 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) bool {
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
-	return true
+	return nil
 }
 
 func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
-	// TODO: IMPLEMENT!
-	return 0
+	w := findWindowByHWND(hWnd)
+	if w == nil {
+		switch uMsg {
+		case w32.WM_NCCREATE:
+			// TODO: IMPLEMENT!
+		case w32.WM_DISPLAYCHANGE:
+			// TODO: IMPLEMENT!
+		}
+	} else {
+		switch uMsg {
+		case w32.WM_MOUSEACTIVATE:
+			// TODO: Implement!
+		case w32.WM_CAPTURECHANGED:
+			// TODO: Implement!
+		case w32.WM_SETFOCUS:
+		// TODO: IMPLEMENT!
+		case w32.WM_KILLFOCUS:
+			// TODO: IMPLEMENT!
+		case w32.WM_SYSCOMMAND:
+			// TODO: IMPLEMENT!
+		case w32.WM_CLOSE:
+			// TODO: IMPLEMENT!
+		case w32.WM_INPUTLANGCHANGE:
+			// TODO: IMPLEMENT!
+		case w32.WM_CHAR, w32.WM_SYSCHAR:
+			// TODO: IMPLEMENT!
+		case w32.WM_UNICHAR:
+		// TODO: IMPLEMENT!
+		case w32.WM_KEYDOWN, w32.WM_SYSKEYDOWN, w32.WM_KEYUP, w32.WM_SYSKEYUP:
+		// TODO: IMPLEMENT!
+		case w32.WM_LBUTTONDOWN, w32.WM_RBUTTONDOWN, w32.WM_MBUTTONDOWN, w32.WM_XBUTTONDOWN, w32.WM_LBUTTONUP,
+			w32.WM_RBUTTONUP, w32.WM_MBUTTONUP, w32.WM_XBUTTONUP:
+			// TODO: IMPLEMENT!
+		case w32.WM_MOUSEMOVE:
+			// TODO: IMPLEMENT!
+		case w32.WM_INPUT:
+			// TODO: IMPLEMENT!
+		case w32.WM_MOUSELEAVE:
+			// TODO: IMPLEMENT!
+		case w32.WM_MOUSEWHEEL:
+			// TODO: IMPLEMENT!
+		case w32.WM_MOUSEHWHEEL:
+			// TODO: IMPLEMENT!
+		case w32.WM_ENTERSIZEMOVE, w32.WM_ENTERMENULOOP:
+			// TODO: IMPLEMENT!
+		case w32.WM_EXITSIZEMOVE, w32.WM_EXITMENULOOP:
+			// TODO: IMPLEMENT!
+		case w32.WM_SIZE:
+		// TODO: IMPLEMENT!
+		case w32.WM_MOVE:
+			// TODO: IMPLEMENT!
+		case w32.WM_SIZING:
+			// TODO: IMPLEMENT!
+		case w32.WM_GETMINMAXINFO:
+			// TODO: IMPLEMENT!
+		case w32.WM_PAINT:
+			// TODO: IMPLEMENT!
+		case w32.WM_ERASEBKGND:
+			// TODO: IMPLEMENT!
+		case w32.WM_NCACTIVATE, w32.WM_NCPAINT:
+			// TODO: IMPLEMENT!
+		case w32.WM_DWMCOMPOSITIONCHANGED, w32.WM_DWMCOLORIZATIONCOLORCHANGED:
+			// TODO: IMPLEMENT!
+		case w32.WM_GETDPISCALEDSIZE:
+			// TODO: IMPLEMENT!
+		case w32.WM_DPICHANGED:
+			// TODO: IMPLEMENT!
+		case w32.WM_SETCURSOR:
+			// TODO: IMPLEMENT!
+		case w32.WM_DROPFILES:
+			// TODO: IMPLEMENT!
+		}
+	}
+	return w32.DefWindowProcW(hWnd, uMsg, wParam, lParam)
 }
 
 func (w *Window) windowStyle() uint32 {
@@ -147,18 +220,32 @@ func (w *Window) windowExStyle() uint32 {
 	return style
 }
 
+func (w *Window) setTitle(title string) {
+	w32.SetWindowTextW(w.wnd.wnd, title)
+}
+
 func (w *Window) frameRect() geom.Rect {
 	if w.IsValid() {
-		left, top, right, bottom := w.wnd.GetFrameSize()
-		r := geom.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
-		sx, sy := w.wnd.GetContentScale()
-		r.X /= sx
-		r.Y /= sy
-		r.Width /= sx
-		r.Height /= sy
-		return r
+		var rect w32.RECT
+		w32.GetClientRect(w.wnd.wnd, &rect)
+		rect.Right -= rect.Left
+		rect.Bottom -= rect.Top
+		rect.Left = 0
+		rect.Top = 0
+		width := rect.Right
+		height := rect.Bottom
+		if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
+			if !w32.AdjustWindowRectExForDpi(&rect, w.windowStyle(), false, w.windowExStyle(), w32.GetDpiForWindow(w.wnd.wnd)) {
+				return geom.NewRect(1, 1, 2, 2)
+			}
+		} else {
+			if !w32.AdjustWindowRectEx(&rect, w.windowStyle(), false, w.windowExStyle()) {
+				return geom.NewRect(1, 1, 2, 2)
+			}
+		}
+		return geom.NewRect(float32(-rect.Left), float32(-rect.Top), float32(rect.Right-width), float32(rect.Bottom-height))
 	}
-	return geom.NewRect(0, 0, 1, 1)
+	return geom.NewRect(1, 1, 2, 2)
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
@@ -190,9 +277,64 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 	}
 }
 
+// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
+// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
+// menu is being displayed.
+func (w *Window) CurrentKeyModifiers() Modifiers {
+	// TODO: Is this right?
+	return w.LastKeyModifiers()
+}
+
+func (w *Window) adjustToCursorChange() {
+	// TODO: Implement
+}
+
+func (w *Window) updateCursorImage() {
+	// TODO: Implement
+}
+
+func (w *Window) cursorInContentArea() bool {
+	// TODO: Implement
+	return false
+}
+
+func (w *Window) cursorPosition() geom.Point {
+	// TODO: Implement
+	return geom.NewPoint(0, 0)
+}
+
 func (w *Window) backingScale() geom.Point {
 	dpi := w32.GetDpiForWindow(w.wnd.wnd)
 	return geom.NewPoint(float32(dpi)/96.0, float32(dpi)/96.0)
+}
+
+func (w *Window) minimize() {
+	// TODO: Implement
+}
+
+func (w *Window) maximize() {
+	// TODO: Implement
+}
+
+func (w *Window) acquireFocus() {
+	// TODO: Implement
+}
+
+func (w *Window) visible() bool {
+	// TODO: Implement
+	return false
+}
+
+func (w *Window) show() {
+	// TODO: Implement
+}
+
+func (w *Window) hide() {
+	// TODO: Implement
+}
+
+func (w *Window) nativeDestroy() {
+	// TODO: Implement
 }
 
 func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point {
@@ -202,11 +344,4 @@ func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point
 		where.Y /= scale.Y
 	}
 	return where
-}
-
-// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
-// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
-// menu is being displayed.
-func (w *Window) CurrentKeyModifiers() Modifiers {
-	return w.LastKeyModifiers()
 }

@@ -101,7 +101,11 @@ type PIXELFORMATDESCRIPTOR struct {
 
 // CreateBitmap https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createbitmap
 func CreateBitmap(width, height int32, planes, bitsPerPixel uint16, bits []byte) HBITMAP {
-	h, _, _ := createBitmapProc.Call(uintptr(width), uintptr(height), uintptr(planes), uintptr(bitsPerPixel), uintptr(unsafe.Pointer(&bits[0])))
+	var bitsPtr uintptr
+	if len(bits) != 0 {
+		bitsPtr = uintptr(unsafe.Pointer(&bits[0]))
+	}
+	h, _, _ := createBitmapProc.Call(uintptr(width), uintptr(height), uintptr(planes), uintptr(bitsPerPixel), bitsPtr)
 	return HBITMAP(h)
 }
 

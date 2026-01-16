@@ -12,12 +12,15 @@ package w32
 import (
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const SIGDN_FILESYSPATH = 0x80058000
 
 var (
 	shell32                         = syscall.NewLazyDLL("Shell32.dll")
+	dragAcceptFilesProc             = shell32.NewProc("DragAcceptFiles")
 	shCreateItemFromParsingNameProc = shell32.NewProc("SHCreateItemFromParsingName")
 	shellItemIID                    = NewGUID("43826D1E-E718-42EE-BC55-A1E261C37BFE")
 )
@@ -33,6 +36,15 @@ type vmtShellItem struct {
 	GetDisplayName uintptr
 	GetAttributes  uintptr
 	Compare        uintptr
+}
+
+// DragAcceptFiles https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-dragacceptfiles
+func DragAcceptFiles(hwnd windows.HWND, accept bool) {
+	var a uint32
+	if accept {
+		a = 1
+	}
+	dragAcceptFilesProc.Call(uintptr(hwnd), uintptr(a))
 }
 
 func NewShellItem(path string) *ShellItem {
