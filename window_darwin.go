@@ -190,7 +190,7 @@ func initNativeWindowCallbacks() {
 	}
 }
 
-func (w *Window) initNativeWindow(cfg *WindowConfig) bool {
+func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	styleMask := mac.WindowStyleMaskMiniaturizable
 	if cfg.Undecorated {
 		styleMask |= mac.WindowStyleMaskBorderless
@@ -202,7 +202,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) bool {
 	}
 	nw := mac.NewWindow(geom.NewRect(0, 0, 1, 1), styleMask, true, true)
 	if nw == 0 {
-		return false
+		return errs.New("unable to create native window")
 	}
 	if cfg.NotResizable {
 		nw.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenNone)
@@ -229,10 +229,9 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) bool {
 	w.wnd.wnd = nw
 	w.wnd.view = v
 	if err := w.glCtx.create(w, cfg.Share, cfg.Transparent); err != nil {
-		errs.Log(err)
-		return false
+		return err
 	}
-	return true
+	return nil
 }
 
 func (w *Window) setTitle(title string) {

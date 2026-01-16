@@ -242,8 +242,8 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		Floating:         w.floating,
 		MousePassThrough: false,
 	}
-	if !w.initNativeWindow(&cfg) {
-		return nil, errs.New("unable to create window")
+	if err := w.initNativeWindow(&cfg); err != nil {
+		return nil, err
 	}
 	w.pressedKeys = make(map[KeyCode]bool)
 	w.pressedButtons = make(map[int]bool)
