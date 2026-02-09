@@ -10,6 +10,7 @@
 package w32
 
 import (
+	"math"
 	"runtime"
 	"syscall"
 	"time"
@@ -19,40 +20,48 @@ import (
 )
 
 var (
-	user32                          = windows.NewLazySystemDLL("user32.dll")
-	adjustWindowRectExProc          = user32.NewProc("AdjustWindowRectEx")
-	adjustWindowRectExForDpiProc    = user32.NewProc("AdjustWindowRectExForDpi")
-	changeWindowMessageFilterExProc = user32.NewProc("ChangeWindowMessageFilterEx")
-	clientToScreenProc              = user32.NewProc("ClientToScreen")
-	closeClipboardProc              = user32.NewProc("CloseClipboard")
-	createIconIndirectProc          = user32.NewProc("CreateIconIndirect")
-	createWindowExWProc             = user32.NewProc("CreateWindowExW")
-	defWindowProcWProc              = user32.NewProc("DefWindowProcW")
-	destroyIconProc                 = user32.NewProc("DestroyIcon")
-	emptyClipboardProc              = user32.NewProc("EmptyClipboard")
-	enumClipboardFormatsProc        = user32.NewProc("EnumClipboardFormats")
-	enumDisplayDevicesWProc         = user32.NewProc("EnumDisplayDevicesW")
-	enumDisplayMonitorsProc         = user32.NewProc("EnumDisplayMonitors")
-	getActiveWindowProc             = user32.NewProc("GetActiveWindow")
-	getClientRectProc               = user32.NewProc("GetClientRect")
-	getClipboardDataProc            = user32.NewProc("GetClipboardData")
-	getClipboardSequenceNumberProc  = user32.NewProc("GetClipboardSequenceNumber")
-	procGetDCProc                   = user32.NewProc("GetDC")
-	getDoubleClickTimeProc          = user32.NewProc("GetDoubleClickTime")
-	getDpiForWindowProc             = user32.NewProc("GetDpiForWindow")
-	getMonitorInfoWProc             = user32.NewProc("GetMonitorInfoW")
-	getSysColorProc                 = user32.NewProc("GetSysColor")
-	getWindowPlacementProc          = user32.NewProc("GetWindowPlacement")
-	loadImageWProc                  = user32.NewProc("LoadImageW")
-	messageBeepProc                 = user32.NewProc("MessageBeep")
-	monitorFromWindowProc           = user32.NewProc("MonitorFromWindow")
-	openClipboardProc               = user32.NewProc("OpenClipboard")
-	registerClassExWProc            = user32.NewProc("RegisterClassExW")
-	releaseDCProc                   = user32.NewProc("ReleaseDC")
-	setClipboardDataProc            = user32.NewProc("SetClipboardData")
-	setWindowPlacementProc          = user32.NewProc("SetWindowPlacement")
-	setWindowPosProc                = user32.NewProc("SetWindowPos")
-	setWindowTextWProc              = user32.NewProc("SetWindowTextW")
+	user32                            = windows.NewLazySystemDLL("user32.dll")
+	adjustWindowRectExProc            = user32.NewProc("AdjustWindowRectEx")
+	adjustWindowRectExForDpiProc      = user32.NewProc("AdjustWindowRectExForDpi")
+	changeWindowMessageFilterExProc   = user32.NewProc("ChangeWindowMessageFilterEx")
+	clientToScreenProc                = user32.NewProc("ClientToScreen")
+	closeClipboardProc                = user32.NewProc("CloseClipboard")
+	createIconIndirectProc            = user32.NewProc("CreateIconIndirect")
+	createWindowExWProc               = user32.NewProc("CreateWindowExW")
+	defWindowProcWProc                = user32.NewProc("DefWindowProcW")
+	destroyIconProc                   = user32.NewProc("DestroyIcon")
+	dispatchMessageWProc              = user32.NewProc("DispatchMessageW")
+	emptyClipboardProc                = user32.NewProc("EmptyClipboard")
+	enumClipboardFormatsProc          = user32.NewProc("EnumClipboardFormats")
+	enumDisplayDevicesWProc           = user32.NewProc("EnumDisplayDevicesW")
+	enumDisplayMonitorsProc           = user32.NewProc("EnumDisplayMonitors")
+	getActiveWindowProc               = user32.NewProc("GetActiveWindow")
+	getClientRectProc                 = user32.NewProc("GetClientRect")
+	getClipboardDataProc              = user32.NewProc("GetClipboardData")
+	getClipboardSequenceNumberProc    = user32.NewProc("GetClipboardSequenceNumber")
+	procGetDCProc                     = user32.NewProc("GetDC")
+	getDoubleClickTimeProc            = user32.NewProc("GetDoubleClickTime")
+	getDpiForWindowProc               = user32.NewProc("GetDpiForWindow")
+	getMonitorInfoWProc               = user32.NewProc("GetMonitorInfoW")
+	getSysColorProc                   = user32.NewProc("GetSysColor")
+	getWindowPlacementProc            = user32.NewProc("GetWindowPlacement")
+	isWindowVisibleProc               = user32.NewProc("IsWindowVisible")
+	loadImageWProc                    = user32.NewProc("LoadImageW")
+	messageBeepProc                   = user32.NewProc("MessageBeep")
+	monitorFromWindowProc             = user32.NewProc("MonitorFromWindow")
+	openClipboardProc                 = user32.NewProc("OpenClipboard")
+	peekMessageWProc                  = user32.NewProc("PeekMessageW")
+	postMessageWProc                  = user32.NewProc("PostMessageW")
+	registerClassExWProc              = user32.NewProc("RegisterClassExW")
+	releaseDCProc                     = user32.NewProc("ReleaseDC")
+	setClipboardDataProc              = user32.NewProc("SetClipboardData")
+	setProcessDpiAwarenessContextProc = user32.NewProc("SetProcessDpiAwarenessContext")
+	setWindowPlacementProc            = user32.NewProc("SetWindowPlacement")
+	setWindowPosProc                  = user32.NewProc("SetWindowPos")
+	setWindowTextWProc                = user32.NewProc("SetWindowTextW")
+	showWindowProc                    = user32.NewProc("ShowWindow")
+	translateMessageProc              = user32.NewProc("TranslateMessage")
+	waitMessageProc                   = user32.NewProc("WaitMessage")
 )
 
 // Clipboard format types https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
@@ -64,6 +73,10 @@ const (
 	CFHDrop        ClipboardFormat = 15
 	CFPrivateFirst ClipboardFormat = 0x0200
 )
+
+type DPI_AWARENESS_CONTEXT windows.Handle
+
+const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 DPI_AWARENESS_CONTEXT = math.MaxUint - 3
 
 const IDI_APPLICATION = 32512
 
@@ -193,6 +206,39 @@ const (
 	WS_EX_TOPMOST             = 8
 	WS_EX_TRANSPARENT         = 32
 	WS_EX_WINDOWEDGE          = 256
+)
+
+// QS_... constants for PeekMessage and GetQueueStatus
+// https://learn.microsoft.com/windows/win32/winmsg/queue-status-flags
+const (
+	QS_KEY = 1 << iota
+	QS_MOUSEMOVE
+	QS_MOUSEBUTTON
+	QS_POSTMESSAGE
+	QS_TIMER
+	QS_PAINT
+	QS_SENDMESSAGE
+	QS_HOTKEY
+	QS_ALLPOSTMESSAGE
+	_QS_UNUSED
+	QS_RAWINPUT
+	QS_TOUCH
+	QS_POINTER
+	QS_MOUSE     = QS_MOUSEMOVE | QS_MOUSEBUTTON
+	QS_INPUT     = QS_MOUSE | QS_KEY | QS_RAWINPUT | QS_TOUCH | QS_POINTER
+	QS_ALLEVENTS = QS_INPUT | QS_POSTMESSAGE | QS_TIMER | QS_PAINT | QS_HOTKEY
+	QS_ALLINPUT  = QS_ALLEVENTS | QS_SENDMESSAGE
+)
+
+// PeekMessage flags https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-peekmessagew
+const (
+	PM_NOREMOVE       = 0x0000
+	PM_REMOVE         = 0x0001
+	PM_NOYIELD        = 0x0002
+	PM_QS_INPUT       = QS_INPUT << 16
+	PM_QS_POSTMESSAGE = (QS_POSTMESSAGE | QS_HOTKEY | QS_TIMER) << 16
+	PM_QS_PAINT       = QS_PAINT << 16
+	PM_QS_SENDMESSAGE = QS_SENDMESSAGE << 16
 )
 
 // Window messages are sent to the window class' window procedure. They identify the type of event that happened.
@@ -790,6 +836,17 @@ type MONITORINFO struct {
 	Flags   uint32
 }
 
+// MSG https://docs.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-msg
+type MSG struct {
+	Hwnd    windows.HWND
+	Message uint32
+	WParam  WPARAM
+	LParam  LPARAM
+	Time    uint32
+	Pt      POINT
+	Private uint32
+}
+
 // AdjustWindowRectEx https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-adjustwindowrectex
 func AdjustWindowRectEx(rect *RECT, style uint32, hasMenu bool, exStyle uint32) bool {
 	var menu uint32
@@ -872,6 +929,12 @@ func DefWindowProcW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM)
 func DestroyIcon(icon HICON) bool {
 	b, _, _ := destroyIconProc.Call(uintptr(icon))
 	return b&0xff != 0
+}
+
+// DispatchMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-dispatchmessagew
+func DispatchMessageW(msg *MSG) LRESULT {
+	ret, _, _ := dispatchMessageWProc.Call(uintptr(unsafe.Pointer(msg)))
+	return LRESULT(ret)
 }
 
 // EmptyClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-emptyclipboard
@@ -988,6 +1051,12 @@ func GetWindowPlacement(hwnd windows.HWND, placement *WINDOWPLACEMENT) bool {
 	return b&0xff != 0
 }
 
+// IsWindowVisible https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindowvisible
+func IsWindowVisible(hwnd windows.HWND) bool {
+	b, _, _ := isWindowVisibleProc.Call(uintptr(hwnd))
+	return b&0xff != 0
+}
+
 // LoadImageW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-loadimagew
 func LoadImageW(inst HINSTANCE, name UTF16String, typ uint32, cx, cy int, load uint32) windows.Handle {
 	ret, _, _ := loadImageWProc.Call(uintptr(inst), uintptr(unsafe.Pointer(name)), uintptr(typ), uintptr(cx),
@@ -1018,6 +1087,19 @@ func OpenClipboard(newOwner windows.HWND) bool {
 	return b&0xff != 0
 }
 
+// PeekMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew
+func PeekMessageW(msg *MSG, hwnd windows.HWND, msgFilterMin, msgFilterMax, removeMsg uint32) bool {
+	b, _, _ := peekMessageWProc.Call(uintptr(unsafe.Pointer(msg)), uintptr(hwnd), uintptr(msgFilterMin),
+		uintptr(msgFilterMax), uintptr(removeMsg))
+	return b&0xff != 0
+}
+
+// PostMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-postmessagew
+func PostMessageW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) bool {
+	b, _, _ := postMessageWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
+	return b&0xff != 0
+}
+
 // RegisterClassExW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-registerclassexw
 func RegisterClassExW(wndClassEx *WNDCLASSEX) ATOM {
 	wndClassEx.Size = uint32(unsafe.Sizeof(*wndClassEx))
@@ -1035,6 +1117,12 @@ func ReleaseDC(hwnd windows.HWND, dc HDC) bool {
 func SetClipboardData(format ClipboardFormat, handle syscall.Handle) syscall.Handle {
 	h, _, _ := setClipboardDataProc.Call(uintptr(format), uintptr(handle))
 	return syscall.Handle(h)
+}
+
+// SetProcessDpiAwarenessContext https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setprocessdpiawarenesscontext
+func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) bool {
+	b, _, _ := setProcessDpiAwarenessContextProc.Call(uintptr(value))
+	return b&0xff != 0
 }
 
 // SetWindowPlacement https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowplacement
@@ -1062,5 +1150,23 @@ func SetWindowTextW(hwnd windows.HWND, text string) bool {
 		defer runtime.KeepAlive(lpString)
 	}
 	b, _, _ := setWindowTextWProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(lpString)))
+	return b&0xff != 0
+}
+
+// ShowWindow https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
+func ShowWindow(hwnd windows.HWND, cmdShow int32) bool {
+	b, _, _ := showWindowProc.Call(uintptr(hwnd), uintptr(cmdShow))
+	return b&0xff != 0
+}
+
+// TranslateMessage https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-translatemessage
+func TranslateMessage(msg *MSG) bool {
+	b, _, _ := translateMessageProc.Call(uintptr(unsafe.Pointer(msg)))
+	return b&0xff != 0
+}
+
+// WaitMessage https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-waitmessage
+func WaitMessage() bool {
+	b, _, _ := waitMessageProc.Call()
 	return b&0xff != 0
 }

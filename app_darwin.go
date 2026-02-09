@@ -25,16 +25,7 @@ var (
 
 func beginStartup() error {
 	mac.AppShouldTerminateCallback = func() {
-		var last *Window
-		for len(windowList) > 0 {
-			windowList[0].nativeRequestClose()
-			if len(windowList) != 0 {
-				if windowList[0] == last {
-					break
-				}
-				last = windowList[0]
-			}
-		}
+		closeAllWindows()
 		xos.Exit(0)
 	}
 	mac.AppDidChangeScreenParameters = func() {

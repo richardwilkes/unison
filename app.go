@@ -294,6 +294,19 @@ func AttemptQuit() {
 	}
 }
 
+func closeAllWindows() {
+	var last *Window
+	for len(windowList) > 0 {
+		windowList[0].nativeRequestClose()
+		if len(windowList) != 0 {
+			if windowList[0] == last {
+				break
+			}
+			last = windowList[0]
+		}
+	}
+}
+
 // Beep plays the system beep sound.
 func Beep() {
 	beep()

@@ -18,8 +18,12 @@ import (
 )
 
 func (c *Clipboard) getText() string {
+	var wnd windows.HWND
+	if len(windowList) != 0 {
+		wnd = windowList[0].wnd.wnd
+	}
 	tries := 3
-	for !w32.OpenClipboard(helperWnd) {
+	for !w32.OpenClipboard(wnd) {
 		time.Sleep(time.Millisecond)
 		tries--
 		if tries == 0 {
@@ -55,8 +59,12 @@ func (c *Clipboard) setText(str string) {
 	}
 	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer)), len(s)), s)
 	w32.GlobalUnlock(obj)
+	var wnd windows.HWND
+	if len(windowList) != 0 {
+		wnd = windowList[0].wnd.wnd
+	}
 	tries := 3
-	for !w32.OpenClipboard(helperWnd) {
+	for !w32.OpenClipboard(wnd) {
 		time.Sleep(time.Millisecond)
 		tries--
 		if tries == 0 {

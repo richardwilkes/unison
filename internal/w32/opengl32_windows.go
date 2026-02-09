@@ -20,6 +20,7 @@ import (
 
 var (
 	opengl32              = syscall.NewLazyDLL("opengl32.dll")
+	wglCreateContextProc  = opengl32.NewProc("wglCreateContext")
 	wglDeleteContextProc  = opengl32.NewProc("wglDeleteContext")
 	wglGetProcAddressProc = opengl32.NewProc("wglGetProcAddress")
 	wglMakeCurrentProc    = opengl32.NewProc("wglMakeCurrent")
@@ -96,6 +97,11 @@ const (
 	WGL_TRANSPARENT_RED_VALUE_ARB               = 0x2037
 	WGL_TYPE_RGBA_ARB                           = 0x202B
 )
+
+func WglCreateContext(dc HDC) HGLRC {
+	ret, _, _ := wglCreateContextProc.Call(uintptr(dc))
+	return HGLRC(ret)
+}
 
 func WglCreateContextAttribsARB(dc HDC, shareCtx HGLRC, attribList []int32) HGLRC {
 	if wglCreateContextAttribsARBProc == 0 {

@@ -30,17 +30,6 @@ type platformWindow struct {
 	wnd windows.HWND
 }
 
-func isWindows10BuildOrGreater(build uint32) bool {
-	cond := w32.VerSetConditionMask(0, w32.VER_MAJORVERSION, w32.VER_GREATER_EQUAL)
-	cond = w32.VerSetConditionMask(cond, w32.VER_MINORVERSION, w32.VER_GREATER_EQUAL)
-	cond = w32.VerSetConditionMask(cond, w32.VER_BUILDNUMBER, w32.VER_GREATER_EQUAL)
-	return w32.RtlVerifyVersionInfo(&w32.OSVERSIONINFOEXW{
-		MajorVersion: 10,
-		MinorVersion: 0,
-		BuildNumber:  build,
-	}, w32.VER_MAJORVERSION|w32.VER_MINORVERSION|w32.VER_BUILDNUMBER, cond) == 0
-}
-
 func findWindowByHWND(wnd windows.HWND) *Window {
 	if i := slices.IndexFunc(windowList, func(w *Window) bool {
 		return w.wnd.wnd == wnd
@@ -117,6 +106,15 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
+
+	if err := w.glCtx.create(w, cfg.Share, cfg.Transparent); err != nil {
+		return err
+	}
+
+	// if (wndconfig->mousePassthrough) {
+	// 	_plafSetWindowMousePassthrough(window, true);
+	// }
+
 	return nil
 }
 
@@ -321,16 +319,15 @@ func (w *Window) acquireFocus() {
 }
 
 func (w *Window) visible() bool {
-	// TODO: Implement
-	return false
+	return w32.IsWindowVisible(w.wnd.wnd)
 }
 
 func (w *Window) show() {
-	// TODO: Implement
+	w32.ShowWindow(w.wnd.wnd, w32.SW_SHOWNA)
 }
 
 func (w *Window) hide() {
-	// TODO: Implement
+	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
 func (w *Window) nativeDestroy() {

@@ -16,8 +16,17 @@ import (
 )
 
 var (
-	shcore               = windows.NewLazySystemDLL("shcore.dll")
-	getDpiForMonitorProc = shcore.NewProc("GetDpiForMonitor")
+	shcore                     = windows.NewLazySystemDLL("shcore.dll")
+	getDpiForMonitorProc       = shcore.NewProc("GetDpiForMonitor")
+	setProcessDpiAwarenessProc = shcore.NewProc("SetProcessDpiAwareness")
+)
+
+type PROCESS_DPI_AWARENESS int32
+
+const (
+	PROCESS_DPI_UNAWARE PROCESS_DPI_AWARENESS = iota
+	PROCESS_SYSTEM_DPI_AWARE
+	PROCESS_PER_MONITOR_DPI_AWARE
 )
 
 // GetDpiForMonitor https://learn.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-getdpiformonitor
@@ -28,4 +37,10 @@ func GetDpiForMonitor(hmonitor HMONITOR, dpiType MONITOR_DPI_TYPE) (dpiX, dpiY u
 		return 0, 0
 	}
 	return dpiX, dpiY
+}
+
+// SetProcessDpiAwareness https://learn.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-setprocessdpiawareness
+func SetProcessDpiAwareness(value PROCESS_DPI_AWARENESS) int32 {
+	ret, _, _ := setProcessDpiAwarenessProc.Call(uintptr(value))
+	return int32(ret)
 }

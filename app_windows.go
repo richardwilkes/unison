@@ -22,13 +22,26 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-var (
-	appUsesLightThemeValue = uint32(1)
-	helperWnd              windows.HWND // TODO: Create this during initialization
-)
+var appUsesLightThemeValue = uint32(1)
+
+func isWindows10BuildOrGreater(build uint32) bool {
+	cond := w32.VerSetConditionMask(0, w32.VER_MAJORVERSION, w32.VER_GREATER_EQUAL)
+	cond = w32.VerSetConditionMask(cond, w32.VER_MINORVERSION, w32.VER_GREATER_EQUAL)
+	cond = w32.VerSetConditionMask(cond, w32.VER_BUILDNUMBER, w32.VER_GREATER_EQUAL)
+	return w32.RtlVerifyVersionInfo(&w32.OSVERSIONINFOEXW{
+		MajorVersion: 10,
+		MinorVersion: 0,
+		BuildNumber:  build,
+	}, w32.VER_MAJORVERSION|w32.VER_MINORVERSION|w32.VER_BUILDNUMBER, cond) == 0
+}
 
 func beginStartup() error {
-	// TODO: Does this need anything?
+	fillKeyCodes()
+	if isWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+		w32.SetProcessDpiAwarenessContext(w32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+	} else {
+		w32.SetProcessDpiAwareness(w32.PROCESS_PER_MONITOR_DPI_AWARE)
+	}
 	return nil
 }
 
@@ -103,64 +116,52 @@ func updateTheme(k registry.Key, sync bool) error {
 }
 
 func pollEvents() {
-	/*
-		TODO: IMPLEMENT!
-
-		MSG msg;
-		plafWindow* window;
-		while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
-			if (msg.message == WM_QUIT) {
-				window = _plaf.windowListHead;
-				while (window) {
-					_plafInputWindowCloseRequest(window);
-					window = window->next;
-				}
-			} else {
-				TranslateMessage(&msg);
-				DispatchMessageW(&msg);
-			}
+	var msg w32.MSG
+	for w32.PeekMessageW(&msg, 0, 0, 0, w32.PM_REMOVE) {
+		if msg.Message == w32.WM_QUIT {
+			closeAllWindows()
+		} else {
+			w32.TranslateMessage(&msg)
+			w32.DispatchMessageW(&msg)
 		}
-		HWND handle = GetActiveWindow();
-		if (handle) {
-			window = GetPropW(handle, L"PLAF");
-			if (window) {
-				int i;
-				const int keys[4][2] = {
-					{ VK_LSHIFT, KEY_LEFT_SHIFT },
-					{ VK_RSHIFT, KEY_RIGHT_SHIFT },
-					{ VK_LWIN, KEY_LEFT_SUPER },
-					{ VK_RWIN, KEY_RIGHT_SUPER }
-				};
-				for (i = 0; i < 4; i++) {
-					const int vk = keys[i][0];
-					const int key = keys[i][1];
-					const int scancode = _plaf.scanCodes[key];
-					if ((GetKeyState(vk) & 0x8000)) {
-						continue;
-					}
-					if (window->keys[key] != INPUT_PRESS) {
-						continue;
-					}
-					_plafInputKey(window, key, scancode, INPUT_RELEASE, getKeyMods());
-				}
-			}
-		}
-	*/
+	}
+	// TODO: Is this bit needed? Seems to be trying to add some missing key-up events.
+	//
+	// if hwnd := w32.GetActiveWindow(); hwnd != 0 {
+	// 	if window := findWindowByHWND(hwnd); window != nil {
+	// 		keys := [4][2]KeyCode{
+	// 			{KeyLShift, KeyLShift},
+	// 			{KeyRShift, KeyRShift},
+	// 			{KeyLCommand, KeyLCommand},
+	// 			{KeyRCommand, KeyRCommand},
+	// 		}
+	// 		for i := 0; i < 4; i++ {
+	// 			vk := keys[i][0]
+	// 			key := keys[i][1]
+	// 			scancode := _plaf.scanCodes[key]
+	// 			if w32.GetKeyState(vk) & 0x8000 {
+	// 				continue
+	// 			}
+	// 			if window.keys[key] != INPUT_PRESS {
+	// 				continue
+	// 			}
+	// 			_plafInputKey(window, key, scancode, INPUT_RELEASE, getKeyMods())
+	// 		}
+	// 	}
+	// }
 }
 
 func waitEvents() {
-	/*
-		TODO: IMPLEMENT!
-		w32.WaitMessage();
-		plafPollEvents();
-	*/
+	w32.WaitMessage()
+	pollEvents()
 }
 
 func postEmptyEvent() {
 	if plafInited.Load() {
-		/*
-			TODO: IMPLEMENT!
-			w32.PostMessageW(_plaf.win32HelperWindowHandle, WM_NULL, 0, 0)
-		*/
+		var wnd windows.HWND
+		if len(windowList) != 0 {
+			wnd = windowList[0].wnd.wnd
+		}
+		w32.PostMessageW(wnd, w32.WM_NULL, 0, 0)
 	}
 }
