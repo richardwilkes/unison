@@ -210,7 +210,7 @@ func (p *FontPanel) adjustForCurrentFontFamily() {
 	possibleWeights := make(map[weight.Enum]bool)
 	possibleSlants := make(map[slant.Enum]bool)
 	possibleSpacings := make(map[spacing.Enum]bool)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		face := family.Face(i)
 		w, sp, sl := face.Style()
 		possibleWeights[w] = true

@@ -51,7 +51,7 @@ func (fd FontDescriptor) String() string {
 
 // MarshalText implements the encoding.TextMarshaler interface.
 func (fd FontDescriptor) MarshalText() (text []byte, err error) {
-	return []byte(fmt.Sprintf("%s %v %s %s %s", fd.Family, fd.Size, fd.Weight.Key(), fd.Spacing.Key(), fd.Slant.Key())), nil
+	return fmt.Appendf(nil, "%s %v %s %s %s", fd.Family, fd.Size, fd.Weight.Key(), fd.Spacing.Key(), fd.Slant.Key()), nil
 }
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.

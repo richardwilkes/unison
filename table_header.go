@@ -87,7 +87,7 @@ func (h *TableHeader[T]) ColumnFrame(col int) geom.Rect {
 	}
 	insets := h.combinedInsets()
 	x := insets.Left
-	for c := 0; c < col; c++ {
+	for c := range col {
 		x += h.table.Columns[c].Current
 		if h.table.ShowColumnDivider {
 			x++

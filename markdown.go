@@ -933,7 +933,7 @@ func (m *Markdown) processStrikethrough() {
 func (m *Markdown) processRawHTML() {
 	if raw, ok := m.node.(*ast.RawHTML); ok {
 		count := raw.Segments.Len()
-		for i := 0; i < count; i++ {
+		for i := range count {
 			segment := raw.Segments.At(i)
 			switch xstrings.CollapseSpaces(strings.ToLower(string(segment.Value(m.content)))) {
 			case "<br>", "<br/>", "<br />":
@@ -1126,18 +1126,18 @@ func (m *Markdown) constrainImage(drawable Drawable) Drawable {
 }
 
 func (m *Markdown) extractText(node ast.Node) string {
-	str := ""
+	var str strings.Builder
 	for c := node.FirstChild(); c != nil; c = c.NextSibling() {
 		if t, ok := c.(*ast.Text); ok {
 			b := util.UnescapePunctuations(t.Value(m.content))
 			b = util.ResolveNumericReferences(b)
-			str += string(util.ResolveEntityNames(b))
+			str.Write(util.ResolveEntityNames(b))
 			if t.SoftLineBreak() {
-				str += " "
+				str.WriteByte(' ')
 			}
 		}
 	}
-	return str
+	return str.String()
 }
 
 func (m *Markdown) processImage() {

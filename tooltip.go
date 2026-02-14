@@ -72,7 +72,7 @@ func NewTooltipWithText(text string) *Panel {
 		HSpacing: StdHSpacing,
 		VSpacing: StdVSpacing,
 	})
-	for _, str := range strings.Split(text, "\n") {
+	for str := range strings.SplitSeq(text, "\n") {
 		l := NewLabel()
 		l.LabelTheme = DefaultTooltipTheme.Label
 		l.SetTitle(str)
@@ -86,7 +86,7 @@ func NewTooltipWithText(text string) *Panel {
 func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 	tip := NewTooltipWithText(primary)
 	if secondary != "" {
-		for _, str := range strings.Split(secondary, "\n") {
+		for str := range strings.SplitSeq(secondary, "\n") {
 			l := NewLabel()
 			l.LabelTheme = DefaultTooltipTheme.Label
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()

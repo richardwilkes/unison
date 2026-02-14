@@ -1242,7 +1242,7 @@ func (p *svgParser) handleStopElement(attrs []xml.Attr) error {
 			if attr.Value == "" {
 				break
 			}
-			for _, s := range strings.Split(attr.Value, ";") {
+			for s := range strings.SplitSeq(attr.Value, ";") {
 				key, val, ok := strings.Cut(s, ":")
 				if !ok {
 					continue

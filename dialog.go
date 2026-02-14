@@ -11,6 +11,7 @@ package unison
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -152,13 +153,11 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 		if originalKeyDownCallback == nil || !originalKeyDownCallback(keyCode, mod, repeat) {
 			if mod&NonStickyModifiers == 0 {
 				for _, one := range d.buttons {
-					for _, kc := range one.info.KeyCodes {
-						if kc == keyCode {
-							if one.button.Enabled() {
-								one.button.Click()
-							}
-							return true
+					if slices.Contains(one.info.KeyCodes, keyCode) {
+						if one.button.Enabled() {
+							one.button.Click()
 						}
+						return true
 					}
 				}
 			}

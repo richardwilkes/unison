@@ -427,10 +427,7 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) b
 		if l.Selection.Count() == 0 {
 			first = len(l.rows) - 1
 		} else {
-			first = l.Selection.FirstSet() - 1
-			if first < 0 {
-				first = 0
-			}
+			first = max(l.Selection.FirstSet()-1, 0)
 		}
 		l.Select(mod.ShiftDown(), first)
 		if l.NewSelectionCallback != nil {

@@ -58,7 +58,7 @@ func FontFamiliesNoCache() []string {
 	count := skia.FontMgrCountFamilies(fm)
 	names := make(map[string]struct{}, count+len(internalFonts))
 	ss := skia.StringNewEmpty()
-	for i := 0; i < count; i++ {
+	for i := range count {
 		skia.FontMgrGetFamilyName(fm, i, ss)
 		names[skia.StringGetString(ss)] = struct{}{}
 	}

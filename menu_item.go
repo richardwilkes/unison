@@ -114,7 +114,7 @@ func (mi *menuItem) Menu() Menu {
 func (mi *menuItem) Index() int {
 	if mi.menu != nil {
 		count := mi.menu.Count()
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if mi.IsSame(mi.menu.ItemAtIndex(i)) {
 				return i
 			}

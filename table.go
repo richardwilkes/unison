@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"maps"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -469,7 +470,7 @@ func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
 		insets = border.Insets()
 	}
 	left = insets.Left
-	for c := 0; c < col; c++ {
+	for c := range col {
 		left += t.Columns[c].Current
 		if t.ShowColumnDivider {
 			left++
@@ -499,14 +500,14 @@ func (t *Table[T]) CellFrame(row, col int) geom.Rect {
 		insets = border.Insets()
 	}
 	x := insets.Left
-	for c := 0; c < col; c++ {
+	for c := range col {
 		x += t.Columns[c].Current
 		if t.ShowColumnDivider {
 			x++
 		}
 	}
 	y := insets.Top
-	for r := 0; r < row; r++ {
+	for r := range row {
 		y += t.rowCache[r].height
 		if t.ShowRowDivider {
 			y++
@@ -532,7 +533,7 @@ func (t *Table[T]) RowFrame(row int) geom.Rect {
 		return geom.Rect{}
 	}
 	rect := t.ContentRect(false)
-	for i := 0; i < row; i++ {
+	for i := range row {
 		rect.Y += t.rowCache[i].height
 		if t.ShowRowDivider {
 			rect.Y++
@@ -1117,9 +1118,7 @@ func (t *Table[T]) SetSelectionMap(selMap map[tid.TID]bool) {
 
 func copySelMap(selMap map[tid.TID]bool) map[tid.TID]bool {
 	result := make(map[tid.TID]bool, len(selMap))
-	for k, v := range selMap {
-		result[k] = v
-	}
+	maps.Copy(result, selMap)
 	return result
 }
 

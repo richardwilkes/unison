@@ -148,7 +148,7 @@ func putUint16Hex(b []byte, v uint16) {
 }
 
 func putByteHex(dst, src []byte) {
-	for i := 0; i < len(src); i++ {
+	for i := range src {
 		dst[i*2] = hexTable[src[i]>>4]
 		dst[i*2+1] = hexTable[src[i]&0x0f]
 	}

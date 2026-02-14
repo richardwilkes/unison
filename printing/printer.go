@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,12 +63,7 @@ type Printer struct {
 
 // MimeTypeSupported returns true if the given MIME type is supported by the printer.
 func (p *Printer) MimeTypeSupported(mimeType string) bool {
-	for _, mt := range p.MimeTypes {
-		if mt == mimeType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.MimeTypes, mimeType)
 }
 
 // Attributes returns the printer's attributes. If allowCachedReturn is true and a previous call to Attributes() was

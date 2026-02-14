@@ -100,7 +100,7 @@ func ExtractPageRanges(text string) (ranges []goipp.Range, noErrors bool) {
 		return nil, true
 	}
 	noErrors = true
-	for _, part := range strings.Split(text, ",") {
+	for part := range strings.SplitSeq(text, ",") {
 		parts := strings.Split(strings.TrimSpace(part), "-")
 		switch len(parts) {
 		case 1:

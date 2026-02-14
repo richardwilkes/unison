@@ -93,7 +93,7 @@ func (m *Modifiers) UnmarshalText(text []byte) error {
 // ModifiersFromKey extracts Modifiers from a string created via a call to .Key().
 func ModifiersFromKey(key string) Modifiers {
 	var mods Modifiers
-	for _, one := range strings.Split(strings.ToLower(key), "+") {
+	for one := range strings.SplitSeq(strings.ToLower(key), "+") {
 		switch one {
 		case "ctrl":
 			mods |= ControlModifier

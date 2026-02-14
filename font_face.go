@@ -68,7 +68,7 @@ func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
 	for _, family := range FontFamilies() {
 		if ff := MatchFontFamily(family); ff != nil {
 			count := ff.Count()
-			for i := 0; i < count; i++ {
+			for i := range count {
 				face := ff.Face(i)
 				w, sp, sl := face.Style()
 				ffd := FontFaceDescriptor{

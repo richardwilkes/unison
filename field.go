@@ -225,7 +225,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 		decoration := &TextDecoration{Font: f.Font}
 		if f.multiLine {
 			endsWithLineFeed = make([]lineEndingType, 0, 16)
-			for _, line := range strings.Split(string(f.runes), "\n") {
+			for line := range strings.SplitSeq(string(f.runes), "\n") {
 				one := NewText(f.obscureStringIfNeeded(line), decoration)
 				if f.wrap && wrapWidth > 0 {
 					parts := one.BreakToWidth(wrapWidth)
