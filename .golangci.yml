@@ -155,8 +155,8 @@ linters:
     generated: lax
     paths:
       - internal/mac/
-      - internal/plaf2/
       - internal/skia/
+      - internal/w32/
 issues:
   max-same-issues: 0
 formatters:

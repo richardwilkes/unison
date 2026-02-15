@@ -37,7 +37,7 @@ func AllDisplays() []*Display {
 	return displays
 }
 
-func monitorCallback(monitor w32.HMONITOR, _hdc w32.HDC, _bounds w32.RECT, lParam uintptr) bool {
+func monitorCallback(monitor w32.HMONITOR, _hdc w32.HDC, _bounds w32.RECT, _lParam uintptr) bool {
 	var info w32.MONITORINFO
 	if w32.GetMonitorInfoW(monitor, &info) {
 		var display Display

@@ -20,7 +20,7 @@ var (
 	regNotifyChangeKeyValueProc = advapi32.NewProc("RegNotifyChangeKeyValue")
 )
 
-// RegNotifyChangeKeyValue https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue
+// RegNotifyMask https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue
 type RegNotifyMask int
 
 // Mask values for RegNotifyMask

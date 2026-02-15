@@ -12,7 +12,7 @@ type glContext struct {
 	rc w32.HGLRC
 }
 
-func (c *glContext) create(wnd, share *Window, transparent bool) error {
+func (c *glContext) create(wnd, share *Window, _transparent bool) error {
 	dc := w32.GetDC(wnd.wnd.wnd)
 	if dc == 0 {
 		return errs.New("failed to get device context for window")
