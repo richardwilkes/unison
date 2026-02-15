@@ -62,7 +62,7 @@ func NewTextLines(text string, decoration *TextDecoration) []*Text {
 // NewTextWrappedLines creates a new list of Text, potentially multiple for each logical line. Tabs are not considered,
 // but the text is split on any line feeds found and then wrapped to the given width. See Text.BreakToWidth().
 func NewTextWrappedLines(text string, decoration *TextDecoration, width float32) []*Text {
-	var lines []*Text
+	var lines []*Text //nolint:prealloc // No way to know in advance how many lines there will be
 	for _, line := range NewTextLines(text, decoration) {
 		lines = append(lines, line.BreakToWidth(width)...)
 	}

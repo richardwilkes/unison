@@ -20,6 +20,7 @@ var (
 	regNotifyChangeKeyValueProc = advapi32.NewProc("RegNotifyChangeKeyValue")
 )
 
+// RegNotifyChangeKeyValue https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue
 type RegNotifyMask int
 
 // Mask values for RegNotifyMask
@@ -40,6 +41,7 @@ func boolParam(b bool) uintptr {
 
 // RegNotifyChangeKeyValue https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue
 func RegNotifyChangeKeyValue(key registry.Key, watchSubTree bool, notifyFilter RegNotifyMask, event syscall.Handle, async bool) int {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	result, _, _ := regNotifyChangeKeyValueProc.Call(uintptr(key), boolParam(watchSubTree), uintptr(notifyFilter),
 		uintptr(event), boolParam(async))
 	return int(result)

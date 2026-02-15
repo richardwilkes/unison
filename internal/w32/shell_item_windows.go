@@ -44,11 +44,13 @@ func DragAcceptFiles(hwnd windows.HWND, accept bool) {
 	if accept {
 		a = 1
 	}
+	//nolint:errcheck // Nothing we can do about an error here
 	dragAcceptFilesProc.Call(uintptr(hwnd), uintptr(a))
 }
 
 func NewShellItem(path string) *ShellItem {
 	var item *ShellItem
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	if r1, _, _ := shCreateItemFromParsingNameProc.Call(uintptr(unsafe.Pointer(SysAllocString(path))), 0,
 		uintptr(unsafe.Pointer(&shellItemIID)), uintptr(unsafe.Pointer(&item))); r1 != 0 {
 		return nil
@@ -60,11 +62,14 @@ func (obj *ShellItem) vmt() *vmtShellItem {
 	return (*vmtShellItem)(obj.UnsafeVirtualMethodTable)
 }
 
-const sizeofUint16 = unsafe.Sizeof(uint16(0))
-const maxUint16Array = (1<<31 - sizeofUint16) / sizeofUint16
+const (
+	sizeofUint16   = unsafe.Sizeof(uint16(0))
+	maxUint16Array = (1<<31 - sizeofUint16) / sizeofUint16
+)
 
 func (obj *ShellItem) DisplayName() string {
 	var p *uint16
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().GetDisplayName, uintptr(unsafe.Pointer(obj)), SIGDN_FILESYSPATH,
 		uintptr(unsafe.Pointer(&p)))
 	if r1 != 0 {
@@ -95,6 +100,7 @@ func (obj *ShellItemArray) vmt() *vmtShellItemArray {
 
 func (obj *ShellItemArray) Count() int {
 	var count uintptr
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().GetCount, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(&count)))
 	if r1 != 0 {
 		return 0
@@ -104,6 +110,7 @@ func (obj *ShellItemArray) Count() int {
 
 func (obj *ShellItemArray) Item(index int) string {
 	var item *ShellItem
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().GetItemAt, uintptr(unsafe.Pointer(obj)), uintptr(index),
 		uintptr(unsafe.Pointer(&item)))
 	if r1 != 0 {

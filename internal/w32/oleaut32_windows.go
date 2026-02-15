@@ -24,6 +24,7 @@ func SysAllocString(str string) *int16 {
 	if err != nil {
 		return nil
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := sysAllocStringProc.Call(uintptr(unsafe.Pointer(p)))
-	return (*int16)(unsafe.Pointer(r1))
+	return (*int16)(unsafe.Pointer(r1)) //nolint:govet // No other choice
 }

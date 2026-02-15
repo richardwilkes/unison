@@ -99,6 +99,7 @@ const (
 )
 
 func WglCreateContext(dc HDC) HGLRC {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := wglCreateContextProc.Call(uintptr(dc))
 	return HGLRC(ret)
 }
@@ -107,17 +108,19 @@ func WglCreateContextAttribsARB(dc HDC, shareCtx HGLRC, attribList []int32) HGLR
 	if wglCreateContextAttribsARBProc == 0 {
 		wglCreateContextAttribsARBProc = WglGetProcAddress("wglCreateContextAttribsARB")
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := syscall.SyscallN(wglCreateContextAttribsARBProc, uintptr(dc), uintptr(shareCtx),
 		uintptr(unsafe.Pointer(&attribList[0])))
 	return HGLRC(r)
 }
 
 // WglGetPixelFormatAttribivARB https://registry.khronos.org/OpenGL/extensions/ARB/WGL_ARB_pixel_format.txt
-func WglGetPixelFormatAttribivARB(hdc HDC, iPixelFormat int32, iLayerPlane int32, piAttributes []int32) []int32 {
+func WglGetPixelFormatAttribivARB(hdc HDC, iPixelFormat, iLayerPlane int32, piAttributes []int32) []int32 {
 	if wglGetPixelFormatAttribivARBProc == 0 {
 		wglGetPixelFormatAttribivARBProc = WglGetProcAddress("wglGetPixelFormatAttribivARB")
 	}
 	values := make([]int32, len(piAttributes))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := syscall.SyscallN(wglGetPixelFormatAttribivARBProc, uintptr(hdc), uintptr(iPixelFormat),
 		uintptr(iLayerPlane), uintptr(len(piAttributes)), uintptr(unsafe.Pointer(&piAttributes[0])),
 		uintptr(unsafe.Pointer(&values[0])))
@@ -131,6 +134,7 @@ func WglGetPixelFormatAttribivARB(hdc HDC, iPixelFormat int32, iLayerPlane int32
 func WglGetProcAddress(name string) uintptr {
 	ptr, err := windows.BytePtrFromString(name)
 	xos.ExitIfErr(err)
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := wglGetProcAddressProc.Call(uintptr(unsafe.Pointer(ptr)))
 	if r == 0 {
 		xos.ExitWithErr(errs.Newf("WglGetProcAddress: procedure not found: %s", name))
@@ -140,12 +144,14 @@ func WglGetProcAddress(name string) uintptr {
 
 // WglDeleteContext https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-wgldeletecontext
 func WglDeleteContext(hglrc HGLRC) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := wglDeleteContextProc.Call(uintptr(hglrc))
 	return ret&0xff != 0
 }
 
 // WglMakeCurrent https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-wglmakecurrent
 func WglMakeCurrent(hdc HDC, hglrc HGLRC) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := wglMakeCurrentProc.Call(uintptr(hdc), uintptr(hglrc))
 	return ret&0xff != 0
 }

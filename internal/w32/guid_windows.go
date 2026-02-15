@@ -98,7 +98,7 @@ func decodeHexUint16(src []byte) (uint16, bool) {
 	return (uint16(b1) << 8) | uint16(b2), ok1 && ok2
 }
 
-func decodeHexByte64(s1 []byte, s2 []byte) (value [8]byte, ok bool) {
+func decodeHexByte64(s1, s2 []byte) (value [8]byte, ok bool) {
 	var ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8 bool
 	value[0], ok1 = decodeHexByte(s1[0], s1[1])
 	value[1], ok2 = decodeHexByte(s1[2], s1[3])

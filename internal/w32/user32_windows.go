@@ -773,6 +773,8 @@ type ICONINFO struct {
 }
 
 // WNDCLASSEX https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-wndclassexw
+//
+//nolint:govet // The field order is dictated by the Windows API and cannot be changed.
 type WNDCLASSEX struct {
 	Size       uint32
 	Style      uint32
@@ -853,6 +855,7 @@ func AdjustWindowRectEx(rect *RECT, style uint32, hasMenu bool, exStyle uint32) 
 	if hasMenu {
 		menu = 1
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := adjustWindowRectExProc.Call(uintptr(unsafe.Pointer(rect)), uintptr(style), uintptr(menu),
 		uintptr(exStyle))
 	return b&0xff != 0
@@ -864,31 +867,36 @@ func AdjustWindowRectExForDpi(rect *RECT, style uint32, hasMenu bool, exStyle, d
 	if hasMenu {
 		menu = 1
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := adjustWindowRectExForDpiProc.Call(uintptr(unsafe.Pointer(rect)), uintptr(style), uintptr(menu),
 		uintptr(exStyle), uintptr(dpi))
 	return b&0xff != 0
 }
 
 // ChangeWindowMessageFilterEx https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-changewindowmessagefilterex
-func ChangeWindowMessageFilterEx(hwnd windows.HWND, msg uint32, action uint32, info *ChangeFilterStruct) bool {
+func ChangeWindowMessageFilterEx(hwnd windows.HWND, msg, action uint32, info *ChangeFilterStruct) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := changeWindowMessageFilterExProc.Call(uintptr(hwnd), uintptr(msg), uintptr(action), uintptr(unsafe.Pointer(info)))
 	return b&0xff != 0
 }
 
 // ClientToScreen https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clienttoscreen
 func ClientToScreen(hwnd windows.HWND, point *POINT) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := clientToScreenProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(point)))
 	return b&0xff != 0
 }
 
 // CloseClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-closeclipboard
 func CloseClipboard() bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := closeClipboardProc.Call()
 	return b&0xff != 0
 }
 
 // CreateIconIndirect https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-createiconindirect
 func CreateIconIndirect(info *ICONINFO) HICON {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := createIconIndirectProc.Call(uintptr(unsafe.Pointer(info)))
 	return HICON(ret)
 }
@@ -912,6 +920,7 @@ func CreateWindowExW(exStyle uint32, className, windowName string, style uint32,
 		}
 		defer runtime.KeepAlive(lpWindowName)
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := createWindowExWProc.Call(uintptr(exStyle), uintptr(unsafe.Pointer(lpClassName)),
 		uintptr(unsafe.Pointer(lpWindowName)), uintptr(style), uintptr(x), uintptr(y), uintptr(width), uintptr(height),
 		uintptr(parent), uintptr(menu), uintptr(instance), uintptr(param),
@@ -921,36 +930,41 @@ func CreateWindowExW(exStyle uint32, className, windowName string, style uint32,
 
 // DefWindowProcW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-defwindowprocw
 func DefWindowProcW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) uintptr {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := defWindowProcWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
 	return ret
 }
 
 // DestroyIcon https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-destroyicon
 func DestroyIcon(icon HICON) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := destroyIconProc.Call(uintptr(icon))
 	return b&0xff != 0
 }
 
 // DispatchMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-dispatchmessagew
 func DispatchMessageW(msg *MSG) LRESULT {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := dispatchMessageWProc.Call(uintptr(unsafe.Pointer(msg)))
 	return LRESULT(ret)
 }
 
 // EmptyClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-emptyclipboard
 func EmptyClipboard() bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := emptyClipboardProc.Call()
 	return b&0xff != 0
 }
 
 // EnumClipboardFormats https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumclipboardformats
 func EnumClipboardFormats(format ClipboardFormat) ClipboardFormat {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := enumClipboardFormatsProc.Call(uintptr(format))
 	return ClipboardFormat(r)
 }
 
 // EnumDisplayDevicesW https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaydevicesw
-func EnumDisplayDevicesW(device string, iDevNum uint32, dwFlags uint32, displayDevice *DISPLAY_DEVICEW) bool {
+func EnumDisplayDevicesW(device string, iDevNum, dwFlags uint32, displayDevice *DISPLAY_DEVICEW) bool {
 	var lpDevice *uint16
 	if device != "" {
 		var err error
@@ -961,13 +975,15 @@ func EnumDisplayDevicesW(device string, iDevNum uint32, dwFlags uint32, displayD
 		runtime.KeepAlive(lpDevice)
 	}
 	displayDevice.size = uint32(unsafe.Sizeof(displayDevice))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := enumDisplayDevicesWProc.Call(uintptr(unsafe.Pointer(lpDevice)), uintptr(iDevNum),
 		uintptr(unsafe.Pointer(displayDevice)), uintptr(dwFlags))
 	return b&0xff != 0
 }
 
 // EnumDisplayMonitors https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaymonitors
-func EnumDisplayMonitors(hdc HDC, lprcClip *RECT, callback uintptr, dwData uintptr) bool {
+func EnumDisplayMonitors(hdc HDC, lprcClip *RECT, callback, dwData uintptr) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := enumDisplayMonitorsProc.Call(uintptr(hdc), uintptr(unsafe.Pointer(lprcClip)), callback, dwData)
 	return ret&0xff != 0
 }
@@ -991,42 +1007,49 @@ func NewEnumDisplayMonitorsCallback(callback func(monitor HMONITOR, hdc HDC, bou
 
 // GetActiveWindow https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getactivewindow
 func GetActiveWindow() windows.HWND {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	hwnd, _, _ := getActiveWindowProc.Call()
 	return windows.HWND(hwnd)
 }
 
 // GetClientRect https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclientrect
 func GetClientRect(hwnd windows.HWND, rect *RECT) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := getClientRectProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(rect)))
 	return b&0xff != 0
 }
 
 // GetClipboardData https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboarddata
 func GetClipboardData(format ClipboardFormat) syscall.Handle {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	h, _, _ := getClipboardDataProc.Call(uintptr(format))
 	return syscall.Handle(h)
 }
 
 // GetClipboardSequenceNumber https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboardsequencenumber
 func GetClipboardSequenceNumber() int {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	num, _, _ := getClipboardSequenceNumberProc.Call()
 	return int(num)
 }
 
 // GetDC https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getdc
 func GetDC(hwnd windows.HWND) HDC {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	dc, _, _ := procGetDCProc.Call(uintptr(hwnd))
 	return HDC(dc)
 }
 
 // GetDoubleClickTime https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getdoubleclicktime
 func GetDoubleClickTime() time.Duration {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	millis, _, _ := getDoubleClickTimeProc.Call()
 	return time.Millisecond * time.Duration(millis)
 }
 
 // GetDpiForWindow https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getdpiforwindow
 func GetDpiForWindow(hwnd windows.HWND) uint32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	dpi, _, _ := getDpiForWindowProc.Call(uintptr(hwnd))
 	return uint32(dpi)
 }
@@ -1034,12 +1057,14 @@ func GetDpiForWindow(hwnd windows.HWND) uint32 {
 // GetMonitorInfoW https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow
 func GetMonitorInfoW(monitor HMONITOR, monitorInfo *MONITORINFO) bool {
 	monitorInfo.size = uint32(unsafe.Sizeof(*monitorInfo))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := getMonitorInfoWProc.Call(uintptr(monitor), uintptr(unsafe.Pointer(monitorInfo)))
 	return b&0xff != 0
 }
 
 // GetSysColor https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsyscolor
 func GetSysColor(index int) uint32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	color, _, _ := getSysColorProc.Call(uintptr(index))
 	return uint32(color)
 }
@@ -1047,18 +1072,21 @@ func GetSysColor(index int) uint32 {
 // GetWindowPlacement https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowplacement
 func GetWindowPlacement(hwnd windows.HWND, placement *WINDOWPLACEMENT) bool {
 	placement.Length = uint32(unsafe.Sizeof(*placement))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := getWindowPlacementProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(placement)))
 	return b&0xff != 0
 }
 
 // IsWindowVisible https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindowvisible
 func IsWindowVisible(hwnd windows.HWND) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := isWindowVisibleProc.Call(uintptr(hwnd))
 	return b&0xff != 0
 }
 
 // LoadImageW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-loadimagew
 func LoadImageW(inst HINSTANCE, name UTF16String, typ uint32, cx, cy int, load uint32) windows.Handle {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := loadImageWProc.Call(uintptr(inst), uintptr(unsafe.Pointer(name)), uintptr(typ), uintptr(cx),
 		uintptr(cy), uintptr(load))
 	return windows.Handle(ret)
@@ -1066,29 +1094,33 @@ func LoadImageW(inst HINSTANCE, name UTF16String, typ uint32, cx, cy int, load u
 
 // MakeIntResourceW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-makeintresourcew
 func MakeIntResourceW(id int) UTF16String {
-	return UTF16String(unsafe.Pointer(uintptr(id)))
+	return UTF16String(unsafe.Pointer(uintptr(id))) //nolint:govet // No other choice
 }
 
 // MessageBeep https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messagebeep
 func MessageBeep(beepType BeepType) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := messageBeepProc.Call(uintptr(beepType))
 	return b&0xff != 0
 }
 
 // MonitorFromWindow https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-monitorfromwindow
 func MonitorFromWindow(hwnd windows.HWND, flags uint32) HMONITOR {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	monitor, _, _ := monitorFromWindowProc.Call(uintptr(hwnd), uintptr(flags))
 	return HMONITOR(monitor)
 }
 
 // OpenClipboard https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openclipboard
 func OpenClipboard(newOwner windows.HWND) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := openClipboardProc.Call(uintptr(newOwner))
 	return b&0xff != 0
 }
 
 // PeekMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew
 func PeekMessageW(msg *MSG, hwnd windows.HWND, msgFilterMin, msgFilterMax, removeMsg uint32) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := peekMessageWProc.Call(uintptr(unsafe.Pointer(msg)), uintptr(hwnd), uintptr(msgFilterMin),
 		uintptr(msgFilterMax), uintptr(removeMsg))
 	return b&0xff != 0
@@ -1096,6 +1128,7 @@ func PeekMessageW(msg *MSG, hwnd windows.HWND, msgFilterMin, msgFilterMax, remov
 
 // PostMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-postmessagew
 func PostMessageW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := postMessageWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
 	return b&0xff != 0
 }
@@ -1103,24 +1136,28 @@ func PostMessageW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) b
 // RegisterClassExW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-registerclassexw
 func RegisterClassExW(wndClassEx *WNDCLASSEX) ATOM {
 	wndClassEx.Size = uint32(unsafe.Sizeof(*wndClassEx))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := registerClassExWProc.Call(uintptr(unsafe.Pointer(wndClassEx)))
 	return ATOM(ret)
 }
 
 // ReleaseDC https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-releasedc
 func ReleaseDC(hwnd windows.HWND, dc HDC) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := releaseDCProc.Call(uintptr(hwnd), uintptr(dc))
 	return ret == 1
 }
 
 // SetClipboardData https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setclipboarddata
 func SetClipboardData(format ClipboardFormat, handle syscall.Handle) syscall.Handle {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	h, _, _ := setClipboardDataProc.Call(uintptr(format), uintptr(handle))
 	return syscall.Handle(h)
 }
 
 // SetProcessDpiAwarenessContext https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setprocessdpiawarenesscontext
 func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := setProcessDpiAwarenessContextProc.Call(uintptr(value))
 	return b&0xff != 0
 }
@@ -1128,12 +1165,14 @@ func SetProcessDpiAwarenessContext(value DPI_AWARENESS_CONTEXT) bool {
 // SetWindowPlacement https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowplacement
 func SetWindowPlacement(hwnd windows.HWND, placement *WINDOWPLACEMENT) bool {
 	placement.Length = uint32(unsafe.Sizeof(*placement))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := setWindowPlacementProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(placement)))
 	return b&0xff != 0
 }
 
 // SetWindowPos https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos
-func SetWindowPos(hwnd windows.HWND, hwndInsertAfter windows.HWND, x, y, cx, cy int32, uFlags uint32) bool {
+func SetWindowPos(hwnd, hwndInsertAfter windows.HWND, x, y, cx, cy int32, uFlags uint32) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := setWindowPosProc.Call(uintptr(hwnd), uintptr(hwndInsertAfter), uintptr(x), uintptr(y),
 		uintptr(cx), uintptr(cy), uintptr(uFlags))
 	return b&0xff != 0
@@ -1149,24 +1188,28 @@ func SetWindowTextW(hwnd windows.HWND, text string) bool {
 		}
 		defer runtime.KeepAlive(lpString)
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := setWindowTextWProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(lpString)))
 	return b&0xff != 0
 }
 
 // ShowWindow https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
 func ShowWindow(hwnd windows.HWND, cmdShow int32) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := showWindowProc.Call(uintptr(hwnd), uintptr(cmdShow))
 	return b&0xff != 0
 }
 
 // TranslateMessage https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-translatemessage
 func TranslateMessage(msg *MSG) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := translateMessageProc.Call(uintptr(unsafe.Pointer(msg)))
 	return b&0xff != 0
 }
 
 // WaitMessage https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-waitmessage
 func WaitMessage() bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := waitMessageProc.Call()
 	return b&0xff != 0
 }

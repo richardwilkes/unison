@@ -28,6 +28,7 @@ func (obj *ModalWindow) vmt() *vmtModalWindow {
 }
 
 func (obj *ModalWindow) Show() bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().Show, uintptr(unsafe.Pointer(obj)), 0)
 	return r1&0xff == 0
 }

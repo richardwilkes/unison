@@ -55,6 +55,7 @@ type OSVERSIONINFOEXW struct {
 // RtlVerifyVersionInfo https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlverifyversioninfo
 func RtlVerifyVersionInfo(info *OSVERSIONINFOEXW, typeMask uint32, conditionMask uint64) int32 {
 	info.OSVersionInfoSize = uint32(unsafe.Sizeof(*info))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := rtlVerifyVersionInfoProc.Call(uintptr(unsafe.Pointer(info)), uintptr(typeMask), uintptr(conditionMask))
 	return int32(ret)
 }

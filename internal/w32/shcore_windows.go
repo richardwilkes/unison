@@ -31,6 +31,7 @@ const (
 
 // GetDpiForMonitor https://learn.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-getdpiformonitor
 func GetDpiForMonitor(hmonitor HMONITOR, dpiType MONITOR_DPI_TYPE) (dpiX, dpiY uint32) {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := getDpiForMonitorProc.Call(uintptr(hmonitor), uintptr(dpiType), uintptr(unsafe.Pointer(&dpiX)),
 		uintptr(unsafe.Pointer(&dpiY)))
 	if uint32(r) != uint32(windows.S_OK) {
@@ -41,6 +42,7 @@ func GetDpiForMonitor(hmonitor HMONITOR, dpiType MONITOR_DPI_TYPE) (dpiX, dpiY u
 
 // SetProcessDpiAwareness https://learn.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-setprocessdpiawareness
 func SetProcessDpiAwareness(value PROCESS_DPI_AWARENESS) int32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := setProcessDpiAwarenessProc.Call(uintptr(value))
 	return int32(ret)
 }

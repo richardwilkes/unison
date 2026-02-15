@@ -127,6 +127,7 @@ func CreateBitmap(width, height int32, planes, bitsPerPixel uint16, bits []byte)
 	if len(bits) != 0 {
 		bitsPtr = uintptr(unsafe.Pointer(&bits[0]))
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	h, _, _ := createBitmapProc.Call(uintptr(width), uintptr(height), uintptr(planes), uintptr(bitsPerPixel), bitsPtr)
 	return HBITMAP(h)
 }
@@ -134,18 +135,21 @@ func CreateBitmap(width, height int32, planes, bitsPerPixel uint16, bits []byte)
 // CreateDIBSection https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createdibsection
 func CreateDIBSection(hdc HDC, pbmi *BITMAPV5HEADER, iUsage uint, ppvBits **byte, hSection windows.Handle, dwOffset uint) HBITMAP {
 	pbmi.BV5Size = uint32(unsafe.Sizeof(*pbmi))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := createDIBSectionProc.Call(uintptr(hdc), uintptr(unsafe.Pointer(pbmi)), uintptr(iUsage), uintptr(unsafe.Pointer(ppvBits)), uintptr(hSection), uintptr(dwOffset))
 	return HBITMAP(ret)
 }
 
 // DeleteObject https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-deleteobject
 func DeleteObject(hObject HGDIOBJ) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := deleteObjectProc.Call(uintptr(hObject))
 	return ret&0xff != 0
 }
 
 // DescribePixelFormat https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-describepixelformat
 func DescribePixelFormat(hdc HDC, iPixelFormat int32, nBytes uint32, ppfd *PIXELFORMATDESCRIPTOR) int32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := describePixelFormatProc.Call(uintptr(hdc), uintptr(iPixelFormat), uintptr(nBytes),
 		uintptr(unsafe.Pointer(ppfd)))
 	return int32(ret)
@@ -153,12 +157,14 @@ func DescribePixelFormat(hdc HDC, iPixelFormat int32, nBytes uint32, ppfd *PIXEL
 
 // SetPixelFormat https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-setpixelformat
 func SetPixelFormat(hdc HDC, iPixelFormat int32, pfd *PIXELFORMATDESCRIPTOR) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := setPixelFormatProc.Call(uintptr(hdc), uintptr(iPixelFormat), uintptr(unsafe.Pointer(pfd)))
 	return ret&0xff != 0
 }
 
 // SwapBuffers https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-swapbuffers
 func SwapBuffers(hdc HDC) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := swapBuffersProc.Call(uintptr(hdc))
 	return ret&0xff != 0
 }

@@ -15,6 +15,7 @@ import (
 	"unsafe"
 )
 
+// https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/ne-shobjidl_core-_fileopendialogoptions
 const (
 	FOSOverwritePrompt          = 0x00000002
 	FOSStrictFileTypes          = 0x00000004
@@ -41,6 +42,8 @@ const (
 	FOSSupportsStreamableItems  = 0x80000000
 )
 
+// FileFilter represents a single filter for a file dialog, with a user-friendly name and a pattern to match against
+// file names.
 type FileFilter struct {
 	Name    string
 	Pattern string
@@ -51,6 +54,7 @@ type filterSpec struct {
 	pattern *int16
 }
 
+// FileDialog https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ifiledialog
 type FileDialog struct {
 	ModalWindow
 }
@@ -89,11 +93,13 @@ func (obj *FileDialog) vmt() *vmtFileDialog {
 func (obj *FileDialog) SetFolder(path string) {
 	if item := NewShellItem(path); item != nil {
 		defer item.Release()
+		//nolint:errcheck // Nothing we can do about an error here
 		syscall.SyscallN(obj.vmt().SetFolder, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(item)))
 	}
 }
 
 func (obj *FileDialog) SetOptions(options int) {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetOptions, uintptr(unsafe.Pointer(obj)), uintptr(options))
 }
 
@@ -108,22 +114,26 @@ func (obj *FileDialog) SetFileTypes(filters []FileFilter) {
 			pattern: SysAllocString(one.Pattern),
 		}
 	}
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetFileTypes, uintptr(unsafe.Pointer(obj)), uintptr(len(specs)),
 		uintptr(unsafe.Pointer(&specs[0])))
 }
 
 func (obj *FileDialog) SetDefaultExtension(ext string) {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetDefaultExtension, uintptr(unsafe.Pointer(obj)),
 		uintptr(unsafe.Pointer(SysAllocString(strings.TrimPrefix(ext, ".")))))
 }
 
 func (obj *FileDialog) SetFileName(fileName string) {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetFileName, uintptr(unsafe.Pointer(obj)),
 		uintptr(unsafe.Pointer(SysAllocString(fileName))))
 }
 
 func (obj *FileDialog) GetResult() string {
 	var item *ShellItem
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().GetResult, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(&item)))
 	if r1 != 0 || item == nil {
 		return ""

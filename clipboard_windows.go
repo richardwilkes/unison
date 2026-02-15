@@ -40,7 +40,7 @@ func (c *Clipboard) getText() string {
 		return ""
 	}
 	defer w32.GlobalUnlock(obj)
-	return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(buffer)))
+	return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(buffer))) //nolint:govet // No other choice
 }
 
 func (c *Clipboard) setText(str string) {
@@ -57,7 +57,7 @@ func (c *Clipboard) setText(str string) {
 		w32.GlobalFree(obj)
 		return
 	}
-	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer)), len(s)), s)
+	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer)), len(s)), s) //nolint:govet // No other choice
 	w32.GlobalUnlock(obj)
 	var wnd windows.HWND
 	if len(windowList) != 0 {

@@ -42,6 +42,7 @@ func NewOpenDialog() *FileOpenDialog {
 
 func (obj *FileOpenDialog) GetResults() []string {
 	var array *ShellItemArray
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().GetResults, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(&array)))
 	if r1 != 0 {
 		return nil

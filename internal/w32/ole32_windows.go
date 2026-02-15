@@ -25,6 +25,7 @@ var (
 )
 
 func CoInitialize(coInit int) {
+	//nolint:errcheck // Nothing we can do about an error here
 	coInitializeExProc.Call(0, uintptr(coInit))
 }
 
@@ -33,6 +34,7 @@ func CoCreateInstance(classID, instanceID GUID) *Unknown {
 		instanceID = instanceIDUnknown
 	}
 	var unknown *Unknown
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	if r1, _, _ := coCreateInstanceProc.Call(uintptr(unsafe.Pointer(&classID)), 0,
 		windows.CLSCTX_INPROC_SERVER|windows.CLSCTX_LOCAL_SERVER|windows.CLSCTX_REMOTE_SERVER,
 		uintptr(unsafe.Pointer(&instanceID)), uintptr(unsafe.Pointer(&unknown))); r1 != 0 {
@@ -42,5 +44,6 @@ func CoCreateInstance(classID, instanceID GUID) *Unknown {
 }
 
 func CoTaskMemFree(ptr uintptr) {
+	//nolint:errcheck // Nothing we can do about an error here
 	coTaskMemFreeProc.Call(ptr)
 }
