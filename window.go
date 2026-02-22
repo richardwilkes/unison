@@ -225,9 +225,11 @@ func ActiveWindow() *Window {
 // NewWindow creates a new, initially hidden, window. Call Show() or ToFront() to make it visible.
 func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	w := &Window{
-		title:      title,
-		titleIcons: DefaultTitleIcons,
-		surface:    &surface{},
+		title:          title,
+		titleIcons:     DefaultTitleIcons,
+		surface:        &surface{},
+		pressedKeys:    make(map[KeyCode]bool),
+		pressedButtons: make(map[int]bool),
 	}
 	for _, option := range options {
 		if err := option(w); err != nil {
@@ -242,12 +244,11 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		Floating:         w.floating,
 		MousePassThrough: false,
 	}
+	windowList = append(windowList, w)
 	if err := w.initNativeWindow(&cfg); err != nil {
+		windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 		return nil, err
 	}
-	w.pressedKeys = make(map[KeyCode]bool)
-	w.pressedButtons = make(map[int]bool)
-	windowList = append(windowList, w)
 	w.valid = true
 	w.root = newRootPanel(w)
 	w.ValidateLayout()

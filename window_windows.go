@@ -27,7 +27,9 @@ var (
 )
 
 type platformWindow struct {
-	wnd windows.HWND
+	wnd       windows.HWND
+	maximized bool
+	minimized bool
 }
 
 func findWindowByHWND(wnd windows.HWND) *Window {
@@ -111,6 +113,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 		return err
 	}
 
+	// TODO: Implement mouse passthrough
 	// if (wndconfig->mousePassthrough) {
 	// 	_plafSetWindowMousePassthrough(window, true);
 	// }
@@ -119,38 +122,34 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 }
 
 func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
-	w := findWindowByHWND(hWnd)
-	if w == nil {
+	if w := findWindowByHWND(hWnd); w != nil {
 		switch uMsg {
-		case w32.WM_NCCREATE:
-			// TODO: IMPLEMENT!
-		case w32.WM_DISPLAYCHANGE:
-			// TODO: IMPLEMENT!
-		}
-	} else {
-		switch uMsg {
-		case w32.WM_MOUSEACTIVATE:
-			// TODO: Implement!
-		case w32.WM_CAPTURECHANGED:
-			// TODO: Implement!
 		case w32.WM_SETFOCUS:
-		// TODO: IMPLEMENT!
+			w.gainedFocus()
+			return 0
 		case w32.WM_KILLFOCUS:
-			// TODO: IMPLEMENT!
-		case w32.WM_SYSCOMMAND:
-			// TODO: IMPLEMENT!
+			w.lostFocus()
+			return 0
 		case w32.WM_CLOSE:
-			// TODO: IMPLEMENT!
-		case w32.WM_INPUTLANGCHANGE:
-			// TODO: IMPLEMENT!
+			w.nativeRequestClose()
+			return 0
 		case w32.WM_CHAR, w32.WM_SYSCHAR:
 			// TODO: IMPLEMENT!
 		case w32.WM_UNICHAR:
 		// TODO: IMPLEMENT!
-		case w32.WM_KEYDOWN, w32.WM_SYSKEYDOWN, w32.WM_KEYUP, w32.WM_SYSKEYUP:
+		case w32.WM_KEYDOWN,
+			w32.WM_SYSKEYDOWN,
+			w32.WM_KEYUP,
+			w32.WM_SYSKEYUP:
 		// TODO: IMPLEMENT!
-		case w32.WM_LBUTTONDOWN, w32.WM_RBUTTONDOWN, w32.WM_MBUTTONDOWN, w32.WM_XBUTTONDOWN, w32.WM_LBUTTONUP,
-			w32.WM_RBUTTONUP, w32.WM_MBUTTONUP, w32.WM_XBUTTONUP:
+		case w32.WM_LBUTTONDOWN,
+			w32.WM_RBUTTONDOWN,
+			w32.WM_MBUTTONDOWN,
+			w32.WM_XBUTTONDOWN,
+			w32.WM_LBUTTONUP,
+			w32.WM_RBUTTONUP,
+			w32.WM_MBUTTONUP,
+			w32.WM_XBUTTONUP:
 			// TODO: IMPLEMENT!
 		case w32.WM_MOUSEMOVE:
 			// TODO: IMPLEMENT!
@@ -162,25 +161,49 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			// TODO: IMPLEMENT!
 		case w32.WM_MOUSEHWHEEL:
 			// TODO: IMPLEMENT!
-		case w32.WM_ENTERSIZEMOVE, w32.WM_ENTERMENULOOP:
-			// TODO: IMPLEMENT!
-		case w32.WM_EXITSIZEMOVE, w32.WM_EXITMENULOOP:
-			// TODO: IMPLEMENT!
 		case w32.WM_SIZE:
-		// TODO: IMPLEMENT!
+			minimized := wParam == w32.SIZE_MINIMIZED
+			if w.wnd.minimized != minimized {
+				w.wnd.minimized = minimized
+				if w.MinimizedCallback != nil {
+					w.MinimizedCallback(minimized)
+				}
+			}
+			maximized := wParam == w32.SIZE_MAXIMIZED || (w.wnd.maximized && wParam != w32.SIZE_RESTORED)
+			if w.wnd.maximized != maximized {
+				w.wnd.maximized = maximized
+				if w.MaximizeCallback != nil {
+					w.MaximizeCallback(maximized)
+				}
+			}
+			width := float32(lParam & 0xFFFF)
+			height := float32((lParam >> 16) & 0xFFFF)
+			if width != w.lastWidth || height != w.lastHeight {
+				w.resized()
+				w.lastWidth = width
+				w.lastHeight = height
+			}
+			return 0
 		case w32.WM_MOVE:
-			// TODO: IMPLEMENT!
+			if w.MovedCallback != nil {
+				w.MovedCallback()
+			}
+			return 0
 		case w32.WM_SIZING:
-			// TODO: IMPLEMENT!
+			return 1
 		case w32.WM_GETMINMAXINFO:
 			// TODO: IMPLEMENT!
 		case w32.WM_PAINT:
-			// TODO: IMPLEMENT!
+			w.draw()
 		case w32.WM_ERASEBKGND:
-			// TODO: IMPLEMENT!
-		case w32.WM_NCACTIVATE, w32.WM_NCPAINT:
-			// TODO: IMPLEMENT!
-		case w32.WM_DWMCOMPOSITIONCHANGED, w32.WM_DWMCOLORIZATIONCOLORCHANGED:
+			return 1
+		case w32.WM_NCACTIVATE,
+			w32.WM_NCPAINT:
+			if w.undecorated {
+				return 1
+			}
+		case w32.WM_DWMCOMPOSITIONCHANGED,
+			w32.WM_DWMCOLORIZATIONCOLORCHANGED:
 			// TODO: IMPLEMENT!
 		case w32.WM_GETDPISCALEDSIZE:
 			// TODO: IMPLEMENT!
