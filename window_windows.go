@@ -12,6 +12,7 @@ package unison
 import (
 	"runtime"
 	"slices"
+	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -192,7 +193,21 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 		case w32.WM_SIZING:
 			return 1
 		case w32.WM_GETMINMAXINFO:
-			// TODO: IMPLEMENT!
+			var frame w32.RECT
+			style := w.windowStyle()
+			exStyle := w.windowExStyle()
+			if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
+				w32.AdjustWindowRectExForDpi(&frame, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
+			} else {
+				w32.AdjustWindowRectEx(&frame, style, false, exStyle)
+			}
+			minimum, maximum := w.minMaxContentSize()
+			mmi := (*w32.MINMAXINFO)(unsafe.Pointer(lParam)) //nolint:govet // No other choice
+			mmi.MinTrackSize.X = int32(minimum.Width) + frame.Right - frame.Left
+			mmi.MinTrackSize.Y = int32(minimum.Height) + frame.Bottom - frame.Top
+			mmi.MaxTrackSize.X = int32(maximum.Width) + frame.Right - frame.Left
+			mmi.MaxTrackSize.Y = int32(maximum.Height) + frame.Bottom - frame.Top
+			return 0
 		case w32.WM_PAINT:
 			w.draw()
 		case w32.WM_ERASEBKGND:

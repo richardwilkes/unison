@@ -891,6 +891,15 @@ type MSG struct {
 	Private uint32
 }
 
+// MINMAXINFO https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-minmaxinfo
+type MINMAXINFO struct {
+	Reserved     POINT
+	MaxSize      POINT
+	MaxPosition  POINT
+	MinTrackSize POINT
+	MaxTrackSize POINT
+}
+
 // AdjustWindowRectEx https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-adjustwindowrectex
 func AdjustWindowRectEx(rect *RECT, style uint32, hasMenu bool, exStyle uint32) bool {
 	var menu uint32

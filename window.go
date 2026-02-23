@@ -307,15 +307,10 @@ func (w *Window) moved() {
 }
 
 func (w *Window) resized() {
-	current := w.ContentRect()
-	adjusted := w.adjustContentRectForMinMax(current)
-	if adjusted != current {
-		w.SetContentRect(adjusted)
-	}
-	w.ValidateLayout()
 	if w.ResizedCallback != nil {
 		xos.SafeCall(func() { w.ResizedCallback() }, nil)
 	}
+	w.ValidateLayout()
 }
 
 func (w *Window) gainedFocus() {

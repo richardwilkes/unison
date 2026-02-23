@@ -77,6 +77,11 @@ func initNativeWindowCallbacks() {
 			if r.Width != w.lastWidth || r.Height != w.lastHeight {
 				w.lastWidth = r.Width
 				w.lastHeight = r.Height
+				current := w.ContentRect()
+				adjusted := w.adjustContentRectForMinMax(current)
+				if adjusted != current {
+					w.SetContentRect(adjusted)
+				}
 				w.resized()
 			}
 		} else {
