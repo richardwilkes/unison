@@ -23,6 +23,7 @@ var (
 	user32                            = windows.NewLazySystemDLL("user32.dll")
 	adjustWindowRectExProc            = user32.NewProc("AdjustWindowRectEx")
 	adjustWindowRectExForDpiProc      = user32.NewProc("AdjustWindowRectExForDpi")
+	bringWindowToTopProc              = user32.NewProc("BringWindowToTop")
 	changeWindowMessageFilterExProc   = user32.NewProc("ChangeWindowMessageFilterEx")
 	clientToScreenProc                = user32.NewProc("ClientToScreen")
 	closeClipboardProc                = user32.NewProc("CloseClipboard")
@@ -30,6 +31,7 @@ var (
 	createWindowExWProc               = user32.NewProc("CreateWindowExW")
 	defWindowProcWProc                = user32.NewProc("DefWindowProcW")
 	destroyIconProc                   = user32.NewProc("DestroyIcon")
+	destroyWindowProc                 = user32.NewProc("DestroyWindow")
 	dispatchMessageWProc              = user32.NewProc("DispatchMessageW")
 	emptyClipboardProc                = user32.NewProc("EmptyClipboard")
 	enumClipboardFormatsProc          = user32.NewProc("EnumClipboardFormats")
@@ -39,14 +41,17 @@ var (
 	getClientRectProc                 = user32.NewProc("GetClientRect")
 	getClipboardDataProc              = user32.NewProc("GetClipboardData")
 	getClipboardSequenceNumberProc    = user32.NewProc("GetClipboardSequenceNumber")
-	procGetDCProc                     = user32.NewProc("GetDC")
+	getCursorPosProc                  = user32.NewProc("GetCursorPos")
+	getDCProc                         = user32.NewProc("GetDC")
 	getDoubleClickTimeProc            = user32.NewProc("GetDoubleClickTime")
 	getDpiForWindowProc               = user32.NewProc("GetDpiForWindow")
+	getMessageTimeProc                = user32.NewProc("GetMessageTime")
 	getMonitorInfoWProc               = user32.NewProc("GetMonitorInfoW")
 	getSysColorProc                   = user32.NewProc("GetSysColor")
 	getWindowPlacementProc            = user32.NewProc("GetWindowPlacement")
 	isWindowVisibleProc               = user32.NewProc("IsWindowVisible")
 	loadImageWProc                    = user32.NewProc("LoadImageW")
+	mapVirtualKeyWProc                = user32.NewProc("MapVirtualKeyW")
 	messageBeepProc                   = user32.NewProc("MessageBeep")
 	monitorFromWindowProc             = user32.NewProc("MonitorFromWindow")
 	openClipboardProc                 = user32.NewProc("OpenClipboard")
@@ -54,14 +59,20 @@ var (
 	postMessageWProc                  = user32.NewProc("PostMessageW")
 	registerClassExWProc              = user32.NewProc("RegisterClassExW")
 	releaseDCProc                     = user32.NewProc("ReleaseDC")
+	screenToClientProc                = user32.NewProc("ScreenToClient")
 	setClipboardDataProc              = user32.NewProc("SetClipboardData")
+	setCursorProc                     = user32.NewProc("SetCursor")
+	setFocusProc                      = user32.NewProc("SetFocus")
+	setForegroundWindowProc           = user32.NewProc("SetForegroundWindow")
 	setProcessDpiAwarenessContextProc = user32.NewProc("SetProcessDpiAwarenessContext")
 	setWindowPlacementProc            = user32.NewProc("SetWindowPlacement")
 	setWindowPosProc                  = user32.NewProc("SetWindowPos")
 	setWindowTextWProc                = user32.NewProc("SetWindowTextW")
 	showWindowProc                    = user32.NewProc("ShowWindow")
+	trackMouseEventProc               = user32.NewProc("TrackMouseEvent")
 	translateMessageProc              = user32.NewProc("TranslateMessage")
 	waitMessageProc                   = user32.NewProc("WaitMessage")
+	windowFromPointProc               = user32.NewProc("WindowFromPoint")
 )
 
 // Clipboard format types https://docs.microsoft.com/en-us/windows/desktop/dataxchg/standard-clipboard-formats
@@ -707,6 +718,36 @@ const (
 	HTSIZELAST  = HTBOTTOMRIGHT
 )
 
+const (
+	MAPVK_VK_TO_VSC = iota
+	MAPVK_VSC_TO_VK
+	MAPVK_VK_TO_CHAR
+	MAPVK_VSC_TO_VK_EX
+	MAPVK_VK_TO_VSC_EX
+)
+
+const WHEEL_DELTA = 120
+
+const (
+	VK_SHIFT      = 0x10
+	VK_CONTROL    = 0x11
+	VK_MENU       = 0x12
+	VK_SNAPSHOT   = 0x2C
+	VK_PROCESSKEY = 0xE5
+)
+
+const (
+	UNICODE_NOCHAR = 0xFFFF
+	KF_EXTENDED    = 0x0100
+	KF_REPEAT      = 0x4000
+	KF_UP          = 0x8000
+)
+
+const (
+	XBUTTON1 = 1 << iota
+	XBUTTON2
+)
+
 // WM_SIZE message wParam values
 const (
 	SIZE_RESTORED = iota
@@ -805,6 +846,14 @@ const (
 	MDT_DEFAULT       MONITOR_DPI_TYPE = MDT_EFFECTIVE_DPI
 )
 
+const (
+	TME_HOVER     = 1
+	TME_LEAVE     = 2
+	TME_NONCLIENT = 0x00000010
+	TME_QUERY     = 0x40000000
+	TME_CANCEL    = 0x80000000
+)
+
 // ICONINFO https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-iconinfo
 type ICONINFO struct {
 	Icon     int32 // 1 for icon, 0 for cursor.
@@ -900,6 +949,14 @@ type MINMAXINFO struct {
 	MaxTrackSize POINT
 }
 
+// TRACKMOUSEEVENT https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-trackmouseevent
+type TRACKMOUSEEVENT struct {
+	size      uint32
+	Flags     uint32
+	HwndTrack windows.HWND
+	HoverTime uint32
+}
+
 // AdjustWindowRectEx https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-adjustwindowrectex
 func AdjustWindowRectEx(rect *RECT, style uint32, hasMenu bool, exStyle uint32) bool {
 	var menu uint32
@@ -921,6 +978,13 @@ func AdjustWindowRectExForDpi(rect *RECT, style uint32, hasMenu bool, exStyle, d
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := adjustWindowRectExForDpiProc.Call(uintptr(unsafe.Pointer(rect)), uintptr(style), uintptr(menu),
 		uintptr(exStyle), uintptr(dpi))
+	return b&0xff != 0
+}
+
+// BringWindowToTop https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-bringwindowtotop
+func BringWindowToTop(hwnd windows.HWND) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := bringWindowToTopProc.Call(uintptr(hwnd))
 	return b&0xff != 0
 }
 
@@ -990,6 +1054,13 @@ func DefWindowProcW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM)
 func DestroyIcon(icon HICON) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := destroyIconProc.Call(uintptr(icon))
+	return b&0xff != 0
+}
+
+// DestroyWindow https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-destroywindow
+func DestroyWindow(hwnd windows.HWND) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := destroyWindowProc.Call(uintptr(hwnd))
 	return b&0xff != 0
 }
 
@@ -1084,10 +1155,17 @@ func GetClipboardSequenceNumber() int {
 	return int(num)
 }
 
+// GetCursorPos https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getcursorpos
+func GetCursorPos(point *POINT) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := getCursorPosProc.Call(uintptr(unsafe.Pointer(point)))
+	return b&0xff != 0
+}
+
 // GetDC https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getdc
 func GetDC(hwnd windows.HWND) HDC {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	dc, _, _ := procGetDCProc.Call(uintptr(hwnd))
+	dc, _, _ := getDCProc.Call(uintptr(hwnd))
 	return HDC(dc)
 }
 
@@ -1103,6 +1181,13 @@ func GetDpiForWindow(hwnd windows.HWND) uint32 {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	dpi, _, _ := getDpiForWindowProc.Call(uintptr(hwnd))
 	return uint32(dpi)
+}
+
+// GetMessageTime https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmessagetime
+func GetMessageTime() uint32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	millis, _, _ := getMessageTimeProc.Call()
+	return uint32(millis)
 }
 
 // GetMonitorInfoW https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow
@@ -1146,6 +1231,13 @@ func LoadImageW(inst HINSTANCE, name UTF16String, typ uint32, cx, cy int, load u
 // MakeIntResourceW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-makeintresourcew
 func MakeIntResourceW(id int) UTF16String {
 	return UTF16String(unsafe.Pointer(uintptr(id))) //nolint:govet // No other choice
+}
+
+// MapVirtualKeyW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-mapvirtualkeyw
+func MapVirtualKeyW(code, mapType uint32) uint32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	mapped, _, _ := mapVirtualKeyWProc.Call(uintptr(code), uintptr(mapType))
+	return uint32(mapped)
 }
 
 // MessageBeep https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messagebeep
@@ -1199,11 +1291,39 @@ func ReleaseDC(hwnd windows.HWND, dc HDC) bool {
 	return ret == 1
 }
 
+// ScreenToClient https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-screentoclient
+func ScreenToClient(hwnd windows.HWND, point *POINT) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := screenToClientProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(point)))
+	return b&0xff != 0
+}
+
 // SetClipboardData https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setclipboarddata
 func SetClipboardData(format ClipboardFormat, handle syscall.Handle) syscall.Handle {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	h, _, _ := setClipboardDataProc.Call(uintptr(format), uintptr(handle))
 	return syscall.Handle(h)
+}
+
+// SetCursor https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcursor
+func SetCursor(cursor HCURSOR) HCURSOR {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	prev, _, _ := setCursorProc.Call(uintptr(cursor))
+	return HCURSOR(prev)
+}
+
+// SetFocus https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setfocus
+func SetFocus(hwnd windows.HWND) windows.HWND {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	prev, _, _ := setFocusProc.Call(uintptr(hwnd))
+	return windows.HWND(prev)
+}
+
+// SetForegroundWindow https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow
+func SetForegroundWindow(hwnd windows.HWND) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := setForegroundWindowProc.Call(uintptr(hwnd))
+	return b&0xff != 0
 }
 
 // SetProcessDpiAwarenessContext https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setprocessdpiawarenesscontext
@@ -1251,6 +1371,14 @@ func ShowWindow(hwnd windows.HWND, cmdShow int32) bool {
 	return b&0xff != 0
 }
 
+// TrackMouseEvent https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
+func TrackMouseEvent(evt *TRACKMOUSEEVENT) bool {
+	evt.size = uint32(unsafe.Sizeof(*evt))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := trackMouseEventProc.Call(uintptr(unsafe.Pointer(evt)))
+	return b&0xff != 0
+}
+
 // TranslateMessage https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-translatemessage
 func TranslateMessage(msg *MSG) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -1263,4 +1391,11 @@ func WaitMessage() bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := waitMessageProc.Call()
 	return b&0xff != 0
+}
+
+// WindowFromPoint https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-windowfrompoint
+func WindowFromPoint(point POINT) windows.HWND {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	hwnd, _, _ := windowFromPointProc.Call(uintptr(point.X), uintptr(point.Y))
+	return windows.HWND(hwnd)
 }

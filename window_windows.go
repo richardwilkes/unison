@@ -28,9 +28,11 @@ var (
 )
 
 type platformWindow struct {
-	wnd       windows.HWND
-	maximized bool
-	minimized bool
+	wnd           windows.HWND
+	highSurrogate rune
+	maximized     bool
+	minimized     bool
+	mouseTracked  bool
 }
 
 func findWindowByHWND(wnd windows.HWND) *Window {
@@ -135,14 +137,77 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w.nativeRequestClose()
 			return 0
 		case w32.WM_CHAR, w32.WM_SYSCHAR:
-			// TODO: IMPLEMENT!
+			switch {
+			case wParam >= 0xD800 && wParam <= 0xDBFF:
+				w.wnd.highSurrogate = rune(wParam)
+			case uMsg == w32.WM_SYSCHAR:
+				w.wnd.highSurrogate = 0
+			default:
+				var r rune
+				if wParam >= 0xDC00 && wParam <= 0xDFFF {
+					if w.wnd.highSurrogate != 0 {
+						r = (w.wnd.highSurrogate-0xD800)<<10 + (rune(wParam) - 0xDC00) + 0x10000
+					}
+				} else {
+					r = rune(wParam)
+				}
+				w.wnd.highSurrogate = 0
+				w.runeTyped(r)
+			}
+			return 0
 		case w32.WM_UNICHAR:
-		// TODO: IMPLEMENT!
+			if wParam == w32.UNICODE_NOCHAR {
+				return 1
+			}
+			w.runeTyped(rune(wParam))
+			return 0
 		case w32.WM_KEYDOWN,
 			w32.WM_SYSKEYDOWN,
 			w32.WM_KEYUP,
 			w32.WM_SYSKEYUP:
-		// TODO: IMPLEMENT!
+			// TODO: Standard ways of inputting accented characters (ALT-0201 for accented capital E, for example) aren't working right now
+			scanCode := int(((lParam >> 16) & 0xFFFF) & (w32.KF_EXTENDED | 0xFF))
+			switch scanCode {
+			case 0:
+				scanCode = int(w32.MapVirtualKeyW(uint32(wParam), w32.MAPVK_VK_TO_VSC))
+			case 0x54: // Alt+PrtScn
+				scanCode = 0x137
+			case 0x146: // Ctrl+Pause
+				scanCode = 0x45
+			case 0x136: // CJK IME right shift
+				scanCode = 0x36
+			}
+			key := rawScanCodeToKeyCodeMap[scanCode]
+			if wParam == w32.VK_CONTROL {
+				if ((lParam>>16)&0xFFFF)&w32.KF_EXTENDED != 0 {
+					key = KeyRControl
+				} else {
+					var next w32.MSG
+					when := w32.GetMessageTime()
+					if w32.PeekMessageW(&next, 0, 0, 0, w32.PM_NOREMOVE) {
+						if (next.Message == w32.WM_KEYDOWN || next.Message == w32.WM_SYSKEYDOWN || next.Message == w32.WM_KEYUP || next.Message == w32.WM_SYSKEYUP) && next.WParam == w32.VK_MENU && next.Time == when && ((next.LParam>>16)&0xFFFF)&w32.KF_EXTENDED != 0 {
+							break
+						}
+					}
+					key = KeyLControl
+				}
+			} else if wParam == w32.VK_PROCESSKEY {
+				break
+			}
+			mods := w.CurrentKeyModifiers()
+			pressed := ((lParam>>16)&0xFFFF)&w32.KF_UP != 0
+			switch {
+			case !pressed && wParam == w32.VK_SHIFT:
+				w.keyReleased(KeyLShift, mods)
+				w.keyReleased(KeyRShift, mods)
+			case wParam == w32.VK_SNAPSHOT:
+				w.keyPressed(KeyPrintScreen, mods)
+				w.keyReleased(KeyPrintScreen, mods)
+			case pressed:
+				w.keyPressed(key, mods)
+			default:
+				w.keyReleased(key, mods)
+			}
 		case w32.WM_LBUTTONDOWN,
 			w32.WM_RBUTTONDOWN,
 			w32.WM_MBUTTONDOWN,
@@ -151,17 +216,50 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w32.WM_RBUTTONUP,
 			w32.WM_MBUTTONUP,
 			w32.WM_XBUTTONUP:
-			// TODO: IMPLEMENT!
+			var button int
+			switch uMsg {
+			case w32.WM_LBUTTONDOWN, w32.WM_LBUTTONUP:
+				button = ButtonLeft
+			case w32.WM_RBUTTONDOWN, w32.WM_RBUTTONUP:
+				button = ButtonRight
+			case w32.WM_MBUTTONDOWN, w32.WM_MBUTTONUP:
+				button = ButtonMiddle
+			default:
+				if (wParam>>16)&0xFFFF == w32.XBUTTON1 {
+					button = ButtonMiddle + 1
+				} else {
+					button = ButtonMiddle + 2
+				}
+			}
+			pressed := uMsg == w32.WM_LBUTTONDOWN || uMsg == w32.WM_RBUTTONDOWN || uMsg == w32.WM_MBUTTONDOWN || uMsg == w32.WM_XBUTTONDOWN
+			w.nativeMouseClick(button, pressed, w.CurrentKeyModifiers())
+			if uMsg == w32.WM_XBUTTONDOWN || uMsg == w32.WM_XBUTTONUP {
+				return 1
+			}
+			return 0
 		case w32.WM_MOUSEMOVE:
-			// TODO: IMPLEMENT!
-		case w32.WM_INPUT:
-			// TODO: IMPLEMENT!
+			pt := geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))
+			if !w.wnd.mouseTracked {
+				var evt w32.TRACKMOUSEEVENT
+				evt.Flags = w32.TME_LEAVE
+				evt.HwndTrack = w.wnd.wnd
+				w32.TrackMouseEvent(&evt)
+				w.wnd.mouseTracked = true
+				w.updateCursorImage()
+				w.mouseEnter(pt, w.lastKeyModifiers)
+			}
+			w.nativeMouseMoved(pt)
+			return 0
 		case w32.WM_MOUSELEAVE:
-			// TODO: IMPLEMENT!
+			w.wnd.mouseTracked = false
+			w.mouseExit()
+			return 0
 		case w32.WM_MOUSEWHEEL:
-			// TODO: IMPLEMENT!
+			w.nativeMouseWheel(geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)), true)
+			return 0
 		case w32.WM_MOUSEHWHEEL:
-			// TODO: IMPLEMENT!
+			w.nativeMouseWheel(geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0), true)
+			return 0
 		case w32.WM_SIZE:
 			minimized := wParam == w32.SIZE_MINIMIZED
 			if w.wnd.minimized != minimized {
@@ -225,7 +323,10 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 		case w32.WM_DPICHANGED:
 			// TODO: IMPLEMENT!
 		case w32.WM_SETCURSOR:
-			// TODO: IMPLEMENT!
+			if lParam&0xFFFF == w32.HTCLIENT {
+				w.updateCursorImage()
+				return 1
+			}
 		case w32.WM_DROPFILES:
 			// TODO: IMPLEMENT!
 		}
@@ -322,20 +423,50 @@ func (w *Window) CurrentKeyModifiers() Modifiers {
 }
 
 func (w *Window) adjustToCursorChange() {
-	// TODO: Implement
+	if w.cursorInContentArea() {
+		w.updateCursorImage()
+	}
 }
 
 func (w *Window) updateCursorImage() {
-	// TODO: Implement
+	switch {
+	case w.cursorHidden:
+		// TODO: This might need to be an actual blank cursor
+		w32.SetCursor(0)
+	case w.cursor != nil:
+		w32.SetCursor(w.cursor.cursor.cursor)
+	default:
+		w32.SetCursor(ArrowCursor().cursor.cursor)
+	}
 }
 
 func (w *Window) cursorInContentArea() bool {
-	// TODO: Implement
-	return false
+	var pos w32.POINT
+	if !w32.GetCursorPos(&pos) {
+		return false
+	}
+	if w32.WindowFromPoint(pos) != w.wnd.wnd {
+		return false
+	}
+	var area w32.RECT
+	w32.GetClientRect(w.wnd.wnd, &area)
+	var topLeft w32.POINT
+	topLeft.X = area.Left
+	topLeft.Y = area.Top
+	w32.ClientToScreen(w.wnd.wnd, &topLeft)
+	var bottomRight w32.POINT
+	bottomRight.X = area.Right
+	bottomRight.Y = area.Bottom
+	w32.ClientToScreen(w.wnd.wnd, &bottomRight)
+	return pos.X >= topLeft.X && pos.X <= bottomRight.X && pos.Y >= topLeft.Y && pos.Y <= bottomRight.Y
 }
 
 func (w *Window) cursorPosition() geom.Point {
-	// TODO: Implement
+	var pos w32.POINT
+	if w32.GetCursorPos(&pos) {
+		w32.ScreenToClient(w.wnd.wnd, &pos)
+		return geom.NewPoint(float32(pos.X), float32(pos.Y))
+	}
 	return geom.NewPoint(0, 0)
 }
 
@@ -345,15 +476,17 @@ func (w *Window) backingScale() geom.Point {
 }
 
 func (w *Window) minimize() {
-	// TODO: Implement
+	w32.ShowWindow(w.wnd.wnd, w32.SW_MINIMIZE)
 }
 
 func (w *Window) maximize() {
-	// TODO: Implement
+	w32.ShowWindow(w.wnd.wnd, w32.SW_MAXIMIZE)
 }
 
 func (w *Window) acquireFocus() {
-	// TODO: Implement
+	w32.BringWindowToTop(w.wnd.wnd)
+	w32.SetForegroundWindow(w.wnd.wnd)
+	w32.SetFocus(w.wnd.wnd)
 }
 
 func (w *Window) visible() bool {
@@ -369,7 +502,11 @@ func (w *Window) hide() {
 }
 
 func (w *Window) nativeDestroy() {
-	// TODO: Implement
+	w.glCtx.destroy()
+	if w.wnd.wnd != 0 {
+		w32.DestroyWindow(w.wnd.wnd)
+		w.wnd.wnd = 0
+	}
 }
 
 func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point {
