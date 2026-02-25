@@ -51,7 +51,7 @@ type Printer struct {
 	RemotePath       string
 	AuthInfoRequired string
 	User             string
-	Password         string
+	Password         string //nolint:gosec // This is set by the user and is not stored anywhere.
 	MimeTypes        []string
 	PrinterID
 	lock   sync.RWMutex
@@ -193,7 +193,7 @@ func (p *Printer) sendRequest(ctx context.Context, req *goipp.Message, fileData 
 		httpReq.SetBasicAuth(p.User, p.Password)
 	}
 	var httpResp *http.Response
-	if httpResp, err = p.httpClient.Do(httpReq); err != nil { //nolint:bodyclose // Body is closed by xio.DiscardAndCloseIgnoringErrors
+	if httpResp, err = p.httpClient.Do(httpReq); err != nil { //nolint:bodyclose,gosec // Body is closed by xio.DiscardAndCloseIgnoringErrors
 		return nil, errs.Wrap(err)
 	}
 	defer xio.DiscardAndCloseIgnoringErrors(httpResp.Body)

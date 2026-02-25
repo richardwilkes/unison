@@ -267,7 +267,7 @@ func (d *JobDialog) retrieveIcon() *unison.Image {
 		}
 		req.Header.Add("Accept-Encoding", "identity")
 		var rsp *http.Response
-		if rsp, err = d.printer.httpClient.Do(req); err != nil { //nolint:bodyclose // Body is closed by xio.CloseIgnoringErrors
+		if rsp, err = d.printer.httpClient.Do(req); err != nil { //nolint:bodyclose,gosec // Body is closed by xio.CloseIgnoringErrors
 			errs.Log(errs.NewWithCause("unable to initiate download for link", err), linkAttr, link)
 			return nil
 		}

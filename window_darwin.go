@@ -233,10 +233,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	nw.SetTabbingMode(mac.WindowTabbingModeDisallowed)
 	w.wnd.wnd = nw
 	w.wnd.view = v
-	if err := w.glCtx.create(w, cfg.Share, cfg.Transparent); err != nil {
-		return err
-	}
-	return nil
+	return w.glCtx.create(w, cfg.Share, cfg.Transparent)
 }
 
 func (w *Window) setTitle(title string) {
