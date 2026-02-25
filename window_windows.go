@@ -300,6 +300,13 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				w32.AdjustWindowRectEx(&frame, style, false, exStyle)
 			}
 			minimum, maximum := w.minMaxContentSize()
+			scale := w.backingScale()
+			minimum = minimum.MulPt(scale)
+			maximum = maximum.MulPt(scale)
+			frame.Left = int32(float32(frame.Left) * scale.X)
+			frame.Right = int32(float32(frame.Right) * scale.X)
+			frame.Top = int32(float32(frame.Top) * scale.Y)
+			frame.Bottom = int32(float32(frame.Bottom) * scale.Y)
 			mmi := (*w32.MINMAXINFO)(unsafe.Pointer(lParam)) //nolint:govet // No other choice
 			mmi.MinTrackSize.X = int32(minimum.Width) + frame.Right - frame.Left
 			mmi.MinTrackSize.Y = int32(minimum.Height) + frame.Bottom - frame.Top
