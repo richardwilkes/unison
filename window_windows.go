@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"image"
+	"math"
 	"runtime"
 	"slices"
 	"unsafe"
@@ -29,7 +31,9 @@ var (
 
 type platformWindow struct {
 	wnd           windows.HWND
-	highSurrogate rune
+	bigIcon       w32.HICON
+	smallIcon     w32.HICON
+	highSurrogate uint16
 	maximized     bool
 	minimized     bool
 	mouseTracked  bool
@@ -111,17 +115,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
-
-	if err := w.glCtx.create(w, cfg.Share, cfg.Transparent); err != nil {
-		return err
-	}
-
-	// TODO: Implement mouse passthrough
-	// if (wndconfig->mousePassthrough) {
-	// 	_plafSetWindowMousePassthrough(window, true);
-	// }
-
-	return nil
+	return w.glCtx.create(w, cfg.Share, cfg.Transparent)
 }
 
 func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
@@ -139,17 +133,19 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 		case w32.WM_CHAR, w32.WM_SYSCHAR:
 			switch {
 			case wParam >= 0xD800 && wParam <= 0xDBFF:
-				w.wnd.highSurrogate = rune(wParam)
+				w.wnd.highSurrogate = uint16(wParam)
 			case uMsg == w32.WM_SYSCHAR:
 				w.wnd.highSurrogate = 0
 			default:
 				var r rune
 				if wParam >= 0xDC00 && wParam <= 0xDFFF {
 					if w.wnd.highSurrogate != 0 {
-						r = (w.wnd.highSurrogate-0xD800)<<10 + (rune(wParam) - 0xDC00) + 0x10000
+						r = (rune(w.wnd.highSurrogate) - 0xD800) << 10
+						r += (rune(wParam) & 0xFFFF) - 0xDC00
+						r += 0x10000
 					}
 				} else {
-					r = rune(wParam)
+					r = rune(wParam) & 0xFFFF
 				}
 				w.wnd.highSurrogate = 0
 				w.runeTyped(r)
@@ -165,8 +161,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w32.WM_SYSKEYDOWN,
 			w32.WM_KEYUP,
 			w32.WM_SYSKEYUP:
-			// TODO: Standard ways of inputting accented characters (ALT-0201 for accented capital E, for example) aren't working right now
-			scanCode := int(((lParam >> 16) & 0xFFFF) & (w32.KF_EXTENDED | 0xFF))
+			scanCode := int(((lParam >> 16) & (w32.KF_EXTENDED | 0xFF)))
 			switch scanCode {
 			case 0:
 				scanCode = int(w32.MapVirtualKeyW(uint32(wParam), w32.MAPVK_VK_TO_VSC))
@@ -179,13 +174,13 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 			key := rawScanCodeToKeyCodeMap[scanCode]
 			if wParam == w32.VK_CONTROL {
-				if ((lParam>>16)&0xFFFF)&w32.KF_EXTENDED != 0 {
+				if (lParam>>16)&w32.KF_EXTENDED != 0 {
 					key = KeyRControl
 				} else {
 					var next w32.MSG
 					when := w32.GetMessageTime()
 					if w32.PeekMessageW(&next, 0, 0, 0, w32.PM_NOREMOVE) {
-						if (next.Message == w32.WM_KEYDOWN || next.Message == w32.WM_SYSKEYDOWN || next.Message == w32.WM_KEYUP || next.Message == w32.WM_SYSKEYUP) && next.WParam == w32.VK_MENU && next.Time == when && ((next.LParam>>16)&0xFFFF)&w32.KF_EXTENDED != 0 {
+						if (next.Message == w32.WM_KEYDOWN || next.Message == w32.WM_SYSKEYDOWN || next.Message == w32.WM_KEYUP || next.Message == w32.WM_SYSKEYUP) && next.WParam == w32.VK_MENU && next.Time == when && ((next.LParam>>16)&w32.KF_EXTENDED) != 0 {
 							break
 						}
 					}
@@ -195,7 +190,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				break
 			}
 			mods := w.CurrentKeyModifiers()
-			pressed := ((lParam>>16)&0xFFFF)&w32.KF_UP != 0
+			pressed := (lParam>>16)&w32.KF_UP == 0
 			switch {
 			case !pressed && wParam == w32.VK_SHIFT:
 				w.keyReleased(KeyLShift, mods)
@@ -284,9 +279,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 			return 0
 		case w32.WM_MOVE:
-			if w.MovedCallback != nil {
-				w.MovedCallback()
-			}
+			w.moved()
 			return 0
 		case w32.WM_SIZING:
 			return 1
@@ -366,6 +359,48 @@ func (w *Window) windowExStyle() uint32 {
 
 func (w *Window) setTitle(title string) {
 	w32.SetWindowTextW(w.wnd.wnd, title)
+}
+
+func (w *Window) setTitleIcons(images []*image.NRGBA) {
+	var big, small w32.HICON
+	if len(images) > 0 {
+		cxIcon := w32.GetSystemMetrics(w32.SM_CXICON)
+		cyIcon := w32.GetSystemMetrics(w32.SM_CYICON)
+		cxSmIcon := w32.GetSystemMetrics(w32.SM_CXSMICON)
+		cySmIcon := w32.GetSystemMetrics(w32.SM_CYSMICON)
+		big = createIconFromImage(chooseBestImage(images, cxIcon, cyIcon), 0, 0, true)
+		small = createIconFromImage(chooseBestImage(images, cxSmIcon, cySmIcon), 0, 0, true)
+	} else {
+		big = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICON))
+		small = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICONSM))
+	}
+	w32.SendMessageW(w.wnd.wnd, w32.WM_SETICON, w32.ICON_BIG, w32.LPARAM(big))
+	w32.SendMessageW(w.wnd.wnd, w32.WM_SETICON, w32.ICON_SMALL, w32.LPARAM(small))
+	if w.wnd.bigIcon != 0 {
+		w32.DestroyIcon(w.wnd.bigIcon)
+	}
+	if w.wnd.smallIcon != 0 {
+		w32.DestroyIcon(w.wnd.smallIcon)
+	}
+	w.wnd.bigIcon = big
+	w.wnd.smallIcon = small
+}
+
+func chooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
+	var closest *image.NRGBA
+	leastDiff := math.MaxInt32
+	wh := width * height
+	for _, image := range images {
+		currDiff := image.Rect.Dx()*image.Rect.Dy() - wh
+		if currDiff < 0 {
+			currDiff = -currDiff
+		}
+		if currDiff < leastDiff {
+			closest = image
+			leastDiff = currDiff
+		}
+	}
+	return closest
 }
 
 func (w *Window) frameRect() geom.Rect {
@@ -513,6 +548,14 @@ func (w *Window) nativeDestroy() {
 	if w.wnd.wnd != 0 {
 		w32.DestroyWindow(w.wnd.wnd)
 		w.wnd.wnd = 0
+	}
+	if w.wnd.bigIcon != 0 {
+		w32.DestroyIcon(w.wnd.bigIcon)
+		w.wnd.bigIcon = 0
+	}
+	if w.wnd.smallIcon != 0 {
+		w32.DestroyIcon(w.wnd.smallIcon)
+		w.wnd.smallIcon = 0
 	}
 }
 

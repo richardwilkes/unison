@@ -22,9 +22,24 @@ type nativeCursor struct {
 }
 
 func newCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
+	icon := createIconFromImage(img, xhot, yhot, false)
+	if icon == 0 {
+		return nil
+	}
+	c := &Cursor{
+		cursor: nativeCursor{
+			cursor: w32.HCURSOR(icon),
+			system: false,
+		},
+	}
+	cursorList = append(cursorList, c)
+	return c
+}
+
+func createIconFromImage(img *image.NRGBA, hotX, hotY int, icon bool) w32.HICON {
 	dc := w32.GetDC(0)
 	if dc == 0 {
-		return nil
+		return 0
 	}
 	defer w32.ReleaseDC(0, dc)
 
@@ -44,13 +59,13 @@ func newCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 		BV5AlphaMask:   0xff000000,
 	}, w32.DIB_RGB_COLORS, &ppvBits, 0, 0)
 	if color == 0 {
-		return nil
+		return 0
 	}
 	defer w32.DeleteObject(w32.HGDIOBJ(color))
 
 	mask := w32.CreateBitmap(int32(w), int32(h), 1, 1, nil)
 	if mask == 0 {
-		return nil
+		return 0
 	}
 	defer w32.DeleteObject(w32.HGDIOBJ(mask))
 
@@ -63,24 +78,16 @@ func newCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 	}
 
 	var iconInt32 int32
-	handle := w32.CreateIconIndirect(&w32.ICONINFO{
+	if icon {
+		iconInt32 = 1
+	}
+	return w32.CreateIconIndirect(&w32.ICONINFO{
 		Icon:     iconInt32,
-		XHotspot: uint32(xhot),
-		YHotspot: uint32(yhot),
+		XHotspot: uint32(hotX),
+		YHotspot: uint32(hotY),
 		Mask:     mask,
 		Color:    color,
 	})
-	if handle == 0 {
-		return nil
-	}
-	c := &Cursor{
-		cursor: nativeCursor{
-			cursor: w32.HCURSOR(handle),
-			system: false,
-		},
-	}
-	cursorList = append(cursorList, c)
-	return c
 }
 
 func (c *Cursor) destroy() {

@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"image"
 	"log/slog"
 	"slices"
 
@@ -238,6 +239,10 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 
 func (w *Window) setTitle(title string) {
 	w.wnd.wnd.SetTitle(title)
+}
+
+func (w *Window) setTitleIcons(_images []*image.NRGBA) {
+	// macOS doesn't have window icons, so just ignore this.
 }
 
 func (w *Window) frameRect() geom.Rect {

@@ -11,6 +11,8 @@ package unison
 
 import (
 	"fmt"
+	"image"
+	"runtime"
 	"slices"
 	"time"
 
@@ -47,13 +49,12 @@ type DragData struct {
 
 // WindowConfig holds the desired window configuration.
 type WindowConfig struct {
-	Share            *Window
-	Title            string
-	Undecorated      bool
-	NotResizable     bool
-	Floating         bool
-	Transparent      bool
-	MousePassThrough bool
+	Share        *Window
+	Title        string
+	Undecorated  bool
+	NotResizable bool
+	Floating     bool
+	Transparent  bool
 }
 
 // Window holds window information.
@@ -237,12 +238,11 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	}
 	cfg := WindowConfig{
-		Title:            title,
-		NotResizable:     w.notResizable,
-		Undecorated:      w.undecorated,
-		Transparent:      w.transparent,
-		Floating:         w.floating,
-		MousePassThrough: false,
+		Title:        title,
+		NotResizable: w.notResizable,
+		Undecorated:  w.undecorated,
+		Transparent:  w.transparent,
+		Floating:     w.floating,
 	}
 	windowList = append(windowList, w)
 	if err := w.initNativeWindow(&cfg); err != nil {
@@ -505,22 +505,20 @@ func (w *Window) TitleIcons() []*Image {
 // and used, scaling if needed. If no images are specified, the window reverts to its default icon.
 //
 // Note that macOS no longer has window icons, so this does nothing on that platform.
-func (w *Window) SetTitleIcons(_images []*Image) {
-	// TODO: Fix for non-macOS platforms
-	//
-	// if runtime.GOOS != xos.MacOS && w.IsValid() {
-	// 	w.titleIcons = images
-	// 	imgs := make([]*image.NRGBA, 0, len(images))
-	// 	for _, img := range images {
-	// 		if nrgba, err := img.ToNRGBA(); err != nil {
-	// 			errs.Log(err)
-	// 		} else {
-	// 			w.titleIcons = append(w.titleIcons, img)
-	// 			imgs = append(imgs, nrgba)
-	// 		}
-	// 	}
-	// 	w.wnd.SetIcon(imgs)
-	// }
+func (w *Window) SetTitleIcons(images []*Image) {
+	if runtime.GOOS != xos.MacOS && w.IsValid() {
+		w.titleIcons = images
+		imgs := make([]*image.NRGBA, 0, len(images))
+		for _, img := range images {
+			if nrgba, err := img.ToNRGBA(); err != nil {
+				errs.Log(err)
+			} else {
+				w.titleIcons = append(w.titleIcons, img)
+				imgs = append(imgs, nrgba)
+			}
+		}
+		w.setTitleIcons(imgs)
+	}
 }
 
 // Content returns the content panel for the window.

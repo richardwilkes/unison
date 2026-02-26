@@ -38,6 +38,7 @@ var (
 	enumDisplayDevicesWProc           = user32.NewProc("EnumDisplayDevicesW")
 	enumDisplayMonitorsProc           = user32.NewProc("EnumDisplayMonitors")
 	getActiveWindowProc               = user32.NewProc("GetActiveWindow")
+	getClassLongPtrWProc              = user32.NewProc("GetClassLongPtrW")
 	getClientRectProc                 = user32.NewProc("GetClientRect")
 	getClipboardDataProc              = user32.NewProc("GetClipboardData")
 	getClipboardSequenceNumberProc    = user32.NewProc("GetClipboardSequenceNumber")
@@ -48,6 +49,7 @@ var (
 	getMessageTimeProc                = user32.NewProc("GetMessageTime")
 	getMonitorInfoWProc               = user32.NewProc("GetMonitorInfoW")
 	getSysColorProc                   = user32.NewProc("GetSysColor")
+	getSystemMetricsProc              = user32.NewProc("GetSystemMetrics")
 	getWindowPlacementProc            = user32.NewProc("GetWindowPlacement")
 	isWindowVisibleProc               = user32.NewProc("IsWindowVisible")
 	loadImageWProc                    = user32.NewProc("LoadImageW")
@@ -60,6 +62,7 @@ var (
 	registerClassExWProc              = user32.NewProc("RegisterClassExW")
 	releaseDCProc                     = user32.NewProc("ReleaseDC")
 	screenToClientProc                = user32.NewProc("ScreenToClient")
+	sendMessageWProc                  = user32.NewProc("SendMessageW")
 	setClipboardDataProc              = user32.NewProc("SetClipboardData")
 	setCursorProc                     = user32.NewProc("SetCursor")
 	setFocusProc                      = user32.NewProc("SetFocus")
@@ -685,6 +688,23 @@ const (
 	WM_AETYPE_EXCLUDE                            = 101
 )
 
+const (
+	SM_CXICON   = 11
+	SM_CYICON   = 12
+	SM_CXSMICON = 49
+	SM_CYSMICON = 50
+)
+
+const (
+	ICON_SMALL = iota
+	ICON_BIG
+)
+
+const (
+	GCLP_HICON   = -14
+	GCLP_HICONSM = -34
+)
+
 // WM_NCHITTEST and MOUSEHOOKSTRUCT Mouse Position Codes
 const (
 	HTERROR = iota - 2
@@ -1134,6 +1154,13 @@ func GetActiveWindow() windows.HWND {
 	return windows.HWND(hwnd)
 }
 
+// GetClassLongPtrW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclasslongptrw
+func GetClassLongPtrW(hwnd windows.HWND, index int) uintptr {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := getClassLongPtrWProc.Call(uintptr(hwnd), uintptr(index))
+	return ret
+}
+
 // GetClientRect https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclientrect
 func GetClientRect(hwnd windows.HWND, rect *RECT) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -1203,6 +1230,13 @@ func GetSysColor(index int) uint32 {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	color, _, _ := getSysColorProc.Call(uintptr(index))
 	return uint32(color)
+}
+
+// GetSystemMetrics https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
+func GetSystemMetrics(index int) int {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	metric, _, _ := getSystemMetricsProc.Call(uintptr(index))
+	return int(metric)
 }
 
 // GetWindowPlacement https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowplacement
@@ -1296,6 +1330,13 @@ func ScreenToClient(hwnd windows.HWND, point *POINT) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := screenToClientProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(point)))
 	return b&0xff != 0
+}
+
+// SendMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessagew
+func SendMessageW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) LRESULT {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := sendMessageWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
+	return LRESULT(ret)
 }
 
 // SetClipboardData https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setclipboarddata
