@@ -247,7 +247,6 @@ func (w *Window) setTitleIcons(_images []*image.NRGBA) {
 
 func (w *Window) frameRect() geom.Rect {
 	if w.IsValid() {
-		// TODO: This really shouldn't be necessary... but for some reason the old framework wanted a frame boundary
 		contentRect := w.wnd.view.Frame()
 		frameRect := w.wnd.wnd.FrameRectForContentRect(contentRect)
 		left := contentRect.X - frameRect.X

@@ -27,6 +27,7 @@ var (
 	changeWindowMessageFilterExProc   = user32.NewProc("ChangeWindowMessageFilterEx")
 	clientToScreenProc                = user32.NewProc("ClientToScreen")
 	closeClipboardProc                = user32.NewProc("CloseClipboard")
+	createCursorProc                  = user32.NewProc("CreateCursor")
 	createIconIndirectProc            = user32.NewProc("CreateIconIndirect")
 	createWindowExWProc               = user32.NewProc("CreateWindowExW")
 	defWindowProcWProc                = user32.NewProc("DefWindowProcW")
@@ -46,6 +47,7 @@ var (
 	getDCProc                         = user32.NewProc("GetDC")
 	getDoubleClickTimeProc            = user32.NewProc("GetDoubleClickTime")
 	getDpiForWindowProc               = user32.NewProc("GetDpiForWindow")
+	getKeyStateProc                   = user32.NewProc("GetKeyState")
 	getMessageTimeProc                = user32.NewProc("GetMessageTime")
 	getMonitorInfoWProc               = user32.NewProc("GetMonitorInfoW")
 	getSysColorProc                   = user32.NewProc("GetSysColor")
@@ -353,12 +355,6 @@ const (
 	WM_TABLET_FLICK                              = 715
 	WM_TABLET_QUERYSYSTEMGESTURESTATUS           = 716
 	WM_FI_FILENAME                               = 900
-	WM_SampleExtension_ContentType_Size          = 1
-	WM_SampleExtension_PixelAspectRatio_Size     = 2
-	WM_SampleExtension_Timecode_Size             = 14
-	WM_SampleExtension_SampleDuration_Size       = 2
-	WM_SampleExtension_ChromaLocation_Size       = 1
-	WM_SampleExtension_ColorSpaceInfo_Size       = 3
 	WM_CT_REPEAT_FIRST_FIELD                     = 16
 	WM_CT_BOTTOM_FIELD_FIRST                     = 32
 	WM_CT_TOP_FIELD_FIRST                        = 64
@@ -752,7 +748,11 @@ const (
 	VK_SHIFT      = 0x10
 	VK_CONTROL    = 0x11
 	VK_MENU       = 0x12
+	VK_CAPITAL    = 0x14
 	VK_SNAPSHOT   = 0x2C
+	VK_LWIN       = 0x5B
+	VK_RWIN       = 0x5C
+	VK_NUMLOCK    = 0x90
 	VK_PROCESSKEY = 0xE5
 )
 
@@ -907,6 +907,12 @@ type POINT struct {
 	Y int32
 }
 
+// SIZE https://learn.microsoft.com/windows/win32/api/windef/ns-windef-size
+type SIZE struct {
+	CX int32
+	CY int32
+}
+
 // RECT https://learn.microsoft.com/windows/win32/api/windef/ns-windef-rect
 type RECT struct {
 	Left   int32
@@ -1027,6 +1033,14 @@ func CloseClipboard() bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := closeClipboardProc.Call()
 	return b&0xff != 0
+}
+
+// CreateCursor https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-createcursor
+func CreateCursor(instance HINSTANCE, xHotspot, yHotspot, width, height uint32, andMask, xorMask []byte) HCURSOR {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := createCursorProc.Call(uintptr(instance), uintptr(xHotspot), uintptr(yHotspot), uintptr(width),
+		uintptr(height), uintptr(unsafe.Pointer(&andMask[0])), uintptr(unsafe.Pointer(&xorMask[0])))
+	return HCURSOR(ret)
 }
 
 // CreateIconIndirect https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-createiconindirect
@@ -1208,6 +1222,13 @@ func GetDpiForWindow(hwnd windows.HWND) uint32 {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	dpi, _, _ := getDpiForWindowProc.Call(uintptr(hwnd))
 	return uint32(dpi)
+}
+
+// GetKeyState https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getkeystate
+func GetKeyState(virtualKey int) uint16 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	state, _, _ := getKeyStateProc.Call(uintptr(virtualKey))
+	return uint16(state & 0xFFFF)
 }
 
 // GetMessageTime https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmessagetime

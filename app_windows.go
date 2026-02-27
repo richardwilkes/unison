@@ -125,30 +125,30 @@ func pollEvents() {
 			w32.DispatchMessageW(&msg)
 		}
 	}
-	// TODO: Is this bit needed? Seems to be trying to add some missing key-up events.
-	//
-	// if hwnd := w32.GetActiveWindow(); hwnd != 0 {
-	// 	if window := findWindowByHWND(hwnd); window != nil {
-	// 		keys := [4][2]KeyCode{
-	// 			{KeyLShift, KeyLShift},
-	// 			{KeyRShift, KeyRShift},
-	// 			{KeyLCommand, KeyLCommand},
-	// 			{KeyRCommand, KeyRCommand},
-	// 		}
-	// 		for i := 0; i < 4; i++ {
-	// 			vk := keys[i][0]
-	// 			key := keys[i][1]
-	// 			scancode := _plaf.scanCodes[key]
-	// 			if w32.GetKeyState(vk) & 0x8000 {
-	// 				continue
-	// 			}
-	// 			if window.keys[key] != INPUT_PRESS {
-	// 				continue
-	// 			}
-	// 			_plafInputKey(window, key, scancode, INPUT_RELEASE, getKeyMods())
-	// 		}
-	// 	}
-	// }
+
+	// Hack to release some modifiers keys that the system did not emit KEYUP events for.
+	if hwnd := w32.GetActiveWindow(); hwnd != 0 {
+		if window := findWindowByHWND(hwnd); window != nil {
+			keys := [4]struct {
+				vk  int
+				key KeyCode
+			}{
+				{0x02A, KeyLShift},
+				{0x036, KeyRShift},
+				{0x15B, KeyLCommand},
+				{0x15C, KeyRCommand},
+			}
+			for _, k := range keys {
+				if !window.pressedKeys[k.key] {
+					continue
+				}
+				if w32.GetKeyState(k.vk)&0x8000 != 0 {
+					continue
+				}
+				window.keyReleased(k.key, window.CurrentKeyModifiers())
+			}
+		}
+	}
 }
 
 func waitEvents() {

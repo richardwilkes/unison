@@ -20,11 +20,14 @@ var (
 	gdi32                   = syscall.NewLazyDLL("gdi32.dll")
 	createBitmapProc        = gdi32.NewProc("CreateBitmap")
 	createDIBSectionProc    = gdi32.NewProc("CreateDIBSection")
+	createRectRgnProc       = gdi32.NewProc("CreateRectRgn")
 	deleteObjectProc        = gdi32.NewProc("DeleteObject")
 	describePixelFormatProc = gdi32.NewProc("DescribePixelFormat")
 	setPixelFormatProc      = gdi32.NewProc("SetPixelFormat")
 	swapBuffersProc         = gdi32.NewProc("SwapBuffers")
 )
+
+type HRGN uintptr
 
 // https://learn.microsoft.com/openspecs/windows_protocols/ms-emf/a5e722e3-891a-4a67-be1a-ed5a48a7fda1
 const (
@@ -138,6 +141,13 @@ func CreateDIBSection(hdc HDC, pbmi *BITMAPV5HEADER, iUsage uint, ppvBits **byte
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := createDIBSectionProc.Call(uintptr(hdc), uintptr(unsafe.Pointer(pbmi)), uintptr(iUsage), uintptr(unsafe.Pointer(ppvBits)), uintptr(hSection), uintptr(dwOffset))
 	return HBITMAP(ret)
+}
+
+// CreateRectRgn https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createrectrgn
+func CreateRectRgn(left, top, right, bottom int32) HRGN {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := createRectRgnProc.Call(uintptr(left), uintptr(top), uintptr(right), uintptr(bottom))
+	return HRGN(ret)
 }
 
 // DeleteObject https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-deleteobject

@@ -27,6 +27,7 @@ const wndProcClassName = "Unison"
 var (
 	mainWndClass w32.ATOM
 	mainInstance w32.HINSTANCE
+	blankCursor  w32.HCURSOR
 )
 
 type platformWindow struct {
@@ -62,7 +63,6 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 			Style:     w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC,
 			WndProc:   windows.NewCallbackCDecl(wndProc),
 			Instance:  mainInstance,
-			Cursor:    ArrowCursor().cursor.cursor,
 			ClassName: &className[0],
 			Icon: w32.HICON(w32.LoadImageW(0, w32.MakeIntResourceW(w32.IDI_APPLICATION), w32.IMAGE_ICON, 0, 0,
 				w32.LR_DEFAULT_SIZE|w32.LR_SHARED)),
@@ -78,7 +78,11 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 		Right:  1,
 		Bottom: 1,
 	}
-	w32.AdjustWindowRectEx(&rect, style, false, exStyle)
+	if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
+		w32.AdjustWindowRectExForDpi(&rect, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
+	} else {
+		w32.AdjustWindowRectEx(&rect, style, false, exStyle)
+	}
 	frameX = rect.Left
 	frameY = rect.Top
 	frameWidth = rect.Right - rect.Left
@@ -91,15 +95,6 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_DROPFILES, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYDATA, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYGLOBALDATA, w32.MSGFLT_ALLOW, nil)
-	if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
-		rect = w32.RECT{
-			Left:   0,
-			Top:    0,
-			Right:  1,
-			Bottom: 1,
-		}
-		w32.AdjustWindowRectExForDpi(&rect, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
-	}
 	var wp w32.WINDOWPLACEMENT
 	w32.GetWindowPlacement(w.wnd.wnd, &wp)
 	dx := wp.NormalPosition.Left - rect.Left
@@ -112,6 +107,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	wp.ShowCmd = w32.SW_HIDE
 	w32.SetWindowPlacement(w.wnd.wnd, &wp)
 	w32.DragAcceptFiles(w.wnd.wnd, true)
+	w.updateFramebufferTransparency()
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
@@ -317,11 +313,37 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 		case w32.WM_DWMCOMPOSITIONCHANGED,
 			w32.WM_DWMCOLORIZATIONCOLORCHANGED:
-			// TODO: IMPLEMENT!
+			w.updateFramebufferTransparency()
+			return 0
 		case w32.WM_GETDPISCALEDSIZE:
-			// TODO: IMPLEMENT!
+			if isWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+				var src, dst w32.RECT
+				style := w.windowStyle()
+				exStyle := w.windowExStyle()
+				curDPI := w32.GetDpiForWindow(w.wnd.wnd)
+				newDPI := uint32(wParam & 0xFFFF)
+				w32.AdjustWindowRectExForDpi(&src, style, false, exStyle, curDPI)
+				w32.AdjustWindowRectExForDpi(&dst, style, false, exStyle, newDPI)
+				size := (*w32.SIZE)(unsafe.Pointer(lParam)) //nolint:govet // Required to access data
+				if curDPI != newDPI {
+					scale := float32(newDPI) / float32(curDPI)
+					size.CX = int32(float32(size.CX) * scale)
+					size.CY = int32(float32(size.CY) * scale)
+				}
+				size.CX += (dst.Right - dst.Left) - (src.Right - src.Left)
+				size.CY += (dst.Bottom - dst.Top) - (src.Bottom - src.Top)
+				return 1
+			}
 		case w32.WM_DPICHANGED:
-			// TODO: IMPLEMENT!
+			if isWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+				rect := (*w32.RECT)(unsafe.Pointer(lParam)) //nolint:govet // Required to access data
+				w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, rect.Left, rect.Top, rect.Right-rect.Left,
+					rect.Bottom-rect.Top, w32.SWP_NOZORDER|w32.SWP_NOACTIVATE)
+			}
+			if w.ContentScaleCallback != nil {
+				scale := float32((wParam>>16)&0xFFFF) / 96
+				w.ContentScaleCallback(geom.NewPoint(scale, scale))
+			}
 		case w32.WM_SETCURSOR:
 			if lParam&0xFFFF == w32.HTCLIENT {
 				w.updateCursorImage()
@@ -451,7 +473,19 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 		scale := w.backingScale()
 		rect.Point = rect.Point.MulPt(scale)
 		rect.Size = rect.Size.MulPt(scale)
-		w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
+		var frame w32.RECT
+		style := w.windowStyle()
+		exStyle := w.windowExStyle()
+		if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
+			w32.AdjustWindowRectExForDpi(&frame, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
+		} else {
+			w32.AdjustWindowRectEx(&frame, style, false, exStyle)
+		}
+		left := int32(rect.X) + frame.Left
+		top := int32(rect.Y) + frame.Top
+		right := int32(rect.Width) + frame.Right - frame.Left
+		bottom := int32(rect.Height) + frame.Bottom - frame.Top
+		w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, left, top, right, bottom,
 			w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
 	}
 }
@@ -460,8 +494,26 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 // however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
 // menu is being displayed.
 func (w *Window) CurrentKeyModifiers() Modifiers {
-	// TODO: Is this right?
-	return w.LastKeyModifiers()
+	var mods Modifiers
+	if w32.GetKeyState(w32.VK_SHIFT)&0x8000 != 0 {
+		mods |= ShiftModifier
+	}
+	if w32.GetKeyState(w32.VK_CONTROL)&0x8000 != 0 {
+		mods |= ControlModifier
+	}
+	if w32.GetKeyState(w32.VK_MENU)&0x8000 != 0 {
+		mods |= OptionModifier
+	}
+	if w32.GetKeyState(w32.VK_LWIN)&0x8000 != 0 || w32.GetKeyState(w32.VK_RWIN)&0x8000 != 0 {
+		mods |= CommandModifier
+	}
+	if w32.GetKeyState(w32.VK_CAPITAL)&0x0001 != 0 {
+		mods |= CapsLockModifier
+	}
+	if w32.GetKeyState(w32.VK_NUMLOCK)&0x0001 != 0 {
+		mods |= NumLockModifier
+	}
+	return mods
 }
 
 func (w *Window) adjustToCursorChange() {
@@ -473,8 +525,11 @@ func (w *Window) adjustToCursorChange() {
 func (w *Window) updateCursorImage() {
 	switch {
 	case w.cursorHidden:
-		// TODO: This might need to be an actual blank cursor
-		w32.SetCursor(0)
+		if blankCursor == 0 {
+			var data [1]byte
+			blankCursor = w32.CreateCursor(w32.HINSTANCE(w32.GetModuleHandleW("")), 0, 0, 1, 1, data[:], data[:])
+		}
+		w32.SetCursor(blankCursor)
 	case w.cursor != nil:
 		w32.SetCursor(w.cursor.cursor.cursor)
 	default:
@@ -485,9 +540,6 @@ func (w *Window) updateCursorImage() {
 func (w *Window) cursorInContentArea() bool {
 	var pos w32.POINT
 	if !w32.GetCursorPos(&pos) {
-		return false
-	}
-	if w32.WindowFromPoint(pos) != w.wnd.wnd {
 		return false
 	}
 	var area w32.RECT
@@ -566,4 +618,17 @@ func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point
 		where.Y /= scale.Y
 	}
 	return where
+}
+
+func (w *Window) updateFramebufferTransparency() {
+	if w.transparent {
+		region := w32.CreateRectRgn(0, 0, -1, -1)
+		bb := w32.DWM_BLURBEHIND{
+			Flags:   w32.DWM_BB_ENABLE | w32.DWM_BB_BLURREGION,
+			Enable:  1,
+			RgnBlur: region,
+		}
+		w32.DwmEnableBlurBehindWindow(w.wnd.wnd, &bb)
+		w32.DeleteObject(w32.HGDIOBJ(region))
+	}
 }
