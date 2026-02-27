@@ -70,16 +70,16 @@ func lateInit() {
 }
 
 func finalFinishStartup() {
-	// TODO: Does this need anything?
+	// Not used on Windows
 }
 
 func terminate() error {
-	// TODO: Does this need anything?
+	// Not used on Windows
 	return nil
 }
 
 func beep() {
-	w32.MessageBeep(w32.MBDefault)
+	w32.MessageBeep(w32.MB_OK)
 }
 
 func isColorModeTrackingPossible() bool {

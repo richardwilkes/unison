@@ -104,11 +104,12 @@ type BeepType uint
 
 // Possible beep types https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messagebeep
 const (
-	MBDefault  BeepType = 0
-	MBError    BeepType = 0x10
-	MBQuestion BeepType = 0x20
-	MBWarning  BeepType = 0x30
-	MBInfo     BeepType = 0x40
+	MB_OK              BeepType = 0
+	MB_ICONERROR       BeepType = 0x10
+	MB_ICONQUESTION    BeepType = 0x20
+	MB_ICONWARNING     BeepType = 0x30
+	MB_ICONINFORMATION BeepType = 0x40
+	MB_SIMPLE          BeepType = 0xFFFFFFFF
 )
 
 // Constants for some standard cursors

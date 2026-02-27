@@ -229,17 +229,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 			return 0
 		case w32.WM_MOUSEMOVE:
-			pt := geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))
-			if !w.wnd.mouseTracked {
-				var evt w32.TRACKMOUSEEVENT
-				evt.Flags = w32.TME_LEAVE
-				evt.HwndTrack = w.wnd.wnd
-				w32.TrackMouseEvent(&evt)
-				w.wnd.mouseTracked = true
-				w.updateCursorImage()
-				w.mouseEnter(pt, w.lastKeyModifiers)
-			}
-			w.nativeMouseMoved(pt)
+			w.handleWindowsMouseMove(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF)))
 			return 0
 		case w32.WM_MOUSELEAVE:
 			w.wnd.mouseTracked = false
@@ -350,7 +340,17 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				return 1
 			}
 		case w32.WM_DROPFILES:
-			// TODO: IMPLEMENT!
+			drop := w32.HDROP(wParam)
+			count := w32.DragQueryFileCount(drop)
+			paths := make([]string, count)
+			pt, _ := w32.DragQueryPoint(drop)
+			w.handleWindowsMouseMove(geom.NewPoint(float32(pt.X), float32(pt.Y)))
+			for i := range count {
+				paths[i] = w32.DragQueryFileW(drop, i)
+			}
+			w.fileDrop(paths)
+			w32.DragFinish(drop)
+			return 0
 		}
 	}
 	return w32.DefWindowProcW(hWnd, uMsg, wParam, lParam)
@@ -377,6 +377,19 @@ func (w *Window) windowExStyle() uint32 {
 		style |= w32.WS_EX_TOPMOST
 	}
 	return style
+}
+
+func (w *Window) handleWindowsMouseMove(pt geom.Point) {
+	if !w.wnd.mouseTracked {
+		var evt w32.TRACKMOUSEEVENT
+		evt.Flags = w32.TME_LEAVE
+		evt.HwndTrack = w.wnd.wnd
+		w32.TrackMouseEvent(&evt)
+		w.wnd.mouseTracked = true
+		w.updateCursorImage()
+		w.mouseEnter(pt, w.lastKeyModifiers)
+	}
+	w.nativeMouseMoved(pt)
 }
 
 func (w *Window) setTitle(title string) {

@@ -27,8 +27,6 @@ var (
 	swapBuffersProc         = gdi32.NewProc("SwapBuffers")
 )
 
-type HRGN uintptr
-
 // https://learn.microsoft.com/openspecs/windows_protocols/ms-emf/a5e722e3-891a-4a67-be1a-ed5a48a7fda1
 const (
 	DIB_RGB_COLORS  = 0

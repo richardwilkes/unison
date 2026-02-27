@@ -432,7 +432,6 @@ func (w *Window) nativeRequestClose() {
 
 // AttemptClose closes the window if permitted. Returns true on success.
 func (w *Window) AttemptClose() bool {
-	// TODO: Merge this with the plaf2 version
 	if w.AllowCloseCallback != nil {
 		allow := false
 		xos.SafeCall(func() { allow = w.AllowCloseCallback() }, nil)

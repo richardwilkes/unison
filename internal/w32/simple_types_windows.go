@@ -9,22 +9,26 @@
 
 package w32
 
+import "golang.org/x/sys/windows"
+
 // Simple types https://docs.microsoft.com/en-us/windows/desktop/WinProg/windows-data-types
 type (
 	ATOM            uintptr
 	ClipboardFormat uint
-	HBITMAP         uintptr
-	HBRUSH          uintptr
-	HCURSOR         uintptr
-	HDC             uintptr
-	HGDIOBJ         uintptr
-	HGLRC           uintptr
-	HICON           uintptr
-	HINSTANCE       uintptr
-	HKEY            uintptr
-	HMENU           uintptr
-	HMODULE         uintptr
-	HMONITOR        uintptr
+	HBITMAP         windows.Handle
+	HBRUSH          windows.Handle
+	HCURSOR         windows.Handle
+	HDC             windows.Handle
+	HDROP           windows.Handle
+	HGDIOBJ         windows.Handle
+	HGLRC           windows.Handle
+	HICON           windows.Handle
+	HINSTANCE       windows.Handle
+	HKEY            windows.Handle
+	HMENU           windows.Handle
+	HMODULE         windows.Handle
+	HMONITOR        windows.Handle
+	HRGN            windows.Handle
 	LPARAM          uintptr
 	LPVOID          uintptr
 	LRESULT         uintptr

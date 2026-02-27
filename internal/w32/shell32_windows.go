@@ -21,6 +21,9 @@ const SIGDN_FILESYSPATH = 0x80058000
 var (
 	shell32                         = syscall.NewLazyDLL("Shell32.dll")
 	dragAcceptFilesProc             = shell32.NewProc("DragAcceptFiles")
+	dragQueryFileWProc              = shell32.NewProc("DragQueryFileW")
+	dragQueryPointProc              = shell32.NewProc("DragQueryPoint")
+	dragFinishProc                  = shell32.NewProc("DragFinish")
 	shCreateItemFromParsingNameProc = shell32.NewProc("SHCreateItemFromParsingName")
 	shellItemIID                    = NewGUID("43826D1E-E718-42EE-BC55-A1E261C37BFE")
 )
@@ -46,6 +49,43 @@ func DragAcceptFiles(hwnd windows.HWND, accept bool) {
 	}
 	//nolint:errcheck // Nothing we can do about an error here
 	dragAcceptFilesProc.Call(uintptr(hwnd), uintptr(a))
+}
+
+// DragQueryFileCount https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragqueryfilew
+func DragQueryFileCount(hdrop HDROP) uint32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	r1, _, _ := dragQueryFileWProc.Call(uintptr(hdrop), 0xFFFFFFFF, 0, 0)
+	return uint32(r1)
+}
+
+// DragQueryFileW https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragqueryfilew
+func DragQueryFileW(hdrop HDROP, index uint32) string {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	r1, _, _ := dragQueryFileWProc.Call(uintptr(hdrop), uintptr(index), 0, 0)
+	if r1 == 0 {
+		return ""
+	}
+	buf := make([]uint16, uint32(r1)+1)
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	r1, _, _ = dragQueryFileWProc.Call(uintptr(hdrop), uintptr(index), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if r1 == 0 {
+		return ""
+	}
+	return syscall.UTF16ToString(buf)
+}
+
+// DragQueryPoint https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragquerypoint
+func DragQueryPoint(hdrop HDROP) (POINT, bool) {
+	var pt POINT
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	r1, _, _ := dragQueryPointProc.Call(uintptr(hdrop), uintptr(unsafe.Pointer(&pt)))
+	return pt, r1&0xff != 0
+}
+
+// DragFinish https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragfinish
+func DragFinish(hdrop HDROP) {
+	//nolint:errcheck // Nothing we can do about an error here
+	dragFinishProc.Call(uintptr(hdrop))
 }
 
 func NewShellItem(path string) *ShellItem {
