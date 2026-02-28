@@ -57,16 +57,21 @@ func lateInit() {
 		xio.CloseIgnoringErrors(k)
 		return
 	}
-	go func() {
-		for {
-			w32.RegNotifyChangeKeyValue(k, false, w32.RegNotifyChangeName|w32.RegNotifyChangeLastSet, 0, false)
-			if err = updateTheme(k, false); err != nil {
-				errs.Log(err)
-				xio.CloseIgnoringErrors(k)
-				return
-			}
+	go monitorThemeChanges(k)
+}
+
+func monitorThemeChanges(key registry.Key) {
+	defer xio.CloseIgnoringErrors(key)
+	for {
+		if err := windows.RegNotifyChangeKeyValue(windows.Handle(key), false, windows.REG_NOTIFY_CHANGE_NAME|windows.REG_NOTIFY_CHANGE_LAST_SET, 0, false); err != nil {
+			errs.Log(err)
+			return
 		}
-	}()
+		if err := updateTheme(key, false); err != nil {
+			errs.Log(err)
+			return
+		}
+	}
 }
 
 func finalFinishStartup() {
