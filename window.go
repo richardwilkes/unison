@@ -544,38 +544,34 @@ func (w *Window) ValidateLayout() {
 // FrameRect returns the boundaries in display coordinates of the frame of this window (i.e. the area that includes both
 // the content and its border and window controls).
 func (w *Window) FrameRect() geom.Rect {
-	fr := w.frameRect()
-	cr := w.ContentRect()
-	cr.X -= fr.X
-	cr.Y -= fr.Y
-	cr.Width += fr.Width
-	cr.Height += fr.Height
-	return cr
-}
-
-// ContentRectForFrameRect returns the content rect for the given frame rect.
-func (w *Window) ContentRectForFrameRect(frame geom.Rect) geom.Rect {
-	fr := w.frameRect()
-	frame.X += fr.X
-	frame.Y += fr.Y
-	frame.Width -= fr.Width
-	frame.Height -= fr.Height
-	return frame
+	if w.IsValid() {
+		return w.frameRect()
+	}
+	return geom.NewRect(0, 0, 1, 1)
 }
 
 // FrameRectForContentRect returns the frame rect for the given content rect.
-func (w *Window) FrameRectForContentRect(cr geom.Rect) geom.Rect {
-	fr := w.frameRect()
-	cr.X -= fr.X
-	cr.Y -= fr.Y
-	cr.Width += fr.Width
-	cr.Height += fr.Height
-	return cr
+func (w *Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
+	if w.IsValid() {
+		return w.frameRectForContentRect(contentRect)
+	}
+	return contentRect
 }
 
-// SetFrameRect sets the boundaries of the frame of this window.
-func (w *Window) SetFrameRect(rect geom.Rect) {
-	w.SetContentRect(w.ContentRectForFrameRect(rect))
+// ContentRect returns the boundaries in display coordinates of the window's content area.
+func (w *Window) ContentRect() geom.Rect {
+	if w.IsValid() {
+		return w.contentRect()
+	}
+	return geom.NewRect(0, 0, 1, 1)
+}
+
+// ContentRectForFrameRect returns the content rect for the given frame rect.
+func (w *Window) ContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+	if w.IsValid() {
+		return w.contentRectForFrameRect(frameRect)
+	}
+	return frameRect
 }
 
 func (w *Window) minMaxContentSize() (minimum, maximum geom.Size) {
@@ -619,7 +615,7 @@ func (w *Window) Pack() {
 // forces it onto a display, trying to position the new window to the right of the currently active window. Failing
 // that, position it at the top-left of the display's usable area.
 func (w *Window) PackWithDefaultInitialLocation() {
-	w.PackWithLocation(DefaultInitialWindowLocation(w.ContentRect().Size))
+	w.PackWithLocation(DefaultInitialWindowContentLocation())
 }
 
 // PackWithLocation sets the window's content size to match the preferred size of the root panel and attempts to use the
@@ -658,16 +654,14 @@ func (w *Window) MoveToModalCenter(within geom.Rect) {
 	w.SetFrameRect(BestDisplayForRect(within).FitRectOnto(within))
 }
 
-// DefaultInitialWindowLocation tries to position the new window to the right of the currently active window. Failing
-// that, position it at the top-left of the display's usable area.
-func DefaultInitialWindowLocation(size geom.Size) geom.Point {
+// DefaultInitialWindowContentLocation selects an upper-left corner for a window by offsetting the current active
+// window's position down and to the right. If there is no active window, it will return the upper-left corner of the
+// primary display.
+func DefaultInitialWindowContentLocation() geom.Point {
 	if w := ActiveWindow(); w != nil {
-		r := w.FrameRect()
-		r.X += r.Width
-		r.Size = size
-		if d := BestDisplayForRect(r); d.Usable.Right() < r.Right() {
-			return d.Usable.Point
-		}
+		r := w.ContentRect()
+		r.X += 32
+		r.Y += 32
 		return r.Point
 	}
 	return PrimaryDisplay().Usable.Point

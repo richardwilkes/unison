@@ -246,26 +246,34 @@ func (w *Window) setTitleIcons(_images []*image.NRGBA) {
 }
 
 func (w *Window) frameRect() geom.Rect {
-	if w.IsValid() {
-		contentRect := w.wnd.view.Frame()
-		frameRect := w.wnd.wnd.FrameRectForContentRect(contentRect)
-		left := contentRect.X - frameRect.X
-		top := frameRect.Y + frameRect.Height - contentRect.Y - contentRect.Height
-		right := frameRect.X + frameRect.Width - contentRect.X - contentRect.Width
-		bottom := contentRect.Y - frameRect.Y
-		return geom.NewRect(left, top, right-left, bottom-top)
-	}
-	return geom.NewRect(1, 1, 2, 2)
+	r := w.wnd.wnd.Frame()
+	r.Y = transformCocoaY(r.Bottom())
+	return r
 }
 
-// ContentRect returns the boundaries in display coordinates of the window's content area.
-func (w *Window) ContentRect() geom.Rect {
-	if w.IsValid() {
-		r := w.wnd.wnd.ContentRectForFrameRect(w.wnd.wnd.Frame())
-		r.Y = transformCocoaY(r.Bottom())
-		return r
-	}
-	return geom.NewRect(0, 0, 1, 1)
+func (w *Window) frameRectForContentRect(contentRect geom.Rect) geom.Rect {
+	contentRect.Y = transformCocoaY(contentRect.Bottom())
+	frameRect := w.wnd.wnd.FrameRectForContentRect(contentRect)
+	frameRect.Y = transformCocoaY(frameRect.Bottom())
+	return frameRect
+}
+
+// SetFrameRect sets the boundaries of the frame of this window.
+func (w *Window) SetFrameRect(rect geom.Rect) {
+	w.SetContentRect(w.ContentRectForFrameRect(rect))
+}
+
+func (w *Window) contentRect() geom.Rect {
+	r := w.wnd.wnd.ContentRectForFrameRect(w.wnd.wnd.Frame())
+	r.Y = transformCocoaY(r.Bottom())
+	return r
+}
+
+func (w *Window) contentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+	frameRect.Y = transformCocoaY(frameRect.Bottom())
+	contentRect := w.wnd.wnd.ContentRectForFrameRect(frameRect)
+	contentRect.Y = transformCocoaY(contentRect.Bottom())
+	return contentRect
 }
 
 // SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame

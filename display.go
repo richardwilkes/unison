@@ -72,7 +72,7 @@ func BestDisplayForRect(r geom.Rect) *Display {
 		}
 	}
 	if bestDisplay == nil {
-		bestDisplay = PrimaryDisplay()
+		return PrimaryDisplay()
 	}
 	return bestDisplay
 }
