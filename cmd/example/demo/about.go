@@ -83,15 +83,9 @@ func ShowAboutWindow(item unison.MenuItem) {
 		})
 		content.AddChild(desc)
 
-		// Pack our window to fit its content, then center it on the main display.
+		// Pack our window to fit its content, then position it.
 		aboutWindow.Pack()
-		wndFrame := aboutWindow.FrameRect()
-		frame := unison.PrimaryDisplay().Usable
-		frame.Y += (frame.Height - wndFrame.Height) / 3
-		frame.Height = wndFrame.Height
-		frame.X += (frame.Width - wndFrame.Width) / 2
-		frame.Width = wndFrame.Width
-		aboutWindow.SetFrameRect(frame.Align())
+		aboutWindow.MoveToDefaultModalCenter()
 	}
 
 	// Make it visible and in the front.

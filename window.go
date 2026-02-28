@@ -610,12 +610,67 @@ func (w *Window) LocalContentRect() geom.Rect {
 	return r
 }
 
-// Pack sets the window's content size to match the preferred size of the root panel.
+// Pack sets the window's content size to match the preferred size of the root panel and forces it onto a display.
 func (w *Window) Pack() {
+	w.PackWithLocation(w.ContentRect().Point)
+}
+
+// PackWithDefaultInitialLocation sets the window's content size to match the preferred size of the root panel and
+// forces it onto a display, trying to position the new window to the right of the currently active window. Failing
+// that, position it at the top-left of the display's usable area.
+func (w *Window) PackWithDefaultInitialLocation() {
+	w.PackWithLocation(DefaultInitialWindowLocation(w.ContentRect().Size))
+}
+
+// PackWithLocation sets the window's content size to match the preferred size of the root panel and attempts to use the
+// provided point for its location, but will force it onto a display if needed.
+func (w *Window) PackWithLocation(pt geom.Point) {
 	_, pref, _ := w.root.Sizes(geom.Size{})
-	rect := w.ContentRect()
-	rect.Size = pref
-	w.SetContentRect(BestDisplayForRect(rect).FitRectOnto(rect))
+	rect := w.FrameRectForContentRect(geom.Rect{
+		Point: pt,
+		Size:  pref,
+	})
+	w.SetFrameRect(BestDisplayForRect(rect).FitRectOnto(rect))
+}
+
+// MoveToDefaultModalCenter moves the window to the center (horizontally) and above center (vertically) of the currently
+// active window, or the primary display if there is no active window.
+func (w *Window) MoveToDefaultModalCenter() {
+	var within geom.Rect
+	if active := ActiveWindow(); active != nil {
+		within = active.FrameRect()
+	} else {
+		within = PrimaryDisplay().Usable
+	}
+	w.MoveToModalCenter(within)
+}
+
+// MoveToModalCenter moves the window to the center (horizontally) and above center (vertically) of the provided
+// rectangle, which is typically the frame rect of the parent window for a modal dialog. The window will be forced onto
+// a display if needed.
+func (w *Window) MoveToModalCenter(within geom.Rect) {
+	wndFrame := w.FrameRect()
+	within.Y += (within.Height - wndFrame.Height) / 3
+	within.Height = wndFrame.Height
+	within.X += (within.Width - wndFrame.Width) / 2
+	within.Width = wndFrame.Width
+	within = within.Align()
+	w.SetFrameRect(BestDisplayForRect(within).FitRectOnto(within))
+}
+
+// DefaultInitialWindowLocation tries to position the new window to the right of the currently active window. Failing
+// that, position it at the top-left of the display's usable area.
+func DefaultInitialWindowLocation(size geom.Size) geom.Point {
+	if w := ActiveWindow(); w != nil {
+		r := w.FrameRect()
+		r.X += r.Width
+		r.Size = size
+		if d := BestDisplayForRect(r); d.Usable.Right() < r.Right() {
+			return d.Usable.Point
+		}
+		return r.Point
+	}
+	return PrimaryDisplay().Usable.Point
 }
 
 // Focused returns true if the window has the current keyboard focus.

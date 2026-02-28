@@ -12,7 +12,6 @@ package demo
 import (
 	"fmt"
 
-	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/side"
@@ -21,7 +20,7 @@ import (
 var dockCounter int
 
 // NewDemoDockWindow creates and displays our demo dock window.
-func NewDemoDockWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoDockWindow() (*unison.Window, error) {
 	// Create the window
 	dockCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Dock #%d", dockCounter))
@@ -53,11 +52,7 @@ func NewDemoDockWindow(where geom.Point) (*unison.Window, error) {
 	})
 	content.AddChild(dock)
 
-	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

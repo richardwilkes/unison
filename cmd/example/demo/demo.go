@@ -27,7 +27,7 @@ import (
 var windowCounter int
 
 // NewDemoWindow creates and displays our demo window.
-func NewDemoWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoWindow() (*unison.Window, error) {
 	// Create the window
 	windowCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Demo #%d", windowCounter))
@@ -150,10 +150,7 @@ func NewDemoWindow(where geom.Point) (*unison.Window, error) {
 	content.AddChild(scrollArea)
 
 	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

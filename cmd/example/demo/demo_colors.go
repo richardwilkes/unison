@@ -40,7 +40,7 @@ func init() {
 }
 
 // NewDemoColorsWindow creates and displays our demo colors window.
-func NewDemoColorsWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoColorsWindow() (*unison.Window, error) {
 	if colorsWindow != nil {
 		if colorsWindow.IsVisible() {
 			return colorsWindow, nil
@@ -92,11 +92,7 @@ func NewDemoColorsWindow(where geom.Point) (*unison.Window, error) {
 	goCodeButton.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Middle})
 	content.AddChild(goCodeButton)
 
-	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

@@ -34,7 +34,7 @@ func main() {
 	xflag.Parse()
 
 	unison.Start(unison.StartupFinishedCallback(func() {
-		_, err := demo.NewDemoWindow(unison.PrimaryDisplay().Usable.Point)
+		_, err := demo.NewDemoWindow()
 		xos.ExitIfErr(err)
 	})) // Never returns
 }

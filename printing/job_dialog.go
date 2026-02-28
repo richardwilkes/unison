@@ -92,14 +92,16 @@ func (d *JobDialog) RunModal() bool {
 		unison.ErrorDialogWithError(i18n.Text("Unable to create print dialog."), err)
 		return false
 	}
-	dlg.Window().SetTitle(i18n.Text("Print"))
+	w := dlg.Window()
+	w.SetTitle(i18n.Text("Print"))
 	d.dialog = dlg
 	d.dialog.Button(unison.ModalResponseOK).SetEnabled(false)
-	dlg.Window().MinMaxContentSizeCallback = func() (minSize, maxSize geom.Size) {
-		_, pref, _ := dlg.Window().Content().Parent().Sizes(geom.Size{})
+	w.MinMaxContentSizeCallback = func() (minSize, maxSize geom.Size) {
+		_, pref, _ := w.Content().Parent().Sizes(geom.Size{})
 		return pref, pref
 	}
-	dlg.Window().Pack()
+	w.Pack()
+	w.MoveToDefaultModalCenter()
 	d.adjustOKButton(nil, nil)
 	if dlg.RunModal() != unison.ModalResponseOK {
 		return false

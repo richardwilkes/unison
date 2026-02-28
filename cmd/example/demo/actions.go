@@ -13,7 +13,6 @@ import (
 	"fmt"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 )
 
@@ -52,7 +51,7 @@ func init() {
 		Title:      "New Demo Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyN, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
-			if _, err := NewDemoWindow(initialWindowLocation()); err != nil {
+			if _, err := NewDemoWindow(); err != nil {
 				errs.Log(err)
 			}
 		},
@@ -63,7 +62,7 @@ func init() {
 		Title:      "New Demo Table Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyT, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
-			if _, err := NewDemoTableWindow(initialWindowLocation()); err != nil {
+			if _, err := NewDemoTableWindow(); err != nil {
 				errs.Log(err)
 			}
 		},
@@ -74,7 +73,7 @@ func init() {
 		Title:      "New Demo Dock Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyD, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
-			if _, err := NewDemoDockWindow(initialWindowLocation()); err != nil {
+			if _, err := NewDemoDockWindow(); err != nil {
 				errs.Log(err)
 			}
 		},
@@ -85,7 +84,7 @@ func init() {
 		Title:      "New Demo Markdown Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyK, Modifiers: unison.ShiftModifier | unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
-			if _, err := NewDemoMarkdownWindow(initialWindowLocation()); err != nil {
+			if _, err := NewDemoMarkdownWindow(); err != nil {
 				errs.Log(err)
 			}
 		},
@@ -96,7 +95,7 @@ func init() {
 		Title:      "New Demo SVG Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyS, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
-			if _, err := NewDemoSVGWindow(initialWindowLocation()); err != nil {
+			if _, err := NewDemoSVGWindow(); err != nil {
 				errs.Log(err)
 			}
 		},
@@ -107,7 +106,7 @@ func init() {
 		Title:      "Show Colors",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyK, Modifiers: unison.OSMenuCmdModifier()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
-			if _, err := NewDemoColorsWindow(initialWindowLocation()); err != nil {
+			if _, err := NewDemoColorsWindow(); err != nil {
 				errs.Log(err)
 			}
 		},
@@ -128,15 +127,4 @@ func init() {
 			}
 		},
 	}
-}
-
-func initialWindowLocation() geom.Point {
-	// Try to position the new window to the right of the currently active window
-	var pt geom.Point
-	if w := unison.ActiveWindow(); w != nil {
-		r := w.FrameRect()
-		pt.X = r.X + r.Width
-		pt.Y = r.Y
-	}
-	return pt
 }

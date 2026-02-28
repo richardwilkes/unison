@@ -27,7 +27,7 @@ var (
 )
 
 // NewDemoSVGWindow creates and displays our demo SVG window.
-func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoSVGWindow() (*unison.Window, error) {
 	// Create the window
 	svgCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("SVG #%d", svgCounter))
@@ -48,7 +48,7 @@ func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
 	}
 	panel := unison.NewPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		MinSize: geom.NewSize(50, 50),
+		MinSize: geom.NewSize(400, 400),
 		HSpan:   1,
 		VSpan:   1,
 		HAlign:  align.Fill,
@@ -62,7 +62,7 @@ func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
 	}
 	content.AddChild(panel)
 
-	wnd.SetFrameRect(geom.NewRect(where.X, where.Y, 400, 400))
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

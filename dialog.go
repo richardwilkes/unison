@@ -78,12 +78,6 @@ type Dialog struct {
 // always have te FloatingWindowOption() set.
 func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo, windowOptions ...WindowOption) (*Dialog, error) {
 	d := &Dialog{buttons: make(map[int]*buttonData)}
-	var frame geom.Rect
-	if focused := ActiveWindow(); focused != nil {
-		frame = focused.FrameRect()
-	} else {
-		frame = PrimaryDisplay().Usable
-	}
 	opts := []WindowOption{FloatingWindowOption()}
 	if len(windowOptions) > 0 {
 		opts = append(opts, windowOptions...)
@@ -166,12 +160,7 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 		return true
 	}
 	d.wnd.Pack()
-	wndFrame := d.wnd.FrameRect()
-	frame.Y += (frame.Height - wndFrame.Height) / 3
-	frame.Height = wndFrame.Height
-	frame.X += (frame.Width - wndFrame.Width) / 2
-	frame.Width = wndFrame.Width
-	d.wnd.SetFrameRect(frame.Align())
+	d.wnd.MoveToDefaultModalCenter()
 	return d, nil
 }
 

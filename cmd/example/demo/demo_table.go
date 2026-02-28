@@ -24,7 +24,7 @@ const topLevelRowsToMake = 100
 var tableCounter int
 
 // NewDemoTableWindow creates and displays our demo table window.
-func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoTableWindow() (*unison.Window, error) {
 	// Create the window
 	tableCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Table #%d", tableCounter))
@@ -120,11 +120,7 @@ func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
 	})
 	content.AddChild(scrollArea)
 
-	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil
