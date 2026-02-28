@@ -12,6 +12,8 @@ package w32
 import (
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // Unknown https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nn-unknwn-iunknown
@@ -30,7 +32,7 @@ func (obj *Unknown) vmt() *vmtUnknown {
 }
 
 // QueryInterface https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-queryinterface(refiid_void)
-func (obj *Unknown) QueryInterface(guid *GUID) unsafe.Pointer {
+func (obj *Unknown) QueryInterface(guid *windows.GUID) unsafe.Pointer {
 	var dest unsafe.Pointer
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	if ret, _, _ := syscall.SyscallN(obj.vmt().QueryInterface, uintptr(unsafe.Pointer(obj)),

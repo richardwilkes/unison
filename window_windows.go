@@ -597,7 +597,7 @@ func (w *Window) acquireFocus() {
 }
 
 func (w *Window) visible() bool {
-	return w32.IsWindowVisible(w.wnd.wnd)
+	return windows.IsWindowVisible(w.wnd.wnd)
 }
 
 func (w *Window) show() {

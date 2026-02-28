@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"golang.org/x/sys/windows"
 )
 
@@ -25,7 +26,7 @@ var (
 	dragQueryPointProc              = shell32.NewProc("DragQueryPoint")
 	dragFinishProc                  = shell32.NewProc("DragFinish")
 	shCreateItemFromParsingNameProc = shell32.NewProc("SHCreateItemFromParsingName")
-	shellItemIID                    = NewGUID("43826D1E-E718-42EE-BC55-A1E261C37BFE")
+	shellItemIID                    = xos.Must(windows.GUIDFromString("{43826D1E-E718-42EE-BC55-A1E261C37BFE}"))
 )
 
 type ShellItem struct {
@@ -115,7 +116,7 @@ func (obj *ShellItem) DisplayName() string {
 	if r1 != 0 {
 		return ""
 	}
-	defer CoTaskMemFree(uintptr(unsafe.Pointer(p)))
+	defer windows.CoTaskMemFree(unsafe.Pointer(p))
 	return syscall.UTF16ToString(unsafe.Slice(p, maxUint16Array))
 }
 

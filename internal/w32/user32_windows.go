@@ -53,7 +53,6 @@ var (
 	getSysColorProc                   = user32.NewProc("GetSysColor")
 	getSystemMetricsProc              = user32.NewProc("GetSystemMetrics")
 	getWindowPlacementProc            = user32.NewProc("GetWindowPlacement")
-	isWindowVisibleProc               = user32.NewProc("IsWindowVisible")
 	loadImageWProc                    = user32.NewProc("LoadImageW")
 	mapVirtualKeyWProc                = user32.NewProc("MapVirtualKeyW")
 	messageBeepProc                   = user32.NewProc("MessageBeep")
@@ -1266,13 +1265,6 @@ func GetWindowPlacement(hwnd windows.HWND, placement *WINDOWPLACEMENT) bool {
 	placement.Length = uint32(unsafe.Sizeof(*placement))
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := getWindowPlacementProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(placement)))
-	return b&0xff != 0
-}
-
-// IsWindowVisible https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindowvisible
-func IsWindowVisible(hwnd windows.HWND) bool {
-	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	b, _, _ := isWindowVisibleProc.Call(uintptr(hwnd))
 	return b&0xff != 0
 }
 

@@ -13,24 +13,19 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"golang.org/x/sys/windows"
 )
 
 var (
 	ole32                = syscall.NewLazyDLL("ole32.dll")
-	coInitializeExProc   = ole32.NewProc("CoInitializeEx")
 	coCreateInstanceProc = ole32.NewProc("CoCreateInstance")
-	coTaskMemFreeProc    = ole32.NewProc("CoTaskMemFree")
-	instanceIDUnknown    = NewGUID("00000000-0000-0000-C000-000000000046")
+	instanceIDUnknown    = xos.Must(windows.GUIDFromString("{00000000-0000-0000-C000-000000000046}"))
+	nullGUID             windows.GUID
 )
 
-func CoInitialize(coInit int) {
-	//nolint:errcheck // Nothing we can do about an error here
-	coInitializeExProc.Call(0, uintptr(coInit))
-}
-
-func CoCreateInstance(classID, instanceID GUID) *Unknown {
-	if instanceID == NullGUID {
+func CoCreateInstance(classID, instanceID windows.GUID) *Unknown {
+	if instanceID == nullGUID {
 		instanceID = instanceIDUnknown
 	}
 	var unknown *Unknown
@@ -41,9 +36,4 @@ func CoCreateInstance(classID, instanceID GUID) *Unknown {
 		return nil
 	}
 	return unknown
-}
-
-func CoTaskMemFree(ptr uintptr) {
-	//nolint:errcheck // Nothing we can do about an error here
-	coTaskMemFreeProc.Call(ptr)
 }

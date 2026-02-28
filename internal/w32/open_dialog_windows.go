@@ -13,12 +13,13 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"golang.org/x/sys/windows"
 )
 
 var (
-	fileOpenDialogCLSID = NewGUID("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")
-	fileOpenDialogIID   = NewGUID("D57C7288-D4AD-4768-BE02-9D969532D960")
+	fileOpenDialogCLSID = xos.Must(windows.GUIDFromString("{DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7}"))
+	fileOpenDialogIID   = xos.Must(windows.GUIDFromString("{D57C7288-D4AD-4768-BE02-9D969532D960}"))
 )
 
 type FileOpenDialog struct {
@@ -36,7 +37,7 @@ func (obj *FileOpenDialog) vmt() *vmtFileOpenDialog {
 }
 
 func NewOpenDialog() *FileOpenDialog {
-	CoInitialize(windows.COINIT_MULTITHREADED | windows.COINIT_DISABLE_OLE1DDE)
+	windows.CoInitializeEx(0, windows.COINIT_MULTITHREADED|windows.COINIT_DISABLE_OLE1DDE)
 	return (*FileOpenDialog)(unsafe.Pointer(CoCreateInstance(fileOpenDialogCLSID, fileOpenDialogIID)))
 }
 

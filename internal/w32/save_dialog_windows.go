@@ -12,12 +12,13 @@ package w32
 import (
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"golang.org/x/sys/windows"
 )
 
 var (
-	fileSaveDialogCLSID = NewGUID("C0B4E2F3-BA21-4773-8DBA-335EC946EB8B")
-	fileSaveDialogIID   = NewGUID("84BCCD23-5FDE-4CDB-AEA4-AF64B83D78AB")
+	fileSaveDialogCLSID = xos.Must(windows.GUIDFromString("{C0B4E2F3-BA21-4773-8DBA-335EC946EB8B}"))
+	fileSaveDialogIID   = xos.Must(windows.GUIDFromString("{84BCCD23-5FDE-4CDB-AEA4-AF64B83D78AB}"))
 )
 
 type FileSaveDialog struct {
@@ -38,6 +39,6 @@ func (obj *FileSaveDialog) vmt() *vmtFileSaveDialog {
 }
 
 func NewSaveDialog() *FileSaveDialog {
-	CoInitialize(windows.COINIT_MULTITHREADED | windows.COINIT_DISABLE_OLE1DDE)
+	windows.CoInitializeEx(0, windows.COINIT_MULTITHREADED|windows.COINIT_DISABLE_OLE1DDE)
 	return (*FileSaveDialog)(unsafe.Pointer(CoCreateInstance(fileSaveDialogCLSID, fileSaveDialogIID)))
 }
