@@ -538,6 +538,14 @@ func (w *Window) ValidateLayout() {
 	w.root.ValidateLayout()
 }
 
+// Display returns the display that this window is currently on, or the primary display if the window is not valid.
+func (w *Window) Display() *Display {
+	if w.IsValid() {
+		return w.display()
+	}
+	return PrimaryDisplay()
+}
+
 // FrameRect returns the boundaries in display coordinates of the frame of this window (i.e. the area that includes both
 // the content and its border and window controls).
 func (w *Window) FrameRect() geom.Rect {
@@ -558,6 +566,14 @@ func (w *Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 // SetFrameRect sets the boundaries of the frame of this window.
 func (w *Window) SetFrameRect(rect geom.Rect) {
 	w.SetContentRect(w.ContentRectForFrameRect(rect))
+}
+
+// EnsureOnDisplay moves the window fully onto a display if it is not already fully within the area of a display, trying
+// to preserve its size if it is necessary to reposition it, though shrinking the window if necessary to fit.
+func (w *Window) EnsureOnDisplay() {
+	if w.IsValid() {
+		w.ensureOnDisplay()
+	}
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
@@ -624,36 +640,30 @@ func (w *Window) PackWithDefaultInitialLocation() {
 // provided point for its location, but will force it onto a display if needed.
 func (w *Window) PackWithLocation(pt geom.Point) {
 	_, pref, _ := w.root.Sizes(geom.Size{})
-	rect := w.FrameRectForContentRect(geom.Rect{
+	w.SetFrameRect(w.FrameRectForContentRect(geom.Rect{
 		Point: pt,
 		Size:  pref,
-	})
-	w.SetFrameRect(BestDisplayForRect(rect).FitRectOnto(rect))
+	}))
+	w.EnsureOnDisplay()
 }
 
-// MoveToDefaultModalCenter moves the window to the center (horizontally) and above center (vertically) of the currently
-// active window, or the primary display if there is no active window.
-func (w *Window) MoveToDefaultModalCenter() {
+// MoveToModalCenter moves the window to the center (horizontally) and above center (vertically) of the other window. If
+// the other window is nil, it will be centered on the primary display. The window will be forced onto a display if
+// needed.
+func (w *Window) MoveToModalCenter(other *Window) {
 	var within geom.Rect
-	if active := ActiveWindow(); active != nil {
-		within = active.FrameRect()
+	if other != nil {
+		within = other.FrameRect()
 	} else {
 		within = PrimaryDisplay().Usable
 	}
-	w.MoveToModalCenter(within)
-}
-
-// MoveToModalCenter moves the window to the center (horizontally) and above center (vertically) of the provided
-// rectangle, which is typically the frame rect of the parent window for a modal dialog. The window will be forced onto
-// a display if needed.
-func (w *Window) MoveToModalCenter(within geom.Rect) {
 	wndFrame := w.FrameRect()
 	within.Y += (within.Height - wndFrame.Height) / 3
 	within.Height = wndFrame.Height
 	within.X += (within.Width - wndFrame.Width) / 2
 	within.Width = wndFrame.Width
-	within = within.Align()
-	w.SetFrameRect(BestDisplayForRect(within).FitRectOnto(within))
+	w.SetFrameRect(within.Align())
+	w.EnsureOnDisplay()
 }
 
 // DefaultInitialWindowContentLocation selects an upper-left corner for a window by offsetting the current active

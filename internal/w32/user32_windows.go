@@ -809,21 +809,21 @@ const (
 
 // Constants for SetWindowPos flags https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowpos
 const (
-	SWP_ASYNCWINDOWPOS = 16384
-	SWP_DEFERERASE     = 8192
-	SWP_DRAWFRAME      = 32
-	SWP_FRAMECHANGED   = 32
-	SWP_HIDEWINDOW     = 128
-	SWP_NOACTIVATE     = 16
-	SWP_NOCOPYBITS     = 256
-	SWP_NOMOVE         = 2
-	SWP_NOOWNERZORDER  = 512
-	SWP_NOREDRAW       = 8
-	SWP_NOREPOSITION   = 512
-	SWP_NOSENDCHANGING = 1024
-	SWP_NOSIZE         = 1
-	SWP_NOZORDER       = 4
-	SWP_SHOWWINDOW     = 64
+	SWP_NOSIZE         = 0x0001
+	SWP_NOMOVE         = 0x0002
+	SWP_NOZORDER       = 0x0004
+	SWP_NOREDRAW       = 0x0008
+	SWP_NOACTIVATE     = 0x0010
+	SWP_DRAWFRAME      = 0x0020
+	SWP_FRAMECHANGED   = 0x0020
+	SWP_SHOWWINDOW     = 0x0040
+	SWP_HIDEWINDOW     = 0x0080
+	SWP_NOCOPYBITS     = 0x0100
+	SWP_NOOWNERZORDER  = 0x0200
+	SWP_NOREPOSITION   = 0x0200
+	SWP_NOSENDCHANGING = 0x0400
+	SWP_DEFERERASE     = 0x2000
+	SWP_ASYNCWINDOWPOS = 0x4000
 )
 
 // Message filter actions for ChangeWindowMessageFilterEx
@@ -936,6 +936,17 @@ type WINDOWPLACEMENT struct {
 	MaxPosition    POINT
 	NormalPosition RECT
 	Device         RECT
+}
+
+// WINDOWPOS https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-windowpos
+type WINDOWPOS struct {
+	Hwnd            windows.HWND
+	HwndInsertAfter windows.HWND
+	X               int32
+	Y               int32
+	CX              int32
+	CY              int32
+	Flags           uint32
 }
 
 // DISPLAY_DEVICEW https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-display_devicew

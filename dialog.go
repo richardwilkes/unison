@@ -160,7 +160,7 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 		return true
 	}
 	d.wnd.Pack()
-	d.wnd.MoveToDefaultModalCenter()
+	d.wnd.MoveToModalCenter(ActiveWindow())
 	return d, nil
 }
 

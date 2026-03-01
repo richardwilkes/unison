@@ -38,18 +38,22 @@ func AllDisplays() []*Display {
 }
 
 func monitorCallback(monitor w32.HMONITOR, _hdc w32.HDC, _bounds w32.RECT, _lParam uintptr) bool {
+	displays = append(displays, monitorInfo(monitor))
+	return true
+}
+
+func monitorInfo(monitor w32.HMONITOR) *Display {
+	var display Display
 	var info w32.MONITORINFO
 	if w32.GetMonitorInfoW(monitor, &info) {
-		var display Display
 		display.Frame = rectFromW32Rect(info.Monitor)
 		display.Usable = rectFromW32Rect(info.Work)
 		display.Primary = (info.Flags & w32.MONITORINFOF_PRIMARY) != 0
 		sx, sy := w32.GetDpiForMonitor(monitor, w32.MDT_EFFECTIVE_DPI)
 		display.PPI = int(sx)
 		display.Scale = geom.NewPoint(float32(sx)/96.0, float32(sy)/96.0)
-		displays = append(displays, &display)
 	}
-	return true
+	return &display
 }
 
 func rectFromW32Rect(r w32.RECT) geom.Rect {

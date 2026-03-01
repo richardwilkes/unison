@@ -101,7 +101,7 @@ func (d *JobDialog) RunModal() bool {
 		return pref, pref
 	}
 	w.Pack()
-	w.MoveToDefaultModalCenter()
+	w.MoveToModalCenter(unison.ActiveWindow())
 	d.adjustOKButton(nil, nil)
 	if dlg.RunModal() != unison.ModalResponseOK {
 		return false

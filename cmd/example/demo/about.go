@@ -85,7 +85,7 @@ func ShowAboutWindow(item unison.MenuItem) {
 
 		// Pack our window to fit its content, then position it.
 		aboutWindow.Pack()
-		aboutWindow.MoveToDefaultModalCenter()
+		aboutWindow.MoveToModalCenter(unison.ActiveWindow())
 	}
 
 	// Make it visible and in the front.

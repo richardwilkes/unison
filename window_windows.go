@@ -411,13 +411,23 @@ func chooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
 	return closest
 }
 
+func (w *Window) display() *Display {
+	var rect w32.RECT
+	w32.GetWindowRect(w.wnd.wnd, &rect)
+	pt := geom.NewPoint(float32(rect.Left), float32(rect.Top))
+	for _, d := range AllDisplays() {
+		if pt.In(d.Usable) {
+			return d
+		}
+	}
+	return monitorInfo(w32.MonitorFromWindow(w.wnd.wnd, w32.MONITOR_DEFAULTTOPRIMARY))
+}
+
 func (w *Window) frameRect() geom.Rect {
 	var rect w32.RECT
 	w32.GetWindowRect(w.wnd.wnd, &rect)
 	r := rectFromW32Rect(rect)
-	scale := w.backingScale()
-	r.Point = r.Point.DivPt(scale)
-	r.Size = r.Size.DivPt(scale)
+	r.Size = r.Size.DivPt(w.backingScale())
 	return r.Align()
 }
 
@@ -442,15 +452,25 @@ func (w *Window) frameInsets() geom.Insets {
 	return geom.NewInsets(-r.Y, -r.X, r.Bottom(), r.Right())
 }
 
+func (w *Window) ensureOnDisplay() {
+	var r w32.RECT
+	w32.GetWindowRect(w.wnd.wnd, &r)
+	frameRect := rectFromW32Rect(r)
+	d := w.display()
+	revisedRect := d.FitRectOnto(frameRect)
+	if frameRect != revisedRect {
+		revisedRect.Size = revisedRect.Size.DivPt(d.Scale)
+		w.SetFrameRect(revisedRect.Align())
+	}
+}
+
 func (w *Window) contentRect() geom.Rect {
 	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	var pt w32.POINT
 	w32.ClientToScreen(w.wnd.wnd, &pt)
 	r := geom.NewRect(float32(pt.X), float32(pt.Y), float32(rect.Right), float32(rect.Bottom))
-	scale := w.backingScale()
-	r.Point = r.Point.DivPt(scale)
-	r.Size = r.Size.DivPt(scale)
+	r.Size = r.Size.DivPt(w.backingScale())
 	return r.Align()
 }
 
@@ -463,9 +483,7 @@ func (w *Window) contentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 func (w *Window) SetContentRect(rect geom.Rect) {
 	if w.IsValid() {
 		rect = w.adjustContentRectForMinMax(rect).Inset(w.frameInsets().Mul(-1))
-		scale := w.backingScale()
-		rect.Point = rect.Point.MulPt(scale)
-		rect.Size = rect.Size.MulPt(scale)
+		rect.Size = rect.Size.MulPt(w.backingScale())
 		rect = rect.Align()
 		w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
 			w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
