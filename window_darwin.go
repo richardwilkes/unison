@@ -258,11 +258,6 @@ func (w *Window) frameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	return frameRect
 }
 
-// SetFrameRect sets the boundaries of the frame of this window.
-func (w *Window) SetFrameRect(rect geom.Rect) {
-	w.SetContentRect(w.ContentRectForFrameRect(rect))
-}
-
 func (w *Window) contentRect() geom.Rect {
 	r := w.wnd.wnd.ContentRectForFrameRect(w.wnd.wnd.Frame())
 	r.Y = transformCocoaY(r.Bottom())

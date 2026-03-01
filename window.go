@@ -534,10 +534,7 @@ func (w *Window) SetContent(panel Paneler) {
 
 // ValidateLayout performs any layout that needs to be run by this window or its children.
 func (w *Window) ValidateLayout() {
-	rect := w.ContentRect()
-	rect.X = 0
-	rect.Y = 0
-	w.root.SetFrameRect(rect)
+	w.root.SetFrameRect(w.LocalContentRect())
 	w.root.ValidateLayout()
 }
 
@@ -556,6 +553,11 @@ func (w *Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 		return w.frameRectForContentRect(contentRect)
 	}
 	return contentRect
+}
+
+// SetFrameRect sets the boundaries of the frame of this window.
+func (w *Window) SetFrameRect(rect geom.Rect) {
+	w.SetContentRect(w.ContentRectForFrameRect(rect))
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
@@ -816,7 +818,9 @@ func (w *Window) Show() {
 		w.show()
 		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
 		// last one we had.
-		w.SetContentRect(w.lastContentRect)
+		//
+		// TODO: Determine if this is still needed. Seems to be breaking some things on Windows
+		// w.SetContentRect(w.lastContentRect)
 	}
 }
 

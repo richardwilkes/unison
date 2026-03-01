@@ -53,5 +53,14 @@ func monitorCallback(monitor w32.HMONITOR, _hdc w32.HDC, _bounds w32.RECT, _lPar
 }
 
 func rectFromW32Rect(r w32.RECT) geom.Rect {
-	return geom.NewRect(float32(r.Left), float32(r.Top), float32(1+r.Right-r.Left), float32(1+r.Bottom-r.Top))
+	return geom.NewRect(float32(r.Left), float32(r.Top), float32(r.Right-r.Left), float32(r.Bottom-r.Top))
+}
+
+func w32RectFromRect(r geom.Rect) w32.RECT {
+	return w32.RECT{
+		Left:   int32(r.X),
+		Top:    int32(r.Y),
+		Right:  int32(r.Right()),
+		Bottom: int32(r.Bottom()),
+	}
 }
