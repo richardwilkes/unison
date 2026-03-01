@@ -23,11 +23,13 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 )
 
+var _ OpenDialog = &linuxOpenDialog{}
+
 type linuxOpenDialog struct {
 	fallback OpenDialog
 }
 
-func platformNewOpenDialog() OpenDialog {
+func apiNewOpenDialog() OpenDialog {
 	return &linuxOpenDialog{fallback: NewCommonOpenDialog()}
 }
 

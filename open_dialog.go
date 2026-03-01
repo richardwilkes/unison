@@ -35,5 +35,5 @@ type OpenDialog interface {
 
 // NewOpenDialog creates a new open dialog using native support where possible.
 func NewOpenDialog() OpenDialog {
-	return platformNewOpenDialog()
+	return apiNewOpenDialog()
 }

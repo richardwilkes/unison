@@ -4,27 +4,7 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-func translateModifiers(flags mac.EventModifierFlags) Modifiers {
-	var mods Modifiers
-	if flags&mac.EventModifierFlagShift != 0 {
-		mods |= ShiftModifier
-	}
-	if flags&mac.EventModifierFlagControl != 0 {
-		mods |= ControlModifier
-	}
-	if flags&mac.EventModifierFlagOption != 0 {
-		mods |= OptionModifier
-	}
-	if flags&mac.EventModifierFlagCommand != 0 {
-		mods |= CommandModifier
-	}
-	if flags&mac.EventModifierFlagCapsLock != 0 {
-		mods |= CapsLockModifier
-	}
-	return mods
-}
-
-func fillKeyCodes() {
+func apiFillKeyCodes() {
 	rawScanCodeToKeyCodeMap[0x00] = KeyA
 	rawScanCodeToKeyCodeMap[0x01] = KeyS
 	rawScanCodeToKeyCodeMap[0x02] = KeyD
@@ -136,4 +116,24 @@ func fillKeyCodes() {
 	rawScanCodeToKeyCodeMap[0x7C] = KeyRight
 	rawScanCodeToKeyCodeMap[0x7D] = KeyDown
 	rawScanCodeToKeyCodeMap[0x7E] = KeyUp
+}
+
+func translateModifiers(flags mac.EventModifierFlags) Modifiers {
+	var mods Modifiers
+	if flags&mac.EventModifierFlagShift != 0 {
+		mods |= ShiftModifier
+	}
+	if flags&mac.EventModifierFlagControl != 0 {
+		mods |= ControlModifier
+	}
+	if flags&mac.EventModifierFlagOption != 0 {
+		mods |= OptionModifier
+	}
+	if flags&mac.EventModifierFlagCommand != 0 {
+		mods |= CommandModifier
+	}
+	if flags&mac.EventModifierFlagCapsLock != 0 {
+		mods |= CapsLockModifier
+	}
+	return mods
 }

@@ -17,7 +17,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func (c *Clipboard) getText() string {
+func (c *Clipboard) apiGetText() string {
 	var wnd windows.HWND
 	if len(windowList) != 0 {
 		wnd = windowList[0].wnd.wnd
@@ -43,7 +43,7 @@ func (c *Clipboard) getText() string {
 	return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(buffer))) //nolint:govet // No other choice
 }
 
-func (c *Clipboard) setText(str string) {
+func (c *Clipboard) apiSetText(str string) {
 	s, err := windows.UTF16FromString(str)
 	if err != nil {
 		return

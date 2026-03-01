@@ -34,7 +34,7 @@ var (
 	quitAfterLastWindowClosedCallback func() bool
 	allowQuitCallback                 func() bool
 	quittingCallback                  func()
-	plafInited                        atomic.Bool
+	platformInited                    atomic.Bool
 	noGlobalMenuBar                   bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
@@ -140,7 +140,7 @@ func Start(options ...StartupOption) {
 		calledAtExit = true
 		quitLock.Unlock()
 	})
-	plafInited.Store(true)
+	platformInited.Store(true)
 	InvokeTask(finishStartup)
 	for {
 		processEvents()
@@ -170,12 +170,12 @@ func start() error {
 		initialized = err == nil
 		initTermLock.Unlock()
 	}()
-	err = beginStartup()
+	err = apiBeginStartup()
 	return err
 }
 
 func processEvents() {
-	waitEvents()
+	apiWaitEvents()
 	processNextTask(uiTaskRecovery)
 	if len(redrawSet) > 0 {
 		set := redrawSet
@@ -193,11 +193,11 @@ func processEvents() {
 func finishStartup() {
 	skiaColorspace = skia.ColorSpaceNewSRGB()
 	RebuildDynamicColors()
-	lateInit()
+	apiLateInit()
 	if startupFinishedCallback != nil {
 		xos.SafeCall(startupFinishedCallback, nil)
 	}
-	finalFinishStartup()
+	apiFinalFinishStartup()
 }
 
 // ThemeChanged marks dynamic colors for rebuilding, calls any installed theme change callback, and then redraws all
@@ -284,7 +284,7 @@ func finishQuit() error {
 	for len(cursorList) != 0 {
 		cursorList[len(cursorList)-1].Destroy()
 	}
-	return terminate()
+	return apiTerminate()
 }
 
 // AttemptQuit initiates the termination sequence.
@@ -309,7 +309,7 @@ func closeAllWindows() {
 
 // Beep plays the system beep sound.
 func Beep() {
-	beep()
+	apiBeep()
 }
 
 // CurrentThemeMode returns the current theme mode state.
@@ -329,7 +329,7 @@ func SetThemeMode(mode thememode.Enum) {
 // IsColorModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
 // platforms that return false from this function, thememode.Auto is the same as thememode.Light.
 func IsColorModeTrackingPossible() bool {
-	return isColorModeTrackingPossible()
+	return apiIsColorModeTrackingPossible()
 }
 
 // IsDarkModeEnabled returns true if the OS is currently using a "dark mode".
@@ -342,7 +342,7 @@ func IsDarkModeEnabled() bool {
 	default:
 		if needPlatformDarkModeUpdate {
 			needPlatformDarkModeUpdate = false
-			platformDarkModeEnabled = isDarkModeEnabled()
+			platformDarkModeEnabled = apiIsDarkModeEnabled()
 		}
 		return platformDarkModeEnabled
 	}
@@ -351,7 +351,7 @@ func IsDarkModeEnabled() bool {
 // DoubleClickParameters returns the maximum delay between clicks and the maximum pixel drift allowed to register as a
 // double-click.
 func DoubleClickParameters() (maxDelay time.Duration, maxMouseDrift float32) {
-	return doubleClickInterval(), 5
+	return apiDoubleClickInterval(), 5
 }
 
 // DragGestureParameters returns the minimum delay before mouse movement should be recognized as a drag as well as the

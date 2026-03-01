@@ -15,12 +15,11 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-// OSMenuCmdModifier returns the OS's standard menu command key modifier.
-func OSMenuCmdModifier() Modifiers {
+func apiOSMenuCmdModifier() Modifiers {
 	return CommandModifier
 }
 
-func (m Modifiers) platformString() string {
+func (m Modifiers) apiString() string {
 	if m == 0 {
 		return ""
 	}
@@ -46,7 +45,7 @@ func (m Modifiers) platformString() string {
 	return buffer.String()
 }
 
-func (m Modifiers) eventModifierFlags() mac.EventModifierFlags {
+func (m Modifiers) macEventModifierFlags() mac.EventModifierFlags {
 	var mods mac.EventModifierFlags
 	if m.ShiftDown() {
 		mods |= mac.EventModifierFlagShift
@@ -66,7 +65,7 @@ func (m Modifiers) eventModifierFlags() mac.EventModifierFlags {
 	return mods
 }
 
-func modifiersFromEventModifierFlags(flags mac.EventModifierFlags) Modifiers {
+func modifiersFromMacEventModifierFlags(flags mac.EventModifierFlags) Modifiers {
 	var mods Modifiers
 	if flags&mac.EventModifierFlagShift != 0 {
 		mods |= ShiftModifier

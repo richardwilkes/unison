@@ -23,7 +23,7 @@ var (
 	okToIssueFileOpens bool
 )
 
-func beginStartup() error {
+func apiBeginStartup() error {
 	mac.AppShouldTerminateCallback = func() {
 		closeAllWindows()
 		xos.Exit(0)
@@ -54,17 +54,17 @@ func beginStartup() error {
 	if err := mac.InstallMacAppDelegate(); err != nil {
 		return err
 	}
-	fillKeyCodes()
-	initNativeWindowCallbacks()
+	apiFillKeyCodes()
+	initMacWindowCallbacks()
 	mac.FinishLaunching()
 	return nil
 }
 
-func lateInit() {
+func apiLateInit() {
 	mac.InstallSystemThemeChangedCallback(ThemeChanged)
 }
 
-func finalFinishStartup() {
+func apiFinalFinishStartup() {
 	pendingFilesLock.Lock()
 	defer pendingFilesLock.Unlock()
 	okToIssueFileOpens = true
@@ -77,37 +77,37 @@ func finalFinishStartup() {
 	}
 }
 
-func terminate() error {
+func apiTerminate() error {
 	mac.UninstallMacAppDelegate()
 	return nil
 }
 
-func beep() {
+func apiBeep() {
 	mac.Beep()
 }
 
-func isColorModeTrackingPossible() bool {
+func apiIsColorModeTrackingPossible() bool {
 	return true
 }
 
-func isDarkModeEnabled() bool {
+func apiIsDarkModeEnabled() bool {
 	return mac.IsDarkModeEnabled()
 }
 
-func doubleClickInterval() time.Duration {
+func apiDoubleClickInterval() time.Duration {
 	return mac.DoubleClickInterval()
 }
 
-func pollEvents() {
+func apiPollEvents() {
 	mac.PollEvents()
 }
 
-func waitEvents() {
+func apiWaitEvents() {
 	mac.WaitEvents()
 }
 
-func postEmptyEvent() {
-	if plafInited.Load() {
+func apiPostEmptyEvent() {
+	if platformInited.Load() {
 		mac.PostEmptyEvent()
 	}
 }

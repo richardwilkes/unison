@@ -7,12 +7,12 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-type glContext struct {
+type apiGLContext struct {
 	dc w32.HDC
 	rc w32.HGLRC
 }
 
-func (c *glContext) create(wnd, share *Window, _transparent bool) error {
+func (c *apiGLContext) apiCreate(wnd, share *Window, _transparent bool) error {
 	dc := w32.GetDC(wnd.wnd.wnd)
 	if dc == 0 {
 		return errs.New("failed to get device context for window")
@@ -53,22 +53,22 @@ func (c *glContext) create(wnd, share *Window, _transparent bool) error {
 	return nil
 }
 
-func (c *glContext) makeCurrent() {
+func (c *apiGLContext) apiMakeCurrent() {
 	w32.WglMakeCurrent(c.dc, c.rc)
 }
 
-func (c *glContext) swapBuffers() {
+func (c *apiGLContext) apiSwapBuffers() {
 	w32.SwapBuffers(c.dc)
 }
 
-func (c *glContext) destroy() {
+func (c *apiGLContext) apiDestroy() {
 	if c.rc != 0 {
 		w32.WglDeleteContext(c.rc)
 		c.rc = 0
 	}
 }
 
-func clearOpenGLCurrentContext() {
+func apiClearOpenGLCurrentContext() {
 	w32.WglMakeCurrent(0, 0)
 	wndWithCurrentCtx = nil
 }

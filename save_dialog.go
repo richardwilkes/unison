@@ -31,7 +31,7 @@ type SaveDialog interface {
 
 // NewSaveDialog creates a new save dialog using native support where possible.
 func NewSaveDialog() SaveDialog {
-	return platformNewSaveDialog()
+	return apiNewSaveDialog()
 }
 
 // ValidateSaveFilePath ensures the given path is ok to be used to save a file. If requiredExtension isn't empty, this

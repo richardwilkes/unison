@@ -19,9 +19,7 @@ var (
 	displays           []*Display
 )
 
-// PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
-// the macOS menu bar is located.
-func PrimaryDisplay() *Display {
+func apiPrimaryDisplay() *Display {
 	for _, d := range AllDisplays() {
 		if d.Primary {
 			return d
@@ -30,8 +28,7 @@ func PrimaryDisplay() *Display {
 	return nil
 }
 
-// AllDisplays returns all currently active displays.
-func AllDisplays() []*Display {
+func apiAllDisplays() []*Display {
 	displays = nil
 	w32.EnumDisplayMonitors(0, nil, monitorCallbackPtr, 0)
 	return displays

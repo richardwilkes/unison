@@ -24,11 +24,13 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xfilepath"
 )
 
+var _ SaveDialog = &linuxSaveDialog{}
+
 type linuxSaveDialog struct {
 	fallback SaveDialog
 }
 
-func platformNewSaveDialog() SaveDialog {
+func apiNewSaveDialog() SaveDialog {
 	return &linuxSaveDialog{fallback: NewCommonSaveDialog()}
 }
 

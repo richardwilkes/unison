@@ -16,11 +16,13 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
+var _ OpenDialog = &macOpenDialog{}
+
 type macOpenDialog struct {
 	dialog mac.OpenPanel
 }
 
-func platformNewOpenDialog() OpenDialog {
+func apiNewOpenDialog() OpenDialog {
 	return &macOpenDialog{dialog: mac.NewOpenPanel()}
 }
 

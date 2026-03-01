@@ -34,12 +34,12 @@ type Clipboard struct {
 
 // GetText returns text from the current clipboard data. This reads from the system clipboard.
 func (c *Clipboard) GetText() string {
-	return c.getText()
+	return c.apiGetText()
 }
 
 // SetText sets text as the current clipboard data. This modifies the system clipboard.
 func (c *Clipboard) SetText(str string) {
-	c.setText(str)
+	c.apiSetText(str)
 	c.lock.Lock()
 	c.data = nil
 	c.lock.Unlock()
@@ -63,9 +63,9 @@ func (c *Clipboard) SetData(dataType string, data any) {
 	c.data[dataType] = data
 	c.lock.Unlock()
 	if s, ok := data.(string); ok {
-		c.setText(s)
+		c.apiSetText(s)
 	} else {
-		c.setText("")
+		c.apiSetText("")
 	}
 }
 
@@ -85,5 +85,5 @@ func (c *Clipboard) SetMultipleData(pairs []ClipboardData) {
 		}
 	}
 	c.lock.Unlock()
-	c.setText(str)
+	c.apiSetText(str)
 }

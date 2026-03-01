@@ -16,11 +16,13 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
+var _ SaveDialog = &macSaveDialog{}
+
 type macSaveDialog struct {
 	dialog mac.SavePanel
 }
 
-func platformNewSaveDialog() SaveDialog {
+func apiNewSaveDialog() SaveDialog {
 	return &macSaveDialog{dialog: mac.NewSavePanel()}
 }
 

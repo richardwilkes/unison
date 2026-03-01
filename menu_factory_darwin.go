@@ -18,7 +18,7 @@ type macMenuFactory struct {
 	bar *macMenu
 }
 
-func platformNewDefaultMenuFactory() MenuFactory {
+func apiNewDefaultMenuFactory() MenuFactory {
 	return &macMenuFactory{}
 }
 
@@ -69,7 +69,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, va
 		}
 	}
 	mi := mac.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
-		keyBinding.Modifiers.eventModifierFlags(), func(mi mac.MenuItem) bool {
+		keyBinding.Modifiers.macEventModifierFlags(), func(mi mac.MenuItem) bool {
 			if DisableMenus {
 				return false
 			}

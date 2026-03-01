@@ -41,7 +41,7 @@ func DefaultMenuFactory() MenuFactory {
 		if noGlobalMenuBar {
 			defaultMenuFactory = NewInWindowMenuFactory()
 		} else {
-			defaultMenuFactory = platformNewDefaultMenuFactory()
+			defaultMenuFactory = apiNewDefaultMenuFactory()
 		}
 	}
 	return defaultMenuFactory

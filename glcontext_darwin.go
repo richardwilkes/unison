@@ -5,12 +5,12 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-type glContext struct {
+type apiGLContext struct {
 	pixelFormat mac.OpenGLPixelFormatRef
 	ctx         mac.OpenGLContextRef
 }
 
-func (c *glContext) create(wnd, share *Window, transparent bool) error {
+func (c *apiGLContext) apiCreate(wnd, share *Window, transparent bool) error {
 	pixFmt := mac.NewOpenGLPixelFormat()
 	if pixFmt == 0 {
 		return errs.New("failed to create OpenGL pixel format")
@@ -29,15 +29,15 @@ func (c *glContext) create(wnd, share *Window, transparent bool) error {
 	return nil
 }
 
-func (c *glContext) makeCurrent() {
+func (c *apiGLContext) apiMakeCurrent() {
 	c.ctx.MakeCurrent()
 }
 
-func (c *glContext) swapBuffers() {
+func (c *apiGLContext) apiSwapBuffers() {
 	c.ctx.FlushBuffer()
 }
 
-func (c *glContext) destroy() {
+func (c *apiGLContext) apiDestroy() {
 	if c.ctx != 0 {
 		c.ctx.Release()
 		c.ctx = 0
@@ -48,7 +48,7 @@ func (c *glContext) destroy() {
 	}
 }
 
-func clearOpenGLCurrentContext() {
+func apiClearOpenGLCurrentContext() {
 	mac.ClearOpenGLCurrentContext()
 	wndWithCurrentCtx = nil
 }

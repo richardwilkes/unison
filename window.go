@@ -98,8 +98,8 @@ type Window struct {
 	data                        map[string]any
 	title                       string
 	titleIcons                  []*Image
-	wnd                         platformWindow
-	glCtx                       glContext
+	wnd                         apiWindow
+	glCtx                       apiGLContext
 	lastDrawDuration            time.Duration
 	tooltipSequence             int
 	modalResultCode             int
@@ -186,7 +186,7 @@ func AllWindowsToFront() {
 		for i := len(list) - 1; i >= 0; i-- {
 			list[i].Show()
 			if i == 0 {
-				list[i].acquireFocus()
+				list[i].apiAcquireFocus()
 			}
 		}
 	}
@@ -245,7 +245,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		Floating:     w.floating,
 	}
 	windowList = append(windowList, w)
-	if err := w.initNativeWindow(&cfg); err != nil {
+	if err := w.apiInit(&cfg); err != nil {
 		windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 		return nil, err
 	}
@@ -333,8 +333,8 @@ func (w *Window) gainedFocus() {
 			w.GainedFocusCallback()
 		}
 		w.mouseEnter(w.MouseLocation(), 0)
-		if w.cursorInContentArea() {
-			w.updateCursorImage()
+		if w.apiCursorInContentArea() {
+			w.apiUpdateCursorImage()
 		}
 	} else {
 		modalStack[len(modalStack)-1].ToFront()
@@ -474,9 +474,9 @@ func (w *Window) destroy() {
 		return
 	}
 	if w == wndWithCurrentCtx {
-		clearOpenGLCurrentContext()
+		apiClearOpenGLCurrentContext()
 	}
-	w.nativeDestroy()
+	w.apiDestroy()
 	windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 }
 
@@ -490,7 +490,7 @@ func (w *Window) SetTitle(title string) {
 	if w.title != title {
 		w.title = title
 		if w.IsValid() {
-			w.setTitle(title)
+			w.apiSetTitle(title)
 		}
 	}
 }
@@ -516,7 +516,7 @@ func (w *Window) SetTitleIcons(images []*Image) {
 				imgs = append(imgs, nrgba)
 			}
 		}
-		w.setTitleIcons(imgs)
+		w.apiSetTitleIcons(imgs)
 	}
 }
 
@@ -541,7 +541,7 @@ func (w *Window) ValidateLayout() {
 // Display returns the display that this window is currently on, or the primary display if the window is not valid.
 func (w *Window) Display() *Display {
 	if w.IsValid() {
-		return w.display()
+		return w.apiDisplay()
 	}
 	return PrimaryDisplay()
 }
@@ -550,7 +550,7 @@ func (w *Window) Display() *Display {
 // the content and its border and window controls).
 func (w *Window) FrameRect() geom.Rect {
 	if w.IsValid() {
-		return w.frameRect()
+		return w.apiFrameRect()
 	}
 	return geom.NewRect(0, 0, 1, 1)
 }
@@ -558,7 +558,7 @@ func (w *Window) FrameRect() geom.Rect {
 // FrameRectForContentRect returns the frame rect for the given content rect.
 func (w *Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	if w.IsValid() {
-		return w.frameRectForContentRect(contentRect)
+		return w.apiFrameRectForContentRect(contentRect)
 	}
 	return contentRect
 }
@@ -572,14 +572,14 @@ func (w *Window) SetFrameRect(rect geom.Rect) {
 // to preserve its size if it is necessary to reposition it, though shrinking the window if necessary to fit.
 func (w *Window) EnsureOnDisplay() {
 	if w.IsValid() {
-		w.ensureOnDisplay()
+		w.apiEnsureOnDisplay()
 	}
 }
 
 // ContentRect returns the boundaries in display coordinates of the window's content area.
 func (w *Window) ContentRect() geom.Rect {
 	if w.IsValid() {
-		return w.contentRect()
+		return w.apiContentRect()
 	}
 	return geom.NewRect(0, 0, 1, 1)
 }
@@ -587,9 +587,18 @@ func (w *Window) ContentRect() geom.Rect {
 // ContentRectForFrameRect returns the content rect for the given frame rect.
 func (w *Window) ContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	if w.IsValid() {
-		return w.contentRectForFrameRect(frameRect)
+		return w.apiContentRectForFrameRect(frameRect)
 	}
 	return frameRect
+}
+
+// SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
+// rect and then applying it to the window.
+func (w *Window) SetContentRect(rect geom.Rect) {
+	if w.IsValid() {
+		rect = w.adjustContentRectForMinMax(rect)
+		w.apiSetContentRect(rect)
+	}
 }
 
 func (w *Window) minMaxContentSize() (minimum, maximum geom.Size) {
@@ -813,7 +822,7 @@ func collectFocusables(current, target *Panel, focusables []*Panel) (match int, 
 
 // IsVisible returns true if the window is currently being shown.
 func (w *Window) IsVisible() bool {
-	return w.IsValid() && w.visible()
+	return w.IsValid() && w.apiVisible()
 }
 
 // IsTransparent returns true if the window was created with a transparent backing buffer.
@@ -825,7 +834,7 @@ func (w *Window) IsTransparent() bool {
 // mode, this function does nothing.
 func (w *Window) Show() {
 	if w.IsValid() {
-		w.show()
+		w.apiShow()
 		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
 		// last one we had.
 		//
@@ -838,7 +847,7 @@ func (w *Window) Show() {
 // function does nothing.
 func (w *Window) Hide() {
 	if w.IsValid() {
-		w.hide()
+		w.apiHide()
 	}
 }
 
@@ -848,21 +857,21 @@ func (w *Window) ToFront() {
 	if w.IsValid() {
 		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
-		w.acquireFocus()
+		w.apiAcquireFocus()
 	}
 }
 
 // Minimize performs the minimize function on the window.
 func (w *Window) Minimize() {
 	if w.IsValid() {
-		w.minimize()
+		w.apiMinimize()
 	}
 }
 
 // Zoom performs the zoom function on the window.
 func (w *Window) Zoom() {
 	if w.IsValid() {
-		w.maximize()
+		w.apiMaximize()
 	}
 }
 
@@ -874,15 +883,21 @@ func (w *Window) Resizable() bool {
 // MouseLocation returns the current mouse location relative to this window.
 func (w *Window) MouseLocation() geom.Point {
 	if w.IsValid() {
-		return w.convertRawMouseLocationForPlatform(w.cursorPosition())
+		return w.apiConvertRawMouse(w.apiCursorPosition())
 	}
 	return geom.Point{}
+}
+
+func (w *Window) adjustToCursorChange() {
+	if w.apiCursorInContentArea() {
+		w.apiUpdateCursorImage()
+	}
 }
 
 // BackingScale returns the scale of the backing store for this window.
 func (w *Window) BackingScale() geom.Point {
 	if w.IsValid() {
-		return w.backingScale()
+		return w.apiBackingScale()
 	}
 	return geom.NewPoint(1, 1)
 }
@@ -915,7 +930,7 @@ func (w *Window) draw() {
 	RebuildDynamicColors()
 	if w.IsValid() {
 		scale := w.BackingScale()
-		w.glCtx.makeCurrent()
+		w.glCtx.apiMakeCurrent()
 		wndWithCurrentCtx = w
 		if !glInited {
 			xos.ExitIfErr(gl.Init())
@@ -933,7 +948,7 @@ func (w *Window) draw() {
 		c.Restore()
 		c.Flush()
 		w.lastDrawDuration = time.Since(start)
-		w.glCtx.swapBuffers()
+		w.glCtx.apiSwapBuffers()
 	}
 }
 
@@ -947,7 +962,7 @@ func (w *Window) MarkForRedraw() {
 	if _, exists := redrawSet[w]; !exists {
 		redrawSet[w] = struct{}{}
 		if len(redrawSet) == 1 {
-			postEmptyEvent()
+			apiPostEmptyEvent()
 		}
 	}
 }
@@ -977,8 +992,8 @@ func (w *Window) ShowCursor() {
 
 func (w *Window) updateCursorVisibility() {
 	if w.focused {
-		if w.cursorInContentArea() {
-			w.updateCursorImage()
+		if w.apiCursorInContentArea() {
+			w.apiUpdateCursorImage()
 		}
 	}
 }
@@ -1179,7 +1194,7 @@ func (w *Window) mouseEnter(where geom.Point, mod Modifiers) {
 }
 
 func (w *Window) nativeMouseMoved(pt geom.Point) {
-	pt = w.convertRawMouseLocationForPlatform(pt)
+	pt = w.apiConvertRawMouse(pt)
 	if w.inMouseDown {
 		w.mouseDrag(pt, w.lastButton, w.lastKeyModifiers)
 	} else {
@@ -1343,6 +1358,13 @@ func (w *Window) keyReleased(key KeyCode, mods Modifiers) {
 	if w.lastKeyDownPanel != nil && w.lastKeyDownPanel.KeyUpCallback != nil {
 		xos.SafeCall(func() { w.lastKeyDownPanel.KeyUpCallback(key, mods) }, nil)
 	}
+}
+
+// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
+// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
+// menu is being displayed.
+func (w *Window) CurrentKeyModifiers() Modifiers {
+	return w.apiCurrentKeyModifiers()
 }
 
 // LastKeyModifiers returns the last set of key modifiers that this window has received.

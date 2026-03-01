@@ -27,6 +27,17 @@ type Display struct {
 	Primary bool
 }
 
+// PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
+// the macOS menu bar is located.
+func PrimaryDisplay() *Display {
+	return apiPrimaryDisplay()
+}
+
+// AllDisplays returns all currently active displays.
+func AllDisplays() []*Display {
+	return apiAllDisplays()
+}
+
 // FitRectOnto returns a rectangle that fits onto this display, trying to preserve its position and size as much as
 // possible.
 func (d *Display) FitRectOnto(r geom.Rect) geom.Rect {

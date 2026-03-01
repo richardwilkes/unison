@@ -33,7 +33,31 @@ var cursorList []*Cursor
 
 // Cursor provides a graphical cursor for the mouse location.
 type Cursor struct {
-	cursor nativeCursor
+	cursor apiNativeCursor
+}
+
+// ArrowCursor returns the standard arrow cursor.
+func ArrowCursor() *Cursor {
+	if arrowCursor == nil {
+		arrowCursor = apiArrowCursor()
+	}
+	return arrowCursor
+}
+
+// PointingCursor returns the standard pointing cursor.
+func PointingCursor() *Cursor {
+	if pointingCursor == nil {
+		pointingCursor = apiPointingCursor()
+	}
+	return pointingCursor
+}
+
+// TextCursor returns the standard text cursor.
+func TextCursor() *Cursor {
+	if textCursor == nil {
+		textCursor = apiTextCursor()
+	}
+	return textCursor
 }
 
 // MoveCursor returns the standard move cursor.
@@ -85,7 +109,7 @@ func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 		draw.CatmullRom.Scale(dst, dstRect, nrgba, image.Rect(0, 0, int(size.Width), int(size.Height)), draw.Over, nil)
 		nrgba = dst
 	}
-	return newCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
+	return apiNewCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
 }
 
 // Destroy releases the resources associated with the cursor.
@@ -100,5 +124,5 @@ func (c *Cursor) Destroy() {
 		}
 	}
 	cursorList = slices.DeleteFunc(cursorList, func(cur *Cursor) bool { return cur == c })
-	c.destroy()
+	c.apiDestroy()
 }

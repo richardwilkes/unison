@@ -19,7 +19,7 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-type platformWindow struct {
+type apiWindow struct {
 	wnd            mac.Window
 	view           mac.View
 	nsCursorHidden bool
@@ -35,7 +35,7 @@ func findWindowByNSWindow(macWnd mac.Window) *Window {
 	return nil
 }
 
-func initNativeWindowCallbacks() {
+func initMacWindowCallbacks() {
 	mac.WindowKeyPressedCallback = func(macWnd mac.Window, key int, mods uint) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
 			w.keyPressed(rawScanCodeToKeyCodeMap[key], translateModifiers(mac.EventModifierFlags(mods)))
@@ -122,14 +122,14 @@ func initNativeWindowCallbacks() {
 	}
 	mac.WindowCursorUpdateCallback = func(macWnd mac.Window) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.updateCursorImage()
+			w.apiUpdateCursorImage()
 		} else {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowMouseEnterCallback = func(macWnd mac.Window) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.updateCursorImage()
+			w.apiUpdateCursorImage()
 			w.mouseEnter(w.MouseLocation(), w.lastKeyModifiers)
 		} else {
 			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
@@ -137,7 +137,7 @@ func initNativeWindowCallbacks() {
 	}
 	mac.WindowMouseExitCallback = func(macWnd mac.Window) {
 		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.updateCursorImage()
+			w.apiUpdateCursorImage()
 			w.mouseExit()
 		} else {
 			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
@@ -196,7 +196,7 @@ func initNativeWindowCallbacks() {
 	}
 }
 
-func (w *Window) initNativeWindow(cfg *WindowConfig) error {
+func (w *Window) apiInit(cfg *WindowConfig) error {
 	styleMask := mac.WindowStyleMaskMiniaturizable
 	if cfg.Undecorated {
 		styleMask |= mac.WindowStyleMaskBorderless
@@ -234,83 +234,69 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	nw.SetTabbingMode(mac.WindowTabbingModeDisallowed)
 	w.wnd.wnd = nw
 	w.wnd.view = v
-	return w.glCtx.create(w, cfg.Share, cfg.Transparent)
+	return w.glCtx.apiCreate(w, cfg.Share, cfg.Transparent)
 }
 
-func (w *Window) setTitle(title string) {
+func (w *Window) apiSetTitle(title string) {
 	w.wnd.wnd.SetTitle(title)
 }
 
-func (w *Window) setTitleIcons(_images []*image.NRGBA) {
+func (w *Window) apiSetTitleIcons(_images []*image.NRGBA) {
 	// macOS doesn't have window icons, so just ignore this.
 }
 
-func (w *Window) display() *Display {
-	return BestDisplayForRect(w.frameRect())
+func (w *Window) apiDisplay() *Display {
+	return BestDisplayForRect(w.apiFrameRect())
 }
 
-func (w *Window) frameRect() geom.Rect {
+func (w *Window) apiFrameRect() geom.Rect {
 	r := w.wnd.wnd.Frame()
 	r.Y = transformCocoaY(r.Bottom())
 	return r
 }
 
-func (w *Window) frameRectForContentRect(contentRect geom.Rect) geom.Rect {
+func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	contentRect.Y = transformCocoaY(contentRect.Bottom())
 	frameRect := w.wnd.wnd.FrameRectForContentRect(contentRect)
 	frameRect.Y = transformCocoaY(frameRect.Bottom())
 	return frameRect
 }
 
-func (w *Window) ensureOnDisplay() {
-	frameRect := w.frameRect()
-	revisedRect := w.display().FitRectOnto(frameRect)
+func (w *Window) apiEnsureOnDisplay() {
+	frameRect := w.apiFrameRect()
+	revisedRect := w.apiDisplay().FitRectOnto(frameRect)
 	if frameRect != revisedRect {
 		w.SetFrameRect(revisedRect)
 	}
 }
 
-func (w *Window) contentRect() geom.Rect {
+func (w *Window) apiContentRect() geom.Rect {
 	r := w.wnd.wnd.ContentRectForFrameRect(w.wnd.wnd.Frame())
 	r.Y = transformCocoaY(r.Bottom())
 	return r
 }
 
-func (w *Window) contentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	frameRect.Y = transformCocoaY(frameRect.Bottom())
 	contentRect := w.wnd.wnd.ContentRectForFrameRect(frameRect)
 	contentRect.Y = transformCocoaY(contentRect.Bottom())
 	return contentRect
 }
 
-// SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
-// rect and then applying it to the window.
-func (w *Window) SetContentRect(rect geom.Rect) {
-	if w.IsValid() {
-		rect = w.adjustContentRectForMinMax(rect)
-		rect.Y = transformCocoaY(rect.Bottom())
-		w.wnd.wnd.SetFrame(w.wnd.wnd.FrameRectForContentRect(rect))
-	}
+func (w *Window) apiSetContentRect(rect geom.Rect) {
+	rect.Y = transformCocoaY(rect.Bottom())
+	w.wnd.wnd.SetFrame(w.wnd.wnd.FrameRectForContentRect(rect))
 }
 
-func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point {
+func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 	return where
 }
 
-// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
-// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
-// menu is being displayed.
-func (w *Window) CurrentKeyModifiers() Modifiers {
-	return modifiersFromEventModifierFlags(mac.CurrentModifierFlags())
+func (w *Window) apiCurrentKeyModifiers() Modifiers {
+	return modifiersFromMacEventModifierFlags(mac.CurrentModifierFlags())
 }
 
-func (w *Window) adjustToCursorChange() {
-	if w.cursorInContentArea() {
-		w.updateCursorImage()
-	}
-}
-
-func (w *Window) updateCursorImage() {
+func (w *Window) apiUpdateCursorImage() {
 	if w.cursorHidden {
 		if !w.wnd.nsCursorHidden {
 			mac.HideCursor()
@@ -322,64 +308,64 @@ func (w *Window) updateCursorImage() {
 			w.wnd.nsCursorHidden = false
 		}
 		if w.cursor != nil {
-			w.cursor.cursor.Set()
+			w.cursor.cursor.cursor.Set()
 		} else {
 			mac.ArrowCursor().Set()
 		}
 	}
 }
 
-func (w *Window) cursorInContentArea() bool {
+func (w *Window) apiCursorInContentArea() bool {
 	return w.wnd.view.MouseInRect(w.wnd.wnd.MouseLocationOutsideOfEventStream(), w.wnd.view.Frame())
 }
 
-func (w *Window) cursorPosition() geom.Point {
+func (w *Window) apiCursorPosition() geom.Point {
 	loc := w.wnd.wnd.MouseLocationOutsideOfEventStream()
 	frame := w.wnd.view.Frame()
 	return geom.NewPoint(loc.X, frame.Height-loc.Y)
 }
 
-func (w *Window) backingScale() geom.Point {
+func (w *Window) apiBackingScale() geom.Point {
 	return w.wnd.view.BackingScale()
 }
 
-func (w *Window) minimize() {
+func (w *Window) apiMinimize() {
 	if !w.wnd.wnd.Miniaturized() {
 		w.wnd.wnd.Miniaturize()
 	}
 }
 
-func (w *Window) maximize() {
+func (w *Window) apiMaximize() {
 	if !w.wnd.wnd.Zoomed() {
 		w.wnd.wnd.Zoom()
 	}
 }
 
-func (w *Window) acquireFocus() {
+func (w *Window) apiAcquireFocus() {
 	mac.ActivateIgnoringOtherApps()
 	w.wnd.wnd.MakeKeyAndOrderFront()
 }
 
-func (w *Window) visible() bool {
+func (w *Window) apiVisible() bool {
 	return w.wnd.wnd.Visible()
 }
 
-func (w *Window) show() {
+func (w *Window) apiShow() {
 	w.wnd.wnd.MakeKeyAndOrderFront()
 }
 
-func (w *Window) hide() {
+func (w *Window) apiHide() {
 	w.wnd.wnd.OrderOut()
 }
 
-func (w *Window) nativeDestroy() {
+func (w *Window) apiDestroy() {
 	w.wnd.wnd.OrderOut()
-	w.glCtx.destroy()
+	w.glCtx.apiDestroy()
 	delegate := w.wnd.wnd.Delegate()
 	w.wnd.wnd.SetDelegate(0)
 	delegate.Release()
 	w.wnd.view.Release()
 	w.wnd.wnd.Close()
 	w.wnd.wnd = 0
-	pollEvents()
+	apiPollEvents()
 }

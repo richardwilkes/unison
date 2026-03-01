@@ -16,24 +16,53 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-type nativeCursor struct {
+type apiNativeCursor struct {
 	cursor w32.HCURSOR
 	system bool
 }
 
-func newCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
+func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 	icon := createIconFromImage(img, xhot, yhot, false)
 	if icon == 0 {
 		return nil
 	}
 	c := &Cursor{
-		cursor: nativeCursor{
+		cursor: apiNativeCursor{
 			cursor: w32.HCURSOR(icon),
-			system: false,
 		},
 	}
 	cursorList = append(cursorList, c)
 	return c
+}
+
+func (c *Cursor) apiDestroy() {
+	if !c.cursor.system && c.cursor.cursor != 0 {
+		w32.DestroyIcon(w32.HICON(c.cursor.cursor))
+		c.cursor.cursor = 0
+		c.cursor.system = false
+	}
+}
+
+func apiArrowCursor() *Cursor {
+	return loadStdCursor(w32.OCR_NORMAL)
+}
+
+func apiPointingCursor() *Cursor {
+	return loadStdCursor(w32.OCR_HAND)
+}
+
+func apiTextCursor() *Cursor {
+	return loadStdCursor(w32.OCR_IBEAM)
+}
+
+func loadStdCursor(id int) *Cursor {
+	return &Cursor{
+		cursor: apiNativeCursor{
+			cursor: w32.HCURSOR(w32.LoadImageW(0, w32.MakeIntResourceW(id), w32.IMAGE_CURSOR, 0, 0,
+				w32.LR_DEFAULT_SIZE|w32.LR_SHARED)),
+			system: true,
+		},
+	}
 }
 
 func createIconFromImage(img *image.NRGBA, hotX, hotY int, icon bool) w32.HICON {
@@ -88,46 +117,4 @@ func createIconFromImage(img *image.NRGBA, hotX, hotY int, icon bool) w32.HICON 
 		Mask:     mask,
 		Color:    color,
 	})
-}
-
-func (c *Cursor) destroy() {
-	if !c.cursor.system && c.cursor.cursor != 0 {
-		w32.DestroyIcon(w32.HICON(c.cursor.cursor))
-		c.cursor.cursor = 0
-		c.cursor.system = false
-	}
-}
-
-// ArrowCursor returns the standard arrow cursor.
-func ArrowCursor() *Cursor {
-	if arrowCursor == nil {
-		arrowCursor = loadStdCursor(w32.OCR_NORMAL)
-	}
-	return arrowCursor
-}
-
-// PointingCursor returns the standard pointing cursor.
-func PointingCursor() *Cursor {
-	if pointingCursor == nil {
-		pointingCursor = loadStdCursor(w32.OCR_HAND)
-	}
-	return pointingCursor
-}
-
-// TextCursor returns the standard text cursor.
-func TextCursor() *Cursor {
-	if textCursor == nil {
-		textCursor = loadStdCursor(w32.OCR_IBEAM)
-	}
-	return textCursor
-}
-
-func loadStdCursor(id int) *Cursor {
-	return &Cursor{
-		cursor: nativeCursor{
-			cursor: w32.HCURSOR(w32.LoadImageW(0, w32.MakeIntResourceW(id), w32.IMAGE_CURSOR, 0, 0,
-				w32.LR_DEFAULT_SIZE|w32.LR_SHARED)),
-			system: true,
-		},
-	}
 }

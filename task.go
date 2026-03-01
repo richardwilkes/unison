@@ -27,7 +27,7 @@ func InvokeTask(f func()) {
 	taskQueueLock.Lock()
 	taskQueue = append(taskQueue, f)
 	taskQueueLock.Unlock()
-	postEmptyEvent()
+	apiPostEmptyEvent()
 }
 
 // InvokeTaskAfter schedules a function to be run on the UI thread after waiting for the specified duration.
@@ -49,7 +49,7 @@ func processNextTask(recoveryHandler func(error)) {
 	if f != nil {
 		xos.SafeCall(f, recoveryHandler)
 		if needsPost {
-			postEmptyEvent()
+			apiPostEmptyEvent()
 		}
 	}
 }

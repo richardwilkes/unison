@@ -23,7 +23,7 @@ var (
 	preservedStderr *os.File //nolint:unused // We don't want them garbage collected
 )
 
-func attachConsole() {
+func apiAttachConsole() {
 	// Squirrel away the original stdin/stdout/stderr to prevent them from being garbage collected.
 	preservedStdin = os.Stdin
 	preservedStdout = os.Stdout

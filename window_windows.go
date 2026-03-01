@@ -30,7 +30,7 @@ var (
 	blankCursor  w32.HCURSOR
 )
 
-type platformWindow struct {
+type apiWindow struct {
 	wnd           windows.HWND
 	bigIcon       w32.HICON
 	smallIcon     w32.HICON
@@ -49,7 +49,7 @@ func findWindowByHWND(wnd windows.HWND) *Window {
 	return nil
 }
 
-func (w *Window) initNativeWindow(cfg *WindowConfig) error {
+func (w *Window) apiInit(cfg *WindowConfig) error {
 	style := w.windowStyle()
 	exStyle := w.windowExStyle()
 	if mainWndClass == 0 {
@@ -84,7 +84,7 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
-	return w.glCtx.create(w, cfg.Share, cfg.Transparent)
+	return w.glCtx.apiCreate(w, cfg.Share, cfg.Transparent)
 }
 
 func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
@@ -252,7 +252,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				w32.AdjustWindowRectEx(&frame, style, false, exStyle)
 			}
 			minimum, maximum := w.minMaxContentSize()
-			scale := w.backingScale()
+			scale := w.apiBackingScale()
 			minimum = minimum.MulPt(scale).Ceil()
 			maximum = maximum.MulPt(scale).Ceil()
 			frame.Left = int32(float32(frame.Left))
@@ -309,7 +309,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 		case w32.WM_SETCURSOR:
 			if lParam&0xFFFF == w32.HTCLIENT {
-				w.updateCursorImage()
+				w.apiUpdateCursorImage()
 				return 1
 			}
 		case w32.WM_DROPFILES:
@@ -359,17 +359,17 @@ func (w *Window) handleWindowsMouseMove(pt geom.Point) {
 		evt.HwndTrack = w.wnd.wnd
 		w32.TrackMouseEvent(&evt)
 		w.wnd.mouseTracked = true
-		w.updateCursorImage()
+		w.apiUpdateCursorImage()
 		w.mouseEnter(pt, w.lastKeyModifiers)
 	}
 	w.nativeMouseMoved(pt)
 }
 
-func (w *Window) setTitle(title string) {
+func (w *Window) apiSetTitle(title string) {
 	w32.SetWindowTextW(w.wnd.wnd, title)
 }
 
-func (w *Window) setTitleIcons(images []*image.NRGBA) {
+func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	var big, small w32.HICON
 	if len(images) > 0 {
 		cxIcon := w32.GetSystemMetrics(w32.SM_CXICON)
@@ -411,7 +411,7 @@ func chooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
 	return closest
 }
 
-func (w *Window) display() *Display {
+func (w *Window) apiDisplay() *Display {
 	var rect w32.RECT
 	w32.GetWindowRect(w.wnd.wnd, &rect)
 	pt := geom.NewPoint(float32(rect.Left), float32(rect.Top))
@@ -423,15 +423,15 @@ func (w *Window) display() *Display {
 	return monitorInfo(w32.MonitorFromWindow(w.wnd.wnd, w32.MONITOR_DEFAULTTOPRIMARY))
 }
 
-func (w *Window) frameRect() geom.Rect {
+func (w *Window) apiFrameRect() geom.Rect {
 	var rect w32.RECT
 	w32.GetWindowRect(w.wnd.wnd, &rect)
 	r := rectFromW32Rect(rect)
-	r.Size = r.Size.DivPt(w.backingScale())
+	r.Size = r.Size.DivPt(w.apiBackingScale())
 	return r.Align()
 }
 
-func (w *Window) frameRectForContentRect(contentRect geom.Rect) geom.Rect {
+func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	return contentRect.Inset(w.frameInsets().Mul(-1)).Align()
 }
 
@@ -445,18 +445,18 @@ func (w *Window) frameInsets() geom.Insets {
 		w32.AdjustWindowRectEx(&rect, style, false, exStyle)
 	}
 	r := rectFromW32Rect(rect)
-	scale := w.backingScale()
+	scale := w.apiBackingScale()
 	r.Point = r.Point.DivPt(scale)
 	r.Size = r.Size.DivPt(scale)
 	r = r.Align()
 	return geom.NewInsets(-r.Y, -r.X, r.Bottom(), r.Right())
 }
 
-func (w *Window) ensureOnDisplay() {
+func (w *Window) apiEnsureOnDisplay() {
 	var r w32.RECT
 	w32.GetWindowRect(w.wnd.wnd, &r)
 	frameRect := rectFromW32Rect(r)
-	d := w.display()
+	d := w.apiDisplay()
 	revisedRect := d.FitRectOnto(frameRect)
 	if frameRect != revisedRect {
 		revisedRect.Size = revisedRect.Size.DivPt(d.Scale)
@@ -464,36 +464,29 @@ func (w *Window) ensureOnDisplay() {
 	}
 }
 
-func (w *Window) contentRect() geom.Rect {
+func (w *Window) apiContentRect() geom.Rect {
 	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	var pt w32.POINT
 	w32.ClientToScreen(w.wnd.wnd, &pt)
 	r := geom.NewRect(float32(pt.X), float32(pt.Y), float32(rect.Right), float32(rect.Bottom))
-	r.Size = r.Size.DivPt(w.backingScale())
+	r.Size = r.Size.DivPt(w.apiBackingScale())
 	return r.Align()
 }
 
-func (w *Window) contentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	return frameRect.Inset(w.frameInsets()).Align()
 }
 
-// SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
-// rect and then applying it to the window.
-func (w *Window) SetContentRect(rect geom.Rect) {
-	if w.IsValid() {
-		rect = w.adjustContentRectForMinMax(rect).Inset(w.frameInsets().Mul(-1))
-		rect.Size = rect.Size.MulPt(w.backingScale())
-		rect = rect.Align()
-		w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
-			w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
-	}
+func (w *Window) apiSetContentRect(rect geom.Rect) {
+	rect = rect.Inset(w.frameInsets().Mul(-1))
+	rect.Size = rect.Size.MulPt(w.apiBackingScale())
+	rect = rect.Align()
+	w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
+		w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
 }
 
-// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
-// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
-// menu is being displayed.
-func (w *Window) CurrentKeyModifiers() Modifiers {
+func (w *Window) apiCurrentKeyModifiers() Modifiers {
 	var mods Modifiers
 	if w32.GetKeyState(w32.VK_SHIFT)&0x8000 != 0 {
 		mods |= ShiftModifier
@@ -516,13 +509,7 @@ func (w *Window) CurrentKeyModifiers() Modifiers {
 	return mods
 }
 
-func (w *Window) adjustToCursorChange() {
-	if w.cursorInContentArea() {
-		w.updateCursorImage()
-	}
-}
-
-func (w *Window) updateCursorImage() {
+func (w *Window) apiUpdateCursorImage() {
 	switch {
 	case w.cursorHidden:
 		if blankCursor == 0 {
@@ -537,7 +524,7 @@ func (w *Window) updateCursorImage() {
 	}
 }
 
-func (w *Window) cursorInContentArea() bool {
+func (w *Window) apiCursorInContentArea() bool {
 	var pos w32.POINT
 	if !w32.GetCursorPos(&pos) {
 		return false
@@ -555,7 +542,7 @@ func (w *Window) cursorInContentArea() bool {
 	return pos.X >= topLeft.X && pos.X <= bottomRight.X && pos.Y >= topLeft.Y && pos.Y <= bottomRight.Y
 }
 
-func (w *Window) cursorPosition() geom.Point {
+func (w *Window) apiCursorPosition() geom.Point {
 	var pos w32.POINT
 	if w32.GetCursorPos(&pos) {
 		w32.ScreenToClient(w.wnd.wnd, &pos)
@@ -564,39 +551,39 @@ func (w *Window) cursorPosition() geom.Point {
 	return geom.NewPoint(0, 0)
 }
 
-func (w *Window) backingScale() geom.Point {
+func (w *Window) apiBackingScale() geom.Point {
 	dpi := w32.GetDpiForWindow(w.wnd.wnd)
 	return geom.NewPoint(float32(dpi)/96.0, float32(dpi)/96.0)
 }
 
-func (w *Window) minimize() {
+func (w *Window) apiMinimize() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_MINIMIZE)
 }
 
-func (w *Window) maximize() {
+func (w *Window) apiMaximize() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_MAXIMIZE)
 }
 
-func (w *Window) acquireFocus() {
+func (w *Window) apiAcquireFocus() {
 	w32.BringWindowToTop(w.wnd.wnd)
 	w32.SetForegroundWindow(w.wnd.wnd)
 	w32.SetFocus(w.wnd.wnd)
 }
 
-func (w *Window) visible() bool {
+func (w *Window) apiVisible() bool {
 	return windows.IsWindowVisible(w.wnd.wnd)
 }
 
-func (w *Window) show() {
+func (w *Window) apiShow() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_SHOWNA)
 }
 
-func (w *Window) hide() {
+func (w *Window) apiHide() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
-func (w *Window) nativeDestroy() {
-	w.glCtx.destroy()
+func (w *Window) apiDestroy() {
+	w.glCtx.apiDestroy()
 	if w.wnd.wnd != 0 {
 		w32.DestroyWindow(w.wnd.wnd)
 		w.wnd.wnd = 0
@@ -611,9 +598,9 @@ func (w *Window) nativeDestroy() {
 	}
 }
 
-func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point {
+func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 	if w.IsValid() {
-		scale := w.backingScale()
+		scale := w.apiBackingScale()
 		where.X /= scale.X
 		where.Y /= scale.Y
 	}

@@ -80,11 +80,11 @@ func (mi *macMenuItem) SetTitle(title string) {
 
 func (mi *macMenuItem) KeyBinding() KeyBinding {
 	keyStr, mods := mi.item.KeyBinding()
-	return KeyBinding{KeyCode: macMenuEquivalentToKeyCodeMap[keyStr], Modifiers: modifiersFromEventModifierFlags(mods)}
+	return KeyBinding{KeyCode: macMenuEquivalentToKeyCodeMap[keyStr], Modifiers: modifiersFromMacEventModifierFlags(mods)}
 }
 
 func (mi *macMenuItem) SetKeyBinding(keyBinding KeyBinding) {
-	mi.item.SetKeyBinding(macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode], keyBinding.Modifiers.eventModifierFlags())
+	mi.item.SetKeyBinding(macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode], keyBinding.Modifiers.macEventModifierFlags())
 }
 
 func (mi *macMenuItem) SubMenu() Menu {

@@ -17,11 +17,13 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
+var _ SaveDialog = &winSaveDialog{}
+
 type winSaveDialog struct {
 	fileCommon
 }
 
-func platformNewSaveDialog() SaveDialog {
+func apiNewSaveDialog() SaveDialog {
 	d := &winSaveDialog{}
 	d.initialize()
 	return d

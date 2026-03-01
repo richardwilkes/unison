@@ -74,7 +74,7 @@ func (m Modifiers) OSMenuCmdModifierDown() bool {
 
 // String returns a text representation of these modifiers.
 func (m Modifiers) String() string {
-	return m.platformString()
+	return m.apiString()
 }
 
 // MarshalText implements encoding.TextMarshaler.
@@ -86,6 +86,11 @@ func (m Modifiers) MarshalText() (text []byte, err error) {
 func (m *Modifiers) UnmarshalText(text []byte) error {
 	*m = ModifiersFromKey(string(text))
 	return nil
+}
+
+// OSMenuCmdModifier returns the OS's standard menu command key modifier.
+func OSMenuCmdModifier() Modifiers {
+	return apiOSMenuCmdModifier()
 }
 
 // ModifiersFromKey extracts Modifiers from a string created via a call to .Key().

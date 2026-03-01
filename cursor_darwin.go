@@ -15,48 +15,55 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-type nativeCursor = mac.Cursor
+type apiNativeCursor struct {
+	cursor mac.Cursor
+	system bool
+}
 
-func newCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
+func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 	nsCursor := mac.NewCursor(img, xhot, yhot)
 	if nsCursor == 0 {
 		return nil
 	}
-	c := &Cursor{cursor: nsCursor}
+	c := &Cursor{
+		cursor: apiNativeCursor{
+			cursor: nsCursor,
+		},
+	}
 	cursorList = append(cursorList, c)
 	return c
 }
 
-func (c *Cursor) destroy() {
-	if c.cursor != 0 {
-		c.cursor.Release()
-		c.cursor = 0
+func (c *Cursor) apiDestroy() {
+	if !c.cursor.system && c.cursor.cursor != 0 {
+		c.cursor.cursor.Release()
+		c.cursor.cursor = 0
 	}
 }
 
-// ArrowCursor returns the standard arrow cursor.
-func ArrowCursor() *Cursor {
-	if arrowCursor == nil {
-		arrowCursor = &Cursor{cursor: mac.ArrowCursor()}
-		cursorList = append(cursorList, arrowCursor)
+func apiArrowCursor() *Cursor {
+	return &Cursor{
+		cursor: apiNativeCursor{
+			cursor: mac.ArrowCursor(),
+			system: true,
+		},
 	}
-	return arrowCursor
 }
 
-// PointingCursor returns the standard pointing cursor.
-func PointingCursor() *Cursor {
-	if pointingCursor == nil {
-		pointingCursor = &Cursor{cursor: mac.PointingHandCursor()}
-		cursorList = append(cursorList, pointingCursor)
+func apiPointingCursor() *Cursor {
+	return &Cursor{
+		cursor: apiNativeCursor{
+			cursor: mac.PointingHandCursor(),
+			system: true,
+		},
 	}
-	return pointingCursor
 }
 
-// TextCursor returns the standard text cursor.
-func TextCursor() *Cursor {
-	if textCursor == nil {
-		textCursor = &Cursor{cursor: mac.IBeamCursor()}
-		cursorList = append(cursorList, textCursor)
+func apiTextCursor() *Cursor {
+	return &Cursor{
+		cursor: apiNativeCursor{
+			cursor: mac.IBeamCursor(),
+			system: true,
+		},
 	}
-	return textCursor
 }

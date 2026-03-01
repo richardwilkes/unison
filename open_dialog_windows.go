@@ -18,11 +18,13 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
+var _ OpenDialog = &winOpenDialog{}
+
 type winOpenDialog struct {
 	fileCommon
 }
 
-func platformNewOpenDialog() OpenDialog {
+func apiNewOpenDialog() OpenDialog {
 	d := &winOpenDialog{}
 	d.initialize()
 	return d

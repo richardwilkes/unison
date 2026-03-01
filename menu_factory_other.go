@@ -11,6 +11,6 @@
 
 package unison
 
-func platformNewDefaultMenuFactory() MenuFactory {
+func apiNewDefaultMenuFactory() MenuFactory {
 	return NewInWindowMenuFactory()
 }

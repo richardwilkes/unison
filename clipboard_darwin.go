@@ -11,10 +11,10 @@ package unison
 
 import "github.com/richardwilkes/unison/internal/mac"
 
-func (c *Clipboard) getText() string {
+func (c *Clipboard) apiGetText() string {
 	return mac.PasteboardString()
 }
 
-func (c *Clipboard) setText(str string) {
+func (c *Clipboard) apiSetText(str string) {
 	mac.SetPasteboardString(str)
 }

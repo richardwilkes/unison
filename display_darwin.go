@@ -14,14 +14,11 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-// PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
-// the macOS menu bar is located.
-func PrimaryDisplay() *Display {
+func apiPrimaryDisplay() *Display {
 	return convertDarwinDisplay(mac.MainDisplayID())
 }
 
-// AllDisplays returns all currently active displays.
-func AllDisplays() []*Display {
+func apiAllDisplays() []*Display {
 	displayIDs := mac.ActiveDisplayList()
 	result := make([]*Display, 0, len(displayIDs))
 	for _, id := range displayIDs {

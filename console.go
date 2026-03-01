@@ -20,5 +20,5 @@ var attachConsoleOnce sync.Once
 // so that a graphical application can also be used as a command-line application without having to build two variants.
 // May be called more than once. Subsequent calls do nothing. Does nothing on non-Windows platforms.
 func AttachConsole() {
-	attachConsoleOnce.Do(attachConsole)
+	attachConsoleOnce.Do(apiAttachConsole)
 }

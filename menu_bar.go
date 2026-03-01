@@ -68,7 +68,7 @@ func NewAppMenu(f MenuFactory, aboutHandler, prefsHandler func(MenuItem), update
 	InsertAboutItem(m, -1, aboutHandler)
 	m.InsertSeparator(-1, false)
 	InsertPreferencesItem(m, -1, prefsHandler)
-	platformAddAppMenuEntries(m)
+	apiAddAppMenuEntries(m)
 	m.InsertSeparator(-1, true)
 	InsertQuitItem(m, -1)
 	return m
@@ -106,7 +106,7 @@ func InsertCloseFocusedWindowItem(m Menu, atIndex int) {
 
 // InsertQuitItem creates the standard "Quit"/"Exit" menu item that will issue the Quit command when chosen.
 func InsertQuitItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, quitMenuTitle(),
+	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, apiQuitMenuTitle(),
 		KeyBinding{KeyCode: KeyQ, Modifiers: OSMenuCmdModifier()},
 		nil,
 		func(MenuItem) { AttemptQuit() }))

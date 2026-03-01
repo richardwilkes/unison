@@ -77,7 +77,7 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 	}
 }
 
-func (w *Window) convertRawMouseLocationForPlatform(where geom.Point) geom.Point {
+func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 	if w.IsValid() {
 		sx, sy := w.wnd.GetContentScale()
 		where.X /= sx
@@ -97,10 +97,7 @@ func (w *Window) keyCallbackForPlatform(_ *Window, key Key, _ int, action Action
 	}
 }
 
-// CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
-// however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
-// menu is being displayed.
-func (w *Window) CurrentKeyModifiers() Modifiers {
+func (w *Window) apiCurrentKeyModifiers() Modifiers {
 	return w.LastKeyModifiers()
 }
 

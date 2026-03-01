@@ -11,5 +11,5 @@
 
 package unison
 
-func attachConsole() {
+func apiAttachConsole() {
 }

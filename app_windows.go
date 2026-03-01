@@ -35,8 +35,8 @@ func isWindows10BuildOrGreater(build uint32) bool {
 	}, w32.VER_MAJORVERSION|w32.VER_MINORVERSION|w32.VER_BUILDNUMBER, cond) == 0
 }
 
-func beginStartup() error {
-	fillKeyCodes()
+func apiBeginStartup() error {
+	apiFillKeyCodes()
 	if isWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 		w32.SetProcessDpiAwarenessContext(w32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	} else {
@@ -45,7 +45,7 @@ func beginStartup() error {
 	return nil
 }
 
-func lateInit() {
+func apiLateInit() {
 	keyPath := `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
 	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, syscall.KEY_NOTIFY|registry.QUERY_VALUE)
 	if err != nil {
@@ -74,28 +74,28 @@ func monitorThemeChanges(key registry.Key) {
 	}
 }
 
-func finalFinishStartup() {
+func apiFinalFinishStartup() {
 	// Not used on Windows
 }
 
-func terminate() error {
+func apiTerminate() error {
 	// Not used on Windows
 	return nil
 }
 
-func beep() {
+func apiBeep() {
 	w32.MessageBeep(w32.MB_OK)
 }
 
-func isColorModeTrackingPossible() bool {
+func apiIsColorModeTrackingPossible() bool {
 	return true
 }
 
-func isDarkModeEnabled() bool {
+func apiIsDarkModeEnabled() bool {
 	return atomic.LoadUint32(&appUsesLightThemeValue) == 0
 }
 
-func doubleClickInterval() time.Duration {
+func apiDoubleClickInterval() time.Duration {
 	return w32.GetDoubleClickTime()
 }
 
@@ -120,7 +120,7 @@ func updateTheme(k registry.Key, sync bool) error {
 	return nil
 }
 
-func pollEvents() {
+func apiPollEvents() {
 	var msg w32.MSG
 	for w32.PeekMessageW(&msg, 0, 0, 0, w32.PM_REMOVE) {
 		if msg.Message == w32.WM_QUIT {
@@ -156,13 +156,13 @@ func pollEvents() {
 	}
 }
 
-func waitEvents() {
+func apiWaitEvents() {
 	w32.WaitMessage()
-	pollEvents()
+	apiPollEvents()
 }
 
-func postEmptyEvent() {
-	if plafInited.Load() {
+func apiPostEmptyEvent() {
+	if platformInited.Load() {
 		var wnd windows.HWND
 		if len(windowList) != 0 {
 			wnd = windowList[0].wnd.wnd

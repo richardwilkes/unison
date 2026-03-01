@@ -13,12 +13,11 @@ package unison
 
 import "bytes"
 
-// OSMenuCmdModifier returns the OS's standard menu command key modifier.
-func OSMenuCmdModifier() Modifiers {
+func apiOSMenuCmdModifier() Modifiers {
 	return ControlModifier
 }
 
-func (m Modifiers) platformString() string {
+func (m Modifiers) apiString() string {
 	if m == 0 {
 		return ""
 	}
