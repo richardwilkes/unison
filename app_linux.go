@@ -13,21 +13,51 @@ import (
 	"time"
 )
 
-func platformLateInit() {
+func apiBeginStartup() error {
+	// TODO: Need implementation
+	return nil
 }
 
-func platformBeep() {
+func apiLateInit() {
 	// TODO: Need implementation
 }
 
-func platformIsDarkModeTrackingPossible() bool {
+func apiFinalFinishStartup() {
+	// TODO: Need implementation
+}
+
+func apiTerminate() error {
+	// TODO: Need implementation
+	return nil
+}
+
+func apiBeep() {
+	// TODO: Need implementation
+}
+
+func apiIsColorModeTrackingPossible() bool {
+	// TODO: Need implementation
 	return false
 }
 
-func platformIsDarkModeEnabled() bool {
+func apiIsDarkModeEnabled() bool {
+	// TODO: Need implementation
 	return false
 }
 
-func platformDoubleClickInterval() time.Duration {
+func apiDoubleClickInterval() time.Duration {
+	// TODO: Determine if this is reasonable; maybe use the same value as macOS?
 	return 500 * time.Millisecond
+}
+
+func apiPollEvents() {
+	// TODO: Need implementation
+}
+
+func apiWaitEvents() {
+	// TODO: Need implementation
+}
+
+func apiPostEmptyEvent() {
+	// TODO: Need implementation
 }
