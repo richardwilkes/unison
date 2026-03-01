@@ -245,6 +245,10 @@ func (w *Window) setTitleIcons(_images []*image.NRGBA) {
 	// macOS doesn't have window icons, so just ignore this.
 }
 
+func (w *Window) display() *Display {
+	return BestDisplayForRect(w.frameRect())
+}
+
 func (w *Window) frameRect() geom.Rect {
 	r := w.wnd.wnd.Frame()
 	r.Y = transformCocoaY(r.Bottom())
@@ -256,6 +260,14 @@ func (w *Window) frameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	frameRect := w.wnd.wnd.FrameRectForContentRect(contentRect)
 	frameRect.Y = transformCocoaY(frameRect.Bottom())
 	return frameRect
+}
+
+func (w *Window) ensureOnDisplay() {
+	frameRect := w.frameRect()
+	revisedRect := w.display().FitRectOnto(frameRect)
+	if frameRect != revisedRect {
+		w.SetFrameRect(revisedRect)
+	}
 }
 
 func (w *Window) contentRect() geom.Rect {
