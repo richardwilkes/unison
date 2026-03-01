@@ -882,14 +882,15 @@ func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
 		xos.SafeCall(func() {
 			w.root.ValidateLayout()
+			r := w.LocalContentRect()
 			if !w.transparent {
-				c.DrawPaint(ThemeSurface.Paint(c, w.LocalContentRect(), paintstyle.Fill))
+				c.DrawPaint(ThemeSurface.Paint(c, r, paintstyle.Fill))
 			}
-			w.root.Draw(c, w.LocalContentRect())
+			w.root.Draw(c, r)
 			if w.InDrag() {
 				c.Save()
 				c.Translate(w.dragDataLocation.Add(w.dragData.Offset))
-				r := geom.Rect{Size: w.dragData.Drawable.LogicalSize()}
+				r = geom.Rect{Size: w.dragData.Drawable.LogicalSize()}
 				c.ClipRect(r, pathop.Intersect, false)
 				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions,
 					w.dragData.Ink.Paint(c, r, paintstyle.Fill))
@@ -910,9 +911,10 @@ func (w *Window) draw() {
 			xos.ExitIfErr(gl.Init())
 			glInited = true
 		}
-		c, err := w.surface.prepareCanvas(w.ContentRect().Size, scale)
+		size := w.ContentRect().Size
+		c, err := w.surface.prepareCanvas(size, scale)
 		if err != nil {
-			errs.Log(err, "size", w.ContentRect().Size, "scale", scale)
+			errs.Log(err, "size", size, "scale", scale)
 			return
 		}
 		start := time.Now()

@@ -71,43 +71,16 @@ func (w *Window) initNativeWindow(cfg *WindowConfig) error {
 			return errs.New("unable to register window class")
 		}
 	}
-	var frameX, frameY, frameWidth, frameHeight int32
-	rect := w32.RECT{
-		Left:   0,
-		Top:    0,
-		Right:  1,
-		Bottom: 1,
-	}
-	if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
-		w32.AdjustWindowRectExForDpi(&rect, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
-	} else {
-		w32.AdjustWindowRectEx(&rect, style, false, exStyle)
-	}
-	frameX = rect.Left
-	frameY = rect.Top
-	frameWidth = rect.Right - rect.Left
-	frameHeight = rect.Bottom - rect.Top
-	w.wnd.wnd = w32.CreateWindowExW(exStyle, wndProcClassName, w.title, style, frameX, frameY, frameWidth, frameHeight,
-		0, 0, mainInstance, 0)
+	w.wnd.wnd = w32.CreateWindowExW(exStyle, wndProcClassName, w.title, style, 0, 0, 1, 1, 0, 0, mainInstance, 0)
 	if w.wnd.wnd == 0 {
 		return errs.New("unable to create window")
 	}
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_DROPFILES, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYDATA, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYGLOBALDATA, w32.MSGFLT_ALLOW, nil)
-	var wp w32.WINDOWPLACEMENT
-	w32.GetWindowPlacement(w.wnd.wnd, &wp)
-	dx := wp.NormalPosition.Left - rect.Left
-	dy := wp.NormalPosition.Top - rect.Top
-	rect.Left += dx
-	rect.Top += dy
-	rect.Right += dx
-	rect.Bottom += dy
-	wp.NormalPosition = rect
-	wp.ShowCmd = w32.SW_HIDE
-	w32.SetWindowPlacement(w.wnd.wnd, &wp)
 	w32.DragAcceptFiles(w.wnd.wnd, true)
 	w.updateFramebufferTransparency()
+	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
@@ -280,12 +253,12 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 			minimum, maximum := w.minMaxContentSize()
 			scale := w.backingScale()
-			minimum = minimum.MulPt(scale)
-			maximum = maximum.MulPt(scale)
-			frame.Left = int32(float32(frame.Left) * scale.X)
-			frame.Right = int32(float32(frame.Right) * scale.X)
-			frame.Top = int32(float32(frame.Top) * scale.Y)
-			frame.Bottom = int32(float32(frame.Bottom) * scale.Y)
+			minimum = minimum.MulPt(scale).Ceil()
+			maximum = maximum.MulPt(scale).Ceil()
+			frame.Left = int32(float32(frame.Left))
+			frame.Right = int32(float32(frame.Right))
+			frame.Top = int32(float32(frame.Top))
+			frame.Bottom = int32(float32(frame.Bottom))
 			mmi := (*w32.MINMAXINFO)(unsafe.Pointer(lParam)) //nolint:govet // No other choice
 			mmi.MinTrackSize.X = int32(minimum.Width) + frame.Right - frame.Left
 			mmi.MinTrackSize.Y = int32(minimum.Height) + frame.Bottom - frame.Top
@@ -439,66 +412,62 @@ func chooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
 }
 
 func (w *Window) frameRect() geom.Rect {
-	if w.IsValid() {
-		var rect w32.RECT
-		w32.GetClientRect(w.wnd.wnd, &rect)
-		rect.Right -= rect.Left
-		rect.Bottom -= rect.Top
-		rect.Left = 0
-		rect.Top = 0
-		width := rect.Right
-		height := rect.Bottom
-		if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
-			if !w32.AdjustWindowRectExForDpi(&rect, w.windowStyle(), false, w.windowExStyle(), w32.GetDpiForWindow(w.wnd.wnd)) {
-				return geom.NewRect(1, 1, 2, 2)
-			}
-		} else {
-			if !w32.AdjustWindowRectEx(&rect, w.windowStyle(), false, w.windowExStyle()) {
-				return geom.NewRect(1, 1, 2, 2)
-			}
-		}
-		return geom.NewRect(float32(-rect.Left), float32(-rect.Top), float32(rect.Right-width), float32(rect.Bottom-height))
-	}
-	return geom.NewRect(1, 1, 2, 2)
+	var rect w32.RECT
+	w32.GetWindowRect(w.wnd.wnd, &rect)
+	r := rectFromW32Rect(rect)
+	scale := w.backingScale()
+	r.Point = r.Point.DivPt(scale)
+	r.Size = r.Size.DivPt(scale)
+	return r.Align()
 }
 
-// ContentRect returns the boundaries in display coordinates of the window's content area.
-func (w *Window) ContentRect() geom.Rect {
-	if w.IsValid() {
-		var pt w32.POINT
-		w32.ClientToScreen(w.wnd.wnd, &pt)
-		var rect w32.RECT
-		w32.GetClientRect(w.wnd.wnd, &rect)
-		r := geom.NewRect(float32(pt.X), float32(pt.Y), float32(rect.Right-rect.Left), float32(rect.Bottom-rect.Top))
-		scale := w.backingScale()
-		r.Point = r.Point.DivPt(scale)
-		r.Size = r.Size.DivPt(scale)
-		return r
+func (w *Window) frameRectForContentRect(contentRect geom.Rect) geom.Rect {
+	return contentRect.Inset(w.frameInsets().Mul(-1)).Align()
+}
+
+func (w *Window) frameInsets() geom.Insets {
+	var rect w32.RECT
+	style := w.windowStyle()
+	exStyle := w.windowExStyle()
+	if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
+		w32.AdjustWindowRectExForDpi(&rect, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
+	} else {
+		w32.AdjustWindowRectEx(&rect, style, false, exStyle)
 	}
-	return geom.NewRect(0, 0, 1, 1)
+	r := rectFromW32Rect(rect)
+	scale := w.backingScale()
+	r.Point = r.Point.DivPt(scale)
+	r.Size = r.Size.DivPt(scale)
+	r = r.Align()
+	return geom.NewInsets(-r.Y, -r.X, r.Bottom(), r.Right())
+}
+
+func (w *Window) contentRect() geom.Rect {
+	var rect w32.RECT
+	w32.GetClientRect(w.wnd.wnd, &rect)
+	var pt w32.POINT
+	w32.ClientToScreen(w.wnd.wnd, &pt)
+	r := geom.NewRect(float32(pt.X), float32(pt.Y), float32(rect.Right), float32(rect.Bottom))
+	scale := w.backingScale()
+	r.Point = r.Point.DivPt(scale)
+	r.Size = r.Size.DivPt(scale)
+	return r.Align()
+}
+
+func (w *Window) contentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+	return frameRect.Inset(w.frameInsets()).Align()
 }
 
 // SetContentRect sets the boundaries of the frame of this window by converting the content rect into a suitable frame
 // rect and then applying it to the window.
 func (w *Window) SetContentRect(rect geom.Rect) {
 	if w.IsValid() {
-		rect = w.adjustContentRectForMinMax(rect)
+		rect = w.adjustContentRectForMinMax(rect).Inset(w.frameInsets().Mul(-1))
 		scale := w.backingScale()
 		rect.Point = rect.Point.MulPt(scale)
 		rect.Size = rect.Size.MulPt(scale)
-		var frame w32.RECT
-		style := w.windowStyle()
-		exStyle := w.windowExStyle()
-		if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
-			w32.AdjustWindowRectExForDpi(&frame, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
-		} else {
-			w32.AdjustWindowRectEx(&frame, style, false, exStyle)
-		}
-		left := int32(rect.X) + frame.Left
-		top := int32(rect.Y) + frame.Top
-		right := int32(rect.Width) + frame.Right - frame.Left
-		bottom := int32(rect.Height) + frame.Bottom - frame.Top
-		w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, left, top, right, bottom,
+		rect = rect.Align()
+		w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
 			w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
 	}
 }
