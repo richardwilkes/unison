@@ -46,7 +46,6 @@ func apiIsDarkModeEnabled() bool {
 }
 
 func apiDoubleClickInterval() time.Duration {
-	// TODO: Determine if this is reasonable; maybe use the same value as macOS?
 	return 500 * time.Millisecond
 }
 
