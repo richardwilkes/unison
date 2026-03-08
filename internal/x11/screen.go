@@ -47,5 +47,5 @@ func (s *Screen) protoRead(r *Reader) {
 	s.BackingStores = r.Byte()
 	s.SaveUnders = r.Bool()
 	s.RootDepth = r.Byte()
-	s.AllowedDepths = ReadList[*Depth](int(r.Byte()), r)
+	s.AllowedDepths = ReadList[Depth](int(r.Byte()), r)
 }

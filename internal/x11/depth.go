@@ -22,5 +22,5 @@ func (d *Depth) protoRead(r *Reader) {
 	r.Skip(1)
 	count := r.Uint16()
 	r.Skip(4)
-	d.Visuals = ReadList[*Visual](int(count), r)
+	d.Visuals = ReadList[Visual](int(count), r)
 }

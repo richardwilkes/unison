@@ -324,8 +324,8 @@ func (c *Conn) protoRead(r *Reader) {
 	r.Skip(4)
 	c.vendor = r.String(int(vendorLen))
 	r.SkipTo4ByteAlignment()
-	c.pixmapFormats = ReadList[*Format](int(pixmapFormatsLen), r)
-	c.roots = ReadList[*Screen](int(rootsLen), r)
+	c.pixmapFormats = ReadList[Format](int(pixmapFormatsLen), r)
+	c.roots = ReadList[Screen](int(rootsLen), r)
 }
 
 // NewAtom generates a new Atom ID.
