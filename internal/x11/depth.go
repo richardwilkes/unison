@@ -17,10 +17,10 @@ type Depth struct {
 	Depth   byte
 }
 
-func (d *Depth) protoRead(r *protoBufferReader) {
-	d.Depth = r.byte()
-	r.skip(1)
-	count := r.uint16()
-	r.skip(4)
-	d.Visuals = readProtoList[*Visual](int(count), r)
+func (d *Depth) protoRead(r *Reader) {
+	d.Depth = r.Byte()
+	r.Skip(1)
+	count := r.Uint16()
+	r.Skip(4)
+	d.Visuals = ReadList[*Visual](int(count), r)
 }

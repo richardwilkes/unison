@@ -12,6 +12,7 @@ package x11
 import (
 	"encoding/binary"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -31,16 +32,16 @@ type xid struct {
 }
 
 type request struct {
-	seq    chan struct{}
-	cookie cookieProcessor
-	data   *protoBufferWriter
+	seq     chan struct{}
+	request requestProcessor
+	data    *Writer
 }
 
 // Conn represents a connection to an X server.
 type Conn struct {
 	conn                     net.Conn
-	eventChan                chan any
-	cookieChan               chan cookieProcessor
+	eventChan                chan Event
+	requestChan              chan requestProcessor
 	xidChan                  chan xid
 	seqChan                  chan uint16
 	reqChan                  chan *request
@@ -48,6 +49,8 @@ type Conn struct {
 	doneRead                 chan struct{}
 	ExtMisc                  *ExtMisc
 	extensions               map[string]*QueryExtensionReply
+	eventNewMap              map[byte]func(r *Reader) Event
+	errorCodeMap             map[byte]string
 	envDisplay               string
 	socket                   string
 	protocol                 string
@@ -58,6 +61,8 @@ type Conn struct {
 	pixmapFormats            []*Format
 	roots                    []*Screen
 	extensionsLock           sync.RWMutex
+	eventNewMapLock          sync.RWMutex
+	errorCodeLock            sync.RWMutex
 	defaultScreen            int
 	displayNum               int
 	releaseNumber            uint32
@@ -87,15 +92,70 @@ func NewConn() (*Conn, error) {
 	if err := c.authenticate(); err != nil {
 		return nil, err
 	}
-	c.cookieChan = make(chan cookieProcessor, 1024)
+	c.errorCodeMap = map[byte]string{
+		1:  "request error",
+		2:  "value error",
+		3:  "window error",
+		4:  "pixmap error",
+		5:  "atom error",
+		6:  "cursor error",
+		7:  "font error",
+		8:  "match error",
+		9:  "drawable error",
+		10: "access error",
+		11: "alloc error",
+		12: "colormap error",
+		13: "gcontext error",
+		14: "id choice error",
+		15: "name error",
+		16: "length error",
+		17: "implementation error",
+	}
+	c.eventNewMap = map[byte]func(r *Reader) Event{
+		2:  c.newKeyPressEvent,
+		3:  c.newKeyReleaseEvent,
+		4:  c.newButtonPressEvent,
+		5:  c.newButtonReleaseEvent,
+		6:  c.newMotionNotifyEvent,
+		7:  c.newEnterNotifyEvent,
+		8:  c.newLeaveNotifyEvent,
+		9:  c.newFocusInEvent,
+		10: c.newFocusOutEvent,
+		11: c.newKeymapNotifyEvent,
+		12: c.newExposeEvent,
+		13: c.newGraphicsExposureEvent,
+		14: c.newNoExposureEvent,
+		15: c.newVisibilityNotifyEvent,
+		16: c.newCreateNotifyEvent,
+		17: c.newDestroyNotifyEvent,
+		18: c.newUnmapNotifyEvent,
+		19: c.newMapNotifyEvent,
+		20: c.newMapRequestEvent,
+		21: c.newReparentNotifyEvent,
+		22: c.newConfigureNotifyEvent,
+		23: c.newConfigureRequestEvent,
+		24: c.newGravityNotifyEvent,
+		25: c.newResizeRequestEvent,
+		26: c.newCirculateNotifyEvent,
+		27: c.newCirculateRequestEvent,
+		28: c.newPropertyNotifyEvent,
+		29: c.newSelectionClearEvent,
+		30: c.newSelectionRequestEvent,
+		31: c.newSelectionNotifyEvent,
+		32: c.newColormapNotifyEvent,
+		33: c.newClientMessageEvent,
+		34: c.newMappingNotifyEvent,
+		35: c.newGenericEventEvent,
+	}
+	c.requestChan = make(chan requestProcessor, 1024)
 	c.xidChan = make(chan xid, 8)
 	c.seqChan = make(chan uint16, 8)
 	c.reqChan = make(chan *request, 128)
-	c.eventChan = make(chan any, 8192)
+	c.eventChan = make(chan Event, 8192)
 	c.doneSend = make(chan struct{})
 	c.doneRead = make(chan struct{})
 	c.ExtMisc = &ExtMisc{conn: &c}
-	go c.generateXIds()
+	go c.generateXIDs()
 	go c.generateSequenceIDs()
 	go c.sendRequests()
 	go c.readResponses()
@@ -168,45 +228,45 @@ func (c *Conn) connect() error {
 
 func (c *Conn) authenticate() error {
 	authName, authData := c.readAuthority()
-	w := newProtoBufferWriter(18 + len(authName) + len(authData))
-	w.byte(0x6C) // Use little endian
-	w.zero(1)
-	w.uint16(11) // Major version
-	w.uint16(0)  // Minor version
-	w.uint16(uint16(len(authName)))
-	w.uint16(uint16(len(authData)))
-	w.zero(2)
-	w.string(authName)
-	w.zeroTo4ByteAlignment()
-	w.bytes(authData)
-	w.zeroTo4ByteAlignment()
-	if err := w.send(c.conn); err != nil {
+	w := NewWriter(18 + len(authName) + len(authData))
+	w.Byte(0x6C) // Use little endian
+	w.Zero(1)
+	w.Uint16(11) // Major version
+	w.Uint16(0)  // Minor version
+	w.Uint16(uint16(len(authName)))
+	w.Uint16(uint16(len(authData)))
+	w.Zero(2)
+	w.String(authName)
+	w.ZeroTo4ByteAlignment()
+	w.Bytes(authData)
+	w.ZeroTo4ByteAlignment()
+	if err := w.Send(c.conn); err != nil {
 		return errs.NewWithCause("failed to send authentication data", err)
 	}
-	header := newProtoBufferReader(make([]byte, 8))
-	if err := header.load(c.conn); err != nil {
+	header := NewReader(make([]byte, 8))
+	if err := header.Load(c.conn); err != nil {
 		return errs.NewWithCause("failed to read authentication response header", err)
 	}
-	code := header.byte()
-	reasonLen := header.byte()
-	c.protocolMajorVersion = header.uint16()
-	c.protocolMinorVersion = header.uint16()
-	dataLen := header.uint16() * 4
+	code := header.Byte()
+	reasonLen := header.Byte()
+	c.protocolMajorVersion = header.Uint16()
+	c.protocolMinorVersion = header.Uint16()
+	dataLen := header.Uint16() * 4
 	if c.protocolMajorVersion != 11 || c.protocolMinorVersion != 0 {
 		return errs.Newf("unsupported X protocol version: %d.%d", c.protocolMajorVersion, c.protocolMinorVersion)
 	}
-	data := newProtoBufferReader(make([]byte, int(dataLen)))
-	if err := data.load(c.conn); err != nil {
+	data := NewReader(make([]byte, int(dataLen)))
+	if err := data.Load(c.conn); err != nil {
 		return errs.NewWithCause("failed to read authentication response data", err)
 	}
 	switch code {
 	case 0:
-		return errs.New("authentication refused: " + data.string(int(reasonLen)))
+		return errs.New("authentication refused: " + data.String(int(reasonLen)))
 	case 1:
 		c.protoRead(data)
 		return nil
 	case 2:
-		return errs.New("further authentication required: " + data.zeroedString(int(dataLen)))
+		return errs.New("further authentication required: " + data.ZeroedString(int(dataLen)))
 	default:
 		return errs.Newf("unexpected response code: %d", code)
 	}
@@ -229,13 +289,13 @@ func (c *Conn) readAuthority() (name string, data []byte) {
 	if fileData, err = root.ReadFile(filepath.Base(fileName)); err != nil {
 		return "", nil
 	}
-	r := newProtoBufferReaderWithOrder(binary.BigEndian, fileData)
-	for r.len() != 0 {
-		family := r.uint16()
-		addr := r.sizePrefixedString()
-		disp := r.sizePrefixedString()
-		name = r.sizePrefixedString()
-		data = r.sizePrefixedBytes()
+	r := NewReaderWithByteOrder(binary.BigEndian, fileData)
+	for r.Remaining() != 0 {
+		family := r.Uint16()
+		addr := r.SizePrefixedString()
+		disp := r.SizePrefixedString()
+		name = r.SizePrefixedString()
+		data = r.SizePrefixedBytes()
 		if ((family == 65535) || (family == 256 && addr == c.host)) &&
 			((disp == "") || (disp == c.display)) {
 			return name, data
@@ -244,26 +304,26 @@ func (c *Conn) readAuthority() (name string, data []byte) {
 	return "", nil
 }
 
-func (c *Conn) protoRead(r *protoBufferReader) {
-	c.releaseNumber = r.uint32()
-	c.resourceIDBase = r.uint32()
-	c.resourceIDMask = r.uint32()
-	c.motionBufferSize = r.uint32()
-	vendorLen := r.uint16()
-	c.maximumRequestLength = r.uint16()
-	rootsLen := r.byte()
-	pixmapFormatsLen := r.byte()
-	c.imageByteOrder = r.byte()
-	c.bitmapFormatBitOrder = r.byte()
-	c.bitmapFormatScanlineUnit = r.byte()
-	c.bitmapFormatScanlinePad = r.byte()
-	c.minKeycode = r.byte()
-	c.maxKeycode = r.byte()
-	r.skip(4)
-	c.vendor = r.string(int(vendorLen))
-	r.skipTo4ByteAlignment()
-	c.pixmapFormats = readProtoList[*Format](int(pixmapFormatsLen), r)
-	c.roots = readProtoList[*Screen](int(rootsLen), r)
+func (c *Conn) protoRead(r *Reader) {
+	c.releaseNumber = r.Uint32()
+	c.resourceIDBase = r.Uint32()
+	c.resourceIDMask = r.Uint32()
+	c.motionBufferSize = r.Uint32()
+	vendorLen := r.Uint16()
+	c.maximumRequestLength = r.Uint16()
+	rootsLen := r.Byte()
+	pixmapFormatsLen := r.Byte()
+	c.imageByteOrder = r.Byte()
+	c.bitmapFormatBitOrder = r.Byte()
+	c.bitmapFormatScanlineUnit = r.Byte()
+	c.bitmapFormatScanlinePad = r.Byte()
+	c.minKeycode = r.Byte()
+	c.maxKeycode = r.Byte()
+	r.Skip(4)
+	c.vendor = r.String(int(vendorLen))
+	r.SkipTo4ByteAlignment()
+	c.pixmapFormats = ReadList[*Format](int(pixmapFormatsLen), r)
+	c.roots = ReadList[*Screen](int(rootsLen), r)
 }
 
 func (c *Conn) newID() (uint32, error) {
@@ -277,7 +337,7 @@ func (c *Conn) newID() (uint32, error) {
 	return id.id, nil
 }
 
-func (c *Conn) generateXIds() {
+func (c *Conn) generateXIDs() {
 	defer close(c.xidChan)
 	rangeState := 0
 	idInc := c.resourceIDMask & -c.resourceIDMask
@@ -336,10 +396,10 @@ func (c *Conn) generateSequenceIDs() {
 	}
 }
 
-func (c *Conn) newRequest(data *protoBufferWriter, cook cookieProcessor) {
+func (c *Conn) newRequest(data *Writer, req requestProcessor) {
 	seq := make(chan struct{})
 	select {
-	case c.reqChan <- &request{seq: seq, cookie: cook, data: data}:
+	case c.reqChan <- &request{seq: seq, request: req, data: data}:
 		select {
 		case <-seq:
 		case <-c.doneSend:
@@ -349,7 +409,7 @@ func (c *Conn) newRequest(data *protoBufferWriter, cook cookieProcessor) {
 }
 
 func (c *Conn) sendRequests() {
-	defer close(c.cookieChan)
+	defer close(c.requestChan)
 	defer xio.CloseIgnoringErrors(c.conn)
 	defer close(c.doneSend)
 	for {
@@ -362,16 +422,16 @@ func (c *Conn) sendRequests() {
 				}
 				return
 			}
-			if len(c.cookieChan) == cap(c.cookieChan)-1 {
+			if len(c.requestChan) == cap(c.requestChan)-1 {
 				if err := c.noop(); err != nil {
 					xio.CloseIgnoringErrors(c.conn)
 					<-c.doneRead
 					return
 				}
 			}
-			req.cookie.setSequenceID(c.newSequenceID())
-			c.cookieChan <- req.cookie
-			if err := req.data.send(c.conn); err != nil {
+			req.request.setSequenceID(c.newSequenceID())
+			c.requestChan <- req.request
+			if err := req.data.Send(c.conn); err != nil {
 				xio.CloseIgnoringErrors(c.conn)
 				<-c.doneRead
 				return
@@ -384,13 +444,13 @@ func (c *Conn) sendRequests() {
 }
 
 func (c *Conn) noop() error {
-	cook := newCookie(c, true, true, &GetInputFocusReply{})
-	cook.setSequenceID(c.newSequenceID())
-	c.cookieChan <- cook
-	if err := getInputFocusRequest().send(c.conn); err != nil {
+	req := newRequest(c, true, true, &GetInputFocusReply{})
+	req.setSequenceID(c.newSequenceID())
+	c.requestChan <- req
+	if err := getInputFocusRequest().Send(c.conn); err != nil {
 		return err
 	}
-	cook.Reply() //nolint:errcheck // Don't care about errors here
+	req.Reply() //nolint:errcheck // Don't care about errors here
 	return nil
 }
 
@@ -406,53 +466,53 @@ func (c *Conn) readResponses() {
 	var err error
 	var seq uint16
 	for {
-		r := newProtoBufferReader(make([]byte, 32))
-		if err = r.load(c.conn); err != nil {
+		r := NewReader(make([]byte, 32))
+		if err = r.Load(c.conn); err != nil {
 			c.bail(err)
 			return
 		}
-		switch r.byte() {
+		switch r.Byte() {
 		case 0: // Error
-			// TODO: Implement
-			// Use the constructor function for this error (that is auto
-			// generated) by looking it up by the error number.
-			// newErrFun, ok := NewErrorFuncs[int(buf[1])]
-			// if !ok {
-			// 	Logger.Printf("BUG: Could not find error constructor function "+
-			// 		"for error with number %d.", buf[1])
-			continue
-			// }
-			// err = newErrFun(buf)
-			// seq = err.SequenceId()
+			code := r.Byte()
+			r.Seek(0)
+			var xerr Error
+			xerr.protoRead(r)
+			c.errorCodeLock.RLock()
+			name, ok := c.errorCodeMap[code]
+			c.errorCodeLock.RUnlock()
+			if ok {
+				xerr.Name = name
+			} else {
+				xerr.Name = "unknown error"
+			}
+			err = &xerr
+			seq = xerr.Sequence
 		case 1: // Reply
-			r.skip(1)
-			seq = r.uint16()
-			if size := r.uint32(); size > 0 {
-				if err = r.append(int(size)*4, c.conn); err != nil {
+			r.Skip(1)
+			seq = r.Uint16()
+			if size := r.Uint32(); size > 0 {
+				if err = r.Append(int(size)*4, c.conn); err != nil {
 					c.bail(err)
 					return
 				}
 			}
-			r.seek(0)
+			r.Seek(0)
 		default: // Event
-			// TODO: Implement
-			// Use the constructor function for this event (like for errors,
-			// and is also auto generated) by looking it up by the event number.
-			// Note that we AND the event number with 127 so that we ignore
-			// the most significant bit (which is set when it was sent from
-			// a SendEvent request).
-			// evNum := int(buf[0] & 127)
-			// newEventFun, ok := NewEventFuncs[evNum]
-			// if !ok {
-			// 	Logger.Printf("BUG: Could not find event construct function "+
-			// 		"for event with number %d.", evNum)
+			r.Seek(0)
+			eventID := r.Byte() & 127
+			r.Seek(0)
+			c.eventNewMapLock.RLock()
+			f, ok := c.eventNewMap[eventID]
+			c.eventNewMapLock.RUnlock()
+			if ok {
+				c.eventChan <- f(r)
+			} else {
+				slog.Warn("dropped unhandled X11 event", "id", eventID)
+			}
 			continue
-			// }
-			// c.eventChan <- newEventFun(buf)
-			// continue
 		}
-		for one := range c.cookieChan {
-			if one.processCookie(seq, r, err) {
+		for one := range c.requestChan {
+			if one.processRequest(seq, r, err) {
 				break
 			}
 		}
@@ -464,7 +524,7 @@ func (c *Conn) bail(err error) {
 	case <-c.doneSend:
 	default:
 		errs.Log(err)
-		c.eventChan <- err
+		c.eventChan <- &errorEvent{err: err}
 	}
 }
 
@@ -487,6 +547,188 @@ func (c *Conn) hasExtension(name string) *QueryExtensionReply {
 	}
 	c.extensions[name] = data
 	return data
+}
+
+func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) {
+	c.eventNewMapLock.Lock()
+	c.eventNewMap[eventID] = f
+	c.eventNewMapLock.Unlock()
+}
+
+func (c *Conn) setErrorCodeName(code byte, name string) {
+	c.errorCodeLock.Lock()
+	c.errorCodeMap[code] = name
+	c.errorCodeLock.Unlock()
+}
+
+func (c *Conn) newKeyPressEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newKeyReleaseEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newButtonPressEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newButtonReleaseEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newMotionNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newEnterNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newLeaveNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newFocusInEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newFocusOutEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newKeymapNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newExposeEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newGraphicsExposureEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newNoExposureEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newVisibilityNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newCreateNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newDestroyNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newUnmapNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newMapNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newMapRequestEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newReparentNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newConfigureNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newConfigureRequestEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newGravityNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newResizeRequestEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newCirculateNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newCirculateRequestEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newPropertyNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newSelectionClearEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newSelectionRequestEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newSelectionNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newColormapNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newClientMessageEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newMappingNotifyEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
+}
+
+func (c *Conn) newGenericEventEvent(r *Reader) Event {
+	// TODO: Implement
+	return nil
 }
 
 // Close the connection after finishing any in-flight requests.

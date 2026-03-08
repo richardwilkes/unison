@@ -25,13 +25,13 @@ type Visual struct {
 	BlueMask        uint32
 }
 
-func (v *Visual) protoRead(r *protoBufferReader) {
-	v.VisualID = VisualID(r.uint32())
-	v.Class = r.byte()
-	v.BitsPerRgbValue = r.byte()
-	v.ColormapEntries = r.uint16()
-	v.RedMask = r.uint32()
-	v.GreenMask = r.uint32()
-	v.BlueMask = r.uint32()
-	r.skip(4)
+func (v *Visual) protoRead(r *Reader) {
+	v.VisualID = VisualID(r.Uint32())
+	v.Class = r.Byte()
+	v.BitsPerRgbValue = r.Byte()
+	v.ColormapEntries = r.Uint16()
+	v.RedMask = r.Uint32()
+	v.GreenMask = r.Uint32()
+	v.BlueMask = r.Uint32()
+	r.Skip(4)
 }

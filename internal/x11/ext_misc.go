@@ -15,7 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
-// ExtMisc provides access to the XC-MISC extension.
+// ExtMisc provides access to the XC-MISC extension. Note that only those calls that I need have been implemented.
 type ExtMisc struct {
 	conn  *Conn
 	query *QueryExtensionReply
@@ -39,13 +39,13 @@ func (e *ExtMisc) Available() bool {
 
 // GetXIDRange requests a range of unused resource IDs from the server.
 func (e *ExtMisc) GetXIDRange() (*GetXIDRangeReply, error) {
-	cook := newCookie(e.conn, true, true, &GetXIDRangeReply{})
-	w := newProtoBufferWriter(4)
-	w.byte(e.query.MajorOpcode)
-	w.byte(1)
-	w.uint16(1)
-	e.conn.newRequest(w, cook)
-	reply, err := cook.Reply()
+	req := newRequest(e.conn, true, true, &GetXIDRangeReply{})
+	w := NewWriter(4)
+	w.Byte(e.query.MajorOpcode)
+	w.Byte(1)
+	w.Uint16(1)
+	e.conn.newRequest(w, req)
+	reply, err := req.Reply()
 	if err != nil {
 		err = errs.Wrap(err)
 	} else if reply.Count == 0 || (reply.StartID == 0 && reply.Count == 1) {
@@ -60,8 +60,9 @@ type GetXIDRangeReply struct {
 	Count   uint32
 }
 
-func (reply *GetXIDRangeReply) protoRead(r *protoBufferReader) {
-	r.skip(8)
-	reply.StartID = r.uint32()
-	reply.Count = r.uint32()
+func (g *GetXIDRangeReply) protoRead(r *Reader) {
+	r.Skip(8)
+	g.StartID = r.Uint32()
+	g.Count = r.Uint32()
+	r.Skip(16)
 }

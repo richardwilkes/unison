@@ -9,18 +9,21 @@
 
 package x11
 
-var _ protoReader = &Format{}
+var _ Event = &errorEvent{}
 
-// Format holds the configuration of a pixmap.
-type Format struct {
-	Depth        byte
-	BitsPerPixel byte
-	ScanlinePad  byte
+// Event represents an X11 event.
+type Event interface {
+	protoReader
+	ID() byte
 }
 
-func (f *Format) protoRead(r *Reader) {
-	f.Depth = r.Byte()
-	f.BitsPerPixel = r.Byte()
-	f.ScanlinePad = r.Byte()
-	r.Skip(5)
+type errorEvent struct {
+	err error
+}
+
+func (e *errorEvent) protoRead(r *Reader) {
+}
+
+func (e *errorEvent) ID() byte {
+	return 0
 }

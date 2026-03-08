@@ -11,16 +11,16 @@ package x11
 
 // GetInputFocus returns the current focus state.
 func GetInputFocus(c *Conn) (*GetInputFocusReply, error) {
-	cook := newCookie(c, true, true, &GetInputFocusReply{})
-	c.newRequest(getInputFocusRequest(), cook)
-	return cook.Reply()
+	req := newRequest(c, true, true, &GetInputFocusReply{})
+	c.newRequest(getInputFocusRequest(), req)
+	return req.Reply()
 }
 
-func getInputFocusRequest() *protoBufferWriter {
-	w := newProtoBufferWriter(4)
-	w.byte(43)
-	w.zero(1)
-	w.uint16(1)
+func getInputFocusRequest() *Writer {
+	w := NewWriter(4)
+	w.Byte(43)
+	w.Zero(1)
+	w.Uint16(1)
 	return w
 }
 
@@ -31,10 +31,10 @@ type GetInputFocusReply struct {
 	RevertTo byte
 }
 
-func (reply *GetInputFocusReply) protoRead(r *protoBufferReader) {
-	r.skip(1)
-	reply.RevertTo = r.byte()
-	reply.Sequence = r.uint16()
-	r.skip(4)
-	reply.Focus = WindowID(r.uint32())
+func (g *GetInputFocusReply) protoRead(r *Reader) {
+	r.Skip(1)
+	g.RevertTo = r.Byte()
+	g.Sequence = r.Uint16()
+	r.Skip(4)
+	g.Focus = WindowID(r.Uint32())
 }
