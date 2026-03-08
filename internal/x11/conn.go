@@ -524,7 +524,22 @@ func (c *Conn) bail(err error) {
 	case <-c.doneSend:
 	default:
 		errs.Log(err)
-		c.eventChan <- &errorEvent{err: err}
+		c.eventChan <- &ErrorEvent{Error: err}
+	}
+}
+
+// WaitForEvent blocks until the next event is available and returns it, or an error if the connection is closed.
+func (c *Conn) WaitForEvent() Event {
+	return <-c.eventChan
+}
+
+// PollForEvent returns the next event if one is available, or nil if no events are available.
+func (c *Conn) PollForEvent() Event {
+	select {
+	case ev := <-c.eventChan:
+		return ev
+	default:
+		return nil
 	}
 }
 

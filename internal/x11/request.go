@@ -140,7 +140,7 @@ func (r *Request[T]) processRequest(seq uint16, in *Reader, err error) bool {
 			if r.errorChan != nil {
 				r.errorChan <- err
 			} else {
-				r.conn.eventChan <- &errorEvent{err: err}
+				r.conn.eventChan <- &ErrorEvent{Error: err}
 				if r.pingChan != nil {
 					r.pingChan <- true
 				}

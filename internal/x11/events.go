@@ -9,21 +9,20 @@
 
 package x11
 
-var _ Event = &errorEvent{}
+var _ Event = &ErrorEvent{}
 
 // Event represents an X11 event.
 type Event interface {
+	isEvent() // marker method to indicate that this type is an Event
 	protoReader
-	ID() byte
 }
 
-type errorEvent struct {
-	err error
+// ErrorEvent represents an error that occurred while processing a request or event.
+type ErrorEvent struct {
+	Error error
 }
 
-func (e *errorEvent) protoRead(r *Reader) {
-}
+func (e *ErrorEvent) isEvent() {}
 
-func (e *errorEvent) ID() byte {
-	return 0
+func (e *ErrorEvent) protoRead(r *Reader) {
 }
