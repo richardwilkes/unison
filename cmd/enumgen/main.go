@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"go/format"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/v2/xfilepath"
+	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"golang.org/x/text/cases"
@@ -390,18 +392,21 @@ func main() {
 }
 
 func removeExistingGenFiles(rootDir string) {
-	root, err := filepath.Abs(rootDir)
+	rootPath, err := filepath.Abs(rootDir)
 	xos.ExitIfErr(err)
-	xos.ExitIfErr(filepath.Walk(root, func(path string, info os.FileInfo, _ error) error {
-		name := info.Name()
-		if info.IsDir() {
+	var root *os.Root
+	root, err = os.OpenRoot(rootPath)
+	xos.ExitIfErr(err)
+	defer xio.CloseIgnoringErrors(root)
+	xos.ExitIfErr(fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, localErr error) error {
+		xos.ExitIfErr(localErr)
+		name := entry.Name()
+		if entry.IsDir() {
 			if name == ".git" {
 				return filepath.SkipDir
 			}
-		} else {
-			if strings.HasSuffix(name, genSuffix) {
-				xos.ExitIfErr(os.Remove(path))
-			}
+		} else if strings.HasSuffix(name, genSuffix) {
+			xos.ExitIfErr(root.Remove(path))
 		}
 		return nil
 	}))

@@ -51,7 +51,7 @@ func (a Attributes) ForJob() *JobAttributes {
 }
 
 func (a Attributes) toIPP() goipp.Attributes {
-	var other goipp.Attributes
+	other := make(goipp.Attributes, 0, len(a))
 	for k, v := range a {
 		other = append(other, goipp.Attribute{
 			Name:   k,
