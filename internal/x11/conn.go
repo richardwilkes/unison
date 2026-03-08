@@ -326,6 +326,15 @@ func (c *Conn) protoRead(r *Reader) {
 	c.roots = ReadList[*Screen](int(rootsLen), r)
 }
 
+// NewAtom generates a new Atom ID.
+func (c *Conn) NewAtom() (Atom, error) {
+	id, err := c.newID()
+	if err != nil {
+		return AtomNone, err
+	}
+	return Atom(id), nil
+}
+
 func (c *Conn) newID() (uint32, error) {
 	id, ok := <-c.xidChan
 	if !ok {
