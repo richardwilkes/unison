@@ -9,15 +9,18 @@
 
 package x11
 
-type DepthInfo struct {
+var _ protoReader = &Depth{}
+
+// Depth holds the Visuals for a given screen bit depth.
+type Depth struct {
+	Visuals []*Visual
 	Depth   byte
-	Visuals []*VisualInfo
 }
 
-func (d *DepthInfo) Read(r *XReader) {
-	d.Depth = r.Byte()
-	r.Skip(1)
-	count := r.Uint16()
-	r.Skip(4)
-	d.Visuals = ReadList[*VisualInfo](int(count), r)
+func (d *Depth) protoRead(r *protoBufferReader) {
+	d.Depth = r.byte()
+	r.skip(1)
+	count := r.uint16()
+	r.skip(4)
+	d.Visuals = readProtoList[*Visual](int(count), r)
 }

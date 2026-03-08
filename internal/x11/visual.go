@@ -9,9 +9,13 @@
 
 package x11
 
+var _ protoReader = &Visual{}
+
+// VisualID holds an ID that refers to a Visual.
 type VisualID uint32
 
-type VisualInfo struct {
+// Visual holds the configuration of a screen's pixel composition for a specific bit depth.
+type Visual struct {
 	VisualID        VisualID
 	Class           byte
 	BitsPerRgbValue byte
@@ -21,13 +25,13 @@ type VisualInfo struct {
 	BlueMask        uint32
 }
 
-func (v *VisualInfo) Read(r *XReader) {
-	v.VisualID = VisualID(r.Uint32())
-	v.Class = r.Byte()
-	v.BitsPerRgbValue = r.Byte()
-	v.ColormapEntries = r.Uint16()
-	v.RedMask = r.Uint32()
-	v.GreenMask = r.Uint32()
-	v.BlueMask = r.Uint32()
-	r.Skip(4)
+func (v *Visual) protoRead(r *protoBufferReader) {
+	v.VisualID = VisualID(r.uint32())
+	v.Class = r.byte()
+	v.BitsPerRgbValue = r.byte()
+	v.ColormapEntries = r.uint16()
+	v.RedMask = r.uint32()
+	v.GreenMask = r.uint32()
+	v.BlueMask = r.uint32()
+	r.skip(4)
 }

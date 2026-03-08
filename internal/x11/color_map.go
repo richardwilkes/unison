@@ -9,18 +9,5 @@
 
 package x11
 
-var _ protoReader = &Format{}
-
-// Format holds the configuration of a pixmap.
-type Format struct {
-	Depth        byte
-	BitsPerPixel byte
-	ScanlinePad  byte
-}
-
-func (f *Format) protoRead(r *protoBufferReader) {
-	f.Depth = r.byte()
-	f.BitsPerPixel = r.byte()
-	f.ScanlinePad = r.byte()
-	r.skip(5)
-}
+// ColorMapID holds an ID that refers to a ColorMap.
+type ColorMapID uint32

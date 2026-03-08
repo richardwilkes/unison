@@ -9,14 +9,13 @@
 
 package x11
 
-type (
-	Window   uint32
-	Colormap uint32
-)
+var _ protoReader = &Screen{}
 
-type ScreenInfo struct {
-	Root                Window
-	DefaultColormap     Colormap
+// Screen holds the configuration of a monitor.
+type Screen struct {
+	AllowedDepths       []*Depth
+	Root                WindowID
+	DefaultColorMap     ColorMapID
 	WhitePixel          uint32
 	BlackPixel          uint32
 	CurrentInputMasks   uint32
@@ -30,24 +29,23 @@ type ScreenInfo struct {
 	BackingStores       byte
 	SaveUnders          bool
 	RootDepth           byte
-	AllowedDepths       []*DepthInfo
 }
 
-func (s *ScreenInfo) Read(r *XReader) {
-	s.Root = Window(r.Uint32())
-	s.DefaultColormap = Colormap(r.Uint32())
-	s.WhitePixel = r.Uint32()
-	s.BlackPixel = r.Uint32()
-	s.CurrentInputMasks = r.Uint32()
-	s.WidthInPixels = r.Uint16()
-	s.HeightInPixels = r.Uint16()
-	s.WidthInMillimeters = r.Uint16()
-	s.HeightInMillimeters = r.Uint16()
-	s.MinInstalledMaps = r.Uint16()
-	s.MaxInstalledMaps = r.Uint16()
-	s.RootVisual = VisualID(r.Uint32())
-	s.BackingStores = r.Byte()
-	s.SaveUnders = r.Bool()
-	s.RootDepth = r.Byte()
-	s.AllowedDepths = ReadList[*DepthInfo](int(r.Byte()), r)
+func (s *Screen) protoRead(r *protoBufferReader) {
+	s.Root = WindowID(r.uint32())
+	s.DefaultColorMap = ColorMapID(r.uint32())
+	s.WhitePixel = r.uint32()
+	s.BlackPixel = r.uint32()
+	s.CurrentInputMasks = r.uint32()
+	s.WidthInPixels = r.uint16()
+	s.HeightInPixels = r.uint16()
+	s.WidthInMillimeters = r.uint16()
+	s.HeightInMillimeters = r.uint16()
+	s.MinInstalledMaps = r.uint16()
+	s.MaxInstalledMaps = r.uint16()
+	s.RootVisual = VisualID(r.uint32())
+	s.BackingStores = r.byte()
+	s.SaveUnders = r.bool()
+	s.RootDepth = r.byte()
+	s.AllowedDepths = readProtoList[*Depth](int(r.byte()), r)
 }

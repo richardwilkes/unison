@@ -13,46 +13,34 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"os"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
 const attemptToReadPastEndOfBufferErr = "attempt to read past end of buffer"
 
-type Readable interface {
-	Read(*XReader)
+type protoReader interface {
+	protoRead(*protoBufferReader)
 }
 
-type XReader struct {
+type protoBufferReader struct {
 	byteOrder binary.ByteOrder
 	buffer    []byte
 	pos       int
 }
 
-func NewXReader(byteOrder binary.ByteOrder, buffer []byte) *XReader {
-	return &XReader{
+func newProtoBufferReader(buffer []byte) *protoBufferReader {
+	return newProtoBufferReaderWithOrder(binary.LittleEndian, buffer)
+}
+
+func newProtoBufferReaderWithOrder(byteOrder binary.ByteOrder, buffer []byte) *protoBufferReader {
+	return &protoBufferReader{
 		byteOrder: byteOrder,
 		buffer:    buffer,
 	}
 }
 
-func NewXReaderWithLoad(byteOrder binary.ByteOrder, size int, r io.Reader) (*XReader, error) {
-	x := NewXReader(byteOrder, make([]byte, size))
-	err := x.Load(r)
-	return x, err
-}
-
-func NewXReaderWithFile(byteOrder binary.ByteOrder, filePath string) (*XReader, error) {
-	fileData, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	return NewXReader(byteOrder, fileData), nil
-}
-
-// Load the underlying buffer from the provided reader and reset the position to 0.
-func (x *XReader) Load(r io.Reader) error {
+func (x *protoBufferReader) load(r io.Reader) error {
 	x.pos = 0
 	if _, err := io.ReadFull(r, x.buffer); err != nil {
 		return errs.Wrap(err)
@@ -60,49 +48,62 @@ func (x *XReader) Load(r io.Reader) error {
 	return nil
 }
 
-// Len returns the number of bytes of the unread portion of the buffer.
-func (x *XReader) Len() int {
+func (x *protoBufferReader) append(byteCount int, r io.Reader) error {
+	i := len(x.buffer)
+	buffer := make([]byte, i+byteCount)
+	copy(buffer, x.buffer)
+	if _, err := io.ReadFull(r, x.buffer[i:]); err != nil {
+		return errs.Wrap(err)
+	}
+	return nil
+}
+
+func (x *protoBufferReader) seek(index int) {
+	x.pos = max(index, 0)
+}
+
+func (x *protoBufferReader) len() int {
 	if x.pos >= len(x.buffer) {
 		return 0
 	}
 	return len(x.buffer) - x.pos
 }
 
-func (x *XReader) Skip(count int) {
+func (x *protoBufferReader) skip(count int) {
 	x.pos += count
 }
 
-func (x *XReader) SkipTo4ByteAlignment() {
-	x.pos += (x.pos + 3) & ^3
+func (x *protoBufferReader) skipTo4ByteAlignment() {
+	x.pos += pad4(x.pos)
 }
 
-func (x *XReader) Bytes(count int) []byte {
+func (x *protoBufferReader) bytes(count int) []byte {
 	buffer := make([]byte, count)
-	x.IntoBytes(buffer)
+	x.intoBytes(buffer)
 	return buffer
 }
 
-func (x *XReader) SizePrefixedBytes() []byte {
-	return x.Bytes(int(x.Uint16()))
+func (x *protoBufferReader) sizePrefixedBytes() []byte {
+	return x.bytes(int(x.uint16()))
 }
 
-func (x *XReader) String(count int) string {
-	return string(x.Bytes(count))
+func (x *protoBufferReader) string(count int) string {
+	return string(x.bytes(count))
 }
 
-func (x *XReader) SizePrefixedString() string {
-	return string(x.Bytes(int(x.Uint16())))
+func (x *protoBufferReader) sizePrefixedString() string {
+	return string(x.bytes(int(x.uint16())))
 }
 
-func (x *XReader) ZeroedString(count int) string {
-	buffer := x.Bytes(count)
+func (x *protoBufferReader) zeroedString(count int) string {
+	buffer := x.bytes(count)
 	if i := bytes.IndexByte(buffer, 0); i != -1 {
 		buffer = buffer[:i]
 	}
 	return string(buffer)
 }
 
-func (x *XReader) IntoBytes(buffer []byte) {
+func (x *protoBufferReader) intoBytes(buffer []byte) {
 	defer func() { x.pos += len(buffer) }()
 	if x.pos+len(buffer) > len(x.buffer) {
 		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
@@ -111,11 +112,11 @@ func (x *XReader) IntoBytes(buffer []byte) {
 	copy(buffer, x.buffer[x.pos:])
 }
 
-func (x *XReader) Bool() bool {
-	return x.Byte() != 0
+func (x *protoBufferReader) bool() bool {
+	return x.byte() != 0
 }
 
-func (x *XReader) Byte() byte {
+func (x *protoBufferReader) byte() byte {
 	defer func() { x.pos++ }()
 	if x.pos >= len(x.buffer) {
 		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
@@ -124,7 +125,7 @@ func (x *XReader) Byte() byte {
 	return x.buffer[x.pos]
 }
 
-func (x *XReader) Uint16() uint16 {
+func (x *protoBufferReader) uint16() uint16 {
 	defer func() { x.pos += 2 }()
 	if x.pos+2 > len(x.buffer) {
 		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
@@ -133,7 +134,7 @@ func (x *XReader) Uint16() uint16 {
 	return x.byteOrder.Uint16(x.buffer[x.pos:])
 }
 
-func (x *XReader) Uint32() uint32 {
+func (x *protoBufferReader) uint32() uint32 {
 	defer func() { x.pos += 4 }()
 	if x.pos+4 > len(x.buffer) {
 		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
@@ -142,11 +143,11 @@ func (x *XReader) Uint32() uint32 {
 	return x.byteOrder.Uint32(x.buffer[x.pos:])
 }
 
-func ReadList[T Readable](count int, x *XReader) []T {
+func readProtoList[T protoReader](count int, x *protoBufferReader) []T {
 	list := make([]T, count)
 	for i := range count {
-		list[i].Read(x)
+		list[i].protoRead(x)
 	}
-	x.SkipTo4ByteAlignment()
+	x.skipTo4ByteAlignment()
 	return list
 }
