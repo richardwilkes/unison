@@ -196,13 +196,8 @@ func (c *Conn) parseDisplayEnv() error {
 		}
 	}
 	var err error
-	if c.displayNum, err = strconv.Atoi(c.display); err != nil || c.displayNum < 0 {
+	if c.displayNum, err = strconv.Atoi(id); err != nil || c.displayNum < 0 {
 		return errs.New(invalidDisplayErr + c.envDisplay)
-	}
-	if c.host == "" || c.host == "localhost" {
-		if c.host, err = os.Hostname(); err != nil {
-			return errs.NewWithCause("cannot determine hostname", err)
-		}
 	}
 	return nil
 }
@@ -211,14 +206,14 @@ func (c *Conn) connect() error {
 	var err error
 	switch {
 	case c.socket != "":
-		c.conn, err = net.Dial("unix", c.socket+":"+c.display)
+		c.conn, err = net.Dial("unix", c.socket+":"+strconv.Itoa(c.displayNum))
 	case c.host != "" && c.host != "unix":
 		if c.protocol == "" {
 			c.protocol = "tcp"
 		}
 		c.conn, err = net.Dial(c.protocol, c.host+":"+strconv.Itoa(6000+c.displayNum))
 	default:
-		c.conn, err = net.Dial("unix", "/tmp/.X11-unix/X"+c.display)
+		c.conn, err = net.Dial("unix", "/tmp/.X11-unix/X"+strconv.Itoa(c.displayNum))
 	}
 	if err != nil {
 		return errs.NewWithCause("unable to connect to X server with DISPLAY "+c.envDisplay, err)
@@ -227,7 +222,14 @@ func (c *Conn) connect() error {
 }
 
 func (c *Conn) authenticate() error {
-	authName, authData := c.readAuthority()
+	host := c.host
+	if host == "" || host == "localhost" {
+		var err error
+		if host, err = os.Hostname(); err != nil {
+			return errs.NewWithCause("cannot determine hostname", err)
+		}
+	}
+	authName, authData := c.readAuthority(host)
 	w := NewWriter(18 + len(authName) + len(authData))
 	w.Byte(0x6C) // Use little endian
 	w.Zero(1)
@@ -272,7 +274,7 @@ func (c *Conn) authenticate() error {
 	}
 }
 
-func (c *Conn) readAuthority() (name string, data []byte) {
+func (c *Conn) readAuthority(host string) (name string, data []byte) {
 	fileName := os.Getenv("XAUTHORITY")
 	if fileName == "" {
 		if fileName = os.Getenv("HOME"); fileName == "" {
@@ -296,7 +298,7 @@ func (c *Conn) readAuthority() (name string, data []byte) {
 		disp := r.SizePrefixedString()
 		name = r.SizePrefixedString()
 		data = r.SizePrefixedBytes()
-		if ((family == 65535) || (family == 256 && addr == c.host)) &&
+		if ((family == 65535) || (family == 256 && addr == host)) &&
 			((disp == "") || (disp == c.display)) {
 			return name, data
 		}

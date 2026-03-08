@@ -12,7 +12,6 @@ package x11
 import (
 	"encoding/binary"
 	"io"
-	"slices"
 )
 
 // Writer provides methods for writing data to a buffer in the format used by the X11 protocol, and sending the buffer
@@ -84,21 +83,16 @@ func (w *Writer) Byte(v byte) {
 
 // Uint16 appends a uint16 value to the buffer using the Writer's byte order.
 func (w *Writer) Uint16(v uint16) {
-	w.ensureCapacity(2)
-	w.byteOrder.PutUint16(w.buffer, v)
+	var buf [2]byte
+	w.byteOrder.PutUint16(buf[:], v)
+	w.buffer = append(w.buffer, buf[:]...)
 }
 
 // Uint32 appends a uint32 value to the buffer using the Writer's byte order.
 func (w *Writer) Uint32(v uint32) {
-	w.ensureCapacity(4)
-	w.byteOrder.PutUint32(w.buffer, v)
-}
-
-func (w *Writer) ensureCapacity(extra int) {
-	if extra -= cap(w.buffer) - len(w.buffer); extra > 0 {
-		// Grow no more than 1K at a time, unless asked for more
-		w.buffer = slices.Grow(w.buffer, len(w.buffer)+max(extra, min(len(w.buffer), 1024)))
-	}
+	var buf [4]byte
+	w.byteOrder.PutUint32(buf[:], v)
+	w.buffer = append(w.buffer, buf[:]...)
 }
 
 func pad4(size int) int {
