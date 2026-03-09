@@ -62,7 +62,7 @@ func (x *Reader) Append(byteCount int, in io.Reader) error {
 	i := len(x.buffer)
 	buffer := make([]byte, i+byteCount)
 	copy(buffer, x.buffer)
-	if _, err := io.ReadFull(in, x.buffer[i:]); err != nil {
+	if _, err := io.ReadFull(in, buffer[i:]); err != nil {
 		return errs.Wrap(err)
 	}
 	x.buffer = buffer

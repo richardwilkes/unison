@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/richardwilkes/unison/internal/x11"
@@ -28,7 +27,7 @@ func apiBeginStartup() error {
 		return err
 	}
 	if prop.Format == 8 && prop.Type == x11.AtomString {
-		fmt.Printf("\nX11 Resource Manager:\n\n%s\n\n====\n", string(prop.Value))
+		// "*customization:\t-color\nXft.dpi:\t192\nXft.antialias:\t1\nXft.hinting:\t1\nXft.hintstyle:\thintslight\nXft.rgba:\trgb\n"
 	}
 
 	apiFillKeyCodes()
