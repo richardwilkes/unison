@@ -10,12 +10,17 @@
 package unison
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-var xconn *x11.Conn
+var (
+	xconn         *x11.Conn
+	xContentScale float32 = 1
+)
 
 func apiBeginStartup() error {
 	var err error
@@ -27,9 +32,17 @@ func apiBeginStartup() error {
 		return err
 	}
 	if prop.Format == 8 && prop.Type == x11.AtomString {
-		// "*customization:\t-color\nXft.dpi:\t192\nXft.antialias:\t1\nXft.hinting:\t1\nXft.hintstyle:\thintslight\nXft.rgba:\trgb\n"
+		for _, line := range strings.Split(string(prop.Value), "\n") {
+			const xftDPI = "Xft.dpi:"
+			if strings.HasPrefix(line, xftDPI) {
+				var dpi int
+				if dpi, err = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, xftDPI))); err == nil {
+					xContentScale = float32(dpi) / 96
+				}
+				break
+			}
+		}
 	}
-
 	apiFillKeyCodes()
 	return nil
 }
