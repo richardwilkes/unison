@@ -59,11 +59,11 @@ type Conn struct {
 	screen                   string
 	vendor                   string
 	pixmapFormats            []*Format
-	roots                    []*Screen
+	Roots                    []*Screen
 	extensionsLock           sync.RWMutex
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
-	defaultScreen            int
+	DefaultScreen            int
 	displayNum               int
 	releaseNumber            uint32
 	resourceIDBase           uint32
@@ -190,7 +190,7 @@ func (c *Conn) parseDisplayEnv() error {
 		c.display = c.envDisplay[0:dot]
 		if c.screen = c.envDisplay[dot+1:]; c.screen != "" {
 			var err error
-			if c.defaultScreen, err = strconv.Atoi(c.screen); err != nil {
+			if c.DefaultScreen, err = strconv.Atoi(c.screen); err != nil {
 				return errs.New(invalidDisplayErr + c.envDisplay)
 			}
 		}
@@ -325,7 +325,7 @@ func (c *Conn) protoRead(r *Reader) {
 	c.vendor = r.String(int(vendorLen))
 	r.SkipTo4ByteAlignment()
 	c.pixmapFormats = ReadList[Format](int(pixmapFormatsLen), r)
-	c.roots = ReadList[Screen](int(rootsLen), r)
+	c.Roots = ReadList[Screen](int(rootsLen), r)
 }
 
 // NewAtom generates a new Atom ID.
@@ -755,6 +755,11 @@ func (c *Conn) newMappingNotifyEvent(r *Reader) Event {
 func (c *Conn) newGenericEventEvent(r *Reader) Event {
 	// TODO: Implement
 	return nil
+}
+
+// RootWindow returns the ID of the root window for the default screen.
+func (c *Conn) RootWindow() WindowID {
+	return c.Roots[c.DefaultScreen].Root
 }
 
 // Close the connection after finishing any in-flight requests.

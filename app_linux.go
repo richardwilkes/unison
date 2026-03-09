@@ -10,11 +10,28 @@
 package unison
 
 import (
+	"fmt"
 	"time"
+
+	"github.com/richardwilkes/unison/internal/x11"
 )
 
+var xconn *x11.Conn
+
 func apiBeginStartup() error {
-	// TODO: Need implementation
+	var err error
+	if xconn, err = x11.NewConn(); err != nil {
+		return err
+	}
+	var prop *x11.GetPropertyReply
+	if prop, err = x11.GetProperty(xconn, xconn.RootWindow(), x11.AtomResourceManager, x11.AtomString, 0, 100_000_000, false); err != nil {
+		return err
+	}
+	if prop.Format == 8 && prop.Type == x11.AtomString {
+		fmt.Printf("\nX11 Resource Manager:\n\n%s\n\n====\n", string(prop.Value))
+	}
+
+	apiFillKeyCodes()
 	return nil
 }
 
