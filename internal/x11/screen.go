@@ -9,8 +9,6 @@
 
 package x11
 
-var _ protoReader = &Screen{}
-
 // Screen holds the configuration of a monitor.
 type Screen struct {
 	AllowedDepths       []*Depth
@@ -31,7 +29,9 @@ type Screen struct {
 	RootDepth           byte
 }
 
-func (s *Screen) protoRead(r *Reader) {
+// NewScreen reads a Screen from the specified Reader and returns it.
+func NewScreen(r *Reader) *Screen {
+	var s Screen
 	s.Root = WindowID(r.Uint32())
 	s.DefaultColorMap = ColorMapID(r.Uint32())
 	s.WhitePixel = r.Uint32()
@@ -47,5 +47,6 @@ func (s *Screen) protoRead(r *Reader) {
 	s.BackingStores = r.Byte()
 	s.SaveUnders = r.Bool()
 	s.RootDepth = r.Byte()
-	s.AllowedDepths = ReadList[Depth](int(r.Byte()), r)
+	s.AllowedDepths = ReadList(int(r.Byte()), r, NewDepth)
+	return &s
 }

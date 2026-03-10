@@ -9,18 +9,19 @@
 
 package x11
 
-var _ protoReader = &Depth{}
-
 // Depth holds the Visuals for a given screen bit depth.
 type Depth struct {
 	Visuals []*Visual
 	Depth   byte
 }
 
-func (d *Depth) protoRead(r *Reader) {
+// NewDepth reads a Depth from the specified Reader and returns it.
+func NewDepth(r *Reader) *Depth {
+	var d Depth
 	d.Depth = r.Byte()
 	r.Skip(1)
 	count := r.Uint16()
 	r.Skip(4)
-	d.Visuals = ReadList[Visual](int(count), r)
+	d.Visuals = ReadList(int(count), r, NewVisual)
+	return &d
 }

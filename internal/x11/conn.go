@@ -24,8 +24,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xio"
 )
 
-var _ protoReader = &Conn{}
-
 type xid struct {
 	err error
 	id  uint32
@@ -47,7 +45,7 @@ type extensionInfo struct {
 // Conn represents a connection to an X server.
 type Conn struct {
 	conn                     net.Conn
-	eventChan                chan Event
+	eventChan                chan any
 	requestChan              chan *Request
 	xidChan                  chan xid
 	seqChan                  chan uint16
@@ -56,7 +54,7 @@ type Conn struct {
 	doneRead                 chan struct{}
 	ExtMisc                  *ExtMisc
 	extensions               map[string]extensionInfo
-	eventNewMap              map[byte]func(r *Reader) Event
+	eventNewMap              map[byte]func(r *Reader) any
 	errorCodeMap             map[byte]string
 	envDisplay               string
 	socket                   string
@@ -118,7 +116,7 @@ func NewConn() (*Conn, error) {
 		16: "length error",
 		17: "implementation error",
 	}
-	c.eventNewMap = map[byte]func(r *Reader) Event{
+	c.eventNewMap = map[byte]func(r *Reader) any{
 		2:  c.newKeyPressEvent,
 		3:  c.newKeyReleaseEvent,
 		4:  c.newButtonPressEvent,
@@ -158,7 +156,7 @@ func NewConn() (*Conn, error) {
 	c.xidChan = make(chan xid, 8)
 	c.seqChan = make(chan uint16, 8)
 	c.reqChan = make(chan *request, 128)
-	c.eventChan = make(chan Event, 8192)
+	c.eventChan = make(chan any, 8192)
 	c.doneSend = make(chan struct{})
 	c.doneRead = make(chan struct{})
 	c.ExtMisc = &ExtMisc{conn: &c}
@@ -264,18 +262,36 @@ func (c *Conn) authenticate() error {
 	if c.protocolMajorVersion != 11 || c.protocolMinorVersion != 0 {
 		return errs.Newf("unsupported X protocol version: %d.%d", c.protocolMajorVersion, c.protocolMinorVersion)
 	}
-	data := NewReader(make([]byte, int(dataLen)))
-	if err := data.Load(c.conn); err != nil {
+	r := NewReader(make([]byte, int(dataLen)))
+	if err := r.Load(c.conn); err != nil {
 		return errs.NewWithCause("failed to read authentication response data", err)
 	}
 	switch code {
 	case 0:
-		return errs.New("authentication refused: " + data.String(int(reasonLen)))
+		return errs.New("authentication refused: " + r.String(int(reasonLen)))
 	case 1:
-		c.protoRead(data)
+		c.releaseNumber = r.Uint32()
+		c.resourceIDBase = r.Uint32()
+		c.resourceIDMask = r.Uint32()
+		c.motionBufferSize = r.Uint32()
+		vendorLen := r.Uint16()
+		c.maximumRequestLength = r.Uint16()
+		rootsLen := r.Byte()
+		pixmapFormatsLen := r.Byte()
+		c.imageByteOrder = r.Byte()
+		c.bitmapFormatBitOrder = r.Byte()
+		c.bitmapFormatScanlineUnit = r.Byte()
+		c.bitmapFormatScanlinePad = r.Byte()
+		c.minKeyCode = r.Byte()
+		c.maxKeyCode = r.Byte()
+		r.Skip(4)
+		c.vendor = r.String(int(vendorLen))
+		r.SkipTo4ByteAlignment()
+		c.pixmapFormats = ReadList(int(pixmapFormatsLen), r, NewFormat)
+		c.Roots = ReadList(int(rootsLen), r, NewScreen)
 		return nil
 	case 2:
-		return errs.New("further authentication required: " + data.ZeroedString(int(dataLen)))
+		return errs.New("further authentication required: " + r.ZeroedString(int(dataLen)))
 	default:
 		return errs.Newf("unexpected response code: %d", code)
 	}
@@ -311,28 +327,6 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 		}
 	}
 	return "", nil
-}
-
-func (c *Conn) protoRead(r *Reader) {
-	c.releaseNumber = r.Uint32()
-	c.resourceIDBase = r.Uint32()
-	c.resourceIDMask = r.Uint32()
-	c.motionBufferSize = r.Uint32()
-	vendorLen := r.Uint16()
-	c.maximumRequestLength = r.Uint16()
-	rootsLen := r.Byte()
-	pixmapFormatsLen := r.Byte()
-	c.imageByteOrder = r.Byte()
-	c.bitmapFormatBitOrder = r.Byte()
-	c.bitmapFormatScanlineUnit = r.Byte()
-	c.bitmapFormatScanlinePad = r.Byte()
-	c.minKeyCode = r.Byte()
-	c.maxKeyCode = r.Byte()
-	r.Skip(4)
-	c.vendor = r.String(int(vendorLen))
-	r.SkipTo4ByteAlignment()
-	c.pixmapFormats = ReadList[Format](int(pixmapFormatsLen), r)
-	c.Roots = ReadList[Screen](int(rootsLen), r)
 }
 
 // NewAtom generates a new Atom ID.
@@ -491,19 +485,10 @@ func (c *Conn) readResponses() {
 		}
 		switch r.Byte() {
 		case 0: // Error
-			code := r.Byte()
 			r.Seek(0)
-			var xerr Error
-			xerr.protoRead(r)
+			xerr := NewError(c, r)
 			c.errorCodeLock.RLock()
-			name, ok := c.errorCodeMap[code]
-			c.errorCodeLock.RUnlock()
-			if ok {
-				xerr.Name = name
-			} else {
-				xerr.Name = "unknown error"
-			}
-			err = &xerr
+			err = xerr
 			seq = xerr.Sequence
 		case 1: // Reply
 			r.Skip(1)
@@ -542,17 +527,17 @@ func (c *Conn) bail(err error) {
 	case <-c.doneSend:
 	default:
 		errs.Log(err)
-		c.eventChan <- &ErrorEvent{Error: err}
+		c.eventChan <- err
 	}
 }
 
 // WaitForEvent blocks until the next event is available and returns it, or an error if the connection is closed.
-func (c *Conn) WaitForEvent() Event {
+func (c *Conn) WaitForEvent() any {
 	return <-c.eventChan
 }
 
 // PollForEvent returns the next event if one is available, or nil if no events are available.
-func (c *Conn) PollForEvent() Event {
+func (c *Conn) PollForEvent() any {
 	select {
 	case ev := <-c.eventChan:
 		return ev
@@ -651,7 +636,7 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 	return format, actualPropertyType, value, err
 }
 
-func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) {
+func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) any) {
 	c.eventNewMapLock.Lock()
 	c.eventNewMap[eventID] = f
 	c.eventNewMapLock.Unlock()
@@ -663,172 +648,172 @@ func (c *Conn) setErrorCodeName(code byte, name string) {
 	c.errorCodeLock.Unlock()
 }
 
-func (c *Conn) newKeyPressEvent(r *Reader) Event {
+func (c *Conn) newKeyPressEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newKeyReleaseEvent(r *Reader) Event {
+func (c *Conn) newKeyReleaseEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newButtonPressEvent(r *Reader) Event {
+func (c *Conn) newButtonPressEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newButtonReleaseEvent(r *Reader) Event {
+func (c *Conn) newButtonReleaseEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newMotionNotifyEvent(r *Reader) Event {
+func (c *Conn) newMotionNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newEnterNotifyEvent(r *Reader) Event {
+func (c *Conn) newEnterNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newLeaveNotifyEvent(r *Reader) Event {
+func (c *Conn) newLeaveNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newFocusInEvent(r *Reader) Event {
+func (c *Conn) newFocusInEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newFocusOutEvent(r *Reader) Event {
+func (c *Conn) newFocusOutEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newKeymapNotifyEvent(r *Reader) Event {
+func (c *Conn) newKeymapNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newExposeEvent(r *Reader) Event {
+func (c *Conn) newExposeEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newGraphicsExposureEvent(r *Reader) Event {
+func (c *Conn) newGraphicsExposureEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newNoExposureEvent(r *Reader) Event {
+func (c *Conn) newNoExposureEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newVisibilityNotifyEvent(r *Reader) Event {
+func (c *Conn) newVisibilityNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newCreateNotifyEvent(r *Reader) Event {
+func (c *Conn) newCreateNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newDestroyNotifyEvent(r *Reader) Event {
+func (c *Conn) newDestroyNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newUnmapNotifyEvent(r *Reader) Event {
+func (c *Conn) newUnmapNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newMapNotifyEvent(r *Reader) Event {
+func (c *Conn) newMapNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newMapRequestEvent(r *Reader) Event {
+func (c *Conn) newMapRequestEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newReparentNotifyEvent(r *Reader) Event {
+func (c *Conn) newReparentNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newConfigureNotifyEvent(r *Reader) Event {
+func (c *Conn) newConfigureNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newConfigureRequestEvent(r *Reader) Event {
+func (c *Conn) newConfigureRequestEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newGravityNotifyEvent(r *Reader) Event {
+func (c *Conn) newGravityNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newResizeRequestEvent(r *Reader) Event {
+func (c *Conn) newResizeRequestEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newCirculateNotifyEvent(r *Reader) Event {
+func (c *Conn) newCirculateNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newCirculateRequestEvent(r *Reader) Event {
+func (c *Conn) newCirculateRequestEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newPropertyNotifyEvent(r *Reader) Event {
+func (c *Conn) newPropertyNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newSelectionClearEvent(r *Reader) Event {
+func (c *Conn) newSelectionClearEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newSelectionRequestEvent(r *Reader) Event {
+func (c *Conn) newSelectionRequestEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newSelectionNotifyEvent(r *Reader) Event {
+func (c *Conn) newSelectionNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newColormapNotifyEvent(r *Reader) Event {
+func (c *Conn) newColormapNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newClientMessageEvent(r *Reader) Event {
+func (c *Conn) newClientMessageEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newMappingNotifyEvent(r *Reader) Event {
+func (c *Conn) newMappingNotifyEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }
 
-func (c *Conn) newGenericEventEvent(r *Reader) Event {
+func (c *Conn) newGenericEventEvent(r *Reader) any {
 	// TODO: Implement
 	return nil
 }

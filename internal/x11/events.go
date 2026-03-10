@@ -8,21 +8,3 @@
 // defined by the Mozilla Public License, version 2.0.
 
 package x11
-
-var _ Event = &ErrorEvent{}
-
-// Event represents an X11 event.
-type Event interface {
-	isEvent() // marker method to indicate that this type is an Event
-	protoReader
-}
-
-// ErrorEvent represents an error that occurred while processing a request or event.
-type ErrorEvent struct {
-	Error error
-}
-
-func (e *ErrorEvent) isEvent() {}
-
-func (e *ErrorEvent) protoRead(r *Reader) {
-}

@@ -9,8 +9,6 @@
 
 package x11
 
-var _ protoReader = &Format{}
-
 // Format holds the configuration of a pixmap.
 type Format struct {
 	Depth        byte
@@ -18,9 +16,12 @@ type Format struct {
 	ScanlinePad  byte
 }
 
-func (f *Format) protoRead(r *Reader) {
+// NewFormat reads a Format from the specified Reader and returns it.
+func NewFormat(r *Reader) *Format {
+	var f Format
 	f.Depth = r.Byte()
 	f.BitsPerPixel = r.Byte()
 	f.ScanlinePad = r.Byte()
 	r.Skip(5)
+	return &f
 }

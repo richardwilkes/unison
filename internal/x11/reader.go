@@ -13,17 +13,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"reflect"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 const attemptToReadPastEndOfBufferErr = "attempt to read past end of buffer"
-
-type protoReader interface {
-	protoRead(*Reader)
-}
 
 // Reader provides methods for reading data from a buffer in the format used by the X11 protocol.
 type Reader struct {
@@ -205,21 +199,11 @@ func (x *Reader) Uint32() uint32 {
 }
 
 // ReadList reads the specified number of objects from the buffer at the current position, advances the position by the
-// total number of bytes read for all objects, and returns the read objects as a slice. Note that if the read operation
-// attempts to read past the end of the buffer, an error will be logged and a slice will be returned containing the
-// objects that could be read with the remaining objects zero-valued. Note that only objects that implement the
-// protoReader interface can be read using ReadList, and if an object does not implement this interface, a panic will
-// occur.
-func ReadList[T any](count int, r *Reader) []*T {
-	list := make([]*T, count)
+// total number of bytes read for all objects, and returns the read objects as a slice.
+func ReadList[T any](count int, r *Reader, readFunc func(*Reader) T) []T {
+	list := make([]T, count)
 	for i := range list {
-		var one T
-		list[i] = &one
-		if pr, ok := any(&one).(protoReader); ok {
-			pr.protoRead(r)
-		} else {
-			xos.ExitWithErr(errs.Newf("type %v does not implement protoReader", reflect.TypeFor[*T]()))
-		}
+		list[i] = readFunc(r)
 	}
 	r.SkipTo4ByteAlignment()
 	return list

@@ -9,8 +9,6 @@
 
 package x11
 
-var _ protoReader = &Visual{}
-
 // VisualID holds an ID that refers to a Visual.
 type VisualID uint32
 
@@ -25,7 +23,9 @@ type Visual struct {
 	BlueMask        uint32
 }
 
-func (v *Visual) protoRead(r *Reader) {
+// NewVisual reads a Visual from the specified Reader and returns it.
+func NewVisual(r *Reader) *Visual {
+	var v Visual
 	v.VisualID = VisualID(r.Uint32())
 	v.Class = r.Byte()
 	v.BitsPerRgbValue = r.Byte()
@@ -34,4 +34,5 @@ func (v *Visual) protoRead(r *Reader) {
 	v.GreenMask = r.Uint32()
 	v.BlueMask = r.Uint32()
 	r.Skip(4)
+	return &v
 }

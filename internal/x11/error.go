@@ -13,8 +13,6 @@ import (
 	"fmt"
 )
 
-var _ protoReader = &Error{}
-
 // Error represents an X server error.
 type Error struct {
 	Name        string
@@ -25,7 +23,9 @@ type Error struct {
 	Code        byte
 }
 
-func (e *Error) protoRead(r *Reader) {
+// NewError reads an Error from the specified Reader and returns it.
+func NewError(c *Conn, r *Reader) *Error {
+	var e Error
 	r.Skip(1)
 	e.Code = r.Byte()
 	e.Sequence = r.Uint16()
@@ -33,6 +33,15 @@ func (e *Error) protoRead(r *Reader) {
 	e.MinorOpcode = r.Uint16()
 	e.MajorOpcode = r.Byte()
 	r.Skip(21)
+	c.errorCodeLock.RLock()
+	name, ok := c.errorCodeMap[e.Code]
+	c.errorCodeLock.RUnlock()
+	if ok {
+		e.Name = name
+	} else {
+		e.Name = "unknown error"
+	}
+	return &e
 }
 
 func (e *Error) String() string {
