@@ -174,6 +174,20 @@ func (x *Reader) Byte() byte {
 	return x.buffer[x.pos]
 }
 
+// Int16 reads two bytes from the buffer at the current position, advances the position by two bytes, and returns the
+// read bytes as an int16 value using the Reader's byte order. Note that if the read operation attempts to read past the
+// end of the buffer, an error will be logged and zero will be returned.
+func (x *Reader) Int16() int16 {
+	return int16(x.Uint16())
+}
+
+// Int32 reads four bytes from the buffer at the current position, advances the position by four bytes, and returns the
+// read bytes as an int32 value using the Reader's byte order. Note that if the read operation attempts to read past the
+// end of the buffer, an error will be logged and zero will be returned.
+func (x *Reader) Int32() int32 {
+	return int32(x.Uint32())
+}
+
 // Uint16 reads two bytes from the buffer at the current position, advances the position by two bytes, and returns the
 // read bytes as a uint16 value using the Reader's byte order. Note that if the read operation attempts to read past the
 // end of the buffer, an error will be logged and zero will be returned.

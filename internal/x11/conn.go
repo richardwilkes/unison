@@ -117,40 +117,40 @@ func NewConn() (*Conn, error) {
 		17: "implementation error",
 	}
 	c.eventNewMap = map[byte]func(r *Reader) any{
-		2:  c.newKeyPressEvent,
-		3:  c.newKeyReleaseEvent,
-		4:  c.newButtonPressEvent,
-		5:  c.newButtonReleaseEvent,
-		6:  c.newMotionNotifyEvent,
-		7:  c.newEnterNotifyEvent,
-		8:  c.newLeaveNotifyEvent,
-		9:  c.newFocusInEvent,
-		10: c.newFocusOutEvent,
-		11: c.newKeymapNotifyEvent,
-		12: c.newExposeEvent,
-		13: c.newGraphicsExposureEvent,
-		14: c.newNoExposureEvent,
-		15: c.newVisibilityNotifyEvent,
-		16: c.newCreateNotifyEvent,
-		17: c.newDestroyNotifyEvent,
-		18: c.newUnmapNotifyEvent,
-		19: c.newMapNotifyEvent,
-		20: c.newMapRequestEvent,
-		21: c.newReparentNotifyEvent,
-		22: c.newConfigureNotifyEvent,
-		23: c.newConfigureRequestEvent,
-		24: c.newGravityNotifyEvent,
-		25: c.newResizeRequestEvent,
-		26: c.newCirculateNotifyEvent,
-		27: c.newCirculateRequestEvent,
-		28: c.newPropertyNotifyEvent,
-		29: c.newSelectionClearEvent,
-		30: c.newSelectionRequestEvent,
-		31: c.newSelectionNotifyEvent,
-		32: c.newColormapNotifyEvent,
-		33: c.newClientMessageEvent,
-		34: c.newMappingNotifyEvent,
-		35: c.newGenericEventEvent,
+		2:  newKeyPressEvent,
+		3:  newKeyReleaseEvent,
+		4:  newButtonPressEvent,
+		5:  newButtonReleaseEvent,
+		6:  newMotionNotifyEvent,
+		7:  newEnterNotifyEvent,
+		8:  newLeaveNotifyEvent,
+		9:  newFocusInEvent,
+		10: newFocusOutEvent,
+		11: newKeymapNotifyEvent,
+		12: newExposeEvent,
+		13: newGraphicsExposureEvent,
+		14: newNoExposureEvent,
+		15: newVisibilityNotifyEvent,
+		16: newCreateNotifyEvent,
+		17: newDestroyNotifyEvent,
+		18: newUnmapNotifyEvent,
+		19: newMapNotifyEvent,
+		20: newMapRequestEvent,
+		21: newReparentNotifyEvent,
+		22: newConfigureNotifyEvent,
+		23: newConfigureRequestEvent,
+		24: newGravityNotifyEvent,
+		25: newResizeRequestEvent,
+		26: newCirculateNotifyEvent,
+		27: newCirculateRequestEvent,
+		28: newPropertyNotifyEvent,
+		29: newSelectionClearEvent,
+		30: newSelectionRequestEvent,
+		31: newSelectionNotifyEvent,
+		32: newColormapNotifyEvent,
+		33: newClientMessageEvent,
+		34: newMappingNotifyEvent,
+		35: newGenericEventEvent,
 	}
 	c.requestChan = make(chan *Request, 1024)
 	c.xidChan = make(chan xid, 8)
@@ -646,176 +646,6 @@ func (c *Conn) setErrorCodeName(code byte, name string) {
 	c.errorCodeLock.Lock()
 	c.errorCodeMap[code] = name
 	c.errorCodeLock.Unlock()
-}
-
-func (c *Conn) newKeyPressEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newKeyReleaseEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newButtonPressEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newButtonReleaseEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newMotionNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newEnterNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newLeaveNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newFocusInEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newFocusOutEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newKeymapNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newExposeEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newGraphicsExposureEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newNoExposureEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newVisibilityNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newCreateNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newDestroyNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newUnmapNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newMapNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newMapRequestEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newReparentNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newConfigureNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newConfigureRequestEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newGravityNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newResizeRequestEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newCirculateNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newCirculateRequestEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newPropertyNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newSelectionClearEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newSelectionRequestEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newSelectionNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newColormapNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newClientMessageEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newMappingNotifyEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
-}
-
-func (c *Conn) newGenericEventEvent(r *Reader) any {
-	// TODO: Implement
-	return nil
 }
 
 // RootWindow returns the ID of the root window for the default screen.
