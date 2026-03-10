@@ -17,52 +17,44 @@ import (
 
 // ExtMisc provides access to the XC-MISC extension. Note that only those calls that I need have been implemented.
 type ExtMisc struct {
-	conn  *Conn
-	query *QueryExtensionReply
-	lock  sync.RWMutex
+	conn    *Conn
+	lock    sync.RWMutex
+	checked bool
+	extensionInfo
 }
 
 // Available returns true if the extension is available on the server. If this returns false, no other methods on this
 // object may be called.
 func (e *ExtMisc) Available() bool {
 	e.lock.RLock()
-	q := e.query
+	checked := e.checked
+	info := e.extensionInfo
 	e.lock.RUnlock()
-	if q == nil {
-		q = e.conn.hasExtension("XC-MISC")
+	if !checked {
+		info = e.conn.hasExtension("XC-MISC")
 		e.lock.Lock()
-		e.query = q
+		e.extensionInfo = info
+		e.checked = true
 		e.lock.Unlock()
 	}
-	return q.Present
+	return info.present
 }
 
 // GetXIDRange requests a range of unused resource IDs from the server.
-func (e *ExtMisc) GetXIDRange() (*GetXIDRangeReply, error) {
-	req := newRequest(e.conn, true, true, &GetXIDRangeReply{})
+func (e *ExtMisc) GetXIDRange() (startID, count uint32, err error) {
+	req := newRequest(e.conn, true, true, func(r *Reader) {
+		r.Skip(8)
+		startID = r.Uint32()
+		count = r.Uint32()
+		r.Skip(16)
+	})
 	w := NewWriter(4)
-	w.Byte(e.query.MajorOpcode)
+	w.Byte(e.majorOpcode)
 	w.Byte(1)
 	w.Uint16(1)
 	e.conn.newRequest(w, req)
-	reply, err := req.Reply()
-	if err != nil {
-		err = errs.Wrap(err)
-	} else if reply.Count == 0 || (reply.StartID == 0 && reply.Count == 1) {
+	if err = req.Reply(); err == nil && (count == 0 || (startID == 0 && count == 1)) {
 		err = errs.New("no more IDs available")
 	}
-	return reply, err
-}
-
-// GetXIDRangeReply holds the resource ID range data.
-type GetXIDRangeReply struct {
-	StartID uint32
-	Count   uint32
-}
-
-func (g *GetXIDRangeReply) protoRead(r *Reader) {
-	r.Skip(8)
-	g.StartID = r.Uint32()
-	g.Count = r.Uint32()
-	r.Skip(16)
+	return startID, count, err
 }

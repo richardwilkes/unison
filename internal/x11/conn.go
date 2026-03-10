@@ -33,22 +33,29 @@ type xid struct {
 
 type request struct {
 	seq     chan struct{}
-	request requestProcessor
+	request *Request
 	data    *Writer
+}
+
+type extensionInfo struct {
+	present     bool
+	majorOpcode byte
+	firstEvent  byte
+	firstError  byte
 }
 
 // Conn represents a connection to an X server.
 type Conn struct {
 	conn                     net.Conn
 	eventChan                chan Event
-	requestChan              chan requestProcessor
+	requestChan              chan *Request
 	xidChan                  chan xid
 	seqChan                  chan uint16
 	reqChan                  chan *request
 	doneSend                 chan struct{}
 	doneRead                 chan struct{}
 	ExtMisc                  *ExtMisc
-	extensions               map[string]*QueryExtensionReply
+	extensions               map[string]extensionInfo
 	eventNewMap              map[byte]func(r *Reader) Event
 	errorCodeMap             map[byte]string
 	envDisplay               string
@@ -76,8 +83,8 @@ type Conn struct {
 	bitmapFormatBitOrder     byte
 	bitmapFormatScanlineUnit byte
 	bitmapFormatScanlinePad  byte
-	minKeycode               byte
-	maxKeycode               byte
+	minKeyCode               byte
+	maxKeyCode               byte
 }
 
 // NewConn establishes a connection to the X server.
@@ -147,7 +154,7 @@ func NewConn() (*Conn, error) {
 		34: c.newMappingNotifyEvent,
 		35: c.newGenericEventEvent,
 	}
-	c.requestChan = make(chan requestProcessor, 1024)
+	c.requestChan = make(chan *Request, 1024)
 	c.xidChan = make(chan xid, 8)
 	c.seqChan = make(chan uint16, 8)
 	c.reqChan = make(chan *request, 128)
@@ -319,8 +326,8 @@ func (c *Conn) protoRead(r *Reader) {
 	c.bitmapFormatBitOrder = r.Byte()
 	c.bitmapFormatScanlineUnit = r.Byte()
 	c.bitmapFormatScanlinePad = r.Byte()
-	c.minKeycode = r.Byte()
-	c.maxKeycode = r.Byte()
+	c.minKeyCode = r.Byte()
+	c.maxKeyCode = r.Byte()
 	r.Skip(4)
 	c.vendor = r.String(int(vendorLen))
 	r.SkipTo4ByteAlignment()
@@ -368,11 +375,11 @@ func (c *Conn) generateXIDs() {
 				}
 			}
 			if rangeState == 1 {
-				if idRange, err := c.ExtMisc.GetXIDRange(); err != nil {
+				if startID, count, err := c.ExtMisc.GetXIDRange(); err != nil {
 					id = xid{err: err}
 				} else {
-					last = idRange.StartID
-					idMax = idRange.StartID + (idRange.Count-1)*idInc
+					last = startID
+					idMax = startID + (count-1)*idInc
 					id = xid{id: last | c.resourceIDBase}
 				}
 			} else {
@@ -407,7 +414,7 @@ func (c *Conn) generateSequenceIDs() {
 	}
 }
 
-func (c *Conn) newRequest(data *Writer, req requestProcessor) {
+func (c *Conn) newRequest(data *Writer, req *Request) {
 	seq := make(chan struct{})
 	select {
 	case c.reqChan <- &request{seq: seq, request: req, data: data}:
@@ -455,10 +462,10 @@ func (c *Conn) sendRequests() {
 }
 
 func (c *Conn) noop() error {
-	req := newRequest(c, true, true, &GetInputFocusReply{})
+	req := newRequest(c, true, true, nil)
 	req.setSequenceID(c.newSequenceID())
 	c.requestChan <- req
-	if err := getInputFocusRequest().Send(c.conn); err != nil {
+	if err := c.inputFocusRequestWriter().Send(c.conn); err != nil {
 		return err
 	}
 	req.Reply() //nolint:errcheck // Don't care about errors here
@@ -467,7 +474,7 @@ func (c *Conn) noop() error {
 
 // Sync causes all outstanding requests to be processed before returning.
 func (c *Conn) Sync() {
-	GetInputFocus(c) //nolint:errcheck // Don't care about errors here
+	c.GetInputFocus() //nolint:errcheck // Don't care about errors here
 }
 
 func (c *Conn) readResponses() {
@@ -554,25 +561,94 @@ func (c *Conn) PollForEvent() Event {
 	}
 }
 
-func (c *Conn) hasExtension(name string) *QueryExtensionReply {
+func (c *Conn) hasExtension(name string) extensionInfo {
 	c.extensionsLock.RLock()
-	data, ok := c.extensions[name]
+	info, ok := c.extensions[name]
 	c.extensionsLock.RUnlock()
 	if ok {
-		return data
+		return info
 	}
 	c.extensionsLock.Lock()
 	defer c.extensionsLock.Unlock()
-	var err error
-	data, err = QueryExtension(c, name)
-	if err != nil {
-		data = &QueryExtensionReply{}
-	}
+	info = c.queryExtension(name)
 	if c.extensions == nil {
-		c.extensions = make(map[string]*QueryExtensionReply)
+		c.extensions = make(map[string]extensionInfo)
 	}
-	c.extensions[name] = data
-	return data
+	c.extensions[name] = info
+	return info
+}
+
+func (c *Conn) queryExtension(name string) extensionInfo {
+	var info extensionInfo
+	req := newRequest(c, true, true, func(r *Reader) {
+		r.Skip(8)
+		info.present = r.Bool()
+		info.majorOpcode = r.Byte()
+		info.firstEvent = r.Byte()
+		info.firstError = r.Byte()
+	})
+	size := 8 + pad4(len(name)) - len(name)
+	w := NewWriter(size)
+	w.Byte(98)
+	w.Zero(1)
+	w.Uint16(uint16(size / 4))
+	w.Uint16(uint16(len(name)))
+	w.Zero(2)
+	w.String(name)
+	w.ZeroTo4ByteAlignment()
+	c.newRequest(w, req)
+	req.Reply() //nolint:errcheck // Ignore errors here since we'll just return info.present=false
+	return info
+}
+
+// GetInputFocus returns the current input focus window and the revert-to value.
+func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
+	req := newRequest(c, true, true, func(r *Reader) {
+		r.Skip(1)
+		revertTo = r.Byte()
+		r.Skip(6)
+		focus = WindowID(r.Uint32())
+	})
+	c.newRequest(c.inputFocusRequestWriter(), req)
+	err = req.Reply()
+	return focus, revertTo, err
+}
+
+func (c *Conn) inputFocusRequestWriter() *Writer {
+	w := NewWriter(4)
+	w.Byte(43)
+	w.Zero(1)
+	w.Uint16(1)
+	return w
+}
+
+// GetProperty returns information about the specified property.
+func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset, length uint32, remove bool) (format byte, actualPropertyType Atom, value []byte, err error) {
+	req := newRequest(c, true, true, func(r *Reader) {
+		r.Skip(1)
+		format = r.Byte()
+		r.Skip(6)
+		actualPropertyType = Atom(r.Uint32())
+		r.Skip(4)
+		lengthInFormatUnits := r.Uint32()
+		r.Skip(12)
+		if format != 0 {
+			value = r.Bytes(int(lengthInFormatUnits * uint32(format/8)))
+			r.Skip(pad4(len(value)))
+		}
+	})
+	w := NewWriter(24)
+	w.Byte(20)
+	w.Bool(remove)
+	w.Uint16(6)
+	w.Uint32(uint32(window))
+	w.Uint32(uint32(property))
+	w.Uint32(uint32(propertyType))
+	w.Uint32(offset)
+	w.Uint32(length)
+	c.newRequest(w, req)
+	err = req.Reply()
+	return format, actualPropertyType, value, err
 }
 
 func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) {

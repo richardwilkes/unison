@@ -17,27 +17,20 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
-var _ requestProcessor = &Request[*GetInputFocusReply]{}
-
-type requestProcessor interface {
-	processRequest(seq uint16, r *Reader, err error) bool
-	setSequenceID(seq uint16)
-}
-
 // Request holds data for managing a request to the server.
-type Request[T protoReader] struct {
+type Request struct {
 	conn      *Conn
 	replyChan chan *Reader
 	errorChan chan error
 	pingChan  chan bool
-	replyData T
+	processor func(*Reader)
 	sequence  uint16
 }
 
-func newRequest[T protoReader](conn *Conn, checked, reply bool, replyData T) *Request[T] {
-	r := Request[T]{
+func newRequest(conn *Conn, checked, reply bool, processor func(*Reader)) *Request {
+	r := Request{
 		conn:      conn,
-		replyData: replyData,
+		processor: processor,
 	}
 	if checked {
 		r.errorChan = make(chan error, 1)
@@ -54,49 +47,52 @@ func newRequest[T protoReader](conn *Conn, checked, reply bool, replyData T) *Re
 	return &r
 }
 
-// Reply waits for a reply to the request and returns it, or an error if one is received. If the request was created
-// with checked=true, then the error channel will be used to receive any errors from the server. If the request was
-// created with reply=true, then the reply channel will be used to receive the reply data from the server. If the
-// request was created with checked=false and reply=false, then neither channel will be used and an error will be
-// returned if either is attempted to be read from. If the request was created with checked=true and reply=false, then
-// the ping channel will be used to signal when a reply is received without an error, and an error will be returned if
-// an error is received or if a reply is received without an error. If the request was created with checked=false and
-// reply=true, then the ping channel will be used to signal when a reply is received, and an error will be returned if a
-// reply is received without an error.
-func (r *Request[T]) Reply() (T, error) {
+// Reply waits for a reply to the request. If the request was created with checked=true, then the error channel will be
+// used to receive any errors from the server. If the request was created with reply=true, then the reply channel will
+// be used to receive the reply data from the server. If the request was created with checked=false and reply=false,
+// then neither channel will be used and an error will be returned if either is attempted to be read from. If the
+// request was created with checked=true and reply=false, then the ping channel will be used to signal when a reply is
+// received without an error, and an error will be returned if an error is received or if a reply is received without an
+// error. If the request was created with checked=false and reply=true, then the ping channel will be used to signal
+// when a reply is received, and an error will be returned if a reply is received without an error.
+func (r *Request) Reply() error {
 	if r.errorChan != nil {
 		return r.replyChecked()
 	}
 	return r.replyUnchecked()
 }
 
-func (r *Request[T]) replyChecked() (T, error) {
+func (r *Request) replyChecked() error {
 	if r.replyChan == nil || r.errorChan == nil {
-		return r.replyData, errs.New("not expecting a reply or an error")
+		return errs.New("not expecting a reply or an error")
 	}
 	select {
 	case in := <-r.replyChan:
-		r.replyData.protoRead(in)
-		return r.replyData, nil
+		if r.processor != nil {
+			r.processor(in)
+		}
+		return nil
 	case err := <-r.errorChan:
-		return r.replyData, err
+		return err
 	case <-r.conn.doneRead:
-		return r.replyData, io.EOF
+		return io.EOF
 	}
 }
 
-func (r *Request[T]) replyUnchecked() (T, error) {
+func (r *Request) replyUnchecked() error {
 	if r.replyChan == nil {
-		return r.replyData, errs.New("not expecting a reply")
+		return errs.New("not expecting a reply")
 	}
 	select {
 	case in := <-r.replyChan:
-		r.replyData.protoRead(in)
-		return r.replyData, nil
+		if r.processor != nil {
+			r.processor(in)
+		}
+		return nil
 	case <-r.pingChan:
-		return r.replyData, nil
+		return nil
 	case <-r.conn.doneRead:
-		return r.replyData, io.EOF
+		return io.EOF
 	}
 }
 
@@ -109,7 +105,7 @@ func (r *Request[T]) replyUnchecked() (T, error) {
 // reply=true, then the ping channel will be used to signal when a reply is received, and an error will be returned if a
 // reply is received without an error. If the request was created with checked=false and reply=false, then neither
 // channel will be used and an error will be returned if either is attempted to be read from.
-func (r *Request[T]) Check() error {
+func (r *Request) Check() error {
 	if r.replyChan != nil {
 		return errors.New("expecting a reply")
 	}
@@ -134,7 +130,7 @@ func (r *Request[T]) Check() error {
 	}
 }
 
-func (r *Request[T]) processRequest(seq uint16, in *Reader, err error) bool {
+func (r *Request) processRequest(seq uint16, in *Reader, err error) bool {
 	if r.sequence == seq {
 		if err != nil {
 			if r.errorChan != nil {
@@ -169,6 +165,6 @@ func (r *Request[T]) processRequest(seq uint16, in *Reader, err error) bool {
 	return false
 }
 
-func (r *Request[T]) setSequenceID(seq uint16) {
+func (r *Request) setSequenceID(seq uint16) {
 	r.sequence = seq
 }

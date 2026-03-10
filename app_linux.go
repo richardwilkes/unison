@@ -18,30 +18,17 @@ import (
 )
 
 var (
-	xconn         *x11.Conn
-	xContentScale float32 = 1
+	x11Conn         *x11.Conn
+	x11ContentScale = float32(1)
 )
 
 func apiBeginStartup() error {
 	var err error
-	if xconn, err = x11.NewConn(); err != nil {
+	if x11Conn, err = x11.NewConn(); err != nil {
 		return err
 	}
-	var prop *x11.GetPropertyReply
-	if prop, err = x11.GetProperty(xconn, xconn.RootWindow(), x11.AtomResourceManager, x11.AtomString, 0, 100_000_000, false); err != nil {
+	if x11ContentScale, err = x11GetContentScale(); err != nil {
 		return err
-	}
-	if prop.Format == 8 && prop.Type == x11.AtomString {
-		for _, line := range strings.Split(string(prop.Value), "\n") {
-			const xftDPI = "Xft.dpi:"
-			if strings.HasPrefix(line, xftDPI) {
-				var dpi int
-				if dpi, err = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, xftDPI))); err == nil {
-					xContentScale = float32(dpi) / 96
-				}
-				break
-			}
-		}
 	}
 	apiFillKeyCodes()
 	return nil
@@ -88,4 +75,24 @@ func apiWaitEvents() {
 
 func apiPostEmptyEvent() {
 	// TODO: Need implementation
+}
+
+func x11GetContentScale() (float32, error) {
+	format, actualPropertyType, value, err := x11Conn.GetProperty(x11Conn.RootWindow(), x11.AtomResourceManager,
+		x11.AtomString, 0, 100_000_000, false)
+	if err != nil {
+		return 1, err
+	}
+	if format == 8 && actualPropertyType == x11.AtomString {
+		for _, line := range strings.Split(string(value), "\n") {
+			const xftDPI = "Xft.dpi:"
+			if strings.HasPrefix(line, xftDPI) {
+				var dpi int
+				if dpi, err = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, xftDPI))); err == nil {
+					return float32(dpi) / 96, nil
+				}
+			}
+		}
+	}
+	return 1, nil
 }

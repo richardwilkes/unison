@@ -10,8 +10,14 @@
 package x11
 
 // QueryExtension returns information about the specified extension.
-func QueryExtension(c *Conn, name string) (*QueryExtensionReply, error) {
-	req := newRequest(c, true, true, &QueryExtensionReply{})
+func QueryExtension(c *Conn, name string) (present bool, majorOpcode, firstEvent, firstError byte, err error) {
+	req := newRequest(c, true, true, func(r *Reader) {
+		r.Skip(8)
+		present = r.Bool()
+		majorOpcode = r.Byte()
+		firstEvent = r.Byte()
+		firstError = r.Byte()
+	})
 	size := 8 + pad4(len(name)) - len(name)
 	w := NewWriter(size)
 	w.Byte(98)
@@ -22,21 +28,8 @@ func QueryExtension(c *Conn, name string) (*QueryExtensionReply, error) {
 	w.String(name)
 	w.ZeroTo4ByteAlignment()
 	c.newRequest(w, req)
-	return req.Reply()
-}
-
-// QueryExtensionReply holds the result of a call to QueryExtension().
-type QueryExtensionReply struct {
-	Present     bool
-	MajorOpcode byte
-	FirstEvent  byte
-	FirstError  byte
-}
-
-func (q *QueryExtensionReply) protoRead(r *Reader) {
-	r.Skip(8)
-	q.Present = r.Bool()
-	q.MajorOpcode = r.Byte()
-	q.FirstEvent = r.Byte()
-	q.FirstError = r.Byte()
+	if err = req.Reply(); err != nil {
+		return false, 0, 0, 0, err
+	}
+	return present, majorOpcode, firstEvent, firstError, nil
 }
