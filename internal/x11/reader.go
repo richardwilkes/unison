@@ -70,6 +70,17 @@ func (x *Reader) Seek(index int) {
 	x.pos = max(index, 0)
 }
 
+// SeekRelative advances the position by the specified amount, or moves it back if the amount is negative, but does not
+// allow the position to become negative. Note that seeking past the end of the buffer is allowed, but will cause
+// subsequent read operations to log an error and return zero values until the position is moved back within the buffer
+// bounds.
+func (x *Reader) SeekRelative(amount int) {
+	x.pos += amount
+	if x.pos < 0 {
+		x.pos = 0
+	}
+}
+
 // Remaining returns the number of bytes remaining in the buffer from the current position to the end of the buffer.
 func (x *Reader) Remaining() int {
 	if x.pos >= len(x.buffer) {

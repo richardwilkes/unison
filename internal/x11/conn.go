@@ -150,7 +150,6 @@ func NewConn() (*Conn, error) {
 		32: newColormapNotifyEvent,
 		33: newClientMessageEvent,
 		34: newMappingNotifyEvent,
-		35: newGenericEventEvent,
 	}
 	c.requestChan = make(chan *Request, 1024)
 	c.xidChan = make(chan xid, 8)
