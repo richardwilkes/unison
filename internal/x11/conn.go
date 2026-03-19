@@ -22,7 +22,15 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xio"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 )
+
+// Event represents a generic X11 event. Specific event types will implement this interface.
+type Event interface {
+	// Process the event using the provided connection. The implementation should perform any necessary actions based on
+	// the event type and its data.
+	Process(*Conn)
+}
 
 type xid struct {
 	err error
@@ -45,7 +53,7 @@ type extensionInfo struct {
 // Conn represents a connection to an X server.
 type Conn struct {
 	conn                     net.Conn
-	eventChan                chan any
+	eventChan                chan Event
 	requestChan              chan *Request
 	xidChan                  chan xid
 	seqChan                  chan uint16
@@ -54,7 +62,7 @@ type Conn struct {
 	doneRead                 chan struct{}
 	ExtMisc                  *ExtMisc
 	extensions               map[string]extensionInfo
-	eventNewMap              map[byte]func(r *Reader) any
+	eventNewMap              map[byte]func(r *Reader) Event
 	errorCodeMap             map[byte]string
 	envDisplay               string
 	socket                   string
@@ -116,7 +124,7 @@ func NewConn() (*Conn, error) {
 		16: "length error",
 		17: "implementation error",
 	}
-	c.eventNewMap = map[byte]func(r *Reader) any{
+	c.eventNewMap = map[byte]func(r *Reader) Event{
 		2:  newKeyPressEvent,
 		3:  newKeyReleaseEvent,
 		4:  newButtonPressEvent,
@@ -155,7 +163,7 @@ func NewConn() (*Conn, error) {
 	c.xidChan = make(chan xid, 8)
 	c.seqChan = make(chan uint16, 8)
 	c.reqChan = make(chan *request, 128)
-	c.eventChan = make(chan any, 8192)
+	c.eventChan = make(chan Event, 8192)
 	c.doneSend = make(chan struct{})
 	c.doneRead = make(chan struct{})
 	c.ExtMisc = &ExtMisc{conn: &c}
@@ -526,23 +534,35 @@ func (c *Conn) bail(err error) {
 	case <-c.doneSend:
 	default:
 		errs.Log(err)
-		c.eventChan <- err
+		c.eventChan <- &ErrorEvent{Error: err}
 	}
 }
 
-// WaitForEvent blocks until the next event is available and returns it, or an error if the connection is closed.
-func (c *Conn) WaitForEvent() any {
-	return <-c.eventChan
+// PostEmptyEvent posts an empty event to the event channel to wake up the event loop without processing an actual X11
+// event.
+func (c *Conn) PostEmptyEvent() {
+	c.eventChan <- nil
 }
 
-// PollForEvent returns the next event if one is available, or nil if no events are available.
-func (c *Conn) PollForEvent() any {
+// WaitEvents blocks until the next event is available, then processes it.
+func (c *Conn) WaitEvents() {
+	c.processEvent(<-c.eventChan)
+}
+
+// PollEvents processes the next event if one is available.
+func (c *Conn) PollEvents() {
 	select {
 	case ev := <-c.eventChan:
-		return ev
+		c.processEvent(ev)
 	default:
-		return nil
 	}
+}
+
+func (c *Conn) processEvent(ev Event) {
+	if xreflect.IsNil(ev) {
+		return
+	}
+	ev.Process(c)
 }
 
 func (c *Conn) hasExtension(name string) extensionInfo {
@@ -635,7 +655,7 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 	return format, actualPropertyType, value, err
 }
 
-func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) any) {
+func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) {
 	c.eventNewMapLock.Lock()
 	c.eventNewMap[eventID] = f
 	c.eventNewMapLock.Unlock()

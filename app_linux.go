@@ -66,15 +66,15 @@ func apiDoubleClickInterval() time.Duration {
 }
 
 func apiPollEvents() {
-	// TODO: Need implementation
+	x11Conn.PollEvents()
 }
 
 func apiWaitEvents() {
-	// TODO: Need implementation
+	x11Conn.WaitEvents()
 }
 
 func apiPostEmptyEvent() {
-	// TODO: Need implementation
+	x11Conn.PostEmptyEvent()
 }
 
 func x11GetContentScale() (float32, error) {
