@@ -33,6 +33,6 @@ func newMappingNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *MappingNotifyEvent) Process(conn *Conn) {
+func (e *MappingNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

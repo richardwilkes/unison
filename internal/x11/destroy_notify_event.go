@@ -30,6 +30,6 @@ func newDestroyNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *DestroyNotifyEvent) Process(conn *Conn) {
+func (e *DestroyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

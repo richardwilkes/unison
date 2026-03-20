@@ -127,7 +127,7 @@ func apiFillKeyCodes() {
 	rawScanCodeToKeyCodeMap[0x7E] = KeyUp
 }
 
-func translateModifiers(flags mac.EventModifierFlags) Modifiers {
+func macTranslateModifiers(flags mac.EventModifierFlags) Modifiers {
 	var mods Modifiers
 	if flags&mac.EventModifierFlagShift != 0 {
 		mods |= ShiftModifier

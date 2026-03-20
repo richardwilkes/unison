@@ -42,14 +42,6 @@ func (d *macSaveDialog) SetInitialDirectory(dir string) {
 	d.dialog.SetDirectoryURL(dirURL)
 }
 
-func (d *macSaveDialog) InitialFileName() string {
-	return d.dialog.InitialFileName()
-}
-
-func (d *macSaveDialog) SetInitialFileName(name string) {
-	d.dialog.SetInitialFileName(name)
-}
-
 func (d *macSaveDialog) AllowedExtensions() []string {
 	allowed := d.dialog.AllowedFileTypes()
 	defer allowed.Release()
@@ -65,16 +57,6 @@ func (d *macSaveDialog) SetAllowedExtensions(types ...string) {
 	}
 }
 
-func (d *macSaveDialog) Path() string {
-	urlStr := d.dialog.URL().AbsoluteString()
-	u, err := url.Parse(urlStr)
-	if err != nil {
-		errs.Log(errs.NewWithCause("unable to convert url to path", err), "url", urlStr)
-		return ""
-	}
-	return u.Path
-}
-
 func (d *macSaveDialog) RunModal() bool {
 	active := ActiveWindow()
 	if active != nil {
@@ -86,4 +68,22 @@ func (d *macSaveDialog) RunModal() bool {
 		}
 	}()
 	return d.dialog.RunModal()
+}
+
+func (d *macSaveDialog) Path() string {
+	urlStr := d.dialog.URL().AbsoluteString()
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		errs.Log(errs.NewWithCause("unable to convert url to path", err), "url", urlStr)
+		return ""
+	}
+	return u.Path
+}
+
+func (d *macSaveDialog) InitialFileName() string {
+	return d.dialog.InitialFileName()
+}
+
+func (d *macSaveDialog) SetInitialFileName(name string) {
+	d.dialog.SetInitialFileName(name)
 }

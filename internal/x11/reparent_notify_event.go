@@ -39,6 +39,6 @@ func newReparentNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ReparentNotifyEvent) Process(conn *Conn) {
+func (e *ReparentNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

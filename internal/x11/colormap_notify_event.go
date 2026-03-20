@@ -35,6 +35,6 @@ func newColormapNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ColormapNotifyEvent) Process(conn *Conn) {
+func (e *ColormapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

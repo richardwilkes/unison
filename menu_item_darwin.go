@@ -80,7 +80,7 @@ func (mi *macMenuItem) SetTitle(title string) {
 
 func (mi *macMenuItem) KeyBinding() KeyBinding {
 	keyStr, mods := mi.item.KeyBinding()
-	return KeyBinding{KeyCode: macMenuEquivalentToKeyCodeMap[keyStr], Modifiers: modifiersFromMacEventModifierFlags(mods)}
+	return KeyBinding{KeyCode: macMenuEquivalentToKeyCodeMap[keyStr], Modifiers: macModifiersFromEventModifierFlags(mods)}
 }
 
 func (mi *macMenuItem) SetKeyBinding(keyBinding KeyBinding) {

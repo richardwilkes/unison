@@ -24,76 +24,76 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xfilepath"
 )
 
-var _ SaveDialog = &linuxSaveDialog{}
+var _ SaveDialog = &x11SaveDialog{}
 
-type linuxSaveDialog struct {
+type x11SaveDialog struct {
 	fallback SaveDialog
 }
 
 func apiNewSaveDialog() SaveDialog {
-	return &linuxSaveDialog{fallback: NewCommonSaveDialog()}
+	return &x11SaveDialog{fallback: NewCommonSaveDialog()}
 }
 
-func (d *linuxSaveDialog) InitialDirectory() string {
+func (d *x11SaveDialog) InitialDirectory() string {
 	return d.fallback.InitialDirectory()
 }
 
-func (d *linuxSaveDialog) SetInitialDirectory(dir string) {
+func (d *x11SaveDialog) SetInitialDirectory(dir string) {
 	d.fallback.SetInitialDirectory(dir)
 }
 
-func (d *linuxSaveDialog) InitialFileName() string {
-	return d.fallback.InitialFileName()
-}
-
-func (d *linuxSaveDialog) SetInitialFileName(name string) {
-	d.fallback.SetInitialFileName(name)
-}
-
-func (d *linuxSaveDialog) AllowedExtensions() []string {
+func (d *x11SaveDialog) AllowedExtensions() []string {
 	return d.fallback.AllowedExtensions()
 }
 
-func (d *linuxSaveDialog) SetAllowedExtensions(extensions ...string) {
+func (d *x11SaveDialog) SetAllowedExtensions(extensions ...string) {
 	d.fallback.SetAllowedExtensions(extensions...)
 }
 
-func (d *linuxSaveDialog) Path() string {
-	return d.fallback.Path()
-}
-
-func (d *linuxSaveDialog) RunModal() bool {
+func (d *x11SaveDialog) RunModal() bool {
 	kdialog, err := exec.LookPath("kdialog")
 	if err != nil {
 		kdialog = ""
 	}
 	if os.Getenv("KDE_FULL_SESSION") != "" && kdialog != "" {
-		return d.runKDialog(kdialog)
+		return d.x11RunKDialog(kdialog)
 	}
 	var zenity string
 	if zenity, err = exec.LookPath("zenity"); err != nil {
 		zenity = ""
 	}
 	if zenity != "" {
-		return d.runZenity(zenity)
+		return d.x11RunZenity(zenity)
 	}
 	if kdialog != "" {
-		return d.runKDialog(kdialog)
+		return d.x11RunKDialog(kdialog)
 	}
 	return d.fallback.RunModal()
 }
 
-func (d *linuxSaveDialog) runKDialog(kdialog string) bool {
-	ext, allowed := d.prepExt()
+func (d *x11SaveDialog) Path() string {
+	return d.fallback.Path()
+}
+
+func (d *x11SaveDialog) InitialFileName() string {
+	return d.fallback.InitialFileName()
+}
+
+func (d *x11SaveDialog) SetInitialFileName(name string) {
+	d.fallback.SetInitialFileName(name)
+}
+
+func (d *x11SaveDialog) x11RunKDialog(kdialog string) bool {
+	ext, allowed := d.x11PrepExt()
 	cmd := exec.Command(kdialog, "--getsavefilename", d.InitialDirectory()+"/"+xfilepath.TrimExtension(d.InitialFileName())+ext)
 	if len(allowed) != 0 {
 		list := strings.Join(allowed, " ")
 		cmd.Args = append(cmd.Args, fmt.Sprintf("%[1]s (%[1]s)", list))
 	}
-	return d.runModal(cmd, "\n")
+	return d.x11RunModal(cmd, "\n")
 }
 
-func (d *linuxSaveDialog) runZenity(zenity string) bool {
+func (d *x11SaveDialog) x11RunZenity(zenity string) bool {
 	cmd := exec.Command(zenity, "--help-file-selection")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -104,15 +104,15 @@ func (d *linuxSaveDialog) runZenity(zenity string) bool {
 	if bytes.Contains(output, []byte("confirm-overwrite")) {
 		cmd.Args = append(cmd.Args, "--confirm-overwrite")
 	}
-	ext, allowed := d.prepExt()
+	ext, allowed := d.x11PrepExt()
 	cmd.Args = append(cmd.Args, "--filename="+d.InitialDirectory()+"/"+xfilepath.TrimExtension(d.InitialFileName())+ext)
 	if len(allowed) != 0 {
 		cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
 	}
-	return d.runModal(cmd, "|")
+	return d.x11RunModal(cmd, "|")
 }
 
-func (d *linuxSaveDialog) prepExt() (ext string, allowed []string) {
+func (d *x11SaveDialog) x11PrepExt() (ext string, allowed []string) {
 	ext = ""
 	allowed = d.fallback.AllowedExtensions()
 	if len(allowed) != 0 {
@@ -126,17 +126,17 @@ func (d *linuxSaveDialog) prepExt() (ext string, allowed []string) {
 	return ext, allowed
 }
 
-func (d *linuxSaveDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
+func (d *x11SaveDialog) x11RunModal(cmd *exec.Cmd, splitOn string) bool {
 	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
 	if err != nil {
 		errs.Log(err)
 	}
 	wnd.SetFrameRect(geom.NewRect(-10000, -10000, 1, 1))
-	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
+	InvokeTaskAfter(func() { go d.x11RunCmd(wnd, cmd, splitOn) }, time.Millisecond)
 	return wnd.RunModal() == ModalResponseOK
 }
 
-func (d *linuxSaveDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
+func (d *x11SaveDialog) x11RunCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 	code := ModalResponseCancel
 	defer func() { InvokeTask(func() { wnd.StopModal(code) }) }()
 	out, err := cmd.Output()

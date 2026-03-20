@@ -30,59 +30,6 @@ func (c *apiGLContext) apiCreate(wnd, share *Window, _transparent bool) error {
 	if share != nil {
 		shareCtx = share.glCtx.rc
 	}
-	pixelFormat := choosePixelFormat(dc)
-	if pixelFormat == 0 {
-		return errs.New("failed to choose pixel format for OpenGL context")
-	}
-	var pfd w32.PIXELFORMATDESCRIPTOR
-	if w32.DescribePixelFormat(dc, pixelFormat, uint32(unsafe.Sizeof(pfd)), &pfd) == 0 {
-		return errs.New("failed to describe pixel format for OpenGL context")
-	}
-	if !w32.SetPixelFormat(dc, pixelFormat, &pfd) {
-		return errs.New("failed to set pixel format for OpenGL context")
-	}
-	fakeRC := w32.WglCreateContext(dc)
-	if !w32.WglMakeCurrent(dc, fakeRC) {
-		return errs.New("failed to make fake OpenGL context current")
-	}
-	defer func() {
-		w32.WglMakeCurrent(0, 0)
-		w32.WglDeleteContext(fakeRC)
-	}()
-	rc := w32.WglCreateContextAttribsARB(dc, shareCtx, []int32{
-		w32.WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-		w32.WGL_CONTEXT_MINOR_VERSION_ARB, 2,
-		0,
-	})
-	if rc == 0 {
-		return errs.New("failed to create OpenGL context")
-	}
-	c.dc = dc
-	c.rc = rc
-	return nil
-}
-
-func (c *apiGLContext) apiMakeCurrent() {
-	w32.WglMakeCurrent(c.dc, c.rc)
-}
-
-func (c *apiGLContext) apiSwapBuffers() {
-	w32.SwapBuffers(c.dc)
-}
-
-func (c *apiGLContext) apiDestroy() {
-	if c.rc != 0 {
-		w32.WglDeleteContext(c.rc)
-		c.rc = 0
-	}
-}
-
-func apiClearOpenGLCurrentContext() {
-	w32.WglMakeCurrent(0, 0)
-	wndWithCurrentCtx = nil
-}
-
-func choosePixelFormat(dc w32.HDC) int32 {
 	var pfd w32.PIXELFORMATDESCRIPTOR
 	count := w32.DescribePixelFormat(dc, 1, uint32(unsafe.Sizeof(pfd)), nil)
 	for i := int32(1); i <= count; i++ {
@@ -105,7 +52,52 @@ func choosePixelFormat(dc w32.HDC) int32 {
 		if pfd.DepthBits != 24 || pfd.StencilBits != 8 {
 			continue
 		}
-		return i
+		var pfd w32.PIXELFORMATDESCRIPTOR
+		if w32.DescribePixelFormat(dc, i, uint32(unsafe.Sizeof(pfd)), &pfd) == 0 {
+			return errs.New("failed to describe pixel format for OpenGL context")
+		}
+		if !w32.SetPixelFormat(dc, i, &pfd) {
+			return errs.New("failed to set pixel format for OpenGL context")
+		}
+		fakeRC := w32.WglCreateContext(dc)
+		if !w32.WglMakeCurrent(dc, fakeRC) {
+			return errs.New("failed to make fake OpenGL context current")
+		}
+		defer func() {
+			w32.WglMakeCurrent(0, 0)
+			w32.WglDeleteContext(fakeRC)
+		}()
+		rc := w32.WglCreateContextAttribsARB(dc, shareCtx, []int32{
+			w32.WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+			w32.WGL_CONTEXT_MINOR_VERSION_ARB, 2,
+			0,
+		})
+		if rc == 0 {
+			return errs.New("failed to create OpenGL context")
+		}
+		c.dc = dc
+		c.rc = rc
+		return nil
 	}
-	return 0
+	return errs.New("failed to choose pixel format for OpenGL context")
+}
+
+func (c *apiGLContext) apiMakeCurrent() {
+	w32.WglMakeCurrent(c.dc, c.rc)
+}
+
+func (c *apiGLContext) apiSwapBuffers() {
+	w32.SwapBuffers(c.dc)
+}
+
+func (c *apiGLContext) apiDestroy() {
+	if c.rc != 0 {
+		w32.WglDeleteContext(c.rc)
+		c.rc = 0
+	}
+}
+
+func apiClearOpenGLCurrentContext() {
+	w32.WglMakeCurrent(0, 0)
+	wndWithCurrentCtx = nil
 }

@@ -15,21 +15,21 @@ import (
 )
 
 func apiPrimaryDisplay() *Display {
-	return convertDarwinDisplay(mac.MainDisplayID())
+	return macConvertDisplay(mac.MainDisplayID())
 }
 
 func apiAllDisplays() []*Display {
 	displayIDs := mac.ActiveDisplayList()
 	result := make([]*Display, 0, len(displayIDs))
 	for _, id := range displayIDs {
-		if display := convertDarwinDisplay(id); display != nil {
+		if display := macConvertDisplay(id); display != nil {
 			result = append(result, display)
 		}
 	}
 	return result
 }
 
-func convertDarwinDisplay(id mac.DisplayID) *Display {
+func macConvertDisplay(id mac.DisplayID) *Display {
 	if mac.DisplayIsAsleep(id) {
 		return nil
 	}
@@ -52,6 +52,6 @@ func convertDarwinDisplay(id mac.DisplayID) *Display {
 	return &display
 }
 
-func transformCocoaY(y float32) float32 {
+func macTransformY(y float32) float32 {
 	return mac.DisplayBounds(mac.MainDisplayID()).Height - y
 }

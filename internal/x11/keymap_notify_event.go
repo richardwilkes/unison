@@ -25,6 +25,6 @@ func newKeymapNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *KeymapNotifyEvent) Process(conn *Conn) {
+func (e *KeymapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

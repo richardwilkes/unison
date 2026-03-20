@@ -57,6 +57,27 @@ func (d *macOpenDialog) SetAllowedExtensions(types ...string) {
 	}
 }
 
+func (d *macOpenDialog) RunModal() bool {
+	active := ActiveWindow()
+	if active != nil {
+		active.restoreHiddenCursor()
+	}
+	defer func() {
+		if active != nil && active.IsVisible() {
+			active.ToFront()
+		}
+	}()
+	return d.dialog.RunModal()
+}
+
+func (d *macOpenDialog) Path() string {
+	paths := d.Paths()
+	if len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
+}
+
 func (d *macOpenDialog) CanChooseFiles() bool {
 	return d.dialog.CanChooseFiles()
 }
@@ -89,27 +110,6 @@ func (d *macOpenDialog) SetAllowsMultipleSelection(allow bool) {
 	d.dialog.SetAllowsMultipleSelection(allow)
 }
 
-func (d *macOpenDialog) Path() string {
-	paths := d.Paths()
-	if len(paths) == 0 {
-		return ""
-	}
-	return paths[0]
-}
-
 func (d *macOpenDialog) Paths() []string {
 	return d.dialog.URLs().ArrayOfURLToStringSlice()
-}
-
-func (d *macOpenDialog) RunModal() bool {
-	active := ActiveWindow()
-	if active != nil {
-		active.restoreHiddenCursor()
-	}
-	defer func() {
-		if active != nil && active.IsVisible() {
-			active.ToFront()
-		}
-	}()
-	return d.dialog.RunModal()
 }

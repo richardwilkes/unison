@@ -39,6 +39,6 @@ func newExposeEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ExposeEvent) Process(conn *Conn) {
+func (e *ExposeEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

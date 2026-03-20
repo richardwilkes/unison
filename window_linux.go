@@ -13,10 +13,21 @@ import (
 	"image"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/x11"
 )
 
 type apiWindow struct {
 	// TODO: Need implementation
+	wnd *x11.Window
+}
+
+func x11FindWindow(id x11.WindowID) *Window {
+	for _, w := range windowList {
+		if w.wnd.wnd.ID == id {
+			return w
+		}
+	}
+	return nil
 }
 
 func (w *Window) apiInit(cfg *WindowConfig) error {
@@ -168,19 +179,19 @@ func (w *Window) apiDestroy() {
 	// TODO: Need implementation
 }
 
-func (w *Window) keyCallbackForPlatform(_ *Window, key KeyCode, _ int, action Action, mods Modifiers) {
+func (w *Window) x11KeyCallback(_ *Window, key KeyCode, _ int, action Action, mods Modifiers) {
 	// TODO: Is this actually needed? If so, needs fixups to work with the new API.
 	// if w.okToProcess() {
 	// 	if action == Release {
-	// 		mods &= ^keyToModifierForPlatform(key)
+	// 		mods &= ^x11KeyToModifiers(key)
 	// 	} else {
-	// 		mods |= keyToModifierForPlatform(key)
+	// 		mods |= x11KeyToModifiers(key)
 	// 	}
 	// 	w.commonKeyCallbackForPlatform(key, action, mods)
 	// }
 }
 
-func keyToModifierForPlatform(key KeyCode) Modifiers {
+func x11KeyToModifiers(key KeyCode) Modifiers {
 	// TODO: Is this actually needed? If so, needs fixups to work with the new API.
 	// switch key {
 	// case KeyLeftControl, KeyRightControl:

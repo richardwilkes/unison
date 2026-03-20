@@ -63,7 +63,7 @@ func newKeyPressEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *KeyPressEvent) Process(conn *Conn) {
+func (e *KeyPressEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -79,7 +79,7 @@ func newKeyReleaseEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *KeyReleaseEvent) Process(conn *Conn) {
+func (e *KeyReleaseEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -95,7 +95,7 @@ func newButtonPressEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ButtonPressEvent) Process(conn *Conn) {
+func (e *ButtonPressEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -111,7 +111,7 @@ func newButtonReleaseEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ButtonReleaseEvent) Process(conn *Conn) {
+func (e *ButtonReleaseEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -127,6 +127,6 @@ func newMotionNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *MotionNotifyEvent) Process(conn *Conn) {
+func (e *MotionNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

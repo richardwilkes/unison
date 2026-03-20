@@ -22,9 +22,9 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-var appUsesLightThemeValue = uint32(1)
+var w32AppUsesLightThemeValue = uint32(1)
 
-func isWindows10BuildOrGreater(build uint32) bool {
+func w32IsWindows10BuildOrGreater(build uint32) bool {
 	cond := w32.VerSetConditionMask(0, w32.VER_MAJORVERSION, w32.VER_GREATER_EQUAL)
 	cond = w32.VerSetConditionMask(cond, w32.VER_MINORVERSION, w32.VER_GREATER_EQUAL)
 	cond = w32.VerSetConditionMask(cond, w32.VER_BUILDNUMBER, w32.VER_GREATER_EQUAL)
@@ -37,7 +37,7 @@ func isWindows10BuildOrGreater(build uint32) bool {
 
 func apiBeginStartup() error {
 	apiFillKeyCodes()
-	if isWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+	if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 		w32.SetProcessDpiAwarenessContext(w32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	} else {
 		w32.SetProcessDpiAwareness(w32.PROCESS_PER_MONITOR_DPI_AWARE)
@@ -52,22 +52,22 @@ func apiLateInit() {
 		errs.Log(errs.NewWithCause("unable to open dark mode key", err), "key", "CURRENT_USER", "path", keyPath)
 		return
 	}
-	if err = updateTheme(k, true); err != nil {
+	if err = w32UpdateTheme(k, true); err != nil {
 		errs.Log(err)
 		xio.CloseIgnoringErrors(k)
 		return
 	}
-	go monitorThemeChanges(k)
+	go w32MonitorThemeChanges(k)
 }
 
-func monitorThemeChanges(key registry.Key) {
+func w32MonitorThemeChanges(key registry.Key) {
 	defer xio.CloseIgnoringErrors(key)
 	for {
 		if err := windows.RegNotifyChangeKeyValue(windows.Handle(key), false, windows.REG_NOTIFY_CHANGE_NAME|windows.REG_NOTIFY_CHANGE_LAST_SET, 0, false); err != nil {
 			errs.Log(err)
 			return
 		}
-		if err := updateTheme(key, false); err != nil {
+		if err := w32UpdateTheme(key, false); err != nil {
 			errs.Log(err)
 			return
 		}
@@ -92,23 +92,23 @@ func apiIsColorModeTrackingPossible() bool {
 }
 
 func apiIsDarkModeEnabled() bool {
-	return atomic.LoadUint32(&appUsesLightThemeValue) == 0
+	return atomic.LoadUint32(&w32AppUsesLightThemeValue) == 0
 }
 
 func apiDoubleClickInterval() time.Duration {
 	return w32.GetDoubleClickTime()
 }
 
-func updateTheme(k registry.Key, sync bool) error {
+func w32UpdateTheme(k registry.Key, sync bool) error {
 	val, _, err := k.GetIntegerValue("AppsUseLightTheme")
 	if err != nil {
 		return errs.NewWithCause("unable to retrieve current dark mode value", err)
 	}
 	var swapped bool
 	if val == 0 {
-		swapped = atomic.CompareAndSwapUint32(&appUsesLightThemeValue, 1, 0)
+		swapped = atomic.CompareAndSwapUint32(&w32AppUsesLightThemeValue, 1, 0)
 	} else {
-		swapped = atomic.CompareAndSwapUint32(&appUsesLightThemeValue, 0, 1)
+		swapped = atomic.CompareAndSwapUint32(&w32AppUsesLightThemeValue, 0, 1)
 	}
 	if swapped && currentThemeMode == thememode.Auto {
 		if sync {

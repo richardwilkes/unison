@@ -13,7 +13,6 @@ import (
 	"image"
 	"math"
 	"runtime"
-	"slices"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -41,10 +40,10 @@ type apiWindow struct {
 }
 
 func findWindowByHWND(wnd windows.HWND) *Window {
-	if i := slices.IndexFunc(windowList, func(w *Window) bool {
-		return w.wnd.wnd == wnd
-	}); i != -1 {
-		return windowList[i]
+	for _, w := range windowList {
+		if w.wnd.wnd == wnd {
+			return w
+		}
 	}
 	return nil
 }
@@ -246,7 +245,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			var frame w32.RECT
 			style := w.windowStyle()
 			exStyle := w.windowExStyle()
-			if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
+			if w32IsWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
 				w32.AdjustWindowRectExForDpi(&frame, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
 			} else {
 				w32.AdjustWindowRectEx(&frame, style, false, exStyle)
@@ -279,7 +278,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w.updateFramebufferTransparency()
 			return 0
 		case w32.WM_GETDPISCALEDSIZE:
-			if isWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+			if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 				var src, dst w32.RECT
 				style := w.windowStyle()
 				exStyle := w.windowExStyle()
@@ -298,7 +297,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				return 1
 			}
 		case w32.WM_DPICHANGED:
-			if isWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+			if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 				rect := (*w32.RECT)(unsafe.Pointer(lParam)) //nolint:govet // Required to access data
 				w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, rect.Left, rect.Top, rect.Right-rect.Left,
 					rect.Bottom-rect.Top, w32.SWP_NOZORDER|w32.SWP_NOACTIVATE)
@@ -376,8 +375,8 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 		cyIcon := w32.GetSystemMetrics(w32.SM_CYICON)
 		cxSmIcon := w32.GetSystemMetrics(w32.SM_CXSMICON)
 		cySmIcon := w32.GetSystemMetrics(w32.SM_CYSMICON)
-		big = createIconFromImage(chooseBestImage(images, cxIcon, cyIcon), 0, 0, true)
-		small = createIconFromImage(chooseBestImage(images, cxSmIcon, cySmIcon), 0, 0, true)
+		big = w32CreateIconFromImage(chooseBestImage(images, cxIcon, cyIcon), 0, 0, true)
+		small = w32CreateIconFromImage(chooseBestImage(images, cxSmIcon, cySmIcon), 0, 0, true)
 	} else {
 		big = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICON))
 		small = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICONSM))
@@ -439,7 +438,7 @@ func (w *Window) frameInsets() geom.Insets {
 	var rect w32.RECT
 	style := w.windowStyle()
 	exStyle := w.windowExStyle()
-	if isWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
+	if w32IsWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
 		w32.AdjustWindowRectExForDpi(&rect, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
 	} else {
 		w32.AdjustWindowRectEx(&rect, style, false, exStyle)

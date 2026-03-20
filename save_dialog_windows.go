@@ -17,19 +17,19 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-var _ SaveDialog = &winSaveDialog{}
+var _ SaveDialog = &w32SaveDialog{}
 
-type winSaveDialog struct {
+type w32SaveDialog struct {
 	fileCommon
 }
 
 func apiNewSaveDialog() SaveDialog {
-	d := &winSaveDialog{}
+	d := &w32SaveDialog{}
 	d.initialize()
 	return d
 }
 
-func (d *winSaveDialog) RunModal() bool {
+func (d *w32SaveDialog) RunModal() bool {
 	active := ActiveWindow()
 	if active != nil {
 		active.restoreHiddenCursor()
@@ -59,7 +59,7 @@ func (d *winSaveDialog) RunModal() bool {
 		options |= w32.FOSNoDereferenceLinks
 	}
 	saveDialog.SetOptions(options)
-	saveDialog.SetFileTypes(d.createFilters())
+	saveDialog.SetFileTypes(d.w32CreateFilters())
 	saveDialog.SetFileName(d.InitialFileName())
 	for _, ext := range d.extensions {
 		if ext != "*" {
@@ -80,7 +80,7 @@ func (d *winSaveDialog) RunModal() bool {
 	return true
 }
 
-func (d *winSaveDialog) createFilters() []w32.FileFilter {
+func (d *w32SaveDialog) w32CreateFilters() []w32.FileFilter {
 	filters := make([]w32.FileFilter, 0, len(d.extensions))
 	for _, ext := range d.extensions {
 		filters = append(filters, w32.FileFilter{

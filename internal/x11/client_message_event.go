@@ -43,6 +43,6 @@ func newClientMessageEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ClientMessageEvent) Process(conn *Conn) {
+func (e *ClientMessageEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

@@ -22,18 +22,18 @@ func apiNewDefaultMenuFactory() MenuFactory {
 	return &macMenuFactory{}
 }
 
-func (f *macMenuFactory) BarForWindowNoCreate(_ *Window) Menu {
+func (f *macMenuFactory) BarForWindow(_ *Window, initializer func(Menu)) Menu {
 	if f.bar == nil {
-		return nil
+		f.bar = f.macNewMenu(RootMenuID, "", nil)
+		initializer(f.bar)
+		InvokeTask(func() { mac.SetMainMenu(f.bar.menu) })
 	}
 	return f.bar
 }
 
-func (f *macMenuFactory) BarForWindow(_ *Window, initializer func(Menu)) Menu {
+func (f *macMenuFactory) BarForWindowNoCreate(_ *Window) Menu {
 	if f.bar == nil {
-		f.bar = f.newMenu(RootMenuID, "", nil)
-		initializer(f.bar)
-		InvokeTask(func() { mac.SetMainMenu(f.bar.menu) })
+		return nil
 	}
 	return f.bar
 }
@@ -43,10 +43,10 @@ func (f *macMenuFactory) BarIsPerWindow() bool {
 }
 
 func (f *macMenuFactory) NewMenu(id int, title string, updater func(Menu)) Menu {
-	return f.newMenu(id, title, updater)
+	return f.macNewMenu(id, title, updater)
 }
 
-func (f *macMenuFactory) newMenu(id int, title string, updater func(Menu)) *macMenu {
+func (f *macMenuFactory) macNewMenu(id int, title string, updater func(Menu)) *macMenu {
 	var u func(mac.Menu)
 	if updater != nil {
 		u = func(m mac.Menu) {

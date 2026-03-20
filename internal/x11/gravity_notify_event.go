@@ -34,6 +34,6 @@ func newGravityNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *GravityNotifyEvent) Process(conn *Conn) {
+func (e *GravityNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

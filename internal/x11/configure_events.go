@@ -48,7 +48,7 @@ func newConfigureRequestEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ConfigureRequestEvent) Process(conn *Conn) {
+func (e *ConfigureRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -86,6 +86,6 @@ func newConfigureNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ConfigureNotifyEvent) Process(conn *Conn) {
+func (e *ConfigureNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

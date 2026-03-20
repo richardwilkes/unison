@@ -18,19 +18,19 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-var _ OpenDialog = &winOpenDialog{}
+var _ OpenDialog = &w32OpenDialog{}
 
-type winOpenDialog struct {
+type w32OpenDialog struct {
 	fileCommon
 }
 
 func apiNewOpenDialog() OpenDialog {
-	d := &winOpenDialog{}
+	d := &w32OpenDialog{}
 	d.initialize()
 	return d
 }
 
-func (d *winOpenDialog) RunModal() bool {
+func (d *w32OpenDialog) RunModal() bool {
 	active := ActiveWindow()
 	if active != nil {
 		active.restoreHiddenCursor()
@@ -60,7 +60,7 @@ func (d *winOpenDialog) RunModal() bool {
 		options |= w32.FOSNoDereferenceLinks
 	}
 	openDialog.SetOptions(options)
-	openDialog.SetFileTypes(d.createFilters())
+	openDialog.SetFileTypes(d.w32CreateFilters())
 	d.paths = nil
 	if !openDialog.Show() {
 		return false
@@ -91,7 +91,7 @@ func (d *winOpenDialog) RunModal() bool {
 	return true
 }
 
-func (d *winOpenDialog) createFilters() []w32.FileFilter {
+func (d *w32OpenDialog) w32CreateFilters() []w32.FileFilter {
 	filters := make([]w32.FileFilter, 0, len(d.extensions)+1)
 	readable := make([]string, 0, len(d.extensions))
 	for _, ext := range d.extensions {

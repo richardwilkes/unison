@@ -32,6 +32,6 @@ func newResizeRequestEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *ResizeRequestEvent) Process(conn *Conn) {
+func (e *ResizeRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

@@ -39,7 +39,7 @@ func newEnterNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *EnterNotifyEvent) Process(conn *Conn) {
+func (e *EnterNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -72,6 +72,6 @@ func newLeaveNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *LeaveNotifyEvent) Process(conn *Conn) {
+func (e *LeaveNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

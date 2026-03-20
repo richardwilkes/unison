@@ -33,6 +33,6 @@ func newNoExposureEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *NoExposureEvent) Process(conn *Conn) {
+func (e *NoExposureEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

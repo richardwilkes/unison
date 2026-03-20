@@ -21,6 +21,6 @@ type ErrorEvent struct {
 }
 
 // Process the event.
-func (e *ErrorEvent) Process(_ *Conn) {
+func (e *ErrorEvent) Process(_conn *Conn) {
 	errs.Log(e.Error)
 }

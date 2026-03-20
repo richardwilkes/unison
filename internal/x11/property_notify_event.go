@@ -35,6 +35,6 @@ func newPropertyNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *PropertyNotifyEvent) Process(conn *Conn) {
+func (e *PropertyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

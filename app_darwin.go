@@ -18,9 +18,9 @@ import (
 )
 
 var (
-	pendingFilesLock   sync.Mutex
-	pendingFilesToOpen []string
-	okToIssueFileOpens bool
+	macPendingFilesLock   sync.Mutex
+	macPendingFilesToOpen []string
+	macMayIssueFileOpens  bool
 )
 
 func apiBeginStartup() error {
@@ -38,16 +38,16 @@ func apiBeginStartup() error {
 		mac.StopMainEventLoop()
 	}
 	mac.OpenFilesCallback = func(paths []string) {
-		pendingFilesLock.Lock()
-		defer pendingFilesLock.Unlock()
-		if okToIssueFileOpens {
+		macPendingFilesLock.Lock()
+		defer macPendingFilesLock.Unlock()
+		if macMayIssueFileOpens {
 			InvokeTask(func() {
 				if openFilesCallback != nil {
 					openFilesCallback(paths)
 				}
 			})
 		} else {
-			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
+			macPendingFilesToOpen = append(macPendingFilesToOpen, paths...)
 		}
 	}
 	// NOTE: Two additional app delegate callbacks exist: AppWillFinishLaunchingCallback and AppDidHideCallback.
@@ -55,7 +55,7 @@ func apiBeginStartup() error {
 		return err
 	}
 	apiFillKeyCodes()
-	initMacWindowCallbacks()
+	macInitWindowCallbacks()
 	mac.FinishLaunching()
 	return nil
 }
@@ -65,12 +65,12 @@ func apiLateInit() {
 }
 
 func apiFinalFinishStartup() {
-	pendingFilesLock.Lock()
-	defer pendingFilesLock.Unlock()
-	okToIssueFileOpens = true
-	if len(pendingFilesToOpen) != 0 {
-		paths := pendingFilesToOpen
-		pendingFilesToOpen = nil
+	macPendingFilesLock.Lock()
+	defer macPendingFilesLock.Unlock()
+	macMayIssueFileOpens = true
+	if len(macPendingFilesToOpen) != 0 {
+		paths := macPendingFilesToOpen
+		macPendingFilesToOpen = nil
 		if openFilesCallback != nil {
 			openFilesCallback(paths)
 		}

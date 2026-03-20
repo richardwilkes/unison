@@ -31,6 +31,6 @@ func newVisibilityNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *VisibilityNotifyEvent) Process(conn *Conn) {
+func (e *VisibilityNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

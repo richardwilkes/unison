@@ -22,7 +22,7 @@ type apiNativeCursor struct {
 }
 
 func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
-	icon := createIconFromImage(img, xhot, yhot, false)
+	icon := w32CreateIconFromImage(img, xhot, yhot, false)
 	if icon == 0 {
 		return nil
 	}
@@ -44,18 +44,18 @@ func (c *Cursor) apiDestroy() {
 }
 
 func apiArrowCursor() *Cursor {
-	return loadStdCursor(w32.OCR_NORMAL)
+	return w32LoadStdCursor(w32.OCR_NORMAL)
 }
 
 func apiPointingCursor() *Cursor {
-	return loadStdCursor(w32.OCR_HAND)
+	return w32LoadStdCursor(w32.OCR_HAND)
 }
 
 func apiTextCursor() *Cursor {
-	return loadStdCursor(w32.OCR_IBEAM)
+	return w32LoadStdCursor(w32.OCR_IBEAM)
 }
 
-func loadStdCursor(id int) *Cursor {
+func w32LoadStdCursor(id int) *Cursor {
 	return &Cursor{
 		cursor: apiNativeCursor{
 			cursor: w32.HCURSOR(w32.LoadImageW(0, w32.MakeIntResourceW(id), w32.IMAGE_CURSOR, 0, 0,
@@ -65,7 +65,7 @@ func loadStdCursor(id int) *Cursor {
 	}
 }
 
-func createIconFromImage(img *image.NRGBA, hotX, hotY int, icon bool) w32.HICON {
+func w32CreateIconFromImage(img *image.NRGBA, hotX, hotY int, icon bool) w32.HICON {
 	dc := w32.GetDC(0)
 	if dc == 0 {
 		return 0

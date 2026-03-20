@@ -65,7 +65,7 @@ func (m Modifiers) macEventModifierFlags() mac.EventModifierFlags {
 	return mods
 }
 
-func modifiersFromMacEventModifierFlags(flags mac.EventModifierFlags) Modifiers {
+func macModifiersFromEventModifierFlags(flags mac.EventModifierFlags) Modifiers {
 	var mods Modifiers
 	if flags&mac.EventModifierFlagShift != 0 {
 		mods |= ShiftModifier

@@ -41,7 +41,7 @@ func newCirculateNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *CirculateNotifyEvent) Process(conn *Conn) {
+func (e *CirculateNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -57,6 +57,6 @@ func newCirculateRequestEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *CirculateRequestEvent) Process(conn *Conn) {
+func (e *CirculateRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

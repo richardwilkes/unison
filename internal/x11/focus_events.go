@@ -44,7 +44,7 @@ func newFocusInEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *FocusInEvent) Process(conn *Conn) {
+func (e *FocusInEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -60,6 +60,6 @@ func newFocusOutEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *FocusOutEvent) Process(conn *Conn) {
+func (e *FocusOutEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

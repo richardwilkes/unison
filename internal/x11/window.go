@@ -11,3 +11,8 @@ package x11
 
 // WindowID holds an ID that refers to a Window.
 type WindowID uint32
+
+// Window represents an X11 window.
+type Window struct {
+	ID WindowID
+}

@@ -12,7 +12,6 @@ package unison
 import (
 	"image"
 	"log/slog"
-	"slices"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -26,46 +25,46 @@ type apiWindow struct {
 	maximized      bool
 }
 
-func findWindowByNSWindow(macWnd mac.Window) *Window {
-	if i := slices.IndexFunc(windowList, func(w *Window) bool {
-		return w.wnd.wnd == macWnd
-	}); i != -1 {
-		return windowList[i]
+func macFindWindow(macWnd mac.Window) *Window {
+	for _, w := range windowList {
+		if w.wnd.wnd == macWnd {
+			return w
+		}
 	}
 	return nil
 }
 
-func initMacWindowCallbacks() {
+func macInitWindowCallbacks() {
 	mac.WindowKeyPressedCallback = func(macWnd mac.Window, key int, mods uint) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.keyPressed(rawScanCodeToKeyCodeMap[key], translateModifiers(mac.EventModifierFlags(mods)))
+		if w := macFindWindow(macWnd); w != nil {
+			w.keyPressed(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window key pressed callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowKeyTypedCallback = func(macWnd mac.Window, ch rune) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.runeTyped(ch)
 		} else {
 			slog.Warn("received window key typed callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowKeyReleasedCallback = func(macWnd mac.Window, key int, mods uint) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.keyReleased(rawScanCodeToKeyCodeMap[key], translateModifiers(mac.EventModifierFlags(mods)))
+		if w := macFindWindow(macWnd); w != nil {
+			w.keyReleased(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window key released callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowShouldCloseCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.nativeRequestClose()
 		} else {
 			slog.Warn("received window should close callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowDidResizeCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.glCtx.ctx.Update()
 			maximized := w.wnd.wnd.Zoomed()
 			if w.wnd.maximized != maximized {
@@ -90,7 +89,7 @@ func initMacWindowCallbacks() {
 		}
 	}
 	mac.WindowDidMoveCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.glCtx.ctx.Update()
 			w.moved()
 		} else {
@@ -98,7 +97,7 @@ func initMacWindowCallbacks() {
 		}
 	}
 	mac.WindowMinimizeCallback = func(macWnd mac.Window, minimized bool) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			if w.MinimizedCallback != nil {
 				w.MinimizedCallback(minimized)
 			}
@@ -107,28 +106,28 @@ func initMacWindowCallbacks() {
 		}
 	}
 	mac.WindowDidBecomeKeyCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.gainedFocus()
 		} else {
 			slog.Warn("received window did become key callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowDidResignKeyCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.lostFocus()
 		} else {
 			slog.Warn("received window did resign key callback for unknown window", "window", macWnd, "error", errs.New("here"))
 		}
 	}
 	mac.WindowCursorUpdateCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
 		} else {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowMouseEnterCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
 			w.mouseEnter(w.MouseLocation(), w.lastKeyModifiers)
 		} else {
@@ -136,7 +135,7 @@ func initMacWindowCallbacks() {
 		}
 	}
 	mac.WindowMouseExitCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
 			w.mouseExit()
 		} else {
@@ -144,28 +143,28 @@ func initMacWindowCallbacks() {
 		}
 	}
 	mac.WindowMouseMovedCallback = func(macWnd mac.Window, pt geom.Point) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.nativeMouseMoved(pt)
 		} else {
 			slog.Warn("received window mouse moved callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowScrollCallback = func(macWnd mac.Window, deltaX, deltaY float32, pixels bool) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.nativeMouseWheel(geom.NewPoint(deltaX, deltaY), pixels)
 		} else {
 			slog.Warn("received window scroll callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, pressed bool, mods uint) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
-			w.nativeMouseClick(button, pressed, translateModifiers(mac.EventModifierFlags(mods)))
+		if w := macFindWindow(macWnd); w != nil {
+			w.nativeMouseClick(button, pressed, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse click callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowUpdateLayerCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.glCtx.ctx.Update()
 			w.draw()
 		} else {
@@ -173,7 +172,7 @@ func initMacWindowCallbacks() {
 		}
 	}
 	mac.WindowRedrawCallback = func(macWnd mac.Window) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.draw()
 		} else {
 			slog.Warn("received window draw rect callback for unknown window", "window", macWnd)
@@ -181,14 +180,14 @@ func initMacWindowCallbacks() {
 	}
 	mac.WindowScaleCallback = func(macWnd mac.Window, scale geom.Point) {
 		// This will be called once before the window is finished initializing, so just ignore any unknown windows here.
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			if w.ContentScaleCallback != nil {
 				w.ContentScaleCallback(scale)
 			}
 		}
 	}
 	mac.WindowDropCallback = func(macWnd mac.Window, filePaths []string) {
-		if w := findWindowByNSWindow(macWnd); w != nil {
+		if w := macFindWindow(macWnd); w != nil {
 			w.fileDrop(filePaths)
 		} else {
 			slog.Warn("received window drop callback for unknown window", "window", macWnd)
@@ -251,14 +250,14 @@ func (w *Window) apiDisplay() *Display {
 
 func (w *Window) apiFrameRect() geom.Rect {
 	r := w.wnd.wnd.Frame()
-	r.Y = transformCocoaY(r.Bottom())
+	r.Y = macTransformY(r.Bottom())
 	return r
 }
 
 func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
-	contentRect.Y = transformCocoaY(contentRect.Bottom())
+	contentRect.Y = macTransformY(contentRect.Bottom())
 	frameRect := w.wnd.wnd.FrameRectForContentRect(contentRect)
-	frameRect.Y = transformCocoaY(frameRect.Bottom())
+	frameRect.Y = macTransformY(frameRect.Bottom())
 	return frameRect
 }
 
@@ -272,19 +271,19 @@ func (w *Window) apiEnsureOnDisplay() {
 
 func (w *Window) apiContentRect() geom.Rect {
 	r := w.wnd.wnd.ContentRectForFrameRect(w.wnd.wnd.Frame())
-	r.Y = transformCocoaY(r.Bottom())
+	r.Y = macTransformY(r.Bottom())
 	return r
 }
 
 func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
-	frameRect.Y = transformCocoaY(frameRect.Bottom())
+	frameRect.Y = macTransformY(frameRect.Bottom())
 	contentRect := w.wnd.wnd.ContentRectForFrameRect(frameRect)
-	contentRect.Y = transformCocoaY(contentRect.Bottom())
+	contentRect.Y = macTransformY(contentRect.Bottom())
 	return contentRect
 }
 
 func (w *Window) apiSetContentRect(rect geom.Rect) {
-	rect.Y = transformCocoaY(rect.Bottom())
+	rect.Y = macTransformY(rect.Bottom())
 	w.wnd.wnd.SetFrame(w.wnd.wnd.FrameRectForContentRect(rect))
 }
 
@@ -293,7 +292,7 @@ func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 }
 
 func (w *Window) apiCurrentKeyModifiers() Modifiers {
-	return modifiersFromMacEventModifierFlags(mac.CurrentModifierFlags())
+	return macModifiersFromEventModifierFlags(mac.CurrentModifierFlags())
 }
 
 func (w *Window) apiUpdateCursorImage() {

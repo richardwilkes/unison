@@ -43,6 +43,6 @@ func newGraphicsExposureEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *GraphicsExposureEvent) Process(conn *Conn) {
+func (e *GraphicsExposureEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

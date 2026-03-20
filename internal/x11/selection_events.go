@@ -36,7 +36,7 @@ func newSelectionClearEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *SelectionClearEvent) Process(conn *Conn) {
+func (e *SelectionClearEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -67,7 +67,7 @@ func newSelectionRequestEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *SelectionRequestEvent) Process(conn *Conn) {
+func (e *SelectionRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }
 
@@ -96,6 +96,6 @@ func newSelectionNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *SelectionNotifyEvent) Process(conn *Conn) {
+func (e *SelectionNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

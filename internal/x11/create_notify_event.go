@@ -43,6 +43,6 @@ func newCreateNotifyEvent(r *Reader) Event {
 }
 
 // Process the event.
-func (e *CreateNotifyEvent) Process(conn *Conn) {
+func (e *CreateNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
 }

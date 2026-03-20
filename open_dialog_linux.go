@@ -23,79 +23,39 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 )
 
-var _ OpenDialog = &linuxOpenDialog{}
+var _ OpenDialog = &x11OpenDialog{}
 
-type linuxOpenDialog struct {
+type x11OpenDialog struct {
 	fallback OpenDialog
 }
 
 func apiNewOpenDialog() OpenDialog {
-	return &linuxOpenDialog{fallback: NewCommonOpenDialog()}
+	return &x11OpenDialog{fallback: NewCommonOpenDialog()}
 }
 
-func (d *linuxOpenDialog) InitialDirectory() string {
+func (d *x11OpenDialog) InitialDirectory() string {
 	return d.fallback.InitialDirectory()
 }
 
-func (d *linuxOpenDialog) SetInitialDirectory(dir string) {
+func (d *x11OpenDialog) SetInitialDirectory(dir string) {
 	d.fallback.SetInitialDirectory(dir)
 }
 
-func (d *linuxOpenDialog) AllowedExtensions() []string {
+func (d *x11OpenDialog) AllowedExtensions() []string {
 	return d.fallback.AllowedExtensions()
 }
 
-func (d *linuxOpenDialog) SetAllowedExtensions(extensions ...string) {
+func (d *x11OpenDialog) SetAllowedExtensions(extensions ...string) {
 	d.fallback.SetAllowedExtensions(extensions...)
 }
 
-func (d *linuxOpenDialog) Path() string {
-	return d.fallback.Path()
-}
-
-func (d *linuxOpenDialog) CanChooseFiles() bool {
-	return d.fallback.CanChooseFiles()
-}
-
-func (d *linuxOpenDialog) SetCanChooseFiles(canChoose bool) {
-	d.fallback.SetCanChooseFiles(canChoose)
-}
-
-func (d *linuxOpenDialog) CanChooseDirectories() bool {
-	return d.fallback.CanChooseDirectories()
-}
-
-func (d *linuxOpenDialog) SetCanChooseDirectories(canChoose bool) {
-	d.fallback.SetCanChooseDirectories(canChoose)
-}
-
-func (d *linuxOpenDialog) ResolvesAliases() bool {
-	return d.fallback.ResolvesAliases()
-}
-
-func (d *linuxOpenDialog) SetResolvesAliases(resolves bool) {
-	d.fallback.SetResolvesAliases(resolves)
-}
-
-func (d *linuxOpenDialog) AllowsMultipleSelection() bool {
-	return d.fallback.AllowsMultipleSelection()
-}
-
-func (d *linuxOpenDialog) SetAllowsMultipleSelection(allow bool) {
-	d.fallback.SetAllowsMultipleSelection(allow)
-}
-
-func (d *linuxOpenDialog) Paths() []string {
-	return d.fallback.Paths()
-}
-
-func (d *linuxOpenDialog) RunModal() bool {
+func (d *x11OpenDialog) RunModal() bool {
 	kdialog, err := exec.LookPath("kdialog")
 	if err != nil {
 		kdialog = ""
 	}
 	if os.Getenv("KDE_FULL_SESSION") != "" && kdialog != "" {
-		return d.runKDialog(kdialog)
+		return d.x11RunKDialog(kdialog)
 	}
 
 	var zenity string
@@ -103,15 +63,55 @@ func (d *linuxOpenDialog) RunModal() bool {
 		zenity = ""
 	}
 	if zenity != "" {
-		return d.runZenity(zenity)
+		return d.x11RunZenity(zenity)
 	}
 	if kdialog != "" {
-		return d.runKDialog(kdialog)
+		return d.x11RunKDialog(kdialog)
 	}
 	return d.fallback.RunModal()
 }
 
-func (d *linuxOpenDialog) runKDialog(kdialog string) bool {
+func (d *x11OpenDialog) Path() string {
+	return d.fallback.Path()
+}
+
+func (d *x11OpenDialog) CanChooseFiles() bool {
+	return d.fallback.CanChooseFiles()
+}
+
+func (d *x11OpenDialog) SetCanChooseFiles(canChoose bool) {
+	d.fallback.SetCanChooseFiles(canChoose)
+}
+
+func (d *x11OpenDialog) CanChooseDirectories() bool {
+	return d.fallback.CanChooseDirectories()
+}
+
+func (d *x11OpenDialog) SetCanChooseDirectories(canChoose bool) {
+	d.fallback.SetCanChooseDirectories(canChoose)
+}
+
+func (d *x11OpenDialog) ResolvesAliases() bool {
+	return d.fallback.ResolvesAliases()
+}
+
+func (d *x11OpenDialog) SetResolvesAliases(resolves bool) {
+	d.fallback.SetResolvesAliases(resolves)
+}
+
+func (d *x11OpenDialog) AllowsMultipleSelection() bool {
+	return d.fallback.AllowsMultipleSelection()
+}
+
+func (d *x11OpenDialog) SetAllowsMultipleSelection(allow bool) {
+	d.fallback.SetAllowsMultipleSelection(allow)
+}
+
+func (d *x11OpenDialog) Paths() []string {
+	return d.fallback.Paths()
+}
+
+func (d *x11OpenDialog) x11RunKDialog(kdialog string) bool {
 	cmd := exec.Command(kdialog)
 	if d.CanChooseDirectories() {
 		cmd.Args = append(cmd.Args, "--getexistingdirectory")
@@ -123,15 +123,15 @@ func (d *linuxOpenDialog) runKDialog(kdialog string) bool {
 	}
 	cmd.Args = append(cmd.Args, d.InitialDirectory()+"/")
 	if d.CanChooseFiles() {
-		allowed := d.prepExt()
+		allowed := d.x11PrepExt()
 		if len(allowed) != 0 {
 			cmd.Args = append(cmd.Args, fmt.Sprintf(i18n.Text("Readable Files (%s)"), strings.Join(allowed, " ")))
 		}
 	}
-	return d.runModal(cmd, "\n")
+	return d.x11RunModal(cmd, "\n")
 }
 
-func (d *linuxOpenDialog) runZenity(zenity string) bool {
+func (d *x11OpenDialog) x11RunZenity(zenity string) bool {
 	cmd := exec.Command(zenity, "--file-selection", "--filename="+d.InitialDirectory()+"/")
 	if d.AllowsMultipleSelection() {
 		cmd.Args = append(cmd.Args, "--multiple")
@@ -139,15 +139,15 @@ func (d *linuxOpenDialog) runZenity(zenity string) bool {
 	if d.CanChooseDirectories() {
 		cmd.Args = append(cmd.Args, "--directory")
 	} else {
-		allowed := d.prepExt()
+		allowed := d.x11PrepExt()
 		if len(allowed) != 0 {
 			cmd.Args = append(cmd.Args, "--file-filter="+strings.Join(allowed, " "))
 		}
 	}
-	return d.runModal(cmd, "|")
+	return d.x11RunModal(cmd, "|")
 }
 
-func (d *linuxOpenDialog) prepExt() []string {
+func (d *x11OpenDialog) x11PrepExt() []string {
 	allowed := d.fallback.AllowedExtensions()
 	if len(allowed) != 0 {
 		revised := make([]string, len(allowed))
@@ -159,17 +159,17 @@ func (d *linuxOpenDialog) prepExt() []string {
 	return allowed
 }
 
-func (d *linuxOpenDialog) runModal(cmd *exec.Cmd, splitOn string) bool {
+func (d *x11OpenDialog) x11RunModal(cmd *exec.Cmd, splitOn string) bool {
 	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
 	if err != nil {
 		errs.Log(err)
 	}
 	wnd.SetFrameRect(geom.NewRect(-10000, -10000, 1, 1))
-	InvokeTaskAfter(func() { go d.runCmd(wnd, cmd, splitOn) }, time.Millisecond)
+	InvokeTaskAfter(func() { go d.x11RunCmd(wnd, cmd, splitOn) }, time.Millisecond)
 	return wnd.RunModal() == ModalResponseOK
 }
 
-func (d *linuxOpenDialog) runCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
+func (d *x11OpenDialog) x11RunCmd(wnd *Window, cmd *exec.Cmd, splitOn string) {
 	code := ModalResponseCancel
 	defer func() { InvokeTask(func() { wnd.StopModal(code) }) }()
 	out, err := cmd.Output()

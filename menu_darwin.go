@@ -26,6 +26,10 @@ func (m *macMenu) Factory() MenuFactory {
 	return m.factory
 }
 
+func (m *macMenu) ID() int {
+	return m.id
+}
+
 func (m *macMenu) IsSame(other Menu) bool {
 	if m2, ok := other.(*macMenu); ok {
 		return m.menu == m2.menu
@@ -92,38 +96,34 @@ func (m *macMenu) InsertSeparator(atIndex int, onlyIfNeeded bool) {
 			}
 		}
 	}
-	m.insert(mac.NewSeparatorMenuItem(), atIndex)
+	m.macInsert(mac.NewSeparatorMenuItem(), atIndex)
 }
 
 func (m *macMenu) InsertItem(atIndex int, mi MenuItem) {
 	if mi != nil {
 		if item, ok := mi.(*macMenuItem); ok {
-			m.insert(item.item, atIndex)
+			m.macInsert(item.item, atIndex)
 		}
 	}
 }
 
 func (m *macMenu) InsertMenu(atIndex int, subMenu Menu) {
 	if menu, ok := subMenu.(*macMenu); ok {
-		m.insertMenu(atIndex, menu)
-	}
-}
-
-func (m *macMenu) insertMenu(atIndex int, subMenu *macMenu) {
-	m.insert(newMacMenuItemForSubMenu(m.factory, subMenu), atIndex)
-	switch subMenu.id {
-	case AppMenuID:
-		if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
-			if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
-				if menu, ok := servicesMenu.(*macMenu); ok {
-					mac.SetServicesMenu(menu.menu)
+		m.macInsert(newMacMenuItemForSubMenu(m.factory, menu), atIndex)
+		switch menu.id {
+		case AppMenuID:
+			if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
+				if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
+					if menu, ok = servicesMenu.(*macMenu); ok {
+						mac.SetServicesMenu(menu.menu)
+					}
 				}
 			}
+		case WindowMenuID:
+			mac.SetWindowsMenu(menu.menu)
+		case HelpMenuID:
+			mac.SetHelpMenu(menu.menu)
 		}
-	case WindowMenuID:
-		mac.SetWindowsMenu(subMenu.menu)
-	case HelpMenuID:
-		mac.SetHelpMenu(subMenu.menu)
 	}
 }
 
@@ -135,10 +135,6 @@ func (m *macMenu) RemoveItem(index int) {
 
 func (m *macMenu) RemoveAll() {
 	m.menu.RemoveAll()
-}
-
-func (m *macMenu) ID() int {
-	return m.id
 }
 
 func (m *macMenu) Title() string {
@@ -164,7 +160,7 @@ func (m *macMenu) Dispose() {
 	m.menu.Release()
 }
 
-func (m *macMenu) insert(mi mac.MenuItem, index int) {
+func (m *macMenu) macInsert(mi mac.MenuItem, index int) {
 	if index < 0 {
 		index = m.Count()
 	}

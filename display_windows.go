@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	monitorCallbackPtr = w32.NewEnumDisplayMonitorsCallback(monitorCallback)
-	displays           []*Display
+	w32MonitorCallbackPtr = w32.NewEnumDisplayMonitorsCallback(monitorCallback)
+	w32Displays           []*Display
 )
 
 func apiPrimaryDisplay() *Display {
@@ -29,13 +29,13 @@ func apiPrimaryDisplay() *Display {
 }
 
 func apiAllDisplays() []*Display {
-	displays = nil
-	w32.EnumDisplayMonitors(0, nil, monitorCallbackPtr, 0)
-	return displays
+	w32Displays = nil
+	w32.EnumDisplayMonitors(0, nil, w32MonitorCallbackPtr, 0)
+	return w32Displays
 }
 
 func monitorCallback(monitor w32.HMONITOR, _hdc w32.HDC, _bounds w32.RECT, _lParam uintptr) bool {
-	displays = append(displays, monitorInfo(monitor))
+	w32Displays = append(w32Displays, monitorInfo(monitor))
 	return true
 }
 
