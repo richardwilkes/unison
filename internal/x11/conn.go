@@ -146,16 +146,13 @@ func NewConn() (*Conn, error) {
 	if c.utf8StringAtom, err = c.InternAtom("UTF8_STRING", false); err != nil {
 		return nil, err
 	}
-	var windowID WindowID
-	if windowID, err = c.newWindowID(); err != nil {
+	if c.helperWindow, err = c.newWindowID(); err != nil {
 		return nil, err
 	}
-	var result *CreateNotifyEvent
-	if result, err = c.CreateWindow(c.RootWindow(), windowID, 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
+	if err = c.CreateWindow(c.RootWindow(), c.helperWindow, 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
 		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); err != nil {
 		return nil, err
 	}
-	c.helperWindow = result.Window
 	return &c, nil
 }
 
@@ -656,12 +653,8 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 
 // CreateWindow creates a new window with the specified parameters and attributes, returning a CreateNotifyEvent
 // containing the ID of the newly created window if successful.
-func (c *Conn) CreateWindow(parent, window WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) (*CreateNotifyEvent, error) {
-	var result *CreateNotifyEvent
-	req := newRequest(c, true, true, func(r *Reader) {
-		// TODO: This may not be the correct way to get this data... we might have to call waitForEvent instead
-		result, _ = newCreateNotifyEvent(r).(*CreateNotifyEvent) //nolint:errcheck // A nil result is OK here
-	})
+func (c *Conn) CreateWindow(parent, window WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) error {
+	req := newRequest(c, true, false, nil)
 	valueList := attributes.toValues(valueMask)
 	size := 32 + 4*len(valueList)
 	w := NewWriter(size)
@@ -683,8 +676,7 @@ func (c *Conn) CreateWindow(parent, window WindowID, x, y int16, width, height, 
 	}
 	w.ZeroTo4ByteAlignment()
 	c.newRequest(w, req)
-	err := req.Reply()
-	return result, err
+	return req.Check()
 }
 
 // GetInputFocus returns the current input focus window and the revert-to value.
