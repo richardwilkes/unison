@@ -146,10 +146,7 @@ func NewConn() (*Conn, error) {
 	if c.utf8StringAtom, err = c.InternAtom("UTF8_STRING", false); err != nil {
 		return nil, err
 	}
-	if c.helperWindow, err = c.newWindowID(); err != nil {
-		return nil, err
-	}
-	if err = c.CreateWindow(c.RootWindow(), c.helperWindow, 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
+	if c.helperWindow, err = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
 		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); err != nil {
 		return nil, err
 	}
@@ -653,7 +650,11 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 
 // CreateWindow creates a new window with the specified parameters and attributes, returning a CreateNotifyEvent
 // containing the ID of the newly created window if successful.
-func (c *Conn) CreateWindow(parent, window WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) error {
+func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) (WindowID, error) {
+	windowID, err := c.newWindowID()
+	if err != nil {
+		return WindowNone, err
+	}
 	req := newRequest(c, true, false, nil)
 	valueList := attributes.toValues(valueMask)
 	size := 32 + 4*len(valueList)
@@ -661,7 +662,7 @@ func (c *Conn) CreateWindow(parent, window WindowID, x, y int16, width, height, 
 	w.Byte(opcodeCreateWindow)
 	w.Byte(depth)
 	w.Uint16(uint16(size / 4))
-	w.WindowID(window)
+	w.WindowID(windowID)
 	w.WindowID(parent)
 	w.Int16(x)
 	w.Int16(y)
@@ -676,7 +677,7 @@ func (c *Conn) CreateWindow(parent, window WindowID, x, y int16, width, height, 
 	}
 	w.ZeroTo4ByteAlignment()
 	c.newRequest(w, req)
-	return req.Check()
+	return windowID, req.Check()
 }
 
 // GetInputFocus returns the current input focus window and the revert-to value.
