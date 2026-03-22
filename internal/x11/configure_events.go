@@ -47,6 +47,16 @@ func newConfigureRequestEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *ConfigureRequestEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *ConfigureRequestEvent) TargetWindow() WindowID {
+	return e.Window
+}
+
 // Process the event.
 func (e *ConfigureRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
@@ -83,6 +93,16 @@ func newConfigureNotifyEvent(r *Reader) Event {
 	e.OverrideRedirect = r.Bool()
 	r.Skip(1)
 	return &e
+}
+
+// ID returns the event code.
+func (e *ConfigureNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *ConfigureNotifyEvent) TargetWindow() WindowID {
+	return e.Event
 }
 
 // Process the event.

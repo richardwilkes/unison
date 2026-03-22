@@ -10,10 +10,9 @@
 package unison
 
 func (c *Clipboard) apiGetText() string {
-	// TODO: Need implementation
-	return ""
+	return x11Conn.GetClipboardText()
 }
 
 func (c *Clipboard) apiSetText(str string) {
-	// TODO: Need implementation
+	x11Conn.SetClipboardText(str)
 }

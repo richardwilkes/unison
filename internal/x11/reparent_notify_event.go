@@ -38,6 +38,16 @@ func newReparentNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *ReparentNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *ReparentNotifyEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
 // Process the event.
 func (e *ReparentNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement

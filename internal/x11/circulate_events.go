@@ -14,8 +14,8 @@ var (
 	_ Event = &CirculateRequestEvent{}
 )
 
-// CirculateNotifyEvent represents an X11 CirculateNotify event.
-type CirculateNotifyEvent struct {
+// CirculateEvent represents an X11 generic circulate event.
+type CirculateEvent struct {
 	Event    WindowID
 	Window   WindowID
 	Sequence uint16
@@ -23,7 +23,7 @@ type CirculateNotifyEvent struct {
 	Place    byte
 }
 
-func (e *CirculateNotifyEvent) read(r *Reader) {
+func (e *CirculateEvent) read(r *Reader) {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
@@ -32,6 +32,21 @@ func (e *CirculateNotifyEvent) read(r *Reader) {
 	r.Skip(4)
 	e.Place = r.Byte()
 	r.Skip(3)
+}
+
+// ID returns the event code.
+func (e *CirculateEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *CirculateEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
+// CirculateNotifyEvent represents an X11 CirculateNotify event.
+type CirculateNotifyEvent struct {
+	CirculateEvent
 }
 
 func newCirculateNotifyEvent(r *Reader) Event {
@@ -47,7 +62,7 @@ func (e *CirculateNotifyEvent) Process(_conn *Conn) {
 
 // CirculateRequestEvent represents an X11 CirculateRequest event.
 type CirculateRequestEvent struct {
-	CirculateNotifyEvent
+	CirculateEvent
 }
 
 func newCirculateRequestEvent(r *Reader) Event {

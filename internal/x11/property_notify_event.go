@@ -34,6 +34,16 @@ func newPropertyNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *PropertyNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *PropertyNotifyEvent) TargetWindow() WindowID {
+	return e.Window
+}
+
 // Process the event.
 func (e *PropertyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement

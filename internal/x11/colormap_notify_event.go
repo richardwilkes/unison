@@ -24,7 +24,7 @@ type ColormapNotifyEvent struct {
 func newColormapNotifyEvent(r *Reader) Event {
 	var e ColormapNotifyEvent
 	e.Code = r.Byte()
-	r.Skip(1)
+	r.Skip(3)
 	e.Sequence = r.Uint16()
 	e.Window = WindowID(r.Uint32())
 	e.Colormap = ColorMapID(r.Uint32())
@@ -32,6 +32,16 @@ func newColormapNotifyEvent(r *Reader) Event {
 	e.State = r.Byte()
 	r.Skip(2)
 	return &e
+}
+
+// ID returns the event code.
+func (e *ColormapNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *ColormapNotifyEvent) TargetWindow() WindowID {
+	return e.Window
 }
 
 // Process the event.

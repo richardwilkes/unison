@@ -14,8 +14,8 @@ var (
 	_ Event = &LeaveNotifyEvent{}
 )
 
-// EnterNotifyEvent represents an X11 EnterNotify event.
-type EnterNotifyEvent struct {
+// EnterLeaveEvent represents an X11 generic enter/leave event.
+type EnterLeaveEvent struct {
 	Root            WindowID
 	Event           WindowID
 	Child           WindowID
@@ -38,12 +38,7 @@ func newEnterNotifyEvent(r *Reader) Event {
 	return &e
 }
 
-// Process the event.
-func (e *EnterNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-}
-
-func (e *EnterNotifyEvent) read(r *Reader) {
+func (e *EnterLeaveEvent) read(r *Reader) {
 	e.Code = r.Byte()
 	e.Detail = r.Byte()
 	e.Sequence = r.Uint16()
@@ -60,9 +55,29 @@ func (e *EnterNotifyEvent) read(r *Reader) {
 	e.SameScreenFocus = r.Byte()
 }
 
+// ID returns the event code.
+func (e *EnterLeaveEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *EnterLeaveEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
+// EnterNotifyEvent represents an X11 EnterNotify event.
+type EnterNotifyEvent struct {
+	EnterLeaveEvent
+}
+
+// Process the event.
+func (e *EnterNotifyEvent) Process(_conn *Conn) {
+	// TODO: Implement
+}
+
 // LeaveNotifyEvent represents an X11 LeaveNotify event.
 type LeaveNotifyEvent struct {
-	EnterNotifyEvent
+	EnterLeaveEvent
 }
 
 func newLeaveNotifyEvent(r *Reader) Event {

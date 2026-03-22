@@ -32,6 +32,16 @@ func newMappingNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *MappingNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *MappingNotifyEvent) TargetWindow() WindowID {
+	return WindowNone
+}
+
 // Process the event.
 func (e *MappingNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement

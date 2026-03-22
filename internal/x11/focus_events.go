@@ -32,6 +32,16 @@ func (e *FocusEvent) read(r *Reader) {
 	r.Skip(23)
 }
 
+// ID returns the event code.
+func (e *FocusEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *FocusEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
 // FocusInEvent represents an X11 FocusIn event.
 type FocusInEvent struct {
 	FocusEvent

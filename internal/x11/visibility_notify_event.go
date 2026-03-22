@@ -30,6 +30,16 @@ func newVisibilityNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *VisibilityNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *VisibilityNotifyEvent) TargetWindow() WindowID {
+	return e.Window
+}
+
 // Process the event.
 func (e *VisibilityNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement

@@ -37,7 +37,7 @@ func NewError(c *Conn, r *Reader) *Error {
 	name, ok := c.errorCodeMap[e.Code]
 	c.errorCodeLock.RUnlock()
 	if ok {
-		e.Name = name
+		e.Name = name + " error"
 	} else {
 		e.Name = "unknown error"
 	}

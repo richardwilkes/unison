@@ -31,15 +31,16 @@ func apiBeginStartup() error {
 		return err
 	}
 	apiFillKeyCodes()
+	// TODO: Need additional implementation?
 	return nil
 }
 
 func apiLateInit() {
-	// TODO: Need implementation
+	// TODO: Need implementation?
 }
 
 func apiFinalFinishStartup() {
-	// TODO: Need implementation
+	// TODO: Need implementation?
 }
 
 func apiTerminate() error {
@@ -48,16 +49,14 @@ func apiTerminate() error {
 }
 
 func apiBeep() {
-	// TODO: Need implementation
+	x11Conn.Bell(0)
 }
 
 func apiIsColorModeTrackingPossible() bool {
-	// TODO: Need implementation
 	return false
 }
 
 func apiIsDarkModeEnabled() bool {
-	// TODO: Need implementation
 	return false
 }
 

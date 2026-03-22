@@ -81,6 +81,33 @@ func (w *Writer) Byte(v byte) {
 	w.buffer = append(w.buffer, v)
 }
 
+// Int8 appends a single int8 value to the buffer.
+func (w *Writer) Int8(v int8) {
+	w.buffer = append(w.buffer, byte(v))
+}
+
+// Atom appends a uint32 value representing an Atom to the buffer using the Writer's byte order.
+func (w *Writer) Atom(v Atom) {
+	w.Uint32(uint32(v))
+}
+
+// WindowID appends a uint32 value representing a WindowID to the buffer using the Writer's byte order.
+func (w *Writer) WindowID(v WindowID) {
+	w.Uint32(uint32(v))
+}
+
+// VisualID appends a uint32 value representing a VisualID to the buffer using the Writer's byte order.
+func (w *Writer) VisualID(v VisualID) {
+	w.Uint32(uint32(v))
+}
+
+// Int16 appends an int16 value to the buffer using the Writer's byte order.
+func (w *Writer) Int16(v int16) {
+	var buf [2]byte
+	w.byteOrder.PutUint16(buf[:], uint16(v))
+	w.buffer = append(w.buffer, buf[:]...)
+}
+
 // Uint16 appends a uint16 value to the buffer using the Writer's byte order.
 func (w *Writer) Uint16(v uint16) {
 	var buf [2]byte

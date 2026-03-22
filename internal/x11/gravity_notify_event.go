@@ -33,6 +33,16 @@ func newGravityNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *GravityNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *GravityNotifyEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
 // Process the event.
 func (e *GravityNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement

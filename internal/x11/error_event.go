@@ -20,6 +20,16 @@ type ErrorEvent struct {
 	Error error
 }
 
+// ID returns the event code.
+func (e *ErrorEvent) ID() byte {
+	return eventCodeNone
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *ErrorEvent) TargetWindow() WindowID {
+	return WindowNone
+}
+
 // Process the event.
 func (e *ErrorEvent) Process(_conn *Conn) {
 	errs.Log(e.Error)

@@ -29,6 +29,16 @@ func newDestroyNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *DestroyNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *DestroyNotifyEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
 // Process the event.
 func (e *DestroyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement

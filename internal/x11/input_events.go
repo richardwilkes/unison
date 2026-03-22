@@ -51,6 +51,16 @@ func (e *InputEvent) read(r *Reader) {
 	r.Skip(1)
 }
 
+// ID returns the event code.
+func (e *InputEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *InputEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
 // KeyPressEvent represents an X11 KeyPress event.
 type KeyPressEvent struct {
 	InputEvent

@@ -31,6 +31,16 @@ func newResizeRequestEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *ResizeRequestEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *ResizeRequestEvent) TargetWindow() WindowID {
+	return e.Window
+}
+
 // Process the event.
 func (e *ResizeRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement

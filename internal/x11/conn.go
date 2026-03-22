@@ -10,9 +10,11 @@
 package x11
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,10 +25,16 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"golang.org/x/text/encoding/charmap"
 )
 
 // Event represents a generic X11 event. Specific event types will implement this interface.
 type Event interface {
+	// ID returns a byte value that identifies the type of the event, which can be used to determine how to process it.
+	ID() byte
+	// TargetWindow returns the ID of the window that is the target of the event, if applicable. For events that do not
+	// have a specific target window, this will return WindowNone.
+	TargetWindow() WindowID
 	// Process the event using the provided connection. The implementation should perform any necessary actions based on
 	// the event type and its data.
 	Process(*Conn)
@@ -71,6 +79,7 @@ type Conn struct {
 	display                  string
 	screen                   string
 	vendor                   string
+	clipboard                string
 	pixmapFormats            []*Format
 	Roots                    []*Screen
 	extensionsLock           sync.RWMutex
@@ -82,6 +91,11 @@ type Conn struct {
 	resourceIDBase           uint32
 	resourceIDMask           uint32
 	motionBufferSize         uint32
+	helperWindow             WindowID
+	clipboardAtom            Atom
+	clipboardSelectionAtom   Atom
+	clipboardIncrementalAtom Atom
+	utf8StringAtom           Atom
 	protocolMajorVersion     uint16
 	protocolMinorVersion     uint16
 	maximumRequestLength     uint16
@@ -96,69 +110,18 @@ type Conn struct {
 // NewConn establishes a connection to the X server.
 func NewConn() (*Conn, error) {
 	var c Conn
-	if err := c.parseDisplayEnv(); err != nil {
+	var err error
+	if err = c.parseDisplayEnv(); err != nil {
 		return nil, err
 	}
-	if err := c.connect(); err != nil {
+	if err = c.connect(); err != nil {
 		return nil, err
 	}
-	if err := c.authenticate(); err != nil {
+	if err = c.authenticate(); err != nil {
 		return nil, err
 	}
-	c.errorCodeMap = map[byte]string{
-		1:  "request error",
-		2:  "value error",
-		3:  "window error",
-		4:  "pixmap error",
-		5:  "atom error",
-		6:  "cursor error",
-		7:  "font error",
-		8:  "match error",
-		9:  "drawable error",
-		10: "access error",
-		11: "alloc error",
-		12: "colormap error",
-		13: "gcontext error",
-		14: "id choice error",
-		15: "name error",
-		16: "length error",
-		17: "implementation error",
-	}
-	c.eventNewMap = map[byte]func(r *Reader) Event{
-		2:  newKeyPressEvent,
-		3:  newKeyReleaseEvent,
-		4:  newButtonPressEvent,
-		5:  newButtonReleaseEvent,
-		6:  newMotionNotifyEvent,
-		7:  newEnterNotifyEvent,
-		8:  newLeaveNotifyEvent,
-		9:  newFocusInEvent,
-		10: newFocusOutEvent,
-		11: newKeymapNotifyEvent,
-		12: newExposeEvent,
-		13: newGraphicsExposureEvent,
-		14: newNoExposureEvent,
-		15: newVisibilityNotifyEvent,
-		16: newCreateNotifyEvent,
-		17: newDestroyNotifyEvent,
-		18: newUnmapNotifyEvent,
-		19: newMapNotifyEvent,
-		20: newMapRequestEvent,
-		21: newReparentNotifyEvent,
-		22: newConfigureNotifyEvent,
-		23: newConfigureRequestEvent,
-		24: newGravityNotifyEvent,
-		25: newResizeRequestEvent,
-		26: newCirculateNotifyEvent,
-		27: newCirculateRequestEvent,
-		28: newPropertyNotifyEvent,
-		29: newSelectionClearEvent,
-		30: newSelectionRequestEvent,
-		31: newSelectionNotifyEvent,
-		32: newColormapNotifyEvent,
-		33: newClientMessageEvent,
-		34: newMappingNotifyEvent,
-	}
+	c.errorCodeMap = newErrorMap()
+	c.eventNewMap = newEventMap()
 	c.requestChan = make(chan *Request, 1024)
 	c.xidChan = make(chan xid, 8)
 	c.seqChan = make(chan uint16, 8)
@@ -171,6 +134,28 @@ func NewConn() (*Conn, error) {
 	go c.generateSequenceIDs()
 	go c.sendRequests()
 	go c.readResponses()
+	if c.clipboardAtom, err = c.InternAtom("CLIPBOARD", false); err != nil {
+		return nil, err
+	}
+	if c.clipboardSelectionAtom, err = c.InternAtom("CLIPBOARD_SELECTION", false); err != nil {
+		return nil, err
+	}
+	if c.clipboardIncrementalAtom, err = c.InternAtom("INCR", false); err != nil {
+		return nil, err
+	}
+	if c.utf8StringAtom, err = c.InternAtom("UTF8_STRING", false); err != nil {
+		return nil, err
+	}
+	var windowID WindowID
+	if windowID, err = c.newWindowID(); err != nil {
+		return nil, err
+	}
+	var result *CreateNotifyEvent
+	if result, err = c.CreateWindow(c.RootWindow(), windowID, 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
+		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); err != nil {
+		return nil, err
+	}
+	c.helperWindow = result.Window
 	return &c, nil
 }
 
@@ -343,6 +328,14 @@ func (c *Conn) NewAtom() (Atom, error) {
 		return AtomNone, err
 	}
 	return Atom(id), nil
+}
+
+func (c *Conn) newWindowID() (WindowID, error) {
+	id, err := c.newID()
+	if err != nil {
+		return WindowNone, err
+	}
+	return WindowID(id), nil
 }
 
 func (c *Conn) newID() (uint32, error) {
@@ -549,12 +542,45 @@ func (c *Conn) WaitEvents() {
 	c.processEvent(<-c.eventChan)
 }
 
+func waitForEvent[T Event](c *Conn, f func(Event) T) T {
+	for {
+		ev := <-c.eventChan
+		if xreflect.IsNil(ev) {
+			var zero T
+			return zero
+		}
+		if evt := f(ev); !xreflect.IsNil(evt) {
+			return evt
+		}
+		c.processEvent(ev)
+	}
+}
+
 // PollEvents processes the next event if one is available.
 func (c *Conn) PollEvents() {
 	select {
 	case ev := <-c.eventChan:
 		c.processEvent(ev)
 	default:
+	}
+}
+
+func pollForEvent[T Event](c *Conn, f func(Event) T) T {
+	for {
+		select {
+		case ev := <-c.eventChan:
+			if xreflect.IsNil(ev) {
+				var zero T
+				return zero
+			}
+			if evt := f(ev); !xreflect.IsNil(evt) {
+				return evt
+			}
+			c.processEvent(ev)
+		default:
+			var zero T
+			return zero
+		}
 	}
 }
 
@@ -591,9 +617,9 @@ func (c *Conn) queryExtension(name string) extensionInfo {
 		info.firstEvent = r.Byte()
 		info.firstError = r.Byte()
 	})
-	size := 8 + pad4(len(name)) - len(name)
+	size := 8 + pad4(len(name))
 	w := NewWriter(size)
-	w.Byte(98)
+	w.Byte(opcodeQueryExtension)
 	w.Zero(1)
 	w.Uint16(uint16(size / 4))
 	w.Uint16(uint16(len(name)))
@@ -603,6 +629,62 @@ func (c *Conn) queryExtension(name string) extensionInfo {
 	c.newRequest(w, req)
 	req.Reply() //nolint:errcheck // Ignore errors here since we'll just return info.present=false
 	return info
+}
+
+// InternAtom returns the Atom ID for the specified name, creating a new Atom if onlyIfExists is false and no existing
+// Atom has the specified name.
+func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
+	var atom Atom
+	req := newRequest(c, true, true, func(r *Reader) {
+		r.Skip(8)
+		atom = Atom(r.Uint32())
+		r.Skip(20)
+	})
+	size := 8 + pad4(len(name))
+	w := NewWriter(size)
+	w.Byte(opcodeInternAtom)
+	w.Bool(onlyIfExists)
+	w.Uint16(uint16(size / 4))
+	w.Uint16(uint16(len(name)))
+	w.Zero(2)
+	w.String(name)
+	w.ZeroTo4ByteAlignment()
+	c.newRequest(w, req)
+	err := req.Reply()
+	return atom, err
+}
+
+// CreateWindow creates a new window with the specified parameters and attributes, returning a CreateNotifyEvent
+// containing the ID of the newly created window if successful.
+func (c *Conn) CreateWindow(parent, window WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) (*CreateNotifyEvent, error) {
+	var result *CreateNotifyEvent
+	req := newRequest(c, true, true, func(r *Reader) {
+		// TODO: This may not be the correct way to get this data... we might have to call waitForEvent instead
+		result, _ = newCreateNotifyEvent(r).(*CreateNotifyEvent) //nolint:errcheck // A nil result is OK here
+	})
+	valueList := attributes.toValues(valueMask)
+	size := 32 + 4*len(valueList)
+	w := NewWriter(size)
+	w.Byte(opcodeCreateWindow)
+	w.Byte(depth)
+	w.Uint16(uint16(size / 4))
+	w.WindowID(window)
+	w.WindowID(parent)
+	w.Int16(x)
+	w.Int16(y)
+	w.Uint16(width)
+	w.Uint16(height)
+	w.Uint16(borderWidth)
+	w.Uint16(windowClass)
+	w.VisualID(visual)
+	w.Uint32(valueMask)
+	for _, v := range valueList {
+		w.Uint32(v)
+	}
+	w.ZeroTo4ByteAlignment()
+	c.newRequest(w, req)
+	err := req.Reply()
+	return result, err
 }
 
 // GetInputFocus returns the current input focus window and the revert-to value.
@@ -620,7 +702,7 @@ func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
 
 func (c *Conn) inputFocusRequestWriter() *Writer {
 	w := NewWriter(4)
-	w.Byte(43)
+	w.Byte(opcodeGetInputFocus)
 	w.Zero(1)
 	w.Uint16(1)
 	return w
@@ -642,17 +724,151 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 		}
 	})
 	w := NewWriter(24)
-	w.Byte(20)
+	w.Byte(opcodeGetProperty)
 	w.Bool(remove)
 	w.Uint16(6)
-	w.Uint32(uint32(window))
-	w.Uint32(uint32(property))
-	w.Uint32(uint32(propertyType))
+	w.WindowID(window)
+	w.Atom(property)
+	w.Atom(propertyType)
 	w.Uint32(offset)
 	w.Uint32(length)
 	c.newRequest(w, req)
 	err = req.Reply()
 	return format, actualPropertyType, value, err
+}
+
+// Bell causes the server to emit a bell sound with the specified volume as a percentage relative to the base volume,
+// from -100 to 100, inclusive.
+func (c *Conn) Bell(percent int8) {
+	req := newRequest(c, false, false, nil)
+	w := NewWriter(4)
+	w.Byte(opcodeBell)
+	w.Int8(percent)
+	w.Uint16(1)
+	c.newRequest(w, req)
+}
+
+// GetClipboardText retrieves the current clipboard text by checking the owner of the CLIPBOARD selection and requesting the selection contents if the owner is not the helper window. It tries to retrieve the clipboard text in UTF8_STRING format first, then falls back to STRING format if UTF8_STRING is not available. If the clipboard contents are provided incrementally (using the INCR mechanism), it handles that as well by repeatedly requesting the property until all data has been received. The retrieved clipboard text is stored in the connection for future retrievals until it changes.
+func (c *Conn) GetClipboardText() string {
+	owner, err := c.getSelectionOwner(c.clipboardAtom)
+	if err != nil {
+		errs.Log(err)
+		return ""
+	}
+	if owner == c.helperWindow {
+		return c.clipboard
+	}
+	c.clipboard = ""
+	for _, kind := range []Atom{c.utf8StringAtom, AtomString} {
+		c.convertSelection(c.helperWindow, c.clipboardAtom, kind, c.clipboardSelectionAtom, 0)
+		sne := waitForEvent(c, func(evt Event) *SelectionNotifyEvent {
+			if e, ok := evt.(*SelectionNotifyEvent); ok && e.Requestor == c.helperWindow {
+				return e
+			}
+			return nil
+		})
+		if sne != nil && sne.Property != AtomNone {
+			filter := func(evt Event) *PropertyNotifyEvent {
+				if e, ok := evt.(*PropertyNotifyEvent); ok && e.State == propertyNewValue &&
+					e.Window == sne.Requestor && e.Atom == sne.Property {
+					return e
+				}
+				return nil
+			}
+			pollForEvent(c, filter) // Ensure no existing PropertyNotifyEvent is already pending
+			var propertyType Atom
+			var value []byte
+			if _, propertyType, value, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0, math.MaxUint32,
+				true); err != nil {
+				errs.Log(err)
+				continue
+			}
+			switch propertyType {
+			case c.clipboardIncrementalAtom:
+				var buffer bytes.Buffer
+				for {
+					waitForEvent(c, filter)
+					if _, _, value, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0,
+						math.MaxUint32, true); err != nil {
+						errs.Log(err)
+						break
+					}
+					if len(value) == 0 {
+						break
+					}
+					buffer.Write(value)
+				}
+				if kind == c.utf8StringAtom {
+					c.clipboard = buffer.String()
+				} else {
+					c.clipboard = convertLatin1ToUTF8(buffer.Bytes())
+				}
+			case c.utf8StringAtom:
+				c.clipboard = string(value)
+			case AtomString:
+				c.clipboard = convertLatin1ToUTF8(value)
+			}
+		}
+		if c.clipboard != "" {
+			break
+		}
+	}
+	return c.clipboard
+}
+
+func convertLatin1ToUTF8(latin1 []byte) string {
+	s, err := charmap.ISO8859_1.NewDecoder().Bytes(latin1)
+	if err != nil {
+		errs.Log(err)
+		return string(latin1)
+	}
+	return string(s)
+}
+
+// SetClipboardText sets the clipboard text by storing it in the connection and claiming ownership of the CLIPBOARD
+// selection with a helper window. When another client requests the clipboard contents, the helper window will provide
+// the stored text.
+func (c *Conn) SetClipboardText(str string) {
+	c.clipboard = str
+	req := newRequest(c, false, false, nil)
+	w := NewWriter(16)
+	w.Byte(opcodeSetSelectionOwner)
+	w.Zero(1)
+	w.Uint16(4)
+	w.WindowID(c.helperWindow)
+	w.Atom(c.clipboardAtom)
+	w.Uint32(0)
+	c.newRequest(w, req)
+}
+
+func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
+	req := newRequest(c, true, true, func(r *Reader) {
+		r.Skip(8)
+		owner = WindowID(r.Uint32())
+		r.Skip(20)
+	})
+	w := NewWriter(8)
+	w.Byte(opcodeGetSelectionOwner)
+	w.Zero(1)
+	w.Uint16(2)
+	w.Atom(selection)
+	c.newRequest(w, req)
+	err = req.Reply()
+	return owner, err
+}
+
+func (c *Conn) convertSelection(requestor WindowID, selection, target, property Atom, timestamp uint32) {
+	req := newRequest(c, false, false, nil)
+	w := NewWriter(8)
+	w.Byte(opcodeConvertSelection)
+	w.Zero(1)
+	w.Uint16(6)
+	w.WindowID(requestor)
+	w.Atom(selection)
+	w.Atom(target)
+	w.Atom(property)
+	w.Uint32(timestamp)
+	c.newRequest(w, req)
 }
 
 func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) {
@@ -670,6 +886,11 @@ func (c *Conn) setErrorCodeName(code byte, name string) {
 // RootWindow returns the ID of the root window for the default screen.
 func (c *Conn) RootWindow() WindowID {
 	return c.Roots[c.DefaultScreen].Root
+}
+
+// DefaultVisual returns the ID of the default visual for the default screen.
+func (c *Conn) DefaultVisual() VisualID {
+	return c.Roots[c.DefaultScreen].RootVisual
 }
 
 // Close the connection after finishing any in-flight requests.

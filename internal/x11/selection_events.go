@@ -35,6 +35,16 @@ func newSelectionClearEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *SelectionClearEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *SelectionClearEvent) TargetWindow() WindowID {
+	return e.Owner
+}
+
 // Process the event.
 func (e *SelectionClearEvent) Process(_conn *Conn) {
 	// TODO: Implement
@@ -66,6 +76,16 @@ func newSelectionRequestEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *SelectionRequestEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *SelectionRequestEvent) TargetWindow() WindowID {
+	return e.Owner
+}
+
 // Process the event.
 func (e *SelectionRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
@@ -95,7 +115,18 @@ func newSelectionNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *SelectionNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *SelectionNotifyEvent) TargetWindow() WindowID {
+	return e.Requestor
+}
+
 // Process the event.
 func (e *SelectionNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
+	// TODO: Implement; this might be a noop, as the clipboard logic is currently implemented in the Conn's
+	// getClipboardString method, which waits for a SelectionNotifyEvent and processes it there.
 }

@@ -33,6 +33,16 @@ func newMapRequestEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *MapRequestEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *MapRequestEvent) TargetWindow() WindowID {
+	return e.Window
+}
+
 // Process the event.
 func (e *MapRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
@@ -59,6 +69,16 @@ func newMapNotifyEvent(r *Reader) Event {
 	return &e
 }
 
+// ID returns the event code.
+func (e *MapNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *MapNotifyEvent) TargetWindow() WindowID {
+	return e.Event
+}
+
 // Process the event.
 func (e *MapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
@@ -83,6 +103,16 @@ func newUnmapNotifyEvent(r *Reader) Event {
 	e.FromConfigure = r.Bool()
 	r.Skip(3)
 	return &e
+}
+
+// ID returns the event code.
+func (e *UnmapNotifyEvent) ID() byte {
+	return e.Code
+}
+
+// TargetWindow returns the ID of the window that is the target of the event.
+func (e *UnmapNotifyEvent) TargetWindow() WindowID {
+	return e.Event
 }
 
 // Process the event.
