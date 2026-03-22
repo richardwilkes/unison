@@ -40,6 +40,12 @@ type Event interface {
 	Process(*Conn)
 }
 
+// WritableEvent represents an event that can be sent to the X server.
+type WritableEvent interface {
+	Write(sequence uint16, w *Writer)
+	Event
+}
+
 type xid struct {
 	err error
 	id  uint32
@@ -95,7 +101,13 @@ type Conn struct {
 	clipboardAtom            Atom
 	clipboardSelectionAtom   Atom
 	clipboardIncrementalAtom Atom
+	clipboardTargetsAtom     Atom
+	clipboardMultipleAtom    Atom
+	clipboardManagerAtom     Atom
+	clipboardSaveTargetsAtom Atom
 	utf8StringAtom           Atom
+	atomPairAtom             Atom
+	nullAtom                 Atom
 	protocolMajorVersion     uint16
 	protocolMinorVersion     uint16
 	maximumRequestLength     uint16
@@ -143,7 +155,25 @@ func NewConn() (*Conn, error) {
 	if c.clipboardIncrementalAtom, err = c.InternAtom("INCR", false); err != nil {
 		return nil, err
 	}
+	if c.clipboardTargetsAtom, err = c.InternAtom("TARGETS", false); err != nil {
+		return nil, err
+	}
+	if c.clipboardMultipleAtom, err = c.InternAtom("MULTIPLE", false); err != nil {
+		return nil, err
+	}
+	if c.clipboardManagerAtom, err = c.InternAtom("CLIPBOARD_MANAGER", false); err != nil {
+		return nil, err
+	}
+	if c.clipboardSaveTargetsAtom, err = c.InternAtom("SAVE_TARGETS", false); err != nil {
+		return nil, err
+	}
 	if c.utf8StringAtom, err = c.InternAtom("UTF8_STRING", false); err != nil {
+		return nil, err
+	}
+	if c.atomPairAtom, err = c.InternAtom("ATOM_PAIR", false); err != nil {
+		return nil, err
+	}
+	if c.nullAtom, err = c.InternAtom("NULL", false); err != nil {
 		return nil, err
 	}
 	if c.helperWindow, err = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
@@ -449,6 +479,18 @@ func (c *Conn) sendRequests() {
 	}
 }
 
+func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, event WritableEvent) {
+	req := newRequest(c, false, false, nil)
+	w := NewWriter(44)
+	w.Byte(opcodeSendEvent)
+	w.Bool(propagate)
+	w.Uint16(11)
+	w.WindowID(window)
+	w.Uint32(eventMask)
+	event.Write(c.newSequenceID(), w)
+	c.newRequest(w, req)
+}
+
 func (c *Conn) noop() error {
 	req := newRequest(c, true, true, nil)
 	req.setSequenceID(c.newSequenceID())
@@ -680,6 +722,18 @@ func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWi
 	return windowID, req.Check()
 }
 
+// DestroyWindow destroys the specified window.
+func (c *Conn) DestroyWindow(window WindowID) error {
+	req := newRequest(c, true, false, nil)
+	w := NewWriter(8)
+	w.Byte(opcodeDestroyWindow)
+	w.Zero(1)
+	w.Uint16(2)
+	w.WindowID(window)
+	c.newRequest(w, req)
+	return req.Check()
+}
+
 // GetInputFocus returns the current input focus window and the revert-to value.
 func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
 	req := newRequest(c, true, true, func(r *Reader) {
@@ -728,6 +782,35 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 	c.newRequest(w, req)
 	err = req.Reply()
 	return format, actualPropertyType, value, err
+}
+
+// Possible modes for ChangeProperty requests
+const (
+	PropModeReplace = iota
+	PropModePrepend
+	PropModeAppend
+)
+
+// ChangeProperty changes the specified property on the given window to the provided data, using the specified mode
+// (PropModeReplace, PropModePrepend, or PropModeAppend). The propertyType and format parameters specify the type and
+// format of the property data, respectively. The data is provided as a byte slice, and its length should be consistent
+// with the specified format (8, 16, or 32 bits per unit).
+func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) error {
+	req := newRequest(c, true, false, nil)
+	w := NewWriter(24 + pad4(len(data)))
+	w.Byte(opcodeChangeProperty)
+	w.Byte(mode)
+	w.Uint16(uint16((24 + pad4(len(data))) / 4))
+	w.WindowID(window)
+	w.Atom(property)
+	w.Atom(propertyType)
+	w.Byte(format)
+	w.Zero(3)
+	w.Uint16(uint16(len(data) / int(format/8)))
+	w.Bytes(data)
+	w.ZeroTo4ByteAlignment()
+	c.newRequest(w, req)
+	return req.Check()
 }
 
 // Bell causes the server to emit a bell sound with the specified volume as a percentage relative to the base volume,
@@ -884,6 +967,53 @@ func (c *Conn) RootWindow() WindowID {
 // DefaultVisual returns the ID of the default visual for the default screen.
 func (c *Conn) DefaultVisual() VisualID {
 	return c.Roots[c.DefaultScreen].RootVisual
+}
+
+// PushClipboardToManager checks if the helper window is currently the owner of the CLIPBOARD selection, and if so, it
+// converts the selection to the CLIPBOARD_MANAGER with the SAVE_TARGETS property. It then waits for events related to
+// this conversion, processing any SelectionRequestEvent or SelectionClearEvent that may occur during this time.
+// Finally, it destroys the helper window and resets its ID to WindowNone.
+func (c *Conn) PushClipboardToManager() {
+	if c.helperWindow != WindowNone {
+		if owner, err := c.getSelectionOwner(c.clipboardAtom); err == nil && owner == c.helperWindow {
+			c.convertSelection(c.helperWindow, c.clipboardManagerAtom, c.clipboardSaveTargetsAtom, AtomNone, 0)
+			again := true
+			for again {
+				evt := waitForEvent(c, func(ev Event) Event {
+					switch e := ev.(type) {
+					case *SelectionNotifyEvent:
+						if e.Requestor == c.helperWindow {
+							return e
+						}
+					case *SelectionRequestEvent:
+						if e.Owner == c.helperWindow {
+							return e
+						}
+					case *SelectionClearEvent:
+						if e.Owner == c.helperWindow {
+							return e
+						}
+					}
+					return nil
+				})
+				switch e := evt.(type) {
+				case *SelectionNotifyEvent:
+					if e.Target == c.clipboardSaveTargetsAtom {
+						again = false
+					}
+				case *SelectionRequestEvent:
+					c.processEvent(e)
+				case *SelectionClearEvent:
+				default:
+					again = false
+				}
+			}
+		}
+		if err := c.DestroyWindow(c.helperWindow); err != nil {
+			errs.Log(err)
+		}
+		c.helperWindow = WindowNone
+	}
 }
 
 // Close the connection after finishing any in-flight requests.

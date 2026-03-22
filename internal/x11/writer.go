@@ -45,6 +45,11 @@ func (w *Writer) Send(dst io.Writer) error {
 	return err
 }
 
+// Retrieve returns the current contents of the buffer without modifying it.
+func (w *Writer) Retrieve() []byte {
+	return w.buffer
+}
+
 // Zero emits 'count' bytes with a value of 0 into the buffer.
 func (w *Writer) Zero(count int) {
 	if count > 0 {

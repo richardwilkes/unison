@@ -223,6 +223,13 @@ func (x *Reader) Uint32() uint32 {
 	return x.byteOrder.Uint32(x.buffer[x.pos:])
 }
 
+// Atom reads four bytes from the buffer at the current position, advances the position by four bytes, and returns the
+// read bytes as an Atom value using the Reader's byte order. Note that if the read operation attempts to read past the
+// end of the buffer, an error will be logged and zero will be returned.
+func (x *Reader) Atom() Atom {
+	return Atom(x.Uint32())
+}
+
 // ReadList reads the specified number of objects from the buffer at the current position, advances the position by the
 // total number of bytes read for all objects, and returns the read objects as a slice.
 func ReadList[T any](count int, r *Reader, readFunc func(*Reader) T) []T {

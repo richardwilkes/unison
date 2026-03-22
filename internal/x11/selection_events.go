@@ -9,10 +9,17 @@
 
 package x11
 
+import (
+	"log/slog"
+	"math"
+
+	"github.com/richardwilkes/toolbox/v2/errs"
+)
+
 var (
-	_ Event = &SelectionClearEvent{}
-	_ Event = &SelectionRequestEvent{}
-	_ Event = &SelectionNotifyEvent{}
+	_ Event         = &SelectionClearEvent{}
+	_ Event         = &SelectionRequestEvent{}
+	_ WritableEvent = &SelectionNotifyEvent{}
 )
 
 // SelectionClearEvent represents an X11 SelectionClear event.
@@ -87,8 +94,73 @@ func (e *SelectionRequestEvent) TargetWindow() WindowID {
 }
 
 // Process the event.
-func (e *SelectionRequestEvent) Process(_conn *Conn) {
-	// TODO: Implement
+func (e *SelectionRequestEvent) Process(c *Conn) {
+	c.sendEvent(e.Requestor, false, 0, &SelectionNotifyEvent{
+		Time:      e.Time,
+		Requestor: e.Requestor,
+		Selection: e.Selection,
+		Target:    e.Target,
+		Property:  e.writeTargetToProperty(c),
+	})
+}
+
+func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
+	if e.Property == AtomNone {
+		return AtomNone
+	}
+	switch e.Target {
+	case c.clipboardTargetsAtom:
+		w := NewWriter(16)
+		w.Atom(c.clipboardTargetsAtom)
+		w.Atom(c.clipboardMultipleAtom)
+		w.Atom(c.utf8StringAtom)
+		w.Atom(AtomString)
+		if err := c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve()); err != nil {
+			errs.Log(err)
+		}
+		return e.Property
+	case c.clipboardMultipleAtom:
+		format, kind, value, err := c.GetProperty(e.Requestor, e.Property, c.atomPairAtom, 0, math.MaxUint32, false)
+		count := len(value) / (int(format) / 8)
+		if err != nil {
+			errs.Log(err)
+			return e.Property
+		}
+		if format != 32 || kind != c.atomPairAtom || count%2 != 0 {
+			slog.Error("unexpected result from GetProperty for MULTIPLE property", "format", format, "kind", kind, "count", count)
+			return e.Property
+		}
+		w := NewWriter(8 * count)
+		r := NewReader(value)
+		for i := 0; i < count; i += 2 {
+			propType := r.Atom()
+			prop := r.Atom()
+			if propType == c.utf8StringAtom || propType == AtomString {
+				w.Atom(propType)
+				if err = c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, []byte(c.clipboard)); err != nil {
+					errs.Log(err)
+				}
+			} else {
+				w.Atom(AtomNone)
+			}
+			w.Atom(prop)
+		}
+		if err = c.ChangeProperty(e.Requestor, e.Property, c.atomPairAtom, 32, PropModeReplace, w.Retrieve()); err != nil {
+			errs.Log(err)
+		}
+		return e.Property
+	case c.clipboardSaveTargetsAtom:
+		if err := c.ChangeProperty(e.Requestor, e.Property, c.nullAtom, 32, PropModeReplace, nil); err != nil {
+			errs.Log(err)
+		}
+		return e.Property
+	case c.utf8StringAtom, AtomString:
+		if err := c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, []byte(c.clipboard)); err != nil {
+			errs.Log(err)
+		}
+		return e.Property
+	}
+	return AtomNone
 }
 
 // SelectionNotifyEvent represents an X11 SelectionNotify event.
@@ -123,6 +195,19 @@ func (e *SelectionNotifyEvent) ID() byte {
 // TargetWindow returns the ID of the window that is the target of the event.
 func (e *SelectionNotifyEvent) TargetWindow() WindowID {
 	return e.Requestor
+}
+
+// Write the event to the given Writer. The sequence number and event code inside the event struct are ignored.
+func (e *SelectionNotifyEvent) Write(sequence uint16, w *Writer) {
+	w.Byte(eventCodeSelectionNotify)
+	w.Zero(1)
+	w.Uint16(sequence)
+	w.Uint32(e.Time)
+	w.WindowID(e.Requestor)
+	w.Atom(e.Selection)
+	w.Atom(e.Target)
+	w.Atom(e.Property)
+	w.Zero(8)
 }
 
 // Process the event.
