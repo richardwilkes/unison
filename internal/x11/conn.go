@@ -806,7 +806,7 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 	w.Atom(propertyType)
 	w.Byte(format)
 	w.Zero(3)
-	w.Uint16(uint16(len(data) / int(format/8)))
+	w.Uint32(uint32(len(data) / int(format/8)))
 	w.Bytes(data)
 	w.ZeroTo4ByteAlignment()
 	c.newRequest(w, req)
