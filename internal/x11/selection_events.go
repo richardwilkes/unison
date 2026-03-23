@@ -130,6 +130,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			slog.Error("unexpected result from GetProperty for MULTIPLE property", "format", format, "kind", kind, "count", count)
 			return e.Property
 		}
+		content := []byte(c.clipboard)
 		w := NewWriter(8 * count)
 		r := NewReader(value)
 		for i := 0; i < count; i += 2 {
@@ -137,7 +138,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			prop := r.Atom()
 			if propType == c.utf8StringAtom || propType == AtomString {
 				w.Atom(propType)
-				if err = c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, []byte(c.clipboard)); err != nil {
+				if err = c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, content); err != nil {
 					errs.Log(err)
 				}
 			} else {
