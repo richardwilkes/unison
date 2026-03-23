@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &ColormapNotifyEvent{}
 
 // ColormapNotifyEvent represents an X11 ColormapNotify event.
@@ -47,4 +49,5 @@ func (e *ColormapNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ColormapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("ColormapNotifyEvent received", "window", e.Window, "colormap", e.Colormap, "new", e.New, "state", e.State)
 }

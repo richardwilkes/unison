@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &ExposeEvent{}
 
 // ExposeEvent represents an X11 Expose event.
@@ -51,4 +53,5 @@ func (e *ExposeEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ExposeEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("ExposeEvent received", "window", e.Window, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "count", e.Count)
 }

@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var (
 	_ Event = &CirculateNotifyEvent{}
 	_ Event = &CirculateRequestEvent{}
@@ -58,6 +60,7 @@ func newCirculateNotifyEvent(r *Reader) Event {
 // Process the event.
 func (e *CirculateNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("CirculateNotifyEvent received", "event", e.Event, "window", e.Window, "place", e.Place)
 }
 
 // CirculateRequestEvent represents an X11 CirculateRequest event.
@@ -74,4 +77,5 @@ func newCirculateRequestEvent(r *Reader) Event {
 // Process the event.
 func (e *CirculateRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("CirculateRequestEvent received", "event", e.Event, "window", e.Window, "place", e.Place)
 }

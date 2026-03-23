@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &DestroyNotifyEvent{}
 
 // DestroyNotifyEvent represents an X11 DestroyNotify event.
@@ -42,4 +44,5 @@ func (e *DestroyNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *DestroyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("DestroyNotifyEvent received", "event", e.Event, "window", e.Window)
 }

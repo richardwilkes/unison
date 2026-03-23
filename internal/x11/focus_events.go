@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var (
 	_ Event = &FocusInEvent{}
 	_ Event = &FocusOutEvent{}
@@ -56,6 +58,7 @@ func newFocusInEvent(r *Reader) Event {
 // Process the event.
 func (e *FocusInEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("FocusInEvent received", "window", e.Event, "detail", e.Detail, "mode", e.Mode)
 }
 
 // FocusOutEvent represents an X11 FocusOut event.
@@ -72,4 +75,5 @@ func newFocusOutEvent(r *Reader) Event {
 // Process the event.
 func (e *FocusOutEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("FocusOutEvent received", "window", e.Event, "detail", e.Detail, "mode", e.Mode)
 }

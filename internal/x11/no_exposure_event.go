@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &NoExposureEvent{}
 
 // NoExposureEvent represents an X11 NoExposure event.
@@ -45,4 +47,5 @@ func (e *NoExposureEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *NoExposureEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("NoExposureEvent received", "drawable", e.Drawable, "minorOpcode", e.MinorOpcode, "majorOpcode", e.MajorOpcode)
 }

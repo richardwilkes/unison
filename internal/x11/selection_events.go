@@ -55,6 +55,7 @@ func (e *SelectionClearEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *SelectionClearEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("SelectionClearEvent received", "owner", e.Owner, "selection", e.Selection, "time", e.Time)
 }
 
 // SelectionRequestEvent represents an X11 SelectionRequest event.
@@ -95,6 +96,7 @@ func (e *SelectionRequestEvent) TargetWindow() WindowID {
 
 // Process the event.
 func (e *SelectionRequestEvent) Process(c *Conn) {
+	slog.Info("SelectionRequestEvent received", "owner", e.Owner, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property, "time", e.Time)
 	c.sendEvent(e.Requestor, false, 0, &SelectionNotifyEvent{
 		Time:      e.Time,
 		Requestor: e.Requestor,
@@ -215,4 +217,5 @@ func (e *SelectionNotifyEvent) Write(sequence uint16, w *Writer) {
 func (e *SelectionNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement; this might be a noop, as the clipboard logic is currently implemented in the Conn's
 	// getClipboardString method, which waits for a SelectionNotifyEvent and processes it there.
+	slog.Info("SelectionNotifyEvent received", "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property, "time", e.Time)
 }

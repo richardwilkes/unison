@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &GraphicsExposureEvent{}
 
 // GraphicsExposureEvent represents an X11 GraphicsExposure event.
@@ -55,4 +57,5 @@ func (e *GraphicsExposureEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *GraphicsExposureEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("GraphicsExposureEvent received", "drawable", e.Drawable, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "minorOpcode", e.MinorOpcode, "count", e.Count, "majorOpcode", e.MajorOpcode)
 }

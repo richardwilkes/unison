@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &ResizeRequestEvent{}
 
 // ResizeRequestEvent represents an X11 ResizeRequest event.
@@ -44,4 +46,5 @@ func (e *ResizeRequestEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ResizeRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("ResizeRequestEvent received", "window", e.Window, "width", e.Width, "height", e.Height)
 }

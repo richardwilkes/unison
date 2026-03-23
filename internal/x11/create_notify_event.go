@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &CreateNotifyEvent{}
 
 // CreateNotifyEvent represents an X11 CreateNotify event.
@@ -55,4 +57,5 @@ func (e *CreateNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *CreateNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("CreateNotifyEvent received", "parent", e.Parent, "window", e.Window, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "borderWidth", e.BorderWidth, "overrideRedirect", e.OverrideRedirect)
 }

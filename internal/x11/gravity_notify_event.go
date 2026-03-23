@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &GravityNotifyEvent{}
 
 // GravityNotifyEvent represents an X11 GravityNotify event.
@@ -46,4 +48,5 @@ func (e *GravityNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *GravityNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("GravityNotifyEvent received", "window", e.Window, "x", e.X, "y", e.Y)
 }

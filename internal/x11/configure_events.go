@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var (
 	_ Event = &ConfigureRequestEvent{}
 	_ Event = &ConfigureNotifyEvent{}
@@ -60,6 +62,7 @@ func (e *ConfigureRequestEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ConfigureRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("ConfigureRequestEvent received", "window", e.Window, "parent", e.Parent, "sibling", e.Sibling, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "borderWidth", e.BorderWidth, "valueMask", e.ValueMask, "stackMode", e.StackMode)
 }
 
 // ConfigureNotifyEvent represents an X11 ConfigureNotify event.
@@ -108,4 +111,5 @@ func (e *ConfigureNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ConfigureNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("ConfigureNotifyEvent received", "event", e.Event, "window", e.Window, "aboveSibling", e.AboveSibling, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "borderWidth", e.BorderWidth, "overrideRedirect", e.OverrideRedirect)
 }

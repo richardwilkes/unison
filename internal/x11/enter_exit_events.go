@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var (
 	_ Event = &EnterNotifyEvent{}
 	_ Event = &LeaveNotifyEvent{}
@@ -73,6 +75,7 @@ type EnterNotifyEvent struct {
 // Process the event.
 func (e *EnterNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("EnterNotifyEvent received", "root", e.Root, "event", e.Event, "child", e.Child, "time", e.Time, "state", e.State, "rootX", e.RootX, "rootY", e.RootY, "eventX", e.EventX, "eventY", e.EventY, "detail", e.Detail, "mode", e.Mode, "sameScreenFocus", e.SameScreenFocus)
 }
 
 // LeaveNotifyEvent represents an X11 LeaveNotify event.
@@ -89,4 +92,5 @@ func newLeaveNotifyEvent(r *Reader) Event {
 // Process the event.
 func (e *LeaveNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("LeaveNotifyEvent received", "root", e.Root, "event", e.Event, "child", e.Child, "time", e.Time, "state", e.State, "rootX", e.RootX, "rootY", e.RootY, "eventX", e.EventX, "eventY", e.EventY, "detail", e.Detail, "mode", e.Mode, "sameScreenFocus", e.SameScreenFocus)
 }

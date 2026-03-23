@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &ClientMessageEvent{}
 
 // ClientMessageEvent represents an X11 ClientMessage event.
@@ -55,4 +57,5 @@ func (e *ClientMessageEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ClientMessageEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("ClientMessageEvent received", "window", e.Window, "type", e.Type, "format", e.Format, "data8", e.Data8, "data16", e.Data16, "data32", e.Data32)
 }

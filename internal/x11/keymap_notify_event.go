@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &KeymapNotifyEvent{}
 
 // KeymapNotifyEvent represents an X11 KeymapNotify event.
@@ -37,4 +39,5 @@ func (e *KeymapNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *KeymapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("KeymapNotifyEvent received", "keys", e.Keys)
 }

@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &ReparentNotifyEvent{}
 
 // ReparentNotifyEvent represents an X11 ReparentNotify event.
@@ -51,4 +53,5 @@ func (e *ReparentNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ReparentNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("ReparentNotifyEvent received", "window", e.Window, "parent", e.Parent, "x", e.X, "y", e.Y, "overrideRedirect", e.OverrideRedirect)
 }

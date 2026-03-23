@@ -9,6 +9,8 @@
 
 package x11
 
+import "log/slog"
+
 var _ Event = &PropertyNotifyEvent{}
 
 // PropertyNotifyEvent represents an X11 PropertyNotify event.
@@ -47,4 +49,5 @@ func (e *PropertyNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *PropertyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
+	slog.Info("PropertyNotifyEvent received", "window", e.Window, "atom", e.Atom, "time", e.Time, "state", e.State)
 }
