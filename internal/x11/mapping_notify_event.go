@@ -47,5 +47,5 @@ func (e *MappingNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *MappingNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("MappingNotifyEvent received", "request", e.Request, "firstKeycode", e.FirstKeycode, "count", e.Count)
+	slog.Info("MappingNotifyEvent received", "sequence", e.Sequence, "request", e.Request, "firstKeycode", e.FirstKeycode, "count", e.Count)
 }

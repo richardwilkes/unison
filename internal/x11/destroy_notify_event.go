@@ -44,5 +44,5 @@ func (e *DestroyNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *DestroyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("DestroyNotifyEvent received", "event", e.Event, "window", e.Window)
+	slog.Info("DestroyNotifyEvent received", "sequence", e.Sequence, "event", e.Event, "window", e.Window)
 }

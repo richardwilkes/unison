@@ -48,5 +48,5 @@ func (e *GravityNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *GravityNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("GravityNotifyEvent received", "window", e.Window, "x", e.X, "y", e.Y)
+	slog.Info("GravityNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "x", e.X, "y", e.Y)
 }

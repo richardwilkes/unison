@@ -77,7 +77,7 @@ func newKeyPressEvent(r *Reader) Event {
 // Process the event.
 func (e *KeyPressEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("KeyPressEvent received", "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
+	slog.Info("KeyPressEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }
 
 // KeyReleaseEvent represents an X11 KeyRelease event.
@@ -94,7 +94,7 @@ func newKeyReleaseEvent(r *Reader) Event {
 // Process the event.
 func (e *KeyReleaseEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("KeyReleaseEvent received", "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
+	slog.Info("KeyReleaseEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }
 
 // ButtonPressEvent represents an X11 ButtonPress event.
@@ -111,7 +111,7 @@ func newButtonPressEvent(r *Reader) Event {
 // Process the event.
 func (e *ButtonPressEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("ButtonPressEvent received", "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
+	slog.Info("ButtonPressEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }
 
 // ButtonReleaseEvent represents an X11 ButtonRelease event.
@@ -128,7 +128,7 @@ func newButtonReleaseEvent(r *Reader) Event {
 // Process the event.
 func (e *ButtonReleaseEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("ButtonReleaseEvent received", "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
+	slog.Info("ButtonReleaseEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }
 
 // MotionNotifyEvent represents an X11 MotionNotify event.
@@ -145,5 +145,5 @@ func newMotionNotifyEvent(r *Reader) Event {
 // Process the event.
 func (e *MotionNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("MotionNotifyEvent received", "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
+	slog.Info("MotionNotifyEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }

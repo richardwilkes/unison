@@ -131,6 +131,7 @@ func (r *Request) Check() error {
 }
 
 func (r *Request) processRequest(seq uint16, in *Reader, err error) bool {
+	slog.Info("processing request response", "sequence", seq, "error", err)
 	if r.sequence == seq {
 		if err != nil {
 			if r.errorChan != nil {

@@ -48,7 +48,7 @@ func (e *MapRequestEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *MapRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("MapRequestEvent received", "window", e.Window, "parent", e.Parent)
+	slog.Info("MapRequestEvent received", "sequence", e.Sequence, "window", e.Window, "parent", e.Parent)
 }
 
 // MapNotifyEvent represents an X11 MapNotify event.
@@ -85,7 +85,7 @@ func (e *MapNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *MapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("MapNotifyEvent received", "window", e.Window, "event", e.Event, "overrideRedirect", e.OverrideRedirect)
+	slog.Info("MapNotifyEvent received", "sequence", e.Sequence, "sequence", e.Sequence, "window", e.Window, "event", e.Event, "overrideRedirect", e.OverrideRedirect)
 }
 
 // UnmapNotifyEvent represents an X11 UnmapNotify event.
@@ -122,5 +122,5 @@ func (e *UnmapNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *UnmapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("UnmapNotifyEvent received", "window", e.Window, "event", e.Event, "fromConfigure", e.FromConfigure)
+	slog.Info("UnmapNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "event", e.Event, "fromConfigure", e.FromConfigure)
 }

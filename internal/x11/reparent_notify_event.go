@@ -53,5 +53,5 @@ func (e *ReparentNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ReparentNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("ReparentNotifyEvent received", "window", e.Window, "parent", e.Parent, "x", e.X, "y", e.Y, "overrideRedirect", e.OverrideRedirect)
+	slog.Info("ReparentNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "parent", e.Parent, "x", e.X, "y", e.Y, "overrideRedirect", e.OverrideRedirect)
 }

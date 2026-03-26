@@ -53,5 +53,5 @@ func (e *ExposeEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ExposeEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("ExposeEvent received", "window", e.Window, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "count", e.Count)
+	slog.Info("ExposeEvent received", "sequence", e.Sequence, "window", e.Window, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "count", e.Count)
 }

@@ -47,5 +47,5 @@ func (e *NoExposureEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *NoExposureEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("NoExposureEvent received", "drawable", e.Drawable, "minorOpcode", e.MinorOpcode, "majorOpcode", e.MajorOpcode)
+	slog.Info("NoExposureEvent received", "sequence", e.Sequence, "drawable", e.Drawable, "minorOpcode", e.MinorOpcode, "majorOpcode", e.MajorOpcode)
 }

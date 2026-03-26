@@ -49,5 +49,5 @@ func (e *ColormapNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *ColormapNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("ColormapNotifyEvent received", "window", e.Window, "colormap", e.Colormap, "new", e.New, "state", e.State)
+	slog.Info("ColormapNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "colormap", e.Colormap, "new", e.New, "state", e.State)
 }

@@ -45,5 +45,5 @@ func (e *VisibilityNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *VisibilityNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("VisibilityNotifyEvent received", "window", e.Window, "state", e.State)
+	slog.Info("VisibilityNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "state", e.State)
 }

@@ -49,5 +49,5 @@ func (e *PropertyNotifyEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *PropertyNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("PropertyNotifyEvent received", "window", e.Window, "atom", e.Atom, "time", e.Time, "state", e.State)
+	slog.Info("PropertyNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "atom", e.Atom, "time", e.Time, "state", e.State)
 }

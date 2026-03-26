@@ -60,7 +60,7 @@ func newCirculateNotifyEvent(r *Reader) Event {
 // Process the event.
 func (e *CirculateNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("CirculateNotifyEvent received", "event", e.Event, "window", e.Window, "place", e.Place)
+	slog.Info("CirculateNotifyEvent received", "sequence", e.Sequence, "event", e.Event, "window", e.Window, "place", e.Place)
 }
 
 // CirculateRequestEvent represents an X11 CirculateRequest event.
@@ -77,5 +77,5 @@ func newCirculateRequestEvent(r *Reader) Event {
 // Process the event.
 func (e *CirculateRequestEvent) Process(_conn *Conn) {
 	// TODO: Implement
-	slog.Info("CirculateRequestEvent received", "event", e.Event, "window", e.Window, "place", e.Place)
+	slog.Info("CirculateRequestEvent received", "sequence", e.Sequence, "event", e.Event, "window", e.Window, "place", e.Place)
 }
