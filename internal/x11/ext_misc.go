@@ -42,7 +42,7 @@ func (e *ExtMisc) Available() bool {
 
 // GetXIDRange requests a range of unused resource IDs from the server.
 func (e *ExtMisc) GetXIDRange() (startID, count uint32, err error) {
-	req := newRequest(e.conn, true, true, func(r *Reader) {
+	req := newRequest("getXIDRange", e.conn, true, true, func(r *Reader) {
 		r.Skip(8)
 		startID = r.Uint32()
 		count = r.Uint32()
@@ -52,7 +52,7 @@ func (e *ExtMisc) GetXIDRange() (startID, count uint32, err error) {
 	w.Byte(e.majorOpcode)
 	w.Byte(1)
 	w.Uint16(1)
-	e.conn.newRequest(w, req)
+	e.conn.sendNewRequest(w, req)
 	if err = req.Reply(); err == nil && (count == 0 || (startID == 0 && count == 1)) {
 		err = errs.New("no more IDs available")
 	}

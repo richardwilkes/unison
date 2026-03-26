@@ -19,6 +19,7 @@ import (
 
 // Request holds data for managing a request to the server.
 type Request struct {
+	name      string
 	conn      *Conn
 	replyChan chan *Reader
 	errorChan chan error
@@ -27,8 +28,10 @@ type Request struct {
 	sequence  uint16
 }
 
-func newRequest(conn *Conn, checked, reply bool, processor func(*Reader)) *Request {
+func newRequest(name string, conn *Conn, checked, reply bool, processor func(*Reader)) *Request {
+	slog.Info("creating new request", "name", name)
 	r := Request{
+		name:      name,
 		conn:      conn,
 		processor: processor,
 	}
@@ -74,7 +77,7 @@ func (r *Request) replyChecked() error {
 		return nil
 	case err := <-r.errorChan:
 		return err
-	case <-r.conn.doneRead:
+	case <-r.conn.termRead:
 		return io.EOF
 	}
 }
@@ -91,7 +94,7 @@ func (r *Request) replyUnchecked() error {
 		return nil
 	case <-r.pingChan:
 		return nil
-	case <-r.conn.doneRead:
+	case <-r.conn.termRead:
 		return io.EOF
 	}
 }
@@ -124,7 +127,7 @@ func (r *Request) Check() error {
 			return err
 		case <-r.pingChan:
 			return nil
-		case <-r.conn.doneRead:
+		case <-r.conn.termRead:
 			return io.EOF
 		}
 	}
@@ -144,7 +147,9 @@ func (r *Request) processRequest(seq uint16, in *Reader, err error) bool {
 			}
 		} else {
 			if r.replyChan == nil {
-				slog.Warn("reply does not have a request with a valid reply channel", "sequence", seq)
+				slog.Warn("reply does not have a request with a valid reply channel",
+					"sequence", seq,
+					"name", r.name)
 				return false
 			}
 			r.replyChan <- in
@@ -155,17 +160,15 @@ func (r *Request) processRequest(seq uint16, in *Reader, err error) bool {
 	case r.replyChan != nil && r.errorChan != nil:
 		slog.Warn("found request that is expecting a reply but will never get it",
 			"sequence", r.sequence,
-			"current sequence", seq)
+			"current sequence", seq,
+			"name", r.name)
 	case r.replyChan != nil && r.pingChan != nil:
 		slog.Warn("found request that is expecting a reply and not an error, but will never get it",
 			"sequence", r.sequence,
-			"current sequence", seq)
+			"current sequence", seq,
+			"name", r.name)
 	case r.pingChan != nil && r.errorChan != nil:
 		r.pingChan <- true
 	}
 	return false
-}
-
-func (r *Request) setSequenceID(seq uint16) {
-	r.sequence = seq
 }

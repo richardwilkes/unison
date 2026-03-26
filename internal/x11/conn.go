@@ -72,8 +72,8 @@ type Conn struct {
 	xidChan                  chan xid
 	seqChan                  chan uint16
 	reqChan                  chan *request
-	doneSend                 chan struct{}
-	doneRead                 chan struct{}
+	termSend                 chan struct{}
+	termRead                 chan struct{}
 	ExtMisc                  *ExtMisc
 	extensions               map[string]extensionInfo
 	eventNewMap              map[byte]func(r *Reader) Event
@@ -139,8 +139,8 @@ func NewConn() (*Conn, error) {
 	c.seqChan = make(chan uint16, 8)
 	c.reqChan = make(chan *request, 128)
 	c.eventChan = make(chan Event, 8192)
-	c.doneSend = make(chan struct{})
-	c.doneRead = make(chan struct{})
+	c.termSend = make(chan struct{})
+	c.termRead = make(chan struct{})
 	c.ExtMisc = &ExtMisc{conn: &c}
 	go c.generateXIDs()
 	go c.generateSequenceIDs()
@@ -406,7 +406,7 @@ func (c *Conn) generateXIDs() {
 		}
 		select {
 		case c.xidChan <- id:
-		case <-c.doneSend:
+		case <-c.termSend:
 			return
 		}
 	}
@@ -426,61 +426,62 @@ func (c *Conn) generateSequenceIDs() {
 			if seqid == 0 {
 				seqid = 1
 			}
-		case <-c.doneSend:
+		case <-c.termSend:
 			return
 		}
 	}
 }
 
-func (c *Conn) newRequest(data *Writer, req *Request) {
+func (c *Conn) sendNewRequest(data *Writer, req *Request) {
 	seq := make(chan struct{})
 	select {
 	case c.reqChan <- &request{seq: seq, request: req, data: data}:
 		select {
 		case <-seq:
-		case <-c.doneSend:
+		case <-c.termSend:
 		}
-	case <-c.doneSend:
+	case <-c.termSend:
 	}
 }
 
 func (c *Conn) sendRequests() {
 	defer close(c.requestChan)
 	defer xio.CloseIgnoringErrors(c.conn)
-	defer close(c.doneSend)
+	defer close(c.termSend)
 	for {
 		select {
 		case req := <-c.reqChan:
 			if req == nil {
 				if err := c.noop(); err != nil {
 					xio.CloseIgnoringErrors(c.conn)
-					<-c.doneRead
+					<-c.termRead
 				}
 				return
 			}
 			if len(c.requestChan) == cap(c.requestChan)-1 {
 				if err := c.noop(); err != nil {
 					xio.CloseIgnoringErrors(c.conn)
-					<-c.doneRead
+					<-c.termRead
 					return
 				}
 			}
-			req.request.setSequenceID(c.newSequenceID())
+			req.request.sequence = c.newSequenceID()
+			slog.Info("sending request", "sequence", req.request.sequence, "name", req.request.name)
 			c.requestChan <- req.request
 			if err := req.data.Send(c.conn); err != nil {
 				xio.CloseIgnoringErrors(c.conn)
-				<-c.doneRead
+				<-c.termRead
 				return
 			}
 			close(req.seq)
-		case <-c.doneRead:
+		case <-c.termRead:
 			return
 		}
 	}
 }
 
 func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, event WritableEvent) {
-	req := newRequest(c, false, false, nil)
+	req := newRequest("sendEvent", c, false, false, nil)
 	w := NewWriter(44)
 	w.Byte(opcodeSendEvent)
 	w.Bool(propagate)
@@ -488,13 +489,15 @@ func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, even
 	w.WindowID(window)
 	w.Uint32(eventMask)
 	event.Write(c.newSequenceID(), w)
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 }
 
 func (c *Conn) noop() error {
-	req := newRequest(c, true, true, nil)
-	req.setSequenceID(c.newSequenceID())
+	slog.Info("SENDING noop request")
+	req := newRequest("noop", c, true, true, nil)
+	req.sequence = c.newSequenceID()
 	c.requestChan <- req
+	slog.Info("sending noop request", "sequence", req.sequence, "name", req.name)
 	if err := c.inputFocusRequestWriter().Send(c.conn); err != nil {
 		return err
 	}
@@ -504,13 +507,14 @@ func (c *Conn) noop() error {
 
 // Sync causes all outstanding requests to be processed before returning.
 func (c *Conn) Sync() {
+	slog.Info("SYNC")
 	c.GetInputFocus() //nolint:errcheck // Don't care about errors here
 }
 
 func (c *Conn) readResponses() {
 	defer close(c.eventChan)
 	defer xio.CloseIgnoringErrors(c.conn)
-	defer close(c.doneRead)
+	defer close(c.termRead)
 	var err error
 	var seq uint16
 	for {
@@ -526,6 +530,7 @@ func (c *Conn) readResponses() {
 			c.errorCodeLock.RLock()
 			err = xerr
 			seq = xerr.Sequence
+			slog.Info("X11 error received", "sequence", seq, "err", err)
 		case 1: // Reply
 			r.Skip(1)
 			seq = r.Uint16()
@@ -536,13 +541,17 @@ func (c *Conn) readResponses() {
 				}
 			}
 			r.Seek(0)
+			slog.Info("X11 reply received", "sequence", seq)
 		default: // Event
 			r.Seek(0)
 			eventID := r.Byte() & 127
+			r.Skip(1)
+			seq2 := r.Uint16()
 			r.Seek(0)
 			c.eventNewMapLock.RLock()
 			f, ok := c.eventNewMap[eventID]
 			c.eventNewMapLock.RUnlock()
+			slog.Info("X11 event received", "id", eventID, "sequence", seq2)
 			if ok {
 				c.eventChan <- f(r)
 			} else {
@@ -550,7 +559,9 @@ func (c *Conn) readResponses() {
 			}
 			continue
 		}
+		slog.Info("processing the X11 request channel", "sequence", seq)
 		for one := range c.requestChan {
+			slog.Info("checking request against response", "requestSequence", one.sequence, "responseSequence", seq, "requestName", one.name)
 			if one.processRequest(seq, r, err) {
 				break
 			}
@@ -560,7 +571,7 @@ func (c *Conn) readResponses() {
 
 func (c *Conn) bail(err error) {
 	select {
-	case <-c.doneSend:
+	case <-c.termSend:
 	default:
 		errs.Log(err)
 		c.eventChan <- &ErrorEvent{Error: err}
@@ -646,7 +657,7 @@ func (c *Conn) hasExtension(name string) extensionInfo {
 
 func (c *Conn) queryExtension(name string) extensionInfo {
 	var info extensionInfo
-	req := newRequest(c, true, true, func(r *Reader) {
+	req := newRequest("queryExtension", c, true, true, func(r *Reader) {
 		r.Skip(8)
 		info.present = r.Bool()
 		info.majorOpcode = r.Byte()
@@ -662,7 +673,7 @@ func (c *Conn) queryExtension(name string) extensionInfo {
 	w.Zero(2)
 	w.String(name)
 	w.ZeroTo4ByteAlignment()
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 	req.Reply() //nolint:errcheck // Ignore errors here since we'll just return info.present=false
 	return info
 }
@@ -671,7 +682,7 @@ func (c *Conn) queryExtension(name string) extensionInfo {
 // Atom has the specified name.
 func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 	var atom Atom
-	req := newRequest(c, true, true, func(r *Reader) {
+	req := newRequest("internAtom", c, true, true, func(r *Reader) {
 		r.Skip(8)
 		atom = Atom(r.Uint32())
 		r.Skip(20)
@@ -685,7 +696,7 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 	w.Zero(2)
 	w.String(name)
 	w.ZeroTo4ByteAlignment()
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 	err := req.Reply()
 	return atom, err
 }
@@ -697,7 +708,7 @@ func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWi
 	if err != nil {
 		return WindowNone, err
 	}
-	req := newRequest(c, true, false, nil)
+	req := newRequest("createWindow", c, true, false, nil)
 	valueList := attributes.toValues(valueMask)
 	size := 32 + 4*len(valueList)
 	w := NewWriter(size)
@@ -718,31 +729,31 @@ func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWi
 		w.Uint32(v)
 	}
 	w.ZeroTo4ByteAlignment()
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 	return windowID, req.Check()
 }
 
 // DestroyWindow destroys the specified window.
 func (c *Conn) DestroyWindow(window WindowID) error {
-	req := newRequest(c, true, false, nil)
+	req := newRequest("destroyWindow", c, true, false, nil)
 	w := NewWriter(8)
 	w.Byte(opcodeDestroyWindow)
 	w.Zero(1)
 	w.Uint16(2)
 	w.WindowID(window)
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 	return req.Check()
 }
 
 // GetInputFocus returns the current input focus window and the revert-to value.
 func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
-	req := newRequest(c, true, true, func(r *Reader) {
+	req := newRequest("getInputFocus", c, true, true, func(r *Reader) {
 		r.Skip(1)
 		revertTo = r.Byte()
 		r.Skip(6)
 		focus = WindowID(r.Uint32())
 	})
-	c.newRequest(c.inputFocusRequestWriter(), req)
+	c.sendNewRequest(c.inputFocusRequestWriter(), req)
 	err = req.Reply()
 	return focus, revertTo, err
 }
@@ -757,7 +768,7 @@ func (c *Conn) inputFocusRequestWriter() *Writer {
 
 // GetProperty returns information about the specified property.
 func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset, length uint32, remove bool) (format byte, actualPropertyType Atom, value []byte, err error) {
-	req := newRequest(c, true, true, func(r *Reader) {
+	req := newRequest("getProperty", c, true, true, func(r *Reader) {
 		r.Skip(1)
 		format = r.Byte()
 		r.Skip(6)
@@ -767,7 +778,7 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 		r.Skip(12)
 		if format != 0 {
 			value = r.Bytes(int(lengthInFormatUnits * uint32(format/8)))
-			r.Skip(pad4(len(value)))
+			r.SkipTo4ByteAlignment()
 		}
 	})
 	w := NewWriter(24)
@@ -779,7 +790,7 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 	w.Atom(propertyType)
 	w.Uint32(offset)
 	w.Uint32(length)
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 	err = req.Reply()
 	return format, actualPropertyType, value, err
 }
@@ -796,7 +807,8 @@ const (
 // format of the property data, respectively. The data is provided as a byte slice, and its length should be consistent
 // with the specified format (8, 16, or 32 bits per unit).
 func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) error {
-	req := newRequest(c, true, false, nil)
+	slog.Info("ChangeProperty")
+	req := newRequest("changeProperty", c, true, false, nil)
 	w := NewWriter(24 + pad4(len(data)))
 	w.Byte(opcodeChangeProperty)
 	w.Byte(mode)
@@ -809,23 +821,24 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 	w.Uint32(uint32(len(data) / int(format/8)))
 	w.Bytes(data)
 	w.ZeroTo4ByteAlignment()
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 	return req.Check()
 }
 
 // Bell causes the server to emit a bell sound with the specified volume as a percentage relative to the base volume,
 // from -100 to 100, inclusive.
 func (c *Conn) Bell(percent int8) {
-	req := newRequest(c, false, false, nil)
+	req := newRequest("bell", c, false, false, nil)
 	w := NewWriter(4)
 	w.Byte(opcodeBell)
 	w.Int8(percent)
 	w.Uint16(1)
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 }
 
 // GetClipboardText retrieves the current clipboard text by checking the owner of the CLIPBOARD selection and requesting the selection contents if the owner is not the helper window. It tries to retrieve the clipboard text in UTF8_STRING format first, then falls back to STRING format if UTF8_STRING is not available. If the clipboard contents are provided incrementally (using the INCR mechanism), it handles that as well by repeatedly requesting the property until all data has been received. The retrieved clipboard text is stored in the connection for future retrievals until it changes.
 func (c *Conn) GetClipboardText() string {
+	slog.Info("GetClipboardText")
 	owner, err := c.getSelectionOwner(c.clipboardAtom)
 	if err != nil {
 		errs.Log(err)
@@ -905,8 +918,9 @@ func convertLatin1ToUTF8(latin1 []byte) string {
 // selection with a helper window. When another client requests the clipboard contents, the helper window will provide
 // the stored text.
 func (c *Conn) SetClipboardText(str string) {
+	slog.Info("SetClipboardText")
 	c.clipboard = str
-	req := newRequest(c, false, false, nil)
+	req := newRequest("setClipboardText", c, false, false, nil)
 	w := NewWriter(16)
 	w.Byte(opcodeSetSelectionOwner)
 	w.Zero(1)
@@ -914,11 +928,12 @@ func (c *Conn) SetClipboardText(str string) {
 	w.WindowID(c.helperWindow)
 	w.Atom(c.clipboardAtom)
 	w.Uint32(0)
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 }
 
 func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
-	req := newRequest(c, true, true, func(r *Reader) {
+	slog.Info("getSelectionOwner")
+	req := newRequest("getSelectionOwner", c, true, true, func(r *Reader) {
 		r.Skip(8)
 		owner = WindowID(r.Uint32())
 		r.Skip(20)
@@ -928,13 +943,14 @@ func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
 	w.Zero(1)
 	w.Uint16(2)
 	w.Atom(selection)
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 	err = req.Reply()
 	return owner, err
 }
 
 func (c *Conn) convertSelection(requestor WindowID, selection, target, property Atom, timestamp uint32) {
-	req := newRequest(c, false, false, nil)
+	slog.Info("convertSelection")
+	req := newRequest("convertSelection", c, false, false, nil)
 	w := NewWriter(8)
 	w.Byte(opcodeConvertSelection)
 	w.Zero(1)
@@ -944,7 +960,7 @@ func (c *Conn) convertSelection(requestor WindowID, selection, target, property 
 	w.Atom(target)
 	w.Atom(property)
 	w.Uint32(timestamp)
-	c.newRequest(w, req)
+	c.sendNewRequest(w, req)
 }
 
 func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) {
@@ -974,6 +990,7 @@ func (c *Conn) DefaultVisual() VisualID {
 // this conversion, processing any SelectionRequestEvent or SelectionClearEvent that may occur during this time.
 // Finally, it destroys the helper window and resets its ID to WindowNone.
 func (c *Conn) PushClipboardToManager() {
+	slog.Info("PushClipboardToManager")
 	if c.helperWindow != WindowNone {
 		if owner, err := c.getSelectionOwner(c.clipboardAtom); err == nil && owner == c.helperWindow {
 			c.convertSelection(c.helperWindow, c.clipboardManagerAtom, c.clipboardSaveTargetsAtom, AtomNone, 0)
@@ -1020,6 +1037,6 @@ func (c *Conn) PushClipboardToManager() {
 func (c *Conn) Close() {
 	select {
 	case c.reqChan <- nil:
-	case <-c.doneSend:
+	case <-c.termSend:
 	}
 }
