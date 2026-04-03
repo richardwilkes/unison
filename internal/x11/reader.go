@@ -157,12 +157,12 @@ func (x *Reader) ZeroedString(count int) string {
 func (x *Reader) IntoBytes(buffer []byte) {
 	defer func() { x.pos += len(buffer) }()
 	if x.pos >= len(x.buffer) {
-		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
+		errs.Log(errs.New(attemptToReadPastEndOfBufferErr), "pos", x.pos, "length", len(buffer), "bufferLength", len(x.buffer))
 		return
 	}
 	copy(buffer, x.buffer[x.pos:])
 	if x.pos+len(buffer) > len(x.buffer) {
-		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
+		errs.Log(errs.New(attemptToReadPastEndOfBufferErr), "pos", x.pos, "length", len(buffer), "bufferLength", len(x.buffer))
 	}
 }
 
@@ -179,7 +179,7 @@ func (x *Reader) Bool() bool {
 func (x *Reader) Byte() byte {
 	defer func() { x.pos++ }()
 	if x.pos >= len(x.buffer) {
-		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
+		errs.Log(errs.New(attemptToReadPastEndOfBufferErr), "pos", x.pos, "length", 1, "bufferLength", len(x.buffer))
 		return 0
 	}
 	return x.buffer[x.pos]
@@ -205,7 +205,7 @@ func (x *Reader) Int32() int32 {
 func (x *Reader) Uint16() uint16 {
 	defer func() { x.pos += 2 }()
 	if x.pos+2 > len(x.buffer) {
-		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
+		errs.Log(errs.New(attemptToReadPastEndOfBufferErr), "pos", x.pos, "length", 2, "bufferLength", len(x.buffer))
 		return 0
 	}
 	return x.byteOrder.Uint16(x.buffer[x.pos:])
@@ -217,7 +217,7 @@ func (x *Reader) Uint16() uint16 {
 func (x *Reader) Uint32() uint32 {
 	defer func() { x.pos += 4 }()
 	if x.pos+4 > len(x.buffer) {
-		errs.Log(errs.New(attemptToReadPastEndOfBufferErr))
+		errs.Log(errs.New(attemptToReadPastEndOfBufferErr), "pos", x.pos, "length", 4, "bufferLength", len(x.buffer))
 		return 0
 	}
 	return x.byteOrder.Uint32(x.buffer[x.pos:])
