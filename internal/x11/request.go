@@ -77,7 +77,7 @@ func (r *Request) replyChecked() error {
 		return nil
 	case err := <-r.errorChan:
 		return err
-	case <-r.conn.termRead:
+	case <-r.conn.readClosed:
 		return io.EOF
 	}
 }
@@ -94,7 +94,7 @@ func (r *Request) replyUnchecked() error {
 		return nil
 	case <-r.pingChan:
 		return nil
-	case <-r.conn.termRead:
+	case <-r.conn.readClosed:
 		return io.EOF
 	}
 }
@@ -129,7 +129,7 @@ func (r *Request) Check() error {
 		case <-r.pingChan:
 			slog.Info("request checked successfully", "name", r.name)
 			return nil
-		case <-r.conn.termRead:
+		case <-r.conn.readClosed:
 			return io.EOF
 		}
 	}
@@ -143,7 +143,7 @@ func (r *Request) processRequest(seq uint16, in *Reader, err error) bool {
 			if r.errorChan != nil {
 				r.errorChan <- err
 			} else {
-				r.conn.eventChan <- &ErrorEvent{Error: err}
+				r.conn.events <- &ErrorEvent{Error: err}
 				if r.pingChan != nil {
 					r.pingChan <- true
 				}

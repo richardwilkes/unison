@@ -63,11 +63,10 @@ type extensionInfo struct {
 // Conn represents a connection to an X server.
 type Conn struct {
 	conn                     net.Conn
-	eventChan                chan Event
-	requestChan              chan *Request
-	reqChan                  chan *request
-	termSend                 chan struct{}
-	termRead                 chan struct{}
+	events                   chan Event
+	requests                 chan *request
+	closed                   chan struct{}
+	readClosed               chan struct{}
 	ExtMisc                  *ExtMisc
 	extensions               map[string]extensionInfo
 	eventNewMap              map[byte]func(r *Reader) Event
@@ -122,11 +121,10 @@ func NewConn() (*Conn, error) {
 	c.errorCodeMap = newErrorMap()
 	c.eventNewMap = newEventMap()
 	c.requestMap = make(map[uint16]*Request)
-	c.requestChan = make(chan *Request, 1024)
-	c.reqChan = make(chan *request, 128)
-	c.eventChan = make(chan Event, 8192)
-	c.termSend = make(chan struct{})
-	c.termRead = make(chan struct{})
+	c.requests = make(chan *request, 128)
+	c.events = make(chan Event, 8192)
+	c.closed = make(chan struct{})
+	c.readClosed = make(chan struct{})
 	c.ExtMisc = &ExtMisc{conn: &c}
 	go c.sendRequests()
 	go c.readResponses()
@@ -330,36 +328,23 @@ func (c *Conn) nextSeq() uint16 {
 func (c *Conn) sendNewRequest(data *Writer, req *Request) {
 	seq := make(chan struct{})
 	select {
-	case c.reqChan <- &request{seq: seq, request: req, data: data}:
+	case c.requests <- &request{seq: seq, request: req, data: data}:
 		select {
 		case <-seq:
-		case <-c.termSend:
+		case <-c.closed:
 		}
-	case <-c.termSend:
+	case <-c.closed:
 	}
 }
 
 func (c *Conn) sendRequests() {
 	defer xio.CloseIgnoringErrors(c.conn)
-	defer close(c.termSend)
+	defer close(c.closed)
 	for {
 		select {
-		case req := <-c.reqChan:
+		case req := <-c.requests:
 			if req == nil {
-				slog.Info("request channel closed, sending noop to ensure all pending requests are processed before terminating")
-				if err := c.noop(); err != nil {
-					errs.Log(err)
-					xio.CloseIgnoringErrors(c.conn)
-					<-c.termRead
-				}
 				return
-			}
-			if len(c.requestChan) == cap(c.requestChan)-1 {
-				if err := c.noop(); err != nil {
-					xio.CloseIgnoringErrors(c.conn)
-					<-c.termRead
-					return
-				}
 			}
 			req.request.sequence = c.nextSeq()
 			slog.Info("sending request", "sequence", req.request.sequence, "name", req.request.name)
@@ -368,14 +353,14 @@ func (c *Conn) sendRequests() {
 				c.requestMap[req.request.sequence] = req.request
 				c.requestMapLock.Unlock()
 			}
+			close(req.seq)
 			if err := req.data.Send(c.conn); err != nil {
 				errs.Log(err)
 				xio.CloseIgnoringErrors(c.conn)
-				<-c.termRead
+				<-c.readClosed
 				return
 			}
-			close(req.seq)
-		case <-c.termRead:
+		case <-c.readClosed:
 			return
 		}
 	}
@@ -394,19 +379,6 @@ func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, even
 	return req.Check()
 }
 
-func (c *Conn) noop() error {
-	slog.Info("SENDING noop request")
-	req := newRequest("noop", c, true, true, nil)
-	req.sequence = c.nextSeq()
-	c.requestChan <- req
-	slog.Info("sending noop request", "sequence", req.sequence, "name", req.name)
-	if err := c.inputFocusRequestWriter().Send(c.conn); err != nil {
-		return err
-	}
-	req.Reply() //nolint:errcheck // Don't care about errors here
-	return nil
-}
-
 // Sync causes all outstanding requests to be processed before returning.
 func (c *Conn) Sync() {
 	slog.Info("SYNC")
@@ -414,9 +386,9 @@ func (c *Conn) Sync() {
 }
 
 func (c *Conn) readResponses() {
-	defer close(c.eventChan)
+	defer close(c.events)
 	defer xio.CloseIgnoringErrors(c.conn)
-	defer close(c.termRead)
+	defer close(c.readClosed)
 	for {
 		var err error
 		r := NewReader(make([]byte, 32))
@@ -452,7 +424,7 @@ func (c *Conn) readResponses() {
 			c.eventNewMapLock.RUnlock()
 			if ok {
 				slog.Info("X11 event received", "id", eventID, "sequence", seq)
-				c.eventChan <- f(r)
+				c.events <- f(r)
 			} else {
 				slog.Warn("dropped unhandled X11 event", "id", eventID, "sequence", seq)
 			}
@@ -476,27 +448,27 @@ func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
 
 func (c *Conn) bail(err error) {
 	select {
-	case <-c.termSend:
+	case <-c.closed:
 	default:
 		errs.Log(err)
-		c.eventChan <- &ErrorEvent{Error: err}
+		c.events <- &ErrorEvent{Error: err}
 	}
 }
 
 // PostEmptyEvent posts an empty event to the event channel to wake up the event loop without processing an actual X11
 // event.
 func (c *Conn) PostEmptyEvent() {
-	c.eventChan <- nil
+	c.events <- nil
 }
 
 // WaitEvents blocks until the next event is available, then processes it.
 func (c *Conn) WaitEvents() {
-	c.processEvent(<-c.eventChan)
+	c.processEvent(<-c.events)
 }
 
 func waitForEvent[T Event](c *Conn, f func(Event) T) T {
 	for {
-		ev := <-c.eventChan
+		ev := <-c.events
 		if xreflect.IsNil(ev) {
 			var zero T
 			return zero
@@ -511,7 +483,7 @@ func waitForEvent[T Event](c *Conn, f func(Event) T) T {
 // PollEvents processes the next event if one is available.
 func (c *Conn) PollEvents() {
 	select {
-	case ev := <-c.eventChan:
+	case ev := <-c.events:
 		c.processEvent(ev)
 	default:
 	}
@@ -520,7 +492,7 @@ func (c *Conn) PollEvents() {
 func pollForEvent[T Event](c *Conn, f func(Event) T) T {
 	for {
 		select {
-		case ev := <-c.eventChan:
+		case ev := <-c.events:
 			if xreflect.IsNil(ev) {
 				var zero T
 				return zero
@@ -949,8 +921,7 @@ func (c *Conn) PushClipboardToManager() {
 
 // Close the connection after finishing any in-flight requests.
 func (c *Conn) Close() {
-	select {
-	case c.reqChan <- nil:
-	case <-c.termSend:
-	}
+	c.Sync()
+	close(c.requests)
+	<-c.closed
 }
