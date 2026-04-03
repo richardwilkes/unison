@@ -155,12 +155,13 @@ func (x *Reader) ZeroedString(count int) string {
 // position by the length of the byte slice. Note that if the read operation attempts to read past the end of the
 // buffer, an error will be logged and only the bytes that could be read will be copied into the byte slice.
 func (x *Reader) IntoBytes(buffer []byte) {
-	defer func() { x.pos += len(buffer) }()
-	if x.pos >= len(x.buffer) {
-		errs.Log(errs.New(attemptToReadPastEndOfBufferErr), "pos", x.pos, "length", len(buffer), "bufferLength", len(x.buffer))
+	if len(buffer) == 0 {
 		return
 	}
-	copy(buffer, x.buffer[x.pos:])
+	defer func() { x.pos += len(buffer) }()
+	if x.pos < len(x.buffer) {
+		copy(buffer, x.buffer[x.pos:])
+	}
 	if x.pos+len(buffer) > len(x.buffer) {
 		errs.Log(errs.New(attemptToReadPastEndOfBufferErr), "pos", x.pos, "length", len(buffer), "bufferLength", len(x.buffer))
 	}
