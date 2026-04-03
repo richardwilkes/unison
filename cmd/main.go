@@ -37,7 +37,9 @@ func start() error {
 	x11Conn.SetClipboardText("Yo!")
 	fmt.Printf(" AFTER clipboard: %q\n", x11Conn.GetClipboardText())
 	x11Conn.PushClipboardToManager()
+	fmt.Printf("AFTER push clipboard: %q\n", x11Conn.GetClipboardText())
 	x11Conn.Close()
+	fmt.Println("AFTER CLOSE")
 	return nil
 }
 

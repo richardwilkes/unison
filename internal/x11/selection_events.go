@@ -97,13 +97,15 @@ func (e *SelectionRequestEvent) TargetWindow() WindowID {
 // Process the event.
 func (e *SelectionRequestEvent) Process(c *Conn) {
 	slog.Info("SelectionRequestEvent received", "sequence", e.Sequence, "owner", e.Owner, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property, "time", e.Time)
-	c.sendEvent(e.Requestor, false, 0, &SelectionNotifyEvent{
+	if err := c.sendEvent(e.Requestor, false, 0, &SelectionNotifyEvent{
 		Time:      e.Time,
 		Requestor: e.Requestor,
 		Selection: e.Selection,
 		Target:    e.Target,
 		Property:  e.writeTargetToProperty(c),
-	})
+	}); err != nil {
+		errs.Log(err)
+	}
 }
 
 func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
@@ -117,9 +119,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 		w.Atom(c.clipboardMultipleAtom)
 		w.Atom(c.utf8StringAtom)
 		w.Atom(AtomString)
-		if err := c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve()); err != nil {
-			errs.Log(err)
-		}
+		c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve())
 		return e.Property
 	case c.clipboardMultipleAtom:
 		format, kind, value, err := c.GetProperty(e.Requestor, e.Property, c.atomPairAtom, 0, math.MaxUint32, false)
@@ -140,27 +140,19 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			prop := r.Atom()
 			if propType == c.utf8StringAtom || propType == AtomString {
 				w.Atom(propType)
-				if err = c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, content); err != nil {
-					errs.Log(err)
-				}
+				c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, content)
 			} else {
 				w.Atom(AtomNone)
 			}
 			w.Atom(prop)
 		}
-		if err = c.ChangeProperty(e.Requestor, e.Property, c.atomPairAtom, 32, PropModeReplace, w.Retrieve()); err != nil {
-			errs.Log(err)
-		}
+		c.ChangeProperty(e.Requestor, e.Property, c.atomPairAtom, 32, PropModeReplace, w.Retrieve())
 		return e.Property
 	case c.clipboardSaveTargetsAtom:
-		if err := c.ChangeProperty(e.Requestor, e.Property, c.nullAtom, 32, PropModeReplace, nil); err != nil {
-			errs.Log(err)
-		}
+		c.ChangeProperty(e.Requestor, e.Property, c.nullAtom, 32, PropModeReplace, nil)
 		return e.Property
 	case c.utf8StringAtom, AtomString:
-		if err := c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, []byte(c.clipboard)); err != nil {
-			errs.Log(err)
-		}
+		c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, []byte(c.clipboard))
 		return e.Property
 	}
 	return AtomNone

@@ -12,6 +12,7 @@ package x11
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"log/slog"
 	"math"
 	"net"
@@ -71,6 +72,7 @@ type Conn struct {
 	extensions               map[string]extensionInfo
 	eventNewMap              map[byte]func(r *Reader) Event
 	errorCodeMap             map[byte]string
+	requestMap               map[uint16]*Request
 	envDisplay               string
 	socket                   string
 	protocol                 string
@@ -84,6 +86,7 @@ type Conn struct {
 	extensionsLock           sync.RWMutex
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
+	requestMapLock           sync.RWMutex
 	xid                      xid
 	DefaultScreen            int
 	displayNum               int
@@ -127,6 +130,7 @@ func NewConn() (*Conn, error) {
 	}
 	c.errorCodeMap = newErrorMap()
 	c.eventNewMap = newEventMap()
+	c.requestMap = make(map[uint16]*Request)
 	c.requestChan = make(chan *Request, 1024)
 	c.reqChan = make(chan *request, 128)
 	c.eventChan = make(chan Event, 8192)
@@ -165,10 +169,9 @@ func NewConn() (*Conn, error) {
 	if c.nullAtom, err = c.InternAtom("NULL", false); err != nil {
 		return nil, err
 	}
-	if c.helperWindow, err = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
-		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); err != nil {
-		return nil, err
-	}
+	c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
+		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange})
+	c.Sync()
 	return &c, nil
 }
 
@@ -371,14 +374,15 @@ func (c *Conn) sendNewRequest(data *Writer, req *Request) {
 }
 
 func (c *Conn) sendRequests() {
-	defer close(c.requestChan)
 	defer xio.CloseIgnoringErrors(c.conn)
 	defer close(c.termSend)
 	for {
 		select {
 		case req := <-c.reqChan:
 			if req == nil {
+				slog.Info("request channel closed, sending noop to ensure all pending requests are processed before terminating")
 				if err := c.noop(); err != nil {
+					errs.Log(err)
 					xio.CloseIgnoringErrors(c.conn)
 					<-c.termRead
 				}
@@ -393,8 +397,13 @@ func (c *Conn) sendRequests() {
 			}
 			req.request.sequence = c.nextSeq()
 			slog.Info("sending request", "sequence", req.request.sequence, "name", req.request.name)
-			c.requestChan <- req.request
+			if req.request.replyChan != nil || req.request.errorChan != nil || req.request.pingChan != nil {
+				c.requestMapLock.Lock()
+				c.requestMap[req.request.sequence] = req.request
+				c.requestMapLock.Unlock()
+			}
 			if err := req.data.Send(c.conn); err != nil {
+				errs.Log(err)
 				xio.CloseIgnoringErrors(c.conn)
 				<-c.termRead
 				return
@@ -406,8 +415,8 @@ func (c *Conn) sendRequests() {
 	}
 }
 
-func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, event WritableEvent) {
-	req := newRequest("sendEvent", c, false, false, nil)
+func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, event WritableEvent) error {
+	req := newRequest("sendEvent", c, true, false, nil)
 	w := NewWriter(44)
 	w.Byte(opcodeSendEvent)
 	w.Bool(propagate)
@@ -416,6 +425,7 @@ func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, even
 	w.Uint32(eventMask)
 	event.Write(c.nextSeq(), w)
 	c.sendNewRequest(w, req)
+	return req.Check()
 }
 
 func (c *Conn) noop() error {
@@ -441,57 +451,60 @@ func (c *Conn) readResponses() {
 	defer close(c.eventChan)
 	defer xio.CloseIgnoringErrors(c.conn)
 	defer close(c.termRead)
-	var err error
-	var seq uint16
 	for {
+		var err error
 		r := NewReader(make([]byte, 32))
 		if err = r.Load(c.conn); err != nil {
 			c.bail(err)
 			return
 		}
-		switch r.Byte() {
+		code := r.Byte()
+		r.Skip(1)
+		seq := r.Uint16()
+		size := r.Uint32()
+		r.Seek(0)
+		switch code {
 		case 0: // Error
-			r.Seek(0)
 			xerr := NewError(c, r)
-			c.errorCodeLock.RLock()
 			err = xerr
 			seq = xerr.Sequence
 			slog.Info("X11 error received", "sequence", seq, "err", err)
+			c.processRequest(seq, r, err)
 		case 1: // Reply
-			r.Skip(1)
-			seq = r.Uint16()
-			if size := r.Uint32(); size > 0 {
+			if size > 0 {
 				if err = r.Append(int(size)*4, c.conn); err != nil {
 					c.bail(err)
 					return
 				}
 			}
-			r.Seek(0)
 			slog.Info("X11 reply received", "sequence", seq)
+			c.processRequest(seq, r, nil)
 		default: // Event
-			r.Seek(0)
-			eventID := r.Byte() & 127
-			r.Skip(1)
-			seq2 := r.Uint16()
-			r.Seek(0)
+			eventID := code & 127
 			c.eventNewMapLock.RLock()
 			f, ok := c.eventNewMap[eventID]
 			c.eventNewMapLock.RUnlock()
-			slog.Info("X11 event received", "id", eventID, "sequence", seq2)
 			if ok {
+				slog.Info("X11 event received", "id", eventID, "sequence", seq)
 				c.eventChan <- f(r)
 			} else {
-				slog.Warn("dropped unhandled X11 event", "id", eventID)
+				slog.Warn("dropped unhandled X11 event", "id", eventID, "sequence", seq)
 			}
 			continue
 		}
-		slog.Info("processing the X11 request channel", "sequence", seq)
-		for one := range c.requestChan {
-			slog.Info("checking request against response", "requestSequence", one.sequence, "responseSequence", seq, "requestName", one.name)
-			if one.processRequest(seq, r, err) {
-				break
-			}
-		}
+	}
+}
+
+func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
+	slog.Info("processing the X11 request channel", "sequence", seq)
+	c.requestMapLock.Lock()
+	defer c.requestMapLock.Unlock()
+	if req, ok := c.requestMap[seq]; ok {
+		delete(c.requestMap, seq)
+		slog.Info("processing request", "sequence", req.sequence, "name", req.name)
+		req.processRequest(seq, in, err)
+	} else {
+		slog.Warn("received response for unknown request", "sequence", seq, "error", err)
 	}
 }
 
@@ -627,14 +640,13 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 	return atom, err
 }
 
-// CreateWindow creates a new window with the specified parameters and attributes, returning a CreateNotifyEvent
-// containing the ID of the newly created window if successful.
-func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) (WindowID, error) {
+// CreateWindow creates a new window with the specified parameters and attributes.
+func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) WindowID {
 	windowID, err := c.nextWindowID()
 	if err != nil {
-		return WindowNone, err
+		return WindowNone
 	}
-	req := newRequest("createWindow", c, true, false, nil)
+	req := newRequest("createWindow", c, false, false, nil)
 	valueList := attributes.toValues(valueMask)
 	size := 32 + 4*len(valueList)
 	w := NewWriter(size)
@@ -656,7 +668,7 @@ func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWi
 	}
 	w.ZeroTo4ByteAlignment()
 	c.sendNewRequest(w, req)
-	return windowID, req.Check()
+	return windowID
 }
 
 // DestroyWindow destroys the specified window.
@@ -703,7 +715,11 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 		lengthInFormatUnits := r.Uint32()
 		r.Skip(12)
 		if format != 0 {
-			value = r.Bytes(int(lengthInFormatUnits * uint32(format/8)))
+			size := int(lengthInFormatUnits)
+			if actualPropertyType == propertyType {
+				size *= int(format / 8)
+			}
+			value = r.Bytes(size)
 			r.SkipTo4ByteAlignment()
 		}
 	})
@@ -732,9 +748,9 @@ const (
 // (PropModeReplace, PropModePrepend, or PropModeAppend). The propertyType and format parameters specify the type and
 // format of the property data, respectively. The data is provided as a byte slice, and its length should be consistent
 // with the specified format (8, 16, or 32 bits per unit).
-func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) error {
+func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) {
 	slog.Info("ChangeProperty")
-	req := newRequest("changeProperty", c, true, false, nil)
+	req := newRequest("changeProperty", c, false, false, nil)
 	w := NewWriter(24 + pad4(len(data)))
 	w.Byte(opcodeChangeProperty)
 	w.Byte(mode)
@@ -748,7 +764,6 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 	w.Bytes(data)
 	w.ZeroTo4ByteAlignment()
 	c.sendNewRequest(w, req)
-	return req.Check()
 }
 
 // Bell causes the server to emit a bell sound with the specified volume as a percentage relative to the base volume,
@@ -922,6 +937,7 @@ func (c *Conn) PushClipboardToManager() {
 			c.convertSelection(c.helperWindow, c.clipboardManagerAtom, c.clipboardSaveTargetsAtom, AtomNone, 0)
 			again := true
 			for again {
+				slog.Info("waiting for events related to clipboard manager interaction")
 				evt := waitForEvent(c, func(ev Event) Event {
 					switch e := ev.(type) {
 					case *SelectionNotifyEvent:
@@ -941,17 +957,23 @@ func (c *Conn) PushClipboardToManager() {
 				})
 				switch e := evt.(type) {
 				case *SelectionNotifyEvent:
+					slog.Info("received SelectionNotifyEvent", "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property)
 					if e.Target == c.clipboardSaveTargetsAtom {
 						again = false
 					}
 				case *SelectionRequestEvent:
+					slog.Info("received SelectionRequestEvent", "owner", e.Owner, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property)
 					c.processEvent(e)
 				case *SelectionClearEvent:
+					slog.Info("received SelectionClearEvent", "owner", e.Owner, "selection", e.Selection, "time", e.Time)
 				default:
+					slog.Info("received other event during clipboard manager interaction", "event", fmt.Sprintf("%T", evt))
 					again = false
 				}
 			}
+			slog.Info("finished processing events related to clipboard manager interaction")
 		}
+		slog.Info("destroying helper window")
 		if err := c.DestroyWindow(c.helperWindow); err != nil {
 			errs.Log(err)
 		}

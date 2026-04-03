@@ -119,6 +119,7 @@ func (r *Request) Check() error {
 	case err := <-r.errorChan:
 		return err
 	case <-r.pingChan:
+		slog.Info("request checked successfully", "name", r.name)
 		return nil
 	default:
 		r.conn.Sync()
@@ -126,6 +127,7 @@ func (r *Request) Check() error {
 		case err := <-r.errorChan:
 			return err
 		case <-r.pingChan:
+			slog.Info("request checked successfully", "name", r.name)
 			return nil
 		case <-r.conn.termRead:
 			return io.EOF
@@ -136,7 +138,8 @@ func (r *Request) Check() error {
 func (r *Request) processRequest(seq uint16, in *Reader, err error) bool {
 	slog.Info("processing request response", "sequence", seq, "error", err)
 	if r.sequence == seq {
-		if err != nil {
+		switch {
+		case err != nil:
 			if r.errorChan != nil {
 				r.errorChan <- err
 			} else {
@@ -145,25 +148,26 @@ func (r *Request) processRequest(seq uint16, in *Reader, err error) bool {
 					r.pingChan <- true
 				}
 			}
-		} else {
-			if r.replyChan == nil {
-				slog.Warn("reply does not have a request with a valid reply channel",
-					"sequence", seq,
-					"name", r.name)
-				return false
-			}
+		case r.replyChan != nil:
 			r.replyChan <- in
+		case r.pingChan != nil:
+			r.pingChan <- true
+		default:
+			slog.Error("found request that is not expecting a reply nor an error, but got one",
+				"sequence", seq,
+				"name", r.name)
+			return false
 		}
 		return true
 	}
 	switch {
 	case r.replyChan != nil && r.errorChan != nil:
-		slog.Warn("found request that is expecting a reply but will never get it",
+		slog.Error("found request that is expecting a reply but will never get it",
 			"sequence", r.sequence,
 			"current sequence", seq,
 			"name", r.name)
 	case r.replyChan != nil && r.pingChan != nil:
-		slog.Warn("found request that is expecting a reply and not an error, but will never get it",
+		slog.Error("found request that is expecting a reply and not an error, but will never get it",
 			"sequence", r.sequence,
 			"current sequence", seq,
 			"name", r.name)
