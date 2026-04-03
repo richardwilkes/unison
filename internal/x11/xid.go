@@ -33,7 +33,7 @@ func (x *xid) next(c *Conn) (uint32, error) {
 	x.lock.Lock()
 	defer x.lock.Unlock()
 	switch {
-	case x.last < x.max-x.inc+1:
+	case x.last <= x.max-x.inc:
 		x.last += x.inc
 	case c.ExtMisc.Available():
 		startID, count, err := c.ExtMisc.GetXIDRange()

@@ -19,12 +19,12 @@ import (
 
 // Request holds data for managing a request to the server.
 type Request struct {
-	name      string
 	conn      *Conn
 	replyChan chan *Reader
 	errorChan chan error
 	pingChan  chan bool
 	processor func(*Reader)
+	name      string
 	sequence  uint16
 }
 
