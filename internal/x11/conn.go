@@ -94,16 +94,7 @@ type Conn struct {
 	releaseNumber            uint32
 	motionBufferSize         uint32
 	helperWindow             WindowID
-	clipboardAtom            Atom
-	clipboardSelectionAtom   Atom
-	clipboardIncrementalAtom Atom
-	clipboardTargetsAtom     Atom
-	clipboardMultipleAtom    Atom
-	clipboardManagerAtom     Atom
-	clipboardSaveTargetsAtom Atom
-	utf8StringAtom           Atom
-	atomPairAtom             Atom
-	nullAtom                 Atom
+	atoms                    [internedAtomCount]Atom
 	protocolMajorVersion     uint16
 	protocolMinorVersion     uint16
 	maximumRequestLength     uint16
@@ -139,35 +130,10 @@ func NewConn() (*Conn, error) {
 	c.ExtMisc = &ExtMisc{conn: &c}
 	go c.sendRequests()
 	go c.readResponses()
-	if c.clipboardAtom, err = c.InternAtom("CLIPBOARD", false); err != nil {
-		return nil, err
-	}
-	if c.clipboardSelectionAtom, err = c.InternAtom("CLIPBOARD_SELECTION", false); err != nil {
-		return nil, err
-	}
-	if c.clipboardIncrementalAtom, err = c.InternAtom("INCR", false); err != nil {
-		return nil, err
-	}
-	if c.clipboardTargetsAtom, err = c.InternAtom("TARGETS", false); err != nil {
-		return nil, err
-	}
-	if c.clipboardMultipleAtom, err = c.InternAtom("MULTIPLE", false); err != nil {
-		return nil, err
-	}
-	if c.clipboardManagerAtom, err = c.InternAtom("CLIPBOARD_MANAGER", false); err != nil {
-		return nil, err
-	}
-	if c.clipboardSaveTargetsAtom, err = c.InternAtom("SAVE_TARGETS", false); err != nil {
-		return nil, err
-	}
-	if c.utf8StringAtom, err = c.InternAtom("UTF8_STRING", false); err != nil {
-		return nil, err
-	}
-	if c.atomPairAtom, err = c.InternAtom("ATOM_PAIR", false); err != nil {
-		return nil, err
-	}
-	if c.nullAtom, err = c.InternAtom("NULL", false); err != nil {
-		return nil, err
+	for i, name := range internedAtomNames {
+		if c.atoms[i], err = c.InternAtom(name, false); err != nil {
+			return nil, err
+		}
 	}
 	c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
 		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange})
@@ -780,7 +746,7 @@ func (c *Conn) Bell(percent int8) {
 // GetClipboardText retrieves the current clipboard text by checking the owner of the CLIPBOARD selection and requesting the selection contents if the owner is not the helper window. It tries to retrieve the clipboard text in UTF8_STRING format first, then falls back to STRING format if UTF8_STRING is not available. If the clipboard contents are provided incrementally (using the INCR mechanism), it handles that as well by repeatedly requesting the property until all data has been received. The retrieved clipboard text is stored in the connection for future retrievals until it changes.
 func (c *Conn) GetClipboardText() string {
 	slog.Info("GetClipboardText")
-	owner, err := c.getSelectionOwner(c.clipboardAtom)
+	owner, err := c.getSelectionOwner(c.atoms[atomClipboard])
 	if err != nil {
 		errs.Log(err)
 		return ""
@@ -789,8 +755,8 @@ func (c *Conn) GetClipboardText() string {
 		return c.clipboard
 	}
 	c.clipboard = ""
-	for _, kind := range []Atom{c.utf8StringAtom, AtomString} {
-		c.convertSelection(c.helperWindow, c.clipboardAtom, kind, c.clipboardSelectionAtom, 0)
+	for _, kind := range []Atom{c.atoms[atomUTF8String], AtomString} {
+		c.convertSelection(c.helperWindow, c.atoms[atomClipboard], kind, c.atoms[atomClipboardSelection], 0)
 		sne := waitForEvent(c, func(evt Event) *SelectionNotifyEvent {
 			if e, ok := evt.(*SelectionNotifyEvent); ok && e.Requestor == c.helperWindow {
 				return e
@@ -814,7 +780,7 @@ func (c *Conn) GetClipboardText() string {
 				continue
 			}
 			switch propertyType {
-			case c.clipboardIncrementalAtom:
+			case c.atoms[atomClipboardIncremental]:
 				var buffer bytes.Buffer
 				for {
 					waitForEvent(c, filter)
@@ -828,12 +794,12 @@ func (c *Conn) GetClipboardText() string {
 					}
 					buffer.Write(value)
 				}
-				if kind == c.utf8StringAtom {
+				if kind == c.atoms[atomUTF8String] {
 					c.clipboard = buffer.String()
 				} else {
 					c.clipboard = convertLatin1ToUTF8(buffer.Bytes())
 				}
-			case c.utf8StringAtom:
+			case c.atoms[atomUTF8String]:
 				c.clipboard = string(value)
 			case AtomString:
 				c.clipboard = convertLatin1ToUTF8(value)
@@ -867,7 +833,7 @@ func (c *Conn) SetClipboardText(str string) {
 	w.Zero(1)
 	w.Uint16(4)
 	w.WindowID(c.helperWindow)
-	w.Atom(c.clipboardAtom)
+	w.Atom(c.atoms[atomClipboard])
 	w.Uint32(0)
 	c.sendNewRequest(w, req)
 }
@@ -933,8 +899,8 @@ func (c *Conn) DefaultVisual() VisualID {
 func (c *Conn) PushClipboardToManager() {
 	slog.Info("PushClipboardToManager")
 	if c.helperWindow != WindowNone {
-		if owner, err := c.getSelectionOwner(c.clipboardAtom); err == nil && owner == c.helperWindow {
-			c.convertSelection(c.helperWindow, c.clipboardManagerAtom, c.clipboardSaveTargetsAtom, AtomNone, 0)
+		if owner, err := c.getSelectionOwner(c.atoms[atomClipboard]); err == nil && owner == c.helperWindow {
+			c.convertSelection(c.helperWindow, c.atoms[atomClipboardManager], c.atoms[atomClipboardSaveTargets], AtomNone, 0)
 			again := true
 			for again {
 				slog.Info("waiting for events related to clipboard manager interaction")
@@ -958,7 +924,7 @@ func (c *Conn) PushClipboardToManager() {
 				switch e := evt.(type) {
 				case *SelectionNotifyEvent:
 					slog.Info("received SelectionNotifyEvent", "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property)
-					if e.Target == c.clipboardSaveTargetsAtom {
+					if e.Target == c.atoms[atomClipboardSaveTargets] {
 						again = false
 					}
 				case *SelectionRequestEvent:
