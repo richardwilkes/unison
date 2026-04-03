@@ -84,15 +84,11 @@ type Conn struct {
 	extensionsLock           sync.RWMutex
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
-	resourceIDLock           sync.Mutex
+	xid                      xid
 	DefaultScreen            int
 	displayNum               int
 	sequence                 atomic.Uint32
 	releaseNumber            uint32
-	resourceIDBase           uint32
-	resourceIDMask           uint32
-	resourceIDMax            uint32
-	resourceIDLast           uint32
 	motionBufferSize         uint32
 	helperWindow             WindowID
 	clipboardAtom            Atom
@@ -280,9 +276,7 @@ func (c *Conn) authenticate() error {
 		return errs.New("authentication refused: " + r.String(int(reasonLen)))
 	case 1:
 		c.releaseNumber = r.Uint32()
-		c.resourceIDBase = r.Uint32()
-		c.resourceIDMask = r.Uint32()
-		c.resourceIDMax = c.resourceIDMask
+		c.xid.init(r)
 		c.motionBufferSize = r.Uint32()
 		vendorLen := r.Uint16()
 		c.maximumRequestLength = r.Uint16()
@@ -341,7 +335,7 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 
 // NewAtom generates a new Atom ID.
 func (c *Conn) NewAtom() (Atom, error) {
-	id, err := c.nextID()
+	id, err := c.xid.next(c)
 	if err != nil {
 		return AtomNone, err
 	}
@@ -349,31 +343,11 @@ func (c *Conn) NewAtom() (Atom, error) {
 }
 
 func (c *Conn) nextWindowID() (WindowID, error) {
-	id, err := c.nextID()
+	id, err := c.xid.next(c)
 	if err != nil {
 		return WindowNone, err
 	}
 	return WindowID(id), nil
-}
-
-func (c *Conn) nextID() (uint32, error) {
-	inc := c.resourceIDMask & -c.resourceIDMask
-	c.resourceIDLock.Lock()
-	defer c.resourceIDLock.Unlock()
-	switch {
-	case c.resourceIDLast < c.resourceIDMax-inc+1:
-		c.resourceIDLast += inc
-	case c.ExtMisc.Available():
-		startID, count, err := c.ExtMisc.GetXIDRange()
-		if err != nil {
-			return 0, err
-		}
-		c.resourceIDLast = startID
-		c.resourceIDMax = startID + (count-1)*inc
-	default:
-		return 0, errs.New("no more IDs available")
-	}
-	return c.resourceIDLast | c.resourceIDBase, nil
 }
 
 func (c *Conn) nextSeq() uint16 {
