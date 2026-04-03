@@ -332,7 +332,7 @@ func (c *Conn) nextSeq() uint16 {
 }
 
 func newUncheckedRequest(name string, data *Writer) *request {
-	slog.Info("creating new request", "name", name)
+	slog.Info("creating new unchecked request", "name", name)
 	return &request{
 		sentChan: make(chan struct{}),
 		data:     data,
@@ -341,18 +341,25 @@ func newUncheckedRequest(name string, data *Writer) *request {
 }
 
 func newCheckedRequest(name string, data *Writer) *request {
-	slog.Info("creating new request", "name", name)
-	r := newUncheckedRequest(name, data)
-	r.failureChan = make(chan error, 1)
-	return r
+	slog.Info("creating new checked request", "name", name)
+	return &request{
+		sentChan:    make(chan struct{}),
+		failureChan: make(chan error, 1),
+		data:        data,
+		name:        name,
+	}
 }
 
 func newReplyRequest(name string, data *Writer, replyProcessor func(*Reader)) *request {
 	slog.Info("creating new request with reply", "name", name)
-	r := newCheckedRequest(name, data)
-	r.replyChan = make(chan *Reader, 1)
-	r.replyProcessor = replyProcessor
-	return r
+	return &request{
+		sentChan:       make(chan struct{}),
+		failureChan:    make(chan error, 1),
+		replyChan:      make(chan *Reader, 1),
+		replyProcessor: replyProcessor,
+		data:           data,
+		name:           name,
+	}
 }
 
 func (c *Conn) sendNewRequest(req *request) error {
@@ -385,6 +392,7 @@ func (c *Conn) sendNewRequest(req *request) error {
 					case <-c.readClosed:
 						return io.EOF
 					default:
+						c.pullRequest(req.sequence)
 						return nil
 					}
 				}
