@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xio"
@@ -70,7 +71,6 @@ type Conn struct {
 	eventChan                chan Event
 	requestChan              chan *Request
 	xidChan                  chan xid
-	seqChan                  chan uint16
 	reqChan                  chan *request
 	termSend                 chan struct{}
 	termRead                 chan struct{}
@@ -93,6 +93,7 @@ type Conn struct {
 	errorCodeLock            sync.RWMutex
 	DefaultScreen            int
 	displayNum               int
+	sequence                 atomic.Uint32
 	releaseNumber            uint32
 	resourceIDBase           uint32
 	resourceIDMask           uint32
@@ -136,14 +137,12 @@ func NewConn() (*Conn, error) {
 	c.eventNewMap = newEventMap()
 	c.requestChan = make(chan *Request, 1024)
 	c.xidChan = make(chan xid, 8)
-	c.seqChan = make(chan uint16, 8)
 	c.reqChan = make(chan *request, 128)
 	c.eventChan = make(chan Event, 8192)
 	c.termSend = make(chan struct{})
 	c.termRead = make(chan struct{})
 	c.ExtMisc = &ExtMisc{conn: &c}
 	go c.generateXIDs()
-	go c.generateSequenceIDs()
 	go c.sendRequests()
 	go c.readResponses()
 	if c.clipboardAtom, err = c.InternAtom("CLIPBOARD", false); err != nil {
@@ -412,24 +411,12 @@ func (c *Conn) generateXIDs() {
 	}
 }
 
-func (c *Conn) newSequenceID() uint16 {
-	return <-c.seqChan
-}
-
-func (c *Conn) generateSequenceIDs() {
-	defer close(c.seqChan)
-	seqid := uint16(1)
-	for {
-		select {
-		case c.seqChan <- seqid:
-			seqid++
-			if seqid == 0 {
-				seqid = 1
-			}
-		case <-c.termSend:
-			return
-		}
+func (c *Conn) nextSeq() uint16 {
+	seq := uint16(c.sequence.Add(1) & 0xFFFF)
+	if seq == 0 {
+		return c.nextSeq()
 	}
+	return seq
 }
 
 func (c *Conn) sendNewRequest(data *Writer, req *Request) {
@@ -465,7 +452,7 @@ func (c *Conn) sendRequests() {
 					return
 				}
 			}
-			req.request.sequence = c.newSequenceID()
+			req.request.sequence = c.nextSeq()
 			slog.Info("sending request", "sequence", req.request.sequence, "name", req.request.name)
 			c.requestChan <- req.request
 			if err := req.data.Send(c.conn); err != nil {
@@ -488,14 +475,14 @@ func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, even
 	w.Uint16(11)
 	w.WindowID(window)
 	w.Uint32(eventMask)
-	event.Write(c.newSequenceID(), w)
+	event.Write(c.nextSeq(), w)
 	c.sendNewRequest(w, req)
 }
 
 func (c *Conn) noop() error {
 	slog.Info("SENDING noop request")
 	req := newRequest("noop", c, true, true, nil)
-	req.sequence = c.newSequenceID()
+	req.sequence = c.nextSeq()
 	c.requestChan <- req
 	slog.Info("sending noop request", "sequence", req.sequence, "name", req.name)
 	if err := c.inputFocusRequestWriter().Send(c.conn); err != nil {
