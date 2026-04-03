@@ -12,7 +12,6 @@ package x11
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 	"log/slog"
 	"math"
 	"net"
@@ -47,11 +46,6 @@ type WritableEvent interface {
 	Event
 }
 
-type xid struct {
-	err error
-	id  uint32
-}
-
 type request struct {
 	seq     chan struct{}
 	request *Request
@@ -70,7 +64,6 @@ type Conn struct {
 	conn                     net.Conn
 	eventChan                chan Event
 	requestChan              chan *Request
-	xidChan                  chan xid
 	reqChan                  chan *request
 	termSend                 chan struct{}
 	termRead                 chan struct{}
@@ -91,12 +84,15 @@ type Conn struct {
 	extensionsLock           sync.RWMutex
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
+	resourceIDLock           sync.Mutex
 	DefaultScreen            int
 	displayNum               int
 	sequence                 atomic.Uint32
 	releaseNumber            uint32
 	resourceIDBase           uint32
 	resourceIDMask           uint32
+	resourceIDMax            uint32
+	resourceIDLast           uint32
 	motionBufferSize         uint32
 	helperWindow             WindowID
 	clipboardAtom            Atom
@@ -136,13 +132,11 @@ func NewConn() (*Conn, error) {
 	c.errorCodeMap = newErrorMap()
 	c.eventNewMap = newEventMap()
 	c.requestChan = make(chan *Request, 1024)
-	c.xidChan = make(chan xid, 8)
 	c.reqChan = make(chan *request, 128)
 	c.eventChan = make(chan Event, 8192)
 	c.termSend = make(chan struct{})
 	c.termRead = make(chan struct{})
 	c.ExtMisc = &ExtMisc{conn: &c}
-	go c.generateXIDs()
 	go c.sendRequests()
 	go c.readResponses()
 	if c.clipboardAtom, err = c.InternAtom("CLIPBOARD", false); err != nil {
@@ -288,6 +282,7 @@ func (c *Conn) authenticate() error {
 		c.releaseNumber = r.Uint32()
 		c.resourceIDBase = r.Uint32()
 		c.resourceIDMask = r.Uint32()
+		c.resourceIDMax = c.resourceIDMask
 		c.motionBufferSize = r.Uint32()
 		vendorLen := r.Uint16()
 		c.maximumRequestLength = r.Uint16()
@@ -346,69 +341,39 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 
 // NewAtom generates a new Atom ID.
 func (c *Conn) NewAtom() (Atom, error) {
-	id, err := c.newID()
+	id, err := c.nextID()
 	if err != nil {
 		return AtomNone, err
 	}
 	return Atom(id), nil
 }
 
-func (c *Conn) newWindowID() (WindowID, error) {
-	id, err := c.newID()
+func (c *Conn) nextWindowID() (WindowID, error) {
+	id, err := c.nextID()
 	if err != nil {
 		return WindowNone, err
 	}
 	return WindowID(id), nil
 }
 
-func (c *Conn) newID() (uint32, error) {
-	id, ok := <-c.xidChan
-	if !ok {
-		return 0, io.EOF
-	}
-	if id.err != nil {
-		return 0, id.err
-	}
-	return id.id, nil
-}
-
-func (c *Conn) generateXIDs() {
-	defer close(c.xidChan)
-	rangeState := 0
-	idInc := c.resourceIDMask & -c.resourceIDMask
-	idMax := c.resourceIDMask
-	var last uint32
-	for {
-		var id xid
-		if last < idMax-idInc+1 {
-			last += idInc
-			id = xid{id: last | c.resourceIDBase}
-		} else {
-			if rangeState == 0 {
-				if c.ExtMisc.Available() {
-					rangeState = 1
-				} else {
-					rangeState = 2
-				}
-			}
-			if rangeState == 1 {
-				if startID, count, err := c.ExtMisc.GetXIDRange(); err != nil {
-					id = xid{err: err}
-				} else {
-					last = startID
-					idMax = startID + (count-1)*idInc
-					id = xid{id: last | c.resourceIDBase}
-				}
-			} else {
-				id = xid{err: errs.New("no more IDs available")}
-			}
+func (c *Conn) nextID() (uint32, error) {
+	inc := c.resourceIDMask & -c.resourceIDMask
+	c.resourceIDLock.Lock()
+	defer c.resourceIDLock.Unlock()
+	switch {
+	case c.resourceIDLast < c.resourceIDMax-inc+1:
+		c.resourceIDLast += inc
+	case c.ExtMisc.Available():
+		startID, count, err := c.ExtMisc.GetXIDRange()
+		if err != nil {
+			return 0, err
 		}
-		select {
-		case c.xidChan <- id:
-		case <-c.termSend:
-			return
-		}
+		c.resourceIDLast = startID
+		c.resourceIDMax = startID + (count-1)*inc
+	default:
+		return 0, errs.New("no more IDs available")
 	}
+	return c.resourceIDLast | c.resourceIDBase, nil
 }
 
 func (c *Conn) nextSeq() uint16 {
@@ -691,7 +656,7 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 // CreateWindow creates a new window with the specified parameters and attributes, returning a CreateNotifyEvent
 // containing the ID of the newly created window if successful.
 func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) (WindowID, error) {
-	windowID, err := c.newWindowID()
+	windowID, err := c.nextWindowID()
 	if err != nil {
 		return WindowNone, err
 	}
