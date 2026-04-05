@@ -54,6 +54,7 @@ type request struct {
 	replyChan      chan *Reader
 	replyProcessor func(*Reader)
 	data           *Writer
+	event          WritableEvent
 	name           string
 	sequence       uint16
 }
@@ -362,6 +363,16 @@ func newReplyRequest(name string, data *Writer, replyProcessor func(*Reader)) *r
 	}
 }
 
+func newEventRequest(name string, data *Writer, event WritableEvent) *request {
+	slog.Info("creating new event request", "name", name)
+	return &request{
+		sentChan: make(chan struct{}),
+		data:     data,
+		name:     name,
+		event:    event,
+	}
+}
+
 func (c *Conn) sendNewRequest(req *request) error {
 	select {
 	case c.requests <- req:
@@ -392,12 +403,12 @@ func (c *Conn) sendNewRequest(req *request) error {
 					case <-c.readClosed:
 						return io.EOF
 					default:
-						c.pullRequest(req.sequence)
+						c.locateRequest(req.sequence)
 						return nil
 					}
 				}
 			default:
-				c.pullRequest(req.sequence)
+				c.locateRequest(req.sequence)
 				return nil
 			}
 		case <-c.closed:
@@ -418,6 +429,9 @@ func (c *Conn) sendRequests() {
 				return
 			}
 			req.sequence = c.nextSeq()
+			if req.event != nil {
+				req.event.Write(req.sequence, req.data)
+			}
 			if req.replyChan != nil || req.failureChan != nil {
 				c.requestMapLock.Lock()
 				c.requestMap[req.sequence] = req
@@ -444,8 +458,7 @@ func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, even
 	w.Uint16(11)
 	w.WindowID(window)
 	w.Uint32(eventMask)
-	event.Write(c.nextSeq(), w)
-	return c.sendNewRequest(newCheckedRequest("sendEvent", w))
+	return c.sendNewRequest(newEventRequest("sendEvent", w, event))
 }
 
 // Sync causes all outstanding requests to be processed before returning.
@@ -497,13 +510,12 @@ func (c *Conn) readResponses() {
 			} else {
 				slog.Warn("dropped unhandled X11 event", "id", eventID, "sequence", seq)
 			}
-			continue
 		}
 	}
 }
 
 func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
-	if req := c.pullRequest(seq); req != nil {
+	if req := c.locateRequest(seq); req != nil {
 		slog.Info("processing request", "sequence", req.sequence, "name", req.name, "error", err)
 		switch {
 		case err != nil:
@@ -525,7 +537,7 @@ func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
 	}
 }
 
-func (c *Conn) pullRequest(seq uint16) *request {
+func (c *Conn) locateRequest(seq uint16) *request {
 	c.requestMapLock.RLock()
 	defer c.requestMapLock.RUnlock()
 	req, ok := c.requestMap[seq]
@@ -708,21 +720,17 @@ func (c *Conn) DestroyWindow(window WindowID) error {
 
 // GetInputFocus returns the current input focus window and the revert-to value.
 func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
-	err = c.sendNewRequest(newReplyRequest("getInputFocus", c.inputFocusRequestWriter(), func(r *Reader) {
+	w := NewWriter(4)
+	w.Byte(opcodeGetInputFocus)
+	w.Zero(1)
+	w.Uint16(1)
+	err = c.sendNewRequest(newReplyRequest("getInputFocus", w, func(r *Reader) {
 		r.Skip(1)
 		revertTo = r.Byte()
 		r.Skip(6)
 		focus = WindowID(r.Uint32())
 	}))
 	return focus, revertTo, err
-}
-
-func (c *Conn) inputFocusRequestWriter() *Writer {
-	w := NewWriter(4)
-	w.Byte(opcodeGetInputFocus)
-	w.Zero(1)
-	w.Uint16(1)
-	return w
 }
 
 // GetProperty returns information about the specified property.
@@ -882,14 +890,19 @@ func convertLatin1ToUTF8(latin1 []byte) string {
 func (c *Conn) SetClipboardText(str string) {
 	slog.Info("SetClipboardText")
 	c.clipboard = str
+	c.setSelectionOwner(c.helperWindow, c.atoms[atomClipboard])
+}
+
+func (c *Conn) setSelectionOwner(owner WindowID, selection Atom) {
+	slog.Info("setSelectionOwner")
 	w := NewWriter(16)
 	w.Byte(opcodeSetSelectionOwner)
 	w.Zero(1)
 	w.Uint16(4)
-	w.WindowID(c.helperWindow)
-	w.Atom(c.atoms[atomClipboard])
+	w.WindowID(owner)
+	w.Atom(selection)
 	w.Uint32(0)
-	if err := c.sendNewRequest(newUncheckedRequest("setClipboardText", w)); err != nil {
+	if err := c.sendNewRequest(newUncheckedRequest("setSelectionOwner", w)); err != nil {
 		errs.Log(err)
 	}
 }
@@ -994,6 +1007,7 @@ func (c *Conn) PushClipboardToManager() {
 			}
 			slog.Info("finished processing events related to clipboard manager interaction")
 		}
+		c.setSelectionOwner(WindowNone, c.atoms[atomClipboard])
 		slog.Info("destroying helper window")
 		if err := c.DestroyWindow(c.helperWindow); err != nil {
 			errs.Log(err)
