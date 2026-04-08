@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -32,14 +31,8 @@ func start() error {
 	if x11ContentScale, err = x11GetContentScale(); err != nil {
 		return err
 	}
-	fmt.Printf("content scale: %f\n", x11ContentScale)
-	fmt.Printf("BEFORE clipboard: %q\n", x11Conn.GetClipboardText())
 	x11Conn.SetClipboardText("Yo!")
-	fmt.Printf(" AFTER clipboard: %q\n", x11Conn.GetClipboardText())
-	x11Conn.PushClipboardToManager()
-	fmt.Printf("AFTER push clipboard: %q\n", x11Conn.GetClipboardText())
 	x11Conn.Close()
-	fmt.Println("AFTER CLOSE")
 	return nil
 }
 

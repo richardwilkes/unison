@@ -12,7 +12,6 @@ package x11
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log/slog"
 	"math"
@@ -333,7 +332,6 @@ func (c *Conn) nextSeq() uint16 {
 }
 
 func newUncheckedRequest(name string, data *Writer) *request {
-	slog.Info("creating new unchecked request", "name", name)
 	return &request{
 		sentChan: make(chan struct{}),
 		data:     data,
@@ -342,7 +340,6 @@ func newUncheckedRequest(name string, data *Writer) *request {
 }
 
 func newCheckedRequest(name string, data *Writer) *request {
-	slog.Info("creating new checked request", "name", name)
 	return &request{
 		sentChan:    make(chan struct{}),
 		failureChan: make(chan error, 1),
@@ -352,7 +349,6 @@ func newCheckedRequest(name string, data *Writer) *request {
 }
 
 func newReplyRequest(name string, data *Writer, replyProcessor func(*Reader)) *request {
-	slog.Info("creating new request with reply", "name", name)
 	return &request{
 		sentChan:       make(chan struct{}),
 		failureChan:    make(chan error, 1),
@@ -364,7 +360,6 @@ func newReplyRequest(name string, data *Writer, replyProcessor func(*Reader)) *r
 }
 
 func newEventRequest(name string, data *Writer, event WritableEvent) *request {
-	slog.Info("creating new event request", "name", name)
 	return &request{
 		sentChan: make(chan struct{}),
 		data:     data,
@@ -438,7 +433,6 @@ func (c *Conn) sendRequests() {
 				c.requestMapLock.Unlock()
 			}
 			close(req.sentChan)
-			slog.Info("sending request", "sequence", req.sequence, "name", req.name)
 			if err := req.data.Send(c.conn); err != nil {
 				errs.Log(err)
 				xio.CloseIgnoringErrors(c.conn)
@@ -463,7 +457,6 @@ func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, even
 
 // Sync causes all outstanding requests to be processed before returning.
 func (c *Conn) Sync() {
-	slog.Info("SYNC")
 	c.GetInputFocus() //nolint:errcheck // Don't care about errors here
 }
 
@@ -488,7 +481,6 @@ func (c *Conn) readResponses() {
 			xerr := NewError(c, r)
 			err = xerr
 			seq = xerr.Sequence
-			slog.Info("X11 error received", "sequence", seq, "err", err)
 			c.processRequest(seq, r, err)
 		case 1: // Reply
 			if size > 0 {
@@ -497,7 +489,6 @@ func (c *Conn) readResponses() {
 					return
 				}
 			}
-			slog.Info("X11 reply received", "sequence", seq)
 			c.processRequest(seq, r, nil)
 		default: // Event
 			eventID := code & 127
@@ -505,7 +496,6 @@ func (c *Conn) readResponses() {
 			f, ok := c.eventNewMap[eventID]
 			c.eventNewMapLock.RUnlock()
 			if ok {
-				slog.Info("X11 event received", "id", eventID, "sequence", seq)
 				c.events <- f(r)
 			} else {
 				slog.Warn("dropped unhandled X11 event", "id", eventID, "sequence", seq)
@@ -516,7 +506,6 @@ func (c *Conn) readResponses() {
 
 func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
 	if req := c.locateRequest(seq); req != nil {
-		slog.Info("processing request", "sequence", req.sequence, "name", req.name, "error", err)
 		switch {
 		case err != nil:
 			if req.failureChan != nil {
@@ -776,7 +765,6 @@ const (
 // format of the property data, respectively. The data is provided as a byte slice, and its length should be consistent
 // with the specified format (8, 16, or 32 bits per unit).
 func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) {
-	slog.Info("ChangeProperty")
 	w := NewWriter(24 + pad4(len(data)))
 	w.Byte(opcodeChangeProperty)
 	w.Byte(mode)
@@ -808,7 +796,9 @@ func (c *Conn) Bell(percent int8) {
 
 // GetClipboardText retrieves the current clipboard text by checking the owner of the CLIPBOARD selection and requesting the selection contents if the owner is not the helper window. It tries to retrieve the clipboard text in UTF8_STRING format first, then falls back to STRING format if UTF8_STRING is not available. If the clipboard contents are provided incrementally (using the INCR mechanism), it handles that as well by repeatedly requesting the property until all data has been received. The retrieved clipboard text is stored in the connection for future retrievals until it changes.
 func (c *Conn) GetClipboardText() string {
-	slog.Info("GetClipboardText")
+	if c.helperWindow == WindowNone {
+		return ""
+	}
 	owner, err := c.getSelectionOwner(c.atoms[atomClipboard])
 	if err != nil {
 		errs.Log(err)
@@ -888,13 +878,14 @@ func convertLatin1ToUTF8(latin1 []byte) string {
 // selection with a helper window. When another client requests the clipboard contents, the helper window will provide
 // the stored text.
 func (c *Conn) SetClipboardText(str string) {
-	slog.Info("SetClipboardText")
+	if c.helperWindow == WindowNone {
+		return
+	}
 	c.clipboard = str
 	c.setSelectionOwner(c.helperWindow, c.atoms[atomClipboard])
 }
 
 func (c *Conn) setSelectionOwner(owner WindowID, selection Atom) {
-	slog.Info("setSelectionOwner")
 	w := NewWriter(16)
 	w.Byte(opcodeSetSelectionOwner)
 	w.Zero(1)
@@ -908,7 +899,6 @@ func (c *Conn) setSelectionOwner(owner WindowID, selection Atom) {
 }
 
 func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
-	slog.Info("getSelectionOwner")
 	w := NewWriter(8)
 	w.Byte(opcodeGetSelectionOwner)
 	w.Zero(1)
@@ -923,7 +913,6 @@ func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
 }
 
 func (c *Conn) convertSelection(requestor WindowID, selection, target, property Atom, timestamp uint32) {
-	slog.Info("convertSelection")
 	w := NewWriter(8)
 	w.Byte(opcodeConvertSelection)
 	w.Zero(1)
@@ -960,64 +949,57 @@ func (c *Conn) DefaultVisual() VisualID {
 	return c.Roots[c.DefaultScreen].RootVisual
 }
 
-// PushClipboardToManager checks if the helper window is currently the owner of the CLIPBOARD selection, and if so, it
+// pushClipboardToManager checks if the helper window is currently the owner of the CLIPBOARD selection, and if so, it
 // converts the selection to the CLIPBOARD_MANAGER with the SAVE_TARGETS property. It then waits for events related to
 // this conversion, processing any SelectionRequestEvent or SelectionClearEvent that may occur during this time.
 // Finally, it destroys the helper window and resets its ID to WindowNone.
-func (c *Conn) PushClipboardToManager() {
-	slog.Info("PushClipboardToManager")
-	if c.helperWindow != WindowNone {
-		if owner, err := c.getSelectionOwner(c.atoms[atomClipboard]); err == nil && owner == c.helperWindow {
-			c.convertSelection(c.helperWindow, c.atoms[atomClipboardManager], c.atoms[atomClipboardSaveTargets], AtomNone, 0)
-			again := true
-			for again {
-				slog.Info("waiting for events related to clipboard manager interaction")
-				evt := waitForEvent(c, func(ev Event) Event {
-					switch e := ev.(type) {
-					case *SelectionNotifyEvent:
-						if e.Requestor == c.helperWindow {
-							return e
-						}
-					case *SelectionRequestEvent:
-						if e.Owner == c.helperWindow {
-							return e
-						}
-					case *SelectionClearEvent:
-						if e.Owner == c.helperWindow {
-							return e
-						}
-					}
-					return nil
-				})
-				switch e := evt.(type) {
+func (c *Conn) pushClipboardToManager() {
+	if c.helperWindow == WindowNone {
+		return
+	}
+	if owner, err := c.getSelectionOwner(c.atoms[atomClipboard]); err == nil && owner == c.helperWindow {
+		c.convertSelection(c.helperWindow, c.atoms[atomClipboardManager], c.atoms[atomClipboardSaveTargets], AtomNone, 0)
+		again := true
+		for again {
+			evt := waitForEvent(c, func(ev Event) Event {
+				switch e := ev.(type) {
 				case *SelectionNotifyEvent:
-					slog.Info("received SelectionNotifyEvent", "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property)
-					if e.Target == c.atoms[atomClipboardSaveTargets] {
-						again = false
+					if e.Requestor == c.helperWindow {
+						return e
 					}
 				case *SelectionRequestEvent:
-					slog.Info("received SelectionRequestEvent", "owner", e.Owner, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property)
-					c.processEvent(e)
+					if e.Owner == c.helperWindow {
+						return e
+					}
 				case *SelectionClearEvent:
-					slog.Info("received SelectionClearEvent", "owner", e.Owner, "selection", e.Selection, "time", e.Time)
-				default:
-					slog.Info("received other event during clipboard manager interaction", "event", fmt.Sprintf("%T", evt))
+					if e.Owner == c.helperWindow {
+						return e
+					}
+				}
+				return nil
+			})
+			switch e := evt.(type) {
+			case *SelectionNotifyEvent:
+				if e.Target == c.atoms[atomClipboardSaveTargets] {
 					again = false
 				}
+			case *SelectionRequestEvent:
+				c.processEvent(e)
+			case *SelectionClearEvent:
+			default:
+				again = false
 			}
-			slog.Info("finished processing events related to clipboard manager interaction")
 		}
-		c.setSelectionOwner(WindowNone, c.atoms[atomClipboard])
-		slog.Info("destroying helper window")
-		if err := c.DestroyWindow(c.helperWindow); err != nil {
-			errs.Log(err)
-		}
-		c.helperWindow = WindowNone
 	}
+	if err := c.DestroyWindow(c.helperWindow); err != nil {
+		errs.Log(err)
+	}
+	c.helperWindow = WindowNone
 }
 
 // Close the connection after finishing any in-flight requests.
 func (c *Conn) Close() {
+	c.pushClipboardToManager()
 	c.Sync()
 	close(c.requests)
 	<-c.closed

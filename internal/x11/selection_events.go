@@ -96,7 +96,6 @@ func (e *SelectionRequestEvent) TargetWindow() WindowID {
 
 // Process the event.
 func (e *SelectionRequestEvent) Process(c *Conn) {
-	slog.Info("SelectionRequestEvent received", "sequence", e.Sequence, "owner", e.Owner, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property, "time", e.Time)
 	if err := c.sendEvent(e.Requestor, false, 0, &SelectionNotifyEvent{
 		Time:      e.Time,
 		Requestor: e.Requestor,

@@ -45,7 +45,6 @@ func apiFinalFinishStartup() {
 
 func apiTerminate() error {
 	if x11Conn != nil {
-		x11Conn.PushClipboardToManager()
 		x11Conn.Close()
 		x11Conn = nil
 	}
