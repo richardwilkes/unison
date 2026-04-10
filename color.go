@@ -310,11 +310,11 @@ func extractColorPercentage(s string) (float32, error) {
 }
 
 // Paint returns a Paint for this Color. Here to satisfy the Ink interface.
-func (c Color) Paint(_ *Canvas, _ geom.Rect, style paintstyle.Enum) *Paint {
+func (c Color) Paint(canvas *Canvas, _ geom.Rect, style paintstyle.Enum) *Paint {
 	paint := NewPaint()
 	paint.SetStyle(style)
 	paint.SetColor(c)
-	return paint
+	return canvas.trackPaint(paint)
 }
 
 // GetColor returns this Color. Here to satisfy the ColorProvider interface.

@@ -167,7 +167,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	radius := w.CornerRadius.Sub(geom.NewUniformSize(wellInset - 2))
 	if pattern, ok := w.ink.(*Pattern); ok {
 		canvas.Save()
-		path := NewPath()
+		path := canvas.trackPath(NewPath())
 		path.RoundedRect(r, radius)
 		canvas.ClipPath(path, pathop.Intersect, true)
 		canvas.DrawImageInRect(pattern.Image, r, nil, nil)

@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -29,12 +30,14 @@ type PathOpPair struct {
 
 // Path holds geometry.
 type Path struct {
-	path skia.Path
+	path        skia.Path
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newPath(path skia.Path) *Path {
 	p := &Path{path: path}
-	runtime.AddCleanup(p, func(sp skia.Path) {
+	p.cleanup = runtime.AddCleanup(p, func(sp skia.Path) {
 		ReleaseOnUIThread(func() {
 			skia.PathDelete(sp)
 		})
@@ -45,6 +48,20 @@ func newPath(path skia.Path) *Path {
 // NewPath creates a new, empty path.
 func NewPath() *Path {
 	return newPath(skia.PathNew())
+}
+
+// Dispose releases the native path resources.
+func (p *Path) Dispose() {
+	if p == nil {
+		return
+	}
+	p.disposeOnce.Do(func() {
+		p.cleanup.Stop()
+		if p.path != nil {
+			skia.PathDelete(p.path)
+			p.path = nil
+		}
+	})
 }
 
 // NewPathFromSVGString attempts to create a path from the given SVG string.

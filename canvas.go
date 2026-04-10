@@ -21,8 +21,72 @@ import (
 
 // Canvas is a drawing surface.
 type Canvas struct {
-	canvas  skia.Canvas
-	surface *surface
+	canvas      skia.Canvas
+	surface     *surface
+	ownedPaint  []*Paint
+	ownedPath   []*Path
+	ownedShader []*Shader
+	ownedText   []*TextBlob
+}
+
+func (c *Canvas) trackPaint(paint *Paint) *Paint {
+	if c != nil && paint != nil {
+		c.ownedPaint = append(c.ownedPaint, paint)
+	}
+	return paint
+}
+
+func (c *Canvas) releaseOwnedPaints() {
+	for _, paint := range c.ownedPaint {
+		paint.Dispose()
+	}
+	clear(c.ownedPaint)
+	c.ownedPaint = nil
+}
+
+func (c *Canvas) trackPath(path *Path) *Path {
+	if c != nil && path != nil {
+		c.ownedPath = append(c.ownedPath, path)
+	}
+	return path
+}
+
+func (c *Canvas) releaseOwnedPaths() {
+	for _, path := range c.ownedPath {
+		path.Dispose()
+	}
+	clear(c.ownedPath)
+	c.ownedPath = nil
+}
+
+func (c *Canvas) trackShader(shader *Shader) *Shader {
+	if c != nil && shader != nil {
+		c.ownedShader = append(c.ownedShader, shader)
+	}
+	return shader
+}
+
+func (c *Canvas) releaseOwnedShaders() {
+	for _, shader := range c.ownedShader {
+		shader.Dispose()
+	}
+	clear(c.ownedShader)
+	c.ownedShader = nil
+}
+
+func (c *Canvas) trackTextBlob(blob *TextBlob) *TextBlob {
+	if c != nil && blob != nil {
+		c.ownedText = append(c.ownedText, blob)
+	}
+	return blob
+}
+
+func (c *Canvas) releaseOwnedTextBlobs() {
+	for _, blob := range c.ownedText {
+		blob.Dispose()
+	}
+	clear(c.ownedText)
+	c.ownedText = nil
 }
 
 // SaveCount returns the number of saved states, which equals the number of save calls minus the number of Restore()
@@ -215,6 +279,7 @@ func (c *Canvas) DrawSimpleString(str string, pt geom.Point, font Font, paint *P
 
 // DrawTextBlob draws text from a text blob.
 func (c *Canvas) DrawTextBlob(blob *TextBlob, pt geom.Point, paint *Paint) {
+	c.trackTextBlob(blob)
 	skia.CanvasDrawTextBlob(c.canvas, blob.blob, pt, paint.paint)
 }
 
@@ -246,4 +311,8 @@ func (c *Canvas) IsClipRect() bool {
 // Flush any drawing.
 func (c *Canvas) Flush() {
 	c.surface.flush(true)
+	c.releaseOwnedPaints()
+	c.releaseOwnedPaths()
+	c.releaseOwnedShaders()
+	c.releaseOwnedTextBlobs()
 }

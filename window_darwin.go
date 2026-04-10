@@ -18,7 +18,10 @@ import (
 func (w *Window) frameRect() geom.Rect {
 	if w.IsValid() {
 		left, top, right, bottom := w.wnd.GetFrameSize()
-		return geom.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+		// GLFW reports the frame extents for each edge, not opposing coordinates. We must sum the sides here or frame
+		// placement math ends up wrong and decorated windows can be positioned too far upward on platforms where the frame
+		// extents are available.
+		return geom.NewRect(float32(left), float32(top), float32(left+right), float32(top+bottom))
 	}
 	return geom.NewRect(0, 0, 1, 1)
 }

@@ -40,12 +40,12 @@ func (p *Pattern) Paint(canvas *Canvas, _ geom.Rect, style paintstyle.Enum) *Pai
 	}
 	scale = scale.MulPt(p.Image.Scale())
 	paint.SetColor(Black)
-	paint.SetShader(NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
+	paint.SetShader(canvas.trackShader(NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
 		geom.Matrix{
 			ScaleX: scale.X,
 			ScaleY: scale.Y,
 			TransX: p.Offset.X,
 			TransY: p.Offset.Y,
-		}))
-	return paint
+		})))
+	return canvas.trackPaint(paint)
 }

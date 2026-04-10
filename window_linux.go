@@ -19,12 +19,21 @@ import (
 func (w *Window) frameRect() geom.Rect {
 	if w.IsValid() {
 		left, top, right, bottom := w.wnd.GetFrameSize()
-		r := geom.NewRect(float32(left), float32(top), float32(right-left), float32(bottom-top))
+		// GLFW reports the frame extents for each edge, not opposing coordinates. We must sum the sides here or frame
+		// placement math ends up wrong and decorated windows can be positioned too far upward, which was hiding the title
+		// bar on Fedora/KDE when GetFrameSize() returned non-zero values.
+		r := geom.NewRect(float32(left), float32(top), float32(left+right), float32(top+bottom))
 		sx, sy := w.wnd.GetContentScale()
 		r.X /= sx
 		r.Y /= sy
 		r.Width /= sx
 		r.Height /= sy
+		if r.X == 0 && r.Y == 0 && r.Width == 0 && r.Height == 0 && !w.undecorated {
+			r.X = 4
+			r.Y = 30
+			r.Width = 8
+			r.Height = 34
+		}
 		return r
 	}
 	return geom.NewRect(0, 0, 1, 1)
@@ -51,6 +60,10 @@ func (w *Window) ContentRect() geom.Rect {
 func (w *Window) SetContentRect(rect geom.Rect) {
 	if w.IsValid() {
 		rect = w.adjustContentRectForMinMax(rect)
+		desiredFrame := w.FrameRectForContentRect(rect)
+		if w.pendingFrameRect != nil {
+			desiredFrame = *w.pendingFrameRect
+		}
 		sx, sy := w.wnd.GetContentScale()
 		rect.X *= sx
 		rect.Y *= sy
@@ -60,6 +73,22 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 		tx := int(rect.Width)
 		ty := int(rect.Height)
 		w.wnd.SetSize(tx, ty)
+
+		adjust := func() {
+			targetFrame := BestDisplayForRect(desiredFrame).FitRectOnto(desiredFrame)
+			actualFrame := w.FrameRect()
+			if actualFrame != targetFrame {
+				adjustedContent := w.ContentRectForFrameRect(targetFrame)
+				adjustedContent.X *= sx
+				adjustedContent.Y *= sy
+				adjustedContent.Width *= sx
+				adjustedContent.Height *= sy
+				w.wnd.SetPos(int(adjustedContent.X), int(adjustedContent.Y))
+				w.wnd.SetSize(int(adjustedContent.Width), int(adjustedContent.Height))
+				return
+			}
+			w.pendingFrameRect = nil
+		}
 
 		// X11 responds asynchronously to window positioning and sizing requests. Due to this, we need to wait for it to
 		// catch up, or subsequent code that is relying on the coordinates being updated will get the wrong information.
@@ -72,9 +101,11 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 			}
 			nx, ny := w.wnd.GetSize()
 			if nx == tx && ny == ty {
+				adjust()
 				return
 			}
 		}
+		adjust()
 	}
 }
 

@@ -146,7 +146,7 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	DrawLabel(canvas, rect, align.Start, align.Middle, p.Font, p.textObj(), p.OnBackgroundInk, nil, nil, 0, 0,
 		!p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
-	path := NewPath()
+	path := canvas.trackPath(NewPath())
 	path.MoveTo(geom.NewPoint(rect.Right(), rect.Y+(rect.Height-triHeight)/2))
 	path.LineTo(geom.NewPoint(rect.Right()-triWidth, rect.Y+(rect.Height-triHeight)/2))
 	path.LineTo(geom.NewPoint(rect.Right()-triWidth/2, rect.Y+(rect.Height-triHeight)/2+triHeight))

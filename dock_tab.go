@@ -173,7 +173,7 @@ func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 		t.button.OnBackgroundInk = fg
 	}
 	r := t.ContentRect(true)
-	p := NewPath()
+	p := gc.trackPath(NewPath())
 	p.MoveTo(geom.NewPoint(0, r.Height))
 	p.LineTo(geom.NewPoint(0, 6))
 	p.CubicTo(geom.NewPoint(0, 6), geom.NewPoint(0, 1), geom.NewPoint(6, 1))

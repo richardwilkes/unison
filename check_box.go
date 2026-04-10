@@ -183,7 +183,7 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		paint.SetColorFilter(Grayscale30Filter())
 	}
 	if c.State == check.On {
-		path := NewPath()
+		path := canvas.trackPath(NewPath())
 		path.MoveTo(geom.NewPoint(rect.X+rect.Width*0.25, rect.Y+rect.Height*0.55))
 		path.LineTo(geom.NewPoint(rect.X+rect.Width*0.45, rect.Y+rect.Height*0.7))
 		path.LineTo(geom.NewPoint(rect.X+rect.Width*0.75, rect.Y+rect.Height*0.3))

@@ -81,6 +81,7 @@ type Window struct {
 	data                   map[string]any
 	title                  string
 	titleIcons             []*Image
+	pendingFrameRect       *geom.Rect
 	lastDrawDuration       time.Duration
 	tooltipSequence        int
 	modalResultCode        int
@@ -607,6 +608,8 @@ func (w *Window) FrameRectForContentRect(cr geom.Rect) geom.Rect {
 
 // SetFrameRect sets the boundaries of the frame of this window.
 func (w *Window) SetFrameRect(rect geom.Rect) {
+	copyOfRect := rect
+	w.pendingFrameRect = &copyOfRect
 	w.SetContentRect(w.ContentRectForFrameRect(rect))
 }
 
@@ -797,7 +800,11 @@ func (w *Window) Show() {
 		w.wnd.Show()
 		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
 		// last one we had.
-		w.SetContentRect(w.lastContentRect)
+		if w.pendingFrameRect != nil {
+			w.SetFrameRect(*w.pendingFrameRect)
+		} else {
+			w.SetContentRect(w.lastContentRect)
+		}
 	}
 }
 

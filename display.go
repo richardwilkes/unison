@@ -140,6 +140,10 @@ func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
 		display.Frame.Y /= sy
 		display.Frame.Width /= sx
 		display.Frame.Height /= sy
+		display.Usable.X /= sx
+		display.Usable.Y /= sy
+		display.Usable.Width /= sx
+		display.Usable.Height /= sy
 	}
 	return display
 }

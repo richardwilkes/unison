@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -24,7 +25,9 @@ import (
 // alpha. This makes it easy to create a shader once (e.g. bitmap tiling or gradient) and then change its transparency
 // without having to modify the original shader... only the paint's alpha needs to be modified.
 type Shader struct {
-	shader skia.Shader
+	shader      skia.Shader
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newShader(shader skia.Shader) *Shader {
@@ -32,7 +35,7 @@ func newShader(shader skia.Shader) *Shader {
 		return nil
 	}
 	s := &Shader{shader: shader}
-	runtime.AddCleanup(s, func(ss skia.Shader) {
+	s.cleanup = runtime.AddCleanup(s, func(ss skia.Shader) {
 		ReleaseOnUIThread(func() {
 			skia.ShaderUnref(ss)
 		})
@@ -45,6 +48,20 @@ func (s *Shader) shaderOrNil() skia.Shader {
 		return nil
 	}
 	return s.shader
+}
+
+// Dispose releases the native shader resources.
+func (s *Shader) Dispose() {
+	if s == nil {
+		return
+	}
+	s.disposeOnce.Do(func() {
+		s.cleanup.Stop()
+		if s.shader != nil {
+			skia.ShaderUnref(s.shader)
+			s.shader = nil
+		}
+	})
 }
 
 // NewColorShader creates a new color Shader.

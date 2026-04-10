@@ -98,7 +98,7 @@ func (g *Gradient) Clone() *Gradient {
 }
 
 // Paint returns a Paint for this Gradient.
-func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
+func (g *Gradient) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
 	p := NewPaint()
 	p.SetStyle(style)
 	p.SetColor(Black)
@@ -112,12 +112,12 @@ func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Pain
 	end := geom.NewPoint(rect.X+rect.Width*g.End.X, rect.Y+rect.Height*g.End.Y)
 	var shader *Shader
 	if g.StartRadius > 0 && g.EndRadius > 0 {
-		shader = New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, c, locs, g.TileMode, g.Transform)
+		shader = canvas.trackShader(New2PtConicalGradientShader(start, end, g.StartRadius, g.EndRadius, c, locs, g.TileMode, g.Transform))
 	} else {
-		shader = NewLinearGradientShader(start, end, c, locs, g.TileMode, g.Transform)
+		shader = canvas.trackShader(NewLinearGradientShader(start, end, c, locs, g.TileMode, g.Transform))
 	}
 	p.SetShader(shader)
-	return p
+	return canvas.trackPaint(p)
 }
 
 // Reversed creates a copy of the current Gradient and inverts the locations of each color stop in that copy.
