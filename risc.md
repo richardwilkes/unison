@@ -1,13 +1,13 @@
 # Risk of creating native objects during drawing
 
-This document describes which patterns are safe and which patterns may lead to memory growth or at
-least very high pressure on the GC and native resource release queues.
+This document describes which patterns are safe and which patterns may lead to memory growth
+or at least very high pressure on the GC and native resource release queues.
 
 ## What this is about
 
 In this project, some objects wrap native Skia resources. If such objects are created inside
-the `Draw()` path or in any logic that runs for every frame, memory can grow faster than resources
-are released.
+the `Draw()` path or in any logic that runs for every frame, memory can grow faster
+than resources are released.
 
 The most suspicious types are:
 - `Paint`
@@ -129,5 +129,4 @@ are cached, so by themselves they are a good usage pattern.
 If memory is still growing slowly, check first:
 - whether some `Draw()` path still creates new `ColorFilter`, `MaskFilter`, `ImageFilter`,
   or `PathEffect`,
-- whether SVG-related objects are recreated during redraw instead of during parsing,
-- whether the growth comes from GPU / Skia / OpenGL driver caches rather than from application logic.
+- whether SVG-related objects are recreated during redraw instead of during parsing.
