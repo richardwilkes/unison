@@ -174,7 +174,7 @@ func (c *Conn) initAtoms() error {
 	if c.AtomClipboardManager, err = c.InternAtom("CLIPBOARD_MANAGER", false); err != nil {
 		return err
 	}
-	if c.AtomClipboardMultiple, err = c.InternAtom("CLIPBOARD_MULTIPLE", false); err != nil {
+	if c.AtomClipboardMultiple, err = c.InternAtom("MULTIPLE", false); err != nil {
 		return err
 	}
 	if c.AtomClipboardSaveTargets, err = c.InternAtom("SAVE_TARGETS", false); err != nil {
