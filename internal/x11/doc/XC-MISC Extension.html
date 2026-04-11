@@ -1,0 +1,418 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head>
+<link rel="canonical" href="https://www.x.org/releases/X11R7.7/doc/xcmiscproto/xc-misc.html">
+<link rel="home" href="http://www.x.org/">
+<link rel="icon" href="https://www.x.org/releases/X11R7.7/favicon.ico">
+<link rel="up" href="https://www.x.org/releases/X11R7.7/doc/index.html">
+<link rel="up up" href="https://www.x.org/releases/X11R7.7/">
+<link rel="alternate" href="https://www.x.org/releases/X11R7.7/doc/xcmiscproto/xc-misc.pdf" type="application/pdf">
+<link rel="alternate" href="https://www.x.org/releases/X11R7.7/doc/xcmiscproto/xc-misc.ps" type="application/postscript">
+<link rel="alternate" href="https://www.x.org/releases/X11R7.7/doc/xcmiscproto/xc-misc.txt" type="text/plain;charset=utf-8">
+<link rel="alternate" href="https://www.x.org/releases/X11R7.7/doc/xcmiscproto/xc-misc.xml" type="application/xml">
+
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><title>XC-MISC Extension</title><meta name="generator" content="DocBook XSL Stylesheets Vsnapshot_9276"><style xmlns="" type="text/css">/*
+ * Copyright (c) 2011 Gaetan Nadon
+ * Copyright (c) 2010, Oracle and/or its affiliates. All rights reserved.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+
+/*
+ * Shared stylesheet for X.Org documentation translated to HTML format
+ * http://www.sagehill.net/docbookxsl/UsingCSS.html
+ * http://www.w3schools.com/css/default.asp
+ * https://addons.mozilla.org/en-US/firefox/addon/web-developer/developers
+ * https://addons.mozilla.org/en-US/firefox/addon/font-finder/
+ */
+
+/*
+ * The sans-serif fonts are considered more legible on a computer screen
+ * http://dry.sailingissues.com/linux-equivalents-verdana-arial.html
+ *
+ */
+body {
+  font-family: "Bitstream Vera Sans", "DejaVu Sans", Tahoma, Geneva, Arial, Sans-serif;
+  /* In support of using "em" font size unit, the w3c recommended method */
+  font-size: 100%;
+}
+
+/*
+ * Selection: all elements requiring mono spaced fonts.
+ *
+ * The family names attempt to match the proportionally spaced font
+ * family names such that the same font name is used for both.
+ * We'd like to use Bitstream, for example, in both proportionally and
+ * mono spaced font text.
+ */
+.command,
+.errorcode,
+.errorname,
+.errortype,
+.filename,
+.funcsynopsis,
+.function,
+.parameter,
+.programlisting,
+.property,
+.screen,
+.structname,
+.symbol,
+.synopsis,
+.type
+{
+  font-family:  "Bitstream Vera Sans Mono", "DejaVu Sans Mono", Courier, "Liberation Mono", Monospace;
+}
+
+/*
+ * Books have a title page, a preface, some chapters and appendices,
+ * a glossary, an index and a bibliography, in that order.
+ *
+ * An Article has no preface and no chapters. It has sections, appendices,
+ * a glossary, an index and a bibliography.
+ */
+
+/*
+ * Selection: book main title and subtitle
+ */
+div.book>div.titlepage h1.title,
+div.book>div.titlepage h2.subtitle {
+  text-align: center;
+}
+
+/*
+ * Selection: article main title and subtitle
+ */
+div.article>div.titlepage h2.title,
+div.article>div.titlepage h3.subtitle,
+div.article>div.sect1>div.titlepage h2.title,
+div.article>div.section>div.titlepage h2.title {
+  text-align: center;
+}
+
+/*
+ * Selection: various types of authors and collaborators, individuals or corporate
+ *
+ * These authors are not always contained inside an authorgroup.
+ * They can be contained inside a lot of different parent types where they might
+ * not be centered.
+ * Reducing the margin at the bottom makes a visual separation between authors
+ * We specify here the ones on the title page, others may be added based on merit.
+ */
+div.titlepage .authorgroup,
+div.titlepage .author,
+div.titlepage .collab,
+div.titlepage .corpauthor,
+div.titlepage .corpcredit,
+div.titlepage .editor,
+div.titlepage .othercredit {
+  text-align: center;
+  margin-bottom: 0.25em;
+}
+
+/*
+ * Selection: the affiliation of various types of authors and collaborators,
+ * individuals or corporate.
+ */
+div.titlepage .affiliation {
+  text-align: center;
+}
+
+/*
+ * Selection: product release information (X Version 11, Release 7)
+ *
+ * The releaseinfo element can be contained inside a lot of different parent
+ * types where it might not be centered.
+ * We specify here the one on the title page, others may be added based on merit.
+ */
+div.titlepage p.releaseinfo {
+  font-weight: bold;
+  text-align: center;
+}
+
+/*
+ * Selection: publishing date
+ */
+div.titlepage .pubdate {
+  text-align: center;
+}
+
+/*
+ * The legal notices are displayed in smaller sized fonts
+ * Justification is only supported in IE and therefore not requested.
+ *
+ */
+.legalnotice {
+  font-size: small;
+  font-style: italic;
+}
+
+/*
+ * For documentation having multiple licenses, the copyright and legalnotice
+ * elements sequence cannot instantiated multiple times.
+ * The copyright notice and license text are therefore coded inside a legalnotice
+ * element. The role attribute on the paragraph is used to allow styling of the
+ * copyright notice text which should not be italicized.
+ */
+p.multiLicensing {
+  font-style: normal;
+  font-size: medium;
+}
+
+/*
+ * Selection: book or article main ToC title
+ * A paragraph is generated for the title rather than a level 2 heading.
+ * We do not want to select chapters sub table of contents, only the main one
+ */
+div.book>div.toc>p,
+div.article>div.toc>p {
+  font-size: 1.5em;
+  text-align: center;
+}
+
+/*
+ * Selection: major sections of a book or an article
+ *
+ * Unlike books, articles do not have a titlepage element for appendix.
+ * Using the selector "div.titlepage h2.title" would be too general.
+ */
+div.book>div.preface>div.titlepage h2.title,
+div.book>div.chapter>div.titlepage h2.title,
+div.article>div.sect1>div.titlepage h2.title,
+div.article>div.section>div.titlepage h2.title,
+div.book>div.appendix>div.titlepage h2.title,
+div.article>div.appendix h2.title,
+div.glossary>div.titlepage h2.title,
+div.index>div.titlepage h2.title,
+div.bibliography>div.titlepage h2.title {
+   /* Add a border top over the major parts, just like printed books */
+   /* The Gray color is already used for the ruler over the main ToC. */
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: Gray;
+  /* Put some space between the border and the title */
+  padding-top: 0.2em;
+  text-align: center;
+}
+
+/*
+ * A Screen is a verbatim environment for displaying text that the user might
+ * see on a computer terminal. It is often used to display the results of a command.
+ *
+ * http://www.css3.info/preview/rounded-border/
+ */
+.screen {
+  background: #e0ffff;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #B0C4DE;
+  border-radius: 1.0em;
+  /* Browser's vendor properties prior to CSS 3 */
+  -moz-border-radius: 1.0em;
+  -webkit-border-radius: 1.0em;
+  -khtml-border-radius: 1.0em;
+  margin-left: 1.0em;
+  margin-right: 1.0em;
+  padding: 0.5em;
+}
+
+/*
+ * Emphasis program listings with a light shade of gray similar to what
+ * DocBook XSL guide does: http://www.sagehill.net/docbookxsl/ProgramListings.html
+ * Found many C API docs on the web using like shades of gray.
+ */
+.programlisting {
+  background: #F4F4F4;
+  border-width: 1px;
+  border-style: solid;
+  border-color: Gray;
+  padding: 0.5em;
+}
+
+/*
+ * Emphasis functions synopsis using a darker shade of gray.
+ * Add a border such that it stands out more.
+ * Set the padding so the text does not touch the border.
+ */
+.funcsynopsis, .synopsis {
+  background: #e6e6fa;
+  border-width: 1px;
+  border-style: solid;
+  border-color: Gray;
+  clear: both;
+  margin: 0.5em;
+  padding: 0.25em;
+}
+
+/*
+ * Selection: paragraphs inside synopsis
+ *
+ * Removes the default browser margin, let the container set the padding.
+ * Paragraphs are not always used in synopsis
+ */
+.funcsynopsis p,
+.synopsis p {
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * Selection: variable lists, informal tables and tables
+ *
+ * Note the parameter name "variablelist.as.table" in xorg-xhtml.xsl
+ * A table with rows and columns is constructed inside div.variablelist
+ *
+ * Set the left margin so it is indented to the right
+ * Display informal tables with single line borders
+ */
+table {
+  margin-left: 0.5em;
+  border-collapse: collapse;
+}
+
+/*
+ * Selection: paragraphs inside tables
+ *
+ * Removes the default browser margin, let the container set the padding.
+ * Paragraphs are not always used in tables
+ */
+td p {
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * Add some space between the left and right column.
+ * The vertical alignment helps the reader associate a term
+ * with a multi-line definition.
+ */
+td, th {
+  padding-left: 1.0em;
+  padding-right: 1.0em;
+  vertical-align: top;
+}
+
+.warning {
+  border: 1px solid red;
+  background: #FFFF66;
+  padding-left: 0.5em;
+}
+</style></head><body><div class="book"><div class="titlepage"><div><div><h1 class="title"><a id="xc-misc"></a>XC-MISC Extension</h1></div><div><h2 class="subtitle">X Consortium Standard</h2></div><div><div class="authorgroup"><div class="author"><h3 class="author"><span class="firstname">Bob</span> <span class="surname">Scheifler</span></h3><div class="affiliation"><span class="orgname">X Consortium<br></span></div></div><div class="author"><h3 class="author"><span class="firstname">David</span> <span class="othername">P.</span> <span class="surname">Wiggins</span></h3><div class="affiliation"><span class="orgname">X Consortium<br></span></div></div></div></div><div><p class="releaseinfo">X Version 11, Release 7.7</p></div><div><p class="releaseinfo">Version 1.1</p></div><div><p class="copyright">Copyright © 1994 X Consortium</p></div><div><div class="legalnotice"><a id="id2525048"></a><p>Permission
+ is hereby granted, free of charge, to any person obtaining a copy of 
+this software and associated documentation files (the “Software”), to 
+deal in the Software without restriction, including without limitation 
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ and/or sell copies of the Software, and to permit persons to whom the 
+Software is furnished to do so, subject to the following conditions:</p><p>The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.</p><p>THE
+ SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT 
+SHALL THE X CONSORTIUM BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+DEALINGS IN THE SOFTWARE.</p><p>Except as contained in this notice, the 
+name of the X Consortium shall not be used in advertising or otherwise 
+to promote the sale, use or other dealings in this Software without 
+prior written authorization from the X Consortium.</p><p>X Window System is a trademark of The Open Group.</p></div></div></div><hr></div><div class="toc"><p><strong>Table of Contents</strong></p><dl><dt><span class="chapter"><a href="#Overview">1. Overview</a></span></dt><dt><span class="chapter"><a href="#Requests">2. Requests</a></span></dt><dt><span class="chapter"><a href="#Events_and_Errors">3. Events and Errors</a></span></dt><dt><span class="chapter"><a href="#Encoding">4. Encoding</a></span></dt></dl></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a id="Overview"></a>Chapter&nbsp;1.&nbsp;Overview</h2></div></div></div><p>When an X client connects to an X server, it receives a fixed range of
+resource IDs to use to identify the client's resources inside the X
+server.  Xlib hands these out sequentially as needed.  When it
+overruns the end of the range, an IDChoice protocol error results.
+Long running clients, or clients that use resource IDs at a rapid
+rate, may encounter this circumstance.  When it happens, there are
+usually many resource IDs available, but Xlib doesn't know about them.</p><p>One approach to solving this problem would be to have Xlib notice when
+a resource is freed and recycle its ID for future use.  This strategy
+runs into difficulties because sometimes freeing one resource causes
+others to be freed (for example, when a window is destroyed, so are
+its children).  To do a complete job, Xlib would have to maintain a
+large amount of state that currently resides only in the server (the
+entire window tree in the above example).  Even if a less
+comprehensive strategy was adopted, such as recycling only those IDs
+that Xlib can identify without maintaining additional state, the
+additional bookkeeping at resource creation and destruction time
+would likely introduce unacceptable overhead.</p><p>To avoid the problems listed above, the server's complete knowledge of
+all resource IDs in use by a client is leveraged.  This extension
+provides two ways for Xlib to query the server for available resource
+IDs.  Xlib can use these extension requests behind the scenes when it has
+exhausted its current pool of resource IDs.</p></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a id="Requests"></a>Chapter&nbsp;2.&nbsp;Requests</h2></div></div></div><p>
+<code class="function">XCMiscGetVersion</code></p><div class="itemizedlist"><ul class="itemizedlist" type="disc"><li class="listitem"><p><em class="parameter"><code>client_major_version</code></em>: CARD16</p></li><li class="listitem"><p><em class="parameter"><code>client_minor_version</code></em>: CARD16</p></li></ul></div><p>   =&gt;</p><div class="itemizedlist"><ul class="itemizedlist" type="disc"><li class="listitem"><p><em class="parameter"><code>client_major_version</code></em>: CARD16</p></li><li class="listitem"><p><em class="parameter"><code>client_minor_version</code></em>: CARD16</p></li></ul></div><p>If supplied, the <em class="parameter"><code>client_major_version</code></em> and
+<em class="parameter"><code>client_minor_version</code></em> indicate what version of
+the protocol the client wants the server to implement.  The server version
+numbers returned indicate the protocol this extension actually supports.  This
+might not equal the version sent by the client.  An implementation can
+(but need not) support more than one version simultaneously.  The
+<em class="parameter"><code>server_major_version</code></em> and the <em class="parameter"><code>server_minor_version</code></em> are a
+mechanism to support future revisions of the XC-MISC protocol
+which may be necessary.  In general, the major version would increment
+for incompatible changes, and the minor version would increment for
+small, upward-compatible changes.  Servers that support the protocol
+defined in this document will return a
+<em class="parameter"><code>server_major_version</code></em> of one (1), and a
+<em class="parameter"><code>server_minor_version</code></em> of one (1).</p><p><code class="function">XCMiscGetXIDRange</code></p><p>   =&gt;</p><div class="itemizedlist"><ul class="itemizedlist" type="disc"><li class="listitem"><p><em class="parameter"><code>start_id</code></em>: XID</p></li><li class="listitem"><p><em class="parameter"><code>count</code></em>: CARD32</p></li></ul></div><p>This request returns a range of available resource IDs for the client
+issuing the request.  <em class="parameter"><code>start_id</code></em> is the first
+ID in the range.  <em class="parameter"><code>count</code></em> is the number of IDs
+in the range.  The returned range may or may not be the largest possible
+range.</p><p><code class="function">XCMiscGetXIDList</code></p><div class="itemizedlist"><ul class="itemizedlist" type="disc"><li class="listitem"><p><em class="parameter"><code>count</code></em>: CARD32</p></li></ul></div><p>   =&gt;</p><div class="itemizedlist"><ul class="itemizedlist" type="disc"><li class="listitem"><p><em class="parameter"><code>ids</code></em>: LISTofXID</p></li></ul></div><p>This request returns the a list of individual resource IDs in
+<em class="parameter"><code>ids</code></em>.
+<em class="parameter"><code>count</code></em> is the number of resource IDs requested.
+The number returned may be smaller than the number requested.</p></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a id="Events_and_Errors"></a>Chapter&nbsp;3.&nbsp;Events and Errors</h2></div></div></div><p>No new events or errors are defined by this extension.</p></div><div class="chapter"><div class="titlepage"><div><div><h2 class="title"><a id="Encoding"></a>Chapter&nbsp;4.&nbsp;Encoding</h2></div></div></div><p>Please refer to the X11 Protocol Encoding document as this document uses
+conventions established there.</p><p>The name of this extension is “XC-MISC”.</p><pre class="synopsis"><code class="function">XCMiscGetVersion</code>
+     1     CARD8          opcode
+     1     0                      XC-MISC opcode
+     2     2                      request length
+     2     CARD16         client_major_version
+     2     CARD16         client_minor_version
+
+ =&gt;
+     1     1          Reply
+     1                unused
+     2     CARD16     sequence number
+     4     0          length
+     2     CARD16     server_major_version
+     2     CARD16     server_minor_version
+     20               unused
+</pre><pre class="synopsis"><code class="function">XCMiscGetXIDRange</code>
+     1     CARD8        opcode
+     1     1                   XC-MISC opcode
+     2     1                   request length
+
+ =&gt;
+     1     1          Reply
+     1                unused
+     2     CARD16     sequence number
+     4     0          length
+     4     XID        start_id
+     4     CARD32     count
+     16               unused
+</pre><pre class="synopsis"><code class="function">XCMiscGetXIDList</code>
+     1     CARD8          opcode
+     1     2                      XC-MISC opcode
+     2     2                      request length
+     4     CARD32         count
+
+ =&gt;
+     1     1          Reply
+     1                unused
+     2     CARD16     sequence number
+     4     CARD32     length
+     4     CARD32     number of XIDs in ids
+     20               unused
+     4n    LISTofXID  ids
+</pre></div></div>
+
+</body></html>

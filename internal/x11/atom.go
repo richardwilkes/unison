@@ -86,30 +86,3 @@ const (
 	AtomWmTransientFor
 	AtomAny = AtomNone
 )
-
-const (
-	atomPair = iota
-	atomClipboard
-	atomClipboardIncremental
-	atomClipboardManager
-	atomClipboardMultiple
-	atomClipboardSaveTargets
-	atomClipboardSelection
-	atomClipboardTargets
-	atomNull
-	atomUTF8String
-	internedAtomCount
-)
-
-var internedAtomNames = []string{
-	"ATOM_PAIR",
-	"CLIPBOARD",
-	"INCR",
-	"CLIPBOARD_MANAGER",
-	"MULTIPLE",
-	"SAVE_TARGETS",
-	"CLIPBOARD_SELECTION",
-	"TARGETS",
-	"NULL",
-	"UTF8_STRING",
-}

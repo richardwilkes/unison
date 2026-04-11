@@ -41,6 +41,11 @@ func NewScreen(r *Reader) *Screen {
 	s.HeightInPixels = r.Uint16()
 	s.WidthInMillimeters = r.Uint16()
 	s.HeightInMillimeters = r.Uint16()
+	if s.WidthInMillimeters == 0 || s.HeightInMillimeters == 0 {
+		// Assume 96 DPI if we don't receive useful info
+		s.WidthInMillimeters = uint16(float64(s.WidthInPixels) * 25.4 / 96.0)
+		s.HeightInMillimeters = uint16(float64(s.HeightInPixels) * 25.4 / 96.0)
+	}
 	s.MinInstalledMaps = r.Uint16()
 	s.MaxInstalledMaps = r.Uint16()
 	s.RootVisual = VisualID(r.Uint32())

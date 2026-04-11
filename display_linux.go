@@ -9,12 +9,54 @@
 
 package unison
 
+import (
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/x11"
+)
+
 func apiPrimaryDisplay() *Display {
-	// TODO: Need implementation
+	for _, d := range AllDisplays() {
+		if d.Primary {
+			return d
+		}
+	}
 	return nil
 }
 
 func apiAllDisplays() []*Display {
-	// TODO: Need implementation
-	return nil
+	scale, err := x11Conn.ContentScale()
+	if err != nil {
+		// scale will be 1 if an error occurred
+		errs.Log(err)
+	}
+	root := x11Conn.RootWindow()
+	if available, major, minor := x11Conn.ExtRandr.Available(); available && (major > 1 || minor > 4) {
+		var m []x11.Monitor
+		if m, err = x11Conn.ExtRandr.GetMonitors(root, true); err == nil && len(m) != 0 {
+			displays := make([]*Display, len(m))
+			for i := range m {
+				frame := geom.NewRect(float32(m[i].X), float32(m[i].Y), float32(m[i].Width), float32(m[i].Height))
+				displays[i] = &Display{
+					Frame:   frame,
+					Usable:  x11Conn.MonitorWorkArea(root, frame),
+					Scale:   geom.NewPoint(scale, scale),
+					PPI:     int(float64(m[i].Width) / (float64(m[i].WidthMM) / 25.4)),
+					Primary: m[i].Primary,
+				}
+			}
+			return displays
+		}
+	}
+	screen := x11Conn.Roots[x11Conn.DefaultScreen]
+	frame := geom.NewRect(0, 0, float32(screen.WidthInPixels), float32(screen.HeightInPixels))
+	return []*Display{
+		{
+			Frame:   frame,
+			Usable:  x11Conn.MonitorWorkArea(root, frame),
+			Scale:   geom.NewPoint(scale, scale),
+			PPI:     int(float64(screen.WidthInPixels) / (float64(screen.WidthInMillimeters) / 25.4)),
+			Primary: true,
+		},
+	}
 }

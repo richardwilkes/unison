@@ -10,43 +10,61 @@
 package x11
 
 import (
+	"log/slog"
 	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
+const (
+	xcmiscGetVersionOpCode = iota
+	xcmiscGetXIDRangeOpCode
+	xcmiscGetXIDListOpCode
+)
+
 // ExtMisc provides access to the XC-MISC extension. Note that only those calls that I need have been implemented.
 type ExtMisc struct {
-	conn    *Conn
-	lock    sync.RWMutex
-	checked bool
+	conn *Conn
+	lock sync.RWMutex
 	extensionInfo
 }
 
-// Available returns true if the extension is available on the server. If this returns false, no other methods on this
-// object may be called.
-func (e *ExtMisc) Available() bool {
+// Available determines if the extension is available on the server. No other methods on this object may be called if
+// false is returned for available.
+func (e *ExtMisc) Available() (available bool, majorVersion, minorVersion uint32) {
 	e.lock.RLock()
-	checked := e.checked
 	info := e.extensionInfo
 	e.lock.RUnlock()
-	if !checked {
+	if !info.checked {
 		info = e.conn.hasExtension("XC-MISC")
+		w := NewWriter(8)
+		w.Byte(info.majorOpcode)
+		w.Byte(xcmiscGetVersionOpCode)
+		w.Uint16(2)
+		w.Uint32(1) // Major version max
+		w.Uint32(1) // Minor version max
+		if err := e.conn.sendNewRequest(newReplyRequest("XCMiscGetVersion", w, func(r *Reader) {
+			r.Skip(8)
+			info.majorVersion = uint32(r.Uint16())
+			info.minorVersion = uint32(r.Uint16())
+			r.Skip(20)
+		})); err != nil {
+			slog.Error("failed to get XC-MISC version", "error", err)
+		}
 		e.lock.Lock()
 		e.extensionInfo = info
-		e.checked = true
 		e.lock.Unlock()
 	}
-	return info.present
+	return info.present, info.majorVersion, info.minorVersion
 }
 
 // GetXIDRange requests a range of unused resource IDs from the server.
 func (e *ExtMisc) GetXIDRange() (startID, count uint32, err error) {
 	w := NewWriter(4)
 	w.Byte(e.majorOpcode)
-	w.Byte(1)
+	w.Byte(xcmiscGetXIDRangeOpCode)
 	w.Uint16(1)
-	err = e.conn.sendNewRequest(newReplyRequest("getXIDRange", w, func(r *Reader) {
+	err = e.conn.sendNewRequest(newReplyRequest("XCMiscGetXIDRange", w, func(r *Reader) {
 		r.Skip(8)
 		startID = r.Uint32()
 		count = r.Uint32()

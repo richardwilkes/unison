@@ -32,17 +32,16 @@ func (x *xid) init(r *Reader) {
 func (x *xid) next(c *Conn) (uint32, error) {
 	x.lock.Lock()
 	defer x.lock.Unlock()
-	switch {
-	case x.last <= x.max-x.inc:
+	if x.last <= x.max-x.inc {
 		x.last += x.inc
-	case c.ExtMisc.Available():
+	} else if available, _, _ := c.ExtMisc.Available(); available {
 		startID, count, err := c.ExtMisc.GetXIDRange()
 		if err != nil {
 			return 0, err
 		}
 		x.last = startID
 		x.max = startID + (count-1)*x.inc
-	default:
+	} else {
 		return 0, errs.New("no more IDs available")
 	}
 	return x.last | x.base, nil

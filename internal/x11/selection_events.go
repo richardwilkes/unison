@@ -112,22 +112,22 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 		return AtomNone
 	}
 	switch e.Target {
-	case c.atoms[atomClipboardTargets]:
+	case c.AtomClipboardTargets:
 		w := NewWriter(16)
-		w.Atom(c.atoms[atomClipboardTargets])
-		w.Atom(c.atoms[atomClipboardMultiple])
-		w.Atom(c.atoms[atomUTF8String])
+		w.Atom(c.AtomClipboardTargets)
+		w.Atom(c.AtomClipboardMultiple)
+		w.Atom(c.AtomUTF8String)
 		w.Atom(AtomString)
 		c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve())
 		return e.Property
-	case c.atoms[atomClipboardMultiple]:
-		format, kind, value, err := c.GetProperty(e.Requestor, e.Property, c.atoms[atomPair], 0, math.MaxUint32, false)
+	case c.AtomClipboardMultiple:
+		format, kind, value, err := c.GetProperty(e.Requestor, e.Property, c.AtomPair, 0, math.MaxUint32, false)
 		count := len(value) / (int(format) / 8)
 		if err != nil {
 			errs.Log(err)
 			return e.Property
 		}
-		if format != 32 || kind != c.atoms[atomPair] || count%2 != 0 {
+		if format != 32 || kind != c.AtomPair || count%2 != 0 {
 			slog.Error("unexpected result from GetProperty for MULTIPLE property", "format", format, "kind", kind, "count", count)
 			return e.Property
 		}
@@ -137,7 +137,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 		for i := 0; i < count; i += 2 {
 			propType := r.Atom()
 			prop := r.Atom()
-			if propType == c.atoms[atomUTF8String] || propType == AtomString {
+			if propType == c.AtomUTF8String || propType == AtomString {
 				w.Atom(propType)
 				c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, content)
 			} else {
@@ -145,12 +145,12 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			}
 			w.Atom(prop)
 		}
-		c.ChangeProperty(e.Requestor, e.Property, c.atoms[atomPair], 32, PropModeReplace, w.Retrieve())
+		c.ChangeProperty(e.Requestor, e.Property, c.AtomPair, 32, PropModeReplace, w.Retrieve())
 		return e.Property
-	case c.atoms[atomClipboardSaveTargets]:
-		c.ChangeProperty(e.Requestor, e.Property, c.atoms[atomNull], 32, PropModeReplace, nil)
+	case c.AtomClipboardSaveTargets:
+		c.ChangeProperty(e.Requestor, e.Property, c.AtomNull, 32, PropModeReplace, nil)
 		return e.Property
-	case c.atoms[atomUTF8String], AtomString:
+	case c.AtomUTF8String, AtomString:
 		c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, []byte(c.clipboard))
 		return e.Property
 	}
@@ -205,7 +205,7 @@ func (e *SelectionNotifyEvent) Write(sequence uint16, w *Writer) {
 }
 
 // Process the event.
-func (e *SelectionNotifyEvent) Process(_conn *Conn) {
+func (e *SelectionNotifyEvent) Process(conn *Conn) {
 	// TODO: Implement; this might be a noop, as the clipboard logic is currently implemented in the Conn's
 	// GetClipboardText method, which waits for a SelectionNotifyEvent and processes it there.
 	slog.Info("SelectionNotifyEvent received", "sequence", e.Sequence, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property, "time", e.Time)

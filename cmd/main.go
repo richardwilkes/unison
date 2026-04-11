@@ -1,8 +1,7 @@
 package main
 
 import (
-	"strconv"
-	"strings"
+	"log/slog"
 
 	"github.com/richardwilkes/toolbox/v2/xflag"
 	"github.com/richardwilkes/toolbox/v2/xos"
@@ -28,30 +27,23 @@ func start() error {
 	if x11Conn, err = x11.NewConn(); err != nil {
 		return err
 	}
-	if x11ContentScale, err = x11GetContentScale(); err != nil {
+	available, major, minor := x11Conn.ExtRandr.Available()
+	slog.Info("RANDR", "available", available, "major", major, "minor", minor)
+
+	if x11ContentScale, err = x11Conn.ContentScale(); err != nil {
 		return err
 	}
+	slog.Info("content scale", "scale", x11ContentScale)
 	x11Conn.SetClipboardText("Yo!")
+
+	var monitors []x11.Monitor
+	if monitors, err = x11Conn.ExtRandr.GetMonitors(x11Conn.RootWindow(), true); err != nil {
+		return err
+	}
+	for i := range monitors {
+		slog.Info("monitor", "index", i, "name", monitors[i].Name, "primary", monitors[i].Primary, "automatic", monitors[i].Automatic, "x", monitors[i].X, "y", monitors[i].Y, "width", monitors[i].Width, "height", monitors[i].Height, "widthMM", monitors[i].WidthMM, "heightMM", monitors[i].HeightMM)
+	}
+
 	x11Conn.Close()
 	return nil
-}
-
-func x11GetContentScale() (float32, error) {
-	format, actualPropertyType, value, err := x11Conn.GetProperty(x11Conn.RootWindow(), x11.AtomResourceManager,
-		x11.AtomString, 0, 100_000_000, false)
-	if err != nil {
-		return 1, err
-	}
-	if format == 8 && actualPropertyType == x11.AtomString {
-		for _, line := range strings.Split(string(value), "\n") {
-			const xftDPI = "Xft.dpi:"
-			if strings.HasPrefix(line, xftDPI) {
-				var dpi int
-				if dpi, err = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, xftDPI))); err == nil {
-					return float32(dpi) / 96, nil
-				}
-			}
-		}
-	}
-	return 1, nil
 }
