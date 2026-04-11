@@ -205,7 +205,7 @@ func (e *SelectionNotifyEvent) Write(sequence uint16, w *Writer) {
 }
 
 // Process the event.
-func (e *SelectionNotifyEvent) Process(conn *Conn) {
+func (e *SelectionNotifyEvent) Process(_conn *Conn) {
 	// TODO: Implement; this might be a noop, as the clipboard logic is currently implemented in the Conn's
 	// GetClipboardText method, which waits for a SelectionNotifyEvent and processes it there.
 	slog.Info("SelectionNotifyEvent received", "sequence", e.Sequence, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property, "time", e.Time)

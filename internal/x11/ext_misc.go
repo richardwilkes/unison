@@ -16,10 +16,11 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
+// Opcodes for XC-MISC requests.
 const (
-	xcmiscGetVersionOpCode = iota
-	xcmiscGetXIDRangeOpCode
-	xcmiscGetXIDListOpCode
+	XCMiscGetVersionOpCode = iota
+	XCMiscGetXIDRangeOpCode
+	XCMiscGetXIDListOpCode
 )
 
 // ExtMisc provides access to the XC-MISC extension. Note that only those calls that I need have been implemented.
@@ -39,7 +40,7 @@ func (e *ExtMisc) Available() (available bool, majorVersion, minorVersion uint32
 		info = e.conn.hasExtension("XC-MISC")
 		w := NewWriter(8)
 		w.Byte(info.majorOpcode)
-		w.Byte(xcmiscGetVersionOpCode)
+		w.Byte(XCMiscGetVersionOpCode)
 		w.Uint16(2)
 		w.Uint32(1) // Major version max
 		w.Uint32(1) // Minor version max
@@ -62,7 +63,7 @@ func (e *ExtMisc) Available() (available bool, majorVersion, minorVersion uint32
 func (e *ExtMisc) GetXIDRange() (startID, count uint32, err error) {
 	w := NewWriter(4)
 	w.Byte(e.majorOpcode)
-	w.Byte(xcmiscGetXIDRangeOpCode)
+	w.Byte(XCMiscGetXIDRangeOpCode)
 	w.Uint16(1)
 	err = e.conn.sendNewRequest(newReplyRequest("XCMiscGetXIDRange", w, func(r *Reader) {
 		r.Skip(8)

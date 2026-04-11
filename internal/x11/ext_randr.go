@@ -16,60 +16,61 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
+// Opcodes for RANDR requests.
 const (
-	rrQueryVersionOpCode = iota
-	rrOldGetScreenInfoOpCode
-	rrSetScreenConfigOpCode
-	rrOldScreenChangeSelectInputOpCode
+	RRQueryVersionOpCode = iota
+	RROldGetScreenInfoOpCode
+	RRSetScreenConfigOpCode
+	RROldScreenChangeSelectInputOpCode
 	// v1.1
-	rrSelectInputOpCode
-	rrGetScreenInfoOpCode
+	RRSelectInputOpCode
+	RRGetScreenInfoOpCode
 	// v1.2
-	rrGetScreenSizeRangeOpCode
-	rrSetScreenSizeOpCode
-	rrGetScreenResourcesOpCode
-	rrGetOutputInfoOpCode
-	rrListOutputPropertiesOpCode
-	rrQueryOutputPropertyOpCode
-	rrConfigureOutputPropertyOpCode
-	rrChangeOutputPropertyOpCode
-	rrDeleteOutputPropertyOpCode
-	rrGetOutputPropertyOpCode
-	rrCreateModeOpCode
-	rrDestroyModeOpCode
-	rrAddOutputModeOpCode
-	rrDeleteOutputModeOpCode
-	rrGetCrtcInfoOpCode
-	rrSetCrtcConfigOpCode
-	rrGetCrtcGammaSizeOpCode
-	rrGetCrtcGammaOpCode
-	rrSetCrtcGammaOpCode
+	RRGetScreenSizeRangeOpCode
+	RRSetScreenSizeOpCode
+	RRGetScreenResourcesOpCode
+	RRGetOutputInfoOpCode
+	RRListOutputPropertiesOpCode
+	RRQueryOutputPropertyOpCode
+	RRConfigureOutputPropertyOpCode
+	RRChangeOutputPropertyOpCode
+	RRDeleteOutputPropertyOpCode
+	RRGetOutputPropertyOpCode
+	RRCreateModeOpCode
+	RRDestroyModeOpCode
+	RRAddOutputModeOpCode
+	RRDeleteOutputModeOpCode
+	RRGetCrtcInfoOpCode
+	RRSetCrtcConfigOpCode
+	RRGetCrtcGammaSizeOpCode
+	RRGetCrtcGammaOpCode
+	RRSetCrtcGammaOpCode
 	// v1.3
-	rrGetScreenResourcesCurrentOpCode
-	rrSetCrtcTransformOpCode
-	rrGetCrtcTransformOpCode
-	rrGetPanningOpCode
-	rrSetPanningOpCode
-	rrSetOutputPrimaryOpCode
-	rrGetOutputPrimaryOpCode
+	RRGetScreenResourcesCurrentOpCode
+	RRSetCrtcTransformOpCode
+	RRGetCrtcTransformOpCode
+	RRGetPanningOpCode
+	RRSetPanningOpCode
+	RRSetOutputPrimaryOpCode
+	RRGetOutputPrimaryOpCode
 	// v1.4
-	rrGetProvidersOpCode
-	rrGetProviderInfoOpCode
-	rrSetProviderOffloadSinkOpCode
-	rrSetProviderOutputSourceOpCode
-	rrListProviderPropertiesOpCode
-	rrQueryProviderPropertyOpCode
-	rrConfigureProviderPropertyOpCode
-	rrChangeProviderPropertyOpCode
-	rrDeleteProviderPropertyOpCode
-	rrGetProviderPropertyOpCode
+	RRGetProvidersOpCode
+	RRGetProviderInfoOpCode
+	RRSetProviderOffloadSinkOpCode
+	RRSetProviderOutputSourceOpCode
+	RRListProviderPropertiesOpCode
+	RRQueryProviderPropertyOpCode
+	RRConfigureProviderPropertyOpCode
+	RRChangeProviderPropertyOpCode
+	RRDeleteProviderPropertyOpCode
+	RRGetProviderPropertyOpCode
 	// v1.5
-	rrGetMonitorsOpCode
-	rrSetMonitorOpCode
-	rrDeleteMonitorOpCode
+	RRGetMonitorsOpCode
+	RRSetMonitorOpCode
+	RRDeleteMonitorOpCode
 	// v1.6
-	rrCreateLeaseOpCode
-	rrFreeLeaseOpCode
+	RRCreateLeaseOpCode
+	RRFreeLeaseOpCode
 )
 
 // Monitor holds information about a monitor.
@@ -102,7 +103,7 @@ func (e *ExtRandr) Available() (available bool, majorVersion, minorVersion uint3
 		info = e.conn.hasExtension("RANDR")
 		w := NewWriter(8)
 		w.Byte(info.majorOpcode)
-		w.Byte(rrQueryVersionOpCode)
+		w.Byte(RRQueryVersionOpCode)
 		w.Uint16(3)
 		w.Uint32(1) // Major version max
 		w.Uint32(6) // Minor version max
@@ -125,7 +126,7 @@ func (e *ExtRandr) Available() (available bool, majorVersion, minorVersion uint3
 func (e *ExtRandr) GetMonitors(root WindowID, active bool) ([]Monitor, error) {
 	w := NewWriter(12)
 	w.Byte(e.majorOpcode)
-	w.Byte(rrGetMonitorsOpCode)
+	w.Byte(RRGetMonitorsOpCode)
 	w.Uint16(3)
 	w.WindowID(root)
 	w.Bool(active)
@@ -138,19 +139,19 @@ func (e *ExtRandr) GetMonitors(root WindowID, active bool) ([]Monitor, error) {
 		r.Skip(12)
 		monitors = ReadList(numMonitors, r, func(rr *Reader) Monitor {
 			var m Monitor
-			m.Name = r.Atom()
-			m.Primary = r.Bool()
-			m.Automatic = r.Bool()
-			r.Skip(2)
-			m.X = r.Int16()
-			m.Y = r.Int16()
-			m.Width = r.Uint16()
-			m.Height = r.Uint16()
-			if m.WidthMM = r.Uint32(); m.WidthMM == 0 {
+			m.Name = rr.Atom()
+			m.Primary = rr.Bool()
+			m.Automatic = rr.Bool()
+			rr.Skip(2)
+			m.X = rr.Int16()
+			m.Y = rr.Int16()
+			m.Width = rr.Uint16()
+			m.Height = rr.Uint16()
+			if m.WidthMM = rr.Uint32(); m.WidthMM == 0 {
 				// Assume 96 DPI if we don't receive useful info
 				m.WidthMM = uint32(float64(m.Width) * 25.4 / 96.0)
 			}
-			if m.HeightMM = r.Uint32(); m.HeightMM == 0 {
+			if m.HeightMM = rr.Uint32(); m.HeightMM == 0 {
 				// Assume 96 DPI if we don't receive useful info
 				m.HeightMM = uint32(float64(m.Height) * 25.4 / 96.0)
 			}
