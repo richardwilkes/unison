@@ -9,10 +9,7 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-var (
-	x11Conn         *x11.Conn
-	x11ContentScale float32 = 1
-)
+var x11Conn *x11.Conn
 
 func main() {
 	logCfg := xslog.Config{Console: true}
@@ -30,10 +27,6 @@ func start() error {
 	available, major, minor := x11Conn.ExtRandr.Available()
 	slog.Info("RANDR", "available", available, "major", major, "minor", minor)
 
-	if x11ContentScale, err = x11Conn.ContentScale(); err != nil {
-		return err
-	}
-	slog.Info("content scale", "scale", x11ContentScale)
 	x11Conn.SetClipboardText("Yo!")
 
 	var monitors []x11.Monitor
