@@ -13,6 +13,8 @@ import (
 	"image"
 )
 
+// Default size of a cursor should be content scale * 16
+
 type apiNativeCursor struct {
 	cursor int // TODO: Need actual type
 	system bool
@@ -24,20 +26,28 @@ func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 }
 
 func (c *Cursor) apiDestroy() {
-	// TODO: Need implementation
+	if !c.cursor.system {
+		// TODO: Need implementation
+	}
 }
 
 func apiArrowCursor() *Cursor {
-	// TODO: Need implementation
-	return nil
+	return x11LoadSystemCursor("default")
 }
 
 func apiPointingCursor() *Cursor {
-	// TODO: Need implementation
-	return nil
+	return x11LoadSystemCursor("pointer")
 }
 
 func apiTextCursor() *Cursor {
+	return x11LoadSystemCursor("text")
+}
+
+func x11LoadSystemCursor(name string) *Cursor {
 	// TODO: Need implementation
-	return nil
+	return &Cursor{
+		cursor: apiNativeCursor{
+			system: true,
+		},
+	}
 }
