@@ -31,7 +31,9 @@ func apiAllDisplays() []*Display {
 		errs.Log(err)
 	}
 	root := x11Conn.RootWindow()
-	if available, major, minor := x11Conn.ExtRandr.Available(); available && (major > 1 || minor > 4) {
+	// Need v1.5+ of RANDR to get monitor information, but if it's not available, just return the screen size as a
+	// single display.
+	if x11Conn.ExtRandr.Present && (x11Conn.ExtRandr.MajorVersion > 1 || x11Conn.ExtRandr.MinorVersion > 4) {
 		var m []x11.Monitor
 		if m, err = x11Conn.ExtRandr.GetMonitors(root, true); err == nil && len(m) != 0 {
 			displays := make([]*Display, len(m))

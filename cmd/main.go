@@ -24,17 +24,32 @@ func start() error {
 	if x11Conn, err = x11.NewConn(); err != nil {
 		return err
 	}
-	available, major, minor := x11Conn.ExtRandr.Available()
-	slog.Info("RANDR", "available", available, "major", major, "minor", minor)
 
-	x11Conn.SetClipboardText("Yo!")
+	slog.Info("RANDR",
+		"available", x11Conn.ExtRandr.Present,
+		"major", x11Conn.ExtRandr.MajorVersion,
+		"minor", x11Conn.ExtRandr.MinorVersion,
+	)
+
+	x11Conn.SetClipboardText("test text")
 
 	var monitors []x11.Monitor
 	if monitors, err = x11Conn.ExtRandr.GetMonitors(x11Conn.RootWindow(), true); err != nil {
 		return err
 	}
 	for i := range monitors {
-		slog.Info("monitor", "index", i, "name", monitors[i].Name, "primary", monitors[i].Primary, "automatic", monitors[i].Automatic, "x", monitors[i].X, "y", monitors[i].Y, "width", monitors[i].Width, "height", monitors[i].Height, "widthMM", monitors[i].WidthMM, "heightMM", monitors[i].HeightMM)
+		slog.Info("monitor",
+			"index", i,
+			"name", monitors[i].Name,
+			"primary", monitors[i].Primary,
+			"automatic", monitors[i].Automatic,
+			"x", monitors[i].X,
+			"y", monitors[i].Y,
+			"width", monitors[i].Width,
+			"height", monitors[i].Height,
+			"widthMM", monitors[i].WidthMM,
+			"heightMM", monitors[i].HeightMM,
+		)
 	}
 
 	x11Conn.Close()

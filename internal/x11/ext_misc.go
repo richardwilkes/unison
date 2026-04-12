@@ -10,62 +10,37 @@
 package x11
 
 import (
-	"log/slog"
-	"sync"
-
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
-// Opcodes for XC-MISC requests.
+//nolint:unused // All available opcodes are defined here, even if not all are used by my code.
 const (
-	XCMiscGetVersionOpCode = iota
-	XCMiscGetXIDRangeOpCode
-	XCMiscGetXIDListOpCode
+	xmOpGetVersion = iota
+	xmOpGetXIDRange
+	xmOpGetXIDList
 )
 
 // ExtMisc provides access to the XC-MISC extension. Note that only those calls that I need have been implemented.
 type ExtMisc struct {
 	conn *Conn
-	lock sync.RWMutex
 	extensionInfo
 }
 
-// Available determines if the extension is available on the server. No other methods on this object may be called if
-// false is returned for available.
-func (e *ExtMisc) Available() (available bool, majorVersion, minorVersion uint32) {
-	e.lock.RLock()
-	info := e.extensionInfo
-	e.lock.RUnlock()
-	if !info.checked {
-		info = e.conn.hasExtension("XC-MISC")
-		w := NewWriter(8)
-		w.Byte(info.majorOpcode)
-		w.Byte(XCMiscGetVersionOpCode)
-		w.Uint16(2)
-		w.Uint32(1) // Major version max
-		w.Uint32(1) // Minor version max
-		if err := e.conn.sendNewRequest(newReplyRequest("XCMiscGetVersion", w, func(r *Reader) {
-			r.Skip(8)
-			info.majorVersion = uint32(r.Uint16())
-			info.minorVersion = uint32(r.Uint16())
-			r.Skip(20)
-		})); err != nil {
-			slog.Error("failed to get XC-MISC version", "error", err)
-		}
-		e.lock.Lock()
-		e.extensionInfo = info
-		e.lock.Unlock()
+func newExtMisc(conn *Conn) *ExtMisc {
+	info := conn.hasExtension("XC-MISC", 1, 1)
+	return &ExtMisc{
+		conn:          conn,
+		extensionInfo: info,
 	}
-	return info.present, info.majorVersion, info.minorVersion
 }
 
 // GetXIDRange requests a range of unused resource IDs from the server.
 func (e *ExtMisc) GetXIDRange() (startID, count uint32, err error) {
 	w := NewWriter(4)
 	w.Byte(e.majorOpcode)
-	w.Byte(XCMiscGetXIDRangeOpCode)
+	w.Byte(xmOpGetXIDRange)
 	w.Uint16(1)
-	err = e.conn.sendNewRequest(newReplyRequest("XCMiscGetXIDRange", w, func(r *Reader) {
+	err = e.conn.sendNewRequest(newReplyRequest(w, func(r *Reader) {
 		r.Skip(8)
 		startID = r.Uint32()
 		count = r.Uint32()

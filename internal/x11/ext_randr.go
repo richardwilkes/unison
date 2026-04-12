@@ -10,67 +10,64 @@
 package x11
 
 import (
-	"log/slog"
-	"sync"
-
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
-// Opcodes for RANDR requests.
+//nolint:unused // All available opcodes are defined here, even if not all are used by my code.
 const (
-	RRQueryVersionOpCode = iota
-	RROldGetScreenInfoOpCode
-	RRSetScreenConfigOpCode
-	RROldScreenChangeSelectInputOpCode
+	rrOpQueryVersion = iota
+	rrOpOldGetScreenInfo
+	rrOpSetScreenConfig
+	rrOpOldScreenChangeSelectInput
 	// v1.1
-	RRSelectInputOpCode
-	RRGetScreenInfoOpCode
+	rrOpSelectInput
+	rrOpGetScreenInfo
 	// v1.2
-	RRGetScreenSizeRangeOpCode
-	RRSetScreenSizeOpCode
-	RRGetScreenResourcesOpCode
-	RRGetOutputInfoOpCode
-	RRListOutputPropertiesOpCode
-	RRQueryOutputPropertyOpCode
-	RRConfigureOutputPropertyOpCode
-	RRChangeOutputPropertyOpCode
-	RRDeleteOutputPropertyOpCode
-	RRGetOutputPropertyOpCode
-	RRCreateModeOpCode
-	RRDestroyModeOpCode
-	RRAddOutputModeOpCode
-	RRDeleteOutputModeOpCode
-	RRGetCrtcInfoOpCode
-	RRSetCrtcConfigOpCode
-	RRGetCrtcGammaSizeOpCode
-	RRGetCrtcGammaOpCode
-	RRSetCrtcGammaOpCode
+	rrOpGetScreenSizeRange
+	rrOpSetScreenSize
+	rrOpGetScreenResources
+	rrOpGetOutputInfo
+	rrOpListOutputProperties
+	rrOpQueryOutputProperty
+	rrOpConfigureOutputProperty
+	rrOpChangeOutputProperty
+	rrOpDeleteOutputProperty
+	rrOpGetOutputProperty
+	rrOpCreateMode
+	rrOpDestroyMode
+	rrOpAddOutputMode
+	rrOpDeleteOutputMode
+	rrOpGetCrtcInfo
+	rrOpSetCrtcConfig
+	rrOpGetCrtcGammaSize
+	rrOpGetCrtcGamma
+	rrOpSetCrtcGamma
 	// v1.3
-	RRGetScreenResourcesCurrentOpCode
-	RRSetCrtcTransformOpCode
-	RRGetCrtcTransformOpCode
-	RRGetPanningOpCode
-	RRSetPanningOpCode
-	RRSetOutputPrimaryOpCode
-	RRGetOutputPrimaryOpCode
+	rrOpGetScreenResourcesCurrent
+	rrOpSetCrtcTransform
+	rrOpGetCrtcTransform
+	rrOpGetPanning
+	rrOpSetPanning
+	rrOpSetOutputPrimary
+	rrOpGetOutputPrimary
 	// v1.4
-	RRGetProvidersOpCode
-	RRGetProviderInfoOpCode
-	RRSetProviderOffloadSinkOpCode
-	RRSetProviderOutputSourceOpCode
-	RRListProviderPropertiesOpCode
-	RRQueryProviderPropertyOpCode
-	RRConfigureProviderPropertyOpCode
-	RRChangeProviderPropertyOpCode
-	RRDeleteProviderPropertyOpCode
-	RRGetProviderPropertyOpCode
+	rrOpGetProviders
+	rrOpGetProviderInfo
+	rrOpSetProviderOffloadSink
+	rrOpSetProviderOutputSource
+	rrOpListProviderProperties
+	rrOpQueryProviderProperty
+	rrOpConfigureProviderProperty
+	rrOpChangeProviderProperty
+	rrOpDeleteProviderProperty
+	rrOpGetProviderProperty
 	// v1.5
-	RRGetMonitorsOpCode
-	RRSetMonitorOpCode
-	RRDeleteMonitorOpCode
+	rrOpGetMonitors
+	rrOpSetMonitor
+	rrOpDeleteMonitor
 	// v1.6
-	RRCreateLeaseOpCode
-	RRFreeLeaseOpCode
+	rrOpCreateLease
+	rrOpFreeLease
 )
 
 // Monitor holds information about a monitor.
@@ -89,36 +86,15 @@ type Monitor struct {
 // ExtRandr provides access to the XC-RANDR extension. Note that only those calls that I need have been implemented.
 type ExtRandr struct {
 	conn *Conn
-	lock sync.RWMutex
 	extensionInfo
 }
 
-// Available determines if the extension is available on the server. No other methods on this object may be called if
-// false is returned for available.
-func (e *ExtRandr) Available() (available bool, majorVersion, minorVersion uint32) {
-	e.lock.RLock()
-	info := e.extensionInfo
-	e.lock.RUnlock()
-	if !info.checked {
-		info = e.conn.hasExtension("RANDR")
-		w := NewWriter(8)
-		w.Byte(info.majorOpcode)
-		w.Byte(RRQueryVersionOpCode)
-		w.Uint16(3)
-		w.Uint32(1) // Major version max
-		w.Uint32(6) // Minor version max
-		if err := e.conn.sendNewRequest(newReplyRequest("RRQueryVersion", w, func(r *Reader) {
-			r.Skip(8)
-			info.majorVersion = r.Uint32()
-			info.minorVersion = r.Uint32()
-		})); err != nil {
-			slog.Error("failed to query RANDR version", "error", err)
-		}
-		e.lock.Lock()
-		e.extensionInfo = info
-		e.lock.Unlock()
+func newExtRandr(conn *Conn) *ExtRandr {
+	info := conn.hasExtension("RANDR", 1, 6)
+	return &ExtRandr{
+		conn:          conn,
+		extensionInfo: info,
 	}
-	return info.present, info.majorVersion, info.minorVersion
 }
 
 // GetMonitors returns information about the monitors for the specified root window. If active is true, only active
@@ -126,13 +102,13 @@ func (e *ExtRandr) Available() (available bool, majorVersion, minorVersion uint3
 func (e *ExtRandr) GetMonitors(root WindowID, active bool) ([]Monitor, error) {
 	w := NewWriter(12)
 	w.Byte(e.majorOpcode)
-	w.Byte(RRGetMonitorsOpCode)
+	w.Byte(rrOpGetMonitors)
 	w.Uint16(3)
 	w.WindowID(root)
 	w.Bool(active)
 	w.Zero(3)
 	var monitors []Monitor
-	if err := e.conn.sendNewRequest(newReplyRequest("RRGetMonitors", w, func(r *Reader) {
+	if err := e.conn.sendNewRequest(newReplyRequest(w, func(r *Reader) {
 		r.Skip(12)
 		numMonitors := int(r.Uint32())
 		numOutputs := int(r.Uint32())
