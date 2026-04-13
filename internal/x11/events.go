@@ -473,7 +473,7 @@ func (e *ErrorEvent) ID() byte {
 
 // TargetWindow returns the ID of the window that is the target of the event.
 func (e *ErrorEvent) TargetWindow() WindowID {
-	return WindowNone
+	return 0
 }
 
 // Process the event.
@@ -820,7 +820,7 @@ func (e *KeymapNotifyEvent) ID() byte {
 
 // TargetWindow returns the ID of the window that is the target of the event.
 func (e *KeymapNotifyEvent) TargetWindow() WindowID {
-	return WindowNone
+	return 0
 }
 
 // Process the event.
@@ -857,7 +857,7 @@ func (e *MappingNotifyEvent) ID() byte {
 
 // TargetWindow returns the ID of the window that is the target of the event.
 func (e *MappingNotifyEvent) TargetWindow() WindowID {
-	return WindowNone
+	return 0
 }
 
 // Process the event.

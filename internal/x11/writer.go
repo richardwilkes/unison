@@ -96,6 +96,36 @@ func (w *Writer) Atom(v Atom) {
 	w.Uint32(uint32(v))
 }
 
+// CursorID appends a uint32 value representing a CursorID to the buffer using the Writer's byte order.
+func (w *Writer) CursorID(v CursorID) {
+	w.Uint32(uint32(v))
+}
+
+// DrawableID appends a uint32 value representing a DrawableID to the buffer using the Writer's byte order.
+func (w *Writer) DrawableID(v DrawableID) {
+	w.Uint32(uint32(v))
+}
+
+// FontID appends a uint32 value representing a FontID to the buffer using the Writer's byte order.
+func (w *Writer) FontID(v FontID) {
+	w.Uint32(uint32(v))
+}
+
+// GCID appends a uint32 value representing a GCID to the buffer using the Writer's byte order.
+func (w *Writer) GCID(v GCID) {
+	w.Uint32(uint32(v))
+}
+
+// PictureID appends a uint32 value representing a PictureID to the buffer using the Writer's byte order.
+func (w *Writer) PictureID(v PictureID) {
+	w.Uint32(uint32(v))
+}
+
+// PixMapID appends a uint32 value representing a PixMapID to the buffer using the Writer's byte order.
+func (w *Writer) PixMapID(v PixMapID) {
+	w.Uint32(uint32(v))
+}
+
 // WindowID appends a uint32 value representing a WindowID to the buffer using the Writer's byte order.
 func (w *Writer) WindowID(v WindowID) {
 	w.Uint32(uint32(v))
@@ -125,6 +155,13 @@ func (w *Writer) Uint32(v uint32) {
 	var buf [4]byte
 	w.byteOrder.PutUint32(buf[:], v)
 	w.buffer = append(w.buffer, buf[:]...)
+}
+
+// Uint32Slice appends a slice of uint32 values to the buffer using the Writer's byte order.
+func (w *Writer) Uint32Slice(v []uint32) {
+	for _, one := range v {
+		w.Uint32(one)
+	}
 }
 
 func pad4(size int) int {

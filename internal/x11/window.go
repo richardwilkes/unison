@@ -9,9 +9,6 @@
 
 package x11
 
-// WindowNone is a special WindowID value that represents the absence of a window.
-const WindowNone = WindowID(0)
-
 // Constants for X11 window classes.
 const (
 	WindowClassCopyFromParent = iota
@@ -79,8 +76,14 @@ type Window struct {
 // PixMapID holds an ID that refers to a PixMap.
 type PixMapID uint32
 
+// PictureID holds an ID that refers to a Picture.
+type PictureID uint32
+
 // CursorID holds an ID that refers to a Cursor.
 type CursorID uint32
+
+// FontID holds an ID that refers to a Font.
+type FontID uint32
 
 // WindowAttributes holds the attributes that can be set on a window.
 type WindowAttributes struct {

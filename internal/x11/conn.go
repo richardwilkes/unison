@@ -12,6 +12,7 @@ package x11
 import (
 	"bytes"
 	"encoding/binary"
+	"image"
 	"io"
 	"log/slog"
 	"math"
@@ -29,6 +30,9 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"golang.org/x/text/encoding/charmap"
 )
+
+// MaxRequestSize is the maximum size of an X11 request in bytes.
+const MaxRequestSize = math.MaxUint16 * 4
 
 // Event represents a generic X11 event. Specific event types will implement this interface.
 type Event interface {
@@ -76,6 +80,7 @@ type Conn struct {
 	readClosed               chan struct{}
 	ExtMisc                  *ExtMisc
 	ExtRandr                 *ExtRandr
+	ExtRender                *ExtRender
 	eventNewMap              map[byte]func(r *Reader) Event
 	errorCodeMap             map[byte]string
 	requestMap               map[uint16]*request
@@ -93,6 +98,7 @@ type Conn struct {
 	errorCodeLock            sync.RWMutex
 	requestMapLock           sync.RWMutex
 	xid                      xid
+	MaxRequestSize           int
 	DefaultScreen            int
 	displayNum               int
 	sequence                 atomic.Uint32
@@ -144,14 +150,22 @@ func NewConn() (*Conn, error) {
 	c.readClosed = make(chan struct{})
 	c.ExtMisc = newExtMisc(&c)
 	c.ExtRandr = newExtRandr(&c)
+	if !c.ExtRandr.Present && (c.ExtRandr.MajorVersion == 0 ||
+		(c.ExtRandr.MajorVersion == 1 && c.ExtRandr.MinorVersion < 5)) {
+		return nil, errs.New("X11 RANDR extension version 1.5 or higher is required")
+	}
+	c.ExtRender = newExtRender(&c)
+	if !c.ExtRender.Present && c.ExtRender.MajorVersion == 0 && c.ExtRender.MinorVersion < 6 {
+		return nil, errs.New("X11 RENDER extension version 0.6 or higher is required")
+	}
 	go c.sendRequests()
 	go c.readResponses()
 	if err = c.initAtoms(); err != nil {
 		return nil, err
 	}
-	if c.helperWindow, err = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
-		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); err != nil {
-		return nil, err
+	if c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
+		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
+		return nil, errs.New("failed to create helper window")
 	}
 	return &c, nil
 }
@@ -359,20 +373,41 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 }
 
 // NewAtom generates a new Atom ID.
-func (c *Conn) NewAtom() (Atom, error) {
-	id, err := c.xid.next(c)
-	if err != nil {
-		return AtomNone, err
-	}
-	return Atom(id), nil
+func (c *Conn) NewAtom() Atom {
+	return nextXID[Atom](c)
 }
 
-func (c *Conn) nextWindowID() (WindowID, error) {
+func (c *Conn) nextCursorID() CursorID {
+	return nextXID[CursorID](c)
+}
+
+func (c *Conn) nextFontID() FontID {
+	return nextXID[FontID](c)
+}
+
+func (c *Conn) nextGCID() GCID {
+	return nextXID[GCID](c)
+}
+
+func (c *Conn) nextPictureID() PictureID {
+	return nextXID[PictureID](c)
+}
+
+func (c *Conn) nextPixmapID() PixMapID {
+	return nextXID[PixMapID](c)
+}
+
+func (c *Conn) nextWindowID() WindowID {
+	return nextXID[WindowID](c)
+}
+
+func nextXID[T ~uint32](c *Conn) T {
 	id, err := c.xid.next(c)
 	if err != nil {
-		return WindowNone, err
+		errs.Log(err)
+		return 0
 	}
-	return WindowID(id), nil
+	return T(id)
 }
 
 func (c *Conn) nextSeq() uint16 {
@@ -716,33 +751,35 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 }
 
 // CreateWindow creates a new window with the specified parameters and attributes.
-func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) (WindowID, error) {
-	windowID, err := c.nextWindowID()
-	if err != nil {
-		return WindowNone, err
+func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) WindowID {
+	id := c.nextWindowID()
+	if id != 0 {
+		valueList := attributes.toValues(valueMask)
+		size := 32 + 4*len(valueList)
+		w := NewWriter(size)
+		w.Byte(opcodeCreateWindow)
+		w.Byte(depth)
+		w.Uint16(uint16(size / 4))
+		w.WindowID(id)
+		w.WindowID(parent)
+		w.Int16(x)
+		w.Int16(y)
+		w.Uint16(width)
+		w.Uint16(height)
+		w.Uint16(borderWidth)
+		w.Uint16(windowClass)
+		w.VisualID(visual)
+		w.Uint32(valueMask)
+		for _, v := range valueList {
+			w.Uint32(v)
+		}
+		w.ZeroTo4ByteAlignment()
+		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+			errs.Log(err)
+			return 0
+		}
 	}
-	valueList := attributes.toValues(valueMask)
-	size := 32 + 4*len(valueList)
-	w := NewWriter(size)
-	w.Byte(opcodeCreateWindow)
-	w.Byte(depth)
-	w.Uint16(uint16(size / 4))
-	w.WindowID(windowID)
-	w.WindowID(parent)
-	w.Int16(x)
-	w.Int16(y)
-	w.Uint16(width)
-	w.Uint16(height)
-	w.Uint16(borderWidth)
-	w.Uint16(windowClass)
-	w.VisualID(visual)
-	w.Uint32(valueMask)
-	for _, v := range valueList {
-		w.Uint32(v)
-	}
-	w.ZeroTo4ByteAlignment()
-	err = c.sendNewRequest(newCheckedRequest(w))
-	return windowID, err
+	return id
 }
 
 // DestroyWindow destroys the specified window.
@@ -848,7 +885,7 @@ func (c *Conn) Bell(percent int8) {
 // provided incrementally (using the INCR mechanism), it handles that as well by repeatedly requesting the property
 // until all data has been received.
 func (c *Conn) GetClipboardText() string {
-	if c.helperWindow == WindowNone {
+	if c.helperWindow == 0 {
 		return ""
 	}
 	owner, err := c.getSelectionOwner(c.AtomClipboard)
@@ -930,7 +967,7 @@ func convertLatin1ToUTF8(latin1 []byte) string {
 // selection with a helper window. When another client requests the clipboard contents, the helper window will provide
 // the stored text.
 func (c *Conn) SetClipboardText(str string) {
-	if c.helperWindow == WindowNone {
+	if c.helperWindow == 0 {
 		return
 	}
 	c.clipboard = str
@@ -1058,12 +1095,187 @@ func (c *Conn) MonitorWorkArea(root WindowID, area geom.Rect) geom.Rect {
 	return area
 }
 
+// OpenFont opens a font with the specified name and returns its FontID.
+func (c *Conn) OpenFont(name string) FontID {
+	id := c.nextFontID()
+	if id != 0 {
+		w := NewWriter(12 + pad4(len(name)))
+		w.Byte(opcodeOpenFont)
+		w.Zero(1)
+		w.Uint16(uint16(3 + (pad4(len(name)) / 4)))
+		w.FontID(id)
+		w.Uint16(uint16(len(name)))
+		w.Zero(2)
+		w.String(name)
+		w.ZeroTo4ByteAlignment()
+		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+			errs.Log(err)
+			return 0
+		}
+	}
+	return id
+}
+
+// CloseFont closes the specified font.
+func (c *Conn) CloseFont(fontID FontID) {
+	if fontID == 0 {
+		return
+	}
+	w := NewWriter(8)
+	w.Byte(opcodeCloseFont)
+	w.Zero(1)
+	w.Uint16(2)
+	w.FontID(fontID)
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// CreateGlyphCursor creates a new cursor with the specified source and mask fonts, character codes, and foreground and
+// background colors. It returns the ID of the newly created cursor.
+func (c *Conn) CreateGlyphCursor(srcFontID, maskFontID FontID, sourceChar, maskChar, fgRed, fgGreen, fgBlue, bgRed, bgGreen, bgBlue uint16) CursorID {
+	id := c.nextCursorID()
+	if id != 0 {
+		w := NewWriter(32)
+		w.Byte(opcodeCreateGlyphCursor)
+		w.Zero(1)
+		w.Uint16(8)
+		w.CursorID(id)
+		w.FontID(srcFontID)
+		w.FontID(maskFontID)
+		w.Uint16(sourceChar)
+		w.Uint16(maskChar)
+		w.Uint16(fgRed)
+		w.Uint16(fgGreen)
+		w.Uint16(fgBlue)
+		w.Uint16(bgRed)
+		w.Uint16(bgGreen)
+		w.Uint16(bgBlue)
+		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+			errs.Log(err)
+			return 0
+		}
+	}
+	return id
+}
+
+// FreeCursor frees the specified cursor.
+func (c *Conn) FreeCursor(cursorID CursorID) {
+	w := NewWriter(8)
+	w.Byte(opcodeFreeCursor)
+	w.Zero(1)
+	w.Uint16(2)
+	w.CursorID(cursorID)
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// CreatePixMap creates a new pixmap with the specified drawable, depth, width, and height, and returns its PixMapID.
+func (c *Conn) CreatePixMap(drawable DrawableID, depth byte, width, height uint16) PixMapID {
+	id := c.nextPixmapID()
+	if id != 0 {
+		w := NewWriter(16)
+		w.Byte(opcodeCreatePixmap)
+		w.Byte(depth)
+		w.Uint16(4)
+		w.PixMapID(id)
+		w.DrawableID(drawable)
+		w.Uint16(width)
+		w.Uint16(height)
+		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+			errs.Log(err)
+			return 0
+		}
+	}
+	return id
+}
+
+// FreePixMap frees the specified pixmap.
+func (c *Conn) FreePixMap(pixmapID PixMapID) {
+	w := NewWriter(8)
+	w.Byte(opcodeFreePixmap)
+	w.Zero(1)
+	w.Uint16(2)
+	w.PixMapID(pixmapID)
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// CreateGC creates a new graphics context with the specified drawable, value mask, and values, and returns its GCID.
+func (c *Conn) CreateGC(drawable DrawableID, valueMask GCValueMask, attrs *GCAttributes) GCID {
+	id := c.nextGCID()
+	if id == 0 {
+		return 0
+	}
+	values := attrs.values(valueMask)
+	w := NewWriter(16 + 4*len(values))
+	w.Byte(opcodeCreateGC)
+	w.Zero(1)
+	w.Uint16(4 + uint16(len(values)))
+	w.GCID(id)
+	w.DrawableID(drawable)
+	w.Uint32(uint32(valueMask))
+	w.Uint32Slice(values)
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+		return 0
+	}
+	return id
+}
+
+// FreeGC frees the specified graphics context.
+func (c *Conn) FreeGC(gcID GCID) {
+	w := NewWriter(8)
+	w.Byte(opcodeFreeGC)
+	w.Zero(1)
+	w.Uint16(2)
+	w.GCID(gcID)
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// PutImage uploads the pixel data from the provided image to the specified drawable at the given destination
+// coordinates using the provided graphics context. The image is sent in chunks if it exceeds the maximum request size
+// allowed by the X server in a single request.
+func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *image.NRGBA) {
+	width := uint16(img.Rect.Dx())
+	w := int(width)
+	height := uint16(img.Rect.Dy())
+	h := int(height)
+	rowsPer := (MaxRequestSize - 24) / (w * 4)
+	for y := 0; y < h; y += rowsPer {
+		rows := min(rowsPer, h-y)
+		pix := img.Pix[y*w*4 : (y+rows)*w*4]
+		w := NewWriter(24 + pad4(len(pix)))
+		w.Byte(opcodePutImage)
+		w.Byte(byte(ImageFormatZPixmap))
+		w.Uint16(6 + uint16(pad4(len(pix))/4))
+		w.DrawableID(drawable)
+		w.GCID(gc)
+		w.Uint16(width)
+		w.Uint16(uint16(rows))
+		w.Int16(dstX)
+		w.Int16(dstY + int16(y))
+		w.Byte(0)
+		w.Byte(32)
+		w.Zero(2)
+		w.Bytes(pix)
+		w.ZeroTo4ByteAlignment()
+		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+			errs.Log(err)
+		}
+	}
+}
+
 // pushClipboardToManager checks if the helper window is currently the owner of the CLIPBOARD selection, and if so, it
 // converts the selection to the CLIPBOARD_MANAGER with the SAVE_TARGETS property. It then waits for events related to
 // this conversion, processing any SelectionRequestEvent or SelectionClearEvent that may occur during this time.
-// Finally, it destroys the helper window and resets its ID to WindowNone.
+// Finally, it destroys the helper window and resets its ID to 0.
 func (c *Conn) pushClipboardToManager() {
-	if c.helperWindow == WindowNone {
+	if c.helperWindow == 0 {
 		return
 	}
 	if owner, err := c.getSelectionOwner(c.AtomClipboard); err == nil && owner == c.helperWindow {
@@ -1103,7 +1315,7 @@ func (c *Conn) pushClipboardToManager() {
 	if err := c.DestroyWindow(c.helperWindow); err != nil {
 		errs.Log(err)
 	}
-	c.helperWindow = WindowNone
+	c.helperWindow = 0
 }
 
 // Close the connection after finishing any in-flight requests.
