@@ -53,6 +53,24 @@ var (
 	_ Event         = &UnmapNotifyEvent{}
 )
 
+// Event represents a generic X11 event. Specific event types will implement this interface.
+type Event interface {
+	// ID returns a byte value that identifies the type of the event, which can be used to determine how to process it.
+	ID() byte
+	// TargetWindow returns the ID of the window that is the target of the event, if applicable. For events that do not
+	// have a specific target window, this will return WindowNone.
+	TargetWindow() WindowID
+	// Process the event using the provided connection. The implementation should perform any necessary actions based on
+	// the event type and its data.
+	Process(*Conn)
+}
+
+// WritableEvent represents an event that can be sent to the X server.
+type WritableEvent interface {
+	Write(sequence uint16, w *Writer)
+	Event
+}
+
 // CirculateEvent represents an X11 generic circulate event.
 type CirculateEvent struct {
 	Event    WindowID
@@ -1111,22 +1129,22 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 		return AtomNone
 	}
 	switch e.Target {
-	case c.AtomClipboardTargets:
+	case c.Atoms.ClipboardTargets:
 		w := NewWriter(16)
-		w.Atom(c.AtomClipboardTargets)
-		w.Atom(c.AtomClipboardMultiple)
-		w.Atom(c.AtomUTF8String)
+		w.Atom(c.Atoms.ClipboardTargets)
+		w.Atom(c.Atoms.ClipboardMultiple)
+		w.Atom(c.Atoms.UTF8String)
 		w.Atom(AtomString)
 		c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve())
 		return e.Property
-	case c.AtomClipboardMultiple:
-		format, kind, value, err := c.GetProperty(e.Requestor, e.Property, c.AtomPair, 0, math.MaxUint32, false)
+	case c.Atoms.ClipboardMultiple:
+		format, kind, value, err := c.GetProperty(e.Requestor, e.Property, c.Atoms.Pair, 0, math.MaxUint32, false)
 		count := len(value) / (int(format) / 8)
 		if err != nil {
 			errs.Log(err)
 			return e.Property
 		}
-		if format != 32 || kind != c.AtomPair || count%2 != 0 {
+		if format != 32 || kind != c.Atoms.Pair || count%2 != 0 {
 			slog.Error("unexpected result from GetProperty for MULTIPLE property", "format", format, "kind", kind, "count", count)
 			return e.Property
 		}
@@ -1136,7 +1154,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 		for i := 0; i < count; i += 2 {
 			propType := r.Atom()
 			prop := r.Atom()
-			if propType == c.AtomUTF8String || propType == AtomString {
+			if propType == c.Atoms.UTF8String || propType == AtomString {
 				w.Atom(propType)
 				c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, content)
 			} else {
@@ -1144,12 +1162,12 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			}
 			w.Atom(prop)
 		}
-		c.ChangeProperty(e.Requestor, e.Property, c.AtomPair, 32, PropModeReplace, w.Retrieve())
+		c.ChangeProperty(e.Requestor, e.Property, c.Atoms.Pair, 32, PropModeReplace, w.Retrieve())
 		return e.Property
-	case c.AtomClipboardSaveTargets:
-		c.ChangeProperty(e.Requestor, e.Property, c.AtomNull, 32, PropModeReplace, nil)
+	case c.Atoms.ClipboardSaveTargets:
+		c.ChangeProperty(e.Requestor, e.Property, c.Atoms.Null, 32, PropModeReplace, nil)
 		return e.Property
-	case c.AtomUTF8String, AtomString:
+	case c.Atoms.UTF8String, AtomString:
 		c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, []byte(c.clipboard))
 		return e.Property
 	}

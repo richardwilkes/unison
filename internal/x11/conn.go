@@ -34,24 +34,6 @@ import (
 // MaxRequestSize is the maximum size of an X11 request in bytes.
 const MaxRequestSize = math.MaxUint16 * 4
 
-// Event represents a generic X11 event. Specific event types will implement this interface.
-type Event interface {
-	// ID returns a byte value that identifies the type of the event, which can be used to determine how to process it.
-	ID() byte
-	// TargetWindow returns the ID of the window that is the target of the event, if applicable. For events that do not
-	// have a specific target window, this will return WindowNone.
-	TargetWindow() WindowID
-	// Process the event using the provided connection. The implementation should perform any necessary actions based on
-	// the event type and its data.
-	Process(*Conn)
-}
-
-// WritableEvent represents an event that can be sent to the X server.
-type WritableEvent interface {
-	Write(sequence uint16, w *Writer)
-	Event
-}
-
 type request struct {
 	sentChan       chan struct{}
 	failureChan    chan error
@@ -98,25 +80,13 @@ type Conn struct {
 	errorCodeLock            sync.RWMutex
 	requestMapLock           sync.RWMutex
 	xid                      xid
-	MaxRequestSize           int
 	DefaultScreen            int
 	displayNum               int
 	sequence                 atomic.Uint32
 	releaseNumber            uint32
 	motionBufferSize         uint32
 	helperWindow             WindowID
-	AtomPair                 Atom
-	AtomClipboard            Atom
-	AtomClipboardIncremental Atom
-	AtomClipboardManager     Atom
-	AtomClipboardMultiple    Atom
-	AtomClipboardSaveTargets Atom
-	AtomClipboardSelection   Atom
-	AtomClipboardTargets     Atom
-	AtomNull                 Atom
-	AtomUTF8String           Atom
-	AtomNetWorkArea          Atom
-	AtomNetCurrentDesktop    Atom
+	Atoms                    Atoms
 	protocolMajorVersion     uint16
 	protocolMinorVersion     uint16
 	maximumRequestLength     uint16
@@ -150,7 +120,7 @@ func NewConn() (*Conn, error) {
 	c.readClosed = make(chan struct{})
 	go c.sendRequests()
 	go c.readResponses()
-	if err = c.initAtoms(); err != nil {
+	if err = c.Atoms.init(&c); err != nil {
 		return nil, err
 	}
 	c.ExtMisc = newExtMisc(&c)
@@ -168,47 +138,6 @@ func NewConn() (*Conn, error) {
 		return nil, errs.New("failed to create helper window")
 	}
 	return &c, nil
-}
-
-func (c *Conn) initAtoms() error {
-	var err error
-	if c.AtomPair, err = c.InternAtom("ATOM_PAIR", false); err != nil {
-		return err
-	}
-	if c.AtomClipboard, err = c.InternAtom("CLIPBOARD", false); err != nil {
-		return err
-	}
-	if c.AtomClipboardIncremental, err = c.InternAtom("INCR", false); err != nil {
-		return err
-	}
-	if c.AtomClipboardManager, err = c.InternAtom("CLIPBOARD_MANAGER", false); err != nil {
-		return err
-	}
-	if c.AtomClipboardMultiple, err = c.InternAtom("MULTIPLE", false); err != nil {
-		return err
-	}
-	if c.AtomClipboardSaveTargets, err = c.InternAtom("SAVE_TARGETS", false); err != nil {
-		return err
-	}
-	if c.AtomClipboardSelection, err = c.InternAtom("CLIPBOARD_SELECTION", false); err != nil {
-		return err
-	}
-	if c.AtomClipboardTargets, err = c.InternAtom("TARGETS", false); err != nil {
-		return err
-	}
-	if c.AtomNull, err = c.InternAtom("NULL", false); err != nil {
-		return err
-	}
-	if c.AtomUTF8String, err = c.InternAtom("UTF8_STRING", false); err != nil {
-		return err
-	}
-	if c.AtomNetWorkArea, err = c.InternAtom("_NET_WORKAREA", false); err != nil {
-		return err
-	}
-	if c.AtomNetCurrentDesktop, err = c.InternAtom("_NET_CURRENT_DESKTOP", false); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *Conn) parseDisplayEnv() error {
@@ -928,7 +857,7 @@ func (c *Conn) GetClipboardText() string {
 	if c.helperWindow == 0 {
 		return ""
 	}
-	owner, err := c.getSelectionOwner(c.AtomClipboard)
+	owner, err := c.getSelectionOwner(c.Atoms.Clipboard)
 	if err != nil {
 		errs.Log(err)
 		return ""
@@ -937,8 +866,8 @@ func (c *Conn) GetClipboardText() string {
 		return c.clipboard
 	}
 	c.clipboard = ""
-	for _, kind := range []Atom{c.AtomUTF8String, AtomString} {
-		c.convertSelection(c.helperWindow, c.AtomClipboard, kind, c.AtomClipboardSelection, 0)
+	for _, kind := range []Atom{c.Atoms.UTF8String, AtomString} {
+		c.convertSelection(c.helperWindow, c.Atoms.Clipboard, kind, c.Atoms.ClipboardSelection, 0)
 		sne := waitForEvent(c, func(evt Event) *SelectionNotifyEvent {
 			if e, ok := evt.(*SelectionNotifyEvent); ok && e.Requestor == c.helperWindow {
 				return e
@@ -962,7 +891,7 @@ func (c *Conn) GetClipboardText() string {
 				continue
 			}
 			switch propertyType {
-			case c.AtomClipboardIncremental:
+			case c.Atoms.ClipboardIncremental:
 				var buffer bytes.Buffer
 				for {
 					waitForEvent(c, filter)
@@ -976,12 +905,12 @@ func (c *Conn) GetClipboardText() string {
 					}
 					buffer.Write(value)
 				}
-				if kind == c.AtomUTF8String {
+				if kind == c.Atoms.UTF8String {
 					c.clipboard = buffer.String()
 				} else {
 					c.clipboard = convertLatin1ToUTF8(buffer.Bytes())
 				}
-			case c.AtomUTF8String:
+			case c.Atoms.UTF8String:
 				c.clipboard = string(value)
 			case AtomString:
 				c.clipboard = convertLatin1ToUTF8(value)
@@ -1011,7 +940,7 @@ func (c *Conn) SetClipboardText(str string) {
 		return
 	}
 	c.clipboard = str
-	c.setSelectionOwner(c.helperWindow, c.AtomClipboard)
+	c.setSelectionOwner(c.helperWindow, c.Atoms.Clipboard)
 }
 
 func (c *Conn) setSelectionOwner(owner WindowID, selection Atom) {
@@ -1100,14 +1029,14 @@ func (c *Conn) ContentScale() (float32, error) {
 
 // MonitorWorkArea returns the work area of the monitor containing the specified root window.
 func (c *Conn) MonitorWorkArea(root WindowID, area geom.Rect) geom.Rect {
-	_, _, extentsBytes, err := c.GetProperty(root, c.AtomNetWorkArea, AtomCardinal, 0, math.MaxUint32, false)
+	_, _, extentsBytes, err := c.GetProperty(root, c.Atoms.NetWorkArea, AtomCardinal, 0, math.MaxUint32, false)
 	if err != nil {
 		return area
 	}
 	r := NewReader(extentsBytes)
 	extents := r.Uint32Slice(len(extentsBytes) / 4)
 	var desktopBytes []byte
-	if _, _, desktopBytes, err = c.GetProperty(root, c.AtomNetCurrentDesktop, AtomCardinal, 0, math.MaxUint32, false); err != nil {
+	if _, _, desktopBytes, err = c.GetProperty(root, c.Atoms.NetCurrentDesktop, AtomCardinal, 0, math.MaxUint32, false); err != nil {
 		return area
 	}
 	r = NewReader(desktopBytes)
@@ -1330,8 +1259,8 @@ func (c *Conn) pushClipboardToManager() {
 	if c.helperWindow == 0 {
 		return
 	}
-	if owner, err := c.getSelectionOwner(c.AtomClipboard); err == nil && owner == c.helperWindow {
-		c.convertSelection(c.helperWindow, c.AtomClipboardManager, c.AtomClipboardSaveTargets, AtomNone, 0)
+	if owner, err := c.getSelectionOwner(c.Atoms.Clipboard); err == nil && owner == c.helperWindow {
+		c.convertSelection(c.helperWindow, c.Atoms.ClipboardManager, c.Atoms.ClipboardSaveTargets, AtomNone, 0)
 		again := true
 		for again {
 			evt := waitForEvent(c, func(ev Event) Event {
@@ -1353,7 +1282,7 @@ func (c *Conn) pushClipboardToManager() {
 			})
 			switch e := evt.(type) {
 			case *SelectionNotifyEvent:
-				if e.Target == c.AtomClipboardSaveTargets {
+				if e.Target == c.Atoms.ClipboardSaveTargets {
 					again = false
 				}
 			case *SelectionRequestEvent:

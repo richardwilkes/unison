@@ -86,3 +86,60 @@ const (
 	AtomWmTransientFor
 	AtomAny = AtomNone
 )
+
+// Atoms holds the Atom values for commonly used X11 Atoms that don't have predefined constants.
+type Atoms struct {
+	Clipboard            Atom
+	ClipboardIncremental Atom
+	ClipboardManager     Atom
+	ClipboardMultiple    Atom
+	ClipboardSaveTargets Atom
+	ClipboardSelection   Atom
+	ClipboardTargets     Atom
+	NetCurrentDesktop    Atom
+	NetWorkArea          Atom
+	Null                 Atom
+	Pair                 Atom
+	UTF8String           Atom
+}
+
+func (a *Atoms) init(c *Conn) error {
+	var err error
+	if a.Clipboard, err = c.InternAtom("CLIPBOARD", false); err != nil {
+		return err
+	}
+	if a.ClipboardIncremental, err = c.InternAtom("INCR", false); err != nil {
+		return err
+	}
+	if a.ClipboardManager, err = c.InternAtom("CLIPBOARD_MANAGER", false); err != nil {
+		return err
+	}
+	if a.ClipboardMultiple, err = c.InternAtom("MULTIPLE", false); err != nil {
+		return err
+	}
+	if a.ClipboardSaveTargets, err = c.InternAtom("SAVE_TARGETS", false); err != nil {
+		return err
+	}
+	if a.ClipboardSelection, err = c.InternAtom("CLIPBOARD_SELECTION", false); err != nil {
+		return err
+	}
+	if a.ClipboardTargets, err = c.InternAtom("TARGETS", false); err != nil {
+		return err
+	}
+	if a.NetCurrentDesktop, err = c.InternAtom("_NET_CURRENT_DESKTOP", false); err != nil {
+		return err
+	}
+	if a.NetWorkArea, err = c.InternAtom("_NET_WORKAREA", false); err != nil {
+		return err
+	}
+	if a.Null, err = c.InternAtom("NULL", false); err != nil {
+		return err
+	}
+	if a.Pair, err = c.InternAtom("ATOM_PAIR", false); err != nil {
+		return err
+	}
+	if a.UTF8String, err = c.InternAtom("UTF8_STRING", false); err != nil {
+		return err
+	}
+	return nil
+}
