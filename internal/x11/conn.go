@@ -148,6 +148,11 @@ func NewConn() (*Conn, error) {
 	c.events = make(chan Event, 8192)
 	c.closed = make(chan struct{})
 	c.readClosed = make(chan struct{})
+	go c.sendRequests()
+	go c.readResponses()
+	if err = c.initAtoms(); err != nil {
+		return nil, err
+	}
 	c.ExtMisc = newExtMisc(&c)
 	c.ExtRandr = newExtRandr(&c)
 	if !c.ExtRandr.Present && (c.ExtRandr.MajorVersion == 0 ||
@@ -157,11 +162,6 @@ func NewConn() (*Conn, error) {
 	c.ExtRender = newExtRender(&c)
 	if !c.ExtRender.Present && c.ExtRender.MajorVersion == 0 && c.ExtRender.MinorVersion < 6 {
 		return nil, errs.New("X11 RENDER extension version 0.6 or higher is required")
-	}
-	go c.sendRequests()
-	go c.readResponses()
-	if err = c.initAtoms(); err != nil {
-		return nil, err
 	}
 	if c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
 		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
@@ -689,7 +689,47 @@ func (c *Conn) processEvent(ev Event) {
 	ev.Process(c)
 }
 
-func (c *Conn) hasExtension(name string, majorMax, minorMax uint32) extensionInfo {
+func (c *Conn) hasExtension16(name string, majorMax, minorMax uint16) extensionInfo {
+	size := 8 + pad4(len(name))
+	w := NewWriter(size)
+	w.Byte(opcodeQueryExtension)
+	w.Zero(1)
+	w.Uint16(uint16(size / 4))
+	w.Uint16(uint16(len(name)))
+	w.Zero(2)
+	w.String(name)
+	w.ZeroTo4ByteAlignment()
+	var info extensionInfo
+	if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(8)
+		info.Present = r.Bool()
+		info.majorOpcode = r.Byte()
+		info.firstEvent = r.Byte()
+		info.firstError = r.Byte()
+		r.Skip(24)
+	})); err != nil {
+		errs.Log(err, "name", name)
+	}
+	if info.Present {
+		w = NewWriter(8)
+		w.Byte(info.majorOpcode)
+		w.Byte(0) // Version query is always opcode 0 within the extension
+		w.Uint16(2)
+		w.Uint16(majorMax)
+		w.Uint16(minorMax)
+		if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+			r.Skip(8)
+			info.MajorVersion = uint32(r.Uint16())
+			info.MinorVersion = uint32(r.Uint16())
+			r.Skip(20)
+		})); err != nil {
+			errs.Log(err, "name", name)
+		}
+	}
+	return info
+}
+
+func (c *Conn) hasExtension32(name string, majorMax, minorMax uint32) extensionInfo {
 	size := 8 + pad4(len(name))
 	w := NewWriter(size)
 	w.Byte(opcodeQueryExtension)
@@ -714,14 +754,14 @@ func (c *Conn) hasExtension(name string, majorMax, minorMax uint32) extensionInf
 		w = NewWriter(12)
 		w.Byte(info.majorOpcode)
 		w.Byte(0) // Version query is always opcode 0 within the extension
-		w.Uint16(2)
+		w.Uint16(3)
 		w.Uint32(majorMax)
 		w.Uint32(minorMax)
 		if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
 			r.Skip(8)
-			info.MajorVersion = uint32(r.Uint16())
-			info.MinorVersion = uint32(r.Uint16())
-			r.Skip(20)
+			info.MajorVersion = r.Uint32()
+			info.MinorVersion = r.Uint32()
+			r.Skip(16)
 		})); err != nil {
 			errs.Log(err, "name", name)
 		}

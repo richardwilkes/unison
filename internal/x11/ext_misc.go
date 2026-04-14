@@ -27,7 +27,7 @@ type ExtMisc struct {
 }
 
 func newExtMisc(conn *Conn) *ExtMisc {
-	info := conn.hasExtension("XC-MISC", 1, 1)
+	info := conn.hasExtension16("XC-MISC", 1, 1)
 	return &ExtMisc{
 		conn:          conn,
 		extensionInfo: info,

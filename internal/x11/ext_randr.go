@@ -90,7 +90,7 @@ type ExtRandr struct {
 }
 
 func newExtRandr(conn *Conn) *ExtRandr {
-	info := conn.hasExtension("RANDR", 1, 6)
+	info := conn.hasExtension32("RANDR", 1, 6)
 	return &ExtRandr{
 		conn:          conn,
 		extensionInfo: info,

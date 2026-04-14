@@ -59,7 +59,7 @@ type ExtRender struct {
 }
 
 func newExtRender(conn *Conn) *ExtRender {
-	info := conn.hasExtension("RENDER", 0, 11)
+	info := conn.hasExtension32("RENDER", 0, 11)
 	return &ExtRender{
 		conn:          conn,
 		extensionInfo: info,
