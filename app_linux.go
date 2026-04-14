@@ -23,16 +23,13 @@ func apiBeginStartup() error {
 		return err
 	}
 	apiFillKeyCodes()
-	// TODO: Need additional implementation?
 	return nil
 }
 
 func apiLateInit() {
-	// TODO: Need implementation?
 }
 
 func apiFinalFinishStartup() {
-	// TODO: Need implementation?
 }
 
 func apiTerminate() error {
