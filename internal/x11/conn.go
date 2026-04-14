@@ -1288,7 +1288,19 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 	rowsPer := (MaxRequestSize - 24) / (w * 4)
 	for y := 0; y < h; y += rowsPer {
 		rows := min(rowsPer, h-y)
-		pix := img.Pix[y*w*4 : (y+rows)*w*4]
+
+		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images.
+		pix := make([]byte, rows*w*4)
+		base := y * w * 4
+		for i := 0; i < len(pix); i += 4 {
+			si := base + i
+			a := uint16(img.Pix[si+3])
+			pix[i] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+			pix[i+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+			pix[i+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+			pix[i+3] = img.Pix[si+3]
+		}
+
 		w := NewWriter(24 + pad4(len(pix)))
 		w.Byte(opcodePutImage)
 		w.Byte(byte(ImageFormatZPixmap))
