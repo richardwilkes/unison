@@ -17,7 +17,6 @@ import (
 )
 
 type apiWindow struct {
-	// TODO: Need implementation
 	id x11.WindowID
 }
 

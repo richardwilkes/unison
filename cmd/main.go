@@ -31,6 +31,18 @@ func start() error {
 		"minor", x11Conn.ExtRandr.MinorVersion,
 	)
 
+	slog.Info("Render",
+		"available", x11Conn.ExtRender.Present,
+		"major", x11Conn.ExtRender.MajorVersion,
+		"minor", x11Conn.ExtRender.MinorVersion,
+	)
+
+	slog.Info("GLX",
+		"available", x11Conn.ExtGLX.Present,
+		"major", x11Conn.ExtGLX.MajorVersion,
+		"minor", x11Conn.ExtGLX.MinorVersion,
+	)
+
 	x11Conn.SetClipboardText("test text")
 
 	var monitors []x11.Monitor

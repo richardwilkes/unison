@@ -197,6 +197,20 @@ type extensionInfo struct {
 	MinorVersion uint32
 }
 
+// HasVersion returns true if the extension is present and has at least the specified major and minor version.
+func (e *extensionInfo) HasVersion(minMajorVersion, minMinorVersion uint32) bool {
+	if !e.Present {
+		return false
+	}
+	if e.MajorVersion < minMajorVersion {
+		return false
+	}
+	if e.MajorVersion == minMajorVersion && e.MinorVersion < minMinorVersion {
+		return false
+	}
+	return true
+}
+
 // Various X11 type IDs.
 //
 //nolint:revive // No need to have separate comments for each of these.
@@ -463,6 +477,7 @@ type Conn struct {
 	requests                 chan *request
 	closed                   chan struct{}
 	readClosed               chan struct{}
+	ExtGLX                   *ExtGLX
 	ExtMisc                  *ExtMisc
 	ExtRandr                 *ExtRandr
 	ExtRender                *ExtRender
@@ -531,14 +546,14 @@ func NewConn() (*Conn, error) {
 		return nil, err
 	}
 	c.ExtMisc = newExtMisc(&c)
-	c.ExtRandr = newExtRandr(&c)
-	if !c.ExtRandr.Present && (c.ExtRandr.MajorVersion == 0 ||
-		(c.ExtRandr.MajorVersion == 1 && c.ExtRandr.MinorVersion < 5)) {
-		return nil, errs.New("X11 RANDR extension version 1.5 or higher is required")
+	if c.ExtGLX = newExtGLX(&c); !c.ExtGLX.HasVersion(1, 3) {
+		return nil, errs.New("X11 extension GLX 1.3 or higher is required")
 	}
-	c.ExtRender = newExtRender(&c)
-	if !c.ExtRender.Present && c.ExtRender.MajorVersion == 0 && c.ExtRender.MinorVersion < 6 {
-		return nil, errs.New("X11 RENDER extension version 0.6 or higher is required")
+	if c.ExtRandr = newExtRandr(&c); !c.ExtRandr.HasVersion(1, 5) {
+		return nil, errs.New("X11 extension RANDR 1.5 or higher is required")
+	}
+	if c.ExtRender = newExtRender(&c); !c.ExtRender.HasVersion(0, 6) {
+		return nil, errs.New("X11 extension RENDER 0.6 or higher is required")
 	}
 	if c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
 		WindowMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
