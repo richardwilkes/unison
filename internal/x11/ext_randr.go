@@ -13,17 +13,14 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
-//nolint:unused // All available opcodes are defined here, even if not all are used by my code.
 const (
 	rrOpQueryVersion = iota
 	rrOpOldGetScreenInfo
 	rrOpSetScreenConfig
 	rrOpOldScreenChangeSelectInput
-	// v1.1
-	rrOpSelectInput
+	rrOpSelectInput // v1.1 starts here
 	rrOpGetScreenInfo
-	// v1.2
-	rrOpGetScreenSizeRange
+	rrOpGetScreenSizeRange // v1.2 starts here
 	rrOpSetScreenSize
 	rrOpGetScreenResources
 	rrOpGetOutputInfo
@@ -42,16 +39,14 @@ const (
 	rrOpGetCrtcGammaSize
 	rrOpGetCrtcGamma
 	rrOpSetCrtcGamma
-	// v1.3
-	rrOpGetScreenResourcesCurrent
+	rrOpGetScreenResourcesCurrent // v1.3 starts here
 	rrOpSetCrtcTransform
 	rrOpGetCrtcTransform
 	rrOpGetPanning
 	rrOpSetPanning
 	rrOpSetOutputPrimary
 	rrOpGetOutputPrimary
-	// v1.4
-	rrOpGetProviders
+	rrOpGetProviders // v1.4 starts here
 	rrOpGetProviderInfo
 	rrOpSetProviderOffloadSink
 	rrOpSetProviderOutputSource
@@ -61,12 +56,10 @@ const (
 	rrOpChangeProviderProperty
 	rrOpDeleteProviderProperty
 	rrOpGetProviderProperty
-	// v1.5
-	rrOpGetMonitors
+	rrOpGetMonitors // v1.5 starts here
 	rrOpSetMonitor
 	rrOpDeleteMonitor
-	// v1.6
-	rrOpCreateLease
+	rrOpCreateLease // v1.6 starts here
 	rrOpFreeLease
 )
 
@@ -90,7 +83,7 @@ type ExtRandr struct {
 }
 
 func newExtRandr(conn *Conn) *ExtRandr {
-	info := conn.hasExtension32("RANDR", 1, 6)
+	info := conn.hasExtension("RANDR", rrOpQueryVersion, false, 1, 6)
 	return &ExtRandr{
 		conn:          conn,
 		extensionInfo: info,

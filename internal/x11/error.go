@@ -13,6 +13,27 @@ import (
 	"fmt"
 )
 
+// Constants for X11 error codes.
+const (
+	errorCodeRequest = 1 + iota
+	errorCodeValue
+	errorCodeWindow
+	errorCodePixmap
+	errorCodeAtom
+	errorCodeCursor
+	errorCodeFont
+	errorCodeMatch
+	errorCodeDrawable
+	errorCodeAccess
+	errorCodeAlloc
+	errorCodeColormap
+	errorCodeGContext
+	errorCodeIDChoice
+	errorCodeName
+	errorCodeLength
+	errorCodeImplementation
+)
+
 // Error represents an X server error.
 type Error struct {
 	Name        string
@@ -21,6 +42,28 @@ type Error struct {
 	MinorOpcode uint16
 	MajorOpcode byte
 	Code        byte
+}
+
+func newErrorMap() map[byte]string {
+	return map[byte]string{
+		errorCodeRequest:        "request",
+		errorCodeValue:          "value",
+		errorCodeWindow:         "window",
+		errorCodePixmap:         "pixmap",
+		errorCodeAtom:           "atom",
+		errorCodeCursor:         "cursor",
+		errorCodeFont:           "font",
+		errorCodeMatch:          "match",
+		errorCodeDrawable:       "drawable",
+		errorCodeAccess:         "access",
+		errorCodeAlloc:          "alloc",
+		errorCodeColormap:       "colormap",
+		errorCodeGContext:       "gcontext",
+		errorCodeIDChoice:       "id choice",
+		errorCodeName:           "name",
+		errorCodeLength:         "length",
+		errorCodeImplementation: "implementation",
+	}
 }
 
 // NewError reads an Error from the specified Reader and returns it.

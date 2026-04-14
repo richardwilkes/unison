@@ -13,7 +13,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
-//nolint:unused // All available opcodes are defined here, even if not all are used by my code.
 const (
 	xmOpGetVersion = iota
 	xmOpGetXIDRange
@@ -27,7 +26,7 @@ type ExtMisc struct {
 }
 
 func newExtMisc(conn *Conn) *ExtMisc {
-	info := conn.hasExtension16("XC-MISC", 1, 1)
+	info := conn.hasExtension("XC-MISC", xmOpGetVersion, true, 1, 1)
 	return &ExtMisc{
 		conn:          conn,
 		extensionInfo: info,

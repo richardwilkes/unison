@@ -53,6 +53,74 @@ var (
 	_ Event         = &UnmapNotifyEvent{}
 )
 
+// Constants for X11 event codes.
+const (
+	eventCodeKeyPress = 2 + iota
+	eventCodeKeyRelease
+	eventCodeButtonPress
+	eventCodeButtonRelease
+	eventCodeMotionNotify
+	eventCodeEnterNotify
+	eventCodeLeaveNotify
+	eventCodeFocusIn
+	eventCodeFocusOut
+	eventCodeKeymapNotify
+	eventCodeExpose
+	eventCodeGraphicsExposure
+	eventCodeNoExposure
+	eventCodeVisibilityNotify
+	eventCodeCreateNotify
+	eventCodeDestroyNotify
+	eventCodeUnmapNotify
+	eventCodeMapNotify
+	eventCodeMapRequest
+	eventCodeReparentNotify
+	eventCodeConfigureNotify
+	eventCodeConfigureRequest
+	eventCodeGravityNotify
+	eventCodeResizeRequest
+	eventCodeCirculateNotify
+	eventCodeCirculateRequest
+	eventCodePropertyNotify
+	eventCodeSelectionClear
+	eventCodeSelectionRequest
+	eventCodeSelectionNotify
+	eventCodeColormapNotify
+	eventCodeClientMessage
+	eventCodeMappingNotify
+	eventCodeNone = 0
+)
+
+// Constants for X11 event masks.
+const (
+	EventMaskKeyPress = 1 << iota
+	EventMaskKeyRelease
+	EventMaskButtonPress
+	EventMaskButtonRelease
+	EventMaskEnterWindow
+	EventMaskLeaveWindow
+	EventMaskPointerMotion
+	EventMaskPointerMotionHint
+	EventMaskButton1Motion
+	EventMaskButton2Motion
+	EventMaskButton3Motion
+	EventMaskButton4Motion
+	EventMaskButton5Motion
+	EventMaskButtonMotion
+	EventMaskKeymapState
+	EventMaskExposure
+	EventMaskVisibilityChange
+	EventMaskStructureNotify
+	EventMaskResizeRedirect
+	EventMaskSubstructureNotify
+	EventMaskSubstructureRedirect
+	EventMaskFocusChange
+	EventMaskPropertyChange
+	EventMaskColormapChange
+	EventMaskOwnerGrabButton
+	EventMaskNone = 0
+)
+
 // Event represents a generic X11 event. Specific event types will implement this interface.
 type Event interface {
 	// ID returns a byte value that identifies the type of the event, which can be used to determine how to process it.
@@ -71,6 +139,44 @@ type WritableEvent interface {
 	Event
 }
 
+func newEventMap() map[byte]func(*Reader) Event {
+	return map[byte]func(r *Reader) Event{
+		eventCodeKeyPress:         newKeyPressEvent,
+		eventCodeKeyRelease:       newKeyReleaseEvent,
+		eventCodeButtonPress:      newButtonPressEvent,
+		eventCodeButtonRelease:    newButtonReleaseEvent,
+		eventCodeMotionNotify:     newMotionNotifyEvent,
+		eventCodeEnterNotify:      newEnterNotifyEvent,
+		eventCodeLeaveNotify:      newLeaveNotifyEvent,
+		eventCodeFocusIn:          newFocusInEvent,
+		eventCodeFocusOut:         newFocusOutEvent,
+		eventCodeKeymapNotify:     newKeymapNotifyEvent,
+		eventCodeExpose:           newExposeEvent,
+		eventCodeGraphicsExposure: newGraphicsExposureEvent,
+		eventCodeNoExposure:       newNoExposureEvent,
+		eventCodeVisibilityNotify: newVisibilityNotifyEvent,
+		eventCodeCreateNotify:     newCreateNotifyEvent,
+		eventCodeDestroyNotify:    newDestroyNotifyEvent,
+		eventCodeUnmapNotify:      newUnmapNotifyEvent,
+		eventCodeMapNotify:        newMapNotifyEvent,
+		eventCodeMapRequest:       newMapRequestEvent,
+		eventCodeReparentNotify:   newReparentNotifyEvent,
+		eventCodeConfigureNotify:  newConfigureNotifyEvent,
+		eventCodeConfigureRequest: newConfigureRequestEvent,
+		eventCodeGravityNotify:    newGravityNotifyEvent,
+		eventCodeResizeRequest:    newResizeRequestEvent,
+		eventCodeCirculateNotify:  newCirculateNotifyEvent,
+		eventCodeCirculateRequest: newCirculateRequestEvent,
+		eventCodePropertyNotify:   newPropertyNotifyEvent,
+		eventCodeSelectionClear:   newSelectionClearEvent,
+		eventCodeSelectionRequest: newSelectionRequestEvent,
+		eventCodeSelectionNotify:  newSelectionNotifyEvent,
+		eventCodeColormapNotify:   newColormapNotifyEvent,
+		eventCodeClientMessage:    newClientMessageEvent,
+		eventCodeMappingNotify:    newMappingNotifyEvent,
+	}
+}
+
 // CirculateEvent represents an X11 generic circulate event.
 type CirculateEvent struct {
 	Event    WindowID
@@ -84,8 +190,8 @@ func (e *CirculateEvent) read(r *Reader) {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
+	e.Event = r.WindowID()
+	e.Window = r.WindowID()
 	r.Skip(4)
 	e.Place = r.Byte()
 	r.Skip(3)
@@ -152,7 +258,7 @@ func newClientMessageEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	e.Format = r.Byte()
 	e.Sequence = r.Uint16()
-	e.Window = WindowID(r.Uint32())
+	e.Window = r.WindowID()
 	e.Type = Atom(r.Uint32())
 	r.IntoBytes(e.Data8[:])
 	r.SeekRelative(-len(e.Data8))
@@ -197,8 +303,8 @@ func newColormapNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(3)
 	e.Sequence = r.Uint16()
-	e.Window = WindowID(r.Uint32())
-	e.Colormap = ColorMapID(r.Uint32())
+	e.Window = r.WindowID()
+	e.Colormap = r.ColorMapID()
 	e.New = r.Bool()
 	e.State = r.Byte()
 	r.Skip(2)
@@ -242,9 +348,9 @@ func newConfigureRequestEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	e.StackMode = r.Byte()
 	e.Sequence = r.Uint16()
-	e.Parent = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
-	e.Sibling = WindowID(r.Uint32())
+	e.Parent = r.WindowID()
+	e.Window = r.WindowID()
+	e.Sibling = r.WindowID()
 	e.X = r.Int16()
 	e.Y = r.Int16()
 	e.Width = r.Uint16()
@@ -290,9 +396,9 @@ func newConfigureNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
-	e.AboveSibling = WindowID(r.Uint32())
+	e.Event = r.WindowID()
+	e.Window = r.WindowID()
+	e.AboveSibling = r.WindowID()
 	e.X = r.Int16()
 	e.Y = r.Int16()
 	e.Width = r.Uint16()
@@ -338,8 +444,8 @@ func newCreateNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Parent = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
+	e.Parent = r.WindowID()
+	e.Window = r.WindowID()
 	e.X = r.Int16()
 	e.Y = r.Int16()
 	e.Width = r.Uint16()
@@ -379,8 +485,8 @@ func newDestroyNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
+	e.Event = r.WindowID()
+	e.Window = r.WindowID()
 	return &e
 }
 
@@ -429,9 +535,9 @@ func (e *EnterLeaveEvent) read(r *Reader) {
 	e.Detail = r.Byte()
 	e.Sequence = r.Uint16()
 	e.Time = r.Uint32()
-	e.Root = WindowID(r.Uint32())
-	e.Event = WindowID(r.Uint32())
-	e.Child = WindowID(r.Uint32())
+	e.Root = r.WindowID()
+	e.Event = r.WindowID()
+	e.Child = r.WindowID()
 	e.RootX = r.Int16()
 	e.RootY = r.Int16()
 	e.EventX = r.Int16()
@@ -516,7 +622,7 @@ func newExposeEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Window = WindowID(r.Uint32())
+	e.Window = r.WindowID()
 	e.X = r.Uint16()
 	e.Y = r.Uint16()
 	e.Width = r.Uint16()
@@ -555,7 +661,7 @@ func (e *FocusEvent) read(r *Reader) {
 	e.Code = r.Byte()
 	e.Detail = r.Byte()
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
+	e.Event = r.WindowID()
 	e.Mode = r.Byte()
 	r.Skip(23)
 }
@@ -623,7 +729,7 @@ func newGraphicsExposureEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Drawable = DrawableID(r.Uint32())
+	e.Drawable = r.DrawableID()
 	e.X = r.Uint16()
 	e.Y = r.Uint16()
 	e.Width = r.Uint16()
@@ -666,8 +772,8 @@ func newGravityNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
+	e.Event = r.WindowID()
+	e.Window = r.WindowID()
 	e.X = r.Int16()
 	e.Y = r.Int16()
 	return &e
@@ -711,9 +817,9 @@ func (e *InputEvent) read(r *Reader) {
 	e.Detail = r.Byte()
 	e.Sequence = r.Uint16()
 	e.Time = r.Uint32()
-	e.Root = WindowID(r.Uint32())
-	e.Event = WindowID(r.Uint32())
-	e.Child = WindowID(r.Uint32())
+	e.Root = r.WindowID()
+	e.Event = r.WindowID()
+	e.Child = r.WindowID()
 	e.RootX = r.Int16()
 	e.RootY = r.Int16()
 	e.EventX = r.Int16()
@@ -898,7 +1004,7 @@ func newNoExposureEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Drawable = DrawableID(r.Uint32())
+	e.Drawable = r.DrawableID()
 	e.MinorOpcode = r.Uint16()
 	e.MajorOpcode = r.Byte()
 	r.Skip(1)
@@ -936,7 +1042,7 @@ func newPropertyNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Window = WindowID(r.Uint32())
+	e.Window = r.WindowID()
 	e.Atom = Atom(r.Uint32())
 	e.Time = r.Uint32()
 	e.State = r.Byte()
@@ -977,9 +1083,9 @@ func newReparentNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
-	e.Parent = WindowID(r.Uint32())
+	e.Event = r.WindowID()
+	e.Window = r.WindowID()
+	e.Parent = r.WindowID()
 	e.X = r.Int16()
 	e.Y = r.Int16()
 	e.OverrideRedirect = r.Bool()
@@ -1017,7 +1123,7 @@ func newResizeRequestEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Window = WindowID(r.Uint32())
+	e.Window = r.WindowID()
 	e.Width = r.Uint16()
 	e.Height = r.Uint16()
 	return &e
@@ -1054,7 +1160,7 @@ func newSelectionClearEvent(r *Reader) Event {
 	r.Skip(1)
 	e.Sequence = r.Uint16()
 	e.Time = r.Uint32()
-	e.Owner = WindowID(r.Uint32())
+	e.Owner = r.WindowID()
 	e.Selection = Atom(r.Uint32())
 	return &e
 }
@@ -1093,8 +1199,8 @@ func newSelectionRequestEvent(r *Reader) Event {
 	r.Skip(1)
 	e.Sequence = r.Uint16()
 	e.Time = r.Uint32()
-	e.Owner = WindowID(r.Uint32())
-	e.Requestor = WindowID(r.Uint32())
+	e.Owner = r.WindowID()
+	e.Requestor = r.WindowID()
 	e.Selection = Atom(r.Uint32())
 	e.Target = Atom(r.Uint32())
 	e.Property = Atom(r.Uint32())
@@ -1191,7 +1297,7 @@ func newSelectionNotifyEvent(r *Reader) Event {
 	r.Skip(1)
 	e.Sequence = r.Uint16()
 	e.Time = r.Uint32()
-	e.Requestor = WindowID(r.Uint32())
+	e.Requestor = r.WindowID()
 	e.Selection = Atom(r.Uint32())
 	e.Target = Atom(r.Uint32())
 	e.Property = Atom(r.Uint32())
@@ -1241,7 +1347,7 @@ func newVisibilityNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Window = WindowID(r.Uint32())
+	e.Window = r.WindowID()
 	e.State = r.Byte()
 	r.Skip(3)
 	return &e
@@ -1276,8 +1382,8 @@ func newMapRequestEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Parent = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
+	e.Parent = r.WindowID()
+	e.Window = r.WindowID()
 	return &e
 }
 
@@ -1311,8 +1417,8 @@ func newMapNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
+	e.Event = r.WindowID()
+	e.Window = r.WindowID()
 	e.OverrideRedirect = r.Bool()
 	r.Skip(3)
 	return &e
@@ -1348,8 +1454,8 @@ func newUnmapNotifyEvent(r *Reader) Event {
 	e.Code = r.Byte()
 	r.Skip(1)
 	e.Sequence = r.Uint16()
-	e.Event = WindowID(r.Uint32())
-	e.Window = WindowID(r.Uint32())
+	e.Event = r.WindowID()
+	e.Window = r.WindowID()
 	e.FromConfigure = r.Bool()
 	r.Skip(3)
 	return &e

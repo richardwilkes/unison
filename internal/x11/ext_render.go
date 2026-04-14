@@ -11,7 +11,6 @@ package x11
 
 import "github.com/richardwilkes/toolbox/v2/errs"
 
-//nolint:unused // All available opcodes are defined here, even if not all are used by my code.
 const (
 	xrOpQueryVersion = iota
 	xrOpQueryPictFormats
@@ -59,7 +58,7 @@ type ExtRender struct {
 }
 
 func newExtRender(conn *Conn) *ExtRender {
-	info := conn.hasExtension32("RENDER", 0, 11)
+	info := conn.hasExtension("RENDER", xrOpQueryVersion, false, 0, 11)
 	return &ExtRender{
 		conn:          conn,
 		extensionInfo: info,
@@ -274,7 +273,7 @@ func (e *ExtRender) QueryPictFormats() PictureFormats {
 			info.Direct.BlueMask = rr.Uint16()
 			info.Direct.AlphaShift = rr.Uint16()
 			info.Direct.AlphaMask = rr.Uint16()
-			info.ColorMap = ColorMapID(rr.Uint32())
+			info.ColorMap = rr.ColorMapID()
 			return info
 		})
 		reply.Screens = ReadList(int(numScreens), r, func(rr *Reader) PictScreen {
@@ -289,7 +288,7 @@ func (e *ExtRender) QueryPictFormats() PictureFormats {
 				rrr.Skip(4)
 				depth.Visuals = ReadList(int(depthNumVisuals), rrr, func(rrrr *Reader) PictVisual {
 					var visual PictVisual
-					visual.Visual = VisualID(rrrr.Uint32())
+					visual.Visual = rrrr.VisualID()
 					visual.Format = PictFormat(rrrr.Uint32())
 					return visual
 				})
@@ -307,7 +306,7 @@ func (e *ExtRender) QueryPictFormats() PictureFormats {
 // CreatePicture creates a new Picture resource with the specified drawable, format, and attributes, returning the new
 // PictureID.
 func (e *ExtRender) CreatePicture(drawable DrawableID, format PictFormat, valueMask PictValueMask, attrs *PictAttributes) PictureID {
-	id := e.conn.nextPictureID()
+	id := nextXID[PictureID](e.conn)
 	if id == 0 {
 		return 0
 	}
@@ -342,7 +341,7 @@ func (e *ExtRender) FreePicture(picture PictureID) {
 // CreateCursor creates a new cursor using the specified source PictureID and hot spot coordinates, returning the new
 // CursorID.
 func (e *ExtRender) CreateCursor(src PictureID, hotX, hotY uint16) CursorID {
-	id := e.conn.nextCursorID()
+	id := nextXID[CursorID](e.conn)
 	if id != 0 {
 		w := NewWriter(16)
 		w.Byte(e.majorOpcode)

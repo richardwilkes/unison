@@ -234,11 +234,29 @@ func (x *Reader) Uint32Slice(count int) []uint32 {
 	return list
 }
 
-// Atom reads four bytes from the buffer at the current position, advances the position by four bytes, and returns the
-// read bytes as an Atom value using the Reader's byte order. Note that if the read operation attempts to read past the
-// end of the buffer, an error will be logged and zero will be returned.
+// Atom is a convenience method that called Uint32() and converts the result to an Atom type.
 func (x *Reader) Atom() Atom {
 	return Atom(x.Uint32())
+}
+
+// ColorMapID is a convenience method that called Uint32() and converts the result to a ColorMapID type.
+func (x *Reader) ColorMapID() ColorMapID {
+	return ColorMapID(x.Uint32())
+}
+
+// DrawableID is a convenience method that called Uint32() and converts the result to a DrawableID type.
+func (x *Reader) DrawableID() DrawableID {
+	return DrawableID(x.Uint32())
+}
+
+// VisualID is a convenience method that called Uint32() and converts the result to a VisualID type.
+func (x *Reader) VisualID() VisualID {
+	return VisualID(x.Uint32())
+}
+
+// WindowID is a convenience method that called Uint32() and converts the result to a WindowID type.
+func (x *Reader) WindowID() WindowID {
+	return WindowID(x.Uint32())
 }
 
 // ReadList reads the specified number of objects from the buffer at the current position, advances the position by the

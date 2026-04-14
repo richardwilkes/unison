@@ -34,6 +34,150 @@ import (
 // MaxRequestSize is the maximum size of an X11 request in bytes.
 const MaxRequestSize = math.MaxUint16 * 4
 
+// Constants for X11 request opcodes.
+const (
+	opCreateWindow = 1 + iota
+	opChangeWindowAttributes
+	opGetWindowAttributes
+	opDestroyWindow
+	opDestroySubwindows
+	opChangeSaveSet
+	opReparentWindow
+	opMapWindow
+	opMapSubwindows
+	opUnmapWindow
+	opUnmapSubwindows
+	opConfigureWindow
+	opCirculateWindow
+	opGetGeometry
+	opQueryTree
+	opInternAtom
+	opGetAtomName
+	opChangeProperty
+	opDeleteProperty
+	opGetProperty
+	opListProperties
+	opSetSelectionOwner
+	opGetSelectionOwner
+	opConvertSelection
+	opSendEvent
+	opGrabPointer
+	opUngrabPointer
+	opGrabButton
+	opUngrabButton
+	opChangeActivePointerGrab
+	opGrabKeyboard
+	opUngrabKeyboard
+	opGrabKey
+	opUngrabKey
+	opAllowEvents
+	opGrabServer
+	opUngrabServer
+	opQueryPointer
+	opGetMotionEvents
+	opTranslateCoordinates
+	opWarpPointer
+	opSetInputFocus
+	opGetInputFocus
+	opQueryKeymap
+	opOpenFont
+	opCloseFont
+	opQueryFont
+	opQueryTextExtents
+	opListFonts
+	opListFontsWithInfo
+	opSetFontPath
+	opGetFontPath
+	opCreatePixmap
+	opFreePixmap
+	opCreateGC
+	opChangeGC
+	opCopyGC
+	opSetDashes
+	opSetClipRectangles
+	opFreeGC
+	opClearArea
+	opCopyArea
+	opCopyPlane
+	opPolyPoint
+	opPolyLine
+	opPolySegment
+	opPolyRectangle
+	opPolyArc
+	opFillPoly
+	opPolyFillRectangle
+	opPolyFillArc
+	opPutImage
+	opGetImage
+	opPolyText8
+	opPolyText16
+	opImageText8
+	opImageText16
+	opCreateColormap
+	opFreeColormap
+	opCopyColormapAndFree
+	opInstallColormap
+	opUninstallColormap
+	opListInstalledColormaps
+	opAllocColor
+	opAllocNamedColor
+	opAllocColorCells
+	opAllocColorPlanes
+	opFreeColors
+	opStoreColors
+	opStoreNamedColor
+	opQueryColors
+	opLookupColor
+	opCreateCursor
+	opCreateGlyphCursor
+	opFreeCursor
+	opRecolorCursor
+	opQueryBestSize
+	opQueryExtension
+	opListExtensions
+	opChangeKeyboardMapping
+	opGetKeyboardMapping
+	opChangeKeyboardControl
+	opGetKeyboardControl
+	opBell
+	opChangePointerControl
+	opGetPointerControl
+	opSetScreenSaver
+	opGetScreenSaver
+	opChangeHosts
+	opListHosts
+	opSetAccessControl
+	opSetCloseDownMode
+	opKillClient
+	opRotateProperties
+	opForceScreenSaver
+	opSetPointerMapping
+	opGetPointerMapping
+	opSetModifierMapping
+	opGetModifierMapping
+	opUndefined1
+	opUndefined2
+	opUndefined3
+	opUndefined4
+	opUndefined5
+	opUndefined6
+	opUndefined7
+	opNoOperation
+)
+
+// Constants for X11 window classes.
+const (
+	WindowClassCopyFromParent = iota
+	WindowClassInputOutput
+	WindowClassInputOnly
+)
+
+// Constants for X11 property events.
+const (
+	propertyNewValue = iota
+	propertyDelete
+)
+
 type request struct {
 	sentChan       chan struct{}
 	failureChan    chan error
@@ -51,6 +195,265 @@ type extensionInfo struct {
 	firstError   byte
 	MajorVersion uint32
 	MinorVersion uint32
+}
+
+// Various X11 type IDs.
+//
+//nolint:revive // No need to have separate comments for each of these.
+type (
+	ColorMapID uint32
+	CursorID   uint32
+	DrawableID uint32
+	FontID     uint32
+	GCID       uint32
+	PictureID  uint32
+	PixMapID   uint32
+	VisualID   uint32
+	WindowID   uint32
+)
+
+// Format holds the configuration of a pixmap.
+type Format struct {
+	Depth        byte
+	BitsPerPixel byte
+	ScanlinePad  byte
+}
+
+// Visual holds the configuration of a screen's pixel composition for a specific bit depth.
+type Visual struct {
+	VisualID        VisualID
+	RedMask         uint32
+	GreenMask       uint32
+	BlueMask        uint32
+	ColormapEntries uint16
+	Class           byte
+	BitsPerRgbValue byte
+}
+
+// Depth holds the Visuals for a given screen bit depth.
+type Depth struct {
+	Visuals []Visual
+	Depth   byte
+}
+
+// Screen holds the configuration of a monitor.
+type Screen struct {
+	AllowedDepths       []Depth
+	Root                WindowID
+	DefaultColorMap     ColorMapID
+	WhitePixel          uint32
+	BlackPixel          uint32
+	CurrentInputMasks   uint32
+	WidthInPixels       uint16
+	HeightInPixels      uint16
+	WidthInMillimeters  uint16
+	HeightInMillimeters uint16
+	MinInstalledMaps    uint16
+	MaxInstalledMaps    uint16
+	RootVisual          VisualID
+	BackingStores       byte
+	SaveUnders          bool
+	RootDepth           byte
+}
+
+// WindowValueMask represents the bitmask for specifying which window attributes to set or get.
+type WindowValueMask uint32
+
+// Window value mask bits.
+const (
+	WindowMaskBackPixMap WindowValueMask = 1 << iota
+	WindowMaskBackPixel
+	WindowMaskBorderPixMap
+	WindowMaskBorderPixel
+	WindowMaskBitGravity
+	WindowMaskWinGravity
+	WindowMaskBackingStore
+	WindowMaskBackingPlanes
+	WindowMaskBackingPixel
+	WindowMaskOverrideRedirect
+	WindowMaskSaveUnder
+	WindowMaskEventMask
+	WindowMaskDontPropagate
+	WindowMaskColorMap
+	WindowMaskCursor
+)
+
+// WindowAttributes holds the attributes that can be set on a window.
+type WindowAttributes struct {
+	BackgroundPixMap   PixMapID
+	BackgroundPixel    uint32
+	BorderPixMap       PixMapID
+	BorderPixel        uint32
+	BitGravity         uint32
+	WinGravity         uint32
+	BackingStore       uint32
+	BackingPlanes      uint32
+	BackingPixel       uint32
+	EventMask          uint32
+	DoNotPropagateMask uint32
+	ColorMap           ColorMapID
+	Cursor             CursorID
+	OverrideRedirect   bool
+	SaveUnder          bool
+}
+
+// GCValueMask represents the bitmask for specifying which GC attributes to set or get.
+type GCValueMask uint32
+
+// GC value mask bits.
+const (
+	GCMaskFunction GCValueMask = 1 << iota
+	GCMaskPlaneMask
+	GCMaskForeground
+	GCMaskBackground
+	GCMaskLineWidth
+	GCMaskLineStyle
+	GCMaskCapStyle
+	GCMaskJoinStyle
+	GCMaskFillStyle
+	GCMaskFillRule
+	GCMaskTile
+	GCMaskStipple
+	GCMaskTileStippleOriginX
+	GCMaskTileStippleOriginY
+	GCMaskFont
+	GCMaskSubwindowMode
+	GCMaskGraphicsExposures
+	GCMaskClipOriginX
+	GCMaskClipOriginY
+	GCMaskClipMask
+	GCMaskDashOffset
+	GCMaskDashList
+	GCMaskArcMode
+)
+
+// GCFunction represents an X11 graphics function.
+type GCFunction byte
+
+// Graphics function constants.
+const (
+	GxClear GCFunction = iota
+	GxAnd
+	GxAndReverse
+	GxCopy
+	GxAndInverted
+	GxNoop
+	GxXor
+	GxOr
+	GxNor
+	GxEquiv
+	GxInvert
+	GxOrReverse
+	GxCopyInverted
+	GxOrInverted
+	GxNand
+	GxSet
+)
+
+// LineStyle represents the line style for drawing operations.
+type LineStyle byte
+
+// Possible LineStyle values.
+const (
+	LineStyleSolid LineStyle = iota
+	LineStyleOnOffDash
+	LineStyleDoubleDash
+)
+
+// CapStyle represents the cap style for line endpoints.
+type CapStyle byte
+
+// Possible CapStyle values.
+const (
+	CapStyleNotLast CapStyle = iota
+	CapStyleButt
+	CapStyleRound
+	CapStyleProjecting
+)
+
+// JoinStyle represents the join style for line segments.
+type JoinStyle byte
+
+// Possible JoinStyle values.
+const (
+	JoinStyleMiter JoinStyle = iota
+	JoinStyleRound
+	JoinStyleBevel
+)
+
+// FillStyle represents the fill style for drawing operations.
+type FillStyle byte
+
+// Possible FillStyle values.
+const (
+	FillStyleSolid FillStyle = iota
+	FillStyleTiled
+	FillStyleStippled
+	FillStyleOpaqueStippled
+)
+
+// FillRule represents the fill rule for polygon filling operations.
+type FillRule byte
+
+// Possible FillRule values.
+const (
+	FillRuleEvenOdd FillRule = iota
+	FillRuleWinding
+)
+
+// SubwindowMode represents the subwindow mode for graphics contexts and pictures.
+type SubwindowMode byte
+
+// Possible SubwindowMode values.
+const (
+	SubwindowModeClipByChildren SubwindowMode = iota
+	SubwindowModeIncludeInferiors
+)
+
+// ArcMode represents the mode for rendering arcs in a graphics context.
+type ArcMode byte
+
+// Possible ArcMode values.
+const (
+	ArcModeChord ArcMode = iota
+	ArcModePieSlice
+)
+
+// ImageFormat represents the format for image data in X11 operations.
+type ImageFormat byte
+
+// Possible ImageFormat values.
+const (
+	ImageFormatXYBitmap ImageFormat = iota
+	ImageFormatXYPixmap
+	ImageFormatZPixmap
+)
+
+// GCAttrs specifies the attributes of a graphics context resource.
+type GCAttrs struct {
+	PlaneMask          uint32
+	Foreground         uint32
+	Background         uint32
+	DashOffset         uint32
+	Font               FontID
+	ClipMask           PixMapID
+	Tile               PixMapID
+	Stipple            PixMapID
+	ClipOriginX        int16
+	ClipOriginY        int16
+	TileStippleOriginX int16
+	TileStippleOriginY int16
+	LineWidth          uint16
+	LineStyle          LineStyle
+	CapStyle           CapStyle
+	JoinStyle          JoinStyle
+	FillStyle          FillStyle
+	FillRule           FillRule
+	SubwindowMode      SubwindowMode
+	Function           GCFunction
+	GraphicsExposures  bool
+	Dashes             byte
+	ArcMode            ArcMode
 }
 
 // Conn represents a connection to an X server.
@@ -74,12 +477,16 @@ type Conn struct {
 	screen                   string
 	vendor                   string
 	clipboard                string
-	pixmapFormats            []*Format
-	Roots                    []*Screen
+	pixmapFormats            []Format
+	Roots                    []Screen
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
 	requestMapLock           sync.RWMutex
-	xid                      xid
+	xidLock                  sync.Mutex
+	xidBase                  uint32
+	xidInc                   uint32
+	xidMax                   uint32
+	xidLast                  uint32
 	DefaultScreen            int
 	displayNum               int
 	sequence                 atomic.Uint32
@@ -134,7 +541,7 @@ func NewConn() (*Conn, error) {
 		return nil, errs.New("X11 RENDER extension version 0.6 or higher is required")
 	}
 	if c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
-		WindowBitMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
+		WindowMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
 		return nil, errs.New("failed to create helper window")
 	}
 	return &c, nil
@@ -244,7 +651,9 @@ func (c *Conn) authenticate() error {
 		return errs.New("authentication refused: " + r.String(int(reasonLen)))
 	case 1:
 		c.releaseNumber = r.Uint32()
-		c.xid.init(r)
+		c.xidBase = r.Uint32()
+		c.xidMax = r.Uint32()
+		c.xidInc = c.xidMax & -c.xidMax
 		c.motionBufferSize = r.Uint32()
 		vendorLen := r.Uint16()
 		c.maximumRequestLength = r.Uint16()
@@ -259,8 +668,58 @@ func (c *Conn) authenticate() error {
 		r.Skip(4)
 		c.vendor = r.String(int(vendorLen))
 		r.SkipTo4ByteAlignment()
-		c.pixmapFormats = ReadList(int(pixmapFormatsLen), r, NewFormat)
-		c.Roots = ReadList(int(rootsLen), r, NewScreen)
+		c.pixmapFormats = ReadList(int(pixmapFormatsLen), r, func(rr *Reader) Format {
+			var f Format
+			f.Depth = rr.Byte()
+			f.BitsPerPixel = rr.Byte()
+			f.ScanlinePad = rr.Byte()
+			rr.Skip(5)
+			return f
+		})
+		c.Roots = ReadList(int(rootsLen), r, func(rr *Reader) Screen {
+			var s Screen
+			s.Root = rr.WindowID()
+			s.DefaultColorMap = rr.ColorMapID()
+			s.WhitePixel = rr.Uint32()
+			s.BlackPixel = rr.Uint32()
+			s.CurrentInputMasks = rr.Uint32()
+			s.WidthInPixels = rr.Uint16()
+			s.HeightInPixels = rr.Uint16()
+			s.WidthInMillimeters = rr.Uint16()
+			s.HeightInMillimeters = rr.Uint16()
+			if s.WidthInMillimeters == 0 || s.HeightInMillimeters == 0 {
+				// Assume 96 DPI if we don't receive useful info
+				s.WidthInMillimeters = uint16(float64(s.WidthInPixels) * 25.4 / 96.0)
+				s.HeightInMillimeters = uint16(float64(s.HeightInPixels) * 25.4 / 96.0)
+			}
+			s.MinInstalledMaps = rr.Uint16()
+			s.MaxInstalledMaps = rr.Uint16()
+			s.RootVisual = rr.VisualID()
+			s.BackingStores = rr.Byte()
+			s.SaveUnders = rr.Bool()
+			s.RootDepth = rr.Byte()
+			s.AllowedDepths = ReadList(int(rr.Byte()), rr, func(rrr *Reader) Depth {
+				var d Depth
+				d.Depth = rrr.Byte()
+				rrr.Skip(1)
+				count := rrr.Uint16()
+				rrr.Skip(4)
+				d.Visuals = ReadList(int(count), rrr, func(rrrr *Reader) Visual {
+					var v Visual
+					v.VisualID = rrrr.VisualID()
+					v.Class = rrrr.Byte()
+					v.BitsPerRgbValue = rrrr.Byte()
+					v.ColormapEntries = rrrr.Uint16()
+					v.RedMask = rrrr.Uint32()
+					v.GreenMask = rrrr.Uint32()
+					v.BlueMask = rrrr.Uint32()
+					rrrr.Skip(4)
+					return v
+				})
+				return d
+			})
+			return s
+		})
 		return nil
 	case 2:
 		return errs.New("further authentication required: " + r.ZeroedString(int(dataLen)))
@@ -301,37 +760,27 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 	return "", nil
 }
 
-// NewAtom generates a new Atom ID.
-func (c *Conn) NewAtom() Atom {
-	return nextXID[Atom](c)
-}
-
-func (c *Conn) nextCursorID() CursorID {
-	return nextXID[CursorID](c)
-}
-
-func (c *Conn) nextFontID() FontID {
-	return nextXID[FontID](c)
-}
-
-func (c *Conn) nextGCID() GCID {
-	return nextXID[GCID](c)
-}
-
-func (c *Conn) nextPictureID() PictureID {
-	return nextXID[PictureID](c)
-}
-
-func (c *Conn) nextPixmapID() PixMapID {
-	return nextXID[PixMapID](c)
-}
-
-func (c *Conn) nextWindowID() WindowID {
-	return nextXID[WindowID](c)
+func (c *Conn) nextXID() (uint32, error) {
+	c.xidLock.Lock()
+	defer c.xidLock.Unlock()
+	switch {
+	case c.xidLast <= c.xidMax-c.xidInc:
+		c.xidLast += c.xidInc
+	case c.ExtMisc.Present:
+		startID, count, err := c.ExtMisc.GetXIDRange()
+		if err != nil {
+			return 0, err
+		}
+		c.xidLast = startID
+		c.xidMax = startID + (count-1)*c.xidInc
+	default:
+		return 0, errs.New("no more IDs available")
+	}
+	return c.xidLast | c.xidBase, nil
 }
 
 func nextXID[T ~uint32](c *Conn) T {
-	id, err := c.xid.next(c)
+	id, err := c.nextXID()
 	if err != nil {
 		errs.Log(err)
 		return 0
@@ -459,7 +908,7 @@ func (c *Conn) sendRequests() {
 
 func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, event WritableEvent) error {
 	w := NewWriter(44)
-	w.Byte(opcodeSendEvent)
+	w.Byte(opSendEvent)
 	w.Bool(propagate)
 	w.Uint16(11)
 	w.WindowID(window)
@@ -618,50 +1067,10 @@ func (c *Conn) processEvent(ev Event) {
 	ev.Process(c)
 }
 
-func (c *Conn) hasExtension16(name string, majorMax, minorMax uint16) extensionInfo {
+func (c *Conn) hasExtension(name string, versionOpCode byte, versionIs16Bit bool, majorMax, minorMax uint32) extensionInfo {
 	size := 8 + pad4(len(name))
 	w := NewWriter(size)
-	w.Byte(opcodeQueryExtension)
-	w.Zero(1)
-	w.Uint16(uint16(size / 4))
-	w.Uint16(uint16(len(name)))
-	w.Zero(2)
-	w.String(name)
-	w.ZeroTo4ByteAlignment()
-	var info extensionInfo
-	if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
-		r.Skip(8)
-		info.Present = r.Bool()
-		info.majorOpcode = r.Byte()
-		info.firstEvent = r.Byte()
-		info.firstError = r.Byte()
-		r.Skip(24)
-	})); err != nil {
-		errs.Log(err, "name", name)
-	}
-	if info.Present {
-		w = NewWriter(8)
-		w.Byte(info.majorOpcode)
-		w.Byte(0) // Version query is always opcode 0 within the extension
-		w.Uint16(2)
-		w.Uint16(majorMax)
-		w.Uint16(minorMax)
-		if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
-			r.Skip(8)
-			info.MajorVersion = uint32(r.Uint16())
-			info.MinorVersion = uint32(r.Uint16())
-			r.Skip(20)
-		})); err != nil {
-			errs.Log(err, "name", name)
-		}
-	}
-	return info
-}
-
-func (c *Conn) hasExtension32(name string, majorMax, minorMax uint32) extensionInfo {
-	size := 8 + pad4(len(name))
-	w := NewWriter(size)
-	w.Byte(opcodeQueryExtension)
+	w.Byte(opQueryExtension)
 	w.Zero(1)
 	w.Uint16(uint16(size / 4))
 	w.Uint16(uint16(len(name)))
@@ -682,15 +1091,27 @@ func (c *Conn) hasExtension32(name string, majorMax, minorMax uint32) extensionI
 	if info.Present {
 		w = NewWriter(12)
 		w.Byte(info.majorOpcode)
-		w.Byte(0) // Version query is always opcode 0 within the extension
-		w.Uint16(3)
-		w.Uint32(majorMax)
-		w.Uint32(minorMax)
+		w.Byte(versionOpCode)
+		if versionIs16Bit {
+			w.Uint16(2)
+			w.Uint16(uint16(majorMax))
+			w.Uint16(uint16(minorMax))
+		} else {
+			w.Uint16(3)
+			w.Uint32(majorMax)
+			w.Uint32(minorMax)
+		}
 		if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
 			r.Skip(8)
-			info.MajorVersion = r.Uint32()
-			info.MinorVersion = r.Uint32()
-			r.Skip(16)
+			if versionIs16Bit {
+				info.MajorVersion = uint32(r.Uint16())
+				info.MinorVersion = uint32(r.Uint16())
+				r.Skip(20)
+			} else {
+				info.MajorVersion = r.Uint32()
+				info.MinorVersion = r.Uint32()
+				r.Skip(16)
+			}
 		})); err != nil {
 			errs.Log(err, "name", name)
 		}
@@ -703,7 +1124,7 @@ func (c *Conn) hasExtension32(name string, majorMax, minorMax uint32) extensionI
 func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 	size := 8 + pad4(len(name))
 	w := NewWriter(size)
-	w.Byte(opcodeInternAtom)
+	w.Byte(opInternAtom)
 	w.Bool(onlyIfExists)
 	w.Uint16(uint16(size / 4))
 	w.Uint16(uint16(len(name)))
@@ -720,13 +1141,69 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 }
 
 // CreateWindow creates a new window with the specified parameters and attributes.
-func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, valueMask uint32, attributes *WindowAttributes) WindowID {
-	id := c.nextWindowID()
+func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, mask WindowValueMask, attrs *WindowAttributes) WindowID {
+	id := nextXID[WindowID](c)
 	if id != 0 {
-		valueList := attributes.toValues(valueMask)
-		size := 32 + 4*len(valueList)
+		var values []uint32
+		if attrs != nil {
+			values = make([]uint32, 0, 15)
+			if mask&WindowMaskBackPixMap != 0 {
+				values = append(values, uint32(attrs.BackgroundPixMap))
+			}
+			if mask&WindowMaskBackPixel != 0 {
+				values = append(values, attrs.BackgroundPixel)
+			}
+			if mask&WindowMaskBorderPixMap != 0 {
+				values = append(values, uint32(attrs.BorderPixMap))
+			}
+			if mask&WindowMaskBorderPixel != 0 {
+				values = append(values, attrs.BorderPixel)
+			}
+			if mask&WindowMaskBitGravity != 0 {
+				values = append(values, attrs.BitGravity)
+			}
+			if mask&WindowMaskWinGravity != 0 {
+				values = append(values, attrs.WinGravity)
+			}
+			if mask&WindowMaskBackingStore != 0 {
+				values = append(values, attrs.BackingStore)
+			}
+			if mask&WindowMaskBackingPlanes != 0 {
+				values = append(values, attrs.BackingPlanes)
+			}
+			if mask&WindowMaskBackingPixel != 0 {
+				values = append(values, attrs.BackingPixel)
+			}
+			if mask&WindowMaskOverrideRedirect != 0 {
+				if attrs.OverrideRedirect {
+					values = append(values, 1)
+				} else {
+					values = append(values, 0)
+				}
+			}
+			if mask&WindowMaskSaveUnder != 0 {
+				if attrs.SaveUnder {
+					values = append(values, 1)
+				} else {
+					values = append(values, 0)
+				}
+			}
+			if mask&WindowMaskEventMask != 0 {
+				values = append(values, attrs.EventMask)
+			}
+			if mask&WindowMaskDontPropagate != 0 {
+				values = append(values, attrs.DoNotPropagateMask)
+			}
+			if mask&WindowMaskColorMap != 0 {
+				values = append(values, uint32(attrs.ColorMap))
+			}
+			if mask&WindowMaskCursor != 0 {
+				values = append(values, uint32(attrs.Cursor))
+			}
+		}
+		size := 32 + 4*len(values)
 		w := NewWriter(size)
-		w.Byte(opcodeCreateWindow)
+		w.Byte(opCreateWindow)
 		w.Byte(depth)
 		w.Uint16(uint16(size / 4))
 		w.WindowID(id)
@@ -738,10 +1215,8 @@ func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWi
 		w.Uint16(borderWidth)
 		w.Uint16(windowClass)
 		w.VisualID(visual)
-		w.Uint32(valueMask)
-		for _, v := range valueList {
-			w.Uint32(v)
-		}
+		w.Uint32(uint32(mask))
+		w.Uint32Slice(values)
 		w.ZeroTo4ByteAlignment()
 		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
 			errs.Log(err)
@@ -754,7 +1229,7 @@ func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWi
 // DestroyWindow destroys the specified window.
 func (c *Conn) DestroyWindow(window WindowID) error {
 	w := NewWriter(8)
-	w.Byte(opcodeDestroyWindow)
+	w.Byte(opDestroyWindow)
 	w.Zero(1)
 	w.Uint16(2)
 	w.WindowID(window)
@@ -764,14 +1239,14 @@ func (c *Conn) DestroyWindow(window WindowID) error {
 // GetInputFocus returns the current input focus window and the revert-to value.
 func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
 	w := NewWriter(4)
-	w.Byte(opcodeGetInputFocus)
+	w.Byte(opGetInputFocus)
 	w.Zero(1)
 	w.Uint16(1)
 	err = c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
 		r.Skip(1)
 		revertTo = r.Byte()
 		r.Skip(6)
-		focus = WindowID(r.Uint32())
+		focus = r.WindowID()
 	}))
 	return focus, revertTo, err
 }
@@ -779,7 +1254,7 @@ func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
 // GetProperty returns information about the specified property.
 func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset, length uint32, remove bool) (format byte, actualPropertyType Atom, value []byte, err error) {
 	w := NewWriter(24)
-	w.Byte(opcodeGetProperty)
+	w.Byte(opGetProperty)
 	w.Bool(remove)
 	w.Uint16(6)
 	w.WindowID(window)
@@ -820,7 +1295,7 @@ const (
 // with the specified format (8, 16, or 32 bits per unit).
 func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) {
 	w := NewWriter(24 + pad4(len(data)))
-	w.Byte(opcodeChangeProperty)
+	w.Byte(opChangeProperty)
 	w.Byte(mode)
 	w.Uint16(uint16((24 + pad4(len(data))) / 4))
 	w.WindowID(window)
@@ -840,7 +1315,7 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 // from -100 to 100, inclusive.
 func (c *Conn) Bell(percent int8) {
 	w := NewWriter(4)
-	w.Byte(opcodeBell)
+	w.Byte(opBell)
 	w.Int8(percent)
 	w.Uint16(1)
 	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
@@ -945,7 +1420,7 @@ func (c *Conn) SetClipboardText(str string) {
 
 func (c *Conn) setSelectionOwner(owner WindowID, selection Atom) {
 	w := NewWriter(16)
-	w.Byte(opcodeSetSelectionOwner)
+	w.Byte(opSetSelectionOwner)
 	w.Zero(1)
 	w.Uint16(4)
 	w.WindowID(owner)
@@ -958,13 +1433,13 @@ func (c *Conn) setSelectionOwner(owner WindowID, selection Atom) {
 
 func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
 	w := NewWriter(8)
-	w.Byte(opcodeGetSelectionOwner)
+	w.Byte(opGetSelectionOwner)
 	w.Zero(1)
 	w.Uint16(2)
 	w.Atom(selection)
 	err = c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
 		r.Skip(8)
-		owner = WindowID(r.Uint32())
+		owner = r.WindowID()
 		r.Skip(20)
 	}))
 	return owner, err
@@ -972,7 +1447,7 @@ func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
 
 func (c *Conn) convertSelection(requestor WindowID, selection, target, property Atom, timestamp uint32) {
 	w := NewWriter(8)
-	w.Byte(opcodeConvertSelection)
+	w.Byte(opConvertSelection)
 	w.Zero(1)
 	w.Uint16(6)
 	w.WindowID(requestor)
@@ -1066,10 +1541,10 @@ func (c *Conn) MonitorWorkArea(root WindowID, area geom.Rect) geom.Rect {
 
 // OpenFont opens a font with the specified name and returns its FontID.
 func (c *Conn) OpenFont(name string) FontID {
-	id := c.nextFontID()
+	id := nextXID[FontID](c)
 	if id != 0 {
 		w := NewWriter(12 + pad4(len(name)))
-		w.Byte(opcodeOpenFont)
+		w.Byte(opOpenFont)
 		w.Zero(1)
 		w.Uint16(uint16(3 + (pad4(len(name)) / 4)))
 		w.FontID(id)
@@ -1091,7 +1566,7 @@ func (c *Conn) CloseFont(fontID FontID) {
 		return
 	}
 	w := NewWriter(8)
-	w.Byte(opcodeCloseFont)
+	w.Byte(opCloseFont)
 	w.Zero(1)
 	w.Uint16(2)
 	w.FontID(fontID)
@@ -1103,10 +1578,10 @@ func (c *Conn) CloseFont(fontID FontID) {
 // CreateGlyphCursor creates a new cursor with the specified source and mask fonts, character codes, and foreground and
 // background colors. It returns the ID of the newly created cursor.
 func (c *Conn) CreateGlyphCursor(srcFontID, maskFontID FontID, sourceChar, maskChar, fgRed, fgGreen, fgBlue, bgRed, bgGreen, bgBlue uint16) CursorID {
-	id := c.nextCursorID()
+	id := nextXID[CursorID](c)
 	if id != 0 {
 		w := NewWriter(32)
-		w.Byte(opcodeCreateGlyphCursor)
+		w.Byte(opCreateGlyphCursor)
 		w.Zero(1)
 		w.Uint16(8)
 		w.CursorID(id)
@@ -1131,7 +1606,7 @@ func (c *Conn) CreateGlyphCursor(srcFontID, maskFontID FontID, sourceChar, maskC
 // FreeCursor frees the specified cursor.
 func (c *Conn) FreeCursor(cursorID CursorID) {
 	w := NewWriter(8)
-	w.Byte(opcodeFreeCursor)
+	w.Byte(opFreeCursor)
 	w.Zero(1)
 	w.Uint16(2)
 	w.CursorID(cursorID)
@@ -1142,10 +1617,10 @@ func (c *Conn) FreeCursor(cursorID CursorID) {
 
 // CreatePixMap creates a new pixmap with the specified drawable, depth, width, and height, and returns its PixMapID.
 func (c *Conn) CreatePixMap(drawable DrawableID, depth byte, width, height uint16) PixMapID {
-	id := c.nextPixmapID()
+	id := nextXID[PixMapID](c)
 	if id != 0 {
 		w := NewWriter(16)
-		w.Byte(opcodeCreatePixmap)
+		w.Byte(opCreatePixmap)
 		w.Byte(depth)
 		w.Uint16(4)
 		w.PixMapID(id)
@@ -1163,7 +1638,7 @@ func (c *Conn) CreatePixMap(drawable DrawableID, depth byte, width, height uint1
 // FreePixMap frees the specified pixmap.
 func (c *Conn) FreePixMap(pixmapID PixMapID) {
 	w := NewWriter(8)
-	w.Byte(opcodeFreePixmap)
+	w.Byte(opFreePixmap)
 	w.Zero(1)
 	w.Uint16(2)
 	w.PixMapID(pixmapID)
@@ -1173,19 +1648,95 @@ func (c *Conn) FreePixMap(pixmapID PixMapID) {
 }
 
 // CreateGC creates a new graphics context with the specified drawable, value mask, and values, and returns its GCID.
-func (c *Conn) CreateGC(drawable DrawableID, valueMask GCValueMask, attrs *GCAttributes) GCID {
-	id := c.nextGCID()
+func (c *Conn) CreateGC(drawable DrawableID, mask GCValueMask, attrs *GCAttrs) GCID {
+	id := nextXID[GCID](c)
 	if id == 0 {
 		return 0
 	}
-	values := attrs.values(valueMask)
+	var values []uint32
+	if attrs != nil {
+		values = make([]uint32, 0, 23)
+		if mask&GCMaskFunction != 0 {
+			values = append(values, uint32(attrs.Function))
+		}
+		if mask&GCMaskPlaneMask != 0 {
+			values = append(values, attrs.PlaneMask)
+		}
+		if mask&GCMaskForeground != 0 {
+			values = append(values, attrs.Foreground)
+		}
+		if mask&GCMaskBackground != 0 {
+			values = append(values, attrs.Background)
+		}
+		if mask&GCMaskLineWidth != 0 {
+			values = append(values, uint32(attrs.LineWidth))
+		}
+		if mask&GCMaskLineStyle != 0 {
+			values = append(values, uint32(attrs.LineStyle))
+		}
+		if mask&GCMaskCapStyle != 0 {
+			values = append(values, uint32(attrs.CapStyle))
+		}
+		if mask&GCMaskJoinStyle != 0 {
+			values = append(values, uint32(attrs.JoinStyle))
+		}
+		if mask&GCMaskFillStyle != 0 {
+			values = append(values, uint32(attrs.FillStyle))
+		}
+		if mask&GCMaskFillRule != 0 {
+			values = append(values, uint32(attrs.FillRule))
+		}
+		if mask&GCMaskTile != 0 {
+			values = append(values, uint32(attrs.Tile))
+		}
+		if mask&GCMaskStipple != 0 {
+			values = append(values, uint32(attrs.Stipple))
+		}
+		if mask&GCMaskTileStippleOriginX != 0 {
+			values = append(values, uint32(attrs.TileStippleOriginX))
+		}
+		if mask&GCMaskTileStippleOriginY != 0 {
+			values = append(values, uint32(attrs.TileStippleOriginY))
+		}
+		if mask&GCMaskFont != 0 {
+			values = append(values, uint32(attrs.Font))
+		}
+		if mask&GCMaskSubwindowMode != 0 {
+			values = append(values, uint32(attrs.SubwindowMode))
+		}
+		if mask&GCMaskGraphicsExposures != 0 {
+			var ge uint32
+			if attrs.GraphicsExposures {
+				ge = 1
+			}
+			values = append(values, ge)
+		}
+		if mask&GCMaskClipOriginX != 0 {
+			values = append(values, uint32(attrs.ClipOriginX))
+		}
+		if mask&GCMaskClipOriginY != 0 {
+			values = append(values, uint32(attrs.ClipOriginY))
+		}
+		if mask&GCMaskClipMask != 0 {
+			values = append(values, uint32(attrs.ClipMask))
+		}
+		if mask&GCMaskDashOffset != 0 {
+			values = append(values, attrs.DashOffset)
+		}
+		if mask&GCMaskDashList != 0 {
+			values = append(values, uint32(attrs.Dashes))
+		}
+		if mask&GCMaskArcMode != 0 {
+			values = append(values, uint32(attrs.ArcMode))
+		}
+	}
 	w := NewWriter(16 + 4*len(values))
-	w.Byte(opcodeCreateGC)
+	w.Byte(opCreateGC)
 	w.Zero(1)
 	w.Uint16(4 + uint16(len(values)))
 	w.GCID(id)
 	w.DrawableID(drawable)
-	w.Uint32(uint32(valueMask))
+	w.Uint32(uint32(mask))
 	w.Uint32Slice(values)
 	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
 		errs.Log(err)
@@ -1197,7 +1748,7 @@ func (c *Conn) CreateGC(drawable DrawableID, valueMask GCValueMask, attrs *GCAtt
 // FreeGC frees the specified graphics context.
 func (c *Conn) FreeGC(gcID GCID) {
 	w := NewWriter(8)
-	w.Byte(opcodeFreeGC)
+	w.Byte(opFreeGC)
 	w.Zero(1)
 	w.Uint16(2)
 	w.GCID(gcID)
@@ -1231,7 +1782,7 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 		}
 
 		w := NewWriter(24 + pad4(len(pix)))
-		w.Byte(opcodePutImage)
+		w.Byte(opPutImage)
 		w.Byte(byte(ImageFormatZPixmap))
 		w.Uint16(6 + uint16(pad4(len(pix))/4))
 		w.DrawableID(drawable)
