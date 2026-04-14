@@ -18,12 +18,12 @@ import (
 
 type apiWindow struct {
 	// TODO: Need implementation
-	wnd *x11.Window
+	id x11.WindowID
 }
 
 func x11FindWindow(id x11.WindowID) *Window {
 	for _, w := range windowList {
-		if w.wnd.wnd.ID == id {
+		if w.wnd.id == id {
 			return w
 		}
 	}

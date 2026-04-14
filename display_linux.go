@@ -31,25 +31,22 @@ func apiAllDisplays() []*Display {
 		errs.Log(err)
 	}
 	root := x11Conn.RootWindow()
-	// Need v1.5+ of RANDR to get monitor information, but if it's not available, just return the screen size as a
-	// single display.
-	if x11Conn.ExtRandr.Present && (x11Conn.ExtRandr.MajorVersion > 1 || x11Conn.ExtRandr.MinorVersion > 4) {
-		var m []x11.Monitor
-		if m, err = x11Conn.ExtRandr.GetMonitors(root, true); err == nil && len(m) != 0 {
-			displays := make([]*Display, len(m))
-			for i := range m {
-				frame := geom.NewRect(float32(m[i].X), float32(m[i].Y), float32(m[i].Width), float32(m[i].Height))
-				displays[i] = &Display{
-					Frame:   frame,
-					Usable:  x11Conn.MonitorWorkArea(root, frame),
-					Scale:   geom.NewPoint(scale, scale),
-					PPI:     int(float64(m[i].Width) / (float64(m[i].WidthMM) / 25.4)),
-					Primary: m[i].Primary,
-				}
+	var m []x11.Monitor
+	if m, err = x11Conn.ExtRandr.GetMonitors(root, true); err == nil && len(m) != 0 {
+		displays := make([]*Display, len(m))
+		for i := range m {
+			frame := geom.NewRect(float32(m[i].X), float32(m[i].Y), float32(m[i].Width), float32(m[i].Height))
+			displays[i] = &Display{
+				Frame:   frame,
+				Usable:  x11Conn.MonitorWorkArea(root, frame),
+				Scale:   geom.NewPoint(scale, scale),
+				PPI:     int(float64(m[i].Width) / (float64(m[i].WidthMM) / 25.4)),
+				Primary: m[i].Primary,
 			}
-			return displays
 		}
+		return displays
 	}
+	// Fall back to the root window if nothing is being reported by RandR.
 	screen := x11Conn.Roots[x11Conn.DefaultScreen]
 	frame := geom.NewRect(0, 0, float32(screen.WidthInPixels), float32(screen.HeightInPixels))
 	return []*Display{
