@@ -472,6 +472,12 @@ type GCAttrs struct {
 	ArcMode            ArcMode
 }
 
+// KeyboardMapping holds the key symbol mapping for a range of key codes.
+type KeyboardMapping struct {
+	KeySyms           []uint32
+	KeySymsPerKeyCode byte
+}
+
 // Conn represents a connection to an X server.
 type Conn struct {
 	conn                     net.Conn
@@ -518,8 +524,8 @@ type Conn struct {
 	bitmapFormatBitOrder     byte
 	bitmapFormatScanlineUnit byte
 	bitmapFormatScanlinePad  byte
-	minKeyCode               byte
-	maxKeyCode               byte
+	MinKeyCode               byte
+	MaxKeyCode               byte
 }
 
 // NewConn establishes a connection to the X server.
@@ -680,8 +686,8 @@ func (c *Conn) authenticate() error {
 		c.bitmapFormatBitOrder = r.Byte()
 		c.bitmapFormatScanlineUnit = r.Byte()
 		c.bitmapFormatScanlinePad = r.Byte()
-		c.minKeyCode = r.Byte()
-		c.maxKeyCode = r.Byte()
+		c.MinKeyCode = r.Byte()
+		c.MaxKeyCode = r.Byte()
 		r.Skip(4)
 		c.vendor = r.String(int(vendorLen))
 		r.SkipTo4ByteAlignment()
@@ -1817,6 +1823,28 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 			errs.Log(err)
 		}
 	}
+}
+
+// GetKeyboardMapping retrieves the keyboard mapping, which includes the keysyms associated with each keycode in the
+// range defined by the connection's minKeyCode and maxKeyCode.
+func (c *Conn) GetKeyboardMapping() KeyboardMapping {
+	w := NewWriter(8)
+	w.Byte(opGetKeyboardMapping)
+	w.Zero(1)
+	w.Uint16(2)
+	w.Byte(c.MinKeyCode)
+	w.Byte(c.MaxKeyCode - c.MinKeyCode + 1)
+	w.Zero(2)
+	var km KeyboardMapping
+	if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(1)
+		km.KeySymsPerKeyCode = r.Byte()
+		r.Skip(30)
+		km.KeySyms = r.Uint32Slice(int(c.MaxKeyCode-c.MinKeyCode+1) * int(km.KeySymsPerKeyCode))
+	})); err != nil {
+		errs.Log(err)
+	}
+	return km
 }
 
 // pushClipboardToManager checks if the helper window is currently the owner of the CLIPBOARD selection, and if so, it
