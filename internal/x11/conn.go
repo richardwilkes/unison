@@ -215,15 +215,17 @@ func (e *extensionInfo) HasVersion(minMajorVersion, minMinorVersion uint32) bool
 //
 //nolint:revive // No need to have separate comments for each of these.
 type (
-	ColorMapID uint32
-	CursorID   uint32
-	DrawableID uint32
-	FontID     uint32
-	GCID       uint32
-	PictureID  uint32
-	PixMapID   uint32
-	VisualID   uint32
-	WindowID   uint32
+	ColorMapID   uint32
+	CursorID     uint32
+	DrawableID   uint32
+	FontID       uint32
+	GCID         uint32
+	GLXContextID uint32
+	GLXWindowID  uint32
+	PictureID    uint32
+	PixMapID     uint32
+	VisualID     uint32
+	WindowID     uint32
 )
 
 // Format holds the configuration of a pixmap.
@@ -546,8 +548,8 @@ func NewConn() (*Conn, error) {
 		return nil, err
 	}
 	c.ExtMisc = newExtMisc(&c)
-	if c.ExtGLX = newExtGLX(&c); !c.ExtGLX.HasVersion(1, 3) {
-		return nil, errs.New("X11 extension GLX 1.3 or higher is required")
+	if c.ExtGLX = newExtGLX(&c); !c.ExtGLX.HasVersion(1, 4) {
+		return nil, errs.New("X11 extension GLX 1.4 or higher is required")
 	}
 	if c.ExtRandr = newExtRandr(&c); !c.ExtRandr.HasVersion(1, 5) {
 		return nil, errs.New("X11 extension RANDR 1.5 or higher is required")

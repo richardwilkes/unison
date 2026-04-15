@@ -99,5 +99,4 @@ func (c *apiGLContext) apiDestroy() {
 
 func apiClearOpenGLCurrentContext() {
 	w32.WglMakeCurrent(0, 0)
-	wndWithCurrentCtx = nil
 }

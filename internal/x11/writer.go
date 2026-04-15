@@ -116,6 +116,16 @@ func (w *Writer) GCID(v GCID) {
 	w.Uint32(uint32(v))
 }
 
+// GLXContextID appends a uint32 value representing a GLXContextID to the buffer using the Writer's byte order.
+func (w *Writer) GLXContextID(v GLXContextID) {
+	w.Uint32(uint32(v))
+}
+
+// GLXWindowID appends a uint32 value representing a GLXWindowID to the buffer using the Writer's byte order.
+func (w *Writer) GLXWindowID(v GLXWindowID) {
+	w.Uint32(uint32(v))
+}
+
 // PictureID appends a uint32 value representing a PictureID to the buffer using the Writer's byte order.
 func (w *Writer) PictureID(v PictureID) {
 	w.Uint32(uint32(v))

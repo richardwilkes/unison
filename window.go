@@ -475,6 +475,7 @@ func (w *Window) destroy() {
 	}
 	if w == wndWithCurrentCtx {
 		apiClearOpenGLCurrentContext()
+		wndWithCurrentCtx = nil
 	}
 	w.apiDestroy()
 	windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })

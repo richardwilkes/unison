@@ -59,5 +59,4 @@ func (c *apiGLContext) apiDestroy() {
 
 func apiClearOpenGLCurrentContext() {
 	mac.ClearOpenGLCurrentContext()
-	wndWithCurrentCtx = nil
 }
