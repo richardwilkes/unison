@@ -1007,6 +1007,10 @@ func (c *Conn) sendRequests() {
 			if req == nil {
 				return
 			}
+			if req.data == nil { // Flush request, just ack
+				close(req.sentChan)
+				continue
+			}
 			req.sequence = c.nextSeq()
 			if req.event != nil {
 				req.event.Write(req.sequence, req.data)
@@ -2097,7 +2101,7 @@ func (c *Conn) GetGeometry(drawable DrawableID) (Geometry, error) {
 		g.Width = r.Uint16()
 		g.Height = r.Uint16()
 		g.BorderWidth = r.Uint16()
-		r.Skip(2)
+		r.Skip(10)
 	}))
 	return g, err
 }
