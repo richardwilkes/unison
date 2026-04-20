@@ -19,7 +19,7 @@ import (
 var (
 	_ Event         = &CirculateNotifyEvent{}
 	_ Event         = &CirculateRequestEvent{}
-	_ Event         = &ClientMessageEvent{}
+	_ WritableEvent = &ClientMessageEvent{}
 	_ Event         = &ColormapNotifyEvent{}
 	_ Event         = &ConfigureRequestEvent{}
 	_ Event         = &ConfigureNotifyEvent{}
@@ -125,12 +125,6 @@ const (
 type Event interface {
 	// ID returns a byte value that identifies the type of the event, which can be used to determine how to process it.
 	ID() byte
-	// TargetWindow returns the ID of the window that is the target of the event, if applicable. For events that do not
-	// have a specific target window, this will return WindowNone.
-	TargetWindow() WindowID
-	// Process the event using the provided connection. The implementation should perform any necessary actions based on
-	// the event type and its data.
-	Process(*Conn)
 }
 
 // WritableEvent represents an event that can be sent to the X server.
@@ -202,11 +196,6 @@ func (e *CirculateEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *CirculateEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
 // CirculateNotifyEvent represents an X11 CirculateNotify event.
 type CirculateNotifyEvent struct {
 	CirculateEvent
@@ -218,12 +207,6 @@ func newCirculateNotifyEvent(r *Reader) Event {
 	return &e
 }
 
-// Process the event.
-func (e *CirculateNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("CirculateNotifyEvent received", "sequence", e.Sequence, "event", e.Event, "window", e.Window, "place", e.Place)
-}
-
 // CirculateRequestEvent represents an X11 CirculateRequest event.
 type CirculateRequestEvent struct {
 	CirculateEvent
@@ -233,12 +216,6 @@ func newCirculateRequestEvent(r *Reader) Event {
 	var e CirculateRequestEvent
 	e.read(r)
 	return &e
-}
-
-// Process the event.
-func (e *CirculateRequestEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("CirculateRequestEvent received", "sequence", e.Sequence, "event", e.Event, "window", e.Window, "place", e.Place)
 }
 
 // ClientMessageEvent represents an X11 ClientMessage event.
@@ -272,20 +249,26 @@ func newClientMessageEvent(r *Reader) Event {
 	return &e
 }
 
+// Write implements [WritableEvent].
+func (e *ClientMessageEvent) Write(sequence uint16, w *Writer) {
+	w.Byte(eventCodeClientMessage)
+	w.Byte(e.Format)
+	w.Uint16(sequence)
+	w.WindowID(e.Window)
+	w.Atom(e.Type)
+	switch e.Format {
+	case 8:
+		w.Bytes(e.Data8[:])
+	case 16:
+		w.Uint16Slice(e.Data16[:])
+	case 32:
+		w.Uint32Slice(e.Data32[:])
+	}
+}
+
 // ID returns the event code.
 func (e *ClientMessageEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ClientMessageEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *ClientMessageEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ClientMessageEvent received", "sequence", e.Sequence, "window", e.Window, "type", e.Type, "format", e.Format, "data8", e.Data8, "data16", e.Data16, "data32", e.Data32)
 }
 
 // ColormapNotifyEvent represents an X11 ColormapNotify event.
@@ -314,17 +297,6 @@ func newColormapNotifyEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *ColormapNotifyEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ColormapNotifyEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *ColormapNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ColormapNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "colormap", e.Colormap, "new", e.New, "state", e.State)
 }
 
 // ConfigureRequestEvent represents an X11 ConfigureRequest event.
@@ -365,17 +337,6 @@ func (e *ConfigureRequestEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ConfigureRequestEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *ConfigureRequestEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ConfigureRequestEvent received", "sequence", e.Sequence, "window", e.Window, "parent", e.Parent, "sibling", e.Sibling, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "borderWidth", e.BorderWidth, "valueMask", e.ValueMask, "stackMode", e.StackMode)
-}
-
 // ConfigureNotifyEvent represents an X11 ConfigureNotify event.
 type ConfigureNotifyEvent struct {
 	Event            WindowID
@@ -414,17 +375,6 @@ func (e *ConfigureNotifyEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ConfigureNotifyEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
-// Process the event.
-func (e *ConfigureNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ConfigureNotifyEvent received", "sequence", e.Sequence, "event", e.Event, "window", e.Window, "aboveSibling", e.AboveSibling, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "borderWidth", e.BorderWidth, "overrideRedirect", e.OverrideRedirect)
-}
-
 // CreateNotifyEvent represents an X11 CreateNotify event.
 type CreateNotifyEvent struct {
 	Parent           WindowID
@@ -461,17 +411,6 @@ func (e *CreateNotifyEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *CreateNotifyEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *CreateNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("CreateNotifyEvent received", "sequence", e.Sequence, "parent", e.Parent, "window", e.Window, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "borderWidth", e.BorderWidth, "overrideRedirect", e.OverrideRedirect)
-}
-
 // DestroyNotifyEvent represents an X11 DestroyNotify event.
 type DestroyNotifyEvent struct {
 	Event    WindowID
@@ -493,17 +432,6 @@ func newDestroyNotifyEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *DestroyNotifyEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *DestroyNotifyEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
-// Process the event.
-func (e *DestroyNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("DestroyNotifyEvent received", "sequence", e.Sequence, "event", e.Event, "window", e.Window)
 }
 
 // EnterLeaveEvent represents an X11 generic enter/leave event.
@@ -552,20 +480,9 @@ func (e *EnterLeaveEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *EnterLeaveEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
 // EnterNotifyEvent represents an X11 EnterNotify event.
 type EnterNotifyEvent struct {
 	EnterLeaveEvent
-}
-
-// Process the event.
-func (e *EnterNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("EnterNotifyEvent received", "sequence", e.Sequence, "root", e.Root, "event", e.Event, "child", e.Child, "time", e.Time, "state", e.State, "rootX", e.RootX, "rootY", e.RootY, "eventX", e.EventX, "eventY", e.EventY, "detail", e.Detail, "mode", e.Mode, "sameScreenFocus", e.SameScreenFocus)
 }
 
 // LeaveNotifyEvent represents an X11 LeaveNotify event.
@@ -579,12 +496,6 @@ func newLeaveNotifyEvent(r *Reader) Event {
 	return &e
 }
 
-// Process the event.
-func (e *LeaveNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("LeaveNotifyEvent received", "sequence", e.Sequence, "root", e.Root, "event", e.Event, "child", e.Child, "time", e.Time, "state", e.State, "rootX", e.RootX, "rootY", e.RootY, "eventX", e.EventX, "eventY", e.EventY, "detail", e.Detail, "mode", e.Mode, "sameScreenFocus", e.SameScreenFocus)
-}
-
 // ErrorEvent is an error delivered as an event.
 type ErrorEvent struct {
 	Error error
@@ -595,13 +506,9 @@ func (e *ErrorEvent) ID() byte {
 	return eventCodeNone
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ErrorEvent) TargetWindow() WindowID {
-	return 0
-}
-
 // Process the event.
 func (e *ErrorEvent) Process(_conn *Conn) {
+	// TODO: Make sure this gets done
 	errs.Log(e.Error)
 }
 
@@ -637,20 +544,9 @@ func (e *ExposeEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ExposeEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *ExposeEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ExposeEvent received", "sequence", e.Sequence, "window", e.Window, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "count", e.Count)
-}
-
 // FocusEvent represents an X11 generic focus event.
 type FocusEvent struct {
-	Event    WindowID
+	Window   WindowID
 	Sequence uint16
 	Code     byte
 	Detail   byte
@@ -661,7 +557,7 @@ func (e *FocusEvent) read(r *Reader) {
 	e.Code = r.Byte()
 	e.Detail = r.Byte()
 	e.Sequence = r.Uint16()
-	e.Event = r.WindowID()
+	e.Window = r.WindowID()
 	e.Mode = r.Byte()
 	r.Skip(23)
 }
@@ -669,11 +565,6 @@ func (e *FocusEvent) read(r *Reader) {
 // ID returns the event code.
 func (e *FocusEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *FocusEvent) TargetWindow() WindowID {
-	return e.Event
 }
 
 // FocusInEvent represents an X11 FocusIn event.
@@ -687,12 +578,6 @@ func newFocusInEvent(r *Reader) Event {
 	return &e
 }
 
-// Process the event.
-func (e *FocusInEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("FocusInEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "mode", e.Mode)
-}
-
 // FocusOutEvent represents an X11 FocusOut event.
 type FocusOutEvent struct {
 	FocusEvent
@@ -702,12 +587,6 @@ func newFocusOutEvent(r *Reader) Event {
 	var e FocusOutEvent
 	e.read(r)
 	return &e
-}
-
-// Process the event.
-func (e *FocusOutEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("FocusOutEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "mode", e.Mode)
 }
 
 // GraphicsExposureEvent represents an X11 GraphicsExposure event.
@@ -746,17 +625,6 @@ func (e *GraphicsExposureEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *GraphicsExposureEvent) TargetWindow() WindowID {
-	return WindowID(e.Drawable)
-}
-
-// Process the event.
-func (e *GraphicsExposureEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("GraphicsExposureEvent received", "sequence", e.Sequence, "drawable", e.Drawable, "x", e.X, "y", e.Y, "width", e.Width, "height", e.Height, "minorOpcode", e.MinorOpcode, "count", e.Count, "majorOpcode", e.MajorOpcode)
-}
-
 // GravityNotifyEvent represents an X11 GravityNotify event.
 type GravityNotifyEvent struct {
 	Event    WindowID
@@ -782,17 +650,6 @@ func newGravityNotifyEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *GravityNotifyEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *GravityNotifyEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
-// Process the event.
-func (e *GravityNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("GravityNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "x", e.X, "y", e.Y)
 }
 
 // InputEvent represents a generic X11 input event.
@@ -834,11 +691,6 @@ func (e *InputEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *InputEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
 // KeyPressEvent represents an X11 KeyPress event.
 type KeyPressEvent struct {
 	InputEvent
@@ -848,12 +700,6 @@ func newKeyPressEvent(r *Reader) Event {
 	var e KeyPressEvent
 	e.read(r)
 	return &e
-}
-
-// Process the event.
-func (e *KeyPressEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("KeyPressEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }
 
 // KeyReleaseEvent represents an X11 KeyRelease event.
@@ -867,12 +713,6 @@ func newKeyReleaseEvent(r *Reader) Event {
 	return &e
 }
 
-// Process the event.
-func (e *KeyReleaseEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("KeyReleaseEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
-}
-
 // ButtonPressEvent represents an X11 ButtonPress event.
 type ButtonPressEvent struct {
 	InputEvent
@@ -882,12 +722,6 @@ func newButtonPressEvent(r *Reader) Event {
 	var e ButtonPressEvent
 	e.read(r)
 	return &e
-}
-
-// Process the event.
-func (e *ButtonPressEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ButtonPressEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }
 
 // ButtonReleaseEvent represents an X11 ButtonRelease event.
@@ -901,12 +735,6 @@ func newButtonReleaseEvent(r *Reader) Event {
 	return &e
 }
 
-// Process the event.
-func (e *ButtonReleaseEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ButtonReleaseEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
-}
-
 // MotionNotifyEvent represents an X11 MotionNotify event.
 type MotionNotifyEvent struct {
 	InputEvent
@@ -916,12 +744,6 @@ func newMotionNotifyEvent(r *Reader) Event {
 	var e MotionNotifyEvent
 	e.read(r)
 	return &e
-}
-
-// Process the event.
-func (e *MotionNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("MotionNotifyEvent received", "sequence", e.Sequence, "window", e.Event, "detail", e.Detail, "state", e.State, "sameScreen", e.SameScreen)
 }
 
 // KeymapNotifyEvent represents an X11 KeymapNotify event.
@@ -940,17 +762,6 @@ func newKeymapNotifyEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *KeymapNotifyEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *KeymapNotifyEvent) TargetWindow() WindowID {
-	return 0
-}
-
-// Process the event.
-func (e *KeymapNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("KeymapNotifyEvent received", "keys", e.Keys)
 }
 
 // MappingNotifyEvent represents an X11 MappingNotify event.
@@ -979,17 +790,6 @@ func (e *MappingNotifyEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *MappingNotifyEvent) TargetWindow() WindowID {
-	return 0
-}
-
-// Process the event.
-func (e *MappingNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("MappingNotifyEvent received", "sequence", e.Sequence, "request", e.Request, "firstKeycode", e.FirstKeycode, "count", e.Count)
-}
-
 // NoExposureEvent represents an X11 NoExposure event.
 type NoExposureEvent struct {
 	Sequence    uint16
@@ -1014,17 +814,6 @@ func newNoExposureEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *NoExposureEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *NoExposureEvent) TargetWindow() WindowID {
-	return WindowID(e.Drawable)
-}
-
-// Process the event.
-func (e *NoExposureEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("NoExposureEvent received", "sequence", e.Sequence, "drawable", e.Drawable, "minorOpcode", e.MinorOpcode, "majorOpcode", e.MajorOpcode)
 }
 
 // PropertyNotifyEvent represents an X11 PropertyNotify event.
@@ -1053,17 +842,6 @@ func newPropertyNotifyEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *PropertyNotifyEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *PropertyNotifyEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *PropertyNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("PropertyNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "atom", e.Atom, "time", e.Time, "state", e.State)
 }
 
 // ReparentNotifyEvent represents an X11 ReparentNotify event.
@@ -1098,17 +876,6 @@ func (e *ReparentNotifyEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ReparentNotifyEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
-// Process the event.
-func (e *ReparentNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ReparentNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "parent", e.Parent, "x", e.X, "y", e.Y, "overrideRedirect", e.OverrideRedirect)
-}
-
 // ResizeRequestEvent represents an X11 ResizeRequest event.
 type ResizeRequestEvent struct {
 	Window   WindowID
@@ -1134,17 +901,6 @@ func (e *ResizeRequestEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *ResizeRequestEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *ResizeRequestEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("ResizeRequestEvent received", "sequence", e.Sequence, "window", e.Window, "width", e.Width, "height", e.Height)
-}
-
 // SelectionClearEvent represents an X11 SelectionClear event.
 type SelectionClearEvent struct {
 	Time      uint32
@@ -1168,17 +924,6 @@ func newSelectionClearEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *SelectionClearEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *SelectionClearEvent) TargetWindow() WindowID {
-	return e.Owner
-}
-
-// Process the event.
-func (e *SelectionClearEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("SelectionClearEvent received", "sequence", e.Sequence, "owner", e.Owner, "selection", e.Selection, "time", e.Time)
 }
 
 // SelectionRequestEvent represents an X11 SelectionRequest event.
@@ -1210,24 +955,6 @@ func newSelectionRequestEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *SelectionRequestEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *SelectionRequestEvent) TargetWindow() WindowID {
-	return e.Owner
-}
-
-// Process the event.
-func (e *SelectionRequestEvent) Process(c *Conn) {
-	if err := c.sendEvent(e.Requestor, false, 0, &SelectionNotifyEvent{
-		Time:      e.Time,
-		Requestor: e.Requestor,
-		Selection: e.Selection,
-		Target:    e.Target,
-		Property:  e.writeTargetToProperty(c),
-	}); err != nil {
-		errs.Log(err)
-	}
 }
 
 func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
@@ -1309,11 +1036,6 @@ func (e *SelectionNotifyEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *SelectionNotifyEvent) TargetWindow() WindowID {
-	return e.Requestor
-}
-
 // Write the event to the given Writer. The sequence number and event code inside the event struct are ignored.
 func (e *SelectionNotifyEvent) Write(sequence uint16, w *Writer) {
 	w.Byte(eventCodeSelectionNotify)
@@ -1325,13 +1047,6 @@ func (e *SelectionNotifyEvent) Write(sequence uint16, w *Writer) {
 	w.Atom(e.Target)
 	w.Atom(e.Property)
 	w.Zero(8)
-}
-
-// Process the event.
-func (e *SelectionNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement; this might be a noop, as the clipboard logic is currently implemented in the Conn's
-	// GetClipboardText method, which waits for a SelectionNotifyEvent and processes it there.
-	slog.Info("SelectionNotifyEvent received", "sequence", e.Sequence, "requestor", e.Requestor, "selection", e.Selection, "target", e.Target, "property", e.Property, "time", e.Time)
 }
 
 // VisibilityNotifyEvent represents an X11 VisibilityNotify event.
@@ -1358,17 +1073,6 @@ func (e *VisibilityNotifyEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *VisibilityNotifyEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *VisibilityNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("VisibilityNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "state", e.State)
-}
-
 // MapRequestEvent represents an X11 MapRequest event.
 type MapRequestEvent struct {
 	Parent   WindowID
@@ -1390,17 +1094,6 @@ func newMapRequestEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *MapRequestEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *MapRequestEvent) TargetWindow() WindowID {
-	return e.Window
-}
-
-// Process the event.
-func (e *MapRequestEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("MapRequestEvent received", "sequence", e.Sequence, "window", e.Window, "parent", e.Parent)
 }
 
 // MapNotifyEvent represents an X11 MapNotify event.
@@ -1429,17 +1122,6 @@ func (e *MapNotifyEvent) ID() byte {
 	return e.Code
 }
 
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *MapNotifyEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
-// Process the event.
-func (e *MapNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("MapNotifyEvent received", "sequence", e.Sequence, "sequence", e.Sequence, "window", e.Window, "event", e.Event, "overrideRedirect", e.OverrideRedirect)
-}
-
 // UnmapNotifyEvent represents an X11 UnmapNotify event.
 type UnmapNotifyEvent struct {
 	Event         WindowID
@@ -1464,15 +1146,4 @@ func newUnmapNotifyEvent(r *Reader) Event {
 // ID returns the event code.
 func (e *UnmapNotifyEvent) ID() byte {
 	return e.Code
-}
-
-// TargetWindow returns the ID of the window that is the target of the event.
-func (e *UnmapNotifyEvent) TargetWindow() WindowID {
-	return e.Event
-}
-
-// Process the event.
-func (e *UnmapNotifyEvent) Process(_conn *Conn) {
-	// TODO: Implement
-	slog.Info("UnmapNotifyEvent received", "sequence", e.Sequence, "window", e.Window, "event", e.Event, "fromConfigure", e.FromConfigure)
 }

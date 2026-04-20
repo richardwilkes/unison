@@ -127,7 +127,8 @@ func (d *x11SaveDialog) x11PrepExt() (ext string, allowed []string) {
 }
 
 func (d *x11SaveDialog) x11RunModal(cmd *exec.Cmd, splitOn string) bool {
-	wnd, err := NewWindow("", FloatingWindowOption(), UndecoratedWindowOption(), NotResizableWindowOption())
+	wnd, err := NewWindow("", WindowKindWindowOption(WindowKindDialog), FloatingWindowOption(),
+		UndecoratedWindowOption(), NotResizableWindowOption())
 	if err != nil {
 		errs.Log(err)
 	}

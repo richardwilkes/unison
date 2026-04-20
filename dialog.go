@@ -78,7 +78,7 @@ type Dialog struct {
 // always have te FloatingWindowOption() set.
 func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo, windowOptions ...WindowOption) (*Dialog, error) {
 	d := &Dialog{buttons: make(map[int]*buttonData)}
-	opts := []WindowOption{FloatingWindowOption()}
+	opts := []WindowOption{WindowKindWindowOption(WindowKindDialog), FloatingWindowOption()}
 	if len(windowOptions) > 0 {
 		opts = append(opts, windowOptions...)
 	}

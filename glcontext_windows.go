@@ -21,14 +21,10 @@ type apiGLContext struct {
 	rc w32.HGLRC
 }
 
-func (c *apiGLContext) apiCreate(wnd, share *Window, _transparent bool) error {
+func (c *apiGLContext) apiCreate(wnd *Window, _transparent bool) error {
 	dc := w32.GetDC(wnd.wnd.wnd)
 	if dc == 0 {
 		return errs.New("failed to get device context for window")
-	}
-	var shareCtx w32.HGLRC
-	if share != nil {
-		shareCtx = share.glCtx.rc
 	}
 	var pfd w32.PIXELFORMATDESCRIPTOR
 	count := w32.DescribePixelFormat(dc, 1, uint32(unsafe.Sizeof(pfd)), nil)
@@ -67,7 +63,7 @@ func (c *apiGLContext) apiCreate(wnd, share *Window, _transparent bool) error {
 			w32.WglMakeCurrent(0, 0)
 			w32.WglDeleteContext(fakeRC)
 		}()
-		rc := w32.WglCreateContextAttribsARB(dc, shareCtx, []int32{
+		rc := w32.WglCreateContextAttribsARB(dc, 0, []int32{
 			w32.WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
 			w32.WGL_CONTEXT_MINOR_VERSION_ARB, 2,
 			0,

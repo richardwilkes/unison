@@ -49,15 +49,15 @@ const (
 	AtomString
 	AtomVisualid
 	AtomWindow
-	AtomWmCommand
-	AtomWmHints
-	AtomWmClientMachine
-	AtomWmIconName
-	AtomWmIconSize
-	AtomWmName
-	AtomWmNormalHints
-	AtomWmSizeHints
-	AtomWmZoomHints
+	AtomWMCommand
+	AtomWMHints
+	AtomWMClientMachine
+	AtomWMIconName
+	AtomWMIconSize
+	AtomWMName
+	AtomWMNormalHints
+	AtomWMSizeHints
+	AtomWMZoomHints
 	AtomMinSpace
 	AtomNormSpace
 	AtomMaxSpace
@@ -82,64 +82,103 @@ const (
 	AtomFamilyName
 	AtomFullName
 	AtomCapHeight
-	AtomWmClass
-	AtomWmTransientFor
+	AtomWMClass
+	AtomWMTransientFor
 	AtomAny = AtomNone
 )
 
 // Atoms holds the Atom values for commonly used X11 Atoms that don't have predefined constants.
 type Atoms struct {
-	Clipboard            Atom
-	ClipboardIncremental Atom
-	ClipboardManager     Atom
-	ClipboardMultiple    Atom
-	ClipboardSaveTargets Atom
-	ClipboardSelection   Atom
-	ClipboardTargets     Atom
-	NetCurrentDesktop    Atom
-	NetWorkArea          Atom
-	Null                 Atom
-	Pair                 Atom
-	UTF8String           Atom
+	Clipboard              Atom
+	ClipboardIncremental   Atom
+	ClipboardManager       Atom
+	ClipboardMultiple      Atom
+	ClipboardSaveTargets   Atom
+	ClipboardSelection     Atom
+	ClipboardTargets       Atom
+	DnDActionCopy          Atom
+	DnDAware               Atom
+	DnDDrop                Atom
+	DnDEnter               Atom
+	DnDFinished            Atom
+	DnDLeave               Atom
+	DnDPosition            Atom
+	DnDSelection           Atom
+	DnDStatus              Atom
+	DndTypeList            Atom
+	MotifWMHints           Atom
+	NetActiveWindow        Atom
+	NetCurrentDesktop      Atom
+	NetFrameExtents        Atom
+	NetState               Atom
+	NetStateAbove          Atom
+	NetWMIconName          Atom
+	NetWMName              Atom
+	NetWMPing              Atom
+	NetWMWindowType        Atom
+	NetWMWindowTypeDialog  Atom
+	NetWMWindowTypeMenu    Atom
+	NetWMWindowTypeNormal  Atom
+	NetWMWindowTypeTooltip Atom
+	NetWorkArea            Atom
+	Null                   Atom
+	Pair                   Atom
+	TextURIList            Atom
+	UTF8String             Atom
+	WMDeleteWindow         Atom
+	WMPID                  Atom
+	WMProtocols            Atom
 }
 
 func (a *Atoms) init(c *Conn) error {
 	var err error
-	if a.Clipboard, err = c.InternAtom("CLIPBOARD", false); err != nil {
-		return err
-	}
-	if a.ClipboardIncremental, err = c.InternAtom("INCR", false); err != nil {
-		return err
-	}
-	if a.ClipboardManager, err = c.InternAtom("CLIPBOARD_MANAGER", false); err != nil {
-		return err
-	}
-	if a.ClipboardMultiple, err = c.InternAtom("MULTIPLE", false); err != nil {
-		return err
-	}
-	if a.ClipboardSaveTargets, err = c.InternAtom("SAVE_TARGETS", false); err != nil {
-		return err
-	}
-	if a.ClipboardSelection, err = c.InternAtom("CLIPBOARD_SELECTION", false); err != nil {
-		return err
-	}
-	if a.ClipboardTargets, err = c.InternAtom("TARGETS", false); err != nil {
-		return err
-	}
-	if a.NetCurrentDesktop, err = c.InternAtom("_NET_CURRENT_DESKTOP", false); err != nil {
-		return err
-	}
-	if a.NetWorkArea, err = c.InternAtom("_NET_WORKAREA", false); err != nil {
-		return err
-	}
-	if a.Null, err = c.InternAtom("NULL", false); err != nil {
-		return err
-	}
-	if a.Pair, err = c.InternAtom("ATOM_PAIR", false); err != nil {
-		return err
-	}
-	if a.UTF8String, err = c.InternAtom("UTF8_STRING", false); err != nil {
-		return err
+	for _, data := range []struct {
+		atom *Atom
+		name string
+	}{
+		{&a.Clipboard, "CLIPBOARD"},
+		{&a.ClipboardIncremental, "INCR"},
+		{&a.ClipboardManager, "CLIPBOARD_MANAGER"},
+		{&a.ClipboardMultiple, "MULTIPLE"},
+		{&a.ClipboardSaveTargets, "SAVE_TARGETS"},
+		{&a.ClipboardSelection, "CLIPBOARD_SELECTION"},
+		{&a.ClipboardTargets, "TARGETS"},
+		{&a.DnDActionCopy, "XdndActionCopy"},
+		{&a.DnDAware, "XdndAware"},
+		{&a.DnDDrop, "XdndDrop"},
+		{&a.DnDEnter, "XdndEnter"},
+		{&a.DnDFinished, "XdndFinished"},
+		{&a.DnDLeave, "XdndLeave"},
+		{&a.DnDPosition, "XdndPosition"},
+		{&a.DnDSelection, "XdndSelection"},
+		{&a.DnDStatus, "XdndStatus"},
+		{&a.DndTypeList, "XdndTypeList"},
+		{&a.MotifWMHints, "_MOTIF_WM_HINTS"},
+		{&a.NetActiveWindow, "_NET_ACTIVE_WINDOW"},
+		{&a.NetCurrentDesktop, "_NET_CURRENT_DESKTOP"},
+		{&a.NetFrameExtents, "_NET_FRAME_EXTENTS"},
+		{&a.NetState, "_NET_WM_STATE"},
+		{&a.NetStateAbove, "_NET_WM_STATE_ABOVE"},
+		{&a.NetWMIconName, "_NET_WM_ICON_NAME"},
+		{&a.NetWMName, "_NET_WM_NAME"},
+		{&a.NetWMPing, "_NET_WM_PING"},
+		{&a.NetWMWindowType, "_NET_WM_WINDOW_TYPE"},
+		{&a.NetWMWindowTypeDialog, "_NET_WM_WINDOW_TYPE_DIALOG"},
+		{&a.NetWMWindowTypeMenu, "_NET_WM_WINDOW_TYPE_MENU"},
+		{&a.NetWMWindowTypeNormal, "_NET_WM_WINDOW_TYPE_NORMAL"},
+		{&a.NetWMWindowTypeTooltip, "_NET_WM_WINDOW_TYPE_TOOLTIP"},
+		{&a.NetWorkArea, "_NET_WORKAREA"},
+		{&a.Null, "NULL"},
+		{&a.Pair, "ATOM_PAIR"},
+		{&a.TextURIList, "text/uri-list"},
+		{&a.UTF8String, "UTF8_STRING"},
+		{&a.WMDeleteWindow, "WM_DELETE_WINDOW"},
+		{&a.WMPID, "_NET_WM_PID"},
+		{&a.WMProtocols, "WM_PROTOCOLS"},
+	} {
+		if *data.atom, err = c.InternAtom(data.name, false); err != nil {
+			return err
+		}
 	}
 	return nil
 }

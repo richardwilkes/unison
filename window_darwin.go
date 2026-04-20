@@ -195,13 +195,13 @@ func macInitWindowCallbacks() {
 	}
 }
 
-func (w *Window) apiInit(cfg *WindowConfig) error {
+func (w *Window) apiInit() error {
 	styleMask := mac.WindowStyleMaskMiniaturizable
-	if cfg.Undecorated {
+	if w.undecorated {
 		styleMask |= mac.WindowStyleMaskBorderless
 	} else {
 		styleMask |= mac.WindowStyleMaskTitled | mac.WindowStyleMaskClosable
-		if !cfg.NotResizable {
+		if !w.notResizable {
 			styleMask |= mac.WindowStyleMaskResizable
 		}
 	}
@@ -209,22 +209,22 @@ func (w *Window) apiInit(cfg *WindowConfig) error {
 	if nw == 0 {
 		return errs.New("unable to create native window")
 	}
-	if cfg.NotResizable {
+	if w.notResizable {
 		nw.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenNone)
 	} else {
 		nw.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenPrimary | mac.WindowCollectionBehaviorManaged)
 	}
-	if cfg.Floating {
+	if w.floating {
 		nw.SetLevel(mac.WindowLevelFloating)
 	}
 	v := mac.NewView(nw)
-	if cfg.Transparent {
+	if w.transparent {
 		nw.SetTransparent()
 	}
 	nw.SetContentView(v)
 	nw.MakeFirstResponder(v)
-	if cfg.Title != "" {
-		nw.SetTitle(cfg.Title)
+	if w.title != "" {
+		nw.SetTitle(w.title)
 	}
 	delegate := mac.NewWindowDelegate(nw)
 	nw.SetDelegate(delegate)
@@ -233,7 +233,7 @@ func (w *Window) apiInit(cfg *WindowConfig) error {
 	nw.SetTabbingMode(mac.WindowTabbingModeDisallowed)
 	w.wnd.wnd = nw
 	w.wnd.view = v
-	return w.glCtx.apiCreate(w, cfg.Share, cfg.Transparent)
+	return w.glCtx.apiCreate(w, w.transparent)
 }
 
 func (w *Window) apiSetTitle(title string) {

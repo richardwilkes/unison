@@ -48,7 +48,7 @@ func findWindowByHWND(wnd windows.HWND) *Window {
 	return nil
 }
 
-func (w *Window) apiInit(cfg *WindowConfig) error {
+func (w *Window) apiInit() error {
 	style := w.windowStyle()
 	exStyle := w.windowExStyle()
 	if mainWndClass == 0 {
@@ -83,7 +83,7 @@ func (w *Window) apiInit(cfg *WindowConfig) error {
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
-	return w.glCtx.apiCreate(w, cfg.Share, cfg.Transparent)
+	return w.glCtx.apiCreate(w, w.transparent)
 }
 
 func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {

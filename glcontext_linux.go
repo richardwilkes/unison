@@ -20,7 +20,7 @@ type apiGLContext struct {
 	contextTag uint32
 }
 
-func (c *apiGLContext) apiCreate(wnd, share *Window, transparent bool) error {
+func (c *apiGLContext) apiCreate(wnd *Window, transparent bool) error {
 	screen := uint32(x11Conn.DefaultScreen)
 	cfgs := x11Conn.ExtGLX.GetFBConfigs(screen)
 	which := -1
@@ -77,11 +77,7 @@ func (c *apiGLContext) apiCreate(wnd, share *Window, transparent bool) error {
 	if !ok {
 		return errs.New("failed to retrieve framebuffer configuration ID for the OpenGL context")
 	}
-	var shareCtx x11.GLXContextID
-	if share != nil {
-		shareCtx = share.glCtx.context
-	}
-	if c.context = x11Conn.ExtGLX.CreateContextAttribsARB(fbCfgID, screen, shareCtx, true, []uint32{
+	if c.context = x11Conn.ExtGLX.CreateContextAttribsARB(fbCfgID, screen, 0, true, []uint32{
 		x11.GLXContextMajorVersionARB, 3,
 		x11.GLXContextMinorVersionARB, 2,
 		0,

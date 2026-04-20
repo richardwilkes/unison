@@ -96,6 +96,11 @@ func (w *Writer) Atom(v Atom) {
 	w.Uint32(uint32(v))
 }
 
+// ColorMapID appends a uint32 value representing a ColorMapID to the buffer using the Writer's byte order.
+func (w *Writer) ColorMapID(v ColorMapID) {
+	w.Uint32(uint32(v))
+}
+
 // CursorID appends a uint32 value representing a CursorID to the buffer using the Writer's byte order.
 func (w *Writer) CursorID(v CursorID) {
 	w.Uint32(uint32(v))
@@ -153,6 +158,13 @@ func (w *Writer) Int16(v int16) {
 	w.buffer = append(w.buffer, buf[:]...)
 }
 
+// Int32 appends an int32 value to the buffer using the Writer's byte order.
+func (w *Writer) Int32(v int32) {
+	var buf [4]byte
+	w.byteOrder.PutUint32(buf[:], uint32(v))
+	w.buffer = append(w.buffer, buf[:]...)
+}
+
 // Uint16 appends a uint16 value to the buffer using the Writer's byte order.
 func (w *Writer) Uint16(v uint16) {
 	var buf [2]byte
@@ -165,6 +177,13 @@ func (w *Writer) Uint32(v uint32) {
 	var buf [4]byte
 	w.byteOrder.PutUint32(buf[:], v)
 	w.buffer = append(w.buffer, buf[:]...)
+}
+
+// Uint16Slice appends a slice of uint16 values to the buffer using the Writer's byte order.
+func (w *Writer) Uint16Slice(v []uint16) {
+	for _, one := range v {
+		w.Uint16(one)
+	}
 }
 
 // Uint32Slice appends a slice of uint32 values to the buffer using the Writer's byte order.

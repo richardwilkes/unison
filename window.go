@@ -47,15 +47,17 @@ type DragData struct {
 	Offset          geom.Point
 }
 
-// WindowConfig holds the desired window configuration.
-type WindowConfig struct {
-	Share        *Window
-	Title        string
-	Undecorated  bool
-	NotResizable bool
-	Floating     bool
-	Transparent  bool
-}
+// WindowKind represents the kind of window, which can be used by the system to determine how to treat the window in
+// various ways, such as how to group it with other windows and what decorations to apply.
+type WindowKind byte
+
+// Possible values for WindowKind.
+const (
+	WindowKindNormal WindowKind = iota
+	WindowKindDialog
+	WindowKindMenu
+	WindowKindTooltip
+)
 
 // Window holds window information.
 type Window struct {
@@ -111,6 +113,7 @@ type Window struct {
 	lastWidth                   float32
 	lastHeight                  float32
 	lastKeyModifiers            Modifiers
+	kind                        WindowKind
 	valid                       bool
 	focused                     bool
 	transient                   bool
@@ -126,6 +129,14 @@ type Window struct {
 
 // WindowOption holds an option for window creation.
 type WindowOption func(*Window) error
+
+// WindowKindWindowOption sets the kind of the window, which can affect how the system treats it in various ways.
+func WindowKindWindowOption(kind WindowKind) WindowOption {
+	return func(w *Window) error {
+		w.kind = kind
+		return nil
+	}
+}
 
 // NotResizableWindowOption prevents the window from being resized by the user.
 func NotResizableWindowOption() WindowOption {
@@ -237,15 +248,8 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			return nil, err
 		}
 	}
-	cfg := WindowConfig{
-		Title:        title,
-		NotResizable: w.notResizable,
-		Undecorated:  w.undecorated,
-		Transparent:  w.transparent,
-		Floating:     w.floating,
-	}
 	windowList = append(windowList, w)
-	if err := w.apiInit(&cfg); err != nil {
+	if err := w.apiInit(); err != nil {
 		windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 		return nil, err
 	}

@@ -19,6 +19,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -178,6 +179,11 @@ const (
 	propertyDelete
 )
 
+const (
+	// MWMHintsDecorations specifies that the decorations field is defined.
+	MWMHintsDecorations = 2
+)
+
 type request struct {
 	sentChan       chan struct{}
 	failureChan    chan error
@@ -294,8 +300,8 @@ const (
 	WindowMaskCursor
 )
 
-// WindowAttributes holds the attributes that can be set on a window.
-type WindowAttributes struct {
+// WindowCreationAttributes holds the attributes that can be set on a window you are about to create.
+type WindowCreationAttributes struct {
 	BackgroundPixMap   PixMapID
 	BackgroundPixel    uint32
 	BorderPixMap       PixMapID
@@ -311,6 +317,86 @@ type WindowAttributes struct {
 	Cursor             CursorID
 	OverrideRedirect   bool
 	SaveUnder          bool
+}
+
+// Possible MapState values.
+const (
+	MapStateUnmapped = iota
+	MapStateUnviewable
+	MapStateViewable
+)
+
+// WindowAttributes holds the attributes that can be retrieved from a window.
+type WindowAttributes struct {
+	Visual             VisualID
+	Colormap           ColorMapID
+	BackingPlanes      uint32
+	BackingPixel       uint32
+	AllEventMasks      uint32
+	YourEventMask      uint32
+	Class              uint16
+	DoNotPropagateMask uint16
+	BackingStore       byte
+	BitGravity         byte
+	WinGravity         byte
+	SaveUnder          bool
+	MapIsInstalled     bool
+	MapState           byte
+	OverrideRedirect   bool
+}
+
+// Possible gravity values.
+const (
+	ForgetGravity = iota
+	NorthWestGravity
+	NorthGravity
+	NorthEastGravity
+	WestGravity
+	CenterGravity
+	EastGravity
+	SouthWestGravity
+	SouthGravity
+	SouthEastGravity
+	StaticGravity
+)
+
+// WindowSizeHintsMask represents the bitmask for specifying which size hints to set or get.
+type WindowSizeHintsMask uint32
+
+// Possible WindowSizeHintsMask values.
+const (
+	WSHMUSPosition WindowSizeHintsMask = 1 << iota
+	WSHMUSSize
+	WSHMPPosition
+	WSHMPSize
+	WSHMPMinSize
+	WSHMPMaxSize
+	WSHMPResizeInc
+	WSHMPAspect
+	WSHMPBaseSize
+	WSHMPWinGravity
+)
+
+// WindowSizeHints holds the size hints that can be set on a window.
+type WindowSizeHints struct {
+	Flags      WindowSizeHintsMask
+	X          int32
+	Y          int32
+	Width      uint32
+	Height     uint32
+	MinWidth   uint32
+	MinHeight  uint32
+	MaxWidth   uint32
+	MaxHeight  uint32
+	WidthInc   uint32
+	HeightInc  uint32
+	MinAspectX uint32
+	MinAspectY uint32
+	MaxAspectX uint32
+	MaxAspectY uint32
+	BaseWidth  uint32
+	BaseHeight uint32
+	WinGravity uint32
 }
 
 // GCValueMask represents the bitmask for specifying which GC attributes to set or get.
@@ -478,6 +564,17 @@ type KeyboardMapping struct {
 	KeySymsPerKeyCode byte
 }
 
+// Geometry represents the geometry of a drawable.
+type Geometry struct {
+	Root        WindowID
+	X           int16
+	Y           int16
+	Width       uint16
+	Height      uint16
+	BorderWidth uint16
+	Depth       byte
+}
+
 // Conn represents a connection to an X server.
 type Conn struct {
 	conn                     net.Conn
@@ -502,6 +599,8 @@ type Conn struct {
 	clipboard                string
 	pixmapFormats            []Format
 	Roots                    []Screen
+	eventQueue               []Event
+	eventQueueLock           sync.Mutex
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
 	requestMapLock           sync.RWMutex
@@ -516,6 +615,7 @@ type Conn struct {
 	releaseNumber            uint32
 	motionBufferSize         uint32
 	helperWindow             WindowID
+	cachedScale              float32
 	Atoms                    Atoms
 	protocolMajorVersion     uint16
 	protocolMinorVersion     uint16
@@ -564,7 +664,7 @@ func NewConn() (*Conn, error) {
 		return nil, errs.New("X11 extension RENDER 0.6 or higher is required")
 	}
 	if c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
-		WindowMaskEventMask, &WindowAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
+		WindowMaskEventMask, &WindowCreationAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
 		return nil, errs.New("failed to create helper window")
 	}
 	return &c, nil
@@ -917,11 +1017,13 @@ func (c *Conn) sendRequests() {
 				c.requestMapLock.Unlock()
 			}
 			close(req.sentChan)
-			if err := req.data.Send(c.conn); err != nil {
-				errs.Log(err)
-				xio.CloseIgnoringErrors(c.conn)
-				<-c.readClosed
-				return
+			if req.data != nil {
+				if err := req.data.Send(c.conn); err != nil {
+					errs.Log(err)
+					xio.CloseIgnoringErrors(c.conn)
+					<-c.readClosed
+					return
+				}
 			}
 		case <-c.readClosed:
 			return
@@ -942,6 +1044,15 @@ func (c *Conn) sendEvent(window WindowID, propagate bool, eventMask uint32, even
 // Sync causes all outstanding requests to be processed before returning.
 func (c *Conn) Sync() {
 	c.GetInputFocus() //nolint:errcheck // Don't care about errors here
+}
+
+// Flush all pending requests to the X server.
+func (c *Conn) Flush() {
+	if err := c.sendNewRequest(&request{
+		sentChan: make(chan struct{}),
+	}); err != nil {
+		errs.Log(err)
+	}
 }
 
 func (c *Conn) readResponses() {
@@ -1036,58 +1147,61 @@ func (c *Conn) PostEmptyEvent() {
 	c.events <- nil
 }
 
-// WaitEvents blocks until the next event is available, then processes it.
-func (c *Conn) WaitEvents() {
-	c.processEvent(<-c.events)
+func (c *Conn) queuedEvent(filter func(Event) bool) (Event, bool) {
+	c.eventQueueLock.Lock()
+	defer c.eventQueueLock.Unlock()
+	if len(c.eventQueue) == 0 {
+		return nil, false
+	}
+	for i, e := range c.eventQueue {
+		if filter == nil || filter(e) {
+			c.eventQueue = slices.Delete(c.eventQueue, i, i+1)
+			return e, true
+		}
+	}
+	return nil, false
 }
 
-func waitForEvent[T Event](c *Conn, f func(Event) T) T {
+// WaitEvents blocks until the next event is available. If the optional filter function is provided, only events for
+// which the filter returns true will be returned, and other events will be queued for later retrieval. nil may be
+// returned if the connection is closed.
+func (c *Conn) WaitEvents(filter func(Event) bool) Event {
+	e, ok := c.queuedEvent(filter)
+	if ok {
+		return e
+	}
 	for {
-		ev := <-c.events
-		if xreflect.IsNil(ev) {
-			var zero T
-			return zero
+		if e, ok = <-c.events; !ok {
+			return nil
 		}
-		if evt := f(ev); !xreflect.IsNil(evt) {
-			return evt
+		if filter == nil || filter(e) {
+			return e
 		}
-		c.processEvent(ev)
+		c.eventQueueLock.Lock()
+		c.eventQueue = append(c.eventQueue, e)
+		c.eventQueueLock.Unlock()
 	}
 }
 
-// PollEvents processes the next event if one is available.
-func (c *Conn) PollEvents() {
+// PollEvents processes the next event if one is available. If the optional filter function is provided, only events for
+// which the filter returns true will be returned, and other events will be queued for later retrieval. nil will be
+// returned if no events are currently available or if the connection is closed.
+func (c *Conn) PollEvents(filter func(Event) bool) Event {
+	e, ok := c.queuedEvent(filter)
+	if ok {
+		return e
+	}
 	select {
-	case ev := <-c.events:
-		c.processEvent(ev)
+	case e = <-c.events:
+		if filter == nil || filter(e) {
+			return e
+		}
+		c.eventQueueLock.Lock()
+		c.eventQueue = append(c.eventQueue, e)
+		c.eventQueueLock.Unlock()
 	default:
 	}
-}
-
-func pollForEvent[T Event](c *Conn, f func(Event) T) T {
-	for {
-		select {
-		case ev := <-c.events:
-			if xreflect.IsNil(ev) {
-				var zero T
-				return zero
-			}
-			if evt := f(ev); !xreflect.IsNil(evt) {
-				return evt
-			}
-			c.processEvent(ev)
-		default:
-			var zero T
-			return zero
-		}
-	}
-}
-
-func (c *Conn) processEvent(ev Event) {
-	if xreflect.IsNil(ev) {
-		return
-	}
-	ev.Process(c)
+	return nil
 }
 
 func (c *Conn) hasExtension(name string, versionOpCode byte, versionIs16Bit bool, majorMax, minorMax uint32) extensionInfo {
@@ -1164,7 +1278,7 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 }
 
 // CreateWindow creates a new window with the specified parameters and attributes.
-func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, mask WindowValueMask, attrs *WindowAttributes) WindowID {
+func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, mask WindowValueMask, attrs *WindowCreationAttributes) WindowID {
 	id := nextXID[WindowID](c)
 	if id != 0 {
 		var values []uint32
@@ -1366,21 +1480,21 @@ func (c *Conn) GetClipboardText() string {
 	c.clipboard = ""
 	for _, kind := range []Atom{c.Atoms.UTF8String, AtomString} {
 		c.convertSelection(c.helperWindow, c.Atoms.Clipboard, kind, c.Atoms.ClipboardSelection, 0)
-		sne := waitForEvent(c, func(evt Event) *SelectionNotifyEvent {
-			if e, ok := evt.(*SelectionNotifyEvent); ok && e.Requestor == c.helperWindow {
-				return e
+		ev := c.WaitEvents(func(e Event) bool {
+			if sne, ok := e.(*SelectionNotifyEvent); ok && sne.Requestor == c.helperWindow {
+				return true
 			}
-			return nil
+			return false
 		})
-		if sne != nil && sne.Property != AtomNone {
-			filter := func(evt Event) *PropertyNotifyEvent {
-				if e, ok := evt.(*PropertyNotifyEvent); ok && e.State == propertyNewValue &&
-					e.Window == sne.Requestor && e.Atom == sne.Property {
-					return e
+		if sne, ok := ev.(*SelectionNotifyEvent); ok && sne.Property != AtomNone {
+			filter := func(e Event) bool {
+				if pne, valid := e.(*PropertyNotifyEvent); valid && pne.State == propertyNewValue &&
+					pne.Window == sne.Requestor && pne.Atom == sne.Property {
+					return true
 				}
-				return nil
+				return false
 			}
-			pollForEvent(c, filter) // Ensure no existing PropertyNotifyEvent is already pending
+			c.PollEvents(filter) // Ensure no existing PropertyNotifyEvent is already pending
 			var propertyType Atom
 			var value []byte
 			if _, propertyType, value, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0, math.MaxUint32,
@@ -1392,7 +1506,7 @@ func (c *Conn) GetClipboardText() string {
 			case c.Atoms.ClipboardIncremental:
 				var buffer bytes.Buffer
 				for {
-					waitForEvent(c, filter)
+					c.WaitEvents(filter)
 					if _, _, value, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0,
 						math.MaxUint32, true); err != nil {
 						errs.Log(err)
@@ -1505,10 +1619,20 @@ func (c *Conn) DefaultVisual() VisualID {
 	return c.Roots[c.DefaultScreen].RootVisual
 }
 
+// DefaultDepth returns the root depth for the default screen.
+func (c *Conn) DefaultDepth() byte {
+	return c.Roots[c.DefaultScreen].RootDepth
+}
+
 // ContentScale returns the content scale factor for the default screen.
 func (c *Conn) ContentScale() (float32, error) {
+	if c.cachedScale != 0 {
+		return c.cachedScale, nil
+	}
 	format, actualPropertyType, value, err := c.GetProperty(c.RootWindow(), AtomResourceManager, AtomString, 0, 100_000_000, false)
 	if err != nil {
+		errs.Log(err)
+		c.cachedScale = 1
 		return 1, err
 	}
 	if format == 8 && actualPropertyType == AtomString {
@@ -1517,11 +1641,13 @@ func (c *Conn) ContentScale() (float32, error) {
 			if strings.HasPrefix(line, xftDPI) {
 				var dpi int
 				if dpi, err = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, xftDPI))); err == nil {
-					return float32(dpi) / 96, nil
+					c.cachedScale = float32(dpi) / 96
+					return c.cachedScale, nil
 				}
 			}
 		}
 	}
+	c.cachedScale = 1
 	return 1, nil
 }
 
@@ -1847,6 +1973,257 @@ func (c *Conn) GetKeyboardMapping() KeyboardMapping {
 	return km
 }
 
+// CreateColormap creates a new colormap with the specified visual, window, and allocation policy, and returns its
+// ColorMapID.
+func (c *Conn) CreateColormap(visual VisualID, window WindowID, alloc bool) ColorMapID {
+	id := nextXID[ColorMapID](c)
+	if id == 0 {
+		return 0
+	}
+	w := NewWriter(16)
+	w.Byte(opCreateColormap)
+	w.Bool(alloc)
+	w.Uint16(4)
+	w.ColorMapID(id)
+	w.WindowID(window)
+	w.VisualID(visual)
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+		return 0
+	}
+	return id
+}
+
+// FreeColormap frees the specified colormap.
+func (c *Conn) FreeColormap(colormapID ColorMapID) {
+	w := NewWriter(8)
+	w.Byte(opFreeColormap)
+	w.Zero(1)
+	w.Uint16(2)
+	w.ColorMapID(colormapID)
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// SetSizeHints sets the size hints data on the specified window for the given key atom.
+func (c *Conn) SetSizeHints(window WindowID, atom Atom, hints *WindowSizeHints) {
+	buf := NewWriter(72)
+	buf.Uint32(uint32(hints.Flags))
+	buf.Int32(hints.X)
+	buf.Int32(hints.Y)
+	buf.Uint32(hints.Width)
+	buf.Uint32(hints.Height)
+	buf.Uint32(hints.MinWidth)
+	buf.Uint32(hints.MinHeight)
+	buf.Uint32(hints.MaxWidth)
+	buf.Uint32(hints.MaxHeight)
+	buf.Uint32(hints.WidthInc)
+	buf.Uint32(hints.HeightInc)
+	buf.Uint32(hints.MinAspectX)
+	buf.Uint32(hints.MinAspectY)
+	buf.Uint32(hints.MaxAspectX)
+	buf.Uint32(hints.MaxAspectY)
+	buf.Uint32(hints.BaseWidth)
+	buf.Uint32(hints.BaseHeight)
+	buf.Uint32(hints.WinGravity)
+	c.ChangeProperty(window, atom, AtomWMSizeHints, 32, PropModeReplace, buf.Retrieve())
+}
+
+// MapWindow maps the specified window, making it visible on the screen if its parent is also mapped.
+func (c *Conn) MapWindow(window WindowID) {
+	w := NewWriter(8)
+	w.Byte(opMapWindow)
+	w.Zero(1)
+	w.Uint16(2)
+	w.WindowID(window)
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// UnmapWindow unmaps the specified window, making it invisible on the screen.
+func (c *Conn) UnmapWindow(window WindowID) {
+	w := NewWriter(8)
+	w.Byte(opUnmapWindow)
+	w.Zero(1)
+	w.Uint16(2)
+	w.WindowID(window)
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// TranslateCoordinates translates the specified source coordinates from the coordinate space of the source window to
+// that of the destination window. It returns the translated coordinates in the destination window's coordinate space,
+// as well as the ID of the child window that contains the translated coordinates, if any.
+func (c *Conn) TranslateCoordinates(src, dst WindowID, srcX, srcY int16) (dstX, dstY int16, sameScreen bool, child WindowID, err error) {
+	w := NewWriter(16)
+	w.Byte(opTranslateCoordinates)
+	w.Zero(1)
+	w.Uint16(4)
+	w.WindowID(src)
+	w.WindowID(dst)
+	w.Int16(srcX)
+	w.Int16(srcY)
+	err = c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(1)
+		sameScreen = r.Bool()
+		r.Skip(6)
+		child = r.WindowID()
+		dstX = r.Int16()
+		dstY = r.Int16()
+	}))
+	return dstX, dstY, sameScreen, child, err
+}
+
+// GetGeometry retrieves the geometry of the specified drawable.
+func (c *Conn) GetGeometry(drawable DrawableID) (Geometry, error) {
+	w := NewWriter(8)
+	w.Byte(opGetGeometry)
+	w.Zero(1)
+	w.Uint16(2)
+	w.DrawableID(drawable)
+	var g Geometry
+	err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(1)
+		g.Depth = r.Byte()
+		r.Skip(6)
+		g.Root = r.WindowID()
+		g.X = r.Int16()
+		g.Y = r.Int16()
+		g.Width = r.Uint16()
+		g.Height = r.Uint16()
+		g.BorderWidth = r.Uint16()
+		r.Skip(2)
+	}))
+	return g, err
+}
+
+// GetWindowAttributes retrieves the attributes of the specified window.
+func (c *Conn) GetWindowAttributes(window WindowID) (*WindowAttributes, error) {
+	w := NewWriter(8)
+	w.Byte(opGetWindowAttributes)
+	w.Zero(1)
+	w.Uint16(2)
+	w.WindowID(window)
+	var attrs WindowAttributes
+	err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(1)
+		attrs.BackingStore = r.Byte()
+		r.Skip(6)
+		attrs.Visual = r.VisualID()
+		attrs.Class = r.Uint16()
+		attrs.BitGravity = r.Byte()
+		attrs.WinGravity = r.Byte()
+		attrs.BackingPlanes = r.Uint32()
+		attrs.BackingPixel = r.Uint32()
+		attrs.SaveUnder = r.Bool()
+		attrs.MapIsInstalled = r.Bool()
+		attrs.MapState = r.Byte()
+		attrs.OverrideRedirect = r.Bool()
+		attrs.Colormap = r.ColorMapID()
+		attrs.AllEventMasks = r.Uint32()
+		attrs.YourEventMask = r.Uint32()
+		attrs.DoNotPropagateMask = r.Uint16()
+		r.Skip(2)
+	}))
+	return &attrs, err
+}
+
+// StackMode represents the possible stack modes for ConfigureWindow requests.
+type StackMode byte
+
+// Possible stack modes for ConfigureWindow requests.
+const (
+	StackModeAbove StackMode = iota
+	StackModeBelow
+	StackModeTopIf
+	StackModeBottomIf
+	StackModeOpposite
+)
+
+// ConfigureWindowValueMask holds the possible bitmask values for the ConfigureWindow request.
+type ConfigureWindowValueMask uint16
+
+// Possible bitmask values for ConfigureWindow requests.
+const (
+	ConfigureWindowMaskX ConfigureWindowValueMask = 1 << iota
+	ConfigureWindowMaskY
+	ConfigureWindowMaskWidth
+	ConfigureWindowMaskHeight
+	ConfigureWindowMaskBorderWidth
+	ConfigureWindowMaskSibling
+	ConfigureWindowMaskStackMode
+)
+
+// ConfigureWindowRequest represents the values that can be specified in a ConfigureWindow request.
+type ConfigureWindowRequest struct {
+	Sibling     WindowID
+	X           int16
+	Y           int16
+	Width       uint16
+	Height      uint16
+	BorderWidth uint16
+	StackMode   byte
+}
+
+func (c *ConfigureWindowRequest) values() []uint32 {
+	values := make([]uint32, 0, 7)
+	if c.X != 0 {
+		values = append(values, uint32(c.X))
+	}
+	if c.Y != 0 {
+		values = append(values, uint32(c.Y))
+	}
+	if c.Width != 0 {
+		values = append(values, uint32(c.Width))
+	}
+	if c.Height != 0 {
+		values = append(values, uint32(c.Height))
+	}
+	if c.BorderWidth != 0 {
+		values = append(values, uint32(c.BorderWidth))
+	}
+	if c.Sibling != 0 {
+		values = append(values, uint32(c.Sibling))
+	}
+	if c.StackMode != 0 {
+		values = append(values, uint32(c.StackMode))
+	}
+	return values
+}
+
+// ConfigureWindow configures the specified window by changing its position, size, border width, sibling, and/or stack
+// mode.
+func (c *Conn) ConfigureWindow(window WindowID, mask ConfigureWindowValueMask, req *ConfigureWindowRequest) {
+	values := req.values()
+	w := NewWriter(12 + len(values)*4)
+	w.Byte(opConfigureWindow)
+	w.Zero(1)
+	w.Uint16(3 + uint16(len(values)))
+	w.WindowID(window)
+	w.Uint32(uint32(mask))
+	w.Zero(2)
+	w.Uint32Slice(values)
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// FocusWindow sets the input focus to the specified window, making it the recipient of keyboard events.
+func (c *Conn) FocusWindow(window WindowID) {
+	var msg ClientMessageEvent
+	msg.Data32[0] = 1
+	msg.Window = window
+	msg.Type = c.Atoms.NetActiveWindow
+	msg.Format = 32
+	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+		errs.Log(err)
+	}
+	// TODO: Determine if we need to wait for a notification event to confirm focus was changed
+}
+
 // pushClipboardToManager checks if the helper window is currently the owner of the CLIPBOARD selection, and if so, it
 // converts the selection to the CLIPBOARD_MANAGER with the SAVE_TARGETS property. It then waits for events related to
 // this conversion, processing any SelectionRequestEvent or SelectionClearEvent that may occur during this time.
@@ -1859,32 +2236,35 @@ func (c *Conn) pushClipboardToManager() {
 		c.convertSelection(c.helperWindow, c.Atoms.ClipboardManager, c.Atoms.ClipboardSaveTargets, AtomNone, 0)
 		again := true
 		for again {
-			evt := waitForEvent(c, func(ev Event) Event {
-				switch e := ev.(type) {
+			if xreflect.IsNil(c.WaitEvents(func(e Event) bool {
+				switch ev := e.(type) {
 				case *SelectionNotifyEvent:
-					if e.Requestor == c.helperWindow {
-						return e
+					if ev.Requestor == c.helperWindow {
+						if ev.Target == c.Atoms.ClipboardSaveTargets {
+							again = false
+						}
+						return true
 					}
 				case *SelectionRequestEvent:
-					if e.Owner == c.helperWindow {
-						return e
+					if ev.Owner == c.helperWindow {
+						if err = c.sendEvent(ev.Requestor, false, 0, &SelectionNotifyEvent{
+							Time:      ev.Time,
+							Requestor: ev.Requestor,
+							Selection: ev.Selection,
+							Target:    ev.Target,
+							Property:  ev.writeTargetToProperty(c),
+						}); err != nil {
+							errs.Log(err)
+						}
+						return true
 					}
 				case *SelectionClearEvent:
-					if e.Owner == c.helperWindow {
-						return e
+					if ev.Owner == c.helperWindow {
+						return true
 					}
 				}
-				return nil
-			})
-			switch e := evt.(type) {
-			case *SelectionNotifyEvent:
-				if e.Target == c.Atoms.ClipboardSaveTargets {
-					again = false
-				}
-			case *SelectionRequestEvent:
-				c.processEvent(e)
-			case *SelectionClearEvent:
-			default:
+				return false
+			})) {
 				again = false
 			}
 		}
