@@ -318,6 +318,7 @@ func (e *ExtRender) CreatePicture(drawable DrawableID, format PictFormat, valueM
 	w.PictureID(id)
 	w.DrawableID(drawable)
 	w.Uint32(uint32(format))
+	w.Uint32(uint32(valueMask))
 	w.Uint32Slice(values)
 	if err := e.conn.sendNewRequest(newCheckedRequest(w)); err != nil {
 		errs.Log(err)
