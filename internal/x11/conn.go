@@ -1364,13 +1364,15 @@ func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWi
 }
 
 // DestroyWindow destroys the specified window.
-func (c *Conn) DestroyWindow(window WindowID) error {
+func (c *Conn) DestroyWindow(window WindowID) {
 	w := NewWriter(8)
 	w.Byte(opDestroyWindow)
 	w.Zero(1)
 	w.Uint16(2)
 	w.WindowID(window)
-	return c.sendNewRequest(newCheckedRequest(w))
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
 }
 
 // GetInputFocus returns the current input focus window and the revert-to value.
@@ -2269,9 +2271,7 @@ func (c *Conn) pushClipboardToManager() {
 			}
 		}
 	}
-	if err := c.DestroyWindow(c.helperWindow); err != nil {
-		errs.Log(err)
-	}
+	c.DestroyWindow(c.helperWindow)
 	c.helperWindow = 0
 }
 

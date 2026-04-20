@@ -285,16 +285,16 @@ func apiFillKeyCodes() {
 		xkLess:         KeyWorld1,
 	}
 	km := x11Conn.GetKeyboardMapping()
-	for i := x11Conn.MinKeyCode; i <= x11Conn.MaxKeyCode; i++ {
-		pos := int(i-x11Conn.MinKeyCode) * int(km.KeySymsPerKeyCode)
+	for i := int(x11Conn.MinKeyCode); i <= int(x11Conn.MaxKeyCode); i++ {
+		pos := (i - int(x11Conn.MinKeyCode)) * int(km.KeySymsPerKeyCode)
 		if km.KeySymsPerKeyCode > 1 {
 			if code, ok := secondary[km.KeySyms[pos+1]]; ok {
-				rawScanCodeToKeyCodeMap[int(i)] = code
+				rawScanCodeToKeyCodeMap[i] = code
 				continue
 			}
 		}
 		if code, ok := primary[km.KeySyms[pos]]; ok {
-			rawScanCodeToKeyCodeMap[int(i)] = code
+			rawScanCodeToKeyCodeMap[i] = code
 		}
 	}
 }
