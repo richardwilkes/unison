@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -82,110 +83,110 @@ func x11ProcessEvent(e x11.Event) {
 		if w := x11FindWindow(ev.Window); w != nil {
 			w.wnd.parent = ev.Parent
 		} else {
-			slog.Info("ReparentNotifyEvent for unknown window: %v", ev)
+			slog.Info("ReparentNotifyEvent for unknown window")
 		}
 	case *x11.KeyPressEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("KeyPressEvent: %v", ev)
+			slog.Info("KeyPressEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("KeyPressEvent for unknown window: %v", ev)
+			slog.Info("KeyPressEvent for unknown window")
 		}
 	case *x11.KeyReleaseEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("KeyReleaseEvent: %v", ev)
+			slog.Info("KeyReleaseEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("KeyReleaseEvent for unknown window: %v", ev)
+			slog.Info("KeyReleaseEvent for unknown window")
 		}
 	case *x11.ButtonPressEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("ButtonPressEvent: %v", ev)
+			slog.Info("ButtonPressEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("ButtonPressEvent for unknown window: %v", ev)
+			slog.Info("ButtonPressEvent for unknown window")
 		}
 	case *x11.ButtonReleaseEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("ButtonReleaseEvent: %v", ev)
+			slog.Info("ButtonReleaseEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("ButtonReleaseEvent for unknown window: %v", ev)
+			slog.Info("ButtonReleaseEvent for unknown window")
 		}
 	case *x11.EnterNotifyEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("EnterNotifyEvent: %v", ev)
+			slog.Info("EnterNotifyEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("EnterNotifyEvent for unknown window: %v", ev)
+			slog.Info("EnterNotifyEvent for unknown window")
 		}
 	case *x11.LeaveNotifyEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("LeaveNotifyEvent: %v", ev)
+			slog.Info("LeaveNotifyEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("LeaveNotifyEvent for unknown window: %v", ev)
+			slog.Info("LeaveNotifyEvent for unknown window")
 		}
 	case *x11.MotionNotifyEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("MotionNotifyEvent: %v", ev)
+			slog.Info("MotionNotifyEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("MotionNotifyEvent for unknown window: %v", ev)
+			slog.Info("MotionNotifyEvent for unknown window")
 		}
 	case *x11.ConfigureNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("ConfigureNotifyEvent: %v", ev)
+			slog.Info("ConfigureNotifyEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("ConfigureNotifyEvent for unknown window: %v", ev)
+			slog.Info("ConfigureNotifyEvent for unknown window")
 		}
 	case *x11.ClientMessageEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("ClientMessageEvent: %v", ev)
+			slog.Info("ClientMessageEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("ClientMessageEvent for unknown window: %v", ev)
+			slog.Info("ClientMessageEvent for unknown window")
 		}
 	case *x11.SelectionNotifyEvent:
-		slog.Info("SelectionNotifyEvent: %v", ev)
+		slog.Info("SelectionNotifyEvent", "event", ev)
 		// TODO: Implement
 	case *x11.FocusInEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("FocusInEvent: %v", ev)
+			slog.Info("FocusInEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("FocusInEvent for unknown window: %v", ev)
+			slog.Info("FocusInEvent for unknown window")
 		}
 	case *x11.FocusOutEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("FocusOutEvent: %v", ev)
+			slog.Info("FocusOutEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("FocusOutEvent for unknown window: %v", ev)
+			slog.Info("FocusOutEvent for unknown window")
 		}
 	case *x11.ExposeEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("ExposeEvent: %v", ev)
+			slog.Info("ExposeEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("ExposeEvent for unknown window: %v", ev)
+			slog.Info("ExposeEvent for unknown window")
 		}
 	case *x11.PropertyNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("PropertyNotifyEvent: %v", ev)
+			slog.Info("PropertyNotifyEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("PropertyNotifyEvent for unknown window: %v", ev)
+			slog.Info("PropertyNotifyEvent for unknown window")
 		}
 	case *x11.DestroyNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("DestroyNotifyEvent: %v", ev)
+			slog.Info("DestroyNotifyEvent", "event", ev)
 			// TODO: Implement
 		} else {
-			slog.Info("DestroyNotifyEvent for unknown window: %v", ev)
+			slog.Info("DestroyNotifyEvent for unknown window")
 		}
 	default:
-		slog.Info("Unknown event: %T", ev)
+		slog.Info(fmt.Sprintf("Unknown event: %T", ev))
 	}
 }
