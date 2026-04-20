@@ -175,8 +175,8 @@ const (
 
 // Constants for X11 property events.
 const (
-	propertyNewValue = iota
-	propertyDelete
+	PropertyNewValue = iota
+	PropertyDelete
 )
 
 const (
@@ -1494,7 +1494,7 @@ func (c *Conn) GetClipboardText() string {
 		})
 		if sne, ok := ev.(*SelectionNotifyEvent); ok && sne.Property != AtomNone {
 			filter := func(e Event) bool {
-				if pne, valid := e.(*PropertyNotifyEvent); valid && pne.State == propertyNewValue &&
+				if pne, valid := e.(*PropertyNotifyEvent); valid && pne.State == PropertyNewValue &&
 					pne.Window == sne.Requestor && pne.Atom == sne.Property {
 					return true
 				}
@@ -2083,6 +2083,16 @@ func (c *Conn) TranslateCoordinates(src, dst WindowID, srcX, srcY int16) (dstX, 
 	return dstX, dstY, sameScreen, child, err
 }
 
+// IsWindowVisible checks if the specified window is currently visible on the screen.
+func (c *Conn) IsWindowVisible(window WindowID) bool {
+	attr, err := c.GetWindowAttributes(window)
+	if err != nil {
+		errs.Log(err)
+		return false
+	}
+	return attr.MapState == MapStateViewable
+}
+
 // GetGeometry retrieves the geometry of the specified drawable.
 func (c *Conn) GetGeometry(drawable DrawableID) (Geometry, error) {
 	w := NewWriter(8)
@@ -2104,6 +2114,38 @@ func (c *Conn) GetGeometry(drawable DrawableID) (Geometry, error) {
 		r.Skip(10)
 	}))
 	return g, err
+}
+
+// GetWindowBorderWidths retrieves the widths of the borders of the specified window.
+func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right uint16) {
+	if !c.IsWindowVisible(window) {
+		var msg ClientMessageEvent
+		msg.Window = window
+		msg.Type = c.Atoms.NetRequestFrameExtents
+		msg.Format = 32
+		if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+			errs.Log(err)
+		} else {
+			c.WaitEvents(func(e Event) bool {
+				pne, ok := e.(*PropertyNotifyEvent)
+				return ok && pne.Window == window && pne.Atom == c.Atoms.NetFrameExtents &&
+					pne.State == PropertyNewValue
+			})
+		}
+	}
+	format, actualType, value, err := c.GetProperty(window, c.Atoms.NetFrameExtents, AtomCardinal, 0, 16, false)
+	if err != nil {
+		errs.Log(err)
+		return 0, 0, 0, 0
+	}
+	if format == 16 && actualType == AtomCardinal && len(value) >= 8 {
+		r := NewReader(value)
+		left = r.Uint16()
+		top = r.Uint16()
+		right = r.Uint16()
+		bottom = r.Uint16()
+	}
+	return top, left, bottom, right
 }
 
 // GetWindowAttributes retrieves the attributes of the specified window.

@@ -198,24 +198,6 @@ func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	return frameRect
 }
 
-func (w *Window) x11Border() (top, left, bottom, right uint16) {
-	if w.undecorated {
-		return 0, 0, 0, 0
-	}
-	// TODO: Make sure this works even when the window is not mapped. See window_linux.c:2219-2247 in old code
-	_, _, value, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetFrameExtents, x11.AtomCardinal, 0, 16, false)
-	if err != nil {
-		errs.Log(err)
-		return 0, 0, 0, 0
-	}
-	r := x11.NewReader(value)
-	left = r.Uint16()
-	top = r.Uint16()
-	right = r.Uint16()
-	bottom = r.Uint16()
-	return top, left, bottom, right
-}
-
 func (w *Window) apiSetContentRect(rect geom.Rect) {
 	scale := w.BackingScale()
 	rect.X *= scale.X
@@ -293,12 +275,7 @@ func (w *Window) apiAcquireFocus() {
 }
 
 func (w *Window) apiVisible() bool {
-	attr, err := x11Conn.GetWindowAttributes(w.wnd.id)
-	if err != nil {
-		errs.Log(err)
-		return false
-	}
-	return attr.MapState == x11.MapStateViewable
+	return x11Conn.IsWindowVisible(w.wnd.id)
 }
 
 func (w *Window) apiShow() {
@@ -341,6 +318,13 @@ func (w *Window) x11SetDecorated(decorated bool) {
 	buf.Zero(8)
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.MotifWMHints, x11Conn.Atoms.MotifWMHints, 32, x11.PropModeReplace,
 		buf.Retrieve())
+}
+
+func (w *Window) x11Border() (top, left, bottom, right uint16) {
+	if w.undecorated {
+		return 0, 0, 0, 0
+	}
+	return x11Conn.GetWindowBorderWidths(w.wnd.id)
 }
 
 func (w *Window) x11KeyCallback(_ *Window, key KeyCode, _ int, action Action, mods Modifiers) {
