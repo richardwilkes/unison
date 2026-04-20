@@ -320,7 +320,7 @@ func (w *Window) x11SetDecorated(decorated bool) {
 		buf.Retrieve())
 }
 
-func (w *Window) x11Border() (top, left, bottom, right uint16) {
+func (w *Window) x11Border() (top, left, bottom, right uint32) {
 	if w.undecorated {
 		return 0, 0, 0, 0
 	}

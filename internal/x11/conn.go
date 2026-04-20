@@ -2117,7 +2117,7 @@ func (c *Conn) GetGeometry(drawable DrawableID) (Geometry, error) {
 }
 
 // GetWindowBorderWidths retrieves the widths of the borders of the specified window.
-func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right uint16) {
+func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right uint32) {
 	if !c.IsWindowVisible(window) {
 		var msg ClientMessageEvent
 		msg.Window = window
@@ -2133,17 +2133,17 @@ func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right 
 			})
 		}
 	}
-	format, actualType, value, err := c.GetProperty(window, c.Atoms.NetFrameExtents, AtomCardinal, 0, 16, false)
+	format, actualType, value, err := c.GetProperty(window, c.Atoms.NetFrameExtents, AtomCardinal, 0, 32, false)
 	if err != nil {
 		errs.Log(err)
 		return 0, 0, 0, 0
 	}
-	if format == 16 && actualType == AtomCardinal && len(value) >= 8 {
+	if format == 32 && actualType == AtomCardinal && len(value) >= 8 {
 		r := NewReader(value)
-		left = r.Uint16()
-		top = r.Uint16()
-		right = r.Uint16()
-		bottom = r.Uint16()
+		left = r.Uint32()
+		right = r.Uint32()
+		top = r.Uint32()
+		bottom = r.Uint32()
 	}
 	return top, left, bottom, right
 }
@@ -2251,7 +2251,7 @@ func (c *Conn) ConfigureWindow(window WindowID, mask ConfigureWindowValueMask, r
 	w.Zero(1)
 	w.Uint16(3 + uint16(len(values)))
 	w.WindowID(window)
-	w.Uint32(uint32(mask))
+	w.Uint16(uint16(mask))
 	w.Zero(2)
 	w.Uint32Slice(values)
 	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
