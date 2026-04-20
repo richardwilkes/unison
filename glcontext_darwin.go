@@ -19,12 +19,12 @@ type apiGLContext struct {
 	ctx         mac.OpenGLContextRef
 }
 
-func (c *apiGLContext) apiCreate(wnd *Window, transparent bool) error {
+func (c *apiGLContext) apiCreate(wnd *Window) error {
 	pixFmt := mac.NewOpenGLPixelFormat()
 	if pixFmt == 0 {
 		return errs.New("failed to create OpenGL pixel format")
 	}
-	ctx := mac.NewOpenGLContext(wnd.wnd.view, pixFmt, 0, transparent)
+	ctx := mac.NewOpenGLContext(wnd.wnd.view, pixFmt, 0, wnd.transparent)
 	if ctx == 0 {
 		pixFmt.Release()
 		return errs.New("failed to create OpenGL context")

@@ -83,7 +83,7 @@ func (w *Window) apiInit() error {
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
-	return w.glCtx.apiCreate(w, w.transparent)
+	return nil
 }
 
 func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {

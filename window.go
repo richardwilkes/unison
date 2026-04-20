@@ -249,7 +249,11 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		}
 	}
 	windowList = append(windowList, w)
-	if err := w.apiInit(); err != nil {
+	err := w.apiInit()
+	if err == nil {
+		err = w.glCtx.apiCreate(w)
+	}
+	if err != nil {
 		windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 		return nil, err
 	}

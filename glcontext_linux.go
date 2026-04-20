@@ -20,7 +20,7 @@ type apiGLContext struct {
 	contextTag uint32
 }
 
-func (c *apiGLContext) apiCreate(wnd *Window, transparent bool) error {
+func (c *apiGLContext) apiCreate(wnd *Window) error {
 	screen := uint32(x11Conn.DefaultScreen)
 	cfgs := x11Conn.ExtGLX.GetFBConfigs(screen)
 	which := -1
@@ -54,7 +54,7 @@ func (c *apiGLContext) apiCreate(wnd *Window, transparent bool) error {
 		if stencilBits, ok := cfg.Property(x11.FBAttrStencilSize); !ok || stencilBits != 8 {
 			continue
 		}
-		if transparent {
+		if wnd.transparent {
 			if transparentType, ok := cfg.Property(x11.FBAttrTransparentType); ok && transparentType != 0 {
 				which = i
 				break

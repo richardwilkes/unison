@@ -21,7 +21,7 @@ type apiGLContext struct {
 	rc w32.HGLRC
 }
 
-func (c *apiGLContext) apiCreate(wnd *Window, _transparent bool) error {
+func (c *apiGLContext) apiCreate(wnd *Window) error {
 	dc := w32.GetDC(wnd.wnd.wnd)
 	if dc == 0 {
 		return errs.New("failed to get device context for window")

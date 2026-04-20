@@ -233,7 +233,7 @@ func (w *Window) apiInit() error {
 	nw.SetTabbingMode(mac.WindowTabbingModeDisallowed)
 	w.wnd.wnd = nw
 	w.wnd.view = v
-	return w.glCtx.apiCreate(w, w.transparent)
+	return nil
 }
 
 func (w *Window) apiSetTitle(title string) {
