@@ -167,8 +167,7 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.ExposeEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("ExposeEvent", "event", ev)
-			// TODO: Implement
+			w.draw()
 		} else {
 			slog.Info("ExposeEvent for unknown window")
 		}
