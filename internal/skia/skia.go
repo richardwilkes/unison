@@ -9,6 +9,15 @@
 
 package skia
 
+/*
+#include <stdlib.h>
+#include <string.h>
+#include "sk_capi.h"
+
+const gr_glinterface_t *createGoGLInterface(void);
+*/
+import "C"
+
 import (
 	"time"
 	"unsafe"
@@ -285,6 +294,10 @@ type MetaData struct {
 	Producer        string
 	RasterDPI       float32
 	EncodingQuality int32
+}
+
+func CreateGoGLInterface() GLInterface {
+	return C.createGoGLInterface()
 }
 
 func toCStr(s string) uintptr {

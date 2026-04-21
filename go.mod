@@ -4,7 +4,6 @@ go 1.26.0
 
 require (
 	github.com/OpenPrinting/goipp v1.2.0
-	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/toolbox/v2 v2.10.0
 	github.com/tc-hib/winres v0.3.1

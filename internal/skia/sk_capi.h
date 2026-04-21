@@ -206,7 +206,7 @@ extern "C"
 		GR_SURFACE_ORIGIN_BOTTOM_LEFT,
 	} gr_surface_origin_t;
 
-	// ===== Types from include/gpu/gl/GrGLTypes.h =====
+	// ===== Types from include/gpu/ganesh/gl/GrGLTypes.h =====
 
 	typedef struct
 	{
@@ -219,9 +219,14 @@ extern "C"
 
 	typedef struct gr_direct_context_t gr_direct_context_t;
 
-	// ===== Types from include/gpu/gl/GrGLInterface.h =====
+	// ===== Types from include/gpu/ganesh/gl/GrGLInterface.h =====
 
 	typedef struct gr_glinterface_t gr_glinterface_t;
+	typedef void(*gr_glfunc_ptr)(void);
+
+	// ===== Types from include/gpu/ganesh/gl/GrGLAssembleInterface.h =====
+
+	typedef gr_glfunc_ptr (*gr_glget_proc)(void *ctx, const char *name);
 
 	// ===== Types from include/gpu/GrBackendSurface.h =====
 
@@ -654,7 +659,10 @@ extern "C"
 	SK_C_API void gr_direct_context_reset_gl_texture_bindings(gr_direct_context_t *context);
 	SK_C_API void gr_direct_context_unref(const gr_direct_context_t *context);
 
-	// ===== Functions from include/gpu/gl/GrGLInterface.h =====
+	// ===== Functions from include/gpu/ganesh/gl/GrGLAssembleInterface.h =====
+	SK_C_API const gr_glinterface_t *gr_glmake_assembled_interface(void *ctx, gr_glget_proc get);
+
+	// ===== Functions from include/gpu/ganesh/gl/GrGLInterface.h =====
 	SK_C_API const gr_glinterface_t *gr_glinterface_create_native_interface(void);
 	SK_C_API void gr_glinterface_unref(const gr_glinterface_t *intf);
 
@@ -747,7 +755,6 @@ extern "C"
 	SK_C_API sk_typeface_t *sk_fontmgr_match_family_style(sk_font_mgr_t *fontmgr, const char *familyName, sk_font_style_t *style);
 	SK_C_API sk_typeface_t *sk_fontmgr_match_family_style_character(sk_font_mgr_t *fontmgr, const char *familyName, sk_font_style_t *style, const char **bcp47, int bcp47Count, int32_t character);
 	SK_C_API sk_font_mgr_t *sk_fontmgr_ref_default(void);
-
 	SK_C_API sk_typeface_t *sk_fontstyleset_create_typeface(sk_font_style_set_t *fss, int index);
 	SK_C_API int sk_fontstyleset_get_count(sk_font_style_set_t *fss);
 	SK_C_API void sk_fontstyleset_get_style(sk_font_style_set_t *fss, int index, sk_font_style_t *fs, sk_string_t *style);
@@ -812,7 +819,6 @@ extern "C"
 	SK_C_API void sk_maskfilter_unref(sk_mask_filter_t *filter);
 
 	// ===== Functions from include/core/SkPaint.h =====
-
 	SK_C_API bool sk_paint_equivalent(sk_paint_t *cpaint, sk_paint_t *other);
 	SK_C_API sk_paint_t *sk_paint_clone(sk_paint_t *cpaint);
 	SK_C_API void sk_paint_delete(sk_paint_t *cpaint);
@@ -951,7 +957,6 @@ extern "C"
 	SK_C_API void sk_textblob_builder_delete(sk_text_blob_builder_t *builder);
 	SK_C_API sk_text_blob_t *sk_textblob_builder_make(sk_text_blob_builder_t *builder);
 	SK_C_API sk_text_blob_builder_t *sk_textblob_builder_new(void);
-
 	SK_C_API void sk_textblob_get_bounds(const sk_text_blob_t *blob, sk_rect_t *bounds);
 	SK_C_API int sk_textblob_get_intercepts(const sk_text_blob_t *blob, const float bounds[2], float intervals[], const sk_paint_t *paint);
 	SK_C_API sk_text_blob_t *sk_textblob_make_from_text(const void *text, size_t byteLength, const sk_font_t *font, sk_text_encoding_t encoding);
@@ -965,14 +970,12 @@ extern "C"
 	SK_C_API void sk_typeface_unref(sk_typeface_t *typeface);
 
 	// ===== Functions from include/core/SkStream.h =====
-
 	SK_C_API sk_dynamic_memory_wstream_t *sk_dynamic_memory_wstream_new(void);
 	SK_C_API sk_wstream_t *sk_dynamic_memory_wstream_as_wstream(sk_dynamic_memory_wstream_t *stream);
 	SK_C_API bool sk_dynamic_memory_wstream_write(sk_dynamic_memory_wstream_t *stream, const void *buffer, size_t size);
 	SK_C_API size_t sk_dynamic_memory_wstream_bytes_written(sk_dynamic_memory_wstream_t *stream);
 	SK_C_API size_t sk_dynamic_memory_wstream_read(sk_dynamic_memory_wstream_t *stream, void *buffer, size_t offset, size_t size);
 	SK_C_API void sk_dynamic_memory_wstream_delete(sk_dynamic_memory_wstream_t *stream);
-
 	SK_C_API sk_file_wstream_t *sk_file_wstream_new(const char *path);
 	SK_C_API sk_wstream_t *sk_file_wstream_as_wstream(sk_file_wstream_t *stream);
 	SK_C_API bool sk_file_wstream_write(sk_file_wstream_t *stream, const void *buffer, size_t size);
