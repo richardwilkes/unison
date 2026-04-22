@@ -63,7 +63,7 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 			which = i
 			break
 		}
-		if maybe != -1 {
+		if maybe == -1 {
 			maybe = i
 		}
 	}
@@ -80,7 +80,7 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 	if c.context = x11Conn.ExtGLX.CreateContextAttribsARB(fbCfgID, screen, 0, true, []uint32{
 		x11.GLXContextMajorVersionARB, 3,
 		x11.GLXContextMinorVersionARB, 2,
-		0,
+		0, 0,
 	}); c.context == 0 {
 		return errs.New("failed to create OpenGL context")
 	}
@@ -108,6 +108,7 @@ func (c *apiGLContext) apiDestroy() {
 	if c.context != 0 {
 		x11Conn.ExtGLX.DestroyContext(c.context)
 		c.context = 0
+		c.contextTag = 0
 	}
 }
 

@@ -231,9 +231,9 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			width := float32(lParam & 0xFFFF)
 			height := float32((lParam >> 16) & 0xFFFF)
 			if width != w.lastWidth || height != w.lastHeight {
-				w.resized()
 				w.lastWidth = width
 				w.lastHeight = height
+				w.resized()
 			}
 			return 0
 		case w32.WM_MOVE:

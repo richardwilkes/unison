@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/internal/x11"
 )
@@ -82,110 +83,123 @@ func x11ProcessEvent(e x11.Event) {
 	case *x11.ReparentNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
 			w.wnd.parent = ev.Parent
-		} else {
-			slog.Info("ReparentNotifyEvent for unknown window")
 		}
 	case *x11.KeyPressEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
 			slog.Info("KeyPressEvent", "event", ev)
 			// TODO: Implement
-		} else {
-			slog.Info("KeyPressEvent for unknown window")
 		}
 	case *x11.KeyReleaseEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
 			slog.Info("KeyReleaseEvent", "event", ev)
 			// TODO: Implement
-		} else {
-			slog.Info("KeyReleaseEvent for unknown window")
 		}
 	case *x11.ButtonPressEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
 			slog.Info("ButtonPressEvent", "event", ev)
 			// TODO: Implement
-		} else {
-			slog.Info("ButtonPressEvent for unknown window")
 		}
 	case *x11.ButtonReleaseEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
 			slog.Info("ButtonReleaseEvent", "event", ev)
 			// TODO: Implement
-		} else {
-			slog.Info("ButtonReleaseEvent for unknown window")
 		}
 	case *x11.EnterNotifyEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("EnterNotifyEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("EnterNotifyEvent for unknown window")
+			w.apiUpdateCursorImage()
+			w.mouseEnter(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)), w.lastKeyModifiers)
 		}
 	case *x11.LeaveNotifyEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("LeaveNotifyEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("LeaveNotifyEvent for unknown window")
+			w.apiUpdateCursorImage()
+			w.mouseExit()
 		}
 	case *x11.MotionNotifyEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("MotionNotifyEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("MotionNotifyEvent for unknown window")
+			w.nativeMouseMoved(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
 		}
 	case *x11.ConfigureNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("ConfigureNotifyEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("ConfigureNotifyEvent for unknown window")
+			if float32(ev.Width) != w.lastWidth || float32(ev.Height) != w.lastHeight {
+				w.lastWidth = float32(ev.Width)
+				w.lastHeight = float32(ev.Height)
+				w.resized()
+			}
+			x := ev.X
+			y := ev.Y
+			if w.wnd.parent != x11Conn.RootWindow() {
+				var err error
+				if x, y, _, _, err = x11Conn.TranslateCoordinates(w.wnd.parent, x11Conn.RootWindow(), x, y); err != nil {
+					errs.Log(err)
+					return
+				}
+			}
+			if float32(x) != w.wnd.lastX || float32(y) != w.wnd.lastY {
+				w.wnd.lastX = float32(x)
+				w.wnd.lastY = float32(y)
+				w.moved()
+			}
 		}
 	case *x11.ClientMessageEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("ClientMessageEvent", "event", ev)
+			switch ev.Type {
+			case x11.AtomNone:
+				return
+			case x11Conn.Atoms.WMProtocols:
+				switch x11.Atom(ev.Data32[0]) {
+				case x11.AtomNone:
+					return
+				case x11Conn.Atoms.WMDeleteWindow:
+					w.nativeRequestClose()
+				case x11Conn.Atoms.NetWMPing:
+					x11Conn.RespondToPing()
+				default:
+					slog.Info(fmt.Sprintf("ClientMessageEvent with unhandled protocol: %d", ev.Data32[0]))
+				}
+			case x11Conn.Atoms.DnDEnter:
 			// TODO: Implement
-		} else {
-			slog.Info("ClientMessageEvent for unknown window")
+			case x11Conn.Atoms.DnDDrop:
+			// TODO: Implement
+			case x11Conn.Atoms.DnDPosition:
+			// TODO: Implement
+			default:
+				slog.Info(fmt.Sprintf("ClientMessageEvent with unhandled type: %d", ev.Type))
+				return
+			}
 		}
 	case *x11.SelectionNotifyEvent:
 		slog.Info("SelectionNotifyEvent", "event", ev)
 		// TODO: Implement
 	case *x11.FocusInEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("FocusInEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("FocusInEvent for unknown window")
+			if ev.Mode == x11.NotifyGrab || ev.Mode == x11.NotifyUngrab {
+				return
+			}
+			w.gainedFocus()
 		}
 	case *x11.FocusOutEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("FocusOutEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("FocusOutEvent for unknown window")
+			if ev.Mode == x11.NotifyGrab || ev.Mode == x11.NotifyUngrab {
+				return
+			}
+			w.lostFocus()
+			// TODO: Old code for Linux cleared its internal flags for key and button pressed states
 		}
 	case *x11.ExposeEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
 			w.draw()
-		} else {
-			slog.Info("ExposeEvent for unknown window")
 		}
 	case *x11.PropertyNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("PropertyNotifyEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("PropertyNotifyEvent for unknown window")
+			if ev.State != x11.PropertyNewValue {
+				return
+			}
+			switch ev.Atom {
+			case x11Conn.Atoms.WMState:
+				// TODO: Implement
+			case x11Conn.Atoms.NetState:
+				// TODO: Implement
+			}
 		}
-	case *x11.DestroyNotifyEvent:
-		if w := x11FindWindow(ev.Window); w != nil {
-			slog.Info("DestroyNotifyEvent", "event", ev)
-			// TODO: Implement
-		} else {
-			slog.Info("DestroyNotifyEvent for unknown window")
-		}
-	default:
-		slog.Info(fmt.Sprintf("Unknown event: %T", ev))
 	}
 }

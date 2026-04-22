@@ -22,6 +22,8 @@ type apiWindow struct {
 	id       x11.WindowID
 	parent   x11.WindowID
 	colorMap x11.ColorMapID
+	lastX    float32
+	lastY    float32
 }
 
 func x11FindWindow(id x11.WindowID) *Window {
@@ -283,8 +285,10 @@ func (w *Window) apiShow() {
 		return
 	}
 	x11Conn.MapWindow(w.wnd.id)
-	x11Conn.Flush()
-	// TODO: We may need to wait on a VisibilityNotify event here instead
+	x11Conn.WaitEvents(func(e x11.Event) bool {
+		ev, ok := e.(*x11.VisibilityNotifyEvent)
+		return ok && ev.Window == w.wnd.id
+	})
 }
 
 func (w *Window) apiHide() {

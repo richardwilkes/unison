@@ -1281,6 +1281,25 @@ func (c *Conn) InternAtom(name string, onlyIfExists bool) (Atom, error) {
 	return atom, err
 }
 
+// GetAtomName returns the name of the specified Atom.
+func (c *Conn) GetAtomName(atom Atom) (string, error) {
+	w := NewWriter(8)
+	w.Byte(opGetAtomName)
+	w.Zero(1)
+	w.Uint16(2)
+	w.Atom(atom)
+	var name string
+	if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(8)
+		length := r.Uint16()
+		r.Skip(22)
+		name = r.String(int(length))
+	})); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
 // CreateWindow creates a new window with the specified parameters and attributes.
 func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, mask WindowValueMask, attrs *WindowCreationAttributes) WindowID {
 	id := nextXID[WindowID](c)
@@ -2091,6 +2110,17 @@ func (c *Conn) IsWindowVisible(window WindowID) bool {
 		return false
 	}
 	return attr.MapState == MapStateViewable
+}
+
+// RespondToPing sends a ClientMessage event to the root window in response to a ping request, allowing the window
+// manager to determine that the client is still responsive. This is typically used in response to a _NET_WM_PING
+// message sent by the window manager to check if the client is alive.
+func (c *Conn) RespondToPing() {
+	var msg ClientMessageEvent
+	msg.Window = c.RootWindow()
+	if err := c.sendEvent(msg.Window, false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+		errs.Log(err)
+	}
 }
 
 // GetGeometry retrieves the geometry of the specified drawable.

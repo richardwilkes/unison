@@ -544,6 +544,14 @@ func (e *ExposeEvent) ID() byte {
 	return e.Code
 }
 
+// Possible values for the FocusEvent mode.
+const (
+	NotifyNormal = iota
+	NotifyGrab
+	NotifyUngrab
+	NotifyWhileGrabbed
+)
+
 // FocusEvent represents an X11 generic focus event.
 type FocusEvent struct {
 	Window   WindowID

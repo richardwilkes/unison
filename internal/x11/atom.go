@@ -129,6 +129,7 @@ type Atoms struct {
 	WMDeleteWindow         Atom
 	WMPID                  Atom
 	WMProtocols            Atom
+	WMState                Atom
 }
 
 func (a *Atoms) init(c *Conn) error {
@@ -177,6 +178,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.WMDeleteWindow, "WM_DELETE_WINDOW"},
 		{&a.WMPID, "_NET_WM_PID"},
 		{&a.WMProtocols, "WM_PROTOCOLS"},
+		{&a.WMState, "WM_STATE"},
 	} {
 		if *data.atom, err = c.InternAtom(data.name, false); err != nil {
 			return err
