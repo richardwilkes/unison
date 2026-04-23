@@ -93,7 +93,7 @@ func (s *surface) dispose() {
 
 func defaultSkiaGL() skia.GLInterface {
 	if skiaGL == nil {
-		skiaGL = skia.CreateGoGLInterface()
+		skiaGL = skia.GLInterfaceCreateNativeInterface()
 	}
 	return skiaGL
 }
