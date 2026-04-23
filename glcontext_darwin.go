@@ -38,6 +38,10 @@ func (c *apiGLContext) apiMakeCurrent() {
 	c.ctx.MakeCurrent()
 }
 
+func (c *apiGLContext) apiReleaseCurrent() {
+	mac.ClearOpenGLCurrentContext()
+}
+
 func (c *apiGLContext) apiSwapBuffers() {
 	c.ctx.FlushBuffer()
 }
@@ -51,8 +55,4 @@ func (c *apiGLContext) apiDestroy() {
 		c.pixelFormat.Release()
 		c.pixelFormat = 0
 	}
-}
-
-func apiClearOpenGLCurrentContext() {
-	mac.ClearOpenGLCurrentContext()
 }

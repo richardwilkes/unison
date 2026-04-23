@@ -358,13 +358,16 @@ func (w *Window) apiHide() {
 }
 
 func (w *Window) apiDestroy() {
-	w.wnd.wnd.OrderOut()
 	w.glCtx.apiDestroy()
-	delegate := w.wnd.wnd.Delegate()
-	w.wnd.wnd.SetDelegate(0)
-	delegate.Release()
-	w.wnd.view.Release()
-	w.wnd.wnd.Close()
-	w.wnd.wnd = 0
+	if w.wnd.wnd != 0 {
+		w.wnd.wnd.OrderOut()
+		if delegate := w.wnd.wnd.Delegate(); delegate != 0 {
+			w.wnd.wnd.SetDelegate(0)
+			delegate.Release()
+		}
+		w.wnd.view.Release()
+		w.wnd.wnd.Close()
+		w.wnd.wnd = 0
+	}
 	apiPollEvents()
 }

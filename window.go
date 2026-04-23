@@ -100,8 +100,8 @@ type Window struct {
 	data                        map[string]any
 	title                       string
 	titleIcons                  []*Image
-	wnd                         apiWindow
 	glCtx                       apiGLContext
+	wnd                         apiWindow
 	lastDrawDuration            time.Duration
 	tooltipSequence             int
 	modalResultCode             int
@@ -254,6 +254,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 		err = w.glCtx.apiCreate(w)
 	}
 	if err != nil {
+		w.apiDestroy()
 		windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
 		return nil, err
 	}
@@ -482,7 +483,7 @@ func (w *Window) destroy() {
 		return
 	}
 	if w == wndWithCurrentCtx {
-		apiClearOpenGLCurrentContext()
+		w.glCtx.apiReleaseCurrent()
 		wndWithCurrentCtx = nil
 	}
 	w.apiDestroy()

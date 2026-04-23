@@ -82,6 +82,10 @@ func (c *apiGLContext) apiMakeCurrent() {
 	w32.WglMakeCurrent(c.dc, c.rc)
 }
 
+func (c *apiGLContext) apiReleaseCurrent() {
+	w32.WglMakeCurrent(0, 0)
+}
+
 func (c *apiGLContext) apiSwapBuffers() {
 	w32.SwapBuffers(c.dc)
 }
@@ -91,8 +95,4 @@ func (c *apiGLContext) apiDestroy() {
 		w32.WglDeleteContext(c.rc)
 		c.rc = 0
 	}
-}
-
-func apiClearOpenGLCurrentContext() {
-	w32.WglMakeCurrent(0, 0)
 }

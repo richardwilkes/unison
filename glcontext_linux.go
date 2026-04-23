@@ -15,103 +15,63 @@ import (
 )
 
 type apiGLContext struct {
-	window     x11.GLXWindowID
-	context    x11.GLXContextID
-	contextTag uint32
+	glx     *x11.GLX
+	context x11.GLXContext
+	window  x11.GLXWindow
+	visual  x11.VisualID
+	depth   byte
+}
+
+func (c *apiGLContext) x11PrepareWindow(wnd *Window) error {
+	var err error
+	if c.glx, err = x11Conn.NewGLX(wnd.transparent); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *apiGLContext) apiCreate(wnd *Window) error {
-	screen := uint32(x11Conn.DefaultScreen)
-	cfgs := x11Conn.ExtGLX.GetFBConfigs(screen)
-	which := -1
-	maybe := -1
-	for i := range cfgs {
-		cfg := &cfgs[i]
-		if renderType, ok := cfg.Property(x11.FBAttrRenderType); !ok || renderType&x11.RenderTypeRGBABit == 0 {
-			continue
-		}
-		if drawableType, ok := cfg.Property(x11.FBAttrDrawableType); !ok || drawableType&x11.DrawableTypeWindowBit == 0 {
-			continue
-		}
-		if doubleBuffered, ok := cfg.Property(x11.FBAttrDoubleBuffer); !ok || doubleBuffered == 0 {
-			continue
-		}
-		if redBits, ok := cfg.Property(x11.FBAttrRedSize); !ok || redBits != 8 {
-			continue
-		}
-		if greenBits, ok := cfg.Property(x11.FBAttrGreenSize); !ok || greenBits != 8 {
-			continue
-		}
-		if blueBits, ok := cfg.Property(x11.FBAttrBlueSize); !ok || blueBits != 8 {
-			continue
-		}
-		if alphaBits, ok := cfg.Property(x11.FBAttrAlphaSize); !ok || alphaBits != 8 {
-			continue
-		}
-		if depthBits, ok := cfg.Property(x11.FBAttrDepthSize); !ok || depthBits != 24 {
-			continue
-		}
-		if stencilBits, ok := cfg.Property(x11.FBAttrStencilSize); !ok || stencilBits != 8 {
-			continue
-		}
-		if wnd.transparent {
-			if transparentType, ok := cfg.Property(x11.FBAttrTransparentType); ok && transparentType != 0 {
-				which = i
-				break
-			}
-		} else {
-			which = i
-			break
-		}
-		if maybe == -1 {
-			maybe = i
-		}
+	if c.glx == nil {
+		return errs.New("failed to prepare GLX resources")
 	}
-	if which == -1 {
-		which = maybe
-	}
-	if which == -1 {
-		return errs.New("failed to find suitable framebuffer configuration for the OpenGL context")
-	}
-	fbCfgID, ok := cfgs[which].Property(x11.FBAttrFBConfigID)
-	if !ok {
-		return errs.New("failed to retrieve framebuffer configuration ID for the OpenGL context")
-	}
-	if c.context = x11Conn.ExtGLX.CreateContextAttribsARB(fbCfgID, screen, 0, true, []uint32{
-		x11.GLXContextMajorVersionARB, 3,
-		x11.GLXContextMinorVersionARB, 2,
-		0, 0,
-	}); c.context == 0 {
+	c.context = c.glx.CreateContext()
+	if c.context == nil {
 		return errs.New("failed to create OpenGL context")
 	}
-	if c.window = x11Conn.ExtGLX.CreateWindow(fbCfgID, screen, wnd.wnd.id, nil); c.window == 0 {
-		x11Conn.ExtGLX.DestroyContext(c.context)
-		c.context = 0
+	x11Conn.Flush()
+	c.window = c.glx.CreateWindow(wnd.wnd.id)
+	if c.window == 0 {
+		c.glx.DestroyContext(c.context)
 		return errs.New("failed to create GLX window for the OpenGL context")
 	}
 	return nil
 }
 
 func (c *apiGLContext) apiMakeCurrent() {
-	c.contextTag = x11Conn.ExtGLX.MakeCurrent(c.window, c.context, c.contextTag)
+	c.glx.MakeCurrent(c.window, c.context)
+}
+
+func (c *apiGLContext) apiReleaseCurrent() {
+	c.glx.ReleaseCurrent()
 }
 
 func (c *apiGLContext) apiSwapBuffers() {
-	x11Conn.ExtGLX.SwapBuffers(c.window, c.contextTag)
+	c.glx.SwapBuffers(c.window)
 }
 
 func (c *apiGLContext) apiDestroy() {
 	if c.window != 0 {
-		x11Conn.ExtGLX.DestroyWindow(c.window)
+		c.glx.DestroyWindow(c.window)
 		c.window = 0
 	}
-	if c.context != 0 {
-		x11Conn.ExtGLX.DestroyContext(c.context)
-		c.context = 0
-		c.contextTag = 0
+	if c.context != nil {
+		c.glx.DestroyContext(c.context)
+		c.context = nil
 	}
-}
-
-func apiClearOpenGLCurrentContext() {
-	x11Conn.ExtGLX.MakeCurrent(0, 0, 0)
+	if c.glx != nil {
+		c.glx.Close()
+		c.glx = nil
+	}
+	c.visual = 0
+	c.depth = 0
 }

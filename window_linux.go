@@ -36,13 +36,21 @@ func x11FindWindow(id x11.WindowID) *Window {
 }
 
 func (w *Window) apiInit() error {
+	if err := w.glCtx.x11PrepareWindow(w); err != nil {
+		return err
+	}
 	w.wnd.parent = x11Conn.RootWindow()
 	visual := x11Conn.DefaultVisual()
+	depth := x11Conn.DefaultDepth()
+	if w.glCtx.visual != 0 {
+		visual = w.glCtx.visual
+		depth = w.glCtx.depth
+	}
 	if w.wnd.colorMap = x11Conn.CreateColormap(visual, w.wnd.parent, false); w.wnd.colorMap == 0 {
 		return errs.New("failed to create X11 color map for window")
 	}
 	if w.wnd.id = x11Conn.CreateWindow(w.wnd.parent, 0, 0, 1, 1, 0, x11.WindowClassInputOutput,
-		x11Conn.DefaultDepth(), visual, x11.WindowMaskBorderPixel|x11.WindowMaskColorMap|x11.WindowMaskEventMask,
+		depth, visual, x11.WindowMaskBorderPixel|x11.WindowMaskColorMap|x11.WindowMaskEventMask,
 		&x11.WindowCreationAttributes{
 			ColorMap: w.wnd.colorMap,
 			EventMask: x11.EventMaskStructureNotify |
