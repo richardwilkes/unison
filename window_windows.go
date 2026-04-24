@@ -196,8 +196,8 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 			pressed := uMsg == w32.WM_LBUTTONDOWN || uMsg == w32.WM_RBUTTONDOWN || uMsg == w32.WM_MBUTTONDOWN ||
 				uMsg == w32.WM_XBUTTONDOWN
-			w.nativeMouseClick(button, geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF)), pressed,
-				w.CurrentKeyModifiers())
+			w.nativeMouseClick(button, w.apiConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF),
+				float32((lParam>>16)&0xFFFF))), pressed, w.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONDOWN || uMsg == w32.WM_XBUTTONUP {
 				return 1
 			}
