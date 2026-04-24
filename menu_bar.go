@@ -36,7 +36,6 @@ const (
 	SelectAllItemID
 	MinimizeItemID
 	ZoomItemID
-	BringAllWindowsToFrontItemID
 	CloseItemID
 	HideItemID
 	HideOthersItemID
@@ -150,8 +149,6 @@ func NewWindowMenu(f MenuFactory, updater func(Menu)) Menu {
 	m := f.NewMenu(WindowMenuID, i18n.Text("Window"), updater)
 	InsertMinimizeItem(m, -1)
 	InsertZoomItem(m, -1)
-	m.InsertSeparator(-1, false)
-	InsertBringAllToFrontItem(m, -1)
 	return m
 }
 
@@ -221,13 +218,6 @@ func InsertZoomItem(m Menu, atIndex int) {
 				wnd.Zoom()
 			}
 		}))
-}
-
-// InsertBringAllToFrontItem creates the standard "Bring All to Front" menu item that will call AllWindowsToFront when
-// chosen.
-func InsertBringAllToFrontItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(BringAllWindowsToFrontItemID, i18n.Text("Bring All to Front"), KeyBinding{},
-		func(MenuItem) bool { return WindowCount() > 0 }, func(MenuItem) { AllWindowsToFront() }))
 }
 
 // NewHelpMenu creates a standard 'Help' menu.

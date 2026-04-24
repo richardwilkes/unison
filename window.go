@@ -189,20 +189,6 @@ func TitleIconsWindowOption(images []*Image) WindowOption {
 	}
 }
 
-// AllWindowsToFront brings all of the application's windows to the foreground.
-func AllWindowsToFront() {
-	if len(windowList) != 0 {
-		list := make([]*Window, len(windowList))
-		copy(list, windowList)
-		for i := len(list) - 1; i >= 0; i-- {
-			list[i].Show()
-			if i == 0 {
-				list[i].apiAcquireFocus()
-			}
-		}
-	}
-}
-
 // WindowCount returns the number of windows that are open.
 func WindowCount() int {
 	return len(windowList)
@@ -816,11 +802,6 @@ func (w *Window) IsTransparent() bool {
 func (w *Window) Show() {
 	if w.IsValid() {
 		w.apiShow()
-		// For some reason, Linux is ignoring some window positioning calls prior to showing, so immediately reissue the
-		// last one we had.
-		//
-		// TODO: Determine if this is still needed. Seems to be breaking some things on Windows
-		// w.SetContentRect(w.lastContentRect)
 	}
 }
 
@@ -839,6 +820,7 @@ func (w *Window) ToFront() {
 		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
 		w.apiAcquireFocus()
+		// TODO: Determine if acquire focus also always forces a window to the front. If not, provide a way to do so.
 	}
 }
 
