@@ -116,13 +116,14 @@ func (w *Window) apiInit() error {
 	x11Conn.ChangeProperty(w.wnd.id, x11.AtomWMHints, x11.AtomWMHints, 32, x11.PropModeReplace, buf.Retrieve())
 
 	var sizeHints x11.WindowSizeHints
-	if w.notResizable {
-		sizeHints.Flags |= x11.WSHMPMinSize | x11.WSHMPMaxSize
-		sizeHints.MinWidth = 1
-		sizeHints.MinHeight = 1
-		sizeHints.MaxWidth = 1
-		sizeHints.MaxHeight = 1
-	}
+	// TODO: For this to work, we need to be able to know the desired size
+	// if w.notResizable {
+	// 	sizeHints.Flags |= x11.WSHMPMinSize | x11.WSHMPMaxSize
+	// 	sizeHints.MinWidth = 1
+	// 	sizeHints.MinHeight = 1
+	// 	sizeHints.MaxWidth = 1
+	// 	sizeHints.MaxHeight = 1
+	// }
 	sizeHints.Flags |= x11.WSHMPPosition | x11.WSHMPWinGravity
 	sizeHints.WinGravity = x11.StaticGravity
 	x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
@@ -162,10 +163,10 @@ func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	if !w.undecorated {
 		top, left, bottom, right := w.x11Border()
 		scale := w.BackingScale()
-		contentRect.X += float32(left) / scale.X
-		contentRect.Y += float32(top) / scale.Y
-		contentRect.Width -= float32(left+right) / scale.X
-		contentRect.Height -= float32(top+bottom) / scale.Y
+		contentRect.X -= float32(left) / scale.X
+		contentRect.Y -= float32(top) / scale.Y
+		contentRect.Width += float32(left+right) / scale.X
+		contentRect.Height += float32(top+bottom) / scale.Y
 	}
 	return contentRect
 }
