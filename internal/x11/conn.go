@@ -1183,12 +1183,6 @@ func (c *Conn) PullEvents() []Event {
 // which the filter returns true will be returned, and other events will be queued for later retrieval. nil may be
 // returned if the connection is closed.
 func (c *Conn) WaitEvents(filter func(Event) bool) Event {
-	defer func() {
-		pending := len(c.events) + len(c.eventQueue)
-		if pending > 2 {
-			slog.Info("event wait complete", "pending", pending)
-		}
-	}()
 	e, ok := c.queuedEvent(filter)
 	if ok {
 		return e
