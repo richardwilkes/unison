@@ -50,14 +50,14 @@ func (m Modifiers) macEventModifierFlags() mac.EventModifierFlags {
 	if m.ShiftDown() {
 		mods |= mac.EventModifierFlagShift
 	}
+	if m.ControlDown() {
+		mods |= mac.EventModifierFlagControl
+	}
 	if m.OptionDown() {
 		mods |= mac.EventModifierFlagOption
 	}
 	if m.CommandDown() {
 		mods |= mac.EventModifierFlagCommand
-	}
-	if m.ControlDown() {
-		mods |= mac.EventModifierFlagControl
 	}
 	if m.CapsLockDown() {
 		mods |= mac.EventModifierFlagCapsLock
@@ -70,14 +70,14 @@ func macModifiersFromEventModifierFlags(flags mac.EventModifierFlags) Modifiers 
 	if flags&mac.EventModifierFlagShift != 0 {
 		mods |= ShiftModifier
 	}
+	if flags&mac.EventModifierFlagControl != 0 {
+		mods |= ControlModifier
+	}
 	if flags&mac.EventModifierFlagOption != 0 {
 		mods |= OptionModifier
 	}
 	if flags&mac.EventModifierFlagCommand != 0 {
 		mods |= CommandModifier
-	}
-	if flags&mac.EventModifierFlagControl != 0 {
-		mods |= ControlModifier
 	}
 	if flags&mac.EventModifierFlagCapsLock != 0 {
 		mods |= CapsLockModifier

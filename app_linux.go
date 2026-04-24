@@ -96,13 +96,40 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.ButtonPressEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("ButtonPressEvent", "event", ev)
-			// TODO: Implement
+			mods := x11TranslateState(ev.State)
+			switch ev.Detail {
+			case 1:
+				w.nativeMouseClick(ButtonLeft, true, mods)
+			case 2:
+				w.nativeMouseClick(ButtonRight, true, mods)
+			case 3:
+				w.nativeMouseClick(ButtonMiddle, true, mods)
+			case 4:
+				w.nativeMouseWheel(geom.NewPoint(0, 1), false)
+			case 5:
+				w.nativeMouseWheel(geom.NewPoint(0, -1), false)
+			case 6:
+				w.nativeMouseWheel(geom.NewPoint(1, 0), false)
+			case 7:
+				w.nativeMouseWheel(geom.NewPoint(-1, 0), false)
+			default:
+				w.nativeMouseClick(int(ev.Detail-5), true, mods)
+			}
 		}
 	case *x11.ButtonReleaseEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("ButtonReleaseEvent", "event", ev)
-			// TODO: Implement
+			mods := x11TranslateState(ev.State)
+			switch ev.Detail {
+			case 1:
+				w.nativeMouseClick(ButtonLeft, false, mods)
+			case 2:
+				w.nativeMouseClick(ButtonRight, false, mods)
+			case 3:
+				w.nativeMouseClick(ButtonMiddle, false, mods)
+			case 4, 5, 6, 7:
+			default:
+				w.nativeMouseClick(int(ev.Detail-5), false, mods)
+			}
 		}
 	case *x11.EnterNotifyEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
@@ -202,4 +229,8 @@ func x11ProcessEvent(e x11.Event) {
 			}
 		}
 	}
+}
+
+func x11TranslateState(state uint16) Modifiers {
+	return Modifiers(state) & AllModifiers
 }
