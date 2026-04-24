@@ -299,14 +299,14 @@ func (d *fileDialog) fileListDoubleClickHandler() {
 	}
 }
 
-func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
-	if mod == NoModifiers && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
+func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mods Modifiers, repeat bool) bool {
+	if mods == NoModifiers && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
 		if d.fileNameField.Text() != "" {
 			d.dialog.StopModal(ModalResponseOK)
 		}
 		return true
 	}
-	return d.fileNameField.DefaultKeyDown(keyCode, mod, repeat)
+	return d.fileNameField.DefaultKeyDown(keyCode, mods, repeat)
 }
 
 func (d *fileDialog) fileNameFieldModified(_, _ *FieldState) {

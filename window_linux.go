@@ -400,21 +400,21 @@ func x11ProcessEvent(e x11.Event) {
 			where := w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
 			switch ev.Detail {
 			case 1:
-				w.nativeMouseClick(ButtonLeft, where, true, mods)
+				w.mouseDown(where, ButtonLeft, mods)
 			case 2:
-				w.nativeMouseClick(ButtonRight, where, true, mods)
+				w.mouseDown(where, ButtonRight, mods)
 			case 3:
-				w.nativeMouseClick(ButtonMiddle, where, true, mods)
+				w.mouseDown(where, ButtonMiddle, mods)
 			case 4:
-				w.nativeMouseWheel(geom.NewPoint(0, 1))
+				w.mouseWheel(where, geom.NewPoint(0, 1), mods)
 			case 5:
-				w.nativeMouseWheel(geom.NewPoint(0, -1))
+				w.mouseWheel(where, geom.NewPoint(0, -1), mods)
 			case 6:
-				w.nativeMouseWheel(geom.NewPoint(1, 0))
+				w.mouseWheel(where, geom.NewPoint(1, 0), mods)
 			case 7:
-				w.nativeMouseWheel(geom.NewPoint(-1, 0))
+				w.mouseWheel(where, geom.NewPoint(-1, 0), mods)
 			default:
-				w.nativeMouseClick(int(ev.Detail-5), where, true, mods)
+				w.mouseDown(where, int(ev.Detail-5), mods)
 			}
 		}
 	case *x11.ButtonReleaseEvent:
@@ -423,21 +423,21 @@ func x11ProcessEvent(e x11.Event) {
 			where := w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
 			switch ev.Detail {
 			case 1:
-				w.nativeMouseClick(ButtonLeft, where, false, mods)
+				w.mouseUp(where, ButtonLeft, mods)
 			case 2:
-				w.nativeMouseClick(ButtonRight, where, false, mods)
+				w.mouseUp(where, ButtonRight, mods)
 			case 3:
-				w.nativeMouseClick(ButtonMiddle, where, false, mods)
+				w.mouseUp(where, ButtonMiddle, mods)
 			case 4, 5, 6, 7:
 			default:
-				w.nativeMouseClick(int(ev.Detail-5), where, false, mods)
+				w.mouseUp(where, int(ev.Detail-5), mods)
 			}
 		}
 	case *x11.EnterNotifyEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
 			w.apiUpdateCursorImage()
 			w.mouseEnter(w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
-				w.lastKeyModifiers)
+				x11TranslateModifierState(ev.State))
 		}
 	case *x11.LeaveNotifyEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
@@ -446,7 +446,8 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.MotionNotifyEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
-			w.nativeMouseMoved(w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))))
+			w.mouseMovedOrDragged(w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
+				x11TranslateModifierState(ev.State))
 		}
 	case *x11.ConfigureNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
@@ -480,7 +481,7 @@ func x11ProcessEvent(e x11.Event) {
 				case x11.AtomNone:
 					return
 				case x11Conn.Atoms.WMDeleteWindow:
-					w.nativeRequestClose()
+					w.requestClose()
 				case x11Conn.Atoms.NetWMPing:
 					x11Conn.RespondToPing()
 				default:

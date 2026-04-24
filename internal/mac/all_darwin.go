@@ -1006,12 +1006,12 @@ func goWindowCursorUpdateCallback(w Window) {
 	}
 }
 
-var WindowMouseEnterCallback func(Window)
+var WindowMouseEnterCallback func(w Window, mods uint)
 
 //export goWindowMouseEnterCallback
-func goWindowMouseEnterCallback(w Window) {
+func goWindowMouseEnterCallback(w Window, mods uint) {
 	if WindowMouseEnterCallback != nil {
-		WindowMouseEnterCallback(w)
+		WindowMouseEnterCallback(w, mods)
 	}
 }
 
@@ -1024,21 +1024,21 @@ func goWindowMouseExitCallback(w Window) {
 	}
 }
 
-var WindowMouseMovedCallback func(w Window, pt geom.Point)
+var WindowMouseMovedCallback func(w Window, pt geom.Point, mods uint)
 
 //export goWindowMouseMovedCallback
-func goWindowMouseMovedCallback(w Window, x, y float32) {
+func goWindowMouseMovedCallback(w Window, x, y float32, mods uint) {
 	if WindowMouseMovedCallback != nil {
-		WindowMouseMovedCallback(w, geom.NewPoint(x, y))
+		WindowMouseMovedCallback(w, geom.NewPoint(x, y), mods)
 	}
 }
 
-var WindowScrollCallback func(w Window, deltaX, deltaY float32)
+var WindowScrollCallback func(w Window, deltaX, deltaY float32, mods uint)
 
 //export goWindowScrollCallback
-func goWindowScrollCallback(w Window, deltaX, deltaY float32) {
+func goWindowScrollCallback(w Window, deltaX, deltaY float32, mods uint) {
 	if WindowScrollCallback != nil {
-		WindowScrollCallback(w, deltaX, deltaY)
+		WindowScrollCallback(w, deltaX, deltaY, mods)
 	}
 }
 

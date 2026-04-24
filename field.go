@@ -436,7 +436,7 @@ func (f *Field) DefaultFocusLost() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods Modifiers) bool {
 	f.undoID = NextUndoID()
 	wasFocused := f.Focused()
 	f.RequestFocus()
@@ -462,7 +462,7 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mod M
 				oldAnchor := f.selectionAnchor
 				f.selectionAnchor = f.ToSelectionIndex(where)
 				var start, end int
-				if mod.ShiftDown() {
+				if mods.ShiftDown() {
 					if oldAnchor > f.selectionAnchor {
 						start = f.selectionAnchor
 						end = oldAnchor
@@ -535,23 +535,23 @@ func (f *Field) DefaultUpdateCursor(_ geom.Point) *Cursor {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) bool {
+func (f *Field) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}
-	if mod.OSMenuCmdModifierDown() {
+	if mods.OSMenuCmdModifierDown() {
 		switch keyCode {
 		case KeyRight:
-			f.handleEnd(f.multiLine, mod.ShiftDown())
+			f.handleEnd(f.multiLine, mods.ShiftDown())
 		case KeyDown:
-			f.handleEnd(false, mod.ShiftDown())
+			f.handleEnd(false, mods.ShiftDown())
 		case KeyLeft:
-			f.handleHome(f.multiLine, mod.ShiftDown())
+			f.handleHome(f.multiLine, mods.ShiftDown())
 		case KeyUp:
-			f.handleHome(false, mod.ShiftDown())
+			f.handleHome(false, mods.ShiftDown())
 		default:
 			// Handle cut/copy/paste/select all commands directly in case no menu is present
-			if mod == OSMenuCmdModifier() {
+			if mods == OSMenuCmdModifier() {
 				switch keyCode {
 				case KeyA:
 					if f.CanSelectAll() {
@@ -588,34 +588,34 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _repeat bool) boo
 		}
 		f.MarkForRedraw()
 	case KeyLeft:
-		f.handleArrowLeft(mod.ShiftDown(), mod.OptionDown())
+		f.handleArrowLeft(mods.ShiftDown(), mods.OptionDown())
 	case KeyRight:
-		f.handleArrowRight(mod.ShiftDown(), mod.OptionDown())
+		f.handleArrowRight(mods.ShiftDown(), mods.OptionDown())
 	case KeyEnd:
-		f.handleEnd(f.multiLine, mod.ShiftDown())
+		f.handleEnd(f.multiLine, mods.ShiftDown())
 	case KeyPageDown:
 		if !f.multiLine {
 			return false
 		}
-		f.handleEnd(false, mod.ShiftDown())
+		f.handleEnd(false, mods.ShiftDown())
 	case KeyHome:
-		f.handleHome(f.multiLine, mod.ShiftDown())
+		f.handleHome(f.multiLine, mods.ShiftDown())
 	case KeyPageUp:
 		if !f.multiLine {
 			return false
 		}
-		f.handleHome(false, mod.ShiftDown())
+		f.handleHome(false, mods.ShiftDown())
 	case KeyDown:
 		if f.multiLine {
-			f.handleArrowDown(mod.ShiftDown(), mod.OptionDown())
+			f.handleArrowDown(mods.ShiftDown(), mods.OptionDown())
 		} else {
-			f.handleEnd(false, mod.ShiftDown())
+			f.handleEnd(false, mods.ShiftDown())
 		}
 	case KeyUp:
 		if f.multiLine {
-			f.handleArrowUp(mod.ShiftDown(), mod.OptionDown())
+			f.handleArrowUp(mods.ShiftDown(), mods.OptionDown())
 		} else {
-			f.handleHome(false, mod.ShiftDown())
+			f.handleHome(false, mods.ShiftDown())
 		}
 	case KeyTab:
 		return false

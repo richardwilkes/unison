@@ -58,7 +58,7 @@ func macInitWindowCallbacks() {
 	}
 	mac.WindowShouldCloseCallback = func(macWnd mac.Window) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeRequestClose()
+			w.requestClose()
 		} else {
 			slog.Warn("received window should close callback for unknown window", "window", macWnd)
 		}
@@ -116,7 +116,8 @@ func macInitWindowCallbacks() {
 		if w := macFindWindow(macWnd); w != nil {
 			w.lostFocus()
 		} else {
-			slog.Warn("received window did resign key callback for unknown window", "window", macWnd, "error", errs.New("here"))
+			slog.Warn("received window did resign key callback for unknown window", "window", macWnd, "error",
+				errs.New("here"))
 		}
 	}
 	mac.WindowCursorUpdateCallback = func(macWnd mac.Window) {
@@ -126,10 +127,10 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseEnterCallback = func(macWnd mac.Window) {
+	mac.WindowMouseEnterCallback = func(macWnd mac.Window, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
-			w.mouseEnter(w.MouseLocation(), w.lastKeyModifiers)
+			w.mouseEnter(w.MouseLocation(), macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
 		}
@@ -142,23 +143,29 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseMovedCallback = func(macWnd mac.Window, pt geom.Point) {
+	mac.WindowMouseMovedCallback = func(macWnd mac.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeMouseMoved(w.apiConvertRawMouse(pt))
+			w.mouseMovedOrDragged(w.apiConvertRawMouse(pt), macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse moved callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowScrollCallback = func(macWnd mac.Window, deltaX, deltaY float32) {
+	mac.WindowScrollCallback = func(macWnd mac.Window, deltaX, deltaY float32, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeMouseWheel(geom.NewPoint(deltaX, deltaY))
+			w.mouseWheel(w.MouseLocation(), geom.NewPoint(deltaX, deltaY),
+				macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window scroll callback for unknown window", "window", macWnd)
 		}
 	}
 	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, where geom.Point, pressed bool, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeMouseClick(button, where, pressed, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			actualMods := macTranslateModifiers(mac.EventModifierFlags(mods))
+			if pressed {
+				w.mouseDown(where, button, actualMods)
+			} else {
+				w.mouseUp(where, button, actualMods)
+			}
 		} else {
 			slog.Warn("received window mouse click callback for unknown window", "window", macWnd)
 		}

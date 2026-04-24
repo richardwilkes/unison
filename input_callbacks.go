@@ -28,34 +28,34 @@ type InputCallbacks struct {
 	LostFocusCallback func()
 	// MouseDownCallback is called when the mouse is pressed. Return true to stop further handling or false to propagate
 	// up to parents.
-	MouseDownCallback func(where geom.Point, button, clickCount int, mod Modifiers) bool
+	MouseDownCallback func(where geom.Point, button, clickCount int, mods Modifiers) bool
 	// MouseDragCallback is called when the mouse is dragged after being pressed. Return true to stop further handling
 	// or false to propagate up to parents.
-	MouseDragCallback func(where geom.Point, button int, mod Modifiers) bool
+	MouseDragCallback func(where geom.Point, button int, mods Modifiers) bool
 	// MouseUpCallback is called when the mouse is released after being pressed. Return true to stop further handling or
 	// false to propagate up to parents.
-	MouseUpCallback func(where geom.Point, button int, mod Modifiers) bool
+	MouseUpCallback func(where geom.Point, button int, mods Modifiers) bool
 	// MouseEnterCallback is called on mouse entry. Return true to stop further handling or false to propagate up to
 	// parents.
-	MouseEnterCallback func(where geom.Point, mod Modifiers) bool
+	MouseEnterCallback func(where geom.Point, mods Modifiers) bool
 	// MouseMoveCallback is called when the mouse moves. Return true to stop further handling or false to propagate up
 	// to parents.
-	MouseMoveCallback func(where geom.Point, mod Modifiers) bool
+	MouseMoveCallback func(where geom.Point, mods Modifiers) bool
 	// MouseExitCallback is called on mouse exit. Return true to stop further handling or false to propagate up to
 	// parents.
 	MouseExitCallback func() bool
 	// MouseWheelCallback is called when the mouse wheel is rotated. Return true to stop further handling or false to
 	// propagate up to parents.
-	MouseWheelCallback func(where, delta geom.Point, mod Modifiers) bool
+	MouseWheelCallback func(where, delta geom.Point, mods Modifiers) bool
 	// KeyDownCallback is called when a key is pressed. Return true to stop further handling or false to propagate up to
 	// parents.
-	KeyDownCallback func(keyCode KeyCode, mod Modifiers, repeat bool) bool
+	KeyDownCallback func(keyCode KeyCode, mods Modifiers, repeat bool) bool
 	// RuneTypedCallback is called when a key is typed. Return true to stop further handling or false to propagate up to
 	// parents.
 	RuneTypedCallback func(ch rune) bool
 	// KeyUpCallback is called when a key is released. Return true to stop further handling or false to propagate up to
 	// parents.
-	KeyUpCallback func(keyCode KeyCode, mod Modifiers) bool
+	KeyUpCallback func(keyCode KeyCode, mods Modifiers) bool
 	// FileDropCallback is called when files are drag & dropped from the OS.
 	FileDropCallback func(files []string)
 }

@@ -297,7 +297,7 @@ func AttemptQuit() {
 func closeAllWindows() {
 	var last *Window
 	for len(windowList) > 0 {
-		windowList[0].nativeRequestClose()
+		windowList[0].requestClose()
 		if len(windowList) != 0 {
 			if windowList[0] == last {
 				break

@@ -281,8 +281,8 @@ func init() {
 }
 
 // IsControlAction returns true if the keyCode should trigger a control, such as a button, that is focused.
-func IsControlAction(keyCode KeyCode, mod Modifiers) bool {
-	return mod&NonStickyModifiers == 0 && keyCode == KeySpace
+func IsControlAction(keyCode KeyCode, mods Modifiers) bool {
+	return mods&NonStickyModifiers == 0 && keyCode == KeySpace
 }
 
 // MarshalText implements encoding.TextMarshaler.

@@ -243,14 +243,14 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mods Modifiers) bool {
 	stop := false
 	if col := h.table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.MouseMoveCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			stop = cell.MouseMoveCallback(where.Sub(rect.Point), mod)
+			stop = cell.MouseMoveCallback(where.Sub(rect.Point), mods)
 			h.uninstallCell(cell)
 		}
 	}
@@ -258,7 +258,7 @@ func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mod Modifiers) bool 
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods Modifiers) bool {
 	h.interactionColumn = -1
 	h.inHeader = false
 	if !h.table.PreventUserColumnResize {
@@ -297,7 +297,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount i
 		if cell.MouseDownCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mod)
+			stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mods)
 			h.uninstallCell(cell)
 		}
 	}
@@ -331,14 +331,14 @@ func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) 
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mods Modifiers) bool {
 	stop := false
 	if h.inHeader && h.interactionColumn != -1 {
 		cell := h.ColumnHeaders[h.interactionColumn].AsPanel()
 		if cell.MouseUpCallback != nil {
 			rect := h.ColumnFrame(h.interactionColumn)
 			h.installCell(cell, rect)
-			stop = cell.MouseUpCallback(where.Sub(rect.Point), button, mod)
+			stop = cell.MouseUpCallback(where.Sub(rect.Point), button, mods)
 			h.uninstallCell(cell)
 		}
 	}

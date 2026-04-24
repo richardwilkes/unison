@@ -96,7 +96,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w.lostFocus()
 			return 0
 		case w32.WM_CLOSE:
-			w.nativeRequestClose()
+			w.requestClose()
 			return 0
 		case w32.WM_CHAR, w32.WM_SYSCHAR:
 			switch {
@@ -174,18 +174,14 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 		case w32.WM_LBUTTONDOWN,
 			w32.WM_RBUTTONDOWN,
 			w32.WM_MBUTTONDOWN,
-			w32.WM_XBUTTONDOWN,
-			w32.WM_LBUTTONUP,
-			w32.WM_RBUTTONUP,
-			w32.WM_MBUTTONUP,
-			w32.WM_XBUTTONUP:
+			w32.WM_XBUTTONDOWN:
 			var button int
 			switch uMsg {
-			case w32.WM_LBUTTONDOWN, w32.WM_LBUTTONUP:
+			case w32.WM_LBUTTONDOWN:
 				button = ButtonLeft
-			case w32.WM_RBUTTONDOWN, w32.WM_RBUTTONUP:
+			case w32.WM_RBUTTONDOWN:
 				button = ButtonRight
-			case w32.WM_MBUTTONDOWN, w32.WM_MBUTTONUP:
+			case w32.WM_MBUTTONDOWN:
 				button = ButtonMiddle
 			default:
 				if (wParam>>16)&0xFFFF == w32.XBUTTON1 {
@@ -194,11 +190,34 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 					button = ButtonMiddle + 2
 				}
 			}
-			pressed := uMsg == w32.WM_LBUTTONDOWN || uMsg == w32.WM_RBUTTONDOWN || uMsg == w32.WM_MBUTTONDOWN ||
-				uMsg == w32.WM_XBUTTONDOWN
-			w.nativeMouseClick(button, w.apiConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF),
-				float32((lParam>>16)&0xFFFF))), pressed, w.CurrentKeyModifiers())
-			if uMsg == w32.WM_XBUTTONDOWN || uMsg == w32.WM_XBUTTONUP {
+			w.mouseDown(w.apiConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
+				button, w.CurrentKeyModifiers())
+			if uMsg == w32.WM_XBUTTONDOWN {
+				return 1
+			}
+			return 0
+		case w32.WM_LBUTTONUP,
+			w32.WM_RBUTTONUP,
+			w32.WM_MBUTTONUP,
+			w32.WM_XBUTTONUP:
+			var button int
+			switch uMsg {
+			case w32.WM_LBUTTONUP:
+				button = ButtonLeft
+			case w32.WM_RBUTTONUP:
+				button = ButtonRight
+			case w32.WM_MBUTTONUP:
+				button = ButtonMiddle
+			default:
+				if (wParam>>16)&0xFFFF == w32.XBUTTON1 {
+					button = ButtonMiddle + 1
+				} else {
+					button = ButtonMiddle + 2
+				}
+			}
+			w.mouseUp(w.apiConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
+				button, w.CurrentKeyModifiers())
+			if uMsg == w32.WM_XBUTTONUP {
 				return 1
 			}
 			return 0
@@ -210,10 +229,20 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w.mouseExit()
 			return 0
 		case w32.WM_MOUSEWHEEL:
-			w.nativeMouseWheel(geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)))
+			var pos w32.POINT
+			pos.X = int32(lParam & 0xFFFF)
+			pos.Y = int32((lParam >> 16) & 0xFFFF)
+			w32.ScreenToClient(w.wnd.wnd, &pos)
+			w.mouseWheel(w.apiConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
+				geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)), w.CurrentKeyModifiers())
 			return 0
 		case w32.WM_MOUSEHWHEEL:
-			w.nativeMouseWheel(geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0))
+			var pos w32.POINT
+			pos.X = int32(lParam & 0xFFFF)
+			pos.Y = int32((lParam >> 16) & 0xFFFF)
+			w32.ScreenToClient(w.wnd.wnd, &pos)
+			w.mouseWheel(w.apiConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
+				geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0), w.CurrentKeyModifiers())
 			return 0
 		case w32.WM_SIZE:
 			minimized := wParam == w32.SIZE_MINIMIZED
@@ -355,6 +384,7 @@ func (w *Window) windowExStyle() uint32 {
 
 func (w *Window) handleWindowsMouseMove(pt geom.Point) {
 	pt = w.apiConvertRawMouse(pt)
+	mods := w.CurrentKeyModifiers()
 	if !w.wnd.mouseTracked {
 		var evt w32.TRACKMOUSEEVENT
 		evt.Flags = w32.TME_LEAVE
@@ -362,9 +392,9 @@ func (w *Window) handleWindowsMouseMove(pt geom.Point) {
 		w32.TrackMouseEvent(&evt)
 		w.wnd.mouseTracked = true
 		w.apiUpdateCursorImage()
-		w.mouseEnter(pt, w.lastKeyModifiers)
+		w.mouseEnter(pt, mods)
 	}
-	w.nativeMouseMoved(pt)
+	w.mouseMovedOrDragged(pt, mods)
 }
 
 func (w *Window) apiSetTitle(title string) {

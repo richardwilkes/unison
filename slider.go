@@ -203,9 +203,9 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mod Modifiers) bool {
+func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mods Modifiers) bool {
 	s.pressed = true
-	s.DefaultMouseDrag(where, button, mod)
+	s.DefaultMouseDrag(where, button, mods)
 	s.MarkForRedraw()
 	return true
 }
@@ -237,8 +237,8 @@ func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *Slider) DefaultMouseUp(where geom.Point, button int, mod Modifiers) bool {
-	s.DefaultMouseDrag(where, button, mod)
+func (s *Slider) DefaultMouseUp(where geom.Point, button int, mods Modifiers) bool {
+	s.DefaultMouseDrag(where, button, mods)
 	s.pressed = false
 	s.MarkForRedraw()
 	return true

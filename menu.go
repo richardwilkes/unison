@@ -285,8 +285,8 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 			})
 		}
 	}
-	p.KeyDownCallback = func(keyCode KeyCode, mod Modifiers, _repeat bool) bool {
-		if mod != 0 {
+	p.KeyDownCallback = func(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+		if mods != 0 {
 			return false
 		}
 		switch keyCode {
@@ -413,14 +413,14 @@ func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
 	return false
 }
 
-func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers, repeat bool) bool {
-	if m.updater != nil && mod.OSMenuCmdModifierDown() {
+func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods Modifiers, repeat bool) bool {
+	if m.updater != nil && mods.OSMenuCmdModifierDown() {
 		// We only call the updater for key presses with the cmd modifier down. This is because the updater may be doing
 		// relatively expensive operations to setup the menu and we don't want to impact every key a user types.
 		m.updater(m)
 	}
 	for _, mi := range m.items {
-		if !mi.keyBinding.KeyCode.IsZero() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mod {
+		if !mi.keyBinding.KeyCode.IsZero() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mods {
 			mi.validate()
 			if mi.enabled {
 				mi.execute()
@@ -429,7 +429,7 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers, repeat bo
 			return len(wnd.root.openMenuPanels) != 0
 		}
 		if mi.subMenu != nil {
-			if mi.subMenu.preKeyDown(wnd, keyCode, mod, repeat) {
+			if mi.subMenu.preKeyDown(wnd, keyCode, mods, repeat) {
 				return true
 			}
 		}

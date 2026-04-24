@@ -141,15 +141,15 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	p.contentPanel.SetFrameRect(rect)
 }
 
-func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods Modifiers, repeat bool) bool {
 	if len(p.openMenuPanels) != 0 {
-		if p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mod, repeat) {
+		if p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mods, repeat) {
 			return true
 		}
 	}
 	if p.menuBar != nil {
 		stop := false
-		xos.SafeCall(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mod, repeat) }, nil)
+		xos.SafeCall(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mods, repeat) }, nil)
 		return stop
 	}
 	return false
@@ -164,10 +164,10 @@ func (p *rootPanel) preRuneTyped(wnd *Window, ch rune) bool {
 	return false
 }
 
-func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
+func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mods Modifiers) bool {
 	if p.menuBar != nil {
 		stop := false
-		xos.SafeCall(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mod) }, nil)
+		xos.SafeCall(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mods) }, nil)
 		return stop
 	}
 	return false
