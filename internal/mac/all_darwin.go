@@ -1042,12 +1042,12 @@ func goWindowScrollCallback(w Window, deltaX, deltaY float32, pixels bool) {
 	}
 }
 
-var WindowMouseClickCallback func(w Window, button int, pressed bool, mods uint)
+var WindowMouseClickCallback func(w Window, button int, where geom.Point, pressed bool, mods uint)
 
 //export goWindowMouseClickCallback
-func goWindowMouseClickCallback(w Window, button int, pressed bool, mods uint) {
+func goWindowMouseClickCallback(w Window, button int, x, y float32, pressed bool, mods uint) {
 	if WindowMouseClickCallback != nil {
-		WindowMouseClickCallback(w, button, pressed, mods)
+		WindowMouseClickCallback(w, button, geom.NewPoint(x, y), pressed, mods)
 	}
 }
 

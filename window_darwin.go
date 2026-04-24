@@ -156,9 +156,9 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window scroll callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, pressed bool, mods uint) {
+	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, where geom.Point, pressed bool, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeMouseClick(button, pressed, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.nativeMouseClick(button, where, pressed, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse click callback for unknown window", "window", macWnd)
 		}

@@ -265,36 +265,6 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	return w, nil
 }
 
-func (w *Window) mouseButtonCallback(button int, pressed bool, mods Modifiers) {
-	if !w.okToProcess() {
-		modalStack[len(modalStack)-1].mouseButtonCallback(button, pressed, mods)
-		return
-	}
-	w.lastKeyModifiers = mods
-	where := w.MouseLocation()
-	if pressed {
-		maxDelay, maxMouseDrift := DoubleClickParameters()
-		now := time.Now()
-		if button == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
-			xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
-			xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
-			w.lastButtonCount++
-			time.Since(w.lastButtonTime)
-		} else {
-			w.lastButtonCount = 1
-			w.firstButtonLocation = where
-		}
-		w.lastButton = button
-		w.lastButtonTime = now
-		w.inMouseDown = true
-		w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
-	} else if w.inMouseDown {
-		w.lastButton = button
-		w.inMouseDown = false
-		w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
-	}
-}
-
 func (w *Window) okToProcess() bool {
 	return len(modalStack) == 0 || modalStack[len(modalStack)-1] == w
 }
@@ -377,8 +347,9 @@ func (w *Window) lostFocus() {
 		for button := range w.pressedButtons {
 			buttons = append(buttons, button)
 		}
+		where := w.MouseLocation()
 		for _, button := range buttons {
-			w.nativeMouseClick(button, false, 0)
+			w.nativeMouseClick(button, where, false, 0)
 		}
 	}
 }
@@ -1095,9 +1066,34 @@ func (w *Window) updateCursor(target *Panel, where geom.Point) {
 	}
 }
 
-func (w *Window) nativeMouseClick(button int, pressed bool, mods Modifiers) {
+func (w *Window) nativeMouseClick(button int, where geom.Point, pressed bool, mods Modifiers) {
+	if !w.okToProcess() {
+		modalStack[len(modalStack)-1].nativeMouseClick(button, where, pressed, mods)
+		return
+	}
 	w.pressedButtons[button] = pressed
-	w.mouseButtonCallback(button, pressed, mods)
+	w.lastKeyModifiers = mods
+	if pressed {
+		maxDelay, maxMouseDrift := DoubleClickParameters()
+		now := time.Now()
+		if button == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
+			xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
+			xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
+			w.lastButtonCount++
+			time.Since(w.lastButtonTime)
+		} else {
+			w.lastButtonCount = 1
+			w.firstButtonLocation = where
+		}
+		w.lastButton = button
+		w.lastButtonTime = now
+		w.inMouseDown = true
+		w.mouseDown(where, w.lastButton, w.lastButtonCount, w.lastKeyModifiers)
+	} else if w.inMouseDown {
+		w.lastButton = button
+		w.inMouseDown = false
+		w.mouseUp(where, w.lastButton, w.lastKeyModifiers)
+	}
 }
 
 func (w *Window) mouseDown(where geom.Point, button, clickCount int, mod Modifiers) {

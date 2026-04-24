@@ -16,7 +16,7 @@ void goWindowCursorUpdateCallback(NSWindowRef w);
 void goWindowMouseEnterCallback(NSWindowRef w);
 void goWindowMouseExitCallback(NSWindowRef w);
 void goWindowMouseMovedCallback(NSWindowRef w, float x, float y);
-void goWindowMouseClickCallback(NSWindowRef w, int button, bool pressed, uint mods);
+void goWindowMouseClickCallback(NSWindowRef w, int button, float x, float y, bool pressed, uint mods);
 void goWindowScrollCallback(NSWindowRef w, float x, float y, bool pixels);
 void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
@@ -84,7 +84,10 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)mouseDown:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 0, true, [event modifierFlags]);
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [event locationInWindow];
+	goWindowMouseClickCallback(wnd, 0, (float)pos.x, (float)(contentRect.size.height - pos.y), true,
+		[event modifierFlags]);
 }
 
 - (void)mouseDragged:(NSEvent *)event {
@@ -92,7 +95,10 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)mouseUp:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 0, false, [event modifierFlags]);
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [event locationInWindow];
+	goWindowMouseClickCallback(wnd, 0, (float)pos.x, (float)(contentRect.size.height - pos.y), false,
+		[event modifierFlags]);
 }
 
 - (void)mouseMoved:(NSEvent *)event {
@@ -102,7 +108,10 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 1, true, [event modifierFlags]);
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [event locationInWindow];
+	goWindowMouseClickCallback(wnd, 1, (float)pos.x, (float)(contentRect.size.height - pos.y), true,
+		[event modifierFlags]);
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
@@ -110,11 +119,17 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, 1, false, [event modifierFlags]);
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [event locationInWindow];
+	goWindowMouseClickCallback(wnd, 1, (float)pos.x, (float)(contentRect.size.height - pos.y), false,
+		[event modifierFlags]);
 }
 
 - (void)otherMouseDown:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], true, [event modifierFlags]);
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [event locationInWindow];
+	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], (float)pos.x, (float)(contentRect.size.height - pos.y),
+		true, [event modifierFlags]);
 }
 
 - (void)otherMouseDragged:(NSEvent *)event {
@@ -122,7 +137,10 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
-	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], false, [event modifierFlags]);
+	const NSRect contentRect = [[wnd contentView] frame];
+	const NSPoint pos = [event locationInWindow];
+	goWindowMouseClickCallback(wnd, (int)[event buttonNumber], (float)pos.x, (float)(contentRect.size.height - pos.y),
+		false, [event modifierFlags]);
 }
 
 - (void)mouseEntered:(NSEvent *)event {
