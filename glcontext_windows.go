@@ -48,10 +48,6 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 		if pfd.DepthBits != 24 || pfd.StencilBits != 8 {
 			continue
 		}
-		var pfd w32.PIXELFORMATDESCRIPTOR
-		if w32.DescribePixelFormat(dc, i, uint32(unsafe.Sizeof(pfd)), &pfd) == 0 {
-			return errs.New("failed to describe pixel format for OpenGL context")
-		}
 		if !w32.SetPixelFormat(dc, i, &pfd) {
 			return errs.New("failed to set pixel format for OpenGL context")
 		}
@@ -59,15 +55,13 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 		if !w32.WglMakeCurrent(dc, fakeRC) {
 			return errs.New("failed to make fake OpenGL context current")
 		}
-		defer func() {
-			w32.WglMakeCurrent(0, 0)
-			w32.WglDeleteContext(fakeRC)
-		}()
 		rc := w32.WglCreateContextAttribsARB(dc, 0, []int32{
 			w32.WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
 			w32.WGL_CONTEXT_MINOR_VERSION_ARB, 2,
 			0,
 		})
+		w32.WglMakeCurrent(0, 0)
+		w32.WglDeleteContext(fakeRC)
 		if rc == 0 {
 			return errs.New("failed to create OpenGL context")
 		}
