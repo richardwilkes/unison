@@ -31,6 +31,8 @@ var (
 
 var cursorList []*Cursor
 
+// TODO: Cursors on Windows & Linux need to be dynamically sized based on the content scale of the window
+
 // Cursor provides a graphical cursor for the mouse location.
 type Cursor struct {
 	cursor apiNativeCursor

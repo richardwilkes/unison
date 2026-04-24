@@ -317,6 +317,64 @@ type WindowCreationAttributes struct {
 	SaveUnder          bool
 }
 
+func (a *WindowCreationAttributes) values(mask WindowValueMask) []uint32 {
+	values := make([]uint32, 0, 15)
+	if mask&WindowMaskBackPixMap != 0 {
+		values = append(values, uint32(a.BackgroundPixMap))
+	}
+	if mask&WindowMaskBackPixel != 0 {
+		values = append(values, a.BackgroundPixel)
+	}
+	if mask&WindowMaskBorderPixMap != 0 {
+		values = append(values, uint32(a.BorderPixMap))
+	}
+	if mask&WindowMaskBorderPixel != 0 {
+		values = append(values, a.BorderPixel)
+	}
+	if mask&WindowMaskBitGravity != 0 {
+		values = append(values, a.BitGravity)
+	}
+	if mask&WindowMaskWinGravity != 0 {
+		values = append(values, a.WinGravity)
+	}
+	if mask&WindowMaskBackingStore != 0 {
+		values = append(values, a.BackingStore)
+	}
+	if mask&WindowMaskBackingPlanes != 0 {
+		values = append(values, a.BackingPlanes)
+	}
+	if mask&WindowMaskBackingPixel != 0 {
+		values = append(values, a.BackingPixel)
+	}
+	if mask&WindowMaskOverrideRedirect != 0 {
+		if a.OverrideRedirect {
+			values = append(values, 1)
+		} else {
+			values = append(values, 0)
+		}
+	}
+	if mask&WindowMaskSaveUnder != 0 {
+		if a.SaveUnder {
+			values = append(values, 1)
+		} else {
+			values = append(values, 0)
+		}
+	}
+	if mask&WindowMaskEventMask != 0 {
+		values = append(values, a.EventMask)
+	}
+	if mask&WindowMaskDontPropagate != 0 {
+		values = append(values, a.DoNotPropagateMask)
+	}
+	if mask&WindowMaskColorMap != 0 {
+		values = append(values, uint32(a.ColorMap))
+	}
+	if mask&WindowMaskCursor != 0 {
+		values = append(values, uint32(a.Cursor))
+	}
+	return values
+}
+
 // Possible MapState values.
 const (
 	MapStateUnmapped = iota
@@ -580,6 +638,7 @@ type Conn struct {
 	requests                 chan *request
 	closed                   chan struct{}
 	readClosed               chan struct{}
+	ExtXFixes                *ExtXFixes
 	ExtMisc                  *ExtMisc
 	ExtRandr                 *ExtRandr
 	ExtRender                *ExtRender
@@ -649,6 +708,9 @@ func NewConn() (*Conn, error) {
 	go c.readResponses()
 	if err = c.Atoms.init(&c); err != nil {
 		return nil, err
+	}
+	if c.ExtXFixes = newExtXFixes(&c); !c.ExtXFixes.HasVersion(4, 0) {
+		return nil, errs.New("X11 extension XFIXES 4.0 or higher is required")
 	}
 	c.ExtMisc = newExtMisc(&c)
 	if c.ExtRandr = newExtRandr(&c); !c.ExtRandr.HasVersion(1, 5) {
@@ -1317,63 +1379,7 @@ func (c *Conn) GetAtomName(atom Atom) (string, error) {
 func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, mask WindowValueMask, attrs *WindowCreationAttributes) WindowID {
 	id := nextXID[WindowID](c)
 	if id != 0 {
-		var values []uint32
-		if attrs != nil {
-			values = make([]uint32, 0, 15)
-			if mask&WindowMaskBackPixMap != 0 {
-				values = append(values, uint32(attrs.BackgroundPixMap))
-			}
-			if mask&WindowMaskBackPixel != 0 {
-				values = append(values, attrs.BackgroundPixel)
-			}
-			if mask&WindowMaskBorderPixMap != 0 {
-				values = append(values, uint32(attrs.BorderPixMap))
-			}
-			if mask&WindowMaskBorderPixel != 0 {
-				values = append(values, attrs.BorderPixel)
-			}
-			if mask&WindowMaskBitGravity != 0 {
-				values = append(values, attrs.BitGravity)
-			}
-			if mask&WindowMaskWinGravity != 0 {
-				values = append(values, attrs.WinGravity)
-			}
-			if mask&WindowMaskBackingStore != 0 {
-				values = append(values, attrs.BackingStore)
-			}
-			if mask&WindowMaskBackingPlanes != 0 {
-				values = append(values, attrs.BackingPlanes)
-			}
-			if mask&WindowMaskBackingPixel != 0 {
-				values = append(values, attrs.BackingPixel)
-			}
-			if mask&WindowMaskOverrideRedirect != 0 {
-				if attrs.OverrideRedirect {
-					values = append(values, 1)
-				} else {
-					values = append(values, 0)
-				}
-			}
-			if mask&WindowMaskSaveUnder != 0 {
-				if attrs.SaveUnder {
-					values = append(values, 1)
-				} else {
-					values = append(values, 0)
-				}
-			}
-			if mask&WindowMaskEventMask != 0 {
-				values = append(values, attrs.EventMask)
-			}
-			if mask&WindowMaskDontPropagate != 0 {
-				values = append(values, attrs.DoNotPropagateMask)
-			}
-			if mask&WindowMaskColorMap != 0 {
-				values = append(values, uint32(attrs.ColorMap))
-			}
-			if mask&WindowMaskCursor != 0 {
-				values = append(values, uint32(attrs.Cursor))
-			}
-		}
+		values := attrs.values(mask)
 		size := 32 + 4*len(values)
 		w := NewWriter(size)
 		w.Byte(opCreateWindow)
@@ -2229,6 +2235,22 @@ func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right 
 		bottom = r.Uint32()
 	}
 	return top, left, bottom, right
+}
+
+// ChangeWindowAttributes changes the attributes of the specified window based on the provided value mask and
+// attributes.
+func (c *Conn) ChangeWindowAttributes(window WindowID, mask WindowValueMask, attrs *WindowCreationAttributes) {
+	values := attrs.values(mask)
+	w := NewWriter(12 + len(values)*4)
+	w.Byte(opChangeWindowAttributes)
+	w.Zero(1)
+	w.Uint16(3 + uint16(len(values)))
+	w.WindowID(window)
+	w.Uint32(uint32(mask))
+	w.Uint32Slice(values)
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
 }
 
 // GetWindowAttributes retrieves the attributes of the specified window.

@@ -150,8 +150,7 @@ func (w *Window) apiSetTitleIcons(_images []*image.NRGBA) {
 }
 
 func (w *Window) apiDisplay() *Display {
-	// TODO: Need implementation
-	return nil
+	return BestDisplayForRect(w.apiFrameRect())
 }
 
 func (w *Window) apiFrameRect() geom.Rect {
@@ -171,7 +170,11 @@ func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 }
 
 func (w *Window) apiEnsureOnDisplay() {
-	// TODO: Need implementation
+	frameRect := w.apiFrameRect()
+	revisedRect := w.apiDisplay().FitRectOnto(frameRect)
+	if frameRect != revisedRect {
+		w.SetFrameRect(revisedRect)
+	}
 }
 
 func (w *Window) apiContentRect() geom.Rect {
@@ -264,11 +267,25 @@ func (w *Window) apiCurrentKeyModifiers() Modifiers {
 
 func (w *Window) apiUpdateCursorImage() {
 	// TODO: Need implementation
+	switch {
+	case w.cursorHidden:
+		// TODO: Need to test this and cursor showing once text input works
+		x11Conn.ExtXFixes.HideCursor(w.wnd.id)
+	case w.cursor != nil:
+		x11Conn.ChangeWindowAttributes(w.wnd.id, x11.WindowMaskCursor, &x11.WindowCreationAttributes{
+			Cursor: w.cursor.cursor.cursor,
+		})
+	default:
+		x11Conn.ChangeWindowAttributes(w.wnd.id, x11.WindowMaskCursor, &x11.WindowCreationAttributes{})
+	}
 }
 
 func (w *Window) apiCursorInContentArea() bool {
-	// TODO: Need implementation
-	return false
+	qpr := x11Conn.QueryPointer(w.wnd.id)
+	if qpr == nil {
+		return false
+	}
+	return w.apiConvertRawMouse(geom.NewPoint(float32(qpr.RootX), float32(qpr.RootY))).In(w.apiContentRect())
 }
 
 func (w *Window) apiCursorPosition() geom.Point {
@@ -354,34 +371,6 @@ func (w *Window) x11Border() (top, left, bottom, right uint32) {
 		return 0, 0, 0, 0
 	}
 	return x11Conn.GetWindowBorderWidths(w.wnd.id)
-}
-
-func (w *Window) x11KeyCallback(_ *Window, key KeyCode, _ int, action Action, mods Modifiers) {
-	// TODO: Is this actually needed? If so, needs fixups to work with the new API.
-	// if w.okToProcess() {
-	// 	if action == Release {
-	// 		mods &= ^x11KeyToModifiers(key)
-	// 	} else {
-	// 		mods |= x11KeyToModifiers(key)
-	// 	}
-	// 	w.commonKeyCallbackForPlatform(key, action, mods)
-	// }
-}
-
-func x11KeyToModifiers(key KeyCode) Modifiers {
-	// TODO: Is this actually needed? If so, needs fixups to work with the new API.
-	// switch key {
-	// case KeyLeftControl, KeyRightControl:
-	// 	return ModControl
-	// case KeyLeftShift, KeyRightShift:
-	// 	return ModShift
-	// case KeyLeftAlt, KeyRightAlt:
-	// 	return ModAlt
-	// case KeyLeftSuper, KeyRightSuper:
-	// 	return ModSuper
-	// default:
-	return 0
-	// }
 }
 
 func x11ProcessEvent(e x11.Event) {
@@ -525,7 +514,6 @@ func x11ProcessEvent(e x11.Event) {
 				return
 			}
 			w.lostFocus()
-			// TODO: Old code for Linux cleared its internal flags for key and button pressed states
 		}
 	case *x11.ExposeEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
