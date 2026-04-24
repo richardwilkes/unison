@@ -116,14 +116,13 @@ func (w *Window) apiInit() error {
 	x11Conn.ChangeProperty(w.wnd.id, x11.AtomWMHints, x11.AtomWMHints, 32, x11.PropModeReplace, buf.Retrieve())
 
 	var sizeHints x11.WindowSizeHints
-	// TODO: For this to work, we need to be able to know the desired size
-	// if w.notResizable {
-	// 	sizeHints.Flags |= x11.WSHMPMinSize | x11.WSHMPMaxSize
-	// 	sizeHints.MinWidth = 1
-	// 	sizeHints.MinHeight = 1
-	// 	sizeHints.MaxWidth = 1
-	// 	sizeHints.MaxHeight = 1
-	// }
+	if w.notResizable {
+		sizeHints.Flags |= x11.WSHMPMinSize | x11.WSHMPMaxSize
+		sizeHints.MinWidth = 1
+		sizeHints.MinHeight = 1
+		sizeHints.MaxWidth = 1
+		sizeHints.MaxHeight = 1
+	}
 	sizeHints.Flags |= x11.WSHMPPosition | x11.WSHMPWinGravity
 	sizeHints.WinGravity = x11.StaticGravity
 	x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
@@ -238,6 +237,17 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 	}
 	if mask == 0 {
 		return
+	}
+	if w.notResizable {
+		var sizeHints x11.WindowSizeHints
+		sizeHints.Flags |= x11.WSHMPMinSize | x11.WSHMPMaxSize
+		sizeHints.MinWidth = uint32(rect.Width)
+		sizeHints.MinHeight = uint32(rect.Height)
+		sizeHints.MaxWidth = uint32(rect.Width)
+		sizeHints.MaxHeight = uint32(rect.Height)
+		sizeHints.Flags |= x11.WSHMPPosition | x11.WSHMPWinGravity
+		sizeHints.WinGravity = x11.StaticGravity
+		x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
 	}
 	x11Conn.ConfigureWindow(w.wnd.id, mask, &req)
 	x11Conn.Flush()
