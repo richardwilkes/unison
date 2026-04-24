@@ -16,13 +16,13 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
-	"github.com/richardwilkes/unison/internal/gl"
 )
 
 var _ UndoManagerProvider = &Window{}
