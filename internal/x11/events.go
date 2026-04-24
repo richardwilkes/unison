@@ -506,12 +506,6 @@ func (e *ErrorEvent) ID() byte {
 	return eventCodeNone
 }
 
-// Process the event.
-func (e *ErrorEvent) Process(_conn *Conn) {
-	// TODO: Make sure this gets done
-	errs.Log(e.Error)
-}
-
 // ExposeEvent represents an X11 Expose event.
 type ExposeEvent struct {
 	Window   WindowID

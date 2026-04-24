@@ -2352,7 +2352,6 @@ func (c *Conn) FocusWindow(window WindowID) {
 	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
 		errs.Log(err)
 	}
-	// TODO: Determine if we need to wait for a notification event to confirm focus was changed
 }
 
 // pushClipboardToManager checks if the helper window is currently the owner of the CLIPBOARD selection, and if so, it
