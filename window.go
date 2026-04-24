@@ -864,7 +864,7 @@ func (w *Window) Resizable() bool {
 // MouseLocation returns the current mouse location relative to this window.
 func (w *Window) MouseLocation() geom.Point {
 	if w.IsValid() {
-		return w.apiConvertRawMouse(w.apiCursorPosition())
+		return w.apiCursorPosition()
 	}
 	return geom.Point{}
 }
@@ -1200,7 +1200,6 @@ func (w *Window) mouseEnter(where geom.Point, mod Modifiers) {
 }
 
 func (w *Window) nativeMouseMoved(pt geom.Point) {
-	pt = w.apiConvertRawMouse(pt)
 	if w.inMouseDown {
 		w.mouseDrag(pt, w.lastButton, w.lastKeyModifiers)
 	} else {
@@ -1245,10 +1244,7 @@ func (w *Window) mouseExit() {
 	}
 }
 
-func (w *Window) nativeMouseWheel(delta geom.Point, pixels bool) {
-	if !pixels {
-		delta = delta.Mul(16)
-	}
+func (w *Window) nativeMouseWheel(delta geom.Point) {
 	w.mouseWheel(w.MouseLocation(), delta, w.lastKeyModifiers)
 }
 

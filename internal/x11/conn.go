@@ -1160,10 +1160,35 @@ func (c *Conn) queuedEvent(filter func(Event) bool) (Event, bool) {
 	return nil, false
 }
 
+// PullEvents retrieves all currently queued events, including any pending events in the channel.
+func (c *Conn) PullEvents() []Event {
+	c.eventQueueLock.Lock()
+	defer c.eventQueueLock.Unlock()
+	events := c.eventQueue
+	c.eventQueue = nil
+	for {
+		select {
+		case e, ok := <-c.events:
+			if !ok {
+				return events
+			}
+			events = append(events, e)
+		default:
+			return events
+		}
+	}
+}
+
 // WaitEvents blocks until the next event is available. If the optional filter function is provided, only events for
 // which the filter returns true will be returned, and other events will be queued for later retrieval. nil may be
 // returned if the connection is closed.
 func (c *Conn) WaitEvents(filter func(Event) bool) Event {
+	defer func() {
+		pending := len(c.events) + len(c.eventQueue)
+		if pending > 2 {
+			slog.Info("event wait complete", "pending", pending)
+		}
+	}()
 	e, ok := c.queuedEvent(filter)
 	if ok {
 		return e
@@ -1990,6 +2015,46 @@ func (c *Conn) GetKeyboardMapping() KeyboardMapping {
 		errs.Log(err)
 	}
 	return km
+}
+
+// QueryPointerResult represents the result of a QueryPointer request, containing information about the pointer's
+// position and state.
+type QueryPointerResult struct {
+	Root       WindowID
+	Child      WindowID
+	RootX      int16
+	RootY      int16
+	WinX       int16
+	WinY       int16
+	Mask       uint16
+	SameScreen bool
+}
+
+// QueryPointer retrieves the current pointer position.
+func (c *Conn) QueryPointer(window WindowID) *QueryPointerResult {
+	w := NewWriter(8)
+	w.Byte(opQueryPointer)
+	w.Zero(1)
+	w.Uint16(2)
+	w.WindowID(window)
+	var result QueryPointerResult
+	if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(1)
+		result.SameScreen = r.Bool()
+		r.Skip(6)
+		result.Root = r.WindowID()
+		result.Child = r.WindowID()
+		result.RootX = r.Int16()
+		result.RootY = r.Int16()
+		result.WinX = r.Int16()
+		result.WinY = r.Int16()
+		result.Mask = r.Uint16()
+		r.Skip(6)
+	})); err != nil {
+		errs.Log(err)
+		return nil
+	}
+	return &result
 }
 
 // CreateColormap creates a new colormap with the specified visual, window, and allocation policy, and returns its

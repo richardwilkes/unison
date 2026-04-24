@@ -17,7 +17,7 @@ void goWindowMouseEnterCallback(NSWindowRef w);
 void goWindowMouseExitCallback(NSWindowRef w);
 void goWindowMouseMovedCallback(NSWindowRef w, float x, float y);
 void goWindowMouseClickCallback(NSWindowRef w, int button, float x, float y, bool pressed, uint mods);
-void goWindowScrollCallback(NSWindowRef w, float x, float y, bool pixels);
+void goWindowScrollCallback(NSWindowRef w, float x, float y);
 void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
 void goWindowScaleCallback(NSWindowRef w, CGPoint scale);
@@ -182,8 +182,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)scrollWheel:(NSEvent *)event {
-	goWindowScrollCallback(wnd, (float)[event scrollingDeltaX], (float)[event scrollingDeltaY],
-		[event hasPreciseScrollingDeltas]);
+	goWindowScrollCallback(wnd, (float)[event scrollingDeltaX], (float)[event scrollingDeltaY]);
 }
 
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)sender {

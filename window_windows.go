@@ -210,10 +210,10 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w.mouseExit()
 			return 0
 		case w32.WM_MOUSEWHEEL:
-			w.nativeMouseWheel(geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)), true)
+			w.nativeMouseWheel(geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)))
 			return 0
 		case w32.WM_MOUSEHWHEEL:
-			w.nativeMouseWheel(geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0), true)
+			w.nativeMouseWheel(geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0))
 			return 0
 		case w32.WM_SIZE:
 			minimized := wParam == w32.SIZE_MINIMIZED
@@ -354,6 +354,7 @@ func (w *Window) windowExStyle() uint32 {
 }
 
 func (w *Window) handleWindowsMouseMove(pt geom.Point) {
+	pt = w.apiConvertRawMouse(pt)
 	if !w.wnd.mouseTracked {
 		var evt w32.TRACKMOUSEEVENT
 		evt.Flags = w32.TME_LEAVE
@@ -547,7 +548,7 @@ func (w *Window) apiCursorPosition() geom.Point {
 	var pos w32.POINT
 	if w32.GetCursorPos(&pos) {
 		w32.ScreenToClient(w.wnd.wnd, &pos)
-		return geom.NewPoint(float32(pos.X), float32(pos.Y))
+		return w.apiConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y)))
 	}
 	return geom.NewPoint(0, 0)
 }

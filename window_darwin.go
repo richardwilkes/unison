@@ -144,14 +144,14 @@ func macInitWindowCallbacks() {
 	}
 	mac.WindowMouseMovedCallback = func(macWnd mac.Window, pt geom.Point) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeMouseMoved(pt)
+			w.nativeMouseMoved(w.apiConvertRawMouse(pt))
 		} else {
 			slog.Warn("received window mouse moved callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowScrollCallback = func(macWnd mac.Window, deltaX, deltaY float32, pixels bool) {
+	mac.WindowScrollCallback = func(macWnd mac.Window, deltaX, deltaY float32) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeMouseWheel(geom.NewPoint(deltaX, deltaY), pixels)
+			w.nativeMouseWheel(geom.NewPoint(deltaX, deltaY))
 		} else {
 			slog.Warn("received window scroll callback for unknown window", "window", macWnd)
 		}
@@ -321,7 +321,7 @@ func (w *Window) apiCursorInContentArea() bool {
 func (w *Window) apiCursorPosition() geom.Point {
 	loc := w.wnd.wnd.MouseLocationOutsideOfEventStream()
 	frame := w.wnd.view.Frame()
-	return geom.NewPoint(loc.X, frame.Height-loc.Y)
+	return w.apiConvertRawMouse(geom.NewPoint(loc.X, frame.Height-loc.Y))
 }
 
 func (w *Window) apiBackingScale() geom.Point {

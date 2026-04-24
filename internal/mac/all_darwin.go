@@ -1033,12 +1033,12 @@ func goWindowMouseMovedCallback(w Window, x, y float32) {
 	}
 }
 
-var WindowScrollCallback func(w Window, deltaX, deltaY float32, pixels bool)
+var WindowScrollCallback func(w Window, deltaX, deltaY float32)
 
 //export goWindowScrollCallback
-func goWindowScrollCallback(w Window, deltaX, deltaY float32, pixels bool) {
+func goWindowScrollCallback(w Window, deltaX, deltaY float32) {
 	if WindowScrollCallback != nil {
-		WindowScrollCallback(w, deltaX, deltaY, pixels)
+		WindowScrollCallback(w, deltaX, deltaY)
 	}
 }
 
