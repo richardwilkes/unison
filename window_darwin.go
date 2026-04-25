@@ -34,7 +34,7 @@ func macFindWindow(macWnd mac.Window) *Window {
 }
 
 func macInitWindowCallbacks() {
-	mac.WindowKeyPressedCallback = func(macWnd mac.Window, key int, mods uint) {
+	mac.WindowKeyPressedCallback = func(macWnd mac.Window, key uint16, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.keyPressed(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
@@ -48,7 +48,7 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window key typed callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowKeyReleasedCallback = func(macWnd mac.Window, key int, mods uint) {
+	mac.WindowKeyReleasedCallback = func(macWnd mac.Window, key uint16, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.keyReleased(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {

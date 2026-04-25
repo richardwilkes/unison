@@ -970,10 +970,10 @@ func (w Window) Close() {
 	C.windowClose(C.NSWindowRef(w))
 }
 
-var WindowKeyPressedCallback func(w Window, key int, mods uint)
+var WindowKeyPressedCallback func(w Window, key uint16, mods uint)
 
 //export goWindowKeyPressedCallback
-func goWindowKeyPressedCallback(w Window, key int, mods uint) {
+func goWindowKeyPressedCallback(w Window, key uint16, mods uint) {
 	if WindowKeyPressedCallback != nil {
 		WindowKeyPressedCallback(w, key, mods)
 	}
@@ -988,10 +988,10 @@ func goWindowKeyTypedCallback(w Window, ch rune) {
 	}
 }
 
-var WindowKeyReleasedCallback func(w Window, key int, mods uint)
+var WindowKeyReleasedCallback func(w Window, key uint16, mods uint)
 
 //export goWindowKeyReleasedCallback
-func goWindowKeyReleasedCallback(w Window, key int, mods uint) {
+func goWindowKeyReleasedCallback(w Window, key uint16, mods uint) {
 	if WindowKeyReleasedCallback != nil {
 		WindowKeyReleasedCallback(w, key, mods)
 	}

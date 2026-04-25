@@ -2202,6 +2202,24 @@ func (c *Conn) RespondToPing() {
 	}
 }
 
+// QueryKeymap retrieves the current state of the keyboard, returning an array of 32 bytes where each bit represents the
+// state of a key (1 for pressed, 0 for released) corresponding to the keycodes defined by the connection's minKeyCode
+// and maxKeyCode.
+func (c *Conn) QueryKeymap() [32]byte {
+	w := NewWriter(4)
+	w.Byte(opQueryKeymap)
+	w.Zero(1)
+	w.Uint16(1)
+	var keys [32]byte
+	if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(8)
+		r.IntoBytes(keys[:])
+	})); err != nil {
+		errs.Log(err)
+	}
+	return keys
+}
+
 // GetGeometry retrieves the geometry of the specified drawable.
 func (c *Conn) GetGeometry(drawable DrawableID) (Geometry, error) {
 	w := NewWriter(8)

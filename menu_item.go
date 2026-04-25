@@ -266,7 +266,7 @@ func (mi *menuItem) sizer(hint geom.Size) (minSize, prefSize, maxSize geom.Size)
 		if !mi.isRoot() {
 			prefSize.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
 		}
-		if !mi.keyBinding.KeyCode.IsZero() {
+		if mi.keyBinding.KeyCode != 0 {
 			keys := mi.keyBinding.String()
 			if keys != "" {
 				size := NewText(keys, &TextDecoration{
@@ -328,7 +328,7 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				}
 				drawable.DrawInRect(gc, r, nil, fg.Paint(gc, r, paintstyle.Fill))
 			}
-			if !mi.keyBinding.KeyCode.IsZero() {
+			if mi.keyBinding.KeyCode != 0 {
 				keys := mi.keyBinding.String()
 				if keys != "" {
 					t = NewText(keys, &TextDecoration{

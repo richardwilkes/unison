@@ -9,8 +9,8 @@
 
 #import "macos.h"
 
-void goWindowKeyPressedCallback(NSWindowRef w, int key, uint mods);
-void goWindowKeyReleasedCallback(NSWindowRef w, int key, uint mods);
+void goWindowKeyPressedCallback(NSWindowRef w, uint16 key, uint mods);
+void goWindowKeyReleasedCallback(NSWindowRef w, uint16 key, uint mods);
 void goWindowKeyTypedCallback(NSWindowRef w, uint32_t ch);
 void goWindowCursorUpdateCallback(NSWindowRef w);
 void goWindowMouseEnterCallback(NSWindowRef w, uint mods);

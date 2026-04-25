@@ -68,5 +68,5 @@ func (b KeyBinding) String() string {
 
 // IsZero implements json.isZero.
 func (b KeyBinding) IsZero() bool {
-	return b.Modifiers == 0 && b.KeyCode.IsZero()
+	return b.Modifiers == 0 && b.KeyCode == 0
 }

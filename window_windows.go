@@ -127,10 +127,10 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			w32.WM_SYSKEYDOWN,
 			w32.WM_KEYUP,
 			w32.WM_SYSKEYUP:
-			scanCode := int(((lParam >> 16) & (w32.KF_EXTENDED | 0xFF)))
+			scanCode := uint16(((lParam >> 16) & (w32.KF_EXTENDED | 0xFF)))
 			switch scanCode {
 			case 0:
-				scanCode = int(w32.MapVirtualKeyW(uint32(wParam), w32.MAPVK_VK_TO_VSC))
+				scanCode = uint16(w32.MapVirtualKeyW(uint32(wParam), w32.MAPVK_VK_TO_VSC))
 			case 0x54: // Alt+PrtScn
 				scanCode = 0x137
 			case 0x146: // Ctrl+Pause

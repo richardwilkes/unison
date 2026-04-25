@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"unicode/utf8"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -396,13 +397,23 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.KeyPressEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("KeyPressEvent", "event", ev)
-			// TODO: Implement
+			if key, ok := rawScanCodeToKeyCodeMap[uint16(ev.Detail)]; ok {
+				mods := x11TranslateModifierState(ev.State)
+				w.keyPressed(key, mods)
+				if mods&(ControlModifier|OptionModifier|CommandModifier) == 0 {
+					keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods)
+					if ch := x11KeySymToUnicode(keySym); ch != utf8.RuneError {
+						w.runeTyped(ch)
+					}
+				}
+			}
 		}
 	case *x11.KeyReleaseEvent:
 		if w := x11FindWindow(ev.Child); w != nil {
-			slog.Info("KeyReleaseEvent", "event", ev)
-			// TODO: Implement
+			if key, ok := rawScanCodeToKeyCodeMap[uint16(ev.Detail)]; ok {
+				mods := x11TranslateModifierState(ev.State)
+				w.keyReleased(key, mods)
+			}
 		}
 	case *x11.ButtonPressEvent:
 		if w := x11FindWindow(ev.Event); w != nil {

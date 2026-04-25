@@ -420,7 +420,7 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods Modifiers, repeat b
 		m.updater(m)
 	}
 	for _, mi := range m.items {
-		if !mi.keyBinding.KeyCode.IsZero() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mods {
+		if mi.keyBinding.KeyCode != 0 && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mods {
 			mi.validate()
 			if mi.enabled {
 				mi.execute()

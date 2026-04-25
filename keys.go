@@ -17,10 +17,10 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 )
 
-var rawScanCodeToKeyCodeMap = make(map[int]KeyCode)
+var rawScanCodeToKeyCodeMap = make(map[uint16]KeyCode)
 
 // KeyCode holds a virtual key code.
-type KeyCode int16
+type KeyCode uint16
 
 // Virtual key codes.
 const (
@@ -149,7 +149,7 @@ const (
 )
 
 var (
-	keyCodeToKey = map[KeyCode]string{
+	keyCodeToString = map[KeyCode]string{
 		KeySpace:          "space",
 		KeyApostrophe:     "'",
 		KeyComma:          ",",
@@ -275,7 +275,7 @@ var (
 )
 
 func init() {
-	for k, v := range keyCodeToKey {
+	for k, v := range keyCodeToString {
 		keyToKeyCode[v] = k
 	}
 }
@@ -311,17 +311,17 @@ func KeyCodeFromKey(key string) KeyCode {
 
 // Key returns a string version of the KeyCode for the purpose of serialization.
 func (k KeyCode) Key() string {
-	if k.IsZero() {
+	if k == 0 {
 		return ""
 	}
-	if v, ok := keyCodeToKey[k]; ok {
+	if v, ok := keyCodeToString[k]; ok {
 		return v
 	}
 	return fmt.Sprintf("#%d", k)
 }
 
 func (k KeyCode) String() string {
-	if k.IsZero() {
+	if k == 0 {
 		return ""
 	}
 	switch k {
@@ -568,9 +568,4 @@ func (k KeyCode) String() string {
 	default:
 		return fmt.Sprintf("#%d", k)
 	}
-}
-
-// IsZero implements json.isZero.
-func (k KeyCode) IsZero() bool {
-	return k == 0 || k == KeyNone
 }
