@@ -276,6 +276,26 @@ type Screen struct {
 	RootDepth           byte
 }
 
+const (
+	netWMStateRemove = iota
+	netWMStateAdd
+	newWMStateToggle
+)
+
+// Possible window states.
+const (
+	StateWithdrawn = iota
+	StateNormal
+	_
+	StateIconic
+)
+
+const (
+	_ = iota
+	sourceNormalApp
+	sourcePager
+)
+
 // WindowValueMask represents the bitmask for specifying which window attributes to set or get.
 type WindowValueMask uint32
 
@@ -2370,6 +2390,35 @@ func (c *Conn) FocusWindow(window WindowID) {
 	msg.Data32[0] = 1
 	msg.Window = window
 	msg.Type = c.Atoms.NetActiveWindow
+	msg.Format = 32
+	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+		errs.Log(err)
+	}
+}
+
+// IconifyWindow sends a ClientMessage event to the root window to request that the specified window be iconified
+// (minimized).
+func (c *Conn) IconifyWindow(window WindowID) {
+	var msg ClientMessageEvent
+	msg.Data32[0] = StateIconic
+	msg.Window = window
+	msg.Type = c.Atoms.WMChangeState
+	msg.Format = 32
+	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+		errs.Log(err)
+	}
+}
+
+// MaximizeWindow sends a ClientMessage event to the root window to request that the specified window be maximized both
+// vertically and horizontally.
+func (c *Conn) MaximizeWindow(window WindowID) {
+	var msg ClientMessageEvent
+	msg.Data32[0] = netWMStateAdd
+	msg.Data32[1] = uint32(c.Atoms.NetWMStateMaximizedVert)
+	msg.Data32[2] = uint32(c.Atoms.NetWMStateMaximizedHorz)
+	msg.Data32[3] = sourceNormalApp
+	msg.Window = window
+	msg.Type = c.Atoms.NetWMState
 	msg.Format = 32
 	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
 		errs.Log(err)

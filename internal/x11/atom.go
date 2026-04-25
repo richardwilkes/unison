@@ -89,47 +89,50 @@ const (
 
 // Atoms holds the Atom values for commonly used X11 Atoms that don't have predefined constants.
 type Atoms struct {
-	Clipboard              Atom
-	ClipboardIncremental   Atom
-	ClipboardManager       Atom
-	ClipboardMultiple      Atom
-	ClipboardSaveTargets   Atom
-	ClipboardSelection     Atom
-	ClipboardTargets       Atom
-	DnDActionCopy          Atom
-	DnDAware               Atom
-	DnDDrop                Atom
-	DnDEnter               Atom
-	DnDFinished            Atom
-	DnDLeave               Atom
-	DnDPosition            Atom
-	DnDSelection           Atom
-	DnDStatus              Atom
-	DndTypeList            Atom
-	MotifWMHints           Atom
-	NetActiveWindow        Atom
-	NetCurrentDesktop      Atom
-	NetFrameExtents        Atom
-	NetRequestFrameExtents Atom
-	NetState               Atom
-	NetStateAbove          Atom
-	NetWMIconName          Atom
-	NetWMName              Atom
-	NetWMPing              Atom
-	NetWMWindowType        Atom
-	NetWMWindowTypeDialog  Atom
-	NetWMWindowTypeMenu    Atom
-	NetWMWindowTypeNormal  Atom
-	NetWMWindowTypeTooltip Atom
-	NetWorkArea            Atom
-	Null                   Atom
-	Pair                   Atom
-	TextURIList            Atom
-	UTF8String             Atom
-	WMDeleteWindow         Atom
-	WMPID                  Atom
-	WMProtocols            Atom
-	WMState                Atom
+	Clipboard               Atom
+	ClipboardIncremental    Atom
+	ClipboardManager        Atom
+	ClipboardMultiple       Atom
+	ClipboardSaveTargets    Atom
+	ClipboardSelection      Atom
+	ClipboardTargets        Atom
+	DnDActionCopy           Atom
+	DnDAware                Atom
+	DnDDrop                 Atom
+	DnDEnter                Atom
+	DnDFinished             Atom
+	DnDLeave                Atom
+	DnDPosition             Atom
+	DnDSelection            Atom
+	DnDStatus               Atom
+	DndTypeList             Atom
+	MotifWMHints            Atom
+	NetActiveWindow         Atom
+	NetCurrentDesktop       Atom
+	NetFrameExtents         Atom
+	NetRequestFrameExtents  Atom
+	NetWMIconName           Atom
+	NetWMName               Atom
+	NetWMPing               Atom
+	NetWMState              Atom
+	NetWMStateAbove         Atom
+	NetWMStateMaximizedHorz Atom
+	NetWMStateMaximizedVert Atom
+	NetWMWindowType         Atom
+	NetWMWindowTypeDialog   Atom
+	NetWMWindowTypeMenu     Atom
+	NetWMWindowTypeNormal   Atom
+	NetWMWindowTypeTooltip  Atom
+	NetWorkArea             Atom
+	Null                    Atom
+	Pair                    Atom
+	TextURIList             Atom
+	UTF8String              Atom
+	WMChangeState           Atom
+	WMDeleteWindow          Atom
+	WMPID                   Atom
+	WMProtocols             Atom
+	WMState                 Atom
 }
 
 func (a *Atoms) init(c *Conn) error {
@@ -160,11 +163,13 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.NetCurrentDesktop, "_NET_CURRENT_DESKTOP"},
 		{&a.NetFrameExtents, "_NET_FRAME_EXTENTS"},
 		{&a.NetRequestFrameExtents, "_NET_REQUEST_FRAME_EXTENTS"},
-		{&a.NetState, "_NET_WM_STATE"},
-		{&a.NetStateAbove, "_NET_WM_STATE_ABOVE"},
 		{&a.NetWMIconName, "_NET_WM_ICON_NAME"},
 		{&a.NetWMName, "_NET_WM_NAME"},
 		{&a.NetWMPing, "_NET_WM_PING"},
+		{&a.NetWMState, "_NET_WM_STATE"},
+		{&a.NetWMStateAbove, "_NET_WM_STATE_ABOVE"},
+		{&a.NetWMStateMaximizedHorz, "_NET_WM_STATE_MAXIMIZED_HORZ"},
+		{&a.NetWMStateMaximizedVert, "_NET_WM_STATE_MAXIMIZED_VERT"},
 		{&a.NetWMWindowType, "_NET_WM_WINDOW_TYPE"},
 		{&a.NetWMWindowTypeDialog, "_NET_WM_WINDOW_TYPE_DIALOG"},
 		{&a.NetWMWindowTypeMenu, "_NET_WM_WINDOW_TYPE_MENU"},
@@ -175,6 +180,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.Pair, "ATOM_PAIR"},
 		{&a.TextURIList, "text/uri-list"},
 		{&a.UTF8String, "UTF8_STRING"},
+		{&a.WMChangeState, "WM_CHANGE_STATE"},
 		{&a.WMDeleteWindow, "WM_DELETE_WINDOW"},
 		{&a.WMPID, "_NET_WM_PID"},
 		{&a.WMProtocols, "WM_PROTOCOLS"},

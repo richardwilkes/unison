@@ -22,7 +22,6 @@ type apiWindow struct {
 	wnd            mac.Window
 	view           mac.View
 	nsCursorHidden bool
-	maximized      bool
 }
 
 func macFindWindow(macWnd mac.Window) *Window {
@@ -67,10 +66,10 @@ func macInitWindowCallbacks() {
 		if w := macFindWindow(macWnd); w != nil {
 			w.glCtx.ctx.Update()
 			maximized := w.wnd.wnd.Zoomed()
-			if w.wnd.maximized != maximized {
-				w.wnd.maximized = maximized
-				if w.MaximizeCallback != nil {
-					w.MaximizeCallback(maximized)
+			if w.maximized != maximized {
+				w.maximized = maximized
+				if w.MaximizedCallback != nil {
+					w.MaximizedCallback(maximized)
 				}
 			}
 			r := w.wnd.view.Frame()
@@ -98,8 +97,11 @@ func macInitWindowCallbacks() {
 	}
 	mac.WindowMinimizeCallback = func(macWnd mac.Window, minimized bool) {
 		if w := macFindWindow(macWnd); w != nil {
-			if w.MinimizedCallback != nil {
-				w.MinimizedCallback(minimized)
+			if w.minimized != minimized {
+				w.minimized = minimized
+				if w.MinimizedCallback != nil {
+					w.MinimizedCallback(minimized)
+				}
 			}
 		} else {
 			slog.Warn("received window minimize callback for unknown window", "window", macWnd, "minimized", minimized)

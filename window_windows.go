@@ -34,8 +34,6 @@ type apiWindow struct {
 	bigIcon       w32.HICON
 	smallIcon     w32.HICON
 	highSurrogate uint16
-	maximized     bool
-	minimized     bool
 	mouseTracked  bool
 }
 
@@ -246,17 +244,17 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			return 0
 		case w32.WM_SIZE:
 			minimized := wParam == w32.SIZE_MINIMIZED
-			if w.wnd.minimized != minimized {
-				w.wnd.minimized = minimized
+			if w.minimized != minimized {
+				w.minimized = minimized
 				if w.MinimizedCallback != nil {
 					w.MinimizedCallback(minimized)
 				}
 			}
-			maximized := wParam == w32.SIZE_MAXIMIZED || (w.wnd.maximized && wParam != w32.SIZE_RESTORED)
-			if w.wnd.maximized != maximized {
-				w.wnd.maximized = maximized
-				if w.MaximizeCallback != nil {
-					w.MaximizeCallback(maximized)
+			maximized := wParam == w32.SIZE_MAXIMIZED || (w.maximized && wParam != w32.SIZE_RESTORED)
+			if w.maximized != maximized {
+				w.maximized = maximized
+				if w.MaximizedCallback != nil {
+					w.MaximizedCallback(maximized)
 				}
 			}
 			width := float32(lParam & 0xFFFF)

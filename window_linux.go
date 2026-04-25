@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"image"
 	"log/slog"
+	"math"
 	"os"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -22,11 +23,13 @@ import (
 )
 
 type apiWindow struct {
-	id       x11.WindowID
-	parent   x11.WindowID
-	colorMap x11.ColorMapID
-	lastX    float32
-	lastY    float32
+	id        x11.WindowID
+	parent    x11.WindowID
+	colorMap  x11.ColorMapID
+	lastX     float32
+	lastY     float32
+	minimized bool
+	maximized bool
 }
 
 func x11FindWindow(id x11.WindowID) *Window {
@@ -78,8 +81,8 @@ func (w *Window) apiInit() error {
 	}
 	if w.floating {
 		buf := x11.NewWriter(4)
-		buf.Atom(x11Conn.Atoms.NetStateAbove)
-		x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetState, x11.AtomAtom, 32, x11.PropModeReplace,
+		buf.Atom(x11Conn.Atoms.NetWMStateAbove)
+		x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMState, x11.AtomAtom, 32, x11.PropModeReplace,
 			buf.Retrieve())
 	}
 
@@ -262,11 +265,10 @@ func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 
 func (w *Window) apiCurrentKeyModifiers() Modifiers {
 	// TODO: Need to fix implementation
-	return w.LastKeyModifiers()
+	return w.lastKeyModifiers
 }
 
 func (w *Window) apiUpdateCursorImage() {
-	// TODO: Need implementation
 	switch {
 	case w.cursorHidden:
 		// TODO: Need to test this and cursor showing once text input works
@@ -306,11 +308,11 @@ func (w *Window) apiBackingScale() geom.Point {
 }
 
 func (w *Window) apiMinimize() {
-	// TODO: Need implementation
+	x11Conn.IconifyWindow(w.wnd.id)
 }
 
 func (w *Window) apiMaximize() {
-	// TODO: Need implementation
+	x11Conn.MaximizeWindow(w.wnd.id)
 }
 
 func (w *Window) apiAcquireFocus() {
@@ -526,9 +528,48 @@ func x11ProcessEvent(e x11.Event) {
 			}
 			switch ev.Atom {
 			case x11Conn.Atoms.WMState:
-				// TODO: Implement
-			case x11Conn.Atoms.NetState:
-				// TODO: Implement
+				format, actualType, values, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.WMState, x11Conn.Atoms.WMState, 0, math.MaxUint32, false)
+				if err != nil {
+					errs.Log(err)
+					return
+				}
+				if format != 32 || actualType != x11Conn.Atoms.WMState || len(values) < 8 {
+					errs.Log(errs.New("unexpected response"))
+					return
+				}
+				r := x11.NewReader(values)
+				minimized := r.Uint32() == x11.StateIconic
+				if minimized != w.wnd.minimized {
+					w.wnd.minimized = minimized
+					if w.MinimizedCallback != nil {
+						w.MinimizedCallback(minimized)
+					}
+				}
+			case x11Conn.Atoms.NetWMState:
+				format, actualType, values, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetWMState, x11.AtomAtom, 0, math.MaxUint32, false)
+				if err != nil {
+					errs.Log(err)
+					return
+				}
+				if format != 32 || actualType != x11.AtomAtom {
+					errs.Log(errs.New("unexpected response"))
+					return
+				}
+				maximized := false
+				r := x11.NewReader(values)
+				for range len(values) / 4 {
+					a := r.Atom()
+					if a == x11Conn.Atoms.NetWMStateMaximizedHorz || a == x11Conn.Atoms.NetWMStateMaximizedVert {
+						maximized = true
+						break
+					}
+				}
+				if maximized != w.wnd.maximized {
+					w.wnd.maximized = maximized
+					if w.MaximizedCallback != nil {
+						w.MaximizedCallback(maximized)
+					}
+				}
 			}
 		}
 	}

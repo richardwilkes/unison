@@ -71,7 +71,7 @@ type Window struct {
 	// MinimizedCallback is called when the window is about to beminimized or restored from minimization.
 	MinimizedCallback func(minimized bool)
 	// MaximizedCallback is called when the window is about to be maximized or restored from maximization.
-	MaximizeCallback func(maximized bool)
+	MaximizedCallback func(maximized bool)
 	// AllowCloseCallback is called when the user has requested that the window be closed. Return true to permit it,
 	// false to cancel the operation. Defaults to always returning true.
 	AllowCloseCallback func() bool
@@ -125,6 +125,8 @@ type Window struct {
 	inMouseDown                 bool
 	cursorHiddenUntilMouseMoves bool
 	cursorHidden                bool
+	minimized                   bool
+	maximized                   bool
 }
 
 // WindowOption holds an option for window creation.
@@ -824,6 +826,11 @@ func (w *Window) ToFront() {
 	}
 }
 
+// IsMinimized returns true if the window is currently minimized.
+func (w *Window) IsMinimized() bool {
+	return w.IsValid() && w.minimized
+}
+
 // Minimize performs the minimize function on the window.
 func (w *Window) Minimize() {
 	if w.IsValid() {
@@ -831,8 +838,13 @@ func (w *Window) Minimize() {
 	}
 }
 
-// Zoom performs the zoom function on the window.
-func (w *Window) Zoom() {
+// IsMaximized returns true if the window is currently maximized.
+func (w *Window) IsMaximized() bool {
+	return w.IsValid() && w.maximized
+}
+
+// Maximize performs the maximize function on the window.
+func (w *Window) Maximize() {
 	if w.IsValid() {
 		w.apiMaximize()
 	}

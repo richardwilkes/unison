@@ -35,7 +35,7 @@ const (
 	DeleteItemID
 	SelectAllItemID
 	MinimizeItemID
-	ZoomItemID
+	MaximizeItemID
 	CloseItemID
 	HideItemID
 	HideOthersItemID
@@ -148,7 +148,7 @@ func NewWindowMenu(f MenuFactory, updater func(Menu)) Menu {
 	}
 	m := f.NewMenu(WindowMenuID, i18n.Text("Window"), updater)
 	InsertMinimizeItem(m, -1)
-	InsertZoomItem(m, -1)
+	InsertMaximizeItem(m, -1)
 	return m
 }
 
@@ -204,10 +204,10 @@ func InsertMinimizeItem(m Menu, atIndex int) {
 		}))
 }
 
-// InsertZoomItem creates the standard "Zoom" menu item that will issue the Zoom command to the currently focused window
+// InsertMaximizeItem creates the standard "Maximize" menu item that will issue the Maximize command to the currently focused window
 // when chosen.
-func InsertZoomItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(ZoomItemID, i18n.Text("Zoom"),
+func InsertMaximizeItem(m Menu, atIndex int) {
+	m.InsertItem(atIndex, m.Factory().NewItem(MaximizeItemID, i18n.Text("Maximize"),
 		KeyBinding{KeyCode: KeyZ, Modifiers: ShiftModifier | OSMenuCmdModifier()},
 		func(MenuItem) bool {
 			w := ActiveWindow()
@@ -215,7 +215,7 @@ func InsertZoomItem(m Menu, atIndex int) {
 		},
 		func(MenuItem) {
 			if wnd := ActiveWindow(); wnd != nil {
-				wnd.Zoom()
+				wnd.Maximize()
 			}
 		}))
 }
