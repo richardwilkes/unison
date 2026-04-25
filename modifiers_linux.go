@@ -10,5 +10,18 @@
 package unison
 
 func x11TranslateModifierState(state uint16) Modifiers {
-	return Modifiers(state) & AllModifiers
+	var m Modifiers
+	if state&0x0001 != 0 {
+		m |= ShiftModifier
+	}
+	if state&0x0004 != 0 {
+		m |= ControlModifier
+	}
+	if state&0x0008 != 0 {
+		m |= OptionModifier
+	}
+	if state&0x0010 != 0 {
+		m |= CommandModifier
+	}
+	return m
 }
