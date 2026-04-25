@@ -24,13 +24,14 @@ import (
 )
 
 type apiWindow struct {
-	id        x11.WindowID
-	parent    x11.WindowID
-	colorMap  x11.ColorMapID
-	lastX     float32
-	lastY     float32
-	minimized bool
-	maximized bool
+	id              x11.WindowID
+	parent          x11.WindowID
+	colorMap        x11.ColorMapID
+	lastX           float32
+	lastY           float32
+	minimized       bool
+	maximized       bool
+	cursorWasHidden bool
 }
 
 func x11FindWindow(id x11.WindowID) *Window {
@@ -272,13 +273,23 @@ func (w *Window) apiCurrentKeyModifiers() Modifiers {
 func (w *Window) apiUpdateCursorImage() {
 	switch {
 	case w.cursorHidden:
-		// TODO: Need to test this and cursor showing once text input works
-		x11Conn.ExtXFixes.HideCursor(w.wnd.id)
+		if !w.wnd.cursorWasHidden {
+			w.wnd.cursorWasHidden = true
+			x11Conn.ExtXFixes.HideCursor(w.wnd.id)
+		}
 	case w.cursor != nil:
+		if w.wnd.cursorWasHidden {
+			w.wnd.cursorWasHidden = false
+			x11Conn.ExtXFixes.ShowCursor(w.wnd.id)
+		}
 		x11Conn.ChangeWindowAttributes(w.wnd.id, x11.WindowMaskCursor, &x11.WindowCreationAttributes{
 			Cursor: w.cursor.cursor.cursor,
 		})
 	default:
+		if w.wnd.cursorWasHidden {
+			w.wnd.cursorWasHidden = false
+			x11Conn.ExtXFixes.ShowCursor(w.wnd.id)
+		}
 		x11Conn.ChangeWindowAttributes(w.wnd.id, x11.WindowMaskCursor, &x11.WindowCreationAttributes{})
 	}
 }
