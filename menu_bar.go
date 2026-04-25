@@ -11,7 +11,6 @@ package unison
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
@@ -149,10 +148,7 @@ func NewWindowMenu(f MenuFactory, updater func(Menu)) Menu {
 	}
 	m := f.NewMenu(WindowMenuID, i18n.Text("Window"), updater)
 	InsertMinimizeItem(m, -1)
-	// macOS automatically adds a bunch of window management items, including "Fill", which is equivalent to "Maximize"
-	if runtime.GOOS != xos.MacOS {
-		InsertMaximizeItem(m, -1)
-	}
+	InsertMaximizeItem(m, -1)
 	return m
 }
 

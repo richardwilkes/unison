@@ -122,7 +122,7 @@ bool windowMiniaturized(NSWindowRef w) {
 }
 
 void windowMiniaturize(NSWindowRef w) {
-	if windowMiniaturized(w) {
+	if (windowMiniaturized(w)) {
 		[(NSWindow*)w deminiaturize:nil];
 	} else {
 		[(NSWindow*)w miniaturize:nil];
