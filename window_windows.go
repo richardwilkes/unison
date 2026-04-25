@@ -587,11 +587,19 @@ func (w *Window) apiBackingScale() geom.Point {
 }
 
 func (w *Window) apiMinimize() {
-	w32.ShowWindow(w.wnd.wnd, w32.SW_MINIMIZE)
+	if w.minimized {
+		w32.ShowWindow(w.wnd.wnd, w32.SW_RESTORE)
+	} else {
+		w32.ShowWindow(w.wnd.wnd, w32.SW_MINIMIZE)
+	}
 }
 
 func (w *Window) apiMaximize() {
-	w32.ShowWindow(w.wnd.wnd, w32.SW_MAXIMIZE)
+	if w.maximized {
+		w32.ShowWindow(w.wnd.wnd, w32.SW_RESTORE)
+	} else {
+		w32.ShowWindow(w.wnd.wnd, w32.SW_MAXIMIZE)
+	}
 }
 
 func (w *Window) apiAcquireFocus() {

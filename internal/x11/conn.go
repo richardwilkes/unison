@@ -2409,11 +2409,40 @@ func (c *Conn) IconifyWindow(window WindowID) {
 	}
 }
 
+// DeiconifyWindow sends a ClientMessage event to the root window to request that the specified window be deiconified
+// (restored from a minimized state).
+func (c *Conn) DeiconifyWindow(window WindowID) {
+	var msg ClientMessageEvent
+	msg.Data32[0] = StateNormal
+	msg.Window = window
+	msg.Type = c.Atoms.WMChangeState
+	msg.Format = 32
+	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+		errs.Log(err)
+	}
+}
+
 // MaximizeWindow sends a ClientMessage event to the root window to request that the specified window be maximized both
 // vertically and horizontally.
 func (c *Conn) MaximizeWindow(window WindowID) {
 	var msg ClientMessageEvent
 	msg.Data32[0] = netWMStateAdd
+	msg.Data32[1] = uint32(c.Atoms.NetWMStateMaximizedVert)
+	msg.Data32[2] = uint32(c.Atoms.NetWMStateMaximizedHorz)
+	msg.Data32[3] = sourceNormalApp
+	msg.Window = window
+	msg.Type = c.Atoms.NetWMState
+	msg.Format = 32
+	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+		errs.Log(err)
+	}
+}
+
+// DemaximizeWindow sends a ClientMessage event to the root window to request that the specified window be restored from
+// a maximized state.
+func (c *Conn) DemaximizeWindow(window WindowID) {
+	var msg ClientMessageEvent
+	msg.Data32[0] = netWMStateRemove
 	msg.Data32[1] = uint32(c.Atoms.NetWMStateMaximizedVert)
 	msg.Data32[2] = uint32(c.Atoms.NetWMStateMaximizedHorz)
 	msg.Data32[3] = sourceNormalApp

@@ -122,7 +122,11 @@ bool windowMiniaturized(NSWindowRef w) {
 }
 
 void windowMiniaturize(NSWindowRef w) {
-	[(NSWindow*)w miniaturize:nil];
+	if windowMiniaturized(w) {
+		[(NSWindow*)w deminiaturize:nil];
+	} else {
+		[(NSWindow*)w miniaturize:nil];
+	}
 }
 
 bool windowZoomed(NSWindowRef w) {

@@ -831,7 +831,7 @@ func (w *Window) IsMinimized() bool {
 	return w.IsValid() && w.minimized
 }
 
-// Minimize performs the minimize function on the window.
+// Minimize performs the minimize function on the window, or restores it if it is already minimized.
 func (w *Window) Minimize() {
 	if w.IsValid() {
 		w.apiMinimize()
@@ -843,7 +843,7 @@ func (w *Window) IsMaximized() bool {
 	return w.IsValid() && w.maximized
 }
 
-// Maximize performs the maximize function on the window.
+// Maximize performs the maximize function on the window, or restores it if it is already maximized.
 func (w *Window) Maximize() {
 	if w.IsValid() {
 		w.apiMaximize()

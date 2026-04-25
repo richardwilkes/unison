@@ -338,15 +338,11 @@ func (w *Window) apiBackingScale() geom.Point {
 }
 
 func (w *Window) apiMinimize() {
-	if !w.wnd.wnd.Miniaturized() {
-		w.wnd.wnd.Miniaturize()
-	}
+	w.wnd.wnd.Miniaturize()
 }
 
 func (w *Window) apiMaximize() {
-	if !w.wnd.wnd.Zoomed() {
-		w.wnd.wnd.Zoom()
-	}
+	w.wnd.wnd.Zoom()
 }
 
 func (w *Window) apiAcquireFocus() {

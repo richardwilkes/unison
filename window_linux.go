@@ -308,11 +308,19 @@ func (w *Window) apiBackingScale() geom.Point {
 }
 
 func (w *Window) apiMinimize() {
-	x11Conn.IconifyWindow(w.wnd.id)
+	if w.wnd.minimized {
+		x11Conn.DeiconifyWindow(w.wnd.id)
+	} else {
+		x11Conn.IconifyWindow(w.wnd.id)
+	}
 }
 
 func (w *Window) apiMaximize() {
-	x11Conn.MaximizeWindow(w.wnd.id)
+	if w.wnd.maximized {
+		x11Conn.DemaximizeWindow(w.wnd.id)
+	} else {
+		x11Conn.MaximizeWindow(w.wnd.id)
+	}
 }
 
 func (w *Window) apiAcquireFocus() {
