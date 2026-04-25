@@ -396,7 +396,7 @@ func x11ProcessEvent(e x11.Event) {
 			w.wnd.parent = ev.Parent
 		}
 	case *x11.KeyPressEvent:
-		if w := x11FindWindow(ev.Child); w != nil {
+		if w := x11FindWindow(ev.Event); w != nil {
 			if key, ok := rawScanCodeToKeyCodeMap[uint16(ev.Detail)]; ok {
 				mods := x11TranslateModifierState(ev.State)
 				w.keyPressed(key, mods)
@@ -409,7 +409,7 @@ func x11ProcessEvent(e x11.Event) {
 			}
 		}
 	case *x11.KeyReleaseEvent:
-		if w := x11FindWindow(ev.Child); w != nil {
+		if w := x11FindWindow(ev.Event); w != nil {
 			if key, ok := rawScanCodeToKeyCodeMap[uint16(ev.Detail)]; ok {
 				mods := x11TranslateModifierState(ev.State)
 				w.keyReleased(key, mods)
