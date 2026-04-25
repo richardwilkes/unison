@@ -14,6 +14,9 @@ func x11TranslateModifierState(state uint16) Modifiers {
 	if state&0x0001 != 0 {
 		m |= ShiftModifier
 	}
+	if state&0x0002 != 0 {
+		m |= CapsLockModifier
+	}
 	if state&0x0004 != 0 {
 		m |= ControlModifier
 	}
