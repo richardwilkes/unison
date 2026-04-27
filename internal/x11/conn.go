@@ -2401,27 +2401,27 @@ type ConfigureWindowRequest struct {
 	StackMode   StackMode
 }
 
-func (c *ConfigureWindowRequest) values() []uint32 {
+func (c *ConfigureWindowRequest) values(mask ConfigureWindowValueMask) []uint32 {
 	values := make([]uint32, 0, 7)
-	if c.X != 0 {
+	if mask&ConfigureWindowMaskX != 0 {
 		values = append(values, uint32(c.X))
 	}
-	if c.Y != 0 {
+	if mask&ConfigureWindowMaskY != 0 {
 		values = append(values, uint32(c.Y))
 	}
-	if c.Width != 0 {
+	if mask&ConfigureWindowMaskWidth != 0 {
 		values = append(values, uint32(c.Width))
 	}
-	if c.Height != 0 {
+	if mask&ConfigureWindowMaskHeight != 0 {
 		values = append(values, uint32(c.Height))
 	}
-	if c.BorderWidth != 0 {
+	if mask&ConfigureWindowMaskBorderWidth != 0 {
 		values = append(values, uint32(c.BorderWidth))
 	}
-	if c.Sibling != 0 {
+	if mask&ConfigureWindowMaskSibling != 0 {
 		values = append(values, uint32(c.Sibling))
 	}
-	if c.StackMode != 0 {
+	if mask&ConfigureWindowMaskStackMode != 0 {
 		values = append(values, uint32(c.StackMode))
 	}
 	return values
@@ -2430,7 +2430,7 @@ func (c *ConfigureWindowRequest) values() []uint32 {
 // ConfigureWindow configures the specified window by changing its position, size, border width, sibling, and/or stack
 // mode.
 func (c *Conn) ConfigureWindow(window WindowID, mask ConfigureWindowValueMask, req *ConfigureWindowRequest) {
-	values := req.values()
+	values := req.values(mask)
 	w := NewWriter(12 + len(values)*4)
 	w.Byte(opConfigureWindow)
 	w.Zero(1)
