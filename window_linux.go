@@ -365,7 +365,10 @@ func (w *Window) apiMaximize() {
 	}
 }
 
-func (w *Window) apiAcquireFocus() {
+func (w *Window) apiAcquireFocusAndBringToFront() {
+	x11Conn.ConfigureWindow(w.wnd.id, x11.ConfigureWindowMaskStackMode, &x11.ConfigureWindowRequest{
+		StackMode: x11.StackModeAbove,
+	})
 	x11Conn.FocusWindow(w.wnd.id)
 	x11Conn.Flush()
 }

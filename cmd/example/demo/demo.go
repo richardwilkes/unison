@@ -594,8 +594,7 @@ func createImagePanel() *unison.Label {
 	if logoImg, err := ClassicAppleLogoImage(); err != nil {
 		errs.Log(err)
 	} else {
-		size := logoImg.LogicalSize()
-		cursor = unison.NewCursor(logoImg, geom.NewPoint(size.Width/2, size.Height/2))
+		cursor = unison.NewCursor(logoImg)
 	}
 	imgPanel.UpdateCursorCallback = func(_ geom.Point) *unison.Cursor { return cursor }
 

@@ -9,15 +9,24 @@
 
 #import "macos.h"
 
-NSCursorRef newCursor(unsigned char* pixels, int width, int height, int xhot, int yhot) {
-	NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:width pixelsHigh:height
-		bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSCalibratedRGBColorSpace
-		bitmapFormat:NSBitmapFormatAlphaNonpremultiplied bytesPerRow:width * 4 bitsPerPixel:32];
+NSCursorRef newCursor(unsigned char* pixels, int xhot, int yhot, int logicalWidth, int logicalheight, int actualWidth, int actualHeight) {
+	NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
+		initWithBitmapDataPlanes:NULL
+		pixelsWide:actualWidth
+		pixelsHigh:actualHeight
+		bitsPerSample:8
+		samplesPerPixel:4
+		hasAlpha:YES
+		isPlanar:NO
+		colorSpaceName:NSCalibratedRGBColorSpace
+		bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
+		bytesPerRow:actualWidth * 4
+		bitsPerPixel:32];
 	if (rep == nil) {
 		return nil;
 	}
-	memcpy([rep bitmapData], pixels, width * height * 4);
-	NSImage* img = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
+	memcpy([rep bitmapData], pixels, actualWidth * actualHeight * 4);
+	NSImage* img = [[NSImage alloc] initWithSize:NSMakeSize(logicalWidth, logicalheight)];
 	[img addRepresentation:rep];
 	NSCursor *cursor = [[[NSCursor alloc] initWithImage:img hotSpot:NSMakePoint(xhot, yhot)] retain];
 	[img release];

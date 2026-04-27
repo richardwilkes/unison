@@ -821,8 +821,7 @@ func (w *Window) ToFront() {
 	if w.IsValid() {
 		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
-		w.apiAcquireFocus()
-		// TODO: Determine if acquire focus also always forces a window to the front. If not, provide a way to do so.
+		w.apiAcquireFocusAndBringToFront()
 	}
 }
 

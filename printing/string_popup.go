@@ -20,7 +20,7 @@ import (
 )
 
 // Language is the language that will be used when performing string manipulations for display.
-var Language = language.AmericanEnglish // TODO: Use the user's default
+var Language = language.AmericanEnglish
 
 type stringPopup[T ~string] struct {
 	colorMode *unison.PopupMenu[T]

@@ -35,7 +35,7 @@ void setWindowsMenu(NSMenuRef menu);
 void setHelpMenu(NSMenuRef menu);
 
 // Cursor
-NSCursorRef newCursor(unsigned char* pixels, int width, int height, int xhot, int yhot);
+NSCursorRef newCursor(unsigned char* pixels, int xhot, int yhot, int logicalWidth, int logicalheight, int actualWidth, int actualHeight);
 NSCursorRef cursorArrow(void);
 NSCursorRef cursorIBeam(void);
 NSCursorRef cursorCrosshair(void);

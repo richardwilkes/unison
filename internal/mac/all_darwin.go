@@ -22,7 +22,6 @@ import "C"
 
 import (
 	"image"
-	"image/draw"
 	"net/url"
 	"strings"
 	"time"
@@ -201,14 +200,9 @@ func (a Array) ArrayOfStringToStringSlice() []string {
 
 type Cursor C.NSCursorRef
 
-func NewCursor(img *image.NRGBA, xhot, yhot int) Cursor {
-	if img.Stride != img.Rect.Dx()*4 {
-		nImg := image.NewNRGBA(image.Rect(0, 0, img.Rect.Dx(), img.Rect.Dy()))
-		draw.Draw(nImg, nImg.Bounds(), img, img.Rect.Min, draw.Src)
-		img = nImg
-	}
-	return Cursor(C.newCursor((*C.uchar)(&img.Pix[0]), C.int(img.Rect.Dx()), C.int(img.Rect.Dy()), C.int(xhot),
-		C.int(yhot)))
+func NewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) Cursor {
+	return Cursor(C.newCursor((*C.uchar)(&img.Pix[0]), C.int(hotSpot.X), C.int(hotSpot.Y), C.int(logicalSize.Width),
+		C.int(logicalSize.Height), C.int(img.Rect.Dx()), C.int(img.Rect.Dy())))
 }
 
 func (c Cursor) Set() {

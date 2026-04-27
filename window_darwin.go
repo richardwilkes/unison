@@ -345,7 +345,7 @@ func (w *Window) apiMaximize() {
 	w.wnd.wnd.Zoom()
 }
 
-func (w *Window) apiAcquireFocus() {
+func (w *Window) apiAcquireFocusAndBringToFront() {
 	mac.ActivateIgnoringOtherApps()
 	w.wnd.wnd.MakeKeyAndOrderFront()
 }

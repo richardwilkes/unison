@@ -17,10 +17,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// TODO: We may need to use a helper window in order to correctly handle clipboard ownership, since otherwise I think we
-// may end up with cases where you put text onto the clipboard when one window is active, switch to a different window
-// and try to paste, and get the wrong clipboard contents.
-
 func (c *Clipboard) apiGetText() string {
 	var wnd windows.HWND
 	if len(windowList) != 0 {

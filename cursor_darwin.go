@@ -12,6 +12,7 @@ package unison
 import (
 	"image"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
@@ -20,8 +21,8 @@ type apiNativeCursor struct {
 	system bool
 }
 
-func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
-	nsCursor := mac.NewCursor(img, xhot, yhot)
+func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
+	nsCursor := mac.NewCursor(img, hotSpot, logicalSize)
 	if nsCursor == 0 {
 		return nil
 	}

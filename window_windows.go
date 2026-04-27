@@ -602,7 +602,7 @@ func (w *Window) apiMaximize() {
 	}
 }
 
-func (w *Window) apiAcquireFocus() {
+func (w *Window) apiAcquireFocusAndBringToFront() {
 	w32.BringWindowToTop(w.wnd.wnd)
 	w32.SetForegroundWindow(w.wnd.wnd)
 	w32.SetFocus(w.wnd.wnd)

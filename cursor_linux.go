@@ -13,7 +13,9 @@ import (
 	"image"
 	"log/slog"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/x11"
+	"golang.org/x/image/draw"
 )
 
 // Default size of a cursor should be content scale * 16
@@ -23,8 +25,16 @@ type apiNativeCursor struct {
 	system bool
 }
 
-func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
-	pm := x11Conn.CreatePixMap(x11.DrawableID(x11Conn.RootWindow()), 32, uint16(img.Rect.Dx()), uint16(img.Rect.Dy()))
+func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
+	logicalWidth := int(logicalSize.Width)
+	logicalHeight := int(logicalSize.Height)
+	if img.Rect.Dx() != logicalWidth || img.Rect.Dy() != logicalHeight {
+		dstRect := image.Rect(0, 0, logicalWidth, logicalHeight)
+		dst := image.NewNRGBA(dstRect)
+		draw.CatmullRom.Scale(dst, dstRect, img, img.Bounds(), draw.Over, nil)
+		img = dst
+	}
+	pm := x11Conn.CreatePixMap(x11.DrawableID(x11Conn.RootWindow()), 32, uint16(logicalWidth), uint16(logicalHeight))
 	if pm == 0 {
 		return &Cursor{}
 	}
@@ -66,7 +76,7 @@ func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
 	defer x11Conn.ExtRender.FreePicture(picture)
 	return &Cursor{
 		cursor: apiNativeCursor{
-			cursor: x11Conn.ExtRender.CreateCursor(picture, uint16(xhot), uint16(yhot)),
+			cursor: x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpot.X), uint16(hotSpot.Y)),
 		},
 	}
 }

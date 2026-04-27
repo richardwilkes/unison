@@ -2398,7 +2398,7 @@ type ConfigureWindowRequest struct {
 	Width       uint16
 	Height      uint16
 	BorderWidth uint16
-	StackMode   byte
+	StackMode   StackMode
 }
 
 func (c *ConfigureWindowRequest) values() []uint32 {

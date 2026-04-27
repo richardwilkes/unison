@@ -312,13 +312,13 @@ type ConfigureRequestEvent struct {
 	BorderWidth uint16
 	ValueMask   uint16
 	Code        byte
-	StackMode   byte
+	StackMode   StackMode
 }
 
 func newConfigureRequestEvent(r *Reader) Event {
 	var e ConfigureRequestEvent
 	e.Code = r.Byte()
-	e.StackMode = r.Byte()
+	e.StackMode = StackMode(r.Byte())
 	e.Sequence = r.Uint16()
 	e.Parent = r.WindowID()
 	e.Window = r.WindowID()

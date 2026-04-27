@@ -13,7 +13,9 @@ import (
 	"image"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/w32"
+	"golang.org/x/image/draw"
 )
 
 type apiNativeCursor struct {
@@ -21,8 +23,16 @@ type apiNativeCursor struct {
 	system bool
 }
 
-func apiNewCursor(img *image.NRGBA, xhot, yhot int) *Cursor {
-	icon := w32CreateIconFromImage(img, xhot, yhot, false)
+func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
+	logicalWidth := int(logicalSize.Width)
+	logicalHeight := int(logicalSize.Height)
+	if img.Rect.Dx() != logicalWidth || img.Rect.Dy() != logicalHeight {
+		dstRect := image.Rect(0, 0, logicalWidth, logicalHeight)
+		dst := image.NewNRGBA(dstRect)
+		draw.CatmullRom.Scale(dst, dstRect, img, img.Bounds(), draw.Over, nil)
+		img = dst
+	}
+	icon := w32CreateIconFromImage(img, int(hotSpot.X), int(hotSpot.Y), false)
 	if icon == 0 {
 		return nil
 	}

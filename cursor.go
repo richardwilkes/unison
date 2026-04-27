@@ -10,12 +10,10 @@
 package unison
 
 import (
-	"image"
 	"slices"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"golang.org/x/image/draw"
 )
 
 var (
@@ -89,29 +87,36 @@ func ResizeVerticalCursor() *Cursor {
 
 func retrieveCursor(img *Image, cursor **Cursor) *Cursor {
 	if *cursor == nil {
-		size := img.LogicalSize()
-		*cursor = NewCursor(img, geom.NewPoint(size.Width/2, size.Height/2))
+		*cursor = NewCursor(img)
 	}
 	return *cursor
 }
 
-// NewCursor creates a new custom cursor from an image.
-func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
+// NewCursor creates a new custom cursor from an image, with the hot spot at the center of the image.
+func NewCursor(img *Image) *Cursor {
+	size := img.LogicalSize()
+	return NewCursorWithHotSpot(img, geom.NewPoint(size.Width/2, size.Height/2))
+}
+
+// NewCursorWithHotSpot creates a new custom cursor from an image with the specified hot spot.
+func NewCursorWithHotSpot(img *Image, hotSpot geom.Point) *Cursor {
+	logicalSize := img.LogicalSize()
+	if hotSpot.X < 0 {
+		hotSpot.X = 0
+	} else if hotSpot.X >= logicalSize.Width {
+		hotSpot.X = logicalSize.Width - 1
+	}
+	if hotSpot.Y < 0 {
+		hotSpot.Y = 0
+	} else if hotSpot.Y >= logicalSize.Height {
+		hotSpot.Y = logicalSize.Height - 1
+	}
 	nrgba, err := img.ToNRGBA()
 	if err != nil {
 		errs.Log(err)
 		return ArrowCursor()
 	}
-	// TODO: Look at which platforms need this scaling step.
-	logicalSize := img.LogicalSize()
-	size := img.Size()
-	if logicalSize != size {
-		dstRect := image.Rect(0, 0, int(logicalSize.Width), int(logicalSize.Height))
-		dst := image.NewNRGBA(dstRect)
-		draw.CatmullRom.Scale(dst, dstRect, nrgba, image.Rect(0, 0, int(size.Width), int(size.Height)), draw.Over, nil)
-		nrgba = dst
-	}
-	return apiNewCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
+	return apiNewCursor(nrgba, hotSpot, img.LogicalSize())
 }
 
 // Destroy releases the resources associated with the cursor.
