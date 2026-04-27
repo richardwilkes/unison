@@ -16,7 +16,19 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-var x11KbMapping x11.KeyboardMapping
+var (
+	x11KbMapping           x11.KeyboardMapping
+	x11KeyLShiftBitIndex   int
+	x11KeyRShiftBitIndex   int
+	x11KeyLControlBitIndex int
+	x11KeyRControlBitIndex int
+	x11KeyLOptionBitIndex  int
+	x11KeyROptionBitIndex  int
+	x11KeyLCommandBitIndex int
+	x11KeyRCommandBitIndex int
+	x11KeyCapsLockBitIndex int
+	x11KeyNumLockBitIndex  int
+)
 
 func apiFillKeyCodes() {
 	secondary := map[uint32]KeyCode{
@@ -159,8 +171,9 @@ func apiFillKeyCodes() {
 		xkLess:         KeyWorld1,
 	}
 	x11KbMapping = x11Conn.GetKeyboardMapping()
-	for i := uint16(x11Conn.MinKeyCode); i <= uint16(x11Conn.MaxKeyCode); i++ {
-		pos := (i - uint16(x11Conn.MinKeyCode)) * uint16(x11KbMapping.KeySymsPerKeyCode)
+	minKeyCode := uint16(x11Conn.MinKeyCode)
+	for i := minKeyCode; i <= uint16(x11Conn.MaxKeyCode); i++ {
+		pos := (i - minKeyCode) * uint16(x11KbMapping.KeySymsPerKeyCode)
 		if x11KbMapping.KeySymsPerKeyCode > 1 {
 			if code, ok := secondary[x11KbMapping.KeySyms[pos+1]]; ok {
 				rawScanCodeToKeyCodeMap[i] = code
@@ -169,6 +182,28 @@ func apiFillKeyCodes() {
 		}
 		if code, ok := primary[x11KbMapping.KeySyms[pos]]; ok {
 			rawScanCodeToKeyCodeMap[i] = code
+			switch code {
+			case KeyLShift:
+				x11KeyLShiftBitIndex = int(i - minKeyCode)
+			case KeyRShift:
+				x11KeyRShiftBitIndex = int(i - minKeyCode)
+			case KeyLControl:
+				x11KeyLControlBitIndex = int(i - minKeyCode)
+			case KeyRControl:
+				x11KeyRControlBitIndex = int(i - minKeyCode)
+			case KeyLOption:
+				x11KeyLOptionBitIndex = int(i - minKeyCode)
+			case KeyROption:
+				x11KeyROptionBitIndex = int(i - minKeyCode)
+			case KeyLCommand:
+				x11KeyLCommandBitIndex = int(i - minKeyCode)
+			case KeyRCommand:
+				x11KeyRCommandBitIndex = int(i - minKeyCode)
+			case KeyCapsLock:
+				x11KeyCapsLockBitIndex = int(i - minKeyCode)
+			case KeyNumLock:
+				x11KeyNumLockBitIndex = int(i - minKeyCode)
+			}
 		}
 	}
 }
@@ -250,6 +285,37 @@ func x11KeySymToUnicode(keySym uint32) rune {
 		return rune(r)
 	}
 	return utf8.RuneError
+}
+
+func x11CurrentKeyModifiers() Modifiers {
+	var mods Modifiers
+	m := x11Conn.QueryKeymap()
+	keyMap := m[:]
+	if x11CheckBit(x11KeyLShiftBitIndex, keyMap) || x11CheckBit(x11KeyRShiftBitIndex, keyMap) {
+		mods |= ShiftModifier
+	}
+	if x11CheckBit(x11KeyLControlBitIndex, keyMap) || x11CheckBit(x11KeyRControlBitIndex, keyMap) {
+		mods |= ControlModifier
+	}
+	if x11CheckBit(x11KeyLOptionBitIndex, keyMap) || x11CheckBit(x11KeyROptionBitIndex, keyMap) {
+		mods |= OptionModifier
+	}
+	if x11CheckBit(x11KeyLCommandBitIndex, keyMap) || x11CheckBit(x11KeyRCommandBitIndex, keyMap) {
+		mods |= CommandModifier
+	}
+	if x11CheckBit(x11KeyCapsLockBitIndex, keyMap) {
+		mods |= CapsLockModifier
+	}
+	if x11CheckBit(x11KeyNumLockBitIndex, keyMap) {
+		mods |= NumLockModifier
+	}
+	return mods
+}
+
+func x11CheckBit(bitIndex int, keyMap []byte) bool {
+	byteIndex := bitIndex >> 3
+	bitMask := byte(1 << (bitIndex & 7))
+	return keyMap[byteIndex]&bitMask != 0
 }
 
 var x11CodePairs = map[uint32]rune{

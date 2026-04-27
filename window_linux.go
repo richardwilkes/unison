@@ -266,8 +266,7 @@ func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 }
 
 func (w *Window) apiCurrentKeyModifiers() Modifiers {
-	// TODO: Need to fix implementation
-	return w.lastKeyModifiers
+	return x11CurrentKeyModifiers()
 }
 
 func (w *Window) apiUpdateCursorImage() {
