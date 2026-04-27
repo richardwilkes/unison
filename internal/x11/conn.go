@@ -1515,27 +1515,31 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 		return
 	}
 	unitSize := int(format / 8)
+	if len(data)%unitSize != 0 {
+		slog.Error("data length must be a multiple of the format unit size", "dataLength", len(data), "unitSize", unitSize)
+	}
 	offset := 0
-	remaining := len(data) / unitSize
+	remainingCount := len(data) / unitSize
 	onlyOnce := format == 0 || mode != PropModeReplace
-	for remaining > 0 || format == 0 {
-		size := remaining
-		if size > math.MaxUint32-24 {
-			size = math.MaxUint32 - 24
-			size /= unitSize
-			size *= unitSize
+	for remainingCount > 0 || format == 0 {
+		unitCount := remainingCount
+		if unitCount > math.MaxUint16-24 {
+			unitCount = math.MaxUint16 - 24
+			unitCount /= unitSize
+			unitCount *= unitSize
 		}
-		w := NewWriter(24 + pad4(size))
+		byteSize := unitCount * unitSize
+		w := NewWriter(24 + pad4(byteSize))
 		w.Byte(opChangeProperty)
 		w.Byte(mode)
-		w.Uint16(uint16((24 + pad4(size)) / 4))
+		w.Uint16(6 + uint16(pad4(byteSize)/4))
 		w.WindowID(window)
 		w.Atom(property)
 		w.Atom(propertyType)
 		w.Byte(format)
 		w.Zero(3)
-		w.Uint32(uint32(size / unitSize))
-		w.Bytes(data[offset : offset+size])
+		w.Uint32(uint32(unitCount))
+		w.Bytes(data[offset : offset+byteSize])
 		w.ZeroTo4ByteAlignment()
 		if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 			errs.Log(err)
@@ -1545,8 +1549,8 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 			break
 		}
 		mode = PropModeAppend
-		offset += size
-		remaining -= size
+		offset += byteSize
+		remainingCount -= unitCount
 	}
 }
 
