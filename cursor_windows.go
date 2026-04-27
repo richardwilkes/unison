@@ -24,6 +24,13 @@ type apiNativeCursor struct {
 }
 
 func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
+	if len(windowList) != 0 {
+		scale := windowList[0].BackingScale()
+		if scale.X != 1 {
+			logicalSize = logicalSize.MulPt(scale)
+			hotSpot = hotSpot.MulPt(scale)
+		}
+	}
 	logicalWidth := int(logicalSize.Width)
 	logicalHeight := int(logicalSize.Height)
 	if img.Rect.Dx() != logicalWidth || img.Rect.Dy() != logicalHeight {
