@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"encoding/binary"
 	"fmt"
 	"image"
 	"log/slog"
@@ -149,8 +150,38 @@ func (w *Window) apiSetTitle(title string) {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiSetTitleIcons(_images []*image.NRGBA) {
-	// TODO: Need implementation
+func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
+	if len(images) == 0 {
+		x11Conn.DeleteProperty(w.wnd.id, x11Conn.Atoms.NetWMIcon)
+	} else {
+		size := 0
+		for _, img := range images {
+			size += 8 + img.Rect.Dy()*img.Rect.Dx()*4
+		}
+		data := make([]byte, size)
+		offset := 0
+		for _, img := range images {
+			w := img.Rect.Dx()
+			h := img.Rect.Dy()
+			d := data[offset:]
+			offset += 8 + w*h*4
+			binary.LittleEndian.PutUint32(d, uint32(w))
+			binary.LittleEndian.PutUint32(d[4:], uint32(h))
+			pix := d[8:]
+			for y := range h {
+				row := y * img.Stride
+				for x := range w {
+					i := row + (x * 4)
+					a := uint16(img.Pix[i+3])
+					pix[i] = uint8((uint16(img.Pix[i+2]) * a) / 0xff)
+					pix[i+1] = uint8((uint16(img.Pix[i+1]) * a) / 0xff)
+					pix[i+2] = uint8((uint16(img.Pix[i]) * a) / 0xff)
+					pix[i+3] = img.Pix[i+3]
+				}
+			}
+		}
+		x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMIcon, x11.AtomCardinal, 32, x11.PropModeReplace, data)
+	}
 	x11Conn.Flush()
 }
 

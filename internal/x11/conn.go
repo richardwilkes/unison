@@ -1452,6 +1452,19 @@ func (c *Conn) GetInputFocus() (focus WindowID, revertTo byte, err error) {
 	return focus, revertTo, err
 }
 
+// DeleteProperty deletes the specified property from the given window.
+func (c *Conn) DeleteProperty(window WindowID, property Atom) {
+	w := NewWriter(12)
+	w.Byte(opDeleteProperty)
+	w.Zero(1)
+	w.Uint16(3)
+	w.WindowID(window)
+	w.Atom(property)
+	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
 // GetProperty returns information about the specified property.
 func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset, length uint32, remove bool) (format byte, actualPropertyType Atom, value []byte, err error) {
 	w := NewWriter(24)
@@ -1493,22 +1506,47 @@ const (
 // ChangeProperty changes the specified property on the given window to the provided data, using the specified mode
 // (PropModeReplace, PropModePrepend, or PropModeAppend). The propertyType and format parameters specify the type and
 // format of the property data, respectively. The data is provided as a byte slice, and its length should be consistent
-// with the specified format (8, 16, or 32 bits per unit).
+// with the specified format (8, 16, or 32 bits per unit). Automatic chunking will occur if the data exceeds the maximum
+// request size and mode is PropModeReplace, so there is no need to manually split the data into multiple requests for
+// large properties.
 func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) {
-	w := NewWriter(24 + pad4(len(data)))
-	w.Byte(opChangeProperty)
-	w.Byte(mode)
-	w.Uint16(uint16((24 + pad4(len(data))) / 4))
-	w.WindowID(window)
-	w.Atom(property)
-	w.Atom(propertyType)
-	w.Byte(format)
-	w.Zero(3)
-	w.Uint32(uint32(len(data) / int(format/8)))
-	w.Bytes(data)
-	w.ZeroTo4ByteAlignment()
-	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
-		errs.Log(err)
+	if format != 0 && format != 8 && format != 16 && format != 32 {
+		slog.Error("invalid format for ChangeProperty (must be 0, 8, 16, or 32)", "format", format)
+		return
+	}
+	unitSize := int(format / 8)
+	offset := 0
+	remaining := len(data) / unitSize
+	onlyOnce := format == 0 || mode != PropModeReplace
+	for remaining > 0 || format == 0 {
+		size := remaining
+		if size > math.MaxUint32-24 {
+			size = math.MaxUint32 - 24
+			size /= unitSize
+			size *= unitSize
+		}
+		w := NewWriter(24 + pad4(size))
+		w.Byte(opChangeProperty)
+		w.Byte(mode)
+		w.Uint16(uint16((24 + pad4(size)) / 4))
+		w.WindowID(window)
+		w.Atom(property)
+		w.Atom(propertyType)
+		w.Byte(format)
+		w.Zero(3)
+		w.Uint32(uint32(size / unitSize))
+		w.Bytes(data[offset : offset+size])
+		w.ZeroTo4ByteAlignment()
+		if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
+			errs.Log(err)
+			break
+		}
+		if onlyOnce {
+			break
+		}
+		mode = PropModeAppend
+		offset += size
+		remaining -= size
 	}
 }
 
@@ -1984,7 +2022,7 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 
 		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images.
 		pix := make([]byte, rows*w*4)
-		base := y * w * 4
+		base := y * img.Stride * 4
 		for i := 0; i < len(pix); i += 4 {
 			si := base + i
 			a := uint16(img.Pix[si+3])

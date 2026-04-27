@@ -111,6 +111,7 @@ type Atoms struct {
 	NetCurrentDesktop       Atom
 	NetFrameExtents         Atom
 	NetRequestFrameExtents  Atom
+	NetWMIcon               Atom
 	NetWMIconName           Atom
 	NetWMName               Atom
 	NetWMPing               Atom
@@ -163,6 +164,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.NetCurrentDesktop, "_NET_CURRENT_DESKTOP"},
 		{&a.NetFrameExtents, "_NET_FRAME_EXTENTS"},
 		{&a.NetRequestFrameExtents, "_NET_REQUEST_FRAME_EXTENTS"},
+		{&a.NetWMIcon, "_NET_WM_ICON"},
 		{&a.NetWMIconName, "_NET_WM_ICON_NAME"},
 		{&a.NetWMName, "_NET_WM_NAME"},
 		{&a.NetWMPing, "_NET_WM_PING"},
