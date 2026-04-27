@@ -266,7 +266,7 @@ func isPrivateKeypadKey(keySym uint32) bool {
 	return keySym >= 0x11000000 && keySym <= 0x1100FFFF
 }
 
-func x11ConvertCase(keySym uint32) (uint32, uint32) {
+func x11ConvertCase(keySym uint32) (lower, upper uint32) {
 	if keySym < 0x100 || keySym&0xff000000 == 0x01000000 {
 		return 0x01000000 | uint32(unicode.ToLower(rune(keySym&0x00ffffff))),
 			0x01000000 | uint32(unicode.ToUpper(rune(keySym&0x00ffffff)))
@@ -282,7 +282,7 @@ func x11KeySymToUnicode(keySym uint32) rune {
 		return rune(keySym & 0x00ffffff)
 	}
 	if r, ok := x11CodePairs[keySym]; ok {
-		return rune(r)
+		return r
 	}
 	return utf8.RuneError
 }
