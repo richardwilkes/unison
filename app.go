@@ -294,7 +294,7 @@ func AttemptQuit() {
 	}
 }
 
-func closeAllWindows() {
+func closeAllWindows() { //nolint:unused // Not all platforms use this
 	var last *Window
 	for len(windowList) > 0 {
 		windowList[0].requestClose()

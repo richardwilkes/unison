@@ -411,6 +411,7 @@ func (w *Window) apiDestroy() {
 		w.wnd.colorMap = 0
 	}
 	x11Conn.Flush()
+	apiPollEvents()
 }
 
 func (w *Window) x11SetDecorated(decorated bool) {
@@ -712,7 +713,7 @@ func x11ParseURIList(uriList []byte) []string {
 	var paths []string
 	for line := range strings.SplitSeq(string(bytes.ReplaceAll(uriList, []byte{'\r', '\n'}, []byte{'\n'})), "\n") {
 		line = strings.TrimSpace(line)
-		if len(line) == 0 || line[0] == '#' {
+		if line == "" || line[0] == '#' {
 			continue
 		}
 		if p, err := url.PathUnescape(strings.TrimPrefix(line, "file://")); err != nil {
