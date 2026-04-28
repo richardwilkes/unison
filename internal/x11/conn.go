@@ -1466,7 +1466,7 @@ func (c *Conn) DeleteProperty(window WindowID, property Atom) {
 }
 
 // GetProperty returns information about the specified property.
-func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset, length uint32, remove bool) (format byte, actualPropertyType Atom, value []byte, err error) {
+func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset, length uint32, remove bool) (format byte, actualPropertyType Atom, value []byte, bytesAfter uint32, err error) {
 	w := NewWriter(24)
 	w.Byte(opGetProperty)
 	w.Bool(remove)
@@ -1481,7 +1481,7 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 		format = r.Byte()
 		r.Skip(6)
 		actualPropertyType = Atom(r.Uint32())
-		r.Skip(4)
+		bytesAfter = r.Uint32()
 		lengthInFormatUnits := r.Uint32()
 		r.Skip(12)
 		if format != 0 {
@@ -1493,7 +1493,7 @@ func (c *Conn) GetProperty(window WindowID, property, propertyType Atom, offset,
 			r.SkipTo4ByteAlignment()
 		}
 	}))
-	return format, actualPropertyType, value, err
+	return format, actualPropertyType, value, bytesAfter, err
 }
 
 // Possible modes for ChangeProperty requests
@@ -1585,7 +1585,7 @@ func (c *Conn) GetClipboardText() string {
 	}
 	c.clipboard = ""
 	for _, kind := range []Atom{c.Atoms.UTF8String, AtomString} {
-		c.convertSelection(c.helperWindow, c.Atoms.Clipboard, kind, c.Atoms.ClipboardSelection, 0)
+		c.ConvertSelection(c.helperWindow, c.Atoms.Clipboard, kind, c.Atoms.ClipboardSelection, 0)
 		ev := c.WaitEvents(func(e Event) bool {
 			if sne, ok := e.(*SelectionNotifyEvent); ok && sne.Requestor == c.helperWindow {
 				return true
@@ -1603,7 +1603,7 @@ func (c *Conn) GetClipboardText() string {
 			c.PollEvents(filter) // Ensure no existing PropertyNotifyEvent is already pending
 			var propertyType Atom
 			var value []byte
-			if _, propertyType, value, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0, math.MaxUint32,
+			if _, propertyType, value, _, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0, math.MaxUint32,
 				true); err != nil {
 				errs.Log(err)
 				continue
@@ -1613,7 +1613,7 @@ func (c *Conn) GetClipboardText() string {
 				var buffer bytes.Buffer
 				for {
 					c.WaitEvents(filter)
-					if _, _, value, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0,
+					if _, _, value, _, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0,
 						math.MaxUint32, true); err != nil {
 						errs.Log(err)
 						break
@@ -1688,7 +1688,9 @@ func (c *Conn) getSelectionOwner(selection Atom) (owner WindowID, err error) {
 	return owner, err
 }
 
-func (c *Conn) convertSelection(requestor WindowID, selection, target, property Atom, timestamp uint32) {
+// ConvertSelection requests the owner of the specified selection to convert the selection contents to the specified
+// target type and store the result in the specified property on the requestor window.
+func (c *Conn) ConvertSelection(requestor WindowID, selection, target, property Atom, timestamp uint32) {
 	w := NewWriter(8)
 	w.Byte(opConvertSelection)
 	w.Zero(1)
@@ -1703,13 +1705,13 @@ func (c *Conn) convertSelection(requestor WindowID, selection, target, property 
 	}
 }
 
-func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) {
+func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) { //nolint:unused // Keeping for the future
 	c.eventNewMapLock.Lock()
 	c.eventNewMap[eventID] = f
 	c.eventNewMapLock.Unlock()
 }
 
-func (c *Conn) setErrorCodeName(code byte, name string) {
+func (c *Conn) setErrorCodeName(code byte, name string) { //nolint:unused // Keeping for the future
 	c.errorCodeLock.Lock()
 	c.errorCodeMap[code] = name
 	c.errorCodeLock.Unlock()
@@ -1735,7 +1737,7 @@ func (c *Conn) ContentScale() (float32, error) {
 	if c.cachedScale != 0 {
 		return c.cachedScale, nil
 	}
-	format, actualPropertyType, value, err := c.GetProperty(c.RootWindow(), AtomResourceManager, AtomString, 0, 100_000_000, false)
+	format, actualPropertyType, value, _, err := c.GetProperty(c.RootWindow(), AtomResourceManager, AtomString, 0, 100_000_000, false)
 	if err != nil {
 		errs.Log(err)
 		c.cachedScale = 1
@@ -1759,14 +1761,14 @@ func (c *Conn) ContentScale() (float32, error) {
 
 // MonitorWorkArea returns the work area of the monitor containing the specified root window.
 func (c *Conn) MonitorWorkArea(root WindowID, area geom.Rect) geom.Rect {
-	_, _, extentsBytes, err := c.GetProperty(root, c.Atoms.NetWorkArea, AtomCardinal, 0, math.MaxUint32, false)
+	_, _, extentsBytes, _, err := c.GetProperty(root, c.Atoms.NetWorkArea, AtomCardinal, 0, math.MaxUint32, false)
 	if err != nil {
 		return area
 	}
 	r := NewReader(extentsBytes)
 	extents := r.Uint32Slice(len(extentsBytes) / 4)
 	var desktopBytes []byte
-	if _, _, desktopBytes, err = c.GetProperty(root, c.Atoms.NetCurrentDesktop, AtomCardinal, 0, math.MaxUint32, false); err != nil {
+	if _, _, desktopBytes, _, err = c.GetProperty(root, c.Atoms.NetCurrentDesktop, AtomCardinal, 0, math.MaxUint32, false); err != nil {
 		return area
 	}
 	r = NewReader(desktopBytes)
@@ -2244,6 +2246,63 @@ func (c *Conn) RespondToPing() {
 	}
 }
 
+// AcceptDrag sends a ClientMessage event to the source window in response to a drag-and-drop operation, indicating that
+// the drag was accepted.
+func (c *Conn) AcceptDrag(src, dst WindowID, action Atom) {
+	if err := c.sendEvent(src, false, 0, &ClientMessageEvent{
+		Window: src,
+		Type:   c.Atoms.DnDStatus,
+		Format: 32,
+		Data32: [5]uint32{
+			uint32(dst),
+			1, // The drag was accepted
+			0,
+			0,
+			uint32(action),
+		},
+	}); err != nil {
+		errs.Log(err)
+	}
+}
+
+// RejectDrag sends a ClientMessage event to the source window in response to a drag-and-drop operation, indicating that
+// the drag was rejected.
+func (c *Conn) RejectDrag(src, dst WindowID) {
+	if err := c.sendEvent(src, false, 0, &ClientMessageEvent{
+		Window: src,
+		Type:   c.Atoms.DnDFinished,
+		Format: 32,
+		Data32: [5]uint32{
+			uint32(dst),
+			0, // The drag was rejected
+			0,
+			0,
+			0,
+		},
+	}); err != nil {
+		errs.Log(err)
+	}
+}
+
+// AcceptDrop sends a ClientMessage event to the source window in response to a drag-and-drop operation, indicating that
+// the drop was accepted and providing the specified action and item count.
+func (c *Conn) AcceptDrop(src, dst WindowID, action Atom, count uint32) {
+	if err := c.sendEvent(src, false, 0, &ClientMessageEvent{
+		Window: src,
+		Type:   c.Atoms.DnDFinished,
+		Format: 32,
+		Data32: [5]uint32{
+			uint32(dst),
+			count,
+			uint32(action),
+			0,
+			0,
+		},
+	}); err != nil {
+		errs.Log(err)
+	}
+}
+
 // QueryKeymap retrieves the current state of the keyboard, returning an array of 32 bytes where each bit represents the
 // state of a key (1 for pressed, 0 for released) corresponding to the keycodes defined by the connection's minKeyCode
 // and maxKeyCode.
@@ -2302,7 +2361,7 @@ func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right 
 			})
 		}
 	}
-	format, actualType, value, err := c.GetProperty(window, c.Atoms.NetFrameExtents, AtomCardinal, 0, 32, false)
+	format, actualType, value, _, err := c.GetProperty(window, c.Atoms.NetFrameExtents, AtomCardinal, 0, 32, false)
 	if err != nil {
 		errs.Log(err)
 		return 0, 0, 0, 0
@@ -2523,7 +2582,7 @@ func (c *Conn) pushClipboardToManager() {
 		return
 	}
 	if owner, err := c.getSelectionOwner(c.Atoms.Clipboard); err == nil && owner == c.helperWindow {
-		c.convertSelection(c.helperWindow, c.Atoms.ClipboardManager, c.Atoms.ClipboardSaveTargets, AtomNone, 0)
+		c.ConvertSelection(c.helperWindow, c.Atoms.ClipboardManager, c.Atoms.ClipboardSaveTargets, AtomNone, 0)
 		again := true
 		for again {
 			if xreflect.IsNil(c.WaitEvents(func(e Event) bool {
@@ -2536,16 +2595,7 @@ func (c *Conn) pushClipboardToManager() {
 						return true
 					}
 				case *SelectionRequestEvent:
-					if ev.Owner == c.helperWindow {
-						if err = c.sendEvent(ev.Requestor, false, 0, &SelectionNotifyEvent{
-							Time:      ev.Time,
-							Requestor: ev.Requestor,
-							Selection: ev.Selection,
-							Target:    ev.Target,
-							Property:  ev.writeTargetToProperty(c),
-						}); err != nil {
-							errs.Log(err)
-						}
+					if c.RespondToSelectionRequest(ev) {
 						return true
 					}
 				case *SelectionClearEvent:
@@ -2561,6 +2611,25 @@ func (c *Conn) pushClipboardToManager() {
 	}
 	c.DestroyWindow(c.helperWindow)
 	c.helperWindow = 0
+}
+
+// RespondToSelectionRequest checks if the provided SelectionRequestEvent is a request for a selection owned by the
+// helper window. If it is, it sends a SelectionNotifyEvent back to the requestor with the appropriate data. It returns
+// true if the event was handled, and false otherwise.
+func (c *Conn) RespondToSelectionRequest(ev *SelectionRequestEvent) bool {
+	if ev.Owner != c.helperWindow {
+		return false
+	}
+	if err := c.sendEvent(ev.Requestor, false, 0, &SelectionNotifyEvent{
+		Time:      ev.Time,
+		Requestor: ev.Requestor,
+		Selection: ev.Selection,
+		Target:    ev.Target,
+		Property:  ev.writeTargetToProperty(c),
+	}); err != nil {
+		errs.Log(err)
+	}
+	return true
 }
 
 // Close the connection after finishing any in-flight requests.

@@ -973,7 +973,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 		c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve())
 		return e.Property
 	case c.Atoms.ClipboardMultiple:
-		format, kind, value, err := c.GetProperty(e.Requestor, e.Property, c.Atoms.Pair, 0, math.MaxUint32, false)
+		format, kind, value, _, err := c.GetProperty(e.Requestor, e.Property, c.Atoms.Pair, 0, math.MaxUint32, false)
 		count := len(value) / (int(format) / 8)
 		if err != nil {
 			errs.Log(err)

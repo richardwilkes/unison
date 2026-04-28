@@ -105,7 +105,7 @@ type Atoms struct {
 	DnDPosition             Atom
 	DnDSelection            Atom
 	DnDStatus               Atom
-	DndTypeList             Atom
+	DnDTypeList             Atom
 	MotifWMHints            Atom
 	NetActiveWindow         Atom
 	NetCurrentDesktop       Atom
@@ -158,7 +158,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.DnDPosition, "XdndPosition"},
 		{&a.DnDSelection, "XdndSelection"},
 		{&a.DnDStatus, "XdndStatus"},
-		{&a.DndTypeList, "XdndTypeList"},
+		{&a.DnDTypeList, "XdndTypeList"},
 		{&a.MotifWMHints, "_MOTIF_WM_HINTS"},
 		{&a.NetActiveWindow, "_NET_ACTIVE_WINDOW"},
 		{&a.NetCurrentDesktop, "_NET_CURRENT_DESKTOP"},

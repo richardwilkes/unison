@@ -10,12 +10,15 @@
 package unison
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"image"
 	"log/slog"
 	"math"
+	"net/url"
 	"os"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -28,6 +31,9 @@ type apiWindow struct {
 	id              x11.WindowID
 	parent          x11.WindowID
 	colorMap        x11.ColorMapID
+	dndSource       x11.WindowID
+	dndVersion      uint32
+	dndFormat       x11.Atom
 	lastX           float32
 	lastY           float32
 	minimized       bool
@@ -553,19 +559,83 @@ func x11ProcessEvent(e x11.Event) {
 					slog.Info(fmt.Sprintf("ClientMessageEvent with unhandled protocol: %d", ev.Data32[0]))
 				}
 			case x11Conn.Atoms.DnDEnter:
-			// TODO: Implement
+				w.wnd.dndSource = x11.WindowID(ev.Data32[0])
+				w.wnd.dndVersion = ev.Data32[1] >> 24
+				w.wnd.dndFormat = 0
+				if ev.Data32[1]&1 == 1 {
+					_, _, values, _, err := x11Conn.GetProperty(w.wnd.dndSource, x11Conn.Atoms.DnDTypeList, x11.AtomAtom, 0, math.MaxUint32, false)
+					if err != nil {
+						errs.Log(err)
+						return
+					}
+					r := x11.NewReader(values)
+					for r.Remaining() > 3 {
+						if x11.Atom(r.Uint32()) == x11Conn.Atoms.TextURIList {
+							w.wnd.dndFormat = x11Conn.Atoms.TextURIList
+							break
+						}
+					}
+				} else {
+					for i := 2; i <= 4; i++ {
+						if x11.Atom(ev.Data32[i]) == x11Conn.Atoms.TextURIList {
+							w.wnd.dndFormat = x11Conn.Atoms.TextURIList
+							break
+						}
+					}
+				}
 			case x11Conn.Atoms.DnDDrop:
-			// TODO: Implement
+				if w.wnd.dndFormat != 0 {
+					x11Conn.ConvertSelection(w.wnd.id, x11Conn.Atoms.DnDSelection, w.wnd.dndFormat,
+						x11Conn.Atoms.DnDSelection, ev.Data32[2])
+				} else if w.wnd.dndVersion > 1 {
+					x11Conn.RejectDrag(w.wnd.dndSource, w.wnd.id)
+					x11Conn.Flush()
+				}
 			case x11Conn.Atoms.DnDPosition:
-			// TODO: Implement
+				x := int16((ev.Data32[2] >> 16) & 0xffff)
+				y := int16((ev.Data32[2]) & 0xffff)
+				var err error
+				if x, y, _, _, err = x11Conn.TranslateCoordinates(x11Conn.RootWindow(), w.wnd.id, x, y); err != nil {
+					errs.Log(err)
+					return
+				}
+				w.mouseMovedOrDragged(w.apiConvertRawMouse(geom.NewPoint(float32(x), float32(y))),
+					w.CurrentKeyModifiers())
+				if w.wnd.dndFormat == 0 {
+					x11Conn.RejectDrag(w.wnd.dndSource, w.wnd.id)
+				} else {
+					var action x11.Atom
+					if w.wnd.dndVersion > 1 {
+						action = x11Conn.Atoms.DnDActionCopy
+					}
+					x11Conn.AcceptDrag(w.wnd.dndSource, w.wnd.id, action)
+				}
+				x11Conn.Flush()
 			default:
 				slog.Info(fmt.Sprintf("ClientMessageEvent with unhandled type: %d", ev.Type))
 				return
 			}
 		}
+	case *x11.SelectionRequestEvent:
+		x11Conn.RespondToSelectionRequest(ev)
 	case *x11.SelectionNotifyEvent:
-		slog.Info("SelectionNotifyEvent", "event", ev)
-		// TODO: Implement
+		if ev.Property == x11Conn.Atoms.DnDSelection {
+			if w := x11FindWindow(ev.Requestor); w != nil {
+				_, _, values, _, err := x11Conn.GetProperty(ev.Requestor, ev.Property, ev.Target, 0, math.MaxUint32, false)
+				if err != nil {
+					errs.Log(err)
+					return
+				}
+				if len(values) != 0 {
+					paths := x11ParseURIList(values)
+					w.fileDrop(paths)
+				}
+				if w.wnd.dndVersion > 1 {
+					x11Conn.AcceptDrop(w.wnd.dndSource, w.wnd.id, x11Conn.Atoms.DnDActionCopy, uint32(len(values)))
+					x11Conn.Flush()
+				}
+			}
+		}
 	case *x11.FocusInEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
 			if ev.Mode == x11.NotifyGrab || ev.Mode == x11.NotifyUngrab {
@@ -591,7 +661,7 @@ func x11ProcessEvent(e x11.Event) {
 			}
 			switch ev.Atom {
 			case x11Conn.Atoms.WMState:
-				format, actualType, values, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.WMState, x11Conn.Atoms.WMState, 0, math.MaxUint32, false)
+				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.WMState, x11Conn.Atoms.WMState, 0, math.MaxUint32, false)
 				if err != nil {
 					errs.Log(err)
 					return
@@ -609,7 +679,7 @@ func x11ProcessEvent(e x11.Event) {
 					}
 				}
 			case x11Conn.Atoms.NetWMState:
-				format, actualType, values, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetWMState, x11.AtomAtom, 0, math.MaxUint32, false)
+				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetWMState, x11.AtomAtom, 0, math.MaxUint32, false)
 				if err != nil {
 					errs.Log(err)
 					return
@@ -636,4 +706,20 @@ func x11ProcessEvent(e x11.Event) {
 			}
 		}
 	}
+}
+
+func x11ParseURIList(uriList []byte) []string {
+	var paths []string
+	for line := range strings.SplitSeq(string(bytes.ReplaceAll(uriList, []byte{'\r', '\n'}, []byte{'\n'})), "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) == 0 || line[0] == '#' {
+			continue
+		}
+		if p, err := url.PathUnescape(strings.TrimPrefix(line, "file://")); err != nil {
+			errs.Log(err)
+		} else {
+			paths = append(paths, p)
+		}
+	}
+	return paths
 }
