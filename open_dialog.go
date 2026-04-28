@@ -35,5 +35,8 @@ type OpenDialog interface {
 
 // NewOpenDialog creates a new open dialog using native support where possible.
 func NewOpenDialog() OpenDialog {
+	if noPlatformFileDialogs {
+		return NewCommonOpenDialog()
+	}
 	return apiNewOpenDialog()
 }

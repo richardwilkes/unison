@@ -437,7 +437,7 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods Modifiers, repeat b
 	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) preRuneTyped(wnd *Window, _ch rune) bool {
+func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 

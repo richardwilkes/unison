@@ -36,6 +36,7 @@ var (
 	quittingCallback                  func()
 	platformInited                    atomic.Bool
 	noGlobalMenuBar                   bool
+	noPlatformFileDialogs             bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
 	currentThemeMode                  = thememode.Auto
@@ -122,6 +123,14 @@ func QuittingCallback(f func()) StartupOption {
 func NoGlobalMenuBar() StartupOption {
 	return func(_ startupOption) error {
 		noGlobalMenuBar = true
+		return nil
+	}
+}
+
+// NoPlatformFileDialogs will disable platform-specific file dialogs on platforms that normally use them.
+func NoPlatformFileDialogs() StartupOption {
+	return func(_ startupOption) error {
+		noPlatformFileDialogs = true
 		return nil
 	}
 }

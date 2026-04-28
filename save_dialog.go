@@ -31,6 +31,9 @@ type SaveDialog interface {
 
 // NewSaveDialog creates a new save dialog using native support where possible.
 func NewSaveDialog() SaveDialog {
+	if noPlatformFileDialogs {
+		return NewCommonSaveDialog()
+	}
 	return apiNewSaveDialog()
 }
 
