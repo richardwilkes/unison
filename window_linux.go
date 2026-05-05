@@ -226,14 +226,12 @@ func (w *Window) apiContentRect() geom.Rect {
 		return geom.Rect{}
 	}
 	root := x11Conn.RootWindow()
-	if info.Root != root {
-		var x, y int16
-		if x, y, _, _, err = x11Conn.TranslateCoordinates(w.wnd.id, root, info.X, info.Y); err != nil {
-			errs.Log(err)
-		} else {
-			info.X = x
-			info.Y = y
-		}
+	var x, y int16
+	if x, y, _, _, err = x11Conn.TranslateCoordinates(w.wnd.id, root, 0, 0); err != nil {
+		errs.Log(err)
+	} else {
+		info.X = x
+		info.Y = y
 	}
 	r := geom.NewRect(float32(info.X), float32(info.Y), float32(info.Width), float32(info.Height))
 	scale := w.BackingScale()
