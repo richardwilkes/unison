@@ -1457,4 +1457,7 @@ func (w *Window) dataDragFinish() {
 	if w.DragIntoWindowFinished != nil {
 		xos.SafeCall(w.DragIntoWindowFinished, nil)
 	}
+	w.ValidateLayout()
+	w.cursor = nil
+	w.UpdateCursorNow()
 }
