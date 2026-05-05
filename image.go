@@ -136,7 +136,7 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		return nil, errs.New("unable to read raw pixels from image")
 	}
 	skia.ImageUnref(img)
-	return NewImageFromPixels(width, height, pixels, geom.NewPoint(1, 1))
+	return NewImageFromPixels(width, height, pixels, geom.NewPoint(1/scale, 1/scale))
 }
 
 func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error) {
