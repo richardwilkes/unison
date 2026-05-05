@@ -67,6 +67,46 @@ var (
 	circledXSVG string
 	CircledXSVG = MustSVGFromContentString(circledXSVG)
 
+	//go:embed resources/images/cursor_arrow.svg
+	cursorArrowSVG string
+	CursorArrowSVG = MustSVGFromContentString(cursorArrowSVG)
+
+	//go:embed resources/images/cursor_hand_closed.svg
+	cursorHandClosedSVG string
+	CursorHandClosedSVG = MustSVGFromContentString(cursorHandClosedSVG)
+
+	//go:embed resources/images/cursor_hand_open.svg
+	cursorHandOpenSVG string
+	CursorHandOpenSVG = MustSVGFromContentString(cursorHandOpenSVG)
+
+	//go:embed resources/images/cursor_hand_pointing.svg
+	cursorHandPointingSVG string
+	CursorHandPointingSVG = MustSVGFromContentString(cursorHandPointingSVG)
+
+	//go:embed resources/images/cursor_move.svg
+	cursorMoveSVG string
+	CursorMoveSVG = MustSVGFromContentString(cursorMoveSVG)
+
+	//go:embed resources/images/cursor_resize_horizontal.svg
+	cursorResizeHorizontalSVG string
+	CursorResizeHorizontalSVG = MustSVGFromContentString(cursorResizeHorizontalSVG)
+
+	//go:embed resources/images/cursor_resize_left_diagonal.svg
+	cursorResizeLeftDiagonalSVG string
+	CursorResizeLeftDiagonalSVG = MustSVGFromContentString(cursorResizeLeftDiagonalSVG)
+
+	//go:embed resources/images/cursor_resize_right_diagonal.svg
+	cursorResizeRightDiagonalSVG string
+	CursorResizeRightDiagonalSVG = MustSVGFromContentString(cursorResizeRightDiagonalSVG)
+
+	//go:embed resources/images/cursor_resize_vertical.svg
+	cursorResizeVerticalSVG string
+	CursorResizeVerticalSVG = MustSVGFromContentString(cursorResizeVerticalSVG)
+
+	//go:embed resources/images/cursor_text.svg
+	cursorTextSVG string
+	CursorTextSVG = MustSVGFromContentString(cursorTextSVG)
+
 	//go:embed resources/images/dash.svg
 	dashSVG string
 	DashSVG = MustSVGFromContentString(dashSVG)

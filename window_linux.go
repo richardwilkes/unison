@@ -319,7 +319,7 @@ func (w *Window) apiUpdateCursorImage() {
 			x11Conn.ExtXFixes.ShowCursor(w.wnd.id)
 		}
 		x11Conn.ChangeWindowAttributes(w.wnd.id, x11.WindowMaskCursor, &x11.WindowCreationAttributes{
-			Cursor: w.cursor.cursor.cursor,
+			Cursor: w.cursor.cursor,
 		})
 	default:
 		if w.wnd.cursorWasHidden {

@@ -886,7 +886,7 @@ func (w *Window) Draw(c *Canvas) {
 				c.DrawPaint(ThemeSurface.Paint(c, r, paintstyle.Fill))
 			}
 			w.root.Draw(c, r)
-			if w.InDrag() {
+			if w.InDrag() && w.dragData.Drawable != nil {
 				c.Save()
 				c.Translate(w.dragDataLocation.Add(w.dragData.Offset))
 				r = geom.Rect{Size: w.dragData.Drawable.LogicalSize()}
@@ -1404,7 +1404,7 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 
 // StartDataDrag starts a data drag operation.
 func (w *Window) StartDataDrag(data *DragData) {
-	if data != nil && len(data.Data) != 0 && data.Drawable != nil && data.Ink != nil {
+	if data != nil && len(data.Data) != 0 {
 		w.dragData = data
 		w.dragDataPanel = nil
 		if w.DragIntoWindowWillStart != nil {

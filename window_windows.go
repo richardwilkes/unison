@@ -548,9 +548,9 @@ func (w *Window) apiUpdateCursorImage() {
 		}
 		w32.SetCursor(blankCursor)
 	case w.cursor != nil:
-		w32.SetCursor(w.cursor.cursor.cursor)
+		w32.SetCursor(w.cursor.cursor)
 	default:
-		w32.SetCursor(ArrowCursor().cursor.cursor)
+		w32.SetCursor(ArrowCursor().cursor)
 	}
 }
 

@@ -18,10 +18,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-type apiNativeCursor struct {
-	cursor w32.HCURSOR
-	system bool
-}
+type apiNativeCursor = w32.HCURSOR
 
 func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
 	if len(windowList) != 0 {
@@ -44,41 +41,16 @@ func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *
 		return nil
 	}
 	c := &Cursor{
-		cursor: apiNativeCursor{
-			cursor: w32.HCURSOR(icon),
-		},
+		cursor: w32.HCURSOR(icon),
 	}
 	cursorList = append(cursorList, c)
 	return c
 }
 
 func (c *Cursor) apiDestroy() {
-	if !c.cursor.system && c.cursor.cursor != 0 {
-		w32.DestroyIcon(w32.HICON(c.cursor.cursor))
-		c.cursor.cursor = 0
-		c.cursor.system = false
-	}
-}
-
-func apiArrowCursor() *Cursor {
-	return w32LoadStdCursor(w32.OCR_NORMAL)
-}
-
-func apiPointingCursor() *Cursor {
-	return w32LoadStdCursor(w32.OCR_HAND)
-}
-
-func apiTextCursor() *Cursor {
-	return w32LoadStdCursor(w32.OCR_IBEAM)
-}
-
-func w32LoadStdCursor(id int) *Cursor {
-	return &Cursor{
-		cursor: apiNativeCursor{
-			cursor: w32.HCURSOR(w32.LoadImageW(0, w32.MakeIntResourceW(id), w32.IMAGE_CURSOR, 0, 0,
-				w32.LR_DEFAULT_SIZE|w32.LR_SHARED)),
-			system: true,
-		},
+	if c.cursor != 0 {
+		w32.DestroyIcon(w32.HICON(c.cursor))
+		c.cursor = 0
 	}
 }
 

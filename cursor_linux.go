@@ -18,12 +18,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// Default size of a cursor should be content scale * 16
-
-type apiNativeCursor struct {
-	cursor x11.CursorID
-	system bool
-}
+type apiNativeCursor = x11.CursorID
 
 func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
 	if scale, err := x11Conn.ContentScale(); err == nil && scale != 1 {
@@ -79,43 +74,13 @@ func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *
 	}
 	defer x11Conn.ExtRender.FreePicture(picture)
 	return &Cursor{
-		cursor: apiNativeCursor{
-			cursor: x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpot.X), uint16(hotSpot.Y)),
-		},
+		cursor: x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpot.X), uint16(hotSpot.Y)),
 	}
 }
 
 func (c *Cursor) apiDestroy() {
-	if c.cursor.cursor != 0 {
-		if !c.cursor.system {
-			x11Conn.FreeCursor(c.cursor.cursor)
-		}
-		c.cursor.cursor = 0
-	}
-}
-
-func apiArrowCursor() *Cursor {
-	return x11LoadSystemCursor(68) // LeftPtr
-}
-
-func apiPointingCursor() *Cursor {
-	return x11LoadSystemCursor(60) // Hand2
-}
-
-func apiTextCursor() *Cursor {
-	return x11LoadSystemCursor(152) // Xterm
-}
-
-func x11LoadSystemCursor(id uint16) *Cursor {
-	var cursorID x11.CursorID
-	if fontID := x11Conn.OpenFont("cursor"); fontID != 0 {
-		defer x11Conn.CloseFont(fontID)
-		cursorID = x11Conn.CreateGlyphCursor(fontID, fontID, id, id+1, 0, 0, 0, 0xffff, 0xffff, 0xffff)
-	}
-	return &Cursor{
-		cursor: apiNativeCursor{
-			cursor: cursorID,
-			system: true,
-		},
+	if c.cursor != 0 {
+		x11Conn.FreeCursor(c.cursor)
+		c.cursor = 0
 	}
 }

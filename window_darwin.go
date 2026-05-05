@@ -316,7 +316,7 @@ func (w *Window) apiUpdateCursorImage() {
 			w.wnd.nsCursorHidden = false
 		}
 		if w.cursor != nil {
-			w.cursor.cursor.cursor.Set()
+			w.cursor.cursor.Set()
 		} else {
 			mac.ArrowCursor().Set()
 		}

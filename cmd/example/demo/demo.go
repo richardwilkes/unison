@@ -590,11 +590,12 @@ func createImagePanel() *unison.Label {
 	imgPanel := unison.NewLabel()
 
 	// Prepare a cursor for when the mouse is over the image
-	cursor := unison.MoveCursor()
+	var cursor *unison.Cursor
 	if logoImg, err := ClassicAppleLogoImage(); err != nil {
 		errs.Log(err)
+		cursor = unison.MoveCursor()
 	} else {
-		cursor = unison.NewCursor(logoImg)
+		cursor = unison.NewCursorFromImage(logoImg, nil)
 	}
 	imgPanel.UpdateCursorCallback = func(_ geom.Point) *unison.Cursor { return cursor }
 

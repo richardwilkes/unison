@@ -16,10 +16,7 @@ import (
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
-type apiNativeCursor struct {
-	cursor mac.Cursor
-	system bool
-}
+type apiNativeCursor = mac.Cursor
 
 func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
 	nsCursor := mac.NewCursor(img, hotSpot, logicalSize)
@@ -27,44 +24,15 @@ func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *
 		return nil
 	}
 	c := &Cursor{
-		cursor: apiNativeCursor{
-			cursor: nsCursor,
-		},
+		cursor: nsCursor,
 	}
 	cursorList = append(cursorList, c)
 	return c
 }
 
 func (c *Cursor) apiDestroy() {
-	if !c.cursor.system && c.cursor.cursor != 0 {
-		c.cursor.cursor.Release()
-		c.cursor.cursor = 0
-	}
-}
-
-func apiArrowCursor() *Cursor {
-	return &Cursor{
-		cursor: apiNativeCursor{
-			cursor: mac.ArrowCursor(),
-			system: true,
-		},
-	}
-}
-
-func apiPointingCursor() *Cursor {
-	return &Cursor{
-		cursor: apiNativeCursor{
-			cursor: mac.PointingHandCursor(),
-			system: true,
-		},
-	}
-}
-
-func apiTextCursor() *Cursor {
-	return &Cursor{
-		cursor: apiNativeCursor{
-			cursor: mac.IBeamCursor(),
-			system: true,
-		},
+	if c.cursor != 0 {
+		c.cursor.Release()
+		c.cursor = 0
 	}
 }
