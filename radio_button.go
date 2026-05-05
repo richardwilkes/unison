@@ -173,9 +173,10 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		rct.Width -= circleSize + r.Gap
 		defer r.Text.RestoreDecorations(r.Text.AdjustDecorations(func(d *TextDecoration) {
 			d.BackgroundInk = nil
-			d.OnBackgroundInk = fg
+			d.OnBackgroundInk = r.OnBackgroundInk
 		}))
-		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Font, r.Text, fg, nil, r.Drawable, r.Side, r.Gap, !r.Enabled())
+		DrawLabel(canvas, rct, r.HAlign, r.VAlign, r.Font, r.Text, r.OnBackgroundInk, nil, r.Drawable, r.Side, r.Gap,
+			!r.Enabled())
 	}
 	if rect.Height > circleSize {
 		rect.Y += xmath.Floor((rect.Height - circleSize) / 2)
