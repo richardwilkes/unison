@@ -10,7 +10,7 @@
 package demo
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison"
@@ -120,10 +120,7 @@ func init() {
 			open := unison.NewOpenDialog()
 			open.SetAllowsMultipleSelection(true)
 			if open.RunModal() {
-				fmt.Println("Paths selected:")
-				for i, p := range open.Paths() {
-					fmt.Printf("%d: %s\n", i, p)
-				}
+				slog.Info("Paths selected", "paths", open.Paths())
 			}
 		},
 	}
