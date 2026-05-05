@@ -43,66 +43,67 @@ func DefaultCursorSize() geom.Size {
 
 // ArrowCursor returns the standard arrow cursor.
 func ArrowCursor() *Cursor {
-	hotSpot := geom.NewPoint(8, 4)
-	return retrieveCursor(CursorArrowSVG, &arrowCursor, &hotSpot)
+	return retrieveCursorWithHotSpot(CursorArrowSVG, &arrowCursor, geom.NewPoint(8, 4))
 }
 
 // PointingCursor returns the standard pointing cursor.
 func PointingCursor() *Cursor {
-	hotSpot := geom.NewPoint(9, 5)
-	return retrieveCursor(CursorHandPointingSVG, &pointingCursor, &hotSpot)
+	return retrieveCursorWithHotSpot(CursorHandPointingSVG, &pointingCursor, geom.NewPoint(9, 5))
 }
 
 // OpenHandCursor returns the standard open hand cursor.
 func OpenHandCursor() *Cursor {
-	return retrieveCursor(CursorHandOpenSVG, &openHandCursor, nil)
+	return retrieveCursor(CursorHandOpenSVG, &openHandCursor)
 }
 
 // ClosedHandCursor returns the standard closed hand cursor.
 func ClosedHandCursor() *Cursor {
-	return retrieveCursor(CursorHandClosedSVG, &closedHandCursor, nil)
+	return retrieveCursor(CursorHandClosedSVG, &closedHandCursor)
 }
 
 // TextCursor returns the standard text cursor.
 func TextCursor() *Cursor {
-	return retrieveCursor(CursorTextSVG, &textCursor, nil)
+	return retrieveCursor(CursorTextSVG, &textCursor)
 }
 
 // MoveCursor returns the standard move cursor.
 func MoveCursor() *Cursor {
-	return retrieveCursor(CursorMoveSVG, &moveCursor, nil)
+	return retrieveCursor(CursorMoveSVG, &moveCursor)
 }
 
 // ResizeHorizontalCursor returns the standard horizontal resize cursor.
 func ResizeHorizontalCursor() *Cursor {
-	return retrieveCursor(CursorResizeHorizontalSVG, &resizeHorizontalCursor, nil)
+	return retrieveCursor(CursorResizeHorizontalSVG, &resizeHorizontalCursor)
 }
 
 // ResizeLeftDiagonalCursor returns the standard left diagonal resize cursor.
 func ResizeLeftDiagonalCursor() *Cursor {
-	return retrieveCursor(CursorResizeLeftDiagonalSVG, &resizeLeftDiagonalCursor, nil)
+	return retrieveCursor(CursorResizeLeftDiagonalSVG, &resizeLeftDiagonalCursor)
 }
 
 // ResizeRightDiagonalCursor returns the standard right diagonal resize cursor.
 func ResizeRightDiagonalCursor() *Cursor {
-	return retrieveCursor(CursorResizeRightDiagonalSVG, &resizeRightDiagonalCursor, nil)
+	return retrieveCursor(CursorResizeRightDiagonalSVG, &resizeRightDiagonalCursor)
 }
 
 // ResizeVerticalCursor returns the standard vertical resize cursor.
 func ResizeVerticalCursor() *Cursor {
-	return retrieveCursor(CursorResizeVerticalSVG, &resizeVerticalCursor, nil)
+	return retrieveCursor(CursorResizeVerticalSVG, &resizeVerticalCursor)
 }
 
-func retrieveCursor(svg *SVG, cursor **Cursor, hotSpot *geom.Point) *Cursor {
+func retrieveCursor(svg *SVG, cursor **Cursor) *Cursor {
+	return retrieveCursorWithHotSpot(svg, cursor, geom.PointFromSize(DefaultCursorSize().Div(2)))
+}
+
+func retrieveCursorWithHotSpot(svg *SVG, cursor **Cursor, hotSpot geom.Point) *Cursor {
 	if *cursor == nil {
-		*cursor = NewCursorFromSVG(svg, hotSpot)
+		*cursor = NewCursorFromSVG(svg, hotSpot, DefaultCursorSize())
 	}
 	return *cursor
 }
 
-// NewCursorFromSVG creates a new custom cursor from a SVG. If hotSpot is nil, the middle of the cursor is used.
-func NewCursorFromSVG(svg *SVG, hotSpot *geom.Point) *Cursor {
-	size := DefaultCursorSize()
+// NewCursorFromSVG creates a new custom cursor from a SVG.
+func NewCursorFromSVG(svg *SVG, hotSpot geom.Point, size geom.Size) *Cursor {
 	img, err := NewImageFromDrawing(int(size.Width), int(size.Height), 144, func(gc *Canvas) {
 		svg.DrawInRectPreservingAspectRatio(gc, geom.NewRect(0, 0, size.Width, size.Height), nil, nil)
 	})
@@ -110,25 +111,20 @@ func NewCursorFromSVG(svg *SVG, hotSpot *geom.Point) *Cursor {
 		errs.Log(err)
 		return nil
 	}
-	return NewCursorFromImage(img, hotSpot)
+	return NewCursor(img, hotSpot)
 }
 
-// NewCursorFromImage creates a new custom cursor from an image. If hotSpot is nil, the middle of the cursor is used.
-func NewCursorFromImage(img *Image, hotSpot *geom.Point) *Cursor {
+// NewCursor creates a new custom cursor from an image.
+func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
 	logicalSize := img.LogicalSize()
-	if hotSpot == nil {
-		pt := geom.PointFromSize(logicalSize.Div(2))
-		hotSpot = &pt
-	} else {
-		hotSpot.X = min(max(hotSpot.X, 0), logicalSize.Width-1)
-		hotSpot.Y = min(max(hotSpot.Y, 0), logicalSize.Height-1)
-	}
+	hotSpot.X = min(max(hotSpot.X, 0), logicalSize.Width-1)
+	hotSpot.Y = min(max(hotSpot.Y, 0), logicalSize.Height-1)
 	nrgba, err := img.ToNRGBA()
 	if err != nil {
 		errs.Log(err)
 		return nil
 	}
-	return apiNewCursor(nrgba, *hotSpot, logicalSize)
+	return apiNewCursor(nrgba, hotSpot, logicalSize)
 }
 
 // Destroy releases the resources associated with the cursor.
