@@ -13,16 +13,6 @@
 			"windows": {
 				"buildFlags": ["-ldflags", "all=\"-w\""]
 			}
-		},
-		{
-			"name": "x11 testing",
-			"type": "go",
-			"request": "launch",
-			"mode": "auto",
-			"program": "cmd/main.go",
-			"windows": {
-				"buildFlags": ["-ldflags", "all=\"-w\""]
-			}
 		}
 	]
 }
