@@ -116,6 +116,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	t.MouseUpCallback = t.mouseUp
 	t.MouseDragCallback = t.mouseDrag
 	t.UpdateTooltipCallback = t.updateTooltip
+	t.UpdateCursorCallback = t.updateCursor
 	return t
 }
 
@@ -203,6 +204,13 @@ func (t *dockTab) updateTooltip(_ geom.Point, suggestedAvoidInRoot geom.Rect) ge
 	return suggestedAvoidInRoot
 }
 
+func (t *dockTab) updateCursor(_ geom.Point) *Cursor {
+	if t.pressed {
+		return ClosedHandCursor()
+	}
+	return OpenHandCursor()
+}
+
 func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifiers) bool {
 	if button == ButtonRight && clickCount == 1 && !t.Window().InDrag() {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
@@ -224,6 +232,7 @@ func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifier
 	}
 	t.pressed = true
 	t.MarkForRedraw()
+	t.UpdateCursorNow()
 	return true
 }
 
@@ -233,20 +242,29 @@ func (t *dockTab) mouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	}
 	if t.IsDragGesture(where) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
-			icon := t.TitleIcon()
-			size := icon.LogicalSize()
 			t.StartDataDrag(&DragData{
 				Data:     map[string]any{dc.Dock.DragKey: t.dockable},
-				Drawable: icon,
+				Drawable: t,
 				Ink:      t.title.OnBackgroundInk,
-				Offset:   geom.NewPoint(-size.Width/2, -size.Height/2),
+				Offset:   where.Neg(),
 			})
 		}
 	}
 	return true
 }
 
+// LogicalSize is here to satisify the Drawable interface so that we can draw ourselves as we get dragged around.
+func (t *dockTab) LogicalSize() geom.Size {
+	return t.ContentRect(true).Size
+}
+
+// DrawInRect is here to satisify the Drawable interface so that we can draw ourselves as we get dragged around.
+func (t *dockTab) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, _ *Paint) {
+	t.Draw(canvas, rect)
+}
+
 func (t *dockTab) mouseUp(where geom.Point, _ int, _ Modifiers) bool {
+	defer t.UpdateCursorNow()
 	if !t.pressed {
 		return true
 	}
