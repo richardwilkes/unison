@@ -17,6 +17,7 @@ import (
 	"unsafe"
 	"weak"
 
+	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xhash"
@@ -100,6 +101,21 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 // NewImageFromDrawing creates a new image by drawing into it. This is currently fairly inefficient, so take care to use
 // it sparingly.
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
+	// Windows needs to have a Window created so that we can create the GL context that Skia will need.
+	if !glInited && runtime.GOOS == xos.WindowsOS {
+		w, err := NewWindow("")
+		if err != nil {
+			return nil, err
+		}
+		defer w.destroy()
+		RebuildDynamicColors()
+		w.glCtx.apiMakeCurrent()
+		wndWithCurrentCtx = w
+		if err = gl.Init(); err != nil {
+			return nil, err
+		}
+		glInited = true
+	}
 	scale := float32(ppi) / 72
 	s := &surface{
 		context: skia.ContextMakeGL(defaultSkiaGL()),
