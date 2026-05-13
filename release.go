@@ -36,7 +36,6 @@ func processReleaseQueue() {
 	list := make([]func(), 0, minListAlloc)
 	for {
 		// Collect up the current set of release functions to execute
-		timer := time.NewTimer(time.Second / 5)
 	inner:
 		for {
 			select {
@@ -45,11 +44,10 @@ func processReleaseQueue() {
 				for len(releaseQueue) > 0 {
 					list = append(list, <-releaseQueue)
 				}
-			case <-timer.C:
+			case <-time.After(time.Second / 5):
 				break inner
 			}
 		}
-		timer.Stop()
 
 		// If we have any, pass them off to the UI thread for execution
 		if len(list) > 0 && platformInited.Load() {
@@ -70,10 +68,7 @@ func processReleaseQueue() {
 					peak = amt
 				}
 			}
-			if peak < minListAlloc {
-				peak = minListAlloc
-			}
-			list = make([]func(), 0, peak)
+			list = make([]func(), 0, max(peak, minListAlloc))
 		}
 	}
 }
