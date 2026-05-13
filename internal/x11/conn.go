@@ -779,6 +779,7 @@ func (c *Conn) parseDisplayEnv() error {
 			}
 		}
 	}
+	c.display = strings.TrimPrefix(c.display, ":")
 	var err error
 	if c.displayNum, err = strconv.Atoi(id); err != nil || c.displayNum < 0 {
 		return errs.New(invalidDisplayErr + c.envDisplay)
@@ -948,7 +949,7 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 	for r.Remaining() != 0 {
 		family := r.Uint16()
 		addr := r.SizePrefixedString()
-		disp := r.SizePrefixedString()
+		disp := strings.TrimPrefix(r.SizePrefixedString(), ":")
 		name = r.SizePrefixedString()
 		data = r.SizePrefixedBytes()
 		if ((family == 65535) || (family == 256 && addr == host)) &&
