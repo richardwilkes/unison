@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -1283,6 +1284,32 @@ func (c *Conn) WaitEvents(filter func(Event) bool) Event {
 	}
 }
 
+// WaitEventsUntil blocks until the next event is available or the specified timeout is reached. If the optional filter
+// function is provided, only events for which the filter returns true will be returned, and other events will be queued
+// for later retrieval. nil may be returned if the connection is closed or the timeout is hit.
+func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) Event {
+	e, ok := c.queuedEvent(filter)
+	if ok {
+		return e
+	}
+	for {
+		select {
+		case e, ok := <-c.events:
+			if !ok {
+				return nil
+			}
+			if filter == nil || filter(e) {
+				return e
+			}
+			c.eventQueueLock.Lock()
+			c.eventQueue = append(c.eventQueue, e)
+			c.eventQueueLock.Unlock()
+		case <-time.After(timeout):
+			return nil
+		}
+	}
+}
+
 // PollEvents processes the next event if one is available. If the optional filter function is provided, only events for
 // which the filter returns true will be returned, and other events will be queued for later retrieval. nil will be
 // returned if no events are currently available or if the connection is closed.
@@ -2355,11 +2382,14 @@ func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right 
 		if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
 			errs.Log(err)
 		} else {
-			c.WaitEvents(func(e Event) bool {
+			// Use a short timeout to avoid waiting too long if the window manager doesn't support
+			// _NET_REQUEST_FRAME_EXTENTS or fails to respond for some reason (most commonly when running through
+			// xwayland)
+			c.WaitEventsUntil(func(e Event) bool {
 				pne, ok := e.(*PropertyNotifyEvent)
 				return ok && pne.Window == window && pne.Atom == c.Atoms.NetFrameExtents &&
 					pne.State == PropertyNewValue
-			})
+			}, time.Millisecond*25)
 		}
 	}
 	format, actualType, value, _, err := c.GetProperty(window, c.Atoms.NetFrameExtents, AtomCardinal, 0, 32, false)
