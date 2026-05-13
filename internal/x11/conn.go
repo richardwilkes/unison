@@ -1294,7 +1294,7 @@ func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) E
 	}
 	for {
 		select {
-		case e, ok := <-c.events:
+		case e, ok = <-c.events:
 			if !ok {
 				return nil
 			}
