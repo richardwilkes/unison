@@ -598,6 +598,25 @@ func SetPasteboardString(str string) {
 	C.pasteboardSetString(C.CFStringRef(s))
 }
 
+func PasteboardBytes(dataType string) []byte {
+	s := NewString(dataType)
+	defer s.Release()
+	var length uint64
+	if buffer := C.pasteboardBytes(C.CFStringRef(s), (*C.ulonglong)(&length)); buffer != nil && length > 0 {
+		data := make([]byte, length)
+		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), length))
+		C.free(buffer)
+		return data
+	}
+	return nil
+}
+
+func SetPasteboardBytes(dataType string, data []byte) {
+	s := NewString(dataType)
+	defer s.Release()
+	C.pasteboardSetBytes(C.CFStringRef(s), C.ulonglong(len(data)), unsafe.Pointer(&data[0]))
+}
+
 // ========== Save Panel ==========
 
 type SavePanel C.NSSavePanelRef

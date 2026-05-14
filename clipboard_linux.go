@@ -9,10 +9,19 @@
 
 package unison
 
-func (c *Clipboard) apiGetText() string {
+func apiClipboardGetText() string {
 	return x11Conn.GetClipboardText()
 }
 
-func (c *Clipboard) apiSetText(str string) {
-	x11Conn.SetClipboardText(str)
+func apiClipboardSetText(text string) {
+	x11Conn.SetClipboardText(text)
+}
+
+func apiClipboardGetBytes(dataType string) []byte {
+	// TODO: Implement
+	return nil
+}
+
+func apiClipboardSetBytes(dataType string, data []byte) {
+	// TODO: Implement
 }

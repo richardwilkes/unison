@@ -22,3 +22,24 @@ void pasteboardSetString(CFStringRef str) {
 	[pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];
 	[pasteboard setString:(NSString *)str forType:NSPasteboardTypeString];
 }
+
+void* pasteboardBytes(CFStringRef dataType, unsigned long long* length) {
+	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+	if (![[pasteboard types] containsObject:(NSPasteboardType)dataType]) {
+		return nil;
+	}
+	NSData* data = [pasteboard dataForType:(NSPasteboardType)dataType];
+	*length = data.length;
+	if (data.length == 0) {
+		return nil;
+	}
+	void* buffer = malloc(data.length);
+	[data getBytes:buffer length:data.length];
+	return buffer;
+}
+
+void pasteboardSetBytes(CFStringRef dataType, unsigned long long length, void* buffer) {
+	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+	[pasteboard declareTypes:@[(NSPasteboardType)dataType] owner:nil];
+	[pasteboard setData:[NSData dataWithBytes:buffer length:length] forType:(NSPasteboardType)dataType];
+}

@@ -110,6 +110,8 @@ NSOpenGLPixelFormatRef newOpenGLPixelFormat(void);
 // Pasteboard
 CFStringRef pasteboardString();
 void pasteboardSetString(CFStringRef str);
+void* pasteboardBytes(CFStringRef dataType, unsigned long long* length);
+void pasteboardSetBytes(CFStringRef dataType, unsigned long long length, void* buffer);
 
 // Save Panel
 NSSavePanelRef newSavePanel();

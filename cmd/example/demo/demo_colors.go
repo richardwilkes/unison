@@ -86,7 +86,7 @@ func NewDemoColorsWindow() (*unison.Window, error) {
 			fmt.Fprintf(&buffer, "unison.Theme%s.Light = unison.%s\n", one.Title, colorToRGBString(one.Color.Light))
 			fmt.Fprintf(&buffer, "unison.Theme%s.Dark = unison.%s\n", one.Title, colorToRGBString(one.Color.Dark))
 		}
-		unison.GlobalClipboard.SetText(buffer.String())
+		unison.ClipboardSetText(buffer.String())
 	}
 	goCodeButton.SetBorder(unison.NewEmptyBorder(geom.Insets{Top: 20}))
 	goCodeButton.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Middle})

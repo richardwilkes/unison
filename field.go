@@ -899,7 +899,7 @@ func (f *Field) CanCut() bool {
 // Cut the selected text to the clipboard.
 func (f *Field) Cut() {
 	if f.HasSelectionRange() {
-		GlobalClipboard.SetText(f.SelectedText())
+		ClipboardSetText(f.SelectedText())
 		f.Delete()
 	}
 }
@@ -912,18 +912,18 @@ func (f *Field) CanCopy() bool {
 // Copy the selected text to the clipboard.
 func (f *Field) Copy() {
 	if f.HasSelectionRange() {
-		GlobalClipboard.SetText(f.SelectedText())
+		ClipboardSetText(f.SelectedText())
 	}
 }
 
 // CanPaste returns true if the clipboard has content that can be pasted into the field.
 func (f *Field) CanPaste() bool {
-	return GlobalClipboard.GetText() != ""
+	return ClipboardGetText() != ""
 }
 
 // Paste any text on the clipboard into the field.
 func (f *Field) Paste() {
-	text := GlobalClipboard.GetText()
+	text := ClipboardGetText()
 	if text != "" {
 		f.undoID = NextUndoID()
 		before := f.GetFieldState()
