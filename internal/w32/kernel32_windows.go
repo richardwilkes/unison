@@ -31,6 +31,7 @@ var (
 	globalAllocProc         = kernel32.NewProc("GlobalAlloc")
 	globalFreeProc          = kernel32.NewProc("GlobalFree")
 	globalLockProc          = kernel32.NewProc("GlobalLock")
+	globalSizeProc          = kernel32.NewProc("GlobalSize")
 	globalUnlockProc        = kernel32.NewProc("GlobalUnlock")
 	verSetConditionMaskProc = kernel32.NewProc("VerSetConditionMask")
 )
@@ -76,6 +77,13 @@ func GlobalLock(handle syscall.Handle) uintptr {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	p, _, _ := globalLockProc.Call(uintptr(handle))
 	return p
+}
+
+// GlobalSize https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalsize
+func GlobalSize(handle syscall.Handle) uint64 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	size, _, _ := globalSizeProc.Call(uintptr(handle))
+	return uint64(size)
 }
 
 // GlobalUnlock https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-globalunlock

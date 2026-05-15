@@ -10,11 +10,20 @@
 package unison
 
 import (
+	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
+)
+
+var (
+	w32DataTypeMapLock sync.RWMutex
+	w32DataTypeMap     = map[string]w32.ClipboardFormat{
+		"public.utf8-plain-text": w32.CFUnicodeText,
+	}
 )
 
 func apiClipboardGetText() string {
@@ -78,10 +87,85 @@ func apiClipboardSetText(text string) {
 }
 
 func apiClipboardGetBytes(dataType string) []byte {
-	// TODO: Implement
-	return nil
+	t := w32LookupDataType(dataType)
+	if t == w32.CFNone {
+		return nil
+	}
+	var wnd windows.HWND
+	if len(windowList) != 0 {
+		wnd = windowList[0].wnd.wnd
+	}
+	tries := 3
+	for !w32.OpenClipboard(wnd) {
+		time.Sleep(time.Millisecond)
+		tries--
+		if tries == 0 {
+			return nil
+		}
+	}
+	defer w32.CloseClipboard()
+	obj := w32.GetClipboardData(t)
+	if obj == 0 {
+		return nil
+	}
+	buffer := w32.GlobalLock(obj)
+	if buffer == 0 {
+		return nil
+	}
+	defer w32.GlobalUnlock(obj)
+	size := w32.GlobalSize(obj)
+	data := make([]byte, size)
+	copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), len(data))) //nolint:govet // No other choice
+	return data
 }
 
 func apiClipboardSetBytes(dataType string, data []byte) {
-	// TODO: Implement
+	t := w32LookupDataType(dataType)
+	if t == w32.CFNone {
+		return
+	}
+	obj := w32.GlobalAlloc(w32.GMemMoveable, len(data))
+	if obj == 0 {
+		return
+	}
+	buffer := w32.GlobalLock(obj)
+	if buffer == 0 {
+		w32.GlobalFree(obj)
+		return
+	}
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(buffer)), len(data)), data) //nolint:govet // No other choice
+	w32.GlobalUnlock(obj)
+	var wnd windows.HWND
+	if len(windowList) != 0 {
+		wnd = windowList[0].wnd.wnd
+	}
+	tries := 3
+	for !w32.OpenClipboard(wnd) {
+		time.Sleep(time.Millisecond)
+		tries--
+		if tries == 0 {
+			w32.GlobalFree(obj)
+			return
+		}
+	}
+	w32.EmptyClipboard()
+	w32.SetClipboardData(t, obj)
+	w32.CloseClipboard()
+}
+
+func w32LookupDataType(dataType string) w32.ClipboardFormat {
+	w32DataTypeMapLock.RLock()
+	f, ok := w32DataTypeMap[dataType]
+	w32DataTypeMapLock.RUnlock()
+	if ok {
+		return f
+	}
+	if f = w32.RegisterClipboardFormatW(dataType); f == w32.CFNone {
+		errs.Log(errs.Newf("unable to register clipboard format %q", dataType))
+		return w32.CFNone
+	}
+	w32DataTypeMapLock.Lock()
+	w32DataTypeMap[dataType] = f
+	w32DataTypeMapLock.Unlock()
+	return f
 }

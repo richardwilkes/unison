@@ -734,6 +734,7 @@ func NewConn() (*Conn, error) {
 	if err = c.Atoms.init(&c); err != nil {
 		return nil, err
 	}
+	c.dataTypeMap["public.utf8-plain-text"] = c.Atoms.UTF8String
 	var name string
 	if name, err = c.GetAtomName(c.Atoms.UTF8String); err == nil {
 		c.dataTypeMap[name] = c.Atoms.UTF8String
