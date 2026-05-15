@@ -18,10 +18,9 @@ func apiClipboardSetText(text string) {
 }
 
 func apiClipboardGetBytes(dataType string) []byte {
-	// TODO: Implement
-	return nil
+	return x11Conn.GetClipboardBytes(dataType)
 }
 
 func apiClipboardSetBytes(dataType string, data []byte) {
-	// TODO: Implement
+	x11Conn.SetClipboardBytes(dataType, data)
 }

@@ -968,8 +968,13 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 		w := NewWriter(16)
 		w.Atom(c.Atoms.ClipboardTargets)
 		w.Atom(c.Atoms.ClipboardMultiple)
-		w.Atom(c.Atoms.UTF8String)
-		w.Atom(AtomString)
+		w.Atom(c.clipboardDataType)
+		switch c.clipboardDataType {
+		case c.Atoms.UTF8String:
+			w.Atom(AtomString)
+		case AtomString:
+			w.Atom(c.Atoms.UTF8String)
+		}
 		c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve())
 		return e.Property
 	case c.Atoms.ClipboardMultiple:
@@ -983,18 +988,13 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			slog.Error("unexpected result from GetProperty for MULTIPLE property", "format", format, "kind", kind, "count", count)
 			return e.Property
 		}
-		content := []byte(c.clipboard)
 		w := NewWriter(8 * count)
 		r := NewReader(value)
 		for i := 0; i < count; i += 2 {
 			propType := r.Atom()
 			prop := r.Atom()
-			if propType == c.Atoms.UTF8String || propType == AtomString {
-				w.Atom(propType)
-				c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, content)
-			} else {
-				w.Atom(AtomNone)
-			}
+			w.Atom(propType)
+			c.ChangeProperty(e.Requestor, prop, propType, 8, PropModeReplace, c.clipboard)
 			w.Atom(prop)
 		}
 		c.ChangeProperty(e.Requestor, e.Property, c.Atoms.Pair, 32, PropModeReplace, w.Retrieve())
@@ -1002,9 +1002,19 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 	case c.Atoms.ClipboardSaveTargets:
 		c.ChangeProperty(e.Requestor, e.Property, c.Atoms.Null, 32, PropModeReplace, nil)
 		return e.Property
-	case c.Atoms.UTF8String, AtomString:
-		c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, []byte(c.clipboard))
+	case c.clipboardDataType:
+		c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, c.clipboard)
 		return e.Property
+	case c.Atoms.UTF8String:
+		if c.clipboardDataType == AtomString {
+			c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, c.clipboard)
+			return e.Property
+		}
+	case AtomString:
+		if c.clipboardDataType == c.Atoms.UTF8String {
+			c.ChangeProperty(e.Requestor, e.Property, e.Target, 8, PropModeReplace, c.clipboard)
+			return e.Property
+		}
 	}
 	return AtomNone
 }

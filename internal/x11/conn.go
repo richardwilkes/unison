@@ -666,6 +666,7 @@ type Conn struct {
 	eventNewMap              map[byte]func(r *Reader) Event
 	errorCodeMap             map[byte]string
 	requestMap               map[uint16]*request
+	dataTypeMap              map[string]Atom
 	envDisplay               string
 	socket                   string
 	protocol                 string
@@ -673,7 +674,7 @@ type Conn struct {
 	display                  string
 	screen                   string
 	vendor                   string
-	clipboard                string
+	clipboard                []byte
 	pixmapFormats            []Format
 	Roots                    []Screen
 	eventQueue               []Event
@@ -681,6 +682,7 @@ type Conn struct {
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
 	requestMapLock           sync.RWMutex
+	dataTypeMapLock          sync.RWMutex
 	xidLock                  sync.Mutex
 	xidBase                  uint32
 	xidInc                   uint32
@@ -691,6 +693,7 @@ type Conn struct {
 	sequence                 atomic.Uint32
 	releaseNumber            uint32
 	motionBufferSize         uint32
+	clipboardDataType        Atom
 	helperWindow             WindowID
 	cachedScale              float32
 	Atoms                    Atoms
@@ -721,6 +724,7 @@ func NewConn() (*Conn, error) {
 	c.errorCodeMap = newErrorMap()
 	c.eventNewMap = newEventMap()
 	c.requestMap = make(map[uint16]*request)
+	c.dataTypeMap = make(map[string]Atom)
 	c.requests = make(chan *request, 128)
 	c.events = make(chan Event, 8192)
 	c.closed = make(chan struct{})
@@ -729,6 +733,13 @@ func NewConn() (*Conn, error) {
 	go c.readResponses()
 	if err = c.Atoms.init(&c); err != nil {
 		return nil, err
+	}
+	var name string
+	if name, err = c.GetAtomName(c.Atoms.UTF8String); err == nil {
+		c.dataTypeMap[name] = c.Atoms.UTF8String
+	}
+	if name, err = c.GetAtomName(AtomString); err == nil {
+		c.dataTypeMap[name] = AtomString
 	}
 	if c.ExtXFixes = newExtXFixes(&c); !c.ExtXFixes.HasVersion(4, 0) {
 		return nil, errs.New("X11 extension XFIXES 4.0 or higher is required")
@@ -1608,11 +1619,112 @@ func (c *Conn) GetClipboardText() string {
 		errs.Log(err)
 		return ""
 	}
-	if owner == c.helperWindow {
-		return c.clipboard
+	if owner != c.helperWindow {
+		c.clipboard = nil
+		for _, kind := range []Atom{c.Atoms.UTF8String, AtomString} {
+			c.ConvertSelection(c.helperWindow, c.Atoms.Clipboard, kind, c.Atoms.ClipboardSelection, 0)
+			ev := c.WaitEvents(func(e Event) bool {
+				if sne, ok := e.(*SelectionNotifyEvent); ok && sne.Requestor == c.helperWindow {
+					return true
+				}
+				return false
+			})
+			if sne, ok := ev.(*SelectionNotifyEvent); ok && sne.Property != AtomNone {
+				filter := func(e Event) bool {
+					if pne, valid := e.(*PropertyNotifyEvent); valid && pne.State == PropertyNewValue &&
+						pne.Window == sne.Requestor && pne.Atom == sne.Property {
+						return true
+					}
+					return false
+				}
+				c.PollEvents(filter) // Ensure no existing PropertyNotifyEvent is already pending
+				var propertyType Atom
+				var value []byte
+				if _, propertyType, value, _, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0, math.MaxUint32,
+					true); err != nil {
+					errs.Log(err)
+					continue
+				}
+				switch propertyType {
+				case c.Atoms.ClipboardIncremental:
+					var buffer bytes.Buffer
+					for {
+						c.WaitEvents(filter)
+						if _, _, value, _, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0,
+							math.MaxUint32, true); err != nil {
+							errs.Log(err)
+							break
+						}
+						if len(value) == 0 {
+							break
+						}
+						buffer.Write(value)
+					}
+					c.clipboardDataType = c.Atoms.UTF8String
+					if kind == c.Atoms.UTF8String {
+						c.clipboard = buffer.Bytes()
+					} else {
+						c.clipboard = convertLatin1ToUTF8(buffer.Bytes())
+					}
+				case c.Atoms.UTF8String:
+					c.clipboardDataType = c.Atoms.UTF8String
+					c.clipboard = value
+				case AtomString:
+					c.clipboardDataType = c.Atoms.UTF8String
+					c.clipboard = convertLatin1ToUTF8(value)
+				}
+			}
+			if len(c.clipboard) != 0 {
+				break
+			}
+		}
 	}
-	c.clipboard = ""
-	for _, kind := range []Atom{c.Atoms.UTF8String, AtomString} {
+	if c.clipboard != nil && (c.clipboardDataType == c.Atoms.UTF8String || c.clipboardDataType == AtomString) {
+		return string(c.clipboard)
+	}
+	return ""
+}
+
+func convertLatin1ToUTF8(latin1 []byte) []byte {
+	s, err := charmap.ISO8859_1.NewDecoder().Bytes(latin1)
+	if err != nil {
+		errs.Log(err)
+		return latin1
+	}
+	return s
+}
+
+// SetClipboardText sets the clipboard text by storing it in the connection and claiming ownership of the CLIPBOARD
+// selection with a helper window. When another client requests the clipboard contents, the helper window will provide
+// the stored text.
+func (c *Conn) SetClipboardText(str string) {
+	if c.helperWindow == 0 {
+		return
+	}
+	c.clipboardDataType = c.Atoms.UTF8String
+	c.clipboard = []byte(str)
+	c.setSelectionOwner(c.helperWindow, c.Atoms.Clipboard)
+}
+
+// GetClipboardBytes retrieves the current clipboard data by checking the owner of the CLIPBOARD selection and
+// requesting the selection contents if the owner is not the helper window. If the clipboard contents are provided
+// incrementally (using the INCR mechanism), it handles that as well by repeatedly requesting the property until all
+// data has been received.
+func (c *Conn) GetClipboardBytes(dataType string) []byte {
+	if c.helperWindow == 0 {
+		return nil
+	}
+	owner, err := c.getSelectionOwner(c.Atoms.Clipboard)
+	if err != nil {
+		errs.Log(err)
+		return nil
+	}
+	kind := c.lookupDataTypeAtom(dataType)
+	if kind == AtomNone {
+		return nil
+	}
+	if owner != c.helperWindow {
+		c.clipboard = nil
 		c.ConvertSelection(c.helperWindow, c.Atoms.Clipboard, kind, c.Atoms.ClipboardSelection, 0)
 		ev := c.WaitEvents(func(e Event) bool {
 			if sne, ok := e.(*SelectionNotifyEvent); ok && sne.Requestor == c.helperWindow {
@@ -1634,7 +1746,7 @@ func (c *Conn) GetClipboardText() string {
 			if _, propertyType, value, _, err = c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0, math.MaxUint32,
 				true); err != nil {
 				errs.Log(err)
-				continue
+				return nil
 			}
 			switch propertyType {
 			case c.Atoms.ClipboardIncremental:
@@ -1651,42 +1763,50 @@ func (c *Conn) GetClipboardText() string {
 					}
 					buffer.Write(value)
 				}
-				if kind == c.Atoms.UTF8String {
-					c.clipboard = buffer.String()
-				} else {
-					c.clipboard = convertLatin1ToUTF8(buffer.Bytes())
-				}
-			case c.Atoms.UTF8String:
-				c.clipboard = string(value)
-			case AtomString:
-				c.clipboard = convertLatin1ToUTF8(value)
+				c.clipboardDataType = kind
+				c.clipboard = buffer.Bytes()
+			case kind:
+				c.clipboardDataType = kind
+				c.clipboard = value
 			}
 		}
-		if c.clipboard != "" {
-			break
-		}
+	}
+	if c.clipboard == nil || c.clipboardDataType != kind {
+		return nil
 	}
 	return c.clipboard
 }
 
-func convertLatin1ToUTF8(latin1 []byte) string {
-	s, err := charmap.ISO8859_1.NewDecoder().Bytes(latin1)
-	if err != nil {
-		errs.Log(err)
-		return string(latin1)
-	}
-	return string(s)
-}
-
-// SetClipboardText sets the clipboard text by storing it in the connection and claiming ownership of the CLIPBOARD
+// SetClipboardBytes sets the clipboard data by storing it in the connection and claiming ownership of the CLIPBOARD
 // selection with a helper window. When another client requests the clipboard contents, the helper window will provide
-// the stored text.
-func (c *Conn) SetClipboardText(str string) {
+// the stored data.
+func (c *Conn) SetClipboardBytes(dataType string, data []byte) {
 	if c.helperWindow == 0 {
 		return
 	}
-	c.clipboard = str
-	c.setSelectionOwner(c.helperWindow, c.Atoms.Clipboard)
+	if a := c.lookupDataTypeAtom(dataType); a != AtomNone {
+		c.clipboardDataType = a
+		c.clipboard = data
+		c.setSelectionOwner(c.helperWindow, c.Atoms.Clipboard)
+	}
+}
+
+func (c *Conn) lookupDataTypeAtom(dataType string) Atom {
+	c.dataTypeMapLock.RLock()
+	a, ok := c.dataTypeMap[dataType]
+	c.dataTypeMapLock.RUnlock()
+	if ok {
+		return a
+	}
+	var err error
+	if a, err = c.InternAtom(dataType, false); err != nil {
+		errs.Log(err)
+		return AtomNone
+	}
+	c.dataTypeMapLock.Lock()
+	c.dataTypeMap[dataType] = a
+	c.dataTypeMapLock.Unlock()
+	return a
 }
 
 func (c *Conn) setSelectionOwner(owner WindowID, selection Atom) {
