@@ -62,6 +62,7 @@ const (
 // Window holds window information.
 type Window struct {
 	InputCallbacks
+	DragCallbacks
 	// MinMaxContentSizeCallback returns the minimum and maximum size for the window content.
 	MinMaxContentSizeCallback func() (minimum, maximum geom.Size)
 	// MovedCallback is called when the window is moved.

@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
 )
@@ -22,7 +23,7 @@ import (
 var (
 	w32DataTypeMapLock sync.RWMutex
 	w32DataTypeMap     = map[string]w32.ClipboardFormat{
-		"public.utf8-plain-text": w32.CFUnicodeText,
+		uti.UTF8PlainText.UTI: w32.CFUnicodeText,
 	}
 )
 

@@ -28,6 +28,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"golang.org/x/text/encoding/charmap"
@@ -734,7 +735,7 @@ func NewConn() (*Conn, error) {
 	if err = c.Atoms.init(&c); err != nil {
 		return nil, err
 	}
-	c.dataTypeMap["public.utf8-plain-text"] = c.Atoms.UTF8String
+	c.dataTypeMap[uti.UTF8PlainText.UTI] = c.Atoms.UTF8String
 	var name string
 	if name, err = c.GetAtomName(c.Atoms.UTF8String); err == nil {
 		c.dataTypeMap[name] = c.Atoms.UTF8String

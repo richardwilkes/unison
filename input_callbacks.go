@@ -56,6 +56,4 @@ type InputCallbacks struct {
 	// KeyUpCallback is called when a key is released. Return true to stop further handling or false to propagate up to
 	// parents.
 	KeyUpCallback func(keyCode KeyCode, mods Modifiers) bool
-	// FileDropCallback is called when files are drag & dropped from the OS.
-	FileDropCallback func(files []string)
 }
