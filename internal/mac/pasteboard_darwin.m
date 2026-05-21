@@ -9,26 +9,23 @@
 
 #import "macos.h"
 
-CFStringRef pasteboardString() {
-	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
-	if (![[pasteboard types] containsObject:NSPasteboardTypeString]) {
-		return nil;
-	}
-	return (CFStringRef)([pasteboard stringForType:NSPasteboardTypeString]);
+NSPasteboardRef pasteboardGeneral() {
+	return (NSPasteboardRef)[NSPasteboard generalPasteboard];
 }
 
-void pasteboardSetString(CFStringRef str) {
-	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
-	[pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];
-	[pasteboard setString:(NSString *)str forType:NSPasteboardTypeString];
+CFArrayRef pasteboardAvailableDataTypes(NSPasteboardRef pasteboard) {
+	return (CFArrayRef)[(NSPasteboard*)pasteboard types];
 }
 
-void* pasteboardBytes(CFStringRef dataType, unsigned long long* length) {
-	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
-	if (![[pasteboard types] containsObject:(NSPasteboardType)dataType]) {
+bool pasteboardHasDataType(NSPasteboardRef pasteboard, CFStringRef dataType) {
+	return [[(NSPasteboard*)pasteboard types] containsObject:(NSPasteboardType)dataType];
+}
+
+void* pasteboardBytes(NSPasteboardRef pasteboard, CFStringRef dataType, unsigned long long* length) {
+	if (![[(NSPasteboard*)pasteboard types] containsObject:(NSPasteboardType)dataType]) {
 		return nil;
 	}
-	NSData* data = [pasteboard dataForType:(NSPasteboardType)dataType];
+	NSData* data = [(NSPasteboard*)pasteboard dataForType:(NSPasteboardType)dataType];
 	*length = data.length;
 	if (data.length == 0) {
 		return nil;
@@ -38,8 +35,22 @@ void* pasteboardBytes(CFStringRef dataType, unsigned long long* length) {
 	return buffer;
 }
 
-void pasteboardSetBytes(CFStringRef dataType, unsigned long long length, void* buffer) {
-	NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
-	[pasteboard declareTypes:@[(NSPasteboardType)dataType] owner:nil];
-	[pasteboard setData:[NSData dataWithBytes:buffer length:length] forType:(NSPasteboardType)dataType];
+void pasteboardClearContents(NSPasteboardRef pasteboard) {
+	[(NSPasteboard*)pasteboard clearContents];
+}
+
+void pasteboardWriteObjects(NSPasteboardRef pasteboard, CFArrayRef items) {
+	[(NSPasteboard*)pasteboard writeObjects:(NSArray*)items];
+}
+
+NSPasteboardItemRef newPasteboardItem() {
+	return (NSPasteboardItemRef)[[NSPasteboardItem alloc] init];
+}
+
+void pasteboardItemSetString(NSPasteboardItemRef item, CFStringRef str) {
+	[(NSPasteboardItem*)item setString:(NSString*)str forType:NSPasteboardTypeString];
+}
+
+void pasteboardItemSetData(NSPasteboardItemRef item, CFStringRef dataType, unsigned long long length, void* buffer) {
+	[(NSPasteboardItem*)item setData:[NSData dataWithBytes:buffer length:length] forType:(NSPasteboardType)dataType];
 }

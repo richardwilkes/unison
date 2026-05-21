@@ -9,22 +9,63 @@
 
 package unison
 
+import (
+	"github.com/richardwilkes/toolbox/v2/uti"
+)
+
+// ClipboardData stores a data type and its data.
+type ClipboardData struct {
+	DataType *uti.DataType
+	Data     []byte
+}
+
+// ClipboardHasText returns true if the clipboard contains text.
+func ClipboardHasText() bool {
+	return ClipboardHasDataType(uti.UTF8PlainText)
+}
+
 // ClipboardGetText returns text from the clipboard.
 func ClipboardGetText() string {
-	return apiClipboardGetText()
+	data := ClipboardGetData(uti.UTF8PlainText)
+	if data == nil {
+		return ""
+	}
+	return string(data)
 }
 
 // ClipboardSetText sets text onto the clipboard, replacing the previous content.
 func ClipboardSetText(text string) {
-	apiClipboardSetText(text)
+	ClipboardSetData(ClipboardData{
+		DataType: uti.UTF8PlainText,
+		Data:     []byte(text),
+	})
 }
 
-// ClipboardGetBytes returns the data associated with the specified type on the clipboard.
-func ClipboardGetBytes(dataType string) []byte {
-	return apiClipboardGetBytes(dataType)
+// ClipboardHasDataType returns true if the clipboard contains data of the specified type.
+func ClipboardHasDataType(dataType *uti.DataType) bool {
+	return apiClipboardHasDataType(selectDataType(dataType, apiClipboardAvailableDataTypes()))
 }
 
-// ClipboardSetBytes sets data onto the clipboard, replacing the previous content.
-func ClipboardSetBytes(dataType string, data []byte) {
-	apiClipboardSetBytes(dataType, data)
+// ClipboardGetData returns the data associated with the specified type on the clipboard.
+func ClipboardGetData(dataType *uti.DataType) []byte {
+	return apiClipboardGetData(selectDataType(dataType, apiClipboardAvailableDataTypes()))
+}
+
+// ClipboardSetData sets data onto the clipboard, replacing the previous content.
+func ClipboardSetData(data ...ClipboardData) {
+	apiClipboardSetData(data...)
+}
+
+func selectDataType(desiredType *uti.DataType, availableDataTypes []string) *uti.DataType {
+	for _, one := range availableDataTypes {
+		if one == desiredType.UTI {
+			return desiredType
+		}
+	}
+	for _, one := range availableDataTypes {
+		if lookup := uti.ByUTI(one); lookup != nil && desiredType.ConformsTo(lookup) {
+			return lookup
+		}
+	}
+	return desiredType
 }

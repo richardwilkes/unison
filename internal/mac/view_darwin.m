@@ -22,6 +22,7 @@ void goWindowUpdateLayerCallback(NSWindowRef w);
 void goWindowRedrawCallback(NSWindowRef w);
 void goWindowScaleCallback(NSWindowRef w, CGPoint scale);
 void goWindowDropCallback(NSWindowRef w, int count, char** paths);
+NSDragOperation goWindowDragEnterCallback(NSWindowRef w, NSDraggingInfoRef d, uint mods);
 
 static const NSRange kEmptyRange = { NSNotFound, 0 };
 
@@ -44,7 +45,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 		trackingArea = nil;
 		markedText = [[NSMutableAttributedString alloc] init];
 		[self updateTrackingAreas];
-		[self registerForDraggedTypes:@[NSPasteboardTypeURL]];
+		[self registerForDraggedTypes:@[@"public.item"]]; // Allow anything
 	}
 	return self;
 }
@@ -186,7 +187,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)sender {
-	return NSDragOperationGeneric;
+	return goWindowDragEnterCallback(wnd, sender, [NSEvent modifierFlags]);
 }
 
 - (BOOL)performDragOperation:(id <NSDraggingInfo>)sender {

@@ -21,6 +21,7 @@ package mac
 import "C"
 
 import (
+	"fmt"
 	"image"
 	"net/url"
 	"strings"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
@@ -271,6 +273,57 @@ func DisplayBounds(id DisplayID) geom.Rect {
 func DisplayScreenSize(id DisplayID) geom.Size {
 	sizeMM := C.CGDisplayScreenSize(id)
 	return geom.NewSize(float32(sizeMM.width), float32(sizeMM.height))
+}
+
+// ========= DragInfo ==========
+
+type DragInfo C.NSDraggingInfoRef
+
+type DragOp C.NSDragOperation
+
+const (
+	DragOpCopy DragOp = DragOp(C.NSDragOperationCopy)
+	DragOpMove DragOp = DragOp(C.NSDragOperationMove)
+	DragOpNone DragOp = DragOp(C.NSDragOperationNone)
+)
+
+func (d DragInfo) SourceDragOpMask() DragOp {
+	return DragOp(C.dragSourceOperationMask(C.NSDraggingInfoRef(d)))
+}
+
+func (d DragInfo) DataTypes() []string {
+	return Array(C.dragDataTypes(C.NSDraggingInfoRef(d))).ArrayOfStringToStringSlice()
+}
+
+func (d DragInfo) HasString() bool {
+	return bool(C.dragHasString(C.NSDraggingInfoRef(d)))
+}
+
+func (d DragInfo) HasDataType(dataType string) bool {
+	s := NewString(dataType)
+	defer s.Release()
+	return bool(C.dragHasDataType(C.NSDraggingInfoRef(d), C.CFStringRef(s)))
+}
+
+func (d DragInfo) Text() string {
+	s := C.dragText(C.NSDraggingInfoRef(d))
+	if s == 0 {
+		return ""
+	}
+	return String(s).String()
+}
+
+func (d DragInfo) Data(dataType string) []byte {
+	s := NewString(dataType)
+	defer s.Release()
+	var length uint64
+	if buffer := C.dragBytes(C.NSDraggingInfoRef(d), C.CFStringRef(s), (*C.ulonglong)(&length)); buffer != nil && length > 0 {
+		data := make([]byte, length)
+		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), length))
+		C.free(buffer)
+		return data
+	}
+	return nil
 }
 
 // ========== Event ==========
@@ -584,25 +637,31 @@ func (f OpenGLPixelFormatRef) Release() {
 
 // ========== Pasteboard ==========
 
-func PasteboardString() string {
-	s := C.pasteboardString()
-	if s == 0 {
-		return ""
-	}
-	return String(s).String()
+type (
+	Pasteboard     C.NSPasteboardRef
+	PasteboardItem C.NSPasteboardItemRef
+)
+
+func PasteboardGeneral() Pasteboard {
+	return Pasteboard(C.pasteboardGeneral())
 }
 
-func SetPasteboardString(str string) {
-	s := NewString(str)
+func (p Pasteboard) AvailableDataTypes() []string {
+	a := C.pasteboardAvailableDataTypes(C.NSPasteboardRef(p))
+	return Array(a).ArrayOfStringToStringSlice()
+}
+
+func (p Pasteboard) HasDataType(dataType *uti.DataType) bool {
+	s := NewString(dataType.UTI)
 	defer s.Release()
-	C.pasteboardSetString(C.CFStringRef(s))
+	return bool(C.pasteboardHasDataType(C.NSPasteboardRef(p), C.CFStringRef(s)))
 }
 
-func PasteboardBytes(dataType string) []byte {
-	s := NewString(dataType)
+func (p Pasteboard) Bytes(dataType *uti.DataType) []byte {
+	s := NewString(dataType.UTI)
 	defer s.Release()
 	var length uint64
-	if buffer := C.pasteboardBytes(C.CFStringRef(s), (*C.ulonglong)(&length)); buffer != nil && length > 0 {
+	if buffer := C.pasteboardBytes(C.NSPasteboardRef(p), C.CFStringRef(s), (*C.ulonglong)(&length)); buffer != nil && length > 0 {
 		data := make([]byte, length)
 		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), length))
 		C.free(buffer)
@@ -611,10 +670,37 @@ func PasteboardBytes(dataType string) []byte {
 	return nil
 }
 
-func SetPasteboardBytes(dataType string, data []byte) {
-	s := NewString(dataType)
-	defer s.Release()
-	C.pasteboardSetBytes(C.CFStringRef(s), C.ulonglong(len(data)), unsafe.Pointer(&data[0]))
+func (p Pasteboard) Clear() {
+	C.pasteboardClearContents(C.NSPasteboardRef(p))
+}
+
+func (p Pasteboard) WriteItems(items ...PasteboardItem) {
+	if len(items) == 0 {
+		return
+	}
+	a := C.CFArrayCreateMutable(0, C.long(len(items)), &C.kCFTypeArrayCallBacks)
+	defer Array(a).Release()
+	for _, item := range items {
+		C.CFArrayAppendValue(a, unsafe.Pointer(item))
+	}
+	C.pasteboardWriteObjects(C.NSPasteboardRef(p), C.CFArrayRef(a))
+}
+
+func NewPasteboardItem() PasteboardItem {
+	return PasteboardItem(C.newPasteboardItem())
+}
+
+func (i PasteboardItem) SetString(s string) {
+	str := NewString(s)
+	defer str.Release()
+	C.pasteboardItemSetString(C.NSPasteboardItemRef(i), C.CFStringRef(str))
+}
+
+func (i PasteboardItem) SetData(dataType *uti.DataType, data []byte) {
+	dt := NewString(dataType.UTI)
+	defer dt.Release()
+	C.pasteboardItemSetData(C.NSPasteboardItemRef(i), C.CFStringRef(dt), C.ulonglong(len(data)),
+		unsafe.Pointer(&data[0]))
 }
 
 // ========== Save Panel ==========
@@ -1103,6 +1189,30 @@ func goWindowDropCallback(w Window, count int, paths **C.char) {
 		}
 		WindowDropCallback(w, goPaths)
 	}
+}
+
+var WindowDragEnterCallback func(w Window, d DragInfo, mods uint) DragOp
+
+//export goWindowDragEnterCallback
+func goWindowDragEnterCallback(w Window, d DragInfo, mods uint) DragOp {
+	fmt.Println("source drag op mask:", d.SourceDragOpMask())
+	fmt.Println("data types:")
+	for i, one := range d.DataTypes() {
+		fmt.Println("  ", i, ":", one)
+	}
+	fmt.Println("has text:", d.HasString())
+	kind := "public.item"
+	fmt.Println("has data type:", d.HasDataType(kind))
+
+	fmt.Printf("text: %q\n", d.Text())
+
+	fmt.Printf("data: %q\n", string(d.Data(kind)))
+
+	if WindowDragEnterCallback != nil {
+		goWindowMouseEnterCallback(w, mods)
+		return WindowDragEnterCallback(w, d, mods)
+	}
+	return DragOpNone
 }
 
 // ========== WindowDelegate ==========

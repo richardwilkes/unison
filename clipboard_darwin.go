@@ -9,20 +9,34 @@
 
 package unison
 
-import "github.com/richardwilkes/unison/internal/mac"
+import (
+	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/internal/mac"
+)
 
-func apiClipboardGetText() string {
-	return mac.PasteboardString()
+func apiClipboardAvailableDataTypes() []string {
+	return mac.PasteboardGeneral().AvailableDataTypes()
 }
 
-func apiClipboardSetText(text string) {
-	mac.SetPasteboardString(text)
+func apiClipboardHasDataType(dataType *uti.DataType) bool {
+	return mac.PasteboardGeneral().HasDataType(dataType)
 }
 
-func apiClipboardGetBytes(dataType string) []byte {
-	return mac.PasteboardBytes(dataType)
+func apiClipboardGetData(dataType *uti.DataType) []byte {
+	return mac.PasteboardGeneral().Bytes(dataType)
 }
 
-func apiClipboardSetBytes(dataType string, data []byte) {
-	mac.SetPasteboardBytes(dataType, data)
+func apiClipboardSetData(data ...ClipboardData) {
+	pb := mac.PasteboardGeneral()
+	pb.Clear()
+	all := make([]mac.PasteboardItem, 0, len(data))
+	for _, one := range data {
+		item := mac.NewPasteboardItem()
+		item.SetData(one.DataType, one.Data)
+		if uti.UTF8PlainText.ConformsTo(one.DataType) {
+			item.SetString(string(one.Data))
+		}
+		all = append(all, item)
+	}
+	pb.WriteItems(all...)
 }

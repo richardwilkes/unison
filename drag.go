@@ -23,12 +23,14 @@ const (
 
 // DragInfo contains information about the current drag operation.
 type DragInfo interface {
-	// Source returns the source of the drag data. Will be nil if the drag originated outside of this application.
-	Source() any
 	// SourceDragOpMask returns the allowed DragOp bits that may be set for a destination.
 	SourceDragOpMask() DragOp
 	// DataTypes returns the data types present in the drag.
 	DataTypes() []string
+	// HasString returns true if the drag contains string data (of type uti.UTF8PlainText.UTI).
+	HasString() bool
+	// HasDataType returns true if the drag contains data of the specified type.
+	HasDataType(dataType string) bool
 	// Text returns the string data (of type uti.UTF8PlainText.UTI) contained in the drag, if any.
 	Text() string
 	// Data returns the data for the specified data type contained in the drag, if any.

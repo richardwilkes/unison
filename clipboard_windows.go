@@ -27,7 +27,55 @@ var (
 	}
 )
 
+func apiClipboardAvailableDataTypes() []string {
+	// TODO: Implement
+	return nil
+}
+
+func apiClipboardHasDataType(dataType *uti.DataType) bool {
+	// TODO: Implement
+	return false
+}
+
+func apiClipboardGetData(dataType *uti.DataType) []byte {
+	t := w32LookupDataType(dataType.UTI)
+	if t == w32.CFNone {
+		return nil
+	}
+	var wnd windows.HWND
+	if len(windowList) != 0 {
+		wnd = windowList[0].wnd.wnd
+	}
+	tries := 3
+	for !w32.OpenClipboard(wnd) {
+		time.Sleep(time.Millisecond)
+		tries--
+		if tries == 0 {
+			return nil
+		}
+	}
+	defer w32.CloseClipboard()
+	obj := w32.GetClipboardData(t)
+	if obj == 0 {
+		return nil
+	}
+	buffer := w32.GlobalLock(obj)
+	if buffer == 0 {
+		return nil
+	}
+	defer w32.GlobalUnlock(obj)
+	size := w32.GlobalSize(obj)
+	data := make([]byte, size)
+	copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), len(data))) //nolint:govet // No other choice
+	return data
+}
+
+func apiClipboardSetData(data ...ClipboardData) {
+	// TODO: Implement
+}
+
 func apiClipboardGetText() string {
+	// TODO: Remove once the four functions above have been implemented
 	var wnd windows.HWND
 	if len(windowList) != 0 {
 		wnd = windowList[0].wnd.wnd
@@ -54,6 +102,7 @@ func apiClipboardGetText() string {
 }
 
 func apiClipboardSetText(text string) {
+	// TODO: Remove once the four functions above have been implemented
 	s, err := windows.UTF16FromString(text)
 	if err != nil {
 		return
@@ -87,40 +136,8 @@ func apiClipboardSetText(text string) {
 	w32.CloseClipboard()
 }
 
-func apiClipboardGetBytes(dataType string) []byte {
-	t := w32LookupDataType(dataType)
-	if t == w32.CFNone {
-		return nil
-	}
-	var wnd windows.HWND
-	if len(windowList) != 0 {
-		wnd = windowList[0].wnd.wnd
-	}
-	tries := 3
-	for !w32.OpenClipboard(wnd) {
-		time.Sleep(time.Millisecond)
-		tries--
-		if tries == 0 {
-			return nil
-		}
-	}
-	defer w32.CloseClipboard()
-	obj := w32.GetClipboardData(t)
-	if obj == 0 {
-		return nil
-	}
-	buffer := w32.GlobalLock(obj)
-	if buffer == 0 {
-		return nil
-	}
-	defer w32.GlobalUnlock(obj)
-	size := w32.GlobalSize(obj)
-	data := make([]byte, size)
-	copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), len(data))) //nolint:govet // No other choice
-	return data
-}
-
 func apiClipboardSetBytes(dataType string, data []byte) {
+	// TODO: Remove once the four functions above have been implemented
 	t := w32LookupDataType(dataType)
 	if t == w32.CFNone {
 		return

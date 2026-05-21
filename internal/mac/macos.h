@@ -10,11 +10,14 @@
 #import <Cocoa/Cocoa.h>
 
 typedef CFTypeRef NSCursorRef;
+typedef CFTypeRef NSDraggingInfoRef;
 typedef CFTypeRef NSMenuRef;
 typedef CFTypeRef NSMenuItemRef;
 typedef CFTypeRef NSOpenPanelRef;
 typedef CFTypeRef NSOpenGLContextRef;
 typedef CFTypeRef NSOpenGLPixelFormatRef;
+typedef CFTypeRef NSPasteboardRef;
+typedef CFTypeRef NSPasteboardItemRef;
 typedef CFTypeRef NSSavePanelRef;
 typedef CFTypeRef NSScreenRef;
 typedef CFTypeRef NSViewRef;
@@ -45,6 +48,14 @@ NSCursorRef cursorResizeUpDown(void);
 void cursorHide(void);
 void cursorShow(void);
 void cursorSet(NSCursorRef cursor);
+
+// Drag
+NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender);
+CFArrayRef dragDataTypes(NSDraggingInfoRef sender);
+bool dragHasString(NSDraggingInfoRef sender);
+CFStringRef dragText(NSDraggingInfoRef sender);
+bool dragHasDataType(NSDraggingInfoRef sender, CFStringRef dataType);
+void* dragBytes(NSDraggingInfoRef sender, CFStringRef dataType, unsigned long long* length);
 
 // Event
 double doubleClickInterval(void);
@@ -108,10 +119,15 @@ void openGLFlushBuffer(NSOpenGLContextRef ctx);
 NSOpenGLPixelFormatRef newOpenGLPixelFormat(void);
 
 // Pasteboard
-CFStringRef pasteboardString();
-void pasteboardSetString(CFStringRef str);
-void* pasteboardBytes(CFStringRef dataType, unsigned long long* length);
-void pasteboardSetBytes(CFStringRef dataType, unsigned long long length, void* buffer);
+NSPasteboardRef pasteboardGeneral();
+CFArrayRef pasteboardAvailableDataTypes(NSPasteboardRef pasteboard);
+bool pasteboardHasDataType(NSPasteboardRef pasteboard, CFStringRef str);
+void* pasteboardBytes(NSPasteboardRef pasteboard, CFStringRef dataType, unsigned long long* length);
+void pasteboardClearContents(NSPasteboardRef pasteboard);
+void pasteboardWriteObjects(NSPasteboardRef pasteboard, CFArrayRef items);
+NSPasteboardItemRef newPasteboardItem();
+void pasteboardItemSetString(NSPasteboardItemRef item, CFStringRef str);
+void pasteboardItemSetData(NSPasteboardItemRef item, CFStringRef dataType, unsigned long long length, void* buffer);
 
 // Save Panel
 NSSavePanelRef newSavePanel();
