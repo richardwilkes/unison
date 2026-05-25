@@ -129,10 +129,10 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseEnterCallback = func(macWnd mac.Window, mods uint) {
+	mac.WindowMouseEnterCallback = func(macWnd mac.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
-			w.mouseEnter(w.MouseLocation(), macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.mouseEnter(pt, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
 		}
@@ -147,15 +147,14 @@ func macInitWindowCallbacks() {
 	}
 	mac.WindowMouseMovedCallback = func(macWnd mac.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.mouseMovedOrDragged(w.apiConvertRawMouse(pt), macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.mouseMovedOrDragged(pt, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse moved callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowScrollCallback = func(macWnd mac.Window, deltaX, deltaY float32, mods uint) {
+	mac.WindowScrollCallback = func(macWnd mac.Window, delta geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.mouseWheel(w.MouseLocation(), geom.NewPoint(deltaX, deltaY),
-				macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.mouseWheel(w.MouseLocation(), delta, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window scroll callback for unknown window", "window", macWnd)
 		}
@@ -195,11 +194,35 @@ func macInitWindowCallbacks() {
 			}
 		}
 	}
-	mac.WindowDropCallback = func(macWnd mac.Window, filePaths []string) {
+	mac.WindowDragEnterCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) mac.DragOp {
 		if w := macFindWindow(macWnd); w != nil {
-			w.fileDrop(filePaths)
+			di := &macDragInfo{native: d}
+			return di.toNativeDragOp(w.dragEntered(di, where, macTranslateModifiers(mac.EventModifierFlags(mods))))
+		}
+		slog.Warn("received window drag enter callback for unknown window", "window", macWnd)
+		return mac.DragOpNone
+	}
+	mac.WindowDragUpdateCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) mac.DragOp {
+		if w := macFindWindow(macWnd); w != nil {
+			di := &macDragInfo{native: d}
+			return di.toNativeDragOp(w.dragUpdate(di, where, macTranslateModifiers(mac.EventModifierFlags(mods))))
+		}
+		slog.Warn("received window drag update callback for unknown window", "window", macWnd)
+		return mac.DragOpNone
+	}
+	mac.WindowDropCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) bool {
+		if w := macFindWindow(macWnd); w != nil {
+			di := &macDragInfo{native: d}
+			return w.drop(di, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
+		}
+		slog.Warn("received window drop callback for unknown window", "window", macWnd)
+		return false
+	}
+	mac.WindowDragExitCallback = func(macWnd mac.Window) {
+		if w := macFindWindow(macWnd); w != nil {
+			w.dragExit()
 		} else {
-			slog.Warn("received window drop callback for unknown window", "window", macWnd)
+			slog.Warn("received window drag exit callback for unknown window", "window", macWnd)
 		}
 	}
 }
@@ -296,7 +319,7 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 	w.wnd.wnd.SetFrame(w.wnd.wnd.FrameRectForContentRect(rect))
 }
 
-func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
+func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point { //nolint:unused // Other platforms need this
 	return where
 }
 
@@ -330,7 +353,7 @@ func (w *Window) apiCursorInContentArea() bool {
 func (w *Window) apiCursorPosition() geom.Point {
 	loc := w.wnd.wnd.MouseLocationOutsideOfEventStream()
 	frame := w.wnd.view.Frame()
-	return w.apiConvertRawMouse(geom.NewPoint(loc.X, frame.Height-loc.Y))
+	return geom.NewPoint(loc.X, frame.Height-loc.Y)
 }
 
 func (w *Window) apiBackingScale() geom.Point {

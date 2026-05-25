@@ -10,33 +10,68 @@
 #import "macos.h"
 
 NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender) {
-	return [(id <NSDraggingInfo>)sender draggingSourceOperationMask];
+	return [(id<NSDraggingInfo>)sender draggingSourceOperationMask];
 }
 
 CFArrayRef dragDataTypes(NSDraggingInfoRef sender) {
-	return (CFArrayRef)[[(id <NSDraggingInfo>)sender draggingPasteboard] types];
+	return (CFArrayRef)[[(id<NSDraggingInfo>)sender draggingPasteboard] types];
 }
 
 bool dragHasString(NSDraggingInfoRef sender) {
-	NSPasteboard *pb = [(id <NSDraggingInfo>)sender draggingPasteboard];
+	NSPasteboard *pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
 	return [[pb types] containsObject:NSPasteboardTypeString];
 }
 
 CFStringRef dragText(NSDraggingInfoRef sender) {
-	NSPasteboard *pb = [(id <NSDraggingInfo>)sender draggingPasteboard];
+	NSPasteboard *pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
 	if (![[pb types] containsObject:NSPasteboardTypeString]) {
 		return nil;
 	}
 	return (CFStringRef)([pb stringForType:NSPasteboardTypeString]);
 }
 
+bool dragHasFilePaths(NSDraggingInfoRef sender) {
+	NSPasteboard *pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
+	NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
+	NSArray* urls = [pb readObjectsForClasses:@[[NSURL class]] options:options];
+	return [urls count] != 0;
+}
+
+CFArrayRef dragFilePaths(NSDraggingInfoRef sender) {
+	NSPasteboard* pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
+	NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey:@YES};
+	NSArray* urls = [pb readObjectsForClasses:@[[NSURL class]] options:options];
+	int count = [urls count];
+	CFMutableArrayRef result = CFArrayCreateMutable(nil, count, &kCFTypeArrayCallBacks);
+	for (int i = 0; i < count; i++) {
+		char* path = strdup([urls[i] fileSystemRepresentation]);
+		CFArrayAppendValue(result, CFStringCreateWithCString(nil, path, kCFStringEncodingUTF8));
+		free(path);
+	}
+	return (CFArrayRef)result;
+}
+
+bool dragHasURLs(NSDraggingInfoRef sender) {
+	NSPasteboard *pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
+	NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey:@NO};
+	NSArray* urls = [pb readObjectsForClasses:@[[NSURL class]] options:options];
+	return [urls count] != 0;
+}
+
+CFArrayRef dragURLs(NSDraggingInfoRef sender) {
+	NSPasteboard* pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
+	NSDictionary* options = @{NSPasteboardURLReadingFileURLsOnlyKey:@NO};
+	NSArray* urls = [pb readObjectsForClasses:@[[NSURL class]] options:options];
+	return (CFArrayRef)urls;
+}
+
 bool dragHasDataType(NSDraggingInfoRef sender, CFStringRef dataType) {
-	NSPasteboard *pb = [(id <NSDraggingInfo>)sender draggingPasteboard];
+	NSPasteboard *pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
 	return [[pb types] containsObject:(NSPasteboardType)dataType];
 }
 
 void* dragBytes(NSDraggingInfoRef sender, CFStringRef dataType, unsigned long long* length) {
-	NSPasteboard *pb = [(id <NSDraggingInfo>)sender draggingPasteboard];
+	NSPasteboard *pb = [(id<NSDraggingInfo>)sender draggingPasteboard];
 	if (![[pb types] containsObject:(NSPasteboardType)dataType]) {
 		return nil;
 	}

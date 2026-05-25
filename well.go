@@ -11,6 +11,7 @@ package unison
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -88,7 +89,8 @@ func NewWell() *Well {
 	well.MouseDragCallback = well.DefaultMouseDrag
 	well.MouseUpCallback = well.DefaultMouseUp
 	well.KeyDownCallback = well.DefaultKeyDown
-	well.FileDropCallback = well.DefaultFileDrop
+	well.DragEnteredCallback = well.DefaultDragEnter
+	well.DropCallback = well.DefaultDrop
 	well.UpdateCursorCallback = well.DefaultUpdateCursor
 	return well
 }
@@ -241,24 +243,41 @@ func (w *Well) Click() {
 	}
 }
 
-// DefaultFileDrop provides the default file drop behavior.
-func (w *Well) DefaultFileDrop(files []string) {
-	for _, one := range files {
-		if imageSpec := imgfmt.Distill(one); imageSpec != "" {
-			img, err := w.loadImage(imageSpec)
-			if err != nil {
-				errs.Log(err, "spec", imageSpec)
-				continue
-			}
-			if w.ValidateImageCallback != nil {
-				img = w.ValidateImageCallback(img)
-			}
-			if img != nil {
-				w.SetInk(&Pattern{Image: img})
-				return
+// DefaultDragEnter provides the default drag enter handling.
+func (w *Well) DefaultDragEnter(di DragInfo, _ geom.Point, _ Modifiers) DragOp {
+	op := DragOpNone
+	if w.Enabled() && di.HasFilePaths() {
+		for _, f := range di.FilePaths() {
+			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
+				op = DragOpCopy
+				break
 			}
 		}
 	}
+	return op
+}
+
+// DefaultDrop provides the default drop handling. Handles image files dropped onto the well.
+func (w *Well) DefaultDrop(di DragInfo, _ geom.Point, _ Modifiers) bool {
+	if w.Enabled() {
+		for _, f := range di.FilePaths() {
+			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
+				img, err := w.loadImage(f)
+				if err != nil {
+					errs.Log(err, "spec", f)
+					continue
+				}
+				if w.ValidateImageCallback != nil {
+					img = w.ValidateImageCallback(img)
+				}
+				if img != nil {
+					w.SetInk(&Pattern{Image: img})
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func (w *Well) loadImage(imageSpec string) (*Image, error) {

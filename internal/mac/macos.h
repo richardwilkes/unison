@@ -54,6 +54,10 @@ NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender);
 CFArrayRef dragDataTypes(NSDraggingInfoRef sender);
 bool dragHasString(NSDraggingInfoRef sender);
 CFStringRef dragText(NSDraggingInfoRef sender);
+bool dragHasFilePaths(NSDraggingInfoRef sender);
+CFArrayRef dragFilePaths(NSDraggingInfoRef sender);
+bool dragHasURLs(NSDraggingInfoRef sender);
+CFArrayRef dragURLs(NSDraggingInfoRef sender);
 bool dragHasDataType(NSDraggingInfoRef sender, CFStringRef dataType);
 void* dragBytes(NSDraggingInfoRef sender, CFStringRef dataType, unsigned long long* length);
 

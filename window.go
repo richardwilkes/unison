@@ -115,6 +115,7 @@ type Window struct {
 	lastHeight                  float32
 	lastKeyModifiers            Modifiers
 	kind                        WindowKind
+	lastDragOp                  DragOp
 	valid                       bool
 	focused                     bool
 	transient                   bool
@@ -1369,23 +1370,6 @@ func (w *Window) LastKeyModifiers() Modifiers {
 	return w.lastKeyModifiers
 }
 
-func (w *Window) fileDrop(files []string) {
-	if w.okToProcess() {
-		if w.FileDropCallback != nil {
-			xos.SafeCall(func() { w.FileDropCallback(files) }, nil)
-			return
-		}
-		panel := w.root.PanelAt(w.MouseLocation())
-		for panel != nil {
-			if panel.FileDropCallback != nil && panel.Enabled() {
-				xos.SafeCall(func() { panel.FileDropCallback(files) }, nil)
-				return
-			}
-			panel = panel.parent
-		}
-	}
-}
-
 // ClientData returns a map of client data for this window.
 func (w *Window) ClientData() map[string]any {
 	if w.data == nil {
@@ -1415,8 +1399,74 @@ func (w *Window) StartDataDrag(data *DragData) {
 	}
 }
 
+func (w *Window) findDropTarget(where geom.Point) *Panel {
+	if !w.okToProcess() {
+		return nil
+	}
+	panel := w.root.PanelAt(where)
+	for panel != nil && panel.DropCallback == nil {
+		panel = panel.Parent()
+	}
+	if panel != nil && !panel.Enabled() {
+		panel = nil
+	}
+	return panel
+}
+
+func (w *Window) dragEntered(di DragInfo, where geom.Point, mods Modifiers) DragOp {
+	op := DragOpNone
+	panel := w.findDropTarget(where)
+	if panel != nil {
+		if !panel.Is(w.dragDataPanel) {
+			if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
+				xos.SafeCall(w.dragDataPanel.DataDragExitCallback, nil)
+			}
+		}
+		if panel.DragEnteredCallback != nil {
+			xos.SafeCall(func() { op = panel.DragEnteredCallback(di, panel.PointFromRoot(where), mods) }, nil)
+		}
+	}
+	w.dragDataPanel = panel
+	w.lastDragOp = op
+	return op
+}
+
+func (w *Window) dragUpdate(di DragInfo, where geom.Point, mods Modifiers) DragOp {
+	panel := w.findDropTarget(where)
+	if panel == nil {
+		return w.lastDragOp
+	}
+	if !panel.Is(w.dragDataPanel) {
+		w.dragEntered(di, where, mods)
+	}
+	if panel.DragUpdatedCallback != nil {
+		xos.SafeCall(func() { w.lastDragOp = panel.DragUpdatedCallback(di, panel.PointFromRoot(where), mods) }, nil)
+	}
+	return w.lastDragOp
+}
+
+func (w *Window) drop(di DragInfo, where geom.Point, mods Modifiers) bool {
+	panel := w.findDropTarget(where)
+	if panel == nil {
+		return false
+	}
+	handled := false
+	xos.SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) }, nil)
+	return handled
+}
+
+func (w *Window) dragExit() {
+	if w.dragDataPanel == nil || !w.okToProcess() {
+		return
+	}
+	if w.dragDataPanel.DragExitedCallback != nil {
+		xos.SafeCall(w.dragDataPanel.DragExitedCallback, nil)
+	}
+}
+
 func (w *Window) dataDragOver() {
-	w.MarkForRedraw()
+	// TODO: This function may be unused now
+	// w.MarkForRedraw()
 	panel := w.root.PanelAt(w.dragDataLocation)
 	for panel != nil {
 		for panel != nil && panel.DataDragOverCallback == nil {
@@ -1444,6 +1494,7 @@ func (w *Window) dataDragOver() {
 }
 
 func (w *Window) dataDragFinish() {
+	// TODO: This function may be unused now
 	w.MarkForRedraw()
 	dragData := w.dragData
 	dragDataLocation := w.dragDataLocation

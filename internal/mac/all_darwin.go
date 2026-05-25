@@ -21,7 +21,6 @@ package mac
 import "C"
 
 import (
-	"fmt"
 	"image"
 	"net/url"
 	"strings"
@@ -299,6 +298,14 @@ func (d DragInfo) HasString() bool {
 	return bool(C.dragHasString(C.NSDraggingInfoRef(d)))
 }
 
+func (d DragInfo) HasFilePaths() bool {
+	return bool(C.dragHasFilePaths(C.NSDraggingInfoRef(d)))
+}
+
+func (d DragInfo) HasURLs() bool {
+	return bool(C.dragHasURLs(C.NSDraggingInfoRef(d)))
+}
+
 func (d DragInfo) HasDataType(dataType string) bool {
 	s := NewString(dataType)
 	defer s.Release()
@@ -311,6 +318,24 @@ func (d DragInfo) Text() string {
 		return ""
 	}
 	return String(s).String()
+}
+
+func (d DragInfo) FilePaths() []string {
+	return Array(C.dragFilePaths(C.NSDraggingInfoRef(d))).ArrayOfStringToStringSlice()
+}
+
+func (d DragInfo) URLs() []*url.URL {
+	urlStrs := Array(C.dragURLs(C.NSDraggingInfoRef(d))).ArrayOfURLToStringSlice()
+	result := make([]*url.URL, 0, len(urlStrs))
+	for _, urlStr := range urlStrs {
+		u, err := url.Parse(urlStr)
+		if err != nil {
+			errs.Log(errs.NewWithCause("unable to parse URL", err), "url", urlStr)
+			continue
+		}
+		result = append(result, u)
+	}
+	return result
 }
 
 func (d DragInfo) Data(dataType string) []byte {
@@ -1105,12 +1130,12 @@ func goWindowCursorUpdateCallback(w Window) {
 	}
 }
 
-var WindowMouseEnterCallback func(w Window, mods uint)
+var WindowMouseEnterCallback func(w Window, pt geom.Point, mods uint)
 
 //export goWindowMouseEnterCallback
-func goWindowMouseEnterCallback(w Window, mods uint) {
+func goWindowMouseEnterCallback(w Window, x, y float32, mods uint) {
 	if WindowMouseEnterCallback != nil {
-		WindowMouseEnterCallback(w, mods)
+		WindowMouseEnterCallback(w, geom.NewPoint(x, y), mods)
 	}
 }
 
@@ -1132,12 +1157,12 @@ func goWindowMouseMovedCallback(w Window, x, y float32, mods uint) {
 	}
 }
 
-var WindowScrollCallback func(w Window, deltaX, deltaY float32, mods uint)
+var WindowScrollCallback func(w Window, delta geom.Point, mods uint)
 
 //export goWindowScrollCallback
 func goWindowScrollCallback(w Window, deltaX, deltaY float32, mods uint) {
 	if WindowScrollCallback != nil {
-		WindowScrollCallback(w, deltaX, deltaY, mods)
+		WindowScrollCallback(w, geom.NewPoint(deltaX, deltaY), mods)
 	}
 }
 
@@ -1177,42 +1202,44 @@ func goWindowRedrawCallback(w Window) {
 	}
 }
 
-var WindowDropCallback func(Window, []string)
-
-//export goWindowDropCallback
-func goWindowDropCallback(w Window, count int, paths **C.char) {
-	if WindowDropCallback != nil {
-		goPaths := make([]string, count)
-		slice := unsafe.Slice(paths, count)
-		for i, p := range slice {
-			goPaths[i] = C.GoString(p)
-		}
-		WindowDropCallback(w, goPaths)
-	}
-}
-
-var WindowDragEnterCallback func(w Window, d DragInfo, mods uint) DragOp
+var WindowDragEnterCallback func(w Window, d DragInfo, where geom.Point, mods uint) DragOp
 
 //export goWindowDragEnterCallback
-func goWindowDragEnterCallback(w Window, d DragInfo, mods uint) DragOp {
-	fmt.Println("source drag op mask:", d.SourceDragOpMask())
-	fmt.Println("data types:")
-	for i, one := range d.DataTypes() {
-		fmt.Println("  ", i, ":", one)
-	}
-	fmt.Println("has text:", d.HasString())
-	kind := "public.item"
-	fmt.Println("has data type:", d.HasDataType(kind))
-
-	fmt.Printf("text: %q\n", d.Text())
-
-	fmt.Printf("data: %q\n", string(d.Data(kind)))
-
+func goWindowDragEnterCallback(w Window, d DragInfo, x, y float32, mods uint) DragOp {
 	if WindowDragEnterCallback != nil {
-		goWindowMouseEnterCallback(w, mods)
-		return WindowDragEnterCallback(w, d, mods)
+		return WindowDragEnterCallback(w, d, geom.NewPoint(x, y), mods)
 	}
 	return DragOpNone
+}
+
+var WindowDragUpdateCallback func(w Window, d DragInfo, where geom.Point, mods uint) DragOp
+
+//export goWindowDragUpdateCallback
+func goWindowDragUpdateCallback(w Window, d DragInfo, x, y float32, mods uint) DragOp {
+	if WindowDragUpdateCallback != nil {
+		return WindowDragUpdateCallback(w, d, geom.NewPoint(x, y), mods)
+	}
+	return DragOpNone
+}
+
+var WindowDropCallback func(w Window, d DragInfo, where geom.Point, mods uint) bool
+
+//export goWindowDropCallback
+func goWindowDropCallback(w Window, d DragInfo, x, y float32, mods uint) bool {
+	var handled bool
+	if WindowDropCallback != nil {
+		handled = WindowDropCallback(w, d, geom.NewPoint(x, y), mods)
+	}
+	return handled
+}
+
+var WindowDragExitCallback func(w Window)
+
+//export goWindowDragExitCallback
+func goWindowDragExitCallback(w Window) {
+	if WindowDragExitCallback != nil {
+		WindowDragExitCallback(w)
+	}
 }
 
 // ========== WindowDelegate ==========
