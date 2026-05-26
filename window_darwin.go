@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
@@ -194,26 +195,23 @@ func macInitWindowCallbacks() {
 			}
 		}
 	}
-	mac.WindowDragEnterCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) mac.DragOp {
+	mac.WindowDragEnterCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) drag.Op {
 		if w := macFindWindow(macWnd); w != nil {
-			di := &macDragInfo{native: d}
-			return di.toNativeDragOp(w.dragEntered(di, where, macTranslateModifiers(mac.EventModifierFlags(mods))))
+			return w.dragEntered(d, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		}
 		slog.Warn("received window drag enter callback for unknown window", "window", macWnd)
-		return mac.DragOpNone
+		return drag.None
 	}
-	mac.WindowDragUpdateCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) mac.DragOp {
+	mac.WindowDragUpdateCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) drag.Op {
 		if w := macFindWindow(macWnd); w != nil {
-			di := &macDragInfo{native: d}
-			return di.toNativeDragOp(w.dragUpdate(di, where, macTranslateModifiers(mac.EventModifierFlags(mods))))
+			return w.dragUpdate(d, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		}
 		slog.Warn("received window drag update callback for unknown window", "window", macWnd)
-		return mac.DragOpNone
+		return drag.None
 	}
 	mac.WindowDropCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) bool {
 		if w := macFindWindow(macWnd); w != nil {
-			di := &macDragInfo{native: d}
-			return w.drop(di, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			return w.drop(d, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
 		}
 		slog.Warn("received window drop callback for unknown window", "window", macWnd)
 		return false

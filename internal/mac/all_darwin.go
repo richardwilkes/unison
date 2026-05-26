@@ -31,6 +31,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/drag"
 )
 
 // ========== App ==========
@@ -278,6 +279,8 @@ func DisplayScreenSize(id DisplayID) geom.Size {
 
 type DragInfo C.NSDraggingInfoRef
 
+var _ drag.Info = DragInfo(0)
+
 type DragOp C.NSDragOperation
 
 const (
@@ -286,8 +289,30 @@ const (
 	DragOpNone DragOp = DragOp(C.NSDragOperationNone)
 )
 
-func (d DragInfo) SourceDragOpMask() DragOp {
-	return DragOp(C.dragSourceOperationMask(C.NSDraggingInfoRef(d)))
+func DragOpFromUnison(op drag.Op) DragOp {
+	var nativeOp DragOp
+	if op&drag.Copy != 0 {
+		nativeOp |= DragOpCopy
+	}
+	if op&drag.Move != 0 {
+		nativeOp |= DragOpMove
+	}
+	return nativeOp
+}
+
+func (d DragOp) ToUnisonDragOp() drag.Op {
+	var op drag.Op
+	if d&DragOpCopy != 0 {
+		op |= drag.Copy
+	}
+	if d&DragOpMove != 0 {
+		op |= drag.Move
+	}
+	return op
+}
+
+func (d DragInfo) SourceDragOpMask() drag.Op {
+	return DragOp(C.dragSourceOperationMask(C.NSDraggingInfoRef(d))).ToUnisonDragOp()
 }
 
 func (d DragInfo) DataTypes() []string {
@@ -1202,22 +1227,22 @@ func goWindowRedrawCallback(w Window) {
 	}
 }
 
-var WindowDragEnterCallback func(w Window, d DragInfo, where geom.Point, mods uint) DragOp
+var WindowDragEnterCallback func(w Window, d DragInfo, where geom.Point, mods uint) drag.Op
 
 //export goWindowDragEnterCallback
 func goWindowDragEnterCallback(w Window, d DragInfo, x, y float32, mods uint) DragOp {
 	if WindowDragEnterCallback != nil {
-		return WindowDragEnterCallback(w, d, geom.NewPoint(x, y), mods)
+		return DragOpFromUnison(WindowDragEnterCallback(w, d, geom.NewPoint(x, y), mods) & d.SourceDragOpMask())
 	}
 	return DragOpNone
 }
 
-var WindowDragUpdateCallback func(w Window, d DragInfo, where geom.Point, mods uint) DragOp
+var WindowDragUpdateCallback func(w Window, d DragInfo, where geom.Point, mods uint) drag.Op
 
 //export goWindowDragUpdateCallback
 func goWindowDragUpdateCallback(w Window, d DragInfo, x, y float32, mods uint) DragOp {
 	if WindowDragUpdateCallback != nil {
-		return WindowDragUpdateCallback(w, d, geom.NewPoint(x, y), mods)
+		return DragOpFromUnison(WindowDragUpdateCallback(w, d, geom.NewPoint(x, y), mods) & d.SourceDragOpMask())
 	}
 	return DragOpNone
 }

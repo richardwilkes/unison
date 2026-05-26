@@ -21,6 +21,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
@@ -115,7 +116,7 @@ type Window struct {
 	lastHeight                  float32
 	lastKeyModifiers            Modifiers
 	kind                        WindowKind
-	lastDragOp                  DragOp
+	lastDragOp                  drag.Op
 	valid                       bool
 	focused                     bool
 	transient                   bool
@@ -1413,8 +1414,8 @@ func (w *Window) findDropTarget(where geom.Point) *Panel {
 	return panel
 }
 
-func (w *Window) dragEntered(di DragInfo, where geom.Point, mods Modifiers) DragOp {
-	op := DragOpNone
+func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+	op := drag.None
 	panel := w.findDropTarget(where)
 	if panel != nil {
 		if !panel.Is(w.dragDataPanel) {
@@ -1431,7 +1432,7 @@ func (w *Window) dragEntered(di DragInfo, where geom.Point, mods Modifiers) Drag
 	return op
 }
 
-func (w *Window) dragUpdate(di DragInfo, where geom.Point, mods Modifiers) DragOp {
+func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
 	panel := w.findDropTarget(where)
 	if panel == nil {
 		return w.lastDragOp
@@ -1445,7 +1446,7 @@ func (w *Window) dragUpdate(di DragInfo, where geom.Point, mods Modifiers) DragO
 	return w.lastDragOp
 }
 
-func (w *Window) drop(di DragInfo, where geom.Point, mods Modifiers) bool {
+func (w *Window) drop(di drag.Info, where geom.Point, mods Modifiers) bool {
 	panel := w.findDropTarget(where)
 	if panel == nil {
 		return false

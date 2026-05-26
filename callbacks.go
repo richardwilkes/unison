@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/drag"
 )
 
 // Constants for mouse buttons.
@@ -56,4 +57,21 @@ type InputCallbacks struct {
 	// KeyUpCallback is called when a key is released. Return true to stop further handling or false to propagate up to
 	// parents.
 	KeyUpCallback func(keyCode KeyCode, mods Modifiers) bool
+}
+
+// DragCallbacks holds the callbacks that client code can hook into for drag and drop events.
+type DragCallbacks struct {
+	// DragEnteredCallback is called when a drag operation enters the window or panel. The returned drag.Op should be
+	// just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask().
+	DragEnteredCallback func(di drag.Info, where geom.Point, mods Modifiers) drag.Op
+	// DragUpdatedCallback is called when a drag operation is adjusted while within the window or panel. The returned
+	// drag.Op should be just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask(). For
+	// performance reasons, examination of data types and/or the data should be done when DragEnteredCallback() is
+	// called and not here, if at all possible. If nil, the result from the DragEnteredCallback will be returned.
+	DragUpdatedCallback func(di drag.Info, where geom.Point, mods Modifiers) drag.Op
+	// DragExitedCallback is called when a drag operation leaves the window or panel.
+	DragExitedCallback func()
+	// DropCallback is called when a drag operation is released over the window or panel. Return true if the drop is
+	// accepted and false if it is not.
+	DropCallback func(di drag.Info, where geom.Point, mods Modifiers) bool
 }

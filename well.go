@@ -16,6 +16,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -244,12 +245,12 @@ func (w *Well) Click() {
 }
 
 // DefaultDragEnter provides the default drag enter handling.
-func (w *Well) DefaultDragEnter(di DragInfo, _ geom.Point, _ Modifiers) DragOp {
-	op := DragOpNone
+func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ Modifiers) drag.Op {
+	op := drag.None
 	if w.Enabled() && di.HasFilePaths() {
 		for _, f := range di.FilePaths() {
 			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
-				op = DragOpCopy
+				op = drag.Copy
 				break
 			}
 		}
@@ -258,7 +259,7 @@ func (w *Well) DefaultDragEnter(di DragInfo, _ geom.Point, _ Modifiers) DragOp {
 }
 
 // DefaultDrop provides the default drop handling. Handles image files dropped onto the well.
-func (w *Well) DefaultDrop(di DragInfo, _ geom.Point, _ Modifiers) bool {
+func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ Modifiers) bool {
 	if w.Enabled() {
 		for _, f := range di.FilePaths() {
 			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
