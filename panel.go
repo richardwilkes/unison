@@ -46,6 +46,7 @@ type Panel struct {
 	ScrollRectIntoViewCallback          func(rect geom.Rect) bool
 	ParentChangedCallback               func()
 	FocusChangeInHierarchyCallback      func(from, to *Panel)
+	// ----- TODO: Figure out how to use native drag & drop instead
 	// DataDragOverCallback is called when a data drag is over a potential drop target. Return true to stop further
 	// handling or false to propagate up to parents.
 	DataDragOverCallback func(where geom.Point, data map[string]any) bool
@@ -55,20 +56,21 @@ type Panel struct {
 	// DataDragDropCallback is called when a data drag is dropped and a previous call to DataDragOverCallback returned
 	// true.
 	DataDragDropCallback func(where geom.Point, data map[string]any)
-	Tooltip              *Panel
-	parent               *Panel
-	canPerformMap        map[int]func(any) bool
-	performMap           map[int]func(any)
-	data                 map[string]any
-	RefKey               string
-	children             []*Panel
-	frame                geom.Rect
-	scale                geom.Point
-	NeedsLayout          bool
-	focusable            bool
-	disabled             bool
-	Hidden               bool
-	TooltipImmediate     bool
+	// -----
+	Tooltip          *Panel
+	parent           *Panel
+	canPerformMap    map[int]func(any) bool
+	performMap       map[int]func(any)
+	data             map[string]any
+	RefKey           string
+	children         []*Panel
+	frame            geom.Rect
+	scale            geom.Point
+	NeedsLayout      bool
+	focusable        bool
+	disabled         bool
+	Hidden           bool
+	TooltipImmediate bool
 }
 
 // NewPanel creates a new panel.

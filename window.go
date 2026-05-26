@@ -79,16 +79,13 @@ type Window struct {
 	AllowCloseCallback func() bool
 	// WillCloseCallback is called just prior to the window closing.
 	WillCloseCallback func()
-	// DragIntoWindowWillStart is called just prior to a drag into the window starting.
-	DragIntoWindowWillStart func()
-	// DragIntoWindowFinished is called just after a drag into the window completes, whether a drop occurs or not.
-	DragIntoWindowFinished func()
 	// ContentScaleCallback is called when the backing scale of the window changes.
 	ContentScaleCallback        func(scale geom.Point)
 	surface                     *surface
 	root                        *rootPanel
 	focus                       *Panel
 	cursor                      *Cursor
+	lastDropTarget              *Panel
 	dragDataPanel               *Panel
 	dragData                    *DragData
 	lastMouseDownPanel          *Panel
@@ -1390,83 +1387,16 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 
 // StartDataDrag starts a data drag operation.
 func (w *Window) StartDataDrag(data *DragData) {
+	// TODO: Figure out how to use native drag & drop instead
 	if data != nil && len(data.Data) != 0 {
 		w.dragData = data
 		w.dragDataPanel = nil
-		if w.DragIntoWindowWillStart != nil {
-			xos.SafeCall(w.DragIntoWindowWillStart, nil)
-		}
 		w.dataDragOver()
 	}
 }
 
-func (w *Window) findDropTarget(where geom.Point) *Panel {
-	if !w.okToProcess() {
-		return nil
-	}
-	panel := w.root.PanelAt(where)
-	for panel != nil && panel.DropCallback == nil {
-		panel = panel.Parent()
-	}
-	if panel != nil && !panel.Enabled() {
-		panel = nil
-	}
-	return panel
-}
-
-func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
-	op := drag.None
-	panel := w.findDropTarget(where)
-	if panel != nil {
-		if !panel.Is(w.dragDataPanel) {
-			if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
-				xos.SafeCall(w.dragDataPanel.DataDragExitCallback, nil)
-			}
-		}
-		if panel.DragEnteredCallback != nil {
-			xos.SafeCall(func() { op = panel.DragEnteredCallback(di, panel.PointFromRoot(where), mods) }, nil)
-		}
-	}
-	w.dragDataPanel = panel
-	w.lastDragOp = op
-	return op
-}
-
-func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
-	panel := w.findDropTarget(where)
-	if panel == nil {
-		return w.lastDragOp
-	}
-	if !panel.Is(w.dragDataPanel) {
-		w.dragEntered(di, where, mods)
-	}
-	if panel.DragUpdatedCallback != nil {
-		xos.SafeCall(func() { w.lastDragOp = panel.DragUpdatedCallback(di, panel.PointFromRoot(where), mods) }, nil)
-	}
-	return w.lastDragOp
-}
-
-func (w *Window) drop(di drag.Info, where geom.Point, mods Modifiers) bool {
-	panel := w.findDropTarget(where)
-	if panel == nil {
-		return false
-	}
-	handled := false
-	xos.SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) }, nil)
-	return handled
-}
-
-func (w *Window) dragExit() {
-	if w.dragDataPanel == nil || !w.okToProcess() {
-		return
-	}
-	if w.dragDataPanel.DragExitedCallback != nil {
-		xos.SafeCall(w.dragDataPanel.DragExitedCallback, nil)
-	}
-}
-
 func (w *Window) dataDragOver() {
-	// TODO: This function may be unused now
+	// TODO: Figure out how to use native drag & drop instead
 	w.MarkForRedraw()
 	panel := w.root.PanelAt(w.dragDataLocation)
 	for panel != nil {
@@ -1495,7 +1425,7 @@ func (w *Window) dataDragOver() {
 }
 
 func (w *Window) dataDragFinish() {
-	// TODO: This function may be unused now
+	// TODO: Figure out how to use native drag & drop instead
 	w.MarkForRedraw()
 	dragData := w.dragData
 	dragDataLocation := w.dragDataLocation
@@ -1507,10 +1437,72 @@ func (w *Window) dataDragFinish() {
 			dragDataPanel.DataDragDropCallback(dragDataPanel.PointFromRoot(dragDataLocation), dragData.Data)
 		}, nil)
 	}
-	if w.DragIntoWindowFinished != nil {
-		xos.SafeCall(w.DragIntoWindowFinished, nil)
-	}
 	w.ValidateLayout()
 	w.cursor = nil
 	w.UpdateCursorNow()
+}
+
+func (w *Window) findDropTarget(where geom.Point) *Panel {
+	if !w.okToProcess() {
+		return nil
+	}
+	panel := w.root.PanelAt(where)
+	for panel != nil && panel.DropCallback == nil {
+		panel = panel.Parent()
+	}
+	if panel != nil && !panel.Enabled() {
+		panel = nil
+	}
+	return panel
+}
+
+func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+	op := drag.None
+	panel := w.findDropTarget(where)
+	if panel != nil {
+		if !panel.Is(w.lastDropTarget) {
+			if w.lastDropTarget != nil && w.lastDropTarget.DragExitedCallback != nil {
+				xos.SafeCall(w.lastDropTarget.DragExitedCallback, nil)
+			}
+		}
+		if panel.DragEnteredCallback != nil {
+			xos.SafeCall(func() { op = panel.DragEnteredCallback(di, panel.PointFromRoot(where), mods) }, nil)
+		}
+	}
+	w.lastDropTarget = panel
+	w.lastDragOp = op
+	return op
+}
+
+func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+	panel := w.findDropTarget(where)
+	if panel == nil {
+		return w.lastDragOp
+	}
+	if !panel.Is(w.lastDropTarget) {
+		w.dragEntered(di, where, mods)
+	}
+	if panel.DragUpdatedCallback != nil {
+		xos.SafeCall(func() { w.lastDragOp = panel.DragUpdatedCallback(di, panel.PointFromRoot(where), mods) }, nil)
+	}
+	return w.lastDragOp
+}
+
+func (w *Window) drop(di drag.Info, where geom.Point, mods Modifiers) bool {
+	panel := w.findDropTarget(where)
+	if panel == nil {
+		return false
+	}
+	handled := false
+	xos.SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) }, nil)
+	return handled
+}
+
+func (w *Window) dragExit() {
+	if w.lastDropTarget == nil || !w.okToProcess() {
+		return
+	}
+	if w.lastDropTarget.DragExitedCallback != nil {
+		xos.SafeCall(w.lastDropTarget.DragExitedCallback, nil)
+	}
 }
