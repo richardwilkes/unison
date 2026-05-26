@@ -69,7 +69,8 @@ type Well struct {
 	ink                   Ink
 	WellTheme
 	Panel
-	Pressed bool
+	Pressed       bool
+	dropHighlight bool
 }
 
 // NewWell creates a new Well.
@@ -91,6 +92,7 @@ func NewWell() *Well {
 	well.MouseUpCallback = well.DefaultMouseUp
 	well.KeyDownCallback = well.DefaultKeyDown
 	well.DragEnteredCallback = well.DefaultDragEnter
+	well.DragExitedCallback = well.DefaultDragExit
 	well.DropCallback = well.DefaultDrop
 	well.UpdateCursorCallback = well.DefaultUpdateCursor
 	return well
@@ -161,7 +163,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	edge := w.EdgeInk
 	thickness := float32(1)
 	wellInset := thickness + 2.5
-	if w.Focused() {
+	if w.dropHighlight || w.Focused() {
 		thickness++
 		edge = w.SelectionInk
 	}
@@ -251,6 +253,10 @@ func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ Modifiers) drag.Op
 		for _, f := range di.FilePaths() {
 			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
 				op = drag.Copy
+				if !w.dropHighlight {
+					w.dropHighlight = true
+					w.MarkForRedraw()
+				}
 				break
 			}
 		}
@@ -258,8 +264,17 @@ func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ Modifiers) drag.Op
 	return op
 }
 
+// DefaultDragExit provides the default drag exit handling.
+func (w *Well) DefaultDragExit() {
+	if w.dropHighlight {
+		w.dropHighlight = false
+		w.MarkForRedraw()
+	}
+}
+
 // DefaultDrop provides the default drop handling. Handles image files dropped onto the well.
 func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ Modifiers) bool {
+	w.DefaultDragExit()
 	if w.Enabled() {
 		for _, f := range di.FilePaths() {
 			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {

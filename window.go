@@ -1460,11 +1460,7 @@ func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) dra
 	op := drag.None
 	panel := w.findDropTarget(where)
 	if panel != nil {
-		if !panel.Is(w.lastDropTarget) {
-			if w.lastDropTarget != nil && w.lastDropTarget.DragExitedCallback != nil {
-				xos.SafeCall(w.lastDropTarget.DragExitedCallback, nil)
-			}
-		}
+		w.dragExit()
 		if panel.DragEnteredCallback != nil {
 			xos.SafeCall(func() { op = panel.DragEnteredCallback(di, panel.PointFromRoot(where), mods) }, nil)
 		}
@@ -1477,7 +1473,8 @@ func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) dra
 func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
 	panel := w.findDropTarget(where)
 	if panel == nil {
-		return w.lastDragOp
+		w.dragExit()
+		return drag.None
 	}
 	if !panel.Is(w.lastDropTarget) {
 		w.dragEntered(di, where, mods)
@@ -1491,10 +1488,12 @@ func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag
 func (w *Window) drop(di drag.Info, where geom.Point, mods Modifiers) bool {
 	panel := w.findDropTarget(where)
 	if panel == nil {
+		w.dragExit()
 		return false
 	}
 	handled := false
 	xos.SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) }, nil)
+	w.lastDropTarget = nil
 	return handled
 }
 
@@ -1505,4 +1504,5 @@ func (w *Window) dragExit() {
 	if w.lastDropTarget.DragExitedCallback != nil {
 		xos.SafeCall(w.lastDropTarget.DragExitedCallback, nil)
 	}
+	w.lastDropTarget = nil
 }
