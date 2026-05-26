@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"slices"
+
 	"github.com/richardwilkes/toolbox/v2/uti"
 )
 
@@ -57,10 +59,8 @@ func ClipboardSetData(data ...ClipboardData) {
 }
 
 func selectDataType(desiredType *uti.DataType, availableDataTypes []string) *uti.DataType {
-	for _, one := range availableDataTypes {
-		if one == desiredType.UTI {
-			return desiredType
-		}
+	if slices.Contains(availableDataTypes, desiredType.UTI) {
+		return desiredType
 	}
 	for _, one := range availableDataTypes {
 		if lookup := uti.ByUTI(one); lookup != nil && desiredType.ConformsTo(lookup) {
