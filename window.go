@@ -1466,7 +1466,7 @@ func (w *Window) dragExit() {
 
 func (w *Window) dataDragOver() {
 	// TODO: This function may be unused now
-	// w.MarkForRedraw()
+	w.MarkForRedraw()
 	panel := w.root.PanelAt(w.dragDataLocation)
 	for panel != nil {
 		for panel != nil && panel.DataDragOverCallback == nil {
