@@ -24,6 +24,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
@@ -395,6 +396,10 @@ func (w *Window) apiShow() {
 func (w *Window) apiHide() {
 	x11Conn.UnmapWindow(w.wnd.id)
 	x11Conn.Flush()
+}
+
+func (w *Window) apiStartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+	// TODO: Implement
 }
 
 func (w *Window) apiDestroy() {

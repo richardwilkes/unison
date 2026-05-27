@@ -383,6 +383,20 @@ func (w *Window) apiHide() {
 	w.wnd.wnd.OrderOut()
 }
 
+func (w *Window) apiStartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+	nrgba, err := img.ToNRGBA()
+	if err != nil {
+		errs.Log(err)
+		return
+	}
+	r := geom.Rect{
+		Point: origin,
+		Size:  img.LogicalSize(),
+	}
+	r.Y += r.Height
+	w.wnd.view.BeginDraggingSession(provider, nrgba, r, dragOpMask)
+}
+
 func (w *Window) apiDestroy() {
 	w.glCtx.apiDestroy()
 	if w.wnd.wnd != 0 {

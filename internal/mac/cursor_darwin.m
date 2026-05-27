@@ -9,28 +9,10 @@
 
 #import "macos.h"
 
-NSCursorRef newCursor(unsigned char* pixels, int xhot, int yhot, int logicalWidth, int logicalheight, int actualWidth, int actualHeight) {
-	NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
-		initWithBitmapDataPlanes:NULL
-		pixelsWide:actualWidth
-		pixelsHigh:actualHeight
-		bitsPerSample:8
-		samplesPerPixel:4
-		hasAlpha:YES
-		isPlanar:NO
-		colorSpaceName:NSCalibratedRGBColorSpace
-		bitmapFormat:NSBitmapFormatAlphaNonpremultiplied
-		bytesPerRow:actualWidth * 4
-		bitsPerPixel:32];
-	if (rep == nil) {
-		return nil;
-	}
-	memcpy([rep bitmapData], pixels, actualWidth * actualHeight * 4);
-	NSImage* img = [[NSImage alloc] initWithSize:NSMakeSize(logicalWidth, logicalheight)];
-	[img addRepresentation:rep];
+NSCursorRef newCursor(unsigned char* pixels, int xhot, int yhot, int logicalWidth, int logicalHeight, int actualWidth, int actualHeight) {
+	NSImageRef img = newImage(pixels, logicalWidth, logicalHeight, actualWidth, actualHeight);
 	NSCursor *cursor = [[[NSCursor alloc] initWithImage:img hotSpot:NSMakePoint(xhot, yhot)] retain];
-	[img release];
-	[rep release];
+	[(NSImage*)img release];
 	return cursor;
 }
 

@@ -11,6 +11,8 @@
 
 typedef CFTypeRef NSCursorRef;
 typedef CFTypeRef NSDraggingInfoRef;
+typedef CFTypeRef NSDraggingItemRef;
+typedef CFTypeRef NSImageRef;
 typedef CFTypeRef NSMenuRef;
 typedef CFTypeRef NSMenuItemRef;
 typedef CFTypeRef NSOpenPanelRef;
@@ -69,6 +71,9 @@ void pollEvents(void);
 void waitEvents(void);
 void waitEventsTimeout(double timeout);
 void stopMainEventLoop(void);
+
+// Image
+NSImageRef newImage(unsigned char* pixels, int logicalWidth, int logicalheight, int actualWidth, int actualHeight);
 
 // Menu
 NSMenuRef newMenu(CFStringRef title);
@@ -132,6 +137,7 @@ void pasteboardWriteObjects(NSPasteboardRef pasteboard, CFArrayRef items);
 NSPasteboardItemRef newPasteboardItem();
 void pasteboardItemSetString(NSPasteboardItemRef item, CFStringRef str);
 void pasteboardItemSetData(NSPasteboardItemRef item, CFStringRef dataType, unsigned long long length, void* buffer);
+NSDraggingItemRef newDraggingItem(NSPasteboardItemRef item, NSImageRef img, CGRect frame);
 
 // Save Panel
 NSSavePanelRef newSavePanel();
@@ -160,6 +166,7 @@ void installThemeChangedCallback(void);
 CGPoint viewBackingScale(NSViewRef v);
 void viewFrame(NSViewRef v, CGRect* frame);
 bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
+void viewBeginDraggingSession(NSViewRef v, NSPasteboardItemRef item, NSDragOperation dragMask);
 
 // Window
 NSWindowRef newWindow(CGRect contentRect, NSWindowStyleMask styleMask, bool canBeKeyWindow, bool canBeMainWindow);

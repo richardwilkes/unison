@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
 
@@ -646,6 +647,13 @@ func (p *Panel) IsDragGesture(where geom.Point) bool {
 		return w.IsDragGesture(p.PointToRoot(where))
 	}
 	return false
+}
+
+// StartDrag starts a drag & drop operation.
+func (p *Panel) StartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+	if w := p.Window(); w != nil {
+		w.StartDrag(provider, img, p.PointToRoot(origin), dragOpMask)
+	}
 }
 
 // StartDataDrag starts a data drag operation.

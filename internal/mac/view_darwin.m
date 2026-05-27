@@ -28,10 +28,12 @@ void goWindowDragExitCallback(NSWindowRef w);
 
 static const NSRange kEmptyRange = { NSNotFound, 0 };
 
-@interface macContentView : NSView<NSTextInputClient> {
+@interface macContentView : NSView<NSTextInputClient, NSDraggingSource> {
 	NSWindow*                  wnd;
 	NSTrackingArea*            trackingArea;
 	NSMutableAttributedString* markedText;
+	NSEvent*                   lastMouseDraggedEvent;
+	NSDragOperation            dragMask;
 }
 
 - (instancetype)initWithWindow:(NSWindow*)window;
@@ -98,7 +100,9 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)mouseDragged:(NSEvent *)event {
+	lastMouseDraggedEvent = event;
 	[self mouseMoved:event];
+	lastMouseDraggedEvent = nil;
 }
 
 - (void)mouseUp:(NSEvent *)event {
@@ -117,7 +121,9 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
+	lastMouseDraggedEvent = event;
 	[self mouseMoved:event];
+	lastMouseDraggedEvent = nil;
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
@@ -131,7 +137,9 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)otherMouseDragged:(NSEvent *)event {
+	lastMouseDraggedEvent = event;
 	[self mouseMoved:event];
+	lastMouseDraggedEvent = nil;
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
@@ -186,6 +194,19 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	NSPoint pt = [sender draggingLocation];
 	pt.y = [self frame].size.height - pt.y;
 	return pt;
+}
+
+- (void)startDragOf:(NSDraggingItem*)item withMask:(NSDragOperation)mask {
+	dragMask = mask;
+	[self beginDraggingSessionWithItems:@[item] event:lastMouseDraggedEvent source:self];
+}
+
+- (NSDragOperation)draggingSession:(NSDraggingSession*)session sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
+	return dragMask;
+}
+
+- (BOOL)ignoreModifierKeysForDraggingSession:(NSDraggingSession*)session {
+	return NO;
 }
 
 - (BOOL)wantsPeriodicDraggingUpdates {
@@ -301,4 +322,8 @@ void viewFrame(NSViewRef v, CGRect *frame) {
 
 bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect) {
 	return [(NSView*)v mouse:mousePt inRect:rect];
+}
+
+void viewBeginDraggingSession(NSViewRef v, NSPasteboardItemRef item, NSDragOperation dragMask) {
+	[(macContentView*)v startDragOf:item withMask:dragMask];
 }

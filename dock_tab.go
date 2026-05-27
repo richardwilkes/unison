@@ -12,8 +12,11 @@ package unison
 import (
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -242,15 +245,36 @@ func (t *dockTab) mouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 	}
 	if t.IsDragGesture(where) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
-			t.StartDataDrag(&DragData{
-				Data:     map[string]any{dc.Dock.DragKey: t.dockable},
-				Drawable: t,
-				Ink:      t.title.OnBackgroundInk,
-				Offset:   where.Neg(),
+			// t.StartDataDrag(&DragData{
+			// 	Data:     map[string]any{dc.Dock.DragKey: t.dockable},
+			// 	Drawable: t,
+			// 	Ink:      t.title.OnBackgroundInk,
+			// 	Offset:   where.Neg(),
+			// })
+			size := t.LogicalSize()
+			img, err := NewImageFromDrawing(int(size.Width), int(size.Height), 144, func(c *Canvas) {
+				t.Draw(c, geom.Rect{Size: size})
 			})
+			if err != nil {
+				errs.Log(err)
+				return true
+			}
+			t.StartDrag(&tmpProvider{}, img, geom.Point{}, drag.Move)
 		}
 	}
 	return true
+}
+
+// TODO: Do something better than the drag.Provider interface and make this actually work again, along with feedback
+
+type tmpProvider struct{}
+
+func (p *tmpProvider) Types() []*uti.DataType {
+	return []*uti.DataType{uti.Data}
+}
+
+func (p *tmpProvider) Data(dataType *uti.DataType) []byte {
+	return []byte{1, 2, 3}
 }
 
 // LogicalSize is here to satisify the Drawable interface so that we can draw ourselves as we get dragged around.

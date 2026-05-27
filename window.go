@@ -1385,6 +1385,11 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 		time.Since(w.lastButtonTime) > minDelay
 }
 
+// StartDrag starts a drag & drop operation.
+func (w *Window) StartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+	w.apiStartDrag(provider, img, origin, dragOpMask)
+}
+
 // StartDataDrag starts a data drag operation.
 func (w *Window) StartDataDrag(data *DragData) {
 	// TODO: Figure out how to use native drag & drop instead
@@ -1460,7 +1465,7 @@ func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) dra
 	op := drag.None
 	panel := w.findDropTarget(where)
 	if panel != nil {
-		w.dragExit()
+		w.dragExitTarget()
 		if panel.DragEnteredCallback != nil {
 			xos.SafeCall(func() { op = panel.DragEnteredCallback(di, panel.PointFromRoot(where), mods) }, nil)
 		}
@@ -1473,7 +1478,7 @@ func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) dra
 func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
 	panel := w.findDropTarget(where)
 	if panel == nil {
-		w.dragExit()
+		w.dragExitTarget()
 		return drag.None
 	}
 	if !panel.Is(w.lastDropTarget) {
@@ -1494,15 +1499,31 @@ func (w *Window) drop(di drag.Info, where geom.Point, mods Modifiers) bool {
 	handled := false
 	xos.SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) }, nil)
 	w.lastDropTarget = nil
+	w.inMouseDown = false
+	w.dragFinish()
 	return handled
 }
 
 func (w *Window) dragExit() {
-	if w.lastDropTarget == nil || !w.okToProcess() {
+	w.dragExitTarget()
+	w.dragFinish()
+}
+
+func (w *Window) dragExitTarget() {
+	if w.lastDropTarget == nil {
 		return
 	}
-	if w.lastDropTarget.DragExitedCallback != nil {
-		xos.SafeCall(w.lastDropTarget.DragExitedCallback, nil)
-	}
+	target := w.lastDropTarget
 	w.lastDropTarget = nil
+	if !w.okToProcess() {
+		return
+	}
+	if target.DragExitedCallback != nil {
+		xos.SafeCall(target.DragExitedCallback, nil)
+	}
+}
+
+func (w *Window) dragFinish() {
+	w.inMouseDown = false
+	w.adjustToCursorChange()
 }

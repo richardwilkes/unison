@@ -963,6 +963,19 @@ func (v View) Release() {
 	C.CFRelease(C.CFTypeRef(v))
 }
 
+func (v View) BeginDraggingSession(provider drag.Provider, img *image.NRGBA, frame geom.Rect, dragOpMask drag.Op) {
+	item := NewPasteboardItem()
+	for _, t := range provider.Types() {
+		item.SetData(t, provider.Data(t))
+	}
+	imgRef := C.newImage((*C.uchar)(&img.Pix[0]), C.int(frame.Width), C.int(frame.Height), C.int(img.Rect.Dx()),
+		C.int(img.Rect.Dy()))
+	defer C.CFRelease(C.CFTypeRef(imgRef))
+	frame.Y = v.Frame().Height - frame.Y
+	dragItem := C.newDraggingItem(C.NSPasteboardItemRef(item), imgRef, rectToCGRect(frame))
+	C.viewBeginDraggingSession(C.NSViewRef(v), dragItem, C.NSDragOperation(DragOpFromUnison(dragOpMask)))
+}
+
 // ========== Window ==========
 
 type (
