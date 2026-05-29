@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 var rawScanCodeToKeyCodeMap = make(map[uint16]KeyCode)
@@ -281,8 +282,8 @@ func init() {
 }
 
 // IsControlAction returns true if the keyCode should trigger a control, such as a button, that is focused.
-func IsControlAction(keyCode KeyCode, mods Modifiers) bool {
-	return mods&NonStickyModifiers == 0 && keyCode == KeySpace
+func IsControlAction(keyCode KeyCode, mods mod.Modifiers) bool {
+	return mods&mod.NonSticky == 0 && keyCode == KeySpace
 }
 
 // MarshalText implements encoding.TextMarshaler.

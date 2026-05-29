@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -96,12 +97,12 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect) {
 }
 
 // DefaultDragEnter provides the default drag enter handling.
-func (d *dockHeader) DefaultDragEnter(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+func (d *dockHeader) DefaultDragEnter(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	return d.DefaultDragUpdated(di, where, mods)
 }
 
 // DefaultDragUpdated provides the default drag updated handling.
-func (d *dockHeader) DefaultDragUpdated(di drag.Info, where geom.Point, _ Modifiers) drag.Op {
+func (d *dockHeader) DefaultDragUpdated(di drag.Info, where geom.Point, _ mod.Modifiers) drag.Op {
 	if dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
 		return drag.None
 	}
@@ -130,7 +131,7 @@ func (d *dockHeader) DefaultDragUpdated(di drag.Info, where geom.Point, _ Modifi
 }
 
 // DefaultDrop provides the default drop handling.
-func (d *dockHeader) DefaultDrop(di drag.Info, where geom.Point, mods Modifiers) bool {
+func (d *dockHeader) DefaultDrop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
 	defer d.DefaultDragExit()
 	if d.DefaultDragUpdated(di, where, mods) != drag.Move {
 		return false

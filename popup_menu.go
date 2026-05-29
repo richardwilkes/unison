@@ -18,6 +18,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/slant"
 )
@@ -416,14 +417,14 @@ func (p *PopupMenu[T]) SelectIndex(index ...int) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (p *PopupMenu[T]) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	p.pressed = true
 	p.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag is the default implementation of the MouseDragCallback.
-func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if p.pressed != where.In(p.ContentRect(true)) {
 		p.pressed = !p.pressed
 		p.MarkForRedraw()
@@ -432,7 +433,7 @@ func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bo
 }
 
 // DefaultMouseUp is the default implementation of the MouseUpCallback.
-func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if where.In(p.ContentRect(true)) {
 		p.Click()
 	}
@@ -442,7 +443,7 @@ func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		p.Click()
 		return true

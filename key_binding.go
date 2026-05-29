@@ -11,12 +11,14 @@ package unison
 
 import (
 	"strings"
+
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // KeyBinding holds a key code and/or modifier.
 type KeyBinding struct {
 	KeyCode   KeyCode
-	Modifiers Modifiers
+	Modifiers mod.Modifiers
 }
 
 // KeyBindingFromKey extracts a KeyBinding from a string created via a call to .Key().
@@ -27,11 +29,11 @@ func KeyBindingFromKey(key string) KeyBinding {
 		if k := KeyCodeFromKey(parts[0]); k != 0 {
 			return KeyBinding{KeyCode: k}
 		}
-		return KeyBinding{Modifiers: ModifiersFromKey(parts[0])}
+		return KeyBinding{Modifiers: mod.FromKey(parts[0])}
 	case 2:
 		return KeyBinding{
 			KeyCode:   KeyCodeFromKey(parts[1]),
-			Modifiers: ModifiersFromKey(parts[0]),
+			Modifiers: mod.FromKey(parts[0]),
 		}
 	default:
 		return KeyBinding{}

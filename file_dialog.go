@@ -22,6 +22,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 const pathSeparator = string(os.PathSeparator)
@@ -299,8 +300,8 @@ func (d *fileDialog) fileListDoubleClickHandler() {
 	}
 }
 
-func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mods Modifiers, repeat bool) bool {
-	if mods == NoModifiers && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
+func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	if mods == mod.None && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
 		if d.fileNameField.Text() != "" {
 			d.dialog.StopModal(ModalResponseOK)
 		}

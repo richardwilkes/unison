@@ -69,7 +69,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, va
 		}
 	}
 	mi := mac.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
-		keyBinding.Modifiers.macEventModifierFlags(), func(mi mac.MenuItem) bool {
+		macEventModifierFlagsFromModifiers(keyBinding.Modifiers), func(mi mac.MenuItem) bool {
 			if DisableMenus {
 				return false
 			}

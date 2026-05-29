@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // Constants for mouse buttons.
@@ -29,49 +29,32 @@ type InputCallbacks struct {
 	LostFocusCallback func()
 	// MouseDownCallback is called when the mouse is pressed. Return true to stop further handling or false to propagate
 	// up to parents.
-	MouseDownCallback func(where geom.Point, button, clickCount int, mods Modifiers) bool
+	MouseDownCallback func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool
 	// MouseDragCallback is called when the mouse is dragged after being pressed. Return true to stop further handling
 	// or false to propagate up to parents.
-	MouseDragCallback func(where geom.Point, button int, mods Modifiers) bool
+	MouseDragCallback func(where geom.Point, button int, mods mod.Modifiers) bool
 	// MouseUpCallback is called when the mouse is released after being pressed. Return true to stop further handling or
 	// false to propagate up to parents.
-	MouseUpCallback func(where geom.Point, button int, mods Modifiers) bool
+	MouseUpCallback func(where geom.Point, button int, mods mod.Modifiers) bool
 	// MouseEnterCallback is called on mouse entry. Return true to stop further handling or false to propagate up to
 	// parents.
-	MouseEnterCallback func(where geom.Point, mods Modifiers) bool
+	MouseEnterCallback func(where geom.Point, mods mod.Modifiers) bool
 	// MouseMoveCallback is called when the mouse moves. Return true to stop further handling or false to propagate up
 	// to parents.
-	MouseMoveCallback func(where geom.Point, mods Modifiers) bool
+	MouseMoveCallback func(where geom.Point, mods mod.Modifiers) bool
 	// MouseExitCallback is called on mouse exit. Return true to stop further handling or false to propagate up to
 	// parents.
 	MouseExitCallback func() bool
 	// MouseWheelCallback is called when the mouse wheel is rotated. Return true to stop further handling or false to
 	// propagate up to parents.
-	MouseWheelCallback func(where, delta geom.Point, mods Modifiers) bool
+	MouseWheelCallback func(where, delta geom.Point, mods mod.Modifiers) bool
 	// KeyDownCallback is called when a key is pressed. Return true to stop further handling or false to propagate up to
 	// parents.
-	KeyDownCallback func(keyCode KeyCode, mods Modifiers, repeat bool) bool
+	KeyDownCallback func(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool
 	// RuneTypedCallback is called when a key is typed. Return true to stop further handling or false to propagate up to
 	// parents.
 	RuneTypedCallback func(ch rune) bool
 	// KeyUpCallback is called when a key is released. Return true to stop further handling or false to propagate up to
 	// parents.
-	KeyUpCallback func(keyCode KeyCode, mods Modifiers) bool
-}
-
-// DragCallbacks holds the callbacks that client code can hook into for drag and drop events.
-type DragCallbacks struct {
-	// DragEnteredCallback is called when a drag operation enters the window or panel. The returned drag.Op should be
-	// just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask().
-	DragEnteredCallback func(di drag.Info, where geom.Point, mods Modifiers) drag.Op
-	// DragUpdatedCallback is called when a drag operation is adjusted while within the window or panel. The returned
-	// drag.Op should be just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask(). For
-	// performance reasons, examination of data types and/or the data should be done when DragEnteredCallback() is
-	// called and not here, if at all possible. If nil, the result from the DragEnteredCallback will be returned.
-	DragUpdatedCallback func(di drag.Info, where geom.Point, mods Modifiers) drag.Op
-	// DragExitedCallback is called when a drag operation leaves the window or panel.
-	DragExitedCallback func()
-	// DropCallback is called when a drag operation is released over the window or panel. Return true if the drop is
-	// accepted and false if it is not.
-	DropCallback func(di drag.Info, where geom.Point, mods Modifiers) bool
+	KeyUpCallback func(keyCode KeyCode, mods mod.Modifiers) bool
 }

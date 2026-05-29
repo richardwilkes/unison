@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -149,8 +150,8 @@ func (p *FontPanel) DefaultValidate() bool {
 }
 
 // DefaultKeyDown provides the default key down handling for the font size field.
-func (p *FontPanel) DefaultKeyDown(keyCode KeyCode, mods Modifiers, repeat bool) bool {
-	if mods.OSMenuCmdModifierDown() {
+func (p *FontPanel) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	if mods.OSMenuCommandDown() {
 		return false
 	}
 	if keyCode == KeyReturn || keyCode == KeyNumPadEnter {

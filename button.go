@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -213,14 +214,14 @@ func (b *Button) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (b *Button) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	b.Pressed = true
 	b.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if pressed := where.In(b.ContentRect(false)); pressed != b.Pressed {
 		b.Pressed = pressed
 		b.MarkForRedraw()
@@ -229,7 +230,7 @@ func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	if where.In(b.ContentRect(false)) {
@@ -242,7 +243,7 @@ func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (b *Button) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (b *Button) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		b.Click()
 		return true

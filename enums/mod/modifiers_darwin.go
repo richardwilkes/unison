@@ -7,14 +7,14 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-//go:build !darwin
+package mod
 
-package unison
-
-import "bytes"
+import (
+	"bytes"
+)
 
 func apiOSMenuCmdModifier() Modifiers {
-	return ControlModifier
+	return Command
 }
 
 func (m Modifiers) apiString() string {
@@ -23,22 +23,22 @@ func (m Modifiers) apiString() string {
 	}
 	var buffer bytes.Buffer
 	if m.ControlDown() {
-		buffer.WriteString("Ctrl+")
+		buffer.WriteRune('⌃')
 	}
 	if m.OptionDown() {
-		buffer.WriteString("Alt+")
+		buffer.WriteRune('⌥')
 	}
 	if m.ShiftDown() {
-		buffer.WriteString("Shift+")
+		buffer.WriteRune('⇧')
 	}
 	if m.CapsLockDown() {
-		buffer.WriteString("CapsLock+")
+		buffer.WriteRune('⇪')
 	}
 	if m.NumLockDown() {
-		buffer.WriteString("NumLock+")
+		buffer.WriteRune('⇭')
 	}
 	if m.CommandDown() {
-		buffer.WriteString("Super+")
+		buffer.WriteRune('⌘')
 	}
 	return buffer.String()
 }

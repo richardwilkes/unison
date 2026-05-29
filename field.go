@@ -19,6 +19,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
@@ -436,7 +437,7 @@ func (f *Field) DefaultFocusLost() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods Modifiers) bool {
+func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 	f.undoID = NextUndoID()
 	wasFocused := f.Focused()
 	f.RequestFocus()
@@ -483,7 +484,7 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods 
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (f *Field) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (f *Field) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	oldAnchor := f.selectionAnchor
 	pos := f.ToSelectionIndex(where)
 	var start, end int
@@ -535,11 +536,11 @@ func (f *Field) DefaultUpdateCursor(_ geom.Point) *Cursor {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (f *Field) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (f *Field) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}
-	if mods.OSMenuCmdModifierDown() {
+	if mods.OSMenuCommandDown() {
 		switch keyCode {
 		case KeyRight:
 			f.handleEnd(f.multiLine, mods.ShiftDown())
@@ -551,7 +552,7 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bo
 			f.handleHome(false, mods.ShiftDown())
 		default:
 			// Handle cut/copy/paste/select all commands directly in case no menu is present
-			if mods == OSMenuCmdModifier() {
+			if mods == mod.OSMenuCommand() {
 				switch keyCode {
 				case KeyA:
 					if f.CanSelectAll() {

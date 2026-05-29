@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 var _ Menu = &menu{}
@@ -285,7 +286,7 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 			})
 		}
 	}
-	p.KeyDownCallback = func(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+	p.KeyDownCallback = func(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 		if mods != 0 {
 			return false
 		}
@@ -413,8 +414,8 @@ func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
 	return false
 }
 
-func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods Modifiers, repeat bool) bool {
-	if m.updater != nil && mods.OSMenuCmdModifierDown() {
+func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	if m.updater != nil && mods.OSMenuCommandDown() {
 		// We only call the updater for key presses with the cmd modifier down. This is because the updater may be doing
 		// relatively expensive operations to setup the menu and we don't want to impact every key a user types.
 		m.updater(m)
@@ -441,7 +442,7 @@ func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) preKeyUp(wnd *Window, _ KeyCode, _ Modifiers) bool {
+func (m *menu) preKeyUp(wnd *Window, _ KeyCode, _ mod.Modifiers) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 

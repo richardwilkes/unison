@@ -20,6 +20,7 @@ import (
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
@@ -196,14 +197,14 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (w *Well) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	w.Pressed = true
 	w.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	rect := w.ContentRect(false)
 	if pressed := where.In(rect); pressed != w.Pressed {
 		w.Pressed = pressed
@@ -213,7 +214,7 @@ func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	w.Pressed = false
 	w.MarkForRedraw()
 	if where.In(w.ContentRect(false)) {
@@ -225,7 +226,7 @@ func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (w *Well) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (w *Well) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		w.Click()
 		return true
@@ -253,7 +254,7 @@ func (w *Well) Click() {
 }
 
 // DefaultDragEnter provides the default drag enter handling.
-func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ Modifiers) drag.Op {
+func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ mod.Modifiers) drag.Op {
 	op := drag.None
 	if w.Enabled() {
 		if di.HasFilePaths() {
@@ -293,7 +294,7 @@ func (w *Well) DefaultDragExit() {
 }
 
 // DefaultDrop provides the default drop handling. Handles image files dropped onto the well.
-func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ Modifiers) bool {
+func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 	w.DefaultDragExit()
 	if w.Enabled() {
 		if di.HasFilePaths() {

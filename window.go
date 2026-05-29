@@ -25,6 +25,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
@@ -66,7 +67,7 @@ const (
 // Window holds window information.
 type Window struct {
 	InputCallbacks
-	DragCallbacks
+	drag.Callbacks
 	// MinMaxContentSizeCallback returns the minimum and maximum size for the window content.
 	MinMaxContentSizeCallback func() (minimum, maximum geom.Size)
 	// MovedCallback is called when the window is moved.
@@ -116,7 +117,7 @@ type Window struct {
 	dragDataLocation            geom.Point
 	lastWidth                   float32
 	lastHeight                  float32
-	lastKeyModifiers            Modifiers
+	lastKeyModifiers            mod.Modifiers
 	kind                        WindowKind
 	lastDragOp                  drag.Op
 	valid                       bool
@@ -1055,7 +1056,7 @@ func (w *Window) updateCursor(target *Panel, where geom.Point) {
 	}
 }
 
-func (w *Window) mouseDown(where geom.Point, button int, mods Modifiers) {
+func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 	if !w.okToProcess() {
 		modalStack[len(modalStack)-1].mouseDown(where, button, mods)
 		return
@@ -1111,7 +1112,7 @@ func (w *Window) InDrag() bool {
 	return w.dragData != nil
 }
 
-func (w *Window) mouseDrag(where geom.Point, button int, mods Modifiers) {
+func (w *Window) mouseDrag(where geom.Point, button int, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	w.dragDataLocation = where
 	w.restoreHiddenCursor()
@@ -1146,7 +1147,7 @@ func (w *Window) synthesizeMouseUp() {
 	}
 }
 
-func (w *Window) mouseUp(where geom.Point, button int, mods Modifiers) {
+func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 	if !w.okToProcess() {
 		modalStack[len(modalStack)-1].mouseUp(where, button, mods)
 		return
@@ -1185,7 +1186,7 @@ func (w *Window) mouseUp(where geom.Point, button int, mods Modifiers) {
 	w.lastMouseDownPanel = nil
 }
 
-func (w *Window) mouseEnter(where geom.Point, mods Modifiers) {
+func (w *Window) mouseEnter(where geom.Point, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	w.restoreHiddenCursor()
 	w.mouseExit()
@@ -1204,7 +1205,7 @@ func (w *Window) mouseEnter(where geom.Point, mods Modifiers) {
 	w.lastMouseOverPanel = panel
 }
 
-func (w *Window) mouseMovedOrDragged(where geom.Point, mods Modifiers) {
+func (w *Window) mouseMovedOrDragged(where geom.Point, mods mod.Modifiers) {
 	if w.inMouseDown {
 		w.mouseDrag(where, w.lastButton, mods)
 	} else {
@@ -1212,7 +1213,7 @@ func (w *Window) mouseMovedOrDragged(where geom.Point, mods Modifiers) {
 	}
 }
 
-func (w *Window) mouseMove(where geom.Point, mods Modifiers) {
+func (w *Window) mouseMove(where geom.Point, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	w.restoreHiddenCursor()
 	panel := w.root.PanelAt(where)
@@ -1250,7 +1251,7 @@ func (w *Window) mouseExit() {
 	}
 }
 
-func (w *Window) mouseWheel(where, delta geom.Point, mods Modifiers) {
+func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	if w.MouseWheelCallback != nil {
 		stop := false
@@ -1277,7 +1278,7 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods Modifiers) {
 	}
 }
 
-func (w *Window) keyPressed(key KeyCode, mods Modifiers) {
+func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	repeat := w.pressedKeys[key]
 	w.pressedKeys[key] = true
@@ -1307,7 +1308,7 @@ func (w *Window) keyPressed(key KeyCode, mods Modifiers) {
 			}
 			panel = panel.parent
 		}
-		if key == KeyTab && (mods&(AllModifiers&^ShiftModifier)) == 0 {
+		if key == KeyTab && (mods&(mod.All&^mod.Shift)) == 0 {
 			if mods.ShiftDown() {
 				w.FocusPrevious()
 			} else {
@@ -1347,7 +1348,7 @@ func (w *Window) runeTyped(ch rune) {
 	}
 }
 
-func (w *Window) keyReleased(key KeyCode, mods Modifiers) {
+func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	delete(w.pressedKeys, key)
 	if w.root.preKeyUp(w, key, mods) {
@@ -1368,12 +1369,12 @@ func (w *Window) keyReleased(key KeyCode, mods Modifiers) {
 // CurrentKeyModifiers returns the current key modifiers, which is usually the same as calling .LastKeyModifiers(),
 // however, on platforms that are using native menus, this will also capture modifier changes that occurred while the
 // menu is being displayed.
-func (w *Window) CurrentKeyModifiers() Modifiers {
+func (w *Window) CurrentKeyModifiers() mod.Modifiers {
 	return w.apiCurrentKeyModifiers()
 }
 
 // LastKeyModifiers returns the last set of key modifiers that this window has received.
-func (w *Window) LastKeyModifiers() Modifiers {
+func (w *Window) LastKeyModifiers() mod.Modifiers {
 	return w.lastKeyModifiers
 }
 
@@ -1478,7 +1479,7 @@ func (w *Window) findDropTarget(where geom.Point) *Panel {
 	return panel
 }
 
-func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+func (w *Window) dragEntered(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	op := drag.None
 	panel := w.findDropTarget(where)
 	if panel != nil {
@@ -1492,7 +1493,7 @@ func (w *Window) dragEntered(di drag.Info, where geom.Point, mods Modifiers) dra
 	return op
 }
 
-func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	panel := w.findDropTarget(where)
 	if panel == nil {
 		w.dragExitTarget()
@@ -1507,7 +1508,7 @@ func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods Modifiers) drag
 	return w.lastDragOp
 }
 
-func (w *Window) drop(di drag.Info, where geom.Point, mods Modifiers) bool {
+func (w *Window) drop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
 	panel := w.findDropTarget(where)
 	if panel == nil {
 		w.dragExit()

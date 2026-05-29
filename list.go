@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -311,7 +312,7 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods Modifiers) bool {
+func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods mod.Modifiers) bool {
 	l.suppressScroll = true
 	l.RequestFocus()
 	l.suppressScroll = false
@@ -364,7 +365,7 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods Mod
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mods Modifiers) bool {
+func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mods mod.Modifiers) bool {
 	if l.pressed {
 		l.wasDragged = true
 		l.Selection.Copy(l.savedSelection)
@@ -396,7 +397,7 @@ func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mods Modifiers) bool
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ Modifiers) bool {
+func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
 		if !l.wasDragged && l.lastSel != -1 {
@@ -414,7 +415,7 @@ func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		if l.DoubleClickCallback != nil && l.Selection.Count() > 0 {
 			xos.SafeCall(l.DoubleClickCallback, nil)

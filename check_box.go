@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
@@ -218,14 +219,14 @@ func (c *CheckBox) updateState() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (c *CheckBox) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (c *CheckBox) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	c.Pressed = true
 	c.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (c *CheckBox) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (c *CheckBox) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if pressed := where.In(c.ContentRect(false)); pressed != c.Pressed {
 		c.Pressed = pressed
 		c.MarkForRedraw()
@@ -234,7 +235,7 @@ func (c *CheckBox) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (c *CheckBox) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (c *CheckBox) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
 	if where.In(c.ContentRect(false)) {
@@ -247,7 +248,7 @@ func (c *CheckBox) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		c.Click()
 		return true

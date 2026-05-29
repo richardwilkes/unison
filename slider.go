@@ -12,6 +12,7 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -203,7 +204,7 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mods Modifiers) bool {
+func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mods mod.Modifiers) bool {
 	s.pressed = true
 	s.DefaultMouseDrag(where, button, mods)
 	s.MarkForRedraw()
@@ -211,7 +212,7 @@ func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mods Modifier
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	bounds := s.ContentRect(false)
 	var minimum, maximum, pos float32
 	inset := s.EdgeThickness + s.MarkerSize/2
@@ -237,7 +238,7 @@ func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *Slider) DefaultMouseUp(where geom.Point, button int, mods Modifiers) bool {
+func (s *Slider) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	s.DefaultMouseDrag(where, button, mods)
 	s.pressed = false
 	s.MarkForRedraw()

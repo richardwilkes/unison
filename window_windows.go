@@ -19,6 +19,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
 )
@@ -518,25 +519,25 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 		w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
 }
 
-func (w *Window) apiCurrentKeyModifiers() Modifiers {
-	var mods Modifiers
+func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
+	var mods mod.Modifiers
 	if w32.GetKeyState(w32.VK_SHIFT)&0x8000 != 0 {
-		mods |= ShiftModifier
+		mods |= mod.Shift
 	}
 	if w32.GetKeyState(w32.VK_CONTROL)&0x8000 != 0 {
-		mods |= ControlModifier
+		mods |= mod.Control
 	}
 	if w32.GetKeyState(w32.VK_MENU)&0x8000 != 0 {
-		mods |= OptionModifier
+		mods |= mod.Option
 	}
 	if w32.GetKeyState(w32.VK_LWIN)&0x8000 != 0 || w32.GetKeyState(w32.VK_RWIN)&0x8000 != 0 {
-		mods |= CommandModifier
+		mods |= mod.Command
 	}
 	if w32.GetKeyState(w32.VK_CAPITAL)&0x0001 != 0 {
-		mods |= CapsLockModifier
+		mods |= mod.CapsLock
 	}
 	if w32.GetKeyState(w32.VK_NUMLOCK)&0x0001 != 0 {
-		mods |= NumLockModifier
+		mods |= mod.NumLock
 	}
 	return mods
 }

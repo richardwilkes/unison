@@ -32,7 +32,7 @@ type Paneler interface {
 // set the Self field to the final object. Failure to do so may result in incorrect behavior.
 type Panel struct {
 	InputCallbacks
-	DragCallbacks
+	drag.Callbacks
 	Self                                Paneler
 	layoutData                          any
 	layout                              Layout

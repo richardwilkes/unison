@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 var _ Layout = &rootPanel{}
@@ -141,7 +142,7 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	p.contentPanel.SetFrameRect(rect)
 }
 
-func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods Modifiers, repeat bool) bool {
+func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
 	if len(p.openMenuPanels) != 0 {
 		if p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mods, repeat) {
 			return true
@@ -164,7 +165,7 @@ func (p *rootPanel) preRuneTyped(wnd *Window, ch rune) bool {
 	return false
 }
 
-func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mods Modifiers) bool {
+func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mods mod.Modifiers) bool {
 	if p.menuBar != nil {
 		stop := false
 		xos.SafeCall(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mods) }, nil)

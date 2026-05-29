@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
@@ -329,7 +330,7 @@ func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point { //nolint:unus
 	return where
 }
 
-func (w *Window) apiCurrentKeyModifiers() Modifiers {
+func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
 	return macModifiersFromEventModifierFlags(mac.CurrentModifierFlags())
 }
 
@@ -426,4 +427,44 @@ func (w *Window) apiDestroy() {
 		w.wnd.wnd = 0
 	}
 	apiPollEvents()
+}
+
+func macModifiersFromEventModifierFlags(flags mac.EventModifierFlags) mod.Modifiers {
+	var mods mod.Modifiers
+	if flags&mac.EventModifierFlagShift != 0 {
+		mods |= mod.Shift
+	}
+	if flags&mac.EventModifierFlagControl != 0 {
+		mods |= mod.Control
+	}
+	if flags&mac.EventModifierFlagOption != 0 {
+		mods |= mod.Option
+	}
+	if flags&mac.EventModifierFlagCommand != 0 {
+		mods |= mod.Command
+	}
+	if flags&mac.EventModifierFlagCapsLock != 0 {
+		mods |= mod.CapsLock
+	}
+	return mods
+}
+
+func macEventModifierFlagsFromModifiers(mods mod.Modifiers) mac.EventModifierFlags {
+	var flags mac.EventModifierFlags
+	if mods.ShiftDown() {
+		flags |= mac.EventModifierFlagShift
+	}
+	if mods.ControlDown() {
+		flags |= mac.EventModifierFlagControl
+	}
+	if mods.OptionDown() {
+		flags |= mac.EventModifierFlagOption
+	}
+	if mods.CommandDown() {
+		flags |= mac.EventModifierFlagCommand
+	}
+	if mods.CapsLockDown() {
+		flags |= mac.EventModifierFlagCapsLock
+	}
+	return flags
 }

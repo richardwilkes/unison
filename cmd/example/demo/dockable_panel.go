@@ -12,6 +12,7 @@ package demo
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -62,7 +63,7 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect geom.Rect) {
 	}
 }
 
-func (d *DockablePanel) mouseDown(_ geom.Point, _, _ int, _ unison.Modifiers) bool {
+func (d *DockablePanel) mouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	if !d.Focused() {
 		d.RequestFocus()
 		d.MarkForRedraw()

@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -213,7 +214,7 @@ func (t *dockTab) updateCursor(_ geom.Point) *Cursor {
 	return OpenHandCursor()
 }
 
-func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifiers) bool {
+func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ mod.Modifiers) bool {
 	if button == ButtonRight && clickCount == 1 && !t.Window().InDrag() {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			if len(dc.Dockables()) > 1 {
@@ -238,7 +239,7 @@ func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifier
 	return true
 }
 
-func (t *dockTab) mouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (t *dockTab) mouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if !t.pressed {
 		return true
 	}
@@ -272,7 +273,7 @@ func (t *dockTab) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions,
 	t.Draw(canvas, rect)
 }
 
-func (t *dockTab) mouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (t *dockTab) mouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	defer t.UpdateCursorNow()
 	if !t.pressed {
 		return true

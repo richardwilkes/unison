@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
@@ -177,14 +178,14 @@ func (mi *menuItem) newPanel() *Panel {
 	return mi.panel
 }
 
-func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	if mi.subMenu != nil {
 		mi.showSubMenu()
 	}
 	return true
 }
 
-func (mi *menuItem) mouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if mi.subMenu == nil && where.In(mi.panel.ContentRect(true)) {
 		mi.execute()
 	}
@@ -221,7 +222,7 @@ func (mi *menuItem) scrollIntoView() {
 	mi.panel.ScrollIntoView()
 }
 
-func (mi *menuItem) mouseEnter(_ geom.Point, _ Modifiers) bool {
+func (mi *menuItem) mouseEnter(_ geom.Point, _ mod.Modifiers) bool {
 	if mi.menu != nil {
 		for _, item := range mi.menu.items {
 			if item.over {
@@ -238,7 +239,7 @@ func (mi *menuItem) mouseEnter(_ geom.Point, _ Modifiers) bool {
 	return false
 }
 
-func (mi *menuItem) mouseMove(_ geom.Point, _ Modifiers) bool {
+func (mi *menuItem) mouseMove(_ geom.Point, _ mod.Modifiers) bool {
 	stopAt := mi.menu
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu

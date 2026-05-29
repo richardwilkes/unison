@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
@@ -210,14 +211,14 @@ func (r *RadioButton) Click() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (r *RadioButton) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (r *RadioButton) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	r.Pressed = true
 	r.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (r *RadioButton) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (r *RadioButton) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if pressed := where.In(r.ContentRect(false)); pressed != r.Pressed {
 		r.Pressed = pressed
 		r.MarkForRedraw()
@@ -226,7 +227,7 @@ func (r *RadioButton) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) boo
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (r *RadioButton) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (r *RadioButton) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	r.Pressed = false
 	r.MarkForRedraw()
 	if where.In(r.ContentRect(false)) {
@@ -239,7 +240,7 @@ func (r *RadioButton) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool 
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (r *RadioButton) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		r.Click()
 		return true

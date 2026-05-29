@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
@@ -127,22 +128,22 @@ func apiFillKeyCodes() {
 	rawScanCodeToKeyCodeMap[0x7E] = KeyUp
 }
 
-func macTranslateModifiers(flags mac.EventModifierFlags) Modifiers {
-	var mods Modifiers
+func macTranslateModifiers(flags mac.EventModifierFlags) mod.Modifiers {
+	var mods mod.Modifiers
 	if flags&mac.EventModifierFlagShift != 0 {
-		mods |= ShiftModifier
+		mods |= mod.Shift
 	}
 	if flags&mac.EventModifierFlagControl != 0 {
-		mods |= ControlModifier
+		mods |= mod.Control
 	}
 	if flags&mac.EventModifierFlagOption != 0 {
-		mods |= OptionModifier
+		mods |= mod.Option
 	}
 	if flags&mac.EventModifierFlagCommand != 0 {
-		mods |= CommandModifier
+		mods |= mod.Command
 	}
 	if flags&mac.EventModifierFlagCapsLock != 0 {
-		mods |= CapsLockModifier
+		mods |= mod.CapsLock
 	}
 	return mods
 }

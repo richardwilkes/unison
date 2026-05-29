@@ -12,7 +12,9 @@ package drag
 import (
 	"net/url"
 
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // Op represents the kind of drag operation being performed.
@@ -53,4 +55,21 @@ type Info interface {
 	URLs() []*url.URL
 	// Data returns the data for the specified data type contained in the drag, if any.
 	Data(dataType string) []byte
+}
+
+// Callbacks holds the callbacks that client code can hook into for drag and drop events.
+type Callbacks struct {
+	// DragEnteredCallback is called when a drag operation enters the window or panel. The returned drag.Op should be
+	// just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask().
+	DragEnteredCallback func(di Info, where geom.Point, mods mod.Modifiers) Op
+	// DragUpdatedCallback is called when a drag operation is adjusted while within the window or panel. The returned
+	// drag.Op should be just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask(). For
+	// performance reasons, examination of data types and/or the data should be done when DragEnteredCallback() is
+	// called and not here, if at all possible. If nil, the result from the DragEnteredCallback will be returned.
+	DragUpdatedCallback func(di Info, where geom.Point, mods mod.Modifiers) Op
+	// DragExitedCallback is called when a drag operation leaves the window or panel.
+	DragExitedCallback func()
+	// DropCallback is called when a drag operation is released over the window or panel. Return true if the drop is
+	// accepted and false if it is not.
+	DropCallback func(di Info, where geom.Point, mods mod.Modifiers) bool
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
@@ -302,7 +303,7 @@ func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 	return where.DivPt(w.BackingScale())
 }
 
-func (w *Window) apiCurrentKeyModifiers() Modifiers {
+func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
 	return x11CurrentKeyModifiers()
 }
 
@@ -459,7 +460,7 @@ func x11ProcessEvent(e x11.Event) {
 			if key, ok := rawScanCodeToKeyCodeMap[uint16(ev.Detail)]; ok {
 				mods := x11TranslateModifierState(ev.State)
 				w.keyPressed(key, mods)
-				if mods&(ControlModifier|OptionModifier|CommandModifier) == 0 {
+				if mods&(mod.Control|mod.Option|mod.Command) == 0 {
 					keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods)
 					if ch := x11KeySymToUnicode(keySym); ch != utf8.RuneError {
 						w.runeTyped(ch)
@@ -715,6 +716,26 @@ func x11ProcessEvent(e x11.Event) {
 			}
 		}
 	}
+}
+
+func x11TranslateModifierState(state uint16) mod.Modifiers {
+	var m mod.Modifiers
+	if state&0x0001 != 0 {
+		m |= mod.Shift
+	}
+	if state&0x0002 != 0 {
+		m |= mod.CapsLock
+	}
+	if state&0x0004 != 0 {
+		m |= mod.Control
+	}
+	if state&0x0008 != 0 {
+		m |= mod.Option
+	}
+	if state&0x0010 != 0 {
+		m |= mod.Command
+	}
+	return m
 }
 
 func x11ParseURIList(uriList []byte) []string {

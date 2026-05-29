@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // Pre-defined modal response codes. Apps should start their codes at ModalResponseUserBase.
@@ -143,9 +144,9 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	})
 	content.AddChild(buttonPanel)
 	originalKeyDownCallback := content.KeyDownCallback
-	content.KeyDownCallback = func(keyCode KeyCode, mods Modifiers, repeat bool) bool {
+	content.KeyDownCallback = func(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
 		if originalKeyDownCallback == nil || !originalKeyDownCallback(keyCode, mods, repeat) {
-			if mods&NonStickyModifiers == 0 {
+			if mods&mod.NonSticky == 0 {
 				for _, one := range d.buttons {
 					if slices.Contains(one.info.KeyCodes, keyCode) {
 						if one.button.Enabled() {

@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -243,7 +244,7 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mods Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 	stop := false
 	if col := h.table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
@@ -258,7 +259,7 @@ func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mods Modifiers) bool
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 	h.interactionColumn = -1
 	h.inHeader = false
 	if !h.table.PreventUserColumnResize {
@@ -305,7 +306,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount i
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if !h.table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
 		width := h.columnResizeBase + where.X - h.columnResizeStart
 		if width < h.columnResizeOverhead {
@@ -331,7 +332,7 @@ func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) 
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mods Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	stop := false
 	if h.inHeader && h.interactionColumn != -1 {
 		cell := h.ColumnHeaders[h.interactionColumn].AsPanel()

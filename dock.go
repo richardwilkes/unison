@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
@@ -333,7 +334,7 @@ func dockLayoutNodeContains(node DockLayoutNode, where geom.Point) bool {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (d *Dock) DefaultMouseDown(where geom.Point, _, _ int, _ Modifiers) bool {
+func (d *Dock) DefaultMouseDown(where geom.Point, _, _ int, _ mod.Modifiers) bool {
 	over := d.overNode(d.layout, where)
 	if dl, ok := over.(*DockLayout); ok {
 		d.dividerDragLayout = dl
@@ -350,7 +351,7 @@ func (d *Dock) DefaultMouseDown(where geom.Point, _, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (d *Dock) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (d *Dock) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	d.dragDivider(where)
 	return true
 }
@@ -373,7 +374,7 @@ func (d *Dock) dragDivider(where geom.Point) {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (d *Dock) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (d *Dock) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if d.dividerDragLayout != nil {
 		if d.dividerDragIsValid {
 			d.dragDivider(where)
@@ -384,12 +385,12 @@ func (d *Dock) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultDragEnter provides the default drag enter handling.
-func (d *Dock) DefaultDragEnter(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+func (d *Dock) DefaultDragEnter(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	return d.DefaultDragUpdated(di, where, mods)
 }
 
 // DefaultDragUpdated provides the default drag updated handling.
-func (d *Dock) DefaultDragUpdated(di drag.Info, where geom.Point, _ Modifiers) drag.Op {
+func (d *Dock) DefaultDragUpdated(di drag.Info, where geom.Point, _ mod.Modifiers) drag.Op {
 	if d.MaximizedContainer != nil || dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
 		return drag.None
 	}
@@ -430,7 +431,7 @@ func (d *Dock) DefaultDragUpdated(di drag.Info, where geom.Point, _ Modifiers) d
 }
 
 // DefaultDrop provides the default drop handling.
-func (d *Dock) DefaultDrop(di drag.Info, where geom.Point, mods Modifiers) bool {
+func (d *Dock) DefaultDrop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
 	defer d.DefaultDragExit()
 	if d.DefaultDragUpdated(di, where, mods) != drag.Move || d.dragDockable == nil || d.dragOverNode == nil {
 		return false

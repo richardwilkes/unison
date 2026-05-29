@@ -12,6 +12,7 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -222,7 +223,7 @@ func (s *ScrollPanel) Sync() {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (s *ScrollPanel) DefaultKeyDown(keyCode KeyCode, mods Modifiers, _repeat bool) bool {
+func (s *ScrollPanel) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	switch keyCode {
 	case KeyPageUp:
 		s.scrollViewByPage(-1, mods.ShiftDown())
@@ -246,7 +247,7 @@ func (s *ScrollPanel) scrollViewByPage(direction float32, horizontal bool) {
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
-func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ Modifiers) bool {
+func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ mod.Modifiers) bool {
 	multiplier := s.MouseWheelMultiplier()
 	if delta.Y != 0 {
 		dy := delta.Y

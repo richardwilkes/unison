@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -175,7 +176,7 @@ func (s *ScrollBar) DefaultDraw(gc *Canvas, _ geom.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *ScrollBar) DefaultMouseDown(where geom.Point, _, _ int, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDown(where geom.Point, _, _ int, _ mod.Modifiers) bool {
 	thumb := s.Thumb()
 	if !where.In(thumb) {
 		s.dragOffset = 0
@@ -194,14 +195,14 @@ func (s *ScrollBar) DefaultMouseDown(where geom.Point, _, _ int, _ Modifiers) bo
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *ScrollBar) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	s.trackingThumb = false
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (s *ScrollBar) DefaultMouseEnter(where geom.Point, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseEnter(where geom.Point, _ mod.Modifiers) bool {
 	if !s.trackingThumb {
 		s.checkOverThumb(where)
 	}
@@ -218,13 +219,13 @@ func (s *ScrollBar) DefaultMouseExit() bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (s *ScrollBar) DefaultMouseMove(where geom.Point, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseMove(where geom.Point, _ mod.Modifiers) bool {
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *ScrollBar) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	s.adjustValueForPoint(where)
 	s.MarkForRedraw()
 	return true

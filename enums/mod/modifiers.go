@@ -7,7 +7,7 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-package unison
+package mod
 
 import (
 	"bytes"
@@ -16,16 +16,16 @@ import (
 
 // Possible Modifiers values.
 const (
-	ShiftModifier Modifiers = 1 << iota
-	ControlModifier
-	OptionModifier
-	CommandModifier
-	CapsLockModifier
-	NumLockModifier
-	NonStickyModifiers           = ShiftModifier | ControlModifier | OptionModifier | CommandModifier
-	StickyModifiers              = CapsLockModifier | NumLockModifier
-	AllModifiers                 = StickyModifiers | NonStickyModifiers
-	NoModifiers        Modifiers = 0
+	Shift Modifiers = 1 << iota
+	Control
+	Option
+	Command
+	CapsLock
+	NumLock
+	NonSticky           = Shift | Control | Option | Command
+	Sticky              = CapsLock | NumLock
+	All                 = Sticky | NonSticky
+	None      Modifiers = 0
 )
 
 // Modifiers contains flags indicating which modifier keys were down when an event occurred.
@@ -33,42 +33,42 @@ type Modifiers byte
 
 // ShiftDown returns true if the shift key is being pressed.
 func (m Modifiers) ShiftDown() bool {
-	return m&ShiftModifier == ShiftModifier
+	return m&Shift == Shift
 }
 
 // ControlDown returns true if the control key is being pressed.
 func (m Modifiers) ControlDown() bool {
-	return m&ControlModifier == ControlModifier
+	return m&Control == Control
 }
 
 // OptionDown returns true if the option/alt key is being pressed.
 func (m Modifiers) OptionDown() bool {
-	return m&OptionModifier == OptionModifier
+	return m&Option == Option
 }
 
 // CommandDown returns true if the command/meta key is being pressed.
 func (m Modifiers) CommandDown() bool {
-	return m&CommandModifier == CommandModifier
+	return m&Command == Command
 }
 
 // CapsLockDown returns true if the caps lock key is being pressed.
 func (m Modifiers) CapsLockDown() bool {
-	return m&CapsLockModifier == CapsLockModifier
+	return m&CapsLock == CapsLock
 }
 
 // NumLockDown returns true if the num lock key is being pressed.
 func (m Modifiers) NumLockDown() bool {
-	return m&NumLockModifier == NumLockModifier
+	return m&NumLock == NumLock
 }
 
 // DiscontiguousSelectionDown returns true if either the control or command/meta key is being pressed.
 func (m Modifiers) DiscontiguousSelectionDown() bool {
-	return m&(ControlModifier|CommandModifier) != 0
+	return m&(Control|Command) != 0
 }
 
-// OSMenuCmdModifierDown returns true if the OS's standard menu command key is being pressed.
-func (m Modifiers) OSMenuCmdModifierDown() bool {
-	mask := OSMenuCmdModifier()
+// OSMenuCommandDown returns true if the OS's standard menu command key is being pressed.
+func (m Modifiers) OSMenuCommandDown() bool {
+	mask := OSMenuCommand()
 	return m&mask == mask
 }
 
@@ -84,32 +84,32 @@ func (m Modifiers) MarshalText() (text []byte, err error) {
 
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (m *Modifiers) UnmarshalText(text []byte) error {
-	*m = ModifiersFromKey(string(text))
+	*m = FromKey(string(text))
 	return nil
 }
 
-// OSMenuCmdModifier returns the OS's standard menu command key modifier.
-func OSMenuCmdModifier() Modifiers {
+// OSMenuCommand returns the OS's standard menu command key modifier.
+func OSMenuCommand() Modifiers {
 	return apiOSMenuCmdModifier()
 }
 
-// ModifiersFromKey extracts Modifiers from a string created via a call to .Key().
-func ModifiersFromKey(key string) Modifiers {
+// FromKey extracts Modifiers from a string created via a call to .Key().
+func FromKey(key string) Modifiers {
 	var mods Modifiers
 	for one := range strings.SplitSeq(strings.ToLower(key), "+") {
 		switch one {
 		case "ctrl":
-			mods |= ControlModifier
+			mods |= Control
 		case "alt":
-			mods |= OptionModifier
+			mods |= Option
 		case "shift":
-			mods |= ShiftModifier
+			mods |= Shift
 		case "caps":
-			mods |= CapsLockModifier
+			mods |= CapsLock
 		case "num":
-			mods |= NumLockModifier
+			mods |= NumLock
 		case "cmd":
-			mods |= CommandModifier
+			mods |= Command
 		}
 	}
 	return mods
