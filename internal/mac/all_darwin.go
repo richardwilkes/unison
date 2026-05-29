@@ -969,7 +969,7 @@ func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask
 	}
 	item := NewPasteboardItem()
 	for _, d := range data {
-		item.SetData(d.DataType, d.Data)
+		item.SetData(d.Type, d.Data)
 	}
 	imgRef := C.newImage((*C.uchar)(&img.Pix[0]), C.int(frame.Width), C.int(frame.Height), C.int(img.Rect.Dx()),
 		C.int(img.Rect.Dy()))

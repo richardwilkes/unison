@@ -27,8 +27,8 @@ const (
 
 // Data stores a data type and its data.
 type Data struct {
-	DataType *uti.DataType
-	Data     []byte
+	Type *uti.DataType
+	Data []byte
 }
 
 // Info contains information about the current drag operation.

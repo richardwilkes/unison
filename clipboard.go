@@ -33,8 +33,8 @@ func ClipboardGetText() string {
 // ClipboardSetText sets text onto the clipboard, replacing the previous content.
 func ClipboardSetText(text string) {
 	ClipboardSetData(drag.Data{
-		DataType: uti.UTF8PlainText,
-		Data:     []byte(text),
+		Type: uti.UTF8PlainText,
+		Data: []byte(text),
 	})
 }
 

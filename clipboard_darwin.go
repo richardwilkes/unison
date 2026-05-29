@@ -33,8 +33,8 @@ func apiClipboardSetData(data ...drag.Data) {
 	all := make([]mac.PasteboardItem, 0, len(data))
 	for _, one := range data {
 		item := mac.NewPasteboardItem()
-		item.SetData(one.DataType, one.Data)
-		if uti.UTF8PlainText.ConformsTo(one.DataType) {
+		item.SetData(one.Type, one.Data)
+		if uti.UTF8PlainText.ConformsTo(one.Type) {
 			item.SetString(string(one.Data))
 		}
 		all = append(all, item)

@@ -254,8 +254,8 @@ func (t *dockTab) mouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 			}
 			dragDockable = t.dockable
 			t.StartDrag(img, geom.Point{}, func() { dragDockable = nil }, drag.Move, drag.Data{
-				DataType: dockableDataType,
-				Data:     []byte{0},
+				Type: dockableDataType,
+				Data: []byte{0},
 			})
 		}
 	}
