@@ -215,7 +215,7 @@ func (t *dockTab) updateCursor(_ geom.Point) *Cursor {
 }
 
 func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ mod.Modifiers) bool {
-	if button == ButtonRight && clickCount == 1 && !t.Window().InDrag() {
+	if button == ButtonRight && clickCount == 1 {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			if len(dc.Dockables()) > 1 {
 				f := DefaultMenuFactory()
@@ -239,11 +239,11 @@ func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ mod.Modi
 	return true
 }
 
-func (t *dockTab) mouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
+func (t *dockTab) mouseDrag(where geom.Point, button int, _ mod.Modifiers) bool {
 	if !t.pressed {
 		return true
 	}
-	if dragDockable == nil && t.IsDragGesture(where) {
+	if dragDockable == nil && button == ButtonLeft && t.IsDragGesture(where) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			size := t.LogicalSize()
 			img, err := NewImageFromDrawing(int(size.Width), int(size.Height), 144, func(c *Canvas) {

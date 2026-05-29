@@ -47,31 +47,20 @@ type Panel struct {
 	ScrollRectIntoViewCallback          func(rect geom.Rect) bool
 	ParentChangedCallback               func()
 	FocusChangeInHierarchyCallback      func(from, to *Panel)
-	// ----- TODO: Figure out how to use native drag & drop instead
-	// DataDragOverCallback is called when a data drag is over a potential drop target. Return true to stop further
-	// handling or false to propagate up to parents.
-	DataDragOverCallback func(where geom.Point, data map[string]any) bool
-	// DataDragExitCallback is called when a previous call to DataDragOverCallback returned true and the data drag
-	// leaves the component.
-	DataDragExitCallback func()
-	// DataDragDropCallback is called when a data drag is dropped and a previous call to DataDragOverCallback returned
-	// true.
-	DataDragDropCallback func(where geom.Point, data map[string]any)
-	// -----
-	Tooltip          *Panel
-	parent           *Panel
-	canPerformMap    map[int]func(any) bool
-	performMap       map[int]func(any)
-	data             map[string]any
-	RefKey           string
-	children         []*Panel
-	frame            geom.Rect
-	scale            geom.Point
-	NeedsLayout      bool
-	focusable        bool
-	disabled         bool
-	Hidden           bool
-	TooltipImmediate bool
+	Tooltip                             *Panel
+	parent                              *Panel
+	canPerformMap                       map[int]func(any) bool
+	performMap                          map[int]func(any)
+	data                                map[string]any
+	RefKey                              string
+	children                            []*Panel
+	frame                               geom.Rect
+	scale                               geom.Point
+	NeedsLayout                         bool
+	focusable                           bool
+	disabled                            bool
+	Hidden                              bool
+	TooltipImmediate                    bool
 }
 
 // NewPanel creates a new panel.
@@ -653,13 +642,6 @@ func (p *Panel) IsDragGesture(where geom.Point) bool {
 func (p *Panel) StartDrag(img *Image, originInPanel geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
 	if w := p.Window(); w != nil {
 		w.StartDrag(img, p.PointToRoot(originInPanel), cleanup, dragOpMask, data...)
-	}
-}
-
-// StartDataDrag starts a data drag operation.
-func (p *Panel) StartDataDrag(data *DragData) {
-	if w := p.Window(); w != nil {
-		w.StartDataDrag(data)
 	}
 }
 

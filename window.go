@@ -27,7 +27,6 @@ import (
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
-	"github.com/richardwilkes/unison/enums/pathop"
 )
 
 var _ UndoManagerProvider = &Window{}
@@ -42,15 +41,6 @@ var (
 	wndWithCurrentCtx *Window
 	glInited          = false
 )
-
-// DragData holds data drag information.
-type DragData struct {
-	Data            map[string]any
-	Drawable        Drawable
-	SamplingOptions *SamplingOptions
-	Ink             Ink
-	Offset          geom.Point
-}
 
 // WindowKind represents the kind of window, which can be used by the system to determine how to treat the window in
 // various ways, such as how to group it with other windows and what decorations to apply.
@@ -90,8 +80,6 @@ type Window struct {
 	focus                       *Panel
 	cursor                      *Cursor
 	lastDropTarget              *Panel
-	dragDataPanel               *Panel
-	dragData                    *DragData
 	dragSourceCleanup           func()
 	lastMouseDownPanel          *Panel
 	lastMouseOverPanel          *Panel
@@ -883,15 +871,6 @@ func (w *Window) Draw(c *Canvas) {
 				c.DrawPaint(ThemeSurface.Paint(c, r, paintstyle.Fill))
 			}
 			w.root.Draw(c, r)
-			if w.InDrag() && w.dragData.Drawable != nil {
-				c.Save()
-				c.Translate(w.dragDataLocation.Add(w.dragData.Offset))
-				r = geom.Rect{Size: w.dragData.Drawable.LogicalSize()}
-				c.ClipRect(r, pathop.Intersect, false)
-				w.dragData.Drawable.DrawInRect(c, r, w.dragData.SamplingOptions,
-					w.dragData.Ink.Paint(c, r, paintstyle.Fill))
-				c.Restore()
-			}
 		}, nil)
 	}
 }
@@ -1107,19 +1086,10 @@ func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 	}
 }
 
-// InDrag returns true if a drag is currently in progress in this window.
-func (w *Window) InDrag() bool {
-	return w.dragData != nil
-}
-
 func (w *Window) mouseDrag(where geom.Point, button int, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	w.dragDataLocation = where
 	w.restoreHiddenCursor()
-	if w.InDrag() {
-		w.dataDragOver()
-		return
-	}
 	if w.MouseDragCallback != nil {
 		stop := false
 		xos.SafeCall(func() { stop = w.MouseDragCallback(where, button, mods) }, nil)
@@ -1159,12 +1129,6 @@ func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 	w.pressedButtons[button] = false
 	w.lastButton = button
 	w.lastKeyModifiers = mods
-	if w.InDrag() {
-		w.dragDataLocation = where
-		w.dataDragFinish()
-		w.lastMouseDownPanel = nil
-		return
-	}
 	if w.MouseUpCallback != nil {
 		stop := false
 		xos.SafeCall(func() { stop = w.MouseUpCallback(where, button, mods) }, nil)
@@ -1408,63 +1372,6 @@ func (w *Window) dragSourceFinished() {
 	}
 }
 
-// StartDataDrag starts a data drag operation.
-func (w *Window) StartDataDrag(data *DragData) {
-	// TODO: Figure out how to use native drag & drop instead
-	if data != nil && len(data.Data) != 0 {
-		w.dragData = data
-		w.dragDataPanel = nil
-		w.dataDragOver()
-	}
-}
-
-func (w *Window) dataDragOver() {
-	// TODO: Figure out how to use native drag & drop instead
-	w.MarkForRedraw()
-	panel := w.root.PanelAt(w.dragDataLocation)
-	for panel != nil {
-		for panel != nil && panel.DataDragOverCallback == nil {
-			panel = panel.Parent()
-		}
-		if panel != nil {
-			handled := false
-			xos.SafeCall(func() { handled = panel.DataDragOverCallback(panel.PointFromRoot(w.dragDataLocation), w.dragData.Data) }, nil)
-			if handled {
-				if !panel.Is(w.dragDataPanel) {
-					if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
-						xos.SafeCall(w.dragDataPanel.DataDragExitCallback, nil)
-					}
-					w.dragDataPanel = panel
-				}
-				return
-			}
-			panel = panel.Parent()
-		}
-	}
-	if w.dragDataPanel != nil && w.dragDataPanel.DataDragExitCallback != nil {
-		xos.SafeCall(w.dragDataPanel.DataDragExitCallback, nil)
-	}
-	w.dragDataPanel = nil
-}
-
-func (w *Window) dataDragFinish() {
-	// TODO: Figure out how to use native drag & drop instead
-	w.MarkForRedraw()
-	dragData := w.dragData
-	dragDataLocation := w.dragDataLocation
-	dragDataPanel := w.dragDataPanel
-	w.dragData = nil
-	w.dragDataPanel = nil
-	if dragDataPanel != nil && dragDataPanel.DataDragDropCallback != nil {
-		xos.SafeCall(func() {
-			dragDataPanel.DataDragDropCallback(dragDataPanel.PointFromRoot(dragDataLocation), dragData.Data)
-		}, nil)
-	}
-	w.ValidateLayout()
-	w.cursor = nil
-	w.UpdateCursorNow()
-}
-
 func (w *Window) findDropTarget(where geom.Point) *Panel {
 	if !w.okToProcess() {
 		return nil
@@ -1544,6 +1451,7 @@ func (w *Window) dragExitTarget() {
 func (w *Window) dragFinish() {
 	w.inMouseDown = false
 	w.adjustToCursorChange()
+	w.FlushDrawing()
 }
 
 // RegisterForDragTypes registers the window as a potential target for drags of the specified types. Some platforms

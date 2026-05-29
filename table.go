@@ -13,10 +13,13 @@ import (
 	"maps"
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -48,6 +51,8 @@ type tableHitRect struct {
 	handler func()
 	geom.Rect
 }
+
+var dragTableData any // Actually a *TableDragData[T]
 
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
 // but will alter any Tables created in the future.
@@ -712,9 +717,6 @@ func (t *Table[T]) DefaultMouseExit() bool {
 
 // DefaultMouseDown provides the default mouse down handling.
 func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
-	if t.Window().InDrag() {
-		return false
-	}
 	t.RequestFocusWithoutScroll()
 	t.wasDragged = false
 	t.dividerDrag = false
@@ -1627,50 +1629,59 @@ func (t *Table[T]) applyFilter(row T, filter func(row T) bool) {
 
 // InstallDragSupport installs default drag support into a table. This will chain a function to any existing
 // MouseDragCallback.
-func (t *Table[T]) InstallDragSupport(svg *SVG, dragKey, singularName, pluralName string) {
+func (t *Table[T]) InstallDragSupport(svg *SVG, dataType *uti.DataType, singularName, pluralName string) {
 	orig := t.MouseDragCallback
 	t.MouseDragCallback = func(where geom.Point, button int, mods mod.Modifiers) bool {
 		if orig != nil && orig(where, button, mods) {
 			return true
 		}
-		if button == ButtonLeft && t.HasSelection() && t.IsDragGesture(where) {
+		if dragTableData == nil && button == ButtonLeft && t.HasSelection() && t.IsDragGesture(where) {
 			data := &TableDragData[T]{
 				Table: t,
 				Rows:  t.SelectedRows(true),
 			}
 			drawable := NewTableDragDrawable(data, svg, singularName, pluralName)
 			size := drawable.LogicalSize()
-			t.StartDataDrag(&DragData{
-				Data:     map[string]any{dragKey: data},
-				Drawable: drawable,
-				Ink:      t.OnBackgroundInk,
-				Offset:   geom.NewPoint(0, -size.Height/2),
+			img, err := NewImageFromDrawing(int(size.Width), int(size.Height), 144, func(c *Canvas) {
+				drawable.DrawInRect(c, geom.Rect{Size: size}, nil, nil)
+			})
+			if err != nil {
+				errs.Log(err)
+				return true
+			}
+			where.X -= size.Width / 2
+			where.Y -= size.Height / 2
+			dragTableData = data
+			t.StartDrag(img, where, func() { dragTableData = nil }, drag.Copy|drag.Move, drag.Data{
+				Type: dataType,
+				Data: []byte{0},
 			})
 		}
-		return false
+		return true
 	}
 }
 
-// InstallDropSupport installs default drop support into a table. This will replace any existing DataDragOverCallback,
-// DataDragExitCallback, and DataDragDropCallback functions. It will also chain a function to any existing
+// InstallDropSupport installs default drop support into a table. This will replace any existing DragEnteredCallback,
+// DragUpdatedCallback, DragUpdatedCallback, and DropCallback functions. It will also chain a function to any existing
 // DrawOverCallback. The shouldMoveDataCallback is called when a drop is about to occur to determine if the data should
 // be moved (i.e. removed from the source) or copied to the destination. The willDropCallback is called before the
 // actual data changes are made, giving an opportunity to start an undo event, which should be returned. The
 // didDropCallback is called after data changes are made and is passed the undo event (if any) returned by the
 // willDropCallback, so that the undo event can be completed and posted.
-func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dragKey string, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
+func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dataType *uti.DataType, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
 	drop := &TableDrop[T, U]{
 		Table:                  t,
-		DragKey:                dragKey,
+		DataType:               dataType,
 		originalDrawOver:       t.DrawOverCallback,
 		shouldMoveDataCallback: shouldMoveDataCallback,
 		willDropCallback:       willDropCallback,
 		didDropCallback:        didDropCallback,
 	}
-	t.DataDragOverCallback = drop.DataDragOverCallback
-	t.DataDragExitCallback = drop.DataDragExitCallback
-	t.DataDragDropCallback = drop.DataDragDropCallback
 	t.DrawOverCallback = drop.DrawOverCallback
+	t.DragEnteredCallback = drop.DragEnterCallback
+	t.DragUpdatedCallback = drop.DragUpdatedCallback
+	t.DragExitedCallback = drop.DragExitCallback
+	t.DropCallback = drop.DropCallback
 	return drop
 }
 
