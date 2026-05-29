@@ -10,12 +10,20 @@
 package unison
 
 import (
-	"fmt"
-
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/tid"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
+)
+
+var (
+	// The TID is added to the UTI to ensure that it is unique to this instance of this application and cannot collide
+	// with any other UTI.
+	dockableDataType = uti.Register(&uti.DataType{UTI: "private.unison.dockable." + string(tid.MustNewTID('d'))})
+	dragDockable     Dockable
 )
 
 // DefaultDockTheme holds the default DockTheme values for Docks. Modifying this data will not alter existing Docks, but
@@ -94,7 +102,6 @@ type Dock struct {
 	dragDockable       Dockable
 	dragOverNode       DockLayoutNode
 	dividerDragLayout  *DockLayout
-	DragKey            string
 	DockTheme
 	Panel
 	dividerDragInitialPosition float32
@@ -103,15 +110,14 @@ type Dock struct {
 	dividerDragIsValid         bool
 }
 
-var dockCounter = 0
+// DockDragTypes returns the list of DataTypes that Docks will accept in drag and drop operations.
+func DockDragTypes() []*uti.DataType {
+	return []*uti.DataType{dockableDataType}
+}
 
 // NewDock creates a new, empty, dock.
 func NewDock() *Dock {
-	dockCounter++
-	d := &Dock{
-		DockTheme: DefaultDockTheme,
-		DragKey:   fmt.Sprintf("dock-%d", dockCounter),
-	}
+	d := &Dock{DockTheme: DefaultDockTheme}
 	d.Self = d
 	d.layout = &DockLayout{
 		dock:    d,
@@ -125,9 +131,10 @@ func NewDock() *Dock {
 	d.MouseDownCallback = d.DefaultMouseDown
 	d.MouseDragCallback = d.DefaultMouseDrag
 	d.MouseUpCallback = d.DefaultMouseUp
-	d.DataDragOverCallback = d.DefaultDataDragOver
-	d.DataDragExitCallback = d.DefaultDataDragExit
-	d.DataDragDropCallback = d.DefaultDataDrop
+	d.DragEnteredCallback = d.DefaultDragEnter
+	d.DragUpdatedCallback = d.DefaultDragUpdated
+	d.DragExitedCallback = d.DefaultDragExit
+	d.DropCallback = d.DefaultDrop
 	return d
 }
 
@@ -376,65 +383,68 @@ func (d *Dock) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
 	return true
 }
 
-// DefaultDataDragOver provides the default data drag over handling.
-func (d *Dock) DefaultDataDragOver(where geom.Point, data map[string]any) bool {
-	if d.MaximizedContainer != nil {
+// DefaultDragEnter provides the default drag enter handling.
+func (d *Dock) DefaultDragEnter(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+	return d.DefaultDragUpdated(di, where, mods)
+}
+
+// DefaultDragUpdated provides the default drag updated handling.
+func (d *Dock) DefaultDragUpdated(di drag.Info, where geom.Point, _ Modifiers) drag.Op {
+	if d.MaximizedContainer != nil || dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
+		return drag.None
+	}
+	if dc := Ancestor[*DockContainer](dragDockable); dc == nil || dc.Dock != d {
+		return drag.None
+	}
+	op := drag.None
+	savedDockable := d.dragDockable
+	savedOverNode := d.dragOverNode
+	savedDragSize := d.dragSide
+	if d.dragOverNode = d.overNode(d.layout, where); d.dragOverNode != nil {
+		var extent float32
+		r := d.dragOverNode.FrameRect()
+		if where.X < r.CenterX() {
+			d.dragSide = side.Left
+			extent = where.X - r.X
+		} else {
+			d.dragSide = side.Right
+			extent = r.Width - (where.X - r.X)
+		}
+		if where.Y < r.CenterY() {
+			if extent > where.Y-r.Y {
+				d.dragSide = side.Top
+			}
+		} else if extent > r.Height-(where.Y-r.Y) {
+			d.dragSide = side.Bottom
+		}
+		d.dragDockable = dragDockable
+		op = drag.Move
+	} else {
+		d.dragDockable = nil
+	}
+	if dragDockable != savedDockable || d.dragOverNode != savedOverNode || d.dragSide != savedDragSize {
+		d.MarkForRedraw()
+		d.FlushDrawing()
+	}
+	return op
+}
+
+// DefaultDrop provides the default drop handling.
+func (d *Dock) DefaultDrop(di drag.Info, where geom.Point, mods Modifiers) bool {
+	defer d.DefaultDragExit()
+	if d.DefaultDragUpdated(di, where, mods) != drag.Move || d.dragDockable == nil || d.dragOverNode == nil {
 		return false
 	}
-	d.updateDragDockable(where, data)
-	return d.dragDockable != nil
+	d.DockTo(d.dragDockable, d.dragOverNode, d.dragSide)
+	return true
 }
 
-// DockableFromDragData attempts to extract a Dockable from the given key in the data.
-func DockableFromDragData(key string, data map[string]any) Dockable {
-	if keyData, ok := data[key]; ok {
-		if dockable, ok2 := keyData.(Dockable); ok2 {
-			return dockable
-		}
-	}
-	return nil
-}
-
-func (d *Dock) updateDragDockable(where geom.Point, data map[string]any) {
+// DefaultDragExit provides the default drag exit handling.
+func (d *Dock) DefaultDragExit() {
 	d.dragDockable = nil
 	d.dragOverNode = nil
-	if dockable := DockableFromDragData(d.DragKey, data); dockable != nil {
-		if d.dragOverNode = d.overNode(d.layout, where); d.dragOverNode != nil {
-			var extent float32
-			r := d.dragOverNode.FrameRect()
-			if where.X < r.CenterX() {
-				d.dragSide = side.Left
-				extent = where.X - r.X
-			} else {
-				d.dragSide = side.Right
-				extent = r.Width - (where.X - r.X)
-			}
-			if where.Y < r.CenterY() {
-				if extent > where.Y-r.Y {
-					d.dragSide = side.Top
-				}
-			} else if extent > r.Height-(where.Y-r.Y) {
-				d.dragSide = side.Bottom
-			}
-			d.dragDockable = dockable
-		}
-	}
-}
-
-// DefaultDataDragExit provides the default data drag exit handling.
-func (d *Dock) DefaultDataDragExit() {
-	d.dragDockable = nil
-	d.dragOverNode = nil
-}
-
-// DefaultDataDrop provides the default data drop handling.
-func (d *Dock) DefaultDataDrop(where geom.Point, data map[string]any) {
-	d.updateDragDockable(where, data)
-	if d.dragDockable != nil && d.dragOverNode != nil {
-		d.DockTo(d.dragDockable, d.dragOverNode, d.dragSide)
-	}
-	d.dragDockable = nil
-	d.dragOverNode = nil
+	d.MarkForRedraw()
+	d.FlushDrawing()
 }
 
 // NextDockableFor returns the logical next Dockable in the Dock given the one passed in as a starting point. The

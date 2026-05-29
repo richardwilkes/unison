@@ -18,6 +18,7 @@ import (
 	"go/format"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,13 +198,13 @@ func main() {
 		Desc: "holds the type of encoding an image was stored with",
 		Values: []enumValue{
 			{Key: "unknown"},
-			{Key: "bmp", NoLocalize: true, ForceUpper: true},
+			{Key: "png", NoLocalize: true, ForceUpper: true},
+			{Key: "webp", NoLocalize: true, ForceUpper: true},
+			{Key: "jpeg", NoLocalize: true, ForceUpper: true},
 			{Key: "gif", NoLocalize: true, ForceUpper: true},
 			{Key: "ico", NoLocalize: true, ForceUpper: true},
-			{Key: "jpeg", NoLocalize: true, ForceUpper: true},
-			{Key: "png", NoLocalize: true, ForceUpper: true},
 			{Key: "wbmp", NoLocalize: true, ForceUpper: true},
-			{Key: "webp", NoLocalize: true, ForceUpper: true},
+			{Key: "bmp", NoLocalize: true, ForceUpper: true},
 		},
 	})
 	processSourceTemplate(wd, &enumInfo{
@@ -429,7 +430,7 @@ func processSourceTemplate(rootDir string, info *enumInfo) {
 	xos.ExitIfErr(tmpl.Execute(&buffer, info))
 	var data []byte
 	if data, err = format.Source(buffer.Bytes()); err != nil {
-		fmt.Println("unable to format source file: " + filepath.Join(info.Pkg, info.Name+genSuffix))
+		slog.Warn("unable to format source", "file", filepath.Join(info.Pkg, info.Name+genSuffix), "error", err)
 		data = buffer.Bytes()
 	}
 	dir := filepath.Join(rootDir, info.Pkg)

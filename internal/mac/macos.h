@@ -167,6 +167,8 @@ CGPoint viewBackingScale(NSViewRef v);
 void viewFrame(NSViewRef v, CGRect* frame);
 bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 void viewBeginDraggingSession(NSViewRef v, NSPasteboardItemRef item, NSDragOperation dragMask);
+void viewRegisterDraggedTypes(NSViewRef v, CFArrayRef types);
+void viewUnregisterDraggedTypes(NSViewRef v);
 
 // Window
 NSWindowRef newWindow(CGRect contentRect, NSWindowStyleMask styleMask, bool canBeKeyWindow, bool canBeMainWindow);

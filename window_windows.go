@@ -17,6 +17,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
@@ -621,7 +622,11 @@ func (w *Window) apiHide() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
-func (w *Window) apiStartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
+	// TODO: Implement
+}
+
+func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 	// TODO: Implement
 }
 

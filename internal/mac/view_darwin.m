@@ -25,6 +25,7 @@ NSDragOperation goWindowDragEnterCallback(NSWindowRef w, NSDraggingInfoRef d, fl
 NSDragOperation goWindowDragUpdateCallback(NSWindowRef w, NSDraggingInfoRef d, float x, float y, uint mods);
 bool goWindowDropCallback(NSWindowRef w, NSDraggingInfoRef d, float x, float y, uint mods);
 void goWindowDragExitCallback(NSWindowRef w);
+void goWindowDragSourceFinishedCallback(NSWindowRef w);
 
 static const NSRange kEmptyRange = { NSNotFound, 0 };
 
@@ -34,6 +35,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 	NSMutableAttributedString* markedText;
 	NSEvent*                   lastMouseDraggedEvent;
 	NSDragOperation            dragMask;
+	bool                       inDragWeStarted;
 }
 
 - (instancetype)initWithWindow:(NSWindow*)window;
@@ -49,7 +51,6 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 		trackingArea = nil;
 		markedText = [[NSMutableAttributedString alloc] init];
 		[self updateTrackingAreas];
-		[self registerForDraggedTypes:@[@"public.item"]]; // Allow anything
 	}
 	return self;
 }
@@ -100,9 +101,11 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)mouseDragged:(NSEvent *)event {
-	lastMouseDraggedEvent = event;
-	[self mouseMoved:event];
-	lastMouseDraggedEvent = nil;
+	if (!inDragWeStarted) {
+		lastMouseDraggedEvent = event;
+		[self mouseMoved:event];
+		lastMouseDraggedEvent = nil;
+	}
 }
 
 - (void)mouseUp:(NSEvent *)event {
@@ -121,9 +124,11 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
-	lastMouseDraggedEvent = event;
-	[self mouseMoved:event];
-	lastMouseDraggedEvent = nil;
+	if (!inDragWeStarted) {
+		lastMouseDraggedEvent = event;
+		[self mouseMoved:event];
+		lastMouseDraggedEvent = nil;
+	}
 }
 
 - (void)rightMouseUp:(NSEvent *)event {
@@ -137,9 +142,11 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (void)otherMouseDragged:(NSEvent *)event {
-	lastMouseDraggedEvent = event;
-	[self mouseMoved:event];
-	lastMouseDraggedEvent = nil;
+	if (!inDragWeStarted) {
+		lastMouseDraggedEvent = event;
+		[self mouseMoved:event];
+		lastMouseDraggedEvent = nil;
+	}
 }
 
 - (void)otherMouseUp:(NSEvent *)event {
@@ -198,11 +205,17 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 
 - (void)startDragOf:(NSDraggingItem*)item withMask:(NSDragOperation)mask {
 	dragMask = mask;
+	inDragWeStarted = true;
 	[self beginDraggingSessionWithItems:@[item] event:lastMouseDraggedEvent source:self];
 }
 
 - (NSDragOperation)draggingSession:(NSDraggingSession*)session sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
 	return dragMask;
+}
+
+- (void)draggingSession:(NSDraggingSession*)session endedAtPoint:(NSPoint)screenPoint operation:(NSDragOperation)operation {
+	goWindowDragSourceFinishedCallback(wnd);
+	inDragWeStarted = false;
 }
 
 - (BOOL)ignoreModifierKeysForDraggingSession:(NSDraggingSession*)session {
@@ -326,4 +339,12 @@ bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect) {
 
 void viewBeginDraggingSession(NSViewRef v, NSPasteboardItemRef item, NSDragOperation dragMask) {
 	[(macContentView*)v startDragOf:item withMask:dragMask];
+}
+
+void viewRegisterDraggedTypes(NSViewRef v, CFArrayRef types) {
+	[(macContentView*)v registerForDraggedTypes:(NSArray<NSString*>*)types];
+}
+
+void viewUnregisterDraggedTypes(NSViewRef v) {
+	[(macContentView*)v unregisterDraggedTypes];
 }

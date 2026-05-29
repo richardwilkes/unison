@@ -650,9 +650,9 @@ func (p *Panel) IsDragGesture(where geom.Point) bool {
 }
 
 // StartDrag starts a drag & drop operation.
-func (p *Panel) StartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+func (p *Panel) StartDrag(img *Image, originInPanel geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
 	if w := p.Window(); w != nil {
-		w.StartDrag(provider, img, p.PointToRoot(origin), dragOpMask)
+		w.StartDrag(img, p.PointToRoot(originInPanel), cleanup, dragOpMask, data...)
 	}
 }
 

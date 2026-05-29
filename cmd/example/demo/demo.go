@@ -149,6 +149,9 @@ func NewDemoWindow() (*unison.Window, error) {
 	})
 	content.AddChild(scrollArea)
 
+	// Register for the drag types we want to enable
+	wnd.RegisterForDragTypes(unison.WellDragTypes()...)
+
 	// Pack our window to fit its content, then set its location on the display and make it visible.
 	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()

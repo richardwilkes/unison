@@ -52,6 +52,9 @@ func NewDemoDockWindow() (*unison.Window, error) {
 	})
 	content.AddChild(dock)
 
+	// Register for the drag types we want to enable
+	wnd.RegisterForDragTypes(unison.DockDragTypes()...)
+
 	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 

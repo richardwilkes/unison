@@ -6,7 +6,7 @@ require (
 	github.com/OpenPrinting/goipp v1.2.0
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/richardwilkes/toolbox/v2 v2.12.1-0.20260525202812-005673e42026
+	github.com/richardwilkes/toolbox/v2 v2.12.1-0.20260528182552-88da212a4fd9
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.8.2
 	github.com/zeebo/xxh3 v1.1.0

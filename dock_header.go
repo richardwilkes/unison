@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -62,9 +63,10 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	}
 	d.Self = d
 	d.DrawCallback = d.DefaultDraw
-	d.DataDragOverCallback = d.DefaultDataDragOver
-	d.DataDragExitCallback = d.DefaultDataDragExit
-	d.DataDragDropCallback = d.DefaultDataDrop
+	d.DragEnteredCallback = d.DefaultDragEnter
+	d.DragUpdatedCallback = d.DefaultDragUpdated
+	d.DragExitedCallback = d.DefaultDragExit
+	d.DropCallback = d.DefaultDrop
 	d.SetBorder(d.HeaderBorder)
 	d.SetLayout(d)
 	for _, dockable := range dc.Dockables() {
@@ -93,40 +95,54 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect) {
 	}
 }
 
-func (d *dockHeader) DefaultDataDragOver(where geom.Point, data map[string]any) bool {
-	return d.dragOver(where, data) != nil
+// DefaultDragEnter provides the default drag enter handling.
+func (d *dockHeader) DefaultDragEnter(di drag.Info, where geom.Point, mods Modifiers) drag.Op {
+	return d.DefaultDragUpdated(di, where, mods)
 }
 
-func (d *dockHeader) dragOver(where geom.Point, data map[string]any) Dockable {
+// DefaultDragUpdated provides the default drag updated handling.
+func (d *dockHeader) DefaultDragUpdated(di drag.Info, where geom.Point, _ Modifiers) drag.Op {
+	if dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
+		return drag.None
+	}
+	if dc := Ancestor[*DockContainer](dragDockable); dc == nil || dc.Dock != d.owner.Dock {
+		return drag.None
+	}
+	savedDragInsertIndex := d.dragInsertIndex
 	d.dragInsertIndex = -1
-	if dockable := DockableFromDragData(d.owner.Dock.DragKey, data); dockable != nil {
-		tabs, _ := d.partition()
-		d.dragInsertIndex = len(tabs)
-		for i, one := range tabs {
-			r := one.FrameRect()
-			if where.X < r.CenterX() {
-				d.dragInsertIndex = i
-				break
-			}
-			if where.X < r.Right() {
-				d.dragInsertIndex = i + 1
-				break
-			}
+	tabs, _ := d.partition()
+	d.dragInsertIndex = len(tabs)
+	for i, one := range tabs {
+		r := one.FrameRect()
+		if where.X < r.CenterX() {
+			d.dragInsertIndex = i
+			break
 		}
-		return dockable
+		if where.X < r.Right() {
+			d.dragInsertIndex = i + 1
+			break
+		}
 	}
-	return nil
+	if d.dragInsertIndex != savedDragInsertIndex {
+		d.MarkForRedraw()
+	}
+	return drag.Move
 }
 
-func (d *dockHeader) DefaultDataDragExit() {
-	d.dragInsertIndex = -1
+// DefaultDrop provides the default drop handling.
+func (d *dockHeader) DefaultDrop(di drag.Info, where geom.Point, mods Modifiers) bool {
+	defer d.DefaultDragExit()
+	if d.DefaultDragUpdated(di, where, mods) != drag.Move {
+		return false
+	}
+	d.owner.Stack(dragDockable, d.dragInsertIndex)
+	return true
 }
 
-func (d *dockHeader) DefaultDataDrop(where geom.Point, data map[string]any) {
-	if dockable := d.dragOver(where, data); dockable != nil {
-		d.owner.Stack(dockable, d.dragInsertIndex)
-	}
+// DefaultDragExit provides the default drag exit handling.
+func (d *dockHeader) DefaultDragExit() {
 	d.dragInsertIndex = -1
+	d.MarkForRedraw()
 }
 
 func (d *dockHeader) updateTitle(index int) {

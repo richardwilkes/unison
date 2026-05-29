@@ -9,7 +9,9 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/v2/geom"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+)
 
 var (
 	_ Layout         = &DockContainer{}

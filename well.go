@@ -16,6 +16,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
@@ -71,6 +72,11 @@ type Well struct {
 	Panel
 	Pressed       bool
 	dropHighlight bool
+}
+
+// WellDragTypes returns the list of DataTypes that Wells will accept in drag and drop operations.
+func WellDragTypes() []*uti.DataType {
+	return append(imgfmt.AllReadableUTIs(), uti.FileURL)
 }
 
 // NewWell creates a new Well.
@@ -249,16 +255,29 @@ func (w *Well) Click() {
 // DefaultDragEnter provides the default drag enter handling.
 func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ Modifiers) drag.Op {
 	op := drag.None
-	if w.Enabled() && di.HasFilePaths() {
-		for _, f := range di.FilePaths() {
-			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
-				op = drag.Copy
-				if !w.dropHighlight {
-					w.dropHighlight = true
-					w.MarkForRedraw()
+	if w.Enabled() {
+		if di.HasFilePaths() {
+			for _, f := range di.FilePaths() {
+				if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
+					op = drag.Copy
+					break
 				}
-				break
 			}
+		}
+		if op == drag.None {
+			for _, dataType := range imgfmt.AllReadableUTIs() {
+				if di.HasDataType(dataType.UTI) {
+					op = drag.Copy
+					break
+				}
+			}
+		}
+	}
+	if op != drag.None {
+		if !w.dropHighlight {
+			w.dropHighlight = true
+			w.MarkForRedraw()
+			w.FlushDrawing()
 		}
 	}
 	return op
@@ -269,6 +288,7 @@ func (w *Well) DefaultDragExit() {
 	if w.dropHighlight {
 		w.dropHighlight = false
 		w.MarkForRedraw()
+		w.FlushDrawing()
 	}
 }
 
@@ -276,11 +296,29 @@ func (w *Well) DefaultDragExit() {
 func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ Modifiers) bool {
 	w.DefaultDragExit()
 	if w.Enabled() {
-		for _, f := range di.FilePaths() {
-			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
-				img, err := w.loadImage(f)
+		if di.HasFilePaths() {
+			for _, f := range di.FilePaths() {
+				if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
+					img, err := w.loadImage(f)
+					if err != nil {
+						errs.Log(err, "spec", f)
+						continue
+					}
+					if w.ValidateImageCallback != nil {
+						img = w.ValidateImageCallback(img)
+					}
+					if img != nil {
+						w.SetInk(&Pattern{Image: img})
+						return true
+					}
+				}
+			}
+		}
+		for _, dataType := range imgfmt.AllReadableUTIs() {
+			if di.HasDataType(dataType.UTI) {
+				img, err := NewImageFromBytes(di.Data(dataType.UTI), w.ImageScale)
 				if err != nil {
-					errs.Log(err, "spec", f)
+					errs.Log(err, "image data", dataType.UTI)
 					continue
 				}
 				if w.ValidateImageCallback != nil {

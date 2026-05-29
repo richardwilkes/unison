@@ -12,13 +12,16 @@ package unison
 import (
 	"fmt"
 	"image"
+	"maps"
 	"runtime"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
@@ -88,6 +91,7 @@ type Window struct {
 	lastDropTarget              *Panel
 	dragDataPanel               *Panel
 	dragData                    *DragData
+	dragSourceCleanup           func()
 	lastMouseDownPanel          *Panel
 	lastMouseOverPanel          *Panel
 	lastKeyDownPanel            *Panel
@@ -97,6 +101,7 @@ type Window struct {
 	pressedKeys                 map[KeyCode]bool
 	pressedButtons              map[int]bool
 	data                        map[string]any
+	dragTypes                   map[string]*uti.DataType
 	title                       string
 	titleIcons                  []*Image
 	glCtx                       apiGLContext
@@ -330,16 +335,7 @@ func (w *Window) lostFocus() {
 			w.keyReleased(key, 0)
 		}
 	}
-	if len(w.pressedButtons) != 0 {
-		buttons := make([]int, 0, len(w.pressedButtons))
-		for button := range w.pressedButtons {
-			buttons = append(buttons, button)
-		}
-		where := w.MouseLocation()
-		for _, button := range buttons {
-			w.mouseUp(where, button, 0)
-		}
-	}
+	w.synthesizeMouseUp()
 }
 
 // RunModal displays and brings this window to the front, the runs a modal event loop until StopModal is called.
@@ -1137,6 +1133,19 @@ func (w *Window) mouseDrag(where geom.Point, button int, mods Modifiers) {
 	}
 }
 
+func (w *Window) synthesizeMouseUp() {
+	if len(w.pressedButtons) != 0 {
+		buttons := make([]int, 0, len(w.pressedButtons))
+		for button := range w.pressedButtons {
+			buttons = append(buttons, button)
+		}
+		where := w.MouseLocation()
+		for _, button := range buttons {
+			w.mouseUp(where, button, 0)
+		}
+	}
+}
+
 func (w *Window) mouseUp(where geom.Point, button int, mods Modifiers) {
 	if !w.okToProcess() {
 		modalStack[len(modalStack)-1].mouseUp(where, button, mods)
@@ -1386,8 +1395,16 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 }
 
 // StartDrag starts a drag & drop operation.
-func (w *Window) StartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
-	w.apiStartDrag(provider, img, origin, dragOpMask)
+func (w *Window) StartDrag(img *Image, originInRoot geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
+	w.synthesizeMouseUp()
+	w.dragSourceCleanup = cleanup
+	w.apiStartDrag(img, originInRoot, dragOpMask, data...)
+}
+
+func (w *Window) dragSourceFinished() {
+	if w.dragSourceCleanup != nil {
+		w.dragSourceCleanup()
+	}
 }
 
 // StartDataDrag starts a data drag operation.
@@ -1526,4 +1543,48 @@ func (w *Window) dragExitTarget() {
 func (w *Window) dragFinish() {
 	w.inMouseDown = false
 	w.adjustToCursorChange()
+}
+
+// RegisterForDragTypes registers the window as a potential target for drags of the specified types. Some platforms
+// require this to be called before drag & drop will work within the window, while others ignore it.
+func (w *Window) RegisterForDragTypes(types ...*uti.DataType) {
+	previous := w.collectedRegisteredDragTypes()
+	if w.dragTypes == nil {
+		w.dragTypes = make(map[string]*uti.DataType)
+	}
+	for _, t := range types {
+		w.dragTypes[t.UTI] = t
+	}
+	w.finishRegisteredDragTypesUpdate(previous)
+}
+
+// UnregisterForDragTypes unregisters the window as a potential target for drags of the specified types.
+func (w *Window) UnregisterForDragTypes(types ...*uti.DataType) {
+	previous := w.collectedRegisteredDragTypes()
+	for _, t := range types {
+		delete(w.dragTypes, t.UTI)
+	}
+	w.finishRegisteredDragTypesUpdate(previous)
+}
+
+// ClearRegisteredDragTypes unregisters the window as a potential target for drags of all types.
+func (w *Window) ClearRegisteredDragTypes() {
+	needUpdate := len(w.dragTypes) != 0
+	w.dragTypes = nil
+	if needUpdate {
+		w.apiUpdateRegisteredDragTypes(nil)
+	}
+}
+
+func (w *Window) collectedRegisteredDragTypes() []*uti.DataType {
+	return slices.SortedFunc(maps.Values(w.dragTypes), func(a, b *uti.DataType) int {
+		return strings.Compare(a.UTI, b.UTI)
+	})
+}
+
+func (w *Window) finishRegisteredDragTypesUpdate(previous []*uti.DataType) {
+	revised := w.collectedRegisteredDragTypes()
+	if !slices.Equal(previous, revised) {
+		w.apiUpdateRegisteredDragTypes(revised)
+	}
 }

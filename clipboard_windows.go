@@ -16,6 +16,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
 )
@@ -70,7 +71,7 @@ func apiClipboardGetData(dataType *uti.DataType) []byte {
 	return data
 }
 
-func apiClipboardSetData(data ...ClipboardData) {
+func apiClipboardSetData(data ...drag.Data) {
 	// TODO: Implement
 }
 

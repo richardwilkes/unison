@@ -20,25 +20,25 @@ import (
 // Possible values.
 const (
 	Unknown Enum = iota
-	BMP
+	PNG
+	WEBP
+	JPEG
 	GIF
 	ICO
-	JPEG
-	PNG
 	WBMP
-	WEBP
+	BMP
 )
 
 // All possible values.
 var All = []Enum{
 	Unknown,
-	BMP,
+	PNG,
+	WEBP,
+	JPEG,
 	GIF,
 	ICO,
-	JPEG,
-	PNG,
 	WBMP,
-	WEBP,
+	BMP,
 }
 
 // Enum holds the type of encoding an image was stored with.
@@ -46,7 +46,7 @@ type Enum byte
 
 // EnsureValid ensures this is of a known value.
 func (e Enum) EnsureValid() Enum {
-	if e <= WEBP {
+	if e <= BMP {
 		return e
 	}
 	return Unknown
@@ -57,20 +57,20 @@ func (e Enum) Key() string {
 	switch e {
 	case Unknown:
 		return "unknown"
-	case BMP:
-		return "bmp"
+	case PNG:
+		return "png"
+	case WEBP:
+		return "webp"
+	case JPEG:
+		return "jpeg"
 	case GIF:
 		return "gif"
 	case ICO:
 		return "ico"
-	case JPEG:
-		return "jpeg"
-	case PNG:
-		return "png"
 	case WBMP:
 		return "wbmp"
-	case WEBP:
-		return "webp"
+	case BMP:
+		return "bmp"
 	default:
 		return Unknown.Key()
 	}
@@ -81,20 +81,20 @@ func (e Enum) String() string {
 	switch e {
 	case Unknown:
 		return i18n.Text("Unknown")
-	case BMP:
-		return "BMP"
+	case PNG:
+		return "PNG"
+	case WEBP:
+		return "WEBP"
+	case JPEG:
+		return "JPEG"
 	case GIF:
 		return "GIF"
 	case ICO:
 		return "ICO"
-	case JPEG:
-		return "JPEG"
-	case PNG:
-		return "PNG"
 	case WBMP:
 		return "WBMP"
-	case WEBP:
-		return "WEBP"
+	case BMP:
+		return "BMP"
 	default:
 		return Unknown.String()
 	}

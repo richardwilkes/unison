@@ -23,6 +23,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/x11"
@@ -398,7 +399,11 @@ func (w *Window) apiHide() {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiStartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
+	// TODO: Implement
+}
+
+func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 	// TODO: Implement
 }
 

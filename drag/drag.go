@@ -11,7 +11,25 @@ package drag
 
 import (
 	"net/url"
+
+	"github.com/richardwilkes/toolbox/v2/uti"
 )
+
+// Op represents the kind of drag operation being performed.
+type Op byte
+
+// Possible values for Op.
+const (
+	Copy Op = 1 << iota
+	Move
+	None Op = 0
+)
+
+// Data stores a data type and its data.
+type Data struct {
+	DataType *uti.DataType
+	Data     []byte
+}
 
 // Info contains information about the current drag operation.
 type Info interface {

@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/v2/uti"
+import (
+	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
+)
 
 func apiClipboardAvailableDataTypes() []string {
 	// TODO: Implement
@@ -25,7 +28,7 @@ func apiClipboardGetData(dataType *uti.DataType) []byte {
 	return x11Conn.GetClipboardBytes(dataType.UTI)
 }
 
-func apiClipboardSetData(data ...ClipboardData) {
+func apiClipboardSetData(data ...drag.Data) {
 	// TODO: Implement
 }
 

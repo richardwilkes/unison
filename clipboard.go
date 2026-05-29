@@ -13,13 +13,8 @@ import (
 	"slices"
 
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
 )
-
-// ClipboardData stores a data type and its data.
-type ClipboardData struct {
-	DataType *uti.DataType
-	Data     []byte
-}
 
 // ClipboardHasText returns true if the clipboard contains text.
 func ClipboardHasText() bool {
@@ -37,7 +32,7 @@ func ClipboardGetText() string {
 
 // ClipboardSetText sets text onto the clipboard, replacing the previous content.
 func ClipboardSetText(text string) {
-	ClipboardSetData(ClipboardData{
+	ClipboardSetData(drag.Data{
 		DataType: uti.UTF8PlainText,
 		Data:     []byte(text),
 	})
@@ -54,7 +49,7 @@ func ClipboardGetData(dataType *uti.DataType) []byte {
 }
 
 // ClipboardSetData sets data onto the clipboard, replacing the previous content.
-func ClipboardSetData(data ...ClipboardData) {
+func ClipboardSetData(data ...drag.Data) {
 	apiClipboardSetData(data...)
 }
 

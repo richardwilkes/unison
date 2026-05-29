@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
@@ -26,7 +27,7 @@ func apiClipboardGetData(dataType *uti.DataType) []byte {
 	return mac.PasteboardGeneral().Bytes(dataType)
 }
 
-func apiClipboardSetData(data ...ClipboardData) {
+func apiClipboardSetData(data ...drag.Data) {
 	pb := mac.PasteboardGeneral()
 	pb.Clear()
 	all := make([]mac.PasteboardItem, 0, len(data))

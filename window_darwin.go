@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/mac"
 )
@@ -223,6 +224,13 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window drag exit callback for unknown window", "window", macWnd)
 		}
 	}
+	mac.WindowDragSourceFinishedCallback = func(macWnd mac.Window) {
+		if w := macFindWindow(macWnd); w != nil {
+			w.dragSourceFinished()
+		} else {
+			slog.Warn("received window drag source finished callback for unknown window", "window", macWnd)
+		}
+	}
 }
 
 func (w *Window) apiInit() error {
@@ -383,18 +391,26 @@ func (w *Window) apiHide() {
 	w.wnd.wnd.OrderOut()
 }
 
-func (w *Window) apiStartDrag(provider drag.Provider, img *Image, origin geom.Point, dragOpMask drag.Op) {
+func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
 	nrgba, err := img.ToNRGBA()
 	if err != nil {
 		errs.Log(err)
+		w.dragSourceFinished()
 		return
 	}
 	r := geom.Rect{
-		Point: origin,
+		Point: originInRoot,
 		Size:  img.LogicalSize(),
 	}
-	r.Y += r.Height
-	w.wnd.view.BeginDraggingSession(provider, nrgba, r, dragOpMask)
+	r.Y = w.wnd.view.Frame().Height - r.Height - r.Y
+	w.wnd.view.BeginDraggingSession(nrgba, r, dragOpMask, data...)
+}
+
+func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
+	w.wnd.view.UnregisterDraggedTypes()
+	if len(types) != 0 {
+		w.wnd.view.RegisterDraggedTypes(types)
+	}
 }
 
 func (w *Window) apiDestroy() {
