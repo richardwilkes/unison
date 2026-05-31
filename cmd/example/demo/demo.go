@@ -47,36 +47,19 @@ func NewDemoWindow() (*unison.Window, error) {
 		VSpacing: 10,
 	})
 
-	// Create a wrappable row of buttons
-	panel := createButtonsPanel()
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	content.AddChild(panel)
-
-	// Create a wrappable row of buttons that bring up dialogs
-	panel = createDialogButtonsPanel()
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	content.AddChild(panel)
-
-	addSeparator(content)
-
-	// Create a wrappable row of svg buttons
-	panel = createSVGButtonsPanel()
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	content.AddChild(panel)
+	// Create some wrappable panels of buttons
+	for _, panel := range createButtonPanels() {
+		panel.SetLayoutData(&unison.FlexLayoutData{
+			VAlign: align.Middle,
+			HGrab:  true,
+		})
+		content.AddChild(panel)
+	}
 
 	addSeparator(content)
 
 	// Create a wrappable row of links
-	panel = createLinksPanel()
+	panel := createLinksPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -159,6 +142,16 @@ func NewDemoWindow() (*unison.Window, error) {
 	return wnd, nil
 }
 
+func createButtonPanels() []*unison.Panel {
+	panels := make([]*unison.Panel, 0, 5)
+	panels = append(panels, createActionButtonsPanel(NewWindowAction, NewTableWindowAction, NewDockWindowAction))
+	panels = append(panels, createActionButtonsPanel(NewMarkdownWindowAction, NewSVGWindowAction, ShowColorsWindowAction))
+	panels = append(panels, createButtonsPanel())
+	panels = append(panels, createDialogButtonsPanel())
+	panels = append(panels, createSVGButtonsPanel())
+	return panels
+}
+
 func createButtonsPanel() *unison.Panel {
 	// Create a panel to place some buttons into.
 	panel := unison.NewPanel()
@@ -173,6 +166,21 @@ func createButtonsPanel() *unison.Panel {
 		if i == 2 {
 			btn.SetEnabled(false)
 		}
+	}
+	return panel
+}
+
+func createActionButtonsPanel(actions ...*unison.Action) *unison.Panel {
+	// Create a panel to place some buttons into.
+	panel := unison.NewPanel()
+	panel.SetLayout(&unison.FlowLayout{
+		HSpacing: unison.StdHSpacing,
+		VSpacing: unison.StdVSpacing,
+	})
+
+	// Add the action buttons
+	for _, action := range actions {
+		createActionButton(action, panel)
 	}
 	return panel
 }
@@ -207,6 +215,15 @@ func createButton(title string, panel *unison.Panel) *unison.Button {
 	btn.ClickCallback = func() { slog.Info(title) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", title))
 	btn.SetLayoutData(align.Middle)
+	panel.AddChild(btn)
+	return btn
+}
+
+func createActionButton(action *unison.Action, panel *unison.Panel) *unison.Button {
+	btn := unison.NewButton()
+	btn.SetTitle(action.Title)
+	btn.SetLayoutData(align.Middle)
+	btn.ClickCallback = func() { action.ExecuteCallback(action, nil) }
 	panel.AddChild(btn)
 	return btn
 }
