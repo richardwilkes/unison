@@ -10,9 +10,9 @@ require (
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.8.2
 	github.com/zeebo/xxh3 v1.1.0
-	golang.org/x/image v0.40.0
-	golang.org/x/net v0.54.0
-	golang.org/x/sys v0.44.0
+	golang.org/x/image v0.41.0
+	golang.org/x/net v0.55.0
+	golang.org/x/sys v0.45.0
 	golang.org/x/text v0.37.0
 )
 

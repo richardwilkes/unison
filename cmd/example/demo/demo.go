@@ -143,13 +143,13 @@ func NewDemoWindow() (*unison.Window, error) {
 }
 
 func createButtonPanels() []*unison.Panel {
-	panels := make([]*unison.Panel, 0, 5)
-	panels = append(panels, createActionButtonsPanel(NewWindowAction, NewTableWindowAction, NewDockWindowAction))
-	panels = append(panels, createActionButtonsPanel(NewMarkdownWindowAction, NewSVGWindowAction, ShowColorsWindowAction))
-	panels = append(panels, createButtonsPanel())
-	panels = append(panels, createDialogButtonsPanel())
-	panels = append(panels, createSVGButtonsPanel())
-	return panels
+	return []*unison.Panel{
+		createActionButtonsPanel(NewWindowAction, NewTableWindowAction, NewDockWindowAction),
+		createActionButtonsPanel(NewMarkdownWindowAction, NewSVGWindowAction, ShowColorsWindowAction),
+		createButtonsPanel(),
+		createDialogButtonsPanel(),
+		createSVGButtonsPanel(),
+	}
 }
 
 func createButtonsPanel() *unison.Panel {
