@@ -400,7 +400,7 @@ func (w *Window) apiHide() {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
+func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
 	// TODO: Implement
 }
 

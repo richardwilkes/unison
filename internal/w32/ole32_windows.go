@@ -24,6 +24,7 @@ var (
 	nullGUID             windows.GUID
 )
 
+// CoCreateInstance https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance
 func CoCreateInstance(classID, instanceID windows.GUID) *Unknown {
 	if instanceID == nullGUID {
 		instanceID = instanceIDUnknown

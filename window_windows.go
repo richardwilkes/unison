@@ -78,7 +78,7 @@ func (w *Window) apiInit() error {
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_DROPFILES, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYDATA, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYGLOBALDATA, w32.MSGFLT_ALLOW, nil)
-	w32.DragAcceptFiles(w.wnd.wnd, true)
+	w32.DragAcceptFiles(w.wnd.wnd, true) // TODO: Likely remove this and replace with new drag & drop support
 	w.updateFramebufferTransparency()
 	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
@@ -343,7 +343,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				w.apiUpdateCursorImage()
 				return 1
 			}
-		case w32.WM_DROPFILES:
+		case w32.WM_DROPFILES: // TODO: Likely remove this and replace with new drag & drop support
 			drop := w32.HDROP(wParam)
 			count := w32.DragQueryFileCount(drop)
 			paths := make([]string, count)
@@ -352,7 +352,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			for i := range count {
 				paths[i] = w32.DragQueryFileW(drop, i)
 			}
-			w.fileDrop(paths)
+			// w.fileDrop(paths)
 			w32.DragFinish(drop)
 			return 0
 		}
@@ -623,7 +623,7 @@ func (w *Window) apiHide() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
-func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
+func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
 	// TODO: Implement
 }
 
