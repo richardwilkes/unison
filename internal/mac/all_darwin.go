@@ -151,7 +151,6 @@ func NewArrayFromStringSlice(slice []string) Array {
 	a := C.CFArrayCreateMutable(0, C.long(len(slice)), &C.kCFTypeArrayCallBacks)
 	for _, s := range slice {
 		str := NewString(s)
-		//nolint:govet // Spurious lint flagging due to C code
 		C.CFArrayAppendValue(a, unsafe.Pointer(str))
 		str.Release()
 	}
