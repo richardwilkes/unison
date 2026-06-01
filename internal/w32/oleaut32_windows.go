@@ -12,6 +12,8 @@ package w32
 import (
 	"syscall"
 	"unsafe"
+
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 )
 
 var (
@@ -26,5 +28,5 @@ func SysAllocString(str string) *int16 {
 	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := sysAllocStringProc.Call(uintptr(unsafe.Pointer(p)))
-	return (*int16)(unsafe.Pointer(r1)) //nolint:govet // No other choice
+	return xruntime.PtrFromUintptr[int16](r1)
 }

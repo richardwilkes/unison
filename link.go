@@ -42,9 +42,13 @@ type LinkTheme struct {
 	LabelTheme
 }
 
-// NewLink creates a new RichLabel that can be used as a hyperlink.
-func NewLink(title, tooltip, target string, theme LinkTheme, clickHandler func(Paneler, string)) *Label { //nolint:gocritic // OK for theme to be passed by value here
+// NewLink creates a new RichLabel that can be used as a hyperlink. You may pass nil for the theme to use the
+// DefaultLinkTheme.
+func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(Paneler, string)) *Label {
 	link := NewLabel()
+	if theme == nil {
+		theme = &DefaultLinkTheme
+	}
 	link.LabelTheme = theme.LabelTheme
 	link.SetTitle(title)
 	if tooltip != "" {

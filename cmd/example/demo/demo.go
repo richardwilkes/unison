@@ -311,24 +311,21 @@ func createLinksPanel() *unison.Panel {
 	})
 
 	// Add some links
-	panel.AddChild(unison.NewLink("Apple", "Open the Apple home page", "", unison.DefaultLinkTheme,
-		func(_ unison.Paneler, _ string) {
-			if err := xos.OpenBrowser("https://www.apple.com"); err != nil {
-				errs.Log(err)
-			}
-		}))
-	panel.AddChild(unison.NewLink("Google", "Open the Google home page", "", unison.DefaultLinkTheme,
-		func(_ unison.Paneler, _ string) {
-			if err := xos.OpenBrowser("https://www.google.com"); err != nil {
-				errs.Log(err)
-			}
-		}))
-	panel.AddChild(unison.NewLink("Microsoft", "Open the Microsoft home page", "", unison.DefaultLinkTheme,
-		func(_ unison.Paneler, _ string) {
-			if err := xos.OpenBrowser("https://www.microsoft.com"); err != nil {
-				errs.Log(err)
-			}
-		}))
+	panel.AddChild(unison.NewLink("Apple", "Open the Apple home page", "", nil, func(_ unison.Paneler, _ string) {
+		if err := xos.OpenBrowser("https://www.apple.com"); err != nil {
+			errs.Log(err)
+		}
+	}))
+	panel.AddChild(unison.NewLink("Google", "Open the Google home page", "", nil, func(_ unison.Paneler, _ string) {
+		if err := xos.OpenBrowser("https://www.google.com"); err != nil {
+			errs.Log(err)
+		}
+	}))
+	panel.AddChild(unison.NewLink("Microsoft", "Open the Microsoft home page", "", nil, func(_ unison.Paneler, _ string) {
+		if err := xos.OpenBrowser("https://www.microsoft.com"); err != nil {
+			errs.Log(err)
+		}
+	}))
 
 	return panel
 }

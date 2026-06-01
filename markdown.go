@@ -980,7 +980,7 @@ func (m *Markdown) createLink(label, target, tooltip string) *Label {
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}
-	link := NewLink(label, tooltip, target, theme, m.linkHandler)
+	link := NewLink(label, tooltip, target, &theme, m.linkHandler)
 	if m.text != nil {
 		_, prefSize, _ := link.Sizes(geom.Size{})
 		m.prepareToFlushText(prefSize.Width)

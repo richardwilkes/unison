@@ -16,6 +16,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"golang.org/x/sys/windows"
 )
 
@@ -1298,7 +1299,7 @@ func LoadImageW(inst HINSTANCE, name UTF16String, typ uint32, cx, cy int, load u
 
 // MakeIntResourceW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-makeintresourcew
 func MakeIntResourceW(id int) UTF16String {
-	return UTF16String(unsafe.Pointer(uintptr(id))) //nolint:govet // No other choice
+	return UTF16String(xruntime.PtrFromUintptr[uint16](uintptr(id)))
 }
 
 // MapVirtualKeyW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-mapvirtualkeyw

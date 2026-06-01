@@ -13,11 +13,11 @@ import (
 	"image"
 	"math"
 	"runtime"
-	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/w32"
@@ -290,7 +290,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			frame.Right = int32(float32(frame.Right))
 			frame.Top = int32(float32(frame.Top))
 			frame.Bottom = int32(float32(frame.Bottom))
-			mmi := (*w32.MINMAXINFO)(unsafe.Pointer(lParam)) //nolint:govet // No other choice
+			mmi := xruntime.PtrFromUintptr[w32.MINMAXINFO](lParam)
 			mmi.MinTrackSize.X = int32(minimum.Width) + frame.Right - frame.Left
 			mmi.MinTrackSize.Y = int32(minimum.Height) + frame.Bottom - frame.Top
 			mmi.MaxTrackSize.X = int32(maximum.Width) + frame.Right - frame.Left
@@ -318,7 +318,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				newDPI := uint32(wParam & 0xFFFF)
 				w32.AdjustWindowRectExForDpi(&src, style, false, exStyle, curDPI)
 				w32.AdjustWindowRectExForDpi(&dst, style, false, exStyle, newDPI)
-				size := (*w32.SIZE)(unsafe.Pointer(lParam)) //nolint:govet // Required to access data
+				size := xruntime.PtrFromUintptr[w32.SIZE](lParam)
 				if curDPI != newDPI {
 					scale := float32(newDPI) / float32(curDPI)
 					size.CX = int32(float32(size.CX) * scale)
@@ -330,7 +330,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 		case w32.WM_DPICHANGED:
 			if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
-				rect := (*w32.RECT)(unsafe.Pointer(lParam)) //nolint:govet // Required to access data
+				rect := xruntime.PtrFromUintptr[w32.RECT](lParam)
 				w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, rect.Left, rect.Top, rect.Right-rect.Left,
 					rect.Bottom-rect.Top, w32.SWP_NOZORDER|w32.SWP_NOACTIVATE)
 			}

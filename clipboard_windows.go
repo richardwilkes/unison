@@ -16,6 +16,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
@@ -67,7 +68,7 @@ func apiClipboardGetData(dataType *uti.DataType) []byte {
 	defer w32.GlobalUnlock(obj)
 	size := w32.GlobalSize(obj)
 	data := make([]byte, size)
-	copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), len(data))) //nolint:govet // No other choice
+	copy(data, unsafe.Slice(xruntime.PtrFromUintptr[byte](buffer), len(data)))
 	return data
 }
 
@@ -99,7 +100,7 @@ func apiClipboardGetText() string {
 		return ""
 	}
 	defer w32.GlobalUnlock(obj)
-	return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(buffer))) //nolint:govet // No other choice
+	return windows.UTF16PtrToString(xruntime.PtrFromUintptr[uint16](buffer))
 }
 
 func apiClipboardSetText(text string) {
@@ -117,7 +118,7 @@ func apiClipboardSetText(text string) {
 		w32.GlobalFree(obj)
 		return
 	}
-	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer)), len(s)), s) //nolint:govet // No other choice
+	copy(unsafe.Slice(xruntime.PtrFromUintptr[uint16](buffer), len(s)), s)
 	w32.GlobalUnlock(obj)
 	var wnd windows.HWND
 	if len(windowList) != 0 {
@@ -152,7 +153,7 @@ func apiClipboardSetBytes(dataType string, data []byte) {
 		w32.GlobalFree(obj)
 		return
 	}
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(buffer)), len(data)), data) //nolint:govet // No other choice
+	copy(unsafe.Slice(xruntime.PtrFromUintptr[byte](buffer), len(data)), data)
 	w32.GlobalUnlock(obj)
 	var wnd windows.HWND
 	if len(windowList) != 0 {
