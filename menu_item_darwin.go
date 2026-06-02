@@ -57,7 +57,7 @@ func (mi *macMenuItem) Menu() Menu {
 func (mi *macMenuItem) Index() int {
 	if m := mi.Menu(); m != nil {
 		count := m.Count()
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if mi.IsSame(m.ItemAtIndex(i)) {
 				return i
 			}

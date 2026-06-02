@@ -1894,7 +1894,7 @@ func (c *Conn) ContentScale() (float32, error) {
 		return 1, err
 	}
 	if format == 8 && actualPropertyType == AtomString {
-		for _, line := range strings.Split(string(value), "\n") {
+		for line := range strings.SplitSeq(string(value), "\n") {
 			const xftDPI = "Xft.dpi:"
 			if strings.HasPrefix(line, xftDPI) {
 				var dpi int
