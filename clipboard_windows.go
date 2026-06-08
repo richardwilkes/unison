@@ -24,8 +24,8 @@ import (
 )
 
 var (
-	w32DataTypeMapLock   sync.RWMutex
-	w32DataTypeMap       = map[string]w32.ClipboardFormat{
+	w32DataTypeMapLock sync.RWMutex
+	w32DataTypeMap     = map[string]w32.ClipboardFormat{
 		uti.UTF8PlainText.UTI: w32.CFUnicodeText,
 	}
 	w32ReverseDataTypeMap = map[w32.ClipboardFormat]string{
@@ -99,6 +99,16 @@ func apiClipboardGetData(dataType *uti.DataType) []byte {
 	}
 	defer w32.GlobalUnlock(obj)
 	size := w32.GlobalSize(obj)
+	if uti.UTF8PlainText.ConformsTo(dataType) {
+		// Windows stores CF_UNICODETEXT as UTF-16LE; convert to UTF-8 for the caller.
+		u16 := unsafe.Slice(xruntime.PtrFromUintptr[uint16](buffer), size/2)
+		// Strip any null terminator before decoding.
+		end := len(u16)
+		for end > 0 && u16[end-1] == 0 {
+			end--
+		}
+		return []byte(windows.UTF16ToString(u16[:end]))
+	}
 	data := make([]byte, size)
 	copy(data, unsafe.Slice(xruntime.PtrFromUintptr[byte](buffer), len(data)))
 	return data
