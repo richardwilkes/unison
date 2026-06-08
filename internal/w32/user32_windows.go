@@ -43,7 +43,9 @@ var (
 	getClassLongPtrWProc              = user32.NewProc("GetClassLongPtrW")
 	getClientRectProc                 = user32.NewProc("GetClientRect")
 	getClipboardDataProc              = user32.NewProc("GetClipboardData")
+	getClipboardFormatNameWProc       = user32.NewProc("GetClipboardFormatNameW")
 	getClipboardSequenceNumberProc    = user32.NewProc("GetClipboardSequenceNumber")
+	isClipboardFormatAvailableProc    = user32.NewProc("IsClipboardFormatAvailable")
 	getCursorPosProc                  = user32.NewProc("GetCursorPos")
 	getDCProc                         = user32.NewProc("GetDC")
 	getDoubleClickTimeProc            = user32.NewProc("GetDoubleClickTime")
@@ -1203,6 +1205,17 @@ func GetClipboardData(format ClipboardFormat) syscall.Handle {
 	return syscall.Handle(h)
 }
 
+// GetClipboardFormatNameW https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboardformatnamew
+func GetClipboardFormatNameW(format ClipboardFormat) string {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	buf := make([]uint16, 256)
+	n, _, _ := getClipboardFormatNameWProc.Call(uintptr(format), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if n == 0 {
+		return ""
+	}
+	return windows.UTF16ToString(buf[:n])
+}
+
 // GetClipboardSequenceNumber https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboardsequencenumber
 func GetClipboardSequenceNumber() int {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -1286,6 +1299,13 @@ func GetWindowPlacement(hwnd windows.HWND, placement *WINDOWPLACEMENT) bool {
 func GetWindowRect(hwnd windows.HWND, rect *RECT) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := getWindowRectProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(rect)))
+	return b&0xff != 0
+}
+
+// IsClipboardFormatAvailable https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-isclipboardformatavailable
+func IsClipboardFormatAvailable(format ClipboardFormat) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := isClipboardFormatAvailableProc.Call(uintptr(format))
 	return b&0xff != 0
 }
 
