@@ -13,6 +13,7 @@ import (
 	"image"
 	"math"
 	"runtime"
+	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -38,6 +39,7 @@ type apiWindow struct {
 	smallIcon     w32.HICON
 	highSurrogate uint16
 	mouseTracked  bool
+	dropTarget    *winDropTarget
 }
 
 func findWindowByHWND(wnd windows.HWND) *Window {
@@ -75,10 +77,8 @@ func (w *Window) apiInit() error {
 	if w.wnd.wnd == 0 {
 		return errs.New("unable to create window")
 	}
-	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_DROPFILES, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYDATA, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYGLOBALDATA, w32.MSGFLT_ALLOW, nil)
-	w32.DragAcceptFiles(w.wnd.wnd, true) // TODO: Likely remove this and replace with new drag & drop support
 	w.updateFramebufferTransparency()
 	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
@@ -343,18 +343,6 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 				w.apiUpdateCursorImage()
 				return 1
 			}
-		case w32.WM_DROPFILES: // TODO: Likely remove this and replace with new drag & drop support
-			drop := w32.HDROP(wParam)
-			count := w32.DragQueryFileCount(drop)
-			paths := make([]string, count)
-			pt, _ := w32.DragQueryPoint(drop)
-			w.handleWindowsMouseMove(geom.NewPoint(float32(pt.X), float32(pt.Y)))
-			for i := range count {
-				paths[i] = w32.DragQueryFileW(drop, i)
-			}
-			// w.fileDrop(paths)
-			w32.DragFinish(drop)
-			return 0
 		}
 	}
 	return w32.DefWindowProcW(hWnd, uMsg, wParam, lParam)
@@ -623,16 +611,53 @@ func (w *Window) apiHide() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
-func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
-	// TODO: Implement
+func (w *Window) apiStartDrag(_ *Image, _ geom.Point, dragOpMask drag.Op, data ...drag.Data) {
+	if len(data) == 0 {
+		w.dragSourceFinished()
+		return
+	}
+
+	var pinner runtime.Pinner
+	defer pinner.Unpin()
+
+	dataObj := newWinDataObject(data, dragOpMask)
+	pinner.Pin(dataObj)
+	pinner.Pin(dataObj.enumFmt)
+
+	dropSrc := newWinDropSource()
+	pinner.Pin(dropSrc)
+
+	okEffects := uintptr(opMaskToDropEffect(dragOpMask))
+	var effect uint32
+	w32.DoDragDrop(unsafe.Pointer(dataObj), unsafe.Pointer(dropSrc), okEffects, &effect)
+
+	w.dragSourceFinished()
 }
 
 func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
-	// TODO: Implement
+	if w.wnd.dropTarget != nil {
+		w32.RevokeDragDrop(w.wnd.wnd)
+		w.wnd.dropTarget.revoke()
+		w.wnd.dropTarget = nil
+	}
+	if len(types) != 0 {
+		dt := newWinDropTarget(w)
+		if r := w32.RegisterDragDrop(w.wnd.wnd, unsafe.Pointer(dt)); r != 0 {
+			errs.Log(errs.Newf("RegisterDragDrop failed: 0x%X", r))
+			dt.revoke()
+			return
+		}
+		w.wnd.dropTarget = dt
+	}
 }
 
 func (w *Window) apiDestroy() {
 	w.glCtx.apiDestroy()
+	if w.wnd.dropTarget != nil {
+		w32.RevokeDragDrop(w.wnd.wnd)
+		w.wnd.dropTarget.revoke()
+		w.wnd.dropTarget = nil
+	}
 	if w.wnd.wnd != 0 {
 		w32.DestroyWindow(w.wnd.wnd)
 		w.wnd.wnd = 0

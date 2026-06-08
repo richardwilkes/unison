@@ -42,6 +42,9 @@ func apiBeginStartup() error {
 	} else {
 		w32.SetProcessDpiAwareness(w32.PROCESS_PER_MONITOR_DPI_AWARE)
 	}
+	if r := w32.OleInitialize(); r != 0 && r != 1 { // 0 = S_OK, 1 = S_FALSE (already initialized)
+		return errs.Newf("OleInitialize failed: 0x%X", r)
+	}
 	return nil
 }
 
