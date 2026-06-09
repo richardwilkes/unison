@@ -42,10 +42,7 @@ func apiBeginStartup() error {
 	} else {
 		w32.SetProcessDpiAwareness(w32.PROCESS_PER_MONITOR_DPI_AWARE)
 	}
-	if r := w32.OleInitialize(); r != 0 && r != 1 { // 0 = S_OK, 1 = S_FALSE (already initialized)
-		return errs.Newf("OleInitialize failed: 0x%X", r)
-	}
-	return nil
+	return w32.OleInitialize()
 }
 
 func apiLateInit() {
@@ -136,7 +133,7 @@ func apiPollEvents() {
 
 	// Hack to release some modifiers keys that the system did not emit KEYUP events for.
 	if hwnd := w32.GetActiveWindow(); hwnd != 0 {
-		if window := findWindowByHWND(hwnd); window != nil {
+		if window := w32FindWindowByHWND(hwnd); window != nil {
 			keys := [4]struct {
 				vk  int
 				key KeyCode

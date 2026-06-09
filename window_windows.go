@@ -28,21 +28,21 @@ import (
 const wndProcClassName = "Unison"
 
 var (
-	mainWndClass w32.ATOM
-	mainInstance w32.HINSTANCE
-	blankCursor  w32.HCURSOR
+	w32MainWndClass w32.ATOM
+	w32MainInstance w32.HINSTANCE
+	w32BlankCursor  w32.HCURSOR
 )
 
 type apiWindow struct {
+	dropTarget    *w32.DropTarget
 	wnd           windows.HWND
 	bigIcon       w32.HICON
 	smallIcon     w32.HICON
 	highSurrogate uint16
 	mouseTracked  bool
-	dropTarget    *winDropTarget
 }
 
-func findWindowByHWND(wnd windows.HWND) *Window {
+func w32FindWindowByHWND(wnd windows.HWND) *Window {
 	for _, w := range windowList {
 		if w.wnd.wnd == wnd {
 			return w
@@ -52,34 +52,34 @@ func findWindowByHWND(wnd windows.HWND) *Window {
 }
 
 func (w *Window) apiInit() error {
-	style := w.windowStyle()
-	exStyle := w.windowExStyle()
-	if mainWndClass == 0 {
-		mainInstance = w32.HINSTANCE(w32.GetModuleHandleW(""))
+	style := w.w32WindowStyle()
+	exStyle := w.w32WindowExStyle()
+	if w32MainWndClass == 0 {
+		w32MainInstance = w32.HINSTANCE(w32.GetModuleHandleW(""))
 		className, err := windows.UTF16FromString(wndProcClassName)
 		if err != nil {
 			return errs.New("unable to create window class name")
 		}
 		defer runtime.KeepAlive(className)
-		mainWndClass = w32.RegisterClassExW(&w32.WNDCLASSEX{
+		w32MainWndClass = w32.RegisterClassExW(&w32.WNDCLASSEX{
 			Style:     w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC,
-			WndProc:   windows.NewCallbackCDecl(wndProc),
-			Instance:  mainInstance,
+			WndProc:   windows.NewCallbackCDecl(w32WndProc),
+			Instance:  w32MainInstance,
 			ClassName: &className[0],
 			Icon: w32.HICON(w32.LoadImageW(0, w32.MakeIntResourceW(w32.IDI_APPLICATION), w32.IMAGE_ICON, 0, 0,
 				w32.LR_DEFAULT_SIZE|w32.LR_SHARED)),
 		})
-		if mainWndClass == 0 {
+		if w32MainWndClass == 0 {
 			return errs.New("unable to register window class")
 		}
 	}
-	w.wnd.wnd = w32.CreateWindowExW(exStyle, wndProcClassName, w.title, style, 0, 0, 1, 1, 0, 0, mainInstance, 0)
+	w.wnd.wnd = w32.CreateWindowExW(exStyle, wndProcClassName, w.title, style, 0, 0, 1, 1, 0, 0, w32MainInstance, 0)
 	if w.wnd.wnd == 0 {
 		return errs.New("unable to create window")
 	}
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYDATA, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYGLOBALDATA, w32.MSGFLT_ALLOW, nil)
-	w.updateFramebufferTransparency()
+	w.w32UpdateFramebufferTransparency()
 	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
@@ -87,8 +87,8 @@ func (w *Window) apiInit() error {
 	return nil
 }
 
-func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
-	if w := findWindowByHWND(hWnd); w != nil {
+func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
+	if w := w32FindWindowByHWND(hWnd); w != nil {
 		switch uMsg {
 		case w32.WM_SETFOCUS:
 			w.gainedFocus()
@@ -223,7 +223,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 			return 0
 		case w32.WM_MOUSEMOVE:
-			w.handleWindowsMouseMove(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF)))
+			w.w32HandleMouseMove(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF)))
 			return 0
 		case w32.WM_MOUSELEAVE:
 			w.wnd.mouseTracked = false
@@ -275,8 +275,8 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			return 1
 		case w32.WM_GETMINMAXINFO:
 			var frame w32.RECT
-			style := w.windowStyle()
-			exStyle := w.windowExStyle()
+			style := w.w32WindowStyle()
+			exStyle := w.w32WindowExStyle()
 			if w32IsWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
 				w32.AdjustWindowRectExForDpi(&frame, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
 			} else {
@@ -307,13 +307,13 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 			}
 		case w32.WM_DWMCOMPOSITIONCHANGED,
 			w32.WM_DWMCOLORIZATIONCOLORCHANGED:
-			w.updateFramebufferTransparency()
+			w.w32UpdateFramebufferTransparency()
 			return 0
 		case w32.WM_GETDPISCALEDSIZE:
 			if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 				var src, dst w32.RECT
-				style := w.windowStyle()
-				exStyle := w.windowExStyle()
+				style := w.w32WindowStyle()
+				exStyle := w.w32WindowExStyle()
 				curDPI := w32.GetDpiForWindow(w.wnd.wnd)
 				newDPI := uint32(wParam & 0xFFFF)
 				w32.AdjustWindowRectExForDpi(&src, style, false, exStyle, curDPI)
@@ -348,7 +348,7 @@ func wndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARA
 	return w32.DefWindowProcW(hWnd, uMsg, wParam, lParam)
 }
 
-func (w *Window) windowStyle() uint32 {
+func (w *Window) w32WindowStyle() uint32 {
 	var style uint32
 	style = w32.WS_CLIPSIBLINGS | w32.WS_CLIPCHILDREN | w32.WS_SYSMENU | w32.WS_MINIMIZEBOX
 	if w.undecorated {
@@ -362,7 +362,7 @@ func (w *Window) windowStyle() uint32 {
 	return style
 }
 
-func (w *Window) windowExStyle() uint32 {
+func (w *Window) w32WindowExStyle() uint32 {
 	var style uint32
 	style = w32.WS_EX_APPWINDOW
 	if w.floating {
@@ -371,7 +371,7 @@ func (w *Window) windowExStyle() uint32 {
 	return style
 }
 
-func (w *Window) handleWindowsMouseMove(pt geom.Point) {
+func (w *Window) w32HandleMouseMove(pt geom.Point) {
 	pt = w.apiConvertRawMouse(pt)
 	mods := w.CurrentKeyModifiers()
 	if !w.wnd.mouseTracked {
@@ -397,8 +397,8 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 		cyIcon := w32.GetSystemMetrics(w32.SM_CYICON)
 		cxSmIcon := w32.GetSystemMetrics(w32.SM_CXSMICON)
 		cySmIcon := w32.GetSystemMetrics(w32.SM_CYSMICON)
-		big = w32CreateIconFromImage(chooseBestImage(images, cxIcon, cyIcon), 0, 0, true)
-		small = w32CreateIconFromImage(chooseBestImage(images, cxSmIcon, cySmIcon), 0, 0, true)
+		big = w32CreateIconFromImage(w32ChooseBestImage(images, cxIcon, cyIcon), 0, 0, true)
+		small = w32CreateIconFromImage(w32ChooseBestImage(images, cxSmIcon, cySmIcon), 0, 0, true)
 	} else {
 		big = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICON))
 		small = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICONSM))
@@ -415,7 +415,7 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	w.wnd.smallIcon = small
 }
 
-func chooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
+func w32ChooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
 	var closest *image.NRGBA
 	leastDiff := math.MaxInt32
 	wh := width * height
@@ -453,13 +453,13 @@ func (w *Window) apiFrameRect() geom.Rect {
 }
 
 func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
-	return contentRect.Inset(w.frameInsets().Mul(-1)).Align()
+	return contentRect.Inset(w.w32FrameInsets().Mul(-1)).Align()
 }
 
-func (w *Window) frameInsets() geom.Insets {
+func (w *Window) w32FrameInsets() geom.Insets {
 	var rect w32.RECT
-	style := w.windowStyle()
-	exStyle := w.windowExStyle()
+	style := w.w32WindowStyle()
+	exStyle := w.w32WindowExStyle()
 	if w32IsWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild) {
 		w32.AdjustWindowRectExForDpi(&rect, style, false, exStyle, w32.GetDpiForWindow(w.wnd.wnd))
 	} else {
@@ -496,11 +496,11 @@ func (w *Window) apiContentRect() geom.Rect {
 }
 
 func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
-	return frameRect.Inset(w.frameInsets()).Align()
+	return frameRect.Inset(w.w32FrameInsets()).Align()
 }
 
 func (w *Window) apiSetContentRect(rect geom.Rect) {
-	rect = rect.Inset(w.frameInsets().Mul(-1))
+	rect = rect.Inset(w.w32FrameInsets().Mul(-1))
 	rect.Size = rect.Size.MulPt(w.apiBackingScale())
 	rect = rect.Align()
 	w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
@@ -533,11 +533,11 @@ func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
 func (w *Window) apiUpdateCursorImage() {
 	switch {
 	case w.cursorHidden:
-		if blankCursor == 0 {
+		if w32BlankCursor == 0 {
 			var data [1]byte
-			blankCursor = w32.CreateCursor(w32.HINSTANCE(w32.GetModuleHandleW("")), 0, 0, 1, 1, data[:], data[:])
+			w32BlankCursor = w32.CreateCursor(w32.HINSTANCE(w32.GetModuleHandleW("")), 0, 0, 1, 1, data[:], data[:])
 		}
-		w32.SetCursor(blankCursor)
+		w32.SetCursor(w32BlankCursor)
 	case w.cursor != nil:
 		w32.SetCursor(w.cursor.cursor)
 	default:
@@ -616,18 +616,11 @@ func (w *Window) apiStartDrag(_ *Image, _ geom.Point, dragOpMask drag.Op, data .
 		w.dragSourceFinished()
 		return
 	}
-
-	var pinner runtime.Pinner
-	defer pinner.Unpin()
-
-	dataObj := newWinDataObject(data, dragOpMask)
-	pinner.Pin(dataObj)
-	pinner.Pin(dataObj.enumFmt)
-
-	dropSrc := newWinDropSource()
-	pinner.Pin(dropSrc)
-
-	okEffects := uintptr(opMaskToDropEffect(dragOpMask))
+	dataObj := w32.NewDataObject(data, dragOpMask)
+	defer dataObj.Release()
+	dropSrc := w32.NewDropSource()
+	defer dropSrc.Release()
+	okEffects := uintptr(w32.OpMaskToDropEffect(dragOpMask))
 	var effect uint32
 	w32.DoDragDrop(unsafe.Pointer(dataObj), unsafe.Pointer(dropSrc), okEffects, &effect)
 
@@ -637,14 +630,14 @@ func (w *Window) apiStartDrag(_ *Image, _ geom.Point, dragOpMask drag.Op, data .
 func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 	if w.wnd.dropTarget != nil {
 		w32.RevokeDragDrop(w.wnd.wnd)
-		w.wnd.dropTarget.revoke()
+		w.wnd.dropTarget.Revoke()
 		w.wnd.dropTarget = nil
 	}
 	if len(types) != 0 {
-		dt := newWinDropTarget(w)
-		if r := w32.RegisterDragDrop(w.wnd.wnd, unsafe.Pointer(dt)); r != 0 {
+		dt := w32.NewDropTarget(w32DragTargetWindowProxy{w: w})
+		if r := w32.RegisterDragDrop(w.wnd.wnd, dt); r != 0 {
 			errs.Log(errs.Newf("RegisterDragDrop failed: 0x%X", r))
-			dt.revoke()
+			dt.Revoke()
 			return
 		}
 		w.wnd.dropTarget = dt
@@ -655,7 +648,7 @@ func (w *Window) apiDestroy() {
 	w.glCtx.apiDestroy()
 	if w.wnd.dropTarget != nil {
 		w32.RevokeDragDrop(w.wnd.wnd)
-		w.wnd.dropTarget.revoke()
+		w.wnd.dropTarget.Revoke()
 		w.wnd.dropTarget = nil
 	}
 	if w.wnd.wnd != 0 {
@@ -681,7 +674,7 @@ func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
 	return where
 }
 
-func (w *Window) updateFramebufferTransparency() {
+func (w *Window) w32UpdateFramebufferTransparency() {
 	if w.transparent {
 		region := w32.CreateRectRgn(0, 0, -1, -1)
 		bb := w32.DWM_BLURBEHIND{
@@ -692,4 +685,32 @@ func (w *Window) updateFramebufferTransparency() {
 		w32.DwmEnableBlurBehindWindow(w.wnd.wnd, &bb)
 		w32.DeleteObject(w32.HGDIOBJ(region))
 	}
+}
+
+type w32DragTargetWindowProxy struct {
+	w *Window
+}
+
+func (p w32DragTargetWindowProxy) HWND() windows.HWND {
+	return p.w.wnd.wnd
+}
+
+func (p w32DragTargetWindowProxy) ConvertRawMousePoint(where geom.Point) geom.Point {
+	return p.w.apiConvertRawMouse(where)
+}
+
+func (p w32DragTargetWindowProxy) DragEntered(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
+	return p.w.dragEntered(di, where, mods)
+}
+
+func (p w32DragTargetWindowProxy) DragUpdated(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
+	return p.w.dragUpdate(di, where, mods)
+}
+
+func (p w32DragTargetWindowProxy) DragExited() {
+	p.w.dragExit()
+}
+
+func (p w32DragTargetWindowProxy) Drop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
+	return p.w.drop(di, where, mods)
 }

@@ -10,27 +10,15 @@
 package unison
 
 import (
-	"sync"
 	"syscall"
 	"time"
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
-)
-
-var (
-	w32DataTypeMapLock sync.RWMutex
-	w32DataTypeMap     = map[string]w32.ClipboardFormat{
-		uti.UTF8PlainText.UTI: w32.CFUnicodeText,
-	}
-	w32ReverseDataTypeMap = map[w32.ClipboardFormat]string{
-		w32.CFUnicodeText: uti.UTF8PlainText.UTI,
-	}
 )
 
 func apiClipboardAvailableDataTypes() []string {
@@ -49,14 +37,7 @@ func apiClipboardAvailableDataTypes() []string {
 	defer w32.CloseClipboard()
 	var result []string
 	for f := w32.EnumClipboardFormats(w32.CFNone); f != w32.CFNone; f = w32.EnumClipboardFormats(f) {
-		w32DataTypeMapLock.RLock()
-		name, ok := w32ReverseDataTypeMap[f]
-		w32DataTypeMapLock.RUnlock()
-		if ok {
-			result = append(result, name)
-			continue
-		}
-		if name = w32.GetClipboardFormatNameW(f); name != "" {
+		if name := w32.ReverseDataType(f); name != "" {
 			result = append(result, name)
 		}
 	}
@@ -64,7 +45,7 @@ func apiClipboardAvailableDataTypes() []string {
 }
 
 func apiClipboardHasDataType(dataType *uti.DataType) bool {
-	t := w32LookupDataType(dataType.UTI)
+	t := w32.LookupDataType(dataType.UTI)
 	if t == w32.CFNone {
 		return false
 	}
@@ -72,7 +53,7 @@ func apiClipboardHasDataType(dataType *uti.DataType) bool {
 }
 
 func apiClipboardGetData(dataType *uti.DataType) []byte {
-	t := w32LookupDataType(dataType.UTI)
+	t := w32.LookupDataType(dataType.UTI)
 	if t == w32.CFNone {
 		return nil
 	}
@@ -121,7 +102,7 @@ func apiClipboardSetData(data ...drag.Data) {
 	}
 	entries := make([]entry, 0, len(data))
 	for _, d := range data {
-		t := w32LookupDataType(d.Type.UTI)
+		t := w32.LookupDataType(d.Type.UTI)
 		if t == w32.CFNone {
 			continue
 		}
@@ -181,22 +162,4 @@ func apiClipboardSetData(data ...drag.Data) {
 		// Windows owns the handle after SetClipboardData — do not free it
 	}
 	w32.CloseClipboard()
-}
-
-func w32LookupDataType(dataType string) w32.ClipboardFormat {
-	w32DataTypeMapLock.RLock()
-	f, ok := w32DataTypeMap[dataType]
-	w32DataTypeMapLock.RUnlock()
-	if ok {
-		return f
-	}
-	if f = w32.RegisterClipboardFormatW(dataType); f == w32.CFNone {
-		errs.Log(errs.Newf("unable to register clipboard format %q", dataType))
-		return w32.CFNone
-	}
-	w32DataTypeMapLock.Lock()
-	w32DataTypeMap[dataType] = f
-	w32ReverseDataTypeMap[f] = dataType
-	w32DataTypeMapLock.Unlock()
-	return f
 }

@@ -93,8 +93,8 @@ type Window struct {
 	dragTypes                   map[string]*uti.DataType
 	title                       string
 	titleIcons                  []*Image
-	glCtx                       apiGLContext
 	wnd                         apiWindow
+	glCtx                       apiGLContext
 	lastDrawDuration            time.Duration
 	tooltipSequence             int
 	modalResultCode             int
