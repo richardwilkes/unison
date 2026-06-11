@@ -388,11 +388,6 @@ extern "C"
 		SK_COLOR_TYPE_SRGBA_8888, // pixel with 8 bits for red, green, blue, alpha; in 32-bit word with conversion between sRGB and linear space
 		SK_COLOR_TYPE_R8_UNORM,
 		SK_COLOR_TYPE_LAST = SK_COLOR_TYPE_R8_UNORM,
-#if defined(SK_BUILD_FOR_WIN)
-		SK_COLOR_TYPE_N32 = SK_COLOR_TYPE_BGRA_8888, // native 32-bit BGRA encoding
-#else
-	SK_COLOR_TYPE_N32 = SK_COLOR_TYPE_RGBA_8888, // native 32-bit RGBA encoding
-#endif
 	} sk_color_type_t;
 
 	// ===== Types from include/core/SkAlphaType.h =====
