@@ -28,7 +28,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xio"
-	"github.com/richardwilkes/toolbox/v2/xreflect"
 )
 
 // MaxRequestSize is the maximum size of an X11 request in bytes.
@@ -1542,13 +1541,18 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 		return
 	}
 	unitSize := int(format / 8)
-	if len(data)%unitSize != 0 {
+	if unitSize != 0 && len(data)%unitSize != 0 {
 		slog.Error("data length must be a multiple of the format unit size", "dataLength", len(data), "unitSize", unitSize)
 	}
 	offset := 0
-	remainingCount := len(data) / unitSize
-	onlyOnce := format == 0 || mode != PropModeReplace
-	for remainingCount > 0 || format == 0 {
+	var remainingCount int
+	if unitSize != 0 {
+		remainingCount = len(data) / unitSize
+	}
+	// A request is sent even when there is no data, since a zero-length write still generates a PropertyNotify event,
+	// which the INCR transfer mechanism relies upon to signal the end of a transfer.
+	onlyOnce := unitSize == 0 || mode != PropModeReplace || len(data) == 0
+	for remainingCount > 0 || onlyOnce {
 		unitCount := remainingCount
 		if unitCount > math.MaxUint16-24 {
 			unitCount = math.MaxUint16 - 24
@@ -2518,29 +2522,32 @@ func (c *Conn) pushClipboardToManager() {
 	}
 	if owner, err := c.getSelectionOwner(c.Atoms.Clipboard); err == nil && owner == c.helperWindow {
 		c.ConvertSelection(c.helperWindow, c.Atoms.ClipboardManager, c.Atoms.ClipboardSaveTargets, AtomNone, 0)
-		again := true
-		for again {
-			if xreflect.IsNil(c.WaitEvents(func(e Event) bool {
+		// Events are handled outside of the filter, since responding to a selection request may need to wait for
+		// events itself, and a nested wait would hide events from an in-progress outer wait.
+	loop:
+		for {
+			e := c.WaitEventsUntil(func(e Event) bool {
 				switch ev := e.(type) {
 				case *SelectionNotifyEvent:
-					if ev.Requestor == c.helperWindow {
-						if ev.Target == c.Atoms.ClipboardSaveTargets {
-							again = false
-						}
-						return true
-					}
+					return ev.Requestor == c.helperWindow
 				case *SelectionRequestEvent:
-					if c.RespondToSelectionRequest(ev) {
-						return true
-					}
+					return ev.Owner == c.helperWindow
 				case *SelectionClearEvent:
-					if ev.Owner == c.helperWindow {
-						return true
-					}
+					return ev.Owner == c.helperWindow
 				}
 				return false
-			})) {
-				again = false
+			}, clipboardReplyTimeout)
+			switch ev := e.(type) {
+			case *SelectionNotifyEvent:
+				if ev.Target == c.Atoms.ClipboardSaveTargets {
+					break loop
+				}
+			case *SelectionRequestEvent:
+				c.RespondToSelectionRequest(ev)
+			case *SelectionClearEvent:
+				break loop
+			default:
+				break loop // The wait timed out or the connection closed, so give up
 			}
 		}
 	}
@@ -2549,21 +2556,24 @@ func (c *Conn) pushClipboardToManager() {
 }
 
 // RespondToSelectionRequest checks if the provided SelectionRequestEvent is a request for a selection owned by the
-// helper window. If it is, it sends a SelectionNotifyEvent back to the requestor with the appropriate data. It returns
-// true if the event was handled, and false otherwise.
+// helper window. If it is, it sends a SelectionNotifyEvent back to the requestor with the appropriate data. Data too
+// large to be written to the requestor's property in one shot is transferred incrementally (using the INCR mechanism)
+// after the notification has been sent. It returns true if the event was handled, and false otherwise.
 func (c *Conn) RespondToSelectionRequest(ev *SelectionRequestEvent) bool {
 	if ev.Owner != c.helperWindow {
 		return false
 	}
+	property, transfers := ev.writeTargetToProperty(c)
 	if err := c.sendEvent(ev.Requestor, false, 0, &SelectionNotifyEvent{
 		Time:      ev.Time,
 		Requestor: ev.Requestor,
 		Selection: ev.Selection,
 		Target:    ev.Target,
-		Property:  ev.writeTargetToProperty(c),
+		Property:  property,
 	}); err != nil {
 		errs.Log(err)
 	}
+	c.completeIncrTransfers(transfers)
 	return true
 }
 

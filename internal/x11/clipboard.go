@@ -28,6 +28,18 @@ import (
 // request or to deliver the next chunk of an INCR transfer.
 const clipboardReplyTimeout = time.Second
 
+// incrSendTimeout is the maximum amount of time to wait for a requestor to consume a chunk of an outgoing INCR
+// transfer before abandoning the transfer.
+const incrSendTimeout = 5 * time.Second
+
+// incrTransfer holds the state for an in-progress outgoing INCR transfer.
+type incrTransfer struct {
+	data      []byte
+	requestor WindowID
+	property  Atom
+	kind      Atom
+}
+
 // clipboardEntry holds one representation of the clipboard contents that the helper window will provide to other
 // clients when they request the associated target.
 type clipboardEntry struct {
@@ -295,6 +307,75 @@ func (c *Conn) lookupDataTypeAtom(dataType string) Atom {
 	c.dataTypeMap[dataType] = a
 	c.dataTypeMapLock.Unlock()
 	return a
+}
+
+// incrThreshold returns the maximum number of bytes that will be written to a selection property in one shot. Per the
+// ICCCM, selections larger than the maximum request size should be transferred incrementally (using the INCR
+// mechanism).
+func (c *Conn) incrThreshold() int {
+	return int(c.maximumRequestLength) * 4
+}
+
+// writeClipboardProperty writes the given clipboard entry to a property on the requestor's window. If the data is
+// small enough, it is written directly and nil is returned. Otherwise, an INCR transfer is initiated by writing the
+// total size to the property and selecting for property change events on the requestor's window, and the returned
+// transfer must be completed with completeIncrTransfers after the SelectionNotify event has been sent.
+func (c *Conn) writeClipboardProperty(requestor WindowID, property Atom, entry clipboardEntry) *incrTransfer {
+	if len(entry.data) <= c.incrThreshold() {
+		c.ChangeProperty(requestor, property, entry.kind, 8, PropModeReplace, entry.data)
+		return nil
+	}
+	c.ChangeWindowAttributes(requestor, WindowMaskEventMask,
+		&WindowCreationAttributes{EventMask: EventMaskPropertyChange})
+	w := NewWriter(4)
+	w.Uint32(uint32(len(entry.data)))
+	c.ChangeProperty(requestor, property, c.Atoms.ClipboardIncremental, 32, PropModeReplace, w.Retrieve())
+	return &incrTransfer{
+		data:      entry.data,
+		requestor: requestor,
+		property:  property,
+		kind:      entry.kind,
+	}
+}
+
+// completeIncrTransfers performs the chunked data transfers for any INCR transfers begun by writeClipboardProperty.
+// Each time the requestor consumes (deletes) the property, the next chunk is written to it, with a final zero-length
+// write signaling the end of the transfer.
+func (c *Conn) completeIncrTransfers(transfers []*incrTransfer) {
+	if len(transfers) == 0 {
+		return
+	}
+	// Each chunk must be written with a single ChangeProperty request, since the requestor treats every property
+	// change as a complete chunk. Larger writes would be split into multiple requests by ChangeProperty, allowing the
+	// requestor to read and delete a partially written chunk.
+	chunkSize := math.MaxUint16 - 24
+	for _, t := range transfers {
+		offset := 0
+		for {
+			ev := c.WaitEventsUntil(func(e Event) bool {
+				pne, ok := e.(*PropertyNotifyEvent)
+				return ok && pne.State == PropertyDelete && pne.Window == t.requestor && pne.Atom == t.property
+			}, incrSendTimeout)
+			if xreflect.IsNil(ev) {
+				break // The requestor stopped responding, so abandon the transfer
+			}
+			size := min(chunkSize, len(t.data)-offset)
+			c.ChangeProperty(t.requestor, t.property, t.kind, 8, PropModeReplace, t.data[offset:offset+size])
+			if size == 0 {
+				break
+			}
+			offset += size
+		}
+	}
+	// Stop listening for property change events on the requestor windows
+	notified := make(map[WindowID]bool)
+	for _, t := range transfers {
+		if !notified[t.requestor] {
+			notified[t.requestor] = true
+			c.ChangeWindowAttributes(t.requestor, WindowMaskEventMask,
+				&WindowCreationAttributes{EventMask: EventMaskNone})
+		}
+	}
 }
 
 func convertLatin1ToUTF8(latin1 []byte) []byte {

@@ -959,9 +959,9 @@ func (e *SelectionRequestEvent) ID() byte {
 	return e.Code
 }
 
-func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
+func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) (property Atom, transfers []*incrTransfer) {
 	if e.Property == AtomNone {
-		return AtomNone
+		return AtomNone, nil
 	}
 	switch e.Target {
 	case c.Atoms.ClipboardTargets:
@@ -972,17 +972,17 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			w.Atom(entry.target)
 		}
 		c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve())
-		return e.Property
+		return e.Property, nil
 	case c.Atoms.ClipboardMultiple:
 		format, kind, value, _, err := c.GetProperty(e.Requestor, e.Property, c.Atoms.Pair, 0, math.MaxUint32, false)
 		if err != nil {
 			errs.Log(err)
-			return e.Property
+			return e.Property, nil
 		}
 		count := len(value) / 4
 		if format != 32 || kind != c.Atoms.Pair || count%2 != 0 {
 			slog.Error("unexpected result from GetProperty for MULTIPLE property", "format", format, "kind", kind, "count", count)
-			return e.Property
+			return e.Property, nil
 		}
 		w := NewWriter(4 * count)
 		r := NewReader(value)
@@ -991,7 +991,9 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			prop := r.Atom()
 			w.Atom(target)
 			if entry, ok := c.clipboardEntryForTarget(target); ok && prop != AtomNone {
-				c.ChangeProperty(e.Requestor, prop, entry.kind, 8, PropModeReplace, entry.data)
+				if t := c.writeClipboardProperty(e.Requestor, prop, entry); t != nil {
+					transfers = append(transfers, t)
+				}
 				w.Atom(prop)
 			} else {
 				// Per ICCCM, a failed conversion is indicated by replacing the property in the pair with None
@@ -999,17 +1001,19 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) Atom {
 			}
 		}
 		c.ChangeProperty(e.Requestor, e.Property, c.Atoms.Pair, 32, PropModeReplace, w.Retrieve())
-		return e.Property
+		return e.Property, transfers
 	case c.Atoms.ClipboardSaveTargets:
 		c.ChangeProperty(e.Requestor, e.Property, c.Atoms.Null, 32, PropModeReplace, nil)
-		return e.Property
+		return e.Property, nil
 	default:
 		if entry, ok := c.clipboardEntryForTarget(e.Target); ok {
-			c.ChangeProperty(e.Requestor, e.Property, entry.kind, 8, PropModeReplace, entry.data)
-			return e.Property
+			if t := c.writeClipboardProperty(e.Requestor, e.Property, entry); t != nil {
+				transfers = append(transfers, t)
+			}
+			return e.Property, transfers
 		}
 	}
-	return AtomNone
+	return AtomNone, nil
 }
 
 // SelectionNotifyEvent represents an X11 SelectionNotify event.
