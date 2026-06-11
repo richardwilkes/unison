@@ -244,7 +244,50 @@ func dataObjGetCanonicalFormatEtc(_, _, pformatetcOut uintptr) uint64 {
 	return COM_DATA_S_SAMEFORMATETC
 }
 
-func dataObjSetData(_, _, _, _ uintptr) uint64 { return COM_E_NOTIMPL }
+// dataObjSetData stores data in the data object. The shell's drag-drop helper relies on this to stash the drag
+// image and its bookkeeping under private clipboard formats, which it reads back later via GetData.
+func dataObjSetData(this, pformatetc, pmedium, fRelease uintptr) uint64 {
+	obj := (*DataObject)(unsafe.Pointer(this))
+	fe := (*FORMATETC)(unsafe.Pointer(pformatetc))
+	stg := (*STGMEDIUM)(unsafe.Pointer(pmedium))
+	if fe.Tymed&TyMedHGlobal == 0 || stg.Tymed != TyMedHGlobal {
+		return COM_DV_E_TYMED
+	}
+	var data []byte
+	if h := syscall.Handle(stg.Data); h != 0 {
+		buf := GlobalLock(h)
+		if buf == 0 {
+			return COM_DV_E_TYMED
+		}
+		data = make([]byte, GlobalSize(h))
+		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(data)))
+		GlobalUnlock(h)
+	}
+	entry := dragDataEntry{
+		fmtEtc: FORMATETC{
+			CfFormat: fe.CfFormat,
+			DwAspect: fe.DwAspect,
+			Lindex:   fe.Lindex,
+			Tymed:    TyMedHGlobal,
+		},
+		data: data,
+	}
+	replaced := false
+	for i := range obj.entries {
+		if obj.entries[i].fmtEtc.CfFormat == fe.CfFormat {
+			obj.entries[i] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		obj.entries = append(obj.entries, entry)
+	}
+	if fRelease != 0 {
+		ReleaseStgMedium(stg)
+	}
+	return COM_S_OK
+}
 
 func dataObjEnumFormatEtc(this, dwDirection, ppenumFormatetc uintptr) uint64 {
 	if dwDirection != 1 { // DATADIR_GET = 1

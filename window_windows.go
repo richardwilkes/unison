@@ -22,6 +22,7 @@ import (
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/w32"
+	"golang.org/x/image/draw"
 	"golang.org/x/sys/windows"
 )
 
@@ -611,7 +612,7 @@ func (w *Window) apiHide() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
-func (w *Window) apiStartDrag(_ *Image, _ geom.Point, dragOpMask drag.Op, data ...drag.Data) {
+func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
 	if len(data) == 0 {
 		w.dragSourceFinished()
 		return
@@ -620,11 +621,79 @@ func (w *Window) apiStartDrag(_ *Image, _ geom.Point, dragOpMask drag.Op, data .
 	defer dataObj.Release()
 	dropSrc := w32.NewDropSource()
 	defer dropSrc.Release()
+	w.w32InitDragImage(img, originInRoot, dataObj)
 	okEffects := uintptr(w32.OpMaskToDropEffect(dragOpMask))
 	var effect uint32
 	w32.DoDragDrop(unsafe.Pointer(dataObj), unsafe.Pointer(dropSrc), okEffects, &effect)
 
 	w.dragSourceFinished()
+}
+
+// w32InitDragImage stores a drag image into the data object via the shell's drag source helper so that the drag
+// image is rendered during the drag. Failures are logged or ignored, since the drag itself still works without an
+// image.
+func (w *Window) w32InitDragImage(img *Image, originInRoot geom.Point, dataObj *w32.DataObject) {
+	if img == nil {
+		return
+	}
+	nrgba, err := img.ToNRGBA()
+	if err != nil {
+		errs.Log(err)
+		return
+	}
+	scale := w.apiBackingScale()
+	size := img.LogicalSize().MulPt(scale).Ceil()
+	width := int(size.Width)
+	height := int(size.Height)
+	if width < 1 || height < 1 {
+		return
+	}
+	if nrgba.Rect.Dx() != width || nrgba.Rect.Dy() != height {
+		dstRect := image.Rect(0, 0, width, height)
+		dst := image.NewNRGBA(dstRect)
+		draw.CatmullRom.Scale(dst, dstRect, nrgba, nrgba.Bounds(), draw.Over, nil)
+		nrgba = dst
+	}
+	dc := w32.GetDC(0)
+	if dc == 0 {
+		return
+	}
+	defer w32.ReleaseDC(0, dc)
+	var ppvBits *byte
+	bmp := w32.CreateDIBSection(dc, &w32.BITMAPV5HEADER{
+		BV5Width:       int32(width),
+		BV5Height:      int32(-height),
+		BV5Planes:      1,
+		BV5BitCount:    32,
+		BV5Compression: w32.BI_BITFIELDS,
+		BV5RedMask:     0x00ff0000,
+		BV5GreenMask:   0x0000ff00,
+		BV5BlueMask:    0x000000ff,
+		BV5AlphaMask:   0xff000000,
+	}, w32.DIB_RGB_COLORS, &ppvBits, 0, 0)
+	if bmp == 0 {
+		return
+	}
+	// The shell renders the drag image as a layered window, which requires premultiplied BGRA pixels.
+	target := unsafe.Slice(ppvBits, len(nrgba.Pix))
+	for i := 0; i < len(nrgba.Pix); i += 4 {
+		a := uint32(nrgba.Pix[i+3])
+		target[i] = byte(uint32(nrgba.Pix[i+2]) * a / 255)
+		target[i+1] = byte(uint32(nrgba.Pix[i+1]) * a / 255)
+		target[i+2] = byte(uint32(nrgba.Pix[i]) * a / 255)
+		target[i+3] = byte(a)
+	}
+	var cursor w32.POINT
+	w32.GetCursorPos(&cursor)
+	w32.ScreenToClient(w.wnd.wnd, &cursor)
+	mouse := w.apiConvertRawMouse(geom.NewPoint(float32(cursor.X), float32(cursor.Y)))
+	offset := w32.POINT{
+		X: min(max(int32((mouse.X-originInRoot.X)*scale.X), 0), int32(width-1)),
+		Y: min(max(int32((mouse.Y-originInRoot.Y)*scale.Y), 0), int32(height-1)),
+	}
+	if !w32.InitializeDragImage(dataObj, bmp, w32.SIZE{CX: int32(width), CY: int32(height)}, offset) {
+		w32.DeleteObject(w32.HGDIOBJ(bmp))
+	}
 }
 
 func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {

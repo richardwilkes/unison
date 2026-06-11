@@ -52,6 +52,7 @@ const (
 type DropTarget struct {
 	lpVtbl   uintptr // MUST BE FIRST: points to dropTargetVtbl
 	window   DragTargetWindow
+	helper   *IDropTargetHelper
 	refCount int32
 	pinner   runtime.Pinner
 	opMask   drag.Op      // source's allowed ops, set in DragEnter
@@ -74,6 +75,7 @@ func init() {
 func NewDropTarget(w DragTargetWindow) *DropTarget {
 	dt := &DropTarget{
 		window:   w,
+		helper:   NewDropTargetHelper(),
 		refCount: 1,
 	}
 	dt.lpVtbl = uintptr(unsafe.Pointer(&dropTargetVtbl[0]))
@@ -85,6 +87,10 @@ func NewDropTarget(w DragTargetWindow) *DropTarget {
 func (dt *DropTarget) Revoke() {
 	if dt == nil {
 		return
+	}
+	if dt.helper != nil {
+		dt.helper.Release()
+		dt.helper = nil
 	}
 	dt.dataObj = nil
 	dt.pinner.Unpin()
@@ -120,6 +126,10 @@ func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, 
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragEntered(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
 	*pdwEffect = opToDropEffect(op)
+	if dt.helper != nil {
+		screenPt := packedScreenPt(pt)
+		dt.helper.DragEnter(dt.window.HWND(), pDataObj, &screenPt, *pdwEffect)
+	}
 	return COM_S_OK
 }
 
@@ -132,6 +142,10 @@ func dropTargetDragOver(this uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragUpdated(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
 	*pdwEffect = opToDropEffect(op)
+	if dt.helper != nil {
+		screenPt := packedScreenPt(pt)
+		dt.helper.DragOver(&screenPt, *pdwEffect)
+	}
 	return COM_S_OK
 }
 
@@ -142,6 +156,9 @@ func dropTargetDragLeave(this uintptr) uint64 {
 		dt.dataObj = nil
 	}
 	dt.window.DragExited()
+	if dt.helper != nil {
+		dt.helper.DragLeave()
+	}
 	return COM_S_OK
 }
 
@@ -155,15 +172,22 @@ func dropTargetDrop(this, pDataObj uintptr, grfKeyState MKDnD, pt, pdwEffect uin
 	info := &dragInfo{obj: dataObj, opMask: dt.opMask}
 	dt.window.Drop(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
 	*(*DropEffect)(unsafe.Pointer(pdwEffect)) = DropEffectNone
+	if dt.helper != nil {
+		screenPt := packedScreenPt(pt)
+		dt.helper.Drop(pDataObj, &screenPt, *(*DropEffect)(unsafe.Pointer(pdwEffect)))
+	}
 	return COM_S_OK
 }
 
+func packedScreenPt(pt uintptr) POINT {
+	return POINT{
+		X: int32(pt & 0xFFFFFFFF),
+		Y: int32(pt >> 32),
+	}
+}
+
 func dropTargetClientPt(w DragTargetWindow, pt uintptr) geom.Point {
-	x := int32(pt & 0xFFFFFFFF)
-	y := int32(pt >> 32)
-	var screenPt POINT
-	screenPt.X = x
-	screenPt.Y = y
+	screenPt := packedScreenPt(pt)
 	ScreenToClient(w.HWND(), &screenPt)
 	return w.ConvertRawMousePoint(geom.NewPoint(float32(screenPt.X), float32(screenPt.Y)))
 }
