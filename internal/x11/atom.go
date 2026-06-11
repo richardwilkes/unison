@@ -127,6 +127,7 @@ type Atoms struct {
 	NetWorkArea             Atom
 	Null                    Atom
 	Pair                    Atom
+	Text                    Atom
 	TextURIList             Atom
 	UTF8String              Atom
 	WMChangeState           Atom
@@ -180,6 +181,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.NetWorkArea, "_NET_WORKAREA"},
 		{&a.Null, "NULL"},
 		{&a.Pair, "ATOM_PAIR"},
+		{&a.Text, "TEXT"},
 		{&a.TextURIList, "text/uri-list"},
 		{&a.UTF8String, "UTF8_STRING"},
 		{&a.WMChangeState, "WM_CHANGE_STATE"},

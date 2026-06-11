@@ -10,18 +10,18 @@
 package unison
 
 import (
+	"slices"
+
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
 )
 
 func apiClipboardAvailableDataTypes() []string {
-	// TODO: Implement
-	return nil
+	return x11Conn.ClipboardDataTypes()
 }
 
 func apiClipboardHasDataType(dataType *uti.DataType) bool {
-	// TODO: Implement
-	return false
+	return slices.Contains(x11Conn.ClipboardDataTypes(), dataType.UTI)
 }
 
 func apiClipboardGetData(dataType *uti.DataType) []byte {
@@ -29,20 +29,5 @@ func apiClipboardGetData(dataType *uti.DataType) []byte {
 }
 
 func apiClipboardSetData(data ...drag.Data) {
-	// TODO: Implement
-}
-
-func apiClipboardGetText() string {
-	// TODO: Remove once the four functions above have been implemented
-	return x11Conn.GetClipboardText()
-}
-
-func apiClipboardSetText(text string) {
-	// TODO: Remove once the four functions above have been implemented
-	x11Conn.SetClipboardText(text)
-}
-
-func apiClipboardSetBytes(dataType string, data []byte) {
-	// TODO: Remove once the four functions above have been implemented
-	x11Conn.SetClipboardBytes(dataType, data)
+	x11Conn.SetClipboardData(data...)
 }

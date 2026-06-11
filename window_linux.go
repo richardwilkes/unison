@@ -637,8 +637,9 @@ func x11ProcessEvent(e x11.Event) {
 					return
 				}
 				if len(values) != 0 {
-					paths := x11ParseURIList(values)
-					w.fileDrop(paths)
+					// TODO: Fix this for drag & drop
+					// paths := x11ParseURIList(values)
+					// w.fileDrop(paths)
 				}
 				if w.wnd.dndVersion > 1 {
 					x11Conn.AcceptDrop(w.wnd.dndSource, w.wnd.id, x11Conn.Atoms.DnDActionCopy, uint32(len(values)))

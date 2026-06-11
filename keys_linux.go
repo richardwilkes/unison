@@ -13,6 +13,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
@@ -208,7 +209,7 @@ func apiFillKeyCodes() {
 	}
 }
 
-func x11ScanCodeToKeySym(scanCode uint16, mods Modifiers) uint32 {
+func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
 	if scanCode < uint16(x11Conn.MinKeyCode) || scanCode > uint16(x11Conn.MaxKeyCode) {
 		return 0
 	}
@@ -287,27 +288,27 @@ func x11KeySymToUnicode(keySym uint32) rune {
 	return utf8.RuneError
 }
 
-func x11CurrentKeyModifiers() Modifiers {
-	var mods Modifiers
+func x11CurrentKeyModifiers() mod.Modifiers {
+	var mods mod.Modifiers
 	m := x11Conn.QueryKeymap()
 	keyMap := m[:]
 	if x11CheckBit(x11KeyLShiftBitIndex, keyMap) || x11CheckBit(x11KeyRShiftBitIndex, keyMap) {
-		mods |= ShiftModifier
+		mods |= mod.Shift
 	}
 	if x11CheckBit(x11KeyLControlBitIndex, keyMap) || x11CheckBit(x11KeyRControlBitIndex, keyMap) {
-		mods |= ControlModifier
+		mods |= mod.Control
 	}
 	if x11CheckBit(x11KeyLOptionBitIndex, keyMap) || x11CheckBit(x11KeyROptionBitIndex, keyMap) {
-		mods |= OptionModifier
+		mods |= mod.Option
 	}
 	if x11CheckBit(x11KeyLCommandBitIndex, keyMap) || x11CheckBit(x11KeyRCommandBitIndex, keyMap) {
-		mods |= CommandModifier
+		mods |= mod.Command
 	}
 	if x11CheckBit(x11KeyCapsLockBitIndex, keyMap) {
-		mods |= CapsLockModifier
+		mods |= mod.CapsLock
 	}
 	if x11CheckBit(x11KeyNumLockBitIndex, keyMap) {
-		mods |= NumLockModifier
+		mods |= mod.NumLock
 	}
 	return mods
 }
