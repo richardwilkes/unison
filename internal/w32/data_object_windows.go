@@ -35,7 +35,16 @@ const (
 
 type dragDataEntry struct {
 	fmtEtc FORMATETC
-	data   []byte // data in Windows format (UTF-16LE for text, raw bytes otherwise)
+	data   []byte  // when fmtEtc.Tymed == TyMedHGlobal: data in Windows format (UTF-16LE for text, raw bytes otherwise)
+	stream uintptr // when fmtEtc.Tymed == TyMedIStream: an owned IStream* received via SetData
+}
+
+// releaseMedium drops the reference to an owned IStream, if any.
+func (e *dragDataEntry) releaseMedium() {
+	if e.stream != 0 {
+		(*Unknown)(unsafe.Pointer(e.stream)).Release()
+		e.stream = 0
+	}
 }
 
 // IDataObject wraps an IDataObject COM interface pointer received from Windows.
@@ -160,15 +169,19 @@ func NewDataObject(data []drag.Data, opMask drag.Op) *DataObject {
 	return obj
 }
 
-// Release unpins the DataObject and its internal enumerator from the Go garbage collector.
+// Release frees any owned mediums and unpins the DataObject and its internal enumerator from the Go garbage
+// collector.
 func (obj *DataObject) Release() {
+	for i := range obj.entries {
+		obj.entries[i].releaseMedium()
+	}
 	obj.pinner.Unpin()
 }
 
-func (obj *DataObject) findEntry(cf uint16) ([]byte, bool) {
-	for _, e := range obj.entries {
-		if e.fmtEtc.CfFormat == cf {
-			return e.data, true
+func (obj *DataObject) findEntry(cf uint16) (*dragDataEntry, bool) {
+	for i := range obj.entries {
+		if obj.entries[i].fmtEtc.CfFormat == cf {
+			return &obj.entries[i], true
 		}
 	}
 	return nil, false
@@ -198,14 +211,22 @@ func dataObjRelease(this uintptr) uintptr {
 func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 	obj := (*DataObject)(unsafe.Pointer(this))
 	fe := (*FORMATETC)(unsafe.Pointer(pformatetcIn))
-	data, ok := obj.findEntry(fe.CfFormat)
+	entry, ok := obj.findEntry(fe.CfFormat)
 	if !ok {
 		return COM_DV_E_FORMATETC
 	}
-	if fe.Tymed&TyMedHGlobal == 0 {
+	if fe.Tymed&entry.fmtEtc.Tymed == 0 {
 		return COM_DV_E_TYMED
 	}
-	h := GlobalAlloc(GMemMoveable, len(data))
+	stg := (*STGMEDIUM)(unsafe.Pointer(pmedium))
+	if entry.fmtEtc.Tymed == TyMedIStream {
+		(*Unknown)(unsafe.Pointer(entry.stream)).AddRef() // caller releases via ReleaseStgMedium
+		stg.Tymed = TyMedIStream
+		stg.Data = entry.stream
+		stg.PUnkForRelease = 0
+		return COM_S_OK
+	}
+	h := GlobalAlloc(GMemMoveable, len(entry.data))
 	if h == 0 {
 		return COM_E_NOTIMPL
 	}
@@ -214,9 +235,8 @@ func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 		GlobalFree(h)
 		return COM_E_NOTIMPL
 	}
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(data)), data)
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(entry.data)), entry.data)
 	GlobalUnlock(h)
-	stg := (*STGMEDIUM)(unsafe.Pointer(pmedium))
 	stg.Tymed = TyMedHGlobal
 	stg.Data = uintptr(h)
 	stg.PUnkForRelease = 0
@@ -228,11 +248,11 @@ func dataObjGetDataHere(_, _, _ uintptr) uint64 { return COM_E_NOTIMPL }
 func dataObjQueryGetData(this, pformatetc uintptr) uint64 {
 	obj := (*DataObject)(unsafe.Pointer(this))
 	fe := (*FORMATETC)(unsafe.Pointer(pformatetc))
-	_, ok := obj.findEntry(fe.CfFormat)
+	entry, ok := obj.findEntry(fe.CfFormat)
 	if !ok {
 		return COM_DV_E_FORMATETC
 	}
-	if fe.Tymed&TyMedHGlobal == 0 {
+	if fe.Tymed&entry.fmtEtc.Tymed == 0 {
 		return COM_DV_E_TYMED
 	}
 	return COM_S_OK
@@ -245,47 +265,54 @@ func dataObjGetCanonicalFormatEtc(_, _, pformatetcOut uintptr) uint64 {
 }
 
 // dataObjSetData stores data in the data object. The shell's drag-drop helper relies on this to stash the drag
-// image and its bookkeeping under private clipboard formats, which it reads back later via GetData.
+// image and its bookkeeping under private clipboard formats, which it reads back later via GetData. The helper uses
+// both HGLOBAL and IStream mediums, so both must be accepted.
 func dataObjSetData(this, pformatetc, pmedium, fRelease uintptr) uint64 {
 	obj := (*DataObject)(unsafe.Pointer(this))
 	fe := (*FORMATETC)(unsafe.Pointer(pformatetc))
 	stg := (*STGMEDIUM)(unsafe.Pointer(pmedium))
-	if fe.Tymed&TyMedHGlobal == 0 || stg.Tymed != TyMedHGlobal {
-		return COM_DV_E_TYMED
-	}
-	var data []byte
-	if h := syscall.Handle(stg.Data); h != 0 {
-		buf := GlobalLock(h)
-		if buf == 0 {
-			return COM_DV_E_TYMED
-		}
-		data = make([]byte, GlobalSize(h))
-		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(data)))
-		GlobalUnlock(h)
-	}
 	entry := dragDataEntry{
 		fmtEtc: FORMATETC{
 			CfFormat: fe.CfFormat,
 			DwAspect: fe.DwAspect,
 			Lindex:   fe.Lindex,
-			Tymed:    TyMedHGlobal,
+			Tymed:    stg.Tymed,
 		},
-		data: data,
 	}
-	replaced := false
+	switch {
+	case fe.Tymed&TyMedHGlobal != 0 && stg.Tymed == TyMedHGlobal:
+		if h := syscall.Handle(stg.Data); h != 0 {
+			buf := GlobalLock(h)
+			if buf == 0 {
+				return COM_DV_E_TYMED
+			}
+			entry.data = make([]byte, GlobalSize(h))
+			copy(entry.data, unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(entry.data)))
+			GlobalUnlock(h)
+		}
+		if fRelease != 0 {
+			ReleaseStgMedium(stg)
+		}
+	case fe.Tymed&TyMedIStream != 0 && stg.Tymed == TyMedIStream:
+		if stg.Data == 0 {
+			return COM_DV_E_TYMED
+		}
+		entry.stream = stg.Data
+		if fRelease == 0 {
+			// We keep a reference of our own; with fRelease set, the caller's reference becomes ours instead.
+			(*Unknown)(unsafe.Pointer(entry.stream)).AddRef()
+		}
+	default:
+		return COM_DV_E_TYMED
+	}
 	for i := range obj.entries {
 		if obj.entries[i].fmtEtc.CfFormat == fe.CfFormat {
+			obj.entries[i].releaseMedium()
 			obj.entries[i] = entry
-			replaced = true
-			break
+			return COM_S_OK
 		}
 	}
-	if !replaced {
-		obj.entries = append(obj.entries, entry)
-	}
-	if fRelease != 0 {
-		ReleaseStgMedium(stg)
-	}
+	obj.entries = append(obj.entries, entry)
 	return COM_S_OK
 }
 

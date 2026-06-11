@@ -49,8 +49,10 @@ type TyMed uint32
 
 // Possible values for TyMed.
 const (
-	TyMedNull TyMed = iota
-	TyMedHGlobal
+	TyMedHGlobal TyMed = 1 << iota
+	TyMedFile
+	TyMedIStream
+	TyMedNull TyMed = 0
 )
 
 // STGMEDIUM https://learn.microsoft.com/en-us/windows/win32/api/objidl/ns-objidl-ustgmedium-r1
