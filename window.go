@@ -18,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
@@ -883,7 +882,6 @@ func (w *Window) draw() {
 		w.glCtx.apiMakeCurrent()
 		wndWithCurrentCtx = w
 		if !glInited {
-			xos.ExitIfErr(gl.Init())
 			glInited = true
 		}
 		size := w.ContentRect().Size

@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/skia"
@@ -40,13 +39,8 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 		if s.context == nil {
 			s.context = skia.ContextMakeGL(defaultSkiaGL())
 		}
-		var fbo int32
-		gl.GetIntegerv(gl.FRAMEBUFFER_BINDING, &fbo)
 		if s.backend = skia.BackendRenderTargetNewGL(int(size.Width*scale.X), int(size.Height*scale.Y), 1, 8,
-			&skia.GLFrameBufferInfo{
-				Fboid:  uint32(fbo),
-				Format: gl.RGBA8,
-			}); s.backend == nil {
+			&skia.GLFrameBufferInfo{Format: 0x8058 /* RGBA8 */}); s.backend == nil {
 			return nil, errs.New("unable to create backend render target")
 		}
 		if s.surface = skia.SurfaceNewBackendRenderTarget(s.context, s.backend, skia.SurfaceOriginBottomLeft,

@@ -17,7 +17,6 @@ import (
 	"unsafe"
 	"weak"
 
-	"github.com/go-gl/gl/v3.2-core/gl"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xhash"
@@ -111,9 +110,6 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		RebuildDynamicColors()
 		w.glCtx.apiMakeCurrent()
 		wndWithCurrentCtx = w
-		if err = gl.Init(); err != nil {
-			return nil, err
-		}
 		glInited = true
 	}
 	scale := float32(ppi) / 72
