@@ -18,7 +18,9 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -28,15 +30,16 @@ import (
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/x11"
+	"golang.org/x/image/draw"
 )
 
 type apiWindow struct {
+	dndInfo         *x11DragInfo
 	id              x11.WindowID
 	parent          x11.WindowID
 	colorMap        x11.ColorMapID
 	dndSource       x11.WindowID
 	dndVersion      uint32
-	dndFormat       x11.Atom
 	lastX           float32
 	lastY           float32
 	minimized       bool
@@ -141,10 +144,6 @@ func (w *Window) apiInit() error {
 	sizeHints.Flags |= x11.WSHMPPosition | x11.WSHMPWinGravity
 	sizeHints.WinGravity = x11.StaticGravity
 	x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
-
-	buf = x11.NewWriter(4)
-	buf.Atom(5)
-	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.DnDAware, x11.AtomAtom, 32, x11.PropModeReplace, buf.Retrieve())
 
 	w.apiSetTitle(w.title)
 	x11Conn.Flush()
@@ -400,12 +399,446 @@ func (w *Window) apiHide() {
 	x11Conn.Flush()
 }
 
+// x11DnDFinishedTimeout is the maximum amount of time to wait for the drop target to send XdndFinished after a drop.
+const x11DnDFinishedTimeout = 2 * time.Second
+
+// x11DnDStatusTimeout is the maximum amount of time to wait for the drop target to answer the final XdndPosition when
+// the mouse is released before the answer has arrived.
+const x11DnDStatusTimeout = 250 * time.Millisecond
+
 func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
-	// TODO: Implement
+	defer w.dragSourceFinished()
+	if len(data) == 0 {
+		return
+	}
+	x11Conn.SetDnDData(data...)
+
+	// Publish the full set of actions we permit so that targets can choose among them
+	buf := x11.NewWriter(8)
+	if dragOpMask&drag.Copy != 0 {
+		buf.Atom(x11Conn.Atoms.DnDActionCopy)
+	}
+	if dragOpMask&drag.Move != 0 {
+		buf.Atom(x11Conn.Atoms.DnDActionMove)
+	}
+	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.DnDActionList, x11.AtomAtom, 32, x11.PropModeReplace, buf.Retrieve())
+
+	if !x11Conn.GrabPointer(w.wnd.id, x11.EventMaskButtonRelease|x11.EventMaskPointerMotion, 0) {
+		slog.Warn("unable to grab the pointer to start a drag")
+		return
+	}
+	defer x11Conn.UngrabPointer()
+	imgWnd := w.newX11DragImageWindow(img, originInRoot)
+	defer imgWnd.dispose()
+	w.x11DragLoop(x11DnDActionForOp(dragOpMask), imgWnd)
+}
+
+// x11DragLoop runs the source side of an XDND drag, processing events until the drag completes. Events unrelated to
+// the drag are dispatched normally so that the windows of this application continue to function, which also allows
+// them to act as the drop target.
+func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindow) {
+	const (
+		dragStateTracking = iota
+		dragStateAwaitFinalStatus
+		dragStateAwaitFinished
+	)
+	targets := x11Conn.DnDTargets()
+	awareCache := make(map[x11.WindowID]uint32)
+	state := dragStateTracking
+	var deadline time.Time
+	var curTarget x11.WindowID
+	var curVersion uint32
+	var awaitingStatus, hasPending, accepted bool
+	var pendingX, pendingY int16
+	var timestamp uint32
+
+	sendPosition := func(rootX, rootY int16) {
+		if curTarget == 0 {
+			return
+		}
+		if awaitingStatus {
+			pendingX = rootX
+			pendingY = rootY
+			hasPending = true
+			return
+		}
+		awaitingStatus = true
+		x11Conn.SendDnDPosition(w.wnd.id, curTarget, rootX, rootY, timestamp, suggestedAction)
+		x11Conn.Flush()
+	}
+
+	updateTarget := func(rootX, rootY int16) {
+		target, version := x11FindDnDAwareWindow(rootX, rootY, awareCache, imgWnd.windowID())
+		if target != curTarget {
+			if curTarget != 0 {
+				x11Conn.SendDnDLeave(w.wnd.id, curTarget)
+			}
+			curTarget = target
+			curVersion = min(version, x11.DnDVersion)
+			awaitingStatus = false
+			hasPending = false
+			accepted = false
+			if curTarget != 0 {
+				x11Conn.SendDnDEnter(w.wnd.id, curTarget, curVersion, targets)
+			}
+			x11Conn.Flush()
+		}
+		sendPosition(rootX, rootY)
+	}
+
+	leaveAndStop := func() {
+		if curTarget != 0 {
+			x11Conn.SendDnDLeave(w.wnd.id, curTarget)
+			x11Conn.Flush()
+		}
+	}
+
+	// dropOrStop either sends XdndDrop and transitions to waiting for XdndFinished, or ends the drag. It returns true
+	// when the loop should exit.
+	dropOrStop := func() bool {
+		if !accepted {
+			leaveAndStop()
+			return true
+		}
+		x11Conn.SendDnDDrop(w.wnd.id, curTarget, timestamp)
+		x11Conn.Flush()
+		state = dragStateAwaitFinished
+		deadline = time.Now().Add(x11DnDFinishedTimeout)
+		return false
+	}
+
+	// handleEvent processes a single event, returning true when the drag is complete and the loop should exit.
+	handleEvent := func(e x11.Event) (done bool) {
+		switch ev := e.(type) {
+		case nil:
+		case *x11.MotionNotifyEvent:
+			if state != dragStateTracking {
+				return false
+			}
+			// Coalesce any additional queued motion events into this one
+			for {
+				next := x11Conn.PollEvents(func(pe x11.Event) bool {
+					_, ok := pe.(*x11.MotionNotifyEvent)
+					return ok
+				})
+				m, ok := next.(*x11.MotionNotifyEvent)
+				if !ok {
+					break
+				}
+				ev = m
+			}
+			timestamp = ev.Time
+			imgWnd.moveTo(ev.RootX, ev.RootY)
+			updateTarget(ev.RootX, ev.RootY)
+		case *x11.ButtonReleaseEvent:
+			if state != dragStateTracking {
+				return false
+			}
+			timestamp = ev.Time
+			x11Conn.UngrabPointer()
+			imgWnd.dispose()
+			switch {
+			case curTarget == 0:
+				return true
+			case awaitingStatus:
+				// The final position hasn't been answered yet, so wait for its XdndStatus before deciding
+				state = dragStateAwaitFinalStatus
+				deadline = time.Now().Add(x11DnDStatusTimeout)
+			default:
+				return dropOrStop()
+			}
+		case *x11.KeyPressEvent:
+			if state == dragStateTracking && rawScanCodeToKeyCodeMap[uint16(ev.Detail)] == KeyEscape {
+				leaveAndStop()
+				return true
+			}
+			x11ProcessEvent(e)
+		case *x11.ClientMessageEvent:
+			switch ev.Type {
+			case x11Conn.Atoms.DnDStatus:
+				if x11.WindowID(ev.Data32[0]) != curTarget {
+					return false
+				}
+				awaitingStatus = false
+				accepted = ev.Data32[1]&1 != 0
+				switch state {
+				case dragStateTracking:
+					if hasPending {
+						hasPending = false
+						sendPosition(pendingX, pendingY)
+					}
+				case dragStateAwaitFinalStatus:
+					return dropOrStop()
+				}
+			case x11Conn.Atoms.DnDFinished:
+				if state == dragStateAwaitFinished && x11.WindowID(ev.Data32[0]) == curTarget {
+					return true
+				}
+			default:
+				x11ProcessEvent(e)
+			}
+		case *x11.SelectionRequestEvent:
+			x11Conn.RespondToSelectionRequest(ev)
+		case *x11.SelectionClearEvent:
+			if ev.Selection == x11Conn.Atoms.DnDSelection {
+				// Something else claimed the drag selection, so abort the drag
+				if state == dragStateTracking {
+					leaveAndStop()
+				}
+				return true
+			}
+		default:
+			x11ProcessEvent(e)
+		}
+		return false
+	}
+
+	if qpr := x11Conn.QueryPointer(w.wnd.id); qpr != nil {
+		imgWnd.moveTo(qpr.RootX, qpr.RootY)
+		updateTarget(qpr.RootX, qpr.RootY)
+	}
+	for {
+		var e x11.Event
+		if state == dragStateTracking {
+			e = x11Conn.WaitEvents(nil)
+		} else {
+			remaining := time.Until(deadline)
+			if remaining > 0 {
+				e = x11Conn.WaitEventsUntil(nil, remaining)
+			}
+			// A nil event is just a wake-up call, so only stop if the deadline has passed
+			if xreflect.IsNil(e) && !time.Now().Before(deadline) {
+				// The target took too long to respond, so give up on it
+				if state == dragStateAwaitFinalStatus {
+					leaveAndStop()
+				}
+				return
+			}
+		}
+		// Process this event plus any others that are already available before flushing UI tasks and redraws, so that
+		// event processing isn't throttled to the redraw rate.
+		for {
+			if handleEvent(e) {
+				return
+			}
+			if e = x11Conn.PollEvents(nil); xreflect.IsNil(e) {
+				break
+			}
+		}
+		finishProcessingEvents()
+	}
+}
+
+// x11FindDnDAwareWindow returns the deepest window beneath the given root coordinates that has the XdndAware property
+// set, along with the XDND protocol version it advertises. The awareness lookups are stored in the provided cache to
+// avoid repeated queries while the pointer moves. The skip window (the drag image) is never descended into.
+func x11FindDnDAwareWindow(rootX, rootY int16, awareCache map[x11.WindowID]uint32, skip x11.WindowID) (target x11.WindowID, version uint32) {
+	root := x11Conn.RootWindow()
+	cur := root
+	for {
+		v, ok := awareCache[cur]
+		if !ok {
+			v = 0
+			format, actualType, values, _, err := x11Conn.GetProperty(cur, x11Conn.Atoms.DnDAware, x11.AtomAtom, 0, 1,
+				false)
+			if err == nil && format == 32 && actualType == x11.AtomAtom && len(values) >= 4 {
+				v = x11.NewReader(values).Uint32()
+			}
+			awareCache[cur] = v
+		}
+		if v != 0 {
+			target = cur
+			version = v
+		}
+		_, _, _, child, err := x11Conn.TranslateCoordinates(root, cur, rootX, rootY)
+		if err != nil {
+			errs.Log(err)
+			break
+		}
+		if child == 0 || child == skip {
+			break
+		}
+		cur = child
+	}
+	return target, version
+}
+
+func x11DnDActionForOp(op drag.Op) x11.Atom {
+	switch {
+	case op&drag.Copy != 0:
+		return x11Conn.Atoms.DnDActionCopy
+	case op&drag.Move != 0:
+		return x11Conn.Atoms.DnDActionMove
+	default:
+		return x11.AtomNone
+	}
+}
+
+func x11OpForDnDAction(action x11.Atom) drag.Op {
+	switch action {
+	case x11Conn.Atoms.DnDActionCopy:
+		return drag.Copy
+	case x11Conn.Atoms.DnDActionMove:
+		return drag.Move
+	default:
+		return drag.None
+	}
+}
+
+// x11DragImageWindow is an override-redirect window that displays the drag image and follows the pointer during a
+// drag. Its input shape is empty so that it does not interfere with locating the window under the pointer.
+type x11DragImageWindow struct {
+	id       x11.WindowID
+	colorMap x11.ColorMapID
+	offsetX  int16
+	offsetY  int16
+}
+
+// newX11DragImageWindow creates the drag image window, positioned so that the image's offset from the pointer matches
+// the offset of originInRoot from the current mouse location. Failures are logged or ignored, since the drag itself
+// still works without an image; nil may be returned and is safe to use.
+func (w *Window) newX11DragImageWindow(img *Image, originInRoot geom.Point) *x11DragImageWindow {
+	if img == nil {
+		return nil
+	}
+	nrgba, err := img.ToNRGBA()
+	if err != nil {
+		errs.Log(err)
+		return nil
+	}
+	scale := w.BackingScale()
+	size := img.LogicalSize().MulPt(scale).Ceil()
+	width := int(size.Width)
+	height := int(size.Height)
+	if width < 1 || height < 1 {
+		return nil
+	}
+	if nrgba.Rect.Dx() != width || nrgba.Rect.Dy() != height {
+		dstRect := image.Rect(0, 0, width, height)
+		dst := image.NewNRGBA(dstRect)
+		draw.CatmullRom.Scale(dst, dstRect, nrgba, nrgba.Bounds(), draw.Over, nil)
+		nrgba = dst
+	}
+	visual := x11FindARGBVisual()
+	if visual == 0 {
+		slog.Warn("unable to find a 32-bit visual for the drag image")
+		return nil
+	}
+	root := x11Conn.RootWindow()
+	pm := x11Conn.CreatePixMap(x11.DrawableID(root), 32, uint16(width), uint16(height))
+	if pm == 0 {
+		return nil
+	}
+	defer x11Conn.FreePixMap(pm)
+	gc := x11Conn.CreateGC(x11.DrawableID(pm), 0, nil)
+	if gc == 0 {
+		return nil
+	}
+	x11Conn.PutImage(x11.DrawableID(pm), gc, 0, 0, nrgba)
+	x11Conn.FreeGC(gc)
+	// Anchor the image to the drag's origin point by translating it into screen coordinates and then capturing its
+	// offset from the pointer, so that the image maintains that offset as it follows the pointer.
+	d := &x11DragImageWindow{}
+	var x, y int16
+	origin := originInRoot.MulPt(scale)
+	rootX, rootY, _, _, err := x11Conn.TranslateCoordinates(w.wnd.id, root, int16(origin.X), int16(origin.Y))
+	if err != nil {
+		errs.Log(err)
+	} else {
+		x = rootX
+		y = rootY
+	}
+	if qpr := x11Conn.QueryPointer(w.wnd.id); qpr != nil {
+		if err != nil {
+			x = qpr.RootX
+			y = qpr.RootY
+		} else {
+			d.offsetX = qpr.RootX - x
+			d.offsetY = qpr.RootY - y
+		}
+	}
+	if d.colorMap = x11Conn.CreateColormap(visual, root, false); d.colorMap == 0 {
+		return nil
+	}
+	if d.id = x11Conn.CreateWindow(root, x, y, uint16(width), uint16(height), 0, x11.WindowClassInputOutput, 32,
+		visual, x11.WindowMaskBackPixMap|x11.WindowMaskBorderPixel|x11.WindowMaskOverrideRedirect|x11.WindowMaskColorMap,
+		&x11.WindowCreationAttributes{
+			BackgroundPixMap: pm,
+			OverrideRedirect: true,
+			ColorMap:         d.colorMap,
+		}); d.id == 0 {
+		x11Conn.FreeColormap(d.colorMap)
+		return nil
+	}
+	if region := x11Conn.ExtXFixes.CreateRegion(); region != 0 {
+		x11Conn.ExtXFixes.SetWindowShapeRegion(d.id, x11.ShapeKindInput, region)
+		x11Conn.ExtXFixes.DestroyRegion(region)
+	}
+	x11Conn.MapWindow(d.id)
+	x11Conn.Flush()
+	return d
+}
+
+func (d *x11DragImageWindow) windowID() x11.WindowID {
+	if d == nil {
+		return 0
+	}
+	return d.id
+}
+
+func (d *x11DragImageWindow) moveTo(rootX, rootY int16) {
+	if d == nil || d.id == 0 {
+		return
+	}
+	x11Conn.ConfigureWindow(d.id, x11.ConfigureWindowMaskX|x11.ConfigureWindowMaskY, &x11.ConfigureWindowRequest{
+		X: rootX - d.offsetX,
+		Y: rootY - d.offsetY,
+	})
+	x11Conn.Flush()
+}
+
+func (d *x11DragImageWindow) dispose() {
+	if d == nil {
+		return
+	}
+	if d.id != 0 {
+		x11Conn.UnmapWindow(d.id)
+		x11Conn.DestroyWindow(d.id)
+		d.id = 0
+	}
+	if d.colorMap != 0 {
+		x11Conn.FreeColormap(d.colorMap)
+		d.colorMap = 0
+	}
+	x11Conn.Flush()
+}
+
+// x11FindARGBVisual returns a 32-bit TrueColor visual suitable for rendering an image with alpha, or 0 if none exists.
+func x11FindARGBVisual() x11.VisualID {
+	const trueColorClass = 4
+	for _, depth := range x11Conn.Roots[x11Conn.DefaultScreen].AllowedDepths {
+		if depth.Depth != 32 {
+			continue
+		}
+		for _, v := range depth.Visuals {
+			if v.Class == trueColorClass && v.RedMask == 0x00ff0000 && v.GreenMask == 0x0000ff00 &&
+				v.BlueMask == 0x000000ff {
+				return v.VisualID
+			}
+		}
+	}
+	return 0
 }
 
 func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
-	// TODO: Implement
+	if len(types) == 0 {
+		x11Conn.DeleteProperty(w.wnd.id, x11Conn.Atoms.DnDAware)
+	} else {
+		buf := x11.NewWriter(4)
+		buf.Atom(x11.DnDVersion)
+		x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.DnDAware, x11.AtomAtom, 32, x11.PropModeReplace, buf.Retrieve())
+	}
+	x11Conn.Flush()
 }
 
 func (w *Window) apiDestroy() {
@@ -571,37 +1004,52 @@ func x11ProcessEvent(e x11.Event) {
 			case x11Conn.Atoms.DnDEnter:
 				w.wnd.dndSource = x11.WindowID(ev.Data32[0])
 				w.wnd.dndVersion = ev.Data32[1] >> 24
-				w.wnd.dndFormat = 0
+				di := &x11DragInfo{}
 				if ev.Data32[1]&1 == 1 {
-					_, _, values, _, err := x11Conn.GetProperty(w.wnd.dndSource, x11Conn.Atoms.DnDTypeList, x11.AtomAtom, 0, math.MaxUint32, false)
+					_, _, values, _, err := x11Conn.GetProperty(w.wnd.dndSource, x11Conn.Atoms.DnDTypeList,
+						x11.AtomAtom, 0, math.MaxUint32, false)
 					if err != nil {
 						errs.Log(err)
 						return
 					}
 					r := x11.NewReader(values)
 					for r.Remaining() > 3 {
-						if x11.Atom(r.Uint32()) == x11Conn.Atoms.TextURIList {
-							w.wnd.dndFormat = x11Conn.Atoms.TextURIList
-							break
-						}
+						di.targets = append(di.targets, r.Atom())
 					}
 				} else {
 					for i := 2; i <= 4; i++ {
-						if x11.Atom(ev.Data32[i]) == x11Conn.Atoms.TextURIList {
-							w.wnd.dndFormat = x11Conn.Atoms.TextURIList
-							break
+						if a := x11.Atom(ev.Data32[i]); a != x11.AtomNone {
+							di.targets = append(di.targets, a)
 						}
 					}
 				}
-			case x11Conn.Atoms.DnDDrop:
-				if w.wnd.dndFormat != 0 {
-					x11Conn.ConvertSelection(w.wnd.id, x11Conn.Atoms.DnDSelection, w.wnd.dndFormat,
-						x11Conn.Atoms.DnDSelection, ev.Data32[2])
-				} else if w.wnd.dndVersion > 1 {
-					x11Conn.RejectDrag(w.wnd.dndSource, w.wnd.id)
-					x11Conn.Flush()
+				for _, target := range di.targets {
+					di.dataTypes = append(di.dataTypes, x11Conn.DataTypeForTarget(target))
 				}
+				// Use the source's full set of allowed actions, if published. Otherwise, the suggested actions from
+				// the position messages will be accumulated as they arrive.
+				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.dndSource,
+					x11Conn.Atoms.DnDActionList, x11.AtomAtom, 0, math.MaxUint32, false)
+				if err == nil && format == 32 && actualType == x11.AtomAtom {
+					r := x11.NewReader(values)
+					for r.Remaining() > 3 {
+						di.opMask |= x11OpForDnDAction(r.Atom())
+					}
+					di.hasActionList = di.opMask != drag.None
+				}
+				w.wnd.dndInfo = di
 			case x11Conn.Atoms.DnDPosition:
+				src := x11.WindowID(ev.Data32[0])
+				di := w.wnd.dndInfo
+				if di == nil {
+					x11Conn.SendDnDStatus(src, w.wnd.id, false, x11.AtomNone)
+					x11Conn.Flush()
+					return
+				}
+				if !di.hasActionList {
+					di.opMask |= x11OpForDnDAction(x11.Atom(ev.Data32[4]))
+				}
+				di.timestamp = ev.Data32[3]
 				x := int16((ev.Data32[2] >> 16) & 0xffff)
 				y := int16((ev.Data32[2]) & 0xffff)
 				var err error
@@ -609,18 +1057,28 @@ func x11ProcessEvent(e x11.Event) {
 					errs.Log(err)
 					return
 				}
-				w.mouseMovedOrDragged(w.apiConvertRawMouse(geom.NewPoint(float32(x), float32(y))),
-					w.CurrentKeyModifiers())
-				if w.wnd.dndFormat == 0 {
-					x11Conn.RejectDrag(w.wnd.dndSource, w.wnd.id)
-				} else {
-					var action x11.Atom
-					if w.wnd.dndVersion > 1 {
-						action = x11Conn.Atoms.DnDActionCopy
-					}
-					x11Conn.AcceptDrag(w.wnd.dndSource, w.wnd.id, action)
-				}
+				di.lastWhere = w.apiConvertRawMouse(geom.NewPoint(float32(x), float32(y)))
+				op := w.dragUpdate(di, di.lastWhere, w.CurrentKeyModifiers())
+				x11Conn.SendDnDStatus(src, w.wnd.id, op != drag.None, x11DnDActionForOp(op))
 				x11Conn.Flush()
+			case x11Conn.Atoms.DnDLeave:
+				w.dragExit()
+				w.wnd.dndInfo = nil
+			case x11Conn.Atoms.DnDDrop:
+				src := x11.WindowID(ev.Data32[0])
+				handled := false
+				if di := w.wnd.dndInfo; di != nil {
+					di.timestamp = ev.Data32[2]
+					handled = w.drop(di, di.lastWhere, w.CurrentKeyModifiers())
+				}
+				if w.wnd.dndVersion > 1 {
+					x11Conn.SendDnDFinished(src, w.wnd.id, handled, x11DnDActionForOp(w.lastDragOp))
+					x11Conn.Flush()
+				}
+				w.wnd.dndInfo = nil
+			case x11Conn.Atoms.DnDStatus, x11Conn.Atoms.DnDFinished:
+				// These are handled by the drag loop while a drag is in progress. One may still arrive after the drag
+				// loop has given up waiting for it, so just ignore it.
 			default:
 				slog.Info(fmt.Sprintf("ClientMessageEvent with unhandled type: %d", ev.Type))
 				return
@@ -628,25 +1086,6 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.SelectionRequestEvent:
 		x11Conn.RespondToSelectionRequest(ev)
-	case *x11.SelectionNotifyEvent:
-		if ev.Property == x11Conn.Atoms.DnDSelection {
-			if w := x11FindWindow(ev.Requestor); w != nil {
-				_, _, values, _, err := x11Conn.GetProperty(ev.Requestor, ev.Property, ev.Target, 0, math.MaxUint32, false)
-				if err != nil {
-					errs.Log(err)
-					return
-				}
-				if len(values) != 0 {
-					// TODO: Fix this for drag & drop
-					// paths := x11ParseURIList(values)
-					// w.fileDrop(paths)
-				}
-				if w.wnd.dndVersion > 1 {
-					x11Conn.AcceptDrop(w.wnd.dndSource, w.wnd.id, x11Conn.Atoms.DnDActionCopy, uint32(len(values)))
-					x11Conn.Flush()
-				}
-			}
-		}
 	case *x11.FocusInEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
 			if ev.Mode == x11.NotifyGrab || ev.Mode == x11.NotifyUngrab {
@@ -739,18 +1178,125 @@ func x11TranslateModifierState(state uint16) mod.Modifiers {
 	return m
 }
 
-func x11ParseURIList(uriList []byte) []string {
-	var paths []string
+func x11ParseURIList(uriList []byte) []*url.URL {
+	var urls []*url.URL
 	for line := range strings.SplitSeq(string(bytes.ReplaceAll(uriList, []byte{'\r', '\n'}, []byte{'\n'})), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || line[0] == '#' {
 			continue
 		}
-		if p, err := url.PathUnescape(strings.TrimPrefix(line, "file://")); err != nil {
+		u, err := url.Parse(line)
+		if err != nil {
 			errs.Log(err)
-		} else {
-			paths = append(paths, p)
+			continue
+		}
+		urls = append(urls, u)
+	}
+	return urls
+}
+
+var _ drag.Info = &x11DragInfo{}
+
+// x11DragInfo implements drag.Info for an incoming XDND drag. The drag data is fetched lazily by converting the
+// XdndSelection and is cached, since the data for a given drag cannot change once the drag has begun.
+type x11DragInfo struct {
+	cache         map[x11.Atom][]byte
+	targets       []x11.Atom
+	dataTypes     []string
+	lastWhere     geom.Point
+	timestamp     uint32
+	opMask        drag.Op
+	hasActionList bool
+}
+
+func (d *x11DragInfo) SourceDragOpMask() drag.Op {
+	if d.opMask == drag.None {
+		return drag.Copy
+	}
+	return d.opMask
+}
+
+func (d *x11DragInfo) DataTypes() []string {
+	result := make([]string, 0, len(d.dataTypes))
+	for _, dataType := range d.dataTypes {
+		if dataType != "" && !slices.Contains(result, dataType) {
+			result = append(result, dataType)
+		}
+	}
+	return result
+}
+
+// targetFor returns the offered target to use for the given data type, or AtomNone if the data type is not present in
+// the drag.
+func (d *x11DragInfo) targetFor(dataType string) x11.Atom {
+	for _, target := range x11Conn.TargetsForDataType(dataType) {
+		if slices.Contains(d.targets, target) {
+			return target
+		}
+	}
+	for i, dt := range d.dataTypes {
+		if dt == dataType {
+			return d.targets[i]
+		}
+	}
+	return x11.AtomNone
+}
+
+func (d *x11DragInfo) HasString() bool {
+	return d.HasDataType(uti.UTF8PlainText.UTI)
+}
+
+func (d *x11DragInfo) HasFilePaths() bool {
+	return slices.Contains(d.targets, x11Conn.Atoms.TextURIList)
+}
+
+func (d *x11DragInfo) HasURLs() bool {
+	return slices.Contains(d.targets, x11Conn.Atoms.TextURIList) || d.HasDataType(uti.URL.UTI)
+}
+
+func (d *x11DragInfo) HasDataType(dataType string) bool {
+	return d.targetFor(dataType) != x11.AtomNone
+}
+
+func (d *x11DragInfo) Text() string {
+	return string(d.Data(uti.UTF8PlainText.UTI))
+}
+
+func (d *x11DragInfo) FilePaths() []string {
+	var paths []string
+	for _, u := range x11ParseURIList(d.fetch(x11Conn.Atoms.TextURIList)) {
+		if u.Scheme == "file" || u.Scheme == "" {
+			paths = append(paths, u.Path)
 		}
 	}
 	return paths
+}
+
+func (d *x11DragInfo) URLs() []*url.URL {
+	if urls := x11ParseURIList(d.fetch(x11Conn.Atoms.TextURIList)); len(urls) != 0 {
+		return urls
+	}
+	return x11ParseURIList(d.Data(uti.URL.UTI))
+}
+
+func (d *x11DragInfo) Data(dataType string) []byte {
+	return d.fetch(d.targetFor(dataType))
+}
+
+func (d *x11DragInfo) fetch(target x11.Atom) []byte {
+	if target == x11.AtomNone {
+		return nil
+	}
+	if data, ok := d.cache[target]; ok {
+		return data
+	}
+	data, ok := x11Conn.DnDSelectionBytes(target, d.timestamp)
+	if !ok {
+		data = nil
+	}
+	if d.cache == nil {
+		d.cache = make(map[x11.Atom][]byte)
+	}
+	d.cache[target] = data
+	return data
 }

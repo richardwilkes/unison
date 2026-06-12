@@ -12,6 +12,7 @@ package unison
 import (
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
@@ -61,7 +62,14 @@ func apiPollEvents() {
 }
 
 func apiWaitEvents() {
-	for _, e := range x11Conn.PullEvents() {
+	// Process the pending events one at a time rather than pulling them all at once, so that a nested event loop
+	// started by a handler (such as the one used for the source side of drag & drop) is able to see the events that
+	// are still pending.
+	for {
+		e := x11Conn.PollEvents(nil)
+		if xreflect.IsNil(e) {
+			return
+		}
 		x11ProcessEvent(e)
 	}
 }

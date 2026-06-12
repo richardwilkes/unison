@@ -226,6 +226,7 @@ type (
 	GCID       uint32
 	PictureID  uint32
 	PixMapID   uint32
+	RegionID   uint32
 	VisualID   uint32
 	WindowID   uint32
 )
@@ -673,6 +674,7 @@ type Conn struct {
 	screen                   string
 	vendor                   string
 	clipboardEntries         []clipboardEntry
+	dndEntries               []clipboardEntry
 	pixmapFormats            []Format
 	Roots                    []Screen
 	eventQueue               []Event
@@ -1246,28 +1248,10 @@ func (c *Conn) queuedEvent(filter func(Event) bool) (Event, bool) {
 	return nil, false
 }
 
-// PullEvents retrieves all currently queued events, including any pending events in the channel.
-func (c *Conn) PullEvents() []Event {
-	c.eventQueueLock.Lock()
-	defer c.eventQueueLock.Unlock()
-	events := c.eventQueue
-	c.eventQueue = nil
-	for {
-		select {
-		case e, ok := <-c.events:
-			if !ok {
-				return events
-			}
-			events = append(events, e)
-		default:
-			return events
-		}
-	}
-}
-
 // WaitEvents blocks until the next event is available. If the optional filter function is provided, only events for
-// which the filter returns true will be returned, and other events will be queued for later retrieval. nil may be
-// returned if the connection is closed.
+// which the filter returns true will be returned, and other events will be queued for later retrieval, except for the
+// nil events posted by PostEmptyEvent, which are discarded, since their only purpose is to wake up a waiter. nil may
+// be returned if the connection is closed.
 func (c *Conn) WaitEvents(filter func(Event) bool) Event {
 	e, ok := c.queuedEvent(filter)
 	if ok {
@@ -1280,15 +1264,18 @@ func (c *Conn) WaitEvents(filter func(Event) bool) Event {
 		if filter == nil || filter(e) {
 			return e
 		}
-		c.eventQueueLock.Lock()
-		c.eventQueue = append(c.eventQueue, e)
-		c.eventQueueLock.Unlock()
+		if e != nil {
+			c.eventQueueLock.Lock()
+			c.eventQueue = append(c.eventQueue, e)
+			c.eventQueueLock.Unlock()
+		}
 	}
 }
 
 // WaitEventsUntil blocks until the next event is available or the specified timeout is reached. If the optional filter
 // function is provided, only events for which the filter returns true will be returned, and other events will be queued
-// for later retrieval. nil may be returned if the connection is closed or the timeout is hit.
+// for later retrieval, except for the nil events posted by PostEmptyEvent, which are discarded, since their only
+// purpose is to wake up a waiter. nil may be returned if the connection is closed or the timeout is hit.
 func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) Event {
 	e, ok := c.queuedEvent(filter)
 	if ok {
@@ -1303,34 +1290,43 @@ func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) E
 			if filter == nil || filter(e) {
 				return e
 			}
-			c.eventQueueLock.Lock()
-			c.eventQueue = append(c.eventQueue, e)
-			c.eventQueueLock.Unlock()
+			if e != nil {
+				c.eventQueueLock.Lock()
+				c.eventQueue = append(c.eventQueue, e)
+				c.eventQueueLock.Unlock()
+			}
 		case <-time.After(timeout):
 			return nil
 		}
 	}
 }
 
-// PollEvents processes the next event if one is available. If the optional filter function is provided, only events for
-// which the filter returns true will be returned, and other events will be queued for later retrieval. nil will be
-// returned if no events are currently available or if the connection is closed.
+// PollEvents returns the next available event matching the optional filter, or nil if no event is immediately
+// available. Events that don't match the filter are queued for later retrieval. The nil wake-up events posted by
+// PostEmptyEvent are skipped, so a nil result always means no actual events are pending.
 func (c *Conn) PollEvents(filter func(Event) bool) Event {
-	e, ok := c.queuedEvent(filter)
-	if ok {
+	if e, ok := c.queuedEvent(filter); ok {
 		return e
 	}
-	select {
-	case e = <-c.events:
-		if filter == nil || filter(e) {
-			return e
+	for {
+		select {
+		case e, ok := <-c.events:
+			if !ok {
+				return nil
+			}
+			if e == nil {
+				continue // Skip wake-up events
+			}
+			if filter == nil || filter(e) {
+				return e
+			}
+			c.eventQueueLock.Lock()
+			c.eventQueue = append(c.eventQueue, e)
+			c.eventQueueLock.Unlock()
+		default:
+			return nil
 		}
-		c.eventQueueLock.Lock()
-		c.eventQueue = append(c.eventQueue, e)
-		c.eventQueueLock.Unlock()
-	default:
 	}
-	return nil
 }
 
 func (c *Conn) hasExtension(name string, versionOpCode byte, versionIs16Bit bool, majorMax, minorMax uint32) extensionInfo {
@@ -1964,7 +1960,7 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 
 		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images.
 		pix := make([]byte, rows*w*4)
-		base := y * img.Stride * 4
+		base := y * img.Stride
 		for i := 0; i < len(pix); i += 4 {
 			si := base + i
 			a := uint16(img.Pix[si+3])
@@ -2182,59 +2178,41 @@ func (c *Conn) RespondToPing() {
 	}
 }
 
-// AcceptDrag sends a ClientMessage event to the source window in response to a drag-and-drop operation, indicating that
-// the drag was accepted.
-func (c *Conn) AcceptDrag(src, dst WindowID, action Atom) {
-	if err := c.sendEvent(src, false, 0, &ClientMessageEvent{
-		Window: src,
-		Type:   c.Atoms.DnDStatus,
-		Format: 32,
-		Data32: [5]uint32{
-			uint32(dst),
-			1, // The drag was accepted
-			0,
-			0,
-			uint32(action),
-		},
-	}); err != nil {
+// GrabPointer actively grabs the pointer so that all pointer events matching the given event mask are reported to the
+// specified window, regardless of which window the pointer is in. If cursor is not 0, it is displayed for the duration
+// of the grab. Returns true if the grab succeeded.
+func (c *Conn) GrabPointer(window WindowID, eventMask uint16, cursor CursorID) bool {
+	w := NewWriter(24)
+	w.Byte(opGrabPointer)
+	w.Bool(false) // owner-events: report all events with respect to the grab window
+	w.Uint16(6)
+	w.WindowID(window)
+	w.Uint16(eventMask)
+	w.Byte(1) // pointer mode: asynchronous
+	w.Byte(1) // keyboard mode: asynchronous
+	w.WindowID(0)
+	w.CursorID(cursor)
+	w.Uint32(0) // time: CurrentTime
+	var status byte
+	if err := c.sendNewRequest(newReplyRequest(w, func(r *Reader) {
+		r.Skip(1)
+		status = r.Byte()
+		r.Skip(30)
+	})); err != nil {
 		errs.Log(err)
+		return false
 	}
+	return status == 0
 }
 
-// RejectDrag sends a ClientMessage event to the source window in response to a drag-and-drop operation, indicating that
-// the drag was rejected.
-func (c *Conn) RejectDrag(src, dst WindowID) {
-	if err := c.sendEvent(src, false, 0, &ClientMessageEvent{
-		Window: src,
-		Type:   c.Atoms.DnDFinished,
-		Format: 32,
-		Data32: [5]uint32{
-			uint32(dst),
-			0, // The drag was rejected
-			0,
-			0,
-			0,
-		},
-	}); err != nil {
-		errs.Log(err)
-	}
-}
-
-// AcceptDrop sends a ClientMessage event to the source window in response to a drag-and-drop operation, indicating that
-// the drop was accepted and providing the specified action and item count.
-func (c *Conn) AcceptDrop(src, dst WindowID, action Atom, count uint32) {
-	if err := c.sendEvent(src, false, 0, &ClientMessageEvent{
-		Window: src,
-		Type:   c.Atoms.DnDFinished,
-		Format: 32,
-		Data32: [5]uint32{
-			uint32(dst),
-			count,
-			uint32(action),
-			0,
-			0,
-		},
-	}); err != nil {
+// UngrabPointer releases an active pointer grab established by GrabPointer.
+func (c *Conn) UngrabPointer() {
+	w := NewWriter(8)
+	w.Byte(opUngrabPointer)
+	w.Zero(1)
+	w.Uint16(2)
+	w.Uint32(0) // time: CurrentTime
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 		errs.Log(err)
 	}
 }

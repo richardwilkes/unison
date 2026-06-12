@@ -97,6 +97,8 @@ type Atoms struct {
 	ClipboardSelection      Atom
 	ClipboardTargets        Atom
 	DnDActionCopy           Atom
+	DnDActionList           Atom
+	DnDActionMove           Atom
 	DnDAware                Atom
 	DnDDrop                 Atom
 	DnDEnter                Atom
@@ -151,6 +153,8 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.ClipboardSelection, "CLIPBOARD_SELECTION"},
 		{&a.ClipboardTargets, "TARGETS"},
 		{&a.DnDActionCopy, "XdndActionCopy"},
+		{&a.DnDActionList, "XdndActionList"},
+		{&a.DnDActionMove, "XdndActionMove"},
 		{&a.DnDAware, "XdndAware"},
 		{&a.DnDDrop, "XdndDrop"},
 		{&a.DnDEnter, "XdndEnter"},

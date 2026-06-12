@@ -185,6 +185,13 @@ func start() error {
 
 func processEvents() {
 	apiWaitEvents()
+	finishProcessingEvents()
+}
+
+// finishProcessingEvents runs the next pending UI task and draws any windows that have been marked for redraw. It is
+// called after each pass of event processing in the main loop, as well as in nested event loops, such as the one used
+// for the source side of drag & drop on Linux.
+func finishProcessingEvents() {
 	processNextTask(uiTaskRecovery)
 	if len(redrawSet) > 0 {
 		set := redrawSet

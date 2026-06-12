@@ -963,12 +963,13 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) (property Atom, t
 	if e.Property == AtomNone {
 		return AtomNone, nil
 	}
+	entries := c.selectionEntries(e.Selection)
 	switch e.Target {
 	case c.Atoms.ClipboardTargets:
-		w := NewWriter(4 * (2 + len(c.clipboardEntries)))
+		w := NewWriter(4 * (2 + len(entries)))
 		w.Atom(c.Atoms.ClipboardTargets)
 		w.Atom(c.Atoms.ClipboardMultiple)
-		for _, entry := range c.clipboardEntries {
+		for _, entry := range entries {
 			w.Atom(entry.target)
 		}
 		c.ChangeProperty(e.Requestor, e.Property, AtomAtom, 32, PropModeReplace, w.Retrieve())
@@ -990,7 +991,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) (property Atom, t
 			target := r.Atom()
 			prop := r.Atom()
 			w.Atom(target)
-			if entry, ok := c.clipboardEntryForTarget(target); ok && prop != AtomNone {
+			if entry, ok := entryForTarget(entries, target); ok && prop != AtomNone {
 				if t := c.writeClipboardProperty(e.Requestor, prop, entry); t != nil {
 					transfers = append(transfers, t)
 				}
@@ -1006,7 +1007,7 @@ func (e *SelectionRequestEvent) writeTargetToProperty(c *Conn) (property Atom, t
 		c.ChangeProperty(e.Requestor, e.Property, c.Atoms.Null, 32, PropModeReplace, nil)
 		return e.Property, nil
 	default:
-		if entry, ok := c.clipboardEntryForTarget(e.Target); ok {
+		if entry, ok := entryForTarget(entries, e.Target); ok {
 			if t := c.writeClipboardProperty(e.Requestor, e.Property, entry); t != nil {
 				transfers = append(transfers, t)
 			}

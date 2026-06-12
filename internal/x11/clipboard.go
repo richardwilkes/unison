@@ -72,7 +72,7 @@ func (c *Conn) ClipboardDataTypes() []string {
 		return nil
 	}
 	for _, target := range c.requestClipboardTargets() {
-		if dataType := c.dataTypeForTarget(target); dataType != "" && !slices.Contains(result, dataType) {
+		if dataType := c.DataTypeForTarget(target); dataType != "" && !slices.Contains(result, dataType) {
 			result = append(result, dataType)
 		}
 	}
@@ -103,8 +103,8 @@ func (c *Conn) GetClipboardBytes(dataType string) []byte {
 	if owner == 0 {
 		return nil
 	}
-	for _, target := range c.targetsForDataType(dataType) {
-		if value, ok := c.convertClipboardSelection(target); ok && len(value) != 0 {
+	for _, target := range c.TargetsForDataType(dataType) {
+		if value, ok := c.convertSelection(c.Atoms.Clipboard, target, 0); ok && len(value) != 0 {
 			if target == AtomString {
 				value = convertLatin1ToUTF8(value)
 			}
@@ -122,6 +122,13 @@ func (c *Conn) SetClipboardData(data ...drag.Data) {
 	if c.helperWindow == 0 {
 		return
 	}
+	c.clipboardEntries = c.buildSelectionEntries(data...)
+	c.setSelectionOwner(c.helperWindow, c.Atoms.Clipboard)
+}
+
+// buildSelectionEntries converts the provided data into the entries that the helper window will offer to other clients
+// when they request the contents of a selection it owns.
+func (c *Conn) buildSelectionEntries(data ...drag.Data) []clipboardEntry {
 	var entries []clipboardEntry
 	seen := make(map[Atom]bool)
 	add := func(dataType string, target, kind Atom, content []byte) {
@@ -133,7 +140,7 @@ func (c *Conn) SetClipboardData(data ...drag.Data) {
 	}
 	for _, d := range data {
 		isText := uti.UTF8PlainText.ConformsTo(d.Type)
-		for i, target := range c.targetsForDataType(d.Type.UTI) {
+		for i, target := range c.TargetsForDataType(d.Type.UTI) {
 			var dataType string
 			if i == 0 {
 				dataType = d.Type.UTI
@@ -148,13 +155,20 @@ func (c *Conn) SetClipboardData(data ...drag.Data) {
 			add("", c.Atoms.Text, c.Atoms.UTF8String, d.Data)
 		}
 	}
-	c.clipboardEntries = entries
-	c.setSelectionOwner(c.helperWindow, c.Atoms.Clipboard)
+	return entries
 }
 
-// clipboardEntryForTarget returns the stored clipboard entry offered under the given target, if any.
-func (c *Conn) clipboardEntryForTarget(target Atom) (entry clipboardEntry, ok bool) {
-	for _, entry = range c.clipboardEntries {
+// selectionEntries returns the stored entries for the given selection.
+func (c *Conn) selectionEntries(selection Atom) []clipboardEntry {
+	if selection == c.Atoms.DnDSelection {
+		return c.dndEntries
+	}
+	return c.clipboardEntries
+}
+
+// entryForTarget returns the entry offered under the given target, if any.
+func entryForTarget(entries []clipboardEntry, target Atom) (entry clipboardEntry, ok bool) {
+	for _, entry = range entries {
 		if entry.target == target {
 			return entry, true
 		}
@@ -164,7 +178,7 @@ func (c *Conn) clipboardEntryForTarget(target Atom) (entry clipboardEntry, ok bo
 
 // requestClipboardTargets asks the current owner of the CLIPBOARD selection for the list of targets it offers.
 func (c *Conn) requestClipboardTargets() []Atom {
-	value, ok := c.convertClipboardSelection(c.Atoms.ClipboardTargets)
+	value, ok := c.convertSelection(c.Atoms.Clipboard, c.Atoms.ClipboardTargets, 0)
 	if !ok || len(value)%4 != 0 {
 		return nil
 	}
@@ -176,13 +190,14 @@ func (c *Conn) requestClipboardTargets() []Atom {
 	return targets
 }
 
-// convertClipboardSelection asks the current owner of the CLIPBOARD selection to convert its contents to the given
-// target and returns the resulting data. If the contents are provided incrementally (using the INCR mechanism), it
-// handles that as well by repeatedly requesting the property until all data has been received.
-func (c *Conn) convertClipboardSelection(target Atom) ([]byte, bool) {
-	c.ConvertSelection(c.helperWindow, c.Atoms.Clipboard, target, c.Atoms.ClipboardSelection, 0)
+// convertSelection asks the current owner of the given selection to convert its contents to the given target and
+// returns the resulting data. If the contents are provided incrementally (using the INCR mechanism), it handles that
+// as well by repeatedly requesting the property until all data has been received.
+func (c *Conn) convertSelection(selection, target Atom, timestamp uint32) ([]byte, bool) {
+	c.ConvertSelection(c.helperWindow, selection, target, c.Atoms.ClipboardSelection, timestamp)
 	ev := c.WaitEventsUntil(func(e Event) bool {
-		if sne, ok := e.(*SelectionNotifyEvent); ok && sne.Requestor == c.helperWindow && sne.Target == target {
+		if sne, ok := e.(*SelectionNotifyEvent); ok && sne.Requestor == c.helperWindow &&
+			sne.Selection == selection && sne.Target == target {
 			return true
 		}
 		return false
@@ -224,8 +239,8 @@ func (c *Conn) convertClipboardSelection(target Atom) ([]byte, bool) {
 	}
 }
 
-// targetsForDataType returns the selection targets to use for the given UTI, in order of preference.
-func (c *Conn) targetsForDataType(dataType string) []Atom {
+// TargetsForDataType returns the selection targets to use for the given UTI, in order of preference.
+func (c *Conn) TargetsForDataType(dataType string) []Atom {
 	var result []Atom
 	add := func(target Atom) {
 		if target != AtomNone && !slices.Contains(result, target) {
@@ -249,10 +264,10 @@ func (c *Conn) targetsForDataType(dataType string) []Atom {
 	return result
 }
 
-// dataTypeForTarget returns the UTI for the given selection target, or "" if the target does not represent clipboard
+// DataTypeForTarget returns the UTI for the given selection target, or "" if the target does not represent selection
 // data. Targets that aren't recognized are returned as-is, since they may be UTIs provided by another unison-based
 // application or types that the caller knows how to interpret.
-func (c *Conn) dataTypeForTarget(target Atom) string {
+func (c *Conn) DataTypeForTarget(target Atom) string {
 	switch target {
 	case AtomNone:
 		return ""

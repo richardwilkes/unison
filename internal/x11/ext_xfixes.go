@@ -49,6 +49,13 @@ const (
 	xfOpGetClientDisconnectMode
 )
 
+// Shape kinds for SetWindowShapeRegion, as defined by the SHAPE extension.
+const (
+	ShapeKindBounding = iota
+	ShapeKindClip
+	ShapeKindInput
+)
+
 // ExtXFixes provides access to the XFIXES extension. Note that only those calls that I need have been implemented.
 type ExtXFixes struct {
 	conn *Conn
@@ -70,6 +77,53 @@ func (e *ExtXFixes) HideCursor(window WindowID) {
 	w.Byte(xfOpHideCursor)
 	w.Uint16(2)
 	w.WindowID(window)
+	if err := e.conn.sendNewRequest(newCheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// CreateRegion creates a new, empty region and returns its ID.
+func (e *ExtXFixes) CreateRegion() RegionID {
+	id := nextXID[RegionID](e.conn)
+	if id != 0 {
+		w := NewWriter(8)
+		w.Byte(e.majorOpcode)
+		w.Byte(xfOpCreateRegion)
+		w.Uint16(2)
+		w.Uint32(uint32(id))
+		if err := e.conn.sendNewRequest(newCheckedRequest(w)); err != nil {
+			errs.Log(err)
+			return 0
+		}
+	}
+	return id
+}
+
+// DestroyRegion destroys the specified region.
+func (e *ExtXFixes) DestroyRegion(region RegionID) {
+	w := NewWriter(8)
+	w.Byte(e.majorOpcode)
+	w.Byte(xfOpDestroyRegion)
+	w.Uint16(2)
+	w.Uint32(uint32(region))
+	if err := e.conn.sendNewRequest(newUncheckedRequest(w)); err != nil {
+		errs.Log(err)
+	}
+}
+
+// SetWindowShapeRegion sets the shape of the specified kind (one of the ShapeKind constants) on the given window to
+// the specified region.
+func (e *ExtXFixes) SetWindowShapeRegion(window WindowID, shapeKind byte, region RegionID) {
+	w := NewWriter(20)
+	w.Byte(e.majorOpcode)
+	w.Byte(xfOpSetWindowShapeRegion)
+	w.Uint16(5)
+	w.WindowID(window)
+	w.Byte(shapeKind)
+	w.Zero(3)
+	w.Int16(0) // x offset
+	w.Int16(0) // y offset
+	w.Uint32(uint32(region))
 	if err := e.conn.sendNewRequest(newCheckedRequest(w)); err != nil {
 		errs.Log(err)
 	}
