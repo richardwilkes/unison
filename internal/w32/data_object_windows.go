@@ -18,6 +18,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"golang.org/x/sys/windows"
 )
@@ -42,7 +43,7 @@ type dragDataEntry struct {
 // releaseMedium drops the reference to an owned IStream, if any.
 func (e *dragDataEntry) releaseMedium() {
 	if e.stream != 0 {
-		(*Unknown)(unsafe.Pointer(e.stream)).Release()
+		xruntime.PtrFromUintptr[Unknown](e.stream).Release()
 		e.stream = 0
 	}
 }
@@ -188,29 +189,29 @@ func (obj *DataObject) findEntry(cf uint16) (*dragDataEntry, bool) {
 }
 
 func dataObjQueryInterface(this, riid, ppvObject uintptr) uint64 {
-	guid := (*windows.GUID)(unsafe.Pointer(riid))
+	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
 	if *guid == iidUnknown || *guid == iidIDataObject {
-		*(*uintptr)(unsafe.Pointer(ppvObject)) = this
+		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		dataObjAddRef(this)
 		return COM_S_OK
 	}
-	*(*uintptr)(unsafe.Pointer(ppvObject)) = 0
+	*xruntime.PtrFromUintptr[uintptr](ppvObject) = 0
 	return COM_E_NOINTERFACE
 }
 
 func dataObjAddRef(this uintptr) uintptr {
-	obj := (*DataObject)(unsafe.Pointer(this))
+	obj := xruntime.PtrFromUintptr[DataObject](this)
 	return uintptr(atomic.AddInt32(&obj.refCount, 1))
 }
 
 func dataObjRelease(this uintptr) uintptr {
-	obj := (*DataObject)(unsafe.Pointer(this))
+	obj := xruntime.PtrFromUintptr[DataObject](this)
 	return uintptr(atomic.AddInt32(&obj.refCount, -1))
 }
 
 func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
-	obj := (*DataObject)(unsafe.Pointer(this))
-	fe := (*FORMATETC)(unsafe.Pointer(pformatetcIn))
+	obj := xruntime.PtrFromUintptr[DataObject](this)
+	fe := xruntime.PtrFromUintptr[FORMATETC](pformatetcIn)
 	entry, ok := obj.findEntry(fe.CfFormat)
 	if !ok {
 		return COM_DV_E_FORMATETC
@@ -218,9 +219,9 @@ func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 	if fe.Tymed&entry.fmtEtc.Tymed == 0 {
 		return COM_DV_E_TYMED
 	}
-	stg := (*STGMEDIUM)(unsafe.Pointer(pmedium))
+	stg := xruntime.PtrFromUintptr[STGMEDIUM](pmedium)
 	if entry.fmtEtc.Tymed == TyMedIStream {
-		(*Unknown)(unsafe.Pointer(entry.stream)).AddRef() // caller releases via ReleaseStgMedium
+		xruntime.PtrFromUintptr[Unknown](entry.stream).AddRef() // caller releases via ReleaseStgMedium
 		stg.Tymed = TyMedIStream
 		stg.Data = entry.stream
 		stg.PUnkForRelease = 0
@@ -235,7 +236,7 @@ func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 		GlobalFree(h)
 		return COM_E_NOTIMPL
 	}
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(entry.data)), entry.data)
+	copy(unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), len(entry.data)), entry.data)
 	GlobalUnlock(h)
 	stg.Tymed = TyMedHGlobal
 	stg.Data = uintptr(h)
@@ -246,8 +247,8 @@ func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 func dataObjGetDataHere(_, _, _ uintptr) uint64 { return COM_E_NOTIMPL }
 
 func dataObjQueryGetData(this, pformatetc uintptr) uint64 {
-	obj := (*DataObject)(unsafe.Pointer(this))
-	fe := (*FORMATETC)(unsafe.Pointer(pformatetc))
+	obj := xruntime.PtrFromUintptr[DataObject](this)
+	fe := xruntime.PtrFromUintptr[FORMATETC](pformatetc)
 	entry, ok := obj.findEntry(fe.CfFormat)
 	if !ok {
 		return COM_DV_E_FORMATETC
@@ -260,7 +261,7 @@ func dataObjQueryGetData(this, pformatetc uintptr) uint64 {
 
 func dataObjGetCanonicalFormatEtc(_, _, pformatetcOut uintptr) uint64 {
 	// Indicate we don't canonicalize.
-	(*FORMATETC)(unsafe.Pointer(pformatetcOut)).Ptd = 0
+	xruntime.PtrFromUintptr[FORMATETC](pformatetcOut).Ptd = 0
 	return COM_DATA_S_SAMEFORMATETC
 }
 
@@ -268,9 +269,9 @@ func dataObjGetCanonicalFormatEtc(_, _, pformatetcOut uintptr) uint64 {
 // image and its bookkeeping under private clipboard formats, which it reads back later via GetData. The helper uses
 // both HGLOBAL and IStream mediums, so both must be accepted.
 func dataObjSetData(this, pformatetc, pmedium, fRelease uintptr) uint64 {
-	obj := (*DataObject)(unsafe.Pointer(this))
-	fe := (*FORMATETC)(unsafe.Pointer(pformatetc))
-	stg := (*STGMEDIUM)(unsafe.Pointer(pmedium))
+	obj := xruntime.PtrFromUintptr[DataObject](this)
+	fe := xruntime.PtrFromUintptr[FORMATETC](pformatetc)
+	stg := xruntime.PtrFromUintptr[STGMEDIUM](pmedium)
 	entry := dragDataEntry{
 		fmtEtc: FORMATETC{
 			CfFormat: fe.CfFormat,
@@ -287,7 +288,7 @@ func dataObjSetData(this, pformatetc, pmedium, fRelease uintptr) uint64 {
 				return COM_DV_E_TYMED
 			}
 			entry.data = make([]byte, GlobalSize(h))
-			copy(entry.data, unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(entry.data)))
+			copy(entry.data, unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), len(entry.data)))
 			GlobalUnlock(h)
 		}
 		if fRelease != 0 {
@@ -300,7 +301,7 @@ func dataObjSetData(this, pformatetc, pmedium, fRelease uintptr) uint64 {
 		entry.stream = stg.Data
 		if fRelease == 0 {
 			// We keep a reference of our own; with fRelease set, the caller's reference becomes ours instead.
-			(*Unknown)(unsafe.Pointer(entry.stream)).AddRef()
+			xruntime.PtrFromUintptr[Unknown](entry.stream).AddRef()
 		}
 	default:
 		return COM_DV_E_TYMED
@@ -320,10 +321,10 @@ func dataObjEnumFormatEtc(this, dwDirection, ppenumFormatetc uintptr) uint64 {
 	if dwDirection != 1 { // DATADIR_GET = 1
 		return COM_E_NOTIMPL
 	}
-	obj := (*DataObject)(unsafe.Pointer(this))
+	obj := xruntime.PtrFromUintptr[DataObject](this)
 	obj.enumFmt.Reset()
 	enumAddRef(uintptr(unsafe.Pointer(obj.enumFmt)))
-	*(*uintptr)(unsafe.Pointer(ppenumFormatetc)) = uintptr(unsafe.Pointer(obj.enumFmt))
+	*xruntime.PtrFromUintptr[uintptr](ppenumFormatetc) = uintptr(unsafe.Pointer(obj.enumFmt))
 	return COM_S_OK
 }
 

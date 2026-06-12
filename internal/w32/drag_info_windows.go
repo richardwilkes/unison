@@ -18,6 +18,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"golang.org/x/sys/windows"
@@ -210,7 +211,7 @@ func (d *dragInfo) getFormatData(cf ClipboardFormat) []byte {
 		return nil
 	}
 	data := make([]byte, size)
-	copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buf)), size))
+	copy(data, unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), size))
 	return data
 }
 

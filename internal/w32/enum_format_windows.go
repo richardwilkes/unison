@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"golang.org/x/sys/windows"
 )
 
@@ -111,30 +112,30 @@ func (e *enumFORMATETC) Reset() {
 }
 
 func enumQueryInterface(this, riid, ppvObject uintptr) uint64 {
-	guid := (*windows.GUID)(unsafe.Pointer(riid))
+	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
 	if *guid == iidUnknown || *guid == iidIEnumFORMATETC {
-		*(*uintptr)(unsafe.Pointer(ppvObject)) = this
+		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		enumAddRef(this)
 		return COM_S_OK
 	}
-	*(*uintptr)(unsafe.Pointer(ppvObject)) = 0
+	*xruntime.PtrFromUintptr[uintptr](ppvObject) = 0
 	return COM_E_NOINTERFACE
 }
 
 func enumAddRef(this uintptr) uintptr {
-	e := (*enumFORMATETC)(unsafe.Pointer(this))
+	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
 	return uintptr(atomic.AddInt32(&e.refCount, 1))
 }
 
 func enumRelease(this uintptr) uintptr {
-	e := (*enumFORMATETC)(unsafe.Pointer(this))
+	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
 	return uintptr(atomic.AddInt32(&e.refCount, -1))
 }
 
 func enumNext(this, celt, rgelt, pceltFetched uintptr) uint64 {
-	e := (*enumFORMATETC)(unsafe.Pointer(this))
+	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
 	count := int(celt)
-	dst := unsafe.Slice((*FORMATETC)(unsafe.Pointer(rgelt)), count)
+	dst := unsafe.Slice(xruntime.PtrFromUintptr[FORMATETC](rgelt), count)
 	fetched := 0
 	for fetched < count && e.pos < len(e.obj.entries) {
 		dst[fetched] = e.obj.entries[e.pos].fmtEtc
@@ -142,7 +143,7 @@ func enumNext(this, celt, rgelt, pceltFetched uintptr) uint64 {
 		e.pos++
 	}
 	if pceltFetched != 0 {
-		*(*uint32)(unsafe.Pointer(pceltFetched)) = uint32(fetched)
+		*xruntime.PtrFromUintptr[uint32](pceltFetched) = uint32(fetched)
 	}
 	if fetched == count {
 		return COM_S_OK
@@ -151,7 +152,7 @@ func enumNext(this, celt, rgelt, pceltFetched uintptr) uint64 {
 }
 
 func enumSkip(this, celt uintptr) uint64 {
-	e := (*enumFORMATETC)(unsafe.Pointer(this))
+	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
 	count := int(celt)
 	remaining := len(e.obj.entries) - e.pos
 	if count > remaining {
@@ -163,7 +164,7 @@ func enumSkip(this, celt uintptr) uint64 {
 }
 
 func enumResetCB(this uintptr) uint64 {
-	e := (*enumFORMATETC)(unsafe.Pointer(this))
+	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
 	e.pos = 0
 	return COM_S_OK
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"golang.org/x/sys/windows"
@@ -115,31 +116,31 @@ func (dt *DropTarget) HWND() windows.HWND {
 }
 
 func dropTargetQueryInterface(this, riid, ppvObject uintptr) uint64 {
-	guid := (*windows.GUID)(unsafe.Pointer(riid))
+	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
 	if *guid == iidUnknown || *guid == iidIDropTarget {
-		*(*uintptr)(unsafe.Pointer(ppvObject)) = this
+		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		dropTargetAddRef(this)
 		return COM_S_OK
 	}
-	*(*uintptr)(unsafe.Pointer(ppvObject)) = 0
+	*xruntime.PtrFromUintptr[uintptr](ppvObject) = 0
 	return COM_E_NOINTERFACE
 }
 
 func dropTargetAddRef(this uintptr) uintptr {
-	dt := (*DropTarget)(unsafe.Pointer(this))
+	dt := xruntime.PtrFromUintptr[DropTarget](this)
 	return uintptr(atomic.AddInt32(&dt.refCount, 1))
 }
 
 func dropTargetRelease(this uintptr) uintptr {
-	dt := (*DropTarget)(unsafe.Pointer(this))
+	dt := xruntime.PtrFromUintptr[DropTarget](this)
 	n := atomic.AddInt32(&dt.refCount, -1)
 	return uintptr(n)
 }
 
 func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *DropEffect) uint64 {
-	dt := (*DropTarget)(unsafe.Pointer(this))
+	dt := xruntime.PtrFromUintptr[DropTarget](this)
 	dt.opMask = dropEffectToOp(*pdwEffect)
-	dt.dataObj = (*IDataObject)(unsafe.Pointer(pDataObj))
+	dt.dataObj = xruntime.PtrFromUintptr[IDataObject](pDataObj)
 	dt.dataObj.AddRef()
 	activeDropTarget = dt
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
@@ -153,7 +154,7 @@ func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, 
 }
 
 func dropTargetDragOver(this uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *DropEffect) uint64 {
-	dt := (*DropTarget)(unsafe.Pointer(this))
+	dt := xruntime.PtrFromUintptr[DropTarget](this)
 	if dt.dataObj == nil {
 		*pdwEffect = DropEffectNone
 		return COM_S_OK
@@ -169,7 +170,7 @@ func dropTargetDragOver(this uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *
 }
 
 func dropTargetDragLeave(this uintptr) uint64 {
-	dt := (*DropTarget)(unsafe.Pointer(this))
+	dt := xruntime.PtrFromUintptr[DropTarget](this)
 	if dt.dataObj != nil {
 		dt.dataObj.Release()
 		dt.dataObj = nil
@@ -185,7 +186,7 @@ func dropTargetDragLeave(this uintptr) uint64 {
 }
 
 func dropTargetDrop(this, pDataObj uintptr, grfKeyState MKDnD, pt, pdwEffect uintptr) uint64 {
-	dt := (*DropTarget)(unsafe.Pointer(this))
+	dt := xruntime.PtrFromUintptr[DropTarget](this)
 	if dt.dataObj != nil {
 		dt.dataObj.Release()
 		dt.dataObj = nil
@@ -193,13 +194,13 @@ func dropTargetDrop(this, pDataObj uintptr, grfKeyState MKDnD, pt, pdwEffect uin
 	if activeDropTarget == dt {
 		activeDropTarget = nil
 	}
-	dataObj := (*IDataObject)(unsafe.Pointer(pDataObj))
+	dataObj := xruntime.PtrFromUintptr[IDataObject](pDataObj)
 	info := &dragInfo{obj: dataObj, opMask: dt.opMask}
 	dt.window.Drop(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
-	*(*DropEffect)(unsafe.Pointer(pdwEffect)) = DropEffectNone
+	*xruntime.PtrFromUintptr[DropEffect](pdwEffect) = DropEffectNone
 	if dt.helper != nil {
 		screenPt := packedScreenPt(pt)
-		dt.helper.Drop(pDataObj, &screenPt, *(*DropEffect)(unsafe.Pointer(pdwEffect)))
+		dt.helper.Drop(pDataObj, &screenPt, *xruntime.PtrFromUintptr[DropEffect](pdwEffect))
 	}
 	return COM_S_OK
 }

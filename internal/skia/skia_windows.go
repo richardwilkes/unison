@@ -22,6 +22,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"golang.org/x/sys/windows"
 )
 
@@ -1963,7 +1964,7 @@ func StringGetString(str String) string {
 	data, _, _ := skStringGetCStrProc.Call(uintptr(str))
 	size, _, _ := skStringGetSizeProc.Call(uintptr(str))
 	s := make([]byte, int(size))
-	copy(s, unsafe.Slice((*byte)(unsafe.Pointer(data)), size))
+	copy(s, unsafe.Slice(xruntime.PtrFromUintptr[byte](data), size))
 	return string(s)
 }
 
@@ -2045,14 +2046,14 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, pt geom.Point) {
 	r1, _, _ := skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)), 0)
-	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
+	buffer := xruntime.PtrFromUintptr[textBlobBuilderRunBuffer](r1)
 	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.Glyphs)), len(glyphs)), glyphs)
 }
 
 func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, positions []float32, y float32) {
 	r1, _, _ := skTextBlobBuilderAllocRunPosHProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(y)), 0)
-	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
+	buffer := xruntime.PtrFromUintptr[textBlobBuilderRunBuffer](r1)
 	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.Glyphs)), len(glyphs)), glyphs)
 	copy(unsafe.Slice((*float32)(unsafe.Pointer(buffer.Pos)), len(positions)), positions)
 }

@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"golang.org/x/sys/windows"
 )
 
@@ -51,23 +52,23 @@ func (src *DropSource) Release() {
 }
 
 func dropSrcQueryInterface(this, riid, ppvObject uintptr) uint64 {
-	guid := (*windows.GUID)(unsafe.Pointer(riid))
+	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
 	if *guid == iidUnknown || *guid == iidIDropSource {
-		*(*uintptr)(unsafe.Pointer(ppvObject)) = this
+		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		dropSrcAddRef(this)
 		return COM_S_OK
 	}
-	*(*uintptr)(unsafe.Pointer(ppvObject)) = 0
+	*xruntime.PtrFromUintptr[uintptr](ppvObject) = 0
 	return COM_E_NOINTERFACE
 }
 
 func dropSrcAddRef(this uintptr) uintptr {
-	src := (*DropSource)(unsafe.Pointer(this))
+	src := xruntime.PtrFromUintptr[DropSource](this)
 	return uintptr(atomic.AddInt32(&src.refCount, 1))
 }
 
 func dropSrcRelease(this uintptr) uintptr {
-	src := (*DropSource)(unsafe.Pointer(this))
+	src := xruntime.PtrFromUintptr[DropSource](this)
 	return uintptr(atomic.AddInt32(&src.refCount, -1))
 }
 
