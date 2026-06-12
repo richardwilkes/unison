@@ -192,7 +192,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
-			w.mouseDown(w.apiConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
+			w.mouseDown(w.w32ConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
 				button, w.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONDOWN {
 				return 1
@@ -217,7 +217,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
-			w.mouseUp(w.apiConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
+			w.mouseUp(w.w32ConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
 				button, w.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONUP {
 				return 1
@@ -235,7 +235,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			pos.X = int32(lParam & 0xFFFF)
 			pos.Y = int32((lParam >> 16) & 0xFFFF)
 			w32.ScreenToClient(w.wnd.wnd, &pos)
-			w.mouseWheel(w.apiConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
+			w.mouseWheel(w.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
 				geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)), w.CurrentKeyModifiers())
 			return 0
 		case w32.WM_MOUSEHWHEEL:
@@ -243,7 +243,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			pos.X = int32(lParam & 0xFFFF)
 			pos.Y = int32((lParam >> 16) & 0xFFFF)
 			w32.ScreenToClient(w.wnd.wnd, &pos)
-			w.mouseWheel(w.apiConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
+			w.mouseWheel(w.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
 				geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0), w.CurrentKeyModifiers())
 			return 0
 		case w32.WM_SIZE:
@@ -373,7 +373,7 @@ func (w *Window) w32WindowExStyle() uint32 {
 }
 
 func (w *Window) w32HandleMouseMove(pt geom.Point) {
-	pt = w.apiConvertRawMouse(pt)
+	pt = w.w32ConvertRawMouse(pt)
 	mods := w.CurrentKeyModifiers()
 	if !w.wnd.mouseTracked {
 		var evt w32.TRACKMOUSEEVENT
@@ -568,7 +568,7 @@ func (w *Window) apiCursorPosition() geom.Point {
 	var pos w32.POINT
 	if w32.GetCursorPos(&pos) {
 		w32.ScreenToClient(w.wnd.wnd, &pos)
-		return w.apiConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y)))
+		return w.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y)))
 	}
 	return geom.NewPoint(0, 0)
 }
@@ -649,7 +649,7 @@ func (w *Window) w32HandleDragScroll(pt w32.POINT, horizontal bool, delta float3
 	mods := target.CurrentKeyModifiers()
 	client := pt
 	w32.ScreenToClient(target.wnd.wnd, &client)
-	where := target.apiConvertRawMouse(geom.NewPoint(float32(client.X), float32(client.Y)))
+	where := target.w32ConvertRawMouse(geom.NewPoint(float32(client.X), float32(client.Y)))
 	var d geom.Point
 	if horizontal {
 		d = geom.NewPoint(delta, 0)
@@ -721,7 +721,7 @@ func (w *Window) w32InitDragImage(img *Image, originInRoot geom.Point, dataObj *
 	var cursor w32.POINT
 	w32.GetCursorPos(&cursor)
 	w32.ScreenToClient(w.wnd.wnd, &cursor)
-	mouse := w.apiConvertRawMouse(geom.NewPoint(float32(cursor.X), float32(cursor.Y)))
+	mouse := w.w32ConvertRawMouse(geom.NewPoint(float32(cursor.X), float32(cursor.Y)))
 	offset := w32.POINT{
 		X: min(max(int32((mouse.X-originInRoot.X)*scale.X), 0), int32(width-1)),
 		Y: min(max(int32((mouse.Y-originInRoot.Y)*scale.Y), 0), int32(height-1)),
@@ -769,7 +769,7 @@ func (w *Window) apiDestroy() {
 	}
 }
 
-func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
+func (w *Window) w32ConvertRawMouse(where geom.Point) geom.Point {
 	if w.IsValid() {
 		scale := w.apiBackingScale()
 		where.X /= scale.X
@@ -800,7 +800,7 @@ func (p w32DragTargetWindowProxy) HWND() windows.HWND {
 }
 
 func (p w32DragTargetWindowProxy) ConvertRawMousePoint(where geom.Point) geom.Point {
-	return p.w.apiConvertRawMouse(where)
+	return p.w.w32ConvertRawMouse(where)
 }
 
 func (p w32DragTargetWindowProxy) DragEntered(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {

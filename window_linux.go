@@ -298,7 +298,7 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point {
+func (w *Window) x11ConvertRawMouse(where geom.Point) geom.Point {
 	return where.DivPt(w.BackingScale())
 }
 
@@ -335,7 +335,7 @@ func (w *Window) apiCursorInContentArea() bool {
 	if qpr == nil {
 		return false
 	}
-	return w.apiConvertRawMouse(geom.NewPoint(float32(qpr.RootX), float32(qpr.RootY))).In(w.apiContentRect())
+	return w.x11ConvertRawMouse(geom.NewPoint(float32(qpr.RootX), float32(qpr.RootY))).In(w.apiContentRect())
 }
 
 func (w *Window) apiCursorPosition() geom.Point {
@@ -343,7 +343,7 @@ func (w *Window) apiCursorPosition() geom.Point {
 	if qpr == nil {
 		return geom.Point{}
 	}
-	return w.apiConvertRawMouse(geom.NewPoint(float32(qpr.WinX), float32(qpr.WinY)))
+	return w.x11ConvertRawMouse(geom.NewPoint(float32(qpr.WinX), float32(qpr.WinY)))
 }
 
 func (w *Window) apiBackingScale() geom.Point {
@@ -556,7 +556,7 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 				case 7:
 					delta = geom.NewPoint(-1, 0)
 				}
-				curLocal.mouseWheel(curLocal.apiConvertRawMouse(geom.NewPoint(float32(x), float32(y))), delta,
+				curLocal.mouseWheel(curLocal.x11ConvertRawMouse(geom.NewPoint(float32(x), float32(y))), delta,
 					x11TranslateModifierState(ev.State))
 				sendPosition(ev.RootX, ev.RootY)
 			}
@@ -945,7 +945,7 @@ func x11ProcessEvent(e x11.Event) {
 	case *x11.ButtonPressEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
 			mods := x11TranslateModifierState(ev.State)
-			where := w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
+			where := w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
 			switch ev.Detail {
 			case 1:
 				w.mouseDown(where, ButtonLeft, mods)
@@ -968,7 +968,7 @@ func x11ProcessEvent(e x11.Event) {
 	case *x11.ButtonReleaseEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
 			mods := x11TranslateModifierState(ev.State)
-			where := w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
+			where := w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
 			switch ev.Detail {
 			case 1:
 				w.mouseUp(where, ButtonLeft, mods)
@@ -984,7 +984,7 @@ func x11ProcessEvent(e x11.Event) {
 	case *x11.EnterNotifyEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
 			w.apiUpdateCursorImage()
-			w.mouseEnter(w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
+			w.mouseEnter(w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
 				x11TranslateModifierState(ev.State))
 		}
 	case *x11.LeaveNotifyEvent:
@@ -994,7 +994,7 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.MotionNotifyEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
-			w.mouseMovedOrDragged(w.apiConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
+			w.mouseMovedOrDragged(w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
 				x11TranslateModifierState(ev.State))
 		}
 	case *x11.ConfigureNotifyEvent:
@@ -1091,7 +1091,7 @@ func x11ProcessEvent(e x11.Event) {
 					errs.Log(err)
 					return
 				}
-				di.lastWhere = w.apiConvertRawMouse(geom.NewPoint(float32(x), float32(y)))
+				di.lastWhere = w.x11ConvertRawMouse(geom.NewPoint(float32(x), float32(y)))
 				op := w.dragUpdate(di, di.lastWhere, w.CurrentKeyModifiers())
 				x11Conn.SendDnDStatus(src, w.wnd.id, op != drag.None, x11DnDActionForOp(op))
 				x11Conn.Flush()

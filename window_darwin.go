@@ -326,10 +326,6 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 	w.wnd.wnd.SetFrame(w.wnd.wnd.FrameRectForContentRect(rect))
 }
 
-func (w *Window) apiConvertRawMouse(where geom.Point) geom.Point { //nolint:unused // Other platforms need this
-	return where
-}
-
 func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
 	return macModifiersFromEventModifierFlags(mac.CurrentModifierFlags())
 }
