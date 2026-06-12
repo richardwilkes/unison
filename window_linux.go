@@ -423,7 +423,8 @@ func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask dr
 	}
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.DnDActionList, x11.AtomAtom, 32, x11.PropModeReplace, buf.Retrieve())
 
-	if !x11Conn.GrabPointer(w.wnd.id, x11.EventMaskButtonRelease|x11.EventMaskPointerMotion, 0) {
+	if !x11Conn.GrabPointer(w.wnd.id, x11.EventMaskButtonPress|x11.EventMaskButtonRelease|x11.EventMaskPointerMotion,
+		0) {
 		slog.Warn("unable to grab the pointer to start a drag")
 		return
 	}
@@ -447,6 +448,7 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 	state := dragStateTracking
 	var deadline time.Time
 	var curTarget x11.WindowID
+	var curLocal *Window
 	var curVersion uint32
 	var awaitingStatus, hasPending, accepted bool
 	var pendingX, pendingY int16
@@ -468,7 +470,8 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 	}
 
 	updateTarget := func(rootX, rootY int16) {
-		target, version := x11FindDnDAwareWindow(rootX, rootY, awareCache, imgWnd.windowID())
+		target, version, local := x11FindDnDAwareWindow(rootX, rootY, awareCache, imgWnd.windowID())
+		curLocal = local
 		if target != curTarget {
 			if curTarget != 0 {
 				x11Conn.SendDnDLeave(w.wnd.id, curTarget)
@@ -530,8 +533,35 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 			timestamp = ev.Time
 			imgWnd.moveTo(ev.RootX, ev.RootY)
 			updateTarget(ev.RootX, ev.RootY)
+		case *x11.ButtonPressEvent:
+			// Mouse wheel scrolls arrive as presses of buttons 4-7. Deliver them to the window of this application
+			// that is under the pointer so that scrolling continues to work during the drag, then refresh the drop
+			// target's position, since the content beneath the pointer may have scrolled. Other button presses are
+			// ignored while the drag is in progress.
+			if state == dragStateTracking && ev.Detail >= 4 && ev.Detail <= 7 && curLocal != nil {
+				x, y, _, _, err := x11Conn.TranslateCoordinates(x11Conn.RootWindow(), curLocal.wnd.id, ev.RootX,
+					ev.RootY)
+				if err != nil {
+					errs.Log(err)
+					return false
+				}
+				var delta geom.Point
+				switch ev.Detail {
+				case 4:
+					delta = geom.NewPoint(0, 1)
+				case 5:
+					delta = geom.NewPoint(0, -1)
+				case 6:
+					delta = geom.NewPoint(1, 0)
+				case 7:
+					delta = geom.NewPoint(-1, 0)
+				}
+				curLocal.mouseWheel(curLocal.apiConvertRawMouse(geom.NewPoint(float32(x), float32(y))), delta,
+					x11TranslateModifierState(ev.State))
+				sendPosition(ev.RootX, ev.RootY)
+			}
 		case *x11.ButtonReleaseEvent:
-			if state != dragStateTracking {
+			if state != dragStateTracking || (ev.Detail >= 4 && ev.Detail <= 7) {
 				return false
 			}
 			timestamp = ev.Time
@@ -631,8 +661,9 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 
 // x11FindDnDAwareWindow returns the deepest window beneath the given root coordinates that has the XdndAware property
 // set, along with the XDND protocol version it advertises. The awareness lookups are stored in the provided cache to
-// avoid repeated queries while the pointer moves. The skip window (the drag image) is never descended into.
-func x11FindDnDAwareWindow(rootX, rootY int16, awareCache map[x11.WindowID]uint32, skip x11.WindowID) (target x11.WindowID, version uint32) {
+// avoid repeated queries while the pointer moves. The skip window (the drag image) is never descended into. Also
+// returns the window of this application that is beneath the coordinates, if any.
+func x11FindDnDAwareWindow(rootX, rootY int16, awareCache map[x11.WindowID]uint32, skip x11.WindowID) (target x11.WindowID, version uint32, local *Window) {
 	root := x11Conn.RootWindow()
 	cur := root
 	for {
@@ -650,6 +681,9 @@ func x11FindDnDAwareWindow(rootX, rootY int16, awareCache map[x11.WindowID]uint3
 			target = cur
 			version = v
 		}
+		if w := x11FindWindow(cur); w != nil {
+			local = w
+		}
 		_, _, _, child, err := x11Conn.TranslateCoordinates(root, cur, rootX, rootY)
 		if err != nil {
 			errs.Log(err)
@@ -660,7 +694,7 @@ func x11FindDnDAwareWindow(rootX, rootY int16, awareCache map[x11.WindowID]uint3
 		}
 		cur = child
 	}
-	return target, version
+	return target, version, local
 }
 
 func x11DnDActionForOp(op drag.Op) x11.Atom {
