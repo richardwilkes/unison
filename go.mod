@@ -9,18 +9,20 @@ require (
 	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.8.2
 	github.com/zeebo/xxh3 v1.1.0
-	golang.org/x/image v0.41.0
-	golang.org/x/net v0.55.0
-	golang.org/x/sys v0.45.0
-	golang.org/x/text v0.37.0
+	golang.org/x/image v0.42.0
+	golang.org/x/net v0.56.0
+	golang.org/x/sys v0.46.0
+	golang.org/x/text v0.38.0
 )
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
-	github.com/miekg/dns v1.1.27 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/miekg/dns v1.1.72 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
-	golang.org/x/term v0.43.0 // indirect
+	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/term v0.44.0 // indirect
+	golang.org/x/tools v0.45.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
