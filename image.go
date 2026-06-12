@@ -101,7 +101,7 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 // it sparingly.
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
 	// Windows needs to have a Window created so that we can create the GL context that Skia will need.
-	if !glInited && runtime.GOOS == xos.WindowsOS {
+	if wndWithCurrentCtx == nil && runtime.GOOS == xos.WindowsOS {
 		w, err := NewWindow("")
 		if err != nil {
 			return nil, err
@@ -110,7 +110,6 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		RebuildDynamicColors()
 		w.glCtx.apiMakeCurrent()
 		wndWithCurrentCtx = w
-		glInited = true
 	}
 	scale := float32(ppi) / 72
 	s := &surface{

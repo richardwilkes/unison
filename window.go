@@ -38,7 +38,6 @@ var (
 	windowList        []*Window
 	modalStack        []*Window
 	wndWithCurrentCtx *Window
-	glInited          = false
 )
 
 // WindowKind represents the kind of window, which can be used by the system to determine how to treat the window in
@@ -881,9 +880,6 @@ func (w *Window) draw() {
 		scale := w.BackingScale()
 		w.glCtx.apiMakeCurrent()
 		wndWithCurrentCtx = w
-		if !glInited {
-			glInited = true
-		}
 		size := w.ContentRect().Size
 		c, err := w.surface.prepareCanvas(size, scale)
 		if err != nil {
