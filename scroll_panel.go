@@ -218,7 +218,7 @@ func (s *ScrollPanel) Sync() {
 			r.Y = -s.verticalBar.Value()
 			s.content.AsPanel().SetFrameRect(r)
 		}
-		s.MarkForLayoutAndRedraw()
+		s.MarkForRedraw()
 	}
 }
 
@@ -310,6 +310,10 @@ func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBotto
 
 // DefaultFrameChangeInChildHierarchy provides the default frame change in child hierarchy handling.
 func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
+	if s.syncing {
+		// Frame changes triggered while syncing are position-only (scrolling) and never require a re-layout.
+		return
+	}
 	if s.content != nil {
 		vs := s.contentView.FrameRect().Size
 		r := s.content.AsPanel().FrameRect()
