@@ -22,6 +22,7 @@ type (
 	HDROP           windows.Handle
 	HGDIOBJ         windows.Handle
 	HGLRC           windows.Handle
+	HHOOK           windows.Handle
 	HICON           windows.Handle
 	HINSTANCE       windows.Handle
 	HKEY            windows.Handle

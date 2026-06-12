@@ -624,9 +624,44 @@ func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask dr
 	w.w32InitDragImage(img, originInRoot, dataObj)
 	okEffects := uintptr(w32.OpMaskToDropEffect(dragOpMask))
 	var effect uint32
+	// Windows runs a modal message loop inside DoDragDrop that swallows mouse wheel messages, so install a hook to
+	// keep the scroll wheel working while the drag is in progress, matching the behavior on the other platforms.
+	w32.InstallDragScrollHook(w.w32HandleDragScroll)
+	defer w32.RemoveDragScrollHook()
 	w32.DoDragDrop(unsafe.Pointer(dataObj), unsafe.Pointer(dropSrc), okEffects, &effect)
 
 	w.dragSourceFinished()
+}
+
+// w32HandleDragScroll forwards a mouse wheel event received during a drag-and-drop operation to the normal wheel
+// handling, allowing the view under the cursor to scroll. The drag may have moved over a different top-level window
+// than the one that initiated it, so the event is routed to whichever window the cursor is currently over (the
+// active drop target), falling back to the source window when the cursor is not over any drop target. pt is in
+// screen coordinates.
+func (w *Window) w32HandleDragScroll(pt w32.POINT, horizontal bool, delta float32) {
+	target := w
+	dt := w32.ActiveDropTarget()
+	if dt != nil {
+		if tw := w32FindWindowByHWND(dt.HWND()); tw != nil {
+			target = tw
+		}
+	}
+	mods := target.CurrentKeyModifiers()
+	client := pt
+	w32.ScreenToClient(target.wnd.wnd, &client)
+	where := target.apiConvertRawMouse(geom.NewPoint(float32(client.X), float32(client.Y)))
+	var d geom.Point
+	if horizontal {
+		d = geom.NewPoint(delta, 0)
+	} else {
+		d = geom.NewPoint(0, delta)
+	}
+	target.mouseWheel(where, d, mods)
+	// Scrolling moves the content beneath the stationary cursor, so recompute the drop feedback; Windows will not
+	// deliver a DragOver of its own until the mouse actually moves.
+	if dt != nil {
+		dt.RefreshDragOver(pt, mods)
+	}
 }
 
 // w32InitDragImage stores a drag image into the data object via the shell's drag source helper so that the drag

@@ -61,6 +61,11 @@ type DropTarget struct {
 
 var dropTargetVtbl [7]uintptr
 
+// activeDropTarget is the drop target the cursor is currently over during a drag, or nil when no drag is in progress
+// or the cursor is not over any registered drop target. OLE keeps exactly one target "entered" at a time, so this
+// identifies the window beneath the cursor. Accessed only on the UI thread.
+var activeDropTarget *DropTarget
+
 func init() {
 	dropTargetVtbl[0] = windows.NewCallback(dropTargetQueryInterface)
 	dropTargetVtbl[1] = windows.NewCallback(dropTargetAddRef)
@@ -93,7 +98,20 @@ func (dt *DropTarget) Revoke() {
 		dt.helper = nil
 	}
 	dt.dataObj = nil
+	if activeDropTarget == dt {
+		activeDropTarget = nil
+	}
 	dt.pinner.Unpin()
+}
+
+// ActiveDropTarget returns the drop target the cursor is currently over during a drag, or nil if there is none.
+func ActiveDropTarget() *DropTarget {
+	return activeDropTarget
+}
+
+// HWND returns the window handle this drop target is registered with.
+func (dt *DropTarget) HWND() windows.HWND {
+	return dt.window.HWND()
 }
 
 func dropTargetQueryInterface(this, riid, ppvObject uintptr) uint64 {
@@ -123,6 +141,7 @@ func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, 
 	dt.opMask = dropEffectToOp(*pdwEffect)
 	dt.dataObj = (*IDataObject)(unsafe.Pointer(pDataObj))
 	dt.dataObj.AddRef()
+	activeDropTarget = dt
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragEntered(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
 	*pdwEffect = opToDropEffect(op)
@@ -155,6 +174,9 @@ func dropTargetDragLeave(this uintptr) uint64 {
 		dt.dataObj.Release()
 		dt.dataObj = nil
 	}
+	if activeDropTarget == dt {
+		activeDropTarget = nil
+	}
 	dt.window.DragExited()
 	if dt.helper != nil {
 		dt.helper.DragLeave()
@@ -168,6 +190,9 @@ func dropTargetDrop(this, pDataObj uintptr, grfKeyState MKDnD, pt, pdwEffect uin
 		dt.dataObj.Release()
 		dt.dataObj = nil
 	}
+	if activeDropTarget == dt {
+		activeDropTarget = nil
+	}
 	dataObj := (*IDataObject)(unsafe.Pointer(pDataObj))
 	info := &dragInfo{obj: dataObj, opMask: dt.opMask}
 	dt.window.Drop(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
@@ -179,6 +204,22 @@ func dropTargetDrop(this, pDataObj uintptr, grfKeyState MKDnD, pt, pdwEffect uin
 	return COM_S_OK
 }
 
+// RefreshDragOver re-runs the drag-over logic at the given screen position without an actual mouse movement, so the
+// drop feedback updates after the target view scrolls during a drag. Windows does not deliver a DragOver until the
+// mouse actually moves, so this must be called explicitly when the content scrolls underneath a stationary cursor.
+// It does nothing if no drag is currently over this target. pt is in screen coordinates.
+func (dt *DropTarget) RefreshDragOver(pt POINT, mods mod.Modifiers) {
+	if dt == nil || dt.dataObj == nil {
+		return
+	}
+	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
+	op := dt.window.DragUpdated(info, dropTargetClientPtFromScreen(dt.window, pt), mods)
+	if dt.helper != nil {
+		screenPt := pt
+		dt.helper.DragOver(&screenPt, opToDropEffect(op))
+	}
+}
+
 func packedScreenPt(pt uintptr) POINT {
 	return POINT{
 		X: int32(pt & 0xFFFFFFFF),
@@ -187,7 +228,10 @@ func packedScreenPt(pt uintptr) POINT {
 }
 
 func dropTargetClientPt(w DragTargetWindow, pt uintptr) geom.Point {
-	screenPt := packedScreenPt(pt)
+	return dropTargetClientPtFromScreen(w, packedScreenPt(pt))
+}
+
+func dropTargetClientPtFromScreen(w DragTargetWindow, screenPt POINT) geom.Point {
 	ScreenToClient(w.HWND(), &screenPt)
 	return w.ConvertRawMousePoint(geom.NewPoint(float32(screenPt.X), float32(screenPt.Y)))
 }

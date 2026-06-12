@@ -25,6 +25,7 @@ var (
 	adjustWindowRectExProc            = user32.NewProc("AdjustWindowRectEx")
 	adjustWindowRectExForDpiProc      = user32.NewProc("AdjustWindowRectExForDpi")
 	bringWindowToTopProc              = user32.NewProc("BringWindowToTop")
+	callNextHookExProc                = user32.NewProc("CallNextHookEx")
 	changeWindowMessageFilterExProc   = user32.NewProc("ChangeWindowMessageFilterEx")
 	clientToScreenProc                = user32.NewProc("ClientToScreen")
 	closeClipboardProc                = user32.NewProc("CloseClipboard")
@@ -76,10 +77,12 @@ var (
 	setProcessDpiAwarenessContextProc = user32.NewProc("SetProcessDpiAwarenessContext")
 	setWindowPlacementProc            = user32.NewProc("SetWindowPlacement")
 	setWindowPosProc                  = user32.NewProc("SetWindowPos")
+	setWindowsHookExWProc             = user32.NewProc("SetWindowsHookExW")
 	setWindowTextWProc                = user32.NewProc("SetWindowTextW")
 	showWindowProc                    = user32.NewProc("ShowWindow")
 	trackMouseEventProc               = user32.NewProc("TrackMouseEvent")
 	translateMessageProc              = user32.NewProc("TranslateMessage")
+	unhookWindowsHookExProc           = user32.NewProc("UnhookWindowsHookEx")
 	waitMessageProc                   = user32.NewProc("WaitMessage")
 	windowFromPointProc               = user32.NewProc("WindowFromPoint")
 )
@@ -749,6 +752,21 @@ const (
 
 const WHEEL_DELTA = 120
 
+// Windows hook types https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowshookexw
+const WH_MOUSE = 7
+
+// HC_ACTION indicates the hook procedure must process the message.
+const HC_ACTION = 0
+
+// MOUSEHOOKSTRUCTEX https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-mousehookstructex
+type MOUSEHOOKSTRUCTEX struct {
+	Pt          POINT
+	Hwnd        windows.HWND
+	HitTestCode uint32
+	ExtraInfo   uintptr
+	MouseData   uint32
+}
+
 const (
 	VK_SHIFT      = 0x10
 	VK_CONTROL    = 0x11
@@ -1363,6 +1381,27 @@ func PostMessageW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) b
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := postMessageWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
 	return b&0xff != 0
+}
+
+// SetWindowsHookExW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowshookexw
+func SetWindowsHookExW(idHook int, fn uintptr, mod HINSTANCE, threadID uint32) HHOOK {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := setWindowsHookExWProc.Call(uintptr(idHook), fn, uintptr(mod), uintptr(threadID))
+	return HHOOK(ret)
+}
+
+// UnhookWindowsHookEx https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-unhookwindowshookex
+func UnhookWindowsHookEx(hook HHOOK) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := unhookWindowsHookExProc.Call(uintptr(hook))
+	return b&0xff != 0
+}
+
+// CallNextHookEx https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-callnexthookex
+func CallNextHookEx(hook HHOOK, code int, wParam WPARAM, lParam LPARAM) uintptr {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := callNextHookExProc.Call(uintptr(hook), uintptr(code), uintptr(wParam), uintptr(lParam))
+	return ret
 }
 
 // RegisterClassExW https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-registerclassexw
