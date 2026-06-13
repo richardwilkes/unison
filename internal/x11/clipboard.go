@@ -362,8 +362,9 @@ func (c *Conn) completeIncrTransfers(transfers []*incrTransfer) {
 	}
 	// Each chunk must be written with a single ChangeProperty request, since the requestor treats every property
 	// change as a complete chunk. Larger writes would be split into multiple requests by ChangeProperty, allowing the
-	// requestor to read and delete a partially written chunk.
-	chunkSize := math.MaxUint16 - 24
+	// requestor to read and delete a partially written chunk. Bound the chunk to the server's maximum request length
+	// (the same limit that triggers INCR in the first place), leaving room for the ChangeProperty request header.
+	chunkSize := c.incrThreshold() - 24
 	for _, t := range transfers {
 		offset := 0
 		for {
