@@ -29,7 +29,7 @@ var (
 		case xos.LinuxOS:
 			return 16 // TODO: Test this value on a Linux box
 		case xos.WindowsOS:
-			return 16 // TODO: Test this value on a Windows box
+			return 24
 		default:
 			return 1
 		}
