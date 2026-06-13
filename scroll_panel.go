@@ -26,9 +26,7 @@ var (
 		switch runtime.GOOS {
 		case xos.MacOS:
 			return 1
-		case xos.LinuxOS:
-			return 16 // TODO: Test this value on a Linux box
-		case xos.WindowsOS:
+		case xos.WindowsOS, xos.LinuxOS:
 			return 24
 		default:
 			return 1
