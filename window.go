@@ -73,7 +73,9 @@ type Window struct {
 	WillCloseCallback func()
 	// ContentScaleCallback is called when the backing scale of the window changes.
 	ContentScaleCallback        func(scale geom.Point)
+	wnd                         *apiWindow
 	surface                     *surface
+	glCtx                       *apiGLContext
 	root                        *rootPanel
 	focus                       *Panel
 	cursor                      *Cursor
@@ -91,8 +93,6 @@ type Window struct {
 	dragTypes                   map[string]*uti.DataType
 	title                       string
 	titleIcons                  []*Image
-	wnd                         apiWindow
-	glCtx                       apiGLContext
 	lastDrawDuration            time.Duration
 	tooltipSequence             int
 	modalResultCode             int
@@ -217,6 +217,8 @@ func ActiveWindow() *Window {
 // NewWindow creates a new, initially hidden, window. Call Show() or ToFront() to make it visible.
 func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	w := &Window{
+		wnd:            &apiWindow{},
+		glCtx:          &apiGLContext{},
 		title:          title,
 		titleIcons:     DefaultTitleIcons,
 		surface:        &surface{},
