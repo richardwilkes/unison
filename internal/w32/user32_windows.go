@@ -24,6 +24,7 @@ var (
 	user32                            = windows.NewLazySystemDLL("user32.dll")
 	adjustWindowRectExProc            = user32.NewProc("AdjustWindowRectEx")
 	adjustWindowRectExForDpiProc      = user32.NewProc("AdjustWindowRectExForDpi")
+	attachThreadInputProc             = user32.NewProc("AttachThreadInput")
 	bringWindowToTopProc              = user32.NewProc("BringWindowToTop")
 	callNextHookExProc                = user32.NewProc("CallNextHookEx")
 	changeWindowMessageFilterExProc   = user32.NewProc("ChangeWindowMessageFilterEx")
@@ -51,6 +52,7 @@ var (
 	getDCProc                         = user32.NewProc("GetDC")
 	getDoubleClickTimeProc            = user32.NewProc("GetDoubleClickTime")
 	getDpiForWindowProc               = user32.NewProc("GetDpiForWindow")
+	getForegroundWindowProc           = user32.NewProc("GetForegroundWindow")
 	getKeyStateProc                   = user32.NewProc("GetKeyState")
 	getMessageTimeProc                = user32.NewProc("GetMessageTime")
 	getMonitorInfoWProc               = user32.NewProc("GetMonitorInfoW")
@@ -58,6 +60,7 @@ var (
 	getSystemMetricsProc              = user32.NewProc("GetSystemMetrics")
 	getWindowPlacementProc            = user32.NewProc("GetWindowPlacement")
 	getWindowRectProc                 = user32.NewProc("GetWindowRect")
+	getWindowThreadProcessIdProc      = user32.NewProc("GetWindowThreadProcessId")
 	loadImageWProc                    = user32.NewProc("LoadImageW")
 	mapVirtualKeyWProc                = user32.NewProc("MapVirtualKeyW")
 	messageBeepProc                   = user32.NewProc("MessageBeep")
@@ -1041,6 +1044,17 @@ func AdjustWindowRectExForDpi(rect *RECT, style uint32, hasMenu bool, exStyle, d
 	return b&0xff != 0
 }
 
+// AttachThreadInput https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-attachthreadinput
+func AttachThreadInput(idAttach, idAttachTo uint32, attach bool) bool {
+	var fAttach uintptr
+	if attach {
+		fAttach = 1
+	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := attachThreadInputProc.Call(uintptr(idAttach), uintptr(idAttachTo), fAttach)
+	return b&0xff != 0
+}
+
 // BringWindowToTop https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-bringwindowtotop
 func BringWindowToTop(hwnd windows.HWND) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -1200,6 +1214,20 @@ func GetActiveWindow() windows.HWND {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	hwnd, _, _ := getActiveWindowProc.Call()
 	return windows.HWND(hwnd)
+}
+
+// GetForegroundWindow https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getforegroundwindow
+func GetForegroundWindow() windows.HWND {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	hwnd, _, _ := getForegroundWindowProc.Call()
+	return windows.HWND(hwnd)
+}
+
+// GetWindowThreadProcessId https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowthreadprocessid
+func GetWindowThreadProcessId(hwnd windows.HWND) uint32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	tid, _, _ := getWindowThreadProcessIdProc.Call(uintptr(hwnd), 0)
+	return uint32(tid)
 }
 
 // GetClassLongPtrW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclasslongptrw

@@ -595,9 +595,23 @@ func (w *Window) apiMaximize() {
 }
 
 func (w *Window) apiAcquireFocusAndBringToFront() {
+	// Windows only permits a process to call SetForegroundWindow when it already owns the foreground window. When the
+	// app is launched from a command line, the console (a different process) owns the foreground, so the call is denied
+	// and the window merely flashes in the taskbar. Temporarily attaching our input thread to the thread that currently
+	// owns the foreground window lifts that restriction long enough to bring our window to the front.
+	foreground := w32.GetForegroundWindow()
+	ourThread := windows.GetCurrentThreadId()
+	foregroundThread := w32.GetWindowThreadProcessId(foreground)
+	attached := foreground != 0 && foregroundThread != 0 && foregroundThread != ourThread
+	if attached {
+		attached = w32.AttachThreadInput(ourThread, foregroundThread, true)
+	}
 	w32.BringWindowToTop(w.wnd.wnd)
 	w32.SetForegroundWindow(w.wnd.wnd)
 	w32.SetFocus(w.wnd.wnd)
+	if attached {
+		w32.AttachThreadInput(ourThread, foregroundThread, false)
+	}
 }
 
 func (w *Window) apiVisible() bool {
