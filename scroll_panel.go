@@ -10,7 +10,10 @@
 package unison
 
 import (
+	"runtime"
+
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -19,7 +22,18 @@ import (
 var (
 	_ Layout = &ScrollPanel{}
 	// MouseWheelMultiplier is used by the default theme to multiply incoming mouse wheel event deltas.
-	MouseWheelMultiplier = float32(16)
+	MouseWheelMultiplier = func() float32 {
+		switch runtime.GOOS {
+		case xos.MacOS:
+			return 1
+		case xos.LinuxOS:
+			return 16 // TODO: Test this value on a Linux box
+		case xos.WindowsOS:
+			return 16 // TODO: Test this value on a Windows box
+		default:
+			return 1
+		}
+	}()
 )
 
 // DefaultScrollPanelTheme holds the default ScrollPanelTheme values for ScrollPanels. Modifying this data will not
