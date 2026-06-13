@@ -59,7 +59,7 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 }
 
 func (s *surface) flush(syncCPU bool) {
-	if s != nil && s.surface != nil {
+	if s != nil && s.surface != nil && s.context != nil {
 		skia.ContextFlushAndSubmit(s.context, syncCPU)
 	}
 }
