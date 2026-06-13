@@ -238,12 +238,12 @@ func (dt *dateTime) set(t time.Time) {
 }
 
 type metaData struct {
-	Title           uintptr
-	Author          uintptr
-	Subject         uintptr
-	Keywords        uintptr
-	Creator         uintptr
-	Producer        uintptr
+	Title           *C.char
+	Author          *C.char
+	Subject         *C.char
+	Keywords        *C.char
+	Creator         *C.char
+	Producer        *C.char
 	Creation        dateTime
 	Modified        dateTime
 	RasterDPI       float32
@@ -272,16 +272,26 @@ func (m *metaData) set(md *MetaData) {
 	if encodingQuality < 1 {
 		encodingQuality = 101
 	}
-	m.Title = toCStr(md.Title)
-	m.Author = toCStr(md.Author)
-	m.Subject = toCStr(md.Subject)
-	m.Keywords = toCStr(md.Keywords)
-	m.Creator = toCStr(md.Creator)
-	m.Producer = toCStr(producer)
+	m.Title = C.CString(md.Title)
+	m.Author = C.CString(md.Author)
+	m.Subject = C.CString(md.Subject)
+	m.Keywords = C.CString(md.Keywords)
+	m.Creator = C.CString(md.Creator)
+	m.Producer = C.CString(producer)
 	m.Creation.set(creation)
 	m.Modified.set(modified)
 	m.RasterDPI = rasterDPI
 	m.EncodingQuality = encodingQuality
+}
+
+// free releases the C strings allocated by set. It is safe to call only after the native code that consumed the
+// metadata has finished copying it.
+func (m *metaData) free() {
+	for _, p := range []*C.char{m.Title, m.Author, m.Subject, m.Keywords, m.Creator, m.Producer} {
+		if p != nil {
+			C.free(unsafe.Pointer(p)) //nolint:gocritic // Freeing C memory allocated by C.CString
+		}
+	}
 }
 
 type MetaData struct {
@@ -295,10 +305,4 @@ type MetaData struct {
 	Producer        string
 	RasterDPI       float32
 	EncodingQuality int32
-}
-
-func toCStr(s string) uintptr {
-	cstr := make([]byte, len(s)+1)
-	copy(cstr, s)
-	return uintptr(unsafe.Pointer(&cstr[0]))
 }

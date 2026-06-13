@@ -1025,18 +1025,16 @@ func (t *Table[T]) PruneSelectionOfUndisclosedNodes() {
 	if len(t.selMap) == 0 {
 		return
 	}
-	needsNotify := false
-	selMap := make(map[tid.TID]bool, len(t.selMap))
+	oldLen := len(t.selMap)
+	selMap := make(map[tid.TID]bool, oldLen)
 	for _, entry := range t.rowCache {
 		id := entry.row.ID()
 		if t.selMap[id] {
 			selMap[id] = true
-		} else {
-			needsNotify = true
 		}
 	}
 	t.selMap = selMap
-	if needsNotify {
+	if len(selMap) != oldLen {
 		t.notifyOfSelectionChange()
 	}
 }

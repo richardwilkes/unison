@@ -14,18 +14,27 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/w32"
+	"golang.org/x/sys/windows"
 )
 
 type apiGLContext struct {
-	dc w32.HDC
-	rc w32.HGLRC
+	hwnd windows.HWND
+	dc   w32.HDC
+	rc   w32.HGLRC
 }
 
 func (c *apiGLContext) apiCreate(wnd *Window) error {
-	dc := w32.GetDC(wnd.wnd.wnd)
+	hwnd := wnd.wnd.wnd
+	dc := w32.GetDC(hwnd)
 	if dc == 0 {
 		return errs.New("failed to get device context for window")
 	}
+	success := false
+	defer func() {
+		if !success {
+			w32.ReleaseDC(hwnd, dc)
+		}
+	}()
 	var pfd w32.PIXELFORMATDESCRIPTOR
 	count := w32.DescribePixelFormat(dc, 1, uint32(unsafe.Sizeof(pfd)), nil)
 	for i := int32(1); i <= count; i++ {
@@ -53,6 +62,7 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 		}
 		fakeRC := w32.WglCreateContext(dc)
 		if !w32.WglMakeCurrent(dc, fakeRC) {
+			w32.WglDeleteContext(fakeRC)
 			return errs.New("failed to make fake OpenGL context current")
 		}
 		rc := w32.WglCreateContextAttribsARB(dc, 0, []int32{
@@ -65,8 +75,10 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 		if rc == 0 {
 			return errs.New("failed to create OpenGL context")
 		}
+		c.hwnd = hwnd
 		c.dc = dc
 		c.rc = rc
+		success = true
 		return nil
 	}
 	return errs.New("failed to choose pixel format for OpenGL context")
@@ -88,5 +100,9 @@ func (c *apiGLContext) apiDestroy() {
 	if c.rc != 0 {
 		w32.WglDeleteContext(c.rc)
 		c.rc = 0
+	}
+	if c.dc != 0 {
+		w32.ReleaseDC(c.hwnd, c.dc)
+		c.dc = 0
 	}
 }

@@ -458,7 +458,7 @@ func (w *Window) TitleIcons() []*Image {
 // Note that macOS no longer has window icons, so this does nothing on that platform.
 func (w *Window) SetTitleIcons(images []*Image) {
 	if runtime.GOOS != xos.MacOS && w.IsValid() {
-		w.titleIcons = images
+		w.titleIcons = make([]*Image, 0, len(images))
 		imgs := make([]*image.NRGBA, 0, len(images))
 		for _, img := range images {
 			if nrgba, err := img.ToNRGBA(); err != nil {
@@ -1348,9 +1348,9 @@ func (w *Window) ClientData() map[string]any {
 func (w *Window) IsDragGesture(where geom.Point) bool {
 	minDelay, minMouseDrift := DragGestureParameters()
 	return w.inMouseDown &&
-		xmath.Abs(w.firstButtonLocation.X-where.X) > minMouseDrift ||
-		xmath.Abs(w.firstButtonLocation.Y-where.Y) > minMouseDrift ||
-		time.Since(w.lastButtonTime) > minDelay
+		(xmath.Abs(w.firstButtonLocation.X-where.X) > minMouseDrift ||
+			xmath.Abs(w.firstButtonLocation.Y-where.Y) > minMouseDrift ||
+			time.Since(w.lastButtonTime) > minDelay)
 }
 
 // StartDrag starts a drag & drop operation.

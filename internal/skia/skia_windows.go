@@ -977,6 +977,7 @@ func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
 	var md metaData
 	md.set(metadata)
+	defer md.free()
 	r1, _, _ := skDocumentMakePDFProc.Call(uintptr(stream), uintptr(unsafe.Pointer(&md)))
 	return Document(r1)
 }

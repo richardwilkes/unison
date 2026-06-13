@@ -102,6 +102,9 @@ func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Pain
 	p := NewPaint()
 	p.SetStyle(style)
 	p.SetColor(Black)
+	if len(g.Stops) == 0 {
+		return p
+	}
 	c := make([]Color, len(g.Stops))
 	locs := make([]float32, len(g.Stops))
 	for i := range g.Stops {

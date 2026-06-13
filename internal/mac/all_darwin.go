@@ -748,8 +748,11 @@ func (i PasteboardItem) SetString(s string) {
 func (i PasteboardItem) SetData(dataType *uti.DataType, data []byte) {
 	dt := NewString(dataType.UTI)
 	defer dt.Release()
-	C.pasteboardItemSetData(C.NSPasteboardItemRef(i), C.CFStringRef(dt), C.ulonglong(len(data)),
-		unsafe.Pointer(&data[0]))
+	var ptr unsafe.Pointer
+	if len(data) != 0 {
+		ptr = unsafe.Pointer(&data[0])
+	}
+	C.pasteboardItemSetData(C.NSPasteboardItemRef(i), C.CFStringRef(dt), C.ulonglong(len(data)), ptr)
 }
 
 // ========== Save Panel ==========
