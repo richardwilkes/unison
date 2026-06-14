@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
-	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
@@ -24,7 +23,7 @@ const topLevelRowsToMake = 100
 
 var (
 	tableCounter  int
-	tableDataType = uti.Register(&uti.DataType{UTI: "private.unison.table." + string(tid.MustNewTID('t'))})
+	tableDataType = unison.CreatePrivateDataType("unison.table")
 )
 
 // NewDemoTableWindow creates and displays our demo table window.

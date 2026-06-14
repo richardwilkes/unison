@@ -64,6 +64,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	}
 	d.Self = d
 	d.DrawCallback = d.DefaultDraw
+	d.CanAcceptDropCallback = d.DefaultCanAcceptDrop
 	d.DragEnteredCallback = d.DefaultDragEnter
 	d.DragUpdatedCallback = d.DefaultDragUpdated
 	d.DragExitedCallback = d.DefaultDragExit
@@ -101,12 +102,18 @@ func (d *dockHeader) DefaultDragEnter(di drag.Info, where geom.Point, mods mod.M
 	return d.DefaultDragUpdated(di, where, mods)
 }
 
+// DefaultCanAcceptDrop reports whether this header is a candidate for the given drag, independent of pointer position.
+func (d *dockHeader) DefaultCanAcceptDrop(di drag.Info) bool {
+	if dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
+		return false
+	}
+	dc := Ancestor[*DockContainer](dragDockable)
+	return dc != nil && dc.Dock == d.owner.Dock
+}
+
 // DefaultDragUpdated provides the default drag updated handling.
 func (d *dockHeader) DefaultDragUpdated(di drag.Info, where geom.Point, _ mod.Modifiers) drag.Op {
-	if dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
-		return drag.None
-	}
-	if dc := Ancestor[*DockContainer](dragDockable); dc == nil || dc.Dock != d.owner.Dock {
+	if !d.DefaultCanAcceptDrop(di) {
 		return drag.None
 	}
 	savedDragInsertIndex := d.dragInsertIndex

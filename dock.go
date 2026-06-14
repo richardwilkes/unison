@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/drag"
@@ -21,9 +20,7 @@ import (
 )
 
 var (
-	// The TID is added to the UTI to ensure that it is unique to this instance of this application and cannot collide
-	// with any other UTI.
-	dockableDataType = uti.Register(&uti.DataType{UTI: "private.unison.dockable." + string(tid.MustNewTID('d'))})
+	dockableDataType = CreatePrivateDataType("unison.dockable")
 	dragDockable     Dockable
 )
 
@@ -132,6 +129,7 @@ func NewDock() *Dock {
 	d.MouseDownCallback = d.DefaultMouseDown
 	d.MouseDragCallback = d.DefaultMouseDrag
 	d.MouseUpCallback = d.DefaultMouseUp
+	d.CanAcceptDropCallback = d.DefaultCanAcceptDrop
 	d.DragEnteredCallback = d.DefaultDragEnter
 	d.DragUpdatedCallback = d.DefaultDragUpdated
 	d.DragExitedCallback = d.DefaultDragExit
@@ -384,6 +382,15 @@ func (d *Dock) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	return true
 }
 
+// DefaultCanAcceptDrop reports whether this dock is a candidate for the given drag, independent of pointer position.
+func (d *Dock) DefaultCanAcceptDrop(di drag.Info) bool {
+	if d.MaximizedContainer != nil || dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
+		return false
+	}
+	dc := Ancestor[*DockContainer](dragDockable)
+	return dc != nil && dc.Dock == d
+}
+
 // DefaultDragEnter provides the default drag enter handling.
 func (d *Dock) DefaultDragEnter(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	return d.DefaultDragUpdated(di, where, mods)
@@ -391,10 +398,7 @@ func (d *Dock) DefaultDragEnter(di drag.Info, where geom.Point, mods mod.Modifie
 
 // DefaultDragUpdated provides the default drag updated handling.
 func (d *Dock) DefaultDragUpdated(di drag.Info, where geom.Point, _ mod.Modifiers) drag.Op {
-	if d.MaximizedContainer != nil || dragDockable == nil || !d.Enabled() || !di.HasDataType(dockableDataType.UTI) {
-		return drag.None
-	}
-	if dc := Ancestor[*DockContainer](dragDockable); dc == nil || dc.Dock != d {
+	if !d.DefaultCanAcceptDrop(di) {
 		return drag.None
 	}
 	op := drag.None

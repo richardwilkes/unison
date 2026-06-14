@@ -98,6 +98,7 @@ func NewWell() *Well {
 	well.MouseDragCallback = well.DefaultMouseDrag
 	well.MouseUpCallback = well.DefaultMouseUp
 	well.KeyDownCallback = well.DefaultKeyDown
+	well.CanAcceptDropCallback = well.DefaultCanAcceptDrop
 	well.DragEnteredCallback = well.DefaultDragEnter
 	well.DragExitedCallback = well.DefaultDragExit
 	well.DropCallback = well.DefaultDrop
@@ -253,26 +254,31 @@ func (w *Well) Click() {
 	}
 }
 
+// DefaultCanAcceptDrop reports whether this well is a candidate for the given drag, independent of pointer position.
+func (w *Well) DefaultCanAcceptDrop(di drag.Info) bool {
+	if !w.Enabled() {
+		return false
+	}
+	if di.HasFilePaths() {
+		for _, f := range di.FilePaths() {
+			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
+				return true
+			}
+		}
+	}
+	for _, dataType := range imgfmt.AllReadableUTIs() {
+		if di.HasDataType(dataType.UTI) {
+			return true
+		}
+	}
+	return false
+}
+
 // DefaultDragEnter provides the default drag enter handling.
 func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ mod.Modifiers) drag.Op {
 	op := drag.None
-	if w.Enabled() {
-		if di.HasFilePaths() {
-			for _, f := range di.FilePaths() {
-				if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
-					op = drag.Copy
-					break
-				}
-			}
-		}
-		if op == drag.None {
-			for _, dataType := range imgfmt.AllReadableUTIs() {
-				if di.HasDataType(dataType.UTI) {
-					op = drag.Copy
-					break
-				}
-			}
-		}
+	if w.DefaultCanAcceptDrop(di) {
+		op = drag.Copy
 	}
 	if op != drag.None {
 		if !w.dropHighlight {

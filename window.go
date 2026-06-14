@@ -1368,23 +1368,22 @@ func (w *Window) dragSourceFinished() {
 	}
 }
 
-func (w *Window) findDropTarget(where geom.Point) *Panel {
+func (w *Window) findDropTarget(di drag.Info, where geom.Point) *Panel {
 	if !w.okToProcess() {
 		return nil
 	}
-	panel := w.root.PanelAt(where)
-	for panel != nil && panel.DropCallback == nil {
-		panel = panel.Parent()
+	for panel := w.root.PanelAt(where); panel != nil; panel = panel.Parent() {
+		if panel.DropCallback != nil && panel.Enabled() &&
+			(panel.CanAcceptDropCallback == nil || panel.CanAcceptDropCallback(di)) {
+			return panel
+		}
 	}
-	if panel != nil && !panel.Enabled() {
-		panel = nil
-	}
-	return panel
+	return nil
 }
 
 func (w *Window) dragEntered(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	op := drag.None
-	panel := w.findDropTarget(where)
+	panel := w.findDropTarget(di, where)
 	if panel != nil {
 		w.dragExitTarget()
 		if panel.DragEnteredCallback != nil {
@@ -1397,7 +1396,7 @@ func (w *Window) dragEntered(di drag.Info, where geom.Point, mods mod.Modifiers)
 }
 
 func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
-	panel := w.findDropTarget(where)
+	panel := w.findDropTarget(di, where)
 	if panel == nil {
 		w.dragExitTarget()
 		return drag.None
@@ -1412,7 +1411,7 @@ func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods mod.Modifiers) 
 }
 
 func (w *Window) drop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
-	panel := w.findDropTarget(where)
+	panel := w.findDropTarget(di, where)
 	if panel == nil {
 		w.dragExit()
 		return false

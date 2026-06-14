@@ -59,6 +59,14 @@ type Info interface {
 
 // Callbacks holds the callbacks that client code can hook into for drag and drop events.
 type Callbacks struct {
+	// CanAcceptDropCallback, if set, is called during drop-target resolution to decide whether this panel is a
+	// candidate for the given drag, independent of pointer position. Return false to decline, so the search continues
+	// up the parent hierarchy and an enclosing drop target can handle the drag. If nil, any panel with a DropCallback
+	// is treated as a candidate. Examination of data types belongs here. This callback must be side-effect free, as it
+	// may be called on panels that do not end up being the drop target. Note that this only governs candidacy: a
+	// candidate may still report no valid drop at a particular position by returning drag.None from
+	// DragEnteredCallback/DragUpdatedCallback without relinquishing the target.
+	CanAcceptDropCallback func(di Info) bool
 	// DragEnteredCallback is called when a drag operation enters the window or panel. The returned drag.Op should be
 	// just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask().
 	DragEnteredCallback func(di Info, where geom.Point, mods mod.Modifiers) Op

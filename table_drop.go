@@ -53,6 +53,15 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect geom.Rect) {
 	}
 }
 
+// CanAcceptDropCallback reports whether this table is a candidate for the given drag, independent of pointer position.
+func (d *TableDrop[T, U]) CanAcceptDropCallback(di drag.Info) bool {
+	if dragTableData == nil || d.Table.filteredRows != nil || !d.Table.Enabled() || !di.HasDataType(d.DataType.UTI) {
+		return false
+	}
+	_, ok := dragTableData.(*TableDragData[T])
+	return ok
+}
+
 // DragEnterCallback provides the drag enter handling.
 func (d *TableDrop[T, U]) DragEnterCallback(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	return d.DragUpdatedCallback(di, where, mods)
@@ -61,7 +70,7 @@ func (d *TableDrop[T, U]) DragEnterCallback(di drag.Info, where geom.Point, mods
 // DragUpdatedCallback provides the drag updated handling.
 func (d *TableDrop[T, U]) DragUpdatedCallback(di drag.Info, where geom.Point, _ mod.Modifiers) drag.Op {
 	d.inDragOver = false
-	if dragTableData == nil || d.Table.filteredRows != nil || !d.Table.Enabled() || !di.HasDataType(d.DataType.UTI) {
+	if !d.CanAcceptDropCallback(di) {
 		return drag.None
 	}
 	data, ok := dragTableData.(*TableDragData[T])
