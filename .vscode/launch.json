@@ -10,8 +10,12 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "cmd/example/main.go",
+			// On Windows, we attach to a binary we build ourselves rather than letting dlv rebuild & relaunch the
+			// program. The dlv-built/launched binary renders a blank window on Windows; a normally-built one does not.
 			"windows": {
-				"buildFlags": ["-ldflags", "all=\"-w\""]
+				"mode": "exec",
+				"preLaunchTask": "build example",
+				"program": "${workspaceFolder}/example.exe"
 			}
 		}
 	]

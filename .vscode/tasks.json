@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			// Build the example so the debugger can attach to a binary that launches and renders correctly. Paths are
+			// relative (with cwd set below) so they survive whatever shell the task runs in.
+			//
+			// Windows: force Go's internal linker (-linkmode=internal). With the default external mingw linker, large
+			// unstripped (debug-info) binaries are rejected by the Windows loader with error 193 ("not a valid Win32
+			// application") -- see golang/go#75077. Stripping (-s -w) also avoids it but would discard the DWARF info
+			// dlv needs. Internal linking keeps full debug info AND produces a loadable binary. macOS/Linux don't hit
+			// this bug (and darwin cgo can't be internally linked), so they use a plain build.
+			"label": "build example",
+			"type": "shell",
+			"command": "go",
+			"args": ["build", "-o", "example", "./cmd/example"],
+			"windows": {
+				"args": ["build", "-ldflags=-linkmode=internal", "-o", "example.exe", "./cmd/example"]
+			},
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": ["$go"]
+		}
+	]
+}
