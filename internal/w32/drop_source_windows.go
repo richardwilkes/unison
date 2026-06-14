@@ -12,6 +12,7 @@ package w32
 import (
 	"runtime"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/xos"
@@ -21,11 +22,16 @@ import (
 
 var iidIDropSource = xos.Must(windows.GUIDFromString("{00000121-0000-0000-C000-000000000046}"))
 
+// dropSourceContinuousInterval is the minimum time between synthesized drag-over updates. The OLE drag loop calls
+// QueryContinueDrag very frequently, so this throttles the synthesized updates to a reasonable rate.
+const dropSourceContinuousInterval = 50 * time.Millisecond
+
 // DropSource is a Go-implemented COM IDropSource used when initiating a drag.
 type DropSource struct {
-	lpVtbl   uintptr // MUST BE FIRST: points to dropSrcVtbl
-	refCount int32
-	pinner   runtime.Pinner
+	lpVtbl           uintptr // MUST BE FIRST: points to dropSrcVtbl
+	refCount         int32
+	pinner           runtime.Pinner
+	lastContinuousAt time.Time
 }
 
 var dropSrcVtbl [5]uintptr
@@ -81,6 +87,18 @@ func dropSrcQueryContinueDrag(this, fEscapePressed uintptr, grfKeyState MKDnD) u
 	// Drop when the left mouse button is released (not held in grfKeyState).
 	if grfKeyState&MKDnDLButton == 0 {
 		return COM_DRAGDROP_S_DROP
+	}
+	// The OLE drag loop calls this continuously, even when the mouse is stationary, so use it to re-run the drag-over
+	// logic on the current drop target at a throttled rate when continuous updates were requested.
+	if dt := ActiveDropTarget(); dt != nil {
+		src := xruntime.PtrFromUintptr[DropSource](this)
+		if now := time.Now(); now.Sub(src.lastContinuousAt) >= dropSourceContinuousInterval {
+			src.lastContinuousAt = now
+			var pt POINT
+			if GetCursorPos(&pt) {
+				dt.RefreshDragOver(pt, dropKeyStateMods(grfKeyState))
+			}
+		}
 	}
 	return COM_S_OK
 }

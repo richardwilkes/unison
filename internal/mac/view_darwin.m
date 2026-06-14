@@ -223,7 +223,7 @@ static const NSRange kEmptyRange = { NSNotFound, 0 };
 }
 
 - (BOOL)wantsPeriodicDraggingUpdates {
-	return NO;
+	return YES;
 }
 
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {

@@ -1355,11 +1355,26 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 			time.Since(w.lastButtonTime) > minDelay)
 }
 
-// StartDrag starts a drag & drop operation.
-func (w *Window) StartDrag(img *Image, originInRoot geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
+// DragSpec describes a drag & drop operation to start.
+type DragSpec struct {
+	// Image is the drag image shown while dragging. May be nil.
+	Image *Image
+	// Cleanup is called when the drag source finishes, if not nil.
+	Cleanup func()
+	// Data holds the payload for the drag.
+	Data []drag.Data
+	// Origin is the origin of the drag image. For Panel.StartDrag it is in the panel's coordinate space; for
+	// Window.StartDrag it is in the window's root coordinate space.
+	Origin geom.Point
+	// OpMask holds the permitted drag operations.
+	OpMask drag.Op
+}
+
+// StartDrag starts a drag & drop operation. The spec's Origin is interpreted in the window's root coordinate space.
+func (w *Window) StartDrag(spec *DragSpec) {
 	w.synthesizeMouseUp()
-	w.dragSourceCleanup = cleanup
-	w.apiStartDrag(img, originInRoot, dragOpMask, data...)
+	w.dragSourceCleanup = spec.Cleanup
+	w.apiStartDrag(spec)
 }
 
 func (w *Window) dragSourceFinished() {

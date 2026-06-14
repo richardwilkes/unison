@@ -1650,9 +1650,15 @@ func (t *Table[T]) InstallDragSupport(svg *SVG, dataType *uti.DataType, singular
 			where.X -= size.Width / 2
 			where.Y -= size.Height / 2
 			dragTableData = data
-			t.StartDrag(img, where, func() { dragTableData = nil }, drag.Copy|drag.Move, drag.Data{
-				Type: dataType,
-				Data: []byte{0},
+			t.StartDrag(&DragSpec{
+				Image:   img,
+				Origin:  where,
+				Cleanup: func() { dragTableData = nil },
+				OpMask:  drag.Copy | drag.Move,
+				Data: []drag.Data{{
+					Type: dataType,
+					Data: []byte{0},
+				}},
 			})
 		}
 		return true

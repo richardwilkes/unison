@@ -388,19 +388,19 @@ func (w *Window) apiHide() {
 	w.wnd.wnd.OrderOut()
 }
 
-func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
-	nrgba, err := img.ToNRGBA()
+func (w *Window) apiStartDrag(spec *DragSpec) {
+	nrgba, err := spec.Image.ToNRGBA()
 	if err != nil {
 		errs.Log(err)
 		w.dragSourceFinished()
 		return
 	}
 	r := geom.Rect{
-		Point: originInRoot,
-		Size:  img.LogicalSize(),
+		Point: spec.Origin,
+		Size:  spec.Image.LogicalSize(),
 	}
 	r.Y = w.wnd.view.Frame().Height - r.Height - r.Y
-	w.wnd.view.BeginDraggingSession(nrgba, r, dragOpMask, data...)
+	w.wnd.view.BeginDraggingSession(nrgba, r, spec.OpMask, spec.Data...)
 }
 
 func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {

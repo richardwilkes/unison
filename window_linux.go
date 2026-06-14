@@ -406,19 +406,23 @@ const x11DnDFinishedTimeout = 2 * time.Second
 // the mouse is released before the answer has arrived.
 const x11DnDStatusTimeout = 250 * time.Millisecond
 
-func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask drag.Op, data ...drag.Data) {
+// x11DnDContinuousInterval is the interval between synthesized XdndPosition messages so that drop targets keep
+// receiving updates while the mouse is stationary.
+const x11DnDContinuousInterval = 50 * time.Millisecond
+
+func (w *Window) apiStartDrag(spec *DragSpec) {
 	defer w.dragSourceFinished()
-	if len(data) == 0 {
+	if len(spec.Data) == 0 {
 		return
 	}
-	x11Conn.SetDnDData(data...)
+	x11Conn.SetDnDData(spec.Data...)
 
 	// Publish the full set of actions we permit so that targets can choose among them
 	buf := x11.NewWriter(8)
-	if dragOpMask&drag.Copy != 0 {
+	if spec.OpMask&drag.Copy != 0 {
 		buf.Atom(x11Conn.Atoms.DnDActionCopy)
 	}
-	if dragOpMask&drag.Move != 0 {
+	if spec.OpMask&drag.Move != 0 {
 		buf.Atom(x11Conn.Atoms.DnDActionMove)
 	}
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.DnDActionList, x11.AtomAtom, 32, x11.PropModeReplace, buf.Retrieve())
@@ -429,9 +433,9 @@ func (w *Window) apiStartDrag(img *Image, originInRoot geom.Point, dragOpMask dr
 		return
 	}
 	defer x11Conn.UngrabPointer()
-	imgWnd := w.newX11DragImageWindow(img, originInRoot)
+	imgWnd := w.newX11DragImageWindow(spec.Image, spec.Origin)
 	defer imgWnd.dispose()
-	w.x11DragLoop(x11DnDActionForOp(dragOpMask), imgWnd)
+	w.x11DragLoop(x11DnDActionForOp(spec.OpMask), imgWnd)
 }
 
 // x11DragLoop runs the source side of an XDND drag, processing events until the drag completes. Events unrelated to
@@ -452,6 +456,7 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 	var curVersion uint32
 	var awaitingStatus, hasPending, accepted bool
 	var pendingX, pendingY int16
+	var lastRootX, lastRootY int16
 	var timestamp uint32
 
 	sendPosition := func(rootX, rootY int16) {
@@ -470,6 +475,8 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 	}
 
 	updateTarget := func(rootX, rootY int16) {
+		lastRootX = rootX
+		lastRootY = rootY
 		target, version, local := x11FindDnDAwareWindow(rootX, rootY, awareCache, imgWnd.windowID())
 		curLocal = local
 		if target != curTarget {
@@ -630,7 +637,12 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 	for {
 		var e x11.Event
 		if state == dragStateTracking {
-			e = x11Conn.WaitEvents(nil)
+			// Wake periodically so a fresh XdndPosition can be sent even when the pointer is stationary, keeping
+			// drop targets updated continuously.
+			e = x11Conn.WaitEventsUntil(nil, x11DnDContinuousInterval)
+			if xreflect.IsNil(e) && curTarget != 0 {
+				sendPosition(lastRootX, lastRootY)
+			}
 		} else {
 			remaining := time.Until(deadline)
 			if remaining > 0 {

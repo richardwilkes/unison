@@ -638,10 +638,12 @@ func (p *Panel) IsDragGesture(where geom.Point) bool {
 	return false
 }
 
-// StartDrag starts a drag & drop operation.
-func (p *Panel) StartDrag(img *Image, originInPanel geom.Point, cleanup func(), dragOpMask drag.Op, data ...drag.Data) {
+// StartDrag starts a drag & drop operation. The spec's Origin is interpreted in this panel's coordinate space.
+func (p *Panel) StartDrag(spec *DragSpec) {
 	if w := p.Window(); w != nil {
-		w.StartDrag(img, p.PointToRoot(originInPanel), cleanup, dragOpMask, data...)
+		rootSpec := *spec
+		rootSpec.Origin = p.PointToRoot(spec.Origin)
+		w.StartDrag(&rootSpec)
 	}
 }
 
