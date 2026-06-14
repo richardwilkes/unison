@@ -626,17 +626,13 @@ func (w *Window) apiHide() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
-func (w *Window) apiStartDrag(spec *DragSpec) {
-	if len(spec.Data) == 0 {
-		w.dragSourceFinished()
-		return
-	}
-	dataObj := w32.NewDataObject(spec.Data, spec.OpMask)
+func (w *Window) apiStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
+	dataObj := w32.NewDataObject(data, opMask)
 	defer dataObj.Release()
 	dropSrc := w32.NewDropSource()
 	defer dropSrc.Release()
-	w.w32InitDragImage(spec.Image, spec.Origin, dataObj)
-	okEffects := uintptr(w32.OpMaskToDropEffect(spec.OpMask))
+	w.w32InitDragImage(img, origin, dataObj)
+	okEffects := uintptr(w32.OpMaskToDropEffect(opMask))
 	var effect uint32
 	// Windows runs a modal message loop inside DoDragDrop that swallows mouse wheel messages, so install a hook to
 	// keep the scroll wheel working while the drag is in progress, matching the behavior on the other platforms.
