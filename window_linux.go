@@ -410,32 +410,27 @@ const x11DnDStatusTimeout = 250 * time.Millisecond
 // receiving updates while the mouse is stationary.
 const x11DnDContinuousInterval = 50 * time.Millisecond
 
-func (w *Window) apiStartDrag(spec *DragSpec) {
+func (w *Window) apiStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
 	defer w.dragSourceFinished()
-	if len(spec.Data) == 0 {
-		return
-	}
-	x11Conn.SetDnDData(spec.Data...)
-
+	x11Conn.SetDnDData(data...)
 	// Publish the full set of actions we permit so that targets can choose among them
 	buf := x11.NewWriter(8)
-	if spec.OpMask&drag.Copy != 0 {
+	if opMask&drag.Copy != 0 {
 		buf.Atom(x11Conn.Atoms.DnDActionCopy)
 	}
-	if spec.OpMask&drag.Move != 0 {
+	if opMask&drag.Move != 0 {
 		buf.Atom(x11Conn.Atoms.DnDActionMove)
 	}
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.DnDActionList, x11.AtomAtom, 32, x11.PropModeReplace, buf.Retrieve())
-
 	if !x11Conn.GrabPointer(w.wnd.id, x11.EventMaskButtonPress|x11.EventMaskButtonRelease|x11.EventMaskPointerMotion,
 		0) {
 		slog.Warn("unable to grab the pointer to start a drag")
 		return
 	}
 	defer x11Conn.UngrabPointer()
-	imgWnd := w.newX11DragImageWindow(spec.Image, spec.Origin)
+	imgWnd := w.newX11DragImageWindow(img, origin)
 	defer imgWnd.dispose()
-	w.x11DragLoop(x11DnDActionForOp(spec.OpMask), imgWnd)
+	w.x11DragLoop(x11DnDActionForOp(opMask), imgWnd)
 }
 
 // x11DragLoop runs the source side of an XDND drag, processing events until the drag completes. Events unrelated to

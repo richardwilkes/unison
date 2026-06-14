@@ -1370,11 +1370,16 @@ type DragSpec struct {
 	OpMask drag.Op
 }
 
-// StartDrag starts a drag & drop operation. The spec's Origin is interpreted in the window's root coordinate space.
-func (w *Window) StartDrag(spec *DragSpec) {
+// StartDrag starts a drag & drop operation. 'img' is the drag image shown while dragging and may be nil. 'origin' is
+// the origin of the drag image in the window's root coordinate space. 'cleanup' is called when the drag source
+// finishes, if not nil. 'opMask' holds the permitted drag operations.
+func (w *Window) StartDrag(img *Image, origin geom.Point, cleanup func(), opMask drag.Op, data ...drag.Data) {
+	if len(data) == 0 {
+		return
+	}
 	w.synthesizeMouseUp()
-	w.dragSourceCleanup = spec.Cleanup
-	w.apiStartDrag(spec)
+	w.dragSourceCleanup = cleanup
+	w.apiStartDrag(img, origin, opMask, data...)
 }
 
 func (w *Window) dragSourceFinished() {
