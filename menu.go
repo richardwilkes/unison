@@ -403,7 +403,11 @@ func (m *menu) postLostFocus(w *Window) {
 
 func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
 	if w.root.menuBar != nil {
-		for _, one := range w.root.openMenuPanels {
+		// Iterate from the most recently opened popup to the oldest, matching the draw/hit-test z-order (the newest
+		// popup is topmost). This ensures that when a child menu overlaps its parent, a click in the overlap is
+		// attributed to the child rather than the parent, which would otherwise tear the child back down.
+		for i := len(w.root.openMenuPanels) - 1; i >= 0; i-- {
+			one := w.root.openMenuPanels[i]
 			if where.In(one.FrameRect()) {
 				m.closeMenuStackStoppingAt(w, one.menu)
 				return false
