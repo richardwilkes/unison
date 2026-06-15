@@ -42,6 +42,11 @@ type apiWindow struct {
 	dndVersion      uint32
 	lastX           float32
 	lastY           float32
+	borderTop       uint32
+	borderLeft      uint32
+	borderBottom    uint32
+	borderRight     uint32
+	borderValid     bool
 	minimized       bool
 	maximized       bool
 	cursorWasHidden bool
@@ -262,39 +267,29 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 	rect.Y *= scale.Y
 	rect.Width *= scale.X
 	rect.Height *= scale.Y
-	var req x11.ConfigureWindowRequest
-	var mask x11.ConfigureWindowValueMask
-	if w.lastContentRect.X != rect.X {
-		req.X = int16(rect.X)
-		mask |= x11.ConfigureWindowMaskX
-	}
-	if w.lastContentRect.Y != rect.Y {
-		req.Y = int16(rect.Y)
-		mask |= x11.ConfigureWindowMaskY
-	}
-	if w.lastContentRect.Width != rect.Width {
-		req.Width = uint16(rect.Width)
-		mask |= x11.ConfigureWindowMaskWidth
-	}
-	if w.lastContentRect.Height != rect.Height {
-		req.Height = uint16(rect.Height)
-		mask |= x11.ConfigureWindowMaskHeight
-	}
-	if mask == 0 {
-		return
+	sizeHints := x11.WindowSizeHints{
+		Flags:      x11.WSHMUSPosition | x11.WSHMPPosition | x11.WSHMUSSize | x11.WSHMPSize | x11.WSHMPWinGravity,
+		X:          int32(rect.X),
+		Y:          int32(rect.Y),
+		Width:      uint32(rect.Width),
+		Height:     uint32(rect.Height),
+		WinGravity: x11.StaticGravity,
 	}
 	if w.notResizable {
-		var sizeHints x11.WindowSizeHints
 		sizeHints.Flags |= x11.WSHMPMinSize | x11.WSHMPMaxSize
 		sizeHints.MinWidth = uint32(rect.Width)
 		sizeHints.MinHeight = uint32(rect.Height)
 		sizeHints.MaxWidth = uint32(rect.Width)
 		sizeHints.MaxHeight = uint32(rect.Height)
-		sizeHints.Flags |= x11.WSHMPPosition | x11.WSHMPWinGravity
-		sizeHints.WinGravity = x11.StaticGravity
-		x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
 	}
-	x11Conn.ConfigureWindow(w.wnd.id, mask, &req)
+	x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
+	x11Conn.ConfigureWindow(w.wnd.id, x11.ConfigureWindowMaskX|x11.ConfigureWindowMaskY|
+		x11.ConfigureWindowMaskWidth|x11.ConfigureWindowMaskHeight, &x11.ConfigureWindowRequest{
+		X:      int16(rect.X),
+		Y:      int16(rect.Y),
+		Width:  uint16(rect.Width),
+		Height: uint16(rect.Height),
+	})
 	x11Conn.Flush()
 }
 
@@ -922,7 +917,31 @@ func (w *Window) x11Border() (top, left, bottom, right uint32) {
 	if w.undecorated {
 		return 0, 0, 0, 0
 	}
-	return x11Conn.GetWindowBorderWidths(w.wnd.id)
+	if !w.wnd.borderValid {
+		w.wnd.borderTop, w.wnd.borderLeft, w.wnd.borderBottom, w.wnd.borderRight = x11Conn.GetWindowBorderWidths(w.wnd.id)
+		w.wnd.borderValid = true
+	}
+	return w.wnd.borderTop, w.wnd.borderLeft, w.wnd.borderBottom, w.wnd.borderRight
+}
+
+// x11RefreshFrameExtents updates the cached window border widths from the current _NET_FRAME_EXTENTS property. Called
+// when the window manager reports new frame extents (e.g. once decorations are applied after mapping, or when they
+// change such as on maximize).
+func (w *Window) x11RefreshFrameExtents() {
+	format, actualType, value, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetFrameExtents, x11.AtomCardinal,
+		0, 32, false)
+	if err != nil {
+		errs.Log(err)
+		return
+	}
+	if format == 32 && actualType == x11.AtomCardinal && len(value) >= 8 {
+		r := x11.NewReader(value)
+		w.wnd.borderLeft = r.Uint32()
+		w.wnd.borderRight = r.Uint32()
+		w.wnd.borderTop = r.Uint32()
+		w.wnd.borderBottom = r.Uint32()
+		w.wnd.borderValid = true
+	}
 }
 
 func x11ProcessEvent(e x11.Event) {
@@ -1162,6 +1181,8 @@ func x11ProcessEvent(e x11.Event) {
 				return
 			}
 			switch ev.Atom {
+			case x11Conn.Atoms.NetFrameExtents:
+				w.x11RefreshFrameExtents()
 			case x11Conn.Atoms.WMState:
 				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.WMState, x11Conn.Atoms.WMState, 0, math.MaxUint32, false)
 				if err != nil {
