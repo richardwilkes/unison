@@ -62,9 +62,11 @@ func apiPollEvents() {
 }
 
 func apiWaitEvents() {
-	// Process the pending events one at a time rather than pulling them all at once, so that a nested event loop
-	// started by a handler (such as the one used for the source side of drag & drop) is able to see the events that
-	// are still pending.
+	// Block until at least one event is available so the event loop idles instead of spinning. Then process that event
+	// along with any others that are already pending. They are handled one at a time rather than pulling them all at
+	// once, so that a nested event loop started by a handler (such as the one used for the source side of drag & drop)
+	// is able to see the events that are still pending.
+	x11ProcessEvent(x11Conn.WaitEvents(nil))
 	for {
 		e := x11Conn.PollEvents(nil)
 		if xreflect.IsNil(e) {

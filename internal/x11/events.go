@@ -55,7 +55,9 @@ var (
 
 // Constants for X11 event codes.
 const (
-	eventCodeKeyPress = 2 + iota
+	eventCodeNone = iota
+	_
+	eventCodeKeyPress
 	eventCodeKeyRelease
 	eventCodeButtonPress
 	eventCodeButtonRelease
@@ -88,7 +90,7 @@ const (
 	eventCodeColormapNotify
 	eventCodeClientMessage
 	eventCodeMappingNotify
-	eventCodeNone = 0
+	eventCodeGenericEvent // XGE; variable-length, with the number of additional 32-bit words in its length field
 )
 
 // Constants for X11 event masks.

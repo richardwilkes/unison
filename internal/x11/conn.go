@@ -1173,6 +1173,16 @@ func (c *Conn) readResponses() {
 			c.processRequest(seq, r, nil)
 		default: // Event
 			eventID := code & 127
+			if eventID == eventCodeGenericEvent && size > 0 {
+				// Generic events (XGE) are variable-length, carrying the number of additional 32-bit words
+				// in their length field (the same bytes read into size above). Those words must be consumed
+				// to keep the protocol stream in sync, even when we have no handler for the event; failing
+				// to do so desyncs all subsequent reads and eventually hangs the connection.
+				if err = r.Append(int(size)*4, c.conn); err != nil {
+					c.bail(err)
+					return
+				}
+			}
 			c.eventNewMapLock.RLock()
 			f, ok := c.eventNewMap[eventID]
 			c.eventNewMapLock.RUnlock()

@@ -1010,6 +1010,10 @@ func x11ProcessEvent(e x11.Event) {
 				w.lastWidth = float32(ev.Width)
 				w.lastHeight = float32(ev.Height)
 				w.resized()
+				// X11 does not guarantee an Expose after a resize (and the resize may arrive after the initial Expose
+				// has already been handled), so explicitly mark the window for redraw to ensure its content is painted
+				// at the new size.
+				w.MarkForRedraw()
 			}
 			x := ev.X
 			y := ev.Y
