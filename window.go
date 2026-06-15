@@ -427,8 +427,7 @@ func (w *Window) destroy() {
 		return
 	}
 	if w == wndWithCurrentCtx {
-		w.glCtx.apiReleaseCurrent()
-		wndWithCurrentCtx = nil
+		w.releaseGLCtxCurrent()
 	}
 	w.apiDestroy()
 	windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
@@ -861,6 +860,16 @@ func (w *Window) BackingScale() geom.Point {
 	return geom.NewPoint(1, 1)
 }
 
+func (w *Window) makeGLCtxCurrent() {
+	w.glCtx.apiMakeCurrent()
+	wndWithCurrentCtx = w
+}
+
+func (w *Window) releaseGLCtxCurrent() {
+	w.glCtx.apiReleaseCurrent()
+	wndWithCurrentCtx = nil
+}
+
 // Draw the window contents.
 func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
@@ -880,8 +889,7 @@ func (w *Window) draw() {
 	RebuildDynamicColors()
 	if w.IsValid() {
 		scale := w.BackingScale()
-		w.glCtx.apiMakeCurrent()
-		wndWithCurrentCtx = w
+		w.makeGLCtxCurrent()
 		size := w.ContentRect().Size
 		c, err := w.surface.prepareCanvas(size, scale)
 		if err != nil {

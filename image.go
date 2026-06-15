@@ -108,8 +108,7 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		}
 		defer w.destroy()
 		RebuildDynamicColors()
-		w.glCtx.apiMakeCurrent()
-		wndWithCurrentCtx = w
+		w.makeGLCtxCurrent()
 	}
 	scale := float32(ppi) / 72
 	s := &surface{
