@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
@@ -22,12 +23,14 @@ import (
 
 // Paint controls options applied when drawing.
 type Paint struct {
-	paint skia.Paint
+	paint       skia.Paint
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newPaint(paint skia.Paint) *Paint {
 	p := &Paint{paint: paint}
-	runtime.AddCleanup(p, func(sp skia.Paint) {
+	p.cleanup = runtime.AddCleanup(p, func(sp skia.Paint) {
 		ReleaseOnUIThread(func() {
 			skia.PaintDelete(sp)
 		})
@@ -47,6 +50,21 @@ func (p *Paint) paintOrNil() skia.Paint {
 		return nil
 	}
 	return p.paint
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (p *Paint) Dispose() {
+	if p == nil {
+		return
+	}
+	p.disposeOnce.Do(func() {
+		p.cleanup.Stop()
+		if p.paint != nil {
+			skia.PaintDelete(p.paint)
+			p.paint = nil
+		}
+	})
 }
 
 // Clone the Paint.

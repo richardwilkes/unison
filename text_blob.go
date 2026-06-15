@@ -11,13 +11,16 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // TextBlob represents runs of text for a font, that may be drawn on a Canvas.
 type TextBlob struct {
-	blob skia.TextBlob
+	blob        skia.TextBlob
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newTextBlob(textBlob skia.TextBlob) *TextBlob {
@@ -25,10 +28,25 @@ func newTextBlob(textBlob skia.TextBlob) *TextBlob {
 		return nil
 	}
 	tb := &TextBlob{blob: textBlob}
-	runtime.AddCleanup(tb, func(sb skia.TextBlob) {
+	tb.cleanup = runtime.AddCleanup(tb, func(sb skia.TextBlob) {
 		ReleaseOnUIThread(func() {
 			skia.TextBlobUnref(sb)
 		})
 	}, tb.blob)
 	return tb
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (tb *TextBlob) Dispose() {
+	if tb == nil {
+		return
+	}
+	tb.disposeOnce.Do(func() {
+		tb.cleanup.Stop()
+		if tb.blob != nil {
+			skia.TextBlobUnref(tb.blob)
+			tb.blob = nil
+		}
+	})
 }

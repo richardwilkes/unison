@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/invertstyle"
@@ -19,7 +20,9 @@ import (
 
 // ColorFilter is called with source colors and return new colors, which are then passed onto the next stage.
 type ColorFilter struct {
-	filter skia.ColorFilter
+	filter      skia.ColorFilter
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newColorFilter(filter skia.ColorFilter) *ColorFilter {
@@ -27,7 +30,7 @@ func newColorFilter(filter skia.ColorFilter) *ColorFilter {
 		return nil
 	}
 	f := &ColorFilter{filter: filter}
-	runtime.AddCleanup(f, func(sf skia.ColorFilter) {
+	f.cleanup = runtime.AddCleanup(f, func(sf skia.ColorFilter) {
 		ReleaseOnUIThread(func() {
 			skia.ColorFilterUnref(sf)
 		})
@@ -40,6 +43,21 @@ func (f *ColorFilter) filterOrNil() skia.ColorFilter {
 		return nil
 	}
 	return f.filter
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (f *ColorFilter) Dispose() {
+	if f == nil {
+		return
+	}
+	f.disposeOnce.Do(func() {
+		f.cleanup.Stop()
+		if f.filter != nil {
+			skia.ColorFilterUnref(f.filter)
+			f.filter = nil
+		}
+	})
 }
 
 // NewBlendColorFilter returns a new blend color filter.

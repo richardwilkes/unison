@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/colorchannel"
@@ -20,7 +21,9 @@ import (
 
 // ImageFilter performs a transformation on the image before drawing it.
 type ImageFilter struct {
-	filter skia.ImageFilter
+	filter      skia.ImageFilter
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newImageFilter(filter skia.ImageFilter) *ImageFilter {
@@ -28,7 +31,7 @@ func newImageFilter(filter skia.ImageFilter) *ImageFilter {
 		return nil
 	}
 	f := &ImageFilter{filter: filter}
-	runtime.AddCleanup(f, func(sf skia.ImageFilter) {
+	f.cleanup = runtime.AddCleanup(f, func(sf skia.ImageFilter) {
 		ReleaseOnUIThread(func() {
 			skia.ImageFilterUnref(sf)
 		})
@@ -41,6 +44,21 @@ func (f *ImageFilter) filterOrNil() skia.ImageFilter {
 		return nil
 	}
 	return f.filter
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (f *ImageFilter) Dispose() {
+	if f == nil {
+		return
+	}
+	f.disposeOnce.Do(func() {
+		f.cleanup.Stop()
+		if f.filter != nil {
+			skia.ImageFilterUnref(f.filter)
+			f.filter = nil
+		}
+	})
 }
 
 // NewArithmeticImageFilter returns a new arithmetic image filter. Each output pixel is the result of combining the

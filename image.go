@@ -13,6 +13,7 @@ import (
 	"context"
 	"image"
 	"runtime"
+	"sync"
 	"time"
 	"unsafe"
 	"weak"
@@ -37,8 +38,11 @@ var (
 type Image struct {
 	skiaImg           skia.Image
 	skiaNonTextureImg skia.Image
+	cleanup           runtime.Cleanup
+	nonTextureCleanup runtime.Cleanup
 	hash              uint64
 	scale             geom.Point
+	disposeOnce       sync.Once
 }
 
 // NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. The http.DefaultClient
@@ -164,12 +168,31 @@ func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error)
 		scale:   scale,
 	}
 	imgCache[hash] = weak.Make(img)
-	runtime.AddCleanup(img, func(si skia.Image) {
+	img.cleanup = runtime.AddCleanup(img, func(si skia.Image) {
 		ReleaseOnUIThread(func() {
 			skia.ImageUnref(si)
 		})
 	}, img.skiaImg)
 	return img, nil
+}
+
+// Dispose releases the native resources.
+func (img *Image) Dispose() {
+	if img == nil {
+		return
+	}
+	img.disposeOnce.Do(func() {
+		img.cleanup.Stop()
+		img.nonTextureCleanup.Stop()
+		if img.skiaImg != nil {
+			skia.ImageUnref(img.skiaImg)
+			img.skiaImg = nil
+		}
+		if img.skiaNonTextureImg != nil {
+			skia.ImageUnref(img.skiaNonTextureImg)
+			img.skiaNonTextureImg = nil
+		}
+	})
 }
 
 // Size returns the size, in pixels, of the image. These dimensions will always be whole numbers > 0 for valid images.
@@ -265,7 +288,7 @@ func (img *Image) skiaImageForCanvas(canvas *Canvas) skia.Image {
 		if img.skiaNonTextureImg == nil {
 			return img.skiaImg
 		}
-		runtime.AddCleanup(img, func(si skia.Image) {
+		img.nonTextureCleanup = runtime.AddCleanup(img, func(si skia.Image) {
 			ReleaseOnUIThread(func() {
 				skia.ImageUnref(si)
 			})

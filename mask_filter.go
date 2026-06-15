@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/unison/enums/blur"
 	"github.com/richardwilkes/unison/internal/skia"
@@ -18,7 +19,9 @@ import (
 
 // MaskFilter performs a transformation on the mask before drawing it.
 type MaskFilter struct {
-	filter skia.MaskFilter
+	filter      skia.MaskFilter
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newMaskFilter(filter skia.MaskFilter) *MaskFilter {
@@ -26,7 +29,7 @@ func newMaskFilter(filter skia.MaskFilter) *MaskFilter {
 		return nil
 	}
 	f := &MaskFilter{filter: filter}
-	runtime.AddCleanup(f, func(sf skia.MaskFilter) {
+	f.cleanup = runtime.AddCleanup(f, func(sf skia.MaskFilter) {
 		ReleaseOnUIThread(func() {
 			skia.MaskFilterUnref(sf)
 		})
@@ -39,6 +42,21 @@ func (f *MaskFilter) filterOrNil() skia.MaskFilter {
 		return nil
 	}
 	return f.filter
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (f *MaskFilter) Dispose() {
+	if f == nil {
+		return
+	}
+	f.disposeOnce.Do(func() {
+		f.cleanup.Stop()
+		if f.filter != nil {
+			skia.MaskFilterUnref(f.filter)
+			f.filter = nil
+		}
+	})
 }
 
 // NewBlurMaskFilter returns a new blur mask filter. sigma is the standard deviation of the gaussian blur to apply. Must
