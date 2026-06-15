@@ -392,6 +392,13 @@ func (w *Window) apiShow() {
 		ev, ok := e.(*x11.VisibilityNotifyEvent)
 		return ok && ev.Window == w.wnd.id
 	})
+	// Draw the window now that it is visible. The filtered wait above discards the nil wake-up events posted by
+	// MarkForRedraw, so a redraw queued while the window was being prepared would otherwise be lost. When a window is
+	// shown from within an event handler (such as a modal dialog raised while handling the window manager's close
+	// request), the event loop would then block in WaitEvents with nothing left to wake it, leaving the window blank
+	// and the application unresponsive. Drawing here guarantees the freshly shown window is painted regardless of
+	// event ordering, and also covers the case where the X server never sends an Expose.
+	w.draw()
 }
 
 func (w *Window) apiHide() {
