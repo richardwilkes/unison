@@ -1049,7 +1049,7 @@ func x11ProcessEvent(e x11.Event) {
 				case x11Conn.Atoms.WMDeleteWindow:
 					w.requestClose()
 				case x11Conn.Atoms.NetWMPing:
-					x11Conn.RespondToPing()
+					x11Conn.RespondToPing(ev)
 				default:
 					slog.Info(fmt.Sprintf("ClientMessageEvent with unhandled protocol: %d", ev.Data32[0]))
 				}

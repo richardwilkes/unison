@@ -1104,6 +1104,22 @@ func (c *Conn) sendRequests() {
 			}
 			close(req.sentChan)
 			if req.data != nil {
+				// Guard against a request whose declared length doesn't match the number of bytes actually written.
+				// Sending such a request desyncs the X protocol stream: the server consumes bytes belonging to
+				// following requests (or blocks waiting for bytes that never arrive), which stalls every subsequent
+				// reply and hangs the UI thread. Correct the length field so the stream stays aligned. The malformed
+				// request itself may still draw an error from the server, but that is reported and handled in isolation
+				// rather than wedging the whole connection. A zero declared length indicates a BigRequests-encoded
+				// length, which is left alone.
+				if buf := req.data.Retrieve(); len(buf) >= 4 && len(buf)%4 == 0 {
+					if declared := int(uint16(buf[2]) | uint16(buf[3])<<8); declared != 0 && declared*4 != len(buf) {
+						slog.Error("corrected malformed X11 request length to avoid desyncing the connection",
+							"opcode", buf[0], "declaredBytes", declared*4, "actualBytes", len(buf))
+						units := len(buf) / 4
+						buf[2] = byte(units)
+						buf[3] = byte(units >> 8)
+					}
+				}
 				if err := req.data.Send(c.conn); err != nil {
 					errs.Log(err)
 					xio.CloseIgnoringErrors(c.conn)
@@ -2177,13 +2193,19 @@ func (c *Conn) IsWindowVisible(window WindowID) bool {
 	return attr.MapState == MapStateViewable
 }
 
-// RespondToPing sends a ClientMessage event to the root window in response to a ping request, allowing the window
-// manager to determine that the client is still responsive. This is typically used in response to a _NET_WM_PING
-// message sent by the window manager to check if the client is alive.
-func (c *Conn) RespondToPing() {
-	var msg ClientMessageEvent
+// RespondToPing echoes the given _NET_WM_PING ClientMessage back to the root window, allowing the window manager to
+// determine that the client is still responsive. This is called in response to a _NET_WM_PING message sent by the
+// window manager to check if the client is alive. Per the EWMH specification, the reply must be the same message
+// (carrying the _NET_WM_PING atom, timestamp, and originating window in its data) sent to the root window. The incoming
+// ping must be echoed verbatim except for the destination: in particular, Format must remain 32 so that the 20-byte
+// data payload is written; sending a ClientMessage with an unset Format would emit a SendEvent shorter than its
+// declared length and desync the protocol stream.
+func (c *Conn) RespondToPing(ping *ClientMessageEvent) {
+	msg := *ping
 	msg.Window = c.RootWindow()
-	if err := c.sendEvent(msg.Window, false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+	msg.Type = c.Atoms.WMProtocols
+	msg.Format = 32
+	if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
 		errs.Log(err)
 	}
 }

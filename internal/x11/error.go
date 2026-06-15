@@ -92,5 +92,6 @@ func (e *Error) String() string {
 }
 
 func (e *Error) Error() string {
-	return fmt.Sprintf("X11 error code %d: %s", e.Code, e.Name)
+	return fmt.Sprintf("X11 error code %d: %s (sequence %d, major opcode %d, minor opcode %d, bad value %d)",
+		e.Code, e.Name, e.Sequence, e.MajorOpcode, e.MinorOpcode, e.Value)
 }
