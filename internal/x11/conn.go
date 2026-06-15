@@ -994,11 +994,7 @@ func nextXID[T ~uint32](c *Conn) T {
 }
 
 func (c *Conn) nextSeq() uint16 {
-	seq := uint16(c.sequence.Add(1) & 0xFFFF)
-	if seq == 0 {
-		return c.nextSeq()
-	}
-	return seq
+	return uint16(c.sequence.Add(1) & 0xFFFF)
 }
 
 func newUncheckedRequest(data *Writer) *request {
