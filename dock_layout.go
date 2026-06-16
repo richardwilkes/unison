@@ -15,8 +15,6 @@ import (
 	"github.com/richardwilkes/unison/enums/side"
 )
 
-// TODO: Fix scaling for docks, too
-
 var (
 	_ Layout         = &DockLayout{}
 	_ DockLayoutNode = &DockLayout{}
