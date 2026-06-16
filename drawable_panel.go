@@ -47,6 +47,7 @@ func (d *DrawablePanel) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := d.ContentRect(false)
 	if !xreflect.IsNil(d.Ink) {
 		paint = d.Ink.Paint(canvas, r, paintstyle.Fill)
+		defer paint.Dispose()
 	}
 	d.Drawable.DrawInRect(canvas, r, nil, paint)
 }

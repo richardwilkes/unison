@@ -297,7 +297,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		fg = f.OnBackgroundInk
 	}
 	rect := f.ContentRect(true)
-	canvas.DrawRect(rect, bg.Paint(canvas, rect, paintstyle.Fill))
+	backgroundPaint := bg.Paint(canvas, rect, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(rect, backgroundPaint)
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, pathop.Intersect, false)
 	f.prepareLines(rect.Width - 2)
@@ -328,7 +330,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				rect.X = f.textLeftForWidth(0, rect) + f.scrollOffset.X - 0.5
 				rect.Width = 1
 				rect.Height = f.Font.LineHeight()
-				canvas.DrawRect(rect, fg.Paint(canvas, rect, paintstyle.Fill))
+				cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
+				canvas.DrawRect(rect, cursorPaint)
+				cursorPaint.Dispose()
 			}
 			f.scheduleBlink()
 		}
@@ -363,7 +367,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				})
 				right := left + t.Width()
 				selRect := geom.NewRect(left, textTop, right-left, textHeight)
-				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill))
+				selectionPaint := f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill)
+				canvas.DrawRect(selRect, selectionPaint)
+				selectionPaint.Dispose()
 				t.Draw(canvas, geom.NewPoint(left, textBaseLine))
 				if selEnd < end {
 					e = end
@@ -384,8 +390,10 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				if f.showCursor {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]),
 						&TextDecoration{Font: f.Font})
+					cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
 					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
-						fg.Paint(canvas, rect, paintstyle.Fill))
+						cursorPaint)
+					cursorPaint.Dispose()
 				}
 				f.scheduleBlink()
 			}

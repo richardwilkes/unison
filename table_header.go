@@ -136,7 +136,9 @@ func (h *TableHeader[T]) combinedInsets() geom.Insets {
 
 // DefaultDraw provides the default drawing.
 func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
-	canvas.DrawRect(dirty, h.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill))
+	backgroundPaint := h.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(dirty, backgroundPaint)
 
 	var firstCol int
 	insets := h.combinedInsets()
@@ -159,7 +161,9 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(h.table.Columns)-1; c++ {
 			rect.X += h.table.Columns[c].Current
-			canvas.DrawRect(rect, h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill))
+			paint := h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 			rect.X++
 		}
 	}

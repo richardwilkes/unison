@@ -363,7 +363,9 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 		}
 		if paint == nil {
 			if path.fillInk != nil {
-				canvas.DrawPath(path.path, path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill))
+				fillPaint := path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill)
+				canvas.DrawPath(path.path, fillPaint)
+				fillPaint.Dispose()
 			}
 			if path.strokeInk != nil {
 				p := path.strokeInk.Paint(canvas, s.viewBox, paintstyle.Stroke)
@@ -375,6 +377,7 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 					p.SetPathEffect(path.dash)
 				}
 				canvas.DrawPath(path.path, p)
+				p.Dispose()
 			}
 		} else {
 			canvas.DrawPath(path.path, paint)

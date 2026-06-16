@@ -279,7 +279,9 @@ func (l *List[T]) RowRect(row int) geom.Rect {
 func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	rect := l.ContentRect(false)
 	intersect := rect.Intersect(dirty)
-	canvas.DrawRect(intersect, l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill))
+	backgroundPaint := l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(intersect, backgroundPaint)
 	row, y := l.rowAt(dirty.Y)
 	if row >= 0 {
 		cellHeight := xmath.Ceil(l.Factory.CellHeight())
@@ -296,7 +298,9 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
 			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
-			canvas.DrawRect(r, bg.Paint(canvas, r, paintstyle.Fill))
+			paint := bg.Paint(canvas, r, paintstyle.Fill)
+			canvas.DrawRect(r, paint)
+			paint.Dispose()
 			canvas.Save()
 			tl := cellRect.Point
 			dirty.Point = dirty.Point.Sub(tl)

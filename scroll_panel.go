@@ -204,7 +204,9 @@ func (s *ScrollPanel) SetPosition(h, v float32) {
 // DefaultDraw provides the default drawing.
 func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := s.ContentRect(true)
-	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
+	paint := s.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
+	defer paint.Dispose()
+	canvas.DrawRect(r, paint)
 }
 
 // Sync the headers and content with the current scroll state.

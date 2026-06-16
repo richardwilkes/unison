@@ -292,7 +292,9 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 		fg = DefaultMenuItemTheme.OnSelectionColor
 		bg = DefaultMenuItemTheme.SelectionColor
 	}
-	gc.DrawRect(rect, bg.Paint(gc, rect, paintstyle.Fill))
+	bgPaint := bg.Paint(gc, rect, paintstyle.Fill)
+	defer bgPaint.Dispose()
+	gc.DrawRect(rect, bgPaint)
 
 	if !mi.enabled {
 		fg = &ColorFilteredInk{
@@ -302,7 +304,9 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 	}
 	rect = mi.panel.ContentRect(false)
 	if mi.isSeparator {
-		gc.DrawLine(rect.Point, geom.NewPoint(rect.Right(), rect.Y), fg.Paint(gc, rect, paintstyle.Fill))
+		separatorPaint := fg.Paint(gc, rect, paintstyle.Fill)
+		gc.DrawLine(rect.Point, geom.NewPoint(rect.Right(), rect.Y), separatorPaint)
+		separatorPaint.Dispose()
 	} else {
 		t := NewText(mi.Title(), &TextDecoration{
 			Font:            DefaultMenuItemTheme.TitleFont,
@@ -327,7 +331,9 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				} else {
 					drawable.SVG = DashSVG
 				}
-				drawable.DrawInRect(gc, r, nil, fg.Paint(gc, r, paintstyle.Fill))
+				statePaint := fg.Paint(gc, r, paintstyle.Fill)
+				drawable.DrawInRect(gc, r, nil, statePaint)
+				statePaint.Dispose()
 			}
 			if mi.keyBinding.KeyCode != 0 {
 				keys := mi.keyBinding.String()
@@ -348,7 +354,9 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				SVG:  ChevronRightSVG,
 				Size: geom.NewSize(baseline, baseline),
 			}
-			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, paintstyle.Fill))
+			chevronPaint := fg.Paint(gc, rect, paintstyle.Fill)
+			drawable.DrawInRect(gc, rect, nil, chevronPaint)
+			chevronPaint.Dispose()
 		}
 	}
 }

@@ -212,7 +212,9 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		selectionInk = t.InactiveSelectionInk
 	}
 
-	canvas.DrawRect(dirty, t.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill))
+	backgroundPaint := t.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(dirty, backgroundPaint)
 
 	var insets geom.Insets
 	if border := t.Border(); border != nil {
@@ -253,18 +255,26 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	for r := startRow; r < endBeforeRow && rect.Y < lastY; r++ {
 		rect.Height = t.rowCache[r].height
 		if t.IsRowOrAnyParentSelected(r) {
+			var rowInk Ink
 			if t.IsRowSelected(r) {
-				canvas.DrawRect(rect, selectionInk.Paint(canvas, rect, paintstyle.Fill))
+				rowInk = selectionInk
 			} else {
-				canvas.DrawRect(rect, t.IndirectSelectionInk.Paint(canvas, rect, paintstyle.Fill))
+				rowInk = t.IndirectSelectionInk
 			}
+			paint := rowInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 		} else if r%2 == 1 {
-			canvas.DrawRect(rect, t.BandingInk.Paint(canvas, rect, paintstyle.Fill))
+			paint := t.BandingInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 		}
 		rect.Y += t.rowCache[r].height
 		if t.ShowRowDivider && r != endBeforeRow-1 {
 			rect.Height = 1
-			canvas.DrawRect(rect, t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill))
+			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 			rect.Y++
 		}
 	}
@@ -275,7 +285,9 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(t.Columns)-1; c++ {
 			rect.X += t.Columns[c].Current
-			canvas.DrawRect(rect, t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill))
+			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 			rect.X++
 		}
 	}
@@ -310,9 +322,10 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 							canvas.Rotate(90)
 							canvas.Translate(offsetPt.Neg())
 						}
+						chevronPaint := fg.Paint(canvas, cellRect, paintstyle.Fill)
 						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
-							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil,
-							fg.Paint(canvas, cellRect, paintstyle.Fill))
+							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil, chevronPaint)
+						chevronPaint.Dispose()
 						canvas.Restore()
 					}
 					indent := hierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left

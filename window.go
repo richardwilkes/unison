@@ -877,7 +877,9 @@ func (w *Window) Draw(c *Canvas) {
 			w.root.ValidateLayout()
 			r := w.LocalContentRect()
 			if !w.transparent {
-				c.DrawPaint(ThemeSurface.Paint(c, r, paintstyle.Fill))
+				paint := ThemeSurface.Paint(c, r, paintstyle.Fill)
+				c.DrawPaint(paint)
+				paint.Dispose()
 			}
 			w.root.Draw(c, r)
 		}, nil)

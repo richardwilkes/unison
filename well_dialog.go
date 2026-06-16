@@ -531,7 +531,9 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 		if pattern, ok := ink.(*Pattern); ok {
 			canvas.DrawImageInRect(pattern.Image, r, nil, nil)
 		} else {
-			canvas.DrawRect(r, ink.Paint(canvas, r, paintstyle.Fill))
+			paint := ink.Paint(canvas, r, paintstyle.Fill)
+			canvas.DrawRect(r, paint)
+			paint.Dispose()
 		}
 	}
 	parent.AddChild(preview)

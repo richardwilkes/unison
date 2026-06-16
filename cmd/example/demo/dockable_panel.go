@@ -51,7 +51,9 @@ func NewDockablePanel(title, tip string, background unison.Color) *DockablePanel
 }
 
 func (d *DockablePanel) draw(gc *unison.Canvas, rect geom.Rect) {
-	gc.DrawRect(rect, d.Color.Paint(gc, rect, paintstyle.Fill))
+	paint := d.Color.Paint(gc, rect, paintstyle.Fill)
+	gc.DrawRect(rect, paint)
+	paint.Dispose()
 	if d.Focused() {
 		txt := unison.NewText("Focused", &unison.TextDecoration{
 			Font:            unison.EmphasizedSystemFont,

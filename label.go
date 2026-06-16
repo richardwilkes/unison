@@ -121,7 +121,9 @@ func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide si
 // DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
 func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font Font, text *Text, onBackgroundInk, backgroundInk Ink, drawable Drawable, drawableSide side.Enum, imgGap float32, applyDisabledFilter bool) {
 	if !xreflect.IsNil(backgroundInk) {
-		canvas.DrawRect(rect, backgroundInk.Paint(canvas, rect, paintstyle.Fill))
+		paint := backgroundInk.Paint(canvas, rect, paintstyle.Fill)
+		canvas.DrawRect(rect, paint)
+		paint.Dispose()
 	}
 	empty := text.Empty()
 	if drawable == nil && empty {
@@ -199,7 +201,9 @@ func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font F
 				ColorFilter: Grayscale30Filter(),
 			}
 		}
-		drawable.DrawInRect(canvas, rect, nil, fg.Paint(canvas, rect, paintstyle.Fill))
+		paint := fg.Paint(canvas, rect, paintstyle.Fill)
+		drawable.DrawInRect(canvas, rect, nil, paint)
+		paint.Dispose()
 	}
 	if !empty {
 		if applyDisabledFilter {

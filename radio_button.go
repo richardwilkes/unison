@@ -188,6 +188,7 @@ func (r *RadioButton) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	if r.group.Selected(r) {
 		rect = rect.Inset(geom.NewUniformInsets(0.5 + 0.2*circleSize))
 		paint := fg.Paint(canvas, rect, paintstyle.Fill)
+		defer paint.Dispose()
 		if !r.Enabled() {
 			paint.SetColorFilter(Grayscale30Filter())
 		}

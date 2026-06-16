@@ -88,7 +88,9 @@ func (t *Tag) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size
 // DefaultDraw provides the default drawing.
 func (t *Tag) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := t.ContentRect(false)
-	canvas.DrawRoundedRect(r, t.Radius, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
+	paint := t.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
+	canvas.DrawRoundedRect(r, t.Radius, paint)
+	paint.Dispose()
 	r.X += t.SideInset
 	r.Width -= t.SideInset * 2
 	DrawLabel(canvas, r, t.HAlign, t.VAlign, t.Font, t.Text, t.OnBackgroundInk, nil, t.Drawable, t.Side, t.Gap,

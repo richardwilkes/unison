@@ -120,6 +120,7 @@ func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Pain
 		shader = NewLinearGradientShader(start, end, c, locs, g.TileMode, g.Transform)
 	}
 	p.SetShader(shader)
+	shader.Dispose()
 	return p
 }
 

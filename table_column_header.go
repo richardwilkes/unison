@@ -108,6 +108,7 @@ func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		r.Y += (r.Height - size.Height) / 2
 		r.Size = size
 		paint := h.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)
+		defer paint.Dispose()
 		if !h.Enabled() {
 			paint.SetColorFilter(Grayscale30Filter())
 		}

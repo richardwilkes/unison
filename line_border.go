@@ -49,6 +49,7 @@ func (b *LineBorder) Insets() geom.Insets {
 func (b *LineBorder) Draw(canvas *Canvas, rect geom.Rect) {
 	clip := rect.Inset(b.insets)
 	path := NewPath()
+	defer path.Dispose()
 	path.SetFillType(filltype.EvenOdd)
 	if b.cornerRadius.Width > 0 || b.cornerRadius.Height > 0 {
 		path.RoundedRect(rect, b.cornerRadius)
@@ -58,5 +59,7 @@ func (b *LineBorder) Draw(canvas *Canvas, rect geom.Rect) {
 		path.Rect(rect)
 		path.Rect(clip)
 	}
-	canvas.DrawPath(path, b.ink.Paint(canvas, rect, paintstyle.Fill))
+	paint := b.ink.Paint(canvas, rect, paintstyle.Fill)
+	defer paint.Dispose()
+	canvas.DrawPath(path, paint)
 }
