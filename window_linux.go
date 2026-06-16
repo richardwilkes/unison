@@ -948,6 +948,14 @@ func x11ProcessEvent(e x11.Event) {
 	if xreflect.IsNil(e) {
 		return
 	}
+	// The XSETTINGS manager is not one of our windows, so handle its property changes (used for dark-mode tracking on
+	// desktops without the XDG portal) before the per-window dispatch below.
+	if pne, ok := e.(*x11.PropertyNotifyEvent); ok && pne.State == x11.PropertyNewValue {
+		if w := x11Conn.XSettingsManagerWindow(); w != 0 && pne.Window == w {
+			linuxXSettingsChanged()
+			return
+		}
+	}
 	switch ev := e.(type) {
 	case *x11.ErrorEvent:
 		errs.Log(ev.Error)

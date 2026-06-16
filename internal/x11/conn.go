@@ -661,6 +661,7 @@ type Conn struct {
 	ExtMisc                  *ExtMisc
 	ExtRandr                 *ExtRandr
 	ExtRender                *ExtRender
+	xset                     *xSettings
 	eventNewMap              map[byte]func(r *Reader) Event
 	errorCodeMap             map[byte]string
 	requestMap               map[uint16]*request

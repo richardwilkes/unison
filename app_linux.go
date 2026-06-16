@@ -10,13 +10,21 @@
 package unison
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-var x11Conn *x11.Conn
+var (
+	x11Conn                 *x11.Conn
+	linuxColorModeTrackable atomic.Bool
+	linuxDarkModeEnabled    atomic.Bool
+	linuxPortalHasValue     atomic.Bool
+	linuxPortalValue        atomic.Uint32 // 0 = no preference, 1 = prefer dark, 2 = prefer light
+)
 
 func apiBeginStartup() error {
 	var err error
@@ -28,6 +36,62 @@ func apiBeginStartup() error {
 }
 
 func apiLateInit() {
+	// Dark mode is detected from two sources, in priority order:
+	//   1. The XDG Desktop Portal "color-scheme" appearance setting (GNOME 42+, KDE Plasma 5.23+).
+	//   2. XSETTINGS, the GTK theme published over X11 (Cinnamon, MATE, XFCE, Budgie, GNOME on X11, ...).
+	// The portal is the modern cross-desktop standard; XSETTINGS covers desktops that do not implement it.
+	x11Conn.InitXSettings()
+	if value, ok := x11.ReadColorScheme(); ok {
+		linuxPortalValue.Store(value)
+		linuxPortalHasValue.Store(true)
+	}
+	linuxRecomputeDarkMode()
+	// The dynamic colors have already been built assuming light mode (RebuildDynamicColors runs before apiLateInit), so
+	// if we detected dark mode at launch, trigger a rebuild now, before the first frame is shown.
+	if linuxDarkModeEnabled.Load() && currentThemeMode == thememode.Auto {
+		ThemeChanged()
+	}
+	x11.WatchColorScheme(func(value uint32) {
+		InvokeTask(func() {
+			linuxPortalValue.Store(value)
+			linuxPortalHasValue.Store(true)
+			if linuxRecomputeDarkMode() {
+				ThemeChanged()
+			}
+		})
+	})
+}
+
+// linuxRecomputeDarkMode recombines the portal and XSETTINGS sources into the cached dark-mode state, returning whether
+// either the tracking-possible or dark-mode value changed. It must be called on the main thread.
+func linuxRecomputeDarkMode() bool {
+	var dark, trackable bool
+	if linuxPortalHasValue.Load() {
+		switch linuxPortalValue.Load() {
+		case 1: // prefer dark
+			dark = true
+			trackable = true
+		case 2: // prefer light
+			dark = false
+			trackable = true
+		}
+	}
+	if !trackable { // The portal gave no definite answer; fall back to the GTK theme via XSETTINGS.
+		if d, ok := x11Conn.XSettingsDark(); ok {
+			dark = d
+			trackable = true
+		}
+	}
+	trackableChanged := linuxColorModeTrackable.Swap(trackable) != trackable
+	darkChanged := linuxDarkModeEnabled.Swap(dark) != dark
+	return trackableChanged || darkChanged
+}
+
+// linuxXSettingsChanged is invoked from the X11 event loop when the XSETTINGS manager's property changes.
+func linuxXSettingsChanged() {
+	if x11Conn.RefreshXSettings() && linuxRecomputeDarkMode() {
+		ThemeChanged()
+	}
 }
 
 func apiFinalFinishStartup() {
@@ -46,11 +110,11 @@ func apiBeep() {
 }
 
 func apiIsColorModeTrackingPossible() bool {
-	return false
+	return linuxColorModeTrackable.Load()
 }
 
 func apiIsDarkModeEnabled() bool {
-	return false
+	return linuxDarkModeEnabled.Load()
 }
 
 func apiDoubleClickInterval() time.Duration {
