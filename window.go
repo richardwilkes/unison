@@ -399,6 +399,9 @@ func (w *Window) AttemptClose() bool {
 // Dispose of the window.
 func (w *Window) Dispose() {
 	active := ActiveWindow()
+	if active == w {
+		w.ShowCursor()
+	}
 	if w.WillCloseCallback != nil {
 		xos.SafeCall(w.WillCloseCallback, nil)
 		w.WillCloseCallback = nil
