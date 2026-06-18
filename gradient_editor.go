@@ -25,7 +25,7 @@ import (
 
 const (
 	gradientMinStops        = 2
-	gradientBarHeight       = 24
+	gradientBarHeight       = 18
 	gradientHandleHalfWidth = 6
 	gradientHandleHeight    = 10
 )
@@ -41,8 +41,10 @@ type GradientEditor struct {
 	colorWell        *Well
 	removeButton     *Button
 	typePopup        *PopupMenu[gradienttype.Enum]
+	startLabel       *Label
 	startXField      *Field
 	startYField      *Field
+	endLabel         *Label
 	endXField        *Field
 	endYField        *Field
 	radiusLabel      *Label
@@ -72,7 +74,7 @@ func NewGradientEditor(gradient *Gradient) *GradientEditor {
 	e.bar = NewPanel()
 	e.bar.SetFocusable(true)
 	e.bar.SetLayoutData(&FlexLayoutData{
-		SizeHint: geom.NewSize(0, gradientBarHeight+gradientHandleHeight),
+		SizeHint: geom.NewSize(0, gradientBarHeight+gradientHandleHeight/2),
 		HAlign:   align.Fill,
 		VAlign:   align.Middle,
 		HGrab:    true,
@@ -137,7 +139,7 @@ func (e *GradientEditor) addStopEditor() {
 		HGrab:  true,
 	})
 
-	e.removeButton = NewSVGButton(CircledXSVG)
+	e.removeButton = NewSVGButton(TrashSVG)
 	e.removeButton.Tooltip = NewTooltipWithText(i18n.Text("Remove Stop"))
 	e.removeButton.ClickCallback = func() { e.removeStop(e.selectedStop) }
 	panel.AddChild(e.removeButton)
@@ -239,7 +241,7 @@ func (e *GradientEditor) addGeometryEditor() {
 	panel := NewPanel()
 	panel.SetBorder(NewEmptyBorder(geom.Insets{Top: StdVSpacing}))
 	panel.SetLayout(&FlexLayout{
-		Columns:  2,
+		Columns:  6,
 		HSpacing: StdHSpacing,
 		VSpacing: StdVSpacing,
 	})
@@ -256,7 +258,7 @@ func (e *GradientEditor) addGeometryEditor() {
 	})
 	popupPanel.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Middle,
-		HSpan:  2,
+		HSpan:  6,
 	})
 	e.AddChild(popupPanel)
 
@@ -321,9 +323,9 @@ func (e *GradientEditor) addGeometryEditor() {
 	})
 	popupPanel.AddChild(e.tileModePopup)
 
-	e.addLabel(panel, i18n.Text("Start"))
+	e.startLabel = e.addLabel(panel, i18n.Text("Start"))
 	e.startXField, e.startYField = e.addPointRow(panel, func() *geom.Point { return &e.gradient.StartPt })
-	e.addLabel(panel, i18n.Text("End"))
+	e.endLabel = e.addLabel(panel, i18n.Text("End"))
 	e.endXField, e.endYField = e.addPointRow(panel, func() *geom.Point { return &e.gradient.EndPt })
 
 	e.radiusLabel = e.addLabel(panel, i18n.Text("Radius"))
@@ -336,66 +338,29 @@ func (e *GradientEditor) addGeometryEditor() {
 }
 
 func (e *GradientEditor) addPointRow(parent *Panel, accessor func() *geom.Point) (xField, yField *Field) {
-	row := NewPanel()
-	row.SetLayout(&FlexLayout{
-		Columns:  4,
-		HSpacing: StdHSpacing,
-		VSpacing: StdVSpacing,
-	})
-	row.SetLayoutData(&FlexLayoutData{
-		HAlign: align.Start,
-		VAlign: align.Middle,
-	})
-	e.addTrailingLabel(row, i18n.Text("X"))
-	xField = e.newPercentField(row, func(v float32) {
-		accessor().X = v
-		e.changed()
-	})
-	e.addTrailingLabel(row, i18n.Text("Y"))
-	yField = e.newPercentField(row, func(v float32) {
-		accessor().Y = v
-		e.changed()
-	})
-	parent.AddChild(row)
+	e.addTrailingLabel(parent, i18n.Text("X"))
+	xField = e.newPercentField(parent, func(v float32) { accessor().X = v })
+	e.addTrailingLabel(parent, i18n.Text("Y"))
+	yField = e.newPercentField(parent, func(v float32) { accessor().Y = v })
+	parent.AddChild(NewLabel())
 	return xField, yField
 }
 
 func (e *GradientEditor) addRadiusRow(parent *Panel) (startField, endField *Field) {
-	row := NewPanel()
-	row.SetLayout(&FlexLayout{
-		Columns:  5,
-		HSpacing: StdHSpacing,
-		VSpacing: StdVSpacing,
-	})
-	row.SetLayoutData(&FlexLayoutData{
-		HAlign: align.Start,
-		VAlign: align.Middle,
-	})
-	e.addTrailingLabel(row, i18n.Text("Start"))
-	startField = e.newPixelsField(row, func(v float32) { e.gradient.Radius.Start = v })
-	e.addTrailingLabel(row, i18n.Text("End"))
-	endField = e.newPixelsField(row, func(v float32) { e.gradient.Radius.End = v })
-	e.addTrailingLabel(row, i18n.Text("pixels"))
-	parent.AddChild(row)
+	e.addTrailingLabel(parent, i18n.Text("Start"))
+	startField = e.newPixelsField(parent, func(v float32) { e.gradient.Radius.Start = v })
+	e.addTrailingLabel(parent, i18n.Text("End"))
+	endField = e.newPixelsField(parent, func(v float32) { e.gradient.Radius.End = v })
+	e.addTrailingLabel(parent, i18n.Text("px"))
 	return startField, endField
 }
 
 func (e *GradientEditor) addAngleRow(parent *Panel) (startField, endField *Field) {
-	row := NewPanel()
-	row.SetLayout(&FlexLayout{
-		Columns:  4,
-		HSpacing: StdHSpacing,
-		VSpacing: StdVSpacing,
-	})
-	row.SetLayoutData(&FlexLayoutData{
-		HAlign: align.Start,
-		VAlign: align.Middle,
-	})
-	e.addTrailingLabel(row, i18n.Text("Start"))
-	startField = e.newDegreesField(row, func(v float32) { e.gradient.Angle.Start = v })
-	e.addTrailingLabel(row, i18n.Text("End"))
-	endField = e.newDegreesField(row, func(v float32) { e.gradient.Angle.End = v })
-	parent.AddChild(row)
+	e.addTrailingLabel(parent, i18n.Text("Start"))
+	startField = e.newDegreesField(parent, func(v float32) { e.gradient.Angle.Start = v })
+	e.addTrailingLabel(parent, i18n.Text("End"))
+	endField = e.newDegreesField(parent, func(v float32) { e.gradient.Angle.End = v })
+	parent.AddChild(NewLabel())
 	return startField, endField
 }
 
@@ -422,7 +387,7 @@ func (e *GradientEditor) addTrailingLabel(parent *Panel, title string) {
 func (e *GradientEditor) newPercentField(parent *Panel, apply func(v float32)) *Field {
 	field := NewField()
 	field.Watermark = "0%"
-	field.SetMinimumTextWidthUsing("100%")
+	field.SetMinimumTextWidthUsing("9999")
 	field.SetLayoutData(&FlexLayoutData{VAlign: align.Middle})
 	field.ValidateCallback = func() bool {
 		text := field.Text()
@@ -435,6 +400,7 @@ func (e *GradientEditor) newPercentField(parent *Panel, apply func(v float32)) *
 		}
 		if !e.syncing {
 			apply(percentage)
+			e.changed()
 		}
 		return true
 	}
@@ -444,7 +410,7 @@ func (e *GradientEditor) newPercentField(parent *Panel, apply func(v float32)) *
 
 func (e *GradientEditor) newPixelsField(parent *Panel, apply func(v float32)) *Field {
 	field := NewField()
-	field.SetMinimumTextWidthUsing("999")
+	field.SetMinimumTextWidthUsing("9999")
 	field.SetLayoutData(&FlexLayoutData{VAlign: align.Middle})
 	field.ValidateCallback = func() bool {
 		v, err := strconv.ParseFloat(field.Text(), 32)
@@ -464,7 +430,7 @@ func (e *GradientEditor) newPixelsField(parent *Panel, apply func(v float32)) *F
 func (e *GradientEditor) newDegreesField(parent *Panel, apply func(v float32)) *Field {
 	field := NewField()
 	field.Watermark = "0°"
-	field.SetMinimumTextWidthUsing("100°")
+	field.SetMinimumTextWidthUsing("9999")
 	field.SetLayoutData(&FlexLayoutData{VAlign: align.Middle})
 	field.ValidateCallback = func() bool {
 		text := field.Text()
@@ -477,6 +443,7 @@ func (e *GradientEditor) newDegreesField(parent *Panel, apply func(v float32)) *
 		}
 		if !e.syncing {
 			apply(degrees)
+			e.changed()
 		}
 		return true
 	}
@@ -527,7 +494,7 @@ func (e *GradientEditor) drawBar(canvas *Canvas, _ geom.Rect) {
 
 	for i, stop := range e.gradient.Stops {
 		x := r.X + stop.Location*r.Width
-		top := r.Y + r.Height
+		top := r.Y + r.Height - gradientHandleHeight/2
 		path := NewPath()
 		path.MoveTo(geom.NewPoint(x, top))
 		path.LineTo(geom.NewPoint(x-gradientHandleHalfWidth, top+gradientHandleHeight))
@@ -538,7 +505,9 @@ func (e *GradientEditor) drawBar(canvas *Canvas, _ geom.Rect) {
 			ink = ThemeFocus
 		}
 		fill := ink.Paint(canvas, r, paintstyle.Fill)
+		stroke := ThemeSurfaceEdge.Paint(canvas, r, paintstyle.Stroke)
 		canvas.DrawPath(path, fill)
+		canvas.DrawPath(path, stroke)
 		fill.Dispose()
 		path.Dispose()
 	}
@@ -624,30 +593,50 @@ func (e *GradientEditor) sync() {
 	e.syncing = true
 
 	stop := e.gradient.Stops[e.selectedStop]
-	e.syncFieldText(e.posField, e.percentString(stop.Location))
+	e.syncFieldText(e.posField, e.percentString(stop.Location), true)
 	e.colorWell.SetInk(stop.Color.GetColor())
 	e.removeButton.SetEnabled(len(e.gradient.Stops) > gradientMinStops)
 
 	e.typePopup.Select(e.gradient.Kind)
-	e.syncFieldText(e.startXField, e.percentString(e.gradient.StartPt.X))
-	e.syncFieldText(e.startYField, e.percentString(e.gradient.StartPt.Y))
-	e.syncFieldText(e.endXField, e.percentString(e.gradient.EndPt.X))
-	e.syncFieldText(e.endYField, e.percentString(e.gradient.EndPt.Y))
-	e.syncFieldText(e.startRadiusField, e.floatString(e.gradient.Radius.Start))
-	e.syncFieldText(e.endRadiusField, e.floatString(e.gradient.Radius.End))
-	e.radiusLabel.SetEnabled(e.gradient.Kind == gradienttype.Radial || e.gradient.Kind == gradienttype.Conical)
-	e.startRadiusField.SetEnabled(e.gradient.Kind == gradienttype.Radial || e.gradient.Kind == gradienttype.Conical)
-	e.endRadiusField.SetEnabled(e.gradient.Kind == gradienttype.Conical)
 	e.tileModePopup.Select(e.gradient.TileMode)
+
+	var startTitle string
+	if e.gradient.Kind == gradienttype.Radial || e.gradient.Kind == gradienttype.Sweep {
+		startTitle = i18n.Text("Center")
+	} else {
+		startTitle = i18n.Text("Start")
+	}
+	if startTitle != e.startLabel.Text.String() {
+		e.startLabel.SetTitle(startTitle)
+		e.startLabel.MarkForLayoutRecursivelyUpward()
+	}
+	e.syncFieldText(e.startXField, e.percentString(e.gradient.StartPt.X), true)
+	e.syncFieldText(e.startYField, e.percentString(e.gradient.StartPt.Y), true)
+
+	enabled := e.gradient.Kind == gradienttype.Linear || e.gradient.Kind == gradienttype.Conical
+	e.endLabel.SetEnabled(enabled)
+	e.syncFieldText(e.endXField, e.percentString(e.gradient.EndPt.X), enabled)
+	e.syncFieldText(e.endYField, e.percentString(e.gradient.EndPt.Y), enabled)
+
+	enabled = e.gradient.Kind == gradienttype.Radial || e.gradient.Kind == gradienttype.Conical
+	e.radiusLabel.SetEnabled(enabled)
+	e.syncFieldText(e.startRadiusField, e.floatString(e.gradient.Radius.Start), enabled)
+	e.syncFieldText(e.endRadiusField, e.floatString(e.gradient.Radius.End), e.gradient.Kind == gradienttype.Conical)
+
+	enabled = e.gradient.Kind == gradienttype.Sweep
+	e.angleLabel.SetEnabled(enabled)
+	e.syncFieldText(e.startAngleField, e.degreeString(e.gradient.Angle.Start), enabled)
+	e.syncFieldText(e.endAngleField, e.degreeString(e.gradient.Angle.End), enabled)
 
 	e.syncing = false
 	e.MarkForRedraw()
 }
 
-func (e *GradientEditor) syncFieldText(field *Field, text string) {
+func (e *GradientEditor) syncFieldText(field *Field, text string, enable bool) {
 	if !field.Focused() {
 		field.SetText(text)
 	}
+	field.SetEnabled(enable)
 }
 
 func (e *GradientEditor) percentString(value float32) string {
@@ -656,4 +645,8 @@ func (e *GradientEditor) percentString(value float32) string {
 
 func (e *GradientEditor) floatString(value float32) string {
 	return strconv.FormatFloat(float64(value), 'f', -1, 32)
+}
+
+func (e *GradientEditor) degreeString(value float32) string {
+	return strconv.Itoa(int(value)) + "°"
 }

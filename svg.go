@@ -148,6 +148,10 @@ var (
 	sortDescendingSVG string
 	SortDescendingSVG = MustSVGFromContentString(sortDescendingSVG)
 
+	//go:embed resources/images/trash.svg
+	trashSVG string
+	TrashSVG = MustSVGFromContentString(trashSVG)
+
 	//go:embed resources/images/triangle_exclamation.svg
 	triangleExclamationSVG string
 	TriangleExclamationSVG = MustSVGFromContentString(triangleExclamationSVG)
