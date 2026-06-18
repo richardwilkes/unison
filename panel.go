@@ -132,7 +132,7 @@ func (p *Panel) AddChild(child Paneler) {
 	c.parent = p
 	p.NeedsLayout = true
 	if c.ParentChangedCallback != nil {
-		c.ParentChangedCallback()
+		xos.SafeCall(c.ParentChangedCallback, nil)
 	}
 }
 
@@ -154,7 +154,7 @@ func (p *Panel) AddChildAtIndex(child Paneler, index int) {
 	c.parent = p
 	p.NeedsLayout = true
 	if c.ParentChangedCallback != nil {
-		c.ParentChangedCallback()
+		xos.SafeCall(c.ParentChangedCallback, nil)
 	}
 }
 
@@ -168,7 +168,7 @@ func (p *Panel) RemoveAllChildren() {
 	p.NeedsLayout = true
 	for _, child := range children {
 		if child.ParentChangedCallback != nil {
-			child.ParentChangedCallback()
+			xos.SafeCall(child.ParentChangedCallback, nil)
 		}
 	}
 }
@@ -186,7 +186,7 @@ func (p *Panel) RemoveChildAtIndex(index int) {
 		p.children = slices.Delete(p.children, index, index+1)
 		p.NeedsLayout = true
 		if child.ParentChangedCallback != nil {
-			child.ParentChangedCallback()
+			xos.SafeCall(child.ParentChangedCallback, nil)
 		}
 	}
 }
@@ -227,17 +227,24 @@ func (p *Panel) Window() *Window {
 // Scale returns the scale that has been applied to this panel. This will be automatically applied, transforming the
 // graphics and mouse events.
 func (p *Panel) Scale() geom.Point {
-	if p.scale.X <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
-		p.scale.X = 1
+	scale := p.scale
+	if scale.X <= 0 {
+		scale.X = 1
 	}
-	if p.scale.Y <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
-		p.scale.Y = 1
+	if scale.Y <= 0 {
+		scale.Y = 1
 	}
-	return p.scale
+	return scale
 }
 
 // SetScale sets the scale for this panel and the panels in the hierarchy below it.
 func (p *Panel) SetScale(scale geom.Point) {
+	if scale.X <= 0 {
+		scale.X = 1
+	}
+	if scale.Y <= 0 {
+		scale.Y = 1
+	}
 	p.scale = scale
 }
 
@@ -266,12 +273,12 @@ func (p *Panel) SetFrameRect(rect geom.Rect) {
 			p.NeedsLayout = true
 		}
 		if p.FrameChangeCallback != nil {
-			p.FrameChangeCallback()
+			xos.SafeCall(p.FrameChangeCallback, nil)
 		}
 		parent := p.parent
 		for parent != nil {
 			if parent.FrameChangeInChildHierarchyCallback != nil {
-				parent.FrameChangeInChildHierarchyCallback(p)
+				xos.SafeCall(func() { parent.FrameChangeInChildHierarchyCallback(p) }, nil)
 			}
 			parent = parent.parent
 		}
@@ -424,7 +431,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 		gc.ClipRect(rect, pathop.Intersect, false)
 		if p.DrawCallback != nil {
 			gc.Save()
-			p.DrawCallback(gc, rect)
+			xos.SafeCall(func() { p.DrawCallback(gc, rect) }, nil)
 			gc.Restore()
 		}
 		// Drawn from last to first, to get correct ordering in case of overlap
@@ -448,7 +455,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 			gc.Restore()
 		}
 		if p.DrawOverCallback != nil {
-			p.DrawOverCallback(gc, rect)
+			xos.SafeCall(func() { p.DrawOverCallback(gc, rect) }, nil)
 		}
 		gc.Restore()
 	}
@@ -601,7 +608,9 @@ func (p *Panel) ScrollRectIntoView(rect geom.Rect) {
 	look := p
 	for look != nil {
 		if look.ScrollRectIntoViewCallback != nil {
-			if look.ScrollRectIntoViewCallback(rect) {
+			handled := false
+			xos.SafeCall(func() { handled = look.ScrollRectIntoViewCallback(rect) }, nil)
+			if handled {
 				return
 			}
 		}

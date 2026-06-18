@@ -269,7 +269,7 @@ func (w *Window) moved() {
 
 func (w *Window) resized() {
 	if w.ResizedCallback != nil {
-		xos.SafeCall(func() { w.ResizedCallback() }, nil)
+		xos.SafeCall(w.ResizedCallback, nil)
 	}
 	w.ValidateLayout()
 }
@@ -291,7 +291,7 @@ func (w *Window) gainedFocus() {
 			w.focus.MarkForRedraw()
 		}
 		if w.GainedFocusCallback != nil {
-			w.GainedFocusCallback()
+			xos.SafeCall(w.GainedFocusCallback, nil)
 		}
 		w.mouseEnter(w.MouseLocation(), 0)
 		if w.apiCursorInContentArea() {
@@ -310,7 +310,7 @@ func (w *Window) lostFocus() {
 		w.focus.MarkForRedraw()
 	}
 	if w.LostFocusCallback != nil {
-		w.LostFocusCallback()
+		xos.SafeCall(w.LostFocusCallback, nil)
 	}
 	if w.root.menuBar != nil {
 		w.root.menuBar.postLostFocus(w)
@@ -559,9 +559,10 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 
 func (w *Window) minMaxContentSize() (minimum, maximum geom.Size) {
 	if w.MinMaxContentSizeCallback != nil {
-		return w.MinMaxContentSizeCallback()
+		xos.SafeCall(func() { minimum, maximum = w.MinMaxContentSizeCallback() }, nil)
+	} else {
+		minimum, _, maximum = w.root.Sizes(geom.Size{})
 	}
-	minimum, _, maximum = w.root.Sizes(geom.Size{})
 	return minimum, maximum
 }
 
@@ -1406,9 +1407,14 @@ func (w *Window) findDropTarget(di drag.Info, where geom.Point) *Panel {
 		return nil
 	}
 	for panel := w.root.PanelAt(where); panel != nil; panel = panel.Parent() {
-		if panel.DropCallback != nil && panel.Enabled() &&
-			(panel.CanAcceptDropCallback == nil || panel.CanAcceptDropCallback(di)) {
-			return panel
+		if panel.DropCallback != nil && panel.Enabled() {
+			accept := false
+			if panel.CanAcceptDropCallback != nil {
+				xos.SafeCall(func() { accept = panel.CanAcceptDropCallback(di) }, nil)
+			}
+			if accept {
+				return panel
+			}
 		}
 	}
 	return nil
