@@ -27,6 +27,7 @@ import (
 	"github.com/richardwilkes/unison/enums/arcsize"
 	"github.com/richardwilkes/unison/enums/direction"
 	"github.com/richardwilkes/unison/enums/filltype"
+	"github.com/richardwilkes/unison/enums/gradienttype"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 	"github.com/richardwilkes/unison/enums/strokecap"
@@ -42,6 +43,10 @@ var (
 	//go:embed resources/images/broken_image.svg
 	brokenImageSVG string
 	BrokenImageSVG = MustSVGFromContentString(brokenImageSVG)
+
+	//go:embed resources/images/circled_add.svg
+	circledAddSVG string
+	CircledAddSVG = MustSVGFromContentString(circledAddSVG)
 
 	//go:embed resources/images/circled_chevron_right.svg
 	circledChevronRightSVG string
@@ -567,43 +572,54 @@ func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, 
 			bbox = path.ComputeTightBounds()
 		}
 		var err error
-		g.Start.X, err = svgResolveUnit(bbox, t.sx, svgPercentWidth)
+		g.StartPt.X, err = svgResolveUnit(bbox, t.sx, svgPercentWidth)
 		if err != nil {
 			return nil, err
 		}
-		g.Start.Y, err = svgResolveUnit(bbox, t.sy, svgPercentHeight)
+		g.StartPt.Y, err = svgResolveUnit(bbox, t.sy, svgPercentHeight)
 		if err != nil {
 			return nil, err
 		}
-		g.End.X, err = svgResolveUnit(bbox, t.ex, svgPercentWidth)
+		g.EndPt.X, err = svgResolveUnit(bbox, t.ex, svgPercentWidth)
 		if err != nil {
 			return nil, err
 		}
-		g.End.Y, err = svgResolveUnit(bbox, t.ey, svgPercentHeight)
+		g.EndPt.Y, err = svgResolveUnit(bbox, t.ey, svgPercentHeight)
 		if err != nil {
 			return nil, err
 		}
-		if t.sr != "" || t.er != "" {
-			g.StartRadius, err = svgResolveUnit(bbox, t.sr, svgPercentDiag)
+		g.Kind = gradienttype.Linear
+		if t.sr != "" {
+			g.Kind = gradienttype.Radial
+			g.Radius.Start, err = svgResolveUnit(bbox, t.sr, svgPercentDiag)
 			if err != nil {
 				return nil, err
 			}
-			g.EndRadius, err = svgResolveUnit(bbox, t.er, svgPercentDiag)
+		}
+		if t.er != "" {
+			g.Radius.End, err = svgResolveUnit(bbox, t.er, svgPercentDiag)
 			if err != nil {
 				return nil, err
+			}
+			if t.sr == "" {
+				g.Kind = gradienttype.Radial
+				g.Radius.Start = g.Radius.End
+				g.Radius.End = 0
+			} else {
+				g.Kind = gradienttype.Conical
 			}
 		}
 		if !t.userSpaceOnUse {
-			g.Start = g.Transform.TransformPoint(g.Start)
-			g.End = g.Transform.TransformPoint(g.End)
-			g.Start = g.Start.Add(bbox.Point)
-			g.End = g.End.Add(bbox.Point)
+			g.StartPt = g.Transform.TransformPoint(g.StartPt)
+			g.EndPt = g.Transform.TransformPoint(g.EndPt)
+			g.StartPt = g.StartPt.Add(bbox.Point)
+			g.EndPt = g.EndPt.Add(bbox.Point)
 			inverted := g.Transform.Invert()
-			g.Start = inverted.TransformPoint(g.Start)
-			g.End = inverted.TransformPoint(g.End)
+			g.StartPt = inverted.TransformPoint(g.StartPt)
+			g.EndPt = inverted.TransformPoint(g.EndPt)
 		}
-		g.Start = g.Start.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
-		g.End = g.End.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
+		g.StartPt = g.StartPt.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
+		g.EndPt = g.EndPt.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
 		return g, nil
 	default:
 		return Black, nil
@@ -1331,6 +1347,7 @@ func (p *svgParser) handleLinearGradientElement(attrs []xml.Attr) error {
 	p.inGrad = true
 	p.grad = &svgGradient{
 		gradient: &Gradient{
+			Kind:      gradienttype.Linear,
 			Transform: geom.NewIdentityMatrix(),
 		},
 		sx: "0%",
@@ -1394,6 +1411,7 @@ func (p *svgParser) handleRadialGradientElement(attrs []xml.Attr) error {
 	const fiftyPercent = "50%"
 	p.grad = &svgGradient{
 		gradient: &Gradient{
+			Kind:      gradienttype.Radial,
 			Transform: geom.NewIdentityMatrix(),
 		},
 		sr: fiftyPercent,

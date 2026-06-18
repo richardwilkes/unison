@@ -23,6 +23,7 @@ const (
 	NewWindowActionID
 	NewTableWindowActionID
 	NewDockWindowActionID
+	DisabledActionID
 	NewMarkdownWindowActionID
 	NewSVGWindowActionID
 	ShowColorsWindowActionID
@@ -60,7 +61,7 @@ func init() {
 
 	NewTableWindowAction = &unison.Action{
 		ID:         NewTableWindowActionID,
-		Title:      "New Demo Table Window",
+		Title:      "New Table Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyT, Modifiers: mod.OSMenuCommand()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
 			if _, err := NewDemoTableWindow(); err != nil {
@@ -71,7 +72,7 @@ func init() {
 
 	NewDockWindowAction = &unison.Action{
 		ID:         NewDockWindowActionID,
-		Title:      "New Demo Dock Window",
+		Title:      "New Dock Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyD, Modifiers: mod.OSMenuCommand()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
 			if _, err := NewDemoDockWindow(); err != nil {
@@ -82,7 +83,7 @@ func init() {
 
 	NewMarkdownWindowAction = &unison.Action{
 		ID:         NewMarkdownWindowActionID,
-		Title:      "New Demo Markdown Window",
+		Title:      "New Markdown Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyK, Modifiers: mod.Shift | mod.OSMenuCommand()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
 			if _, err := NewDemoMarkdownWindow(); err != nil {
@@ -93,7 +94,7 @@ func init() {
 
 	NewSVGWindowAction = &unison.Action{
 		ID:         NewSVGWindowActionID,
-		Title:      "New Demo SVG Window",
+		Title:      "New SVG Window",
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyS, Modifiers: mod.OSMenuCommand()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
 			if _, err := NewDemoSVGWindow(); err != nil {

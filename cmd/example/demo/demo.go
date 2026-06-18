@@ -44,7 +44,7 @@ func NewDemoWindow() (*unison.Window, error) {
 	content.SetLayout(&unison.FlexLayout{
 		Columns:  1,
 		HSpacing: unison.StdHSpacing,
-		VSpacing: 10,
+		VSpacing: unison.StdVSpacing * 2,
 	})
 
 	// Create some wrappable panels of buttons
@@ -144,30 +144,15 @@ func NewDemoWindow() (*unison.Window, error) {
 
 func createButtonPanels() []*unison.Panel {
 	return []*unison.Panel{
-		createActionButtonsPanel(NewWindowAction, NewTableWindowAction, NewDockWindowAction),
+		createActionButtonsPanel(NewWindowAction, NewTableWindowAction, NewDockWindowAction, &unison.Action{
+			EnabledCallback: func(_ *unison.Action, _ any) bool { return false },
+			Title:           "Disabled",
+			ID:              DisabledActionID,
+		}),
 		createActionButtonsPanel(NewMarkdownWindowAction, NewSVGWindowAction, ShowColorsWindowAction),
-		createButtonsPanel(),
 		createDialogButtonsPanel(),
 		createSVGButtonsPanel(),
 	}
-}
-
-func createButtonsPanel() *unison.Panel {
-	// Create a panel to place some buttons into.
-	panel := unison.NewPanel()
-	panel.SetLayout(&unison.FlowLayout{
-		HSpacing: unison.StdHSpacing,
-		VSpacing: unison.StdVSpacing,
-	})
-
-	// Add some buttons
-	for i, title := range []string{"First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth"} {
-		btn := createButton(title, panel)
-		if i == 2 {
-			btn.SetEnabled(false)
-		}
-	}
-	return panel
 }
 
 func createActionButtonsPanel(actions ...*unison.Action) *unison.Panel {
@@ -224,6 +209,9 @@ func createActionButton(action *unison.Action, panel *unison.Panel) *unison.Butt
 	btn.SetTitle(action.Title)
 	btn.SetLayoutData(align.Middle)
 	btn.ClickCallback = func() { action.ExecuteCallback(action, nil) }
+	if !action.Enabled(nil) {
+		btn.SetEnabled(false)
+	}
 	panel.AddChild(btn)
 	return btn
 }

@@ -193,6 +193,17 @@ func main() {
 		},
 	})
 	processSourceTemplate(wd, &enumInfo{
+		Pkg:  "enums/gradienttype",
+		Name: "gradienttype",
+		Desc: "specifies the type of gradient to use",
+		Values: []enumValue{
+			{Key: "linear"},
+			{Key: "radial"},
+			{Key: "sweep"},
+			{Key: "conical"},
+		},
+	})
+	processSourceTemplate(wd, &enumInfo{
 		Pkg:  "enums/imgfmt",
 		Name: "imgfmt",
 		Desc: "holds the type of encoding an image was stored with",
