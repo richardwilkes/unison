@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
@@ -136,7 +137,7 @@ func (w *Well) SetInk(ink Ink) {
 		w.ink = ink
 		w.MarkForRedraw()
 		if w.InkChangedCallback != nil {
-			w.InkChangedCallback()
+			xos.SafeCall(w.InkChangedCallback, nil)
 		}
 	}
 }
@@ -226,7 +227,7 @@ func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	w.MarkForRedraw()
 	if where.In(w.ContentRect(false)) {
 		if w.ClickCallback != nil {
-			w.ClickCallback()
+			xos.SafeCall(w.ClickCallback, nil)
 		}
 	}
 	return true
@@ -256,7 +257,7 @@ func (w *Well) Click() {
 	time.Sleep(w.ClickAnimationTime)
 	w.MarkForRedraw()
 	if w.ClickCallback != nil {
-		w.ClickCallback()
+		xos.SafeCall(w.ClickCallback, nil)
 	}
 }
 
@@ -318,7 +319,7 @@ func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 						continue
 					}
 					if w.ValidateImageCallback != nil {
-						img = w.ValidateImageCallback(img)
+						xos.SafeCall(func() { img = w.ValidateImageCallback(img) }, nil)
 					}
 					if img != nil {
 						w.SetInk(&Pattern{Image: img})
@@ -335,7 +336,7 @@ func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 					continue
 				}
 				if w.ValidateImageCallback != nil {
-					img = w.ValidateImageCallback(img)
+					xos.SafeCall(func() { img = w.ValidateImageCallback(img) }, nil)
 				}
 				if img != nil {
 					w.SetInk(&Pattern{Image: img})
@@ -347,10 +348,11 @@ func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 	return false
 }
 
-func (w *Well) loadImage(imageSpec string) (*Image, error) {
+func (w *Well) loadImage(imageSpec string) (img *Image, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), w.ImageLoadTimeout)
 	defer cancel()
-	return w.ImageFromSpecCallback(ctx, imageSpec, w.ImageScale)
+	xos.SafeCall(func() { img, err = w.ImageFromSpecCallback(ctx, imageSpec, w.ImageScale) }, nil)
+	return img, err
 }
 
 // DefaultUpdateCursor provides the default cursor for wells.

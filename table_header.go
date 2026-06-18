@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -218,7 +219,8 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 		if cell.UpdateCursorCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			cursor := cell.UpdateCursorCallback(where.Sub(rect.Point))
+			var cursor *Cursor
+			xos.SafeCall(func() { cursor = cell.UpdateCursorCallback(where.Sub(rect.Point)) }, nil)
 			h.uninstallCell(cell)
 			return cursor
 		}
@@ -233,7 +235,10 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 		if cell.UpdateTooltipCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			avoid := cell.UpdateTooltipCallback(where.Sub(rect.Point), h.RectToRoot(rect).Align())
+			var avoid geom.Rect
+			xos.SafeCall(func() {
+				avoid = cell.UpdateTooltipCallback(where.Sub(rect.Point), h.RectToRoot(rect).Align())
+			}, nil)
 			h.Tooltip = cell.Tooltip
 			h.uninstallCell(cell)
 			return avoid
@@ -255,7 +260,7 @@ func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) 
 		if cell.MouseMoveCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			stop = cell.MouseMoveCallback(where.Sub(rect.Point), mods)
+			xos.SafeCall(func() { stop = cell.MouseMoveCallback(where.Sub(rect.Point), mods) }, nil)
 			h.uninstallCell(cell)
 		}
 	}
@@ -302,7 +307,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount i
 		if cell.MouseDownCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mods)
+			xos.SafeCall(func() { stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mods) }, nil)
 			h.uninstallCell(cell)
 		}
 	}
@@ -343,7 +348,7 @@ func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mods mod.M
 		if cell.MouseUpCallback != nil {
 			rect := h.ColumnFrame(h.interactionColumn)
 			h.installCell(cell, rect)
-			stop = cell.MouseUpCallback(where.Sub(rect.Point), button, mods)
+			xos.SafeCall(func() { stop = cell.MouseUpCallback(where.Sub(rect.Point), button, mods) }, nil)
 			h.uninstallCell(cell)
 		}
 	}

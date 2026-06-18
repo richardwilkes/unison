@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -208,7 +209,7 @@ func (c *CheckBox) Click() {
 	time.Sleep(c.ClickAnimationTime)
 	c.MarkForRedraw()
 	if c.ClickCallback != nil {
-		c.ClickCallback()
+		xos.SafeCall(c.ClickCallback, nil)
 	}
 }
 
@@ -243,7 +244,7 @@ func (c *CheckBox) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool
 	if where.In(c.ContentRect(false)) {
 		c.updateState()
 		if c.ClickCallback != nil {
-			c.ClickCallback()
+			xos.SafeCall(c.ClickCallback, nil)
 		}
 	}
 	return true

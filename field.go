@@ -1012,7 +1012,7 @@ func (f *Field) SetText(text string) {
 func (f *Field) notifyOfModification(before, after *FieldState) {
 	f.MarkForRedraw()
 	if f.ModifiedCallback != nil {
-		f.ModifiedCallback(before, after)
+		xos.SafeCall(func() { f.ModifiedCallback(before, after) }, nil)
 	}
 	f.Validate()
 }
@@ -1021,7 +1021,7 @@ func (f *Field) notifyOfModification(before, after *FieldState) {
 func (f *Field) Validate() {
 	invalid := false
 	if f.ValidateCallback != nil {
-		invalid = !f.ValidateCallback()
+		xos.SafeCall(func() { invalid = !f.ValidateCallback() }, nil)
 	}
 	if invalid != f.invalid {
 		f.invalid = invalid

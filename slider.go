@@ -82,7 +82,7 @@ func (s *Slider) Value() float32 {
 // SetValue sets the current value.
 func (s *Slider) SetValue(value float32) {
 	if s.ValueSnapCallback != nil {
-		value = s.ValueSnapCallback(value)
+		xos.SafeCall(func() { value = s.ValueSnapCallback(value) }, nil)
 	}
 	if value < s.minimum {
 		value = s.minimum

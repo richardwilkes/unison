@@ -26,6 +26,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -1206,7 +1207,7 @@ func x11ProcessEvent(e x11.Event) {
 				if minimized != w.wnd.minimized {
 					w.wnd.minimized = minimized
 					if w.MinimizedCallback != nil {
-						w.MinimizedCallback(minimized)
+						xos.SafeCall(func() { w.MinimizedCallback(minimized) }, nil)
 					}
 				}
 			case x11Conn.Atoms.NetWMState:
@@ -1231,7 +1232,7 @@ func x11ProcessEvent(e x11.Event) {
 				if maximized != w.wnd.maximized {
 					w.wnd.maximized = maximized
 					if w.MaximizedCallback != nil {
-						w.MaximizedCallback(maximized)
+						xos.SafeCall(func() { w.MaximizedCallback(maximized) }, nil)
 					}
 				}
 			}

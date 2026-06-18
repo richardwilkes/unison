@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -118,7 +119,7 @@ func (s *ScrollBar) SetRange(value, extent, maximum float32) {
 		s.maximum = maximum
 		s.MarkForRedraw()
 		if s.ChangedCallback != nil {
-			s.ChangedCallback()
+			xos.SafeCall(s.ChangedCallback, nil)
 		}
 	}
 }

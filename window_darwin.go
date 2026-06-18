@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/mac"
@@ -72,7 +73,7 @@ func macInitWindowCallbacks() {
 			if w.maximized != maximized {
 				w.maximized = maximized
 				if w.MaximizedCallback != nil {
-					w.MaximizedCallback(maximized)
+					xos.SafeCall(func() { w.MaximizedCallback(maximized) }, nil)
 				}
 			}
 			r := w.wnd.view.Frame()
@@ -103,7 +104,7 @@ func macInitWindowCallbacks() {
 			if w.minimized != minimized {
 				w.minimized = minimized
 				if w.MinimizedCallback != nil {
-					w.MinimizedCallback(minimized)
+					xos.SafeCall(func() { w.MinimizedCallback(minimized) }, nil)
 				}
 			}
 		} else {
@@ -193,7 +194,7 @@ func macInitWindowCallbacks() {
 		// This will be called once before the window is finished initializing, so just ignore any unknown windows here.
 		if w := macFindWindow(macWnd); w != nil {
 			if w.ContentScaleCallback != nil {
-				w.ContentScaleCallback(scale)
+				xos.SafeCall(func() { w.ContentScaleCallback(scale) }, nil)
 			}
 		}
 	}

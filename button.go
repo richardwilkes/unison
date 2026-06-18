@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/side"
@@ -209,7 +210,7 @@ func (b *Button) Click() {
 	time.Sleep(b.ClickAnimationTime)
 	b.MarkForRedraw()
 	if b.ClickCallback != nil {
-		b.ClickCallback()
+		xos.SafeCall(b.ClickCallback, nil)
 	}
 }
 
@@ -236,7 +237,7 @@ func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if where.In(b.ContentRect(false)) {
 		b.group.Select(b)
 		if b.ClickCallback != nil {
-			b.ClickCallback()
+			xos.SafeCall(b.ClickCallback, nil)
 		}
 	}
 	return true

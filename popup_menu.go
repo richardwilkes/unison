@@ -226,7 +226,7 @@ func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]
 			return entry.enabled
 		}, func(_ MenuItem) {
 			if p.ChoiceMadeCallback != nil {
-				p.ChoiceMadeCallback(p, index, p.items[index].item)
+				xos.SafeCall(func() { p.ChoiceMadeCallback(p, index, p.items[index].item) }, nil)
 			}
 		})
 	if p.selection[index] {
@@ -413,7 +413,7 @@ func (p *PopupMenu[T]) SelectIndex(index ...int) {
 	if !slices.Equal(indexes, newIndexes) {
 		p.MarkForRedraw()
 		if p.SelectionChangedCallback != nil {
-			p.SelectionChangedCallback(p)
+			xos.SafeCall(func() { p.SelectionChangedCallback(p) }, nil)
 		}
 	}
 }

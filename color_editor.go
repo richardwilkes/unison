@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/gradienttype"
 )
@@ -387,7 +388,7 @@ func (e *ColorEditor) sync() {
 	e.syncText(e.cssField, e.color.String())
 	e.syncing = false
 	if e.ChangedCallback != nil {
-		e.ChangedCallback()
+		xos.SafeCall(e.ChangedCallback, nil)
 	}
 }
 

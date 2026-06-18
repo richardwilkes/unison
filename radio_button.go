@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -207,7 +208,7 @@ func (r *RadioButton) Click() {
 	time.Sleep(r.ClickAnimationTime)
 	r.MarkForRedraw()
 	if r.ClickCallback != nil {
-		r.ClickCallback()
+		xos.SafeCall(r.ClickCallback, nil)
 	}
 }
 
@@ -234,7 +235,7 @@ func (r *RadioButton) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) b
 	if where.In(r.ContentRect(false)) {
 		r.group.Select(r)
 		if r.ClickCallback != nil {
-			r.ClickCallback()
+			xos.SafeCall(r.ClickCallback, nil)
 		}
 	}
 	return true

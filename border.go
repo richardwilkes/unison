@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/v2/geom"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
+)
 
 const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
 
@@ -71,13 +74,13 @@ func InstallFocusBorders(focusTarget, borderTarget Paneler, focusedBorder, unfoc
 	focusPanel.GainedFocusCallback = func() {
 		borderPanel.SetBorder(focusedBorder)
 		if previous.GainedFocusCallback != nil {
-			previous.GainedFocusCallback()
+			xos.SafeCall(previous.GainedFocusCallback, nil)
 		}
 	}
 	focusPanel.LostFocusCallback = func() {
 		borderPanel.SetBorder(unfocusedBorder)
 		if previous.LostFocusCallback != nil {
-			previous.LostFocusCallback()
+			xos.SafeCall(previous.LostFocusCallback, nil)
 		}
 	}
 	borderPanel.SetBorder(unfocusedBorder)

@@ -144,12 +144,16 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 
 func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
 	if len(p.openMenuPanels) != 0 {
-		if p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mods, repeat) {
+		var handled bool
+		xos.SafeCall(func() {
+			handled = p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mods, repeat)
+		}, nil)
+		if handled {
 			return true
 		}
 	}
 	if p.menuBar != nil {
-		stop := false
+		var stop bool
 		xos.SafeCall(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mods, repeat) }, nil)
 		return stop
 	}

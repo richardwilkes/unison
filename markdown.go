@@ -219,7 +219,7 @@ func (m *Markdown) adjustSizeOnParentChange() {
 func (m *Markdown) adjustToParent() {
 	m.SetContentBytes(m.content, 0)
 	if m.chainedFrameChangeCallback != nil {
-		m.chainedFrameChangeCallback()
+		xos.SafeCall(m.chainedFrameChangeCallback, nil)
 	}
 }
 

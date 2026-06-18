@@ -21,6 +21,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xio"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
 )
@@ -353,11 +354,17 @@ func (d *JobDialog) adjustOKButton(_, _ *unison.FieldState) {
 		return
 	}
 	enabled := d.printer != nil
-	if !d.copies.ValidateCallback() {
+	var notValid bool
+	xos.SafeCall(func() { notValid = !d.copies.ValidateCallback() }, nil)
+	if notValid {
 		enabled = false
 	}
-	if d.printerAttributes.PageRangesSupported() && !d.pageRanges.ValidateCallback() {
-		enabled = false
+	if d.printerAttributes.PageRangesSupported() {
+		notValid = false
+		xos.SafeCall(func() { notValid = !d.pageRanges.ValidateCallback() }, nil)
+		if notValid {
+			enabled = false
+		}
 	}
 	d.dialog.Button(unison.ModalResponseOK).SetEnabled(enabled)
 }
