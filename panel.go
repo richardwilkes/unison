@@ -554,17 +554,10 @@ func (p *Panel) PointToRoot(pt geom.Point) geom.Point {
 // PointFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local
 // coordinates.
 func (p *Panel) PointFromRoot(pt geom.Point) geom.Point {
-	list := make([]*Panel, 0, 32)
-	panel := p
-	for panel != nil {
-		list = append(list, panel)
-		panel = panel.parent
+	if p.parent != nil {
+		pt = p.parent.PointFromRoot(pt)
 	}
-	for i := len(list) - 1; i >= 0; i-- {
-		panel = list[i]
-		pt = pt.Sub(panel.frame.Point).DivPt(panel.Scale())
-	}
-	return pt
+	return pt.Sub(p.frame.Point).DivPt(p.Scale())
 }
 
 // PointTo converts panel-local coordinates into another panel's coordinates.
