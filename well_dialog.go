@@ -34,8 +34,6 @@ type wellDialog struct {
 	syncing     bool
 }
 
-// TODO: Implement gradient selection
-
 func showWellDialog(w *Well) {
 	if w.Mask&(ColorWellMask|GradientWellMask|PatternWellMask) == 0 {
 		slog.Warn("well mask doesn't enable color, gradient, or pattern")
