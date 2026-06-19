@@ -29,9 +29,12 @@ import (
 )
 
 var (
-	_           Drawable = &Image{}
-	imgCache             = make(map[uint64]weak.Pointer[Image])
-	imageCtxMap          = make(map[skia.DirectContext]map[uint64]skia.Image)
+	_            Drawable = &Image{}
+	imgCacheLock sync.Mutex
+	imgCache     = make(map[uint64]weak.Pointer[Image])
+	// imageCtxMap is only accessed on the UI (rendering) thread, since each entry is tied to a GL DirectContext, so it
+	// does not require its own lock.
+	imageCtxMap = make(map[skia.DirectContext]map[uint64]skia.Image)
 )
 
 // Image holds a reference to an image.
@@ -153,9 +156,12 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 	return NewImageFromPixels(width, height, pixels, geom.NewPoint(1/scale, 1/scale))
 }
 
+// newImage may be called from any goroutine, so access to imgCache is guarded by imgCacheLock.
 func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error) {
+	imgCacheLock.Lock()
 	if existing, ok := imgCache[hash]; ok {
 		if actual := existing.Value(); actual != nil {
+			imgCacheLock.Unlock()
 			ReleaseOnUIThread(func() {
 				skia.ImageUnref(skiaImg)
 			})
@@ -168,6 +174,7 @@ func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error)
 		scale:   scale,
 	}
 	imgCache[hash] = weak.Make(img)
+	imgCacheLock.Unlock()
 	img.cleanup = runtime.AddCleanup(img, func(si skia.Image) {
 		ReleaseOnUIThread(func() {
 			skia.ImageUnref(si)
