@@ -30,11 +30,7 @@ type Paint struct {
 
 func newPaint(paint skia.Paint) *Paint {
 	p := &Paint{paint: paint}
-	p.cleanup = runtime.AddCleanup(p, func(sp skia.Paint) {
-		ReleaseOnUIThread(func() {
-			skia.PaintDelete(sp)
-		})
-	}, p.paint)
+	p.cleanup = newSkiaCleanup(p, paint, skia.PaintDelete)
 	return p
 }
 
@@ -58,13 +54,7 @@ func (p *Paint) Dispose() {
 	if p == nil {
 		return
 	}
-	p.disposeOnce.Do(func() {
-		p.cleanup.Stop()
-		if p.paint != nil {
-			skia.PaintDelete(p.paint)
-			p.paint = nil
-		}
-	})
+	disposeSkiaHandle(&p.disposeOnce, p.cleanup, &p.paint, skia.PaintDelete)
 }
 
 // Clone the Paint.

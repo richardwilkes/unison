@@ -29,11 +29,7 @@ func newMaskFilter(filter skia.MaskFilter) *MaskFilter {
 		return nil
 	}
 	f := &MaskFilter{filter: filter}
-	f.cleanup = runtime.AddCleanup(f, func(sf skia.MaskFilter) {
-		ReleaseOnUIThread(func() {
-			skia.MaskFilterUnref(sf)
-		})
-	}, f.filter)
+	f.cleanup = newSkiaCleanup(f, filter, skia.MaskFilterUnref)
 	return f
 }
 
@@ -50,13 +46,7 @@ func (f *MaskFilter) Dispose() {
 	if f == nil {
 		return
 	}
-	f.disposeOnce.Do(func() {
-		f.cleanup.Stop()
-		if f.filter != nil {
-			skia.MaskFilterUnref(f.filter)
-			f.filter = nil
-		}
-	})
+	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.MaskFilterUnref)
 }
 
 // NewBlurMaskFilter returns a new blur mask filter. sigma is the standard deviation of the gaussian blur to apply. Must

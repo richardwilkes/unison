@@ -31,11 +31,7 @@ func newPathEffect(effect skia.PathEffect) *PathEffect {
 		return nil
 	}
 	e := &PathEffect{effect: effect}
-	e.cleanup = runtime.AddCleanup(e, func(se skia.PathEffect) {
-		ReleaseOnUIThread(func() {
-			skia.PathEffectUnref(se)
-		})
-	}, e.effect)
+	e.cleanup = newSkiaCleanup(e, effect, skia.PathEffectUnref)
 	return e
 }
 
@@ -52,13 +48,7 @@ func (e *PathEffect) Dispose() {
 	if e == nil {
 		return
 	}
-	e.disposeOnce.Do(func() {
-		e.cleanup.Stop()
-		if e.effect != nil {
-			skia.PathEffectUnref(e.effect)
-			e.effect = nil
-		}
-	})
+	disposeSkiaHandle(&e.disposeOnce, e.cleanup, &e.effect, skia.PathEffectUnref)
 }
 
 // NewComposePathEffect creates a new PathEffect that combines two PathEffects.

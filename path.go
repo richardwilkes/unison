@@ -37,11 +37,7 @@ type Path struct {
 
 func newPath(path skia.Path) *Path {
 	p := &Path{path: path}
-	p.cleanup = runtime.AddCleanup(p, func(sp skia.Path) {
-		ReleaseOnUIThread(func() {
-			skia.PathDelete(sp)
-		})
-	}, p.path)
+	p.cleanup = newSkiaCleanup(p, path, skia.PathDelete)
 	return p
 }
 
@@ -56,13 +52,7 @@ func (p *Path) Dispose() {
 	if p == nil {
 		return
 	}
-	p.disposeOnce.Do(func() {
-		p.cleanup.Stop()
-		if p.path != nil {
-			skia.PathDelete(p.path)
-			p.path = nil
-		}
-	})
+	disposeSkiaHandle(&p.disposeOnce, p.cleanup, &p.path, skia.PathDelete)
 }
 
 // NewPathFromSVGString attempts to create a path from the given SVG string.

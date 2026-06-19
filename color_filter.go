@@ -30,11 +30,7 @@ func newColorFilter(filter skia.ColorFilter) *ColorFilter {
 		return nil
 	}
 	f := &ColorFilter{filter: filter}
-	f.cleanup = runtime.AddCleanup(f, func(sf skia.ColorFilter) {
-		ReleaseOnUIThread(func() {
-			skia.ColorFilterUnref(sf)
-		})
-	}, f.filter)
+	f.cleanup = newSkiaCleanup(f, filter, skia.ColorFilterUnref)
 	return f
 }
 
@@ -51,13 +47,7 @@ func (f *ColorFilter) Dispose() {
 	if f == nil {
 		return
 	}
-	f.disposeOnce.Do(func() {
-		f.cleanup.Stop()
-		if f.filter != nil {
-			skia.ColorFilterUnref(f.filter)
-			f.filter = nil
-		}
-	})
+	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.ColorFilterUnref)
 }
 
 // NewBlendColorFilter returns a new blend color filter.

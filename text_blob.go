@@ -28,11 +28,7 @@ func newTextBlob(textBlob skia.TextBlob) *TextBlob {
 		return nil
 	}
 	tb := &TextBlob{blob: textBlob}
-	tb.cleanup = runtime.AddCleanup(tb, func(sb skia.TextBlob) {
-		ReleaseOnUIThread(func() {
-			skia.TextBlobUnref(sb)
-		})
-	}, tb.blob)
+	tb.cleanup = newSkiaCleanup(tb, textBlob, skia.TextBlobUnref)
 	return tb
 }
 
@@ -42,11 +38,5 @@ func (tb *TextBlob) Dispose() {
 	if tb == nil {
 		return
 	}
-	tb.disposeOnce.Do(func() {
-		tb.cleanup.Stop()
-		if tb.blob != nil {
-			skia.TextBlobUnref(tb.blob)
-			tb.blob = nil
-		}
-	})
+	disposeSkiaHandle(&tb.disposeOnce, tb.cleanup, &tb.blob, skia.TextBlobUnref)
 }

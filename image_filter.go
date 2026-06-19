@@ -31,11 +31,7 @@ func newImageFilter(filter skia.ImageFilter) *ImageFilter {
 		return nil
 	}
 	f := &ImageFilter{filter: filter}
-	f.cleanup = runtime.AddCleanup(f, func(sf skia.ImageFilter) {
-		ReleaseOnUIThread(func() {
-			skia.ImageFilterUnref(sf)
-		})
-	}, f.filter)
+	f.cleanup = newSkiaCleanup(f, filter, skia.ImageFilterUnref)
 	return f
 }
 
@@ -52,13 +48,7 @@ func (f *ImageFilter) Dispose() {
 	if f == nil {
 		return
 	}
-	f.disposeOnce.Do(func() {
-		f.cleanup.Stop()
-		if f.filter != nil {
-			skia.ImageFilterUnref(f.filter)
-			f.filter = nil
-		}
-	})
+	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.ImageFilterUnref)
 }
 
 // NewArithmeticImageFilter returns a new arithmetic image filter. Each output pixel is the result of combining the

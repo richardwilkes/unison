@@ -35,11 +35,7 @@ func newShader(shader skia.Shader) *Shader {
 		return nil
 	}
 	s := &Shader{shader: shader}
-	s.cleanup = runtime.AddCleanup(s, func(ss skia.Shader) {
-		ReleaseOnUIThread(func() {
-			skia.ShaderUnref(ss)
-		})
-	}, s.shader)
+	s.cleanup = newSkiaCleanup(s, shader, skia.ShaderUnref)
 	return s
 }
 
@@ -56,13 +52,7 @@ func (s *Shader) Dispose() {
 	if s == nil {
 		return
 	}
-	s.disposeOnce.Do(func() {
-		s.cleanup.Stop()
-		if s.shader != nil {
-			skia.ShaderUnref(s.shader)
-			s.shader = nil
-		}
-	})
+	disposeSkiaHandle(&s.disposeOnce, s.cleanup, &s.shader, skia.ShaderUnref)
 }
 
 // NewColorShader creates a new color Shader.

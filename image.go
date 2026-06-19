@@ -175,11 +175,7 @@ func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error)
 	}
 	imgCache[hash] = weak.Make(img)
 	imgCacheLock.Unlock()
-	img.cleanup = runtime.AddCleanup(img, func(si skia.Image) {
-		ReleaseOnUIThread(func() {
-			skia.ImageUnref(si)
-		})
-	}, img.skiaImg)
+	img.cleanup = newSkiaCleanup(img, img.skiaImg, skia.ImageUnref)
 	return img, nil
 }
 
@@ -301,11 +297,7 @@ func (img *Image) skiaImageForCanvas(canvas *Canvas) skia.Image {
 		if img.skiaNonTextureImg == nil {
 			return img.skiaImg
 		}
-		img.nonTextureCleanup = runtime.AddCleanup(img, func(si skia.Image) {
-			ReleaseOnUIThread(func() {
-				skia.ImageUnref(si)
-			})
-		}, img.skiaNonTextureImg)
+		img.nonTextureCleanup = newSkiaCleanup(img, img.skiaNonTextureImg, skia.ImageUnref)
 		return img.skiaNonTextureImg
 	}
 	m, ok := imageCtxMap[canvas.surface.context]
