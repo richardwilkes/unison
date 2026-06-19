@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
@@ -36,7 +37,7 @@ func InvokeTaskAfter(f func(), after time.Duration) {
 	time.AfterFunc(after, func() { InvokeTask(f) })
 }
 
-func processNextTask(recoveryHandler func(error)) {
+func processNextTask() {
 	var f func()
 	needsPost := false
 	taskQueueLock.Lock()
@@ -62,9 +63,26 @@ func processNextTask(recoveryHandler func(error)) {
 	}
 	taskQueueLock.Unlock()
 	if f != nil {
-		xos.SafeCall(f, recoveryHandler)
+		SafeCall(f)
 		if needsPost {
 			apiPostEmptyEvent()
 		}
 	}
+}
+
+// SafeCall uses xos.SafeCall() and the callback, if any, set with the RecoveryCallback startup option to safely call a
+// function. If 'f' is nil, this function returns immediately.
+func SafeCall(f func()) {
+	if f == nil {
+		return
+	}
+	xos.SafeCall(f, func(err error) {
+		if recoveryCallback != nil {
+			// Note that it is not necessary to wrap this callback inside another xos.SafeCall, as xos.PanicRecovery
+			// (called from xos.SafeCall) does that for us.
+			recoveryCallback(err)
+		} else {
+			errs.Log(err)
+		}
+	})
 }

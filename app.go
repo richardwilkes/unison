@@ -83,8 +83,8 @@ func ThemeChangedCallback(f func()) StartupOption {
 	}
 }
 
-// RecoveryCallback will cause f to be called should a task invoked via task.InvokeTask() or task.InvokeTaskAfter()
-// panic. If no recovery callback is set, the panic will be logged via errs.Log(err).
+// RecoveryCallback will cause f to be called should a task invoked via task.InvokeTask(), task.InvokeTaskAfter(), or
+// SafeCall() panic. If no recovery callback is set, the panic will be logged via errs.Log(err).
 func RecoveryCallback(f func(error)) StartupOption {
 	return func(_ startupOption) error {
 		recoveryCallback = f
@@ -192,7 +192,7 @@ func processEvents() {
 // called after each pass of event processing in the main loop, as well as in nested event loops, such as the one used
 // for the source side of drag & drop on Linux.
 func finishProcessingEvents() {
-	processNextTask(uiTaskRecovery)
+	processNextTask()
 	if len(redrawSet) > 0 {
 		set := redrawSet
 		redrawSet = make(map[*Window]struct{})
@@ -210,9 +210,7 @@ func finishStartup() {
 	skiaColorspace = skia.ColorSpaceNewSRGB()
 	RebuildDynamicColors()
 	apiLateInit()
-	if startupFinishedCallback != nil {
-		xos.SafeCall(startupFinishedCallback, nil)
-	}
+	SafeCall(startupFinishedCallback)
 	apiFinalFinishStartup()
 }
 
@@ -221,26 +219,16 @@ func finishStartup() {
 // on demand.
 func ThemeChanged() {
 	MarkDynamicColorsForRebuild()
-	if themeChangedCallback != nil {
-		xos.SafeCall(themeChangedCallback, nil)
-	}
+	SafeCall(themeChangedCallback)
 	for _, wnd := range Windows() {
 		wnd.MarkForRedraw()
-	}
-}
-
-func uiTaskRecovery(err error) {
-	if recoveryCallback != nil {
-		xos.SafeCall(func() { recoveryCallback(err) }, nil)
-	} else {
-		errs.Log(err)
 	}
 }
 
 func quitAfterLastWindowClosed() bool {
 	if quitAfterLastWindowClosedCallback != nil {
 		quit := true
-		xos.SafeCall(func() { quit = quitAfterLastWindowClosedCallback() }, nil)
+		SafeCall(func() { quit = quitAfterLastWindowClosedCallback() })
 		return quit
 	}
 	return true
@@ -249,7 +237,7 @@ func quitAfterLastWindowClosed() bool {
 func allowQuit() bool {
 	if allowQuitCallback != nil {
 		allow := true
-		xos.SafeCall(func() { allow = allowQuitCallback() }, nil)
+		SafeCall(func() { allow = allowQuitCallback() })
 		return allow
 	}
 	return true
@@ -260,16 +248,14 @@ func quitting() {
 	callback := quittingCallback
 	quittingCallback = nil
 	quitLock.Unlock()
-	if callback != nil {
-		xos.SafeCall(callback, nil)
-	}
-	// xos.Exit() is called here once to ensure registered exit hooks are actually called, as OS's may directly
-	// terminate the app after returning from this function.
+	SafeCall(callback)
 	quitLock.Lock()
 	calledExit := calledAtExit
 	calledAtExit = true
 	quitLock.Unlock()
 	if !calledExit {
+		// xos.Exit() is called here once to ensure registered exit hooks are actually called, as OS's may directly
+		// terminate the app after returning from this function.
 		xos.Exit(0)
 	}
 	if err := finishQuit(); err != nil {

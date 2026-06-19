@@ -15,7 +15,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -198,7 +197,7 @@ func (p *PopupMenu[T]) Text() string {
 // Click performs any animation associated with a click and triggers the popup menu to appear.
 func (p *PopupMenu[T]) Click() {
 	if p.WillShowMenuCallback != nil {
-		xos.SafeCall(func() { p.WillShowMenuCallback(p) }, nil)
+		SafeCall(func() { p.WillShowMenuCallback(p) })
 	}
 	hasItem := false
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
@@ -226,7 +225,7 @@ func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]
 			return entry.enabled
 		}, func(_ MenuItem) {
 			if p.ChoiceMadeCallback != nil {
-				xos.SafeCall(func() { p.ChoiceMadeCallback(p, index, p.items[index].item) }, nil)
+				SafeCall(func() { p.ChoiceMadeCallback(p, index, p.items[index].item) })
 			}
 		})
 	if p.selection[index] {
@@ -413,7 +412,7 @@ func (p *PopupMenu[T]) SelectIndex(index ...int) {
 	if !slices.Equal(indexes, newIndexes) {
 		p.MarkForRedraw()
 		if p.SelectionChangedCallback != nil {
-			xos.SafeCall(func() { p.SelectionChangedCallback(p) }, nil)
+			SafeCall(func() { p.SelectionChangedCallback(p) })
 		}
 	}
 }

@@ -134,7 +134,7 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 	c.RestoreToCount(1)
 	c.SetMatrix(geom.NewScaleMatrix(scale, scale))
 	c.Save()
-	xos.SafeCall(func() { draw(c) }, nil)
+	SafeCall(func() { draw(c) })
 	c.Restore()
 	c.Flush()
 	defer s.dispose()

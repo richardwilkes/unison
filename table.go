@@ -18,7 +18,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -616,7 +615,7 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 					if target.UpdateCursorCallback == nil {
 						target = target.parent
 					} else {
-						xos.SafeCall(func() { cursor = target.UpdateCursorCallback(cell.PointTo(where, target)) }, nil)
+						SafeCall(func() { cursor = target.UpdateCursorCallback(cell.PointTo(where, target)) })
 						break
 					}
 				}
@@ -643,9 +642,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 				for target != t.AsPanel() {
 					avoid = target.RectToRoot(target.ContentRect(true)).Align()
 					if target.UpdateTooltipCallback != nil {
-						xos.SafeCall(func() {
-							avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid)
-						}, nil)
+						SafeCall(func() { avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid) })
 					}
 					if target.Tooltip != nil {
 						t.Tooltip = target.Tooltip
@@ -689,7 +686,7 @@ func (t *Table[T]) DefaultMouseEnter(where geom.Point, mods mod.Modifiers) bool 
 			t.lastMouseMotionColumn = col
 		}
 		if target.MouseEnterCallback != nil {
-			xos.SafeCall(func() { target.MouseEnterCallback(cell.PointTo(where, target), mods) }, nil)
+			SafeCall(func() { target.MouseEnterCallback(cell.PointTo(where, target), mods) })
 		}
 		t.uninstallCell(cell)
 		t.lastMouseEnterCellPanel = target
@@ -708,7 +705,7 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 		t.installCell(cell, rect)
 		where = where.Sub(rect.Point)
 		if target := cell.PanelAt(where); target.MouseMoveCallback != nil {
-			xos.SafeCall(func() { target.MouseMoveCallback(cell.PointTo(where, target), mods) }, nil)
+			SafeCall(func() { target.MouseMoveCallback(cell.PointTo(where, target), mods) })
 		}
 		t.uninstallCell(cell)
 	}
@@ -722,7 +719,7 @@ func (t *Table[T]) DefaultMouseExit() bool {
 		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		rect := t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		t.installCell(cell, rect)
-		xos.SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() }, nil)
+		SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() })
 		t.uninstallCell(cell)
 	}
 	t.lastMouseEnterCellPanel = nil
@@ -787,9 +784,9 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 				stop := false
 				if target := cell.PanelAt(where); target.MouseDownCallback != nil {
 					t.lastMouseDownCellPanel = target
-					xos.SafeCall(func() {
+					SafeCall(func() {
 						stop = target.MouseDownCallback(cell.PointTo(where, target), button, clickCount, mods)
-					}, nil)
+					})
 				}
 				t.uninstallCell(cell)
 				if stop {
@@ -839,16 +836,14 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		}
 		t.MarkForRedraw()
 		if button == ButtonLeft && clickCount == 2 && t.DoubleClickCallback != nil && len(t.selMap) != 0 {
-			xos.SafeCall(t.DoubleClickCallback, nil)
+			SafeCall(t.DoubleClickCallback)
 		}
 	}
 	return true
 }
 
 func (t *Table[T]) notifyOfSelectionChange() {
-	if t.SelectionChangedCallback != nil {
-		xos.SafeCall(t.SelectionChangedCallback, nil)
-	}
+	SafeCall(t.SelectionChangedCallback)
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
@@ -884,9 +879,10 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
 			where = where.Sub(rect.Point)
-			xos.SafeCall(func() {
-				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mods)
-			}, nil)
+			SafeCall(func() {
+				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel),
+					button, mods)
+			})
 			t.uninstallCell(cell)
 		}
 	}
@@ -920,9 +916,9 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 		t.installCell(cell, rect)
 		where = where.Sub(rect.Point)
-		xos.SafeCall(func() {
+		SafeCall(func() {
 			stop = t.lastMouseDownCellPanel.MouseUpCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mods)
-		}, nil)
+		})
 		t.uninstallCell(cell)
 	}
 	t.lastMouseDownCellPanel = nil
@@ -934,7 +930,7 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		if t.DoubleClickCallback != nil && len(t.selMap) != 0 {
-			xos.SafeCall(t.DoubleClickCallback, nil)
+			SafeCall(t.DoubleClickCallback)
 		}
 		return true
 	}

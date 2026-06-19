@@ -12,8 +12,6 @@ package unison
 import (
 	"sync"
 	"time"
-
-	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 var (
@@ -54,7 +52,7 @@ func processReleaseQueue() {
 			funcs := list
 			InvokeTask(func() {
 				for _, f := range funcs {
-					xos.SafeCall(f, nil)
+					SafeCall(f)
 				}
 			})
 			allocation[pos] = len(list)

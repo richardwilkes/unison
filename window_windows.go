@@ -18,7 +18,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -252,14 +251,14 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			if w.minimized != minimized {
 				w.minimized = minimized
 				if w.MinimizedCallback != nil {
-					xos.SafeCall(func() { w.MinimizedCallback(minimized) }, nil)
+					SafeCallWithRecovery(func() { w.MinimizedCallback(minimized) })
 				}
 			}
 			maximized := wParam == w32.SIZE_MAXIMIZED || (w.maximized && wParam != w32.SIZE_RESTORED)
 			if w.maximized != maximized {
 				w.maximized = maximized
 				if w.MaximizedCallback != nil {
-					xos.SafeCall(func() { w.MaximizedCallback(maximized) }, nil)
+					SafeCallWithRecovery(func() { w.MaximizedCallback(maximized) })
 				}
 			}
 			width := float32(lParam & 0xFFFF)
@@ -338,7 +337,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			}
 			if w.ContentScaleCallback != nil {
 				scale := float32((wParam>>16)&0xFFFF) / 96
-				xos.SafeCall(func() { w.ContentScaleCallback(geom.NewPoint(scale, scale)) }, nil)
+				SafeCallWithRecovery(func() { w.ContentScaleCallback(geom.NewPoint(scale, scale)) })
 			}
 		case w32.WM_SETCURSOR:
 			if lParam&0xFFFF == w32.HTCLIENT {

@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -77,7 +76,7 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 	link.MouseUpCallback = func(where geom.Point, _ int, _ mod.Modifiers) bool {
 		link.MarkForRedraw()
 		if where.In(link.ContentRect(true)) && clickHandler != nil {
-			xos.SafeCall(func() { clickHandler(link, target) }, nil)
+			SafeCall(func() { clickHandler(link, target) })
 		}
 		mouseDown = false
 		return true

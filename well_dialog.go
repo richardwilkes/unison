@@ -17,7 +17,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/imgfmt"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -236,7 +235,7 @@ func (d *wellDialog) createPatternSelector() *Button {
 				return
 			}
 			if d.well.ValidateImageCallback != nil {
-				xos.SafeCall(func() { img = d.well.ValidateImageCallback(img) }, nil)
+				SafeCall(func() { img = d.well.ValidateImageCallback(img) })
 			}
 			if img == nil {
 				ErrorDialogWithMessage(unable, "")

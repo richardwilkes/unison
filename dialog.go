@@ -16,7 +16,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -150,7 +149,7 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 		if originalKeyDownCallback == nil {
 			ok = true
 		} else {
-			xos.SafeCall(func() { ok = !originalKeyDownCallback(keyCode, mods, repeat) }, nil)
+			SafeCall(func() { ok = !originalKeyDownCallback(keyCode, mods, repeat) })
 		}
 		if ok {
 			if mods&mod.NonSticky == 0 {

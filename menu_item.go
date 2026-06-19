@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -375,7 +374,7 @@ func (mi *menuItem) validate() {
 		mi.enabled = true
 		if mi.validator != nil {
 			mi.enabled = false
-			xos.SafeCall(func() { mi.enabled = mi.validator(mi) }, nil)
+			SafeCall(func() { mi.enabled = mi.validator(mi) })
 		}
 	}
 }
@@ -386,6 +385,6 @@ func (mi *menuItem) execute() {
 	}
 	mi.menu.closeMenuStack()
 	if mi.enabled && mi.handler != nil {
-		xos.SafeCall(func() { mi.handler(mi) }, nil)
+		SafeCall(func() { mi.handler(mi) })
 	}
 }

@@ -17,7 +17,6 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -462,7 +461,7 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods 
 			selectAll := false
 			if !wasFocused {
 				if f.InitialClickSelectsAll != nil {
-					xos.SafeCall(func() { selectAll = f.InitialClickSelectsAll(f) }, nil)
+					SafeCall(func() { selectAll = f.InitialClickSelectsAll(f) })
 				}
 			}
 			if selectAll {
@@ -1012,7 +1011,7 @@ func (f *Field) SetText(text string) {
 func (f *Field) notifyOfModification(before, after *FieldState) {
 	f.MarkForRedraw()
 	if f.ModifiedCallback != nil {
-		xos.SafeCall(func() { f.ModifiedCallback(before, after) }, nil)
+		SafeCall(func() { f.ModifiedCallback(before, after) })
 	}
 	f.Validate()
 }
@@ -1021,7 +1020,7 @@ func (f *Field) notifyOfModification(before, after *FieldState) {
 func (f *Field) Validate() {
 	invalid := false
 	if f.ValidateCallback != nil {
-		xos.SafeCall(func() { invalid = !f.ValidateCallback() }, nil)
+		SafeCall(func() { invalid = !f.ValidateCallback() })
 	}
 	if invalid != f.invalid {
 		f.invalid = invalid

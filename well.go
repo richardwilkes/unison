@@ -17,7 +17,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
@@ -136,9 +135,7 @@ func (w *Well) SetInk(ink Ink) {
 	if ink != w.ink {
 		w.ink = ink
 		w.MarkForRedraw()
-		if w.InkChangedCallback != nil {
-			xos.SafeCall(w.InkChangedCallback, nil)
-		}
+		SafeCall(w.InkChangedCallback)
 	}
 }
 
@@ -226,9 +223,7 @@ func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	w.Pressed = false
 	w.MarkForRedraw()
 	if where.In(w.ContentRect(false)) {
-		if w.ClickCallback != nil {
-			xos.SafeCall(w.ClickCallback, nil)
-		}
+		SafeCall(w.ClickCallback)
 	}
 	return true
 }
@@ -256,9 +251,7 @@ func (w *Well) Click() {
 	w.Pressed = pressed
 	time.Sleep(w.ClickAnimationTime)
 	w.MarkForRedraw()
-	if w.ClickCallback != nil {
-		xos.SafeCall(w.ClickCallback, nil)
-	}
+	SafeCall(w.ClickCallback)
 }
 
 // DefaultCanAcceptDrop reports whether this well is a candidate for the given drag, independent of pointer position.
@@ -319,7 +312,7 @@ func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 						continue
 					}
 					if w.ValidateImageCallback != nil {
-						xos.SafeCall(func() { img = w.ValidateImageCallback(img) }, nil)
+						SafeCall(func() { img = w.ValidateImageCallback(img) })
 					}
 					if img != nil {
 						w.SetInk(&Pattern{Image: img})
@@ -336,7 +329,7 @@ func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 					continue
 				}
 				if w.ValidateImageCallback != nil {
-					xos.SafeCall(func() { img = w.ValidateImageCallback(img) }, nil)
+					SafeCall(func() { img = w.ValidateImageCallback(img) })
 				}
 				if img != nil {
 					w.SetInk(&Pattern{Image: img})
@@ -351,7 +344,7 @@ func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 func (w *Well) loadImage(imageSpec string) (img *Image, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), w.ImageLoadTimeout)
 	defer cancel()
-	xos.SafeCall(func() { img, err = w.ImageFromSpecCallback(ctx, imageSpec, w.ImageScale) }, nil)
+	SafeCall(func() { img, err = w.ImageFromSpecCallback(ctx, imageSpec, w.ImageScale) })
 	return img, err
 }
 

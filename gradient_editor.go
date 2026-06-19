@@ -16,7 +16,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/gradienttype"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -585,9 +584,7 @@ func (e *GradientEditor) reselect(stop Stop) {
 
 func (e *GradientEditor) changed() {
 	e.sync()
-	if e.ChangedCallback != nil {
-		xos.SafeCall(e.ChangedCallback, nil)
-	}
+	SafeCall(e.ChangedCallback)
 }
 
 func (e *GradientEditor) sync() {

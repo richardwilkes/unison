@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
@@ -73,15 +72,11 @@ func InstallFocusBorders(focusTarget, borderTarget Paneler, focusedBorder, unfoc
 	clientData[previousFocusCallbacksKey] = previous
 	focusPanel.GainedFocusCallback = func() {
 		borderPanel.SetBorder(focusedBorder)
-		if previous.GainedFocusCallback != nil {
-			xos.SafeCall(previous.GainedFocusCallback, nil)
-		}
+		SafeCall(previous.GainedFocusCallback)
 	}
 	focusPanel.LostFocusCallback = func() {
 		borderPanel.SetBorder(unfocusedBorder)
-		if previous.LostFocusCallback != nil {
-			xos.SafeCall(previous.LostFocusCallback, nil)
-		}
+		SafeCall(previous.LostFocusCallback)
 	}
 	borderPanel.SetBorder(unfocusedBorder)
 }

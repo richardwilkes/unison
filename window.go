@@ -262,15 +262,11 @@ func (w *Window) UndoManager() *UndoManager {
 func (w *Window) moved() {
 	w.lastContentRect = w.ContentRect()
 	w.root.preMoved(w)
-	if w.MovedCallback != nil {
-		xos.SafeCall(w.MovedCallback, nil)
-	}
+	SafeCall(w.MovedCallback)
 }
 
 func (w *Window) resized() {
-	if w.ResizedCallback != nil {
-		xos.SafeCall(w.ResizedCallback, nil)
-	}
+	SafeCall(w.ResizedCallback)
 	w.ValidateLayout()
 }
 
@@ -290,9 +286,7 @@ func (w *Window) gainedFocus() {
 		if w.focus != nil {
 			w.focus.MarkForRedraw()
 		}
-		if w.GainedFocusCallback != nil {
-			xos.SafeCall(w.GainedFocusCallback, nil)
-		}
+		SafeCall(w.GainedFocusCallback)
 		w.mouseEnter(w.MouseLocation(), 0)
 		if w.apiCursorInContentArea() {
 			w.apiUpdateCursorImage()
@@ -309,9 +303,7 @@ func (w *Window) lostFocus() {
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
-	if w.LostFocusCallback != nil {
-		xos.SafeCall(w.LostFocusCallback, nil)
-	}
+	SafeCall(w.LostFocusCallback)
 	if w.root.menuBar != nil {
 		w.root.menuBar.postLostFocus(w)
 	}
@@ -387,7 +379,7 @@ func (w *Window) requestClose() {
 func (w *Window) AttemptClose() bool {
 	if w.AllowCloseCallback != nil {
 		allow := false
-		xos.SafeCall(func() { allow = w.AllowCloseCallback() }, nil)
+		SafeCall(func() { allow = w.AllowCloseCallback() })
 		if !allow {
 			return false
 		}
@@ -402,10 +394,8 @@ func (w *Window) Dispose() {
 	if active == w {
 		w.ShowCursor()
 	}
-	if w.WillCloseCallback != nil {
-		xos.SafeCall(w.WillCloseCallback, nil)
-		w.WillCloseCallback = nil
-	}
+	SafeCall(w.WillCloseCallback)
+	w.WillCloseCallback = nil
 	if w.inModal {
 		w.StopModal(ModalResponseDiscard)
 	}
@@ -559,7 +549,7 @@ func (w *Window) SetContentRect(rect geom.Rect) {
 
 func (w *Window) minMaxContentSize() (minimum, maximum geom.Size) {
 	if w.MinMaxContentSizeCallback != nil {
-		xos.SafeCall(func() { minimum, maximum = w.MinMaxContentSizeCallback() }, nil)
+		SafeCall(func() { minimum, maximum = w.MinMaxContentSizeCallback() })
 	} else {
 		minimum, _, maximum = w.root.Sizes(geom.Size{})
 	}
@@ -681,15 +671,11 @@ func (w *Window) SetFocus(target Paneler) {
 		}
 		if !newFocus.Is(w.focus) {
 			if w.focus != nil {
-				if oldFocus.LostFocusCallback != nil {
-					xos.SafeCall(oldFocus.LostFocusCallback, nil)
-				}
+				SafeCall(oldFocus.LostFocusCallback)
 			}
 			w.focus = newFocus
 			if newFocus != nil {
-				if newFocus.GainedFocusCallback != nil {
-					xos.SafeCall(newFocus.GainedFocusCallback, nil)
-				}
+				SafeCall(newFocus.GainedFocusCallback)
 			}
 			w.notifyOfFocusChangeInHierarchy(oldFocus, newFocus)
 		}
@@ -699,9 +685,7 @@ func (w *Window) SetFocus(target Paneler) {
 func (w *Window) removeFocus() {
 	oldFocus := w.focus
 	if oldFocus != nil {
-		if oldFocus.LostFocusCallback != nil {
-			xos.SafeCall(oldFocus.LostFocusCallback, nil)
-		}
+		SafeCall(oldFocus.LostFocusCallback)
 		w.focus = nil
 		w.notifyOfFocusChangeInHierarchy(oldFocus, nil)
 	}
@@ -713,7 +697,7 @@ func (w *Window) notifyOfFocusChangeInHierarchy(oldFocus, newFocus *Panel) {
 			p = p.Parent()
 			for p != nil {
 				if p.FocusChangeInHierarchyCallback != nil {
-					xos.SafeCall(func() { p.FocusChangeInHierarchyCallback(oldFocus, newFocus) }, nil)
+					SafeCall(func() { p.FocusChangeInHierarchyCallback(oldFocus, newFocus) })
 				}
 				p = p.Parent()
 			}
@@ -877,7 +861,7 @@ func (w *Window) releaseGLCtxCurrent() {
 // Draw the window contents.
 func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
-		xos.SafeCall(func() {
+		SafeCall(func() {
 			w.root.ValidateLayout()
 			r := w.LocalContentRect()
 			if !w.transparent {
@@ -886,7 +870,7 @@ func (w *Window) Draw(c *Canvas) {
 				paint.Dispose()
 			}
 			w.root.Draw(c, r)
-		}, nil)
+		})
 	}
 }
 
@@ -985,7 +969,7 @@ func (w *Window) updateTooltip(target *Panel, where geom.Point) {
 		avoid = target.RectToRoot(target.ContentRect(true))
 		avoid.Align()
 		if target.UpdateTooltipCallback != nil {
-			xos.SafeCall(func() { avoid = target.UpdateTooltipCallback(target.PointFromRoot(where), avoid) }, nil)
+			SafeCall(func() { avoid = target.UpdateTooltipCallback(target.PointFromRoot(where), avoid) })
 		}
 		if target.Tooltip != nil {
 			tip = target.Tooltip
@@ -1029,7 +1013,7 @@ func (w *Window) updateCursor(target *Panel, where geom.Point) {
 		if target.UpdateCursorCallback == nil {
 			target = target.parent
 		} else {
-			xos.SafeCall(func() { cursor = target.UpdateCursorCallback(target.PointFromRoot(where)) }, nil)
+			SafeCall(func() { cursor = target.UpdateCursorCallback(target.PointFromRoot(where)) })
 			break
 		}
 	}
@@ -1071,7 +1055,7 @@ func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 	}
 	if w.MouseDownCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.MouseDownCallback(where, button, w.lastButtonCount, mods) }, nil)
+		SafeCall(func() { stop = w.MouseDownCallback(where, button, w.lastButtonCount, mods) })
 		if stop {
 			return
 		}
@@ -1083,9 +1067,9 @@ func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 		for panel != nil {
 			if panel.MouseDownCallback != nil && panel.Enabled() {
 				stop := false
-				xos.SafeCall(func() {
+				SafeCall(func() {
 					stop = panel.MouseDownCallback(panel.PointFromRoot(where), button, w.lastButtonCount, mods)
-				}, nil)
+				})
 				if stop {
 					w.lastMouseDownPanel = panel
 					return
@@ -1102,15 +1086,15 @@ func (w *Window) mouseDrag(where geom.Point, button int, mods mod.Modifiers) {
 	w.restoreHiddenCursor()
 	if w.MouseDragCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.MouseDragCallback(where, button, mods) }, nil)
+		SafeCall(func() { stop = w.MouseDragCallback(where, button, mods) })
 		if stop {
 			return
 		}
 	}
 	if w.lastMouseDownPanel != nil && w.lastMouseDownPanel.MouseDragCallback != nil && w.lastMouseDownPanel.Enabled() {
-		xos.SafeCall(func() {
+		SafeCall(func() {
 			w.lastMouseDownPanel.MouseDragCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mods)
-		}, nil)
+		})
 	}
 }
 
@@ -1141,15 +1125,15 @@ func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	if w.MouseUpCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.MouseUpCallback(where, button, mods) }, nil)
+		SafeCall(func() { stop = w.MouseUpCallback(where, button, mods) })
 		if stop {
 			return
 		}
 	}
 	if w.lastMouseDownPanel != nil && w.lastMouseDownPanel.MouseUpCallback != nil && w.lastMouseDownPanel.Enabled() {
-		xos.SafeCall(func() {
+		SafeCall(func() {
 			w.lastMouseDownPanel.MouseUpCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mods)
-		}, nil)
+		})
 	}
 	panel := w.root.PanelAt(where)
 	if w.root != nil && !panel.Is(w.lastMouseOverPanel) {
@@ -1166,14 +1150,14 @@ func (w *Window) mouseEnter(where geom.Point, mods mod.Modifiers) {
 	w.mouseExit()
 	if w.MouseEnterCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.MouseEnterCallback(where, mods) }, nil)
+		SafeCall(func() { stop = w.MouseEnterCallback(where, mods) })
 		if stop {
 			return
 		}
 	}
 	panel := w.root.PanelAt(where)
 	if panel.MouseEnterCallback != nil {
-		xos.SafeCall(func() { panel.MouseEnterCallback(panel.PointFromRoot(where), mods) }, nil)
+		SafeCall(func() { panel.MouseEnterCallback(panel.PointFromRoot(where), mods) })
 	}
 	w.updateTooltipAndCursor(panel, where)
 	w.lastMouseOverPanel = panel
@@ -1194,13 +1178,13 @@ func (w *Window) mouseMove(where geom.Point, mods mod.Modifiers) {
 	if panel.Is(w.lastMouseOverPanel) {
 		if w.MouseMoveCallback != nil {
 			stop := false
-			xos.SafeCall(func() { stop = w.MouseMoveCallback(where, mods) }, nil)
+			SafeCall(func() { stop = w.MouseMoveCallback(where, mods) })
 			if stop {
 				return
 			}
 		}
 		if panel.MouseMoveCallback != nil {
-			xos.SafeCall(func() { panel.MouseMoveCallback(panel.PointFromRoot(where), mods) }, nil)
+			SafeCall(func() { panel.MouseMoveCallback(panel.PointFromRoot(where), mods) })
 		}
 		w.updateTooltipAndCursor(panel, where)
 	} else {
@@ -1211,14 +1195,14 @@ func (w *Window) mouseMove(where geom.Point, mods mod.Modifiers) {
 func (w *Window) mouseExit() {
 	if w.MouseExitCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.MouseExitCallback() }, nil)
+		SafeCall(func() { stop = w.MouseExitCallback() })
 		if stop {
 			return
 		}
 	}
 	if w.lastMouseDownPanel == nil && w.lastMouseOverPanel != nil {
 		if w.lastMouseOverPanel.MouseExitCallback != nil {
-			xos.SafeCall(func() { w.lastMouseOverPanel.MouseExitCallback() }, nil)
+			SafeCall(func() { w.lastMouseOverPanel.MouseExitCallback() })
 		}
 		w.lastMouseOverPanel = nil
 		w.cursor = nil
@@ -1229,7 +1213,7 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	if w.MouseWheelCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.MouseWheelCallback(where, delta, mods) }, nil)
+		SafeCall(func() { stop = w.MouseWheelCallback(where, delta, mods) })
 		if stop {
 			return
 		}
@@ -1238,7 +1222,7 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 	for panel != nil {
 		if panel.Enabled() && panel.MouseWheelCallback != nil {
 			stop := false
-			xos.SafeCall(func() { stop = panel.MouseWheelCallback(panel.PointFromRoot(where), delta, mods) }, nil)
+			SafeCall(func() { stop = panel.MouseWheelCallback(panel.PointFromRoot(where), delta, mods) })
 			if stop {
 				break
 			}
@@ -1261,7 +1245,7 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 	}
 	if w.KeyDownCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.KeyDownCallback(key, mods, repeat) }, nil)
+		SafeCall(func() { stop = w.KeyDownCallback(key, mods, repeat) })
 		if stop {
 			return
 		}
@@ -1274,7 +1258,7 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 		for panel != nil {
 			if panel.Enabled() && panel.KeyDownCallback != nil {
 				stop := false
-				xos.SafeCall(func() { stop = panel.KeyDownCallback(key, mods, repeat) }, nil)
+				SafeCall(func() { stop = panel.KeyDownCallback(key, mods, repeat) })
 				if stop {
 					w.lastKeyDownPanel = panel
 					return
@@ -1298,7 +1282,7 @@ func (w *Window) runeTyped(ch rune) {
 	}
 	if w.RuneTypedCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.RuneTypedCallback(ch) }, nil)
+		SafeCall(func() { stop = w.RuneTypedCallback(ch) })
 		if stop {
 			return
 		}
@@ -1311,7 +1295,7 @@ func (w *Window) runeTyped(ch rune) {
 		for panel != nil {
 			if panel.Enabled() && panel.RuneTypedCallback != nil {
 				stop := false
-				xos.SafeCall(func() { stop = panel.RuneTypedCallback(ch) }, nil)
+				SafeCall(func() { stop = panel.RuneTypedCallback(ch) })
 				if stop {
 					w.lastKeyDownPanel = panel
 					return
@@ -1330,13 +1314,13 @@ func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	}
 	if w.KeyUpCallback != nil {
 		stop := false
-		xos.SafeCall(func() { stop = w.KeyUpCallback(key, mods) }, nil)
+		SafeCall(func() { stop = w.KeyUpCallback(key, mods) })
 		if stop {
 			return
 		}
 	}
 	if w.lastKeyDownPanel != nil && w.lastKeyDownPanel.KeyUpCallback != nil {
-		xos.SafeCall(func() { w.lastKeyDownPanel.KeyUpCallback(key, mods) }, nil)
+		SafeCall(func() { w.lastKeyDownPanel.KeyUpCallback(key, mods) })
 	}
 }
 
@@ -1410,7 +1394,7 @@ func (w *Window) findDropTarget(di drag.Info, where geom.Point) *Panel {
 		if panel.DropCallback != nil && panel.Enabled() {
 			accept := false
 			if panel.CanAcceptDropCallback != nil {
-				xos.SafeCall(func() { accept = panel.CanAcceptDropCallback(di) }, nil)
+				SafeCall(func() { accept = panel.CanAcceptDropCallback(di) })
 			}
 			if accept {
 				return panel
@@ -1426,7 +1410,7 @@ func (w *Window) dragEntered(di drag.Info, where geom.Point, mods mod.Modifiers)
 	if panel != nil {
 		w.dragExitTarget()
 		if panel.DragEnteredCallback != nil {
-			xos.SafeCall(func() { op = panel.DragEnteredCallback(di, panel.PointFromRoot(where), mods) }, nil)
+			SafeCall(func() { op = panel.DragEnteredCallback(di, panel.PointFromRoot(where), mods) })
 		}
 	}
 	w.lastDropTarget = panel
@@ -1444,7 +1428,7 @@ func (w *Window) dragUpdate(di drag.Info, where geom.Point, mods mod.Modifiers) 
 		w.dragEntered(di, where, mods)
 	}
 	if panel.DragUpdatedCallback != nil {
-		xos.SafeCall(func() { w.lastDragOp = panel.DragUpdatedCallback(di, panel.PointFromRoot(where), mods) }, nil)
+		SafeCall(func() { w.lastDragOp = panel.DragUpdatedCallback(di, panel.PointFromRoot(where), mods) })
 	}
 	return w.lastDragOp
 }
@@ -1456,7 +1440,7 @@ func (w *Window) drop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
 		return false
 	}
 	handled := false
-	xos.SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) }, nil)
+	SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) })
 	w.lastDropTarget = nil
 	w.inMouseDown = false
 	w.dragFinish()
@@ -1478,7 +1462,7 @@ func (w *Window) dragExitTarget() {
 		return
 	}
 	if target.DragExitedCallback != nil {
-		xos.SafeCall(target.DragExitedCallback, nil)
+		SafeCall(target.DragExitedCallback)
 	}
 }
 

@@ -133,9 +133,7 @@ func (p *Panel) AddChild(child Paneler) {
 	p.children = append(p.children, c)
 	c.parent = p
 	p.NeedsLayout = true
-	if c.ParentChangedCallback != nil {
-		xos.SafeCall(c.ParentChangedCallback, nil)
-	}
+	SafeCall(c.ParentChangedCallback)
 }
 
 // AddChildAtIndex adds child to this panel at the index, removing it from any previous parent it may have had. Passing
@@ -156,9 +154,7 @@ func (p *Panel) AddChildAtIndex(child Paneler, index int) {
 	}
 	c.parent = p
 	p.NeedsLayout = true
-	if c.ParentChangedCallback != nil {
-		xos.SafeCall(c.ParentChangedCallback, nil)
-	}
+	SafeCall(c.ParentChangedCallback)
 }
 
 func (p *Panel) selfCheck() {
@@ -179,9 +175,7 @@ func (p *Panel) RemoveAllChildren() {
 	p.children = nil
 	p.NeedsLayout = true
 	for _, child := range children {
-		if child.ParentChangedCallback != nil {
-			xos.SafeCall(child.ParentChangedCallback, nil)
-		}
+		SafeCall(child.ParentChangedCallback)
 	}
 }
 
@@ -197,9 +191,7 @@ func (p *Panel) RemoveChildAtIndex(index int) {
 		child.parent = nil
 		p.children = slices.Delete(p.children, index, index+1)
 		p.NeedsLayout = true
-		if child.ParentChangedCallback != nil {
-			xos.SafeCall(child.ParentChangedCallback, nil)
-		}
+		SafeCall(child.ParentChangedCallback)
 	}
 }
 
@@ -281,13 +273,11 @@ func (p *Panel) SetFrameRect(rect geom.Rect) {
 			p.frame.Size = rect.Size
 			p.NeedsLayout = true
 		}
-		if p.FrameChangeCallback != nil {
-			xos.SafeCall(p.FrameChangeCallback, nil)
-		}
+		SafeCall(p.FrameChangeCallback)
 		parent := p.parent
 		for parent != nil {
 			if parent.FrameChangeInChildHierarchyCallback != nil {
-				xos.SafeCall(func() { parent.FrameChangeInChildHierarchyCallback(p) }, nil)
+				SafeCall(func() { parent.FrameChangeInChildHierarchyCallback(p) })
 			}
 			parent = parent.parent
 		}
@@ -440,7 +430,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 		gc.ClipRect(rect, pathop.Intersect, false)
 		if p.DrawCallback != nil {
 			gc.Save()
-			xos.SafeCall(func() { p.DrawCallback(gc, rect) }, nil)
+			SafeCall(func() { p.DrawCallback(gc, rect) })
 			gc.Restore()
 		}
 		// Drawn from last to first, to get correct ordering in case of overlap
@@ -464,7 +454,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 			gc.Restore()
 		}
 		if p.DrawOverCallback != nil {
-			xos.SafeCall(func() { p.DrawOverCallback(gc, rect) }, nil)
+			SafeCall(func() { p.DrawOverCallback(gc, rect) })
 		}
 		gc.Restore()
 	}
@@ -609,7 +599,7 @@ func (p *Panel) ScrollRectIntoView(rect geom.Rect) {
 	for look != nil {
 		if look.ScrollRectIntoViewCallback != nil {
 			handled := false
-			xos.SafeCall(func() { handled = look.ScrollRectIntoViewCallback(rect) }, nil)
+			SafeCall(func() { handled = look.ScrollRectIntoViewCallback(rect) })
 			if handled {
 				return
 			}
@@ -704,7 +694,7 @@ func (p *Panel) CanPerformCmd(src any, id int) bool {
 	for current != nil {
 		if f, ok := current.canPerformMap[id]; ok {
 			enabled := false
-			xos.SafeCall(func() { enabled = f(src) }, nil)
+			SafeCall(func() { enabled = f(src) })
 			return enabled
 		}
 		current = current.parent
@@ -719,7 +709,7 @@ func (p *Panel) PerformCmd(src any, id int) {
 		current := p
 		for current != nil {
 			if f, ok := current.performMap[id]; ok {
-				xos.SafeCall(func() { f(src) }, nil)
+				SafeCall(func() { f(src) })
 				return
 			}
 			current = current.parent

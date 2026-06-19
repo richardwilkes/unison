@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/internal/mac"
 )
 
@@ -65,7 +64,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, va
 	var h func(mac.MenuItem)
 	if handler != nil {
 		h = func(mi mac.MenuItem) {
-			xos.SafeCall(func() { handler(&macMenuItem{factory: f, item: mi}) }, nil)
+			SafeCall(func() { handler(&macMenuItem{factory: f, item: mi}) })
 		}
 	}
 	mi := mac.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
@@ -75,7 +74,7 @@ func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, va
 			}
 			if validator != nil {
 				var result bool
-				xos.SafeCall(func() { result = validator(&macMenuItem{factory: f, item: mi}) }, nil)
+				SafeCall(func() { result = validator(&macMenuItem{factory: f, item: mi}) })
 				return result
 			}
 			return true

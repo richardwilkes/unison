@@ -15,7 +15,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/gradienttype"
 )
@@ -387,9 +386,7 @@ func (e *ColorEditor) sync() {
 	e.syncText(e.brightnessField, strconv.Itoa(int(e.color.Brightness()*100+0.5))+"%")
 	e.syncText(e.cssField, e.color.String())
 	e.syncing = false
-	if e.ChangedCallback != nil {
-		xos.SafeCall(e.ChangedCallback, nil)
-	}
+	SafeCall(e.ChangedCallback)
 }
 
 func (e *ColorEditor) newGradient(colors ...ColorProvider) *Gradient {

@@ -218,9 +218,7 @@ func (m *Markdown) adjustSizeOnParentChange() {
 
 func (m *Markdown) adjustToParent() {
 	m.SetContentBytes(m.content, 0)
-	if m.chainedFrameChangeCallback != nil {
-		xos.SafeCall(m.chainedFrameChangeCallback, nil)
-	}
+	SafeCall(m.chainedFrameChangeCallback)
 }
 
 // SetContent replaces the current markdown content.

@@ -14,7 +14,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -92,9 +91,7 @@ func (c *checkRadioBase) Click() {
 	c.Pressed = wasPressed
 	time.Sleep(c.baseTheme.ClickAnimationTime)
 	c.MarkForRedraw()
-	if c.ClickCallback != nil {
-		xos.SafeCall(c.ClickCallback, nil)
-	}
+	SafeCall(c.ClickCallback)
 }
 
 // DefaultMouseDown provides the default mouse down handling.
@@ -119,9 +116,7 @@ func (c *checkRadioBase) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers
 	c.MarkForRedraw()
 	if where.In(c.ContentRect(false)) {
 		c.updateState()
-		if c.ClickCallback != nil {
-			xos.SafeCall(c.ClickCallback, nil)
-		}
+		SafeCall(c.ClickCallback)
 	}
 	return true
 }

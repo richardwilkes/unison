@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -48,7 +47,7 @@ func (d *DockLayout) forEachDockContainer(f func(*DockContainer) bool) bool {
 		switch c := node.(type) {
 		case *DockContainer:
 			stop := false
-			xos.SafeCall(func() { stop = f(c) }, nil)
+			SafeCall(func() { stop = f(c) })
 			if stop {
 				return true
 			}

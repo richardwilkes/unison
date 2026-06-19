@@ -15,7 +15,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/toolbox/v2/uti"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -67,7 +66,7 @@ func (d *TableDrop[T, U]) CanAcceptDropCallback(di drag.Info) bool {
 // DragEnterCallback provides the drag enter handling.
 func (d *TableDrop[T, U]) DragEnterCallback(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
 	var op drag.Op
-	xos.SafeCall(func() { op = d.DragUpdatedCallback(di, where, mods) }, nil)
+	SafeCall(func() { op = d.DragUpdatedCallback(di, where, mods) })
 	return op
 }
 
@@ -75,7 +74,7 @@ func (d *TableDrop[T, U]) DragEnterCallback(di drag.Info, where geom.Point, mods
 func (d *TableDrop[T, U]) DragUpdatedCallback(di drag.Info, where geom.Point, _ mod.Modifiers) drag.Op {
 	d.inDragOver = false
 	accept := false
-	xos.SafeCall(func() { accept = d.CanAcceptDropCallback(di) }, nil)
+	SafeCall(func() { accept = d.CanAcceptDropCallback(di) })
 	if !accept {
 		return drag.None
 	}
@@ -89,13 +88,13 @@ func (d *TableDrop[T, U]) DragUpdatedCallback(di drag.Info, where geom.Point, _ 
 	contentRect := d.Table.ContentRect(false)
 	hierarchyColumnIndex := d.Table.ColumnIndexForID(d.Table.HierarchyColumnID)
 	var op drag.Op
-	xos.SafeCall(func() {
+	SafeCall(func() {
 		if d.shouldMoveDataCallback(data.Table, d.Table) {
 			op = drag.Move
 		} else {
 			op = drag.Copy
 		}
-	}, nil)
+	})
 	if where.Y >= contentRect.Bottom()-2 {
 		// Over bottom edge, adding to end of top-level rows
 		d.TargetParent = zero
@@ -187,9 +186,9 @@ func (d *TableDrop[T, U]) DragUpdatedCallback(di drag.Info, where geom.Point, _ 
 
 // DropCallback handles processing a drop.
 func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
-	defer func() { xos.SafeCall(d.DragExitCallback, nil) }()
+	defer func() { SafeCall(d.DragExitCallback) }()
 	var op drag.Op
-	xos.SafeCall(func() { op = d.DragUpdatedCallback(di, where, mods) }, nil)
+	SafeCall(func() { op = d.DragUpdatedCallback(di, where, mods) })
 	if op == drag.None {
 		return false
 	}
@@ -207,10 +206,10 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 	var zero T
 	d.inDragOver = false
 	move := false
-	xos.SafeCall(func() { move = d.shouldMoveDataCallback(data.Table, d.Table) }, nil)
+	SafeCall(func() { move = d.shouldMoveDataCallback(data.Table, d.Table) })
 	var undo *UndoEdit[U]
 	if d.willDropCallback != nil {
-		xos.SafeCall(func() { undo = d.willDropCallback(data.Table, d.Table, move) }, nil)
+		SafeCall(func() { undo = d.willDropCallback(data.Table, d.Table, move) })
 	}
 	rows := slices.Clone(data.Rows)
 	if move {
@@ -241,7 +240,7 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 		// Notify the source table if it is different from the destination
 		if d.Table != data.Table {
 			if d.Table != data.Table && data.Table.DragRemovedRowsCallback != nil {
-				xos.SafeCall(data.Table.DragRemovedRowsCallback, nil)
+				SafeCall(data.Table.DragRemovedRowsCallback)
 			}
 		}
 	} else {
@@ -274,12 +273,10 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 	d.Table.SetSelectionMap(selMap)
 
 	// Notify the destination table
-	if d.Table.DropOccurredCallback != nil {
-		xos.SafeCall(d.Table.DropOccurredCallback, nil)
-	}
+	SafeCall(d.Table.DropOccurredCallback)
 
 	if d.didDropCallback != nil {
-		xos.SafeCall(func() { d.didDropCallback(undo, data.Table, d.Table, move) }, nil)
+		SafeCall(func() { d.didDropCallback(undo, data.Table, d.Table, move) })
 	}
 
 	d.Table.MarkForRedraw()

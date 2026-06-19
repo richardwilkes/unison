@@ -16,7 +16,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/collection/bitset"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -352,7 +351,7 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods mod
 			l.lastSel = index
 			l.anchor = index
 			if clickCount == 2 && l.DoubleClickCallback != nil {
-				xos.SafeCall(l.DoubleClickCallback, nil)
+				SafeCall(l.DoubleClickCallback)
 				return true
 			}
 		default:
@@ -411,7 +410,7 @@ func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 			l.MarkForRedraw()
 		}
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
-			xos.SafeCall(l.NewSelectionCallback, nil)
+			SafeCall(l.NewSelectionCallback)
 		}
 	}
 	l.savedSelection = nil
@@ -422,7 +421,7 @@ func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if IsControlAction(keyCode, mods) {
 		if l.DoubleClickCallback != nil && l.Selection.Count() > 0 {
-			xos.SafeCall(l.DoubleClickCallback, nil)
+			SafeCall(l.DoubleClickCallback)
 		}
 		return true
 	}
@@ -435,9 +434,7 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 			first = max(l.Selection.FirstSet()-1, 0)
 		}
 		l.Select(mods.ShiftDown(), first)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(first))
 	case KeyDown:
 		last := l.Selection.LastSet() + 1
@@ -445,21 +442,15 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 			last = len(l.rows) - 1
 		}
 		l.Select(mods.ShiftDown(), last)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(last))
 	case KeyHome:
 		l.Select(mods.ShiftDown(), 0)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(0))
 	case KeyEnd:
 		l.Select(mods.ShiftDown(), len(l.rows)-1)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(len(l.rows) - 1))
 	default:
 		return false

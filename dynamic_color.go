@@ -13,7 +13,6 @@ import (
 	"slices"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -70,7 +69,7 @@ func RebuildDynamicColors() {
 	if needDynamicColorUpdate {
 		needDynamicColorUpdate = false
 		for _, color := range dynamicColors {
-			xos.SafeCall(func() { color.Color = color.Rebuilder() }, nil)
+			SafeCall(func() { color.Color = color.Rebuilder() })
 		}
 	}
 }

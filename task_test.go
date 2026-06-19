@@ -31,9 +31,20 @@ func taskQueueState() (length, head int) {
 	return len(taskQueue), taskQueueHead
 }
 
+// withRecoveryCallback installs f as the recovery callback used by SafeCallWithRecovery (and thus processNextTask) for
+// the duration of the test, restoring the previous one afterward. These tests share global state and therefore must not
+// call t.Parallel.
+func withRecoveryCallback(t *testing.T, f func(error)) {
+	t.Helper()
+	prev := recoveryCallback
+	recoveryCallback = f
+	t.Cleanup(func() { recoveryCallback = prev })
+}
+
 func TestProcessNextTaskRunsInFIFOOrder(t *testing.T) {
 	c := check.New(t)
 	resetTaskQueue()
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
 
 	const count = 5
 	var order []int
@@ -45,7 +56,7 @@ func TestProcessNextTaskRunsInFIFOOrder(t *testing.T) {
 	c.Equal(0, head)
 
 	for range count {
-		processNextTask(func(err error) { c.NoError(err) })
+		processNextTask()
 	}
 
 	// A fully drained queue must reset so the backing array is reused rather than growing without bound.
@@ -55,7 +66,7 @@ func TestProcessNextTaskRunsInFIFOOrder(t *testing.T) {
 	c.True(slices.Equal(order, []int{0, 1, 2, 3, 4}))
 
 	// Draining an empty queue is a no-op and must not panic or alter state.
-	processNextTask(func(err error) { c.NoError(err) })
+	processNextTask()
 	length, head = taskQueueState()
 	c.Equal(0, length)
 	c.Equal(0, head)
@@ -65,16 +76,20 @@ func TestProcessNextTaskRecoversFromPanic(t *testing.T) {
 	c := check.New(t)
 	resetTaskQueue()
 
+	var recovered error
+	withRecoveryCallback(t, func(err error) { recovered = err })
+
 	ran := false
 	InvokeTask(func() { panic("boom") })
 	InvokeTask(func() { ran = true })
 
-	var recovered error
-	processNextTask(func(err error) { recovered = err })
+	processNextTask()
 	c.NotNil(recovered)
 
 	// A panic in one task must not corrupt the queue; the following task still runs.
-	processNextTask(func(err error) { c.NoError(err) })
+	recovered = nil
+	processNextTask()
+	c.Nil(recovered)
 	c.True(ran)
 	length, head := taskQueueState()
 	c.Equal(0, length)
@@ -84,6 +99,7 @@ func TestProcessNextTaskRecoversFromPanic(t *testing.T) {
 func TestProcessNextTaskCompactsDeadPrefix(t *testing.T) {
 	c := check.New(t)
 	resetTaskQueue()
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
 
 	// Enough tasks that, partway through draining, the dead prefix exceeds both the 1024 threshold and the live
 	// tail, triggering compaction.
@@ -95,7 +111,7 @@ func TestProcessNextTaskCompactsDeadPrefix(t *testing.T) {
 
 	compacted := false
 	for range count {
-		processNextTask(func(err error) { c.NoError(err) })
+		processNextTask()
 		// Compaction is the only path that resets head to 0 while tasks remain queued; a full drain resets both
 		// length and head to 0.
 		if length, head := taskQueueState(); head == 0 && length > 0 {

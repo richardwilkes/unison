@@ -11,7 +11,6 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
@@ -82,7 +81,7 @@ func (s *Slider) Value() float32 {
 // SetValue sets the current value.
 func (s *Slider) SetValue(value float32) {
 	if s.ValueSnapCallback != nil {
-		xos.SafeCall(func() { value = s.ValueSnapCallback(value) }, nil)
+		SafeCall(func() { value = s.ValueSnapCallback(value) })
 	}
 	if value < s.minimum {
 		value = s.minimum
@@ -91,9 +90,7 @@ func (s *Slider) SetValue(value float32) {
 	}
 	if s.value != value {
 		s.value = value
-		if s.ValueChangedCallback != nil {
-			xos.SafeCall(s.ValueChangedCallback, nil)
-		}
+		SafeCall(s.ValueChangedCallback)
 		s.MarkForRedraw()
 	}
 }
