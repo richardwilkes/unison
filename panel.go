@@ -220,20 +220,17 @@ func (p *Panel) Parent() *Panel {
 
 // Window returns the containing window, if any.
 func (p *Panel) Window() *Window {
-	var prev *Panel
+	if p == nil {
+		return nil
+	}
 	panel := p
-	for {
-		if panel == nil {
-			if prev != nil {
-				if root, ok := prev.Self.(*rootPanel); ok {
-					return root.window
-				}
-			}
-			return nil
-		}
-		prev = panel
+	for panel.parent != nil {
 		panel = panel.parent
 	}
+	if root, ok := panel.Self.(*rootPanel); ok {
+		return root.window
+	}
+	return nil
 }
 
 // Scale returns the scale that has been applied to this panel. This will be automatically applied, transforming the
