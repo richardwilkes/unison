@@ -52,7 +52,10 @@ type tableHitRect struct {
 	geom.Rect
 }
 
-var dragTableData any // Actually a *TableDragData[T]
+// dragTableData is actually a *TableDragData[T], but cannot be stored with the originating table since it must be
+// accessible from the drag data. All access occurs on the UI thread during a single drag & drop operation, so only
+// one drag can be in flight at a time and no synchronization is required.
+var dragTableData any
 
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
 // but will alter any Tables created in the future.
