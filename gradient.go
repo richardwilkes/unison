@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/gradienttype"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/tilemode"
@@ -145,7 +147,7 @@ func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Pain
 		end := geom.NewPoint(rect.X+rect.Width*g.EndPt.X, rect.Y+rect.Height*g.EndPt.Y)
 		shader = New2PtConicalGradientShader(start, end, g.Radius.Start, g.Radius.End, c, locs, g.TileMode, g.Transform)
 	default:
-		panic(fmt.Sprintf("unknown gradient type: %v", g.Kind))
+		xos.ExitWithErr(errs.Newf("unknown gradient type: %v", g.Kind))
 	}
 	p.SetShader(shader)
 	shader.Dispose()
