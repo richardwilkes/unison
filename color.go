@@ -93,6 +93,50 @@ func HSBA(hue, saturation, brightness, alpha float32) Color {
 	}
 }
 
+// HSL creates a new opaque Color from HSL (Hue, Saturation, Lightness) values in the range 0-1.
+func HSL(hue, saturation, lightness float32) Color {
+	return HSLA(hue, saturation, lightness, 1)
+}
+
+// HSLA creates a new Color from HSLA (Hue, Saturation, Lightness, Alpha) values in the range 0-1.
+func HSLA(hue, saturation, lightness, alpha float32) Color {
+	saturation = clamp0To1(saturation)
+	lightness = clamp0To1(lightness)
+	if saturation == 0 {
+		v := clamp0To1AndScale255(lightness)
+		return ARGB(alpha, v, v, v)
+	}
+	var q float32
+	if lightness < 0.5 {
+		q = lightness * (1 + saturation)
+	} else {
+		q = lightness + saturation - lightness*saturation
+	}
+	p := 2*lightness - q
+	hue -= xmath.Floor(hue)
+	return ARGB(alpha, clamp0To1AndScale255(hueToRGB(p, q, hue+1.0/3.0)),
+		clamp0To1AndScale255(hueToRGB(p, q, hue)),
+		clamp0To1AndScale255(hueToRGB(p, q, hue-1.0/3.0)))
+}
+
+func hueToRGB(p, q, t float32) float32 {
+	if t < 0 {
+		t++
+	} else if t > 1 {
+		t--
+	}
+	switch {
+	case t < 1.0/6.0:
+		return p + (q-p)*6*t
+	case t < 0.5:
+		return q
+	case t < 2.0/3.0:
+		return p + (q-p)*(2.0/3.0-t)*6
+	default:
+		return p
+	}
+}
+
 // OKLCH creates a Color from lightness (0-1), chroma (0-0.37), hue (0-360), alpha (0-1) values using the OKLCH color space.
 func OKLCH(lightness, chroma, hue, alpha float32) Color {
 	x := float64(normalizeHue(float64(hue))) * math.Pi / 180
@@ -125,7 +169,8 @@ func fromLinear(value float64) float32 {
 	return float32(value * 12.92)
 }
 
-// MustColorDecode is the same as ColorDecode(), but returns Black if an error occurs.
+// MustColorDecode is the same as ColorDecode(), but returns a fully transparent color (the zero value) if an error
+// occurs.
 func MustColorDecode(buffer string) Color {
 	c, _ := ColorDecode(buffer) //nolint:errcheck // Intentional dropping of the error
 	return c
@@ -229,11 +274,11 @@ func ColorDecode(buffer string) (Color, error) {
 			if saturation, err = extractColorPercentage(parts[1]); err != nil {
 				return 0, errs.NewWithCausef(err, invalid, original)
 			}
-			var brightness float32
-			if brightness, err = extractColorPercentage(parts[2]); err != nil {
+			var lightness float32
+			if lightness, err = extractColorPercentage(parts[2]); err != nil {
 				return 0, errs.NewWithCausef(err, invalid, original)
 			}
-			return HSB(float32(hue)/360, saturation, brightness), nil
+			return HSL(float32(hue)/360, saturation, lightness), nil
 		}
 	case strings.HasPrefix(buffer, "hsla(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[5:len(buffer)-1]), ",", 5)
@@ -251,8 +296,8 @@ func ColorDecode(buffer string) (Color, error) {
 			if saturation, err = extractColorPercentage(parts[1]); err != nil {
 				return 0, errs.NewWithCausef(err, invalid, original)
 			}
-			var brightness float32
-			if brightness, err = extractColorPercentage(parts[2]); err != nil {
+			var lightness float32
+			if lightness, err = extractColorPercentage(parts[2]); err != nil {
 				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var alpha float64
@@ -264,7 +309,7 @@ func ColorDecode(buffer string) (Color, error) {
 			} else if alpha > 1 {
 				alpha = 1
 			}
-			return HSBA(float32(hue)/360, saturation, brightness, float32(alpha)), nil
+			return HSLA(float32(hue)/360, saturation, lightness, float32(alpha)), nil
 		}
 	}
 	return 0, errs.Newf(invalid, original)
