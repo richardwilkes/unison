@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
@@ -127,6 +128,7 @@ func (p *Panel) AddChild(child Paneler) {
 		return
 	}
 	c := child.AsPanel()
+	c.selfCheck()
 	c.RemoveFromParent()
 	p.children = append(p.children, c)
 	c.parent = p
@@ -143,6 +145,7 @@ func (p *Panel) AddChildAtIndex(child Paneler, index int) {
 		return
 	}
 	c := child.AsPanel()
+	c.selfCheck()
 	c.RemoveFromParent()
 	if index < 0 || index >= len(p.children) {
 		p.children = append(p.children, c)
@@ -155,6 +158,15 @@ func (p *Panel) AddChildAtIndex(child Paneler, index int) {
 	p.NeedsLayout = true
 	if c.ParentChangedCallback != nil {
 		xos.SafeCall(c.ParentChangedCallback, nil)
+	}
+}
+
+func (p *Panel) selfCheck() {
+	if p.Self == nil {
+		xos.ExitWithErr(errs.New("panel added with nil Self"))
+	}
+	if p.Self.AsPanel() != p {
+		xos.ExitWithErr(errs.New("panel added with Self set to wrong object"))
 	}
 }
 
