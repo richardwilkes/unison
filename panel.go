@@ -477,7 +477,7 @@ func (p *Panel) Enabled() bool {
 
 // SetEnabled sets this panel's enabled state.
 func (p *Panel) SetEnabled(enabled bool) {
-	if p.disabled == enabled {
+	if p.disabled != !enabled {
 		p.disabled = !enabled
 		p.MarkForRedraw()
 	}
@@ -490,9 +490,7 @@ func (p *Panel) Focusable() bool {
 
 // SetFocusable sets whether this panel can have the keyboard focus.
 func (p *Panel) SetFocusable(focusable bool) {
-	if p.focusable != focusable {
-		p.focusable = focusable
-	}
+	p.focusable = focusable
 }
 
 // Focused returns true if this panel has the keyboard focus.
