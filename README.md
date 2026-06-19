@@ -5,24 +5,12 @@
 
 A unified graphical user experience toolkit for Go desktop applications. macOS, Windows, and Linux are supported.
 
-## Required setup
-
-Unison requires some setup prior to being able to build correctly:
-
-* On macOS, you need Xcode or Command Line Tools for Xcode (`xcode-select --install`) for required headers and
-  libraries.
-* On Ubuntu/Debian-like Linux distributions, you need `libgl1-mesa-dev` and `xorg-dev` packages.
-* On CentOS/Fedora-like Linux distributions, you need `libX11-devel libXcursor-devel libXrandr-devel libXinerama-devel
-  mesa-libGL-devel libXi-devel libXxf86vm-devel` packages.
-* On Windows, you need [tdm-gcc](https://jmeubank.github.io/tdm-gcc/download/) as well as [git-scm](https://git-scm.com)
-  for its bash shell.
-
 ## Example
 
 An example application can be found in the `cmd/example` directory:
 
 ```sh
-go run ./cmd/example/main.go
+go run cmd/example/main.go
 ```
 
 ## Notes
