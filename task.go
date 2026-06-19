@@ -19,6 +19,7 @@ import (
 var (
 	taskQueueLock sync.Mutex
 	taskQueue     []func()
+	taskQueueHead int
 )
 
 // InvokeTask calls a function on the UI thread. The function is put into the system event queue and will be run at the
@@ -39,11 +40,25 @@ func processNextTask(recoveryHandler func(error)) {
 	var f func()
 	needsPost := false
 	taskQueueLock.Lock()
-	if len(taskQueue) > 0 {
-		f = taskQueue[0]
-		copy(taskQueue, taskQueue[1:])
-		taskQueue = taskQueue[:len(taskQueue)-1]
-		needsPost = len(taskQueue) > 0
+	if taskQueueHead < len(taskQueue) {
+		f = taskQueue[taskQueueHead]
+		taskQueue[taskQueueHead] = nil // release the closure for GC
+		taskQueueHead++
+		if taskQueueHead == len(taskQueue) {
+			// Fully drained: reset to reuse the backing array.
+			taskQueue = taskQueue[:0]
+			taskQueueHead = 0
+		} else {
+			needsPost = true
+			// If the dead prefix has grown large relative to the live tail, compact it to the front so the
+			// backing array doesn't grow without bound when the queue is never fully drained.
+			if taskQueueHead >= 1024 && taskQueueHead > len(taskQueue)-taskQueueHead {
+				n := copy(taskQueue, taskQueue[taskQueueHead:])
+				clear(taskQueue[n:]) // drop references in the vacated tail
+				taskQueue = taskQueue[:n]
+				taskQueueHead = 0
+			}
+		}
 	}
 	taskQueueLock.Unlock()
 	if f != nil {
