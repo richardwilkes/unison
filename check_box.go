@@ -10,176 +10,56 @@
 package unison
 
 import (
-	"time"
-
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
-	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
-	"github.com/richardwilkes/unison/enums/side"
 )
 
 // DefaultCheckBoxTheme holds the default CheckBoxTheme values for CheckBoxes. Modifying this data will not alter
 // existing CheckBoxes, but will alter any CheckBoxes created in the future.
 var DefaultCheckBoxTheme = CheckBoxTheme{
-	TextDecoration: TextDecoration{
-		Font:            SystemFont,
-		OnBackgroundInk: ThemeOnSurface,
-	},
-	EdgeInk:            ThemeSurfaceEdge,
-	SelectionInk:       ThemeFocus,
-	OnSelectionInk:     ThemeOnFocus,
-	ControlInk:         ThemeAboveSurface,
-	OnControlInk:       ThemeOnAboveSurface,
-	ClickAnimationTime: 100 * time.Millisecond,
-	CornerRadius:       geom.NewUniformSize(4),
-	Gap:                StdIconGap,
-	HAlign:             align.Start,
-	VAlign:             align.Middle,
-	Side:               side.Left,
+	RadioButtonTheme: DefaultRadioButtonTheme,
+	CornerRadius:     geom.NewUniformSize(4),
 }
 
 // CheckBoxTheme holds theming data for a CheckBox.
 type CheckBoxTheme struct {
-	EdgeInk        Ink
-	SelectionInk   Ink
-	OnSelectionInk Ink
-	ControlInk     Ink
-	OnControlInk   Ink
-	TextDecoration
-	ClickAnimationTime time.Duration
-	CornerRadius       geom.Size
-	Gap                float32
-	HAlign             align.Enum
-	VAlign             align.Enum
-	Side               side.Enum
+	RadioButtonTheme
+	CornerRadius geom.Size
 }
 
 // CheckBox represents a clickable checkbox with an optional label.
 type CheckBox struct {
-	ClickCallback func()
-	Drawable      Drawable
-	Text          *Text
 	CheckBoxTheme
-	Panel
-	State   check.Enum
-	Pressed bool
+	checkRadioBase
+	State check.Enum
 }
 
 // NewCheckBox creates a new checkbox.
 func NewCheckBox() *CheckBox {
-	c := &CheckBox{CheckBoxTheme: DefaultCheckBoxTheme}
-	c.Self = c
-	c.SetFocusable(true)
-	c.SetSizer(c.DefaultSizes)
-	c.DrawCallback = c.DefaultDraw
-	c.GainedFocusCallback = c.DefaultFocusGained
-	c.LostFocusCallback = c.MarkForRedraw
-	c.MouseDownCallback = c.DefaultMouseDown
-	c.MouseDragCallback = c.DefaultMouseDrag
-	c.MouseUpCallback = c.DefaultMouseUp
-	c.KeyDownCallback = c.DefaultKeyDown
-	c.UpdateCursorCallback = c.DefaultUpdateCursor
-	return c
+	var c CheckBox
+	c.Self = &c
+	c.CheckBoxTheme = DefaultCheckBoxTheme
+	c.baseTheme = &c.RadioButtonTheme
+	c.commonInit()
+	c.updateState = func() {
+		if c.State == check.On {
+			c.State = check.Off
+		} else {
+			c.State = check.On
+		}
+	}
+	c.drawMark = c.drawCheck
+	return &c
 }
 
-// SetTitle sets the text of the checkbox to the specified text. The theme's TextDecoration will be used, so any
-// changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
-// .Text field.
-func (c *CheckBox) SetTitle(text string) {
-	c.Text = NewText(text, &c.TextDecoration)
-}
-
-// DefaultFocusGained provides the default focus gained handling.
-func (c *CheckBox) DefaultFocusGained() {
-	c.ScrollIntoView()
-	c.MarkForRedraw()
-}
-
-// DefaultSizes provides the default sizing.
-func (c *CheckBox) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
-	prefSize = c.boxAndLabelSize()
-	if border := c.Border(); border != nil {
-		prefSize = prefSize.Add(border.Insets().Size())
-	}
-	prefSize = prefSize.Ceil().ConstrainForHint(hint)
-	return prefSize, prefSize, MaxSize(prefSize)
-}
-
-func (c *CheckBox) boxAndLabelSize() geom.Size {
-	boxSize := c.boxSize()
-	if c.Drawable == nil && c.Text.Empty() {
-		return geom.NewSize(boxSize, boxSize)
-	}
-	size, _ := LabelContentSizes(c.Text, c.Drawable, c.Font, c.Side, c.Gap)
-	size.Width += c.Gap + boxSize
-	if size.Height < boxSize {
-		size.Height = boxSize
-	}
-	return size
-}
-
-func (c *CheckBox) boxSize() float32 {
-	return xmath.Ceil(c.Font.Baseline())
-}
-
-// DefaultDraw provides the default drawing.
-func (c *CheckBox) DefaultDraw(canvas *Canvas, _ geom.Rect) {
-	contentRect := c.ContentRect(false)
-	rect := contentRect
-	size := c.boxAndLabelSize()
-	switch c.HAlign {
-	case align.Middle, align.Fill:
-		rect.X = xmath.Floor(rect.X + (rect.Width-size.Width)/2)
-	case align.End:
-		rect.X += rect.Width - size.Width
-	default: // align.Start
-	}
-	switch c.VAlign {
-	case align.Middle, align.Fill:
-		rect.Y = xmath.Floor(rect.Y + (rect.Height-size.Height)/2)
-	case align.End:
-		rect.Y += rect.Height - size.Height
-	default: // align.Start
-	}
-	rect.Size = size
-	boxSize := c.boxSize()
-	if c.Drawable != nil || !c.Text.Empty() {
-		r := rect
-		r.X += boxSize + c.Gap
-		r.Width -= boxSize + c.Gap
-		DrawLabel(canvas, r, c.HAlign, c.VAlign, c.Font, c.Text, c.OnBackgroundInk, nil, c.Drawable, c.Side, c.Gap,
-			!c.Enabled())
-	}
-	if rect.Height > boxSize {
-		rect.Y += xmath.Floor((rect.Height - boxSize) / 2)
-	}
-	rect.Width = boxSize
-	rect.Height = boxSize
-	var fg, bg Ink
-	switch {
-	case c.Pressed:
-		bg = c.SelectionInk
-		fg = c.OnSelectionInk
-	default:
-		bg = c.ControlInk
-		fg = c.OnControlInk
-	}
-	edge := c.EdgeInk
-	thickness := float32(1)
-	if c.Focused() {
-		thickness++
-		edge = c.SelectionInk
-	}
+func (c *CheckBox) drawCheck(canvas *Canvas, rect geom.Rect, thickness float32, fg, bg, edge Ink) {
 	DrawRoundedRectBase(canvas, rect, c.CornerRadius, thickness, bg, edge)
 	rect = rect.Inset(geom.NewUniformInsets(0.5))
 	if c.State == check.Off {
 		return
 	}
-	paint := fg.Paint(canvas, contentRect, paintstyle.Stroke)
+	paint := fg.Paint(canvas, rect, paintstyle.Stroke)
 	defer paint.Dispose()
 	paint.SetStrokeWidth(2)
 	if !c.Enabled() {
@@ -196,73 +76,4 @@ func (c *CheckBox) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		canvas.DrawLine(rect.Point.Add(geom.NewPoint(rect.Width*0.25, rect.Height*0.5)),
 			rect.Point.Add(geom.NewPoint(rect.Width*0.7, rect.Height*0.5)), paint)
 	}
-}
-
-// Click makes the checkbox behave as if a user clicked on it.
-func (c *CheckBox) Click() {
-	c.updateState()
-	pressed := c.Pressed
-	c.Pressed = true
-	c.MarkForRedraw()
-	c.FlushDrawing()
-	c.Pressed = pressed
-	time.Sleep(c.ClickAnimationTime)
-	c.MarkForRedraw()
-	if c.ClickCallback != nil {
-		xos.SafeCall(c.ClickCallback, nil)
-	}
-}
-
-func (c *CheckBox) updateState() {
-	if c.State == check.On {
-		c.State = check.Off
-	} else {
-		c.State = check.On
-	}
-}
-
-// DefaultMouseDown provides the default mouse down handling.
-func (c *CheckBox) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
-	c.Pressed = true
-	c.MarkForRedraw()
-	return true
-}
-
-// DefaultMouseDrag provides the default mouse drag handling.
-func (c *CheckBox) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
-	if pressed := where.In(c.ContentRect(false)); pressed != c.Pressed {
-		c.Pressed = pressed
-		c.MarkForRedraw()
-	}
-	return true
-}
-
-// DefaultMouseUp provides the default mouse up handling.
-func (c *CheckBox) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
-	c.Pressed = false
-	c.MarkForRedraw()
-	if where.In(c.ContentRect(false)) {
-		c.updateState()
-		if c.ClickCallback != nil {
-			xos.SafeCall(c.ClickCallback, nil)
-		}
-	}
-	return true
-}
-
-// DefaultKeyDown provides the default key down handling.
-func (c *CheckBox) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
-	if IsControlAction(keyCode, mods) {
-		c.Click()
-		return true
-	}
-	return false
-}
-
-// DefaultUpdateCursor provides the default cursor for check boxes.
-func (c *CheckBox) DefaultUpdateCursor(_ geom.Point) *Cursor {
-	if !c.Enabled() {
-		return ArrowCursor()
-	}
-	return PointingCursor()
 }
