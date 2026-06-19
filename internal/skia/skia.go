@@ -306,3 +306,26 @@ type MetaData struct {
 	RasterDPI       float32
 	EncodingQuality int32
 }
+
+func EncodeJPEG(ctx DirectContext, img Image, quality int) []byte {
+	return DataToBytes(encodeJPEG(ctx, img, quality))
+}
+
+func EncodePNG(ctx DirectContext, img Image, compressionLevel int) []byte {
+	return DataToBytes(encodePNG(ctx, img, compressionLevel))
+}
+
+func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) []byte {
+	return DataToBytes(encodeWebp(ctx, img, quality, lossy))
+}
+
+// DataToBytes copies the contents of a skia.Data into a freshly allocated byte slice and releases the skia.Data.
+func DataToBytes(data Data) []byte {
+	if data == nil {
+		return nil
+	}
+	buffer := make([]byte, DataGetSize(data))
+	copy(buffer, unsafe.Slice((*byte)(DataGetData(data)), len(buffer)))
+	DataUnref(data)
+	return buffer
+}

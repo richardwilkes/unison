@@ -327,13 +327,13 @@ func init() {
 	dir, err := os.UserCacheDir()
 	xos.ExitIfErr(err)
 	dir = filepath.Join(dir, "unison", "dll_cache")
-	xos.ExitIfErr(os.MkdirAll(dir, 0755))
+	xos.ExitIfErr(os.MkdirAll(dir, 0o755))
 	xos.ExitIfErr(windows.SetDllDirectory(dir))
 	sha := sha256.Sum256(dllData)
 	dllName := fmt.Sprintf("skia-%s.dll", base64.RawURLEncoding.EncodeToString(sha[:]))
 	filePath := filepath.Join(dir, dllName)
 	if !xos.FileExists(filePath) {
-		xos.ExitIfErr(os.WriteFile(filePath, dllData, 0644))
+		xos.ExitIfErr(os.WriteFile(filePath, dllData, 0o644))
 	}
 	skia := syscall.MustLoadDLL(dllName)
 	grBackendRenderTargetNewGLProc = skia.MustFindProc("gr_backendrendertarget_new_gl")
@@ -959,17 +959,17 @@ func DataUnref(data Data) {
 	skDataUnrefProc.Call(uintptr(data))
 }
 
-func EncodeJPEG(ctx DirectContext, img Image, quality int) Data {
+func encodeJPEG(ctx DirectContext, img Image, quality int) Data {
 	r1, _, _ := skEncodeJPEGProc.Call(uintptr(ctx), uintptr(img), uintptr(quality))
 	return Data(r1)
 }
 
-func EncodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
+func encodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
 	r1, _, _ := skEncodePNGProc.Call(uintptr(ctx), uintptr(img), uintptr(compressionLevel))
 	return Data(r1)
 }
 
-func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
+func encodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
 	r1, _, _ := skEncodeWEBPProc.Call(uintptr(ctx), uintptr(img), uintptr(math.Float32bits(quality)), boolToUintptr(lossy))
 	return Data(r1)
 }

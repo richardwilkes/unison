@@ -342,15 +342,15 @@ func DataUnref(data Data) {
 	C.sk_data_unref(data)
 }
 
-func EncodeJPEG(ctx DirectContext, img Image, quality int) Data {
+func encodeJPEG(ctx DirectContext, img Image, quality int) Data {
 	return C.sk_encode_jpeg(ctx, img, C.int(quality))
 }
 
-func EncodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
+func encodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
 	return C.sk_encode_png(ctx, img, C.int(compressionLevel))
 }
 
-func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
+func encodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
 	return C.sk_encode_webp(ctx, img, C.float(quality), C.bool(lossy))
 }
 

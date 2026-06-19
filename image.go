@@ -15,7 +15,6 @@ import (
 	"runtime"
 	"sync"
 	"time"
-	"unsafe"
 	"weak"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -249,38 +248,26 @@ func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 // ToPNG creates PNG data from the image. 'compressionLevel' should in the range 0-9 and is equivalent to
 // the zlib compression level. A typical compression level is 6 and is equivalent to the zlib default.
 func (img *Image) ToPNG(compressionLevel int) ([]byte, error) {
-	data := skia.EncodePNG(nil, img.skiaImg, compressionLevel)
-	if data == nil {
-		return nil, errs.New("unable to create PNG from image")
+	if data := skia.EncodePNG(nil, img.skiaImg, compressionLevel); data != nil {
+		return data, nil
 	}
-	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
-	skia.DataUnref(data)
-	return buffer, nil
+	return nil, errs.New("unable to create PNG from image")
 }
 
 // ToJPEG creates JPEG data from the image. quality should be greater than 0 and equal to or less than 100.
 func (img *Image) ToJPEG(quality int) ([]byte, error) {
-	data := skia.EncodeJPEG(nil, img.skiaImg, quality)
-	if data == nil {
-		return nil, errs.New("unable to create JPEG from image")
+	if data := skia.EncodeJPEG(nil, img.skiaImg, quality); data != nil {
+		return data, nil
 	}
-	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
-	skia.DataUnref(data)
-	return buffer, nil
+	return nil, errs.New("unable to create JPEG from image")
 }
 
 // ToWebp creates Webp data from the image. quality should be greater than 0 and equal to or less than 100.
 func (img *Image) ToWebp(quality float32, lossy bool) ([]byte, error) {
-	data := skia.EncodeWebp(nil, img.skiaImg, quality, lossy)
-	if data == nil {
-		return nil, errs.New("unable to create WEBP from image")
+	if data := skia.EncodeWebp(nil, img.skiaImg, quality, lossy); data != nil {
+		return data, nil
 	}
-	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
-	skia.DataUnref(data)
-	return buffer, nil
+	return nil, errs.New("unable to create WEBP from image")
 }
 
 // Hash returns a hash of the image data.
