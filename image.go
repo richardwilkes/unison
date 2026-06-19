@@ -183,12 +183,18 @@ func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error)
 	return img, nil
 }
 
-// Dispose releases the native resources.
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
 func (img *Image) Dispose() {
 	if img == nil {
 		return
 	}
 	img.disposeOnce.Do(func() {
+		imgCacheLock.Lock()
+		if p, ok := imgCache[img.hash]; ok && p.Value() == img {
+			delete(imgCache, img.hash)
+		}
+		imgCacheLock.Unlock()
 		img.cleanup.Stop()
 		img.nonTextureCleanup.Stop()
 		if img.skiaImg != nil {
