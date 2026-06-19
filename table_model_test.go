@@ -17,7 +17,7 @@ import (
 	"github.com/richardwilkes/unison"
 )
 
-// tableTestRow is a minimal TableRowData implementation for exercising selection logic. The table is built with no
+// tableTestRow is a minimal TableRowData implementation for exercising table model logic. The table is built with no
 // columns, so ColumnCell is never invoked and no font/graphics work is required.
 type tableTestRow struct {
 	parent   *tableTestRow
@@ -171,4 +171,97 @@ func TestTableHierarchySelection(t *testing.T) {
 	minimal := table.SelectedRows(true)
 	c.Equal(1, len(minimal))
 	c.Equal(parent, minimal[0])
+}
+
+func TestTableSetRootRowsAndCount(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(flatRows(3)...)
+	c.Equal(3, table.RootRowCount())
+	c.Equal(3, len(table.RootRows()))
+	c.Equal(2, table.LastRowIndex())
+
+	table.SetRootRows(flatRows(5))
+	c.Equal(5, table.RootRowCount())
+	c.Equal(4, table.LastRowIndex())
+}
+
+func TestTableRowFromIndexBounds(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(flatRows(3)...)
+	c.Equal(tid.TID("r1"), table.RowFromIndex(1).ID())
+	// Out-of-range indexes return the zero value (a nil *tableTestRow) rather than panicking.
+	c.True(table.RowFromIndex(-1) == nil)
+	c.True(table.RowFromIndex(99) == nil)
+}
+
+func TestTableRowToIndexRoundTrip(t *testing.T) {
+	c := check.New(t)
+	rows := flatRows(4)
+	table := newTestTable(rows...)
+	for i, r := range rows {
+		c.Equal(i, table.RowToIndex(r))
+		c.Equal(r, table.RowFromIndex(i))
+	}
+	// A row that isn't part of the table reports -1.
+	c.Equal(-1, table.RowToIndex(newTableTestRow("ghost")))
+}
+
+func TestTableDisclosureAffectsRowCount(t *testing.T) {
+	c := check.New(t)
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), newTableTestRow("c1")})
+	sibling := newTableTestRow("s")
+	table := newTestTable(parent, sibling)
+
+	// Root count is independent of disclosure.
+	c.Equal(2, table.RootRowCount())
+
+	// Collapsed: only the two root rows are disclosed.
+	c.Equal(2, table.LastRowIndex()+1)
+
+	// Expanding the parent surfaces its children between it and the sibling.
+	parent.SetOpen(true)
+	table.SyncToModel()
+	c.Equal(4, table.LastRowIndex()+1)
+	c.Equal(tid.TID("c0"), table.RowFromIndex(1).ID())
+	c.Equal(tid.TID("s"), table.RowFromIndex(3).ID())
+
+	// Collapsing again hides them.
+	parent.SetOpen(false)
+	table.SyncToModel()
+	c.Equal(2, table.LastRowIndex()+1)
+}
+
+func TestTableSetRootRowsClearsSelection(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(flatRows(3)...)
+	table.SelectByIndex(1)
+	c.True(table.HasSelection())
+
+	table.SetRootRows(flatRows(2))
+	c.False(table.HasSelection())
+}
+
+func TestTableApplyFilterFlattensAndRestores(t *testing.T) {
+	c := check.New(t)
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), newTableTestRow("c1")})
+	sibling := newTableTestRow("s")
+	table := newTestTable(parent, sibling)
+
+	// Parent is collapsed, so only p and s are disclosed normally.
+	c.False(table.IsFiltered())
+	c.Equal(2, table.LastRowIndex()+1)
+
+	// A filter is consulted for every row recursively (ignoring disclosure) and keeps only the rows it returns false
+	// for. Here we keep just "c1", which is a collapsed child.
+	table.ApplyFilter(func(row *tableTestRow) bool { return row.ID() != "c1" })
+	c.True(table.IsFiltered())
+	c.Equal(1, table.LastRowIndex()+1)
+	c.Equal(tid.TID("c1"), table.RowFromIndex(0).ID())
+
+	// Removing the filter restores the original disclosed view.
+	table.ApplyFilter(nil)
+	c.False(table.IsFiltered())
+	c.Equal(2, table.LastRowIndex()+1)
 }
