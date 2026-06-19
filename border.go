@@ -13,7 +13,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
-const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
+const previousFocusCallbacksKey = "unison.internal.previous.focus.callbacks"
 
 type previousFocusCallbacks struct {
 	GainedFocusCallback func()

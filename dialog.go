@@ -30,7 +30,7 @@ const (
 
 // DialogClientDataKey is the key used in the ClientData() of the Window the dialog puts up which contains the *Dialog
 // of the owning dialog.
-const DialogClientDataKey = "dialog"
+const DialogClientDataKey = "unison.dialog"
 
 // DefaultDialogTheme holds the default DialogTheme values for Dialogs. Modifying this data will not alter existing
 // Dialogs, but will alter any Dialogs created in the future.
