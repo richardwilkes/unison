@@ -12,6 +12,7 @@ package unison
 import (
 	"context"
 	"image"
+	"net/http"
 	"runtime"
 	"sync"
 	"time"
@@ -47,16 +48,11 @@ type Image struct {
 	disposeOnce       sync.Once
 }
 
-// NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. The http.DefaultClient
-// will be used if the data is remote.
-func NewImageFromFilePathOrURL(filePathOrURL string, scale geom.Point) (*Image, error) {
-	return NewImageFromFilePathOrURLWithContext(context.Background(), filePathOrURL, scale)
-}
-
-// NewImageFromFilePathOrURLWithContext creates a new image from data retrieved from the file path or URL. The
-// http.DefaultClient will be used if the data is remote.
-func NewImageFromFilePathOrURLWithContext(ctx context.Context, filePathOrURL string, scale geom.Point) (*Image, error) {
-	data, err := xhttp.RetrieveData(ctx, nil, filePathOrURL)
+// NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. You may pass nil for the
+// client to use the http.DefaultClient if the data is remote. A maxBytes of 0 or less means no limit on the number of
+// bytes allowed.
+func NewImageFromFilePathOrURL(ctx context.Context, client *http.Client, filePathOrURL string, scale geom.Point, maxBytes int64) (*Image, error) {
+	data, err := xhttp.RetrieveDataWithLimit(ctx, client, filePathOrURL, maxBytes)
 	if err != nil {
 		return nil, errs.NewWithCause(filePathOrURL, err)
 	}

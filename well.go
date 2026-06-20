@@ -11,6 +11,7 @@ package unison
 
 import (
 	"context"
+	"net/http"
 	"path/filepath"
 	"time"
 
@@ -64,15 +65,17 @@ type WellTheme struct {
 
 // Well represents a control that holds and lets a user choose an ink.
 type Well struct {
-	ImageFromSpecCallback func(ctx context.Context, filePathOrURL string, scale geom.Point) (*Image, error)
+	HTTPClient            *http.Client // Used when retrieving data from a remote host
+	ImageFromSpecCallback func(ctx context.Context, client *http.Client, filePathOrURL string, scale geom.Point, maxBytes int64) (*Image, error)
 	InkChangedCallback    func()
 	ClickCallback         func()
 	ValidateImageCallback func(*Image) *Image
 	ink                   Ink
 	WellTheme
 	Panel
-	Pressed       bool
-	dropHighlight bool
+	ImageByteLimit int64 // Used when retrieving data from a remote host
+	Pressed        bool
+	dropHighlight  bool
 }
 
 // WellDragTypes returns the list of DataTypes that Wells will accept in drag and drop operations.
@@ -89,7 +92,7 @@ func NewWell() *Well {
 	well.Self = well
 	well.SetFocusable(true)
 	well.SetSizer(well.DefaultSizes)
-	well.ImageFromSpecCallback = NewImageFromFilePathOrURLWithContext
+	well.ImageFromSpecCallback = NewImageFromFilePathOrURL
 	well.ClickCallback = well.DefaultClick
 	well.DrawCallback = well.DefaultDraw
 	well.GainedFocusCallback = well.DefaultFocusGained
@@ -344,7 +347,9 @@ func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 func (w *Well) loadImage(imageSpec string) (img *Image, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), w.ImageLoadTimeout)
 	defer cancel()
-	SafeCall(func() { img, err = w.ImageFromSpecCallback(ctx, imageSpec, w.ImageScale) })
+	SafeCall(func() {
+		img, err = w.ImageFromSpecCallback(ctx, w.HTTPClient, imageSpec, w.ImageScale, w.ImageByteLimit)
+	})
 	return img, err
 }
 

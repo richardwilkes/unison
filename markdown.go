@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"path/filepath"
@@ -165,6 +166,7 @@ type drawableCacheEntry struct {
 
 // Markdown provides markdown display widget.
 type Markdown struct {
+	HTTPClient                 *http.Client // Used when retrieving data from a remote host
 	lastParent                 *Panel
 	block                      *Panel
 	textRow                    *Panel
@@ -178,6 +180,7 @@ type Markdown struct {
 	MarkdownTheme
 	Panel
 	drawableCacheLock sync.Mutex
+	PerImageByteLimit int64 // Used when retrieving data from a remote host
 	index             int
 	columnIndex       int
 	alert             int
@@ -1070,7 +1073,7 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 		} else {
 			scale := geom.NewPoint(1, 1).DivPt(PrimaryDisplay().Scale)
 			var img *Image
-			if img, err = NewImageFromFilePathOrURLWithContext(ctx, revisedTarget, scale); err != nil {
+			if img, err = NewImageFromFilePathOrURL(ctx, m.HTTPClient, revisedTarget, scale, m.PerImageByteLimit); err != nil {
 				result <- nil
 				errs.Log(err, "path", revisedTarget, "scale", scale)
 				return
