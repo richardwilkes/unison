@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/richardwilkes/unison.svg)](https://pkg.go.dev/github.com/richardwilkes/unison)
 [![Go Report Card](https://goreportcard.com/badge/github.com/richardwilkes/unison)](https://goreportcard.com/report/github.com/richardwilkes/unison)
+[![Build](https://github.com/richardwilkes/unison/actions/workflows/build.yml/badge.svg)](https://github.com/richardwilkes/unison/actions/workflows/build.yml)
 
 A unified graphical user experience toolkit for Go desktop applications. macOS, Windows, and Linux are supported.
 
@@ -38,3 +39,11 @@ There are a large number of Go source files in a single, top-level package. Unis
 experience code tends to need to have its tentacles in many places, and the logical separations I made kept hindering
 the ability to do things. Ultimately, I made the decision to collapse nearly everything into a single package to
 simplify development and greatly reduce the overall complexity of things.
+
+### Threading
+
+Unison is single-threaded: panels, windows, drawing, and the native graphics objects behind them are owned by one UI
+thread and are not safe for concurrent use. Code invoked by Unison (input/draw callbacks, layout, command handlers,
+`StartupFinishedCallback`) already runs on that thread; work done on other goroutines must marshal back via
+`InvokeTask`, `InvokeTaskAfter`, or `ReleaseOnUIThread` before touching UI objects. See the package documentation for
+the full threading model.
