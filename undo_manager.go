@@ -90,15 +90,14 @@ func (m *UndoManager) Add(edit Undoable) {
 		}
 		add = !absorb
 	}
+	// Drop the released redo tail in place, clearing the vacated slots so those edits can be garbage collected, then
+	// either append the new edit or retain the absorbing edit already at the current index.
+	clear(m.edits[m.index+1:])
+	m.edits = m.edits[:m.index+1]
 	if add {
 		m.index++
+		m.edits = append(m.edits, edit)
 	}
-	edits := make([]Undoable, m.index+1)
-	copy(edits, m.edits)
-	if add {
-		edits[m.index] = edit
-	}
-	m.edits = edits
 	m.trimForLimit()
 }
 
