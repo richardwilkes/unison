@@ -251,14 +251,14 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			if w.minimized != minimized {
 				w.minimized = minimized
 				if w.MinimizedCallback != nil {
-					SafeCallWithRecovery(func() { w.MinimizedCallback(minimized) })
+					SafeCall(func() { w.MinimizedCallback(minimized) })
 				}
 			}
 			maximized := wParam == w32.SIZE_MAXIMIZED || (w.maximized && wParam != w32.SIZE_RESTORED)
 			if w.maximized != maximized {
 				w.maximized = maximized
 				if w.MaximizedCallback != nil {
-					SafeCallWithRecovery(func() { w.MaximizedCallback(maximized) })
+					SafeCall(func() { w.MaximizedCallback(maximized) })
 				}
 			}
 			width := float32(lParam & 0xFFFF)
@@ -337,7 +337,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			}
 			if w.ContentScaleCallback != nil {
 				scale := float32((wParam>>16)&0xFFFF) / 96
-				SafeCallWithRecovery(func() { w.ContentScaleCallback(geom.NewPoint(scale, scale)) })
+				SafeCall(func() { w.ContentScaleCallback(geom.NewPoint(scale, scale)) })
 			}
 		case w32.WM_SETCURSOR:
 			if lParam&0xFFFF == w32.HTCLIENT {

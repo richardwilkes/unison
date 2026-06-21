@@ -1206,7 +1206,7 @@ func x11ProcessEvent(e x11.Event) {
 				if minimized != w.wnd.minimized {
 					w.wnd.minimized = minimized
 					if w.MinimizedCallback != nil {
-						SafeCallWithRecovery(func() { w.MinimizedCallback(minimized) })
+						SafeCall(func() { w.MinimizedCallback(minimized) })
 					}
 				}
 			case x11Conn.Atoms.NetWMState:
@@ -1231,7 +1231,7 @@ func x11ProcessEvent(e x11.Event) {
 				if maximized != w.wnd.maximized {
 					w.wnd.maximized = maximized
 					if w.MaximizedCallback != nil {
-						SafeCallWithRecovery(func() { w.MaximizedCallback(maximized) })
+						SafeCall(func() { w.MaximizedCallback(maximized) })
 					}
 				}
 			}
