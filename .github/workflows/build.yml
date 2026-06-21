@@ -65,3 +65,24 @@ jobs:
           else
             ./build.sh --all
           fi
+
+      # Build the example app, naming the binary after the target platform and
+      # architecture (e.g. example-macos-arm64, example-windows-amd64.exe).
+      - name: Build example
+        id: example
+        run: |
+          goos=$(go env GOOS)
+          goarch=$(go env GOARCH)
+          platform=$goos
+          [ "$goos" = "darwin" ] && platform=macos
+          name="example-$platform-$goarch"
+          [ "$goos" = "windows" ] && name="$name.exe"
+          go build -o "dist/$name" ./cmd/example
+          echo "artifact_name=example-$platform-$goarch" >> "$GITHUB_OUTPUT"
+
+      - name: Upload example artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.example.outputs.artifact_name }}
+          path: dist/
+          if-no-files-found: error
