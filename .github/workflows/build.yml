@@ -56,5 +56,12 @@ jobs:
           echo "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH"
           echo "CC=aarch64-w64-mingw32-gcc" >> "$GITHUB_ENV"
 
+      # The race detector isn't supported on windows/arm64, so run the tests
+      # without it there (--lint --test instead of --all).
       - name: Build
-        run: ./build.sh --all
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ] && [ "$RUNNER_ARCH" = "ARM64" ]; then
+            ./build.sh --lint --test
+          else
+            ./build.sh --all
+          fi
