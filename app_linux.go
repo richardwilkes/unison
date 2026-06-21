@@ -141,5 +141,7 @@ func apiWaitEvents() {
 }
 
 func apiPostEmptyEvent() {
-	x11Conn.PostEmptyEvent()
+	if x11Conn != nil {
+		x11Conn.PostEmptyEvent()
+	}
 }
