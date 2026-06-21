@@ -11,7 +11,6 @@ package skia
 
 import (
 	"crypto/sha256"
-	_ "embed" // Needed for dll embedding
 	"encoding/base64"
 	"fmt"
 	"math"
@@ -29,8 +28,6 @@ import (
 const ColorTypeN32 = ColorTypeBGRA8888
 
 var (
-	//go:embed skia_windows.dll
-	dllData                                        []byte
 	grBackendRenderTargetNewGLProc                 *syscall.Proc
 	grBackendRenderTargetDeleteProc                *syscall.Proc
 	grContextMakeGLProc                            *syscall.Proc
