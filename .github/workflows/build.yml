@@ -22,10 +22,10 @@ jobs:
         shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -40,6 +40,21 @@ jobs:
             libgl1-mesa-dev \
             libfontconfig1-dev \
             libfreetype-dev
+
+      # The default mingw gcc on the Windows/ARM64 runner is an x86_64 build that
+      # emits x86 assembly, so cgo fails to assemble runtime/cgo's gcc_arm64.S.
+      # Install a native aarch64 llvm-mingw toolchain and point cgo's CC at it.
+      - name: Install Windows ARM64 toolchain
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        env:
+          LLVM_MINGW_VERSION: "20260616"
+        run: |
+          name="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-aarch64"
+          curl -fsSL -o "$RUNNER_TEMP/$name.zip" \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/$name.zip"
+          7z x "$RUNNER_TEMP/$name.zip" -o"$RUNNER_TEMP" >/dev/null
+          echo "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH"
+          echo "CC=aarch64-w64-mingw32-gcc" >> "$GITHUB_ENV"
 
       - name: Build
         run: ./build.sh --all
