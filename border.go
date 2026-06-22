@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -9,9 +9,11 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/v2/geom"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+)
 
-const previousFocusCallbacksKey = "internal.previous.focus.callbacks"
+const previousFocusCallbacksKey = "unison.internal.previous.focus.callbacks"
 
 type previousFocusCallbacks struct {
 	GainedFocusCallback func()
@@ -70,15 +72,11 @@ func InstallFocusBorders(focusTarget, borderTarget Paneler, focusedBorder, unfoc
 	clientData[previousFocusCallbacksKey] = previous
 	focusPanel.GainedFocusCallback = func() {
 		borderPanel.SetBorder(focusedBorder)
-		if previous.GainedFocusCallback != nil {
-			previous.GainedFocusCallback()
-		}
+		SafeCall(previous.GainedFocusCallback)
 	}
 	focusPanel.LostFocusCallback = func() {
 		borderPanel.SetBorder(unfocusedBorder)
-		if previous.LostFocusCallback != nil {
-			previous.LostFocusCallback()
-		}
+		SafeCall(previous.LostFocusCallback)
 	}
 	borderPanel.SetBorder(unfocusedBorder)
 }

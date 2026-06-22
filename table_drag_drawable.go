@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -27,8 +27,12 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		r := rect.Inset(geom.NewUniformInsets(1))
 		corner := geom.NewUniformSize(r.Height / 2)
 		gc.SaveWithOpacity(0.7)
-		gc.DrawRoundedRect(r, corner, data.Table.SelectionInk.Paint(gc, r, paintstyle.Fill))
-		gc.DrawRoundedRect(r, corner, data.Table.OnSelectionInk.Paint(gc, r, paintstyle.Stroke))
+		fillPaint := data.Table.SelectionInk.Paint(gc, r, paintstyle.Fill)
+		gc.DrawRoundedRect(r, corner, fillPaint)
+		fillPaint.Dispose()
+		strokePaint := data.Table.OnSelectionInk.Paint(gc, r, paintstyle.Stroke)
+		gc.DrawRoundedRect(r, corner, strokePaint)
+		strokePaint.Dispose()
 		gc.Restore()
 		label.DefaultDraw(gc, rect)
 	}

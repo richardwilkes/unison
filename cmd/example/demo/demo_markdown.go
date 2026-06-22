@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -25,7 +25,7 @@ var sampleMarkdown string
 var markdownCounter int
 
 // NewDemoMarkdownWindow creates and displays our demo markdown window.
-func NewDemoMarkdownWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoMarkdownWindow() (*unison.Window, error) {
 	// Create the window
 	markdownCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Markdown #%d", markdownCounter))
@@ -55,11 +55,7 @@ func NewDemoMarkdownWindow(where geom.Point) (*unison.Window, error) {
 	})
 	content.AddChild(scrollArea)
 
-	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

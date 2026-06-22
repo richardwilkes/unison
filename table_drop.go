@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -14,6 +14,9 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
+	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -21,14 +24,12 @@ import (
 // Table.InstallDropSupport().
 type TableDrop[T TableRowConstraint[T], U any] struct {
 	Table                  *Table[T]
-	TableDragData          *TableDragData[T]
-	AllDragData            map[string]any
+	DataType               *uti.DataType
 	originalDrawOver       func(*Canvas, geom.Rect)
 	shouldMoveDataCallback func(from, to *Table[T]) bool
 	willDropCallback       func(from, to *Table[T], move bool) *UndoEdit[U]
 	didDropCallback        func(undo *UndoEdit[U], from, to *Table[T], move bool)
 	TargetParent           T
-	DragKey                string
 	TargetIndex            int
 	top                    float32
 	left                   float32
@@ -43,6 +44,7 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect geom.Rect) {
 	if d.inDragOver {
 		r := d.Table.ContentRect(false).Inset(geom.NewUniformInsets(1))
 		paint := ThemeWarning.Paint(gc, r, paintstyle.Stroke)
+		defer paint.Dispose()
 		paint.SetStrokeWidth(2)
 		paint.SetColorFilter(Alpha30Filter())
 		gc.DrawRect(r, paint)
@@ -52,118 +54,148 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect geom.Rect) {
 	}
 }
 
-// DataDragOverCallback handles determining if a given drag is one that we are interested in.
-func (d *TableDrop[T, U]) DataDragOverCallback(where geom.Point, data map[string]any) bool {
-	if d.Table.filteredRows != nil {
+// CanAcceptDropCallback reports whether this table is a candidate for the given drag, independent of pointer position.
+func (d *TableDrop[T, U]) CanAcceptDropCallback(di drag.Info) bool {
+	if dragTableData == nil || d.Table.filteredRows != nil || !d.Table.Enabled() || !di.HasDataType(d.DataType.UTI) {
 		return false
 	}
-	var zero T
+	_, ok := dragTableData.(*TableDragData[T])
+	return ok
+}
+
+// DragEnterCallback provides the drag enter handling.
+func (d *TableDrop[T, U]) DragEnterCallback(di drag.Info, where geom.Point, mods mod.Modifiers) drag.Op {
+	var op drag.Op
+	SafeCall(func() { op = d.DragUpdatedCallback(di, where, mods) })
+	return op
+}
+
+// DragUpdatedCallback provides the drag updated handling.
+func (d *TableDrop[T, U]) DragUpdatedCallback(di drag.Info, where geom.Point, _ mod.Modifiers) drag.Op {
 	d.inDragOver = false
-	if dd, ok := data[d.DragKey]; ok {
-		if d.TableDragData, ok = dd.(*TableDragData[T]); ok {
-			d.inDragOver = true
-			last := d.Table.LastRowIndex()
-			contentRect := d.Table.ContentRect(false)
-			hierarchyColumnIndex := d.Table.ColumnIndexForID(d.Table.HierarchyColumnID)
-			if where.Y >= contentRect.Bottom()-2 {
-				// Over bottom edge, adding to end of top-level rows
-				d.TargetParent = zero
-				d.TargetIndex = d.Table.RootRowCount()
-				rect := d.Table.RowFrame(last)
-				d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
-				d.left, _ = d.Table.ColumnEdges(max(hierarchyColumnIndex, 0))
-				d.Table.MarkForRedraw()
-				return true
-			}
-			if rowIndex := d.Table.OverRow(where.Y); rowIndex != -1 {
-				// Over row
-				d.TargetIndex = -1
-				row := d.Table.RowFromIndex(rowIndex)
-				rect := d.Table.CellFrame(rowIndex, max(hierarchyColumnIndex, 0))
-				if where.Y >= d.Table.RowFrame(rowIndex).CenterY() {
-					d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
-					d.left = rect.X
-					// Over lower half of row
-					if row.CanHaveChildren() {
-						// Row is a container; add to container at index 0
-						d.TargetParent = row
-						d.TargetIndex = 0
-						if hierarchyColumnIndex != -1 {
-							if hierarchyIndent := d.Table.CurrentHierarchyIndent(); hierarchyIndent > 0 {
-								d.left += hierarchyIndent
-							}
-						}
-					} else {
-						// Row is not a container; add as sibling below this row
-						d.TargetParent = row.Parent()
-						if row = d.Table.RowFromIndex(rowIndex + 1); row == zero {
-							if d.TargetParent == zero {
-								d.TargetIndex = len(d.Table.RootRows())
-							} else {
-								d.TargetIndex = len(d.TargetParent.Children())
-							}
-						}
-					}
-				} else {
-					// Over upper half of row; add to parent of this row at this row's index
-					d.TargetParent = row.Parent()
-					d.top = max(rect.Y-d.Table.Padding.Bottom, 1)
-					d.left = rect.X
-				}
-				if d.TargetIndex == -1 && row != zero {
-					var children []T
-					if d.TargetParent == zero {
-						children = d.Table.RootRows()
-					} else {
-						children = d.TargetParent.Children()
-					}
-					for i, child := range children {
-						if child.ID() == row.ID() {
-							d.TargetIndex = i
-							break
-						}
-					}
-					if d.TargetIndex == -1 {
-						d.TargetIndex = len(children)
-					}
-				}
-				// Check to make sure we aren't trying to drop into the items being moved
-				if d.TargetParent != zero && d.TableDragData.Table == d.Table {
-					for _, r := range d.TableDragData.Rows {
-						if RowContainsRow(r, d.TargetParent) {
-							// Can't drop into itself, so abort
-							d.inDragOver = false
-							d.TargetParent = zero
-							break
-						}
-					}
-				}
-				d.Table.MarkForRedraw()
-				return true
-			}
-			// Not over any row, adding to end of top-level rows
-			d.TargetParent = zero
-			d.TargetIndex = d.Table.RootRowCount()
-			rect := d.Table.RowFrame(last)
-			d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
-			d.left, _ = d.Table.ColumnEdges(max(hierarchyColumnIndex, 0))
-			d.Table.MarkForRedraw()
-			return true
-		}
+	accept := false
+	SafeCall(func() { accept = d.CanAcceptDropCallback(di) })
+	if !accept {
+		return drag.None
 	}
-	return false
-}
-
-// DataDragExitCallback handles resetting the state when a drag is no longer of interest.
-func (d *TableDrop[T, U]) DataDragExitCallback() {
-	d.inDragOver = false
+	data, ok := dragTableData.(*TableDragData[T])
+	if !ok {
+		return drag.None
+	}
 	var zero T
+	d.inDragOver = true
+	last := d.Table.LastRowIndex()
+	contentRect := d.Table.ContentRect(false)
+	hierarchyColumnIndex := d.Table.ColumnIndexForID(d.Table.HierarchyColumnID)
+	var op drag.Op
+	SafeCall(func() {
+		if d.shouldMoveDataCallback(data.Table, d.Table) {
+			op = drag.Move
+		} else {
+			op = drag.Copy
+		}
+	})
+	if where.Y >= contentRect.Bottom()-2 {
+		// Over bottom edge, adding to end of top-level rows
+		d.TargetParent = zero
+		d.TargetIndex = d.Table.RootRowCount()
+		rect := d.Table.RowFrame(last)
+		d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
+		d.left, _ = d.Table.ColumnEdges(max(hierarchyColumnIndex, 0))
+		d.Table.MarkForRedraw()
+		d.Table.FlushDrawing()
+		return op
+	}
+	if rowIndex := d.Table.OverRow(where.Y); rowIndex != -1 {
+		// Over row
+		d.TargetIndex = -1
+		row := d.Table.RowFromIndex(rowIndex)
+		rect := d.Table.CellFrame(rowIndex, max(hierarchyColumnIndex, 0))
+		if where.Y >= d.Table.RowFrame(rowIndex).CenterY() {
+			d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
+			d.left = rect.X
+			// Over lower half of row
+			if row.CanHaveChildren() {
+				// Row is a container; add to container at index 0
+				d.TargetParent = row
+				d.TargetIndex = 0
+				if hierarchyColumnIndex != -1 {
+					if hierarchyIndent := d.Table.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+						d.left += hierarchyIndent
+					}
+				}
+			} else {
+				// Row is not a container; add as sibling below this row
+				d.TargetParent = row.Parent()
+				if row = d.Table.RowFromIndex(rowIndex + 1); row == zero {
+					if d.TargetParent == zero {
+						d.TargetIndex = len(d.Table.RootRows())
+					} else {
+						d.TargetIndex = len(d.TargetParent.Children())
+					}
+				}
+			}
+		} else {
+			// Over upper half of row; add to parent of this row at this row's index
+			d.TargetParent = row.Parent()
+			d.top = max(rect.Y-d.Table.Padding.Bottom, 1)
+			d.left = rect.X
+		}
+		if d.TargetIndex == -1 && row != zero {
+			var children []T
+			if d.TargetParent == zero {
+				children = d.Table.RootRows()
+			} else {
+				children = d.TargetParent.Children()
+			}
+			for i, child := range children {
+				if child.ID() == row.ID() {
+					d.TargetIndex = i
+					break
+				}
+			}
+			if d.TargetIndex == -1 {
+				d.TargetIndex = len(children)
+			}
+		}
+		// Check to make sure we aren't trying to drop into the items being moved
+		if d.TargetParent != zero && data.Table == d.Table {
+			for _, r := range data.Rows {
+				if RowContainsRow(r, d.TargetParent) {
+					// Can't drop into itself, so abort
+					d.inDragOver = false
+					d.TargetParent = zero
+					break
+				}
+			}
+		}
+		d.Table.MarkForRedraw()
+		d.Table.FlushDrawing()
+		return op
+	}
+	// Not over any row, adding to end of top-level rows
 	d.TargetParent = zero
+	d.TargetIndex = d.Table.RootRowCount()
+	rect := d.Table.RowFrame(last)
+	d.top = min(rect.Bottom()+1+d.Table.Padding.Bottom, contentRect.Bottom()-1)
+	d.left, _ = d.Table.ColumnEdges(max(hierarchyColumnIndex, 0))
 	d.Table.MarkForRedraw()
+	d.Table.FlushDrawing()
+	return op
 }
 
-// DataDragDropCallback handles processing a drop.
-func (d *TableDrop[T, U]) DataDragDropCallback(_ geom.Point, data map[string]any) {
+// DropCallback handles processing a drop.
+func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
+	defer func() { SafeCall(d.DragExitCallback) }()
+	var op drag.Op
+	SafeCall(func() { op = d.DragUpdatedCallback(di, where, mods) })
+	if op == drag.None {
+		return false
+	}
+	data, ok := dragTableData.(*TableDragData[T])
+	if !ok {
+		return false
+	}
 	var savedScrollX, savedScrollY float32
 	if scroller := d.Table.ScrollRoot(); scroller != nil {
 		savedScrollX, savedScrollY = scroller.Position()
@@ -173,89 +205,91 @@ func (d *TableDrop[T, U]) DataDragDropCallback(_ geom.Point, data map[string]any
 	}
 	var zero T
 	d.inDragOver = false
-	var ok bool
-	if d.TableDragData, ok = data[d.DragKey].(*TableDragData[T]); ok {
-		d.AllDragData = data
-
-		move := d.shouldMoveDataCallback(d.TableDragData.Table, d.Table)
-		var undo *UndoEdit[U]
-		if d.willDropCallback != nil {
-			undo = d.willDropCallback(d.TableDragData.Table, d.Table, move)
-		}
-		rows := slices.Clone(d.TableDragData.Rows)
-		if move {
-			// Remove the drag rows from their original places
-			commonParents := collectCommonParents(rows)
-			for parent, list := range commonParents {
-				var children []T
-				if parent == zero {
-					children = d.TableDragData.Table.RootRows()
-				} else {
-					children = parent.Children()
-				}
-				list = d.pruneRows(parent, children, makeRowSet(list))
-				if parent == zero {
-					d.TableDragData.Table.Model.SetRootRows(list)
-				} else {
-					parent.SetChildren(list)
-				}
+	move := false
+	SafeCall(func() { move = d.shouldMoveDataCallback(data.Table, d.Table) })
+	var undo *UndoEdit[U]
+	if d.willDropCallback != nil {
+		SafeCall(func() { undo = d.willDropCallback(data.Table, d.Table, move) })
+	}
+	rows := slices.Clone(data.Rows)
+	if move {
+		// Remove the drag rows from their original places
+		commonParents := collectCommonParents(rows)
+		for parent, list := range commonParents {
+			var children []T
+			if parent == zero {
+				children = data.Table.RootRows()
+			} else {
+				children = parent.Children()
 			}
-			d.TableDragData.Table.ClearSelection()
-			d.TableDragData.Table.SyncToModel()
-
-			// Set the new parent
-			for _, row := range rows {
-				row.SetParent(d.TargetParent)
-			}
-
-			// Notify the source table if it is different from the destination
-			if d.Table != d.TableDragData.Table {
-				if d.Table != d.TableDragData.Table && d.TableDragData.Table.DragRemovedRowsCallback != nil {
-					d.TableDragData.Table.DragRemovedRowsCallback()
-				}
-			}
-		} else {
-			// Make a copy of the data
-			for i, row := range rows {
-				rows[i] = row.CloneForTarget(d.Table, d.TargetParent)
+			list = d.pruneRows(parent, children, makeRowSet(list))
+			if parent == zero {
+				data.Table.Model.SetRootRows(list)
+			} else {
+				parent.SetChildren(list)
 			}
 		}
+		data.Table.ClearSelection()
+		data.Table.SyncToModel()
 
-		// Insert the rows into their new location
-		var targetRows []T
-		if d.TargetParent == zero {
-			targetRows = d.Table.RootRows()
-		} else {
-			targetRows = d.TargetParent.Children()
-		}
-		targetRows = slices.Insert(slices.Clone(targetRows), max(min(d.TargetIndex, len(targetRows)), 0), rows...)
-		if d.TargetParent == zero {
-			d.Table.SetRootRows(targetRows)
-		} else {
-			d.TargetParent.SetChildren(targetRows)
-			d.Table.SyncToModel()
-		}
-
-		// Restore selection
-		selMap := make(map[tid.TID]bool, len(rows))
+		// Set the new parent
 		for _, row := range rows {
-			selMap[row.ID()] = true
-		}
-		d.Table.SetSelectionMap(selMap)
-
-		// Notify the destination table
-		if d.Table.DropOccurredCallback != nil {
-			d.Table.DropOccurredCallback()
+			row.SetParent(d.TargetParent)
 		}
 
-		if d.didDropCallback != nil {
-			d.didDropCallback(undo, d.TableDragData.Table, d.Table, move)
+		// Notify the source table if it is different from the destination
+		if d.Table != data.Table {
+			if d.Table != data.Table && data.Table.DragRemovedRowsCallback != nil {
+				SafeCall(data.Table.DragRemovedRowsCallback)
+			}
+		}
+	} else {
+		// Make a copy of the data
+		for i, row := range rows {
+			rows[i] = row.CloneForTarget(d.Table, d.TargetParent)
 		}
 	}
+
+	// Insert the rows into their new location
+	var targetRows []T
+	if d.TargetParent == zero {
+		targetRows = d.Table.RootRows()
+	} else {
+		targetRows = d.TargetParent.Children()
+	}
+	targetRows = slices.Insert(slices.Clone(targetRows), max(min(d.TargetIndex, len(targetRows)), 0), rows...)
+	if d.TargetParent == zero {
+		d.Table.SetRootRows(targetRows)
+	} else {
+		d.TargetParent.SetChildren(targetRows)
+		d.Table.SyncToModel()
+	}
+
+	// Restore selection
+	selMap := make(map[tid.TID]bool, len(rows))
+	for _, row := range rows {
+		selMap[row.ID()] = true
+	}
+	d.Table.SetSelectionMap(selMap)
+
+	// Notify the destination table
+	SafeCall(d.Table.DropOccurredCallback)
+
+	if d.didDropCallback != nil {
+		SafeCall(func() { d.didDropCallback(undo, data.Table, d.Table, move) })
+	}
+
 	d.Table.MarkForRedraw()
+	return true
+}
+
+// DragExitCallback handles resetting the state when a drag is no longer of interest.
+func (d *TableDrop[T, U]) DragExitCallback() {
+	d.inDragOver = false
+	var zero T
 	d.TargetParent = zero
-	d.AllDragData = nil
-	d.TableDragData = nil
+	d.Table.MarkForRedraw()
+	d.Table.FlushDrawing()
 }
 
 func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[tid.TID]bool) []T {

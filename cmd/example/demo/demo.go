@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -27,7 +27,7 @@ import (
 var windowCounter int
 
 // NewDemoWindow creates and displays our demo window.
-func NewDemoWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoWindow() (*unison.Window, error) {
 	// Create the window
 	windowCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Demo #%d", windowCounter))
@@ -44,39 +44,22 @@ func NewDemoWindow(where geom.Point) (*unison.Window, error) {
 	content.SetLayout(&unison.FlexLayout{
 		Columns:  1,
 		HSpacing: unison.StdHSpacing,
-		VSpacing: 10,
+		VSpacing: unison.StdVSpacing * 2,
 	})
 
-	// Create a wrappable row of buttons
-	panel := createButtonsPanel()
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	content.AddChild(panel)
-
-	// Create a wrappable row of buttons that bring up dialogs
-	panel = createDialogButtonsPanel()
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	content.AddChild(panel)
-
-	addSeparator(content)
-
-	// Create a wrappable row of svg buttons
-	panel = createSVGButtonsPanel()
-	panel.SetLayoutData(&unison.FlexLayoutData{
-		VAlign: align.Middle,
-		HGrab:  true,
-	})
-	content.AddChild(panel)
+	// Create some wrappable panels of buttons
+	for _, panel := range createButtonPanels() {
+		panel.SetLayoutData(&unison.FlexLayoutData{
+			VAlign: align.Middle,
+			HGrab:  true,
+		})
+		content.AddChild(panel)
+	}
 
 	addSeparator(content)
 
 	// Create a wrappable row of links
-	panel = createLinksPanel()
+	panel := createLinksPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
 		VAlign: align.Middle,
 		HGrab:  true,
@@ -149,17 +132,30 @@ func NewDemoWindow(where geom.Point) (*unison.Window, error) {
 	})
 	content.AddChild(scrollArea)
 
+	// Register for the drag types we want to enable
+	wnd.RegisterForDragTypes(unison.WellDragTypes()...)
+
 	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil
 }
 
-func createButtonsPanel() *unison.Panel {
+func createButtonPanels() []*unison.Panel {
+	return []*unison.Panel{
+		createActionButtonsPanel(NewWindowAction, NewTableWindowAction, NewDockWindowAction, &unison.Action{
+			EnabledCallback: func(_ *unison.Action, _ any) bool { return false },
+			Title:           "Disabled",
+			ID:              DisabledActionID,
+		}),
+		createActionButtonsPanel(NewMarkdownWindowAction, NewSVGWindowAction, ShowColorsWindowAction),
+		createDialogButtonsPanel(),
+		createSVGButtonsPanel(),
+	}
+}
+
+func createActionButtonsPanel(actions ...*unison.Action) *unison.Panel {
 	// Create a panel to place some buttons into.
 	panel := unison.NewPanel()
 	panel.SetLayout(&unison.FlowLayout{
@@ -167,12 +163,9 @@ func createButtonsPanel() *unison.Panel {
 		VSpacing: unison.StdVSpacing,
 	})
 
-	// Add some buttons
-	for i, title := range []string{"First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth"} {
-		btn := createButton(title, panel)
-		if i == 2 {
-			btn.SetEnabled(false)
-		}
+	// Add the action buttons
+	for _, action := range actions {
+		createActionButton(action, panel)
 	}
 	return panel
 }
@@ -207,6 +200,18 @@ func createButton(title string, panel *unison.Panel) *unison.Button {
 	btn.ClickCallback = func() { slog.Info(title) }
 	btn.Tooltip = unison.NewTooltipWithText(fmt.Sprintf("Tooltip for: %s", title))
 	btn.SetLayoutData(align.Middle)
+	panel.AddChild(btn)
+	return btn
+}
+
+func createActionButton(action *unison.Action, panel *unison.Panel) *unison.Button {
+	btn := unison.NewButton()
+	btn.SetTitle(action.Title)
+	btn.SetLayoutData(align.Middle)
+	btn.ClickCallback = func() { action.ExecuteCallback(action, nil) }
+	if !action.Enabled(nil) {
+		btn.SetEnabled(false)
+	}
 	panel.AddChild(btn)
 	return btn
 }
@@ -294,24 +299,21 @@ func createLinksPanel() *unison.Panel {
 	})
 
 	// Add some links
-	panel.AddChild(unison.NewLink("Apple", "Open the Apple home page", "", unison.DefaultLinkTheme,
-		func(_ unison.Paneler, _ string) {
-			if err := xos.OpenBrowser("https://www.apple.com"); err != nil {
-				errs.Log(err)
-			}
-		}))
-	panel.AddChild(unison.NewLink("Google", "Open the Google home page", "", unison.DefaultLinkTheme,
-		func(_ unison.Paneler, _ string) {
-			if err := xos.OpenBrowser("https://www.google.com"); err != nil {
-				errs.Log(err)
-			}
-		}))
-	panel.AddChild(unison.NewLink("Microsoft", "Open the Microsoft home page", "", unison.DefaultLinkTheme,
-		func(_ unison.Paneler, _ string) {
-			if err := xos.OpenBrowser("https://www.microsoft.com"); err != nil {
-				errs.Log(err)
-			}
-		}))
+	panel.AddChild(unison.NewLink("Apple", "Open the Apple home page", "", nil, func(_ unison.Paneler, _ string) {
+		if err := xos.OpenBrowser("https://www.apple.com"); err != nil {
+			errs.Log(err)
+		}
+	}))
+	panel.AddChild(unison.NewLink("Google", "Open the Google home page", "", nil, func(_ unison.Paneler, _ string) {
+		if err := xos.OpenBrowser("https://www.google.com"); err != nil {
+			errs.Log(err)
+		}
+	}))
+	panel.AddChild(unison.NewLink("Microsoft", "Open the Microsoft home page", "", nil, func(_ unison.Paneler, _ string) {
+		if err := xos.OpenBrowser("https://www.microsoft.com"); err != nil {
+			errs.Log(err)
+		}
+	}))
 
 	return panel
 }
@@ -593,12 +595,12 @@ func createImagePanel() *unison.Label {
 	imgPanel := unison.NewLabel()
 
 	// Prepare a cursor for when the mouse is over the image
-	cursor := unison.MoveCursor()
+	var cursor *unison.Cursor
 	if logoImg, err := ClassicAppleLogoImage(); err != nil {
 		errs.Log(err)
+		cursor = unison.MoveCursor()
 	} else {
-		size := logoImg.LogicalSize()
-		cursor = unison.NewCursor(logoImg, geom.NewPoint(size.Width/2, size.Height/2))
+		cursor = unison.NewCursor(logoImg, geom.PointFromSize(logoImg.LogicalSize().Div(2)))
 	}
 	imgPanel.UpdateCursorCallback = func(_ geom.Point) *unison.Cursor { return cursor }
 

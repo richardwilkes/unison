@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -27,7 +27,7 @@ var (
 )
 
 // NewDemoSVGWindow creates and displays our demo SVG window.
-func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoSVGWindow() (*unison.Window, error) {
 	// Create the window
 	svgCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("SVG #%d", svgCounter))
@@ -48,7 +48,7 @@ func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
 	}
 	panel := unison.NewPanel()
 	panel.SetLayoutData(&unison.FlexLayoutData{
-		MinSize: geom.NewSize(50, 50),
+		MinSize: geom.NewSize(400, 400),
 		HSpan:   1,
 		VSpan:   1,
 		HAlign:  align.Fill,
@@ -57,12 +57,14 @@ func NewDemoSVGWindow(where geom.Point) (*unison.Window, error) {
 		VGrab:   true,
 	})
 	panel.DrawCallback = func(gc *unison.Canvas, dirty geom.Rect) {
-		gc.DrawRect(dirty, unison.Gray.Paint(gc, dirty, paintstyle.Fill))
+		paint := unison.Gray.Paint(gc, dirty, paintstyle.Fill)
+		gc.DrawRect(dirty, paint)
+		paint.Dispose()
 		svg.DrawInRectPreservingAspectRatio(gc, panel.ContentRect(false), nil, nil)
 	}
 	content.AddChild(panel)
 
-	wnd.SetFrameRect(geom.NewRect(where.X, where.Y, 400, 400))
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

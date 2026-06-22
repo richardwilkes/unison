@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/unison/enums/blur"
 	"github.com/richardwilkes/unison/internal/skia"
@@ -18,7 +19,9 @@ import (
 
 // MaskFilter performs a transformation on the mask before drawing it.
 type MaskFilter struct {
-	filter skia.MaskFilter
+	filter      skia.MaskFilter
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newMaskFilter(filter skia.MaskFilter) *MaskFilter {
@@ -26,11 +29,7 @@ func newMaskFilter(filter skia.MaskFilter) *MaskFilter {
 		return nil
 	}
 	f := &MaskFilter{filter: filter}
-	runtime.AddCleanup(f, func(sf skia.MaskFilter) {
-		ReleaseOnUIThread(func() {
-			skia.MaskFilterUnref(sf)
-		})
-	}, f.filter)
+	f.cleanup = newSkiaCleanup(f, filter, skia.MaskFilterUnref)
 	return f
 }
 
@@ -39,6 +38,15 @@ func (f *MaskFilter) filterOrNil() skia.MaskFilter {
 		return nil
 	}
 	return f.filter
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (f *MaskFilter) Dispose() {
+	if f == nil {
+		return
+	}
+	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.MaskFilterUnref)
 }
 
 // NewBlurMaskFilter returns a new blur mask filter. sigma is the standard deviation of the gaussian blur to apply. Must

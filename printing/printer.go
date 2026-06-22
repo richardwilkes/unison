@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,7 +51,7 @@ type Printer struct {
 	RemotePath       string
 	AuthInfoRequired string
 	User             string
-	Password         string
+	Password         string //nolint:gosec // This is set by the user and is not stored anywhere.
 	MimeTypes        []string
 	PrinterID
 	lock   sync.RWMutex
@@ -62,12 +63,7 @@ type Printer struct {
 
 // MimeTypeSupported returns true if the given MIME type is supported by the printer.
 func (p *Printer) MimeTypeSupported(mimeType string) bool {
-	for _, mt := range p.MimeTypes {
-		if mt == mimeType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.MimeTypes, mimeType)
 }
 
 // Attributes returns the printer's attributes. If allowCachedReturn is true and a previous call to Attributes() was
@@ -197,7 +193,7 @@ func (p *Printer) sendRequest(ctx context.Context, req *goipp.Message, fileData 
 		httpReq.SetBasicAuth(p.User, p.Password)
 	}
 	var httpResp *http.Response
-	if httpResp, err = p.httpClient.Do(httpReq); err != nil { //nolint:bodyclose // Body is closed by xio.DiscardAndCloseIgnoringErrors
+	if httpResp, err = p.httpClient.Do(httpReq); err != nil { //nolint:bodyclose,gosec // Body is closed by xio.DiscardAndCloseIgnoringErrors
 		return nil, errs.Wrap(err)
 	}
 	defer xio.DiscardAndCloseIgnoringErrors(httpResp.Body)

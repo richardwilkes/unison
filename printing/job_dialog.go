@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -92,14 +92,16 @@ func (d *JobDialog) RunModal() bool {
 		unison.ErrorDialogWithError(i18n.Text("Unable to create print dialog."), err)
 		return false
 	}
-	dlg.Window().SetTitle(i18n.Text("Print"))
+	w := dlg.Window()
+	w.SetTitle(i18n.Text("Print"))
 	d.dialog = dlg
 	d.dialog.Button(unison.ModalResponseOK).SetEnabled(false)
-	dlg.Window().MinMaxContentSizeCallback = func() (minSize, maxSize geom.Size) {
-		_, pref, _ := dlg.Window().Content().Parent().Sizes(geom.Size{})
+	w.MinMaxContentSizeCallback = func() (minSize, maxSize geom.Size) {
+		_, pref, _ := w.Content().Parent().Sizes(geom.Size{})
 		return pref, pref
 	}
-	dlg.Window().Pack()
+	w.Pack()
+	w.MoveToModalCenter(unison.ActiveWindow())
 	d.adjustOKButton(nil, nil)
 	if dlg.RunModal() != unison.ModalResponseOK {
 		return false
@@ -267,7 +269,7 @@ func (d *JobDialog) retrieveIcon() *unison.Image {
 		}
 		req.Header.Add("Accept-Encoding", "identity")
 		var rsp *http.Response
-		if rsp, err = d.printer.httpClient.Do(req); err != nil { //nolint:bodyclose // Body is closed by xio.CloseIgnoringErrors
+		if rsp, err = d.printer.httpClient.Do(req); err != nil { //nolint:bodyclose,gosec // Body is closed by xio.CloseIgnoringErrors
 			errs.Log(errs.NewWithCause("unable to initiate download for link", err), linkAttr, link)
 			return nil
 		}
@@ -351,11 +353,17 @@ func (d *JobDialog) adjustOKButton(_, _ *unison.FieldState) {
 		return
 	}
 	enabled := d.printer != nil
-	if !d.copies.ValidateCallback() {
+	var notValid bool
+	unison.SafeCall(func() { notValid = !d.copies.ValidateCallback() })
+	if notValid {
 		enabled = false
 	}
-	if d.printerAttributes.PageRangesSupported() && !d.pageRanges.ValidateCallback() {
-		enabled = false
+	if d.printerAttributes.PageRangesSupported() {
+		notValid = false
+		unison.SafeCall(func() { notValid = !d.pageRanges.ValidateCallback() })
+		if notValid {
+			enabled = false
+		}
 	}
 	d.dialog.Button(unison.ModalResponseOK).SetEnabled(enabled)
 }

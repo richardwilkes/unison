@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -40,7 +40,7 @@ func init() {
 }
 
 // NewDemoColorsWindow creates and displays our demo colors window.
-func NewDemoColorsWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoColorsWindow() (*unison.Window, error) {
 	if colorsWindow != nil {
 		if colorsWindow.IsVisible() {
 			return colorsWindow, nil
@@ -86,17 +86,13 @@ func NewDemoColorsWindow(where geom.Point) (*unison.Window, error) {
 			fmt.Fprintf(&buffer, "unison.Theme%s.Light = unison.%s\n", one.Title, colorToRGBString(one.Color.Light))
 			fmt.Fprintf(&buffer, "unison.Theme%s.Dark = unison.%s\n", one.Title, colorToRGBString(one.Color.Dark))
 		}
-		unison.GlobalClipboard.SetText(buffer.String())
+		unison.ClipboardSetText(buffer.String())
 	}
 	goCodeButton.SetBorder(unison.NewEmptyBorder(geom.Insets{Top: 20}))
 	goCodeButton.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Middle})
 	content.AddChild(goCodeButton)
 
-	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

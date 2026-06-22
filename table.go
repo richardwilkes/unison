@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -10,12 +10,16 @@
 package unison
 
 import (
+	"maps"
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
+	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -46,6 +50,11 @@ type tableHitRect struct {
 	handler func()
 	geom.Rect
 }
+
+// dragTableData is actually a *TableDragData[T], but cannot be stored with the originating table since it must be
+// accessible from the drag data. All access occurs on the UI thread during a single drag & drop operation, so only
+// one drag can be in flight at a time and no synchronization is required.
+var dragTableData any
 
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
 // but will alter any Tables created in the future.
@@ -205,7 +214,9 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		selectionInk = t.InactiveSelectionInk
 	}
 
-	canvas.DrawRect(dirty, t.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill))
+	backgroundPaint := t.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(dirty, backgroundPaint)
 
 	var insets geom.Insets
 	if border := t.Border(); border != nil {
@@ -246,18 +257,26 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	for r := startRow; r < endBeforeRow && rect.Y < lastY; r++ {
 		rect.Height = t.rowCache[r].height
 		if t.IsRowOrAnyParentSelected(r) {
+			var rowInk Ink
 			if t.IsRowSelected(r) {
-				canvas.DrawRect(rect, selectionInk.Paint(canvas, rect, paintstyle.Fill))
+				rowInk = selectionInk
 			} else {
-				canvas.DrawRect(rect, t.IndirectSelectionInk.Paint(canvas, rect, paintstyle.Fill))
+				rowInk = t.IndirectSelectionInk
 			}
+			paint := rowInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 		} else if r%2 == 1 {
-			canvas.DrawRect(rect, t.BandingInk.Paint(canvas, rect, paintstyle.Fill))
+			paint := t.BandingInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 		}
 		rect.Y += t.rowCache[r].height
 		if t.ShowRowDivider && r != endBeforeRow-1 {
 			rect.Height = 1
-			canvas.DrawRect(rect, t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill))
+			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 			rect.Y++
 		}
 	}
@@ -268,7 +287,9 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(t.Columns)-1; c++ {
 			rect.X += t.Columns[c].Current
-			canvas.DrawRect(rect, t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill))
+			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 			rect.X++
 		}
 	}
@@ -303,9 +324,10 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 							canvas.Rotate(90)
 							canvas.Translate(offsetPt.Neg())
 						}
+						chevronPaint := fg.Paint(canvas, cellRect, paintstyle.Fill)
 						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
-							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil,
-							fg.Paint(canvas, cellRect, paintstyle.Fill))
+							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil, chevronPaint)
+						chevronPaint.Dispose()
 						canvas.Restore()
 					}
 					indent := hierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left
@@ -469,7 +491,7 @@ func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
 		insets = border.Insets()
 	}
 	left = insets.Left
-	for c := 0; c < col; c++ {
+	for c := range col {
 		left += t.Columns[c].Current
 		if t.ShowColumnDivider {
 			left++
@@ -499,14 +521,14 @@ func (t *Table[T]) CellFrame(row, col int) geom.Rect {
 		insets = border.Insets()
 	}
 	x := insets.Left
-	for c := 0; c < col; c++ {
+	for c := range col {
 		x += t.Columns[c].Current
 		if t.ShowColumnDivider {
 			x++
 		}
 	}
 	y := insets.Top
-	for r := 0; r < row; r++ {
+	for r := range row {
 		y += t.rowCache[r].height
 		if t.ShowRowDivider {
 			y++
@@ -532,7 +554,7 @@ func (t *Table[T]) RowFrame(row int) geom.Rect {
 		return geom.Rect{}
 	}
 	rect := t.ContentRect(false)
-	for i := 0; i < row; i++ {
+	for i := range row {
 		rect.Y += t.rowCache[i].height
 		if t.ShowRowDivider {
 			rect.Y++
@@ -593,7 +615,7 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 					if target.UpdateCursorCallback == nil {
 						target = target.parent
 					} else {
-						xos.SafeCall(func() { cursor = target.UpdateCursorCallback(cell.PointTo(where, target)) }, nil)
+						SafeCall(func() { cursor = target.UpdateCursorCallback(cell.PointTo(where, target)) })
 						break
 					}
 				}
@@ -620,9 +642,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 				for target != t.AsPanel() {
 					avoid = target.RectToRoot(target.ContentRect(true)).Align()
 					if target.UpdateTooltipCallback != nil {
-						xos.SafeCall(func() {
-							avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid)
-						}, nil)
+						SafeCall(func() { avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid) })
 					}
 					if target.Tooltip != nil {
 						t.Tooltip = target.Tooltip
@@ -646,7 +666,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (t *Table[T]) DefaultMouseEnter(where geom.Point, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseEnter(where geom.Point, mods mod.Modifiers) bool {
 	row := t.OverRow(where.Y)
 	col := t.OverColumn(where.X)
 	if t.lastMouseMotionRow != row || t.lastMouseMotionColumn != col {
@@ -666,7 +686,7 @@ func (t *Table[T]) DefaultMouseEnter(where geom.Point, mod Modifiers) bool {
 			t.lastMouseMotionColumn = col
 		}
 		if target.MouseEnterCallback != nil {
-			xos.SafeCall(func() { target.MouseEnterCallback(cell.PointTo(where, target), mod) }, nil)
+			SafeCall(func() { target.MouseEnterCallback(cell.PointTo(where, target), mods) })
 		}
 		t.uninstallCell(cell)
 		t.lastMouseEnterCellPanel = target
@@ -675,8 +695,8 @@ func (t *Table[T]) DefaultMouseEnter(where geom.Point, mod Modifiers) bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (t *Table[T]) DefaultMouseMove(where geom.Point, mod Modifiers) bool {
-	t.DefaultMouseEnter(where, mod)
+func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
+	t.DefaultMouseEnter(where, mods)
 	if t.lastMouseEnterCellPanel != nil {
 		row := t.OverRow(where.Y)
 		col := t.OverColumn(where.X)
@@ -685,7 +705,7 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mod Modifiers) bool {
 		t.installCell(cell, rect)
 		where = where.Sub(rect.Point)
 		if target := cell.PanelAt(where); target.MouseMoveCallback != nil {
-			xos.SafeCall(func() { target.MouseMoveCallback(cell.PointTo(where, target), mod) }, nil)
+			SafeCall(func() { target.MouseMoveCallback(cell.PointTo(where, target), mods) })
 		}
 		t.uninstallCell(cell)
 	}
@@ -699,7 +719,7 @@ func (t *Table[T]) DefaultMouseExit() bool {
 		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		rect := t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		t.installCell(cell, rect)
-		xos.SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() }, nil)
+		SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() })
 		t.uninstallCell(cell)
 	}
 	t.lastMouseEnterCellPanel = nil
@@ -709,10 +729,7 @@ func (t *Table[T]) DefaultMouseExit() bool {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mod Modifiers) bool {
-	if t.Window().InDrag() {
-		return false
-	}
+func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 	t.RequestFocusWithoutScroll()
 	t.wasDragged = false
 	t.dividerDrag = false
@@ -767,9 +784,9 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 				stop := false
 				if target := cell.PanelAt(where); target.MouseDownCallback != nil {
 					t.lastMouseDownCellPanel = target
-					xos.SafeCall(func() {
-						stop = target.MouseDownCallback(cell.PointTo(where, target), button, clickCount, mod)
-					}, nil)
+					SafeCall(func() {
+						stop = target.MouseDownCallback(cell.PointTo(where, target), button, clickCount, mods)
+					})
 				}
 				t.uninstallCell(cell)
 				if stop {
@@ -780,7 +797,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		rowData := t.rowCache[row].row
 		id := rowData.ID()
 		switch {
-		case mod&ShiftModifier != 0: // Extend selection from anchor
+		case mods&mod.Shift != 0: // Extend selection from anchor
 			selAnchorIndex := -1
 			if t.selAnchor != "" {
 				for i, c := range t.rowCache {
@@ -802,7 +819,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 				t.selAnchor = id
 				t.notifyOfSelectionChange()
 			}
-		case mod.DiscontiguousSelectionDown(): // Toggle single row
+		case mods.DiscontiguousSelectionDown(): // Toggle single row
 			if t.selMap[id] {
 				delete(t.selMap, id)
 			} else {
@@ -819,20 +836,18 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		}
 		t.MarkForRedraw()
 		if button == ButtonLeft && clickCount == 2 && t.DoubleClickCallback != nil && len(t.selMap) != 0 {
-			xos.SafeCall(t.DoubleClickCallback, nil)
+			SafeCall(t.DoubleClickCallback)
 		}
 	}
 	return true
 }
 
 func (t *Table[T]) notifyOfSelectionChange() {
-	if t.SelectionChangedCallback != nil {
-		xos.SafeCall(t.SelectionChangedCallback, nil)
-	}
+	SafeCall(t.SelectionChangedCallback)
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modifiers) bool {
 	t.wasDragged = true
 	stop := false
 	if t.interactionColumn != -1 {
@@ -864,9 +879,10 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mod Modifiers)
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
 			where = where.Sub(rect.Point)
-			xos.SafeCall(func() {
-				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mod)
-			}, nil)
+			SafeCall(func() {
+				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel),
+					button, mods)
+			})
 			t.uninstallCell(cell)
 		}
 	}
@@ -874,7 +890,7 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mod Modifiers)
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mod Modifiers) bool {
+func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	stop := false
 	if !t.dividerDrag && button == ButtonLeft {
 		for _, one := range t.hitRects {
@@ -900,9 +916,9 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mod Modifiers) b
 		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 		t.installCell(cell, rect)
 		where = where.Sub(rect.Point)
-		xos.SafeCall(func() {
-			stop = t.lastMouseDownCellPanel.MouseUpCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mod)
-		}, nil)
+		SafeCall(func() {
+			stop = t.lastMouseDownCellPanel.MouseUpCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mods)
+		})
 		t.uninstallCell(cell)
 	}
 	t.lastMouseDownCellPanel = nil
@@ -911,10 +927,10 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mod Modifiers) b
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
-	if IsControlAction(keyCode, mod) {
+func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	if IsControlAction(keyCode, mods) {
 		if t.DoubleClickCallback != nil && len(t.selMap) != 0 {
-			xos.SafeCall(t.DoubleClickCallback, nil)
+			SafeCall(t.DoubleClickCallback)
 		}
 		return true
 	}
@@ -923,7 +939,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) b
 		if !repeat && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
-				if mod.OptionDown() {
+				if mods.OptionDown() {
 					if setOpenRecursively(row, false) {
 						altered = true
 					}
@@ -941,7 +957,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) b
 		if !repeat && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
-				if mod.OptionDown() {
+				if mods.OptionDown() {
 					if setOpenRecursively(row, true) {
 						altered = true
 					}
@@ -961,20 +977,20 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) b
 		} else {
 			i = len(t.rowCache) - 1
 		}
-		if !mod.ShiftDown() {
+		if !mods.ShiftDown() {
 			t.ClearSelection()
 		}
 		t.SelectByIndex(i)
 		t.ScrollRowCellIntoView(i, 0)
 	case KeyDown:
 		i := min(t.LastSelectedRowIndex()+1, len(t.rowCache)-1)
-		if !mod.ShiftDown() {
+		if !mods.ShiftDown() {
 			t.ClearSelection()
 		}
 		t.SelectByIndex(i)
 		t.ScrollRowCellIntoView(i, 0)
 	case KeyHome:
-		if mod.ShiftDown() && t.HasSelection() {
+		if mods.ShiftDown() && t.HasSelection() {
 			t.SelectRange(0, t.FirstSelectedRowIndex())
 		} else {
 			t.ClearSelection()
@@ -982,7 +998,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) b
 		}
 		t.ScrollRowCellIntoView(0, 0)
 	case KeyEnd:
-		if mod.ShiftDown() && t.HasSelection() {
+		if mods.ShiftDown() && t.HasSelection() {
 			t.SelectRange(t.LastSelectedRowIndex(), len(t.rowCache)-1)
 		} else {
 			t.ClearSelection()
@@ -1021,18 +1037,16 @@ func (t *Table[T]) PruneSelectionOfUndisclosedNodes() {
 	if len(t.selMap) == 0 {
 		return
 	}
-	needsNotify := false
-	selMap := make(map[tid.TID]bool, len(t.selMap))
+	oldLen := len(t.selMap)
+	selMap := make(map[tid.TID]bool, oldLen)
 	for _, entry := range t.rowCache {
 		id := entry.row.ID()
 		if t.selMap[id] {
 			selMap[id] = true
-		} else {
-			needsNotify = true
 		}
 	}
 	t.selMap = selMap
-	if needsNotify {
+	if len(selMap) != oldLen {
 		t.notifyOfSelectionChange()
 	}
 }
@@ -1117,9 +1131,7 @@ func (t *Table[T]) SetSelectionMap(selMap map[tid.TID]bool) {
 
 func copySelMap(selMap map[tid.TID]bool) map[tid.TID]bool {
 	result := make(map[tid.TID]bool, len(selMap))
-	for k, v := range selMap {
-		result[k] = v
-	}
+	maps.Copy(result, selMap)
 	return result
 }
 
@@ -1627,50 +1639,60 @@ func (t *Table[T]) applyFilter(row T, filter func(row T) bool) {
 
 // InstallDragSupport installs default drag support into a table. This will chain a function to any existing
 // MouseDragCallback.
-func (t *Table[T]) InstallDragSupport(svg *SVG, dragKey, singularName, pluralName string) {
+func (t *Table[T]) InstallDragSupport(svg *SVG, dataType *uti.DataType, singularName, pluralName string) {
 	orig := t.MouseDragCallback
-	t.MouseDragCallback = func(where geom.Point, button int, mod Modifiers) bool {
-		if orig != nil && orig(where, button, mod) {
+	t.MouseDragCallback = func(where geom.Point, button int, mods mod.Modifiers) bool {
+		if orig != nil && orig(where, button, mods) {
 			return true
 		}
-		if button == ButtonLeft && t.HasSelection() && t.IsDragGesture(where) {
+		if dragTableData == nil && button == ButtonLeft && t.HasSelection() && t.IsDragGesture(where) {
 			data := &TableDragData[T]{
 				Table: t,
 				Rows:  t.SelectedRows(true),
 			}
 			drawable := NewTableDragDrawable(data, svg, singularName, pluralName)
 			size := drawable.LogicalSize()
-			t.StartDataDrag(&DragData{
-				Data:     map[string]any{dragKey: data},
-				Drawable: drawable,
-				Ink:      t.OnBackgroundInk,
-				Offset:   geom.NewPoint(0, -size.Height/2),
+			img, err := NewImageFromDrawing(int(size.Width), int(size.Height), 144, func(c *Canvas) {
+				drawable.DrawInRect(c, geom.Rect{Size: size}, nil, nil)
+			})
+			if err != nil {
+				errs.Log(err)
+				return true
+			}
+			where.X -= size.Width / 2
+			where.Y -= size.Height / 2
+			dragTableData = data
+			t.StartDrag(img, where, func() { dragTableData = nil }, drag.Copy|drag.Move, drag.Data{
+				Type: dataType,
+				Data: []byte{0},
 			})
 		}
-		return false
+		return true
 	}
 }
 
-// InstallDropSupport installs default drop support into a table. This will replace any existing DataDragOverCallback,
-// DataDragExitCallback, and DataDragDropCallback functions. It will also chain a function to any existing
-// DrawOverCallback. The shouldMoveDataCallback is called when a drop is about to occur to determine if the data should
-// be moved (i.e. removed from the source) or copied to the destination. The willDropCallback is called before the
-// actual data changes are made, giving an opportunity to start an undo event, which should be returned. The
-// didDropCallback is called after data changes are made and is passed the undo event (if any) returned by the
-// willDropCallback, so that the undo event can be completed and posted.
-func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dragKey string, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
+// InstallDropSupport installs default drop support into a table. This will replace any existing CanAcceptDropCallback,
+// DragEnteredCallback, DragUpdatedCallback, DragExitedCallback, and DropCallback functions. It will also chain a
+// function to any existing DrawOverCallback. The shouldMoveDataCallback is called when a drop is about to occur to
+// determine if the data should be moved (i.e. removed from the source) or copied to the destination. The
+// willDropCallback is called before the actual data changes are made, giving an opportunity to start an undo event,
+// which should be returned. The didDropCallback is called after data changes are made and is passed the undo event (if
+// any) returned by the willDropCallback, so that the undo event can be completed and posted.
+func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dataType *uti.DataType, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
 	drop := &TableDrop[T, U]{
 		Table:                  t,
-		DragKey:                dragKey,
+		DataType:               dataType,
 		originalDrawOver:       t.DrawOverCallback,
 		shouldMoveDataCallback: shouldMoveDataCallback,
 		willDropCallback:       willDropCallback,
 		didDropCallback:        didDropCallback,
 	}
-	t.DataDragOverCallback = drop.DataDragOverCallback
-	t.DataDragExitCallback = drop.DataDragExitCallback
-	t.DataDragDropCallback = drop.DataDragDropCallback
 	t.DrawOverCallback = drop.DrawOverCallback
+	t.CanAcceptDropCallback = drop.CanAcceptDropCallback
+	t.DragEnteredCallback = drop.DragEnterCallback
+	t.DragUpdatedCallback = drop.DragUpdatedCallback
+	t.DragExitedCallback = drop.DragExitCallback
+	t.DropCallback = drop.DropCallback
 	return drop
 }
 

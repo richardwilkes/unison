@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
@@ -23,6 +22,10 @@ import (
 )
 
 var (
+	initTermLock                      sync.Mutex
+	initialized                       bool
+	initializing                      bool
+	terminating                       bool
 	redrawSet                         = make(map[*Window]struct{})
 	startupFinishedCallback           func()
 	openFilesCallback                 func([]string) //nolint:unused // Not all platforms use this
@@ -31,8 +34,9 @@ var (
 	quitAfterLastWindowClosedCallback func() bool
 	allowQuitCallback                 func() bool
 	quittingCallback                  func()
-	glfwInited                        atomic.Bool
+	platformInited                    atomic.Bool
 	noGlobalMenuBar                   bool
+	noPlatformFileDialogs             bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
 	currentThemeMode                  = thememode.Auto
@@ -62,7 +66,7 @@ func StartupFinishedCallback(f func()) StartupOption {
 }
 
 // OpenFilesCallback will cause f to be called when the application is asked to open one or more files by the OS or an
-// external application. By default, nothing is done with the request.
+// external application. By default, nothing is done with the request. Note that only macOS supports this feature.
 func OpenFilesCallback(f func(urls []string)) StartupOption {
 	return func(_ startupOption) error {
 		openFilesCallback = f
@@ -79,8 +83,8 @@ func ThemeChangedCallback(f func()) StartupOption {
 	}
 }
 
-// RecoveryCallback will cause f to be called should a task invoked via task.InvokeTask() or task.InvokeTaskAfter()
-// panic. If no recovery callback is set, the panic will be logged via errs.Log(err).
+// RecoveryCallback will cause f to be called should a task invoked via task.InvokeTask(), task.InvokeTaskAfter(), or
+// SafeCall() panic. If no recovery callback is set, the panic will be logged via errs.Log(err).
 func RecoveryCallback(f func(error)) StartupOption {
 	return func(_ startupOption) error {
 		recoveryCallback = f
@@ -123,34 +127,72 @@ func NoGlobalMenuBar() StartupOption {
 	}
 }
 
+// NoPlatformFileDialogs will disable platform-specific file dialogs on platforms that normally use them.
+func NoPlatformFileDialogs() StartupOption {
+	return func(_ startupOption) error {
+		noPlatformFileDialogs = true
+		return nil
+	}
+}
+
 // Start the application. This function does NOT return. While some calls may be safe to make, it should be assumed no
 // calls into unison can be made prior to Start() being called unless explicitly stated otherwise.
 func Start(options ...StartupOption) {
+	AttachConsole()
 	for _, option := range options {
 		xos.ExitIfErr(option(startupOption{}))
 	}
-	glfw.InitHint(glfw.CocoaMenubar, glfw.False)
-	glfw.InitHint(glfw.CocoaChdirResources, glfw.False)
-	xos.ExitIfErr(glfw.Init())
+	xos.ExitIfErr(start())
 	xos.RunAtExit(quitting)
 	xos.RunAtExit(func() {
 		quitLock.Lock()
 		calledAtExit = true
 		quitLock.Unlock()
 	})
-	glfw.WindowHint(glfw.ContextVersionMajor, 3)
-	glfw.WindowHint(glfw.ContextVersionMinor, 2)
-	platformEarlyInit()
-	glfwInited.Store(true)
+	platformInited.Store(true)
 	InvokeTask(finishStartup)
 	for {
 		processEvents()
 	}
 }
 
+func start() error {
+	initTermLock.Lock()
+	if initialized {
+		initTermLock.Unlock()
+		return errs.New("already initialized")
+	}
+	if initializing {
+		initTermLock.Unlock()
+		return errs.New("initialization already in progress")
+	}
+	if terminating {
+		initTermLock.Unlock()
+		return errs.New("termination in progress")
+	}
+	initializing = true
+	initTermLock.Unlock()
+	var err error
+	defer func() {
+		initTermLock.Lock()
+		initializing = false
+		initialized = err == nil
+		initTermLock.Unlock()
+	}()
+	err = apiBeginStartup()
+	return err
+}
+
 func processEvents() {
-	glfw.WaitEvents()
-	processNextTask(uiTaskRecovery)
+	apiWaitEvents()
+	finishProcessingEvents()
+}
+
+// finishProcessingEvents runs the next pending UI task and draws any windows that have been marked for redraw. It is
+// called after each pass of event processing in the main loop, as well as in nested event loops, such as the one used
+// for the source side of drag & drop on Linux.
+func finishProcessingEvents() {
+	processNextTask()
 	if len(redrawSet) > 0 {
 		set := redrawSet
 		redrawSet = make(map[*Window]struct{})
@@ -167,11 +209,9 @@ func processEvents() {
 func finishStartup() {
 	skiaColorspace = skia.ColorSpaceNewSRGB()
 	RebuildDynamicColors()
-	platformLateInit()
-	if startupFinishedCallback != nil {
-		xos.SafeCall(startupFinishedCallback, nil)
-	}
-	platformFinishedStartup()
+	apiLateInit()
+	SafeCall(startupFinishedCallback)
+	apiFinalFinishStartup()
 }
 
 // ThemeChanged marks dynamic colors for rebuilding, calls any installed theme change callback, and then redraws all
@@ -179,26 +219,16 @@ func finishStartup() {
 // on demand.
 func ThemeChanged() {
 	MarkDynamicColorsForRebuild()
-	if themeChangedCallback != nil {
-		xos.SafeCall(themeChangedCallback, nil)
-	}
+	SafeCall(themeChangedCallback)
 	for _, wnd := range Windows() {
 		wnd.MarkForRedraw()
-	}
-}
-
-func uiTaskRecovery(err error) {
-	if recoveryCallback != nil {
-		xos.SafeCall(func() { recoveryCallback(err) }, nil)
-	} else {
-		errs.Log(err)
 	}
 }
 
 func quitAfterLastWindowClosed() bool {
 	if quitAfterLastWindowClosedCallback != nil {
 		quit := true
-		xos.SafeCall(func() { quit = quitAfterLastWindowClosedCallback() }, nil)
+		SafeCall(func() { quit = quitAfterLastWindowClosedCallback() })
 		return quit
 	}
 	return true
@@ -207,7 +237,7 @@ func quitAfterLastWindowClosed() bool {
 func allowQuit() bool {
 	if allowQuitCallback != nil {
 		allow := true
-		xos.SafeCall(func() { allow = allowQuitCallback() }, nil)
+		SafeCall(func() { allow = allowQuitCallback() })
 		return allow
 	}
 	return true
@@ -218,19 +248,45 @@ func quitting() {
 	callback := quittingCallback
 	quittingCallback = nil
 	quitLock.Unlock()
-	if callback != nil {
-		xos.SafeCall(callback, nil)
-	}
-	// xos.Exit() is called here once to ensure registered exit hooks are actually called, as OS's may directly
-	// terminate the app after returning from this function.
+	SafeCall(callback)
 	quitLock.Lock()
 	calledExit := calledAtExit
 	calledAtExit = true
 	quitLock.Unlock()
 	if !calledExit {
+		// xos.Exit() is called here once to ensure registered exit hooks are actually called, as OS's may directly
+		// terminate the app after returning from this function.
 		xos.Exit(0)
 	}
-	glfw.Terminate()
+	if err := finishQuit(); err != nil {
+		errs.Log(err)
+	}
+}
+
+func finishQuit() error {
+	initTermLock.Lock()
+	if terminating {
+		initTermLock.Unlock()
+		return errs.New("termination already in progress")
+	}
+	if !initialized {
+		initTermLock.Unlock()
+		return errs.New("initialization has not been performed")
+	}
+	terminating = true
+	initTermLock.Unlock()
+	defer func() {
+		initTermLock.Lock()
+		terminating = false
+		initTermLock.Unlock()
+	}()
+	for len(windowList) != 0 {
+		windowList[len(windowList)-1].destroy()
+	}
+	for len(cursorList) != 0 {
+		cursorList[len(cursorList)-1].Destroy()
+	}
+	return apiTerminate()
 }
 
 // AttemptQuit initiates the termination sequence.
@@ -240,15 +296,22 @@ func AttemptQuit() {
 	}
 }
 
-// Beep plays the system beep sound.
-func Beep() {
-	platformBeep()
+func closeAllWindows() { //nolint:unused // Not all platforms use this
+	var last *Window
+	for len(windowList) > 0 {
+		windowList[0].requestClose()
+		if len(windowList) != 0 {
+			if windowList[0] == last {
+				break
+			}
+			last = windowList[0]
+		}
+	}
 }
 
-// IsColorModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
-// platforms that return false from this function, thememode.Auto is the same as thememode.Light.
-func IsColorModeTrackingPossible() bool {
-	return platformIsDarkModeTrackingPossible()
+// Beep plays the system beep sound.
+func Beep() {
+	apiBeep()
 }
 
 // CurrentThemeMode returns the current theme mode state.
@@ -265,6 +328,12 @@ func SetThemeMode(mode thememode.Enum) {
 	}
 }
 
+// IsColorModeTrackingPossible returns true if the underlying platform can provide the current dark mode state. On those
+// platforms that return false from this function, thememode.Auto is the same as thememode.Light.
+func IsColorModeTrackingPossible() bool {
+	return apiIsColorModeTrackingPossible()
+}
+
 // IsDarkModeEnabled returns true if the OS is currently using a "dark mode".
 func IsDarkModeEnabled() bool {
 	switch currentThemeMode {
@@ -275,7 +344,7 @@ func IsDarkModeEnabled() bool {
 	default:
 		if needPlatformDarkModeUpdate {
 			needPlatformDarkModeUpdate = false
-			platformDarkModeEnabled = platformIsDarkModeEnabled()
+			platformDarkModeEnabled = apiIsDarkModeEnabled()
 		}
 		return platformDarkModeEnabled
 	}
@@ -284,17 +353,11 @@ func IsDarkModeEnabled() bool {
 // DoubleClickParameters returns the maximum delay between clicks and the maximum pixel drift allowed to register as a
 // double-click.
 func DoubleClickParameters() (maxDelay time.Duration, maxMouseDrift float32) {
-	return platformDoubleClickInterval(), 5
+	return apiDoubleClickInterval(), 5
 }
 
 // DragGestureParameters returns the minimum delay before mouse movement should be recognized as a drag as well as the
 // minimum pixel drift required to trigger a drag.
 func DragGestureParameters() (minDelay time.Duration, minMouseDrift float32) {
 	return 250 * time.Millisecond, 5
-}
-
-func postEmptyEvent() {
-	if glfwInited.Load() {
-		glfw.PostEmptyEvent()
-	}
 }

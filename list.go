@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -16,7 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/collection/bitset"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -278,7 +278,9 @@ func (l *List[T]) RowRect(row int) geom.Rect {
 func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	rect := l.ContentRect(false)
 	intersect := rect.Intersect(dirty)
-	canvas.DrawRect(intersect, l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill))
+	backgroundPaint := l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(intersect, backgroundPaint)
 	row, y := l.rowAt(dirty.Y)
 	if row >= 0 {
 		cellHeight := xmath.Ceil(l.Factory.CellHeight())
@@ -295,7 +297,9 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			cell.SetFrameRect(cellRect)
 			y += cellRect.Height
 			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
-			canvas.DrawRect(r, bg.Paint(canvas, r, paintstyle.Fill))
+			paint := bg.Paint(canvas, r, paintstyle.Fill)
+			canvas.DrawRect(r, paint)
+			paint.Dispose()
 			canvas.Save()
 			tl := cellRect.Point
 			dirty.Point = dirty.Point.Sub(tl)
@@ -311,7 +315,7 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mod Modifiers) bool {
+func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods mod.Modifiers) bool {
 	l.suppressScroll = true
 	l.RequestFocus()
 	l.suppressScroll = false
@@ -320,7 +324,7 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mod Modi
 	l.wasDragged = false
 	if index, _ := l.rowAt(where.Y); index >= 0 {
 		switch {
-		case mod.DiscontiguousSelectionDown():
+		case mods.DiscontiguousSelectionDown():
 			if l.allowMultiple {
 				l.Selection.Flip(index)
 			} else {
@@ -331,7 +335,7 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mod Modi
 				}
 			}
 			l.anchor = index
-		case mod.ShiftDown():
+		case mods.ShiftDown():
 			if l.allowMultiple {
 				if l.anchor != -1 {
 					l.Selection.SetRange(l.anchor, index)
@@ -347,7 +351,7 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mod Modi
 			l.lastSel = index
 			l.anchor = index
 			if clickCount == 2 && l.DoubleClickCallback != nil {
-				xos.SafeCall(l.DoubleClickCallback, nil)
+				SafeCall(l.DoubleClickCallback)
 				return true
 			}
 		default:
@@ -364,7 +368,7 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mod Modi
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mod Modifiers) bool {
+func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mods mod.Modifiers) bool {
 	if l.pressed {
 		l.wasDragged = true
 		l.Selection.Copy(l.savedSelection)
@@ -374,9 +378,9 @@ func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mod Modifiers) bool 
 					l.anchor = index
 				}
 				switch {
-				case mod.DiscontiguousSelectionDown():
+				case mods.DiscontiguousSelectionDown():
 					l.Selection.FlipRange(l.anchor, index)
-				case mod.ShiftDown():
+				case mods.ShiftDown():
 					l.Selection.SetRange(l.anchor, index)
 				default:
 					l.Selection.Reset()
@@ -396,7 +400,7 @@ func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mod Modifiers) bool 
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ Modifiers) bool {
+func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
 		if !l.wasDragged && l.lastSel != -1 {
@@ -406,7 +410,7 @@ func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ Modifiers) bool {
 			l.MarkForRedraw()
 		}
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
-			xos.SafeCall(l.NewSelectionCallback, nil)
+			SafeCall(l.NewSelectionCallback)
 		}
 	}
 	l.savedSelection = nil
@@ -414,10 +418,10 @@ func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
-	if IsControlAction(keyCode, mod) {
+func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
+	if IsControlAction(keyCode, mods) {
 		if l.DoubleClickCallback != nil && l.Selection.Count() > 0 {
-			xos.SafeCall(l.DoubleClickCallback, nil)
+			SafeCall(l.DoubleClickCallback)
 		}
 		return true
 	}
@@ -427,37 +431,26 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 		if l.Selection.Count() == 0 {
 			first = len(l.rows) - 1
 		} else {
-			first = l.Selection.FirstSet() - 1
-			if first < 0 {
-				first = 0
-			}
+			first = max(l.Selection.FirstSet()-1, 0)
 		}
-		l.Select(mod.ShiftDown(), first)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		l.Select(mods.ShiftDown(), first)
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(first))
 	case KeyDown:
 		last := l.Selection.LastSet() + 1
 		if last >= len(l.rows) {
 			last = len(l.rows) - 1
 		}
-		l.Select(mod.ShiftDown(), last)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		l.Select(mods.ShiftDown(), last)
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(last))
 	case KeyHome:
-		l.Select(mod.ShiftDown(), 0)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		l.Select(mods.ShiftDown(), 0)
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(0))
 	case KeyEnd:
-		l.Select(mod.ShiftDown(), len(l.rows)-1)
-		if l.NewSelectionCallback != nil {
-			xos.SafeCall(l.NewSelectionCallback, nil)
-		}
+		l.Select(mods.ShiftDown(), len(l.rows)-1)
+		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(len(l.rows) - 1))
 	default:
 		return false

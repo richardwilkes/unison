@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/invertstyle"
@@ -19,7 +20,9 @@ import (
 
 // ColorFilter is called with source colors and return new colors, which are then passed onto the next stage.
 type ColorFilter struct {
-	filter skia.ColorFilter
+	filter      skia.ColorFilter
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newColorFilter(filter skia.ColorFilter) *ColorFilter {
@@ -27,11 +30,7 @@ func newColorFilter(filter skia.ColorFilter) *ColorFilter {
 		return nil
 	}
 	f := &ColorFilter{filter: filter}
-	runtime.AddCleanup(f, func(sf skia.ColorFilter) {
-		ReleaseOnUIThread(func() {
-			skia.ColorFilterUnref(sf)
-		})
-	}, f.filter)
+	f.cleanup = newSkiaCleanup(f, filter, skia.ColorFilterUnref)
 	return f
 }
 
@@ -40,6 +39,15 @@ func (f *ColorFilter) filterOrNil() skia.ColorFilter {
 		return nil
 	}
 	return f.filter
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (f *ColorFilter) Dispose() {
+	if f == nil {
+		return
+	}
+	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.ColorFilterUnref)
 }
 
 // NewBlendColorFilter returns a new blend color filter.
@@ -92,37 +100,40 @@ func NewAlphaFilter(alpha float32) *ColorFilter {
 	})
 }
 
-var grayscale30Filter *ColorFilter
+var (
+	alpha30Filter         *ColorFilter
+	alpha30FilterOnce     sync.Once
+	alpha50Filter         *ColorFilter
+	alpha50FilterOnce     sync.Once
+	grayscale30Filter     *ColorFilter
+	grayscale30FilterOnce sync.Once
+)
+
+// Alpha30Filter returns a ColorFilter that transforms colors by applying a 30% alpha blend.
+func Alpha30Filter() *ColorFilter {
+	alpha30FilterOnce.Do(func() {
+		alpha30Filter = NewAlphaFilter(0.3)
+	})
+	return alpha30Filter
+}
+
+// Alpha50Filter returns a ColorFilter that transforms colors by applying a 50% alpha blend.
+func Alpha50Filter() *ColorFilter {
+	alpha50FilterOnce.Do(func() {
+		alpha50Filter = NewAlphaFilter(0.5)
+	})
+	return alpha50Filter
+}
 
 // Grayscale30Filter returns a ColorFilter that transforms colors to grayscale and applies a 30% alpha blend.
 func Grayscale30Filter() *ColorFilter {
-	if grayscale30Filter == nil {
+	grayscale30FilterOnce.Do(func() {
 		grayscale30Filter = NewMatrixColorFilter([]float32{
 			0.2126, 0.7152, 0.0722, 0, 0,
 			0.2126, 0.7152, 0.0722, 0, 0,
 			0.2126, 0.7152, 0.0722, 0, 0,
 			0, 0, 0, 0.3, 0,
 		})
-	}
+	})
 	return grayscale30Filter
-}
-
-var alpha30Filter *ColorFilter
-
-// Alpha30Filter returns a ColorFilter that transforms colors by applying a 30% alpha blend.
-func Alpha30Filter() *ColorFilter {
-	if alpha30Filter == nil {
-		alpha30Filter = NewAlphaFilter(0.3)
-	}
-	return alpha30Filter
-}
-
-var alpha50Filter *ColorFilter
-
-// Alpha50Filter returns a ColorFilter that transforms colors by applying a 50% alpha blend.
-func Alpha50Filter() *ColorFilter {
-	if alpha50Filter == nil {
-		alpha50Filter = NewAlphaFilter(0.5)
-	}
-	return alpha50Filter
 }

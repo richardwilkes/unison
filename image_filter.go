@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/colorchannel"
@@ -20,7 +21,9 @@ import (
 
 // ImageFilter performs a transformation on the image before drawing it.
 type ImageFilter struct {
-	filter skia.ImageFilter
+	filter      skia.ImageFilter
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newImageFilter(filter skia.ImageFilter) *ImageFilter {
@@ -28,11 +31,7 @@ func newImageFilter(filter skia.ImageFilter) *ImageFilter {
 		return nil
 	}
 	f := &ImageFilter{filter: filter}
-	runtime.AddCleanup(f, func(sf skia.ImageFilter) {
-		ReleaseOnUIThread(func() {
-			skia.ImageFilterUnref(sf)
-		})
-	}, f.filter)
+	f.cleanup = newSkiaCleanup(f, filter, skia.ImageFilterUnref)
 	return f
 }
 
@@ -41,6 +40,15 @@ func (f *ImageFilter) filterOrNil() skia.ImageFilter {
 		return nil
 	}
 	return f.filter
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (f *ImageFilter) Dispose() {
+	if f == nil {
+		return
+	}
+	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.ImageFilterUnref)
 }
 
 // NewArithmeticImageFilter returns a new arithmetic image filter. Each output pixel is the result of combining the

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,7 +11,9 @@ package main
 
 import (
 	_ "embed"
+	"flag"
 
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xflag"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xslog"
@@ -26,6 +28,8 @@ func main() {
 	xos.CopyrightHolder = "Richard A. Wilkes"
 	xos.AppIdentifier = "com.trollworks.unison.example"
 	xflag.SetUsage(nil, "Demo of some of the features of Unison", "")
+	noFileDialogs := flag.Bool("file-dialogs", false, i18n.Text("Use internal file dialogs rather than the platform's"))
+	noGlobalMenuBar := flag.Bool("menubar", false, i18n.Text("Disable the global menu bar on platforms that support it"))
 
 	unison.AttachConsole()
 
@@ -33,8 +37,16 @@ func main() {
 	logCfg.AddFlags()
 	xflag.Parse()
 
-	unison.Start(unison.StartupFinishedCallback(func() {
-		_, err := demo.NewDemoWindow(unison.PrimaryDisplay().Usable.Point)
+	var options []unison.StartupOption
+	options = append(options, unison.StartupFinishedCallback(func() {
+		_, err := demo.NewDemoWindow()
 		xos.ExitIfErr(err)
-	})) // Never returns
+	}))
+	if *noFileDialogs {
+		options = append(options, unison.NoPlatformFileDialogs())
+	}
+	if *noGlobalMenuBar {
+		options = append(options, unison.NoGlobalMenuBar())
+	}
+	unison.Start(options...) // Never returns
 }

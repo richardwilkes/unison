@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -116,9 +117,7 @@ func (s *ScrollBar) SetRange(value, extent, maximum float32) {
 		s.extent = extent
 		s.maximum = maximum
 		s.MarkForRedraw()
-		if s.ChangedCallback != nil {
-			s.ChangedCallback()
-		}
+		SafeCall(s.ChangedCallback)
 	}
 }
 
@@ -166,16 +165,19 @@ func (s *ScrollBar) DefaultSizes(_ geom.Size) (minSize, prefSize, maxSize geom.S
 func (s *ScrollBar) DefaultDraw(gc *Canvas, _ geom.Rect) {
 	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
 		p := s.ThumbInk.Paint(gc, thumb, paintstyle.Fill)
+		defer p.Dispose()
 		if !s.overThumb {
 			p.SetColorFilter(Alpha30Filter())
 		}
 		gc.DrawRoundedRect(thumb, s.CornerRadius, p)
-		gc.DrawRoundedRect(thumb, s.CornerRadius, s.EdgeInk.Paint(gc, thumb, paintstyle.Stroke))
+		edgePaint := s.EdgeInk.Paint(gc, thumb, paintstyle.Stroke)
+		defer edgePaint.Dispose()
+		gc.DrawRoundedRect(thumb, s.CornerRadius, edgePaint)
 	}
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *ScrollBar) DefaultMouseDown(where geom.Point, _, _ int, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDown(where geom.Point, _, _ int, _ mod.Modifiers) bool {
 	thumb := s.Thumb()
 	if !where.In(thumb) {
 		s.dragOffset = 0
@@ -194,14 +196,14 @@ func (s *ScrollBar) DefaultMouseDown(where geom.Point, _, _ int, _ Modifiers) bo
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *ScrollBar) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	s.trackingThumb = false
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseEnter provides the default mouse enter handling.
-func (s *ScrollBar) DefaultMouseEnter(where geom.Point, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseEnter(where geom.Point, _ mod.Modifiers) bool {
 	if !s.trackingThumb {
 		s.checkOverThumb(where)
 	}
@@ -218,13 +220,13 @@ func (s *ScrollBar) DefaultMouseExit() bool {
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (s *ScrollBar) DefaultMouseMove(where geom.Point, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseMove(where geom.Point, _ mod.Modifiers) bool {
 	s.checkOverThumb(where)
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *ScrollBar) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (s *ScrollBar) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	s.adjustValueForPoint(where)
 	s.MarkForRedraw()
 	return true

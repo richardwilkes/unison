@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -15,9 +15,9 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/slant"
 )
@@ -147,11 +147,13 @@ func (p *PopupMenu[T]) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		!p.Enabled())
 	rect.Width += triWidth + p.HMargin/2
 	path := NewPath()
+	defer path.Dispose()
 	path.MoveTo(geom.NewPoint(rect.Right(), rect.Y+(rect.Height-triHeight)/2))
 	path.LineTo(geom.NewPoint(rect.Right()-triWidth, rect.Y+(rect.Height-triHeight)/2))
 	path.LineTo(geom.NewPoint(rect.Right()-triWidth/2, rect.Y+(rect.Height-triHeight)/2+triHeight))
 	path.Close()
 	paint := p.OnBackgroundInk.Paint(canvas, rect, paintstyle.Fill)
+	defer paint.Dispose()
 	if !p.Enabled() {
 		paint.SetColorFilter(Grayscale30Filter())
 	}
@@ -195,7 +197,7 @@ func (p *PopupMenu[T]) Text() string {
 // Click performs any animation associated with a click and triggers the popup menu to appear.
 func (p *PopupMenu[T]) Click() {
 	if p.WillShowMenuCallback != nil {
-		xos.SafeCall(func() { p.WillShowMenuCallback(p) }, nil)
+		SafeCall(func() { p.WillShowMenuCallback(p) })
 	}
 	hasItem := false
 	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
@@ -223,7 +225,7 @@ func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]
 			return entry.enabled
 		}, func(_ MenuItem) {
 			if p.ChoiceMadeCallback != nil {
-				p.ChoiceMadeCallback(p, index, p.items[index].item)
+				SafeCall(func() { p.ChoiceMadeCallback(p, index, p.items[index].item) })
 			}
 		})
 	if p.selection[index] {
@@ -410,20 +412,20 @@ func (p *PopupMenu[T]) SelectIndex(index ...int) {
 	if !slices.Equal(indexes, newIndexes) {
 		p.MarkForRedraw()
 		if p.SelectionChangedCallback != nil {
-			p.SelectionChangedCallback(p)
+			SafeCall(func() { p.SelectionChangedCallback(p) })
 		}
 	}
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (p *PopupMenu[T]) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	p.pressed = true
 	p.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag is the default implementation of the MouseDragCallback.
-func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if p.pressed != where.In(p.ContentRect(true)) {
 		p.pressed = !p.pressed
 		p.MarkForRedraw()
@@ -432,7 +434,7 @@ func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bo
 }
 
 // DefaultMouseUp is the default implementation of the MouseUpCallback.
-func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if where.In(p.ContentRect(true)) {
 		p.Click()
 	}
@@ -442,8 +444,8 @@ func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
-	if IsControlAction(keyCode, mod) {
+func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
+	if IsControlAction(keyCode, mods) {
 		p.Click()
 		return true
 	}

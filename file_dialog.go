@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -22,6 +22,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 const pathSeparator = string(os.PathSeparator)
@@ -299,14 +300,14 @@ func (d *fileDialog) fileListDoubleClickHandler() {
 	}
 }
 
-func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
-	if mod == NoModifiers && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
+func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	if mods == mod.None && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
 		if d.fileNameField.Text() != "" {
 			d.dialog.StopModal(ModalResponseOK)
 		}
 		return true
 	}
-	return d.fileNameField.DefaultKeyDown(keyCode, mod, repeat)
+	return d.fileNameField.DefaultKeyDown(keyCode, mods, repeat)
 }
 
 func (d *fileDialog) fileNameFieldModified(_, _ *FieldState) {

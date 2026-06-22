@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/patheffect"
@@ -20,7 +21,9 @@ import (
 
 // PathEffect affects the geometry of a drawing primitive before it is transformed by the canvas' matrix and drawn.
 type PathEffect struct {
-	effect skia.PathEffect
+	effect      skia.PathEffect
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newPathEffect(effect skia.PathEffect) *PathEffect {
@@ -28,11 +31,7 @@ func newPathEffect(effect skia.PathEffect) *PathEffect {
 		return nil
 	}
 	e := &PathEffect{effect: effect}
-	runtime.AddCleanup(e, func(se skia.PathEffect) {
-		ReleaseOnUIThread(func() {
-			skia.PathEffectUnref(se)
-		})
-	}, e.effect)
+	e.cleanup = newSkiaCleanup(e, effect, skia.PathEffectUnref)
 	return e
 }
 
@@ -41,6 +40,15 @@ func (e *PathEffect) effectOrNil() skia.PathEffect {
 		return nil
 	}
 	return e.effect
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (e *PathEffect) Dispose() {
+	if e == nil {
+		return
+	}
+	disposeSkiaHandle(&e.disposeOnce, e.cleanup, &e.effect, skia.PathEffectUnref)
 }
 
 // NewComposePathEffect creates a new PathEffect that combines two PathEffects.

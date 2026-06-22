@@ -1,0 +1,88 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-26-intel, macos-26, windows-2022, windows-11-arm]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libx11-dev \
+            libgl1-mesa-dev \
+            libfontconfig1-dev \
+            libfreetype-dev
+
+      # The default mingw gcc on the Windows/ARM64 runner is an x86_64 build that
+      # emits x86 assembly, so cgo fails to assemble runtime/cgo's gcc_arm64.S.
+      # Install a native aarch64 llvm-mingw toolchain and point cgo's CC at it.
+      - name: Install Windows ARM64 toolchain
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        env:
+          LLVM_MINGW_VERSION: "20260616"
+        run: |
+          name="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-aarch64"
+          curl -fsSL -o "$RUNNER_TEMP/$name.zip" \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/$name.zip"
+          7z x "$RUNNER_TEMP/$name.zip" -o"$RUNNER_TEMP" >/dev/null
+          echo "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH"
+          echo "CC=aarch64-w64-mingw32-gcc" >> "$GITHUB_ENV"
+
+      # The race detector isn't supported on windows/arm64, so run the tests
+      # without it there (--lint --test instead of --all).
+      - name: Build
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ] && [ "$RUNNER_ARCH" = "ARM64" ]; then
+            ./build.sh --lint --test
+          else
+            ./build.sh --all
+          fi
+
+      # Build the example app, naming the binary after the target platform and
+      # architecture (e.g. example-macos-arm64, example-windows-amd64.exe).
+      - name: Build example
+        id: example
+        run: |
+          goos=$(go env GOOS)
+          goarch=$(go env GOARCH)
+          platform=$goos
+          [ "$goos" = "darwin" ] && platform=macos
+          name="example-$platform-$goarch"
+          [ "$goos" = "windows" ] && name="$name.exe"
+          go build -o "dist/$name" ./cmd/example
+          echo "artifact_name=example-$platform-$goarch" >> "$GITHUB_OUTPUT"
+
+      - name: Upload example artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.example.outputs.artifact_name }}
+          path: dist/
+          if-no-files-found: error

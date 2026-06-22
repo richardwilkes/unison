@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,12 +11,14 @@ package unison
 
 import (
 	"strings"
+
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // KeyBinding holds a key code and/or modifier.
 type KeyBinding struct {
 	KeyCode   KeyCode
-	Modifiers Modifiers
+	Modifiers mod.Modifiers
 }
 
 // KeyBindingFromKey extracts a KeyBinding from a string created via a call to .Key().
@@ -27,11 +29,11 @@ func KeyBindingFromKey(key string) KeyBinding {
 		if k := KeyCodeFromKey(parts[0]); k != 0 {
 			return KeyBinding{KeyCode: k}
 		}
-		return KeyBinding{Modifiers: ModifiersFromKey(parts[0])}
+		return KeyBinding{Modifiers: mod.FromKey(parts[0])}
 	case 2:
 		return KeyBinding{
 			KeyCode:   KeyCodeFromKey(parts[1]),
-			Modifiers: ModifiersFromKey(parts[0]),
+			Modifiers: mod.FromKey(parts[0]),
 		}
 	default:
 		return KeyBinding{}
@@ -68,5 +70,5 @@ func (b KeyBinding) String() string {
 
 // IsZero implements json.isZero.
 func (b KeyBinding) IsZero() bool {
-	return b.Modifiers == 0 && b.KeyCode.IsZero()
+	return b.Modifiers == 0 && b.KeyCode == 0
 }

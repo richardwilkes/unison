@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -14,8 +14,8 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/side"
 )
@@ -114,7 +114,7 @@ func (mi *menuItem) Menu() Menu {
 func (mi *menuItem) Index() int {
 	if mi.menu != nil {
 		count := mi.menu.Count()
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if mi.IsSame(mi.menu.ItemAtIndex(i)) {
 				return i
 			}
@@ -177,14 +177,14 @@ func (mi *menuItem) newPanel() *Panel {
 	return mi.panel
 }
 
-func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	if mi.subMenu != nil {
 		mi.showSubMenu()
 	}
 	return true
 }
 
-func (mi *menuItem) mouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (mi *menuItem) mouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if mi.subMenu == nil && where.In(mi.panel.ContentRect(true)) {
 		mi.execute()
 	}
@@ -221,7 +221,7 @@ func (mi *menuItem) scrollIntoView() {
 	mi.panel.ScrollIntoView()
 }
 
-func (mi *menuItem) mouseEnter(_ geom.Point, _ Modifiers) bool {
+func (mi *menuItem) mouseEnter(_ geom.Point, _ mod.Modifiers) bool {
 	if mi.menu != nil {
 		for _, item := range mi.menu.items {
 			if item.over {
@@ -238,7 +238,7 @@ func (mi *menuItem) mouseEnter(_ geom.Point, _ Modifiers) bool {
 	return false
 }
 
-func (mi *menuItem) mouseMove(_ geom.Point, _ Modifiers) bool {
+func (mi *menuItem) mouseMove(_ geom.Point, _ mod.Modifiers) bool {
 	stopAt := mi.menu
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu
@@ -266,7 +266,7 @@ func (mi *menuItem) sizer(hint geom.Size) (minSize, prefSize, maxSize geom.Size)
 		if !mi.isRoot() {
 			prefSize.Width += (DefaultMenuItemTheme.KeyFont.Baseline() + 2) * 2
 		}
-		if !mi.keyBinding.KeyCode.IsZero() {
+		if mi.keyBinding.KeyCode != 0 {
 			keys := mi.keyBinding.String()
 			if keys != "" {
 				size := NewText(keys, &TextDecoration{
@@ -291,7 +291,9 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 		fg = DefaultMenuItemTheme.OnSelectionColor
 		bg = DefaultMenuItemTheme.SelectionColor
 	}
-	gc.DrawRect(rect, bg.Paint(gc, rect, paintstyle.Fill))
+	bgPaint := bg.Paint(gc, rect, paintstyle.Fill)
+	defer bgPaint.Dispose()
+	gc.DrawRect(rect, bgPaint)
 
 	if !mi.enabled {
 		fg = &ColorFilteredInk{
@@ -301,7 +303,9 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 	}
 	rect = mi.panel.ContentRect(false)
 	if mi.isSeparator {
-		gc.DrawLine(rect.Point, geom.NewPoint(rect.Right(), rect.Y), fg.Paint(gc, rect, paintstyle.Fill))
+		separatorPaint := fg.Paint(gc, rect, paintstyle.Fill)
+		gc.DrawLine(rect.Point, geom.NewPoint(rect.Right(), rect.Y), separatorPaint)
+		separatorPaint.Dispose()
 	} else {
 		t := NewText(mi.Title(), &TextDecoration{
 			Font:            DefaultMenuItemTheme.TitleFont,
@@ -326,9 +330,11 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				} else {
 					drawable.SVG = DashSVG
 				}
-				drawable.DrawInRect(gc, r, nil, fg.Paint(gc, r, paintstyle.Fill))
+				statePaint := fg.Paint(gc, r, paintstyle.Fill)
+				drawable.DrawInRect(gc, r, nil, statePaint)
+				statePaint.Dispose()
 			}
-			if !mi.keyBinding.KeyCode.IsZero() {
+			if mi.keyBinding.KeyCode != 0 {
 				keys := mi.keyBinding.String()
 				if keys != "" {
 					t = NewText(keys, &TextDecoration{
@@ -347,7 +353,9 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				SVG:  ChevronRightSVG,
 				Size: geom.NewSize(baseline, baseline),
 			}
-			drawable.DrawInRect(gc, rect, nil, fg.Paint(gc, rect, paintstyle.Fill))
+			chevronPaint := fg.Paint(gc, rect, paintstyle.Fill)
+			drawable.DrawInRect(gc, rect, nil, chevronPaint)
+			chevronPaint.Dispose()
 		}
 	}
 }
@@ -366,7 +374,7 @@ func (mi *menuItem) validate() {
 		mi.enabled = true
 		if mi.validator != nil {
 			mi.enabled = false
-			xos.SafeCall(func() { mi.enabled = mi.validator(mi) }, nil)
+			SafeCall(func() { mi.enabled = mi.validator(mi) })
 		}
 	}
 }
@@ -377,6 +385,6 @@ func (mi *menuItem) execute() {
 	}
 	mi.menu.closeMenuStack()
 	if mi.enabled && mi.handler != nil {
-		xos.SafeCall(func() { mi.handler(mi) }, nil)
+		SafeCall(func() { mi.handler(mi) })
 	}
 }

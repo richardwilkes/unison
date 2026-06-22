@@ -1,0 +1,86 @@
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package unison
+
+import (
+	"image"
+	"log/slog"
+
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/x11"
+	"golang.org/x/image/draw"
+)
+
+type apiNativeCursor = x11.CursorID
+
+func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
+	if scale, err := x11Conn.ContentScale(); err == nil && scale != 1 {
+		logicalSize = logicalSize.Mul(scale)
+		hotSpot = hotSpot.Mul(scale)
+	}
+	logicalWidth := int(logicalSize.Width)
+	logicalHeight := int(logicalSize.Height)
+	if img.Rect.Dx() != logicalWidth || img.Rect.Dy() != logicalHeight {
+		dstRect := image.Rect(0, 0, logicalWidth, logicalHeight)
+		dst := image.NewNRGBA(dstRect)
+		draw.CatmullRom.Scale(dst, dstRect, img, img.Bounds(), draw.Over, nil)
+		img = dst
+	}
+	pm := x11Conn.CreatePixMap(x11.DrawableID(x11Conn.RootWindow()), 32, uint16(logicalWidth), uint16(logicalHeight))
+	if pm == 0 {
+		return &Cursor{}
+	}
+	defer x11Conn.FreePixMap(pm)
+	pix := x11.DrawableID(pm)
+	gc := x11Conn.CreateGC(pix, 0, nil)
+	if gc == 0 {
+		return &Cursor{}
+	}
+	defer x11Conn.FreeGC(gc)
+	x11Conn.PutImage(pix, gc, 0, 0, img)
+	formats := x11Conn.ExtRender.QueryPictFormats()
+	var format x11.PictFormat
+	// Look for ARGB32 format, which is a standard format that is always present.
+	for i := range formats.Formats {
+		f := &formats.Formats[i]
+		if f.Type == x11.PictTypeDirect &&
+			f.Depth == 32 &&
+			f.Direct.RedShift == 16 &&
+			f.Direct.RedMask == 0xff &&
+			f.Direct.GreenShift == 8 &&
+			f.Direct.GreenMask == 0xff &&
+			f.Direct.BlueShift == 0 &&
+			f.Direct.BlueMask == 0xff &&
+			f.Direct.AlphaShift == 24 &&
+			f.Direct.AlphaMask == 0xff {
+			format = f.ID
+			break
+		}
+	}
+	if format == 0 {
+		slog.Error("unable to find the ARGB32 format")
+		return &Cursor{}
+	}
+	picture := x11Conn.ExtRender.CreatePicture(pix, format, 0, nil)
+	if picture == 0 {
+		return &Cursor{}
+	}
+	defer x11Conn.ExtRender.FreePicture(picture)
+	return &Cursor{
+		cursor: x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpot.X), uint16(hotSpot.Y)),
+	}
+}
+
+func (c *Cursor) apiDestroy() {
+	if c.cursor != 0 {
+		x11Conn.FreeCursor(c.cursor)
+		c.cursor = 0
+	}
+}

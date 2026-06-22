@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -16,7 +16,8 @@ package skia
 #cgo darwin LDFLAGS: -L${SRCDIR} -lc++ -framework Cocoa -framework Metal
 #cgo darwin,amd64 LDFLAGS: -lskia_darwin_amd64
 #cgo darwin,arm64 LDFLAGS: -lskia_darwin_arm64
-#cgo linux LDFLAGS: -L${SRCDIR} -lskia_linux -lfontconfig -lfreetype -lGL -ldl -lm -lstdc++
+#cgo linux,amd64 LDFLAGS: -L${SRCDIR} -lskia_linux_amd64 -lfontconfig -lfreetype -lGL -ldl -lm -lstdc++
+#cgo linux,arm64 LDFLAGS: -L${SRCDIR} -lskia_linux_arm64 -lfontconfig -lfreetype -lGL -ldl -lm -lstdc++
 
 #include <stdlib.h>
 #include <string.h>
@@ -342,21 +343,23 @@ func DataUnref(data Data) {
 	C.sk_data_unref(data)
 }
 
-func EncodeJPEG(ctx DirectContext, img Image, quality int) Data {
+func encodeJPEG(ctx DirectContext, img Image, quality int) Data {
 	return C.sk_encode_jpeg(ctx, img, C.int(quality))
 }
 
-func EncodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
+func encodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
 	return C.sk_encode_png(ctx, img, C.int(compressionLevel))
 }
 
-func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
+func encodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
 	return C.sk_encode_webp(ctx, img, C.float(quality), C.bool(lossy))
 }
 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
 	var md metaData
 	md.set(metadata)
+	defer md.free()
+	//nolint:gocritic // Spurious lint flagging due to C code
 	return C.sk_document_make_pdf(stream, (*C.sk_metadata_t)(unsafe.Pointer(&md)))
 }
 

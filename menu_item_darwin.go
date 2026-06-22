@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,18 +11,18 @@ package unison
 
 import (
 	"github.com/richardwilkes/unison/enums/check"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 var _ MenuItem = &macMenuItem{}
 
 type macMenuItem struct {
 	factory *macMenuFactory
-	item    ns.MenuItem
+	item    mac.MenuItem
 }
 
-func newMacMenuItemForSubMenu(_ *macMenuFactory, subMenu *macMenu) ns.MenuItem {
-	mi := ns.NewMenuItem(subMenu.id, subMenu.Title(), "", 0, nil, nil)
+func newMacMenuItemForSubMenu(_ *macMenuFactory, subMenu *macMenu) mac.MenuItem {
+	mi := mac.NewMenuItem(subMenu.id, subMenu.Title(), "", 0, nil, nil)
 	mi.SetSubMenu(subMenu.menu)
 	return mi
 }
@@ -57,7 +57,7 @@ func (mi *macMenuItem) Menu() Menu {
 func (mi *macMenuItem) Index() int {
 	if m := mi.Menu(); m != nil {
 		count := m.Count()
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if mi.IsSame(m.ItemAtIndex(i)) {
 				return i
 			}
@@ -80,11 +80,15 @@ func (mi *macMenuItem) SetTitle(title string) {
 
 func (mi *macMenuItem) KeyBinding() KeyBinding {
 	keyStr, mods := mi.item.KeyBinding()
-	return KeyBinding{KeyCode: macMenuEquivalentToKeyCodeMap[keyStr], Modifiers: modifiersFromEventModifierFlags(mods)}
+	return KeyBinding{
+		KeyCode:   macMenuEquivalentToKeyCodeMap[keyStr],
+		Modifiers: macModifiersFromEventModifierFlags(mods),
+	}
 }
 
 func (mi *macMenuItem) SetKeyBinding(keyBinding KeyBinding) {
-	mi.item.SetKeyBinding(macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode], keyBinding.Modifiers.eventModifierFlags())
+	mi.item.SetKeyBinding(macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
+		macEventModifierFlagsFromModifiers(keyBinding.Modifiers))
 }
 
 func (mi *macMenuItem) SubMenu() Menu {
@@ -101,9 +105,9 @@ func (mi *macMenuItem) SubMenu() Menu {
 
 func (mi *macMenuItem) CheckState() check.Enum {
 	switch mi.item.State() {
-	case ns.ControlStateValueOn:
+	case mac.ControlStateValueOn:
 		return check.On
-	case ns.ControlStateValueOff:
+	case mac.ControlStateValueOff:
 		return check.Off
 	default:
 		return check.Mixed
@@ -111,14 +115,14 @@ func (mi *macMenuItem) CheckState() check.Enum {
 }
 
 func (mi *macMenuItem) SetCheckState(s check.Enum) {
-	var itemState ns.ControlStateValue
+	var itemState mac.ControlStateValue
 	switch s {
 	case check.On:
-		itemState = ns.ControlStateValueOn
+		itemState = mac.ControlStateValueOn
 	case check.Off:
-		itemState = ns.ControlStateValueOff
+		itemState = mac.ControlStateValueOff
 	default:
-		itemState = ns.ControlStateValueMixed
+		itemState = mac.ControlStateValueMixed
 	}
 	mi.item.SetState(itemState)
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -49,6 +49,7 @@ func (b *LineBorder) Insets() geom.Insets {
 func (b *LineBorder) Draw(canvas *Canvas, rect geom.Rect) {
 	clip := rect.Inset(b.insets)
 	path := NewPath()
+	defer path.Dispose()
 	path.SetFillType(filltype.EvenOdd)
 	if b.cornerRadius.Width > 0 || b.cornerRadius.Height > 0 {
 		path.RoundedRect(rect, b.cornerRadius)
@@ -58,5 +59,7 @@ func (b *LineBorder) Draw(canvas *Canvas, rect geom.Rect) {
 		path.Rect(rect)
 		path.Rect(clip)
 	}
-	canvas.DrawPath(path, b.ink.Paint(canvas, rect, paintstyle.Fill))
+	paint := b.ink.Paint(canvas, rect, paintstyle.Fill)
+	defer paint.Dispose()
+	canvas.DrawPath(path, paint)
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -12,9 +12,10 @@ package unison
 import (
 	"context"
 	"image"
+	"net/http"
 	"runtime"
+	"sync"
 	"time"
-	"unsafe"
 	"weak"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -28,29 +29,30 @@ import (
 )
 
 var (
-	_           Drawable = &Image{}
-	imgCache             = make(map[uint64]weak.Pointer[Image])
-	imageCtxMap          = make(map[skia.DirectContext]map[uint64]skia.Image)
+	_            Drawable = &Image{}
+	imgCacheLock sync.Mutex
+	imgCache     = make(map[uint64]weak.Pointer[Image])
+	// imageCtxMap is only accessed on the UI (rendering) thread, since each entry is tied to a GL DirectContext, so it
+	// does not require its own lock.
+	imageCtxMap = make(map[skia.DirectContext]map[uint64]skia.Image)
 )
 
 // Image holds a reference to an image.
 type Image struct {
 	skiaImg           skia.Image
 	skiaNonTextureImg skia.Image
+	cleanup           runtime.Cleanup
+	nonTextureCleanup runtime.Cleanup
 	hash              uint64
 	scale             geom.Point
+	disposeOnce       sync.Once
 }
 
-// NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. The http.DefaultClient
-// will be used if the data is remote.
-func NewImageFromFilePathOrURL(filePathOrURL string, scale geom.Point) (*Image, error) {
-	return NewImageFromFilePathOrURLWithContext(context.Background(), filePathOrURL, scale)
-}
-
-// NewImageFromFilePathOrURLWithContext creates a new image from data retrieved from the file path or URL. The
-// http.DefaultClient will be used if the data is remote.
-func NewImageFromFilePathOrURLWithContext(ctx context.Context, filePathOrURL string, scale geom.Point) (*Image, error) {
-	data, err := xhttp.RetrieveData(ctx, nil, filePathOrURL)
+// NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. You may pass nil for the
+// client to use the http.DefaultClient if the data is remote. A maxBytes of 0 or less means no limit on the number of
+// bytes allowed.
+func NewImageFromFilePathOrURL(ctx context.Context, client *http.Client, filePathOrURL string, scale geom.Point, maxBytes int64) (*Image, error) {
+	data, err := xhttp.RetrieveDataWithLimit(ctx, client, filePathOrURL, maxBytes)
 	if err != nil {
 		return nil, errs.NewWithCause(filePathOrURL, err)
 	}
@@ -100,6 +102,16 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 // NewImageFromDrawing creates a new image by drawing into it. This is currently fairly inefficient, so take care to use
 // it sparingly.
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
+	// Windows needs to have a Window created so that we can create the GL context that Skia will need.
+	if wndWithCurrentCtx == nil && runtime.GOOS == xos.WindowsOS {
+		w, err := NewWindow("")
+		if err != nil {
+			return nil, err
+		}
+		defer w.destroy()
+		RebuildDynamicColors()
+		w.makeGLCtxCurrent()
+	}
 	scale := float32(ppi) / 72
 	s := &surface{
 		context: skia.ContextMakeGL(defaultSkiaGL()),
@@ -118,7 +130,7 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 	c.RestoreToCount(1)
 	c.SetMatrix(geom.NewScaleMatrix(scale, scale))
 	c.Save()
-	xos.SafeCall(func() { draw(c) }, nil)
+	SafeCall(func() { draw(c) })
 	c.Restore()
 	c.Flush()
 	defer s.dispose()
@@ -136,12 +148,15 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 		return nil, errs.New("unable to read raw pixels from image")
 	}
 	skia.ImageUnref(img)
-	return NewImageFromPixels(width, height, pixels, geom.NewPoint(1, 1))
+	return NewImageFromPixels(width, height, pixels, geom.NewPoint(1/scale, 1/scale))
 }
 
+// newImage may be called from any goroutine, so access to imgCache is guarded by imgCacheLock.
 func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error) {
+	imgCacheLock.Lock()
 	if existing, ok := imgCache[hash]; ok {
 		if actual := existing.Value(); actual != nil {
+			imgCacheLock.Unlock()
 			ReleaseOnUIThread(func() {
 				skia.ImageUnref(skiaImg)
 			})
@@ -154,12 +169,34 @@ func newImage(skiaImg skia.Image, scale geom.Point, hash uint64) (*Image, error)
 		scale:   scale,
 	}
 	imgCache[hash] = weak.Make(img)
-	runtime.AddCleanup(img, func(si skia.Image) {
-		ReleaseOnUIThread(func() {
-			skia.ImageUnref(si)
-		})
-	}, img.skiaImg)
+	imgCacheLock.Unlock()
+	img.cleanup = newSkiaCleanup(img, img.skiaImg, skia.ImageUnref)
 	return img, nil
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (img *Image) Dispose() {
+	if img == nil {
+		return
+	}
+	img.disposeOnce.Do(func() {
+		imgCacheLock.Lock()
+		if p, ok := imgCache[img.hash]; ok && p.Value() == img {
+			delete(imgCache, img.hash)
+		}
+		imgCacheLock.Unlock()
+		img.cleanup.Stop()
+		img.nonTextureCleanup.Stop()
+		if img.skiaImg != nil {
+			skia.ImageUnref(img.skiaImg)
+			img.skiaImg = nil
+		}
+		if img.skiaNonTextureImg != nil {
+			skia.ImageUnref(img.skiaNonTextureImg)
+			img.skiaNonTextureImg = nil
+		}
+	})
 }
 
 // Size returns the size, in pixels, of the image. These dimensions will always be whole numbers > 0 for valid images.
@@ -207,38 +244,26 @@ func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 // ToPNG creates PNG data from the image. 'compressionLevel' should in the range 0-9 and is equivalent to
 // the zlib compression level. A typical compression level is 6 and is equivalent to the zlib default.
 func (img *Image) ToPNG(compressionLevel int) ([]byte, error) {
-	data := skia.EncodePNG(nil, img.skiaImg, compressionLevel)
-	if data == nil {
-		return nil, errs.New("unable to create PNG from image")
+	if data := skia.EncodePNG(nil, img.skiaImg, compressionLevel); data != nil {
+		return data, nil
 	}
-	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
-	skia.DataUnref(data)
-	return buffer, nil
+	return nil, errs.New("unable to create PNG from image")
 }
 
 // ToJPEG creates JPEG data from the image. quality should be greater than 0 and equal to or less than 100.
 func (img *Image) ToJPEG(quality int) ([]byte, error) {
-	data := skia.EncodeJPEG(nil, img.skiaImg, quality)
-	if data == nil {
-		return nil, errs.New("unable to create JPEG from image")
+	if data := skia.EncodeJPEG(nil, img.skiaImg, quality); data != nil {
+		return data, nil
 	}
-	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
-	skia.DataUnref(data)
-	return buffer, nil
+	return nil, errs.New("unable to create JPEG from image")
 }
 
 // ToWebp creates Webp data from the image. quality should be greater than 0 and equal to or less than 100.
 func (img *Image) ToWebp(quality float32, lossy bool) ([]byte, error) {
-	data := skia.EncodeWebp(nil, img.skiaImg, quality, lossy)
-	if data == nil {
-		return nil, errs.New("unable to create WEBP from image")
+	if data := skia.EncodeWebp(nil, img.skiaImg, quality, lossy); data != nil {
+		return data, nil
 	}
-	buffer := make([]byte, skia.DataGetSize(data))
-	copy(buffer, unsafe.Slice((*byte)(skia.DataGetData(data)), len(buffer)))
-	skia.DataUnref(data)
-	return buffer, nil
+	return nil, errs.New("unable to create WEBP from image")
 }
 
 // Hash returns a hash of the image data.
@@ -255,11 +280,7 @@ func (img *Image) skiaImageForCanvas(canvas *Canvas) skia.Image {
 		if img.skiaNonTextureImg == nil {
 			return img.skiaImg
 		}
-		runtime.AddCleanup(img, func(si skia.Image) {
-			ReleaseOnUIThread(func() {
-				skia.ImageUnref(si)
-			})
-		}, img.skiaNonTextureImg)
+		img.nonTextureCleanup = newSkiaCleanup(img, img.skiaNonTextureImg, skia.ImageUnref)
 		return img.skiaNonTextureImg
 	}
 	m, ok := imageCtxMap[canvas.surface.context]

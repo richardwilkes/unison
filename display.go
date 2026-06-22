@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -10,33 +10,32 @@
 package unison
 
 import (
-	"runtime"
-
-	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 )
-
-var lastPrimaryDisplay *Display
 
 // Display holds information about each available active display.
 type Display struct {
-	Name        string     // The name of the display
-	Frame       geom.Rect  // The position of the display in the global screen coordinate system
-	Usable      geom.Rect  // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
-	Scale       geom.Point // The scale of the content
-	RefreshRate int        // The refresh rate, in Hz
-	WidthMM     int        // The display's physical width, in millimeters
-	HeightMM    int        // The display's physical height, in millimeters
+	// The position of the display in the global screen coordinate system. Note that some platforms (e.g. Windows) don't
+	// use a consistent linear global coordinate system for these rects and instead use the raw pixel counts, which
+	// means that the rects may not be in the same coordinate space as the windows, which are normalized to a 1x scale.
+	Frame  geom.Rect
+	Usable geom.Rect  // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
+	Scale  geom.Point // The scale of the content
+	// The pixels-per-inch for the display. This may not be accurate, either because the monitor's EDID data is
+	// incorrect, or because the driver does not report it accurately.
+	PPI     int
+	Primary bool
 }
 
-// PPI returns the pixels-per-inch for the display. Some operating systems do not provide accurate information, either
-// because the monitor's EDID data is incorrect, or because the driver does not report it accurately.
-func (d *Display) PPI() int {
-	if d.WidthMM > d.HeightMM {
-		return int(d.Frame.Width / (float32(d.WidthMM) / 25.4))
-	}
-	return int(d.Frame.Height / (float32(d.HeightMM) / 25.4))
+// PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
+// the macOS menu bar is located.
+func PrimaryDisplay() *Display {
+	return apiPrimaryDisplay()
+}
+
+// AllDisplays returns all currently active displays.
+func AllDisplays() []*Display {
+	return apiAllDisplays()
 }
 
 // FitRectOnto returns a rectangle that fits onto this display, trying to preserve its position and size as much as
@@ -87,59 +86,7 @@ func BestDisplayForRect(r geom.Rect) *Display {
 		}
 	}
 	if bestDisplay == nil {
-		bestDisplay = PrimaryDisplay()
+		return PrimaryDisplay()
 	}
 	return bestDisplay
-}
-
-// PrimaryDisplay returns the primary display.
-func PrimaryDisplay() *Display {
-	if monitor := glfw.GetPrimaryMonitor(); monitor == nil {
-		// On macOS, I've had cases where the monitor list has been emptied after some time has passed. Appears to be a
-		// bug in glfw, but we can try to work around it by just using the last primary monitor we found.
-		if lastPrimaryDisplay == nil {
-			return nil
-		}
-	} else {
-		lastPrimaryDisplay = convertMonitorToDisplay(monitor)
-	}
-	if lastPrimaryDisplay != nil {
-		d := *lastPrimaryDisplay
-		return &d
-	}
-	return nil
-}
-
-// AllDisplays returns all displays.
-func AllDisplays() []*Display {
-	monitors := glfw.GetMonitors()
-	displays := make([]*Display, len(monitors))
-	for i, monitor := range monitors {
-		displays[i] = convertMonitorToDisplay(monitor)
-	}
-	return displays
-}
-
-func convertMonitorToDisplay(monitor *glfw.Monitor) *Display {
-	x, y := monitor.GetPos()
-	vidMode := monitor.GetVideoMode()
-	workX, workY, workWidth, workHeight := monitor.GetWorkarea()
-	sx, sy := monitor.GetContentScale()
-	mmx, mmy := monitor.GetPhysicalSize()
-	display := &Display{
-		Name:        monitor.GetName(),
-		Frame:       geom.NewRect(float32(x), float32(y), float32(vidMode.Width), float32(vidMode.Height)),
-		Usable:      geom.NewRect(float32(workX), float32(workY), float32(workWidth), float32(workHeight)),
-		Scale:       geom.NewPoint(sx, sy),
-		RefreshRate: vidMode.RefreshRate,
-		WidthMM:     mmx,
-		HeightMM:    mmy,
-	}
-	if runtime.GOOS != xos.MacOS {
-		display.Frame.X /= sx
-		display.Frame.Y /= sy
-		display.Frame.Width /= sx
-		display.Frame.Height /= sy
-	}
-	return display
 }

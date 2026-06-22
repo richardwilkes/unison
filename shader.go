@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -24,7 +25,9 @@ import (
 // alpha. This makes it easy to create a shader once (e.g. bitmap tiling or gradient) and then change its transparency
 // without having to modify the original shader... only the paint's alpha needs to be modified.
 type Shader struct {
-	shader skia.Shader
+	shader      skia.Shader
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newShader(shader skia.Shader) *Shader {
@@ -32,11 +35,7 @@ func newShader(shader skia.Shader) *Shader {
 		return nil
 	}
 	s := &Shader{shader: shader}
-	runtime.AddCleanup(s, func(ss skia.Shader) {
-		ReleaseOnUIThread(func() {
-			skia.ShaderUnref(ss)
-		})
-	}, s.shader)
+	s.cleanup = newSkiaCleanup(s, shader, skia.ShaderUnref)
 	return s
 }
 
@@ -45,6 +44,15 @@ func (s *Shader) shaderOrNil() skia.Shader {
 		return nil
 	}
 	return s.shader
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (s *Shader) Dispose() {
+	if s == nil {
+		return
+	}
+	disposeSkiaHandle(&s.disposeOnce, s.cleanup, &s.shader, skia.ShaderUnref)
 }
 
 // NewColorShader creates a new color Shader.

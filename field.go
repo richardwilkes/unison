@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -17,8 +17,8 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
@@ -225,7 +225,7 @@ func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed [
 		decoration := &TextDecoration{Font: f.Font}
 		if f.multiLine {
 			endsWithLineFeed = make([]lineEndingType, 0, 16)
-			for _, line := range strings.Split(string(f.runes), "\n") {
+			for line := range strings.SplitSeq(string(f.runes), "\n") {
 				one := NewText(f.obscureStringIfNeeded(line), decoration)
 				if f.wrap && wrapWidth > 0 {
 					parts := one.BreakToWidth(wrapWidth)
@@ -296,7 +296,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		fg = f.OnBackgroundInk
 	}
 	rect := f.ContentRect(true)
-	canvas.DrawRect(rect, bg.Paint(canvas, rect, paintstyle.Fill))
+	backgroundPaint := bg.Paint(canvas, rect, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(rect, backgroundPaint)
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, pathop.Intersect, false)
 	f.prepareLines(rect.Width - 2)
@@ -327,7 +329,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				rect.X = f.textLeftForWidth(0, rect) + f.scrollOffset.X - 0.5
 				rect.Width = 1
 				rect.Height = f.Font.LineHeight()
-				canvas.DrawRect(rect, fg.Paint(canvas, rect, paintstyle.Fill))
+				cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
+				canvas.DrawRect(rect, cursorPaint)
+				cursorPaint.Dispose()
 			}
 			f.scheduleBlink()
 		}
@@ -362,7 +366,9 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				})
 				right := left + t.Width()
 				selRect := geom.NewRect(left, textTop, right-left, textHeight)
-				canvas.DrawRect(selRect, f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill))
+				selectionPaint := f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill)
+				canvas.DrawRect(selRect, selectionPaint)
+				selectionPaint.Dispose()
 				t.Draw(canvas, geom.NewPoint(left, textBaseLine))
 				if selEnd < end {
 					e = end
@@ -383,8 +389,10 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				if f.showCursor {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]),
 						&TextDecoration{Font: f.Font})
+					cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
 					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
-						fg.Paint(canvas, rect, paintstyle.Fill))
+						cursorPaint)
+					cursorPaint.Dispose()
 				}
 				f.scheduleBlink()
 			}
@@ -436,7 +444,7 @@ func (f *Field) DefaultFocusLost() {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mod Modifiers) bool {
+func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 	f.undoID = NextUndoID()
 	wasFocused := f.Focused()
 	f.RequestFocus()
@@ -453,7 +461,7 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mod M
 			selectAll := false
 			if !wasFocused {
 				if f.InitialClickSelectsAll != nil {
-					xos.SafeCall(func() { selectAll = f.InitialClickSelectsAll(f) }, nil)
+					SafeCall(func() { selectAll = f.InitialClickSelectsAll(f) })
 				}
 			}
 			if selectAll {
@@ -462,7 +470,7 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mod M
 				oldAnchor := f.selectionAnchor
 				f.selectionAnchor = f.ToSelectionIndex(where)
 				var start, end int
-				if mod.ShiftDown() {
+				if mods.ShiftDown() {
 					if oldAnchor > f.selectionAnchor {
 						start = f.selectionAnchor
 						end = oldAnchor
@@ -483,7 +491,7 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mod M
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (f *Field) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (f *Field) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	oldAnchor := f.selectionAnchor
 	pos := f.ToSelectionIndex(where)
 	var start, end int
@@ -535,23 +543,23 @@ func (f *Field) DefaultUpdateCursor(_ geom.Point) *Cursor {
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
+func (f *Field) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
 	}
-	if mod.OSMenuCmdModifierDown() {
+	if mods.OSMenuCommandDown() {
 		switch keyCode {
 		case KeyRight:
-			f.handleEnd(f.multiLine, mod.ShiftDown())
+			f.handleEnd(f.multiLine, mods.ShiftDown())
 		case KeyDown:
-			f.handleEnd(false, mod.ShiftDown())
+			f.handleEnd(false, mods.ShiftDown())
 		case KeyLeft:
-			f.handleHome(f.multiLine, mod.ShiftDown())
+			f.handleHome(f.multiLine, mods.ShiftDown())
 		case KeyUp:
-			f.handleHome(false, mod.ShiftDown())
+			f.handleHome(false, mods.ShiftDown())
 		default:
 			// Handle cut/copy/paste/select all commands directly in case no menu is present
-			if mod == OSMenuCmdModifier() {
+			if mods == mod.OSMenuCommand() {
 				switch keyCode {
 				case KeyA:
 					if f.CanSelectAll() {
@@ -588,44 +596,43 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
 		}
 		f.MarkForRedraw()
 	case KeyLeft:
-		f.handleArrowLeft(mod.ShiftDown(), mod.OptionDown())
+		f.handleArrowLeft(mods.ShiftDown(), mods.OptionDown())
 	case KeyRight:
-		f.handleArrowRight(mod.ShiftDown(), mod.OptionDown())
+		f.handleArrowRight(mods.ShiftDown(), mods.OptionDown())
 	case KeyEnd:
-		f.handleEnd(f.multiLine, mod.ShiftDown())
+		f.handleEnd(f.multiLine, mods.ShiftDown())
 	case KeyPageDown:
 		if !f.multiLine {
 			return false
 		}
-		f.handleEnd(false, mod.ShiftDown())
+		f.handleEnd(false, mods.ShiftDown())
 	case KeyHome:
-		f.handleHome(f.multiLine, mod.ShiftDown())
+		f.handleHome(f.multiLine, mods.ShiftDown())
 	case KeyPageUp:
 		if !f.multiLine {
 			return false
 		}
-		f.handleHome(false, mod.ShiftDown())
+		f.handleHome(false, mods.ShiftDown())
 	case KeyDown:
 		if f.multiLine {
-			f.handleArrowDown(mod.ShiftDown(), mod.OptionDown())
+			f.handleArrowDown(mods.ShiftDown(), mods.OptionDown())
 		} else {
-			f.handleEnd(false, mod.ShiftDown())
+			f.handleEnd(false, mods.ShiftDown())
 		}
 	case KeyUp:
 		if f.multiLine {
-			f.handleArrowUp(mod.ShiftDown(), mod.OptionDown())
+			f.handleArrowUp(mods.ShiftDown(), mods.OptionDown())
 		} else {
-			f.handleHome(false, mod.ShiftDown())
+			f.handleHome(false, mods.ShiftDown())
 		}
 	case KeyTab:
 		return false
 	case KeyReturn, KeyNumPadEnter:
 		f.undoID = NextUndoID()
-		if f.multiLine {
-			f.DefaultRuneTyped('\n')
-		} else {
+		if !f.multiLine {
 			return false
 		}
+		f.DefaultRuneTyped('\n')
 	case KeyEscape:
 		return false
 	}
@@ -900,7 +907,7 @@ func (f *Field) CanCut() bool {
 // Cut the selected text to the clipboard.
 func (f *Field) Cut() {
 	if f.HasSelectionRange() {
-		GlobalClipboard.SetText(f.SelectedText())
+		ClipboardSetText(f.SelectedText())
 		f.Delete()
 	}
 }
@@ -913,18 +920,18 @@ func (f *Field) CanCopy() bool {
 // Copy the selected text to the clipboard.
 func (f *Field) Copy() {
 	if f.HasSelectionRange() {
-		GlobalClipboard.SetText(f.SelectedText())
+		ClipboardSetText(f.SelectedText())
 	}
 }
 
 // CanPaste returns true if the clipboard has content that can be pasted into the field.
 func (f *Field) CanPaste() bool {
-	return GlobalClipboard.GetText() != ""
+	return ClipboardGetText() != ""
 }
 
 // Paste any text on the clipboard into the field.
 func (f *Field) Paste() {
-	text := GlobalClipboard.GetText()
+	text := ClipboardGetText()
 	if text != "" {
 		f.undoID = NextUndoID()
 		before := f.GetFieldState()
@@ -1004,7 +1011,7 @@ func (f *Field) SetText(text string) {
 func (f *Field) notifyOfModification(before, after *FieldState) {
 	f.MarkForRedraw()
 	if f.ModifiedCallback != nil {
-		f.ModifiedCallback(before, after)
+		SafeCall(func() { f.ModifiedCallback(before, after) })
 	}
 	f.Validate()
 }
@@ -1013,7 +1020,7 @@ func (f *Field) notifyOfModification(before, after *FieldState) {
 func (f *Field) Validate() {
 	invalid := false
 	if f.ValidateCallback != nil {
-		invalid = !f.ValidateCallback()
+		SafeCall(func() { invalid = !f.ValidateCallback() })
 	}
 	if invalid != f.invalid {
 		f.invalid = invalid

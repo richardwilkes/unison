@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -17,17 +17,19 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-type winSaveDialog struct {
+var _ SaveDialog = &w32SaveDialog{}
+
+type w32SaveDialog struct {
 	fileCommon
 }
 
-func platformNewSaveDialog() SaveDialog {
-	d := &winSaveDialog{}
+func apiNewSaveDialog() SaveDialog {
+	d := &w32SaveDialog{}
 	d.initialize()
 	return d
 }
 
-func (d *winSaveDialog) RunModal() bool {
+func (d *w32SaveDialog) RunModal() bool {
 	active := ActiveWindow()
 	if active != nil {
 		active.restoreHiddenCursor()
@@ -57,7 +59,7 @@ func (d *winSaveDialog) RunModal() bool {
 		options |= w32.FOSNoDereferenceLinks
 	}
 	saveDialog.SetOptions(options)
-	saveDialog.SetFileTypes(d.createFilters())
+	saveDialog.SetFileTypes(d.w32CreateFilters())
 	saveDialog.SetFileName(d.InitialFileName())
 	for _, ext := range d.extensions {
 		if ext != "*" {
@@ -78,7 +80,7 @@ func (d *winSaveDialog) RunModal() bool {
 	return true
 }
 
-func (d *winSaveDialog) createFilters() []w32.FileFilter {
+func (d *w32SaveDialog) w32CreateFilters() []w32.FileFilter {
 	filters := make([]w32.FileFilter, 0, len(d.extensions))
 	for _, ext := range d.extensions {
 		filters = append(filters, w32.FileFilter{

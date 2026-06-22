@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // Pre-defined menu IDs. Apps should start their IDs at UserBaseID.
@@ -35,8 +36,7 @@ const (
 	DeleteItemID
 	SelectAllItemID
 	MinimizeItemID
-	ZoomItemID
-	BringAllWindowsToFrontItemID
+	MaximizeItemID
 	CloseItemID
 	HideItemID
 	HideOthersItemID
@@ -68,7 +68,7 @@ func NewAppMenu(f MenuFactory, aboutHandler, prefsHandler func(MenuItem), update
 	InsertAboutItem(m, -1, aboutHandler)
 	m.InsertSeparator(-1, false)
 	InsertPreferencesItem(m, -1, prefsHandler)
-	platformAddAppMenuEntries(m)
+	apiAddAppMenuEntries(m)
 	m.InsertSeparator(-1, true)
 	InsertQuitItem(m, -1)
 	return m
@@ -95,7 +95,7 @@ func NewFileMenu(f MenuFactory, updater func(Menu)) Menu {
 // chosen.
 func InsertCloseFocusedWindowItem(m Menu, atIndex int) {
 	m.InsertItem(atIndex, m.Factory().NewItem(CloseItemID, i18n.Text("Close"),
-		KeyBinding{KeyCode: KeyW, Modifiers: OSMenuCmdModifier()},
+		KeyBinding{KeyCode: KeyW, Modifiers: mod.OSMenuCommand()},
 		func(MenuItem) bool { return ActiveWindow() != nil },
 		func(MenuItem) {
 			if wnd := ActiveWindow(); wnd != nil {
@@ -106,8 +106,8 @@ func InsertCloseFocusedWindowItem(m Menu, atIndex int) {
 
 // InsertQuitItem creates the standard "Quit"/"Exit" menu item that will issue the Quit command when chosen.
 func InsertQuitItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, quitMenuTitle(),
-		KeyBinding{KeyCode: KeyQ, Modifiers: OSMenuCmdModifier()},
+	m.InsertItem(atIndex, m.Factory().NewItem(QuitItemID, apiQuitMenuTitle(),
+		KeyBinding{KeyCode: KeyQ, Modifiers: mod.OSMenuCommand()},
 		nil,
 		func(MenuItem) { AttemptQuit() }))
 }
@@ -130,7 +130,7 @@ func NewEditMenu(f MenuFactory, prefsHandler func(MenuItem), updater func(Menu))
 // InsertPreferencesItem creates the standard "Preferences…" menu item that will call the provided handler when chosen.
 func InsertPreferencesItem(m Menu, atIndex int, prefsHandler func(MenuItem)) {
 	m.InsertItem(atIndex, m.Factory().NewItem(PreferencesItemID, i18n.Text("Preferences…"),
-		KeyBinding{KeyCode: KeyComma, Modifiers: OSMenuCmdModifier()},
+		KeyBinding{KeyCode: KeyComma, Modifiers: mod.OSMenuCommand()},
 		func(MenuItem) bool { return prefsHandler != nil }, prefsHandler))
 }
 
@@ -149,9 +149,7 @@ func NewWindowMenu(f MenuFactory, updater func(Menu)) Menu {
 	}
 	m := f.NewMenu(WindowMenuID, i18n.Text("Window"), updater)
 	InsertMinimizeItem(m, -1)
-	InsertZoomItem(m, -1)
-	m.InsertSeparator(-1, false)
-	InsertBringAllToFrontItem(m, -1)
+	InsertMaximizeItem(m, -1)
 	return m
 }
 
@@ -198,7 +196,7 @@ func createSelectWindowMenuItem(f MenuFactory, id int, wnd, active *Window) Menu
 // focused window when chosen.
 func InsertMinimizeItem(m Menu, atIndex int) {
 	m.InsertItem(atIndex, m.Factory().NewItem(MinimizeItemID, i18n.Text("Minimize"),
-		KeyBinding{KeyCode: KeyM, Modifiers: OSMenuCmdModifier()},
+		KeyBinding{KeyCode: KeyM, Modifiers: mod.OSMenuCommand()},
 		func(MenuItem) bool { return ActiveWindow() != nil },
 		func(MenuItem) {
 			if wnd := ActiveWindow(); wnd != nil {
@@ -207,27 +205,20 @@ func InsertMinimizeItem(m Menu, atIndex int) {
 		}))
 }
 
-// InsertZoomItem creates the standard "Zoom" menu item that will issue the Zoom command to the currently focused window
+// InsertMaximizeItem creates the standard "Maximize" menu item that will issue the Maximize command to the currently focused window
 // when chosen.
-func InsertZoomItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(ZoomItemID, i18n.Text("Zoom"),
-		KeyBinding{KeyCode: KeyZ, Modifiers: ShiftModifier | OSMenuCmdModifier()},
+func InsertMaximizeItem(m Menu, atIndex int) {
+	m.InsertItem(atIndex, m.Factory().NewItem(MaximizeItemID, i18n.Text("Maximize"),
+		KeyBinding{KeyCode: KeyZ, Modifiers: mod.Shift | mod.OSMenuCommand()},
 		func(MenuItem) bool {
 			w := ActiveWindow()
 			return w != nil && w.Resizable()
 		},
 		func(MenuItem) {
 			if wnd := ActiveWindow(); wnd != nil {
-				wnd.Zoom()
+				wnd.Maximize()
 			}
 		}))
-}
-
-// InsertBringAllToFrontItem creates the standard "Bring All to Front" menu item that will call AllWindowsToFront when
-// chosen.
-func InsertBringAllToFrontItem(m Menu, atIndex int) {
-	m.InsertItem(atIndex, m.Factory().NewItem(BringAllWindowsToFrontItemID, i18n.Text("Bring All to Front"), KeyBinding{},
-		func(MenuItem) bool { return WindowCount() > 0 }, func(MenuItem) { AllWindowsToFront() }))
 }
 
 // NewHelpMenu creates a standard 'Help' menu.

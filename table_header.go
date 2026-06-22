@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -87,7 +88,7 @@ func (h *TableHeader[T]) ColumnFrame(col int) geom.Rect {
 	}
 	insets := h.combinedInsets()
 	x := insets.Left
-	for c := 0; c < col; c++ {
+	for c := range col {
 		x += h.table.Columns[c].Current
 		if h.table.ShowColumnDivider {
 			x++
@@ -135,7 +136,9 @@ func (h *TableHeader[T]) combinedInsets() geom.Insets {
 
 // DefaultDraw provides the default drawing.
 func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
-	canvas.DrawRect(dirty, h.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill))
+	backgroundPaint := h.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
+	defer backgroundPaint.Dispose()
+	canvas.DrawRect(dirty, backgroundPaint)
 
 	var firstCol int
 	insets := h.combinedInsets()
@@ -158,7 +161,9 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		rect.Width = 1
 		for c := firstCol; c < len(h.table.Columns)-1; c++ {
 			rect.X += h.table.Columns[c].Current
-			canvas.DrawRect(rect, h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill))
+			paint := h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
 			rect.X++
 		}
 	}
@@ -213,7 +218,8 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 		if cell.UpdateCursorCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			cursor := cell.UpdateCursorCallback(where.Sub(rect.Point))
+			var cursor *Cursor
+			SafeCall(func() { cursor = cell.UpdateCursorCallback(where.Sub(rect.Point)) })
 			h.uninstallCell(cell)
 			return cursor
 		}
@@ -228,7 +234,8 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 		if cell.UpdateTooltipCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			avoid := cell.UpdateTooltipCallback(where.Sub(rect.Point), h.RectToRoot(rect).Align())
+			var avoid geom.Rect
+			SafeCall(func() { avoid = cell.UpdateTooltipCallback(where.Sub(rect.Point), h.RectToRoot(rect).Align()) })
 			h.Tooltip = cell.Tooltip
 			h.uninstallCell(cell)
 			return avoid
@@ -243,14 +250,14 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 }
 
 // DefaultMouseMove provides the default mouse move handling.
-func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 	stop := false
 	if col := h.table.OverColumn(where.X); col != -1 {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.MouseMoveCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			stop = cell.MouseMoveCallback(where.Sub(rect.Point), mod)
+			SafeCall(func() { stop = cell.MouseMoveCallback(where.Sub(rect.Point), mods) })
 			h.uninstallCell(cell)
 		}
 	}
@@ -258,7 +265,7 @@ func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mod Modifiers) bool 
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 	h.interactionColumn = -1
 	h.inHeader = false
 	if !h.table.PreventUserColumnResize {
@@ -297,7 +304,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount i
 		if cell.MouseDownCallback != nil {
 			rect := h.ColumnFrame(col)
 			h.installCell(cell, rect)
-			stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mod)
+			SafeCall(func() { stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mods) })
 			h.uninstallCell(cell)
 		}
 	}
@@ -305,7 +312,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount i
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if !h.table.PreventUserColumnResize && !h.inHeader && h.interactionColumn != -1 {
 		width := h.columnResizeBase + where.X - h.columnResizeStart
 		if width < h.columnResizeOverhead {
@@ -331,14 +338,14 @@ func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) 
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mod Modifiers) bool {
+func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	stop := false
 	if h.inHeader && h.interactionColumn != -1 {
 		cell := h.ColumnHeaders[h.interactionColumn].AsPanel()
 		if cell.MouseUpCallback != nil {
 			rect := h.ColumnFrame(h.interactionColumn)
 			h.installCell(cell, rect)
-			stop = cell.MouseUpCallback(where.Sub(rect.Point), button, mod)
+			SafeCall(func() { stop = cell.MouseUpCallback(where.Sub(rect.Point), button, mods) })
 			h.uninstallCell(cell)
 		}
 	}

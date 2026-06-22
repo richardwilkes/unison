@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -51,7 +51,7 @@ func (fd FontDescriptor) String() string {
 
 // MarshalText implements the encoding.TextMarshaler interface.
 func (fd FontDescriptor) MarshalText() (text []byte, err error) {
-	return []byte(fmt.Sprintf("%s %v %s %s %s", fd.Family, fd.Size, fd.Weight.Key(), fd.Spacing.Key(), fd.Slant.Key())), nil
+	return fmt.Appendf(nil, "%s %v %s %s %s", fd.Family, fd.Size, fd.Weight.Key(), fd.Spacing.Key(), fd.Slant.Key()), nil
 }
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.

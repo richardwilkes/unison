@@ -2,32 +2,16 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/richardwilkes/unison.svg)](https://pkg.go.dev/github.com/richardwilkes/unison)
 [![Go Report Card](https://goreportcard.com/badge/github.com/richardwilkes/unison)](https://goreportcard.com/report/github.com/richardwilkes/unison)
+[![Build](https://github.com/richardwilkes/unison/actions/workflows/build.yml/badge.svg)](https://github.com/richardwilkes/unison/actions/workflows/build.yml)
 
 A unified graphical user experience toolkit for Go desktop applications. macOS, Windows, and Linux are supported.
-
-## Required setup
-
-Unison is built upon [glfw](https://github.com/go-gl/glfw). As such, it requires some setup prior to being able to build
-correctly:
-
-* On macOS, you need Xcode or Command Line Tools for Xcode (`xcode-select --install`) for required headers and
-  libraries.
-* On Ubuntu/Debian-like Linux distributions, you need `libgl1-mesa-dev` and `xorg-dev` packages.
-* On CentOS/Fedora-like Linux distributions, you need `libX11-devel libXcursor-devel libXrandr-devel libXinerama-devel
-  mesa-libGL-devel libXi-devel libXxf86vm-devel` packages.
-* On Windows, you need [tdm-gcc](https://jmeubank.github.io/tdm-gcc/download/) as well as [git-scm](https://git-scm.com)
-  for its bash shell.
-* See [compilation dependencies](http://www.glfw.org/docs/latest/compile.html#compile_deps) for full details.
-
-This version of Unison was built using Go 1.24. It has been compiled under many earlier versions of Go in the past, but
-only Go 1.24+ will be considered as I make further changes.
 
 ## Example
 
 An example application can be found in the `cmd/example` directory:
 
 ```sh
-go run ./cmd/example/main.go
+go run cmd/example/main.go
 ```
 
 ## Notes
@@ -55,3 +39,11 @@ There are a large number of Go source files in a single, top-level package. Unis
 experience code tends to need to have its tentacles in many places, and the logical separations I made kept hindering
 the ability to do things. Ultimately, I made the decision to collapse nearly everything into a single package to
 simplify development and greatly reduce the overall complexity of things.
+
+### Threading
+
+Unison is single-threaded: panels, windows, drawing, and the native graphics objects behind them are owned by one UI
+thread and are not safe for concurrent use. Code invoked by Unison (input/draw callbacks, layout, command handlers,
+`StartupFinishedCallback`) already runs on that thread; work done on other goroutines must marshal back via
+`InvokeTask`, `InvokeTaskAfter`, or `ReleaseOnUIThread` before touching UI objects. See the package documentation for
+the full threading model.

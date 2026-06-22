@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -51,10 +51,13 @@ func (d *TextDecoration) Clone() *TextDecoration {
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, pt geom.Point, width float32) {
 	r := geom.NewRect(pt.X, pt.Y-d.Font.Baseline(), width, d.Font.LineHeight())
 	if !xreflect.IsNil(d.BackgroundInk) {
-		canvas.DrawRect(r, d.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
+		backgroundPaint := d.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
+		canvas.DrawRect(r, backgroundPaint)
+		backgroundPaint.Dispose()
 	}
 	pt.Y += d.BaselineOffset
 	paint := d.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)
+	defer paint.Dispose()
 	canvas.DrawSimpleString(text, pt, d.Font, paint)
 	if d.Underline || d.StrikeThrough {
 		pt.Y++

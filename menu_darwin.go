@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 var _ Menu = &macMenu{}
@@ -19,11 +19,15 @@ var _ Menu = &macMenu{}
 type macMenu struct {
 	factory *macMenuFactory
 	id      int
-	menu    ns.Menu
+	menu    mac.Menu
 }
 
 func (m *macMenu) Factory() MenuFactory {
 	return m.factory
+}
+
+func (m *macMenu) ID() int {
+	return m.id
 }
 
 func (m *macMenu) IsSame(other Menu) bool {
@@ -92,38 +96,34 @@ func (m *macMenu) InsertSeparator(atIndex int, onlyIfNeeded bool) {
 			}
 		}
 	}
-	m.insert(ns.NewSeparatorMenuItem(), atIndex)
+	m.macInsert(mac.NewSeparatorMenuItem(), atIndex)
 }
 
 func (m *macMenu) InsertItem(atIndex int, mi MenuItem) {
 	if mi != nil {
 		if item, ok := mi.(*macMenuItem); ok {
-			m.insert(item.item, atIndex)
+			m.macInsert(item.item, atIndex)
 		}
 	}
 }
 
 func (m *macMenu) InsertMenu(atIndex int, subMenu Menu) {
 	if menu, ok := subMenu.(*macMenu); ok {
-		m.insertMenu(atIndex, menu)
-	}
-}
-
-func (m *macMenu) insertMenu(atIndex int, subMenu *macMenu) {
-	m.insert(newMacMenuItemForSubMenu(m.factory, subMenu), atIndex)
-	switch subMenu.id {
-	case AppMenuID:
-		if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
-			if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
-				if menu, ok := servicesMenu.(*macMenu); ok {
-					ns.SetServicesMenu(menu.menu)
+		m.macInsert(newMacMenuItemForSubMenu(m.factory, menu), atIndex)
+		switch menu.id {
+		case AppMenuID:
+			if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
+				if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
+					if menu, ok = servicesMenu.(*macMenu); ok {
+						mac.SetServicesMenu(menu.menu)
+					}
 				}
 			}
+		case WindowMenuID:
+			mac.SetWindowsMenu(menu.menu)
+		case HelpMenuID:
+			mac.SetHelpMenu(menu.menu)
 		}
-	case WindowMenuID:
-		ns.SetWindowsMenu(subMenu.menu)
-	case HelpMenuID:
-		ns.SetHelpMenu(subMenu.menu)
 	}
 }
 
@@ -137,10 +137,6 @@ func (m *macMenu) RemoveAll() {
 	m.menu.RemoveAll()
 }
 
-func (m *macMenu) ID() int {
-	return m.id
-}
-
 func (m *macMenu) Title() string {
 	return m.menu.Title()
 }
@@ -152,12 +148,10 @@ func (m *macMenu) Count() int {
 func (m *macMenu) Popup(where geom.Rect, itemIndex int) {
 	if w := ActiveWindow(); w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {
-			wnd := ns.Window(w.wnd.GetCocoaWindow())
-			view := wnd.ContentView()
-			frame := view.Frame()
+			frame := w.wnd.view.Frame()
 			where.X += 8
 			where.Y = frame.Height - where.Bottom()
-			m.menu.Popup(wnd, m.menu, m.menu.ItemAtIndex(itemIndex), where)
+			m.menu.Popup(w.wnd.wnd, m.menu, m.menu.ItemAtIndex(itemIndex), where)
 		}
 	}
 }
@@ -166,7 +160,7 @@ func (m *macMenu) Dispose() {
 	m.menu.Release()
 }
 
-func (m *macMenu) insert(mi ns.MenuItem, index int) {
+func (m *macMenu) macInsert(mi mac.MenuItem, index int) {
 	if index < 0 {
 		index = m.Count()
 	}

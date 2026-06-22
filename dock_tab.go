@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -12,9 +12,12 @@ package unison
 import (
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -116,6 +119,7 @@ func newDockTab(dockable Dockable) *dockTab {
 	t.MouseUpCallback = t.mouseUp
 	t.MouseDragCallback = t.mouseDrag
 	t.UpdateTooltipCallback = t.updateTooltip
+	t.UpdateCursorCallback = t.updateCursor
 	return t
 }
 
@@ -174,6 +178,7 @@ func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 	}
 	r := t.ContentRect(true)
 	p := NewPath()
+	defer p.Dispose()
 	p.MoveTo(geom.NewPoint(0, r.Height))
 	p.LineTo(geom.NewPoint(0, 6))
 	p.CubicTo(geom.NewPoint(0, 6), geom.NewPoint(0, 1), geom.NewPoint(6, 1))
@@ -183,8 +188,12 @@ func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 	p.CubicTo(geom.NewPoint(rightCornerStart, 1), geom.NewPoint(right, 1), geom.NewPoint(right, 7))
 	p.LineTo(geom.NewPoint(right, r.Height))
 	p.Close()
-	gc.DrawPath(p, bg.Paint(gc, r, paintstyle.Fill))
-	gc.DrawPath(p, t.EdgeInk.Paint(gc, r, paintstyle.Stroke))
+	bgPaint := bg.Paint(gc, r, paintstyle.Fill)
+	defer bgPaint.Dispose()
+	gc.DrawPath(p, bgPaint)
+	edgePaint := t.EdgeInk.Paint(gc, r, paintstyle.Stroke)
+	defer edgePaint.Dispose()
+	gc.DrawPath(p, edgePaint)
 }
 
 func (t *dockTab) attemptClose() bool {
@@ -203,8 +212,15 @@ func (t *dockTab) updateTooltip(_ geom.Point, suggestedAvoidInRoot geom.Rect) ge
 	return suggestedAvoidInRoot
 }
 
-func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifiers) bool {
-	if button == ButtonRight && clickCount == 1 && !t.Window().InDrag() {
+func (t *dockTab) updateCursor(_ geom.Point) *Cursor {
+	if t.pressed {
+		return ClosedHandCursor()
+	}
+	return OpenHandCursor()
+}
+
+func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ mod.Modifiers) bool {
+	if button == ButtonRight && clickCount == 1 {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
 			if len(dc.Dockables()) > 1 {
 				f := DefaultMenuFactory()
@@ -224,29 +240,46 @@ func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ Modifier
 	}
 	t.pressed = true
 	t.MarkForRedraw()
+	t.UpdateCursorNow()
 	return true
 }
 
-func (t *dockTab) mouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (t *dockTab) mouseDrag(where geom.Point, button int, _ mod.Modifiers) bool {
 	if !t.pressed {
 		return true
 	}
-	if t.IsDragGesture(where) {
+	if dragDockable == nil && button == ButtonLeft && t.IsDragGesture(where) {
 		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
-			icon := t.TitleIcon()
-			size := icon.LogicalSize()
-			t.StartDataDrag(&DragData{
-				Data:     map[string]any{dc.Dock.DragKey: t.dockable},
-				Drawable: icon,
-				Ink:      t.title.OnBackgroundInk,
-				Offset:   geom.NewPoint(-size.Width/2, -size.Height/2),
+			size := t.LogicalSize()
+			img, err := NewImageFromDrawing(int(size.Width), int(size.Height), 144, func(c *Canvas) {
+				t.Draw(c, geom.Rect{Size: size})
+			})
+			if err != nil {
+				errs.Log(err)
+				return true
+			}
+			dragDockable = t.dockable
+			t.StartDrag(img, geom.Point{}, func() { dragDockable = nil }, drag.Move, drag.Data{
+				Type: dockableDataType,
+				Data: []byte{0},
 			})
 		}
 	}
 	return true
 }
 
-func (t *dockTab) mouseUp(where geom.Point, _ int, _ Modifiers) bool {
+// LogicalSize is here to satisify the Drawable interface so that we can draw ourselves as we get dragged around.
+func (t *dockTab) LogicalSize() geom.Size {
+	return t.ContentRect(true).Size
+}
+
+// DrawInRect is here to satisify the Drawable interface so that we can draw ourselves as we get dragged around.
+func (t *dockTab) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, _ *Paint) {
+	t.Draw(canvas, rect)
+}
+
+func (t *dockTab) mouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
+	defer t.UpdateCursorNow()
 	if !t.pressed {
 		return true
 	}

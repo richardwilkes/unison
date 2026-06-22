@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -8,6 +8,13 @@
 // defined by the Mozilla Public License, version 2.0.
 
 package skia
+
+/*
+#include <stdlib.h>
+#include <string.h>
+#include "sk_capi.h"
+*/
+import "C"
 
 import (
 	"time"
@@ -97,9 +104,12 @@ const (
 	ColorTypeRGB101010X
 	ColorTypeBGR101010X
 	ColorTypeBGR101010XXR
+	ColorTypeBGRA10101010XR
+	ColorTypeRGBA10x6
 	ColorTypeGray8
 	ColorTypeRGBAF16Norm
 	ColorTypeRGBAF16
+	ColorTypeRGBAF16F16F16x
 	ColorTypeRGBAF32
 	ColorTypeR8G8UNorm
 	ColorTypeA16Float
@@ -228,12 +238,12 @@ func (dt *dateTime) set(t time.Time) {
 }
 
 type metaData struct {
-	Title           uintptr
-	Author          uintptr
-	Subject         uintptr
-	Keywords        uintptr
-	Creator         uintptr
-	Producer        uintptr
+	Title           *C.char
+	Author          *C.char
+	Subject         *C.char
+	Keywords        *C.char
+	Creator         *C.char
+	Producer        *C.char
 	Creation        dateTime
 	Modified        dateTime
 	RasterDPI       float32
@@ -262,33 +272,60 @@ func (m *metaData) set(md *MetaData) {
 	if encodingQuality < 1 {
 		encodingQuality = 101
 	}
-	m.Title = toCStr(md.Title)
-	m.Author = toCStr(md.Author)
-	m.Subject = toCStr(md.Subject)
-	m.Keywords = toCStr(md.Keywords)
-	m.Creator = toCStr(md.Creator)
-	m.Producer = toCStr(producer)
+	m.Title = C.CString(md.Title)
+	m.Author = C.CString(md.Author)
+	m.Subject = C.CString(md.Subject)
+	m.Keywords = C.CString(md.Keywords)
+	m.Creator = C.CString(md.Creator)
+	m.Producer = C.CString(producer)
 	m.Creation.set(creation)
 	m.Modified.set(modified)
 	m.RasterDPI = rasterDPI
 	m.EncodingQuality = encodingQuality
 }
 
+// free releases the C strings allocated by set. It is safe to call only after the native code that consumed the
+// metadata has finished copying it.
+func (m *metaData) free() {
+	for _, p := range []*C.char{m.Title, m.Author, m.Subject, m.Keywords, m.Creator, m.Producer} {
+		if p != nil {
+			C.free(unsafe.Pointer(p)) //nolint:gocritic // Freeing C memory allocated by C.CString
+		}
+	}
+}
+
 type MetaData struct {
+	Creation        time.Time
+	Modified        time.Time
 	Title           string
 	Author          string
 	Subject         string
 	Keywords        string
 	Creator         string
 	Producer        string
-	Creation        time.Time
-	Modified        time.Time
 	RasterDPI       float32
 	EncodingQuality int32
 }
 
-func toCStr(s string) uintptr {
-	cstr := make([]byte, len(s)+1)
-	copy(cstr, s)
-	return uintptr(unsafe.Pointer(&cstr[0]))
+func EncodeJPEG(ctx DirectContext, img Image, quality int) []byte {
+	return DataToBytes(encodeJPEG(ctx, img, quality))
+}
+
+func EncodePNG(ctx DirectContext, img Image, compressionLevel int) []byte {
+	return DataToBytes(encodePNG(ctx, img, compressionLevel))
+}
+
+func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) []byte {
+	return DataToBytes(encodeWebp(ctx, img, quality, lossy))
+}
+
+// DataToBytes copies the contents of a skia.Data into a freshly allocated byte slice and releases the skia.Data.
+func DataToBytes(data Data) []byte {
+	if data == nil {
+		return nil
+	}
+	buffer := make([]byte, DataGetSize(data))
+	copy(buffer, unsafe.Slice((*byte)(DataGetData(data)), len(buffer)))
+	DataUnref(data)
+	return buffer
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -90,15 +90,14 @@ func (m *UndoManager) Add(edit Undoable) {
 		}
 		add = !absorb
 	}
+	// Drop the released redo tail in place, clearing the vacated slots so those edits can be garbage collected, then
+	// either append the new edit or retain the absorbing edit already at the current index.
+	clear(m.edits[m.index+1:])
+	m.edits = m.edits[:m.index+1]
 	if add {
 		m.index++
+		m.edits = append(m.edits, edit)
 	}
-	edits := make([]Undoable, m.index+1)
-	copy(edits, m.edits)
-	if add {
-		edits[m.index] = edit
-	}
-	m.edits = edits
 	m.trimForLimit()
 }
 
@@ -175,7 +174,7 @@ func (m *UndoManager) release(edit Undoable) {
 	xos.SafeCall(edit.Release, m.recoveryHandler)
 }
 
-func (m *UndoManager) cost(edit Undoable) int {
+func costForUndo(edit Undoable) int {
 	cost := edit.Cost()
 	if cost < 1 {
 		return 1
@@ -189,7 +188,7 @@ func (m *UndoManager) trimForLimit() {
 	i := m.index
 	remaining := m.CostLimit()
 	for ; i >= 0; i-- {
-		if remaining -= m.cost(m.edits[i]); remaining >= 0 {
+		if remaining -= costForUndo(m.edits[i]); remaining >= 0 {
 			continue
 		}
 		if i == m.index {
@@ -219,7 +218,7 @@ func (m *UndoManager) trimForLimit() {
 	// If we get here, then all edits up to the current index fit within the cost limit. Look at those beyond the
 	// current index and trim out any that go over the limit.
 	for i = m.index + 1; i < len(m.edits); i++ {
-		if remaining -= m.cost(m.edits[i]); remaining >= 0 {
+		if remaining -= costForUndo(m.edits[i]); remaining >= 0 {
 			continue
 		}
 		for j := i; j < len(m.edits); j++ {

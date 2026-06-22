@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -29,22 +30,29 @@ type PathOpPair struct {
 
 // Path holds geometry.
 type Path struct {
-	path skia.Path
+	path        skia.Path
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newPath(path skia.Path) *Path {
 	p := &Path{path: path}
-	runtime.AddCleanup(p, func(sp skia.Path) {
-		ReleaseOnUIThread(func() {
-			skia.PathDelete(sp)
-		})
-	}, p.path)
+	p.cleanup = newSkiaCleanup(p, path, skia.PathDelete)
 	return p
 }
 
 // NewPath creates a new, empty path.
 func NewPath() *Path {
 	return newPath(skia.PathNew())
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (p *Path) Dispose() {
+	if p == nil {
+		return
+	}
+	disposeSkiaHandle(&p.disposeOnce, p.cleanup, &p.path, skia.PathDelete)
 }
 
 // NewPathFromSVGString attempts to create a path from the given SVG string.

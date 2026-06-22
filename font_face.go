@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -68,7 +68,7 @@ func AllFontFaces() (all, monospaced []FontFaceDescriptor) {
 	for _, family := range FontFamilies() {
 		if ff := MatchFontFamily(family); ff != nil {
 			count := ff.Count()
-			for i := 0; i < count; i++ {
+			for i := range count {
 				face := ff.Face(i)
 				w, sp, sl := face.Style()
 				ffd := FontFaceDescriptor{

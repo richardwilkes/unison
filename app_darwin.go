@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -13,66 +13,101 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
 var (
-	pendingFilesLock   sync.Mutex
-	pendingFilesToOpen []string
-	okToIssueFileOpens bool
+	macPendingFilesLock   sync.Mutex
+	macPendingFilesToOpen []string
+	macMayIssueFileOpens  bool
 )
 
-func platformEarlyInit() {
-	// macOS requires both of these hints to be set
-	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
-	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-
-	ns.InstallAppDelegate(func(paths []string) {
-		pendingFilesLock.Lock()
-		defer pendingFilesLock.Unlock()
-		if okToIssueFileOpens {
+func apiBeginStartup() error {
+	mac.AppShouldTerminateCallback = func() {
+		closeAllWindows()
+		xos.Exit(0)
+	}
+	mac.AppDidChangeScreenParameters = func() {
+		for _, w := range windowList {
+			w.glCtx.ctx.Update()
+		}
+	}
+	mac.AppDidFinishLaunchingCallback = func() {
+		mac.PostEmptyEvent()
+		mac.StopMainEventLoop()
+	}
+	mac.OpenFilesCallback = func(paths []string) {
+		macPendingFilesLock.Lock()
+		defer macPendingFilesLock.Unlock()
+		if macMayIssueFileOpens {
 			InvokeTask(func() {
 				if openFilesCallback != nil {
 					openFilesCallback(paths)
 				}
 			})
 		} else {
-			pendingFilesToOpen = append(pendingFilesToOpen, paths...)
+			macPendingFilesToOpen = append(macPendingFilesToOpen, paths...)
 		}
-	})
+	}
+	// NOTE: Two additional app delegate callbacks exist: AppWillFinishLaunchingCallback and AppDidHideCallback.
+	if err := mac.InstallMacAppDelegate(); err != nil {
+		return err
+	}
+	apiFillKeyCodes()
+	macInitWindowCallbacks()
+	mac.FinishLaunching()
+	return nil
 }
 
-func platformLateInit() {
-	ns.InstallSystemThemeChangedCallback(ThemeChanged)
-	ns.SetActivationPolicy(ns.ActivationPolicyRegular)
+func apiLateInit() {
+	mac.InstallSystemThemeChangedCallback(ThemeChanged)
 }
 
-func platformFinishedStartup() {
-	pendingFilesLock.Lock()
-	defer pendingFilesLock.Unlock()
-	okToIssueFileOpens = true
-	if len(pendingFilesToOpen) != 0 {
-		paths := pendingFilesToOpen
-		pendingFilesToOpen = nil
+func apiFinalFinishStartup() {
+	macPendingFilesLock.Lock()
+	defer macPendingFilesLock.Unlock()
+	macMayIssueFileOpens = true
+	if len(macPendingFilesToOpen) != 0 {
+		paths := macPendingFilesToOpen
+		macPendingFilesToOpen = nil
 		if openFilesCallback != nil {
 			openFilesCallback(paths)
 		}
 	}
 }
 
-func platformBeep() {
-	ns.Beep()
+func apiTerminate() error {
+	mac.UninstallMacAppDelegate()
+	return nil
 }
 
-func platformIsDarkModeTrackingPossible() bool {
+func apiBeep() {
+	mac.Beep()
+}
+
+func apiIsColorModeTrackingPossible() bool {
 	return true
 }
 
-func platformIsDarkModeEnabled() bool {
-	return ns.IsDarkModeEnabled()
+func apiIsDarkModeEnabled() bool {
+	return mac.IsDarkModeEnabled()
 }
 
-func platformDoubleClickInterval() time.Duration {
-	return ns.DoubleClickInterval()
+func apiDoubleClickInterval() time.Duration {
+	return mac.DoubleClickInterval()
+}
+
+func apiPollEvents() {
+	mac.PollEvents()
+}
+
+func apiWaitEvents() {
+	mac.WaitEvents()
+}
+
+func apiPostEmptyEvent() {
+	if platformInited.Load() {
+		mac.PostEmptyEvent()
+	}
 }

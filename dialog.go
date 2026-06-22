@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,11 +11,13 @@ package unison
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // Pre-defined modal response codes. Apps should start their codes at ModalResponseUserBase.
@@ -28,7 +30,7 @@ const (
 
 // DialogClientDataKey is the key used in the ClientData() of the Window the dialog puts up which contains the *Dialog
 // of the owning dialog.
-const DialogClientDataKey = "dialog"
+const DialogClientDataKey = "unison.dialog"
 
 // DefaultDialogTheme holds the default DialogTheme values for Dialogs. Modifying this data will not alter existing
 // Dialogs, but will alter any Dialogs created in the future.
@@ -77,13 +79,7 @@ type Dialog struct {
 // always have te FloatingWindowOption() set.
 func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*DialogButtonInfo, windowOptions ...WindowOption) (*Dialog, error) {
 	d := &Dialog{buttons: make(map[int]*buttonData)}
-	var frame geom.Rect
-	if focused := ActiveWindow(); focused != nil {
-		frame = focused.FrameRect()
-	} else {
-		frame = PrimaryDisplay().Usable
-	}
-	opts := []WindowOption{FloatingWindowOption()}
+	opts := []WindowOption{WindowKindWindowOption(WindowKindDialog), FloatingWindowOption()}
 	if len(windowOptions) > 0 {
 		opts = append(opts, windowOptions...)
 	}
@@ -148,17 +144,21 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 	})
 	content.AddChild(buttonPanel)
 	originalKeyDownCallback := content.KeyDownCallback
-	content.KeyDownCallback = func(keyCode KeyCode, mod Modifiers, repeat bool) bool {
-		if originalKeyDownCallback == nil || !originalKeyDownCallback(keyCode, mod, repeat) {
-			if mod&NonStickyModifiers == 0 {
+	content.KeyDownCallback = func(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+		ok := false
+		if originalKeyDownCallback == nil {
+			ok = true
+		} else {
+			SafeCall(func() { ok = !originalKeyDownCallback(keyCode, mods, repeat) })
+		}
+		if ok {
+			if mods&mod.NonSticky == 0 {
 				for _, one := range d.buttons {
-					for _, kc := range one.info.KeyCodes {
-						if kc == keyCode {
-							if one.button.Enabled() {
-								one.button.Click()
-							}
-							return true
+					if slices.Contains(one.info.KeyCodes, keyCode) {
+						if one.button.Enabled() {
+							one.button.Click()
 						}
+						return true
 					}
 				}
 			}
@@ -167,12 +167,7 @@ func NewDialog(icon Drawable, iconInk Ink, msgPanel Paneler, buttonInfo []*Dialo
 		return true
 	}
 	d.wnd.Pack()
-	wndFrame := d.wnd.FrameRect()
-	frame.Y += (frame.Height - wndFrame.Height) / 3
-	frame.Height = wndFrame.Height
-	frame.X += (frame.Width - wndFrame.Width) / 2
-	frame.Width = wndFrame.Width
-	d.wnd.SetFrameRect(frame.Align())
+	d.wnd.MoveToModalCenter(ActiveWindow())
 	return d, nil
 }
 

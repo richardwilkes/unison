@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -207,20 +208,18 @@ func (b *Button) Click() {
 	b.Pressed = pressed
 	time.Sleep(b.ClickAnimationTime)
 	b.MarkForRedraw()
-	if b.ClickCallback != nil {
-		b.ClickCallback()
-	}
+	SafeCall(b.ClickCallback)
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (b *Button) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	b.Pressed = true
 	b.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if pressed := where.In(b.ContentRect(false)); pressed != b.Pressed {
 		b.Pressed = pressed
 		b.MarkForRedraw()
@@ -229,21 +228,19 @@ func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	if where.In(b.ContentRect(false)) {
 		b.group.Select(b)
-		if b.ClickCallback != nil {
-			b.ClickCallback()
-		}
+		SafeCall(b.ClickCallback)
 	}
 	return true
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (b *Button) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
-	if IsControlAction(keyCode, mod) {
+func (b *Button) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
+	if IsControlAction(keyCode, mods) {
 		b.Click()
 		return true
 	}

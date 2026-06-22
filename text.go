@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -62,7 +62,7 @@ func NewTextLines(text string, decoration *TextDecoration) []*Text {
 // NewTextWrappedLines creates a new list of Text, potentially multiple for each logical line. Tabs are not considered,
 // but the text is split on any line feeds found and then wrapped to the given width. See Text.BreakToWidth().
 func NewTextWrappedLines(text string, decoration *TextDecoration, width float32) []*Text {
-	var lines []*Text
+	var lines []*Text //nolint:prealloc // No way to know in advance how many lines there will be
 	for _, line := range NewTextLines(text, decoration) {
 		lines = append(lines, line.BreakToWidth(width)...)
 	}

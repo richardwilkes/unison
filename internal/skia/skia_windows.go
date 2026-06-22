@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,7 +11,6 @@ package skia
 
 import (
 	"crypto/sha256"
-	_ "embed" // Needed for dll embedding
 	"encoding/base64"
 	"fmt"
 	"math"
@@ -22,14 +21,13 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"golang.org/x/sys/windows"
 )
 
 const ColorTypeN32 = ColorTypeBGRA8888
 
 var (
-	//go:embed skia_windows.dll
-	dllData                                        []byte
 	grBackendRenderTargetNewGLProc                 *syscall.Proc
 	grBackendRenderTargetDeleteProc                *syscall.Proc
 	grContextMakeGLProc                            *syscall.Proc
@@ -326,13 +324,13 @@ func init() {
 	dir, err := os.UserCacheDir()
 	xos.ExitIfErr(err)
 	dir = filepath.Join(dir, "unison", "dll_cache")
-	xos.ExitIfErr(os.MkdirAll(dir, 0755))
+	xos.ExitIfErr(os.MkdirAll(dir, 0o755))
 	xos.ExitIfErr(windows.SetDllDirectory(dir))
 	sha := sha256.Sum256(dllData)
 	dllName := fmt.Sprintf("skia-%s.dll", base64.RawURLEncoding.EncodeToString(sha[:]))
 	filePath := filepath.Join(dir, dllName)
 	if !xos.FileExists(filePath) {
-		xos.ExitIfErr(os.WriteFile(filePath, dllData, 0644))
+		xos.ExitIfErr(os.WriteFile(filePath, dllData, 0o644))
 	}
 	skia := syscall.MustLoadDLL(dllName)
 	grBackendRenderTargetNewGLProc = skia.MustFindProc("gr_backendrendertarget_new_gl")
@@ -958,17 +956,17 @@ func DataUnref(data Data) {
 	skDataUnrefProc.Call(uintptr(data))
 }
 
-func EncodeJPEG(ctx DirectContext, img Image, quality int) Data {
+func encodeJPEG(ctx DirectContext, img Image, quality int) Data {
 	r1, _, _ := skEncodeJPEGProc.Call(uintptr(ctx), uintptr(img), uintptr(quality))
 	return Data(r1)
 }
 
-func EncodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
+func encodePNG(ctx DirectContext, img Image, compressionLevel int) Data {
 	r1, _, _ := skEncodePNGProc.Call(uintptr(ctx), uintptr(img), uintptr(compressionLevel))
 	return Data(r1)
 }
 
-func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
+func encodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data {
 	r1, _, _ := skEncodeWEBPProc.Call(uintptr(ctx), uintptr(img), uintptr(math.Float32bits(quality)), boolToUintptr(lossy))
 	return Data(r1)
 }
@@ -976,6 +974,7 @@ func EncodeWebp(ctx DirectContext, img Image, quality float32, lossy bool) Data 
 func DocumentMakePDF(stream WStream, metadata *MetaData) Document {
 	var md metaData
 	md.set(metadata)
+	defer md.free()
 	r1, _, _ := skDocumentMakePDFProc.Call(uintptr(stream), uintptr(unsafe.Pointer(&md)))
 	return Document(r1)
 }
@@ -1963,7 +1962,7 @@ func StringGetString(str String) string {
 	data, _, _ := skStringGetCStrProc.Call(uintptr(str))
 	size, _, _ := skStringGetSizeProc.Call(uintptr(str))
 	s := make([]byte, int(size))
-	copy(s, unsafe.Slice((*byte)(unsafe.Pointer(data)), size))
+	copy(s, unsafe.Slice(xruntime.PtrFromUintptr[byte](data), size))
 	return string(s)
 }
 
@@ -2045,14 +2044,14 @@ func TextBlobBuilderMake(builder TextBlobBuilder) TextBlob {
 func TextBlobBuilderAllocRun(builder TextBlobBuilder, font Font, glyphs []uint16, pt geom.Point) {
 	r1, _, _ := skTextBlobBuilderAllocRunProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(pt.X)), uintptr(math.Float32bits(pt.Y)), 0)
-	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
+	buffer := xruntime.PtrFromUintptr[textBlobBuilderRunBuffer](r1)
 	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.Glyphs)), len(glyphs)), glyphs)
 }
 
 func TextBlobBuilderAllocRunPosH(builder TextBlobBuilder, font Font, glyphs []uint16, positions []float32, y float32) {
 	r1, _, _ := skTextBlobBuilderAllocRunPosHProc.Call(uintptr(builder), uintptr(font), uintptr(len(glyphs)),
 		uintptr(math.Float32bits(y)), 0)
-	buffer := (*textBlobBuilderRunBuffer)(unsafe.Pointer(r1))
+	buffer := xruntime.PtrFromUintptr[textBlobBuilderRunBuffer](r1)
 	copy(unsafe.Slice((*uint16)(unsafe.Pointer(buffer.Glyphs)), len(glyphs)), glyphs)
 	copy(unsafe.Slice((*float32)(unsafe.Pointer(buffer.Pos)), len(positions)), positions)
 }

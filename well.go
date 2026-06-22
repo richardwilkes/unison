@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,12 +11,17 @@ package unison
 
 import (
 	"context"
+	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
@@ -60,14 +65,22 @@ type WellTheme struct {
 
 // Well represents a control that holds and lets a user choose an ink.
 type Well struct {
-	ImageFromSpecCallback func(ctx context.Context, filePathOrURL string, scale geom.Point) (*Image, error)
+	HTTPClient            *http.Client // Used when retrieving data from a remote host
+	ImageFromSpecCallback func(ctx context.Context, client *http.Client, filePathOrURL string, scale geom.Point, maxBytes int64) (*Image, error)
 	InkChangedCallback    func()
 	ClickCallback         func()
 	ValidateImageCallback func(*Image) *Image
 	ink                   Ink
 	WellTheme
 	Panel
-	Pressed bool
+	ImageByteLimit int64 // Used when retrieving data from a remote host
+	Pressed        bool
+	dropHighlight  bool
+}
+
+// WellDragTypes returns the list of DataTypes that Wells will accept in drag and drop operations.
+func WellDragTypes() []*uti.DataType {
+	return append(imgfmt.AllReadableUTIs(), uti.FileURL)
 }
 
 // NewWell creates a new Well.
@@ -79,7 +92,7 @@ func NewWell() *Well {
 	well.Self = well
 	well.SetFocusable(true)
 	well.SetSizer(well.DefaultSizes)
-	well.ImageFromSpecCallback = NewImageFromFilePathOrURLWithContext
+	well.ImageFromSpecCallback = NewImageFromFilePathOrURL
 	well.ClickCallback = well.DefaultClick
 	well.DrawCallback = well.DefaultDraw
 	well.GainedFocusCallback = well.DefaultFocusGained
@@ -88,7 +101,10 @@ func NewWell() *Well {
 	well.MouseDragCallback = well.DefaultMouseDrag
 	well.MouseUpCallback = well.DefaultMouseUp
 	well.KeyDownCallback = well.DefaultKeyDown
-	well.FileDropCallback = well.DefaultFileDrop
+	well.CanAcceptDropCallback = well.DefaultCanAcceptDrop
+	well.DragEnteredCallback = well.DefaultDragEnter
+	well.DragExitedCallback = well.DefaultDragExit
+	well.DropCallback = well.DefaultDrop
 	well.UpdateCursorCallback = well.DefaultUpdateCursor
 	return well
 }
@@ -122,9 +138,7 @@ func (w *Well) SetInk(ink Ink) {
 	if ink != w.ink {
 		w.ink = ink
 		w.MarkForRedraw()
-		if w.InkChangedCallback != nil {
-			w.InkChangedCallback()
-		}
+		SafeCall(w.InkChangedCallback)
 	}
 }
 
@@ -158,7 +172,7 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	edge := w.EdgeInk
 	thickness := float32(1)
 	wellInset := thickness + 2.5
-	if w.Focused() {
+	if w.dropHighlight || w.Focused() {
 		thickness++
 		edge = w.SelectionInk
 	}
@@ -172,27 +186,33 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		canvas.ClipPath(path, pathop.Intersect, true)
 		canvas.DrawImageInRect(pattern.Image, r, nil, nil)
 		canvas.Restore()
+		path.Dispose()
 	} else {
-		canvas.DrawRoundedRect(r, radius, w.ink.Paint(canvas, r, paintstyle.Fill))
+		fillPaint := w.ink.Paint(canvas, r, paintstyle.Fill)
+		canvas.DrawRoundedRect(r, radius, fillPaint)
+		fillPaint.Dispose()
 	}
 	if !w.Enabled() {
 		p := Black.Paint(canvas, r, paintstyle.Stroke)
 		p.SetBlendMode(blendmode.Xor)
 		canvas.DrawLine(geom.NewPoint(r.X+1, r.Y+1), geom.NewPoint(r.Right()-1, r.Bottom()-1), p)
 		canvas.DrawLine(geom.NewPoint(r.X+1, r.Bottom()-1), geom.NewPoint(r.Right()-1, r.Y+1), p)
+		p.Dispose()
 	}
-	canvas.DrawRoundedRect(r, radius, edge.Paint(canvas, r, paintstyle.Stroke))
+	edgePaint := edge.Paint(canvas, r, paintstyle.Stroke)
+	defer edgePaint.Dispose()
+	canvas.DrawRoundedRect(r, radius, edgePaint)
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (w *Well) DefaultMouseDown(_ geom.Point, _, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	w.Pressed = true
 	w.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	rect := w.ContentRect(false)
 	if pressed := where.In(rect); pressed != w.Pressed {
 		w.Pressed = pressed
@@ -202,20 +222,18 @@ func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ Modifiers) bool {
+func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	w.Pressed = false
 	w.MarkForRedraw()
 	if where.In(w.ContentRect(false)) {
-		if w.ClickCallback != nil {
-			w.ClickCallback()
-		}
+		SafeCall(w.ClickCallback)
 	}
 	return true
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (w *Well) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
-	if IsControlAction(keyCode, mod) {
+func (w *Well) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
+	if IsControlAction(keyCode, mods) {
 		w.Click()
 		return true
 	}
@@ -236,35 +254,103 @@ func (w *Well) Click() {
 	w.Pressed = pressed
 	time.Sleep(w.ClickAnimationTime)
 	w.MarkForRedraw()
-	if w.ClickCallback != nil {
-		w.ClickCallback()
-	}
+	SafeCall(w.ClickCallback)
 }
 
-// DefaultFileDrop provides the default file drop behavior.
-func (w *Well) DefaultFileDrop(files []string) {
-	for _, one := range files {
-		if imageSpec := imgfmt.Distill(one); imageSpec != "" {
-			img, err := w.loadImage(imageSpec)
-			if err != nil {
-				errs.Log(err, "spec", imageSpec)
-				continue
-			}
-			if w.ValidateImageCallback != nil {
-				img = w.ValidateImageCallback(img)
-			}
-			if img != nil {
-				w.SetInk(&Pattern{Image: img})
-				return
+// DefaultCanAcceptDrop reports whether this well is a candidate for the given drag, independent of pointer position.
+func (w *Well) DefaultCanAcceptDrop(di drag.Info) bool {
+	if !w.Enabled() {
+		return false
+	}
+	if di.HasFilePaths() {
+		for _, f := range di.FilePaths() {
+			if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
+				return true
 			}
 		}
 	}
+	for _, dataType := range imgfmt.AllReadableUTIs() {
+		if di.HasDataType(dataType.UTI) {
+			return true
+		}
+	}
+	return false
 }
 
-func (w *Well) loadImage(imageSpec string) (*Image, error) {
+// DefaultDragEnter provides the default drag enter handling.
+func (w *Well) DefaultDragEnter(di drag.Info, _ geom.Point, _ mod.Modifiers) drag.Op {
+	op := drag.None
+	if w.DefaultCanAcceptDrop(di) {
+		op = drag.Copy
+	}
+	if op != drag.None {
+		if !w.dropHighlight {
+			w.dropHighlight = true
+			w.MarkForRedraw()
+			w.FlushDrawing()
+		}
+	}
+	return op
+}
+
+// DefaultDragExit provides the default drag exit handling.
+func (w *Well) DefaultDragExit() {
+	if w.dropHighlight {
+		w.dropHighlight = false
+		w.MarkForRedraw()
+		w.FlushDrawing()
+	}
+}
+
+// DefaultDrop provides the default drop handling. Handles image files dropped onto the well.
+func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
+	w.DefaultDragExit()
+	if w.Enabled() {
+		if di.HasFilePaths() {
+			for _, f := range di.FilePaths() {
+				if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
+					img, err := w.loadImage(f)
+					if err != nil {
+						errs.Log(err, "spec", f)
+						continue
+					}
+					if w.ValidateImageCallback != nil {
+						SafeCall(func() { img = w.ValidateImageCallback(img) })
+					}
+					if img != nil {
+						w.SetInk(&Pattern{Image: img})
+						return true
+					}
+				}
+			}
+		}
+		for _, dataType := range imgfmt.AllReadableUTIs() {
+			if di.HasDataType(dataType.UTI) {
+				img, err := NewImageFromBytes(di.Data(dataType.UTI), w.ImageScale)
+				if err != nil {
+					errs.Log(err, "image data", dataType.UTI)
+					continue
+				}
+				if w.ValidateImageCallback != nil {
+					SafeCall(func() { img = w.ValidateImageCallback(img) })
+				}
+				if img != nil {
+					w.SetInk(&Pattern{Image: img})
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (w *Well) loadImage(imageSpec string) (img *Image, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), w.ImageLoadTimeout)
 	defer cancel()
-	return w.ImageFromSpecCallback(ctx, imageSpec, w.ImageScale)
+	SafeCall(func() {
+		img, err = w.ImageFromSpecCallback(ctx, w.HTTPClient, imageSpec, w.ImageScale, w.ImageByteLimit)
+	})
+	return img, err
 }
 
 // DefaultUpdateCursor provides the default cursor for wells.

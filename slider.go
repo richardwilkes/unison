@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -81,7 +81,7 @@ func (s *Slider) Value() float32 {
 // SetValue sets the current value.
 func (s *Slider) SetValue(value float32) {
 	if s.ValueSnapCallback != nil {
-		value = s.ValueSnapCallback(value)
+		SafeCall(func() { value = s.ValueSnapCallback(value) })
 	}
 	if value < s.minimum {
 		value = s.minimum
@@ -90,9 +90,7 @@ func (s *Slider) SetValue(value float32) {
 	}
 	if s.value != value {
 		s.value = value
-		if s.ValueChangedCallback != nil {
-			xos.SafeCall(s.ValueChangedCallback, nil)
-		}
+		SafeCall(s.ValueChangedCallback)
 		s.MarkForRedraw()
 	}
 }
@@ -154,7 +152,9 @@ func (s *Slider) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.S
 
 // DefaultDrawBackground provides the default background drawing.
 func (s *Slider) DefaultDrawBackground(canvas *Canvas, bounds geom.Rect) {
-	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.FillInk.Paint(canvas, bounds, paintstyle.Fill))
+	paint := s.FillInk.Paint(canvas, bounds, paintstyle.Fill)
+	defer paint.Dispose()
+	canvas.DrawRoundedRect(bounds, s.CornerRadius, paint)
 }
 
 // DefaultDraw provides the default drawing.
@@ -174,8 +174,11 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		bounds.Y += s.EdgeThickness
 		bounds.Height -= s.EdgeThickness * 2
 	}
-	canvas.DrawRoundedRect(bounds, s.CornerRadius, s.FillInk.Paint(canvas, bounds, paintstyle.Fill))
+	fillPaint := s.FillInk.Paint(canvas, bounds, paintstyle.Fill)
+	defer fillPaint.Dispose()
+	canvas.DrawRoundedRect(bounds, s.CornerRadius, fillPaint)
 	edgePaint := s.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
+	defer edgePaint.Dispose()
 	edgePaint.SetStrokeWidth(s.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, s.CornerRadius, edgePaint)
 	center := bounds.Center()
@@ -198,20 +201,22 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		inner = s.MarkerColor.Paint(canvas, bounds, paintstyle.Stroke)
 		inner.SetStrokeWidth(1)
 	}
+	defer outer.Dispose()
+	defer inner.Dispose()
 	canvas.DrawCircle(center, s.MarkerSize/2-2, outer)
 	canvas.DrawCircle(center, s.MarkerSize/2-2, inner)
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mod Modifiers) bool {
+func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mods mod.Modifiers) bool {
 	s.pressed = true
-	s.DefaultMouseDrag(where, button, mod)
+	s.DefaultMouseDrag(where, button, mods)
 	s.MarkForRedraw()
 	return true
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
-func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
+func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	bounds := s.ContentRect(false)
 	var minimum, maximum, pos float32
 	inset := s.EdgeThickness + s.MarkerSize/2
@@ -237,8 +242,8 @@ func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ Modifiers) bool {
 }
 
 // DefaultMouseUp provides the default mouse up handling.
-func (s *Slider) DefaultMouseUp(where geom.Point, button int, mod Modifiers) bool {
-	s.DefaultMouseDrag(where, button, mod)
+func (s *Slider) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
+	s.DefaultMouseDrag(where, button, mods)
 	s.pressed = false
 	s.MarkForRedraw()
 	return true

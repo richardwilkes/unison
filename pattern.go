@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -40,12 +40,14 @@ func (p *Pattern) Paint(canvas *Canvas, _ geom.Rect, style paintstyle.Enum) *Pai
 	}
 	scale = scale.MulPt(p.Image.Scale())
 	paint.SetColor(Black)
-	paint.SetShader(NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
+	shader := NewImageShader(canvas, p.Image, p.TileModeX, p.TileModeY, &p.SamplingOptions,
 		geom.Matrix{
 			ScaleX: scale.X,
 			ScaleY: scale.Y,
 			TransX: p.Offset.X,
 			TransY: p.Offset.Y,
-		}))
+		})
+	paint.SetShader(shader)
+	shader.Dispose()
 	return paint
 }

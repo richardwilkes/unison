@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -51,7 +51,7 @@ func (a Attributes) ForJob() *JobAttributes {
 }
 
 func (a Attributes) toIPP() goipp.Attributes {
-	var other goipp.Attributes
+	other := make(goipp.Attributes, 0, len(a))
 	for k, v := range a {
 		other = append(other, goipp.Attribute{
 			Name:   k,

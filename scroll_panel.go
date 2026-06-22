@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -10,15 +10,28 @@
 package unison
 
 import (
+	"runtime"
+
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 var (
 	_ Layout = &ScrollPanel{}
 	// MouseWheelMultiplier is used by the default theme to multiply incoming mouse wheel event deltas.
-	MouseWheelMultiplier = float32(16)
+	MouseWheelMultiplier = func() float32 {
+		switch runtime.GOOS {
+		case xos.MacOS:
+			return 1
+		case xos.WindowsOS, xos.LinuxOS:
+			return 24
+		default:
+			return 1
+		}
+	}()
 )
 
 // DefaultScrollPanelTheme holds the default ScrollPanelTheme values for ScrollPanels. Modifying this data will not
@@ -191,7 +204,9 @@ func (s *ScrollPanel) SetPosition(h, v float32) {
 // DefaultDraw provides the default drawing.
 func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := s.ContentRect(true)
-	canvas.DrawRect(r, s.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
+	paint := s.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
+	defer paint.Dispose()
+	canvas.DrawRect(r, paint)
 }
 
 // Sync the headers and content with the current scroll state.
@@ -217,17 +232,17 @@ func (s *ScrollPanel) Sync() {
 			r.Y = -s.verticalBar.Value()
 			s.content.AsPanel().SetFrameRect(r)
 		}
-		s.MarkForLayoutAndRedraw()
+		s.MarkForRedraw()
 	}
 }
 
 // DefaultKeyDown provides the default key down handling.
-func (s *ScrollPanel) DefaultKeyDown(keyCode KeyCode, mod Modifiers, _ bool) bool {
+func (s *ScrollPanel) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	switch keyCode {
 	case KeyPageUp:
-		s.scrollViewByPage(-1, mod.ShiftDown())
+		s.scrollViewByPage(-1, mods.ShiftDown())
 	case KeyPageDown:
-		s.scrollViewByPage(1, mod.ShiftDown())
+		s.scrollViewByPage(1, mods.ShiftDown())
 	default:
 		return false
 	}
@@ -246,7 +261,7 @@ func (s *ScrollPanel) scrollViewByPage(direction float32, horizontal bool) {
 }
 
 // DefaultMouseWheel provides the default mouse wheel handling.
-func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ Modifiers) bool {
+func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ mod.Modifiers) bool {
 	multiplier := s.MouseWheelMultiplier()
 	if delta.Y != 0 {
 		dy := delta.Y
@@ -309,6 +324,10 @@ func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBotto
 
 // DefaultFrameChangeInChildHierarchy provides the default frame change in child hierarchy handling.
 func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
+	if s.syncing {
+		// Frame changes triggered while syncing are position-only (scrolling) and never require a re-layout.
+		return
+	}
 	if s.content != nil {
 		vs := s.contentView.FrameRect().Size
 		r := s.content.AsPanel().FrameRect()

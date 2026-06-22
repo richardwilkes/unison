@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -15,6 +15,7 @@ import (
 	"unsafe"
 )
 
+// https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/ne-shobjidl_core-_fileopendialogoptions
 const (
 	FOSOverwritePrompt          = 0x00000002
 	FOSStrictFileTypes          = 0x00000004
@@ -41,6 +42,8 @@ const (
 	FOSSupportsStreamableItems  = 0x80000000
 )
 
+// FileFilter represents a single filter for a file dialog, with a user-friendly name and a pattern to match against
+// file names.
 type FileFilter struct {
 	Name    string
 	Pattern string
@@ -51,6 +54,7 @@ type filterSpec struct {
 	pattern *int16
 }
 
+// FileDialog https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ifiledialog
 type FileDialog struct {
 	ModalWindow
 }
@@ -77,7 +81,7 @@ type vmtFileDialog struct {
 	AddPlace            uintptr
 	SetDefaultExtension uintptr
 	Close               uintptr
-	SetClientGuid       uintptr
+	SetClientGUID       uintptr
 	ClearClientData     uintptr
 	SetFilter           uintptr
 }
@@ -86,17 +90,24 @@ func (obj *FileDialog) vmt() *vmtFileDialog {
 	return (*vmtFileDialog)(obj.UnsafeVirtualMethodTable)
 }
 
+// SetFolder sets the initial folder for the file dialog to open in. The path should be an absolute path to a folder.
 func (obj *FileDialog) SetFolder(path string) {
 	if item := NewShellItem(path); item != nil {
 		defer item.Release()
+		//nolint:errcheck // Nothing we can do about an error here
 		syscall.SyscallN(obj.vmt().SetFolder, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(item)))
 	}
 }
 
+// SetOptions sets the options for the file dialog, using a bitwise combination of the FOS* constants defined above.
 func (obj *FileDialog) SetOptions(options int) {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetOptions, uintptr(unsafe.Pointer(obj)), uintptr(options))
 }
 
+// SetFileTypes sets the file type filters for the file dialog. Each filter consists of a user-friendly name and a
+// pattern to match against file names. The pattern can include wildcards, such as "*.txt" to match all text files. If
+// no filters are set, all files will be shown.
 func (obj *FileDialog) SetFileTypes(filters []FileFilter) {
 	if len(filters) == 0 {
 		return
@@ -108,22 +119,33 @@ func (obj *FileDialog) SetFileTypes(filters []FileFilter) {
 			pattern: SysAllocString(one.Pattern),
 		}
 	}
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetFileTypes, uintptr(unsafe.Pointer(obj)), uintptr(len(specs)),
 		uintptr(unsafe.Pointer(&specs[0])))
 }
 
+// SetDefaultExtension sets the default file extension for the file dialog. This is the extension that will be
+// automatically appended to the file name if the user does not specify an extension. The extension should be specified
+// without a leading dot, e.g. "txt" for text files.
 func (obj *FileDialog) SetDefaultExtension(ext string) {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetDefaultExtension, uintptr(unsafe.Pointer(obj)),
 		uintptr(unsafe.Pointer(SysAllocString(strings.TrimPrefix(ext, ".")))))
 }
 
+// SetFileName sets the initial file name for the file dialog. This is the file name that will be pre-filled in the file
+// name input field when the dialog is shown.
 func (obj *FileDialog) SetFileName(fileName string) {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetFileName, uintptr(unsafe.Pointer(obj)),
 		uintptr(unsafe.Pointer(SysAllocString(fileName))))
 }
 
+// GetResult retrieves the file path selected by the user in the file dialog. If the user cancels the dialog or an error
+// occurs, an empty string is returned.
 func (obj *FileDialog) GetResult() string {
 	var item *ShellItem
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().GetResult, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(&item)))
 	if r1 != 0 || item == nil {
 		return ""

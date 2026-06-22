@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -252,8 +252,8 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 	<string>{{.AppVersion}}</string>
 	<key>CFBundleShortVersionString</key>
 	<string>{{.ShortVersion}}</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>{{.MinimumSystemVersion}}</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>{{.MinimumSystemVersion}}</string>
 	<key>CFBundleExecutable</key>
 	<string>{{.AppCmdName}}</string>
 	<key>NSHumanReadableCopyright</key>
@@ -264,34 +264,34 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 	<string>{{.AppIcon}}</string>
 	<key>CFBundleSpokenName</key>
 	<string>{{.SpokenName}}</string>
-    <key>LSApplicationCategoryType</key>
-    <string>{{.CategoryUTI}}</string>
+	<key>LSApplicationCategoryType</key>
+	<string>{{.CategoryUTI}}</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 {{- if .FileInfo}}
-    <key>CFBundleDocumentTypes</key>
-    <array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
 {{- range .FileInfo}}
-        <dict>
-            <key>CFBundleTypeName</key>
-            <string>{{.Name}}</string>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>{{.Name}}</string>
 {{- if eq .Rank "Owner"}}
-            <key>CFBundleTypeIconFile</key>
-            <string>{{.IconName}}</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>{{.IconName}}</string>
 {{- end}}
-            <key>CFBundleTypeRole</key>
-            <string>{{.Role}}</string>
-            <key>LSHandlerRank</key>
-            <string>{{.Rank}}</string>
-            <key>LSItemContentTypes</key>
-            <array>
-                <string>{{.UTI}}</string>
-            </array>
-        </dict>
+			<key>CFBundleTypeRole</key>
+			<string>{{.Role}}</string>
+			<key>LSHandlerRank</key>
+			<string>{{.Rank}}</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>{{.UTI}}</string>
+			</array>
+		</dict>
 {{- end}}
-    </array>
+	</array>
 {{- if .ExportCount}}
 	<key>UTExportedTypeDeclarations</key>
 	<array>

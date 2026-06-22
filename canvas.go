@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -10,6 +10,9 @@
 package unison
 
 import (
+	"log/slog"
+
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/blendmode"
@@ -220,12 +223,20 @@ func (c *Canvas) DrawTextBlob(blob *TextBlob, pt geom.Point, paint *Paint) {
 
 // ClipRect replaces the clip with the intersection of difference of the current clip and rect.
 func (c *Canvas) ClipRect(rect geom.Rect, op pathop.Enum, antialias bool) {
-	skia.CanavasClipRectWithOperation(c.canvas, rect, skia.ClipOp(op), antialias)
+	if op.ValidForClip() {
+		skia.CanavasClipRectWithOperation(c.canvas, rect, skia.ClipOp(op), antialias)
+	} else {
+		errs.LogAttrs(errs.New("invalid op for clipping"), slog.String("op", op.String()))
+	}
 }
 
 // ClipPath replaces the clip with the intersection of difference of the current clip and path.
 func (c *Canvas) ClipPath(path *Path, op pathop.Enum, antialias bool) {
-	skia.CanavasClipPathWithOperation(c.canvas, path.path, skia.ClipOp(op), antialias)
+	if op.ValidForClip() {
+		skia.CanavasClipPathWithOperation(c.canvas, path.path, skia.ClipOp(op), antialias)
+	} else {
+		errs.LogAttrs(errs.New("invalid op for clipping"), slog.String("op", op.String()))
+	}
 }
 
 // ClipBounds returns the clip bounds.

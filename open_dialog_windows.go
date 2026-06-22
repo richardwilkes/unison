@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -18,17 +18,19 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-type winOpenDialog struct {
+var _ OpenDialog = &w32OpenDialog{}
+
+type w32OpenDialog struct {
 	fileCommon
 }
 
-func platformNewOpenDialog() OpenDialog {
-	d := &winOpenDialog{}
+func apiNewOpenDialog() OpenDialog {
+	d := &w32OpenDialog{}
 	d.initialize()
 	return d
 }
 
-func (d *winOpenDialog) RunModal() bool {
+func (d *w32OpenDialog) RunModal() bool {
 	active := ActiveWindow()
 	if active != nil {
 		active.restoreHiddenCursor()
@@ -58,7 +60,7 @@ func (d *winOpenDialog) RunModal() bool {
 		options |= w32.FOSNoDereferenceLinks
 	}
 	openDialog.SetOptions(options)
-	openDialog.SetFileTypes(d.createFilters())
+	openDialog.SetFileTypes(d.w32CreateFilters())
 	d.paths = nil
 	if !openDialog.Show() {
 		return false
@@ -89,7 +91,7 @@ func (d *winOpenDialog) RunModal() bool {
 	return true
 }
 
-func (d *winOpenDialog) createFilters() []w32.FileFilter {
+func (d *w32OpenDialog) w32CreateFilters() []w32.FileFilter {
 	filters := make([]w32.FileFilter, 0, len(d.extensions)+1)
 	readable := make([]string, 0, len(d.extensions))
 	for _, ext := range d.extensions {

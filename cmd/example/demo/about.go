@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -83,15 +83,9 @@ func ShowAboutWindow(item unison.MenuItem) {
 		})
 		content.AddChild(desc)
 
-		// Pack our window to fit its content, then center it on the main display.
+		// Pack our window to fit its content, then position it.
 		aboutWindow.Pack()
-		wndFrame := aboutWindow.FrameRect()
-		frame := unison.PrimaryDisplay().Usable
-		frame.Y += (frame.Height - wndFrame.Height) / 3
-		frame.Height = wndFrame.Height
-		frame.X += (frame.Width - wndFrame.Width) / 2
-		frame.Width = wndFrame.Width
-		aboutWindow.SetFrameRect(frame.Align())
+		aboutWindow.MoveToModalCenter(unison.ActiveWindow())
 	}
 
 	// Make it visible and in the front.

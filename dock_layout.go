@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,11 +11,8 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/side"
 )
-
-// TODO: Fix scaling for docks, too
 
 var (
 	_ Layout         = &DockLayout{}
@@ -50,7 +47,7 @@ func (d *DockLayout) forEachDockContainer(f func(*DockContainer) bool) bool {
 		switch c := node.(type) {
 		case *DockContainer:
 			stop := false
-			xos.SafeCall(func() { stop = f(c) }, nil)
+			SafeCall(func() { stop = f(c) })
 			if stop {
 				return true
 			}

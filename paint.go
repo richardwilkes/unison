@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
@@ -22,16 +23,14 @@ import (
 
 // Paint controls options applied when drawing.
 type Paint struct {
-	paint skia.Paint
+	paint       skia.Paint
+	cleanup     runtime.Cleanup
+	disposeOnce sync.Once
 }
 
 func newPaint(paint skia.Paint) *Paint {
 	p := &Paint{paint: paint}
-	runtime.AddCleanup(p, func(sp skia.Paint) {
-		ReleaseOnUIThread(func() {
-			skia.PaintDelete(sp)
-		})
-	}, p.paint)
+	p.cleanup = newSkiaCleanup(p, paint, skia.PaintDelete)
 	return p
 }
 
@@ -47,6 +46,15 @@ func (p *Paint) paintOrNil() skia.Paint {
 		return nil
 	}
 	return p.paint
+}
+
+// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
+// trigger it.
+func (p *Paint) Dispose() {
+	if p == nil {
+		return
+	}
+	disposeSkiaHandle(&p.disposeOnce, p.cleanup, &p.paint, skia.PaintDelete)
 }
 
 // Clone the Paint.

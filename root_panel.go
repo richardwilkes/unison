@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -13,7 +13,7 @@ import (
 	"slices"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 var _ Layout = &rootPanel{}
@@ -141,24 +141,17 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 	p.contentPanel.SetFrameRect(rect)
 }
 
-func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers, repeat bool) bool {
+func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
 	if len(p.openMenuPanels) != 0 {
-		if p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mod, repeat) {
+		var handled bool
+		SafeCall(func() { handled = p.openMenuPanels[len(p.openMenuPanels)-1].KeyDownCallback(keyCode, mods, repeat) })
+		if handled {
 			return true
 		}
 	}
 	if p.menuBar != nil {
-		stop := false
-		xos.SafeCall(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mod) }, nil)
-		return stop
-	}
-	return false
-}
-
-func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
-	if p.menuBar != nil {
-		stop := false
-		xos.SafeCall(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mod) }, nil)
+		var stop bool
+		SafeCall(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mods, repeat) })
 		return stop
 	}
 	return false
@@ -167,7 +160,16 @@ func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 func (p *rootPanel) preRuneTyped(wnd *Window, ch rune) bool {
 	if p.menuBar != nil {
 		stop := false
-		xos.SafeCall(func() { stop = p.menuBar.preRuneTyped(wnd, ch) }, nil)
+		SafeCall(func() { stop = p.menuBar.preRuneTyped(wnd, ch) })
+		return stop
+	}
+	return false
+}
+
+func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mods mod.Modifiers) bool {
+	if p.menuBar != nil {
+		stop := false
+		SafeCall(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mods) })
 		return stop
 	}
 	return false
@@ -176,7 +178,7 @@ func (p *rootPanel) preRuneTyped(wnd *Window, ch rune) bool {
 func (p *rootPanel) preMouseDown(wnd *Window, where geom.Point) bool {
 	if p.menuBar != nil {
 		stop := false
-		xos.SafeCall(func() { stop = p.menuBar.preMouseDown(wnd, where) }, nil)
+		SafeCall(func() { stop = p.menuBar.preMouseDown(wnd, where) })
 		return stop
 	}
 	return false
@@ -184,6 +186,6 @@ func (p *rootPanel) preMouseDown(wnd *Window, where geom.Point) bool {
 
 func (p *rootPanel) preMoved(wnd *Window) {
 	if p.menuBar != nil {
-		xos.SafeCall(func() { p.menuBar.preMoved(wnd) }, nil)
+		SafeCall(func() { p.menuBar.preMoved(wnd) })
 	}
 }

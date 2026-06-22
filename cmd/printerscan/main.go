@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -12,16 +12,16 @@ package main
 import (
 	"context"
 	"flag"
-	"io"
-	"log"
 	"log/slog"
 	"os"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xflag"
+	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xslog"
+	"github.com/richardwilkes/toolbox/v2/xterm"
 	"github.com/richardwilkes/unison/printing"
 )
 
@@ -39,8 +39,6 @@ func main() {
 	outputDesc := "The file to write to"
 	output := flag.String("output", defOutput, outputDesc)
 	flag.StringVar(output, "o", defOutput, outputDesc)
-	logCfg := xslog.Config{Console: true}
-	logCfg.AddFlags()
 	xflag.Parse()
 	scan(*duration, *output)
 	xos.Exit(0)
@@ -49,7 +47,18 @@ func main() {
 func scan(duration time.Duration, output string) {
 	f, err := os.Create(output)
 	xos.ExitIfErr(err)
-	log.SetOutput(io.MultiWriter(f, os.Stdout))
+	defer xio.CloseLoggingErrors(f)
+	opts := slog.HandlerOptions{
+		AddSource: true,
+		Level:     slog.LevelInfo,
+	}
+	slog.SetDefault(slog.New(xslog.NewMultiHandler(
+		slog.NewJSONHandler(f, &opts),
+		xslog.NewPrettyHandler(os.Stdout, &xslog.PrettyOptions{
+			HandlerOptions:       opts,
+			ColorSupportOverride: xterm.DetectKind(os.Stdout),
+		}),
+	)))
 	pm := &printing.PrintManager{}
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()

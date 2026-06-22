@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -31,7 +31,10 @@ type SaveDialog interface {
 
 // NewSaveDialog creates a new save dialog using native support where possible.
 func NewSaveDialog() SaveDialog {
-	return platformNewSaveDialog()
+	if noPlatformFileDialogs {
+		return NewCommonSaveDialog()
+	}
+	return apiNewSaveDialog()
 }
 
 // ValidateSaveFilePath ensures the given path is ok to be used to save a file. If requiredExtension isn't empty, this

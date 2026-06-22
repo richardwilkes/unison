@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -17,17 +17,16 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 var (
-	// ErrColorDecode is the sentinel error returned by the ColorDecode function on failure.
-	ErrColorDecode               = errors.New("invalid color string")
-	nameToColor                  = make(map[string]Color)
-	colorToName                  = make(map[Color]string)
-	_              ColorProvider = Color(0)
+	nameToColor               = make(map[string]Color)
+	colorToName               = make(map[Color]string)
+	_           ColorProvider = Color(0)
 )
 
 // ColorProvider allows for different types of objects that hold a color to be used interchangeably.
@@ -94,6 +93,50 @@ func HSBA(hue, saturation, brightness, alpha float32) Color {
 	}
 }
 
+// HSL creates a new opaque Color from HSL (Hue, Saturation, Lightness) values in the range 0-1.
+func HSL(hue, saturation, lightness float32) Color {
+	return HSLA(hue, saturation, lightness, 1)
+}
+
+// HSLA creates a new Color from HSLA (Hue, Saturation, Lightness, Alpha) values in the range 0-1.
+func HSLA(hue, saturation, lightness, alpha float32) Color {
+	saturation = clamp0To1(saturation)
+	lightness = clamp0To1(lightness)
+	if saturation == 0 {
+		v := clamp0To1AndScale255(lightness)
+		return ARGB(alpha, v, v, v)
+	}
+	var q float32
+	if lightness < 0.5 {
+		q = lightness * (1 + saturation)
+	} else {
+		q = lightness + saturation - lightness*saturation
+	}
+	p := 2*lightness - q
+	hue -= xmath.Floor(hue)
+	return ARGB(alpha, clamp0To1AndScale255(hueToRGB(p, q, hue+1.0/3.0)),
+		clamp0To1AndScale255(hueToRGB(p, q, hue)),
+		clamp0To1AndScale255(hueToRGB(p, q, hue-1.0/3.0)))
+}
+
+func hueToRGB(p, q, t float32) float32 {
+	if t < 0 {
+		t++
+	} else if t > 1 {
+		t--
+	}
+	switch {
+	case t < 1.0/6.0:
+		return p + (q-p)*6*t
+	case t < 0.5:
+		return q
+	case t < 2.0/3.0:
+		return p + (q-p)*(2.0/3.0-t)*6
+	default:
+		return p
+	}
+}
+
 // OKLCH creates a Color from lightness (0-1), chroma (0-0.37), hue (0-360), alpha (0-1) values using the OKLCH color space.
 func OKLCH(lightness, chroma, hue, alpha float32) Color {
 	x := float64(normalizeHue(float64(hue))) * math.Pi / 180
@@ -126,7 +169,8 @@ func fromLinear(value float64) float32 {
 	return float32(value * 12.92)
 }
 
-// MustColorDecode is the same as ColorDecode(), but returns Black if an error occurs.
+// MustColorDecode is the same as ColorDecode(), but returns a fully transparent color (the zero value) if an error
+// occurs.
 func MustColorDecode(buffer string) Color {
 	c, _ := ColorDecode(buffer) //nolint:errcheck // Intentional dropping of the error
 	return c
@@ -142,6 +186,8 @@ func MustColorDecode(buffer string) Color {
 // - CCS hsl(), e.g. "hsl(120, 100%, 50%)"
 // - CSS hsla(), e.g. "hsla(120, 100%, 50%, 0.3)"
 func ColorDecode(buffer string) (Color, error) {
+	const invalid = "invalid color string: %q"
+	original := buffer
 	buffer = strings.ToLower(strings.TrimSpace(buffer))
 	if c, ok := nameToColor[buffer]; ok {
 		return c, nil
@@ -153,29 +199,29 @@ func ColorDecode(buffer string) (Color, error) {
 		case 3:
 			red, err := strconv.ParseInt(buffer[0:1], 16, 64)
 			if err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var green int64
 			if green, err = strconv.ParseInt(buffer[1:2], 16, 64); err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var blue int64
 			if blue, err = strconv.ParseInt(buffer[2:3], 16, 64); err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			return RGB(int((red<<4)|red), int((green<<4)|green), int((blue<<4)|blue)), nil
 		case 6:
 			red, err := strconv.ParseInt(strings.TrimSpace(buffer[0:2]), 16, 64)
 			if err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var green int64
 			if green, err = strconv.ParseInt(strings.TrimSpace(buffer[2:4]), 16, 64); err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var blue int64
 			if blue, err = strconv.ParseInt(strings.TrimSpace(buffer[4:6]), 16, 64); err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			return RGB(int(red), int(green), int(blue)), nil
 		}
@@ -184,15 +230,15 @@ func ColorDecode(buffer string) (Color, error) {
 		if len(parts) == 3 {
 			red, err := extractIntegerOrPercentColorValue(parts[0])
 			if err != nil {
-				return 0, err
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var green int
 			if green, err = extractIntegerOrPercentColorValue(parts[1]); err != nil {
-				return 0, err
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var blue int
 			if blue, err = extractIntegerOrPercentColorValue(parts[2]); err != nil {
-				return 0, err
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			return RGB(red, green, blue), nil
 		}
@@ -201,19 +247,19 @@ func ColorDecode(buffer string) (Color, error) {
 		if len(parts) == 4 {
 			red, err := extractIntegerOrPercentColorValue(parts[0])
 			if err != nil {
-				return 0, err
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var green int
 			if green, err = extractIntegerOrPercentColorValue(parts[1]); err != nil {
-				return 0, err
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var blue int
 			if blue, err = extractIntegerOrPercentColorValue(parts[2]); err != nil {
-				return 0, err
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var alpha float64
 			if alpha, err = strconv.ParseFloat(strings.TrimSpace(parts[3]), 32); err != nil || alpha < 0 || alpha > 1 {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			return ARGB(float32(alpha), red, green, blue), nil
 		}
@@ -222,24 +268,24 @@ func ColorDecode(buffer string) (Color, error) {
 		if len(parts) == 3 {
 			hue, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
 			if err != nil || hue < 0 || hue > 359 {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var saturation float32
 			if saturation, err = extractColorPercentage(parts[1]); err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
-			var brightness float32
-			if brightness, err = extractColorPercentage(parts[2]); err != nil {
-				return 0, ErrColorDecode
+			var lightness float32
+			if lightness, err = extractColorPercentage(parts[2]); err != nil {
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
-			return HSB(float32(hue)/360, saturation, brightness), nil
+			return HSL(float32(hue)/360, saturation, lightness), nil
 		}
 	case strings.HasPrefix(buffer, "hsla(") && strings.HasSuffix(buffer, ")"):
 		parts := strings.SplitN(strings.TrimSpace(buffer[5:len(buffer)-1]), ",", 5)
 		if len(parts) == 4 {
 			hue, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
 			if err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			if hue < 0 {
 				hue = 360 - ((-hue) % 360)
@@ -248,25 +294,25 @@ func ColorDecode(buffer string) (Color, error) {
 			}
 			var saturation float32
 			if saturation, err = extractColorPercentage(parts[1]); err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
-			var brightness float32
-			if brightness, err = extractColorPercentage(parts[2]); err != nil {
-				return 0, ErrColorDecode
+			var lightness float32
+			if lightness, err = extractColorPercentage(parts[2]); err != nil {
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			var alpha float64
 			if alpha, err = strconv.ParseFloat(strings.TrimSpace(parts[3]), 32); err != nil {
-				return 0, ErrColorDecode
+				return 0, errs.NewWithCausef(err, invalid, original)
 			}
 			if alpha < 0 {
 				alpha = 0
 			} else if alpha > 1 {
 				alpha = 1
 			}
-			return HSBA(float32(hue)/360, saturation, brightness, float32(alpha)), nil
+			return HSLA(float32(hue)/360, saturation, lightness, float32(alpha)), nil
 		}
 	}
-	return 0, ErrColorDecode
+	return 0, errs.Newf(invalid, original)
 }
 
 func extractIntegerOrPercentColorValue(s string) (int, error) {
@@ -274,7 +320,7 @@ func extractIntegerOrPercentColorValue(s string) (int, error) {
 	s, isPercent = strings.CutSuffix(strings.TrimSpace(s), "%")
 	v, err := strconv.Atoi(strings.TrimSpace(s))
 	if err != nil {
-		return 0, ErrColorDecode
+		return 0, err
 	}
 	switch {
 	case v < 0:
@@ -295,11 +341,11 @@ func extractColorPercentage(s string) (float32, error) {
 	var isPercent bool
 	s, isPercent = strings.CutSuffix(strings.TrimSpace(s), "%")
 	if !isPercent {
-		return 0, ErrColorDecode
+		return 0, errors.New("expected percentage value")
 	}
 	v, err := strconv.Atoi(strings.TrimSpace(s))
 	if err != nil {
-		return 0, ErrColorDecode
+		return 0, err
 	}
 	if v < 0 {
 		v = 0
@@ -747,308 +793,158 @@ func clampChromaForOKLCH(value float32) float32 {
 
 // CSS named colors.
 var (
-	AliceBlue            = RGB(240, 248, 255)
-	AntiqueWhite         = RGB(250, 235, 215)
-	Aqua                 = RGB(0, 255, 255)
-	Aquamarine           = RGB(127, 255, 212)
-	Azure                = RGB(240, 255, 255)
-	Beige                = RGB(245, 245, 220)
-	Bisque               = RGB(255, 228, 196)
-	Black                = RGB(0, 0, 0)
-	BlanchedAlmond       = RGB(255, 235, 205)
-	Blue                 = RGB(0, 0, 255)
-	BlueViolet           = RGB(138, 43, 226)
-	Brown                = RGB(165, 42, 42)
-	BurlyWood            = RGB(222, 184, 135)
-	CadetBlue            = RGB(95, 158, 160)
-	Chartreuse           = RGB(127, 255, 0)
-	Chocolate            = RGB(210, 105, 30)
-	Coral                = RGB(255, 127, 80)
-	CornflowerBlue       = RGB(100, 149, 237)
-	Cornsilk             = RGB(255, 248, 220)
-	Crimson              = RGB(220, 20, 60)
-	Cyan                 = RGB(0, 255, 255)
-	DarkBlue             = RGB(0, 0, 139)
-	DarkCyan             = RGB(0, 139, 139)
-	DarkGoldenRod        = RGB(184, 134, 11)
-	DarkGray             = RGB(169, 169, 169)
-	DarkGreen            = RGB(0, 100, 0)
-	DarkGrey             = RGB(169, 169, 169)
-	DarkKhaki            = RGB(189, 183, 107)
-	DarkMagenta          = RGB(139, 0, 139)
-	DarkOliveGreen       = RGB(85, 107, 47)
-	DarkOrange           = RGB(255, 140, 0)
-	DarkOrchid           = RGB(153, 50, 204)
-	DarkRed              = RGB(139, 0, 0)
-	DarkSalmon           = RGB(233, 150, 122)
-	DarkSeaGreen         = RGB(143, 188, 143)
-	DarkSlateBlue        = RGB(72, 61, 139)
-	DarkSlateGray        = RGB(47, 79, 79)
-	DarkSlateGrey        = RGB(47, 79, 79)
-	DarkTurquoise        = RGB(0, 206, 209)
-	DarkViolet           = RGB(148, 0, 211)
-	DeepPink             = RGB(255, 20, 147)
-	DeepSkyBlue          = RGB(0, 191, 255)
-	DimGray              = RGB(105, 105, 105)
-	DimGrey              = RGB(105, 105, 105)
-	DodgerBlue           = RGB(30, 144, 255)
-	FireBrick            = RGB(178, 34, 34)
-	FloralWhite          = RGB(255, 250, 240)
-	ForestGreen          = RGB(34, 139, 34)
-	Fuchsia              = RGB(255, 0, 255)
-	Gainsboro            = RGB(220, 220, 220)
-	GhostWhite           = RGB(248, 248, 255)
-	Gold                 = RGB(255, 215, 0)
-	GoldenRod            = RGB(218, 165, 32)
-	Gray                 = RGB(128, 128, 128)
-	Green                = RGB(0, 128, 0)
-	GreenYellow          = RGB(173, 255, 47)
-	Grey                 = RGB(128, 128, 128)
-	HoneyDew             = RGB(240, 255, 240)
-	HotPink              = RGB(255, 105, 180)
-	IndianRed            = RGB(205, 92, 92)
-	Indigo               = RGB(75, 0, 130)
-	Ivory                = RGB(255, 255, 240)
-	Khaki                = RGB(240, 230, 140)
-	Lavender             = RGB(230, 230, 250)
-	LavenderBlush        = RGB(255, 240, 245)
-	LawnGreen            = RGB(124, 252, 0)
-	LemonChiffon         = RGB(255, 250, 205)
-	LightBlue            = RGB(173, 216, 230)
-	LightCoral           = RGB(240, 128, 128)
-	LightCyan            = RGB(224, 255, 255)
-	LightGoldenRodYellow = RGB(250, 250, 210)
-	LightGray            = RGB(211, 211, 211)
-	LightGreen           = RGB(144, 238, 144)
-	LightGrey            = RGB(211, 211, 211)
-	LightPink            = RGB(255, 182, 193)
-	LightSalmon          = RGB(255, 160, 122)
-	LightSeaGreen        = RGB(32, 178, 170)
-	LightSkyBlue         = RGB(135, 206, 250)
-	LightSlateGray       = RGB(119, 136, 153)
-	LightSlateGrey       = RGB(119, 136, 153)
-	LightSteelBlue       = RGB(176, 196, 222)
-	LightYellow          = RGB(255, 255, 224)
-	Lime                 = RGB(0, 255, 0)
-	LimeGreen            = RGB(50, 205, 50)
-	Linen                = RGB(250, 240, 230)
-	Magenta              = RGB(255, 0, 255)
-	Maroon               = RGB(128, 0, 0)
-	MediumAquaMarine     = RGB(102, 205, 170)
-	MediumBlue           = RGB(0, 0, 205)
-	MediumOrchid         = RGB(186, 85, 211)
-	MediumPurple         = RGB(147, 112, 219)
-	MediumSeaGreen       = RGB(60, 179, 113)
-	MediumSlateBlue      = RGB(123, 104, 238)
-	MediumSpringGreen    = RGB(0, 250, 154)
-	MediumTurquoise      = RGB(72, 209, 204)
-	MediumVioletRed      = RGB(199, 21, 133)
-	MidnightBlue         = RGB(25, 25, 112)
-	MintCream            = RGB(245, 255, 250)
-	MistyRose            = RGB(255, 228, 225)
-	Moccasin             = RGB(255, 228, 181)
-	NavajoWhite          = RGB(255, 222, 173)
-	Navy                 = RGB(0, 0, 128)
-	OldLace              = RGB(253, 245, 230)
-	Olive                = RGB(128, 128, 0)
-	OliveDrab            = RGB(107, 142, 35)
-	Orange               = RGB(255, 165, 0)
-	OrangeRed            = RGB(255, 69, 0)
-	Orchid               = RGB(218, 112, 214)
-	PaleGoldenRod        = RGB(238, 232, 170)
-	PaleGreen            = RGB(152, 251, 152)
-	PaleTurquoise        = RGB(175, 238, 238)
-	PaleVioletRed        = RGB(219, 112, 147)
-	PapayaWhip           = RGB(255, 239, 213)
-	PeachPuff            = RGB(255, 218, 185)
-	Peru                 = RGB(205, 133, 63)
-	Pink                 = RGB(255, 192, 203)
-	Plum                 = RGB(221, 160, 221)
-	PowderBlue           = RGB(176, 224, 230)
-	Purple               = RGB(128, 0, 128)
-	Red                  = RGB(255, 0, 0)
-	RosyBrown            = RGB(188, 143, 143)
-	RoyalBlue            = RGB(65, 105, 225)
-	SaddleBrown          = RGB(139, 69, 19)
-	Salmon               = RGB(250, 128, 114)
-	SandyBrown           = RGB(244, 164, 96)
-	SeaGreen             = RGB(46, 139, 87)
-	SeaShell             = RGB(255, 245, 238)
-	Sienna               = RGB(160, 82, 45)
-	Silver               = RGB(192, 192, 192)
-	SkyBlue              = RGB(135, 206, 235)
-	SlateBlue            = RGB(106, 90, 205)
-	SlateGray            = RGB(112, 128, 144)
-	SlateGrey            = RGB(112, 128, 144)
-	Snow                 = RGB(255, 250, 250)
-	SpringGreen          = RGB(0, 255, 127)
-	SteelBlue            = RGB(70, 130, 180)
-	Tan                  = RGB(210, 180, 140)
-	Teal                 = RGB(0, 128, 128)
-	Thistle              = RGB(216, 191, 216)
-	Tomato               = RGB(255, 99, 71)
-	Transparent          = Color(0)
-	Turquoise            = RGB(64, 224, 208)
-	Violet               = RGB(238, 130, 238)
-	Wheat                = RGB(245, 222, 179)
-	White                = RGB(255, 255, 255)
-	WhiteSmoke           = RGB(245, 245, 245)
-	Yellow               = RGB(255, 255, 0)
-	YellowGreen          = RGB(154, 205, 50)
+	AliceBlue            = registerColor("AliceBlue", RGB(240, 248, 255))
+	AntiqueWhite         = registerColor("AntiqueWhite", RGB(250, 235, 215))
+	Aqua                 = registerColor("Aqua", RGB(0, 255, 255))
+	Aquamarine           = registerColor("Aquamarine", RGB(127, 255, 212))
+	Azure                = registerColor("Azure", RGB(240, 255, 255))
+	Beige                = registerColor("Beige", RGB(245, 245, 220))
+	Bisque               = registerColor("Bisque", RGB(255, 228, 196))
+	Black                = registerColor("Black", RGB(0, 0, 0))
+	BlanchedAlmond       = registerColor("BlanchedAlmond", RGB(255, 235, 205))
+	Blue                 = registerColor("Blue", RGB(0, 0, 255))
+	BlueViolet           = registerColor("BlueViolet", RGB(138, 43, 226))
+	Brown                = registerColor("Brown", RGB(165, 42, 42))
+	BurlyWood            = registerColor("BurlyWood", RGB(222, 184, 135))
+	CadetBlue            = registerColor("CadetBlue", RGB(95, 158, 160))
+	Chartreuse           = registerColor("Chartreuse", RGB(127, 255, 0))
+	Chocolate            = registerColor("Chocolate", RGB(210, 105, 30))
+	Coral                = registerColor("Coral", RGB(255, 127, 80))
+	CornflowerBlue       = registerColor("CornflowerBlue", RGB(100, 149, 237))
+	Cornsilk             = registerColor("Cornsilk", RGB(255, 248, 220))
+	Crimson              = registerColor("Crimson", RGB(220, 20, 60))
+	Cyan                 = registerColor("Cyan", RGB(0, 255, 255))
+	DarkBlue             = registerColor("DarkBlue", RGB(0, 0, 139))
+	DarkCyan             = registerColor("DarkCyan", RGB(0, 139, 139))
+	DarkGoldenRod        = registerColor("DarkGoldenRod", RGB(184, 134, 11))
+	DarkGray             = registerColor("DarkGray", RGB(169, 169, 169))
+	DarkGreen            = registerColor("DarkGreen", RGB(0, 100, 0))
+	DarkGrey             = registerColor("DarkGrey", RGB(169, 169, 169))
+	DarkKhaki            = registerColor("DarkKhaki", RGB(189, 183, 107))
+	DarkMagenta          = registerColor("DarkMagenta", RGB(139, 0, 139))
+	DarkOliveGreen       = registerColor("DarkOliveGreen", RGB(85, 107, 47))
+	DarkOrange           = registerColor("DarkOrange", RGB(255, 140, 0))
+	DarkOrchid           = registerColor("DarkOrchid", RGB(153, 50, 204))
+	DarkRed              = registerColor("DarkRed", RGB(139, 0, 0))
+	DarkSalmon           = registerColor("DarkSalmon", RGB(233, 150, 122))
+	DarkSeaGreen         = registerColor("DarkSeaGreen", RGB(143, 188, 143))
+	DarkSlateBlue        = registerColor("DarkSlateBlue", RGB(72, 61, 139))
+	DarkSlateGray        = registerColor("DarkSlateGray", RGB(47, 79, 79))
+	DarkSlateGrey        = registerColor("DarkSlateGrey", RGB(47, 79, 79))
+	DarkTurquoise        = registerColor("DarkTurquoise", RGB(0, 206, 209))
+	DarkViolet           = registerColor("DarkViolet", RGB(148, 0, 211))
+	DeepPink             = registerColor("DeepPink", RGB(255, 20, 147))
+	DeepSkyBlue          = registerColor("DeepSkyBlue", RGB(0, 191, 255))
+	DimGray              = registerColor("DimGray", RGB(105, 105, 105))
+	DimGrey              = registerColor("DimGrey", RGB(105, 105, 105))
+	DodgerBlue           = registerColor("DodgerBlue", RGB(30, 144, 255))
+	FireBrick            = registerColor("FireBrick", RGB(178, 34, 34))
+	FloralWhite          = registerColor("FloralWhite", RGB(255, 250, 240))
+	ForestGreen          = registerColor("ForestGreen", RGB(34, 139, 34))
+	Fuchsia              = registerColor("Fuchsia", RGB(255, 0, 255))
+	Gainsboro            = registerColor("Gainsboro", RGB(220, 220, 220))
+	GhostWhite           = registerColor("GhostWhite", RGB(248, 248, 255))
+	Gold                 = registerColor("Gold", RGB(255, 215, 0))
+	GoldenRod            = registerColor("GoldenRod", RGB(218, 165, 32))
+	Gray                 = registerColor("Gray", RGB(128, 128, 128))
+	Green                = registerColor("Green", RGB(0, 128, 0))
+	GreenYellow          = registerColor("GreenYellow", RGB(173, 255, 47))
+	Grey                 = registerColor("Grey", RGB(128, 128, 128))
+	HoneyDew             = registerColor("HoneyDew", RGB(240, 255, 240))
+	HotPink              = registerColor("HotPink", RGB(255, 105, 180))
+	IndianRed            = registerColor("IndianRed", RGB(205, 92, 92))
+	Indigo               = registerColor("Indigo", RGB(75, 0, 130))
+	Ivory                = registerColor("Ivory", RGB(255, 255, 240))
+	Khaki                = registerColor("Khaki", RGB(240, 230, 140))
+	Lavender             = registerColor("Lavender", RGB(230, 230, 250))
+	LavenderBlush        = registerColor("LavenderBlush", RGB(255, 240, 245))
+	LawnGreen            = registerColor("LawnGreen", RGB(124, 252, 0))
+	LemonChiffon         = registerColor("LemonChiffon", RGB(255, 250, 205))
+	LightBlue            = registerColor("LightBlue", RGB(173, 216, 230))
+	LightCoral           = registerColor("LightCoral", RGB(240, 128, 128))
+	LightCyan            = registerColor("LightCyan", RGB(224, 255, 255))
+	LightGoldenRodYellow = registerColor("LightGoldenRodYellow", RGB(250, 250, 210))
+	LightGray            = registerColor("LightGray", RGB(211, 211, 211))
+	LightGreen           = registerColor("LightGreen", RGB(144, 238, 144))
+	LightGrey            = registerColor("LightGrey", RGB(211, 211, 211))
+	LightPink            = registerColor("LightPink", RGB(255, 182, 193))
+	LightSalmon          = registerColor("LightSalmon", RGB(255, 160, 122))
+	LightSeaGreen        = registerColor("LightSeaGreen", RGB(32, 178, 170))
+	LightSkyBlue         = registerColor("LightSkyBlue", RGB(135, 206, 250))
+	LightSlateGray       = registerColor("LightSlateGray", RGB(119, 136, 153))
+	LightSlateGrey       = registerColor("LightSlateGrey", RGB(119, 136, 153))
+	LightSteelBlue       = registerColor("LightSteelBlue", RGB(176, 196, 222))
+	LightYellow          = registerColor("LightYellow", RGB(255, 255, 224))
+	Lime                 = registerColor("Lime", RGB(0, 255, 0))
+	LimeGreen            = registerColor("LimeGreen", RGB(50, 205, 50))
+	Linen                = registerColor("Linen", RGB(250, 240, 230))
+	Magenta              = registerColor("Magenta", RGB(255, 0, 255))
+	Maroon               = registerColor("Maroon", RGB(128, 0, 0))
+	MediumAquaMarine     = registerColor("MediumAquaMarine", RGB(102, 205, 170))
+	MediumBlue           = registerColor("MediumBlue", RGB(0, 0, 205))
+	MediumOrchid         = registerColor("MediumOrchid", RGB(186, 85, 211))
+	MediumPurple         = registerColor("MediumPurple", RGB(147, 112, 219))
+	MediumSeaGreen       = registerColor("MediumSeaGreen", RGB(60, 179, 113))
+	MediumSlateBlue      = registerColor("MediumSlateBlue", RGB(123, 104, 238))
+	MediumSpringGreen    = registerColor("MediumSpringGreen", RGB(0, 250, 154))
+	MediumTurquoise      = registerColor("MediumTurquoise", RGB(72, 209, 204))
+	MediumVioletRed      = registerColor("MediumVioletRed", RGB(199, 21, 133))
+	MidnightBlue         = registerColor("MidnightBlue", RGB(25, 25, 112))
+	MintCream            = registerColor("MintCream", RGB(245, 255, 250))
+	MistyRose            = registerColor("MistyRose", RGB(255, 228, 225))
+	Moccasin             = registerColor("Moccasin", RGB(255, 228, 181))
+	NavajoWhite          = registerColor("NavajoWhite", RGB(255, 222, 173))
+	Navy                 = registerColor("Navy", RGB(0, 0, 128))
+	OldLace              = registerColor("OldLace", RGB(253, 245, 230))
+	Olive                = registerColor("Olive", RGB(128, 128, 0))
+	OliveDrab            = registerColor("OliveDrab", RGB(107, 142, 35))
+	Orange               = registerColor("Orange", RGB(255, 165, 0))
+	OrangeRed            = registerColor("OrangeRed", RGB(255, 69, 0))
+	Orchid               = registerColor("Orchid", RGB(218, 112, 214))
+	PaleGoldenRod        = registerColor("PaleGoldenRod", RGB(238, 232, 170))
+	PaleGreen            = registerColor("PaleGreen", RGB(152, 251, 152))
+	PaleTurquoise        = registerColor("PaleTurquoise", RGB(175, 238, 238))
+	PaleVioletRed        = registerColor("PaleVioletRed", RGB(219, 112, 147))
+	PapayaWhip           = registerColor("PapayaWhip", RGB(255, 239, 213))
+	PeachPuff            = registerColor("PeachPuff", RGB(255, 218, 185))
+	Peru                 = registerColor("Peru", RGB(205, 133, 63))
+	Pink                 = registerColor("Pink", RGB(255, 192, 203))
+	Plum                 = registerColor("Plum", RGB(221, 160, 221))
+	PowderBlue           = registerColor("PowderBlue", RGB(176, 224, 230))
+	Purple               = registerColor("Purple", RGB(128, 0, 128))
+	Red                  = registerColor("Red", RGB(255, 0, 0))
+	RosyBrown            = registerColor("RosyBrown", RGB(188, 143, 143))
+	RoyalBlue            = registerColor("RoyalBlue", RGB(65, 105, 225))
+	SaddleBrown          = registerColor("SaddleBrown", RGB(139, 69, 19))
+	Salmon               = registerColor("Salmon", RGB(250, 128, 114))
+	SandyBrown           = registerColor("SandyBrown", RGB(244, 164, 96))
+	SeaGreen             = registerColor("SeaGreen", RGB(46, 139, 87))
+	SeaShell             = registerColor("SeaShell", RGB(255, 245, 238))
+	Sienna               = registerColor("Sienna", RGB(160, 82, 45))
+	Silver               = registerColor("Silver", RGB(192, 192, 192))
+	SkyBlue              = registerColor("SkyBlue", RGB(135, 206, 235))
+	SlateBlue            = registerColor("SlateBlue", RGB(106, 90, 205))
+	SlateGray            = registerColor("SlateGray", RGB(112, 128, 144))
+	SlateGrey            = registerColor("SlateGrey", RGB(112, 128, 144))
+	Snow                 = registerColor("Snow", RGB(255, 250, 250))
+	SpringGreen          = registerColor("SpringGreen", RGB(0, 255, 127))
+	SteelBlue            = registerColor("SteelBlue", RGB(70, 130, 180))
+	Tan                  = registerColor("Tan", RGB(210, 180, 140))
+	Teal                 = registerColor("Teal", RGB(0, 128, 128))
+	Thistle              = registerColor("Thistle", RGB(216, 191, 216))
+	Tomato               = registerColor("Tomato", RGB(255, 99, 71))
+	Transparent          = registerColor("None", Color(0))
+	Turquoise            = registerColor("Turquoise", RGB(64, 224, 208))
+	Violet               = registerColor("Violet", RGB(238, 130, 238))
+	Wheat                = registerColor("Wheat", RGB(245, 222, 179))
+	White                = registerColor("White", RGB(255, 255, 255))
+	WhiteSmoke           = registerColor("WhiteSmoke", RGB(245, 245, 245))
+	Yellow               = registerColor("Yellow", RGB(255, 255, 0))
+	YellowGreen          = registerColor("YellowGreen", RGB(154, 205, 50))
 )
 
-func init() {
-	registerColor("AliceBlue", AliceBlue)
-	registerColor("AntiqueWhite", AntiqueWhite)
-	registerColor("Aqua", Aqua)
-	registerColor("Aquamarine", Aquamarine)
-	registerColor("Azure", Azure)
-	registerColor("Beige", Beige)
-	registerColor("Bisque", Bisque)
-	registerColor("Black", Black)
-	registerColor("BlanchedAlmond", BlanchedAlmond)
-	registerColor("Blue", Blue)
-	registerColor("BlueViolet", BlueViolet)
-	registerColor("Brown", Brown)
-	registerColor("BurlyWood", BurlyWood)
-	registerColor("CadetBlue", CadetBlue)
-	registerColor("Chartreuse", Chartreuse)
-	registerColor("Chocolate", Chocolate)
-	registerColor("Coral", Coral)
-	registerColor("CornflowerBlue", CornflowerBlue)
-	registerColor("Cornsilk", Cornsilk)
-	registerColor("Crimson", Crimson)
-	registerColor("Cyan", Cyan)
-	registerColor("DarkBlue", DarkBlue)
-	registerColor("DarkCyan", DarkCyan)
-	registerColor("DarkGoldenRod", DarkGoldenRod)
-	registerColor("DarkGray", DarkGray)
-	registerColor("DarkGreen", DarkGreen)
-	registerColor("DarkGrey", DarkGrey)
-	registerColor("DarkKhaki", DarkKhaki)
-	registerColor("DarkMagenta", DarkMagenta)
-	registerColor("DarkOliveGreen", DarkOliveGreen)
-	registerColor("DarkOrange", DarkOrange)
-	registerColor("DarkOrchid", DarkOrchid)
-	registerColor("DarkRed", DarkRed)
-	registerColor("DarkSalmon", DarkSalmon)
-	registerColor("DarkSeaGreen", DarkSeaGreen)
-	registerColor("DarkSlateBlue", DarkSlateBlue)
-	registerColor("DarkSlateGray", DarkSlateGray)
-	registerColor("DarkSlateGrey", DarkSlateGrey)
-	registerColor("DarkTurquoise", DarkTurquoise)
-	registerColor("DarkViolet", DarkViolet)
-	registerColor("DeepPink", DeepPink)
-	registerColor("DeepSkyBlue", DeepSkyBlue)
-	registerColor("DimGray", DimGray)
-	registerColor("DimGrey", DimGrey)
-	registerColor("DodgerBlue", DodgerBlue)
-	registerColor("FireBrick", FireBrick)
-	registerColor("FloralWhite", FloralWhite)
-	registerColor("ForestGreen", ForestGreen)
-	registerColor("Fuchsia", Fuchsia)
-	registerColor("Gainsboro", Gainsboro)
-	registerColor("GhostWhite", GhostWhite)
-	registerColor("Gold", Gold)
-	registerColor("GoldenRod", GoldenRod)
-	registerColor("Gray", Gray)
-	registerColor("Green", Green)
-	registerColor("GreenYellow", GreenYellow)
-	registerColor("Grey", Grey)
-	registerColor("HoneyDew", HoneyDew)
-	registerColor("HotPink", HotPink)
-	registerColor("IndianRed", IndianRed)
-	registerColor("Indigo", Indigo)
-	registerColor("Ivory", Ivory)
-	registerColor("Khaki", Khaki)
-	registerColor("Lavender", Lavender)
-	registerColor("LavenderBlush", LavenderBlush)
-	registerColor("LawnGreen", LawnGreen)
-	registerColor("LemonChiffon", LemonChiffon)
-	registerColor("LightBlue", LightBlue)
-	registerColor("LightCoral", LightCoral)
-	registerColor("LightCyan", LightCyan)
-	registerColor("LightGoldenRodYellow", LightGoldenRodYellow)
-	registerColor("LightGray", LightGray)
-	registerColor("LightGreen", LightGreen)
-	registerColor("LightGrey", LightGrey)
-	registerColor("LightPink", LightPink)
-	registerColor("LightSalmon", LightSalmon)
-	registerColor("LightSeaGreen", LightSeaGreen)
-	registerColor("LightSkyBlue", LightSkyBlue)
-	registerColor("LightSlateGray", LightSlateGray)
-	registerColor("LightSlateGrey", LightSlateGrey)
-	registerColor("LightSteelBlue", LightSteelBlue)
-	registerColor("LightYellow", LightYellow)
-	registerColor("Lime", Lime)
-	registerColor("LimeGreen", LimeGreen)
-	registerColor("Linen", Linen)
-	registerColor("Magenta", Magenta)
-	registerColor("Maroon", Maroon)
-	registerColor("MediumAquaMarine", MediumAquaMarine)
-	registerColor("MediumBlue", MediumBlue)
-	registerColor("MediumOrchid", MediumOrchid)
-	registerColor("MediumPurple", MediumPurple)
-	registerColor("MediumSeaGreen", MediumSeaGreen)
-	registerColor("MediumSlateBlue", MediumSlateBlue)
-	registerColor("MediumSpringGreen", MediumSpringGreen)
-	registerColor("MediumTurquoise", MediumTurquoise)
-	registerColor("MediumVioletRed", MediumVioletRed)
-	registerColor("MidnightBlue", MidnightBlue)
-	registerColor("MintCream", MintCream)
-	registerColor("MistyRose", MistyRose)
-	registerColor("Moccasin", Moccasin)
-	registerColor("NavajoWhite", NavajoWhite)
-	registerColor("Navy", Navy)
-	registerColor("None", Transparent)
-	registerColor("OldLace", OldLace)
-	registerColor("Olive", Olive)
-	registerColor("OliveDrab", OliveDrab)
-	registerColor("Orange", Orange)
-	registerColor("OrangeRed", OrangeRed)
-	registerColor("Orchid", Orchid)
-	registerColor("PaleGoldenRod", PaleGoldenRod)
-	registerColor("PaleGreen", PaleGreen)
-	registerColor("PaleTurquoise", PaleTurquoise)
-	registerColor("PaleVioletRed", PaleVioletRed)
-	registerColor("PapayaWhip", PapayaWhip)
-	registerColor("PeachPuff", PeachPuff)
-	registerColor("Peru", Peru)
-	registerColor("Pink", Pink)
-	registerColor("Plum", Plum)
-	registerColor("PowderBlue", PowderBlue)
-	registerColor("Purple", Purple)
-	registerColor("Red", Red)
-	registerColor("RosyBrown", RosyBrown)
-	registerColor("RoyalBlue", RoyalBlue)
-	registerColor("SaddleBrown", SaddleBrown)
-	registerColor("Salmon", Salmon)
-	registerColor("SandyBrown", SandyBrown)
-	registerColor("SeaGreen", SeaGreen)
-	registerColor("SeaShell", SeaShell)
-	registerColor("Sienna", Sienna)
-	registerColor("Silver", Silver)
-	registerColor("SkyBlue", SkyBlue)
-	registerColor("SlateBlue", SlateBlue)
-	registerColor("SlateGray", SlateGray)
-	registerColor("SlateGrey", SlateGrey)
-	registerColor("Snow", Snow)
-	registerColor("SpringGreen", SpringGreen)
-	registerColor("SteelBlue", SteelBlue)
-	registerColor("Tan", Tan)
-	registerColor("Teal", Teal)
-	registerColor("Thistle", Thistle)
-	registerColor("Tomato", Tomato)
-	registerColor("Turquoise", Turquoise)
-	registerColor("Violet", Violet)
-	registerColor("Wheat", Wheat)
-	registerColor("White", White)
-	registerColor("WhiteSmoke", WhiteSmoke)
-	registerColor("Yellow", Yellow)
-	registerColor("YellowGreen", YellowGreen)
-}
-
-func registerColor(name string, c Color) {
+func registerColor(name string, c Color) Color {
 	nameToColor[strings.ToLower(name)] = c
 	colorToName[c] = name
+	return c
 }

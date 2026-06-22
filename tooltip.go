@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -59,7 +59,9 @@ func NewTooltipBase() *Panel {
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
 	tip.DrawCallback = func(canvas *Canvas, _ geom.Rect) {
 		r := tip.ContentRect(true)
-		canvas.DrawRect(r, DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
+		paint := DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
+		defer paint.Dispose()
+		canvas.DrawRect(r, paint)
 	}
 	return tip
 }
@@ -72,7 +74,7 @@ func NewTooltipWithText(text string) *Panel {
 		HSpacing: StdHSpacing,
 		VSpacing: StdVSpacing,
 	})
-	for _, str := range strings.Split(text, "\n") {
+	for str := range strings.SplitSeq(text, "\n") {
 		l := NewLabel()
 		l.LabelTheme = DefaultTooltipTheme.Label
 		l.SetTitle(str)
@@ -86,7 +88,7 @@ func NewTooltipWithText(text string) *Panel {
 func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 	tip := NewTooltipWithText(primary)
 	if secondary != "" {
-		for _, str := range strings.Split(secondary, "\n") {
+		for str := range strings.SplitSeq(secondary, "\n") {
 			l := NewLabel()
 			l.LabelTheme = DefaultTooltipTheme.Label
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()

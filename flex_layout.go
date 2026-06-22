@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -191,9 +191,9 @@ func (f *FlexLayout) buildGrid(children []*Panel) [][]*Panel {
 				row++
 			}
 		}
-		for j := 0; j < vSpan; j++ {
+		for j := range vSpan {
 			pos := row + j
-			for k := 0; k < hSpan; k++ {
+			for k := range hSpan {
 				// noinspection GoNilness
 				grid[pos][column+k] = child
 			}
@@ -247,7 +247,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 				if hSpan > 1 {
 					var spanWidth, spanMinWidth float32
 					spanExpandCount := 0
-					for k := 0; k < hSpan; k++ {
+					for k := range hSpan {
 						spanWidth += widths[j-k]
 						spanMinWidth += minWidths[j-k]
 						if expandColumn[j-k] {
@@ -262,7 +262,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 					if w > 0 {
 						if f.EqualColumns {
 							equalWidth := xmath.Floor((w + spanWidth) / float32(hSpan))
-							for k := 0; k < hSpan; k++ {
+							for k := range hSpan {
 								if widths[j-k] < equalWidth {
 									widths[j-k] = equalWidth
 								}
@@ -341,7 +341,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 							if !data.HGrab || minimumWidth != 0 {
 								var spanWidth float32
 								spanExpandCount := 0
-								for k := 0; k < hSpan; k++ {
+								for k := range hSpan {
 									spanWidth += widths[j-k]
 									if expandColumn[j-k] {
 										spanExpandCount++
@@ -381,14 +381,14 @@ func (f *FlexLayout) apportionExtra(extra float32, base, count, span int, expand
 		extraInt := int(xmath.Floor(extra))
 		delta := extraInt / count
 		remainder := extraInt - delta*count
-		for i := 0; i < span; i++ {
+		for i := range span {
 			j := base - i
 			if expand[j] {
 				values[j] += float32(delta)
 			}
 		}
 		for remainder > 0 {
-			for i := 0; i < span; i++ {
+			for i := range span {
 				j := base - i
 				if expand[j] {
 					values[j]++
@@ -436,7 +436,7 @@ func (f *FlexLayout) wrap(width float32, grid [][]*Panel, widths []float32, useM
 					if data.SizeHint.Height < 1 {
 						hSpan := max(1, min(data.HSpan, f.Columns))
 						var currentWidth float32
-						for k := 0; k < hSpan; k++ {
+						for k := range hSpan {
 							currentWidth += widths[j-k]
 						}
 						currentWidth += float32(hSpan-1) * f.HSpacing
@@ -498,7 +498,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 				if vSpan > 1 {
 					var spanHeight, spanMinHeight float32
 					spanExpandCount := 0
-					for k := 0; k < vSpan; k++ {
+					for k := range vSpan {
 						spanHeight += heights[i-k]
 						spanMinHeight += minHeights[i-k]
 						if expandRow[i-k] {
@@ -515,7 +515,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 							heights[i] += h
 						} else {
 							delta := h / float32(spanExpandCount)
-							for k := 0; k < vSpan; k++ {
+							for k := range vSpan {
 								if expandRow[i-k] {
 									heights[i-k] += delta
 								}
@@ -567,7 +567,7 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 							if !data.VGrab || minimumHeight != 0 {
 								var spanHeight float32
 								spanExpandCount := 0
-								for k := 0; k < vSpan; k++ {
+								for k := range vSpan {
 									spanHeight += heights[i-k]
 									if expandRow[i-k] {
 										spanExpandCount++
@@ -611,10 +611,10 @@ func (f *FlexLayout) positionChildren(location geom.Point, grid [][]*Panel, widt
 				hSpan := max(1, min(data.HSpan, f.Columns))
 				vSpan := max(1, data.VSpan)
 				var cellWidth, cellHeight float32
-				for k := 0; k < hSpan; k++ {
+				for k := range hSpan {
 					cellWidth += widths[j+k]
 				}
-				for k := 0; k < vSpan; k++ {
+				for k := range vSpan {
 					cellHeight += heights[i+k]
 				}
 				cellWidth += f.HSpacing * float32(hSpan-1)

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -149,8 +149,8 @@ func (p *FontPanel) DefaultValidate() bool {
 }
 
 // DefaultKeyDown provides the default key down handling for the font size field.
-func (p *FontPanel) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) bool {
-	if mod.OSMenuCmdModifierDown() {
+func (p *FontPanel) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	if mods.OSMenuCommandDown() {
 		return false
 	}
 	if keyCode == KeyReturn || keyCode == KeyNumPadEnter {
@@ -159,7 +159,7 @@ func (p *FontPanel) DefaultKeyDown(keyCode KeyCode, mod Modifiers, repeat bool) 
 		}
 		return true
 	}
-	return p.fontSizeField.DefaultKeyDown(keyCode, mod, repeat)
+	return p.fontSizeField.DefaultKeyDown(keyCode, mods, repeat)
 }
 
 // DefaultFocusLost provides the default focus lost handling for the font size field.
@@ -179,7 +179,7 @@ func (p *FontPanel) adjustFontSize(value float32) {
 
 func (p *FontPanel) fontModified() {
 	if p.FontModifiedCallback != nil {
-		xos.SafeCall(func() { p.FontModifiedCallback(p.fontDescriptor) }, nil)
+		SafeCall(func() { p.FontModifiedCallback(p.fontDescriptor) })
 	}
 }
 
@@ -210,7 +210,7 @@ func (p *FontPanel) adjustForCurrentFontFamily() {
 	possibleWeights := make(map[weight.Enum]bool)
 	possibleSlants := make(map[slant.Enum]bool)
 	possibleSpacings := make(map[spacing.Enum]bool)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		face := family.Face(i)
 		w, sp, sl := face.Style()
 		possibleWeights[w] = true

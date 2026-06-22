@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -10,82 +10,57 @@
 package unison
 
 import (
-	"sync"
+	"slices"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
 )
 
-// GlobalClipboard holds the global clipboard.
-var GlobalClipboard = &Clipboard{}
-
-// ClipboardData holds a type and data pair.
-type ClipboardData struct {
-	Data any
-	Type string
+// ClipboardHasText returns true if the clipboard contains text.
+func ClipboardHasText() bool {
+	return ClipboardHasDataType(uti.UTF8PlainText)
 }
 
-// Clipboard provides access to the system clipboard as well as an internal, application-only, clipboard. Currently, due
-// to limitations in the underlying glfw libraries, only strings may be set onto and retrieved from the system
-// clipboard. The internal clipboard accepts any type of data and is passed around via interface. Due to this, you may
-// want to consider serializing and unserializing your data into bytes to pass it through the clipboard, to avoid
-// accidental mutations.
-type Clipboard struct {
-	data map[string]any
-	lock sync.RWMutex
-}
-
-// GetText returns text from the current clipboard data. This reads from the system clipboard.
-func (c *Clipboard) GetText() string {
-	return glfw.GetClipboardString()
-}
-
-// SetText sets text as the current clipboard data. This modifies the system clipboard.
-func (c *Clipboard) SetText(str string) {
-	glfw.SetClipboardString(str)
-	c.lock.Lock()
-	c.data = nil
-	c.lock.Unlock()
-}
-
-// GetData returns the data associated with the specified type on the application clipboard and does not examine the
-// system clipboard at all.
-func (c *Clipboard) GetData(dataType string) (data any, exists bool) {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	data, exists = c.data[dataType]
-	return data, exists
-}
-
-// SetData the data for a single type on the application clipboard, clearing out any others that were previously
-// present. If the data can be converted to text by .(string), it will also be set onto the system clipboard, otherwise,
-// the system clipboard will be cleared.
-func (c *Clipboard) SetData(dataType string, data any) {
-	c.lock.Lock()
-	c.data = make(map[string]any)
-	c.data[dataType] = data
-	c.lock.Unlock()
-	if s, ok := data.(string); ok {
-		glfw.SetClipboardString(s)
-	} else {
-		glfw.SetClipboardString("")
+// ClipboardGetText returns text from the clipboard.
+func ClipboardGetText() string {
+	data := ClipboardGetData(uti.UTF8PlainText)
+	if data == nil {
+		return ""
 	}
+	return string(data)
 }
 
-// SetMultipleData sets the data for multiple types onto the application clipboard, clearing out any others that were
-// previously present. The first one that is convertable to text via .(string) will be used to set the system clipboard
-// value. If none is found, then the system clipboard will be cleared.
-func (c *Clipboard) SetMultipleData(pairs []ClipboardData) {
-	var str string
-	c.lock.Lock()
-	c.data = make(map[string]any)
-	for _, p := range pairs {
-		c.data[p.Type] = p.Data
-		if str == "" {
-			if s, ok := p.Data.(string); ok {
-				str = s
-			}
+// ClipboardSetText sets text onto the clipboard, replacing the previous content.
+func ClipboardSetText(text string) {
+	ClipboardSetData(drag.Data{
+		Type: uti.UTF8PlainText,
+		Data: []byte(text),
+	})
+}
+
+// ClipboardHasDataType returns true if the clipboard contains data of the specified type.
+func ClipboardHasDataType(dataType *uti.DataType) bool {
+	return apiClipboardHasDataType(selectDataType(dataType, apiClipboardAvailableDataTypes()))
+}
+
+// ClipboardGetData returns the data associated with the specified type on the clipboard.
+func ClipboardGetData(dataType *uti.DataType) []byte {
+	return apiClipboardGetData(selectDataType(dataType, apiClipboardAvailableDataTypes()))
+}
+
+// ClipboardSetData sets data onto the clipboard, replacing the previous content.
+func ClipboardSetData(data ...drag.Data) {
+	apiClipboardSetData(data...)
+}
+
+func selectDataType(desiredType *uti.DataType, availableDataTypes []string) *uti.DataType {
+	if slices.Contains(availableDataTypes, desiredType.UTI) {
+		return desiredType
+	}
+	for _, one := range availableDataTypes {
+		if lookup := uti.ByUTI(one); lookup != nil && desiredType.ConformsTo(lookup) {
+			return lookup
 		}
 	}
-	c.lock.Unlock()
-	glfw.SetClipboardString(str)
+	return desiredType
 }

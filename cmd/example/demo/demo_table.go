@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -21,10 +21,13 @@ import (
 
 const topLevelRowsToMake = 100
 
-var tableCounter int
+var (
+	tableCounter  int
+	tableDataType = unison.CreatePrivateDataType("unison.table")
+)
 
 // NewDemoTableWindow creates and displays our demo table window.
-func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
+func NewDemoTableWindow() (*unison.Window, error) {
 	// Create the window
 	tableCounter++
 	wnd, err := unison.NewWindow(fmt.Sprintf("Table #%d", tableCounter))
@@ -92,8 +95,8 @@ func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
 	}
 	table.SetRootRows(rows)
 	table.SizeColumnsToFit(true)
-	table.InstallDragSupport(nil, "demoRow", "Row", "Rows")
-	unison.InstallDropSupport[*demoRow, any](table, "demoRow",
+	table.InstallDragSupport(nil, tableDataType, "Row", "Rows")
+	unison.InstallDropSupport[*demoRow, any](table, tableDataType,
 		func(from, to *unison.Table[*demoRow]) bool { return from == to }, nil, nil)
 
 	header := unison.NewTableHeader(table,
@@ -120,11 +123,10 @@ func NewDemoTableWindow(where geom.Point) (*unison.Window, error) {
 	})
 	content.AddChild(scrollArea)
 
-	// Pack our window to fit its content, then set its location on the display and make it visible.
-	wnd.Pack()
-	rect := wnd.FrameRect()
-	rect.Point = where
-	wnd.SetFrameRect(rect)
+	// Register for the drag types we want to enable
+	wnd.RegisterForDragTypes(tableDataType)
+
+	wnd.PackWithDefaultInitialLocation()
 	wnd.ToFront()
 
 	return wnd, nil

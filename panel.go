@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -14,9 +14,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/pathop"
 )
 
@@ -31,6 +33,7 @@ type Paneler interface {
 // set the Self field to the final object. Failure to do so may result in incorrect behavior.
 type Panel struct {
 	InputCallbacks
+	drag.Callbacks
 	Self                                Paneler
 	layoutData                          any
 	layout                              Layout
@@ -45,29 +48,20 @@ type Panel struct {
 	ScrollRectIntoViewCallback          func(rect geom.Rect) bool
 	ParentChangedCallback               func()
 	FocusChangeInHierarchyCallback      func(from, to *Panel)
-	// DataDragOverCallback is called when a data drag is over a potential drop target. Return true to stop further
-	// handling or false to propagate up to parents.
-	DataDragOverCallback func(where geom.Point, data map[string]any) bool
-	// DataDragExitCallback is called when a previous call to DataDragOverCallback returned true and the data drag
-	// leaves the component.
-	DataDragExitCallback func()
-	// DataDragDropCallback is called when a data drag is dropped and a previous call to DataDragOverCallback returned
-	// true.
-	DataDragDropCallback func(where geom.Point, data map[string]any)
-	Tooltip              *Panel
-	parent               *Panel
-	canPerformMap        map[int]func(any) bool
-	performMap           map[int]func(any)
-	data                 map[string]any
-	RefKey               string
-	children             []*Panel
-	frame                geom.Rect
-	scale                geom.Point
-	NeedsLayout          bool
-	focusable            bool
-	disabled             bool
-	Hidden               bool
-	TooltipImmediate     bool
+	Tooltip                             *Panel
+	parent                              *Panel
+	canPerformMap                       map[int]func(any) bool
+	performMap                          map[int]func(any)
+	data                                map[string]any
+	RefKey                              string
+	children                            []*Panel
+	frame                               geom.Rect
+	scale                               geom.Point
+	NeedsLayout                         bool
+	focusable                           bool
+	disabled                            bool
+	Hidden                              bool
+	TooltipImmediate                    bool
 }
 
 // NewPanel creates a new panel.
@@ -134,13 +128,12 @@ func (p *Panel) AddChild(child Paneler) {
 		return
 	}
 	c := child.AsPanel()
+	c.selfCheck()
 	c.RemoveFromParent()
 	p.children = append(p.children, c)
 	c.parent = p
 	p.NeedsLayout = true
-	if c.ParentChangedCallback != nil {
-		c.ParentChangedCallback()
-	}
+	SafeCall(c.ParentChangedCallback)
 }
 
 // AddChildAtIndex adds child to this panel at the index, removing it from any previous parent it may have had. Passing
@@ -150,6 +143,7 @@ func (p *Panel) AddChildAtIndex(child Paneler, index int) {
 		return
 	}
 	c := child.AsPanel()
+	c.selfCheck()
 	c.RemoveFromParent()
 	if index < 0 || index >= len(p.children) {
 		p.children = append(p.children, c)
@@ -160,8 +154,15 @@ func (p *Panel) AddChildAtIndex(child Paneler, index int) {
 	}
 	c.parent = p
 	p.NeedsLayout = true
-	if c.ParentChangedCallback != nil {
-		c.ParentChangedCallback()
+	SafeCall(c.ParentChangedCallback)
+}
+
+func (p *Panel) selfCheck() {
+	if p.Self == nil {
+		xos.ExitWithErr(errs.New("panel added with nil Self"))
+	}
+	if p.Self.AsPanel() != p {
+		xos.ExitWithErr(errs.New("panel added with Self set to wrong object"))
 	}
 }
 
@@ -174,9 +175,7 @@ func (p *Panel) RemoveAllChildren() {
 	p.children = nil
 	p.NeedsLayout = true
 	for _, child := range children {
-		if child.ParentChangedCallback != nil {
-			child.ParentChangedCallback()
-		}
+		SafeCall(child.ParentChangedCallback)
 	}
 }
 
@@ -192,9 +191,7 @@ func (p *Panel) RemoveChildAtIndex(index int) {
 		child.parent = nil
 		p.children = slices.Delete(p.children, index, index+1)
 		p.NeedsLayout = true
-		if child.ParentChangedCallback != nil {
-			child.ParentChangedCallback()
-		}
+		SafeCall(child.ParentChangedCallback)
 	}
 }
 
@@ -215,36 +212,40 @@ func (p *Panel) Parent() *Panel {
 
 // Window returns the containing window, if any.
 func (p *Panel) Window() *Window {
-	var prev *Panel
+	if p == nil {
+		return nil
+	}
 	panel := p
-	for {
-		if panel == nil {
-			if prev != nil {
-				if root, ok := prev.Self.(*rootPanel); ok {
-					return root.window
-				}
-			}
-			return nil
-		}
-		prev = panel
+	for panel.parent != nil {
 		panel = panel.parent
 	}
+	if root, ok := panel.Self.(*rootPanel); ok {
+		return root.window
+	}
+	return nil
 }
 
 // Scale returns the scale that has been applied to this panel. This will be automatically applied, transforming the
 // graphics and mouse events.
 func (p *Panel) Scale() geom.Point {
-	if p.scale.X <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
-		p.scale.X = 1
+	scale := p.scale
+	if scale.X <= 0 {
+		scale.X = 1
 	}
-	if p.scale.Y <= 0 { // This happens if not explicitly set. 0 or less isn't valid, so make it 1
-		p.scale.Y = 1
+	if scale.Y <= 0 {
+		scale.Y = 1
 	}
-	return p.scale
+	return scale
 }
 
 // SetScale sets the scale for this panel and the panels in the hierarchy below it.
 func (p *Panel) SetScale(scale geom.Point) {
+	if scale.X <= 0 {
+		scale.X = 1
+	}
+	if scale.Y <= 0 {
+		scale.Y = 1
+	}
 	p.scale = scale
 }
 
@@ -272,13 +273,11 @@ func (p *Panel) SetFrameRect(rect geom.Rect) {
 			p.frame.Size = rect.Size
 			p.NeedsLayout = true
 		}
-		if p.FrameChangeCallback != nil {
-			p.FrameChangeCallback()
-		}
+		SafeCall(p.FrameChangeCallback)
 		parent := p.parent
 		for parent != nil {
 			if parent.FrameChangeInChildHierarchyCallback != nil {
-				parent.FrameChangeInChildHierarchyCallback(p)
+				SafeCall(func() { parent.FrameChangeInChildHierarchyCallback(p) })
 			}
 			parent = parent.parent
 		}
@@ -404,9 +403,7 @@ func (p *Panel) MarkForLayoutAndRedraw() {
 	p.MarkForRedraw()
 }
 
-// MarkForRedraw finds the parent window and marks it for drawing at the next update. Note that currently I have found
-// no way to get glfw to both only redraw a subset of the window AND retain the previous contents of that window, such
-// that incremental updates can be done. So... we just redraw everything in the window every time.
+// MarkForRedraw finds the parent window and marks it for drawing at the next update.
 func (p *Panel) MarkForRedraw() {
 	if w := p.Window(); w != nil {
 		w.MarkForRedraw()
@@ -433,7 +430,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 		gc.ClipRect(rect, pathop.Intersect, false)
 		if p.DrawCallback != nil {
 			gc.Save()
-			p.DrawCallback(gc, rect)
+			SafeCall(func() { p.DrawCallback(gc, rect) })
 			gc.Restore()
 		}
 		// Drawn from last to first, to get correct ordering in case of overlap
@@ -457,7 +454,7 @@ func (p *Panel) Draw(gc *Canvas, rect geom.Rect) {
 			gc.Restore()
 		}
 		if p.DrawOverCallback != nil {
-			p.DrawOverCallback(gc, rect)
+			SafeCall(func() { p.DrawOverCallback(gc, rect) })
 		}
 		gc.Restore()
 	}
@@ -470,7 +467,7 @@ func (p *Panel) Enabled() bool {
 
 // SetEnabled sets this panel's enabled state.
 func (p *Panel) SetEnabled(enabled bool) {
-	if p.disabled == enabled {
+	if p.disabled != !enabled {
 		p.disabled = !enabled
 		p.MarkForRedraw()
 	}
@@ -483,9 +480,7 @@ func (p *Panel) Focusable() bool {
 
 // SetFocusable sets whether this panel can have the keyboard focus.
 func (p *Panel) SetFocusable(focusable bool) {
-	if p.focusable != focusable {
-		p.focusable = focusable
-	}
+	p.focusable = focusable
 }
 
 // Focused returns true if this panel has the keyboard focus.
@@ -556,17 +551,10 @@ func (p *Panel) PointToRoot(pt geom.Point) geom.Point {
 // PointFromRoot converts root coordinates (i.e. window-local, when rooted within a window) into panel-local
 // coordinates.
 func (p *Panel) PointFromRoot(pt geom.Point) geom.Point {
-	list := make([]*Panel, 0, 32)
-	panel := p
-	for panel != nil {
-		list = append(list, panel)
-		panel = panel.parent
+	if p.parent != nil {
+		pt = p.parent.PointFromRoot(pt)
 	}
-	for i := len(list) - 1; i >= 0; i-- {
-		panel = list[i]
-		pt = pt.Sub(panel.frame.Point).DivPt(panel.Scale())
-	}
-	return pt
+	return pt.Sub(p.frame.Point).DivPt(p.Scale())
 }
 
 // PointTo converts panel-local coordinates into another panel's coordinates.
@@ -610,7 +598,9 @@ func (p *Panel) ScrollRectIntoView(rect geom.Rect) {
 	look := p
 	for look != nil {
 		if look.ScrollRectIntoViewCallback != nil {
-			if look.ScrollRectIntoViewCallback(rect) {
+			handled := false
+			SafeCall(func() { handled = look.ScrollRectIntoViewCallback(rect) })
+			if handled {
 				return
 			}
 		}
@@ -647,10 +637,12 @@ func (p *Panel) IsDragGesture(where geom.Point) bool {
 	return false
 }
 
-// StartDataDrag starts a data drag operation.
-func (p *Panel) StartDataDrag(data *DragData) {
+// StartDrag starts a drag & drop operation. 'img' is the drag image shown while dragging and may be nil. 'origin' is
+// the origin of the drag image in the panel's coordinate space. 'cleanup' is called when the drag source
+// finishes, if not nil. 'opMask' holds the permitted drag operations.
+func (p *Panel) StartDrag(img *Image, origin geom.Point, cleanup func(), opMask drag.Op, data ...drag.Data) {
 	if w := p.Window(); w != nil {
-		w.StartDataDrag(data)
+		w.StartDrag(img, p.PointToRoot(origin), cleanup, opMask, data...)
 	}
 }
 
@@ -702,7 +694,7 @@ func (p *Panel) CanPerformCmd(src any, id int) bool {
 	for current != nil {
 		if f, ok := current.canPerformMap[id]; ok {
 			enabled := false
-			xos.SafeCall(func() { enabled = f(src) }, nil)
+			SafeCall(func() { enabled = f(src) })
 			return enabled
 		}
 		current = current.parent
@@ -717,7 +709,7 @@ func (p *Panel) PerformCmd(src any, id int) {
 		current := p
 		for current != nil {
 			if f, ok := current.performMap[id]; ok {
-				xos.SafeCall(func() { f(src) }, nil)
+				SafeCall(func() { f(src) })
 				return
 			}
 			current = current.parent

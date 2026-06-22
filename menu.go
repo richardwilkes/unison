@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 var _ Menu = &menu{}
@@ -285,8 +286,8 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 			})
 		}
 	}
-	p.KeyDownCallback = func(keyCode KeyCode, mod Modifiers, _ bool) bool {
-		if mod != 0 {
+	p.KeyDownCallback = func(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
+		if mods != 0 {
 			return false
 		}
 		switch keyCode {
@@ -402,7 +403,11 @@ func (m *menu) postLostFocus(w *Window) {
 
 func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
 	if w.root.menuBar != nil {
-		for _, one := range w.root.openMenuPanels {
+		// Iterate from the most recently opened popup to the oldest, matching the draw/hit-test z-order (the newest
+		// popup is topmost). This ensures that when a child menu overlaps its parent, a click in the overlap is
+		// attributed to the child rather than the parent, which would otherwise tear the child back down.
+		for i := len(w.root.openMenuPanels) - 1; i >= 0; i-- {
+			one := w.root.openMenuPanels[i]
 			if where.In(one.FrameRect()) {
 				m.closeMenuStackStoppingAt(w, one.menu)
 				return false
@@ -413,14 +418,14 @@ func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
 	return false
 }
 
-func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
-	if m.updater != nil && mod.OSMenuCmdModifierDown() {
+func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	if m.updater != nil && mods.OSMenuCommandDown() {
 		// We only call the updater for key presses with the cmd modifier down. This is because the updater may be doing
 		// relatively expensive operations to setup the menu and we don't want to impact every key a user types.
 		m.updater(m)
 	}
 	for _, mi := range m.items {
-		if !mi.keyBinding.KeyCode.IsZero() && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mod {
+		if mi.keyBinding.KeyCode != 0 && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mods {
 			mi.validate()
 			if mi.enabled {
 				mi.execute()
@@ -429,7 +434,7 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 			return len(wnd.root.openMenuPanels) != 0
 		}
 		if mi.subMenu != nil {
-			if mi.subMenu.preKeyDown(wnd, keyCode, mod) {
+			if mi.subMenu.preKeyDown(wnd, keyCode, mods, repeat) {
 				return true
 			}
 		}
@@ -437,11 +442,11 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mod Modifiers) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) preKeyUp(wnd *Window, _ KeyCode, _ Modifiers) bool {
+func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
+func (m *menu) preKeyUp(wnd *Window, _ KeyCode, _ mod.Modifiers) bool {
 	return len(wnd.root.openMenuPanels) != 0
 }
 

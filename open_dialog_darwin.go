@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -13,15 +13,17 @@ import (
 	"net/url"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/unison/internal/ns"
+	"github.com/richardwilkes/unison/internal/mac"
 )
 
+var _ OpenDialog = &macOpenDialog{}
+
 type macOpenDialog struct {
-	dialog ns.OpenPanel
+	dialog mac.OpenPanel
 }
 
-func platformNewOpenDialog() OpenDialog {
-	return &macOpenDialog{dialog: ns.NewOpenPanel()}
+func apiNewOpenDialog() OpenDialog {
+	return &macOpenDialog{dialog: mac.NewOpenPanel()}
 }
 
 func (d *macOpenDialog) InitialDirectory() string {
@@ -35,7 +37,7 @@ func (d *macOpenDialog) InitialDirectory() string {
 }
 
 func (d *macOpenDialog) SetInitialDirectory(dir string) {
-	dirURL := ns.NewFileURL(dir)
+	dirURL := mac.NewFileURL(dir)
 	defer dirURL.Release()
 	d.dialog.SetDirectoryURL(dirURL)
 }
@@ -49,10 +51,31 @@ func (d *macOpenDialog) AllowedExtensions() []string {
 func (d *macOpenDialog) SetAllowedExtensions(types ...string) {
 	types = SanitizeExtensionList(types)
 	if len(types) != 0 {
-		d.dialog.SetAllowedFileTypes(ns.NewArrayFromStringSlice(types))
+		d.dialog.SetAllowedFileTypes(mac.NewArrayFromStringSlice(types))
 	} else {
 		d.dialog.SetAllowedFileTypes(0)
 	}
+}
+
+func (d *macOpenDialog) RunModal() bool {
+	active := ActiveWindow()
+	if active != nil {
+		active.restoreHiddenCursor()
+	}
+	defer func() {
+		if active != nil && active.IsVisible() {
+			active.ToFront()
+		}
+	}()
+	return d.dialog.RunModal()
+}
+
+func (d *macOpenDialog) Path() string {
+	paths := d.Paths()
+	if len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
 }
 
 func (d *macOpenDialog) CanChooseFiles() bool {
@@ -87,27 +110,6 @@ func (d *macOpenDialog) SetAllowsMultipleSelection(allow bool) {
 	d.dialog.SetAllowsMultipleSelection(allow)
 }
 
-func (d *macOpenDialog) Path() string {
-	paths := d.Paths()
-	if len(paths) == 0 {
-		return ""
-	}
-	return paths[0]
-}
-
 func (d *macOpenDialog) Paths() []string {
 	return d.dialog.URLs().ArrayOfURLToStringSlice()
-}
-
-func (d *macOpenDialog) RunModal() bool {
-	active := ActiveWindow()
-	if active != nil {
-		active.restoreHiddenCursor()
-	}
-	defer func() {
-		if active != nil && active.IsVisible() {
-			active.ToFront()
-		}
-	}()
-	return d.dialog.RunModal()
 }

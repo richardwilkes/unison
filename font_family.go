@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -58,7 +58,7 @@ func FontFamiliesNoCache() []string {
 	count := skia.FontMgrCountFamilies(fm)
 	names := make(map[string]struct{}, count+len(internalFonts))
 	ss := skia.StringNewEmpty()
-	for i := 0; i < count; i++ {
+	for i := range count {
 		skia.FontMgrGetFamilyName(fm, i, ss)
 		names[skia.StringGetString(ss)] = struct{}{}
 	}

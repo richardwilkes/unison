@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -27,6 +27,7 @@ import (
 	"github.com/richardwilkes/unison/enums/arcsize"
 	"github.com/richardwilkes/unison/enums/direction"
 	"github.com/richardwilkes/unison/enums/filltype"
+	"github.com/richardwilkes/unison/enums/gradienttype"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
 	"github.com/richardwilkes/unison/enums/strokecap"
@@ -42,6 +43,10 @@ var (
 	//go:embed resources/images/broken_image.svg
 	brokenImageSVG string
 	BrokenImageSVG = MustSVGFromContentString(brokenImageSVG)
+
+	//go:embed resources/images/circled_add.svg
+	circledAddSVG string
+	CircledAddSVG = MustSVGFromContentString(circledAddSVG)
 
 	//go:embed resources/images/circled_chevron_right.svg
 	circledChevronRightSVG string
@@ -66,6 +71,46 @@ var (
 	//go:embed resources/images/circled_x.svg
 	circledXSVG string
 	CircledXSVG = MustSVGFromContentString(circledXSVG)
+
+	//go:embed resources/images/cursor_arrow.svg
+	cursorArrowSVG string
+	CursorArrowSVG = MustSVGFromContentString(cursorArrowSVG)
+
+	//go:embed resources/images/cursor_hand_closed.svg
+	cursorHandClosedSVG string
+	CursorHandClosedSVG = MustSVGFromContentString(cursorHandClosedSVG)
+
+	//go:embed resources/images/cursor_hand_open.svg
+	cursorHandOpenSVG string
+	CursorHandOpenSVG = MustSVGFromContentString(cursorHandOpenSVG)
+
+	//go:embed resources/images/cursor_hand_pointing.svg
+	cursorHandPointingSVG string
+	CursorHandPointingSVG = MustSVGFromContentString(cursorHandPointingSVG)
+
+	//go:embed resources/images/cursor_move.svg
+	cursorMoveSVG string
+	CursorMoveSVG = MustSVGFromContentString(cursorMoveSVG)
+
+	//go:embed resources/images/cursor_resize_horizontal.svg
+	cursorResizeHorizontalSVG string
+	CursorResizeHorizontalSVG = MustSVGFromContentString(cursorResizeHorizontalSVG)
+
+	//go:embed resources/images/cursor_resize_left_diagonal.svg
+	cursorResizeLeftDiagonalSVG string
+	CursorResizeLeftDiagonalSVG = MustSVGFromContentString(cursorResizeLeftDiagonalSVG)
+
+	//go:embed resources/images/cursor_resize_right_diagonal.svg
+	cursorResizeRightDiagonalSVG string
+	CursorResizeRightDiagonalSVG = MustSVGFromContentString(cursorResizeRightDiagonalSVG)
+
+	//go:embed resources/images/cursor_resize_vertical.svg
+	cursorResizeVerticalSVG string
+	CursorResizeVerticalSVG = MustSVGFromContentString(cursorResizeVerticalSVG)
+
+	//go:embed resources/images/cursor_text.svg
+	cursorTextSVG string
+	CursorTextSVG = MustSVGFromContentString(cursorTextSVG)
 
 	//go:embed resources/images/dash.svg
 	dashSVG string
@@ -102,6 +147,10 @@ var (
 	//go:embed resources/images/sort_descending.svg
 	sortDescendingSVG string
 	SortDescendingSVG = MustSVGFromContentString(sortDescendingSVG)
+
+	//go:embed resources/images/trash.svg
+	trashSVG string
+	TrashSVG = MustSVGFromContentString(trashSVG)
 
 	//go:embed resources/images/triangle_exclamation.svg
 	triangleExclamationSVG string
@@ -323,7 +372,9 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 		}
 		if paint == nil {
 			if path.fillInk != nil {
-				canvas.DrawPath(path.path, path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill))
+				fillPaint := path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill)
+				canvas.DrawPath(path.path, fillPaint)
+				fillPaint.Dispose()
 			}
 			if path.strokeInk != nil {
 				p := path.strokeInk.Paint(canvas, s.viewBox, paintstyle.Stroke)
@@ -335,6 +386,7 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 					p.SetPathEffect(path.dash)
 				}
 				canvas.DrawPath(path.path, p)
+				p.Dispose()
 			}
 		} else {
 			canvas.DrawPath(path.path, paint)
@@ -524,43 +576,54 @@ func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, 
 			bbox = path.ComputeTightBounds()
 		}
 		var err error
-		g.Start.X, err = svgResolveUnit(bbox, t.sx, svgPercentWidth)
+		g.StartPt.X, err = svgResolveUnit(bbox, t.sx, svgPercentWidth)
 		if err != nil {
 			return nil, err
 		}
-		g.Start.Y, err = svgResolveUnit(bbox, t.sy, svgPercentHeight)
+		g.StartPt.Y, err = svgResolveUnit(bbox, t.sy, svgPercentHeight)
 		if err != nil {
 			return nil, err
 		}
-		g.End.X, err = svgResolveUnit(bbox, t.ex, svgPercentWidth)
+		g.EndPt.X, err = svgResolveUnit(bbox, t.ex, svgPercentWidth)
 		if err != nil {
 			return nil, err
 		}
-		g.End.Y, err = svgResolveUnit(bbox, t.ey, svgPercentHeight)
+		g.EndPt.Y, err = svgResolveUnit(bbox, t.ey, svgPercentHeight)
 		if err != nil {
 			return nil, err
 		}
-		if t.sr != "" || t.er != "" {
-			g.StartRadius, err = svgResolveUnit(bbox, t.sr, svgPercentDiag)
+		g.Kind = gradienttype.Linear
+		if t.sr != "" {
+			g.Kind = gradienttype.Radial
+			g.Radius.Start, err = svgResolveUnit(bbox, t.sr, svgPercentDiag)
 			if err != nil {
 				return nil, err
 			}
-			g.EndRadius, err = svgResolveUnit(bbox, t.er, svgPercentDiag)
+		}
+		if t.er != "" {
+			g.Radius.End, err = svgResolveUnit(bbox, t.er, svgPercentDiag)
 			if err != nil {
 				return nil, err
+			}
+			if t.sr == "" {
+				g.Kind = gradienttype.Radial
+				g.Radius.Start = g.Radius.End
+				g.Radius.End = 0
+			} else {
+				g.Kind = gradienttype.Conical
 			}
 		}
 		if !t.userSpaceOnUse {
-			g.Start = g.Transform.TransformPoint(g.Start)
-			g.End = g.Transform.TransformPoint(g.End)
-			g.Start = g.Start.Add(bbox.Point)
-			g.End = g.End.Add(bbox.Point)
+			g.StartPt = g.Transform.TransformPoint(g.StartPt)
+			g.EndPt = g.Transform.TransformPoint(g.EndPt)
+			g.StartPt = g.StartPt.Add(bbox.Point)
+			g.EndPt = g.EndPt.Add(bbox.Point)
 			inverted := g.Transform.Invert()
-			g.Start = inverted.TransformPoint(g.Start)
-			g.End = inverted.TransformPoint(g.End)
+			g.StartPt = inverted.TransformPoint(g.StartPt)
+			g.EndPt = inverted.TransformPoint(g.EndPt)
 		}
-		g.Start = g.Start.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
-		g.End = g.End.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
+		g.StartPt = g.StartPt.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
+		g.EndPt = g.EndPt.Sub(p.svg.viewBox.Point).DivSize(p.svg.viewBox.Size)
 		return g, nil
 	default:
 		return Black, nil
@@ -1242,7 +1305,7 @@ func (p *svgParser) handleStopElement(attrs []xml.Attr) error {
 			if attr.Value == "" {
 				break
 			}
-			for _, s := range strings.Split(attr.Value, ";") {
+			for s := range strings.SplitSeq(attr.Value, ";") {
 				key, val, ok := strings.Cut(s, ":")
 				if !ok {
 					continue
@@ -1288,6 +1351,7 @@ func (p *svgParser) handleLinearGradientElement(attrs []xml.Attr) error {
 	p.inGrad = true
 	p.grad = &svgGradient{
 		gradient: &Gradient{
+			Kind:      gradienttype.Linear,
 			Transform: geom.NewIdentityMatrix(),
 		},
 		sx: "0%",
@@ -1351,6 +1415,7 @@ func (p *svgParser) handleRadialGradientElement(attrs []xml.Attr) error {
 	const fiftyPercent = "50%"
 	p.grad = &svgGradient{
 		gradient: &Gradient{
+			Kind:      gradienttype.Radial,
 			Transform: geom.NewIdentityMatrix(),
 		},
 		sr: fiftyPercent,

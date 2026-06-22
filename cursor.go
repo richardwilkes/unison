@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -10,18 +10,18 @@
 package unison
 
 import (
-	"image"
+	"slices"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"golang.org/x/image/draw"
 )
 
 var (
 	arrowCursor               *Cursor
-	pointingCursor            *Cursor
 	moveCursor                *Cursor
+	pointingCursor            *Cursor
+	openHandCursor            *Cursor
+	closedHandCursor          *Cursor
 	resizeHorizontalCursor    *Cursor
 	resizeLeftDiagonalCursor  *Cursor
 	resizeRightDiagonalCursor *Cursor
@@ -29,83 +29,115 @@ var (
 	textCursor                *Cursor
 )
 
+var cursorList []*Cursor
+
 // Cursor provides a graphical cursor for the mouse location.
-type Cursor = glfw.Cursor
+type Cursor struct {
+	cursor apiNativeCursor
+}
+
+// DefaultCursorSize returns the default size for cursors.
+func DefaultCursorSize() geom.Size {
+	return geom.NewSize(24, 24)
+}
 
 // ArrowCursor returns the standard arrow cursor.
 func ArrowCursor() *Cursor {
-	if arrowCursor == nil {
-		arrowCursor = glfw.CreateStandardCursor(glfw.ArrowCursor)
-	}
-	return arrowCursor
+	return retrieveCursorWithHotSpot(CursorArrowSVG, &arrowCursor, geom.NewPoint(8, 4))
 }
 
 // PointingCursor returns the standard pointing cursor.
 func PointingCursor() *Cursor {
-	if pointingCursor == nil {
-		pointingCursor = glfw.CreateStandardCursor(glfw.HandCursor)
-	}
-	return pointingCursor
+	return retrieveCursorWithHotSpot(CursorHandPointingSVG, &pointingCursor, geom.NewPoint(9, 5))
 }
 
-// MoveCursor returns the standard move cursor.
-func MoveCursor() *Cursor {
-	return retrieveCursor(MoveCursorImage(), &moveCursor)
+// OpenHandCursor returns the standard open hand cursor.
+func OpenHandCursor() *Cursor {
+	return retrieveCursor(CursorHandOpenSVG, &openHandCursor)
 }
 
-// ResizeHorizontalCursor returns the standard horizontal resize cursor.
-func ResizeHorizontalCursor() *Cursor {
-	return retrieveCursor(ResizeHorizontalCursorImage(), &resizeHorizontalCursor)
-}
-
-// ResizeLeftDiagonalCursor returns the standard left diagonal resize cursor.
-func ResizeLeftDiagonalCursor() *Cursor {
-	return retrieveCursor(ResizeLeftDiagonalCursorImage(), &resizeLeftDiagonalCursor)
-}
-
-// ResizeRightDiagonalCursor returns the standard right diagonal resize cursor.
-func ResizeRightDiagonalCursor() *Cursor {
-	return retrieveCursor(ResizeRightDiagonalCursorImage(), &resizeRightDiagonalCursor)
-}
-
-// ResizeVerticalCursor returns the standard vertical resize cursor.
-func ResizeVerticalCursor() *Cursor {
-	return retrieveCursor(ResizeVerticalCursorImage(), &resizeVerticalCursor)
+// ClosedHandCursor returns the standard closed hand cursor.
+func ClosedHandCursor() *Cursor {
+	return retrieveCursor(CursorHandClosedSVG, &closedHandCursor)
 }
 
 // TextCursor returns the standard text cursor.
 func TextCursor() *Cursor {
-	if textCursor == nil {
-		textCursor = glfw.CreateStandardCursor(glfw.IBeamCursor)
-	}
-	return textCursor
+	return retrieveCursor(CursorTextSVG, &textCursor)
 }
 
-func retrieveCursor(img *Image, cursor **Cursor) *Cursor {
+// MoveCursor returns the standard move cursor.
+func MoveCursor() *Cursor {
+	return retrieveCursor(CursorMoveSVG, &moveCursor)
+}
+
+// ResizeHorizontalCursor returns the standard horizontal resize cursor.
+func ResizeHorizontalCursor() *Cursor {
+	return retrieveCursor(CursorResizeHorizontalSVG, &resizeHorizontalCursor)
+}
+
+// ResizeLeftDiagonalCursor returns the standard left diagonal resize cursor.
+func ResizeLeftDiagonalCursor() *Cursor {
+	return retrieveCursor(CursorResizeLeftDiagonalSVG, &resizeLeftDiagonalCursor)
+}
+
+// ResizeRightDiagonalCursor returns the standard right diagonal resize cursor.
+func ResizeRightDiagonalCursor() *Cursor {
+	return retrieveCursor(CursorResizeRightDiagonalSVG, &resizeRightDiagonalCursor)
+}
+
+// ResizeVerticalCursor returns the standard vertical resize cursor.
+func ResizeVerticalCursor() *Cursor {
+	return retrieveCursor(CursorResizeVerticalSVG, &resizeVerticalCursor)
+}
+
+func retrieveCursor(svg *SVG, cursor **Cursor) *Cursor {
+	return retrieveCursorWithHotSpot(svg, cursor, geom.PointFromSize(DefaultCursorSize().Div(2)))
+}
+
+func retrieveCursorWithHotSpot(svg *SVG, cursor **Cursor, hotSpot geom.Point) *Cursor {
 	if *cursor == nil {
-		size := img.LogicalSize()
-		*cursor = NewCursor(img, geom.NewPoint(size.Width/2, size.Height/2))
+		*cursor = NewCursorFromSVG(svg, hotSpot, DefaultCursorSize())
 	}
 	return *cursor
 }
 
+// NewCursorFromSVG creates a new custom cursor from a SVG.
+func NewCursorFromSVG(svg *SVG, hotSpot geom.Point, size geom.Size) *Cursor {
+	img, err := NewImageFromDrawing(int(size.Width), int(size.Height), 144, func(gc *Canvas) {
+		svg.DrawInRectPreservingAspectRatio(gc, geom.NewRect(0, 0, size.Width, size.Height), nil, nil)
+	})
+	if err != nil {
+		errs.Log(err)
+		return nil
+	}
+	return NewCursor(img, hotSpot)
+}
+
 // NewCursor creates a new custom cursor from an image.
 func NewCursor(img *Image, hotSpot geom.Point) *Cursor {
+	logicalSize := img.LogicalSize()
+	hotSpot.X = min(max(hotSpot.X, 0), logicalSize.Width-1)
+	hotSpot.Y = min(max(hotSpot.Y, 0), logicalSize.Height-1)
 	nrgba, err := img.ToNRGBA()
 	if err != nil {
 		errs.Log(err)
-		return ArrowCursor()
+		return nil
 	}
+	return apiNewCursor(nrgba, hotSpot, logicalSize)
+}
 
-	// glfw doesn't take the high resolution cursors properly, so scale them down, if needed
-	logicalSize := img.LogicalSize()
-	size := img.Size()
-	if logicalSize != size {
-		dstRect := image.Rect(0, 0, int(logicalSize.Width), int(logicalSize.Height))
-		dst := image.NewNRGBA(dstRect)
-		draw.CatmullRom.Scale(dst, dstRect, nrgba, image.Rect(0, 0, int(size.Width), int(size.Height)), draw.Over, nil)
-		nrgba = dst
+// Destroy releases the resources associated with the cursor.
+func (c *Cursor) Destroy() {
+	if c == nil {
+		return
 	}
-
-	return glfw.CreateCursor(nrgba, int(hotSpot.X), int(hotSpot.Y))
+	for _, w := range windowList {
+		if w.cursor == c {
+			w.cursor = nil
+			w.adjustToCursorChange()
+		}
+	}
+	cursorList = slices.DeleteFunc(cursorList, func(cur *Cursor) bool { return cur == c })
+	c.apiDestroy()
 }

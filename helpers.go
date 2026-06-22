@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -18,16 +18,23 @@ import (
 
 // DrawRectBase fills and strokes a rectangle.
 func DrawRectBase(canvas *Canvas, rect geom.Rect, fillInk, strokeInk Ink) {
-	canvas.DrawRect(rect, fillInk.Paint(canvas, rect, paintstyle.Fill))
+	fillPaint := fillInk.Paint(canvas, rect, paintstyle.Fill)
+	defer fillPaint.Dispose()
+	canvas.DrawRect(rect, fillPaint)
 	rect = rect.Inset(geom.NewUniformInsets(0.5))
-	canvas.DrawRect(rect, strokeInk.Paint(canvas, rect, paintstyle.Stroke))
+	strokePaint := strokeInk.Paint(canvas, rect, paintstyle.Stroke)
+	defer strokePaint.Dispose()
+	canvas.DrawRect(rect, strokePaint)
 }
 
 // DrawRoundedRectBase fills and strokes a rounded rectangle.
 func DrawRoundedRectBase(canvas *Canvas, rect geom.Rect, cornerRadius geom.Size, thickness float32, fillInk, strokeInk Ink) {
-	canvas.DrawRoundedRect(rect, cornerRadius, fillInk.Paint(canvas, rect, paintstyle.Fill))
+	fillPaint := fillInk.Paint(canvas, rect, paintstyle.Fill)
+	defer fillPaint.Dispose()
+	canvas.DrawRoundedRect(rect, cornerRadius, fillPaint)
 	rect = rect.Inset(geom.NewUniformInsets(thickness / 2))
 	p := strokeInk.Paint(canvas, rect, paintstyle.Stroke)
+	defer p.Dispose()
 	p.SetStrokeWidth(thickness)
 	cornerRadius.Width = max(cornerRadius.Width-thickness/2, 0)
 	cornerRadius.Height = max(cornerRadius.Height-thickness/2, 0)
@@ -36,9 +43,12 @@ func DrawRoundedRectBase(canvas *Canvas, rect geom.Rect, cornerRadius geom.Size,
 
 // DrawEllipseBase fills and strokes an ellipse.
 func DrawEllipseBase(canvas *Canvas, rect geom.Rect, thickness float32, fillInk, strokeInk Ink) {
-	canvas.DrawOval(rect, fillInk.Paint(canvas, rect, paintstyle.Fill))
+	fillPaint := fillInk.Paint(canvas, rect, paintstyle.Fill)
+	defer fillPaint.Dispose()
+	canvas.DrawOval(rect, fillPaint)
 	rect = rect.Inset(geom.NewUniformInsets(thickness / 2))
 	p := strokeInk.Paint(canvas, rect, paintstyle.Stroke)
+	defer p.Dispose()
 	p.SetStrokeWidth(thickness)
 	canvas.DrawOval(rect, p)
 }

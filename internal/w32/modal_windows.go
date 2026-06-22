@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -28,6 +28,7 @@ func (obj *ModalWindow) vmt() *vmtModalWindow {
 }
 
 func (obj *ModalWindow) Show() bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().Show, uintptr(unsafe.Pointer(obj)), 0)
 	return r1&0xff == 0
 }

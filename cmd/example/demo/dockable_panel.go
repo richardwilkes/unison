@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -12,6 +12,7 @@ package demo
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
@@ -50,7 +51,9 @@ func NewDockablePanel(title, tip string, background unison.Color) *DockablePanel
 }
 
 func (d *DockablePanel) draw(gc *unison.Canvas, rect geom.Rect) {
-	gc.DrawRect(rect, d.Color.Paint(gc, rect, paintstyle.Fill))
+	paint := d.Color.Paint(gc, rect, paintstyle.Fill)
+	gc.DrawRect(rect, paint)
+	paint.Dispose()
 	if d.Focused() {
 		txt := unison.NewText("Focused", &unison.TextDecoration{
 			Font:            unison.EmphasizedSystemFont,
@@ -62,7 +65,7 @@ func (d *DockablePanel) draw(gc *unison.Canvas, rect geom.Rect) {
 	}
 }
 
-func (d *DockablePanel) mouseDown(_ geom.Point, _, _ int, _ unison.Modifiers) bool {
+func (d *DockablePanel) mouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
 	if !d.Focused() {
 		d.RequestFocus()
 		d.MarkForRedraw()

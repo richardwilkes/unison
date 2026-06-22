@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -20,7 +20,7 @@ import (
 )
 
 // Language is the language that will be used when performing string manipulations for display.
-var Language = language.AmericanEnglish // TODO: Use the user's default
+var Language = language.AmericanEnglish
 
 type stringPopup[T ~string] struct {
 	colorMode *unison.PopupMenu[T]

@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"path/filepath"
@@ -165,6 +166,7 @@ type drawableCacheEntry struct {
 
 // Markdown provides markdown display widget.
 type Markdown struct {
+	HTTPClient                 *http.Client // Used when retrieving data from a remote host
 	lastParent                 *Panel
 	block                      *Panel
 	textRow                    *Panel
@@ -178,6 +180,7 @@ type Markdown struct {
 	MarkdownTheme
 	Panel
 	drawableCacheLock sync.Mutex
+	PerImageByteLimit int64 // Used when retrieving data from a remote host
 	index             int
 	columnIndex       int
 	alert             int
@@ -218,9 +221,7 @@ func (m *Markdown) adjustSizeOnParentChange() {
 
 func (m *Markdown) adjustToParent() {
 	m.SetContentBytes(m.content, 0)
-	if m.chainedFrameChangeCallback != nil {
-		m.chainedFrameChangeCallback()
-	}
+	SafeCall(m.chainedFrameChangeCallback)
 }
 
 // SetContent replaces the current markdown content.
@@ -445,7 +446,9 @@ func (m *Markdown) processCodeBlock() {
 
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
-		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, paintstyle.Fill))
+		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
+		defer paint.Dispose()
+		gc.DrawRect(rect, paint)
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
@@ -488,7 +491,9 @@ func (m *Markdown) processBlockquote() {
 
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
-		gc.DrawRect(rect, m.CodeBackground.Paint(gc, rect, paintstyle.Fill))
+		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
+		defer paint.Dispose()
+		gc.DrawRect(rect, paint)
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
@@ -933,7 +938,7 @@ func (m *Markdown) processStrikethrough() {
 func (m *Markdown) processRawHTML() {
 	if raw, ok := m.node.(*ast.RawHTML); ok {
 		count := raw.Segments.Len()
-		for i := 0; i < count; i++ {
+		for i := range count {
 			segment := raw.Segments.At(i)
 			switch xstrings.CollapseSpaces(strings.ToLower(string(segment.Value(m.content)))) {
 			case "<br>", "<br/>", "<br />":
@@ -980,7 +985,7 @@ func (m *Markdown) createLink(label, target, tooltip string) *Label {
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}
-	link := NewLink(label, tooltip, target, theme, m.linkHandler)
+	link := NewLink(label, tooltip, target, &theme, m.linkHandler)
 	if m.text != nil {
 		_, prefSize, _ := link.Sizes(geom.Size{})
 		m.prepareToFlushText(prefSize.Width)
@@ -1068,7 +1073,7 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 		} else {
 			scale := geom.NewPoint(1, 1).DivPt(PrimaryDisplay().Scale)
 			var img *Image
-			if img, err = NewImageFromFilePathOrURLWithContext(ctx, revisedTarget, scale); err != nil {
+			if img, err = NewImageFromFilePathOrURL(ctx, m.HTTPClient, revisedTarget, scale, m.PerImageByteLimit); err != nil {
 				result <- nil
 				errs.Log(err, "path", revisedTarget, "scale", scale)
 				return
@@ -1126,18 +1131,18 @@ func (m *Markdown) constrainImage(drawable Drawable) Drawable {
 }
 
 func (m *Markdown) extractText(node ast.Node) string {
-	str := ""
+	var str strings.Builder
 	for c := node.FirstChild(); c != nil; c = c.NextSibling() {
 		if t, ok := c.(*ast.Text); ok {
 			b := util.UnescapePunctuations(t.Value(m.content))
 			b = util.ResolveNumericReferences(b)
-			str += string(util.ResolveEntityNames(b))
+			str.Write(util.ResolveEntityNames(b))
 			if t.SoftLineBreak() {
-				str += " "
+				str.WriteByte(' ')
 			}
 		}
 	}
-	return str
+	return str.String()
 }
 
 func (m *Markdown) processImage() {

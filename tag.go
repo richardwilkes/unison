@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -88,7 +88,9 @@ func (t *Tag) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size
 // DefaultDraw provides the default drawing.
 func (t *Tag) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := t.ContentRect(false)
-	canvas.DrawRoundedRect(r, t.Radius, t.BackgroundInk.Paint(canvas, r, paintstyle.Fill))
+	paint := t.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
+	canvas.DrawRoundedRect(r, t.Radius, paint)
+	paint.Dispose()
 	r.X += t.SideInset
 	r.Width -= t.SideInset * 2
 	DrawLabel(canvas, r, t.HAlign, t.VAlign, t.Font, t.Text, t.OnBackgroundInk, nil, t.Drawable, t.Side, t.Gap,

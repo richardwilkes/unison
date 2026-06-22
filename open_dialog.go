@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -35,5 +35,8 @@ type OpenDialog interface {
 
 // NewOpenDialog creates a new open dialog using native support where possible.
 func NewOpenDialog() OpenDialog {
-	return platformNewOpenDialog()
+	if noPlatformFileDialogs {
+		return NewCommonOpenDialog()
+	}
+	return apiNewOpenDialog()
 }

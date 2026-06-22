@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/richardwilkes/toolbox/v2/uti"
 )
 
 // CanRead returns true if the format can be read.
@@ -32,24 +34,10 @@ func (e Enum) CanWrite() bool {
 
 // Extensions returns the list of valid file extensions for the format. An unknown format will return nil.
 func (e Enum) Extensions() []string {
-	switch e {
-	case BMP:
-		return []string{".bmp", ".dib"}
-	case GIF:
-		return []string{".gif"}
-	case ICO:
-		return []string{".ico"}
-	case JPEG:
-		return []string{".jpg", ".jpeg", ".jpe", ".jif", ".jfif", ".jfi"}
-	case PNG:
-		return []string{".png"}
-	case WBMP:
-		return []string{".wbmp"}
-	case WEBP:
-		return []string{".webp"}
-	default:
-		return nil
+	if u := e.UTI(); u != nil {
+		return u.Extensions
 	}
+	return nil
 }
 
 // Extension returns the primary extension for the format. An unknown format will return an empty string.
@@ -63,24 +51,10 @@ func (e Enum) Extension() string {
 
 // MimeTypes returns the list of valid mime types for the format. An unknown format will return nil.
 func (e Enum) MimeTypes() []string {
-	switch e {
-	case BMP:
-		return []string{"image/bmp", "image/x-bmp"}
-	case GIF:
-		return []string{"image/gif"}
-	case ICO:
-		return []string{"image/x-icon", "image/vnd.microsoft.icon"}
-	case JPEG:
-		return []string{"image/jpeg"}
-	case PNG:
-		return []string{"image/png"}
-	case WBMP:
-		return []string{"image/vnd.wap.wbmp"}
-	case WEBP:
-		return []string{"image/webp"}
-	default:
-		return nil
+	if u := e.UTI(); u != nil {
+		return u.MimeTypes
 	}
+	return nil
 }
 
 // MimeType returns the primary mime type for the format. An unknown format will return an empty string.
@@ -93,24 +67,24 @@ func (e Enum) MimeType() string {
 }
 
 // UTI returns the uniform type identifier for the format. An unknown format will return an empty string.
-func (e Enum) UTI() string {
+func (e Enum) UTI() *uti.DataType {
 	switch e {
 	case BMP:
-		return "com.microsoft.bmp"
+		return uti.BMP
 	case GIF:
-		return "com.compuserve.gif"
+		return uti.GIF
 	case ICO:
-		return "com.microsoft.ico"
+		return uti.ICO
 	case JPEG:
-		return "public.jpeg"
+		return uti.JPEG
 	case PNG:
-		return "public.png"
+		return uti.PNG
 	case WBMP:
-		return "com.adobe.wbmp"
+		return uti.WBMP
 	case WEBP:
-		return "org.webmproject.webp"
+		return uti.WEBP
 	default:
-		return ""
+		return nil
 	}
 }
 
@@ -125,12 +99,34 @@ func AllReadableExtensions() []string {
 	return all
 }
 
+// AllReadableUTIs returns all Uniform Type Identifiers that map to readable image formats.
+func AllReadableUTIs() []*uti.DataType {
+	all := make([]*uti.DataType, 0, 16)
+	for _, e := range All {
+		if e.CanRead() {
+			all = append(all, e.UTI())
+		}
+	}
+	return all
+}
+
 // AllWritableExtensions returns all file extensions that map to writable image formats.
 func AllWritableExtensions() []string {
 	all := make([]string, 0, 16)
 	for _, e := range All {
 		if e.CanWrite() {
 			all = append(all, e.Extensions()...)
+		}
+	}
+	return all
+}
+
+// AllWritableUTIs returns all Uniform Type Identifiers that map to writable image formats.
+func AllWritableUTIs() []*uti.DataType {
+	all := make([]*uti.DataType, 0, 16)
+	for _, e := range All {
+		if e.CanWrite() {
+			all = append(all, e.UTI())
 		}
 	}
 	return all
@@ -175,12 +171,12 @@ func ForMimeType(mimeType string) Enum {
 }
 
 // ForUTI returns the image format for the given Universal Type Identifier.
-func ForUTI(uti string) Enum {
+func ForUTI(u *uti.DataType) Enum {
 	for _, e := range All {
 		if e == Unknown {
 			continue
 		}
-		if strings.EqualFold(uti, e.UTI()) {
+		if strings.EqualFold(u.UTI, e.UTI().UTI) {
 			return e
 		}
 	}

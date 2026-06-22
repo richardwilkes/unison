@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -12,6 +12,8 @@ package w32
 import (
 	"syscall"
 	"unsafe"
+
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 )
 
 var (
@@ -24,6 +26,7 @@ func SysAllocString(str string) *int16 {
 	if err != nil {
 		return nil
 	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := sysAllocStringProc.Call(uintptr(unsafe.Pointer(p)))
-	return (*int16)(unsafe.Pointer(r1))
+	return xruntime.PtrFromUintptr[int16](r1)
 }

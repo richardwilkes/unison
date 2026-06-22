@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
-	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 var (
@@ -51,7 +51,7 @@ func (a *Action) Enabled(src any) bool {
 		return true
 	}
 	result := false
-	xos.SafeCall(func() { result = a.EnabledCallback(a, src) }, nil)
+	SafeCall(func() { result = a.EnabledCallback(a, src) })
 	return result
 }
 
@@ -66,7 +66,7 @@ func (a *Action) enabled(item MenuItem) bool {
 // Execute the action. Calls Enabled() to verify execution is permitted.
 func (a *Action) Execute(src any) {
 	if a.ExecuteCallback != nil && a.Enabled(src) {
-		xos.SafeCall(func() { a.ExecuteCallback(a, src) }, nil)
+		SafeCall(func() { a.ExecuteCallback(a, src) })
 	}
 }
 
@@ -97,7 +97,7 @@ func CutAction() *Action {
 		cutAction = &Action{
 			ID:              CutItemID,
 			Title:           i18n.Text("Cut"),
-			KeyBinding:      KeyBinding{KeyCode: KeyX, Modifiers: OSMenuCmdModifier()},
+			KeyBinding:      KeyBinding{KeyCode: KeyX, Modifiers: mod.OSMenuCommand()},
 			EnabledCallback: RouteActionToFocusEnabledFunc,
 			ExecuteCallback: RouteActionToFocusExecuteFunc,
 		}
@@ -111,7 +111,7 @@ func CopyAction() *Action {
 		copyAction = &Action{
 			ID:              CopyItemID,
 			Title:           i18n.Text("Copy"),
-			KeyBinding:      KeyBinding{KeyCode: KeyC, Modifiers: OSMenuCmdModifier()},
+			KeyBinding:      KeyBinding{KeyCode: KeyC, Modifiers: mod.OSMenuCommand()},
 			EnabledCallback: RouteActionToFocusEnabledFunc,
 			ExecuteCallback: RouteActionToFocusExecuteFunc,
 		}
@@ -125,7 +125,7 @@ func PasteAction() *Action {
 		pasteAction = &Action{
 			ID:              PasteItemID,
 			Title:           i18n.Text("Paste"),
-			KeyBinding:      KeyBinding{KeyCode: KeyV, Modifiers: OSMenuCmdModifier()},
+			KeyBinding:      KeyBinding{KeyCode: KeyV, Modifiers: mod.OSMenuCommand()},
 			EnabledCallback: RouteActionToFocusEnabledFunc,
 			ExecuteCallback: RouteActionToFocusExecuteFunc,
 		}
@@ -152,7 +152,7 @@ func SelectAllAction() *Action {
 		selectAllAction = &Action{
 			ID:              SelectAllItemID,
 			Title:           i18n.Text("Select All"),
-			KeyBinding:      KeyBinding{KeyCode: KeyA, Modifiers: OSMenuCmdModifier()},
+			KeyBinding:      KeyBinding{KeyCode: KeyA, Modifiers: mod.OSMenuCommand()},
 			EnabledCallback: RouteActionToFocusEnabledFunc,
 			ExecuteCallback: RouteActionToFocusExecuteFunc,
 		}

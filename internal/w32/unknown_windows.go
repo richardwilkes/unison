@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -12,6 +12,8 @@ package w32
 import (
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // Unknown https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nn-unknwn-iunknown
@@ -30,8 +32,9 @@ func (obj *Unknown) vmt() *vmtUnknown {
 }
 
 // QueryInterface https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-queryinterface(refiid_void)
-func (obj *Unknown) QueryInterface(guid *GUID) unsafe.Pointer {
+func (obj *Unknown) QueryInterface(guid *windows.GUID) unsafe.Pointer {
 	var dest unsafe.Pointer
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	if ret, _, _ := syscall.SyscallN(obj.vmt().QueryInterface, uintptr(unsafe.Pointer(obj)),
 		uintptr(unsafe.Pointer(guid)), uintptr(unsafe.Pointer(&dest))); ret != 0 {
 		return nil
@@ -41,10 +44,12 @@ func (obj *Unknown) QueryInterface(guid *GUID) unsafe.Pointer {
 
 // AddRef https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-addref
 func (obj *Unknown) AddRef() {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().AddRef, uintptr(unsafe.Pointer(obj)))
 }
 
 // Release https://docs.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-release
 func (obj *Unknown) Release() {
+	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().Release, uintptr(unsafe.Pointer(obj)))
 }

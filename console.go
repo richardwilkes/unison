@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2025 by Richard A. Wilkes. All rights reserved.
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, version 2.0. If a copy of the MPL was not distributed with
@@ -20,5 +20,5 @@ var attachConsoleOnce sync.Once
 // so that a graphical application can also be used as a command-line application without having to build two variants.
 // May be called more than once. Subsequent calls do nothing. Does nothing on non-Windows platforms.
 func AttachConsole() {
-	attachConsoleOnce.Do(attachConsole)
+	attachConsoleOnce.Do(apiAttachConsole)
 }
