@@ -157,9 +157,45 @@ func generateDistribution(cfg *Config) error {
 		}
 	}
 	if err := signApp(cfg); err != nil {
-		return nil
+		return err
 	}
-	return createDiskImage(cfg, dstPath)
+	if err := createDiskImage(cfg, dstPath); err != nil {
+		return err
+	}
+	return notarize(cfg, dstPath)
+}
+
+// notarize submits the distribution to Apple's notary service and staples the resulting ticket onto it. Credentials
+// are passed directly to notarytool and nothing is persisted on the machine: an App Store Connect API key is used when
+// supplied (in the configuration or via the NOTARY_API_KEY, NOTARY_API_KEY_ID, and NOTARY_API_KEY_ISSUER environment
+// variables), otherwise a pre-existing keychain profile named by Credentials is used.
+func notarize(cfg *Config, dstPath string) error {
+	signing := &cfg.Mac.CodeSigning
+	args := []string{"notarytool", "submit", dstPath, "--wait"}
+	key := valueOrEnv(signing.APIKey, "NOTARY_API_KEY")
+	keyID := valueOrEnv(signing.APIKeyID, "NOTARY_API_KEY_ID")
+	issuer := valueOrEnv(signing.APIKeyIssuer, "NOTARY_API_KEY_ISSUER")
+	switch {
+	case key != "" && keyID != "" && issuer != "":
+		args = append(args, "--key", key, "--key-id", keyID, "--issuer", issuer)
+	case key != "" || keyID != "" || issuer != "":
+		return errs.New("incomplete App Store Connect API key: the key file, key ID, and issuer ID must all be set")
+	case signing.Credentials != "":
+		args = append(args, "--keychain-profile", signing.Credentials)
+	default:
+		return errs.New("notarization requires either an App Store Connect API key or a credentials (keychain profile) name")
+	}
+	if err := run(exec.Command("xcrun", args...)); err != nil {
+		return err
+	}
+	return run(exec.Command("xcrun", "stapler", "staple", dstPath))
+}
+
+func valueOrEnv(value, envVar string) string {
+	if value != "" {
+		return value
+	}
+	return os.Getenv(envVar)
 }
 
 func signApp(cfg *Config) error {
@@ -218,7 +254,6 @@ func createDiskImage(cfg *Config, dstPath string) error {
 		"--codesign", cfg.Mac.CodeSigning.Identity,
 		"--hdiutil-quiet",
 		"--no-internet-enable",
-		"--notarize", cfg.Mac.CodeSigning.Credentials,
 		dstPath,
 	)
 	tmpDir, err := os.MkdirTemp(".", "tmp")
