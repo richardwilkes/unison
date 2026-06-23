@@ -31,10 +31,19 @@ type FileData struct {
 }
 
 // MacCodeSigning holds information about code signing for macOS.
+//
+// Notarization uses the keychain profile named by Credentials. That profile may either already exist (created
+// beforehand via "xcrun notarytool store-credentials") or be created automatically at packaging time from an App
+// Store Connect API key by supplying APIKey, APIKeyID, and APIKeyIssuer. Each of the three API key values falls back
+// to an environment variable (NOTARY_API_KEY, NOTARY_API_KEY_ID, NOTARY_API_KEY_ISSUER, respectively) when left empty,
+// so secrets need not be committed to the configuration file.
 type MacCodeSigning struct {
-	Identity    string   `yaml:"identity"`
-	Credentials string   `yaml:"credentials"`
-	Options     []string `yaml:"options"`
+	Identity     string   `yaml:"identity"`
+	Credentials  string   `yaml:"credentials"`
+	APIKey       string   `yaml:"api_key"`        // Path to the App Store Connect API key (.p8) file
+	APIKeyID     string   `yaml:"api_key_id"`     // The App Store Connect API key ID
+	APIKeyIssuer string   `yaml:"api_key_issuer"` // The App Store Connect API key issuer ID
+	Options      []string `yaml:"options"`
 }
 
 // MacOnlyOpts holds options for macOS.
