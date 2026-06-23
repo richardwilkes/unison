@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -13,6 +15,9 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Allow uploading assets to the release when triggered by a release event.
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -86,3 +91,11 @@ jobs:
           name: ${{ steps.example.outputs.artifact_name }}
           path: dist/
           if-no-files-found: error
+
+      # On a published release, attach this platform's built binary to the
+      # release. Each matrix job uploads its own distinctly-named file.
+      - name: Attach binary to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
