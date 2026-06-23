@@ -666,7 +666,7 @@ func (m *Markdown) processTable() {
 
 			m.MarkForLayoutRecursively()
 			m.ValidateLayout()
-			if over := int(xmath.Ceil(p.FrameRect().Width - (m.maxLineWidth - (4 + StdHSpacing*float32(1+len(m.columnWidths)))))); over > 0 {
+			if over := int(xmath.Ceil(p.FrameRect().Width - m.maxLineWidth)); over > 0 {
 				children := p.Children()
 				count := 0
 				for i := 0; i < len(m.columnWidths); i++ {

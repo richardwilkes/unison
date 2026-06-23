@@ -123,3 +123,31 @@ func TestMarkdownEmptyContent(t *testing.T) {
 	// Empty content must not panic and must leave no rendered text.
 	c.Equal("", collectMarkdownText(m.AsPanel()))
 }
+
+// TestMarkdownTableDoesNotWrapWhenItFits guards against regressing the table column-sizing logic so that a table whose
+// natural width fits within the available width is left at full width rather than having its columns shrunk (which
+// would force premature text wrapping). The column widths are only reduced below the available width when the table's
+// natural width actually exceeds it.
+func TestMarkdownTableDoesNotWrapWhenItFits(t *testing.T) {
+	c := check.New(t)
+	const content = "| one | two | three | four | five | six | seven | eight | nine | ten |\n" +
+		"|-|-|-|-|-|-|-|-|-|-|\n" +
+		"| some text | some more text | ccc | ddd | eee/eee | fff | ggg | hhh | iii | jjj |\n"
+
+	// At a generous width the table fits easily, so no column should be shrunk below the available width.
+	m := NewMarkdown(false)
+	m.SetContent(content, 800)
+	for i, w := range m.columnWidths {
+		c.Equal(800, w, "column %d should not be shrunk when the table fits", i)
+	}
+
+	// At a width narrower than the table's natural width, columns must be shrunk so the table fits.
+	m = NewMarkdown(false)
+	m.SetContent(content, 200)
+	total := 0
+	for _, w := range m.columnWidths {
+		c.True(w < 200, "columns should be shrunk when the table cannot fit")
+		total += w
+	}
+	c.True(total <= 200, "shrunk columns must sum to no more than the available width")
+}
