@@ -991,9 +991,9 @@ func x11ProcessEvent(e x11.Event) {
 			case 1:
 				w.mouseDown(where, ButtonLeft, mods)
 			case 2:
-				w.mouseDown(where, ButtonRight, mods)
-			case 3:
 				w.mouseDown(where, ButtonMiddle, mods)
+			case 3:
+				w.mouseDown(where, ButtonRight, mods)
 			case 4:
 				w.mouseWheel(where, geom.NewPoint(0, 1), mods)
 			case 5:
@@ -1014,9 +1014,9 @@ func x11ProcessEvent(e x11.Event) {
 			case 1:
 				w.mouseUp(where, ButtonLeft, mods)
 			case 2:
-				w.mouseUp(where, ButtonRight, mods)
-			case 3:
 				w.mouseUp(where, ButtonMiddle, mods)
+			case 3:
+				w.mouseUp(where, ButtonRight, mods)
 			case 4, 5, 6, 7:
 			default:
 				w.mouseUp(where, int(ev.Detail-5), mods)
