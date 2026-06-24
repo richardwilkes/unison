@@ -94,7 +94,13 @@ func (l *Label) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide side.Enum, gap float32) (size, txtSize geom.Size) {
 	empty := text.Empty()
 	if empty && drawable == nil {
-		txtSize.Height = font.LineHeight()
+		// Use the text's own single-line height so that an empty line is exactly as tall as one containing text.
+		// Only fall back to the passed-in font when there is no text object to consult.
+		if text != nil {
+			txtSize.Height = text.Height()
+		} else {
+			txtSize.Height = font.LineHeight()
+		}
 		size = txtSize
 	} else {
 		if !empty {
