@@ -137,6 +137,7 @@ func (d *dockHeader) DefaultDragUpdated(di drag.Info, where geom.Point, _ mod.Mo
 	}
 	if d.dragInsertIndex != savedDragInsertIndex {
 		d.MarkForRedraw()
+		d.FlushDrawing()
 	}
 	return drag.Move
 }
@@ -155,6 +156,7 @@ func (d *dockHeader) DefaultDrop(di drag.Info, where geom.Point, mods mod.Modifi
 func (d *dockHeader) DefaultDragExit() {
 	d.dragInsertIndex = -1
 	d.MarkForRedraw()
+	d.FlushDrawing()
 }
 
 func (d *dockHeader) updateTitle(index int) {

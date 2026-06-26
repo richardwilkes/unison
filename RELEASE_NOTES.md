@@ -8,6 +8,8 @@
 
 ## Bug Fixes
 
+- The dock header now calls `FlushDrawing()` after `MarkForRedraw()` during drag-update and drag-exit events, so the
+  tab insertion indicator will actually show up, as there is no continuous redraw loop during native drag & drop.
 - `LabelContentSizes` now reports the same height for an empty line as for a line containing text. Previously the
   empty-text height was taken from the passed-in `font` parameter while the height for text came from the text's own
   `TextDecoration` font, so the two could disagree when those fonts differed. The single-line height is now derived from
