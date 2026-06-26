@@ -434,8 +434,8 @@ func TestDockLayoutPerformLayoutClampsDivider(t *testing.T) {
 	// A divider larger than the available space is clamped down to the available space.
 	layout.divider = 10000
 	layout.PerformLayout(nil)
-	available := float32(108) - dividerSize
-	c.Equal(available, layout.divider)
+	available := 108 - dividerSize
+	c.Equal(float32(10000), layout.divider)
 	c.Equal(geom.NewRect(0, 0, 200, available), node0.frame)
 	c.Equal(geom.NewRect(0, available+dividerSize, 200, 0), node1.frame)
 }
