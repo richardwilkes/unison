@@ -90,7 +90,7 @@ func (h *TableHeader[T]) ColumnFrame(col int) geom.Rect {
 	x := insets.Left
 	for c := range col {
 		x += h.table.Columns[c].Current
-		if h.table.ShowColumnDivider {
+		if h.table.ShowColumnDivider && (h.table.ShowLastColumnDivider || c < len(h.table.Columns)-1) {
 			x++
 		}
 	}
@@ -145,7 +145,7 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	x := insets.Left
 	for i := range h.table.Columns {
 		x1 := x + h.table.Columns[i].Current
-		if h.table.ShowColumnDivider {
+		if h.table.ShowColumnDivider && (h.table.ShowLastColumnDivider || i < len(h.table.Columns)-1) {
 			x1++
 		}
 		if x1 >= dirty.X {
@@ -159,7 +159,11 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		rect := dirty
 		rect.X = x
 		rect.Width = 1
-		for c := firstCol; c < len(h.table.Columns)-1; c++ {
+		lastCol := len(h.table.Columns)
+		if !h.table.ShowLastColumnDivider {
+			lastCol--
+		}
+		for c := firstCol; c < lastCol; c++ {
 			rect.X += h.table.Columns[c].Current
 			paint := h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)

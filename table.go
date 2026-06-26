@@ -75,6 +75,7 @@ var DefaultTableTheme = TableTheme{
 	MinimumRowHeight:       16,
 	ColumnResizeSlop:       4,
 	ShowColumnDivider:      true,
+	ShowLastColumnDivider:  true,
 }
 
 // TableTheme holds theming data for a Table.
@@ -97,6 +98,7 @@ type TableTheme struct {
 	ColumnResizeSlop       float32
 	ShowRowDivider         bool
 	ShowColumnDivider      bool
+	ShowLastColumnDivider  bool
 }
 
 // Table provides a control that can display data in columns and rows.
@@ -227,7 +229,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	x := insets.Left
 	for i := range t.Columns {
 		x1 := x + t.Columns[i].Current
-		if t.ShowColumnDivider {
+		if t.ShowColumnDivider && (t.ShowLastColumnDivider || i < len(t.Columns)-1) {
 			x1++
 		}
 		if x1 >= dirty.X {
@@ -285,7 +287,11 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		rect = dirty
 		rect.X = x
 		rect.Width = 1
-		for c := firstCol; c < len(t.Columns)-1; c++ {
+		lastCol := len(t.Columns)
+		if !t.ShowLastColumnDivider {
+			lastCol--
+		}
+		for c := firstCol; c < lastCol; c++ {
 			rect.X += t.Columns[c].Current
 			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
@@ -345,7 +351,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			t.uninstallCell(cell)
 			canvas.Restore()
 			rect.X += t.Columns[c].Current
-			if t.ShowColumnDivider {
+			if t.ShowColumnDivider && (t.ShowLastColumnDivider || c < len(t.Columns)-1) {
 				rect.X++
 			}
 		}
@@ -445,9 +451,9 @@ func (t *Table[T]) OverColumn(x float32) int {
 }
 
 // OverColumnDivider returns the column index of the column divider that the x coordinate is over, or -1 if it isn't
-// over any column divider.
+// over any column divider. The last column's right edge is also considered a resizable divider.
 func (t *Table[T]) OverColumnDivider(x float32) int {
-	if len(t.Columns) < 2 {
+	if len(t.Columns) == 0 {
 		return -1
 	}
 	var insets geom.Insets
@@ -455,7 +461,7 @@ func (t *Table[T]) OverColumnDivider(x float32) int {
 		insets = border.Insets()
 	}
 	pos := insets.Left
-	for i := range t.Columns[:len(t.Columns)-1] {
+	for i := range t.Columns {
 		pos += t.Columns[i].Current
 		if t.ShowColumnDivider {
 			pos++
@@ -523,7 +529,7 @@ func (t *Table[T]) CellFrame(row, col int) geom.Rect {
 	x := insets.Left
 	for c := range col {
 		x += t.Columns[c].Current
-		if t.ShowColumnDivider {
+		if t.ShowColumnDivider && (t.ShowLastColumnDivider || c < len(t.Columns)-1) {
 			x++
 		}
 	}
@@ -1412,7 +1418,10 @@ func (t *Table[T]) SizeColumnsToFitWithExcessIn(columnID int) {
 	}
 	width := t.ContentRect(false).Width
 	if t.ShowColumnDivider {
-		width -= float32(len(t.Columns) - 1)
+		width -= float32(len(t.Columns))
+		if t.ShowLastColumnDivider {
+			width--
+		}
 	}
 	for col := range current {
 		if col == excessColumnIndex {
@@ -1551,7 +1560,10 @@ func (t *Table[T]) DefaultSizes(_ geom.Size) (minSize, prefSize, maxSize geom.Si
 		prefSize.Height += cache.height
 	}
 	if t.ShowColumnDivider {
-		prefSize.Width += float32(len(t.Columns) - 1)
+		prefSize.Width += float32(len(t.Columns))
+		if !t.ShowLastColumnDivider && len(t.Columns) != 0 {
+			prefSize.Width--
+		}
 	}
 	if t.ShowRowDivider {
 		prefSize.Height += float32((endBeforeRow - startRow) - 1)
