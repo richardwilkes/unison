@@ -384,10 +384,7 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 		if d.divider < 0 {
 			primary = available / 2
 		} else {
-			if d.divider > available {
-				d.divider = available
-			}
-			primary = d.divider
+			primary = min(d.divider, available)
 		}
 		if d.Horizontal {
 			d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, primary, size.Height))
