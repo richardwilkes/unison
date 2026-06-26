@@ -1422,9 +1422,7 @@ func (t *Table[T]) SizeColumnsToFitWithExcessIn(columnID int) {
 		width -= current[col]
 	}
 	t.Columns[excessColumnIndex].Current = max(width, t.Columns[excessColumnIndex].Minimum)
-	for row, cache := range t.rowCache {
-		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
-	}
+	t.SyncRowHeights()
 }
 
 // SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the Table's FrameRect will be set to
@@ -1461,9 +1459,7 @@ func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 	for col := range current {
 		t.Columns[col].Current = current[col]
 	}
-	for row, cache := range t.rowCache {
-		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
-	}
+	t.SyncRowHeights()
 	if adjust {
 		_, pref, _ := t.DefaultSizes(geom.Size{})
 		rect := t.FrameRect()
@@ -1502,14 +1498,21 @@ func (t *Table[T]) SizeColumnToFit(col int, adjust bool) {
 		}
 	}
 	t.Columns[col].Current = current
-	for row, cache := range t.rowCache {
-		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
-	}
+	t.SyncRowHeights()
 	if adjust {
 		_, pref, _ := t.DefaultSizes(geom.Size{})
 		rect := t.FrameRect()
 		rect.Size = pref
 		t.SetFrameRect(rect)
+	}
+}
+
+// SyncRowHeights recalculates the height of each row based on the current column widths. Call this after adjusting
+// column widths directly (i.e. outside of the SizeColumns* methods) so that rows whose content wraps to a height that
+// depends on the available width are given the correct amount of vertical space.
+func (t *Table[T]) SyncRowHeights() {
+	for row, cache := range t.rowCache {
+		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
 	}
 }
 
