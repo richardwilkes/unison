@@ -25,7 +25,7 @@ var (
 	MouseWheelMultiplier = func() float32 {
 		switch runtime.GOOS {
 		case xos.MacOS:
-			return 1
+			return 8
 		case xos.WindowsOS, xos.LinuxOS:
 			return 24
 		default:
