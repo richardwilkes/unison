@@ -1,5 +1,11 @@
 # Changes since v0.92.3
 
+## New & Improved
+
+- Added `Table.SyncRowHeights()` — a new public method that recalculates cached row heights based on current column
+  widths. Previously this logic was inlined in the three SizeColumns* methods; it is now extracted so callers who adjust
+  column widths directly (outside those methods) can trigger the same recalculation.
+
 ## Bug Fixes
 
 - `LabelContentSizes` now reports the same height for an empty line as for a line containing text. Previously the
