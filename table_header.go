@@ -87,7 +87,7 @@ func (h *TableHeader[T]) ColumnFrame(col int) geom.Rect {
 		return geom.Rect{}
 	}
 	insets := h.combinedInsets()
-	x := insets.Left
+	x := insets.Left + h.table.leadingColumnDividerWidth()
 	for c := range col {
 		x += h.table.Columns[c].Current
 		if h.table.ShowColumnDivider && (h.table.ShowLastColumnDivider || c < len(h.table.Columns)-1) {
@@ -142,7 +142,7 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 
 	var firstCol int
 	insets := h.combinedInsets()
-	x := insets.Left
+	x := insets.Left + h.table.leadingColumnDividerWidth()
 	for i := range h.table.Columns {
 		x1 := x + h.table.Columns[i].Current
 		if h.table.ShowColumnDivider && (h.table.ShowLastColumnDivider || i < len(h.table.Columns)-1) {
@@ -157,8 +157,14 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 
 	if h.table.ShowColumnDivider {
 		rect := dirty
-		rect.X = x
 		rect.Width = 1
+		if firstCol == 0 && h.table.leadingColumnDividerWidth() > 0 {
+			rect.X = insets.Left
+			paint := h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill)
+			canvas.DrawRect(rect, paint)
+			paint.Dispose()
+		}
+		rect.X = x
 		lastCol := len(h.table.Columns)
 		if !h.table.ShowLastColumnDivider {
 			lastCol--
