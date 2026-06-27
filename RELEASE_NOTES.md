@@ -20,3 +20,4 @@
 - The dock divider position is now clamped only for layout purposes. Previously, it would be set to whatever value it
   had been clamped to as you sized the view. The new behavior means the divider will restore itself if you shrink the
   view down, the grow it back to where it was.
+- Windows only: Fix mouse wheel events when on a display positioned to the left of or above the primary display.

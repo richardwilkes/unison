@@ -232,16 +232,16 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			return 0
 		case w32.WM_MOUSEWHEEL:
 			var pos w32.POINT
-			pos.X = int32(lParam & 0xFFFF)
-			pos.Y = int32((lParam >> 16) & 0xFFFF)
+			pos.X = int32(int16(lParam & 0xFFFF))
+			pos.Y = int32(int16((lParam >> 16) & 0xFFFF))
 			w32.ScreenToClient(w.wnd.wnd, &pos)
 			w.mouseWheel(w.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
 				geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)), w.CurrentKeyModifiers())
 			return 0
 		case w32.WM_MOUSEHWHEEL:
 			var pos w32.POINT
-			pos.X = int32(lParam & 0xFFFF)
-			pos.Y = int32((lParam >> 16) & 0xFFFF)
+			pos.X = int32(int16(lParam & 0xFFFF))
+			pos.Y = int32(int16((lParam >> 16) & 0xFFFF))
 			w32.ScreenToClient(w.wnd.wnd, &pos)
 			w.mouseWheel(w.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
 				geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0), w.CurrentKeyModifiers())
