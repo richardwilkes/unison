@@ -17,7 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xfilepath"
 )
 
-// FileData holds information about a file type for macOS.
+// FileData holds information about a file type.
 type FileData struct {
 	Name       string   `yaml:"name"`
 	Icon       string   `yaml:"icon"`

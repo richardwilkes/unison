@@ -6,7 +6,6 @@ require (
 	github.com/OpenPrinting/goipp v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/toolbox/v2 v2.14.0
-	github.com/tc-hib/winres v0.3.1
 	github.com/yuin/goldmark v1.8.2
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/image v0.43.0
@@ -19,7 +18,6 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
-	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
