@@ -34,22 +34,23 @@ import (
 )
 
 type apiWindow struct {
-	dndInfo         *x11DragInfo
-	id              x11.WindowID
-	parent          x11.WindowID
-	colorMap        x11.ColorMapID
-	dndSource       x11.WindowID
-	dndVersion      uint32
-	lastX           float32
-	lastY           float32
-	borderTop       uint32
-	borderLeft      uint32
-	borderBottom    uint32
-	borderRight     uint32
-	borderValid     bool
-	minimized       bool
-	maximized       bool
-	cursorWasHidden bool
+	dndInfo           *x11DragInfo
+	id                x11.WindowID
+	parent            x11.WindowID
+	colorMap          x11.ColorMapID
+	dndSource         x11.WindowID
+	dndVersion        uint32
+	lastX             float32
+	lastY             float32
+	borderTop         uint32
+	borderLeft        uint32
+	borderBottom      uint32
+	borderRight       uint32
+	borderValid       bool
+	minimized         bool
+	maximized         bool
+	cursorWasHidden   bool
+	awaitingConfigure bool
 }
 
 func x11FindWindow(id x11.WindowID) *Window {
@@ -227,6 +228,9 @@ func (w *Window) apiEnsureOnDisplay() {
 }
 
 func (w *Window) apiContentRect() geom.Rect {
+	if w.wnd.awaitingConfigure {
+		return w.lastContentRect
+	}
 	info, err := x11Conn.GetGeometry(x11.DrawableID(w.wnd.id))
 	if err != nil {
 		errs.Log(err)
@@ -290,6 +294,7 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 		Width:  uint16(rect.Width),
 		Height: uint16(rect.Height),
 	})
+	w.wnd.awaitingConfigure = true
 	x11Conn.Flush()
 }
 
@@ -918,8 +923,10 @@ func (w *Window) x11Border() (top, left, bottom, right uint32) {
 		return 0, 0, 0, 0
 	}
 	if !w.wnd.borderValid {
-		w.wnd.borderTop, w.wnd.borderLeft, w.wnd.borderBottom, w.wnd.borderRight = x11Conn.GetWindowBorderWidths(w.wnd.id)
-		w.wnd.borderValid = true
+		if t, l, b, r, ok := x11Conn.GetWindowBorderWidths(w.wnd.id); ok {
+			w.wnd.borderTop, w.wnd.borderLeft, w.wnd.borderBottom, w.wnd.borderRight = t, l, b, r
+			w.wnd.borderValid = true
+		}
 	}
 	return w.wnd.borderTop, w.wnd.borderLeft, w.wnd.borderBottom, w.wnd.borderRight
 }
@@ -1040,6 +1047,7 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.ConfigureNotifyEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
+			w.wnd.awaitingConfigure = false
 			if float32(ev.Width) != w.lastWidth || float32(ev.Height) != w.lastHeight {
 				w.lastWidth = float32(ev.Width)
 				w.lastHeight = float32(ev.Height)

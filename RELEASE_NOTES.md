@@ -20,6 +20,13 @@
 - The dock divider position is now clamped only for layout purposes. Previously, it would be set to whatever value it
   had been clamped to as you sized the view. The new behavior means the divider will restore itself if you shrink the
   view down, the grow it back to where it was.
+- Linux only: Window frame border widths are now detected more reliably. `_NET_REQUEST_FRAME_EXTENTS` is only sent (and
+  waited on) when the window manager advertises support for it via `_NET_SUPPORTED`, avoiding a needless stall at window
+  creation under window managers that ignore it (such as bare xwayland); when it is supported, the wait timeout was
+  raised so a busy window manager has time to respond. Border widths are no longer cached as valid until the window
+  manager has actually reported them, so the zero placeholder is no longer mistaken for a real frame size. The content
+  rect is also held at its last known value while awaiting the `ConfigureNotify` for a pending resize, preventing reads
+  of stale window geometry.
 - Windows only: Fix mouse wheel events when on a display positioned to the left of or above the primary display.
 - Windows only: Custom cursors are no longer baked at a single monitor's DPI. They were previously rasterized once at
   the primary display's scale and reused everywhere, so on a secondary monitor with a different DPI the cursor appeared

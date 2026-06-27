@@ -679,6 +679,7 @@ type Conn struct {
 	pixmapFormats            []Format
 	Roots                    []Screen
 	eventQueue               []Event
+	supportedAtoms           []Atom
 	eventQueueLock           sync.Mutex
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
@@ -706,6 +707,7 @@ type Conn struct {
 	bitmapFormatScanlinePad  byte
 	MinKeyCode               byte
 	MaxKeyCode               byte
+	supportedAtomsCached     bool
 }
 
 // NewConn establishes a connection to the X server.
@@ -2287,39 +2289,74 @@ func (c *Conn) GetGeometry(drawable DrawableID) (Geometry, error) {
 	return g, err
 }
 
-// GetWindowBorderWidths retrieves the widths of the borders of the specified window.
-func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right uint32) {
-	if !c.IsWindowVisible(window) {
-		var msg ClientMessageEvent
-		msg.Window = window
-		msg.Type = c.Atoms.NetRequestFrameExtents
-		msg.Format = 32
-		if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+// WMSupports reports whether the window manager advertises support for the given atom (hint or protocol) in the
+// _NET_SUPPORTED property on the root window. The supported set is cached after the first successful query.
+func (c *Conn) WMSupports(atom Atom) bool {
+	if !c.supportedAtomsCached {
+		format, actualType, value, _, err := c.GetProperty(c.RootWindow(), c.Atoms.NetSupported, AtomAtom, 0,
+			math.MaxUint32, false)
+		if err != nil {
 			errs.Log(err)
-		} else {
-			// Use a short timeout to avoid waiting too long if the window manager doesn't support
-			// _NET_REQUEST_FRAME_EXTENTS or fails to respond for some reason (most commonly when running through
-			// xwayland)
-			c.WaitEventsUntil(func(e Event) bool {
-				pne, ok := e.(*PropertyNotifyEvent)
-				return ok && pne.Window == window && pne.Atom == c.Atoms.NetFrameExtents &&
-					pne.State == PropertyNewValue
-			}, time.Millisecond*25)
+			return false
+		}
+		if format == 32 && actualType == AtomAtom {
+			r := NewReader(value)
+			for r.Remaining() >= 4 {
+				c.supportedAtoms = append(c.supportedAtoms, r.Atom())
+			}
+		}
+		c.supportedAtomsCached = true
+	}
+	return slices.Contains(c.supportedAtoms, atom)
+}
+
+// frameExtentsTimeout bounds how long GetWindowBorderWidths waits for the window manager to report a window's frame
+// extents in response to a _NET_REQUEST_FRAME_EXTENTS message. It is only used when the window manager advertises
+// support for that message, so a response is expected; the generous bound merely guards against a hung or unusually
+// busy window manager.
+const frameExtentsTimeout = 500 * time.Millisecond
+
+// GetWindowBorderWidths retrieves the widths of the borders (the window manager's frame decorations) of the specified
+// window. The returned ok is true only when the window manager actually reported the extents; a false value means they
+// are not yet known (for example, the window hasn't been mapped and the window manager doesn't support
+// _NET_REQUEST_FRAME_EXTENTS), and the caller should not treat the zero widths as authoritative or cache them.
+func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right uint32, ok bool) {
+	if !c.IsWindowVisible(window) {
+		// The frame extents are normally only known once the window manager has decorated the window at map time.
+		// _NET_REQUEST_FRAME_EXTENTS asks it to compute them ahead of that. Only wait when the window manager
+		// advertises support for the request (e.g. not under bare xwayland), since otherwise no response will ever
+		// arrive and waiting would just stall window creation. When it is supported a response is guaranteed, so wait
+		// long enough to ride out a busy window manager rather than racing a short timeout.
+		if c.WMSupports(c.Atoms.NetRequestFrameExtents) {
+			var msg ClientMessageEvent
+			msg.Window = window
+			msg.Type = c.Atoms.NetRequestFrameExtents
+			msg.Format = 32
+			if err := c.sendEvent(c.RootWindow(), false, EventMaskSubstructureNotify|EventMaskSubstructureRedirect, &msg); err != nil {
+				errs.Log(err)
+			} else {
+				c.WaitEventsUntil(func(e Event) bool {
+					pne, isPNE := e.(*PropertyNotifyEvent)
+					return isPNE && pne.Window == window && pne.Atom == c.Atoms.NetFrameExtents &&
+						pne.State == PropertyNewValue
+				}, frameExtentsTimeout)
+			}
 		}
 	}
 	format, actualType, value, _, err := c.GetProperty(window, c.Atoms.NetFrameExtents, AtomCardinal, 0, 32, false)
 	if err != nil {
 		errs.Log(err)
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, false
 	}
-	if format == 32 && actualType == AtomCardinal && len(value) >= 8 {
+	if format == 32 && actualType == AtomCardinal && len(value) >= 16 {
 		r := NewReader(value)
 		left = r.Uint32()
 		right = r.Uint32()
 		top = r.Uint32()
 		bottom = r.Uint32()
+		return top, left, bottom, right, true
 	}
-	return top, left, bottom, right
+	return 0, 0, 0, 0, false
 }
 
 // ChangeWindowAttributes changes the attributes of the specified window based on the provided value mask and
