@@ -320,13 +320,19 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				w32.AdjustWindowRectExForDpi(&src, style, false, exStyle, curDPI)
 				w32.AdjustWindowRectExForDpi(&dst, style, false, exStyle, newDPI)
 				size := xruntime.PtrFromUintptr[w32.SIZE](lParam)
-				if curDPI != newDPI {
+				// The incoming size is the current window (outer) size at the current DPI. Strip the current frame to
+				// recover the client size, scale just the client area to the new DPI so the logical content size is
+				// preserved, then add the frame computed for the new DPI. Scaling the client area rather than the whole
+				// window rect keeps the snapped size exact.
+				clientCX := size.CX - (src.Right - src.Left)
+				clientCY := size.CY - (src.Bottom - src.Top)
+				if curDPI != 0 && curDPI != newDPI {
 					scale := float32(newDPI) / float32(curDPI)
-					size.CX = int32(float32(size.CX) * scale)
-					size.CY = int32(float32(size.CY) * scale)
+					clientCX = int32(float32(clientCX) * scale)
+					clientCY = int32(float32(clientCY) * scale)
 				}
-				size.CX += (dst.Right - dst.Left) - (src.Right - src.Left)
-				size.CY += (dst.Bottom - dst.Top) - (src.Bottom - src.Top)
+				size.CX = clientCX + (dst.Right - dst.Left)
+				size.CY = clientCY + (dst.Bottom - dst.Top)
 				return 1
 			}
 		case w32.WM_DPICHANGED:
@@ -339,6 +345,8 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				scale := float32((wParam>>16)&0xFFFF) / 96
 				SafeCall(func() { w.ContentScaleCallback(geom.NewPoint(scale, scale)) })
 			}
+			// Custom cursors are rasterized per monitor DPI, so refresh to the size that matches the new scale.
+			w.adjustToCursorChange()
 		case w32.WM_SETCURSOR:
 			if lParam&0xFFFF == w32.HTCLIENT {
 				w.apiUpdateCursorImage()
@@ -540,9 +548,17 @@ func (w *Window) apiUpdateCursorImage() {
 		}
 		w32.SetCursor(w32BlankCursor)
 	case w.cursor != nil:
-		w32.SetCursor(w.cursor.cursor)
+		w.w32SetCursor(w.cursor.cursor)
 	default:
-		w32.SetCursor(ArrowCursor().cursor)
+		w.w32SetCursor(ArrowCursor().cursor)
+	}
+}
+
+// w32SetCursor applies the native cursor sized for this window's current monitor DPI. Setting a null cursor would hide
+// it entirely, so a failed handle creation leaves the existing cursor in place.
+func (w *Window) w32SetCursor(c *w32Cursor) {
+	if h := c.handle(w.apiBackingScale().X); h != 0 {
+		w32.SetCursor(h)
 	}
 }
 

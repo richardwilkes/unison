@@ -21,3 +21,13 @@
   had been clamped to as you sized the view. The new behavior means the divider will restore itself if you shrink the
   view down, the grow it back to where it was.
 - Windows only: Fix mouse wheel events when on a display positioned to the left of or above the primary display.
+- Windows only: Custom cursors are no longer baked at a single monitor's DPI. They were previously rasterized once at
+  the primary display's scale and reused everywhere, so on a secondary monitor with a different DPI the cursor appeared
+  the wrong size and never corrected. A correctly sized cursor is now produced for whichever monitor's DPI it is shown
+  on, and refreshed when a window moves between monitors.
+- Windows only: When a window is dragged between monitors with differing DPI, it now snaps to the exact correct size.
+  The size computed in response to `WM_GETDPISCALEDSIZE` was scaling the whole window rect instead of just the client
+  area, overshooting by roughly half the window frame.
+- Windows only: Packaged apps now declare Per-Monitor V2 DPI awareness in their manifest, matching what the runtime
+  requests. Previously the manifest declared system DPI awareness, which takes precedence over the runtime request and
+  left distributed apps blurry and incorrectly scaled on secondary monitors with a different DPI.

@@ -30,7 +30,7 @@ func prepareBinary(cfg *Config) error {
 		Description:    cfg.Description,
 		Compatibility:  winres.Win10AndAbove,
 		ExecutionLevel: winres.AsInvoker,
-		DPIAwareness:   winres.DPIAware,
+		DPIAwareness:   winres.DPIPerMonitorV2,
 	})
 	if err := addWindowsIcon(cfg, rs); err != nil {
 		return err

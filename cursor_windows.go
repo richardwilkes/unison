@@ -18,39 +18,66 @@ import (
 	"golang.org/x/image/draw"
 )
 
-type apiNativeCursor = w32.HCURSOR
+type apiNativeCursor = *w32Cursor
+
+// w32Cursor retains the source image so that a correctly sized native cursor can be produced for whatever monitor DPI
+// the cursor is currently being displayed on. Windows does not automatically rescale custom cursors as they move
+// between monitors with differing DPI, so we lazily build and cache one HCURSOR per backing scale.
+type w32Cursor struct {
+	nrgba       *image.NRGBA
+	byScale     map[float32]w32.HCURSOR
+	hotSpot     geom.Point
+	logicalSize geom.Size
+}
 
 func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
-	if len(windowList) != 0 {
-		scale := windowList[0].BackingScale()
-		if scale.X != 1 {
-			logicalSize = logicalSize.MulPt(scale)
-			hotSpot = hotSpot.MulPt(scale)
-		}
-	}
-	logicalWidth := int(logicalSize.Width)
-	logicalHeight := int(logicalSize.Height)
-	if img.Rect.Dx() != logicalWidth || img.Rect.Dy() != logicalHeight {
-		dstRect := image.Rect(0, 0, logicalWidth, logicalHeight)
-		dst := image.NewNRGBA(dstRect)
-		draw.CatmullRom.Scale(dst, dstRect, img, img.Bounds(), draw.Over, nil)
-		img = dst
-	}
-	icon := w32CreateIconFromImage(img, int(hotSpot.X), int(hotSpot.Y), false)
-	if icon == 0 {
-		return nil
-	}
 	c := &Cursor{
-		cursor: w32.HCURSOR(icon),
+		cursor: &w32Cursor{
+			nrgba:       img,
+			byScale:     make(map[float32]w32.HCURSOR),
+			hotSpot:     hotSpot,
+			logicalSize: logicalSize,
+		},
 	}
 	cursorList = append(cursorList, c)
 	return c
 }
 
+// handle returns the native cursor sized for the given backing scale, creating and caching it on first use.
+func (c *w32Cursor) handle(scale float32) w32.HCURSOR {
+	if scale <= 0 {
+		scale = 1
+	}
+	if h, ok := c.byScale[scale]; ok {
+		return h
+	}
+	scalePt := geom.NewPoint(scale, scale)
+	size := c.logicalSize.MulPt(scalePt).Ceil()
+	width := max(int(size.Width), 1)
+	height := max(int(size.Height), 1)
+	img := c.nrgba
+	if img.Rect.Dx() != width || img.Rect.Dy() != height {
+		dstRect := image.Rect(0, 0, width, height)
+		dst := image.NewNRGBA(dstRect)
+		draw.CatmullRom.Scale(dst, dstRect, img, img.Bounds(), draw.Over, nil)
+		img = dst
+	}
+	hot := c.hotSpot.Mul(scale)
+	hotX := min(max(int(hot.X), 0), width-1)
+	hotY := min(max(int(hot.Y), 0), height-1)
+	h := w32.HCURSOR(w32CreateIconFromImage(img, hotX, hotY, false))
+	c.byScale[scale] = h
+	return h
+}
+
 func (c *Cursor) apiDestroy() {
-	if c.cursor != 0 {
-		w32.DestroyIcon(w32.HICON(c.cursor))
-		c.cursor = 0
+	if c.cursor != nil {
+		for scale, h := range c.cursor.byScale {
+			if h != 0 {
+				w32.DestroyIcon(w32.HICON(h))
+			}
+			delete(c.cursor.byScale, scale)
+		}
 	}
 }
 
