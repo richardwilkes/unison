@@ -20,10 +20,14 @@ var (
 )
 
 func apiPrimaryDisplay() *Display {
-	for _, d := range AllDisplays() {
+	displays := AllDisplays()
+	for _, d := range displays {
 		if d.Primary {
 			return d
 		}
+	}
+	if len(displays) > 0 {
+		return displays[0]
 	}
 	return nil
 }

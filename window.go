@@ -610,8 +610,8 @@ func (w *Window) MoveToModalCenter(other *Window) {
 	var within geom.Rect
 	if other != nil {
 		within = other.FrameRect()
-	} else {
-		within = PrimaryDisplay().Usable
+	} else if d := PrimaryDisplay(); d != nil {
+		within = d.Usable
 	}
 	wndFrame := w.FrameRect()
 	within.Y += (within.Height - wndFrame.Height) / 3
@@ -632,7 +632,10 @@ func DefaultInitialWindowContentLocation() geom.Point {
 		r.Y += 32
 		return r.Point
 	}
-	return PrimaryDisplay().Usable.Point
+	if d := PrimaryDisplay(); d != nil {
+		return d.Usable.Point
+	}
+	return geom.Point{}
 }
 
 // Focused returns true if the window has the current keyboard focus.
