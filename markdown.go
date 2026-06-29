@@ -1071,7 +1071,10 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 				Size: svg.SuggestedSize(),
 			}
 		} else {
-			scale := geom.NewPoint(1, 1).DivPt(PrimaryDisplay().Scale)
+			scale := geom.NewPoint(1, 1)
+			if d := PrimaryDisplay(); d != nil {
+				scale = scale.DivPt(d.Scale)
+			}
 			var img *Image
 			if img, err = NewImageFromFilePathOrURL(ctx, m.HTTPClient, revisedTarget, scale, m.PerImageByteLimit); err != nil {
 				result <- nil
