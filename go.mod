@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/OpenPrinting/goipp v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/richardwilkes/toolbox/v2 v2.14.0
+	github.com/richardwilkes/toolbox/v2 v2.15.0
 	github.com/yuin/goldmark v1.8.2
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/image v0.43.0
