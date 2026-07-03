@@ -301,7 +301,7 @@ func (d *fileDialog) fileListDoubleClickHandler() {
 }
 
 func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
-	if mods == mod.None && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
+	if mods&mod.NonSticky == mod.None && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
 		if d.fileNameField.Text() != "" {
 			d.dialog.StopModal(ModalResponseOK)
 		}

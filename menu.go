@@ -287,7 +287,7 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 		}
 	}
 	p.KeyDownCallback = func(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
-		if mods != 0 {
+		if mods&mod.NonSticky != 0 {
 			return false
 		}
 		switch keyCode {
@@ -425,7 +425,8 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repe
 		m.updater(m)
 	}
 	for _, mi := range m.items {
-		if mi.keyBinding.KeyCode != 0 && mi.keyBinding.KeyCode == keyCode && mi.keyBinding.Modifiers == mods {
+		if mi.keyBinding.KeyCode != 0 && mi.keyBinding.KeyCode == keyCode &&
+			mi.keyBinding.Modifiers == mods&mod.NonSticky {
 			mi.validate()
 			if mi.enabled {
 				mi.execute()

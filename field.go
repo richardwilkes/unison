@@ -559,7 +559,7 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool
 			f.handleHome(false, mods.ShiftDown())
 		default:
 			// Handle cut/copy/paste/select all commands directly in case no menu is present
-			if mods == mod.OSMenuCommand() {
+			if mods&mod.NonSticky == mod.OSMenuCommand() {
 				switch keyCode {
 				case KeyA:
 					if f.CanSelectAll() {

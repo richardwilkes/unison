@@ -1261,7 +1261,10 @@ func x11TranslateModifierState(state uint16) mod.Modifiers {
 	if state&0x0008 != 0 {
 		m |= mod.Option
 	}
-	if state&0x0010 != 0 {
+	if state&0x0010 != 0 { // Mod2 is NumLock on essentially all X11 configurations
+		m |= mod.NumLock
+	}
+	if state&0x0040 != 0 { // Mod4 is the Super/Windows key on essentially all X11 configurations
 		m |= mod.Command
 	}
 	return m
