@@ -219,29 +219,33 @@ func (t *dockTab) updateCursor(_ geom.Point) *Cursor {
 	return OpenHandCursor()
 }
 
-func (t *dockTab) mouseDown(where geom.Point, button, clickCount int, _ mod.Modifiers) bool {
+func (t *dockTab) mouseDown(_ geom.Point, button, clickCount int, _ mod.Modifiers) bool {
 	if button == ButtonRight && clickCount == 1 {
-		if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
-			if len(dc.Dockables()) > 1 {
-				f := DefaultMenuFactory()
-				cm := f.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
-				cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close Other Tabs"), KeyBinding{}, nil, func(MenuItem) {
-					dc.AttemptCloseAllExcept(t.dockable)
-				}))
-				cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close All Tabs"), KeyBinding{}, nil, func(MenuItem) {
-					dc.AttemptCloseAll()
-				}))
-				where = t.PointToRoot(where)
-				cm.Popup(geom.NewRect(where.X, where.Y, 1, 1), 0)
-				cm.Dispose()
-				return true
-			}
-		}
+		// Claim the click so that the mouse up is delivered to this tab, where the context menu will be shown. The
+		// menu cannot be popped up here, since it would swallow the mouse up event and leave the window convinced the
+		// right button was still down, causing subsequent mouse moves to be treated as drags.
+		return true
 	}
 	t.pressed = true
 	t.MarkForRedraw()
 	t.UpdateCursorNow()
 	return true
+}
+
+func (t *dockTab) showContextMenu(where geom.Point) {
+	if dc := Ancestor[*DockContainer](t.dockable); dc != nil && len(dc.Dockables()) > 1 {
+		f := DefaultMenuFactory()
+		cm := f.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
+		cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close Other Tabs"), KeyBinding{}, nil, func(MenuItem) {
+			dc.AttemptCloseAllExcept(t.dockable)
+		}))
+		cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close All Tabs"), KeyBinding{}, nil, func(MenuItem) {
+			dc.AttemptCloseAll()
+		}))
+		where = t.PointToRoot(where)
+		cm.Popup(geom.NewRect(where.X, where.Y, 1, 1), 0)
+		cm.Dispose()
+	}
 }
 
 func (t *dockTab) mouseDrag(where geom.Point, button int, _ mod.Modifiers) bool {
@@ -278,8 +282,14 @@ func (t *dockTab) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions,
 	t.Draw(canvas, rect)
 }
 
-func (t *dockTab) mouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
+func (t *dockTab) mouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
 	defer t.UpdateCursorNow()
+	if button == ButtonRight {
+		if where.In(t.ContentRect(true)) {
+			t.showContextMenu(where)
+		}
+		return true
+	}
 	if !t.pressed {
 		return true
 	}

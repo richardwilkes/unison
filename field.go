@@ -117,6 +117,7 @@ func NewField() *Field {
 	f.LostFocusCallback = f.DefaultFocusLost
 	f.MouseDownCallback = f.DefaultMouseDown
 	f.MouseDragCallback = f.DefaultMouseDrag
+	f.MouseUpCallback = f.DefaultMouseUp
 	f.UpdateCursorCallback = f.DefaultUpdateCursor
 	f.KeyDownCallback = f.DefaultKeyDown
 	f.RuneTypedCallback = f.DefaultRuneTyped
@@ -448,6 +449,12 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods 
 	f.undoID = NextUndoID()
 	wasFocused := f.Focused()
 	f.RequestFocus()
+	if button == ButtonRight && clickCount == 1 {
+		// Claim the click so that the mouse up is delivered to this field, where the context menu will be shown. The
+		// menu cannot be popped up here, since it would swallow the mouse up event and leave the window convinced the
+		// right button was still down, causing subsequent mouse moves to be treated as drags.
+		return true
+	}
 	if button == ButtonLeft {
 		f.extendByWord = false
 		switch clickCount {
@@ -490,8 +497,39 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods 
 	return false
 }
 
+// DefaultMouseUp provides the default mouse up handling.
+func (f *Field) DefaultMouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
+	if button == ButtonRight {
+		if where.In(f.ContentRect(true)) {
+			f.ShowContextMenu(where)
+		}
+		return true
+	}
+	return false
+}
+
+// ShowContextMenu displays the context menu for the field at the specified position, which should be in local
+// coordinates. Only the actions that can currently be performed (Cut, Copy, Paste, Select All) are included; if none
+// of them can be performed, no menu is shown.
+func (f *Field) ShowContextMenu(where geom.Point) {
+	fac := DefaultMenuFactory()
+	cm := fac.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
+	cm.InsertItem(-1, CutAction().NewContextMenuItemFromAction(fac))
+	cm.InsertItem(-1, CopyAction().NewContextMenuItemFromAction(fac))
+	cm.InsertItem(-1, PasteAction().NewContextMenuItemFromAction(fac))
+	cm.InsertItem(-1, SelectAllAction().NewContextMenuItemFromAction(fac))
+	if cm.Count() > 0 {
+		where = f.PointToRoot(where)
+		cm.Popup(geom.NewRect(where.X, where.Y, 1, 1), 0)
+	}
+	cm.Dispose()
+}
+
 // DefaultMouseDrag provides the default mouse drag handling.
-func (f *Field) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
+func (f *Field) DefaultMouseDrag(where geom.Point, button int, _ mod.Modifiers) bool {
+	if button != ButtonLeft {
+		return true
+	}
 	oldAnchor := f.selectionAnchor
 	pos := f.ToSelectionIndex(where)
 	var start, end int
