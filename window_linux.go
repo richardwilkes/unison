@@ -26,6 +26,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -150,10 +151,38 @@ func (w *Window) apiInit() error {
 	sizeHints.Flags |= x11.WSHMPPosition | x11.WSHMPWinGravity
 	sizeHints.WinGravity = x11.StaticGravity
 	x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
-
+	w.apiSetWMClass()
 	w.apiSetTitle(w.title)
 	x11Conn.Flush()
 	return nil
+}
+
+// apiSetWMClass sets the WM_CLASS property (the ICCCM instance and class names) on the window. Desktop environments use
+// this to associate the window with its launcher/.desktop file (for the taskbar/dock icon, application grouping, etc.),
+// so the class name is set to the application identifier, which is what a .desktop file's StartupWMClass entry should
+// match.
+func (w *Window) apiSetWMClass() {
+	x11Conn.ChangeProperty(w.wnd.id, x11.AtomWMClass, x11.AtomString, 8, x11.PropModeReplace, wmClassData())
+}
+
+// wmClassData builds the WM_CLASS property payload: the ICCCM instance and class names as a pair of null-terminated
+// Latin-1 strings. The instance name is the application's command name and the class name is the application
+// identifier, which is what a .desktop file's StartupWMClass entry should match.
+func wmClassData() []byte {
+	instance := xos.AppCmdName
+	if instance == "" {
+		instance = xos.AppName
+	}
+	class := xos.AppIdentifier
+	if class == "" {
+		class = instance
+	}
+	data := make([]byte, 0, len(instance)+len(class)+2)
+	data = append(data, instance...)
+	data = append(data, 0)
+	data = append(data, class...)
+	data = append(data, 0)
+	return data
 }
 
 func (w *Window) apiSetTitle(title string) {
@@ -1200,7 +1229,8 @@ func x11ProcessEvent(e x11.Event) {
 			case x11Conn.Atoms.NetFrameExtents:
 				w.x11RefreshFrameExtents()
 			case x11Conn.Atoms.WMState:
-				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.WMState, x11Conn.Atoms.WMState, 0, math.MaxUint32, false)
+				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.WMState,
+					x11Conn.Atoms.WMState, 0, math.MaxUint32, false)
 				if err != nil {
 					errs.Log(err)
 					return
@@ -1218,7 +1248,8 @@ func x11ProcessEvent(e x11.Event) {
 					}
 				}
 			case x11Conn.Atoms.NetWMState:
-				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetWMState, x11.AtomAtom, 0, math.MaxUint32, false)
+				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetWMState,
+					x11.AtomAtom, 0, math.MaxUint32, false)
 				if err != nil {
 					errs.Log(err)
 					return

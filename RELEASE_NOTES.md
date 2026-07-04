@@ -6,6 +6,11 @@
   the actions that can currently be performed are included, and if none of them apply, no menu is shown. The menu can
   also be triggered programmatically via the new `Field.ShowContextMenu` method, and the mouse up handling that
   triggers it is exposed as `Field.DefaultMouseUp`.
+- Linux only: Windows now set the `WM_CLASS` property (the ICCCM instance and class names) when created. The instance
+  name is the application's command name (falling back to the application name) and the class name is the application
+  identifier (falling back to the instance name). This lets desktop environments associate a window with its `.desktop`
+  file — whose `StartupWMClass` entry should match the class name — so the taskbar/dock shows the correct icon and
+  groups the application's windows together.
 
 ## Bug Fixes
 
