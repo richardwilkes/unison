@@ -8,3 +8,8 @@
   programmatically via the new `Markdown.ScrollToAnchor` method.
 
 ## Bug Fixes
+
+- Tab and Shift-Tab moving focus between fields compared the event modifiers without masking out the lock (sticky)
+  modifiers, so having NumLock (on by default on most Windows keyboards) or CapsLock engaged prevented the match and
+  suppressed focus traversal entirely. The comparison now masks with `mod.NonSticky`, consistent with the other key
+  handling paths.

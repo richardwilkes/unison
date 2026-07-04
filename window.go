@@ -1269,7 +1269,7 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 			}
 			panel = panel.parent
 		}
-		if key == KeyTab && (mods&(mod.All&^mod.Shift)) == 0 {
+		if key == KeyTab && (mods&(mod.NonSticky&^mod.Shift)) == 0 {
 			if mods.ShiftDown() {
 				w.FocusPrevious()
 			} else {
