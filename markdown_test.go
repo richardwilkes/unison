@@ -10,10 +10,13 @@
 package unison
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/behavior"
 )
 
 // collectMarkdownText concatenates the text of every Label in the panel subtree, in tree order, so tests can assert on
@@ -114,6 +117,127 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 			c.Contains(collectMarkdownText(m.AsPanel()), tc.want)
 		})
 	}
+}
+
+func TestMarkdownHeadingAnchors(t *testing.T) {
+	c := check.New(t)
+	m := NewMarkdown(false)
+	m.SetContent("# New\n\ntext\n\n## Second Heading\n\nmore\n\n### Custom {#my-id}\n\nend\n", 400)
+
+	// Headings automatically get GitHub-style slug anchors.
+	c.NotNil(m.anchors["new"])
+	c.NotNil(m.anchors["second-heading"])
+	// An explicit {#id} overrides the auto-generated slug.
+	c.NotNil(m.anchors["my-id"])
+
+	// ScrollToAnchor accepts a bare slug, a '#'-prefixed slug, and is case-insensitive (so a link written as "#New"
+	// still resolves to the lower-cased "new" slug).
+	c.True(m.ScrollToAnchor("new"))
+	c.True(m.ScrollToAnchor("#new"))
+	c.True(m.ScrollToAnchor("#New"))
+	c.True(m.ScrollToAnchor("#Second-Heading"))
+	c.True(m.ScrollToAnchor("#my-id"))
+
+	// A URL-escaped anchor is unescaped before matching.
+	c.True(m.ScrollToAnchor("#second%2Dheading"))
+
+	// An unknown anchor reports no match so the caller can fall back to normal link handling.
+	c.False(m.ScrollToAnchor("#does-not-exist"))
+}
+
+// markdownInScrollPanel builds a Markdown from the given content inside a ScrollPanel with the given viewport height,
+// lays it out, and returns both so tests can assert on scroll behavior. The root of the ScrollPanel sits at (0,0), so a
+// panel's root coordinates are also its coordinates relative to the visible viewport (0..viewHeight).
+func markdownInScrollPanel(content string, viewHeight float32) (*ScrollPanel, *Markdown) {
+	m := NewMarkdown(false)
+	m.SetContent(content, 400)
+	scroll := NewScrollPanel()
+	scroll.SetContent(m, behavior.Fill, behavior.Fill)
+	scroll.SetFrameRect(geom.NewRect(0, 0, 420, viewHeight))
+	scroll.ValidateLayout()
+	return scroll, m
+}
+
+// TestMarkdownScrollToAnchorAlignsTop verifies that scrolling to an anchor brings the top of the heading to the top of
+// the view (revealing the section that follows it) rather than leaving it pinned to the bottom of the view.
+func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
+	c := check.New(t)
+	var sb strings.Builder
+	sb.WriteString("# Top\n\n")
+	for i := range 40 {
+		fmt.Fprintf(&sb, "line %d of the top section\n\n", i)
+	}
+	sb.WriteString("## Target Heading\n\n")
+	for i := range 40 {
+		fmt.Fprintf(&sb, "line %d of the target section\n\n", i)
+	}
+	const viewHeight float32 = 300
+	_, m := markdownInScrollPanel(sb.String(), viewHeight)
+
+	p := m.anchors["target-heading"]
+	c.NotNil(p)
+	// Before scrolling, the heading is far below the viewport.
+	c.True(m.ScrollToAnchor("#Target-Heading"))
+	rect := p.RectToRoot(p.ContentRect(true))
+	// The heading's top is brought to the top of the view, and the whole heading fits within the view.
+	c.Equal(float32(0), rect.Y)
+	c.True(rect.Bottom() <= viewHeight)
+}
+
+// TestMarkdownScrollToAnchorTallerThanView verifies that when the heading itself is taller than the view, its top (not
+// its bottom) is aligned with the top of the view, so it isn't reduced to showing only its last "bit".
+func TestMarkdownScrollToAnchorTallerThanView(t *testing.T) {
+	c := check.New(t)
+	var sb strings.Builder
+	sb.WriteString("# Top\n\n")
+	for i := range 40 {
+		fmt.Fprintf(&sb, "line %d\n\n", i)
+	}
+	sb.WriteString("## Target Heading\n\nbody\n")
+	// A viewport shorter than a single heading forces the "cannot fit" path.
+	_, m := markdownInScrollPanel(sb.String(), 10)
+
+	p := m.anchors["target-heading"]
+	c.NotNil(p)
+	c.True(m.ScrollToAnchor("target-heading"))
+	c.Equal(float32(0), p.RectToRoot(p.ContentRect(true)).Y)
+}
+
+// TestMarkdownScrollToAnchorNearEndClamps verifies that a heading near the very end of the document, which cannot be
+// pulled all the way to the top because there isn't enough content below it, is still brought fully into view (clamped
+// to the available scroll range) rather than being left off-screen.
+func TestMarkdownScrollToAnchorNearEndClamps(t *testing.T) {
+	c := check.New(t)
+	var sb strings.Builder
+	sb.WriteString("# Top\n\n")
+	for i := range 60 {
+		fmt.Fprintf(&sb, "line %d\n\n", i)
+	}
+	sb.WriteString("## Last\n\ntail\n")
+	const viewHeight float32 = 300
+	scroll, m := markdownInScrollPanel(sb.String(), viewHeight)
+
+	p := m.anchors["last"]
+	c.NotNil(p)
+	c.True(m.ScrollToAnchor("last"))
+	rect := p.RectToRoot(p.ContentRect(true))
+	// The heading is fully visible within the viewport...
+	c.True(rect.Y >= 0)
+	c.True(rect.Bottom() <= viewHeight)
+	// ...and the scroll is clamped to the bottom of the content (the last line is visible), confirming we scrolled as
+	// far as possible even though a strict top-alignment wasn't achievable.
+	c.Equal(scroll.Bar(true).Max(), scroll.Bar(true).Value()+scroll.Bar(true).Extent())
+}
+
+func TestMarkdownAnchorsResetOnNewContent(t *testing.T) {
+	c := check.New(t)
+	m := NewMarkdown(false)
+	m.SetContent("# First\n", 400)
+	c.True(m.ScrollToAnchor("#first"))
+	// Replacing the content must clear stale anchors from the prior content.
+	m.SetContent("# Second\n", 400)
+	c.False(m.ScrollToAnchor("#first"))
+	c.True(m.ScrollToAnchor("#second"))
 }
 
 func TestMarkdownEmptyContent(t *testing.T) {

@@ -40,6 +40,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	astex "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
@@ -177,6 +178,7 @@ type Markdown struct {
 	content                    []byte
 	columnWidths               []int
 	drawableCache              map[string]*drawableCacheEntry
+	anchors                    map[string]*Panel
 	MarkdownTheme
 	Panel
 	drawableCacheLock sync.Mutex
@@ -196,6 +198,7 @@ func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	m := &Markdown{
 		MarkdownTheme: DefaultMarkdownTheme,
 		drawableCache: make(map[string]*drawableCacheEntry),
+		anchors:       make(map[string]*Panel),
 	}
 	m.SetLayout(&FlexLayout{Columns: 1})
 	m.Self = m
@@ -261,7 +264,10 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.decoration = m.Clone()
 	m.index = 0
 	m.ordered = false
-	m.node = goldmark.New(goldmark.WithExtensions(extension.GFM)).Parser().Parse(text.NewReader(m.content))
+	m.anchors = make(map[string]*Panel)
+	m.node = goldmark.New(goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithHeadingAttribute())).
+		Parser().Parse(text.NewReader(m.content))
 	m.walk(m.node)
 	if m.StripBottomEmptyMargin && len(m.children) > 0 {
 		if border := m.children[len(m.children)-1].Border(); border != nil {
@@ -388,6 +394,11 @@ func (m *Markdown) processHeading() {
 		p.SetBorder(NewEmptyBorder(insets))
 		p.SetLayout(&FlexLayout{Columns: 1})
 		m.block.AddChild(p)
+		if id, hasID := heading.AttributeString("id"); hasID {
+			if idBytes, isBytes := id.([]byte); isBytes {
+				m.anchors[string(idBytes)] = p
+			}
+		}
 		m.block = p
 		m.text = NewText("", m.decoration)
 		m.processChildren()
@@ -1020,7 +1031,47 @@ func ReviseTarget(workingDir, target string, altLinkPrefixes []string) (string, 
 }
 
 func (m *Markdown) linkHandler(_ Paneler, target string) {
+	if strings.HasPrefix(target, "#") {
+		if m.ScrollToAnchor(target) {
+			return
+		}
+	}
 	m.LinkHandler(m, target)
+}
+
+// ScrollToAnchor attempts to scroll the heading associated with the given anchor into view. The anchor may optionally
+// be prefixed with '#' and may be URL-escaped. Matching is first attempted case-sensitively, then case-insensitively.
+// Returns true if a matching anchor was found.
+func (m *Markdown) ScrollToAnchor(anchor string) bool {
+	anchor = strings.TrimPrefix(anchor, "#")
+	if unescaped, err := url.PathUnescape(anchor); err == nil {
+		anchor = unescaped
+	}
+	if p := m.panelForAnchor(anchor); p != nil {
+		// Bring the top of the heading to the top of the view (when the scroll range allows), revealing the section
+		// that follows it rather than leaving the heading pinned to the bottom of the view. Inflating the height of the
+		// rect we request to be made visible to the full height of the document forces a top alignment: the rect can
+		// never fully fit, so the scroll logic aligns its top edge with the top of the view (clamped to the available
+		// scroll range). When the heading itself is taller than the view, this still shows its top rather than its
+		// bottom.
+		rect := p.ContentRect(true)
+		rect.Height = max(rect.Height, m.ContentRect(true).Height)
+		p.ScrollRectIntoView(rect)
+		return true
+	}
+	return false
+}
+
+func (m *Markdown) panelForAnchor(anchor string) *Panel {
+	if p, ok := m.anchors[anchor]; ok {
+		return p
+	}
+	for id, p := range m.anchors {
+		if strings.EqualFold(id, anchor) {
+			return p
+		}
+	}
+	return nil
 }
 
 func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
