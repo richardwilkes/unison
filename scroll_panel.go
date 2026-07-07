@@ -339,18 +339,13 @@ func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
 			nl.X = min(vs.Width-r.Width, 0)
 		}
 		if nl != r.Point {
-			r.Point = nl
-			s.content.AsPanel().SetFrameRect(r)
-			if s.columnHeaderView != nil {
-				r = s.columnHeader.AsPanel().FrameRect()
-				r.X = nl.X
-				s.columnHeader.AsPanel().SetFrameRect(r)
-			}
-			if s.rowHeaderView != nil {
-				r = s.rowHeader.AsPanel().FrameRect()
-				r.Y = nl.Y
-				s.rowHeader.AsPanel().SetFrameRect(r)
-			}
+			// Removing the blank space is a change in scroll position, so adjust the scroll bars rather than moving the
+			// content (and headers) directly. Sync derives their positions from the bar values, so repositioning only
+			// the content here would leave the two disagreeing: with a now-stale bar value, the Sync below would
+			// immediately undo the move, and that frame change would re-enter this handler and recurse until the stack
+			// overflowed. Updating the bars keeps them the single source of truth and lets Sync settle in one pass.
+			s.horizontalBar.SetRange(-nl.X, s.horizontalBar.Extent(), s.horizontalBar.Max())
+			s.verticalBar.SetRange(-nl.Y, s.verticalBar.Extent(), s.verticalBar.Max())
 		}
 		s.MarkForLayoutAndRedraw()
 		s.Sync()

@@ -13,3 +13,7 @@
   modifiers, so having NumLock (on by default on most Windows keyboards) or CapsLock engaged prevented the match and
   suppressed focus traversal entirely. The comparison now masks with `mod.NonSticky`, consistent with the other key
   handling paths.
+- `ScrollPanel` could recurse into infinite frame-change handling and overflow the stack when collapsing blank space at
+  the edge of the content. It repositioned the content and headers directly, leaving the scroll bar values stale; the
+  following `Sync` then derived positions from those bars and undid the move, re-triggering the handler. It now adjusts
+  the scroll bar values (the single source of truth) so `Sync` settles in a single pass.
