@@ -70,7 +70,7 @@ func (w *Window) apiInit() error {
 	w.wnd.parent = x11Conn.RootWindow()
 	visual := x11Conn.DefaultVisual()
 	depth := x11Conn.DefaultDepth()
-	if w.glCtx.visual != 0 {
+	if w.glCtx.hasVisual {
 		visual = w.glCtx.visual
 		depth = w.glCtx.depth
 	}

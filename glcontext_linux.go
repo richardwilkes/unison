@@ -15,11 +15,12 @@ import (
 )
 
 type apiGLContext struct {
-	glx     *x11.GLX
-	context x11.GLXContext
-	window  x11.GLXWindow
-	visual  x11.VisualID
-	depth   byte
+	glx       *x11.GLX
+	context   x11.GLXContext
+	window    x11.GLXWindow
+	visual    x11.VisualID
+	depth     byte
+	hasVisual bool
 }
 
 func (c *apiGLContext) x11PrepareWindow(wnd *Window) error {
@@ -27,6 +28,11 @@ func (c *apiGLContext) x11PrepareWindow(wnd *Window) error {
 	if c.glx, err = x11Conn.NewGLX(wnd.transparent); err != nil {
 		return err
 	}
+	// The window must be created with the visual & depth of the framebuffer configuration that GLX chose; otherwise
+	// glXCreateWindow will fail with BadMatch. Propagate them so apiInit uses them instead of the screen defaults.
+	c.visual = c.glx.Visual()
+	c.depth = c.glx.Depth()
+	c.hasVisual = true
 	return nil
 }
 
@@ -74,4 +80,5 @@ func (c *apiGLContext) apiDestroy() {
 	}
 	c.visual = 0
 	c.depth = 0
+	c.hasVisual = false
 }

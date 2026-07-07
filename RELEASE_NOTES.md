@@ -17,3 +17,8 @@
   the edge of the content. It repositioned the content and headers directly, leaving the scroll bar values stale; the
   following `Sync` then derived positions from those bars and undid the move, re-triggering the handler. It now adjusts
   the scroll bar values (the single source of truth) so `Sync` settles in a single pass.
+- Linux only: Window creation could fail with a `BadMatch` error from `glXCreateWindow` on some drivers (e.g. NVIDIA)
+  because the window was created with the screen's default visual instead of the visual belonging to the framebuffer
+  configuration GLX chose. The chosen visual and depth are now propagated to window creation, and an alpha channel is
+  only requested when transparency is actually needed (requesting one otherwise biased the driver toward 32-bit ARGB
+  visuals that differ from the screen default).

@@ -61,6 +61,17 @@ type GLX struct {
 	depth    byte
 }
 
+// Visual returns the X11 visual ID associated with the chosen framebuffer configuration. The window that a GLX drawable
+// will be created for must be created with this visual, or glXCreateWindow will fail with BadMatch.
+func (glx *GLX) Visual() VisualID {
+	return glx.visual
+}
+
+// Depth returns the color depth associated with the chosen framebuffer configuration's visual.
+func (glx *GLX) Depth() byte {
+	return glx.depth
+}
+
 // NewGLX creates a new GLX context with the specified transparency requirement.
 func (c *Conn) NewGLX(transparent bool) (*GLX, error) {
 	var glx GLX
@@ -75,12 +86,17 @@ func (c *Conn) NewGLX(transparent bool) (*GLX, error) {
 		C.GLX_RED_SIZE, 8,
 		C.GLX_GREEN_SIZE, 8,
 		C.GLX_BLUE_SIZE, 8,
-		C.GLX_ALPHA_SIZE, 8,
 		C.GLX_DEPTH_SIZE, 24,
 		C.GLX_STENCIL_SIZE, 8,
 		C.GLX_DOUBLEBUFFER, C.True,
-		C.None,
 	}
+	// Only request an alpha channel when transparency is actually needed. Requesting one otherwise biases the driver
+	// toward 32-bit ARGB visuals that frequently differ from the screen's default visual, which is a common source of
+	// BadMatch failures from glXCreateWindow on some drivers (e.g. NVIDIA).
+	if transparent {
+		attrs = append(attrs, C.GLX_ALPHA_SIZE, 8)
+	}
+	attrs = append(attrs, C.None)
 	var count C.int
 	configs := C.glXChooseFBConfig(glx.display, C.int(c.DefaultScreen), &attrs[0], &count)
 	if configs == nil || count == 0 {
