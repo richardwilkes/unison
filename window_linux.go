@@ -133,6 +133,21 @@ func (w *Window) apiInit() error {
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMWindowType, x11.AtomAtom, 32, x11.PropModeReplace,
 		buf.Retrieve())
 
+	// Associate dialog windows with the window that spawned them via WM_TRANSIENT_FOR, the ICCCM/EWMH-correct hint that
+	// tells the window manager which top-level a dialog belongs to. On X11 this lets the window manager center and
+	// stack the dialog over its parent. Under XWayland it is more important: without it the compositor sees an
+	// unparented dialog and can mishandle focus and pointer confinement (pulling the cursor to the display origin and
+	// trapping it), so parenting the dialog avoids that. The owner is the currently active window, which at this point
+	// (before the new window has been shown) is still the window the dialog was raised from.
+	if w.kind == WindowKindDialog {
+		if owner := ActiveWindow(); owner != nil && owner != w && owner.wnd.id != 0 {
+			buf = x11.NewWriter(4)
+			buf.WindowID(owner.wnd.id)
+			x11Conn.ChangeProperty(w.wnd.id, x11.AtomWMTransientFor, x11.AtomWindow, 32, x11.PropModeReplace,
+				buf.Retrieve())
+		}
+	}
+
 	buf = x11.NewWriter(36)
 	buf.Uint32(2) // StateHint
 	buf.Zero(4)
