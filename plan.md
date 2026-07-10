@@ -38,20 +38,26 @@ fully cgo-free on macOS using `purego/objc` for exactly this kind of AppKit work
 
 - [x] Promote `github.com/ebitengine/purego` from indirect to direct dependency in `go.mod` (v0.10.1 already in the
       module graph via canvas).
-- [ ] Spike (throwaway program, not committed): using `purego/objc`, register an `NSView` subclass with
+- [x] Spike (throwaway program, not committed): using `purego/objc`, register an `NSView` subclass with
       `objc.RegisterClass` that implements `drawRect:` (struct *argument*, `NSRect` = 32 bytes),
       `firstRectForCharacterRange:actualRange:` (struct *return* > 16 bytes, uses the hidden indirect-return
       pointer), and `markedRange` (16-byte struct return in registers). Verify on both darwin/arm64 and darwin/amd64.
       purego's objc package has struct type-encoding support (`maxRegAllocStructSize`, struct encoders), but this is
       the single biggest technical risk of the whole migration and must be proven first.
-- [ ] In the same spike, verify: `objc_msgSend` calls that pass/return `CGRect`/`CGPoint`/`NSRange`;
+- [x] In the same spike, verify: `objc_msgSend` calls that pass/return `CGRect`/`CGPoint`/`NSRange`;
       `purego.NewCallback` for plain C callbacks; autorelease pool push/pop (`objc_autoreleasePoolPush`/`Pop`).
-- [ ] Decide the shared helper set the real port will use and put it in a new `internal/mac/objc_darwin.go` (or reuse
+- [x] Decide the shared helper set the real port will use and put it in a new `internal/mac/objc_darwin.go` (or reuse
       `purego/objc` directly): class/selector caching, NSString⇄Go string, NSArray⇄slice, CGRect/CGPoint/NSRange Go
       struct definitions matching the C ABI.
 
 Exit criteria: spike renders into a window, receives mouse/key events, and round-trips a struct-returning
 `NSTextInputClient` method without crashing on both architectures.
+
+**Spike outcome (see progress.md session 2)**: all exit criteria met on darwin/arm64 and darwin/amd64, but only
+after upgrading purego to **v0.11.0-alpha.6** — v0.10.1's callbacks reject struct args/returns outright, so the
+whole Phase 2 port hard-requires the v0.11 line. One purego bug found (amd64 call-side splitting of a 16-byte
+struct arg that straddles the register/stack boundary); the AppKit→Go direction is unaffected. Details and the
+resulting call-shape constraint are documented in `internal/mac/objc_darwin.go`.
 
 ## Phase 1 — Linux: port `internal/x11/glx_linux.go` to purego (small, do first)
 
@@ -86,7 +92,7 @@ CoreGraphics as needed) — dlopen also makes the Objective-C classes visible to
 Suggested order (each step leaves the package compiling; use a temporary build tag split only if a step must land
 half-done):
 
-- [ ] **Foundation helpers** (`objc_darwin.go`): class/SEL caches, NSString/CFString⇄string, NSArray⇄[]uintptr,
+- [x] **Foundation helpers** (`objc_darwin.go`): class/SEL caches, NSString/CFString⇄string, NSArray⇄[]uintptr,
       NSNumber, NSURL⇄file path, CGRect/CGPoint/CGSize/NSRange structs, autorelease-pool helpers, retain/release
       helpers mirroring the current CFRetain/CFRelease ownership rules of the bridge (the `CFTypeRef`-based handle
       discipline in `macos.h` should carry over: handles stay `uintptr`, ownership stays explicit).

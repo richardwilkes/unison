@@ -4,8 +4,8 @@ github.com/OpenPrinting/goipp v1.2.0 h1:qeB3GyhhB7NM16quwyl51CsTEHFb9chZXAprt+00
 github.com/OpenPrinting/goipp v1.2.0/go.mod h1:ot2iw+QF7fVLaX+55JUNlF5YSDNiXVo2LRAv21iGcQI=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
 github.com/cenkalti/backoff v2.2.1+incompatible/go.mod h1:90ReRw6GdpyfrHakVjL/QHaoyV4aDUVVkXQJJJ3NXXM=
-github.com/ebitengine/purego v0.10.1 h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/qyY=
-github.com/ebitengine/purego v0.10.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
+github.com/ebitengine/purego v0.11.0-alpha.6 h1:xZ7KkRHWH0O/DskwUkFfd6Y4X9vtth85b4iEmNDeIME=
+github.com/ebitengine/purego v0.11.0-alpha.6/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
 github.com/go-text/typesetting v0.3.4 h1:YYurUOtEb9kGSOz4uE3k4OpBGsp1dDL8+fjCeaFamAU=
 github.com/go-text/typesetting v0.3.4/go.mod h1:4qZCQphq4KSgGTAeI0uMEkVbROgfah8BuyF5LRYr7XY=
 github.com/go-text/typesetting-utils v0.0.0-20260223113751-2d88ac90dae3 h1:drBZzMgdYPbmyXqOto4YhhJGrFIQCX94FpR4MzTCsos=

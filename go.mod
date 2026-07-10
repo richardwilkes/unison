@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/OpenPrinting/goipp v1.2.0
-	github.com/ebitengine/purego v0.10.1
+	github.com/ebitengine/purego v0.11.0-alpha.6
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/canvas v0.0.0-20260710162742-558e56cdc5e8
 	github.com/richardwilkes/toolbox/v2 v2.15.0
