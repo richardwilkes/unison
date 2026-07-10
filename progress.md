@@ -2,6 +2,94 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 10 — 2026-07-10: Phase 2 code complete — panels + CF helpers ported; the module is now 100% cgo-free
+
+The "Open/save panels" bullet and the delete-the-cgo cleanup bullet of Phase 2 are done. `all_darwin.go`,
+`macos.h`, `open_panel_darwin.m`, and `save_panel_darwin.m` are deleted; **no `import "C"` remains anywhere in the
+module**, and the whole module now builds *and tests* with `CGO_ENABLED=0` on macOS (also verified for
+linux/amd64+arm64, windows/amd64, and darwin/amd64). Exported API effectively unchanged; the root package needed
+zero edits. All that remains of Phase 2 is the final human verification pass (see plan.md); Phase 3 is untouched.
+
+### What changed (session 10)
+
+- **[internal/mac/foundation_darwin.go](internal/mac/foundation_darwin.go)** (new) — the exported CF-flavored
+  wrapper types the root dialogs consume (`Array`, `String`, `URL`) are now `objc.ID`-based over the
+  toll-free-bridged Foundation classes (NSMutableArray/NSString/NSURL msgSends). Ownership discipline ported
+  mechanically: constructors return owned (+1) references (`NewArrayFromStringSlice` builds an
+  alloc/initWithCapacity: NSMutableArray and releases each NSString after addObject:, same net counts as the old
+  CFArrayCreateMutable flow), index accessors return borrowed references, `Release` balances one owned reference.
+  `NewFileURL` uses `fileURLWithFileSystemRepresentation:isDirectory:relativeToURL:` — the documented NSURL
+  counterpart of the old `CFURLCreateFromFileSystemRepresentation` — verified to produce **byte-identical absolute
+  URL strings** (plain/space/CJK/trailing-slash/directory cases) by a compiled-and-run Objective-C program;
+  `AbsoluteString` is `absoluteString` (equivalent to the old CFURLCopyAbsoluteURL+CFURLGetString, including for
+  relative URLs — also verified). The `ArrayOfURLToStringSlice` scheme/host-discarding quirk is preserved verbatim.
+  One deliberate difference, documented in the file comment: nil handles are now safe no-ops yielding zero values
+  (objc nil messaging) where CFRelease(NULL)/CFArrayGetCount(NULL) crashed. The exported-but-unused-everywhere
+  `MutableArray` type was dropped (nothing in the module ever referenced it).
+- **[internal/mac/open_panel_darwin.go](internal/mac/open_panel_darwin.go)** /
+  **[internal/mac/save_panel_darwin.go](internal/mac/save_panel_darwin.go)** (new) — `OpenPanel`/`SavePanel` are
+  `objc.ID`-based; `NewOpenPanel`/`NewSavePanel` reproduce the old `[[... openPanel] retain]` (+1) inside a
+  `WithPool`. `RunModal` compares `runModal` against `NSModalResponseOK` = 1 (verified empirically, along with
+  Cancel = 0 and sizeof(NSModalResponse) = 8). The deprecated `allowedFileTypes` property is kept per the plan
+  (set/get round-trip verified against this SDK with compiled Objective-C — it still works, mapping onto
+  allowedContentTypes internally). One deliberate fix, documented on the methods: `AllowedFileTypes()` returns a
+  **retained (+1)** reference where the old bridge returned a borrowed one, because the root dialogs release the
+  result — the old contract was an over-release (and a CFRelease(NULL) crash when no types were set) had
+  `AllowedExtensions` ever been used; retaining makes the existing root code balanced with zero edits.
+  `DirectoryURL()`/`URLs()`/`URL()` stay borrowed exactly like the old bridge (root does not release those), and
+  string getters/setters run inside `WithPool`.
+- **Deleted**: `all_darwin.go` (the last cgo file in the module), `macos.h`, `open_panel_darwin.m`,
+  `save_panel_darwin.m`. The plan's "split into per-area files" cleanup was already satisfied incrementally by
+  sessions 3–9, so nothing else moved.
+- **New tests**: [foundation_darwin_test.go](internal/mac/foundation_darwin_test.go) covers the string-slice array
+  round-trip (ASCII/CJK, empty, nil-handle no-ops), `ArrayOfURLToStringSlice` with file URLs + a non-file URL
+  (asserting the path-only quirk), the String wrapper round-trip, and `NewFileURL` (existing file vs directory via
+  the real file system, trailing-slash and nonexistent-path handling, exact absolute-string values).
+  [open_panel_darwin_test.go](internal/mac/open_panel_darwin_test.go) covers all four bool accessors both ways,
+  the directory-URL round-trip, the **root-dialog-shaped allowedFileTypes flow** (unset → 0-handle safe use,
+  set/copy semantics, double read-back each followed by Release proving the +1 contract, clear via 0), empty
+  `URLs()`, and **`RunModal` itself**: a delayed `cancel:` scheduled in NSModalPanelRunLoopMode ends the real
+  modal session (~0.3s) and RunModal reports false, with an `abortModal` backstop at 10s so a wedged modal
+  session fails fast instead of hanging the suite. [save_panel_darwin_test.go](internal/mac/save_panel_darwin_test.go)
+  covers the name-field round-trip (ASCII/CJK/empty), directory URL, allowedFileTypes, and the canceled modal run
+  including the post-run `URL()` composition check (directory + name field, the value root's `Path()` parses).
+
+### Discoveries (session 10)
+
+1. **Panel `runModal` is fully testable headlessly** (and in a locked session, on both arches): schedule `cancel:`
+   with `performSelector:withObject:afterDelay:inModes:` in **NSModalPanelRunLoopMode** — timers in that mode fire
+   inside the modal session's run loop — and the session ends with NSModalResponseCancel ~0.3s in. Because
+   `runModal` blocks the test suite's main-thread pump, every such test also schedules a 10s `abortModal` backstop
+   on NSApp and cancels both pending performs (`cancelPreviousPerformRequestsWithTarget:`) after runModal returns.
+2. **`NSSavePanel.URL` does not recompose from `setDirectoryURL:`/`setNameFieldStringValue:` until the panel has
+   been presented at least once** — before that it reports the panel's defaults (e.g. `~/Desktop/Untitled`); after
+   even a *canceled* run it reflects directory + name field. Verified identical with a compiled Objective-C
+   program, so it is AppKit behavior, not a port difference. Production is unaffected: root only reads `Path()`
+   after `RunModal` returns true, i.e. always after presentation.
+3. `go vet ./internal/mac/` is down to 1 pre-existing unsafeptr finding (objc_darwin.go's NSStringConstant deref);
+   the other one lived in all_darwin.go's cgo sections and went with the file.
+
+### Verification performed (session 10)
+
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt internal/mac/` and `gofmt -l`
+  clean; root package needed zero edits (untouched per git status, and the full build passed).
+- **`CGO_ENABLED=0 go build ./...` and `CGO_ENABLED=0 go test ./internal/mac/` pass natively on darwin/arm64** —
+  the plan's headline goal for macOS — and `grep -rln 'import "C"'` over the module finds nothing.
+- `go test ./internal/mac/` 10/10 fresh processes; `-count=5` single process; `-race`.
+- darwin/amd64 under Rosetta 2, now built with `CGO_ENABLED=0 GOARCH=amd64 go test -c` (no cgo left to enable):
+  5/5 fresh runs + `-test.count=3`, plus a verbose run of the 13 new tests (proves the runModal int64 return, the
+  performSelector float64-delay marshaling, and the bool/pointer accessor shapes on SysV; no new struct-arg call
+  shapes, so the straddle constraint is not in play).
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...`, windows/amd64, and darwin/amd64 all pass.
+- `cmd/example` smoke-run twice — the normal build **and an explicitly `CGO_ENABLED=0` build** — both alive after
+  8s with empty stderr/stdout (SIGKILL per the session-3 note). Startup does not open dialogs, so the
+  production-shape proof for the panels is the test suite driving the exact call sequences the root dialogs make
+  (including a real modal session ending in cancel), through the same exported API.
+- Not covered (need a human session): interactively choosing files in the dialogs (the OK path of `RunModal` — the
+  constant is verified, and cancel proves the modal plumbing — plus `URLs()` with a real selection), and the
+  standing Phase 2 manual list (IME, popup-menu tracking, cross-app drag & drop and clipboard, minimize/zoom/
+  focus, multi-monitor, transparency).
+
 ## Session 9 — 2026-07-10: Phase 2 — pasteboard + drag info ported to purego; pasteboard_darwin.m and drag_darwin.m deleted
 
 The "Pasteboard, drag & drop" bullet of Phase 2 is done (the dragging-destination view overrides and
@@ -684,21 +772,15 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 
 ## What remains (in plan order)
 
-1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
-   helpers, the five trivial areas (sound, theme, screen+display, image, cursor), app + event loop,
-   window + window delegate, **view/IME**, **GL context + pixel format**, **menus**, and **pasteboard + drag
-   info** are done — no `//export` callbacks remain anywhere, and the only cgo left is the open/save panels plus
-   the CF Array/String/URL helpers they and the root dialogs use (~250 lines in all_darwin.go, 2 `.m` files).
-   Next up is **open/save panels** (`open_panel_darwin.m`, `save_panel_darwin.m` — NSOpenPanel/NSSavePanel
-   accessors + `runModal`; keep `allowedFileTypes` behavior as-is per the plan). Since the root dialogs consume the
-   `Array`/`URL` CF helper types directly (`NewArrayFromStringSlice`, `ArrayOfURLToStringSlice`, `NewFileURL`, …),
-   porting the panels means either porting those helper types to objc.ID in the same step or changing the panel
-   API to Go-native types — decide there, keeping root-package edits to a minimum. After that: delete the last
-   `.m` files, `macos.h`, and the cgo preamble from all_darwin.go (the plan's cleanup bullet). Every step must
-   leave `./build.sh` green. Final manual verification must include a real CJK input source (IME), popup-menu
-   tracking (`Menu.Popup`), live drag & drop between apps, and clipboard interchange with other apps.
-2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
-   `.claude/CLAUDE.md` architecture-note update, upack audit.
+1. **Phase 2 final manual verification (needs a human at the keyboard)**: all Phase 2 code is ported — the module
+   is 100% cgo-free as of session 10 — but the plan's last Phase 2 bullet requires exercising the app by hand:
+   real CJK input source (IME), popup-menu tracking (`Menu.Popup`), live drag & drop between apps, clipboard
+   interchange with other apps, interactively choosing files in the open/save dialogs (the OK path), window
+   minimize/zoom/focus in an active session, multi-monitor + retina scale changes, and transparent-window
+   compositing. Each session's "Not covered" list has the per-area details.
+2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite
+   (no C toolchain needed anywhere now; document runtime libX11/libGL dlopen on Linux and the new
+   cross-compilation ability), `.claude/CLAUDE.md` architecture-note update, upack audit.
 
 ## Notes for future sessions
 
@@ -744,7 +826,14 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
   the test goroutine remains documented misuse — gate before entering `runOnMain` when possible).
 - While cgo and purego coexist in internal/mac, a Go-registered Objective-C class name must not collide with one
   still compiled from a `.m` file (objc_allocateClassPair fails). Delete the `.m` file in the same step that
-  registers the class from Go, as done for ThemeDelegate.
+  registers the class from Go, as done for ThemeDelegate. (Moot since session 10 — no cgo remains — but relevant
+  if a `.m` file ever comes back.)
+- Application-modal sessions are testable headlessly (session 10): schedule the ending action with
+  `performSelector:withObject:afterDelay:inModes:` in **NSModalPanelRunLoopMode** so the timer fires inside the
+  modal run loop, and always add an `abortModal` backstop — `runModal` blocks the test suite's main-thread pump,
+  so a wedged modal session would otherwise hang the package to its timeout. Cancel pending performs with
+  `cancelPreviousPerformRequestsWithTarget:` once the session ends. See `cancelModalAfter` in
+  [open_panel_darwin_test.go](internal/mac/open_panel_darwin_test.go).
 - The SIGTERM shutdown crash (Session 3 discovery 3) is pre-existing and unrelated to the port: `xos.Exit` calls
   window teardown from the signal-handler goroutine, off the main thread. Smoke-testing the example app should
   assert liveness and use SIGKILL, not judge success by SIGTERM exit status. Consider a separate fix that marshals

@@ -134,19 +134,29 @@ half-done):
       functions and `menuPopup`. — Done in Session 8; both `.m` files are deleted along with the last three
       `//export` callbacks, so no C→Go callbacks remain anywhere in the module. `Menu.Popup` still needs the Phase 2
       final manual verification pass (menu tracking cannot run headlessly).
-- [ ] **Pasteboard, drag & drop** (`pasteboard_darwin.m`, `drag_darwin.m`): NSPasteboard read/write,
+- [x] **Pasteboard, drag & drop** (`pasteboard_darwin.m`, `drag_darwin.m`): NSPasteboard read/write,
       NSPasteboardItem, NSDraggingItem, the drag-info accessors, `beginDraggingSessionWithItems:`, and the
-      dragging-destination overrides on `macContentView` (registered in the view step).
-- [ ] **Open/save panels** (`open_panel_darwin.m`, `save_panel_darwin.m`): NSOpenPanel/NSSavePanel accessors +
+      dragging-destination overrides on `macContentView` (registered in the view step). — Done in Session 9; both
+      `.m` files deleted, tests drive everything through uniquely named pasteboards so the user's clipboard is
+      never touched.
+- [x] **Open/save panels** (`open_panel_darwin.m`, `save_panel_darwin.m`): NSOpenPanel/NSSavePanel accessors +
       `runModal`. `openPanelSetAllowedFileTypes` should keep using the same underlying property the ObjC code uses
-      today (allowedFileTypes vs UTType-based — match current behavior, note the deprecation separately).
-- [ ] Delete all `.m` files, `macos.h`, and the cgo preamble/`//export` blocks from `all_darwin.go`; split the
-      remaining pure-Go code into per-area files mirroring the old `.m` layout.
+      today (allowedFileTypes vs UTType-based — match current behavior, note the deprecation separately). — Done in
+      Session 10, along with the CF Array/String/URL helper types the root dialogs consume (now NSArray/NSString/
+      NSURL msgSends in foundation_darwin.go); allowedFileTypes kept as-is per this bullet. Even `RunModal` is
+      covered by tests (a delayed `cancel:` scheduled in NSModalPanelRunLoopMode ends the modal session headlessly).
+- [x] Delete all `.m` files, `macos.h`, and the cgo preamble/`//export` blocks from `all_darwin.go`; split the
+      remaining pure-Go code into per-area files mirroring the old `.m` layout. — Done in Session 10: all_darwin.go
+      and macos.h are deleted outright (the per-area split had already happened incrementally in sessions 3-9), and
+      no `import "C"` remains anywhere in the module.
 - [ ] Verify: `CGO_ENABLED=0 go build ./...` on darwin/arm64 and darwin/amd64; run `cmd/example` and exercise every
       ported area — windows (resize/move/minimize/zoom/close/focus), mouse + keyboard, **IME input (e.g. Japanese
       via the system input source)**, menus + key equivalents + validation, popup menus, cursors, clipboard
       cut/copy/paste, drag & drop both directions (text, files, custom data), open/save dialogs, multi-monitor +
-      retina scale changes, dark/light theme switching, beep, transparent windows.
+      retina scale changes, dark/light theme switching, beep, transparent windows. — Session 10: both
+      `CGO_ENABLED=0` builds pass and a `CGO_ENABLED=0` `cmd/example` smoke-runs; what remains here is the human
+      manual pass (IME with a real CJK input source, popup-menu tracking, cross-app drag & drop and clipboard,
+      minimize/zoom/focus, multi-monitor, transparency) — the parts that cannot run headlessly.
 
 Estimated size: four to six sessions. Keep a checkpoint after each bullet — every step must leave `./build.sh`
 green.
