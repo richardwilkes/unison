@@ -124,9 +124,11 @@ half-done):
       all 17 export shims are gone, the ivars use purego `FieldDef`s, and the dragging-item creation moved to pure
       Go (deleting `newDraggingItem` from pasteboard_darwin.m ahead of the pasteboard bullet). Real CJK IME input
       still needs the Phase 2 final manual verification pass.
-- [ ] **OpenGL context + pixel format** (`opengl_context_darwin.m`, `opengl_pixel_format_darwin.m`):
+- [x] **OpenGL context + pixel format** (`opengl_context_darwin.m`, `opengl_pixel_format_darwin.m`):
       `NSOpenGLPixelFormat`/`NSOpenGLContext` via objc_msgSend (deprecated API, unchanged behavior; the transparent
-      surface opacity handling moves to Go).
+      surface opacity handling moves to Go). — Done in Session 7; both `.m` files are deleted along with the
+      `NSViewRef`/`NSOpenGL*` typedefs, and every constant baked into the Go port was verified against the SDK by
+      running a compiled Objective-C program.
 - [ ] **Menus** (`menu_darwin.m`, `menu_item_darwin.m`): `MenuDelegate` (`menuNeedsUpdate:` → `goUpdateMenuCallback`)
       and `MenuItemDelegate` (target/action + `validateMenuItem:` → the two Go callbacks); port the ~25 accessor
       functions and `menuPopup`.

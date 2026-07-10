@@ -2,6 +2,68 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 7 — 2026-07-10: Phase 2 — OpenGL context + pixel format ported to purego; their .m files and the NSViewRef typedef deleted
+
+The "OpenGL context + pixel format" bullet of Phase 2 is done. A previous run of this session was interrupted after
+writing the port but **before any verification**; this session reviewed that work critically (it turned out correct
+and complete, but its code comments claimed empirical constant verification that had not actually been performed —
+now it has), added the missing tests, and ran the full verification matrix. Exported API unchanged; the root package
+([glcontext_darwin.go](glcontext_darwin.go)) needed zero edits. Six `.m` files remain (drag, menu, menu_item,
+open_panel, pasteboard, save_panel).
+
+### What changed (session 7)
+
+- **[internal/mac/opengl_context_darwin.go](internal/mac/opengl_context_darwin.go)** (new) — `OpenGLContextRef` is
+  `objc.ID`-based (was `C.NSOpenGLContextRef`; both uintptr-kinded, so root's `== 0` checks still compile).
+  `NewOpenGLContext` reproduces the old bridge step for step: `initWithFormat:shareContext:` → nil check → (when
+  transparent) `setValues:forParameter:` with a GLint 0 for `NSOpenGLContextParameterSurfaceOpacity` (=236) →
+  `setWantsBestResolutionOpenGLSurface:YES` → `setView:`. `MakeCurrent` on a 0 handle still clears the current
+  context (the old `openGLMakeCurrent(nil)` branch), now via `ClearOpenGLCurrentContext`. One deliberate mechanical
+  difference: `Release` sends `release` instead of calling `CFRelease` — identical for a non-nil ObjC object, and
+  the nil case (a crash under CFRelease) is unreachable through unison, which guards every Release with `!= 0`.
+- **[internal/mac/opengl_pixel_format_darwin.go](internal/mac/opengl_pixel_format_darwin.go)** (new) — same
+  attribute list as the old `newOpenGLPixelFormat` (accelerated, closest-policy, 3.2 core profile, 24/8/24/8), as a
+  `[...]uint32` passed to `initWithAttributes:` by pointer (NSOpenGLPixelFormatAttribute is uint32).
+- **all_darwin.go / macos.h** — OpenGL Context and OpenGL Pixel Format sections removed (~41 lines);
+  `NSOpenGLContextRef`/`NSOpenGLPixelFormatRef`/`NSViewRef` typedefs and the GL declarations removed from macos.h;
+  `opengl_context_darwin.m` and `opengl_pixel_format_darwin.m` deleted.
+- **All baked-in constants re-verified empirically** (the interrupted run's comments claimed this but hadn't done
+  it): a compiled-and-run Objective-C program confirmed SurfaceOpacity=236, PFAColorSize=8, AlphaSize=11,
+  DepthSize=12, StencilSize=13, Accelerated=73, ClosestPolicy=74, OpenGLProfile=99, ProfileVersion3_2Core=0x3200,
+  and the ABI sizes (NSOpenGLPixelFormatAttribute=4, NSOpenGLContextParameter=8, GLint=4 bytes).
+- **New tests**: [opengl_darwin_test.go](internal/mac/opengl_darwin_test.go) covers the pixel format's requested
+  attributes read back via `getValues:forAttribute:forVirtualScreen:` (≥24/8/24/8, accelerated, profile == 0x3200
+  exactly); context creation against a real window/view pair (context view identity, the view's
+  wantsBestResolutionOpenGLSurface flag, default surface opacity 1, and the share-context creation path); the
+  transparent path reading back surface opacity 0 through `getValues:forParameter:`; and the make-current contract
+  (MakeCurrent binds, MakeCurrent(0) clears, ClearOpenGLCurrentContext clears) plus a one-frame
+  Update/MakeCurrent/FlushBuffer smoke with the window ordered in.
+
+### Notes (session 7)
+
+1. `getValues:forParameter:` reads the surface-opacity value back correctly even before the window has ever been
+   shown (no live drawable needed), so the transparent path is testable headlessly.
+2. `go vet ./internal/mac/` reports 3 pre-existing `unsafeptr` warnings on HEAD (objc_darwin.go's NSStringConstant
+   deref and two in all_darwin.go's cgo sections — the latter disappear with the cgo preamble). `go test`'s default
+   vet subset doesn't include unsafeptr, and build.sh doesn't run vet, so nothing fails today; worth deciding in
+   Phase 3 whether to gate on vet.
+
+### Verification performed (session 7)
+
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt internal/mac/` made no changes.
+- `go test ./internal/mac/` 10/10 fresh processes; `-count=5` single process; `-race`.
+- darwin/amd64 under Rosetta 2 (`CGO_ENABLED=1 GOARCH=amd64 go test -c`): 5/5 fresh runs + `-test.count=3`, plus an
+  explicit verbose run of the four new GL tests (the new msgSend shapes are all plain integer/pointer args — no
+  struct-arg straddle exposure — but the GLint out-pointer readbacks and uint32/int64 arg marshaling are now proven
+  on both arches).
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...` and windows/amd64 pass.
+- `cmd/example` smoke-run: alive after 8s with empty stderr/stdout (SIGKILL per the session-3 note). This is the
+  production-shape proof for this bullet: apiCreate builds the pixel format + context through the ported path at
+  startup, and every rendered frame goes through the ported MakeCurrent/FlushBuffer.
+- Not covered (need a human session): visually confirming a transparent window composites correctly over the
+  desktop (the opacity parameter round-trip is proven; the pixels are not), and rendering across a
+  retina/non-retina monitor move (Update is exercised, but only single-screen).
+
 ## Session 6 — 2026-07-10: Phase 2 — view/IME ported to purego; view_darwin.m and all 17 export shims deleted
 
 The "View" bullet of Phase 2 (flagged in the plan as the riskiest file) is done. `macContentView` is now a
@@ -442,11 +504,11 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 
 1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
    helpers, the five trivial areas (sound, theme, screen+display, image, cursor), app + event loop,
-   window + window delegate, and **view/IME** are done — no `//export` callbacks remain anywhere; the rest of the
-   cgo bridge is plain Go→C calls. Next up is **GL context + pixel format** (`opengl_context_darwin.m`,
-   `opengl_pixel_format_darwin.m` — small; drops the `NSViewRef` typedef), then menus → pasteboard/drag →
-   panels → delete the remaining `.m` files and the cgo preamble. Every step must leave `./build.sh` green. Final
-   manual verification must include a real CJK input source (IME).
+   window + window delegate, **view/IME**, and **GL context + pixel format** are done — no `//export` callbacks
+   remain anywhere; the rest of the cgo bridge is plain Go→C calls. Next up is **menus** (`menu_darwin.m`,
+   `menu_item_darwin.m` — the `MenuDelegate`/`MenuItemDelegate` classes, ~25 accessors, `menuPopup`), then
+   pasteboard/drag → panels → delete the remaining `.m` files and the cgo preamble. Every step must leave
+   `./build.sh` green. Final manual verification must include a real CJK input source (IME).
 2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
    `.claude/CLAUDE.md` architecture-note update, upack audit.
 
