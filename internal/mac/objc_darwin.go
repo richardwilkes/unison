@@ -26,6 +26,7 @@ package mac
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -192,7 +193,9 @@ func ensurePoolFuncs() {
 
 // PoolPush pushes a new autorelease pool and returns its token. Every call must be balanced by a PoolPop of that
 // token. Unlike Objective-C, Go code gets no implicit pools, so any code that runs Objective-C calls outside an
-// event-loop turn should bracket them with PoolPush/PoolPop (or use WithPool).
+// event-loop turn should bracket them with PoolPush/PoolPop (or use WithPool). Autorelease pools are per-thread:
+// the pop must happen on the same OS thread as the push, so a goroutine using this pair directly must be locked to
+// its OS thread for the pool's whole lifetime. Prefer WithPool, which handles that.
 func PoolPush() uintptr {
 	ensurePoolFuncs()
 	return poolPushFunc()
@@ -203,8 +206,13 @@ func PoolPop(pool uintptr) {
 	poolPopFunc(pool)
 }
 
-// WithPool runs f inside its own autorelease pool.
+// WithPool runs f inside its own autorelease pool. The calling goroutine is locked to its OS thread for the
+// duration, since a pool must be pushed and popped on the same thread and an unlocked goroutine can migrate between
+// OS threads at any preemption point. (The cgo bridge never had this hazard: its @autoreleasepool blocks lived
+// entirely inside single C calls.)
 func WithPool(f func()) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	pool := PoolPush()
 	defer PoolPop(pool)
 	f()

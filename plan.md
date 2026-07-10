@@ -102,12 +102,13 @@ half-done):
       `NSBitmapImageRep`, `NSCursor` constructors). These prove the helper layer with minimal risk. — Done in
       Session 3 (including the CGDirectDisplay functions, which the screen code depends on); the five `.m` files are
       deleted and each area has unit tests.
-- [ ] **App + event loop** (`app_darwin.m`, `event_darwin.m`): register `macAppDelegate` via `objc.RegisterClass`
+- [x] **App + event loop** (`app_darwin.m`, `event_darwin.m`): register `macAppDelegate` via `objc.RegisterClass`
       with the 6 delegate methods calling the existing Go callback funcs directly (no more `//export`);
       `finishLaunching`, activation, hide/unhide, `setMainMenu` etc.; `pollEvents`/`waitEvents`/`waitEventsTimeout`
       via `nextEventMatchingMask:untilDate:inMode:dequeue:` + `sendEvent:`, `postEmptyEvent`, `stopMainEventLoop`.
       Wrap each event-loop turn in an autorelease pool (the ObjC code currently gets this from `@autoreleasepool`;
-      pure Go must do it explicitly).
+      pure Go must do it explicitly). — Done in Session 4; the Cmd+keyUp local monitor is an Objective-C block
+      created from Go (`objc.NewBlock`), and `WithPool` was hardened to pin the OS thread (see progress.md).
 - [ ] **Window + window delegate** (`window_darwin.m`, `window_delegate_darwin.m`): register `macWindow` (overrides
       `canBecomeKeyWindow`/`canBecomeMainWindow`) and `macWindowDelegate` (resize/move/miniaturize/key/should-close
       → Go callbacks). Port the ~30 window functions (frame/content-rect math uses CGRect by-pointer variants —

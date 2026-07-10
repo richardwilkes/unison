@@ -24,19 +24,6 @@ typedef CFTypeRef NSViewRef;
 typedef CFTypeRef NSWindowRef;
 typedef CFTypeRef NSWindowDelegateRef;
 
-// App
-bool installMacAppDelegate(void);
-void uninstallMacAppDelegate(void);
-void finishLaunching(void);
-void activateIgnoringOtherApps(void);
-void hideRunningApplication(void);
-void hideOtherApplications(void);
-void unhideAllApplications(void);
-void setMainMenu(NSMenuRef menu);
-void setServicesMenu(NSMenuRef menu);
-void setWindowsMenu(NSMenuRef menu);
-void setHelpMenu(NSMenuRef menu);
-
 // Drag
 NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender);
 CFArrayRef dragDataTypes(NSDraggingInfoRef sender);
@@ -48,15 +35,6 @@ bool dragHasURLs(NSDraggingInfoRef sender);
 CFArrayRef dragURLs(NSDraggingInfoRef sender);
 bool dragHasDataType(NSDraggingInfoRef sender, CFStringRef dataType);
 void* dragBytes(NSDraggingInfoRef sender, CFStringRef dataType, unsigned long long* length);
-
-// Event
-double doubleClickInterval(void);
-NSEventModifierFlags eventModifierFlags(void);
-void postEmptyEvent(void);
-void pollEvents(void);
-void waitEvents(void);
-void waitEventsTimeout(double timeout);
-void stopMainEventLoop(void);
 
 // Menu
 NSMenuRef newMenu(CFStringRef title);

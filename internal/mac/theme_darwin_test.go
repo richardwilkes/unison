@@ -10,8 +10,6 @@
 package mac
 
 import (
-	"os"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,39 +22,12 @@ func TestIsDarkModeEnabled(t *testing.T) {
 	_ = IsDarkModeEnabled()
 }
 
+// themeFired records deliveries of the theme-change notification. The observer is installed by TestMain from the
+// main thread before any test runs — distributed-notification delivery is bound to the main thread's run loop (see
+// TestMain and InstallSystemThemeChangedCallback), and the main thread keeps that run loop pumping for the entire
+// test process. The observer registration is process-global (sync.Once in InstallSystemThemeChangedCallback), so
+// repeated test runs in one process (-count=N) all share the one registration.
 var themeFired atomic.Bool
-
-// TestMain starts the theme-change observer pump before any test runs. Distributed notifications are delivered on
-// the run loop of the thread that FIRST created the default NSDistributedNotificationCenter (the addObserver:
-// thread is irrelevant — see InstallSystemThemeChangedCallback), and other tests can cause AppKit/Foundation to
-// touch the distributed center lazily from their own transient threads, silently binding delivery to a run loop
-// nobody pumps. Installing from TestMain guarantees this package's pump thread wins the race, mirroring how unison
-// installs the observer on the main thread at startup before anything else runs.
-func TestMain(m *testing.M) {
-	startThemePump()
-	os.Exit(m.Run())
-}
-
-// startThemePump installs the theme-change observer from a dedicated, permanently locked OS thread and keeps that
-// thread's run loop pumping for the remainder of the test process. The observer registration is process-global
-// (sync.Once in InstallSystemThemeChangedCallback), so repeated test runs in one process (-count=N) all share this
-// one registering thread.
-func startThemePump() {
-	ready := make(chan struct{})
-	go func() {
-		runtime.LockOSThread() // never unlocked; the observer's run loop lives on this thread
-		InstallSystemThemeChangedCallback(func() { themeFired.Store(true) })
-		close(ready)
-		mode := NSStringConstant("Foundation", "NSDefaultRunLoopMode")
-		for {
-			WithPool(func() {
-				date := objc.ID(Cls("NSDate")).Send(Sel("dateWithTimeIntervalSinceNow:"), 0.05)
-				objc.ID(Cls("NSRunLoop")).Send(Sel("currentRunLoop")).Send(Sel("runMode:beforeDate:"), mode, date)
-			})
-		}
-	}()
-	<-ready
-}
 
 // TestThemeChangedNotification proves the full ThemeDelegate path: Go-implemented Objective-C class registration,
 // distributed-notification observation, and dispatch back into the Go callback.

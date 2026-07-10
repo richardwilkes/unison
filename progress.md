@@ -2,6 +2,85 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 4 — 2026-07-10: Phase 2 — app + event loop ported to purego; app_darwin.m and event_darwin.m deleted
+
+The "App + event loop" bullet of Phase 2 is done. `macAppDelegate` is now a Go-registered Objective-C class, the
+Cmd+keyUp local event monitor is an Objective-C **block created from Go** (`objc.NewBlock` — first block in shipped
+code; purego v0.11.0-alpha.6 has full block support via `__NSMallocBlock__`, which lives in libsystem so blocks work
+before AppKit loads), and the event pump (`PollEvents`/`WaitEvents`/`WaitEventsTimeout`/`PostEmptyEvent`/
+`StopMainEventLoop`) is pure msgSend. Exported API unchanged; the root package needed zero edits.
+
+### What changed (session 4)
+
+- **[internal/mac/app_darwin.go](internal/mac/app_darwin.go)** (new) — `InstallMacAppDelegate` registers
+  `macAppDelegate` (6 delegate methods calling the App*Callback vars directly, incl. the uint64-returning
+  `applicationShouldTerminate:` → NSTerminateCancel and `application:openURLs:` with NSURL→path conversion);
+  class registration is `sync.Once`-guarded so install/uninstall/reinstall cycles work (the class can only be
+  registered once per process; instances are per-install). `FinishLaunching` runs `[NSApp run]` until the
+  didFinishLaunching callback stops it, then sets activation policy Regular — same flow as the ObjC bridge.
+  Hide/unhide/activate and the four menu setters are one-line msgSends; `Menu` (still cgo-typed) converts to
+  `objc.ID` legally because cgo maps CFTypeRef-family typedefs to uintptr.
+- **[internal/mac/event_darwin.go](internal/mac/event_darwin.go)** (new) — `EventModifierFlags` + constants moved
+  here from all_darwin.go; `DoubleClickInterval`, `CurrentModifierFlags`, `PostEmptyEvent` (struct NSPoint arg is
+  all-float/SSE-class, so the amd64 straddle constraint does not apply), the pump functions, and
+  `StopMainEventLoop`. `NSDefaultRunLoopMode` is resolved once via `NSStringConstant`. Autorelease pools bracket
+  exactly the regions the old `@autoreleasepool` blocks did.
+- **all_darwin.go / macos.h** — App and Event sections removed (~140 + ~40 lines, all 6 `//export goApp*` funcs);
+  `app_darwin.m` and `event_darwin.m` deleted.
+- **[internal/mac/objc_darwin.go](internal/mac/objc_darwin.go)** — **real bug found and fixed by the amd64 test
+  run**: `WithPool` pushed/popped an autorelease pool without pinning the OS thread, but pools are per-thread and
+  a Go goroutine can migrate between push and pop (the cgo bridge never had this hazard — its `@autoreleasepool`
+  blocks lived inside single C calls). `PostEmptyEvent` is called from arbitrary goroutines in production, so this
+  was a real crash waiting to happen (reproduced as a SIGSEGV in `objc_autoreleasePoolPop` under Rosetta,
+  `-test.count=3`). `WithPool` now does `runtime.LockOSThread`/`UnlockOSThread` around the pool; `PoolPush`/
+  `PoolPop` docs state the same-thread requirement for direct users.
+- **Test infrastructure**: [testmain_darwin_test.go](internal/mac/testmain_darwin_test.go) (new) pins the main
+  goroutine to the main OS thread (`init` + `runtime.LockOSThread`) and turns `TestMain` into a main-thread
+  dispatcher: tests run on a secondary goroutine and submit main-thread work via `runOnMain`, while the dispatcher
+  also pumps the main run loop between work items. The theme observer is now installed from the main thread in
+  `TestMain` (the session-3 dedicated pump thread is gone — see discovery 1); later window/view test sessions can
+  reuse `runOnMain` as-is.
+- **New tests**: [app_darwin_test.go](internal/mac/app_darwin_test.go) covers the full delegate lifecycle
+  (install → `FinishLaunching` through a real `[NSApp run]` with watchdog → willFinish/didFinish delivered →
+  `terminate:` round-trip through the uint64-returning delegate method → `application:openURLs:` driven via
+  objc_msgSend → keyUp-monitor block logic via `objc.InvokeBlock` plus a synthesized Cmd+keyUp NSEvent routed
+  through the real queue → uninstall/reinstall) and the four menu setters against their AppKit getters (which also
+  proves cgo Menu handles interoperate with the purego side). [event_darwin_test.go](internal/mac/event_darwin_test.go)
+  proves the production wake-up contract (PostEmptyEvent → blocked WaitEvents returns) and both WaitEventsTimeout
+  paths (expiry, and mid-wait wake by a posted event). Launch-once-per-process effects are handled: on `-count=N`
+  reruns the launch notifications can't fire again and post-launch AppKit substitutes its own services/windows
+  menus, so those asserts are gated on `isFinishedLaunching`.
+
+### Discoveries
+
+1. **The session-3 "dedicated pump thread" for NSDistributedNotificationCenter only worked by accident.** With the
+   main goroutine unlocked (old TestMain), the pump goroutine's `LockOSThread` evidently landed on the real main
+   thread (m0) while the main goroutine was parked. Once session 4's `init` locked the main goroutine to m0, the
+   pump got a genuinely different thread and delivery silently stopped (theme test failed even in isolation, while
+   HEAD passed). Delivery requires the default center to be created from and pumped on the **process main thread**
+   — which is exactly the production configuration, so production was never affected. The test infrastructure now
+   does it that way explicitly.
+2. **Autorelease pools + goroutine migration** (the `WithPool` bug above): any purego port that brackets work with
+   `objc_autoreleasePoolPush/Pop` from Go must pin the OS thread for the pool's lifetime. Worth remembering for
+   every remaining Phase 2 file.
+3. `-count=N` in one process is a genuinely different regime for AppKit lifecycle code (launch-once, AppKit-managed
+   menus after launch). Keep running it — it caught both of the above along with the Rosetta run.
+
+### Verification performed (session 4)
+
+- `./build.sh --test` green (twice — after the port and after the WithPool fix); `golangci-lint run ./...` 0
+  issues; `golangci-lint fmt` applied (no changes beyond the edits themselves).
+- `go test ./internal/mac/` 10/10 fresh processes + 5 more after the fixes; `-count=5` single process; `-race`.
+- darwin/amd64 under Rosetta 2 (`CGO_ENABLED=1 GOARCH=amd64 go test -c`): 5/5 fresh runs + 3/3 `-test.count=3`
+  runs (this configuration exposed the WithPool bug before the fix).
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...` and windows/amd64 pass.
+- `cmd/example` smoke-run: alive after 8s with empty stderr/stdout, killed with SIGKILL per the session-3 note.
+  Startup exercises the entire ported path in production shape: InstallMacAppDelegate → FinishLaunching
+  (`[NSApp run]` → delegate → stop) → WaitEvents/PollEvents pumping with real windows rendering.
+- Not covered (need a human or a real session): applicationDidHide/hideOtherApplications side effects (would hide
+  the user's other apps), ActivateIgnoringOtherApps (would steal focus), Cmd+keyUp forwarding to a real key window
+  (needs the view/window port; the block logic and AppKit→block dispatch are covered).
+
 ## Session 3 — 2026-07-10: Phase 2 — sound, theme, screen (+display), image, and cursor ported to purego; their .m files deleted
 
 The "five trivial files" bullet of Phase 2 is done. Each area moved from the cgo bridge to a pure-Go `_darwin.go`
@@ -198,10 +277,10 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 ## What remains (in plan order)
 
 1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
-   helpers and the five trivial areas (sound, theme, screen+display, image, cursor) are done; next up is **app +
-   event loop** (`app_darwin.m`, `event_darwin.m`), then window → view/IME → GL context → menus → pasteboard/drag →
-   panels → delete the remaining `.m` files. Every step must leave `./build.sh` green. Final manual verification
-   must include a real CJK input source (IME).
+   helpers, the five trivial areas (sound, theme, screen+display, image, cursor), and app + event loop are done;
+   next up is **window + window delegate** (`window_darwin.m`, `window_delegate_darwin.m`), then view/IME → GL
+   context → menus → pasteboard/drag → panels → delete the remaining `.m` files. Every step must leave
+   `./build.sh` green. Final manual verification must include a real CJK input source (IME).
 2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
    `.claude/CLAUDE.md` architecture-note update, upack audit.
 
@@ -232,10 +311,15 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 - golangci-lint can cross-lint: `GOOS=linux golangci-lint run ./internal/x11/` works from macOS and caught real issues
   (gofumpt formatting, govet fieldalignment) that the native run never sees. Use `GOOS=<os> golangci-lint run` on any
   platform-suffixed files touched in future sessions.
-- NSDistributedNotificationCenter binds delivery to the run loop of the thread that first creates the default
-  center (see Session 3 discovery 1). Any future code observing distributed notifications must be installed from
-  the main thread before other threads can touch the center, and internal/mac tests must keep the `TestMain` pump
-  in [theme_darwin_test.go](internal/mac/theme_darwin_test.go) starting before all other tests.
+- NSDistributedNotificationCenter delivery requires the default center to be created from and pumped on the
+  **process main thread** (Session 3 discovery 1, sharpened by Session 4 discovery 1 — a non-main "first-touch"
+  thread is not enough). Any future code observing distributed notifications must be installed from the main
+  thread before other threads can touch the center. In internal/mac tests, `TestMain`
+  ([testmain_darwin_test.go](internal/mac/testmain_darwin_test.go)) owns the locked main thread: it installs the
+  theme observer first, pumps the main run loop, and services `runOnMain` closures — use `runOnMain` for anything
+  AppKit requires on the main thread ([NSApp run], event pumping, and the upcoming window/view work).
+- `WithPool` locks the goroutine to its OS thread for the pool's lifetime (Session 4 discovery 2). Direct
+  `PoolPush`/`PoolPop` pairs are only safe on an already-locked thread — prefer `WithPool`.
 - While cgo and purego coexist in internal/mac, a Go-registered Objective-C class name must not collide with one
   still compiled from a `.m` file (objc_allocateClassPair fails). Delete the `.m` file in the same step that
   registers the class from Go, as done for ThemeDelegate.

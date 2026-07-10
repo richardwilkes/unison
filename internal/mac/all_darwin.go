@@ -24,7 +24,6 @@ import (
 	"image"
 	"net/url"
 	"strings"
-	"time"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -33,111 +32,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/drag"
 )
-
-// ========== App ==========
-
-func InstallMacAppDelegate() error {
-	if !C.installMacAppDelegate() {
-		return errs.New("InstallMacAppDelegate: unable to install app delegate")
-	}
-	return nil
-}
-
-func UninstallMacAppDelegate() {
-	C.uninstallMacAppDelegate()
-}
-
-func FinishLaunching() {
-	C.finishLaunching()
-}
-
-func ActivateIgnoringOtherApps() {
-	C.activateIgnoringOtherApps()
-}
-
-func HideApplication() {
-	C.hideRunningApplication()
-}
-
-func HideOtherApplications() {
-	C.hideOtherApplications()
-}
-
-func UnhideAllApplications() {
-	C.unhideAllApplications()
-}
-
-func SetMainMenu(menu Menu) {
-	C.setMainMenu(C.NSMenuRef(menu))
-}
-
-func SetServicesMenu(menu Menu) {
-	C.setServicesMenu(C.NSMenuRef(menu))
-}
-
-func SetWindowsMenu(menu Menu) {
-	C.setWindowsMenu(C.NSMenuRef(menu))
-}
-
-func SetHelpMenu(menu Menu) {
-	C.setHelpMenu(C.NSMenuRef(menu))
-}
-
-var AppShouldTerminateCallback func()
-
-//export goAppShouldTerminateCallback
-func goAppShouldTerminateCallback() {
-	if AppShouldTerminateCallback != nil {
-		AppShouldTerminateCallback()
-	}
-}
-
-var AppDidChangeScreenParameters func()
-
-//export goAppDidChangeScreenParametersCallback
-func goAppDidChangeScreenParametersCallback() {
-	if AppDidChangeScreenParameters != nil {
-		AppDidChangeScreenParameters()
-	}
-}
-
-var AppWillFinishLaunchingCallback func()
-
-//export goAppWillFinishLaunchingCallback
-func goAppWillFinishLaunchingCallback() {
-	if AppWillFinishLaunchingCallback != nil {
-		AppWillFinishLaunchingCallback()
-	}
-}
-
-var AppDidFinishLaunchingCallback func()
-
-//export goAppDidFinishLaunchingCallback
-func goAppDidFinishLaunchingCallback() {
-	if AppDidFinishLaunchingCallback != nil {
-		AppDidFinishLaunchingCallback()
-	}
-}
-
-var AppDidHideCallback func()
-
-//export goAppDidHideCallback
-func goAppDidHideCallback() {
-	if AppDidHideCallback != nil {
-		AppDidHideCallback()
-	}
-}
-
-var OpenFilesCallback func([]string)
-
-//export goOpenURLsCallback
-func goOpenURLsCallback(a C.CFArrayRef) {
-	if OpenFilesCallback != nil {
-		if urls := Array(a).ArrayOfURLToStringSlice(); len(urls) > 0 {
-			OpenFilesCallback(urls)
-		}
-	}
-}
 
 // ========== Array ==========
 
@@ -296,46 +190,6 @@ func (d DragInfo) Data(dataType string) []byte {
 		return data
 	}
 	return nil
-}
-
-// ========== Event ==========
-
-type EventModifierFlags uint
-
-const (
-	EventModifierFlagCapsLock EventModifierFlags = 1 << (16 + iota)
-	EventModifierFlagShift
-	EventModifierFlagControl
-	EventModifierFlagOption
-	EventModifierFlagCommand
-)
-
-func DoubleClickInterval() time.Duration {
-	return time.Duration(C.doubleClickInterval()*1000) * time.Millisecond
-}
-
-func CurrentModifierFlags() EventModifierFlags {
-	return EventModifierFlags(C.eventModifierFlags())
-}
-
-func PostEmptyEvent() {
-	C.postEmptyEvent()
-}
-
-func PollEvents() {
-	C.pollEvents()
-}
-
-func WaitEvents() {
-	C.waitEvents()
-}
-
-func WaitEventsTimeout(timeout float64) {
-	C.waitEventsTimeout(C.double(timeout))
-}
-
-func StopMainEventLoop() {
-	C.stopMainEventLoop()
 }
 
 // ========== Menu ==========
