@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/OpenPrinting/goipp v1.2.0
+	github.com/ebitengine/purego v0.10.1
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/canvas v0.0.0-20260710162742-558e56cdc5e8
 	github.com/richardwilkes/toolbox/v2 v2.15.0
@@ -18,7 +19,6 @@ require (
 require (
 	github.com/HugoSmits86/nativewebp v1.3.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
-	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/miekg/dns v1.1.72 // indirect

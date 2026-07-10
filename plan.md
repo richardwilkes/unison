@@ -36,7 +36,7 @@ fully cgo-free on macOS using `purego/objc` for exactly this kind of AppKit work
 
 ## Phase 0 — Feasibility spike and dependency setup
 
-- [ ] Promote `github.com/ebitengine/purego` from indirect to direct dependency in `go.mod` (v0.10.1 already in the
+- [x] Promote `github.com/ebitengine/purego` from indirect to direct dependency in `go.mod` (v0.10.1 already in the
       module graph via canvas).
 - [ ] Spike (throwaway program, not committed): using `purego/objc`, register an `NSView` subclass with
       `objc.RegisterClass` that implements `drawRect:` (struct *argument*, `NSRect` = 32 bytes),
@@ -55,7 +55,7 @@ Exit criteria: spike renders into a window, receives mouse/key events, and round
 
 ## Phase 1 — Linux: port `internal/x11/glx_linux.go` to purego (small, do first)
 
-- [ ] Rewrite `glx_linux.go` with no `import "C"`:
+- [x] Rewrite `glx_linux.go` with no `import "C"`:
       - `purego.Dlopen("libX11.so.6", ...)` and `purego.Dlopen("libGL.so.1", ...)` at first use;
         `purego.RegisterLibFunc` for the 13 functions listed in the inventory. Resolve
         `glXCreateContextAttribsARB` through `glXGetProcAddressARB`, then call it via `purego.SyscallN` or a
@@ -65,12 +65,12 @@ Exit criteria: spike renders into a window, receives mouse/key events, and round
         no caller changes.
       - `XVisualInfo` becomes a Go struct matching the C layout (visualid/ depth extraction only); `XFree` stays for
         server-allocated arrays.
-- [ ] Keep the two-connection design (GLX on its own display connection) — XIDs are server-global, so windows created
+- [x] Keep the two-connection design (GLX on its own display connection) — XIDs are server-global, so windows created
       by the pure-Go connection remain valid GLX drawables. Preserve the transparent-visual selection logic and the
       NVIDIA BadMatch comment/behavior exactly.
 - [ ] Verify `GOOS=linux CGO_ENABLED=0 go build ./...` passes and the example app runs on X11 and XWayland
       (`clipboard_live_test.go` in `internal/x11` still passes).
-- [ ] Fallback library names: try `libGL.so.1` then `libGL.so`; `libX11.so.6` then `libX11.so`; fail with a clear
+- [x] Fallback library names: try `libGL.so.1` then `libGL.so`; `libX11.so.6` then `libX11.so`; fail with a clear
       error mentioning the package to install.
 
 Estimated size: one session.
