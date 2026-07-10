@@ -10,7 +10,9 @@
 package mac
 
 import (
+	"bytes"
 	"testing"
+	"unsafe"
 
 	"github.com/ebitengine/purego/objc"
 )
@@ -139,6 +141,44 @@ func TestStructMsgSend(t *testing.T) {
 		r := objc.Send[NSRange](NSStringFromGo("hello world"), Sel("rangeOfString:"), NSStringFromGo("world"))
 		if r.Location != 6 || r.Length != 5 {
 			t.Errorf("rangeOfString: produced %+v, want {6 5}", r)
+		}
+	})
+}
+
+func TestGoStringFromCString(t *testing.T) {
+	if got := GoStringFromCString(nil); got != "" {
+		t.Errorf("GoStringFromCString(nil) = %q, want \"\"", got)
+	}
+	buf := []byte("hello\x00trailing garbage")
+	if got := GoStringFromCString(&buf[0]); got != "hello" {
+		t.Errorf("GoStringFromCString = %q, want %q", got, "hello")
+	}
+	empty := []byte{0}
+	if got := GoStringFromCString(&empty[0]); got != "" {
+		t.Errorf("GoStringFromCString(empty) = %q, want \"\"", got)
+	}
+	WithPool(func() {
+		// A real Objective-C-sourced C string, the way DragInfo.FilePaths uses it.
+		p := objc.Send[*byte](NSURLFromFilePath("/tmp/some file.txt"), Sel("fileSystemRepresentation"))
+		if got := GoStringFromCString(p); got != "/tmp/some file.txt" {
+			t.Errorf("fileSystemRepresentation via GoStringFromCString = %q", got)
+		}
+	})
+}
+
+func TestGoBytesFromNSData(t *testing.T) {
+	if got := GoBytesFromNSData(0); got != nil {
+		t.Errorf("GoBytesFromNSData(0) = %v, want nil", got)
+	}
+	WithPool(func() {
+		payload := []byte{0, 1, 2, 253, 254, 255}
+		data := objc.ID(Cls("NSData")).Send(Sel("dataWithBytes:length:"),
+			unsafe.Pointer(&payload[0]), uint64(len(payload)))
+		if got := GoBytesFromNSData(data); !bytes.Equal(got, payload) {
+			t.Errorf("GoBytesFromNSData = %v, want %v", got, payload)
+		}
+		if got := GoBytesFromNSData(objc.ID(Cls("NSData")).Send(Sel("data"))); got != nil {
+			t.Errorf("GoBytesFromNSData(empty) = %v, want nil", got)
 		}
 	})
 }

@@ -26,9 +26,7 @@ import (
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/drag"
 )
 
 // ========== Array ==========
@@ -87,107 +85,6 @@ func (a Array) ArrayOfStringToStringSlice() []string {
 		result = append(result, a.StringAtIndex(i).String())
 	}
 	return result
-}
-
-// ========= DragInfo ==========
-
-type DragInfo C.NSDraggingInfoRef
-
-var _ drag.Info = DragInfo(0)
-
-type DragOp C.NSDragOperation
-
-const (
-	DragOpCopy DragOp = DragOp(C.NSDragOperationCopy)
-	DragOpMove DragOp = DragOp(C.NSDragOperationMove)
-	DragOpNone DragOp = DragOp(C.NSDragOperationNone)
-)
-
-func DragOpFromUnison(op drag.Op) DragOp {
-	var nativeOp DragOp
-	if op&drag.Copy != 0 {
-		nativeOp |= DragOpCopy
-	}
-	if op&drag.Move != 0 {
-		nativeOp |= DragOpMove
-	}
-	return nativeOp
-}
-
-func (d DragOp) ToUnisonDragOp() drag.Op {
-	var op drag.Op
-	if d&DragOpCopy != 0 {
-		op |= drag.Copy
-	}
-	if d&DragOpMove != 0 {
-		op |= drag.Move
-	}
-	return op
-}
-
-func (d DragInfo) SourceDragOpMask() drag.Op {
-	return DragOp(C.dragSourceOperationMask(C.NSDraggingInfoRef(d))).ToUnisonDragOp()
-}
-
-func (d DragInfo) DataTypes() []string {
-	return Array(C.dragDataTypes(C.NSDraggingInfoRef(d))).ArrayOfStringToStringSlice()
-}
-
-func (d DragInfo) HasString() bool {
-	return bool(C.dragHasString(C.NSDraggingInfoRef(d)))
-}
-
-func (d DragInfo) HasFilePaths() bool {
-	return bool(C.dragHasFilePaths(C.NSDraggingInfoRef(d)))
-}
-
-func (d DragInfo) HasURLs() bool {
-	return bool(C.dragHasURLs(C.NSDraggingInfoRef(d)))
-}
-
-func (d DragInfo) HasDataType(dataType string) bool {
-	s := NewString(dataType)
-	defer s.Release()
-	return bool(C.dragHasDataType(C.NSDraggingInfoRef(d), C.CFStringRef(s)))
-}
-
-func (d DragInfo) Text() string {
-	s := C.dragText(C.NSDraggingInfoRef(d))
-	if s == 0 {
-		return ""
-	}
-	return String(s).String()
-}
-
-func (d DragInfo) FilePaths() []string {
-	return Array(C.dragFilePaths(C.NSDraggingInfoRef(d))).ArrayOfStringToStringSlice()
-}
-
-func (d DragInfo) URLs() []*url.URL {
-	urlStrs := Array(C.dragURLs(C.NSDraggingInfoRef(d))).ArrayOfURLToStringSlice()
-	result := make([]*url.URL, 0, len(urlStrs))
-	for _, urlStr := range urlStrs {
-		u, err := url.Parse(urlStr)
-		if err != nil {
-			errs.Log(errs.NewWithCause("unable to parse URL", err), "url", urlStr)
-			continue
-		}
-		result = append(result, u)
-	}
-	return result
-}
-
-func (d DragInfo) Data(dataType string) []byte {
-	s := NewString(dataType)
-	defer s.Release()
-	var length uint64
-	if buffer := C.dragBytes(C.NSDraggingInfoRef(d), C.CFStringRef(s), (*C.ulonglong)(&length)); buffer != nil && length > 0 {
-		data := make([]byte, length)
-		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), length))
-		C.free(buffer)
-		return data
-	}
-	return nil
 }
 
 // ========== Open Panel ==========
@@ -252,77 +149,6 @@ func (p OpenPanel) URLs() Array {
 
 func (p OpenPanel) RunModal() bool {
 	return bool(C.openPanelRunModal(C.NSOpenPanelRef(p)))
-}
-
-// ========== Pasteboard ==========
-
-type (
-	Pasteboard     C.NSPasteboardRef
-	PasteboardItem C.NSPasteboardItemRef
-)
-
-func PasteboardGeneral() Pasteboard {
-	return Pasteboard(C.pasteboardGeneral())
-}
-
-func (p Pasteboard) AvailableDataTypes() []string {
-	a := C.pasteboardAvailableDataTypes(C.NSPasteboardRef(p))
-	return Array(a).ArrayOfStringToStringSlice()
-}
-
-func (p Pasteboard) HasDataType(dataType *uti.DataType) bool {
-	s := NewString(dataType.UTI)
-	defer s.Release()
-	return bool(C.pasteboardHasDataType(C.NSPasteboardRef(p), C.CFStringRef(s)))
-}
-
-func (p Pasteboard) Bytes(dataType *uti.DataType) []byte {
-	s := NewString(dataType.UTI)
-	defer s.Release()
-	var length uint64
-	if buffer := C.pasteboardBytes(C.NSPasteboardRef(p), C.CFStringRef(s), (*C.ulonglong)(&length)); buffer != nil && length > 0 {
-		data := make([]byte, length)
-		copy(data, unsafe.Slice((*byte)(unsafe.Pointer(buffer)), length))
-		C.free(buffer)
-		return data
-	}
-	return nil
-}
-
-func (p Pasteboard) Clear() {
-	C.pasteboardClearContents(C.NSPasteboardRef(p))
-}
-
-func (p Pasteboard) WriteItems(items ...PasteboardItem) {
-	if len(items) == 0 {
-		return
-	}
-	a := C.CFArrayCreateMutable(0, C.long(len(items)), &C.kCFTypeArrayCallBacks)
-	defer Array(a).Release()
-	for _, item := range items {
-		C.CFArrayAppendValue(a, unsafe.Pointer(item))
-	}
-	C.pasteboardWriteObjects(C.NSPasteboardRef(p), C.CFArrayRef(a))
-}
-
-func NewPasteboardItem() PasteboardItem {
-	return PasteboardItem(C.newPasteboardItem())
-}
-
-func (i PasteboardItem) SetString(s string) {
-	str := NewString(s)
-	defer str.Release()
-	C.pasteboardItemSetString(C.NSPasteboardItemRef(i), C.CFStringRef(str))
-}
-
-func (i PasteboardItem) SetData(dataType *uti.DataType, data []byte) {
-	dt := NewString(dataType.UTI)
-	defer dt.Release()
-	var ptr unsafe.Pointer
-	if len(data) != 0 {
-		ptr = unsafe.Pointer(&data[0])
-	}
-	C.pasteboardItemSetData(C.NSPasteboardItemRef(i), C.CFStringRef(dt), C.ulonglong(len(data)), ptr)
 }
 
 // ========== Save Panel ==========

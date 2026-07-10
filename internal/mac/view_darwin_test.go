@@ -402,11 +402,13 @@ var (
 	testDragInfoClass     objc.Class
 	testDragLocation      NSPoint
 	testDragSourceMask    uint64
+	testDragPasteboard    objc.ID
 )
 
-// testDragInfo returns an owned instance of a minimal NSDraggingInfo stand-in whose draggingLocation and
-// draggingSourceOperationMask answers come from the two vars above. The mask lookup goes through the cgo
-// dragSourceOperationMask accessor, so this also proves cgo-initiated calls dispatch into Go-implemented methods.
+// testDragInfo returns an owned instance of a minimal NSDraggingInfo stand-in whose draggingLocation,
+// draggingSourceOperationMask, and draggingPasteboard answers come from the vars above. Since the DragInfo methods
+// send real Objective-C messages to the sender, this stand-in serves both the view's destination overrides and the
+// DragInfo accessor tests in drag_darwin_test.go.
 func testDragInfo(t *testing.T) objc.ID {
 	t.Helper()
 	testDragInfoClassOnce.Do(func() {
@@ -418,6 +420,10 @@ func testDragInfo(t *testing.T) objc.ID {
 			{
 				Cmd: Sel("draggingSourceOperationMask"),
 				Fn:  func(_ objc.ID, _ objc.SEL) uint64 { return testDragSourceMask },
+			},
+			{
+				Cmd: Sel("draggingPasteboard"),
+				Fn:  func(_ objc.ID, _ objc.SEL) objc.ID { return testDragPasteboard },
 			},
 		})
 		if err != nil {

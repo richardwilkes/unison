@@ -246,6 +246,36 @@ func GoStringFromNSString(str objc.ID) string {
 	return string(unsafe.Slice(p, n))
 }
 
+// GoStringFromCString returns a Go string copied from a NUL-terminated C string. A nil pointer yields "".
+func GoStringFromCString(p *byte) string {
+	if p == nil {
+		return ""
+	}
+	n := 0
+	for *(*byte)(unsafe.Add(unsafe.Pointer(p), n)) != 0 {
+		n++
+	}
+	return string(unsafe.Slice(p, n))
+}
+
+// GoBytesFromNSData returns a copy of an NSData's contents. A nil or empty NSData yields nil.
+func GoBytesFromNSData(data objc.ID) []byte {
+	if data == 0 {
+		return nil
+	}
+	n := objc.Send[uint64](data, Sel("length"))
+	if n == 0 {
+		return nil
+	}
+	p := objc.Send[*byte](data, Sel("bytes"))
+	if p == nil {
+		return nil
+	}
+	out := make([]byte, n)
+	copy(out, unsafe.Slice(p, n))
+	return out
+}
+
 // NSArrayFromIDs returns an autoreleased NSArray containing the given objects.
 func NSArrayFromIDs(ids ...objc.ID) objc.ID {
 	if len(ids) == 0 {

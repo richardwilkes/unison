@@ -9,23 +9,8 @@
 
 #import <Cocoa/Cocoa.h>
 
-typedef CFTypeRef NSDraggingInfoRef;
 typedef CFTypeRef NSOpenPanelRef;
-typedef CFTypeRef NSPasteboardRef;
-typedef CFTypeRef NSPasteboardItemRef;
 typedef CFTypeRef NSSavePanelRef;
-
-// Drag
-NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender);
-CFArrayRef dragDataTypes(NSDraggingInfoRef sender);
-bool dragHasString(NSDraggingInfoRef sender);
-CFStringRef dragText(NSDraggingInfoRef sender);
-bool dragHasFilePaths(NSDraggingInfoRef sender);
-CFArrayRef dragFilePaths(NSDraggingInfoRef sender);
-bool dragHasURLs(NSDraggingInfoRef sender);
-CFArrayRef dragURLs(NSDraggingInfoRef sender);
-bool dragHasDataType(NSDraggingInfoRef sender, CFStringRef dataType);
-void* dragBytes(NSDraggingInfoRef sender, CFStringRef dataType, unsigned long long* length);
 
 // Open Panel
 NSOpenPanelRef newOpenPanel();
@@ -43,17 +28,6 @@ bool openPanelAllowsMultipleSelection(NSOpenPanelRef openPanel);
 void openPanelSetAllowsMultipleSelection(NSOpenPanelRef openPanel, bool set);
 CFArrayRef openPanelURLs(NSOpenPanelRef openPanel);
 bool openPanelRunModal(NSOpenPanelRef openPanel);
-
-// Pasteboard
-NSPasteboardRef pasteboardGeneral();
-CFArrayRef pasteboardAvailableDataTypes(NSPasteboardRef pasteboard);
-bool pasteboardHasDataType(NSPasteboardRef pasteboard, CFStringRef str);
-void* pasteboardBytes(NSPasteboardRef pasteboard, CFStringRef dataType, unsigned long long* length);
-void pasteboardClearContents(NSPasteboardRef pasteboard);
-void pasteboardWriteObjects(NSPasteboardRef pasteboard, CFArrayRef items);
-NSPasteboardItemRef newPasteboardItem();
-void pasteboardItemSetString(NSPasteboardItemRef item, CFStringRef str);
-void pasteboardItemSetData(NSPasteboardItemRef item, CFStringRef dataType, unsigned long long length, void* buffer);
 
 // Save Panel
 NSSavePanelRef newSavePanel();

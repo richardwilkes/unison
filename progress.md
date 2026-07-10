@@ -2,6 +2,91 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 9 — 2026-07-10: Phase 2 — pasteboard + drag info ported to purego; pasteboard_darwin.m and drag_darwin.m deleted
+
+The "Pasteboard, drag & drop" bullet of Phase 2 is done (the dragging-destination view overrides and
+`beginDraggingSessionWithItems:` were already ported with the view in session 6, so this session covered the
+remaining half: NSPasteboard read/write, NSPasteboardItem, and the DragInfo accessors). Exported API unchanged; the
+root package needed zero edits. Only two `.m` files remain (open_panel, save_panel), and `all_darwin.go` is down to
+the CF Array/String/URL helpers plus the two panels (~250 lines).
+
+### What changed (session 9)
+
+- **[internal/mac/drag_darwin.go](internal/mac/drag_darwin.go)** (new) — `DragInfo` is `objc.ID`-based (was
+  `C.NSDraggingInfoRef`; both uintptr-kinded, so `var _ drag.Info = DragInfo(0)` and the view/root usage compile
+  unchanged). `DragOp` is now `uint64` with baked-in constants (None=0, Copy=1, Move=16 — verified by compiling and
+  running an Objective-C program against the SDK, along with sizeof(NSDragOperation)=8);
+  `DragOpFromUnison`/`ToUnisonDragOp` moved verbatim. Every accessor is a direct msgSend to the sender
+  (`draggingPasteboard`, `draggingSourceOperationMask`) bracketed by `WithPool` where autoreleased objects flow.
+  Behavior parity kept deliberately: `FilePaths` still goes through each URL's `fileSystemRepresentation` (not
+  `path`), and `URLs` still reduces each absolute URL string to its path component before re-parsing — the old
+  bridge's `ArrayOfURLToStringSlice` quirk that discards scheme/host — documented in the method comment. One
+  mechanical improvement: the old `dragFilePaths` leaked a +1 CFArray per call (Go never released it); the pure-Go
+  version builds the []string directly, so nothing leaks. `NSPasteboardURLReadingFileURLsOnlyKey` is resolved once
+  via `sync.OnceValue` + `NSStringConstant` and the `readObjectsForClasses:options:` NSDictionary is built with
+  `dictionaryWithObject:forKey:` + `numberWithBool:`.
+- **[internal/mac/pasteboard_darwin.go](internal/mac/pasteboard_darwin.go)** (new) — `Pasteboard`/`PasteboardItem`
+  are `objc.ID`-based. `PasteboardGeneral` is the `generalPasteboard` singleton; `WriteItems` builds an autoreleased
+  NSArray inside a pool (the old code's owned CFArray + release, same net ownership); `NewPasteboardItem` keeps the
+  old bridge's +1-never-released item discipline (ownership effectively transfers to the pasteboard; the one extra
+  reference per item is a pre-existing leak kept for bring-up parity, documented on the type). `SetData` creates the
+  NSData with `dataWithBytes:length:` (copies during the call, so passing Go memory is safe); `Bytes` reads back
+  through the shared `GoBytesFromNSData`, copying once instead of the old bridge's malloc+copy+copy+free. The
+  `NSPasteboardTypeString` constant is resolved once via `sync.OnceValue` (its value, "public.utf8-plain-text", plus
+  both dlsym resolutions were verified with compiled Objective-C programs).
+- **[internal/mac/objc_darwin.go](internal/mac/objc_darwin.go)** — two new shared helpers: `GoStringFromCString`
+  (NUL-terminated C string → Go string, for `fileSystemRepresentation`) and `GoBytesFromNSData` (NSData → copied
+  []byte, nil for nil/empty, matching the old bridge's nil-on-zero-length behavior).
+- **all_darwin.go / macos.h** — DragInfo and Pasteboard sections removed (~170 lines; the `uti` and `drag` imports
+  went with them); `NSDraggingInfoRef`/`NSPasteboardRef`/`NSPasteboardItemRef` typedefs and both declaration blocks
+  removed from macos.h; `pasteboard_darwin.m` and `drag_darwin.m` deleted.
+- **New tests**: [pasteboard_darwin_test.go](internal/mac/pasteboard_darwin_test.go) exercises the Pasteboard
+  methods against a **uniquely named pasteboard** (`pasteboardWithUniqueName`, released via `releaseGlobally`), so
+  the user's clipboard is never touched: write/read-back of custom-UTI data + string (ASCII/CJK) through
+  AppKit's own string channel (`stringForType:` readback proves `SetString` used the real NSPasteboardTypeString),
+  AvailableDataTypes/HasDataType/Bytes including absent types, multi-item writes, zero-length data (present but
+  Bytes = nil, matching the old bridge), empty WriteItems no-op, Clear, and PasteboardGeneral singleton identity
+  against AppKit's own `generalPasteboard`. [drag_darwin_test.go](internal/mac/drag_darwin_test.go) extends the
+  session-6 fake NSDraggingInfo class with a `draggingPasteboard` method backed by a unique pasteboard and drives
+  every `drag.Info` accessor through real objc_msgSend dispatch: DataTypes/HasString/Text/HasDataType/Data with
+  string+data payloads, file-URL handling (HasFilePaths/FilePaths asserted against AppKit's own
+  `fileSystemRepresentation` recorded at write time, so path canonicalization can't flake the test), non-file URLs
+  (HasURLs true, HasFilePaths false, and the URLs() path-only parity quirk asserted explicitly), the negative cases
+  for a URL-less pasteboard, SourceDragOpMask for three masks, and the DragOp conversion table (including AppKit
+  bits unison doesn't model being dropped). Helper tests for `GoStringFromCString`/`GoBytesFromNSData` added to
+  objc_darwin_test.go.
+
+### Notes (session 9)
+
+1. NSPasteboard is fully testable headlessly (and in a locked session) via uniquely named pasteboards — writes,
+   reads, and `readObjectsForClasses:options:` URL extraction all work without the app being active, and nothing
+   touches the user's clipboard.
+2. The new-test threading convention held: whole test bodies run inside a single `runOnMain` closure, and helpers
+   that need the main thread (`newUniquePasteboard`, `newDragInfoWithPasteboard`) must be called from *within* a
+   runOnMain closure — nesting runOnMain deadlocks by design.
+3. `go vet ./internal/mac/` is down to 2 pre-existing unsafeptr findings (from 3): the removed pasteboard cgo
+   section contained one of them. The remaining two (objc_darwin.go's NSStringConstant deref, all_darwin.go's
+   NewArrayFromStringSlice) are unchanged.
+
+### Verification performed (session 9)
+
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt internal/mac/` and `gofmt -l`
+  clean; root package needed zero edits (verified by the untouched build and git status).
+- `go test ./internal/mac/` 10/10 fresh processes; `-count=5` single process; `-race`.
+- darwin/amd64 under Rosetta 2 (`CGO_ENABLED=1 GOARCH=amd64 go test -c`): 5/5 fresh runs + `-test.count=3`, plus a
+  verbose run of the nine new tests (covers the amd64 side of the *byte returns from `bytes`/`UTF8String`/
+  `fileSystemRepresentation` and the bool/uint64/pointer msgSend arg shapes; no new struct-arg call shapes were
+  introduced, so the straddle constraint is not in play).
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...` and windows/amd64 pass.
+- `cmd/example` smoke-run: alive after 8s with empty stderr/stdout (SIGKILL per the session-3 note). Startup does
+  not exercise clipboard/drag, so the production-shape proof for this bullet is the test suite driving the same
+  methods root's clipboard_darwin.go calls, plus the PasteboardGeneral identity test tying the tested unique
+  pasteboard paths to the singleton production actually uses.
+- Not covered (need a human session): real user-initiated drag & drop between apps (the DragInfo accessors are
+  proven against real pasteboard contents, but not a live drag session's NSDraggingInfo), and clipboard interchange
+  with other running applications (copy in unison → paste in TextEdit and vice versa — same NSPasteboard API, but
+  worth a manual sanity pass alongside the existing Phase 2 final checklist).
+
 ## Session 8 — 2026-07-10: Phase 2 — menus ported to purego; menu_darwin.m, menu_item_darwin.m, and the last three //export callbacks deleted
 
 The "Menus" bullet of Phase 2 is done. `MenuDelegate` and `MenuItemDelegate` are now Go-registered Objective-C
@@ -601,15 +686,17 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 
 1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
    helpers, the five trivial areas (sound, theme, screen+display, image, cursor), app + event loop,
-   window + window delegate, **view/IME**, **GL context + pixel format**, and **menus** are done — no `//export`
-   callbacks remain anywhere (truly none now; session 6's claim had missed the three menu exports); the rest of
-   the cgo bridge is plain Go→C calls. Next up is **pasteboard + drag info** (`pasteboard_darwin.m`,
-   `drag_darwin.m` — NSPasteboard read/write, NSPasteboardItem, the DragInfo accessors; the dragging-destination
-   view overrides and `beginDraggingSessionWithItems:` were already ported with the view in session 6), then
-   open/save panels → delete the remaining `.m` files, `macos.h`, and the cgo preamble, splitting what's left of
-   all_darwin.go (Array/String/URL CF helpers, DragInfo) into per-area files. Every step must leave `./build.sh`
-   green. Final manual verification must include a real CJK input source (IME) and popup-menu tracking
-   (`Menu.Popup`).
+   window + window delegate, **view/IME**, **GL context + pixel format**, **menus**, and **pasteboard + drag
+   info** are done — no `//export` callbacks remain anywhere, and the only cgo left is the open/save panels plus
+   the CF Array/String/URL helpers they and the root dialogs use (~250 lines in all_darwin.go, 2 `.m` files).
+   Next up is **open/save panels** (`open_panel_darwin.m`, `save_panel_darwin.m` — NSOpenPanel/NSSavePanel
+   accessors + `runModal`; keep `allowedFileTypes` behavior as-is per the plan). Since the root dialogs consume the
+   `Array`/`URL` CF helper types directly (`NewArrayFromStringSlice`, `ArrayOfURLToStringSlice`, `NewFileURL`, …),
+   porting the panels means either porting those helper types to objc.ID in the same step or changing the panel
+   API to Go-native types — decide there, keeping root-package edits to a minimum. After that: delete the last
+   `.m` files, `macos.h`, and the cgo preamble from all_darwin.go (the plan's cleanup bullet). Every step must
+   leave `./build.sh` green. Final manual verification must include a real CJK input source (IME), popup-menu
+   tracking (`Menu.Popup`), live drag & drop between apps, and clipboard interchange with other apps.
 2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
    `.claude/CLAUDE.md` architecture-note update, upack audit.
 
