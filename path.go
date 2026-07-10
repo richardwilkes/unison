@@ -332,41 +332,27 @@ func (p *Path) CurrentPt() geom.Point {
 	return fromSkPoint(pt)
 }
 
-// Union this path with the other path. Returns true if successful. Path is left unmodified if not successful.
-func (p *Path) Union(other *Path) bool {
-	if res, ok := pathops.Op(p.path, other.path, pathops.Union); ok {
+// applyOp applies the boolean operation op between this path and the other path. Returns true if successful. Path is
+// left unmodified if not successful.
+func (p *Path) applyOp(other *Path, op pathops.PathOp) bool {
+	if res, ok := pathops.Op(p.path, other.path, op); ok {
 		p.path = res
 		return true
 	}
 	return false
 }
+
+// Union this path with the other path. Returns true if successful. Path is left unmodified if not successful.
+func (p *Path) Union(other *Path) bool { return p.applyOp(other, pathops.Union) }
 
 // Subtract the other path from this path. Returns true if successful. Path is left unmodified if not successful.
-func (p *Path) Subtract(other *Path) bool {
-	if res, ok := pathops.Op(p.path, other.path, pathops.Difference); ok {
-		p.path = res
-		return true
-	}
-	return false
-}
+func (p *Path) Subtract(other *Path) bool { return p.applyOp(other, pathops.Difference) }
 
 // Intersect this path with the other path. Returns true if successful. Path is left unmodified if not successful.
-func (p *Path) Intersect(other *Path) bool {
-	if res, ok := pathops.Op(p.path, other.path, pathops.Intersect); ok {
-		p.path = res
-		return true
-	}
-	return false
-}
+func (p *Path) Intersect(other *Path) bool { return p.applyOp(other, pathops.Intersect) }
 
 // Xor this path with the other path. Returns true if successful. Path is left unmodified if not successful.
-func (p *Path) Xor(other *Path) bool {
-	if res, ok := pathops.Op(p.path, other.path, pathops.XOR); ok {
-		p.path = res
-		return true
-	}
-	return false
-}
+func (p *Path) Xor(other *Path) bool { return p.applyOp(other, pathops.XOR) }
 
 // Simplify this path. Returns true if successful. Path is left unmodified if not successful.
 func (p *Path) Simplify() bool {

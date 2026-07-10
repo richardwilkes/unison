@@ -15,10 +15,10 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
-// The canvas module ships its own geometry package that is independent of toolbox's geom. The two are not
-// structurally compatible (canvas uses left/top/right/bottom rectangles and a 3x3 matrix with unexported
-// fields, while toolbox uses x/y/width/height rectangles and a 6-element affine matrix), so every geometry
-// value crossing the skcapi boundary is converted here.
+// The canvas module ships its own geometry package that is independent of toolbox's geom. The two are not structurally
+// compatible (canvas uses left/top/right/bottom rectangles and a 3x3 matrix with unexported fields, while toolbox uses
+// x/y/width/height rectangles and a 6-element affine matrix), so every geometry value crossing the canvas↔toolbox geom
+// boundary is converted here.
 
 func toSkPoint(p geom.Point) skgeom.Point { return skgeom.Point{X: p.X, Y: p.Y} }
 

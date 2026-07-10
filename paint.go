@@ -13,7 +13,6 @@ import (
 	"reflect"
 
 	"github.com/richardwilkes/canvas/canvas"
-	skgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/canvas/skcolor"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -261,11 +260,6 @@ func (p *Paint) FillPath(path *Path, resScale float32) (result *Path, hairline b
 // a fill.
 func (p *Paint) FillPathWithCull(path *Path, cullRect *geom.Rect, resScale float32) (result *Path, hairline bool) {
 	result = NewPath()
-	var cull *skgeom.Rect
-	if cullRect != nil {
-		r := toSkRect(*cullRect)
-		cull = &r
-	}
-	isFill := p.paint.FillPath(path.path, result.path, cull, resScale)
+	isFill := p.paint.FillPath(path.path, result.path, toSkRectPtr(cullRect), resScale)
 	return result, !isFill
 }
