@@ -31,6 +31,7 @@ import (
 
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 // Struct types matching the Apple 64-bit ABI. CGFloat and NSUInteger are both 8 bytes on every supported macOS
@@ -59,29 +60,81 @@ type (
 	}
 )
 
+// PointFromNSPoint converts an NSPoint to a geom.Point.
+func PointFromNSPoint(pt NSPoint) geom.Point {
+	return geom.NewPoint(float32(pt.X), float32(pt.Y))
+}
+
+// NSPointFromPoint converts a geom.Point to an NSPoint.
+func NSPointFromPoint(pt geom.Point) NSPoint {
+	return NSPoint{X: float64(pt.X), Y: float64(pt.Y)}
+}
+
+// SizeFromNSSize converts an NSSize to a geom.Size.
+func SizeFromNSSize(size NSSize) geom.Size {
+	return geom.NewSize(float32(size.Width), float32(size.Height))
+}
+
+// RectFromNSRect converts an NSRect to a geom.Rect.
+func RectFromNSRect(r NSRect) geom.Rect {
+	return geom.NewRect(float32(r.Origin.X), float32(r.Origin.Y), float32(r.Size.Width), float32(r.Size.Height))
+}
+
+// NSRectFromRect converts a geom.Rect to an NSRect.
+func NSRectFromRect(r geom.Rect) NSRect {
+	return NSRect{
+		Origin: NSPoint{X: float64(r.X), Y: float64(r.Y)},
+		Size:   NSSize{Width: float64(r.Width), Height: float64(r.Height)},
+	}
+}
+
 // NSUTF8StringEncoding is Foundation's constant for UTF-8 in the NSString*Encoding APIs.
 const NSUTF8StringEncoding = 4
 
 var (
-	appKitOnce   sync.Once
-	poolOnce     sync.Once
-	poolPushFunc func() uintptr
-	poolPopFunc  func(uintptr)
-	selCache     sync.Map // map[string]objc.SEL
-	clsCache     sync.Map // map[string]objc.Class
+	frameworkLock    sync.Mutex
+	frameworkHandles = make(map[string]uintptr)
+	poolOnce         sync.Once
+	poolPushFunc     func() uintptr
+	poolPopFunc      func(uintptr)
+	selCache         sync.Map // map[string]objc.SEL
+	clsCache         sync.Map // map[string]objc.Class
 )
 
+// LoadFramework loads the named macOS system framework (e.g. "AppKit") into the process, making its symbols and
+// Objective-C classes visible, and returns its dlopen handle for symbol lookup. It is safe to call from any
+// goroutine and any number of times; each framework is loaded once. The frameworks this bridge asks for are present
+// on every macOS installation, so a failure here is unrecoverable and panics.
+func LoadFramework(name string) uintptr {
+	frameworkLock.Lock()
+	defer frameworkLock.Unlock()
+	if handle, ok := frameworkHandles[name]; ok {
+		return handle
+	}
+	handle, err := purego.Dlopen("/System/Library/Frameworks/"+name+".framework/"+name,
+		purego.RTLD_LAZY|purego.RTLD_GLOBAL)
+	if err != nil {
+		panic(fmt.Errorf("mac: unable to load %s: %w", name, err))
+	}
+	frameworkHandles[name] = handle
+	return handle
+}
+
 // LoadAppKit loads the AppKit framework (and, transitively, Foundation and the other frameworks it links against)
-// into the process, making its Objective-C classes visible to the runtime. It is safe to call from any goroutine
-// and any number of times; the load happens once. AppKit is present on every macOS installation, so a failure here
-// is unrecoverable and panics.
+// into the process, making its Objective-C classes visible to the runtime.
 func LoadAppKit() {
-	appKitOnce.Do(func() {
-		if _, err := purego.Dlopen("/System/Library/Frameworks/AppKit.framework/AppKit",
-			purego.RTLD_LAZY|purego.RTLD_GLOBAL); err != nil {
-			panic(fmt.Errorf("mac: unable to load AppKit: %w", err))
-		}
-	})
+	LoadFramework("AppKit")
+}
+
+// NSStringConstant returns the value of an exported NSString* constant (e.g. AppKit's NSCalibratedRGBColorSpace)
+// from the given framework. The requested symbols are compile-time known and always present, so a resolution
+// failure is a programming error and panics.
+func NSStringConstant(framework, symbol string) objc.ID {
+	ptr, err := purego.Dlsym(LoadFramework(framework), symbol)
+	if err != nil || ptr == 0 {
+		panic(fmt.Errorf("mac: unable to resolve %s in %s: %w", symbol, framework, err))
+	}
+	return *(*objc.ID)(unsafe.Pointer(ptr))
 }
 
 // Sel returns the selector for name, caching the result since objc.RegisterName takes the global Objective-C

@@ -74,8 +74,9 @@ resulting call-shape constraint are documented in `internal/mac/objc_darwin.go`.
 - [x] Keep the two-connection design (GLX on its own display connection) — XIDs are server-global, so windows created
       by the pure-Go connection remain valid GLX drawables. Preserve the transparent-visual selection logic and the
       NVIDIA BadMatch comment/behavior exactly.
-- [ ] Verify `GOOS=linux CGO_ENABLED=0 go build ./...` passes and the example app runs on X11 and XWayland
-      (`clipboard_live_test.go` in `internal/x11` still passes).
+- [x] Verify `GOOS=linux CGO_ENABLED=0 go build ./...` passes and the example app runs on X11 and XWayland
+      (`clipboard_live_test.go` in `internal/x11` still passes). — Cross-build verified in Session 1; Rich ran the
+      checked-in code on a live Linux machine (2026-07-10) and reports it working.
 - [x] Fallback library names: try `libGL.so.1` then `libGL.so`; `libX11.so.6` then `libX11.so`; fail with a clear
       error mentioning the package to install.
 
@@ -96,9 +97,11 @@ half-done):
       NSNumber, NSURL⇄file path, CGRect/CGPoint/CGSize/NSRange structs, autorelease-pool helpers, retain/release
       helpers mirroring the current CFRetain/CFRelease ownership rules of the bridge (the `CFTypeRef`-based handle
       discipline in `macos.h` should carry over: handles stay `uintptr`, ownership stays explicit).
-- [ ] **Sound, theme, screen, image, cursor** — the five trivial files (`beep`, effective-appearance observation via
+- [x] **Sound, theme, screen, image, cursor** — the five trivial files (`beep`, effective-appearance observation via
       `ThemeDelegate` + KVO or `NSDistributedNotificationCenter`, `NSScreen` queries, `NSImage` from RGBA pixels via
-      `NSBitmapImageRep`, `NSCursor` constructors). These prove the helper layer with minimal risk.
+      `NSBitmapImageRep`, `NSCursor` constructors). These prove the helper layer with minimal risk. — Done in
+      Session 3 (including the CGDirectDisplay functions, which the screen code depends on); the five `.m` files are
+      deleted and each area has unit tests.
 - [ ] **App + event loop** (`app_darwin.m`, `event_darwin.m`): register `macAppDelegate` via `objc.RegisterClass`
       with the 6 delegate methods calling the existing Go callback funcs directly (no more `//export`);
       `finishLaunching`, activation, hide/unhide, `setMainMenu` etc.; `pollEvents`/`waitEvents`/`waitEventsTimeout`

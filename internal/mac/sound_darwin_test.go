@@ -7,8 +7,15 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-#import "macos.h"
+package mac
 
-void beep(void) {
-	NSBeep();
+import "testing"
+
+// TestBeepRegistration validates that the NSBeep symbol resolves without actually playing the alert sound on every
+// test run (RegisterLibFunc panics if the symbol is missing).
+func TestBeepRegistration(t *testing.T) {
+	ensureBeep()
+	if nsBeep == nil {
+		t.Error("NSBeep was not registered")
+	}
 }

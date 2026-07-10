@@ -197,83 +197,6 @@ func (a Array) ArrayOfStringToStringSlice() []string {
 	return result
 }
 
-// ========== Cursor ==========
-
-type Cursor C.NSCursorRef
-
-func NewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) Cursor {
-	return Cursor(C.newCursor((*C.uchar)(&img.Pix[0]), C.int(hotSpot.X), C.int(hotSpot.Y), C.int(logicalSize.Width),
-		C.int(logicalSize.Height), C.int(img.Rect.Dx()), C.int(img.Rect.Dy())))
-}
-
-func (c Cursor) Set() {
-	C.cursorSet(C.NSCursorRef(c))
-}
-
-func (c Cursor) Release() {
-	C.CFRelease(C.CFTypeRef(c))
-}
-
-func HideCursor() {
-	C.cursorHide()
-}
-
-func ShowCursor() {
-	C.cursorShow()
-}
-
-func ArrowCursor() Cursor {
-	return Cursor(C.cursorArrow())
-}
-
-func IBeamCursor() Cursor {
-	return Cursor(C.cursorIBeam())
-}
-
-func CrosshairCursor() Cursor {
-	return Cursor(C.cursorCrosshair())
-}
-
-func PointingHandCursor() Cursor {
-	return Cursor(C.cursorPointingHand())
-}
-
-func ResizeLeftRightCursor() Cursor {
-	return Cursor(C.cursorResizeLeftRight())
-}
-
-func ResizeUpDownCursor() Cursor {
-	return Cursor(C.cursorResizeUpDown())
-}
-
-// ========== Display ==========
-
-type DisplayID = C.CGDirectDisplayID
-
-func ActiveDisplayList() []DisplayID {
-	var displayIDs [16]C.CGDirectDisplayID
-	var count C.uint32
-	C.CGGetActiveDisplayList(C.uint32(len(displayIDs)), &displayIDs[0], &count)
-	return displayIDs[:int(count)]
-}
-
-func MainDisplayID() DisplayID {
-	return C.CGMainDisplayID()
-}
-
-func DisplayIsAsleep(id DisplayID) bool {
-	return C.CGDisplayIsAsleep(id) != 0
-}
-
-func DisplayBounds(id DisplayID) geom.Rect {
-	return cgRectToRect(C.CGDisplayBounds(id))
-}
-
-func DisplayScreenSize(id DisplayID) geom.Size {
-	sizeMM := C.CGDisplayScreenSize(id)
-	return geom.NewSize(float32(sizeMM.width), float32(sizeMM.height))
-}
-
 // ========= DragInfo ==========
 
 type DragInfo C.NSDraggingInfoRef
@@ -797,38 +720,6 @@ func (p SavePanel) RunModal() bool {
 	return bool(C.savePanelRunModal(C.NSSavePanelRef(p)))
 }
 
-// ========== Screen ==========
-
-type Screen C.NSScreenRef
-
-func ScreenForDisplayID(id DisplayID) Screen {
-	return Screen(C.screenForDisplayID(id))
-}
-
-func (s Screen) Frame() geom.Rect {
-	var frame C.CGRect
-	C.screenFrame(C.NSScreenRef(s), &frame)
-	return cgRectToRect(frame)
-}
-
-func (s Screen) VisibleFrame() geom.Rect {
-	var frame C.CGRect
-	C.screenVisibleFrame(C.NSScreenRef(s), &frame)
-	return cgRectToRect(frame)
-}
-
-func (s Screen) ConvertRectToBacking(r geom.Rect) geom.Rect {
-	backing := rectToCGRect(r)
-	C.screenConvertRectToBacking(C.NSScreenRef(s), &backing)
-	return cgRectToRect(backing)
-}
-
-// ========== Sound ==========
-
-func Beep() {
-	C.beep()
-}
-
 // ========== String ==========
 
 type String C.CFStringRef
@@ -854,35 +745,6 @@ func (s String) String() string {
 
 func (s String) Release() {
 	C.CFRelease(C.CFTypeRef(s))
-}
-
-// ========== Theme ==========
-
-var systemThemeChangedCallback func()
-
-func InstallSystemThemeChangedCallback(f func()) {
-	systemThemeChangedCallback = f
-	if f != nil {
-		C.installThemeChangedCallback()
-	}
-}
-
-func IsDarkModeEnabled() bool {
-	if style := C.CFPreferencesCopyAppValue(C.CFStringRef(NewString("AppleInterfaceStyle")),
-		C.kCFPreferencesCurrentApplication); style != 0 {
-		s := String(style)
-		str := s.String()
-		s.Release()
-		return strings.Contains(strings.ToLower(str), "dark")
-	}
-	return false
-}
-
-//export goThemeChangedCallback
-func goThemeChangedCallback() {
-	if systemThemeChangedCallback != nil {
-		systemThemeChangedCallback()
-	}
 }
 
 // ========== URL ==========
@@ -973,10 +835,9 @@ func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask
 	for _, d := range data {
 		item.SetData(d.Type, d.Data)
 	}
-	imgRef := C.newImage((*C.uchar)(&img.Pix[0]), C.int(frame.Width), C.int(frame.Height), C.int(img.Rect.Dx()),
-		C.int(img.Rect.Dy()))
-	defer C.CFRelease(C.CFTypeRef(imgRef))
-	dragItem := C.newDraggingItem(C.NSPasteboardItemRef(item), imgRef, rectToCGRect(frame))
+	imgRef := newNSImage(img.Pix, int(frame.Width), int(frame.Height), img.Rect.Dx(), img.Rect.Dy())
+	defer Release(imgRef)
+	dragItem := C.newDraggingItem(C.NSPasteboardItemRef(item), C.NSImageRef(imgRef), rectToCGRect(frame))
 	C.viewBeginDraggingSession(C.NSViewRef(v), dragItem, C.NSDragOperation(DragOpFromUnison(dragOpMask)))
 }
 

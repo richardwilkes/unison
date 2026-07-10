@@ -2,6 +2,72 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 3 — 2026-07-10: Phase 2 — sound, theme, screen (+display), image, and cursor ported to purego; their .m files deleted
+
+The "five trivial files" bullet of Phase 2 is done. Each area moved from the cgo bridge to a pure-Go `_darwin.go`
+file with the exported API unchanged; the corresponding `.m` files, `macos.h` declarations, and `all_darwin.go`
+sections are gone. The CGDirectDisplay functions (the old "Display" section of `all_darwin.go`, plain C calls into
+CoreGraphics) were ported alongside screen since `ScreenForDisplayID` needs `CGDisplayUnitNumber`.
+
+### What changed
+
+- **[internal/mac/sound_darwin.go](internal/mac/sound_darwin.go)** — `Beep` via `NSBeep` (dlsym from AppKit).
+- **[internal/mac/theme_darwin.go](internal/mac/theme_darwin.go)** — `ThemeDelegate` is now a Go-registered
+  Objective-C class (`objc.RegisterClass`, the first in shipped code); observer install is `sync.Once`-guarded.
+  `IsDarkModeEnabled` reads AppleInterfaceStyle through NSUserDefaults instead of `CFPreferencesCopyAppValue` —
+  same domains searched, same result, and it fixes a small CFString leak the old code had.
+- **[internal/mac/display_darwin.go](internal/mac/display_darwin.go)** — the six CG functions via
+  `purego.RegisterLibFunc` against the CoreGraphics framework; `DisplayID` is now `= uint32` (was
+  `= C.CGDirectDisplayID`, same underlying type). `CGDisplayBounds`/`CGDisplayScreenSize` return CGRect/CGSize by
+  value — first use of struct returns through RegisterLibFunc, verified on both arches.
+- **[internal/mac/screen_darwin.go](internal/mac/screen_darwin.go)** — `Screen` is now `objc.ID`-based (was
+  `C.NSScreenRef`; both uintptr-kinded, so root-package `== 0` checks still compile). Frame/VisibleFrame use
+  `objc.Send[NSRect]` struct returns; `ConvertRectToBacking` passes NSRect by value (all-float structs, so the
+  amd64 straddle constraint from Session 2 does not apply).
+- **[internal/mac/image_darwin.go](internal/mac/image_darwin.go)** — `newNSImage` (unexported, +1 retain) builds
+  the NSBitmapImageRep/NSImage pair; the colorSpaceName uses the real `NSCalibratedRGBColorSpace` constant via
+  dlsym rather than a lookalike string. The still-cgo drag path in `all_darwin.go` now calls it and converts the
+  handle with `C.NSImageRef(imgRef)` (legal: cgo maps CFTypeRef-family typedefs to uintptr).
+- **[internal/mac/cursor_darwin.go](internal/mac/cursor_darwin.go)** — `Cursor` is `objc.ID`-based. `NewCursor`
+  reproduces the old bridge's +2 retain count (alloc/init + retain) and the int truncation of the hot spot; the
+  shared cursors keep their +1 retain so `Release` balances.
+- **[internal/mac/objc_darwin.go](internal/mac/objc_darwin.go)** — helper additions: `LoadFramework` (generalizes
+  `LoadAppKit`, returns the dlopen handle for symbol lookup), `NSStringConstant` (dlsym + deref of exported
+  NSString* constants), and geom converters (`PointFromNSPoint`, `NSPointFromPoint`, `SizeFromNSSize`,
+  `RectFromNSRect`, `NSRectFromRect`).
+- Per-area `_darwin_test.go` files cover every ported function that can be exercised headlessly, including a
+  delivery test for the full ThemeDelegate path (class registration → distributed notification → Go callback).
+
+### Discoveries (all verified empirically)
+
+1. **NSDistributedNotificationCenter delivers on the run loop of the thread that FIRST created the default
+   center — the `addObserver:` thread is irrelevant.** Proven with a standalone control/poisoned repro: touching
+   `defaultCenter` from a throwaway thread before registering breaks delivery permanently (0/3 vs 3/3). This was
+   the cause of a ~40% full-suite test flake (another test's transient thread would win the first-touch race).
+   Fixed in tests via `TestMain` starting a dedicated, permanently locked pump thread before any test runs, and
+   documented on `InstallSystemThemeChangedCallback`: production is safe because unison installs the observer from
+   the main thread at startup before anything else touches the center — same ordering the cgo bridge relied on.
+2. **`NSCursor arrowCursor`/`IBeamCursor` return nil until NSApplication is initialized** (the other four shared
+   cursors work regardless). Identical under the old ObjC bridge — unison always creates the shared application
+   first, so only the tests needed a `sharedApplication` call.
+3. **Pre-existing SIGTERM shutdown crash, NOT a regression**: `xos.Exit` runs `quitting()` on the signal-handler
+   goroutine, so `Window.OrderOut` → AppKit `orderOut:` executes off the main thread while the main thread sits in
+   `waitEvents`, and AppKit SIGTRAPs. Reproduced 3/3 with identical stacks on the *unmodified* tree (via
+   `git stash`). Session 2's "exits cleanly on SIGTERM" observation does not hold today; the app runs fine and the
+   crash is only in process teardown. Worth fixing separately (marshal shutdown to the main thread) — out of scope
+   for the port.
+
+### Verification performed (session 3)
+
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt` applied to internal/mac.
+- `go test -race ./internal/mac/` 10/10 in fresh processes (was flaky ~40% before the TestMain fix), plus
+  `-count=5` in a single process (validates the observer surviving reruns).
+- darwin/amd64: `CGO_ENABLED=1 GOARCH=amd64 go test -c` binary run under Rosetta 2 — all tests pass, covering the
+  amd64 hidden-pointer struct returns from C (CGDisplayBounds) and objc_msgSend_stret paths.
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...` and windows/amd64 still pass.
+- `cmd/example` smoke-run: launches, renders, alive after 6s, empty stderr — startup exercises the ported
+  display/screen (window placement), cursor, and theme (apiLateInit) paths in-process.
+
 ## Session 2 — 2026-07-10: Phase 0 complete (purego/objc feasibility spike proven on both arches) + Phase 2 foundation helpers
 
 The spike turned out to be runnable without a human at the keyboard: windows open on this machine from a normal
@@ -123,23 +189,20 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 - `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...` passes (sanity check).
 - Native macOS: `./build.sh --test` green; `golangci-lint run ./...` — 0 issues.
 
-### Not yet verified (needs a Linux machine with a display)
+### Live Linux verification — done (2026-07-10)
 
-- Running `cmd/example` on real X11 and XWayland with the new dlopen-based GLX path (including a transparent window
-  and an NVIDIA driver if available), and `clipboard_live_test.go` in `internal/x11`. This is the one unchecked
-  Phase 1 bullet in plan.md.
+- Rich ran the checked-in code on a live Linux machine after Session 2 and reports it working, closing the last
+  Phase 1 bullet. (The finer-grained scenarios — XWayland vs X11, transparent window, NVIDIA driver,
+  `clipboard_live_test.go` — were not individually itemized; re-check them if a Linux display regression appears.)
 
 ## What remains (in plan order)
 
-1. **Phase 1 leftover**: live verification on a Linux machine with a display — `cmd/example` on X11 and XWayland with
-   the dlopen-based GLX path (including a transparent window and an NVIDIA driver if available), plus
-   `clipboard_live_test.go` in `internal/x11`.
-2. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
-   helpers are done ([internal/mac/objc_darwin.go](internal/mac/objc_darwin.go)); next up are the five trivial files
-   (`sound`, `theme`, `screen`, `image`, `cursor`), then app/event loop → window → view/IME → GL context → menus →
-   pasteboard/drag → panels → delete `.m` files. Estimated four to six sessions; every step must leave `./build.sh`
-   green. Final manual verification must include a real CJK input source (IME).
-3. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
+1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
+   helpers and the five trivial areas (sound, theme, screen+display, image, cursor) are done; next up is **app +
+   event loop** (`app_darwin.m`, `event_darwin.m`), then window → view/IME → GL context → menus → pasteboard/drag →
+   panels → delete the remaining `.m` files. Every step must leave `./build.sh` green. Final manual verification
+   must include a real CJK input source (IME).
+2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
    `.claude/CLAUDE.md` architecture-note update, upack audit.
 
 ## Notes for future sessions
@@ -169,3 +232,14 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 - golangci-lint can cross-lint: `GOOS=linux golangci-lint run ./internal/x11/` works from macOS and caught real issues
   (gofumpt formatting, govet fieldalignment) that the native run never sees. Use `GOOS=<os> golangci-lint run` on any
   platform-suffixed files touched in future sessions.
+- NSDistributedNotificationCenter binds delivery to the run loop of the thread that first creates the default
+  center (see Session 3 discovery 1). Any future code observing distributed notifications must be installed from
+  the main thread before other threads can touch the center, and internal/mac tests must keep the `TestMain` pump
+  in [theme_darwin_test.go](internal/mac/theme_darwin_test.go) starting before all other tests.
+- While cgo and purego coexist in internal/mac, a Go-registered Objective-C class name must not collide with one
+  still compiled from a `.m` file (objc_allocateClassPair fails). Delete the `.m` file in the same step that
+  registers the class from Go, as done for ThemeDelegate.
+- The SIGTERM shutdown crash (Session 3 discovery 3) is pre-existing and unrelated to the port: `xos.Exit` calls
+  window teardown from the signal-handler goroutine, off the main thread. Smoke-testing the example app should
+  assert liveness and use SIGKILL, not judge success by SIGTERM exit status. Consider a separate fix that marshals
+  quitting() to the main event loop.

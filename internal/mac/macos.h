@@ -9,7 +9,6 @@
 
 #import <Cocoa/Cocoa.h>
 
-typedef CFTypeRef NSCursorRef;
 typedef CFTypeRef NSDraggingInfoRef;
 typedef CFTypeRef NSDraggingItemRef;
 typedef CFTypeRef NSImageRef;
@@ -21,7 +20,6 @@ typedef CFTypeRef NSOpenGLPixelFormatRef;
 typedef CFTypeRef NSPasteboardRef;
 typedef CFTypeRef NSPasteboardItemRef;
 typedef CFTypeRef NSSavePanelRef;
-typedef CFTypeRef NSScreenRef;
 typedef CFTypeRef NSViewRef;
 typedef CFTypeRef NSWindowRef;
 typedef CFTypeRef NSWindowDelegateRef;
@@ -38,18 +36,6 @@ void setMainMenu(NSMenuRef menu);
 void setServicesMenu(NSMenuRef menu);
 void setWindowsMenu(NSMenuRef menu);
 void setHelpMenu(NSMenuRef menu);
-
-// Cursor
-NSCursorRef newCursor(unsigned char* pixels, int xhot, int yhot, int logicalWidth, int logicalheight, int actualWidth, int actualHeight);
-NSCursorRef cursorArrow(void);
-NSCursorRef cursorIBeam(void);
-NSCursorRef cursorCrosshair(void);
-NSCursorRef cursorPointingHand(void);
-NSCursorRef cursorResizeLeftRight(void);
-NSCursorRef cursorResizeUpDown(void);
-void cursorHide(void);
-void cursorShow(void);
-void cursorSet(NSCursorRef cursor);
 
 // Drag
 NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender);
@@ -71,9 +57,6 @@ void pollEvents(void);
 void waitEvents(void);
 void waitEventsTimeout(double timeout);
 void stopMainEventLoop(void);
-
-// Image
-NSImageRef newImage(unsigned char* pixels, int logicalWidth, int logicalheight, int actualWidth, int actualHeight);
 
 // Menu
 NSMenuRef newMenu(CFStringRef title);
@@ -149,18 +132,6 @@ CFArrayRef savePanelAllowedFileTypes(NSSavePanelRef savePanel);
 void savePanelSetAllowedFileTypes(NSSavePanelRef savePanel, CFArrayRef types);
 CFURLRef savePanelURL(NSSavePanelRef savePanel);
 bool savePanelRunModal(NSSavePanelRef savePanel);
-
-// Screen
-NSScreenRef screenForDisplayID(CGDirectDisplayID displayID);
-void screenFrame(NSScreenRef screen, CGRect* frame);
-void screenVisibleFrame(NSScreenRef screen, CGRect *frame);
-void screenConvertRectToBacking(NSScreenRef screen, CGRect *rect);
-
-// Sound
-void beep(void);
-
-// Theme
-void installThemeChangedCallback(void);
 
 // View
 CGPoint viewBackingScale(NSViewRef v);
