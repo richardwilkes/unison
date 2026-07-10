@@ -34,8 +34,33 @@ func contextSurfaceOpacity(c OpenGLContextRef) int32 {
 	return val
 }
 
-// newTestPixelFormat returns the pixel format unison renders with, failing the test if none exists (every Mac that
-// can run the tests has a hardware-accelerated GL 3.2 core configuration).
+// requireAcceleratedGL skips the test when the environment has no hardware-accelerated OpenGL renderer. Headless CI
+// VMs (both the Intel and Apple-silicon GitHub runners) offer none, so NewOpenGLPixelFormat legitimately returns 0
+// there; every physical Mac has one, even with the login session locked. The probe requests the single attribute
+// NSOpenGLPFAAccelerated through raw msgSends, independent of NewOpenGLPixelFormat's attribute-list handling, so a
+// genuine regression in the ported code still fails — not skips — wherever a GPU exists. It must be called from the
+// test goroutine, before runOnMain: t.Skip calls runtime.Goexit and must never run inside a runOnMain closure.
+func requireAcceleratedGL(t *testing.T) {
+	t.Helper()
+	accelerated := false
+	runOnMain(func() {
+		attrs := [...]uint32{nsOpenGLPFAAccelerated, 0}
+		f := objc.ID(Cls("NSOpenGLPixelFormat")).Send(Sel("alloc")).Send(Sel("initWithAttributes:"),
+			unsafe.Pointer(&attrs[0]))
+		runtime.KeepAlive(&attrs)
+		if f != 0 {
+			Release(f)
+			accelerated = true
+		}
+	})
+	if !accelerated {
+		t.Skip("no hardware-accelerated OpenGL renderer in this environment (headless CI)")
+	}
+}
+
+// newTestPixelFormat returns the pixel format unison renders with, failing the test if none exists. Callers must
+// have passed requireAcceleratedGL first, so a 0 here is a real defect (every machine with a hardware-accelerated
+// renderer supports unison's GL 3.2 core 24/8/24/8 configuration), and the Fatal is pump-safe (see runPumped).
 func newTestPixelFormat(t *testing.T) OpenGLPixelFormatRef {
 	t.Helper()
 	f := NewOpenGLPixelFormat()
@@ -48,6 +73,7 @@ func newTestPixelFormat(t *testing.T) OpenGLPixelFormatRef {
 // TestNewOpenGLPixelFormat proves the attribute list crossed the purego boundary intact: every attribute the old
 // Objective-C bridge requested must be queryable from the resulting format with at least the requested value.
 func TestNewOpenGLPixelFormat(t *testing.T) {
+	requireAcceleratedGL(t)
 	runOnMain(func() {
 		f := newTestPixelFormat(t)
 		defer f.Release()
@@ -76,6 +102,7 @@ func TestNewOpenGLPixelFormat(t *testing.T) {
 // the context must exist, be attached to the view, leave the view flagged for best-resolution surfaces, default to
 // an opaque surface, and support the share-context creation path.
 func TestNewOpenGLContext(t *testing.T) {
+	requireAcceleratedGL(t)
 	runOnMain(func() {
 		_, v, cleanup := newTestWindowAndView(t)
 		defer cleanup()
@@ -107,6 +134,7 @@ func TestNewOpenGLContext(t *testing.T) {
 // TestNewOpenGLContextTransparent proves the surface-opacity handling that moved from Objective-C to Go: a context
 // created with transparent=true must read back opacity 0, exactly what the old bridge's setValues:forParameter: did.
 func TestNewOpenGLContextTransparent(t *testing.T) {
+	requireAcceleratedGL(t)
 	runOnMain(func() {
 		w, v, cleanup := newTestWindowAndView(t)
 		defer cleanup()
@@ -129,6 +157,7 @@ func TestNewOpenGLContextTransparent(t *testing.T) {
 // behavior), and ClearOpenGLCurrentContext clears it explicitly. Update and FlushBuffer are exercised against the
 // current context with the window ordered in, the shape of every frame unison draws.
 func TestOpenGLContextCurrent(t *testing.T) {
+	requireAcceleratedGL(t)
 	runOnMain(func() {
 		w, v, cleanup := newTestWindowAndView(t)
 		defer cleanup()

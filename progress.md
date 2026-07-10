@@ -48,6 +48,32 @@ open_panel, pasteboard, save_panel).
    vet subset doesn't include unsafeptr, and build.sh doesn't run vet, so nothing fails today; worth deciding in
    Phase 3 whether to gate on vet.
 
+### CI followup (session 7): headless runners deadlocked the package — pump made Goexit-proof, GL tests skip without a GPU
+
+The Build workflow failed identically on both macOS runners (macos-26 arm64 and macos-26-intel) while every local run
+passed. Two stacked causes, both fixed in the working tree:
+
+1. **Environment**: headless CI VMs have no hardware-accelerated OpenGL renderer, so `NewOpenGLPixelFormat` (whose
+   attribute list requires `NSOpenGLPFAAccelerated`) legitimately returns 0 there. The four GL tests now call
+   `requireAcceleratedGL(t)` first — from the test goroutine, where `t.Skip` is legal — which probes for a minimal
+   `{NSOpenGLPFAAccelerated, 0}` pixel format via raw msgSends, independent of `NewOpenGLPixelFormat`'s attribute
+   handling. They skip only where no accelerated renderer exists at all (the session-3 `TestDisplayFunctions`
+   pattern); a real marshaling regression still fails on any machine with a GPU.
+2. **Deadlock**: `newTestPixelFormat` called `t.Fatal` from *inside* a `runOnMain` closure, i.e. on TestMain's pump
+   goroutine. `FailNow` calls `runtime.Goexit`, which killed the pump (the wrapper's `defer close(done)` ran during
+   the Goexit, so the failing test was still reported, but the loop goroutine was gone); the next test's `runOnMain`
+   then blocked forever on the unbuffered channel send until the 10-minute package timeout. This hazard was latent in
+   every `t.Fatal`/`t.Skip` inside every `runOnMain` closure since session 3 — it just had never fired. The pump now
+   runs each closure through `runPumped`, whose deferred handler re-enters the pump loop when a closure Goexits
+   (deferred functions run during Goexit; the re-entered loop never returns, so the Goexit stays parked in that frame
+   while the main thread keeps servicing work). Real panics are re-raised so crashes stay loud.
+   `TestRunOnMainSurvivesGoexit` locks the contract in: it Goexits a closure on purpose and proves `runOnMain` still
+   works afterward.
+
+Verified by simulation on top of the normal matrix: with a temporary first-in-package test doing `t.Fatal` inside
+`runOnMain`, the whole suite now runs to completion (one FAIL, zero deadlocks); with the probe temporarily forced to
+report no acceleration, all four GL tests SKIP with a clear message and everything else passes.
+
 ### Verification performed (session 7)
 
 - `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt internal/mac/` made no changes.
@@ -548,6 +574,12 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
   AppKit requires on the main thread ([NSApp run], event pumping, and the upcoming window/view work).
 - `WithPool` locks the goroutine to its OS thread for the pool's lifetime (Session 4 discovery 2). Direct
   `PoolPush`/`PoolPop` pairs are only safe on an already-locked thread — prefer `WithPool`.
+- The GitHub macOS runners (both arches) have a WindowServer session (windows, views, events, and drawing all work)
+  but **no hardware-accelerated OpenGL renderer**, so any test needing a real GL config must gate on
+  `requireAcceleratedGL(t)` (session 7 CI followup). Relatedly, `t.Fatal`/`t.Skip` inside a `runOnMain` closure
+  Goexits the main-thread pump; `runPumped` in testmain_darwin_test.go makes that survivable, but skips must still
+  be issued from the test goroutine (a skip from inside a closure marks the test skipped, yet FailNow/SkipNow off
+  the test goroutine remains documented misuse — gate before entering `runOnMain` when possible).
 - While cgo and purego coexist in internal/mac, a Go-registered Objective-C class name must not collide with one
   still compiled from a `.m` file (objc_allocateClassPair fails). Delete the `.m` file in the same step that
   registers the class from Go, as done for ThemeDelegate.
