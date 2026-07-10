@@ -61,13 +61,11 @@ type genericImage interface {
 
 // Image holds a reference to an image.
 type Image struct {
-	image             genericImage
-	nonTextureImage   genericImage
-	cleanup           runtime.Cleanup
-	nonTextureCleanup runtime.Cleanup
-	hash              uint64
-	scale             geom.Point
-	disposeOnce       sync.Once
+	image           genericImage
+	nonTextureImage genericImage
+	hash            uint64
+	scale           geom.Point
+	disposeOnce     sync.Once
 }
 
 // NewImageFromFilePathOrURL creates a new image from data retrieved from the file path or URL. You may pass nil for the
@@ -170,9 +168,6 @@ func newImage(baseImage genericImage, scale geom.Point, hash uint64) (*Image, er
 	if existing, ok := imgCache[hash]; ok {
 		if actual := existing.Value(); actual != nil {
 			imgCacheLock.Unlock()
-			ReleaseOnUIThread(func() {
-				imgUnref(baseImage)
-			})
 			return actual, nil
 		}
 	}
@@ -183,18 +178,7 @@ func newImage(baseImage genericImage, scale geom.Point, hash uint64) (*Image, er
 	}
 	imgCache[hash] = weak.Make(img)
 	imgCacheLock.Unlock()
-	img.cleanup = addImageCleanup(img, img.image, imgUnref)
 	return img, nil
-}
-
-func addImageCleanup[O, T any](owner *O, handle T, unref func(T)) runtime.Cleanup {
-	return runtime.AddCleanup(owner, func(h T) { ReleaseOnUIThread(func() { unref(h) }) }, handle)
-}
-
-func imgUnref(img genericImage) {
-	if tex, ok := img.(*gl.TextureImage); ok {
-		tex.Release()
-	}
 }
 
 func asRaster(img genericImage) *imagecore.Image {
@@ -220,16 +204,8 @@ func (img *Image) Dispose() {
 			delete(imgCache, img.hash)
 		}
 		imgCacheLock.Unlock()
-		img.cleanup.Stop()
-		img.nonTextureCleanup.Stop()
-		if img.image != nil {
-			imgUnref(img.image)
-			img.image = nil
-		}
-		if img.nonTextureImage != nil {
-			imgUnref(img.nonTextureImage)
-			img.nonTextureImage = nil
-		}
+		img.image = nil
+		img.nonTextureImage = nil
 	})
 }
 
@@ -312,7 +288,6 @@ func (img *Image) imageForCanvas(canvas *Canvas) genericImage {
 		if img.nonTextureImage == nil {
 			return img.image
 		}
-		img.nonTextureCleanup = addImageCleanup(img, img.nonTextureImage, imgUnref)
 		return img.nonTextureImage
 	}
 	m, ok := imageCtxMap[canvas.surface.context]
@@ -320,27 +295,28 @@ func (img *Image) imageForCanvas(canvas *Canvas) genericImage {
 		m = make(map[uint64]genericImage)
 		imageCtxMap[canvas.surface.context] = m
 	}
-	var si genericImage
-	if si, ok = m[img.hash]; ok {
-		return si
+	if cached, present := m[img.hash]; present {
+		return cached
 	}
-	if tex, ok2 := img.image.(*gl.TextureImage); ok2 && tex.Context() == canvas.surface.context {
-		si = tex
-	} else {
-		si = gl.TextureFromImage(canvas.surface.context, asRaster(img.image), gpu.MipmappedNo, gpu.BudgetedYes)
-	}
-	if si == nil {
+	// img.image is always a raster *imagecore.Image (see the constructors and TestImageBackedByRaster), so upload it to
+	// a texture-backed image for this context.
+	tex := gl.TextureFromImage(canvas.surface.context, asRaster(img.image), gpu.MipmappedNo, gpu.BudgetedYes)
+	if tex == nil {
 		return img.image
 	}
-	m[img.hash] = si
-	return si
+	m[img.hash] = tex
+	return tex
 }
 
 func releaseImagesForContext(ctx *gl.DirectContext) {
 	if m, ok := imageCtxMap[ctx]; ok {
 		delete(imageCtxMap, ctx)
 		for _, img := range m {
-			imgUnref(img)
+			// The context map only ever holds texture-backed images produced by gl.TextureFromImage, so releasing
+			// their texture proxies is the one place a real unref happens.
+			if tex, isTex := img.(*gl.TextureImage); isTex {
+				tex.Release()
+			}
 		}
 	}
 	InvokeTaskAfter(func() {
