@@ -458,7 +458,6 @@ func (m *Markdown) processCodeBlock() {
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
-		defer paint.Dispose()
 		gc.DrawRect(rect, paint)
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
@@ -503,7 +502,6 @@ func (m *Markdown) processBlockquote() {
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
-		defer paint.Dispose()
 		gc.DrawRect(rect, paint)
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})

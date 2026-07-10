@@ -87,7 +87,6 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 				decoration.OnBackgroundInk = theme.OnPressedInk
 			}))
 			paint := theme.PressedInk.Paint(gc, rect, paintstyle.Fill)
-			defer paint.Dispose()
 			gc.DrawRect(rect, paint)
 		}
 		link.DefaultDraw(gc, rect)

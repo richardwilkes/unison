@@ -16,11 +16,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/richardwilkes/canvas/font"
+	"github.com/richardwilkes/canvas/textblob"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 const (
@@ -56,7 +57,7 @@ type Font interface {
 	// Size returns the size of the font. This is the value that was passed to FontFace.Font() when creating the font.
 	Size() float32
 	// Metrics returns a copy of the FontMetrics for this font.
-	Metrics() FontMetrics
+	Metrics() font.Metrics
 	// Baseline returns the number of logical pixels to the bottom of characters without descenders.
 	Baseline() float32
 	// LineHeight returns the recommended line height of the font.
@@ -74,10 +75,10 @@ type Font interface {
 	SimpleWidth(str string) float32
 	// TextBlobPosH creates a text blob for glyphs, with specified horizontal positions. The glyphs and positions slices
 	// should have the same length.
-	TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob
+	TextBlobPosH(glyphs []uint16, positions []float32, y float32) *textblob.Blob
 	// Descriptor returns a FontDescriptor for this Font.
 	Descriptor() FontDescriptor
-	skiaFont() skia.Font
+	canvasFont() *font.Font
 }
 
 type internalFont struct {
@@ -85,22 +86,10 @@ type internalFont struct {
 	faces  []*FontFace
 }
 
-// FontMetrics flags
-const (
-	UnderlineThicknessIsValidFontMetricsFlag = 1 << iota
-	UnderlinePositionIsValidFontMetricsFlag
-	StrikeoutThicknessIsValidFontMetricsFlag
-	StrikeoutPositionIsValidFontMetricsFlag
-	BoundsInvalidFontMetricsFlag
-)
-
-// FontMetrics holds various metrics about a font.
-type FontMetrics = skia.FontMetrics
-
 type fontImpl struct {
 	face    *FontFace
-	font    skia.Font
-	metrics FontMetrics
+	font    *font.Font
+	metrics font.Metrics
 	size    float32
 }
 
@@ -112,7 +101,7 @@ func (f *fontImpl) Size() float32 {
 	return f.size
 }
 
-func (f *fontImpl) Metrics() FontMetrics {
+func (f *fontImpl) Metrics() font.Metrics {
 	return f.metrics
 }
 
@@ -125,43 +114,51 @@ func (f *fontImpl) LineHeight() float32 {
 }
 
 func (f *fontImpl) RuneToGlyph(r rune) uint16 {
-	return skia.FontRuneToGlyph(f.font, r)
+	return f.font.UnicharToGlyph(r)
 }
 
 func (f *fontImpl) RunesToGlyphs(r []rune) []uint16 {
 	if len(r) == 0 {
 		return nil
 	}
-	return skia.FontRunesToGlyphs(f.font, r)
+	unichars := make([]int32, len(r))
+	copy(unichars, r)
+	glyphs := make([]uint16, len(r))
+	f.font.UnicharsToGlyphs(unichars, glyphs)
+	return glyphs
 }
 
 func (f *fontImpl) GlyphWidth(glyph uint16) float32 {
-	return skia.FontGlyphWidths(f.font, []uint16{glyph})[0]
+	widths := make([]float32, 1)
+	f.font.GlyphWidths([]uint16{glyph}, widths)
+	return widths[0]
 }
 
 func (f *fontImpl) GlyphWidths(glyphs []uint16) []float32 {
 	if len(glyphs) == 0 {
 		return nil
 	}
-	return skia.FontGlyphWidths(f.font, glyphs)
+	widths := make([]float32, len(glyphs))
+	f.font.GlyphWidths(glyphs, widths)
+	return widths
 }
 
 func (f *fontImpl) SimpleWidth(str string) float32 {
 	if str == "" {
 		return 0
 	}
-	return skia.FontMeasureText(f.font, str)
+	return f.font.MeasureText([]byte(str), font.TextEncodingUTF8, nil, nil)
 }
 
-func (f *fontImpl) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob {
-	builder := skia.TextBlobBuilderNew()
-	skia.TextBlobBuilderAllocRunPosH(builder, f.font, glyphs, positions, y)
-	blob := skia.TextBlobBuilderMake(builder)
-	skia.TextBlobBuilderDelete(builder)
-	return newTextBlob(blob)
+func (f *fontImpl) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *textblob.Blob {
+	builder := textblob.NewBuilder()
+	buffer := builder.AllocRunPosH(f.font, len(glyphs), y, nil)
+	copy(buffer.Glyphs, glyphs)
+	copy(buffer.Pos, positions)
+	return builder.Make()
 }
 
-func (f *fontImpl) skiaFont() skia.Font {
+func (f *fontImpl) canvasFont() *font.Font {
 	return f.font
 }
 

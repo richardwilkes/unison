@@ -7,12 +7,12 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-// Package unison is a cross-platform GUI toolkit for Go desktop applications, rendering with Skia on an OpenGL context.
+// Package unison is a cross-platform GUI toolkit for Go desktop applications, rendering with an OpenGL context.
 //
 // # Threading model
 //
 // Unison is single-threaded. Almost all of its state — every [Panel] and the widgets built on it, every [Window], all
-// drawing via [Canvas], and the native Skia and OpenGL objects behind images, fonts, paints, and the like — is owned by
+// drawing via [Canvas], and the objects behind images, fonts, paints, and the like — is owned by
 // one dedicated OS thread, referred to throughout as the UI thread. None of these types are safe for concurrent use.
 // Reading or mutating them from any other goroutine is a data race that will eventually crash or corrupt the
 // application, even if it appears to work in testing.
@@ -58,13 +58,6 @@
 //			label.MarkForRedraw()
 //		})
 //	}()
-//
-// # Native resource disposal
-//
-// The Skia- and OpenGL-backed wrappers (images, fonts, paints, paths, shaders, filters, and so on) hold native memory.
-// Their finalizers route the actual native free through [ReleaseOnUIThread], so garbage-collected resources are
-// released safely no matter which goroutine drops the last reference. Calling a wrapper's Dispose method directly to
-// free it early, however, must be done on the UI thread.
 //
 // # What is and isn't synchronized
 //

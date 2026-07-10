@@ -165,13 +165,11 @@ func (s *ScrollBar) DefaultSizes(_ geom.Size) (minSize, prefSize, maxSize geom.S
 func (s *ScrollBar) DefaultDraw(gc *Canvas, _ geom.Rect) {
 	if thumb := s.Thumb(); thumb.Width > 0 && thumb.Height > 0 {
 		p := s.ThumbInk.Paint(gc, thumb, paintstyle.Fill)
-		defer p.Dispose()
 		if !s.overThumb {
 			p.SetColorFilter(Alpha30Filter())
 		}
 		gc.DrawRoundedRect(thumb, s.CornerRadius, p)
 		edgePaint := s.EdgeInk.Paint(gc, thumb, paintstyle.Stroke)
-		defer edgePaint.Dispose()
 		gc.DrawRoundedRect(thumb, s.CornerRadius, edgePaint)
 	}
 }

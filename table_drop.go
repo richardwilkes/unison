@@ -44,7 +44,6 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect geom.Rect) {
 	if d.inDragOver {
 		r := d.Table.ContentRect(false).Inset(geom.NewUniformInsets(1))
 		paint := ThemeWarning.Paint(gc, r, paintstyle.Stroke)
-		defer paint.Dispose()
 		paint.SetStrokeWidth(2)
 		paint.SetColorFilter(Alpha30Filter())
 		gc.DrawRect(r, paint)

@@ -870,7 +870,6 @@ func (w *Window) Draw(c *Canvas) {
 			if !w.transparent {
 				paint := ThemeSurface.Paint(c, r, paintstyle.Fill)
 				c.DrawPaint(paint)
-				paint.Dispose()
 			}
 			w.root.Draw(c, r)
 		})

@@ -11,16 +11,16 @@ package unison
 
 import (
 	"maps"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
 
+	"github.com/richardwilkes/canvas/font"
+	"github.com/richardwilkes/canvas/fontmgr"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 var (
@@ -35,7 +35,7 @@ var (
 
 // FontFamily holds information about one font family.
 type FontFamily struct {
-	set  skia.FontStyleSet
+	set  *fontmgr.StyleSet
 	name string
 }
 
@@ -54,15 +54,12 @@ func FontFamilies() []string {
 func FontFamiliesNoCache() []string {
 	cachedFontFamiliesLock.Lock()
 	defer cachedFontFamiliesLock.Unlock()
-	fm := skia.FontMgrRefDefault()
-	count := skia.FontMgrCountFamilies(fm)
+	fm := fontmgr.Default()
+	count := fm.CountFamilies()
 	names := make(map[string]struct{}, count+len(internalFonts))
-	ss := skia.StringNewEmpty()
 	for i := range count {
-		skia.FontMgrGetFamilyName(fm, i, ss)
-		names[skia.StringGetString(ss)] = struct{}{}
+		names[fm.FamilyName(i)] = struct{}{}
 	}
-	skia.StringDelete(ss)
 	internalFontLock.RLock()
 	for k := range internalFonts {
 		names[k] = struct{}{}
@@ -82,16 +79,10 @@ func MatchFontFamily(family string) *FontFamily {
 	if exists {
 		return &FontFamily{name: family}
 	}
-	f := &FontFamily{
+	return &FontFamily{
 		name: family,
-		set:  skia.FontMgrMatchFamily(skia.FontMgrRefDefault(), family),
+		set:  fontmgr.Default().MatchFamily(family),
 	}
-	runtime.AddCleanup(f, func(set skia.FontStyleSet) {
-		ReleaseOnUIThread(func() {
-			skia.FontStyleSetUnref(set)
-		})
-	}, f.set)
-	return f
 }
 
 // Count returns the number of Faces within this FontFamily.
@@ -101,7 +92,7 @@ func (f *FontFamily) Count() int {
 	if fnt, exists := internalFonts[f.name]; exists {
 		return len(fnt.faces)
 	}
-	return skia.FontStyleSetGetCount(f.set)
+	return f.set.Count()
 }
 
 // Style returns the style information for the given index. Must be >= 0 and < Count().
@@ -125,13 +116,8 @@ func (f *FontFamily) Style(index int) (description string, weightValue weight.En
 		}
 		return description, weightValue, spacingValue, slantValue
 	}
-	ss := skia.StringNewEmpty()
-	defer skia.StringDelete(ss)
-	style := skia.FontStyleNew(0, 0, 0)
-	defer skia.FontStyleDelete(style)
-	skia.FontStyleSetGetStyle(f.set, index, style, ss)
-	return skia.StringGetString(ss), weight.Enum(skia.FontStyleGetWeight(style)),
-		spacing.Enum(skia.FontStyleGetWidth(style)), slant.Enum(skia.FontStyleGetSlant(style))
+	style, name := f.set.Style(index)
+	return name, weight.Enum(style.Weight()), spacing.Enum(style.Width()), slant.Enum(style.Slant())
 }
 
 // Face returns the FontFace for the given index. Must be >= 0 and < Count().
@@ -144,7 +130,7 @@ func (f *FontFamily) Face(index int) *FontFace {
 		}
 		return nil
 	}
-	return newFace(skia.FontStyleSetCreateTypeFace(f.set, index))
+	return newFace(f.set.CreateTypeface(index))
 }
 
 // MatchStyle attempts to locate the FontFace within the family with the given style. Will return nil if nothing
@@ -211,9 +197,8 @@ func (f *FontFamily) MatchStyle(weightValue weight.Enum, spacingValue spacing.En
 		}
 		return fnt.faces[bestIndex]
 	}
-	style := skia.FontStyleNew(skia.FontWeight(weightValue), skia.FontSpacing(spacingValue), skia.FontSlant(slantValue))
-	defer skia.FontStyleDelete(style)
-	return newFace(skia.FontStyleSetMatchStyle(f.set, style))
+	style := font.NewStyle(int(weightValue), int(spacingValue), font.Slant(slantValue))
+	return newFace(f.set.MatchStyle(style))
 }
 
 func (f *FontFamily) String() string {

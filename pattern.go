@@ -48,6 +48,5 @@ func (p *Pattern) Paint(canvas *Canvas, _ geom.Rect, style paintstyle.Enum) *Pai
 			TransY: p.Offset.Y,
 		})
 	paint.SetShader(shader)
-	shader.Dispose()
 	return paint
 }

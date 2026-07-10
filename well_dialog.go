@@ -277,7 +277,6 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 		} else {
 			paint := ink.Paint(canvas, r, paintstyle.Fill)
 			canvas.DrawRect(r, paint)
-			paint.Dispose()
 		}
 	}
 	parent.AddChild(preview)

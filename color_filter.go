@@ -10,59 +10,48 @@
 package unison
 
 import (
-	"runtime"
 	"sync"
 
+	"github.com/richardwilkes/canvas/colorfilter"
+	"github.com/richardwilkes/canvas/raster"
+	"github.com/richardwilkes/canvas/shaders"
+	"github.com/richardwilkes/canvas/skcolor"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/invertstyle"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // ColorFilter is called with source colors and return new colors, which are then passed onto the next stage.
 type ColorFilter struct {
-	filter      skia.ColorFilter
-	cleanup     runtime.Cleanup
-	disposeOnce sync.Once
+	filter shaders.ColorFilter
 }
 
-func newColorFilter(filter skia.ColorFilter) *ColorFilter {
+func newColorFilter(filter shaders.ColorFilter) *ColorFilter {
 	if filter == nil {
 		return nil
 	}
-	f := &ColorFilter{filter: filter}
-	f.cleanup = newSkiaCleanup(f, filter, skia.ColorFilterUnref)
-	return f
+	return &ColorFilter{filter: filter}
 }
 
-func (f *ColorFilter) filterOrNil() skia.ColorFilter {
+func (f *ColorFilter) filterOrNil() shaders.ColorFilter {
 	if f == nil {
 		return nil
 	}
 	return f.filter
 }
 
-// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
-// trigger it.
-func (f *ColorFilter) Dispose() {
-	if f == nil {
-		return
-	}
-	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.ColorFilterUnref)
-}
-
 // NewBlendColorFilter returns a new blend color filter.
 func NewBlendColorFilter(color Color, blendMode blendmode.Enum) *ColorFilter {
-	return newColorFilter(skia.ColorFilterNewMode(skia.Color(color), skia.BlendMode(blendMode)))
+	return newColorFilter(colorfilter.NewBlend(skcolor.Color(color), raster.BlendMode(blendMode)))
 }
 
 // NewLightingColorFilter returns a new lighting color filter.
 func NewLightingColorFilter(mul, add Color) *ColorFilter {
-	return newColorFilter(skia.ColorFilterNewLighting(skia.Color(mul), skia.Color(add)))
+	return newColorFilter(colorfilter.NewLighting(skcolor.Color(mul), skcolor.Color(add)))
 }
 
 // NewComposeColorFilter returns a new color filter that combines two other color filters.
 func NewComposeColorFilter(outer, inner *ColorFilter) *ColorFilter {
-	return newColorFilter(skia.ColorFilterNewCompose(outer.filter, inner.filter))
+	return newColorFilter(colorfilter.NewCompose(outer.filter, inner.filter))
 }
 
 // NewMatrixColorFilter returns a new matrix color filter. array should be 20 long. If smaller, it will be filled with
@@ -73,19 +62,19 @@ func NewMatrixColorFilter(array []float32) *ColorFilter {
 		copy(a, array)
 		array = a
 	}
-	return newColorFilter(skia.ColorFilterNewColorMatrix(array))
+	return newColorFilter(colorfilter.NewMatrix((*[20]float32)(array)))
 }
 
 // NewLumaColorFilter returns a new luma color filter.
 func NewLumaColorFilter() *ColorFilter {
-	return newColorFilter(skia.ColorFilterNewLumaColor())
+	return newColorFilter(colorfilter.NewLuma())
 }
 
 // NewHighContrastColorFilter returns a new high contrast color filter.
 func NewHighContrastColorFilter(contrast float32, style invertstyle.Enum, grayscale bool) *ColorFilter {
-	return newColorFilter(skia.ColorFilterNewHighContrast(&skia.HighContrastConfig{
+	return newColorFilter(colorfilter.NewHighContrast(colorfilter.HighContrastConfig{
 		Grayscale:   grayscale,
-		InvertStyle: skia.InvertStyle(style),
+		InvertStyle: colorfilter.HighContrastInvertStyle(style),
 		Contrast:    contrast,
 	}))
 }

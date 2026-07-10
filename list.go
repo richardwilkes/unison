@@ -279,7 +279,6 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	rect := l.ContentRect(false)
 	intersect := rect.Intersect(dirty)
 	backgroundPaint := l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRect(intersect, backgroundPaint)
 	row, y := l.rowAt(dirty.Y)
 	if row >= 0 {
@@ -299,7 +298,6 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
 			paint := bg.Paint(canvas, r, paintstyle.Fill)
 			canvas.DrawRect(r, paint)
-			paint.Dispose()
 			canvas.Save()
 			tl := cellRect.Point
 			dirty.Point = dirty.Point.Sub(tl)

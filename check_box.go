@@ -60,14 +60,12 @@ func (c *CheckBox) drawCheck(canvas *Canvas, rect geom.Rect, thickness float32, 
 		return
 	}
 	paint := fg.Paint(canvas, rect, paintstyle.Stroke)
-	defer paint.Dispose()
 	paint.SetStrokeWidth(2)
 	if !c.Enabled() {
 		paint.SetColorFilter(Grayscale30Filter())
 	}
 	if c.State == check.On {
 		path := NewPath()
-		defer path.Dispose()
 		path.MoveTo(geom.NewPoint(rect.X+rect.Width*0.25, rect.Y+rect.Height*0.55))
 		path.LineTo(geom.NewPoint(rect.X+rect.Width*0.45, rect.Y+rect.Height*0.7))
 		path.LineTo(geom.NewPoint(rect.X+rect.Width*0.75, rect.Y+rect.Height*0.3))

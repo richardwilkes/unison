@@ -10,7 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/unison/internal/skia"
+	"github.com/richardwilkes/canvas/font"
+	"github.com/richardwilkes/canvas/textblob"
 )
 
 var _ Font = &IndirectFont{}
@@ -31,7 +32,7 @@ func (f *IndirectFont) Size() float32 {
 }
 
 // Metrics implements Font.
-func (f *IndirectFont) Metrics() FontMetrics {
+func (f *IndirectFont) Metrics() font.Metrics {
 	return f.Font.Metrics()
 }
 
@@ -76,10 +77,10 @@ func (f *IndirectFont) Descriptor() FontDescriptor {
 }
 
 // TextBlobPosH implements Font.
-func (f *IndirectFont) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob {
+func (f *IndirectFont) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *textblob.Blob {
 	return f.Font.TextBlobPosH(glyphs, positions, y)
 }
 
-func (f *IndirectFont) skiaFont() skia.Font {
-	return f.Font.skiaFont()
+func (f *IndirectFont) canvasFont() *font.Font {
+	return f.Font.canvasFont()
 }

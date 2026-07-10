@@ -10,90 +10,75 @@
 package unison
 
 import (
-	"runtime"
-	"sync"
-
+	skpatheffect "github.com/richardwilkes/canvas/patheffect"
+	"github.com/richardwilkes/canvas/stroke"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/patheffect"
 	"github.com/richardwilkes/unison/enums/trimmode"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // PathEffect affects the geometry of a drawing primitive before it is transformed by the canvas' matrix and drawn.
 type PathEffect struct {
-	effect      skia.PathEffect
-	cleanup     runtime.Cleanup
-	disposeOnce sync.Once
+	effect stroke.PathEffect
 }
 
-func newPathEffect(effect skia.PathEffect) *PathEffect {
+func newPathEffect(effect stroke.PathEffect) *PathEffect {
 	if effect == nil {
 		return nil
 	}
-	e := &PathEffect{effect: effect}
-	e.cleanup = newSkiaCleanup(e, effect, skia.PathEffectUnref)
-	return e
+	return &PathEffect{effect: effect}
 }
 
-func (e *PathEffect) effectOrNil() skia.PathEffect {
+func (e *PathEffect) effectOrNil() stroke.PathEffect {
 	if e == nil {
 		return nil
 	}
 	return e.effect
 }
 
-// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
-// trigger it.
-func (e *PathEffect) Dispose() {
-	if e == nil {
-		return
-	}
-	disposeSkiaHandle(&e.disposeOnce, e.cleanup, &e.effect, skia.PathEffectUnref)
-}
-
 // NewComposePathEffect creates a new PathEffect that combines two PathEffects.
 func NewComposePathEffect(outer, inner *PathEffect) *PathEffect {
-	return newPathEffect(skia.PathEffectCreateCompose(outer.effect, inner.effect))
+	return newPathEffect(skpatheffect.MakeCompose(outer.effect, inner.effect))
 }
 
 // NewSumPathEffect creates a new sum PathEffect.
 func NewSumPathEffect(first, second *PathEffect) *PathEffect {
-	return newPathEffect(skia.PathEffectCreateSum(first.effect, second.effect))
+	return newPathEffect(skpatheffect.MakeSum(first.effect, second.effect))
 }
 
 // NewDiscretePathEffect creates a new discrete PathEffect.
 func NewDiscretePathEffect(segLength, deviation float32, seedAssist uint32) *PathEffect {
-	return newPathEffect(skia.PathEffectCreateDiscrete(segLength, deviation, seedAssist))
+	return newPathEffect(skpatheffect.MakeDiscrete(segLength, deviation, seedAssist))
 }
 
 // NewCornerPathEffect creates a new corner PathEffect.
 func NewCornerPathEffect(radius float32) *PathEffect {
-	return newPathEffect(skia.PathEffectCreateCorner(radius))
+	return newPathEffect(skpatheffect.MakeCorner(radius))
 }
 
 // New1dPathPathEffect creates a new 1D path PathEffect.
 func New1dPathPathEffect(path *Path, advance, phase float32, style patheffect.Enum) *PathEffect {
-	return newPathEffect(skia.PathEffectCreate1dPath(path.path, advance, phase, skia.PathEffect1DStyle(style)))
+	return newPathEffect(skpatheffect.MakePath1D(path.path, advance, phase, skpatheffect.Path1DStyle(style)))
 }
 
 // New2dLinePathEffect creates a new 2D line PathEffect.
 func New2dLinePathEffect(width float32, matrix geom.Matrix) *PathEffect {
-	return newPathEffect(skia.PathEffectCreate2dLine(width, matrix))
+	return newPathEffect(skpatheffect.MakeLine2D(width, toSkMatrixPtr(matrix)))
 }
 
 // New2dPathEffect creates a new 2D PathEffect.
 func New2dPathEffect(matrix geom.Matrix, path *Path) *PathEffect {
-	return newPathEffect(skia.PathEffectCreate2dPath(matrix, path.path))
+	return newPathEffect(skpatheffect.MakePath2D(toSkMatrixPtr(matrix), path.path))
 }
 
 // NewDashPathEffect creates a new dash PathEffect.
 func NewDashPathEffect(intervals []float32, phase float32) *PathEffect {
-	return newPathEffect(skia.PathEffectCreateDash(intervals, phase))
+	return newPathEffect(skpatheffect.MakeDash(intervals, phase))
 }
 
 // NewTrimPathEffect creates a new trim PathEffect.
 func NewTrimPathEffect(start, stop float32, mode trimmode.Enum) *PathEffect {
-	return newPathEffect(skia.PathEffectCreateTrim(start, stop, skia.TrimMode(mode)))
+	return newPathEffect(skpatheffect.MakeTrim(start, stop, skpatheffect.TrimMode(mode)))
 }
 
 var dashEffect *PathEffect

@@ -292,7 +292,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 		bg = DefaultMenuItemTheme.SelectionColor
 	}
 	bgPaint := bg.Paint(gc, rect, paintstyle.Fill)
-	defer bgPaint.Dispose()
 	gc.DrawRect(rect, bgPaint)
 
 	if !mi.enabled {
@@ -305,7 +304,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 	if mi.isSeparator {
 		separatorPaint := fg.Paint(gc, rect, paintstyle.Fill)
 		gc.DrawLine(rect.Point, geom.NewPoint(rect.Right(), rect.Y), separatorPaint)
-		separatorPaint.Dispose()
 	} else {
 		t := NewText(mi.Title(), &TextDecoration{
 			Font:            DefaultMenuItemTheme.TitleFont,
@@ -332,7 +330,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				}
 				statePaint := fg.Paint(gc, r, paintstyle.Fill)
 				drawable.DrawInRect(gc, r, nil, statePaint)
-				statePaint.Dispose()
 			}
 			if mi.keyBinding.KeyCode != 0 {
 				keys := mi.keyBinding.String()
@@ -355,7 +352,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 			}
 			chevronPaint := fg.Paint(gc, rect, paintstyle.Fill)
 			drawable.DrawInRect(gc, rect, nil, chevronPaint)
-			chevronPaint.Dispose()
 		}
 	}
 }

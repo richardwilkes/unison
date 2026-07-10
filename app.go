@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/richardwilkes/canvas/codecs"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 var (
@@ -207,7 +207,7 @@ func finishProcessingEvents() {
 }
 
 func finishStartup() {
-	skiaColorspace = skia.ColorSpaceNewSRGB()
+	codecs.Register()
 	RebuildDynamicColors()
 	apiLateInit()
 	SafeCall(startupFinishedCallback)

@@ -64,13 +64,11 @@ func (d *DockTheme) DockDividerSize() float32 {
 // DrawHorizontalGripper draws the horizontal divider gripper.
 func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r geom.Rect) {
 	dividerPaint := d.DividerInk.Paint(canvas, r, paintstyle.Fill)
-	defer dividerPaint.Dispose()
 	canvas.DrawRect(r, dividerPaint)
 	gripLength := d.DockGripLength()
 	x := r.X + (r.Width-d.GripWidth)/2
 	y := r.Y + (r.Height-gripLength)/2
 	paint := d.GripInk.Paint(canvas, r, paintstyle.Fill)
-	defer paint.Dispose()
 	for yy := y; yy < y+gripLength; yy += d.GripHeight + d.GripGap {
 		canvas.DrawRect(geom.NewRect(x, yy, d.GripWidth, d.GripHeight), paint)
 	}
@@ -83,13 +81,11 @@ func (d *DockTheme) DrawHorizontalGripper(canvas *Canvas, r geom.Rect) {
 // DrawVerticalGripper draws the vertical divider gripper.
 func (d *DockTheme) DrawVerticalGripper(canvas *Canvas, r geom.Rect) {
 	dividerPaint := d.DividerInk.Paint(canvas, r, paintstyle.Fill)
-	defer dividerPaint.Dispose()
 	canvas.DrawRect(r, dividerPaint)
 	gripLength := d.DockGripLength()
 	x := r.X + (r.Width-gripLength)/2
 	y := r.Y + (r.Height-d.GripWidth)/2
 	paint := d.GripInk.Paint(canvas, r, paintstyle.Fill)
-	defer paint.Dispose()
 	for xx := x; xx < x+gripLength; xx += d.GripHeight + d.GripGap {
 		canvas.DrawRect(geom.NewRect(xx, y, d.GripHeight, d.GripWidth), paint)
 	}
@@ -207,7 +203,6 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, s side.Enum) {
 func (d *Dock) DefaultDraw(gc *Canvas, _ geom.Rect) {
 	rect := d.ContentRect(true)
 	paint := d.BackgroundInk.Paint(gc, rect, paintstyle.Fill)
-	defer paint.Dispose()
 	gc.DrawRect(rect, paint)
 }
 
@@ -233,12 +228,10 @@ func (d *Dock) DefaultDrawOver(gc *Canvas, dirty geom.Rect) {
 			r.Width = half
 		}
 		paint := d.DropAreaInk.Paint(gc, r, paintstyle.Fill)
-		defer paint.Dispose()
 		paint.SetColorFilter(Alpha30Filter())
 		gc.DrawRect(r, paint)
 		r = r.Inset(geom.NewUniformInsets(1))
 		p := d.DropAreaInk.Paint(gc, r, paintstyle.Stroke)
-		defer p.Dispose()
 		p.SetStrokeWidth(2)
 		gc.DrawRect(r, p)
 	}

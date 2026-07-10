@@ -150,6 +150,5 @@ func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Pain
 		xos.ExitWithErr(errs.Newf("unknown gradient type: %v", g.Kind))
 	}
 	p.SetShader(shader)
-	shader.Dispose()
 	return p
 }

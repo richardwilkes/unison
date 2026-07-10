@@ -298,7 +298,6 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	}
 	rect := f.ContentRect(true)
 	backgroundPaint := bg.Paint(canvas, rect, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRect(rect, backgroundPaint)
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, pathop.Intersect, false)
@@ -332,7 +331,6 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				rect.Height = f.Font.LineHeight()
 				cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
 				canvas.DrawRect(rect, cursorPaint)
-				cursorPaint.Dispose()
 			}
 			f.scheduleBlink()
 		}
@@ -369,7 +367,6 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				selRect := geom.NewRect(left, textTop, right-left, textHeight)
 				selectionPaint := f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill)
 				canvas.DrawRect(selRect, selectionPaint)
-				selectionPaint.Dispose()
 				t.Draw(canvas, geom.NewPoint(left, textBaseLine))
 				if selEnd < end {
 					e = end
@@ -393,7 +390,6 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 					cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
 					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
 						cursorPaint)
-					cursorPaint.Dispose()
 				}
 				f.scheduleBlink()
 			}

@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Unison is a cross-platform (macOS, Windows, Linux) GUI toolkit for Go desktop applications. It renders with Skia (via
-CGO bindings) on an OpenGL context, and defines its own consistent look & feel rather than using native widgets.
-Requires Go 1.26+ and CGO; the platform C/Objective-C dependencies are listed in [README.md](README.md#required-setup).
+Unison is a cross-platform (macOS, Windows, Linux) GUI toolkit for Go desktop applications. It renders with OpenGL, and
+defines its own consistent look & feel rather than using native widgets. Requires Go 1.26+ and CGO; the platform
+C/Objective-C dependencies are listed in [README.md](README.md#required-setup).
 
 ## Commands
 
@@ -53,22 +53,14 @@ Cross-platform code is split by filename suffix, not build tags in most cases:
 - `foo_darwin.go`, `foo_linux.go`, `foo_windows.go` — per-OS implementations
 - `foo_other.go` — fallback for platforms without a specific need
 
-The actual OS integration (windowing, menus, dialogs, clipboard, drag & drop, OpenGL context) lives in `internal/`:
+The actual OS integration (windowing, menus, dialogs, clipboard, drag & drop) lives in `internal/`:
 
 - `internal/mac/` — Objective-C (`.m`) + CGO, Cocoa framework
 - `internal/w32/` — Win32 API bindings
 - `internal/x11/` — X11 bindings for Linux
-- `internal/skia/` — Skia graphics bindings; prebuilt static libs (`libskia_*.a`) and `skia_windows.dll` are committed,
-  with `sk_capi.h` as the C API surface
 
 When adding a feature that touches the OS, expect to implement it three times (one file per platform) plus the shared
 API file.
-
-### Skia rendering
-
-Drawing goes through Skia: `Canvas`, `Paint`, `Path`, `Font`, `Image`, `Surface`, `Shader`, gradients, and filters all
-wrap Skia objects from `internal/skia`. These hold native memory — respect the existing dispose/finalizer patterns when
-creating wrappers.
 
 ### Generated enums
 

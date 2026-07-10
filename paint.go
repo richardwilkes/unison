@@ -10,56 +10,44 @@
 package unison
 
 import (
-	"runtime"
-	"sync"
-
+	"github.com/richardwilkes/canvas/canvas"
+	skgeom "github.com/richardwilkes/canvas/geom"
+	"github.com/richardwilkes/canvas/raster"
+	"github.com/richardwilkes/canvas/skcolor"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/strokecap"
 	"github.com/richardwilkes/unison/enums/strokejoin"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // Paint controls options applied when drawing.
 type Paint struct {
-	paint       skia.Paint
-	cleanup     runtime.Cleanup
-	disposeOnce sync.Once
+	paint *canvas.Paint
 }
 
-func newPaint(paint skia.Paint) *Paint {
-	p := &Paint{paint: paint}
-	p.cleanup = newSkiaCleanup(p, paint, skia.PaintDelete)
-	return p
+func newPaint(paint *canvas.Paint) *Paint {
+	return &Paint{paint: paint}
 }
 
 // NewPaint creates a new Paint.
 func NewPaint() *Paint {
-	p := newPaint(skia.PaintNew())
+	p := newPaint(canvas.NewPaint())
 	p.SetAntialias(true)
 	return p
 }
 
-func (p *Paint) paintOrNil() skia.Paint {
+func (p *Paint) paintOrNil() *canvas.Paint {
 	if p == nil {
 		return nil
 	}
 	return p.paint
 }
 
-// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
-// trigger it.
-func (p *Paint) Dispose() {
-	if p == nil {
-		return
-	}
-	disposeSkiaHandle(&p.disposeOnce, p.cleanup, &p.paint, skia.PaintDelete)
-}
-
 // Clone the Paint.
 func (p *Paint) Clone() *Paint {
-	return newPaint(skia.PaintClone(p.paint))
+	clone := *p.paint
+	return &Paint{paint: &clone}
 }
 
 // Equivalent returns true if these Paint objects are equivalent.
@@ -70,152 +58,152 @@ func (p *Paint) Equivalent(other *Paint) bool {
 	if other == nil {
 		return false
 	}
-	return skia.PaintEquivalent(p.paint, other.paint)
+	return p.paint == other.paint
 }
 
 // Reset the Paint back to its default state.
 func (p *Paint) Reset() {
-	skia.PaintReset(p.paint)
+	p.paint = canvas.NewPaint()
 }
 
 // Antialias returns true if pixels on the active edges of a path may be drawn with partial transparency.
 func (p *Paint) Antialias() bool {
-	return skia.PaintIsAntialias(p.paint)
+	return p.paint.AntiAlias
 }
 
 // SetAntialias sets whether pixels on the active edges of a path may be drawn with partial transparency.
 func (p *Paint) SetAntialias(enabled bool) {
-	skia.PaintSetAntialias(p.paint, enabled)
+	p.paint.AntiAlias = enabled
 }
 
 // Dither returns true if color error may be distributed to smooth color transition.
 func (p *Paint) Dither() bool {
-	return skia.PaintIsDither(p.paint)
+	return p.paint.Dither
 }
 
 // SetDither sets whether color error may be distributed to smooth color transition.
 func (p *Paint) SetDither(enabled bool) {
-	skia.PaintSetDither(p.paint, enabled)
+	p.paint.Dither = enabled
 }
 
 // Color returns the current color.
 func (p *Paint) Color() Color {
-	return Color(skia.PaintGetColor(p.paint))
+	return Color(p.paint.Color)
 }
 
 // SetColor sets the color.
 func (p *Paint) SetColor(color Color) {
-	skia.PaintSetColor(p.paint, skia.Color(color))
+	p.paint.Color = skcolor.Color(color)
 }
 
 // Style returns the current PaintStyle.
 func (p *Paint) Style() paintstyle.Enum {
-	return paintstyle.Enum(skia.PaintGetStyle(p.paint))
+	return paintstyle.Enum(p.paint.Style)
 }
 
 // SetStyle sets the PaintStyle.
 func (p *Paint) SetStyle(style paintstyle.Enum) {
-	skia.PaintSetStyle(p.paint, skia.PaintStyle(style))
+	p.paint.Style = canvas.Style(style)
 }
 
 // StrokeWidth returns the current stroke width.
 func (p *Paint) StrokeWidth() float32 {
-	return skia.PaintGetStrokeWidth(p.paint)
+	return p.paint.StrokeWidth
 }
 
 // SetStrokeWidth sets the stroke width.
 func (p *Paint) SetStrokeWidth(width float32) {
-	skia.PaintSetStrokeWidth(p.paint, width)
+	p.paint.StrokeWidth = width
 }
 
 // StrokeMiter returns the current stroke miter limit for sharp corners.
 func (p *Paint) StrokeMiter() float32 {
-	return skia.PaintGetStrokeMiter(p.paint)
+	return p.paint.MiterLimit
 }
 
 // SetStrokeMiter sets the miter limit for sharp corners.
 func (p *Paint) SetStrokeMiter(miter float32) {
-	skia.PaintSetStrokeMiter(p.paint, miter)
+	p.paint.MiterLimit = miter
 }
 
 // StrokeCap returns the current StrokeCap.
 func (p *Paint) StrokeCap() strokecap.Enum {
-	return strokecap.Enum(skia.PaintGetStrokeCap(p.paint))
+	return strokecap.Enum(p.paint.Cap)
 }
 
 // SetStrokeCap sets the StrokeCap.
 func (p *Paint) SetStrokeCap(strokeCap strokecap.Enum) {
-	skia.PaintSetStrokeCap(p.paint, skia.StrokeCap(strokeCap))
+	p.paint.Cap = canvas.StrokeCap(strokeCap)
 }
 
 // StrokeJoin returns the current StrokeJoin.
 func (p *Paint) StrokeJoin() strokejoin.Enum {
-	return strokejoin.Enum(skia.PaintGetStrokeJoin(p.paint))
+	return strokejoin.Enum(p.paint.Join)
 }
 
 // SetStrokeJoin sets the StrokeJoin.
 func (p *Paint) SetStrokeJoin(strokeJoin strokejoin.Enum) {
-	skia.PaintSetStrokeJoin(p.paint, skia.StrokeJoin(strokeJoin))
+	p.paint.Join = canvas.StrokeJoin(strokeJoin)
 }
 
 // BlendMode returns the current BlendMode.
 func (p *Paint) BlendMode() blendmode.Enum {
-	return blendmode.Enum(skia.PaintGetBlendMode(p.paint))
+	return blendmode.Enum(p.paint.BlendMode)
 }
 
 // SetBlendMode sets the BlendMode.
 func (p *Paint) SetBlendMode(blendMode blendmode.Enum) {
-	skia.PaintSetBlendMode(p.paint, skia.BlendMode(blendMode))
+	p.paint.BlendMode = raster.BlendMode(blendMode)
 }
 
 // Shader returns the current Shader.
 func (p *Paint) Shader() *Shader {
-	return newShader(skia.PaintGetShader(p.paint))
+	return newShader(p.paint.Shader)
 }
 
 // SetShader sets the Shader.
 func (p *Paint) SetShader(shader *Shader) {
-	skia.PaintSetShader(p.paint, shader.shaderOrNil())
+	p.paint.Shader = shader.shaderOrNil()
 }
 
 // ColorFilter returns the current ColorFilter.
 func (p *Paint) ColorFilter() *ColorFilter {
-	return newColorFilter(skia.PaintGetColorFilter(p.paint))
+	return newColorFilter(p.paint.ColorFilter)
 }
 
 // SetColorFilter sets the ColorFilter.
 func (p *Paint) SetColorFilter(filter *ColorFilter) {
-	skia.PaintSetColorFilter(p.paint, filter.filterOrNil())
+	p.paint.ColorFilter = filter.filterOrNil()
 }
 
 // MaskFilter returns the current MaskFilter.
 func (p *Paint) MaskFilter() *MaskFilter {
-	return newMaskFilter(skia.PaintGetMaskFilter(p.paint))
+	return newMaskFilter(p.paint.MaskFilter)
 }
 
 // SetMaskFilter sets the MaskFilter.
 func (p *Paint) SetMaskFilter(filter *MaskFilter) {
-	skia.PaintSetMaskFilter(p.paint, filter.filterOrNil())
+	p.paint.MaskFilter = filter.filterOrNil()
 }
 
 // ImageFilter returns the current ImageFilter.
 func (p *Paint) ImageFilter() *ImageFilter {
-	return newImageFilter(skia.PaintGetImageFilter(p.paint))
+	return newImageFilter(p.paint.ImageFilter)
 }
 
 // SetImageFilter sets the ImageFilter.
 func (p *Paint) SetImageFilter(filter *ImageFilter) {
-	skia.PaintSetImageFilter(p.paint, filter.filterOrNil())
+	p.paint.ImageFilter = filter.filterOrNil()
 }
 
 // PathEffect returns the current PathEffect.
 func (p *Paint) PathEffect() *PathEffect {
-	return newPathEffect(skia.PaintGetPathEffect(p.paint))
+	return newPathEffect(p.paint.PathEffect)
 }
 
 // SetPathEffect sets the PathEffect.
 func (p *Paint) SetPathEffect(effect *PathEffect) {
-	skia.PaintSetPathEffect(p.paint, effect.effectOrNil())
+	p.paint.PathEffect = effect.effectOrNil()
 }
 
 // FillPath returns a path representing the path if it was stroked. resScale determines the precision used. Values >1
@@ -223,7 +211,7 @@ func (p *Paint) SetPathEffect(effect *PathEffect) {
 // represents a hairline, otherwise it represents a fill.
 func (p *Paint) FillPath(path *Path, resScale float32) (result *Path, hairline bool) {
 	result = NewPath()
-	isFill := skia.PaintGetFillPath(p.paint, path.path, result.path, nil, resScale)
+	isFill := p.paint.FillPath(path.path, result.path, nil, resScale)
 	return result, !isFill
 }
 
@@ -233,6 +221,11 @@ func (p *Paint) FillPath(path *Path, resScale float32) (result *Path, hairline b
 // a fill.
 func (p *Paint) FillPathWithCull(path *Path, cullRect *geom.Rect, resScale float32) (result *Path, hairline bool) {
 	result = NewPath()
-	isFill := skia.PaintGetFillPath(p.paint, path.path, result.path, cullRect, resScale)
+	var cull *skgeom.Rect
+	if cullRect != nil {
+		r := toSkRect(*cullRect)
+		cull = &r
+	}
+	isFill := p.paint.FillPath(path.path, result.path, cull, resScale)
 	return result, !isFill
 }

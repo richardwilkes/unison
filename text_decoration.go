@@ -53,11 +53,9 @@ func (d *TextDecoration) DrawText(canvas *Canvas, text string, pt geom.Point, wi
 	if !xreflect.IsNil(d.BackgroundInk) {
 		backgroundPaint := d.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
 		canvas.DrawRect(r, backgroundPaint)
-		backgroundPaint.Dispose()
 	}
 	pt.Y += d.BaselineOffset
 	paint := d.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)
-	defer paint.Dispose()
 	canvas.DrawSimpleString(text, pt, d.Font, paint)
 	if d.Underline || d.StrikeThrough {
 		pt.Y++

@@ -83,7 +83,6 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 
 func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect) {
 	backgroundPaint := d.BackgroundInk.Paint(gc, rect, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	gc.DrawRect(rect, backgroundPaint)
 	if d.dragInsertIndex >= 0 {
 		r := d.ContentRect(false)
@@ -96,7 +95,6 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect) {
 			r.X = tabs[len(tabs)-1].FrameRect().Right()
 		}
 		dropPaint := d.DropAreaInk.Paint(gc, rect, paintstyle.Fill)
-		defer dropPaint.Dispose()
 		gc.DrawRect(r, dropPaint)
 	}
 }

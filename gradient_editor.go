@@ -485,12 +485,10 @@ func (e *GradientEditor) drawBar(canvas *Canvas, _ geom.Rect) {
 	}
 	paint := preview.Paint(canvas, r, paintstyle.Fill)
 	canvas.DrawRect(r, paint)
-	paint.Dispose()
 
 	edge := ThemeSurfaceEdge.Paint(canvas, r, paintstyle.Stroke)
 	edge.SetStrokeWidth(1)
 	canvas.DrawRect(r, edge)
-	edge.Dispose()
 
 	for i, stop := range e.gradient.Stops {
 		x := r.X + stop.Location*r.Width
@@ -508,8 +506,6 @@ func (e *GradientEditor) drawBar(canvas *Canvas, _ geom.Rect) {
 		stroke := ThemeSurfaceEdge.Paint(canvas, r, paintstyle.Stroke)
 		canvas.DrawPath(path, fill)
 		canvas.DrawPath(path, stroke)
-		fill.Dispose()
-		path.Dispose()
 	}
 }
 

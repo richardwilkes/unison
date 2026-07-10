@@ -10,45 +10,33 @@
 package unison
 
 import (
-	"runtime"
-	"sync"
-
+	skgeom "github.com/richardwilkes/canvas/geom"
+	"github.com/richardwilkes/canvas/imagefilter"
+	"github.com/richardwilkes/canvas/shaders"
+	"github.com/richardwilkes/canvas/skcolor"
+	"github.com/richardwilkes/canvas/skif"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/colorchannel"
 	"github.com/richardwilkes/unison/enums/tilemode"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // ImageFilter performs a transformation on the image before drawing it.
 type ImageFilter struct {
-	filter      skia.ImageFilter
-	cleanup     runtime.Cleanup
-	disposeOnce sync.Once
+	filter skif.Filter
 }
 
-func newImageFilter(filter skia.ImageFilter) *ImageFilter {
+func newImageFilter(filter skif.Filter) *ImageFilter {
 	if filter == nil {
 		return nil
 	}
-	f := &ImageFilter{filter: filter}
-	f.cleanup = newSkiaCleanup(f, filter, skia.ImageFilterUnref)
-	return f
+	return &ImageFilter{filter: filter}
 }
 
-func (f *ImageFilter) filterOrNil() skia.ImageFilter {
+func (f *ImageFilter) filterOrNil() skif.Filter {
 	if f == nil {
 		return nil
 	}
 	return f.filter
-}
-
-// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
-// trigger it.
-func (f *ImageFilter) Dispose() {
-	if f == nil {
-		return
-	}
-	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.ImageFilterUnref)
 }
 
 // NewArithmeticImageFilter returns a new arithmetic image filter. Each output pixel is the result of combining the
@@ -58,94 +46,68 @@ func (f *ImageFilter) Dispose() {
 // If enforcePMColor is true, the RGB channels will clamped to the calculated alpha.
 // cropRect may be nil.
 func NewArithmeticImageFilter(k1, k2, k3, k4 float32, background, foreground *ImageFilter, enforcePMColor bool, cropRect *geom.Rect) *ImageFilter {
-	var bg, fg skia.ImageFilter
-	if background != nil {
-		bg = background.filter
-	}
-	if foreground != nil {
-		fg = foreground.filter
-	}
-	return newImageFilter(skia.ImageFilterNewArithmetic(k1, k2, k3, k4, enforcePMColor, bg, fg, cropRect))
+	return newImageFilter(imagefilter.Arithmetic(k1, k2, k3, k4, enforcePMColor, background.filterOrNil(),
+		foreground.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewBlurImageFilter returns a new blur image filter. input may be nil, in which case the source bitmap is used.
 // cropRect may be nil.
 func NewBlurImageFilter(sigmaX, sigmaY float32, tileMode tilemode.Enum, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewBlur(sigmaX, sigmaY, skia.TileMode(tileMode), in, cropRect))
+	return newImageFilter(imagefilter.Blur(sigmaX, sigmaY, shaders.TileMode(tileMode), input.filterOrNil(),
+		toSkRectPtr(cropRect)))
 }
 
 // NewColorImageFilter returns a new color image filter. input may be nil, in which case the source bitmap is used.
 // cropRect may be nil.
 func NewColorImageFilter(colorFilter *ColorFilter, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewColorFilter(colorFilter.filter, in, cropRect))
+	return newImageFilter(imagefilter.ColorFilter(colorFilter.filter, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewComposeImageFilter returns a new combining image filter.
 func NewComposeImageFilter(outer, inner *ImageFilter) *ImageFilter {
-	return newImageFilter(skia.ImageFilterNewCompose(outer.filter, inner.filter))
+	return newImageFilter(imagefilter.Compose(outer.filter, inner.filter))
 }
 
 // NewDisplacementImageFilter returns a new displacement image filter. displayment may be nil, in which case the source
 // bitmap will be used. cropRect may be nil.
 func NewDisplacementImageFilter(xChannelSelector, yChannelSelector colorchannel.Enum, scale float32, displacement, color *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var dis skia.ImageFilter
-	if displacement != nil {
-		dis = displacement.filter
-	}
-	return newImageFilter(skia.ImageFilterNewDisplacementMapEffect(skia.ColorChannel(xChannelSelector),
-		skia.ColorChannel(yChannelSelector), scale, dis, color.filter, cropRect))
+	return newImageFilter(imagefilter.DisplacementMap(imagefilter.ColorChannel(xChannelSelector),
+		imagefilter.ColorChannel(yChannelSelector), scale, displacement.filterOrNil(), color.filter,
+		toSkRectPtr(cropRect)))
 }
 
 // NewDropShadowImageFilter returns a new drop shadow image filter. input may be nil, in which case the source bitmap
 // will be used. cropRect may be nil.
 func NewDropShadowImageFilter(dx, dy, sigmaX, sigmaY float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewDropShadow(dx, dy, sigmaX, sigmaY, skia.Color(color), in, cropRect))
+	return newImageFilter(imagefilter.DropShadow(dx, dy, sigmaX, sigmaY, skcolor.Color(color), input.filterOrNil(),
+		toSkRectPtr(cropRect)))
 }
 
 // NewDropShadowOnlyImageFilter returns a new drop shadow only image filter. input may be nil, in which case the source
 // bitmap will be used. cropRect may be nil.
 func NewDropShadowOnlyImageFilter(dx, dy, sigmaX, sigmaY float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewDropShadowOnly(dx, dy, sigmaX, sigmaY, skia.Color(color), in, cropRect))
+	return newImageFilter(imagefilter.DropShadowOnly(dx, dy, sigmaX, sigmaY, skcolor.Color(color), input.filterOrNil(),
+		toSkRectPtr(cropRect)))
 }
 
 // NewImageSourceImageFilter returns a new image source image filter. If canvas is not nil, a hardware-accellerated
 // image will be used if possible.
 func NewImageSourceImageFilter(canvas *Canvas, img *Image, srcRect, dstRect geom.Rect, sampling *SamplingOptions) *ImageFilter {
-	return newImageFilter(skia.ImageFilterNewImageSource(img.skiaImageForCanvas(canvas), srcRect, dstRect,
-		sampling.skSamplingOptions()))
+	return newImageFilter(imagefilter.Image(img.imageForCanvas(canvas), toSkRect(srcRect), toSkRect(dstRect),
+		*sampling.skSamplingOptions()))
 }
 
 // NewImageSourceDefaultImageFilter returns a new image source image filter that uses the default quality and the full
 // image size. If canvas is not nil, a hardware-accellerated image will be used if possible.
 func NewImageSourceDefaultImageFilter(canvas *Canvas, img *Image, sampling *SamplingOptions) *ImageFilter {
-	return newImageFilter(skia.ImageFilterNewImageSourceDefault(img.skiaImageForCanvas(canvas),
-		sampling.skSamplingOptions()))
+	return newImageFilter(imagefilter.ImageDefault(img.imageForCanvas(canvas), *sampling.skSamplingOptions()))
 }
 
 // NewMagnifierImageFilter returns a new magnifier image filter. input may be nil, in which case the source bitmap will
 // be used. cropRect may be nil.
 func NewMagnifierImageFilter(lensBounds geom.Rect, zoomAmount, inset float32, sampling *SamplingOptions, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewMagnifier(lensBounds, zoomAmount, inset, sampling.skSamplingOptions(), in, cropRect))
+	return newImageFilter(imagefilter.Magnifier(toSkRect(lensBounds), zoomAmount, inset,
+		*sampling.skSamplingOptions(), input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewMatrixConvolutionImageFilter returns a new matrix convolution image filter.
@@ -164,173 +126,98 @@ func NewMagnifierImageFilter(lensBounds geom.Rect, zoomAmount, inset float32, sa
 // input: The input image filter, if nil the source bitmap is used instead.
 // cropRect: Rectangle to which the output processing will be limited. May be nil.
 func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, bias float32, offsetX, offsetY int, tileMode tilemode.Enum, convolveAlpha bool, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
 	if len(kernel) < width*height {
 		k := make([]float32, width*height)
 		copy(k, kernel)
 		kernel = k
 	}
-	return newImageFilter(skia.ImageFilterNewMatrixConvolution(&skia.ISize{
-		Width:  int32(width),
-		Height: int32(height),
-	}, kernel, gain, bias, &skia.IPoint{
-		X: int32(offsetX),
-		Y: int32(offsetY),
-	}, skia.TileMode(tileMode), convolveAlpha, in, cropRect))
+	return newImageFilter(imagefilter.MatrixConvolution(skgeom.ISize{Width: int32(width), Height: int32(height)},
+		kernel, gain, bias, skgeom.IPoint{X: int32(offsetX), Y: int32(offsetY)}, shaders.TileMode(tileMode),
+		convolveAlpha, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewMatrixTransformImageFilter returns a new matrix transform image filter. input may be nil, in which case the source
 // bitmap will be used.
 func NewMatrixTransformImageFilter(matrix geom.Matrix, sampling *SamplingOptions, input *ImageFilter) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewMatrixTransform(matrix, sampling.skSamplingOptions(), in))
+	return newImageFilter(imagefilter.MatrixTransform(toSkMatrixPtr(matrix), *sampling.skSamplingOptions(),
+		input.filterOrNil()))
 }
 
 // NewMergeImageFilter returns a new merge image filter. Each filter will draw their results in order with src-over
 // blending. A nil filter will use the source bitmap instead. cropRect may be nil.
 func NewMergeImageFilter(filters []*ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	ff := make([]skia.ImageFilter, len(filters))
+	ff := make([]skif.Filter, len(filters))
 	for i, one := range filters {
 		if one != nil {
 			ff[i] = one.filter
 		}
 	}
-	return newImageFilter(skia.ImageFilterNewMerge(ff, cropRect))
+	return newImageFilter(imagefilter.Merge(ff, toSkRectPtr(cropRect)))
 }
 
 // NewOffsetImageFilter returns a new offset image filter. input may be nil, in which case the source bitmap will be
 // used. cropRect may be nil.
 func NewOffsetImageFilter(dx, dy float32, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewOffset(dx, dy, in, cropRect))
+	return newImageFilter(imagefilter.Offset(dx, dy, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewTileImageFilter returns a new tile image filter. input may be nil, in which case the source bitmap will be used.
 func NewTileImageFilter(src, dst geom.Rect, input *ImageFilter) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewTile(src, dst, in))
+	return newImageFilter(imagefilter.Tile(toSkRect(src), toSkRect(dst), input.filterOrNil()))
 }
 
 // NewDilateImageFilter returns a new dilate image filter. input may be nil, in which case the source bitmap will be
 // used. cropRect may be nil.
-func NewDilateImageFilter(radiusX, radiusY int, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewDilate(radiusX, radiusY, in, cropRect))
+func NewDilateImageFilter(radiusX, radiusY float32, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
+	return newImageFilter(imagefilter.Dilate(radiusX, radiusY, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewErodeImageFilter returns a new erode image filter. input may be nil, in which case the source bitmap will be
 // used. cropRect may be nil.
-func NewErodeImageFilter(radiusX, radiusY int, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewErode(radiusX, radiusY, in, cropRect))
+func NewErodeImageFilter(radiusX, radiusY float32, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
+	return newImageFilter(imagefilter.Erode(radiusX, radiusY, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewDistantLitDiffuseImageFilter returns a new distant lit diffuse image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewDistantLitDiffuseImageFilter(x, y, z, scale, reflectivity float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewDistantLitDiffuse(&skia.Point3{
-		X: x,
-		Y: y,
-		Z: z,
-	}, skia.Color(color), scale, reflectivity, in, cropRect))
+	return newImageFilter(imagefilter.DistantLitDiffuse(skgeom.Point3{X: x, Y: y, Z: z}, skcolor.Color(color), scale,
+		reflectivity, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewPointLitDiffuseImageFilter returns a new point lit diffuse image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewPointLitDiffuseImageFilter(x, y, z, scale, reflectivity float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewPointLitDiffuse(&skia.Point3{
-		X: x,
-		Y: y,
-		Z: z,
-	}, skia.Color(color), scale, reflectivity, in, cropRect))
+	return newImageFilter(imagefilter.PointLitDiffuse(skgeom.Point3{X: x, Y: y, Z: z}, skcolor.Color(color), scale,
+		reflectivity, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewSpotLitDiffuseImageFilter returns a new spot lit diffuse image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewSpotLitDiffuseImageFilter(x, y, z, targetX, targetY, targetZ, specularExponent, cutoffAngle, scale, reflectivity float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewSpotLitDiffuse(&skia.Point3{
-		X: x,
-		Y: y,
-		Z: z,
-	}, &skia.Point3{
-		X: targetX,
-		Y: targetY,
-		Z: targetZ,
-	}, specularExponent, cutoffAngle, scale, reflectivity, skia.Color(color), in, cropRect))
+	return newImageFilter(imagefilter.SpotLitDiffuse(skgeom.Point3{X: x, Y: y, Z: z},
+		skgeom.Point3{X: targetX, Y: targetY, Z: targetZ}, specularExponent, cutoffAngle, skcolor.Color(color), scale,
+		reflectivity, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewDistantLitSpecularImageFilter returns a new distant lit specular image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewDistantLitSpecularImageFilter(x, y, z, scale, reflectivity, shine float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewDistantLitSpecular(&skia.Point3{
-		X: x,
-		Y: y,
-		Z: z,
-	}, skia.Color(color), scale, reflectivity, shine, in, cropRect))
+	return newImageFilter(imagefilter.DistantLitSpecular(skgeom.Point3{X: x, Y: y, Z: z}, skcolor.Color(color), scale,
+		reflectivity, shine, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewPointLitSpecularImageFilter returns a new point lit specular image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewPointLitSpecularImageFilter(x, y, z, scale, reflectivity, shine float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewPointLitSpecular(&skia.Point3{
-		X: x,
-		Y: y,
-		Z: z,
-	}, skia.Color(color), scale, reflectivity, shine, in, cropRect))
+	return newImageFilter(imagefilter.PointLitSpecular(skgeom.Point3{X: x, Y: y, Z: z}, skcolor.Color(color), scale,
+		reflectivity, shine, input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewSpotLitSpecularImageFilter returns a new spot lit specular image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewSpotLitSpecularImageFilter(x, y, z, targetX, targetY, targetZ, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	var in skia.ImageFilter
-	if input != nil {
-		in = input.filter
-	}
-	return newImageFilter(skia.ImageFilterNewSpotLitSpecular(&skia.Point3{
-		X: x,
-		Y: y,
-		Z: z,
-	}, &skia.Point3{
-		X: targetX,
-		Y: targetY,
-		Z: targetZ,
-	}, specularExponent, cutoffAngle, scale, reflectivity, shine, skia.Color(color), in, cropRect))
+	return newImageFilter(imagefilter.SpotLitSpecular(skgeom.Point3{X: x, Y: y, Z: z},
+		skgeom.Point3{X: targetX, Y: targetY, Z: targetZ}, specularExponent, cutoffAngle, skcolor.Color(color), scale,
+		reflectivity, shine, input.filterOrNil(), toSkRectPtr(cropRect)))
 }

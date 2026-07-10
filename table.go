@@ -226,7 +226,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	}
 
 	backgroundPaint := t.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRect(dirty, backgroundPaint)
 
 	var insets geom.Insets
@@ -276,18 +275,15 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			}
 			paint := rowInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 		} else if r%2 == 1 {
 			paint := t.BandingInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 		}
 		rect.Y += t.rowCache[r].height
 		if t.ShowRowDivider && r != endBeforeRow-1 {
 			rect.Height = 1
 			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 			rect.Y++
 		}
 	}
@@ -299,7 +295,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			rect.X = insets.Left
 			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 		}
 		rect.X = x
 		lastCol := len(t.Columns)
@@ -310,7 +305,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			rect.X += t.Columns[c].Current
 			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 			rect.X++
 		}
 	}
@@ -348,7 +342,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 						chevronPaint := fg.Paint(canvas, cellRect, paintstyle.Fill)
 						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
 							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil, chevronPaint)
-						chevronPaint.Dispose()
 						canvas.Restore()
 					}
 					indent := hierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left

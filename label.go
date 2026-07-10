@@ -129,7 +129,6 @@ func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font F
 	if !xreflect.IsNil(backgroundInk) {
 		paint := backgroundInk.Paint(canvas, rect, paintstyle.Fill)
 		canvas.DrawRect(rect, paint)
-		paint.Dispose()
 	}
 	empty := text.Empty()
 	if drawable == nil && empty {
@@ -209,7 +208,6 @@ func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font F
 		}
 		paint := fg.Paint(canvas, rect, paintstyle.Fill)
 		drawable.DrawInRect(canvas, rect, nil, paint)
-		paint.Dispose()
 	}
 	if !empty {
 		if applyDisabledFilter {

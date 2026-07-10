@@ -143,19 +143,16 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		meter.Width = bounds.Width * (p.current / p.maximum)
 	}
 	backgroundPaint := p.BackgroundInk.Paint(canvas, bounds, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, backgroundPaint)
 	if meter.Width > 0 {
 		trimmedMeter := meter
 		trimmedMeter.X += 0.5
 		trimmedMeter.Width--
 		fillPaint := p.FillInk.Paint(canvas, trimmedMeter, paintstyle.Fill)
-		defer fillPaint.Dispose()
 		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, fillPaint)
 	}
 	bounds = bounds.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
 	paint := p.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
-	defer paint.Dispose()
 	paint.SetStrokeWidth(p.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, paint)
 	if meter.Width > 0 {

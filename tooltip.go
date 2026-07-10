@@ -60,7 +60,6 @@ func NewTooltipBase() *Panel {
 	tip.DrawCallback = func(canvas *Canvas, _ geom.Rect) {
 		r := tip.ContentRect(true)
 		paint := DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
-		defer paint.Dispose()
 		canvas.DrawRect(r, paint)
 	}
 	return tip

@@ -10,7 +10,8 @@
 package unison
 
 import (
-	"github.com/richardwilkes/unison/internal/skia"
+	"github.com/richardwilkes/canvas/font"
+	"github.com/richardwilkes/canvas/textblob"
 )
 
 var _ Font = &DynamicFont{}
@@ -41,7 +42,7 @@ func (f *DynamicFont) Size() float32 {
 }
 
 // Metrics implements Font.
-func (f *DynamicFont) Metrics() FontMetrics {
+func (f *DynamicFont) Metrics() font.Metrics {
 	return f.resolvedFont().Metrics()
 }
 
@@ -86,10 +87,10 @@ func (f *DynamicFont) Descriptor() FontDescriptor {
 }
 
 // TextBlobPosH implements Font.
-func (f *DynamicFont) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *TextBlob {
+func (f *DynamicFont) TextBlobPosH(glyphs []uint16, positions []float32, y float32) *textblob.Blob {
 	return f.resolvedFont().TextBlobPosH(glyphs, positions, y)
 }
 
-func (f *DynamicFont) skiaFont() skia.Font {
-	return f.resolvedFont().skiaFont()
+func (f *DynamicFont) canvasFont() *font.Font {
+	return f.resolvedFont().canvasFont()
 }

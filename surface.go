@@ -10,21 +10,23 @@
 package unison
 
 import (
+	"github.com/richardwilkes/canvas/canvas"
+	skgeom "github.com/richardwilkes/canvas/geom"
+	"github.com/richardwilkes/canvas/gpu"
+	"github.com/richardwilkes/canvas/gpu/gl"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
-var (
-	skiaGL           skia.GLInterface
-	skiaColorspace   skia.ColorSpace
-	skiaSurfaceProps skia.SurfaceProps
-)
+var opengl *gl.Interface
+
+type genericSurface interface {
+	Canvas() *canvas.Canvas
+}
 
 type surface struct {
-	context skia.DirectContext
-	backend skia.BackendRenderTarget
-	surface skia.Surface
+	context *gl.DirectContext
+	surface genericSurface
 	size    geom.Size
 	scale   geom.Point
 }
@@ -37,22 +39,19 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 	}
 	if s.surface == nil {
 		if s.context == nil {
-			s.context = skia.ContextMakeGL(defaultSkiaGL())
+			s.context = gl.MakeGLDirectContext(defaultOpenGL(), nil)
 		}
-		if s.backend = skia.BackendRenderTargetNewGL(int(size.Width*scale.X), int(size.Height*scale.Y), 1, 8,
-			&skia.GLFrameBufferInfo{Format: 0x8058 /* RGBA8 */}); s.backend == nil {
-			return nil, errs.New("unable to create backend render target")
-		}
-		if s.surface = skia.SurfaceNewBackendRenderTarget(s.context, s.backend, skia.SurfaceOriginBottomLeft,
-			skia.ColorTypeRGBA8888, skiaColorspace, defaultSurfaceProps()); s.surface == nil {
-			return nil, errs.New("unable to create backend rendering surface")
+		if s.surface = gl.NewRenderTargetSurfaceFromBackendRenderTarget(s.context, gpu.ColorTypeRGBA8888,
+			skgeom.ISize{Width: int32(size.Width * scale.X), Height: int32(size.Height * scale.Y)},
+			gl.FormatFromEnum(gl.RGBA8), 1, 8, 0, gpu.OriginBottomLeft); s.surface == nil {
+			return nil, errs.New("unable to create rendering surface")
 		}
 	}
 	c := &Canvas{
-		canvas:  skia.SurfaceGetCanvas(s.surface),
+		canvas:  s.surface.Canvas(),
 		surface: s,
 	}
-	skia.ContextReset(s.context)
+	s.context.ResetContext(gl.AllBackendState)
 	c.RestoreToCount(1)
 	c.SetMatrix(geom.NewScaleMatrix(scale.X, scale.Y))
 	return c, nil
@@ -60,41 +59,29 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 
 func (s *surface) flush(syncCPU bool) {
 	if s != nil && s.surface != nil && s.context != nil {
-		skia.ContextFlushAndSubmit(s.context, syncCPU)
+		s.context.FlushAndSubmit(syncCPU)
 	}
 }
 
 func (s *surface) partialDispose() {
 	if s.surface != nil {
-		skia.SurfaceUnref(s.surface)
 		s.surface = nil
-	}
-	if s.backend != nil {
-		skia.BackendRenderTargetDelete(s.backend)
-		s.backend = nil
 	}
 }
 
 func (s *surface) dispose() {
 	s.partialDispose()
 	if s.context != nil {
-		releaseSkiaImagesForContext(s.context)
-		skia.ContextAbandonContext(s.context)
-		skia.ContextUnref(s.context)
+		releaseImagesForContext(s.context)
+		s.context.AbandonContext()
+		s.context.Destroy()
 		s.context = nil
 	}
 }
 
-func defaultSkiaGL() skia.GLInterface {
-	if skiaGL == nil {
-		skiaGL = skia.GLInterfaceCreateNativeInterface()
+func defaultOpenGL() *gl.Interface {
+	if opengl == nil {
+		opengl = gl.MakeNativeInterface()
 	}
-	return skiaGL
-}
-
-func defaultSurfaceProps() skia.SurfaceProps {
-	if skiaSurfaceProps == nil {
-		skiaSurfaceProps = skia.SurfacePropsNew(skia.PixelGeometryRGBH)
-	}
-	return skiaSurfaceProps
+	return opengl
 }
