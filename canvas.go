@@ -187,7 +187,10 @@ func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom.Rect, sam
 // sections: four sides, four corners, and the center. Corners are unmodified or scaled down proportionately if their
 // sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. paint may be nil.
 func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect geom.Rect, filter filtermode.Enum, paint *Paint) {
-	c.canvas.DrawImageNine(asRaster(img.imageForCanvas(c)), toSkIRect(centerRect), toSkRect(dstRect),
+	// DrawImageNine wants a raster image. img.image is always a raster *imagecore.Image, so asRaster is a plain type
+	// assertion here; routing through imageForCanvas would instead force a GPU upload plus a full GPU->CPU readback on
+	// every call for on-screen window canvases.
+	c.canvas.DrawImageNine(asRaster(img.image), toSkIRect(centerRect), toSkRect(dstRect),
 		shaders.FilterMode(filter), paint.paintOrNil())
 }
 
