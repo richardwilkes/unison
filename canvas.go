@@ -179,7 +179,7 @@ func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom.Rect, sam
 		return
 	}
 	src := toSkRect(srcRect)
-	c.canvas.DrawImageRect(img.imageForCanvas(c), src, toSkRect(dstRect), *sampling.skSamplingOptions(),
+	c.canvas.DrawImageRect(img.imageForCanvas(c), src, toSkRect(dstRect), sampling.skSamplingOptions(),
 		paint.paintOrNil(), canvas.ConstraintStrict)
 }
 

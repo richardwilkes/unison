@@ -15,7 +15,7 @@ import (
 	"github.com/richardwilkes/unison/enums/mipmapmode"
 )
 
-// All of the structures and constants in this file must match the equivalents in canvas
+// The enum values in this file must match the equivalents in canvas.
 
 var defaultSampling SamplingOptions
 
@@ -46,11 +46,11 @@ type SamplingOptions struct {
 }
 
 // TODO: Replace with direct use
-func (s *SamplingOptions) skSamplingOptions() *shaders.SamplingOptions {
+func (s *SamplingOptions) skSamplingOptions() shaders.SamplingOptions {
 	if s == nil {
 		return defaultSampling.skSamplingOptions()
 	}
-	return &shaders.SamplingOptions{
+	return shaders.SamplingOptions{
 		MaxAniso: s.MaxAniso,
 		UseCubic: s.UseCubic,
 		Cubic:    shaders.CubicResampler{B: s.CubicResampler.B, C: s.CubicResampler.C},

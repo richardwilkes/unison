@@ -90,7 +90,7 @@ func NewTurbulencePerlinNoiseShader(baseFreqX, baseFreqY, seed float32, numOctav
 // possible.
 func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY tilemode.Enum, sampling *SamplingOptions, matrix geom.Matrix) *Shader {
 	return newShader(shaders.NewImageDrawable(img.imageForCanvas(canvas), shaders.TileMode(tileModeX),
-		shaders.TileMode(tileModeY), *sampling.skSamplingOptions(), toSkMatrixPtr(matrix)))
+		shaders.TileMode(tileModeY), sampling.skSamplingOptions(), toSkMatrixPtr(matrix)))
 }
 
 // NewWithLocalMatrix creates a new copy of this shader with a local matrix applied.

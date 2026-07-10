@@ -94,20 +94,20 @@ func NewDropShadowOnlyImageFilter(dx, dy, sigmaX, sigmaY float32, color Color, i
 // image will be used if possible.
 func NewImageSourceImageFilter(canvas *Canvas, img *Image, srcRect, dstRect geom.Rect, sampling *SamplingOptions) *ImageFilter {
 	return newImageFilter(imagefilter.Image(img.imageForCanvas(canvas), toSkRect(srcRect), toSkRect(dstRect),
-		*sampling.skSamplingOptions()))
+		sampling.skSamplingOptions()))
 }
 
 // NewImageSourceDefaultImageFilter returns a new image source image filter that uses the default quality and the full
 // image size. If canvas is not nil, a hardware-accellerated image will be used if possible.
 func NewImageSourceDefaultImageFilter(canvas *Canvas, img *Image, sampling *SamplingOptions) *ImageFilter {
-	return newImageFilter(imagefilter.ImageDefault(img.imageForCanvas(canvas), *sampling.skSamplingOptions()))
+	return newImageFilter(imagefilter.ImageDefault(img.imageForCanvas(canvas), sampling.skSamplingOptions()))
 }
 
 // NewMagnifierImageFilter returns a new magnifier image filter. input may be nil, in which case the source bitmap will
 // be used. cropRect may be nil.
 func NewMagnifierImageFilter(lensBounds geom.Rect, zoomAmount, inset float32, sampling *SamplingOptions, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
 	return newImageFilter(imagefilter.Magnifier(toSkRect(lensBounds), zoomAmount, inset,
-		*sampling.skSamplingOptions(), input.filterOrNil(), toSkRectPtr(cropRect)))
+		sampling.skSamplingOptions(), input.filterOrNil(), toSkRectPtr(cropRect)))
 }
 
 // NewMatrixConvolutionImageFilter returns a new matrix convolution image filter.
@@ -139,7 +139,7 @@ func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, 
 // NewMatrixTransformImageFilter returns a new matrix transform image filter. input may be nil, in which case the source
 // bitmap will be used.
 func NewMatrixTransformImageFilter(matrix geom.Matrix, sampling *SamplingOptions, input *ImageFilter) *ImageFilter {
-	return newImageFilter(imagefilter.MatrixTransform(toSkMatrixPtr(matrix), *sampling.skSamplingOptions(),
+	return newImageFilter(imagefilter.MatrixTransform(toSkMatrixPtr(matrix), sampling.skSamplingOptions(),
 		input.filterOrNil()))
 }
 
