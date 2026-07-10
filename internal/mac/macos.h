@@ -10,13 +10,10 @@
 #import <Cocoa/Cocoa.h>
 
 typedef CFTypeRef NSDraggingInfoRef;
-typedef CFTypeRef NSMenuRef;
-typedef CFTypeRef NSMenuItemRef;
 typedef CFTypeRef NSOpenPanelRef;
 typedef CFTypeRef NSPasteboardRef;
 typedef CFTypeRef NSPasteboardItemRef;
 typedef CFTypeRef NSSavePanelRef;
-typedef CFTypeRef NSWindowRef;
 
 // Drag
 NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender);
@@ -29,32 +26,6 @@ bool dragHasURLs(NSDraggingInfoRef sender);
 CFArrayRef dragURLs(NSDraggingInfoRef sender);
 bool dragHasDataType(NSDraggingInfoRef sender, CFStringRef dataType);
 void* dragBytes(NSDraggingInfoRef sender, CFStringRef dataType, unsigned long long* length);
-
-// Menu
-NSMenuRef newMenu(CFStringRef title);
-int menuNumberOfItems(NSMenuRef m);
-NSMenuItemRef menuItemAtIndex(NSMenuRef m, int index);
-void menuInsertItemAtIndex(NSMenuRef m, NSMenuItemRef mi, int index);
-void menuRemoveItemAtIndex(NSMenuRef m, int index);
-void menuRemoveAll(NSMenuRef m);
-CFStringRef menuTitle(NSMenuRef m);
-void menuPopup(NSWindowRef wnd, NSMenuRef m, NSMenuItemRef mi, CGRect bounds);
-
-// Menu Item
-NSMenuItemRef newMenuItem(int tag, CFStringRef title, CFStringRef keyEquiv, NSEventModifierFlags modifiers);
-NSMenuItemRef newMenuSeparatorItem();
-bool menuItemIsSeparator(NSMenuItemRef mi);
-int menuItemTag(NSMenuItemRef mi);
-CFStringRef menuItemTitle(NSMenuItemRef mi);
-void menuItemSetTitle(NSMenuItemRef mi, CFStringRef title);
-CFStringRef menuItemKeyEquivalent(NSMenuItemRef mi);
-NSEventModifierFlags menuItemKeyEquivalentModifierMask(NSMenuItemRef mi);
-void menuItemSetKeyBinding(NSMenuItemRef mi, CFStringRef keyEquiv, NSEventModifierFlags modifiers);
-NSMenuRef menuItemMenu(NSMenuItemRef mi);
-NSMenuRef menuItemSubMenu(NSMenuItemRef mi);
-void menuItemSetSubMenu(NSMenuItemRef mi, NSMenuRef m);
-NSControlStateValue menuItemState(NSMenuItemRef mi);
-void menuItemSetState(NSMenuItemRef mi, NSControlStateValue state);
 
 // Open Panel
 NSOpenPanelRef newOpenPanel();

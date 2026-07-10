@@ -129,9 +129,11 @@ half-done):
       surface opacity handling moves to Go). — Done in Session 7; both `.m` files are deleted along with the
       `NSViewRef`/`NSOpenGL*` typedefs, and every constant baked into the Go port was verified against the SDK by
       running a compiled Objective-C program.
-- [ ] **Menus** (`menu_darwin.m`, `menu_item_darwin.m`): `MenuDelegate` (`menuNeedsUpdate:` → `goUpdateMenuCallback`)
+- [x] **Menus** (`menu_darwin.m`, `menu_item_darwin.m`): `MenuDelegate` (`menuNeedsUpdate:` → `goUpdateMenuCallback`)
       and `MenuItemDelegate` (target/action + `validateMenuItem:` → the two Go callbacks); port the ~25 accessor
-      functions and `menuPopup`.
+      functions and `menuPopup`. — Done in Session 8; both `.m` files are deleted along with the last three
+      `//export` callbacks, so no C→Go callbacks remain anywhere in the module. `Menu.Popup` still needs the Phase 2
+      final manual verification pass (menu tracking cannot run headlessly).
 - [ ] **Pasteboard, drag & drop** (`pasteboard_darwin.m`, `drag_darwin.m`): NSPasteboard read/write,
       NSPasteboardItem, NSDraggingItem, the drag-info accessors, `beginDraggingSessionWithItems:`, and the
       dragging-destination overrides on `macContentView` (registered in the view step).

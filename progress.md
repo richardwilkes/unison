@@ -2,6 +2,77 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 8 — 2026-07-10: Phase 2 — menus ported to purego; menu_darwin.m, menu_item_darwin.m, and the last three //export callbacks deleted
+
+The "Menus" bullet of Phase 2 is done. `MenuDelegate` and `MenuItemDelegate` are now Go-registered Objective-C
+classes, the ~25 menu/menu-item functions are direct msgSends, and `menuPopup` is pure Go. The three `//export`
+functions these delegates called (`goUpdateMenuCallback`, `goMenuItemValidateCallback`, `goMenuItemHandleCallback`)
+were the last C→Go callbacks in the module — session 6's "no exports remain" claim covered only the view shims —
+so **the cgo bridge is now exclusively plain Go→C calls** (pasteboard/drag-info accessors and the open/save panels).
+Exported API unchanged; the root package needed zero edits. Four `.m` files remain (drag, open_panel, pasteboard,
+save_panel).
+
+### What changed (session 8)
+
+- **[internal/mac/menu_darwin.go](internal/mac/menu_darwin.go)** (new) — `Menu` is `objc.ID`-based (was
+  `C.NSMenuRef`; both uintptr-kinded, so root's `== 0` checks still compile). `MenuDelegate` is a Go-registered
+  class (`NSMenuDelegate` protocol, nil-guarded lookup) with a single shared instance created on first use,
+  mirroring the old file-static; `menuNeedsUpdate:` routes to the `menuUpdaters` map exactly as the export shim
+  did. Ownership parity kept deliberately: `NewMenu` reproduces the old bridge's **double retain** (alloc/init +
+  retain, so Release never deallocates a menu — documented on the type), and `Menu.Popup` reproduces the
+  NSPopUpButtonCell flow verbatim (`initTextCell:pullsDown:` + retain, autoenables/altersState off, setMenu/
+  selectItem, `performClickWithFrame:inView:` — a 32-byte NSRect arg, same proven shape as `setFrame:display:` —
+  then a single release, keeping the old code's one-reference-per-popup leak for bring-up parity, noted in a
+  comment). Popup and the string getters run inside `WithPool` so they are safe regardless of ambient pools.
+- **[internal/mac/menu_item_darwin.go](internal/mac/menu_item_darwin.go)** (new) — `MenuItem` is `objc.ID`-based;
+  `ControlStateValue` and the validator/handler maps moved over verbatim. `MenuItemDelegate` is a Go-registered
+  class (`NSMenuItemValidation` protocol) with a shared instance that is every item's target: `handleMenuItem:`
+  (the action) routes to `menuItemHandlers`, and the bool-returning `validateMenuItem:` routes to
+  `menuItemValidators` with the same default-true fallback. `NewMenuItem` keeps the old +2 retain and the exact
+  setup order (init with action selector → setTag: → setKeyEquivalentModifierMask: → setTarget:);
+  `NewSeparatorMenuItem` retains the autoreleased `separatorItem` inside a pool.
+- **all_darwin.go / macos.h** — Menu and Menu Item sections removed (~180 lines incl. the 3 exports and the
+  now-unused `rectToCGRect`/`geom` import); `NSMenuRef`/`NSMenuItemRef`/`NSWindowRef` typedefs and both declaration
+  blocks removed from macos.h; `menu_darwin.m` and `menu_item_darwin.m` deleted.
+- **New tests**: [menu_darwin_test.go](internal/mac/menu_darwin_test.go) covers menu basics (title round-trip
+  ASCII/CJK/empty, shared-delegate wiring on every menu), structure (insert/remove/removeAll/count/item identity,
+  separator placement, item→menu back-pointers, submenu set/get), `menuNeedsUpdate:` routing through the delegate
+  via msgSend (right updater for the right menu; updater-less menus are safe no-ops), item accessors (tag, title,
+  key equivalent + modifier round-trips, action/target wiring, all three states), **AppKit-initiated validation** —
+  `[menu update]` drives auto-enablement through the Go `validateMenuItem:` IMP (false → disabled, true → enabled,
+  no validator → default enabled) — **AppKit-routed actions** — `performActionForItemAtIndex:` sends
+  `handleMenuItem:` through NSApplication's action dispatch to the Go handler (and is a safe no-op without one) —
+  and Release's registration-map cleanup contract.
+
+### Notes (session 8)
+
+1. `[menu update]` really does drive `NSMenuItemValidation` for items with an explicit target, and
+   `performActionForItemAtIndex:` really does fire the target/action pair, both headlessly and in a locked
+   session — so the whole menu behavior surface except live tracking is testable without a human.
+2. AppKit only sends `menuNeedsUpdate:` at the start of a real user-interactive tracking session, so that path is
+   driven via direct msgSend to the delegate (the same dispatch AppKit uses); `Menu.Popup`
+   (`performClickWithFrame:inView:` blocks in a tracking run loop) cannot run headlessly at all and stays on the
+   Phase 2 final manual-verification list.
+3. `go vet ./internal/mac/` still reports exactly the 3 pre-existing unsafeptr findings from session 7 (lines
+   shifted); nothing new.
+
+### Verification performed (session 8)
+
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt internal/mac/` and `gofmt -l`
+  clean; root package needed zero edits (verified by the untouched build).
+- `go test ./internal/mac/` 10/10 fresh processes; `-count=5` single process; `-race`.
+- darwin/amd64 under Rosetta 2 (`CGO_ENABLED=1 GOARCH=amd64 go test -c`): 5/5 fresh runs + `-test.count=3`, plus a
+  verbose run of the seven menu tests (covers the SysV side of the bool-returning `validateMenuItem:` Go IMP and
+  the int64/uint64/SEL/NSString msgSend arg shapes).
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...` and windows/amd64 pass.
+- `cmd/example` smoke-run: alive after 8s with empty stderr/stdout (SIGKILL per the session-3 note). This is the
+  production-shape proof: the demo's `BarForWindow`/`InsertStdMenus` startup path builds the entire macOS menu bar
+  through NewMenu/NewMenuItem/InsertItemAtIndex/SetSubMenu/SetKeyBinding plus SetMainMenu/SetServicesMenu/
+  SetWindowsMenu/SetHelpMenu, all via the ported msgSend path.
+- Not covered (need a human session): `Menu.Popup` tracking (popup menus over a window, incl. during modal
+  dialogs — the reason the NSPopUpButtonCell approach exists), real menu-bar interaction (opening menus, choosing
+  items, key equivalents through the live event stream), and `menuNeedsUpdate:` delivery from real tracking.
+
 ## Session 7 — 2026-07-10: Phase 2 — OpenGL context + pixel format ported to purego; their .m files and the NSViewRef typedef deleted
 
 The "OpenGL context + pixel format" bullet of Phase 2 is done. A previous run of this session was interrupted after
@@ -530,11 +601,15 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 
 1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
    helpers, the five trivial areas (sound, theme, screen+display, image, cursor), app + event loop,
-   window + window delegate, **view/IME**, and **GL context + pixel format** are done — no `//export` callbacks
-   remain anywhere; the rest of the cgo bridge is plain Go→C calls. Next up is **menus** (`menu_darwin.m`,
-   `menu_item_darwin.m` — the `MenuDelegate`/`MenuItemDelegate` classes, ~25 accessors, `menuPopup`), then
-   pasteboard/drag → panels → delete the remaining `.m` files and the cgo preamble. Every step must leave
-   `./build.sh` green. Final manual verification must include a real CJK input source (IME).
+   window + window delegate, **view/IME**, **GL context + pixel format**, and **menus** are done — no `//export`
+   callbacks remain anywhere (truly none now; session 6's claim had missed the three menu exports); the rest of
+   the cgo bridge is plain Go→C calls. Next up is **pasteboard + drag info** (`pasteboard_darwin.m`,
+   `drag_darwin.m` — NSPasteboard read/write, NSPasteboardItem, the DragInfo accessors; the dragging-destination
+   view overrides and `beginDraggingSessionWithItems:` were already ported with the view in session 6), then
+   open/save panels → delete the remaining `.m` files, `macos.h`, and the cgo preamble, splitting what's left of
+   all_darwin.go (Array/String/URL CF helpers, DragInfo) into per-area files. Every step must leave `./build.sh`
+   green. Final manual verification must include a real CJK input source (IME) and popup-menu tracking
+   (`Menu.Popup`).
 2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
    `.claude/CLAUDE.md` architecture-note update, upack audit.
 
