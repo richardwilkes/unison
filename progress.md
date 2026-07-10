@@ -69,6 +69,24 @@ zero edits. All that remains of Phase 2 is the final human verification pass (se
 3. `go vet ./internal/mac/` is down to 1 pre-existing unsafeptr finding (objc_darwin.go's NSStringConstant deref);
    the other one lived in all_darwin.go's cgo sections and went with the file.
 
+### CI followup (session 10): panel tests skip where the panel XPC service can't start (Intel runner)
+
+The Build workflow passed on the macos-26 arm64 runner but failed on macos-26-intel: all 9 panel tests failed with
+`NewOpenPanel`/`NewSavePanel` returning 0, each burning ~60s first (~402s package total). On modern macOS both panels
+are backed by the remote view service `com.apple.appkit.xpc.openAndSavePanelService`; on that headless Intel VM the
+service cannot start, so `+[NSOpenPanel openPanel]` blocks for the ~60s XPC timeout and then returns nil. The arm64
+runner creates panels fine despite also being headless, so a plain headless check would wrongly skip machines where
+panels work. Fix (same shape as the session-7 GL skip): the panel tests now call `requirePanelService(t)` from the
+test goroutine — never inside `runOnMain`, where `t.Skip`'s Goexit is misuse — which probes `openPanel` via a raw
+msgSend (independent of `NewOpenPanel`'s Retain/WithPool handling, so a real port regression still fails wherever
+panels work) and caches the result in a `sync.OnceValue`, so a broken environment pays the ~60s stall once for the
+whole suite instead of once per test. One probe covers both panel kinds (NSOpenPanel subclasses NSSavePanel; same XPC
+service). Verified by simulation: with the probe temporarily forced false, exactly the 9 panel tests SKIP (only the
+first pays the probe) and everything else passes with no pump deadlock; unmodified, all 9 still run and pass locally.
+Production is unaffected by a nil panel: real user machines have a WindowServer and a working panel service, and even
+if creation ever did fail, the port's nil-messaging semantics make the root dialogs degrade gracefully (RunModal
+false, empty getters, no-op setters) where the old CF bridge could crash (e.g. `AllowedExtensions`'s CFRelease(NULL)).
+
 ### Verification performed (session 10)
 
 - `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt internal/mac/` and `gofmt -l`
@@ -778,7 +796,16 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
    interchange with other apps, interactively choosing files in the open/save dialogs (the OK path), window
    minimize/zoom/focus in an active session, multi-monitor + retina scale changes, and transparent-window
    compositing. Each session's "Not covered" list has the per-area details.
-2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite
+2. **Software-GL fallback for the CI-skipped GL tests (requested by Rich, 2026-07-10)**: extend
+   `requireAcceleratedGL` in `internal/mac/opengl_darwin_test.go` so that when the accelerated probe fails, the GL
+   tests fall back to the Apple software renderer instead of skipping — either drop `NSOpenGLPFAAccelerated` and
+   let `ClosestPolicy` choose, or explicitly request `NSOpenGLPFARendererID = kCGLRendererGenericFloatID`
+   (0x00020400). A CGL probe on the M4 Max (2026-07-10) confirmed the software renderer still exists on Apple
+   Silicon macOS 26 (`CGLQueryRendererInfo` lists id 0x01020400 with accelerated=0, majorGL=4) and that an explicit
+   3.2-core pixel format requesting it succeeds, so it very likely works on the headless runners too. Keep the
+   accelerated path preferred wherever it exists (production attributes unchanged; the fallback is test-only), make
+   the test log which renderer it ran on, and keep a skip as the last resort if even software GL is unavailable.
+3. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite
    (no C toolchain needed anywhere now; document runtime libX11/libGL dlopen on Linux and the new
    cross-compilation ability), `.claude/CLAUDE.md` architecture-note update, upack audit.
 

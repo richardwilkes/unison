@@ -13,11 +13,42 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ebitengine/purego/objc"
 )
+
+// panelServiceAvailable reports whether this environment can create NSOpenPanel/NSSavePanel instances. On modern
+// macOS both panels are backed by the remote view service com.apple.appkit.xpc.openAndSavePanelService, and on some
+// headless CI VMs that service cannot start: +[NSOpenPanel openPanel] then blocks for the ~60s XPC timeout before
+// returning nil (observed on the GitHub macos-26-intel runners, while the arm64 runners create panels fine, so a
+// plain headless check would wrongly skip machines where panels work). The probe is a raw msgSend independent of
+// NewOpenPanel's Retain/WithPool handling, so a genuine regression in the ported code still fails — not skips —
+// wherever panels actually work; the result is cached so a broken environment pays the ~60s stall once for the whole
+// suite instead of once per test. NSOpenPanel subclasses NSSavePanel and both are served by the same XPC service, so
+// the single probe covers both panel kinds. Must be called only from the test goroutine (it submits work through
+// runOnMain; calling it from within a runOnMain closure would deadlock).
+var panelServiceAvailable = sync.OnceValue(func() bool {
+	available := false
+	runOnMain(func() {
+		WithPool(func() {
+			available = objc.ID(Cls("NSOpenPanel")).Send(Sel("openPanel")) != 0
+		})
+	})
+	return available
+})
+
+// requirePanelService skips the test when the environment cannot create open/save panels (headless CI without a
+// working panel XPC service — see panelServiceAvailable). It must be called from the test goroutine, before
+// runOnMain: t.Skip calls runtime.Goexit and must never run inside a runOnMain closure.
+func requirePanelService(t *testing.T) {
+	t.Helper()
+	if !panelServiceAvailable() {
+		t.Skip("open/save panel service unavailable in this environment (headless CI)")
+	}
+}
 
 // nsModalPanelRunLoopModes returns an autoreleased NSArray holding NSModalPanelRunLoopMode, the mode timers must be
 // scheduled in for them to fire inside a panel's runModal session. Must be called on the main thread inside a pool.
@@ -41,6 +72,7 @@ func cancelModalAfter(panel objc.ID, delay float64) (cleanup func()) {
 }
 
 func TestOpenPanelBoolAccessors(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewOpenPanel()
@@ -72,6 +104,7 @@ func TestOpenPanelBoolAccessors(t *testing.T) {
 }
 
 func TestOpenPanelDirectoryURL(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewOpenPanel()
@@ -96,6 +129,7 @@ func TestOpenPanelDirectoryURL(t *testing.T) {
 }
 
 func TestOpenPanelAllowedFileTypes(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewOpenPanel()
@@ -141,6 +175,7 @@ func TestOpenPanelAllowedFileTypes(t *testing.T) {
 }
 
 func TestOpenPanelURLsEmpty(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewOpenPanel()
@@ -159,6 +194,7 @@ func TestOpenPanelURLsEmpty(t *testing.T) {
 }
 
 func TestOpenPanelRunModalCancel(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewOpenPanel()

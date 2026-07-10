@@ -19,6 +19,7 @@ import (
 )
 
 func TestSavePanelNameField(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewSavePanel()
@@ -38,6 +39,7 @@ func TestSavePanelNameField(t *testing.T) {
 }
 
 func TestSavePanelDirectoryURL(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewSavePanel()
@@ -58,6 +60,7 @@ func TestSavePanelDirectoryURL(t *testing.T) {
 }
 
 func TestSavePanelAllowedFileTypes(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewSavePanel()
@@ -90,6 +93,7 @@ func TestSavePanelAllowedFileTypes(t *testing.T) {
 }
 
 func TestSavePanelRunModalCancel(t *testing.T) {
+	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {
 			p := NewSavePanel()
