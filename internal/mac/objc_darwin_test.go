@@ -28,6 +28,19 @@ func TestNSStringRoundTrip(t *testing.T) {
 	})
 }
 
+func TestNewNSString(t *testing.T) {
+	for _, s := range []string{"", "hello", "héllo wörld", "漢字テスト", "emoji 🎉👍", "line\nbreak"} {
+		// Deliberately created outside any autorelease pool — that is NewNSString's reason for existing.
+		str := NewNSString(s)
+		WithPool(func() {
+			if got := GoStringFromNSString(str); got != s {
+				t.Errorf("round trip of %q produced %q", s, got)
+			}
+		})
+		Release(str)
+	}
+}
+
 func TestNSArrayHelpers(t *testing.T) {
 	WithPool(func() {
 		if count := NSArrayCount(NSArrayFromIDs()); count != 0 {

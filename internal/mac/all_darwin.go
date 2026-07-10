@@ -707,276 +707,125 @@ func (v View) UnregisterDraggedTypes() {
 	C.viewUnregisterDraggedTypes(C.NSViewRef(v))
 }
 
-// ========== Window ==========
-
-type (
-	Window                   C.NSWindowRef
-	WindowStyleMask          = C.NSWindowStyleMask
-	WindowCollectionBehavior = C.NSWindowCollectionBehavior
-	WindowLevel              = C.NSWindowLevel
-	WindowTabbingMode        = C.NSWindowTabbingMode
-)
-
-const (
-	WindowStyleMaskMiniaturizable WindowStyleMask = C.NSWindowStyleMaskMiniaturizable
-	WindowStyleMaskTitled         WindowStyleMask = C.NSWindowStyleMaskTitled
-	WindowStyleMaskClosable       WindowStyleMask = C.NSWindowStyleMaskClosable
-	WindowStyleMaskResizable      WindowStyleMask = C.NSWindowStyleMaskResizable
-	WindowStyleMaskBorderless     WindowStyleMask = C.NSWindowStyleMaskBorderless
-)
-
-const (
-	WindowCollectionBehaviorFullScreenPrimary WindowCollectionBehavior = C.NSWindowCollectionBehaviorFullScreenPrimary
-	WindowCollectionBehaviorManaged           WindowCollectionBehavior = C.NSWindowCollectionBehaviorManaged
-	WindowCollectionBehaviorFullScreenNone    WindowCollectionBehavior = C.NSWindowCollectionBehaviorFullScreenNone
-)
-
-const (
-	WindowLevelNormal    WindowLevel = C.NSNormalWindowLevel
-	WindowLevelFloating  WindowLevel = C.NSFloatingWindowLevel
-	WindowLevelPopUpMenu WindowLevel = C.NSPopUpMenuWindowLevel
-)
-
-const (
-	WindowTabbingModeAutomatic  WindowTabbingMode = C.NSWindowTabbingModeAutomatic
-	WindowTabbingModeDisallowed WindowTabbingMode = C.NSWindowTabbingModeDisallowed
-	WindowTabbingModePreferred  WindowTabbingMode = C.NSWindowTabbingModePreferred
-)
-
-func NewWindow(contentRect geom.Rect, styleMask WindowStyleMask, canBeKey, canBeMain bool) Window {
-	return Window(C.newWindow(rectToCGRect(contentRect), styleMask, C.bool(canBeKey), C.bool(canBeMain)))
-}
-
-func (w Window) SetCollectionBehavior(behavior WindowCollectionBehavior) {
-	C.windowSetCollectionBehavior(C.NSWindowRef(w), behavior)
-}
-
-func (w Window) SetLevel(level WindowLevel) {
-	C.windowSetWindowLevel(C.NSWindowRef(w), level)
-}
-
-func (w Window) StyleMask() WindowStyleMask {
-	return WindowStyleMask(C.windowStyleMask(C.NSWindowRef(w)))
-}
-
-func (w Window) SetTransparent() {
-	C.windowSetTransparent(C.NSWindowRef(w))
-}
-
-func (w Window) SetTitle(title string) {
-	str := NewString(title)
-	defer str.Release()
-	C.windowSetTitle(C.NSWindowRef(w), C.CFStringRef(str))
-}
-
-func (w Window) ContentView() View {
-	return View(C.windowContentView(C.NSWindowRef(w)))
-}
-
-func (w Window) SetContentView(v View) {
-	C.windowSetContentView(C.NSWindowRef(w), C.NSViewRef(v))
-}
-
-func (w Window) SetRestorable(restorable bool) {
-	C.windowSetRestorable(C.NSWindowRef(w), C.bool(restorable))
-}
-
-func (w Window) MakeFirstResponder(v View) {
-	C.windowMakeFirstResponder(C.NSWindowRef(w), C.NSViewRef(v))
-}
-
-func (w Window) SetTabbingMode(mode WindowTabbingMode) {
-	C.windowSetTabbingMode(C.NSWindowRef(w), mode)
-}
-
-func (w Window) SetAcceptsMouseMovedEvents(accepts bool) {
-	C.windowSetAcceptsMouseMovedEvents(C.NSWindowRef(w), C.bool(accepts))
-}
-
-func (w Window) MouseLocationOutsideOfEventStream() geom.Point {
-	return cgPointToPoint(C.windowMouseLocationOutsideOfEventStream(C.NSWindowRef(w)))
-}
-
-func (w Window) MakeKeyAndOrderFront() {
-	C.windowMakeKeyAndOrderFront(C.NSWindowRef(w))
-}
-
-func (w Window) OrderOut() {
-	C.windowOrderOut(C.NSWindowRef(w))
-}
-
-func (w Window) Delegate() WindowDelegate {
-	return WindowDelegate(C.windowDelegate(C.NSWindowRef(w)))
-}
-
-func (w Window) SetDelegate(delegate WindowDelegate) {
-	C.windowSetDelegate(C.NSWindowRef(w), C.NSWindowDelegateRef(delegate))
-}
-
-func (w Window) Focused() bool {
-	return bool(C.windowFocused(C.NSWindowRef(w)))
-}
-
-func (w Window) Miniaturized() bool {
-	return bool(C.windowMiniaturized(C.NSWindowRef(w)))
-}
-
-func (w Window) Miniaturize() {
-	C.windowMiniaturize(C.NSWindowRef(w))
-}
-
-func (w Window) Zoomed() bool {
-	return bool(C.windowZoomed(C.NSWindowRef(w)))
-}
-
-func (w Window) Zoom() {
-	C.windowZoom(C.NSWindowRef(w))
-}
-
-func (w Window) Frame() geom.Rect {
-	var frame C.CGRect
-	C.windowFrame(C.NSWindowRef(w), &frame)
-	return cgRectToRect(frame)
-}
-
-func (w Window) SetFrame(frameRect geom.Rect) {
-	C.windowSetFrame(C.NSWindowRef(w), rectToCGRect(frameRect), true)
-}
-
-func (w Window) ContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
-	r := rectToCGRect(frameRect)
-	C.windowContentRectForFrameRect(C.NSWindowRef(w), &r)
-	return cgRectToRect(r)
-}
-
-func (w Window) FrameRectForContentRect(contentRect geom.Rect) geom.Rect {
-	r := rectToCGRect(contentRect)
-	C.windowFrameRectForContentRect(C.NSWindowRef(w), &r)
-	return cgRectToRect(r)
-}
-
-func (w Window) Visible() bool {
-	return bool(C.windowVisible(C.NSWindowRef(w)))
-}
-
-func (w Window) Close() {
-	C.windowClose(C.NSWindowRef(w))
-}
+// ========== View callbacks ==========
+// These are still invoked from the Objective-C macContentView in view_darwin.m and will move to Go when the view is
+// ported. The Window type itself now lives in window_darwin.go (purego-based), so the exported shims take
+// C.NSWindowRef (a CFTypeRef, which cgo maps to uintptr) and convert.
 
 var WindowKeyPressedCallback func(w Window, key uint16, mods uint)
 
 //export goWindowKeyPressedCallback
-func goWindowKeyPressedCallback(w Window, key uint16, mods uint) {
+func goWindowKeyPressedCallback(w C.NSWindowRef, key uint16, mods uint) {
 	if WindowKeyPressedCallback != nil {
-		WindowKeyPressedCallback(w, key, mods)
+		WindowKeyPressedCallback(Window(w), key, mods)
 	}
 }
 
 var WindowKeyTypedCallback func(w Window, ch rune)
 
 //export goWindowKeyTypedCallback
-func goWindowKeyTypedCallback(w Window, ch rune) {
+func goWindowKeyTypedCallback(w C.NSWindowRef, ch rune) {
 	if WindowKeyTypedCallback != nil {
-		WindowKeyTypedCallback(w, ch)
+		WindowKeyTypedCallback(Window(w), ch)
 	}
 }
 
 var WindowKeyReleasedCallback func(w Window, key uint16, mods uint)
 
 //export goWindowKeyReleasedCallback
-func goWindowKeyReleasedCallback(w Window, key uint16, mods uint) {
+func goWindowKeyReleasedCallback(w C.NSWindowRef, key uint16, mods uint) {
 	if WindowKeyReleasedCallback != nil {
-		WindowKeyReleasedCallback(w, key, mods)
+		WindowKeyReleasedCallback(Window(w), key, mods)
 	}
 }
 
 var WindowCursorUpdateCallback func(Window)
 
 //export goWindowCursorUpdateCallback
-func goWindowCursorUpdateCallback(w Window) {
+func goWindowCursorUpdateCallback(w C.NSWindowRef) {
 	if WindowCursorUpdateCallback != nil {
-		WindowCursorUpdateCallback(w)
+		WindowCursorUpdateCallback(Window(w))
 	}
 }
 
 var WindowMouseEnterCallback func(w Window, pt geom.Point, mods uint)
 
 //export goWindowMouseEnterCallback
-func goWindowMouseEnterCallback(w Window, x, y float32, mods uint) {
+func goWindowMouseEnterCallback(w C.NSWindowRef, x, y float32, mods uint) {
 	if WindowMouseEnterCallback != nil {
-		WindowMouseEnterCallback(w, geom.NewPoint(x, y), mods)
+		WindowMouseEnterCallback(Window(w), geom.NewPoint(x, y), mods)
 	}
 }
 
 var WindowMouseExitCallback func(Window)
 
 //export goWindowMouseExitCallback
-func goWindowMouseExitCallback(w Window) {
+func goWindowMouseExitCallback(w C.NSWindowRef) {
 	if WindowMouseExitCallback != nil {
-		WindowMouseExitCallback(w)
+		WindowMouseExitCallback(Window(w))
 	}
 }
 
 var WindowMouseMovedCallback func(w Window, pt geom.Point, mods uint)
 
 //export goWindowMouseMovedCallback
-func goWindowMouseMovedCallback(w Window, x, y float32, mods uint) {
+func goWindowMouseMovedCallback(w C.NSWindowRef, x, y float32, mods uint) {
 	if WindowMouseMovedCallback != nil {
-		WindowMouseMovedCallback(w, geom.NewPoint(x, y), mods)
+		WindowMouseMovedCallback(Window(w), geom.NewPoint(x, y), mods)
 	}
 }
 
 var WindowScrollCallback func(w Window, delta geom.Point, mods uint)
 
 //export goWindowScrollCallback
-func goWindowScrollCallback(w Window, deltaX, deltaY float32, mods uint) {
+func goWindowScrollCallback(w C.NSWindowRef, deltaX, deltaY float32, mods uint) {
 	if WindowScrollCallback != nil {
-		WindowScrollCallback(w, geom.NewPoint(deltaX, deltaY), mods)
+		WindowScrollCallback(Window(w), geom.NewPoint(deltaX, deltaY), mods)
 	}
 }
 
 var WindowMouseClickCallback func(w Window, button int, where geom.Point, pressed bool, mods uint)
 
 //export goWindowMouseClickCallback
-func goWindowMouseClickCallback(w Window, button int, x, y float32, pressed bool, mods uint) {
+func goWindowMouseClickCallback(w C.NSWindowRef, button int, x, y float32, pressed bool, mods uint) {
 	if WindowMouseClickCallback != nil {
-		WindowMouseClickCallback(w, button, geom.NewPoint(x, y), pressed, mods)
+		WindowMouseClickCallback(Window(w), button, geom.NewPoint(x, y), pressed, mods)
 	}
 }
 
 var WindowUpdateLayerCallback func(Window)
 
 //export goWindowUpdateLayerCallback
-func goWindowUpdateLayerCallback(w Window) {
+func goWindowUpdateLayerCallback(w C.NSWindowRef) {
 	if WindowUpdateLayerCallback != nil {
-		WindowUpdateLayerCallback(w)
+		WindowUpdateLayerCallback(Window(w))
 	}
 }
 
 var WindowScaleCallback func(w Window, scale geom.Point)
 
 //export goWindowScaleCallback
-func goWindowScaleCallback(w Window, scale C.CGPoint) {
+func goWindowScaleCallback(w C.NSWindowRef, scale C.CGPoint) {
 	if WindowScaleCallback != nil {
-		WindowScaleCallback(w, cgPointToPoint(scale))
+		WindowScaleCallback(Window(w), cgPointToPoint(scale))
 	}
 }
 
 var WindowRedrawCallback func(Window)
 
 //export goWindowRedrawCallback
-func goWindowRedrawCallback(w Window) {
+func goWindowRedrawCallback(w C.NSWindowRef) {
 	if WindowRedrawCallback != nil {
-		WindowRedrawCallback(w)
+		WindowRedrawCallback(Window(w))
 	}
 }
 
 var WindowDragEnterCallback func(w Window, d DragInfo, where geom.Point, mods uint) drag.Op
 
 //export goWindowDragEnterCallback
-func goWindowDragEnterCallback(w Window, d DragInfo, x, y float32, mods uint) DragOp {
+func goWindowDragEnterCallback(w C.NSWindowRef, d DragInfo, x, y float32, mods uint) DragOp {
 	if WindowDragEnterCallback != nil {
-		return DragOpFromUnison(WindowDragEnterCallback(w, d, geom.NewPoint(x, y), mods) & d.SourceDragOpMask())
+		return DragOpFromUnison(WindowDragEnterCallback(Window(w), d, geom.NewPoint(x, y), mods) & d.SourceDragOpMask())
 	}
 	return DragOpNone
 }
@@ -984,9 +833,9 @@ func goWindowDragEnterCallback(w Window, d DragInfo, x, y float32, mods uint) Dr
 var WindowDragUpdateCallback func(w Window, d DragInfo, where geom.Point, mods uint) drag.Op
 
 //export goWindowDragUpdateCallback
-func goWindowDragUpdateCallback(w Window, d DragInfo, x, y float32, mods uint) DragOp {
+func goWindowDragUpdateCallback(w C.NSWindowRef, d DragInfo, x, y float32, mods uint) DragOp {
 	if WindowDragUpdateCallback != nil {
-		return DragOpFromUnison(WindowDragUpdateCallback(w, d, geom.NewPoint(x, y), mods) & d.SourceDragOpMask())
+		return DragOpFromUnison(WindowDragUpdateCallback(Window(w), d, geom.NewPoint(x, y), mods) & d.SourceDragOpMask())
 	}
 	return DragOpNone
 }
@@ -994,10 +843,10 @@ func goWindowDragUpdateCallback(w Window, d DragInfo, x, y float32, mods uint) D
 var WindowDropCallback func(w Window, d DragInfo, where geom.Point, mods uint) bool
 
 //export goWindowDropCallback
-func goWindowDropCallback(w Window, d DragInfo, x, y float32, mods uint) bool {
+func goWindowDropCallback(w C.NSWindowRef, d DragInfo, x, y float32, mods uint) bool {
 	var handled bool
 	if WindowDropCallback != nil {
-		handled = WindowDropCallback(w, d, geom.NewPoint(x, y), mods)
+		handled = WindowDropCallback(Window(w), d, geom.NewPoint(x, y), mods)
 	}
 	return handled
 }
@@ -1005,85 +854,17 @@ func goWindowDropCallback(w Window, d DragInfo, x, y float32, mods uint) bool {
 var WindowDragExitCallback func(w Window)
 
 //export goWindowDragExitCallback
-func goWindowDragExitCallback(w Window) {
+func goWindowDragExitCallback(w C.NSWindowRef) {
 	if WindowDragExitCallback != nil {
-		WindowDragExitCallback(w)
+		WindowDragExitCallback(Window(w))
 	}
 }
 
 var WindowDragSourceFinishedCallback func(w Window)
 
 //export goWindowDragSourceFinishedCallback
-func goWindowDragSourceFinishedCallback(w Window) {
+func goWindowDragSourceFinishedCallback(w C.NSWindowRef) {
 	if WindowDragSourceFinishedCallback != nil {
-		WindowDragSourceFinishedCallback(w)
-	}
-}
-
-// ========== WindowDelegate ==========
-
-type WindowDelegate C.NSWindowDelegateRef
-
-func NewWindowDelegate(w Window) WindowDelegate {
-	return WindowDelegate(C.newWindowDelegate(C.NSWindowRef(w)))
-}
-
-func (d WindowDelegate) Release() {
-	C.CFRelease(C.CFTypeRef(d))
-}
-
-var WindowShouldCloseCallback func(Window)
-
-//export goWindowShouldCloseCallback
-func goWindowShouldCloseCallback(w Window) bool {
-	if WindowShouldCloseCallback == nil {
-		return true
-	}
-	WindowShouldCloseCallback(w)
-	return false
-}
-
-var WindowDidResizeCallback func(Window)
-
-//export goWindowDidResizeCallback
-func goWindowDidResizeCallback(w Window) {
-	if WindowDidResizeCallback != nil {
-		WindowDidResizeCallback(w)
-	}
-}
-
-var WindowDidMoveCallback func(Window)
-
-//export goWindowDidMoveCallback
-func goWindowDidMoveCallback(w Window) {
-	if WindowDidMoveCallback != nil {
-		WindowDidMoveCallback(w)
-	}
-}
-
-var WindowMinimizeCallback func(Window, bool)
-
-//export goWindowDidMinimizeCallback
-func goWindowDidMinimizeCallback(w Window, minimized bool) {
-	if WindowMinimizeCallback != nil {
-		WindowMinimizeCallback(w, minimized)
-	}
-}
-
-var WindowDidBecomeKeyCallback func(Window)
-
-//export goWindowDidBecomeKeyCallback
-func goWindowDidBecomeKeyCallback(w Window) {
-	if WindowDidBecomeKeyCallback != nil {
-		WindowDidBecomeKeyCallback(w)
-	}
-}
-
-var WindowDidResignKeyCallback func(Window)
-
-//export goWindowDidResignKeyCallback
-func goWindowDidResignKeyCallback(w Window) {
-	if WindowDidResignKeyCallback != nil {
-		WindowDidResignKeyCallback(w)
+		WindowDragSourceFinishedCallback(Window(w))
 	}
 }

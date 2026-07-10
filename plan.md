@@ -109,10 +109,12 @@ half-done):
       Wrap each event-loop turn in an autorelease pool (the ObjC code currently gets this from `@autoreleasepool`;
       pure Go must do it explicitly). — Done in Session 4; the Cmd+keyUp local monitor is an Objective-C block
       created from Go (`objc.NewBlock`), and `WithPool` was hardened to pin the OS thread (see progress.md).
-- [ ] **Window + window delegate** (`window_darwin.m`, `window_delegate_darwin.m`): register `macWindow` (overrides
+- [x] **Window + window delegate** (`window_darwin.m`, `window_delegate_darwin.m`): register `macWindow` (overrides
       `canBecomeKeyWindow`/`canBecomeMainWindow`) and `macWindowDelegate` (resize/move/miniaturize/key/should-close
       → Go callbacks). Port the ~30 window functions (frame/content-rect math uses CGRect by-pointer variants —
-      keep the same out-parameter style internally).
+      keep the same out-parameter style internally). — Done in Session 5; the by-pointer style was dropped in favor
+      of direct struct returns (`objc.Send[NSRect]`), which the Session 2/3 struct-return verification already
+      covers on both arches.
 - [ ] **View** (`view_darwin.m`, 350 lines — the riskiest file): register `macContentView` with all mouse/key/
       tracking/drawing overrides (`drawRect:`, `updateLayer`, `wantsUpdateLayer`, `updateTrackingAreas`,
       `cursorUpdate:`, `viewDidChangeBackingProperties`, `acceptsFirstResponder`, …) wired to the 15

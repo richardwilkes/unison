@@ -20,6 +20,11 @@ func TestDisplayFunctions(t *testing.T) {
 		t.Skip("no main display (headless environment)")
 	}
 	if list := ActiveDisplayList(); !slices.Contains(list, mainID) {
+		// CGGetActiveDisplayList excludes sleeping displays, so a locked session with the displays asleep legitimately
+		// returns an empty list even though CGMainDisplayID still reports a display (verified empirically 2026-07-10).
+		if len(list) == 0 && DisplayIsAsleep(mainID) {
+			t.Skip("displays are asleep (locked session) — active display list is legitimately empty")
+		}
 		t.Errorf("ActiveDisplayList %v does not contain the main display %d", list, mainID)
 	}
 	bounds := DisplayBounds(mainID)

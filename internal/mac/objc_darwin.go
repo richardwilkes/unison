@@ -223,6 +223,13 @@ func NSStringFromGo(s string) objc.ID {
 	return objc.ID(Cls("NSString")).Send(Sel("stringWithUTF8String:"), s)
 }
 
+// NewNSString returns an owned (+1) NSString with the contents of s. Unlike NSStringFromGo, the result is not
+// autoreleased, so it is safe to create from code that may run outside any autorelease pool; balance it with Release.
+func NewNSString(s string) objc.ID {
+	return objc.ID(Cls("NSString")).Send(Sel("alloc")).Send(Sel("initWithBytes:length:encoding:"),
+		s, uint64(len(s)), uint64(NSUTF8StringEncoding))
+}
+
 // GoStringFromNSString returns the contents of the given NSString as a Go string. A nil NSString yields "".
 func GoStringFromNSString(str objc.ID) string {
 	if str == 0 {

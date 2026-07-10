@@ -22,7 +22,6 @@ typedef CFTypeRef NSPasteboardItemRef;
 typedef CFTypeRef NSSavePanelRef;
 typedef CFTypeRef NSViewRef;
 typedef CFTypeRef NSWindowRef;
-typedef CFTypeRef NSWindowDelegateRef;
 
 // Drag
 NSDragOperation dragSourceOperationMask(NSDraggingInfoRef sender);
@@ -112,43 +111,10 @@ CFURLRef savePanelURL(NSSavePanelRef savePanel);
 bool savePanelRunModal(NSSavePanelRef savePanel);
 
 // View
+NSViewRef newView(NSWindowRef w);
 CGPoint viewBackingScale(NSViewRef v);
 void viewFrame(NSViewRef v, CGRect* frame);
 bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
 void viewBeginDraggingSession(NSViewRef v, NSPasteboardItemRef item, NSDragOperation dragMask);
 void viewRegisterDraggedTypes(NSViewRef v, CFArrayRef types);
 void viewUnregisterDraggedTypes(NSViewRef v);
-
-// Window
-NSWindowRef newWindow(CGRect contentRect, NSWindowStyleMask styleMask, bool canBeKeyWindow, bool canBeMainWindow);
-void windowSetCollectionBehavior(NSWindowRef w, NSWindowCollectionBehavior behavior);
-void windowSetWindowLevel(NSWindowRef w, NSWindowLevel level);
-NSWindowStyleMask windowStyleMask(NSWindowRef w);
-void windowSetTransparent(NSWindowRef w);
-void windowSetTitle(NSWindowRef w, CFStringRef title);
-NSViewRef windowContentView(NSWindowRef w);
-void windowSetContentView(NSWindowRef w, NSViewRef v);
-void windowSetRestorable(NSWindowRef w, bool restorable);
-void windowMakeFirstResponder(NSWindowRef w, NSViewRef v);
-void windowSetTabbingMode(NSWindowRef w, NSWindowTabbingMode mode);
-void windowSetAcceptsMouseMovedEvents(NSWindowRef w, bool accept);
-CGPoint windowMouseLocationOutsideOfEventStream(NSWindowRef w);
-void windowMakeKeyAndOrderFront(NSWindowRef w);
-void windowOrderOut(NSWindowRef w);
-NSWindowDelegateRef windowDelegate(NSWindowRef w);
-void windowSetDelegate(NSWindowRef w, NSWindowDelegateRef delegate);
-bool windowFocused(NSWindowRef w);
-bool windowMiniaturized(NSWindowRef w);
-void windowMiniaturize(NSWindowRef w);
-bool windowZoomed(NSWindowRef w);
-void windowZoom(NSWindowRef w);
-void windowFrame(NSWindowRef w, CGRect* r);
-void windowSetFrame(NSWindowRef w, CGRect r, bool display);
-void windowContentRectForFrameRect(NSWindowRef w, CGRect* r);
-void windowFrameRectForContentRect(NSWindowRef w, CGRect* r);
-bool windowVisible(NSWindowRef w);
-void windowClose(NSWindowRef w);
-
-// Window Delegate
-NSViewRef newView(NSWindowRef w);
-NSWindowDelegateRef newWindowDelegate(NSWindowRef w);

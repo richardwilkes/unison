@@ -2,6 +2,82 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 5 — 2026-07-10: Phase 2 — window + window delegate ported to purego; window_darwin.m and window_delegate_darwin.m deleted
+
+The "Window + window delegate" bullet of Phase 2 is done. `macWindow` (NSWindow subclass) and `macWindowDelegate` are
+now Go-registered Objective-C classes; all ~30 window functions are direct msgSends. Exported API unchanged — the
+root package needed zero edits (verified: full build + `./build.sh --test` green with no root-package changes).
+
+### What changed (session 5)
+
+- **[internal/mac/window_darwin.go](internal/mac/window_darwin.go)** (new) — `Window` is now `objc.ID`-based (was
+  `C.NSWindowRef`; both uintptr-kinded, so root's `nw == 0` check still compiles). `macWindow` uses purego
+  `FieldDef` ivars (first use in shipped code) for the two `canBe*Window` bools: `NewWindow` sets them through the
+  generated `setCanBeKeyWindow:`/`setCanBeMainWindow:` accessors right after init (same ordering as the old custom
+  initializer, where super's init also ran before the ivars were assigned), and the `canBecomeKeyWindow`/
+  `canBecomeMainWindow` overrides read them back via the generated `isCanBe*Window` getters — no unsafe ivar-offset
+  arithmetic. The `WindowStyleMask`/`WindowCollectionBehavior`/`WindowLevel`/`WindowTabbingMode` aliases became
+  `= uint64`/`= int64`; every enum constant value was verified by compiling and running a throwaway Objective-C
+  program against the SDK (borderless=0, titled=1, closable=2, miniaturizable=4, resizable=8; managed=4,
+  fsPrimary=128, fsNone=512; levels 0/3/101; tabbing 0/1/2; NSBackingStoreBuffered=2). The old bridge's CGRect
+  by-pointer out-parameter style is gone: `Frame`/`ContentRectForFrameRect`/`FrameRectForContentRect` use
+  `objc.Send[NSRect]` struct returns (stret on amd64), same shape Screen already uses.
+- **[internal/mac/window_delegate_darwin.go](internal/mac/window_delegate_darwin.go)** (new) — `macWindowDelegate`
+  with the 7 NSWindowDelegate methods. Design change (behavior identical): the old ObjC delegate stored its window
+  in an ivar set at init; the Go delegate instead derives the window from each delegate message
+  (`windowShouldClose:`'s sender IS the window; every `windowDid*:` notification's `object` is the window), so
+  `NewWindowDelegate`'s Window parameter is now unused but kept for API compatibility. The six
+  `Window*Callback` vars for delegate events moved here from all_darwin.go.
+- **[internal/mac/all_darwin.go](internal/mac/all_darwin.go)** — Window and WindowDelegate sections removed
+  (~380 lines incl. the 6 `//export goWindowDid*` funcs). The 17 view/drag callbacks (key/mouse/scroll/draw/drag)
+  **stay** as `//export` shims until the view port, but their first parameter changed from `Window` (now a pure-Go
+  type cgo can't export) to `C.NSWindowRef` with a `Window(w)` conversion inside — legal because cgo maps
+  CFTypeRef-family typedefs to uintptr. `NewView` and `Menu.Popup` still pass `C.NSWindowRef(w)` unchanged.
+- **macos.h** — Window/Window Delegate declarations and the `NSWindowDelegateRef` typedef removed; `newView` moved
+  under the View section (`NSWindowRef` typedef stays for the remaining view/menu/export declarations).
+- **[internal/mac/objc_darwin.go](internal/mac/objc_darwin.go)** — new helper `NewNSString` (owned +1 NSString via
+  alloc/initWithBytes:length:encoding:, safe to use outside any autorelease pool, unlike the autoreleased
+  `NSStringFromGo`). `Window.SetTitle` uses it so titles work from any call context, mirroring the old bridge's
+  owned CFString discipline.
+- **New tests**: [window_darwin_test.go](internal/mac/window_darwin_test.go) covers all four canBeKey/canBeMain
+  combinations through real `canBecomeKeyWindow` dispatch (including overriding NSWindow's borderless=NO default in
+  both directions), StyleMask round-trip, title round-trip (ASCII/CJK), SetTransparent (isOpaque/hasShadow),
+  SetFrame/Frame round-trip, content/frame rect math inversion, visibility through MakeKeyAndOrderFront/OrderOut,
+  and the delegate end-to-end: real AppKit-initiated `windowDidResize:`/`windowDidMove:` delivered synchronously
+  from `setFrame:display:`, the `windowShouldClose:` nil/non-nil callback contract via msgSend, and the
+  notification-object derivation driven with constructed NSNotifications. `TestNewNSString` added to
+  objc_darwin_test.go.
+
+### Discoveries (session 5)
+
+1. **AppKit posts `windowDidMove:` only for origin-only frame changes** — a `setFrame:display:` that changes the
+   size posts just `windowDidResize:` even when the origin also moved (empirical; the first test draft expected
+   both). Same AppKit behavior under the old bridge, so nothing user-visible changes; worth knowing when the view
+   port writes move/resize tests.
+2. **A locked login session empties `CGGetActiveDisplayList`** (this machine was locked during this session:
+   probe showed screenLocked=true, main display asleep, 0 active but 3 online displays). Session 3's
+   `TestDisplayFunctions` failed on HEAD because of it (verified pre-existing via `git stash`). The test now skips
+   when the list is empty and the main display is asleep; the misleading doc comment on `ActiveDisplayList` (it
+   described the *online* list semantics) was corrected. Everything else — window creation, delegate delivery,
+   AppKit dispatch, the example app — works fine in a locked session.
+
+### Verification performed (session 5)
+
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt` applied (drive-by w32
+  reformats it wanted were reverted to keep the diff focused).
+- `go test ./internal/mac/` 10/10 fresh processes; `-count=5` single process; `-race`.
+- darwin/amd64 under Rosetta 2 (`CGO_ENABLED=1 GOARCH=amd64 go test -c`): 5/5 fresh runs + `-test.count=3`
+  (covers the amd64 stret paths for Frame/ContentRect math and the Go bool-returning `canBecome*` IMPs).
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...` and windows/amd64 pass.
+- `cmd/example` smoke-run: alive after 8s with empty stderr/stdout (killed with SIGKILL per the session-3 note),
+  despite the locked session. Startup exercises the ported path in production shape: NewWindow → NewWindowDelegate/
+  SetDelegate → SetContentView/MakeFirstResponder/SetTitle → frame math → MakeKeyAndOrderFront, with the delegate's
+  didResize feeding unison's layout.
+- Not covered (need a human session): actually miniaturizing/zooming a window (the toggles are ported verbatim but
+  only the getters and the delegate notifications are exercised — real minimize animates through the Dock and needs
+  an unlocked, active session), key-window focus transitions (app activation would steal focus), and live-resize
+  from a real user drag.
+
 ## Session 4 — 2026-07-10: Phase 2 — app + event loop ported to purego; app_darwin.m and event_darwin.m deleted
 
 The "App + event loop" bullet of Phase 2 is done. `macAppDelegate` is now a Go-registered Objective-C class, the
@@ -277,10 +353,11 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 ## What remains (in plan order)
 
 1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
-   helpers, the five trivial areas (sound, theme, screen+display, image, cursor), and app + event loop are done;
-   next up is **window + window delegate** (`window_darwin.m`, `window_delegate_darwin.m`), then view/IME → GL
-   context → menus → pasteboard/drag → panels → delete the remaining `.m` files. Every step must leave
-   `./build.sh` green. Final manual verification must include a real CJK input source (IME).
+   helpers, the five trivial areas (sound, theme, screen+display, image, cursor), app + event loop, and
+   window + window delegate are done; next up is **view/IME** (`view_darwin.m`, the riskiest file — port the 17
+   still-cgo view/drag callback shims in all_darwin.go along with it), then GL context → menus → pasteboard/drag →
+   panels → delete the remaining `.m` files. Every step must leave `./build.sh` green. Final manual verification
+   must include a real CJK input source (IME).
 2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
    `.claude/CLAUDE.md` architecture-note update, upack audit.
 
@@ -327,3 +404,15 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
   window teardown from the signal-handler goroutine, off the main thread. Smoke-testing the example app should
   assert liveness and use SIGKILL, not judge success by SIGTERM exit status. Consider a separate fix that marshals
   quitting() to the main event loop.
+- purego `objc.FieldDef` ivars work well for Go-registered classes (proven by macWindow): a `ReadWrite` bool field
+  named `foo` generates `setFoo:` and `isFoo` accessor methods, so instance state needs no unsafe offset arithmetic
+  and no Go-side handle→state maps. Non-bool getters use the plain field name.
+- Everything ported so far works in a **locked login session** (this machine was locked for all of Session 5):
+  window creation/ordering, Go-registered class dispatch, delegate delivery, and the example app all behave
+  normally. Only `CGGetActiveDisplayList` degrades (empty while displays sleep — `TestDisplayFunctions` skips
+  itself in that state). Unattended agent sessions can keep testing AppKit paths without an unlocked screen, but
+  focus/miniaturize/zoom behavior still needs a human with an active session.
+- When a Go export shim must keep receiving an object handle from remaining `.m` code while the Go-side type has
+  already moved off cgo (Session 5: `Window`), declare the shim parameter as the CFTypeRef-based C typedef
+  (`C.NSWindowRef`) and convert — cgo maps CFTypeRef-family typedefs to uintptr, so `Window(w)` is legal, and cgo
+  cannot export parameters of pure-Go named types like `objc.ID`.

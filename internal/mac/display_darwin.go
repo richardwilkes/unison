@@ -41,8 +41,9 @@ func ensureDisplayFuncs() {
 	})
 }
 
-// ActiveDisplayList returns the IDs of the displays that are online (active, mirrored, or sleeping), up to a limit
-// of 16 displays.
+// ActiveDisplayList returns the IDs of the displays that are active (drawable), up to a limit of 16 displays. Note
+// that sleeping displays are excluded — while the login session is locked with the displays asleep, this list is
+// empty even though CGMainDisplayID still reports a main display.
 func ActiveDisplayList() []DisplayID {
 	ensureDisplayFuncs()
 	var displayIDs [16]DisplayID
