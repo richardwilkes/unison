@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/OpenPrinting/goipp v1.2.0
 	github.com/grandcat/zeroconf v1.0.0
-	github.com/richardwilkes/canvas v0.0.0-20260710071840-a25272a22e92
+	github.com/richardwilkes/canvas v0.0.0-20260710162742-558e56cdc5e8
 	github.com/richardwilkes/toolbox/v2 v2.15.0
 	github.com/yuin/goldmark v1.8.2
 	github.com/zeebo/xxh3 v1.1.0

@@ -108,11 +108,10 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 	localData := make([]byte, len(pixels))
 	copy(localData, pixels)
 	if img := imagecore.NewRasterData(imagecore.ImageInfo{
-		Width:      int32(width),
-		Height:     int32(height),
-		ColorType:  imagecore.ColorTypeRGBA8888,
-		AlphaType:  imagecore.AlphaTypeUnpremul,
-		ColorSpace: imagecore.ColorSpaceSRGB,
+		Width:     int32(width),
+		Height:    int32(height),
+		ColorType: imagecore.ColorTypeRGBA8888,
+		AlphaType: imagecore.AlphaTypeUnpremul,
 	}, localData, width*4); img != nil {
 		return newImage(img, scale, hashImageData(width, height, scale, pixels))
 	}
@@ -155,11 +154,10 @@ func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, er
 	height = int(img.Height())
 	pixels := make([]byte, width*height*4)
 	if !img.ReadPixels(imagecore.ImageInfo{
-		Width:      int32(width),
-		Height:     int32(height),
-		ColorType:  imagecore.ColorTypeRGBA8888,
-		AlphaType:  imagecore.AlphaTypeUnpremul,
-		ColorSpace: imagecore.ColorSpaceSRGB,
+		Width:     int32(width),
+		Height:    int32(height),
+		ColorType: imagecore.ColorTypeRGBA8888,
+		AlphaType: imagecore.AlphaTypeUnpremul,
 	}, pixels, width*4, 0, 0, imagecore.CachingDisallow) {
 		return nil, errs.New("unable to read raw pixels from image")
 	}
@@ -261,11 +259,10 @@ func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 	height := int(img.image.Height())
 	pixels := make([]byte, width*height*4)
 	if !img.image.ReadPixels(imagecore.ImageInfo{
-		Width:      int32(width),
-		Height:     int32(height),
-		ColorType:  imagecore.ColorTypeRGBA8888,
-		AlphaType:  img.image.AlphaType(),
-		ColorSpace: imagecore.ColorSpaceSRGB,
+		Width:     int32(width),
+		Height:    int32(height),
+		ColorType: imagecore.ColorTypeRGBA8888,
+		AlphaType: img.image.AlphaType(),
 	}, pixels, width*4, 0, 0, imagecore.CachingDisallow) {
 		return nil, errs.New("unable to read raw pixels from image")
 	}
