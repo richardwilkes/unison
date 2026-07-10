@@ -129,10 +129,8 @@ func registerWindowDelegateClass() {
 	windowDelegateClass = cls
 }
 
-// NewWindowDelegate returns a new window delegate for the given window, or 0 if the delegate could not be created.
-// The window parameter is unused because the delegate derives the window from each delegate message (see
-// windowFromNotification); it is kept so the exported API matches the cgo bridge.
-func NewWindowDelegate(_ Window) WindowDelegate {
+// NewWindowDelegate returns a new window delegate, or 0 if the delegate could not be created.
+func NewWindowDelegate() WindowDelegate {
 	windowDelegateClassOnce.Do(registerWindowDelegateClass)
 	if windowDelegateClassErr != nil {
 		errs.Log(windowDelegateClassErr)

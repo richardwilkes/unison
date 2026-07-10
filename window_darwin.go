@@ -265,8 +265,7 @@ func (w *Window) apiInit() error {
 	if w.title != "" {
 		nw.SetTitle(w.title)
 	}
-	delegate := mac.NewWindowDelegate(nw)
-	nw.SetDelegate(delegate)
+	nw.SetDelegate(mac.NewWindowDelegate())
 	nw.SetAcceptsMouseMovedEvents(true)
 	nw.SetRestorable(false)
 	nw.SetTabbingMode(mac.WindowTabbingModeDisallowed)

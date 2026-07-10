@@ -170,7 +170,7 @@ func TestWindowDelegate(t *testing.T) {
 		if w == 0 {
 			t.Fatal("NewWindow returned 0")
 		}
-		d := NewWindowDelegate(w)
+		d := NewWindowDelegate()
 		if d == 0 {
 			t.Fatal("NewWindowDelegate returned 0")
 		}
