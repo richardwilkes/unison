@@ -115,12 +115,15 @@ half-done):
       keep the same out-parameter style internally). — Done in Session 5; the by-pointer style was dropped in favor
       of direct struct returns (`objc.Send[NSRect]`), which the Session 2/3 struct-return verification already
       covers on both arches.
-- [ ] **View** (`view_darwin.m`, 350 lines — the riskiest file): register `macContentView` with all mouse/key/
+- [x] **View** (`view_darwin.m`, 350 lines — the riskiest file): register `macContentView` with all mouse/key/
       tracking/drawing overrides (`drawRect:`, `updateLayer`, `wantsUpdateLayer`, `updateTrackingAreas`,
       `cursorUpdate:`, `viewDidChangeBackingProperties`, `acceptsFirstResponder`, …) wired to the 15
       `goWindow*Callback` functions. Then the `NSTextInputClient` protocol methods (IME: marked text, insertText,
       firstRectForCharacterRange, doCommandBySelector) — this is where the Phase 0 struct-return spike pays off.
-      Declare protocol conformance when registering the class so AppKit routes IME correctly.
+      Declare protocol conformance when registering the class so AppKit routes IME correctly. — Done in Session 6;
+      all 17 export shims are gone, the ivars use purego `FieldDef`s, and the dragging-item creation moved to pure
+      Go (deleting `newDraggingItem` from pasteboard_darwin.m ahead of the pasteboard bullet). Real CJK IME input
+      still needs the Phase 2 final manual verification pass.
 - [ ] **OpenGL context + pixel format** (`opengl_context_darwin.m`, `opengl_pixel_format_darwin.m`):
       `NSOpenGLPixelFormat`/`NSOpenGLContext` via objc_msgSend (deprecated API, unchanged behavior; the transparent
       surface opacity handling moves to Go).

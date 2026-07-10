@@ -10,8 +10,6 @@
 #import <Cocoa/Cocoa.h>
 
 typedef CFTypeRef NSDraggingInfoRef;
-typedef CFTypeRef NSDraggingItemRef;
-typedef CFTypeRef NSImageRef;
 typedef CFTypeRef NSMenuRef;
 typedef CFTypeRef NSMenuItemRef;
 typedef CFTypeRef NSOpenPanelRef;
@@ -97,7 +95,6 @@ void pasteboardWriteObjects(NSPasteboardRef pasteboard, CFArrayRef items);
 NSPasteboardItemRef newPasteboardItem();
 void pasteboardItemSetString(NSPasteboardItemRef item, CFStringRef str);
 void pasteboardItemSetData(NSPasteboardItemRef item, CFStringRef dataType, unsigned long long length, void* buffer);
-NSDraggingItemRef newDraggingItem(NSPasteboardItemRef item, NSImageRef img, CGRect frame);
 
 // Save Panel
 NSSavePanelRef newSavePanel();
@@ -109,12 +106,3 @@ CFArrayRef savePanelAllowedFileTypes(NSSavePanelRef savePanel);
 void savePanelSetAllowedFileTypes(NSSavePanelRef savePanel, CFArrayRef types);
 CFURLRef savePanelURL(NSSavePanelRef savePanel);
 bool savePanelRunModal(NSSavePanelRef savePanel);
-
-// View
-NSViewRef newView(NSWindowRef w);
-CGPoint viewBackingScale(NSViewRef v);
-void viewFrame(NSViewRef v, CGRect* frame);
-bool viewMouseInRect(NSViewRef v, CGPoint mousePt, CGRect rect);
-void viewBeginDraggingSession(NSViewRef v, NSPasteboardItemRef item, NSDragOperation dragMask);
-void viewRegisterDraggedTypes(NSViewRef v, CFArrayRef types);
-void viewUnregisterDraggedTypes(NSViewRef v);

@@ -2,6 +2,94 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 6 — 2026-07-10: Phase 2 — view/IME ported to purego; view_darwin.m and all 17 export shims deleted
+
+The "View" bullet of Phase 2 (flagged in the plan as the riskiest file) is done. `macContentView` is now a
+Go-registered Objective-C class implementing every override the `.m` file had — mouse/key/tracking/drawing, the full
+`NSTextInputClient` protocol (IME), and both drag & drop directions — and the last `//export` shims are gone from
+all_darwin.go, so **internal/mac no longer has any C→Go callbacks at all** (the remaining cgo is plain Go→C calls
+for menus, pasteboard/drag-info accessors, panels, and NSOpenGL*). Exported API unchanged; the root package needed
+zero edits.
+
+### What changed (session 6)
+
+- **[internal/mac/view_darwin.go](internal/mac/view_darwin.go)** (new, ~590 lines) — `View` is `objc.ID`-based. The
+  17 `Window*Callback` vars moved here verbatim from all_darwin.go. `macContentView` extends NSView, declares the
+  `NSTextInputClient` and `NSDraggingSource` protocols (nil-guarded lookups, same as macWindowDelegate), and carries
+  the old class's six ivars as purego `FieldDef`s: `wnd`, `trackingArea`, `markedText`, `lastMouseDraggedEvent`
+  (all `objc.ID` — encodes as `@`), `dragMask` (uint64), `inDragWeStarted` (bool). Ownership discipline is ported
+  mechanically: `trackingArea`/`markedText` are owned (+1) with a Go-implemented `dealloc` override releasing them
+  before `SendSuper(dealloc)`; `wnd`/`lastMouseDraggedEvent` are assign-only, as before. `NewView` reproduces
+  `initWithWindow:` step for step (super init → set wnd → fresh NSMutableAttributedString → updateTrackingAreas).
+  The old shim-only logic (drag-op masking against `SourceDragOpMask`, insertText's Command-modifier gate and
+  0xF700–0xF7FF function-key filtering, the `markedRange` = {0, length-1} quirk, mouseDragged's
+  lastMouseDraggedEvent stash) is preserved exactly; insertText's per-character UTF-32 extraction loop became Go
+  rune iteration (same code points). `View.BeginDraggingSession` builds the `NSDraggingItem` with direct msgSends,
+  so `newDraggingItem` was deleted from pasteboard_darwin.m/macos.h ahead of the pasteboard bullet (the
+  NSPasteboardItem still comes from the cgo `NewPasteboardItem` — package-internal calls across the cgo/purego
+  boundary are plain Go calls). Matching the old bridge, the pasteboard item and dragging item are deliberately not
+  released (pre-existing leak, kept for bring-up parity; noted in the method comment). `RegisterDraggedTypes` now
+  autoreleases its NSArray/NSStrings inside a `WithPool`, fixing the old path's leaked CFArray+CFStrings per call.
+- **[internal/mac/all_darwin.go](internal/mac/all_darwin.go)** — View section, all 17 `//export goWindow*` shims,
+  and the now-unused CGPoint/CGRect→Go converters removed (~230 lines). `NewOpenGLContext` keeps passing
+  `C.NSViewRef(view)` (View is uintptr-kinded, so the conversion stays legal — same pattern as Window/Menu).
+- **macos.h / pasteboard_darwin.m / view_darwin.m** — View section, `newDraggingItem`, and the
+  `NSDraggingItemRef`/`NSImageRef` typedefs removed; `view_darwin.m` deleted (`NSViewRef` typedef stays for
+  `newOpenGLContext` until the GL bullet lands).
+- **New tests**: [view_darwin_test.go](internal/mac/view_darwin_test.go) covers the class basics (protocol
+  conformance, the constant bool overrides, isOpaque tracking the window, frame/MouseInRect/BackingScale geometry,
+  and the tracking-area remove/release/re-add cycle keeping exactly one view-owned area); mouse events through real
+  objc_msgSend dispatch with synthesized NSEvents (flipped coordinates, buttons, modifiers, the mouseDragged
+  forwarding contract incl. suppression during a drag we started); **the full IME loop** — keyDown: →
+  `interpretKeyEvents:` → AppKit's text input system calling back into our `insertText:replacementRange:` → typed
+  callback; the NSTextInputClient surface (struct returns via markedRange/firstRectForCharacterRange,
+  `setMarkedText:selectedRange:replacementRange:` driven through an **NSInvocation with a corrected
+  `{_NSRange=QQ}` signature** — Foundation's marshaling calls our IMP the way AppKit would while sidestepping the
+  purego amd64 caller-side straddle bug — plus both NSString/NSAttributedString branches, unmarkText, and the
+  function-key filter); drag & drop (a Go-registered `unisonTestDraggingInfo` fake proves destination methods,
+  source-mask intersection, coordinate flipping, and that **cgo-initiated calls dispatch into Go-implemented
+  methods** via the dragSourceOperationMask accessor); registered-drag-types round-trip against AppKit's own
+  bookkeeping; draw callbacks; and dealloc for never-installed views (installed views are deallocated by every
+  test's apiDestroy-shaped cleanup).
+
+### Discoveries (session 6)
+
+1. **`[view display]` never calls `drawRect:`/`updateLayer` for a non-layer-backed view whose `wantsUpdateLayer`
+   returns YES** — needsDisplay is simply cleared. Verified byte-for-byte identical behavior with a compiled
+   Objective-C view of the old macContentView's shape (throwaway clang program), so this is pre-existing AppKit
+   behavior, not a port difference: with the GL-based rendering, unison's draw callbacks in practice arrive via
+   `updateLayer` (layer-backed windows) or the dirty-region machinery, not forced `display` calls. The draw test
+   uses `displayRectIgnoringOpacity:inContext:` with a bitmap-backed NSGraphicsContext instead, which
+   deterministically routes AppKit-initiated drawing into `updateLayer` headlessly.
+2. `graphicsContextWithBitmapImageRep:` returns nil for non-premultiplied-alpha bitmap reps (bitmapFormat must be
+   0, not `NSBitmapFormatAlphaNonpremultiplied`) — cost a puzzled half hour; noted in the test.
+3. purego `FieldDef` ivars of type `objc.ID` work as cleanly as the session-5 bools (encode as `@`, generated
+   getter/setter do plain assign — exactly the old MRC assign semantics; retain/release stays explicit in the
+   methods that own their values).
+4. The purego-generated method type encodings use `L` for uint64 (Apple treats `l`/`L` as 32-bit in encodings), so
+   `methodSignatureForSelector:`-based marshaling against a Go-registered method would mis-parse NSRange args.
+   Irrelevant for AppKit's direct-IMP dispatch (the spike + these tests prove IME works), but any NSInvocation
+   aimed at our methods must build its signature from a corrected type string — as the setMarkedText test does.
+   Worth remembering if some AppKit subsystem ever forwards to these methods via NSInvocation.
+
+### Verification performed (session 6)
+
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues (re-run after `golangci-lint fmt`); root package
+  needed zero edits (verified by the untouched build).
+- `go test ./internal/mac/` 10/10 fresh processes; `-count=5` single process; `-race`.
+- darwin/amd64 under Rosetta 2 (`CGO_ENABLED=1 GOARCH=amd64 go test -c`): 5/5 fresh runs + `-test.count=3`, re-run
+  after the formatting pass (covers amd64 stret returns, the SysV struct-arg callback classification for
+  drawRect:/setMarkedText:/draggingSession:endedAtPoint:, and the NSPoint HFA/SSE returns from the Go fake
+  dragging-info class).
+- `GOOS=linux GOARCH={amd64,arm64} CGO_ENABLED=0 go build ./...` and windows/amd64 pass.
+- `cmd/example` smoke-run: alive after 8s with empty stderr/stdout (SIGKILL per the session-3 note), in a locked
+  session. Startup exercises the ported view in production shape: NewView → SetContentView/MakeFirstResponder →
+  tracking-area installation → event pump delivering updateLayer draws through the Go IMPs.
+- Not covered (need a human session): real CJK IME composition through a system input source (the
+  interpretKeyEvents→insertText loop is proven for plain input; marked-text is proven via NSInvocation), real
+  user-initiated drag & drop between apps (both directions are proven at the method level), scrollWheel: with a
+  real device event, and live cursor-update/enter/exit from real pointer movement.
+
 ## Session 5 — 2026-07-10: Phase 2 — window + window delegate ported to purego; window_darwin.m and window_delegate_darwin.m deleted
 
 The "Window + window delegate" bullet of Phase 2 is done. `macWindow` (NSWindow subclass) and `macWindowDelegate` are
@@ -353,11 +441,12 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 ## What remains (in plan order)
 
 1. **Phase 2 (rest)**: port `internal/mac` to purego/objc, file-by-file in the order listed in plan.md. Foundation
-   helpers, the five trivial areas (sound, theme, screen+display, image, cursor), app + event loop, and
-   window + window delegate are done; next up is **view/IME** (`view_darwin.m`, the riskiest file — port the 17
-   still-cgo view/drag callback shims in all_darwin.go along with it), then GL context → menus → pasteboard/drag →
-   panels → delete the remaining `.m` files. Every step must leave `./build.sh` green. Final manual verification
-   must include a real CJK input source (IME).
+   helpers, the five trivial areas (sound, theme, screen+display, image, cursor), app + event loop,
+   window + window delegate, and **view/IME** are done — no `//export` callbacks remain anywhere; the rest of the
+   cgo bridge is plain Go→C calls. Next up is **GL context + pixel format** (`opengl_context_darwin.m`,
+   `opengl_pixel_format_darwin.m` — small; drops the `NSViewRef` typedef), then menus → pasteboard/drag →
+   panels → delete the remaining `.m` files and the cgo preamble. Every step must leave `./build.sh` green. Final
+   manual verification must include a real CJK input source (IME).
 2. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite,
    `.claude/CLAUDE.md` architecture-note update, upack audit.
 
@@ -415,4 +504,15 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 - When a Go export shim must keep receiving an object handle from remaining `.m` code while the Go-side type has
   already moved off cgo (Session 5: `Window`), declare the shim parameter as the CFTypeRef-based C typedef
   (`C.NSWindowRef`) and convert — cgo maps CFTypeRef-family typedefs to uintptr, so `Window(w)` is legal, and cgo
-  cannot export parameters of pure-Go named types like `objc.ID`.
+  cannot export parameters of pure-Go named types like `objc.ID`. (As of Session 6 no export shims remain; the
+  same uintptr-kinded conversion trick still carries purego-side handles INTO remaining cgo calls, e.g.
+  `C.NSViewRef(view)` in NewOpenGLContext and `DragInfo(sender)` from the Go drag methods.)
+- The purego-generated Objective-C type encodings for Go-registered methods use `L` where the real encoding would
+  be `Q` (Apple parses `l`/`L` as 32-bit), so never drive a Go-registered method through
+  `methodSignatureForSelector:`-derived NSInvocations — build the signature from a hand-written correct type
+  string instead (see the setMarkedText test in view_darwin_test.go). AppKit's normal direct-IMP dispatch is
+  unaffected.
+- Headless AppKit draw testing: `[view display]` clears needsDisplay without calling `drawRect:`/`updateLayer` on
+  a non-layer-backed view whose `wantsUpdateLayer` is YES (identical under compiled ObjC — Session 6 discovery 1).
+  Use `displayRectIgnoringOpacity:inContext:` with a bitmap-backed NSGraphicsContext (bitmapFormat 0 —
+  premultiplied — or the context comes back nil) to force AppKit-initiated drawing deterministically.

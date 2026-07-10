@@ -54,9 +54,3 @@ void pasteboardItemSetString(NSPasteboardItemRef item, CFStringRef str) {
 void pasteboardItemSetData(NSPasteboardItemRef item, CFStringRef dataType, unsigned long long length, void* buffer) {
 	[(NSPasteboardItem*)item setData:[NSData dataWithBytes:buffer length:length] forType:(NSPasteboardType)dataType];
 }
-
-NSDraggingItemRef newDraggingItem(NSPasteboardItemRef item, NSImageRef img, CGRect frame) {
-	NSDraggingItem *dragItem = [[NSDraggingItem alloc] initWithPasteboardWriter:(id<NSPasteboardWriting>)item];
-	[dragItem setDraggingFrame:frame contents:img];
-	return dragItem;
-}
