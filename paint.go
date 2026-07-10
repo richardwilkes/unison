@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"reflect"
+
 	"github.com/richardwilkes/canvas/canvas"
 	skgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/canvas/raster"
@@ -58,7 +60,45 @@ func (p *Paint) Equivalent(other *Paint) bool {
 	if other == nil {
 		return false
 	}
-	return p.paint == other.paint
+	if p.paint == other.paint {
+		return true
+	}
+	a := *p.paint
+	b := *other.paint
+	// The five effect fields (PathEffect, Shader, ColorFilter, MaskFilter, ImageFilter) are interfaces whose dynamic
+	// types may not be comparable (e.g. a gradient shader carrying a []Color slice), so a plain a == b on the whole
+	// struct could panic. Compare the effects by identity (matching the old SkPaint::operator== pointer semantics),
+	// then clear them so the remaining all-scalar fields can be compared safely with ==.
+	if !sameEffect(a.PathEffect, b.PathEffect) ||
+		!sameEffect(a.Shader, b.Shader) ||
+		!sameEffect(a.ColorFilter, b.ColorFilter) ||
+		!sameEffect(a.MaskFilter, b.MaskFilter) ||
+		!sameEffect(a.ImageFilter, b.ImageFilter) {
+		return false
+	}
+	a.PathEffect, a.Shader, a.ColorFilter, a.MaskFilter, a.ImageFilter = nil, nil, nil, nil, nil
+	b.PathEffect, b.Shader, b.ColorFilter, b.MaskFilter, b.ImageFilter = nil, nil, nil, nil, nil
+	return a == b
+}
+
+// sameEffect reports whether two Paint effect values refer to the same underlying effect. Effects are treated as
+// immutable and compared by identity: pointer-typed effects (the common case) by pointer, and any non-pointer effect
+// via a panic-safe deep comparison rather than ==, which would panic on a non-comparable dynamic type.
+func sameEffect(a, b any) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	va := reflect.ValueOf(a)
+	vb := reflect.ValueOf(b)
+	if va.Type() != vb.Type() {
+		return false
+	}
+	switch va.Kind() {
+	case reflect.Pointer, reflect.UnsafePointer, reflect.Chan, reflect.Func, reflect.Map:
+		return va.Pointer() == vb.Pointer()
+	default:
+		return reflect.DeepEqual(a, b)
+	}
 }
 
 // Reset the Paint back to its default state.
