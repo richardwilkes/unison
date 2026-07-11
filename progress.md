@@ -2,6 +2,104 @@
 
 Running log of work sessions against [plan.md](plan.md) (removing all cgo usage from unison). Newest session first.
 
+## Session 11 — 2026-07-10: software-GL fallback for the GL tests (Rich's request) + Phase 3 complete
+
+Two chunks this session. First, the software-renderer fallback Rich requested: the four GL tests in
+`internal/mac` now run on the Apple software renderer wherever no hardware-accelerated renderer exists (the
+headless CI runners) instead of skipping, with a skip only as the last resort. Second, **all of Phase 3 is done**
+(build.sh cgo-free enforcement + guard, README setup section, CLAUDE.md architecture notes, CI modernization,
+upack audit). The Phase 2 final manual verification pass was then closed by Rich's hands-on testing of the macOS
+and Linux builds (see "What remains"), and build.sh gained a CGO_ENABLED save/restore-on-exit at his request —
+**the plan is now fully implemented**.
+
+### What changed (session 11)
+
+- **[internal/mac/opengl_darwin_test.go](internal/mac/opengl_darwin_test.go)** — `requireAcceleratedGL` is now
+  `requireGL` + a `sync.OnceValue` probe (`probeGLEnv`) that classifies the environment once per process:
+  hardware-accelerated (preferred — the minimal `{NSOpenGLPFAAccelerated, 0}` probe is unchanged, so a genuine
+  regression in `NewOpenGLPixelFormat` still fails, not skips, wherever a GPU exists), else the Apple software
+  renderer, else skip. `newTestPixelFormat` uses the production `NewOpenGLPixelFormat` in accelerated mode and a
+  test-only `newSoftwareGLPixelFormat` otherwise — the production attribute list with `NSOpenGLPFAAccelerated`
+  replaced by an explicit `NSOpenGLPFARendererID = kCGLRendererGenericFloatID` request (the plan note's second
+  option, chosen for determinism); production attributes are untouched. Every test logs which renderer it ran on
+  (with the renderer ID read back from the probe format). `TestNewOpenGLPixelFormat` gained a mode-dependent
+  assertion: accelerated ≥ 1 in accelerated mode, renderer-ID-matches-generic-float (under
+  `kCGLRendererIDMatchingMask` — read-back IDs carry variant bits, 0x1020400 vs 0x20400) in software mode.
+  Constants baked in (`NSOpenGLPFARendererID`=70, `kCGLRendererGenericFloatID`=0x20400,
+  `kCGLRendererIDMatchingMask`=0xfe7f00) were verified by compiling and running an Objective-C program, which also
+  proved the full software flow on this SDK: format creates, context creates, makeCurrent works, and
+  `glGetString(GL_RENDERER)` reports "Apple Software Renderer" — even on a GPU machine.
+- **[build.sh](build.sh)** — `export CGO_ENABLED=0` for everything (generate/build/lint/test/install), replacing
+  the now-dead darwin `CGO_LDFLAGS` cgo workaround; a grep guard fails the build if any `.go` file contains
+  `import "C"` in either the single or grouped form (a stray cgo file would NOT necessarily break the
+  CGO_ENABLED=0 build — build constraints just exclude it — hence the explicit guard, placed first so it runs
+  before anything else). One exception, commented in the script: `-race` on non-macOS platforms runs with
+  `CGO_ENABLED=1` because Go's prebuilt race runtime itself requires cgo there ("go: -race requires cgo", verified
+  for linux and windows targets; macOS race works cgo-free, verified natively) — this changes only how test
+  binaries link the race runtime, not what the module contains.
+- **[README.md](README.md)** — new "Required setup" section (the old one had been dropped entirely in the canvas
+  migration, leaving CLAUDE.md's #required-setup link dangling): pure Go, `CGO_ENABLED=0` on every platform, no
+  C/Objective-C toolchain, cross-compilation works; macOS/Windows need nothing; Linux needs the dlopen'd runtime
+  libraries `libX11.so.6`/`libGL.so.1` with Debian/Ubuntu (`libx11-6`, `libgl1`) and Fedora (`libX11`,
+  `libglvnd-glx`) package names, explicitly no dev headers/pkg-config, and XWayland for Wayland desktops.
+- **[.claude/CLAUDE.md](.claude/CLAUDE.md)** — Overview now says pure Go/cgo-forbidden (with the build.sh
+  enforcement) and cross-compilation; the `internal/` section describes internal/mac as purego/objc with
+  Go-registered classes and points at the objc_darwin.go helper layer, the headless test suite, and the runOnMain
+  pump; internal/x11 as pure-Go wire protocol + dlopen'd GLX; adds "never introduce cgo" and the lint-exclusion
+  warning for internal/mac + internal/w32.
+- **[.github/workflows/build.yml](.github/workflows/build.yml)** — the Linux deps step installs only the runtime
+  libraries unison dlopens (`libx11-6`, `libgl1`) instead of the stale cgo-era dev packages
+  (pkg-config/libx11-dev/libgl1-mesa-dev/libfontconfig1-dev/libfreetype-dev — fontconfig/freetype were dead
+  weight: canvas's fontmgr is a pure-Go port that scans font directories itself). The llvm-mingw install for
+  windows-11-arm is deleted — it existed solely so cgo could assemble runtime/cgo, and that runner runs
+  `--lint --test` (no race), which is now fully `CGO_ENABLED=0`; the runners that do run race tests (ubuntu,
+  windows-2022) have preinstalled C toolchains for the race runtime. New `cross-build` job compiles all six
+  OS/arch pairs (darwin/linux/windows × amd64/arm64) with `CGO_ENABLED=0` from one ubuntu job — compile breakage
+  on other platforms is no longer masked by cgo needing native toolchains. The example-artifact build is pinned to
+  `CGO_ENABLED=0`.
+- **[.golangci.yml](.golangci.yml)** — the three gocritic checks disabled "when using CGO" were revisited:
+  `dupImport` and `underef` re-enabled (0 findings on the cgo-free tree); `sloppyReassign` stays disabled with an
+  honest new comment (12 findings — the codebase deliberately reuses `err` in `if err = f(); err != nil` form).
+- **cmd/upack audit** (plan bullet, no changes needed): no dylib/framework bundling logic exists anywhere in
+  cmd/upack, and notarization/signing operate on the built app/dmg regardless of how the binary was linked.
+
+### Notes (session 11)
+
+1. The Apple software renderer (`kCGLRendererGenericFloatID`) still exists on Apple Silicon macOS 26 and supports
+   the full 3.2-core 24/8/24/8 configuration — now proven end to end through the ported purego path on **both**
+   arches (arm64 native and amd64 under Rosetta, the Intel CI runner's exact shape), not just via the session-10
+   CGL probe.
+2. `go test -race` works with `CGO_ENABLED=0` on darwin but hard-fails with "go: -race requires cgo" for linux and
+   windows targets (go1.26.2) — hence build.sh's single documented CGO_ENABLED=1 exception.
+3. The cgo guard must be a grep, not a build failure expectation or a lint rule: CGO_ENABLED=0 silently *excludes*
+   cgo files via build constraints (an added-file regression could pass the build), and `.golangci.yml` excludes
+   internal/mac and internal/w32 from linting entirely.
+
+### Verification performed (session 11)
+
+- `./build.sh --all` green end to end with the new script (guard → generate → CGO_ENABLED=0 build → lint 0 issues
+  → race tests, which on darwin run CGO_ENABLED=0); `./build.sh --test` green (the non-race CGO_ENABLED=0 branch).
+- Guard tested both ways: clean tree passes; planted files with `import "C"` and grouped `"C"` are both caught.
+- GL tests on darwin/arm64: pass in accelerated mode (renderer 0x1027f00 logged); with the accelerated probe
+  temporarily forced to fail, all four run — not skip — on the software renderer (0x1020400) and pass, and the
+  full package passes in that mode; with both probes forced to fail, exactly the four GL tests SKIP with a clear
+  message and the suite completes with no pump deadlock. All simulations reverted.
+- darwin/amd64 under Rosetta 2 (`CGO_ENABLED=0 GOARCH=amd64 go test -c`): 5/5 fresh runs + `-test.count=3`, a
+  verbose accelerated-mode run of the four GL tests, **and a forced-software-fallback run** — the four GL tests
+  pass on the software renderer under amd64, plus a full-suite pass in that mode (the macos-26-intel runner's
+  exact configuration, modulo the probe result being real there).
+- `go test ./internal/mac/` 10/10 fresh processes; `-count=5` single process; `-race`.
+- Cross-builds: all six OS/arch pairs (`darwin`/`linux`/`windows` × `amd64`/`arm64`) with `CGO_ENABLED=0` — the
+  same loop the new CI job runs.
+- `.github/workflows/build.yml` parses as valid YAML; `gofmt`/`golangci-lint fmt` clean on the touched Go file.
+- `cmd/example` smoke-run (`CGO_ENABLED=0` build): alive after 8s with empty app output (SIGKILL per the
+  session-3 note).
+- Not covered (needs CI/a human): the new workflow running on real GitHub runners (YAML is valid and every command
+  in it was exercised locally, but runner-image assumptions — preinstalled toolchains for the race runtime on
+  ubuntu/windows-2022 — are only verifiable by a CI run), and whether the Intel runner's software renderer
+  actually initializes (strongly suggested by the amd64 Rosetta run; the last-resort skip keeps a failure from
+  blocking CI either way).
+
 ## Session 10 — 2026-07-10: Phase 2 code complete — panels + CF helpers ported; the module is now 100% cgo-free
 
 The "Open/save panels" bullet and the delete-the-cgo cleanup bullet of Phase 2 are done. `all_darwin.go`,
@@ -790,27 +888,19 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 
 ## What remains (in plan order)
 
-1. **Phase 2 final manual verification (needs a human at the keyboard)**: all Phase 2 code is ported — the module
-   is 100% cgo-free as of session 10 — but the plan's last Phase 2 bullet requires exercising the app by hand:
-   real CJK input source (IME), popup-menu tracking (`Menu.Popup`), live drag & drop between apps, clipboard
-   interchange with other apps, interactively choosing files in the open/save dialogs (the OK path), window
-   minimize/zoom/focus in an active session, multi-monitor + retina scale changes, and transparent-window
-   compositing. Each session's "Not covered" list has the per-area details.
-2. **Software-GL fallback for the CI-skipped GL tests (requested by Rich, 2026-07-10)**: extend
-   `requireAcceleratedGL` in `internal/mac/opengl_darwin_test.go` so that when the accelerated probe fails, the GL
-   tests fall back to the Apple software renderer instead of skipping — either drop `NSOpenGLPFAAccelerated` and
-   let `ClosestPolicy` choose, or explicitly request `NSOpenGLPFARendererID = kCGLRendererGenericFloatID`
-   (0x00020400). A CGL probe on the M4 Max (2026-07-10) confirmed the software renderer still exists on Apple
-   Silicon macOS 26 (`CGLQueryRendererInfo` lists id 0x01020400 with accelerated=0, majorGL=4) and that an explicit
-   3.2-core pixel format requesting it succeeds, so it very likely works on the headless runners too. Keep the
-   accelerated path preferred wherever it exists (production attributes unchanged; the fallback is test-only), make
-   the test log which renderer it ran on, and keep a skip as the last resort if even software GL is unavailable.
-3. **Phase 3**: build.sh/CI enforcement of `CGO_ENABLED=0`, `import "C"` guard, README setup-section rewrite
-   (no C toolchain needed anywhere now; document runtime libX11/libGL dlopen on Linux and the new
-   cross-compilation ability), `.claude/CLAUDE.md` architecture-note update, upack audit.
+Nothing — the plan is fully implemented. The Phase 2 final manual verification pass (the last open item) was
+closed on 2026-07-10: Rich manually tested both the macOS and Linux builds of the committed code (through
+`Session 10 fixes`) and reports them working correctly. (The per-scenario details in each session's "Not covered"
+list were not individually itemized in that report; revisit them only if a regression appears.) One thing worth a
+glance after the next push: the session-11 CI changes running on real runners (new cross-build job, runtime-only
+Linux deps, no llvm-mingw on windows-11-arm, GL tests on the runners' software renderer instead of skipping).
 
 ## Notes for future sessions
 
+- **build.sh enforces cgo-freedom** (session 11): everything runs `CGO_ENABLED=0` and an `import "C"` grep guard
+  fails the build. The one sanctioned exception is `-race` on non-macOS platforms, where Go's prebuilt race
+  runtime requires cgo — if a future Go release lifts that ("go: -race requires cgo"), the `TEST_CGO` branch in
+  build.sh can be deleted.
 - **purego is now v0.11.0-alpha.6** (required — see session 2). When a stable v0.11.0 ships, bump to it and check
   whether the amd64 call-side struct-straddle bug (session 2) was fixed; the guard test in
   `internal/mac/objc_darwin_test.go` plus a re-run of the spike checks would validate the bump.
@@ -846,8 +936,10 @@ cross-compilation, whereas the Phase 0 spike needs an interactive macOS GUI run.
 - `WithPool` locks the goroutine to its OS thread for the pool's lifetime (Session 4 discovery 2). Direct
   `PoolPush`/`PoolPop` pairs are only safe on an already-locked thread — prefer `WithPool`.
 - The GitHub macOS runners (both arches) have a WindowServer session (windows, views, events, and drawing all work)
-  but **no hardware-accelerated OpenGL renderer**, so any test needing a real GL config must gate on
-  `requireAcceleratedGL(t)` (session 7 CI followup). Relatedly, `t.Fatal`/`t.Skip` inside a `runOnMain` closure
+  but **no hardware-accelerated OpenGL renderer**. GL tests gate on `requireGL(t)` (session 11, superseding
+  session 7's `requireAcceleratedGL`), which prefers the accelerated renderer, falls back to the Apple software
+  renderer (`NSOpenGLPFARendererID = kCGLRendererGenericFloatID`, test-only — production attributes are
+  untouched), and skips only when neither exists. Relatedly, `t.Fatal`/`t.Skip` inside a `runOnMain` closure
   Goexits the main-thread pump; `runPumped` in testmain_darwin_test.go makes that survivable, but skips must still
   be issued from the test goroutine (a skip from inside a closure marks the test skipped, yet FailNow/SkipNow off
   the test goroutine remains documented misuse — gate before entering `runOnMain` when possible).

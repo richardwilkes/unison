@@ -5,6 +5,23 @@
 
 A unified graphical user experience toolkit for Go desktop applications. macOS, Windows, and Linux are supported.
 
+## Required setup
+
+Unison is pure Go: it requires Go 1.26+ and builds with cgo disabled (`CGO_ENABLED=0`) on every platform, so no C or
+Objective-C toolchain is needed. That also means cross-compilation just works — e.g. `GOOS=linux GOARCH=arm64 go build`
+from a macOS host.
+
+At runtime, the operating system's libraries are loaded dynamically (via
+[purego](https://github.com/ebitengine/purego)):
+
+- **macOS**: no setup required; the system frameworks (AppKit, CoreGraphics, OpenGL) are always present.
+- **Windows**: no setup required; only standard system DLLs are used.
+- **Linux**: the X11 and OpenGL client libraries must be present, since they are dlopen'd at startup: `libX11.so.6`
+  and `libGL.so.1`. Any desktop system already has both; minimal or container installs need the runtime packages —
+  e.g. `libx11-6` and `libgl1` on Debian/Ubuntu, or `libX11` and `libglvnd-glx` on Fedora. Development headers and
+  `pkg-config` are *not* required. Unison talks to the display server via X11, so Wayland desktops need XWayland
+  (virtually always present).
+
 ## Example
 
 An example application can be found in the `cmd/example` directory:

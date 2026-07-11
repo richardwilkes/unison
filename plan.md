@@ -149,32 +149,40 @@ half-done):
       remaining pure-Go code into per-area files mirroring the old `.m` layout. — Done in Session 10: all_darwin.go
       and macos.h are deleted outright (the per-area split had already happened incrementally in sessions 3-9), and
       no `import "C"` remains anywhere in the module.
-- [ ] Verify: `CGO_ENABLED=0 go build ./...` on darwin/arm64 and darwin/amd64; run `cmd/example` and exercise every
+- [x] Verify: `CGO_ENABLED=0 go build ./...` on darwin/arm64 and darwin/amd64; run `cmd/example` and exercise every
       ported area — windows (resize/move/minimize/zoom/close/focus), mouse + keyboard, **IME input (e.g. Japanese
       via the system input source)**, menus + key equivalents + validation, popup menus, cursors, clipboard
       cut/copy/paste, drag & drop both directions (text, files, custom data), open/save dialogs, multi-monitor +
       retina scale changes, dark/light theme switching, beep, transparent windows. — Session 10: both
-      `CGO_ENABLED=0` builds pass and a `CGO_ENABLED=0` `cmd/example` smoke-runs; what remains here is the human
-      manual pass (IME with a real CJK input source, popup-menu tracking, cross-app drag & drop and clipboard,
-      minimize/zoom/focus, multi-monitor, transparency) — the parts that cannot run headlessly.
+      `CGO_ENABLED=0` builds pass and a `CGO_ENABLED=0` `cmd/example` smoke-runs. Rich manually tested the macOS
+      and Linux builds of the committed code (through Session 10 fixes, 2026-07-10) and reports both working
+      correctly, closing the human manual pass.
 
 Estimated size: four to six sessions. Keep a checkpoint after each bullet — every step must leave `./build.sh`
 green.
 
 ## Phase 3 — Build system, CI, and docs
 
-- [ ] `build.sh`: build and test with `CGO_ENABLED=0` explicitly so cgo can't creep back in silently.
-- [ ] Add a guard that fails the build if `import "C"` appears anywhere (grep in `build.sh` or a `depguard`/custom
-      lint rule in `.golangci.yml`).
-- [ ] README: rewrite the "Required setup" section — no more C/Objective-C toolchain, no `pkg-config x11 gl` build
+- [x] `build.sh`: build and test with `CGO_ENABLED=0` explicitly so cgo can't creep back in silently. — Done in
+      Session 11; the one exception is `-race` on non-macOS platforms, where Go's prebuilt race runtime itself
+      requires cgo ("go: -race requires cgo" — verified empirically), so that test run alone uses CGO_ENABLED=1
+      with a comment explaining why.
+- [x] Add a guard that fails the build if `import "C"` appears anywhere (grep in `build.sh` or a `depguard`/custom
+      lint rule in `.golangci.yml`). — Done in Session 11 as a grep in build.sh (covers all platforms' files
+      regardless of GOOS, unlike a lint rule — `.golangci.yml` excludes internal/mac and internal/w32); matches
+      both the single and grouped import forms.
+- [x] README: rewrite the "Required setup" section — no more C/Objective-C toolchain, no `pkg-config x11 gl` build
       dependency on Linux (runtime shared libraries `libX11`/`libGL` are still required, now loaded via dlopen;
       document the package names). Note that cross-compilation now works (`GOOS=linux go build` from macOS, etc.)
       and consider adding a cross-build matrix (darwin/linux/windows × amd64/arm64) to CI since compile breakage on
-      other platforms is no longer masked by cgo requiring native toolchains.
-- [ ] `.claude/CLAUDE.md`: update the architecture notes (internal/mac is now purego/objc, not Objective-C + CGO;
-      the "expect to implement it three times" guidance stands, but all three are now Go).
-- [ ] Check `cmd/upack` packager for any cgo-era assumptions (dylib bundling, notarization notes) — likely none, but
-      confirm.
+      other platforms is no longer masked by cgo requiring native toolchains. — Done in Session 11 (the section had
+      been dropped entirely during the canvas migration; restored with the new reality, which also fixes
+      CLAUDE.md's dangling #required-setup link). CI cross-builds all six OS/arch pairs from one ubuntu job.
+- [x] `.claude/CLAUDE.md`: update the architecture notes (internal/mac is now purego/objc, not Objective-C + CGO;
+      the "expect to implement it three times" guidance stands, but all three are now Go). — Done in Session 11.
+- [x] Check `cmd/upack` packager for any cgo-era assumptions (dylib bundling, notarization notes) — likely none, but
+      confirm. — Confirmed none in Session 11: no dylib/framework bundling logic exists anywhere in cmd/upack, and
+      notarization operates on the signed app/dmg, independent of how the binary was linked.
 
 Estimated size: one session.
 

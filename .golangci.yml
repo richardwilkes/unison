@@ -53,9 +53,7 @@ linters:
       min-occurrences: 4
     gocritic:
       disabled-checks:
-        - dupImport      # This check doesn't work properly when using CGO
-        - sloppyReassign # This check doesn't work properly when using CGO
-        - underef        # The C code pointer derefs in Go get incorrectly flagged if this is enabled
+        - sloppyReassign # The codebase deliberately reuses err in `if err = f(); err != nil` form
       enabled-tags:
         - diagnostic
         - experimental

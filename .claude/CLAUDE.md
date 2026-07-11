@@ -5,8 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Overview
 
 Unison is a cross-platform (macOS, Windows, Linux) GUI toolkit for Go desktop applications. It renders with OpenGL, and
-defines its own consistent look & feel rather than using native widgets. Requires Go 1.26+ and CGO; the platform
-C/Objective-C dependencies are listed in [README.md](README.md#required-setup).
+defines its own consistent look & feel rather than using native widgets. Requires Go 1.26+. The module is **pure Go —
+cgo is forbidden** (`build.sh` enforces `CGO_ENABLED=0` and fails on any `import "C"`); OS libraries are reached at
+runtime via `github.com/ebitengine/purego` instead. Consequently, cross-compilation works from any host (e.g.
+`GOOS=linux GOARCH=arm64 go build ./...` from macOS — CI cross-builds all six OS/arch pairs). The runtime library
+requirements are listed in [README.md](README.md#required-setup).
 
 ## Commands
 
@@ -53,14 +56,19 @@ Cross-platform code is split by filename suffix, not build tags in most cases:
 - `foo_darwin.go`, `foo_linux.go`, `foo_windows.go` — per-OS implementations
 - `foo_other.go` — fallback for platforms without a specific need
 
-The actual OS integration (windowing, menus, dialogs, clipboard, drag & drop) lives in `internal/`:
+The actual OS integration (windowing, menus, dialogs, clipboard, drag & drop) lives in `internal/`, all of it pure Go:
 
-- `internal/mac/` — Objective-C (`.m`) + CGO, Cocoa framework
-- `internal/w32/` — Win32 API bindings
-- `internal/x11/` — X11 bindings for Linux
+- `internal/mac/` — Cocoa via `purego/objc`: Objective-C classes are registered from Go (`objc.RegisterClass`) and
+  AppKit is driven through `objc_msgSend`; `objc_darwin.go` holds the shared helper layer and documents the ABI
+  constraints. This package has a real headless test suite (windows, views, IME, menus, pasteboard, panels) built on
+  the `runOnMain` main-thread pump in `testmain_darwin_test.go`.
+- `internal/w32/` — Win32 API bindings via `golang.org/x/sys/windows`-style syscalls
+- `internal/x11/` — a pure-Go X11 wire-protocol implementation for Linux, plus GLX via purego/dlopen
+  (`glx_linux.go`)
 
 When adding a feature that touches the OS, expect to implement it three times (one file per platform) plus the shared
-API file.
+API file — all three implementations are Go; never introduce cgo. Note that `.golangci.yml` excludes `internal/mac/`
+and `internal/w32/` from linting, so review code there manually.
 
 ### Generated enums
 
