@@ -95,7 +95,7 @@ func showWellDialog(w *Well) {
 		d.popup = NewPopupMenu[string]()
 		d.popup.AddItem(labels...)
 		d.popup.SelectionChangedCallback = func(popup *PopupMenu[string]) {
-			d.switchEditor(d.options[WellMask(popup.SelectedIndex())])
+			d.switchEditor(d.options[popup.SelectedIndex()])
 		}
 		d.popup.SetLayoutData(&FlexLayoutData{
 			HAlign: align.Middle,

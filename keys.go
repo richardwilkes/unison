@@ -303,7 +303,7 @@ func KeyCodeFromKey(key string) KeyCode {
 		return v
 	}
 	if strings.HasPrefix(key, "#") {
-		if v, err := strconv.Atoi(key[1:]); err == nil {
+		if v, err := strconv.ParseUint(key[1:], 10, 16); err == nil {
 			return KeyCode(v)
 		}
 	}

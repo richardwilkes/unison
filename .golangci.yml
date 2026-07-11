@@ -53,7 +53,7 @@ linters:
       min-occurrences: 4
     gocritic:
       disabled-checks:
-        - sloppyReassign # The codebase deliberately reuses err in `if err = f(); err != nil` form
+        - sloppyReassign
       enabled-tags:
         - diagnostic
         - experimental
@@ -150,6 +150,7 @@ linters:
       - internal/w32/
 issues:
   max-same-issues: 0
+  max-issues-per-linter: 0
 formatters:
   enable:
     - gofumpt
