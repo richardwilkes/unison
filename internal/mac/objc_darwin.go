@@ -33,6 +33,7 @@ import (
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 )
 
 // Struct types matching the Apple 64-bit ABI. CGFloat and NSUInteger are both 8 bytes on every supported macOS
@@ -135,14 +136,14 @@ func NSStringConstant(framework, symbol string) objc.ID {
 	if err != nil || ptr == 0 {
 		panic(fmt.Errorf("mac: unable to resolve %s in %s: %w", symbol, framework, err))
 	}
-	return *(*objc.ID)(unsafe.Pointer(ptr))
+	return *xruntime.PtrFromUintptr[objc.ID](ptr)
 }
 
 // Sel returns the selector for name, caching the result since objc.RegisterName takes the global Objective-C
 // runtime lock.
 func Sel(name string) objc.SEL {
 	if s, ok := selCache.Load(name); ok {
-		return s.(objc.SEL)
+		return s.(objc.SEL) //nolint:errcheck // There is only one thing it can be
 	}
 	s := objc.RegisterName(name)
 	selCache.Store(name, s)
@@ -153,7 +154,7 @@ func Sel(name string) objc.SEL {
 // class does not exist, since sending messages to a nil class silently returns nil and hides the typo.
 func Cls(name string) objc.Class {
 	if c, ok := clsCache.Load(name); ok {
-		return c.(objc.Class)
+		return c.(objc.Class) //nolint:errcheck // There is only one thing it can be
 	}
 	LoadAppKit()
 	c := objc.GetClass(name)

@@ -28,6 +28,7 @@ var _ drag.Info = DragInfo(0)
 // by compiling and running an Objective-C program.
 type DragOp uint64
 
+// Possible DragOp values
 const (
 	DragOpNone DragOp = 0
 	DragOpCopy DragOp = 1

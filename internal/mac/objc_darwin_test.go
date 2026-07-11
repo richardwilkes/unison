@@ -17,9 +17,11 @@ import (
 	"github.com/ebitengine/purego/objc"
 )
 
+//nolint:goconst // Explicit strings are more readable
+
 func TestNSStringRoundTrip(t *testing.T) {
 	WithPool(func() {
-		for _, s := range []string{"", "hello", "héllo wörld", "漢字テスト", "emoji 🎉👍", "line\nbreak"} {
+		for _, s := range []string{"", "hello", "héllo wörld", "漢字テスト", "emoji 🎉👍", "line\nbreak"} { //nolint:goconst // Explicit strings are more readable
 			if got := GoStringFromNSString(NSStringFromGo(s)); got != s {
 				t.Errorf("round trip of %q produced %q", s, got)
 			}

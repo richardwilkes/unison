@@ -586,7 +586,8 @@ func TestViewDrawAndBackingCallbacks(t *testing.T) {
 		if layerUpdated == 0 {
 			t.Error("updateLayer did not fire for displayRectIgnoringOpacity:inContext:")
 		}
-		if objc.ID(v).Send(Sel("drawRect:"), NSRect{Size: NSSize{Width: 10, Height: 10}}); redrawn != 1 {
+		objc.ID(v).Send(Sel("drawRect:"), NSRect{Size: NSSize{Width: 10, Height: 10}})
+		if redrawn != 1 {
 			t.Errorf("drawRect: dispatch produced %d redraw callbacks, want 1", redrawn)
 		}
 

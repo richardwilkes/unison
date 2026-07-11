@@ -55,8 +55,7 @@ func (p SavePanel) SetInitialFileName(name string) {
 // AllowedFileTypes returns the panel's allowed file types as an owned (+1) reference, or 0 if none have been set.
 // The old bridge returned a borrowed reference here even though the root dialogs release the result — an
 // over-release (and a crash when no types were set) if AllowedExtensions was ever used; retaining before returning
-// makes the existing caller contract balanced. This keeps using the API the old bridge used (allowedFileTypes,
-// deprecated in favor of the UTType-based allowedContentTypes) so behavior is unchanged.
+// makes the existing caller contract balanced.
 func (p SavePanel) AllowedFileTypes() Array {
 	return Array(Retain(objc.ID(p).Send(Sel("allowedFileTypes"))))
 }

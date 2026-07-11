@@ -17,7 +17,7 @@ import (
 	"github.com/ebitengine/purego/objc"
 )
 
-func TestIsDarkModeEnabled(t *testing.T) {
+func TestIsDarkModeEnabled(_ *testing.T) {
 	// The result depends on the user's settings; this exercises the NSUserDefaults path for crashes only.
 	_ = IsDarkModeEnabled()
 }

@@ -26,7 +26,7 @@ var testDataType = &uti.DataType{UTI: "com.trollworks.unison.test-data"}
 // methods can be exercised without touching the user's clipboard. It must be called on the main thread (from within
 // a runOnMain closure), and the returned cleanup — which releases the pasteboard's server-side resources — must run
 // there too.
-func newUniquePasteboard(t *testing.T) (Pasteboard, func()) {
+func newUniquePasteboard(t *testing.T) (p Pasteboard, f func()) {
 	t.Helper()
 	var pb objc.ID
 	WithPool(func() {

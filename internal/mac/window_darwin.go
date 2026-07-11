@@ -23,44 +23,48 @@ import (
 // default releasedWhenClosed behavior drops the reference when Close is called, after which the handle is invalid.
 type Window objc.ID
 
-// Aliases for the underlying Go types of the AppKit enums the cgo bridge re-exported. NSWindowStyleMask and
-// NSWindowCollectionBehavior are NSUInteger; NSWindowLevel and NSWindowTabbingMode are NSInteger.
-type (
-	WindowStyleMask          = uint64
-	WindowCollectionBehavior = uint64
-	WindowLevel              = int64
-	WindowTabbingMode        = int64
+// WindowStyleMask holds constants that specify the style of a window.
+type WindowStyleMask = uint64
+
+// Some WindowStyleMask values.
+const (
+	WindowStyleMaskTitled WindowStyleMask = 1 << iota
+	WindowStyleMaskClosable
+	WindowStyleMaskMiniaturizable
+	WindowStyleMaskResizable
+	WindowStyleMaskBorderless WindowStyleMask = 0
 )
 
-// NSWindowStyleMask values. All AppKit enum values in this file were verified against the SDK by compiling and
-// running an Objective-C program that printed them (2026-07-10; they are ABI-frozen).
-const (
-	WindowStyleMaskBorderless     WindowStyleMask = 0
-	WindowStyleMaskTitled         WindowStyleMask = 1 << 0
-	WindowStyleMaskClosable       WindowStyleMask = 1 << 1
-	WindowStyleMaskMiniaturizable WindowStyleMask = 1 << 2
-	WindowStyleMaskResizable      WindowStyleMask = 1 << 3
-)
+// WindowCollectionBehavior holds window collection behaviors related to Mission Control, Spaces, and Stage Manager.
+type WindowCollectionBehavior = uint64
 
-// NSWindowCollectionBehavior values.
 const (
-	WindowCollectionBehaviorManaged           WindowCollectionBehavior = 1 << 2
+	// WindowCollectionBehaviorManaged indicates the window participates in Mission Control and Spaces.
+	WindowCollectionBehaviorManaged WindowCollectionBehavior = 1 << 2
+	// WindowCollectionBehaviorFullScreenPrimary indicates the window can enter full-screen mode.
 	WindowCollectionBehaviorFullScreenPrimary WindowCollectionBehavior = 1 << 7
-	WindowCollectionBehaviorFullScreenNone    WindowCollectionBehavior = 1 << 9
+	// WindowCollectionBehaviorFullScreenNone indicates the window doesn’t support full-screen mode.
+	WindowCollectionBehaviorFullScreenNone WindowCollectionBehavior = 1 << 9
 )
 
-// NSWindowLevel values.
+// WindowLevel holds the standard window levels in macOS.
+type WindowLevel = int64
+
+// Some WindowLevel values.
 const (
 	WindowLevelNormal    WindowLevel = 0
 	WindowLevelFloating  WindowLevel = 3
 	WindowLevelPopUpMenu WindowLevel = 101
 )
 
-// NSWindowTabbingMode values.
+// WindowTabbingMode holds the preferred tabbing behavior of a window.
+type WindowTabbingMode = int64
+
+// Some WindowTabbingMode values.
 const (
-	WindowTabbingModeAutomatic  WindowTabbingMode = 0
-	WindowTabbingModePreferred  WindowTabbingMode = 1
-	WindowTabbingModeDisallowed WindowTabbingMode = 2
+	WindowTabbingModeAutomatic WindowTabbingMode = iota
+	WindowTabbingModePreferred
+	WindowTabbingModeDisallowed
 )
 
 // nsBackingStoreBuffered is NSBackingStoreType's NSBackingStoreBuffered.

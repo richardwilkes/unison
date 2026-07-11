@@ -78,7 +78,7 @@ func TestArrayOfURLToStringSlice(t *testing.T) {
 
 func TestStringWrapperRoundTrip(t *testing.T) {
 	runOnMain(func() {
-		for _, want := range []string{"", "hello", "漢字テスト"} {
+		for _, want := range []string{"", "hello", "漢字テスト"} { //nolint:goconst // Explicit strings are more readable
 			s := NewString(want)
 			got := s.String()
 			s.Release()
