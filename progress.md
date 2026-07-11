@@ -750,7 +750,7 @@ CoreGraphics) were ported alongside screen since `ScreenForDisplayID` needs `CGD
 
 ### Verification performed (session 3)
 
-- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt` applied to internal/mac.
+- `./build.sh --test` green; `golangci-lint run ./...` 0 issues; `golangci-lint fmt` applied to internal/cocoa.
 - `go test -race ./internal/mac/` 10/10 in fresh processes (was flaky ~40% before the TestMain fix), plus
   `-count=5` in a single process (validates the observer surviving reruns).
 - darwin/amd64: `CGO_ENABLED=1 GOARCH=amd64 go test -c` binary run under Rosetta 2 — all tests pass, covering the

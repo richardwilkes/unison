@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 var _ Menu = &macMenu{}
@@ -19,7 +19,7 @@ var _ Menu = &macMenu{}
 type macMenu struct {
 	factory *macMenuFactory
 	id      int
-	menu    mac.Menu
+	menu    cocoa.Menu
 }
 
 func (m *macMenu) Factory() MenuFactory {
@@ -96,7 +96,7 @@ func (m *macMenu) InsertSeparator(atIndex int, onlyIfNeeded bool) {
 			}
 		}
 	}
-	m.macInsert(mac.NewSeparatorMenuItem(), atIndex)
+	m.macInsert(cocoa.NewSeparatorMenuItem(), atIndex)
 }
 
 func (m *macMenu) InsertItem(atIndex int, mi MenuItem) {
@@ -115,14 +115,14 @@ func (m *macMenu) InsertMenu(atIndex int, subMenu Menu) {
 			if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
 				if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
 					if menu, ok = servicesMenu.(*macMenu); ok {
-						mac.SetServicesMenu(menu.menu)
+						cocoa.SetServicesMenu(menu.menu)
 					}
 				}
 			}
 		case WindowMenuID:
-			mac.SetWindowsMenu(menu.menu)
+			cocoa.SetWindowsMenu(menu.menu)
 		case HelpMenuID:
-			mac.SetHelpMenu(menu.menu)
+			cocoa.SetHelpMenu(menu.menu)
 		}
 	}
 }
@@ -160,7 +160,7 @@ func (m *macMenu) Dispose() {
 	m.menu.Release()
 }
 
-func (m *macMenu) macInsert(mi mac.MenuItem, index int) {
+func (m *macMenu) macInsert(mi cocoa.MenuItem, index int) {
 	if index < 0 {
 		index = m.Count()
 	}

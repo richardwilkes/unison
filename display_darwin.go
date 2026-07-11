@@ -11,15 +11,15 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 func apiPrimaryDisplay() *Display {
-	return macConvertDisplay(mac.MainDisplayID())
+	return macConvertDisplay(cocoa.MainDisplayID())
 }
 
 func apiAllDisplays() []*Display {
-	displayIDs := mac.ActiveDisplayList()
+	displayIDs := cocoa.ActiveDisplayList()
 	result := make([]*Display, 0, len(displayIDs))
 	for _, id := range displayIDs {
 		if display := macConvertDisplay(id); display != nil {
@@ -29,16 +29,16 @@ func apiAllDisplays() []*Display {
 	return result
 }
 
-func macConvertDisplay(id mac.DisplayID) *Display {
-	if mac.DisplayIsAsleep(id) {
+func macConvertDisplay(id cocoa.DisplayID) *Display {
+	if cocoa.DisplayIsAsleep(id) {
 		return nil
 	}
-	screen := mac.ScreenForDisplayID(id)
+	screen := cocoa.ScreenForDisplayID(id)
 	if screen == 0 {
 		return nil
 	}
-	mainDisplayID := mac.MainDisplayID()
-	height := mac.DisplayBounds(mainDisplayID).Height
+	mainDisplayID := cocoa.MainDisplayID()
+	height := cocoa.DisplayBounds(mainDisplayID).Height
 	var display Display
 	display.Frame = screen.Frame()
 	pixels := screen.ConvertRectToBacking(display.Frame)
@@ -46,12 +46,12 @@ func macConvertDisplay(id mac.DisplayID) *Display {
 	display.Usable = screen.VisibleFrame()
 	display.Usable.Y = height - display.Usable.Bottom()
 	display.Scale = geom.NewPoint(pixels.Width/display.Frame.Width, pixels.Height/display.Frame.Height)
-	sizeMM := mac.DisplayScreenSize(id)
+	sizeMM := cocoa.DisplayScreenSize(id)
 	display.PPI = int(pixels.Width / (sizeMM.Width / 25.4))
 	display.Primary = id == mainDisplayID
 	return &display
 }
 
 func macTransformY(y float32) float32 {
-	return mac.DisplayBounds(mac.MainDisplayID()).Height - y
+	return cocoa.DisplayBounds(cocoa.MainDisplayID()).Height - y
 }

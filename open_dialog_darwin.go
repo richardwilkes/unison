@@ -13,17 +13,17 @@ import (
 	"net/url"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 var _ OpenDialog = &macOpenDialog{}
 
 type macOpenDialog struct {
-	dialog mac.OpenPanel
+	dialog cocoa.OpenPanel
 }
 
 func apiNewOpenDialog() OpenDialog {
-	return &macOpenDialog{dialog: mac.NewOpenPanel()}
+	return &macOpenDialog{dialog: cocoa.NewOpenPanel()}
 }
 
 func (d *macOpenDialog) InitialDirectory() string {
@@ -37,7 +37,7 @@ func (d *macOpenDialog) InitialDirectory() string {
 }
 
 func (d *macOpenDialog) SetInitialDirectory(dir string) {
-	dirURL := mac.NewFileURL(dir)
+	dirURL := cocoa.NewFileURL(dir)
 	defer dirURL.Release()
 	d.dialog.SetDirectoryURL(dirURL)
 }
@@ -51,7 +51,7 @@ func (d *macOpenDialog) AllowedExtensions() []string {
 func (d *macOpenDialog) SetAllowedExtensions(types ...string) {
 	types = SanitizeExtensionList(types)
 	if len(types) != 0 {
-		d.dialog.SetAllowedFileTypes(mac.NewArrayFromStringSlice(types))
+		d.dialog.SetAllowedFileTypes(cocoa.NewArrayFromStringSlice(types))
 	} else {
 		d.dialog.SetAllowedFileTypes(0)
 	}

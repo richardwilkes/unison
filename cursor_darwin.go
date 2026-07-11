@@ -13,13 +13,13 @@ import (
 	"image"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-type apiNativeCursor = mac.Cursor
+type apiNativeCursor = cocoa.Cursor
 
 func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
-	nsCursor := mac.NewCursor(img, hotSpot, logicalSize)
+	nsCursor := cocoa.NewCursor(img, hotSpot, logicalSize)
 	if nsCursor == 0 {
 		return nil
 	}

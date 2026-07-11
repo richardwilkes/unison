@@ -11,7 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/unison/enums/mod"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 func apiFillKeyCodes() {
@@ -128,21 +128,21 @@ func apiFillKeyCodes() {
 	rawScanCodeToKeyCodeMap[0x7E] = KeyUp
 }
 
-func macTranslateModifiers(flags mac.EventModifierFlags) mod.Modifiers {
+func macTranslateModifiers(flags cocoa.EventModifierFlags) mod.Modifiers {
 	var mods mod.Modifiers
-	if flags&mac.EventModifierFlagShift != 0 {
+	if flags&cocoa.EventModifierFlagShift != 0 {
 		mods |= mod.Shift
 	}
-	if flags&mac.EventModifierFlagControl != 0 {
+	if flags&cocoa.EventModifierFlagControl != 0 {
 		mods |= mod.Control
 	}
-	if flags&mac.EventModifierFlagOption != 0 {
+	if flags&cocoa.EventModifierFlagOption != 0 {
 		mods |= mod.Option
 	}
-	if flags&mac.EventModifierFlagCommand != 0 {
+	if flags&cocoa.EventModifierFlagCommand != 0 {
 		mods |= mod.Command
 	}
-	if flags&mac.EventModifierFlagCapsLock != 0 {
+	if flags&cocoa.EventModifierFlagCapsLock != 0 {
 		mods |= mod.CapsLock
 	}
 	return mods

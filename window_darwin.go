@@ -18,16 +18,16 @@ import (
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 type apiWindow struct {
-	wnd            mac.Window
-	view           mac.View
+	wnd            cocoa.Window
+	view           cocoa.View
 	nsCursorHidden bool
 }
 
-func macFindWindow(macWnd mac.Window) *Window {
+func macFindWindow(macWnd cocoa.Window) *Window {
 	for _, w := range windowList {
 		if w.wnd.wnd == macWnd {
 			return w
@@ -37,35 +37,35 @@ func macFindWindow(macWnd mac.Window) *Window {
 }
 
 func macInitWindowCallbacks() {
-	mac.WindowKeyPressedCallback = func(macWnd mac.Window, key uint16, mods uint) {
+	cocoa.WindowKeyPressedCallback = func(macWnd cocoa.Window, key uint16, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.keyPressed(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.keyPressed(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window key pressed callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowKeyTypedCallback = func(macWnd mac.Window, ch rune) {
+	cocoa.WindowKeyTypedCallback = func(macWnd cocoa.Window, ch rune) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.runeTyped(ch)
 		} else {
 			slog.Warn("received window key typed callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowKeyReleasedCallback = func(macWnd mac.Window, key uint16, mods uint) {
+	cocoa.WindowKeyReleasedCallback = func(macWnd cocoa.Window, key uint16, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.keyReleased(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.keyReleased(rawScanCodeToKeyCodeMap[key], macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window key released callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowShouldCloseCallback = func(macWnd mac.Window) {
+	cocoa.WindowShouldCloseCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.requestClose()
 		} else {
 			slog.Warn("received window should close callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowDidResizeCallback = func(macWnd mac.Window) {
+	cocoa.WindowDidResizeCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.glCtx.ctx.Update()
 			maximized := w.wnd.wnd.Zoomed()
@@ -90,7 +90,7 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window did resize callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowDidMoveCallback = func(macWnd mac.Window) {
+	cocoa.WindowDidMoveCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.glCtx.ctx.Update()
 			w.moved()
@@ -98,7 +98,7 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window did move callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMinimizeCallback = func(macWnd mac.Window, minimized bool) {
+	cocoa.WindowMinimizeCallback = func(macWnd cocoa.Window, minimized bool) {
 		if w := macFindWindow(macWnd); w != nil {
 			if w.minimized != minimized {
 				w.minimized = minimized
@@ -110,14 +110,14 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window minimize callback for unknown window", "window", macWnd, "minimized", minimized)
 		}
 	}
-	mac.WindowDidBecomeKeyCallback = func(macWnd mac.Window) {
+	cocoa.WindowDidBecomeKeyCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.gainedFocus()
 		} else {
 			slog.Warn("received window did become key callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowDidResignKeyCallback = func(macWnd mac.Window) {
+	cocoa.WindowDidResignKeyCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.lostFocus()
 		} else {
@@ -125,22 +125,22 @@ func macInitWindowCallbacks() {
 				errs.New("here"))
 		}
 	}
-	mac.WindowCursorUpdateCallback = func(macWnd mac.Window) {
+	cocoa.WindowCursorUpdateCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
 		} else {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseEnterCallback = func(macWnd mac.Window, pt geom.Point, mods uint) {
+	cocoa.WindowMouseEnterCallback = func(macWnd cocoa.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
-			w.mouseEnter(pt, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.mouseEnter(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseExitCallback = func(macWnd mac.Window) {
+	cocoa.WindowMouseExitCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.apiUpdateCursorImage()
 			w.mouseExit()
@@ -148,23 +148,23 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseMovedCallback = func(macWnd mac.Window, pt geom.Point, mods uint) {
+	cocoa.WindowMouseMovedCallback = func(macWnd cocoa.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.mouseMovedOrDragged(pt, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.mouseMovedOrDragged(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse moved callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowScrollCallback = func(macWnd mac.Window, delta geom.Point, mods uint) {
+	cocoa.WindowScrollCallback = func(macWnd cocoa.Window, delta geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.mouseWheel(w.MouseLocation(), delta, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			w.mouseWheel(w.MouseLocation(), delta, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window scroll callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowMouseClickCallback = func(macWnd mac.Window, button int, where geom.Point, pressed bool, mods uint) {
+	cocoa.WindowMouseClickCallback = func(macWnd cocoa.Window, button int, where geom.Point, pressed bool, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			actualMods := macTranslateModifiers(mac.EventModifierFlags(mods))
+			actualMods := macTranslateModifiers(cocoa.EventModifierFlags(mods))
 			if pressed {
 				w.mouseDown(where, button, actualMods)
 			} else {
@@ -174,7 +174,7 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window mouse click callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowUpdateLayerCallback = func(macWnd mac.Window) {
+	cocoa.WindowUpdateLayerCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.glCtx.ctx.Update()
 			w.draw()
@@ -182,14 +182,14 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window update layer callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowRedrawCallback = func(macWnd mac.Window) {
+	cocoa.WindowRedrawCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.draw()
 		} else {
 			slog.Warn("received window draw rect callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowScaleCallback = func(macWnd mac.Window, scale geom.Point) {
+	cocoa.WindowScaleCallback = func(macWnd cocoa.Window, scale geom.Point) {
 		// This will be called once before the window is finished initializing, so just ignore any unknown windows here.
 		if w := macFindWindow(macWnd); w != nil {
 			if w.ContentScaleCallback != nil {
@@ -197,35 +197,35 @@ func macInitWindowCallbacks() {
 			}
 		}
 	}
-	mac.WindowDragEnterCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) drag.Op {
+	cocoa.WindowDragEnterCallback = func(macWnd cocoa.Window, d cocoa.DragInfo, where geom.Point, mods uint) drag.Op {
 		if w := macFindWindow(macWnd); w != nil {
-			return w.dragEntered(d, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			return w.dragEntered(d, where, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		}
 		slog.Warn("received window drag enter callback for unknown window", "window", macWnd)
 		return drag.None
 	}
-	mac.WindowDragUpdateCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) drag.Op {
+	cocoa.WindowDragUpdateCallback = func(macWnd cocoa.Window, d cocoa.DragInfo, where geom.Point, mods uint) drag.Op {
 		if w := macFindWindow(macWnd); w != nil {
-			return w.dragUpdate(d, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			return w.dragUpdate(d, where, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		}
 		slog.Warn("received window drag update callback for unknown window", "window", macWnd)
 		return drag.None
 	}
-	mac.WindowDropCallback = func(macWnd mac.Window, d mac.DragInfo, where geom.Point, mods uint) bool {
+	cocoa.WindowDropCallback = func(macWnd cocoa.Window, d cocoa.DragInfo, where geom.Point, mods uint) bool {
 		if w := macFindWindow(macWnd); w != nil {
-			return w.drop(d, where, macTranslateModifiers(mac.EventModifierFlags(mods)))
+			return w.drop(d, where, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		}
 		slog.Warn("received window drop callback for unknown window", "window", macWnd)
 		return false
 	}
-	mac.WindowDragExitCallback = func(macWnd mac.Window) {
+	cocoa.WindowDragExitCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.dragExit()
 		} else {
 			slog.Warn("received window drag exit callback for unknown window", "window", macWnd)
 		}
 	}
-	mac.WindowDragSourceFinishedCallback = func(macWnd mac.Window) {
+	cocoa.WindowDragSourceFinishedCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
 			w.dragSourceFinished()
 		} else {
@@ -235,28 +235,28 @@ func macInitWindowCallbacks() {
 }
 
 func (w *Window) apiInit() error {
-	styleMask := mac.WindowStyleMaskMiniaturizable
+	styleMask := cocoa.WindowStyleMaskMiniaturizable
 	if w.undecorated {
-		styleMask |= mac.WindowStyleMaskBorderless
+		styleMask |= cocoa.WindowStyleMaskBorderless
 	} else {
-		styleMask |= mac.WindowStyleMaskTitled | mac.WindowStyleMaskClosable
+		styleMask |= cocoa.WindowStyleMaskTitled | cocoa.WindowStyleMaskClosable
 		if !w.notResizable {
-			styleMask |= mac.WindowStyleMaskResizable
+			styleMask |= cocoa.WindowStyleMaskResizable
 		}
 	}
-	nw := mac.NewWindow(geom.NewRect(0, 0, 1, 1), styleMask, true, true)
+	nw := cocoa.NewWindow(geom.NewRect(0, 0, 1, 1), styleMask, true, true)
 	if nw == 0 {
 		return errs.New("unable to create native window")
 	}
 	if w.notResizable {
-		nw.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenNone)
+		nw.SetCollectionBehavior(cocoa.WindowCollectionBehaviorFullScreenNone)
 	} else {
-		nw.SetCollectionBehavior(mac.WindowCollectionBehaviorFullScreenPrimary | mac.WindowCollectionBehaviorManaged)
+		nw.SetCollectionBehavior(cocoa.WindowCollectionBehaviorFullScreenPrimary | cocoa.WindowCollectionBehaviorManaged)
 	}
 	if w.floating {
-		nw.SetLevel(mac.WindowLevelFloating)
+		nw.SetLevel(cocoa.WindowLevelFloating)
 	}
-	v := mac.NewView(nw)
+	v := cocoa.NewView(nw)
 	if w.transparent {
 		nw.SetTransparent()
 	}
@@ -265,10 +265,10 @@ func (w *Window) apiInit() error {
 	if w.title != "" {
 		nw.SetTitle(w.title)
 	}
-	nw.SetDelegate(mac.NewWindowDelegate())
+	nw.SetDelegate(cocoa.NewWindowDelegate())
 	nw.SetAcceptsMouseMovedEvents(true)
 	nw.SetRestorable(false)
-	nw.SetTabbingMode(mac.WindowTabbingModeDisallowed)
+	nw.SetTabbingMode(cocoa.WindowTabbingModeDisallowed)
 	w.wnd.wnd = nw
 	w.wnd.view = v
 	return nil
@@ -326,24 +326,24 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 }
 
 func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
-	return macModifiersFromEventModifierFlags(mac.CurrentModifierFlags())
+	return macModifiersFromEventModifierFlags(cocoa.CurrentModifierFlags())
 }
 
 func (w *Window) apiUpdateCursorImage() {
 	if w.cursorHidden {
 		if !w.wnd.nsCursorHidden {
-			mac.HideCursor()
+			cocoa.HideCursor()
 			w.wnd.nsCursorHidden = true
 		}
 	} else {
 		if w.wnd.nsCursorHidden {
-			mac.ShowCursor()
+			cocoa.ShowCursor()
 			w.wnd.nsCursorHidden = false
 		}
 		if w.cursor != nil {
 			w.cursor.cursor.Set()
 		} else {
-			mac.ArrowCursor().Set()
+			cocoa.ArrowCursor().Set()
 		}
 	}
 }
@@ -371,7 +371,7 @@ func (w *Window) apiMaximize() {
 }
 
 func (w *Window) apiAcquireFocusAndBringToFront() {
-	mac.ActivateIgnoringOtherApps()
+	cocoa.ActivateIgnoringOtherApps()
 	w.wnd.wnd.MakeKeyAndOrderFront()
 }
 
@@ -424,42 +424,42 @@ func (w *Window) apiDestroy() {
 	apiPollEvents()
 }
 
-func macModifiersFromEventModifierFlags(flags mac.EventModifierFlags) mod.Modifiers {
+func macModifiersFromEventModifierFlags(flags cocoa.EventModifierFlags) mod.Modifiers {
 	var mods mod.Modifiers
-	if flags&mac.EventModifierFlagShift != 0 {
+	if flags&cocoa.EventModifierFlagShift != 0 {
 		mods |= mod.Shift
 	}
-	if flags&mac.EventModifierFlagControl != 0 {
+	if flags&cocoa.EventModifierFlagControl != 0 {
 		mods |= mod.Control
 	}
-	if flags&mac.EventModifierFlagOption != 0 {
+	if flags&cocoa.EventModifierFlagOption != 0 {
 		mods |= mod.Option
 	}
-	if flags&mac.EventModifierFlagCommand != 0 {
+	if flags&cocoa.EventModifierFlagCommand != 0 {
 		mods |= mod.Command
 	}
-	if flags&mac.EventModifierFlagCapsLock != 0 {
+	if flags&cocoa.EventModifierFlagCapsLock != 0 {
 		mods |= mod.CapsLock
 	}
 	return mods
 }
 
-func macEventModifierFlagsFromModifiers(mods mod.Modifiers) mac.EventModifierFlags {
-	var flags mac.EventModifierFlags
+func macEventModifierFlagsFromModifiers(mods mod.Modifiers) cocoa.EventModifierFlags {
+	var flags cocoa.EventModifierFlags
 	if mods.ShiftDown() {
-		flags |= mac.EventModifierFlagShift
+		flags |= cocoa.EventModifierFlagShift
 	}
 	if mods.ControlDown() {
-		flags |= mac.EventModifierFlagControl
+		flags |= cocoa.EventModifierFlagControl
 	}
 	if mods.OptionDown() {
-		flags |= mac.EventModifierFlagOption
+		flags |= cocoa.EventModifierFlagOption
 	}
 	if mods.CommandDown() {
-		flags |= mac.EventModifierFlagCommand
+		flags |= cocoa.EventModifierFlagCommand
 	}
 	if mods.CapsLockDown() {
-		flags |= mac.EventModifierFlagCapsLock
+		flags |= cocoa.EventModifierFlagCapsLock
 	}
 	return flags
 }

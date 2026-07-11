@@ -12,27 +12,27 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 func apiClipboardAvailableDataTypes() []string {
-	return mac.PasteboardGeneral().AvailableDataTypes()
+	return cocoa.PasteboardGeneral().AvailableDataTypes()
 }
 
 func apiClipboardHasDataType(dataType *uti.DataType) bool {
-	return mac.PasteboardGeneral().HasDataType(dataType)
+	return cocoa.PasteboardGeneral().HasDataType(dataType)
 }
 
 func apiClipboardGetData(dataType *uti.DataType) []byte {
-	return mac.PasteboardGeneral().Bytes(dataType)
+	return cocoa.PasteboardGeneral().Bytes(dataType)
 }
 
 func apiClipboardSetData(data ...drag.Data) {
-	pb := mac.PasteboardGeneral()
+	pb := cocoa.PasteboardGeneral()
 	pb.Clear()
-	all := make([]mac.PasteboardItem, 0, len(data))
+	all := make([]cocoa.PasteboardItem, 0, len(data))
 	for _, one := range data {
-		item := mac.NewPasteboardItem()
+		item := cocoa.NewPasteboardItem()
 		item.SetData(one.Type, one.Data)
 		if uti.UTF8PlainText.ConformsTo(one.Type) {
 			item.SetString(string(one.Data))

@@ -11,18 +11,18 @@ package unison
 
 import (
 	"github.com/richardwilkes/unison/enums/check"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 var _ MenuItem = &macMenuItem{}
 
 type macMenuItem struct {
 	factory *macMenuFactory
-	item    mac.MenuItem
+	item    cocoa.MenuItem
 }
 
-func newMacMenuItemForSubMenu(_ *macMenuFactory, subMenu *macMenu) mac.MenuItem {
-	mi := mac.NewMenuItem(subMenu.id, subMenu.Title(), "", 0, nil, nil)
+func newMacMenuItemForSubMenu(_ *macMenuFactory, subMenu *macMenu) cocoa.MenuItem {
+	mi := cocoa.NewMenuItem(subMenu.id, subMenu.Title(), "", 0, nil, nil)
 	mi.SetSubMenu(subMenu.menu)
 	return mi
 }
@@ -105,9 +105,9 @@ func (mi *macMenuItem) SubMenu() Menu {
 
 func (mi *macMenuItem) CheckState() check.Enum {
 	switch mi.item.State() {
-	case mac.ControlStateValueOn:
+	case cocoa.ControlStateValueOn:
 		return check.On
-	case mac.ControlStateValueOff:
+	case cocoa.ControlStateValueOff:
 		return check.Off
 	default:
 		return check.Mixed
@@ -115,14 +115,14 @@ func (mi *macMenuItem) CheckState() check.Enum {
 }
 
 func (mi *macMenuItem) SetCheckState(s check.Enum) {
-	var itemState mac.ControlStateValue
+	var itemState cocoa.ControlStateValue
 	switch s {
 	case check.On:
-		itemState = mac.ControlStateValueOn
+		itemState = cocoa.ControlStateValueOn
 	case check.Off:
-		itemState = mac.ControlStateValueOff
+		itemState = cocoa.ControlStateValueOff
 	default:
-		itemState = mac.ControlStateValueMixed
+		itemState = cocoa.ControlStateValueMixed
 	}
 	mi.item.SetState(itemState)
 }

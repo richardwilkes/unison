@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 var (
@@ -24,20 +24,20 @@ var (
 )
 
 func apiBeginStartup() error {
-	mac.AppShouldTerminateCallback = func() {
+	cocoa.AppShouldTerminateCallback = func() {
 		closeAllWindows()
 		xos.Exit(0)
 	}
-	mac.AppDidChangeScreenParameters = func() {
+	cocoa.AppDidChangeScreenParameters = func() {
 		for _, w := range windowList {
 			w.glCtx.ctx.Update()
 		}
 	}
-	mac.AppDidFinishLaunchingCallback = func() {
-		mac.PostEmptyEvent()
-		mac.StopMainEventLoop()
+	cocoa.AppDidFinishLaunchingCallback = func() {
+		cocoa.PostEmptyEvent()
+		cocoa.StopMainEventLoop()
 	}
-	mac.OpenFilesCallback = func(paths []string) {
+	cocoa.OpenFilesCallback = func(paths []string) {
 		macPendingFilesLock.Lock()
 		defer macPendingFilesLock.Unlock()
 		if macMayIssueFileOpens {
@@ -51,17 +51,17 @@ func apiBeginStartup() error {
 		}
 	}
 	// NOTE: Two additional app delegate callbacks exist: AppWillFinishLaunchingCallback and AppDidHideCallback.
-	if err := mac.InstallMacAppDelegate(); err != nil {
+	if err := cocoa.InstallMacAppDelegate(); err != nil {
 		return err
 	}
 	apiFillKeyCodes()
 	macInitWindowCallbacks()
-	mac.FinishLaunching()
+	cocoa.FinishLaunching()
 	return nil
 }
 
 func apiLateInit() {
-	mac.InstallSystemThemeChangedCallback(ThemeChanged)
+	cocoa.InstallSystemThemeChangedCallback(ThemeChanged)
 }
 
 func apiFinalFinishStartup() {
@@ -78,12 +78,12 @@ func apiFinalFinishStartup() {
 }
 
 func apiTerminate() error {
-	mac.UninstallMacAppDelegate()
+	cocoa.UninstallMacAppDelegate()
 	return nil
 }
 
 func apiBeep() {
-	mac.Beep()
+	cocoa.Beep()
 }
 
 func apiIsColorModeTrackingPossible() bool {
@@ -91,23 +91,23 @@ func apiIsColorModeTrackingPossible() bool {
 }
 
 func apiIsDarkModeEnabled() bool {
-	return mac.IsDarkModeEnabled()
+	return cocoa.IsDarkModeEnabled()
 }
 
 func apiDoubleClickInterval() time.Duration {
-	return mac.DoubleClickInterval()
+	return cocoa.DoubleClickInterval()
 }
 
 func apiPollEvents() {
-	mac.PollEvents()
+	cocoa.PollEvents()
 }
 
 func apiWaitEvents() {
-	mac.WaitEvents()
+	cocoa.WaitEvents()
 }
 
 func apiPostEmptyEvent() {
 	if platformInited.Load() {
-		mac.PostEmptyEvent()
+		cocoa.PostEmptyEvent()
 	}
 }
