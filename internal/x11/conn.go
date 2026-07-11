@@ -713,14 +713,13 @@ type Conn struct {
 // NewConn establishes a connection to the X server.
 func NewConn() (*Conn, error) {
 	var c Conn
-	var err error
-	if err = c.parseDisplayEnv(); err != nil {
+	if err := c.parseDisplayEnv(); err != nil {
 		return nil, err
 	}
-	if err = c.connect(); err != nil {
+	if err := c.connect(); err != nil {
 		return nil, err
 	}
-	if err = c.authenticate(); err != nil {
+	if err := c.authenticate(); err != nil {
 		return nil, err
 	}
 	c.errorCodeMap = newErrorMap()
@@ -734,7 +733,7 @@ func NewConn() (*Conn, error) {
 	c.readClosed = make(chan struct{})
 	go c.sendRequests()
 	go c.readResponses()
-	if err = c.Atoms.init(&c); err != nil {
+	if err := c.Atoms.init(&c); err != nil {
 		return nil, err
 	}
 	if c.ExtXFixes = newExtXFixes(&c); !c.ExtXFixes.HasVersion(4, 0) {
