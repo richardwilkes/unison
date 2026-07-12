@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
 )
 
@@ -160,12 +159,14 @@ func (d *x11OpenDialog) x11PrepExt() []string {
 }
 
 func (d *x11OpenDialog) x11RunModal(cmd *exec.Cmd, splitOn string) bool {
-	wnd, err := NewWindow("", WindowKindWindowOption(WindowKindDialog), FloatingWindowOption(),
-		UndecoratedWindowOption(), NotResizableWindowOption())
+	wnd, err := NewWindow("")
 	if err != nil {
 		errs.Log(err)
 	}
-	wnd.SetFrameRect(geom.NewRect(-10000, -10000, 1, 1))
+	// This window exists only to run a modal event loop, blocking input to this app's windows while the external
+	// dialog process runs, so it is never shown. Showing it off-screen instead does not work under Wayland, which
+	// ignores client-requested window positions and places it on-screen as a tiny "phantom" window.
+	wnd.keepHidden = true
 	InvokeTaskAfter(func() { go d.x11RunCmd(wnd, cmd, splitOn) }, time.Millisecond)
 	return wnd.RunModal() == ModalResponseOK
 }
