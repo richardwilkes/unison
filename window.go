@@ -107,6 +107,7 @@ type Window struct {
 	kind                        WindowKind
 	lastDragOp                  drag.Op
 	valid                       bool
+	keepHidden                  bool
 	focused                     bool
 	transient                   bool
 	notResizable                bool
@@ -271,28 +272,32 @@ func (w *Window) resized() {
 }
 
 func (w *Window) gainedFocus() {
-	if w.okToProcess() {
-		w.focused = true
-		if len(windowList) != 0 && windowList[0] != w {
-			windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
-			windowList = append(windowList, nil)
-			copy(windowList[1:], windowList)
-			windowList[0] = w
-		}
-		w.ClearTooltip()
-		if w.focus == nil {
-			w.FocusNext()
-		}
-		if w.focus != nil {
-			w.focus.MarkForRedraw()
-		}
-		SafeCall(w.GainedFocusCallback)
-		w.mouseEnter(w.MouseLocation(), 0)
-		if w.apiCursorInContentArea() {
-			w.apiUpdateCursorImage()
-		}
-	} else {
-		modalStack[len(modalStack)-1].ToFront()
+	if !w.okToProcess() {
+		// Deliberately do NOT bring the top modal window back to the front here. Input routing already ignores windows
+		// that are blocked by a modal, so the modal does not need to hold the focus. Re-activating it on every focus
+		// change creates a feedback loop under focus-follows-mouse window managers, where merely hovering over another
+		// of this app's windows re-activates the modal; compositors that warp the pointer on activation (e.g. Hyprland)
+		// then appear to trap the cursor inside the modal window.
+		return
+	}
+	w.focused = true
+	if len(windowList) != 0 && windowList[0] != w {
+		windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
+		windowList = append(windowList, nil)
+		copy(windowList[1:], windowList)
+		windowList[0] = w
+	}
+	w.ClearTooltip()
+	if w.focus == nil {
+		w.FocusNext()
+	}
+	if w.focus != nil {
+		w.focus.MarkForRedraw()
+	}
+	SafeCall(w.GainedFocusCallback)
+	w.mouseEnter(w.MouseLocation(), 0)
+	if w.apiCursorInContentArea() {
+		w.apiUpdateCursorImage()
 	}
 }
 
@@ -791,9 +796,9 @@ func (w *Window) Hide() {
 }
 
 // ToFront attempts to bring the window to the foreground and give it the keyboard focus. If it is hidden, it will be
-// made visible first.
+// made visible first. Does nothing for windows marked keepHidden.
 func (w *Window) ToFront() {
-	if w.IsValid() {
+	if w.IsValid() && !w.keepHidden {
 		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
 		w.apiAcquireFocusAndBringToFront()
