@@ -185,25 +185,25 @@ func apiFillKeyCodes() {
 			rawScanCodeToKeyCodeMap[i] = code
 			switch code {
 			case KeyLShift:
-				x11KeyLShiftBitIndex = int(i - minKeyCode)
+				x11KeyLShiftBitIndex = x11ModifierBitIndex(i)
 			case KeyRShift:
-				x11KeyRShiftBitIndex = int(i - minKeyCode)
+				x11KeyRShiftBitIndex = x11ModifierBitIndex(i)
 			case KeyLControl:
-				x11KeyLControlBitIndex = int(i - minKeyCode)
+				x11KeyLControlBitIndex = x11ModifierBitIndex(i)
 			case KeyRControl:
-				x11KeyRControlBitIndex = int(i - minKeyCode)
+				x11KeyRControlBitIndex = x11ModifierBitIndex(i)
 			case KeyLOption:
-				x11KeyLOptionBitIndex = int(i - minKeyCode)
+				x11KeyLOptionBitIndex = x11ModifierBitIndex(i)
 			case KeyROption:
-				x11KeyROptionBitIndex = int(i - minKeyCode)
+				x11KeyROptionBitIndex = x11ModifierBitIndex(i)
 			case KeyLCommand:
-				x11KeyLCommandBitIndex = int(i - minKeyCode)
+				x11KeyLCommandBitIndex = x11ModifierBitIndex(i)
 			case KeyRCommand:
-				x11KeyRCommandBitIndex = int(i - minKeyCode)
+				x11KeyRCommandBitIndex = x11ModifierBitIndex(i)
 			case KeyCapsLock:
-				x11KeyCapsLockBitIndex = int(i - minKeyCode)
+				x11KeyCapsLockBitIndex = x11ModifierBitIndex(i)
 			case KeyNumLock:
-				x11KeyNumLockBitIndex = int(i - minKeyCode)
+				x11KeyNumLockBitIndex = x11ModifierBitIndex(i)
 			}
 		}
 	}
@@ -289,9 +289,14 @@ func x11KeySymToUnicode(keySym uint32) rune {
 }
 
 func x11CurrentKeyModifiers() mod.Modifiers {
-	var mods mod.Modifiers
 	m := x11Conn.QueryKeymap()
-	keyMap := m[:]
+	return x11ModifiersFromKeymap(m[:])
+}
+
+// x11ModifiersFromKeymap decodes a QueryKeymap() bit vector into a set of modifiers. The bit indices are the raw
+// keycodes of the modifier keys, matching the indexing used by QueryKeymap().
+func x11ModifiersFromKeymap(keyMap []byte) mod.Modifiers {
+	var mods mod.Modifiers
 	if x11CheckBit(x11KeyLShiftBitIndex, keyMap) || x11CheckBit(x11KeyRShiftBitIndex, keyMap) {
 		mods |= mod.Shift
 	}
@@ -311,6 +316,12 @@ func x11CurrentKeyModifiers() mod.Modifiers {
 		mods |= mod.NumLock
 	}
 	return mods
+}
+
+// x11ModifierBitIndex returns the bit index within a QueryKeymap() bit vector for the given keycode. QueryKeymap()
+// indexes its bit vector by the raw keycode (byte keycode>>3, bit keycode&7), so the index is simply the keycode.
+func x11ModifierBitIndex(keycode uint16) int {
+	return int(keycode)
 }
 
 func x11CheckBit(bitIndex int, keyMap []byte) bool {
