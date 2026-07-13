@@ -136,10 +136,16 @@ func (w *Window) apiInit() error {
 	// Associate dialog windows with the window that spawned them via WM_TRANSIENT_FOR, the ICCCM/EWMH-correct hint that
 	// tells the window manager which top-level a dialog belongs to, letting it center and stack the dialog over its
 	// parent (and, under XWayland, treat it as a child rather than an independent toplevel). The owner is the currently
-	// active window, which at this point (before the new window has been shown) is still the window the dialog was
-	// raised from.
+	// active window, but since focus notifications can be delayed (e.g. immediately after a menu window closes, the
+	// underlying window's focus event may not have arrived yet), fall back to the frontmost window so the dialog is
+	// still tied to the window it was raised from rather than being left unowned, which typically causes the window
+	// manager to place it on the primary display instead of the display the user is working on.
 	if w.kind == WindowKindDialog {
-		if owner := ActiveWindow(); owner != nil && owner != w && owner.wnd.id != 0 {
+		owner := ActiveWindow()
+		if owner == nil {
+			owner = FrontmostWindow()
+		}
+		if owner != nil && owner != w && owner.wnd.id != 0 {
 			buf = x11.NewWriter(4)
 			buf.WindowID(owner.wnd.id)
 			x11Conn.ChangeProperty(w.wnd.id, x11.AtomWMTransientFor, x11.AtomWindow, 32, x11.PropModeReplace,

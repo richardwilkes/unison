@@ -12,6 +12,8 @@ package w32
 import (
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 type ModalWindow struct {
@@ -27,8 +29,10 @@ func (obj *ModalWindow) vmt() *vmtModalWindow {
 	return (*vmtModalWindow)(obj.UnsafeVirtualMethodTable)
 }
 
-func (obj *ModalWindow) Show() bool {
+// Show displays the modal window. The owner may be 0, but providing one ensures the window is positioned relative to
+// it (and therefore on the same display) rather than being placed at a system-chosen location.
+func (obj *ModalWindow) Show(owner windows.HWND) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	r1, _, _ := syscall.SyscallN(obj.vmt().Show, uintptr(unsafe.Pointer(obj)), 0)
+	r1, _, _ := syscall.SyscallN(obj.vmt().Show, uintptr(unsafe.Pointer(obj)), uintptr(owner))
 	return r1&0xff == 0
 }

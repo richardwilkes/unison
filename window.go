@@ -215,6 +215,19 @@ func ActiveWindow() *Window {
 	return nil
 }
 
+// FrontmostWindow returns the frontmost visible, non-transient window, or nil if there is none. Unlike ActiveWindow(),
+// this does not require the window to currently hold the keyboard focus, making it a reliable anchor for positioning
+// new windows and dialogs even at moments when no window has the focus (e.g. immediately after a menu window closes,
+// but before the delayed focus notification for the underlying window has arrived).
+func FrontmostWindow() *Window {
+	for _, w := range windowList {
+		if !w.transient && w.IsVisible() {
+			return w
+		}
+	}
+	return nil
+}
+
 // NewWindow creates a new, initially hidden, window. Call Show() or ToFront() to make it visible.
 func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	w := &Window{
@@ -608,12 +621,16 @@ func (w *Window) PackWithLocation(pt geom.Point) {
 	w.EnsureOnDisplay()
 }
 
-// MoveToModalCenter moves the window to the center (horizontally) and above center (vertically) of the other window. If
-// the other window is nil, it will be centered on the primary display. The window will be forced onto a display if
-// needed.
+// MoveToModalCenter moves the window to the center (horizontally) and above center (vertically) of the other window.
+// If the other window is nil, the frontmost window will be used in its place, so that the window opens on the same
+// display the user is working on; only if no window is available will it be centered on the primary display. The
+// window will be forced onto a display if needed.
 func (w *Window) MoveToModalCenter(other *Window) {
+	if other == nil {
+		other = FrontmostWindow()
+	}
 	var within geom.Rect
-	if other != nil {
+	if other != nil && other != w {
 		within = other.FrameRect()
 	} else if d := PrimaryDisplay(); d != nil {
 		within = d.Usable
@@ -628,10 +645,15 @@ func (w *Window) MoveToModalCenter(other *Window) {
 }
 
 // DefaultInitialWindowContentLocation selects an upper-left corner for a window by offsetting the current active
-// window's position down and to the right. If there is no active window, it will return the upper-left corner of the
-// primary display.
+// window's position down and to the right. If there is no active window, the frontmost window will be used in its
+// place, so that new windows open on the same display the user is working on. Only if no window is available will it
+// return the upper-left corner of the primary display.
 func DefaultInitialWindowContentLocation() geom.Point {
-	if w := ActiveWindow(); w != nil {
+	w := ActiveWindow()
+	if w == nil {
+		w = FrontmostWindow()
+	}
+	if w != nil {
 		r := w.ContentRect()
 		r.X += 32
 		r.Y += 32

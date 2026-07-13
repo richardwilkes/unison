@@ -62,7 +62,7 @@ func (d *w32OpenDialog) RunModal() bool {
 	openDialog.SetOptions(options)
 	openDialog.SetFileTypes(d.w32CreateFilters())
 	d.paths = nil
-	if !openDialog.Show() {
+	if !openDialog.Show(w32OwnerHWND()) {
 		return false
 	}
 	d.paths = openDialog.GetResults()

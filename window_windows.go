@@ -52,6 +52,21 @@ func w32FindWindowByHWND(wnd windows.HWND) *Window {
 	return nil
 }
 
+// w32OwnerHWND returns the native handle of the active window, or failing that, the frontmost window, for use as the
+// owner of native modal dialogs. Providing an owner causes the system to position the dialog relative to it, ensuring
+// it appears on the same display as the window that spawned it; without one, the system chooses the location itself,
+// typically placing the dialog on the primary display.
+func w32OwnerHWND() windows.HWND {
+	w := ActiveWindow()
+	if w == nil {
+		w = FrontmostWindow()
+	}
+	if w != nil && w.IsValid() {
+		return w.wnd.wnd
+	}
+	return 0
+}
+
 func (w *Window) apiInit() error {
 	style := w.w32WindowStyle()
 	exStyle := w.w32WindowExStyle()
