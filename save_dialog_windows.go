@@ -68,7 +68,7 @@ func (d *w32SaveDialog) RunModal() bool {
 		}
 	}
 	d.paths = nil
-	if !saveDialog.Show() {
+	if !saveDialog.Show(w32OwnerHWND()) {
 		return false
 	}
 	result := saveDialog.GetResult()
