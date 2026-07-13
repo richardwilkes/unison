@@ -43,7 +43,7 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 		}
 		if s.surface = gl.NewRenderTargetSurfaceFromBackendRenderTarget(s.context, gpu.ColorTypeRGBA8888,
 			skgeom.ISize{Width: int32(size.Width * scale.X), Height: int32(size.Height * scale.Y)},
-			gl.FormatFromEnum(gl.RGBA8), 1, 8, 0, gpu.OriginBottomLeft); s.surface == nil {
+			gl.FormatFromEnum(gl.RGBA8), 1, 8, 0, gpu.OriginBottomLeft, nil); s.surface == nil {
 			return nil, errs.New("unable to create rendering surface")
 		}
 	}
