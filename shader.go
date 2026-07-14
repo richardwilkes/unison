@@ -10,9 +10,9 @@
 package unison
 
 import (
+	"github.com/richardwilkes/canvas/colorcore"
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/canvas/shaders"
-	"github.com/richardwilkes/canvas/skcolor"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/tilemode"
@@ -42,7 +42,7 @@ func (s *Shader) shaderOrNil() shaders.Shader {
 
 // NewColorShader creates a new color Shader.
 func NewColorShader(color Color) *Shader {
-	return newShader(shaders.NewColor(skcolor.Color(color)))
+	return newShader(shaders.NewColor(colorcore.Color(color)))
 }
 
 // NewBlendShader creates a new blend Shader.
@@ -52,26 +52,26 @@ func NewBlendShader(blendMode blendmode.Enum, dst, src *Shader) *Shader {
 
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.
 func NewLinearGradientShader(start, end geom.Point, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
-	return newShader(shaders.NewLinearGradient(toSkPoint(start), toSkPoint(end), toSkColors(colors), colorPos,
-		shaders.TileMode(tileMode), toSkMatrixPtr(matrix)))
+	return newShader(shaders.NewLinearGradient(toCanvasPoint(start), toCanvasPoint(end), toCanvasColors(colors), colorPos,
+		shaders.TileMode(tileMode), toCanvasMatrixPtr(matrix)))
 }
 
 // NewRadialGradientShader creates a new radial gradient Shader. matrix may be nil.
 func NewRadialGradientShader(center geom.Point, radius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
-	return newShader(shaders.NewRadialGradient(toSkPoint(center), radius, toSkColors(colors), colorPos,
-		shaders.TileMode(tileMode), toSkMatrixPtr(matrix)))
+	return newShader(shaders.NewRadialGradient(toCanvasPoint(center), radius, toCanvasColors(colors), colorPos,
+		shaders.TileMode(tileMode), toCanvasMatrixPtr(matrix)))
 }
 
 // NewSweepGradientShader creates a new sweep gradient Shader. matrix may be nil.
 func NewSweepGradientShader(center geom.Point, startAngle, endAngle float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
-	return newShader(shaders.NewSweepGradient(toSkPoint(center), toSkColors(colors), colorPos,
-		shaders.TileMode(tileMode), startAngle, endAngle, toSkMatrixPtr(matrix)))
+	return newShader(shaders.NewSweepGradient(toCanvasPoint(center), toCanvasColors(colors), colorPos,
+		shaders.TileMode(tileMode), startAngle, endAngle, toCanvasMatrixPtr(matrix)))
 }
 
 // New2PtConicalGradientShader creates a new 2-point conical gradient Shader. matrix may be nil.
 func New2PtConicalGradientShader(startPt, endPt geom.Point, startRadius, endRadius float32, colors []Color, colorPos []float32, tileMode tilemode.Enum, matrix geom.Matrix) *Shader {
-	return newShader(shaders.NewTwoPointConicalGradient(toSkPoint(startPt), startRadius, toSkPoint(endPt),
-		endRadius, toSkColors(colors), colorPos, shaders.TileMode(tileMode), toSkMatrixPtr(matrix)))
+	return newShader(shaders.NewTwoPointConicalGradient(toCanvasPoint(startPt), startRadius, toCanvasPoint(endPt),
+		endRadius, toCanvasColors(colors), colorPos, shaders.TileMode(tileMode), toCanvasMatrixPtr(matrix)))
 }
 
 // NewFractalPerlinNoiseShader creates a new fractal perlin noise Shader.
@@ -90,12 +90,12 @@ func NewTurbulencePerlinNoiseShader(baseFreqX, baseFreqY, seed float32, numOctav
 // possible.
 func NewImageShader(canvas *Canvas, img *Image, tileModeX, tileModeY tilemode.Enum, sampling *SamplingOptions, matrix geom.Matrix) *Shader {
 	return newShader(shaders.NewImageDrawable(img.imageForCanvas(canvas), shaders.TileMode(tileModeX),
-		shaders.TileMode(tileModeY), sampling.skSamplingOptions(), toSkMatrixPtr(matrix)))
+		shaders.TileMode(tileModeY), sampling.skSamplingOptions(), toCanvasMatrixPtr(matrix)))
 }
 
 // NewWithLocalMatrix creates a new copy of this shader with a local matrix applied.
 func (s *Shader) NewWithLocalMatrix(matrix geom.Matrix) *Shader {
-	return newShader(shaders.NewWithLocalMatrix(s.shader, toSkMatrix(matrix)))
+	return newShader(shaders.NewWithLocalMatrix(s.shader, toCanvasMatrix(matrix)))
 }
 
 // NewWithColorFilter creates a new copy of this shader with a color filter applied.

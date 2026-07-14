@@ -12,10 +12,10 @@ package unison
 import (
 	"sync"
 
+	"github.com/richardwilkes/canvas/colorcore"
 	"github.com/richardwilkes/canvas/colorfilter"
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/canvas/shaders"
-	"github.com/richardwilkes/canvas/skcolor"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/invertstyle"
 )
@@ -41,12 +41,12 @@ func (f *ColorFilter) filterOrNil() shaders.ColorFilter {
 
 // NewBlendColorFilter returns a new blend color filter.
 func NewBlendColorFilter(color Color, blendMode blendmode.Enum) *ColorFilter {
-	return newColorFilter(colorfilter.NewBlend(skcolor.Color(color), raster.BlendMode(blendMode)))
+	return newColorFilter(colorfilter.NewBlend(colorcore.Color(color), raster.BlendMode(blendMode)))
 }
 
 // NewLightingColorFilter returns a new lighting color filter.
 func NewLightingColorFilter(mul, add Color) *ColorFilter {
-	return newColorFilter(colorfilter.NewLighting(skcolor.Color(mul), skcolor.Color(add)))
+	return newColorFilter(colorfilter.NewLighting(colorcore.Color(mul), colorcore.Color(add)))
 }
 
 // NewComposeColorFilter returns a new color filter that combines two other color filters.

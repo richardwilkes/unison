@@ -10,8 +10,8 @@
 package unison
 
 import (
-	skgeom "github.com/richardwilkes/canvas/geom"
-	"github.com/richardwilkes/canvas/skcolor"
+	"github.com/richardwilkes/canvas/colorcore"
+	canvasgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
@@ -20,57 +20,57 @@ import (
 // x/y/width/height rectangles and a 6-element affine matrix), so every geometry value crossing the canvas↔toolbox geom
 // boundary is converted here.
 
-func toSkPoint(p geom.Point) skgeom.Point { return skgeom.Point{X: p.X, Y: p.Y} }
+func toCanvasPoint(p geom.Point) canvasgeom.Point { return canvasgeom.Point{X: p.X, Y: p.Y} }
 
-func fromSkPoint(p skgeom.Point) geom.Point { return geom.NewPoint(p.X, p.Y) }
+func fromCanvasPoint(p canvasgeom.Point) geom.Point { return geom.NewPoint(p.X, p.Y) }
 
-func toSkPoints(pts []geom.Point) []skgeom.Point {
-	out := make([]skgeom.Point, len(pts))
+func toCanvasPoints(pts []geom.Point) []canvasgeom.Point {
+	out := make([]canvasgeom.Point, len(pts))
 	for i, p := range pts {
-		out[i] = skgeom.Point{X: p.X, Y: p.Y}
+		out[i] = canvasgeom.Point{X: p.X, Y: p.Y}
 	}
 	return out
 }
 
-func toSkRect(r geom.Rect) skgeom.Rect {
-	return skgeom.Rect{Left: r.X, Top: r.Y, Right: r.Right(), Bottom: r.Bottom()}
+func toCanvasRect(r geom.Rect) canvasgeom.Rect {
+	return canvasgeom.Rect{Left: r.X, Top: r.Y, Right: r.Right(), Bottom: r.Bottom()}
 }
 
-func fromSkRect(r skgeom.Rect) geom.Rect {
+func fromCanvasRect(r canvasgeom.Rect) geom.Rect {
 	return geom.NewRect(r.Left, r.Top, r.Right-r.Left, r.Bottom-r.Top)
 }
 
-func toSkRectPtr(r *geom.Rect) *skgeom.Rect {
+func toCanvasRectPtr(r *geom.Rect) *canvasgeom.Rect {
 	if r == nil {
 		return nil
 	}
-	sr := toSkRect(*r)
+	sr := toCanvasRect(*r)
 	return &sr
 }
 
-func toSkIRect(r geom.Rect) skgeom.IRect {
+func toCanvasIRect(r geom.Rect) canvasgeom.IRect {
 	r = r.Align()
-	return skgeom.IRect{Left: int32(r.X), Top: int32(r.Y), Right: int32(r.Right()), Bottom: int32(r.Bottom())}
+	return canvasgeom.IRect{Left: int32(r.X), Top: int32(r.Y), Right: int32(r.Right()), Bottom: int32(r.Bottom())}
 }
 
-func toSkMatrix(m geom.Matrix) skgeom.Matrix {
-	return skgeom.MatrixFrom9([9]float32{m.ScaleX, m.SkewX, m.TransX, m.SkewY, m.ScaleY, m.TransY, 0, 0, 1})
+func toCanvasMatrix(m geom.Matrix) canvasgeom.Matrix {
+	return canvasgeom.MatrixFrom9([9]float32{m.ScaleX, m.SkewX, m.TransX, m.SkewY, m.ScaleY, m.TransY, 0, 0, 1})
 }
 
-func toSkMatrixPtr(m geom.Matrix) *skgeom.Matrix {
-	sm := toSkMatrix(m)
+func toCanvasMatrixPtr(m geom.Matrix) *canvasgeom.Matrix {
+	sm := toCanvasMatrix(m)
 	return &sm
 }
 
-func toSkColors(colors []Color) []skcolor.Color {
-	out := make([]skcolor.Color, len(colors))
+func toCanvasColors(colors []Color) []colorcore.Color {
+	out := make([]colorcore.Color, len(colors))
 	for i, c := range colors {
-		out[i] = skcolor.Color(c)
+		out[i] = colorcore.Color(c)
 	}
 	return out
 }
 
-func fromSkMatrix(m skgeom.Matrix) geom.Matrix {
+func fromCanvasMatrix(m canvasgeom.Matrix) geom.Matrix {
 	return geom.Matrix{
 		ScaleX: m.Get(0),
 		SkewX:  m.Get(1),

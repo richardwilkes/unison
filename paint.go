@@ -13,8 +13,8 @@ import (
 	"reflect"
 
 	"github.com/richardwilkes/canvas/canvas"
+	"github.com/richardwilkes/canvas/colorcore"
 	"github.com/richardwilkes/canvas/raster"
-	"github.com/richardwilkes/canvas/skcolor"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -132,7 +132,7 @@ func (p *Paint) Color() Color {
 
 // SetColor sets the color.
 func (p *Paint) SetColor(color Color) {
-	p.paint.Color = skcolor.Color(color)
+	p.paint.Color = colorcore.Color(color)
 }
 
 // Style returns the current PaintStyle.
@@ -260,6 +260,6 @@ func (p *Paint) FillPath(path *Path, resScale float32) (result *Path, hairline b
 // a fill.
 func (p *Paint) FillPathWithCull(path *Path, cullRect *geom.Rect, resScale float32) (result *Path, hairline bool) {
 	result = NewPath()
-	isFill := p.paint.FillPath(path.path, result.path, toSkRectPtr(cullRect), resScale)
+	isFill := p.paint.FillPath(path.path, result.path, toCanvasRectPtr(cullRect), resScale)
 	return result, !isFill
 }

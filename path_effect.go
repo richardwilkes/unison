@@ -63,12 +63,12 @@ func New1dPathPathEffect(path *Path, advance, phase float32, style patheffect.En
 
 // New2dLinePathEffect creates a new 2D line PathEffect.
 func New2dLinePathEffect(width float32, matrix geom.Matrix) *PathEffect {
-	return newPathEffect(skpatheffect.MakeLine2D(width, toSkMatrixPtr(matrix)))
+	return newPathEffect(skpatheffect.MakeLine2D(width, toCanvasMatrixPtr(matrix)))
 }
 
 // New2dPathEffect creates a new 2D PathEffect.
 func New2dPathEffect(matrix geom.Matrix, path *Path) *PathEffect {
-	return newPathEffect(skpatheffect.MakePath2D(toSkMatrixPtr(matrix), path.path))
+	return newPathEffect(skpatheffect.MakePath2D(toCanvasMatrixPtr(matrix), path.path))
 }
 
 // NewDashPathEffect creates a new dash PathEffect.

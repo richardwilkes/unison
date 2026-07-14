@@ -90,13 +90,13 @@ func (p *Path) ArcToRelative(destPt geom.Point, radius geom.Size, rotation float
 // ArcToOval appends an arc bounded by an oval. Both startAngle and sweepAngle are in degrees. A positive sweepAngle
 // extends clockwise while a negative value extends counter-clockwise. If forceMoveTo is true, a new contour is started.
 func (p *Path) ArcToOval(bounds geom.Rect, startAngle, sweepAngle float32, forceMoveTo bool) {
-	p.path.ArcToOval(toSkRect(bounds), startAngle, sweepAngle, forceMoveTo)
+	p.path.ArcToOval(toCanvasRect(bounds), startAngle, sweepAngle, forceMoveTo)
 }
 
 // Bounds returns the bounding rectangle of the path. This is an approximation and may be different than the actual area
 // covered when drawn.
 func (p *Path) Bounds() geom.Rect {
-	return fromSkRect(p.path.Bounds())
+	return fromCanvasRect(p.path.Bounds())
 }
 
 // ComputeTightBounds returns the bounding rectangle of the path. This is an approximation and may be different than the
@@ -104,7 +104,7 @@ func (p *Path) Bounds() geom.Rect {
 // Bounds(), though slower. When a path contains curves, the computed bounds includes the maximum extent of the quad,
 // conic, or cubic.
 func (p *Path) ComputeTightBounds() geom.Rect {
-	return fromSkRect(p.path.ComputeTightBounds())
+	return fromCanvasRect(p.path.ComputeTightBounds())
 }
 
 // Circle adds a circle to the path with a clockwise direction. The circle is a complete contour, i.e. it starts with a
@@ -172,13 +172,13 @@ func (p *Path) MoveToRelative(pt geom.Point) {
 // Oval adds an oval to the path with a clockwise direction. The oval is a complete contour, i.e. it starts with a
 // MoveTo and ends with a Close operation.
 func (p *Path) Oval(bounds geom.Rect) {
-	p.path.AddOval(toSkRect(bounds), skgeom.PathDirection(direction.Clockwise))
+	p.path.AddOval(toCanvasRect(bounds), skgeom.PathDirection(direction.Clockwise))
 }
 
 // OvalWithDirection adds an oval to the path. The oval is a complete contour, i.e. it starts with a MoveTo and ends
 // with a Close operation.
 func (p *Path) OvalWithDirection(bounds geom.Rect, dir direction.Enum) {
-	p.path.AddOval(toSkRect(bounds), skgeom.PathDirection(dir))
+	p.path.AddOval(toCanvasRect(bounds), skgeom.PathDirection(dir))
 }
 
 // Path appends a path. If extend is true, a line from the current point to the start of the added path is created.
@@ -194,21 +194,21 @@ func (p *Path) PathReverse(other *Path) {
 // PathRotated appends a path after rotating it. If extend is true, a line from the current point to the start of the
 // added path is created.
 func (p *Path) PathRotated(other *Path, degrees float32, extend bool) {
-	m := toSkMatrix(geom.NewRotationMatrix(degrees))
+	m := toCanvasMatrix(geom.NewRotationMatrix(degrees))
 	p.path.AddPathMatrix(other.path, &m, pathAddMode(extend))
 }
 
 // PathScaled appends a path after scaling it. If extend is true, a line from the current point to the start of the
 // added path is created.
 func (p *Path) PathScaled(other *Path, pt geom.Point, extend bool) {
-	m := toSkMatrix(geom.NewScaleMatrix(pt.X, pt.Y))
+	m := toCanvasMatrix(geom.NewScaleMatrix(pt.X, pt.Y))
 	p.path.AddPathMatrix(other.path, &m, pathAddMode(extend))
 }
 
 // PathTransformed appends a path after transforming it. If extend is true, a line from the current point to the start
 // of the added path is created.
 func (p *Path) PathTransformed(other *Path, matrix geom.Matrix, extend bool) {
-	m := toSkMatrix(matrix)
+	m := toCanvasMatrix(matrix)
 	p.path.AddPathMatrix(other.path, &m, pathAddMode(extend))
 }
 
@@ -221,7 +221,7 @@ func (p *Path) PathTranslated(other *Path, offset geom.Point, extend bool) {
 // Poly appends the line segments represented by pts to the path.
 func (p *Path) Poly(pts []geom.Point, closePath bool) {
 	if len(pts) > 0 {
-		p.path.AddPoly(toSkPoints(pts), closePath)
+		p.path.AddPoly(toCanvasPoints(pts), closePath)
 	}
 }
 
@@ -233,55 +233,55 @@ func (p *Path) QuadTo(ctrlPt, endPt geom.Point) {
 // Rect adds a rectangle to the path with a clockwise direction. The rectangle is a complete contour, i.e. it starts
 // with a MoveTo and ends with a Close operation.
 func (p *Path) Rect(bounds geom.Rect) {
-	p.path.AddRect(toSkRect(bounds), skgeom.PathDirection(direction.Clockwise))
+	p.path.AddRect(toCanvasRect(bounds), skgeom.PathDirection(direction.Clockwise))
 }
 
 // RectWithDirection adds a rectangle to the path. The rectangle is a complete contour, i.e. it starts with a MoveTo and
 // ends with a Close operation.
 func (p *Path) RectWithDirection(bounds geom.Rect, dir direction.Enum) {
-	p.path.AddRect(toSkRect(bounds), skgeom.PathDirection(dir))
+	p.path.AddRect(toCanvasRect(bounds), skgeom.PathDirection(dir))
 }
 
 // RoundedRect adds a rectangle with curved corners to the path with a clockwise direction. The rectangle is a complete
 // contour, i.e. it starts with a MoveTo and ends with a Close operation.
 func (p *Path) RoundedRect(bounds geom.Rect, radius geom.Size) {
-	p.path.AddRoundRect(toSkRect(bounds), radius.Width, radius.Height, skgeom.PathDirection(direction.Clockwise))
+	p.path.AddRoundRect(toCanvasRect(bounds), radius.Width, radius.Height, skgeom.PathDirection(direction.Clockwise))
 }
 
 // RoundedRectWithDirection adds a rectangle with curved corners to the path. The rectangle is a complete contour, i.e.
 // it starts with a MoveTo and ends with a Close operation.
 func (p *Path) RoundedRectWithDirection(bounds geom.Rect, radius geom.Size, dir direction.Enum) {
-	p.path.AddRoundRect(toSkRect(bounds), radius.Width, radius.Height, skgeom.PathDirection(dir))
+	p.path.AddRoundRect(toCanvasRect(bounds), radius.Width, radius.Height, skgeom.PathDirection(dir))
 }
 
 // Rotate the path.
 func (p *Path) Rotate(degrees float32) {
-	m := toSkMatrix(geom.NewRotationMatrix(degrees))
+	m := toCanvasMatrix(geom.NewRotationMatrix(degrees))
 	p.path.Transform(&m)
 }
 
 // Scale the path.
 func (p *Path) Scale(scale geom.Point) {
-	m := toSkMatrix(geom.NewScaleMatrix(scale.X, scale.Y))
+	m := toCanvasMatrix(geom.NewScaleMatrix(scale.X, scale.Y))
 	p.path.Transform(&m)
 }
 
 // Transform the path by the provided matrix.
 func (p *Path) Transform(matrix geom.Matrix) {
-	m := toSkMatrix(matrix)
+	m := toCanvasMatrix(matrix)
 	p.path.Transform(&m)
 }
 
 // Translate the path.
 func (p *Path) Translate(pt geom.Point) {
-	m := toSkMatrix(geom.NewTranslationMatrix(pt.X, pt.Y))
+	m := toCanvasMatrix(geom.NewTranslationMatrix(pt.X, pt.Y))
 	p.path.Transform(&m)
 }
 
 // NewRotated creates a copy of this path and then rotates it.
 func (p *Path) NewRotated(degrees float32) *Path {
 	result := NewPath()
-	m := toSkMatrix(geom.NewRotationMatrix(degrees))
+	m := toCanvasMatrix(geom.NewRotationMatrix(degrees))
 	p.path.TransformTo(&m, result.path)
 	return result
 }
@@ -289,7 +289,7 @@ func (p *Path) NewRotated(degrees float32) *Path {
 // NewScaled creates a copy of this path and then scales it.
 func (p *Path) NewScaled(scale geom.Point) *Path {
 	result := NewPath()
-	m := toSkMatrix(geom.NewScaleMatrix(scale.X, scale.Y))
+	m := toCanvasMatrix(geom.NewScaleMatrix(scale.X, scale.Y))
 	p.path.TransformTo(&m, result.path)
 	return result
 }
@@ -297,7 +297,7 @@ func (p *Path) NewScaled(scale geom.Point) *Path {
 // NewTransformed creates a copy of this path and then transforms it by the provided matrix.
 func (p *Path) NewTransformed(matrix geom.Matrix) *Path {
 	result := NewPath()
-	m := toSkMatrix(matrix)
+	m := toCanvasMatrix(matrix)
 	p.path.TransformTo(&m, result.path)
 	return result
 }
@@ -305,7 +305,7 @@ func (p *Path) NewTransformed(matrix geom.Matrix) *Path {
 // NewTranslated creates a copy of this path and then translates it.
 func (p *Path) NewTranslated(pt geom.Point) *Path {
 	result := NewPath()
-	m := toSkMatrix(geom.NewTranslationMatrix(pt.X, pt.Y))
+	m := toCanvasMatrix(geom.NewTranslationMatrix(pt.X, pt.Y))
 	p.path.TransformTo(&m, result.path)
 	return result
 }
@@ -329,7 +329,7 @@ func (p *Path) Contains(pt geom.Point) bool {
 // CurrentPt returns the current point.
 func (p *Path) CurrentPt() geom.Point {
 	pt, _ := p.path.LastPt()
-	return fromSkPoint(pt)
+	return fromCanvasPoint(pt)
 }
 
 // applyOp applies the boolean operation op between this path and the other path. Returns true if successful. Path is

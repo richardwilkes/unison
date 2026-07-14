@@ -13,10 +13,10 @@ import (
 	"log/slog"
 
 	"github.com/richardwilkes/canvas/canvas"
+	"github.com/richardwilkes/canvas/colorcore"
 	"github.com/richardwilkes/canvas/font"
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/canvas/shaders"
-	"github.com/richardwilkes/canvas/skcolor"
 	"github.com/richardwilkes/canvas/textblob"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -95,7 +95,7 @@ func (c *Canvas) Skew(skew geom.Point) {
 
 // Concat the matrix.
 func (c *Canvas) Concat(matrix geom.Matrix) {
-	m := toSkMatrix(matrix)
+	m := toCanvasMatrix(matrix)
 	c.canvas.Concat(&m)
 }
 
@@ -106,12 +106,12 @@ func (c *Canvas) ResetMatrix() {
 
 // Matrix returns the current transform matrix.
 func (c *Canvas) Matrix() geom.Matrix {
-	return fromSkMatrix(c.canvas.TotalMatrix())
+	return fromCanvasMatrix(c.canvas.TotalMatrix())
 }
 
 // SetMatrix replaces the current matrix with the given matrix.
 func (c *Canvas) SetMatrix(matrix geom.Matrix) {
-	m := toSkMatrix(matrix)
+	m := toCanvasMatrix(matrix)
 	c.canvas.SetMatrix(&m)
 }
 
@@ -124,12 +124,12 @@ func (c *Canvas) QuickRejectPath(path *Path) bool {
 // QuickRejectRect returns true if the rect, after transformations by the current matrix, can be quickly determined to
 // be outside of the current clip. May return false even though the rect is outside of the clip.
 func (c *Canvas) QuickRejectRect(rect geom.Rect) bool {
-	return c.canvas.QuickReject(toSkRect(rect))
+	return c.canvas.QuickReject(toCanvasRect(rect))
 }
 
 // Clear fills the clip with the color.
 func (c *Canvas) Clear(color Color) {
-	c.canvas.Clear(skcolor.Color(color))
+	c.canvas.Clear(colorcore.Color(color))
 }
 
 // DrawPaint fills the clip with Paint. Any MaskFilter or PathEffect in the Paint is ignored.
@@ -139,12 +139,12 @@ func (c *Canvas) DrawPaint(paint *Paint) {
 
 // DrawRect draws the rectangle with Paint.
 func (c *Canvas) DrawRect(rect geom.Rect, paint *Paint) {
-	c.canvas.DrawRect(toSkRect(rect), paint.paint)
+	c.canvas.DrawRect(toCanvasRect(rect), paint.paint)
 }
 
 // DrawRoundedRect draws a rounded rectangle with Paint.
 func (c *Canvas) DrawRoundedRect(rect geom.Rect, radius geom.Size, paint *Paint) {
-	c.canvas.DrawRoundRect(toSkRect(rect), radius.Width, radius.Height, paint.paint)
+	c.canvas.DrawRoundRect(toCanvasRect(rect), radius.Width, radius.Height, paint.paint)
 }
 
 // DrawCircle draws the circle with Paint.
@@ -154,7 +154,7 @@ func (c *Canvas) DrawCircle(center geom.Point, radius float32, paint *Paint) {
 
 // DrawOval draws the oval with Paint.
 func (c *Canvas) DrawOval(rect geom.Rect, paint *Paint) {
-	c.canvas.DrawOval(toSkRect(rect), paint.paint)
+	c.canvas.DrawOval(toCanvasRect(rect), paint.paint)
 }
 
 // DrawPath draws the path with Paint.
@@ -178,8 +178,8 @@ func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom.Rect, sam
 	if img == nil {
 		return
 	}
-	src := toSkRect(srcRect)
-	c.canvas.DrawImageRect(img.imageForCanvas(c), src, toSkRect(dstRect), sampling.skSamplingOptions(),
+	src := toCanvasRect(srcRect)
+	c.canvas.DrawImageRect(img.imageForCanvas(c), src, toCanvasRect(dstRect), sampling.skSamplingOptions(),
 		paint.paintOrNil(), canvas.ConstraintStrict)
 }
 
@@ -190,13 +190,13 @@ func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect geom.Rect, filter
 	// DrawImageNine wants a raster image. img.image is always a raster *imagecore.Image, so asRaster is a plain type
 	// assertion here; routing through imageForCanvas would instead force a GPU upload plus a full GPU->CPU readback on
 	// every call for on-screen window canvases.
-	c.canvas.DrawImageNine(asRaster(img.image), toSkIRect(centerRect), toSkRect(dstRect),
+	c.canvas.DrawImageNine(asRaster(img.image), toCanvasIRect(centerRect), toCanvasRect(dstRect),
 		shaders.FilterMode(filter), paint.paintOrNil())
 }
 
 // DrawColor fills the clip with the color.
 func (c *Canvas) DrawColor(color Color, mode blendmode.Enum) {
-	c.canvas.DrawColor(skcolor.Color(color), raster.BlendMode(mode))
+	c.canvas.DrawColor(colorcore.Color(color), raster.BlendMode(mode))
 }
 
 // DrawPoint draws a point.
@@ -206,7 +206,7 @@ func (c *Canvas) DrawPoint(pt geom.Point, paint *Paint) {
 
 // DrawPoints draws the points using the given mode.
 func (c *Canvas) DrawPoints(pts []geom.Point, paint *Paint, mode pointmode.Enum) {
-	c.canvas.DrawPoints(canvas.PointMode(mode), toSkPoints(pts), paint.paint)
+	c.canvas.DrawPoints(canvas.PointMode(mode), toCanvasPoints(pts), paint.paint)
 }
 
 // DrawLine draws a line.
@@ -218,7 +218,7 @@ func (c *Canvas) DrawLine(start, end geom.Point, paint *Paint) {
 // includes lines from the oval center to the arc end points. If useCenter is false, then just and arc between the end
 // points will be drawn.
 func (c *Canvas) DrawArc(oval geom.Rect, startAngle, sweepAngle float32, paint *Paint, useCenter bool) {
-	c.canvas.DrawArc(toSkRect(oval), startAngle, sweepAngle, useCenter, paint.paint)
+	c.canvas.DrawArc(toCanvasRect(oval), startAngle, sweepAngle, useCenter, paint.paint)
 }
 
 // DrawSimpleString draws a string. It does not do any processing of embedded line endings nor tabs. It also does not do
@@ -237,7 +237,7 @@ func (c *Canvas) DrawTextBlob(blob *textblob.Blob, pt geom.Point, paint *Paint) 
 // ClipRect replaces the clip with the intersection of difference of the current clip and rect.
 func (c *Canvas) ClipRect(rect geom.Rect, op pathop.Enum, antialias bool) {
 	if op.ValidForClip() {
-		c.canvas.ClipRect(toSkRect(rect), raster.ClipOp(op), antialias)
+		c.canvas.ClipRect(toCanvasRect(rect), raster.ClipOp(op), antialias)
 	} else {
 		errs.LogAttrs(errs.New("invalid op for clipping"), slog.String("op", op.String()))
 	}
@@ -254,7 +254,7 @@ func (c *Canvas) ClipPath(path *Path, op pathop.Enum, antialias bool) {
 
 // ClipBounds returns the clip bounds.
 func (c *Canvas) ClipBounds() geom.Rect {
-	return fromSkRect(c.canvas.LocalClipBounds())
+	return fromCanvasRect(c.canvas.LocalClipBounds())
 }
 
 // IsClipEmpty returns true if the clip is empty, i.e. nothing will draw.
