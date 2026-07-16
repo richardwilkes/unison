@@ -41,22 +41,9 @@ func NewPath() *Path {
 	return newPath(path.New())
 }
 
-// NewPathFromSVGString attempts to create a path from the given SVG string.
-func NewPathFromSVGString(svg string) (*Path, error) {
-	if parsed := path.ParseSVGString(svg); parsed != nil {
-		return newPath(parsed), nil
-	}
-	return nil, errs.New("unable to parse SVG string into path")
-}
-
 // Empty returns true if the path is empty.
 func (p *Path) Empty() bool {
 	return p.path.IsEmpty()
-}
-
-// ToSVGString returns an SVG string that represents this path.
-func (p *Path) ToSVGString(useAbsoluteValues bool) string {
-	return p.path.ToSVGString(useAbsoluteValues)
 }
 
 // FillType returns the FillType for this path.
