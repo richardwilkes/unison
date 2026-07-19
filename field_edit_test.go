@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 func TestFieldSetTextMovesSelectionToEnd(t *testing.T) {
@@ -119,6 +120,40 @@ func TestMultiLineFieldKeepsNewlines(t *testing.T) {
 	f := unison.NewMultiLineField()
 	f.SetText("a\nb")
 	c.Equal("a\nb", f.Text())
+}
+
+func TestMultiLineFieldEndKeyOnEmptyField(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewMultiLineField()
+
+	// End on an empty multi-line field previously panicked with an index out of range in findNextLineBreak.
+	c.True(f.DefaultKeyDown(unison.KeyEnd, 0, false))
+	start, end := f.Selection()
+	c.Equal(0, start)
+	c.Equal(0, end)
+
+	// Cmd+Right (macOS) follows the same code path.
+	f.DefaultKeyDown(unison.KeyRight, mod.OSMenuCommand(), false)
+	start, end = f.Selection()
+	c.Equal(0, start)
+	c.Equal(0, end)
+
+	// Shift+End extends the selection and previously hit the same panic.
+	c.True(f.DefaultKeyDown(unison.KeyEnd, mod.Shift, false))
+	start, end = f.Selection()
+	c.Equal(0, start)
+	c.Equal(0, end)
+}
+
+func TestMultiLineFieldEndKeyMovesToEndOfLine(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewMultiLineField()
+	f.SetText("first\nsecond")
+	f.SetSelectionToStart()
+	c.True(f.DefaultKeyDown(unison.KeyEnd, 0, false))
+	start, end := f.Selection()
+	c.Equal(5, start)
+	c.Equal(5, end)
 }
 
 func TestFieldCanCutCopyTrackSelection(t *testing.T) {

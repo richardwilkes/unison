@@ -1335,6 +1335,9 @@ func (f *Field) findNextLineBreak(pos int) int {
 		pos++
 	}
 	index, start := f.lineIndexForPos(pos)
+	if index >= len(f.lines) {
+		return len(f.runes)
+	}
 	start += len(f.lines[index].runes)
 	if f.multiLine && f.endsWithLineFeed[index] != hardLineEnding {
 		start--
