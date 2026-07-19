@@ -228,7 +228,7 @@ func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
 		} else {
 			result = s1
 		}
-	case !mods.ShiftDown():
+	case !mods.ShiftDown() && !mods.CapsLockDown():
 		if per == 1 || s1 == 0 {
 			result, _ = x11ConvertCase(s0)
 		} else {
@@ -248,7 +248,7 @@ func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
 			s = s1
 		}
 		var alt uint32
-		alt, result = x11ConvertCase(s1)
+		alt, result = x11ConvertCase(s)
 		if !mods.ShiftDown() && s != s0 && (s != result || alt == result) {
 			_, result = x11ConvertCase(s0)
 		}
