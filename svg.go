@@ -603,11 +603,13 @@ func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, 
 			if err != nil {
 				return nil, err
 			}
-			if t.sr == "" {
+			if t.sr == "" && g.StartPt == g.EndPt {
 				g.Kind = gradienttype.Radial
 				g.Radius.Start = g.Radius.End
 				g.Radius.End = 0
 			} else {
+				// Either a focal radius (fr) or an offset focal point (fx/fy) was given, so a two-point conical
+				// gradient is required. When fr was omitted, Radius.Start is already 0.
 				g.Kind = gradienttype.Conical
 			}
 		}
@@ -1411,13 +1413,14 @@ func (p *svgParser) readCommonGradientAttrs(attr xml.Attr) error {
 func (p *svgParser) handleRadialGradientElement(attrs []xml.Attr) error {
 	p.inGrad = true
 	const fiftyPercent = "50%"
+	// Per the SVG spec, cx, cy and r default to 50%, fx and fy default to cx and cy, and fr defaults to 0. sx, sy and
+	// sr are deliberately left empty here: sx and sy inherit from ex and ey below once the attributes have been read,
+	// and an empty sr represents the fr default of 0.
 	p.grad = &svgGradient{
 		gradient: &Gradient{
 			Kind:      gradienttype.Radial,
 			Transform: geom.NewIdentityMatrix(),
 		},
-		sr: fiftyPercent,
-		sx: fiftyPercent,
 		ex: fiftyPercent,
 		ey: fiftyPercent,
 		er: fiftyPercent,
