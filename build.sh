@@ -79,8 +79,12 @@ if [ "$LINT"x == "1x" ]; then
 		mkdir -p "$TOOLS_DIR"
 		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b "$TOOLS_DIR" v$GOLANGCI_LINT_VERSION
 	fi
-	echo -e "\033[33mLinting...\033[0m"
-	"$TOOLS_DIR/golangci-lint" run
+	# Lint for every supported platform, not just the host, so problems in platform-specific files (e.g.
+	# *_windows.go) are caught no matter where the script is run.
+	for TARGET_GOOS in darwin linux windows; do
+		echo -e "\033[33mLinting for $TARGET_GOOS...\033[0m"
+		GOOS=$TARGET_GOOS "$TOOLS_DIR/golangci-lint" run
+	done
 fi
 
 # Run the tests
