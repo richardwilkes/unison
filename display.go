@@ -28,12 +28,12 @@ type Display struct {
 }
 
 // PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
-// the macOS menu bar is located.
+// the macOS menu bar is located. It may only be called on the UI thread.
 func PrimaryDisplay() *Display {
 	return apiPrimaryDisplay()
 }
 
-// AllDisplays returns all currently active displays.
+// AllDisplays returns all currently active displays. It may only be called on the UI thread.
 func AllDisplays() []*Display {
 	return apiAllDisplays()
 }

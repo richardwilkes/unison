@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -274,4 +275,47 @@ func TestMarkdownTableDoesNotWrapWhenItFits(t *testing.T) {
 		total += w
 	}
 	c.True(total <= 200, "shrunk columns must sum to no more than the available width")
+}
+
+// TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine verifies that retrieveImage queries the primary display
+// synchronously on the calling goroutine (the UI thread in production) rather than from the background image-loading
+// goroutine it spawns. Querying displays off the UI thread is unsafe: on macOS the lookup calls into AppKit, which
+// only permits access from the main thread, and the platform implementations rely on the UI thread for
+// synchronization.
+func TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine(t *testing.T) {
+	saved := markdownPrimaryDisplay
+	defer func() { markdownPrimaryDisplay = saved }()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	markdownPrimaryDisplay = func() *Display {
+		close(entered)
+		<-release
+		return nil
+	}
+	m := NewMarkdown(false)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		m.retrieveImage("missing-image-for-test.png", NewDrawablePanel())
+	}()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("retrieveImage never queried the display")
+	}
+	// retrieveImage waits at most one second for the image fetch before giving up and returning nil. If the display
+	// query were still being made from the image-loading goroutine, retrieveImage would therefore return while the
+	// blocked query keeps that goroutine stuck; when the query is made on the calling goroutine, retrieveImage cannot
+	// return until the query has been released. Wait longer than that internal timeout to tell the two apart.
+	select {
+	case <-done:
+		t.Fatal("retrieveImage returned while the display query was still blocked; it must query the display on the calling goroutine")
+	case <-time.After(1500 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("retrieveImage did not return after the display query completed")
+	}
 }

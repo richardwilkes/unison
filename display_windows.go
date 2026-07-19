@@ -10,13 +10,19 @@
 package unison
 
 import (
+	"sync"
+
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
 var (
 	w32MonitorCallbackPtr = w32.NewEnumDisplayMonitorsCallback(monitorCallback)
-	w32Displays           []*Display
+	// w32DisplaysLock serializes use of the w32Displays scratch slice. Display queries are normally made on the UI
+	// thread, but they are also reachable from other goroutines (e.g. background image loading), so the enumeration
+	// and the scratch slice handoff must not be allowed to interleave.
+	w32DisplaysLock sync.Mutex
+	w32Displays     []*Display
 )
 
 func apiPrimaryDisplay() *Display {
@@ -33,9 +39,22 @@ func apiPrimaryDisplay() *Display {
 }
 
 func apiAllDisplays() []*Display {
+	return w32EnumDisplays(func() {
+		w32.EnumDisplayMonitors(0, nil, w32MonitorCallbackPtr, 0)
+	})
+}
+
+// w32EnumDisplays invokes enum — which must synchronously deliver its results by appending to w32Displays, as the
+// EnumDisplayMonitors callback does — while holding the lock that guards the scratch slice, then takes ownership of
+// the accumulated result, leaving the scratch slice empty for the next caller.
+func w32EnumDisplays(enum func()) []*Display {
+	w32DisplaysLock.Lock()
+	defer w32DisplaysLock.Unlock()
 	w32Displays = nil
-	w32.EnumDisplayMonitors(0, nil, w32MonitorCallbackPtr, 0)
-	return w32Displays
+	enum()
+	displays := w32Displays
+	w32Displays = nil
+	return displays
 }
 
 func monitorCallback(monitor w32.HMONITOR, _hdc w32.HDC, _bounds w32.RECT, _lParam uintptr) bool {

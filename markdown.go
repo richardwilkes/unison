@@ -1072,6 +1072,11 @@ func (m *Markdown) panelForAnchor(anchor string) *Panel {
 	return nil
 }
 
+// markdownPrimaryDisplay indirects PrimaryDisplay solely so that tests can verify the display query performed by
+// retrieveImage happens on the calling goroutine and not on the image-loading goroutine, since displays may only be
+// queried on the UI thread. Production code must never reassign it.
+var markdownPrimaryDisplay = PrimaryDisplay
+
 func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 	workingDir := ""
 	if m.WorkingDirProvider != nil {
@@ -1096,12 +1101,22 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 		targets: []*DrawablePanel{panel},
 	}
 	m.drawableCacheLock.Unlock()
+	isSVG := strings.ToLower(path.Ext(revisedTarget)) == ".svg"
+	// Displays may only be queried on the UI thread (on macOS the lookup calls into AppKit, and the platform
+	// implementations use unsynchronized state), so capture the scale here, on the calling thread, rather than inside
+	// the image-loading goroutine below.
+	scale := geom.NewPoint(1, 1)
+	if !isSVG {
+		if d := markdownPrimaryDisplay(); d != nil {
+			scale = scale.DivPt(d.Scale)
+		}
+	}
 	result := make(chan Drawable, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		var d Drawable
-		if strings.ToLower(path.Ext(revisedTarget)) == ".svg" {
+		if isSVG {
 			var r io.ReadCloser
 			if r, err = xhttp.StreamData(ctx, nil, revisedTarget); err != nil {
 				result <- nil
@@ -1120,10 +1135,6 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 				Size: svg.SuggestedSize(),
 			}
 		} else {
-			scale := geom.NewPoint(1, 1)
-			if d := PrimaryDisplay(); d != nil {
-				scale = scale.DivPt(d.Scale)
-			}
 			var img *Image
 			if img, err = NewImageFromFilePathOrURL(ctx, m.HTTPClient, revisedTarget, scale, m.PerImageByteLimit); err != nil {
 				result <- nil
