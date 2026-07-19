@@ -735,7 +735,7 @@ func (c Color) Premultiply() Color {
 		b |= b << 8
 		b *= a
 		b /= 0xff
-		return ARGB(c.AlphaIntensity(), int(r&0xff), int(g&0xff), int(b&0xff))
+		return ARGB(c.AlphaIntensity(), int(r>>8), int(g>>8), int(b>>8))
 	}
 }
 
@@ -762,7 +762,7 @@ func (c Color) Unpremultiply() Color {
 		b |= b << 8
 		b *= 0xff
 		b /= a
-		return ARGB(c.AlphaIntensity(), int(r&0xff), int(g&0xff), int(b&0xff))
+		return ARGB(c.AlphaIntensity(), int(r>>8), int(g>>8), int(b>>8))
 	}
 }
 
