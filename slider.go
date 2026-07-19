@@ -232,7 +232,7 @@ func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool
 		return true
 	}
 	ratio := (min(max(pos, minimum), maximum) - minimum) / (maximum - minimum)
-	s.SetValue(ratio * (s.maximum - s.minimum))
+	s.SetValue(s.minimum + ratio*(s.maximum-s.minimum))
 	return true
 }
 
