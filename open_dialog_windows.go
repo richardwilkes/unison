@@ -65,30 +65,28 @@ func (d *w32OpenDialog) RunModal() bool {
 	if !openDialog.Show(w32OwnerHWND()) {
 		return false
 	}
-	d.paths = openDialog.GetResults()
-	switch len(d.paths) {
-	case 0:
+	var dir string
+	d.paths, dir = w32FinalizeOpenPaths(openDialog.GetResults(), d.allowMultipleSelection)
+	if len(d.paths) == 0 {
 		return false
-	case 1:
-		lastWorkingDir = filepath.Dir(d.paths[0])
-	default:
-		if d.allowMultipleSelection {
-			paths := make([]string, len(d.paths)-1)
-			for i, p := range d.paths {
-				if i != 0 {
-					paths[i-1] = filepath.Join(d.paths[0], p)
-				}
-			}
-			d.paths = paths
-			lastWorkingDir = d.paths[0]
-		} else {
-			paths := make([]string, 1)
-			paths[0] = d.paths[1]
-			d.paths = paths
-			lastWorkingDir = filepath.Dir(d.paths[0])
-		}
 	}
+	lastWorkingDir = dir
 	return true
+}
+
+// w32FinalizeOpenPaths normalizes the results of IFileOpenDialog.GetResults, which yields one full filesystem path
+// (SIGDN_FILESYSPATH) per selected item -- unlike the legacy GetOpenFileName API, whose multi-select buffer held the
+// directory followed by bare file names. If multiple selection is not enabled, only the first path is kept. It returns
+// the paths to report along with the directory to record as the last working dir, or (nil, "") if there were no
+// results.
+func w32FinalizeOpenPaths(paths []string, allowMultipleSelection bool) ([]string, string) {
+	if len(paths) == 0 {
+		return nil, ""
+	}
+	if !allowMultipleSelection && len(paths) > 1 {
+		paths = paths[:1]
+	}
+	return paths, filepath.Dir(paths[0])
 }
 
 func (d *w32OpenDialog) w32CreateFilters() []w32.FileFilter {
