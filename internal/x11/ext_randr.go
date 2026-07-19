@@ -102,33 +102,37 @@ func (e *ExtRandr) GetMonitors(root WindowID, active bool) ([]Monitor, error) {
 	w.Zero(3)
 	var monitors []Monitor
 	if err := e.conn.sendNewRequest(newReplyRequest(w, func(r *Reader) {
-		r.Skip(12)
-		numMonitors := int(r.Uint32())
-		numOutputs := int(r.Uint32())
-		r.Skip(12)
-		monitors = ReadList(numMonitors, r, func(rr *Reader) Monitor {
-			var m Monitor
-			m.Name = rr.Atom()
-			m.Primary = rr.Bool()
-			m.Automatic = rr.Bool()
-			rr.Skip(2)
-			m.X = rr.Int16()
-			m.Y = rr.Int16()
-			m.Width = rr.Uint16()
-			m.Height = rr.Uint16()
-			if m.WidthMM = rr.Uint32(); m.WidthMM == 0 {
-				// Assume 96 DPI if we don't receive useful info
-				m.WidthMM = uint32(float64(m.Width) * 25.4 / 96.0)
-			}
-			if m.HeightMM = rr.Uint32(); m.HeightMM == 0 {
-				// Assume 96 DPI if we don't receive useful info
-				m.HeightMM = uint32(float64(m.Height) * 25.4 / 96.0)
-			}
-			return m
-		})
-		r.Skip(numOutputs * 4)
+		monitors = readGetMonitorsReply(r)
 	})); err != nil {
 		return nil, errs.NewWithCause("failed to get monitors", err)
 	}
 	return monitors, nil
+}
+
+func readGetMonitorsReply(r *Reader) []Monitor {
+	r.Skip(12)
+	numMonitors := int(r.Uint32())
+	r.Skip(16)
+	return ReadList(numMonitors, r, func(rr *Reader) Monitor {
+		var m Monitor
+		m.Name = rr.Atom()
+		m.Primary = rr.Bool()
+		m.Automatic = rr.Bool()
+		numOutputs := int(rr.Uint16())
+		m.X = rr.Int16()
+		m.Y = rr.Int16()
+		m.Width = rr.Uint16()
+		m.Height = rr.Uint16()
+		if m.WidthMM = rr.Uint32(); m.WidthMM == 0 {
+			// Assume 96 DPI if we don't receive useful info
+			m.WidthMM = uint32(float64(m.Width) * 25.4 / 96.0)
+		}
+		if m.HeightMM = rr.Uint32(); m.HeightMM == 0 {
+			// Assume 96 DPI if we don't receive useful info
+			m.HeightMM = uint32(float64(m.Height) * 25.4 / 96.0)
+		}
+		// Each MONITORINFO is followed by its own list of nOutput OUTPUT ids, which we don't use.
+		rr.Skip(numOutputs * 4)
+		return m
+	})
 }
