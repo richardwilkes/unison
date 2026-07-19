@@ -21,23 +21,25 @@ type KeyBinding struct {
 	Modifiers mod.Modifiers
 }
 
-// KeyBindingFromKey extracts a KeyBinding from a string created via a call to .Key().
+// KeyBindingFromKey extracts a KeyBinding from a string created via a call to .Key(). Since .Key() always places the
+// key code after the modifiers, the final "+"-separated part is treated as the key code if it can be parsed as one and
+// any preceding parts are treated as modifiers; otherwise, the entire string is treated as modifiers. The tokens
+// "caps" and "num" are used both as key codes (CapsLock, NumLock) and as modifiers, so a trailing "caps" or "num"
+// always resolves to the key code.
 func KeyBindingFromKey(key string) KeyBinding {
-	parts := strings.Split(key, "+")
-	switch len(parts) {
-	case 1:
-		if k := KeyCodeFromKey(parts[0]); k != 0 {
-			return KeyBinding{KeyCode: k}
+	if i := strings.LastIndex(key, "+"); i != -1 {
+		if k := KeyCodeFromKey(key[i+1:]); k != KeyNone {
+			return KeyBinding{
+				KeyCode:   k,
+				Modifiers: mod.FromKey(key[:i]),
+			}
 		}
-		return KeyBinding{Modifiers: mod.FromKey(parts[0])}
-	case 2:
-		return KeyBinding{
-			KeyCode:   KeyCodeFromKey(parts[1]),
-			Modifiers: mod.FromKey(parts[0]),
-		}
-	default:
-		return KeyBinding{}
+		return KeyBinding{Modifiers: mod.FromKey(key)}
 	}
+	if k := KeyCodeFromKey(key); k != KeyNone {
+		return KeyBinding{KeyCode: k}
+	}
+	return KeyBinding{Modifiers: mod.FromKey(key)}
 }
 
 // Key returns a string version of the KeyCode for the purpose of serialization.
