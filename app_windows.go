@@ -134,26 +134,36 @@ func apiPollEvents() {
 	// Hack to release some modifiers keys that the system did not emit KEYUP events for.
 	if hwnd := w32.GetActiveWindow(); hwnd != 0 {
 		if window := w32FindWindowByHWND(hwnd); window != nil {
-			keys := [4]struct {
-				vk  int
-				key KeyCode
-			}{
-				{0x02A, KeyLShift},
-				{0x036, KeyRShift},
-				{0x15B, KeyLCommand},
-				{0x15C, KeyRCommand},
-			}
-			for _, k := range keys {
-				if !window.pressedKeys[k.key] {
-					continue
-				}
-				if w32.GetKeyState(k.vk)&0x8000 != 0 {
-					continue
-				}
-				window.keyReleased(k.key, window.CurrentKeyModifiers())
+			for _, key := range w32CollectStuckModifiers(window.pressedKeys, w32.GetKeyState) {
+				window.keyReleased(key, window.CurrentKeyModifiers())
 			}
 		}
 	}
+}
+
+// w32StuckModifierKeys maps each modifier key that Windows sometimes fails to deliver a KEYUP for to the virtual-key
+// code used to query its current state. These must be virtual-key codes (VK_*), since that is what GetKeyState takes,
+// not the raw scan codes used by rawScanCodeToKeyCodeMap to translate WM_KEYDOWN/WM_KEYUP events.
+var w32StuckModifierKeys = []struct {
+	virtualKey int
+	key        KeyCode
+}{
+	{w32.VK_LSHIFT, KeyLShift},
+	{w32.VK_RSHIFT, KeyRShift},
+	{w32.VK_LWIN, KeyLCommand},
+	{w32.VK_RWIN, KeyRCommand},
+}
+
+// w32CollectStuckModifiers returns the modifier keys that pressedKeys still considers held even though getKeyState
+// reports them as up, meaning the KEYUP event was never delivered and a release needs to be synthesized.
+func w32CollectStuckModifiers(pressedKeys map[KeyCode]bool, getKeyState func(virtualKey int) uint16) []KeyCode {
+	var stuck []KeyCode
+	for _, k := range w32StuckModifierKeys {
+		if pressedKeys[k.key] && getKeyState(k.virtualKey)&0x8000 == 0 {
+			stuck = append(stuck, k.key)
+		}
+	}
+	return stuck
 }
 
 func apiWaitEvents() {

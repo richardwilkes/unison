@@ -779,6 +779,8 @@ const (
 	VK_LWIN       = 0x5B
 	VK_RWIN       = 0x5C
 	VK_NUMLOCK    = 0x90
+	VK_LSHIFT     = 0xA0
+	VK_RSHIFT     = 0xA1
 	VK_PROCESSKEY = 0xE5
 )
 
