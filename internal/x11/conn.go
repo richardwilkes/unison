@@ -1569,16 +1569,19 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 	if unitSize != 0 {
 		remainingCount = len(data) / unitSize
 	}
+	// The request length field counts 4-byte words and must cover the 24-byte (6-word) header plus the data, so each
+	// request can carry at most (maximumRequestLength - 6) * 4 bytes of data. Note that this per-request byte limit is
+	// exactly the chunk size completeIncrTransfers uses, which relies on each chunk being written with a single
+	// ChangeProperty request.
+	maxUnitsPerRequest := 1
+	if unitSize != 0 {
+		maxUnitsPerRequest = max((int(c.maximumRequestLength)-6)*4/unitSize, 1)
+	}
 	// A request is sent even when there is no data, since a zero-length write still generates a PropertyNotify event,
 	// which the INCR transfer mechanism relies upon to signal the end of a transfer.
 	onlyOnce := unitSize == 0 || mode != PropModeReplace || len(data) == 0
 	for remainingCount > 0 || onlyOnce {
-		unitCount := remainingCount
-		if unitCount > math.MaxUint16-24 {
-			unitCount = math.MaxUint16 - 24
-			unitCount /= unitSize
-			unitCount *= unitSize
-		}
+		unitCount := min(remainingCount, maxUnitsPerRequest)
 		byteSize := unitCount * unitSize
 		w := NewWriter(24 + pad4(byteSize))
 		w.Byte(opChangeProperty)
