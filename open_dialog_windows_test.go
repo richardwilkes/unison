@@ -15,6 +15,12 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 )
 
+const (
+	testOpenDir   = `C:\dir`
+	testOpenFileA = testOpenDir + `\a.txt`
+	testOpenFileB = testOpenDir + `\b.txt`
+)
+
 // TestFinalizeOpenPathsMultiSelect verifies that multi-select results are passed through unchanged. IFileOpenDialog
 // returns one full filesystem path per selected item, so no reassembly is needed. Prior to the fix, the legacy
 // GetOpenFileName post-processing ("element 0 is the directory, the rest are bare names") was applied instead, which
@@ -22,30 +28,30 @@ import (
 // `C:\dir\a.txt\C:\dir\b.txt` and recording a file path as the last working dir.
 func TestFinalizeOpenPathsMultiSelect(t *testing.T) {
 	c := check.New(t)
-	in := []string{`C:\dir\a.txt`, `C:\dir\b.txt`, `C:\other\c.txt`}
+	in := []string{testOpenFileA, testOpenFileB, `C:\misc\c.txt`}
 	paths, dir := w32FinalizeOpenPaths(in, true)
 	c.Equal(in, paths)
-	c.Equal(`C:\dir`, dir)
+	c.Equal(testOpenDir, dir)
 }
 
 func TestFinalizeOpenPathsSingleSelection(t *testing.T) {
 	c := check.New(t)
-	paths, dir := w32FinalizeOpenPaths([]string{`C:\dir\a.txt`}, false)
-	c.Equal([]string{`C:\dir\a.txt`}, paths)
-	c.Equal(`C:\dir`, dir)
+	paths, dir := w32FinalizeOpenPaths([]string{testOpenFileA}, false)
+	c.Equal([]string{testOpenFileA}, paths)
+	c.Equal(testOpenDir, dir)
 
-	paths, dir = w32FinalizeOpenPaths([]string{`C:\dir\a.txt`}, true)
-	c.Equal([]string{`C:\dir\a.txt`}, paths)
-	c.Equal(`C:\dir`, dir)
+	paths, dir = w32FinalizeOpenPaths([]string{testOpenFileA}, true)
+	c.Equal([]string{testOpenFileA}, paths)
+	c.Equal(testOpenDir, dir)
 }
 
 // TestFinalizeOpenPathsExtraResultsWithoutMultiSelect verifies that only the first path is kept when multiple results
 // arrive even though multiple selection was not enabled.
 func TestFinalizeOpenPathsExtraResultsWithoutMultiSelect(t *testing.T) {
 	c := check.New(t)
-	paths, dir := w32FinalizeOpenPaths([]string{`C:\dir\a.txt`, `C:\dir\b.txt`}, false)
-	c.Equal([]string{`C:\dir\a.txt`}, paths)
-	c.Equal(`C:\dir`, dir)
+	paths, dir := w32FinalizeOpenPaths([]string{testOpenFileA, testOpenFileB}, false)
+	c.Equal([]string{testOpenFileA}, paths)
+	c.Equal(testOpenDir, dir)
 }
 
 func TestFinalizeOpenPathsEmpty(t *testing.T) {

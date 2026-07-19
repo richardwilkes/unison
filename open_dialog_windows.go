@@ -79,7 +79,7 @@ func (d *w32OpenDialog) RunModal() bool {
 // directory followed by bare file names. If multiple selection is not enabled, only the first path is kept. It returns
 // the paths to report along with the directory to record as the last working dir, or (nil, "") if there were no
 // results.
-func w32FinalizeOpenPaths(paths []string, allowMultipleSelection bool) ([]string, string) {
+func w32FinalizeOpenPaths(paths []string, allowMultipleSelection bool) (finalPaths []string, workingDir string) {
 	if len(paths) == 0 {
 		return nil, ""
 	}
