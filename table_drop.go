@@ -160,12 +160,15 @@ func (d *TableDrop[T, U]) DragUpdatedCallback(di drag.Info, where geom.Point, _ 
 		// Check to make sure we aren't trying to drop into the items being moved
 		if d.TargetParent != zero && data.Table == d.Table {
 			for _, r := range data.Rows {
-				if RowContainsRow(r, d.TargetParent) {
-					// Can't drop into itself, so abort
-					d.inDragOver = false
-					d.TargetParent = zero
-					break
+				if !RowContainsRow(r, d.TargetParent) {
+					continue
 				}
+				// Can't drop into itself, so reject the drop
+				d.inDragOver = false
+				d.TargetParent = zero
+				d.Table.MarkForRedraw()
+				d.Table.FlushDrawing()
+				return drag.None
 			}
 		}
 		d.Table.MarkForRedraw()
