@@ -197,9 +197,12 @@ func finishProcessingEvents() {
 		set := redrawSet
 		redrawSet = make(map[*Window]struct{})
 		for wnd := range set {
-			if wnd.IsVisible() {
+			switch {
+			case wnd.IsVisible():
 				wnd.draw()
-			} else {
+			case wnd.IsValid():
+				// Hidden, but not disposed, so keep the request pending until the window becomes visible. Disposed
+				// windows are dropped, since they can never be drawn again.
 				redrawSet[wnd] = struct{}{}
 			}
 		}

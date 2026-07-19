@@ -425,6 +425,9 @@ func (w *Window) Dispose() {
 		w.surface.dispose()
 		w.destroy()
 	}
+	// Drop any pending redraw request, since a disposed window can never be drawn again. Without this, the window (and
+	// its entire panel tree) would be retained in redrawSet for the life of the process.
+	delete(redrawSet, w)
 	if len(windowList) == 0 && quitAfterLastWindowClosed() {
 		quitting()
 	}
@@ -930,8 +933,11 @@ func (w *Window) LastDrawDuration() time.Duration {
 	return w.lastDrawDuration
 }
 
-// MarkForRedraw marks this window for drawing at the next update.
+// MarkForRedraw marks this window for drawing at the next update. Does nothing if the window has been disposed.
 func (w *Window) MarkForRedraw() {
+	if !w.IsValid() {
+		return
+	}
 	if _, exists := redrawSet[w]; !exists {
 		redrawSet[w] = struct{}{}
 		if len(redrawSet) == 1 {
