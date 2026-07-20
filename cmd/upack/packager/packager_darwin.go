@@ -53,7 +53,9 @@ func createAppPackage(cfg *Config) error {
 		return err
 	}
 	for _, f := range cfg.FileInfo {
-		if f.Role == "Editor" {
+		// The plist references the file type's .icns (CFBundleTypeIconFile / UTTypeIconFile) for entries whose Rank
+		// is Owner, so that is the predicate for generating them, too.
+		if f.Rank == rankOwner {
 			if err := createICNS(f.Icon, resDir); err != nil {
 				return err
 			}
@@ -104,7 +106,7 @@ func writePlist(cfg *Config, targetPath string) error {
 	exportCount := 0
 	importCount := 0
 	for _, one := range cfg.FileInfo {
-		if one.Rank == "Owner" {
+		if one.Rank == rankOwner {
 			exportCount++
 		} else {
 			importCount++
@@ -278,29 +280,29 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleName</key>
-	<string>{{.FinderAppName}}</string>
+	<string>{{.FinderAppName | html}}</string>
 	<key>CFBundleDisplayName</key>
-	<string>{{.FinderAppName}}</string>
+	<string>{{.FinderAppName | html}}</string>
 	<key>CFBundleIdentifier</key>
-	<string>{{.AppID}}</string>
+	<string>{{.AppID | html}}</string>
 	<key>CFBundleVersion</key>
-	<string>{{.AppVersion}}</string>
+	<string>{{.AppVersion | html}}</string>
 	<key>CFBundleShortVersionString</key>
-	<string>{{.ShortVersion}}</string>
+	<string>{{.ShortVersion | html}}</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>{{.MinimumSystemVersion}}</string>
+	<string>{{.MinimumSystemVersion | html}}</string>
 	<key>CFBundleExecutable</key>
-	<string>{{.AppCmdName}}</string>
+	<string>{{.AppCmdName | html}}</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>{{.Copyright}}</string>
+	<string>{{.Copyright | html}}</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en-US</string>
 	<key>CFBundleIconFile</key>
-	<string>{{.AppIcon}}</string>
+	<string>{{.AppIcon | html}}</string>
 	<key>CFBundleSpokenName</key>
-	<string>{{.SpokenName}}</string>
+	<string>{{.SpokenName | html}}</string>
 	<key>LSApplicationCategoryType</key>
-	<string>{{.CategoryUTI}}</string>
+	<string>{{.CategoryUTI | html}}</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
@@ -311,18 +313,18 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 {{- range .FileInfo}}
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>{{.Name}}</string>
+			<string>{{.Name | html}}</string>
 {{- if eq .Rank "Owner"}}
 			<key>CFBundleTypeIconFile</key>
-			<string>{{.IconName}}</string>
+			<string>{{.IconName | html}}</string>
 {{- end}}
 			<key>CFBundleTypeRole</key>
-			<string>{{.Role}}</string>
+			<string>{{.Role | html}}</string>
 			<key>LSHandlerRank</key>
-			<string>{{.Rank}}</string>
+			<string>{{.Rank | html}}</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>{{.UTI}}</string>
+				<string>{{.UTI | html}}</string>
 			</array>
 		</dict>
 {{- end}}
@@ -334,15 +336,15 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 {{- if eq .Rank "Owner"}}
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>{{.UTI}}</string>
+			<string>{{.UTI | html}}</string>
 			<key>UTTypeDescription</key>
-			<string>{{.Name}}</string>
+			<string>{{.Name | html}}</string>
 			<key>UTTypeIconFile</key>
-			<string>{{.IconName}}</string>
+			<string>{{.IconName | html}}</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 {{- range .ConformsTo}}
-				<string>{{.}}</string>
+				<string>{{. | html}}</string>
 {{- end}}
 			</array>
 			<key>UTTypeTagSpecification</key>
@@ -350,13 +352,13 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 				<key>public.filename-extension</key>
 				<array>
 {{- range .Extensions}}
-					<string>{{.}}</string>
+					<string>{{. | html}}</string>
 {{- end}}
 				</array>
 				<key>public.mime-type</key>
 				<array>
 {{- range .MimeTypes}}
-					<string>{{.}}</string>
+					<string>{{. | html}}</string>
 {{- end}}
 				</array>
 			</dict>
@@ -372,13 +374,13 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 {{- if ne .Rank "Owner"}}
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>{{.UTI}}</string>
+			<string>{{.UTI | html}}</string>
 			<key>UTTypeDescription</key>
-			<string>{{.Name}}</string>
+			<string>{{.Name | html}}</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 {{- range .ConformsTo}}
-				<string>{{.}}</string>
+				<string>{{. | html}}</string>
 {{- end}}
 			</array>
 			<key>UTTypeTagSpecification</key>
@@ -386,13 +388,13 @@ const plistTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 				<key>public.filename-extension</key>
 				<array>
 {{- range .Extensions}}
-					<string>{{.}}</string>
+					<string>{{. | html}}</string>
 {{- end}}
 				</array>
 				<key>public.mime-type</key>
 				<array>
 {{- range .MimeTypes}}
-					<string>{{.}}</string>
+					<string>{{. | html}}</string>
 {{- end}}
 				</array>
 			</dict>
