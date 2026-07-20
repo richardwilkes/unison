@@ -65,6 +65,8 @@ type Image struct {
 	nonTextureImage genericImage
 	hash            uint64
 	scale           geom.Point
+	texCleanup      runtime.Cleanup
+	hasTexCleanup   bool
 	disposeOnce     sync.Once
 }
 
@@ -204,6 +206,8 @@ func (img *Image) Dispose() {
 			delete(imgCache, img.hash)
 		}
 		imgCacheLock.Unlock()
+		img.texCleanup.Stop()
+		releaseTexturesForImage(img.hash)
 		img.image = nil
 		img.nonTextureImage = nil
 	})
@@ -305,7 +309,44 @@ func (img *Image) imageForCanvas(canvas *Canvas) genericImage {
 		return img.image
 	}
 	m[img.hash] = tex
+	img.registerTextureCleanup()
 	return tex
+}
+
+// registerTextureCleanup arranges for the image's cached GPU textures to be evicted from imageCtxMap when the Image is
+// garbage collected, since entries would otherwise live until their whole GL context is destroyed. Called on the UI
+// thread (from imageForCanvas) when the first texture is uploaded; registering once covers every context, as the
+// cleanup evicts by hash across all of imageCtxMap.
+func (img *Image) registerTextureCleanup() {
+	if img.hasTexCleanup {
+		return
+	}
+	img.hasTexCleanup = true
+	// The cleanup must not capture img itself, or the Image would never become collectable. It runs on the runtime's
+	// cleanup goroutine, so the actual eviction is marshaled onto the UI thread, which owns imageCtxMap.
+	img.texCleanup = runtime.AddCleanup(img, func(hash uint64) {
+		InvokeTask(func() { releaseTexturesForImage(hash) })
+	}, img.hash)
+}
+
+// releaseTexturesForImage evicts and releases the given image hash's texture entries from every live GL context's
+// cache. Must be called on the UI thread, since imageCtxMap is UI-thread-only state.
+func releaseTexturesForImage(hash uint64) {
+	for _, m := range imageCtxMap {
+		if img, ok := m[hash]; ok {
+			delete(m, hash)
+			releaseTexture(img)
+		}
+	}
+}
+
+// releaseTexture releases the GPU texture behind a cached context-map entry, if it has one. In production the entries
+// are always *gl.TextureImage, whose Release drops the texture proxy ref so the GPU resource is freed deterministically
+// rather than waiting on the GC.
+func releaseTexture(img genericImage) {
+	if tex, ok := img.(interface{ Release() }); ok {
+		tex.Release()
+	}
 }
 
 func releaseImagesForContext(ctx *gl.DirectContext) {
@@ -314,9 +355,7 @@ func releaseImagesForContext(ctx *gl.DirectContext) {
 		for _, img := range m {
 			// The context map only ever holds texture-backed images produced by gl.TextureFromImage, so releasing
 			// their texture proxies is the one place a real unref happens.
-			if tex, isTex := img.(*gl.TextureImage); isTex {
-				tex.Release()
-			}
+			releaseTexture(img)
 		}
 	}
 	InvokeTaskAfter(func() {

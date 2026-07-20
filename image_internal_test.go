@@ -10,8 +10,11 @@
 package unison
 
 import (
+	"runtime"
 	"testing"
+	"time"
 
+	"github.com/richardwilkes/canvas/gpu/gl"
 	"github.com/richardwilkes/canvas/imagecore"
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -89,6 +92,141 @@ func TestImageDeduplication(t *testing.T) {
 	c.True(img1 == img2, "identical pixel data should resolve to the same cached *Image")
 
 	img1.Dispose()
+}
+
+// stubTexture is a genericImage stand-in for the *gl.TextureImage entries imageCtxMap holds in production, recording
+// whether its GPU-side release was invoked so tests can observe eviction without a live GL context.
+type stubTexture struct {
+	released bool
+}
+
+func (s *stubTexture) Width() int32                          { return 1 }
+func (s *stubTexture) Height() int32                         { return 1 }
+func (s *stubTexture) AlphaType() imagecore.AlphaType        { return imagecore.AlphaTypeUnpremul }
+func (s *stubTexture) IsAlphaOnly() bool                     { return false }
+func (s *stubTexture) UniqueID() uint32                      { return 0 }
+func (s *stubTexture) MakeNonTextureImage() *imagecore.Image { return nil }
+func (s *stubTexture) ReadPixels(_ imagecore.ImageInfo, _ []byte, _ int, _, _ int32, _ imagecore.CachingHint) bool {
+	return false
+}
+func (s *stubTexture) Release() { s.released = true }
+
+// drainTasks runs any queued UI tasks on the current goroutine, which stands in for the UI thread in these headless
+// tests.
+func drainTasks() {
+	for {
+		taskQueueLock.Lock()
+		pending := len(taskQueue) - taskQueueHead
+		taskQueueLock.Unlock()
+		if pending == 0 {
+			return
+		}
+		processNextTask()
+	}
+}
+
+// TestImageDisposeReleasesTextures verifies that Dispose evicts the image's cached GPU textures from every context in
+// imageCtxMap and releases them, while leaving other images' entries alone. Before this, only whole-context teardown
+// (releaseImagesForContext) ever removed per-image texture entries, so long-lived windows accumulated textures without
+// bound.
+func TestImageDisposeReleasesTextures(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 41), geom.NewPoint(1, 1))
+	c.NoError(err)
+
+	ctx1 := new(gl.DirectContext)
+	ctx2 := new(gl.DirectContext)
+	defer func() {
+		delete(imageCtxMap, ctx1)
+		delete(imageCtxMap, ctx2)
+	}()
+	tex1 := &stubTexture{}
+	tex2 := &stubTexture{}
+	bystander := &stubTexture{}
+	imageCtxMap[ctx1] = map[uint64]genericImage{img.hash: tex1, img.hash + 1: bystander}
+	imageCtxMap[ctx2] = map[uint64]genericImage{img.hash: tex2}
+
+	img.Dispose()
+
+	_, present := imageCtxMap[ctx1][img.hash]
+	c.False(present, "Dispose should evict the image's texture from the first context")
+	_, present = imageCtxMap[ctx2][img.hash]
+	c.False(present, "Dispose should evict the image's texture from the second context")
+	c.True(tex1.released, "Dispose should release the first context's texture")
+	c.True(tex2.released, "Dispose should release the second context's texture")
+
+	_, present = imageCtxMap[ctx1][img.hash+1]
+	c.True(present, "Dispose should leave other images' textures alone")
+	c.False(bystander.released, "Dispose should not release other images' textures")
+}
+
+// TestImageGCReleasesTextures verifies the garbage-collection path: once a texture has been uploaded for an image (and
+// registerTextureCleanup has run), dropping the last reference to the Image must eventually evict and release its
+// cached textures via a task on the UI thread. This restores the eviction role of the per-image runtime.Cleanup
+// registrations that existed before the canvas port.
+func TestImageGCReleasesTextures(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 43), geom.NewPoint(1, 1))
+	c.NoError(err)
+
+	hash := img.hash
+	ctx := new(gl.DirectContext)
+	defer delete(imageCtxMap, ctx)
+	tex := &stubTexture{}
+	imageCtxMap[ctx] = map[uint64]genericImage{hash: tex}
+
+	img.registerTextureCleanup()
+	img.registerTextureCleanup() // must be idempotent, as imageForCanvas calls it on every texture upload
+
+	img = nil //nolint:wastedassign // drops the last strong reference so the cleanup can run
+	deadline := time.Now().Add(30 * time.Second)
+	for !tex.released && time.Now().Before(deadline) {
+		runtime.GC()
+		drainTasks()
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	c.True(tex.released, "collecting an Image should release its cached textures")
+	_, present := imageCtxMap[ctx][hash]
+	c.False(present, "collecting an Image should evict its texture from imageCtxMap")
+}
+
+// TestImageDisposeStopsGCCleanup verifies that Dispose cancels the pending GC cleanup: after Dispose, a later texture
+// cached under the same hash (by a new Image built from the same data) must not be evicted when the old disposed Image
+// is collected. Stop is called while the Image is still reachable, so the cleanup is guaranteed never to fire, making
+// this check deterministic.
+func TestImageDisposeStopsGCCleanup(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 47), geom.NewPoint(1, 1))
+	c.NoError(err)
+
+	hash := img.hash
+	ctx := new(gl.DirectContext)
+	defer delete(imageCtxMap, ctx)
+	imageCtxMap[ctx] = map[uint64]genericImage{hash: &stubTexture{}}
+	img.registerTextureCleanup()
+	img.Dispose()
+
+	// Simulate a successor image's texture cached under the same hash after the old image was disposed.
+	successor := &stubTexture{}
+	imageCtxMap[ctx][hash] = successor
+
+	img = nil //nolint:wastedassign // drops the last strong reference to the disposed image
+	for range 5 {
+		runtime.GC()
+		drainTasks()
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	_, present := imageCtxMap[ctx][hash]
+	c.True(present, "a stopped cleanup must not evict a successor's texture")
+	c.False(successor.released, "a stopped cleanup must not release a successor's texture")
 }
 
 // TestImageForCanvasReturnsRasterForNilContext covers the non-texture branch of imageForCanvas: with no GL context it
