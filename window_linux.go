@@ -1025,7 +1025,7 @@ func x11ProcessEvent(e x11.Event) {
 				mods := x11TranslateModifierState(ev.State)
 				w.keyPressed(key, mods)
 				if mods&(mod.Control|mod.Option|mod.Command) == 0 {
-					keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods)
+					keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods, ev.State&x11Mod5Mask != 0)
 					if ch := x11KeySymToUnicode(keySym); ch != utf8.RuneError {
 						w.runeTyped(ch)
 					}

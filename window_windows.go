@@ -640,8 +640,11 @@ func (w *Window) apiUpdateCursorImage() {
 }
 
 // w32SetCursor applies the native cursor sized for this window's current monitor DPI. Setting a null cursor would hide
-// it entirely, so a failed handle creation leaves the existing cursor in place.
+// it entirely, so a nil (destroyed) cursor or a failed handle creation leaves the existing cursor in place.
 func (w *Window) w32SetCursor(c *w32Cursor) {
+	if c == nil {
+		return
+	}
 	if h := c.handle(w.apiBackingScale().X); h != 0 {
 		w32.SetCursor(h)
 	}

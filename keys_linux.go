@@ -209,7 +209,12 @@ func apiFillKeyCodes() {
 	}
 }
 
-func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
+// x11Mod5Mask is the Mod5 bit within an X11 event state mask. On effectively all XKB configurations, AltGr
+// (ISO_Level3_Shift) is bound to Mod5, and the level-3 keysyms appear in the second pair of columns of the core
+// keyboard mapping, mirroring the Mode_switch group handling in libX11's _XTranslateKey().
+const x11Mod5Mask = 0x0080
+
+func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers, level3 bool) uint32 {
 	if scanCode < uint16(x11Conn.MinKeyCode) || scanCode > uint16(x11Conn.MaxKeyCode) {
 		return 0
 	}
@@ -218,11 +223,18 @@ func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
 	for per > 2 && x11KbMapping.KeySyms[syms+per-1] == 0 {
 		per--
 	}
+	if per > 2 && level3 {
+		syms += 2
+		per -= 2
+	}
 	var result uint32
 	s0 := x11KbMapping.KeySyms[syms]
-	s1 := x11KbMapping.KeySyms[syms+1]
+	var s1 uint32
+	if per > 1 {
+		s1 = x11KbMapping.KeySyms[syms+1]
+	}
 	switch {
-	case mods.NumLockDown() && (per > 1 && (isKeypadKey(s1)) || isPrivateKeypadKey(s1)):
+	case mods.NumLockDown() && per > 1 && (isKeypadKey(s1) || isPrivateKeypadKey(s1)):
 		if mods.ShiftDown() {
 			result = s0
 		} else {

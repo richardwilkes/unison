@@ -35,13 +35,13 @@ func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *
 	}
 	pm := x11Conn.CreatePixMap(x11.DrawableID(x11Conn.RootWindow()), 32, uint16(logicalWidth), uint16(logicalHeight))
 	if pm == 0 {
-		return &Cursor{}
+		return nil
 	}
 	defer x11Conn.FreePixMap(pm)
 	pix := x11.DrawableID(pm)
 	gc := x11Conn.CreateGC(pix, 0, nil)
 	if gc == 0 {
-		return &Cursor{}
+		return nil
 	}
 	defer x11Conn.FreeGC(gc)
 	x11Conn.PutImage(pix, gc, 0, 0, img)
@@ -66,16 +66,20 @@ func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *
 	}
 	if format == 0 {
 		slog.Error("unable to find the ARGB32 format")
-		return &Cursor{}
+		return nil
 	}
 	picture := x11Conn.ExtRender.CreatePicture(pix, format, 0, nil)
 	if picture == 0 {
-		return &Cursor{}
+		return nil
 	}
 	defer x11Conn.ExtRender.FreePicture(picture)
-	return &Cursor{
-		cursor: x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpot.X), uint16(hotSpot.Y)),
+	cursor := x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpot.X), uint16(hotSpot.Y))
+	if cursor == 0 {
+		return nil
 	}
+	c := &Cursor{cursor: cursor}
+	cursorList = append(cursorList, c)
+	return c
 }
 
 func (c *Cursor) apiDestroy() {

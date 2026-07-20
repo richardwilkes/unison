@@ -78,6 +78,8 @@ func (c *Cursor) apiDestroy() {
 			}
 			delete(c.cursor.byScale, scale)
 		}
+		// Zero the native cursor, as the other platforms do, so use after destroy cannot silently recreate an HCURSOR.
+		c.cursor = nil
 	}
 }
 

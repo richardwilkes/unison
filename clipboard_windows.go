@@ -158,8 +158,10 @@ func apiClipboardSetData(data ...drag.Data) {
 	}
 	w32.EmptyClipboard()
 	for _, e := range entries {
-		w32.SetClipboardData(e.format, e.obj)
-		// Windows owns the handle after SetClipboardData — do not free it
+		// Windows owns the handle only after a successful SetClipboardData, so free it ourselves on failure.
+		if w32.SetClipboardData(e.format, e.obj) == 0 {
+			w32.GlobalFree(e.obj)
+		}
 	}
 	w32.CloseClipboard()
 }
