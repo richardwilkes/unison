@@ -670,8 +670,38 @@ func (w *Window) apiCursorPosition() geom.Point {
 }
 
 func (w *Window) apiBackingScale() geom.Point {
-	dpi := w32.GetDpiForWindow(w.wnd.wnd)
+	dpi := w.w32DPI()
 	return geom.NewPoint(float32(dpi)/96.0, float32(dpi)/96.0)
+}
+
+// w32DPI returns the effective DPI for the window. GetDpiForWindow only exists as of the Windows 10 Anniversary Update
+// and its lazy proc would panic when called on an older build, so builds before that — which the SetProcessDpiAwareness
+// startup fallback still supports — instead query the DPI of the monitor hosting the window via shcore, present since
+// Windows 8.1.
+func (w *Window) w32DPI() uint32 {
+	return w32WindowDPI(w32IsWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild),
+		func() uint32 { return w32.GetDpiForWindow(w.wnd.wnd) },
+		func() uint32 {
+			dpi, _ := w32.GetDpiForMonitor(w32.MonitorFromWindow(w.wnd.wnd, w32.MONITOR_DEFAULTTONEAREST),
+				w32.MDT_EFFECTIVE_DPI)
+			return dpi
+		})
+}
+
+// w32WindowDPI picks which DPI query to use based on whether GetDpiForWindow is available, invoking only the chosen
+// one, since calling the other could panic on a proc the running Windows build does not export. A query that fails and
+// reports zero is mapped to the default 96, because callers turn the result into scale factors that are divided by.
+func w32WindowDPI(haveGetDpiForWindow bool, getDpiForWindow, getDpiForMonitor func() uint32) uint32 {
+	var dpi uint32
+	if haveGetDpiForWindow {
+		dpi = getDpiForWindow()
+	} else {
+		dpi = getDpiForMonitor()
+	}
+	if dpi == 0 {
+		return 96
+	}
+	return dpi
 }
 
 func (w *Window) apiMinimize() {

@@ -72,6 +72,29 @@ func TestW32AnyMouseButtonDown(t *testing.T) {
 	c.True(w32AnyMouseButtonDown(w32.WPARAM(w32.XBUTTON1)<<16 | 0x04 | w32.MK_MBUTTON))
 }
 
+// TestW32WindowDPI is the regression test for the unguarded GetDpiForWindow call in apiBackingScale: GetDpiForWindow
+// only exists as of the Windows 10 Anniversary Update, and calling a missing lazy proc panics, so on older builds the
+// helper must invoke only the monitor-DPI fallback and never touch the GetDpiForWindow path (and vice versa on newer
+// builds, where the fallback must stay untouched). A failed query reporting zero must yield the default 96 DPI rather
+// than propagate a zero that callers would turn into a division by zero.
+func TestW32WindowDPI(t *testing.T) {
+	c := check.New(t)
+	panics := func() uint32 {
+		t.Error("called the DPI query that must not be invoked on this build")
+		return 0
+	}
+	returns := func(dpi uint32) func() uint32 {
+		return func() uint32 { return dpi }
+	}
+	// Anniversary Update or later: GetDpiForWindow is used and the monitor fallback is never called.
+	c.Equal(uint32(144), w32WindowDPI(true, returns(144), panics))
+	// Older builds: only the monitor fallback runs, since GetDpiForWindow does not exist and would panic.
+	c.Equal(uint32(120), w32WindowDPI(false, panics, returns(120)))
+	// A zero result from either path maps to the default DPI instead of poisoning scale factors.
+	c.Equal(uint32(96), w32WindowDPI(true, returns(0), panics))
+	c.Equal(uint32(96), w32WindowDPI(false, panics, returns(0)))
+}
+
 // TestW32MouseMessagePoint verifies that the client coordinates packed into a mouse message's lParam are sign-extended
 // from 16 bits. While the mouse is captured, positions outside the client area are delivered, and those above or to
 // the left of it are negative; the previous unsigned decode turned a drag to (-5, -1) into (65531, 65535).
