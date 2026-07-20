@@ -361,8 +361,7 @@ func (s *SVG) AspectRatio() float32 {
 func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, paint *Paint) {
 	canvas.Save()
 	defer canvas.Restore()
-	offset := s.OffsetToCenterWithinScaledSize(rect.Size)
-	canvas.Translate(rect.Point.Add(offset))
+	canvas.Translate(rect.Point)
 	canvas.Scale(geom.PointFromSize(rect.Size.DivSize(s.viewBox.Size)))
 	canvas.Translate(s.viewBox.Neg())
 	for _, path := range s.paths {
