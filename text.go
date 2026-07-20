@@ -140,10 +140,12 @@ func (t *Text) Slice(i, j int) *Text {
 			emptyBottom: t.emptyBottom,
 		}
 	}
+	// The three-index slices cap the capacity at j so that a later AddRunes/AddString on the returned Text reallocates
+	// instead of overwriting this Text's elements beyond j.
 	return &Text{
-		runes:       t.runes[i:j],
-		decorations: t.decorations[i:j],
-		widths:      t.widths[i:j],
+		runes:       t.runes[i:j:j],
+		decorations: t.decorations[i:j:j],
+		widths:      t.widths[i:j:j],
 		extents:     geom.NewSize(-1, 0),
 		baseline:    t.baseline,
 		emptyTop:    t.emptyTop,

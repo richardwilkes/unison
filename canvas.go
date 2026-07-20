@@ -162,18 +162,27 @@ func (c *Canvas) DrawPath(path *Path, paint *Paint) {
 	c.canvas.DrawPath(path.path, paint.paint)
 }
 
-// DrawImage draws the image at the specified location using its logical size. paint may be nil.
+// DrawImage draws the image at the specified location using its logical size. img may be nil, in which case nothing is
+// drawn. paint may be nil.
 func (c *Canvas) DrawImage(img *Image, upperLeft geom.Point, sampling *SamplingOptions, paint *Paint) {
+	if img == nil {
+		return
+	}
 	c.DrawImageInRect(img, geom.Rect{Point: upperLeft, Size: img.LogicalSize()}, sampling, paint)
 }
 
-// DrawImageInRect draws the image into the area specified by the rect, scaling if necessary. paint may be nil.
+// DrawImageInRect draws the image into the area specified by the rect, scaling if necessary. img may be nil, in which
+// case nothing is drawn. paint may be nil.
 func (c *Canvas) DrawImageInRect(img *Image, rect geom.Rect, sampling *SamplingOptions, paint *Paint) {
+	if img == nil {
+		return
+	}
 	c.DrawImageRectInRect(img, geom.Rect{Size: img.Size()}, rect, sampling, paint)
 }
 
 // DrawImageRectInRect draws a portion of the image into the area specified, scaling if necessary. srcRect should be in
-// raw pixel coordinates, not logical coordinates. dstRect should be in logical coordinates. paint may be nil.
+// raw pixel coordinates, not logical coordinates. dstRect should be in logical coordinates. img may be nil, in which
+// case nothing is drawn. paint may be nil.
 func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom.Rect, sampling *SamplingOptions, paint *Paint) {
 	if img == nil {
 		return
@@ -185,8 +194,12 @@ func (c *Canvas) DrawImageRectInRect(img *Image, srcRect, dstRect geom.Rect, sam
 
 // DrawImageNine draws an image stretched proportionally to fit into dstRect. 'center' divides the image into nine
 // sections: four sides, four corners, and the center. Corners are unmodified or scaled down proportionately if their
-// sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. paint may be nil.
+// sides are larger than dstRect; center and four sides are scaled to fit remaining space, if any. img may be nil, in
+// which case nothing is drawn. paint may be nil.
 func (c *Canvas) DrawImageNine(img *Image, centerRect, dstRect geom.Rect, filter filtermode.Enum, paint *Paint) {
+	if img == nil {
+		return
+	}
 	// DrawImageNine wants a raster image. img.image is always a raster *imagecore.Image, so asRaster is a plain type
 	// assertion here; routing through imageForCanvas would instead force a GPU upload plus a full GPU->CPU readback on
 	// every call for on-screen window canvases.

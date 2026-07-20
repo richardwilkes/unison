@@ -39,13 +39,12 @@ func CatmullRomResampler() CubicResampler {
 type SamplingOptions struct {
 	MaxAniso       int32
 	UseCubic       bool
-	_              [3]bool
 	CubicResampler CubicResampler
 	FilterMode     filtermode.Enum
 	MipMapMode     mipmapmode.Enum
 }
 
-// TODO: Replace with direct use
+// skSamplingOptions converts the SamplingOptions into the canvas equivalent. A nil receiver yields the default options.
 func (s *SamplingOptions) skSamplingOptions() shaders.SamplingOptions {
 	if s == nil {
 		return defaultSampling.skSamplingOptions()

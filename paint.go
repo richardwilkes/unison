@@ -100,9 +100,10 @@ func sameEffect(a, b any) bool {
 	}
 }
 
-// Reset the Paint back to its default state.
+// Reset the Paint back to its default state, which is the same state a Paint returned by NewPaint() is in.
 func (p *Paint) Reset() {
 	p.paint = canvas.NewPaint()
+	p.SetAntialias(true)
 }
 
 // Antialias returns true if pixels on the active edges of a path may be drawn with partial transparency.

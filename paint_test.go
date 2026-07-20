@@ -75,3 +75,22 @@ func TestPaintEquivalentGradientShaders(t *testing.T) {
 	// A gradient-bearing paint is not equivalent to a plain default paint.
 	c.False(p.Equivalent(unison.NewPaint()))
 }
+
+// TestPaintReset verifies that Reset restores the state a Paint returned by NewPaint() is in — in particular that
+// antialiasing is re-enabled, since the underlying canvas default has it off while NewPaint() turns it on.
+func TestPaintReset(t *testing.T) {
+	c := check.New(t)
+
+	p := unison.NewPaint()
+	c.True(p.Antialias())
+
+	p.SetAntialias(false)
+	p.SetColor(unison.Red)
+	p.SetStrokeWidth(5)
+	p.SetStyle(paintstyle.Stroke)
+	c.False(p.Equivalent(unison.NewPaint()))
+
+	p.Reset()
+	c.True(p.Antialias(), "Reset should restore NewPaint()'s antialias setting")
+	c.True(p.Equivalent(unison.NewPaint()), "Reset should restore the full NewPaint() state")
+}

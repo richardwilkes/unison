@@ -767,12 +767,17 @@ func (c Color) Unpremultiply() Color {
 }
 
 func normalizeHue(hue float64) float32 {
+	hue = math.Mod(hue, 360)
 	if hue < 0 {
-		return 360 - (float32(math.Mod(-hue, 360)))
-	} else if hue >= 360 {
-		return float32(math.Mod(hue, 360))
+		hue += 360
 	}
-	return float32(hue)
+	h := float32(hue)
+	if h >= 360 {
+		// Guard against float rounding: a tiny negative input can land on exactly 360 after the conversion to float32,
+		// which would violate the [0,360) contract.
+		h = 0
+	}
+	return h
 }
 
 func clamp0To1(value float32) float32 {

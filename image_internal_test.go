@@ -200,6 +200,35 @@ func TestImageGCReleasesTextures(t *testing.T) {
 	c.False(present, "collecting an Image should evict its texture from imageCtxMap")
 }
 
+// TestImageGCRemovesCacheEntry verifies that an Image garbage collected without Dispose() ever being called has its
+// imgCache entry removed. Before this, the entry's weak pointer went permanently stale and the key was retained
+// forever, slowly growing the map without bound.
+func TestImageGCRemovesCacheEntry(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 53), geom.NewPoint(1, 1))
+	c.NoError(err)
+
+	hash := img.hash
+	imgCacheLock.Lock()
+	_, cached := imgCache[hash]
+	imgCacheLock.Unlock()
+	c.True(cached, "a freshly created image should be present in the cache")
+
+	img = nil //nolint:wastedassign // drops the last strong reference so the cleanup can run
+	deadline := time.Now().Add(30 * time.Second)
+	for cached && time.Now().Before(deadline) {
+		runtime.GC()
+		time.Sleep(10 * time.Millisecond)
+		imgCacheLock.Lock()
+		_, cached = imgCache[hash]
+		imgCacheLock.Unlock()
+	}
+
+	c.False(cached, "collecting an Image without Dispose should remove its cache entry")
+}
+
 // TestImageDisposeStopsGCCleanup verifies that Dispose cancels the pending GC cleanup: after Dispose, a later texture
 // cached under the same hash (by a new Image built from the same data) must not be evicted when the old disposed Image
 // is collected. Stop is called while the Image is still reachable, so the cleanup is guaranteed never to fire, making

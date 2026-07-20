@@ -148,49 +148,7 @@ func (f *FontFamily) MatchStyle(weightValue weight.Enum, spacingValue spacing.En
 			if weightValue == w && spacingValue == sp && slantValue == sl {
 				return face
 			}
-			var score int
-			if spacingValue <= spacing.Standard {
-				if sp <= spacingValue {
-					score = 10 - int(spacingValue) + int(sp)
-				} else {
-					score = 10 - int(sp)
-				}
-			} else {
-				if sp > spacingValue {
-					score = 10 + int(spacingValue) - int(sp)
-				} else {
-					score = int(sp)
-				}
-			}
-			score <<= 8
-			score += slantMapping[slantValue][sl]
-			score <<= 8
-			switch {
-			case weightValue == w:
-				score += 1000
-			case weightValue < weight.Regular:
-				if w <= weightValue {
-					score += 1000 - int(weightValue) + int(w)
-				} else {
-					score += 1000 - int(w)
-				}
-			case weightValue <= weight.Medium:
-				switch {
-				case w >= weightValue && w <= weight.Medium:
-					score += 1000 + int(weightValue) - int(w)
-				case w <= weightValue:
-					score += 500 + int(w)
-				default:
-					score += 1000 - int(w)
-				}
-			default:
-				if w > weightValue {
-					score += 1000 + int(weightValue) - int(w)
-				} else {
-					score += int(w)
-				}
-			}
-			if bestScore < score {
+			if score := matchStyleScore(weightValue, spacingValue, slantValue, w, sp, sl); bestScore < score {
 				bestScore = score
 				bestIndex = i
 			}
@@ -199,6 +157,55 @@ func (f *FontFamily) MatchStyle(weightValue weight.Enum, spacingValue spacing.En
 	}
 	style := font.NewStyle(int(weightValue), int(spacingValue), font.Slant(slantValue))
 	return newFace(f.set.MatchStyle(style))
+}
+
+// matchStyleScore scores how well a face's style (w, sp, sl) matches the requested style. Higher is better. Spacing is
+// the most significant criteria, followed by slant, then weight. Each tier gets 16 bits, since the weight component can
+// reach 2000, which would overflow into the slant tier if only 8 bits were reserved for it.
+func matchStyleScore(weightValue weight.Enum, spacingValue spacing.Enum, slantValue slant.Enum, w weight.Enum, sp spacing.Enum, sl slant.Enum) int {
+	var score int
+	if spacingValue <= spacing.Standard {
+		if sp <= spacingValue {
+			score = 10 - int(spacingValue) + int(sp)
+		} else {
+			score = 10 - int(sp)
+		}
+	} else {
+		if sp > spacingValue {
+			score = 10 + int(spacingValue) - int(sp)
+		} else {
+			score = int(sp)
+		}
+	}
+	score <<= 16
+	score += slantMapping[slantValue][sl]
+	score <<= 16
+	switch {
+	case weightValue == w:
+		score += 1000
+	case weightValue < weight.Regular:
+		if w <= weightValue {
+			score += 1000 - int(weightValue) + int(w)
+		} else {
+			score += 1000 - int(w)
+		}
+	case weightValue <= weight.Medium:
+		switch {
+		case w >= weightValue && w <= weight.Medium:
+			score += 1000 + int(weightValue) - int(w)
+		case w <= weightValue:
+			score += 500 + int(w)
+		default:
+			score += 1000 - int(w)
+		}
+	default:
+		if w > weightValue {
+			score += 1000 + int(weightValue) - int(w)
+		} else {
+			score += int(w)
+		}
+	}
+	return score
 }
 
 func (f *FontFamily) String() string {

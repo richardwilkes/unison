@@ -219,7 +219,6 @@ func RegisterFont(data []byte) (FontFaceDescriptor, error) {
 	ffd.Spacing = sp
 	ffd.Slant = sl
 	internalFontLock.Lock()
-	defer internalFontLock.Unlock()
 	if info, ok := internalFonts[ffd.Family]; ok {
 		add := true
 		for _, one := range info.faces {
@@ -241,5 +240,12 @@ func RegisterFont(data []byte) (FontFaceDescriptor, error) {
 			faces:  []*FontFace{f},
 		}
 	}
+	internalFontLock.Unlock()
+	// Drop any cached family list so the newly registered font shows up in subsequent FontFamilies() calls. This must
+	// happen after internalFontLock has been released, since FontFamiliesNoCache acquires the two locks in the opposite
+	// order.
+	cachedFontFamiliesLock.Lock()
+	cachedFontFamilies = nil
+	cachedFontFamiliesLock.Unlock()
 	return ffd, nil
 }

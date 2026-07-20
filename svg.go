@@ -269,6 +269,21 @@ type svgDef struct {
 	attrs []xml.Attr
 }
 
+// svgGradientRef is a placeholder Ink recorded when a fill or stroke references a gradient via url(#id). The reference
+// is only resolved once the entire document has been parsed, so that references to gradients defined later in the
+// document (a legal forward reference) work. def holds the ink that was inherited when the reference was encountered
+// and supplies the default color for gradient stops that lack an explicit one.
+type svgGradientRef struct {
+	def Ink
+	id  string
+}
+
+// Paint implements Ink. It is never expected to be called, since every reference is replaced by its actual gradient
+// before parsing completes; it exists only so svgGradientRef can occupy a style's ink slots.
+func (r *svgGradientRef) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
+	return Black.Paint(canvas, rect, style)
+}
+
 type svgParser struct {
 	svg        *SVG
 	data       *svgData
@@ -504,6 +519,14 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 	p.svg.paths = make([]*svgPath, 0, len(svg.paths))
 	for _, pp := range svg.paths {
 		var err error
+		// Gradient url(#id) references are resolved only now that the whole document has been seen, so that forward
+		// references to gradients defined later in the document work.
+		if pp.style.fillInk, err = p.resolveGradientRefInk(pp.style.fillInk); err != nil {
+			return nil, err
+		}
+		if pp.style.strokeInk, err = p.resolveGradientRefInk(pp.style.strokeInk); err != nil {
+			return nil, err
+		}
 		mp := &svgPath{path: svgPreparePath(pp.path, &pp.style)}
 		if pp.style.fillInk != nil && pp.style.fillOpacity != 0 {
 			if mp.fillInk, err = p.createInkForSVG(pp.path, pp.style.fillInk, pp.style.fillOpacity); err != nil {
@@ -752,8 +775,8 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 	v = strings.TrimSpace(v)
 	switch strings.TrimSpace(strings.ToLower(k)) {
 	case "fill":
-		if gradient, ok := p.readGradientURL(v, curStyle.fillInk); ok {
-			curStyle.fillInk = swapGradientForColorIfNeeded(gradient)
+		if id, ok := svgGradientURLRefID(v); ok {
+			curStyle.fillInk = &svgGradientRef{def: curStyle.fillInk, id: id}
 		} else if curStyle.fillInk, err = ColorDecode(v); err != nil {
 			return err
 		}
@@ -767,8 +790,8 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 			slog.Warn("svg: unsupported value for fill-rule", "value", v)
 		}
 	case "stroke":
-		if gradient, ok := p.readGradientURL(v, curStyle.strokeInk); ok {
-			curStyle.strokeInk = swapGradientForColorIfNeeded(gradient)
+		if id, ok := svgGradientURLRefID(v); ok {
+			curStyle.strokeInk = &svgGradientRef{def: curStyle.strokeInk, id: id}
 		} else if curStyle.strokeInk, err = ColorDecode(v); err != nil {
 			return err
 		}
@@ -903,44 +926,69 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	if err := p.executeDrawFunc(se.Name.Local, se.Attr); err != nil {
 		return err
 	}
-	if !p.path.Empty() {
-		if p.inMask && p.mask != nil {
-			p.mask.paths = append(p.mask.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
-		} else if !p.inMask {
-			p.data.paths = append(p.data.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
-		}
-		p.path = NewPath()
-	}
+	p.flushPath()
 	return nil
 }
 
-func (p *svgParser) readGradientURL(v string, defaultColor Ink) (grad *svgGradient, ok bool) {
+// flushPath records any geometry accumulated in p.path with the current top-of-stack style and resets p.path for the
+// next shape. Does nothing if no geometry has accumulated.
+func (p *svgParser) flushPath() {
+	if p.path.Empty() {
+		return
+	}
+	if p.inMask && p.mask != nil {
+		p.mask.paths = append(p.mask.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
+	} else if !p.inMask {
+		p.data.paths = append(p.data.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
+	}
+	p.path = NewPath()
+}
+
+// svgGradientURLRefID extracts the gradient id from a url(#id) fill or stroke value. ok is false when the value is not
+// an id-based url reference.
+func svgGradientURLRefID(v string) (id string, ok bool) {
 	if strings.HasPrefix(v, "url(") && strings.HasSuffix(v, ")") {
-		if v, ok = strings.CutPrefix(strings.TrimSpace(v[4:len(v)-1]), "#"); ok {
-			var sg *svgGradient
-			if sg, ok = p.data.grads[v]; ok {
-				g := *sg.gradient
-				for _, s := range g.Stops {
-					if s.Color != nil {
-						continue
-					}
-					stops := append([]Stop{}, g.Stops...)
-					g.Stops = stops
-					c := getSVGBackgroundColor(defaultColor)
-					for i, s := range stops {
-						if s.Color == nil {
-							g.Stops[i].Color = c
-						}
-					}
-					break
-				}
-				sg2 := *sg
-				sg2.gradient = &g
-				grad = &sg2
+		return strings.CutPrefix(strings.TrimSpace(v[4:len(v)-1]), "#")
+	}
+	return "", false
+}
+
+// resolveGradientRefInk replaces an svgGradientRef placeholder with its actual gradient (or a solid color when the
+// gradient degenerates to one). Any other ink, including nil, is returned unchanged. Called once the entire document
+// has been parsed, so gradients defined after their first reference resolve correctly. Recursion on ref.def terminates
+// because each placeholder's def ink was recorded strictly before the placeholder itself was created, so the reference
+// chain can never cycle.
+func (p *svgParser) resolveGradientRefInk(ink Ink) (Ink, error) {
+	ref, ok := ink.(*svgGradientRef)
+	if !ok {
+		return ink, nil
+	}
+	sg, ok := p.data.grads[ref.id]
+	if !ok {
+		return nil, errs.Newf("svg: no gradient with id %q", ref.id)
+	}
+	def, err := p.resolveGradientRefInk(ref.def)
+	if err != nil {
+		return nil, err
+	}
+	g := *sg.gradient
+	for _, s := range g.Stops {
+		if s.Color != nil {
+			continue
+		}
+		stops := append([]Stop{}, g.Stops...)
+		g.Stops = stops
+		c := getSVGBackgroundColor(def)
+		for i, s := range stops {
+			if s.Color == nil {
+				g.Stops[i].Color = c
 			}
 		}
+		break
 	}
-	return grad, ok
+	sg2 := *sg
+	sg2.gradient = &g
+	return swapGradientForColorIfNeeded(&sg2), nil
 }
 
 func getSVGBackgroundColor(clr Ink) Color {
@@ -970,7 +1018,7 @@ func (p *svgParser) compilePath(svgPath string) error {
 	p.inPath = false
 	lastIndex := -1
 	for i, v := range svgPath {
-		if unicode.IsLetter(v) && v != 'e' {
+		if unicode.IsLetter(v) && v != 'e' && v != 'E' {
 			if lastIndex != -1 {
 				if err := p.addSegment(svgPath[lastIndex:i]); err != nil {
 					return err
@@ -1022,7 +1070,9 @@ func (p *svgParser) addPoints(dataPoints string) error {
 	p.pts = p.pts[0:0]
 	lr := ' '
 	for i, r := range dataPoints {
-		if !unicode.IsNumber(r) && r != '.' && (r != '-' || lr != 'e') && r != 'e' {
+		partOfNumber := unicode.IsNumber(r) || r == '.' || r == 'e' || r == 'E' ||
+			((r == '-' || r == '+') && (lr == 'e' || lr == 'E'))
+		if !partOfNumber {
 			if lastIndex != -1 {
 				if err := p.readFloatIntoPts(dataPoints[lastIndex:i]); err != nil {
 					return err
@@ -1265,7 +1315,7 @@ func (p *svgParser) executeDrawFunc(name string, attrs []xml.Attr) error {
 		if err := p.handlePolylineElement(attrs); err != nil {
 			return err
 		}
-		if len(p.pts) > 4 {
+		if len(p.pts) >= 4 {
 			p.path.Close()
 		}
 		return nil
@@ -1567,7 +1617,7 @@ func (p *svgParser) handlePolylineElement(attrs []xml.Attr) error {
 			return errors.New("polygon has odd number of points")
 		}
 	}
-	if len(p.pts) > 4 {
+	if len(p.pts) >= 4 {
 		p.path.MoveTo(geom.NewPoint(p.pts[0]+p.curX, p.pts[1]+p.curY))
 		for i := 2; i < len(p.pts)-1; i += 2 {
 			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
@@ -1664,6 +1714,9 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 		if err = p.executeDrawFunc(def.tag, def.attrs); err != nil {
 			return err
 		}
+		// Flush each def's geometry with its own style before the next def runs, since handlers like compilePath reset
+		// p.path, which would otherwise silently discard everything drawn by the earlier defs.
+		p.flushPath()
 		if def.tag != "g" {
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 		}

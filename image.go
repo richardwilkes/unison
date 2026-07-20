@@ -179,6 +179,17 @@ func newImage(baseImage genericImage, scale geom.Point, hash uint64) (*Image, er
 		scale: scale,
 	}
 	imgCache[hash] = weak.Make(img)
+	// If the Image is garbage collected without Dispose() ever being called, its cache entry would hold a permanently
+	// stale weak pointer, so arrange for the entry to be removed when the Image is collected. The cleanup must not
+	// capture img itself, or the Image would never become collectable. If another Image with the same hash has been
+	// cached in the meantime, its entry is live and must be left alone.
+	runtime.AddCleanup(img, func(h uint64) {
+		imgCacheLock.Lock()
+		if p, ok := imgCache[h]; ok && p.Value() == nil {
+			delete(imgCache, h)
+		}
+		imgCacheLock.Unlock()
+	}, hash)
 	imgCacheLock.Unlock()
 	return img, nil
 }
