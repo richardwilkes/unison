@@ -37,19 +37,7 @@ func apiBeginStartup() error {
 		cocoa.PostEmptyEvent()
 		cocoa.StopMainEventLoop()
 	}
-	cocoa.OpenFilesCallback = func(paths []string) {
-		macPendingFilesLock.Lock()
-		defer macPendingFilesLock.Unlock()
-		if macMayIssueFileOpens {
-			InvokeTask(func() {
-				if openFilesCallback != nil {
-					openFilesCallback(paths)
-				}
-			})
-		} else {
-			macPendingFilesToOpen = append(macPendingFilesToOpen, paths...)
-		}
-	}
+	cocoa.OpenFilesCallback = macOpenFilesRequested
 	// NOTE: Two additional app delegate callbacks exist: AppWillFinishLaunchingCallback and AppDidHideCallback.
 	if err := cocoa.InstallMacAppDelegate(); err != nil {
 		return err
@@ -64,16 +52,37 @@ func apiLateInit() {
 	cocoa.InstallSystemThemeChangedCallback(ThemeChanged)
 }
 
+// macOpenFilesRequested is installed as cocoa.OpenFilesCallback. Until apiFinalFinishStartup marks startup as
+// complete, requests are buffered; afterward they are routed to the user's callback via the task queue. The decision
+// is made under macPendingFilesLock, but InvokeTask is called outside it so the lock is never held while other
+// package machinery runs.
+func macOpenFilesRequested(paths []string) {
+	macPendingFilesLock.Lock()
+	mayIssue := macMayIssueFileOpens
+	if !mayIssue {
+		macPendingFilesToOpen = append(macPendingFilesToOpen, paths...)
+	}
+	macPendingFilesLock.Unlock()
+	if mayIssue {
+		InvokeTask(func() {
+			if openFilesCallback != nil {
+				openFilesCallback(paths)
+			}
+		})
+	}
+}
+
 func apiFinalFinishStartup() {
 	macPendingFilesLock.Lock()
-	defer macPendingFilesLock.Unlock()
 	macMayIssueFileOpens = true
-	if len(macPendingFilesToOpen) != 0 {
-		paths := macPendingFilesToOpen
-		macPendingFilesToOpen = nil
-		if openFilesCallback != nil {
-			openFilesCallback(paths)
-		}
+	paths := macPendingFilesToOpen
+	macPendingFilesToOpen = nil
+	macPendingFilesLock.Unlock()
+	// The callback must be invoked without holding macPendingFilesLock: if it pumps events (e.g. via RunModal) and
+	// AppKit delivers another open-files request during the nested loop, macOpenFilesRequested would re-lock the
+	// same non-reentrant mutex on the same thread and self-deadlock.
+	if len(paths) != 0 && openFilesCallback != nil {
+		openFilesCallback(paths)
 	}
 }
 
