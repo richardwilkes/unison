@@ -41,6 +41,44 @@ type apiWindow struct {
 	smallIcon     w32.HICON
 	highSurrogate uint16
 	mouseTracked  bool
+	mouseCaptured bool
+}
+
+// w32CaptureOp describes how a mouse button message should change the mouse capture state.
+type w32CaptureOp int
+
+const (
+	w32CaptureKeep w32CaptureOp = iota
+	w32CaptureAcquire
+	w32CaptureRelease
+)
+
+// w32MouseCaptureTransition decides how a button message should change the mouse capture state. The first button press
+// acquires the capture, which is then held until the release of the last button, whose up message carries MK_* flags
+// showing that no buttons remain down. When the capture has already been lost (e.g. taken by OLE's drag-drop loop),
+// releases make no change, so a capture held elsewhere is never stolen or dropped.
+func w32MouseCaptureTransition(down, captured bool, wParam w32.WPARAM) w32CaptureOp {
+	switch {
+	case down && !captured:
+		return w32CaptureAcquire
+	case !down && captured && !w32AnyMouseButtonDown(wParam):
+		return w32CaptureRelease
+	default:
+		return w32CaptureKeep
+	}
+}
+
+// w32AnyMouseButtonDown reports whether the MK_* flags in a mouse message's wParam indicate at least one mouse button
+// is currently held down.
+func w32AnyMouseButtonDown(wParam w32.WPARAM) bool {
+	return wParam&(w32.MK_LBUTTON|w32.MK_RBUTTON|w32.MK_MBUTTON|w32.MK_XBUTTON1|w32.MK_XBUTTON2) != 0
+}
+
+// w32MouseMessagePoint returns the client-area position packed into a mouse message's lParam. The coordinates must be
+// sign-extended from 16 bits: while the mouse is captured, positions outside the client area are delivered, and those
+// above or to the left of it are negative.
+func w32MouseMessagePoint(lParam w32.LPARAM) geom.Point {
+	return geom.NewPoint(float32(int16(lParam&0xFFFF)), float32(int16((lParam>>16)&0xFFFF)))
 }
 
 func w32FindWindowByHWND(wnd windows.HWND) *Window {
@@ -207,8 +245,15 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
-			w.mouseDown(w.w32ConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
-				button, w.CurrentKeyModifiers())
+			// Capture the mouse on the first button press so that moves and the eventual release keep being delivered
+			// while the cursor is outside the client area. Without capture, Windows stops sending mouse messages once
+			// the cursor leaves the window, so a release that happens outside is never seen (leaving stuck button
+			// state) and drag-past-edge auto-scroll cannot work.
+			if w32MouseCaptureTransition(true, w.wnd.mouseCaptured, wParam) == w32CaptureAcquire {
+				w32.SetCapture(hWnd)
+				w.wnd.mouseCaptured = true
+			}
+			w.mouseDown(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONDOWN {
 				return 1
 			}
@@ -232,18 +277,34 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
-			w.mouseUp(w.w32ConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
-				button, w.CurrentKeyModifiers())
+			w.mouseUp(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
+			// Release the capture taken on button-down once the last button has been released.
+			if w32MouseCaptureTransition(false, w.wnd.mouseCaptured, wParam) == w32CaptureRelease {
+				w.wnd.mouseCaptured = false
+				w32.ReleaseCapture()
+			}
 			if uMsg == w32.WM_XBUTTONUP {
 				return 1
 			}
 			return 0
 		case w32.WM_MOUSEMOVE:
-			w.w32HandleMouseMove(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF)))
+			w.w32HandleMouseMove(w32MouseMessagePoint(lParam))
 			return 0
 		case w32.WM_MOUSELEAVE:
 			w.wnd.mouseTracked = false
-			w.mouseExit()
+			// Crossing events are suppressed while the mouse is captured (see w32HandleMouseMove).
+			if !w.wnd.mouseCaptured {
+				w.mouseExit()
+			}
+			return 0
+		case w32.WM_CAPTURECHANGED:
+			// Another window took the capture away (e.g. OLE's drag-drop loop or a system menu/size-move loop). Any
+			// button release that happens while it holds the capture will never be delivered here, so synthesize the
+			// releases now to avoid stuck button state.
+			if windows.HWND(lParam) != hWnd && w.wnd.mouseCaptured {
+				w.wnd.mouseCaptured = false
+				w.synthesizeMouseUp()
+			}
 			return 0
 		case w32.WM_MOUSEWHEEL:
 			var pos w32.POINT
@@ -398,7 +459,11 @@ func (w *Window) w32WindowExStyle() uint32 {
 func (w *Window) w32HandleMouseMove(pt geom.Point) {
 	pt = w.w32ConvertRawMouse(pt)
 	mods := w.CurrentKeyModifiers()
-	if !w.wnd.mouseTracked {
+	// While the mouse is captured, moves are delivered even when the cursor is outside the client area, where arming
+	// TrackMouseEvent would post an immediate WM_MOUSELEAVE and cause enter/exit churn on every move. Crossing events
+	// are therefore suppressed for the duration of the capture; normal tracking resumes on the first move after the
+	// capture is released.
+	if !w.wnd.mouseTracked && !w.wnd.mouseCaptured {
 		var evt w32.TRACKMOUSEEVENT
 		evt.Flags = w32.TME_LEAVE
 		evt.HwndTrack = w.wnd.wnd

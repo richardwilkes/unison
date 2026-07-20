@@ -71,9 +71,11 @@ var (
 	postThreadMessageWProc            = user32.NewProc("PostThreadMessageW")
 	registerClassExWProc              = user32.NewProc("RegisterClassExW")
 	registerClipboardFormatWProc      = user32.NewProc("RegisterClipboardFormatW")
+	releaseCaptureProc                = user32.NewProc("ReleaseCapture")
 	releaseDCProc                     = user32.NewProc("ReleaseDC")
 	screenToClientProc                = user32.NewProc("ScreenToClient")
 	sendMessageWProc                  = user32.NewProc("SendMessageW")
+	setCaptureProc                    = user32.NewProc("SetCapture")
 	setClipboardDataProc              = user32.NewProc("SetClipboardData")
 	setCursorProc                     = user32.NewProc("SetCursor")
 	setFocusProc                      = user32.NewProc("SetFocus")
@@ -797,6 +799,16 @@ const (
 	XBUTTON2
 )
 
+// Mouse button state flags present in the wParam of mouse messages
+// https://learn.microsoft.com/windows/win32/inputdev/wm-lbuttondown
+const (
+	MK_LBUTTON  = 0x0001
+	MK_RBUTTON  = 0x0002
+	MK_MBUTTON  = 0x0010
+	MK_XBUTTON1 = 0x0020
+	MK_XBUTTON2 = 0x0040
+)
+
 // WM_SIZE message wParam values
 const (
 	SIZE_RESTORED = iota
@@ -1465,6 +1477,13 @@ func RegisterClipboardFormatW(name string) ClipboardFormat {
 	return ClipboardFormat(b)
 }
 
+// ReleaseCapture https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-releasecapture
+func ReleaseCapture() bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := releaseCaptureProc.Call()
+	return b&0xff != 0
+}
+
 // ReleaseDC https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-releasedc
 func ReleaseDC(hwnd windows.HWND, dc HDC) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -1484,6 +1503,13 @@ func SendMessageW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) L
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := sendMessageWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
 	return LRESULT(ret)
+}
+
+// SetCapture https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setcapture
+func SetCapture(hwnd windows.HWND) windows.HWND {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	prev, _, _ := setCaptureProc.Call(uintptr(hwnd))
+	return windows.HWND(prev)
 }
 
 // SetClipboardData https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setclipboarddata
