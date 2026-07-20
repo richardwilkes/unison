@@ -40,13 +40,8 @@ func apiAllDisplays() []*Display {
 		displays := make([]*Display, len(m))
 		for i := range m {
 			frame := geom.NewRect(float32(m[i].X), float32(m[i].Y), float32(m[i].Width), float32(m[i].Height))
-			displays[i] = &Display{
-				Frame:   frame,
-				Usable:  x11Conn.MonitorWorkArea(root, frame),
-				Scale:   geom.NewPoint(scale, scale),
-				PPI:     int(float64(m[i].Width) / (float64(m[i].WidthMM) / 25.4)),
-				Primary: m[i].Primary,
-			}
+			displays[i] = x11NewDisplay(frame, x11Conn.MonitorWorkArea(root, frame), scale,
+				int(float64(m[i].Width)/(float64(m[i].WidthMM)/25.4)), m[i].Primary)
 		}
 		return displays
 	}
@@ -54,12 +49,32 @@ func apiAllDisplays() []*Display {
 	screen := x11Conn.Roots[x11Conn.DefaultScreen]
 	frame := geom.NewRect(0, 0, float32(screen.WidthInPixels), float32(screen.HeightInPixels))
 	return []*Display{
-		{
-			Frame:   frame,
-			Usable:  x11Conn.MonitorWorkArea(root, frame),
-			Scale:   geom.NewPoint(scale, scale),
-			PPI:     int(float64(screen.WidthInPixels) / (float64(screen.WidthInMillimeters) / 25.4)),
-			Primary: true,
-		},
+		x11NewDisplay(frame, x11Conn.MonitorWorkArea(root, frame), scale,
+			int(float64(screen.WidthInPixels)/(float64(screen.WidthInMillimeters)/25.4)), true),
 	}
+}
+
+// x11NewDisplay builds a Display from the frame and usable area reported by the X server, which are in raw pixels,
+// converting both into the logical, 1x-scale coordinate space that window rects use. Without this conversion, any
+// comparison between window rects and display rects (e.g. in BestDisplayForRect, FitRectOnto, or the fallback path of
+// MoveToModalCenter) would mix coordinate spaces whenever the content scale is not 1 (i.e. Xft.dpi is not 96), causing
+// windows to be assigned to the wrong display or positioned incorrectly. The PPI is deliberately left in terms of raw
+// pixels, since it describes the physical panel.
+func x11NewDisplay(rawFrame, rawUsable geom.Rect, scale float32, ppi int, primary bool) *Display {
+	return &Display{
+		Frame:   x11LogicalRect(rawFrame, scale),
+		Usable:  x11LogicalRect(rawUsable, scale),
+		Scale:   geom.NewPoint(scale, scale),
+		PPI:     ppi,
+		Primary: primary,
+	}
+}
+
+// x11LogicalRect converts a rectangle expressed in raw pixels into the logical, 1x-scale coordinate space.
+func x11LogicalRect(r geom.Rect, scale float32) geom.Rect {
+	r.X /= scale
+	r.Y /= scale
+	r.Width /= scale
+	r.Height /= scale
+	return r
 }
