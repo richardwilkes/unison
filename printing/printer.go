@@ -16,7 +16,6 @@ import (
 	"io"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -187,7 +186,9 @@ func (p *Printer) sendRequest(ctx context.Context, req *goipp.Message, fileData 
 	if httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, p.uri(), r); err != nil {
 		return nil, errs.Wrap(err)
 	}
-	httpReq.Header.Set("Content-Length", strconv.Itoa(len(data)+fileLength))
+	// net/http ignores a Content-Length header set on an outgoing request; only the ContentLength field is honored.
+	// Without it the body would be sent chunked, which many embedded IPP implementations reject.
+	httpReq.ContentLength = int64(len(data) + fileLength)
 	httpReq.Header.Set("Content-Type", goipp.ContentType)
 	if p.User != "" && p.Password != "" {
 		httpReq.SetBasicAuth(p.User, p.Password)

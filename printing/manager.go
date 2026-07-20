@@ -22,6 +22,9 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 )
 
+// newResolver is a hook for tests to simulate resolver creation failure.
+var newResolver = zeroconf.NewResolver
+
 // PrintManager holds the data needed by the print manager.
 type PrintManager struct {
 	printers map[string]*Printer
@@ -55,9 +58,12 @@ func (p *PrintManager) ScanForPrinters(ctx context.Context, printers chan<- *Pri
 	p.lock.Lock()
 	p.printers = make(map[string]*Printer)
 	p.lock.Unlock()
-	resolver, err := zeroconf.NewResolver()
+	resolver, err := newResolver()
 	if err != nil {
 		errs.Log(errs.NewWithCause("unable to create zeroconf resolver", err))
+		if printers != nil {
+			close(printers)
+		}
 		return
 	}
 	entries := make(chan *zeroconf.ServiceEntry, 8)
