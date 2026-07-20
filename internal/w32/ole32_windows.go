@@ -34,6 +34,8 @@ const (
 	COM_S_FALSE                      uint64 = 1
 	COM_E_NOTIMPL                    uint64 = 0x80004001
 	COM_E_NOINTERFACE                uint64 = 0x80004002
+	COM_E_POINTER                    uint64 = 0x80004003
+	COM_E_OUTOFMEMORY                uint64 = 0x8007000E
 	COM_DV_E_FORMATETC               uint64 = 0x80040064
 	COM_DV_E_TYMED                   uint64 = 0x80040069
 	COM_OLE_E_ADVISENOTSUPPORTED     uint64 = 0x80040003

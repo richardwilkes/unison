@@ -90,3 +90,31 @@ func TestSourceHygiene(t *testing.T) {
 		}
 	}
 }
+
+// TestPointerLifetimeAndDeadCodeHygiene guards against reintroducing patterns this package has deliberately removed.
+// runtime.KeepAlive: every native call goes through syscall.SyscallN or x/sys/windows (*LazyProc).Call/(*Proc).Call,
+// all marked //go:uintptrescapes, so a uintptr(unsafe.Pointer(p)) conversion written in the call's argument list is
+// already kept alive for the call (see the package documentation); a KeepAlive therefore signals a conversion hoisted
+// out of the call expression, the one pattern that genuinely is unsafe. WM_CAP_/WM_DM_/WM_PLAYBACK_: video-capture
+// and DirectShow macro sets that once padded the window-message constants despite not being window messages at all.
+// maxUint16Array: DisplayName built an unsafe.Slice of ~2^30 elements over a small CoTaskMem allocation, violating
+// the unsafe.Slice contract; windows.UTF16PtrToString is the correct tool.
+func TestPointerLifetimeAndDeadCodeHygiene(t *testing.T) {
+	c := check.New(t)
+	entries, err := os.ReadDir(".")
+	c.NoError(err)
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		data, readErr := os.ReadFile(name)
+		c.NoError(readErr)
+		content := string(data)
+		for _, forbidden := range []string{"runtime.KeepAlive(", "WM_CAP_", "WM_DM_", "WM_PLAYBACK_", "maxUint16Array"} {
+			if strings.Contains(content, forbidden) {
+				t.Errorf("%s contains forbidden pattern %s", name, forbidden)
+			}
+		}
+	}
+}

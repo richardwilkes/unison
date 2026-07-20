@@ -10,7 +10,6 @@
 package w32
 
 import (
-	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -51,7 +50,6 @@ func GetModuleHandleW(name string) HMODULE {
 		if err != nil {
 			return 0
 		}
-		defer runtime.KeepAlive(utf16Name)
 		moduleName = &utf16Name[0]
 	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.

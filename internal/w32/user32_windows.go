@@ -11,7 +11,6 @@ package w32
 
 import (
 	"math"
-	"runtime"
 	"syscall"
 	"time"
 	"unsafe"
@@ -46,7 +45,6 @@ var (
 	getClientRectProc                 = user32.NewProc("GetClientRect")
 	getClipboardDataProc              = user32.NewProc("GetClipboardData")
 	getClipboardFormatNameWProc       = user32.NewProc("GetClipboardFormatNameW")
-	getClipboardSequenceNumberProc    = user32.NewProc("GetClipboardSequenceNumber")
 	isClipboardFormatAvailableProc    = user32.NewProc("IsClipboardFormatAvailable")
 	getCursorPosProc                  = user32.NewProc("GetCursorPos")
 	getDCProc                         = user32.NewProc("GetDC")
@@ -56,7 +54,6 @@ var (
 	getKeyStateProc                   = user32.NewProc("GetKeyState")
 	getMessageTimeProc                = user32.NewProc("GetMessageTime")
 	getMonitorInfoWProc               = user32.NewProc("GetMonitorInfoW")
-	getSysColorProc                   = user32.NewProc("GetSysColor")
 	getSystemMetricsProc              = user32.NewProc("GetSystemMetrics")
 	getWindowPlacementProc            = user32.NewProc("GetWindowPlacement")
 	getWindowRectProc                 = user32.NewProc("GetWindowRect")
@@ -108,9 +105,6 @@ type DPI_AWARENESS_CONTEXT windows.Handle
 const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 DPI_AWARENESS_CONTEXT = math.MaxUint - 3
 
 const IDI_APPLICATION = 32512
-
-// ColorHighlight https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsyscolor
-const ColorHighlight = 13
 
 // BeepType https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messagebeep
 type BeepType uint
@@ -272,430 +266,51 @@ const (
 )
 
 // Window messages are sent to the window class' window procedure. They identify the type of event that happened.
+// Only the messages the package actually handles are defined here; see the Win32 headers for the full set.
 //
 // https://learn.microsoft.com/windows/win32/learnwin32/window-messages
 const (
-	WM_CTLCOLOR                                  = 25
-	WM_MOUSEHOVER                                = 673
-	WM_MOUSELEAVE                                = 675
-	WM_CAP_START                                 = 1024
-	WM_CAP_UNICODE_START                         = 1124
-	WM_CAP_GET_CAPSTREAMPTR                      = 1025
-	WM_CAP_SET_CALLBACK_ERRORW                   = 1126
-	WM_CAP_SET_CALLBACK_STATUSW                  = 1127
-	WM_CAP_SET_CALLBACK_ERRORA                   = 1026
-	WM_CAP_SET_CALLBACK_STATUSA                  = 1027
-	WM_CAP_SET_CALLBACK_ERROR                    = 1126
-	WM_CAP_SET_CALLBACK_STATUS                   = 1127
-	WM_CAP_SET_CALLBACK_YIELD                    = 1028
-	WM_CAP_SET_CALLBACK_FRAME                    = 1029
-	WM_CAP_SET_CALLBACK_VIDEOSTREAM              = 1030
-	WM_CAP_SET_CALLBACK_WAVESTREAM               = 1031
-	WM_CAP_GET_USER_DATA                         = 1032
-	WM_CAP_SET_USER_DATA                         = 1033
-	WM_CAP_DRIVER_CONNECT                        = 1034
-	WM_CAP_DRIVER_DISCONNECT                     = 1035
-	WM_CAP_DRIVER_GET_NAMEA                      = 1036
-	WM_CAP_DRIVER_GET_VERSIONA                   = 1037
-	WM_CAP_DRIVER_GET_NAMEW                      = 1136
-	WM_CAP_DRIVER_GET_VERSIONW                   = 1137
-	WM_CAP_DRIVER_GET_NAME                       = 1136
-	WM_CAP_DRIVER_GET_VERSION                    = 1137
-	WM_CAP_DRIVER_GET_CAPS                       = 1038
-	WM_CAP_FILE_SET_CAPTURE_FILEA                = 1044
-	WM_CAP_FILE_GET_CAPTURE_FILEA                = 1045
-	WM_CAP_FILE_SAVEASA                          = 1047
-	WM_CAP_FILE_SAVEDIBA                         = 1049
-	WM_CAP_FILE_SET_CAPTURE_FILEW                = 1144
-	WM_CAP_FILE_GET_CAPTURE_FILEW                = 1145
-	WM_CAP_FILE_SAVEASW                          = 1147
-	WM_CAP_FILE_SAVEDIBW                         = 1149
-	WM_CAP_FILE_SET_CAPTURE_FILE                 = 1144
-	WM_CAP_FILE_GET_CAPTURE_FILE                 = 1145
-	WM_CAP_FILE_SAVEAS                           = 1147
-	WM_CAP_FILE_SAVEDIB                          = 1149
-	WM_CAP_FILE_ALLOCATE                         = 1046
-	WM_CAP_FILE_SET_INFOCHUNK                    = 1048
-	WM_CAP_EDIT_COPY                             = 1054
-	WM_CAP_SET_AUDIOFORMAT                       = 1059
-	WM_CAP_GET_AUDIOFORMAT                       = 1060
-	WM_CAP_DLG_VIDEOFORMAT                       = 1065
-	WM_CAP_DLG_VIDEOSOURCE                       = 1066
-	WM_CAP_DLG_VIDEODISPLAY                      = 1067
-	WM_CAP_GET_VIDEOFORMAT                       = 1068
-	WM_CAP_SET_VIDEOFORMAT                       = 1069
-	WM_CAP_DLG_VIDEOCOMPRESSION                  = 1070
-	WM_CAP_SET_PREVIEW                           = 1074
-	WM_CAP_SET_OVERLAY                           = 1075
-	WM_CAP_SET_PREVIEWRATE                       = 1076
-	WM_CAP_SET_SCALE                             = 1077
-	WM_CAP_GET_STATUS                            = 1078
-	WM_CAP_SET_SCROLL                            = 1079
-	WM_CAP_GRAB_FRAME                            = 1084
-	WM_CAP_GRAB_FRAME_NOSTOP                     = 1085
-	WM_CAP_SEQUENCE                              = 1086
-	WM_CAP_SEQUENCE_NOFILE                       = 1087
-	WM_CAP_SET_SEQUENCE_SETUP                    = 1088
-	WM_CAP_GET_SEQUENCE_SETUP                    = 1089
-	WM_CAP_SET_MCI_DEVICEA                       = 1090
-	WM_CAP_GET_MCI_DEVICEA                       = 1091
-	WM_CAP_SET_MCI_DEVICEW                       = 1190
-	WM_CAP_GET_MCI_DEVICEW                       = 1191
-	WM_CAP_SET_MCI_DEVICE                        = 1190
-	WM_CAP_GET_MCI_DEVICE                        = 1191
-	WM_CAP_STOP                                  = 1092
-	WM_CAP_ABORT                                 = 1093
-	WM_CAP_SINGLE_FRAME_OPEN                     = 1094
-	WM_CAP_SINGLE_FRAME_CLOSE                    = 1095
-	WM_CAP_SINGLE_FRAME                          = 1096
-	WM_CAP_PAL_OPENA                             = 1104
-	WM_CAP_PAL_SAVEA                             = 1105
-	WM_CAP_PAL_OPENW                             = 1204
-	WM_CAP_PAL_SAVEW                             = 1205
-	WM_CAP_PAL_OPEN                              = 1204
-	WM_CAP_PAL_SAVE                              = 1205
-	WM_CAP_PAL_PASTE                             = 1106
-	WM_CAP_PAL_AUTOCREATE                        = 1107
-	WM_CAP_PAL_MANUALCREATE                      = 1108
-	WM_CAP_SET_CALLBACK_CAPCONTROL               = 1109
-	WM_CAP_UNICODE_END                           = 1205
-	WM_CAP_END                                   = 1205
-	WM_CPL_LAUNCH                                = 2024
-	WM_CPL_LAUNCHED                              = 2025
-	WM_TABLET_DEFBASE                            = 704
-	WM_TABLET_MAXOFFSET                          = 32
-	WM_TABLET_ADDED                              = 712
-	WM_TABLET_DELETED                            = 713
-	WM_TABLET_FLICK                              = 715
-	WM_TABLET_QUERYSYSTEMGESTURESTATUS           = 716
-	WM_FI_FILENAME                               = 900
-	WM_CT_REPEAT_FIRST_FIELD                     = 16
-	WM_CT_BOTTOM_FIELD_FIRST                     = 32
-	WM_CT_TOP_FIELD_FIRST                        = 64
-	WM_CT_INTERLACED                             = 128
-	WM_CL_INTERLACED420                          = 0
-	WM_CL_PROGRESSIVE420                         = 1
-	WM_MAX_VIDEO_STREAMS                         = 63
-	WM_MAX_STREAMS                               = 63
-	WM_ADSPROP_NOTIFY_PAGEINIT                   = 2125
-	WM_ADSPROP_NOTIFY_PAGEHWND                   = 2126
-	WM_ADSPROP_NOTIFY_CHANGE                     = 2127
-	WM_ADSPROP_NOTIFY_APPLY                      = 2128
-	WM_ADSPROP_NOTIFY_SETFOCUS                   = 2129
-	WM_ADSPROP_NOTIFY_FOREGROUND                 = 2130
-	WM_ADSPROP_NOTIFY_EXIT                       = 2131
-	WM_ADSPROP_NOTIFY_ERROR                      = 2134
-	WM_RASDIALEVENT                              = 52429
-	WM_DDE_FIRST                                 = 992
-	WM_DDE_INITIATE                              = 992
-	WM_DDE_TERMINATE                             = 993
-	WM_DDE_ADVISE                                = 994
-	WM_DDE_UNADVISE                              = 995
-	WM_DDE_ACK                                   = 996
-	WM_DDE_DATA                                  = 997
-	WM_DDE_REQUEST                               = 998
-	WM_DDE_POKE                                  = 999
-	WM_DDE_EXECUTE                               = 1000
-	WM_DDE_LAST                                  = 1000
-	WM_IME_REPORT                                = 640
-	WM_WNT_CONVERTREQUESTEX                      = 265
-	WM_CONVERTREQUEST                            = 266
-	WM_CONVERTRESULT                             = 267
-	WM_INTERIM                                   = 268
-	WM_IMEKEYDOWN                                = 656
-	WM_IMEKEYUP                                  = 657
-	WM_CHOOSEFONT_GETLOGFONT                     = 1025
-	WM_CHOOSEFONT_SETLOGFONT                     = 1125
-	WM_CHOOSEFONT_SETFLAGS                       = 1126
-	WM_PSD_FULLPAGERECT                          = 1025
-	WM_PSD_MINMARGINRECT                         = 1026
-	WM_PSD_MARGINRECT                            = 1027
-	WM_PSD_GREEKTEXTRECT                         = 1028
-	WM_PSD_ENVSTAMPRECT                          = 1029
-	WM_PSD_YAFULLPAGERECT                        = 1030
-	WM_CONTEXTMENU                               = 123
-	WM_UNICHAR                                   = 265
-	WM_PRINTCLIENT                               = 792
-	WM_NOTIFY                                    = 78
-	WM_DEVICECHANGE                              = 537
-	WM_NULL                                      = 0
-	WM_CREATE                                    = 1
-	WM_DESTROY                                   = 2
-	WM_MOVE                                      = 3
-	WM_SIZE                                      = 5
-	WM_ACTIVATE                                  = 6
-	WM_SETFOCUS                                  = 7
-	WM_KILLFOCUS                                 = 8
-	WM_ENABLE                                    = 10
-	WM_SETREDRAW                                 = 11
-	WM_SETTEXT                                   = 12
-	WM_GETTEXT                                   = 13
-	WM_GETTEXTLENGTH                             = 14
-	WM_PAINT                                     = 15
-	WM_CLOSE                                     = 16
-	WM_QUERYENDSESSION                           = 17
-	WM_QUERYOPEN                                 = 19
-	WM_ENDSESSION                                = 22
-	WM_QUIT                                      = 18
-	WM_ERASEBKGND                                = 20
-	WM_SYSCOLORCHANGE                            = 21
-	WM_SHOWWINDOW                                = 24
-	WM_WININICHANGE                              = 26
-	WM_SETTINGCHANGE                             = 26
-	WM_DEVMODECHANGE                             = 27
-	WM_ACTIVATEAPP                               = 28
-	WM_FONTCHANGE                                = 29
-	WM_TIMECHANGE                                = 30
-	WM_CANCELMODE                                = 31
-	WM_SETCURSOR                                 = 32
-	WM_MOUSEACTIVATE                             = 33
-	WM_CHILDACTIVATE                             = 34
-	WM_QUEUESYNC                                 = 35
-	WM_GETMINMAXINFO                             = 36
-	WM_PAINTICON                                 = 38
-	WM_ICONERASEBKGND                            = 39
-	WM_NEXTDLGCTL                                = 40
-	WM_SPOOLERSTATUS                             = 42
-	WM_DRAWITEM                                  = 43
-	WM_MEASUREITEM                               = 44
-	WM_DELETEITEM                                = 45
-	WM_VKEYTOITEM                                = 46
-	WM_CHARTOITEM                                = 47
-	WM_SETFONT                                   = 48
-	WM_GETFONT                                   = 49
-	WM_SETHOTKEY                                 = 50
-	WM_GETHOTKEY                                 = 51
-	WM_QUERYDRAGICON                             = 55
-	WM_COMPAREITEM                               = 57
-	WM_GETOBJECT                                 = 61
-	WM_COMPACTING                                = 65
-	WM_COMMNOTIFY                                = 68
-	WM_WINDOWPOSCHANGING                         = 70
-	WM_WINDOWPOSCHANGED                          = 71
-	WM_POWER                                     = 72
-	WM_COPYGLOBALDATA                            = 73
-	WM_COPYDATA                                  = 74
-	WM_CANCELJOURNAL                             = 75
-	WM_INPUTLANGCHANGEREQUEST                    = 80
-	WM_INPUTLANGCHANGE                           = 81
-	WM_TCARD                                     = 82
-	WM_HELP                                      = 83
-	WM_USERCHANGED                               = 84
-	WM_NOTIFYFORMAT                              = 85
-	WM_STYLECHANGING                             = 124
-	WM_STYLECHANGED                              = 125
-	WM_DISPLAYCHANGE                             = 126
-	WM_GETICON                                   = 127
-	WM_SETICON                                   = 128
-	WM_NCCREATE                                  = 129
-	WM_NCDESTROY                                 = 130
-	WM_NCCALCSIZE                                = 131
-	WM_NCHITTEST                                 = 132
-	WM_NCPAINT                                   = 133
-	WM_NCACTIVATE                                = 134
-	WM_GETDLGCODE                                = 135
-	WM_SYNCPAINT                                 = 136
-	WM_NCMOUSEMOVE                               = 160
-	WM_NCLBUTTONDOWN                             = 161
-	WM_NCLBUTTONUP                               = 162
-	WM_NCLBUTTONDBLCLK                           = 163
-	WM_NCRBUTTONDOWN                             = 164
-	WM_NCRBUTTONUP                               = 165
-	WM_NCRBUTTONDBLCLK                           = 166
-	WM_NCMBUTTONDOWN                             = 167
-	WM_NCMBUTTONUP                               = 168
-	WM_NCMBUTTONDBLCLK                           = 169
-	WM_NCXBUTTONDOWN                             = 171
-	WM_NCXBUTTONUP                               = 172
-	WM_NCXBUTTONDBLCLK                           = 173
-	WM_INPUT_DEVICE_CHANGE                       = 254
-	WM_INPUT                                     = 255
-	WM_KEYFIRST                                  = 256
-	WM_KEYDOWN                                   = 256
-	WM_KEYUP                                     = 257
-	WM_CHAR                                      = 258
-	WM_DEADCHAR                                  = 259
-	WM_SYSKEYDOWN                                = 260
-	WM_SYSKEYUP                                  = 261
-	WM_SYSCHAR                                   = 262
-	WM_SYSDEADCHAR                               = 263
-	WM_KEYLAST                                   = 265
-	WM_IME_STARTCOMPOSITION                      = 269
-	WM_IME_ENDCOMPOSITION                        = 270
-	WM_IME_COMPOSITION                           = 271
-	WM_IME_KEYLAST                               = 271
-	WM_INITDIALOG                                = 272
-	WM_COMMAND                                   = 273
-	WM_SYSCOMMAND                                = 274
-	WM_TIMER                                     = 275
-	WM_HSCROLL                                   = 276
-	WM_VSCROLL                                   = 277
-	WM_INITMENU                                  = 278
-	WM_INITMENUPOPUP                             = 279
-	WM_GESTURE                                   = 281
-	WM_GESTURENOTIFY                             = 282
-	WM_MENUSELECT                                = 287
-	WM_MENUCHAR                                  = 288
-	WM_ENTERIDLE                                 = 289
-	WM_MENURBUTTONUP                             = 290
-	WM_MENUDRAG                                  = 291
-	WM_MENUGETOBJECT                             = 292
-	WM_UNINITMENUPOPUP                           = 293
-	WM_MENUCOMMAND                               = 294
-	WM_CHANGEUISTATE                             = 295
-	WM_UPDATEUISTATE                             = 296
-	WM_QUERYUISTATE                              = 297
-	WM_CTLCOLORMSGBOX                            = 306
-	WM_CTLCOLOREDIT                              = 307
-	WM_CTLCOLORLISTBOX                           = 308
-	WM_CTLCOLORBTN                               = 309
-	WM_CTLCOLORDLG                               = 310
-	WM_CTLCOLORSCROLLBAR                         = 311
-	WM_CTLCOLORSTATIC                            = 312
-	WM_MOUSEFIRST                                = 512
-	WM_MOUSEMOVE                                 = 512
-	WM_LBUTTONDOWN                               = 513
-	WM_LBUTTONUP                                 = 514
-	WM_LBUTTONDBLCLK                             = 515
-	WM_RBUTTONDOWN                               = 516
-	WM_RBUTTONUP                                 = 517
-	WM_RBUTTONDBLCLK                             = 518
-	WM_MBUTTONDOWN                               = 519
-	WM_MBUTTONUP                                 = 520
-	WM_MBUTTONDBLCLK                             = 521
-	WM_MOUSEWHEEL                                = 522
-	WM_XBUTTONDOWN                               = 523
-	WM_XBUTTONUP                                 = 524
-	WM_XBUTTONDBLCLK                             = 525
-	WM_MOUSEHWHEEL                               = 526
-	WM_MOUSELAST                                 = 526
-	WM_PARENTNOTIFY                              = 528
-	WM_ENTERMENULOOP                             = 529
-	WM_EXITMENULOOP                              = 530
-	WM_NEXTMENU                                  = 531
-	WM_SIZING                                    = 532
-	WM_CAPTURECHANGED                            = 533
-	WM_MOVING                                    = 534
-	WM_POWERBROADCAST                            = 536
-	WM_MDICREATE                                 = 544
-	WM_MDIDESTROY                                = 545
-	WM_MDIACTIVATE                               = 546
-	WM_MDIRESTORE                                = 547
-	WM_MDINEXT                                   = 548
-	WM_MDIMAXIMIZE                               = 549
-	WM_MDITILE                                   = 550
-	WM_MDICASCADE                                = 551
-	WM_MDIICONARRANGE                            = 552
-	WM_MDIGETACTIVE                              = 553
-	WM_MDISETMENU                                = 560
-	WM_ENTERSIZEMOVE                             = 561
-	WM_EXITSIZEMOVE                              = 562
-	WM_DROPFILES                                 = 563
-	WM_MDIREFRESHMENU                            = 564
-	WM_POINTERDEVICECHANGE                       = 568
-	WM_POINTERDEVICEINRANGE                      = 569
-	WM_POINTERDEVICEOUTOFRANGE                   = 570
-	WM_TOUCH                                     = 576
-	WM_NCPOINTERUPDATE                           = 577
-	WM_NCPOINTERDOWN                             = 578
-	WM_NCPOINTERUP                               = 579
-	WM_POINTERUPDATE                             = 581
-	WM_POINTERDOWN                               = 582
-	WM_POINTERUP                                 = 583
-	WM_POINTERENTER                              = 585
-	WM_POINTERLEAVE                              = 586
-	WM_POINTERACTIVATE                           = 587
-	WM_POINTERCAPTURECHANGED                     = 588
-	WM_TOUCHHITTESTING                           = 589
-	WM_POINTERWHEEL                              = 590
-	WM_POINTERHWHEEL                             = 591
-	WM_POINTERROUTEDTO                           = 593
-	WM_POINTERROUTEDAWAY                         = 594
-	WM_POINTERROUTEDRELEASED                     = 595
-	WM_IME_SETCONTEXT                            = 641
-	WM_IME_NOTIFY                                = 642
-	WM_IME_CONTROL                               = 643
-	WM_IME_COMPOSITIONFULL                       = 644
-	WM_IME_SELECT                                = 645
-	WM_IME_CHAR                                  = 646
-	WM_IME_REQUEST                               = 648
-	WM_IME_KEYDOWN                               = 656
-	WM_IME_KEYUP                                 = 657
-	WM_NCMOUSEHOVER                              = 672
-	WM_NCMOUSELEAVE                              = 674
-	WM_WTSSESSION_CHANGE                         = 689
-	WM_TABLET_FIRST                              = 704
-	WM_TABLET_LAST                               = 735
-	WM_DPICHANGED                                = 736
-	WM_DPICHANGED_BEFOREPARENT                   = 738
-	WM_DPICHANGED_AFTERPARENT                    = 739
-	WM_GETDPISCALEDSIZE                          = 740
-	WM_CUT                                       = 768
-	WM_COPY                                      = 769
-	WM_PASTE                                     = 770
-	WM_CLEAR                                     = 771
-	WM_UNDO                                      = 772
-	WM_RENDERFORMAT                              = 773
-	WM_RENDERALLFORMATS                          = 774
-	WM_DESTROYCLIPBOARD                          = 775
-	WM_DRAWCLIPBOARD                             = 776
-	WM_PAINTCLIPBOARD                            = 777
-	WM_VSCROLLCLIPBOARD                          = 778
-	WM_SIZECLIPBOARD                             = 779
-	WM_ASKCBFORMATNAME                           = 780
-	WM_CHANGECBCHAIN                             = 781
-	WM_HSCROLLCLIPBOARD                          = 782
-	WM_QUERYNEWPALETTE                           = 783
-	WM_PALETTEISCHANGING                         = 784
-	WM_PALETTECHANGED                            = 785
-	WM_HOTKEY                                    = 786
-	WM_PRINT                                     = 791
-	WM_APPCOMMAND                                = 793
-	WM_THEMECHANGED                              = 794
-	WM_CLIPBOARDUPDATE                           = 797
-	WM_DWMCOMPOSITIONCHANGED                     = 798
-	WM_DWMNCRENDERINGCHANGED                     = 799
-	WM_DWMCOLORIZATIONCOLORCHANGED               = 800
-	WM_DWMWINDOWMAXIMIZEDCHANGE                  = 801
-	WM_DWMSENDICONICTHUMBNAIL                    = 803
-	WM_DWMSENDICONICLIVEPREVIEWBITMAP            = 806
-	WM_GETTITLEBARINFOEX                         = 831
-	WM_HANDHELDFIRST                             = 856
-	WM_HANDHELDLAST                              = 863
-	WM_AFXFIRST                                  = 864
-	WM_AFXLAST                                   = 895
-	WM_PENWINFIRST                               = 896
-	WM_PENWINLAST                                = 911
-	WM_APP                                       = 32768
-	WM_USER                                      = 1024
-	WM_TOOLTIPDISMISS                            = 837
-	WM_SF_CLEANPOINT                             = 1
-	WM_SF_DISCONTINUITY                          = 2
-	WM_SF_DATALOSS                               = 4
-	WM_SFEX_NOTASYNCPOINT                        = 2
-	WM_SFEX_DATALOSS                             = 4
-	WM_DM_NOTINTERLACED                          = 0
-	WM_DM_DEINTERLACE_NORMAL                     = 1
-	WM_DM_DEINTERLACE_HALFSIZE                   = 2
-	WM_DM_DEINTERLACE_HALFSIZEDOUBLERATE         = 3
-	WM_DM_DEINTERLACE_INVERSETELECINE            = 4
-	WM_DM_DEINTERLACE_VERTICALHALFSIZEDOUBLERATE = 5
-	WM_DM_IT_DISABLE_COHERENT_MODE               = 0
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_AA_TOP       = 1
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_BB_TOP       = 2
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_BC_TOP       = 3
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_CD_TOP       = 4
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_DD_TOP       = 5
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_AA_BOTTOM    = 6
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_BB_BOTTOM    = 7
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_BC_BOTTOM    = 8
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_CD_BOTTOM    = 9
-	WM_DM_IT_FIRST_FRAME_IN_CLIP_IS_DD_BOTTOM    = 10
-	WM_PLAYBACK_DRC_HIGH                         = 0
-	WM_PLAYBACK_DRC_MEDIUM                       = 1
-	WM_PLAYBACK_DRC_LOW                          = 2
-	WM_AETYPE_INCLUDE                            = 105
-	WM_AETYPE_EXCLUDE                            = 101
+	WM_NULL                        = 0
+	WM_MOVE                        = 3
+	WM_SIZE                        = 5
+	WM_SETFOCUS                    = 7
+	WM_KILLFOCUS                   = 8
+	WM_PAINT                       = 15
+	WM_CLOSE                       = 16
+	WM_QUIT                        = 18
+	WM_ERASEBKGND                  = 20
+	WM_SETCURSOR                   = 32
+	WM_GETMINMAXINFO               = 36
+	WM_COPYGLOBALDATA              = 73
+	WM_COPYDATA                    = 74
+	WM_SETICON                     = 128
+	WM_NCPAINT                     = 133
+	WM_NCACTIVATE                  = 134
+	WM_KEYDOWN                     = 256
+	WM_KEYUP                       = 257
+	WM_CHAR                        = 258
+	WM_SYSKEYDOWN                  = 260
+	WM_SYSKEYUP                    = 261
+	WM_SYSCHAR                     = 262
+	WM_UNICHAR                     = 265
+	WM_MOUSEMOVE                   = 512
+	WM_LBUTTONDOWN                 = 513
+	WM_LBUTTONUP                   = 514
+	WM_RBUTTONDOWN                 = 516
+	WM_RBUTTONUP                   = 517
+	WM_MBUTTONDOWN                 = 519
+	WM_MBUTTONUP                   = 520
+	WM_MOUSEWHEEL                  = 522
+	WM_XBUTTONDOWN                 = 523
+	WM_XBUTTONUP                   = 524
+	WM_MOUSEHWHEEL                 = 526
+	WM_SIZING                      = 532
+	WM_CAPTURECHANGED              = 533
+	WM_MOUSELEAVE                  = 675
+	WM_DPICHANGED                  = 736
+	WM_GETDPISCALEDSIZE            = 740
+	WM_DWMCOMPOSITIONCHANGED       = 798
+	WM_DWMCOLORIZATIONCOLORCHANGED = 800
 )
 
 const (
@@ -1123,7 +738,6 @@ func CreateWindowExW(exStyle uint32, className, windowName string, style uint32,
 		if lpClassName, err = windows.UTF16PtrFromString(className); err != nil {
 			return 0
 		}
-		defer runtime.KeepAlive(lpClassName)
 	}
 
 	var lpWindowName *uint16
@@ -1132,7 +746,6 @@ func CreateWindowExW(exStyle uint32, className, windowName string, style uint32,
 		if lpWindowName, err = windows.UTF16PtrFromString(windowName); err != nil {
 			return 0
 		}
-		defer runtime.KeepAlive(lpWindowName)
 	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := createWindowExWProc.Call(uintptr(exStyle), uintptr(unsafe.Pointer(lpClassName)),
@@ -1193,7 +806,6 @@ func EnumDisplayDevicesW(device string, iDevNum, dwFlags uint32, displayDevice *
 		if err != nil {
 			return false
 		}
-		runtime.KeepAlive(lpDevice)
 	}
 	displayDevice.size = uint32(unsafe.Sizeof(*displayDevice))
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -1279,13 +891,6 @@ func GetClipboardFormatNameW(format ClipboardFormat) string {
 	return windows.UTF16ToString(buf[:n])
 }
 
-// GetClipboardSequenceNumber https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclipboardsequencenumber
-func GetClipboardSequenceNumber() int {
-	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	num, _, _ := getClipboardSequenceNumberProc.Call()
-	return int(num)
-}
-
 // GetCursorPos https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getcursorpos
 func GetCursorPos(point *POINT) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -1334,13 +939,6 @@ func GetMonitorInfoW(monitor HMONITOR, monitorInfo *MONITORINFO) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := getMonitorInfoWProc.Call(uintptr(monitor), uintptr(unsafe.Pointer(monitorInfo)))
 	return b&0xff != 0
-}
-
-// GetSysColor https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsyscolor
-func GetSysColor(index int) uint32 {
-	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	color, _, _ := getSysColorProc.Call(uintptr(index))
-	return uint32(color)
 }
 
 // GetSystemMetrics https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getsystemmetrics
@@ -1472,7 +1070,6 @@ func RegisterClipboardFormatW(name string) ClipboardFormat {
 		if lpString, err = windows.UTF16PtrFromString(name); err != nil {
 			return CFNone
 		}
-		defer runtime.KeepAlive(lpString)
 	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := registerClipboardFormatWProc.Call(uintptr(unsafe.Pointer(lpString)))
@@ -1573,7 +1170,6 @@ func SetWindowTextW(hwnd windows.HWND, text string) bool {
 		if lpString, err = windows.UTF16PtrFromString(text); err != nil {
 			return false
 		}
-		defer runtime.KeepAlive(lpString)
 	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := setWindowTextWProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(lpString)))

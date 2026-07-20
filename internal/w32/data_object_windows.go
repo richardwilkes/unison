@@ -11,7 +11,6 @@ package w32
 
 import (
 	"runtime"
-	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -67,11 +66,13 @@ type vmtIDataObject struct {
 	EnumDAdvise           uintptr
 }
 
-// DataObject is a Go-implemented COM IDataObject that carries drag data.
+// DataObject is a Go-implemented COM IDataObject that carries drag data. Its lifetime is governed by the COM
+// reference count: the object stays pinned (and its mediums held) until every reference — the creator's initial one
+// plus any taken by drop targets or the drag-drop helper — has been released, so a target that retains the
+// IDataObject past the end of DoDragDrop still points at live memory.
 type DataObject struct {
 	lpVtbl   uintptr // MUST BE FIRST: points to dataObjVtbl
 	entries  []dragDataEntry
-	enumFmt  *enumFORMATETC
 	refCount int32
 	pinner   runtime.Pinner
 }
@@ -164,19 +165,31 @@ func NewDataObject(data []drag.Data, opMask drag.Op) *DataObject {
 	}
 	obj := &DataObject{entries: entries, refCount: 1}
 	obj.lpVtbl = uintptr(unsafe.Pointer(&dataObjVtbl[0]))
-	obj.enumFmt = newEnumFORMATETC(obj)
 	obj.pinner.Pin(obj)
-	obj.pinner.Pin(obj.enumFmt)
 	return obj
 }
 
-// Release frees any owned mediums and unpins the DataObject and its internal enumerator from the Go garbage
-// collector.
+// Release drops the creator's reference from NewDataObject. Owned mediums are freed and the object is unpinned from
+// the Go garbage collector only once every other holder (drop targets, the drag-drop helper, enumerators) has
+// released its reference too.
 func (obj *DataObject) Release() {
-	for i := range obj.entries {
-		obj.entries[i].releaseMedium()
+	obj.release()
+}
+
+func (obj *DataObject) addRef() uintptr {
+	return comAddRef(&obj.refCount)
+}
+
+func (obj *DataObject) release() uintptr {
+	remaining, final := comRelease(&obj.refCount)
+	if final {
+		for i := range obj.entries {
+			obj.entries[i].releaseMedium()
+		}
+		obj.entries = nil
+		obj.pinner.Unpin()
 	}
-	obj.pinner.Unpin()
+	return remaining
 }
 
 func (obj *DataObject) findEntry(cf uint16) (*dragDataEntry, bool) {
@@ -200,13 +213,11 @@ func dataObjQueryInterface(this, riid, ppvObject uintptr) uint64 {
 }
 
 func dataObjAddRef(this uintptr) uintptr {
-	obj := xruntime.PtrFromUintptr[DataObject](this)
-	return uintptr(atomic.AddInt32(&obj.refCount, 1))
+	return xruntime.PtrFromUintptr[DataObject](this).addRef()
 }
 
 func dataObjRelease(this uintptr) uintptr {
-	obj := xruntime.PtrFromUintptr[DataObject](this)
-	return uintptr(atomic.AddInt32(&obj.refCount, -1))
+	return xruntime.PtrFromUintptr[DataObject](this).release()
 }
 
 func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
@@ -229,12 +240,12 @@ func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 	}
 	h := GlobalAlloc(GMemMoveable, len(entry.data))
 	if h == 0 {
-		return COM_E_NOTIMPL
+		return COM_E_OUTOFMEMORY
 	}
 	buf := GlobalLock(h)
 	if buf == 0 {
 		GlobalFree(h)
-		return COM_E_NOTIMPL
+		return COM_E_OUTOFMEMORY
 	}
 	copy(unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), len(entry.data)), entry.data)
 	GlobalUnlock(h)
@@ -259,9 +270,19 @@ func dataObjQueryGetData(this, pformatetc uintptr) uint64 {
 	return COM_S_OK
 }
 
-func dataObjGetCanonicalFormatEtc(_, _, pformatetcOut uintptr) uint64 {
-	// Indicate we don't canonicalize.
-	xruntime.PtrFromUintptr[FORMATETC](pformatetcOut).Ptd = 0
+func dataObjGetCanonicalFormatEtc(_, pformatetcIn, pformatetcOut uintptr) uint64 {
+	if pformatetcOut == 0 {
+		return COM_E_POINTER
+	}
+	out := xruntime.PtrFromUintptr[FORMATETC](pformatetcOut)
+	if pformatetcIn == 0 {
+		*out = FORMATETC{}
+		return COM_E_POINTER
+	}
+	// We don't canonicalize: the output is the input minus any target device, per the DATA_S_SAMEFORMATETC contract,
+	// which requires the out-struct to be fully filled in rather than left as whatever the caller passed.
+	*out = *xruntime.PtrFromUintptr[FORMATETC](pformatetcIn)
+	out.Ptd = 0
 	return COM_DATA_S_SAMEFORMATETC
 }
 
@@ -299,9 +320,13 @@ func dataObjSetData(this, pformatetc, pmedium, fRelease uintptr) uint64 {
 			return COM_DV_E_TYMED
 		}
 		entry.stream = stg.Data
-		if fRelease == 0 {
-			// We keep a reference of our own; with fRelease set, the caller's reference becomes ours instead.
-			xruntime.PtrFromUintptr[Unknown](entry.stream).AddRef()
+		// Always take a direct reference of our own on the stream. Simply adopting the caller's reference when
+		// fRelease is set would be wrong whenever PUnkForRelease is non-zero, since the medium must then be freed
+		// through that object rather than by releasing the stream; taking our own reference and handing the medium
+		// back through ReleaseStgMedium (which honors PUnkForRelease) is correct in every combination.
+		xruntime.PtrFromUintptr[Unknown](entry.stream).AddRef()
+		if fRelease != 0 {
+			ReleaseStgMedium(stg)
 		}
 	default:
 		return COM_DV_E_TYMED
@@ -318,13 +343,18 @@ func dataObjSetData(this, pformatetc, pmedium, fRelease uintptr) uint64 {
 }
 
 func dataObjEnumFormatEtc(this, dwDirection, ppenumFormatetc uintptr) uint64 {
-	if dwDirection != 1 { // DATADIR_GET = 1
+	if ppenumFormatetc == 0 {
+		return COM_E_POINTER
+	}
+	out := xruntime.PtrFromUintptr[uintptr](ppenumFormatetc)
+	*out = 0
+	if DataDir(dwDirection) != DataDirGet {
 		return COM_E_NOTIMPL
 	}
+	// Each call hands out a fresh, independently positioned enumerator, as the IDataObject contract requires;
+	// a single shared instance would let one consumer's iteration corrupt another's.
 	obj := xruntime.PtrFromUintptr[DataObject](this)
-	obj.enumFmt.Reset()
-	enumAddRef(uintptr(unsafe.Pointer(obj.enumFmt)))
-	*xruntime.PtrFromUintptr[uintptr](ppenumFormatetc) = uintptr(unsafe.Pointer(obj.enumFmt))
+	*out = uintptr(unsafe.Pointer(newEnumFORMATETC(obj, 0)))
 	return COM_S_OK
 }
 
