@@ -169,3 +169,8 @@ func apiPostEmptyEvent() {
 		conn.PostEmptyEvent()
 	}
 }
+
+// apiWithAutoreleasePool runs f directly: autorelease pools are a macOS concept with no X11 counterpart.
+func apiWithAutoreleasePool(f func()) {
+	f()
+}

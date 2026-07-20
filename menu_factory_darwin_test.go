@@ -29,4 +29,23 @@ func TestMacMenuUpdaterReceivesID(t *testing.T) {
 	c.Equal(42, got.ID())
 	c.True(got.Factory() == MenuFactory(f))
 	c.True(f.wrapUpdater(42, nil) == nil)
+	// Wrappers handed to updaters merely navigate a menu the tree owns, so they must never own the reference —
+	// otherwise an updater calling Dispose would release a menu out from under its parent item.
+	if mm, ok := got.(*macMenu); ok {
+		c.False(mm.owned)
+	}
+}
+
+// TestMacMenuDisposeOwnership verifies the Dispose ownership contract: only a wrapper that owns its menu's reference
+// releases it, exactly once, while Dispose of a borrowed wrapper (e.g. one obtained via SubMenu) is a no-op left to
+// the owning tree's root.
+func TestMacMenuDisposeOwnership(t *testing.T) {
+	c := check.New(t)
+	m := &macMenu{owned: true}
+	m.Dispose()
+	c.False(m.owned)
+	m.Dispose() // a second Dispose must not release again
+	borrowed := &macMenu{}
+	c.NotPanics(func() { borrowed.Dispose() })
+	c.False(borrowed.owned)
 }

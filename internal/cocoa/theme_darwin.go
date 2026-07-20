@@ -46,7 +46,7 @@ func installThemeObserver() {
 			},
 		}})
 		if err != nil {
-			panic(fmt.Errorf("mac: unable to register ThemeDelegate: %w", err))
+			panic(fmt.Errorf("cocoa: unable to register ThemeDelegate: %w", err))
 		}
 		WithPool(func() {
 			delegate := objc.ID(cls).Send(Sel("new"))

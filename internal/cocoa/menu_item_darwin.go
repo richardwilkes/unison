@@ -26,9 +26,9 @@ const (
 	ControlStateValueOn
 )
 
-// MenuItem is a handle to an NSMenuItem. NewMenuItem and NewSeparatorMenuItem return owned references; there is no
-// Release — matching the cgo bridge, an item's registered validator and handler are removed when its menu is
-// released, but the item itself is left retained.
+// MenuItem is a handle to an NSMenuItem. NewMenuItem and NewSeparatorMenuItem return owned (+1) references. Inserting
+// an item into a menu transfers that reference to the menu (see Menu.InsertItemAtIndex), which from then on cleans the
+// item up when it is removed or the menu is released; only an item that is never inserted needs its own Release.
 type MenuItem objc.ID
 
 // menuItemValidators and menuItemHandlers hold the functions registered via NewMenuItem, keyed by item. They are
@@ -90,14 +90,14 @@ func menuItemDelegate() objc.ID {
 	return menuItemDelegateInstance
 }
 
-// NewMenuItem returns a new menu item. The item's action is routed through the shared MenuItemDelegate to the given
-// handler, and AppKit's menu validation to the given validator; a nil validator leaves the item always enabled.
-// Matching the cgo bridge, the returned reference is doubly-retained (alloc/init plus an extra retain).
+// NewMenuItem returns a new menu item as an owned (+1) reference. The item's action is routed through the shared
+// MenuItemDelegate to the given handler, and AppKit's menu validation to the given validator; a nil validator leaves
+// the item always enabled.
 func NewMenuItem(tag int, title, keyEquivalent string, modifiers EventModifierFlags, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
 	titleStr := NewNSString(title)
 	keyStr := NewNSString(keyEquivalent)
-	item := Retain(objc.ID(Cls("NSMenuItem")).Send(Sel("alloc")).Send(Sel("initWithTitle:action:keyEquivalent:"),
-		titleStr, Sel("handleMenuItem:"), keyStr))
+	item := objc.ID(Cls("NSMenuItem")).Send(Sel("alloc")).Send(Sel("initWithTitle:action:keyEquivalent:"),
+		titleStr, Sel("handleMenuItem:"), keyStr)
 	Release(keyStr)
 	Release(titleStr)
 	item.Send(Sel("setTag:"), int64(tag))
@@ -115,8 +115,8 @@ func NewMenuItem(tag int, title, keyEquivalent string, modifiers EventModifierFl
 	return mi
 }
 
-// NewSeparatorMenuItem returns a new separator menu item, retained to match the cgo bridge's ownership (AppKit's
-// separatorItem is autoreleased).
+// NewSeparatorMenuItem returns a new separator menu item as an owned (+1) reference (AppKit's separatorItem is
+// autoreleased, so the retain converts it to the same ownership NewMenuItem hands back).
 func NewSeparatorMenuItem() MenuItem {
 	var item objc.ID
 	WithPool(func() {
@@ -177,9 +177,30 @@ func (m MenuItem) SubMenu() Menu {
 	return Menu(objc.ID(m).Send(Sel("submenu")))
 }
 
-// SetSubMenu sets the item's submenu.
+// SetSubMenu sets the item's submenu, transferring ownership of the caller's reference to the item: the item retains
+// the submenu and the owned reference returned by NewMenu is released here. The submenu handle remains usable for as
+// long as the item keeps the submenu; releasing the root of the tree it belongs to cleans it up.
 func (m MenuItem) SetSubMenu(menu Menu) {
 	objc.ID(m).Send(Sel("setSubmenu:"), objc.ID(menu))
+	Release(objc.ID(menu))
+}
+
+// Release releases a menu item that was never inserted into a menu, removing its validator and handler registrations
+// along with those of any submenu tree attached to it. Items that have been inserted must not be released: the menu
+// owns them and cleans them up when they are removed or when it is released.
+func (m MenuItem) Release() {
+	m.forgetRegistrations()
+	Release(objc.ID(m))
+}
+
+// forgetRegistrations removes the item's validator and handler registrations and, if the item has a submenu, the
+// registrations of that entire submenu tree.
+func (m MenuItem) forgetRegistrations() {
+	delete(menuItemValidators, m)
+	delete(menuItemHandlers, m)
+	if sub := m.SubMenu(); sub != 0 {
+		sub.forgetRegistrations()
+	}
 }
 
 // State returns the menu item's state (its checked/unchecked/mixed mark).

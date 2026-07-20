@@ -156,6 +156,9 @@ func InstallMacAppDelegate() error {
 	if delegate == 0 {
 		return errs.New("InstallMacAppDelegate: unable to install app delegate")
 	}
+	// A repeated install replaces any prior installation rather than leaking its delegate instance and key-up
+	// monitor — a leaked monitor would forward every Cmd+keyUp event once per leaked install.
+	UninstallMacAppDelegate()
 	appDelegate = delegate
 	sharedApp().Send(Sel("setDelegate:"), delegate)
 	keyUpBlock = objc.NewBlock(func(_ objc.Block, event objc.ID) objc.ID {

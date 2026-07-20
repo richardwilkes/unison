@@ -119,3 +119,10 @@ func apiPostEmptyEvent() {
 		cocoa.PostEmptyEvent()
 	}
 }
+
+// apiWithAutoreleasePool runs f inside its own autorelease pool, so AppKit-internal objects autoreleased by the
+// msgSends f performs (InvokeTask callbacks, window draws) are reclaimed when f returns instead of accumulating on
+// the thread until process exit.
+func apiWithAutoreleasePool(f func()) {
+	cocoa.WithPool(f)
+}

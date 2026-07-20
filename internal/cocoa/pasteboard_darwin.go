@@ -21,9 +21,10 @@ type (
 	// Pasteboard is a handle to an NSPasteboard. The only instance unison uses is the general pasteboard, a
 	// process-lifetime singleton, so Pasteboard values are never owned or released.
 	Pasteboard objc.ID
-	// PasteboardItem is a handle to an NSPasteboardItem. NewPasteboardItem returns an owned (+1) reference that,
-	// matching the old bridge, is never released: ownership effectively transfers to the pasteboard it is written to
-	// (the one extra reference per item is a pre-existing leak kept for bring-up parity).
+	// PasteboardItem is a handle to an NSPasteboardItem. NewPasteboardItem returns an owned (+1) reference whose
+	// ownership transfers to whatever the item is handed to: Pasteboard.WriteItems releases the written items, and a
+	// drag's NSDraggingItem takes over the reference (see View.BeginDraggingSession). An NSPasteboardItem can only
+	// ever be attached to a single pasteboard, so an item handle must not be reused after being handed off.
 	PasteboardItem objc.ID
 )
 
@@ -79,7 +80,9 @@ func (p Pasteboard) Clear() {
 	objc.ID(p).Send(Sel("clearContents"))
 }
 
-// WriteItems writes the given items to the pasteboard.
+// WriteItems writes the given items to the pasteboard, transferring ownership of the caller's references: the
+// pasteboard retains the items and the owned references returned by NewPasteboardItem are released here. The item
+// handles must not be used afterward.
 func (p Pasteboard) WriteItems(items ...PasteboardItem) {
 	if len(items) == 0 {
 		return
@@ -90,6 +93,9 @@ func (p Pasteboard) WriteItems(items ...PasteboardItem) {
 			ids[i] = objc.ID(item)
 		}
 		objc.ID(p).Send(Sel("writeObjects:"), NSArrayFromIDs(ids...))
+		for _, id := range ids {
+			Release(id)
+		}
 	})
 }
 

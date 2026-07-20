@@ -193,23 +193,27 @@ func processEvents() {
 
 // finishProcessingEvents runs the next pending UI task and draws any windows that have been marked for redraw. It is
 // called after each pass of event processing in the main loop, as well as in nested event loops, such as the one used
-// for the source side of drag & drop on Linux.
+// for the source side of drag & drop on Linux. The work is bracketed by a platform autorelease pool (a no-op outside
+// macOS), since tasks and draws make platform calls that produce autoreleased objects, and this is the outermost spot
+// on the thread that can reclaim them.
 func finishProcessingEvents() {
-	processNextTask()
-	if len(redrawSet) > 0 {
-		set := redrawSet
-		redrawSet = make(map[*Window]struct{})
-		for wnd := range set {
-			switch {
-			case wnd.IsVisible():
-				wnd.draw()
-			case wnd.IsValid():
-				// Hidden, but not disposed, so keep the request pending until the window becomes visible. Disposed
-				// windows are dropped, since they can never be drawn again.
-				redrawSet[wnd] = struct{}{}
+	apiWithAutoreleasePool(func() {
+		processNextTask()
+		if len(redrawSet) > 0 {
+			set := redrawSet
+			redrawSet = make(map[*Window]struct{})
+			for wnd := range set {
+				switch {
+				case wnd.IsVisible():
+					wnd.draw()
+				case wnd.IsValid():
+					// Hidden, but not disposed, so keep the request pending until the window becomes visible. Disposed
+					// windows are dropped, since they can never be drawn again.
+					redrawSet[wnd] = struct{}{}
+				}
 			}
 		}
-	}
+	})
 }
 
 func finishStartup() {

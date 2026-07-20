@@ -10,10 +10,53 @@
 package cocoa
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/ebitengine/purego/objc"
 )
+
+var (
+	deallocSpyClassOnce sync.Once
+	deallocSpyClass     objc.Class
+	deallocSpyClassErr  error
+	// deallocSpyFlags maps live spy instances to the flag their dealloc sets. Only touched from the main thread.
+	deallocSpyFlags = make(map[objc.ID]*bool)
+)
+
+// newDeallocSpy returns a new instance of a class whose dealloc sets *flag, so tests can prove that an object graph
+// holding the spy was actually deallocated rather than merely released once.
+func newDeallocSpy(t *testing.T, flag *bool) objc.ID {
+	t.Helper()
+	deallocSpyClassOnce.Do(func() {
+		deallocSpyClass, deallocSpyClassErr = objc.RegisterClass("TestDeallocSpy", Cls("NSObject"), nil, nil,
+			[]objc.MethodDef{{
+				Cmd: Sel("dealloc"),
+				Fn: func(self objc.ID, _ objc.SEL) {
+					if f, ok := deallocSpyFlags[self]; ok {
+						*f = true
+						delete(deallocSpyFlags, self)
+					}
+					objc.SendSuper[objc.ID](self, Sel("dealloc"))
+				},
+			}})
+	})
+	if deallocSpyClassErr != nil {
+		t.Fatal(deallocSpyClassErr)
+	}
+	spy := objc.ID(deallocSpyClass).Send(Sel("new"))
+	deallocSpyFlags[spy] = flag
+	return spy
+}
+
+// attachDeallocSpy ties a dealloc spy to the menu item's lifetime via its representedObject (a strong property), so
+// *flag flips exactly when the item is deallocated.
+func attachDeallocSpy(t *testing.T, item MenuItem, flag *bool) {
+	t.Helper()
+	spy := newDeallocSpy(t, flag)
+	objc.ID(item).Send(Sel("setRepresentedObject:"), spy)
+	Release(spy) // the item now holds the only reference
+}
 
 func TestNewMenuBasics(t *testing.T) {
 	runOnMain(func() {
@@ -80,12 +123,12 @@ func TestMenuStructure(t *testing.T) {
 			t.Errorf("Menu() = %#x after insertion, want %#x", got, m)
 		}
 
-		// Submenu wiring, the shape root uses for nested menus.
+		// Submenu wiring, the shape root uses for nested menus. SetSubMenu transfers ownership of the submenu to the
+		// item, so no Release of sub is needed (or permitted) here.
 		if got := mi1.SubMenu(); got != 0 {
 			t.Errorf("SubMenu() = %#x before SetSubMenu, want 0", got)
 		}
 		sub := NewMenu("Sub", nil)
-		defer sub.Release()
 		mi1.SetSubMenu(sub)
 		if got := mi1.SubMenu(); got != sub {
 			t.Errorf("SubMenu() = %#x, want %#x", got, sub)
@@ -98,6 +141,9 @@ func TestMenuStructure(t *testing.T) {
 		if got := m.ItemAtIndex(1); got != mi2 {
 			t.Errorf("ItemAtIndex(1) = %#x after removal, want %#x", got, mi2)
 		}
+		// The menu owns its items, so RemoveAll destroys them; keep a reference to mi2 across the removal so its
+		// menu back-pointer can still be checked afterward.
+		Retain(objc.ID(mi2))
 		m.RemoveAll()
 		if got := m.NumberOfItems(); got != 0 {
 			t.Errorf("NumberOfItems() = %d after RemoveAll, want 0", got)
@@ -105,6 +151,7 @@ func TestMenuStructure(t *testing.T) {
 		if got := mi2.Menu(); got != 0 {
 			t.Errorf("Menu() = %#x after RemoveAll, want 0", got)
 		}
+		Release(objc.ID(mi2))
 	})
 }
 
@@ -143,6 +190,7 @@ func TestMenuItemAccessors(t *testing.T) {
 		if mi == 0 {
 			t.Fatal("NewMenuItem returned 0")
 		}
+		defer mi.Release() // never inserted into a menu, so the creation reference must be balanced here
 		if got := mi.Tag(); got != 42 {
 			t.Errorf("Tag() = %d, want 42", got)
 		}
@@ -247,7 +295,7 @@ func TestMenuItemAction(t *testing.T) {
 }
 
 // TestMenuReleaseCleansUpRegistrations proves Menu.Release removes the menu's updater and every contained item's
-// validator and handler from the registration maps, matching the cgo bridge's cleanup contract.
+// validator and handler from the registration maps.
 func TestMenuReleaseCleansUpRegistrations(t *testing.T) {
 	runOnMain(func() {
 		sharedApp()
@@ -279,5 +327,116 @@ func TestMenuReleaseCleansUpRegistrations(t *testing.T) {
 				t.Error("menuItemHandlers still contains an item after Release")
 			}
 		}
+	})
+}
+
+// TestMenuTreeReleaseDeallocatesAndCleansUp proves the ownership contract end to end: creation hands back the only
+// reference, InsertItemAtIndex and SetSubMenu transfer references into the tree, and releasing the root deallocates
+// every item and submenu (verified by dealloc spies) while emptying the registration maps for the whole tree,
+// including entries reachable only through a submenu — the case whose omission let the maps grow without bound.
+func TestMenuTreeReleaseDeallocatesAndCleansUp(t *testing.T) {
+	runOnMain(func() {
+		sharedApp()
+		var parentGone, subItemGone bool
+		var m, sub Menu
+		var parent, subItem MenuItem
+		// AppKit autoreleases internal references during menu assembly (e.g. the NSMenuDidAddItemNotification it
+		// posts carries the item), so the deallocations only complete once the pool pops; assert after WithPool.
+		WithPool(func() {
+			m = NewMenu("Owner", func(Menu) {})
+			sub = NewMenu("Sub", func(Menu) {})
+			subItem = NewMenuItem(502, "SubChild", "", 0, func(MenuItem) bool { return true }, func(MenuItem) {})
+			attachDeallocSpy(t, subItem, &subItemGone)
+			sub.InsertItemAtIndex(subItem, 0)
+			parent = NewMenuItem(501, "Parent", "", 0, nil, func(MenuItem) {})
+			attachDeallocSpy(t, parent, &parentGone)
+			parent.SetSubMenu(sub)
+			m.InsertItemAtIndex(parent, 0)
+			for name, ok := range map[string]bool{
+				"menuUpdaters[m]":             menuUpdaters[m] != nil,
+				"menuUpdaters[sub]":           menuUpdaters[sub] != nil,
+				"menuItemHandlers[parent]":    menuItemHandlers[parent] != nil,
+				"menuItemValidators[subItem]": menuItemValidators[subItem] != nil,
+				"menuItemHandlers[subItem]":   menuItemHandlers[subItem] != nil,
+			} {
+				if !ok {
+					t.Errorf("%s missing before Release", name)
+				}
+			}
+			m.Release()
+		})
+		if !parentGone {
+			t.Error("the parent item was not deallocated by releasing the root menu")
+		}
+		if !subItemGone {
+			t.Error("the submenu's item was not deallocated by releasing the root menu")
+		}
+		if _, ok := menuUpdaters[m]; ok {
+			t.Error("menuUpdaters still contains the root menu after Release")
+		}
+		if _, ok := menuUpdaters[sub]; ok {
+			t.Error("menuUpdaters still contains the submenu after Release")
+		}
+		if _, ok := menuItemHandlers[parent]; ok {
+			t.Error("menuItemHandlers still contains the parent item after Release")
+		}
+		if _, ok := menuItemValidators[subItem]; ok {
+			t.Error("menuItemValidators still contains the submenu's item after Release")
+		}
+		if _, ok := menuItemHandlers[subItem]; ok {
+			t.Error("menuItemHandlers still contains the submenu's item after Release")
+		}
+	})
+}
+
+// TestMenuRemovalDestroysItems proves RemoveItemAtIndex and RemoveAll destroy the removed items: the items (and any
+// submenu tree hanging off them) are deallocated and their registrations dropped, so repeated remove-and-recreate
+// cycles — the pattern a menu updater that rebuilds its items on every open produces — cannot accumulate anything.
+func TestMenuRemovalDestroysItems(t *testing.T) {
+	runOnMain(func() {
+		sharedApp()
+		m := NewMenu("Removal", nil)
+		var plainGone, subOwnerGone, subItemGone bool
+		var plain, subOwner, subItem MenuItem
+		var sub Menu
+		WithPool(func() {
+			plain = NewMenuItem(601, "Plain", "", 0, func(MenuItem) bool { return true }, func(MenuItem) {})
+			attachDeallocSpy(t, plain, &plainGone)
+			m.InsertItemAtIndex(plain, 0)
+			sub = NewMenu("Sub", func(Menu) {})
+			subItem = NewMenuItem(603, "SubChild", "", 0, nil, func(MenuItem) {})
+			attachDeallocSpy(t, subItem, &subItemGone)
+			sub.InsertItemAtIndex(subItem, 0)
+			subOwner = NewMenuItem(602, "SubOwner", "", 0, nil, nil)
+			attachDeallocSpy(t, subOwner, &subOwnerGone)
+			subOwner.SetSubMenu(sub)
+			m.InsertItemAtIndex(subOwner, 1)
+			m.RemoveItemAtIndex(0)
+		})
+		if !plainGone {
+			t.Error("RemoveItemAtIndex did not deallocate the removed item")
+		}
+		if _, ok := menuItemValidators[plain]; ok {
+			t.Error("menuItemValidators still contains the removed item")
+		}
+		if _, ok := menuItemHandlers[plain]; ok {
+			t.Error("menuItemHandlers still contains the removed item")
+		}
+		WithPool(func() {
+			m.RemoveAll()
+		})
+		if !subOwnerGone {
+			t.Error("RemoveAll did not deallocate the submenu-owning item")
+		}
+		if !subItemGone {
+			t.Error("RemoveAll did not deallocate the submenu's item")
+		}
+		if _, ok := menuUpdaters[sub]; ok {
+			t.Error("menuUpdaters still contains the removed item's submenu")
+		}
+		if _, ok := menuItemHandlers[subItem]; ok {
+			t.Error("menuItemHandlers still contains the removed submenu's item")
+		}
+		m.Release()
 	})
 }

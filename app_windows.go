@@ -185,3 +185,8 @@ func apiPostEmptyEvent() {
 		w32.PostThreadMessageW(w32MainThreadID.Load(), w32.WM_NULL, 0, 0)
 	}
 }
+
+// apiWithAutoreleasePool runs f directly: autorelease pools are a macOS concept with no Win32 counterpart.
+func apiWithAutoreleasePool(f func()) {
+	f()
+}

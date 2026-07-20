@@ -116,7 +116,44 @@ func TestAppDelegateAndLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// A repeated install without an intervening uninstall must replace the prior installation — a fresh delegate
+	// instance and key-up monitor take over — rather than leaking the old ones (a leaked monitor would forward every
+	// Cmd+keyUp event once per leaked install). A single uninstall must then clear everything.
+	var firstDelegate, firstMonitor objc.ID
+	runOnMain(func() {
+		// Pin the first install's objects so their addresses cannot be recycled for the second install's, which
+		// would make the distinctness checks below meaningless.
+		firstDelegate = Retain(appDelegate)
+		firstMonitor = Retain(keyUpMonitor)
+		err = InstallMacAppDelegate()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runOnMain(func() {
+		if appDelegate == firstDelegate {
+			t.Error("second install did not create a fresh delegate instance")
+		}
+		if keyUpMonitor == firstMonitor {
+			t.Error("second install did not replace the key-up monitor")
+		}
+		if got := sharedApp().Send(Sel("delegate")); got != appDelegate {
+			t.Errorf("app delegate = %#x after second install, want %#x", got, appDelegate)
+		}
+		Release(firstDelegate)
+		Release(firstMonitor)
+	})
 	runOnMain(UninstallMacAppDelegate)
+	runOnMain(func() {
+		if appDelegate != 0 || keyUpMonitor != 0 || keyUpBlock != 0 {
+			t.Errorf("uninstall left state behind: delegate %#x, monitor %#x, block %#x",
+				appDelegate, keyUpMonitor, keyUpBlock)
+		}
+		if got := sharedApp().Send(Sel("delegate")); got != 0 {
+			t.Errorf("app delegate = %#x after uninstall, want 0", got)
+		}
+	})
 }
 
 // cmdKeyUpEvent synthesizes a key-up NSEvent with the Command modifier set.

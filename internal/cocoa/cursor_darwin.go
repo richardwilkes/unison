@@ -20,8 +20,8 @@ import (
 type Cursor objc.ID
 
 // NewCursor creates a new custom cursor from the image's non-premultiplied RGBA pixels, or returns 0 if the image
-// cannot be created. The returned cursor has a +2 retain count (alloc/init plus an extra retain), matching the
-// Objective-C bridge this replaced, so a cursor survives its Release while set as the current cursor.
+// cannot be created. The returned cursor is an owned (+1) reference; balance it with Release. Releasing a cursor
+// while it is the current cursor is safe: AppKit retains the current cursor for as long as it is in use.
 func NewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) Cursor {
 	var cursor Cursor
 	WithPool(func() {
@@ -29,8 +29,8 @@ func NewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) Curs
 		if nsImg == 0 {
 			return
 		}
-		cursor = Cursor(Retain(objc.ID(Cls("NSCursor")).Send(Sel("alloc")).Send(Sel("initWithImage:hotSpot:"),
-			nsImg, NSPoint{X: float64(int(hotSpot.X)), Y: float64(int(hotSpot.Y))})))
+		cursor = Cursor(objc.ID(Cls("NSCursor")).Send(Sel("alloc")).Send(Sel("initWithImage:hotSpot:"),
+			nsImg, NSPoint{X: float64(int(hotSpot.X)), Y: float64(int(hotSpot.Y))}))
 		Release(nsImg)
 	})
 	return cursor
@@ -41,7 +41,8 @@ func (c Cursor) Set() {
 	objc.ID(c).Send(Sel("set"))
 }
 
-// Release releases the cursor.
+// Release releases the cursor. Only cursors returned by NewCursor own a reference; the shared built-in cursors
+// (ArrowCursor and friends) are owned by AppKit and must not be released.
 func (c Cursor) Release() {
 	Release(objc.ID(c))
 }
@@ -86,12 +87,13 @@ func ResizeUpDownCursor() Cursor {
 	return builtInCursor("resizeUpDownCursor")
 }
 
-// builtInCursor returns one of NSCursor's shared cursors, retained so that the caller's Release balances, matching
-// the ownership rule of the Objective-C bridge this replaced.
+// builtInCursor returns one of NSCursor's shared cursor singletons. The returned handle is owned by AppKit and lives
+// for the life of the process; it is not retained here and must not be released. (The bridge previously retained on
+// every call and no caller ever balanced that, growing the singletons' retain counts on every mouse enter/exit.)
 func builtInCursor(selName string) Cursor {
 	var cursor Cursor
 	WithPool(func() {
-		cursor = Cursor(Retain(objc.ID(Cls("NSCursor")).Send(Sel(selName))))
+		cursor = Cursor(objc.ID(Cls("NSCursor")).Send(Sel(selName)))
 	})
 	return cursor
 }

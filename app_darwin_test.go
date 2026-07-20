@@ -82,3 +82,13 @@ func TestFinalFinishStartupSurvivesReentrantOpenFiles(t *testing.T) {
 	c.Equal(2, len(received))
 	c.Equal([]string{"c"}, received[1])
 }
+
+// TestAPIWithAutoreleasePool verifies the wrapper finishProcessingEvents brackets its work with runs the function it
+// is given (inside a real autorelease pool on macOS, so autoreleased objects created by tasks and draws are
+// reclaimed each pass instead of accumulating until process exit).
+func TestAPIWithAutoreleasePool(t *testing.T) {
+	c := check.New(t)
+	ran := false
+	apiWithAutoreleasePool(func() { ran = true })
+	c.True(ran)
+}

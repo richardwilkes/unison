@@ -49,6 +49,7 @@ func (f *macMenuFactory) macNewMenu(id int, title string, updater func(Menu)) *m
 		factory: f,
 		id:      id,
 		menu:    m,
+		owned:   true,
 	}
 }
 

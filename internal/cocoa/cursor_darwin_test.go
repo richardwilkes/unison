@@ -45,18 +45,23 @@ func TestBuiltInCursors(t *testing.T) {
 	// AppKit populates the shared cursors (arrowCursor, IBeamCursor) only once NSApplication exists; unison always
 	// creates the shared application at startup before requesting cursors, so the test does too.
 	objc.ID(Cls("NSApplication")).Send(Sel("sharedApplication"))
-	for name, cursor := range map[string]Cursor{
-		"arrow":           ArrowCursor(),
-		"iBeam":           IBeamCursor(),
-		"crosshair":       CrosshairCursor(),
-		"pointingHand":    PointingHandCursor(),
-		"resizeLeftRight": ResizeLeftRightCursor(),
-		"resizeUpDown":    ResizeUpDownCursor(),
+	for name, get := range map[string]func() Cursor{
+		"arrow":           ArrowCursor,
+		"iBeam":           IBeamCursor,
+		"crosshair":       CrosshairCursor,
+		"pointingHand":    PointingHandCursor,
+		"resizeLeftRight": ResizeLeftRightCursor,
+		"resizeUpDown":    ResizeUpDownCursor,
 	} {
+		cursor := get()
 		if cursor == 0 {
 			t.Errorf("%s cursor is 0", name)
 			continue
 		}
-		cursor.Release()
+		// The built-ins are AppKit-owned shared singletons: repeated calls must hand back the same object without
+		// stacking up retains, and callers must not release them.
+		if again := get(); again != cursor {
+			t.Errorf("%s cursor is not a stable singleton: %#x vs %#x", name, cursor, again)
+		}
 	}
 }

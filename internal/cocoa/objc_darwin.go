@@ -27,7 +27,9 @@ package cocoa
 import (
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -116,7 +118,7 @@ func LoadFramework(name string) uintptr {
 	handle, err := purego.Dlopen("/System/Library/Frameworks/"+name+".framework/"+name,
 		purego.RTLD_LAZY|purego.RTLD_GLOBAL)
 	if err != nil {
-		panic(fmt.Errorf("mac: unable to load %s: %w", name, err))
+		panic(fmt.Errorf("cocoa: unable to load %s: %w", name, err))
 	}
 	frameworkHandles[name] = handle
 	return handle
@@ -134,7 +136,7 @@ func LoadAppKit() {
 func NSStringConstant(framework, symbol string) objc.ID {
 	ptr, err := purego.Dlsym(LoadFramework(framework), symbol)
 	if err != nil || ptr == 0 {
-		panic(fmt.Errorf("mac: unable to resolve %s in %s: %w", symbol, framework, err))
+		panic(fmt.Errorf("cocoa: unable to resolve %s in %s: %w", symbol, framework, err))
 	}
 	return *xruntime.PtrFromUintptr[objc.ID](ptr)
 }
@@ -159,7 +161,7 @@ func Cls(name string) objc.Class {
 	LoadAppKit()
 	c := objc.GetClass(name)
 	if c == 0 {
-		panic("mac: no Objective-C class named " + name)
+		panic("cocoa: no Objective-C class named " + name)
 	}
 	clsCache.Store(name, c)
 	return c
@@ -185,7 +187,7 @@ func ensurePoolFuncs() {
 	poolOnce.Do(func() {
 		lib, err := purego.Dlopen("/usr/lib/libobjc.A.dylib", purego.RTLD_LAZY|purego.RTLD_GLOBAL)
 		if err != nil {
-			panic(fmt.Errorf("mac: unable to load libobjc: %w", err))
+			panic(fmt.Errorf("cocoa: unable to load libobjc: %w", err))
 		}
 		purego.RegisterLibFunc(&poolPushFunc, lib, "objc_autoreleasePoolPush")
 		purego.RegisterLibFunc(&poolPopFunc, lib, "objc_autoreleasePoolPop")
@@ -219,14 +221,22 @@ func WithPool(f func()) {
 	f()
 }
 
-// NSStringFromGo returns an autoreleased NSString with the contents of s.
+// NSStringFromGo returns an autoreleased NSString with the contents of s. It never returns nil: invalid UTF-8 byte
+// sequences are replaced with the Unicode replacement character rather than being allowed to turn the whole string
+// into a nil that would raise NSInvalidArgumentException when passed to AppKit (e.g. a clipboard write of a text
+// datum containing invalid UTF-8).
 func NSStringFromGo(s string) objc.ID {
-	return objc.ID(Cls("NSString")).Send(Sel("stringWithUTF8String:"), s)
+	return Autorelease(NewNSString(s))
 }
 
 // NewNSString returns an owned (+1) NSString with the contents of s. Unlike NSStringFromGo, the result is not
 // autoreleased, so it is safe to create from code that may run outside any autorelease pool; balance it with Release.
+// Like NSStringFromGo, it never returns nil: invalid UTF-8 byte sequences are replaced with the Unicode replacement
+// character.
 func NewNSString(s string) objc.ID {
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "�")
+	}
 	return objc.ID(Cls("NSString")).Send(Sel("alloc")).Send(Sel("initWithBytes:length:encoding:"),
 		s, uint64(len(s)), uint64(NSUTF8StringEncoding))
 }

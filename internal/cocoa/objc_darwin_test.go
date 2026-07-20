@@ -45,6 +45,44 @@ func TestNewNSString(t *testing.T) {
 	}
 }
 
+// TestNSStringInvalidUTF8 proves the NSString constructors never return nil for invalid UTF-8. NSString's own
+// UTF-8 decoders reject bad sequences with a nil result, which would flow into AppKit calls (e.g. setString:forType:
+// during a clipboard write) and raise NSInvalidArgumentException; instead, the helpers substitute the Unicode
+// replacement character.
+func TestNSStringInvalidUTF8(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want string
+	}{
+		{in: "bad\x80seq", want: "bad�seq"},
+		{in: "\xff", want: "�"},
+		{in: "truncated\xe2\x82", want: "truncated�"},
+		{in: "fine", want: "fine"},
+	} {
+		str := NewNSString(c.in)
+		if str == 0 {
+			t.Errorf("NewNSString(%q) returned nil", c.in)
+			continue
+		}
+		WithPool(func() {
+			if got := GoStringFromNSString(str); got != c.want {
+				t.Errorf("NewNSString(%q) round-tripped to %q, want %q", c.in, got, c.want)
+			}
+		})
+		Release(str)
+		WithPool(func() {
+			auto := NSStringFromGo(c.in)
+			if auto == 0 {
+				t.Errorf("NSStringFromGo(%q) returned nil", c.in)
+				return
+			}
+			if got := GoStringFromNSString(auto); got != c.want {
+				t.Errorf("NSStringFromGo(%q) round-tripped to %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestNSArrayHelpers(t *testing.T) {
 	WithPool(func() {
 		if count := NSArrayCount(NSArrayFromIDs()); count != 0 {
