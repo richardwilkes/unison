@@ -49,12 +49,12 @@ func (d *TextDecoration) Clone() *TextDecoration {
 
 // DrawText draws the given text using this TextDecoration.
 func (d *TextDecoration) DrawText(canvas *Canvas, text string, pt geom.Point, width float32) {
+	pt.Y += d.BaselineOffset
 	r := geom.NewRect(pt.X, pt.Y-d.Font.Baseline(), width, d.Font.LineHeight())
 	if !xreflect.IsNil(d.BackgroundInk) {
 		backgroundPaint := d.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
 		canvas.DrawRect(r, backgroundPaint)
 	}
-	pt.Y += d.BaselineOffset
 	paint := d.OnBackgroundInk.Paint(canvas, r, paintstyle.Fill)
 	canvas.DrawSimpleString(text, pt, d.Font, paint)
 	if d.Underline || d.StrikeThrough {

@@ -14,7 +14,6 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xmath"
 )
 
 // Text holds data necessary to draw a string using font fallbacks where necessary.
@@ -25,7 +24,11 @@ type Text struct {
 	widths      []float32
 	extents     geom.Size
 	baseline    float32
-	emptyHeight float32
+	// emptyTop and emptyBottom are the vertical bounds reserved by the decoration passed in at creation time, relative
+	// to the baseline (emptyTop <= 0). They serve as the floor for the computed extents, so an empty Text still
+	// reserves a full line and adding runs never shrinks the metrics below what the original decoration requires.
+	emptyTop    float32
+	emptyBottom float32
 }
 
 // NewText creates a new Text. Note that tabs and line endings are not considered.
@@ -36,13 +39,15 @@ func NewText(str string, decoration *TextDecoration) *Text {
 // NewTextFromRunes creates a new Text. Note that tabs and line endings are not considered. This is more efficient than
 // NewText(), since the string doesn't have to be converted to runes first.
 func NewTextFromRunes(runes []rune, decoration *TextDecoration) *Text {
+	b := decoration.Font.Baseline()
 	t := &Text{
 		runes:       make([]rune, 0, len(runes)),
 		decorations: make([]*TextDecoration, 0, len(runes)),
 		widths:      make([]float32, 0, len(runes)),
 		extents:     geom.NewSize(-1, 0),
-		baseline:    decoration.Font.Baseline(),
-		emptyHeight: decoration.Font.LineHeight() + xmath.Abs(decoration.BaselineOffset),
+		baseline:    b - min(decoration.BaselineOffset, 0),
+		emptyTop:    min(decoration.BaselineOffset, 0) - b,
+		emptyBottom: decoration.Font.LineHeight() - b + max(decoration.BaselineOffset, 0),
 	}
 	t.AddRunes(runes, decoration)
 	return t
@@ -129,8 +134,10 @@ func (t *Text) Slice(i, j int) *Text {
 	}
 	if i >= j {
 		return &Text{
+			extents:     geom.NewSize(-1, 0),
 			baseline:    t.baseline,
-			emptyHeight: t.emptyHeight,
+			emptyTop:    t.emptyTop,
+			emptyBottom: t.emptyBottom,
 		}
 	}
 	return &Text{
@@ -139,7 +146,8 @@ func (t *Text) Slice(i, j int) *Text {
 		widths:      t.widths[i:j],
 		extents:     geom.NewSize(-1, 0),
 		baseline:    t.baseline,
-		emptyHeight: t.emptyHeight,
+		emptyTop:    t.emptyTop,
+		emptyBottom: t.emptyBottom,
 	}
 }
 
@@ -177,22 +185,29 @@ func (t *Text) Height() float32 {
 	return t.extents.Height
 }
 
-// Baseline returns the baseline that will be used, which is based on the original font passed in at creation time.
+// Baseline returns the distance from the top of the extents to the baseline the text will be drawn at, accounting for
+// all fonts and baseline offsets in use.
 func (t *Text) Baseline() float32 {
+	t.cache()
 	return t.baseline
 }
 
 func (t *Text) cache() {
 	if t.extents.Width < 0 {
 		t.extents.Width = 0
-		t.extents.Height = t.emptyHeight
+		// Track the union of the vertical bounds of each run, relative to the baseline. Each run reserves its font's
+		// normal line box in addition to the box shifted by its BaselineOffset, so offset runs keep room for
+		// normal-baseline text of the same font and plain text metrics are unchanged.
+		top := t.emptyTop
+		bottom := t.emptyBottom
 		for i, d := range t.decorations {
-			h := d.Font.LineHeight() + xmath.Abs(d.BaselineOffset)
 			t.extents.Width += t.widths[i]
-			if t.extents.Height < h {
-				t.extents.Height = h
-			}
+			b := d.Font.Baseline()
+			top = min(top, min(d.BaselineOffset, 0)-b)
+			bottom = max(bottom, d.Font.LineHeight()-b+max(d.BaselineOffset, 0))
 		}
+		t.extents.Height = bottom - top
+		t.baseline = -top
 	}
 }
 
@@ -270,7 +285,6 @@ func (t *Text) Draw(canvas *Canvas, pt geom.Point) {
 	start := 0
 	current := t.decorations[0]
 	nx := pt.X
-	pt.Y += current.BaselineOffset
 	for i, d := range t.decorations {
 		if i != 0 && !current.Equivalent(d) {
 			current.DrawText(canvas, string(t.runes[start:i]), pt, nx-pt.X)
