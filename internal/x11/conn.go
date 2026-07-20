@@ -734,24 +734,39 @@ func NewConn() (*Conn, error) {
 	c.readClosed = make(chan struct{})
 	go c.sendRequests()
 	go c.readResponses()
-	if err := c.Atoms.init(&c); err != nil {
+	// From here on, a failure must tear the partially-constructed connection down, or the socket and the two goroutines
+	// just started would be leaked.
+	fail := func(err error) (*Conn, error) {
+		c.abortStartup()
 		return nil, err
 	}
+	if err := c.Atoms.init(&c); err != nil {
+		return fail(err)
+	}
 	if c.ExtXFixes = newExtXFixes(&c); !c.ExtXFixes.HasVersion(4, 0) {
-		return nil, errs.New("X11 extension XFIXES 4.0 or higher is required")
+		return fail(errs.New("X11 extension XFIXES 4.0 or higher is required"))
 	}
 	c.ExtMisc = newExtMisc(&c)
 	if c.ExtRandr = newExtRandr(&c); !c.ExtRandr.HasVersion(1, 5) {
-		return nil, errs.New("X11 extension RANDR 1.5 or higher is required")
+		return fail(errs.New("X11 extension RANDR 1.5 or higher is required"))
 	}
 	if c.ExtRender = newExtRender(&c); !c.ExtRender.HasVersion(0, 6) {
-		return nil, errs.New("X11 extension RENDER 0.6 or higher is required")
+		return fail(errs.New("X11 extension RENDER 0.6 or higher is required"))
 	}
 	if c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
 		WindowMaskEventMask, &WindowCreationAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
-		return nil, errs.New("failed to create helper window")
+		return fail(errs.New("failed to create helper window"))
 	}
 	return &c, nil
+}
+
+// abortStartup shuts down a partially-constructed connection whose reader and writer goroutines have already been
+// started. Closing the requests channel makes sendRequests exit and close the socket, which in turn unblocks
+// readResponses; waiting on both completion channels guarantees neither goroutine outlives the failed NewConn.
+func (c *Conn) abortStartup() {
+	close(c.requests)
+	<-c.closed
+	<-c.readClosed
 }
 
 func (c *Conn) parseDisplayEnv() error {
@@ -843,11 +858,13 @@ func (c *Conn) authenticate() error {
 	reasonLen := header.Byte()
 	c.protocolMajorVersion = header.Uint16()
 	c.protocolMinorVersion = header.Uint16()
-	dataLen := header.Uint16() * 4
+	// The length field counts 4-byte words, so widen before multiplying: a setup blob of 16384 words or more (64 KB+,
+	// possible on servers with many screens/visuals) would overflow uint16 arithmetic and desync the stream.
+	dataLen := int(header.Uint16()) * 4
 	if c.protocolMajorVersion != 11 || c.protocolMinorVersion != 0 {
 		return errs.Newf("unsupported X protocol version: %d.%d", c.protocolMajorVersion, c.protocolMinorVersion)
 	}
-	r := NewReader(make([]byte, int(dataLen)))
+	r := NewReader(make([]byte, dataLen))
 	if err := r.Load(c.conn); err != nil {
 		return errs.NewWithCause("failed to read authentication response data", err)
 	}
@@ -927,7 +944,7 @@ func (c *Conn) authenticate() error {
 		})
 		return nil
 	case 2:
-		return errs.New("further authentication required: " + r.ZeroedString(int(dataLen)))
+		return errs.New("further authentication required: " + r.ZeroedString(dataLen))
 	default:
 		return errs.Newf("unexpected response code: %d", code)
 	}
@@ -1065,7 +1082,10 @@ func (c *Conn) sendNewRequest(req *request) error {
 					}
 				}
 			default:
-				c.locateRequest(req.sequence)
+				// Unchecked, event, and flush requests are never registered in the request map, so there is nothing to
+				// clean up here. In particular, a flush request never gets a sequence assigned, and looking up its zero
+				// sequence could evict an unrelated tracked request whose 16-bit sequence wrapped to 0, stranding its
+				// waiter.
 				return nil
 			}
 		case <-c.closed:
@@ -1208,24 +1228,25 @@ func (c *Conn) readResponses() {
 }
 
 func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
+	// Only checked and reply requests are ever registered in the request map, and both always carry a failureChan, so
+	// a located request needs no nil checks on it.
 	if req := c.locateRequest(seq); req != nil {
 		switch {
 		case err != nil:
-			if req.failureChan != nil {
-				req.failureChan <- err
-			} else {
-				c.deliverEvent(&ErrorEvent{Error: err})
-				if req.replyChan != nil {
-					req.replyChan <- nil
-				}
-			}
+			req.failureChan <- err
 		case req.replyChan != nil:
 			req.replyChan <- in
-		case req.failureChan != nil:
+		default:
 			req.failureChan <- nil
 		}
+		return
+	}
+	if err != nil {
+		// Unchecked requests are never tracked in the request map, so a server error for one of them always lands
+		// here. It identifies a real request, not an unknown one, so report it as an error event.
+		c.deliverEvent(&ErrorEvent{Error: err})
 	} else {
-		slog.Warn("received response for unknown request", "sequence", seq, "error", err)
+		slog.Warn("received reply for unknown request", "sequence", seq)
 	}
 }
 
@@ -1345,6 +1366,11 @@ func (c *Conn) WaitEvents(filter func(Event) bool) Event {
 // wake-up causes nil to be returned, since its only purpose is to wake the event loop. nil is also returned if the
 // timeout is hit or the connection has shut down (see Dead).
 func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) Event {
+	// The timer is armed once so the timeout is a fixed deadline for the whole wait; re-arming it per loop iteration
+	// would turn it into a maximum gap between events, letting a steady stream of non-matching events extend the wait
+	// indefinitely.
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	for {
 		if e, ok := c.queuedEvent(filter); ok {
 			return e
@@ -1359,7 +1385,7 @@ func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) E
 				e, _ := c.queuedEvent(nil)
 				return e
 			}
-		case <-time.After(timeout):
+		case <-timer.C:
 			return nil
 		}
 	}
@@ -2053,6 +2079,41 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 			}
 		}
 	}
+}
+
+// IconData builds a _NET_WM_ICON property payload from the given images: for each one, a 32-bit width and height
+// followed by its pixels converted to pre-multiplied BGRA order. The source rows are addressed through PixOffset, since
+// an image may be a sub-image with a non-zero origin and a stride wider than the pixel data.
+func IconData(images []*image.NRGBA) []byte {
+	size := 0
+	for _, img := range images {
+		size += 8 + img.Rect.Dx()*img.Rect.Dy()*4
+	}
+	data := make([]byte, size)
+	offset := 0
+	for _, img := range images {
+		width := img.Rect.Dx()
+		height := img.Rect.Dy()
+		d := data[offset:]
+		offset += 8 + width*height*4
+		binary.LittleEndian.PutUint32(d, uint32(width))
+		binary.LittleEndian.PutUint32(d[4:], uint32(height))
+		pix := d[8:]
+		di := 0
+		for y := range height {
+			si := img.PixOffset(img.Rect.Min.X, img.Rect.Min.Y+y)
+			for range width {
+				a := uint16(img.Pix[si+3])
+				pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+				pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+				pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+				pix[di+3] = img.Pix[si+3]
+				si += 4
+				di += 4
+			}
+		}
+	}
+	return data
 }
 
 // GetKeyboardMapping retrieves the keyboard mapping, which includes the keysyms associated with each keycode in the
