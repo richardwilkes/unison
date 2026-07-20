@@ -19,7 +19,12 @@ import (
 )
 
 var (
-	x11Conn                 *x11.Conn
+	// x11Conn is UI-thread-only state; everything that touches it must run on the UI thread. The one exception is
+	// waking the event loop from another goroutine, which goes through x11PostConn below instead.
+	x11Conn *x11.Conn
+	// x11PostConn mirrors x11Conn for use by apiPostEmptyEvent, which may be called from any goroutine and therefore
+	// cannot read x11Conn without racing apiTerminate's teardown of it on the UI thread.
+	x11PostConn             atomic.Pointer[x11.Conn]
 	linuxColorModeTrackable atomic.Bool
 	linuxDarkModeEnabled    atomic.Bool
 	linuxPortalHasValue     atomic.Bool
@@ -31,6 +36,7 @@ func apiBeginStartup() error {
 	if x11Conn, err = x11.NewConn(); err != nil {
 		return err
 	}
+	x11PostConn.Store(x11Conn)
 	apiFillKeyCodes()
 	return nil
 }
@@ -99,6 +105,10 @@ func apiFinalFinishStartup() {
 
 func apiTerminate() error {
 	if x11Conn != nil {
+		// Withdraw the connection from apiPostEmptyEvent before closing it. A goroutine that loaded the pointer just
+		// before the swap may still call PostEmptyEvent concurrently with (or after) Close, which is safe: it becomes
+		// a no-op once the connection's event channel shuts down.
+		x11PostConn.Store(nil)
 		x11Conn.Close()
 		x11Conn = nil
 	}
@@ -141,7 +151,9 @@ func apiWaitEvents() {
 }
 
 func apiPostEmptyEvent() {
-	if x11Conn != nil {
-		x11Conn.PostEmptyEvent()
+	// This runs on arbitrary goroutines, so it must use the atomic x11PostConn handle rather than x11Conn, whose
+	// non-atomic teardown in apiTerminate would race the check here.
+	if conn := x11PostConn.Load(); conn != nil {
+		conn.PostEmptyEvent()
 	}
 }

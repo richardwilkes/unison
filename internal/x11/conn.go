@@ -681,6 +681,7 @@ type Conn struct {
 	eventQueue               []Event
 	supportedAtoms           []Atom
 	eventQueueLock           sync.Mutex
+	postEventLock            sync.Mutex
 	eventNewMapLock          sync.RWMutex
 	errorCodeLock            sync.RWMutex
 	requestMapLock           sync.RWMutex
@@ -708,6 +709,7 @@ type Conn struct {
 	MinKeyCode               byte
 	MaxKeyCode               byte
 	supportedAtomsCached     bool
+	eventsClosed             bool
 }
 
 // NewConn establishes a connection to the X server.
@@ -1156,7 +1158,7 @@ func (c *Conn) Flush() {
 }
 
 func (c *Conn) readResponses() {
-	defer close(c.events)
+	defer c.closeEvents()
 	defer xio.CloseIgnoringErrors(c.conn)
 	defer close(c.readClosed)
 	for {
@@ -1251,10 +1253,33 @@ func (c *Conn) bail(err error) {
 	}
 }
 
+// closeEvents marks the events channel as closed and then closes it. Holding postEventLock across both steps
+// guarantees that a PostEmptyEvent racing with shutdown either completes its send before the close or observes
+// eventsClosed and skips the send; without it, the send could panic on the just-closed channel. All other sends on
+// the channel happen on the readResponses goroutine, which is the one that calls this, so they need no such guard.
+func (c *Conn) closeEvents() {
+	c.postEventLock.Lock()
+	defer c.postEventLock.Unlock()
+	c.eventsClosed = true
+	close(c.events)
+}
+
 // PostEmptyEvent posts an empty event to the event channel to wake up the event loop without processing an actual X11
-// event.
+// event. Unlike the rest of Conn's event machinery, it may be called from any goroutine, including concurrently with
+// the connection shutting down; once the events channel has been closed, it is a no-op.
 func (c *Conn) PostEmptyEvent() {
-	c.events <- nil
+	c.postEventLock.Lock()
+	defer c.postEventLock.Unlock()
+	if c.eventsClosed {
+		return
+	}
+	select {
+	case c.events <- nil:
+	default:
+		// The events channel is full, so anything waiting on it is already guaranteed to wake without this extra
+		// wake-up. Dropping it avoids blocking while holding postEventLock, which would deadlock a concurrent
+		// closeEvents during shutdown.
+	}
 }
 
 func (c *Conn) queuedEvent(filter func(Event) bool) (Event, bool) {
