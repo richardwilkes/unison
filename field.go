@@ -696,15 +696,7 @@ func (f *Field) handleHome(lineOnly, extend bool) {
 	f.undoID = NextUndoID()
 	switch {
 	case lineOnly:
-		var start int
-		if f.selectionStart == 0 || f.runes[f.selectionStart-1] == '\n' {
-			start = f.findPrevLineBreak(f.selectionStart + 1)
-		} else {
-			start = f.findPrevLineBreak(f.selectionStart)
-		}
-		if start != 0 {
-			start++
-		}
+		_, start := f.lineIndexForPos(f.selectionStart)
 		if extend {
 			f.setSelection(start, f.selectionEnd, f.selectionEnd)
 		} else {
@@ -1214,7 +1206,7 @@ func (f *Field) autoScroll() {
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionStart).Y
 			} else if top+f.lineHeightAt(top) >= rect.Bottom() {
 				f.scrollOffset.Y = 0
-				top = f.FromSelectionIndex(f.selectionEnd).Y
+				top = f.FromSelectionIndex(f.selectionStart).Y
 				f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
 			}
 		}
@@ -1318,16 +1310,6 @@ func (f *Field) isWordPart(index int) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }
 
-func (f *Field) findPrevLineBreak(pos int) int {
-	if pos >= len(f.runes) {
-		pos = len(f.runes) - 1
-	} else {
-		pos--
-	}
-	_, start := f.lineIndexForPos(pos)
-	return max(start-1, 0)
-}
-
 func (f *Field) findNextLineBreak(pos int) int {
 	if pos < 0 {
 		pos = 0
@@ -1408,6 +1390,7 @@ func (f *Field) ApplyFieldState(state *FieldState) {
 	if !slices.Equal(runes, f.runes) {
 		f.runes = runes
 		f.linesBuiltFor = -1
+		f.MarkForRedraw()
 	}
 	f.setSelection(state.SelectionStart, state.SelectionEnd, state.SelectionAnchor)
 }

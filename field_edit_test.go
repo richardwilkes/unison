@@ -156,6 +156,74 @@ func TestMultiLineFieldEndKeyMovesToEndOfLine(t *testing.T) {
 	c.Equal(5, end)
 }
 
+func TestMultiLineFieldHomeKeyMovesToLineStart(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewMultiLineField()
+	f.SetText("first\nsecond")
+	f.SetSelectionTo(9) // Middle of "second"
+	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
+	start, end := f.Selection()
+	c.Equal(6, start)
+	c.Equal(6, end)
+
+	// Home when already at the start of the line stays put.
+	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
+	start, end = f.Selection()
+	c.Equal(6, start)
+	c.Equal(6, end)
+
+	// Shift+Home extends the selection back to the start of the line.
+	f.SetSelectionTo(9)
+	c.True(f.DefaultKeyDown(unison.KeyHome, mod.Shift, false))
+	start, end = f.Selection()
+	c.Equal(6, start)
+	c.Equal(9, end)
+}
+
+func TestMultiLineFieldHomeKeyOnEmptyTrailingLine(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewMultiLineField()
+	f.SetText("ab\n")
+	f.SetSelectionTo(3)
+
+	// The caret is on the empty line following the trailing newline, so Home must keep it there rather than jumping
+	// to the start of the text.
+	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
+	start, end := f.Selection()
+	c.Equal(3, start)
+	c.Equal(3, end)
+}
+
+func TestMultiLineFieldHomeKeyWithLineBreakAtStart(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewMultiLineField()
+	f.SetText("\nabc")
+	f.SetSelectionTo(2)
+
+	// The line containing the caret starts just past the newline at index 0; Home must not treat "line break at
+	// index 0" as "no line break" and move to the start of the text.
+	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
+	start, end := f.Selection()
+	c.Equal(1, start)
+	c.Equal(1, end)
+
+	// Shift+Home from the same spot extends back to the line start only.
+	f.SetSelectionTo(2)
+	c.True(f.DefaultKeyDown(unison.KeyHome, mod.Shift, false))
+	start, end = f.Selection()
+	c.Equal(1, start)
+	c.Equal(2, end)
+}
+
+func TestMultiLineFieldHomeKeyOnEmptyField(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewMultiLineField()
+	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
+	start, end := f.Selection()
+	c.Equal(0, start)
+	c.Equal(0, end)
+}
+
 func TestFieldCanCutCopyTrackSelection(t *testing.T) {
 	c := check.New(t)
 	f := unison.NewField()
