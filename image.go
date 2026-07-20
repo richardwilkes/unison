@@ -242,7 +242,7 @@ func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 		Width:     int32(width),
 		Height:    int32(height),
 		ColorType: imagecore.ColorTypeRGBA8888,
-		AlphaType: img.image.AlphaType(),
+		AlphaType: imagecore.AlphaTypeUnpremul,
 	}, pixels, width*4, 0, 0, imagecore.CachingDisallow) {
 		return nil, errs.New("unable to read raw pixels from image")
 	}

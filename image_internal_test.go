@@ -10,10 +10,15 @@
 package unison
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"runtime"
 	"testing"
 	"time"
 
+	"github.com/richardwilkes/canvas/codecs"
 	"github.com/richardwilkes/canvas/gpu/gl"
 	"github.com/richardwilkes/canvas/imagecore"
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -227,6 +232,50 @@ func TestImageDisposeStopsGCCleanup(t *testing.T) {
 	_, present := imageCtxMap[ctx][hash]
 	c.True(present, "a stopped cleanup must not evict a successor's texture")
 	c.False(successor.released, "a stopped cleanup must not release a successor's texture")
+}
+
+// TestImageToNRGBAUnpremultiplies verifies that ToNRGBA returns non-premultiplied pixels even when the underlying
+// image is premultiplied, as it is for images decoded from encoded data with transparency. Before this, ToNRGBA read
+// pixels using the image's own alpha type, so translucent pixels came back premultiplied (darkened) despite
+// image.NRGBA's non-premultiplied contract.
+func TestImageToNRGBAUnpremultiplies(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	colors := []color.NRGBA{
+		{R: 200, G: 100, B: 40, A: 128},
+		{R: 255, G: 255, B: 255, A: 51},
+		{R: 10, G: 20, B: 30, A: 255},
+		{R: 0, G: 0, B: 0, A: 0},
+	}
+	src := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for i, col := range colors {
+		src.SetNRGBA(i%w, i/w, col)
+	}
+	var buf bytes.Buffer
+	c.NoError(png.Encode(&buf, src))
+
+	codecs.Register() // normally done at app startup, which these headless tests skip
+	img, err := NewImageFromBytes(buf.Bytes(), geom.NewPoint(1, 1))
+	c.NoError(err)
+	defer img.Dispose()
+	c.Equal(imagecore.AlphaTypePremul, img.image.AlphaType(),
+		"decoded translucent PNGs must be premultiplied for this test to exercise the conversion")
+
+	nrgba, err := img.ToNRGBA()
+	c.NoError(err)
+	for i, want := range colors {
+		got := nrgba.NRGBAAt(i%w, i/w)
+		c.Equal(want.A, got.A, "pixel %d alpha", i)
+		// The premultiply/unpremultiply round trip can shift color channels by a little due to rounding.
+		for ch, pair := range [][2]uint8{{want.R, got.R}, {want.G, got.G}, {want.B, got.B}} {
+			diff := int(pair[0]) - int(pair[1])
+			if diff < 0 {
+				diff = -diff
+			}
+			c.True(diff <= 2, "pixel %d channel %d: want %d, got %d", i, ch, pair[0], pair[1])
+		}
+	}
 }
 
 // TestImageForCanvasReturnsRasterForNilContext covers the non-texture branch of imageForCanvas: with no GL context it
