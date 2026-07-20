@@ -730,7 +730,9 @@ func NewConn() (*Conn, error) {
 	c.dataTypeMap = make(map[string]Atom)
 	c.reverseDataTypeMap = make(map[Atom]string)
 	c.requests = make(chan *request, 128)
-	c.events = make(chan Event, 8192)
+	// The events channel carries only nil wake-up signals and the closed state; actual events accumulate in the
+	// unbounded eventQueue (see deliverEvent), so a single pending signal is always enough.
+	c.events = make(chan Event, 1)
 	c.closed = make(chan struct{})
 	c.readClosed = make(chan struct{})
 	go c.sendRequests()
@@ -765,30 +767,27 @@ func (c *Conn) parseDisplayEnv() error {
 	if c.envDisplay[0] == '/' {
 		c.socket = c.envDisplay[0:colon]
 	} else {
-		if slash := strings.LastIndex(c.envDisplay, "/"); slash >= 0 {
+		if slash := strings.LastIndex(c.envDisplay[:colon], "/"); slash >= 0 {
 			c.protocol = c.envDisplay[0:slash]
 			c.host = c.envDisplay[slash+1 : colon]
 		} else {
 			c.host = c.envDisplay[0:colon]
 		}
 	}
+	// The screen separator dot may only be searched for after the colon, since hostnames routinely contain dots (e.g.
+	// DISPLAY=myhost.example.com:0). c.display must end up holding just the display number so the Xauthority display
+	// matching in readAuthority works for both local and remote displays.
 	id := c.envDisplay[colon+1:]
-	if id == "" {
-		return errs.New(invalidDisplayErr + c.envDisplay)
-	}
-	dot := strings.LastIndex(c.envDisplay, ".")
-	if dot < 0 {
-		c.display = c.envDisplay[0:]
-	} else {
-		c.display = c.envDisplay[0:dot]
-		if c.screen = c.envDisplay[dot+1:]; c.screen != "" {
+	if dot := strings.Index(id, "."); dot >= 0 {
+		if c.screen = id[dot+1:]; c.screen != "" {
 			var err error
-			if c.DefaultScreen, err = strconv.Atoi(c.screen); err != nil {
+			if c.DefaultScreen, err = strconv.Atoi(c.screen); err != nil || c.DefaultScreen < 0 {
 				return errs.New(invalidDisplayErr + c.envDisplay)
 			}
 		}
+		id = id[:dot]
 	}
-	c.display = strings.TrimPrefix(c.display, ":")
+	c.display = id
 	var err error
 	if c.displayNum, err = strconv.Atoi(id); err != nil || c.displayNum < 0 {
 		return errs.New(invalidDisplayErr + c.envDisplay)
@@ -1203,7 +1202,7 @@ func (c *Conn) readResponses() {
 			f, ok := c.eventNewMap[eventID]
 			c.eventNewMapLock.RUnlock()
 			if ok {
-				c.events <- f(r)
+				c.deliverEvent(f(r))
 			} else {
 				slog.Warn("dropped unhandled X11 event", "id", eventID, "sequence", seq)
 			}
@@ -1218,7 +1217,7 @@ func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
 			if req.failureChan != nil {
 				req.failureChan <- err
 			} else {
-				c.events <- &ErrorEvent{Error: err}
+				c.deliverEvent(&ErrorEvent{Error: err})
 				if req.replyChan != nil {
 					req.replyChan <- nil
 				}
@@ -1249,7 +1248,24 @@ func (c *Conn) bail(err error) {
 	case <-c.closed:
 	default:
 		errs.Log(err)
-		c.events <- &ErrorEvent{Error: err}
+		c.deliverEvent(&ErrorEvent{Error: err})
+	}
+}
+
+// deliverEvent appends an event to the event queue and wakes any waiter. Delivery must never block: readResponses is
+// the sole reader of the connection, and the main thread may be parked in sendNewRequest waiting for a reply that
+// readResponses has not reached yet in the stream. If delivery blocked on a bounded channel behind such a backlog, the
+// reply would never be read and the connection would deadlock, so events accumulate in the unbounded queue and the
+// events channel carries only a wake-up signal. This is only called from the readResponses goroutine, which is also
+// the goroutine that closes the events channel (after all delivery is done), so the send needs no closed-channel
+// guard.
+func (c *Conn) deliverEvent(e Event) {
+	c.eventQueueLock.Lock()
+	c.eventQueue = append(c.eventQueue, e)
+	c.eventQueueLock.Unlock()
+	select {
+	case c.events <- nil:
+	default: // A wake-up is already pending, which is enough for any waiter to drain the queue.
 	}
 }
 
@@ -1262,6 +1278,15 @@ func (c *Conn) closeEvents() {
 	defer c.postEventLock.Unlock()
 	c.eventsClosed = true
 	close(c.events)
+}
+
+// Dead returns true once the connection's event stream has shut down, whether through an orderly Close or because the
+// connection to the X server was lost. Once dead, no further events will ever be delivered and all new requests fail
+// immediately.
+func (c *Conn) Dead() bool {
+	c.postEventLock.Lock()
+	defer c.postEventLock.Unlock()
+	return c.eventsClosed
 }
 
 // PostEmptyEvent posts an empty event to the event channel to wake up the event loop without processing an actual X11
@@ -1298,51 +1323,44 @@ func (c *Conn) queuedEvent(filter func(Event) bool) (Event, bool) {
 }
 
 // WaitEvents blocks until the next event is available. If the optional filter function is provided, only events for
-// which the filter returns true will be returned, and other events will be queued for later retrieval, except for the
-// nil events posted by PostEmptyEvent, which are discarded, since their only purpose is to wake up a waiter. nil may
-// be returned if the connection is closed.
+// which the filter returns true will be returned, and other events remain queued for later retrieval; wake-ups posted
+// by PostEmptyEvent are ignored while a filter is in effect. Without a filter, a wake-up causes nil to be returned,
+// since its only purpose is to wake the event loop. nil is also returned once the connection has shut down (see Dead).
 func (c *Conn) WaitEvents(filter func(Event) bool) Event {
-	e, ok := c.queuedEvent(filter)
-	if ok {
-		return e
-	}
 	for {
-		if e, ok = <-c.events; !ok {
-			return nil
-		}
-		if filter == nil || filter(e) {
+		if e, ok := c.queuedEvent(filter); ok {
 			return e
 		}
-		if e != nil {
-			c.eventQueueLock.Lock()
-			c.eventQueue = append(c.eventQueue, e)
-			c.eventQueueLock.Unlock()
+		if _, open := <-c.events; !open {
+			e, _ := c.queuedEvent(filter)
+			return e
+		}
+		if filter == nil {
+			e, _ := c.queuedEvent(nil)
+			return e
 		}
 	}
 }
 
 // WaitEventsUntil blocks until the next event is available or the specified timeout is reached. If the optional filter
-// function is provided, only events for which the filter returns true will be returned, and other events will be queued
-// for later retrieval, except for the nil events posted by PostEmptyEvent, which are discarded, since their only
-// purpose is to wake up a waiter. nil may be returned if the connection is closed or the timeout is hit.
+// function is provided, only events for which the filter returns true will be returned, and other events remain queued
+// for later retrieval; wake-ups posted by PostEmptyEvent are ignored while a filter is in effect. Without a filter, a
+// wake-up causes nil to be returned, since its only purpose is to wake the event loop. nil is also returned if the
+// timeout is hit or the connection has shut down (see Dead).
 func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) Event {
-	e, ok := c.queuedEvent(filter)
-	if ok {
-		return e
-	}
 	for {
+		if e, ok := c.queuedEvent(filter); ok {
+			return e
+		}
 		select {
-		case e, ok = <-c.events:
-			if !ok {
-				return nil
-			}
-			if filter == nil || filter(e) {
+		case _, open := <-c.events:
+			if !open {
+				e, _ := c.queuedEvent(filter)
 				return e
 			}
-			if e != nil {
-				c.eventQueueLock.Lock()
-				c.eventQueue = append(c.eventQueue, e)
-				c.eventQueueLock.Unlock()
+			if filter == nil {
+				e, _ := c.queuedEvent(nil)
+				return e
 			}
 		case <-time.After(timeout):
 			return nil
@@ -1351,31 +1369,11 @@ func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) E
 }
 
 // PollEvents returns the next available event matching the optional filter, or nil if no event is immediately
-// available. Events that don't match the filter are queued for later retrieval. The nil wake-up events posted by
-// PostEmptyEvent are skipped, so a nil result always means no actual events are pending.
+// available. Events that don't match the filter remain queued for later retrieval. A nil result always means no
+// matching events are pending.
 func (c *Conn) PollEvents(filter func(Event) bool) Event {
-	if e, ok := c.queuedEvent(filter); ok {
-		return e
-	}
-	for {
-		select {
-		case e, ok := <-c.events:
-			if !ok {
-				return nil
-			}
-			if e == nil {
-				continue // Skip wake-up events
-			}
-			if filter == nil || filter(e) {
-				return e
-			}
-			c.eventQueueLock.Lock()
-			c.eventQueue = append(c.eventQueue, e)
-			c.eventQueueLock.Unlock()
-		default:
-			return nil
-		}
-	}
+	e, _ := c.queuedEvent(filter)
+	return e
 }
 
 func (c *Conn) hasExtension(name string, versionOpCode byte, versionIs16Bit bool, majorMax, minorMax uint32) extensionInfo {

@@ -71,10 +71,14 @@ var (
 	glxInitOnce sync.Once
 	glxInitErr  error
 
-	xOpenDisplay  func(name *byte) Display
-	xCloseDisplay func(display Display) int32
-	xFree         func(ptr unsafe.Pointer) int32
-	xSync         func(display Display, discard int32) int32
+	xOpenDisplay     func(name *byte) Display
+	xCloseDisplay    func(display Display) int32
+	xFree            func(ptr unsafe.Pointer) int32
+	xSync            func(display Display, discard int32) int32
+	xSetErrorHandler func(handler uintptr) uintptr
+
+	// glxNoopErrorHandler is a purego callback for an Xlib error handler that ignores the error, created in initGLX.
+	glxNoopErrorHandler uintptr
 
 	glXChooseFBConfig          func(display Display, screen int32, attribs, count *int32) *FBConfig
 	glXGetVisualFromFBConfig   func(display Display, config FBConfig) *xVisualInfo
@@ -138,6 +142,7 @@ func initGLX() error {
 			{&xCloseDisplay, "XCloseDisplay", libX11},
 			{&xFree, "XFree", libX11},
 			{&xSync, "XSync", libX11},
+			{&xSetErrorHandler, "XSetErrorHandler", libX11},
 			{&glXChooseFBConfig, "glXChooseFBConfig", libGL},
 			{&glXGetVisualFromFBConfig, "glXGetVisualFromFBConfig", libGL},
 			{&glXGetFBConfigAttrib, "glXGetFBConfigAttrib", libGL},
@@ -158,6 +163,8 @@ func initGLX() error {
 		if addr := glXGetProcAddressARB("glXCreateContextAttribsARB"); addr != 0 {
 			purego.RegisterFunc(&glXCreateContextAttribsARB, addr)
 		}
+		// An Xlib error handler has the C signature int (*)(Display *, XErrorEvent *); the return value is ignored.
+		glxNoopErrorHandler = purego.NewCallback(func(_, _ uintptr) uintptr { return 0 })
 	})
 	return glxInitErr
 }
@@ -273,7 +280,16 @@ func (glx *GLX) CreateContext() GLXContext {
 		glxContextMinorVersionARB, 2,
 		0, // None
 	}
-	return glXCreateContextAttribsARB(glx.display, glx.fbConfig, nil, 1, &attrs[0])
+	// glXCreateContextAttribsARB raises X protocol errors (e.g. GLXBadFBConfig) when the requested GL version or
+	// configuration is unsupported, and Xlib's default error handler prints a message and terminates the process.
+	// Install a no-op handler around the call (as GLFW does) so such failures surface as a nil context the caller can
+	// handle, and sync before restoring it so any error the call raised is processed while the no-op handler is still
+	// installed.
+	prev := xSetErrorHandler(glxNoopErrorHandler)
+	context := glXCreateContextAttribsARB(glx.display, glx.fbConfig, nil, 1, &attrs[0])
+	xSync(glx.display, 0)
+	xSetErrorHandler(prev)
+	return context
 }
 
 // CreateWindow creates a new GLX drawable window for the specified X11 window ID.

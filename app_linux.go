@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/x11"
@@ -141,6 +143,16 @@ func apiWaitEvents() {
 	// once, so that a nested event loop started by a handler (such as the one used for the source side of drag & drop)
 	// is able to see the events that are still pending.
 	x11ProcessEvent(x11Conn.WaitEvents(nil))
+	if x11Conn.Dead() {
+		// The connection to the X server was lost (server exit, dropped remote session, etc.). No further events can
+		// ever arrive and every request now fails immediately, so returning would leave the main loop spinning at full
+		// speed on a dead connection. Do what Xlib's fatal IO error handler does and exit, but through xos.Exit so the
+		// registered exit hooks (including the normal quit path) still get a chance to clean up. An orderly quit never
+		// reaches this point, since it tears the connection down from within xos.Exit and the process terminates
+		// before the main loop runs again.
+		errs.Log(errs.New("connection to X server lost"))
+		xos.Exit(1)
+	}
 	for {
 		e := x11Conn.PollEvents(nil)
 		if xreflect.IsNil(e) {
