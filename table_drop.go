@@ -217,19 +217,35 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 	if move {
 		// Remove the drag rows from their original places
 		commonParents := collectCommonParents(rows)
+		sameTable := data.Table == d.Table
 		for parent, list := range commonParents {
 			var children []T
 			if parent == zero {
-				children = data.Table.RootRows()
+				// Use the model's root rows rather than the table's RootRows(), since the latter returns the flattened
+				// filter results when the source table has a filter applied, which would replace the model's real
+				// hierarchy with the filter results below.
+				children = data.Table.Model.RootRows()
 			} else {
 				children = parent.Children()
 			}
-			list = d.pruneRows(parent, children, makeRowSet(list))
+			list = d.pruneRows(parent, children, makeRowSet(list), sameTable)
 			if parent == zero {
 				data.Table.Model.SetRootRows(list)
 			} else {
 				parent.SetChildren(list)
 			}
+		}
+		if data.Table.filteredRows != nil {
+			// Remove the moved rows and their descendants from the source table's filtered view, since they are no
+			// longer part of its model.
+			data.Table.filteredRows = slices.DeleteFunc(slices.Clone(data.Table.filteredRows), func(row T) bool {
+				for _, r := range rows {
+					if RowContainsRow(r, row) {
+						return true
+					}
+				}
+				return false
+			})
 		}
 		data.Table.ClearSelection()
 		data.Table.SyncToModel()
@@ -294,12 +310,17 @@ func (d *TableDrop[T, U]) DragExitCallback() {
 	d.Table.FlushDrawing()
 }
 
-func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[tid.TID]bool) []T {
-	movingToThisParent := d.TargetParent == parent
+func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[tid.TID]bool, sameTable bool) []T {
+	// Only adjust TargetIndex when the removals come from the destination table's target parent. Without the sameTable
+	// check, a cross-table move of root rows would match here (both parents are the zero value) and shift the insertion
+	// point in the destination based on removals from the source.
+	movingToThisParent := sameTable && d.TargetParent == parent
 	list := make([]T, 0, len(rows))
 	for i, row := range rows {
 		if movingSet[row.ID()] {
-			if movingToThisParent && d.TargetIndex >= i {
+			// Only removals strictly before the insertion point shift it; a row being removed at the insertion point
+			// itself sits after the insertion, so dropping rows directly above themselves remains a no-op.
+			if movingToThisParent && d.TargetIndex > i {
 				d.TargetIndex--
 			}
 		} else {
