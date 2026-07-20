@@ -30,9 +30,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xio"
 )
 
-// MaxRequestSize is the maximum size of an X11 request in bytes.
-const MaxRequestSize = math.MaxUint16 * 4
-
 // Constants for X11 request opcodes.
 const (
 	opCreateWindow = 1 + iota
@@ -1997,46 +1994,63 @@ func (c *Conn) FreeGC(gcID GCID) {
 }
 
 // PutImage uploads the pixel data from the provided image to the specified drawable at the given destination
-// coordinates using the provided graphics context. The image is sent in chunks if it exceeds the maximum request size
-// allowed by the X server in a single request.
+// coordinates using the provided graphics context. The image is sent in multiple requests if it exceeds the maximum
+// request size advertised by the X server.
 func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *image.NRGBA) {
-	width := uint16(img.Rect.Dx())
-	w := int(width)
-	height := uint16(img.Rect.Dy())
-	h := int(height)
-	rowsPer := (MaxRequestSize - 24) / (w * 4)
-	for y := 0; y < h; y += rowsPer {
-		rows := min(rowsPer, h-y)
-
-		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images.
-		pix := make([]byte, rows*w*4)
-		base := y * img.Stride
-		for i := 0; i < len(pix); i += 4 {
-			si := base + i
-			a := uint16(img.Pix[si+3])
-			pix[i] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
-			pix[i+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
-			pix[i+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
-			pix[i+3] = img.Pix[si+3]
+	width := img.Rect.Dx()
+	height := img.Rect.Dy()
+	if width <= 0 || height <= 0 {
+		return
+	}
+	send := func(x, y, cols, rows int) {
+		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images. The source rows
+		// are addressed through PixOffset, since the image may be a sub-image with a non-zero origin and a stride
+		// wider than the pixel data.
+		pix := make([]byte, cols*rows*4)
+		di := 0
+		for row := y; row < y+rows; row++ {
+			si := img.PixOffset(img.Rect.Min.X+x, img.Rect.Min.Y+row)
+			for range cols {
+				a := uint16(img.Pix[si+3])
+				pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+				pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+				pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+				pix[di+3] = img.Pix[si+3]
+				si += 4
+				di += 4
+			}
 		}
-
-		w := NewWriter(24 + pad4(len(pix)))
+		w := NewWriter(24 + len(pix))
 		w.Byte(opPutImage)
 		w.Byte(byte(ImageFormatZPixmap))
-		w.Uint16(6 + uint16(pad4(len(pix))/4))
+		w.Uint16(6 + uint16(len(pix)/4))
 		w.DrawableID(drawable)
 		w.GCID(gc)
-		w.Uint16(width)
+		w.Uint16(uint16(cols))
 		w.Uint16(uint16(rows))
-		w.Int16(dstX)
+		w.Int16(dstX + int16(x))
 		w.Int16(dstY + int16(y))
 		w.Byte(0)
 		w.Byte(32)
 		w.Zero(2)
 		w.Bytes(pix)
-		w.ZeroTo4ByteAlignment()
 		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
 			errs.Log(err)
+		}
+	}
+	// The request length field counts 4-byte words and must cover the 24-byte (6-word) header plus the pixel data, so
+	// each request can carry at most maximumRequestLength - 6 pixels at 4 bytes per pixel.
+	maxPixels := max(int(c.maximumRequestLength)-6, 1)
+	if rowsPer := maxPixels / width; rowsPer > 0 {
+		for y := 0; y < height; y += rowsPer {
+			send(0, y, width, min(rowsPer, height-y))
+		}
+	} else {
+		// A single row holds more pixels than the largest request can carry, so split each row into spans.
+		for y := range height {
+			for x := 0; x < width; x += maxPixels {
+				send(x, y, min(maxPixels, width-x), 1)
+			}
 		}
 	}
 }

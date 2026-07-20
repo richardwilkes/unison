@@ -218,10 +218,8 @@ func (dt *DropTarget) RefreshDragOver(pt POINT, mods mod.Modifiers) {
 }
 
 func packedScreenPt(pt uintptr) POINT {
-	return POINT{
-		X: int32(pt & 0xFFFFFFFF),
-		Y: int32(pt >> 32),
-	}
+	x, y := unpackPoint(pt)
+	return POINT{X: x, Y: y}
 }
 
 func dropTargetClientPt(w DragTargetWindow, pt uintptr) geom.Point {

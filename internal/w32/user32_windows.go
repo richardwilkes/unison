@@ -968,6 +968,9 @@ type ChangeFilterStruct struct {
 }
 
 // WINDOWPLACEMENT https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-windowplacement
+// The C declaration also contains a trailing "RECT rcDevice" field, but only when _MAC is defined, so it must not be
+// included here: with it, Length would be 60 instead of the 44 Windows expects and Get/SetWindowPlacement would reject
+// the structure.
 type WINDOWPLACEMENT struct {
 	Length         uint32
 	Flags          uint32
@@ -975,7 +978,6 @@ type WINDOWPLACEMENT struct {
 	MinPosition    POINT
 	MaxPosition    POINT
 	NormalPosition RECT
-	Device         RECT
 }
 
 // WINDOWPOS https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-windowpos
@@ -1193,7 +1195,7 @@ func EnumDisplayDevicesW(device string, iDevNum, dwFlags uint32, displayDevice *
 		}
 		runtime.KeepAlive(lpDevice)
 	}
-	displayDevice.size = uint32(unsafe.Sizeof(displayDevice))
+	displayDevice.size = uint32(unsafe.Sizeof(*displayDevice))
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := enumDisplayDevicesWProc.Call(uintptr(unsafe.Pointer(lpDevice)), uintptr(iDevNum),
 		uintptr(unsafe.Pointer(displayDevice)), uintptr(dwFlags))
@@ -1609,7 +1611,8 @@ func WaitMessage() bool {
 
 // WindowFromPoint https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-windowfrompoint
 func WindowFromPoint(point POINT) windows.HWND {
+	// The Win64 ABI passes the 8-byte POINT structure by value as a single packed register, not as two arguments.
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	hwnd, _, _ := windowFromPointProc.Call(uintptr(point.X), uintptr(point.Y))
+	hwnd, _, _ := windowFromPointProc.Call(packPoint(point.X, point.Y))
 	return windows.HWND(hwnd)
 }
