@@ -1245,6 +1245,9 @@ func (w *Window) mouseExit() {
 }
 
 func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
+	// Deliberately not gated by okToProcess(). Platforms deliver wheel events to the window under the cursor rather
+	// than the focused window, so scrolling a window blocked by a modal is both possible and desirable, as it only
+	// adjusts the view and cannot trigger actions.
 	w.lastKeyModifiers = mods
 	if w.MouseWheelCallback != nil {
 		stop := false
@@ -1272,6 +1275,12 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 }
 
 func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
+	if !w.okToProcess() {
+		// A window blocked by a modal may still hold the platform focus (see the comment in gainedFocus), so route
+		// keyboard input to the top modal window rather than processing it here.
+		modalStack[len(modalStack)-1].keyPressed(key, mods)
+		return
+	}
 	w.lastKeyModifiers = mods
 	repeat := w.pressedKeys[key]
 	w.pressedKeys[key] = true
@@ -1312,6 +1321,11 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 }
 
 func (w *Window) runeTyped(ch rune) {
+	if !w.okToProcess() {
+		// See the comment in keyPressed.
+		modalStack[len(modalStack)-1].runeTyped(ch)
+		return
+	}
 	if w.root.preRuneTyped(w, ch) {
 		return
 	}
@@ -1344,6 +1358,13 @@ func (w *Window) runeTyped(ch rune) {
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	delete(w.pressedKeys, key)
+	if !w.okToProcess() {
+		// The matching key down was routed to the top modal window, so deliver the key up there as well. The
+		// bookkeeping above is still done locally so that releases synthesized by lostFocus keep this window's pressed
+		// key state clean.
+		modalStack[len(modalStack)-1].keyReleased(key, mods)
+		return
+	}
 	if w.root.preKeyUp(w, key, mods) {
 		return
 	}
