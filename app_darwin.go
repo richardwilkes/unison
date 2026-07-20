@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
@@ -24,10 +23,10 @@ var (
 )
 
 func apiBeginStartup() error {
-	cocoa.AppShouldTerminateCallback = func() {
-		closeAllWindows()
-		xos.Exit(0)
-	}
+	// System-initiated termination (e.g. Dock -> Quit, logout) takes the same path as the in-app Quit menu item, so
+	// the AllowQuitCallback and per-window AllowCloseCallback vetoes are honored for both. The delegate always reports
+	// NSTerminateCancel to AppKit, so when the request is permitted, AttemptQuit is responsible for actually exiting.
+	cocoa.AppShouldTerminateCallback = AttemptQuit
 	cocoa.AppDidChangeScreenParameters = func() {
 		for _, w := range windowList {
 			w.glCtx.ctx.Update()

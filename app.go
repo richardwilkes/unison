@@ -295,24 +295,27 @@ func finishQuit() error {
 	return apiTerminate()
 }
 
-// AttemptQuit initiates the termination sequence.
+// AttemptQuit initiates the termination sequence. The AllowQuitCallback is consulted first, then each open window is
+// asked to close, honoring any AllowCloseCallback vetoes. If the quit request or any window close is denied, the app
+// is not terminated. This is also the path taken for system-initiated termination requests (e.g. Dock -> Quit or
+// logout on macOS), so both quit paths behave identically.
 func AttemptQuit() {
-	if allowQuit() {
+	if allowQuit() && closeAllWindows() {
 		quitting()
 	}
 }
 
-func closeAllWindows() { //nolint:unused // Not all platforms use this
-	var last *Window
-	for len(windowList) > 0 {
-		windowList[0].requestClose()
-		if len(windowList) != 0 {
-			if windowList[0] == last {
-				break
-			}
-			last = windowList[0]
+// closeAllWindows attempts to close each open window, consulting each window's AllowCloseCallback at most once. A
+// window that vetoes the close is left open, but does not prevent the remaining windows from being asked. Returns
+// true if all windows were closed. Note that closing the last window may terminate the app before this function
+// returns, if permitted by quitAfterLastWindowClosed().
+func closeAllWindows() bool {
+	for _, wnd := range Windows() {
+		if wnd.IsValid() {
+			wnd.requestClose()
 		}
 	}
+	return len(windowList) == 0
 }
 
 // Beep plays the system beep sound.
