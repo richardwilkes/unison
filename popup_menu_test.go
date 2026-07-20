@@ -122,6 +122,18 @@ func TestPopupRemoveItemByValue(t *testing.T) {
 	c.Equal("c", p.Text())
 }
 
+func TestPopupRemoveMissingItemLeavesSelectionAlone(t *testing.T) {
+	c := check.New(t)
+	p := newTestPopup("a", "b", "c")
+	p.SelectIndex(2)
+	p.RemoveItem("missing")
+	c.Equal(3, p.ItemCount())
+	c.Equal([]int{2}, p.SelectedIndexes())
+	item, ok := p.Selected()
+	c.True(ok)
+	c.Equal("c", item)
+}
+
 func TestPopupSetItemEnabledAndReplace(t *testing.T) {
 	c := check.New(t)
 	p := newTestPopup("a", "b")

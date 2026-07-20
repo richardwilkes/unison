@@ -269,21 +269,9 @@ func (p *PopupMenu[T]) RemoveAllItems() {
 	p.MarkForRedraw()
 }
 
-// RemoveItem from the PopupMenu.
+// RemoveItem from the PopupMenu. Does nothing if the item is not present.
 func (p *PopupMenu[T]) RemoveItem(item T) {
-	index := p.IndexOfItem(item)
-	indexes := p.SelectedIndexes()
-	p.RemoveItemAt(index)
-	for _, one := range indexes {
-		if one >= index {
-			delete(p.selection, one)
-		}
-	}
-	for _, one := range indexes {
-		if one > index {
-			p.selection[one-1] = true
-		}
-	}
+	p.RemoveItemAt(p.IndexOfItem(item))
 }
 
 // RemoveItemAt the specified index from the PopupMenu.
