@@ -249,10 +249,6 @@ func (m *menu) createPopup() {
 	}
 	if activeWnd := ActiveWindow(); activeWnd != nil {
 		activeWnd.root.closeMenuStackStoppingAt(m.titleItem.menu)
-		root := m
-		for root.titleItem.menu != nil {
-			root = root.titleItem.menu
-		}
 		m.popupPanel = m.newPanel(false)
 		m.popupPanel.Pack()
 		activeWnd.root.insertMenu(m.popupPanel)

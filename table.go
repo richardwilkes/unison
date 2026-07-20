@@ -1573,7 +1573,7 @@ func (t *Table[T]) DefaultSizes(_ geom.Size) (minSize, prefSize, maxSize geom.Si
 			prefSize.Width--
 		}
 	}
-	if t.ShowRowDivider {
+	if t.ShowRowDivider && endBeforeRow > startRow {
 		prefSize.Height += float32((endBeforeRow - startRow) - 1)
 	}
 	if border := t.Border(); border != nil {

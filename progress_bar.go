@@ -55,6 +55,11 @@ type ProgressBar struct {
 // NewProgressBar creates a new progress bar. A max of zero will create an indeterminate progress bar, i.e. one whose
 // meter animates back and forth.
 func NewProgressBar(maximum float32) *ProgressBar {
+	if maximum < 0 {
+		// Clamp just as SetMaximum() does, since DefaultDraw() draws a negative maximum as an indeterminate meter but
+		// only schedules the animation when the maximum is exactly zero, which would leave the meter frozen.
+		maximum = 0
+	}
 	p := &ProgressBar{
 		ProgressBarTheme: DefaultProgressBarTheme,
 		maximum:          maximum,

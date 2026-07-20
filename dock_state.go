@@ -101,7 +101,15 @@ func (d *DockState) apply(node DockLayoutNode, keyToDockable func(string) Dockab
 	case *DockLayout:
 		t.divider = d.Divider
 		t.Horizontal = d.Horizontal
-		for i, child := range d.Children {
+		children := d.Children
+		if len(children) > len(t.nodes) {
+			// A layout can only hold two children. More than that can only come from a malformed (e.g. hand-edited)
+			// saved state, so reject the extras rather than panicking on the fixed-size nodes array.
+			errs.Log(errs.New("dock state layout has more than two children; ignoring the extras"),
+				"children", len(children))
+			children = children[:len(t.nodes)]
+		}
+		for i, child := range children {
 			if child.Type == LayoutType {
 				t.nodes[i] = &DockLayout{
 					dock:   t.dock,
@@ -114,7 +122,7 @@ func (d *DockState) apply(node DockLayoutNode, keyToDockable func(string) Dockab
 			}
 			child.apply(t.nodes[i], keyToDockable)
 		}
-		for i := len(d.Children); i < 2; i++ {
+		for i := len(children); i < len(t.nodes); i++ {
 			t.nodes[i] = nil
 		}
 	}

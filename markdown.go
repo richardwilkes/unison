@@ -1115,19 +1115,27 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
+		// On failure, the cache entry must be removed. Leaving it in place would permanently poison the cache: the
+		// load would never be retried and every subsequent rebuild would append another dead placeholder panel to the
+		// entry's target list, retaining those detached panels for the life of the Markdown widget.
+		fail := func(failure error, args ...any) {
+			result <- nil
+			errs.Log(failure, args...)
+			m.drawableCacheLock.Lock()
+			delete(m.drawableCache, revisedTarget)
+			m.drawableCacheLock.Unlock()
+		}
 		var d Drawable
 		if isSVG {
 			var r io.ReadCloser
 			if r, err = xhttp.StreamData(ctx, nil, revisedTarget); err != nil {
-				result <- nil
-				errs.Log(err, "path", revisedTarget)
+				fail(err, "path", revisedTarget)
 				return
 			}
 			defer xio.CloseIgnoringErrors(r)
 			var svg *SVG
 			if svg, err = NewSVGFromReader(r); err != nil {
-				result <- nil
-				errs.Log(err, "path", revisedTarget)
+				fail(err, "path", revisedTarget)
 				return
 			}
 			d = &DrawableSVG{
@@ -1137,8 +1145,7 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 		} else {
 			var img *Image
 			if img, err = NewImageFromFilePathOrURL(ctx, m.HTTPClient, revisedTarget, scale, m.PerImageByteLimit); err != nil {
-				result <- nil
-				errs.Log(err, "path", revisedTarget, "scale", scale)
+				fail(err, "path", revisedTarget, "scale", scale)
 				return
 			}
 			d = img

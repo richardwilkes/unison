@@ -141,6 +141,7 @@ func (d *wellDialog) switchEditor(which WellMask) {
 	if d.syncing || which == d.current {
 		return
 	}
+	d.current = which
 	d.syncing = true
 	defer func() { d.syncing = false }()
 	if d.hasMultipleEditors() {

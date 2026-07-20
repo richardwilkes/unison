@@ -93,6 +93,11 @@ func (m Menu) ItemAtIndex(index int) MenuItem {
 	return MenuItem(objc.ID(m).Send(Sel("itemAtIndex:"), int64(index)))
 }
 
+// Supermenu returns the menu's parent menu, or 0 if it has none.
+func (m Menu) Supermenu() Menu {
+	return Menu(objc.ID(m).Send(Sel("supermenu")))
+}
+
 // InsertItemAtIndex inserts the given menu item at the given index.
 func (m Menu) InsertItemAtIndex(item MenuItem, index int) {
 	objc.ID(m).Send(Sel("insertItem:atIndex:"), objc.ID(item), int64(index))

@@ -256,10 +256,8 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 		}
 
 		// Notify the source table if it is different from the destination
-		if d.Table != data.Table {
-			if d.Table != data.Table && data.Table.DragRemovedRowsCallback != nil {
-				SafeCall(data.Table.DragRemovedRowsCallback)
-			}
+		if d.Table != data.Table && data.Table.DragRemovedRowsCallback != nil {
+			SafeCall(data.Table.DragRemovedRowsCallback)
 		}
 	} else {
 		// Make a copy of the data

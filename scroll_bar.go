@@ -128,19 +128,28 @@ func (s *ScrollBar) Thumb() geom.Rect {
 	}
 	r := s.ContentRect(false)
 	if s.horizontal {
-		start := r.Width * (s.value / s.maximum)
 		size := r.Width * (s.extent / s.maximum)
 		if size < s.MinimumThumb {
 			size = s.MinimumThumb
 		}
-		return geom.NewRect(start, 0, size, r.Height-s.ThumbIndent)
+		return geom.NewRect(r.X+s.thumbStart(r.Width, size), r.Y, size, r.Height-s.ThumbIndent)
 	}
-	start := r.Height * (s.value / s.maximum)
 	size := r.Height * (s.extent / s.maximum)
 	if size < s.MinimumThumb {
 		size = s.MinimumThumb
 	}
-	return geom.NewRect(0, start, r.Width-s.ThumbIndent, size)
+	return geom.NewRect(r.X, r.Y+s.thumbStart(r.Height, size), r.Width-s.ThumbIndent, size)
+}
+
+// thumbStart returns the offset of the thumb within a track of the given length for a thumb of the given size. The
+// available travel is the track length minus the thumb size, so that the thumb stays within the track even when its
+// size has been clamped to MinimumThumb, keeping this mapping the exact inverse of adjustValueForPoint().
+func (s *ScrollBar) thumbStart(trackLength, thumbSize float32) float32 {
+	maxValue := s.MaxValue()
+	if maxValue <= 0 || trackLength <= thumbSize {
+		return 0
+	}
+	return (trackLength - thumbSize) * (s.value / maxValue)
 }
 
 // DefaultSizes provides the default sizing.
@@ -235,16 +244,16 @@ func (s *ScrollBar) adjustValueForPoint(pt geom.Point) {
 	thumb := s.Thumb()
 	var pos, maximum float32
 	if s.horizontal {
-		pos = pt.X
+		pos = pt.X + s.dragOffset - r.X
 		maximum = r.Width - thumb.Width
 	} else {
-		pos = pt.Y
+		pos = pt.Y + s.dragOffset - r.Y
 		maximum = r.Height - thumb.Height
 	}
-	if s.maximum <= s.extent {
+	if s.maximum <= s.extent || maximum <= 0 {
 		s.SetRange(0, s.extent, s.maximum)
 	} else {
-		s.SetRange((s.maximum-s.extent)*(pos+s.dragOffset)/maximum, s.extent, s.maximum)
+		s.SetRange((s.maximum-s.extent)*pos/maximum, s.extent, s.maximum)
 	}
 }
 

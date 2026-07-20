@@ -108,6 +108,11 @@ func (mi *menuItem) IsSame(other MenuItem) bool {
 }
 
 func (mi *menuItem) Menu() Menu {
+	if mi.menu == nil {
+		// Return a true nil rather than a typed-nil *menu wrapped in the interface, which would pass != nil checks
+		// and then crash on the first method call. This also matches the behavior of the macOS implementation.
+		return nil
+	}
 	return mi.menu
 }
 

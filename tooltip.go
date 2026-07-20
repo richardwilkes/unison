@@ -39,6 +39,8 @@ func defaultToolTipLabelTheme() LabelTheme {
 
 // TooltipTheme holds theming data for a Tooltip.
 type TooltipTheme struct {
+	// SecondaryTextFont is the font used for the secondary text of tooltips created via
+	// NewTooltipWithSecondaryText(). When nil, a font one size smaller than the Label theme's font is used.
 	SecondaryTextFont Font
 	BackgroundInk     Ink
 	BaseBorder        Border
@@ -87,12 +89,16 @@ func NewTooltipWithText(text string) *Panel {
 func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 	tip := NewTooltipWithText(primary)
 	if secondary != "" {
+		font := DefaultTooltipTheme.SecondaryTextFont
+		if font == nil {
+			desc := DefaultTooltipTheme.Label.Font.Descriptor()
+			desc.Size--
+			font = desc.Font()
+		}
 		for str := range strings.SplitSeq(secondary, "\n") {
 			l := NewLabel()
 			l.LabelTheme = DefaultTooltipTheme.Label
-			desc := DefaultTooltipTheme.Label.Font.Descriptor()
-			desc.Size--
-			l.Font = desc.Font()
+			l.Font = font
 			l.SetTitle(str)
 			tip.AddChild(l)
 		}

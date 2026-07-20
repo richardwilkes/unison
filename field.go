@@ -413,9 +413,12 @@ func (f *Field) scheduleBlink() {
 }
 
 func (f *Field) blink() {
+	// The pending flag must be cleared even when the field is no longer in a valid window, since otherwise a blink
+	// task that fires while the field is detached would leave it set and prevent the caret from ever blinking again
+	// after the field is re-attached.
+	f.pending = false
 	window := f.Window()
 	if window != nil && window.IsValid() {
-		f.pending = false
 		if time.Now().After(f.forceShowUntil) {
 			f.showCursor = !f.showCursor
 			f.MarkForRedraw()
@@ -598,23 +601,30 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool
 				case KeyA:
 					if f.CanSelectAll() {
 						f.SelectAll()
+						return true
 					}
 				case KeyX:
 					if f.CanCut() {
 						f.Cut()
+						return true
 					}
 				case KeyC:
 					if f.CanCopy() {
 						f.Copy()
+						return true
 					}
 				case KeyV:
 					if f.CanPaste() {
 						f.Paste()
+						return true
 					}
 				}
 			}
+			return false
 		}
-		return false
+		// The key was acted upon, so report it as handled to stop ancestors (e.g. a containing Table, which treats
+		// bare arrow keys as navigation) from also processing it.
+		return true
 	}
 	switch keyCode {
 	case KeyBackspace:

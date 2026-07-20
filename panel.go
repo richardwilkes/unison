@@ -702,7 +702,7 @@ func (p *Panel) CanPerformCmd(src any, id int) bool {
 	return false
 }
 
-// PerformCmd returns true if the command was handled, either by this panel or its ancestors. May be called on a nil
+// PerformCmd performs the command with the first handler found in this panel or its ancestors. May be called on a nil
 // Panel object. First calls CanPerformCmd() to ensure the command is permitted to be performed.
 func (p *Panel) PerformCmd(src any, id int) {
 	if p.CanPerformCmd(src, id) {
@@ -754,8 +754,10 @@ func Ancestor[T any](paneler Paneler) T {
 
 // AncestorOrSelf returns the provided panel or the first ancestor of the given type. May return nil if nothing matches.
 func AncestorOrSelf[T any](paneler Paneler) T {
-	if one, ok := paneler.AsPanel().Self.(T); ok {
-		return one
+	if paneler != nil {
+		if one, ok := paneler.AsPanel().Self.(T); ok {
+			return one
+		}
 	}
 	return Ancestor[T](paneler)
 }
