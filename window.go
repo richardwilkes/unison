@@ -634,7 +634,7 @@ func (w *Window) MoveToModalCenter(other *Window) {
 	if other != nil && other != w {
 		within = other.FrameRect()
 	} else if d := PrimaryDisplay(); d != nil {
-		within = d.Usable
+		within = d.usableInWindowUnits()
 	}
 	wndFrame := w.FrameRect()
 	within.Y += (within.Height - wndFrame.Height) / 3
@@ -1063,7 +1063,9 @@ func (w *Window) updateCursor(target *Panel, where geom.Point) {
 
 func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 	if !w.okToProcess() {
-		modalStack[len(modalStack)-1].mouseDown(where, button, mods)
+		// Unlike keyboard events, mouse events are positional: the coordinates are in this window's space and would
+		// land on arbitrary panels if rerouted to the top modal window, so a window blocked by a modal simply ignores
+		// mouse presses.
 		return
 	}
 	w.inMouseDown = true
@@ -1074,7 +1076,6 @@ func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 		xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
 		xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
 		w.lastButtonCount++
-		time.Since(w.lastButtonTime)
 	} else {
 		w.lastButtonCount = 1
 		w.firstButtonLocation = where
@@ -1145,14 +1146,14 @@ func (w *Window) synthesizeMouseUp() {
 
 func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 	if !w.okToProcess() {
-		modalStack[len(modalStack)-1].mouseUp(where, button, mods)
+		// See the comment in mouseDown.
 		return
 	}
-	if !w.inMouseDown {
+	if !w.pressedButtons[button] {
 		return
 	}
-	w.inMouseDown = false
-	w.pressedButtons[button] = false
+	delete(w.pressedButtons, button)
+	w.inMouseDown = len(w.pressedButtons) != 0
 	w.lastButton = button
 	w.lastKeyModifiers = mods
 	if w.MouseUpCallback != nil {
@@ -1167,8 +1168,13 @@ func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 			w.lastMouseDownPanel.MouseUpCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mods)
 		})
 	}
+	if w.inMouseDown {
+		// Other buttons are still down, so the drag in progress continues and the panel it is targeting must keep
+		// receiving events until the last button is released.
+		return
+	}
 	panel := w.root.PanelAt(where)
-	if w.root != nil && !panel.Is(w.lastMouseOverPanel) {
+	if !panel.Is(w.lastMouseOverPanel) {
 		w.mouseExit()
 	}
 	w.updateCursor(panel, where)
@@ -1406,21 +1412,6 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 			time.Since(w.lastButtonTime) > minDelay)
 }
 
-// DragSpec describes a drag & drop operation to start.
-type DragSpec struct {
-	// Image is the drag image shown while dragging. May be nil.
-	Image *Image
-	// Cleanup is called when the drag source finishes, if not nil.
-	Cleanup func()
-	// Data holds the payload for the drag.
-	Data []drag.Data
-	// Origin is the origin of the drag image. For Panel.StartDrag it is in the panel's coordinate space; for
-	// Window.StartDrag it is in the window's root coordinate space.
-	Origin geom.Point
-	// OpMask holds the permitted drag operations.
-	OpMask drag.Op
-}
-
 // StartDrag starts a drag & drop operation. 'img' is the drag image shown while dragging and may be nil. 'origin' is
 // the origin of the drag image in the window's root coordinate space. 'cleanup' is called when the drag source
 // finishes, if not nil. 'opMask' holds the permitted drag operations.
@@ -1495,7 +1486,6 @@ func (w *Window) drop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
 	handled := false
 	SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) })
 	w.lastDropTarget = nil
-	w.inMouseDown = false
 	w.dragFinish()
 	return handled
 }
@@ -1521,6 +1511,7 @@ func (w *Window) dragExitTarget() {
 
 func (w *Window) dragFinish() {
 	w.inMouseDown = false
+	clear(w.pressedButtons)
 	w.adjustToCursorChange()
 	w.FlushDrawing()
 }

@@ -117,7 +117,7 @@ func (w *Window) apiInit() error {
 		defer runtime.KeepAlive(className)
 		w32MainWndClass = w32.RegisterClassExW(&w32.WNDCLASSEX{
 			Style:     w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC,
-			WndProc:   windows.NewCallbackCDecl(w32WndProc),
+			WndProc:   windows.NewCallback(w32WndProc),
 			Instance:  w32MainInstance,
 			ClassName: &className[0],
 			Icon: w32.HICON(w32.LoadImageW(0, w32.MakeIntResourceW(w32.IDI_APPLICATION), w32.IMAGE_ICON, 0, 0,
@@ -363,10 +363,6 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			scale := w.apiBackingScale()
 			minimum = minimum.MulPt(scale).Ceil()
 			maximum = maximum.MulPt(scale).Ceil()
-			frame.Left = int32(float32(frame.Left))
-			frame.Right = int32(float32(frame.Right))
-			frame.Top = int32(float32(frame.Top))
-			frame.Bottom = int32(float32(frame.Bottom))
 			mmi := xruntime.PtrFromUintptr[w32.MINMAXINFO](lParam)
 			mmi.MinTrackSize.X = int32(minimum.Width) + frame.Right - frame.Left
 			mmi.MinTrackSize.Y = int32(minimum.Height) + frame.Bottom - frame.Top
@@ -481,6 +477,7 @@ func (w *Window) apiSetTitle(title string) {
 
 func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	var big, small w32.HICON
+	owned := false
 	if len(images) > 0 {
 		cxIcon := w32.GetSystemMetrics(w32.SM_CXICON)
 		cyIcon := w32.GetSystemMetrics(w32.SM_CYICON)
@@ -488,7 +485,10 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 		cySmIcon := w32.GetSystemMetrics(w32.SM_CYSMICON)
 		big = w32CreateIconFromImage(w32ChooseBestImage(images, cxIcon, cyIcon), 0, 0, true)
 		small = w32CreateIconFromImage(w32ChooseBestImage(images, cxSmIcon, cySmIcon), 0, 0, true)
+		owned = true
 	} else {
+		// Revert to the class icons. These handles are shared and owned by the system, so they must never be passed to
+		// DestroyIcon; bigIcon/smallIcon only ever record icons created by this window.
 		big = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICON))
 		small = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICONSM))
 	}
@@ -500,8 +500,13 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	if w.wnd.smallIcon != 0 {
 		w32.DestroyIcon(w.wnd.smallIcon)
 	}
-	w.wnd.bigIcon = big
-	w.wnd.smallIcon = small
+	if owned {
+		w.wnd.bigIcon = big
+		w.wnd.smallIcon = small
+	} else {
+		w.wnd.bigIcon = 0
+		w.wnd.smallIcon = 0
+	}
 }
 
 func w32ChooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {

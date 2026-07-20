@@ -121,8 +121,7 @@ func macInitWindowCallbacks() {
 		if w := macFindWindow(macWnd); w != nil {
 			w.lostFocus()
 		} else {
-			slog.Warn("received window did resign key callback for unknown window", "window", macWnd, "error",
-				errs.New("here"))
+			slog.Warn("received window did resign key callback for unknown window", "window", macWnd)
 		}
 	}
 	cocoa.WindowCursorUpdateCallback = func(macWnd cocoa.Window) {
@@ -380,7 +379,10 @@ func (w *Window) apiVisible() bool {
 }
 
 func (w *Window) apiShow() {
-	w.wnd.wnd.MakeKeyAndOrderFront()
+	// Order the window front without making it key, matching the other platforms, where Show() makes the window
+	// visible without giving it the focus. ToFront() layers apiAcquireFocusAndBringToFront on top of this for the
+	// show-and-focus behavior.
+	w.wnd.wnd.OrderFront()
 }
 
 func (w *Window) apiHide() {

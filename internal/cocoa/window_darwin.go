@@ -196,6 +196,11 @@ func (w Window) MakeKeyAndOrderFront() {
 	objc.ID(w).Send(Sel("makeKeyAndOrderFront:"), objc.ID(0))
 }
 
+// OrderFront shows the window and moves it to the front without making it the key window.
+func (w Window) OrderFront() {
+	objc.ID(w).Send(Sel("orderFront:"), objc.ID(0))
+}
+
 // OrderOut hides the window.
 func (w Window) OrderOut() {
 	objc.ID(w).Send(Sel("orderOut:"), objc.ID(0))

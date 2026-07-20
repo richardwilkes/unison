@@ -144,6 +144,44 @@ func TestMouseWheelOnBlockedWindowIsStillDelivered(t *testing.T) {
 	c.Equal(0, modalCount)
 }
 
+func TestMouseEventsOnBlockedWindowAreIgnored(t *testing.T) {
+	c := check.New(t)
+	blocked := newModalInputTestWindow()
+	modal := newModalInputTestWindow()
+	pushTestModal(t, modal)
+	blockedDowns, modalDowns, blockedUps, modalUps := 0, 0, 0, 0
+	blocked.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
+		blockedDowns++
+		return true
+	}
+	modal.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
+		modalDowns++
+		return true
+	}
+	blocked.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+		blockedUps++
+		return true
+	}
+	modal.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+		modalUps++
+		return true
+	}
+	// Mouse events are positional, so unlike keyboard events they must not be rerouted to the modal: the coordinates
+	// are in the blocked window's space and would land on arbitrary panels in the modal. The blocked window must also
+	// not record any pressed-button state of its own, and the modal's state must be left untouched.
+	where := geom.NewPoint(10, 10)
+	blocked.mouseDown(where, ButtonLeft, 0)
+	blocked.mouseUp(where, ButtonLeft, 0)
+	c.Equal(0, blockedDowns)
+	c.Equal(0, blockedUps)
+	c.Equal(0, modalDowns)
+	c.Equal(0, modalUps)
+	c.False(blocked.inMouseDown)
+	c.Equal(0, len(blocked.pressedButtons))
+	c.False(modal.inMouseDown)
+	c.Equal(0, len(modal.pressedButtons))
+}
+
 func TestKeyEventsProcessedNormallyWithoutModal(t *testing.T) {
 	c := check.New(t)
 	w := newModalInputTestWindow()

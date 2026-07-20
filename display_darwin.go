@@ -47,9 +47,15 @@ func macConvertDisplay(id cocoa.DisplayID) *Display {
 	display.Usable.Y = height - display.Usable.Bottom()
 	display.Scale = geom.NewPoint(pixels.Width/display.Frame.Width, pixels.Height/display.Frame.Height)
 	sizeMM := cocoa.DisplayScreenSize(id)
-	display.PPI = int(pixels.Width / (sizeMM.Width / 25.4))
+	display.PPI = displayPPI(float64(pixels.Width), float64(sizeMM.Width))
 	display.Primary = id == mainDisplayID
 	return &display
+}
+
+// usableInWindowUnits returns the usable area of the display in the coordinate space used by window rects, which on
+// this platform is the same space the display rects already use.
+func (d *Display) usableInWindowUnits() geom.Rect {
+	return d.Usable
 }
 
 func macTransformY(y float32) float32 {

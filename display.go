@@ -27,6 +27,23 @@ type Display struct {
 	Primary bool
 }
 
+// defaultDisplayPPI is the pixels-per-inch assumed when the true value cannot be determined.
+const defaultDisplayPPI = 96
+
+// displayPPI computes the pixels-per-inch of a display from its pixel extent and its physical size in millimeters.
+// Virtual displays and VMs commonly report a physical size of zero, which would otherwise produce an infinite result,
+// so implausible inputs fall back to defaultDisplayPPI.
+func displayPPI(pixels, sizeMM float64) int {
+	if sizeMM <= 0 {
+		return defaultDisplayPPI
+	}
+	ppi := int(pixels / (sizeMM / 25.4))
+	if ppi <= 0 {
+		return defaultDisplayPPI
+	}
+	return ppi
+}
+
 // PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
 // the macOS menu bar is located. It may only be called on the UI thread.
 func PrimaryDisplay() *Display {

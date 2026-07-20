@@ -76,3 +76,11 @@ func TestX11DisplayLogicalSpaceMatchesWindowRects(t *testing.T) {
 	within.Size = wnd.Size
 	c.True(within.In(left.Usable))
 }
+
+// TestUsableInWindowUnits verifies that on this platform the usable rect is handed to cross-platform window math
+// unchanged, since x11NewDisplay already converts display rects into the logical space window rects use.
+func TestUsableInWindowUnits(t *testing.T) {
+	c := check.New(t)
+	d := x11NewDisplay(geom.NewRect(0, 0, 3840, 2160), geom.NewRect(0, 32, 3840, 2128), 2, 163, true)
+	c.Equal(d.Usable, d.usableInWindowUnits())
+}

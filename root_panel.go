@@ -83,8 +83,12 @@ func (p *rootPanel) setContent(content Paneler) {
 	if p.contentPanel != nil {
 		p.RemoveChild(p.contentPanel)
 	}
-	p.contentPanel = content.AsPanel()
+	var panel *Panel
 	if content != nil {
+		panel = content.AsPanel()
+	}
+	p.contentPanel = panel
+	if panel != nil {
 		index := len(p.openMenuPanels)
 		if p.menuBarPanel != nil {
 			index++
@@ -92,7 +96,7 @@ func (p *rootPanel) setContent(content Paneler) {
 		if p.tooltipPanel != nil {
 			index++
 		}
-		p.AddChildAtIndex(content, index)
+		p.AddChildAtIndex(panel, index)
 	}
 	p.NeedsLayout = true
 	p.MarkForRedraw()
@@ -115,7 +119,9 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 }
 
 func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
-	minSize, prefSize, maxSize = p.contentPanel.Sizes(hint)
+	if p.contentPanel != nil {
+		minSize, prefSize, maxSize = p.contentPanel.Sizes(hint)
+	}
 	if p.menuBarPanel != nil {
 		_, barSize, _ := p.menuBarPanel.Sizes(geom.Size{})
 		for _, size := range []*geom.Size{&minSize, &prefSize, &maxSize} {
@@ -138,7 +144,9 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 		rect.Y += size.Height
 		rect.Height -= size.Height
 	}
-	p.contentPanel.SetFrameRect(rect)
+	if p.contentPanel != nil {
+		p.contentPanel.SetFrameRect(rect)
+	}
 }
 
 func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {

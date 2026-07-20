@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 // TestW32EnumDisplaysSerializesScratchSlice verifies that concurrent display enumerations cannot interleave their use
@@ -60,4 +61,25 @@ func TestW32EnumDisplaysSerializesScratchSlice(t *testing.T) {
 	}
 	// The scratch slice must be left empty so no caller's result is retained or handed to a later caller.
 	c.Equal(0, len(w32Displays))
+}
+
+// TestW32DisplayDPI verifies that the zero DPI reported by a failed query maps to the default 96, since callers turn
+// DPI values into scale factors that are divided by, and a zero scale would turn downstream geometry into Inf/NaN.
+func TestW32DisplayDPI(t *testing.T) {
+	c := check.New(t)
+	c.Equal(uint32(96), w32DisplayDPI(0))
+	c.Equal(uint32(96), w32DisplayDPI(96))
+	c.Equal(uint32(144), w32DisplayDPI(144))
+}
+
+// TestUsableInWindowUnits verifies that the usable rect handed to cross-platform window math keeps its origin in the
+// raw global pixel space window positions use on this platform, while its size is converted to the logical units that
+// window sizes use.
+func TestUsableInWindowUnits(t *testing.T) {
+	c := check.New(t)
+	d := &Display{
+		Usable: geom.NewRect(3840, 32, 3840, 2128),
+		Scale:  geom.NewPoint(2, 2),
+	}
+	c.Equal(geom.NewRect(3840, 32, 1920, 1064), d.usableInWindowUnits())
 }

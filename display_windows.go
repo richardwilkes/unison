@@ -69,11 +69,33 @@ func monitorInfo(monitor w32.HMONITOR) *Display {
 		display.Frame = rectFromW32Rect(info.Monitor)
 		display.Usable = rectFromW32Rect(info.Work)
 		display.Primary = (info.Flags & w32.MONITORINFOF_PRIMARY) != 0
-		sx, sy := w32.GetDpiForMonitor(monitor, w32.MDT_EFFECTIVE_DPI)
-		display.PPI = int(sx)
-		display.Scale = geom.NewPoint(float32(sx)/96.0, float32(sy)/96.0)
 	}
+	// The DPI is queried and the scale filled in even when GetMonitorInfoW fails, since callers divide by the scale and
+	// a zero-value Display would turn their geometry into Inf/NaN.
+	sx, sy := w32.GetDpiForMonitor(monitor, w32.MDT_EFFECTIVE_DPI)
+	display.PPI = int(w32DisplayDPI(sx))
+	display.Scale = geom.NewPoint(float32(w32DisplayDPI(sx))/96.0, float32(w32DisplayDPI(sy))/96.0)
 	return &display
+}
+
+// w32DisplayDPI maps a DPI reported as zero — the result of a failed query — to the default 96, because callers turn
+// DPI values into scale factors that are divided by.
+func w32DisplayDPI(dpi uint32) uint32 {
+	if dpi == 0 {
+		return 96
+	}
+	return dpi
+}
+
+// usableInWindowUnits returns the usable area of the display in the coordinate space used by window rects: the origin
+// stays in the raw global pixel space that both display rects and window positions use on this platform, while the
+// size is converted to the logical, 1x-scale units that window sizes use. Without the size conversion, math that mixes
+// display extents with window extents (e.g. the fallback path of Window.MoveToModalCenter) is wrong whenever the
+// monitor scale is not 1.
+func (d *Display) usableInWindowUnits() geom.Rect {
+	r := d.Usable
+	r.Size = r.Size.DivPt(d.Scale)
+	return r
 }
 
 func rectFromW32Rect(r w32.RECT) geom.Rect {

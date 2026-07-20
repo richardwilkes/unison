@@ -41,7 +41,7 @@ func apiAllDisplays() []*Display {
 		for i := range m {
 			frame := geom.NewRect(float32(m[i].X), float32(m[i].Y), float32(m[i].Width), float32(m[i].Height))
 			displays[i] = x11NewDisplay(frame, x11Conn.MonitorWorkArea(root, frame), scale,
-				int(float64(m[i].Width)/(float64(m[i].WidthMM)/25.4)), m[i].Primary)
+				displayPPI(float64(m[i].Width), float64(m[i].WidthMM)), m[i].Primary)
 		}
 		return displays
 	}
@@ -50,7 +50,7 @@ func apiAllDisplays() []*Display {
 	frame := geom.NewRect(0, 0, float32(screen.WidthInPixels), float32(screen.HeightInPixels))
 	return []*Display{
 		x11NewDisplay(frame, x11Conn.MonitorWorkArea(root, frame), scale,
-			int(float64(screen.WidthInPixels)/(float64(screen.WidthInMillimeters)/25.4)), true),
+			displayPPI(float64(screen.WidthInPixels), float64(screen.WidthInMillimeters)), true),
 	}
 }
 
@@ -68,6 +68,12 @@ func x11NewDisplay(rawFrame, rawUsable geom.Rect, scale float32, ppi int, primar
 		PPI:     ppi,
 		Primary: primary,
 	}
+}
+
+// usableInWindowUnits returns the usable area of the display in the coordinate space used by window rects. The rects
+// built by x11NewDisplay are already converted into that logical, 1x-scale space.
+func (d *Display) usableInWindowUnits() geom.Rect {
+	return d.Usable
 }
 
 // x11LogicalRect converts a rectangle expressed in raw pixels into the logical, 1x-scale coordinate space.
