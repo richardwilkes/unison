@@ -39,14 +39,12 @@ func init() {
 	}
 }
 
-// NewDemoColorsWindow creates and displays our demo colors window.
+// NewDemoColorsWindow creates and displays our demo colors window. Only one such window is permitted to exist at a
+// time, so if one was created earlier and hasn't been closed, it is brought to the front and returned instead.
 func NewDemoColorsWindow() (*unison.Window, error) {
 	if colorsWindow != nil {
-		if colorsWindow.IsVisible() {
-			return colorsWindow, nil
-		}
-		colorsWindow.Dispose()
-		colorsWindow = nil
+		colorsWindow.ToFront()
+		return colorsWindow, nil
 	}
 
 	// Create the window
@@ -54,6 +52,7 @@ func NewDemoColorsWindow() (*unison.Window, error) {
 	if err != nil {
 		return nil, err
 	}
+	trackColorsWindow(wnd)
 
 	// Install our menus
 	installDefaultMenus(wnd)
@@ -96,6 +95,13 @@ func NewDemoColorsWindow() (*unison.Window, error) {
 	wnd.ToFront()
 
 	return wnd, nil
+}
+
+// trackColorsWindow records wnd as the shared colors window, clearing the record when the window closes so that the
+// next call to NewDemoColorsWindow creates a new one.
+func trackColorsWindow(wnd *unison.Window) {
+	colorsWindow = wnd
+	wnd.WillCloseCallback = func() { colorsWindow = nil }
 }
 
 func colorToRGBString(c unison.Color) string {
