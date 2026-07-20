@@ -24,18 +24,6 @@ import (
 
 var iidIDropTarget = xos.Must(windows.GUIDFromString("{00000122-0000-0000-C000-000000000046}"))
 
-// DropEffect represents the effect of a drag-and-drop operation.
-type DropEffect uint32
-
-// Possible values for DropEffect.
-const (
-	DropEffectCopy DropEffect = 1 << iota
-	DropEffectMove
-	DropEffectLink
-	DropEffectNone   DropEffect = 0
-	DropEffectScroll DropEffect = 0x80000000
-)
-
 // MKDnD represents the key state and button modifiers passed to IDropTarget callbacks.
 type MKDnD uint32
 
@@ -57,6 +45,7 @@ type DropTarget struct {
 	refCount int32
 	pinner   runtime.Pinner
 	opMask   drag.Op      // source's allowed ops, set in DragEnter
+	lastOp   drag.Op      // op returned by the window's most recent DragEntered/DragUpdated, reported back on Drop
 	dataObj  *IDataObject // current drag's data object (valid between DragEnter and DragLeave/Drop)
 }
 
@@ -145,6 +134,7 @@ func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, 
 	activeDropTarget = dt
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragEntered(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
+	dt.lastOp = op
 	*pdwEffect = opToDropEffect(op)
 	if dt.helper != nil {
 		screenPt := packedScreenPt(pt)
@@ -161,6 +151,7 @@ func dropTargetDragOver(this uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *
 	}
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragUpdated(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
+	dt.lastOp = op
 	*pdwEffect = opToDropEffect(op)
 	if dt.helper != nil {
 		screenPt := packedScreenPt(pt)
@@ -171,6 +162,7 @@ func dropTargetDragOver(this uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *
 
 func dropTargetDragLeave(this uintptr) uint64 {
 	dt := xruntime.PtrFromUintptr[DropTarget](this)
+	dt.lastOp = 0
 	if dt.dataObj != nil {
 		dt.dataObj.Release()
 		dt.dataObj = nil
@@ -196,8 +188,11 @@ func dropTargetDrop(this, pDataObj uintptr, grfKeyState MKDnD, pt, pdwEffect uin
 	}
 	dataObj := xruntime.PtrFromUintptr[IDataObject](pDataObj)
 	info := &dragInfo{obj: dataObj, opMask: dt.opMask}
-	dt.window.Drop(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
-	*xruntime.PtrFromUintptr[DropEffect](pdwEffect) = DropEffectNone
+	accepted := dt.window.Drop(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
+	// Report the effect that was actually performed back to the source. Reporting DROPEFFECT_NONE on an accepted drop
+	// would tell a source performing a Move that nothing happened, so it would never delete the original.
+	*xruntime.PtrFromUintptr[DropEffect](pdwEffect) = dropResultEffect(accepted, dt.lastOp)
+	dt.lastOp = 0
 	if dt.helper != nil {
 		screenPt := packedScreenPt(pt)
 		dt.helper.Drop(pDataObj, &screenPt, *xruntime.PtrFromUintptr[DropEffect](pdwEffect))
@@ -215,6 +210,7 @@ func (dt *DropTarget) RefreshDragOver(pt POINT, mods mod.Modifiers) {
 	}
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragUpdated(info, dropTargetClientPtFromScreen(dt.window, pt), mods)
+	dt.lastOp = op
 	if dt.helper != nil {
 		screenPt := pt
 		dt.helper.DragOver(&screenPt, opToDropEffect(op))
@@ -249,38 +245,4 @@ func dropKeyStateMods(grfKeyState MKDnD) mod.Modifiers {
 		mods |= mod.Option
 	}
 	return mods
-}
-
-func dropEffectToOp(effect DropEffect) drag.Op {
-	var op drag.Op
-	if effect&DropEffectCopy != 0 {
-		op |= drag.Copy
-	}
-	if effect&DropEffectMove != 0 {
-		op |= drag.Move
-	}
-	return op
-}
-
-func opToDropEffect(op drag.Op) DropEffect {
-	switch {
-	case op&drag.Copy != 0:
-		return DropEffectCopy
-	case op&drag.Move != 0:
-		return DropEffectMove
-	default:
-		return DropEffectNone
-	}
-}
-
-// OpMaskToDropEffect converts a drag.Op mask to a Windows DropEffect bitmask.
-func OpMaskToDropEffect(op drag.Op) DropEffect {
-	var effect DropEffect
-	if op&drag.Copy != 0 {
-		effect |= DropEffectCopy
-	}
-	if op&drag.Move != 0 {
-		effect |= DropEffectMove
-	}
-	return effect
 }

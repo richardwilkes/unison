@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	kernel32                = syscall.NewLazyDLL("kernel32.dll")
+	kernel32                = windows.NewLazySystemDLL("kernel32.dll")
 	attachConsoleProc       = kernel32.NewProc("AttachConsole")
 	getModuleHandleWProc    = kernel32.NewProc("GetModuleHandleW")
 	globalAllocProc         = kernel32.NewProc("GlobalAlloc")

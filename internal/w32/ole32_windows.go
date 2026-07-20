@@ -10,7 +10,6 @@
 package w32
 
 import (
-	"syscall"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -19,7 +18,7 @@ import (
 )
 
 var (
-	ole32                = syscall.NewLazyDLL("ole32.dll")
+	ole32                = windows.NewLazySystemDLL("ole32.dll")
 	coCreateInstanceProc = ole32.NewProc("CoCreateInstance")
 	doDragDropProc       = ole32.NewProc("DoDragDrop")
 	oleInitializeProc    = ole32.NewProc("OleInitialize")

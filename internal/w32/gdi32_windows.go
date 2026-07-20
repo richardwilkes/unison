@@ -10,14 +10,13 @@
 package w32
 
 import (
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 var (
-	gdi32                   = syscall.NewLazyDLL("gdi32.dll")
+	gdi32                   = windows.NewLazySystemDLL("gdi32.dll")
 	createBitmapProc        = gdi32.NewProc("CreateBitmap")
 	createDIBSectionProc    = gdi32.NewProc("CreateDIBSection")
 	createRectRgnProc       = gdi32.NewProc("CreateRectRgn")
