@@ -388,18 +388,28 @@ func (w *Window) apiHide() {
 }
 
 func (w *Window) apiStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
-	nrgba, err := img.ToNRGBA()
-	if err != nil {
-		errs.Log(err)
-		w.dragSourceFinished()
-		return
-	}
-	r := geom.Rect{
-		Point: origin,
-		Size:  img.LogicalSize(),
-	}
+	nrgba, r := macDragImageAndFrame(img, origin)
 	r.Y = w.wnd.view.Frame().Height - r.Height - r.Y
 	w.wnd.view.BeginDraggingSession(nrgba, r, opMask, data...)
+}
+
+// macDragImageAndFrame converts the optional drag image into the pixel data and top-left-origin frame handed to
+// BeginDraggingSession. The image may be nil, and conversion failures are logged or ignored, since the drag itself
+// still works without an image; in those cases nil pixel data and a 1x1 frame anchored at origin are returned so
+// AppKit still gets a valid, effectively invisible dragging frame.
+func macDragImageAndFrame(img *Image, origin geom.Point) (*image.NRGBA, geom.Rect) {
+	if img != nil {
+		size := img.LogicalSize()
+		if size.Width >= 1 && size.Height >= 1 {
+			nrgba, err := img.ToNRGBA()
+			if err != nil {
+				errs.Log(err)
+			} else {
+				return nrgba, geom.Rect{Point: origin, Size: size}
+			}
+		}
+	}
+	return nil, geom.Rect{Point: origin, Size: geom.NewSize(1, 1)}
 }
 
 func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {

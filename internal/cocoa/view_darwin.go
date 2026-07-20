@@ -539,9 +539,10 @@ func (v View) Release() {
 	Release(objc.ID(v))
 }
 
-// BeginDraggingSession starts a drag from this view with the given image and data. It must be called from within a
-// mouse-dragged callback, since AppKit requires the triggering mouse event (stashed in the lastMouseDraggedEvent
-// ivar) to start a session. Matching the old bridge, the pasteboard item and dragging item are not released here.
+// BeginDraggingSession starts a drag from this view with the given image and data. The image may be nil, in which
+// case the drag proceeds without one. It must be called from within a mouse-dragged callback, since AppKit requires
+// the triggering mouse event (stashed in the lastMouseDraggedEvent ivar) to start a session. Matching the old bridge,
+// the pasteboard item and dragging item are not released here.
 func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask drag.Op, data ...drag.Data) {
 	if len(data) == 0 {
 		return
@@ -550,8 +551,11 @@ func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask
 	for _, d := range data {
 		item.SetData(d.Type, d.Data)
 	}
-	imgRef := newNSImage(img.Pix, int(frame.Width), int(frame.Height), img.Rect.Dx(), img.Rect.Dy())
-	defer Release(imgRef)
+	var imgRef objc.ID
+	if img != nil {
+		imgRef = newNSImage(img.Pix, int(frame.Width), int(frame.Height), img.Rect.Dx(), img.Rect.Dy())
+		defer Release(imgRef)
+	}
 	dragItem := objc.ID(Cls("NSDraggingItem")).Send(Sel("alloc")).Send(Sel("initWithPasteboardWriter:"),
 		objc.ID(item))
 	dragItem.Send(Sel("setDraggingFrame:contents:"), NSRectFromRect(frame), imgRef)
