@@ -255,7 +255,7 @@ func (w *Well) Click() {
 
 // DefaultCanAcceptDrop reports whether this well is a candidate for the given drag, independent of pointer position.
 func (w *Well) DefaultCanAcceptDrop(di drag.Info) bool {
-	if !w.Enabled() {
+	if !w.Enabled() || w.Mask&PatternWellMask == 0 {
 		return false
 	}
 	if di.HasFilePaths() {
@@ -301,7 +301,7 @@ func (w *Well) DefaultDragExit() {
 // DefaultDrop provides the default drop handling. Handles image files dropped onto the well.
 func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 	w.DefaultDragExit()
-	if w.Enabled() {
+	if w.Enabled() && w.Mask&PatternWellMask != 0 {
 		if di.HasFilePaths() {
 			for _, f := range di.FilePaths() {
 				if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {
