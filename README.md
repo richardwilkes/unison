@@ -60,6 +60,5 @@ simplify development and greatly reduce the overall complexity of things.
 
 Unison is single-threaded: panels, windows, drawing, and the native graphics objects behind them are owned by one UI
 thread and are not safe for concurrent use. Code invoked by Unison (input/draw callbacks, layout, command handlers,
-`StartupFinishedCallback`) already runs on that thread; work done on other goroutines must marshal back via
-`InvokeTask`, `InvokeTaskAfter`, or `ReleaseOnUIThread` before touching UI objects. See the package documentation for
-the full threading model.
+`StartupFinishedCallback`) already runs on that thread; work done on other goroutines must marshal back via `InvokeTask`
+or `InvokeTaskAfter` before touching UI objects. See the package documentation for the full threading model.
