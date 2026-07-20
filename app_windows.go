@@ -24,6 +24,10 @@ import (
 
 var w32AppUsesLightThemeValue = uint32(1)
 
+// w32MainThreadID holds the thread ID of the main (UI) thread, captured during startup so that apiPostEmptyEvent can
+// wake the main event loop from any goroutine without touching UI-thread-only state such as windowList.
+var w32MainThreadID atomic.Uint32
+
 func w32IsWindows10BuildOrGreater(build uint32) bool {
 	cond := w32.VerSetConditionMask(0, w32.VER_MAJORVERSION, w32.VER_GREATER_EQUAL)
 	cond = w32.VerSetConditionMask(cond, w32.VER_MINORVERSION, w32.VER_GREATER_EQUAL)
@@ -36,6 +40,7 @@ func w32IsWindows10BuildOrGreater(build uint32) bool {
 }
 
 func apiBeginStartup() error {
+	w32MainThreadID.Store(windows.GetCurrentThreadId())
 	apiFillKeyCodes()
 	if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 		w32.SetProcessDpiAwarenessContext(w32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
@@ -110,7 +115,7 @@ func w32UpdateTheme(k registry.Key, sync bool) error {
 	} else {
 		swapped = atomic.CompareAndSwapUint32(&w32AppUsesLightThemeValue, 0, 1)
 	}
-	if swapped && currentThemeMode == thememode.Auto {
+	if swapped && CurrentThemeMode() == thememode.Auto {
 		if sync {
 			ThemeChanged()
 		} else {
@@ -173,10 +178,10 @@ func apiWaitEvents() {
 
 func apiPostEmptyEvent() {
 	if platformInited.Load() {
-		var wnd windows.HWND
-		if len(windowList) != 0 {
-			wnd = windowList[0].wnd.wnd
-		}
-		w32.PostMessageW(wnd, w32.WM_NULL, 0, 0)
+		// Post directly to the main thread's message queue rather than to a window. apiPostEmptyEvent may be called
+		// from arbitrary goroutines, so it must not touch windowList, which is UI-thread-only state, and posting to a
+		// window would not work anyway when no windows exist: PostMessageW with a null hwnd posts to the *calling*
+		// thread's queue, which would fail to wake the main loop blocked in WaitMessage.
+		w32.PostThreadMessageW(w32MainThreadID.Load(), w32.WM_NULL, 0, 0)
 	}
 }

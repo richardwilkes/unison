@@ -48,7 +48,7 @@ func apiLateInit() {
 	linuxRecomputeDarkMode()
 	// The dynamic colors have already been built assuming light mode (RebuildDynamicColors runs before apiLateInit), so
 	// if we detected dark mode at launch, trigger a rebuild now, before the first frame is shown.
-	if linuxDarkModeEnabled.Load() && currentThemeMode == thememode.Auto {
+	if linuxDarkModeEnabled.Load() && CurrentThemeMode() == thememode.Auto {
 		ThemeChanged()
 	}
 	x11.WatchColorScheme(func(value uint32) {

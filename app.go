@@ -39,9 +39,12 @@ var (
 	noPlatformFileDialogs             bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
-	currentThemeMode                  = thememode.Auto
-	needPlatformDarkModeUpdate        = true
-	platformDarkModeEnabled           bool
+	// currentThemeMode holds a thememode.Enum; the zero value is thememode.Auto. It is atomic because the platform
+	// theme monitors (e.g. the Windows registry watcher) read it from their own goroutines while the UI thread writes
+	// it via SetThemeMode.
+	currentThemeMode           atomic.Int32
+	needPlatformDarkModeUpdate = true
+	platformDarkModeEnabled    bool
 )
 
 type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
@@ -317,15 +320,14 @@ func Beep() {
 	apiBeep()
 }
 
-// CurrentThemeMode returns the current theme mode state.
+// CurrentThemeMode returns the current theme mode state. It is safe to call from any goroutine.
 func CurrentThemeMode() thememode.Enum {
-	return currentThemeMode
+	return thememode.Enum(currentThemeMode.Load())
 }
 
 // SetThemeMode sets the current theme mode state.
 func SetThemeMode(mode thememode.Enum) {
-	if currentThemeMode != mode {
-		currentThemeMode = mode
+	if thememode.Enum(currentThemeMode.Swap(int32(mode))) != mode {
 		needPlatformDarkModeUpdate = true
 		InvokeTask(ThemeChanged)
 	}
@@ -339,7 +341,7 @@ func IsColorModeTrackingPossible() bool {
 
 // IsDarkModeEnabled returns true if the OS is currently using a "dark mode".
 func IsDarkModeEnabled() bool {
-	switch currentThemeMode {
+	switch CurrentThemeMode() {
 	case thememode.Light:
 		return false
 	case thememode.Dark:

@@ -68,6 +68,7 @@ var (
 	openClipboardProc                 = user32.NewProc("OpenClipboard")
 	peekMessageWProc                  = user32.NewProc("PeekMessageW")
 	postMessageWProc                  = user32.NewProc("PostMessageW")
+	postThreadMessageWProc            = user32.NewProc("PostThreadMessageW")
 	registerClassExWProc              = user32.NewProc("RegisterClassExW")
 	registerClipboardFormatWProc      = user32.NewProc("RegisterClipboardFormatW")
 	releaseDCProc                     = user32.NewProc("ReleaseDC")
@@ -1410,6 +1411,13 @@ func PeekMessageW(msg *MSG, hwnd windows.HWND, msgFilterMin, msgFilterMax, remov
 func PostMessageW(hwnd windows.HWND, msg uint32, wParam WPARAM, lParam LPARAM) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := postMessageWProc.Call(uintptr(hwnd), uintptr(msg), uintptr(wParam), uintptr(lParam))
+	return b&0xff != 0
+}
+
+// PostThreadMessageW https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-postthreadmessagew
+func PostThreadMessageW(threadID, msg uint32, wParam WPARAM, lParam LPARAM) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := postThreadMessageWProc.Call(uintptr(threadID), uintptr(msg), uintptr(wParam), uintptr(lParam))
 	return b&0xff != 0
 }
 
