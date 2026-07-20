@@ -1038,8 +1038,7 @@ func (w *Window) ClearTooltip() {
 // UpdateCursorNow causes the cursor to be updated as if the mouse had moved.
 func (w *Window) UpdateCursorNow() {
 	where := w.MouseLocation()
-	target := w.root.PanelAt(where)
-	w.updateCursor(target, target.PointFromRoot(where))
+	w.updateCursor(w.root.PanelAt(where), where)
 }
 
 func (w *Window) updateCursor(target *Panel, where geom.Point) {
