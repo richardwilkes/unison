@@ -44,17 +44,20 @@ func (f *macMenuFactory) NewMenu(id int, title string, updater func(Menu)) Menu 
 }
 
 func (f *macMenuFactory) macNewMenu(id int, title string, updater func(Menu)) *macMenu {
-	var u func(cocoa.Menu)
-	if updater != nil {
-		u = func(m cocoa.Menu) {
-			updater(&macMenu{factory: f, menu: m})
-		}
-	}
-	m := cocoa.NewMenu(title, u)
+	m := cocoa.NewMenu(title, f.wrapUpdater(id, updater))
 	return &macMenu{
 		factory: f,
 		id:      id,
 		menu:    m,
+	}
+}
+
+func (f *macMenuFactory) wrapUpdater(id int, updater func(Menu)) func(cocoa.Menu) {
+	if updater == nil {
+		return nil
+	}
+	return func(m cocoa.Menu) {
+		updater(&macMenu{factory: f, id: id, menu: m})
 	}
 }
 

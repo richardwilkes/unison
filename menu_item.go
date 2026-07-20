@@ -244,7 +244,7 @@ func (mi *menuItem) mouseMove(_ geom.Point, _ mod.Modifiers) bool {
 		stopAt = mi.subMenu
 	}
 	if w := ActiveWindow(); w != nil {
-		mi.menu.closeMenuStackStoppingAt(w, stopAt)
+		w.root.closeMenuStackStoppingAt(stopAt)
 	}
 	return false
 }

@@ -322,9 +322,7 @@ func (w *Window) lostFocus() {
 		w.focus.MarkForRedraw()
 	}
 	SafeCall(w.LostFocusCallback)
-	if w.root.menuBar != nil {
-		w.root.menuBar.postLostFocus(w)
-	}
+	w.root.postLostFocus(w)
 	if len(w.pressedKeys) != 0 {
 		keys := make([]KeyCode, 0, len(w.pressedKeys))
 		for key := range w.pressedKeys {
