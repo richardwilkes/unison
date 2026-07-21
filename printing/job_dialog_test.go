@@ -13,11 +13,13 @@ import (
 	"bytes"
 	"image"
 	"image/png"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -211,4 +213,65 @@ func TestRetrieveIcon(t *testing.T) {
 
 	// No icon URLs means no icon and no network access.
 	c.Nil(retrieveIcon(p, NewAttributes(nil).ForPrinter()))
+}
+
+func TestRetrieveIconChecksHTTPStatus(t *testing.T) {
+	c := check.New(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		mustWrite(t, w, []byte("<html><body>Not Found</body></html>"))
+	}))
+	defer srv.Close()
+	p := newTestPrinter(t, "icons", srv)
+	attrs := make(Attributes)
+	attrs.SetURI("printer-icons", srv.URL+"/icon.png", true)
+
+	// A printer that returns an error page for its advertised icon URL must be reported as an HTTP failure, not as an
+	// image decoding failure from feeding the HTML error page to the image codecs.
+	var logBuf bytes.Buffer
+	saved := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	defer slog.SetDefault(saved)
+	c.Nil(retrieveIcon(p, attrs.ForPrinter()))
+	c.Contains(logBuf.String(), "404")
+	c.NotContains(logBuf.String(), "unable to create image")
+}
+
+func TestPrinterDiscoveredAtCloseDoesNotRearmFetches(t *testing.T) {
+	c := check.New(t)
+	rspData := encodeIPPAttributesResponse(t, make(Attributes))
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		mustWrite(t, w, rspData)
+	}))
+	defer srv.Close()
+
+	tasks := make(chan func(), 4)
+	d := newTestJobDialog(func(f func()) { tasks <- f })
+	p := newTestPrinter(t, "late", srv)
+	d.mgr.lock.Lock()
+	d.mgr.printers = map[string]*Printer{p.ID: p}
+	d.mgr.lock.Unlock()
+
+	// A printer discovered just before the dialog is dismissed queues a popup rebuild that only runs on the UI thread
+	// after RunModal has returned.
+	d.printersChan = make(chan *Printer, 1)
+	go d.collectPrinters()
+	d.printersChan <- p
+	rebuild := waitForInvoke(t, tasks)
+	close(d.printersChan)
+
+	// The user dismisses the dialog (RunModal's deferred close), then the queued rebuild runs. It must not select the
+	// newly discovered printer and spawn a fresh attribute/icon fetch against the closed dialog's widgets.
+	d.close()
+	rebuild()
+	c.Nil(d.printer)
+	c.False(d.fetchingAttributes)
+	select {
+	case <-tasks:
+		t.Fatal("no UI task should have been queued after the dialog was closed")
+	default:
+	}
+	c.Equal(int32(0), requests.Load())
 }

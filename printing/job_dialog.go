@@ -55,6 +55,7 @@ type JobDialog struct {
 	lock                  sync.Mutex
 	fetchingAttributes    bool
 	awaitingPrinterUpdate bool
+	closed                bool
 }
 
 func newJobDialog(p *PrintManager, id PrinterID, mimeType string, attributes *JobAttributes) *JobDialog {
@@ -91,9 +92,7 @@ func (d *JobDialog) JobAttributes() *JobAttributes {
 // RunModal presents the dialog and returns true if the user pressed OK.
 func (d *JobDialog) RunModal() bool {
 	defer d.scanCancel()
-	// Invalidate any in-flight printer info fetch once the dialog is gone, so its results are not applied to widgets
-	// that are no longer displayed.
-	defer func() { d.fetchGen++ }()
+	defer d.close()
 	dlg, err := unison.NewDialog(nil, nil, d.createContent(), []*unison.DialogButtonInfo{
 		unison.NewCancelButtonInfo(),
 		unison.NewOKButtonInfoWithTitle(i18n.Text("Print")),
@@ -131,6 +130,14 @@ func (d *JobDialog) RunModal() bool {
 	d.sides.apply(d.printerAttributes.SupportedSides, d.jobAttributes.SetSides)
 	d.orientation.apply(d.printerAttributes.SupportedOrientations, d.jobAttributes.SetOrientation)
 	return true
+}
+
+// close marks the dialog as closed, invalidating any in-flight printer info fetch and any queued UI tasks so their
+// results are not applied to widgets that are no longer displayed and no new fetches are started. It runs on the UI
+// thread, as do the closures that check the flag, so no locking is needed.
+func (d *JobDialog) close() {
+	d.closed = true
+	d.fetchGen++
 }
 
 func (d *JobDialog) createContent() unison.Paneler {
@@ -189,6 +196,11 @@ func (d *JobDialog) createPrinterPopup(parent *unison.Panel) {
 }
 
 func (d *JobDialog) rebuildPrinterPopup() {
+	// A printer discovered just as the dialog is dismissed can queue this via invoke to run after RunModal returns;
+	// without this guard it would call setPrinter and re-arm printer info fetches against the detached widget tree.
+	if d.closed {
+		return
+	}
 	d.printers.SelectionChangedCallback = nil
 	d.printers.RemoveAllItems()
 	d.lock.Lock()
@@ -258,7 +270,7 @@ func (d *JobDialog) fetchPrinterInfo(printer *Printer, gen int) {
 	}
 	icon := retrieveIcon(printer, attributes)
 	d.invoke(func() {
-		if gen != d.fetchGen {
+		if d.closed || gen != d.fetchGen {
 			return
 		}
 		d.fetchingAttributes = false
@@ -305,6 +317,10 @@ func retrieveIcon(printer *Printer, attributes *PrinterAttributes) *unison.Image
 			return nil
 		}
 		defer xio.CloseIgnoringErrors(rsp.Body)
+		if rsp.StatusCode != http.StatusOK {
+			errs.Log(errs.Newf("unexpected status %q downloading link", rsp.Status), linkAttr, link)
+			return nil
+		}
 		var content []byte
 		if content, err = io.ReadAll(rsp.Body); err != nil {
 			errs.Log(errs.NewWithCause("unable to read body for link", err), linkAttr, link)
