@@ -175,6 +175,66 @@ func TestChangePropertyFormat16Chunking(t *testing.T) {
 	c.Equal(data, append(first.data, second.data...))
 }
 
+// TestChangePropertyRejectsPartialUnitData verifies that data whose length is not a multiple of the format unit size
+// is rejected outright rather than silently truncated to a whole number of units on the wire.
+func TestChangePropertyRejectsPartialUnitData(t *testing.T) {
+	c := check.New(t)
+	requests := captureRequests(t, math.MaxUint16, func(conn *Conn) {
+		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 16, PropModeReplace, patternedData(5))
+		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 32, PropModeAppend, patternedData(6))
+	})
+	c.Equal(0, len(requests))
+}
+
+// TestChangePropertyAppendChunking verifies that oversized appends are split into multiple append requests that
+// preserve the data's order, rather than sending only the first chunk and discarding the remainder.
+func TestChangePropertyAppendChunking(t *testing.T) {
+	c := check.New(t)
+	const maxWords = 4096
+	const maxData = (maxWords - 6) * 4
+	data := patternedData(maxData + 7)
+	requests := captureRequests(t, maxWords, func(conn *Conn) {
+		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 8, PropModeAppend, data)
+	})
+	c.Equal(2, len(requests))
+	var reassembled []byte
+	for i, raw := range requests {
+		req := parseChangeProperty(t, raw)
+		c.Equal(byte(PropModeAppend), req.mode)
+		if req.words > maxWords {
+			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
+		}
+		reassembled = append(reassembled, req.data...)
+	}
+	c.Equal(data, reassembled)
+}
+
+// TestChangePropertyPrependChunking verifies that oversized prepends are split into multiple prepend requests sent in
+// reverse order, so that the property ends up holding the data in its original order once all chunks have landed.
+func TestChangePropertyPrependChunking(t *testing.T) {
+	c := check.New(t)
+	const maxWords = 4096
+	const maxDataUnits = (maxWords - 6) * 4 / 2 // format 16: 2 bytes per unit
+	data := patternedData((maxDataUnits*2 + 3) * 2)
+	requests := captureRequests(t, maxWords, func(conn *Conn) {
+		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 16, PropModePrepend, data)
+	})
+	c.Equal(3, len(requests))
+	// Simulate the property: each prepend lands ahead of the previously written content.
+	var property []byte
+	for i, raw := range requests {
+		req := parseChangeProperty(t, raw)
+		c.Equal(byte(PropModePrepend), req.mode)
+		if req.words > maxWords {
+			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
+		}
+		property = append(append([]byte{}, req.data...), property...)
+	}
+	c.Equal(uint32(maxDataUnits), parseChangeProperty(t, requests[0]).unitCount)
+	c.Equal(uint32(3), parseChangeProperty(t, requests[2]).unitCount)
+	c.Equal(data, property)
+}
+
 // TestChangePropertyZeroLengthStillSends verifies that a zero-length write still produces a single request, since the
 // INCR protocol uses the resulting PropertyNotify to signal the end of a transfer.
 func TestChangePropertyZeroLengthStillSends(t *testing.T) {

@@ -1399,6 +1399,14 @@ func (c *Conn) PollEvents(filter func(Event) bool) Event {
 	return e
 }
 
+// drainEvents removes and discards every queued event matching the filter, leaving non-matching events queued. Since
+// filtered waits leave non-matching events queued indefinitely, this is needed before starting an exchange whose
+// replies are matched by filter, so stale events from an earlier abandoned exchange can't be mistaken for new ones.
+func (c *Conn) drainEvents(filter func(Event) bool) {
+	for c.PollEvents(filter) != nil {
+	}
+}
+
 func (c *Conn) hasExtension(name string, versionOpCode byte, versionIs16Bit bool, majorMax, minorMax uint32) extensionInfo {
 	size := 8 + pad4(len(name))
 	w := NewWriter(size)
@@ -1597,10 +1605,10 @@ const (
 
 // ChangeProperty changes the specified property on the given window to the provided data, using the specified mode
 // (PropModeReplace, PropModePrepend, or PropModeAppend). The propertyType and format parameters specify the type and
-// format of the property data, respectively. The data is provided as a byte slice, and its length should be consistent
-// with the specified format (8, 16, or 32 bits per unit). Automatic chunking will occur if the data exceeds the maximum
-// request size and mode is PropModeReplace, so there is no need to manually split the data into multiple requests for
-// large properties.
+// format of the property data, respectively. The data is provided as a byte slice, and its length must be a multiple
+// of the format unit size (8, 16, or 32 bits per unit); data that isn't is rejected outright rather than truncated to
+// a whole number of units. Automatic chunking will occur in any mode if the data exceeds the maximum request size, so
+// there is no need to manually split the data into multiple requests for large properties.
 func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) {
 	if format != 0 && format != 8 && format != 16 && format != 32 {
 		slog.Error("invalid format for ChangeProperty (must be 0, 8, 16, or 32)", "format", format)
@@ -1609,8 +1617,8 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 	unitSize := int(format / 8)
 	if unitSize != 0 && len(data)%unitSize != 0 {
 		slog.Error("data length must be a multiple of the format unit size", "dataLength", len(data), "unitSize", unitSize)
+		return
 	}
-	offset := 0
 	var remainingCount int
 	if unitSize != 0 {
 		remainingCount = len(data) / unitSize
@@ -1623,12 +1631,23 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 	if unitSize != 0 {
 		maxUnitsPerRequest = max((int(c.maximumRequestLength)-6)*4/unitSize, 1)
 	}
+	// When chunking, replacements send the first chunk with PropModeReplace and the rest with PropModeAppend, and
+	// appends send every chunk in order. Prepends must instead send chunks in reverse order, carving each chunk off
+	// the end of the remaining data, since every prepend lands ahead of the previously written one; offset always
+	// tracks the start of the next chunk to send.
+	offset := 0
+	if mode == PropModePrepend {
+		offset = len(data)
+	}
 	// A request is sent even when there is no data, since a zero-length write still generates a PropertyNotify event,
 	// which the INCR transfer mechanism relies upon to signal the end of a transfer.
-	onlyOnce := unitSize == 0 || mode != PropModeReplace || len(data) == 0
+	onlyOnce := unitSize == 0 || len(data) == 0
 	for remainingCount > 0 || onlyOnce {
 		unitCount := min(remainingCount, maxUnitsPerRequest)
 		byteSize := unitCount * unitSize
+		if mode == PropModePrepend {
+			offset -= byteSize
+		}
 		w := NewWriter(24 + pad4(byteSize))
 		w.Byte(opChangeProperty)
 		w.Byte(mode)
@@ -1648,9 +1667,11 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 		if onlyOnce {
 			break
 		}
-		mode = PropModeAppend
-		offset += byteSize
 		remainingCount -= unitCount
+		if mode != PropModePrepend {
+			mode = PropModeAppend
+			offset += byteSize
+		}
 	}
 }
 
