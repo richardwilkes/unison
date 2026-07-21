@@ -383,7 +383,7 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				line.Draw(canvas, geom.NewPoint(textLeft+f.scrollOffset.X, textBaseLine))
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end ||
-				(!f.multiLine && f.selectionEnd <= end)) {
+				(i == len(f.lines)-1 && f.selectionEnd <= end)) {
 				if f.showCursor {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]),
 						&TextDecoration{Font: f.Font})
@@ -1285,7 +1285,7 @@ func (f *Field) FromSelectionIndex(index int) geom.Point {
 		if f.endsWithLineFeed[i] == hardLineEnding {
 			length++
 		}
-		if !f.multiLine || index < start+length {
+		if index < start+length || i == len(f.lines)-1 {
 			return geom.NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-start)+f.scrollOffset.X, y)
 		}
 		lastHeight = max(line.Height(), f.Font.LineHeight())
