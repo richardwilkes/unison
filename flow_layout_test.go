@@ -112,6 +112,18 @@ func TestFlowLayoutBorderInsets(t *testing.T) {
 	c.Equal(geom.NewSize(110, 30), minSize)
 }
 
+func TestFlowLayoutAsymmetricBorderInsets(t *testing.T) {
+	c := check.New(t)
+	// An empty panel's preferred size is just its insets, so nothing masks the accumulator's seed values: the
+	// width must be Left+Right (3+5) and the height Top+Bottom (7+11). Seeding the width from the top inset
+	// instead of the left one reported Top+Right (12) here.
+	parent := newFlowParent(&unison.FlowLayout{})
+	parent.SetBorder(unison.NewEmptyBorder(geom.NewInsets(7, 3, 11, 5)))
+	minSize, prefSize, _ := parent.Sizes(geom.Size{})
+	c.Equal(geom.NewSize(8, 18), prefSize)
+	c.Equal(geom.NewSize(8, 18), minSize)
+}
+
 func TestFlowLayoutVerticalAlignment(t *testing.T) {
 	c := check.New(t)
 	// All four children share a single 40-tall row (the tallest child, b). Each exercises a different

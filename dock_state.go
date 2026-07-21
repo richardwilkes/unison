@@ -84,7 +84,7 @@ func (d *DockState) Apply(dock *Dock, keyToDockable func(string) Dockable) {
 	dock.RemoveAllChildren()
 	d.apply(dock.RootDockLayout(), keyToDockable)
 	dock.MarkForLayoutRecursively()
-	dock.Layout()
+	dock.ValidateLayout()
 	dock.MarkForRedraw()
 }
 

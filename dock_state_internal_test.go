@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 // TestDockStateApplyRejectsExcessLayoutChildren verifies that applying a malformed (e.g. hand-edited) saved state
@@ -32,4 +33,24 @@ func TestDockStateApplyRejectsExcessLayoutChildren(t *testing.T) {
 	state.apply(layout, func(string) Dockable { return nil })
 	c.NotNil(layout.nodes[0])
 	c.NotNil(layout.nodes[1])
+}
+
+// TestDockStateApplyPerformsLayout verifies that Apply actually performs layout rather than merely marking it needed,
+// since code commonly inspects frame rects immediately after restoring a saved state. It used to call the Layout()
+// getter, a no-op, instead of ValidateLayout().
+func TestDockStateApplyPerformsLayout(t *testing.T) {
+	c := check.New(t)
+	source := newTestDockable("one")
+	dock, _ := newTestDockContainer(source)
+	state := NewDockState(dock, func(d Dockable) string { return d.Title() })
+
+	restored := newTestDockable("one")
+	target := NewDock()
+	target.SetFrameRect(geom.NewRect(0, 0, 400, 300))
+	state.Apply(target, func(string) Dockable { return restored })
+
+	c.False(target.NeedsLayout)
+	dc := Ancestor[*DockContainer](restored)
+	c.NotNil(dc)
+	c.False(dc.FrameRect().Empty())
 }

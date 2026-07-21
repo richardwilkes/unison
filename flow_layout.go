@@ -38,7 +38,7 @@ func (f *FlowLayout) LayoutSizes(target *Panel, hint geom.Size) (minSize, prefSi
 	}
 	width := hint.Width - insets.Width()
 	pt := geom.NewPoint(insets.Left, insets.Top)
-	result := geom.NewSize(pt.Y, pt.Y)
+	result := geom.NewSize(pt.X, pt.Y)
 	availWidth := width
 	availHeight := hint.Height - insets.Height()
 	var maxHeight float32
