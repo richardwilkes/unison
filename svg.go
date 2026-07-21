@@ -551,13 +551,24 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 			if !ok {
 				continue
 			}
+			// Paths within a single mask union together, since each painted shape reveals its area. Distinct mask
+			// references on an element each clip the result, so those combine by intersection.
+			var maskPath *Path
 			for _, sp := range mask.paths {
 				sm := svgPreparePath(sp.path, &sp.style)
-				if singleMask == nil {
-					singleMask = sm
-				} else if !singleMask.Intersect(sm) {
+				if maskPath == nil {
+					maskPath = sm
+				} else if !maskPath.Union(sm) {
 					return nil, errs.New("svg: failed to combine mask paths")
 				}
+			}
+			if maskPath == nil {
+				continue
+			}
+			if singleMask == nil {
+				singleMask = maskPath
+			} else if !singleMask.Intersect(maskPath) {
+				return nil, errs.New("svg: failed to combine mask paths")
 			}
 		}
 		if singleMask != nil && !singleMask.Empty() {
@@ -596,32 +607,32 @@ func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, 
 			bbox = path.ComputeTightBounds()
 		}
 		var err error
-		g.StartPt.X, err = svgResolveUnit(bbox, t.sx, svgPercentWidth)
+		g.StartPt.X, err = svgResolveGradientUnit(bbox, t.sx, svgPercentWidth, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
-		g.StartPt.Y, err = svgResolveUnit(bbox, t.sy, svgPercentHeight)
+		g.StartPt.Y, err = svgResolveGradientUnit(bbox, t.sy, svgPercentHeight, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
-		g.EndPt.X, err = svgResolveUnit(bbox, t.ex, svgPercentWidth)
+		g.EndPt.X, err = svgResolveGradientUnit(bbox, t.ex, svgPercentWidth, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
-		g.EndPt.Y, err = svgResolveUnit(bbox, t.ey, svgPercentHeight)
+		g.EndPt.Y, err = svgResolveGradientUnit(bbox, t.ey, svgPercentHeight, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
 		g.Kind = gradienttype.Linear
 		if t.sr != "" {
 			g.Kind = gradienttype.Radial
-			g.Radius.Start, err = svgResolveUnit(bbox, t.sr, svgPercentDiag)
+			g.Radius.Start, err = svgResolveGradientUnit(bbox, t.sr, svgPercentDiag, !t.userSpaceOnUse)
 			if err != nil {
 				return nil, err
 			}
 		}
 		if t.er != "" {
-			g.Radius.End, err = svgResolveUnit(bbox, t.er, svgPercentDiag)
+			g.Radius.End, err = svgResolveGradientUnit(bbox, t.er, svgPercentDiag, !t.userSpaceOnUse)
 			if err != nil {
 				return nil, err
 			}
@@ -1418,7 +1429,7 @@ func (p *svgParser) handleLinearGradientElement(attrs []xml.Attr) error {
 		sx: "0%",
 		sy: "0%",
 		ex: "100%",
-		ey: "100%",
+		ey: "0%",
 	}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
@@ -1797,6 +1808,32 @@ func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentRef) (float32,
 			normalizedDiag := xmath.Sqrt(w*w+h*h) / xmath.Sqrt(2)
 			return value / 100 * normalizedDiag, nil
 		}
+	}
+	return value, nil
+}
+
+// svgResolveGradientUnit resolves a gradient coordinate. For objectBoundingBox units (the default), percentages and
+// plain numbers both denote fractions of the bounding box (e.g. "0.5" and "50%" are equivalent), so plain numbers are
+// scaled by the box dimension as well. For userSpaceOnUse, plain numbers are user-space values and only percentages
+// scale, which is what svgResolveUnit already does.
+func svgResolveGradientUnit(bbox geom.Rect, s string, asPerc svgPercentRef, objectBoundingBox bool) (float32, error) {
+	if !objectBoundingBox {
+		return svgResolveUnit(bbox, s, asPerc)
+	}
+	value, isPercent, err := svgParseUnit(s)
+	if err != nil {
+		return 0, err
+	}
+	if isPercent {
+		value /= 100
+	}
+	switch asPerc {
+	case svgPercentWidth:
+		return value * bbox.Width, nil
+	case svgPercentHeight:
+		return value * bbox.Height, nil
+	case svgPercentDiag:
+		return value * xmath.Sqrt(bbox.Width*bbox.Width+bbox.Height*bbox.Height) / xmath.Sqrt(2), nil
 	}
 	return value, nil
 }

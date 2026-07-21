@@ -131,6 +131,86 @@ func TestSVGCompactArcFlags(t *testing.T) {
 	}
 }
 
+// TestSVGObjectBoundingBoxGradientFractions verifies that objectBoundingBox gradient coordinates written as plain
+// numbers are treated as fractions of the bounding box, equivalent to percentages, since they were previously passed
+// through as user-space pixels and collapsed the gradient into a sliver.
+func TestSVGObjectBoundingBoxGradientFractions(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<linearGradient id="grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient>
+<rect x="2" y="2" width="6" height="6" fill="url(#grad)"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	g, ok := svg.paths[0].fillInk.(*Gradient)
+	c.True(ok, "fill should resolve to a gradient, got %T", svg.paths[0].fillInk)
+	// The gradient must span the shape's bounding box vertically: from the box's top edge to its bottom edge, both
+	// expressed as fractions of the viewBox.
+	c.Equal(geom.NewPoint(0.2, 0.2), g.StartPt)
+	c.Equal(geom.NewPoint(0.2, 0.8), g.EndPt)
+
+	// A fraction and the equivalent percentage must resolve identically, for both linear and radial gradients.
+	fromFractions, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<radialGradient id="grad" cx="0.5" cy="0.5" r="0.25"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></radialGradient>
+<rect x="2" y="2" width="6" height="6" fill="url(#grad)"/>
+</svg>`)
+	c.NoError(err)
+	fromPercents, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<radialGradient id="grad" cx="50%" cy="50%" r="25%"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></radialGradient>
+<rect x="2" y="2" width="6" height="6" fill="url(#grad)"/>
+</svg>`)
+	c.NoError(err)
+	gf, ok := fromFractions.paths[0].fillInk.(*Gradient)
+	c.True(ok, "fill should resolve to a gradient, got %T", fromFractions.paths[0].fillInk)
+	gp, ok := fromPercents.paths[0].fillInk.(*Gradient)
+	c.True(ok, "fill should resolve to a gradient, got %T", fromPercents.paths[0].fillInk)
+	c.Equal(gp.StartPt, gf.StartPt)
+	c.Equal(gp.EndPt, gf.EndPt)
+	c.Equal(gp.Radius, gf.Radius)
+}
+
+// TestSVGLinearGradientDefaultDirection verifies that a linearGradient with no coordinate attributes is horizontal, per
+// the spec defaults x1=0% y1=0% x2=100% y2=0%, since y2 was previously seeded as 100% and rendered diagonally.
+func TestSVGLinearGradientDefaultDirection(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<linearGradient id="grad"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient>
+<rect x="0" y="0" width="10" height="10" fill="url(#grad)"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	g, ok := svg.paths[0].fillInk.(*Gradient)
+	c.True(ok, "fill should resolve to a gradient, got %T", svg.paths[0].fillInk)
+	c.Equal(geom.NewPoint(0, 0), g.StartPt)
+	c.Equal(geom.NewPoint(1, 0), g.EndPt)
+}
+
+// TestSVGMaskMultiplePathsUnion verifies that multiple shapes within one mask reveal the union of their areas, since
+// they were previously intersected — which for disjoint shapes produced an empty mask that was silently dropped.
+func TestSVGMaskMultiplePathsUnion(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<mask id="m"><rect x="0" y="0" width="4" height="4" fill="#fff"/><rect x="6" y="6" width="3" height="3" fill="#fff"/></mask>
+<rect x="0" y="0" width="10" height="10" mask="url(#m)"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	c.NotNil(svg.paths[0].mask)
+	c.Equal(geom.NewRect(0, 0, 9, 9), svg.paths[0].mask.ComputeTightBounds())
+
+	// Distinct mask references reached through nesting must still intersect: a group mask and an element mask each
+	// clip, so the element is limited to the overlap of the two.
+	svg, err = NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<mask id="a"><rect x="0" y="0" width="6" height="6" fill="#fff"/></mask>
+<mask id="b"><rect x="4" y="4" width="6" height="6" fill="#fff"/></mask>
+<g mask="url(#a)"><rect x="0" y="0" width="10" height="10" mask="url(#b)"/></g>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	c.NotNil(svg.paths[0].mask)
+	c.Equal(geom.NewRect(4, 4, 2, 2), svg.paths[0].mask.ComputeTightBounds())
+}
+
 // TestSVGUseWithMultiShapeDef verifies that a use element referencing a def containing multiple shapes draws all of
 // them, since each shape's geometry was previously discarded when the next one reset the working path.
 func TestSVGUseWithMultiShapeDef(t *testing.T) {

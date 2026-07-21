@@ -176,11 +176,12 @@ func TestSVGGradientDefaults(t *testing.T) {
 			radiusEnd:   50,
 		},
 		{
+			// x1, y1 and y2 default to 0%, x2 to 100%, yielding a horizontal left-to-right gradient.
 			name:     "linear with defaults",
 			gradient: `<linearGradient id="g">` + stops + `</linearGradient>`,
 			kind:     gradienttype.Linear,
 			start:    geom.NewPoint(0, 0),
-			end:      geom.NewPoint(1, 1),
+			end:      geom.NewPoint(1, 0),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
