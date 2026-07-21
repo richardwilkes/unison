@@ -719,8 +719,10 @@ func (p *svgParser) readTransformAttr(op string, m geom.Matrix) (geom.Matrix, er
 func (p *svgParser) parseTransform(v string) (geom.Matrix, error) {
 	s := strings.Split(v, ")")
 	m := p.styleStack[len(p.styleStack)-1].transform
-	for i := len(s) - 1; i >= 0; i-- {
-		t := strings.TrimSpace(s[i])
+	// SVG composes a transform list left-to-right: the first op in the attribute is outermost, so it must be multiplied
+	// onto the accumulator first (Multiply applies its argument to the point before the receiver).
+	for _, seg := range s {
+		t := strings.TrimSpace(seg)
 		if t == "" {
 			continue
 		}
@@ -728,7 +730,7 @@ func (p *svgParser) parseTransform(v string) (geom.Matrix, error) {
 		if len(data) != 2 || len(data[1]) < 1 {
 			return m, errParamMismatch
 		}
-		err := p.addPoints(data[1])
+		err := p.addPoints(data[1], false)
 		if err != nil {
 			return m, err
 		}
@@ -1065,11 +1067,21 @@ func (p *svgParser) hasSetsOrMore(sz int, rel bool) bool {
 	return true
 }
 
-func (p *svgParser) addPoints(dataPoints string) error {
+// addPoints tokenizes a list of numbers. When arcFlags is true, the data is elliptical-arc arguments, whose 4th and 5th
+// values in each set of 7 are the large-arc and sweep flags: single digits that may legally abut the following number
+// with no separator (e.g. "a4 4 0 014 4"), so at those positions exactly one digit is consumed.
+func (p *svgParser) addPoints(dataPoints string, arcFlags bool) error {
 	lastIndex := -1
 	p.pts = p.pts[0:0]
 	lr := ' '
 	for i, r := range dataPoints {
+		if arcFlags && lastIndex == -1 && (r == '0' || r == '1') {
+			if pos := len(p.pts) % 7; pos == 3 || pos == 4 {
+				p.pts = append(p.pts, float32(r-'0'))
+				lr = r
+				continue
+			}
+		}
 		partOfNumber := unicode.IsNumber(r) || r == '.' || r == 'e' || r == 'E' ||
 			((r == '-' || r == '+') && (lr == 'e' || lr == 'E'))
 		if !partOfNumber {
@@ -1123,11 +1135,11 @@ func (p *svgParser) readFloatIntoPts(numStr string) error {
 }
 
 func (p *svgParser) addSegment(segString string) error {
-	if err := p.addPoints(segString[1:]); err != nil {
+	k := segString[0]
+	if err := p.addPoints(segString[1:], k == 'a' || k == 'A'); err != nil {
 		return err
 	}
 	l := len(p.pts)
-	k := segString[0]
 	rel := false
 	switch k {
 	case 'Z', 'z':
@@ -1610,7 +1622,7 @@ func (p *svgParser) handlePolylineElement(attrs []xml.Attr) error {
 		if attr.Name.Local != "points" {
 			continue
 		}
-		if err := p.addPoints(attr.Value); err != nil {
+		if err := p.addPoints(attr.Value, false); err != nil {
 			return err
 		}
 		if len(p.pts)%2 != 0 {
@@ -1631,7 +1643,7 @@ func (p *svgParser) handleSVGElement(attrs []xml.Attr) error {
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "viewBox":
-			if err := p.addPoints(attr.Value); err != nil {
+			if err := p.addPoints(attr.Value, false); err != nil {
 				return err
 			}
 			if len(p.pts) != 4 {

@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -73,6 +75,60 @@ func TestSVGPathUppercaseExponent(t *testing.T) {
 	c.NoError(err)
 	c.Equal(1, len(svg.paths))
 	c.Equal(geom.NewRect(0, 0, 20, 10), svg.paths[0].path.ComputeTightBounds())
+}
+
+// TestSVGTransformListOrder verifies that a multi-op transform attribute composes left-to-right as the spec requires,
+// since the parser previously composed the ops in reverse order. For "translate(10,0) rotate(90)" the rotation must be
+// applied to geometry first: the unit rect maps to (9,0)-(10,1), not the reversed order's (-1,10)-(0,11).
+func TestSVGTransformListOrder(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+<rect x="0" y="0" width="1" height="1" transform="translate(10,0) rotate(90)"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	bounds := svg.paths[0].path.ComputeTightBounds()
+	c.True(rectsNearlyEqual(geom.NewRect(9, 0, 1, 1), bounds), "got %v", bounds)
+
+	svg, err = NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+<rect x="0" y="0" width="1" height="1" transform="translate(5,5) scale(2)"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	bounds = svg.paths[0].path.ComputeTightBounds()
+	c.True(rectsNearlyEqual(geom.NewRect(5, 5, 2, 2), bounds), "got %v", bounds)
+}
+
+// rectsNearlyEqual compares rects with a small tolerance, since transforms like rotate(90) introduce float32 rounding
+// noise (e.g. cos 90° is not exactly zero).
+func rectsNearlyEqual(a, b geom.Rect) bool {
+	const tolerance = 1e-5
+	near := func(x, y float32) bool { return math.Abs(float64(x-y)) < tolerance }
+	return near(a.X, b.X) && near(a.Y, b.Y) && near(a.Width, b.Width) && near(a.Height, b.Height)
+}
+
+// TestSVGCompactArcFlags verifies that arc commands whose single-digit flags abut the following number without a
+// separator (the compact form emitted by svgo and similar minifiers) parse identically to the fully separated form,
+// since the number tokenizer previously consumed the run as one number and rejected the whole document.
+func TestSVGCompactArcFlags(t *testing.T) {
+	c := check.New(t)
+	const doc = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="%s"/></svg>`
+	for _, one := range []struct{ compact, expanded string }{
+		{"M0 0a4 4 0 014 4z", "M0 0a4 4 0 0 1 4 4z"},
+		{"M0 0a4 4 0 104 4z", "M0 0a4 4 0 1 0 4 4z"},
+		{"M0 0a4 4 0 11-4 4z", "M0 0a4 4 0 1 1 -4 4z"},
+		{"M0 0a4 4 0 014 4 4 4 0 014 4z", "M0 0a4 4 0 0 1 4 4 4 4 0 0 1 4 4z"},
+		{"M2 2A4 4 0 01.5.5z", "M2 2A4 4 0 0 1 0.5 0.5z"},
+	} {
+		compact, err := NewSVGFromContentString(fmt.Sprintf(doc, one.compact))
+		c.NoError(err, "compact form %q", one.compact)
+		expanded, err := NewSVGFromContentString(fmt.Sprintf(doc, one.expanded))
+		c.NoError(err, "expanded form %q", one.expanded)
+		c.Equal(1, len(compact.paths), "compact form %q", one.compact)
+		c.Equal(1, len(expanded.paths), "expanded form %q", one.expanded)
+		c.Equal(expanded.paths[0].path.ComputeTightBounds(), compact.paths[0].path.ComputeTightBounds(),
+			"compact form %q", one.compact)
+	}
 }
 
 // TestSVGUseWithMultiShapeDef verifies that a use element referencing a def containing multiple shapes draws all of
