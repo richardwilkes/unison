@@ -550,7 +550,9 @@ func (l *List[T]) rowAt(y float32) (row int, top float32) {
 			row++
 		}
 	} else {
-		row = int(xmath.Floor((y - top) / cellHeight))
+		// y can be above the content rect (e.g. within a top border inset when redrawing the full widget), which would
+		// otherwise produce a negative row and cause DefaultDraw to skip all rows.
+		row = max(int(xmath.Floor((y-top)/cellHeight)), 0)
 		top += float32(row) * cellHeight
 	}
 	if row >= count {
