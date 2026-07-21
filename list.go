@@ -469,6 +469,11 @@ func (l *List[T]) SelectAll() {
 // SelectRange selects items from 'start' to 'end', inclusive. If 'add' is true, then any existing selection is added to
 // rather than replaced.
 func (l *List[T]) SelectRange(start, end int, add bool) {
+	maximum := len(l.rows) - 1
+	if maximum < 0 {
+		// With no rows, the clamps below would produce SetRange(0, 0), creating a phantom selection at index 0.
+		return
+	}
 	if !l.allowMultiple {
 		add = false
 		end = start
@@ -477,7 +482,6 @@ func (l *List[T]) SelectRange(start, end int, add bool) {
 		l.Selection.Reset()
 		l.anchor = -1
 	}
-	maximum := len(l.rows) - 1
 	start = max(min(start, maximum), 0)
 	end = max(min(end, maximum), 0)
 	l.Selection.SetRange(start, end)
