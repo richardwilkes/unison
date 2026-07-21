@@ -263,6 +263,10 @@ type svgMask struct {
 	bounds geom.Rect
 }
 
+// svgEndGroupTag is the sentinel def entry recorded when a group inside a defs section closes, marking where the style
+// frame pushed for the group's attributes must be popped when the def is used.
+const svgEndGroupTag = "endg"
+
 type svgDef struct {
 	id    string
 	tag   string
@@ -495,7 +499,7 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 			switch se.Name.Local {
 			case "g":
 				if p.inDefs {
-					p.currentDef = append(p.currentDef, svgDef{tag: "endg"})
+					p.currentDef = append(p.currentDef, svgDef{tag: svgEndGroupTag})
 				}
 			case "mask":
 				if p.mask != nil {
@@ -504,10 +508,7 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 				}
 				p.inMask = false
 			case "defs":
-				if len(p.currentDef) > 0 {
-					p.data.defs[p.currentDef[0].id] = p.currentDef
-					p.currentDef = make([]svgDef, 0)
-				}
+				p.registerDefs()
 				p.inDefs = false
 			case "radialGradient", "linearGradient":
 				p.inGrad = false
@@ -925,10 +926,6 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 				id = attr.Value
 			}
 		}
-		if id != "" && len(p.currentDef) > 0 {
-			p.data.defs[p.currentDef[0].id] = p.currentDef
-			p.currentDef = make([]svgDef, 0)
-		}
 		p.currentDef = append(p.currentDef, svgDef{
 			id:    id,
 			tag:   se.Name.Local,
@@ -941,6 +938,32 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	}
 	p.flushPath()
 	return nil
+}
+
+// registerDefs records the def entries collected for a defs section, creating one entry in the defs map per id-bearing
+// element. A group's def spans through its matching endg sentinel so that using it pushes and pops style frames in
+// balance, while id-bearing elements nested inside a group also remain individually addressable.
+func (p *svgParser) registerDefs() {
+	for i, def := range p.currentDef {
+		if def.id == "" || def.tag == svgEndGroupTag {
+			continue
+		}
+		end := i + 1
+		if def.tag == "g" {
+			depth := 1
+			for end < len(p.currentDef) && depth > 0 {
+				switch p.currentDef[end].tag {
+				case "g":
+					depth++
+				case svgEndGroupTag:
+					depth--
+				}
+				end++
+			}
+		}
+		p.data.defs[def.id] = p.currentDef[i:end]
+	}
+	p.currentDef = nil
 }
 
 // flushPath records any geometry accumulated in p.path with the current top-of-stack style and resets p.path for the
@@ -1712,9 +1735,12 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 			return err
 		}
 	}
-	p.curX, p.curY = x, y
+	// Offsets accumulate rather than replace so that a use reached through another use's def keeps the outer offset,
+	// and the previous values are restored afterward rather than being reset to zero.
+	prevX, prevY := p.curX, p.curY
+	p.curX, p.curY = prevX+x, prevY+y
 	defer func() {
-		p.curX, p.curY = 0, 0
+		p.curX, p.curY = prevX, prevY
 	}()
 	if href == "" {
 		return errors.New("only use tags with href is supported")
@@ -1727,7 +1753,7 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 		return errors.New("href ID in use statement was not found in saved defs")
 	}
 	for _, def := range defs {
-		if def.tag == "endg" {
+		if def.tag == svgEndGroupTag {
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 			continue
 		}

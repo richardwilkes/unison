@@ -211,6 +211,49 @@ func TestSVGMaskMultiplePathsUnion(t *testing.T) {
 	c.Equal(geom.NewRect(4, 4, 2, 2), svg.paths[0].mask.ComputeTightBounds())
 }
 
+// TestSVGUseOfDefNestedInGroup verifies that an id-bearing element nested inside an id-bearing group within defs can be
+// used without corrupting the style stack. Previously the def list was split at the nested id, leaving the group's endg
+// sentinel in the wrong def entry, so each use popped a style frame that was never pushed — corrupting inherited styles
+// and panicking on the second use.
+func TestSVGUseOfDefNestedInGroup(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<defs><g id="outer" fill="#ff0000"><rect id="inner" x="1" y="1" width="2" height="2"/></g></defs>
+<use href="#inner"/>
+<use href="#inner" x="4"/>
+<use href="#outer" y="4"/>
+<rect x="0" y="0" width="1" height="1"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(4, len(svg.paths))
+	// Using the nested rect directly draws it without the group's fill.
+	c.Equal(geom.NewRect(1, 1, 2, 2), svg.paths[0].path.ComputeTightBounds())
+	c.Equal(Black, svg.paths[0].fillInk)
+	c.Equal(geom.NewRect(5, 1, 2, 2), svg.paths[1].path.ComputeTightBounds())
+	// Using the group draws the nested rect with the group's fill.
+	c.Equal(geom.NewRect(1, 5, 2, 2), svg.paths[2].path.ComputeTightBounds())
+	c.Equal(Red, svg.paths[2].fillInk)
+	// The trailing rect must still see the document's default style, proving the stack survived the uses intact.
+	c.Equal(geom.NewRect(0, 0, 1, 1), svg.paths[3].path.ComputeTightBounds())
+	c.Equal(Black, svg.paths[3].fillInk)
+}
+
+// TestSVGNestedUseKeepsOuterOffset verifies that a use reached through another use's def combines both x/y offsets and
+// that the offsets are restored afterward. Previously the inner use replaced the outer offset and then reset it to
+// zero.
+func TestSVGNestedUseKeepsOuterOffset(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+<defs><rect id="leaf" width="2" height="2"/><use id="mid" href="#leaf" x="3" y="3"/></defs>
+<use href="#mid" x="10" y="20"/>
+<rect x="0" y="0" width="1" height="1"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(2, len(svg.paths))
+	c.Equal(geom.NewRect(13, 23, 2, 2), svg.paths[0].path.ComputeTightBounds())
+	c.Equal(geom.NewRect(0, 0, 1, 1), svg.paths[1].path.ComputeTightBounds())
+}
+
 // TestSVGUseWithMultiShapeDef verifies that a use element referencing a def containing multiple shapes draws all of
 // them, since each shape's geometry was previously discarded when the next one reset the working path.
 func TestSVGUseWithMultiShapeDef(t *testing.T) {
