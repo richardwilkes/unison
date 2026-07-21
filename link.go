@@ -60,12 +60,18 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 		return ArrowCursor()
 	}
 	mouseDown := false
-	link.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
+	link.MouseDownCallback = func(_ geom.Point, button, _ int, _ mod.Modifiers) bool {
+		if button != ButtonLeft {
+			return false
+		}
 		mouseDown = true
 		link.MarkForRedraw()
 		return true
 	}
-	link.MouseDragCallback = func(where geom.Point, _ int, _ mod.Modifiers) bool {
+	link.MouseDragCallback = func(where geom.Point, button int, _ mod.Modifiers) bool {
+		if button != ButtonLeft {
+			return false
+		}
 		now := where.In(link.ContentRect(true))
 		if now != mouseDown {
 			mouseDown = now
@@ -73,7 +79,10 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 		}
 		return true
 	}
-	link.MouseUpCallback = func(where geom.Point, _ int, _ mod.Modifiers) bool {
+	link.MouseUpCallback = func(where geom.Point, button int, _ mod.Modifiers) bool {
+		if button != ButtonLeft {
+			return false
+		}
 		link.MarkForRedraw()
 		if where.In(link.ContentRect(true)) && clickHandler != nil {
 			SafeCall(func() { clickHandler(link, target) })
