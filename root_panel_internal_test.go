@@ -24,6 +24,17 @@ func newContentTestWindow() *Window {
 	return w
 }
 
+// TestMenuBarWithoutMenuBarSet verifies that MenuBar returns nil rather than panicking when no menu bar has been
+// installed, and still returns the menu bar's panel once one is present.
+func TestMenuBarWithoutMenuBarSet(t *testing.T) {
+	c := check.New(t)
+	root := newRootPanel(nil)
+	c.Nil(root.MenuBar())
+	mp := newTestMenuPanel(0, 0, 100, 20)
+	root.menuBarPanel = mp
+	c.Equal(mp.AsPanel(), root.MenuBar())
+}
+
 // TestSetContentNilSupported verifies that clearing the window content with SetContent(nil) neither panics in
 // setContent nor in the subsequent layout of a window with no content, and that content can be installed again
 // afterwards.

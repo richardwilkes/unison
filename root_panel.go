@@ -43,6 +43,9 @@ func newRootPanel(wnd *Window) *rootPanel {
 }
 
 func (p *rootPanel) MenuBar() *Panel {
+	if p.menuBarPanel == nil {
+		return nil
+	}
 	return p.menuBarPanel.AsPanel()
 }
 
