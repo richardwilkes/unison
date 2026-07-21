@@ -1251,8 +1251,8 @@ func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
 }
 
 func (c *Conn) locateRequest(seq uint16) *request {
-	c.requestMapLock.RLock()
-	defer c.requestMapLock.RUnlock()
+	c.requestMapLock.Lock()
+	defer c.requestMapLock.Unlock()
 	req, ok := c.requestMap[seq]
 	if !ok {
 		return nil

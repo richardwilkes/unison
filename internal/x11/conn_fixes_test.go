@@ -17,6 +17,8 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -301,6 +303,46 @@ func TestXSettingsHandleManagerMessage(t *testing.T) {
 	if err := <-serverDone; err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestLocateRequestConcurrent verifies that locateRequest can run concurrently with itself and with request
+// registration, as happens when the checked-request cleanup on a sending goroutine overlaps the reader goroutine's
+// response processing. locateRequest deletes from the request map, so it must take the write lock; under the race
+// detector this test fails if it mutates the map while holding only the read lock.
+func TestLocateRequestConcurrent(t *testing.T) {
+	c := check.New(t)
+	conn := &Conn{requestMap: make(map[uint16]*request)}
+	const workers = 4
+	const perWorker = 512
+	for i := range workers * perWorker {
+		conn.requestMap[uint16(i)] = newCheckedRequest(nil)
+	}
+	var located atomic.Int32
+	var wg sync.WaitGroup
+	for w := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range perWorker {
+				if conn.locateRequest(uint16(w*perWorker+i)) != nil {
+					located.Add(1)
+				}
+			}
+		}()
+	}
+	// Register new requests concurrently, mirroring what sendRequests does while responses are being processed.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := range perWorker {
+			conn.requestMapLock.Lock()
+			conn.requestMap[uint16(workers*perWorker+i)] = newCheckedRequest(nil)
+			conn.requestMapLock.Unlock()
+		}
+	}()
+	wg.Wait()
+	c.Equal(int32(workers*perWorker), located.Load(), "every tracked request must be located exactly once")
+	c.Equal(perWorker, len(conn.requestMap), "only the concurrently registered requests may remain")
 }
 
 // TestIconData verifies the _NET_WM_ICON payload layout for multiple images, including a sub-image with a non-zero
