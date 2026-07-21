@@ -36,15 +36,6 @@ type DragTargetWindow interface {
 	Drop(di drag.Info, where geom.Point, mods mod.Modifiers) bool
 }
 
-// DROPFILES https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/ns-shlobj_core-dropfiles
-type DROPFILES struct {
-	PFiles uint32
-	PtX    int32
-	PtY    int32
-	FNC    uint32 // BOOL: non-client area flag
-	FWide  uint32 // BOOL: TRUE = Unicode wide chars
-}
-
 // dragInfo implements drag.Info using a Windows IDataObject.
 type dragInfo struct {
 	obj    *IDataObject
@@ -213,37 +204,4 @@ func (d *dragInfo) getFormatData(cf ClipboardFormat) []byte {
 	data := make([]byte, size)
 	copy(data, unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), size))
 	return data
-}
-
-// ParseDropFiles extracts file paths from a raw CF_HDROP HGLOBAL buffer.
-func ParseDropFiles(data []byte) []string {
-	if len(data) < int(unsafe.Sizeof(DROPFILES{})) {
-		return nil
-	}
-	df := (*DROPFILES)(unsafe.Pointer(&data[0]))
-	if df.FWide == 0 {
-		return nil // Only support Unicode (FWide=TRUE)
-	}
-	offset := int(df.PFiles)
-	if offset >= len(data) {
-		return nil
-	}
-	// The file list is a double-null-terminated list of wide strings.
-	remaining := data[offset:]
-	if len(remaining)%2 != 0 {
-		remaining = remaining[:len(remaining)-1]
-	}
-	u16 := unsafe.Slice((*uint16)(unsafe.Pointer(&remaining[0])), len(remaining)/2)
-	var paths []string
-	start := 0
-	for i, v := range u16 {
-		if v == 0 {
-			if i == start {
-				break // Double null: end of list
-			}
-			paths = append(paths, windows.UTF16ToString(u16[start:i]))
-			start = i + 1
-		}
-	}
-	return paths
 }
