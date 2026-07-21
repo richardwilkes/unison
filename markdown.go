@@ -1202,17 +1202,28 @@ func (m *Markdown) constrainImage(drawable Drawable) Drawable {
 
 func (m *Markdown) extractText(node ast.Node) string {
 	var str strings.Builder
+	m.collectText(node, &str)
+	return str.String()
+}
+
+func (m *Markdown) collectText(node ast.Node, str *strings.Builder) {
 	for c := node.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
+		switch t := c.(type) {
+		case *ast.Text:
 			b := util.UnescapePunctuations(t.Value(m.content))
 			b = util.ResolveNumericReferences(b)
 			str.Write(util.ResolveEntityNames(b))
 			if t.SoftLineBreak() {
 				str.WriteByte(' ')
 			}
+		case *ast.String:
+			b := util.UnescapePunctuations(t.Value)
+			b = util.ResolveNumericReferences(b)
+			str.Write(util.ResolveEntityNames(b))
+		default:
+			m.collectText(c, str)
 		}
 	}
-	return str.String()
 }
 
 func (m *Markdown) processImage() {

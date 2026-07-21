@@ -120,6 +120,58 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 	}
 }
 
+// TestMarkdownStyledLinkLabels verifies that link labels whose text is nested inside styled inline nodes (emphasis,
+// code spans, strikethrough, etc.) still surface their text. extractText must recurse into child nodes rather than
+// only collecting the link node's direct Text children, or the rendered link ends up with an empty label.
+func TestMarkdownStyledLinkLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{name: "bold label", content: "[**bold label**](http://example.com)\n", want: "bold label"},
+		{name: "italic label", content: "[*italic label*](http://example.com)\n", want: "italic label"},
+		{name: "code label", content: "[`code label`](http://example.com)\n", want: "code label"},
+		{name: "strikethrough label", content: "[~~struck label~~](http://example.com)\n", want: "struck label"},
+		{name: "nested styles", content: "[**outer *inner* text**](http://example.com)\n", want: "outer inner text"},
+		{name: "mixed plain and styled", content: "[pre **mid** post](http://example.com)\n", want: "pre mid post"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent(tc.content, 400)
+			c.Contains(collectMarkdownText(m.AsPanel()), tc.want)
+		})
+	}
+}
+
+// TestMarkdownStyledImageAltText verifies that image alt text nested inside styled inline nodes still becomes the
+// image's tooltip, exercising the same extractText recursion as styled link labels. The image target does not exist,
+// so the load fails fast and the broken-image placeholder is used; the alt-text tooltip must be attached regardless.
+func TestMarkdownStyledImageAltText(t *testing.T) {
+	saved := markdownPrimaryDisplay
+	defer func() { markdownPrimaryDisplay = saved }()
+	markdownPrimaryDisplay = func() *Display { return nil }
+	c := check.New(t)
+	m := NewMarkdown(false)
+	m.SetContent("![**styled alt text**](missing-image-for-test.png)\n", 400)
+	var tip *Panel
+	var walk func(p *Panel)
+	walk = func(p *Panel) {
+		if _, ok := p.Self.(*DrawablePanel); ok && p.Tooltip != nil {
+			tip = p.Tooltip
+		}
+		for _, child := range p.Children() {
+			walk(child)
+		}
+	}
+	walk(m.AsPanel())
+	c.NotNil(tip)
+	if tip != nil {
+		c.Contains(collectMarkdownText(tip), "styled alt text")
+	}
+}
+
 func TestMarkdownHeadingAnchors(t *testing.T) {
 	c := check.New(t)
 	m := NewMarkdown(false)
