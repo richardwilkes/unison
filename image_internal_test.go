@@ -133,7 +133,8 @@ func drainTasks() {
 // TestImageDisposeReleasesTextures verifies that Dispose evicts the image's cached GPU textures from every context in
 // imageCtxMap and releases them, while leaving other images' entries alone. Before this, only whole-context teardown
 // (releaseImagesForContext) ever removed per-image texture entries, so long-lived windows accumulated textures without
-// bound.
+// bound. The eviction must happen via a task on the UI thread, not on Dispose's caller's goroutine, since imageCtxMap
+// is UI-thread-only state.
 func TestImageDisposeReleasesTextures(t *testing.T) {
 	c := check.New(t)
 
@@ -155,7 +156,14 @@ func TestImageDisposeReleasesTextures(t *testing.T) {
 
 	img.Dispose()
 
+	// Dispose only queues the release; nothing may touch imageCtxMap until the task runs on the UI thread.
 	_, present := imageCtxMap[ctx1][img.hash]
+	c.True(present, "Dispose must not touch imageCtxMap before the queued task runs")
+	c.False(tex1.released, "Dispose must not release textures before the queued task runs")
+
+	drainTasks()
+
+	_, present = imageCtxMap[ctx1][img.hash]
 	c.False(present, "Dispose should evict the image's texture from the first context")
 	_, present = imageCtxMap[ctx2][img.hash]
 	c.False(present, "Dispose should evict the image's texture from the second context")
@@ -165,6 +173,45 @@ func TestImageDisposeReleasesTextures(t *testing.T) {
 	_, present = imageCtxMap[ctx1][img.hash+1]
 	c.True(present, "Dispose should leave other images' textures alone")
 	c.False(bystander.released, "Dispose should not release other images' textures")
+}
+
+// TestImageDisposeOffUIThreadDefersTextureRelease covers the scenario from issue 13: an app disposing images from a
+// background loader goroutine. Dispose must not touch imageCtxMap (UI-thread-only, unlocked) or perform GL work on the
+// caller's goroutine; it must instead queue the release through InvokeTask, exactly like the GC cleanup path. The
+// caller's goroutine here stands in for the background loader, and the test goroutine drains the task queue as the UI
+// thread would.
+func TestImageDisposeOffUIThreadDefersTextureRelease(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 59), geom.NewPoint(1, 1))
+	c.NoError(err)
+
+	hash := img.hash
+	ctx := new(gl.DirectContext)
+	defer delete(imageCtxMap, ctx)
+	tex := &stubTexture{}
+	imageCtxMap[ctx] = map[uint64]genericImage{hash: tex}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		img.Dispose()
+	}()
+	<-done
+
+	// The background goroutine's Dispose has fully returned, yet the map and texture must be untouched: the release
+	// runs only when the UI thread services the task queue.
+	_, present := imageCtxMap[ctx][hash]
+	c.True(present, "Dispose from a background goroutine must not mutate imageCtxMap directly")
+	c.False(tex.released, "Dispose from a background goroutine must not release the texture directly")
+	c.Nil(img.image, "Dispose should still drop the underlying image reference synchronously")
+
+	drainTasks()
+
+	_, present = imageCtxMap[ctx][hash]
+	c.False(present, "the queued task should evict the texture on the UI thread")
+	c.True(tex.released, "the queued task should release the texture on the UI thread")
 }
 
 // TestImageGCReleasesTextures verifies the garbage-collection path: once a texture has been uploaded for an image (and
@@ -246,6 +293,7 @@ func TestImageDisposeStopsGCCleanup(t *testing.T) {
 	imageCtxMap[ctx] = map[uint64]genericImage{hash: &stubTexture{}}
 	img.registerTextureCleanup()
 	img.Dispose()
+	drainTasks() // run Dispose's queued texture release before caching the successor
 
 	// Simulate a successor image's texture cached under the same hash after the old image was disposed.
 	successor := &stubTexture{}

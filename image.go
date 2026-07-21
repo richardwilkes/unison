@@ -222,7 +222,11 @@ func (img *Image) Dispose() {
 		}
 		imgCacheLock.Unlock()
 		img.texCleanup.Stop()
-		releaseTexturesForImage(img.hash)
+		// Dispose may be called from any goroutine, but imageCtxMap is UI-thread-only state and releasing a texture is
+		// GL work, so marshal the release onto the UI thread, just as the GC cleanup path does. Capture the hash rather
+		// than img so the task does not extend the Image's lifetime.
+		hash := img.hash
+		InvokeTask(func() { releaseTexturesForImage(hash) })
 		img.image = nil
 		img.nonTextureImage = nil
 	})
