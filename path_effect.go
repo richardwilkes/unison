@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"sync"
+
 	skpatheffect "github.com/richardwilkes/canvas/patheffect"
 	"github.com/richardwilkes/canvas/stroke"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -81,12 +83,15 @@ func NewTrimPathEffect(start, stop float32, mode trimmode.Enum) *PathEffect {
 	return newPathEffect(skpatheffect.MakeTrim(start, stop, skpatheffect.TrimMode(mode)))
 }
 
-var dashEffect *PathEffect
+var (
+	dashEffect     *PathEffect
+	dashEffectOnce sync.Once
+)
 
 // DashEffect returns a 4-4 dash effect.
 func DashEffect() *PathEffect {
-	if dashEffect == nil {
+	dashEffectOnce.Do(func() {
 		dashEffect = NewDashPathEffect([]float32{4, 4}, 0)
-	}
+	})
 	return dashEffect
 }
