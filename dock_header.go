@@ -91,7 +91,7 @@ func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect) {
 		switch {
 		case d.dragInsertIndex < len(tabs):
 			r.X = tabs[d.dragInsertIndex].FrameRect().X - ((d.TabGap-d.TabInsertSize)/2 + d.TabInsertSize + 1)
-		default:
+		case len(tabs) != 0:
 			r.X = tabs[len(tabs)-1].FrameRect().Right()
 		}
 		dropPaint := d.DropAreaInk.Paint(gc, rect, paintstyle.Fill)
