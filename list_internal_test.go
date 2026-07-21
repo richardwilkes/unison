@@ -56,6 +56,35 @@ func TestListRowAtFixedHeightClampsAboveContent(t *testing.T) {
 	c.Equal(float32(0), top)
 }
 
+func TestListSelectRangeEmptyList(t *testing.T) {
+	c := check.New(t)
+	l := NewList[string]()
+
+	// SelectRange and SelectAll on an empty list must not create a phantom selection at index 0.
+	l.SelectRange(0, 0, false)
+	c.Equal(0, l.Selection.Count())
+	l.SelectAll()
+	c.Equal(0, l.Selection.Count())
+	c.Equal(-1, l.anchor)
+}
+
+func TestListSelectRangeNonEmptyList(t *testing.T) {
+	c := check.New(t)
+	l := NewList[string]()
+	l.Append("a", "b", "c")
+	l.SetAllowMultipleSelection(true)
+
+	// Normal ranges still work, including clamping of out-of-bounds indexes.
+	l.SelectRange(1, 5, false)
+	c.Equal(2, l.Selection.Count())
+	c.True(l.Selection.State(1))
+	c.True(l.Selection.State(2))
+	c.Equal(1, l.anchor)
+
+	l.SelectAll()
+	c.Equal(3, l.Selection.Count())
+}
+
 func TestListRowAtFixedHeightEmptyList(t *testing.T) {
 	c := check.New(t)
 	l := newFixedHeightBorderedList()
