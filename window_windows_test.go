@@ -114,3 +114,21 @@ func TestW32MouseMessagePoint(t *testing.T) {
 	hiBits <<= 32
 	c.Equal(geom.NewPoint(-5, -1), w32MouseMessagePoint(w32.LPARAM(hiBits)|pack(-5, -1)))
 }
+
+// TestW32KeyEvents verifies the translation of key messages into logical key events, in particular that the
+// PrintScreen press/release pair is synthesized only from the KEYUP. Physical keyboards deliver only WM_KEYUP for
+// PrintScreen, but injected input (SendInput, remote-desktop stacks, automation) delivers both messages; the previous
+// code synthesized the pair on each, double-triggering any PrintScreen-bound action.
+func TestW32KeyEvents(t *testing.T) {
+	c := check.New(t)
+	// Ordinary keys pass through one-for-one in both directions.
+	c.Equal([]w32KeyEvent{{key: KeyA, pressed: true}}, w32KeyEvents(KeyA, 'A', true))
+	c.Equal([]w32KeyEvent{{key: KeyA}}, w32KeyEvents(KeyA, 'A', false))
+	// A shift press passes through; a shift release fans out to both shift keys.
+	c.Equal([]w32KeyEvent{{key: KeyLShift, pressed: true}}, w32KeyEvents(KeyLShift, w32.VK_SHIFT, true))
+	c.Equal([]w32KeyEvent{{key: KeyLShift}, {key: KeyRShift}}, w32KeyEvents(KeyRShift, w32.VK_SHIFT, false))
+	// PrintScreen: nothing on KEYDOWN, the synthesized press/release pair on KEYUP.
+	c.Nil(w32KeyEvents(KeyPrintScreen, w32.VK_SNAPSHOT, true))
+	c.Equal([]w32KeyEvent{{key: KeyPrintScreen, pressed: true}, {key: KeyPrintScreen}},
+		w32KeyEvents(KeyPrintScreen, w32.VK_SNAPSHOT, false))
+}

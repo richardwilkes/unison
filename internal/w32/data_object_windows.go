@@ -238,7 +238,11 @@ func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 		stg.PUnkForRelease = 0
 		return COM_S_OK
 	}
-	h := GlobalAlloc(GMemMoveable, len(entry.data))
+	// A zero-length entry still needs a lockable medium: GlobalAlloc(GMEM_MOVEABLE, 0) returns a handle to a
+	// zero-length, discarded block that GlobalLock cannot lock, which would turn a request for empty data into a
+	// spurious E_OUTOFMEMORY. Allocate at least one byte so the requester always receives a valid, lockable HGLOBAL.
+	size := max(len(entry.data), 1)
+	h := GlobalAlloc(GMemMoveable, size)
 	if h == 0 {
 		return COM_E_OUTOFMEMORY
 	}
@@ -247,7 +251,9 @@ func dataObjGetData(this, pformatetcIn, pmedium uintptr) uint64 {
 		GlobalFree(h)
 		return COM_E_OUTOFMEMORY
 	}
-	copy(unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), len(entry.data)), entry.data)
+	dst := unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), size)
+	dst[0] = 0 // so the padding byte of an empty entry reads as zero rather than allocator garbage
+	copy(dst, entry.data)
 	GlobalUnlock(h)
 	stg.Tymed = TyMedHGlobal
 	stg.Data = uintptr(h)

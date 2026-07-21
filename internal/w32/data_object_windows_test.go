@@ -11,10 +11,12 @@ package w32
 
 import (
 	"runtime"
+	"syscall"
 	"testing"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 )
 
 // newTestDataObject builds a pinned DataObject directly, bypassing NewDataObject so no clipboard formats need to be
@@ -66,6 +68,44 @@ func TestDataObjectReferenceCountLifetime(t *testing.T) {
 	c.True(obj.entries != nil)    // still alive: the enumerator's reference must keep it so
 	c.Equal(uintptr(0), enumRelease(uintptr(unsafe.Pointer(e))))
 	c.True(obj.entries == nil) // the final release ran the cleanup
+}
+
+// TestDataObjectGetDataZeroLength verifies a zero-length entry is delivered as a valid, lockable HGLOBAL instead of
+// failing: GlobalAlloc(GMEM_MOVEABLE, 0) returns a handle to a zero-length, discarded block that GlobalLock cannot
+// lock, which the old code mistook for allocation failure, handing the requester a spurious E_OUTOFMEMORY. Also
+// verifies a non-empty entry still round-trips byte-for-byte through the medium.
+func TestDataObjectGetDataZeroLength(t *testing.T) {
+	c := check.New(t)
+	obj := newTestDataObject(1, 2)
+	obj.entries[0].data = nil
+	obj.entries[1].data = []byte{0xAB, 0xCD}
+	defer obj.Release()
+	this := uintptr(unsafe.Pointer(obj))
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	fe := &FORMATETC{CfFormat: 1, DwAspect: DVAspectContent, Lindex: -1, Tymed: TyMedHGlobal}
+	stg := &STGMEDIUM{}
+	pin.Pin(fe)
+	pin.Pin(stg)
+
+	c.Equal(COM_S_OK, dataObjGetData(this, uintptr(unsafe.Pointer(fe)), uintptr(unsafe.Pointer(stg))))
+	c.Equal(TyMedHGlobal, stg.Tymed)
+	h := syscall.Handle(stg.Data)
+	c.True(h != 0)
+	buf := GlobalLock(h)
+	c.True(buf != 0)
+	c.Equal(byte(0), *xruntime.PtrFromUintptr[byte](buf)) // the padding byte must read as zero, not allocator garbage
+	GlobalUnlock(h)
+	ReleaseStgMedium(stg)
+
+	fe.CfFormat = 2
+	c.Equal(COM_S_OK, dataObjGetData(this, uintptr(unsafe.Pointer(fe)), uintptr(unsafe.Pointer(stg))))
+	h = syscall.Handle(stg.Data)
+	buf = GlobalLock(h)
+	c.True(buf != 0)
+	c.Equal([]byte{0xAB, 0xCD}, unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), 2))
+	GlobalUnlock(h)
+	ReleaseStgMedium(stg)
 }
 
 // TestDataObjectEnumeratorIndependence verifies each EnumFormatEtc call and each Clone yields an independently

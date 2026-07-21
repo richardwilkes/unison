@@ -82,6 +82,31 @@ func w32MouseMessagePoint(lParam w32.LPARAM) geom.Point {
 	return geom.NewPoint(float32(int16(lParam&0xFFFF)), float32(int16((lParam>>16)&0xFFFF)))
 }
 
+// w32KeyEvent is one logical key transition produced by translating a WM_KEYDOWN/WM_KEYUP message.
+type w32KeyEvent struct {
+	key     KeyCode
+	pressed bool
+}
+
+// w32KeyEvents translates a key message into the logical key events to dispatch. A shift release fans out to both
+// shift keys, since when both are held Windows delivers a release only for the last one let go. Physical keyboards
+// deliver only WM_KEYUP for PrintScreen, so a full press/release pair is synthesized from the release; injected input
+// (SendInput, remote-desktop stacks, automation) delivers both messages, so the KEYDOWN must produce nothing or every
+// PrintScreen would trigger any bound action twice.
+func w32KeyEvents(key KeyCode, wParam w32.WPARAM, pressed bool) []w32KeyEvent {
+	switch {
+	case !pressed && wParam == w32.VK_SHIFT:
+		return []w32KeyEvent{{key: KeyLShift}, {key: KeyRShift}}
+	case wParam == w32.VK_SNAPSHOT:
+		if pressed {
+			return nil
+		}
+		return []w32KeyEvent{{key: KeyPrintScreen, pressed: true}, {key: KeyPrintScreen}}
+	default:
+		return []w32KeyEvent{{key: key, pressed: pressed}}
+	}
+}
+
 func w32FindWindowByHWND(wnd windows.HWND) *Window {
 	for _, w := range windowList {
 		if w.wnd.wnd == wnd {
@@ -215,17 +240,12 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			}
 			mods := w.CurrentKeyModifiers()
 			pressed := (lParam>>16)&w32.KF_UP == 0
-			switch {
-			case !pressed && wParam == w32.VK_SHIFT:
-				w.keyReleased(KeyLShift, mods)
-				w.keyReleased(KeyRShift, mods)
-			case wParam == w32.VK_SNAPSHOT:
-				w.keyPressed(KeyPrintScreen, mods)
-				w.keyReleased(KeyPrintScreen, mods)
-			case pressed:
-				w.keyPressed(key, mods)
-			default:
-				w.keyReleased(key, mods)
+			for _, e := range w32KeyEvents(key, wParam, pressed) {
+				if e.pressed {
+					w.keyPressed(e.key, mods)
+				} else {
+					w.keyReleased(e.key, mods)
+				}
 			}
 		case w32.WM_LBUTTONDOWN,
 			w32.WM_RBUTTONDOWN,
