@@ -122,6 +122,76 @@ func TestKeyReleasedOnBlockedWindowRoutesToModalAndClearsLocalState(t *testing.T
 	c.False(modal.pressedKeys[KeyA])
 }
 
+func TestKeyReleasedForwardedToModalWithoutMatchingDownIsNotDispatched(t *testing.T) {
+	c := check.New(t)
+	blocked := newModalInputTestWindow()
+	modal := newModalInputTestWindow()
+	pushTestModal(t, modal)
+	var modalKeys []KeyCode
+	modal.KeyUpCallback = func(keyCode KeyCode, _ mod.Modifiers) bool {
+		modalKeys = append(modalKeys, keyCode)
+		return true
+	}
+	// The key went down in the blocked window before the modal opened, so the modal never saw the press. The release
+	// (here as synthesized by lostFocus) must clear the blocked window's pressed state without delivering a KeyUp to
+	// the modal for a key it never saw pressed.
+	blocked.pressedKeys[KeyA] = true
+	blocked.keyReleased(KeyA, 0)
+	c.Equal(0, len(modalKeys))
+	c.False(blocked.pressedKeys[KeyA])
+}
+
+func TestKeyReleasedWithoutMatchingDownIsIgnored(t *testing.T) {
+	c := check.New(t)
+	w := newModalInputTestWindow()
+	ups := 0
+	w.KeyUpCallback = func(_ KeyCode, _ mod.Modifiers) bool {
+		ups++
+		return true
+	}
+	w.keyReleased(KeyA, 0)
+	c.Equal(0, ups)
+}
+
+// TestMouseUpWhileBlockedByModalClearsDragState is the regression test for the stuck-drag bug: when a modal opens
+// while a mouse button is held (e.g. a mouse-down handler calls RunModal, or a background task raises a dialog
+// mid-drag), the release arrives while the window is blocked. Delivery must be suppressed, but the pressed-button
+// bookkeeping must still run — otherwise mouseMovedOrDragged, which has no modal gate, keeps feeding drag events to
+// lastMouseDownPanel for the modal's entire lifetime.
+func TestMouseUpWhileBlockedByModalClearsDragState(t *testing.T) {
+	c := check.New(t)
+	w := newMouseButtonTestWindow()
+	content := w.root.contentPanel
+	ups := 0
+	drags := 0
+	content.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+	content.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+		ups++
+		return true
+	}
+	content.MouseDragCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+		drags++
+		return true
+	}
+	pt := geom.NewPoint(10, 10)
+	w.mouseDown(pt, ButtonLeft, 0)
+	c.True(w.inMouseDown)
+	c.NotNil(w.lastMouseDownPanel)
+
+	// A modal opens while the button is held, then lostFocus synthesizes the release while the window is blocked.
+	modal := newModalInputTestWindow()
+	pushTestModal(t, modal)
+	w.synthesizeMouseUp()
+	c.Equal(0, ups, "the release must not be delivered while blocked by a modal")
+	c.False(w.inMouseDown)
+	c.Equal(0, len(w.pressedButtons))
+	c.Nil(w.lastMouseDownPanel)
+
+	// With the state clean, subsequent motion over the blocked window must not be treated as a drag.
+	w.mouseMovedOrDragged(geom.NewPoint(20, 20), 0)
+	c.Equal(0, drags)
+}
+
 func TestMouseWheelOnBlockedWindowIsStillDelivered(t *testing.T) {
 	c := check.New(t)
 	blocked := newModalInputTestWindow()

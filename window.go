@@ -1170,15 +1170,22 @@ func (w *Window) synthesizeMouseUp() {
 }
 
 func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
-	if !w.okToProcess() {
-		// See the comment in mouseDown.
-		return
-	}
 	if !w.pressedButtons[button] {
 		return
 	}
 	delete(w.pressedButtons, button)
 	w.inMouseDown = len(w.pressedButtons) != 0
+	if !w.okToProcess() {
+		// Delivery is suppressed while blocked by a modal (and, unlike key events, not rerouted to the modal, since
+		// mouse events are positional — see the comment in mouseDown), but the bookkeeping above must still happen so
+		// that a release arriving while blocked (e.g. one synthesized by lostFocus when a modal opens mid-press)
+		// cannot leave stale pressed-button state behind. Otherwise mouseMovedOrDragged, which has no modal gate,
+		// would keep feeding drag events to lastMouseDownPanel for the modal's entire lifetime.
+		if !w.inMouseDown {
+			w.lastMouseDownPanel = nil
+		}
+		return
+	}
 	w.lastButton = button
 	w.lastKeyModifiers = mods
 	if w.MouseUpCallback != nil {
@@ -1385,12 +1392,18 @@ func (w *Window) runeTyped(ch rune) {
 
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
+	pressed := w.pressedKeys[key]
 	delete(w.pressedKeys, key)
 	if !w.okToProcess() {
 		// The matching key down was routed to the top modal window, so deliver the key up there as well. The
 		// bookkeeping above is still done locally so that releases synthesized by lostFocus keep this window's pressed
 		// key state clean.
 		modalStack[len(modalStack)-1].keyReleased(key, mods)
+		return
+	}
+	if !pressed {
+		// No matching key down was seen here — e.g. a release forwarded by a blocked window's lostFocus for a key
+		// that was pressed before the modal opened — so there is nothing to deliver.
 		return
 	}
 	if w.root.preKeyUp(w, key, mods) {
