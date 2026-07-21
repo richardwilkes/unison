@@ -28,8 +28,8 @@ func main() {
 	xos.CopyrightHolder = "Richard A. Wilkes"
 	xos.AppIdentifier = "com.trollworks.unison.example"
 	xflag.SetUsage(nil, "Demo of some of the features of Unison", "")
-	noFileDialogs := flag.Bool("file-dialogs", false, i18n.Text("Use internal file dialogs rather than the platform's"))
-	noGlobalMenuBar := flag.Bool("menubar", false, i18n.Text("Disable the global menu bar on platforms that support it"))
+	noFileDialogs := flag.Bool("no-file-dialogs", false, i18n.Text("Use internal file dialogs rather than the platform's"))
+	noGlobalMenuBar := flag.Bool("no-menu-bar", false, i18n.Text("Disable the global menu bar on platforms that support it"))
 
 	unison.AttachConsole()
 
