@@ -55,7 +55,7 @@ export CGO_ENABLED=0
 # Guard against cgo creeping back in. A stray cgo file would not necessarily break the CGO_ENABLED=0 build (build
 # constraints just exclude it), so check for import "C" explicitly, in both its single and grouped import forms.
 echo -e "\033[33mVerifying the module is cgo-free...\033[0m"
-CGO_USERS=$(grep -rl --include='*.go' -e '^import "C"' -e '^[[:space:]]*"C"$' . || true)
+CGO_USERS=$(grep -rlE --include='*.go' -e '^import[[:space:]]+"C"' -e '^[[:space:]]*"C"[[:space:]]*(//.*)?$' . || true)
 if [ -n "$CGO_USERS" ]; then
 	echo -e "\033[31mcgo is not permitted in this module, but these files import \"C\":\033[0m"
 	echo "$CGO_USERS"
@@ -101,7 +101,8 @@ if [ "$TEST"x == "1x" ]; then
 	else
 		echo -e "\033[33mTesting...\033[0m"
 	fi
-	CGO_ENABLED=$TEST_CGO go test $RACE ./... | grep -v "no test files"
+	# The "|| true" keeps pipefail from failing the build if grep filters out every line of output.
+	CGO_ENABLED=$TEST_CGO go test $RACE ./... | { grep -v "no test files" || true; }
 fi
 
 # Install the packager

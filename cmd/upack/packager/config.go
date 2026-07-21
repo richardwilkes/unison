@@ -11,11 +11,11 @@ package packager
 
 import (
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/toolbox/v2/xfilepath"
 )
 
 // rankOwner is the LSHandlerRank value that marks a file type as owned (and therefore exported) by the application.
@@ -76,7 +76,11 @@ type Config struct {
 
 func (c *Config) prepare(version string) {
 	c.version = version
-	c.ExecutableName = xfilepath.BaseName(c.ExecutableName)
+	if c.ExecutableName != "" {
+		// Strip any leading directories, but keep the file name intact: xfilepath.BaseName would also remove an
+		// "extension", mangling executable names that contain a dot (e.g. "app.v2" -> "app").
+		c.ExecutableName = filepath.Base(c.ExecutableName)
+	}
 }
 
 // validate rejects configurations that would otherwise fail (or panic) deep inside platform-specific packaging code.

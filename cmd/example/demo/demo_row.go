@@ -130,7 +130,7 @@ func (d *demoRow) ColumnCell(row, col int, foreground, _ unison.Ink, _, _, _ boo
 		addWrappedText(wrapper, "xyz", foreground, unison.LabelFont, width)
 		return wrapper
 	default:
-		errs.Log(errs.New("column index out of range (0-2)"), "column", col)
+		errs.Log(errs.New("column index out of range (0-3)"), "column", col)
 		return unison.NewLabel()
 	}
 }

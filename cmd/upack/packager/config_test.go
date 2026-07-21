@@ -37,3 +37,25 @@ func TestValidateOwnerRequiresExtensions(t *testing.T) {
 		t.Errorf("unexpected error for an empty configuration: %v", err)
 	}
 }
+
+func TestPrepareKeepsDotsInExecutableName(t *testing.T) {
+	// prepare() previously used xfilepath.BaseName, which also strips an "extension", mangling executable names that
+	// contain a dot (e.g. "app.v2" -> "app") so that later opens targeted the wrong file. Only directories may be
+	// stripped.
+	for _, one := range []struct{ in, want string }{
+		{"app.v2", "app.v2"},
+		{"dist/app.v2", "app.v2"},
+		{"myapp", "myapp"},
+		{"some/dir/myapp", "myapp"},
+		{"", ""},
+	} {
+		cfg := &Config{ExecutableName: one.in}
+		cfg.prepare("1.2.3")
+		if cfg.ExecutableName != one.want {
+			t.Errorf("prepare(%q): got executable name %q, want %q", one.in, cfg.ExecutableName, one.want)
+		}
+		if cfg.version != "1.2.3" {
+			t.Errorf("prepare(%q): version not recorded", one.in)
+		}
+	}
+}

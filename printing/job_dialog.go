@@ -333,7 +333,7 @@ func (d *JobDialog) createCopies(parent *unison.Panel) {
 func (d *JobDialog) createPageRanges(parent *unison.Panel) {
 	d.pageRanges = unison.NewField()
 	d.pageRanges.Tooltip = unison.NewTooltipWithText(i18n.Text(`A page range in the form "5" or "9-12" or multiple
-separated by commas, such as "1, 3-4 in ascending
+separated by commas, such as "1, 3-4" in ascending
 order with no overlapping ranges`))
 	d.pageRanges.ValidateCallback = func() bool {
 		ranges, noErrors := ExtractPageRanges(d.pageRanges.Text())

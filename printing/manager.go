@@ -14,6 +14,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -81,7 +82,9 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 	}()
 	for entry := range in {
 		if ctx.Err() != nil {
-			return
+			// Keep draining rather than returning: zeroconf's mainloop sends to this channel without checking the
+			// context, so abandoning it would leave that goroutine blocked mid-send forever once the buffer fills.
+			continue
 		}
 		m := make(map[string]string, len(entry.Text)+1)
 		for _, text := range entry.Text {
@@ -94,6 +97,12 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 		if id == "" {
 			id = m["DUUID"]
 		}
+		host := strings.TrimSuffix(entry.HostName, ".")
+		if id == "" {
+			// Printers that advertise neither UUID nor DUUID would otherwise all share the map key "", leaving only
+			// one of them visible, so fall back to the host and port, which are unique per advertised printer.
+			id = host + ":" + strconv.Itoa(entry.Port)
+		}
 		authInfo := m["air"]
 		if authInfo == "" {
 			authInfo = "none"
@@ -102,7 +111,7 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 			PrinterID: PrinterID{
 				ID:   id,
 				Name: m["ty"],
-				Host: strings.TrimSuffix(entry.HostName, "."),
+				Host: host,
 				Port: entry.Port,
 			},
 			RemotePath:       m["rp"],

@@ -27,7 +27,7 @@ func main() {
 	xos.CopyrightHolder = "Richard A. Wilkes"
 	xos.AppIdentifier = "com.trollworks.unison.packager"
 	xflag.SetUsage(nil, "A tool for packaging Unison apps for distribution.", "<config-file>")
-	release := flag.String("release", "", "The release `version` to package (e.g. '1.2.3') to package")
+	release := flag.String("release", "", "The release `version` to package (e.g. '1.2.3')")
 	flag.StringVar(release, "r", "", "Short `version` of -release")
 	createDist := flag.Bool("dist", false, "Enable creation of a distribution package")
 	flag.BoolVar(createDist, "d", false, "Short version of -dist")
