@@ -9,7 +9,11 @@
 
 package unison
 
-import "runtime"
+import (
+	"runtime"
+
+	"github.com/richardwilkes/unison/internal/cocoa"
+)
 
 // panelReleaser matches the owned cocoa panel handles the platform file dialogs hold (cocoa.OpenPanel and
 // cocoa.SavePanel).
@@ -27,4 +31,18 @@ func releasePanelOnCleanup[T any](owner *T, panel panelReleaser) {
 	runtime.AddCleanup(owner, func(p panelReleaser) {
 		InvokeTask(p.Release)
 	}, panel)
+}
+
+// setAllowedFileTypes converts types into an owned NSArray, hands it to set (an open or save panel's
+// SetAllowedFileTypes), and releases it. The panel's allowedFileTypes property copies the array, so ownership stays
+// with the caller; passing the array inline without a release leaked one NSArray plus its NSStrings per call. An
+// empty list clears the property with a nil handle instead.
+func setAllowedFileTypes(set func(cocoa.Array), types []string) {
+	if len(types) == 0 {
+		set(0)
+		return
+	}
+	allowed := cocoa.NewArrayFromStringSlice(types)
+	defer allowed.Release()
+	set(allowed)
 }

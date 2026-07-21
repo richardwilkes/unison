@@ -15,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 // recordingPanel stands in for the cocoa panel handles so the release-on-collect plumbing can be exercised without
@@ -26,6 +28,30 @@ type recordingPanel struct {
 
 func (p recordingPanel) Release() {
 	p.released.Store(true)
+}
+
+// TestSetAllowedFileTypesOwnership is the regression test for the allowed-file-types leak: SetAllowedExtensions used
+// to pass the owned array from cocoa.NewArrayFromStringSlice inline to SetAllowedFileTypes and never release it,
+// leaking one NSArray plus its NSStrings per call. The fake setter stands in for the panel property's own
+// copy/retain, so after the helper returns, that single reference must be the only one left — the helper's creating
+// (+1) reference has to have been dropped.
+func TestSetAllowedFileTypesOwnership(t *testing.T) {
+	c := check.New(t)
+	var captured cocoa.Array
+	setAllowedFileTypes(func(a cocoa.Array) {
+		captured = a
+		cocoa.Retain(objc.ID(a))
+	}, []string{"png", "jpg"})
+	c.Equal([]string{"png", "jpg"}, captured.ArrayOfStringToStringSlice())
+	c.Equal(uint64(1), objc.Send[uint64](objc.ID(captured), cocoa.Sel("retainCount")),
+		"the helper must release its own reference to the array once the setter has run")
+	captured.Release()
+
+	// An empty list must clear the property with a nil handle rather than allocating an empty array.
+	var cleared []cocoa.Array
+	setAllowedFileTypes(func(a cocoa.Array) { cleared = append(cleared, a) }, nil)
+	c.Equal(1, len(cleared))
+	c.Equal(cocoa.Array(0), cleared[0])
 }
 
 // TestReleasePanelOnCleanupReleasesPanel verifies the mechanism apiNewOpenDialog/apiNewSaveDialog use to free their

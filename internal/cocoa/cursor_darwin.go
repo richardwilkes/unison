@@ -25,7 +25,7 @@ type Cursor objc.ID
 func NewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) Cursor {
 	var cursor Cursor
 	WithPool(func() {
-		nsImg := newNSImage(img.Pix, int(logicalSize.Width), int(logicalSize.Height), img.Rect.Dx(), img.Rect.Dy())
+		nsImg := newNSImageFromNRGBA(img, int(logicalSize.Width), int(logicalSize.Height))
 		if nsImg == 0 {
 			return
 		}

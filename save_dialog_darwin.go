@@ -51,12 +51,7 @@ func (d *macSaveDialog) AllowedExtensions() []string {
 }
 
 func (d *macSaveDialog) SetAllowedExtensions(types ...string) {
-	types = SanitizeExtensionList(types)
-	if len(types) != 0 {
-		d.dialog.SetAllowedFileTypes(cocoa.NewArrayFromStringSlice(types))
-	} else {
-		d.dialog.SetAllowedFileTypes(0)
-	}
+	setAllowedFileTypes(d.dialog.SetAllowedFileTypes, SanitizeExtensionList(types))
 }
 
 func (d *macSaveDialog) RunModal() bool {

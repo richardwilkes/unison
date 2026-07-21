@@ -10,6 +10,7 @@
 package cocoa
 
 import (
+	"image"
 	"unsafe"
 
 	"github.com/ebitengine/purego/objc"
@@ -24,6 +25,23 @@ const nsBitmapFormatAlphaNonpremultiplied = 1 << 1
 func newNSImage(pixels []byte, logicalWidth, logicalHeight, actualWidth, actualHeight int) objc.ID {
 	return newNSImageWithFormat(pixels, logicalWidth, logicalHeight, actualWidth, actualHeight,
 		nsBitmapFormatAlphaNonpremultiplied)
+}
+
+// newNSImageFromNRGBA is newNSImage for a non-premultiplied NRGBA image, honoring the image's stride and sub-image
+// origin: when the pixel data is not tightly packed (a sub-image or a padded stride), the visible rows are repacked
+// into a contiguous buffer first, so passing img.Pix directly cannot garble rows.
+func newNSImageFromNRGBA(img *image.NRGBA, logicalWidth, logicalHeight int) objc.ID {
+	width := img.Rect.Dx()
+	height := img.Rect.Dy()
+	pixels := img.Pix
+	if img.Stride != width*4 {
+		pixels = make([]byte, width*height*4)
+		for y := range height {
+			src := img.PixOffset(img.Rect.Min.X, img.Rect.Min.Y+y)
+			copy(pixels[y*width*4:(y+1)*width*4], img.Pix[src:src+width*4])
+		}
+	}
+	return newNSImage(pixels, logicalWidth, logicalHeight, width, height)
 }
 
 // newNSImageWithFormat is newNSImage with an explicit NSBitmapFormat: pass 0 for premultiplied RGBA pixels or

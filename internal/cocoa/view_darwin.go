@@ -571,7 +571,7 @@ func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask
 	}
 	var imgRef objc.ID
 	if img != nil {
-		imgRef = newNSImage(img.Pix, int(frame.Width), int(frame.Height), img.Rect.Dx(), img.Rect.Dy())
+		imgRef = newNSImageFromNRGBA(img, int(frame.Width), int(frame.Height))
 		defer Release(imgRef)
 	}
 	dragItem := objc.ID(Cls("NSDraggingItem")).Send(Sel("alloc")).Send(Sel("initWithPasteboardWriter:"),
