@@ -36,6 +36,7 @@ var (
 
 type apiWindow struct {
 	dropTarget    *w32.DropTarget
+	presentBuf    []uint32 // scratch buffer reused by apiPresentCPUPixels to avoid a full-frame allocation per present
 	wnd           windows.HWND
 	bigIcon       w32.HICON
 	smallIcon     w32.HICON

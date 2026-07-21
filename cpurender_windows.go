@@ -21,18 +21,9 @@ func (w *Window) apiPresentCPUPixels(pixels *raster.Pixmap) {
 		return
 	}
 	defer w32.ReleaseDC(w.wnd.wnd, dc)
-	// Repack the premultiplied RGBA words as the BGRA words GDI expects, dropping any stride padding in the process.
 	width := int(pixels.Width)
 	height := int(pixels.Height)
-	buf := make([]uint32, width*height)
-	di := 0
-	for y := range height {
-		row := pixels.Pix[y*int(pixels.RowPixels) : y*int(pixels.RowPixels)+width]
-		for _, v := range row {
-			buf[di] = (v & 0xFF00FF00) | ((v & 0xFF) << 16) | ((v >> 16) & 0xFF)
-			di++
-		}
-	}
+	w.wnd.presentBuf = w32.RepackRGBAToBGRA(pixels.Pix, width, height, int(pixels.RowPixels), w.wnd.presentBuf)
 	hdr := w32.BITMAPINFOHEADER{
 		BiWidth:       int32(width),
 		BiHeight:      -int32(height), // Negative height makes the rows top-down, matching the pixmap's layout.
@@ -40,6 +31,6 @@ func (w *Window) apiPresentCPUPixels(pixels *raster.Pixmap) {
 		BiBitCount:    32,
 		BiCompression: w32.BI_RGB,
 	}
-	w32.StretchDIBits(dc, 0, 0, int32(width), int32(height), 0, 0, int32(width), int32(height), buf, &hdr,
-		w32.DIB_RGB_COLORS, w32.SRCCOPY)
+	w32.StretchDIBits(dc, 0, 0, int32(width), int32(height), 0, 0, int32(width), int32(height), w.wnd.presentBuf,
+		&hdr, w32.DIB_RGB_COLORS, w32.SRCCOPY)
 }
