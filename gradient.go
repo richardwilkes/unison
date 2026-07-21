@@ -127,25 +127,26 @@ func (g *Gradient) Paint(_ *Canvas, rect geom.Rect, style paintstyle.Enum) *Pain
 		c[i] = g.Stops[i].Color.GetColor()
 		locs[i] = g.Stops[i].Location
 	}
-	if g.Transform == (geom.Matrix{}) {
-		g.Transform = geom.NewIdentityMatrix()
+	transform := g.Transform
+	if transform == (geom.Matrix{}) {
+		transform = geom.NewIdentityMatrix()
 	}
 	var shader *Shader
 	switch g.Kind {
 	case gradienttype.Linear:
 		start := geom.NewPoint(rect.X+rect.Width*g.StartPt.X, rect.Y+rect.Height*g.StartPt.Y)
 		end := geom.NewPoint(rect.X+rect.Width*g.EndPt.X, rect.Y+rect.Height*g.EndPt.Y)
-		shader = NewLinearGradientShader(start, end, c, locs, g.TileMode, g.Transform)
+		shader = NewLinearGradientShader(start, end, c, locs, g.TileMode, transform)
 	case gradienttype.Radial:
 		center := geom.NewPoint(rect.X+rect.Width*g.StartPt.X, rect.Y+rect.Height*g.StartPt.Y)
-		shader = NewRadialGradientShader(center, g.Radius.Start, c, locs, g.TileMode, g.Transform)
+		shader = NewRadialGradientShader(center, g.Radius.Start, c, locs, g.TileMode, transform)
 	case gradienttype.Sweep:
 		center := geom.NewPoint(rect.X+rect.Width*g.StartPt.X, rect.Y+rect.Height*g.StartPt.Y)
-		shader = NewSweepGradientShader(center, g.Angle.Start, g.Angle.End, c, locs, g.TileMode, g.Transform)
+		shader = NewSweepGradientShader(center, g.Angle.Start, g.Angle.End, c, locs, g.TileMode, transform)
 	case gradienttype.Conical:
 		start := geom.NewPoint(rect.X+rect.Width*g.StartPt.X, rect.Y+rect.Height*g.StartPt.Y)
 		end := geom.NewPoint(rect.X+rect.Width*g.EndPt.X, rect.Y+rect.Height*g.EndPt.Y)
-		shader = New2PtConicalGradientShader(start, end, g.Radius.Start, g.Radius.End, c, locs, g.TileMode, g.Transform)
+		shader = New2PtConicalGradientShader(start, end, g.Radius.Start, g.Radius.End, c, locs, g.TileMode, transform)
 	default:
 		xos.ExitWithErr(errs.Newf("unknown gradient type: %v", g.Kind))
 	}
