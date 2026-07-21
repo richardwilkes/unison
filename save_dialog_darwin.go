@@ -23,7 +23,9 @@ type macSaveDialog struct {
 }
 
 func apiNewSaveDialog() SaveDialog {
-	return &macSaveDialog{dialog: cocoa.NewSavePanel()}
+	d := &macSaveDialog{dialog: cocoa.NewSavePanel()}
+	releasePanelOnCleanup(d, d.dialog)
+	return d
 }
 
 func (d *macSaveDialog) InitialDirectory() string {

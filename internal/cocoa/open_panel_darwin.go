@@ -23,6 +23,11 @@ func NewOpenPanel() OpenPanel {
 	return OpenPanel(p)
 }
 
+// Release releases one owned reference to the panel.
+func (p OpenPanel) Release() {
+	Release(objc.ID(p))
+}
+
 // DirectoryURL returns the panel's current directory as a borrowed reference.
 func (p OpenPanel) DirectoryURL() URL {
 	return URL(objc.ID(p).Send(Sel("directoryURL")))

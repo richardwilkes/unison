@@ -45,6 +45,9 @@ func (d *w32SaveDialog) RunModal() bool {
 		errs.Log(errs.New("unable to create save dialog"))
 		return false
 	}
+	// NewSaveDialog hands over a +1 COM reference; without this release, every RunModal leaked the dialog object and
+	// its shell state for the life of the process.
+	defer saveDialog.Release()
 	if d.initialDir != "" {
 		saveDialog.SetFolder(filepath.Clean(d.initialDir))
 	}

@@ -38,9 +38,10 @@ func (obj *FileSaveDialog) vmt() *vmtFileSaveDialog {
 	return (*vmtFileSaveDialog)(obj.UnsafeVirtualMethodTable)
 }
 
-// NewSaveDialog creates a new IFileSaveDialog instance. COM is already initialized with a single-threaded apartment on
-// the UI thread via OleInitialize during startup, which is what IFileDialog (an STA-only object) requires, so no
-// CoInitializeEx call is made here.
+// NewSaveDialog creates a new IFileSaveDialog instance. The caller owns the returned (+1) reference and must call
+// Release when done with it. COM is already initialized with a single-threaded apartment on the UI thread via
+// OleInitialize during startup, which is what IFileDialog (an STA-only object) requires, so no CoInitializeEx call is
+// made here.
 func NewSaveDialog() *FileSaveDialog {
 	return (*FileSaveDialog)(unsafe.Pointer(CoCreateInstance(fileSaveDialogCLSID, fileSaveDialogIID)))
 }

@@ -46,6 +46,9 @@ func (d *w32OpenDialog) RunModal() bool {
 		errs.Log(errs.New("unable to create open dialog"))
 		return false
 	}
+	// NewOpenDialog hands over a +1 COM reference; without this release, every RunModal leaked the dialog object and
+	// its shell state for the life of the process.
+	defer openDialog.Release()
 	if d.initialDir != "" {
 		openDialog.SetFolder(filepath.Clean(d.initialDir))
 	}

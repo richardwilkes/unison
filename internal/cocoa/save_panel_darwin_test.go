@@ -27,12 +27,37 @@ func TestSavePanelNameField(t *testing.T) {
 				t.Error("NewSavePanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			for _, want := range []string{"report.txt", "unison-漢字.txt", ""} {
 				p.SetInitialFileName(want)
 				if got := p.InitialFileName(); got != want {
 					t.Errorf("InitialFileName = %q, want %q", got, want)
 				}
+			}
+		})
+	})
+}
+
+// TestSavePanelRelease covers the Release method the root dialogs depend on to free their panels (before it existed,
+// every NewSaveDialog leaked its panel for the life of the process and these tests worked around the gap with raw
+// Release(objc.ID(p)) calls). Release must drop exactly one reference: a panel kept alive by an extra retain has to
+// remain fully usable afterward.
+func TestSavePanelRelease(t *testing.T) {
+	requirePanelService(t)
+	runOnMain(func() {
+		WithPool(func() {
+			p := NewSavePanel()
+			if p == 0 {
+				t.Error("NewSavePanel returned 0")
+				return
+			}
+			Retain(objc.ID(p)) // hold a second reference so the panel survives the Release under test
+			defer Release(objc.ID(p))
+			p.Release()
+			const want = "release-probe.txt"
+			p.SetInitialFileName(want)
+			if got := p.InitialFileName(); got != want {
+				t.Errorf("after a balanced Release, InitialFileName = %q, want %q", got, want)
 			}
 		})
 	})
@@ -47,7 +72,7 @@ func TestSavePanelDirectoryURL(t *testing.T) {
 				t.Error("NewSavePanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			dirURL := NewFileURL("/Library/")
 			p.SetDirectoryURL(dirURL)
 			dirURL.Release()
@@ -68,7 +93,7 @@ func TestSavePanelAllowedFileTypes(t *testing.T) {
 				t.Error("NewSavePanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			allowed := p.AllowedFileTypes()
 			if objc.ID(allowed) != 0 {
 				t.Errorf("AllowedFileTypes = %#x before any set, want 0", objc.ID(allowed))
@@ -101,7 +126,7 @@ func TestSavePanelRunModalCancel(t *testing.T) {
 				t.Error("NewSavePanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			dirURL := NewFileURL("/Library/")
 			p.SetDirectoryURL(dirURL)
 			dirURL.Release()

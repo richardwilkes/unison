@@ -80,7 +80,7 @@ func TestOpenPanelBoolAccessors(t *testing.T) {
 				t.Error("NewOpenPanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			checks := []struct {
 				get  func() bool
 				set  func(bool)
@@ -103,6 +103,32 @@ func TestOpenPanelBoolAccessors(t *testing.T) {
 	})
 }
 
+// TestOpenPanelRelease covers the Release method the root dialogs depend on to free their panels (before it existed,
+// every NewOpenDialog leaked its panel for the life of the process and these tests worked around the gap with raw
+// Release(objc.ID(p)) calls). Release must drop exactly one reference: a panel kept alive by an extra retain has to
+// remain fully usable afterward.
+func TestOpenPanelRelease(t *testing.T) {
+	requirePanelService(t)
+	runOnMain(func() {
+		WithPool(func() {
+			p := NewOpenPanel()
+			if p == 0 {
+				t.Error("NewOpenPanel returned 0")
+				return
+			}
+			Retain(objc.ID(p)) // hold a second reference so the panel survives the Release under test
+			defer Release(objc.ID(p))
+			p.Release()
+			for _, v := range []bool{true, false} {
+				p.SetCanChooseFiles(v)
+				if got := p.CanChooseFiles(); got != v {
+					t.Errorf("after a balanced Release, canChooseFiles = %v, want %v", got, v)
+				}
+			}
+		})
+	})
+}
+
 func TestOpenPanelDirectoryURL(t *testing.T) {
 	requirePanelService(t)
 	runOnMain(func() {
@@ -112,7 +138,7 @@ func TestOpenPanelDirectoryURL(t *testing.T) {
 				t.Error("NewOpenPanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			dirURL := NewFileURL("/Library/")
 			p.SetDirectoryURL(dirURL)
 			dirURL.Release()
@@ -137,7 +163,7 @@ func TestOpenPanelAllowedFileTypes(t *testing.T) {
 				t.Error("NewOpenPanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			// With no types set the handle is 0, and using it the way the root dialog's AllowedExtensions does must
 			// be safe and yield an empty slice.
 			allowed := p.AllowedFileTypes()
@@ -183,7 +209,7 @@ func TestOpenPanelURLsEmpty(t *testing.T) {
 				t.Error("NewOpenPanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			// Before the panel has run, the selection is empty. URLs returns a borrowed reference, so no Release —
 			// same shape as the root dialog's Paths.
 			if got := p.URLs().ArrayOfURLToStringSlice(); len(got) != 0 {
@@ -202,7 +228,7 @@ func TestOpenPanelRunModalCancel(t *testing.T) {
 				t.Error("NewOpenPanel returned 0")
 				return
 			}
-			defer Release(objc.ID(p))
+			defer p.Release()
 			cleanup := cancelModalAfter(objc.ID(p), 0.3)
 			start := time.Now()
 			ok := p.RunModal()

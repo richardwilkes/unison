@@ -27,6 +27,11 @@ func NewSavePanel() SavePanel {
 	return SavePanel(p)
 }
 
+// Release releases one owned reference to the panel.
+func (p SavePanel) Release() {
+	Release(objc.ID(p))
+}
+
 // DirectoryURL returns the panel's current directory as a borrowed reference.
 func (p SavePanel) DirectoryURL() URL {
 	return URL(objc.ID(p).Send(Sel("directoryURL")))

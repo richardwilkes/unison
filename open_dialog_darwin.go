@@ -23,7 +23,9 @@ type macOpenDialog struct {
 }
 
 func apiNewOpenDialog() OpenDialog {
-	return &macOpenDialog{dialog: cocoa.NewOpenPanel()}
+	d := &macOpenDialog{dialog: cocoa.NewOpenPanel()}
+	releasePanelOnCleanup(d, d.dialog)
+	return d
 }
 
 func (d *macOpenDialog) InitialDirectory() string {
