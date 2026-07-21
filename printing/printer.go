@@ -160,10 +160,13 @@ func (p *Printer) printerURI() string {
 
 func (p *Printer) newRequest(id uint32, op goipp.Op) *goipp.Message {
 	req := goipp.NewRequest(goipp.DefaultVersion, op, id)
-	req.Operation.Add(goipp.MakeAttribute("printer-uri", goipp.TagURI, goipp.String(p.printerURI())))
-	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(xos.CurrentUserName())))
+	// RFC 8011 §4.1.4 requires attributes-charset first and attributes-natural-language second in every request's
+	// operation group. goipp encodes attributes in insertion order, and CUPS rejects requests that violate this
+	// ordering with client-error-bad-request, so these two must be added before any other operation attributes.
 	req.Operation.Add(goipp.MakeAttribute("attributes-charset", goipp.TagCharset, goipp.String("utf-8")))
 	req.Operation.Add(goipp.MakeAttribute("attributes-natural-language", goipp.TagLanguage, goipp.String("en-US")))
+	req.Operation.Add(goipp.MakeAttribute("printer-uri", goipp.TagURI, goipp.String(p.printerURI())))
+	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(xos.CurrentUserName())))
 	return req
 }
 
