@@ -144,8 +144,8 @@ func (m *UndoManager) Redo() {
 }
 
 func (m *UndoManager) redo() {
+	m.edits[m.index+1].Redo()
 	m.index++
-	m.edits[m.index].Redo()
 }
 
 // RedoTitle returns the title for the current redo state.
