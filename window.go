@@ -246,8 +246,10 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	}
 	windowList = append(windowList, w)
 	err := w.apiInit()
-	if err == nil {
-		err = w.glCtx.apiCreate(w)
+	if err == nil && !cpuRenderingActive {
+		if glErr := w.glCtx.apiCreate(w); glErr != nil {
+			fallbackToCPURendering(glErr)
+		}
 	}
 	if err != nil {
 		w.apiDestroy()
@@ -909,7 +911,9 @@ func (w *Window) draw() {
 	RebuildDynamicColors()
 	if w.IsValid() {
 		scale := w.BackingScale()
-		w.makeGLCtxCurrent()
+		if w.usesGLRendering() {
+			w.makeGLCtxCurrent()
+		}
 		size := w.ContentRect().Size
 		c, err := w.surface.prepareCanvas(size, scale)
 		if err != nil {
@@ -922,8 +926,29 @@ func (w *Window) draw() {
 		c.Restore()
 		c.Flush()
 		w.lastDrawDuration = time.Since(start)
-		w.glCtx.apiSwapBuffers()
+		if pixels := w.surface.rasterPixmap(); pixels != nil {
+			// The window may have a live GL context even though rendering fell back to the CPU (the fallback was
+			// triggered while preparing this window's canvas). Destroy it so it cannot obscure the CPU-rendered content.
+			w.discardGLCtx()
+			w.apiPresentCPUPixels(pixels)
+		} else {
+			w.glCtx.apiSwapBuffers()
+		}
 	}
+}
+
+// usesGLRendering returns true if this window's drawing should go through its OpenGL context. Windows created before a
+// CPU-rendering fallback keep using their existing GL rendering surface; windows created after it never get one.
+func (w *Window) usesGLRendering() bool {
+	return !cpuRenderingActive || w.surface.context != nil
+}
+
+// discardGLCtx destroys the window's OpenGL context, if any, releasing it first if it is the current one.
+func (w *Window) discardGLCtx() {
+	if wndWithCurrentCtx == w {
+		w.releaseGLCtxCurrent()
+	}
+	w.glCtx.apiDestroy()
 }
 
 // LastDrawDuration returns the duration of the window's most recent draw.

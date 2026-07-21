@@ -22,10 +22,17 @@ const nsBitmapFormatAlphaNonpremultiplied = 1 << 1
 // backed by a single 32-bit non-premultiplied RGBA bitmap representation of actualWidth x actualHeight device
 // pixels copied from pixels. It returns 0 if the bitmap representation cannot be created.
 func newNSImage(pixels []byte, logicalWidth, logicalHeight, actualWidth, actualHeight int) objc.ID {
+	return newNSImageWithFormat(pixels, logicalWidth, logicalHeight, actualWidth, actualHeight,
+		nsBitmapFormatAlphaNonpremultiplied)
+}
+
+// newNSImageWithFormat is newNSImage with an explicit NSBitmapFormat: pass 0 for premultiplied RGBA pixels or
+// nsBitmapFormatAlphaNonpremultiplied for non-premultiplied ones.
+func newNSImageWithFormat(pixels []byte, logicalWidth, logicalHeight, actualWidth, actualHeight, format int) objc.ID {
 	rep := objc.ID(Cls("NSBitmapImageRep")).Send(Sel("alloc")).Send(
 		Sel("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bitmapFormat:bytesPerRow:bitsPerPixel:"),
 		unsafe.Pointer(nil), actualWidth, actualHeight, 8, 4, true, false,
-		NSStringConstant("AppKit", "NSCalibratedRGBColorSpace"), nsBitmapFormatAlphaNonpremultiplied,
+		NSStringConstant("AppKit", "NSCalibratedRGBColorSpace"), format,
 		actualWidth*4, 32)
 	if rep == 0 {
 		return 0

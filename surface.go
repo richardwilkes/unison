@@ -14,6 +14,8 @@ import (
 	skgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/canvas/gpu"
 	"github.com/richardwilkes/canvas/gpu/gl"
+	"github.com/richardwilkes/canvas/raster"
+	sksurface "github.com/richardwilkes/canvas/surface"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
@@ -27,6 +29,7 @@ type genericSurface interface {
 type surface struct {
 	context *gl.DirectContext
 	surface genericSurface
+	raster  *sksurface.Surface // set instead of context when rendering on the CPU
 	size    geom.Size
 	scale   geom.Point
 }
@@ -38,12 +41,21 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 		s.scale = scale
 	}
 	if s.surface == nil {
-		if s.context == nil {
-			s.context = gl.MakeGLDirectContext(defaultOpenGL(), nil)
+		pixelSize := skgeom.ISize{Width: int32(size.Width * scale.X), Height: int32(size.Height * scale.Y)}
+		if !cpuRenderingActive && s.context == nil {
+			if s.context = gl.MakeGLDirectContext(defaultOpenGL(), nil); s.context == nil {
+				fallbackToCPURendering(errs.New("unable to create an OpenGL rendering context"))
+			}
 		}
-		if s.surface = gl.NewRenderTargetSurfaceFromBackendRenderTarget(s.context, gpu.ColorTypeRGBA8888,
-			skgeom.ISize{Width: int32(size.Width * scale.X), Height: int32(size.Height * scale.Y)},
-			gl.FormatFromEnum(gl.RGBA8), 1, 8, 0, gpu.OriginBottomLeft, nil); s.surface == nil {
+		if s.context == nil {
+			rs := sksurface.NewRasterN32Premul(pixelSize.Width, pixelSize.Height, nil)
+			if rs == nil {
+				return nil, errs.New("unable to create CPU rendering surface")
+			}
+			s.raster = rs
+			s.surface = rs
+		} else if s.surface = gl.NewRenderTargetSurfaceFromBackendRenderTarget(s.context, gpu.ColorTypeRGBA8888,
+			pixelSize, gl.FormatFromEnum(gl.RGBA8), 1, 8, 0, gpu.OriginBottomLeft, nil); s.surface == nil {
 			return nil, errs.New("unable to create rendering surface")
 		}
 	}
@@ -51,7 +63,9 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 		canvas:  s.surface.Canvas(),
 		surface: s,
 	}
-	s.context.ResetContext(gl.AllBackendState)
+	if s.context != nil {
+		s.context.ResetContext(gl.AllBackendState)
+	}
 	c.RestoreToCount(1)
 	c.SetMatrix(geom.NewScaleMatrix(scale.X, scale.Y))
 	return c, nil
@@ -63,10 +77,17 @@ func (s *surface) flush(syncCPU bool) {
 	}
 }
 
-func (s *surface) partialDispose() {
-	if s.surface != nil {
-		s.surface = nil
+// rasterPixmap returns the pixel store backing this surface when rendering on the CPU, or nil when GPU-backed.
+func (s *surface) rasterPixmap() *raster.Pixmap {
+	if s.raster != nil {
+		return s.raster.Pixmap()
 	}
+	return nil
+}
+
+func (s *surface) partialDispose() {
+	s.surface = nil
+	s.raster = nil
 }
 
 func (s *surface) dispose() {

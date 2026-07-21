@@ -23,8 +23,12 @@ var (
 	deleteObjectProc        = gdi32.NewProc("DeleteObject")
 	describePixelFormatProc = gdi32.NewProc("DescribePixelFormat")
 	setPixelFormatProc      = gdi32.NewProc("SetPixelFormat")
+	stretchDIBitsProc       = gdi32.NewProc("StretchDIBits")
 	swapBuffersProc         = gdi32.NewProc("SwapBuffers")
 )
+
+// SRCCOPY https://learn.microsoft.com/en-us/windows/win32/gdi/ternary-raster-operations
+const SRCCOPY = 0x00CC0020
 
 // https://learn.microsoft.com/openspecs/windows_protocols/ms-emf/a5e722e3-891a-4a67-be1a-ed5a48a7fda1
 const (
@@ -67,6 +71,21 @@ type CIEXYZTRIPLE struct {
 	CiexyzRed   CIEXYZ
 	CiexyzGreen CIEXYZ
 	CiexyzBlue  CIEXYZ
+}
+
+// BITMAPINFOHEADER https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader
+type BITMAPINFOHEADER struct {
+	BiSize          uint32
+	BiWidth         int32
+	BiHeight        int32
+	BiPlanes        uint16
+	BiBitCount      uint16
+	BiCompression   uint32
+	BiSizeImage     uint32
+	BiXPelsPerMeter int32
+	BiYPelsPerMeter int32
+	BiClrUsed       uint32
+	BiClrImportant  uint32
 }
 
 type BITMAPV5HEADER struct {
@@ -167,6 +186,22 @@ func SetPixelFormat(hdc HDC, iPixelFormat int32, pfd *PIXELFORMATDESCRIPTOR) boo
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := setPixelFormatProc.Call(uintptr(hdc), uintptr(iPixelFormat), uintptr(unsafe.Pointer(pfd)))
 	return ret&0xff != 0
+}
+
+// StretchDIBits https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-stretchdibits. bits holds the
+// pixels as 32-bit BGRA words; bmi's header fields must describe them (a BITMAPINFO with no color table is just its
+// BITMAPINFOHEADER, so the header pointer is passed directly).
+func StretchDIBits(hdc HDC, xDest, yDest, destWidth, destHeight, xSrc, ySrc, srcWidth, srcHeight int32, bits []uint32, bmi *BITMAPINFOHEADER, iUsage, rop uint32) int32 {
+	var bitsPtr uintptr
+	if len(bits) != 0 {
+		bitsPtr = uintptr(unsafe.Pointer(&bits[0]))
+	}
+	bmi.BiSize = uint32(unsafe.Sizeof(*bmi))
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := stretchDIBitsProc.Call(uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(destWidth),
+		uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight), bitsPtr,
+		uintptr(unsafe.Pointer(bmi)), uintptr(iUsage), uintptr(rop))
+	return int32(ret)
 }
 
 // SwapBuffers https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-swapbuffers

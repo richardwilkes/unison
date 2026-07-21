@@ -258,3 +258,124 @@ func TestPutImageSubImageRespectsStrideAndOrigin(t *testing.T) {
 	c.Equal(4, req.height)
 	c.Equal(premultipliedBGRA(base, 2, 3, 4, 4), req.data)
 }
+
+// premulTestPixels returns a pixel buffer for PutImageRGBAPremul: rowPixels words per row for height rows, where the
+// leftmost width words of each row hold distinct premultiplied RGBA values and any remaining stride padding is filled
+// with a sentinel that must never appear on the wire.
+func premulTestPixels(width, height, rowPixels int) []uint32 {
+	pixels := make([]uint32, rowPixels*height)
+	i := 0
+	for y := range height {
+		for x := range rowPixels {
+			if x < width {
+				pixels[y*rowPixels+x] = uint32(uint8(i*7)) | uint32(uint8(i*13+5))<<8 |
+					uint32(uint8(i*29+11))<<16 | uint32(uint8(i*31+100))<<24
+				i++
+			} else {
+				pixels[y*rowPixels+x] = 0xdeadbeef
+			}
+		}
+	}
+	return pixels
+}
+
+// premulBGRAWire returns the expected wire form of the given rectangle of a premulTestPixels buffer: rows of pixel
+// words serialized in BGRA byte order.
+func premulBGRAWire(pixels []uint32, rowPixels, x, y, w, h int) []byte {
+	out := make([]byte, 0, w*h*4)
+	for row := y; row < y+h; row++ {
+		for col := x; col < x+w; col++ {
+			v := pixels[row*rowPixels+col]
+			out = append(out, byte(v>>16), byte(v>>8), byte(v), byte(v>>24))
+		}
+	}
+	return out
+}
+
+// TestPutImageRGBAPremulSingleRequest verifies the wire form of a premultiplied-RGBA upload that fits in one request,
+// including a hand-computed BGRA pixel and the caller-supplied drawable depth.
+func TestPutImageRGBAPremulSingleRequest(t *testing.T) {
+	c := check.New(t)
+	pixels := []uint32{100 | 50<<8 | 20<<16 | 128<<24}
+	requests := captureCheckedRequests(t, math.MaxUint16, func(conn *Conn) {
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 30, -40, 1, 1, 1, pixels, 24)
+	})
+	c.Equal(1, len(requests))
+	req := parsePutImage(t, requests[0])
+	c.Equal(byte(ImageFormatZPixmap), req.format)
+	c.Equal(byte(24), req.depth)
+	c.Equal(byte(0), req.leftPad)
+	c.Equal(1, req.width)
+	c.Equal(1, req.height)
+	c.Equal(30, req.dstX)
+	c.Equal(-40, req.dstY)
+	c.Equal(7, req.words)
+	// The (R, G, B, A) device word (100, 50, 20, 128) reordered to wire (B, G, R, A).
+	c.Equal([]byte{20, 50, 100, 128}, req.data)
+}
+
+// TestPutImageRGBAPremulChunksRowsAndRespectsStride verifies that a tall upload is split into row chunks sized by the
+// server-advertised maximum request length and that rows are read through the pixel stride, never leaking padding
+// words onto the wire.
+func TestPutImageRGBAPremulChunksRowsAndRespectsStride(t *testing.T) {
+	c := check.New(t)
+	const maxWords = 306 // Fits 300 pixels per request, which is 3 rows of 100.
+	const width, height, rowPixels = 100, 10, 128
+	pixels := premulTestPixels(width, height, rowPixels)
+	requests := captureCheckedRequests(t, maxWords, func(conn *Conn) {
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 5, 7, width, height, rowPixels, pixels, 32)
+	})
+	c.Equal(4, len(requests))
+	var reassembled []byte
+	for i, raw := range requests {
+		req := parsePutImage(t, raw)
+		if req.words > maxWords {
+			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
+		}
+		c.Equal(byte(32), req.depth)
+		c.Equal(width, req.width)
+		c.Equal(5, req.dstX)
+		c.Equal(7+i*3, req.dstY)
+		reassembled = append(reassembled, req.data...)
+	}
+	c.Equal(3, parsePutImage(t, requests[0]).height)
+	c.Equal(1, parsePutImage(t, requests[3]).height)
+	c.Equal(premulBGRAWire(pixels, rowPixels, 0, 0, width, height), reassembled)
+}
+
+// TestPutImageRGBAPremulSplitsRowsWiderThanMaxRequest verifies that an upload whose single row exceeds the maximum
+// request size is split into horizontal spans.
+func TestPutImageRGBAPremulSplitsRowsWiderThanMaxRequest(t *testing.T) {
+	c := check.New(t)
+	const maxWords = 106 // Fits 100 pixels per request, less than one 250-pixel row.
+	const width, height = 250, 2
+	pixels := premulTestPixels(width, height, width)
+	requests := captureCheckedRequests(t, maxWords, func(conn *Conn) {
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 10, 20, width, height, width, pixels, 24)
+	})
+	c.Equal(6, len(requests))
+	spans := [][2]int{{0, 100}, {100, 100}, {200, 50}}
+	for i, raw := range requests {
+		req := parsePutImage(t, raw)
+		if req.words > maxWords {
+			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
+		}
+		row := i / len(spans)
+		span := spans[i%len(spans)]
+		c.Equal(1, req.height)
+		c.Equal(20+row, req.dstY)
+		c.Equal(10+span[0], req.dstX)
+		c.Equal(span[1], req.width)
+		c.Equal(premulBGRAWire(pixels, width, span[0], row, span[1], 1), req.data)
+	}
+}
+
+// TestPutImageRGBAPremulZeroSized verifies that empty uploads produce no requests.
+func TestPutImageRGBAPremulZeroSized(t *testing.T) {
+	c := check.New(t)
+	requests := captureCheckedRequests(t, math.MaxUint16, func(conn *Conn) {
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 0, 0, 0, 5, 1, nil, 24)
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 0, 0, 5, 0, 5, nil, 24)
+	})
+	c.Equal(0, len(requests))
+}

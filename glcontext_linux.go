@@ -76,15 +76,21 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 }
 
 func (c *apiGLContext) apiMakeCurrent() {
-	c.glx.MakeCurrent(c.window, c.context)
+	if c.glx != nil {
+		c.glx.MakeCurrent(c.window, c.context)
+	}
 }
 
 func (c *apiGLContext) apiReleaseCurrent() {
-	c.glx.ReleaseCurrent()
+	if c.glx != nil {
+		c.glx.ReleaseCurrent()
+	}
 }
 
 func (c *apiGLContext) apiSwapBuffers() {
-	c.glx.SwapBuffers(c.window)
+	if c.glx != nil {
+		c.glx.SwapBuffers(c.window)
+	}
 }
 
 func (c *apiGLContext) apiDestroy() {

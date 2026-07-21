@@ -2081,6 +2081,67 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 	}
 }
 
+// PutImageRGBAPremul uploads premultiplied RGBA pixels (packed as R | G<<8 | B<<16 | A<<24 device words, rowPixels
+// words per row) to the specified drawable at the given destination coordinates using the provided graphics context.
+// depth must be the drawable's depth (24 or 32); the pixels are sent as 32-bits-per-pixel BGRA ZPixmap data either
+// way, which is the wire layout X servers use for both depths. The image is sent in multiple requests if it exceeds
+// the maximum request size advertised by the X server. This is the CPU-rendering presentation path, used when no
+// OpenGL context is available to display into a window.
+func (c *Conn) PutImageRGBAPremul(drawable DrawableID, gc GCID, dstX, dstY int16, width, height, rowPixels int32, pixels []uint32, depth byte) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	send := func(x, y, cols, rows int) {
+		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images.
+		pix := make([]byte, cols*rows*4)
+		di := 0
+		for row := y; row < y+rows; row++ {
+			si := row*int(rowPixels) + x
+			for range cols {
+				v := pixels[si]
+				pix[di] = byte(v >> 16)
+				pix[di+1] = byte(v >> 8)
+				pix[di+2] = byte(v)
+				pix[di+3] = byte(v >> 24)
+				si++
+				di += 4
+			}
+		}
+		w := NewWriter(24 + len(pix))
+		w.Byte(opPutImage)
+		w.Byte(byte(ImageFormatZPixmap))
+		w.Uint16(6 + uint16(len(pix)/4))
+		w.DrawableID(drawable)
+		w.GCID(gc)
+		w.Uint16(uint16(cols))
+		w.Uint16(uint16(rows))
+		w.Int16(dstX + int16(x))
+		w.Int16(dstY + int16(y))
+		w.Byte(0)
+		w.Byte(depth)
+		w.Zero(2)
+		w.Bytes(pix)
+		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+			errs.Log(err)
+		}
+	}
+	// The request length field counts 4-byte words and must cover the 24-byte (6-word) header plus the pixel data, so
+	// each request can carry at most maximumRequestLength - 6 pixels at 4 bytes per pixel.
+	maxPixels := max(int(c.maximumRequestLength)-6, 1)
+	if rowsPer := maxPixels / int(width); rowsPer > 0 {
+		for y := 0; y < int(height); y += rowsPer {
+			send(0, y, int(width), min(rowsPer, int(height)-y))
+		}
+	} else {
+		// A single row holds more pixels than the largest request can carry, so split each row into spans.
+		for y := range int(height) {
+			for x := 0; x < int(width); x += maxPixels {
+				send(x, y, min(maxPixels, int(width)-x), 1)
+			}
+		}
+	}
+}
+
 // IconData builds a _NET_WM_ICON property payload from the given images: for each one, a 32-bit width and height
 // followed by its pixels converted to pre-multiplied BGRA order. The source rows are addressed through PixOffset, since
 // an image may be a sub-image with a non-zero origin and a stride wider than the pixel data.

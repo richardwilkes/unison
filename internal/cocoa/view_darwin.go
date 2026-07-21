@@ -534,6 +534,25 @@ func (v View) MouseInRect(mousePt geom.Point, rect geom.Rect) bool {
 	return objc.Send[bool](objc.ID(v), Sel("mouse:inRect:"), NSPointFromPoint(mousePt), NSRectFromRect(rect))
 }
 
+// SetLayerContentsRGBAPremul makes the view layer-backed (if it is not already) and replaces its layer's contents with
+// an image built from the given premultiplied RGBA pixels: actualWidth x actualHeight device pixels displayed at
+// logicalWidth x logicalHeight points. This is the CPU-rendering presentation path, used when no OpenGL context is
+// available to display into the view.
+func (v View) SetLayerContentsRGBAPremul(pixels []byte, logicalWidth, logicalHeight, actualWidth, actualHeight int) {
+	view := objc.ID(v)
+	if !objc.Send[bool](view, Sel("wantsLayer")) {
+		view.Send(Sel("setWantsLayer:"), true)
+	}
+	img := newNSImageWithFormat(pixels, logicalWidth, logicalHeight, actualWidth, actualHeight, 0)
+	if img == 0 {
+		return
+	}
+	if layer := view.Send(Sel("layer")); layer != 0 {
+		layer.Send(Sel("setContents:"), img)
+	}
+	Release(img)
+}
+
 // Release releases the view.
 func (v View) Release() {
 	Release(objc.ID(v))

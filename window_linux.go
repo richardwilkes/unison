@@ -38,6 +38,7 @@ type apiWindow struct {
 	id                x11.WindowID
 	parent            x11.WindowID
 	colorMap          x11.ColorMapID
+	gc                x11.GCID // lazily created; only used by the CPU-rendering presentation path
 	dndSource         x11.WindowID
 	dndVersion        uint32
 	lastX             float32
@@ -46,6 +47,7 @@ type apiWindow struct {
 	borderLeft        uint32
 	borderBottom      uint32
 	borderRight       uint32
+	depth             byte
 	borderValid       bool
 	minimized         bool
 	maximized         bool
@@ -63,16 +65,27 @@ func x11FindWindow(id x11.WindowID) *Window {
 }
 
 func (w *Window) apiInit() error {
-	if err := w.glCtx.x11PrepareWindow(w); err != nil {
-		return err
+	if !cpuRenderingActive {
+		if err := w.glCtx.x11PrepareWindow(w); err != nil {
+			fallbackToCPURendering(err)
+		}
 	}
 	w.wnd.parent = x11Conn.RootWindow()
 	visual := x11Conn.DefaultVisual()
 	depth := x11Conn.DefaultDepth()
-	if w.glCtx.hasVisual {
+	switch {
+	case w.glCtx.hasVisual:
 		visual = w.glCtx.visual
 		depth = w.glCtx.depth
+	case cpuRenderingActive && w.transparent:
+		// Without GLX to supply an alpha-capable framebuffer configuration, a transparent window needs a 32-bit ARGB
+		// visual so the CPU-rendered pixels keep their alpha channel.
+		if argb := x11FindARGBVisual(); argb != 0 {
+			visual = argb
+			depth = 32
+		}
 	}
+	w.wnd.depth = depth
 	if w.wnd.colorMap = x11Conn.CreateColormap(visual, w.wnd.parent, false); w.wnd.colorMap == 0 {
 		return errs.New("failed to create X11 color map for window")
 	}
@@ -914,6 +927,10 @@ func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 
 func (w *Window) apiDestroy() {
 	w.glCtx.apiDestroy()
+	if w.wnd.gc != 0 {
+		x11Conn.FreeGC(w.wnd.gc)
+		w.wnd.gc = 0
+	}
 	if w.wnd.id != 0 {
 		x11Conn.UnmapWindow(w.wnd.id)
 		x11Conn.DestroyWindow(w.wnd.id)

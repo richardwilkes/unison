@@ -52,3 +52,30 @@ func TestNewNSImage(t *testing.T) {
 		}
 	})
 }
+
+func TestNewNSImageWithFormatPremultiplied(t *testing.T) {
+	WithPool(func() {
+		const actualWidth, actualHeight = 3, 2
+		pixels := make([]byte, actualWidth*actualHeight*4)
+		for i := range pixels {
+			pixels[i] = byte(i * 11)
+		}
+		img := newNSImageWithFormat(pixels, 3, 2, actualWidth, actualHeight, 0)
+		if img == 0 {
+			t.Fatal("newNSImageWithFormat returned 0")
+		}
+		defer Release(img)
+		reps := img.Send(Sel("representations"))
+		if count := NSArrayCount(reps); count != 1 {
+			t.Fatalf("image has %d representations, want 1", count)
+		}
+		rep := NSArrayObjectAt(reps, 0)
+		if format := objc.Send[uint64](rep, Sel("bitmapFormat")); format&nsBitmapFormatAlphaNonpremultiplied != 0 {
+			t.Errorf("bitmapFormat %#x has the non-premultiplied alpha bit, want premultiplied", format)
+		}
+		bitmap := objc.Send[*byte](rep, Sel("bitmapData"))
+		if got := unsafe.Slice(bitmap, len(pixels)); !bytes.Equal(got, pixels) {
+			t.Error("bitmap data does not match the source pixels")
+		}
+	})
+}

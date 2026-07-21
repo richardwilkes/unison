@@ -616,3 +616,45 @@ func TestViewReleaseDealloc(t *testing.T) {
 		v.Release() // drops the only reference: dealloc must release the tracking area and marked text
 	})
 }
+
+// TestSetLayerContentsRGBAPremul proves the CPU-rendering presentation path: the view becomes layer-backed and its
+// layer's contents are replaced with an image of the expected logical size on every call.
+func TestSetLayerContentsRGBAPremul(t *testing.T) {
+	runOnMain(func() {
+		_, v, cleanup := newTestWindowAndView(t)
+		defer cleanup()
+		ov := objc.ID(v)
+		WithPool(func() {
+			const actualWidth, actualHeight = 8, 6
+			pixels := make([]byte, actualWidth*actualHeight*4)
+			for i := range pixels {
+				pixels[i] = byte(i * 3)
+			}
+			v.SetLayerContentsRGBAPremul(pixels, 4, 3, actualWidth, actualHeight)
+			if !objc.Send[bool](ov, Sel("wantsLayer")) {
+				t.Error("wantsLayer = false after SetLayerContentsRGBAPremul, want true")
+			}
+			layer := ov.Send(Sel("layer"))
+			if layer == 0 {
+				t.Fatal("view has no layer after SetLayerContentsRGBAPremul")
+			}
+			contents := layer.Send(Sel("contents"))
+			if contents == 0 {
+				t.Fatal("layer contents empty after SetLayerContentsRGBAPremul")
+			}
+			if !objc.Send[bool](contents, Sel("isKindOfClass:"), Cls("NSImage")) {
+				t.Fatalf("layer contents are a %q, want NSImage",
+					GoStringFromNSString(contents.Send(Sel("className"))))
+			}
+			if size := objc.Send[NSSize](contents, Sel("size")); size.Width != 4 || size.Height != 3 {
+				t.Errorf("layer contents size = %v, want {4 3}", size)
+			}
+			// A second frame must replace the contents rather than accumulate.
+			v.SetLayerContentsRGBAPremul(pixels, 8, 6, actualWidth, actualHeight)
+			replaced := ov.Send(Sel("layer")).Send(Sel("contents"))
+			if replaced == 0 || replaced == contents {
+				t.Error("second SetLayerContentsRGBAPremul did not replace the layer contents")
+			}
+		})
+	})
+}

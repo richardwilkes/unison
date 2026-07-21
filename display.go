@@ -15,9 +15,10 @@ import (
 
 // Display holds information about each available active display.
 type Display struct {
-	// The position of the display in the global screen coordinate system. Note that some platforms (e.g. Windows) don't
-	// use a consistent linear global coordinate system for these rects and instead use the raw pixel counts, which
-	// means that the rects may not be in the same coordinate space as the windows, which are normalized to a 1x scale.
+	// The position of the display in the global screen coordinate system. Note that some platforms (e.g. Windows and
+	// Linux) don't use a consistent linear global coordinate system for these rects and instead use the raw pixel
+	// counts, which means that the rects may not be in the same coordinate space as the windows, which are normalized
+	// to a 1x scale.
 	Frame  geom.Rect
 	Usable geom.Rect  // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
 	Scale  geom.Point // The scale of the content

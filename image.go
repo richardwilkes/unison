@@ -122,21 +122,25 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 // it sparingly.
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
 	// Windows needs to have a Window created so that we can create the GL context that we will need.
-	if wndWithCurrentCtx == nil && runtime.GOOS == xos.WindowsOS {
+	if wndWithCurrentCtx == nil && runtime.GOOS == xos.WindowsOS && !cpuRenderingActive {
 		w, err := NewWindow("")
 		if err != nil {
 			return nil, err
 		}
 		defer w.destroy()
 		RebuildDynamicColors()
-		w.makeGLCtxCurrent()
+		if w.usesGLRendering() {
+			w.makeGLCtxCurrent()
+		}
 	}
 	scale := float32(ppi) / 72
 	ss := sksurface.NewRasterN32Premul(int32(xmath.Ceil(float32(width)*scale)),
 		int32(xmath.Ceil(float32(height)*scale)), &sksurface.Props{PixelGeometry: sksurface.PixelGeometryRGBH})
 	s := &surface{
-		context: gl.MakeGLDirectContext(defaultOpenGL(), nil),
 		surface: ss,
+	}
+	if !cpuRenderingActive {
+		s.context = gl.MakeGLDirectContext(defaultOpenGL(), nil)
 	}
 	c := &Canvas{
 		canvas:  s.surface.Canvas(),
