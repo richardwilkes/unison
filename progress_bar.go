@@ -48,8 +48,9 @@ type ProgressBar struct {
 	lastAnimationTime time.Time
 	ProgressBarTheme
 	Panel
-	current float32
-	maximum float32
+	current       float32
+	maximum       float32
+	redrawPending bool
 }
 
 // NewProgressBar creates a new progress bar. A max of zero will create an indeterminate progress bar, i.e. one whose
@@ -164,7 +165,18 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		meter = meter.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
 		canvas.DrawRoundedRect(meter, p.CornerRadius, paint)
 	}
-	if p.maximum == 0 {
-		InvokeTaskAfter(p.MarkForRedraw, p.TickSpeed)
+	if p.maximum == 0 && !p.redrawPending {
+		// Guard against scheduling more than one redraw task at a time. Without this, every externally triggered draw
+		// (resize, overlapping invalidation, focus change) would start another self-perpetuating redraw chain, and a
+		// long-lived indeterminate bar would accumulate many concurrent redraw loops.
+		p.redrawPending = true
+		InvokeTaskAfter(p.animationTick, p.TickSpeed)
 	}
+}
+
+func (p *ProgressBar) animationTick() {
+	// The pending flag must be cleared even if the redraw ends up being a no-op (e.g. the bar is no longer in a valid
+	// window), since otherwise the animation could never be scheduled again.
+	p.redrawPending = false
+	p.MarkForRedraw()
 }
