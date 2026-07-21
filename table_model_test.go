@@ -20,10 +20,11 @@ import (
 // tableTestRow is a minimal TableRowData implementation for exercising table model logic. The table is built with no
 // columns, so ColumnCell is never invoked and no font/graphics work is required.
 type tableTestRow struct {
-	parent   *tableTestRow
-	id       tid.TID
-	children []*tableTestRow
-	open     bool
+	parent      *tableTestRow
+	cellFactory func(row, col int) unison.Paneler
+	id          tid.TID
+	children    []*tableTestRow
+	open        bool
 }
 
 func newTableTestRow(id string) *tableTestRow {
@@ -45,7 +46,10 @@ func (r *tableTestRow) SetChildren(children []*tableTestRow) {
 	}
 }
 func (r *tableTestRow) CellDataForSort(_ int) string { return string(r.id) }
-func (r *tableTestRow) ColumnCell(_, _ int, _, _ unison.Ink, _, _, _ bool) unison.Paneler {
+func (r *tableTestRow) ColumnCell(row, col int, _, _ unison.Ink, _, _, _ bool) unison.Paneler {
+	if r.cellFactory != nil {
+		return r.cellFactory(row, col)
+	}
 	return unison.NewPanel()
 }
 func (r *tableTestRow) IsOpen() bool      { return r.open }

@@ -888,7 +888,8 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 				}
 				stop = true
 			}
-		} else if t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseDragCallback != nil {
+		} else if t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseDragCallback != nil &&
+			t.interactionRow < len(t.rowCache) && t.interactionColumn < len(t.Columns) {
 			cell := t.cell(t.interactionRow, t.interactionColumn)
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
@@ -924,7 +925,8 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 		t.notifyOfSelectionChange()
 	}
 
-	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 && t.lastMouseDownCellPanel != nil &&
+	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 && t.interactionRow < len(t.rowCache) &&
+		t.interactionColumn < len(t.Columns) && t.lastMouseDownCellPanel != nil &&
 		t.lastMouseDownCellPanel.MouseUpCallback != nil {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
 		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
