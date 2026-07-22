@@ -4,10 +4,10 @@ go 1.26.0
 
 require (
 	github.com/OpenPrinting/goipp v1.2.0
-	github.com/ebitengine/purego v0.11.0-alpha.7
+	github.com/ebitengine/purego v0.11.0-alpha.8
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/canvas v0.1.0
-	github.com/richardwilkes/toolbox/v2 v2.15.1
+	github.com/richardwilkes/toolbox/v2 v2.15.2
 	github.com/yuin/goldmark v1.8.4
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/image v0.44.0
