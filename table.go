@@ -122,6 +122,7 @@ type Table[T TableRowConstraint[T]] struct {
 	lastMouseDownCellPanel   *Panel
 	TableTheme
 	Panel
+	pressedHitRect           geom.Rect
 	interactionRow           int
 	interactionColumn        int
 	lastMouseMotionRow       int
@@ -748,6 +749,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 	t.wasDragged = false
 	t.dividerDrag = false
 	t.lastSel = ""
+	t.pressedHitRect = geom.Rect{}
 
 	t.interactionRow = -1
 	t.interactionColumn = -1
@@ -782,6 +784,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		}
 		for _, one := range t.hitRects {
 			if where.In(one.Rect) {
+				t.pressedHitRect = one.Rect
 				return true
 			}
 		}
@@ -907,14 +910,17 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	stop := false
-	if !t.dividerDrag && button == ButtonLeft {
+	if !t.dividerDrag && button == ButtonLeft && !t.pressedHitRect.Empty() {
+		// Only fire a hit rect's handler when the press began on that same hit rect, so that a gesture started
+		// elsewhere (e.g. a row selection drag) releasing over a disclosure triangle does not toggle it.
 		for _, one := range t.hitRects {
-			if where.In(one.Rect) {
+			if one.Rect == t.pressedHitRect && where.In(one.Rect) {
 				one.handler()
 				stop = true
 				break
 			}
 		}
+		t.pressedHitRect = geom.Rect{}
 	}
 
 	if !t.wasDragged && t.lastSel != "" {

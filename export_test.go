@@ -9,8 +9,16 @@
 
 package unison
 
+import "github.com/richardwilkes/toolbox/v2/geom"
+
 // SetDragTableDataForTest sets the package-level drag data used by table drag & drop, allowing external tests to
 // simulate an in-progress table row drag without a live drag gesture. Tests should reset it to nil when done.
 func SetDragTableDataForTest(data any) {
 	dragTableData = data
+}
+
+// AddHitRectForTest injects a disclosure hit rect for the given row, allowing external tests to exercise the table's
+// mouse-down/mouse-up hit rect handling without the draw pass that normally builds the hit rects.
+func (t *Table[T]) AddHitRectForTest(rect geom.Rect, row T) {
+	t.hitRects = append(t.hitRects, t.newTableHitRect(rect, row))
 }

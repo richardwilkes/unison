@@ -68,3 +68,64 @@ func TestTableDragAndUpAfterModelShrink(t *testing.T) {
 	table.DefaultMouseUp(pt, unison.ButtonLeft, 0)
 	c.Equal(1, upCount)
 }
+
+// TestTableDisclosureRequiresPressOnSameHitRect verifies that a disclosure hit rect's handler only fires when the
+// mouse-down began on that same hit rect. A gesture that starts elsewhere (e.g. a row selection drag) and releases
+// over a disclosure triangle must not toggle it.
+func TestTableDisclosureRequiresPressOnSameHitRect(t *testing.T) {
+	c := check.New(t)
+	parentA := newTableTestRow("A")
+	parentA.SetChildren([]*tableTestRow{newTableTestRow("a0")})
+	parentA.SetOpen(false)
+	parentB := newTableTestRow("B")
+	parentB.SetChildren([]*tableTestRow{newTableTestRow("b0")})
+	parentB.SetOpen(false)
+	model := &unison.SimpleTableModel[*tableTestRow]{}
+	model.SetRootRows([]*tableTestRow{parentA, parentB})
+	table := unison.NewTable[*tableTestRow](model)
+	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100}}
+	table.SyncToModel()
+
+	rectA := table.RowFrame(0)
+	rectA.Size = geom.NewSize(12, 12)
+	rectB := table.RowFrame(1)
+	rectB.Size = geom.NewSize(12, 12)
+	addHitRects := func() {
+		table.AddHitRectForTest(rectA, parentA)
+		table.AddHitRectForTest(rectB, parentB)
+	}
+	addHitRects()
+
+	// A press that starts on row B outside any hit rect, drags, and releases over row A's disclosure triangle must not
+	// toggle it.
+	table.DefaultMouseDown(geom.NewPoint(50, rectB.CenterY()), unison.ButtonLeft, 1, 0)
+	table.DefaultMouseDrag(rectA.Center(), unison.ButtonLeft, 0)
+	table.DefaultMouseUp(rectA.Center(), unison.ButtonLeft, 0)
+	c.False(parentA.IsOpen())
+	c.False(parentB.IsOpen())
+
+	// A press that starts on row A's disclosure triangle but releases over row B's must toggle neither.
+	table.DefaultMouseDown(rectA.Center(), unison.ButtonLeft, 1, 0)
+	table.DefaultMouseUp(rectB.Center(), unison.ButtonLeft, 0)
+	c.False(parentA.IsOpen())
+	c.False(parentB.IsOpen())
+
+	// A press that starts on the disclosure triangle and releases outside it must not toggle.
+	table.DefaultMouseDown(rectA.Center(), unison.ButtonLeft, 1, 0)
+	table.DefaultMouseUp(geom.NewPoint(50, rectA.CenterY()), unison.ButtonLeft, 0)
+	c.False(parentA.IsOpen())
+
+	// A press and release on the same disclosure triangle must toggle it, even if drag events occurred in between.
+	table.DefaultMouseDown(rectA.Center(), unison.ButtonLeft, 1, 0)
+	table.DefaultMouseDrag(rectA.Center().Add(geom.NewPoint(1, 1)), unison.ButtonLeft, 0)
+	table.DefaultMouseUp(rectA.Center(), unison.ButtonLeft, 0)
+	c.True(parentA.IsOpen())
+	c.False(parentB.IsOpen())
+
+	// The toggle resynced the model (and a real redraw would rebuild the hit rects), so re-inject them and verify a
+	// second same-rect gesture closes it again.
+	addHitRects()
+	table.DefaultMouseDown(rectA.Center(), unison.ButtonLeft, 1, 0)
+	table.DefaultMouseUp(rectA.Center(), unison.ButtonLeft, 0)
+	c.False(parentA.IsOpen())
+}
