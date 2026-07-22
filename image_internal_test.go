@@ -375,3 +375,87 @@ func TestImageForCanvasReturnsRasterForNilContext(t *testing.T) {
 
 	img.Dispose()
 }
+
+// TestImageForCanvasNilNonTextureFallsBack covers the failed-readback branch of imageForCanvas: when
+// MakeNonTextureImage returns nil (its documented failure result for a texture image), imageForCanvas must fall back to
+// the base image and must not cache the nil. Before this, the nil *imagecore.Image was assigned directly to the
+// genericImage interface field, producing a non-nil interface holding a typed nil that the nil checks could never
+// catch, so the typed nil was cached and handed to callers as a "valid" image on every subsequent call.
+func TestImageForCanvasNilNonTextureFallsBack(t *testing.T) {
+	c := check.New(t)
+
+	stub := &stubTexture{} // its MakeNonTextureImage returns nil, modeling a failed GPU readback
+	img := &Image{image: stub}
+
+	got := img.imageForCanvas(nil)
+	c.Equal(genericImage(stub), got, "a nil MakeNonTextureImage result must fall back to the base image")
+	c.True(img.nonTextureImage == nil, "a nil MakeNonTextureImage result must not be cached as a typed nil")
+
+	// The failure must not poison the cache: a second call takes the same fallback rather than returning a cached
+	// typed nil.
+	c.Equal(genericImage(stub), img.imageForCanvas(nil))
+}
+
+// TestNewImageFromDrawingInvalidDimensions verifies that non-positive width, height, or ppi produce an error like every
+// other invalid-input path in this file. Before this, the nil surface returned by NewRasterN32Premul was used
+// unchecked, so these inputs crashed with a nil dereference instead.
+func TestNewImageFromDrawingInvalidDimensions(t *testing.T) {
+	c := check.New(t)
+
+	for _, in := range []struct{ width, height, ppi int }{
+		{0, 10, 72},
+		{10, 0, 72},
+		{10, 10, 0},
+		{-1, 10, 72},
+		{10, -1, 72},
+		{10, 10, -72},
+	} {
+		c.NotPanics(func() {
+			img, err := NewImageFromDrawing(in.width, in.height, in.ppi, func(_ *Canvas) {})
+			c.HasError(err, "width=%d height=%d ppi=%d", in.width, in.height, in.ppi)
+			c.Nil(img, "width=%d height=%d ppi=%d", in.width, in.height, in.ppi)
+		})
+	}
+}
+
+// TestNewImageFromDrawingStaysOnCPU verifies that NewImageFromDrawing renders entirely on the CPU: its canvas has no GL
+// DirectContext, so drawing an *Image inside the callback takes imageForCanvas's raster path instead of uploading a
+// texture that the raster device would immediately read back. This also makes the function usable headless, which the
+// pixel round-trip below relies on.
+func TestNewImageFromDrawingStaysOnCPU(t *testing.T) {
+	c := check.New(t)
+
+	// A 2x2 opaque green inner image drawn at the origin over a red background gives every checked pixel an exact
+	// expected value (opaque pixels survive the premul round trip losslessly).
+	const innerSize = 2
+	innerPixels := bytes.Repeat([]byte{0, 255, 0, 255}, innerSize*innerSize)
+	inner, err := NewImageFromPixels(innerSize, innerSize, innerPixels, geom.NewPoint(1, 1))
+	c.NoError(err)
+	defer inner.Dispose()
+
+	const w, h = 4, 3
+	texturedContexts := len(imageCtxMap)
+	var sawContext, sawRaster bool
+	img, err := NewImageFromDrawing(w, h, 72, func(cv *Canvas) {
+		// NewImageFromDrawing disposes its surface before returning, so inspect it here rather than afterward.
+		sawContext = cv.surface.context != nil
+		sawRaster = cv.surface.raster != nil
+		cv.Clear(RGB(255, 0, 0))
+		cv.DrawImage(inner, geom.Point{}, nil, nil)
+	})
+	c.NoError(err)
+	c.NotNil(img)
+	defer img.Dispose()
+
+	c.False(sawContext, "NewImageFromDrawing must not create a GL context for its raster surface")
+	c.True(sawRaster, "the drawing surface should be flagged as raster")
+	c.Equal(texturedContexts, len(imageCtxMap), "drawing an image into a raster surface must not upload GL textures")
+
+	// The drawn content must survive the snapshot/readback: the inner image covers the top-left, the cleared red shows
+	// everywhere else.
+	c.Equal(geom.NewSize(w, h), img.Size())
+	nrgba, err := img.ToNRGBA()
+	c.NoError(err)
+	c.Equal(color.NRGBA{G: 255, A: 255}, nrgba.NRGBAAt(0, 0), "the drawn inner image should survive the readback")
+	c.Equal(color.NRGBA{R: 255, A: 255}, nrgba.NRGBAAt(w-1, h-1), "the cleared background should survive the readback")
+}

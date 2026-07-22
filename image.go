@@ -28,7 +28,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xhash"
 	"github.com/richardwilkes/toolbox/v2/xhttp"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/zeebo/xxh3"
 )
 
@@ -121,26 +120,18 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 // NewImageFromDrawing creates a new image by drawing into it. This is currently fairly inefficient, so take care to use
 // it sparingly.
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
-	// Windows needs to have a Window created so that we can create the GL context that we will need.
-	if wndWithCurrentCtx == nil && runtime.GOOS == xos.WindowsOS && !cpuRenderingActive {
-		w, err := NewWindow("")
-		if err != nil {
-			return nil, err
-		}
-		defer w.destroy()
-		RebuildDynamicColors()
-		if w.usesGLRendering() {
-			w.makeGLCtxCurrent()
-		}
-	}
 	scale := float32(ppi) / 72
 	ss := sksurface.NewRasterN32Premul(int32(xmath.Ceil(float32(width)*scale)),
 		int32(xmath.Ceil(float32(height)*scale)), &sksurface.Props{PixelGeometry: sksurface.PixelGeometryRGBH})
+	if ss == nil {
+		return nil, errs.New("invalid dimensions")
+	}
+	// The surface is always raster, so no GL context is set: leaving surface.context nil keeps imageForCanvas (and
+	// everything else) on the pure-CPU path, avoiding a pointless texture upload plus GPU→CPU readback for each image
+	// drawn by the callback.
 	s := &surface{
 		surface: ss,
-	}
-	if !cpuRenderingActive {
-		s.context = gl.MakeGLDirectContext(defaultOpenGL(), nil)
+		raster:  ss,
 	}
 	c := &Canvas{
 		canvas:  s.surface.Canvas(),
@@ -307,11 +298,14 @@ func (img *Image) imageForCanvas(canvas *Canvas) genericImage {
 		if img.nonTextureImage != nil {
 			return img.nonTextureImage
 		}
-		img.nonTextureImage = img.image.MakeNonTextureImage()
-		if img.nonTextureImage == nil {
-			return img.image
+		// Assign through a concrete-typed local so a nil *imagecore.Image is never stored in the interface field, where
+		// it would become a non-nil interface holding a typed nil that both this nil check and the cached-value check
+		// above would then treat as a valid image.
+		if nti := img.image.MakeNonTextureImage(); nti != nil {
+			img.nonTextureImage = nti
+			return img.nonTextureImage
 		}
-		return img.nonTextureImage
+		return img.image
 	}
 	m, ok := imageCtxMap[canvas.surface.context]
 	if !ok {
