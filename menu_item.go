@@ -209,6 +209,10 @@ func (mi *menuItem) showSubMenu() {
 		mi.factory.showInProgress = true
 		defer func() { mi.factory.showInProgress = false }()
 		mi.subMenu.createPopup()
+		if mi.subMenu.popupPanel == nil {
+			// createPopup is a no-op when no window is active, so there is no panel to position.
+			return
+		}
 		pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
 		fr := mi.subMenu.popupPanel.FrameRect()
 		if mi.isRoot() {

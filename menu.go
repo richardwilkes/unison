@@ -205,6 +205,11 @@ func (m *menu) Count() int {
 func (m *menu) Popup(where geom.Rect, itemIndex int) {
 	if m.popupPanel == nil {
 		m.createPopup()
+		if m.popupPanel == nil {
+			// createPopup is a no-op when no window is active (a transient state; see FrontmostWindow's comment), so
+			// there is no panel to position or show.
+			return
+		}
 		if itemIndex >= 0 && itemIndex < len(m.items) {
 			m.popupPanel.ValidateLayout()
 			if sp, ok := m.popupPanel.Children()[0].Self.(*ScrollPanel); ok {
@@ -376,6 +381,10 @@ func (m *menu) doExitEnter(previousIndex int) {
 }
 
 func (m *menu) setKeyIndex(index int) {
+	if m.popupPanel == nil {
+		// The popup may not exist if createPopup ran while no window was active.
+		return
+	}
 	m.popupPanel.itemIndex = index
 	if index >= 0 && index < len(m.items) {
 		m.items[index].mouseEnter(geom.Point{}, 0) // params are unused

@@ -95,6 +95,49 @@ func TestKeyEventsSwallowedWhileMenuOpenWithoutMenuBar(t *testing.T) {
 	c.True(root.preKeyUp(nil, KeyA, 0))
 }
 
+// TestPopupWithoutActiveWindowDoesNotPanic verifies that Menu.Popup degrades to a no-op instead of panicking when
+// there is no active window, since createPopup silently declines to build the popup panel in that state.
+func TestPopupWithoutActiveWindowDoesNotPanic(t *testing.T) {
+	c := check.New(t)
+	c.Nil(ActiveWindow())
+	f := &inWindowMenuFactory{}
+	m := f.newMenu(1, "Test", nil)
+	m.InsertItem(-1, f.NewItem(2, "One", KeyBinding{}, nil, nil))
+	m.InsertItem(-1, f.NewItem(3, "Two", KeyBinding{}, nil, nil))
+	m.Popup(geom.NewRect(10, 10, 100, 20), 0)
+	c.Nil(m.popupPanel)
+	m.Popup(geom.NewRect(10, 10, 100, 20), -1)
+	c.Nil(m.popupPanel)
+}
+
+// TestShowSubMenuWithoutActiveWindowDoesNotPanic verifies that opening a sub-menu degrades to a no-op instead of
+// panicking when there is no active window to host the popup panel.
+func TestShowSubMenuWithoutActiveWindowDoesNotPanic(t *testing.T) {
+	c := check.New(t)
+	c.Nil(ActiveWindow())
+	f := &inWindowMenuFactory{}
+	m := f.newMenu(1, "Test", nil)
+	sub := f.newMenu(2, "Sub", nil)
+	sub.InsertItem(-1, f.NewItem(3, "One", KeyBinding{}, nil, nil))
+	m.InsertMenu(-1, sub)
+	mi, ok := m.ItemAtIndex(0).(*menuItem)
+	c.True(ok)
+	mi.showSubMenu()
+	c.Nil(sub.popupPanel)
+}
+
+// TestSetKeyIndexWithoutPopupDoesNotPanic verifies that keyboard navigation into a menu whose popup panel was never
+// created (no active window) is a no-op instead of a panic.
+func TestSetKeyIndexWithoutPopupDoesNotPanic(t *testing.T) {
+	c := check.New(t)
+	f := &inWindowMenuFactory{}
+	m := f.newMenu(1, "Test", nil)
+	m.InsertItem(-1, f.NewItem(2, "One", KeyBinding{}, nil, nil))
+	c.Nil(m.popupPanel)
+	m.setKeyIndex(0)
+	c.Nil(m.popupPanel)
+}
+
 // TestCloseMenuStackStoppingAt verifies that closing the open menu stack stops when it reaches the given menu,
 // leaving that menu and any older ones open.
 func TestCloseMenuStackStoppingAt(t *testing.T) {
