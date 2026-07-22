@@ -22,7 +22,7 @@ import (
 	"github.com/richardwilkes/canvas/gpu"
 	"github.com/richardwilkes/canvas/gpu/gl"
 	"github.com/richardwilkes/canvas/imagecore"
-	sksurface "github.com/richardwilkes/canvas/surface"
+	canvassurface "github.com/richardwilkes/canvas/surface"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xhash"
@@ -121,8 +121,8 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 // it sparingly.
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
 	scale := float32(ppi) / 72
-	ss := sksurface.NewRasterN32Premul(int32(xmath.Ceil(float32(width)*scale)),
-		int32(xmath.Ceil(float32(height)*scale)), &sksurface.Props{PixelGeometry: sksurface.PixelGeometryRGBH})
+	ss := canvassurface.NewRasterN32Premul(int32(xmath.Ceil(float32(width)*scale)),
+		int32(xmath.Ceil(float32(height)*scale)), &canvassurface.Props{PixelGeometry: canvassurface.PixelGeometryRGBH})
 	if ss == nil {
 		return nil, errs.New("invalid dimensions")
 	}

@@ -13,10 +13,10 @@ import (
 	"testing"
 
 	"github.com/richardwilkes/canvas/canvas"
-	skgeom "github.com/richardwilkes/canvas/geom"
+	canvasgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/canvas/maskfilter"
 	"github.com/richardwilkes/canvas/path"
-	skpatheffect "github.com/richardwilkes/canvas/patheffect"
+	canvaspatheffect "github.com/richardwilkes/canvas/patheffect"
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/canvas/shaders"
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -126,10 +126,10 @@ func TestEnumAlignmentWithCanvas(t *testing.T) {
 		{int(arcsize.Large), int(path.ArcSizeLarge)},
 	})
 
-	// direction.Enum ↔ skgeom.PathDirection (path.go)
+	// direction.Enum ↔ canvasgeom.PathDirection (path.go)
 	checkEnumAlignment(c, "direction", len(direction.All), []enumPair{
-		{int(direction.Clockwise), int(skgeom.DirectionCW)},
-		{int(direction.CounterClockwise), int(skgeom.DirectionCCW)},
+		{int(direction.Clockwise), int(canvasgeom.DirectionCW)},
+		{int(direction.CounterClockwise), int(canvasgeom.DirectionCCW)},
 	})
 
 	// blur.Enum ↔ maskfilter.BlurStyle (mask_filter.go)
@@ -161,16 +161,16 @@ func TestEnumAlignmentWithCanvas(t *testing.T) {
 		{int(mipmapmode.Linear), int(shaders.MipmapLinear)},
 	})
 
-	// patheffect.Enum ↔ skpatheffect.Path1DStyle (path_effect.go)
+	// patheffect.Enum ↔ canvaspatheffect.Path1DStyle (path_effect.go)
 	checkEnumAlignment(c, "patheffect", len(patheffect.All), []enumPair{
-		{int(patheffect.Translate), int(skpatheffect.Path1DTranslate)},
-		{int(patheffect.Rotate), int(skpatheffect.Path1DRotate)},
-		{int(patheffect.Morph), int(skpatheffect.Path1DMorph)},
+		{int(patheffect.Translate), int(canvaspatheffect.Path1DTranslate)},
+		{int(patheffect.Rotate), int(canvaspatheffect.Path1DRotate)},
+		{int(patheffect.Morph), int(canvaspatheffect.Path1DMorph)},
 	})
 
-	// trimmode.Enum ↔ skpatheffect.TrimMode (path_effect.go)
+	// trimmode.Enum ↔ canvaspatheffect.TrimMode (path_effect.go)
 	checkEnumAlignment(c, "trimmode", len(trimmode.All), []enumPair{
-		{int(trimmode.Normal), int(skpatheffect.TrimNormal)},
-		{int(trimmode.Inverted), int(skpatheffect.TrimInverted)},
+		{int(trimmode.Normal), int(canvaspatheffect.TrimNormal)},
+		{int(trimmode.Inverted), int(canvaspatheffect.TrimInverted)},
 	})
 }

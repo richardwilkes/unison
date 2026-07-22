@@ -12,7 +12,7 @@ package unison
 import (
 	"github.com/richardwilkes/canvas/colorcore"
 	"github.com/richardwilkes/canvas/filtercore"
-	skgeom "github.com/richardwilkes/canvas/geom"
+	canvasgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/canvas/imagefilter"
 	"github.com/richardwilkes/canvas/shaders"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -131,8 +131,8 @@ func NewMatrixConvolutionImageFilter(width, height int, kernel []float32, gain, 
 		copy(k, kernel)
 		kernel = k
 	}
-	return newImageFilter(imagefilter.MatrixConvolution(skgeom.ISize{Width: int32(width), Height: int32(height)},
-		kernel, gain, bias, skgeom.IPoint{X: int32(offsetX), Y: int32(offsetY)}, shaders.TileMode(tileMode),
+	return newImageFilter(imagefilter.MatrixConvolution(canvasgeom.ISize{Width: int32(width), Height: int32(height)},
+		kernel, gain, bias, canvasgeom.IPoint{X: int32(offsetX), Y: int32(offsetY)}, shaders.TileMode(tileMode),
 		convolveAlpha, input.filterOrNil(), toCanvasRectPtr(cropRect)))
 }
 
@@ -181,43 +181,43 @@ func NewErodeImageFilter(radiusX, radiusY float32, input *ImageFilter, cropRect 
 // NewDistantLitDiffuseImageFilter returns a new distant lit diffuse image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewDistantLitDiffuseImageFilter(x, y, z, scale, reflectivity float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	return newImageFilter(imagefilter.DistantLitDiffuse(skgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
+	return newImageFilter(imagefilter.DistantLitDiffuse(canvasgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
 		reflectivity, input.filterOrNil(), toCanvasRectPtr(cropRect)))
 }
 
 // NewPointLitDiffuseImageFilter returns a new point lit diffuse image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewPointLitDiffuseImageFilter(x, y, z, scale, reflectivity float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	return newImageFilter(imagefilter.PointLitDiffuse(skgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
+	return newImageFilter(imagefilter.PointLitDiffuse(canvasgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
 		reflectivity, input.filterOrNil(), toCanvasRectPtr(cropRect)))
 }
 
 // NewSpotLitDiffuseImageFilter returns a new spot lit diffuse image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewSpotLitDiffuseImageFilter(x, y, z, targetX, targetY, targetZ, specularExponent, cutoffAngle, scale, reflectivity float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	return newImageFilter(imagefilter.SpotLitDiffuse(skgeom.Point3{X: x, Y: y, Z: z},
-		skgeom.Point3{X: targetX, Y: targetY, Z: targetZ}, specularExponent, cutoffAngle, colorcore.Color(color), scale,
+	return newImageFilter(imagefilter.SpotLitDiffuse(canvasgeom.Point3{X: x, Y: y, Z: z},
+		canvasgeom.Point3{X: targetX, Y: targetY, Z: targetZ}, specularExponent, cutoffAngle, colorcore.Color(color), scale,
 		reflectivity, input.filterOrNil(), toCanvasRectPtr(cropRect)))
 }
 
 // NewDistantLitSpecularImageFilter returns a new distant lit specular image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewDistantLitSpecularImageFilter(x, y, z, scale, reflectivity, shine float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	return newImageFilter(imagefilter.DistantLitSpecular(skgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
+	return newImageFilter(imagefilter.DistantLitSpecular(canvasgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
 		reflectivity, shine, input.filterOrNil(), toCanvasRectPtr(cropRect)))
 }
 
 // NewPointLitSpecularImageFilter returns a new point lit specular image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewPointLitSpecularImageFilter(x, y, z, scale, reflectivity, shine float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	return newImageFilter(imagefilter.PointLitSpecular(skgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
+	return newImageFilter(imagefilter.PointLitSpecular(canvasgeom.Point3{X: x, Y: y, Z: z}, colorcore.Color(color), scale,
 		reflectivity, shine, input.filterOrNil(), toCanvasRectPtr(cropRect)))
 }
 
 // NewSpotLitSpecularImageFilter returns a new spot lit specular image filter. input may be nil, in which case the
 // source bitmap will be used. cropRect may be nil.
 func NewSpotLitSpecularImageFilter(x, y, z, targetX, targetY, targetZ, specularExponent, cutoffAngle, scale, reflectivity, shine float32, color Color, input *ImageFilter, cropRect *geom.Rect) *ImageFilter {
-	return newImageFilter(imagefilter.SpotLitSpecular(skgeom.Point3{X: x, Y: y, Z: z},
-		skgeom.Point3{X: targetX, Y: targetY, Z: targetZ}, specularExponent, cutoffAngle, colorcore.Color(color), scale,
+	return newImageFilter(imagefilter.SpotLitSpecular(canvasgeom.Point3{X: x, Y: y, Z: z},
+		canvasgeom.Point3{X: targetX, Y: targetY, Z: targetZ}, specularExponent, cutoffAngle, colorcore.Color(color), scale,
 		reflectivity, shine, input.filterOrNil(), toCanvasRectPtr(cropRect)))
 }

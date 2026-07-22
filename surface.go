@@ -11,11 +11,11 @@ package unison
 
 import (
 	"github.com/richardwilkes/canvas/canvas"
-	skgeom "github.com/richardwilkes/canvas/geom"
+	canvasgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/canvas/gpu"
 	"github.com/richardwilkes/canvas/gpu/gl"
 	"github.com/richardwilkes/canvas/raster"
-	sksurface "github.com/richardwilkes/canvas/surface"
+	canvassurface "github.com/richardwilkes/canvas/surface"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
@@ -29,7 +29,7 @@ type genericSurface interface {
 type surface struct {
 	context *gl.DirectContext
 	surface genericSurface
-	raster  *sksurface.Surface // set instead of context when rendering on the CPU
+	raster  *canvassurface.Surface // set instead of context when rendering on the CPU
 	size    geom.Size
 	scale   geom.Point
 }
@@ -41,14 +41,14 @@ func (s *surface) prepareCanvas(size geom.Size, scale geom.Point) (*Canvas, erro
 		s.scale = scale
 	}
 	if s.surface == nil {
-		pixelSize := skgeom.ISize{Width: int32(size.Width * scale.X), Height: int32(size.Height * scale.Y)}
+		pixelSize := canvasgeom.ISize{Width: int32(size.Width * scale.X), Height: int32(size.Height * scale.Y)}
 		if !cpuRenderingActive && s.context == nil {
 			if s.context = gl.MakeGLDirectContext(defaultOpenGL(), nil); s.context == nil {
 				fallbackToCPURendering(errs.New("unable to create an OpenGL rendering context"))
 			}
 		}
 		if s.context == nil {
-			rs := sksurface.NewRasterN32Premul(pixelSize.Width, pixelSize.Height, nil)
+			rs := canvassurface.NewRasterN32Premul(pixelSize.Width, pixelSize.Height, nil)
 			if rs == nil {
 				return nil, errs.New("unable to create CPU rendering surface")
 			}

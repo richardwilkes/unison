@@ -10,7 +10,7 @@
 package unison
 
 import (
-	skgeom "github.com/richardwilkes/canvas/geom"
+	canvasgeom "github.com/richardwilkes/canvas/geom"
 	"github.com/richardwilkes/canvas/path"
 	"github.com/richardwilkes/canvas/pathops"
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -58,7 +58,7 @@ func (p *Path) SetFillType(fillType filltype.Enum) {
 
 // ArcTo appends an arc. rotation is in degrees.
 func (p *Path) ArcTo(pt geom.Point, radius geom.Size, rotation float32, arcSize arcsize.Enum, dir direction.Enum) {
-	p.path.ArcToRotated(radius.Width, radius.Height, rotation, path.ArcSize(arcSize), skgeom.PathDirection(dir),
+	p.path.ArcToRotated(radius.Width, radius.Height, rotation, path.ArcSize(arcSize), canvasgeom.PathDirection(dir),
 		pt.X, pt.Y)
 }
 
@@ -70,7 +70,7 @@ func (p *Path) ArcToFromTangent(pt1, pt2 geom.Point, radius float32) {
 
 // ArcToRelative appends an arc. The destination point is relative to the current point. rotation is in degrees.
 func (p *Path) ArcToRelative(destPt geom.Point, radius geom.Size, rotation float32, arcSize arcsize.Enum, dir direction.Enum) {
-	p.path.RArcToRotated(radius.Width, radius.Height, rotation, path.ArcSize(arcSize), skgeom.PathDirection(dir),
+	p.path.RArcToRotated(radius.Width, radius.Height, rotation, path.ArcSize(arcSize), canvasgeom.PathDirection(dir),
 		destPt.X, destPt.Y)
 }
 
@@ -97,13 +97,13 @@ func (p *Path) ComputeTightBounds() geom.Rect {
 // Circle adds a circle to the path with a clockwise direction. The circle is a complete contour, i.e. it starts with a
 // MoveTo and ends with a Close operation.
 func (p *Path) Circle(center geom.Point, radius float32) {
-	p.path.AddCircle(center.X, center.Y, radius, skgeom.PathDirection(direction.Clockwise))
+	p.path.AddCircle(center.X, center.Y, radius, canvasgeom.PathDirection(direction.Clockwise))
 }
 
 // CircleWithDirection adds a circle to the path. The circle is a complete contour, i.e. it starts with a MoveTo and
 // ends with a Close operation.
 func (p *Path) CircleWithDirection(center geom.Point, radius float32, dir direction.Enum) {
-	p.path.AddCircle(center.X, center.Y, radius, skgeom.PathDirection(dir))
+	p.path.AddCircle(center.X, center.Y, radius, canvasgeom.PathDirection(dir))
 }
 
 // Clone this path.
@@ -159,13 +159,13 @@ func (p *Path) MoveToRelative(pt geom.Point) {
 // Oval adds an oval to the path with a clockwise direction. The oval is a complete contour, i.e. it starts with a
 // MoveTo and ends with a Close operation.
 func (p *Path) Oval(bounds geom.Rect) {
-	p.path.AddOval(toCanvasRect(bounds), skgeom.PathDirection(direction.Clockwise))
+	p.path.AddOval(toCanvasRect(bounds), canvasgeom.PathDirection(direction.Clockwise))
 }
 
 // OvalWithDirection adds an oval to the path. The oval is a complete contour, i.e. it starts with a MoveTo and ends
 // with a Close operation.
 func (p *Path) OvalWithDirection(bounds geom.Rect, dir direction.Enum) {
-	p.path.AddOval(toCanvasRect(bounds), skgeom.PathDirection(dir))
+	p.path.AddOval(toCanvasRect(bounds), canvasgeom.PathDirection(dir))
 }
 
 // Path appends a path. If extend is true, a line from the current point to the start of the added path is created.
@@ -220,25 +220,25 @@ func (p *Path) QuadTo(ctrlPt, endPt geom.Point) {
 // Rect adds a rectangle to the path with a clockwise direction. The rectangle is a complete contour, i.e. it starts
 // with a MoveTo and ends with a Close operation.
 func (p *Path) Rect(bounds geom.Rect) {
-	p.path.AddRect(toCanvasRect(bounds), skgeom.PathDirection(direction.Clockwise))
+	p.path.AddRect(toCanvasRect(bounds), canvasgeom.PathDirection(direction.Clockwise))
 }
 
 // RectWithDirection adds a rectangle to the path. The rectangle is a complete contour, i.e. it starts with a MoveTo and
 // ends with a Close operation.
 func (p *Path) RectWithDirection(bounds geom.Rect, dir direction.Enum) {
-	p.path.AddRect(toCanvasRect(bounds), skgeom.PathDirection(dir))
+	p.path.AddRect(toCanvasRect(bounds), canvasgeom.PathDirection(dir))
 }
 
 // RoundedRect adds a rectangle with curved corners to the path with a clockwise direction. The rectangle is a complete
 // contour, i.e. it starts with a MoveTo and ends with a Close operation.
 func (p *Path) RoundedRect(bounds geom.Rect, radius geom.Size) {
-	p.path.AddRoundRect(toCanvasRect(bounds), radius.Width, radius.Height, skgeom.PathDirection(direction.Clockwise))
+	p.path.AddRoundRect(toCanvasRect(bounds), radius.Width, radius.Height, canvasgeom.PathDirection(direction.Clockwise))
 }
 
 // RoundedRectWithDirection adds a rectangle with curved corners to the path. The rectangle is a complete contour, i.e.
 // it starts with a MoveTo and ends with a Close operation.
 func (p *Path) RoundedRectWithDirection(bounds geom.Rect, radius geom.Size, dir direction.Enum) {
-	p.path.AddRoundRect(toCanvasRect(bounds), radius.Width, radius.Height, skgeom.PathDirection(dir))
+	p.path.AddRoundRect(toCanvasRect(bounds), radius.Width, radius.Height, canvasgeom.PathDirection(dir))
 }
 
 // Rotate the path.

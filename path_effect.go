@@ -12,7 +12,7 @@ package unison
 import (
 	"sync"
 
-	skpatheffect "github.com/richardwilkes/canvas/patheffect"
+	canvaspatheffect "github.com/richardwilkes/canvas/patheffect"
 	"github.com/richardwilkes/canvas/stroke"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/patheffect"
@@ -40,47 +40,47 @@ func (e *PathEffect) effectOrNil() stroke.PathEffect {
 
 // NewComposePathEffect creates a new PathEffect that combines two PathEffects.
 func NewComposePathEffect(outer, inner *PathEffect) *PathEffect {
-	return newPathEffect(skpatheffect.MakeCompose(outer.effect, inner.effect))
+	return newPathEffect(canvaspatheffect.MakeCompose(outer.effect, inner.effect))
 }
 
 // NewSumPathEffect creates a new sum PathEffect.
 func NewSumPathEffect(first, second *PathEffect) *PathEffect {
-	return newPathEffect(skpatheffect.MakeSum(first.effect, second.effect))
+	return newPathEffect(canvaspatheffect.MakeSum(first.effect, second.effect))
 }
 
 // NewDiscretePathEffect creates a new discrete PathEffect.
 func NewDiscretePathEffect(segLength, deviation float32, seedAssist uint32) *PathEffect {
-	return newPathEffect(skpatheffect.MakeDiscrete(segLength, deviation, seedAssist))
+	return newPathEffect(canvaspatheffect.MakeDiscrete(segLength, deviation, seedAssist))
 }
 
 // NewCornerPathEffect creates a new corner PathEffect.
 func NewCornerPathEffect(radius float32) *PathEffect {
-	return newPathEffect(skpatheffect.MakeCorner(radius))
+	return newPathEffect(canvaspatheffect.MakeCorner(radius))
 }
 
 // New1dPathPathEffect creates a new 1D path PathEffect.
 func New1dPathPathEffect(path *Path, advance, phase float32, style patheffect.Enum) *PathEffect {
-	return newPathEffect(skpatheffect.MakePath1D(path.path, advance, phase, skpatheffect.Path1DStyle(style)))
+	return newPathEffect(canvaspatheffect.MakePath1D(path.path, advance, phase, canvaspatheffect.Path1DStyle(style)))
 }
 
 // New2dLinePathEffect creates a new 2D line PathEffect.
 func New2dLinePathEffect(width float32, matrix geom.Matrix) *PathEffect {
-	return newPathEffect(skpatheffect.MakeLine2D(width, toCanvasMatrixPtr(matrix)))
+	return newPathEffect(canvaspatheffect.MakeLine2D(width, toCanvasMatrixPtr(matrix)))
 }
 
 // New2dPathEffect creates a new 2D PathEffect.
 func New2dPathEffect(matrix geom.Matrix, path *Path) *PathEffect {
-	return newPathEffect(skpatheffect.MakePath2D(toCanvasMatrixPtr(matrix), path.path))
+	return newPathEffect(canvaspatheffect.MakePath2D(toCanvasMatrixPtr(matrix), path.path))
 }
 
 // NewDashPathEffect creates a new dash PathEffect.
 func NewDashPathEffect(intervals []float32, phase float32) *PathEffect {
-	return newPathEffect(skpatheffect.MakeDash(intervals, phase))
+	return newPathEffect(canvaspatheffect.MakeDash(intervals, phase))
 }
 
 // NewTrimPathEffect creates a new trim PathEffect.
 func NewTrimPathEffect(start, stop float32, mode trimmode.Enum) *PathEffect {
-	return newPathEffect(skpatheffect.MakeTrim(start, stop, skpatheffect.TrimMode(mode)))
+	return newPathEffect(canvaspatheffect.MakeTrim(start, stop, canvaspatheffect.TrimMode(mode)))
 }
 
 var (
