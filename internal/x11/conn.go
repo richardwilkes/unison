@@ -1172,9 +1172,12 @@ func (c *Conn) Flush() {
 }
 
 func (c *Conn) readResponses() {
-	defer c.closeEvents()
-	defer xio.CloseIgnoringErrors(c.conn)
+	// Deferred calls run last-in-first-out, so this order makes closeEvents run before readClosed is closed. Anyone
+	// unblocked by readClosed (abortStartup, sendNewRequest waiters) may immediately call Dead, which must already
+	// report true by then; readClosed closing is the signal that shutdown has fully completed.
 	defer close(c.readClosed)
+	defer xio.CloseIgnoringErrors(c.conn)
+	defer c.closeEvents()
 	for {
 		var err error
 		r := NewReader(make([]byte, 32))

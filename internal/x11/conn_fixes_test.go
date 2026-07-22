@@ -221,6 +221,22 @@ func TestAbortStartupReleasesResources(t *testing.T) {
 	c.True(conn.Dead(), "the event stream must be shut down after an aborted startup")
 }
 
+// TestDeadImmediatelyAfterShutdown verifies the shutdown ordering contract: readClosed must be the last thing to close
+// during shutdown, so anyone it unblocks (abortStartup, waiters in sendNewRequest) already observes Dead as true. The
+// deferred closeEvents in readResponses used to run after readClosed was closed, leaving a window where the connection
+// looked fully shut down but Dead still reported false. The loop shuts down many connections because a single pass
+// rarely lands in that window.
+func TestDeadImmediatelyAfterShutdown(t *testing.T) {
+	for i := range 200 {
+		conn, server := newPipeConn()
+		conn.abortStartup()
+		if !conn.Dead() {
+			t.Fatalf("iteration %d: Dead must report true once abortStartup returns", i)
+		}
+		xio.CloseIgnoringErrors(server)
+	}
+}
+
 // TestXSettingsHandleManagerMessage verifies that a MANAGER ClientMessage for the XSETTINGS selection triggers
 // re-resolution of the manager window (so a restarted settings daemon is picked up), and that unrelated ClientMessages
 // are left alone.
