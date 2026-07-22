@@ -1474,8 +1474,8 @@ func (w *Window) findDropTarget(di drag.Info, where geom.Point) *Panel {
 	}
 	for panel := w.root.PanelAt(where); panel != nil; panel = panel.Parent() {
 		if panel.DropCallback != nil && panel.Enabled() {
-			accept := false
-			if panel.CanAcceptDropCallback != nil {
+			accept := panel.CanAcceptDropCallback == nil
+			if !accept {
 				SafeCall(func() { accept = panel.CanAcceptDropCallback(di) })
 			}
 			if accept {
