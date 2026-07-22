@@ -350,6 +350,16 @@ func (c *Conn) writeClipboardProperty(requestor WindowID, property Atom, entry c
 		c.ChangeProperty(requestor, property, entry.kind, 8, PropModeReplace, entry.data)
 		return nil
 	}
+	// Mirror the receive-side drain in convertSelection: an earlier transfer to the same requestor and property that
+	// was abandoned after incrSendTimeout can leave a matching PropertyDelete queued (filtered waits keep non-matching
+	// events around forever). If it survived into completeIncrTransfers, the first wait there would consume it and
+	// write chunk 1 immediately, replacing the INCR size marker before the requestor has read it and corrupting the
+	// transfer. The drain must happen here, before the size marker is written, since once the marker is on the wire a
+	// matching PropertyDelete may be the requestor legitimately consuming it.
+	c.drainEvents(func(e Event) bool {
+		pne, ok := e.(*PropertyNotifyEvent)
+		return ok && pne.State == PropertyDelete && pne.Window == requestor && pne.Atom == property
+	})
 	c.ChangeWindowAttributes(requestor, WindowMaskEventMask,
 		&WindowCreationAttributes{EventMask: EventMaskPropertyChange})
 	w := NewWriter(4)

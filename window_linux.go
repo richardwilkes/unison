@@ -419,15 +419,18 @@ func (w *Window) apiVisible() bool {
 	return x11Conn.IsWindowVisible(w.wnd.id)
 }
 
+// x11ShowTimeout bounds how long apiShow waits for the window manager to actually map a newly shown window. MapWindow
+// is intercepted by the window manager (SubstructureRedirect), so a hung window manager — or one that keeps the window
+// unmapped, such as by assigning it to a non-current desktop — may never produce a VisibilityNotify. Since filtered
+// waits ignore PostEmptyEvent wake-ups, an unbounded wait here would hang the whole application permanently.
+const x11ShowTimeout = 2 * time.Second
+
 func (w *Window) apiShow() {
 	if w.apiVisible() {
 		return
 	}
 	x11Conn.MapWindow(w.wnd.id)
-	x11Conn.WaitEvents(func(e x11.Event) bool {
-		ev, ok := e.(*x11.VisibilityNotifyEvent)
-		return ok && ev.Window == w.wnd.id
-	})
+	x11Conn.WaitForWindowVisibility(w.wnd.id, x11ShowTimeout)
 	// Draw the window now that it is visible. The filtered wait above discards the nil wake-up events posted by
 	// MarkForRedraw, so a redraw queued while the window was being prepared would otherwise be lost. When a window is
 	// shown from within an event handler (such as a modal dialog raised while handling the window manager's close

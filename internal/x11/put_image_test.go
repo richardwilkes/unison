@@ -379,3 +379,79 @@ func TestPutImageRGBAPremulZeroSized(t *testing.T) {
 	})
 	c.Equal(0, len(requests))
 }
+
+// reversedWordOrder returns the wire data with each 32-bit word's bytes reversed, turning the LSBFirst BGRA byte
+// sequences the expectation helpers produce into their MSBFirst ARGB equivalents.
+func reversedWordOrder(t *testing.T, data []byte) []byte {
+	t.Helper()
+	if len(data)%4 != 0 {
+		t.Fatalf("data length %d is not a multiple of 4", len(data))
+	}
+	out := make([]byte, len(data))
+	for i := 0; i < len(data); i += 4 {
+		out[i] = data[i+3]
+		out[i+1] = data[i+2]
+		out[i+2] = data[i+1]
+		out[i+3] = data[i]
+	}
+	return out
+}
+
+// TestPutImageHonorsServerImageByteOrder verifies that pixel words are emitted in the server's advertised
+// image-byte-order. Unlike property data, ZPixmap image data is not byte-swapped by the server, so against an
+// MSBFirst server the previously hard-coded little-endian BGRA byte sequences rendered with scrambled channels.
+func TestPutImageHonorsServerImageByteOrder(t *testing.T) {
+	c := check.New(t)
+	img := putImageTestImage(3, 2)
+	requests := captureRequests(t, math.MaxUint16, func(conn *Conn) {
+		conn.imageByteOrder = imageByteOrderMSBFirst
+		conn.PutImage(DrawableID(1), GCID(2), 0, 0, img)
+	})
+	c.Equal(1, len(requests))
+	req := parsePutImage(t, requests[0])
+	c.Equal(reversedWordOrder(t, premultipliedBGRA(img, 0, 0, 3, 2)), req.data)
+}
+
+// TestPutImageRGBAPremulHonorsServerImageByteOrder is the premultiplied-RGBA companion to
+// TestPutImageHonorsServerImageByteOrder.
+func TestPutImageRGBAPremulHonorsServerImageByteOrder(t *testing.T) {
+	c := check.New(t)
+	const width, height = 3, 2
+	pixels := premulTestPixels(width, height, width)
+	requests := captureRequests(t, math.MaxUint16, func(conn *Conn) {
+		conn.imageByteOrder = imageByteOrderMSBFirst
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 0, 0, width, height, width, pixels, 24)
+	})
+	c.Equal(1, len(requests))
+	req := parsePutImage(t, requests[0])
+	c.Equal(reversedWordOrder(t, premulBGRAWire(pixels, width, 0, 0, width, height)), req.data)
+}
+
+// TestPutImagePipelinesChunksWithoutSync verifies that a chunked upload goes out as a pure stream of PutImage
+// requests with no interleaved synchronization round-trips. The captureRequests fake server never replies to
+// anything, so a regression back to one checked request (and its GetInputFocus round-trip) per chunk deadlocks here
+// and is caught by the test timeout; the opcode check additionally documents that nothing but image data goes on the
+// wire in the presentation hot path.
+func TestPutImagePipelinesChunksWithoutSync(t *testing.T) {
+	c := check.New(t)
+	const maxWords = 306 // Fits 300 pixels per request, which is 3 rows of 100.
+	img := putImageTestImage(100, 10)
+	requests := captureRequests(t, maxWords, func(conn *Conn) {
+		conn.PutImage(DrawableID(1), GCID(2), 0, 0, img)
+	})
+	c.Equal(4, len(requests))
+	for i, raw := range requests {
+		if raw[0] != opPutImage {
+			t.Errorf("request %d has opcode %d; the chunk stream must contain only PutImage requests", i, raw[0])
+		}
+	}
+	requests = captureRequests(t, maxWords, func(conn *Conn) {
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 0, 0, 100, 10, 100, premulTestPixels(100, 10, 100), 24)
+	})
+	c.Equal(4, len(requests))
+	for i, raw := range requests {
+		if raw[0] != opPutImage {
+			t.Errorf("request %d has opcode %d; the chunk stream must contain only PutImage requests", i, raw[0])
+		}
+	}
+}

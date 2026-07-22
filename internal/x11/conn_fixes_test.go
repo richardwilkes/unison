@@ -380,3 +380,20 @@ func TestIconData(t *testing.T) {
 	c.Equal(uint32(3), binary.LittleEndian.Uint32(data[28:32]))
 	c.Equal(premultipliedBGRA(sub, 0, 0, 4, 3), data[32:])
 }
+
+// TestConfigureWindowDoesNotSync verifies that ConfigureWindow goes out as a single unchecked request with no
+// synchronization round-trip: it is issued for every pointer-motion event while dragging (to move the drag-image
+// window), so a checked request would cost one server round-trip per motion event. The captureRequests fake server
+// never replies to anything, so a regression back to a checked request deadlocks here and is caught by the test
+// timeout.
+func TestConfigureWindowDoesNotSync(t *testing.T) {
+	c := check.New(t)
+	requests := captureRequests(t, 1024, func(conn *Conn) {
+		conn.ConfigureWindow(WindowID(3), ConfigureWindowMaskX|ConfigureWindowMaskY, &ConfigureWindowRequest{
+			X: 10,
+			Y: 20,
+		})
+	})
+	c.Equal(1, len(requests))
+	c.Equal(byte(opConfigureWindow), requests[0][0])
+}

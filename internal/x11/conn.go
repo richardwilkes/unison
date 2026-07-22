@@ -948,6 +948,15 @@ func (c *Conn) authenticate() error {
 	}
 }
 
+// Xauthority entry address families. Local entries store the hostname as a string, while Internet entries store the
+// raw binary IP address of the display's network endpoint.
+const (
+	xauthFamilyInternet  = 0
+	xauthFamilyInternet6 = 6
+	xauthFamilyLocal     = 256
+	xauthFamilyWild      = 65535
+)
+
 func (c *Conn) readAuthority(host string) (name string, data []byte) {
 	fileName := os.Getenv("XAUTHORITY")
 	if fileName == "" {
@@ -965,6 +974,7 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 	if fileData, err = root.ReadFile(filepath.Base(fileName)); err != nil {
 		return "", nil
 	}
+	remoteIP := c.remoteIP()
 	r := NewReaderWithByteOrder(binary.BigEndian, fileData)
 	for r.Remaining() != 0 {
 		family := r.Uint16()
@@ -972,12 +982,45 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 		disp := strings.TrimPrefix(r.SizePrefixedString(), ":")
 		name = r.SizePrefixedString()
 		data = r.SizePrefixedBytes()
-		if ((family == 65535) || (family == 256 && addr == host)) &&
-			((disp == "") || (disp == c.display)) {
+		if xauthAddressMatches(family, addr, host, remoteIP) && ((disp == "") || (disp == c.display)) {
 			return name, data
 		}
 	}
 	return "", nil
+}
+
+// remoteIP returns the IP address of the X server when the connection runs over TCP, or nil for local (unix socket)
+// connections. It is the address FamilyInternet/FamilyInternet6 Xauthority entries must be matched against; using the
+// address of the established connection avoids a separate hostname resolution that could pick a different address.
+func (c *Conn) remoteIP() net.IP {
+	if c.conn == nil {
+		return nil
+	}
+	if addr, ok := c.conn.RemoteAddr().(*net.TCPAddr); ok {
+		return addr.IP
+	}
+	return nil
+}
+
+// xauthAddressMatches reports whether an Xauthority entry with the given family and address matches the display being
+// connected to. Local entries match the hostname, while Internet entries hold the server's binary IP address, so they
+// can only ever match a TCP connection (DISPLAY=host:0), whose remote IP is provided by the caller.
+func xauthAddressMatches(family uint16, addr, host string, remoteIP net.IP) bool {
+	switch family {
+	case xauthFamilyWild:
+		return true
+	case xauthFamilyLocal:
+		return addr == host
+	case xauthFamilyInternet:
+		if ip := remoteIP.To4(); ip != nil {
+			return addr == string(ip)
+		}
+	case xauthFamilyInternet6:
+		if remoteIP != nil && remoteIP.To4() == nil {
+			return addr == string(remoteIP.To16())
+		}
+	}
+	return false
 }
 
 func (c *Conn) nextXID() (uint32, error) {
@@ -1404,6 +1447,18 @@ func (c *Conn) PollEvents(filter func(Event) bool) Event {
 func (c *Conn) drainEvents(filter func(Event) bool) {
 	for c.PollEvents(filter) != nil {
 	}
+}
+
+// WaitForWindowVisibility waits until a VisibilityNotify event for the given window arrives, bounding the wait by the
+// given timeout, and reports whether the event arrived. The bound matters: MapWindow is redirected to the window
+// manager (SubstructureRedirect), so a hung window manager — or one that keeps the window unmapped, such as by
+// assigning it to a non-current desktop — may never deliver the event, and since filtered waits ignore PostEmptyEvent
+// wake-ups, an unbounded filtered wait could never be unstuck by InvokeTask and would hang the caller forever.
+func (c *Conn) WaitForWindowVisibility(window WindowID, timeout time.Duration) bool {
+	return c.WaitEventsUntil(func(e Event) bool {
+		ev, ok := e.(*VisibilityNotifyEvent)
+		return ok && ev.Window == window
+	}, timeout) != nil
 }
 
 func (c *Conn) hasExtension(name string, versionOpCode byte, versionIs16Bit bool, majorMax, minorMax uint32) extensionInfo {
@@ -2027,6 +2082,13 @@ func (c *Conn) FreeGC(gcID GCID) {
 	}
 }
 
+// Image byte order values from the connection setup block, dictating the byte order the server requires for ZPixmap
+// image data.
+const (
+	imageByteOrderLSBFirst = 0
+	imageByteOrderMSBFirst = 1
+)
+
 // PutImage uploads the pixel data from the provided image to the specified drawable at the given destination
 // coordinates using the provided graphics context. The image is sent in multiple requests if it exceeds the maximum
 // request size advertised by the X server.
@@ -2036,9 +2098,13 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 	if width <= 0 || height <= 0 {
 		return
 	}
+	// Unlike property data, ZPixmap pixel data is not byte-swapped by the server, so each 32-bit pixel word must be
+	// emitted in the server's advertised image-byte-order: BGRA byte sequences for an LSBFirst server, ARGB for an
+	// MSBFirst one.
+	msbFirst := c.imageByteOrder == imageByteOrderMSBFirst
 	send := func(x, y, cols, rows int) {
-		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images. The source rows
-		// are addressed through PixOffset, since the image may be a sub-image with a non-zero origin and a stride
+		// Convert the pixels to pre-multiplied 0xAARRGGBB words, which is what X expects for 32bpp images. The source
+		// rows are addressed through PixOffset, since the image may be a sub-image with a non-zero origin and a stride
 		// wider than the pixel data.
 		pix := make([]byte, cols*rows*4)
 		di := 0
@@ -2046,10 +2112,17 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 			si := img.PixOffset(img.Rect.Min.X+x, img.Rect.Min.Y+row)
 			for range cols {
 				a := uint16(img.Pix[si+3])
-				pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
-				pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
-				pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
-				pix[di+3] = img.Pix[si+3]
+				if msbFirst {
+					pix[di] = img.Pix[si+3]
+					pix[di+1] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+					pix[di+2] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+					pix[di+3] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+				} else {
+					pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+					pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+					pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+					pix[di+3] = img.Pix[si+3]
+				}
 				si += 4
 				di += 4
 			}
@@ -2068,7 +2141,10 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 		w.Byte(32)
 		w.Zero(2)
 		w.Bytes(pix)
-		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		// Unchecked so that the chunks pipeline: a checked request performs a server round-trip per chunk, which
+		// serializes frame presentation and makes remote connections unusably slow. Errors still surface, as
+		// ErrorEvents delivered through the event queue.
+		if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 			errs.Log(err)
 		}
 	}
@@ -2099,18 +2175,29 @@ func (c *Conn) PutImageRGBAPremul(drawable DrawableID, gc GCID, dstX, dstY int16
 	if width <= 0 || height <= 0 {
 		return
 	}
+	// Unlike property data, ZPixmap pixel data is not byte-swapped by the server, so each 32-bit pixel word must be
+	// emitted in the server's advertised image-byte-order: BGRA byte sequences for an LSBFirst server, ARGB for an
+	// MSBFirst one.
+	msbFirst := c.imageByteOrder == imageByteOrderMSBFirst
 	send := func(x, y, cols, rows int) {
-		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images.
+		// Convert the pixels to pre-multiplied 0xAARRGGBB words, which is what X expects for 32bpp images.
 		pix := make([]byte, cols*rows*4)
 		di := 0
 		for row := y; row < y+rows; row++ {
 			si := row*int(rowPixels) + x
 			for range cols {
 				v := pixels[si]
-				pix[di] = byte(v >> 16)
-				pix[di+1] = byte(v >> 8)
-				pix[di+2] = byte(v)
-				pix[di+3] = byte(v >> 24)
+				if msbFirst {
+					pix[di] = byte(v >> 24)
+					pix[di+1] = byte(v)
+					pix[di+2] = byte(v >> 8)
+					pix[di+3] = byte(v >> 16)
+				} else {
+					pix[di] = byte(v >> 16)
+					pix[di+1] = byte(v >> 8)
+					pix[di+2] = byte(v)
+					pix[di+3] = byte(v >> 24)
+				}
 				si++
 				di += 4
 			}
@@ -2129,7 +2216,10 @@ func (c *Conn) PutImageRGBAPremul(drawable DrawableID, gc GCID, dstX, dstY int16
 		w.Byte(depth)
 		w.Zero(2)
 		w.Bytes(pix)
-		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		// Unchecked so that the chunks pipeline: a checked request performs a server round-trip per chunk, which
+		// serializes frame presentation and makes remote connections unusably slow. Errors still surface, as
+		// ErrorEvents delivered through the event queue.
+		if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 			errs.Log(err)
 		}
 	}
@@ -2650,7 +2740,10 @@ func (c *Conn) ConfigureWindow(window WindowID, mask ConfigureWindowValueMask, r
 	w.Uint16(uint16(mask))
 	w.Zero(2)
 	w.Uint32Slice(values)
-	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+	// Unchecked so that calls pipeline instead of costing a server round-trip each: the drag-image window is moved
+	// with ConfigureWindow on every pointer-motion event, which over a remote connection would otherwise stall the UI
+	// thread for one round-trip per event. Errors still surface, as ErrorEvents delivered through the event queue.
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 		errs.Log(err)
 	}
 }

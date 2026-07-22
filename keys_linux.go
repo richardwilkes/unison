@@ -32,6 +32,24 @@ var (
 )
 
 func apiFillKeyCodes() {
+	x11KbMapping = x11Conn.GetKeyboardMapping()
+	x11FillKeyCodesFromMapping()
+}
+
+// x11KbMappingUsable reports whether the fetched keyboard mapping actually covers the connection's full keycode range.
+// A GetKeyboardMapping request that fails (for example, because the X server died right after the connection was
+// established, or the reply was malformed) is logged and yields a zero-value mapping — nil KeySyms with a
+// KeySymsPerKeyCode of 0 — which the keycode translation code must not index into, since the setup block guarantees a
+// non-empty keycode range and unguarded indexing would panic on the UI thread.
+func x11KbMappingUsable() bool {
+	per := int(x11KbMapping.KeySymsPerKeyCode)
+	return per > 0 && len(x11KbMapping.KeySyms) >= (int(x11Conn.MaxKeyCode)-int(x11Conn.MinKeyCode)+1)*per
+}
+
+func x11FillKeyCodesFromMapping() {
+	if !x11KbMappingUsable() {
+		return
+	}
 	secondary := map[uint32]KeyCode{
 		xkKPEnter:     KeyNumPadEnter,
 		xkKPSeparator: KeyNumPadDecimal,
@@ -171,7 +189,6 @@ func apiFillKeyCodes() {
 		xkSlash:        KeySlash,
 		xkLess:         KeyWorld1,
 	}
-	x11KbMapping = x11Conn.GetKeyboardMapping()
 	minKeyCode := uint16(x11Conn.MinKeyCode)
 	for i := minKeyCode; i <= uint16(x11Conn.MaxKeyCode); i++ {
 		pos := (i - minKeyCode) * uint16(x11KbMapping.KeySymsPerKeyCode)
@@ -215,7 +232,7 @@ func apiFillKeyCodes() {
 const x11Mod5Mask = 0x0080
 
 func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers, level3 bool) uint32 {
-	if scanCode < uint16(x11Conn.MinKeyCode) || scanCode > uint16(x11Conn.MaxKeyCode) {
+	if scanCode < uint16(x11Conn.MinKeyCode) || scanCode > uint16(x11Conn.MaxKeyCode) || !x11KbMappingUsable() {
 		return 0
 	}
 	per := uint16(x11KbMapping.KeySymsPerKeyCode)

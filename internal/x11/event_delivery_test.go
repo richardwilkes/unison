@@ -131,6 +131,56 @@ func TestWaitEventsUntilTimesOut(t *testing.T) {
 	c.True(time.Since(start) >= 50*time.Millisecond, "must not return before the timeout")
 }
 
+// TestWaitForWindowVisibilityReturnsOnEvent verifies that WaitForWindowVisibility consumes the VisibilityNotify event
+// for the requested window and reports success, leaving events for other windows queued.
+func TestWaitForWindowVisibilityReturnsOnEvent(t *testing.T) {
+	c := check.New(t)
+	conn := &Conn{events: make(chan Event, 1)}
+	conn.deliverEvent(&VisibilityNotifyEvent{Code: eventCodeVisibilityNotify, Window: WindowID(9)})
+	conn.deliverEvent(&VisibilityNotifyEvent{Code: eventCodeVisibilityNotify, Window: WindowID(5)})
+	c.True(conn.WaitForWindowVisibility(WindowID(5), time.Minute), "must report that the event arrived")
+	ev, ok := conn.PollEvents(nil).(*VisibilityNotifyEvent)
+	c.True(ok, "the other window's event must remain queued")
+	c.Equal(WindowID(9), ev.Window)
+	c.True(conn.PollEvents(nil) == nil, "queue must be empty after draining")
+}
+
+// TestWaitForWindowVisibilityBounded is the regression test for apiShow hanging forever when the window manager never
+// maps a window: the wait is filtered, so PostEmptyEvent wake-ups cannot unstick it, and MapWindow is intercepted via
+// SubstructureRedirect, so a hung or misbehaving window manager may never produce the awaited VisibilityNotify. The
+// wait must therefore give up on its own once the timeout elapses, even while wake-ups and non-matching events keep
+// arriving.
+func TestWaitForWindowVisibilityBounded(t *testing.T) {
+	c := check.New(t)
+	conn := &Conn{events: make(chan Event, 1)}
+	conn.deliverEvent(&VisibilityNotifyEvent{Code: eventCodeVisibilityNotify, Window: WindowID(9)})
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() { // Keep posting wake-ups, mimicking InvokeTask trying to unstick the UI thread.
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				conn.PostEmptyEvent()
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+	start := time.Now()
+	done := make(chan bool, 1)
+	go func() {
+		done <- conn.WaitForWindowVisibility(WindowID(5), 50*time.Millisecond)
+	}()
+	select {
+	case got := <-done:
+		c.False(got, "must report that the event never arrived")
+		c.True(time.Since(start) >= 50*time.Millisecond, "must not return before the timeout")
+	case <-time.After(10 * time.Second):
+		t.Fatal("WaitForWindowVisibility failed to time out")
+	}
+}
+
 // TestReplyNotStarvedByEventBacklog is the regression test for the reply-starvation deadlock: with the main thread
 // parked in sendNewRequest waiting for a reply and nothing draining events, readResponses must still be able to work
 // through an event backlog larger than any fixed buffer to reach the reply. Before the fix, events were delivered

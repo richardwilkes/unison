@@ -217,3 +217,49 @@ func TestX11ScanCodeToKeySymSingleColumnMapping(t *testing.T) {
 	c.Equal('a', x11KeySymToUnicode(x11ScanCodeToKeySym(8, mod.None, true)),
 		"AltGr must fall back to the only column")
 }
+
+// TestX11FillKeyCodesFailedMapping verifies that a failed GetKeyboardMapping — which yields a zero-value mapping with
+// nil KeySyms and a KeySymsPerKeyCode of 0 — degrades to an unpopulated key map instead of panicking. The setup block
+// guarantees a non-empty keycode range, so before the guard every keycode in it indexed the nil KeySyms slice,
+// turning an X request failure during startup into a hard panic on the UI thread.
+func TestX11FillKeyCodesFailedMapping(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	savedRaw := rawScanCodeToKeyCodeMap
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+		rawScanCodeToKeyCodeMap = savedRaw
+	})
+	rawScanCodeToKeyCodeMap = make(map[uint16]KeyCode)
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 255}
+
+	x11KbMapping = x11.KeyboardMapping{} // What a failed GetKeyboardMapping returns.
+	x11FillKeyCodesFromMapping()
+	c.Equal(0, len(rawScanCodeToKeyCodeMap))
+
+	// A truncated mapping that does not cover the full keycode range must be rejected as well.
+	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: make([]uint32, 4)}
+	x11FillKeyCodesFromMapping()
+	c.Equal(0, len(rawScanCodeToKeyCodeMap))
+}
+
+// TestX11ScanCodeToKeySymFailedMapping verifies that keycode translation returns 0 instead of panicking when the
+// keyboard mapping is empty (failed GetKeyboardMapping) or does not cover the connection's keycode range.
+func TestX11ScanCodeToKeySymFailedMapping(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+	})
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 255}
+
+	x11KbMapping = x11.KeyboardMapping{} // What a failed GetKeyboardMapping returns.
+	c.Equal(uint32(0), x11ScanCodeToKeySym(9, 0, false))
+
+	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: make([]uint32, 4)}
+	c.Equal(uint32(0), x11ScanCodeToKeySym(9, 0, false))
+}

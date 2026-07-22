@@ -214,6 +214,124 @@ func TestConvertSelectionDrainsStaleEventsBeforeIncrPaste(t *testing.T) {
 	shutdownClipboardTestConn(t, conn)
 }
 
+// TestIncrSendDrainsStalePropertyDeleteBeforeTransfer is the send-side companion to the receive-side drain test above:
+// a PropertyDelete for the same (requestor, property) pair left queued by an earlier abandoned INCR transfer (a delete
+// arriving after incrSendTimeout stays queued while inside filtered event loops) must be drained before a new transfer
+// writes its INCR size marker. Before the fix, the first wait in completeIncrTransfers consumed the stale delete and
+// wrote chunk 1 immediately, replacing the size marker before the requestor had read it and corrupting the handoff —
+// notably to the clipboard manager at app quit. The drain leaves exactly one wait per requestor-consumed delete, so a
+// stale event would surface as a leftover in the queue at the end of the transfer.
+func TestIncrSendDrainsStalePropertyDeleteBeforeTransfer(t *testing.T) {
+	c := check.New(t)
+	const requestor = WindowID(33)
+	const property = Atom(44)
+	const kind = Atom(45)
+	client, server := net.Pipe()
+	conn := &Conn{
+		conn:                 client,
+		events:               make(chan Event, 1),
+		requests:             make(chan *request, 128),
+		closed:               make(chan struct{}),
+		readClosed:           make(chan struct{}),
+		eventNewMap:          newEventMap(),
+		errorCodeMap:         newErrorMap(),
+		requestMap:           make(map[uint16]*request),
+		maximumRequestLength: 16, // incrThreshold is 64 bytes, so chunks carry 40 bytes each.
+	}
+	conn.Atoms.ClipboardIncremental = Atom(201)
+	data := patternedData(100) // Splits into chunks of 40, 40, and 20 bytes plus the final zero-length write.
+	// The leftover of an earlier transfer to the same requestor and property that was abandoned after its timeout.
+	conn.deliverEvent(&PropertyNotifyEvent{
+		Code:   eventCodePropertyNotify,
+		Window: requestor,
+		Atom:   property,
+		State:  PropertyDelete,
+	})
+	go conn.sendRequests()
+	go conn.readResponses()
+	type serverResult struct {
+		err    error
+		chunks [][]byte
+	}
+	serverDone := make(chan serverResult, 1)
+	go func() {
+		serverDone <- func() serverResult {
+			// A fake requestor: it "consumes" the INCR size marker and then each non-empty chunk by deleting the
+			// property, which arrives at the sender as a PropertyDelete event. GetInputFocus round-trips (the Sync
+			// inside checked requests) are answered so ChangeWindowAttributes can complete.
+			var result serverResult
+			var seq uint16
+			for {
+				req, err := readX11Request(server)
+				if err != nil {
+					return result // The pipe closes when the Conn shuts down, ending the read with an error.
+				}
+				seq++
+				switch req[0] {
+				case opGetInputFocus:
+					reply := make([]byte, 32)
+					reply[0] = 1
+					binary.LittleEndian.PutUint16(reply[2:4], seq)
+					if _, err = server.Write(reply); err != nil {
+						result.err = err
+						return result
+					}
+				case opChangeWindowAttributes: // Subscribing to or unsubscribing from property change events.
+				case opChangeProperty:
+					format := req[16]
+					size := int(binary.LittleEndian.Uint32(req[20:24])) * int(format) / 8
+					if format == 32 { // The INCR size marker that starts the transfer.
+						if err = writePropertyNotify(server, requestor, property, PropertyDelete); err != nil {
+							result.err = err
+							return result
+						}
+						continue
+					}
+					if size > 0 {
+						result.chunks = append(result.chunks, req[24:24+size])
+						if err = writePropertyNotify(server, requestor, property, PropertyDelete); err != nil {
+							result.err = err
+							return result
+						}
+					}
+				default:
+					result.err = fmt.Errorf("unexpected opcode %d", req[0])
+					return result
+				}
+			}
+		}()
+	}()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if transfer := conn.writeClipboardProperty(requestor, property,
+			clipboardEntry{data: data, target: kind, kind: kind}); transfer != nil {
+			conn.completeIncrTransfers([]*incrTransfer{transfer})
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("INCR transfer did not complete")
+	}
+	// Round-trip once more so any event the fake requestor sent before this point is guaranteed to have been
+	// delivered, making the queue-empty check below deterministic.
+	_, _, err := conn.GetInputFocus()
+	c.NoError(err)
+	// Every requestor delete must have been matched by exactly one wait; anything left queued means the stale delete
+	// was consumed in place of a real one, letting a chunk overwrite data the requestor had not read yet.
+	c.True(conn.PollEvents(nil) == nil, "event queue must be empty after the transfer")
+	shutdownClipboardTestConn(t, conn)
+	res := <-serverDone
+	c.NoError(res.err)
+	c.Equal(3, len(res.chunks))
+	var reassembled []byte
+	for _, chunk := range res.chunks {
+		reassembled = append(reassembled, chunk...)
+	}
+	c.Equal(data, reassembled)
+}
+
 // TestConvertSelectionIgnoresStaleSelectionNotify verifies that a stale SelectionNotify from a timed-out conversion in
 // which the owner refused the request (Property == AtomNone) does not fail a later conversion. Before the fix, the
 // stale event was consumed as the response to the new request, reporting failure even though the owner responds.
