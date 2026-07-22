@@ -55,11 +55,26 @@ func newNSImageWithFormat(pixels []byte, logicalWidth, logicalHeight, actualWidt
 	if rep == 0 {
 		return 0
 	}
-	bitmap := objc.Send[*byte](rep, Sel("bitmapData"))
-	copy(unsafe.Slice(bitmap, actualWidth*actualHeight*4), pixels)
+	if !copyPixelsToRep(rep, pixels, actualWidth*actualHeight*4) {
+		Release(rep)
+		return 0
+	}
 	img := objc.ID(Cls("NSImage")).Send(Sel("alloc")).Send(Sel("initWithSize:"),
 		NSSize{Width: float64(logicalWidth), Height: float64(logicalHeight)})
 	img.Send(Sel("addRepresentation:"), rep)
 	Release(rep)
 	return img
+}
+
+// copyPixelsToRep copies size bytes of pixels into rep's bitmapData buffer, returning false without copying if the
+// buffer is unavailable: bitmapData allocates its backing store lazily and returns NULL when that allocation fails,
+// and unsafe.Slice on a NULL pointer with a non-zero length would panic instead of honoring the callers' documented
+// return-0-on-failure contract.
+func copyPixelsToRep(rep objc.ID, pixels []byte, size int) bool {
+	bitmap := objc.Send[*byte](rep, Sel("bitmapData"))
+	if bitmap == nil {
+		return false
+	}
+	copy(unsafe.Slice(bitmap, size), pixels)
+	return true
 }

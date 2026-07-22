@@ -10,11 +10,11 @@
 package cocoa
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/ebitengine/purego/objc"
+	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
 var (
@@ -37,29 +37,40 @@ func InstallSystemThemeChangedCallback(f func()) {
 
 func installThemeObserver() {
 	themeObserverOnce.Do(func() {
-		cls, err := objc.RegisterClass("ThemeDelegate", Cls("NSObject"), nil, nil, []objc.MethodDef{{
-			Cmd: Sel("themeChanged:"),
-			Fn: func(_ objc.ID, _ objc.SEL, _ objc.ID) {
-				if systemThemeChangedCallback != nil {
-					systemThemeChangedCallback()
-				}
-			},
-		}})
-		if err != nil {
-			panic(fmt.Errorf("cocoa: unable to register ThemeDelegate: %w", err))
+		if err := registerThemeObserver("macThemeDelegate"); err != nil {
+			errs.Log(err)
 		}
-		WithPool(func() {
-			delegate := objc.ID(cls).Send(Sel("new"))
-			center := objc.ID(Cls("NSDistributedNotificationCenter")).Send(Sel("defaultCenter"))
-			for _, name := range []string{
-				"AppleInterfaceThemeChangedNotification",
-				"AppleColorPreferencesChangedNotification",
-			} {
-				center.Send(Sel("addObserver:selector:name:object:"), delegate, Sel("themeChanged:"),
-					NSStringFromGo(name), 0)
-			}
-		})
 	})
+}
+
+// registerThemeObserver registers the theme delegate class under the given name and subscribes an instance of it to
+// the theme/accent distributed notifications. On class-registration failure (e.g. the host process already defines a
+// class with that name) it returns the error so the caller can log it and degrade — dark-mode tracking is lost, but
+// startup continues, matching the app/window/menu delegate registration paths.
+func registerThemeObserver(className string) error {
+	cls, err := objc.RegisterClass(className, Cls("NSObject"), nil, nil, []objc.MethodDef{{
+		Cmd: Sel("themeChanged:"),
+		Fn: func(_ objc.ID, _ objc.SEL, _ objc.ID) {
+			if systemThemeChangedCallback != nil {
+				systemThemeChangedCallback()
+			}
+		},
+	}})
+	if err != nil {
+		return errs.NewWithCause("unable to register "+className+" class", err)
+	}
+	WithPool(func() {
+		delegate := objc.ID(cls).Send(Sel("new"))
+		center := objc.ID(Cls("NSDistributedNotificationCenter")).Send(Sel("defaultCenter"))
+		for _, name := range []string{
+			"AppleInterfaceThemeChangedNotification",
+			"AppleColorPreferencesChangedNotification",
+		} {
+			center.Send(Sel("addObserver:selector:name:object:"), delegate, Sel("themeChanged:"),
+				NSStringFromGo(name), 0)
+		}
+	})
+	return nil
 }
 
 // IsDarkModeEnabled returns true if the system is currently configured for dark mode. The cgo bridge read the

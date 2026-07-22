@@ -73,17 +73,17 @@ func TestNewMenuBasics(t *testing.T) {
 			if got := m.NumberOfItems(); got != 0 {
 				t.Errorf("NumberOfItems() = %d for a fresh menu, want 0", got)
 			}
-			// Every menu gets the shared MenuDelegate so AppKit sends menuNeedsUpdate: at tracking start, whether or
+			// Every menu gets the shared macMenuDelegate so AppKit sends menuNeedsUpdate: at tracking start, whether or
 			// not an updater was registered.
 			delegate := objc.ID(m).Send(Sel("delegate"))
 			if delegate == 0 {
 				t.Fatal("menu has no delegate")
 			}
 			if delegate != menuDelegate() {
-				t.Errorf("menu delegate = %#x, want the shared MenuDelegate %#x", delegate, menuDelegate())
+				t.Errorf("menu delegate = %#x, want the shared macMenuDelegate %#x", delegate, menuDelegate())
 			}
 			if !objc.Send[bool](delegate, Sel("respondsToSelector:"), Sel("menuNeedsUpdate:")) {
-				t.Error("MenuDelegate does not respond to menuNeedsUpdate:")
+				t.Error("macMenuDelegate does not respond to menuNeedsUpdate:")
 			}
 			m.Release()
 		}
@@ -155,7 +155,7 @@ func TestMenuStructure(t *testing.T) {
 	})
 }
 
-// TestMenuNeedsUpdateRouting proves the Go-registered MenuDelegate routes menuNeedsUpdate: to the updater registered
+// TestMenuNeedsUpdateRouting proves the Go-registered macMenuDelegate routes menuNeedsUpdate: to the updater registered
 // for exactly the menu being updated. AppKit only sends the message at the start of a real (user-interactive)
 // tracking session, so the test drives the delegate through objc_msgSend the way AppKit would.
 func TestMenuNeedsUpdateRouting(t *testing.T) {
@@ -212,12 +212,12 @@ func TestMenuItemAccessors(t *testing.T) {
 			t.Errorf("KeyBinding() = %q/%#x after SetKeyBinding, want %q/%#x", key, gotMods, "",
 				EventModifierFlagOption)
 		}
-		// The action/target wiring NewMenuItem promises: action handleMenuItem:, target the shared MenuItemDelegate.
+		// The action/target wiring NewMenuItem promises: action handleMenuItem:, target the shared macMenuItemDelegate.
 		if got := objc.SEL(objc.ID(mi).Send(Sel("action"))); got != Sel("handleMenuItem:") {
 			t.Errorf("action = %v, want handleMenuItem:", got)
 		}
 		if got := objc.ID(mi).Send(Sel("target")); got != menuItemDelegate() {
-			t.Errorf("target = %#x, want the shared MenuItemDelegate %#x", got, menuItemDelegate())
+			t.Errorf("target = %#x, want the shared macMenuItemDelegate %#x", got, menuItemDelegate())
 		}
 		for _, state := range []ControlStateValue{ControlStateValueOn, ControlStateValueMixed, ControlStateValueOff} {
 			mi.SetState(state)
@@ -272,7 +272,7 @@ func TestMenuItemValidation(t *testing.T) {
 
 // TestMenuItemAction proves a menu item's action fires the registered handler through AppKit's own dispatch:
 // performActionForItemAtIndex: sends the item's action (handleMenuItem:) to its target (the shared
-// MenuItemDelegate) via NSApplication's action routing, exactly as choosing the item from a menu would.
+// macMenuItemDelegate) via NSApplication's action routing, exactly as choosing the item from a menu would.
 func TestMenuItemAction(t *testing.T) {
 	runOnMain(func() {
 		sharedApp()

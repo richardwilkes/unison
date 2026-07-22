@@ -120,6 +120,29 @@ func TestNewNSImageFromNRGBASubImage(t *testing.T) {
 	})
 }
 
+// TestCopyPixelsToRepNilBitmapData proves the bitmapData nil check: the buffer is allocated lazily and bitmapData
+// returns NULL on allocation failure, and copyPixelsToRep must report failure instead of letting unsafe.Slice panic
+// on the nil pointer. A stand-in class whose bitmapData returns nil simulates the failure, since a real
+// NSBitmapImageRep only does so under memory exhaustion.
+func TestCopyPixelsToRepNilBitmapData(t *testing.T) {
+	cls, err := objc.RegisterClass("unisonTestNilBitmapRep", Cls("NSObject"), nil, nil, []objc.MethodDef{
+		{
+			Cmd: Sel("bitmapData"),
+			// Declared as returning objc.ID purely so purego accepts the signature; the zero return reaches
+			// objc.Send[*byte] as a nil pointer, exactly like NSBitmapImageRep's NULL on allocation failure.
+			Fn: func(_ objc.ID, _ objc.SEL) objc.ID { return 0 },
+		},
+	})
+	if err != nil {
+		t.Fatalf("unable to register test bitmap rep class: %v", err)
+	}
+	rep := objc.ID(cls).Send(Sel("new"))
+	defer Release(rep)
+	if copyPixelsToRep(rep, []byte{1, 2, 3, 4}, 4) {
+		t.Error("copyPixelsToRep = true for a rep whose bitmapData is nil, want false")
+	}
+}
+
 func TestNewNSImageWithFormatPremultiplied(t *testing.T) {
 	WithPool(func() {
 		const actualWidth, actualHeight = 3, 2

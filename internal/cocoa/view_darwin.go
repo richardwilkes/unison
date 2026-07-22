@@ -416,7 +416,7 @@ func registerMacContentViewClass() {
 			Cmd: Sel("markedRange"),
 			Fn: func(self objc.ID, _ objc.SEL) NSRange {
 				if length := objc.Send[uint64](self.Send(Sel("markedText")), Sel("length")); length > 0 {
-					return NSRange{Location: 0, Length: length - 1}
+					return NSRange{Location: 0, Length: length}
 				}
 				return emptyRange
 			},

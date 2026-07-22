@@ -34,7 +34,7 @@ var (
 	menuDelegateErr      error
 )
 
-// menuDelegate returns the shared MenuDelegate instance, which routes each menu's menuNeedsUpdate: delegate message
+// menuDelegate returns the shared macMenuDelegate instance, which routes each menu's menuNeedsUpdate: delegate message
 // (sent by AppKit at the start of menu tracking) to the updater registered for that menu. The class is registered and
 // the instance created on first use; on registration failure it returns 0 with the error logged, leaving menus
 // functional but without dynamic updates.
@@ -45,7 +45,7 @@ func menuDelegate() objc.ID {
 		if p := objc.GetProtocol("NSMenuDelegate"); p != nil {
 			protocols = append(protocols, p)
 		}
-		cls, err := objc.RegisterClass("MenuDelegate", Cls("NSObject"), protocols, nil, []objc.MethodDef{
+		cls, err := objc.RegisterClass("macMenuDelegate", Cls("NSObject"), protocols, nil, []objc.MethodDef{
 			{
 				Cmd: Sel("menuNeedsUpdate:"),
 				Fn: func(_ objc.ID, _ objc.SEL, menu objc.ID) {
@@ -57,7 +57,7 @@ func menuDelegate() objc.ID {
 			},
 		})
 		if err != nil {
-			menuDelegateErr = errs.NewWithCause("unable to register MenuDelegate class", err)
+			menuDelegateErr = errs.NewWithCause("unable to register macMenuDelegate class", err)
 			return
 		}
 		menuDelegateInstance = objc.ID(cls).Send(Sel("new"))

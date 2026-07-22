@@ -337,8 +337,9 @@ func TestViewTextInputClient(t *testing.T) {
 			if !objc.Send[bool](ov, Sel("hasMarkedText")) {
 				t.Error("hasMarkedText = false after setMarkedText")
 			}
-			// The old implementation reported {0, length-1}; preserved verbatim.
-			if got, want := objc.Send[NSRange](ov, Sel("markedRange")), (NSRange{Location: 0, Length: 2}); got != want {
+			// The old cgo bridge (inherited from GLFW) under-reported this as {0, length-1}, which misplaces IME
+			// candidate windows; NSTextInputClient expects the full range {0, length}.
+			if got, want := objc.Send[NSRange](ov, Sel("markedRange")), (NSRange{Location: 0, Length: 3}); got != want {
 				t.Errorf("markedRange = %+v, want %+v", got, want)
 			}
 			// NSAttributedString marked text (the other branch), with a different length.
@@ -346,8 +347,17 @@ func TestViewTextInputClient(t *testing.T) {
 				Send(Sel("initWithString:"), NSStringFromGo("日本語入力"))
 			setMarkedText(attr)
 			Release(attr)
-			if got, want := objc.Send[NSRange](ov, Sel("markedRange")), (NSRange{Location: 0, Length: 4}); got != want {
+			if got, want := objc.Send[NSRange](ov, Sel("markedRange")), (NSRange{Location: 0, Length: 5}); got != want {
 				t.Errorf("markedRange after attributed setMarkedText = %+v, want %+v", got, want)
+			}
+			// A single-character marked text is the case the old off-by-one collapsed to length 0 even while
+			// hasMarkedText reported true, confusing IME candidate-window placement.
+			setMarkedText(NSStringFromGo("x"))
+			if !objc.Send[bool](ov, Sel("hasMarkedText")) {
+				t.Error("hasMarkedText = false for a 1-character marked text")
+			}
+			if got, want := objc.Send[NSRange](ov, Sel("markedRange")), (NSRange{Location: 0, Length: 1}); got != want {
+				t.Errorf("markedRange for 1-character marked text = %+v, want %+v", got, want)
 			}
 			ov.Send(Sel("unmarkText"))
 			if objc.Send[bool](ov, Sel("hasMarkedText")) {

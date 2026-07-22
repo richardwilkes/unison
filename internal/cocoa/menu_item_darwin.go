@@ -45,7 +45,7 @@ var (
 	menuItemDelegateErr      error
 )
 
-// menuItemDelegate returns the shared MenuItemDelegate instance, the target of every item created by NewMenuItem. It
+// menuItemDelegate returns the shared macMenuItemDelegate instance, the target of every item created by NewMenuItem. It
 // implements handleMenuItem: (the items' action) routing to the registered handler, and NSMenuItemValidation's
 // validateMenuItem: routing to the registered validator, so AppKit's menu auto-enablement asks it about each item.
 // The class is registered and the instance created on first use; on registration failure it returns 0 with the error
@@ -57,7 +57,7 @@ func menuItemDelegate() objc.ID {
 		if p := objc.GetProtocol("NSMenuItemValidation"); p != nil {
 			protocols = append(protocols, p)
 		}
-		cls, err := objc.RegisterClass("MenuItemDelegate", Cls("NSObject"), protocols, nil, []objc.MethodDef{
+		cls, err := objc.RegisterClass("macMenuItemDelegate", Cls("NSObject"), protocols, nil, []objc.MethodDef{
 			{
 				Cmd: Sel("validateMenuItem:"),
 				Fn: func(_ objc.ID, _ objc.SEL, menuItem objc.ID) bool {
@@ -79,7 +79,7 @@ func menuItemDelegate() objc.ID {
 			},
 		})
 		if err != nil {
-			menuItemDelegateErr = errs.NewWithCause("unable to register MenuItemDelegate class", err)
+			menuItemDelegateErr = errs.NewWithCause("unable to register macMenuItemDelegate class", err)
 			return
 		}
 		menuItemDelegateInstance = objc.ID(cls).Send(Sel("new"))
@@ -91,7 +91,7 @@ func menuItemDelegate() objc.ID {
 }
 
 // NewMenuItem returns a new menu item as an owned (+1) reference. The item's action is routed through the shared
-// MenuItemDelegate to the given handler, and AppKit's menu validation to the given validator; a nil validator leaves
+// macMenuItemDelegate to the given handler, and AppKit's menu validation to the given validator; a nil validator leaves
 // the item always enabled.
 func NewMenuItem(tag int, title, keyEquivalent string, modifiers EventModifierFlags, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem {
 	titleStr := NewNSString(title)

@@ -22,6 +22,15 @@ func TestIsDarkModeEnabled(_ *testing.T) {
 	_ = IsDarkModeEnabled()
 }
 
+// TestRegisterThemeObserverNameCollision proves a class-name collision (a host app or another framework already
+// defining the delegate class) degrades to an error instead of panicking during startup: dark-mode tracking is
+// non-essential and must not crash the whole app. NSObject is used as a name guaranteed to already exist.
+func TestRegisterThemeObserverNameCollision(t *testing.T) {
+	if err := registerThemeObserver("NSObject"); err == nil {
+		t.Error("registerThemeObserver with an already-registered class name returned nil, want an error")
+	}
+}
+
 // themeFired records deliveries of the theme-change notification. The observer is installed by TestMain from the
 // main thread before any test runs — distributed-notification delivery is bound to the main thread's run loop (see
 // TestMain and InstallSystemThemeChangedCallback), and the main thread keeps that run loop pumping for the entire
@@ -29,7 +38,7 @@ func TestIsDarkModeEnabled(_ *testing.T) {
 // repeated test runs in one process (-count=N) all share the one registration.
 var themeFired atomic.Bool
 
-// TestThemeChangedNotification proves the full ThemeDelegate path: Go-implemented Objective-C class registration,
+// TestThemeChangedNotification proves the full macThemeDelegate path: Go-implemented Objective-C class registration,
 // distributed-notification observation, and dispatch back into the Go callback.
 func TestThemeChangedNotification(t *testing.T) {
 	themeFired.Store(false)
