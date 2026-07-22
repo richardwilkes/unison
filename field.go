@@ -67,13 +67,14 @@ type FieldTheme struct {
 
 // Field provides a text input control.
 type Field struct {
-	ModifiedCallback func(before, after *FieldState)
-	ValidateCallback func() bool
-	runes            []rune
-	lines            []*Text
-	endsWithLineFeed []lineEndingType
-	Watermark        string
-	forceShowUntil   time.Time
+	ModifiedCallback   func(before, after *FieldState)
+	ValidateCallback   func() bool
+	runes              []rune
+	lines              []*Text
+	endsWithLineFeed   []lineEndingType
+	Watermark          string
+	linesBuiltWithFont FontDescriptor
+	forceShowUntil     time.Time
 	FieldTheme
 	Panel
 	undoID             int64
@@ -82,6 +83,7 @@ type Field struct {
 	selectionAnchor    int
 	scrollOffset       geom.Point
 	linesBuiltFor      float32
+	linesBuiltWithRune rune
 	ObscurementRune    rune
 	AutoScroll         bool
 	NoSelectAllOnFocus bool
@@ -157,6 +159,7 @@ func (f *Field) Wrap() bool {
 func (f *Field) SetWrap(wrap bool) {
 	if wrap != f.wrap {
 		f.wrap = wrap
+		f.linesBuiltFor = -1
 		f.MarkForLayoutAndRedraw()
 	}
 }
@@ -211,6 +214,8 @@ func (f *Field) prepareLines(width float32) {
 	width = max(width, 0)
 	f.lines, f.endsWithLineFeed = f.buildLines(width)
 	f.linesBuiltFor = width
+	f.linesBuiltWithFont = f.Font.Descriptor()
+	f.linesBuiltWithRune = f.ObscurementRune
 }
 
 func (f *Field) prepareLinesForCurrentWidth() {
@@ -218,7 +223,10 @@ func (f *Field) prepareLinesForCurrentWidth() {
 }
 
 func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed []lineEndingType) {
-	if wrapWidth == f.linesBuiltFor && f.linesBuiltFor >= 0 {
+	// ObscurementRune and Font are public fields that may be changed at any time, so they must participate in the
+	// cache validity check; wrap changes are handled by SetWrap resetting linesBuiltFor.
+	if wrapWidth == f.linesBuiltFor && f.linesBuiltFor >= 0 && f.ObscurementRune == f.linesBuiltWithRune &&
+		f.Font.Descriptor() == f.linesBuiltWithFont {
 		return f.lines, f.endsWithLineFeed
 	}
 	if len(f.runes) != 0 {

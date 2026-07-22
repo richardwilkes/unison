@@ -167,3 +167,52 @@ func TestFieldApplyFieldStateRedrawsWhenOnlyTextChanges(t *testing.T) {
 	_, pending := redrawSet[w]
 	c.True(pending, "restoring text without changing the selection must still mark the field for redraw")
 }
+
+// TestFieldSetWrapInvalidatesLineCache verifies that toggling SetWrap rebuilds the cached lines even when the field's
+// content width is unchanged. SetWrap used to only mark for layout/redraw without resetting linesBuiltFor, so a later
+// prepareLines call at the same width silently reused lines built with the old wrap setting and the toggle had no
+// visible effect.
+func TestFieldSetWrapInvalidatesLineCache(t *testing.T) {
+	c := check.New(t)
+	f, _ := wrapTestField(c) // Wrap is enabled and the text soft-wraps into exactly two lines.
+	f.SetWrap(false)
+	f.prepareLinesForCurrentWidth()
+	c.Equal(1, len(f.lines), "disabling wrap at the same width must rebuild the lines unwrapped")
+	f.SetWrap(true)
+	f.prepareLinesForCurrentWidth()
+	c.Equal(2, len(f.lines), "re-enabling wrap at the same width must rebuild the soft-wrapped lines")
+}
+
+// TestFieldObscurementRuneChangeInvalidatesLineCache verifies that changing the public ObscurementRune field (e.g. a
+// "show password" toggle) rebuilds the cached lines even when the field's content width is unchanged.
+func TestFieldObscurementRuneChangeInvalidatesLineCache(t *testing.T) {
+	c := check.New(t)
+	f := NewField()
+	f.SetText("secret")
+	f.SetFrameRect(geom.NewRect(0, 0, 200, 40))
+	f.prepareLinesForCurrentWidth()
+	c.Equal(1, len(f.lines))
+	c.Equal("secret", f.lines[0].String())
+	f.ObscurementRune = '•'
+	f.prepareLinesForCurrentWidth()
+	c.Equal("••••••", f.lines[0].String(), "setting ObscurementRune must rebuild the lines obscured")
+	f.ObscurementRune = 0
+	f.prepareLinesForCurrentWidth()
+	c.Equal("secret", f.lines[0].String(), "clearing ObscurementRune must rebuild the lines unobscured")
+}
+
+// TestFieldFontChangeInvalidatesLineCache verifies that changing the public Font field rebuilds the cached lines even
+// when the field's content width is unchanged.
+func TestFieldFontChangeInvalidatesLineCache(t *testing.T) {
+	c := check.New(t)
+	f := NewField()
+	f.SetText("hello")
+	f.SetFrameRect(geom.NewRect(0, 0, 200, 80))
+	f.prepareLinesForCurrentWidth()
+	oldWidth := f.lines[0].Width()
+	f.Font = f.Font.Face().Font(f.Font.Size() * 2)
+	f.prepareLinesForCurrentWidth()
+	c.True(f.lines[0].Width() > oldWidth,
+		"doubling the font size must rebuild the lines with the new font (old width %v, new width %v)",
+		oldWidth, f.lines[0].Width())
+}
