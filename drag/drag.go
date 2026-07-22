@@ -67,17 +67,17 @@ type Callbacks struct {
 	// candidate may still report no valid drop at a particular position by returning drag.None from
 	// DragEnteredCallback/DragUpdatedCallback without relinquishing the target.
 	CanAcceptDropCallback func(di Info) bool
-	// DragEnteredCallback is called when a drag operation enters the window or panel. The returned drag.Op should be
-	// just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask().
+	// DragEnteredCallback is called when a drag operation enters the panel. The returned drag.Op should be just one of
+	// the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask().
 	DragEnteredCallback func(di Info, where geom.Point, mods mod.Modifiers) Op
-	// DragUpdatedCallback is called when a drag operation is adjusted while within the window or panel. The returned
-	// drag.Op should be just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask(). For
+	// DragUpdatedCallback is called when a drag operation is adjusted while within the panel. The returned drag.Op
+	// should be just one of the permitted drag.Op constants, as determined by dragInfo.SourceDragOpMask(). For
 	// performance reasons, examination of data types and/or the data should be done when DragEnteredCallback() is
 	// called and not here, if at all possible. If nil, the result from the DragEnteredCallback will be returned.
 	DragUpdatedCallback func(di Info, where geom.Point, mods mod.Modifiers) Op
-	// DragExitedCallback is called when a drag operation leaves the window or panel.
+	// DragExitedCallback is called when a drag operation leaves the panel.
 	DragExitedCallback func()
-	// DropCallback is called when a drag operation is released over the window or panel. Return true if the drop is
-	// accepted and false if it is not.
+	// DropCallback is called when a drag operation is released over the panel. Return true if the drop is accepted and
+	// false if it is not.
 	DropCallback func(di Info, where geom.Point, mods mod.Modifiers) bool
 }
