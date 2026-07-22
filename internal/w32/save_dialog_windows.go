@@ -25,19 +25,6 @@ type FileSaveDialog struct {
 	FileDialog
 }
 
-type vmtFileSaveDialog struct {
-	vmtFileDialog
-	SetSaveAsItem          uintptr
-	SetProperties          uintptr
-	SetCollectedProperties uintptr
-	GetProperties          uintptr
-	ApplyProperties        uintptr
-}
-
-func (obj *FileSaveDialog) vmt() *vmtFileSaveDialog {
-	return (*vmtFileSaveDialog)(obj.UnsafeVirtualMethodTable)
-}
-
 // NewSaveDialog creates a new IFileSaveDialog instance. The caller owns the returned (+1) reference and must call
 // Release when done with it. COM is already initialized with a single-threaded apartment on the UI thread via
 // OleInitialize during startup, which is what IFileDialog (an STA-only object) requires, so no CoInitializeEx call is

@@ -76,9 +76,7 @@ func NewError(c *Conn, r *Reader) *Error {
 	e.MinorOpcode = r.Uint16()
 	e.MajorOpcode = r.Byte()
 	r.Skip(21)
-	c.errorCodeLock.RLock()
 	name, ok := c.errorCodeMap[e.Code]
-	c.errorCodeLock.RUnlock()
 	if ok {
 		e.Name = name + " error"
 	} else {

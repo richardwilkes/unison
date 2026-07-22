@@ -679,8 +679,6 @@ type Conn struct {
 	supportedAtoms           []Atom
 	eventQueueLock           sync.Mutex
 	postEventLock            sync.Mutex
-	eventNewMapLock          sync.RWMutex
-	errorCodeLock            sync.RWMutex
 	requestMapLock           sync.RWMutex
 	dataTypeMapLock          sync.RWMutex
 	xidLock                  sync.Mutex
@@ -1215,9 +1213,7 @@ func (c *Conn) readResponses() {
 					return
 				}
 			}
-			c.eventNewMapLock.RLock()
 			f, ok := c.eventNewMap[eventID]
-			c.eventNewMapLock.RUnlock()
 			if ok {
 				c.deliverEvent(f(r))
 			} else {
@@ -1729,18 +1725,6 @@ func (c *Conn) ConvertSelection(requestor WindowID, selection, target, property 
 	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 		errs.Log(err)
 	}
-}
-
-func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) { //nolint:unused // Keeping for the future
-	c.eventNewMapLock.Lock()
-	c.eventNewMap[eventID] = f
-	c.eventNewMapLock.Unlock()
-}
-
-func (c *Conn) setErrorCodeName(code byte, name string) { //nolint:unused // Keeping for the future
-	c.errorCodeLock.Lock()
-	c.errorCodeMap[code] = name
-	c.errorCodeLock.Unlock()
 }
 
 // RootWindow returns the ID of the root window for the default screen.
