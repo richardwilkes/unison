@@ -785,6 +785,9 @@ func collectFocusables(current, target *Panel, focusables []*Panel) (match int, 
 		focusables = append(focusables, current)
 	}
 	for _, child := range current.Children() {
+		if child.Hidden {
+			continue
+		}
 		var m int
 		m, focusables = collectFocusables(child, target, focusables)
 		if match == -1 && m != -1 {

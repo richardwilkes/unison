@@ -498,9 +498,12 @@ func (p *Panel) RequestFocus() {
 	}
 }
 
-// FirstFocusableChild returns the first focusable child or nil.
+// FirstFocusableChild returns the first focusable child or nil. Hidden subtrees are skipped.
 func (p *Panel) FirstFocusableChild() *Panel {
 	for _, child := range p.children {
+		if child.Hidden {
+			continue
+		}
 		if child.Focusable() {
 			return child
 		}
@@ -511,10 +514,13 @@ func (p *Panel) FirstFocusableChild() *Panel {
 	return nil
 }
 
-// LastFocusableChild returns the last focusable child or nil.
+// LastFocusableChild returns the last focusable child or nil. Hidden subtrees are skipped.
 func (p *Panel) LastFocusableChild() *Panel {
 	for i := len(p.children) - 1; i >= 0; i-- {
 		child := p.children[i]
+		if child.Hidden {
+			continue
+		}
 		if child.Focusable() {
 			return child
 		}
