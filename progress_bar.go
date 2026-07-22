@@ -143,7 +143,7 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 			if elapsed >= p.FullTraversalSpeed {
 				elapsed = p.FullTraversalSpeed - (elapsed - p.FullTraversalSpeed)
 			}
-			meter.X = maximum * float32(elapsed) / float32(p.FullTraversalSpeed)
+			meter.X = bounds.X + maximum*float32(elapsed)/float32(p.FullTraversalSpeed)
 		}
 	} else if p.current > 0 {
 		meter.Width = bounds.Width * (p.current / p.maximum)
