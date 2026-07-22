@@ -92,6 +92,56 @@ func TestListRemoveRangeShiftsSelection(t *testing.T) {
 	c.Equal("d", l.DataAtIndex(1))
 }
 
+func TestListInsertShiftsAnchor(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("a", "b", "c")
+	l.Select(false, 2) // anchor at "c"
+	c.Equal(2, l.Anchor())
+	l.Insert(1, "x", "y")
+	// The anchor follows the moved item.
+	c.Equal(4, l.Anchor())
+	// Inserting after the anchor leaves it alone.
+	l.Insert(5, "z")
+	c.Equal(4, l.Anchor())
+}
+
+func TestListRemoveAdjustsAnchor(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("a", "b", "c", "d")
+	l.Select(false, 2) // anchor at "c"
+	l.Remove(0)        // remove "a"; anchor slides down with its row
+	c.Equal(1, l.Anchor())
+	l.Remove(2) // remove "d", after the anchor; anchor unchanged
+	c.Equal(1, l.Anchor())
+	l.Remove(1) // remove the anchored row itself
+	c.Equal(-1, l.Anchor())
+}
+
+func TestListRemoveRangeAdjustsAnchor(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("a", "b", "c", "d", "e")
+	l.Select(false, 4) // anchor at "e"
+	l.RemoveRange(0, 1)
+	c.Equal(2, l.Anchor())
+	l.RemoveRange(1, 2) // range covers the anchored row
+	c.Equal(-1, l.Anchor())
+}
+
+func TestListRemoveRangeNoPhantomSelection(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("a", "b", "c", "d", "e", "f", "g", "h", "i", "j")
+	l.Select(false, 9)  // anchor at the last row
+	l.RemoveRange(5, 9) // the anchored row is gone; the anchor must not point past the new row count
+	c.Equal(-1, l.Anchor())
+	// A subsequent range selection anchors afresh instead of extending from the stale index, so the selection can
+	// never include rows beyond the current count and CanSelectAll stays consistent.
+	l.SelectRange(2, 2, true)
+	c.Equal([]int{2}, selectedIndexes(l))
+	c.Equal(2, l.Anchor())
+	c.True(l.Selection.Count() <= l.Count())
+	c.True(l.CanSelectAll())
+}
+
 func TestListSelectReplaceVsAdd(t *testing.T) {
 	c := check.New(t)
 	l := newTestList("a", "b", "c", "d")

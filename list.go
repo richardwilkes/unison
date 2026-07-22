@@ -127,6 +127,9 @@ func (l *List[T]) Insert(index int, values ...T) {
 			l.Selection.Clear(i)
 		}
 	}
+	if l.anchor >= index {
+		l.anchor += len(values)
+	}
 	l.MarkForLayoutAndRedraw()
 }
 
@@ -151,6 +154,12 @@ func (l *List[T]) Remove(index int) {
 	if index >= 0 && index < len(l.rows) {
 		l.rows = slices.Delete(l.rows, index, index+1)
 		l.Selection.Clear(index)
+		switch {
+		case l.anchor == index:
+			l.anchor = -1
+		case l.anchor > index:
+			l.anchor--
+		}
 		for {
 			if index = l.Selection.NextSet(index); index == -1 {
 				break
@@ -168,6 +177,12 @@ func (l *List[T]) RemoveRange(from, to int) {
 		l.rows = slices.Delete(l.rows, from, to+1)
 		l.Selection.ClearRange(from, to)
 		delta := to - from + 1
+		switch {
+		case l.anchor >= from && l.anchor <= to:
+			l.anchor = -1
+		case l.anchor > to:
+			l.anchor -= delta
+		}
 		for {
 			if from = l.Selection.NextSet(from); from == -1 {
 				break
