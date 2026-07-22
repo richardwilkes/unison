@@ -95,12 +95,17 @@ type BITMAPV5HEADER struct {
 
 // CreateBitmap https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createbitmap
 func CreateBitmap(width, height int32, planes, bitsPerPixel uint16, bits []byte) HBITMAP {
-	var bitsPtr uintptr
-	if len(bits) != 0 {
-		bitsPtr = uintptr(unsafe.Pointer(&bits[0]))
+	// The uintptr(unsafe.Pointer(...)) conversion must be written directly in the Call argument list; hoisting it
+	// into a local would end bits' liveness before the call, letting the GC collect the backing array mid-call (see
+	// doc.go), hence the duplicated call.
+	if len(bits) == 0 {
+		//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+		h, _, _ := createBitmapProc.Call(uintptr(width), uintptr(height), uintptr(planes), uintptr(bitsPerPixel), 0)
+		return HBITMAP(h)
 	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	h, _, _ := createBitmapProc.Call(uintptr(width), uintptr(height), uintptr(planes), uintptr(bitsPerPixel), bitsPtr)
+	h, _, _ := createBitmapProc.Call(uintptr(width), uintptr(height), uintptr(planes), uintptr(bitsPerPixel),
+		uintptr(unsafe.Pointer(&bits[0])))
 	return HBITMAP(h)
 }
 
@@ -145,15 +150,21 @@ func SetPixelFormat(hdc HDC, iPixelFormat int32, pfd *PIXELFORMATDESCRIPTOR) boo
 // pixels as 32-bit BGRA words; bmi's header fields must describe them (a BITMAPINFO with no color table is just its
 // BITMAPINFOHEADER, so the header pointer is passed directly).
 func StretchDIBits(hdc HDC, xDest, yDest, destWidth, destHeight, xSrc, ySrc, srcWidth, srcHeight int32, bits []uint32, bmi *BITMAPINFOHEADER, iUsage, rop uint32) int32 {
-	var bitsPtr uintptr
-	if len(bits) != 0 {
-		bitsPtr = uintptr(unsafe.Pointer(&bits[0]))
-	}
 	bmi.BiSize = uint32(unsafe.Sizeof(*bmi))
+	// The uintptr(unsafe.Pointer(...)) conversion must be written directly in the Call argument list; hoisting it
+	// into a local would end bits' liveness before the call, letting the GC collect the backing array mid-call (see
+	// doc.go), hence the duplicated call.
+	if len(bits) == 0 {
+		//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+		ret, _, _ := stretchDIBitsProc.Call(uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(destWidth),
+			uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight), 0,
+			uintptr(unsafe.Pointer(bmi)), uintptr(iUsage), uintptr(rop))
+		return int32(ret)
+	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := stretchDIBitsProc.Call(uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(destWidth),
-		uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight), bitsPtr,
-		uintptr(unsafe.Pointer(bmi)), uintptr(iUsage), uintptr(rop))
+		uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight),
+		uintptr(unsafe.Pointer(&bits[0])), uintptr(unsafe.Pointer(bmi)), uintptr(iUsage), uintptr(rop))
 	return int32(ret)
 }
 

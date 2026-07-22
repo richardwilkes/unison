@@ -10,6 +10,9 @@
 package w32
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"strings"
 	"testing"
@@ -114,6 +117,124 @@ func TestPointerLifetimeAndDeadCodeHygiene(t *testing.T) {
 		for _, forbidden := range []string{"runtime.KeepAlive(", "WM_CAP_", "WM_DM_", "WM_PLAYBACK_", "maxUint16Array"} {
 			if strings.Contains(content, forbidden) {
 				t.Errorf("%s contains forbidden pattern %s", name, forbidden)
+			}
+		}
+	}
+}
+
+// parsePackageSources parses every non-test .go file in this directory, regardless of build constraints, so hygiene
+// checks cover the platform-specific files no matter where the tests run.
+func parsePackageSources(t *testing.T) (*token.FileSet, map[string]*ast.File) {
+	t.Helper()
+	c := check.New(t)
+	entries, err := os.ReadDir(".")
+	c.NoError(err)
+	fset := token.NewFileSet()
+	files := make(map[string]*ast.File)
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, parseErr := parser.ParseFile(fset, name, nil, 0)
+		c.NoError(parseErr)
+		files[name] = file
+	}
+	return fset, files
+}
+
+// isUintptrUnsafePointerConversion reports whether e has the form uintptr(unsafe.Pointer(...)).
+func isUintptrUnsafePointerConversion(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 {
+		return false
+	}
+	fn, ok := call.Fun.(*ast.Ident)
+	if !ok || fn.Name != "uintptr" {
+		return false
+	}
+	inner, ok := call.Args[0].(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := inner.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Pointer" {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "unsafe"
+}
+
+// TestNoHoistedUnsafePointerConversions guards against storing uintptr(unsafe.Pointer(p)) in a variable before a
+// native call. The keep-alive exemption only applies to conversions written directly in a //go:uintptrescapes call's
+// argument list (see the package documentation); once the result sits in a local, p is dead to the GC and its memory
+// can be collected while the kernel call is still using it. Assignments to struct fields (e.g. the lpVtbl slots,
+// which point at package-level vtables) and through pointer dereferences (COM out-parameters) are the deliberate,
+// pinned-or-global exceptions and remain allowed.
+func TestNoHoistedUnsafePointerConversions(t *testing.T) {
+	fset, files := parsePackageSources(t)
+	for name, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch stmt := n.(type) {
+			case *ast.AssignStmt:
+				if len(stmt.Lhs) != len(stmt.Rhs) {
+					return true
+				}
+				for i, rhs := range stmt.Rhs {
+					if _, isIdent := stmt.Lhs[i].(*ast.Ident); isIdent && isUintptrUnsafePointerConversion(rhs) {
+						t.Errorf("%s: %s: uintptr(unsafe.Pointer(...)) hoisted into a variable; write the conversion inline in the call's argument list",
+							name, fset.Position(rhs.Pos()))
+					}
+				}
+			case *ast.ValueSpec:
+				for _, value := range stmt.Values {
+					if isUintptrUnsafePointerConversion(value) {
+						t.Errorf("%s: %s: uintptr(unsafe.Pointer(...)) hoisted into a variable; write the conversion inline in the call's argument list",
+							name, fset.Position(value.Pos()))
+					}
+				}
+			}
+			return true
+		})
+	}
+}
+
+// TestUnpinRequiresFinalComRelease guards against unpinning a Go-implemented COM object anywhere but the spot where
+// comRelease reports the final reference dropped. An unconditional Unpin (as DropTarget.Revoke once did) removes the
+// sole thing keeping the object alive while OLE may still hold AddRef'd pointers to it, so a later callback
+// dereferences freed memory.
+func TestUnpinRequiresFinalComRelease(t *testing.T) {
+	fset, files := parsePackageSources(t)
+	for name, file := range files {
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			var unpins []token.Pos
+			releasesCount := false
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				call, isCall := n.(*ast.CallExpr)
+				if !isCall {
+					return true
+				}
+				switch fun := call.Fun.(type) {
+				case *ast.SelectorExpr:
+					if fun.Sel.Name == "Unpin" {
+						unpins = append(unpins, call.Pos())
+					}
+				case *ast.Ident:
+					if fun.Name == "comRelease" {
+						releasesCount = true
+					}
+				}
+				return true
+			})
+			if len(unpins) != 0 && !releasesCount {
+				for _, pos := range unpins {
+					t.Errorf("%s: %s: Unpin called in %s, which never consults comRelease; unpin only when the final COM reference is released",
+						name, fset.Position(pos), fn.Name.Name)
+				}
 			}
 		}
 	}

@@ -11,7 +11,6 @@ package w32
 
 import (
 	"runtime"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -78,7 +77,12 @@ func NewDropTarget(w DragTargetWindow) *DropTarget {
 	return dt
 }
 
-// Revoke releases the pinner and clears the data object reference.
+// Revoke drops the creator's reference from NewDropTarget and releases the resources held for any drag currently in
+// progress. Revocation can happen mid-drag — a DragEntered/DragUpdated/Drop handler that disposes the window runs this
+// while OLE's DoDragDrop loop still holds an AddRef'd IDropTarget pointer — so the object is unpinned from the Go
+// garbage collector only once every COM reference has been released, keeping a later DragLeave/DragOver/Release from
+// dereferencing freed memory. The data object reference taken in dropTargetDragEnter is released here as well, since
+// the DragLeave/Drop that would normally release it may never be delivered once the target is revoked.
 func (dt *DropTarget) Revoke() {
 	if dt == nil {
 		return
@@ -87,11 +91,26 @@ func (dt *DropTarget) Revoke() {
 		dt.helper.Release()
 		dt.helper = nil
 	}
-	dt.dataObj = nil
+	if dt.dataObj != nil {
+		dt.dataObj.Release()
+		dt.dataObj = nil
+	}
 	if activeDropTarget == dt {
 		activeDropTarget = nil
 	}
-	dt.pinner.Unpin()
+	dt.release()
+}
+
+func (dt *DropTarget) addRef() uintptr {
+	return comAddRef(&dt.refCount)
+}
+
+func (dt *DropTarget) release() uintptr {
+	remaining, final := comRelease(&dt.refCount)
+	if final {
+		dt.pinner.Unpin()
+	}
+	return remaining
 }
 
 // ActiveDropTarget returns the drop target the cursor is currently over during a drag, or nil if there is none.
@@ -116,14 +135,11 @@ func dropTargetQueryInterface(this, riid, ppvObject uintptr) uint64 {
 }
 
 func dropTargetAddRef(this uintptr) uintptr {
-	dt := xruntime.PtrFromUintptr[DropTarget](this)
-	return uintptr(atomic.AddInt32(&dt.refCount, 1))
+	return xruntime.PtrFromUintptr[DropTarget](this).addRef()
 }
 
 func dropTargetRelease(this uintptr) uintptr {
-	dt := xruntime.PtrFromUintptr[DropTarget](this)
-	n := atomic.AddInt32(&dt.refCount, -1)
-	return uintptr(n)
+	return xruntime.PtrFromUintptr[DropTarget](this).release()
 }
 
 func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *DropEffect) uint64 {
