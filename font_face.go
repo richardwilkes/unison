@@ -10,21 +10,21 @@
 package unison
 
 import (
-	"runtime"
 	"slices"
 	"sync"
 
+	"github.com/richardwilkes/canvas/font"
+	"github.com/richardwilkes/canvas/fontmgr"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 var (
 	faceCacheLock         sync.RWMutex
-	faceCache             = make(map[skia.TypeFace]*FontFace)
+	faceCache             = make(map[*font.Typeface]*FontFace)
 	faceFallbackCacheLock sync.RWMutex
 	faceFallbackCache     = make(map[faceFallbackCacheKey]*FontFace)
 	fontSizeCacheLock     sync.RWMutex
@@ -32,16 +32,16 @@ var (
 )
 
 type faceFallbackCacheKey struct {
-	face skia.TypeFace
+	face *font.Typeface
 	r    rune
 }
 
 // FontFace holds the immutable portions of a font description.
 type FontFace struct {
-	face skia.TypeFace
+	face *font.Typeface
 }
 
-func newFace(face skia.TypeFace) *FontFace {
+func newFace(face *font.Typeface) *FontFace {
 	if face == nil {
 		return nil
 	}
@@ -106,16 +106,15 @@ func MatchFontFace(family string, weightValue weight.Enum, spacingValue spacing.
 		fam := MatchFontFamily(family)
 		return fam.MatchStyle(weightValue, spacingValue, slantValue)
 	}
-	style := skia.FontStyleNew(skia.FontWeight(weightValue), skia.FontSpacing(spacingValue), skia.FontSlant(slantValue))
-	defer skia.FontStyleDelete(style)
-	return newFace(skia.FontMgrMatchFamilyStyle(skia.FontMgrRefDefault(), family, style))
+	return newFace(fontmgr.Default().MatchFamilyStyle(family,
+		font.NewStyle(int(weightValue), int(spacingValue), font.Slant(slantValue))))
 }
 
 // CreateFontFace creates a new FontFace from font data.
 func CreateFontFace(data []byte) *FontFace {
-	cData := skia.DataNewWithCopy(data)
-	defer skia.DataUnref(cData)
-	return newFace(skia.FontMgrCreateFromData(skia.FontMgrRefDefault(), cData))
+	localData := make([]byte, len(data))
+	copy(localData, data)
+	return newFace(fontmgr.Default().MakeFromData(localData, 0))
 }
 
 // Font returns a Font of the given size for this FontFace.
@@ -131,35 +130,35 @@ func (f *FontFace) Font(capHeightSizeInLogicalPixels float32) Font {
 		Size: capHeightSizeInLogicalPixels,
 	}
 	fontSizeCacheLock.RLock()
-	skiaSize, exists := fontSizeCache[fd]
+	size, exists := fontSizeCache[fd]
 	fontSizeCacheLock.RUnlock()
 	if exists {
-		font := f.createFontWithSkiaSize(skiaSize)
-		font.size = capHeightSizeInLogicalPixels
-		return font
+		fi := f.createFontWithSize(size)
+		fi.size = capHeightSizeInLogicalPixels
+		return fi
 	}
-	skiaSize = capHeightSizeInLogicalPixels
-	var font *fontImpl
-	font = f.createFontWithSkiaSize(skiaSize)
-	if font.metrics.CapHeight > 0 { // I've seen some fonts with a negative CapHeight, which won't work
-		skiaSize = xmath.Floor(capHeightSizeInLogicalPixels * skiaSize / font.metrics.CapHeight)
+	size = capHeightSizeInLogicalPixels
+	var fi *fontImpl
+	fi = f.createFontWithSize(size)
+	if fi.metrics.CapHeight > 0 { // I've seen some fonts with a negative CapHeight, which won't work
+		size = xmath.Floor(capHeightSizeInLogicalPixels * size / fi.metrics.CapHeight)
 		for {
-			font = f.createFontWithSkiaSize(skiaSize)
-			if font.metrics.CapHeight >= capHeightSizeInLogicalPixels {
+			fi = f.createFontWithSize(size)
+			if fi.metrics.CapHeight >= capHeightSizeInLogicalPixels {
 				break
 			}
-			skiaSize++
+			size++
 		}
-		for skiaSize >= 1 && font.metrics.CapHeight > capHeightSizeInLogicalPixels {
-			skiaSize -= 0.5
-			font = f.createFontWithSkiaSize(skiaSize)
+		for size >= 1 && fi.metrics.CapHeight > capHeightSizeInLogicalPixels {
+			size -= 0.5
+			fi = f.createFontWithSize(size)
 		}
 	}
-	font.size = capHeightSizeInLogicalPixels
+	fi.size = capHeightSizeInLogicalPixels
 	fontSizeCacheLock.Lock()
-	fontSizeCache[fd] = skiaSize
+	fontSizeCache[fd] = size
 	fontSizeCacheLock.Unlock()
-	return font
+	return fi
 }
 
 // FallbackForCharacter attempts to locate the FontFace that best matches this FontFace and has the given character.
@@ -180,57 +179,46 @@ func (f *FontFace) FallbackForCharacter(ch rune) *FontFace {
 	if ff, exists = faceFallbackCache[key]; exists {
 		return ff
 	}
-	style := skia.TypeFaceGetFontStyle(f.face)
-	defer skia.FontStyleDelete(style)
-	ff = newFace(skia.FontMgrMatchFamilyStyleCharacter(skia.FontMgrRefDefault(), f.Family(), style, ch))
+	ff = newFace(fontmgr.Default().MatchFamilyStyleCharacter(f.Family(), f.face.Style(), nil, ch))
 	faceFallbackCache[key] = ff
 	return ff
 }
 
-func (f *FontFace) createFontWithSkiaSize(skiaSize float32) *fontImpl {
-	font := &fontImpl{
+func (f *FontFace) createFontWithSize(size float32) *fontImpl {
+	fi := &fontImpl{
 		face: f,
-		font: skia.FontNewWithValues(f.face, skiaSize, 1, 0),
+		font: font.NewFont(f.face, size, 1, 0),
 	}
-	skia.FontSetSubPixel(font.font, true)
-	skia.FontSetForceAutoHinting(font.font, true)
+	fi.font.SetSubpixel(true)
+	fi.font.SetForceAutoHinting(true)
 	// Using hinting on some platforms (Linux, for example) was resulting in bad placement of the text. Carefully test
-	// any changes away from no font hinting (0) on all supported platforms.
-	skia.FontSetHinting(font.font, 0)
-	skia.FontGetMetrics(font.font, &font.metrics)
-	runtime.AddCleanup(font, func(sf skia.Font) {
-		ReleaseOnUIThread(func() {
-			skia.FontDelete(sf)
-		})
-	}, font.font)
-	return font
+	// any changes away from no font hinting on all supported platforms.
+	fi.font.SetHinting(font.HintingNone)
+	fi.font.Metrics(&fi.metrics)
+	return fi
 }
 
 // Style returns the style information for this FontFace.
 func (f *FontFace) Style() (weightValue weight.Enum, spacingValue spacing.Enum, slantValue slant.Enum) {
-	style := skia.TypeFaceGetFontStyle(f.face)
-	defer skia.FontStyleDelete(style)
-	return weight.Enum(skia.FontStyleGetWeight(style)), spacing.Enum(skia.FontStyleGetWidth(style)),
-		slant.Enum(skia.FontStyleGetSlant(style))
+	style := f.face.Style()
+	return weight.Enum(style.Weight()), spacing.Enum(style.Width()), slant.Enum(style.Slant())
 }
 
 // Monospaced returns true if this FontFace has been marked as having a fixed width for every character.
 func (f *FontFace) Monospaced() bool {
-	return skia.TypeFaceIsFixedPitch(f.face)
+	return f.face.IsFixedPitch()
 }
 
 // Family returns the name of the FontFamily this FontFace belongs to.
 func (f *FontFace) Family() string {
-	ss := skia.TypeFaceGetFamilyName(f.face)
-	defer skia.StringDelete(ss)
-	return skia.StringGetString(ss)
+	return f.face.FamilyName()
 }
 
 // UnitsPerEm returns the number of coordinate units on the "em square", an abstract square whose height is the intended
 // distance between lines of type in the same type size. This is the size of the design grid on which glyphs are laid
 // out.
 func (f *FontFace) UnitsPerEm() int {
-	return skia.TypeFaceGetUnitsPerEm(f.face)
+	return f.face.UnitsPerEm()
 }
 
 // Less returns true if this FontFace is logically before the other FontFace.

@@ -127,6 +127,9 @@ func (l *List[T]) Insert(index int, values ...T) {
 			l.Selection.Clear(i)
 		}
 	}
+	if l.anchor >= index {
+		l.anchor += len(values)
+	}
 	l.MarkForLayoutAndRedraw()
 }
 
@@ -151,6 +154,12 @@ func (l *List[T]) Remove(index int) {
 	if index >= 0 && index < len(l.rows) {
 		l.rows = slices.Delete(l.rows, index, index+1)
 		l.Selection.Clear(index)
+		switch {
+		case l.anchor == index:
+			l.anchor = -1
+		case l.anchor > index:
+			l.anchor--
+		}
 		for {
 			if index = l.Selection.NextSet(index); index == -1 {
 				break
@@ -168,6 +177,12 @@ func (l *List[T]) RemoveRange(from, to int) {
 		l.rows = slices.Delete(l.rows, from, to+1)
 		l.Selection.ClearRange(from, to)
 		delta := to - from + 1
+		switch {
+		case l.anchor >= from && l.anchor <= to:
+			l.anchor = -1
+		case l.anchor > to:
+			l.anchor -= delta
+		}
 		for {
 			if from = l.Selection.NextSet(from); from == -1 {
 				break
@@ -279,7 +294,6 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	rect := l.ContentRect(false)
 	intersect := rect.Intersect(dirty)
 	backgroundPaint := l.BackgroundInk.Paint(canvas, intersect, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRect(intersect, backgroundPaint)
 	row, y := l.rowAt(dirty.Y)
 	if row >= 0 {
@@ -299,7 +313,6 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
 			paint := bg.Paint(canvas, r, paintstyle.Fill)
 			canvas.DrawRect(r, paint)
-			paint.Dispose()
 			canvas.Save()
 			tl := cellRect.Point
 			dirty.Point = dirty.Point.Sub(tl)
@@ -471,6 +484,11 @@ func (l *List[T]) SelectAll() {
 // SelectRange selects items from 'start' to 'end', inclusive. If 'add' is true, then any existing selection is added to
 // rather than replaced.
 func (l *List[T]) SelectRange(start, end int, add bool) {
+	maximum := len(l.rows) - 1
+	if maximum < 0 {
+		// With no rows, the clamps below would produce SetRange(0, 0), creating a phantom selection at index 0.
+		return
+	}
 	if !l.allowMultiple {
 		add = false
 		end = start
@@ -479,7 +497,6 @@ func (l *List[T]) SelectRange(start, end int, add bool) {
 		l.Selection.Reset()
 		l.anchor = -1
 	}
-	maximum := len(l.rows) - 1
 	start = max(min(start, maximum), 0)
 	end = max(min(end, maximum), 0)
 	l.Selection.SetRange(start, end)
@@ -552,7 +569,9 @@ func (l *List[T]) rowAt(y float32) (row int, top float32) {
 			row++
 		}
 	} else {
-		row = int(xmath.Floor((y - top) / cellHeight))
+		// y can be above the content rect (e.g. within a top border inset when redrawing the full widget), which would
+		// otherwise produce a negative row and cause DefaultDraw to skip all rows.
+		row = max(int(xmath.Floor((y-top)/cellHeight)), 0)
 		top += float32(row) * cellHeight
 	}
 	if row >= count {

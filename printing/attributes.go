@@ -99,6 +99,7 @@ func (a Attributes) SetBoolean(key string, value, replaceExisting bool) {
 		}
 	} else {
 		existing.Add(goipp.TagBoolean, goipp.Boolean(value))
+		a[key] = existing
 	}
 }
 
@@ -149,6 +150,7 @@ func (a Attributes) setInteger(key string, value int, tag goipp.Tag, replaceExis
 		}
 	} else {
 		existing.Add(tag, goipp.Integer(value))
+		a[key] = existing
 	}
 }
 
@@ -252,6 +254,7 @@ func (a Attributes) setString(key, value string, tag goipp.Tag, replaceExisting 
 		}
 	} else {
 		existing.Add(tag, goipp.String(value))
+		a[key] = existing
 	}
 }
 
@@ -293,6 +296,7 @@ func (a Attributes) SetTime(key string, value time.Time, replaceExisting bool) {
 		}
 	} else {
 		existing.Add(goipp.TagDateTime, goipp.Time{Time: value})
+		a[key] = existing
 	}
 }
 
@@ -334,6 +338,7 @@ func (a Attributes) SetResolution(key string, value goipp.Resolution, replaceExi
 		}
 	} else {
 		existing.Add(goipp.TagResolution, value)
+		a[key] = existing
 	}
 }
 
@@ -375,6 +380,7 @@ func (a Attributes) SetRange(key string, value goipp.Range, replaceExisting bool
 		}
 	} else {
 		existing.Add(goipp.TagRange, value)
+		a[key] = existing
 	}
 }
 
@@ -425,6 +431,7 @@ func (a Attributes) setTextWithLang(key string, value goipp.TextWithLang, tag go
 		}
 	} else {
 		existing.Add(tag, value)
+		a[key] = existing
 	}
 }
 

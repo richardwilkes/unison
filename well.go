@@ -186,21 +186,17 @@ func (w *Well) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		canvas.ClipPath(path, pathop.Intersect, true)
 		canvas.DrawImageInRect(pattern.Image, r, nil, nil)
 		canvas.Restore()
-		path.Dispose()
 	} else {
 		fillPaint := w.ink.Paint(canvas, r, paintstyle.Fill)
 		canvas.DrawRoundedRect(r, radius, fillPaint)
-		fillPaint.Dispose()
 	}
 	if !w.Enabled() {
 		p := Black.Paint(canvas, r, paintstyle.Stroke)
 		p.SetBlendMode(blendmode.Xor)
 		canvas.DrawLine(geom.NewPoint(r.X+1, r.Y+1), geom.NewPoint(r.Right()-1, r.Bottom()-1), p)
 		canvas.DrawLine(geom.NewPoint(r.X+1, r.Bottom()-1), geom.NewPoint(r.Right()-1, r.Y+1), p)
-		p.Dispose()
 	}
 	edgePaint := edge.Paint(canvas, r, paintstyle.Stroke)
-	defer edgePaint.Dispose()
 	canvas.DrawRoundedRect(r, radius, edgePaint)
 }
 
@@ -259,7 +255,7 @@ func (w *Well) Click() {
 
 // DefaultCanAcceptDrop reports whether this well is a candidate for the given drag, independent of pointer position.
 func (w *Well) DefaultCanAcceptDrop(di drag.Info) bool {
-	if !w.Enabled() {
+	if !w.Enabled() || w.Mask&PatternWellMask == 0 {
 		return false
 	}
 	if di.HasFilePaths() {
@@ -305,7 +301,7 @@ func (w *Well) DefaultDragExit() {
 // DefaultDrop provides the default drop handling. Handles image files dropped onto the well.
 func (w *Well) DefaultDrop(di drag.Info, _ geom.Point, _ mod.Modifiers) bool {
 	w.DefaultDragExit()
-	if w.Enabled() {
+	if w.Enabled() && w.Mask&PatternWellMask != 0 {
 		if di.HasFilePaths() {
 			for _, f := range di.FilePaths() {
 				if imgfmt.ForExtension(filepath.Ext(f)).CanRead() {

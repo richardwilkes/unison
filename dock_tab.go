@@ -178,7 +178,6 @@ func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 	}
 	r := t.ContentRect(true)
 	p := NewPath()
-	defer p.Dispose()
 	p.MoveTo(geom.NewPoint(0, r.Height))
 	p.LineTo(geom.NewPoint(0, 6))
 	p.CubicTo(geom.NewPoint(0, 6), geom.NewPoint(0, 1), geom.NewPoint(6, 1))
@@ -189,10 +188,8 @@ func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 	p.LineTo(geom.NewPoint(right, r.Height))
 	p.Close()
 	bgPaint := bg.Paint(gc, r, paintstyle.Fill)
-	defer bgPaint.Dispose()
 	gc.DrawPath(p, bgPaint)
 	edgePaint := t.EdgeInk.Paint(gc, r, paintstyle.Stroke)
-	defer edgePaint.Dispose()
 	gc.DrawPath(p, edgePaint)
 }
 

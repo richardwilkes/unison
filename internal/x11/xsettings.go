@@ -31,6 +31,7 @@ const (
 type xSettings struct {
 	selection Atom
 	settings  Atom
+	manager   Atom
 	window    WindowID
 	dark      bool
 	ok        bool
@@ -48,7 +49,29 @@ func (c *Conn) InitXSettings() {
 	if xs.settings, err = c.InternAtom("_XSETTINGS_SETTINGS", false); err != nil {
 		return
 	}
+	if xs.manager, err = c.InternAtom("MANAGER", false); err == nil {
+		// Watch the root window for MANAGER ClientMessages so that a restarted settings daemon (a new selection owner)
+		// is picked up; without this, dark-mode tracking would silently stop working until the application restarted.
+		// Per the XSETTINGS spec, this must be selected before the selection owner is queried so an ownership change
+		// cannot slip between the two.
+		c.ChangeWindowAttributes(c.RootWindow(), WindowMaskEventMask,
+			&WindowCreationAttributes{EventMask: EventMaskStructureNotify})
+	}
 	c.resolveXSettingsManager()
+}
+
+// XSettingsHandleManagerMessage processes a MANAGER ClientMessage broadcast on the root window. When the message
+// announces a new owner for this screen's XSETTINGS selection (data32[1] holds the selection atom), the manager window
+// is re-resolved and the settings re-read. It returns whether the message was consumed and whether the dark-mode state
+// changed as a result.
+func (c *Conn) XSettingsHandleManagerMessage(ev *ClientMessageEvent) (handled, changed bool) {
+	xs := c.xset
+	if xs == nil || xs.manager == AtomNone || ev.Type != xs.manager || Atom(ev.Data32[1]) != xs.selection {
+		return false, false
+	}
+	prevDark, prevOK := xs.dark, xs.ok
+	c.resolveXSettingsManager()
+	return true, xs.dark != prevDark || xs.ok != prevOK
 }
 
 // resolveXSettingsManager finds the current manager window, watches it for property changes, and reads its value.

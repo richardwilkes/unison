@@ -29,10 +29,8 @@ func NewTableDragDrawable[T TableRowConstraint[T]](data *TableDragData[T], svg *
 		gc.SaveWithOpacity(0.7)
 		fillPaint := data.Table.SelectionInk.Paint(gc, r, paintstyle.Fill)
 		gc.DrawRoundedRect(r, corner, fillPaint)
-		fillPaint.Dispose()
 		strokePaint := data.Table.OnSelectionInk.Paint(gc, r, paintstyle.Stroke)
 		gc.DrawRoundedRect(r, corner, strokePaint)
-		strokePaint.Dispose()
 		gc.Restore()
 		label.DefaultDraw(gc, rect)
 	}

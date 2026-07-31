@@ -11,7 +11,6 @@ package w32
 
 import (
 	"runtime"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -23,18 +22,6 @@ import (
 )
 
 var iidIDropTarget = xos.Must(windows.GUIDFromString("{00000122-0000-0000-C000-000000000046}"))
-
-// DropEffect represents the effect of a drag-and-drop operation.
-type DropEffect uint32
-
-// Possible values for DropEffect.
-const (
-	DropEffectCopy DropEffect = 1 << iota
-	DropEffectMove
-	DropEffectLink
-	DropEffectNone   DropEffect = 0
-	DropEffectScroll DropEffect = 0x80000000
-)
 
 // MKDnD represents the key state and button modifiers passed to IDropTarget callbacks.
 type MKDnD uint32
@@ -57,6 +44,7 @@ type DropTarget struct {
 	refCount int32
 	pinner   runtime.Pinner
 	opMask   drag.Op      // source's allowed ops, set in DragEnter
+	lastOp   drag.Op      // op returned by the window's most recent DragEntered/DragUpdated, reported back on Drop
 	dataObj  *IDataObject // current drag's data object (valid between DragEnter and DragLeave/Drop)
 }
 
@@ -89,7 +77,12 @@ func NewDropTarget(w DragTargetWindow) *DropTarget {
 	return dt
 }
 
-// Revoke releases the pinner and clears the data object reference.
+// Revoke drops the creator's reference from NewDropTarget and releases the resources held for any drag currently in
+// progress. Revocation can happen mid-drag — a DragEntered/DragUpdated/Drop handler that disposes the window runs this
+// while OLE's DoDragDrop loop still holds an AddRef'd IDropTarget pointer — so the object is unpinned from the Go
+// garbage collector only once every COM reference has been released, keeping a later DragLeave/DragOver/Release from
+// dereferencing freed memory. The data object reference taken in dropTargetDragEnter is released here as well, since
+// the DragLeave/Drop that would normally release it may never be delivered once the target is revoked.
 func (dt *DropTarget) Revoke() {
 	if dt == nil {
 		return
@@ -98,11 +91,26 @@ func (dt *DropTarget) Revoke() {
 		dt.helper.Release()
 		dt.helper = nil
 	}
-	dt.dataObj = nil
+	if dt.dataObj != nil {
+		dt.dataObj.Release()
+		dt.dataObj = nil
+	}
 	if activeDropTarget == dt {
 		activeDropTarget = nil
 	}
-	dt.pinner.Unpin()
+	dt.release()
+}
+
+func (dt *DropTarget) addRef() uintptr {
+	return comAddRef(&dt.refCount)
+}
+
+func (dt *DropTarget) release() uintptr {
+	remaining, final := comRelease(&dt.refCount)
+	if final {
+		dt.pinner.Unpin()
+	}
+	return remaining
 }
 
 // ActiveDropTarget returns the drop target the cursor is currently over during a drag, or nil if there is none.
@@ -127,14 +135,11 @@ func dropTargetQueryInterface(this, riid, ppvObject uintptr) uint64 {
 }
 
 func dropTargetAddRef(this uintptr) uintptr {
-	dt := xruntime.PtrFromUintptr[DropTarget](this)
-	return uintptr(atomic.AddInt32(&dt.refCount, 1))
+	return xruntime.PtrFromUintptr[DropTarget](this).addRef()
 }
 
 func dropTargetRelease(this uintptr) uintptr {
-	dt := xruntime.PtrFromUintptr[DropTarget](this)
-	n := atomic.AddInt32(&dt.refCount, -1)
-	return uintptr(n)
+	return xruntime.PtrFromUintptr[DropTarget](this).release()
 }
 
 func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *DropEffect) uint64 {
@@ -145,6 +150,7 @@ func dropTargetDragEnter(this, pDataObj uintptr, grfKeyState MKDnD, pt uintptr, 
 	activeDropTarget = dt
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragEntered(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
+	dt.lastOp = op
 	*pdwEffect = opToDropEffect(op)
 	if dt.helper != nil {
 		screenPt := packedScreenPt(pt)
@@ -161,6 +167,7 @@ func dropTargetDragOver(this uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *
 	}
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragUpdated(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
+	dt.lastOp = op
 	*pdwEffect = opToDropEffect(op)
 	if dt.helper != nil {
 		screenPt := packedScreenPt(pt)
@@ -171,6 +178,7 @@ func dropTargetDragOver(this uintptr, grfKeyState MKDnD, pt uintptr, pdwEffect *
 
 func dropTargetDragLeave(this uintptr) uint64 {
 	dt := xruntime.PtrFromUintptr[DropTarget](this)
+	dt.lastOp = 0
 	if dt.dataObj != nil {
 		dt.dataObj.Release()
 		dt.dataObj = nil
@@ -196,8 +204,11 @@ func dropTargetDrop(this, pDataObj uintptr, grfKeyState MKDnD, pt, pdwEffect uin
 	}
 	dataObj := xruntime.PtrFromUintptr[IDataObject](pDataObj)
 	info := &dragInfo{obj: dataObj, opMask: dt.opMask}
-	dt.window.Drop(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
-	*xruntime.PtrFromUintptr[DropEffect](pdwEffect) = DropEffectNone
+	accepted := dt.window.Drop(info, dropTargetClientPt(dt.window, pt), dropKeyStateMods(grfKeyState))
+	// Report the effect that was actually performed back to the source. Reporting DROPEFFECT_NONE on an accepted drop
+	// would tell a source performing a Move that nothing happened, so it would never delete the original.
+	*xruntime.PtrFromUintptr[DropEffect](pdwEffect) = dropResultEffect(accepted, dt.lastOp)
+	dt.lastOp = 0
 	if dt.helper != nil {
 		screenPt := packedScreenPt(pt)
 		dt.helper.Drop(pDataObj, &screenPt, *xruntime.PtrFromUintptr[DropEffect](pdwEffect))
@@ -215,6 +226,7 @@ func (dt *DropTarget) RefreshDragOver(pt POINT, mods mod.Modifiers) {
 	}
 	info := &dragInfo{obj: dt.dataObj, opMask: dt.opMask}
 	op := dt.window.DragUpdated(info, dropTargetClientPtFromScreen(dt.window, pt), mods)
+	dt.lastOp = op
 	if dt.helper != nil {
 		screenPt := pt
 		dt.helper.DragOver(&screenPt, opToDropEffect(op))
@@ -222,10 +234,8 @@ func (dt *DropTarget) RefreshDragOver(pt POINT, mods mod.Modifiers) {
 }
 
 func packedScreenPt(pt uintptr) POINT {
-	return POINT{
-		X: int32(pt & 0xFFFFFFFF),
-		Y: int32(pt >> 32),
-	}
+	x, y := unpackPoint(pt)
+	return POINT{X: x, Y: y}
 }
 
 func dropTargetClientPt(w DragTargetWindow, pt uintptr) geom.Point {
@@ -249,38 +259,4 @@ func dropKeyStateMods(grfKeyState MKDnD) mod.Modifiers {
 		mods |= mod.Option
 	}
 	return mods
-}
-
-func dropEffectToOp(effect DropEffect) drag.Op {
-	var op drag.Op
-	if effect&DropEffectCopy != 0 {
-		op |= drag.Copy
-	}
-	if effect&DropEffectMove != 0 {
-		op |= drag.Move
-	}
-	return op
-}
-
-func opToDropEffect(op drag.Op) DropEffect {
-	switch {
-	case op&drag.Copy != 0:
-		return DropEffectCopy
-	case op&drag.Move != 0:
-		return DropEffectMove
-	default:
-		return DropEffectNone
-	}
-}
-
-// OpMaskToDropEffect converts a drag.Op mask to a Windows DropEffect bitmask.
-func OpMaskToDropEffect(op drag.Op) DropEffect {
-	var effect DropEffect
-	if op&drag.Copy != 0 {
-		effect |= DropEffectCopy
-	}
-	if op&drag.Move != 0 {
-		effect |= DropEffectMove
-	}
-	return effect
 }

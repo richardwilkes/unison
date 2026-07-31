@@ -153,7 +153,6 @@ func (s *Slider) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.S
 // DefaultDrawBackground provides the default background drawing.
 func (s *Slider) DefaultDrawBackground(canvas *Canvas, bounds geom.Rect) {
 	paint := s.FillInk.Paint(canvas, bounds, paintstyle.Fill)
-	defer paint.Dispose()
 	canvas.DrawRoundedRect(bounds, s.CornerRadius, paint)
 }
 
@@ -175,10 +174,8 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		bounds.Height -= s.EdgeThickness * 2
 	}
 	fillPaint := s.FillInk.Paint(canvas, bounds, paintstyle.Fill)
-	defer fillPaint.Dispose()
 	canvas.DrawRoundedRect(bounds, s.CornerRadius, fillPaint)
 	edgePaint := s.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
-	defer edgePaint.Dispose()
 	edgePaint.SetStrokeWidth(s.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, s.CornerRadius, edgePaint)
 	center := bounds.Center()
@@ -201,8 +198,6 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		inner = s.MarkerColor.Paint(canvas, bounds, paintstyle.Stroke)
 		inner.SetStrokeWidth(1)
 	}
-	defer outer.Dispose()
-	defer inner.Dispose()
 	canvas.DrawCircle(center, s.MarkerSize/2-2, outer)
 	canvas.DrawCircle(center, s.MarkerSize/2-2, inner)
 }
@@ -237,7 +232,7 @@ func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool
 		return true
 	}
 	ratio := (min(max(pos, minimum), maximum) - minimum) / (maximum - minimum)
-	s.SetValue(ratio * (s.maximum - s.minimum))
+	s.SetValue(s.minimum + ratio*(s.maximum-s.minimum))
 	return true
 }
 

@@ -458,7 +458,6 @@ func (m *Markdown) processCodeBlock() {
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
-		defer paint.Dispose()
 		gc.DrawRect(rect, paint)
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
@@ -503,7 +502,6 @@ func (m *Markdown) processBlockquote() {
 	p := NewPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
-		defer paint.Dispose()
 		gc.DrawRect(rect, paint)
 	}
 	p.SetLayout(&FlexLayout{Columns: 1})
@@ -1074,6 +1072,11 @@ func (m *Markdown) panelForAnchor(anchor string) *Panel {
 	return nil
 }
 
+// markdownPrimaryDisplay indirects PrimaryDisplay solely so that tests can verify the display query performed by
+// retrieveImage happens on the calling goroutine and not on the image-loading goroutine, since displays may only be
+// queried on the UI thread. Production code must never reassign it.
+var markdownPrimaryDisplay = PrimaryDisplay
+
 func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 	workingDir := ""
 	if m.WorkingDirProvider != nil {
@@ -1098,23 +1101,41 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 		targets: []*DrawablePanel{panel},
 	}
 	m.drawableCacheLock.Unlock()
+	isSVG := strings.ToLower(path.Ext(revisedTarget)) == ".svg"
+	// Displays may only be queried on the UI thread (on macOS the lookup calls into AppKit, and the platform
+	// implementations use unsynchronized state), so capture the scale here, on the calling thread, rather than inside
+	// the image-loading goroutine below.
+	scale := geom.NewPoint(1, 1)
+	if !isSVG {
+		if d := markdownPrimaryDisplay(); d != nil {
+			scale = scale.DivPt(d.Scale)
+		}
+	}
 	result := make(chan Drawable, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
+		// On failure, the cache entry must be removed. Leaving it in place would permanently poison the cache: the
+		// load would never be retried and every subsequent rebuild would append another dead placeholder panel to the
+		// entry's target list, retaining those detached panels for the life of the Markdown widget.
+		fail := func(failure error, args ...any) {
+			result <- nil
+			errs.Log(failure, args...)
+			m.drawableCacheLock.Lock()
+			delete(m.drawableCache, revisedTarget)
+			m.drawableCacheLock.Unlock()
+		}
 		var d Drawable
-		if strings.ToLower(path.Ext(revisedTarget)) == ".svg" {
+		if isSVG {
 			var r io.ReadCloser
 			if r, err = xhttp.StreamData(ctx, nil, revisedTarget); err != nil {
-				result <- nil
-				errs.Log(err, "path", revisedTarget)
+				fail(err, "path", revisedTarget)
 				return
 			}
 			defer xio.CloseIgnoringErrors(r)
 			var svg *SVG
 			if svg, err = NewSVGFromReader(r); err != nil {
-				result <- nil
-				errs.Log(err, "path", revisedTarget)
+				fail(err, "path", revisedTarget)
 				return
 			}
 			d = &DrawableSVG{
@@ -1122,14 +1143,9 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 				Size: svg.SuggestedSize(),
 			}
 		} else {
-			scale := geom.NewPoint(1, 1)
-			if d := PrimaryDisplay(); d != nil {
-				scale = scale.DivPt(d.Scale)
-			}
 			var img *Image
 			if img, err = NewImageFromFilePathOrURL(ctx, m.HTTPClient, revisedTarget, scale, m.PerImageByteLimit); err != nil {
-				result <- nil
-				errs.Log(err, "path", revisedTarget, "scale", scale)
+				fail(err, "path", revisedTarget, "scale", scale)
 				return
 			}
 			d = img
@@ -1186,17 +1202,28 @@ func (m *Markdown) constrainImage(drawable Drawable) Drawable {
 
 func (m *Markdown) extractText(node ast.Node) string {
 	var str strings.Builder
+	m.collectText(node, &str)
+	return str.String()
+}
+
+func (m *Markdown) collectText(node ast.Node, str *strings.Builder) {
 	for c := node.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
+		switch t := c.(type) {
+		case *ast.Text:
 			b := util.UnescapePunctuations(t.Value(m.content))
 			b = util.ResolveNumericReferences(b)
 			str.Write(util.ResolveEntityNames(b))
 			if t.SoftLineBreak() {
 				str.WriteByte(' ')
 			}
+		case *ast.String:
+			b := util.UnescapePunctuations(t.Value)
+			b = util.ResolveNumericReferences(b)
+			str.Write(util.ResolveEntityNames(b))
+		default:
+			m.collectText(c, str)
 		}
 	}
-	return str.String()
 }
 
 func (m *Markdown) processImage() {

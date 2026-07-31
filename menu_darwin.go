@@ -11,15 +11,20 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 var _ Menu = &macMenu{}
 
+// macMenu wraps a cocoa.Menu handle. owned records whether this wrapper holds the menu's owned reference: wrappers
+// from the factory own the menus they create until InsertMenu transfers that ownership into the parent menu's tree,
+// while wrappers that merely navigate existing menus (ItemAtIndex, SubMenu, updater callbacks) never own anything.
+// Only an owning wrapper's Dispose releases the underlying menu.
 type macMenu struct {
 	factory *macMenuFactory
 	id      int
-	menu    mac.Menu
+	menu    cocoa.Menu
+	owned   bool
 }
 
 func (m *macMenu) Factory() MenuFactory {
@@ -96,7 +101,7 @@ func (m *macMenu) InsertSeparator(atIndex int, onlyIfNeeded bool) {
 			}
 		}
 	}
-	m.macInsert(mac.NewSeparatorMenuItem(), atIndex)
+	m.macInsert(cocoa.NewSeparatorMenuItem(), atIndex)
 }
 
 func (m *macMenu) InsertItem(atIndex int, mi MenuItem) {
@@ -109,20 +114,23 @@ func (m *macMenu) InsertItem(atIndex int, mi MenuItem) {
 
 func (m *macMenu) InsertMenu(atIndex int, subMenu Menu) {
 	if menu, ok := subMenu.(*macMenu); ok {
+		// newMacMenuItemForSubMenu transfers ownership of the submenu to the item holding it (and the item to this
+		// menu), so from here on the tree owns the submenu and Dispose of its wrapper must become a no-op.
 		m.macInsert(newMacMenuItemForSubMenu(m.factory, menu), atIndex)
+		menu.owned = false
 		switch menu.id {
 		case AppMenuID:
 			if servicesItem := m.Item(ServicesMenuID); servicesItem != nil {
 				if servicesMenu := servicesItem.SubMenu(); servicesMenu != nil {
 					if menu, ok = servicesMenu.(*macMenu); ok {
-						mac.SetServicesMenu(menu.menu)
+						cocoa.SetServicesMenu(menu.menu)
 					}
 				}
 			}
 		case WindowMenuID:
-			mac.SetWindowsMenu(menu.menu)
+			cocoa.SetWindowsMenu(menu.menu)
 		case HelpMenuID:
-			mac.SetHelpMenu(menu.menu)
+			cocoa.SetHelpMenu(menu.menu)
 		}
 	}
 }
@@ -157,10 +165,15 @@ func (m *macMenu) Popup(where geom.Rect, itemIndex int) {
 }
 
 func (m *macMenu) Dispose() {
-	m.menu.Release()
+	// Only the owning wrapper may release; disposing a wrapper for a menu owned by a tree (e.g. one obtained through
+	// SubMenu) is a no-op, since the tree's root cleans it up.
+	if m.owned {
+		m.owned = false
+		m.menu.Release()
+	}
 }
 
-func (m *macMenu) macInsert(mi mac.MenuItem, index int) {
+func (m *macMenu) macInsert(mi cocoa.MenuItem, index int) {
 	if index < 0 {
 		index = m.Count()
 	}

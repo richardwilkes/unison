@@ -45,13 +45,16 @@ func (d *w32SaveDialog) RunModal() bool {
 		errs.Log(errs.New("unable to create save dialog"))
 		return false
 	}
+	// NewSaveDialog hands over a +1 COM reference; without this release, every RunModal leaked the dialog object and
+	// its shell state for the life of the process.
+	defer saveDialog.Release()
 	if d.initialDir != "" {
 		saveDialog.SetFolder(filepath.Clean(d.initialDir))
 	}
+	// FOSPickFolders is deliberately never set here even when canChooseDirs is requested: IFileSaveDialog does not
+	// support it, and since SetOptions' HRESULT is not surfaced, a rejected flag would silently drop every option
+	// in the mask, including FOSOverwritePrompt. Saving into a directory is not a supported operation on Windows.
 	options := w32.FOSOverwritePrompt | w32.FOSPathMustExist | w32.FOSNoTestFileCreate
-	if d.canChooseDirs {
-		options |= w32.FOSPickFolders
-	}
 	if d.allowMultipleSelection {
 		options |= w32.FOSAllowMultiSelect
 	}

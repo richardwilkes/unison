@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/internal/x11"
 )
 
 // TestX11ModifiersFromKeymap verifies that the modifier bit indices probe a QueryKeymap() bit vector using the same
@@ -87,4 +88,178 @@ func TestX11ModifiersFromKeymap(t *testing.T) {
 	// A non-modifier key at the bit index an off-by-minKeyCode bug would have used for shift must not read as shift.
 	c.False(x11ModifiersFromKeymap(pressKeymap(lShiftKeycode-8)).ShiftDown(),
 		"a key minKeyCode below the shift keycode must not register as shift")
+}
+
+// TestX11ScanCodeToKeySym verifies keysym selection against libX11's _XTranslateKey(). Prior to the fix, the
+// lowercase branch only checked that Shift was up, so with CapsLock on (and Shift up) it returned the lowercase
+// keysym before the CapsLock handling could run, and letters were typed lowercase on Linux. The default branch also
+// case-converted syms[1] unconditionally instead of the selected keysym, which broke CapsLock for keys whose mapping
+// only lists the lowercase form.
+func TestX11ScanCodeToKeySym(t *testing.T) {
+	c := check.New(t)
+
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+	})
+
+	// A synthetic keyboard mapping with two keysyms per keycode, starting at the typical minimum keycode of 8.
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 11}
+	x11KbMapping = x11.KeyboardMapping{
+		KeySymsPerKeyCode: 2,
+		KeySyms: []uint32{
+			'a', 'A', // keycode 8: a letter key with both cases in the mapping
+			'1', '!', // keycode 9: a digit key
+			'a', 0, // keycode 10: a letter key listing only its lowercase form, as some servers report
+			xkKPHome, xkKP7, // keycode 11: a numeric keypad key
+		},
+	}
+
+	// toRune mirrors how window_linux.go consumes the keysym, so expectations can be written as plain characters
+	// regardless of whether the translation returns a Latin-1 keysym or its 0x01000000-based Unicode form.
+	toRune := func(scanCode uint16, mods mod.Modifiers) rune {
+		return x11KeySymToUnicode(x11ScanCodeToKeySym(scanCode, mods, false))
+	}
+
+	c.Equal('a', toRune(8, mod.None), "letter without modifiers")
+	c.Equal('A', toRune(8, mod.Shift), "letter with shift")
+	c.Equal('A', toRune(8, mod.CapsLock), "letter with caps lock")
+	c.Equal('A', toRune(8, mod.Shift|mod.CapsLock), "letter with shift and caps lock")
+
+	c.Equal('1', toRune(9, mod.None), "digit without modifiers")
+	c.Equal('!', toRune(9, mod.Shift), "digit with shift")
+	c.Equal('1', toRune(9, mod.CapsLock), "digit must be unaffected by caps lock")
+	c.Equal('!', toRune(9, mod.Shift|mod.CapsLock), "digit with shift and caps lock")
+
+	c.Equal('a', toRune(10, mod.None), "lowercase-only letter without modifiers")
+	c.Equal('A', toRune(10, mod.Shift), "lowercase-only letter with shift")
+	c.Equal('A', toRune(10, mod.CapsLock), "lowercase-only letter with caps lock")
+
+	c.Equal(uint32(xkKP7), x11ScanCodeToKeySym(11, mod.NumLock, false), "keypad key with num lock")
+	c.Equal(uint32(xkKPHome), x11ScanCodeToKeySym(11, mod.NumLock|mod.Shift, false),
+		"keypad key with num lock and shift")
+
+	c.Equal(uint32(0), x11ScanCodeToKeySym(7, mod.None, false), "scan code below the server minimum")
+	c.Equal(uint32(0), x11ScanCodeToKeySym(12, mod.None, false), "scan code above the server maximum")
+}
+
+// TestX11ScanCodeToKeySymAltGr verifies that AltGr (ISO_Level3_Shift, reported as Mod5 in the event state) selects the
+// second pair of keysym columns, matching libX11's mode-switch handling in _XTranslateKey(). Prior to the fix, only
+// columns 0/1 were ever consulted, so AltGr-dependent layouts (German, French, the Nordic layouts, ...) typed the base
+// character instead of the level-3 one.
+func TestX11ScanCodeToKeySymAltGr(t *testing.T) {
+	c := check.New(t)
+
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+	})
+
+	// A German-style mapping with four keysyms per keycode: base, shifted, AltGr, and Shift+AltGr.
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 9}
+	x11KbMapping = x11.KeyboardMapping{
+		KeySymsPerKeyCode: 4,
+		KeySyms: []uint32{
+			'q', 'Q', '@', 0x07d9, // keycode 8: the German q key, with at-sign and Greek_OMEGA on levels 3/4
+			'a', 'A', 0, 0, // keycode 9: a key with no level-3 bindings
+		},
+	}
+
+	toRune := func(scanCode uint16, mods mod.Modifiers, level3 bool) rune {
+		return x11KeySymToUnicode(x11ScanCodeToKeySym(scanCode, mods, level3))
+	}
+
+	c.Equal('q', toRune(8, mod.None, false), "base character without AltGr")
+	c.Equal('Q', toRune(8, mod.Shift, false), "shifted character without AltGr")
+	c.Equal('@', toRune(8, mod.None, true), "level-3 character with AltGr")
+	c.Equal('Ω', toRune(8, mod.Shift, true), "level-4 character with AltGr and shift")
+	c.Equal('@', toRune(8, mod.CapsLock, true), "caps lock must not shift the level-3 character")
+
+	// A key without level-3 bindings has its trailing zero columns trimmed, so AltGr falls back to the base columns.
+	c.Equal('a', toRune(9, mod.None, true), "AltGr on a key without level-3 bindings")
+	c.Equal('A', toRune(9, mod.Shift, true), "AltGr+shift on a key without level-3 bindings")
+}
+
+// TestX11ScanCodeToKeySymSingleColumnMapping verifies that a mapping reporting only one keysym per keycode is handled
+// without reading past the key's columns. Prior to the fix, the second column was read before the per-keycode count
+// was checked, which indexed out of range (and panicked) on a server reporting KeySymsPerKeyCode == 1.
+func TestX11ScanCodeToKeySymSingleColumnMapping(t *testing.T) {
+	c := check.New(t)
+
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+	})
+
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 9}
+	x11KbMapping = x11.KeyboardMapping{
+		KeySymsPerKeyCode: 1,
+		KeySyms: []uint32{
+			'a', // keycode 8
+			'1', // keycode 9
+		},
+	}
+
+	toRune := func(scanCode uint16, mods mod.Modifiers) rune {
+		return x11KeySymToUnicode(x11ScanCodeToKeySym(scanCode, mods, false))
+	}
+
+	c.Equal('a', toRune(8, mod.None), "letter without modifiers")
+	c.Equal('A', toRune(8, mod.Shift), "letter with shift")
+	c.Equal('A', toRune(8, mod.CapsLock), "letter with caps lock")
+	c.Equal('1', toRune(9, mod.NumLock), "num lock must not read a second keysym column")
+	c.Equal('a', x11KeySymToUnicode(x11ScanCodeToKeySym(8, mod.None, true)),
+		"AltGr must fall back to the only column")
+}
+
+// TestX11FillKeyCodesFailedMapping verifies that a failed GetKeyboardMapping — which yields a zero-value mapping with
+// nil KeySyms and a KeySymsPerKeyCode of 0 — degrades to an unpopulated key map instead of panicking. The setup block
+// guarantees a non-empty keycode range, so before the guard every keycode in it indexed the nil KeySyms slice,
+// turning an X request failure during startup into a hard panic on the UI thread.
+func TestX11FillKeyCodesFailedMapping(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	savedRaw := rawScanCodeToKeyCodeMap
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+		rawScanCodeToKeyCodeMap = savedRaw
+	})
+	rawScanCodeToKeyCodeMap = make(map[uint16]KeyCode)
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 255}
+
+	x11KbMapping = x11.KeyboardMapping{} // What a failed GetKeyboardMapping returns.
+	x11FillKeyCodesFromMapping()
+	c.Equal(0, len(rawScanCodeToKeyCodeMap))
+
+	// A truncated mapping that does not cover the full keycode range must be rejected as well.
+	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: make([]uint32, 4)}
+	x11FillKeyCodesFromMapping()
+	c.Equal(0, len(rawScanCodeToKeyCodeMap))
+}
+
+// TestX11ScanCodeToKeySymFailedMapping verifies that keycode translation returns 0 instead of panicking when the
+// keyboard mapping is empty (failed GetKeyboardMapping) or does not cover the connection's keycode range.
+func TestX11ScanCodeToKeySymFailedMapping(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+	})
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 255}
+
+	x11KbMapping = x11.KeyboardMapping{} // What a failed GetKeyboardMapping returns.
+	c.Equal(uint32(0), x11ScanCodeToKeySym(9, 0, false))
+
+	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: make([]uint32, 4)}
+	c.Equal(uint32(0), x11ScanCodeToKeySym(9, 0, false))
 }

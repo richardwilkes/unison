@@ -10,13 +10,11 @@
 package unison
 
 import (
+	"github.com/richardwilkes/canvas/pdf"
+	"github.com/richardwilkes/canvas/stream"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/unison/internal/skia"
 )
-
-// PDFMetaData holds the metadata about a PDF document.
-type PDFMetaData = skia.MetaData
 
 // PageProvider defines the methods required of a PDF producer.
 type PageProvider interface {
@@ -26,25 +24,22 @@ type PageProvider interface {
 }
 
 // CreatePDF writes a PDF to the given stream. md may be nil.
-func CreatePDF(s Stream, md *PDFMetaData, pageProvider PageProvider) error {
-	if md == nil {
-		md = &PDFMetaData{}
-	}
-	d := skia.DocumentMakePDF(s.asWStream(), md)
+func CreatePDF(s stream.WStream, md *pdf.Metadata, pageProvider PageProvider) error {
+	d := pdf.NewDocument(s, md)
 	if d == nil {
 		return errs.New("unable to create PDF")
 	}
 	pageNumber := 1
 	for pageProvider.HasPage(pageNumber) {
 		size := pageProvider.PageSize()
-		canvas := &Canvas{canvas: skia.DocumentBeginPage(d, size)}
+		canvas := &Canvas{canvas: d.BeginPageCanvas(size.Width, size.Height)}
 		if err := pageProvider.DrawPage(canvas, pageNumber); err != nil {
-			skia.DocumentAbort(d)
+			d.Abort()
 			return errs.Wrap(err)
 		}
-		skia.DocumentEndPage(d)
+		d.EndPage()
 		pageNumber++
 	}
-	skia.DocumentClose(d)
+	d.Close()
 	return nil
 }

@@ -209,33 +209,35 @@ func (d *fileDialog) createContent() *Panel {
 
 func (d *fileDialog) rebuildParentDirs() {
 	d.parentDirPopup.RemoveAllItems()
-	dir := d.currentDir
-	vol := filepath.VolumeName(dir)
-	for {
-		parent, f := filepath.Split(dir)
-		if dir == pathSeparator || dir == vol {
-			f = pathSeparator
-		}
-		d.parentDirPopup.AddItem(&parentDirItem{
-			name: f,
-			path: dir,
-		})
-		if dir == pathSeparator || dir == vol {
-			break
-		}
-		if parent != pathSeparator && parent != vol {
-			parent = strings.TrimRight(parent, pathSeparator)
-		}
-		if parent == "" || parent == vol {
-			break
-		}
-		dir = parent
+	for _, item := range parentDirChain(d.currentDir, filepath.VolumeName(d.currentDir), pathSeparator) {
+		d.parentDirPopup.AddItem(item)
 	}
 	d.parentDirPopup.SelectIndex(0)
 	d.parentDirPopup.MarkForLayoutAndRedraw()
 	if p := d.parentDirPopup.Parent(); p != nil {
 		p.NeedsLayout = true
 	}
+}
+
+// parentDirChain returns the chain of directories from dir up to and including the filesystem root, ordered deepest
+// first. vol must be filepath.VolumeName(dir) and sep must be the path separator; they are parameters rather than
+// derived here so that tests can exercise non-native path styles. dir is expected to be an absolute, cleaned path, as
+// produced by resolveToAcceptableAbsDir. The root entry uses vol+sep for both its name and path, so on Windows the
+// drive root appears as "C:\" (and a UNC share root as `\\server\share\`) rather than being omitted.
+func parentDirChain(dir, vol, sep string) []*parentDirItem {
+	root := vol + sep
+	var chain []*parentDirItem
+	for dir != root && dir != vol {
+		rest := strings.TrimRight(dir[len(vol):], sep)
+		i := strings.LastIndex(rest, sep)
+		if i < 0 {
+			// Not an absolute path; just present it as-is.
+			return append(chain, &parentDirItem{name: rest, path: dir})
+		}
+		chain = append(chain, &parentDirItem{name: rest[i+1:], path: dir})
+		dir = vol + rest[:i]
+	}
+	return append(chain, &parentDirItem{name: root, path: root})
 }
 
 func (d *fileDialog) parentDirPopupSelectionHandler(popup *PopupMenu[*parentDirItem]) {

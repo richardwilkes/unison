@@ -16,7 +16,6 @@ import (
 	"io"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -161,10 +160,13 @@ func (p *Printer) printerURI() string {
 
 func (p *Printer) newRequest(id uint32, op goipp.Op) *goipp.Message {
 	req := goipp.NewRequest(goipp.DefaultVersion, op, id)
-	req.Operation.Add(goipp.MakeAttribute("printer-uri", goipp.TagURI, goipp.String(p.printerURI())))
-	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(xos.CurrentUserName())))
+	// RFC 8011 §4.1.4 requires attributes-charset first and attributes-natural-language second in every request's
+	// operation group. goipp encodes attributes in insertion order, and CUPS rejects requests that violate this
+	// ordering with client-error-bad-request, so these two must be added before any other operation attributes.
 	req.Operation.Add(goipp.MakeAttribute("attributes-charset", goipp.TagCharset, goipp.String("utf-8")))
 	req.Operation.Add(goipp.MakeAttribute("attributes-natural-language", goipp.TagLanguage, goipp.String("en-US")))
+	req.Operation.Add(goipp.MakeAttribute("printer-uri", goipp.TagURI, goipp.String(p.printerURI())))
+	req.Operation.Add(goipp.MakeAttribute("requesting-user-name", goipp.TagName, goipp.String(xos.CurrentUserName())))
 	return req
 }
 
@@ -187,7 +189,9 @@ func (p *Printer) sendRequest(ctx context.Context, req *goipp.Message, fileData 
 	if httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, p.uri(), r); err != nil {
 		return nil, errs.Wrap(err)
 	}
-	httpReq.Header.Set("Content-Length", strconv.Itoa(len(data)+fileLength))
+	// net/http ignores a Content-Length header set on an outgoing request; only the ContentLength field is honored.
+	// Without it the body would be sent chunked, which many embedded IPP implementations reject.
+	httpReq.ContentLength = int64(len(data) + fileLength)
 	httpReq.Header.Set("Content-Type", goipp.ContentType)
 	if p.User != "" && p.Password != "" {
 		httpReq.SetBasicAuth(p.User, p.Password)

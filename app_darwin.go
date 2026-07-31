@@ -13,8 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/richardwilkes/toolbox/v2/xos"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 var (
@@ -24,66 +23,75 @@ var (
 )
 
 func apiBeginStartup() error {
-	mac.AppShouldTerminateCallback = func() {
-		closeAllWindows()
-		xos.Exit(0)
-	}
-	mac.AppDidChangeScreenParameters = func() {
+	// System-initiated termination (e.g. Dock -> Quit, logout) takes the same path as the in-app Quit menu item, so
+	// the AllowQuitCallback and per-window AllowCloseCallback vetoes are honored for both. The delegate always reports
+	// NSTerminateCancel to AppKit, so when the request is permitted, AttemptQuit is responsible for actually exiting.
+	cocoa.AppShouldTerminateCallback = AttemptQuit
+	cocoa.AppDidChangeScreenParameters = func() {
 		for _, w := range windowList {
 			w.glCtx.ctx.Update()
 		}
 	}
-	mac.AppDidFinishLaunchingCallback = func() {
-		mac.PostEmptyEvent()
-		mac.StopMainEventLoop()
+	cocoa.AppDidFinishLaunchingCallback = func() {
+		cocoa.PostEmptyEvent()
+		cocoa.StopMainEventLoop()
 	}
-	mac.OpenFilesCallback = func(paths []string) {
-		macPendingFilesLock.Lock()
-		defer macPendingFilesLock.Unlock()
-		if macMayIssueFileOpens {
-			InvokeTask(func() {
-				if openFilesCallback != nil {
-					openFilesCallback(paths)
-				}
-			})
-		} else {
-			macPendingFilesToOpen = append(macPendingFilesToOpen, paths...)
-		}
-	}
+	cocoa.OpenFilesCallback = macOpenFilesRequested
 	// NOTE: Two additional app delegate callbacks exist: AppWillFinishLaunchingCallback and AppDidHideCallback.
-	if err := mac.InstallMacAppDelegate(); err != nil {
+	if err := cocoa.InstallMacAppDelegate(); err != nil {
 		return err
 	}
 	apiFillKeyCodes()
 	macInitWindowCallbacks()
-	mac.FinishLaunching()
+	cocoa.FinishLaunching()
 	return nil
 }
 
 func apiLateInit() {
-	mac.InstallSystemThemeChangedCallback(ThemeChanged)
+	cocoa.InstallSystemThemeChangedCallback(ThemeChanged)
+}
+
+// macOpenFilesRequested is installed as cocoa.OpenFilesCallback. Until apiFinalFinishStartup marks startup as
+// complete, requests are buffered; afterward they are routed to the user's callback via the task queue. The decision
+// is made under macPendingFilesLock, but InvokeTask is called outside it so the lock is never held while other
+// package machinery runs.
+func macOpenFilesRequested(paths []string) {
+	macPendingFilesLock.Lock()
+	mayIssue := macMayIssueFileOpens
+	if !mayIssue {
+		macPendingFilesToOpen = append(macPendingFilesToOpen, paths...)
+	}
+	macPendingFilesLock.Unlock()
+	if mayIssue {
+		InvokeTask(func() {
+			if openFilesCallback != nil {
+				openFilesCallback(paths)
+			}
+		})
+	}
 }
 
 func apiFinalFinishStartup() {
 	macPendingFilesLock.Lock()
-	defer macPendingFilesLock.Unlock()
 	macMayIssueFileOpens = true
-	if len(macPendingFilesToOpen) != 0 {
-		paths := macPendingFilesToOpen
-		macPendingFilesToOpen = nil
-		if openFilesCallback != nil {
-			openFilesCallback(paths)
-		}
+	paths := macPendingFilesToOpen
+	macPendingFilesToOpen = nil
+	macPendingFilesLock.Unlock()
+	// The callback must be invoked without holding macPendingFilesLock: if it pumps events (e.g. via RunModal) and
+	// AppKit delivers another open-files request during the nested loop, macOpenFilesRequested would re-lock the
+	// same non-reentrant mutex on the same thread and self-deadlock.
+	if len(paths) != 0 && openFilesCallback != nil {
+		openFilesCallback(paths)
 	}
 }
 
 func apiTerminate() error {
-	mac.UninstallMacAppDelegate()
+	cocoa.UninstallMacAppDelegate()
 	return nil
 }
 
 func apiBeep() {
-	mac.Beep()
+	cocoa.Beep()
 }
 
 func apiIsColorModeTrackingPossible() bool {
@@ -91,23 +99,30 @@ func apiIsColorModeTrackingPossible() bool {
 }
 
 func apiIsDarkModeEnabled() bool {
-	return mac.IsDarkModeEnabled()
+	return cocoa.IsDarkModeEnabled()
 }
 
 func apiDoubleClickInterval() time.Duration {
-	return mac.DoubleClickInterval()
+	return cocoa.DoubleClickInterval()
 }
 
 func apiPollEvents() {
-	mac.PollEvents()
+	cocoa.PollEvents()
 }
 
 func apiWaitEvents() {
-	mac.WaitEvents()
+	cocoa.WaitEvents()
 }
 
 func apiPostEmptyEvent() {
 	if platformInited.Load() {
-		mac.PostEmptyEvent()
+		cocoa.PostEmptyEvent()
 	}
+}
+
+// apiWithAutoreleasePool runs f inside its own autorelease pool, so AppKit-internal objects autoreleased by the
+// msgSends f performs (InvokeTask callbacks, window draws) are reclaimed when f returns instead of accumulating on
+// the thread until process exit.
+func apiWithAutoreleasePool(f func()) {
+	cocoa.WithPool(f)
 }

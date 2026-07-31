@@ -180,6 +180,62 @@ func TestFlexLayoutFillAndGrab(t *testing.T) {
 	c.Equal(geom.NewRect(0, 0, 200, 100), child.FrameRect())
 }
 
+func TestFlexLayoutHGrabHonorsMinWidthWhenShrinking(t *testing.T) {
+	c := check.New(t)
+	child := sizedPanel(geom.NewSize(10, 20), geom.NewSize(200, 20))
+	child.SetLayoutData(&unison.FlexLayoutData{
+		MinSize: geom.NewSize(100, 0),
+		HSpan:   1,
+		VSpan:   1,
+		HAlign:  align.Fill,
+		VAlign:  align.Fill,
+		HGrab:   true,
+	})
+	parent := newFlexParent(&unison.FlexLayout{Columns: 1}, child)
+	parent.SetFrameRect(geom.NewRect(0, 0, 60, 40))
+	parent.ValidateLayout()
+	// The grabbing column must stop shrinking at the explicit MinSize.Width, not collapse to the available 60.
+	c.Equal(float32(100), child.FrameRect().Width)
+}
+
+func TestFlexLayoutHGrabMinWidthNextToFixedColumn(t *testing.T) {
+	c := check.New(t)
+	label := fixedPanel(40, 20)
+	field := sizedPanel(geom.NewSize(10, 20), geom.NewSize(150, 20))
+	field.SetLayoutData(&unison.FlexLayoutData{
+		MinSize: geom.NewSize(80, 0),
+		HSpan:   1,
+		VSpan:   1,
+		HAlign:  align.Fill,
+		VAlign:  align.Middle,
+		HGrab:   true,
+	})
+	parent := newFlexParent(&unison.FlexLayout{Columns: 2}, label, field)
+	parent.SetFrameRect(geom.NewRect(0, 0, 100, 40))
+	parent.ValidateLayout()
+	// Only the grabbing column shrinks, and it floors at its MinSize.Width.
+	c.Equal(float32(40), label.FrameRect().Width)
+	c.Equal(float32(80), field.FrameRect().Width)
+}
+
+func TestFlexLayoutHGrabWithoutMinWidthShrinksFreely(t *testing.T) {
+	c := check.New(t)
+	child := sizedPanel(geom.NewSize(50, 20), geom.NewSize(200, 20))
+	child.SetLayoutData(&unison.FlexLayoutData{
+		HSpan:  1,
+		VSpan:  1,
+		HAlign: align.Fill,
+		VAlign: align.Fill,
+		HGrab:  true,
+	})
+	parent := newFlexParent(&unison.FlexLayout{Columns: 1}, child)
+	parent.SetFrameRect(geom.NewRect(0, 0, 30, 40))
+	parent.ValidateLayout()
+	// Without an explicit MinSize.Width, a grabbing column shrinks to the available space, matching how
+	// adjustRowHeights treats VGrab rows without an explicit MinSize.Height.
+	c.Equal(float32(30), child.FrameRect().Width)
+}
+
 func TestFlexLayoutAlignWithinTarget(t *testing.T) {
 	c := check.New(t)
 	child := fixedPanel(50, 20)

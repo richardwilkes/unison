@@ -263,10 +263,29 @@ type svgMask struct {
 	bounds geom.Rect
 }
 
+// svgEndGroupTag is the sentinel def entry recorded when a group inside a defs section closes, marking where the style
+// frame pushed for the group's attributes must be popped when the def is used.
+const svgEndGroupTag = "endg"
+
 type svgDef struct {
 	id    string
 	tag   string
 	attrs []xml.Attr
+}
+
+// svgGradientRef is a placeholder Ink recorded when a fill or stroke references a gradient via url(#id). The reference
+// is only resolved once the entire document has been parsed, so that references to gradients defined later in the
+// document (a legal forward reference) work. def holds the ink that was inherited when the reference was encountered
+// and supplies the default color for gradient stops that lack an explicit one.
+type svgGradientRef struct {
+	def Ink
+	id  string
+}
+
+// Paint implements Ink. It is never expected to be called, since every reference is replaced by its actual gradient
+// before parsing completes; it exists only so svgGradientRef can occupy a style's ink slots.
+func (r *svgGradientRef) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
+	return Black.Paint(canvas, rect, style)
 }
 
 type svgParser struct {
@@ -361,8 +380,7 @@ func (s *SVG) AspectRatio() float32 {
 func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, paint *Paint) {
 	canvas.Save()
 	defer canvas.Restore()
-	offset := s.OffsetToCenterWithinScaledSize(rect.Size)
-	canvas.Translate(rect.Point.Add(offset))
+	canvas.Translate(rect.Point)
 	canvas.Scale(geom.PointFromSize(rect.Size.DivSize(s.viewBox.Size)))
 	canvas.Translate(s.viewBox.Neg())
 	for _, path := range s.paths {
@@ -374,7 +392,6 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 			if path.fillInk != nil {
 				fillPaint := path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill)
 				canvas.DrawPath(path.path, fillPaint)
-				fillPaint.Dispose()
 			}
 			if path.strokeInk != nil {
 				p := path.strokeInk.Paint(canvas, s.viewBox, paintstyle.Stroke)
@@ -386,7 +403,6 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 					p.SetPathEffect(path.dash)
 				}
 				canvas.DrawPath(path.path, p)
-				p.Dispose()
 			}
 		} else {
 			canvas.DrawPath(path.path, paint)
@@ -483,7 +499,7 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 			switch se.Name.Local {
 			case "g":
 				if p.inDefs {
-					p.currentDef = append(p.currentDef, svgDef{tag: "endg"})
+					p.currentDef = append(p.currentDef, svgDef{tag: svgEndGroupTag})
 				}
 			case "mask":
 				if p.mask != nil {
@@ -492,10 +508,7 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 				}
 				p.inMask = false
 			case "defs":
-				if len(p.currentDef) > 0 {
-					p.data.defs[p.currentDef[0].id] = p.currentDef
-					p.currentDef = make([]svgDef, 0)
-				}
+				p.registerDefs()
 				p.inDefs = false
 			case "radialGradient", "linearGradient":
 				p.inGrad = false
@@ -507,6 +520,14 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 	p.svg.paths = make([]*svgPath, 0, len(svg.paths))
 	for _, pp := range svg.paths {
 		var err error
+		// Gradient url(#id) references are resolved only now that the whole document has been seen, so that forward
+		// references to gradients defined later in the document work.
+		if pp.style.fillInk, err = p.resolveGradientRefInk(pp.style.fillInk); err != nil {
+			return nil, err
+		}
+		if pp.style.strokeInk, err = p.resolveGradientRefInk(pp.style.strokeInk); err != nil {
+			return nil, err
+		}
 		mp := &svgPath{path: svgPreparePath(pp.path, &pp.style)}
 		if pp.style.fillInk != nil && pp.style.fillOpacity != 0 {
 			if mp.fillInk, err = p.createInkForSVG(pp.path, pp.style.fillInk, pp.style.fillOpacity); err != nil {
@@ -531,13 +552,24 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 			if !ok {
 				continue
 			}
+			// Paths within a single mask union together, since each painted shape reveals its area. Distinct mask
+			// references on an element each clip the result, so those combine by intersection.
+			var maskPath *Path
 			for _, sp := range mask.paths {
 				sm := svgPreparePath(sp.path, &sp.style)
-				if singleMask == nil {
-					singleMask = sm
-				} else if !singleMask.Intersect(sm) {
+				if maskPath == nil {
+					maskPath = sm
+				} else if !maskPath.Union(sm) {
 					return nil, errs.New("svg: failed to combine mask paths")
 				}
+			}
+			if maskPath == nil {
+				continue
+			}
+			if singleMask == nil {
+				singleMask = maskPath
+			} else if !singleMask.Intersect(maskPath) {
+				return nil, errs.New("svg: failed to combine mask paths")
 			}
 		}
 		if singleMask != nil && !singleMask.Empty() {
@@ -576,40 +608,42 @@ func (p *svgParser) createInkForSVG(path *Path, ink Ink, opacity float32) (Ink, 
 			bbox = path.ComputeTightBounds()
 		}
 		var err error
-		g.StartPt.X, err = svgResolveUnit(bbox, t.sx, svgPercentWidth)
+		g.StartPt.X, err = svgResolveGradientUnit(bbox, t.sx, svgPercentWidth, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
-		g.StartPt.Y, err = svgResolveUnit(bbox, t.sy, svgPercentHeight)
+		g.StartPt.Y, err = svgResolveGradientUnit(bbox, t.sy, svgPercentHeight, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
-		g.EndPt.X, err = svgResolveUnit(bbox, t.ex, svgPercentWidth)
+		g.EndPt.X, err = svgResolveGradientUnit(bbox, t.ex, svgPercentWidth, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
-		g.EndPt.Y, err = svgResolveUnit(bbox, t.ey, svgPercentHeight)
+		g.EndPt.Y, err = svgResolveGradientUnit(bbox, t.ey, svgPercentHeight, !t.userSpaceOnUse)
 		if err != nil {
 			return nil, err
 		}
 		g.Kind = gradienttype.Linear
 		if t.sr != "" {
 			g.Kind = gradienttype.Radial
-			g.Radius.Start, err = svgResolveUnit(bbox, t.sr, svgPercentDiag)
+			g.Radius.Start, err = svgResolveGradientUnit(bbox, t.sr, svgPercentDiag, !t.userSpaceOnUse)
 			if err != nil {
 				return nil, err
 			}
 		}
 		if t.er != "" {
-			g.Radius.End, err = svgResolveUnit(bbox, t.er, svgPercentDiag)
+			g.Radius.End, err = svgResolveGradientUnit(bbox, t.er, svgPercentDiag, !t.userSpaceOnUse)
 			if err != nil {
 				return nil, err
 			}
-			if t.sr == "" {
+			if t.sr == "" && g.StartPt == g.EndPt {
 				g.Kind = gradienttype.Radial
 				g.Radius.Start = g.Radius.End
 				g.Radius.End = 0
 			} else {
+				// Either a focal radius (fr) or an offset focal point (fx/fy) was given, so a two-point conical
+				// gradient is required. When fr was omitted, Radius.Start is already 0.
 				g.Kind = gradienttype.Conical
 			}
 		}
@@ -697,8 +731,10 @@ func (p *svgParser) readTransformAttr(op string, m geom.Matrix) (geom.Matrix, er
 func (p *svgParser) parseTransform(v string) (geom.Matrix, error) {
 	s := strings.Split(v, ")")
 	m := p.styleStack[len(p.styleStack)-1].transform
-	for i := len(s) - 1; i >= 0; i-- {
-		t := strings.TrimSpace(s[i])
+	// SVG composes a transform list left-to-right: the first op in the attribute is outermost, so it must be multiplied
+	// onto the accumulator first (Multiply applies its argument to the point before the receiver).
+	for _, seg := range s {
+		t := strings.TrimSpace(seg)
 		if t == "" {
 			continue
 		}
@@ -706,7 +742,7 @@ func (p *svgParser) parseTransform(v string) (geom.Matrix, error) {
 		if len(data) != 2 || len(data[1]) < 1 {
 			return m, errParamMismatch
 		}
-		err := p.addPoints(data[1])
+		err := p.addPoints(data[1], false)
 		if err != nil {
 			return m, err
 		}
@@ -753,8 +789,8 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 	v = strings.TrimSpace(v)
 	switch strings.TrimSpace(strings.ToLower(k)) {
 	case "fill":
-		if gradient, ok := p.readGradientURL(v, curStyle.fillInk); ok {
-			curStyle.fillInk = swapGradientForColorIfNeeded(gradient)
+		if id, ok := svgGradientURLRefID(v); ok {
+			curStyle.fillInk = &svgGradientRef{def: curStyle.fillInk, id: id}
 		} else if curStyle.fillInk, err = ColorDecode(v); err != nil {
 			return err
 		}
@@ -768,8 +804,8 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 			slog.Warn("svg: unsupported value for fill-rule", "value", v)
 		}
 	case "stroke":
-		if gradient, ok := p.readGradientURL(v, curStyle.strokeInk); ok {
-			curStyle.strokeInk = swapGradientForColorIfNeeded(gradient)
+		if id, ok := svgGradientURLRefID(v); ok {
+			curStyle.strokeInk = &svgGradientRef{def: curStyle.strokeInk, id: id}
 		} else if curStyle.strokeInk, err = ColorDecode(v); err != nil {
 			return err
 		}
@@ -890,10 +926,6 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 				id = attr.Value
 			}
 		}
-		if id != "" && len(p.currentDef) > 0 {
-			p.data.defs[p.currentDef[0].id] = p.currentDef
-			p.currentDef = make([]svgDef, 0)
-		}
 		p.currentDef = append(p.currentDef, svgDef{
 			id:    id,
 			tag:   se.Name.Local,
@@ -904,44 +936,95 @@ func (p *svgParser) readStartElement(se xml.StartElement) error {
 	if err := p.executeDrawFunc(se.Name.Local, se.Attr); err != nil {
 		return err
 	}
-	if !p.path.Empty() {
-		if p.inMask && p.mask != nil {
-			p.mask.paths = append(p.mask.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
-		} else if !p.inMask {
-			p.data.paths = append(p.data.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
-		}
-		p.path = NewPath()
-	}
+	p.flushPath()
 	return nil
 }
 
-func (p *svgParser) readGradientURL(v string, defaultColor Ink) (grad *svgGradient, ok bool) {
-	if strings.HasPrefix(v, "url(") && strings.HasSuffix(v, ")") {
-		if v, ok = strings.CutPrefix(strings.TrimSpace(v[4:len(v)-1]), "#"); ok {
-			var sg *svgGradient
-			if sg, ok = p.data.grads[v]; ok {
-				g := *sg.gradient
-				for _, s := range g.Stops {
-					if s.Color != nil {
-						continue
-					}
-					stops := append([]Stop{}, g.Stops...)
-					g.Stops = stops
-					c := getSVGBackgroundColor(defaultColor)
-					for i, s := range stops {
-						if s.Color == nil {
-							g.Stops[i].Color = c
-						}
-					}
-					break
+// registerDefs records the def entries collected for a defs section, creating one entry in the defs map per id-bearing
+// element. A group's def spans through its matching endg sentinel so that using it pushes and pops style frames in
+// balance, while id-bearing elements nested inside a group also remain individually addressable.
+func (p *svgParser) registerDefs() {
+	for i, def := range p.currentDef {
+		if def.id == "" || def.tag == svgEndGroupTag {
+			continue
+		}
+		end := i + 1
+		if def.tag == "g" {
+			depth := 1
+			for end < len(p.currentDef) && depth > 0 {
+				switch p.currentDef[end].tag {
+				case "g":
+					depth++
+				case svgEndGroupTag:
+					depth--
 				}
-				sg2 := *sg
-				sg2.gradient = &g
-				grad = &sg2
+				end++
 			}
 		}
+		p.data.defs[def.id] = p.currentDef[i:end]
 	}
-	return grad, ok
+	p.currentDef = nil
+}
+
+// flushPath records any geometry accumulated in p.path with the current top-of-stack style and resets p.path for the
+// next shape. Does nothing if no geometry has accumulated.
+func (p *svgParser) flushPath() {
+	if p.path.Empty() {
+		return
+	}
+	if p.inMask && p.mask != nil {
+		p.mask.paths = append(p.mask.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
+	} else if !p.inMask {
+		p.data.paths = append(p.data.paths, &svgStyledPath{path: p.path, style: p.styleStack[len(p.styleStack)-1]})
+	}
+	p.path = NewPath()
+}
+
+// svgGradientURLRefID extracts the gradient id from a url(#id) fill or stroke value. ok is false when the value is not
+// an id-based url reference.
+func svgGradientURLRefID(v string) (id string, ok bool) {
+	if strings.HasPrefix(v, "url(") && strings.HasSuffix(v, ")") {
+		return strings.CutPrefix(strings.TrimSpace(v[4:len(v)-1]), "#")
+	}
+	return "", false
+}
+
+// resolveGradientRefInk replaces an svgGradientRef placeholder with its actual gradient (or a solid color when the
+// gradient degenerates to one). Any other ink, including nil, is returned unchanged. Called once the entire document
+// has been parsed, so gradients defined after their first reference resolve correctly. Recursion on ref.def terminates
+// because each placeholder's def ink was recorded strictly before the placeholder itself was created, so the reference
+// chain can never cycle.
+func (p *svgParser) resolveGradientRefInk(ink Ink) (Ink, error) {
+	ref, ok := ink.(*svgGradientRef)
+	if !ok {
+		return ink, nil
+	}
+	sg, ok := p.data.grads[ref.id]
+	if !ok {
+		return nil, errs.Newf("svg: no gradient with id %q", ref.id)
+	}
+	def, err := p.resolveGradientRefInk(ref.def)
+	if err != nil {
+		return nil, err
+	}
+	g := *sg.gradient
+	for _, s := range g.Stops {
+		if s.Color != nil {
+			continue
+		}
+		stops := append([]Stop{}, g.Stops...)
+		g.Stops = stops
+		c := getSVGBackgroundColor(def)
+		for i, s := range stops {
+			if s.Color == nil {
+				g.Stops[i].Color = c
+			}
+		}
+		break
+	}
+	sg2 := *sg
+	sg2.gradient = &g
+	return swapGradientForColorIfNeeded(&sg2), nil
 }
 
 func getSVGBackgroundColor(clr Ink) Color {
@@ -971,7 +1054,7 @@ func (p *svgParser) compilePath(svgPath string) error {
 	p.inPath = false
 	lastIndex := -1
 	for i, v := range svgPath {
-		if unicode.IsLetter(v) && v != 'e' {
+		if unicode.IsLetter(v) && v != 'e' && v != 'E' {
 			if lastIndex != -1 {
 				if err := p.addSegment(svgPath[lastIndex:i]); err != nil {
 					return err
@@ -1018,12 +1101,24 @@ func (p *svgParser) hasSetsOrMore(sz int, rel bool) bool {
 	return true
 }
 
-func (p *svgParser) addPoints(dataPoints string) error {
+// addPoints tokenizes a list of numbers. When arcFlags is true, the data is elliptical-arc arguments, whose 4th and 5th
+// values in each set of 7 are the large-arc and sweep flags: single digits that may legally abut the following number
+// with no separator (e.g. "a4 4 0 014 4"), so at those positions exactly one digit is consumed.
+func (p *svgParser) addPoints(dataPoints string, arcFlags bool) error {
 	lastIndex := -1
 	p.pts = p.pts[0:0]
 	lr := ' '
 	for i, r := range dataPoints {
-		if !unicode.IsNumber(r) && r != '.' && (r != '-' || lr != 'e') && r != 'e' {
+		if arcFlags && lastIndex == -1 && (r == '0' || r == '1') {
+			if pos := len(p.pts) % 7; pos == 3 || pos == 4 {
+				p.pts = append(p.pts, float32(r-'0'))
+				lr = r
+				continue
+			}
+		}
+		partOfNumber := unicode.IsNumber(r) || r == '.' || r == 'e' || r == 'E' ||
+			((r == '-' || r == '+') && (lr == 'e' || lr == 'E'))
+		if !partOfNumber {
 			if lastIndex != -1 {
 				if err := p.readFloatIntoPts(dataPoints[lastIndex:i]); err != nil {
 					return err
@@ -1074,11 +1169,11 @@ func (p *svgParser) readFloatIntoPts(numStr string) error {
 }
 
 func (p *svgParser) addSegment(segString string) error {
-	if err := p.addPoints(segString[1:]); err != nil {
+	k := segString[0]
+	if err := p.addPoints(segString[1:], k == 'a' || k == 'A'); err != nil {
 		return err
 	}
 	l := len(p.pts)
-	k := segString[0]
 	rel := false
 	switch k {
 	case 'Z', 'z':
@@ -1266,7 +1361,7 @@ func (p *svgParser) executeDrawFunc(name string, attrs []xml.Attr) error {
 		if err := p.handlePolylineElement(attrs); err != nil {
 			return err
 		}
-		if len(p.pts) > 4 {
+		if len(p.pts) >= 4 {
 			p.path.Close()
 		}
 		return nil
@@ -1357,7 +1452,7 @@ func (p *svgParser) handleLinearGradientElement(attrs []xml.Attr) error {
 		sx: "0%",
 		sy: "0%",
 		ex: "100%",
-		ey: "100%",
+		ey: "0%",
 	}
 	for _, attr := range attrs {
 		switch attr.Name.Local {
@@ -1413,13 +1508,14 @@ func (p *svgParser) readCommonGradientAttrs(attr xml.Attr) error {
 func (p *svgParser) handleRadialGradientElement(attrs []xml.Attr) error {
 	p.inGrad = true
 	const fiftyPercent = "50%"
+	// Per the SVG spec, cx, cy and r default to 50%, fx and fy default to cx and cy, and fr defaults to 0. sx, sy and
+	// sr are deliberately left empty here: sx and sy inherit from ex and ey below once the attributes have been read,
+	// and an empty sr represents the fr default of 0.
 	p.grad = &svgGradient{
 		gradient: &Gradient{
 			Kind:      gradienttype.Radial,
 			Transform: geom.NewIdentityMatrix(),
 		},
-		sr: fiftyPercent,
-		sx: fiftyPercent,
 		ex: fiftyPercent,
 		ey: fiftyPercent,
 		er: fiftyPercent,
@@ -1560,14 +1656,14 @@ func (p *svgParser) handlePolylineElement(attrs []xml.Attr) error {
 		if attr.Name.Local != "points" {
 			continue
 		}
-		if err := p.addPoints(attr.Value); err != nil {
+		if err := p.addPoints(attr.Value, false); err != nil {
 			return err
 		}
 		if len(p.pts)%2 != 0 {
 			return errors.New("polygon has odd number of points")
 		}
 	}
-	if len(p.pts) > 4 {
+	if len(p.pts) >= 4 {
 		p.path.MoveTo(geom.NewPoint(p.pts[0]+p.curX, p.pts[1]+p.curY))
 		for i := 2; i < len(p.pts)-1; i += 2 {
 			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
@@ -1581,7 +1677,7 @@ func (p *svgParser) handleSVGElement(attrs []xml.Attr) error {
 	for _, attr := range attrs {
 		switch attr.Name.Local {
 		case "viewBox":
-			if err := p.addPoints(attr.Value); err != nil {
+			if err := p.addPoints(attr.Value, false); err != nil {
 				return err
 			}
 			if len(p.pts) != 4 {
@@ -1639,9 +1735,12 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 			return err
 		}
 	}
-	p.curX, p.curY = x, y
+	// Offsets accumulate rather than replace so that a use reached through another use's def keeps the outer offset,
+	// and the previous values are restored afterward rather than being reset to zero.
+	prevX, prevY := p.curX, p.curY
+	p.curX, p.curY = prevX+x, prevY+y
 	defer func() {
-		p.curX, p.curY = 0, 0
+		p.curX, p.curY = prevX, prevY
 	}()
 	if href == "" {
 		return errors.New("only use tags with href is supported")
@@ -1654,7 +1753,7 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 		return errors.New("href ID in use statement was not found in saved defs")
 	}
 	for _, def := range defs {
-		if def.tag == "endg" {
+		if def.tag == svgEndGroupTag {
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 			continue
 		}
@@ -1664,6 +1763,9 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 		if err = p.executeDrawFunc(def.tag, def.attrs); err != nil {
 			return err
 		}
+		// Flush each def's geometry with its own style before the next def runs, since handlers like compilePath reset
+		// p.path, which would otherwise silently discard everything drawn by the earlier defs.
+		p.flushPath()
 		if def.tag != "g" {
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 		}
@@ -1732,6 +1834,32 @@ func svgResolveUnit(viewBox geom.Rect, s string, asPerc svgPercentRef) (float32,
 			normalizedDiag := xmath.Sqrt(w*w+h*h) / xmath.Sqrt(2)
 			return value / 100 * normalizedDiag, nil
 		}
+	}
+	return value, nil
+}
+
+// svgResolveGradientUnit resolves a gradient coordinate. For objectBoundingBox units (the default), percentages and
+// plain numbers both denote fractions of the bounding box (e.g. "0.5" and "50%" are equivalent), so plain numbers are
+// scaled by the box dimension as well. For userSpaceOnUse, plain numbers are user-space values and only percentages
+// scale, which is what svgResolveUnit already does.
+func svgResolveGradientUnit(bbox geom.Rect, s string, asPerc svgPercentRef, objectBoundingBox bool) (float32, error) {
+	if !objectBoundingBox {
+		return svgResolveUnit(bbox, s, asPerc)
+	}
+	value, isPercent, err := svgParseUnit(s)
+	if err != nil {
+		return 0, err
+	}
+	if isPercent {
+		value /= 100
+	}
+	switch asPerc {
+	case svgPercentWidth:
+		return value * bbox.Width, nil
+	case svgPercentHeight:
+		return value * bbox.Height, nil
+	case svgPercentDiag:
+		return value * xmath.Sqrt(bbox.Width*bbox.Width+bbox.Height*bbox.Height) / xmath.Sqrt(2), nil
 	}
 	return value, nil
 }

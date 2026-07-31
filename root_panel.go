@@ -43,12 +43,15 @@ func newRootPanel(wnd *Window) *rootPanel {
 }
 
 func (p *rootPanel) MenuBar() *Panel {
+	if p.menuBarPanel == nil {
+		return nil
+	}
 	return p.menuBarPanel.AsPanel()
 }
 
 func (p *rootPanel) setMenuBar(menuBar *menu) {
 	if p.menuBarPanel != nil {
-		p.menuBar.closeMenuStackStoppingAt(p.window, nil)
+		p.closeMenuStackStoppingAt(nil)
 		p.RemoveChild(p.menuBarPanel)
 	}
 	p.menuBar = menuBar
@@ -83,8 +86,12 @@ func (p *rootPanel) setContent(content Paneler) {
 	if p.contentPanel != nil {
 		p.RemoveChild(p.contentPanel)
 	}
-	p.contentPanel = content.AsPanel()
+	var panel *Panel
 	if content != nil {
+		panel = content.AsPanel()
+	}
+	p.contentPanel = panel
+	if panel != nil {
 		index := len(p.openMenuPanels)
 		if p.menuBarPanel != nil {
 			index++
@@ -92,7 +99,7 @@ func (p *rootPanel) setContent(content Paneler) {
 		if p.tooltipPanel != nil {
 			index++
 		}
-		p.AddChildAtIndex(content, index)
+		p.AddChildAtIndex(panel, index)
 	}
 	p.NeedsLayout = true
 	p.MarkForRedraw()
@@ -115,7 +122,9 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 }
 
 func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
-	minSize, prefSize, maxSize = p.contentPanel.Sizes(hint)
+	if p.contentPanel != nil {
+		minSize, prefSize, maxSize = p.contentPanel.Sizes(hint)
+	}
 	if p.menuBarPanel != nil {
 		_, barSize, _ := p.menuBarPanel.Sizes(geom.Size{})
 		for _, size := range []*geom.Size{&minSize, &prefSize, &maxSize} {
@@ -138,7 +147,9 @@ func (p *rootPanel) PerformLayout(_ *Panel) {
 		rect.Y += size.Height
 		rect.Height -= size.Height
 	}
-	p.contentPanel.SetFrameRect(rect)
+	if p.contentPanel != nil {
+		p.contentPanel.SetFrameRect(rect)
+	}
 }
 
 func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
@@ -154,38 +165,50 @@ func (p *rootPanel) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers,
 		SafeCall(func() { stop = p.menuBar.preKeyDown(wnd, keyCode, mods, repeat) })
 		return stop
 	}
-	return false
+	return len(p.openMenuPanels) != 0
 }
 
-func (p *rootPanel) preRuneTyped(wnd *Window, ch rune) bool {
-	if p.menuBar != nil {
-		stop := false
-		SafeCall(func() { stop = p.menuBar.preRuneTyped(wnd, ch) })
-		return stop
+func (p *rootPanel) preRuneTyped(_ *Window, _ rune) bool {
+	return len(p.openMenuPanels) != 0
+}
+
+func (p *rootPanel) preKeyUp(_ *Window, _ KeyCode, _ mod.Modifiers) bool {
+	return len(p.openMenuPanels) != 0
+}
+
+func (p *rootPanel) preMouseDown(_ *Window, where geom.Point) bool {
+	// Iterate from the most recently opened popup to the oldest, matching the draw/hit-test z-order (the newest popup
+	// is topmost). This ensures that when a child menu overlaps its parent, a click in the overlap is attributed to the
+	// child rather than the parent, which would otherwise tear the child back down.
+	for i := len(p.openMenuPanels) - 1; i >= 0; i-- {
+		one := p.openMenuPanels[i]
+		if where.In(one.FrameRect()) {
+			SafeCall(func() { p.closeMenuStackStoppingAt(one.menu) })
+			return false
+		}
 	}
+	SafeCall(func() { p.closeMenuStackStoppingAt(nil) })
 	return false
 }
 
-func (p *rootPanel) preKeyUp(wnd *Window, keyCode KeyCode, mods mod.Modifiers) bool {
-	if p.menuBar != nil {
-		stop := false
-		SafeCall(func() { stop = p.menuBar.preKeyUp(wnd, keyCode, mods) })
-		return stop
-	}
-	return false
+func (p *rootPanel) preMoved(_ *Window) {
+	SafeCall(func() { p.closeMenuStackStoppingAt(nil) })
 }
 
-func (p *rootPanel) preMouseDown(wnd *Window, where geom.Point) bool {
-	if p.menuBar != nil {
-		stop := false
-		SafeCall(func() { stop = p.menuBar.preMouseDown(wnd, where) })
-		return stop
-	}
-	return false
+func (p *rootPanel) postLostFocus(w *Window) {
+	// Need to give the event loop a chance to potentially refocus it before we decide to tear it down.
+	InvokeTask(func() {
+		if ActiveWindow() != w {
+			p.closeMenuStackStoppingAt(nil)
+		}
+	})
 }
 
-func (p *rootPanel) preMoved(wnd *Window) {
-	if p.menuBar != nil {
-		SafeCall(func() { p.menuBar.preMoved(wnd) })
+func (p *rootPanel) closeMenuStackStoppingAt(stopAt *menu) {
+	for i := len(p.openMenuPanels) - 1; i >= 0; i-- {
+		if p.openMenuPanels[i].menu == stopAt {
+			return
+		}
+		p.removeMenu(p.openMenuPanels[i])
 	}
 }

@@ -108,6 +108,11 @@ func (mi *menuItem) IsSame(other MenuItem) bool {
 }
 
 func (mi *menuItem) Menu() Menu {
+	if mi.menu == nil {
+		// Return a true nil rather than a typed-nil *menu wrapped in the interface, which would pass != nil checks
+		// and then crash on the first method call. This also matches the behavior of the macOS implementation.
+		return nil
+	}
 	return mi.menu
 }
 
@@ -204,6 +209,10 @@ func (mi *menuItem) showSubMenu() {
 		mi.factory.showInProgress = true
 		defer func() { mi.factory.showInProgress = false }()
 		mi.subMenu.createPopup()
+		if mi.subMenu.popupPanel == nil {
+			// createPopup is a no-op when no window is active, so there is no panel to position.
+			return
+		}
 		pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
 		fr := mi.subMenu.popupPanel.FrameRect()
 		if mi.isRoot() {
@@ -244,7 +253,7 @@ func (mi *menuItem) mouseMove(_ geom.Point, _ mod.Modifiers) bool {
 		stopAt = mi.subMenu
 	}
 	if w := ActiveWindow(); w != nil {
-		mi.menu.closeMenuStackStoppingAt(w, stopAt)
+		w.root.closeMenuStackStoppingAt(stopAt)
 	}
 	return false
 }
@@ -292,7 +301,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 		bg = DefaultMenuItemTheme.SelectionColor
 	}
 	bgPaint := bg.Paint(gc, rect, paintstyle.Fill)
-	defer bgPaint.Dispose()
 	gc.DrawRect(rect, bgPaint)
 
 	if !mi.enabled {
@@ -305,7 +313,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 	if mi.isSeparator {
 		separatorPaint := fg.Paint(gc, rect, paintstyle.Fill)
 		gc.DrawLine(rect.Point, geom.NewPoint(rect.Right(), rect.Y), separatorPaint)
-		separatorPaint.Dispose()
 	} else {
 		t := NewText(mi.Title(), &TextDecoration{
 			Font:            DefaultMenuItemTheme.TitleFont,
@@ -332,7 +339,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 				}
 				statePaint := fg.Paint(gc, r, paintstyle.Fill)
 				drawable.DrawInRect(gc, r, nil, statePaint)
-				statePaint.Dispose()
 			}
 			if mi.keyBinding.KeyCode != 0 {
 				keys := mi.keyBinding.String()
@@ -355,7 +361,6 @@ func (mi *menuItem) paint(gc *Canvas, rect geom.Rect) {
 			}
 			chevronPaint := fg.Paint(gc, rect, paintstyle.Fill)
 			drawable.DrawInRect(gc, rect, nil, chevronPaint)
-			chevronPaint.Dispose()
 		}
 	}
 }

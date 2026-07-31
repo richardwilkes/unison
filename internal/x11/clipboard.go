@@ -194,14 +194,24 @@ func (c *Conn) requestClipboardTargets() []Atom {
 // returns the resulting data. If the contents are provided incrementally (using the INCR mechanism), it handles that
 // as well by repeatedly requesting the property until all data has been received.
 func (c *Conn) convertSelection(selection, target Atom, timestamp uint32) ([]byte, bool) {
-	c.ConvertSelection(c.helperWindow, selection, target, c.Atoms.ClipboardSelection, timestamp)
-	ev := c.WaitEventsUntil(func(e Event) bool {
-		if sne, ok := e.(*SelectionNotifyEvent); ok && sne.Requestor == c.helperWindow &&
-			sne.Selection == selection && sne.Target == target {
+	sneFilter := func(e Event) bool {
+		sne, valid := e.(*SelectionNotifyEvent)
+		return valid && sne.Requestor == c.helperWindow && sne.Selection == selection && sne.Target == target
+	}
+	// A conversion that previously timed out can leave matching SelectionNotify and PropertyNotify events queued
+	// (filtered waits keep non-matching events around forever). Drain all of them before starting a new conversion so
+	// a stale event can't be mistaken for a response to this request, which could truncate an INCR transfer by making
+	// the loop below read the property before the owner has written the next chunk.
+	c.drainEvents(func(e Event) bool {
+		if sneFilter(e) {
 			return true
 		}
-		return false
-	}, clipboardReplyTimeout)
+		pne, valid := e.(*PropertyNotifyEvent)
+		return valid && pne.State == PropertyNewValue && pne.Window == c.helperWindow &&
+			pne.Atom == c.Atoms.ClipboardSelection
+	})
+	c.ConvertSelection(c.helperWindow, selection, target, c.Atoms.ClipboardSelection, timestamp)
+	ev := c.WaitEventsUntil(sneFilter, clipboardReplyTimeout)
 	sne, ok := ev.(*SelectionNotifyEvent)
 	if !ok || sne.Property == AtomNone {
 		return nil, false
@@ -213,7 +223,7 @@ func (c *Conn) convertSelection(selection, target Atom, timestamp uint32) ([]byt
 		}
 		return false
 	}
-	c.PollEvents(filter) // Ensure no existing PropertyNotifyEvent is already pending
+	c.drainEvents(filter) // Discard notifications for writes that happened before the SelectionNotify arrived
 	_, propertyType, value, _, err := c.GetProperty(sne.Requestor, sne.Property, AtomAny, 0, math.MaxUint32, true)
 	if err != nil {
 		errs.Log(err)
@@ -340,6 +350,16 @@ func (c *Conn) writeClipboardProperty(requestor WindowID, property Atom, entry c
 		c.ChangeProperty(requestor, property, entry.kind, 8, PropModeReplace, entry.data)
 		return nil
 	}
+	// Mirror the receive-side drain in convertSelection: an earlier transfer to the same requestor and property that
+	// was abandoned after incrSendTimeout can leave a matching PropertyDelete queued (filtered waits keep non-matching
+	// events around forever). If it survived into completeIncrTransfers, the first wait there would consume it and
+	// write chunk 1 immediately, replacing the INCR size marker before the requestor has read it and corrupting the
+	// transfer. The drain must happen here, before the size marker is written, since once the marker is on the wire a
+	// matching PropertyDelete may be the requestor legitimately consuming it.
+	c.drainEvents(func(e Event) bool {
+		pne, ok := e.(*PropertyNotifyEvent)
+		return ok && pne.State == PropertyDelete && pne.Window == requestor && pne.Atom == property
+	})
 	c.ChangeWindowAttributes(requestor, WindowMaskEventMask,
 		&WindowCreationAttributes{EventMask: EventMaskPropertyChange})
 	w := NewWriter(4)

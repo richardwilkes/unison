@@ -89,6 +89,5 @@ func (s *Separator) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		rect.Height = 1
 	}
 	paint := s.LineInk.Paint(canvas, rect, paintstyle.Fill)
-	defer paint.Dispose()
 	canvas.DrawRect(rect, paint)
 }

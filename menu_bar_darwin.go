@@ -15,7 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/mod"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 func apiQuitMenuTitle() string {
@@ -28,10 +28,10 @@ func apiAddAppMenuEntries(m Menu) {
 	m.InsertSeparator(-1, false)
 	m.InsertItem(-1, m.Factory().NewItem(HideItemID, fmt.Sprintf(i18n.Text("Hide %s"), xos.AppName),
 		KeyBinding{KeyCode: KeyH, Modifiers: mod.OSMenuCommand()},
-		nil, func(MenuItem) { mac.HideApplication() }))
+		nil, func(MenuItem) { cocoa.HideApplication() }))
 	m.InsertItem(-1, m.Factory().NewItem(HideOthersItemID, i18n.Text("Hide Others"),
 		KeyBinding{KeyCode: KeyH, Modifiers: mod.Option | mod.OSMenuCommand()},
-		nil, func(MenuItem) { mac.HideOtherApplications() }))
+		nil, func(MenuItem) { cocoa.HideOtherApplications() }))
 	m.InsertItem(-1, m.Factory().NewItem(ShowAllItemID, i18n.Text("Show All"), KeyBinding{}, nil,
-		func(MenuItem) { mac.UnhideAllApplications() }))
+		func(MenuItem) { cocoa.UnhideAllApplications() }))
 }

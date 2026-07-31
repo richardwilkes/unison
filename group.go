@@ -31,7 +31,7 @@ type Group struct {
 // NewGroup creates a new group for the specified set of panels. Each panel is removed from any other group it may be in
 // and placed in the newly created one.
 func NewGroup(panel ...Grouper) *Group {
-	sg := &Group{panel: panel}
+	sg := &Group{}
 	for _, one := range panel {
 		sg.Add(one)
 	}

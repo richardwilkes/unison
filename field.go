@@ -67,13 +67,14 @@ type FieldTheme struct {
 
 // Field provides a text input control.
 type Field struct {
-	ModifiedCallback func(before, after *FieldState)
-	ValidateCallback func() bool
-	runes            []rune
-	lines            []*Text
-	endsWithLineFeed []lineEndingType
-	Watermark        string
-	forceShowUntil   time.Time
+	ModifiedCallback   func(before, after *FieldState)
+	ValidateCallback   func() bool
+	runes              []rune
+	lines              []*Text
+	endsWithLineFeed   []lineEndingType
+	Watermark          string
+	linesBuiltWithFont FontDescriptor
+	forceShowUntil     time.Time
 	FieldTheme
 	Panel
 	undoID             int64
@@ -82,6 +83,7 @@ type Field struct {
 	selectionAnchor    int
 	scrollOffset       geom.Point
 	linesBuiltFor      float32
+	linesBuiltWithRune rune
 	ObscurementRune    rune
 	AutoScroll         bool
 	NoSelectAllOnFocus bool
@@ -157,6 +159,7 @@ func (f *Field) Wrap() bool {
 func (f *Field) SetWrap(wrap bool) {
 	if wrap != f.wrap {
 		f.wrap = wrap
+		f.linesBuiltFor = -1
 		f.MarkForLayoutAndRedraw()
 	}
 }
@@ -211,6 +214,8 @@ func (f *Field) prepareLines(width float32) {
 	width = max(width, 0)
 	f.lines, f.endsWithLineFeed = f.buildLines(width)
 	f.linesBuiltFor = width
+	f.linesBuiltWithFont = f.Font.Descriptor()
+	f.linesBuiltWithRune = f.ObscurementRune
 }
 
 func (f *Field) prepareLinesForCurrentWidth() {
@@ -218,7 +223,10 @@ func (f *Field) prepareLinesForCurrentWidth() {
 }
 
 func (f *Field) buildLines(wrapWidth float32) (lines []*Text, endsWithLineFeed []lineEndingType) {
-	if wrapWidth == f.linesBuiltFor && f.linesBuiltFor >= 0 {
+	// ObscurementRune and Font are public fields that may be changed at any time, so they must participate in the
+	// cache validity check; wrap changes are handled by SetWrap resetting linesBuiltFor.
+	if wrapWidth == f.linesBuiltFor && f.linesBuiltFor >= 0 && f.ObscurementRune == f.linesBuiltWithRune &&
+		f.Font.Descriptor() == f.linesBuiltWithFont {
 		return f.lines, f.endsWithLineFeed
 	}
 	if len(f.runes) != 0 {
@@ -298,7 +306,6 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	}
 	rect := f.ContentRect(true)
 	backgroundPaint := bg.Paint(canvas, rect, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRect(rect, backgroundPaint)
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, pathop.Intersect, false)
@@ -332,7 +339,6 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				rect.Height = f.Font.LineHeight()
 				cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
 				canvas.DrawRect(rect, cursorPaint)
-				cursorPaint.Dispose()
 			}
 			f.scheduleBlink()
 		}
@@ -369,7 +375,6 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				selRect := geom.NewRect(left, textTop, right-left, textHeight)
 				selectionPaint := f.SelectionInk.Paint(canvas, selRect, paintstyle.Fill)
 				canvas.DrawRect(selRect, selectionPaint)
-				selectionPaint.Dispose()
 				t.Draw(canvas, geom.NewPoint(left, textBaseLine))
 				if selEnd < end {
 					e = end
@@ -386,14 +391,13 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 				line.Draw(canvas, geom.NewPoint(textLeft+f.scrollOffset.X, textBaseLine))
 			}
 			if !hasSelectionRange && enabled && focused && f.selectionEnd >= start && (f.selectionEnd < end ||
-				(!f.multiLine && f.selectionEnd <= end)) {
+				(i == len(f.lines)-1 && f.selectionEnd <= end)) {
 				if f.showCursor {
 					t := NewTextFromRunes(f.obscureIfNeeded(f.runes[start:f.selectionEnd]),
 						&TextDecoration{Font: f.Font})
 					cursorPaint := fg.Paint(canvas, rect, paintstyle.Fill)
 					canvas.DrawRect(geom.NewRect(textLeft+t.Width()+f.scrollOffset.X-0.5, textTop, 1, textHeight),
 						cursorPaint)
-					cursorPaint.Dispose()
 				}
 				f.scheduleBlink()
 			}
@@ -417,9 +421,12 @@ func (f *Field) scheduleBlink() {
 }
 
 func (f *Field) blink() {
+	// The pending flag must be cleared even when the field is no longer in a valid window, since otherwise a blink
+	// task that fires while the field is detached would leave it set and prevent the caret from ever blinking again
+	// after the field is re-attached.
+	f.pending = false
 	window := f.Window()
 	if window != nil && window.IsValid() {
-		f.pending = false
 		if time.Now().After(f.forceShowUntil) {
 			f.showCursor = !f.showCursor
 			f.MarkForRedraw()
@@ -602,23 +609,30 @@ func (f *Field) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool
 				case KeyA:
 					if f.CanSelectAll() {
 						f.SelectAll()
+						return true
 					}
 				case KeyX:
 					if f.CanCut() {
 						f.Cut()
+						return true
 					}
 				case KeyC:
 					if f.CanCopy() {
 						f.Copy()
+						return true
 					}
 				case KeyV:
 					if f.CanPaste() {
 						f.Paste()
+						return true
 					}
 				}
 			}
+			return false
 		}
-		return false
+		// The key was acted upon, so report it as handled to stop ancestors (e.g. a containing Table, which treats
+		// bare arrow keys as navigation) from also processing it.
+		return true
 	}
 	switch keyCode {
 	case KeyBackspace:
@@ -700,15 +714,7 @@ func (f *Field) handleHome(lineOnly, extend bool) {
 	f.undoID = NextUndoID()
 	switch {
 	case lineOnly:
-		var start int
-		if f.selectionStart == 0 || f.runes[f.selectionStart-1] == '\n' {
-			start = f.findPrevLineBreak(f.selectionStart + 1)
-		} else {
-			start = f.findPrevLineBreak(f.selectionStart)
-		}
-		if start != 0 {
-			start++
-		}
+		_, start := f.lineIndexForPos(f.selectionStart)
 		if extend {
 			f.setSelection(start, f.selectionEnd, f.selectionEnd)
 		} else {
@@ -1218,7 +1224,7 @@ func (f *Field) autoScroll() {
 				f.scrollOffset.Y = rect.Y - f.FromSelectionIndex(f.selectionStart).Y
 			} else if top+f.lineHeightAt(top) >= rect.Bottom() {
 				f.scrollOffset.Y = 0
-				top = f.FromSelectionIndex(f.selectionEnd).Y
+				top = f.FromSelectionIndex(f.selectionStart).Y
 				f.scrollOffset.Y = rect.Bottom() - (top + f.lineHeightAt(top))
 			}
 		}
@@ -1287,7 +1293,7 @@ func (f *Field) FromSelectionIndex(index int) geom.Point {
 		if f.endsWithLineFeed[i] == hardLineEnding {
 			length++
 		}
-		if !f.multiLine || index < start+length {
+		if index < start+length || i == len(f.lines)-1 {
 			return geom.NewPoint(f.textLeft(line, rect)+line.PositionForRuneIndex(index-start)+f.scrollOffset.X, y)
 		}
 		lastHeight = max(line.Height(), f.Font.LineHeight())
@@ -1322,16 +1328,6 @@ func (f *Field) isWordPart(index int) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }
 
-func (f *Field) findPrevLineBreak(pos int) int {
-	if pos >= len(f.runes) {
-		pos = len(f.runes) - 1
-	} else {
-		pos--
-	}
-	_, start := f.lineIndexForPos(pos)
-	return max(start-1, 0)
-}
-
 func (f *Field) findNextLineBreak(pos int) int {
 	if pos < 0 {
 		pos = 0
@@ -1339,6 +1335,9 @@ func (f *Field) findNextLineBreak(pos int) int {
 		pos++
 	}
 	index, start := f.lineIndexForPos(pos)
+	if index >= len(f.lines) {
+		return len(f.runes)
+	}
 	start += len(f.lines[index].runes)
 	if f.multiLine && f.endsWithLineFeed[index] != hardLineEnding {
 		start--
@@ -1409,6 +1408,7 @@ func (f *Field) ApplyFieldState(state *FieldState) {
 	if !slices.Equal(runes, f.runes) {
 		f.runes = runes
 		f.linesBuiltFor = -1
+		f.MarkForRedraw()
 	}
 	f.setSelection(state.SelectionStart, state.SelectionEnd, state.SelectionAnchor)
 }

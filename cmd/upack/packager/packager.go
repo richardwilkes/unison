@@ -21,6 +21,9 @@ import (
 // Package performs the platform-specific packaging for a Unison application.
 func Package(cfg *Config, version string, createDist bool) error {
 	cfg.prepare(version)
+	if err := cfg.validate(); err != nil {
+		return err
+	}
 	if err := prepareBinary(cfg); err != nil {
 		return err
 	}
@@ -30,12 +33,12 @@ func Package(cfg *Config, version string, createDist bool) error {
 	return nil
 }
 
-func copyFile(from, to string, mode fs.FileMode) error { //nolint:unused // This is used only on some platforms
-	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+func copyFile(from, to string, mode fs.FileMode) (err error) { //nolint:unused // This is used only on some platforms
+	if err = os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 		return errs.Wrap(err)
 	}
-	f, err := os.OpenFile(to, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
+	var f *os.File
+	if f, err = os.OpenFile(to, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode); err != nil {
 		return errs.Wrap(err)
 	}
 	defer func() {

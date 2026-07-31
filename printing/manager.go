@@ -14,6 +14,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -21,6 +22,9 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 )
+
+// newResolver is a hook for tests to simulate resolver creation failure.
+var newResolver = zeroconf.NewResolver
 
 // PrintManager holds the data needed by the print manager.
 type PrintManager struct {
@@ -55,9 +59,12 @@ func (p *PrintManager) ScanForPrinters(ctx context.Context, printers chan<- *Pri
 	p.lock.Lock()
 	p.printers = make(map[string]*Printer)
 	p.lock.Unlock()
-	resolver, err := zeroconf.NewResolver()
+	resolver, err := newResolver()
 	if err != nil {
 		errs.Log(errs.NewWithCause("unable to create zeroconf resolver", err))
+		if printers != nil {
+			close(printers)
+		}
 		return
 	}
 	entries := make(chan *zeroconf.ServiceEntry, 8)
@@ -75,7 +82,9 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 	}()
 	for entry := range in {
 		if ctx.Err() != nil {
-			return
+			// Keep draining rather than returning: zeroconf's mainloop sends to this channel without checking the
+			// context, so abandoning it would leave that goroutine blocked mid-send forever once the buffer fills.
+			continue
 		}
 		m := make(map[string]string, len(entry.Text)+1)
 		for _, text := range entry.Text {
@@ -88,6 +97,12 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 		if id == "" {
 			id = m["DUUID"]
 		}
+		host := strings.TrimSuffix(entry.HostName, ".")
+		if id == "" {
+			// Printers that advertise neither UUID nor DUUID would otherwise all share the map key "", leaving only
+			// one of them visible, so fall back to the host and port, which are unique per advertised printer.
+			id = host + ":" + strconv.Itoa(entry.Port)
+		}
 		authInfo := m["air"]
 		if authInfo == "" {
 			authInfo = "none"
@@ -96,7 +111,7 @@ func (p *PrintManager) collectPrinters(ctx context.Context, in <-chan *zeroconf.
 			PrinterID: PrinterID{
 				ID:   id,
 				Name: m["ty"],
-				Host: strings.TrimSuffix(entry.HostName, "."),
+				Host: host,
 				Port: entry.Port,
 			},
 			RemotePath:       m["rp"],

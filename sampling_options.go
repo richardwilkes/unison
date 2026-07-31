@@ -10,14 +10,12 @@
 package unison
 
 import (
-	"unsafe"
-
+	"github.com/richardwilkes/canvas/shaders"
 	"github.com/richardwilkes/unison/enums/filtermode"
 	"github.com/richardwilkes/unison/enums/mipmapmode"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
-// All of the structures and constants in this file must match the equivalents in Skia
+// The enum values in this file must match the equivalents in canvas.
 
 var defaultSampling SamplingOptions
 
@@ -41,15 +39,21 @@ func CatmullRomResampler() CubicResampler {
 type SamplingOptions struct {
 	MaxAniso       int32
 	UseCubic       bool
-	_              [3]bool
 	CubicResampler CubicResampler
 	FilterMode     filtermode.Enum
 	MipMapMode     mipmapmode.Enum
 }
 
-func (s *SamplingOptions) skSamplingOptions() skia.SamplingOptions {
+// skSamplingOptions converts the SamplingOptions into the canvas equivalent. A nil receiver yields the default options.
+func (s *SamplingOptions) skSamplingOptions() shaders.SamplingOptions {
 	if s == nil {
 		return defaultSampling.skSamplingOptions()
 	}
-	return skia.SamplingOptions(unsafe.Pointer(s))
+	return shaders.SamplingOptions{
+		MaxAniso: s.MaxAniso,
+		UseCubic: s.UseCubic,
+		Cubic:    shaders.CubicResampler{B: s.CubicResampler.B, C: s.CubicResampler.C},
+		Filter:   shaders.FilterMode(s.FilterMode),
+		Mipmap:   shaders.MipmapMode(s.MipMapMode),
+	}
 }

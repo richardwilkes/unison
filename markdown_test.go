@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -116,6 +117,58 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 			c.True(len(m.Children()) > 0)
 			c.Contains(collectMarkdownText(m.AsPanel()), tc.want)
 		})
+	}
+}
+
+// TestMarkdownStyledLinkLabels verifies that link labels whose text is nested inside styled inline nodes (emphasis,
+// code spans, strikethrough, etc.) still surface their text. extractText must recurse into child nodes rather than
+// only collecting the link node's direct Text children, or the rendered link ends up with an empty label.
+func TestMarkdownStyledLinkLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{name: "bold label", content: "[**bold label**](http://example.com)\n", want: "bold label"},
+		{name: "italic label", content: "[*italic label*](http://example.com)\n", want: "italic label"},
+		{name: "code label", content: "[`code label`](http://example.com)\n", want: "code label"},
+		{name: "strikethrough label", content: "[~~struck label~~](http://example.com)\n", want: "struck label"},
+		{name: "nested styles", content: "[**outer *inner* text**](http://example.com)\n", want: "outer inner text"},
+		{name: "mixed plain and styled", content: "[pre **mid** post](http://example.com)\n", want: "pre mid post"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent(tc.content, 400)
+			c.Contains(collectMarkdownText(m.AsPanel()), tc.want)
+		})
+	}
+}
+
+// TestMarkdownStyledImageAltText verifies that image alt text nested inside styled inline nodes still becomes the
+// image's tooltip, exercising the same extractText recursion as styled link labels. The image target does not exist,
+// so the load fails fast and the broken-image placeholder is used; the alt-text tooltip must be attached regardless.
+func TestMarkdownStyledImageAltText(t *testing.T) {
+	saved := markdownPrimaryDisplay
+	defer func() { markdownPrimaryDisplay = saved }()
+	markdownPrimaryDisplay = func() *Display { return nil }
+	c := check.New(t)
+	m := NewMarkdown(false)
+	m.SetContent("![**styled alt text**](missing-image-for-test.png)\n", 400)
+	var tip *Panel
+	var walk func(p *Panel)
+	walk = func(p *Panel) {
+		if _, ok := p.Self.(*DrawablePanel); ok && p.Tooltip != nil {
+			tip = p.Tooltip
+		}
+		for _, child := range p.Children() {
+			walk(child)
+		}
+	}
+	walk(m.AsPanel())
+	c.NotNil(tip)
+	if tip != nil {
+		c.Contains(collectMarkdownText(tip), "styled alt text")
 	}
 }
 
@@ -274,4 +327,47 @@ func TestMarkdownTableDoesNotWrapWhenItFits(t *testing.T) {
 		total += w
 	}
 	c.True(total <= 200, "shrunk columns must sum to no more than the available width")
+}
+
+// TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine verifies that retrieveImage queries the primary display
+// synchronously on the calling goroutine (the UI thread in production) rather than from the background image-loading
+// goroutine it spawns. Querying displays off the UI thread is unsafe: on macOS the lookup calls into AppKit, which
+// only permits access from the main thread, and the platform implementations rely on the UI thread for
+// synchronization.
+func TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine(t *testing.T) {
+	saved := markdownPrimaryDisplay
+	defer func() { markdownPrimaryDisplay = saved }()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	markdownPrimaryDisplay = func() *Display {
+		close(entered)
+		<-release
+		return nil
+	}
+	m := NewMarkdown(false)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		m.retrieveImage("missing-image-for-test.png", NewDrawablePanel())
+	}()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("retrieveImage never queried the display")
+	}
+	// retrieveImage waits at most one second for the image fetch before giving up and returning nil. If the display
+	// query were still being made from the image-loading goroutine, retrieveImage would therefore return while the
+	// blocked query keeps that goroutine stuck; when the query is made on the calling goroutine, retrieveImage cannot
+	// return until the query has been released. Wait longer than that internal timeout to tell the two apart.
+	select {
+	case <-done:
+		t.Fatal("retrieveImage returned while the display query was still blocked; it must query the display on the calling goroutine")
+	case <-time.After(1500 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("retrieveImage did not return after the display query completed")
+	}
 }

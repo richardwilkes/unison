@@ -58,7 +58,10 @@ func selectDataType(desiredType *uti.DataType, availableDataTypes []string) *uti
 		return desiredType
 	}
 	for _, one := range availableDataTypes {
-		if lookup := uti.ByUTI(one); lookup != nil && desiredType.ConformsTo(lookup) {
+		// Accept an available type that is a descendant of the desired type (e.g. public.utf8-plain-text satisfies a
+		// request for public.plain-text) as well as an ancestor of it, since either can service the request.
+		if lookup := uti.ByUTI(one); lookup != nil &&
+			(lookup.ConformsTo(desiredType) || desiredType.ConformsTo(lookup)) {
 			return lookup
 		}
 	}

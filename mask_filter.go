@@ -10,43 +10,27 @@
 package unison
 
 import (
-	"runtime"
-	"sync"
-
+	"github.com/richardwilkes/canvas/maskfilter"
 	"github.com/richardwilkes/unison/enums/blur"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 // MaskFilter performs a transformation on the mask before drawing it.
 type MaskFilter struct {
-	filter      skia.MaskFilter
-	cleanup     runtime.Cleanup
-	disposeOnce sync.Once
+	filter maskfilter.MaskFilter
 }
 
-func newMaskFilter(filter skia.MaskFilter) *MaskFilter {
+func newMaskFilter(filter maskfilter.MaskFilter) *MaskFilter {
 	if filter == nil {
 		return nil
 	}
-	f := &MaskFilter{filter: filter}
-	f.cleanup = newSkiaCleanup(f, filter, skia.MaskFilterUnref)
-	return f
+	return &MaskFilter{filter: filter}
 }
 
-func (f *MaskFilter) filterOrNil() skia.MaskFilter {
+func (f *MaskFilter) filterOrNil() maskfilter.MaskFilter {
 	if f == nil {
 		return nil
 	}
 	return f.filter
-}
-
-// Dispose releases the native resource. Use this if you wish to force cleanup earlier than a gc run would normally
-// trigger it.
-func (f *MaskFilter) Dispose() {
-	if f == nil {
-		return
-	}
-	disposeSkiaHandle(&f.disposeOnce, f.cleanup, &f.filter, skia.MaskFilterUnref)
 }
 
 // NewBlurMaskFilter returns a new blur mask filter. sigma is the standard deviation of the gaussian blur to apply. Must
@@ -55,7 +39,7 @@ func NewBlurMaskFilter(style blur.Enum, sigma float32, respectMatrix bool) *Mask
 	if sigma <= 0 {
 		sigma = 1
 	}
-	return newMaskFilter(skia.MaskFilterNewBlurWithFlags(skia.Blur(style), sigma, respectMatrix))
+	return newMaskFilter(maskfilter.NewBlur(maskfilter.BlurStyle(style), sigma, respectMatrix))
 }
 
 // NewTableMaskFilter returns a new table mask filter. The table should be 256 elements long. If shorter, it will be
@@ -66,20 +50,20 @@ func NewTableMaskFilter(table []byte) *MaskFilter {
 		copy(t, table)
 		table = t
 	}
-	return newMaskFilter(skia.MaskFilterNewTable(table))
+	return newMaskFilter(maskfilter.NewTable((*[256]uint8)(table)))
 }
 
 // NewGammaMaskFilter returns a new gamma mask filter.
 func NewGammaMaskFilter(gamma float32) *MaskFilter {
-	return newMaskFilter(skia.MaskFilterNewGamma(gamma))
+	return newMaskFilter(maskfilter.NewGamma(gamma))
 }
 
 // NewClipMaskFilter returns a new clip mask filter.
 func NewClipMaskFilter(minimum, maximum byte) *MaskFilter {
-	return newMaskFilter(skia.MaskFilterNewClip(minimum, maximum))
+	return newMaskFilter(maskfilter.NewClip(minimum, maximum))
 }
 
 // NewShaderMaskFilter returns a new shader mask filter.
 func NewShaderMaskFilter(shader *Shader) *MaskFilter {
-	return newMaskFilter(skia.MaskFilterNewShader(shader.shader))
+	return newMaskFilter(maskfilter.NewShader(shader.shader))
 }

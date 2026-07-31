@@ -11,6 +11,7 @@ linters:
     - errorlint
     - goconst
     - gocritic
+    - goheader
     - gosec
     - govet
     - ineffassign
@@ -53,29 +54,32 @@ linters:
       min-occurrences: 4
     gocritic:
       disabled-checks:
-        - dupImport      # This check doesn't work properly when using CGO
-        - sloppyReassign # This check doesn't work properly when using CGO
-        - underef        # The C code pointer derefs in Go get incorrectly flagged if this is enabled
+        - sloppyReassign
       enabled-tags:
         - diagnostic
         - experimental
         - opinionated
         - performance
         - style
+    goheader:
+      template: |-
+        Copyright (c) {{.YEAR_RANGE}} by Richard A. Wilkes. All rights reserved.
+
+        This Source Code Form is subject to the terms of the Mozilla Public
+        License, version 2.0. If a copy of the MPL was not distributed with
+        this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+        This Source Code Form is "Incompatible With Secondary Licenses", as
+        defined by the Mozilla Public License, version 2.0.
     gosec:
       excludes:
         - G103
         - G104
-        - G110
         - G115
         - G204
         - G301
-        - G302
-        - G303
         - G304
         - G306
-        - G307
-        - G601
     govet:
       disable:
         - composites
@@ -154,11 +158,10 @@ linters:
   exclusions:
     generated: lax
     paths:
-      - internal/mac/
-      - internal/skia/
       - internal/w32/
 issues:
   max-same-issues: 0
+  max-issues-per-linter: 0
 formatters:
   enable:
     - gofumpt
@@ -168,7 +171,3 @@ formatters:
       extra-rules: true
   exclusions:
     generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$

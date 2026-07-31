@@ -11,11 +11,15 @@ package packager
 
 import (
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 
-	"github.com/richardwilkes/toolbox/v2/xfilepath"
+	"github.com/richardwilkes/toolbox/v2/errs"
 )
+
+// rankOwner is the LSHandlerRank value that marks a file type as owned (and therefore exported) by the application.
+const rankOwner = "Owner"
 
 // FileData holds information about a file type.
 type FileData struct {
@@ -72,7 +76,21 @@ type Config struct {
 
 func (c *Config) prepare(version string) {
 	c.version = version
-	c.ExecutableName = xfilepath.BaseName(c.ExecutableName)
+	if c.ExecutableName != "" {
+		// Strip any leading directories, but keep the file name intact: xfilepath.BaseName would also remove an
+		// "extension", mangling executable names that contain a dot (e.g. "app.v2" -> "app").
+		c.ExecutableName = filepath.Base(c.ExecutableName)
+	}
+}
+
+// validate rejects configurations that would otherwise fail (or panic) deep inside platform-specific packaging code.
+func (c *Config) validate() error {
+	for _, fi := range c.FileInfo {
+		if fi.Rank == rankOwner && len(fi.Extensions) == 0 {
+			return errs.Newf("file_info entry %q has rank Owner but no extensions", fi.Name)
+		}
+	}
+	return nil
 }
 
 func (c *Config) finderAppName() string { //nolint:unused // This is used only on some platforms

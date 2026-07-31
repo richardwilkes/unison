@@ -207,20 +207,18 @@ func (d *DockContainer) Close(dockable Dockable) {
 		if c != dockable {
 			continue
 		}
-		var next Dockable
-		if DockableHasFocus(dockable) {
+		hadFocus := DockableHasFocus(dockable)
+		next := d.CurrentDockable()
+		if next == dockable {
+			// The tab being closed is the current one, so a neighbor must become current instead.
 			switch {
 			case i+1 < len(children):
 				next = children[i+1]
-				d.content.SetCurrentIndex(i + 1)
 			case i > 0:
 				next = children[i-1]
-				d.content.SetCurrentIndex(i - 1)
 			default:
 				next = d.Dock.NextDockableFor(dockable)
 			}
-		} else {
-			next = d.CurrentDockable()
 		}
 		d.content.RemoveChild(dockable)
 		d.header.close(dockable)
@@ -237,9 +235,17 @@ func (d *DockContainer) Close(dockable Dockable) {
 		if next != nil {
 			if dc := Ancestor[*DockContainer](next); dc != nil {
 				if dc == d {
-					dc.SetCurrentDockable(next)
+					// Reestablish the current index now that the removal has shifted the remaining children.
+					for j, c2 := range d.content.Children() {
+						if c2.Self == next {
+							d.content.SetCurrentIndex(j)
+							break
+						}
+					}
 				}
-				dc.AcquireFocus()
+				if hadFocus {
+					dc.AcquireFocus()
+				}
 			}
 		}
 		return

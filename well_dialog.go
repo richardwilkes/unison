@@ -95,7 +95,7 @@ func showWellDialog(w *Well) {
 		d.popup = NewPopupMenu[string]()
 		d.popup.AddItem(labels...)
 		d.popup.SelectionChangedCallback = func(popup *PopupMenu[string]) {
-			d.switchEditor(d.options[WellMask(popup.SelectedIndex())])
+			d.switchEditor(d.options[popup.SelectedIndex()])
 		}
 		d.popup.SetLayoutData(&FlexLayoutData{
 			HAlign: align.Middle,
@@ -141,6 +141,7 @@ func (d *wellDialog) switchEditor(which WellMask) {
 	if d.syncing || which == d.current {
 		return
 	}
+	d.current = which
 	d.syncing = true
 	defer func() { d.syncing = false }()
 	if d.hasMultipleEditors() {
@@ -277,7 +278,6 @@ func (d *wellDialog) addPreviewBlock(parent *Panel, title string, spaceBefore fl
 		} else {
 			paint := ink.Paint(canvas, r, paintstyle.Fill)
 			canvas.DrawRect(r, paint)
-			paint.Dispose()
 		}
 	}
 	parent.AddChild(preview)

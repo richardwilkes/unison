@@ -372,7 +372,7 @@ func main() {
 	processSourceTemplate(wd, &enumInfo{
 		Pkg:           "enums/weight",
 		Name:          "weight",
-		Desc:          "holds the wegith of a font",
+		Desc:          "holds the weight of a font",
 		baseType:      "int32",
 		baseValue:     "iota * 100",
 		NonContiguous: true,
@@ -426,14 +426,8 @@ func removeExistingGenFiles(rootDir string) {
 
 func processSourceTemplate(rootDir string, info *enumInfo) {
 	tmpl, err := template.New("enum.go.tmpl").Funcs(template.FuncMap{
-		"add":          add,
-		"emptyIfTrue":  emptyIfTrue,
-		"fileLeaf":     filepath.Base,
-		"firstToLower": xstrings.FirstToLower,
-		"join":         join,
-		"toCamelCase":  xstrings.ToCamelCase,
-		"toIdentifier": toIdentifier,
-		"wrapComment":  wrapComment,
+		"fileLeaf":    filepath.Base,
+		"wrapComment": wrapComment,
 	}).Parse(enumTmplData)
 	xos.ExitIfErr(err)
 	var buffer bytes.Buffer
@@ -452,25 +446,6 @@ func processSourceTemplate(rootDir string, info *enumInfo) {
 func writeGeneratedFromComment(w io.Writer, tmplName string) {
 	_, err := fmt.Fprintf(w, "// Code generated from \"%s\" - DO NOT EDIT.\n\n", tmplName)
 	xos.ExitIfErr(err)
-}
-
-func add(a, b int) int {
-	return a + b
-}
-
-func join(values []string) string {
-	var buffer strings.Builder
-	for i, one := range values {
-		if i != 0 {
-			buffer.WriteString(", ")
-		}
-		fmt.Fprintf(&buffer, "%q", one)
-	}
-	return buffer.String()
-}
-
-func (e *enumInfo) LocalType() string {
-	return xstrings.FirstToLower(toIdentifier(e.Name)) + "Data"
 }
 
 func (e *enumInfo) BaseType() string {
@@ -547,13 +522,6 @@ func (e *enumValue) StringValue() string {
 		return cases.Title(language.AmericanEnglish).String(key)
 	}
 	return e.String
-}
-
-func emptyIfTrue(str string, test bool) string {
-	if test {
-		return ""
-	}
-	return str
 }
 
 func toIdentifier(in string) string {

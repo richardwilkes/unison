@@ -37,9 +37,29 @@ for arg in "$@"; do
 	esac
 done
 
-if [ $(uname -s) == "Darwin" ]; then
-	# Until https://github.com/golang/go/issues/67799 is fixed, this will suppress the annoying message about -lobjc
-	export CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries"
+# The module is 100% cgo-free and must stay that way: everything is built and tested with cgo disabled so any
+# accidental reintroduction fails loudly. (The -race test run below is the one exception; see the comment there.)
+# CGO_ENABLED is restored to its prior state on exit so the setting cannot leak out of this script.
+ORIG_CGO_ENABLED_SET=${CGO_ENABLED+set}
+ORIG_CGO_ENABLED=${CGO_ENABLED-}
+restore_cgo_enabled() {
+	if [ "$ORIG_CGO_ENABLED_SET" = "set" ]; then
+		export CGO_ENABLED="$ORIG_CGO_ENABLED"
+	else
+		unset CGO_ENABLED
+	fi
+}
+trap restore_cgo_enabled EXIT
+export CGO_ENABLED=0
+
+# Guard against cgo creeping back in. A stray cgo file would not necessarily break the CGO_ENABLED=0 build (build
+# constraints just exclude it), so check for import "C" explicitly, in both its single and grouped import forms.
+echo -e "\033[33mVerifying the module is cgo-free...\033[0m"
+CGO_USERS=$(grep -rlE --include='*.go' -e '^import[[:space:]]+"C"' -e '^[[:space:]]*"C"[[:space:]]*(//.*)?$' . || true)
+if [ -n "$CGO_USERS" ]; then
+	echo -e "\033[31mcgo is not permitted in this module, but these files import \"C\":\033[0m"
+	echo "$CGO_USERS"
+	exit 1
 fi
 
 # Generate the source
@@ -59,18 +79,30 @@ if [ "$LINT"x == "1x" ]; then
 		mkdir -p "$TOOLS_DIR"
 		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b "$TOOLS_DIR" v$GOLANGCI_LINT_VERSION
 	fi
-	echo -e "\033[33mLinting...\033[0m"
-	"$TOOLS_DIR/golangci-lint" run
+	# Lint for every supported platform, not just the host, so problems in platform-specific files (e.g.
+	# *_windows.go) are caught no matter where the script is run.
+	for TARGET_GOOS in darwin linux windows; do
+		echo -e "\033[33mLinting for $TARGET_GOOS...\033[0m"
+		GOOS=$TARGET_GOOS "$TOOLS_DIR/golangci-lint" run
+	done
 fi
 
 # Run the tests
 if [ "$TEST"x == "1x" ]; then
+	TEST_CGO=0
 	if [ -n "$RACE" ]; then
 		echo -e "\033[33mTesting with -race enabled...\033[0m"
+		if [ "$(go env GOOS)" != "darwin" ]; then
+			# Go's prebuilt race runtime itself requires cgo everywhere except macOS ("go: -race requires cgo").
+			# The module still contains no cgo (enforced by the guard above); this only changes how the test
+			# binaries link the race runtime.
+			TEST_CGO=1
+		fi
 	else
 		echo -e "\033[33mTesting...\033[0m"
 	fi
-	go test $RACE ./... | grep -v "no test files"
+	# The "|| true" keeps pipefail from failing the build if grep filters out every line of output.
+	CGO_ENABLED=$TEST_CGO go test $RACE ./... | { grep -v "no test files" || true; }
 fi
 
 # Install the packager

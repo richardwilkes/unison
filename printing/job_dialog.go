@@ -25,12 +25,16 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 )
 
+// fetchTimeout is the maximum amount of time to wait for a printer to respond to an attribute or icon request.
+const fetchTimeout = 15 * time.Second
+
 // JobDialog provides a print job dialog.
 type JobDialog struct {
 	mgr                   *PrintManager
 	printer               *Printer
 	printersChan          chan *Printer
 	scanCancel            func()
+	invoke                func(func())
 	printerAttributes     *PrinterAttributes
 	jobAttributes         *JobAttributes
 	dialog                *unison.Dialog
@@ -47,8 +51,11 @@ type JobDialog struct {
 	orientation           stringPopup[capString]
 	mimeType              string
 	printerID             PrinterID
+	fetchGen              int
 	lock                  sync.Mutex
+	fetchingAttributes    bool
 	awaitingPrinterUpdate bool
+	closed                bool
 }
 
 func newJobDialog(p *PrintManager, id PrinterID, mimeType string, attributes *JobAttributes) *JobDialog {
@@ -60,6 +67,7 @@ func newJobDialog(p *PrintManager, id PrinterID, mimeType string, attributes *Jo
 		printerID:         id,
 		printer:           p.LookupPrinter(id),
 		printersChan:      make(chan *Printer, 8),
+		invoke:            unison.InvokeTask,
 		mimeType:          mimeType,
 		printerAttributes: NewAttributes(nil).ForPrinter(),
 		jobAttributes:     attributes.Copy().ForJob(),
@@ -84,6 +92,7 @@ func (d *JobDialog) JobAttributes() *JobAttributes {
 // RunModal presents the dialog and returns true if the user pressed OK.
 func (d *JobDialog) RunModal() bool {
 	defer d.scanCancel()
+	defer d.close()
 	dlg, err := unison.NewDialog(nil, nil, d.createContent(), []*unison.DialogButtonInfo{
 		unison.NewCancelButtonInfo(),
 		unison.NewOKButtonInfoWithTitle(i18n.Text("Print")),
@@ -121,6 +130,14 @@ func (d *JobDialog) RunModal() bool {
 	d.sides.apply(d.printerAttributes.SupportedSides, d.jobAttributes.SetSides)
 	d.orientation.apply(d.printerAttributes.SupportedOrientations, d.jobAttributes.SetOrientation)
 	return true
+}
+
+// close marks the dialog as closed, invalidating any in-flight printer info fetch and any queued UI tasks so their
+// results are not applied to widgets that are no longer displayed and no new fetches are started. It runs on the UI
+// thread, as do the closures that check the flag, so no locking is needed.
+func (d *JobDialog) close() {
+	d.closed = true
+	d.fetchGen++
 }
 
 func (d *JobDialog) createContent() unison.Paneler {
@@ -179,6 +196,11 @@ func (d *JobDialog) createPrinterPopup(parent *unison.Panel) {
 }
 
 func (d *JobDialog) rebuildPrinterPopup() {
+	// A printer discovered just as the dialog is dismissed can queue this via invoke to run after RunModal returns;
+	// without this guard it would call setPrinter and re-arm printer info fetches against the detached widget tree.
+	if d.closed {
+		return
+	}
 	d.printers.SelectionChangedCallback = nil
 	d.printers.RemoveAllItems()
 	d.lock.Lock()
@@ -231,35 +253,56 @@ func (d *JobDialog) setPrinter(printer *Printer) {
 	}
 	d.printer = printer
 	d.printerID = d.printer.PrinterID
-	var err error
-	if d.printerAttributes, err = d.printer.Attributes(15*time.Second, true); err != nil {
-		errs.Log(err)
-	}
-	if icon := d.retrieveIcon(); icon != nil {
-		d.img.Drawable = icon
-	}
-	d.copies.SetMinMax(1, d.printerAttributes.MaxCopies())
-	d.media.rebuild(d.printerAttributes.SupportedMedia, d.jobAttributes.Media, d.printerAttributes.DefaultMedia)
-	d.mediaSource.rebuild(d.printerAttributes.SupportedMediaSources, d.jobAttributes.MediaSource,
-		d.printerAttributes.DefaultMediaSource)
-	d.scaling.rebuild(d.printerAttributes.SupportedPrintScaling, d.jobAttributes.PrintScaling,
-		d.printerAttributes.DefaultPrintScaling)
-	d.colorMode.rebuild(d.printerAttributes.SupportedColorModes, d.jobAttributes.ColorMode,
-		d.printerAttributes.DefaultColorMode)
-	d.contentOptimization.rebuild(d.printerAttributes.SupportedContentOptimizations, d.jobAttributes.ContentOptimization,
-		d.printerAttributes.DefaultContentOptimization)
-	d.sides.rebuild(d.printerAttributes.SupportedSides, d.jobAttributes.Sides,
-		d.printerAttributes.DefaultSides)
-	d.orientation.rebuild(d.printerAttributes.SupportedOrientations, d.jobAttributes.Orientation,
-		d.printerAttributes.DefaultOrientation)
-	d.adjustEnablement()
 	d.printers.Select(printer)
+	d.fetchingAttributes = true
+	d.adjustEnablement()
+	d.fetchGen++
+	go d.fetchPrinterInfo(printer, d.fetchGen)
 }
 
-func (d *JobDialog) retrieveIcon() *unison.Image {
-	if icons := d.printerAttributes.Icons(); len(icons) != 0 {
+// fetchPrinterInfo retrieves the printer's attributes and icon, which may involve slow network access, so it must not
+// be run on the UI thread. Once retrieved, the results are applied on the UI thread. The results are discarded if
+// another printer was selected or the dialog was closed while the retrieval was in flight.
+func (d *JobDialog) fetchPrinterInfo(printer *Printer, gen int) {
+	attributes, err := printer.Attributes(fetchTimeout, true)
+	if err != nil {
+		errs.Log(err)
+	}
+	icon := retrieveIcon(printer, attributes)
+	d.invoke(func() {
+		if d.closed || gen != d.fetchGen {
+			return
+		}
+		d.fetchingAttributes = false
+		d.printerAttributes = attributes
+		if icon != nil {
+			d.img.Drawable = icon
+			d.img.MarkForLayoutAndRedraw()
+		}
+		d.copies.SetMinMax(1, attributes.MaxCopies())
+		d.media.rebuild(attributes.SupportedMedia, d.jobAttributes.Media, attributes.DefaultMedia)
+		d.mediaSource.rebuild(attributes.SupportedMediaSources, d.jobAttributes.MediaSource,
+			attributes.DefaultMediaSource)
+		d.scaling.rebuild(attributes.SupportedPrintScaling, d.jobAttributes.PrintScaling,
+			attributes.DefaultPrintScaling)
+		d.colorMode.rebuild(attributes.SupportedColorModes, d.jobAttributes.ColorMode,
+			attributes.DefaultColorMode)
+		d.contentOptimization.rebuild(attributes.SupportedContentOptimizations, d.jobAttributes.ContentOptimization,
+			attributes.DefaultContentOptimization)
+		d.sides.rebuild(attributes.SupportedSides, d.jobAttributes.Sides, attributes.DefaultSides)
+		d.orientation.rebuild(attributes.SupportedOrientations, d.jobAttributes.Orientation,
+			attributes.DefaultOrientation)
+		d.adjustEnablement()
+		if d.dialog != nil {
+			d.dialog.Window().Pack()
+		}
+	})
+}
+
+func retrieveIcon(printer *Printer, attributes *PrinterAttributes) *unison.Image {
+	if icons := attributes.Icons(); len(icons) != 0 {
 		const linkAttr = "link"
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
 		link := icons[len(icons)-1]
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, http.NoBody)
@@ -269,11 +312,15 @@ func (d *JobDialog) retrieveIcon() *unison.Image {
 		}
 		req.Header.Add("Accept-Encoding", "identity")
 		var rsp *http.Response
-		if rsp, err = d.printer.httpClient.Do(req); err != nil { //nolint:bodyclose,gosec // Body is closed by xio.CloseIgnoringErrors
+		if rsp, err = printer.httpClient.Do(req); err != nil { //nolint:bodyclose,gosec // Body is closed by xio.CloseIgnoringErrors
 			errs.Log(errs.NewWithCause("unable to initiate download for link", err), linkAttr, link)
 			return nil
 		}
 		defer xio.CloseIgnoringErrors(rsp.Body)
+		if rsp.StatusCode != http.StatusOK {
+			errs.Log(errs.Newf("unexpected status %q downloading link", rsp.Status), linkAttr, link)
+			return nil
+		}
 		var content []byte
 		if content, err = io.ReadAll(rsp.Body); err != nil {
 			errs.Log(errs.NewWithCause("unable to read body for link", err), linkAttr, link)
@@ -302,7 +349,7 @@ func (d *JobDialog) createCopies(parent *unison.Panel) {
 func (d *JobDialog) createPageRanges(parent *unison.Panel) {
 	d.pageRanges = unison.NewField()
 	d.pageRanges.Tooltip = unison.NewTooltipWithText(i18n.Text(`A page range in the form "5" or "9-12" or multiple
-separated by commas, such as "1, 3-4 in ascending
+separated by commas, such as "1, 3-4" in ascending
 order with no overlapping ranges`))
 	d.pageRanges.ValidateCallback = func() bool {
 		ranges, noErrors := ExtractPageRanges(d.pageRanges.Text())
@@ -335,7 +382,7 @@ func createLabel(text string) *unison.Label {
 }
 
 func (d *JobDialog) adjustEnablement() {
-	enabled := d.printer != nil
+	enabled := d.printer != nil && !d.fetchingAttributes
 	d.copies.SetEnabled(enabled)
 	d.pageRanges.SetEnabled(enabled && d.printerAttributes.PageRangesSupported())
 	d.media.setEnabled(enabled, d.printerAttributes.SupportedMedia)
@@ -352,7 +399,7 @@ func (d *JobDialog) adjustOKButton(_, _ *unison.FieldState) {
 	if d.dialog == nil {
 		return
 	}
-	enabled := d.printer != nil
+	enabled := d.printer != nil && !d.fetchingAttributes
 	var notValid bool
 	unison.SafeCall(func() { notValid = !d.copies.ValidateCallback() })
 	if notValid {
@@ -373,7 +420,7 @@ func (d *JobDialog) collectPrinters() {
 		d.lock.Lock()
 		if !d.awaitingPrinterUpdate {
 			d.awaitingPrinterUpdate = true
-			unison.InvokeTask(d.rebuildPrinterPopup)
+			d.invoke(d.rebuildPrinterPopup)
 		}
 		d.lock.Unlock()
 	}

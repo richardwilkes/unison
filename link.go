@@ -41,7 +41,7 @@ type LinkTheme struct {
 	LabelTheme
 }
 
-// NewLink creates a new RichLabel that can be used as a hyperlink. You may pass nil for the theme to use the
+// NewLink creates a new Label that can be used as a hyperlink. You may pass nil for the theme to use the
 // DefaultLinkTheme.
 func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(Paneler, string)) *Label {
 	link := NewLabel()
@@ -60,12 +60,18 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 		return ArrowCursor()
 	}
 	mouseDown := false
-	link.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
+	link.MouseDownCallback = func(_ geom.Point, button, _ int, _ mod.Modifiers) bool {
+		if button != ButtonLeft {
+			return false
+		}
 		mouseDown = true
 		link.MarkForRedraw()
 		return true
 	}
-	link.MouseDragCallback = func(where geom.Point, _ int, _ mod.Modifiers) bool {
+	link.MouseDragCallback = func(where geom.Point, button int, _ mod.Modifiers) bool {
+		if button != ButtonLeft {
+			return false
+		}
 		now := where.In(link.ContentRect(true))
 		if now != mouseDown {
 			mouseDown = now
@@ -73,7 +79,10 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 		}
 		return true
 	}
-	link.MouseUpCallback = func(where geom.Point, _ int, _ mod.Modifiers) bool {
+	link.MouseUpCallback = func(where geom.Point, button int, _ mod.Modifiers) bool {
+		if button != ButtonLeft {
+			return false
+		}
 		link.MarkForRedraw()
 		if where.In(link.ContentRect(true)) && clickHandler != nil {
 			SafeCall(func() { clickHandler(link, target) })
@@ -87,7 +96,6 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 				decoration.OnBackgroundInk = theme.OnPressedInk
 			}))
 			paint := theme.PressedInk.Paint(gc, rect, paintstyle.Fill)
-			defer paint.Dispose()
 			gc.DrawRect(rect, paint)
 		}
 		link.DefaultDraw(gc, rect)

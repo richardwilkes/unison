@@ -30,9 +30,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xio"
 )
 
-// MaxRequestSize is the maximum size of an X11 request in bytes.
-const MaxRequestSize = math.MaxUint16 * 4
-
 // Constants for X11 request opcodes.
 const (
 	opCreateWindow = 1 + iota
@@ -681,8 +678,7 @@ type Conn struct {
 	eventQueue               []Event
 	supportedAtoms           []Atom
 	eventQueueLock           sync.Mutex
-	eventNewMapLock          sync.RWMutex
-	errorCodeLock            sync.RWMutex
+	postEventLock            sync.Mutex
 	requestMapLock           sync.RWMutex
 	dataTypeMapLock          sync.RWMutex
 	xidLock                  sync.Mutex
@@ -708,19 +704,19 @@ type Conn struct {
 	MinKeyCode               byte
 	MaxKeyCode               byte
 	supportedAtomsCached     bool
+	eventsClosed             bool
 }
 
 // NewConn establishes a connection to the X server.
 func NewConn() (*Conn, error) {
 	var c Conn
-	var err error
-	if err = c.parseDisplayEnv(); err != nil {
+	if err := c.parseDisplayEnv(); err != nil {
 		return nil, err
 	}
-	if err = c.connect(); err != nil {
+	if err := c.connect(); err != nil {
 		return nil, err
 	}
-	if err = c.authenticate(); err != nil {
+	if err := c.authenticate(); err != nil {
 		return nil, err
 	}
 	c.errorCodeMap = newErrorMap()
@@ -729,29 +725,46 @@ func NewConn() (*Conn, error) {
 	c.dataTypeMap = make(map[string]Atom)
 	c.reverseDataTypeMap = make(map[Atom]string)
 	c.requests = make(chan *request, 128)
-	c.events = make(chan Event, 8192)
+	// The events channel carries only nil wake-up signals and the closed state; actual events accumulate in the
+	// unbounded eventQueue (see deliverEvent), so a single pending signal is always enough.
+	c.events = make(chan Event, 1)
 	c.closed = make(chan struct{})
 	c.readClosed = make(chan struct{})
 	go c.sendRequests()
 	go c.readResponses()
-	if err = c.Atoms.init(&c); err != nil {
+	// From here on, a failure must tear the partially-constructed connection down, or the socket and the two goroutines
+	// just started would be leaked.
+	fail := func(err error) (*Conn, error) {
+		c.abortStartup()
 		return nil, err
 	}
+	if err := c.Atoms.init(&c); err != nil {
+		return fail(err)
+	}
 	if c.ExtXFixes = newExtXFixes(&c); !c.ExtXFixes.HasVersion(4, 0) {
-		return nil, errs.New("X11 extension XFIXES 4.0 or higher is required")
+		return fail(errs.New("X11 extension XFIXES 4.0 or higher is required"))
 	}
 	c.ExtMisc = newExtMisc(&c)
 	if c.ExtRandr = newExtRandr(&c); !c.ExtRandr.HasVersion(1, 5) {
-		return nil, errs.New("X11 extension RANDR 1.5 or higher is required")
+		return fail(errs.New("X11 extension RANDR 1.5 or higher is required"))
 	}
 	if c.ExtRender = newExtRender(&c); !c.ExtRender.HasVersion(0, 6) {
-		return nil, errs.New("X11 extension RENDER 0.6 or higher is required")
+		return fail(errs.New("X11 extension RENDER 0.6 or higher is required"))
 	}
 	if c.helperWindow = c.CreateWindow(c.RootWindow(), 0, 0, 1, 1, 0, WindowClassInputOnly, 0, c.DefaultVisual(),
 		WindowMaskEventMask, &WindowCreationAttributes{EventMask: EventMaskPropertyChange}); c.helperWindow == 0 {
-		return nil, errs.New("failed to create helper window")
+		return fail(errs.New("failed to create helper window"))
 	}
 	return &c, nil
+}
+
+// abortStartup shuts down a partially-constructed connection whose reader and writer goroutines have already been
+// started. Closing the requests channel makes sendRequests exit and close the socket, which in turn unblocks
+// readResponses; waiting on both completion channels guarantees neither goroutine outlives the failed NewConn.
+func (c *Conn) abortStartup() {
+	close(c.requests)
+	<-c.closed
+	<-c.readClosed
 }
 
 func (c *Conn) parseDisplayEnv() error {
@@ -764,30 +777,27 @@ func (c *Conn) parseDisplayEnv() error {
 	if c.envDisplay[0] == '/' {
 		c.socket = c.envDisplay[0:colon]
 	} else {
-		if slash := strings.LastIndex(c.envDisplay, "/"); slash >= 0 {
+		if slash := strings.LastIndex(c.envDisplay[:colon], "/"); slash >= 0 {
 			c.protocol = c.envDisplay[0:slash]
 			c.host = c.envDisplay[slash+1 : colon]
 		} else {
 			c.host = c.envDisplay[0:colon]
 		}
 	}
+	// The screen separator dot may only be searched for after the colon, since hostnames routinely contain dots (e.g.
+	// DISPLAY=myhost.example.com:0). c.display must end up holding just the display number so the Xauthority display
+	// matching in readAuthority works for both local and remote displays.
 	id := c.envDisplay[colon+1:]
-	if id == "" {
-		return errs.New(invalidDisplayErr + c.envDisplay)
-	}
-	dot := strings.LastIndex(c.envDisplay, ".")
-	if dot < 0 {
-		c.display = c.envDisplay[0:]
-	} else {
-		c.display = c.envDisplay[0:dot]
-		if c.screen = c.envDisplay[dot+1:]; c.screen != "" {
+	if dot := strings.Index(id, "."); dot >= 0 {
+		if c.screen = id[dot+1:]; c.screen != "" {
 			var err error
-			if c.DefaultScreen, err = strconv.Atoi(c.screen); err != nil {
+			if c.DefaultScreen, err = strconv.Atoi(c.screen); err != nil || c.DefaultScreen < 0 {
 				return errs.New(invalidDisplayErr + c.envDisplay)
 			}
 		}
+		id = id[:dot]
 	}
-	c.display = strings.TrimPrefix(c.display, ":")
+	c.display = id
 	var err error
 	if c.displayNum, err = strconv.Atoi(id); err != nil || c.displayNum < 0 {
 		return errs.New(invalidDisplayErr + c.envDisplay)
@@ -846,11 +856,13 @@ func (c *Conn) authenticate() error {
 	reasonLen := header.Byte()
 	c.protocolMajorVersion = header.Uint16()
 	c.protocolMinorVersion = header.Uint16()
-	dataLen := header.Uint16() * 4
+	// The length field counts 4-byte words, so widen before multiplying: a setup blob of 16384 words or more (64 KB+,
+	// possible on servers with many screens/visuals) would overflow uint16 arithmetic and desync the stream.
+	dataLen := int(header.Uint16()) * 4
 	if c.protocolMajorVersion != 11 || c.protocolMinorVersion != 0 {
 		return errs.Newf("unsupported X protocol version: %d.%d", c.protocolMajorVersion, c.protocolMinorVersion)
 	}
-	r := NewReader(make([]byte, int(dataLen)))
+	r := NewReader(make([]byte, dataLen))
 	if err := r.Load(c.conn); err != nil {
 		return errs.NewWithCause("failed to read authentication response data", err)
 	}
@@ -930,11 +942,20 @@ func (c *Conn) authenticate() error {
 		})
 		return nil
 	case 2:
-		return errs.New("further authentication required: " + r.ZeroedString(int(dataLen)))
+		return errs.New("further authentication required: " + r.ZeroedString(dataLen))
 	default:
 		return errs.Newf("unexpected response code: %d", code)
 	}
 }
+
+// Xauthority entry address families. Local entries store the hostname as a string, while Internet entries store the
+// raw binary IP address of the display's network endpoint.
+const (
+	xauthFamilyInternet  = 0
+	xauthFamilyInternet6 = 6
+	xauthFamilyLocal     = 256
+	xauthFamilyWild      = 65535
+)
 
 func (c *Conn) readAuthority(host string) (name string, data []byte) {
 	fileName := os.Getenv("XAUTHORITY")
@@ -953,6 +974,7 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 	if fileData, err = root.ReadFile(filepath.Base(fileName)); err != nil {
 		return "", nil
 	}
+	remoteIP := c.remoteIP()
 	r := NewReaderWithByteOrder(binary.BigEndian, fileData)
 	for r.Remaining() != 0 {
 		family := r.Uint16()
@@ -960,12 +982,45 @@ func (c *Conn) readAuthority(host string) (name string, data []byte) {
 		disp := strings.TrimPrefix(r.SizePrefixedString(), ":")
 		name = r.SizePrefixedString()
 		data = r.SizePrefixedBytes()
-		if ((family == 65535) || (family == 256 && addr == host)) &&
-			((disp == "") || (disp == c.display)) {
+		if xauthAddressMatches(family, addr, host, remoteIP) && ((disp == "") || (disp == c.display)) {
 			return name, data
 		}
 	}
 	return "", nil
+}
+
+// remoteIP returns the IP address of the X server when the connection runs over TCP, or nil for local (unix socket)
+// connections. It is the address FamilyInternet/FamilyInternet6 Xauthority entries must be matched against; using the
+// address of the established connection avoids a separate hostname resolution that could pick a different address.
+func (c *Conn) remoteIP() net.IP {
+	if c.conn == nil {
+		return nil
+	}
+	if addr, ok := c.conn.RemoteAddr().(*net.TCPAddr); ok {
+		return addr.IP
+	}
+	return nil
+}
+
+// xauthAddressMatches reports whether an Xauthority entry with the given family and address matches the display being
+// connected to. Local entries match the hostname, while Internet entries hold the server's binary IP address, so they
+// can only ever match a TCP connection (DISPLAY=host:0), whose remote IP is provided by the caller.
+func xauthAddressMatches(family uint16, addr, host string, remoteIP net.IP) bool {
+	switch family {
+	case xauthFamilyWild:
+		return true
+	case xauthFamilyLocal:
+		return addr == host
+	case xauthFamilyInternet:
+		if ip := remoteIP.To4(); ip != nil {
+			return addr == string(ip)
+		}
+	case xauthFamilyInternet6:
+		if remoteIP != nil && remoteIP.To4() == nil {
+			return addr == string(remoteIP.To16())
+		}
+	}
+	return false
 }
 
 func (c *Conn) nextXID() (uint32, error) {
@@ -1068,7 +1123,10 @@ func (c *Conn) sendNewRequest(req *request) error {
 					}
 				}
 			default:
-				c.locateRequest(req.sequence)
+				// Unchecked, event, and flush requests are never registered in the request map, so there is nothing to
+				// clean up here. In particular, a flush request never gets a sequence assigned, and looking up its zero
+				// sequence could evict an unrelated tracked request whose 16-bit sequence wrapped to 0, stranding its
+				// waiter.
 				return nil
 			}
 		case <-c.closed:
@@ -1157,9 +1215,12 @@ func (c *Conn) Flush() {
 }
 
 func (c *Conn) readResponses() {
-	defer close(c.events)
-	defer xio.CloseIgnoringErrors(c.conn)
+	// Deferred calls run last-in-first-out, so this order makes closeEvents run before readClosed is closed. Anyone
+	// unblocked by readClosed (abortStartup, sendNewRequest waiters) may immediately call Dead, which must already
+	// report true by then; readClosed closing is the signal that shutdown has fully completed.
 	defer close(c.readClosed)
+	defer xio.CloseIgnoringErrors(c.conn)
+	defer c.closeEvents()
 	for {
 		var err error
 		r := NewReader(make([]byte, 32))
@@ -1198,11 +1259,9 @@ func (c *Conn) readResponses() {
 					return
 				}
 			}
-			c.eventNewMapLock.RLock()
 			f, ok := c.eventNewMap[eventID]
-			c.eventNewMapLock.RUnlock()
 			if ok {
-				c.events <- f(r)
+				c.deliverEvent(f(r))
 			} else {
 				slog.Warn("dropped unhandled X11 event", "id", eventID, "sequence", seq)
 			}
@@ -1211,30 +1270,31 @@ func (c *Conn) readResponses() {
 }
 
 func (c *Conn) processRequest(seq uint16, in *Reader, err error) {
+	// Only checked and reply requests are ever registered in the request map, and both always carry a failureChan, so
+	// a located request needs no nil checks on it.
 	if req := c.locateRequest(seq); req != nil {
 		switch {
 		case err != nil:
-			if req.failureChan != nil {
-				req.failureChan <- err
-			} else {
-				c.events <- &ErrorEvent{Error: err}
-				if req.replyChan != nil {
-					req.replyChan <- nil
-				}
-			}
+			req.failureChan <- err
 		case req.replyChan != nil:
 			req.replyChan <- in
-		case req.failureChan != nil:
+		default:
 			req.failureChan <- nil
 		}
+		return
+	}
+	if err != nil {
+		// Unchecked requests are never tracked in the request map, so a server error for one of them always lands
+		// here. It identifies a real request, not an unknown one, so report it as an error event.
+		c.deliverEvent(&ErrorEvent{Error: err})
 	} else {
-		slog.Warn("received response for unknown request", "sequence", seq, "error", err)
+		slog.Warn("received reply for unknown request", "sequence", seq)
 	}
 }
 
 func (c *Conn) locateRequest(seq uint16) *request {
-	c.requestMapLock.RLock()
-	defer c.requestMapLock.RUnlock()
+	c.requestMapLock.Lock()
+	defer c.requestMapLock.Unlock()
 	req, ok := c.requestMap[seq]
 	if !ok {
 		return nil
@@ -1248,14 +1308,63 @@ func (c *Conn) bail(err error) {
 	case <-c.closed:
 	default:
 		errs.Log(err)
-		c.events <- &ErrorEvent{Error: err}
+		c.deliverEvent(&ErrorEvent{Error: err})
 	}
 }
 
+// deliverEvent appends an event to the event queue and wakes any waiter. Delivery must never block: readResponses is
+// the sole reader of the connection, and the main thread may be parked in sendNewRequest waiting for a reply that
+// readResponses has not reached yet in the stream. If delivery blocked on a bounded channel behind such a backlog, the
+// reply would never be read and the connection would deadlock, so events accumulate in the unbounded queue and the
+// events channel carries only a wake-up signal. This is only called from the readResponses goroutine, which is also
+// the goroutine that closes the events channel (after all delivery is done), so the send needs no closed-channel
+// guard.
+func (c *Conn) deliverEvent(e Event) {
+	c.eventQueueLock.Lock()
+	c.eventQueue = append(c.eventQueue, e)
+	c.eventQueueLock.Unlock()
+	select {
+	case c.events <- nil:
+	default: // A wake-up is already pending, which is enough for any waiter to drain the queue.
+	}
+}
+
+// closeEvents marks the events channel as closed and then closes it. Holding postEventLock across both steps
+// guarantees that a PostEmptyEvent racing with shutdown either completes its send before the close or observes
+// eventsClosed and skips the send; without it, the send could panic on the just-closed channel. All other sends on
+// the channel happen on the readResponses goroutine, which is the one that calls this, so they need no such guard.
+func (c *Conn) closeEvents() {
+	c.postEventLock.Lock()
+	defer c.postEventLock.Unlock()
+	c.eventsClosed = true
+	close(c.events)
+}
+
+// Dead returns true once the connection's event stream has shut down, whether through an orderly Close or because the
+// connection to the X server was lost. Once dead, no further events will ever be delivered and all new requests fail
+// immediately.
+func (c *Conn) Dead() bool {
+	c.postEventLock.Lock()
+	defer c.postEventLock.Unlock()
+	return c.eventsClosed
+}
+
 // PostEmptyEvent posts an empty event to the event channel to wake up the event loop without processing an actual X11
-// event.
+// event. Unlike the rest of Conn's event machinery, it may be called from any goroutine, including concurrently with
+// the connection shutting down; once the events channel has been closed, it is a no-op.
 func (c *Conn) PostEmptyEvent() {
-	c.events <- nil
+	c.postEventLock.Lock()
+	defer c.postEventLock.Unlock()
+	if c.eventsClosed {
+		return
+	}
+	select {
+	case c.events <- nil:
+	default:
+		// The events channel is full, so anything waiting on it is already guaranteed to wake without this extra
+		// wake-up. Dropping it avoids blocking while holding postEventLock, which would deadlock a concurrent
+		// closeEvents during shutdown.
+	}
 }
 
 func (c *Conn) queuedEvent(filter func(Event) bool) (Event, bool) {
@@ -1274,84 +1383,82 @@ func (c *Conn) queuedEvent(filter func(Event) bool) (Event, bool) {
 }
 
 // WaitEvents blocks until the next event is available. If the optional filter function is provided, only events for
-// which the filter returns true will be returned, and other events will be queued for later retrieval, except for the
-// nil events posted by PostEmptyEvent, which are discarded, since their only purpose is to wake up a waiter. nil may
-// be returned if the connection is closed.
+// which the filter returns true will be returned, and other events remain queued for later retrieval; wake-ups posted
+// by PostEmptyEvent are ignored while a filter is in effect. Without a filter, a wake-up causes nil to be returned,
+// since its only purpose is to wake the event loop. nil is also returned once the connection has shut down (see Dead).
 func (c *Conn) WaitEvents(filter func(Event) bool) Event {
-	e, ok := c.queuedEvent(filter)
-	if ok {
-		return e
-	}
 	for {
-		if e, ok = <-c.events; !ok {
-			return nil
-		}
-		if filter == nil || filter(e) {
+		if e, ok := c.queuedEvent(filter); ok {
 			return e
 		}
-		if e != nil {
-			c.eventQueueLock.Lock()
-			c.eventQueue = append(c.eventQueue, e)
-			c.eventQueueLock.Unlock()
+		if _, open := <-c.events; !open {
+			e, _ := c.queuedEvent(filter)
+			return e
+		}
+		if filter == nil {
+			e, _ := c.queuedEvent(nil)
+			return e
 		}
 	}
 }
 
 // WaitEventsUntil blocks until the next event is available or the specified timeout is reached. If the optional filter
-// function is provided, only events for which the filter returns true will be returned, and other events will be queued
-// for later retrieval, except for the nil events posted by PostEmptyEvent, which are discarded, since their only
-// purpose is to wake up a waiter. nil may be returned if the connection is closed or the timeout is hit.
+// function is provided, only events for which the filter returns true will be returned, and other events remain queued
+// for later retrieval; wake-ups posted by PostEmptyEvent are ignored while a filter is in effect. Without a filter, a
+// wake-up causes nil to be returned, since its only purpose is to wake the event loop. nil is also returned if the
+// timeout is hit or the connection has shut down (see Dead).
 func (c *Conn) WaitEventsUntil(filter func(Event) bool, timeout time.Duration) Event {
-	e, ok := c.queuedEvent(filter)
-	if ok {
-		return e
-	}
+	// The timer is armed once so the timeout is a fixed deadline for the whole wait; re-arming it per loop iteration
+	// would turn it into a maximum gap between events, letting a steady stream of non-matching events extend the wait
+	// indefinitely.
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	for {
+		if e, ok := c.queuedEvent(filter); ok {
+			return e
+		}
 		select {
-		case e, ok = <-c.events:
-			if !ok {
-				return nil
-			}
-			if filter == nil || filter(e) {
+		case _, open := <-c.events:
+			if !open {
+				e, _ := c.queuedEvent(filter)
 				return e
 			}
-			if e != nil {
-				c.eventQueueLock.Lock()
-				c.eventQueue = append(c.eventQueue, e)
-				c.eventQueueLock.Unlock()
+			if filter == nil {
+				e, _ := c.queuedEvent(nil)
+				return e
 			}
-		case <-time.After(timeout):
+		case <-timer.C:
 			return nil
 		}
 	}
 }
 
 // PollEvents returns the next available event matching the optional filter, or nil if no event is immediately
-// available. Events that don't match the filter are queued for later retrieval. The nil wake-up events posted by
-// PostEmptyEvent are skipped, so a nil result always means no actual events are pending.
+// available. Events that don't match the filter remain queued for later retrieval. A nil result always means no
+// matching events are pending.
 func (c *Conn) PollEvents(filter func(Event) bool) Event {
-	if e, ok := c.queuedEvent(filter); ok {
-		return e
+	e, _ := c.queuedEvent(filter)
+	return e
+}
+
+// drainEvents removes and discards every queued event matching the filter, leaving non-matching events queued. Since
+// filtered waits leave non-matching events queued indefinitely, this is needed before starting an exchange whose
+// replies are matched by filter, so stale events from an earlier abandoned exchange can't be mistaken for new ones.
+func (c *Conn) drainEvents(filter func(Event) bool) {
+	for c.PollEvents(filter) != nil {
 	}
-	for {
-		select {
-		case e, ok := <-c.events:
-			if !ok {
-				return nil
-			}
-			if e == nil {
-				continue // Skip wake-up events
-			}
-			if filter == nil || filter(e) {
-				return e
-			}
-			c.eventQueueLock.Lock()
-			c.eventQueue = append(c.eventQueue, e)
-			c.eventQueueLock.Unlock()
-		default:
-			return nil
-		}
-	}
+}
+
+// WaitForWindowVisibility waits until a VisibilityNotify event for the given window arrives, bounding the wait by the
+// given timeout, and reports whether the event arrived. The bound matters: MapWindow is redirected to the window
+// manager (SubstructureRedirect), so a hung window manager — or one that keeps the window unmapped, such as by
+// assigning it to a non-current desktop — may never deliver the event, and since filtered waits ignore PostEmptyEvent
+// wake-ups, an unbounded filtered wait could never be unstuck by InvokeTask and would hang the caller forever.
+func (c *Conn) WaitForWindowVisibility(window WindowID, timeout time.Duration) bool {
+	return c.WaitEventsUntil(func(e Event) bool {
+		ev, ok := e.(*VisibilityNotifyEvent)
+		return ok && ev.Window == window
+	}, timeout) != nil
 }
 
 func (c *Conn) hasExtension(name string, versionOpCode byte, versionIs16Bit bool, majorMax, minorMax uint32) extensionInfo {
@@ -1552,10 +1659,10 @@ const (
 
 // ChangeProperty changes the specified property on the given window to the provided data, using the specified mode
 // (PropModeReplace, PropModePrepend, or PropModeAppend). The propertyType and format parameters specify the type and
-// format of the property data, respectively. The data is provided as a byte slice, and its length should be consistent
-// with the specified format (8, 16, or 32 bits per unit). Automatic chunking will occur if the data exceeds the maximum
-// request size and mode is PropModeReplace, so there is no need to manually split the data into multiple requests for
-// large properties.
+// format of the property data, respectively. The data is provided as a byte slice, and its length must be a multiple
+// of the format unit size (8, 16, or 32 bits per unit); data that isn't is rejected outright rather than truncated to
+// a whole number of units. Automatic chunking will occur in any mode if the data exceeds the maximum request size, so
+// there is no need to manually split the data into multiple requests for large properties.
 func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, format, mode byte, data []byte) {
 	if format != 0 && format != 8 && format != 16 && format != 32 {
 		slog.Error("invalid format for ChangeProperty (must be 0, 8, 16, or 32)", "format", format)
@@ -1564,23 +1671,37 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 	unitSize := int(format / 8)
 	if unitSize != 0 && len(data)%unitSize != 0 {
 		slog.Error("data length must be a multiple of the format unit size", "dataLength", len(data), "unitSize", unitSize)
+		return
 	}
-	offset := 0
 	var remainingCount int
 	if unitSize != 0 {
 		remainingCount = len(data) / unitSize
 	}
+	// The request length field counts 4-byte words and must cover the 24-byte (6-word) header plus the data, so each
+	// request can carry at most (maximumRequestLength - 6) * 4 bytes of data. Note that this per-request byte limit is
+	// exactly the chunk size completeIncrTransfers uses, which relies on each chunk being written with a single
+	// ChangeProperty request.
+	maxUnitsPerRequest := 1
+	if unitSize != 0 {
+		maxUnitsPerRequest = max((int(c.maximumRequestLength)-6)*4/unitSize, 1)
+	}
+	// When chunking, replacements send the first chunk with PropModeReplace and the rest with PropModeAppend, and
+	// appends send every chunk in order. Prepends must instead send chunks in reverse order, carving each chunk off
+	// the end of the remaining data, since every prepend lands ahead of the previously written one; offset always
+	// tracks the start of the next chunk to send.
+	offset := 0
+	if mode == PropModePrepend {
+		offset = len(data)
+	}
 	// A request is sent even when there is no data, since a zero-length write still generates a PropertyNotify event,
 	// which the INCR transfer mechanism relies upon to signal the end of a transfer.
-	onlyOnce := unitSize == 0 || mode != PropModeReplace || len(data) == 0
+	onlyOnce := unitSize == 0 || len(data) == 0
 	for remainingCount > 0 || onlyOnce {
-		unitCount := remainingCount
-		if unitCount > math.MaxUint16-24 {
-			unitCount = math.MaxUint16 - 24
-			unitCount /= unitSize
-			unitCount *= unitSize
-		}
+		unitCount := min(remainingCount, maxUnitsPerRequest)
 		byteSize := unitCount * unitSize
+		if mode == PropModePrepend {
+			offset -= byteSize
+		}
 		w := NewWriter(24 + pad4(byteSize))
 		w.Byte(opChangeProperty)
 		w.Byte(mode)
@@ -1600,9 +1721,11 @@ func (c *Conn) ChangeProperty(window WindowID, property, propertyType Atom, form
 		if onlyOnce {
 			break
 		}
-		mode = PropModeAppend
-		offset += byteSize
 		remainingCount -= unitCount
+		if mode != PropModePrepend {
+			mode = PropModeAppend
+			offset += byteSize
+		}
 	}
 }
 
@@ -1660,18 +1783,6 @@ func (c *Conn) ConvertSelection(requestor WindowID, selection, target, property 
 	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 		errs.Log(err)
 	}
-}
-
-func (c *Conn) setEventNewFunc(eventID byte, f func(r *Reader) Event) { //nolint:unused // Keeping for the future
-	c.eventNewMapLock.Lock()
-	c.eventNewMap[eventID] = f
-	c.eventNewMapLock.Unlock()
-}
-
-func (c *Conn) setErrorCodeName(code byte, name string) { //nolint:unused // Keeping for the future
-	c.errorCodeLock.Lock()
-	c.errorCodeMap[code] = name
-	c.errorCodeLock.Unlock()
 }
 
 // RootWindow returns the ID of the root window for the default screen.
@@ -1971,49 +2082,197 @@ func (c *Conn) FreeGC(gcID GCID) {
 	}
 }
 
+// Image byte order values from the connection setup block, dictating the byte order the server requires for ZPixmap
+// image data.
+const (
+	imageByteOrderLSBFirst = 0
+	imageByteOrderMSBFirst = 1
+)
+
 // PutImage uploads the pixel data from the provided image to the specified drawable at the given destination
-// coordinates using the provided graphics context. The image is sent in chunks if it exceeds the maximum request size
-// allowed by the X server in a single request.
+// coordinates using the provided graphics context. The image is sent in multiple requests if it exceeds the maximum
+// request size advertised by the X server.
 func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *image.NRGBA) {
-	width := uint16(img.Rect.Dx())
-	w := int(width)
-	height := uint16(img.Rect.Dy())
-	h := int(height)
-	rowsPer := (MaxRequestSize - 24) / (w * 4)
-	for y := 0; y < h; y += rowsPer {
-		rows := min(rowsPer, h-y)
-
-		// Convert the pixels to pre-multiplied BGRA order, which is what X expects for 32bpp images.
-		pix := make([]byte, rows*w*4)
-		base := y * img.Stride
-		for i := 0; i < len(pix); i += 4 {
-			si := base + i
-			a := uint16(img.Pix[si+3])
-			pix[i] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
-			pix[i+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
-			pix[i+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
-			pix[i+3] = img.Pix[si+3]
+	width := img.Rect.Dx()
+	height := img.Rect.Dy()
+	if width <= 0 || height <= 0 {
+		return
+	}
+	// Unlike property data, ZPixmap pixel data is not byte-swapped by the server, so each 32-bit pixel word must be
+	// emitted in the server's advertised image-byte-order: BGRA byte sequences for an LSBFirst server, ARGB for an
+	// MSBFirst one.
+	msbFirst := c.imageByteOrder == imageByteOrderMSBFirst
+	send := func(x, y, cols, rows int) {
+		// Convert the pixels to pre-multiplied 0xAARRGGBB words, which is what X expects for 32bpp images. The source
+		// rows are addressed through PixOffset, since the image may be a sub-image with a non-zero origin and a stride
+		// wider than the pixel data.
+		pix := make([]byte, cols*rows*4)
+		di := 0
+		for row := y; row < y+rows; row++ {
+			si := img.PixOffset(img.Rect.Min.X+x, img.Rect.Min.Y+row)
+			for range cols {
+				a := uint16(img.Pix[si+3])
+				if msbFirst {
+					pix[di] = img.Pix[si+3]
+					pix[di+1] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+					pix[di+2] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+					pix[di+3] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+				} else {
+					pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+					pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+					pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+					pix[di+3] = img.Pix[si+3]
+				}
+				si += 4
+				di += 4
+			}
 		}
-
-		w := NewWriter(24 + pad4(len(pix)))
+		w := NewWriter(24 + len(pix))
 		w.Byte(opPutImage)
 		w.Byte(byte(ImageFormatZPixmap))
-		w.Uint16(6 + uint16(pad4(len(pix))/4))
+		w.Uint16(6 + uint16(len(pix)/4))
 		w.DrawableID(drawable)
 		w.GCID(gc)
-		w.Uint16(width)
+		w.Uint16(uint16(cols))
 		w.Uint16(uint16(rows))
-		w.Int16(dstX)
+		w.Int16(dstX + int16(x))
 		w.Int16(dstY + int16(y))
 		w.Byte(0)
 		w.Byte(32)
 		w.Zero(2)
 		w.Bytes(pix)
-		w.ZeroTo4ByteAlignment()
-		if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+		// Unchecked so that the chunks pipeline: a checked request performs a server round-trip per chunk, which
+		// serializes frame presentation and makes remote connections unusably slow. Errors still surface, as
+		// ErrorEvents delivered through the event queue.
+		if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 			errs.Log(err)
 		}
 	}
+	// The request length field counts 4-byte words and must cover the 24-byte (6-word) header plus the pixel data, so
+	// each request can carry at most maximumRequestLength - 6 pixels at 4 bytes per pixel.
+	maxPixels := max(int(c.maximumRequestLength)-6, 1)
+	if rowsPer := maxPixels / width; rowsPer > 0 {
+		for y := 0; y < height; y += rowsPer {
+			send(0, y, width, min(rowsPer, height-y))
+		}
+	} else {
+		// A single row holds more pixels than the largest request can carry, so split each row into spans.
+		for y := range height {
+			for x := 0; x < width; x += maxPixels {
+				send(x, y, min(maxPixels, width-x), 1)
+			}
+		}
+	}
+}
+
+// PutImageRGBAPremul uploads premultiplied RGBA pixels (packed as R | G<<8 | B<<16 | A<<24 device words, rowPixels
+// words per row) to the specified drawable at the given destination coordinates using the provided graphics context.
+// depth must be the drawable's depth (24 or 32); the pixels are sent as 32-bits-per-pixel BGRA ZPixmap data either
+// way, which is the wire layout X servers use for both depths. The image is sent in multiple requests if it exceeds
+// the maximum request size advertised by the X server. This is the CPU-rendering presentation path, used when no
+// OpenGL context is available to display into a window.
+func (c *Conn) PutImageRGBAPremul(drawable DrawableID, gc GCID, dstX, dstY int16, width, height, rowPixels int32, pixels []uint32, depth byte) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	// Unlike property data, ZPixmap pixel data is not byte-swapped by the server, so each 32-bit pixel word must be
+	// emitted in the server's advertised image-byte-order: BGRA byte sequences for an LSBFirst server, ARGB for an
+	// MSBFirst one.
+	msbFirst := c.imageByteOrder == imageByteOrderMSBFirst
+	send := func(x, y, cols, rows int) {
+		// Convert the pixels to pre-multiplied 0xAARRGGBB words, which is what X expects for 32bpp images.
+		pix := make([]byte, cols*rows*4)
+		di := 0
+		for row := y; row < y+rows; row++ {
+			si := row*int(rowPixels) + x
+			for range cols {
+				v := pixels[si]
+				if msbFirst {
+					pix[di] = byte(v >> 24)
+					pix[di+1] = byte(v)
+					pix[di+2] = byte(v >> 8)
+					pix[di+3] = byte(v >> 16)
+				} else {
+					pix[di] = byte(v >> 16)
+					pix[di+1] = byte(v >> 8)
+					pix[di+2] = byte(v)
+					pix[di+3] = byte(v >> 24)
+				}
+				si++
+				di += 4
+			}
+		}
+		w := NewWriter(24 + len(pix))
+		w.Byte(opPutImage)
+		w.Byte(byte(ImageFormatZPixmap))
+		w.Uint16(6 + uint16(len(pix)/4))
+		w.DrawableID(drawable)
+		w.GCID(gc)
+		w.Uint16(uint16(cols))
+		w.Uint16(uint16(rows))
+		w.Int16(dstX + int16(x))
+		w.Int16(dstY + int16(y))
+		w.Byte(0)
+		w.Byte(depth)
+		w.Zero(2)
+		w.Bytes(pix)
+		// Unchecked so that the chunks pipeline: a checked request performs a server round-trip per chunk, which
+		// serializes frame presentation and makes remote connections unusably slow. Errors still surface, as
+		// ErrorEvents delivered through the event queue.
+		if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
+			errs.Log(err)
+		}
+	}
+	// The request length field counts 4-byte words and must cover the 24-byte (6-word) header plus the pixel data, so
+	// each request can carry at most maximumRequestLength - 6 pixels at 4 bytes per pixel.
+	maxPixels := max(int(c.maximumRequestLength)-6, 1)
+	if rowsPer := maxPixels / int(width); rowsPer > 0 {
+		for y := 0; y < int(height); y += rowsPer {
+			send(0, y, int(width), min(rowsPer, int(height)-y))
+		}
+	} else {
+		// A single row holds more pixels than the largest request can carry, so split each row into spans.
+		for y := range int(height) {
+			for x := 0; x < int(width); x += maxPixels {
+				send(x, y, min(maxPixels, int(width)-x), 1)
+			}
+		}
+	}
+}
+
+// IconData builds a _NET_WM_ICON property payload from the given images: for each one, a 32-bit width and height
+// followed by its pixels converted to pre-multiplied BGRA order. The source rows are addressed through PixOffset, since
+// an image may be a sub-image with a non-zero origin and a stride wider than the pixel data.
+func IconData(images []*image.NRGBA) []byte {
+	size := 0
+	for _, img := range images {
+		size += 8 + img.Rect.Dx()*img.Rect.Dy()*4
+	}
+	data := make([]byte, size)
+	offset := 0
+	for _, img := range images {
+		width := img.Rect.Dx()
+		height := img.Rect.Dy()
+		d := data[offset:]
+		offset += 8 + width*height*4
+		binary.LittleEndian.PutUint32(d, uint32(width))
+		binary.LittleEndian.PutUint32(d[4:], uint32(height))
+		pix := d[8:]
+		di := 0
+		for y := range height {
+			si := img.PixOffset(img.Rect.Min.X, img.Rect.Min.Y+y)
+			for range width {
+				a := uint16(img.Pix[si+3])
+				pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
+				pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
+				pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
+				pix[di+3] = img.Pix[si+3]
+				si += 4
+				di += 4
+			}
+		}
+	}
+	return data
 }
 
 // GetKeyboardMapping retrieves the keyboard mapping, which includes the keysyms associated with each keycode in the
@@ -2481,7 +2740,10 @@ func (c *Conn) ConfigureWindow(window WindowID, mask ConfigureWindowValueMask, r
 	w.Uint16(uint16(mask))
 	w.Zero(2)
 	w.Uint32Slice(values)
-	if err := c.sendNewRequest(newCheckedRequest(w)); err != nil {
+	// Unchecked so that calls pipeline instead of costing a server round-trip each: the drag-image window is moved
+	// with ConfigureWindow on every pointer-motion event, which over a remote connection would otherwise stall the UI
+	// thread for one round-trip per event. Errors still surface, as ErrorEvents delivered through the event queue.
+	if err := c.sendNewRequest(newUncheckedRequest(w)); err != nil {
 		errs.Log(err)
 	}
 }

@@ -20,7 +20,7 @@ import (
 const SIGDN_FILESYSPATH = 0x80058000
 
 var (
-	shell32                         = syscall.NewLazyDLL("Shell32.dll")
+	shell32                         = windows.NewLazySystemDLL("shell32.dll")
 	dragAcceptFilesProc             = shell32.NewProc("DragAcceptFiles")
 	dragQueryFileWProc              = shell32.NewProc("DragQueryFileW")
 	dragQueryPointProc              = shell32.NewProc("DragQueryPoint")
@@ -90,9 +90,13 @@ func DragFinish(hdrop HDROP) {
 }
 
 func NewShellItem(path string) *ShellItem {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil
+	}
 	var item *ShellItem
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	if r1, _, _ := shCreateItemFromParsingNameProc.Call(uintptr(unsafe.Pointer(SysAllocString(path))), 0,
+	if r1, _, _ := shCreateItemFromParsingNameProc.Call(uintptr(unsafe.Pointer(p)), 0,
 		uintptr(unsafe.Pointer(&shellItemIID)), uintptr(unsafe.Pointer(&item))); r1 != 0 {
 		return nil
 	}
@@ -103,11 +107,6 @@ func (obj *ShellItem) vmt() *vmtShellItem {
 	return (*vmtShellItem)(obj.UnsafeVirtualMethodTable)
 }
 
-const (
-	sizeofUint16   = unsafe.Sizeof(uint16(0))
-	maxUint16Array = (1<<31 - sizeofUint16) / sizeofUint16
-)
-
 func (obj *ShellItem) DisplayName() string {
 	var p *uint16
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -117,7 +116,9 @@ func (obj *ShellItem) DisplayName() string {
 		return ""
 	}
 	defer windows.CoTaskMemFree(unsafe.Pointer(p))
-	return syscall.UTF16ToString(unsafe.Slice(p, maxUint16Array))
+	// UTF16PtrToString walks to the NUL terminator without manufacturing a slice that extends past the allocation,
+	// which unsafe.Slice with an oversized length would do (violating its contract and tripping checkptr).
+	return windows.UTF16PtrToString(p)
 }
 
 type ShellItemArray struct {

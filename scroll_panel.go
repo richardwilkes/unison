@@ -205,7 +205,6 @@ func (s *ScrollPanel) SetPosition(h, v float32) {
 func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := s.ContentRect(true)
 	paint := s.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
-	defer paint.Dispose()
 	canvas.DrawRect(r, paint)
 }
 

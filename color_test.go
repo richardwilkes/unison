@@ -332,6 +332,24 @@ func TestColorPremultiply(t *testing.T) {
 
 	// Unpremultiply undoes Premultiply for fully saturated channels.
 	chk.Equal(unison.ARGB(0.5, 255, 255, 255), pm.Unpremultiply())
+
+	// Mid-range channels scale correctly, exercising values whose 16-bit intermediate has differing high and low
+	// bytes.
+	pm = unison.ARGB(0.5, 200, 60, 10).Premultiply()
+	chk.Equal(128, pm.Alpha())
+	chk.Equal(100, pm.Red())
+	chk.Equal(30, pm.Green())
+	chk.Equal(5, pm.Blue())
+
+	// Unpremultiply scales mid-range channels back up, within integer rounding error.
+	up := pm.Unpremultiply()
+	chk.Equal(128, up.Alpha())
+	chk.Equal(199, up.Red())
+	chk.Equal(59, up.Green())
+	chk.Equal(9, up.Blue())
+
+	// A channel value larger than the alpha value clamps to 255 rather than wrapping.
+	chk.Equal(255, unison.ARGB(0.5, 200, 0, 0).Unpremultiply().Red())
 }
 
 func TestColorOnAndPerceivedLightness(t *testing.T) {
@@ -422,5 +440,5 @@ func TestOKLCH(t *testing.T) {
 	l, c, h = unison.Blue.OKLCH()
 	chk.Equal(float32(0.45201373), l)
 	chk.Equal(float32(0.31321436), c)
-	chk.Equal(float32(264.052), h)
+	chk.Equal(float32(264.0520206), h)
 }

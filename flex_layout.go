@@ -226,10 +226,17 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 						}
 						expandColumn[j] = true
 					}
-					minimumWidth := data.minCacheSize.Width
-					if !data.HGrab {
-						if minimumWidth < 1 {
-							w = data.cacheSize.Width
+					// Read MinSize directly rather than minCacheSize, which is not populated during the
+					// PerformLayout pass; this mirrors adjustRowHeights so an explicit MinSize.Width sets the
+					// shrink floor for grabbing columns.
+					minimumWidth := data.MinSize.Width
+					if !data.HGrab || minimumWidth != 0 {
+						if !data.HGrab || minimumWidth < 1 {
+							if data.minCacheSize.Width < 1 {
+								w = data.cacheSize.Width
+							} else {
+								w = data.minCacheSize.Width
+							}
 						} else {
 							w = minimumWidth
 						}

@@ -205,6 +205,11 @@ func (m *menu) Count() int {
 func (m *menu) Popup(where geom.Rect, itemIndex int) {
 	if m.popupPanel == nil {
 		m.createPopup()
+		if m.popupPanel == nil {
+			// createPopup is a no-op when no window is active (a transient state; see FrontmostWindow's comment), so
+			// there is no panel to position or show.
+			return
+		}
 		if itemIndex >= 0 && itemIndex < len(m.items) {
 			m.popupPanel.ValidateLayout()
 			if sp, ok := m.popupPanel.Children()[0].Self.(*ScrollPanel); ok {
@@ -248,11 +253,7 @@ func (m *menu) createPopup() {
 		return
 	}
 	if activeWnd := ActiveWindow(); activeWnd != nil {
-		m.closeMenuStackStoppingAt(activeWnd, m.titleItem.menu)
-		root := m
-		for root.titleItem.menu != nil {
-			root = root.titleItem.menu
-		}
+		activeWnd.root.closeMenuStackStoppingAt(m.titleItem.menu)
 		m.popupPanel = m.newPanel(false)
 		m.popupPanel.Pack()
 		activeWnd.root.insertMenu(m.popupPanel)
@@ -336,7 +337,9 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 				return true
 			}
 		case KeyEscape, KeyLeft:
-			m.closeMenuStackStoppingAt(p.Window(), m.titleItem.menu)
+			if wnd := p.Window(); wnd != nil {
+				wnd.root.closeMenuStackStoppingAt(m.titleItem.menu)
+			}
 			return true
 		case KeyRight:
 			if m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(m.items) && m.items[m.popupPanel.itemIndex].subMenu != nil {
@@ -378,6 +381,10 @@ func (m *menu) doExitEnter(previousIndex int) {
 }
 
 func (m *menu) setKeyIndex(index int) {
+	if m.popupPanel == nil {
+		// The popup may not exist if createPopup ran while no window was active.
+		return
+	}
 	m.popupPanel.itemIndex = index
 	if index >= 0 && index < len(m.items) {
 		m.items[index].mouseEnter(geom.Point{}, 0) // params are unused
@@ -386,36 +393,6 @@ func (m *menu) setKeyIndex(index int) {
 }
 
 func (m *menu) Dispose() {
-}
-
-func (m *menu) preMoved(w *Window) {
-	m.closeMenuStackStoppingAt(w, nil)
-}
-
-func (m *menu) postLostFocus(w *Window) {
-	// Need to give the event loop a chance to potentially refocus it before we decide to tear it down.
-	InvokeTask(func() {
-		if ActiveWindow() != w {
-			m.closeMenuStackStoppingAt(w, nil)
-		}
-	})
-}
-
-func (m *menu) preMouseDown(w *Window, where geom.Point) bool {
-	if w.root.menuBar != nil {
-		// Iterate from the most recently opened popup to the oldest, matching the draw/hit-test z-order (the newest
-		// popup is topmost). This ensures that when a child menu overlaps its parent, a click in the overlap is
-		// attributed to the child rather than the parent, which would otherwise tear the child back down.
-		for i := len(w.root.openMenuPanels) - 1; i >= 0; i-- {
-			one := w.root.openMenuPanels[i]
-			if where.In(one.FrameRect()) {
-				m.closeMenuStackStoppingAt(w, one.menu)
-				return false
-			}
-		}
-		m.closeMenuStackStoppingAt(w, nil)
-	}
-	return false
 }
 
 func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
@@ -443,31 +420,11 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repe
 	return len(wnd.root.openMenuPanels) != 0
 }
 
-func (m *menu) preRuneTyped(wnd *Window, _ rune) bool {
-	return len(wnd.root.openMenuPanels) != 0
-}
-
-func (m *menu) preKeyUp(wnd *Window, _ KeyCode, _ mod.Modifiers) bool {
-	return len(wnd.root.openMenuPanels) != 0
-}
-
 func (m *menu) closeMenuStack() {
 	if wnd := ActiveWindow(); wnd != nil {
-		m.closeMenuStackStoppingAt(wnd, nil)
+		wnd.root.closeMenuStackStoppingAt(nil)
 		wnd.ToFront()
 		wnd.MarkForRedraw()
 		wnd.FlushDrawing()
-	}
-}
-
-func (m *menu) closeMenuStackStoppingAt(wnd *Window, stopAt *menu) {
-	if len(wnd.root.openMenuPanels) == 0 {
-		return
-	}
-	for i := len(wnd.root.openMenuPanels) - 1; i >= 0; i-- {
-		if wnd.root.openMenuPanels[i].menu == stopAt {
-			return
-		}
-		wnd.root.removeMenu(wnd.root.openMenuPanels[i])
 	}
 }

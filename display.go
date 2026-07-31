@@ -15,9 +15,10 @@ import (
 
 // Display holds information about each available active display.
 type Display struct {
-	// The position of the display in the global screen coordinate system. Note that some platforms (e.g. Windows) don't
-	// use a consistent linear global coordinate system for these rects and instead use the raw pixel counts, which
-	// means that the rects may not be in the same coordinate space as the windows, which are normalized to a 1x scale.
+	// The position of the display in the global screen coordinate system. Note that some platforms (e.g. Windows and
+	// Linux) don't use a consistent linear global coordinate system for these rects and instead use the raw pixel
+	// counts, which means that the rects may not be in the same coordinate space as the windows, which are normalized
+	// to a 1x scale.
 	Frame  geom.Rect
 	Usable geom.Rect  // The usable area, i.e. the Frame minus the area used by global menu bars or task bars
 	Scale  geom.Point // The scale of the content
@@ -27,13 +28,30 @@ type Display struct {
 	Primary bool
 }
 
+// defaultDisplayPPI is the pixels-per-inch assumed when the true value cannot be determined.
+const defaultDisplayPPI = 96
+
+// displayPPI computes the pixels-per-inch of a display from its pixel extent and its physical size in millimeters.
+// Virtual displays and VMs commonly report a physical size of zero, which would otherwise produce an infinite result,
+// so implausible inputs fall back to defaultDisplayPPI.
+func displayPPI(pixels, sizeMM float64) int {
+	if sizeMM <= 0 {
+		return defaultDisplayPPI
+	}
+	ppi := int(pixels / (sizeMM / 25.4))
+	if ppi <= 0 {
+		return defaultDisplayPPI
+	}
+	return ppi
+}
+
 // PrimaryDisplay returns the primary display. This is usually the display where elements like the Windows task bar or
-// the macOS menu bar is located.
+// the macOS menu bar is located. It may only be called on the UI thread.
 func PrimaryDisplay() *Display {
 	return apiPrimaryDisplay()
 }
 
-// AllDisplays returns all currently active displays.
+// AllDisplays returns all currently active displays. It may only be called on the UI thread.
 func AllDisplays() []*Display {
 	return apiAllDisplays()
 }

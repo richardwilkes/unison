@@ -44,7 +44,6 @@ func (d *TableDrop[T, U]) DrawOverCallback(gc *Canvas, rect geom.Rect) {
 	if d.inDragOver {
 		r := d.Table.ContentRect(false).Inset(geom.NewUniformInsets(1))
 		paint := ThemeWarning.Paint(gc, r, paintstyle.Stroke)
-		defer paint.Dispose()
 		paint.SetStrokeWidth(2)
 		paint.SetColorFilter(Alpha30Filter())
 		gc.DrawRect(r, paint)
@@ -161,12 +160,15 @@ func (d *TableDrop[T, U]) DragUpdatedCallback(di drag.Info, where geom.Point, _ 
 		// Check to make sure we aren't trying to drop into the items being moved
 		if d.TargetParent != zero && data.Table == d.Table {
 			for _, r := range data.Rows {
-				if RowContainsRow(r, d.TargetParent) {
-					// Can't drop into itself, so abort
-					d.inDragOver = false
-					d.TargetParent = zero
-					break
+				if !RowContainsRow(r, d.TargetParent) {
+					continue
 				}
+				// Can't drop into itself, so reject the drop
+				d.inDragOver = false
+				d.TargetParent = zero
+				d.Table.MarkForRedraw()
+				d.Table.FlushDrawing()
+				return drag.None
 			}
 		}
 		d.Table.MarkForRedraw()
@@ -215,19 +217,35 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 	if move {
 		// Remove the drag rows from their original places
 		commonParents := collectCommonParents(rows)
+		sameTable := data.Table == d.Table
 		for parent, list := range commonParents {
 			var children []T
 			if parent == zero {
-				children = data.Table.RootRows()
+				// Use the model's root rows rather than the table's RootRows(), since the latter returns the flattened
+				// filter results when the source table has a filter applied, which would replace the model's real
+				// hierarchy with the filter results below.
+				children = data.Table.Model.RootRows()
 			} else {
 				children = parent.Children()
 			}
-			list = d.pruneRows(parent, children, makeRowSet(list))
+			list = d.pruneRows(parent, children, makeRowSet(list), sameTable)
 			if parent == zero {
 				data.Table.Model.SetRootRows(list)
 			} else {
 				parent.SetChildren(list)
 			}
+		}
+		if data.Table.filteredRows != nil {
+			// Remove the moved rows and their descendants from the source table's filtered view, since they are no
+			// longer part of its model.
+			data.Table.filteredRows = slices.DeleteFunc(slices.Clone(data.Table.filteredRows), func(row T) bool {
+				for _, r := range rows {
+					if RowContainsRow(r, row) {
+						return true
+					}
+				}
+				return false
+			})
 		}
 		data.Table.ClearSelection()
 		data.Table.SyncToModel()
@@ -238,10 +256,8 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 		}
 
 		// Notify the source table if it is different from the destination
-		if d.Table != data.Table {
-			if d.Table != data.Table && data.Table.DragRemovedRowsCallback != nil {
-				SafeCall(data.Table.DragRemovedRowsCallback)
-			}
+		if d.Table != data.Table && data.Table.DragRemovedRowsCallback != nil {
+			SafeCall(data.Table.DragRemovedRowsCallback)
 		}
 	} else {
 		// Make a copy of the data
@@ -292,12 +308,17 @@ func (d *TableDrop[T, U]) DragExitCallback() {
 	d.Table.FlushDrawing()
 }
 
-func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[tid.TID]bool) []T {
-	movingToThisParent := d.TargetParent == parent
+func (d *TableDrop[T, U]) pruneRows(parent T, rows []T, movingSet map[tid.TID]bool, sameTable bool) []T {
+	// Only adjust TargetIndex when the removals come from the destination table's target parent. Without the sameTable
+	// check, a cross-table move of root rows would match here (both parents are the zero value) and shift the insertion
+	// point in the destination based on removals from the source.
+	movingToThisParent := sameTable && d.TargetParent == parent
 	list := make([]T, 0, len(rows))
 	for i, row := range rows {
 		if movingSet[row.ID()] {
-			if movingToThisParent && d.TargetIndex >= i {
+			// Only removals strictly before the insertion point shift it; a row being removed at the insertion point
+			// itself sits after the insertion, so dropping rows directly above themselves remains a no-op.
+			if movingToThisParent && d.TargetIndex > i {
 				d.TargetIndex--
 			}
 		} else {

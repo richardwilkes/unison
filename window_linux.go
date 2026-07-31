@@ -11,7 +11,6 @@ package unison
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"image"
 	"log/slog"
@@ -39,6 +38,7 @@ type apiWindow struct {
 	id                x11.WindowID
 	parent            x11.WindowID
 	colorMap          x11.ColorMapID
+	gc                x11.GCID // lazily created; only used by the CPU-rendering presentation path
 	dndSource         x11.WindowID
 	dndVersion        uint32
 	lastX             float32
@@ -47,6 +47,7 @@ type apiWindow struct {
 	borderLeft        uint32
 	borderBottom      uint32
 	borderRight       uint32
+	depth             byte
 	borderValid       bool
 	minimized         bool
 	maximized         bool
@@ -64,16 +65,27 @@ func x11FindWindow(id x11.WindowID) *Window {
 }
 
 func (w *Window) apiInit() error {
-	if err := w.glCtx.x11PrepareWindow(w); err != nil {
-		return err
+	if !cpuRenderingActive {
+		if err := w.glCtx.x11PrepareWindow(w); err != nil {
+			fallbackToCPURendering(err)
+		}
 	}
 	w.wnd.parent = x11Conn.RootWindow()
 	visual := x11Conn.DefaultVisual()
 	depth := x11Conn.DefaultDepth()
-	if w.glCtx.hasVisual {
+	switch {
+	case w.glCtx.hasVisual:
 		visual = w.glCtx.visual
 		depth = w.glCtx.depth
+	case cpuRenderingActive && w.transparent:
+		// Without GLX to supply an alpha-capable framebuffer configuration, a transparent window needs a 32-bit ARGB
+		// visual so the CPU-rendered pixels keep their alpha channel.
+		if argb := x11FindARGBVisual(); argb != 0 {
+			visual = argb
+			depth = 32
+		}
 	}
+	w.wnd.depth = depth
 	if w.wnd.colorMap = x11Conn.CreateColormap(visual, w.wnd.parent, false); w.wnd.colorMap == 0 {
 		return errs.New("failed to create X11 color map for window")
 	}
@@ -217,33 +229,8 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	if len(images) == 0 {
 		x11Conn.DeleteProperty(w.wnd.id, x11Conn.Atoms.NetWMIcon)
 	} else {
-		size := 0
-		for _, img := range images {
-			size += 8 + img.Rect.Dy()*img.Rect.Dx()*4
-		}
-		data := make([]byte, size)
-		offset := 0
-		for _, img := range images {
-			w := img.Rect.Dx()
-			h := img.Rect.Dy()
-			d := data[offset:]
-			offset += 8 + w*h*4
-			binary.LittleEndian.PutUint32(d, uint32(w))
-			binary.LittleEndian.PutUint32(d[4:], uint32(h))
-			pix := d[8:]
-			for y := range h {
-				row := y * img.Stride
-				for x := range w {
-					i := row + (x * 4)
-					a := uint16(img.Pix[i+3])
-					pix[i] = uint8((uint16(img.Pix[i+2]) * a) / 0xff)
-					pix[i+1] = uint8((uint16(img.Pix[i+1]) * a) / 0xff)
-					pix[i+2] = uint8((uint16(img.Pix[i]) * a) / 0xff)
-					pix[i+3] = img.Pix[i+3]
-				}
-			}
-		}
-		x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMIcon, x11.AtomCardinal, 32, x11.PropModeReplace, data)
+		x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMIcon, x11.AtomCardinal, 32, x11.PropModeReplace,
+			x11.IconData(images))
 	}
 	x11Conn.Flush()
 }
@@ -432,15 +419,18 @@ func (w *Window) apiVisible() bool {
 	return x11Conn.IsWindowVisible(w.wnd.id)
 }
 
+// x11ShowTimeout bounds how long apiShow waits for the window manager to actually map a newly shown window. MapWindow
+// is intercepted by the window manager (SubstructureRedirect), so a hung window manager — or one that keeps the window
+// unmapped, such as by assigning it to a non-current desktop — may never produce a VisibilityNotify. Since filtered
+// waits ignore PostEmptyEvent wake-ups, an unbounded wait here would hang the whole application permanently.
+const x11ShowTimeout = 2 * time.Second
+
 func (w *Window) apiShow() {
 	if w.apiVisible() {
 		return
 	}
 	x11Conn.MapWindow(w.wnd.id)
-	x11Conn.WaitEvents(func(e x11.Event) bool {
-		ev, ok := e.(*x11.VisibilityNotifyEvent)
-		return ok && ev.Window == w.wnd.id
-	})
+	x11Conn.WaitForWindowVisibility(w.wnd.id, x11ShowTimeout)
 	// Draw the window now that it is visible. The filtered wait above discards the nil wake-up events posted by
 	// MarkForRedraw, so a redraw queued while the window was being prepared would otherwise be lost. When a window is
 	// shown from within an event handler (such as a modal dialog raised while handling the window manager's close
@@ -940,6 +930,10 @@ func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 
 func (w *Window) apiDestroy() {
 	w.glCtx.apiDestroy()
+	if w.wnd.gc != 0 {
+		x11Conn.FreeGC(w.wnd.gc)
+		w.wnd.gc = 0
+	}
 	if w.wnd.id != 0 {
 		x11Conn.UnmapWindow(w.wnd.id)
 		x11Conn.DestroyWindow(w.wnd.id)
@@ -1012,6 +1006,16 @@ func x11ProcessEvent(e x11.Event) {
 			return
 		}
 	}
+	// Likewise, the MANAGER ClientMessage announcing a new XSETTINGS manager (e.g. after the settings daemon restarts)
+	// arrives on the root window, so it too must be handled before the per-window dispatch.
+	if cme, ok := e.(*x11.ClientMessageEvent); ok {
+		if handled, changed := x11Conn.XSettingsHandleManagerMessage(cme); handled {
+			if changed && linuxRecomputeDarkMode() {
+				ThemeChanged()
+			}
+			return
+		}
+	}
 	switch ev := e.(type) {
 	case *x11.ErrorEvent:
 		errs.Log(ev.Error)
@@ -1025,7 +1029,7 @@ func x11ProcessEvent(e x11.Event) {
 				mods := x11TranslateModifierState(ev.State)
 				w.keyPressed(key, mods)
 				if mods&(mod.Control|mod.Option|mod.Command) == 0 {
-					keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods)
+					keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods, ev.State&x11Mod5Mask != 0)
 					if ch := x11KeySymToUnicode(keySym); ch != utf8.RuneError {
 						w.runeTyped(ch)
 					}

@@ -10,7 +10,7 @@
 package w32
 
 import (
-	"sync/atomic"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -57,12 +57,15 @@ type vmtIEnumFORMATETC struct {
 	Clone uintptr
 }
 
-// enumFORMATETC is a Go-implemented COM IEnumFORMATETC for a DataObject.
+// enumFORMATETC is a Go-implemented COM IEnumFORMATETC for a DataObject. Each instance holds its own position, its
+// own pin, and a reference on the parent DataObject, so enumerators handed out by EnumFormatEtc and Clone iterate
+// independently and keep the underlying data alive until they are released.
 type enumFORMATETC struct {
 	lpVtbl   uintptr // MUST BE FIRST: points to enumFmtVtbl
 	obj      *DataObject
 	pos      int
 	refCount int32
+	pinner   runtime.Pinner
 }
 
 var enumFmtVtbl [7]uintptr
@@ -101,14 +104,12 @@ func (obj *IEnumFORMATETC) Reset() {
 	syscall.SyscallN(obj.vmt().Reset, uintptr(unsafe.Pointer(obj)))
 }
 
-func newEnumFORMATETC(obj *DataObject) *enumFORMATETC {
-	e := &enumFORMATETC{obj: obj, refCount: 1}
+func newEnumFORMATETC(obj *DataObject, pos int) *enumFORMATETC {
+	e := &enumFORMATETC{obj: obj, pos: pos, refCount: 1}
 	e.lpVtbl = uintptr(unsafe.Pointer(&enumFmtVtbl[0]))
+	e.pinner.Pin(e)
+	obj.addRef()
 	return e
-}
-
-func (e *enumFORMATETC) Reset() {
-	e.pos = 0
 }
 
 func enumQueryInterface(this, riid, ppvObject uintptr) uint64 {
@@ -124,24 +125,30 @@ func enumQueryInterface(this, riid, ppvObject uintptr) uint64 {
 
 func enumAddRef(this uintptr) uintptr {
 	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
-	return uintptr(atomic.AddInt32(&e.refCount, 1))
+	return comAddRef(&e.refCount)
 }
 
 func enumRelease(this uintptr) uintptr {
 	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
-	return uintptr(atomic.AddInt32(&e.refCount, -1))
+	remaining, final := comRelease(&e.refCount)
+	if final {
+		obj := e.obj
+		e.obj = nil
+		e.pinner.Unpin()
+		obj.release()
+	}
+	return remaining
 }
 
 func enumNext(this, celt, rgelt, pceltFetched uintptr) uint64 {
 	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
 	count := int(celt)
 	dst := unsafe.Slice(xruntime.PtrFromUintptr[FORMATETC](rgelt), count)
-	fetched := 0
-	for fetched < count && e.pos < len(e.obj.entries) {
-		dst[fetched] = e.obj.entries[e.pos].fmtEtc
-		fetched++
-		e.pos++
+	newPos, fetched := enumFetchCount(e.pos, len(e.obj.entries), count)
+	for i := range fetched {
+		dst[i] = e.obj.entries[e.pos+i].fmtEtc
 	}
+	e.pos = newPos
 	if pceltFetched != 0 {
 		*xruntime.PtrFromUintptr[uint32](pceltFetched) = uint32(fetched)
 	}
@@ -153,14 +160,12 @@ func enumNext(this, celt, rgelt, pceltFetched uintptr) uint64 {
 
 func enumSkip(this, celt uintptr) uint64 {
 	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
-	count := int(celt)
-	remaining := len(e.obj.entries) - e.pos
-	if count > remaining {
-		e.pos = len(e.obj.entries)
-		return COM_S_FALSE
+	newPos, all := enumSkipAdvance(e.pos, len(e.obj.entries), int(celt))
+	e.pos = newPos
+	if all {
+		return COM_S_OK
 	}
-	e.pos += count
-	return COM_S_OK
+	return COM_S_FALSE
 }
 
 func enumResetCB(this uintptr) uint64 {
@@ -169,4 +174,12 @@ func enumResetCB(this uintptr) uint64 {
 	return COM_S_OK
 }
 
-func enumClone(_ uintptr, _ uintptr) uint64 { return COM_E_NOTIMPL }
+func enumClone(this, ppenum uintptr) uint64 {
+	if ppenum == 0 {
+		return COM_E_POINTER
+	}
+	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
+	clone := newEnumFORMATETC(e.obj, e.pos)
+	*xruntime.PtrFromUintptr[uintptr](ppenum) = uintptr(unsafe.Pointer(clone))
+	return COM_S_OK
+}

@@ -620,8 +620,11 @@ func (rs *resourceSet) addWindowsIcons(appIconPath string, files []*FileData) er
 		return err
 	}
 	for _, fi := range files {
-		if fi.Rank != "Owner" {
+		if fi.Rank != rankOwner {
 			continue
+		}
+		if len(fi.Extensions) == 0 {
+			return errs.Newf("file_info entry %q has rank Owner but no extensions", fi.Name)
 		}
 		if err := rs.addWindowIcon(fi.Icon, fi.Extensions[0]); err != nil {
 			return err

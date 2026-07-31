@@ -32,6 +32,24 @@ var (
 )
 
 func apiFillKeyCodes() {
+	x11KbMapping = x11Conn.GetKeyboardMapping()
+	x11FillKeyCodesFromMapping()
+}
+
+// x11KbMappingUsable reports whether the fetched keyboard mapping actually covers the connection's full keycode range.
+// A GetKeyboardMapping request that fails (for example, because the X server died right after the connection was
+// established, or the reply was malformed) is logged and yields a zero-value mapping — nil KeySyms with a
+// KeySymsPerKeyCode of 0 — which the keycode translation code must not index into, since the setup block guarantees a
+// non-empty keycode range and unguarded indexing would panic on the UI thread.
+func x11KbMappingUsable() bool {
+	per := int(x11KbMapping.KeySymsPerKeyCode)
+	return per > 0 && len(x11KbMapping.KeySyms) >= (int(x11Conn.MaxKeyCode)-int(x11Conn.MinKeyCode)+1)*per
+}
+
+func x11FillKeyCodesFromMapping() {
+	if !x11KbMappingUsable() {
+		return
+	}
 	secondary := map[uint32]KeyCode{
 		xkKPEnter:     KeyNumPadEnter,
 		xkKPSeparator: KeyNumPadDecimal,
@@ -171,7 +189,6 @@ func apiFillKeyCodes() {
 		xkSlash:        KeySlash,
 		xkLess:         KeyWorld1,
 	}
-	x11KbMapping = x11Conn.GetKeyboardMapping()
 	minKeyCode := uint16(x11Conn.MinKeyCode)
 	for i := minKeyCode; i <= uint16(x11Conn.MaxKeyCode); i++ {
 		pos := (i - minKeyCode) * uint16(x11KbMapping.KeySymsPerKeyCode)
@@ -209,8 +226,13 @@ func apiFillKeyCodes() {
 	}
 }
 
-func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
-	if scanCode < uint16(x11Conn.MinKeyCode) || scanCode > uint16(x11Conn.MaxKeyCode) {
+// x11Mod5Mask is the Mod5 bit within an X11 event state mask. On effectively all XKB configurations, AltGr
+// (ISO_Level3_Shift) is bound to Mod5, and the level-3 keysyms appear in the second pair of columns of the core
+// keyboard mapping, mirroring the Mode_switch group handling in libX11's _XTranslateKey().
+const x11Mod5Mask = 0x0080
+
+func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers, level3 bool) uint32 {
+	if scanCode < uint16(x11Conn.MinKeyCode) || scanCode > uint16(x11Conn.MaxKeyCode) || !x11KbMappingUsable() {
 		return 0
 	}
 	per := uint16(x11KbMapping.KeySymsPerKeyCode)
@@ -218,17 +240,24 @@ func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
 	for per > 2 && x11KbMapping.KeySyms[syms+per-1] == 0 {
 		per--
 	}
+	if per > 2 && level3 {
+		syms += 2
+		per -= 2
+	}
 	var result uint32
 	s0 := x11KbMapping.KeySyms[syms]
-	s1 := x11KbMapping.KeySyms[syms+1]
+	var s1 uint32
+	if per > 1 {
+		s1 = x11KbMapping.KeySyms[syms+1]
+	}
 	switch {
-	case mods.NumLockDown() && (per > 1 && (isKeypadKey(s1)) || isPrivateKeypadKey(s1)):
+	case mods.NumLockDown() && per > 1 && (isKeypadKey(s1) || isPrivateKeypadKey(s1)):
 		if mods.ShiftDown() {
 			result = s0
 		} else {
 			result = s1
 		}
-	case !mods.ShiftDown():
+	case !mods.ShiftDown() && !mods.CapsLockDown():
 		if per == 1 || s1 == 0 {
 			result, _ = x11ConvertCase(s0)
 		} else {
@@ -248,7 +277,7 @@ func x11ScanCodeToKeySym(scanCode uint16, mods mod.Modifiers) uint32 {
 			s = s1
 		}
 		var alt uint32
-		alt, result = x11ConvertCase(s1)
+		alt, result = x11ConvertCase(s)
 		if !mods.ShiftDown() && s != s0 && (s != result || alt == result) {
 			_, result = x11ConvertCase(s0)
 		}

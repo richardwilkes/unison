@@ -1,5 +1,13 @@
 # Changes since v0.95.0
 
+## Enhancements
+
+- When a usable hardware OpenGL environment isn't available (no GL library, no acceptable pixel format or framebuffer
+  configuration, or a context that fails validation), unison now falls back to rendering on the CPU instead of failing
+  window creation, emitting a warning to the log the first time the fallback occurs. The fallback is process-wide and
+  sticky: once triggered, all subsequent windows render on the CPU as well. The new `IsCPURenderingActive()` function
+  reports whether the fallback is in effect.
+
 ## Bug Fixes
 
 - Linux only: The hidden window used to run the modal event loop for file dialogs was placed off-screen, but Wayland

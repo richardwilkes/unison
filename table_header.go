@@ -137,7 +137,6 @@ func (h *TableHeader[T]) combinedInsets() geom.Insets {
 // DefaultDraw provides the default drawing.
 func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	backgroundPaint := h.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRect(dirty, backgroundPaint)
 
 	var firstCol int
@@ -162,7 +161,6 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			rect.X = insets.Left
 			paint := h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 		}
 		rect.X = x
 		lastCol := len(h.table.Columns)
@@ -173,7 +171,6 @@ func (h *TableHeader[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			rect.X += h.table.Columns[c].Current
 			paint := h.InteriorDividerColor.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 			rect.X++
 		}
 	}
@@ -223,7 +220,7 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 			}
 		}
 	}
-	if col := h.table.OverColumn(where.X); col != -1 {
+	if col := h.table.OverColumn(where.X); col != -1 && col < len(h.ColumnHeaders) {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateCursorCallback != nil {
 			rect := h.ColumnFrame(col)
@@ -239,7 +236,7 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 
 // DefaultUpdateTooltipCallback provides the default tooltip update handling.
 func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.Rect) geom.Rect {
-	if col := h.table.OverColumn(where.X); col != -1 {
+	if col := h.table.OverColumn(where.X); col != -1 && col < len(h.ColumnHeaders) {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.UpdateTooltipCallback != nil {
 			rect := h.ColumnFrame(col)
@@ -262,7 +259,7 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 // DefaultMouseMove provides the default mouse move handling.
 func (h *TableHeader[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 	stop := false
-	if col := h.table.OverColumn(where.X); col != -1 {
+	if col := h.table.OverColumn(where.X); col != -1 && col < len(h.ColumnHeaders) {
 		cell := h.ColumnHeaders[col].AsPanel()
 		if cell.MouseMoveCallback != nil {
 			rect := h.ColumnFrame(col)
@@ -310,12 +307,14 @@ func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount i
 	if col := h.table.OverColumn(where.X); col != -1 {
 		h.interactionColumn = col
 		h.inHeader = true
-		cell := h.ColumnHeaders[col].AsPanel()
-		if cell.MouseDownCallback != nil {
-			rect := h.ColumnFrame(col)
-			h.installCell(cell, rect)
-			SafeCall(func() { stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mods) })
-			h.uninstallCell(cell)
+		if col < len(h.ColumnHeaders) {
+			cell := h.ColumnHeaders[col].AsPanel()
+			if cell.MouseDownCallback != nil {
+				rect := h.ColumnFrame(col)
+				h.installCell(cell, rect)
+				SafeCall(func() { stop = cell.MouseDownCallback(where.Sub(rect.Point), button, clickCount, mods) })
+				h.uninstallCell(cell)
+			}
 		}
 	}
 	return stop
@@ -350,7 +349,7 @@ func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifie
 // DefaultMouseUp provides the default mouse up handling.
 func (h *TableHeader[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	stop := false
-	if h.inHeader && h.interactionColumn != -1 {
+	if h.inHeader && h.interactionColumn != -1 && h.interactionColumn < len(h.ColumnHeaders) {
 		cell := h.ColumnHeaders[h.interactionColumn].AsPanel()
 		if cell.MouseUpCallback != nil {
 			rect := h.ColumnFrame(h.interactionColumn)

@@ -11,7 +11,6 @@ package w32
 
 import (
 	"runtime"
-	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -52,9 +51,23 @@ func NewDropSource() *DropSource {
 	return src
 }
 
-// Release unpins the DropSource from the Go garbage collector.
+// Release drops the creator's reference from NewDropSource. The object is unpinned from the Go garbage collector only
+// once every reference — including any taken through dropSrcQueryInterface/dropSrcAddRef — has been released, so a
+// holder that retained the IDropSource past the end of DoDragDrop still points at live memory.
 func (src *DropSource) Release() {
-	src.pinner.Unpin()
+	src.release()
+}
+
+func (src *DropSource) addRef() uintptr {
+	return comAddRef(&src.refCount)
+}
+
+func (src *DropSource) release() uintptr {
+	remaining, final := comRelease(&src.refCount)
+	if final {
+		src.pinner.Unpin()
+	}
+	return remaining
 }
 
 func dropSrcQueryInterface(this, riid, ppvObject uintptr) uint64 {
@@ -69,13 +82,11 @@ func dropSrcQueryInterface(this, riid, ppvObject uintptr) uint64 {
 }
 
 func dropSrcAddRef(this uintptr) uintptr {
-	src := xruntime.PtrFromUintptr[DropSource](this)
-	return uintptr(atomic.AddInt32(&src.refCount, 1))
+	return xruntime.PtrFromUintptr[DropSource](this).addRef()
 }
 
 func dropSrcRelease(this uintptr) uintptr {
-	src := xruntime.PtrFromUintptr[DropSource](this)
-	return uintptr(atomic.AddInt32(&src.refCount, -1))
+	return xruntime.PtrFromUintptr[DropSource](this).release()
 }
 
 // dropSrcQueryContinueDrag is called repeatedly during a drag to check whether to continue.

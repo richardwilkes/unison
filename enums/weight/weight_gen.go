@@ -47,7 +47,7 @@ var All = []Enum{
 	ExtraBlack,
 }
 
-// Enum holds the wegith of a font.
+// Enum holds the weight of a font.
 type Enum int32
 
 // EnsureValid ensures this is of a known value.

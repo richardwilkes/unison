@@ -85,7 +85,6 @@ func (r *RadioButton) drawRadio(canvas *Canvas, rect geom.Rect, thickness float3
 	if r.group.Selected(r) {
 		rect = rect.Inset(geom.NewUniformInsets(0.5 + 0.2*rect.Width))
 		paint := fg.Paint(canvas, rect, paintstyle.Fill)
-		defer paint.Dispose()
 		if !r.Enabled() {
 			paint.SetColorFilter(Grayscale30Filter())
 		}

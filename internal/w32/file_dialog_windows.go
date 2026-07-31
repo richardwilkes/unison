@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/ne-shobjidl_core-_fileopendialogoptions
@@ -50,8 +52,8 @@ type FileFilter struct {
 }
 
 type filterSpec struct {
-	name    *int16
-	pattern *int16
+	name    *uint16
+	pattern *uint16
 }
 
 // FileDialog https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ifiledialog
@@ -112,12 +114,22 @@ func (obj *FileDialog) SetFileTypes(filters []FileFilter) {
 	if len(filters) == 0 {
 		return
 	}
-	specs := make([]filterSpec, len(filters))
-	for i, one := range filters {
-		specs[i] = filterSpec{
-			name:    SysAllocString(one.Name),
-			pattern: SysAllocString(one.Pattern),
+	// These parameters are plain PCWSTRs that the dialog copies during the call, so Go-allocated UTF-16 strings are
+	// sufficient; they remain alive through the syscall via the specs slice.
+	specs := make([]filterSpec, 0, len(filters))
+	for _, one := range filters {
+		name, err := windows.UTF16PtrFromString(one.Name)
+		if err != nil {
+			continue
 		}
+		var pattern *uint16
+		if pattern, err = windows.UTF16PtrFromString(one.Pattern); err != nil {
+			continue
+		}
+		specs = append(specs, filterSpec{name: name, pattern: pattern})
+	}
+	if len(specs) == 0 {
+		return
 	}
 	//nolint:errcheck // Nothing we can do about an error here
 	syscall.SyscallN(obj.vmt().SetFileTypes, uintptr(unsafe.Pointer(obj)), uintptr(len(specs)),
@@ -128,17 +140,23 @@ func (obj *FileDialog) SetFileTypes(filters []FileFilter) {
 // automatically appended to the file name if the user does not specify an extension. The extension should be specified
 // without a leading dot, e.g. "txt" for text files.
 func (obj *FileDialog) SetDefaultExtension(ext string) {
+	p, err := windows.UTF16PtrFromString(strings.TrimPrefix(ext, "."))
+	if err != nil {
+		return
+	}
 	//nolint:errcheck // Nothing we can do about an error here
-	syscall.SyscallN(obj.vmt().SetDefaultExtension, uintptr(unsafe.Pointer(obj)),
-		uintptr(unsafe.Pointer(SysAllocString(strings.TrimPrefix(ext, ".")))))
+	syscall.SyscallN(obj.vmt().SetDefaultExtension, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(p)))
 }
 
 // SetFileName sets the initial file name for the file dialog. This is the file name that will be pre-filled in the file
 // name input field when the dialog is shown.
 func (obj *FileDialog) SetFileName(fileName string) {
+	p, err := windows.UTF16PtrFromString(fileName)
+	if err != nil {
+		return
+	}
 	//nolint:errcheck // Nothing we can do about an error here
-	syscall.SyscallN(obj.vmt().SetFileName, uintptr(unsafe.Pointer(obj)),
-		uintptr(unsafe.Pointer(SysAllocString(fileName))))
+	syscall.SyscallN(obj.vmt().SetFileName, uintptr(unsafe.Pointer(obj)), uintptr(unsafe.Pointer(p)))
 }
 
 // GetResult retrieves the file path selected by the user in the file dialog. If the user cancels the dialog or an error

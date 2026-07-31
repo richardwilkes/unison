@@ -30,9 +30,11 @@ func (obj *ModalWindow) vmt() *vmtModalWindow {
 }
 
 // Show displays the modal window. The owner may be 0, but providing one ensures the window is positioned relative to
-// it (and therefore on the same display) rather than being placed at a system-chosen location.
+// it (and therefore on the same display) rather than being placed at a system-chosen location. Show returns an
+// HRESULT (S_OK on OK, HRESULT_FROM_WIN32(ERROR_CANCELLED) on cancel), so success must be judged by the SUCCEEDED()
+// rule rather than the BOOL idiom, which would misread any failure code with a zero low byte as success.
 func (obj *ModalWindow) Show(owner windows.HWND) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r1, _, _ := syscall.SyscallN(obj.vmt().Show, uintptr(unsafe.Pointer(obj)), uintptr(owner))
-	return r1&0xff == 0
+	return hresultSucceeded(r1)
 }

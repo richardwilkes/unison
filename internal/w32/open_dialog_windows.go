@@ -36,8 +36,11 @@ func (obj *FileOpenDialog) vmt() *vmtFileOpenDialog {
 	return (*vmtFileOpenDialog)(obj.UnsafeVirtualMethodTable)
 }
 
+// NewOpenDialog creates a new IFileOpenDialog instance. The caller owns the returned (+1) reference and must call
+// Release when done with it. COM is already initialized with a single-threaded apartment on the UI thread via
+// OleInitialize during startup, which is what IFileDialog (an STA-only object) requires, so no CoInitializeEx call is
+// made here.
 func NewOpenDialog() *FileOpenDialog {
-	windows.CoInitializeEx(0, windows.COINIT_MULTITHREADED|windows.COINIT_DISABLE_OLE1DDE)
 	return (*FileOpenDialog)(unsafe.Pointer(CoCreateInstance(fileOpenDialogCLSID, fileOpenDialogIID)))
 }
 

@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/richardwilkes/canvas/codecs"
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/thememode"
-	"github.com/richardwilkes/unison/internal/skia"
 )
 
 var (
@@ -39,9 +39,12 @@ var (
 	noPlatformFileDialogs             bool
 	quitLock                          sync.RWMutex
 	calledAtExit                      bool
-	currentThemeMode                  = thememode.Auto
-	needPlatformDarkModeUpdate        = true
-	platformDarkModeEnabled           bool
+	// currentThemeMode holds a thememode.Enum; the zero value is thememode.Auto. It is atomic because the platform
+	// theme monitors (e.g. the Windows registry watcher) read it from their own goroutines while the UI thread writes
+	// it via SetThemeMode.
+	currentThemeMode           atomic.Int32
+	needPlatformDarkModeUpdate = true
+	platformDarkModeEnabled    bool
 )
 
 type startupOption struct { // This exists just to prevent arbitrary functions from being passed to application startup.
@@ -190,24 +193,31 @@ func processEvents() {
 
 // finishProcessingEvents runs the next pending UI task and draws any windows that have been marked for redraw. It is
 // called after each pass of event processing in the main loop, as well as in nested event loops, such as the one used
-// for the source side of drag & drop on Linux.
+// for the source side of drag & drop on Linux. The work is bracketed by a platform autorelease pool (a no-op outside
+// macOS), since tasks and draws make platform calls that produce autoreleased objects, and this is the outermost spot
+// on the thread that can reclaim them.
 func finishProcessingEvents() {
-	processNextTask()
-	if len(redrawSet) > 0 {
-		set := redrawSet
-		redrawSet = make(map[*Window]struct{})
-		for wnd := range set {
-			if wnd.IsVisible() {
-				wnd.draw()
-			} else {
-				redrawSet[wnd] = struct{}{}
+	apiWithAutoreleasePool(func() {
+		processNextTask()
+		if len(redrawSet) > 0 {
+			set := redrawSet
+			redrawSet = make(map[*Window]struct{})
+			for wnd := range set {
+				switch {
+				case wnd.IsVisible():
+					wnd.draw()
+				case wnd.IsValid():
+					// Hidden, but not disposed, so keep the request pending until the window becomes visible. Disposed
+					// windows are dropped, since they can never be drawn again.
+					redrawSet[wnd] = struct{}{}
+				}
 			}
 		}
-	}
+	})
 }
 
 func finishStartup() {
-	skiaColorspace = skia.ColorSpaceNewSRGB()
+	codecs.Register()
 	RebuildDynamicColors()
 	apiLateInit()
 	SafeCall(startupFinishedCallback)
@@ -289,24 +299,27 @@ func finishQuit() error {
 	return apiTerminate()
 }
 
-// AttemptQuit initiates the termination sequence.
+// AttemptQuit initiates the termination sequence. The AllowQuitCallback is consulted first, then each open window is
+// asked to close, honoring any AllowCloseCallback vetoes. If the quit request or any window close is denied, the app
+// is not terminated. This is also the path taken for system-initiated termination requests (e.g. Dock -> Quit or
+// logout on macOS), so both quit paths behave identically.
 func AttemptQuit() {
-	if allowQuit() {
+	if allowQuit() && closeAllWindows() {
 		quitting()
 	}
 }
 
-func closeAllWindows() { //nolint:unused // Not all platforms use this
-	var last *Window
-	for len(windowList) > 0 {
-		windowList[0].requestClose()
-		if len(windowList) != 0 {
-			if windowList[0] == last {
-				break
-			}
-			last = windowList[0]
+// closeAllWindows attempts to close each open window, consulting each window's AllowCloseCallback at most once. A
+// window that vetoes the close is left open, but does not prevent the remaining windows from being asked. Returns
+// true if all windows were closed. Note that closing the last window may terminate the app before this function
+// returns, if permitted by quitAfterLastWindowClosed().
+func closeAllWindows() bool {
+	for _, wnd := range Windows() {
+		if wnd.IsValid() {
+			wnd.requestClose()
 		}
 	}
+	return len(windowList) == 0
 }
 
 // Beep plays the system beep sound.
@@ -314,15 +327,14 @@ func Beep() {
 	apiBeep()
 }
 
-// CurrentThemeMode returns the current theme mode state.
+// CurrentThemeMode returns the current theme mode state. It is safe to call from any goroutine.
 func CurrentThemeMode() thememode.Enum {
-	return currentThemeMode
+	return thememode.Enum(currentThemeMode.Load())
 }
 
 // SetThemeMode sets the current theme mode state.
 func SetThemeMode(mode thememode.Enum) {
-	if currentThemeMode != mode {
-		currentThemeMode = mode
+	if thememode.Enum(currentThemeMode.Swap(int32(mode))) != mode {
 		needPlatformDarkModeUpdate = true
 		InvokeTask(ThemeChanged)
 	}
@@ -336,7 +348,7 @@ func IsColorModeTrackingPossible() bool {
 
 // IsDarkModeEnabled returns true if the OS is currently using a "dark mode".
 func IsDarkModeEnabled() bool {
-	switch currentThemeMode {
+	switch CurrentThemeMode() {
 	case thememode.Light:
 		return false
 	case thememode.Dark:

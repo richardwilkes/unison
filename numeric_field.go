@@ -40,7 +40,9 @@ func NewNumericField[T xmath.Integer | xmath.Float](current, minimum, maximum T,
 		maximum:    maximum,
 	}
 	f.Self = f
+	UninstallFocusBorders(f, f)
 	f.LostFocusCallback = f.DefaultFocusLost
+	InstallDefaultFieldBorder(f, f)
 	f.RuneTypedCallback = f.DefaultRuneTyped
 	f.ValidateCallback = f.DefaultValidate
 	f.SetText(f.Format(current))

@@ -13,13 +13,14 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"golang.org/x/sys/windows"
 )
 
 var (
-	opengl32              = syscall.NewLazyDLL("opengl32.dll")
+	// opengl32.dll is NOT on the KnownDLLs list, so it must be loaded with NewLazySystemDLL to force resolution from
+	// the system directory; syscall.NewLazyDLL would search the application directory first, allowing a planted DLL
+	// next to the executable to hijack the process at the first GL call.
+	opengl32              = windows.NewLazySystemDLL("opengl32.dll")
 	wglCreateContextProc  = opengl32.NewProc("wglCreateContext")
 	wglDeleteContextProc  = opengl32.NewProc("wglDeleteContext")
 	wglGetProcAddressProc = opengl32.NewProc("wglGetProcAddress")
@@ -104,9 +105,13 @@ func WglCreateContext(dc HDC) HGLRC {
 	return HGLRC(ret)
 }
 
+// WglCreateContextAttribsARB creates a context via the WGL_ARB_create_context extension. Returns 0 if the extension is
+// unavailable (e.g. under RDP or basic display adapters), letting the caller fail gracefully.
 func WglCreateContextAttribsARB(dc HDC, shareCtx HGLRC, attribList []int32) HGLRC {
 	if wglCreateContextAttribsARBProc == 0 {
-		wglCreateContextAttribsARBProc = WglGetProcAddress("wglCreateContextAttribsARB")
+		if wglCreateContextAttribsARBProc = WglGetProcAddress("wglCreateContextAttribsARB"); wglCreateContextAttribsARBProc == 0 {
+			return 0
+		}
 	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := syscall.SyscallN(wglCreateContextAttribsARBProc, uintptr(dc), uintptr(shareCtx),
@@ -117,7 +122,9 @@ func WglCreateContextAttribsARB(dc HDC, shareCtx HGLRC, attribList []int32) HGLR
 // WglGetPixelFormatAttribivARB https://registry.khronos.org/OpenGL/extensions/ARB/WGL_ARB_pixel_format.txt
 func WglGetPixelFormatAttribivARB(hdc HDC, iPixelFormat, iLayerPlane int32, piAttributes []int32) []int32 {
 	if wglGetPixelFormatAttribivARBProc == 0 {
-		wglGetPixelFormatAttribivARBProc = WglGetProcAddress("wglGetPixelFormatAttribivARB")
+		if wglGetPixelFormatAttribivARBProc = WglGetProcAddress("wglGetPixelFormatAttribivARB"); wglGetPixelFormatAttribivARBProc == 0 {
+			return nil
+		}
 	}
 	values := make([]int32, len(piAttributes))
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
@@ -131,13 +138,19 @@ func WglGetPixelFormatAttribivARB(hdc HDC, iPixelFormat, iLayerPlane int32, piAt
 }
 
 // WglGetProcAddress https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-wglgetprocaddress
+//
+// Returns 0 when the procedure is unavailable so callers can probe for optional extensions and degrade gracefully
+// rather than terminating the process. Some implementations return the sentinel values 1, 2, 3, or -1 on failure
+// instead of NULL, so those are mapped to 0 as well.
 func WglGetProcAddress(name string) uintptr {
 	ptr, err := windows.BytePtrFromString(name)
-	xos.ExitIfErr(err)
+	if err != nil {
+		return 0
+	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := wglGetProcAddressProc.Call(uintptr(unsafe.Pointer(ptr)))
-	if r == 0 {
-		xos.ExitWithErr(errs.Newf("WglGetProcAddress: procedure not found: %s", name))
+	if !wglProcAddressValid(r) {
+		return 0
 	}
 	return r
 }

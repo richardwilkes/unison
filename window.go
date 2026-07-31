@@ -55,7 +55,6 @@ const (
 // Window holds window information.
 type Window struct {
 	InputCallbacks
-	drag.Callbacks
 	// MinMaxContentSizeCallback returns the minimum and maximum size for the window content.
 	MinMaxContentSizeCallback func() (minimum, maximum geom.Size)
 	// MovedCallback is called when the window is moved.
@@ -246,8 +245,10 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	}
 	windowList = append(windowList, w)
 	err := w.apiInit()
-	if err == nil {
-		err = w.glCtx.apiCreate(w)
+	if err == nil && !cpuRenderingActive {
+		if glErr := w.glCtx.apiCreate(w); glErr != nil {
+			fallbackToCPURendering(glErr)
+		}
 	}
 	if err != nil {
 		w.apiDestroy()
@@ -322,9 +323,7 @@ func (w *Window) lostFocus() {
 		w.focus.MarkForRedraw()
 	}
 	SafeCall(w.LostFocusCallback)
-	if w.root.menuBar != nil {
-		w.root.menuBar.postLostFocus(w)
-	}
+	w.root.postLostFocus(w)
 	if len(w.pressedKeys) != 0 {
 		keys := make([]KeyCode, 0, len(w.pressedKeys))
 		for key := range w.pressedKeys {
@@ -425,6 +424,9 @@ func (w *Window) Dispose() {
 		w.surface.dispose()
 		w.destroy()
 	}
+	// Drop any pending redraw request, since a disposed window can never be drawn again. Without this, the window (and
+	// its entire panel tree) would be retained in redrawSet for the life of the process.
+	delete(redrawSet, w)
 	if len(windowList) == 0 && quitAfterLastWindowClosed() {
 		quitting()
 	}
@@ -633,7 +635,7 @@ func (w *Window) MoveToModalCenter(other *Window) {
 	if other != nil && other != w {
 		within = other.FrameRect()
 	} else if d := PrimaryDisplay(); d != nil {
-		within = d.Usable
+		within = d.usableInWindowUnits()
 	}
 	wndFrame := w.FrameRect()
 	within.Y += (within.Height - wndFrame.Height) / 3
@@ -782,6 +784,9 @@ func collectFocusables(current, target *Panel, focusables []*Panel) (match int, 
 		focusables = append(focusables, current)
 	}
 	for _, child := range current.Children() {
+		if child.Hidden {
+			continue
+		}
 		var m int
 		m, focusables = collectFocusables(child, target, focusables)
 		if match == -1 && m != -1 {
@@ -897,7 +902,6 @@ func (w *Window) Draw(c *Canvas) {
 			if !w.transparent {
 				paint := ThemeSurface.Paint(c, r, paintstyle.Fill)
 				c.DrawPaint(paint)
-				paint.Dispose()
 			}
 			w.root.Draw(c, r)
 		})
@@ -909,7 +913,9 @@ func (w *Window) draw() {
 	RebuildDynamicColors()
 	if w.IsValid() {
 		scale := w.BackingScale()
-		w.makeGLCtxCurrent()
+		if w.usesGLRendering() {
+			w.makeGLCtxCurrent()
+		}
 		size := w.ContentRect().Size
 		c, err := w.surface.prepareCanvas(size, scale)
 		if err != nil {
@@ -922,8 +928,29 @@ func (w *Window) draw() {
 		c.Restore()
 		c.Flush()
 		w.lastDrawDuration = time.Since(start)
-		w.glCtx.apiSwapBuffers()
+		if pixels := w.surface.rasterPixmap(); pixels != nil {
+			// The window may have a live GL context even though rendering fell back to the CPU (the fallback was
+			// triggered while preparing this window's canvas). Destroy it so it cannot obscure the CPU-rendered content.
+			w.discardGLCtx()
+			w.apiPresentCPUPixels(pixels)
+		} else {
+			w.glCtx.apiSwapBuffers()
+		}
 	}
+}
+
+// usesGLRendering returns true if this window's drawing should go through its OpenGL context. Windows created before a
+// CPU-rendering fallback keep using their existing GL rendering surface; windows created after it never get one.
+func (w *Window) usesGLRendering() bool {
+	return !cpuRenderingActive || w.surface.context != nil
+}
+
+// discardGLCtx destroys the window's OpenGL context, if any, releasing it first if it is the current one.
+func (w *Window) discardGLCtx() {
+	if wndWithCurrentCtx == w {
+		w.releaseGLCtxCurrent()
+	}
+	w.glCtx.apiDestroy()
 }
 
 // LastDrawDuration returns the duration of the window's most recent draw.
@@ -931,8 +958,11 @@ func (w *Window) LastDrawDuration() time.Duration {
 	return w.lastDrawDuration
 }
 
-// MarkForRedraw marks this window for drawing at the next update.
+// MarkForRedraw marks this window for drawing at the next update. Does nothing if the window has been disposed.
 func (w *Window) MarkForRedraw() {
+	if !w.IsValid() {
+		return
+	}
 	if _, exists := redrawSet[w]; !exists {
 		redrawSet[w] = struct{}{}
 		if len(redrawSet) == 1 {
@@ -1033,8 +1063,7 @@ func (w *Window) ClearTooltip() {
 // UpdateCursorNow causes the cursor to be updated as if the mouse had moved.
 func (w *Window) UpdateCursorNow() {
 	where := w.MouseLocation()
-	target := w.root.PanelAt(where)
-	w.updateCursor(target, target.PointFromRoot(where))
+	w.updateCursor(w.root.PanelAt(where), where)
 }
 
 func (w *Window) updateCursor(target *Panel, where geom.Point) {
@@ -1061,7 +1090,9 @@ func (w *Window) updateCursor(target *Panel, where geom.Point) {
 
 func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 	if !w.okToProcess() {
-		modalStack[len(modalStack)-1].mouseDown(where, button, mods)
+		// Unlike keyboard events, mouse events are positional: the coordinates are in this window's space and would
+		// land on arbitrary panels if rerouted to the top modal window, so a window blocked by a modal simply ignores
+		// mouse presses.
 		return
 	}
 	w.inMouseDown = true
@@ -1072,7 +1103,6 @@ func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 		xmath.Abs(where.X-w.firstButtonLocation.X) <= maxMouseDrift &&
 		xmath.Abs(where.Y-w.firstButtonLocation.Y) <= maxMouseDrift {
 		w.lastButtonCount++
-		time.Since(w.lastButtonTime)
 	} else {
 		w.lastButtonCount = 1
 		w.firstButtonLocation = where
@@ -1142,15 +1172,22 @@ func (w *Window) synthesizeMouseUp() {
 }
 
 func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
+	if !w.pressedButtons[button] {
+		return
+	}
+	delete(w.pressedButtons, button)
+	w.inMouseDown = len(w.pressedButtons) != 0
 	if !w.okToProcess() {
-		modalStack[len(modalStack)-1].mouseUp(where, button, mods)
+		// Delivery is suppressed while blocked by a modal (and, unlike key events, not rerouted to the modal, since
+		// mouse events are positional — see the comment in mouseDown), but the bookkeeping above must still happen so
+		// that a release arriving while blocked (e.g. one synthesized by lostFocus when a modal opens mid-press)
+		// cannot leave stale pressed-button state behind. Otherwise mouseMovedOrDragged, which has no modal gate,
+		// would keep feeding drag events to lastMouseDownPanel for the modal's entire lifetime.
+		if !w.inMouseDown {
+			w.lastMouseDownPanel = nil
+		}
 		return
 	}
-	if !w.inMouseDown {
-		return
-	}
-	w.inMouseDown = false
-	w.pressedButtons[button] = false
 	w.lastButton = button
 	w.lastKeyModifiers = mods
 	if w.MouseUpCallback != nil {
@@ -1165,8 +1202,13 @@ func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 			w.lastMouseDownPanel.MouseUpCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mods)
 		})
 	}
+	if w.inMouseDown {
+		// Other buttons are still down, so the drag in progress continues and the panel it is targeting must keep
+		// receiving events until the last button is released.
+		return
+	}
 	panel := w.root.PanelAt(where)
-	if w.root != nil && !panel.Is(w.lastMouseOverPanel) {
+	if !panel.Is(w.lastMouseOverPanel) {
 		w.mouseExit()
 	}
 	w.updateCursor(panel, where)
@@ -1240,6 +1282,9 @@ func (w *Window) mouseExit() {
 }
 
 func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
+	// Deliberately not gated by okToProcess(). Platforms deliver wheel events to the window under the cursor rather
+	// than the focused window, so scrolling a window blocked by a modal is both possible and desirable, as it only
+	// adjusts the view and cannot trigger actions.
 	w.lastKeyModifiers = mods
 	if w.MouseWheelCallback != nil {
 		stop := false
@@ -1267,6 +1312,12 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 }
 
 func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
+	if !w.okToProcess() {
+		// A window blocked by a modal may still hold the platform focus (see the comment in gainedFocus), so route
+		// keyboard input to the top modal window rather than processing it here.
+		modalStack[len(modalStack)-1].keyPressed(key, mods)
+		return
+	}
 	w.lastKeyModifiers = mods
 	repeat := w.pressedKeys[key]
 	w.pressedKeys[key] = true
@@ -1307,6 +1358,11 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 }
 
 func (w *Window) runeTyped(ch rune) {
+	if !w.okToProcess() {
+		// See the comment in keyPressed.
+		modalStack[len(modalStack)-1].runeTyped(ch)
+		return
+	}
 	if w.root.preRuneTyped(w, ch) {
 		return
 	}
@@ -1338,7 +1394,20 @@ func (w *Window) runeTyped(ch rune) {
 
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
+	pressed := w.pressedKeys[key]
 	delete(w.pressedKeys, key)
+	if !w.okToProcess() {
+		// The matching key down was routed to the top modal window, so deliver the key up there as well. The
+		// bookkeeping above is still done locally so that releases synthesized by lostFocus keep this window's pressed
+		// key state clean.
+		modalStack[len(modalStack)-1].keyReleased(key, mods)
+		return
+	}
+	if !pressed {
+		// No matching key down was seen here — e.g. a release forwarded by a blocked window's lostFocus for a key
+		// that was pressed before the modal opened — so there is nothing to deliver.
+		return
+	}
 	if w.root.preKeyUp(w, key, mods) {
 		return
 	}
@@ -1383,21 +1452,6 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 			time.Since(w.lastButtonTime) > minDelay)
 }
 
-// DragSpec describes a drag & drop operation to start.
-type DragSpec struct {
-	// Image is the drag image shown while dragging. May be nil.
-	Image *Image
-	// Cleanup is called when the drag source finishes, if not nil.
-	Cleanup func()
-	// Data holds the payload for the drag.
-	Data []drag.Data
-	// Origin is the origin of the drag image. For Panel.StartDrag it is in the panel's coordinate space; for
-	// Window.StartDrag it is in the window's root coordinate space.
-	Origin geom.Point
-	// OpMask holds the permitted drag operations.
-	OpMask drag.Op
-}
-
 // StartDrag starts a drag & drop operation. 'img' is the drag image shown while dragging and may be nil. 'origin' is
 // the origin of the drag image in the window's root coordinate space. 'cleanup' is called when the drag source
 // finishes, if not nil. 'opMask' holds the permitted drag operations.
@@ -1422,8 +1476,8 @@ func (w *Window) findDropTarget(di drag.Info, where geom.Point) *Panel {
 	}
 	for panel := w.root.PanelAt(where); panel != nil; panel = panel.Parent() {
 		if panel.DropCallback != nil && panel.Enabled() {
-			accept := false
-			if panel.CanAcceptDropCallback != nil {
+			accept := panel.CanAcceptDropCallback == nil
+			if !accept {
 				SafeCall(func() { accept = panel.CanAcceptDropCallback(di) })
 			}
 			if accept {
@@ -1472,7 +1526,6 @@ func (w *Window) drop(di drag.Info, where geom.Point, mods mod.Modifiers) bool {
 	handled := false
 	SafeCall(func() { handled = panel.DropCallback(di, panel.PointFromRoot(where), mods) })
 	w.lastDropTarget = nil
-	w.inMouseDown = false
 	w.dragFinish()
 	return handled
 }
@@ -1498,6 +1551,7 @@ func (w *Window) dragExitTarget() {
 
 func (w *Window) dragFinish() {
 	w.inMouseDown = false
+	clear(w.pressedButtons)
 	w.adjustToCursorChange()
 	w.FlushDrawing()
 }

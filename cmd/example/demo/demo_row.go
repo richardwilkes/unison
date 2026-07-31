@@ -43,6 +43,14 @@ func (d *demoRow) CloneForTarget(target unison.Paneler, newParent *demoRow) *dem
 	clone.table = table
 	clone.parent = newParent
 	clone.id = tid.MustNewTID('a')
+	// A panel may have only one parent, so the clone must not share the original's checkbox widget; leaving it nil
+	// causes a fresh one to be created on demand for the clone's own cell.
+	clone.checkbox = nil
+	// Deep-clone the children so the clone doesn't share its subtree with the original row.
+	clone.children = nil
+	for _, child := range d.children {
+		clone.children = append(clone.children, child.CloneForTarget(target, &clone))
+	}
 	return &clone
 }
 
@@ -122,7 +130,7 @@ func (d *demoRow) ColumnCell(row, col int, foreground, _ unison.Ink, _, _, _ boo
 		addWrappedText(wrapper, "xyz", foreground, unison.LabelFont, width)
 		return wrapper
 	default:
-		errs.Log(errs.New("column index out of range (0-2)"), "column", col)
+		errs.Log(errs.New("column index out of range (0-3)"), "column", col)
 		return unison.NewLabel()
 	}
 }

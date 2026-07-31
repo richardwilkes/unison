@@ -36,11 +36,75 @@ var (
 
 type apiWindow struct {
 	dropTarget    *w32.DropTarget
+	presentBuf    []uint32 // scratch buffer reused by apiPresentCPUPixels to avoid a full-frame allocation per present
 	wnd           windows.HWND
 	bigIcon       w32.HICON
 	smallIcon     w32.HICON
 	highSurrogate uint16
 	mouseTracked  bool
+	mouseCaptured bool
+}
+
+// w32CaptureOp describes how a mouse button message should change the mouse capture state.
+type w32CaptureOp int
+
+const (
+	w32CaptureKeep w32CaptureOp = iota
+	w32CaptureAcquire
+	w32CaptureRelease
+)
+
+// w32MouseCaptureTransition decides how a button message should change the mouse capture state. The first button press
+// acquires the capture, which is then held until the release of the last button, whose up message carries MK_* flags
+// showing that no buttons remain down. When the capture has already been lost (e.g. taken by OLE's drag-drop loop),
+// releases make no change, so a capture held elsewhere is never stolen or dropped.
+func w32MouseCaptureTransition(down, captured bool, wParam w32.WPARAM) w32CaptureOp {
+	switch {
+	case down && !captured:
+		return w32CaptureAcquire
+	case !down && captured && !w32AnyMouseButtonDown(wParam):
+		return w32CaptureRelease
+	default:
+		return w32CaptureKeep
+	}
+}
+
+// w32AnyMouseButtonDown reports whether the MK_* flags in a mouse message's wParam indicate at least one mouse button
+// is currently held down.
+func w32AnyMouseButtonDown(wParam w32.WPARAM) bool {
+	return wParam&(w32.MK_LBUTTON|w32.MK_RBUTTON|w32.MK_MBUTTON|w32.MK_XBUTTON1|w32.MK_XBUTTON2) != 0
+}
+
+// w32MouseMessagePoint returns the client-area position packed into a mouse message's lParam. The coordinates must be
+// sign-extended from 16 bits: while the mouse is captured, positions outside the client area are delivered, and those
+// above or to the left of it are negative.
+func w32MouseMessagePoint(lParam w32.LPARAM) geom.Point {
+	return geom.NewPoint(float32(int16(lParam&0xFFFF)), float32(int16((lParam>>16)&0xFFFF)))
+}
+
+// w32KeyEvent is one logical key transition produced by translating a WM_KEYDOWN/WM_KEYUP message.
+type w32KeyEvent struct {
+	key     KeyCode
+	pressed bool
+}
+
+// w32KeyEvents translates a key message into the logical key events to dispatch. A shift release fans out to both
+// shift keys, since when both are held Windows delivers a release only for the last one let go. Physical keyboards
+// deliver only WM_KEYUP for PrintScreen, so a full press/release pair is synthesized from the release; injected input
+// (SendInput, remote-desktop stacks, automation) delivers both messages, so the KEYDOWN must produce nothing or every
+// PrintScreen would trigger any bound action twice.
+func w32KeyEvents(key KeyCode, wParam w32.WPARAM, pressed bool) []w32KeyEvent {
+	switch {
+	case !pressed && wParam == w32.VK_SHIFT:
+		return []w32KeyEvent{{key: KeyLShift}, {key: KeyRShift}}
+	case wParam == w32.VK_SNAPSHOT:
+		if pressed {
+			return nil
+		}
+		return []w32KeyEvent{{key: KeyPrintScreen, pressed: true}, {key: KeyPrintScreen}}
+	default:
+		return []w32KeyEvent{{key: key, pressed: pressed}}
+	}
 }
 
 func w32FindWindowByHWND(wnd windows.HWND) *Window {
@@ -79,7 +143,7 @@ func (w *Window) apiInit() error {
 		defer runtime.KeepAlive(className)
 		w32MainWndClass = w32.RegisterClassExW(&w32.WNDCLASSEX{
 			Style:     w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC,
-			WndProc:   windows.NewCallbackCDecl(w32WndProc),
+			WndProc:   windows.NewCallback(w32WndProc),
 			Instance:  w32MainInstance,
 			ClassName: &className[0],
 			Icon: w32.HICON(w32.LoadImageW(0, w32.MakeIntResourceW(w32.IDI_APPLICATION), w32.IMAGE_ICON, 0, 0,
@@ -176,17 +240,12 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			}
 			mods := w.CurrentKeyModifiers()
 			pressed := (lParam>>16)&w32.KF_UP == 0
-			switch {
-			case !pressed && wParam == w32.VK_SHIFT:
-				w.keyReleased(KeyLShift, mods)
-				w.keyReleased(KeyRShift, mods)
-			case wParam == w32.VK_SNAPSHOT:
-				w.keyPressed(KeyPrintScreen, mods)
-				w.keyReleased(KeyPrintScreen, mods)
-			case pressed:
-				w.keyPressed(key, mods)
-			default:
-				w.keyReleased(key, mods)
+			for _, e := range w32KeyEvents(key, wParam, pressed) {
+				if e.pressed {
+					w.keyPressed(e.key, mods)
+				} else {
+					w.keyReleased(e.key, mods)
+				}
 			}
 		case w32.WM_LBUTTONDOWN,
 			w32.WM_RBUTTONDOWN,
@@ -207,8 +266,15 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
-			w.mouseDown(w.w32ConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
-				button, w.CurrentKeyModifiers())
+			// Capture the mouse on the first button press so that moves and the eventual release keep being delivered
+			// while the cursor is outside the client area. Without capture, Windows stops sending mouse messages once
+			// the cursor leaves the window, so a release that happens outside is never seen (leaving stuck button
+			// state) and drag-past-edge auto-scroll cannot work.
+			if w32MouseCaptureTransition(true, w.wnd.mouseCaptured, wParam) == w32CaptureAcquire {
+				w32.SetCapture(hWnd)
+				w.wnd.mouseCaptured = true
+			}
+			w.mouseDown(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONDOWN {
 				return 1
 			}
@@ -232,18 +298,34 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
-			w.mouseUp(w.w32ConvertRawMouse(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF))),
-				button, w.CurrentKeyModifiers())
+			w.mouseUp(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
+			// Release the capture taken on button-down once the last button has been released.
+			if w32MouseCaptureTransition(false, w.wnd.mouseCaptured, wParam) == w32CaptureRelease {
+				w.wnd.mouseCaptured = false
+				w32.ReleaseCapture()
+			}
 			if uMsg == w32.WM_XBUTTONUP {
 				return 1
 			}
 			return 0
 		case w32.WM_MOUSEMOVE:
-			w.w32HandleMouseMove(geom.NewPoint(float32(lParam&0xFFFF), float32((lParam>>16)&0xFFFF)))
+			w.w32HandleMouseMove(w32MouseMessagePoint(lParam))
 			return 0
 		case w32.WM_MOUSELEAVE:
 			w.wnd.mouseTracked = false
-			w.mouseExit()
+			// Crossing events are suppressed while the mouse is captured (see w32HandleMouseMove).
+			if !w.wnd.mouseCaptured {
+				w.mouseExit()
+			}
+			return 0
+		case w32.WM_CAPTURECHANGED:
+			// Another window took the capture away (e.g. OLE's drag-drop loop or a system menu/size-move loop). Any
+			// button release that happens while it holds the capture will never be delivered here, so synthesize the
+			// releases now to avoid stuck button state.
+			if windows.HWND(lParam) != hWnd && w.wnd.mouseCaptured {
+				w.wnd.mouseCaptured = false
+				w.synthesizeMouseUp()
+			}
 			return 0
 		case w32.WM_MOUSEWHEEL:
 			var pos w32.POINT
@@ -302,10 +384,6 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			scale := w.apiBackingScale()
 			minimum = minimum.MulPt(scale).Ceil()
 			maximum = maximum.MulPt(scale).Ceil()
-			frame.Left = int32(float32(frame.Left))
-			frame.Right = int32(float32(frame.Right))
-			frame.Top = int32(float32(frame.Top))
-			frame.Bottom = int32(float32(frame.Bottom))
 			mmi := xruntime.PtrFromUintptr[w32.MINMAXINFO](lParam)
 			mmi.MinTrackSize.X = int32(minimum.Width) + frame.Right - frame.Left
 			mmi.MinTrackSize.Y = int32(minimum.Height) + frame.Bottom - frame.Top
@@ -398,7 +476,11 @@ func (w *Window) w32WindowExStyle() uint32 {
 func (w *Window) w32HandleMouseMove(pt geom.Point) {
 	pt = w.w32ConvertRawMouse(pt)
 	mods := w.CurrentKeyModifiers()
-	if !w.wnd.mouseTracked {
+	// While the mouse is captured, moves are delivered even when the cursor is outside the client area, where arming
+	// TrackMouseEvent would post an immediate WM_MOUSELEAVE and cause enter/exit churn on every move. Crossing events
+	// are therefore suppressed for the duration of the capture; normal tracking resumes on the first move after the
+	// capture is released.
+	if !w.wnd.mouseTracked && !w.wnd.mouseCaptured {
 		var evt w32.TRACKMOUSEEVENT
 		evt.Flags = w32.TME_LEAVE
 		evt.HwndTrack = w.wnd.wnd
@@ -416,6 +498,7 @@ func (w *Window) apiSetTitle(title string) {
 
 func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	var big, small w32.HICON
+	owned := false
 	if len(images) > 0 {
 		cxIcon := w32.GetSystemMetrics(w32.SM_CXICON)
 		cyIcon := w32.GetSystemMetrics(w32.SM_CYICON)
@@ -423,7 +506,10 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 		cySmIcon := w32.GetSystemMetrics(w32.SM_CYSMICON)
 		big = w32CreateIconFromImage(w32ChooseBestImage(images, cxIcon, cyIcon), 0, 0, true)
 		small = w32CreateIconFromImage(w32ChooseBestImage(images, cxSmIcon, cySmIcon), 0, 0, true)
+		owned = true
 	} else {
+		// Revert to the class icons. These handles are shared and owned by the system, so they must never be passed to
+		// DestroyIcon; bigIcon/smallIcon only ever record icons created by this window.
 		big = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICON))
 		small = w32.HICON(w32.GetClassLongPtrW(w.wnd.wnd, w32.GCLP_HICONSM))
 	}
@@ -435,8 +521,13 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	if w.wnd.smallIcon != 0 {
 		w32.DestroyIcon(w.wnd.smallIcon)
 	}
-	w.wnd.bigIcon = big
-	w.wnd.smallIcon = small
+	if owned {
+		w.wnd.bigIcon = big
+		w.wnd.smallIcon = small
+	} else {
+		w.wnd.bigIcon = 0
+		w.wnd.smallIcon = 0
+	}
 }
 
 func w32ChooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
@@ -570,8 +661,11 @@ func (w *Window) apiUpdateCursorImage() {
 }
 
 // w32SetCursor applies the native cursor sized for this window's current monitor DPI. Setting a null cursor would hide
-// it entirely, so a failed handle creation leaves the existing cursor in place.
+// it entirely, so a nil (destroyed) cursor or a failed handle creation leaves the existing cursor in place.
 func (w *Window) w32SetCursor(c *w32Cursor) {
+	if c == nil {
+		return
+	}
 	if h := c.handle(w.apiBackingScale().X); h != 0 {
 		w32.SetCursor(h)
 	}
@@ -605,8 +699,38 @@ func (w *Window) apiCursorPosition() geom.Point {
 }
 
 func (w *Window) apiBackingScale() geom.Point {
-	dpi := w32.GetDpiForWindow(w.wnd.wnd)
+	dpi := w.w32DPI()
 	return geom.NewPoint(float32(dpi)/96.0, float32(dpi)/96.0)
+}
+
+// w32DPI returns the effective DPI for the window. GetDpiForWindow only exists as of the Windows 10 Anniversary Update
+// and its lazy proc would panic when called on an older build, so builds before that — which the SetProcessDpiAwareness
+// startup fallback still supports — instead query the DPI of the monitor hosting the window via shcore, present since
+// Windows 8.1.
+func (w *Window) w32DPI() uint32 {
+	return w32WindowDPI(w32IsWindows10BuildOrGreater(w32.Windows10AnniversaryUpdateBuild),
+		func() uint32 { return w32.GetDpiForWindow(w.wnd.wnd) },
+		func() uint32 {
+			dpi, _ := w32.GetDpiForMonitor(w32.MonitorFromWindow(w.wnd.wnd, w32.MONITOR_DEFAULTTONEAREST),
+				w32.MDT_EFFECTIVE_DPI)
+			return dpi
+		})
+}
+
+// w32WindowDPI picks which DPI query to use based on whether GetDpiForWindow is available, invoking only the chosen
+// one, since calling the other could panic on a proc the running Windows build does not export. A query that fails and
+// reports zero is mapped to the default 96, because callers turn the result into scale factors that are divided by.
+func w32WindowDPI(haveGetDpiForWindow bool, getDpiForWindow, getDpiForMonitor func() uint32) uint32 {
+	var dpi uint32
+	if haveGetDpiForWindow {
+		dpi = getDpiForWindow()
+	} else {
+		dpi = getDpiForMonitor()
+	}
+	if dpi == 0 {
+		return 96
+	}
+	return dpi
 }
 
 func (w *Window) apiMinimize() {

@@ -30,34 +30,22 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # The module is pure Go (no cgo), so no development headers or C toolchain are needed anywhere. These are
+      # the libraries unison dlopens at runtime on Linux; installed so the environment matches a user machine
+      # (any test that dlopens them can run rather than skip).
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config \
-            libx11-dev \
-            libgl1-mesa-dev \
-            libfontconfig1-dev \
-            libfreetype-dev
-
-      # The default mingw gcc on the Windows/ARM64 runner is an x86_64 build that
-      # emits x86 assembly, so cgo fails to assemble runtime/cgo's gcc_arm64.S.
-      # Install a native aarch64 llvm-mingw toolchain and point cgo's CC at it.
-      - name: Install Windows ARM64 toolchain
-        if: runner.os == 'Windows' && runner.arch == 'ARM64'
-        env:
-          LLVM_MINGW_VERSION: "20260616"
-        run: |
-          name="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-aarch64"
-          curl -fsSL -o "$RUNNER_TEMP/$name.zip" \
-            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/$name.zip"
-          7z x "$RUNNER_TEMP/$name.zip" -o"$RUNNER_TEMP" >/dev/null
-          echo "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH"
-          echo "CC=aarch64-w64-mingw32-gcc" >> "$GITHUB_ENV"
+            libx11-6 \
+            libgl1
 
       # The race detector isn't supported on windows/arm64, so run the tests
-      # without it there (--lint --test instead of --all).
+      # without it there (--lint --test instead of --all). Everywhere else,
+      # build.sh runs the race tests with CGO_ENABLED=1 on non-macOS platforms
+      # because Go's prebuilt race runtime requires cgo there — the runners'
+      # preinstalled C toolchains cover that; the module itself has no cgo.
       - name: Build
         run: |
           if [ "$RUNNER_OS" = "Windows" ] && [ "$RUNNER_ARCH" = "ARM64" ]; then
@@ -70,6 +58,8 @@ jobs:
       # architecture (e.g. example-macos-arm64, example-windows-amd64.exe).
       - name: Build example
         id: example
+        env:
+          CGO_ENABLED: 0
         run: |
           goos=$(go env GOOS)
           goarch=$(go env GOARCH)
@@ -86,3 +76,31 @@ jobs:
           name: ${{ steps.example.outputs.artifact_name }}
           path: dist/
           if-no-files-found: error
+
+  # The module is pure Go, so every platform can be compiled from one host. Cross-building all six OS/arch pairs
+  # catches compile breakage on platforms whose native runners might be slow, missing, or skipped — cheap insurance
+  # that was impossible in the cgo era.
+  cross-build:
+    name: Cross-build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-build all platforms
+        env:
+          CGO_ENABLED: 0
+        run: |
+          for goos in darwin linux windows; do
+            for goarch in amd64 arm64; do
+              echo "::group::$goos/$goarch"
+              GOOS=$goos GOARCH=$goarch go build ./...
+              echo "::endgroup::"
+            done
+          done

@@ -10,14 +10,13 @@
 package w32
 
 import (
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 var (
-	dwmapi                        = syscall.NewLazyDLL("dwmapi.dll")
+	dwmapi                        = windows.NewLazySystemDLL("dwmapi.dll")
 	dwmEnableBlurBehindWindowProc = dwmapi.NewProc("DwmEnableBlurBehindWindow")
 )
 
@@ -40,5 +39,5 @@ type DWM_BLURBEHIND struct {
 func DwmEnableBlurBehindWindow(hwnd windows.HWND, blurBehind *DWM_BLURBEHIND) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := dwmEnableBlurBehindWindowProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(blurBehind)))
-	return ret&0xff != 0
+	return hresultSucceeded(ret)
 }

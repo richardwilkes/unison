@@ -81,12 +81,38 @@ func TestUndo(t *testing.T) {
 	c.Equal(0, t7.released)
 }
 
+func TestRedoPanicLeavesEditUnapplied(t *testing.T) {
+	c := check.New(t)
+	var recovered int
+	mgr := unison.NewUndoManager(5, func(_ error) { recovered++ })
+	tu := newTestUndo("t1")
+	mgr.Add(tu)
+	mgr.Undo()
+	c.Equal(1, tu.undone)
+	c.True(mgr.CanRedo())
+	c.False(mgr.CanUndo())
+	tu.redoPanics = true
+	mgr.Redo()
+	c.Equal(1, recovered)
+	c.Equal(0, tu.redone)
+	// The failed edit must not be marked as applied: redo should remain available and undo unavailable.
+	c.True(mgr.CanRedo())
+	c.False(mgr.CanUndo())
+	tu.redoPanics = false
+	mgr.Redo()
+	c.Equal(1, recovered)
+	c.Equal(1, tu.redone)
+	c.False(mgr.CanRedo())
+	c.True(mgr.CanUndo())
+}
+
 type testUndo struct {
-	name     string
-	absorbed int
-	undone   int
-	redone   int
-	released int
+	name       string
+	absorbed   int
+	undone     int
+	redone     int
+	released   int
+	redoPanics bool
 }
 
 func newTestUndo(name string) *testUndo {
@@ -106,6 +132,9 @@ func (tu *testUndo) Undo() {
 }
 
 func (tu *testUndo) Redo() {
+	if tu.redoPanics {
+		panic("redo failure")
+	}
 	tu.redone++
 }
 

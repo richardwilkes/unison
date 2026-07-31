@@ -122,6 +122,7 @@ type Table[T TableRowConstraint[T]] struct {
 	lastMouseDownCellPanel   *Panel
 	TableTheme
 	Panel
+	pressedHitRect           geom.Rect
 	interactionRow           int
 	interactionColumn        int
 	lastMouseMotionRow       int
@@ -226,7 +227,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	}
 
 	backgroundPaint := t.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRect(dirty, backgroundPaint)
 
 	var insets geom.Insets
@@ -276,18 +276,15 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			}
 			paint := rowInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 		} else if r%2 == 1 {
 			paint := t.BandingInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 		}
 		rect.Y += t.rowCache[r].height
 		if t.ShowRowDivider && r != endBeforeRow-1 {
 			rect.Height = 1
 			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 			rect.Y++
 		}
 	}
@@ -299,7 +296,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			rect.X = insets.Left
 			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 		}
 		rect.X = x
 		lastCol := len(t.Columns)
@@ -310,7 +306,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			rect.X += t.Columns[c].Current
 			paint := t.InteriorDividerInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
-			paint.Dispose()
 			rect.X++
 		}
 	}
@@ -348,7 +343,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 						chevronPaint := fg.Paint(canvas, cellRect, paintstyle.Fill)
 						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
 							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil, chevronPaint)
-						chevronPaint.Dispose()
 						canvas.Restore()
 					}
 					indent := hierarchyIndent*float32(t.rowCache[r].depth+1) + t.Padding.Left
@@ -755,6 +749,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 	t.wasDragged = false
 	t.dividerDrag = false
 	t.lastSel = ""
+	t.pressedHitRect = geom.Rect{}
 
 	t.interactionRow = -1
 	t.interactionColumn = -1
@@ -789,6 +784,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		}
 		for _, one := range t.hitRects {
 			if where.In(one.Rect) {
+				t.pressedHitRect = one.Rect
 				return true
 			}
 		}
@@ -895,7 +891,8 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 				}
 				stop = true
 			}
-		} else if t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseDragCallback != nil {
+		} else if t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseDragCallback != nil &&
+			t.interactionRow < len(t.rowCache) && t.interactionColumn < len(t.Columns) {
 			cell := t.cell(t.interactionRow, t.interactionColumn)
 			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
 			t.installCell(cell, rect)
@@ -913,14 +910,17 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 // DefaultMouseUp provides the default mouse up handling.
 func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	stop := false
-	if !t.dividerDrag && button == ButtonLeft {
+	if !t.dividerDrag && button == ButtonLeft && !t.pressedHitRect.Empty() {
+		// Only fire a hit rect's handler when the press began on that same hit rect, so that a gesture started
+		// elsewhere (e.g. a row selection drag) releasing over a disclosure triangle does not toggle it.
 		for _, one := range t.hitRects {
-			if where.In(one.Rect) {
+			if one.Rect == t.pressedHitRect && where.In(one.Rect) {
 				one.handler()
 				stop = true
 				break
 			}
 		}
+		t.pressedHitRect = geom.Rect{}
 	}
 
 	if !t.wasDragged && t.lastSel != "" {
@@ -931,7 +931,8 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 		t.notifyOfSelectionChange()
 	}
 
-	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 && t.lastMouseDownCellPanel != nil &&
+	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 && t.interactionRow < len(t.rowCache) &&
+		t.interactionColumn < len(t.Columns) && t.lastMouseDownCellPanel != nil &&
 		t.lastMouseDownCellPanel.MouseUpCallback != nil {
 		cell := t.cell(t.interactionRow, t.interactionColumn)
 		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
@@ -1580,7 +1581,7 @@ func (t *Table[T]) DefaultSizes(_ geom.Size) (minSize, prefSize, maxSize geom.Si
 			prefSize.Width--
 		}
 	}
-	if t.ShowRowDivider {
+	if t.ShowRowDivider && endBeforeRow > startRow {
 		prefSize.Height += float32((endBeforeRow - startRow) - 1)
 	}
 	if border := t.Border(); border != nil {

@@ -14,6 +14,9 @@ import (
 	"debug/pe"
 	"image"
 	"image/color"
+	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -140,6 +143,25 @@ func TestWriteObject(t *testing.T) {
 		} else if !bytes.Equal(rsrc, secData) {
 			t.Errorf("%s: .rsrc content differs across architectures", arch.goarch)
 		}
+	}
+}
+
+func TestAddWindowsIconsRejectsOwnerWithoutExtensions(t *testing.T) {
+	iconPath := filepath.Join(t.TempDir(), "app.png")
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, solidImage(32, 32)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(iconPath, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rs := &resourceSet{}
+	err := rs.addWindowsIcons(iconPath, []*FileData{{Name: "Doc", Icon: iconPath, Rank: rankOwner}})
+	if err == nil {
+		t.Fatal("expected an error for an Owner file_info entry with no extensions, not a panic or success")
+	}
+	if !strings.Contains(err.Error(), "no extensions") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 

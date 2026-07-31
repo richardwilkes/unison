@@ -83,20 +83,19 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 
 func (d *dockHeader) DefaultDraw(gc *Canvas, rect geom.Rect) {
 	backgroundPaint := d.BackgroundInk.Paint(gc, rect, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	gc.DrawRect(rect, backgroundPaint)
 	if d.dragInsertIndex >= 0 {
 		r := d.ContentRect(false)
 		r.Width = d.TabInsertSize
 		tabs, _ := d.partition()
-		switch {
-		case d.dragInsertIndex < len(tabs):
-			r.X = tabs[d.dragInsertIndex].FrameRect().X - ((d.TabGap-d.TabInsertSize)/2 + d.TabInsertSize + 1)
-		default:
-			r.X = tabs[len(tabs)-1].FrameRect().Right()
+		// The insert position may refer to a tab hidden by the overflow logic, whose frame is stale, so anchor the
+		// marker to the nearest visible tab instead.
+		if i := nextVisibleTab(tabs, d.dragInsertIndex); i != -1 {
+			r.X = tabs[i].FrameRect().X - ((d.TabGap-d.TabInsertSize)/2 + d.TabInsertSize + 1)
+		} else if i = previousVisibleTab(tabs, d.dragInsertIndex-1); i != -1 {
+			r.X = tabs[i].FrameRect().Right()
 		}
 		dropPaint := d.DropAreaInk.Paint(gc, rect, paintstyle.Fill)
-		defer dropPaint.Dispose()
 		gc.DrawRect(r, dropPaint)
 	}
 }
@@ -121,10 +120,14 @@ func (d *dockHeader) DefaultDragUpdated(di drag.Info, where geom.Point, _ mod.Mo
 		return drag.None
 	}
 	savedDragInsertIndex := d.dragInsertIndex
-	d.dragInsertIndex = -1
 	tabs, _ := d.partition()
 	d.dragInsertIndex = len(tabs)
 	for i, one := range tabs {
+		if one.Hidden {
+			// Tabs hidden by the overflow logic retain the frame from when they were last visible, so their stale
+			// rects must not participate in hit-testing.
+			continue
+		}
 		r := one.FrameRect()
 		if where.X < r.CenterX() {
 			d.dragInsertIndex = i
@@ -188,6 +191,26 @@ func (d *dockHeader) partition() (tabs []*dockTab, buttons []*Panel) {
 		}
 	}
 	return tabs, buttons
+}
+
+// nextVisibleTab returns the index of the first tab at or after index that is not hidden, or -1 if there is none.
+func nextVisibleTab(tabs []*dockTab, index int) int {
+	for i := max(index, 0); i < len(tabs); i++ {
+		if !tabs[i].Hidden {
+			return i
+		}
+	}
+	return -1
+}
+
+// previousVisibleTab returns the index of the last tab at or before index that is not hidden, or -1 if there is none.
+func previousVisibleTab(tabs []*dockTab, index int) int {
+	for i := min(index, len(tabs)-1); i >= 0; i-- {
+		if !tabs[i].Hidden {
+			return i
+		}
+	}
+	return -1
 }
 
 func (d *dockHeader) LayoutSizes(target *Panel, _ geom.Size) (minSize, prefSize, maxSize geom.Size) {

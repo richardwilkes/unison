@@ -48,13 +48,19 @@ type ProgressBar struct {
 	lastAnimationTime time.Time
 	ProgressBarTheme
 	Panel
-	current float32
-	maximum float32
+	current       float32
+	maximum       float32
+	redrawPending bool
 }
 
 // NewProgressBar creates a new progress bar. A max of zero will create an indeterminate progress bar, i.e. one whose
 // meter animates back and forth.
 func NewProgressBar(maximum float32) *ProgressBar {
+	if maximum < 0 {
+		// Clamp just as SetMaximum() does, since DefaultDraw() draws a negative maximum as an indeterminate meter but
+		// only schedules the animation when the maximum is exactly zero, which would leave the meter frozen.
+		maximum = 0
+	}
 	p := &ProgressBar{
 		ProgressBarTheme: DefaultProgressBarTheme,
 		maximum:          maximum,
@@ -137,32 +143,40 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 			if elapsed >= p.FullTraversalSpeed {
 				elapsed = p.FullTraversalSpeed - (elapsed - p.FullTraversalSpeed)
 			}
-			meter.X = maximum * float32(elapsed) / float32(p.FullTraversalSpeed)
+			meter.X = bounds.X + maximum*float32(elapsed)/float32(p.FullTraversalSpeed)
 		}
 	} else if p.current > 0 {
 		meter.Width = bounds.Width * (p.current / p.maximum)
 	}
 	backgroundPaint := p.BackgroundInk.Paint(canvas, bounds, paintstyle.Fill)
-	defer backgroundPaint.Dispose()
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, backgroundPaint)
 	if meter.Width > 0 {
 		trimmedMeter := meter
 		trimmedMeter.X += 0.5
 		trimmedMeter.Width--
 		fillPaint := p.FillInk.Paint(canvas, trimmedMeter, paintstyle.Fill)
-		defer fillPaint.Dispose()
 		canvas.DrawRoundedRect(trimmedMeter, p.CornerRadius, fillPaint)
 	}
 	bounds = bounds.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
 	paint := p.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
-	defer paint.Dispose()
 	paint.SetStrokeWidth(p.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, p.CornerRadius, paint)
 	if meter.Width > 0 {
 		meter = meter.Inset(geom.NewUniformInsets(p.EdgeThickness / 2))
 		canvas.DrawRoundedRect(meter, p.CornerRadius, paint)
 	}
-	if p.maximum == 0 {
-		InvokeTaskAfter(p.MarkForRedraw, p.TickSpeed)
+	if p.maximum == 0 && !p.redrawPending {
+		// Guard against scheduling more than one redraw task at a time. Without this, every externally triggered draw
+		// (resize, overlapping invalidation, focus change) would start another self-perpetuating redraw chain, and a
+		// long-lived indeterminate bar would accumulate many concurrent redraw loops.
+		p.redrawPending = true
+		InvokeTaskAfter(p.animationTick, p.TickSpeed)
 	}
+}
+
+func (p *ProgressBar) animationTick() {
+	// The pending flag must be cleared even if the redraw ends up being a no-op (e.g. the bar is no longer in a valid
+	// window), since otherwise the animation could never be scheduled again.
+	p.redrawPending = false
+	p.MarkForRedraw()
 }

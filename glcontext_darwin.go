@@ -11,20 +11,20 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/errs"
-	"github.com/richardwilkes/unison/internal/mac"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 type apiGLContext struct {
-	pixelFormat mac.OpenGLPixelFormatRef
-	ctx         mac.OpenGLContextRef
+	pixelFormat cocoa.OpenGLPixelFormatRef
+	ctx         cocoa.OpenGLContextRef
 }
 
 func (c *apiGLContext) apiCreate(wnd *Window) error {
-	pixFmt := mac.NewOpenGLPixelFormat()
+	pixFmt := cocoa.NewOpenGLPixelFormat()
 	if pixFmt == 0 {
 		return errs.New("failed to create OpenGL pixel format")
 	}
-	ctx := mac.NewOpenGLContext(wnd.wnd.view, pixFmt, 0, wnd.transparent)
+	ctx := cocoa.NewOpenGLContext(wnd.wnd.view, pixFmt, 0, wnd.transparent)
 	if ctx == 0 {
 		pixFmt.Release()
 		return errs.New("failed to create OpenGL context")
@@ -39,7 +39,7 @@ func (c *apiGLContext) apiMakeCurrent() {
 }
 
 func (c *apiGLContext) apiReleaseCurrent() {
-	mac.ClearOpenGLCurrentContext()
+	cocoa.ClearOpenGLCurrentContext()
 }
 
 func (c *apiGLContext) apiSwapBuffers() {
