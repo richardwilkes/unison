@@ -142,6 +142,10 @@ func NoPlatformFileDialogs() StartupOption {
 // calls into unison can be made prior to Start() being called unless explicitly stated otherwise.
 func Start(options ...StartupOption) {
 	AttachConsole()
+	// Record the UI thread's identity before anything can ask whether it is running on it. In particular, this must
+	// happen before quitting() is registered as an exit function, since that may be called from the signal handler
+	// goroutine xos installs and needs to know it isn't on the UI thread.
+	uiGoroutineID.Store(currentGoroutineID())
 	for _, option := range options {
 		xos.ExitIfErr(option(startupOption{}))
 	}
@@ -254,6 +258,34 @@ func allowQuit() bool {
 }
 
 func quitting() {
+	// quitting() is registered with xos.RunAtExit(), so a SIGINT or SIGTERM brings us here on the signal handler
+	// goroutine rather than the UI thread. The teardown this leads to (window destruction, cursor destruction and the
+	// platform terminate call) may only be performed on the UI thread, since the platform windowing APIs are
+	// thread-affine — on macOS, AppKit traps outright. Hand the work to the event loop as a normal quit request and
+	// block here until it has run, so xos.Exit() doesn't reach os.Exit() before the teardown completes.
+	//
+	// Two consequences are deliberate:
+	//
+	//  1. If the marshaled quit is vetoed (by the AllowQuitCallback or a window refusing to close), the app still
+	//     exits: once xos.Exit() has been entered, the exit is committed and will call os.Exit() regardless. A veto
+	//     cannot cancel a signal-initiated termination; it only means the process exits without the orderly window
+	//     teardown, which is safe.
+	//  2. The wait is unbounded. The UI thread may legitimately be showing an unsaved-changes dialog in response to
+	//     the quit request, and there is no correct amount of time to allow for a human to answer it. SIGKILL remains
+	//     the escalation path for an app that never finishes.
+	//
+	// The marshaled AttemptQuit() comes back through here on the UI thread, where this branch is skipped and the
+	// normal, inline path is taken. By then, the exit function registered after this one has already set calledAtExit
+	// (xos.Exit() runs them in reverse order of registration), so the nested xos.Exit() below is skipped as well.
+	if platformInited.Load() && !onUIThread() {
+		done := make(chan struct{})
+		InvokeTask(func() {
+			defer close(done)
+			AttemptQuit()
+		})
+		<-done
+		return
+	}
 	quitLock.Lock()
 	callback := quittingCallback
 	quittingCallback = nil
@@ -302,7 +334,9 @@ func finishQuit() error {
 // AttemptQuit initiates the termination sequence. The AllowQuitCallback is consulted first, then each open window is
 // asked to close, honoring any AllowCloseCallback vetoes. If the quit request or any window close is denied, the app
 // is not terminated. This is also the path taken for system-initiated termination requests (e.g. Dock -> Quit or
-// logout on macOS), so both quit paths behave identically.
+// logout on macOS), so both quit paths behave identically. Signal-initiated termination (SIGINT/SIGTERM) is routed
+// through here as well, marshaled onto the UI thread from the signal handler goroutine, with the caveat that a veto
+// cannot stop the process from exiting at that point; see quitting() for details.
 func AttemptQuit() {
 	if allowQuit() && closeAllWindows() {
 		quitting()

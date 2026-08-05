@@ -12,7 +12,9 @@ package unison
 import (
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/unison/enums/thememode"
@@ -80,17 +82,27 @@ func withAllowQuitCallback(t *testing.T, f func() bool) {
 }
 
 // guardQuitting prevents quitting() from exiting the test process and returns a pointer to a flag recording whether
-// it was invoked. Setting calledAtExit keeps quitting() from calling xos.Exit; since the package was never
-// initialized, the finishQuit() it then falls through to fails fast with a logged error before touching any platform
-// APIs.
+// it was invoked.
 func guardQuitting(t *testing.T) *bool {
 	t.Helper()
 	quit := false
+	guardQuittingWith(t, func() { quit = true })
+	return &quit
+}
+
+// guardQuittingWith installs f as the quitting callback and prevents quitting() from exiting the test process, both
+// only for the duration of the test. Setting calledAtExit keeps quitting() from calling xos.Exit; it is also what the
+// signal path would have done by the time quitting() runs, since xos.Exit invokes the registered exit functions in
+// reverse order of registration and the one that sets calledAtExit is registered last. Since the package was never
+// initialized, the finishQuit() quitting() then falls through to fails fast with a logged error before touching any
+// platform APIs.
+func guardQuittingWith(t *testing.T, f func()) {
+	t.Helper()
 	quitLock.Lock()
 	savedCalledAtExit := calledAtExit
 	savedQuittingCallback := quittingCallback
 	calledAtExit = true
-	quittingCallback = func() { quit = true }
+	quittingCallback = f
 	quitLock.Unlock()
 	t.Cleanup(func() {
 		quitLock.Lock()
@@ -98,7 +110,53 @@ func guardQuitting(t *testing.T) *bool {
 		quittingCallback = savedQuittingCallback
 		quitLock.Unlock()
 	})
-	return &quit
+}
+
+// withUIThreadIdentity makes the calling goroutine pass onUIThread's check and marks the platform as initialized, both
+// only for the duration of the test, so the tests can drive the UI-thread-marshaling logic without a live windowing
+// system. Tests using this must pump the task queue themselves, as the event loop would.
+func withUIThreadIdentity(t *testing.T) {
+	t.Helper()
+	savedID := uiGoroutineID.Load()
+	savedInited := platformInited.Load()
+	uiGoroutineID.Store(currentGoroutineID())
+	platformInited.Store(true)
+	t.Cleanup(func() {
+		uiGoroutineID.Store(savedID)
+		platformInited.Store(savedInited)
+	})
+}
+
+// waitForQueuedTask blocks until at least one task is pending on the shared queue, failing the test rather than
+// hanging the test binary if none ever appears.
+func waitForQueuedTask(t *testing.T) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		if length, head := taskQueueState(); length > head {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("no task was queued")
+}
+
+// pumpTasksUntil services the task queue from the calling goroutine, the way the event loop would, until done is
+// closed. It fails the test rather than hanging the test binary if that takes too long, so a regression in the
+// marshaling surfaces as a failure.
+func pumpTasksUntil(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case <-done:
+			return
+		case <-deadline:
+			t.Fatal("timed out waiting for the off-thread quitting() to return")
+		default:
+			processNextTask()
+			time.Sleep(time.Millisecond)
+		}
+	}
 }
 
 // newCloseTestWindow returns a minimal Window (via newRedrawTestWindow) whose AllowCloseCallback increments *asked and
@@ -218,4 +276,111 @@ func TestAttemptQuitProceedsWhenPermitted(t *testing.T) {
 	c.True(*quit, "termination must proceed once the quit and all window closes are permitted")
 	c.Equal(1, asked)
 	c.Equal(0, len(windowList))
+}
+
+// TestQuittingFromSignalGoroutineMarshalsToUIThread is the regression test for a SIGINT/SIGTERM crashing the app
+// instead of terminating it cleanly. quitting() is registered with xos.RunAtExit, so the signal handler goroutine xos
+// installs runs it directly; the window teardown it leads to may only happen on the UI thread, and on macOS AppKit
+// traps when it doesn't ("SIGTRAP: trace trap"). The quit must instead be marshaled to the UI thread and the calling
+// goroutine must block until it has completed, so the process isn't torn down mid-teardown. This test mutates global
+// state and therefore must not call t.Parallel.
+func TestQuittingFromSignalGoroutineMarshalsToUIThread(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	preventQuitOnLastWindowClosed(t)
+	withAllowQuitCallback(t, func() bool { return true })
+	withUIThreadIdentity(t)
+
+	uiID := currentGoroutineID()
+	returned := make(chan struct{})
+	var callbackGoroutineID atomic.Uint64
+	var callbackRanBeforeReturn atomic.Bool
+	guardQuittingWith(t, func() {
+		callbackGoroutineID.Store(currentGoroutineID())
+		select {
+		case <-returned:
+		default:
+			callbackRanBeforeReturn.Store(true)
+		}
+	})
+	var asked int
+	wnd := newCloseTestWindow(true, &asked)
+	swapWindowList(t, wnd)
+
+	go func() { // Stands in for the signal handler goroutine calling quitting() via xos.Exit.
+		quitting()
+		close(returned)
+	}()
+
+	// The quit must have been handed to the task queue rather than performed in place, and the caller must still be
+	// blocked while the task sits there unserviced.
+	waitForQueuedTask(t)
+	select {
+	case <-returned:
+		t.Fatal("quitting() returned without waiting for the marshaled quit to complete")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	pumpTasksUntil(t, returned)
+	c.Equal(uiID, callbackGoroutineID.Load(), "the quitting callback must run on the UI thread")
+	c.True(callbackRanBeforeReturn.Load(), "quitting() must not return before the marshaled quit has run")
+	c.Equal(1, asked, "the window must be asked to close")
+	c.Equal(0, len(windowList), "the window must be closed")
+	c.False(wnd.IsValid())
+}
+
+// TestQuittingFromSignalGoroutineWithVetoedQuit verifies the semantic that a veto cannot cancel a signal-initiated
+// termination: once xos.Exit has been entered, os.Exit will be called no matter what, so the off-thread quitting()
+// must still return promptly after the marshaled quit request is denied. The termination sequence itself must not run,
+// leaving the windows untouched, and the process then exits without the orderly teardown. This test mutates global
+// state and therefore must not call t.Parallel.
+func TestQuittingFromSignalGoroutineWithVetoedQuit(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	preventQuitOnLastWindowClosed(t)
+	withAllowQuitCallback(t, func() bool { return false })
+	withUIThreadIdentity(t)
+
+	returned := make(chan struct{})
+	var callbackRan atomic.Bool
+	guardQuittingWith(t, func() { callbackRan.Store(true) })
+	var asked int
+	wnd := newCloseTestWindow(true, &asked)
+	swapWindowList(t, wnd)
+
+	go func() { // Stands in for the signal handler goroutine calling quitting() via xos.Exit.
+		quitting()
+		close(returned)
+	}()
+
+	pumpTasksUntil(t, returned)
+	c.False(callbackRan.Load(), "a denied quit must not run the termination sequence")
+	c.Equal(0, asked, "no window may be asked to close when the quit itself was denied")
+	c.Equal(1, len(windowList), "no window may be closed when the quit itself was denied")
+	c.True(wnd.IsValid())
+}
+
+// TestQuittingOnUIThreadRunsInline verifies that a quit already running on the UI thread (the normal Cmd-Q or
+// last-window-closed path) is performed in place rather than being bounced through the task queue, which would
+// deadlock the event loop or silently defer the teardown. This test mutates global state and therefore must not call
+// t.Parallel.
+func TestQuittingOnUIThreadRunsInline(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	preventQuitOnLastWindowClosed(t)
+	withUIThreadIdentity(t)
+	quit := guardQuitting(t)
+	swapWindowList(t)
+
+	quitting()
+	c.True(*quit, "the quitting callback must be invoked inline when already on the UI thread")
+	length, head := taskQueueState()
+	c.Equal(0, length, "a quit on the UI thread must not enqueue a task")
+	c.Equal(0, head)
 }
