@@ -337,8 +337,8 @@ func TestViewTextInputClient(t *testing.T) {
 			if !objc.Send[bool](ov, Sel("hasMarkedText")) {
 				t.Error("hasMarkedText = false after setMarkedText")
 			}
-			// The old cgo bridge (inherited from GLFW) under-reported this as {0, length-1}, which misplaces IME
-			// candidate windows; NSTextInputClient expects the full range {0, length}.
+			// The old cgo bridge under-reported this as {0, length-1}, which misplaces IME candidate windows;
+			// NSTextInputClient expects the full range {0, length}.
 			if got, want := objc.Send[NSRange](ov, Sel("markedRange")), (NSRange{Location: 0, Length: 3}); got != want {
 				t.Errorf("markedRange = %+v, want %+v", got, want)
 			}

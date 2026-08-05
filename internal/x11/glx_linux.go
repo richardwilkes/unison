@@ -282,9 +282,8 @@ func (glx *GLX) CreateContext() GLXContext {
 	}
 	// glXCreateContextAttribsARB raises X protocol errors (e.g. GLXBadFBConfig) when the requested GL version or
 	// configuration is unsupported, and Xlib's default error handler prints a message and terminates the process.
-	// Install a no-op handler around the call (as GLFW does) so such failures surface as a nil context the caller can
-	// handle, and sync before restoring it so any error the call raised is processed while the no-op handler is still
-	// installed.
+	// Install a no-op handler around the call so such failures surface as a nil context the caller can handle, and sync
+	// before restoring it so any error the call raised is processed while the no-op handler is still installed.
 	prev := xSetErrorHandler(glxNoopErrorHandler)
 	context := glXCreateContextAttribsARB(glx.display, glx.fbConfig, nil, 1, &attrs[0])
 	xSync(glx.display, 0)
