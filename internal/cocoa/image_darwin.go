@@ -28,30 +28,72 @@ func newNSImage(pixels []byte, logicalWidth, logicalHeight, actualWidth, actualH
 }
 
 // newNSImageFromNRGBA is newNSImage for a non-premultiplied NRGBA image, honoring the image's stride and sub-image
-// origin: when the pixel data is not tightly packed (a sub-image or a padded stride), the visible rows are repacked
-// into a contiguous buffer first, so passing img.Pix directly cannot garble rows.
+// origin.
 func newNSImageFromNRGBA(img *image.NRGBA, logicalWidth, logicalHeight int) objc.ID {
-	width := img.Rect.Dx()
-	height := img.Rect.Dy()
-	pixels := img.Pix
-	if img.Stride != width*4 {
-		pixels = make([]byte, width*height*4)
-		for y := range height {
-			src := img.PixOffset(img.Rect.Min.X, img.Rect.Min.Y+y)
-			copy(pixels[y*width*4:(y+1)*width*4], img.Pix[src:src+width*4])
-		}
+	return newNSImage(nrgbaPixels(img), logicalWidth, logicalHeight, img.Rect.Dx(), img.Rect.Dy())
+}
+
+// newNSImageFromNRGBAReps returns an NSImage (with a +1 retain count that the caller must release) of the given
+// logical size containing one 32-bit non-premultiplied RGBA bitmap representation per entry in reps, each declaring
+// that same logical size, so its pixel dimensions determine the scale it represents and AppKit can pick the one that
+// best matches the backing scale of wherever the image is drawn. It returns 0 if reps is empty or any representation
+// cannot be created.
+func newNSImageFromNRGBAReps(reps []*image.NRGBA, logicalWidth, logicalHeight int) objc.ID {
+	if len(reps) == 0 {
+		return 0
 	}
-	return newNSImage(pixels, logicalWidth, logicalHeight, width, height)
+	bitmaps := make([]objc.ID, 0, len(reps))
+	for _, one := range reps {
+		bitmap := newNSBitmapRep(nrgbaPixels(one), one.Rect.Dx(), one.Rect.Dy(), nsBitmapFormatAlphaNonpremultiplied)
+		if bitmap == 0 {
+			for _, created := range bitmaps {
+				Release(created)
+			}
+			return 0
+		}
+		bitmaps = append(bitmaps, bitmap)
+	}
+	img := newNSImageOfSize(logicalWidth, logicalHeight)
+	size := NSSize{Width: float64(logicalWidth), Height: float64(logicalHeight)}
+	for _, bitmap := range bitmaps {
+		bitmap.Send(Sel("setSize:"), size)
+		img.Send(Sel("addRepresentation:"), bitmap)
+		Release(bitmap)
+	}
+	return img
 }
 
 // newNSImageWithFormat is newNSImage with an explicit NSBitmapFormat: pass 0 for premultiplied RGBA pixels or
 // nsBitmapFormatAlphaNonpremultiplied for non-premultiplied ones.
 func newNSImageWithFormat(pixels []byte, logicalWidth, logicalHeight, actualWidth, actualHeight, format int) objc.ID {
+	rep := newNSBitmapRep(pixels, actualWidth, actualHeight, format)
+	if rep == 0 {
+		return 0
+	}
+	img := newNSImageOfSize(logicalWidth, logicalHeight)
+	img.Send(Sel("addRepresentation:"), rep)
+	Release(rep)
+	return img
+}
+
+// newNSImageOfSize returns an empty NSImage (with a +1 retain count that the caller must release) of the given logical
+// size, ready for representations to be added to it.
+func newNSImageOfSize(logicalWidth, logicalHeight int) objc.ID {
+	return objc.ID(Cls("NSImage")).Send(Sel("alloc")).Send(Sel("initWithSize:"),
+		NSSize{Width: float64(logicalWidth), Height: float64(logicalHeight)})
+}
+
+// newNSBitmapRep returns an NSBitmapImageRep (with a +1 retain count that the caller must release) of actualWidth x
+// actualHeight device pixels copied from pixels, using the given NSBitmapFormat: pass 0 for premultiplied RGBA pixels
+// or nsBitmapFormatAlphaNonpremultiplied for non-premultiplied ones. It returns 0 if the representation cannot be
+// created.
+func newNSBitmapRep(pixels []byte, actualWidth, actualHeight, format int) objc.ID {
 	rep := objc.ID(Cls("NSBitmapImageRep")).Send(Sel("alloc")).Send(
 		Sel("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bitmapFormat:bytesPerRow:bitsPerPixel:"),
 		unsafe.Pointer(nil), actualWidth, actualHeight, 8, 4, true, false,
 		NSStringConstant("AppKit", "NSCalibratedRGBColorSpace"), format,
-		actualWidth*4, 32)
+		actualWidth*4, 32,
+	)
 	if rep == 0 {
 		return 0
 	}
@@ -59,11 +101,24 @@ func newNSImageWithFormat(pixels []byte, logicalWidth, logicalHeight, actualWidt
 		Release(rep)
 		return 0
 	}
-	img := objc.ID(Cls("NSImage")).Send(Sel("alloc")).Send(Sel("initWithSize:"),
-		NSSize{Width: float64(logicalWidth), Height: float64(logicalHeight)})
-	img.Send(Sel("addRepresentation:"), rep)
-	Release(rep)
-	return img
+	return rep
+}
+
+// nrgbaPixels returns the visible pixels of a non-premultiplied NRGBA image as a tightly packed buffer, honoring the
+// image's stride and sub-image origin: when the pixel data is not tightly packed (a sub-image or a padded stride), the
+// visible rows are repacked into a contiguous buffer first, so passing img.Pix directly cannot garble rows.
+func nrgbaPixels(img *image.NRGBA) []byte {
+	width := img.Rect.Dx()
+	height := img.Rect.Dy()
+	if img.Stride == width*4 {
+		return img.Pix
+	}
+	pixels := make([]byte, width*height*4)
+	for y := range height {
+		src := img.PixOffset(img.Rect.Min.X, img.Rect.Min.Y+y)
+		copy(pixels[y*width*4:(y+1)*width*4], img.Pix[src:src+width*4])
+	}
+	return pixels
 }
 
 // copyPixelsToRep copies size bytes of pixels into rep's bitmapData buffer, returning false without copying if the

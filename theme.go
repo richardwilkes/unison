@@ -21,12 +21,14 @@ var (
 
 // The theme colors used throughout Unison.
 var (
-	ThemeSurface = DefaultThemeSurface()
-	ThemeBanding = DefaultThemeBanding()
-	ThemeFocus   = DefaultThemeFocus()
-	ThemeTooltip = DefaultThemeTooltip()
-	ThemeError   = DefaultThemeError()
-	ThemeWarning = DefaultThemeWarning()
+	ThemeSurface          = DefaultThemeSurface()
+	ThemeBanding          = DefaultThemeBanding()
+	ThemeFocus            = DefaultThemeFocus()
+	ThemeTooltip          = DefaultThemeTooltip()
+	ThemeError            = DefaultThemeError()
+	ThemeWarning          = DefaultThemeWarning()
+	ThemeCursorForeground = DefaultThemeCursorForeground()
+	ThemeCursorBackground = DefaultThemeCursorBackground()
 )
 
 // The colors derived from the theme colors.
@@ -82,6 +84,19 @@ func DefaultThemeError() *ThemeColor {
 // DefaultThemeWarning returns the default warning color.
 func DefaultThemeWarning() *ThemeColor {
 	return &ThemeColor{Light: RGB(217, 76, 0), Dark: RGB(191, 67, 0)}
+}
+
+// DefaultThemeCursorForeground returns the default cursor foreground color, used for the body and linework of the
+// built-in cursors. The light and dark values are identical by default, since cursors conventionally do not invert when
+// the system switches between light and dark mode.
+func DefaultThemeCursorForeground() *ThemeColor {
+	return &ThemeColor{Light: Black, Dark: Black}
+}
+
+// DefaultThemeCursorBackground returns the default cursor background color, used for the outline and halo of the
+// built-in cursors.
+func DefaultThemeCursorBackground() *ThemeColor {
+	return &ThemeColor{Light: White, Dark: White}
 }
 
 // ThemeColor holds a pair of colors, one for light mode and one for dark mode.

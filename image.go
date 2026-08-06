@@ -120,7 +120,13 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 // NewImageFromDrawing creates a new image by drawing into it. This is currently fairly inefficient, so take care to use
 // it sparingly.
 func NewImageFromDrawing(width, height, ppi int, draw func(*Canvas)) (*Image, error) {
-	scale := float32(ppi) / 72
+	return newImageFromDrawingAtScale(width, height, float32(ppi)/72, draw)
+}
+
+// newImageFromDrawingAtScale creates a new image by drawing into it at the given scale. This exists so that callers
+// which know their exact scaling factor, which may be fractional (e.g. per-monitor DPI scaling), can rasterize at that
+// scale rather than having it quantized by passing it through the integer ppi parameter of NewImageFromDrawing.
+func newImageFromDrawingAtScale(width, height int, scale float32, draw func(*Canvas)) (*Image, error) {
 	ss := canvassurface.NewRasterN32Premul(int32(xmath.Ceil(float32(width)*scale)),
 		int32(xmath.Ceil(float32(height)*scale)), &canvassurface.Props{PixelGeometry: canvassurface.PixelGeometryRGBH})
 	if ss == nil {

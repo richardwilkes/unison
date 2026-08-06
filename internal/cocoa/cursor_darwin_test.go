@@ -18,11 +18,7 @@ import (
 )
 
 func TestNewCursor(t *testing.T) {
-	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
-	for i := range img.Pix {
-		img.Pix[i] = 0xFF
-	}
-	cursor := NewCursor(img, geom.NewPoint(2, 3), geom.NewSize(8, 8))
+	cursor := NewCursor([]*image.NRGBA{filledNRGBA(16, 16)}, geom.NewPoint(2, 3), geom.NewSize(8, 8))
 	if cursor == 0 {
 		t.Fatal("NewCursor returned 0")
 	}
@@ -39,6 +35,61 @@ func TestNewCursor(t *testing.T) {
 			t.Errorf("cursor image size = %v, want {8 8}", size)
 		}
 	})
+}
+
+// TestNewCursorMultipleReps covers the vector-backed path: every rasterization handed to NewCursor must become a
+// representation of a single image whose point size is the logical size, since that is what lets AppKit pick the one
+// matching the display's backing scale. A fractional hot spot must survive as-is, too, rather than being truncated.
+func TestNewCursorMultipleReps(t *testing.T) {
+	cursor := NewCursor([]*image.NRGBA{filledNRGBA(24, 24), filledNRGBA(48, 48)}, geom.NewPoint(11.5, 12.5),
+		geom.NewSize(24, 24))
+	if cursor == 0 {
+		t.Fatal("NewCursor returned 0")
+	}
+	defer cursor.Release()
+	WithPool(func() {
+		if pt := objc.Send[NSPoint](objc.ID(cursor), Sel("hotSpot")); pt.X != 11.5 || pt.Y != 12.5 {
+			t.Errorf("hot spot = %v, want {11.5 12.5}", pt)
+		}
+		cursorImg := objc.ID(cursor).Send(Sel("image"))
+		if cursorImg == 0 {
+			t.Fatal("cursor has no image")
+		}
+		if size := objc.Send[NSSize](cursorImg, Sel("size")); size.Width != 24 || size.Height != 24 {
+			t.Errorf("cursor image size = %v, want {24 24}", size)
+		}
+		reps := cursorImg.Send(Sel("representations"))
+		count := NSArrayCount(reps)
+		if count != 2 {
+			t.Fatalf("cursor image has %d representations, want 2", count)
+		}
+		for i, want := range []int64{24, 48} {
+			rep := NSArrayObjectAt(reps, uint64(i))
+			if pixels := objc.Send[int64](rep, Sel("pixelsWide")); pixels != want {
+				t.Errorf("representation %d pixelsWide = %d, want %d", i, pixels, want)
+			}
+			if size := objc.Send[NSSize](rep, Sel("size")); size.Width != 24 || size.Height != 24 {
+				t.Errorf("representation %d size = %v, want {24 24}", i, size)
+			}
+		}
+	})
+}
+
+// TestNewCursorNoReps verifies that a cursor cannot be built without any pixels to draw.
+func TestNewCursorNoReps(t *testing.T) {
+	if cursor := NewCursor(nil, geom.NewPoint(0, 0), geom.NewSize(8, 8)); cursor != 0 {
+		cursor.Release()
+		t.Error("NewCursor with no representations returned a cursor, want 0")
+	}
+}
+
+// filledNRGBA returns an opaque white image of the given pixel size.
+func filledNRGBA(width, height int) *image.NRGBA {
+	img := image.NewNRGBA(image.Rect(0, 0, width, height))
+	for i := range img.Pix {
+		img.Pix[i] = 0xFF
+	}
+	return img
 }
 
 func TestBuiltInCursors(t *testing.T) {

@@ -10,30 +10,33 @@
 package unison
 
 import (
-	"image"
 	"log/slog"
 
-	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/x11"
-	"golang.org/x/image/draw"
 )
 
 type apiNativeCursor = x11.CursorID
 
-func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
-	if scale, err := x11Conn.ContentScale(); err == nil && scale != 1 {
-		logicalSize = logicalSize.Mul(scale)
-		hotSpot = hotSpot.Mul(scale)
+// apiNewCursor creates the native cursor. X11 cursors are immutable, fixed-size pixmaps and this backend uses a single
+// cached, global content scale rather than a per-monitor one, so one render at creation time is all X11 can consume.
+// Mixed-DPI setups therefore get a single, uniform cursor scale, a pre-existing limitation of this backend.
+func apiNewCursor(src *cursorSource) *Cursor {
+	scale := float32(1)
+	if s, err := x11Conn.ContentScale(); err == nil {
+		scale = s
 	}
-	logicalWidth := int(logicalSize.Width)
-	logicalHeight := int(logicalSize.Height)
-	if img.Rect.Dx() != logicalWidth || img.Rect.Dy() != logicalHeight {
-		dstRect := image.Rect(0, 0, logicalWidth, logicalHeight)
-		dst := image.NewNRGBA(dstRect)
-		draw.CatmullRom.Scale(dst, dstRect, img, img.Bounds(), draw.Over, nil)
-		img = dst
+	img, err := src.render(scale)
+	if err != nil {
+		errs.Log(err)
+		return nil
 	}
-	pm := x11Conn.CreatePixMap(x11.DrawableID(x11Conn.RootWindow()), 32, uint16(logicalWidth), uint16(logicalHeight))
+	pixelWidth := img.Rect.Dx()
+	pixelHeight := img.Rect.Dy()
+	hotSpot := src.hotSpot.Mul(scale)
+	hotSpotX := min(max(int(hotSpot.X), 0), pixelWidth-1)
+	hotSpotY := min(max(int(hotSpot.Y), 0), pixelHeight-1)
+	pm := x11Conn.CreatePixMap(x11.DrawableID(x11Conn.RootWindow()), 32, uint16(pixelWidth), uint16(pixelHeight))
 	if pm == 0 {
 		return nil
 	}
@@ -73,7 +76,7 @@ func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *
 		return nil
 	}
 	defer x11Conn.ExtRender.FreePicture(picture)
-	cursor := x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpot.X), uint16(hotSpot.Y))
+	cursor := x11Conn.ExtRender.CreateCursor(picture, uint16(hotSpotX), uint16(hotSpotY))
 	if cursor == 0 {
 		return nil
 	}

@@ -13,30 +13,26 @@ import (
 	"image"
 	"unsafe"
 
-	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/w32"
-	"golang.org/x/image/draw"
 )
 
 type apiNativeCursor = *w32Cursor
 
-// w32Cursor retains the source image so that a correctly sized native cursor can be produced for whatever monitor DPI
-// the cursor is currently being displayed on. Windows does not automatically rescale custom cursors as they move
-// between monitors with differing DPI, so we lazily build and cache one HCURSOR per backing scale.
+// w32Cursor retains the cursor's source so that a correctly sized native cursor can be produced for whatever monitor
+// DPI the cursor is currently being displayed on. Windows does not automatically rescale custom cursors as they move
+// between monitors with differing DPI, so we lazily build and cache one HCURSOR per backing scale, re-rasterizing
+// vector sources at that exact scale and resampling image sources.
 type w32Cursor struct {
-	nrgba       *image.NRGBA
-	byScale     map[float32]w32.HCURSOR
-	hotSpot     geom.Point
-	logicalSize geom.Size
+	src     *cursorSource
+	byScale map[float32]w32.HCURSOR
 }
 
-func apiNewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) *Cursor {
+func apiNewCursor(src *cursorSource) *Cursor {
 	c := &Cursor{
 		cursor: &w32Cursor{
-			nrgba:       img,
-			byScale:     make(map[float32]w32.HCURSOR),
-			hotSpot:     hotSpot,
-			logicalSize: logicalSize,
+			src:     src,
+			byScale: make(map[float32]w32.HCURSOR),
 		},
 	}
 	cursorList = append(cursorList, c)
@@ -51,18 +47,15 @@ func (c *w32Cursor) handle(scale float32) w32.HCURSOR {
 	if h, ok := c.byScale[scale]; ok {
 		return h
 	}
-	scalePt := geom.NewPoint(scale, scale)
-	size := c.logicalSize.MulPt(scalePt).Ceil()
-	width := max(int(size.Width), 1)
-	height := max(int(size.Height), 1)
-	img := c.nrgba
-	if img.Rect.Dx() != width || img.Rect.Dy() != height {
-		dstRect := image.Rect(0, 0, width, height)
-		dst := image.NewNRGBA(dstRect)
-		draw.CatmullRom.Scale(dst, dstRect, img, img.Bounds(), draw.Over, nil)
-		img = dst
+	img, err := c.src.render(scale)
+	if err != nil {
+		// Don't cache the failure, so a later attempt at this scale can succeed.
+		errs.Log(err)
+		return 0
 	}
-	hot := c.hotSpot.Mul(scale)
+	width := img.Rect.Dx()
+	height := img.Rect.Dy()
+	hot := c.src.hotSpot.Mul(scale)
 	hotX := min(max(int(hot.X), 0), width-1)
 	hotY := min(max(int(hot.Y), 0), height-1)
 	h := w32.HCURSOR(w32CreateIconFromImage(img, hotX, hotY, false))

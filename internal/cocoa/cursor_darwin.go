@@ -11,6 +11,7 @@ package cocoa
 
 import (
 	"image"
+	"math"
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -19,18 +20,22 @@ import (
 // Cursor is a handle to an NSCursor.
 type Cursor objc.ID
 
-// NewCursor creates a new custom cursor from the image's non-premultiplied RGBA pixels, or returns 0 if the image
-// cannot be created. The returned cursor is an owned (+1) reference; balance it with Release. Releasing a cursor
-// while it is the current cursor is safe: AppKit retains the current cursor for as long as it is in use.
-func NewCursor(img *image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) Cursor {
+// NewCursor creates a new custom cursor from the non-premultiplied RGBA pixels of one or more images, or returns 0 if
+// the cursor's image cannot be created. Each entry in reps becomes a representation of a single image whose point size
+// is logicalSize, so AppKit can draw the one that best matches the backing scale of the display the cursor appears on.
+// hotSpot is in logical points, measured from the upper-left corner of the cursor. The returned cursor is an owned
+// (+1) reference; balance it with Release. Releasing a cursor while it is the current cursor is safe: AppKit retains
+// the current cursor for as long as it is in use.
+func NewCursor(reps []*image.NRGBA, hotSpot geom.Point, logicalSize geom.Size) Cursor {
 	var cursor Cursor
 	WithPool(func() {
-		nsImg := newNSImageFromNRGBA(img, int(logicalSize.Width), int(logicalSize.Height))
+		nsImg := newNSImageFromNRGBAReps(reps, int(math.Round(float64(logicalSize.Width))),
+			int(math.Round(float64(logicalSize.Height))))
 		if nsImg == 0 {
 			return
 		}
 		cursor = Cursor(objc.ID(Cls("NSCursor")).Send(Sel("alloc")).Send(Sel("initWithImage:hotSpot:"),
-			nsImg, NSPoint{X: float64(int(hotSpot.X)), Y: float64(int(hotSpot.Y))}))
+			nsImg, NSPoint{X: float64(hotSpot.X), Y: float64(hotSpot.Y)}))
 		Release(nsImg)
 	})
 	return cursor

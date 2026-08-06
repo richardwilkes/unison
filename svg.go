@@ -377,7 +377,54 @@ func (s *SVG) AspectRatio() float32 {
 
 // DrawInRect draws this SVG resized to fit in the given rectangle. If paint is not nil, the SVG paths will be drawn
 // with the provided paint, ignoring any fill or stroke attributes within the source SVG.
-func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, paint *Paint) {
+func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, paint *Paint) {
+	s.drawInRect(canvas, rect, opts, paint, nil)
+}
+
+// DrawInRectWithReplacementInks draws this SVG resized to fit in the given rectangle, substituting inks for the solid
+// colors found in the source SVG. Each path's fill and stroke inks are looked up in the map independently, so a path
+// with a black fill and a white stroke picks up both substitutions. Inks that are not plain colors, such as gradients,
+// as well as those whose color is not present in the map, are drawn unchanged, as is everything when the map is nil or
+// empty. Note that Transparent should not be used as a key, since paths with fill="none" carry a Transparent fill ink
+// and would therefore gain a visible fill.
+func (s *SVG) DrawInRectWithReplacementInks(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, replacements map[Color]Ink) {
+	s.drawInRect(canvas, rect, opts, nil, replacements)
+}
+
+// DrawInRectPreservingAspectRatio draws this SVG resized to fit in the given rectangle, preserving the aspect ratio.
+// If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
+// within the source SVG.
+func (s *SVG) DrawInRectPreservingAspectRatio(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, paint *Paint) {
+	s.drawInRect(canvas, s.aspectRatioFitRect(rect), opts, paint, nil)
+}
+
+// DrawInRectPreservingAspectRatioWithReplacementInks draws this SVG resized to fit in the given rectangle, preserving
+// the aspect ratio, while substituting inks for the solid colors found in the source SVG. Each path's fill and stroke
+// inks are looked up in the map independently, so a path with a black fill and a white stroke picks up both
+// substitutions. Inks that are not plain colors, such as gradients, as well as those whose color is not present in the
+// map, are drawn unchanged, as is everything when the map is nil or empty. Note that Transparent should not be used as
+// a key, since paths with fill="none" carry a Transparent fill ink and would therefore gain a visible fill.
+func (s *SVG) DrawInRectPreservingAspectRatioWithReplacementInks(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, replacements map[Color]Ink) {
+	s.drawInRect(canvas, s.aspectRatioFitRect(rect), opts, nil, replacements)
+}
+
+// aspectRatioFitRect returns the largest rectangle with this SVG's aspect ratio that fits within the given rectangle,
+// centered within it.
+func (s *SVG) aspectRatioFitRect(rect geom.Rect) geom.Rect {
+	ratio := s.AspectRatio()
+	w := rect.Width
+	h := w / ratio
+	if h > rect.Height {
+		h = rect.Height
+		w = h * ratio
+	}
+	return geom.NewRect(rect.X+(rect.Width-w)/2, rect.Y+(rect.Height-h)/2, w, h)
+}
+
+// drawInRect implements the common drawing logic for the exported drawing methods. If paint is not nil, every path is
+// drawn with it and replacements is ignored; otherwise each path's own fill and stroke inks are used, after being
+// passed through replacements.
+func (s *SVG) drawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, paint *Paint, replacements map[Color]Ink) {
 	canvas.Save()
 	defer canvas.Restore()
 	canvas.Translate(rect.Point)
@@ -389,12 +436,12 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 			canvas.ClipPath(path.mask, pathop.Intersect, true)
 		}
 		if paint == nil {
-			if path.fillInk != nil {
-				fillPaint := path.fillInk.Paint(canvas, s.viewBox, paintstyle.Fill)
+			if fillInk := svgReplaceInk(path.fillInk, replacements); fillInk != nil {
+				fillPaint := fillInk.Paint(canvas, s.viewBox, paintstyle.Fill)
 				canvas.DrawPath(path.path, fillPaint)
 			}
-			if path.strokeInk != nil {
-				p := path.strokeInk.Paint(canvas, s.viewBox, paintstyle.Stroke)
+			if strokeInk := svgReplaceInk(path.strokeInk, replacements); strokeInk != nil {
+				p := strokeInk.Paint(canvas, s.viewBox, paintstyle.Stroke)
 				p.SetStrokeCap(path.strokeCap)
 				p.SetStrokeJoin(path.strokeJoin)
 				p.SetStrokeMiter(path.strokeMiter)
@@ -413,18 +460,19 @@ func (s *SVG) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, pai
 	}
 }
 
-// DrawInRectPreservingAspectRatio draws this SVG resized to fit in the given rectangle, preserving the aspect ratio.
-// If paint is not nil, the SVG paths will be drawn with the provided paint, ignoring any fill or stroke attributes
-// within the source SVG.
-func (s *SVG) DrawInRectPreservingAspectRatio(canvas *Canvas, rect geom.Rect, opts *SamplingOptions, paint *Paint) {
-	ratio := s.AspectRatio()
-	w := rect.Width
-	h := w / ratio
-	if h > rect.Height {
-		h = rect.Height
-		w = h * ratio
+// svgReplaceInk returns the replacement for ink when ink is a plain Color present in replacements, otherwise ink.
+func svgReplaceInk(ink Ink, replacements map[Color]Ink) Ink {
+	if ink == nil || len(replacements) == 0 {
+		return ink
 	}
-	s.DrawInRect(canvas, geom.NewRect(rect.X+(rect.Width-w)/2, rect.Y+(rect.Height-h)/2, w, h), opts, paint)
+	color, ok := ink.(Color)
+	if !ok {
+		return ink
+	}
+	if replacement, found := replacements[color]; found {
+		return replacement
+	}
+	return ink
 }
 
 // LogicalSize implements the Drawable interface.
