@@ -393,9 +393,10 @@ func (s *ScrollPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, 
 
 // PerformLayout implements the Layout interface.
 func (s *ScrollPanel) PerformLayout(_ *Panel) {
-	r := s.FrameRect()
-	r.X = 0
-	r.Y = 0
+	// Lay out from the content rect rather than the frame rect so the ScrollPanel's own border is honored. LayoutSizes
+	// adds those insets to the reported sizes, so ignoring them here would draw the content view and scroll bars on top
+	// of the border.
+	r := s.ContentRect(false)
 	columnHeaderTop := r.Y
 	if s.columnHeaderView != nil {
 		_, p, _ := s.columnHeader.AsPanel().Sizes(geom.NewSize(r.Width, 0))

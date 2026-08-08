@@ -70,3 +70,38 @@ func TestScrollPanelContentShrinkWhileScrolled(t *testing.T) {
 	scroll.ValidateLayout()
 	c.Equal(float32(0), content.FrameRect().Y, "content should stay in view after a subsequent layout")
 }
+
+// TestScrollPanelHonorsOwnBorder verifies that a ScrollPanel with a border of its own lays out inside that border.
+// LayoutSizes already adds the border insets to the sizes it reports, but PerformLayout used to start from the frame
+// rect, so the content view, the headers and the scroll bars were all drawn on top of the border.
+func TestScrollPanelHonorsOwnBorder(t *testing.T) {
+	c := check.New(t)
+	scroll := unison.NewScrollPanel()
+	contentW, contentH := float32(500), float32(500)
+	content := resizablePanel(&contentW, &contentH)
+	headerW, headerH := float32(500), float32(20)
+	header := resizablePanel(&headerW, &headerH)
+	scroll.SetColumnHeader(header)
+	scroll.SetContent(content, behavior.Fill, behavior.Fill)
+	scroll.SetBorder(unison.NewEmptyBorder(geom.NewUniformInsets(10)))
+	scroll.SetFrameRect(geom.NewRect(0, 0, 100, 100))
+	scroll.ValidateLayout()
+
+	inside := scroll.ContentRect(false)
+	c.Equal(geom.NewRect(10, 10, 80, 80), inside)
+
+	// The column header sits at the top of the content rect and the content view fills what is left, with neither
+	// straying into the border.
+	headerRect := scroll.ColumnHeaderView().FrameRect()
+	c.Equal(geom.NewPoint(10, 10), headerRect.Point, "the column header must start inside the border")
+	viewRect := scroll.ContentView().FrameRect()
+	c.Equal(geom.NewPoint(10, 10+headerRect.Height), viewRect.Point, "the content view must start inside the border")
+	c.Equal(float32(80), viewRect.Width, "the content view must not extend past the border")
+	c.Equal(inside.Bottom(), viewRect.Bottom(), "the content view must not extend past the border")
+
+	// The scroll bars ride the inner edges of the content view, not the panel's outer edge.
+	vBar := scroll.Bar(false)
+	c.Equal(inside.Right(), vBar.FrameRect().Right(), "the vertical scroll bar must sit inside the border")
+	hBar := scroll.Bar(true)
+	c.Equal(inside.Bottom(), hBar.FrameRect().Bottom(), "the horizontal scroll bar must sit inside the border")
+}
