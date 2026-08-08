@@ -34,3 +34,8 @@
   while `Path()` returned a path in the previously shown directory, a directory itself, or an empty string — even
   though the OK button was visibly disabled. Return now rebuilds the path from the name field and the directory
   currently showing, and accepts only when the OK button would.
+- `FontFamily.MatchStyle()` picked the wrong face from an internally registered family when a wider-than-Standard
+  spacing was requested and no face matched all three of weight, spacing and slant. A face whose spacing matched
+  exactly was scored as though it did not match at all, so any wider face — an UltraExpanded face against a request for
+  SemiExpanded, say — outranked it in the spacing tier, which outranks slant and weight. Exact spacing matches now
+  score as matches.

@@ -171,7 +171,7 @@ func matchStyleScore(weightValue weight.Enum, spacingValue spacing.Enum, slantVa
 			score = 10 - int(sp)
 		}
 	} else {
-		if sp > spacingValue {
+		if sp >= spacingValue {
 			score = 10 + int(spacingValue) - int(sp)
 		} else {
 			score = int(sp)
