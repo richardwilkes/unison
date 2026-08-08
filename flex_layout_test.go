@@ -11,6 +11,7 @@ package unison_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -234,6 +235,115 @@ func TestFlexLayoutHGrabWithoutMinWidthShrinksFreely(t *testing.T) {
 	// Without an explicit MinSize.Width, a grabbing column shrinks to the available space, matching how
 	// adjustRowHeights treats VGrab rows without an explicit MinSize.Height.
 	c.Equal(float32(30), child.FrameRect().Width)
+}
+
+func TestFlexLayoutHGrabSpanHonorsMinWidthWhenShrinking(t *testing.T) {
+	c := check.New(t)
+	spanning := sizedPanel(geom.NewSize(10, 20), geom.NewSize(200, 20))
+	spanning.SetLayoutData(&unison.FlexLayoutData{
+		MinSize: geom.NewSize(100, 0),
+		HSpan:   2,
+		VSpan:   1,
+		HAlign:  align.Fill,
+		VAlign:  align.Fill,
+		HGrab:   true,
+	})
+	parent := newFlexParent(&unison.FlexLayout{Columns: 2}, spanning)
+	parent.SetFrameRect(geom.NewRect(0, 0, 60, 40))
+	parent.ValidateLayout()
+	// A column-spanning grabbing child must respect its explicit MinSize.Width just as an unspanned one does.
+	c.Equal(float32(100), spanning.FrameRect().Width)
+}
+
+func TestFlexLayoutHGrabSpanMinWidthNextToFixedColumns(t *testing.T) {
+	c := check.New(t)
+	spanning := sizedPanel(geom.NewSize(10, 20), geom.NewSize(200, 20))
+	spanning.SetLayoutData(&unison.FlexLayoutData{
+		MinSize: geom.NewSize(150, 0),
+		HSpan:   2,
+		VSpan:   1,
+		HAlign:  align.Fill,
+		VAlign:  align.Fill,
+		HGrab:   true,
+	})
+	first := fixedPanel(50, 20)
+	second := fixedPanel(50, 20)
+	parent := newFlexParent(&unison.FlexLayout{Columns: 2}, spanning, first, second)
+	parent.SetFrameRect(geom.NewRect(0, 0, 60, 60))
+	parent.ValidateLayout()
+	// The two columns can't shrink below the fixed cells in the second row, and the spanning child's minimum
+	// widens the grabbing column enough to reach 150 across the span.
+	c.Equal(float32(150), spanning.FrameRect().Width)
+	c.Equal(geom.NewRect(0, 20, 50, 20), first.FrameRect())
+	// The second column absorbed the rest of the span's minimum, so its cell starts at 50 and runs to 150.
+	c.Equal(float32(50), second.FrameRect().X)
+	c.Equal(float32(50), second.FrameRect().Width)
+}
+
+func TestFlexLayoutColumnDistributionTerminates(t *testing.T) {
+	c := check.New(t)
+	// Three grabbing columns sized so that the per-column delta is under half an ulp of each column's width: the
+	// additions round away and the total oscillates rather than converging on the available width. The loop has to
+	// give up on its own instead of spinning forever.
+	const columnWidth = float32(1 << 20)
+	children := make([]*unison.Panel, 3)
+	for i := range children {
+		children[i] = fixedPanel(columnWidth, 20)
+		children[i].SetLayoutData(&unison.FlexLayoutData{
+			HSpan:  1,
+			VSpan:  1,
+			HAlign: align.Fill,
+			VAlign: align.Fill,
+			HGrab:  true,
+		})
+	}
+	parent := newFlexParent(&unison.FlexLayout{Columns: 3}, children...)
+	parent.SetFrameRect(geom.NewRect(0, 0, columnWidth*3+0.25, 40))
+	layoutWithinTimeout(t, parent)
+	for _, child := range children {
+		c.True(child.FrameRect().Width >= columnWidth)
+		c.True(child.FrameRect().Width <= columnWidth+1)
+	}
+}
+
+func TestFlexLayoutRowDistributionTerminates(t *testing.T) {
+	c := check.New(t)
+	// The row-height counterpart of TestFlexLayoutColumnDistributionTerminates.
+	const rowHeight = float32(1 << 20)
+	children := make([]*unison.Panel, 3)
+	for i := range children {
+		children[i] = fixedPanel(20, rowHeight)
+		children[i].SetLayoutData(&unison.FlexLayoutData{
+			HSpan:  1,
+			VSpan:  1,
+			HAlign: align.Fill,
+			VAlign: align.Fill,
+			VGrab:  true,
+		})
+	}
+	parent := newFlexParent(&unison.FlexLayout{Columns: 1}, children...)
+	parent.SetFrameRect(geom.NewRect(0, 0, 40, rowHeight*3+0.25))
+	layoutWithinTimeout(t, parent)
+	for _, child := range children {
+		c.True(child.FrameRect().Height >= rowHeight)
+		c.True(child.FrameRect().Height <= rowHeight+1)
+	}
+}
+
+// layoutWithinTimeout validates the panel's layout, failing the test rather than hanging it if the layout does not
+// complete promptly.
+func layoutWithinTimeout(t *testing.T, parent *unison.Panel) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		parent.ValidateLayout()
+	}()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("layout failed to converge")
+	}
 }
 
 func TestFlexLayoutAlignWithinTarget(t *testing.T) {

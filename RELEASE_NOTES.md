@@ -89,3 +89,12 @@
   from zeroed AND and XOR masks, a combination Win32 renders as an opaque black pixel — transparency requires the AND
   bits to be set — and the one-byte mask buffers were also shorter than the WORD-aligned scanline `CreateCursor()`
   reads. The cursor is now created at the system cursor size with masks that are actually transparent.
+- A `FlexLayout` child spanning more than one column ignored the `MinSize.Width` set in its `FlexLayoutData` when it
+  also had `HGrab` set, so shrinking the window squeezed it below its declared minimum. The spanning-cell paths read
+  an internal cache field that is only filled in while measuring, never while laying out, and so always saw a minimum
+  of zero; they now read `MinSize` directly, as the single-column and row-height paths already did.
+- `FlexLayout` could hang the application while handing out space to grabbing columns or rows. Those loops repeat
+  until the total reaches the space available, but with several grabbing tracks a few hundred thousand pixels across,
+  each track's share of what remains is too small to change a `float32` of that magnitude: the additions round away or
+  round back and forth, the total never settles within the convergence epsilon, and the loop spins forever. Both loops
+  now give up after a bounded number of passes, accepting a slightly imprecise layout instead.

@@ -15,6 +15,12 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 )
 
+// flexDistributionPassHeadroom is the number of passes the column-width and row-height distribution loops are allowed
+// beyond the one pass per expanding track that pinning a track to its minimum can consume. A bound is required because
+// float32 rounding can leave the total permanently short of the available space, or oscillating around it, while the
+// residual remains above the convergence epsilon -- without it, such a layout spins forever and hangs the UI.
+const flexDistributionPassHeadroom = 8
+
 var _ Layout = &FlexLayout{}
 
 // FlexLayout lays out the children of its Layoutable based on the FlexLayoutData assigned to each child.
@@ -278,7 +284,9 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 							f.apportionExtra(w, j, spanExpandCount, hSpan, expandColumn, widths)
 						}
 					}
-					minimumWidth := data.minCacheSize.Width
+					// As with the hSpan==1 case above, read MinSize rather than minCacheSize, which is not
+					// populated during the PerformLayout pass.
+					minimumWidth := data.MinSize.Width
 					if !data.HGrab || minimumWidth != 0 {
 						if !data.HGrab || minimumWidth < 1 {
 							w = data.cacheSize.Width
@@ -325,7 +333,8 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 			totalWidth += widths[i]
 		}
 		c := expandCount
-		for xmath.Abs(totalWidth-availableWidth) > 0.01 {
+		maxPasses := expandCount + flexDistributionPassHeadroom
+		for pass := 0; pass < maxPasses && xmath.Abs(totalWidth-availableWidth) > 0.01; pass++ {
 			delta := (availableWidth - totalWidth) / float32(c)
 			for j := 0; j < f.Columns; j++ {
 				if expandColumn[j] {
@@ -344,7 +353,7 @@ func (f *FlexLayout) adjustColumnWidths(width float32, grid [][]*Panel) []float3
 					if data != nil {
 						hSpan := max(1, min(data.HSpan, f.Columns))
 						if hSpan > 1 {
-							minimumWidth := data.minCacheSize.Width
+							minimumWidth := data.MinSize.Width
 							if !data.HGrab || minimumWidth != 0 {
 								var spanWidth float32
 								spanExpandCount := 0
@@ -552,7 +561,8 @@ func (f *FlexLayout) adjustRowHeights(height float32, grid [][]*Panel) []float32
 		}
 		c := expandCount
 		delta := (availableHeight - totalHeight) / float32(c)
-		for xmath.Abs(totalHeight-availableHeight) > 0.01 {
+		maxPasses := expandCount + flexDistributionPassHeadroom
+		for pass := 0; pass < maxPasses && xmath.Abs(totalHeight-availableHeight) > 0.01; pass++ {
 			for i := 0; i < f.rows; i++ {
 				if expandRow[i] {
 					if heights[i]+delta > minHeights[i] {
