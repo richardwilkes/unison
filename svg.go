@@ -263,6 +263,11 @@ type svgMask struct {
 	bounds geom.Rect
 }
 
+// svgMaxUseDepth caps how deeply use elements may nest. The cycle guard in handleUseElement stops self- and
+// mutually-referencing defs, but a long enough chain of distinct ids could still recurse deeply enough to overflow the
+// stack, so the nesting depth is bounded as well.
+const svgMaxUseDepth = 32
+
 // svgEndGroupTag is the sentinel def entry recorded when a group inside a defs section closes, marking where the style
 // frame pushed for the group's attributes must be popped when the def is used.
 const svgEndGroupTag = "endg"
@@ -293,6 +298,7 @@ type svgParser struct {
 	data       *svgData
 	grad       *svgGradient
 	mask       *svgMask
+	activeUses map[string]bool
 	styleStack []svgPathStyle
 	currentDef []svgDef
 	path       *Path
@@ -1796,10 +1802,25 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 	if !strings.HasPrefix(href, "#") {
 		return errors.New("only the ID CSS selector is supported")
 	}
-	defs, ok := p.data.defs[href[1:]]
+	id := href[1:]
+	defs, ok := p.data.defs[id]
 	if !ok {
 		return errors.New("href ID in use statement was not found in saved defs")
 	}
+	// A def that reaches itself, directly or through other defs, would recurse until the stack overflows, which is
+	// fatal and unrecoverable, so refuse the document instead. The depth cap covers long chains of distinct ids, which
+	// can't cycle but can still nest arbitrarily deep.
+	if p.activeUses[id] {
+		return errs.Newf("use of href ID %q is recursive", id)
+	}
+	if len(p.activeUses) >= svgMaxUseDepth {
+		return errs.Newf("use elements may not nest more than %d deep", svgMaxUseDepth)
+	}
+	if p.activeUses == nil {
+		p.activeUses = make(map[string]bool)
+	}
+	p.activeUses[id] = true
+	defer delete(p.activeUses, id)
 	for _, def := range defs {
 		if def.tag == svgEndGroupTag {
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]

@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -252,6 +253,59 @@ func TestSVGNestedUseKeepsOuterOffset(t *testing.T) {
 	c.Equal(2, len(svg.paths))
 	c.Equal(geom.NewRect(13, 23, 2, 2), svg.paths[0].path.ComputeTightBounds())
 	c.Equal(geom.NewRect(0, 0, 1, 1), svg.paths[1].path.ComputeTightBounds())
+}
+
+// TestSVGRecursiveUseIsRejected verifies that a def which reaches itself, directly or through other defs, is reported
+// as an error rather than recursing until the stack overflows, which would be a fatal, unrecoverable process death.
+func TestSVGRecursiveUseIsRejected(t *testing.T) {
+	c := check.New(t)
+
+	// Direct self-reference.
+	_, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<defs><g id="a"><use href="#a"/></g></defs>
+<use href="#a"/>
+</svg>`)
+	c.HasError(err)
+	c.Contains(err.Error(), "recursive")
+
+	// Mutual reference through a second def.
+	_, err = NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+<defs><g id="a"><use href="#b"/></g><g id="b"><use href="#a"/></g></defs>
+<use href="#a"/>
+</svg>`)
+	c.HasError(err)
+	c.Contains(err.Error(), "recursive")
+
+	// A chain of distinct ids can't cycle, but can still nest arbitrarily deep, so it is capped too.
+	var buf strings.Builder
+	buf.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><rect id="u0" width="2" height="2"/>`)
+	depth := svgMaxUseDepth + 8
+	for i := 1; i <= depth; i++ {
+		fmt.Fprintf(&buf, `<g id="u%d"><use href="#u%d"/></g>`, i, i-1)
+	}
+	fmt.Fprintf(&buf, `</defs><use href="#u%d"/></svg>`, depth)
+	_, err = NewSVGFromContentString(buf.String())
+	c.HasError(err)
+	c.Contains(err.Error(), "nest")
+}
+
+// TestSVGRepeatedNonRecursiveUseStillWorks verifies that the recursion guard tracks only the defs currently being
+// expanded, so the same def may be used repeatedly, both in sequence and from sibling positions within another def.
+func TestSVGRepeatedNonRecursiveUseStillWorks(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+<defs><rect id="leaf" width="2" height="2"/><g id="pair"><use href="#leaf"/><use href="#leaf" x="5"/></g></defs>
+<use href="#pair"/>
+<use href="#pair" y="10"/>
+<use href="#leaf" x="20" y="20"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(5, len(svg.paths))
+	c.Equal(geom.NewRect(0, 0, 2, 2), svg.paths[0].path.ComputeTightBounds())
+	c.Equal(geom.NewRect(5, 0, 2, 2), svg.paths[1].path.ComputeTightBounds())
+	c.Equal(geom.NewRect(0, 10, 2, 2), svg.paths[2].path.ComputeTightBounds())
+	c.Equal(geom.NewRect(5, 10, 2, 2), svg.paths[3].path.ComputeTightBounds())
+	c.Equal(geom.NewRect(20, 20, 2, 2), svg.paths[4].path.ComputeTightBounds())
 }
 
 // TestSVGUseWithMultiShapeDef verifies that a use element referencing a def containing multiple shapes draws all of
