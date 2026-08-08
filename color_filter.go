@@ -49,9 +49,10 @@ func NewLightingColorFilter(mul, add Color) *ColorFilter {
 	return newColorFilter(colorfilter.NewLighting(colorcore.Color(mul), colorcore.Color(add)))
 }
 
-// NewComposeColorFilter returns a new color filter that combines two other color filters.
+// NewComposeColorFilter returns a new color filter that combines two other color filters. A nil outer yields inner and
+// vice versa, since the constructors in this package legitimately return nil for filters that would be no-ops.
 func NewComposeColorFilter(outer, inner *ColorFilter) *ColorFilter {
-	return newColorFilter(colorfilter.NewCompose(outer.filter, inner.filter))
+	return newColorFilter(colorfilter.NewCompose(outer.filterOrNil(), inner.filterOrNil()))
 }
 
 // NewMatrixColorFilter returns a new matrix color filter. array should be 20 long. If smaller, it will be filled with
