@@ -186,7 +186,7 @@ func (e *ColorEditor) addHueField() (*Slider, *Field) {
 	e.AddChild(slider)
 
 	field := NewField()
-	field.SetText(strconv.Itoa(int(e.color.Hue()*360 + 0.5)))
+	field.SetText(strconv.Itoa(hueDegrees(e.color)))
 	field.Watermark = "0"
 	field.SetMinimumTextWidthUsing("359")
 	field.SetLayoutData(&FlexLayoutData{
@@ -369,7 +369,7 @@ func (e *ColorEditor) sync() {
 		colors[i] = HSB(float32(i)/float32(len(colors)-1), saturation, brightness)
 	}
 	e.hueSlider.FillInk = e.newGradient(colors...)
-	e.syncText(e.hueField, strconv.Itoa(int(e.color.Hue()*360+0.5)))
+	e.syncText(e.hueField, strconv.Itoa(hueDegrees(e.color)))
 	colors = make([]ColorProvider, 101)
 	for i := range colors {
 		colors[i] = HSB(hue, float32(i)/float32(len(colors)-1), brightness)
@@ -387,6 +387,13 @@ func (e *ColorEditor) sync() {
 	e.syncText(e.cssField, e.color.String())
 	e.syncing = false
 	SafeCall(e.ChangedCallback)
+}
+
+// hueDegrees returns the color's hue rounded to a whole number of degrees, constrained to the 0-359 range the hue
+// slider and field present. Rounding alone can produce 360 for hues just shy of a full turn (e.g. RGB(255, 0, 1) has a
+// hue of ~359.76 degrees), which is out of range and disagrees with the slider's clamped display.
+func hueDegrees(c Color) int {
+	return min(int(c.Hue()*360+0.5), 359)
 }
 
 func (e *ColorEditor) newGradient(colors ...ColorProvider) *Gradient {
