@@ -39,6 +39,13 @@ type ColumnInfo struct {
 	AutoMaximum float32
 }
 
+// resizable returns true if the user should be permitted to resize the column, i.e. its Minimum and Maximum don't pin it
+// to a single width. A Maximum of 0 or less means "no maximum", matching how the resize clamping treats it, so a column
+// with only a Minimum set remains resizable.
+func (c *ColumnInfo) resizable() bool {
+	return c.Minimum <= 0 || c.Maximum <= 0 || c.Minimum < c.Maximum
+}
+
 type tableCache[T TableRowConstraint[T]] struct {
 	row    T
 	parent int
@@ -612,7 +619,7 @@ func (t *Table[T]) DefaultFocusGained() {
 func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 	if !t.PreventUserColumnResize {
 		if over := t.OverColumnDivider(where.X); over != -1 {
-			if t.Columns[over].Minimum <= 0 || t.Columns[over].Minimum < t.Columns[over].Maximum {
+			if t.Columns[over].resizable() {
 				return ResizeHorizontalCursor()
 			}
 		}
@@ -730,7 +737,8 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 // DefaultMouseExit provides the default mouse exit handling.
 func (t *Table[T]) DefaultMouseExit() bool {
 	if t.lastMouseEnterCellPanel != nil && t.lastMouseEnterCellPanel.MouseExitCallback != nil &&
-		t.lastMouseMotionColumn != -1 && t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) {
+		t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) &&
+		t.lastMouseMotionColumn >= 0 && t.lastMouseMotionColumn < len(t.Columns) {
 		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		rect := t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		t.installCell(cell, rect)
@@ -756,7 +764,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 	if button == ButtonLeft {
 		if !t.PreventUserColumnResize {
 			if over := t.OverColumnDivider(where.X); over != -1 {
-				if t.Columns[over].Minimum <= 0 || t.Columns[over].Minimum < t.Columns[over].Maximum {
+				if t.Columns[over].resizable() {
 					if clickCount == 2 {
 						t.SizeColumnToFit(over, true)
 						t.MarkForRedraw()
@@ -1549,8 +1557,8 @@ func (t *Table[T]) EventuallySizeColumnsToFit(adjust bool) {
 	if !t.awaitingSizeColumnsToFit {
 		t.awaitingSizeColumnsToFit = true
 		InvokeTaskAfter(func() {
+			defer func() { t.awaitingSizeColumnsToFit = false }()
 			t.SizeColumnsToFit(adjust)
-			t.awaitingSizeColumnsToFit = false
 		}, 20*time.Millisecond)
 	}
 }
@@ -1561,8 +1569,8 @@ func (t *Table[T]) EventuallySyncToModel() {
 	if !t.awaitingSyncToModel {
 		t.awaitingSyncToModel = true
 		InvokeTaskAfter(func() {
+			defer func() { t.awaitingSyncToModel = false }()
 			t.SyncToModel()
-			t.awaitingSyncToModel = false
 		}, 20*time.Millisecond)
 	}
 }

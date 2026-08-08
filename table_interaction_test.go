@@ -155,3 +155,85 @@ func TestTableDisclosureRequiresPressOnSameHitRect(t *testing.T) {
 	table.DefaultMouseUp(rectA.Center(), unison.ButtonLeft, 0)
 	c.False(parentA.IsOpen())
 }
+
+// TestTableMouseExitAfterColumnRemoval verifies that removing columns while the mouse is over a cell doesn't leave the
+// exit path addressing a column that no longer exists. The row bound was checked but the column bound wasn't, so the
+// exit path handed an out-of-range column index to the row's ColumnCell, which panics in typical implementations.
+func TestTableMouseExitAfterColumnRemoval(t *testing.T) {
+	c := check.New(t)
+	exits := 0
+	visibleColumns := 2
+	panel := unison.NewPanel()
+	panel.MouseEnterCallback = func(_ geom.Point, _ mod.Modifiers) bool { return true }
+	panel.MouseExitCallback = func() bool { exits++; return true }
+	row := newTableTestRow("A")
+	row.cellFactory = func(_, col int) unison.Paneler {
+		// Stand in for the usual row implementation, which indexes its own per-column data.
+		if col < 0 || col >= visibleColumns {
+			panic("column index out of range")
+		}
+		return panel
+	}
+	model := &unison.SimpleTableModel[*tableTestRow]{}
+	model.SetRootRows([]*tableTestRow{row})
+	table := unison.NewTable[*tableTestRow](model)
+	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100}, {ID: 1, Current: 100}}
+	table.SyncToModel()
+
+	// Sanity check: entering and exiting a cell that stays put reaches the cell's exit callback.
+	over0 := table.CellFrame(0, 0).Point.Add(geom.NewPoint(1, 1))
+	table.DefaultMouseEnter(over0, 0)
+	table.DefaultMouseExit()
+	c.Equal(1, exits)
+
+	// Now hover the last column and drop it out from under the mouse before the exit arrives.
+	over1 := table.CellFrame(0, 1).Point.Add(geom.NewPoint(1, 1))
+	table.DefaultMouseEnter(over1, 0)
+	table.Columns = table.Columns[:1]
+	visibleColumns = 1
+	table.SyncToModel()
+	table.DefaultMouseExit()
+	c.Equal(1, exits, "the exit must not be delivered through a column that no longer exists")
+
+	// The table remains usable afterward.
+	table.DefaultMouseEnter(over0, 0)
+	table.DefaultMouseExit()
+	c.Equal(2, exits)
+}
+
+// TestTableColumnWithOnlyMinimumIsResizable verifies that a column with a positive Minimum and no Maximum can be
+// resized. The gate treated a Maximum of 0 as a hard bound, while the resize clamping treats it as "no maximum", so
+// such a column could never be resized at all.
+func TestTableColumnWithOnlyMinimumIsResizable(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(flatRows(2)...)
+	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100, Minimum: 50}, {ID: 1, Current: 100}}
+	table.SyncToModel()
+
+	divider := geom.NewPoint(100, 5)
+	c.Equal(0, table.OverColumnDivider(divider.X), "expected a divider at the column boundary")
+	table.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0)
+	table.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+	c.Equal(float32(120), table.Columns[0].Current)
+
+	// The Minimum is still honored: dragging far to the left stops at the minimum plus the cell padding overhead.
+	table.DefaultMouseDrag(geom.NewPoint(-500, 5), unison.ButtonLeft, 0)
+	c.Equal(50+table.Padding.Left+table.Padding.Right, table.Columns[0].Current)
+	table.DefaultMouseUp(geom.NewPoint(-500, 5), unison.ButtonLeft, 0)
+}
+
+// TestTableColumnPinnedToOneWidthIsNotResizable verifies that a column whose Minimum and Maximum pin it to a single
+// width still refuses to be resized.
+func TestTableColumnPinnedToOneWidthIsNotResizable(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(flatRows(2)...)
+	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100, Minimum: 100, Maximum: 100}, {ID: 1, Current: 100}}
+	table.SyncToModel()
+
+	divider := geom.NewPoint(100, 5)
+	c.Equal(0, table.OverColumnDivider(divider.X), "expected a divider at the column boundary")
+	table.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0)
+	table.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+	c.Equal(float32(100), table.Columns[0].Current)
+	table.DefaultMouseUp(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+}

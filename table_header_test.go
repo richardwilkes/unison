@@ -90,3 +90,31 @@ func TestTableHeaderStillDispatchesToPresentHeaders(t *testing.T) {
 	c.Equal(1, downCalls)
 	c.Equal(1, upCalls)
 }
+
+// TestTableHeaderColumnWithOnlyMinimumIsResizable verifies that the header's resize gate agrees with the table's: a
+// column with a positive Minimum and no Maximum is resizable, while one pinned to a single width is not.
+func TestTableHeaderColumnWithOnlyMinimumIsResizable(t *testing.T) {
+	c := check.New(t)
+	table := newHeaderTestTable()
+	table.Columns[0].Minimum = 50
+	header := unison.NewTableHeader[*tableTestRow](table)
+	header.SetFrameRect(geom.NewRect(0, 0, 300, 20))
+
+	divider := geom.NewPoint(100, 10)
+	c.Equal(0, table.OverColumnDivider(divider.X), "expected a divider at the column boundary")
+	c.True(header.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0))
+	c.True(header.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0))
+	c.Equal(float32(120), table.Columns[0].Current)
+	header.DefaultMouseUp(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+
+	// A column pinned to a single width is not resizable, so the press lands on the header instead of the divider.
+	pinned := newHeaderTestTable()
+	pinned.Columns[0].Minimum = 100
+	pinned.Columns[0].Maximum = 100
+	pinnedHeader := unison.NewTableHeader[*tableTestRow](pinned)
+	pinnedHeader.SetFrameRect(geom.NewRect(0, 0, 300, 20))
+	pinnedHeader.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0)
+	pinnedHeader.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+	c.Equal(float32(100), pinned.Columns[0].Current)
+	pinnedHeader.DefaultMouseUp(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+}

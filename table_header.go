@@ -215,7 +215,7 @@ func (h *TableHeader[T]) uninstallCell(cell *Panel) {
 func (h *TableHeader[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 	if !h.table.PreventUserColumnResize {
 		if over := h.table.OverColumnDivider(where.X); over != -1 {
-			if h.table.Columns[over].Minimum <= 0 || h.table.Columns[over].Minimum < h.table.Columns[over].Maximum {
+			if h.table.Columns[over].resizable() {
 				return ResizeHorizontalCursor()
 			}
 		}
@@ -277,7 +277,7 @@ func (h *TableHeader[T]) DefaultMouseDown(where geom.Point, button, clickCount i
 	h.inHeader = false
 	if !h.table.PreventUserColumnResize {
 		if over := h.table.OverColumnDivider(where.X); over != -1 {
-			if h.table.Columns[over].Minimum <= 0 || h.table.Columns[over].Minimum < h.table.Columns[over].Maximum {
+			if h.table.Columns[over].resizable() {
 				if clickCount == 2 {
 					h.table.SizeColumnToFit(over, true)
 					h.MarkForRedraw()
