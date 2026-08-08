@@ -11,6 +11,7 @@ package packager
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -46,5 +47,30 @@ func TestCopyFile(t *testing.T) {
 	}
 	if err = copyFile(filepath.Join(dir, "missing"), filepath.Join(dir, "dst2"), 0o644); err == nil {
 		t.Error("expected an error for a missing source file")
+	}
+
+	// A source that cannot be opened must leave the destination untouched. Creating the destination first truncated an
+	// existing file to zero even though nothing was ever copied.
+	existing := filepath.Join(dir, "existing")
+	if err = os.WriteFile(existing, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err = copyFile(filepath.Join(dir, "missing"), existing, 0o644); err == nil {
+		t.Error("expected an error for a missing source file")
+	}
+	if data, err = os.ReadFile(existing); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, content) {
+		t.Errorf("destination content after a failed copy = %q, want %q", data, content)
+	}
+
+	// Nor may it leave a newly created empty file and the directories made for it behind.
+	fresh := filepath.Join(dir, "fresh", "dst")
+	if err = copyFile(filepath.Join(dir, "missing"), fresh, 0o644); err == nil {
+		t.Error("expected an error for a missing source file")
+	}
+	if _, err = os.Stat(filepath.Dir(fresh)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a failed copy created %s", filepath.Dir(fresh))
 	}
 }

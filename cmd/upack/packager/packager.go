@@ -34,6 +34,18 @@ func Package(cfg *Config, version string, createDist bool) error {
 }
 
 func copyFile(from, to string, mode fs.FileMode) (err error) { //nolint:unused // This is used only on some platforms
+	// The source is opened first so that a failure to read it leaves the destination untouched. Creating the
+	// destination up front would truncate an existing file and leave behind an empty one, plus any directories made
+	// for it, even though nothing was ever copied.
+	var s *os.File
+	if s, err = os.Open(from); err != nil {
+		return errs.Wrap(err)
+	}
+	defer func() {
+		if closeErr := s.Close(); closeErr != nil && err == nil {
+			err = errs.Wrap(closeErr)
+		}
+	}()
 	if err = os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 		return errs.Wrap(err)
 	}
@@ -43,16 +55,6 @@ func copyFile(from, to string, mode fs.FileMode) (err error) { //nolint:unused /
 	}
 	defer func() {
 		if closeErr := f.Close(); closeErr != nil && err == nil {
-			err = errs.Wrap(closeErr)
-		}
-	}()
-	var s *os.File
-	if s, err = os.Open(from); err != nil {
-		err = errs.Wrap(err)
-		return err
-	}
-	defer func() {
-		if closeErr := s.Close(); closeErr != nil && err == nil {
 			err = errs.Wrap(closeErr)
 		}
 	}()
