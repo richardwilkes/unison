@@ -69,6 +69,32 @@ func TestTableDragAndUpAfterModelShrink(t *testing.T) {
 	c.Equal(1, upCount)
 }
 
+// TestTableMouseUpClearsColumnResizeState verifies that a mouse up ends a column-resize interaction. Only the
+// interaction row used to be reset, so a drag arriving after the release — which happens whenever a second button is
+// still down, since the window keeps routing drags to the table — re-entered the column-resize branch with stale
+// resize state and overwrote the column's width with a garbage value.
+func TestTableMouseUpClearsColumnResizeState(t *testing.T) {
+	c := check.New(t)
+	model := &unison.SimpleTableModel[*tableTestRow]{}
+	model.SetRootRows([]*tableTestRow{newTableTestRow("A"), newTableTestRow("B")})
+	table := unison.NewTable[*tableTestRow](model)
+	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100}, {ID: 1, Current: 100}}
+	table.SyncToModel()
+
+	// Grab the divider between the two columns and drag it 20 to the right.
+	divider := geom.NewPoint(100, 5)
+	c.Equal(0, table.OverColumnDivider(divider.X), "expected a divider at the column boundary")
+	table.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0)
+	table.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+	c.Equal(float32(120), table.Columns[0].Current)
+
+	// Release, then let a drag from the rest of a multi-button gesture arrive. The resize is over, so the column must
+	// keep the width the completed drag left it at.
+	table.DefaultMouseUp(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+	table.DefaultMouseDrag(geom.NewPoint(400, 5), unison.ButtonLeft, 0)
+	c.Equal(float32(120), table.Columns[0].Current, "a drag after the release must not resize the column")
+}
+
 // TestTableDisclosureRequiresPressOnSameHitRect verifies that a disclosure hit rect's handler only fires when the
 // mouse-down began on that same hit rect. A gesture that starts elsewhere (e.g. a row selection drag) and releases
 // over a disclosure triangle must not toggle it.

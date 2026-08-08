@@ -945,6 +945,7 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 	}
 	t.lastMouseDownCellPanel = nil
 	t.interactionRow = -1
+	t.interactionColumn = -1
 	return stop
 }
 
