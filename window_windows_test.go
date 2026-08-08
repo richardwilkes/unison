@@ -132,3 +132,59 @@ func TestW32KeyEvents(t *testing.T) {
 	c.Equal([]w32KeyEvent{{key: KeyPrintScreen, pressed: true}, {key: KeyPrintScreen}},
 		w32KeyEvents(KeyPrintScreen, w32.VK_SNAPSHOT, false))
 }
+
+// TestW32ApplyFrameInsets verifies that frame insets are applied in the space each part of a window rect actually
+// lives in: window positions are raw global pixels while window sizes are logical, 1x-scale units. The insets used to
+// be scaled down wholesale and handed to Rect.Inset, which moved the position by too little at any monitor scale above
+// 100%, so ContentRectForFrameRect(FrameRect()) disagreed with ContentRect() and every ContentRect/SetContentRect
+// round trip (Pack, for one) walked the window across the screen by insets×(scale−1) pixels.
+func TestW32ApplyFrameInsets(t *testing.T) {
+	c := check.New(t)
+	// A typical 200% monitor: an 8px border with a 31px title bar, all in raw pixels.
+	insets := geom.NewInsets(31, 8, 8, 8)
+	scale := geom.NewPoint(2, 2)
+
+	// The frame rect of a window whose client area starts at raw (108, 131) and is 800x600 raw pixels, i.e. 400x300
+	// logical units.
+	content := geom.NewRect(108, 131, 400, 300)
+	frame := w32ApplyFrameInsets(content, insets, scale, false)
+	// The origin backs up by the full raw inset, while the size grows by the logical equivalent of the 16 raw pixels
+	// of horizontal frame and 39 raw pixels of vertical frame.
+	c.Equal(geom.NewRect(100, 100, 408, 319.5), frame)
+
+	// Going back the other way must land exactly where it started.
+	c.Equal(content, w32ApplyFrameInsets(frame, insets, scale, true))
+
+	// At 100% scale the two spaces coincide, so the result matches a plain inset of the whole rect.
+	scale = geom.NewPoint(1, 1)
+	frame = w32ApplyFrameInsets(content, insets, scale, false)
+	c.Equal(content.Inset(insets.Mul(-1)), frame)
+	c.Equal(content, w32ApplyFrameInsets(frame, insets, scale, true))
+}
+
+// TestW32BlankCursorMasks verifies the masks used for the cursor that HideCursor installs. Win32 combines a monochrome
+// cursor's masks as (screen AND andMask) XOR xorMask, so the zeroed masks previously passed produced an opaque black
+// pixel rather than a hidden cursor. The buffers must also cover the WORD-aligned scanline stride that CreateCursor
+// reads, not just the pixel width; the old single byte was short even for the 1x1 cursor it described.
+func TestW32BlankCursorMasks(t *testing.T) {
+	c := check.New(t)
+	for _, one := range []struct {
+		width    int
+		height   int
+		expected int
+	}{
+		{width: 1, height: 1, expected: 2},     // one WORD-aligned scanline
+		{width: 16, height: 16, expected: 32},  // exactly one WORD per scanline
+		{width: 17, height: 17, expected: 68},  // spills into a second WORD
+		{width: 32, height: 32, expected: 128}, // the usual system cursor size
+	} {
+		andMask, xorMask := w32BlankCursorMasks(one.width, one.height)
+		c.Equal(one.expected, len(andMask), "%dx%d AND mask", one.width, one.height)
+		c.Equal(one.expected, len(xorMask), "%dx%d XOR mask", one.width, one.height)
+		for i := range andMask {
+			// AND of 1 with XOR of 0 leaves the screen pixel untouched, i.e. transparent.
+			c.Equal(byte(0xFF), andMask[i], "%dx%d AND mask byte %d", one.width, one.height, i)
+			c.Equal(byte(0), xorMask[i], "%dx%d XOR mask byte %d", one.width, one.height, i)
+		}
+	}
+}

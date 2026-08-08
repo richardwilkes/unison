@@ -568,9 +568,10 @@ func (w *Window) apiFrameRect() geom.Rect {
 }
 
 func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
-	return contentRect.Inset(w.w32FrameInsets().Mul(-1)).Align()
+	return w32ApplyFrameInsets(contentRect, w.w32FrameInsets(), w.apiBackingScale(), false).Align()
 }
 
+// w32FrameInsets returns the window's frame insets in raw screen pixels.
 func (w *Window) w32FrameInsets() geom.Insets {
 	var rect w32.RECT
 	style := w.w32WindowStyle()
@@ -581,11 +582,24 @@ func (w *Window) w32FrameInsets() geom.Insets {
 		w32.AdjustWindowRectEx(&rect, style, false, exStyle)
 	}
 	r := rectFromW32Rect(rect)
-	scale := w.apiBackingScale()
-	r.Point = r.Point.DivPt(scale)
-	r.Size = r.Size.DivPt(scale)
-	r = r.Align()
 	return geom.NewInsets(-r.Y, -r.X, r.Bottom(), r.Right())
+}
+
+// w32ApplyFrameInsets converts between a window's frame rect and its content rect. Window rects on this platform keep
+// their origin in the raw global pixel space that display rects use, while their size is in logical, 1x-scale units
+// (see Display.usableInWindowUnits), so the insets — which are raw pixels — cannot simply be handed to Rect.Inset:
+// the position must move by the raw amount while the size changes by the scaled-down amount. Getting this wrong makes
+// a ContentRect/SetContentRect round trip (e.g. Pack) creep by insets×(scale−1) pixels on every call. Pass true for
+// remove to go from a frame rect to a content rect, false for the reverse.
+func w32ApplyFrameInsets(r geom.Rect, insets geom.Insets, scale geom.Point, remove bool) geom.Rect {
+	if !remove {
+		insets = insets.Mul(-1)
+	}
+	r.X += insets.Left
+	r.Y += insets.Top
+	r.Width -= insets.Width() / scale.X
+	r.Height -= insets.Height() / scale.Y
+	return r
 }
 
 func (w *Window) apiEnsureOnDisplay() {
@@ -611,12 +625,13 @@ func (w *Window) apiContentRect() geom.Rect {
 }
 
 func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
-	return frameRect.Inset(w.w32FrameInsets()).Align()
+	return w32ApplyFrameInsets(frameRect, w.w32FrameInsets(), w.apiBackingScale(), true).Align()
 }
 
 func (w *Window) apiSetContentRect(rect geom.Rect) {
-	rect = rect.Inset(w.w32FrameInsets().Mul(-1))
-	rect.Size = rect.Size.MulPt(w.apiBackingScale())
+	scale := w.apiBackingScale()
+	rect = w32ApplyFrameInsets(rect, w.w32FrameInsets(), scale, false)
+	rect.Size = rect.Size.MulPt(scale)
 	rect = rect.Align()
 	w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
 		w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
@@ -649,15 +664,43 @@ func (w *Window) apiUpdateCursorImage() {
 	switch {
 	case w.cursorHidden:
 		if w32BlankCursor == 0 {
-			var data [1]byte
-			w32BlankCursor = w32.CreateCursor(w32.HINSTANCE(w32.GetModuleHandleW("")), 0, 0, 1, 1, data[:], data[:])
+			w32BlankCursor = w32CreateBlankCursor()
 		}
+		// A zero handle here means the creation failed; SetCursor(NULL) also removes the cursor from the screen, so
+		// the fallback still hides it.
 		w32.SetCursor(w32BlankCursor)
 	case w.cursor != nil:
 		w.w32SetCursor(w.cursor.cursor)
 	default:
 		w.w32SetCursor(ArrowCursor().cursor)
 	}
+}
+
+// w32CreateBlankCursor creates a fully transparent cursor at the system cursor size. CreateCursor documents that size,
+// not an arbitrary one, as what it accepts.
+func w32CreateBlankCursor() w32.HCURSOR {
+	width := w32.GetSystemMetrics(w32.SM_CXCURSOR)
+	height := w32.GetSystemMetrics(w32.SM_CYCURSOR)
+	if width < 1 || height < 1 {
+		width = 32
+		height = 32
+	}
+	andMask, xorMask := w32BlankCursorMasks(width, height)
+	return w32.CreateCursor(w32.HINSTANCE(w32.GetModuleHandleW("")), 0, 0, uint32(width), uint32(height), andMask,
+		xorMask)
+}
+
+// w32BlankCursorMasks builds the AND and XOR masks for a fully transparent monochrome cursor. Win32 combines the two
+// per-pixel as (screen AND andMask) XOR xorMask, so transparency requires an AND bit of 1 with an XOR bit of 0; the
+// all-zero masks that a zeroed buffer yields instead paint opaque black. Each scanline of a monochrome mask is padded
+// out to a WORD boundary, so the buffers are sized from that stride rather than from the pixel width.
+func w32BlankCursorMasks(width, height int) (andMask, xorMask []byte) {
+	stride := ((width + 15) / 16) * 2
+	andMask = make([]byte, stride*height)
+	for i := range andMask {
+		andMask[i] = 0xFF
+	}
+	return andMask, make([]byte, stride*height)
 }
 
 // w32SetCursor applies the native cursor sized for this window's current monitor DPI. Setting a null cursor would hide

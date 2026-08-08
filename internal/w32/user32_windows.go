@@ -316,6 +316,8 @@ const (
 const (
 	SM_CXICON   = 11
 	SM_CYICON   = 12
+	SM_CXCURSOR = 13
+	SM_CYCURSOR = 14
 	SM_CXSMICON = 49
 	SM_CYSMICON = 50
 )
