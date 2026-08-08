@@ -1006,12 +1006,8 @@ func (w *Window) x11RefreshFrameExtents() {
 		errs.Log(err)
 		return
 	}
-	if format == 32 && actualType == x11.AtomCardinal && len(value) >= 8 {
-		r := x11.NewReader(value)
-		w.wnd.borderLeft = r.Uint32()
-		w.wnd.borderRight = r.Uint32()
-		w.wnd.borderTop = r.Uint32()
-		w.wnd.borderBottom = r.Uint32()
+	if top, left, bottom, right, ok := x11.ParseFrameExtents(format, actualType, value); ok {
+		w.wnd.borderTop, w.wnd.borderLeft, w.wnd.borderBottom, w.wnd.borderRight = top, left, bottom, right
 		w.wnd.borderValid = true
 	}
 }
