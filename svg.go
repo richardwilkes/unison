@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -278,6 +279,17 @@ type svgDef struct {
 	attrs []xml.Attr
 }
 
+// svgDeferredUse records a use element whose referenced def had not been seen yet. Referring to a def declared later
+// in the document is legal, so the expansion is postponed until the whole document has been parsed and then spliced
+// back in at the point the use appeared, preserving the drawing order. mask is non-nil when the use appeared inside a
+// mask, in which case index refers to that mask's paths rather than the document's.
+type svgDeferredUse struct {
+	mask  *svgMask
+	id    string
+	style svgPathStyle
+	index int
+}
+
 // svgGradientRef is a placeholder Ink recorded when a fill or stroke references a gradient via url(#id). The reference
 // is only resolved once the entire document has been parsed, so that references to gradients defined later in the
 // document (a legal forward reference) work. def holds the ink that was inherited when the reference was encountered
@@ -294,28 +306,28 @@ func (r *svgGradientRef) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.
 }
 
 type svgParser struct {
-	svg        *SVG
-	data       *svgData
-	grad       *svgGradient
-	mask       *svgMask
-	activeUses map[string]bool
-	styleStack []svgPathStyle
-	currentDef []svgDef
-	path       *Path
-	pts        []float32
-	placeX     float32
-	placeY     float32
-	curX       float32
-	curY       float32
-	cntlPtX    float32
-	cntlPtY    float32
-	pathStartX float32
-	pathStartY float32
-	lastKey    uint8
-	inPath     bool
-	inGrad     bool
-	inDefs     bool
-	inMask     bool
+	svg           *SVG
+	data          *svgData
+	grad          *svgGradient
+	mask          *svgMask
+	activeUses    map[string]bool
+	styleStack    []svgPathStyle
+	currentDef    []svgDef
+	deferredUses  []svgDeferredUse
+	path          *Path
+	pts           []float32
+	placeX        float32
+	placeY        float32
+	cntlPtX       float32
+	cntlPtY       float32
+	pathStartX    float32
+	pathStartY    float32
+	lastKey       uint8
+	inPath        bool
+	inGrad        bool
+	inDefs        bool
+	inMask        bool
+	resolvingUses bool
 }
 
 // MustSVGFromContentString creates a new SVG and panics if an error would be generated. The content should contain
@@ -568,6 +580,9 @@ func parseSVG(stream io.Reader) (*SVG, error) {
 				p.inGrad = false
 			}
 		}
+	}
+	if err := p.resolveDeferredUses(); err != nil {
+		return nil, err
 	}
 
 	// Convert to unison's internal representation
@@ -893,7 +908,7 @@ func (p *svgParser) readStyleAttr(curStyle *svgPathStyle, k, v string) error {
 			return err
 		}
 	case "stroke-width":
-		if curStyle.strokeWidth, err = p.parseUnitToPx(v, svgPercentWidth); err != nil {
+		if curStyle.strokeWidth, err = p.parseUnitToPx(v, svgPercentDiag); err != nil {
 			return err
 		}
 	case "stroke-dashoffset":
@@ -1232,8 +1247,10 @@ func (p *svgParser) addSegment(segString string) error {
 	}
 	l := len(p.pts)
 	rel := false
+	opensSubpath := true
 	switch k {
 	case 'Z', 'z':
+		opensSubpath = false
 		if len(p.pts) != 0 {
 			return errParamMismatch
 		}
@@ -1252,10 +1269,9 @@ func (p *svgParser) addSegment(segString string) error {
 		}
 		p.pathStartX = p.pts[0]
 		p.pathStartY = p.pts[1]
-		p.inPath = true
-		p.path.MoveTo(geom.NewPoint(p.pathStartX+p.curX, p.pathStartY+p.curY))
+		p.path.MoveTo(geom.NewPoint(p.pathStartX, p.pathStartY))
 		for i := 2; i < l-1; i += 2 {
-			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
+			p.path.LineTo(geom.NewPoint(p.pts[i], p.pts[i+1]))
 		}
 		p.placeX = p.pts[l-2]
 		p.placeY = p.pts[l-1]
@@ -1267,7 +1283,7 @@ func (p *svgParser) addSegment(segString string) error {
 			return errParamMismatch
 		}
 		for i := 0; i < l-1; i += 2 {
-			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
+			p.path.LineTo(geom.NewPoint(p.pts[i], p.pts[i+1]))
 		}
 		p.placeX = p.pts[l-2]
 		p.placeY = p.pts[l-1]
@@ -1279,7 +1295,7 @@ func (p *svgParser) addSegment(segString string) error {
 			return errParamMismatch
 		}
 		for _, pt := range p.pts {
-			p.path.LineTo(geom.NewPoint(p.placeX+p.curX, pt+p.curY))
+			p.path.LineTo(geom.NewPoint(p.placeX, pt))
 		}
 		p.placeY = p.pts[l-1]
 	case 'h':
@@ -1290,7 +1306,7 @@ func (p *svgParser) addSegment(segString string) error {
 			return errParamMismatch
 		}
 		for _, pt := range p.pts {
-			p.path.LineTo(geom.NewPoint(pt+p.curX, p.placeY+p.curY))
+			p.path.LineTo(geom.NewPoint(pt, p.placeY))
 		}
 		p.placeX = p.pts[l-1]
 	case 'q', 'Q':
@@ -1299,8 +1315,8 @@ func (p *svgParser) addSegment(segString string) error {
 		}
 		for i := 0; i < l-3; i += 4 {
 			p.path.QuadTo(
-				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
-				geom.NewPoint(p.pts[i+2]+p.curX, p.pts[i+3]+p.curY),
+				geom.NewPoint(p.pts[i], p.pts[i+1]),
+				geom.NewPoint(p.pts[i+2], p.pts[i+3]),
 			)
 		}
 		p.cntlPtX, p.cntlPtY = p.pts[l-4], p.pts[l-3]
@@ -1316,8 +1332,8 @@ func (p *svgParser) addSegment(segString string) error {
 		for i := 0; i < l-1; i += 2 {
 			p.reflectControl(true)
 			p.path.QuadTo(
-				geom.NewPoint(p.cntlPtX+p.curX, p.cntlPtY+p.curY),
-				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
+				geom.NewPoint(p.cntlPtX, p.cntlPtY),
+				geom.NewPoint(p.pts[i], p.pts[i+1]),
 			)
 			p.lastKey = k
 			p.placeX = p.pts[i]
@@ -1329,9 +1345,9 @@ func (p *svgParser) addSegment(segString string) error {
 		}
 		for i := 0; i < l-5; i += 6 {
 			p.path.CubicTo(
-				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
-				geom.NewPoint(p.pts[i+2]+p.curX, p.pts[i+3]+p.curY),
-				geom.NewPoint(p.pts[i+4]+p.curX, p.pts[i+5]+p.curY),
+				geom.NewPoint(p.pts[i], p.pts[i+1]),
+				geom.NewPoint(p.pts[i+2], p.pts[i+3]),
+				geom.NewPoint(p.pts[i+4], p.pts[i+5]),
 			)
 		}
 		p.cntlPtX, p.cntlPtY = p.pts[l-4], p.pts[l-3]
@@ -1344,9 +1360,9 @@ func (p *svgParser) addSegment(segString string) error {
 		for i := 0; i < l-3; i += 4 {
 			p.reflectControl(false)
 			p.path.CubicTo(
-				geom.NewPoint(p.cntlPtX+p.curX, p.cntlPtY+p.curY),
-				geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY),
-				geom.NewPoint(p.pts[i+2]+p.curX, p.pts[i+3]+p.curY),
+				geom.NewPoint(p.cntlPtX, p.cntlPtY),
+				geom.NewPoint(p.pts[i], p.pts[i+1]),
+				geom.NewPoint(p.pts[i+2], p.pts[i+3]),
 			)
 			p.lastKey = k
 			p.cntlPtX, p.cntlPtY = p.pts[i], p.pts[i+1]
@@ -1362,8 +1378,8 @@ func (p *svgParser) addSegment(segString string) error {
 				p.pts[i+5] += p.placeX
 				p.pts[i+6] += p.placeY
 			}
-			x := p.pts[i+5] + p.curX
-			y := p.pts[i+6] + p.curY
+			x := p.pts[i+5]
+			y := p.pts[i+6]
 			as := arcsize.Small
 			if p.pts[i+3] != 0 {
 				as = arcsize.Large
@@ -1377,7 +1393,11 @@ func (p *svgParser) addSegment(segString string) error {
 			p.placeY = y
 		}
 	default:
+		opensSubpath = false
 		slog.Warn("svg: ignoring unknown path command", "command", string(k))
+	}
+	if opensSubpath {
+		p.inPath = true
 	}
 	p.lastKey = k
 	return nil
@@ -1644,9 +1664,9 @@ func (p *svgParser) handleRectElement(attrs []xml.Attr) error {
 		rx = ry
 	}
 	if rx == 0 {
-		p.path.Rect(geom.NewRect(x+p.curX, y+p.curY, w, h))
+		p.path.Rect(geom.NewRect(x, y, w, h))
 	} else {
-		p.path.RoundedRect(geom.NewRect(x+p.curX, y+p.curY, w, h), geom.NewSize(rx, ry))
+		p.path.RoundedRect(geom.NewRect(x, y, w, h), geom.NewSize(rx, ry))
 	}
 	return nil
 }
@@ -1675,8 +1695,6 @@ func (p *svgParser) handleCircleElement(attrs []xml.Attr) error {
 	if rx == 0 || ry == 0 {
 		return nil
 	}
-	cx += p.curX
-	cy += p.curY
 	if rx == ry {
 		p.path.Circle(geom.NewPoint(cx, cy), rx)
 	} else {
@@ -1703,8 +1721,8 @@ func (p *svgParser) handleLineElement(attrs []xml.Attr) error {
 			return err
 		}
 	}
-	p.path.MoveTo(geom.NewPoint(x1+p.curX, y1+p.curY))
-	p.path.LineTo(geom.NewPoint(x2+p.curX, y2+p.curY))
+	p.path.MoveTo(geom.NewPoint(x1, y1))
+	p.path.LineTo(geom.NewPoint(x2, y2))
 	return nil
 }
 
@@ -1721,9 +1739,9 @@ func (p *svgParser) handlePolylineElement(attrs []xml.Attr) error {
 		}
 	}
 	if len(p.pts) >= 4 {
-		p.path.MoveTo(geom.NewPoint(p.pts[0]+p.curX, p.pts[1]+p.curY))
+		p.path.MoveTo(geom.NewPoint(p.pts[0], p.pts[1]))
 		for i := 2; i < len(p.pts)-1; i += 2 {
-			p.path.LineTo(geom.NewPoint(p.pts[i]+p.curX, p.pts[i+1]+p.curY))
+			p.path.LineTo(geom.NewPoint(p.pts[i], p.pts[i+1]))
 		}
 	}
 	return nil
@@ -1792,24 +1810,46 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 			return err
 		}
 	}
-	// Offsets accumulate rather than replace so that a use reached through another use's def keeps the outer offset,
-	// and the previous values are restored afterward rather than being reset to zero.
-	prevX, prevY := p.curX, p.curY
-	p.curX, p.curY = prevX+x, prevY+y
-	defer func() {
-		p.curX, p.curY = prevX, prevY
-	}()
 	if href == "" {
 		return errors.New("only use tags with href is supported")
 	}
 	if !strings.HasPrefix(href, "#") {
 		return errors.New("only the ID CSS selector is supported")
 	}
+	if x != 0 || y != 0 {
+		style := &p.styleStack[len(p.styleStack)-1]
+		style.transform = style.transform.Multiply(geom.NewTranslationMatrix(x, y))
+	}
 	id := href[1:]
 	defs, ok := p.data.defs[id]
 	if !ok {
-		return errors.New("href ID in use statement was not found in saved defs")
+		if p.resolvingUses {
+			return errs.Newf("href ID %q in use statement was not found in saved defs", id)
+		}
+		p.deferUse(id)
+		return nil
 	}
+	return p.expandUse(id, defs)
+}
+
+func (p *svgParser) deferUse(id string) {
+	deferred := svgDeferredUse{
+		id:    id,
+		style: p.styleStack[len(p.styleStack)-1],
+	}
+	if p.inMask {
+		if p.mask == nil {
+			return
+		}
+		deferred.mask = p.mask
+		deferred.index = len(p.mask.paths)
+	} else {
+		deferred.index = len(p.data.paths)
+	}
+	p.deferredUses = append(p.deferredUses, deferred)
+}
+
+func (p *svgParser) expandUse(id string, defs []svgDef) error {
 	// A def that reaches itself, directly or through other defs, would recurse until the stack overflows, which is
 	// fatal and unrecoverable, so refuse the document instead. The depth cap covers long chains of distinct ids, which
 	// can't cycle but can still nest arbitrarily deep.
@@ -1829,10 +1869,10 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 			p.styleStack = p.styleStack[:len(p.styleStack)-1]
 			continue
 		}
-		if err = p.pushStyle(def.attrs); err != nil {
+		if err := p.pushStyle(def.attrs); err != nil {
 			return err
 		}
-		if err = p.executeDrawFunc(def.tag, def.attrs); err != nil {
+		if err := p.executeDrawFunc(def.tag, def.attrs); err != nil {
 			return err
 		}
 		// Flush each def's geometry with its own style before the next def runs, since handlers like compilePath reset
@@ -1843,6 +1883,50 @@ func (p *svgParser) handleUseElement(attrs []xml.Attr) error {
 		}
 	}
 	return nil
+}
+
+// resolveDeferredUses expands the use elements whose defs had not been seen when they were encountered. It runs once
+// the whole document has been parsed, so every def is now known and a missing one is a genuine error. Each expansion
+// is spliced back in at the index its use recorded, working from the last deferral to the first so that the earlier
+// indexes stay valid as the lists grow.
+func (p *svgParser) resolveDeferredUses() error {
+	p.resolvingUses = true
+	for i := len(p.deferredUses) - 1; i >= 0; i-- {
+		deferred := &p.deferredUses[i]
+		produced, err := p.collectUsePaths(deferred)
+		if err != nil {
+			return err
+		}
+		if deferred.mask != nil {
+			deferred.mask.paths = slices.Insert(deferred.mask.paths, deferred.index, produced...)
+		} else {
+			p.data.paths = slices.Insert(p.data.paths, deferred.index, produced...)
+		}
+	}
+	p.deferredUses = nil
+	return nil
+}
+
+// collectUsePaths expands a deferred use into a list of its own, restoring the parser state it borrows to do so. Any
+// use nested within resolves immediately, since every def is known by the time this runs.
+func (p *svgParser) collectUsePaths(deferred *svgDeferredUse) ([]*svgStyledPath, error) {
+	savedPaths, savedMask, savedInMask := p.data.paths, p.mask, p.inMask
+	savedStack, savedPath := p.styleStack, p.path
+	p.data.paths = nil
+	p.mask, p.inMask = nil, false
+	p.styleStack = []svgPathStyle{deferred.style}
+	p.path = NewPath()
+	defs, ok := p.data.defs[deferred.id]
+	var err error
+	if ok {
+		err = p.expandUse(deferred.id, defs)
+	} else {
+		err = errs.Newf("href ID %q in use statement was not found in saved defs", deferred.id)
+	}
+	produced := p.data.paths
+	p.data.paths, p.mask, p.inMask = savedPaths, savedMask, savedInMask
+	p.styleStack, p.path = savedStack, savedPath
+	return produced, err
 }
 
 func (p *svgParser) handleMaskElement(attrs []xml.Attr) error {

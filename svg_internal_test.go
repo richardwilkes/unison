@@ -17,6 +17,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 )
 
 // TestSVGPolylineTwoPoints verifies that a minimal, legal two-point polyline (and polygon) produces geometry, since the
@@ -337,6 +338,142 @@ func TestSVGRepeatedNonRecursiveUseStillWorks(t *testing.T) {
 	c.Equal(geom.NewRect(0, 10, 2, 2), svg.paths[2].path.ComputeTightBounds())
 	c.Equal(geom.NewRect(5, 10, 2, 2), svg.paths[3].path.ComputeTightBounds())
 	c.Equal(geom.NewRect(20, 20, 2, 2), svg.paths[4].path.ComputeTightBounds())
+}
+
+// TestSVGPercentStrokeWidthUsesDiagonal verifies that a percentage stroke-width resolves against the normalized
+// diagonal the spec requires for lengths that lie along neither axis. It was previously resolved against the viewport
+// width, giving the wrong width on any non-square viewBox.
+func TestSVGPercentStrokeWidthUsesDiagonal(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50">
+<path d="M0 0 L10 10" stroke="#000000" stroke-width="10%"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	// sqrt(100² + 50²) / sqrt(2) is 79.0569..., a tenth of which is the resolved width. The viewport width would
+	// have given 10.
+	nearlyEqual(c, xmath.Sqrt(100*100+50*50)/xmath.Sqrt(2)/10, svg.paths[0].strokeWidth)
+
+	// On a square viewBox the diagonal reduces to the width, so both readings agree.
+	svg, err = NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<path d="M0 0 L10 10" stroke="#000000" stroke-width="10%"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	nearlyEqual(c, 10, svg.paths[0].strokeWidth)
+}
+
+// TestSVGClosePathAfterClosePath verifies that a closepath following drawing commands that were themselves issued
+// after an earlier closepath closes the subpath those commands implicitly restarted. The parser marked itself as being
+// in a subpath only on moveto, so the second Z was silently dropped and left that subpath open.
+func TestSVGClosePathAfterClosePath(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z L20 20 Z"/></svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	c.True(svg.paths[0].path.path.IsLastContourClosed(), "the second subpath should be closed")
+
+	// The restarted subpath begins at the closed subpath's initial point, so the result must match the form that
+	// names that point explicitly.
+	explicit, err := NewSVGFromContentString(
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z M0 0 L20 20 Z"/></svg>`)
+	c.NoError(err)
+	c.Equal(1, len(explicit.paths))
+	c.Equal(explicit.paths[0].path.path.CountVerbs(), svg.paths[0].path.path.CountVerbs())
+	c.Equal(explicit.paths[0].path.ComputeTightBounds(), svg.paths[0].path.ComputeTightBounds())
+
+	// A closepath with nothing drawn since the previous one must remain a no-op.
+	svg, err = NewSVGFromContentString(
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z Z"/></svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	c.Equal(4, svg.paths[0].path.path.CountVerbs())
+	c.Equal(geom.NewRect(0, 0, 10, 10), svg.paths[0].path.ComputeTightBounds())
+}
+
+// TestSVGUseOffsetIsOutsideDefTransform verifies that a use element's x/y offset is applied outside the referenced
+// def's own transform, matching the translate(x,y) wrapper the spec defines. The offset was previously added to the
+// raw coordinates, so a def carrying a scale or rotation transformed the offset along with the geometry.
+func TestSVGUseOffsetIsOutsideDefTransform(t *testing.T) {
+	c := check.New(t)
+	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<defs><rect id="r" width="10" height="10" transform="scale(2)"/></defs>
+<use href="#r" x="5" y="5"/>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(svg.paths))
+	// scale(2) makes the rect 20x20 and the offset is then added unscaled. Scaling the offset too would place it at
+	// (10, 10).
+	bounds := svg.paths[0].path.ComputeTightBounds()
+	c.True(rectsNearlyEqual(geom.NewRect(5, 5, 20, 20), bounds), "got %v", bounds)
+
+	// The same thing spelled out as the group the spec says a use is equivalent to.
+	equivalent, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<g transform="translate(5,5)"><rect width="10" height="10" transform="scale(2)"/></g>
+</svg>`)
+	c.NoError(err)
+	c.Equal(1, len(equivalent.paths))
+	c.Equal(equivalent.paths[0].path.ComputeTightBounds(), bounds)
+}
+
+// TestSVGUseForwardReference verifies that a use element may reference a def declared later in the document, which is
+// legal SVG that previously aborted the whole parse, and that the postponed expansion still lands at the point in the
+// drawing order where the use appeared.
+func TestSVGUseForwardReference(t *testing.T) {
+	c := check.New(t)
+	// Parsing must succeed for any of the assertions below to mean anything, so stop the test rather than
+	// dereferencing a nil result.
+	parse := func(content string) *SVG {
+		t.Helper()
+		svg, err := NewSVGFromContentString(content)
+		c.NoError(err)
+		if svg == nil {
+			t.FailNow()
+		}
+		return svg
+	}
+
+	svg := parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<use href="#r" x="5" y="5"/>
+<rect x="50" y="50" width="4" height="4"/>
+<defs><rect id="r" width="10" height="10"/></defs>
+</svg>`)
+	c.Equal(2, len(svg.paths))
+	c.Equal(geom.NewRect(5, 5, 10, 10), svg.paths[0].path.ComputeTightBounds())
+	c.Equal(geom.NewRect(50, 50, 4, 4), svg.paths[1].path.ComputeTightBounds())
+
+	// The style inherited at the point of use must survive the postponement.
+	svg = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<g fill="#ff0000"><use href="#r"/></g>
+<defs><rect id="r" width="10" height="10"/></defs>
+</svg>`)
+	c.Equal(1, len(svg.paths))
+	c.Equal(Red, svg.paths[0].fillInk)
+
+	// A postponed def that reaches a def of its own must resolve too.
+	svg = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<use href="#outer"/>
+<defs><g id="outer"><use href="#leaf" x="3"/></g><rect id="leaf" width="2" height="2"/></defs>
+</svg>`)
+	c.Equal(1, len(svg.paths))
+	c.Equal(geom.NewRect(3, 0, 2, 2), svg.paths[0].path.ComputeTightBounds())
+
+	// A postponed use inside a mask must still contribute to that mask.
+	svg = parse(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+<mask id="m"><use href="#box"/></mask>
+<rect x="0" y="0" width="20" height="20" mask="url(#m)"/>
+<defs><rect id="box" x="2" y="2" width="6" height="6" fill="#ffffff"/></defs>
+</svg>`)
+	c.Equal(1, len(svg.paths))
+	c.NotNil(svg.paths[0].mask)
+	c.Equal(geom.NewRect(2, 2, 6, 6), svg.paths[0].mask.ComputeTightBounds())
+
+	// An id that never appears anywhere must still be rejected.
+	_, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<use href="#missing"/>
+</svg>`)
+	c.HasError(err)
 }
 
 // TestSVGUseWithMultiShapeDef verifies that a use element referencing a def containing multiple shapes draws all of

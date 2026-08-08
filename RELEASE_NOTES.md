@@ -98,3 +98,18 @@
   each track's share of what remains is too small to change a `float32` of that magnitude: the additions round away or
   round back and forth, the total never settles within the convergence epsilon, and the loop spins forever. Both loops
   now give up after a bounded number of passes, accepting a slightly imprecise layout instead.
+- An SVG `stroke-width` given as a percentage was resolved against the viewport width. A stroke width runs along
+  neither axis, so the spec resolves it against the normalized diagonal instead, which the dash attributes already
+  used. Any non-square viewBox therefore drew such strokes at the wrong width.
+- A `Z` in SVG path data that followed drawing commands issued after an earlier `Z` was silently dropped, leaving that
+  subpath open. The parser considered itself inside a subpath only after a moveto, whereas the spec treats a drawing
+  command after a closepath as implicitly restarting a subpath at the closed one's initial point — which the following
+  closepath then closes.
+- An SVG `use` element's x and y offset was added to the referenced definition's coordinates before that definition's
+  own `transform` was applied, so a definition carrying a scale or a rotation transformed the offset along with its
+  geometry — a `scale(2)` definition placed at x="5" landed at 10. The spec makes the offset a `translate(x, y)`
+  wrapped around the referenced element, outside its transform, and it is now applied that way.
+- An SVG `use` element that appeared before the `defs` section defining its target failed with "href ID ... not found"
+  and rejected the whole document, even though referring to a definition declared later is legal. Such a reference is
+  now expanded once the document has been read, and its shapes are placed in the drawing order at the point the `use`
+  appeared. A reference to an id that never appears is still an error.
