@@ -188,3 +188,48 @@ func TestW32BlankCursorMasks(t *testing.T) {
 		}
 	}
 }
+
+// TestW32RuneFromCharMessage verifies the WM_CHAR/WM_SYSCHAR surrogate handling. A low surrogate arriving with no
+// stored high surrogate is a malformed pair and must be discarded; it used to fall through with the rune left at 0,
+// delivering a spurious U+0000 to the window's and panels' RuneTyped callbacks.
+func TestW32RuneFromCharMessage(t *testing.T) {
+	c := check.New(t)
+	var high uint16
+
+	// An ordinary BMP character types itself.
+	r, ok := w32RuneFromCharMessage(&high, false, w32.WPARAM('A'))
+	c.True(ok)
+	c.Equal('A', r)
+	c.Equal(uint16(0), high)
+
+	// A character outside the BMP arrives as a surrogate pair; only the second message produces a rune.
+	_, ok = w32RuneFromCharMessage(&high, false, w32.WPARAM(0xD83D))
+	c.False(ok, "a high surrogate alone types nothing")
+	c.Equal(uint16(0xD83D), high)
+	r, ok = w32RuneFromCharMessage(&high, false, w32.WPARAM(0xDE00))
+	c.True(ok)
+	c.Equal('\U0001F600', r)
+	c.Equal(uint16(0), high)
+
+	// A low surrogate with no stored high surrogate must be discarded rather than reported as U+0000.
+	_, ok = w32RuneFromCharMessage(&high, false, w32.WPARAM(0xDE00))
+	c.False(ok, "a lone low surrogate must type nothing")
+	c.Equal(uint16(0), high)
+
+	// WM_SYSCHAR is an accelerator rather than typed text, and drops any pending high surrogate.
+	high = 0xD83D
+	_, ok = w32RuneFromCharMessage(&high, true, w32.WPARAM('a'))
+	c.False(ok, "WM_SYSCHAR must type nothing")
+	c.Equal(uint16(0), high)
+
+	// A high surrogate is still stored when it arrives as WM_SYSCHAR, matching the order Windows delivers them in.
+	_, ok = w32RuneFromCharMessage(&high, true, w32.WPARAM(0xD83D))
+	c.False(ok)
+	c.Equal(uint16(0xD83D), high)
+
+	// A BMP character following an unconsumed high surrogate types itself and drops the orphan.
+	r, ok = w32RuneFromCharMessage(&high, false, w32.WPARAM('b'))
+	c.True(ok)
+	c.Equal('b', r)
+	c.Equal(uint16(0), high)
+}

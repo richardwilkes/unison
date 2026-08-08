@@ -107,6 +107,32 @@ func w32KeyEvents(key KeyCode, wParam w32.WPARAM, pressed bool) []w32KeyEvent {
 	}
 }
 
+// w32RuneFromCharMessage translates the wParam of a WM_CHAR/WM_SYSCHAR message into the rune it produces, using and
+// updating the high surrogate carried over from a preceding message. ok is false when the message yields no character:
+// a high surrogate (which only completes once its low surrogate arrives), a WM_SYSCHAR (which is an accelerator rather
+// than typed text), or a low surrogate with no stored high surrogate, which is a malformed pair that must be discarded
+// rather than reported as U+0000.
+func w32RuneFromCharMessage(highSurrogate *uint16, sysChar bool, wParam w32.WPARAM) (r rune, ok bool) {
+	switch {
+	case wParam >= 0xD800 && wParam <= 0xDBFF:
+		*highSurrogate = uint16(wParam)
+		return 0, false
+	case sysChar:
+		*highSurrogate = 0
+		return 0, false
+	case wParam >= 0xDC00 && wParam <= 0xDFFF:
+		high := *highSurrogate
+		*highSurrogate = 0
+		if high == 0 {
+			return 0, false
+		}
+		return 0x10000 + (rune(high)-0xD800)<<10 + ((rune(wParam) & 0xFFFF) - 0xDC00), true
+	default:
+		*highSurrogate = 0
+		return rune(wParam) & 0xFFFF, true
+	}
+}
+
 func w32FindWindowByHWND(wnd windows.HWND) *Window {
 	for _, w := range windowList {
 		if w.wnd.wnd == wnd {
@@ -180,23 +206,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			w.requestClose()
 			return 0
 		case w32.WM_CHAR, w32.WM_SYSCHAR:
-			switch {
-			case wParam >= 0xD800 && wParam <= 0xDBFF:
-				w.wnd.highSurrogate = uint16(wParam)
-			case uMsg == w32.WM_SYSCHAR:
-				w.wnd.highSurrogate = 0
-			default:
-				var r rune
-				if wParam >= 0xDC00 && wParam <= 0xDFFF {
-					if w.wnd.highSurrogate != 0 {
-						r = (rune(w.wnd.highSurrogate) - 0xD800) << 10
-						r += (rune(wParam) & 0xFFFF) - 0xDC00
-						r += 0x10000
-					}
-				} else {
-					r = rune(wParam) & 0xFFFF
-				}
-				w.wnd.highSurrogate = 0
+			if r, ok := w32RuneFromCharMessage(&w.wnd.highSurrogate, uMsg == w32.WM_SYSCHAR, wParam); ok {
 				w.runeTyped(r)
 			}
 			return 0
