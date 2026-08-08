@@ -323,3 +323,48 @@ func TestKeypadRuneFollowsNumLock(t *testing.T) {
 	c.Equal(utf8.RuneError, toRune(mod.NumLock|mod.Shift),
 		"shift with NumLock on must navigate rather than type")
 }
+
+// TestX11FillKeyCodesAltGr verifies that the AltGr key is recognized from the ISO_Level3_Shift keysym its core
+// keyboard mapping carries on virtually every modern XKB layout. Only the legacy Mode_switch and Alt_R spellings were
+// matched, so on those layouts the AltGr keycode never entered rawScanCodeToKeyCodeMap — no keyPressed/keyReleased was
+// delivered for the key — and x11KeyROptionBitIndex was never assigned, leaving the QueryKeymap-based modifier polling
+// unable to see a held AltGr.
+func TestX11FillKeyCodesAltGr(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	savedRaw := rawScanCodeToKeyCodeMap
+	savedROption := x11KeyROptionBitIndex
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+		rawScanCodeToKeyCodeMap = savedRaw
+		x11KeyROptionBitIndex = savedROption
+	})
+
+	// The keycode AltGr occupies on a typical evdev keyboard. A modern XKB layout reports ISO_Level3_Shift in its
+	// first column and nothing in the second; every other keycode here is left unmapped.
+	const altGrKeycode = uint16(108)
+	const minKeyCode = uint16(8)
+	for _, one := range []struct {
+		name   string
+		keySym uint32
+	}{
+		{name: "ISO_Level3_Shift", keySym: xkISOLevel3Shift},
+		{name: "Mode_switch", keySym: xkModeswitch},
+		{name: "Alt_R", keySym: xkAltR},
+		{name: "Meta_R", keySym: xkMetaR},
+	} {
+		rawScanCodeToKeyCodeMap = make(map[uint16]KeyCode)
+		x11KeyROptionBitIndex = 0
+		x11Conn = &x11.Conn{MinKeyCode: byte(minKeyCode), MaxKeyCode: byte(altGrKeycode)}
+		keySyms := make([]uint32, (altGrKeycode-minKeyCode+1)*2)
+		keySyms[(altGrKeycode-minKeyCode)*2] = one.keySym
+		x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: keySyms}
+
+		x11FillKeyCodesFromMapping()
+		c.Equal(KeyROption, rawScanCodeToKeyCodeMap[altGrKeycode], "%s must map to the right option key", one.name)
+		c.Equal(x11ModifierBitIndex(altGrKeycode), x11KeyROptionBitIndex,
+			"%s must supply the right option modifier bit index", one.name)
+	}
+}
