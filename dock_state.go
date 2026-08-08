@@ -81,6 +81,10 @@ func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string
 // Apply the saved DockState to the specified Dock. keyToDockable is called for each Dockable that was in the Dock when
 // the state was captured, passing in the unique key that was used when keyFromDockable in NewDockState() was called.
 func (d *DockState) Apply(dock *Dock, keyToDockable func(string) Dockable) {
+	// A DockState records no maximized container, so restore first. Otherwise MaximizedContainer would be left pointing
+	// at a container that is about to be removed, and DockLayout.PerformLayout's maximized branch would then hide every
+	// restored container, since none of them is that stale pointer.
+	dock.Restore()
 	dock.RemoveAllChildren()
 	d.apply(dock.RootDockLayout(), keyToDockable)
 	dock.MarkForLayoutRecursively()

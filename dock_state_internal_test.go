@@ -35,6 +35,29 @@ func TestDockStateApplyRejectsExcessLayoutChildren(t *testing.T) {
 	c.NotNil(layout.nodes[1])
 }
 
+// TestDockStateApplyClearsMaximizedContainer verifies that applying a saved state while a container is maximized
+// releases the maximized container first. A DockState records no maximized container, so leaving the stale pointer in
+// place made DockLayout.PerformLayout's maximized branch hide every restored container (none of them being the removed
+// one), leaving the dock blank with no visible way to recover.
+func TestDockStateApplyClearsMaximizedContainer(t *testing.T) {
+	c := check.New(t)
+	dock, dc := newTestDockContainer(newTestDockable("one"))
+	dock.SetFrameRect(geom.NewRect(0, 0, 400, 300))
+	state := NewDockState(dock, func(d Dockable) string { return d.Title() })
+	dock.Maximize(dc)
+	c.Equal(dc, dock.MaximizedContainer)
+
+	restored := newTestDockable("one")
+	state.Apply(dock, func(string) Dockable { return restored })
+
+	c.Nil(dock.MaximizedContainer)
+	restoredContainer := Ancestor[*DockContainer](restored)
+	c.NotNil(restoredContainer)
+	c.NotEqual(dc, restoredContainer)
+	c.False(restoredContainer.Hidden)
+	c.False(restoredContainer.FrameRect().Empty())
+}
+
 // TestDockStateApplyPerformsLayout verifies that Apply actually performs layout rather than merely marking it needed,
 // since code commonly inspects frame rects immediately after restoring a saved state. It used to call the Layout()
 // getter, a no-op, instead of ValidateLayout().
