@@ -16,6 +16,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -91,6 +92,122 @@ func TestAuthenticateLargeSetupReply(t *testing.T) {
 		"the refusal reason must be read from beyond the 64 KB boundary; got: %v", err)
 	if err = <-serverDone; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// setupReplyScreenSize is the size of a SCREEN in a connection setup reply that lists no DEPTHs.
+const setupReplyScreenSize = 40
+
+// buildSetupReply returns a complete connection setup success reply, header included, for a server reporting the
+// specified number of screens. Screen i is given a root window of 100+i, a root visual of 200+i and a root depth of
+// 24, so a test can tell which screen a lookup resolved to.
+func buildSetupReply(screens int) []byte {
+	data := make([]byte, 32+screens*setupReplyScreenSize)
+	binary.LittleEndian.PutUint32(data[0:4], 1)          // release-number
+	binary.LittleEndian.PutUint32(data[4:8], 0x00400000) // resource-id-base
+	binary.LittleEndian.PutUint32(data[8:12], 0x001fffff)
+	binary.LittleEndian.PutUint32(data[12:16], 256)   // motion-buffer-size
+	binary.LittleEndian.PutUint16(data[16:18], 0)     // length-of-vendor
+	binary.LittleEndian.PutUint16(data[18:20], 65535) // maximum-request-length
+	data[20] = byte(screens)                          // number-of-SCREENs
+	data[21] = 0                                      // number-of-FORMATs
+	data[22] = 0                                      // image-byte-order
+	data[23] = 0                                      // bitmap-format-bit-order
+	data[24] = 32                                     // bitmap-format-scanline-unit
+	data[25] = 32                                     // bitmap-format-scanline-pad
+	data[26] = 8                                      // min-keycode
+	data[27] = 255                                    // max-keycode
+	for i := range screens {
+		s := data[32+i*setupReplyScreenSize:]
+		binary.LittleEndian.PutUint32(s[0:4], uint32(100+i)) // root
+		binary.LittleEndian.PutUint32(s[4:8], uint32(1))     // default-colormap
+		binary.LittleEndian.PutUint16(s[20:22], 1920)        // width-in-pixels
+		binary.LittleEndian.PutUint16(s[22:24], 1080)        // height-in-pixels
+		binary.LittleEndian.PutUint16(s[24:26], 508)         // width-in-millimeters
+		binary.LittleEndian.PutUint16(s[26:28], 285)         // height-in-millimeters
+		binary.LittleEndian.PutUint16(s[28:30], 1)           // min-installed-maps
+		binary.LittleEndian.PutUint16(s[30:32], 1)           // max-installed-maps
+		binary.LittleEndian.PutUint32(s[32:36], uint32(200+i))
+		s[38] = 24 // root-depth
+		s[39] = 0  // number-of-DEPTHs
+	}
+	reply := make([]byte, 8+len(data))
+	reply[0] = 1                                  // Success
+	binary.LittleEndian.PutUint16(reply[2:4], 11) // protocol major version
+	binary.LittleEndian.PutUint16(reply[4:6], 0)  // protocol minor version
+	binary.LittleEndian.PutUint16(reply[6:8], uint16(len(data)/4))
+	copy(reply[8:], data)
+	return reply
+}
+
+// serveSetupReply consumes a connection setup request from server and answers it with reply.
+func serveSetupReply(server net.Conn, reply []byte) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		done <- func() error {
+			header := make([]byte, 12)
+			if _, err := io.ReadFull(server, header); err != nil {
+				return err
+			}
+			nameLen := int(binary.LittleEndian.Uint16(header[6:8]))
+			dataLen := int(binary.LittleEndian.Uint16(header[8:10]))
+			if rest := pad4(nameLen) + pad4(dataLen); rest > 0 {
+				if _, err := io.ReadFull(server, make([]byte, rest)); err != nil {
+					return err
+				}
+			}
+			_, err := server.Write(reply)
+			return err
+		}()
+		xio.CloseIgnoringErrors(server)
+	}()
+	return done
+}
+
+// TestAuthenticateValidatesScreenNumber verifies that the screen number taken from DISPLAY (e.g. ":0.1") is checked
+// against the number of screens the server actually reports. Parsing only rejects negative values, so without this
+// check RootWindow(), DefaultVisual() and DefaultDepth() index Conn.Roots out of range and panic while NewConn
+// creates its helper window, rather than the connection failing with a usable error.
+func TestAuthenticateValidatesScreenNumber(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		screen  int
+		screens int
+		wantErr bool
+	}{
+		{name: "the only screen", screen: 0, screens: 1},
+		{name: "the second of two screens", screen: 1, screens: 2},
+		{name: "one past the last screen", screen: 1, screens: 1, wantErr: true},
+		{name: "far past the last screen", screen: 5, screens: 2, wantErr: true},
+		{name: "a server with no screens", screen: 0, screens: 0, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			t.Setenv("XAUTHORITY", filepath.Join(t.TempDir(), "nonexistent"))
+			t.Setenv("DISPLAY", ":0."+strconv.Itoa(tc.screen))
+			client, server := net.Pipe()
+			defer xio.CloseIgnoringErrors(client)
+			conn := &Conn{conn: client}
+			c.NoError(conn.parseDisplayEnv())
+			c.Equal(tc.screen, conn.DefaultScreen)
+			serverDone := serveSetupReply(server, buildSetupReply(tc.screens))
+			err := conn.authenticate()
+			if tc.wantErr {
+				c.HasError(err)
+				c.True(err != nil && strings.Contains(err.Error(), "does not exist"),
+					"the failure must name the missing screen; got: %v", err)
+			} else {
+				c.NoError(err)
+				c.Equal(tc.screens, len(conn.Roots))
+				// The accessors that index Roots must resolve to the screen DISPLAY asked for.
+				c.Equal(WindowID(100+tc.screen), conn.RootWindow())
+				c.Equal(VisualID(200+tc.screen), conn.DefaultVisual())
+				c.Equal(byte(24), conn.DefaultDepth())
+			}
+			if err = <-serverDone; err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

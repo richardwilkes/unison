@@ -940,6 +940,10 @@ func (c *Conn) authenticate() error {
 			})
 			return s
 		})
+		if c.DefaultScreen >= len(c.Roots) {
+			return errs.Newf("screen %d specified by DISPLAY=%s does not exist; the server has %d screen(s)",
+				c.DefaultScreen, c.envDisplay, len(c.Roots))
+		}
 		return nil
 	case 2:
 		return errs.New("further authentication required: " + r.ZeroedString(dataLen))
