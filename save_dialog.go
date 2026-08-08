@@ -52,12 +52,21 @@ func ValidateSaveFilePath(filePath, requiredExtension string, forcePrompt bool) 
 			revisedPath = xfilepath.TrimExtension(revisedPath) + requiredExtension
 		}
 	}
-	if xos.FileExists(revisedPath) {
-		if forcePrompt || !xos.FileExists(filePath) { // forced or the native dialog didn't see it because the extension wasn't applied
-			if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), revisedPath); result != ModalResponseOK {
-				return "", false
-			}
+	if needsOverwritePrompt(filePath, revisedPath, forcePrompt) {
+		if result := QuestionDialog(i18n.Text("File already exists! Do you want to overwrite it?"), revisedPath); result != ModalResponseOK {
+			return "", false
 		}
 	}
 	return revisedPath, true
+}
+
+// needsOverwritePrompt returns true if the user must be asked to confirm overwriting revisedPath. Only the path the
+// native dialog actually presented, filePath, was covered by the dialog's own overwrite prompt, so once the required
+// extension has revised the path into a different one, the target must be confirmed here even when the originally
+// chosen path also exists.
+func needsOverwritePrompt(filePath, revisedPath string, forcePrompt bool) bool {
+	if !xos.FileExists(revisedPath) {
+		return false
+	}
+	return forcePrompt || revisedPath != filePath
 }
