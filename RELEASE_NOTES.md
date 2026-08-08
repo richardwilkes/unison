@@ -39,3 +39,8 @@
   exactly was scored as though it did not match at all, so any wider face — an UltraExpanded face against a request for
   SemiExpanded, say — outranked it in the spacing tier, which outranks slant and weight. Exact spacing matches now
   score as matches.
+- Windows only: the URLs reported for dropped files were built by concatenating the raw path into a `file://` string
+  and parsing it, so characters that are legal in a filename but significant in a URL came back wrong. A `#` or `?`
+  cut the path short and reappeared as a fragment or query, a `%xx` sequence was decoded as an escape, and a `%`
+  followed by anything else failed to parse at all, dropping the file from the results entirely. The path is now
+  escaped rather than interpreted.

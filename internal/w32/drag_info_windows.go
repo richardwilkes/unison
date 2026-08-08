@@ -112,12 +112,7 @@ func (d *dragInfo) URLs() []*url.URL {
 	var result []*url.URL
 	// File paths from CF_HDROP as file:// URLs
 	for _, path := range d.FilePaths() {
-		// Convert backslashes and build file:// URL
-		urlPath := "/" + strings.ReplaceAll(path, "\\", "/")
-		u, err := url.Parse("file://" + urlPath)
-		if err == nil {
-			result = append(result, u)
-		}
+		result = append(result, FileURL(path))
 	}
 	// Generic URL data type
 	if raw := d.Data(uti.URL.UTI); len(raw) > 0 {
