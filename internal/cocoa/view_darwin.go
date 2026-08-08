@@ -115,6 +115,21 @@ func viewLocationFromDrag(self, sender objc.ID) geom.Point {
 	return geom.NewPoint(float32(pt.X), float32(frame.Size.Height-pt.Y))
 }
 
+// viewFirstRectForCharacterRange returns the rect the NSTextInputClient protocol's
+// firstRectForCharacterRange:actualRange: must report for the composed text: the area it occupies, expressed in screen
+// coordinates. AppKit anchors IME candidate lists and the press-and-hold accent picker to it, so returning view or
+// window coordinates puts them at the bottom-left corner of the screen instead of over the window. The caret's own
+// bounds are not tracked here, so the view's bounds stand in for the composition area, keeping the panels attached to
+// the window being typed into.
+func viewFirstRectForCharacterRange(self objc.ID) NSRect {
+	r := objc.Send[NSRect](self, Sel("convertRect:toView:"), objc.Send[NSRect](self, Sel("bounds")), objc.ID(0))
+	wnd := self.Send(Sel("window"))
+	if wnd == 0 {
+		return r
+	}
+	return objc.Send[NSRect](wnd, Sel("convertRectToScreen:"), r)
+}
+
 // eventMods returns an event's modifier flags.
 func eventMods(event objc.ID) uint {
 	return uint(objc.Send[uint64](event, Sel("modifierFlags")))
@@ -461,7 +476,7 @@ func registerMacContentViewClass() {
 		{
 			Cmd: Sel("firstRectForCharacterRange:actualRange:"),
 			Fn: func(self objc.ID, _ objc.SEL, _ NSRange, _ *NSRange) NSRect {
-				return NSRect{Origin: objc.Send[NSRect](self, Sel("frame")).Origin}
+				return viewFirstRectForCharacterRange(self)
 			},
 		},
 		{

@@ -300,7 +300,7 @@ func TestViewMouseAndKeyEvents(t *testing.T) {
 func TestViewTextInputClient(t *testing.T) {
 	defer func() { WindowKeyTypedCallback = nil }()
 	runOnMain(func() {
-		_, v, cleanup := newTestWindowAndView(t)
+		w, v, cleanup := newTestWindowAndView(t)
 		defer cleanup()
 		ov := objc.ID(v)
 
@@ -384,13 +384,21 @@ func TestViewTextInputClient(t *testing.T) {
 				t.Errorf("typed %q from attributed string, want %q", got, want)
 			}
 
-			// The remaining protocol methods have fixed answers.
+			// firstRectForCharacterRange:actualRange: must report the composition area in screen coordinates. It
+			// used to return the view's frame origin, which is the window-coordinate {0, 0} of a content view with
+			// a zero size attached, so AppKit parked IME candidate lists and the press-and-hold accent picker at the
+			// bottom-left corner of the screen rather than over the window being typed into. The whole view stands
+			// in for the composition area, so the answer is the window's content rect on screen.
 			var actual NSRange
-			frame := objc.Send[NSRect](ov, Sel("frame"))
 			got := objc.Send[NSRect](ov, Sel("firstRectForCharacterRange:actualRange:"),
 				NSRange{Location: 0, Length: 1}, &actual)
-			if want := (NSRect{Origin: frame.Origin}); got != want {
-				t.Errorf("firstRectForCharacterRange = %+v, want %+v", got, want)
+			content := objc.Send[NSRect](objc.ID(w), Sel("contentRectForFrameRect:"),
+				objc.Send[NSRect](objc.ID(w), Sel("frame")))
+			if got != content {
+				t.Errorf("firstRectForCharacterRange = %+v, want the content rect on screen %+v", got, content)
+			}
+			if got.Origin == (NSPoint{}) || got.Size == (NSSize{}) {
+				t.Errorf("firstRectForCharacterRange = %+v, want a placed, non-empty rect", got)
 			}
 			if got := objc.Send[uint64](ov, Sel("characterIndexForPoint:"), NSPoint{X: 5, Y: 5}); got != 0 {
 				t.Errorf("characterIndexForPoint = %d, want 0", got)
