@@ -1,24 +1,26 @@
-# Changes since v0.96.1
+# Changes since v0.97.0
 
 ## Enhancements
 
-- Cursors now have a runtime-configurable size and colors. `CursorSize()` and `SetCursorSize()` control the logical
-  size the built-in cursors are built at, while the new `ThemeCursorForeground` and `ThemeCursorBackground` theme
-  colors control the color of their body and linework and of their outline and halo, respectively. Changing any of
-  them — including as part of a theme change — rebuilds the built-in cursors and immediately updates every open
-  window. Client code can follow along by creating its own cursors with the new `NewThemedCursorFromSVG()` function
-  and registering a `CursorChangedCallback()`, which is called after the built-in cursors have been rebuilt but before
-  open windows are refreshed, so replacement cursors created within it are picked up immediately.
-- Cursors are now rasterized from their vector art at each display's backing scale rather than being scaled from a
-  single fixed-size bitmap, so they are sharper on Windows systems using fractional DPI scaling and on non-retina
-  macOS displays.
-- `SVG` gained `DrawInRectWithReplacementInks()` and `DrawInRectPreservingAspectRatioWithReplacementInks()`, which
-  draw an SVG while substituting a different ink for each of a set of colors found in the source art. This is what
-  allows the cursor art — drawn entirely with pure black for the foreground and pure white for the background — to be
-  recolored.
+- (none yet)
 
 ## Bug Fixes
 
-- The text cursor's artwork contained a stray zero-width segment at the top-left corner of its lower-left arm, which
-  the outline stroke rendered as a small notch in the cursor's body, making that corner asymmetric with the rest of
-  the cursor. The stray segment has been removed.
+- An SVG containing a `<use>` element that reached itself, either directly or through other definitions (e.g.
+  `<g id="a"><use href="#a"/></g>`), recursed until the stack overflowed, killing the process outright rather than
+  failing in a recoverable way. Such a document is now rejected with an error, as is one whose `<use>` elements nest
+  more than 32 deep.
+- `NewComposeColorFilter()` panicked with a nil pointer dereference when either of its filters was nil, even though
+  this package's own constructors legitimately return a nil `*ColorFilter` for filters that would do nothing — for
+  example, `NewBlendColorFilter()` with `blendmode.Dst`, or with a zero-alpha color and `blendmode.SrcOver`. Composing
+  with such a filter now yields the other filter, and composing two of them yields nil.
+- `DockState.Apply()` left `Dock.MaximizedContainer` pointing at a container it had just removed. Applying a saved
+  state while a container was maximized therefore hid every restored container, since none of them was that stale
+  pointer, leaving the dock blank with no visible way to recover. Any maximized container is now restored before the
+  saved state is applied.
+- Shift-clicking in a `Field` moved the selection anchor — the gesture's fixed end — to the click position, so a
+  following drag or second shift-click extended from the wrong end and visibly dropped the previously selected range
+  mid-gesture. The anchor now stays put; only an unshifted click moves it.
+- Shift+Up and Shift+Down in a `Field` destroyed the selection whenever the moving end crossed the anchor — for
+  example, Shift+Right followed by Shift+Up in a multi-line field — collapsing it to an empty caret instead of
+  flipping it past the anchor. The selection now flips, in the by-word variants as well.

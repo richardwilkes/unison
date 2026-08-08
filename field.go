@@ -481,22 +481,15 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods 
 			if selectAll {
 				f.setSelection(0, len(f.runes), f.ToSelectionIndex(where))
 			} else {
-				oldAnchor := f.selectionAnchor
-				f.selectionAnchor = f.ToSelectionIndex(where)
-				var start, end int
+				pos := f.ToSelectionIndex(where)
 				if mods.ShiftDown() {
-					if oldAnchor > f.selectionAnchor {
-						start = f.selectionAnchor
-						end = oldAnchor
-					} else {
-						start = oldAnchor
-						end = f.selectionAnchor
-					}
+					// The anchor is the gesture's fixed end, so a shift-click extends from the existing anchor and
+					// leaves it where it is; a following drag or shift-click then continues from that same fixed end.
+					// Only an unshifted click moves the anchor to the click position.
+					f.setSelectionFromAnchor(f.selectionAnchor, pos)
 				} else {
-					start = f.selectionAnchor
-					end = f.selectionAnchor
+					f.setSelection(pos, pos, pos)
 				}
-				f.setSelection(start, end, f.selectionAnchor)
 			}
 		}
 		return true
@@ -862,7 +855,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 					pos = min(max(start, anchor), pos)
 				}
-				f.setSelection(anchor, pos, anchor)
+				f.setSelectionFromAnchor(anchor, pos)
 			} else {
 				pt := f.FromSelectionIndex(f.selectionStart)
 				pt.Y--
@@ -871,7 +864,7 @@ func (f *Field) handleArrowUp(extend, byWord bool) {
 					start, _ := f.findWordAt(f.scanLeftToWordPart(pos))
 					pos = min(start, pos)
 				}
-				f.setSelection(pos, anchor, anchor)
+				f.setSelectionFromAnchor(anchor, pos)
 			}
 		} else {
 			f.SetSelectionTo(f.selectionStart)
@@ -905,7 +898,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 					_, end := f.findWordAt(f.scanRightToWordPart(pos))
 					pos = max(min(end, anchor), pos)
 				}
-				f.setSelection(pos, anchor, anchor)
+				f.setSelectionFromAnchor(anchor, pos)
 			} else {
 				pt := f.FromSelectionIndex(f.selectionEnd)
 				pt.Y += 1 + f.lineHeightAt(pt.Y)
@@ -914,7 +907,7 @@ func (f *Field) handleArrowDown(extend, byWord bool) {
 					_, end := f.findWordAt(f.scanRightToWordPart(pos))
 					pos = max(end, pos)
 				}
-				f.setSelection(anchor, pos, anchor)
+				f.setSelectionFromAnchor(anchor, pos)
 			}
 		} else {
 			f.SetSelectionTo(f.selectionEnd)
@@ -1123,6 +1116,17 @@ func (f *Field) SetSelectionTo(pos int) {
 // the same.
 func (f *Field) SetSelection(start, end int) {
 	f.setSelection(start, end, start)
+}
+
+// setSelectionFromAnchor sets the selection to the range spanned by the gesture's fixed end (the anchor) and its moving
+// end (pos), in whichever order they fall. Passing the two to setSelection directly would collapse the selection to an
+// empty caret whenever the moving end crosses the anchor, since setSelection treats an end below the start as empty.
+func (f *Field) setSelectionFromAnchor(anchor, pos int) {
+	if pos < anchor {
+		f.setSelection(pos, anchor, anchor)
+	} else {
+		f.setSelection(anchor, pos, anchor)
+	}
 }
 
 func (f *Field) setSelection(start, end, anchor int) {

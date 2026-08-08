@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // TestFieldAutoScrollBottomOverflowTracksSelectionStart verifies that when a selection is being extended backward
@@ -215,4 +216,125 @@ func TestFieldFontChangeInvalidatesLineCache(t *testing.T) {
 	c.True(f.lines[0].Width() > oldWidth,
 		"doubling the font size must rebuild the lines with the new font (old width %v, new width %v)",
 		oldWidth, f.lines[0].Width())
+}
+
+// multiLineSelectionTestField returns a multi-line field holding five identical 4-rune lines, tall and wide enough to
+// show them all without wrapping, so rune index i*5 is the first rune of line i.
+func multiLineSelectionTestField() *Field {
+	f := NewMultiLineField()
+	f.SetText("line\nline\nline\nline\nline")
+	var insets geom.Insets
+	if b := f.Border(); b != nil {
+		insets = b.Insets()
+	}
+	f.SetFrameRect(geom.NewRect(0, 0, 200+insets.Width(), 5*f.Font.LineHeight()+insets.Height()))
+	return f
+}
+
+// TestFieldShiftClickKeepsAnchor verifies that a shift-click extends the selection from the existing anchor and leaves
+// that anchor in place. The click position used to become the new anchor, so the gesture's fixed end moved to the click
+// point and a following drag or second shift-click extended from the wrong end, visibly dropping the previously
+// selected range mid-gesture.
+func TestFieldShiftClickKeepsAnchor(t *testing.T) {
+	c := check.New(t)
+	f := NewField()
+	f.SetText("hello world")
+	f.SetFrameRect(geom.NewRect(0, 0, 400, 100))
+	c.Equal(8, f.ToSelectionIndex(f.FromSelectionIndex(8)), "rune positions must round trip for this test to mean anything")
+
+	// Put the caret, and therefore the anchor, at index 2.
+	f.setSelection(2, 2, 2)
+
+	// A shift-click extends from the anchor at 2 without moving it.
+	f.DefaultMouseDown(f.FromSelectionIndex(8), ButtonLeft, 1, mod.Shift)
+	c.Equal(2, f.selectionStart)
+	c.Equal(8, f.selectionEnd)
+	c.Equal(2, f.selectionAnchor)
+
+	// A second shift-click still extends from that same fixed end rather than from the first click point.
+	f.DefaultMouseDown(f.FromSelectionIndex(5), ButtonLeft, 1, mod.Shift)
+	c.Equal(2, f.selectionStart)
+	c.Equal(5, f.selectionEnd)
+	c.Equal(2, f.selectionAnchor)
+
+	// A shift-click before the anchor flips the selection to the other side of it, again keeping the anchor put.
+	f.DefaultMouseDown(f.FromSelectionIndex(0), ButtonLeft, 1, mod.Shift)
+	c.Equal(0, f.selectionStart)
+	c.Equal(2, f.selectionEnd)
+	c.Equal(2, f.selectionAnchor)
+
+	// A drag after the shift-click continues from the anchor, not from the last click point.
+	f.DefaultMouseDrag(f.FromSelectionIndex(9), ButtonLeft, 0)
+	c.Equal(2, f.selectionStart)
+	c.Equal(9, f.selectionEnd)
+
+	// An unshifted click still moves the anchor to the click position and collapses the selection there.
+	f.DefaultMouseDown(f.FromSelectionIndex(4), ButtonLeft, 1, mod.None)
+	c.Equal(4, f.selectionStart)
+	c.Equal(4, f.selectionEnd)
+	c.Equal(4, f.selectionAnchor)
+}
+
+// TestFieldShiftArrowCrossingAnchorFlipsSelection verifies that a shift+up/down move whose free end crosses the anchor
+// flips the selection past it. Such a move used to hand setSelection an end below its start, which collapsed the
+// selection to an empty caret and silently destroyed it.
+func TestFieldShiftArrowCrossingAnchorFlipsSelection(t *testing.T) {
+	c := check.New(t)
+
+	// Shift+right then shift+up: the free end starts after the anchor and lands a line above it.
+	f := multiLineSelectionTestField()
+	f.setSelection(12, 13, 12)
+	f.handleArrowUp(true, false)
+	c.Equal(8, f.selectionStart)
+	c.Equal(12, f.selectionEnd)
+	c.Equal(12, f.selectionAnchor)
+	c.True(f.HasSelectionRange())
+
+	// The same crossing by word must flip too, rather than collapsing at the anchor.
+	f = multiLineSelectionTestField()
+	f.setSelection(12, 13, 12)
+	f.handleArrowUp(true, true)
+	c.Equal(12, f.selectionEnd)
+	c.Equal(12, f.selectionAnchor)
+	c.True(f.selectionStart < 12)
+	c.True(f.HasSelectionRange())
+
+	// Shift+left then shift+down: the mirror case, where the free end starts before the anchor and lands a line below.
+	f = multiLineSelectionTestField()
+	f.setSelection(11, 12, 12)
+	f.handleArrowDown(true, false)
+	c.Equal(12, f.selectionStart)
+	c.Equal(16, f.selectionEnd)
+	c.Equal(12, f.selectionAnchor)
+	c.True(f.HasSelectionRange())
+
+	f = multiLineSelectionTestField()
+	f.setSelection(11, 12, 12)
+	f.handleArrowDown(true, true)
+	c.Equal(12, f.selectionStart)
+	c.Equal(12, f.selectionAnchor)
+	c.True(f.selectionEnd > 12)
+	c.True(f.HasSelectionRange())
+}
+
+// TestFieldShiftArrowWithoutCrossingAnchorIsUnchanged verifies that the flip handling leaves the ordinary,
+// non-crossing shift+up/down extensions alone.
+func TestFieldShiftArrowWithoutCrossingAnchorIsUnchanged(t *testing.T) {
+	c := check.New(t)
+
+	// Extending downward from an anchor that stays the selection start.
+	f := multiLineSelectionTestField()
+	f.setSelection(7, 12, 7)
+	f.handleArrowDown(true, false)
+	c.Equal(7, f.selectionStart)
+	c.Equal(17, f.selectionEnd)
+	c.Equal(7, f.selectionAnchor)
+
+	// Extending upward from an anchor that stays the selection end.
+	f = multiLineSelectionTestField()
+	f.setSelection(7, 12, 12)
+	f.handleArrowUp(true, false)
+	c.Equal(2, f.selectionStart)
+	c.Equal(12, f.selectionEnd)
+	c.Equal(12, f.selectionAnchor)
 }
