@@ -317,7 +317,7 @@ func (p *PopupMenu[T]) ItemAt(index int) (item T, ok bool) {
 func (p *PopupMenu[T]) SetItemAt(index int, item T, enabled bool) {
 	if index >= 0 && index < len(p.items) {
 		one := p.items[index]
-		if one.separator || one.item != item {
+		if one.separator || one.item != item || one.enabled != enabled {
 			one.item = item
 			one.enabled = enabled
 			one.separator = false

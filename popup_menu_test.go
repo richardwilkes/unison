@@ -145,6 +145,32 @@ func TestPopupSetItemEnabledAndReplace(t *testing.T) {
 	c.Equal("B", item)
 }
 
+// TestPopupSetItemAtUpdatesEnabledForUnchangedItem verifies that SetItemAt applies a new enabled state even when the
+// item value itself is unchanged. The update used to be skipped entirely whenever the value matched, silently ignoring
+// the enabled argument.
+func TestPopupSetItemAtUpdatesEnabledForUnchangedItem(t *testing.T) {
+	c := check.New(t)
+	p := newTestPopup("a", "b")
+	c.True(p.ItemEnabledAt(1))
+
+	p.SetItemAt(1, "b", false)
+	c.False(p.ItemEnabledAt(1))
+	item, ok := p.ItemAt(1)
+	c.True(ok)
+	c.Equal("b", item)
+
+	p.SetItemAt(1, "b", true)
+	c.True(p.ItemEnabledAt(1))
+
+	// Replacing a separator with an item continues to work, including when it starts out disabled.
+	p.AddSeparator()
+	p.SetItemAt(2, "c", false)
+	item, ok = p.ItemAt(2)
+	c.True(ok)
+	c.Equal("c", item)
+	c.False(p.ItemEnabledAt(2))
+}
+
 func TestPopupRemoveAllItems(t *testing.T) {
 	c := check.New(t)
 	p := newTestPopup("a", "b", "c")
