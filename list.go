@@ -569,7 +569,7 @@ func (l *List[T]) rowAt(y float32) (row int, top float32) {
 		for row < count {
 			_, pref, _ := l.cell(row).Sizes(geom.Size{})
 			pref = pref.Ceil()
-			if top+pref.Height >= y {
+			if top+pref.Height > y {
 				break
 			}
 			top += pref.Height

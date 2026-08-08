@@ -147,6 +147,46 @@ func TestListRowRectVariableHeight(t *testing.T) {
 	c.Equal(geom.Rect{}, l.RowRect(4))
 }
 
+// TestListRowAtBoundaryPicksLowerRow verifies that a y lying exactly on a row's top boundary maps to that row rather
+// than the one above it. The variable-height path's inclusive comparison used to assign the boundary to the previous
+// row, so a click landing exactly on a row boundary selected the row above the one clicked, while the fixed-height
+// path's floor((y-top)/cellHeight) assigned it to the row itself.
+func TestListRowAtBoundaryPicksLowerRow(t *testing.T) {
+	c := check.New(t)
+	heights := []float32{10, 30, 20, 40}
+	l := NewList[string]()
+	l.Factory = &variableHeightCellFactory{heights: heights}
+	l.Append("a", "b", "c", "d")
+	l.SetBorder(NewLineBorder(Black, geom.Size{}, geom.NewUniformInsets(2), false))
+	l.SetFrameRect(geom.NewRect(0, 0, 100, 200))
+
+	for i := range heights {
+		rect := l.RowRect(i)
+		row, top := l.rowAt(rect.Y)
+		c.Equal(i, row, "the top boundary of row %d belongs to row %d", i, i)
+		c.Equal(rect.Y, top, "rowAt must report the same top as RowRect for row %d", i)
+
+		// The last pixel of the row still belongs to it.
+		row, top = l.rowAt(rect.Bottom() - 1)
+		c.Equal(i, row, "the last pixel of row %d belongs to row %d", i, i)
+		c.Equal(rect.Y, top, "rowAt must report the same top as RowRect for row %d", i)
+	}
+
+	// A y past the last row has no row, matching the fixed-height path.
+	row, top := l.rowAt(l.RowRect(len(heights) - 1).Bottom())
+	c.Equal(-1, row)
+	c.Equal(float32(0), top)
+
+	// The fixed-height path resolves boundaries the same way.
+	fixed := newFixedHeightBorderedList("a", "b", "c")
+	for i := range 3 {
+		rect := fixed.RowRect(i)
+		row, top = fixed.rowAt(rect.Y)
+		c.Equal(i, row, "the top boundary of fixed-height row %d belongs to row %d", i, i)
+		c.Equal(rect.Y, top)
+	}
+}
+
 // TestListRowRectFixedHeight verifies that the fixed-height path is unaffected by the variable-height correction.
 func TestListRowRectFixedHeight(t *testing.T) {
 	c := check.New(t)
