@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -79,4 +80,55 @@ func TestSliderSetValueClamps(t *testing.T) {
 	c.Equal(float32(50), s.Value())
 	s.SetValue(200)
 	c.Equal(float32(100), s.Value())
+}
+
+// TestSliderRangeChangeNotifiesWhenValueMoves verifies that narrowing the range reports the value it displaces.
+// SetMinimum and SetMaximum used to clamp the value directly, so listeners never learned the value had changed.
+func TestSliderRangeChangeNotifiesWhenValueMoves(t *testing.T) {
+	c := check.New(t)
+
+	s := unison.NewSlider(0, 100, 10)
+	changes := 0
+	s.ValueChangedCallback = func() { changes++ }
+
+	// A range change that leaves the value within range notifies no one.
+	s.SetMinimum(5)
+	c.Equal(float32(10), s.Value())
+	c.Equal(0, changes)
+	s.SetMaximum(90)
+	c.Equal(float32(10), s.Value())
+	c.Equal(0, changes)
+
+	// A new minimum above the value moves it, and that must be reported.
+	s.SetMinimum(50)
+	c.Equal(float32(50), s.Value())
+	c.Equal(1, changes)
+
+	// So must a new maximum below it.
+	s.SetMaximum(60)
+	c.Equal(float32(50), s.Value())
+	c.Equal(1, changes)
+	s.SetMinimum(0)
+	s.SetMaximum(20)
+	c.Equal(float32(20), s.Value())
+	c.Equal(2, changes)
+}
+
+// TestSliderRangeChangeAppliesSnap verifies that a value the range change moves goes through the snap callback, just as
+// it would had SetValue been called directly.
+func TestSliderRangeChangeAppliesSnap(t *testing.T) {
+	c := check.New(t)
+	s := unison.NewSlider(0, 100, 30)
+	snaps := 0
+	s.ValueSnapCallback = func(value float32) float32 {
+		snaps++
+		return xmath.Round(value/25) * 25
+	}
+	changes := 0
+	s.ValueChangedCallback = func() { changes++ }
+
+	s.SetMaximum(20)
+	c.True(snaps > 0, "a range change must run the value through the snap callback")
+	c.Equal(float32(20), s.Value())
+	c.Equal(1, changes)
 }

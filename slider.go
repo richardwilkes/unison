@@ -107,10 +107,8 @@ func (s *Slider) SetMinimum(value float32) {
 		if s.maximum < s.minimum {
 			s.maximum = s.minimum
 		}
-		if s.value < s.minimum {
-			s.value = s.minimum
-		}
 		s.MarkForRedraw()
+		s.SetValue(s.value)
 	}
 }
 
@@ -126,10 +124,8 @@ func (s *Slider) SetMaximum(value float32) {
 		if s.minimum > s.maximum {
 			s.minimum = s.maximum
 		}
-		if s.value > s.maximum {
-			s.value = s.maximum
-		}
 		s.MarkForRedraw()
+		s.SetValue(s.value)
 	}
 }
 
