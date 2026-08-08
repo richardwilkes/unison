@@ -2632,15 +2632,23 @@ func (c *Conn) GetWindowBorderWidths(window WindowID) (top, left, bottom, right 
 		errs.Log(err)
 		return 0, 0, 0, 0, false
 	}
-	if format == 32 && actualType == AtomCardinal && len(value) >= 16 {
-		r := NewReader(value)
-		left = r.Uint32()
-		right = r.Uint32()
-		top = r.Uint32()
-		bottom = r.Uint32()
-		return top, left, bottom, right, true
+	return ParseFrameExtents(format, actualType, value)
+}
+
+// ParseFrameExtents decodes the value of a _NET_FRAME_EXTENTS property into the window manager's frame border widths.
+// The returned ok is false unless the property is well-formed: four CARD32s in 32-bit format, so anything shorter than
+// 16 bytes is rejected rather than read past the end and reported as zeroed extents, which callers would otherwise
+// cache as authoritative.
+func ParseFrameExtents(format byte, propertyType Atom, value []byte) (top, left, bottom, right uint32, ok bool) {
+	if format != 32 || propertyType != AtomCardinal || len(value) < 16 {
+		return 0, 0, 0, 0, false
 	}
-	return 0, 0, 0, 0, false
+	r := NewReader(value)
+	left = r.Uint32()
+	right = r.Uint32()
+	top = r.Uint32()
+	bottom = r.Uint32()
+	return top, left, bottom, right, true
 }
 
 // ChangeWindowAttributes changes the attributes of the specified window based on the provided value mask and

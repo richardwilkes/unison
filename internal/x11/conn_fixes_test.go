@@ -514,3 +514,45 @@ func TestConfigureWindowDoesNotSync(t *testing.T) {
 	c.Equal(1, len(requests))
 	c.Equal(byte(opConfigureWindow), requests[0][0])
 }
+
+// TestParseFrameExtents verifies that a _NET_FRAME_EXTENTS property is only accepted when it actually holds all four
+// CARD32s. A property of 8 to 12 bytes used to be accepted by the frame-extents refresh path, which then read past the
+// end of the value (logging errors) and cached zeroed top/bottom borders as if the window manager had reported them.
+func TestParseFrameExtents(t *testing.T) {
+	c := check.New(t)
+
+	extents := func(left, right, top, bottom uint32) []byte {
+		w := NewWriter(16)
+		w.Uint32(left)
+		w.Uint32(right)
+		w.Uint32(top)
+		w.Uint32(bottom)
+		return w.Retrieve()
+	}
+
+	// The property is ordered left, right, top, bottom, but the widths are returned top, left, bottom, right.
+	value := extents(1, 2, 3, 4)
+	top, left, bottom, right, ok := ParseFrameExtents(32, AtomCardinal, value)
+	c.True(ok)
+	c.Equal(uint32(3), top)
+	c.Equal(uint32(1), left)
+	c.Equal(uint32(4), bottom)
+	c.Equal(uint32(2), right)
+
+	// Trailing data beyond the four values is fine.
+	_, _, _, _, ok = ParseFrameExtents(32, AtomCardinal, append(value, make([]byte, 8)...))
+	c.True(ok)
+
+	// Anything shorter than the four CARD32s is malformed and must be rejected rather than read past the end.
+	for _, size := range []int{0, 4, 8, 12, 15} {
+		top, left, bottom, right, ok = ParseFrameExtents(32, AtomCardinal, value[:size])
+		c.False(ok, "a %d byte property must be rejected", size)
+		c.Equal(uint32(0), top|left|bottom|right, "a rejected property must report no borders")
+	}
+
+	// So are the wrong format and the wrong property type.
+	_, _, _, _, ok = ParseFrameExtents(16, AtomCardinal, value)
+	c.False(ok, "a non-32-bit format must be rejected")
+	_, _, _, _, ok = ParseFrameExtents(32, AtomString, value)
+	c.False(ok, "a non-CARDINAL property type must be rejected")
+}
