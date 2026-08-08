@@ -44,3 +44,25 @@
   cut the path short and reappeared as a fragment or query, a `%xx` sequence was decoded as an escape, and a `%`
   followed by anything else failed to parse at all, dropping the file from the results entirely. The path is now
   escaped rather than interpreted.
+- Linux only: a screen number in `DISPLAY` (e.g. `:0.1`) was only checked for being non-negative, never against the
+  number of screens the X server actually reported, so pointing at a screen the server does not have crashed the
+  application with an index-out-of-range panic while the connection was still being established. Such a display is now
+  rejected with an error naming the missing screen.
+- Linux only: ColormapNotify events were decoded two bytes off, because three bytes were skipped after the event code
+  rather than one, so every such event delivered garbage for its sequence number, window, colormap, and installed
+  state.
+- Linux only: requesting a transparent window on a system whose driver offers no transparency-capable framebuffer
+  configuration failed outright instead of falling back to an opaque one. The fallback existed but was guarded by a
+  condition that could never be true.
+- Linux only: the numeric keypad typed digits into text fields regardless of NumLock, because the navigation keysyms
+  the key produces with NumLock off (KP_Home, KP_Left, KP_Insert, and the rest) were mapped to the digits printed on
+  their keycaps. Those keys now type nothing while they are acting as navigation keys, so the NumLock state finally
+  governs whether the keypad produces characters.
+- `List.RowRect()` computed a row's vertical position by multiplying that row's own height by its index instead of
+  summing the heights of the rows above it. In a list whose cells differ in height — the default, when the cell
+  factory reports a height below 1 — every row after the first was reported at the wrong offset, so keyboard
+  navigation scrolled to the wrong place and could leave the newly selected row off-screen.
+- `ValidateSaveFilePath()` skipped its overwrite confirmation whenever the path handed to it existed, even when
+  applying the required extension had changed the path into a different, also-existing file. The native dialog had
+  only ever prompted about the original path, so the real target was overwritten with no warning. The confirmation is
+  now skipped only for the exact path the dialog itself presented.
