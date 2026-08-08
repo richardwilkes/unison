@@ -113,3 +113,28 @@
   and rejected the whole document, even though referring to a definition declared later is legal. Such a reference is
   now expanded once the document has been read, and its shapes are placed in the drawing order at the point the `use`
   appeared. A reference to an id that never appears is still an error.
+- A `ColorEditor` showed a hue of 360 — outside the 0-359 range its own label documents, and disagreeing with the hue
+  slider, which clamps to 359 — for colors sitting just shy of a full turn around the wheel, such as `RGB(255, 0, 1)`
+  at roughly 359.76 degrees. The displayed value is now held within the range the slider presents.
+- A click landing exactly on a row boundary in a `List` whose cells differ in height — the default, when the cell
+  factory reports a height below 1 — selected the row above the one clicked. The variable-height row lookup assigned a
+  y-coordinate lying on a row's top edge to the preceding row, whereas the fixed-height path assigns it to the row
+  that edge belongs to.
+- `ReviseTarget()` joined every local target onto the working directory without checking whether it was already
+  absolute, so an absolute link or image target such as `/tmp/img.png` became `<workingDir>/tmp/img.png`. The load then
+  failed and the image rendered as the broken-image placeholder. Absolute targets are now left where they are.
+- `PopupMenu.SetItemAt()` ignored its `enabled` argument whenever the item value passed in matched the one already
+  there, so enabling or disabling an existing item without also changing its value did nothing.
+- `Slider.SetMinimum()` and `Slider.SetMaximum()` clamped the current value into the new range directly, so a range
+  change that moved the value never reached `ValueChangedCallback` and bypassed `ValueSnapCallback` entirely. Both now
+  route the value back through `SetValue()`.
+- A `Table`'s mouse exit handling bounds-checked the row it had last seen the mouse over against the row cache, but
+  only checked that the column was not -1. Removing columns while the mouse was over a cell therefore handed an
+  out-of-range column index to the row's `ColumnCell()`, which panics in typical implementations.
+- A `Table` column configured with only a positive `Minimum`, leaving `Maximum` at 0, could not be resized by the user
+  at all. The gate deciding whether a divider may be dragged treated a `Maximum` of 0 as a hard upper bound, while the
+  code clamping a resize in progress treats it as no maximum at all. Both now agree that 0 means unbounded.
+- `Table.EventuallySyncToModel()` and `Table.EventuallySizeColumnsToFit()` cleared their pending flags only once the
+  deferred work had finished. A panic in that work — from user `ColumnCell()` code, say — is recovered by the task
+  runner, but left the flag set for good, so every later call was silently dropped and the table never synced or
+  resized again. The flags are now cleared even when the work panics.
