@@ -66,3 +66,26 @@
   applying the required extension had changed the path into a different, also-existing file. The native dialog had
   only ever prompted about the original path, so the real target was overwritten with no warning. The confirmation is
   now skipped only for the exact path the dialog itself presented.
+- A `ScrollPanel` with a border of its own laid its children out from its frame rect rather than its content rect,
+  even though the sizes it reported already accounted for the border insets. The content view, the headers and the
+  scroll bars were all positioned and sized as though the border were not there, drawing on top of it.
+- An SVG `transform` attribute whose operations were separated by a comma — `transform="translate(1,2), scale(2)"`, a
+  form the spec's comma-wsp separator permits — failed to parse, and that error rejected the entire document. The
+  parser split the list on the closing parenthesis and left the leading comma attached to the following operation's
+  name, where it matched nothing.
+- `Table.DefaultMouseUp()` cleared only the interaction row captured at mouse down, leaving the interaction column
+  set. A drag arriving after the release — which happens for the remainder of a gesture whenever a second mouse button
+  is still down — was therefore taken as a continuation of a column resize and overwrote the column's width using
+  resize state left over from the finished gesture.
+- Linux only: `IsMinimized()` and `IsMaximized()` always returned false. The WM_STATE and _NET_WM_STATE property
+  handlers recorded the state reported by the window manager in a platform-private copy of the flags rather than in
+  the fields those methods read.
+- Windows only: the window frame insets were converted to logical units and then applied to positions, which are raw
+  screen pixels. On a monitor scaled above 100%, `ContentRectForFrameRect(FrameRect())` therefore disagreed with
+  `ContentRect()`, and every round trip through `ContentRect()` and `SetContentRect()` — `Pack()`, for one — moved the
+  window by the insets times the scale minus one, walking it a little further across the screen on each call. The
+  position and size portions of the insets are now each applied in the space they belong to.
+- Windows only: `HideCursor()` displayed a 1x1 black dot rather than hiding the cursor. The blank cursor was built
+  from zeroed AND and XOR masks, a combination Win32 renders as an opaque black pixel — transparency requires the AND
+  bits to be set — and the one-byte mask buffers were also shorter than the WORD-aligned scanline `CreateCursor()`
+  reads. The cursor is now created at the system cursor size with masks that are actually transparent.
