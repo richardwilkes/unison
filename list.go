@@ -281,10 +281,17 @@ func (l *List[T]) RowRect(row int) geom.Rect {
 	rect := l.ContentRect(false)
 	cellHeight := xmath.Ceil(l.Factory.CellHeight())
 	if cellHeight < 1 {
+		// Rows may each have a different height, so the top of this row is the sum of the heights of the rows that
+		// precede it, not a multiple of this row's own height.
+		for i := range row {
+			_, pref, _ := l.cell(i).Sizes(geom.Size{})
+			rect.Y += pref.Ceil().Height
+		}
 		_, pref, _ := l.cell(row).Sizes(geom.Size{})
 		cellHeight = pref.Ceil().Height
+	} else {
+		rect.Y += cellHeight * float32(row)
 	}
-	rect.Y += cellHeight * float32(row)
 	rect.Height = cellHeight
 	return rect
 }

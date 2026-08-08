@@ -92,3 +92,67 @@ func TestListRowAtFixedHeightEmptyList(t *testing.T) {
 	c.Equal(-1, row)
 	c.Equal(float32(0), top)
 }
+
+// variableHeightCellFactory produces cells whose heights differ per row, selecting the variable-height code paths that
+// a CellHeight() of less than 1 turns on.
+type variableHeightCellFactory struct {
+	heights []float32
+}
+
+// CellHeight implements CellFactory.
+func (f *variableHeightCellFactory) CellHeight() float32 {
+	return 0
+}
+
+// CreateCell implements CellFactory.
+func (f *variableHeightCellFactory) CreateCell(_ Paneler, _ any, row int, _, _ Ink, _, _ bool) Paneler {
+	size := geom.NewSize(50, f.heights[row])
+	p := NewPanel()
+	p.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) { return size, size, size })
+	return p
+}
+
+// TestListRowRectVariableHeight verifies that a row's rectangle in a variable-height list starts where the rows above
+// it end. RowRect used to multiply the row's own height by its index, which places every row after the first at the
+// wrong offset unless all rows happen to be the same height, so DefaultKeyDown's ScrollRectIntoView could scroll to a
+// position that left the selected row off-screen.
+func TestListRowRectVariableHeight(t *testing.T) {
+	c := check.New(t)
+	l := NewList[string]()
+	l.Factory = &variableHeightCellFactory{heights: []float32{10, 30, 20, 40}}
+	l.Append("a", "b", "c", "d")
+	l.SetBorder(NewLineBorder(Black, geom.Size{}, geom.NewUniformInsets(2), false))
+	l.SetFrameRect(geom.NewRect(0, 0, 100, 200))
+	content := l.ContentRect(false)
+
+	for i, want := range []geom.Rect{
+		geom.NewRect(content.X, content.Y, content.Width, 10),
+		geom.NewRect(content.X, content.Y+10, content.Width, 30),
+		geom.NewRect(content.X, content.Y+40, content.Width, 20),
+		geom.NewRect(content.X, content.Y+60, content.Width, 40),
+	} {
+		c.Equal(want, l.RowRect(i), "row %d", i)
+	}
+
+	// Every row's rectangle must agree with the row rowAt reports for a point inside it.
+	for i := range 4 {
+		rect := l.RowRect(i)
+		row, top := l.rowAt(rect.Y + rect.Height/2)
+		c.Equal(i, row, "rowAt must report row %d for a point within its rectangle", i)
+		c.Equal(rect.Y, top, "rowAt must report the same top as RowRect for row %d", i)
+	}
+
+	// Out-of-range rows yield an empty rectangle.
+	c.Equal(geom.Rect{}, l.RowRect(-1))
+	c.Equal(geom.Rect{}, l.RowRect(4))
+}
+
+// TestListRowRectFixedHeight verifies that the fixed-height path is unaffected by the variable-height correction.
+func TestListRowRectFixedHeight(t *testing.T) {
+	c := check.New(t)
+	l := newFixedHeightBorderedList("a", "b", "c")
+	content := l.ContentRect(false)
+	for i := range 3 {
+		c.Equal(geom.NewRect(content.X, content.Y+float32(i)*20, content.Width, 20), l.RowRect(i), "row %d", i)
+	}
+}
