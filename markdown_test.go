@@ -11,6 +11,7 @@ package unison
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -370,4 +371,39 @@ func TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("retrieveImage did not return after the display query completed")
 	}
+}
+
+// TestReviseTarget verifies how targets are turned into links or absolute paths. An already-absolute local target used
+// to be joined onto the working directory anyway, turning "/tmp/img.png" into "<workingDir>/tmp/img.png", which then
+// failed to load and rendered as the broken-image placeholder.
+func TestReviseTarget(t *testing.T) {
+	c := check.New(t)
+	workingDir := t.TempDir()
+
+	// URLs pass through untouched.
+	revised, err := ReviseTarget(workingDir, "https://example.com/a.png", nil)
+	c.NoError(err)
+	c.Equal("https://example.com/a.png", revised)
+
+	// So do targets matching one of the alternate link prefixes.
+	revised, err = ReviseTarget(workingDir, "mailto:someone@example.com", []string{"mailto:"})
+	c.NoError(err)
+	c.Equal("mailto:someone@example.com", revised)
+
+	// A relative target is resolved against the working directory, after URL unescaping.
+	revised, err = ReviseTarget(workingDir, "sub/img%20one.png", nil)
+	c.NoError(err)
+	c.Equal(filepath.Join(workingDir, "sub", "img one.png"), revised)
+
+	// An absolute target is left where it is rather than being buried under the working directory.
+	abs := filepath.Join(workingDir, "abs.png")
+	revised, err = ReviseTarget(filepath.Join(workingDir, "elsewhere"), abs, nil)
+	c.NoError(err)
+	c.Equal(abs, revised)
+
+	// The same holds when the absolute target arrives URL-escaped.
+	absWithSpace := filepath.Join(workingDir, "abs two.png")
+	revised, err = ReviseTarget(workingDir, filepath.ToSlash(filepath.Join(workingDir, "abs%20two.png")), nil)
+	c.NoError(err)
+	c.Equal(absWithSpace, revised)
 }

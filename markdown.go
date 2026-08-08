@@ -1019,10 +1019,13 @@ func ReviseTarget(workingDir, target string, altLinkPrefixes []string) (string, 
 	if HasAnyPrefix(altLinkPrefixes, revised) {
 		return revised, nil
 	}
-	if workingDir == "" {
-		workingDir = "."
+	if !filepath.IsAbs(revised) {
+		if workingDir == "" {
+			workingDir = "."
+		}
+		revised = filepath.Join(workingDir, revised)
 	}
-	if revised, err = filepath.Abs(filepath.Join(workingDir, revised)); err != nil {
+	if revised, err = filepath.Abs(revised); err != nil {
 		return target, errs.Wrap(err)
 	}
 	return revised, nil
