@@ -24,3 +24,13 @@
 - Shift+Up and Shift+Down in a `Field` destroyed the selection whenever the moving end crossed the anchor — for
   example, Shift+Right followed by Shift+Up in a multi-line field — collapsing it to an empty caret instead of
   flipping it past the anchor. The selection now flips, in the by-word variants as well.
+- In the common (non-native) open dialog, a multiple selection containing an item the dialog was not allowed to choose
+  — such as a directory when `SetCanChooseDirectories(false)` — still enabled the OK button as long as some later item
+  in the selection was valid, and that item's path was then returned from `Paths()`. Every selected item must now be
+  choosable for OK to be enabled.
+- In the common (non-native) save dialog, pressing Return in the file name field accepted the dialog based only on
+  that field being non-empty, without rebuilding the path from it. Navigating to another directory, double-clicking
+  into one, or selecting one in the file list all left the stored path stale, so `RunModal()` could report success
+  while `Path()` returned a path in the previously shown directory, a directory itself, or an empty string — even
+  though the OK button was visibly disabled. Return now rebuilds the path from the name field and the directory
+  currently showing, and accepts only when the OK button would.

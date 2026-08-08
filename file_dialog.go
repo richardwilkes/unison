@@ -256,20 +256,21 @@ func (d *fileDialog) changeDirTo(dir string) {
 
 func (d *fileDialog) fileListSelectionHandler() {
 	d.paths = make([]string, 0, d.fileList.Selection.Count())
-	okEnabled := false
+	// Every selected item must be choosable, since accepting returns them all from Paths(). A single non-choosable
+	// item therefore disqualifies the whole selection rather than being overridden by a later valid one.
+	allChoosable := true
 	i := d.fileList.Selection.FirstSet()
 	for i != -1 {
-		okEnabled = true
 		item := d.fileList.DataAtIndex(i)
 		d.paths = append(d.paths, filepath.Join(d.currentDir, item.entry.Name()))
 		switch {
 		case item.entry.IsDir():
 			if !d.forOpen || !d.canChooseDirs {
-				okEnabled = false
+				allChoosable = false
 			}
 		case d.forOpen:
 			if !d.canChooseFiles {
-				okEnabled = false
+				allChoosable = false
 			}
 		default:
 			d.fileNameField.SetText(item.entry.Name())
@@ -277,7 +278,7 @@ func (d *fileDialog) fileListSelectionHandler() {
 		}
 		i = d.fileList.Selection.NextSet(i + 1)
 	}
-	d.dialog.Button(ModalResponseOK).SetEnabled(okEnabled)
+	d.dialog.Button(ModalResponseOK).SetEnabled(allChoosable && len(d.paths) != 0)
 }
 
 func (d *fileDialog) fileListDoubleClickHandler() {
@@ -304,7 +305,12 @@ func (d *fileDialog) fileListDoubleClickHandler() {
 
 func (d *fileDialog) fileNameFieldKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
 	if mods&mod.NonSticky == mod.None && (keyCode == KeyReturn || keyCode == KeyNumPadEnter) {
-		if d.fileNameField.Text() != "" {
+		// Recompute the paths from the name field before accepting. Navigating to another directory leaves them
+		// pointing into the one that was showing before (or, after a double-click, at nothing at all), and selecting a
+		// directory in the list leaves them pointing at that directory, so accepting on the strength of a non-empty
+		// name field alone could report success with a path that was never what the field showed.
+		d.fileNameFieldModified(nil, nil)
+		if d.dialog.Button(ModalResponseOK).Enabled() {
 			d.dialog.StopModal(ModalResponseOK)
 		}
 		return true
