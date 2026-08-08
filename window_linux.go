@@ -582,10 +582,16 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 			if state != dragStateTracking {
 				return false
 			}
-			// Coalesce any additional queued motion events into this one
+			// Coalesce any additional queued motion events into this one, but not past a queued ButtonRelease: motion
+			// behind the release happened after the button came up, so folding it in here would send a final
+			// XdndPosition for a position the pointer only reached after the drop was committed, dropping at the
+			// wrong spot — or on a different target entirely — whenever events have backed up.
 			for {
-				next := x11Conn.PollEvents(func(pe x11.Event) bool {
+				next := x11Conn.PollEventsBefore(func(pe x11.Event) bool {
 					_, ok := pe.(*x11.MotionNotifyEvent)
+					return ok
+				}, func(pe x11.Event) bool {
+					_, ok := pe.(*x11.ButtonReleaseEvent)
 					return ok
 				})
 				m, ok := next.(*x11.MotionNotifyEvent)

@@ -138,3 +138,4 @@
   deferred work had finished. A panic in that work — from user `ColumnCell()` code, say — is recovered by the task
   runner, but left the flag set for good, so every later call was silently dropped and the table never synced or
   resized again. The flags are now cleared even when the work panics.
+- Linux only: pointer motion that happened after the mouse button came up could be taken as the position of a drop.

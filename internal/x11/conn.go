@@ -1445,6 +1445,27 @@ func (c *Conn) PollEvents(filter func(Event) bool) Event {
 	return e
 }
 
+// PollEventsBefore returns the next queued event matching filter, but only when no event matching barrier is queued
+// ahead of it; nil is returned if a barrier event comes first or nothing matches. Non-matching events, and the barrier
+// event itself, remain queued. Use this instead of PollEvents whenever pulling an event out of order would move it
+// ahead of an event that has to be handled first. Coalescing pointer motion during a drag is the motivating case: the
+// motion queued behind a ButtonRelease happened after the button came up, so folding it into the current motion event
+// would report the pointer's post-release position as the drop position.
+func (c *Conn) PollEventsBefore(filter, barrier func(Event) bool) Event {
+	c.eventQueueLock.Lock()
+	defer c.eventQueueLock.Unlock()
+	for i, e := range c.eventQueue {
+		if barrier != nil && barrier(e) {
+			return nil
+		}
+		if filter == nil || filter(e) {
+			c.eventQueue = slices.Delete(c.eventQueue, i, i+1)
+			return e
+		}
+	}
+	return nil
+}
+
 // drainEvents removes and discards every queued event matching the filter, leaving non-matching events queued. Since
 // filtered waits leave non-matching events queued indefinitely, this is needed before starting an exchange whose
 // replies are matched by filter, so stale events from an earlier abandoned exchange can't be mistaken for new ones.
