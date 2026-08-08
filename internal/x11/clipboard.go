@@ -131,25 +131,33 @@ func (c *Conn) SetClipboardData(data ...drag.Data) {
 func (c *Conn) buildSelectionEntries(data ...drag.Data) []clipboardEntry {
 	var entries []clipboardEntry
 	seen := make(map[Atom]bool)
-	add := func(dataType string, target, kind Atom, content []byte) {
+	add := func(dataType string, target, kind Atom, content []byte) bool {
 		if target == AtomNone || seen[target] {
-			return
+			return false
 		}
 		seen[target] = true
 		entries = append(entries, clipboardEntry{dataType: dataType, data: content, target: target, kind: kind})
+		return true
 	}
 	for _, d := range data {
 		isText := uti.UTF8PlainText.ConformsTo(d.Type)
-		for i, target := range c.TargetsForDataType(d.Type.UTI) {
+		// The UTI label is what ClipboardDataTypes reports and what GetClipboardBytes matches on in-process, so it has
+		// to land on a target this item actually contributes. Pinning it to the first target dropped it whenever an
+		// earlier item had already claimed that target, which a second text-conforming flavor always does, since
+		// UTF8_STRING leads the target list of every one of them.
+		labeled := false
+		for _, target := range c.TargetsForDataType(d.Type.UTI) {
 			var dataType string
-			if i == 0 {
+			if !labeled {
 				dataType = d.Type.UTI
 			}
 			content := d.Data
 			if isText && target == AtomString {
 				content = convertUTF8ToLatin1(d.Data)
 			}
-			add(dataType, target, target, content)
+			if add(dataType, target, target, content) {
+				labeled = true
+			}
 		}
 		if isText {
 			add("", c.Atoms.Text, c.Atoms.UTF8String, d.Data)
