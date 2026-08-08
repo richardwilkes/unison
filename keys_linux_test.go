@@ -11,6 +11,7 @@ package unison
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -262,4 +263,63 @@ func TestX11ScanCodeToKeySymFailedMapping(t *testing.T) {
 
 	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: make([]uint32, 4)}
 	c.Equal(uint32(0), x11ScanCodeToKeySym(9, 0, false))
+}
+
+// TestKeypadNavigationKeySymsTypeNoCharacter verifies that the keypad's navigation keysyms produce no character.
+// These are the forms x11ScanCodeToKeySym selects when NumLock is off, meaning the key should navigate; mapping them
+// to the digits printed on their keycaps made window_linux.go deliver a runeTyped digit regardless of the NumLock
+// state, which typed digits into text fields while the caret was supposed to be moving.
+func TestKeypadNavigationKeySymsTypeNoCharacter(t *testing.T) {
+	c := check.New(t)
+	const xkKPBegin = 0xff9d // Has no KeyCode mapping of its own, so keys_linux.go declares no constant for it.
+	for _, one := range []struct {
+		name   string
+		keySym uint32
+	}{
+		{name: "KP_Home", keySym: xkKPHome},
+		{name: "KP_Left", keySym: xkKPLeft},
+		{name: "KP_Up", keySym: xkKPUp},
+		{name: "KP_Right", keySym: xkKPRight},
+		{name: "KP_Down", keySym: xkKPDown},
+		{name: "KP_Page_Up", keySym: xkKPPageUp},
+		{name: "KP_Page_Down", keySym: xkKPPageDown},
+		{name: "KP_End", keySym: xkKPEnd},
+		{name: "KP_Begin", keySym: xkKPBegin},
+		{name: "KP_Insert", keySym: xkKPInsert},
+		{name: "KP_Delete", keySym: xkKPDelete},
+	} {
+		c.Equal(utf8.RuneError, x11KeySymToUnicode(one.keySym), "%s must not type a character", one.name)
+	}
+
+	// The numeric forms, which NumLock selects, still type what their keycaps show.
+	c.Equal('0', x11KeySymToUnicode(xkKP0))
+	c.Equal('7', x11KeySymToUnicode(xkKP7))
+	c.Equal('9', x11KeySymToUnicode(xkKP9))
+	c.Equal('.', x11KeySymToUnicode(xkKPDecimal))
+	c.Equal('+', x11KeySymToUnicode(xkKPAdd))
+	c.Equal(' ', x11KeySymToUnicode(xkKPSpace))
+}
+
+// TestKeypadRuneFollowsNumLock verifies the full translation window_linux.go performs for a keypad key: the digit is
+// typed only when NumLock selects the numeric keysym, and the navigation keysym yields no character at all.
+func TestKeypadRuneFollowsNumLock(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+	})
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 8}
+	x11KbMapping = x11.KeyboardMapping{
+		KeySymsPerKeyCode: 2,
+		KeySyms:           []uint32{xkKPHome, xkKP7}, // The keypad's 7/Home key, as a server reports it
+	}
+	toRune := func(mods mod.Modifiers) rune {
+		return x11KeySymToUnicode(x11ScanCodeToKeySym(8, mods, false))
+	}
+	c.Equal('7', toRune(mod.NumLock), "NumLock on must type the digit")
+	c.Equal(utf8.RuneError, toRune(mod.None), "NumLock off must navigate rather than type")
+	c.Equal(utf8.RuneError, toRune(mod.NumLock|mod.Shift),
+		"shift with NumLock on must navigate rather than type")
 }

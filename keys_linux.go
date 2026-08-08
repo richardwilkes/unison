@@ -1161,16 +1161,10 @@ var x11CodePairs = map[uint32]rune{
 	0xfe91: 0x02c8,
 	0xfe92: 0x02cc,
 	0xff80: ' ',
-	0xff95: 0x0037,
-	0xff96: 0x0034,
-	0xff97: 0x0038,
-	0xff98: 0x0036,
-	0xff99: 0x0032,
-	0xff9a: 0x0039,
-	0xff9b: 0x0033,
-	0xff9c: 0x0031,
-	0xff9d: 0x0035,
-	0xff9e: 0x0030,
+	// The keypad navigation keysyms KP_Home (0xff95) through KP_Delete (0xff9f) are deliberately absent. They are the
+	// forms x11ScanCodeToKeySym selects when NumLock is off (or Shift is held with NumLock on), which means the key
+	// should navigate rather than type a character; mapping them to digits would make the keypad type digits
+	// regardless of the NumLock state. The digits come from the KP_0 (0xffb0) through KP_9 (0xffb9) forms below.
 	0xffaa: '*',
 	0xffab: '+',
 	0xffac: ',',
