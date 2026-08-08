@@ -286,7 +286,7 @@ type ColormapNotifyEvent struct {
 func newColormapNotifyEvent(r *Reader) Event {
 	var e ColormapNotifyEvent
 	e.Code = r.Byte()
-	r.Skip(3)
+	r.Skip(1)
 	e.Sequence = r.Uint16()
 	e.Window = r.WindowID()
 	e.Colormap = r.ColorMapID()
