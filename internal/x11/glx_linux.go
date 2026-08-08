@@ -246,7 +246,11 @@ func (c *Conn) NewGLX(transparent bool) (*GLX, error) {
 		chosenVisual = visual
 		break
 	}
-	if chosenVisual == nil && !transparent {
+	// A transparency request is a preference, not a requirement: if no framebuffer configuration on this system can
+	// provide transparency, fall back to the first usable opaque one rather than failing outright, since the caller
+	// does not retry with transparent set to false. The non-transparent case needs no fallback, as the loop above
+	// already accepts the first configuration with a visual.
+	if chosenVisual == nil && transparent {
 		for i := 0; i < int(count); i++ {
 			visual := glXGetVisualFromFBConfig(glx.display, cfgs[i])
 			if visual != nil {
