@@ -788,7 +788,10 @@ func (p *svgParser) parseTransform(v string) (geom.Matrix, error) {
 	// SVG composes a transform list left-to-right: the first op in the attribute is outermost, so it must be multiplied
 	// onto the accumulator first (Multiply applies its argument to the point before the receiver).
 	for _, seg := range s {
-		t := strings.TrimSpace(seg)
+		// The transform list separator is comma-wsp, so a segment that follows a closing parenthesis may still lead
+		// with a comma (e.g. "translate(1,2), scale(2)"). Strip it, since otherwise it would become part of the
+		// operation name and fail to match.
+		t := strings.TrimSpace(strings.TrimLeft(seg, ", \t\r\n\f\v"))
 		if t == "" {
 			continue
 		}

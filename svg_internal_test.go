@@ -100,6 +100,37 @@ func TestSVGTransformListOrder(t *testing.T) {
 	c.True(rectsNearlyEqual(geom.NewRect(5, 5, 2, 2), bounds), "got %v", bounds)
 }
 
+// TestSVGTransformListCommaSeparated verifies that the comma-wsp separator the spec permits between the operations of
+// a transform list parses. The parser splits on ")" and used to hand the leftover leading comma to the operation name
+// matcher, so a single comma anywhere in the list rejected the entire document.
+func TestSVGTransformListCommaSeparated(t *testing.T) {
+	c := check.New(t)
+	for _, transform := range []string{
+		"translate(5,5), scale(2)",
+		"translate(5,5),scale(2)",
+		"translate(5,5) , scale(2)",
+		"translate(5 5)  scale(2)",
+	} {
+		svg, err := NewSVGFromContentString(fmt.Sprintf(
+			`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+<rect x="0" y="0" width="1" height="1" transform="%s"/>
+</svg>`, transform))
+		c.NoError(err, "transform %q", transform)
+		if err != nil {
+			continue
+		}
+		c.Equal(1, len(svg.paths), "transform %q", transform)
+		bounds := svg.paths[0].path.ComputeTightBounds()
+		c.True(rectsNearlyEqual(geom.NewRect(5, 5, 2, 2), bounds), "transform %q got %v", transform, bounds)
+	}
+
+	// A genuinely unknown operation must still be rejected.
+	_, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+<rect x="0" y="0" width="1" height="1" transform="translate(5,5) bogus(2)"/>
+</svg>`)
+	c.HasError(err)
+}
+
 // rectsNearlyEqual compares rects with a small tolerance, since transforms like rotate(90) introduce float32 rounding
 // noise (e.g. cos 90° is not exactly zero).
 func rectsNearlyEqual(a, b geom.Rect) bool {
