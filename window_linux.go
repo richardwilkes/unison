@@ -49,8 +49,6 @@ type apiWindow struct {
 	borderRight       uint32
 	depth             byte
 	borderValid       bool
-	minimized         bool
-	maximized         bool
 	cursorWasHidden   bool
 	awaitingConfigure bool
 }
@@ -392,7 +390,7 @@ func (w *Window) apiBackingScale() geom.Point {
 }
 
 func (w *Window) apiMinimize() {
-	if w.wnd.minimized {
+	if w.minimized {
 		x11Conn.DeiconifyWindow(w.wnd.id)
 	} else {
 		x11Conn.IconifyWindow(w.wnd.id)
@@ -400,10 +398,28 @@ func (w *Window) apiMinimize() {
 }
 
 func (w *Window) apiMaximize() {
-	if w.wnd.maximized {
+	if w.maximized {
 		x11Conn.DemaximizeWindow(w.wnd.id)
 	} else {
 		x11Conn.MaximizeWindow(w.wnd.id)
+	}
+}
+
+func (w *Window) x11SetMinimized(minimized bool) {
+	if minimized != w.minimized {
+		w.minimized = minimized
+		if w.MinimizedCallback != nil {
+			SafeCall(func() { w.MinimizedCallback(minimized) })
+		}
+	}
+}
+
+func (w *Window) x11SetMaximized(maximized bool) {
+	if maximized != w.maximized {
+		w.maximized = maximized
+		if w.MaximizedCallback != nil {
+			SafeCall(func() { w.MaximizedCallback(maximized) })
+		}
 	}
 }
 
@@ -1264,13 +1280,7 @@ func x11ProcessEvent(e x11.Event) {
 					return
 				}
 				r := x11.NewReader(values)
-				minimized := r.Uint32() == x11.StateIconic
-				if minimized != w.wnd.minimized {
-					w.wnd.minimized = minimized
-					if w.MinimizedCallback != nil {
-						SafeCall(func() { w.MinimizedCallback(minimized) })
-					}
-				}
+				w.x11SetMinimized(r.Uint32() == x11.StateIconic)
 			case x11Conn.Atoms.NetWMState:
 				format, actualType, values, _, err := x11Conn.GetProperty(w.wnd.id, x11Conn.Atoms.NetWMState,
 					x11.AtomAtom, 0, math.MaxUint32, false)
@@ -1291,12 +1301,7 @@ func x11ProcessEvent(e x11.Event) {
 						break
 					}
 				}
-				if maximized != w.wnd.maximized {
-					w.wnd.maximized = maximized
-					if w.MaximizedCallback != nil {
-						SafeCall(func() { w.MaximizedCallback(maximized) })
-					}
-				}
+				w.x11SetMaximized(maximized)
 			}
 		}
 	}

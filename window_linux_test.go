@@ -44,3 +44,37 @@ func TestWMClassData(t *testing.T) {
 	xos.AppIdentifier = ""
 	c.Equal("gcs\x00gcs\x00", string(wmClassData()))
 }
+
+// TestX11WindowStateIsVisibleToPublicAPI verifies that the WM_STATE and _NET_WM_STATE property handlers record the
+// state where IsMinimized and IsMaximized read it. The handlers used to write a platform-private copy of the flags
+// instead, so those public methods always reported false on Linux no matter what the window manager did.
+func TestX11WindowStateIsVisibleToPublicAPI(t *testing.T) {
+	c := check.New(t)
+	w := &Window{valid: true}
+	var minimizedCalls, maximizedCalls []bool
+	w.MinimizedCallback = func(minimized bool) { minimizedCalls = append(minimizedCalls, minimized) }
+	w.MaximizedCallback = func(maximized bool) { maximizedCalls = append(maximizedCalls, maximized) }
+	c.False(w.IsMinimized())
+	c.False(w.IsMaximized())
+
+	w.x11SetMinimized(true)
+	c.True(w.IsMinimized())
+	c.Equal([]bool{true}, minimizedCalls)
+
+	// A repeat of the state already in effect must not re-notify.
+	w.x11SetMinimized(true)
+	c.Equal([]bool{true}, minimizedCalls)
+
+	w.x11SetMinimized(false)
+	c.False(w.IsMinimized())
+	c.Equal([]bool{true, false}, minimizedCalls)
+
+	w.x11SetMaximized(true)
+	c.True(w.IsMaximized())
+	c.Equal([]bool{true}, maximizedCalls)
+	w.x11SetMaximized(true)
+	c.Equal([]bool{true}, maximizedCalls)
+	w.x11SetMaximized(false)
+	c.False(w.IsMaximized())
+	c.Equal([]bool{true, false}, maximizedCalls)
+}
