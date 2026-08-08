@@ -40,9 +40,19 @@ func NewDockState(dock *Dock, keyFromDockable func(Dockable) string) *DockState 
 func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string) *DockState {
 	switch t := node.(type) {
 	case *DockContainer:
-		children := make([]*DockState, 0, len(t.Dockables()))
-		for _, d := range t.Dockables() {
+		dockables := t.Dockables()
+		children := make([]*DockState, 0, len(dockables))
+		// CurrentIndex is stored one-based so that its zero value means "not recorded", and apply() resolves it
+		// against Children, which omits dockables with an empty key. It therefore has to be tracked while filtering
+		// rather than derived from the position within the unfiltered list, since any omitted dockable ahead of the
+		// current one would otherwise shift it and restore the wrong tab.
+		current := t.CurrentDockableIndex()
+		currentIndex := 0
+		for i, d := range dockables {
 			if key := keyFromDockable(d); key != "" {
+				if i == current {
+					currentIndex = 1 + len(children)
+				}
 				children = append(children, &DockState{
 					Type: DockableType,
 					Key:  key,
@@ -55,7 +65,7 @@ func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string
 		return &DockState{
 			Type:         ContainerType,
 			Children:     children,
-			CurrentIndex: 1 + t.CurrentDockableIndex(),
+			CurrentIndex: currentIndex,
 		}
 	case *DockLayout:
 		children := make([]*DockState, 0, 2)
