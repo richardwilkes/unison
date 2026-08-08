@@ -65,5 +65,5 @@ func NewClipMaskFilter(minimum, maximum byte) *MaskFilter {
 
 // NewShaderMaskFilter returns a new shader mask filter.
 func NewShaderMaskFilter(shader *Shader) *MaskFilter {
-	return newMaskFilter(maskfilter.NewShader(shader.shader))
+	return newMaskFilter(maskfilter.NewShader(shader.shaderOrNil()))
 }

@@ -223,7 +223,7 @@ func (img *Image) Dispose() {
 		// GL work, so marshal the release onto the UI thread, just as the GC cleanup path does. Capture the hash rather
 		// than img so the task does not extend the Image's lifetime.
 		hash := img.hash
-		InvokeTask(func() { releaseTexturesForImage(hash) })
+		InvokeTask(func() { releaseTexturesForUnclaimedImage(hash) })
 		img.image = nil
 		img.nonTextureImage = nil
 	})
@@ -319,6 +319,9 @@ func (img *Image) imageForCanvas(canvas *Canvas) genericImage {
 		imageCtxMap[canvas.surface.context] = m
 	}
 	if cached, present := m[img.hash]; present {
+		// Another Image with the same hash (identical pixel data) may have uploaded this texture, so make sure this
+		// Image also arranges for its eviction should it be the last one holding on to it.
+		img.registerTextureCleanup()
 		return cached
 	}
 	// img.image is always a raster *imagecore.Image (see the constructors and TestImageBackedByRaster), so upload it to
@@ -344,8 +347,25 @@ func (img *Image) registerTextureCleanup() {
 	// The cleanup must not capture img itself, or the Image would never become collectable. It runs on the runtime's
 	// cleanup goroutine, so the actual eviction is marshaled onto the UI thread, which owns imageCtxMap.
 	img.texCleanup = runtime.AddCleanup(img, func(hash uint64) {
-		InvokeTask(func() { releaseTexturesForImage(hash) })
+		InvokeTask(func() { releaseTexturesForUnclaimedImage(hash) })
 	}, img.hash)
+}
+
+// releaseTexturesForUnclaimedImage releases the given image hash's cached textures unless a live Image with that same
+// hash has since been created. Dispose's release is deferred to a task on the UI thread, and in that window a
+// successor Image built from identical data (the disposed Image's cache entry having just been evicted) can be created
+// and draw, adopting the textures still sitting in imageCtxMap under the shared hash. Releasing them then would clobber
+// the successor's live textures and force a redundant GPU re-upload — the same successor-clobbering that Dispose's
+// texCleanup.Stop() prevents on the GC path. The successor's own Dispose or GC cleanup will release them instead. Must
+// be called on the UI thread, since imageCtxMap is UI-thread-only state.
+func releaseTexturesForUnclaimedImage(hash uint64) {
+	imgCacheLock.Lock()
+	p, exists := imgCache[hash]
+	imgCacheLock.Unlock()
+	if exists && p.Value() != nil {
+		return
+	}
+	releaseTexturesForImage(hash)
 }
 
 // releaseTexturesForImage evicts and releases the given image hash's texture entries from every live GL context's

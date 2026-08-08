@@ -55,13 +55,14 @@ func NewEvenlySpacedGradientStopsForColors(colors ...ColorProvider) Stops {
 	default:
 		step := 1 / float32(len(colors)-1)
 		var location float32
+		last := len(colors) - 1
 		for i, color := range colors {
 			stops[i].Color = color
-			stops[i].Location = location
-			if i < len(colors)-1 {
-				location += step
+			if i == last {
+				stops[i].Location = 1
 			} else {
-				location = 1
+				stops[i].Location = location
+				location += step
 			}
 		}
 	}

@@ -311,6 +311,74 @@ func TestImageDisposeStopsGCCleanup(t *testing.T) {
 	c.False(successor.released, "a stopped cleanup must not release a successor's texture")
 }
 
+// TestImageDisposeKeepsSuccessorTextures covers the other half of the successor-clobbering protection that
+// TestImageDisposeStopsGCCleanup covers for the GC path. Dispose only queues its texture release, and in the window
+// before that task runs, a successor Image built from identical data (the disposed Image's cache entry having just been
+// evicted) can be created and drawn, adopting the textures still cached under the shared hash. The queued release must
+// leave those alone, or the successor is forced into a redundant GPU re-upload on its next draw.
+func TestImageDisposeKeepsSuccessorTextures(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	pixels := distinctPixels(w, h, 67)
+	img, err := NewImageFromPixels(w, h, pixels, geom.NewPoint(1, 1))
+	c.NoError(err)
+
+	hash := img.hash
+	ctx := new(gl.DirectContext)
+	defer delete(imageCtxMap, ctx)
+	tex := &stubTexture{}
+	imageCtxMap[ctx] = map[uint64]genericImage{hash: tex}
+	img.registerTextureCleanup()
+
+	img.Dispose()
+
+	// The successor resolves to the same hash, so imageForCanvas would hand it the texture still sitting in the map.
+	successor, err := NewImageFromPixels(w, h, append([]byte(nil), pixels...), geom.NewPoint(1, 1))
+	c.NoError(err)
+	c.True(successor != img, "a disposed image must not be handed back out of the cache")
+	c.Equal(hash, successor.hash)
+
+	drainTasks()
+
+	entry, present := imageCtxMap[ctx][hash]
+	c.True(present, "the disposed image's release must not evict a live successor's texture")
+	c.Equal(genericImage(tex), entry)
+	c.False(tex.released, "the disposed image's release must not release a live successor's texture")
+
+	// With the successor gone as well, nothing claims the hash any longer, so the texture must actually be released.
+	successor.Dispose()
+	drainTasks()
+
+	_, present = imageCtxMap[ctx][hash]
+	c.False(present, "disposing the last image using the hash should evict its texture")
+	c.True(tex.released, "disposing the last image using the hash should release its texture")
+}
+
+// TestImageForCanvasAdoptsCachedTexture verifies that an Image which finds a texture already cached under its hash —
+// uploaded by an earlier Image built from identical data — registers the GC cleanup that evicts it. Without this, a
+// texture uploaded by an Image that was later disposed (its release skipped because this successor claimed the hash)
+// would linger in imageCtxMap until its whole GL context was torn down.
+func TestImageForCanvasAdoptsCachedTexture(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 2, 2
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 73), geom.NewPoint(1, 1))
+	c.NoError(err)
+	defer img.Dispose()
+
+	ctx := new(gl.DirectContext)
+	defer delete(imageCtxMap, ctx)
+	tex := &stubTexture{}
+	imageCtxMap[ctx] = map[uint64]genericImage{img.hash: tex}
+
+	// A canvas whose surface has a GL context takes imageForCanvas's texture path; the texture is already cached, so
+	// no upload (and hence no real GL work) is needed to reach the adoption path.
+	got := img.imageForCanvas(&Canvas{surface: &surface{context: ctx}})
+	c.Equal(genericImage(tex), got, "a texture already cached for the context should be reused")
+	c.True(img.hasTexCleanup, "adopting a cached texture should register the eviction cleanup")
+}
+
 // TestImageToNRGBAUnpremultiplies verifies that ToNRGBA returns non-premultiplied pixels even when the underlying
 // image is premultiplied, as it is for images decoded from encoded data with transparency. Before this, ToNRGBA read
 // pixels using the image's own alpha type, so translucent pixels came back premultiplied (darkened) despite

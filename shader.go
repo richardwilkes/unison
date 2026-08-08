@@ -47,7 +47,7 @@ func NewColorShader(color Color) *Shader {
 
 // NewBlendShader creates a new blend Shader.
 func NewBlendShader(blendMode blendmode.Enum, dst, src *Shader) *Shader {
-	return newShader(shaders.NewBlend(raster.BlendMode(blendMode), dst.shader, src.shader))
+	return newShader(shaders.NewBlend(raster.BlendMode(blendMode), dst.shaderOrNil(), src.shaderOrNil()))
 }
 
 // NewLinearGradientShader creates a new linear gradient Shader. matrix may be nil.

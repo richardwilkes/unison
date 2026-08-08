@@ -40,12 +40,12 @@ func (e *PathEffect) effectOrNil() stroke.PathEffect {
 
 // NewComposePathEffect creates a new PathEffect that combines two PathEffects.
 func NewComposePathEffect(outer, inner *PathEffect) *PathEffect {
-	return newPathEffect(canvaspatheffect.MakeCompose(outer.effect, inner.effect))
+	return newPathEffect(canvaspatheffect.MakeCompose(outer.effectOrNil(), inner.effectOrNil()))
 }
 
 // NewSumPathEffect creates a new sum PathEffect.
 func NewSumPathEffect(first, second *PathEffect) *PathEffect {
-	return newPathEffect(canvaspatheffect.MakeSum(first.effect, second.effect))
+	return newPathEffect(canvaspatheffect.MakeSum(first.effectOrNil(), second.effectOrNil()))
 }
 
 // NewDiscretePathEffect creates a new discrete PathEffect.
