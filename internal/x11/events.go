@@ -768,6 +768,13 @@ func (e *KeymapNotifyEvent) ID() byte {
 	return e.Code
 }
 
+// MappingNotify request kinds, identifying which mapping the server reports as changed.
+const (
+	MappingModifier byte = iota
+	MappingKeyboard
+	MappingPointer
+)
+
 // MappingNotifyEvent represents an X11 MappingNotify event.
 type MappingNotifyEvent struct {
 	Sequence     uint16

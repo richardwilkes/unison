@@ -50,6 +50,21 @@ func x11FillKeyCodesFromMapping() {
 	if !x11KbMappingUsable() {
 		return
 	}
+	// This is re-run when the server reports a keyboard mapping change (MappingNotify), so everything derived from the
+	// previous mapping must be dropped first, or keycodes the new layout no longer defines would keep their old
+	// translations. The unusable-mapping guard above deliberately comes first: if the refetch failed, keeping the old
+	// state is better than having none.
+	clear(rawScanCodeToKeyCodeMap)
+	x11KeyLShiftBitIndex = 0
+	x11KeyRShiftBitIndex = 0
+	x11KeyLControlBitIndex = 0
+	x11KeyRControlBitIndex = 0
+	x11KeyLOptionBitIndex = 0
+	x11KeyROptionBitIndex = 0
+	x11KeyLCommandBitIndex = 0
+	x11KeyRCommandBitIndex = 0
+	x11KeyCapsLockBitIndex = 0
+	x11KeyNumLockBitIndex = 0
 	secondary := map[uint32]KeyCode{
 		xkKPEnter:     KeyNumPadEnter,
 		xkKPSeparator: KeyNumPadDecimal,
@@ -222,6 +237,18 @@ func x11FillKeyCodesFromMapping() {
 				x11KeyCapsLockBitIndex = x11ModifierBitIndex(i)
 			case KeyNumLock:
 				x11KeyNumLockBitIndex = x11ModifierBitIndex(i)
+			}
+			continue
+		}
+		// The unshifted group-1 keysym can miss even though a later column carries a recognizable one: French AZERTY
+		// reports the digits as the shifted forms, and when a second layout group is configured (e.g. UK plus US), the
+		// second group's keysyms occupy the columns after the first group's. Scan the remaining columns so such keys
+		// still get a KeyCode for key bindings and shortcuts. The modifier bit indices are deliberately only assigned
+		// from the unshifted column above, since only it says the key itself acts as that modifier.
+		for col := uint16(1); col < uint16(x11KbMapping.KeySymsPerKeyCode); col++ {
+			if code, ok := primary[x11KbMapping.KeySyms[pos+col]]; ok {
+				rawScanCodeToKeyCodeMap[i] = code
+				break
 			}
 		}
 	}

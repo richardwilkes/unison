@@ -1043,23 +1043,22 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.KeyPressEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
-			if key, ok := rawScanCodeToKeyCodeMap[uint16(ev.Detail)]; ok {
-				mods := x11TranslateModifierState(ev.State)
-				w.keyPressed(key, mods)
-				if mods&(mod.Control|mod.Option|mod.Command) == 0 {
-					keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods, ev.State&x11Mod5Mask != 0)
-					if ch := x11KeySymToUnicode(keySym); ch != utf8.RuneError {
-						w.runeTyped(ch)
-					}
+			mods := x11TranslateModifierState(ev.State)
+			w.keyPressed(rawScanCodeToKeyCodeMap[uint16(ev.Detail)], mods)
+			if mods&(mod.Control|mod.Option|mod.Command) == 0 {
+				keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods, ev.State&x11Mod5Mask != 0)
+				if ch := x11KeySymToUnicode(keySym); ch != utf8.RuneError {
+					w.runeTyped(ch)
 				}
 			}
 		}
 	case *x11.KeyReleaseEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
-			if key, ok := rawScanCodeToKeyCodeMap[uint16(ev.Detail)]; ok {
-				mods := x11TranslateModifierState(ev.State)
-				w.keyReleased(key, mods)
-			}
+			w.keyReleased(rawScanCodeToKeyCodeMap[uint16(ev.Detail)], x11TranslateModifierState(ev.State))
+		}
+	case *x11.MappingNotifyEvent:
+		if ev.Request != x11.MappingPointer {
+			apiFillKeyCodes()
 		}
 	case *x11.ButtonPressEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
@@ -1209,7 +1208,7 @@ func x11ProcessEvent(e x11.Event) {
 				}
 				di.timestamp = ev.Data32[3]
 				x := int16((ev.Data32[2] >> 16) & 0xffff)
-				y := int16((ev.Data32[2]) & 0xffff)
+				y := int16(ev.Data32[2] & 0xffff)
 				var err error
 				if x, y, _, _, err = x11Conn.TranslateCoordinates(x11Conn.RootWindow(), w.wnd.id, x, y); err != nil {
 					errs.Log(err)

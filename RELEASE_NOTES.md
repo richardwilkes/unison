@@ -1,4 +1,4 @@
-# Changes since v0.97.1
+# Changes since the last release
 
 ## Enhancements
 

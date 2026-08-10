@@ -368,3 +368,81 @@ func TestX11FillKeyCodesAltGr(t *testing.T) {
 			"%s must supply the right option modifier bit index", one.name)
 	}
 }
+
+// TestX11FillKeyCodesLaterColumns verifies that a keycode whose unshifted group-1 keysym is not in the translation
+// table still gets a KeyCode when a later column carries a recognizable keysym. On the UK layout the key left of Enter
+// reports numbersign/asciitilde, and with a US layout configured as a second group its backslash/bar keysyms follow in
+// the next columns; on French AZERTY the digit row reports the digits as the shifted forms. Previously only the first
+// column was consulted, so such keys had no KeyCode at all — and since key event delivery was gated on that map, they
+// typed nothing. See https://github.com/richardwilkes/gcs/issues/1087.
+func TestX11FillKeyCodesLaterColumns(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	savedRaw := rawScanCodeToKeyCodeMap
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+		rawScanCodeToKeyCodeMap = savedRaw
+	})
+	rawScanCodeToKeyCodeMap = make(map[uint16]KeyCode)
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 10}
+	x11KbMapping = x11.KeyboardMapping{
+		KeySymsPerKeyCode: 4,
+		KeySyms: []uint32{
+			'#', '~', '\\', '|', // keycode 8: the UK hash key, with a US layout configured as the second group
+			'&', '1', '&', '1', // keycode 9: the AZERTY 1 key
+			'#', '~', 0, 0, // keycode 10: the UK hash key without a second group
+		},
+	}
+	x11FillKeyCodesFromMapping()
+	c.Equal(KeyBackslash, rawScanCodeToKeyCodeMap[8], "second group's keysym must supply the KeyCode")
+	c.Equal(Key1, rawScanCodeToKeyCodeMap[9], "shifted keysym must supply the KeyCode")
+	_, ok := rawScanCodeToKeyCodeMap[10]
+	c.False(ok, "a key with no recognizable keysym in any column must remain unmapped")
+
+	// The unmapped key must still translate to its characters, since window_linux.go types the translated rune even
+	// for keycodes absent from rawScanCodeToKeyCodeMap.
+	c.Equal('#', x11KeySymToUnicode(x11ScanCodeToKeySym(10, mod.None, false)), "unmapped key must still type #")
+	c.Equal('~', x11KeySymToUnicode(x11ScanCodeToKeySym(10, mod.Shift, false)), "unmapped key must still type ~")
+}
+
+// TestX11FillKeyCodesRebuildDropsStaleState verifies that refilling after a keyboard mapping change (MappingNotify)
+// drops the KeyCodes and modifier bit indices derived from the previous layout, and that a refill from a failed
+// refetch keeps the previous state instead of wiping it.
+func TestX11FillKeyCodesRebuildDropsStaleState(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	savedMapping := x11KbMapping
+	savedRaw := rawScanCodeToKeyCodeMap
+	savedLShift := x11KeyLShiftBitIndex
+	t.Cleanup(func() {
+		x11Conn = savedConn
+		x11KbMapping = savedMapping
+		rawScanCodeToKeyCodeMap = savedRaw
+		x11KeyLShiftBitIndex = savedLShift
+	})
+	rawScanCodeToKeyCodeMap = make(map[uint16]KeyCode)
+	x11KeyLShiftBitIndex = 0
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 9}
+
+	// First layout: keycode 8 is a letter, keycode 9 is the left shift key.
+	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: []uint32{'a', 'A', xkShiftL, 0}}
+	x11FillKeyCodesFromMapping()
+	c.Equal(KeyA, rawScanCodeToKeyCodeMap[8])
+	c.Equal(KeyLShift, rawScanCodeToKeyCodeMap[9])
+	c.Equal(x11ModifierBitIndex(9), x11KeyLShiftBitIndex)
+
+	// Second layout: keycode 8 has no recognizable keysym anymore, keycode 9 is now a letter.
+	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: []uint32{'#', '~', 'b', 'B'}}
+	x11FillKeyCodesFromMapping()
+	_, ok := rawScanCodeToKeyCodeMap[8]
+	c.False(ok, "keycode the new layout does not define must lose its stale KeyCode")
+	c.Equal(KeyB, rawScanCodeToKeyCodeMap[9], "keycode must take its KeyCode from the new layout")
+	c.Equal(0, x11KeyLShiftBitIndex, "modifier bit index from the old layout must be dropped")
+
+	// A failed refetch yields a zero-value mapping, which must leave the previous state in place.
+	x11KbMapping = x11.KeyboardMapping{}
+	x11FillKeyCodesFromMapping()
+	c.Equal(KeyB, rawScanCodeToKeyCodeMap[9], "a failed refetch must keep the previous mapping")
+}
