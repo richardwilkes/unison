@@ -75,7 +75,7 @@ func TestApplyCPURenderingEnvRequest(t *testing.T) {
 			// held before the test, which the unset case below would otherwise discard permanently.
 			t.Setenv(CPURenderingEnvKey, test.value)
 			if !test.set {
-				os.Unsetenv(CPURenderingEnvKey)
+				c.NoError(os.Unsetenv(CPURenderingEnvKey))
 			}
 			applyCPURenderingEnvRequest()
 			c.Equal(test.want, IsCPURenderingActive())
