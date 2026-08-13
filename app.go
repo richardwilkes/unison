@@ -186,6 +186,7 @@ func start() error {
 		initialized = err == nil
 		initTermLock.Unlock()
 	}()
+	applyCPURenderingEnvRequest()
 	err = apiBeginStartup()
 	return err
 }

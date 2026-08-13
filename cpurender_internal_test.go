@@ -12,6 +12,7 @@ package unison
 import (
 	"bytes"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 
@@ -47,6 +48,49 @@ func TestFallbackToCPURenderingWarnsOnce(t *testing.T) {
 	fallbackToCPURendering(errs.New("second failure"))
 	c.True(IsCPURenderingActive())
 	c.Equal("", buf.String())
+}
+
+func TestApplyCPURenderingEnvRequest(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		set   bool
+		want  bool
+	}{
+		{name: "unset", want: false},
+		{name: "one", value: "1", set: true, want: true},
+		{name: "true", value: "true", set: true, want: true},
+		{name: "padded", value: "  TRUE  ", set: true, want: true},
+		{name: "zero", value: "0", set: true, want: false},
+		{name: "false", value: "false", set: true, want: false},
+		{name: "empty", value: "", set: true, want: false},
+		{name: "unparseable", value: "maybe", set: true, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			saved := cpuRenderingActive
+			defer func() { cpuRenderingActive = saved }()
+			cpuRenderingActive = false
+			// t.Setenv is called unconditionally because it is what registers restoration of whatever the variable
+			// held before the test, which the unset case below would otherwise discard permanently.
+			t.Setenv(CPURenderingEnvKey, test.value)
+			if !test.set {
+				os.Unsetenv(CPURenderingEnvKey)
+			}
+			applyCPURenderingEnvRequest()
+			c.Equal(test.want, IsCPURenderingActive())
+		})
+	}
+}
+
+func TestApplyCPURenderingEnvRequestDoesNotUndoFallback(t *testing.T) {
+	c := check.New(t)
+	saved := cpuRenderingActive
+	defer func() { cpuRenderingActive = saved }()
+	cpuRenderingActive = true
+	t.Setenv(CPURenderingEnvKey, "0")
+	applyCPURenderingEnvRequest()
+	c.True(IsCPURenderingActive())
 }
 
 func TestSurfaceCPURendering(t *testing.T) {

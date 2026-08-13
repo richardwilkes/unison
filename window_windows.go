@@ -35,8 +35,15 @@ var (
 )
 
 type apiWindow struct {
-	dropTarget    *w32.DropTarget
-	presentBuf    []uint32 // scratch buffer reused by apiPresentCPUPixels to avoid a full-frame allocation per present
+	dropTarget *w32.DropTarget
+	// The surface apiPresentCPUPixels draws through: a DIB section selected into a memory DC, whose pixels are
+	// written directly and then blitted to the window. See w32EnsurePresentSurface for why it works this way.
+	presentPixels []uint32
+	presentDC     w32.HDC
+	presentBmp    w32.HBITMAP
+	presentPrev   w32.HGDIOBJ
+	presentWidth  int
+	presentHeight int
 	wnd           windows.HWND
 	bigIcon       w32.HICON
 	smallIcon     w32.HICON
@@ -968,6 +975,7 @@ func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 
 func (w *Window) apiDestroy() {
 	w.glCtx.apiDestroy()
+	w.w32DisposePresentSurface()
 	if w.wnd.dropTarget != nil {
 		w32.RevokeDragDrop(w.wnd.wnd)
 		w.wnd.dropTarget.Revoke()

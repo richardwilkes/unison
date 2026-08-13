@@ -24,30 +24,21 @@ func TestRepackRGBAToBGRASwizzle(t *testing.T) {
 		0x44332211, 0x88776655, 0xDEADBEEF,
 		0x00000000, 0xFF00FF00, 0xDEADBEEF,
 	}
-	c.Equal([]uint32{0x44112233, 0x88556677, 0x00000000, 0xFF00FF00}, RepackRGBAToBGRA(pix, 2, 2, 3, nil))
+	dst := make([]uint32, 4)
+	RepackRGBAToBGRA(pix, 2, 2, 3, dst)
+	c.Equal([]uint32{0x44112233, 0x88556677, 0x00000000, 0xFF00FF00}, dst)
 }
 
-// TestRepackRGBAToBGRABufferReuse verifies the scratch buffer contract: a buffer with sufficient capacity is reused
-// in place (no per-frame full-frame allocation) and one that is too small is replaced by a grown allocation of the
-// exact pixel count.
-func TestRepackRGBAToBGRABufferReuse(t *testing.T) {
+// TestRepackRGBAToBGRAWritesInPlace verifies that the destination is filled in place, since it addresses the
+// presentation bitmap's own pixel store, and that nothing is written past the frame.
+func TestRepackRGBAToBGRAWritesInPlace(t *testing.T) {
 	c := check.New(t)
 	pix := []uint32{0x44332211, 0x88776655, 0x00000000, 0xFF00FF00}
+	dst := make([]uint32, 6)
+	RepackRGBAToBGRA(pix, 2, 2, 2, dst)
+	c.Equal([]uint32{0x44112233, 0x88556677, 0x00000000, 0xFF00FF00, 0, 0}, dst)
 
-	scratch := make([]uint32, 16)
-	out := RepackRGBAToBGRA(pix, 2, 2, 2, scratch)
-	c.Equal(4, len(out))
-	c.True(&out[0] == &scratch[0])
-	c.Equal([]uint32{0x44112233, 0x88556677, 0x00000000, 0xFF00FF00}, out)
-
-	// A zero-length slice over the same backing array still gets reused, as happens frame after frame once a window
-	// has presented at a given size.
-	again := RepackRGBAToBGRA(pix, 2, 2, 2, out[:0])
-	c.True(&again[0] == &out[0])
-	c.Equal(out, again)
-
-	// Too little capacity forces a new allocation of the right size, as happens when a window grows.
-	grown := RepackRGBAToBGRA(pix, 2, 2, 2, make([]uint32, 1))
-	c.Equal(4, len(grown))
-	c.Equal([]uint32{0x44112233, 0x88556677, 0x00000000, 0xFF00FF00}, grown)
+	// Presenting again at the same size overwrites the same words rather than needing a fresh destination.
+	RepackRGBAToBGRA([]uint32{1, 2, 3, 4}, 2, 2, 2, dst)
+	c.Equal([]uint32{0x10000, 0x20000, 0x30000, 0x40000, 0, 0}, dst)
 }

@@ -9,18 +9,48 @@
 
 package unison
 
-import "log/slog"
+import (
+	"log/slog"
+	"os"
+	"strconv"
+	"strings"
+)
+
+// CPURenderingEnvKey names the environment variable that forces rendering onto the CPU. When it is set to a true
+// value, as understood by strconv.ParseBool (e.g. "1"), no OpenGL call is ever made: windows are created without a
+// rendering context and their contents are presented through the platform's CPU blit path instead.
+//
+// This exists as an escape hatch for machines whose OpenGL stack is broken in a way the automatic fallback cannot
+// catch. That fallback only engages when GL setup returns an error, so a driver -- or third-party software that has
+// hooked one -- which hangs rather than fails would otherwise wedge the UI thread with no way to get the application
+// running at all.
+const CPURenderingEnvKey = "UNISON_CPU_RENDERING"
 
 // cpuRenderingActive is true once hardware-accelerated (OpenGL) rendering has been found to be unavailable and the
-// process has fallen back to CPU rendering. The fallback is sticky and process-wide: once any window fails to obtain a
-// usable OpenGL environment, all subsequent rendering happens on the CPU rather than repeatedly re-attempting (and
-// failing) GL setup. Only accessed on the UI thread.
+// process has fallen back to CPU rendering, or once CPURenderingEnvKey has asked for it up front. The fallback is
+// sticky and process-wide: once any window fails to obtain a usable OpenGL environment, all subsequent rendering
+// happens on the CPU rather than repeatedly re-attempting (and failing) GL setup. Only accessed on the UI thread.
 var cpuRenderingActive bool
 
-// IsCPURenderingActive returns true if hardware-accelerated (OpenGL) rendering was unavailable and rendering is being
-// performed on the CPU instead.
+// IsCPURenderingActive returns true if rendering is being performed on the CPU rather than with hardware acceleration
+// (OpenGL), whether because OpenGL was unavailable or because CPURenderingEnvKey asked for it.
 func IsCPURenderingActive() bool {
 	return cpuRenderingActive
+}
+
+// applyCPURenderingEnvRequest turns on CPU rendering if CPURenderingEnvKey asks for it. This runs during startup,
+// before any window can exist, so that the OpenGL paths are never entered at all rather than being abandoned partway
+// through.
+func applyCPURenderingEnvRequest() {
+	v, ok := os.LookupEnv(CPURenderingEnvKey)
+	if !ok {
+		return
+	}
+	if on, err := strconv.ParseBool(strings.TrimSpace(v)); err == nil && on && !cpuRenderingActive {
+		cpuRenderingActive = true
+		slog.Info("CPU rendering was requested via the environment; OpenGL will not be used", "var",
+			CPURenderingEnvKey)
+	}
 }
 
 // fallbackToCPURendering switches the process to CPU rendering. The first time it is called, a warning with the cause

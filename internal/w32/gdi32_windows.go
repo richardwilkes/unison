@@ -17,13 +17,16 @@ import (
 
 var (
 	gdi32                   = windows.NewLazySystemDLL("gdi32.dll")
+	bitBltProc              = gdi32.NewProc("BitBlt")
 	createBitmapProc        = gdi32.NewProc("CreateBitmap")
+	createCompatibleDCProc  = gdi32.NewProc("CreateCompatibleDC")
 	createDIBSectionProc    = gdi32.NewProc("CreateDIBSection")
 	createRectRgnProc       = gdi32.NewProc("CreateRectRgn")
+	deleteDCProc            = gdi32.NewProc("DeleteDC")
 	deleteObjectProc        = gdi32.NewProc("DeleteObject")
 	describePixelFormatProc = gdi32.NewProc("DescribePixelFormat")
+	selectObjectProc        = gdi32.NewProc("SelectObject")
 	setPixelFormatProc      = gdi32.NewProc("SetPixelFormat")
-	stretchDIBitsProc       = gdi32.NewProc("StretchDIBits")
 	swapBuffersProc         = gdi32.NewProc("SwapBuffers")
 )
 
@@ -51,21 +54,6 @@ type CIEXYZTRIPLE struct {
 	CiexyzBlue  CIEXYZ
 }
 
-// BITMAPINFOHEADER https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader
-type BITMAPINFOHEADER struct {
-	BiSize          uint32
-	BiWidth         int32
-	BiHeight        int32
-	BiPlanes        uint16
-	BiBitCount      uint16
-	BiCompression   uint32
-	BiSizeImage     uint32
-	BiXPelsPerMeter int32
-	BiYPelsPerMeter int32
-	BiClrUsed       uint32
-	BiClrImportant  uint32
-}
-
 type BITMAPV5HEADER struct {
 	BV5Size          uint32
 	BV5Width         int32
@@ -91,6 +79,36 @@ type BITMAPV5HEADER struct {
 	BV5ProfileData   uint32
 	BV5ProfileSize   uint32
 	BV5Reserved      uint32
+}
+
+// BitBlt https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-bitblt
+func BitBlt(hdcDest HDC, xDest, yDest, width, height int32, hdcSrc HDC, xSrc, ySrc int32, rop uint32) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := bitBltProc.Call(uintptr(hdcDest), uintptr(xDest), uintptr(yDest), uintptr(width), uintptr(height),
+		uintptr(hdcSrc), uintptr(xSrc), uintptr(ySrc), uintptr(rop))
+	return ret&0xff != 0
+}
+
+// CreateCompatibleDC https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createcompatibledc
+func CreateCompatibleDC(hdc HDC) HDC {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := createCompatibleDCProc.Call(uintptr(hdc))
+	return HDC(ret)
+}
+
+// DeleteDC https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-deletedc
+func DeleteDC(hdc HDC) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := deleteDCProc.Call(uintptr(hdc))
+	return ret&0xff != 0
+}
+
+// SelectObject https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-selectobject. Returns the object
+// that was displaced, which must be selected back in before the DC is deleted.
+func SelectObject(hdc HDC, obj HGDIOBJ) HGDIOBJ {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := selectObjectProc.Call(uintptr(hdc), uintptr(obj))
+	return HGDIOBJ(ret)
 }
 
 // CreateBitmap https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createbitmap
@@ -144,28 +162,6 @@ func SetPixelFormat(hdc HDC, iPixelFormat int32, pfd *PIXELFORMATDESCRIPTOR) boo
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := setPixelFormatProc.Call(uintptr(hdc), uintptr(iPixelFormat), uintptr(unsafe.Pointer(pfd)))
 	return ret&0xff != 0
-}
-
-// StretchDIBits https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-stretchdibits. bits holds the
-// pixels as 32-bit BGRA words; bmi's header fields must describe them (a BITMAPINFO with no color table is just its
-// BITMAPINFOHEADER, so the header pointer is passed directly).
-func StretchDIBits(hdc HDC, xDest, yDest, destWidth, destHeight, xSrc, ySrc, srcWidth, srcHeight int32, bits []uint32, bmi *BITMAPINFOHEADER, iUsage, rop uint32) int32 {
-	bmi.BiSize = uint32(unsafe.Sizeof(*bmi))
-	// The uintptr(unsafe.Pointer(...)) conversion must be written directly in the Call argument list; hoisting it
-	// into a local would end bits' liveness before the call, letting the GC collect the backing array mid-call (see
-	// doc.go), hence the duplicated call.
-	if len(bits) == 0 {
-		//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-		ret, _, _ := stretchDIBitsProc.Call(uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(destWidth),
-			uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight), 0,
-			uintptr(unsafe.Pointer(bmi)), uintptr(iUsage), uintptr(rop))
-		return int32(ret)
-	}
-	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	ret, _, _ := stretchDIBitsProc.Call(uintptr(hdc), uintptr(xDest), uintptr(yDest), uintptr(destWidth),
-		uintptr(destHeight), uintptr(xSrc), uintptr(ySrc), uintptr(srcWidth), uintptr(srcHeight),
-		uintptr(unsafe.Pointer(&bits[0])), uintptr(unsafe.Pointer(bmi)), uintptr(iUsage), uintptr(rop))
-	return int32(ret)
 }
 
 // SwapBuffers https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-swapbuffers
