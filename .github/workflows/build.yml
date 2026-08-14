@@ -10,6 +10,26 @@ permissions:
   contents: read
 
 jobs:
+  # build.sh lints for every supported GOOS from whatever host it runs on, so a single pass covers the entire matrix
+  # and repeating it in all six build jobs bought nothing. Hoisting it here keeps the three passes off the slow
+  # runners: on macos-26-intel they took ~6 of that job's ~9.5 minutes. ubuntu-22.04-arm is the fastest runner
+  # available for the work.
+  lint:
+    name: Lint
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Lint
+        run: ./build.sh --lint
+
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -41,17 +61,16 @@ jobs:
             libx11-6 \
             libgl1
 
-      # The race detector isn't supported on windows/arm64, so run the tests
-      # without it there (--lint --test instead of --all). Everywhere else,
-      # build.sh runs the race tests with CGO_ENABLED=1 on non-macOS platforms
-      # because Go's prebuilt race runtime requires cgo there — the runners'
-      # preinstalled C toolchains cover that; the module itself has no cgo.
+      # Linting happens once in the lint job above, so these jobs only build and test. The race detector isn't
+      # supported on windows/arm64, so run the tests without it there (--test instead of --race). Everywhere else,
+      # build.sh runs the race tests with CGO_ENABLED=1 on non-macOS platforms because Go's prebuilt race runtime
+      # requires cgo there — the runners' preinstalled C toolchains cover that; the module itself has no cgo.
       - name: Build
         run: |
           if [ "$RUNNER_OS" = "Windows" ] && [ "$RUNNER_ARCH" = "ARM64" ]; then
-            ./build.sh --lint --test
+            ./build.sh --test
           else
-            ./build.sh --all
+            ./build.sh --race
           fi
 
       # Build the example app, naming the binary after the target platform and
