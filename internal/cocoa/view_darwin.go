@@ -258,7 +258,14 @@ func registerMacContentViewClass() {
 			Cmd: Sel("mouseMoved:"),
 			Fn: func(self objc.ID, _ objc.SEL, event objc.ID) {
 				if WindowMouseMovedCallback != nil {
+					// The callback can start a drag even though this is a move rather than a drag, since
+					// Window.mouseMovedOrDragged routes to mouseDrag whenever it believes a button is held, so the
+					// event is stashed here as viewMouseDragged does it. The prior value is restored rather than
+					// cleared because viewMouseDragged re-enters through this selector with the ivar already set.
+					prior := self.Send(Sel("lastMouseDraggedEvent"))
+					self.Send(Sel("setLastMouseDraggedEvent:"), event)
 					WindowMouseMovedCallback(viewWindow(self), viewLocationFromEvent(self, event), eventMods(event))
+					self.Send(Sel("setLastMouseDraggedEvent:"), prior)
 				}
 			},
 		},
@@ -573,11 +580,37 @@ func (v View) Release() {
 	Release(objc.ID(v))
 }
 
+// dragSessionEvent picks the mouse event to hand beginDraggingSessionWithItems:event:source:, reporting whether one
+// could be found at all.
+//
+// AppKit requires the event that triggered the drag and raises NSInvalidArgumentException when handed nil. That is an
+// uncaught Objective-C exception rather than anything Go can recover from, so it aborts the process outright. The
+// event is normally the one viewMouseDragged stashes, but a drag can also start from a plain mouseMoved:, because
+// Window.mouseMovedOrDragged routes to mouseDrag whenever it believes a button is held -- and a mouse-up that never
+// came back through the window leaves that belief latched, so an ordinary mouse move can arrive here. The
+// application's current event covers that case; if even that is missing there is no event to start a session with,
+// and the caller must abandon the drag rather than let a nil reach AppKit.
+func dragSessionEvent(stashed objc.ID, currentEvent func() objc.ID) (event objc.ID, ok bool) {
+	if stashed != 0 {
+		return stashed, true
+	}
+	event = currentEvent()
+	return event, event != 0
+}
+
 // BeginDraggingSession starts a drag from this view with the given image and data. The image may be nil, in which
-// case the drag proceeds without one. It must be called from within a mouse-dragged callback, since AppKit requires
-// the triggering mouse event (stashed in the lastMouseDraggedEvent ivar) to start a session.
+// case the drag proceeds without one. It is normally called from within a mouse-dragged callback, since AppKit
+// requires the triggering mouse event (stashed in the lastMouseDraggedEvent ivar) to start a session; see
+// dragSessionEvent for what happens when it is reached without one.
 func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask drag.Op, data ...drag.Data) {
 	if len(data) == 0 {
+		return
+	}
+	// Resolved before anything is allocated or any state is set on the view, so that giving up costs no cleanup.
+	event, ok := dragSessionEvent(objc.ID(v).Send(Sel("lastMouseDraggedEvent")), func() objc.ID {
+		return objc.ID(Cls("NSApplication")).Send(Sel("sharedApplication")).Send(Sel("currentEvent"))
+	})
+	if !ok {
 		return
 	}
 	item := NewPasteboardItem()
@@ -596,8 +629,7 @@ func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask
 	ov := objc.ID(v)
 	ov.Send(Sel("setDragMask:"), uint64(DragOpFromUnison(dragOpMask)))
 	ov.Send(Sel("setInDragWeStarted:"), true)
-	ov.Send(Sel("beginDraggingSessionWithItems:event:source:"), NSArrayFromIDs(dragItem),
-		ov.Send(Sel("lastMouseDraggedEvent")), ov)
+	ov.Send(Sel("beginDraggingSessionWithItems:event:source:"), NSArrayFromIDs(dragItem), event, ov)
 	Release(dragItem) // the dragging session retains everything it needs before beginDraggingSession... returns
 }
 
