@@ -37,6 +37,33 @@ func InvokeTaskAfter(f func(), after time.Duration) {
 	time.AfterFunc(after, func() { InvokeTask(f) })
 }
 
+// InvokeTaskAndWait calls a function on the UI thread and does not return until it has run. Use it when the calling
+// goroutine may not proceed until the work is done, such as an exit function that must not let the process terminate
+// before the UI state it reads has been written out.
+//
+// The function is called directly, on the calling goroutine, if the caller is the UI thread or if Start() has not yet
+// reached its event loop, since a wait for that loop would never end in either case. A panic inside the function is
+// recovered and reported the same way it is for InvokeTask, rather than delivered to the caller.
+//
+// The wait is unbounded, because the UI thread may legitimately be busy for an arbitrary length of time, such as when
+// a modal dialog waits for an answer from the user. Do not call this from work that the UI thread itself waits on,
+// since that deadlocks.
+func InvokeTaskAndWait(f func()) {
+	if f == nil {
+		return
+	}
+	if !platformInited.Load() || onUIThread() {
+		SafeCall(f)
+		return
+	}
+	done := make(chan struct{})
+	InvokeTask(func() {
+		defer close(done)
+		f()
+	})
+	<-done
+}
+
 func processNextTask() {
 	var f func()
 	needsPost := false

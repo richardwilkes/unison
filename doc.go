@@ -31,7 +31,7 @@
 //     callbacks (DrawCallback, DrawOverCallback), layout (the [Layout] and [Sizer] interfaces), and the other Panel
 //     and Window callbacks.
 //   - Command "can-perform" and "perform" handlers installed via [Panel.InstallCmdHandlers].
-//   - Functions handed to [InvokeTask] and [InvokeTaskAfter].
+//   - Functions handed to [InvokeTask], [InvokeTaskAfter] and [InvokeTaskAndWait].
 //
 // # Reaching the UI thread from another goroutine
 //
@@ -40,6 +40,7 @@
 //
 //   - [InvokeTask] queues a function to run on the UI thread at the next opportunity.
 //   - [InvokeTaskAfter] does the same after a delay.
+//   - [InvokeTaskAndWait] queues a function and blocks the caller until the UI thread has run it.
 //
 // These three are the supported entry points that are safe to call from any goroutine; they are internally synchronized
 // and wake the event loop as needed. A typical background operation computes its result off-thread, then calls

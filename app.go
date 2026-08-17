@@ -287,12 +287,7 @@ func quitting() {
 	// normal, inline path is taken. By then, the exit function registered after this one has already set calledAtExit
 	// (xos.Exit() runs them in reverse order of registration), so the nested xos.Exit() below is skipped as well.
 	if platformInited.Load() && !onUIThread() {
-		done := make(chan struct{})
-		InvokeTask(func() {
-			defer close(done)
-			AttemptQuit()
-		})
-		<-done
+		InvokeTaskAndWait(AttemptQuit)
 		return
 	}
 	quitLock.Lock()

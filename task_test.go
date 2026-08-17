@@ -11,7 +11,9 @@ package unison
 
 import (
 	"slices"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 )
@@ -94,6 +96,130 @@ func TestProcessNextTaskRecoversFromPanic(t *testing.T) {
 	length, head := taskQueueState()
 	c.Equal(0, length)
 	c.Equal(0, head)
+}
+
+// TestInvokeTaskAndWaitMarshalsAndWaits verifies the reason the call exists: the work runs on the UI thread and the
+// caller stays blocked until it has. This test mutates global state and therefore must not call t.Parallel.
+func TestInvokeTaskAndWaitMarshalsAndWaits(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	withUIThreadIdentity(t)
+
+	uiID := currentGoroutineID()
+	returned := make(chan struct{})
+	var ranOn atomic.Uint64
+	var ranBeforeReturn atomic.Bool
+	go func() {
+		InvokeTaskAndWait(func() {
+			ranOn.Store(currentGoroutineID())
+			select {
+			case <-returned:
+			default:
+				ranBeforeReturn.Store(true)
+			}
+		})
+		close(returned)
+	}()
+
+	// The function must have been handed to the task queue rather than called in place, and the caller must still be
+	// blocked while the task sits there unserviced.
+	waitForQueuedTask(t)
+	c.Equal(uint64(0), ranOn.Load(), "the function must not run on the calling goroutine")
+	select {
+	case <-returned:
+		t.Fatal("InvokeTaskAndWait returned without waiting for the function to run")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	pumpTasksUntil(t, returned)
+	c.Equal(uiID, ranOn.Load(), "the function must run on the UI thread")
+	c.True(ranBeforeReturn.Load(), "InvokeTaskAndWait must not return before the function has run")
+}
+
+// TestInvokeTaskAndWaitRunsDirectlyOnTheUIThread verifies that the UI thread does not wait on itself, which would
+// never end. This test mutates global state and therefore must not call t.Parallel.
+func TestInvokeTaskAndWaitRunsDirectlyOnTheUIThread(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	withUIThreadIdentity(t)
+
+	ranOn := uint64(0)
+	InvokeTaskAndWait(func() { ranOn = currentGoroutineID() })
+	c.Equal(currentGoroutineID(), ranOn, "the UI thread must call the function itself")
+	length, head := taskQueueState()
+	c.Equal(0, length-head, "nothing may be left on the queue")
+}
+
+// TestInvokeTaskAndWaitRunsDirectlyBeforeTheEventLoop verifies that a caller is not blocked forever by work handed
+// over before Start() reaches its event loop, since nothing would ever drain the queue. This test mutates global state
+// and therefore must not call t.Parallel.
+func TestInvokeTaskAndWaitRunsDirectlyBeforeTheEventLoop(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	savedInited := platformInited.Load()
+	platformInited.Store(false)
+	t.Cleanup(func() { platformInited.Store(savedInited) })
+
+	ran := make(chan uint64, 1)
+	go func() {
+		var ranOn uint64
+		InvokeTaskAndWait(func() { ranOn = currentGoroutineID() })
+		ran <- ranOn
+	}()
+	select {
+	case ranOn := <-ran:
+		c.True(ranOn != 0, "the function must be called rather than queued for an event loop that is not running")
+	case <-time.After(5 * time.Second):
+		t.Fatal("InvokeTaskAndWait blocked before the event loop was running")
+	}
+	length, head := taskQueueState()
+	c.Equal(0, length-head, "nothing may be left on the queue")
+}
+
+// TestInvokeTaskAndWaitReturnsWhenTheFunctionPanics verifies that a panic is handled the way InvokeTask handles one and
+// still releases the caller. This test mutates global state and therefore must not call t.Parallel.
+func TestInvokeTaskAndWaitReturnsWhenTheFunctionPanics(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	var recovered atomic.Bool
+	withRecoveryCallback(t, func(_ error) { recovered.Store(true) })
+	withUIThreadIdentity(t)
+
+	// From another goroutine, the panic happens on the UI thread while the caller waits for it.
+	returned := make(chan struct{})
+	go func() {
+		InvokeTaskAndWait(func() { panic("boom") })
+		close(returned)
+	}()
+	waitForQueuedTask(t)
+	pumpTasksUntil(t, returned)
+	c.True(recovered.Load(), "the panic must be reported through the recovery callback")
+
+	// On the UI thread itself, the panic must not reach the caller either.
+	recovered.Store(false)
+	c.NotPanics(func() { InvokeTaskAndWait(func() { panic("boom") }) })
+	c.True(recovered.Load(), "the panic must be reported through the recovery callback")
+}
+
+// TestInvokeTaskAndWaitIgnoresANilFunction verifies that a nil function is a no-op, as it is for SafeCall, rather than
+// a panic or a task that outlives the call. This test mutates global state and therefore must not call t.Parallel.
+func TestInvokeTaskAndWaitIgnoresANilFunction(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	withUIThreadIdentity(t)
+
+	c.NotPanics(func() { InvokeTaskAndWait(nil) })
+	length, head := taskQueueState()
+	c.Equal(0, length-head, "nothing may be left on the queue")
 }
 
 func TestProcessNextTaskCompactsDeadPrefix(t *testing.T) {
