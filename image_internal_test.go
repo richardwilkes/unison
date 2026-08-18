@@ -15,6 +15,7 @@ import (
 	"image/color"
 	"image/png"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -526,4 +527,138 @@ func TestNewImageFromDrawingStaysOnCPU(t *testing.T) {
 	c.NoError(err)
 	c.Equal(color.NRGBA{G: 255, A: 255}, nrgba.NRGBAAt(0, 0), "the drawn inner image should survive the readback")
 	c.Equal(color.NRGBA{R: 255, A: 255}, nrgba.NRGBAAt(w-1, h-1), "the cleared background should survive the readback")
+}
+
+// distinctPNGForTest returns PNG-encoded data for a width x height image built from the given seed, so each test gets
+// its own cache hash and does not collide with images created by other tests in this shared-cache package.
+func distinctPNGForTest(c check.Checker, width, height, seed int) []byte {
+	src := image.NewNRGBA(image.Rect(0, 0, width, height))
+	copy(src.Pix, distinctPixels(width, height, seed))
+	for i := 3; i < len(src.Pix); i += 4 {
+		src.Pix[i] = 255 // fully opaque, so the encoded bytes stay a direct function of the seed
+	}
+	var buf bytes.Buffer
+	c.NoError(png.Encode(&buf, src))
+	return buf.Bytes()
+}
+
+// TestImagePreloadDecodesLazyImage verifies the primary purpose of Preload: an image created from encoded bytes is
+// lazy (only its header was parsed), and Preload performs and caches the pixel decode that would otherwise happen on
+// the UI thread during the first draw. It must be repeatable, returning true again once the pixels are present.
+func TestImagePreloadDecodesLazyImage(t *testing.T) {
+	c := check.New(t)
+
+	codecs.Register() // normally done at app startup, which these headless tests skip
+	img, err := NewImageFromBytes(distinctPNGForTest(c, 6, 4, 101), geom.NewPoint(1, 1))
+	c.NoError(err)
+	c.NotNil(img)
+	defer img.Dispose()
+
+	raster, ok := img.image.(*imagecore.Image)
+	c.True(ok, "an image created from encoded bytes should be a raster *imagecore.Image")
+	c.True(raster.IsLazy(), "an image created from encoded bytes should start out undecoded")
+
+	c.True(img.Preload(), "Preload should decode the image")
+	c.True(img.Preload(), "Preload on an already decoded image should return true again")
+
+	// The decode must have been cached rather than repeated, which is what spares the first draw the work: a cached
+	// decode hands back the identical pixels on every subsequent request.
+	pixels := raster.PeekPixels(imagecore.CachingAllow)
+	c.NotNil(pixels)
+	c.True(pixels == raster.PeekPixels(imagecore.CachingAllow), "Preload should have cached the decoded pixels")
+}
+
+// TestImagePreloadFailsForUndecodableData verifies that Preload reports failure for data whose header parses but whose
+// pixels do not decode. The first 33 bytes of a PNG are the signature plus the IHDR chunk, which is enough for the
+// header parse that NewImageFromBytes performs, so the failure only surfaces when the pixels are actually decoded.
+// The failure must be sticky, since a caller may retry.
+func TestImagePreloadFailsForUndecodableData(t *testing.T) {
+	c := check.New(t)
+
+	codecs.Register() // normally done at app startup, which these headless tests skip
+	data := distinctPNGForTest(c, 5, 7, 103)
+	c.True(len(data) > 33)
+	img, err := NewImageFromBytes(data[:33], geom.NewPoint(1, 1))
+	c.NoError(err, "a truncated PNG should still yield an image, since only its header is parsed")
+	c.NotNil(img)
+	defer img.Dispose()
+
+	c.Equal(geom.NewSize(5, 7), img.Size(), "the size should come from the IHDR chunk")
+	c.False(img.Preload(), "Preload should report failure when the pixels do not decode")
+	c.False(img.Preload(), "a failed decode should stay failed")
+}
+
+// TestImagePreloadOnAlreadyDecodedImage verifies that Preload succeeds and returns at once for an image whose pixels
+// were supplied directly, since there is nothing left to decode.
+func TestImagePreloadOnAlreadyDecodedImage(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 3, 3
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 107), geom.NewPoint(1, 1))
+	c.NoError(err)
+	defer img.Dispose()
+
+	raster, ok := img.image.(*imagecore.Image)
+	c.True(ok)
+	c.False(raster.IsLazy(), "an image created from pixels is never lazy")
+	c.True(img.Preload(), "Preload on an image that already holds its pixels should succeed")
+}
+
+// TestImagePreloadOnDisposedImage verifies that Preload reports failure rather than panicking for a disposed image,
+// whose underlying image reference has been dropped. A background loader can race a Dispose from the UI thread, so
+// this must be safe.
+func TestImagePreloadOnDisposedImage(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 3, 3
+	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 109), geom.NewPoint(1, 1))
+	c.NoError(err)
+
+	img.Dispose()
+
+	c.NotPanics(func() { c.False(img.Preload(), "Preload on a disposed image should report failure") })
+}
+
+// TestImagePreloadOnNilImage verifies that Preload tolerates a nil receiver, matching Dispose, so callers can preload
+// an optional image without a nil check.
+func TestImagePreloadOnNilImage(t *testing.T) {
+	c := check.New(t)
+
+	var img *Image
+	c.NotPanics(func() { c.False(img.Preload(), "Preload on a nil image should report failure") })
+}
+
+// TestImagePreloadConcurrent verifies the documented promise that Preload may be called from any goroutine, even
+// concurrently, which is what lets a loader decode many images in parallel on background goroutines. Under -race this
+// also proves the decode itself is properly synchronized.
+func TestImagePreloadConcurrent(t *testing.T) {
+	c := check.New(t)
+
+	codecs.Register() // normally done at app startup, which these headless tests skip
+	img, err := NewImageFromBytes(distinctPNGForTest(c, 8, 6, 113), geom.NewPoint(1, 1))
+	c.NoError(err)
+	defer img.Dispose()
+
+	raster, ok := img.image.(*imagecore.Image)
+	c.True(ok)
+	c.True(raster.IsLazy(), "the image must still be undecoded for the goroutines to race on the decode")
+
+	const goroutines = 8
+	results := make([]bool, goroutines)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range goroutines {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start // line the goroutines up so they hit the decode together
+			results[i] = img.Preload()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	for i, result := range results {
+		c.True(result, "goroutine %d should have seen a successful decode", i)
+	}
 }

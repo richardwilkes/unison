@@ -249,6 +249,20 @@ func (img *Image) Scale() geom.Point {
 	return img.scale
 }
 
+// Preload decodes the pixels of the image now, on the calling goroutine, and caches them, so that the first draw only
+// has to upload them. It may be called from any goroutine, also concurrently. An image that is already decoded returns
+// at once. Returns false if the image was disposed or if its data does not decode.
+func (img *Image) Preload() bool {
+	if img == nil {
+		return false
+	}
+	raster, ok := img.image.(*imagecore.Image) // a disposed image holds a nil interface, so ok is false
+	if !ok {
+		return false
+	}
+	return raster.PeekPixels(imagecore.CachingAllow) != nil
+}
+
 // ToNRGBA creates an image.NRGBA from the image.
 func (img *Image) ToNRGBA() (*image.NRGBA, error) {
 	width := int(img.image.Width())
