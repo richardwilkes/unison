@@ -104,14 +104,32 @@ func NewImageFromPixels(width, height int, pixels []byte, scale geom.Point) (*Im
 	if width < 1 || height < 1 || len(pixels) != width*height*4 {
 		return nil, errs.New("invalid image data")
 	}
+	// The exported API may neither trust nor retain a caller's slice, since the caller remains free to mutate or reuse
+	// it, so the image is built from a private copy instead. Validating first keeps an invalid request from allocating
+	// a full-size buffer it would only throw away.
 	localData := make([]byte, len(pixels))
 	copy(localData, pixels)
+	return newImageFromOwnedPixels(width, height, localData, scale)
+}
+
+// newImageFromOwnedPixels creates a new image from pixel data, taking ownership of the pixels slice: the caller must
+// neither read from nor write to it afterward. That is what lets a caller holding a freshly allocated, private buffer
+// (newImageFromDrawingAtScale) hand it over directly, instead of paying for the defensive copy the exported
+// NewImageFromPixels must make. Currently imagecore.NewRasterData copies the rows into its own storage, so the buffer
+// is only read here, but callers must not depend on that.
+func newImageFromOwnedPixels(width, height int, pixels []byte, scale geom.Point) (*Image, error) {
+	if scale.X <= 0 || scale.Y <= 0 {
+		return nil, errs.New("invalid scale")
+	}
+	if width < 1 || height < 1 || len(pixels) != width*height*4 {
+		return nil, errs.New("invalid image data")
+	}
 	if img := imagecore.NewRasterData(imagecore.ImageInfo{
 		Width:     int32(width),
 		Height:    int32(height),
 		ColorType: imagecore.ColorTypeRGBA8888,
 		AlphaType: imagecore.AlphaTypeUnpremul,
-	}, localData, width*4); img != nil {
+	}, pixels, width*4); img != nil {
 		return newImage(img, scale, hashImageData(width, height, scale, pixels))
 	}
 	return nil, errs.New("unable to create image")
@@ -162,7 +180,9 @@ func newImageFromDrawingAtScale(width, height int, scale float32, draw func(*Can
 	}, pixels, width*4, 0, 0, imagecore.CachingDisallow) {
 		return nil, errs.New("unable to read raw pixels from image")
 	}
-	return NewImageFromPixels(width, height, pixels, geom.NewPoint(1/scale, 1/scale))
+	// pixels was allocated here and nothing else refers to it, so hand it over rather than routing through
+	// NewImageFromPixels, whose defensive copy of a caller's slice would be a second full-image copy for no gain.
+	return newImageFromOwnedPixels(width, height, pixels, geom.NewPoint(1/scale, 1/scale))
 }
 
 // newImage may be called from any goroutine, so access to imgCache is guarded by imgCacheLock.

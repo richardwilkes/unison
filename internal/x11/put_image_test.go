@@ -455,3 +455,46 @@ func TestPutImagePipelinesChunksWithoutSync(t *testing.T) {
 		}
 	}
 }
+
+// TestPutImageRGBAPremulReusesScratchBuffer verifies that the wire-format staging buffer lives on the connection and
+// only grows, so neither the chunks of one frame nor the frames after it allocate a buffer of their own. The payload
+// comparisons guard the other half of that bargain: reuse is only safe because the request buffer copies the staged
+// bytes as it is handed them, so a regression there would show up as chunks carrying a later chunk's pixels, and the
+// buffer the large frame leaves oversized must not leak stale bytes into the small frame that follows.
+func TestPutImageRGBAPremulReusesScratchBuffer(t *testing.T) {
+	c := check.New(t)
+	const maxWords = 306 // Fits 300 pixels per request, which is 3 rows of 100.
+	const width, height, rowPixels = 100, 10, 128
+	pixels := premulTestPixels(width, height, rowPixels)
+	small := premulTestPixels(4, 2, 4)
+	// base identifies the scratch buffer's storage, and tolerates a buffer that was never allocated so that a
+	// regression to per-chunk buffers reports a failure rather than panicking.
+	base := func(conn *Conn) *byte {
+		if len(conn.putImageScratch) == 0 {
+			return nil
+		}
+		return &conn.putImageScratch[0]
+	}
+	requests := captureCheckedRequests(t, maxWords, func(conn *Conn) {
+		c.Equal(0, cap(conn.putImageScratch)) // Nothing is staged until a chunk needs it.
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 0, 0, width, height, rowPixels, pixels, 32)
+		// The chunks are 3, 3, 3 then 1 rows, so the buffer sized for the largest of them is what remains at the end
+		// of the frame; a per-chunk allocation would have left the trailing chunk's smaller one instead.
+		c.Equal(width*3*4, cap(conn.putImageScratch))
+		first := base(conn)
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 0, 0, width, height, rowPixels, pixels, 32)
+		c.True(first != nil && first == base(conn), "the next frame must stage into the same buffer")
+		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 0, 0, 4, 2, 4, small, 32)
+		c.True(first != nil && first == base(conn), "a smaller frame must reuse the buffer rather than replace it")
+		c.Equal(width*3*4, cap(conn.putImageScratch))
+	})
+	c.Equal(9, len(requests))
+	for _, frame := range [][][]byte{requests[:4], requests[4:8]} {
+		reassembled := make([]byte, 0, int(width)*int(height)*4)
+		for _, raw := range frame {
+			reassembled = append(reassembled, parsePutImage(t, raw).data...)
+		}
+		c.Equal(premulBGRAWire(pixels, rowPixels, 0, 0, width, height), reassembled)
+	}
+	c.Equal(premulBGRAWire(small, 4, 0, 0, 4, 2), parsePutImage(t, requests[8]).data)
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xruntime"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/internal/pixconv"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/image/draw"
 	"golang.org/x/sys/windows"
@@ -934,14 +935,16 @@ func (w *Window) w32InitDragImage(img *Image, originInRoot geom.Point, dataObj *
 	if bmp == 0 {
 		return
 	}
-	// The shell renders the drag image as a layered window, which requires premultiplied BGRA pixels.
-	target := unsafe.Slice(ppvBits, len(nrgba.Pix))
-	for i := 0; i < len(nrgba.Pix); i += 4 {
-		a := uint32(nrgba.Pix[i+3])
-		target[i] = byte(uint32(nrgba.Pix[i+2]) * a / 255)
-		target[i+1] = byte(uint32(nrgba.Pix[i+1]) * a / 255)
-		target[i+2] = byte(uint32(nrgba.Pix[i]) * a / 255)
-		target[i+3] = byte(a)
+	// The shell renders the drag image as a layered window, which requires premultiplied BGRA pixels. The DIB holds
+	// exactly width*height*4 bytes with no stride padding, so the conversion runs a row at a time through PixOffset:
+	// ToNRGBA and the rescale above both hand back packed, zero-origin pixels, but a source whose stride is wider than
+	// its rows would otherwise walk past the end of the DIB. The DIB's pixel store is written in place, never replaced.
+	rowBytes := width * 4
+	target := unsafe.Slice(ppvBits, height*rowBytes)
+	for y := range height {
+		si := nrgba.PixOffset(nrgba.Rect.Min.X, nrgba.Rect.Min.Y+y)
+		di := y * rowBytes
+		pixconv.PremulBGRA(target[di:di+rowBytes], nrgba.Pix[si:si+rowBytes])
 	}
 	var cursor w32.POINT
 	w32.GetCursorPos(&cursor)

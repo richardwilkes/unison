@@ -73,6 +73,15 @@ jobs:
             ./build.sh --race
           fi
 
+      # The goexperiment.simd leg: test the module again with the simd kernels wired in (internal/pixconv and
+      # internal/f32), so the vector paths and their equivalence-with-scalar gates run on every OS/arch pair. The
+      # default steps above stay authoritative for what ships; this leg guards the opt-in build.
+      - name: Test (GOEXPERIMENT=simd)
+        env:
+          GOEXPERIMENT: simd
+          CGO_ENABLED: '0'
+        run: go test ./...
+
       # Build the example app, naming the binary after the target platform and
       # architecture (e.g. example-macos-arm64, example-windows-amd64.exe).
       - name: Build example
@@ -98,7 +107,8 @@ jobs:
 
   # The module is pure Go, so every platform can be compiled from one host. Cross-building all six OS/arch pairs
   # catches compile breakage on platforms whose native runners might be slow, missing, or skipped — cheap insurance
-  # that was impossible in the cgo era.
+  # that was impossible in the cgo era. Each pair is built twice, with and without GOEXPERIMENT=simd, so the
+  # goexperiment.simd-tagged kernels are compiled everywhere too.
   cross-build:
     name: Cross-build
     runs-on: ubuntu-22.04
@@ -118,8 +128,10 @@ jobs:
         run: |
           for goos in darwin linux windows; do
             for goarch in amd64 arm64; do
-              echo "::group::$goos/$goarch"
-              GOOS=$goos GOARCH=$goarch go build ./...
-              echo "::endgroup::"
+              for exp in "" simd; do
+                echo "::group::$goos/$goarch${exp:+ (GOEXPERIMENT=$exp)}"
+                GOEXPERIMENT=$exp GOOS=$goos GOARCH=$goarch go build ./...
+                echo "::endgroup::"
+              done
             done
           done

@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/f32"
 )
 
 // Text holds data necessary to draw a string using font fallbacks where necessary.
@@ -196,17 +197,26 @@ func (t *Text) Baseline() float32 {
 
 func (t *Text) cache() {
 	if t.extents.Width < 0 {
-		t.extents.Width = 0
+		t.extents.Width = f32.Sum(t.widths)
 		// Track the union of the vertical bounds of each run, relative to the baseline. Each run reserves its font's
 		// normal line box in addition to the box shifted by its BaselineOffset, so offset runs keep room for
 		// normal-baseline text of the same font and plain text metrics are unchanged.
 		top := t.emptyTop
 		bottom := t.emptyBottom
-		for i, d := range t.decorations {
-			t.extents.Width += t.widths[i]
+		// AddRunes() gives every rune of a run the same *TextDecoration, unifying adjacent equivalent decorations onto
+		// one pointer, so the decorations are in practice a handful of long stretches of a repeated pointer. Walking
+		// those stretches asks each font for its metrics once per run instead of once per rune. The result is
+		// unchanged, since the terms skipped within a run are identical to the one folded in for the run.
+		for i := 0; i < len(t.decorations); {
+			d := t.decorations[i]
+			j := i + 1
+			for j < len(t.decorations) && t.decorations[j] == d {
+				j++
+			}
 			b := d.Font.Baseline()
 			top = min(top, min(d.BaselineOffset, 0)-b)
 			bottom = max(bottom, d.Font.LineHeight()-b+max(d.BaselineOffset, 0))
+			i = j
 		}
 		t.extents.Height = bottom - top
 		t.baseline = -top
@@ -288,7 +298,9 @@ func (t *Text) Draw(canvas *Canvas, pt geom.Point) {
 	current := t.decorations[0]
 	nx := pt.X
 	for i, d := range t.decorations {
-		if i != 0 && !current.Equivalent(d) {
+		// The pointer comparison is a fast path for the common case: AddRunes() hands every rune of a run the same
+		// *TextDecoration, so the far more expensive Equivalent() only has to run at a genuine pointer change.
+		if i != 0 && d != current && !current.Equivalent(d) {
 			current.DrawText(canvas, string(t.runes[start:i]), pt, nx-pt.X)
 			current = d
 			pt.X = nx
@@ -326,14 +338,8 @@ func (t *Text) PositionForRuneIndex(index int) float32 {
 	if index <= 0 || len(t.widths) == 0 {
 		return 0
 	}
-	var x float32
-	for i, w := range t.widths {
-		if i >= index {
-			break
-		}
-		x += w
-	}
-	return x
+	// An index past the end clamps to the full width rather than being an error.
+	return f32.Sum(t.widths[:min(index, len(t.widths))])
 }
 
 // BreakToWidth breaks the given text into multiple lines that are <= width. Trailing whitespace is not considered for
