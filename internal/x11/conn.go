@@ -28,6 +28,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xio"
+	"github.com/richardwilkes/unison/internal/pixconv"
 )
 
 // Constants for X11 request opcodes.
@@ -673,6 +674,7 @@ type Conn struct {
 	vendor                   string
 	clipboardEntries         []clipboardEntry
 	dndEntries               []clipboardEntry
+	putImageScratch          []byte // Owned solely by PutImageRGBAPremul, which documents the reuse rules
 	pixmapFormats            []Format
 	Roots                    []Screen
 	eventQueue               []Event
@@ -2130,27 +2132,19 @@ func (c *Conn) PutImage(drawable DrawableID, gc GCID, dstX, dstY int16, img *ima
 	send := func(x, y, cols, rows int) {
 		// Convert the pixels to pre-multiplied 0xAARRGGBB words, which is what X expects for 32bpp images. The source
 		// rows are addressed through PixOffset, since the image may be a sub-image with a non-zero origin and a stride
-		// wider than the pixel data.
+		// wider than the pixel data, so the conversion runs a row at a time. The buffer is per call rather than shared
+		// on the connection, since this path is not restricted to the presentation goroutine.
 		pix := make([]byte, cols*rows*4)
+		rowBytes := cols * 4
 		di := 0
 		for row := y; row < y+rows; row++ {
 			si := img.PixOffset(img.Rect.Min.X+x, img.Rect.Min.Y+row)
-			for range cols {
-				a := uint16(img.Pix[si+3])
-				if msbFirst {
-					pix[di] = img.Pix[si+3]
-					pix[di+1] = uint8((uint16(img.Pix[si]) * a) / 0xff)
-					pix[di+2] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
-					pix[di+3] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
-				} else {
-					pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
-					pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
-					pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
-					pix[di+3] = img.Pix[si+3]
-				}
-				si += 4
-				di += 4
+			if msbFirst {
+				pixconv.PremulARGB(pix[di:di+rowBytes], img.Pix[si:si+rowBytes])
+			} else {
+				pixconv.PremulBGRA(pix[di:di+rowBytes], img.Pix[si:si+rowBytes])
 			}
+			di += rowBytes
 		}
 		w := NewWriter(24 + len(pix))
 		w.Byte(opPutImage)
@@ -2205,27 +2199,27 @@ func (c *Conn) PutImageRGBAPremul(drawable DrawableID, gc GCID, dstX, dstY int16
 	// MSBFirst one.
 	msbFirst := c.imageByteOrder == imageByteOrderMSBFirst
 	send := func(x, y, cols, rows int) {
-		// Convert the pixels to pre-multiplied 0xAARRGGBB words, which is what X expects for 32bpp images.
-		pix := make([]byte, cols*rows*4)
+		// Unpack the pixel words into the server's byte order a row at a time, since only the leading cols words of
+		// each stride-wide source row belong to this chunk. The staging buffer lives on the connection and only ever
+		// grows, so presenting frame after frame at the same size allocates nothing here: Writer.Bytes below copies
+		// the staged bytes into the request's own buffer as it is called (writer.go:67,
+		// "w.buffer = append(w.buffer, v...)"), so nothing queued still refers to the scratch when the next chunk
+		// overwrites it. That reuse is only safe because this is the presentation path, which is single-threaded.
+		need := cols * rows * 4
+		if cap(c.putImageScratch) < need {
+			c.putImageScratch = make([]byte, need)
+		}
+		pix := c.putImageScratch[:need]
+		rowBytes := cols * 4
 		di := 0
 		for row := y; row < y+rows; row++ {
 			si := row*int(rowPixels) + x
-			for range cols {
-				v := pixels[si]
-				if msbFirst {
-					pix[di] = byte(v >> 24)
-					pix[di+1] = byte(v)
-					pix[di+2] = byte(v >> 8)
-					pix[di+3] = byte(v >> 16)
-				} else {
-					pix[di] = byte(v >> 16)
-					pix[di+1] = byte(v >> 8)
-					pix[di+2] = byte(v)
-					pix[di+3] = byte(v >> 24)
-				}
-				si++
-				di += 4
+			if msbFirst {
+				pixconv.RGBAToARGBBytes(pix[di:di+rowBytes], pixels[si:si+cols])
+			} else {
+				pixconv.RGBAToBGRABytes(pix[di:di+rowBytes], pixels[si:si+cols])
 			}
+			di += rowBytes
 		}
 		w := NewWriter(24 + len(pix))
 		w.Byte(opPutImage)
@@ -2283,18 +2277,14 @@ func IconData(images []*image.NRGBA) []byte {
 		binary.LittleEndian.PutUint32(d, uint32(width))
 		binary.LittleEndian.PutUint32(d[4:], uint32(height))
 		pix := d[8:]
+		rowBytes := width * 4
 		di := 0
+		// The b,g,r,a byte quads PremulBGRA emits are the little-endian form of the 0xAARRGGBB CARDINALs _NET_WM_ICON
+		// is defined in terms of, which is the byte order the width and height words above are written in as well.
 		for y := range height {
 			si := img.PixOffset(img.Rect.Min.X, img.Rect.Min.Y+y)
-			for range width {
-				a := uint16(img.Pix[si+3])
-				pix[di] = uint8((uint16(img.Pix[si+2]) * a) / 0xff)
-				pix[di+1] = uint8((uint16(img.Pix[si+1]) * a) / 0xff)
-				pix[di+2] = uint8((uint16(img.Pix[si]) * a) / 0xff)
-				pix[di+3] = img.Pix[si+3]
-				si += 4
-				di += 4
-			}
+			pixconv.PremulBGRA(pix[di:di+rowBytes], img.Pix[si:si+rowBytes])
+			di += rowBytes
 		}
 	}
 	return data

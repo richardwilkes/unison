@@ -9,6 +9,8 @@
 
 package w32
 
+import "github.com/richardwilkes/unison/internal/pixconv"
+
 // This file deliberately has no _windows suffix so that the pixel repacking logic can be tested on any platform.
 
 // RepackRGBAToBGRA repacks premultiplied RGBA pixel words as the BGRA words GDI expects, dropping any stride padding
@@ -16,12 +18,11 @@ package w32
 // least width*height words. dst is written in place and never reallocated, since it addresses the pixel store of the
 // presentation bitmap itself, where a replacement would go unnoticed and leave the window showing a stale frame.
 func RepackRGBAToBGRA(pix []uint32, width, height, rowPixels int, dst []uint32) {
+	// A row at a time, since only the leading width words of each source row are part of the frame; pixconv.SwizzleRB
+	// performs the channel exchange itself and honors the same never-reallocate contract dst needs.
 	di := 0
 	for y := range height {
-		row := pix[y*rowPixels : y*rowPixels+width]
-		for _, v := range row {
-			dst[di] = (v & 0xFF00FF00) | ((v & 0xFF) << 16) | ((v >> 16) & 0xFF)
-			di++
-		}
+		pixconv.SwizzleRB(dst[di:di+width], pix[y*rowPixels:y*rowPixels+width])
+		di += width
 	}
 }

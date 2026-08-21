@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/unison/internal/pixconv"
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
@@ -109,12 +110,16 @@ func w32CreateIconFromImage(img *image.NRGBA, hotX, hotY int, icon bool) w32.HIC
 	}
 	defer w32.DeleteObject(w32.HGDIOBJ(mask))
 
-	target := unsafe.Slice(ppvBits, len(img.Pix))
-	for i := 0; i < len(img.Pix)/4; i++ {
-		target[4*i] = img.Pix[4*i+2]
-		target[4*i+1] = img.Pix[4*i+1]
-		target[4*i+2] = img.Pix[4*i+0]
-		target[4*i+3] = img.Pix[4*i+3]
+	// The DIB wants BGRA and holds exactly w*h*4 bytes with no stride padding, so the red/blue exchange runs a row at a
+	// time through PixOffset. The source is whatever image the caller handed to NewCursor or SetTitleIcons, which may
+	// be a sub-image with a non-zero origin and a stride wider than its rows; a single pass over img.Pix would then
+	// copy that padding and run past the end of the DIB. The DIB's pixel store is written in place, never replaced.
+	rowBytes := w * 4
+	target := unsafe.Slice(ppvBits, h*rowBytes)
+	for y := range h {
+		si := img.PixOffset(bounds.Min.X, bounds.Min.Y+y)
+		di := y * rowBytes
+		pixconv.SwizzleRBBytes(target[di:di+rowBytes], img.Pix[si:si+rowBytes])
 	}
 
 	var iconInt32 int32
