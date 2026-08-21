@@ -60,7 +60,8 @@ func PostEmptyEvent() {
 		event := objc.ID(Cls("NSEvent")).Send(
 			Sel("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:"),
 			nsEventTypeApplicationDefined, NSPoint{}, uint64(0), float64(0), int64(0), objc.ID(0), int16(0),
-			int64(0), int64(0))
+			int64(0), int64(0),
+		)
 		sharedApp().Send(Sel("postEvent:atStart:"), event, true)
 	})
 }

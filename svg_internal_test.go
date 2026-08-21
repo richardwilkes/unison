@@ -25,13 +25,15 @@ import (
 func TestSVGPolylineTwoPoints(t *testing.T) {
 	c := check.New(t)
 	svg, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><polyline points="1,2 9,8"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><polyline points="1,2 9,8"/></svg>`,
+	)
 	c.NoError(err)
 	c.Equal(1, len(svg.paths))
 	c.Equal(geom.NewRect(1, 2, 8, 6), svg.paths[0].path.ComputeTightBounds())
 
 	svg, err = NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><polygon points="1,2 9,8"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><polygon points="1,2 9,8"/></svg>`,
+	)
 	c.NoError(err)
 	c.Equal(1, len(svg.paths))
 	c.Equal(geom.NewRect(1, 2, 8, 6), svg.paths[0].path.ComputeTightBounds())
@@ -73,7 +75,8 @@ func TestSVGGradientForwardReference(t *testing.T) {
 func TestSVGPathUppercaseExponent(t *testing.T) {
 	c := check.New(t)
 	svg, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M0 0 L1E1 1e1 L2E+1 1e-0 Z"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M0 0 L1E1 1e1 L2E+1 1e-0 Z"/></svg>`,
+	)
 	c.NoError(err)
 	c.Equal(1, len(svg.paths))
 	c.Equal(geom.NewRect(0, 0, 20, 10), svg.paths[0].path.ComputeTightBounds())
@@ -115,7 +118,8 @@ func TestSVGTransformListCommaSeparated(t *testing.T) {
 		svg, err := NewSVGFromContentString(fmt.Sprintf(
 			`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
 <rect x="0" y="0" width="1" height="1" transform="%s"/>
-</svg>`, transform))
+</svg>`, transform,
+		))
 		c.NoError(err, "transform %q", transform)
 		if err != nil {
 			continue
@@ -369,7 +373,8 @@ func TestSVGPercentStrokeWidthUsesDiagonal(t *testing.T) {
 func TestSVGClosePathAfterClosePath(t *testing.T) {
 	c := check.New(t)
 	svg, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z L20 20 Z"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z L20 20 Z"/></svg>`,
+	)
 	c.NoError(err)
 	c.Equal(1, len(svg.paths))
 	c.True(svg.paths[0].path.path.IsLastContourClosed(), "the second subpath should be closed")
@@ -377,7 +382,8 @@ func TestSVGClosePathAfterClosePath(t *testing.T) {
 	// The restarted subpath begins at the closed subpath's initial point, so the result must match the form that
 	// names that point explicitly.
 	explicit, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z M0 0 L20 20 Z"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z M0 0 L20 20 Z"/></svg>`,
+	)
 	c.NoError(err)
 	c.Equal(1, len(explicit.paths))
 	c.Equal(explicit.paths[0].path.path.CountVerbs(), svg.paths[0].path.path.CountVerbs())
@@ -385,7 +391,8 @@ func TestSVGClosePathAfterClosePath(t *testing.T) {
 
 	// A closepath with nothing drawn since the previous one must remain a no-op.
 	svg, err = NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z Z"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z Z"/></svg>`,
+	)
 	c.NoError(err)
 	c.Equal(1, len(svg.paths))
 	c.Equal(4, svg.paths[0].path.path.CountVerbs())

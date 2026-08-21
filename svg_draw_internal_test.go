@@ -91,7 +91,8 @@ func TestSVGDrawInRectStretchesToExactRect(t *testing.T) {
 func TestSVGDrawInRectPreservingAspectRatioCenters(t *testing.T) {
 	c := check.New(t)
 	svg, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`,
+	)
 	c.NoError(err)
 
 	// A square SVG drawn into a wide rect must be scaled uniformly to the rect height and centered horizontally.

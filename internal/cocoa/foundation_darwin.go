@@ -122,8 +122,11 @@ func NewFileURL(str string) URL {
 	isDir := strings.HasSuffix(str, "/") || xos.IsDir(str)
 	var u objc.ID
 	WithPool(func() {
-		u = Retain(objc.ID(Cls("NSURL")).Send(
-			Sel("fileURLWithFileSystemRepresentation:isDirectory:relativeToURL:"), str, isDir, objc.ID(0)))
+		u = Retain(
+			objc.ID(Cls("NSURL")).Send(
+				Sel("fileURLWithFileSystemRepresentation:isDirectory:relativeToURL:"), str, isDir, objc.ID(0),
+			),
+		)
 	})
 	return URL(u)
 }

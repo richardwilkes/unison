@@ -208,7 +208,8 @@ func TestSVGGradientDefaults(t *testing.T) {
 func TestSVGOffsetToCenterWithinScaledSize(t *testing.T) {
 	c := check.New(t)
 	svg, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0 L10 10 Z"/></svg>`)
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0 L10 10 Z"/></svg>`,
+	)
 	c.NoError(err)
 
 	// A square SVG scaled to fit a wider rectangle: the scale is limited by height, so the image is centered

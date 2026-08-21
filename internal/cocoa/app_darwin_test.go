@@ -164,7 +164,8 @@ func cmdKeyUpEvent() objc.ID {
 		NSPoint{},
 		uint64(EventModifierFlagCommand),
 		float64(0), int64(0), objc.ID(0),
-		NSStringFromGo("a"), NSStringFromGo("a"), false, uint16(0))
+		NSStringFromGo("a"), NSStringFromGo("a"), false, uint16(0),
+	)
 }
 
 // TestSetMenus verifies the four application menu setters against their AppKit getters, which also proves that the

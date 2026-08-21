@@ -59,7 +59,8 @@ func synthMouseEvent(eventType uint64, where NSPoint, mods uint64, w Window) obj
 	return objc.ID(Cls("NSEvent")).Send(
 		Sel("mouseEventWithType:location:modifierFlags:timestamp:windowNumber:context:eventNumber:clickCount:pressure:"),
 		eventType, where, mods, float64(0), objc.Send[int64](objc.ID(w), Sel("windowNumber")), objc.ID(0),
-		int64(0), int64(1), float32(1))
+		int64(0), int64(1), float32(1),
+	)
 }
 
 // synthKeyEvent returns an autoreleased NSEvent for a key event type; the caller must have a pool in place.
@@ -67,7 +68,8 @@ func synthKeyEvent(eventType uint64, chars string, keyCode uint16, mods uint64, 
 	return objc.ID(Cls("NSEvent")).Send(
 		Sel("keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:"),
 		eventType, NSPoint{}, mods, float64(0), objc.Send[int64](objc.ID(w), Sel("windowNumber")), objc.ID(0),
-		NSStringFromGo(chars), NSStringFromGo(chars), false, keyCode)
+		NSStringFromGo(chars), NSStringFromGo(chars), false, keyCode,
+	)
 }
 
 // TestNewViewBasics proves the Go-registered macContentView class: creation, protocol conformance, the constant
@@ -592,7 +594,8 @@ func TestViewDrawAndBackingCallbacks(t *testing.T) {
 			rep := objc.ID(Cls("NSBitmapImageRep")).Send(Sel("alloc")).Send(
 				Sel("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:hasAlpha:isPlanar:colorSpaceName:bitmapFormat:bytesPerRow:bitsPerPixel:"),
 				unsafe.Pointer(nil), 64, 64, 8, 4, true, false,
-				NSStringConstant("AppKit", "NSCalibratedRGBColorSpace"), 0, 64*4, 32)
+				NSStringConstant("AppKit", "NSCalibratedRGBColorSpace"), 0, 64*4, 32,
+			)
 			defer Release(rep)
 			ctx := objc.ID(Cls("NSGraphicsContext")).Send(Sel("graphicsContextWithBitmapImageRep:"), rep)
 			if ctx == 0 {

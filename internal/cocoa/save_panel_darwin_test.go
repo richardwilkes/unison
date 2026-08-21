@@ -11,6 +11,7 @@ package cocoa
 
 import (
 	"net/url"
+	"path"
 	"slices"
 	"testing"
 	"time"
@@ -144,10 +145,24 @@ func TestSavePanelRunModalCancel(t *testing.T) {
 			}
 			// The panel composes its URL from the directory and name field once it has been presented (before the
 			// first presentation it still reports its defaults — verified against compiled Objective-C, so it is
-			// AppKit behavior, not a port difference). This is the value the root dialog's Path parses.
+			// AppKit behavior, not a port difference). This is the value the root dialog's Path parses. Compare
+			// against the panel's live directory and name field rather than the /Library values set above: the panel
+			// is really on screen while runModal runs, so stray user input can navigate it elsewhere (Cmd-D jumps to
+			// the Desktop, a sidebar click works too) or edit the name field, and that must not fail the composition
+			// check.
+			dir := p.DirectoryURL().AbsoluteString()
+			parsedDir, dirErr := url.Parse(dir)
+			if dirErr != nil {
+				t.Errorf("DirectoryURL = %q did not parse: %v", dir, dirErr)
+				return
+			}
+			if parsedDir.Path != "/Library/" {
+				t.Logf("panel directory is %q, not the /Library/ this test set; stray user input likely navigated the panel", dir)
+			}
+			want := path.Join(parsedDir.Path, p.InitialFileName())
 			abs := p.URL().AbsoluteString()
-			if parsed, err := url.Parse(abs); err != nil || parsed.Path != "/Library/unison-mac-test.txt" {
-				t.Errorf("URL = %q (parse err %v), want path /Library/unison-mac-test.txt", abs, err)
+			if parsed, err := url.Parse(abs); err != nil || parsed.Path != want {
+				t.Errorf("URL = %q (parse err %v), want path %q", abs, err, want)
 			}
 		})
 	})

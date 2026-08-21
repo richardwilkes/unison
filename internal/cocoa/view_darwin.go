@@ -340,7 +340,8 @@ func registerMacContentViewClass() {
 				}
 				ta := objc.ID(Cls("NSTrackingArea")).Send(Sel("alloc")).Send(
 					Sel("initWithRect:options:owner:userInfo:"), objc.Send[NSRect](self, Sel("bounds")),
-					nsTrackingOptions, self, objc.ID(0))
+					nsTrackingOptions, self, objc.ID(0),
+				)
 				self.Send(Sel("setTrackingArea:"), ta)
 				self.Send(Sel("addTrackingArea:"), ta)
 				self.SendSuper(Sel("updateTrackingAreas"))

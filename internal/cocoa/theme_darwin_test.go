@@ -45,7 +45,8 @@ func TestThemeChangedNotification(t *testing.T) {
 	WithPool(func() {
 		objc.ID(Cls("NSDistributedNotificationCenter")).Send(Sel("defaultCenter")).Send(
 			Sel("postNotificationName:object:userInfo:deliverImmediately:"),
-			NSStringFromGo("AppleInterfaceThemeChangedNotification"), 0, 0, true)
+			NSStringFromGo("AppleInterfaceThemeChangedNotification"), 0, 0, true,
+		)
 	})
 	for deadline := time.Now().Add(5 * time.Second); !themeFired.Load() && time.Now().Before(deadline); {
 		time.Sleep(10 * time.Millisecond)
