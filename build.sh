@@ -80,10 +80,14 @@ if [ "$LINT"x == "1x" ]; then
 		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b "$TOOLS_DIR" v$GOLANGCI_LINT_VERSION
 	fi
 	# Lint for every supported platform, not just the host, so problems in platform-specific files (e.g.
-	# *_windows.go) are caught no matter where the script is run.
+	# *_windows.go) are caught no matter where the script is run. Each platform is linted twice, once for the
+	# default build and once with GOEXPERIMENT=simd, because the goexperiment.simd-tagged sources (internal/pixconv,
+	# internal/f32) are excluded from the default build and would otherwise never be analyzed.
 	for TARGET_GOOS in darwin linux windows; do
-		echo -e "\033[33mLinting for $TARGET_GOOS...\033[0m"
-		GOOS=$TARGET_GOOS "$TOOLS_DIR/golangci-lint" run
+		for TARGET_EXP in "" simd; do
+			echo -e "\033[33mLinting for $TARGET_GOOS${TARGET_EXP:+ (GOEXPERIMENT=$TARGET_EXP)}...\033[0m"
+			GOOS=$TARGET_GOOS GOEXPERIMENT=$TARGET_EXP "$TOOLS_DIR/golangci-lint" run
+		done
 	done
 fi
 
