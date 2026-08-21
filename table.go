@@ -1711,14 +1711,14 @@ func (t *Table[T]) InstallDragSupport(svg *SVG, dataType *uti.DataType, singular
 	}
 }
 
-// InstallDropSupport installs default drop support into a table. This will replace any existing CanAcceptDropCallback,
-// DragEnteredCallback, DragUpdatedCallback, DragExitedCallback, and DropCallback functions. It will also chain a
-// function to any existing DrawOverCallback. The shouldMoveDataCallback is called when a drop is about to occur to
-// determine if the data should be moved (i.e. removed from the source) or copied to the destination. The
-// willDropCallback is called before the actual data changes are made, giving an opportunity to start an undo event,
-// which should be returned. The didDropCallback is called after data changes are made and is passed the undo event (if
-// any) returned by the willDropCallback, so that the undo event can be completed and posted.
-func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dataType *uti.DataType, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
+// InstallDropSupport installs default drop support into this table. This will replace any existing
+// CanAcceptDropCallback, DragEnteredCallback, DragUpdatedCallback, DragExitedCallback, and DropCallback functions. It
+// will also chain a function to any existing DrawOverCallback. The shouldMoveDataCallback is called when a drop is
+// about to occur to determine if the data should be moved (i.e. removed from the source) or copied to the destination.
+// The willDropCallback is called before the actual data changes are made, giving an opportunity to start an undo
+// event, which should be returned. The didDropCallback is called after data changes are made and is passed the undo
+// event (if any) returned by the willDropCallback, so that the undo event can be completed and posted.
+func (t *Table[T]) InstallDropSupport[U any](dataType *uti.DataType, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
 	drop := &TableDrop[T, U]{
 		Table:                  t,
 		DataType:               dataType,
@@ -1734,6 +1734,13 @@ func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dataType *u
 	t.DragExitedCallback = drop.DragExitCallback
 	t.DropCallback = drop.DropCallback
 	return drop
+}
+
+// InstallDropSupport installs default drop support into a table.
+//
+// Deprecated: Use [Table.InstallDropSupport] instead.
+func InstallDropSupport[T TableRowConstraint[T], U any](t *Table[T], dataType *uti.DataType, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
+	return t.InstallDropSupport(dataType, shouldMoveDataCallback, willDropCallback, didDropCallback)
 }
 
 // CountTableRows returns the number of table rows, including all descendants, whether open or not.

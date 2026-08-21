@@ -96,7 +96,7 @@ func NewDemoTableWindow() (*unison.Window, error) {
 	table.SetRootRows(rows)
 	table.SizeColumnsToFit(true)
 	table.InstallDragSupport(nil, tableDataType, "Row", "Rows")
-	unison.InstallDropSupport[*demoRow, any](table, tableDataType,
+	table.InstallDropSupport[any](tableDataType,
 		func(from, to *unison.Table[*demoRow]) bool { return from == to }, nil, nil)
 
 	header := unison.NewTableHeader(table,

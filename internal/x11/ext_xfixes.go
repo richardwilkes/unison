@@ -84,7 +84,7 @@ func (e *ExtXFixes) HideCursor(window WindowID) {
 
 // CreateRegion creates a new, empty region and returns its ID.
 func (e *ExtXFixes) CreateRegion() RegionID {
-	id := nextXID[RegionID](e.conn)
+	id := e.conn.nextXID[RegionID]()
 	if id != 0 {
 		w := NewWriter(8)
 		w.Byte(e.majorOpcode)

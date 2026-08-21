@@ -888,7 +888,7 @@ func (c *Conn) authenticate() error {
 		r.Skip(4)
 		c.vendor = r.String(int(vendorLen))
 		r.SkipTo4ByteAlignment()
-		c.pixmapFormats = ReadList(int(pixmapFormatsLen), r, func(rr *Reader) Format {
+		c.pixmapFormats = r.ReadList(int(pixmapFormatsLen), func(rr *Reader) Format {
 			var f Format
 			f.Depth = rr.Byte()
 			f.BitsPerPixel = rr.Byte()
@@ -896,7 +896,7 @@ func (c *Conn) authenticate() error {
 			rr.Skip(5)
 			return f
 		})
-		c.Roots = ReadList(int(rootsLen), r, func(rr *Reader) Screen {
+		c.Roots = r.ReadList(int(rootsLen), func(rr *Reader) Screen {
 			var s Screen
 			s.Root = rr.WindowID()
 			s.DefaultColorMap = rr.ColorMapID()
@@ -918,13 +918,13 @@ func (c *Conn) authenticate() error {
 			s.BackingStores = rr.Byte()
 			s.SaveUnders = rr.Bool()
 			s.RootDepth = rr.Byte()
-			s.AllowedDepths = ReadList(int(rr.Byte()), rr, func(rrr *Reader) Depth {
+			s.AllowedDepths = rr.ReadList(int(rr.Byte()), func(rrr *Reader) Depth {
 				var d Depth
 				d.Depth = rrr.Byte()
 				rrr.Skip(1)
 				count := rrr.Uint16()
 				rrr.Skip(4)
-				d.Visuals = ReadList(int(count), rrr, func(rrrr *Reader) Visual {
+				d.Visuals = rrr.ReadList(int(count), func(rrrr *Reader) Visual {
 					var v Visual
 					v.VisualID = rrrr.VisualID()
 					v.Class = rrrr.Byte()
@@ -1027,7 +1027,7 @@ func xauthAddressMatches(family uint16, addr, host string, remoteIP net.IP) bool
 	return false
 }
 
-func (c *Conn) nextXID() (uint32, error) {
+func (c *Conn) nextRawXID() (uint32, error) {
 	c.xidLock.Lock()
 	defer c.xidLock.Unlock()
 	switch {
@@ -1046,8 +1046,8 @@ func (c *Conn) nextXID() (uint32, error) {
 	return c.xidLast | c.xidBase, nil
 }
 
-func nextXID[T ~uint32](c *Conn) T {
-	id, err := c.nextXID()
+func (c *Conn) nextXID[T ~uint32]() T {
+	id, err := c.nextRawXID()
 	if err != nil {
 		errs.Log(err)
 		return 0
@@ -1580,7 +1580,7 @@ func (c *Conn) GetAtomName(atom Atom) (string, error) {
 
 // CreateWindow creates a new window with the specified parameters and attributes.
 func (c *Conn) CreateWindow(parent WindowID, x, y int16, width, height, borderWidth, windowClass uint16, depth byte, visual VisualID, mask WindowValueMask, attrs *WindowCreationAttributes) WindowID {
-	id := nextXID[WindowID](c)
+	id := c.nextXID[WindowID]()
 	if id != 0 {
 		values := attrs.values(mask)
 		size := 32 + 4*len(values)
@@ -1891,7 +1891,7 @@ func (c *Conn) MonitorWorkArea(root WindowID, area geom.Rect) geom.Rect {
 
 // OpenFont opens a font with the specified name and returns its FontID.
 func (c *Conn) OpenFont(name string) FontID {
-	id := nextXID[FontID](c)
+	id := c.nextXID[FontID]()
 	if id != 0 {
 		w := NewWriter(12 + pad4(len(name)))
 		w.Byte(opOpenFont)
@@ -1928,7 +1928,7 @@ func (c *Conn) CloseFont(fontID FontID) {
 // CreateGlyphCursor creates a new cursor with the specified source and mask fonts, character codes, and foreground and
 // background colors. It returns the ID of the newly created cursor.
 func (c *Conn) CreateGlyphCursor(srcFontID, maskFontID FontID, sourceChar, maskChar, fgRed, fgGreen, fgBlue, bgRed, bgGreen, bgBlue uint16) CursorID {
-	id := nextXID[CursorID](c)
+	id := c.nextXID[CursorID]()
 	if id != 0 {
 		w := NewWriter(32)
 		w.Byte(opCreateGlyphCursor)
@@ -1967,7 +1967,7 @@ func (c *Conn) FreeCursor(cursorID CursorID) {
 
 // CreatePixMap creates a new pixmap with the specified drawable, depth, width, and height, and returns its PixMapID.
 func (c *Conn) CreatePixMap(drawable DrawableID, depth byte, width, height uint16) PixMapID {
-	id := nextXID[PixMapID](c)
+	id := c.nextXID[PixMapID]()
 	if id != 0 {
 		w := NewWriter(16)
 		w.Byte(opCreatePixmap)
@@ -1999,7 +1999,7 @@ func (c *Conn) FreePixMap(pixmapID PixMapID) {
 
 // CreateGC creates a new graphics context with the specified drawable, value mask, and values, and returns its GCID.
 func (c *Conn) CreateGC(drawable DrawableID, mask GCValueMask, attrs *GCAttrs) GCID {
-	id := nextXID[GCID](c)
+	id := c.nextXID[GCID]()
 	if id == 0 {
 		return 0
 	}
@@ -2365,7 +2365,7 @@ func (c *Conn) QueryPointer(window WindowID) *QueryPointerResult {
 // CreateColormap creates a new colormap with the specified visual, window, and allocation policy, and returns its
 // ColorMapID.
 func (c *Conn) CreateColormap(visual VisualID, window WindowID, alloc bool) ColorMapID {
-	id := nextXID[ColorMapID](c)
+	id := c.nextXID[ColorMapID]()
 	if id == 0 {
 		return 0
 	}

@@ -113,7 +113,7 @@ func readGetMonitorsReply(r *Reader) []Monitor {
 	r.Skip(12)
 	numMonitors := int(r.Uint32())
 	r.Skip(16)
-	return ReadList(numMonitors, r, func(rr *Reader) Monitor {
+	return r.ReadList(numMonitors, func(rr *Reader) Monitor {
 		var m Monitor
 		m.Name = rr.Atom()
 		m.Primary = rr.Bool()

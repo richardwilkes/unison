@@ -56,7 +56,7 @@ func newDropTestTable(t *testing.T) (table *unison.Table[*tableTestRow], parent 
 	parent.SetOpen(true)
 	table = newTestTable(parent, newTableTestRow("s"))
 	table.SetFrameRect(geom.NewRect(0, 0, 300, 300))
-	unison.InstallDropSupport[*tableTestRow, any](table, tableDropDataType(),
+	table.InstallDropSupport[any](tableDropDataType(),
 		func(from, to *unison.Table[*tableTestRow]) bool { return from == to }, nil, nil)
 	unison.SetDragTableDataForTest(&unison.TableDragData[*tableTestRow]{
 		Table: table,
@@ -85,7 +85,7 @@ func upperHalfOf(table *unison.Table[*tableTestRow], rowIndex int) geom.Point {
 func installMoveDropSupport(t *testing.T, table, source *unison.Table[*tableTestRow], rows ...*tableTestRow) {
 	t.Helper()
 	table.SetFrameRect(geom.NewRect(0, 0, 300, 300))
-	unison.InstallDropSupport[*tableTestRow, any](table, tableDropDataType(),
+	table.InstallDropSupport[any](tableDropDataType(),
 		func(_, _ *unison.Table[*tableTestRow]) bool { return true }, nil, nil)
 	unison.SetDragTableDataForTest(&unison.TableDragData[*tableTestRow]{Table: source, Rows: rows})
 	t.Cleanup(func() { unison.SetDragTableDataForTest(nil) })

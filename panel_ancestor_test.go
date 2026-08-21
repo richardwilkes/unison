@@ -16,22 +16,24 @@ import (
 	"github.com/richardwilkes/unison"
 )
 
-// TestAncestorOrSelfNil verifies that AncestorOrSelf tolerates a nil Paneler the same way Ancestor does, returning the
-// zero value rather than panicking. UndoManagerFor forwards a possibly-nil Paneler straight into AncestorOrSelf, so
-// this must not crash.
+// TestAncestorOrSelfNil makes sure that the Ancestor and AncestorOrSelf methods accept a nil panel and return the
+// zero value instead of a panic. UndoManagerFor sends a possibly-nil Paneler into this path, so this must not crash.
+// The deprecated function forms must also accept a nil Paneler.
 func TestAncestorOrSelfNil(t *testing.T) {
 	c := check.New(t)
-	c.Nil(unison.Ancestor[*unison.Panel](nil))
-	c.Nil(unison.AncestorOrSelf[*unison.Panel](nil))
+	c.Nil((*unison.Panel)(nil).Ancestor[*unison.Panel]())
+	c.Nil((*unison.Panel)(nil).AncestorOrSelf[*unison.Panel]())
+	c.Nil(unison.Ancestor[*unison.Panel](nil))       //nolint:staticcheck // checks the deprecated form
+	c.Nil(unison.AncestorOrSelf[*unison.Panel](nil)) //nolint:staticcheck // checks the deprecated form
 	c.Nil(unison.UndoManagerFor(nil))
 }
 
-// TestAncestorOrSelfResolution verifies that AncestorOrSelf still finds both the panel itself and its ancestors.
+// TestAncestorOrSelfResolution makes sure that AncestorOrSelf finds both the panel itself and its ancestors.
 func TestAncestorOrSelfResolution(t *testing.T) {
 	c := check.New(t)
 	parent := unison.NewPanel()
 	child := unison.NewPanel()
 	parent.AddChild(child)
-	c.True(unison.AncestorOrSelf[*unison.Panel](child) == child)
-	c.True(unison.Ancestor[*unison.Panel](child) == parent)
+	c.True(child.AncestorOrSelf[*unison.Panel]() == child)
+	c.True(child.Ancestor[*unison.Panel]() == parent)
 }

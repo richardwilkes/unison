@@ -259,7 +259,7 @@ func (e *ExtRender) QueryPictFormats() PictureFormats {
 		r.Skip(8)
 		numSubPixel := r.Uint32()
 		r.Skip(4)
-		reply.Formats = ReadList(int(numFormats), r, func(rr *Reader) PictFormatInfo {
+		reply.Formats = r.ReadList(int(numFormats), func(rr *Reader) PictFormatInfo {
 			var info PictFormatInfo
 			info.ID = PictFormat(rr.Uint32())
 			info.Type = PictType(rr.Byte())
@@ -276,17 +276,17 @@ func (e *ExtRender) QueryPictFormats() PictureFormats {
 			info.ColorMap = rr.ColorMapID()
 			return info
 		})
-		reply.Screens = ReadList(int(numScreens), r, func(rr *Reader) PictScreen {
+		reply.Screens = r.ReadList(int(numScreens), func(rr *Reader) PictScreen {
 			var screen PictScreen
 			screenNumDepths := rr.Uint32()
 			screen.Fallback = PictFormat(rr.Uint32())
-			screen.Depths = ReadList(int(screenNumDepths), rr, func(rrr *Reader) PictDepth {
+			screen.Depths = rr.ReadList(int(screenNumDepths), func(rrr *Reader) PictDepth {
 				var depth PictDepth
 				depth.Depth = rrr.Byte()
 				rrr.Skip(1)
 				depthNumVisuals := rrr.Uint16()
 				rrr.Skip(4)
-				depth.Visuals = ReadList(int(depthNumVisuals), rrr, func(rrrr *Reader) PictVisual {
+				depth.Visuals = rrr.ReadList(int(depthNumVisuals), func(rrrr *Reader) PictVisual {
 					var visual PictVisual
 					visual.Visual = rrrr.VisualID()
 					visual.Format = PictFormat(rrrr.Uint32())
@@ -306,7 +306,7 @@ func (e *ExtRender) QueryPictFormats() PictureFormats {
 // CreatePicture creates a new Picture resource with the specified drawable, format, and attributes, returning the new
 // PictureID.
 func (e *ExtRender) CreatePicture(drawable DrawableID, format PictFormat, valueMask PictValueMask, attrs *PictAttributes) PictureID {
-	id := nextXID[PictureID](e.conn)
+	id := e.conn.nextXID[PictureID]()
 	if id == 0 {
 		return 0
 	}
@@ -342,7 +342,7 @@ func (e *ExtRender) FreePicture(picture PictureID) {
 // CreateCursor creates a new cursor using the specified source PictureID and hot spot coordinates, returning the new
 // CursorID.
 func (e *ExtRender) CreateCursor(src PictureID, hotX, hotY uint16) CursorID {
-	id := nextXID[CursorID](e.conn)
+	id := e.conn.nextXID[CursorID]()
 	if id != 0 {
 		w := NewWriter(16)
 		w.Byte(e.majorOpcode)

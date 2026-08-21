@@ -744,28 +744,44 @@ func AlwaysEnabled(_ any) bool {
 }
 
 // Ancestor returns the first ancestor of the given type. May return nil if no parent matches.
-func Ancestor[T any](paneler Paneler) T {
-	if paneler != nil {
-		p := paneler.AsPanel().Parent()
-		for p != nil {
-			if one, ok := p.Self.(T); ok {
-				return one
-			}
-			p = p.Parent()
+func (p *Panel) Ancestor[T any]() T {
+	ancestor := p.Parent()
+	for ancestor != nil {
+		if one, ok := ancestor.Self.(T); ok {
+			return one
 		}
+		ancestor = ancestor.Parent()
 	}
 	var zero T
 	return zero
 }
 
-// AncestorOrSelf returns the provided panel or the first ancestor of the given type. May return nil if nothing matches.
-func AncestorOrSelf[T any](paneler Paneler) T {
+// Ancestor returns the first ancestor of the given type. May return nil if no parent matches.
+func Ancestor[T any](paneler Paneler) T {
 	if paneler != nil {
-		if one, ok := paneler.AsPanel().Self.(T); ok {
+		return paneler.AsPanel().Ancestor[T]()
+	}
+	var zero T
+	return zero
+}
+
+// AncestorOrSelf returns this panel or the first ancestor of the given type. May return nil if nothing matches.
+func (p *Panel) AncestorOrSelf[T any]() T {
+	if p != nil {
+		if one, ok := p.Self.(T); ok {
 			return one
 		}
 	}
-	return Ancestor[T](paneler)
+	return p.Ancestor[T]()
+}
+
+// AncestorOrSelf returns the provided panel or the first ancestor of the given type. May return nil if nothing matches.
+func AncestorOrSelf[T any](paneler Paneler) T {
+	if paneler != nil {
+		return paneler.AsPanel().AncestorOrSelf[T]()
+	}
+	var zero T
+	return zero
 }
 
 // AncestorIs returns true if the paneler has the given ancestor.
