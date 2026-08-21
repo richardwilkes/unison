@@ -22,12 +22,10 @@ import "simd/archsimd"
 func simdPixconvSupported() bool { return archsimd.X86.AVX2() }
 
 // Per-kernel dispatch preference: whether the simd converter is at least as fast as this build's default lane. On
-// amd64 the only alternative is the portable per-byte code, and there is no reason to expect any of these to lose to
-// it — but nothing here has been measured on real amd64 hardware yet, so a benchstat run should confirm each constant
-// and this list should be revisited when it lands. Until then the justification is two indirect measurements: the
-// canvas raster kernels, which are near-identical in shape, ran -21% to -78% against their portable twins on a Xeon
-// W-2191B (darwin/amd64, benchstat n=10, 2026-08-20), and these kernels themselves ran -50% to -70% on arm64 (see
-// pixconv_simd_arm64.go).
+// amd64 every one of them is, by a wide margin: against the portable per-byte code on a Xeon W-2191B (darwin/amd64,
+// go1.27.0, benchstat n=10, 2026-08-21, via simd-bench.sh) the vector forms ran -33% (SwizzleRB) to -64%
+// (SwizzleRBBytes), geomean -55% — in line with these kernels' own arm64 numbers (-50% to -70%, see
+// pixconv_simd_arm64.go) and with the near-identical canvas raster kernels (-21% to -78% on the same Xeon).
 const (
 	preferSIMDSwizzleRB       = true
 	preferSIMDSwizzleRBBytes  = true

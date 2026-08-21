@@ -22,11 +22,11 @@ import "simd/archsimd"
 func simdSumSupported() bool { return archsimd.X86.AVX2() }
 
 // Per-kernel dispatch preference: whether the simd kernel is at least as fast as this build's default lane. On amd64
-// the only alternative is the portable form in sum.go, and the two run the identical dependency chain — four float32
-// accumulators over the same elements — with the vector lane spending one VADDPS and one load per quad where the scalar
-// lane spends four of each, so it should win outright on issue count alone.
-//
-// That is an argument, not a measurement. This landed with benchstat numbers from arm64 hardware only (see
-// sum_simd_arm64.go); a real amd64 benchstat run — BenchmarkSum with and without GOEXPERIMENT=simd, n>=10 — should
-// confirm the constant before it is treated as settled, the way the canvas kernels' preference tables were.
-const preferSIMDSum = true
+// it is not: on a Xeon W-2191B (darwin/amd64, go1.27.0, benchstat n=10, 2026-08-21, via simd-bench.sh) the vector form
+// ran +2% at n=8, +6% at n=64, and level within noise (p=0.09) at n=1024. The issue-count argument this constant first
+// landed on — one VADDPS and one load per quad against the scalar lane's four of each — did not survive measurement:
+// the portable form's four independent accumulators already keep this silicon's ALUs saturated, and the out-of-line
+// kernel call costs more than the arithmetic it saves. Both forms return identical bits, so preferring the portable
+// one changes nothing but speed. Dispatch stays on sumGeneric here; TestSumSIMDWiring skips (it gates on this
+// constant) while TestSumSIMDMatchesScalar keeps verifying the kernel itself.
+const preferSIMDSum = false
