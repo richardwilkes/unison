@@ -628,6 +628,168 @@ func TestImagePreloadOnNilImage(t *testing.T) {
 	c.NotPanics(func() { c.False(img.Preload(), "Preload on a nil image should report failure") })
 }
 
+// allocatedBytes reports how many bytes fn allocated on the heap. TotalAlloc is cumulative and unaffected by
+// collection, so the difference across the call is exactly what fn asked the allocator for. The collections beforehand
+// settle any pending cleanup work (the weak-cache and texture cleanups this package registers) so it is not charged to
+// fn.
+func allocatedBytes(fn func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	fn()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+// TestNewImageFromOwnedPixelsSkipsDefensiveCopy locks the removal of the double copy. NewImageFromPixels is exported,
+// so it must neither trust nor retain the caller's slice and therefore copies it; imagecore.NewRasterData then copies
+// again into the raster image's own storage. A caller that already owns a private buffer paid for both, so
+// newImageFromOwnedPixels exists to pay for only the second one. The two are measured here against each other: the
+// owned variant must allocate exactly one full-image buffer less, and must stay under two buffers in total.
+func TestNewImageFromOwnedPixelsSkipsDefensiveCopy(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 256, 256
+	const bufSize = w * h * 4
+	scale := geom.NewPoint(1, 1)
+
+	// Distinct pixel data on each side, so neither call is short-circuited by the image cache's deduplication.
+	copied := distinctPixels(w, h, 1201)
+	owned := distinctPixels(w, h, 1203)
+	var fromCopy, fromOwned *Image
+	var copyErr, ownedErr error
+	copyBytes := allocatedBytes(func() { fromCopy, copyErr = NewImageFromPixels(w, h, copied, scale) })
+	ownedBytes := allocatedBytes(func() { fromOwned, ownedErr = newImageFromOwnedPixels(w, h, owned, scale) })
+	c.NoError(copyErr)
+	c.NoError(ownedErr)
+	c.NotNil(fromCopy)
+	c.NotNil(fromOwned)
+
+	c.True(ownedBytes < 2*bufSize,
+		"the owned variant should allocate only imagecore's copy, well under two full buffers; got %d bytes for a %d byte image",
+		ownedBytes, bufSize)
+	saved := int64(copyBytes) - int64(ownedBytes)
+	c.True(saved >= bufSize, "the owned variant should save a full-image copy (%d bytes); saved %d", bufSize, saved)
+	c.True(saved < bufSize+bufSize/16,
+		"only the full-image copy should differ between the two; saved %d for a %d byte image", saved, bufSize)
+
+	// Nothing else may be collected mid-measurement, or the cleanups would charge their work to the wrong call.
+	runtime.KeepAlive(fromCopy)
+	runtime.KeepAlive(fromOwned)
+	fromCopy.Dispose()
+	fromOwned.Dispose()
+	drainTasks()
+}
+
+// TestNewImageFromOwnedPixelsAllocationCount is the count-based half of the lock above: the defensive copy is one
+// allocation, and removing it must remove exactly one, with everything else about the two paths identical. The images
+// are retained for the duration so no cleanup fires mid-measurement, and each run gets its own pixel data so every run
+// takes the same cache-miss path.
+func TestNewImageFromOwnedPixelsAllocationCount(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 64, 64
+	const runs = 5
+	scale := geom.NewPoint(1, 1)
+
+	// AllocsPerRun calls its function once to warm up and then runs times, so runs+1 buffers are needed per variant.
+	copyPixels := make([][]byte, runs+1)
+	ownedPixels := make([][]byte, runs+1)
+	for i := range copyPixels {
+		copyPixels[i] = distinctPixels(w, h, 1301+i)
+		ownedPixels[i] = distinctPixels(w, h, 1401+i)
+	}
+	keep := make([]*Image, 0, 2*(runs+1))
+
+	// Errors are recorded rather than checked inside the measured functions, since the check itself would be charged
+	// to the measurement.
+	var sawErr error
+	record := func(err error) {
+		if err != nil && sawErr == nil {
+			sawErr = err
+		}
+	}
+	next := 0
+	copyAllocs := testing.AllocsPerRun(runs, func() {
+		img, err := NewImageFromPixels(w, h, copyPixels[next], scale)
+		record(err)
+		keep = append(keep, img)
+		next++
+	})
+	next = 0
+	ownedAllocs := testing.AllocsPerRun(runs, func() {
+		img, err := newImageFromOwnedPixels(w, h, ownedPixels[next], scale)
+		record(err)
+		keep = append(keep, img)
+		next++
+	})
+
+	c.NoError(sawErr)
+	c.Equal(ownedAllocs+1, copyAllocs,
+		"the defensive copy should be the only allocation separating the two constructors")
+
+	for _, img := range keep {
+		c.NotNil(img)
+		img.Dispose()
+	}
+	drainTasks()
+}
+
+// TestNewImageFromDrawingSkipsDefensiveCopy locks the drawing path itself. Rasterizing at scale 1 allocates three
+// full-image buffers: the surface's pixmap, the buffer ReadPixels fills, and imagecore's copy of that buffer. Routing
+// the freshly allocated buffer through the exported NewImageFromPixels, as this used to, made it a fourth. The budget
+// below sits between the two, so a reintroduced copy fails here.
+func TestNewImageFromDrawingSkipsDefensiveCopy(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 256, 256
+	const bufSize = w * h * 4
+
+	var img *Image
+	var err error
+	used := allocatedBytes(func() {
+		img, err = newImageFromDrawingAtScale(w, h, 1, func(cv *Canvas) { cv.Clear(RGB(1, 2, 3)) })
+	})
+	c.NoError(err)
+	c.NotNil(img)
+	c.True(used < bufSize*7/2,
+		"the drawing path should allocate about three full-image buffers, not four; used %d bytes for a %d byte image",
+		used, bufSize)
+
+	runtime.KeepAlive(img)
+	img.Dispose()
+	drainTasks()
+}
+
+// TestNewImageFromPixelsDoesNotAliasCaller verifies the contract that justifies the defensive copy the exported
+// constructor keeps: the caller's slice is neither retained nor read again, so mutating it afterward must not change
+// the image. The internal newImageFromOwnedPixels deliberately makes the opposite promise (the caller hands over
+// ownership), which is why the copy could only be dropped for callers that own their buffer.
+func TestNewImageFromPixelsDoesNotAliasCaller(t *testing.T) {
+	c := check.New(t)
+
+	const w, h = 4, 3
+	pixels := distinctPixels(w, h, 1501)
+	for i := 3; i < len(pixels); i += 4 {
+		pixels[i] = 255 // opaque, so the pixel values survive the readback exactly
+	}
+	original := append([]byte(nil), pixels...)
+
+	img, err := NewImageFromPixels(w, h, pixels, geom.NewPoint(1, 1))
+	c.NoError(err)
+	c.NotNil(img)
+	defer img.Dispose()
+
+	for i := range pixels {
+		pixels[i] = 0
+	}
+
+	nrgba, err := img.ToNRGBA()
+	c.NoError(err)
+	c.Equal(original, nrgba.Pix, "mutating the caller's slice must not change the image's pixels")
+}
+
 // TestImagePreloadConcurrent verifies the documented promise that Preload may be called from any goroutine, even
 // concurrently, which is what lets a loader decode many images in parallel on background goroutines. Under -race this
 // also proves the decode itself is properly synchronized.
