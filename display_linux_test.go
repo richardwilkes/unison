@@ -84,3 +84,16 @@ func TestUsableInWindowUnits(t *testing.T) {
 	d := x11NewDisplay(geom.NewRect(0, 0, 3840, 2160), geom.NewRect(0, 32, 3840, 2128), 2, 163, true)
 	c.Equal(d.Usable, d.usableInWindowUnits())
 }
+
+// TestX11DisplaysWithoutConnection verifies that asking about displays before Start has connected to an X server --
+// the permanent state of a headless process such as a test run on a machine without a display -- reports that there
+// are none rather than dereferencing the missing connection and crashing the process.
+func TestX11DisplaysWithoutConnection(t *testing.T) {
+	c := check.New(t)
+	savedConn := x11Conn
+	t.Cleanup(func() { x11Conn = savedConn })
+	x11Conn = nil
+
+	c.Nil(AllDisplays(), "there are no displays to enumerate without a connection")
+	c.Nil(PrimaryDisplay(), "and therefore no primary display")
+}

@@ -29,6 +29,12 @@ func apiPrimaryDisplay() *Display {
 }
 
 func apiAllDisplays() []*Display {
+	if x11Conn == nil {
+		// There is no connection to an X server until Start has run (or once Terminate has finished), which is the
+		// permanent state of a headless process such as a test run on a machine without a display. Nothing can be
+		// enumerated, so there are no displays, and PrimaryDisplay() reports that as nil.
+		return nil
+	}
 	scale, err := x11Conn.ContentScale()
 	if err != nil {
 		// scale will be 1 if an error occurred

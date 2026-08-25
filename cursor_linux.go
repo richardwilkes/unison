@@ -22,6 +22,15 @@ type apiNativeCursor = x11.CursorID
 // cached, global content scale rather than a per-monitor one, so one render at creation time is all X11 can consume.
 // Mixed-DPI setups therefore get a single, uniform cursor scale, a pre-existing limitation of this backend.
 func apiNewCursor(src *cursorSource) *Cursor {
+	if x11Conn == nil {
+		// There is no connection to an X server until Start has run (or once Terminate has finished), which is the
+		// permanent state of a headless process such as a test run on a machine without a display, so there is
+		// nothing to create a native cursor with. Callers can still reasonably expect the built-in cursors to exist
+		// and to be distinct from one another, so hand back an inert cursor: a non-nil Cursor with no native cursor
+		// behind it, which apiDestroy already knows there is nothing to free for. It is not recorded in cursorList,
+		// since there is nothing for the teardown to release either.
+		return &Cursor{}
+	}
 	scale := float32(1)
 	if s, err := x11Conn.ContentScale(); err == nil {
 		scale = s
