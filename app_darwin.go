@@ -22,7 +22,7 @@ var (
 	macMayIssueFileOpens  bool
 )
 
-func apiBeginStartup() error {
+func nativeBeginStartup() error {
 	// System-initiated termination (e.g. Dock -> Quit, logout) takes the same path as the in-app Quit menu item, so
 	// the AllowQuitCallback and per-window AllowCloseCallback vetoes are honored for both. The delegate always reports
 	// NSTerminateCancel to AppKit, so when the request is permitted, AttemptQuit is responsible for actually exiting.
@@ -41,17 +41,17 @@ func apiBeginStartup() error {
 	if err := cocoa.InstallMacAppDelegate(); err != nil {
 		return err
 	}
-	apiFillKeyCodes()
+	nativeFillKeyCodes()
 	macInitWindowCallbacks()
 	cocoa.FinishLaunching()
 	return nil
 }
 
-func apiLateInit() {
+func nativeLateInit() {
 	cocoa.InstallSystemThemeChangedCallback(ThemeChanged)
 }
 
-// macOpenFilesRequested is installed as cocoa.OpenFilesCallback. Until apiFinalFinishStartup marks startup as
+// macOpenFilesRequested is installed as cocoa.OpenFilesCallback. Until nativeFinalFinishStartup marks startup as
 // complete, requests are buffered; afterward they are routed to the user's callback via the task queue. The decision
 // is made under macPendingFilesLock, but InvokeTask is called outside it so the lock is never held while other
 // package machinery runs.
@@ -71,7 +71,7 @@ func macOpenFilesRequested(paths []string) {
 	}
 }
 
-func apiFinalFinishStartup() {
+func nativeFinalFinishStartup() {
 	macPendingFilesLock.Lock()
 	macMayIssueFileOpens = true
 	paths := macPendingFilesToOpen
@@ -85,44 +85,44 @@ func apiFinalFinishStartup() {
 	}
 }
 
-func apiTerminate() error {
+func nativeTerminate() error {
 	cocoa.UninstallMacAppDelegate()
 	return nil
 }
 
-func apiBeep() {
+func nativeBeep() {
 	cocoa.Beep()
 }
 
-func apiIsColorModeTrackingPossible() bool {
+func nativeIsColorModeTrackingPossible() bool {
 	return true
 }
 
-func apiIsDarkModeEnabled() bool {
+func nativeIsDarkModeEnabled() bool {
 	return cocoa.IsDarkModeEnabled()
 }
 
-func apiDoubleClickInterval() time.Duration {
+func nativeDoubleClickInterval() time.Duration {
 	return cocoa.DoubleClickInterval()
 }
 
-func apiPollEvents() {
+func nativePollEvents() {
 	cocoa.PollEvents()
 }
 
-func apiWaitEvents() {
+func nativeWaitEvents() {
 	cocoa.WaitEvents()
 }
 
-func apiPostEmptyEvent() {
+func nativePostEmptyEvent() {
 	if platformInited.Load() {
 		cocoa.PostEmptyEvent()
 	}
 }
 
-// apiWithAutoreleasePool runs f inside its own autorelease pool, so AppKit-internal objects autoreleased by the
+// nativeWithAutoreleasePool runs f inside its own autorelease pool, so AppKit-internal objects autoreleased by the
 // msgSends f performs (InvokeTask callbacks, window draws) are reclaimed when f returns instead of accumulating on
 // the thread until process exit.
-func apiWithAutoreleasePool(f func()) {
+func nativeWithAutoreleasePool(f func()) {
 	cocoa.WithPool(f)
 }

@@ -47,8 +47,8 @@ func (f *fakeGLX) Close() {
 	f.closed++
 }
 
-// TestAPICreateWindowFailureDestroysContextOnce is the regression test for apiCreate's create-window failure path
-// having destroyed the GLX context but left c.context set, so that apiDestroy — which NewWindow's error path always
+// TestAPICreateWindowFailureDestroysContextOnce is the regression test for nativeCreate's create-window failure path
+// having destroyed the GLX context but left c.context set, so that nativeDestroy — which NewWindow's error path always
 // invokes — destroyed the same context a second time and raised GLXBadContext.
 func TestAPICreateWindowFailureDestroysContextOnce(t *testing.T) {
 	c := check.New(t)
@@ -56,15 +56,15 @@ func TestAPICreateWindowFailureDestroysContextOnce(t *testing.T) {
 	var backing int
 	ctx := x11.GLXContext(unsafe.Pointer(&backing))
 	fake := &fakeGLX{context: ctx} // window is left 0 so CreateWindow reports failure
-	glc := &apiGLContext{glx: fake}
-	c.HasError(glc.apiCreate(&Window{wnd: &apiWindow{}}))
+	glc := &nativeGLContext{glx: fake}
+	c.HasError(glc.nativeCreate(&Window{wnd: &apiWindow{}}))
 
 	// The failure path must destroy the context it created, exactly once, and drop the reference to it.
 	c.Equal([]x11.GLXContext{ctx}, fake.destroyedContexts)
 	c.Nil(glc.context)
 
-	// NewWindow's error path then calls apiDestroy, which must not hand the already-destroyed context back to GLX.
-	glc.apiDestroy()
+	// NewWindow's error path then calls nativeDestroy, which must not hand the already-destroyed context back to GLX.
+	glc.nativeDestroy()
 	c.Equal([]x11.GLXContext{ctx}, fake.destroyedContexts)
 	c.Equal(1, fake.closed)
 }
@@ -76,12 +76,12 @@ func TestAPIDestroyAfterSuccessfulCreate(t *testing.T) {
 	var backing int
 	ctx := x11.GLXContext(unsafe.Pointer(&backing))
 	fake := &fakeGLX{context: ctx, window: 42}
-	glc := &apiGLContext{glx: fake}
-	c.NoError(glc.apiCreate(&Window{wnd: &apiWindow{}}))
+	glc := &nativeGLContext{glx: fake}
+	c.NoError(glc.nativeCreate(&Window{wnd: &apiWindow{}}))
 	c.Equal(ctx, glc.context)
 	c.Equal(x11.GLXWindow(42), glc.window)
 
-	glc.apiDestroy()
+	glc.nativeDestroy()
 	c.Equal([]x11.GLXWindow{42}, fake.destroyedWindows)
 	c.Equal([]x11.GLXContext{ctx}, fake.destroyedContexts)
 	c.Equal(1, fake.closed)
@@ -89,8 +89,8 @@ func TestAPIDestroyAfterSuccessfulCreate(t *testing.T) {
 	c.Equal(x11.GLXWindow(0), glc.window)
 	c.Nil(glc.glx)
 
-	// A second apiDestroy (e.g. Dispose after a failed NewWindow already cleaned up) must be a no-op.
-	glc.apiDestroy()
+	// A second nativeDestroy (e.g. Dispose after a failed NewWindow already cleaned up) must be a no-op.
+	glc.nativeDestroy()
 	c.Equal(1, len(fake.destroyedWindows))
 	c.Equal(1, len(fake.destroyedContexts))
 	c.Equal(1, fake.closed)

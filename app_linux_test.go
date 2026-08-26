@@ -16,13 +16,13 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-// TestPostEmptyEventRacesTerminate is the regression test for the shutdown race between apiTerminate and
-// apiPostEmptyEvent. Before the fix, apiPostEmptyEvent nil-checked and dereferenced x11Conn — UI-thread-only state
-// that apiTerminate tears down — from arbitrary goroutines with no synchronization, a data race flagged by -race
-// during quit. The wake path now goes through the atomic x11PostConn handle, which apiTerminate withdraws before
-// closing the connection. This test hammers apiPostEmptyEvent from several goroutines while the main goroutine
-// repeatedly publishes and withdraws a connection the way startup and terminate do; under -race it fails if any
-// access is unsynchronized. A zero-value x11.Conn works here because PostEmptyEvent on an unconnected Conn is a
+// TestPostEmptyEventRacesTerminate is the regression test for the shutdown race between nativeTerminate and
+// nativePostEmptyEvent. Before the fix, nativePostEmptyEvent nil-checked and dereferenced x11Conn — UI-thread-only
+// state that nativeTerminate tears down — from arbitrary goroutines with no synchronization, a data race flagged
+// by -race during quit. The wake path now goes through the atomic x11PostConn handle, which nativeTerminate withdraws
+// before closing the connection. This test hammers nativePostEmptyEvent from several goroutines while the main
+// goroutine repeatedly publishes and withdraws a connection the way startup and terminate do; under -race it fails if
+// any access is unsynchronized. A zero-value x11.Conn works here because PostEmptyEvent on an unconnected Conn is a
 // documented no-op (see x11's TestPostEmptyEventSafeOnUnconnectedConn). This test mutates global state and therefore
 // must not call t.Parallel.
 func TestPostEmptyEventRacesTerminate(_ *testing.T) {
@@ -40,14 +40,14 @@ func TestPostEmptyEventRacesTerminate(_ *testing.T) {
 				case <-stop:
 					return
 				default:
-					apiPostEmptyEvent()
+					nativePostEmptyEvent()
 				}
 			}
 		}()
 	}
 	for range 1000 {
-		x11PostConn.Store(conn) // What apiBeginStartup does after connecting.
-		x11PostConn.Store(nil)  // What apiTerminate does before closing the connection.
+		x11PostConn.Store(conn) // What nativeBeginStartup does after connecting.
+		x11PostConn.Store(nil)  // What nativeTerminate does before closing the connection.
 	}
 	close(stop)
 	wg.Wait()

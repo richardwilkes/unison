@@ -15,7 +15,7 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-func apiPrimaryDisplay() *Display {
+func nativePrimaryDisplay() *Display {
 	displays := AllDisplays()
 	for _, d := range displays {
 		if d.Primary {
@@ -28,7 +28,7 @@ func apiPrimaryDisplay() *Display {
 	return nil
 }
 
-func apiAllDisplays() []*Display {
+func nativeAllDisplays() []*Display {
 	if x11Conn == nil {
 		// There is no connection to an X server until Start has run (or once Terminate has finished), which is the
 		// permanent state of a headless process such as a test run on a machine without a display. Nothing can be
@@ -76,9 +76,9 @@ func x11NewDisplay(rawFrame, rawUsable geom.Rect, scale float32, ppi int, primar
 	}
 }
 
-// usableInWindowUnits returns the usable area of the display in the coordinate space used by window rects. The rects
-// built by x11NewDisplay are already converted into that logical, 1x-scale space.
-func (d *Display) usableInWindowUnits() geom.Rect {
+// nativeUsableInWindowUnits returns the usable area of the display in the coordinate space used by window rects. The
+// rects built by x11NewDisplay are already converted into that logical, 1x-scale space.
+func (d *Display) nativeUsableInWindowUnits() geom.Rect {
 	return d.Usable
 }
 

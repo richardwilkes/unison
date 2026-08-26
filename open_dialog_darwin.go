@@ -22,7 +22,7 @@ type macOpenDialog struct {
 	dialog cocoa.OpenPanel
 }
 
-func apiNewOpenDialog() OpenDialog {
+func nativeNewOpenDialog() OpenDialog {
 	d := &macOpenDialog{dialog: cocoa.NewOpenPanel()}
 	releasePanelOnCleanup(d, d.dialog)
 	return d

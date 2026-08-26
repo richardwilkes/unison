@@ -15,7 +15,7 @@ type macMenuFactory struct {
 	bar *macMenu
 }
 
-func apiNewDefaultMenuFactory() MenuFactory {
+func nativeNewDefaultMenuFactory() MenuFactory {
 	return &macMenuFactory{}
 }
 

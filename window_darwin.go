@@ -21,7 +21,7 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-type apiWindow struct {
+type nativeWindow struct {
 	wnd            cocoa.Window
 	view           cocoa.View
 	nsCursorHidden bool
@@ -126,14 +126,14 @@ func macInitWindowCallbacks() {
 	}
 	cocoa.WindowCursorUpdateCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.apiUpdateCursorImage()
+			w.nativeUpdateCursorImage()
 		} else {
 			slog.Warn("received window cursor update callback for unknown window", "window", macWnd)
 		}
 	}
 	cocoa.WindowMouseEnterCallback = func(macWnd cocoa.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.apiUpdateCursorImage()
+			w.nativeUpdateCursorImage()
 			w.mouseEnter(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
@@ -141,7 +141,7 @@ func macInitWindowCallbacks() {
 	}
 	cocoa.WindowMouseExitCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.apiUpdateCursorImage()
+			w.nativeUpdateCursorImage()
 			w.mouseExit()
 		} else {
 			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
@@ -233,7 +233,7 @@ func macInitWindowCallbacks() {
 	}
 }
 
-func (w *Window) apiInit() error {
+func (w *Window) nativeInit() error {
 	styleMask := cocoa.WindowStyleMaskMiniaturizable
 	if w.undecorated {
 		styleMask |= cocoa.WindowStyleMaskBorderless
@@ -273,62 +273,62 @@ func (w *Window) apiInit() error {
 	return nil
 }
 
-func (w *Window) apiSetTitle(title string) {
+func (w *Window) nativeSetTitle(title string) {
 	w.wnd.wnd.SetTitle(title)
 }
 
-func (w *Window) apiSetTitleIcons(_images []*image.NRGBA) {
+func (w *Window) nativeSetTitleIcons(_images []*image.NRGBA) {
 	// macOS doesn't have window icons, so just ignore this.
 }
 
-func (w *Window) apiDisplay() *Display {
-	return BestDisplayForRect(w.apiFrameRect())
+func (w *Window) nativeDisplay() *Display {
+	return BestDisplayForRect(w.nativeFrameRect())
 }
 
-func (w *Window) apiFrameRect() geom.Rect {
+func (w *Window) nativeFrameRect() geom.Rect {
 	r := w.wnd.wnd.Frame()
 	r.Y = macTransformY(r.Bottom())
 	return r
 }
 
-func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
+func (w *Window) nativeFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	contentRect.Y = macTransformY(contentRect.Bottom())
 	frameRect := w.wnd.wnd.FrameRectForContentRect(contentRect)
 	frameRect.Y = macTransformY(frameRect.Bottom())
 	return frameRect
 }
 
-func (w *Window) apiEnsureOnDisplay() {
-	frameRect := w.apiFrameRect()
-	revisedRect := w.apiDisplay().FitRectOnto(frameRect)
+func (w *Window) nativeEnsureOnDisplay() {
+	frameRect := w.nativeFrameRect()
+	revisedRect := w.nativeDisplay().FitRectOnto(frameRect)
 	if frameRect != revisedRect {
 		w.SetFrameRect(revisedRect)
 	}
 }
 
-func (w *Window) apiContentRect() geom.Rect {
+func (w *Window) nativeContentRect() geom.Rect {
 	r := w.wnd.wnd.ContentRectForFrameRect(w.wnd.wnd.Frame())
 	r.Y = macTransformY(r.Bottom())
 	return r
 }
 
-func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+func (w *Window) nativeContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	frameRect.Y = macTransformY(frameRect.Bottom())
 	contentRect := w.wnd.wnd.ContentRectForFrameRect(frameRect)
 	contentRect.Y = macTransformY(contentRect.Bottom())
 	return contentRect
 }
 
-func (w *Window) apiSetContentRect(rect geom.Rect) {
+func (w *Window) nativeSetContentRect(rect geom.Rect) {
 	rect.Y = macTransformY(rect.Bottom())
 	w.wnd.wnd.SetFrame(w.wnd.wnd.FrameRectForContentRect(rect))
 }
 
-func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
+func (w *Window) nativeCurrentKeyModifiers() mod.Modifiers {
 	return macModifiersFromEventModifierFlags(cocoa.CurrentModifierFlags())
 }
 
-func (w *Window) apiUpdateCursorImage() {
+func (w *Window) nativeUpdateCursorImage() {
 	if w.cursorHidden {
 		if !w.wnd.nsCursorHidden {
 			cocoa.HideCursor()
@@ -347,49 +347,49 @@ func (w *Window) apiUpdateCursorImage() {
 	}
 }
 
-func (w *Window) apiCursorInContentArea() bool {
+func (w *Window) nativeCursorInContentArea() bool {
 	return w.wnd.view.MouseInRect(w.wnd.wnd.MouseLocationOutsideOfEventStream(), w.wnd.view.Frame())
 }
 
-func (w *Window) apiCursorPosition() geom.Point {
+func (w *Window) nativeCursorPosition() geom.Point {
 	loc := w.wnd.wnd.MouseLocationOutsideOfEventStream()
 	frame := w.wnd.view.Frame()
 	return geom.NewPoint(loc.X, frame.Height-loc.Y)
 }
 
-func (w *Window) apiBackingScale() geom.Point {
+func (w *Window) nativeBackingScale() geom.Point {
 	return w.wnd.view.BackingScale()
 }
 
-func (w *Window) apiMinimize() {
+func (w *Window) nativeMinimize() {
 	w.wnd.wnd.Miniaturize()
 }
 
-func (w *Window) apiMaximize() {
+func (w *Window) nativeMaximize() {
 	w.wnd.wnd.Zoom()
 }
 
-func (w *Window) apiAcquireFocusAndBringToFront() {
+func (w *Window) nativeAcquireFocusAndBringToFront() {
 	cocoa.ActivateIgnoringOtherApps()
 	w.wnd.wnd.MakeKeyAndOrderFront()
 }
 
-func (w *Window) apiVisible() bool {
+func (w *Window) nativeVisible() bool {
 	return w.wnd.wnd.Visible()
 }
 
-func (w *Window) apiShow() {
+func (w *Window) nativeShow() {
 	// Order the window front without making it key, matching the other platforms, where Show() makes the window
-	// visible without giving it the focus. ToFront() layers apiAcquireFocusAndBringToFront on top of this for the
+	// visible without giving it the focus. ToFront() layers nativeAcquireFocusAndBringToFront on top of this for the
 	// show-and-focus behavior.
 	w.wnd.wnd.OrderFront()
 }
 
-func (w *Window) apiHide() {
+func (w *Window) nativeHide() {
 	w.wnd.wnd.OrderOut()
 }
 
-func (w *Window) apiStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
+func (w *Window) nativeStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
 	nrgba, r := macDragImageAndFrame(img, origin)
 	r.Y = w.wnd.view.Frame().Height - r.Height - r.Y
 	w.wnd.view.BeginDraggingSession(nrgba, r, opMask, data...)
@@ -414,15 +414,15 @@ func macDragImageAndFrame(img *Image, origin geom.Point) (*image.NRGBA, geom.Rec
 	return nil, geom.Rect{Point: origin, Size: geom.NewSize(1, 1)}
 }
 
-func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
+func (w *Window) nativeUpdateRegisteredDragTypes(types []*uti.DataType) {
 	w.wnd.view.UnregisterDraggedTypes()
 	if len(types) != 0 {
 		w.wnd.view.RegisterDraggedTypes(types)
 	}
 }
 
-func (w *Window) apiDestroy() {
-	w.glCtx.apiDestroy()
+func (w *Window) nativeDestroy() {
+	w.glCtx.nativeDestroy()
 	if w.wnd.wnd != 0 {
 		w.wnd.wnd.OrderOut()
 		if delegate := w.wnd.wnd.Delegate(); delegate != 0 {
@@ -433,7 +433,7 @@ func (w *Window) apiDestroy() {
 		w.wnd.wnd.Close()
 		w.wnd.wnd = 0
 	}
-	apiPollEvents()
+	nativePollEvents()
 }
 
 func macModifiersFromEventModifierFlags(flags cocoa.EventModifierFlags) mod.Modifiers {

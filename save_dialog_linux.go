@@ -28,7 +28,7 @@ type x11SaveDialog struct {
 	fallback SaveDialog
 }
 
-func apiNewSaveDialog() SaveDialog {
+func nativeNewSaveDialog() SaveDialog {
 	return &x11SaveDialog{fallback: NewCommonSaveDialog()}
 }
 

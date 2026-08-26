@@ -138,7 +138,9 @@ func NoPlatformFileDialogs() StartupOption {
 	}
 }
 
-// Start the application. This function does NOT return. While some calls may be safe to make, it should be assumed no
+// Start the application. This function does NOT return, with one exception: when the Headless() startup option has
+// been supplied, it returns once the headless session has ended and every piece of state that session owned has been
+// reset, so that another one may be started afterwards. While some calls may be safe to make, it should be assumed no
 // calls into unison can be made prior to Start() being called unless explicitly stated otherwise.
 func Start(options ...StartupOption) {
 	AttachConsole()
@@ -150,16 +152,26 @@ func Start(options ...StartupOption) {
 		xos.ExitIfErr(option(startupOption{}))
 	}
 	xos.ExitIfErr(start())
-	xos.RunAtExit(quitting)
-	xos.RunAtExit(func() {
-		quitLock.Lock()
-		calledAtExit = true
-		quitLock.Unlock()
-	})
+	hs := activeHeadless()
+	if hs == nil {
+		// A headless session is not tied to the life of the process: it ends when the application quits, and the
+		// process — a test binary, typically — carries on afterwards, possibly to run another session. Registering
+		// these would both tie its teardown to process exit and leave the hooks behind for whatever runs next.
+		xos.RunAtExit(quitting)
+		xos.RunAtExit(func() {
+			quitLock.Lock()
+			calledAtExit = true
+			quitLock.Unlock()
+		})
+	}
 	platformInited.Store(true)
 	InvokeTask(finishStartup)
 	for {
 		processEvents()
+		if hs != nil && hs.terminated.Load() {
+			hs.finish()
+			return
+		}
 	}
 }
 
@@ -299,9 +311,10 @@ func quitting() {
 	calledExit := calledAtExit
 	calledAtExit = true
 	quitLock.Unlock()
-	if !calledExit {
+	if !calledExit && activeHeadless() == nil {
 		// xos.Exit() is called here once to ensure registered exit hooks are actually called, as OS's may directly
-		// terminate the app after returning from this function.
+		// terminate the app after returning from this function. A headless session is skipped: it ends by letting
+		// Start() return, and exiting the process would take the test binary with it.
 		xos.Exit(0)
 	}
 	if err := finishQuit(); err != nil {

@@ -82,7 +82,7 @@ func TestX11DisplayLogicalSpaceMatchesWindowRects(t *testing.T) {
 func TestUsableInWindowUnits(t *testing.T) {
 	c := check.New(t)
 	d := x11NewDisplay(geom.NewRect(0, 0, 3840, 2160), geom.NewRect(0, 32, 3840, 2128), 2, 163, true)
-	c.Equal(d.Usable, d.usableInWindowUnits())
+	c.Equal(d.Usable, d.apiUsableInWindowUnits())
 }
 
 // TestX11DisplaysWithoutConnection verifies that asking about displays before Start has connected to an X server --

@@ -16,7 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
-// newTestWindow creates a window the way unison's apiInit does (titled unless undecorated), on the caller's
+// newTestWindow creates a window the way unison's nativeInit does (titled unless undecorated), on the caller's
 // (main-thread) goroutine. Production always creates the shared application before any window, so the tests do too.
 func newTestWindow(styleMask WindowStyleMask, canBeKey, canBeMain bool) Window {
 	sharedApp()
@@ -92,7 +92,7 @@ func TestWindowTitleAndTransparency(t *testing.T) {
 }
 
 // TestWindowFrameMath exercises the struct-heavy geometry calls: 32-byte NSRect returns (stret path on amd64) and
-// NSRect arguments, plus the titled-window content/frame conversions unison's apiContentRect math depends on.
+// NSRect arguments, plus the titled-window content/frame conversions unison's nativeContentRect math depends on.
 func TestWindowFrameMath(t *testing.T) {
 	runOnMain(func() {
 		w := newTestWindow(testTitledStyle, true, true)
@@ -240,7 +240,7 @@ func TestWindowDelegate(t *testing.T) {
 			t.Errorf("notification-derived windows = %#x/%#x/%#x, want %#x", minimizedWnd, becameKey, resignedKey, w)
 		}
 
-		// Tear down the way unison's apiClose does: detach, release the delegate, close the window.
+		// Tear down the way unison's nativeDestroy does: detach, release the delegate, close the window.
 		w.SetDelegate(0)
 		if got := w.Delegate(); got != 0 {
 			t.Errorf("Delegate() = %#x after SetDelegate(0)", got)

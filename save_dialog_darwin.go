@@ -22,7 +22,7 @@ type macSaveDialog struct {
 	dialog cocoa.SavePanel
 }
 
-func apiNewSaveDialog() SaveDialog {
+func nativeNewSaveDialog() SaveDialog {
 	d := &macSaveDialog{dialog: cocoa.NewSavePanel()}
 	releasePanelOnCleanup(d, d.dialog)
 	return d

@@ -18,7 +18,7 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-type apiNativeCursor = *w32Cursor
+type nativeCursorHandle = *w32Cursor
 
 // w32Cursor retains the cursor's source so that a correctly sized native cursor can be produced for whatever monitor
 // DPI the cursor is currently being displayed on. Windows does not automatically rescale custom cursors as they move
@@ -29,7 +29,7 @@ type w32Cursor struct {
 	byScale map[float32]w32.HCURSOR
 }
 
-func apiNewCursor(src *cursorSource) *Cursor {
+func nativeNewCursor(src *cursorSource) *Cursor {
 	c := &Cursor{
 		cursor: &w32Cursor{
 			src:     src,
@@ -64,7 +64,7 @@ func (c *w32Cursor) handle(scale float32) w32.HCURSOR {
 	return h
 }
 
-func (c *Cursor) apiDestroy() {
+func (c *Cursor) nativeDestroy() {
 	if c.cursor != nil {
 		for scale, h := range c.cursor.byScale {
 			if h != 0 {

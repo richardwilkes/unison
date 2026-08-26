@@ -62,3 +62,88 @@ Unison is single-threaded: panels, windows, drawing, and the native graphics obj
 thread and are not safe for concurrent use. Code invoked by Unison (input/draw callbacks, layout, command handlers,
 `StartupFinishedCallback`) already runs on that thread; work done on other goroutines must marshal back via `InvokeTask`
 or `InvokeTaskAfter` before touching UI objects. See the package documentation for the full threading model.
+
+### Headless testing
+
+`StartHeadless()` runs a real application — its event loop, windows, focus handling, modal dialogs, menus and drawing —
+against an in-memory screen instead of the operating system's. No display is needed, so user interface tests run on a
+build machine with no windowing system at all. It runs `Start()` on its own goroutine and hands back a
+`*HeadlessScreen`, which is both the stand-in screen and the handle used to drive it. It returns once the application
+has settled, so the windows the `StartupFinishedCallback` created already exist; a callback that runs a nested event
+loop of its own, such as a first-run dialog put up with `RunModal()`, hands back an application parked in that loop with
+nothing left to do, ready to be driven. Use `Headless(cfg)` instead if your code calls `Start()` itself; in headless
+mode `Start()` returns when the session ends rather than never returning.
+
+Input is injected in the screen's logical coordinate space, which is also the space window content rects are in;
+`PanelCenter()` and `PanelPoint()` convert a widget's own coordinates into it. Every injection method waits for the
+application to finish reacting before it returns — the callbacks have run, the tasks they queued have run, and the
+redraws those asked for have been performed — which is what `Sync()` does and what makes assertions right after a click
+meaningful. The one exception is a call made from the UI thread itself, as when a widget callback drives the screen:
+there the events are only queued, to be dispatched by the event loop the caller is suspended inside once it has
+returned there, so the call comes back at once without waiting for anything. Work scheduled with `InvokeTaskAfter()` is
+deliberately not waited for. Anything a test wants to read out of the application belongs to the UI thread, so it must
+be read inside `Do()`. An application that never goes quiet — one whose `DrawCallback` marks itself for redraw, say —
+would leave that wait hanging, so it is bounded by `HeadlessConfig.SyncTimeout` (10 seconds by default) and giving up is
+reported through `Errors()`.
+
+Drag & drop works too. A drag the application starts itself needs nothing special: `Drag()` posts the press and motions,
+and a widget calling `StartDrag()` from its `MouseDragCallback` turns them into a drag exactly as it would on a real
+platform. For data arriving from outside the application, such as files from a file manager, use `BeginExternalDrag()`
+or `DropExternal()`. Sessions run one after another within a process, never side by side, and a session owns most of the
+package's mutable globals while it runs, so tests using one must not call `t.Parallel()`.
+
+```go
+import (
+	"image/png"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/enums/align"
+)
+
+func TestButton(t *testing.T) {
+	var button *unison.Button
+	clicks := 0
+	screen, err := unison.StartHeadless(unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			button = unison.NewButton()
+			button.SetTitle("Press Me")
+			button.ClickCallback = func() { clicks++ }
+			button.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Fill, VAlign: align.Fill, HGrab: true, VGrab: true})
+			wnd, wndErr := unison.NewWindow("example")
+			if wndErr != nil {
+				t.Error(wndErr)
+				return
+			}
+			wnd.Content().SetLayout(&unison.FlexLayout{Columns: 1})
+			wnd.Content().AddChild(button)
+			wnd.SetContentRect(geom.NewRect(20, 20, 200, 80))
+			wnd.ToFront()
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(screen.Stop)
+
+	screen.Click(screen.PanelCenter(button))
+	var count int
+	screen.Do(func() { count = clicks })
+	if count != 1 {
+		t.Errorf("expected 1 click, got %d", count)
+	}
+
+	f, err := os.Create(filepath.Join(t.TempDir(), "button.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = png.Encode(f, screen.Capture()); err != nil { // Capture() returns an *image.NRGBA of the whole screen
+		t.Error(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Error(err)
+	}
+}
+```

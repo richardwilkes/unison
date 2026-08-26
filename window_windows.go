@@ -35,9 +35,9 @@ var (
 	w32BlankCursor  w32.HCURSOR
 )
 
-type apiWindow struct {
+type nativeWindow struct {
 	dropTarget *w32.DropTarget
-	// The surface apiPresentCPUPixels draws through: a DIB section selected into a memory DC, whose pixels are
+	// The surface nativePresentCPUPixels draws through: a DIB section selected into a memory DC, whose pixels are
 	// written directly and then blitted to the window. See w32EnsurePresentSurface for why it works this way.
 	presentPixels []uint32
 	presentDC     w32.HDC
@@ -165,7 +165,7 @@ func w32OwnerHWND() windows.HWND {
 	return 0
 }
 
-func (w *Window) apiInit() error {
+func (w *Window) nativeInit() error {
 	style := w.w32WindowStyle()
 	exStyle := w.w32WindowExStyle()
 	if w32MainWndClass == 0 {
@@ -399,7 +399,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				w32.AdjustWindowRectEx(&frame, style, false, exStyle)
 			}
 			minimum, maximum := w.minMaxContentSize()
-			scale := w.apiBackingScale()
+			scale := w.nativeBackingScale()
 			minimum = minimum.MulPt(scale).Ceil()
 			maximum = maximum.MulPt(scale).Ceil()
 			mmi := xruntime.PtrFromUintptr[w32.MINMAXINFO](lParam)
@@ -460,7 +460,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			w.adjustToCursorChange()
 		case w32.WM_SETCURSOR:
 			if lParam&0xFFFF == w32.HTCLIENT {
-				w.apiUpdateCursorImage()
+				w.nativeUpdateCursorImage()
 				return 1
 			}
 		}
@@ -504,17 +504,17 @@ func (w *Window) w32HandleMouseMove(pt geom.Point) {
 		evt.HwndTrack = w.wnd.wnd
 		w32.TrackMouseEvent(&evt)
 		w.wnd.mouseTracked = true
-		w.apiUpdateCursorImage()
+		w.nativeUpdateCursorImage()
 		w.mouseEnter(pt, mods)
 	}
 	w.mouseMovedOrDragged(pt, mods)
 }
 
-func (w *Window) apiSetTitle(title string) {
+func (w *Window) nativeSetTitle(title string) {
 	w32.SetWindowTextW(w.wnd.wnd, title)
 }
 
-func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
+func (w *Window) nativeSetTitleIcons(images []*image.NRGBA) {
 	var big, small w32.HICON
 	owned := false
 	if len(images) > 0 {
@@ -565,7 +565,7 @@ func w32ChooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
 	return closest
 }
 
-func (w *Window) apiDisplay() *Display {
+func (w *Window) nativeDisplay() *Display {
 	var rect w32.RECT
 	w32.GetWindowRect(w.wnd.wnd, &rect)
 	pt := geom.NewPoint(float32(rect.Left), float32(rect.Top))
@@ -577,16 +577,16 @@ func (w *Window) apiDisplay() *Display {
 	return monitorInfo(w32.MonitorFromWindow(w.wnd.wnd, w32.MONITOR_DEFAULTTOPRIMARY))
 }
 
-func (w *Window) apiFrameRect() geom.Rect {
+func (w *Window) nativeFrameRect() geom.Rect {
 	var rect w32.RECT
 	w32.GetWindowRect(w.wnd.wnd, &rect)
 	r := rectFromW32Rect(rect)
-	r.Size = r.Size.DivPt(w.apiBackingScale())
+	r.Size = r.Size.DivPt(w.nativeBackingScale())
 	return r.Align()
 }
 
-func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
-	return w32ApplyFrameInsets(contentRect, w.w32FrameInsets(), w.apiBackingScale(), false).Align()
+func (w *Window) nativeFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
+	return w32ApplyFrameInsets(contentRect, w.w32FrameInsets(), w.nativeBackingScale(), false).Align()
 }
 
 // w32FrameInsets returns the window's frame insets in raw screen pixels.
@@ -605,10 +605,10 @@ func (w *Window) w32FrameInsets() geom.Insets {
 
 // w32ApplyFrameInsets converts between a window's frame rect and its content rect. Window rects on this platform keep
 // their origin in the raw global pixel space that display rects use, while their size is in logical, 1x-scale units
-// (see Display.usableInWindowUnits), so the insets — which are raw pixels — cannot simply be handed to Rect.Inset:
-// the position must move by the raw amount while the size changes by the scaled-down amount. Getting this wrong makes
-// a ContentRect/SetContentRect round trip (e.g. Pack) creep by insets×(scale−1) pixels on every call. Pass true for
-// remove to go from a frame rect to a content rect, false for the reverse.
+// (see Display.nativeUsableInWindowUnits), so the insets — which are raw pixels — cannot simply be handed to
+// Rect.Inset: the position must move by the raw amount while the size changes by the scaled-down amount. Getting this
+// wrong makes a ContentRect/SetContentRect round trip (e.g. Pack) creep by insets×(scale−1) pixels on every call. Pass
+// true for remove to go from a frame rect to a content rect, false for the reverse.
 func w32ApplyFrameInsets(r geom.Rect, insets geom.Insets, scale geom.Point, remove bool) geom.Rect {
 	if !remove {
 		insets = insets.Mul(-1)
@@ -620,11 +620,11 @@ func w32ApplyFrameInsets(r geom.Rect, insets geom.Insets, scale geom.Point, remo
 	return r
 }
 
-func (w *Window) apiEnsureOnDisplay() {
+func (w *Window) nativeEnsureOnDisplay() {
 	var r w32.RECT
 	w32.GetWindowRect(w.wnd.wnd, &r)
 	frameRect := rectFromW32Rect(r)
-	d := w.apiDisplay()
+	d := w.nativeDisplay()
 	revisedRect := d.FitRectOnto(frameRect)
 	if frameRect != revisedRect {
 		revisedRect.Size = revisedRect.Size.DivPt(d.Scale)
@@ -632,22 +632,22 @@ func (w *Window) apiEnsureOnDisplay() {
 	}
 }
 
-func (w *Window) apiContentRect() geom.Rect {
+func (w *Window) nativeContentRect() geom.Rect {
 	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	var pt w32.POINT
 	w32.ClientToScreen(w.wnd.wnd, &pt)
 	r := geom.NewRect(float32(pt.X), float32(pt.Y), float32(rect.Right), float32(rect.Bottom))
-	r.Size = r.Size.DivPt(w.apiBackingScale())
+	r.Size = r.Size.DivPt(w.nativeBackingScale())
 	return r.Align()
 }
 
-func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
-	return w32ApplyFrameInsets(frameRect, w.w32FrameInsets(), w.apiBackingScale(), true).Align()
+func (w *Window) nativeContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+	return w32ApplyFrameInsets(frameRect, w.w32FrameInsets(), w.nativeBackingScale(), true).Align()
 }
 
-func (w *Window) apiSetContentRect(rect geom.Rect) {
-	scale := w.apiBackingScale()
+func (w *Window) nativeSetContentRect(rect geom.Rect) {
+	scale := w.nativeBackingScale()
 	rect = w32ApplyFrameInsets(rect, w.w32FrameInsets(), scale, false)
 	rect.Size = rect.Size.MulPt(scale)
 	rect = rect.Align()
@@ -655,7 +655,7 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 		w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
 }
 
-func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
+func (w *Window) nativeCurrentKeyModifiers() mod.Modifiers {
 	var mods mod.Modifiers
 	if w32.GetKeyState(w32.VK_SHIFT)&0x8000 != 0 {
 		mods |= mod.Shift
@@ -678,7 +678,7 @@ func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
 	return mods
 }
 
-func (w *Window) apiUpdateCursorImage() {
+func (w *Window) nativeUpdateCursorImage() {
 	switch {
 	case w.cursorHidden:
 		if w32BlankCursor == 0 {
@@ -727,12 +727,12 @@ func (w *Window) w32SetCursor(c *w32Cursor) {
 	if c == nil {
 		return
 	}
-	if h := c.handle(w.apiBackingScale().X); h != 0 {
+	if h := c.handle(w.nativeBackingScale().X); h != 0 {
 		w32.SetCursor(h)
 	}
 }
 
-func (w *Window) apiCursorInContentArea() bool {
+func (w *Window) nativeCursorInContentArea() bool {
 	var pos w32.POINT
 	if !w32.GetCursorPos(&pos) {
 		return false
@@ -750,7 +750,7 @@ func (w *Window) apiCursorInContentArea() bool {
 	return pos.X >= topLeft.X && pos.X <= bottomRight.X && pos.Y >= topLeft.Y && pos.Y <= bottomRight.Y
 }
 
-func (w *Window) apiCursorPosition() geom.Point {
+func (w *Window) nativeCursorPosition() geom.Point {
 	var pos w32.POINT
 	if w32.GetCursorPos(&pos) {
 		w32.ScreenToClient(w.wnd.wnd, &pos)
@@ -759,7 +759,7 @@ func (w *Window) apiCursorPosition() geom.Point {
 	return geom.NewPoint(0, 0)
 }
 
-func (w *Window) apiBackingScale() geom.Point {
+func (w *Window) nativeBackingScale() geom.Point {
 	dpi := w.w32DPI()
 	return geom.NewPoint(float32(dpi)/96.0, float32(dpi)/96.0)
 }
@@ -794,7 +794,7 @@ func w32WindowDPI(haveGetDpiForWindow bool, getDpiForWindow, getDpiForMonitor fu
 	return dpi
 }
 
-func (w *Window) apiMinimize() {
+func (w *Window) nativeMinimize() {
 	if w.minimized {
 		w32.ShowWindow(w.wnd.wnd, w32.SW_RESTORE)
 	} else {
@@ -802,7 +802,7 @@ func (w *Window) apiMinimize() {
 	}
 }
 
-func (w *Window) apiMaximize() {
+func (w *Window) nativeMaximize() {
 	if w.maximized {
 		w32.ShowWindow(w.wnd.wnd, w32.SW_RESTORE)
 	} else {
@@ -810,7 +810,7 @@ func (w *Window) apiMaximize() {
 	}
 }
 
-func (w *Window) apiAcquireFocusAndBringToFront() {
+func (w *Window) nativeAcquireFocusAndBringToFront() {
 	// Windows only permits a process to call SetForegroundWindow when it already owns the foreground window. When the
 	// app is launched from a command line, the console (a different process) owns the foreground, so the call is denied
 	// and the window merely flashes in the taskbar. Temporarily attaching our input thread to the thread that currently
@@ -830,19 +830,19 @@ func (w *Window) apiAcquireFocusAndBringToFront() {
 	}
 }
 
-func (w *Window) apiVisible() bool {
+func (w *Window) nativeVisible() bool {
 	return windows.IsWindowVisible(w.wnd.wnd)
 }
 
-func (w *Window) apiShow() {
+func (w *Window) nativeShow() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_SHOWNA)
 }
 
-func (w *Window) apiHide() {
+func (w *Window) nativeHide() {
 	w32.ShowWindow(w.wnd.wnd, w32.SW_HIDE)
 }
 
-func (w *Window) apiStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
+func (w *Window) nativeStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
 	dataObj := w32.NewDataObject(data, opMask)
 	defer dataObj.Release()
 	dropSrc := w32.NewDropSource()
@@ -902,7 +902,7 @@ func (w *Window) w32InitDragImage(img *Image, originInRoot geom.Point, dataObj *
 		errs.Log(err)
 		return
 	}
-	scale := w.apiBackingScale()
+	scale := w.nativeBackingScale()
 	size := img.LogicalSize().MulPt(scale).Ceil()
 	width := int(size.Width)
 	height := int(size.Height)
@@ -959,7 +959,7 @@ func (w *Window) w32InitDragImage(img *Image, originInRoot geom.Point, dataObj *
 	}
 }
 
-func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
+func (w *Window) nativeUpdateRegisteredDragTypes(types []*uti.DataType) {
 	if w.wnd.dropTarget != nil {
 		w32.RevokeDragDrop(w.wnd.wnd)
 		w.wnd.dropTarget.Revoke()
@@ -976,8 +976,8 @@ func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 	}
 }
 
-func (w *Window) apiDestroy() {
-	w.glCtx.apiDestroy()
+func (w *Window) nativeDestroy() {
+	w.glCtx.nativeDestroy()
 	w.w32DisposePresentSurface()
 	if w.wnd.dropTarget != nil {
 		w32.RevokeDragDrop(w.wnd.wnd)
@@ -1000,7 +1000,7 @@ func (w *Window) apiDestroy() {
 
 func (w *Window) w32ConvertRawMouse(where geom.Point) geom.Point {
 	if w.IsValid() {
-		scale := w.apiBackingScale()
+		scale := w.nativeBackingScale()
 		where.X /= scale.X
 		where.Y /= scale.Y
 	}

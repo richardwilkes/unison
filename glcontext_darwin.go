@@ -14,12 +14,12 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-type apiGLContext struct {
+type nativeGLContext struct {
 	pixelFormat cocoa.OpenGLPixelFormatRef
 	ctx         cocoa.OpenGLContextRef
 }
 
-func (c *apiGLContext) apiCreate(wnd *Window) error {
+func (c *nativeGLContext) nativeCreate(wnd *Window) error {
 	pixFmt := cocoa.NewOpenGLPixelFormat()
 	if pixFmt == 0 {
 		return errs.New("failed to create OpenGL pixel format")
@@ -34,19 +34,19 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 	return nil
 }
 
-func (c *apiGLContext) apiMakeCurrent() {
+func (c *nativeGLContext) nativeMakeCurrent() {
 	c.ctx.MakeCurrent()
 }
 
-func (c *apiGLContext) apiReleaseCurrent() {
+func (c *nativeGLContext) nativeReleaseCurrent() {
 	cocoa.ClearOpenGLCurrentContext()
 }
 
-func (c *apiGLContext) apiSwapBuffers() {
+func (c *nativeGLContext) nativeSwapBuffers() {
 	c.ctx.FlushBuffer()
 }
 
-func (c *apiGLContext) apiDestroy() {
+func (c *nativeGLContext) nativeDestroy() {
 	if c.ctx != 0 {
 		c.ctx.Release()
 		c.ctx = 0

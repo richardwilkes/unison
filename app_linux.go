@@ -24,8 +24,8 @@ var (
 	// x11Conn is UI-thread-only state; everything that touches it must run on the UI thread. The one exception is
 	// waking the event loop from another goroutine, which goes through x11PostConn below instead.
 	x11Conn *x11.Conn
-	// x11PostConn mirrors x11Conn for use by apiPostEmptyEvent, which may be called from any goroutine and therefore
-	// cannot read x11Conn without racing apiTerminate's teardown of it on the UI thread.
+	// x11PostConn mirrors x11Conn for use by nativePostEmptyEvent, which may be called from any goroutine and therefore
+	// cannot read x11Conn without racing nativeTerminate's teardown of it on the UI thread.
 	x11PostConn             atomic.Pointer[x11.Conn]
 	linuxColorModeTrackable atomic.Bool
 	linuxDarkModeEnabled    atomic.Bool
@@ -33,17 +33,17 @@ var (
 	linuxPortalValue        atomic.Uint32 // 0 = no preference, 1 = prefer dark, 2 = prefer light
 )
 
-func apiBeginStartup() error {
+func nativeBeginStartup() error {
 	var err error
 	if x11Conn, err = x11.NewConn(); err != nil {
 		return err
 	}
 	x11PostConn.Store(x11Conn)
-	apiFillKeyCodes()
+	nativeFillKeyCodes()
 	return nil
 }
 
-func apiLateInit() {
+func nativeLateInit() {
 	// Dark mode is detected from two sources, in priority order:
 	//   1. The XDG Desktop Portal "color-scheme" appearance setting (GNOME 42+, KDE Plasma 5.23+).
 	//   2. XSETTINGS, the GTK theme published over X11 (Cinnamon, MATE, XFCE, Budgie, GNOME on X11, ...).
@@ -54,8 +54,8 @@ func apiLateInit() {
 		linuxPortalHasValue.Store(true)
 	}
 	linuxRecomputeDarkMode()
-	// The dynamic colors have already been built assuming light mode (RebuildDynamicColors runs before apiLateInit), so
-	// if we detected dark mode at launch, trigger a rebuild now, before the first frame is shown.
+	// The dynamic colors have already been built assuming light mode (RebuildDynamicColors runs before nativeLateInit),
+	// so if we detected dark mode at launch, trigger a rebuild now, before the first frame is shown.
 	if linuxDarkModeEnabled.Load() && CurrentThemeMode() == thememode.Auto {
 		ThemeChanged()
 	}
@@ -102,12 +102,12 @@ func linuxXSettingsChanged() {
 	}
 }
 
-func apiFinalFinishStartup() {
+func nativeFinalFinishStartup() {
 }
 
-func apiTerminate() error {
+func nativeTerminate() error {
 	if x11Conn != nil {
-		// Withdraw the connection from apiPostEmptyEvent before closing it. A goroutine that loaded the pointer just
+		// Withdraw the connection from nativePostEmptyEvent before closing it. A goroutine that loaded the pointer just
 		// before the swap may still call PostEmptyEvent concurrently with (or after) Close, which is safe: it becomes
 		// a no-op once the connection's event channel shuts down.
 		x11PostConn.Store(nil)
@@ -117,27 +117,27 @@ func apiTerminate() error {
 	return nil
 }
 
-func apiBeep() {
+func nativeBeep() {
 	x11Conn.Bell(0)
 }
 
-func apiIsColorModeTrackingPossible() bool {
+func nativeIsColorModeTrackingPossible() bool {
 	return linuxColorModeTrackable.Load()
 }
 
-func apiIsDarkModeEnabled() bool {
+func nativeIsDarkModeEnabled() bool {
 	return linuxDarkModeEnabled.Load()
 }
 
-func apiDoubleClickInterval() time.Duration {
+func nativeDoubleClickInterval() time.Duration {
 	return 500 * time.Millisecond
 }
 
-func apiPollEvents() {
+func nativePollEvents() {
 	x11ProcessEvent(x11Conn.PollEvents(nil))
 }
 
-func apiWaitEvents() {
+func nativeWaitEvents() {
 	// Block until at least one event is available so the event loop idles instead of spinning. Then process that event
 	// along with any others that are already pending. They are handled one at a time rather than pulling them all at
 	// once, so that a nested event loop started by a handler (such as the one used for the source side of drag & drop)
@@ -162,15 +162,15 @@ func apiWaitEvents() {
 	}
 }
 
-func apiPostEmptyEvent() {
+func nativePostEmptyEvent() {
 	// This runs on arbitrary goroutines, so it must use the atomic x11PostConn handle rather than x11Conn, whose
-	// non-atomic teardown in apiTerminate would race the check here.
+	// non-atomic teardown in nativeTerminate would race the check here.
 	if conn := x11PostConn.Load(); conn != nil {
 		conn.PostEmptyEvent()
 	}
 }
 
-// apiWithAutoreleasePool runs f directly: autorelease pools are a macOS concept with no X11 counterpart.
-func apiWithAutoreleasePool(f func()) {
+// nativeWithAutoreleasePool runs f directly: autorelease pools are a macOS concept with no X11 counterpart.
+func nativeWithAutoreleasePool(f func()) {
 	f()
 }

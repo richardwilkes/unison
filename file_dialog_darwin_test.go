@@ -54,10 +54,10 @@ func TestSetAllowedFileTypesOwnership(t *testing.T) {
 	c.Equal(cocoa.Array(0), cleared[0])
 }
 
-// TestReleasePanelOnCleanupReleasesPanel verifies the mechanism apiNewOpenDialog/apiNewSaveDialog use to free their
-// NSOpenPanel/NSSavePanel: once the dialog wrapper becomes unreachable, the panel's Release must run — and run via
-// the UI-thread task queue, never directly on the runtime's cleanup goroutine, since AppKit objects must be released
-// on the UI thread. Before this, every dialog leaked its panel for the life of the process, because the
+// TestReleasePanelOnCleanupReleasesPanel verifies the mechanism nativeNewOpenDialog/nativeNewSaveDialog use to free
+// their NSOpenPanel/NSSavePanel: once the dialog wrapper becomes unreachable, the panel's Release must run — and run
+// via the UI-thread task queue, never directly on the runtime's cleanup goroutine, since AppKit objects must be
+// released on the UI thread. Before this, every dialog leaked its panel for the life of the process, because the
 // OpenDialog/SaveDialog interfaces have no dispose method. This test mutates the global task queue and therefore must
 // not call t.Parallel.
 func TestReleasePanelOnCleanupReleasesPanel(t *testing.T) {

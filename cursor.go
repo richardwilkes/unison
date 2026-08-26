@@ -55,7 +55,11 @@ var (
 
 // Cursor provides a graphical cursor for the mouse location.
 type Cursor struct {
-	cursor apiNativeCursor
+	cursor nativeCursorHandle
+	// headless is true for a cursor a headless session created, which is inert and has no OS resource behind it. It is
+	// what Destroy dispatches on, so that a cursor keeps the backend it was created with even when it outlives the
+	// session, or is created before one and destroyed during it.
+	headless bool
 }
 
 // cursorSettings captures the inputs the built-in cursors are rasterized from. It is comparable, so determining

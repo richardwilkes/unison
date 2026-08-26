@@ -24,7 +24,7 @@ type w32OpenDialog struct {
 	fileCommon
 }
 
-func apiNewOpenDialog() OpenDialog {
+func nativeNewOpenDialog() OpenDialog {
 	d := &w32OpenDialog{}
 	d.initialize()
 	return d

@@ -57,21 +57,25 @@ func newPanicCellTable(boom *bool, cellCalls *int) *Table[*panicCellRow] {
 	return table
 }
 
-// runPendingTask waits for the task InvokeTaskAfter scheduled to reach the queue, then runs it through the same
-// recovery path the UI loop uses. These tests share the global task queue and therefore must not call t.Parallel.
-func runPendingTask(t *testing.T) {
+// runTasksUntil runs queued tasks through the same recovery path the UI loop uses until done reports that the work the
+// test is waiting on has happened. It drains the queue instead of assuming the next task to arrive is the one the test
+// scheduled, since the global queue is shared: a timer left running by an earlier test, such as the caret blink a Field
+// keeps rearming via InvokeTaskAfter, can enqueue a task at any moment. Those foreign tasks are harmless to run here,
+// so they are simply executed and skipped over. These tests share the global task queue and therefore must not call
+// t.Parallel.
+func runTasksUntil(t *testing.T, done func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if length, head := taskQueueState(); length > head {
-			break
-		}
+	for !done() {
 		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for the scheduled task")
+			t.Fatal("timed out waiting for the scheduled task to run")
 		}
-		time.Sleep(time.Millisecond)
+		if length, head := taskQueueState(); length > head {
+			processNextTask()
+		} else {
+			time.Sleep(time.Millisecond)
+		}
 	}
-	processNextTask()
 }
 
 // TestTableEventuallySyncToModelClearsFlagOnPanic verifies that a panicking sync doesn't wedge the table. The pending
@@ -90,7 +94,7 @@ func TestTableEventuallySyncToModelClearsFlagOnPanic(t *testing.T) {
 	boom = true
 	table.EventuallySyncToModel()
 	c.True(table.awaitingSyncToModel)
-	runPendingTask(t)
+	runTasksUntil(t, func() bool { return !table.awaitingSyncToModel })
 	c.NotNil(recovered, "the scheduled sync was expected to panic")
 	c.False(table.awaitingSyncToModel, "a panicking sync must still clear the pending flag")
 
@@ -99,7 +103,7 @@ func TestTableEventuallySyncToModelClearsFlagOnPanic(t *testing.T) {
 	recovered = nil
 	before := cellCalls
 	table.EventuallySyncToModel()
-	runPendingTask(t)
+	runTasksUntil(t, func() bool { return !table.awaitingSyncToModel })
 	c.Nil(recovered)
 	c.True(cellCalls > before, "the table must sync again after a panicking sync")
 }
@@ -118,7 +122,7 @@ func TestTableEventuallySizeColumnsToFitClearsFlagOnPanic(t *testing.T) {
 	boom = true
 	table.EventuallySizeColumnsToFit(false)
 	c.True(table.awaitingSizeColumnsToFit)
-	runPendingTask(t)
+	runTasksUntil(t, func() bool { return !table.awaitingSizeColumnsToFit })
 	c.NotNil(recovered, "the scheduled sizing was expected to panic")
 	c.False(table.awaitingSizeColumnsToFit, "a panicking sizing pass must still clear the pending flag")
 
@@ -126,7 +130,7 @@ func TestTableEventuallySizeColumnsToFitClearsFlagOnPanic(t *testing.T) {
 	recovered = nil
 	before := cellCalls
 	table.EventuallySizeColumnsToFit(false)
-	runPendingTask(t)
+	runTasksUntil(t, func() bool { return !table.awaitingSizeColumnsToFit })
 	c.Nil(recovered)
 	c.True(cellCalls > before, "the table must size its columns again after a panicking sizing pass")
 }

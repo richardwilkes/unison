@@ -16,7 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
-// TestMacDragImageAndFrameNilImage is the regression test for apiStartDrag panicking on a nil drag image.
+// TestMacDragImageAndFrameNilImage is the regression test for nativeStartDrag panicking on a nil drag image.
 // Window.StartDrag and Panel.StartDrag both document that the image may be nil, and the Linux and Windows
 // implementations guard for it, but the macOS path dereferenced it unconditionally. A nil image must yield nil pixel
 // data and a minimal 1x1 frame anchored at the origin so the drag proceeds without an image, matching the other

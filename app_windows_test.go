@@ -72,10 +72,10 @@ func TestCollectStuckModifiers(t *testing.T) {
 	c.Equal(0, len(w32CollectStuckModifiers(map[KeyCode]bool{}, fakeKeyState())))
 }
 
-// TestPostEmptyEventWakesMainThreadWithoutWindows verifies that apiPostEmptyEvent, called from another goroutine with
-// no windows open, delivers WM_NULL to the main (UI) thread's message queue. Prior to the fix, it read windowList —
-// UI-thread-only state — from arbitrary goroutines, a data race, and with an empty windowList it fell back to
-// PostMessageW(0, WM_NULL), which posts to the *calling* thread's queue, so the main loop blocked in WaitMessage was
+// TestPostEmptyEventWakesMainThreadWithoutWindows verifies that nativePostEmptyEvent, called from another goroutine
+// with no windows open, delivers WM_NULL to the main (UI) thread's message queue. Prior to the fix, it read
+// windowList — UI-thread-only state — from arbitrary goroutines, a data race, and with an empty windowList it fell back
+// to PostMessageW(0, WM_NULL), which posts to the *calling* thread's queue, so the main loop blocked in WaitMessage was
 // never woken. The test locks the current goroutine to its OS thread, designates that thread as the main thread, and
 // confirms the wakeup message arrives on it. This test shares global state and therefore must not call t.Parallel.
 func TestPostEmptyEventWakesMainThreadWithoutWindows(t *testing.T) {
@@ -105,7 +105,7 @@ func TestPostEmptyEventWakesMainThreadWithoutWindows(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		// This goroutine necessarily runs on a different OS thread, since the test goroutine has this one locked.
-		apiPostEmptyEvent()
+		nativePostEmptyEvent()
 		close(done)
 	}()
 	<-done

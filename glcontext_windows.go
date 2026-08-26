@@ -18,7 +18,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type apiGLContext struct {
+type nativeGLContext struct {
 	hwnd windows.HWND
 	dc   w32.HDC
 	rc   w32.HGLRC
@@ -29,7 +29,7 @@ type apiGLContext struct {
 // probe. Only accessed on the UI thread.
 var w32GLPipelineVerified bool
 
-func (c *apiGLContext) apiCreate(wnd *Window) error {
+func (c *nativeGLContext) nativeCreate(wnd *Window) error {
 	hwnd := wnd.wnd.wnd
 	dc := w32.GetDC(hwnd)
 	if dc == 0 {
@@ -48,8 +48,8 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 	// Prove that the pixel format and context creation actually work on a disposable hidden window before touching
 	// this window. SetPixelFormat is irreversible for a window, and a GL-capable format requires PFD_DOUBLEBUFFER,
 	// which excludes PFD_SUPPORT_GDI — so once the format is committed, GDI can no longer paint the window, and GDI is
-	// exactly what apiPresentCPUPixels uses when rendering falls back to the CPU. Probing first means a failure at any
-	// step leaves this window format-free and therefore still paintable by the fallback. Since a GL context may be
+	// exactly what nativePresentCPUPixels uses when rendering falls back to the CPU. Probing first means a failure at
+	// any step leaves this window format-free and therefore still paintable by the fallback. Since a GL context may be
 	// made current with any DC that has the same pixel format on the same device, the probe's context is usable with
 	// this window once the same format has been committed to it below.
 	rc, err := w32CreateGLContextOnProbeWindow(format, &pfd)
@@ -135,19 +135,19 @@ func w32CreateGLContextOnProbeWindow(format int32, pfd *w32.PIXELFORMATDESCRIPTO
 	return rc, nil
 }
 
-func (c *apiGLContext) apiMakeCurrent() {
+func (c *nativeGLContext) nativeMakeCurrent() {
 	w32.WglMakeCurrent(c.dc, c.rc)
 }
 
-func (c *apiGLContext) apiReleaseCurrent() {
+func (c *nativeGLContext) nativeReleaseCurrent() {
 	w32.WglMakeCurrent(0, 0)
 }
 
-func (c *apiGLContext) apiSwapBuffers() {
+func (c *nativeGLContext) nativeSwapBuffers() {
 	w32.SwapBuffers(c.dc)
 }
 
-func (c *apiGLContext) apiDestroy() {
+func (c *nativeGLContext) nativeDestroy() {
 	if c.rc != 0 {
 		w32.WglDeleteContext(c.rc)
 		c.rc = 0

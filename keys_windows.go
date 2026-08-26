@@ -9,7 +9,7 @@
 
 package unison
 
-func apiFillKeyCodes() {
+func nativeFillKeyCodes() {
 	rawScanCodeToKeyCodeMap[0x001] = KeyEscape
 	rawScanCodeToKeyCodeMap[0x002] = Key1
 	rawScanCodeToKeyCodeMap[0x003] = Key2
