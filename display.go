@@ -26,6 +26,10 @@ type Display struct {
 	// incorrect, or because the driver does not report it accurately.
 	PPI     int
 	Primary bool
+	// headless is true for the display a headless session stands in with, and is what Display.apiUsableInWindowUnits
+	// dispatches on, so that a display keeps the backend it was created with for its whole life, as windows and
+	// cursors do.
+	headless bool
 }
 
 // defaultDisplayPPI is the pixels-per-inch assumed when the true value cannot be determined.

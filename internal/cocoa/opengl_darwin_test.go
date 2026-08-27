@@ -182,7 +182,7 @@ func TestNewOpenGLPixelFormat(t *testing.T) {
 	})
 }
 
-// TestNewOpenGLContext proves context creation against a real window/view pair the way unison's apiCreate does:
+// TestNewOpenGLContext proves context creation against a real window/view pair the way unison's nativeCreate does:
 // the context must exist, be attached to the view, leave the view flagged for best-resolution surfaces, default to
 // an opaque surface, and support the share-context creation path.
 func TestNewOpenGLContext(t *testing.T) {

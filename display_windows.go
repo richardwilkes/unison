@@ -25,7 +25,7 @@ var (
 	w32Displays     []*Display
 )
 
-func apiPrimaryDisplay() *Display {
+func nativePrimaryDisplay() *Display {
 	displays := AllDisplays()
 	for _, d := range displays {
 		if d.Primary {
@@ -38,7 +38,7 @@ func apiPrimaryDisplay() *Display {
 	return nil
 }
 
-func apiAllDisplays() []*Display {
+func nativeAllDisplays() []*Display {
 	return w32EnumDisplays(func() {
 		w32.EnumDisplayMonitors(0, nil, w32MonitorCallbackPtr, 0)
 	})
@@ -87,12 +87,12 @@ func w32DisplayDPI(dpi uint32) uint32 {
 	return dpi
 }
 
-// usableInWindowUnits returns the usable area of the display in the coordinate space used by window rects: the origin
-// stays in the raw global pixel space that both display rects and window positions use on this platform, while the
-// size is converted to the logical, 1x-scale units that window sizes use. Without the size conversion, math that mixes
-// display extents with window extents (e.g. the fallback path of Window.MoveToModalCenter) is wrong whenever the
+// nativeUsableInWindowUnits returns the usable area of the display in the coordinate space used by window rects: the
+// origin stays in the raw global pixel space that both display rects and window positions use on this platform, while
+// the size is converted to the logical, 1x-scale units that window sizes use. Without the size conversion, math that
+// mixes display extents with window extents (e.g. the fallback path of Window.MoveToModalCenter) is wrong whenever the
 // monitor scale is not 1.
-func (d *Display) usableInWindowUnits() geom.Rect {
+func (d *Display) nativeUsableInWindowUnits() geom.Rect {
 	r := d.Usable
 	r.Size = r.Size.DivPt(d.Scale)
 	return r

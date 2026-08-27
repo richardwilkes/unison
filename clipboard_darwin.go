@@ -15,19 +15,19 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-func apiClipboardAvailableDataTypes() []string {
+func nativeClipboardAvailableDataTypes() []string {
 	return cocoa.PasteboardGeneral().AvailableDataTypes()
 }
 
-func apiClipboardHasDataType(dataType *uti.DataType) bool {
+func nativeClipboardHasDataType(dataType *uti.DataType) bool {
 	return cocoa.PasteboardGeneral().HasDataType(dataType)
 }
 
-func apiClipboardGetData(dataType *uti.DataType) []byte {
+func nativeClipboardGetData(dataType *uti.DataType) []byte {
 	return cocoa.PasteboardGeneral().Bytes(dataType)
 }
 
-func apiClipboardSetData(data ...drag.Data) {
+func nativeClipboardSetData(data ...drag.Data) {
 	pb := cocoa.PasteboardGeneral()
 	pb.Clear()
 	all := make([]cocoa.PasteboardItem, 0, len(data))

@@ -33,7 +33,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-type apiWindow struct {
+type nativeWindow struct {
 	dndInfo           *x11DragInfo
 	id                x11.WindowID
 	parent            x11.WindowID
@@ -62,7 +62,7 @@ func x11FindWindow(id x11.WindowID) *Window {
 	return nil
 }
 
-func (w *Window) apiInit() error {
+func (w *Window) nativeInit() error {
 	if !cpuRenderingActive {
 		if err := w.glCtx.x11PrepareWindow(w); err != nil {
 			fallbackToCPURendering(err)
@@ -181,17 +181,17 @@ func (w *Window) apiInit() error {
 	sizeHints.Flags |= x11.WSHMPPosition | x11.WSHMPWinGravity
 	sizeHints.WinGravity = x11.StaticGravity
 	x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
-	w.apiSetWMClass()
-	w.apiSetTitle(w.title)
+	w.nativeSetWMClass()
+	w.nativeSetTitle(w.title)
 	x11Conn.Flush()
 	return nil
 }
 
-// apiSetWMClass sets the WM_CLASS property (the ICCCM instance and class names) on the window. Desktop environments use
-// this to associate the window with its launcher/.desktop file (for the taskbar/dock icon, application grouping, etc.),
-// so the class name is set to the application identifier, which is what a .desktop file's StartupWMClass entry should
-// match.
-func (w *Window) apiSetWMClass() {
+// nativeSetWMClass sets the WM_CLASS property (the ICCCM instance and class names) on the window. Desktop environments
+// use this to associate the window with its launcher/.desktop file (for the taskbar/dock icon, application grouping,
+// etc.), so the class name is set to the application identifier, which is what a .desktop file's StartupWMClass entry
+// should match.
+func (w *Window) nativeSetWMClass() {
 	x11Conn.ChangeProperty(w.wnd.id, x11.AtomWMClass, x11.AtomString, 8, x11.PropModeReplace, wmClassData())
 }
 
@@ -215,7 +215,7 @@ func wmClassData() []byte {
 	return data
 }
 
-func (w *Window) apiSetTitle(title string) {
+func (w *Window) nativeSetTitle(title string) {
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMName, x11Conn.Atoms.UTF8String, 8, x11.PropModeReplace,
 		[]byte(title))
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMIconName, x11Conn.Atoms.UTF8String, 8, x11.PropModeReplace,
@@ -223,7 +223,7 @@ func (w *Window) apiSetTitle(title string) {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
+func (w *Window) nativeSetTitleIcons(images []*image.NRGBA) {
 	if len(images) == 0 {
 		x11Conn.DeleteProperty(w.wnd.id, x11Conn.Atoms.NetWMIcon)
 	} else {
@@ -233,15 +233,15 @@ func (w *Window) apiSetTitleIcons(images []*image.NRGBA) {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiDisplay() *Display {
-	return BestDisplayForRect(w.apiFrameRect())
+func (w *Window) nativeDisplay() *Display {
+	return BestDisplayForRect(w.nativeFrameRect())
 }
 
-func (w *Window) apiFrameRect() geom.Rect {
-	return w.apiFrameRectForContentRect(w.apiContentRect())
+func (w *Window) nativeFrameRect() geom.Rect {
+	return w.nativeFrameRectForContentRect(w.nativeContentRect())
 }
 
-func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
+func (w *Window) nativeFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	if !w.undecorated {
 		top, left, bottom, right := w.x11Border()
 		scale := w.BackingScale()
@@ -253,15 +253,15 @@ func (w *Window) apiFrameRectForContentRect(contentRect geom.Rect) geom.Rect {
 	return contentRect
 }
 
-func (w *Window) apiEnsureOnDisplay() {
-	frameRect := w.apiFrameRect()
-	revisedRect := w.apiDisplay().FitRectOnto(frameRect)
+func (w *Window) nativeEnsureOnDisplay() {
+	frameRect := w.nativeFrameRect()
+	revisedRect := w.nativeDisplay().FitRectOnto(frameRect)
 	if frameRect != revisedRect {
 		w.SetFrameRect(revisedRect)
 	}
 }
 
-func (w *Window) apiContentRect() geom.Rect {
+func (w *Window) nativeContentRect() geom.Rect {
 	if w.wnd.awaitingConfigure {
 		return w.lastContentRect
 	}
@@ -287,7 +287,7 @@ func (w *Window) apiContentRect() geom.Rect {
 	return r
 }
 
-func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
+func (w *Window) nativeContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	if !w.undecorated {
 		top, left, bottom, right := w.x11Border()
 		scale := w.BackingScale()
@@ -299,7 +299,7 @@ func (w *Window) apiContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	return frameRect
 }
 
-func (w *Window) apiSetContentRect(rect geom.Rect) {
+func (w *Window) nativeSetContentRect(rect geom.Rect) {
 	scale := w.BackingScale()
 	rect.X *= scale.X
 	rect.Y *= scale.Y
@@ -336,11 +336,11 @@ func (w *Window) x11ConvertRawMouse(where geom.Point) geom.Point {
 	return where.DivPt(w.BackingScale())
 }
 
-func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
+func (w *Window) nativeCurrentKeyModifiers() mod.Modifiers {
 	return x11CurrentKeyModifiers()
 }
 
-func (w *Window) apiUpdateCursorImage() {
+func (w *Window) nativeUpdateCursorImage() {
 	switch {
 	case w.cursorHidden:
 		if !w.wnd.cursorWasHidden {
@@ -364,15 +364,15 @@ func (w *Window) apiUpdateCursorImage() {
 	}
 }
 
-func (w *Window) apiCursorInContentArea() bool {
+func (w *Window) nativeCursorInContentArea() bool {
 	qpr := x11Conn.QueryPointer(w.wnd.id)
 	if qpr == nil {
 		return false
 	}
-	return w.x11ConvertRawMouse(geom.NewPoint(float32(qpr.RootX), float32(qpr.RootY))).In(w.apiContentRect())
+	return w.x11ConvertRawMouse(geom.NewPoint(float32(qpr.RootX), float32(qpr.RootY))).In(w.nativeContentRect())
 }
 
-func (w *Window) apiCursorPosition() geom.Point {
+func (w *Window) nativeCursorPosition() geom.Point {
 	qpr := x11Conn.QueryPointer(w.wnd.id)
 	if qpr == nil {
 		return geom.Point{}
@@ -380,7 +380,7 @@ func (w *Window) apiCursorPosition() geom.Point {
 	return w.x11ConvertRawMouse(geom.NewPoint(float32(qpr.WinX), float32(qpr.WinY)))
 }
 
-func (w *Window) apiBackingScale() geom.Point {
+func (w *Window) nativeBackingScale() geom.Point {
 	scale, err := x11Conn.ContentScale()
 	if err != nil {
 		errs.Log(err)
@@ -389,7 +389,7 @@ func (w *Window) apiBackingScale() geom.Point {
 	return geom.NewPoint(scale, scale)
 }
 
-func (w *Window) apiMinimize() {
+func (w *Window) nativeMinimize() {
 	if w.minimized {
 		x11Conn.DeiconifyWindow(w.wnd.id)
 	} else {
@@ -397,7 +397,7 @@ func (w *Window) apiMinimize() {
 	}
 }
 
-func (w *Window) apiMaximize() {
+func (w *Window) nativeMaximize() {
 	if w.maximized {
 		x11Conn.DemaximizeWindow(w.wnd.id)
 	} else {
@@ -423,7 +423,7 @@ func (w *Window) x11SetMaximized(maximized bool) {
 	}
 }
 
-func (w *Window) apiAcquireFocusAndBringToFront() {
+func (w *Window) nativeAcquireFocusAndBringToFront() {
 	x11Conn.ConfigureWindow(w.wnd.id, x11.ConfigureWindowMaskStackMode, &x11.ConfigureWindowRequest{
 		StackMode: x11.StackModeAbove,
 	})
@@ -431,18 +431,18 @@ func (w *Window) apiAcquireFocusAndBringToFront() {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiVisible() bool {
+func (w *Window) nativeVisible() bool {
 	return x11Conn.IsWindowVisible(w.wnd.id)
 }
 
-// x11ShowTimeout bounds how long apiShow waits for the window manager to actually map a newly shown window. MapWindow
-// is intercepted by the window manager (SubstructureRedirect), so a hung window manager — or one that keeps the window
-// unmapped, such as by assigning it to a non-current desktop — may never produce a VisibilityNotify. Since filtered
-// waits ignore PostEmptyEvent wake-ups, an unbounded wait here would hang the whole application permanently.
+// x11ShowTimeout bounds how long nativeShow waits for the window manager to actually map a newly shown window.
+// MapWindow is intercepted by the window manager (SubstructureRedirect), so a hung window manager — or one that keeps
+// the window unmapped, such as by assigning it to a non-current desktop — may never produce a VisibilityNotify. Since
+// filtered waits ignore PostEmptyEvent wake-ups, an unbounded wait here would hang the whole application permanently.
 const x11ShowTimeout = 2 * time.Second
 
-func (w *Window) apiShow() {
-	if w.apiVisible() {
+func (w *Window) nativeShow() {
+	if w.nativeVisible() {
 		return
 	}
 	x11Conn.MapWindow(w.wnd.id)
@@ -456,7 +456,7 @@ func (w *Window) apiShow() {
 	w.draw()
 }
 
-func (w *Window) apiHide() {
+func (w *Window) nativeHide() {
 	x11Conn.UnmapWindow(w.wnd.id)
 	x11Conn.Flush()
 }
@@ -472,7 +472,7 @@ const x11DnDStatusTimeout = 250 * time.Millisecond
 // receiving updates while the mouse is stationary.
 const x11DnDContinuousInterval = 50 * time.Millisecond
 
-func (w *Window) apiStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
+func (w *Window) nativeStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
 	defer w.dragSourceFinished()
 	x11Conn.SetDnDData(data...)
 	// Publish the full set of actions we permit so that targets can choose among them
@@ -939,7 +939,7 @@ func x11FindARGBVisual() x11.VisualID {
 	return 0
 }
 
-func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
+func (w *Window) nativeUpdateRegisteredDragTypes(types []*uti.DataType) {
 	if len(types) == 0 {
 		x11Conn.DeleteProperty(w.wnd.id, x11Conn.Atoms.DnDAware)
 	} else {
@@ -950,8 +950,8 @@ func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 	x11Conn.Flush()
 }
 
-func (w *Window) apiDestroy() {
-	w.glCtx.apiDestroy()
+func (w *Window) nativeDestroy() {
+	w.glCtx.nativeDestroy()
 	if w.wnd.gc != 0 {
 		x11Conn.FreeGC(w.wnd.gc)
 		w.wnd.gc = 0
@@ -966,7 +966,7 @@ func (w *Window) apiDestroy() {
 		w.wnd.colorMap = 0
 	}
 	x11Conn.Flush()
-	apiPollEvents()
+	nativePollEvents()
 }
 
 func (w *Window) x11SetDecorated(decorated bool) {
@@ -1058,7 +1058,7 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.MappingNotifyEvent:
 		if ev.Request != x11.MappingPointer {
-			apiFillKeyCodes()
+			nativeFillKeyCodes()
 		}
 	case *x11.ButtonPressEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
@@ -1101,13 +1101,13 @@ func x11ProcessEvent(e x11.Event) {
 		}
 	case *x11.EnterNotifyEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
-			w.apiUpdateCursorImage()
+			w.nativeUpdateCursorImage()
 			w.mouseEnter(w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
 				x11TranslateModifierState(ev.State))
 		}
 	case *x11.LeaveNotifyEvent:
 		if w := x11FindWindow(ev.Event); w != nil {
-			w.apiUpdateCursorImage()
+			w.nativeUpdateCursorImage()
 			w.mouseExit()
 		}
 	case *x11.MotionNotifyEvent:

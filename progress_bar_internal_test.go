@@ -18,24 +18,20 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
-// waitForTaskQueueLength polls the task queue until it holds at least min tasks, then waits out the grace period so any
-// stragglers can land, and returns the final live queue length.
-func waitForTaskQueueLength(t *testing.T, minimum int, grace time.Duration) int {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		length, head := taskQueueState()
-		if length-head >= minimum {
-			break
+// runTasksFor runs whatever arrives in the task queue, through the same recovery path the UI loop uses, until the
+// given duration has passed. It is how a test lets stragglers land and run rather than counting them: the queue is
+// package-global, and a timer armed by an earlier test — a caret blink from a field that was focused when a headless
+// session ended, say — may enqueue a task of its own at any moment, so an exact queue length is never something a test
+// can assert.
+func runTasksFor(d time.Duration) {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if length, head := taskQueueState(); length > head {
+			processNextTask()
+		} else {
+			time.Sleep(time.Millisecond)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %d task(s) to be queued", minimum)
-		}
-		time.Sleep(time.Millisecond)
 	}
-	time.Sleep(grace)
-	length, head := taskQueueState()
-	return length - head
 }
 
 // TestIndeterminateProgressBarSchedulesSingleRedrawTask verifies that overlapping draws of an indeterminate progress
@@ -57,18 +53,21 @@ func TestIndeterminateProgressBarSchedulesSingleRedrawTask(t *testing.T) {
 	}
 	c.True(p.redrawPending)
 
-	// Only one redraw task should ever arrive, no matter how many draws occurred.
-	c.Equal(1, waitForTaskQueueLength(t, 1, 50*time.Millisecond))
+	// Running the redraw task clears the pending flag so the next draw can schedule the next tick of the animation.
+	runTasksUntil(t, func() bool { return !p.redrawPending })
 
-	// Running the task clears the pending flag so the next draw can schedule the next tick of the animation.
-	processNextTask()
-	c.False(p.redrawPending)
-	length, head := taskQueueState()
-	c.Equal(0, length-head)
+	// Only one redraw task should ever have been scheduled, no matter how many draws occurred. A second one would clear
+	// the flag again when it ran, so raise the flag by hand and let anything else that was scheduled arrive and run:
+	// the flag surviving is the proof that nothing else was. The queue cannot simply be counted, since tasks from
+	// elsewhere may land in it at any time.
+	p.redrawPending = true
+	runTasksFor(50 * time.Millisecond)
+	c.True(p.redrawPending, "the overlapping draws should have scheduled a single redraw task, not one each")
+	p.redrawPending = false
 
 	p.DefaultDraw(cv, p.ContentRect(false))
-	c.True(p.redrawPending)
-	c.Equal(1, waitForTaskQueueLength(t, 1, 50*time.Millisecond))
+	c.True(p.redrawPending, "a draw after the tick has run should schedule the next one")
+	runTasksUntil(t, func() bool { return !p.redrawPending })
 
 	resetTaskQueue()
 }
@@ -145,9 +144,9 @@ func TestDeterminateProgressBarSchedulesNoRedrawTask(t *testing.T) {
 	p.SetFrameRect(geom.NewRect(0, 0, 100, 8))
 	cv, _ := newPixmapCanvas(100, 8)
 	p.DefaultDraw(cv, p.ContentRect(false))
+	// Scheduling a tick is what raises the flag, so the flag staying down is the whole of the evidence: the queue
+	// itself cannot be counted, since tasks from elsewhere may land in it at any time (see runTasksFor).
+	c.False(p.redrawPending, "a determinate bar should not have scheduled an animation tick")
+	runTasksFor(50 * time.Millisecond)
 	c.False(p.redrawPending)
-
-	time.Sleep(50 * time.Millisecond)
-	length, head := taskQueueState()
-	c.Equal(0, length-head)
 }

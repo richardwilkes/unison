@@ -16,18 +16,18 @@ import (
 	"github.com/richardwilkes/unison/drag"
 )
 
-func apiClipboardAvailableDataTypes() []string {
+func nativeClipboardAvailableDataTypes() []string {
 	return x11Conn.ClipboardDataTypes()
 }
 
-func apiClipboardHasDataType(dataType *uti.DataType) bool {
+func nativeClipboardHasDataType(dataType *uti.DataType) bool {
 	return slices.Contains(x11Conn.ClipboardDataTypes(), dataType.UTI)
 }
 
-func apiClipboardGetData(dataType *uti.DataType) []byte {
+func nativeClipboardGetData(dataType *uti.DataType) []byte {
 	return x11Conn.GetClipboardBytes(dataType.UTI)
 }
 
-func apiClipboardSetData(data ...drag.Data) {
+func nativeClipboardSetData(data ...drag.Data) {
 	x11Conn.SetClipboardData(data...)
 }

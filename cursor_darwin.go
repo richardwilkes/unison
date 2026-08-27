@@ -16,12 +16,12 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-type apiNativeCursor = cocoa.Cursor
+type nativeCursorHandle = cocoa.Cursor
 
-// apiNewCursor hands the cursor's pixels to AppKit, which does the per-display work itself: an NSCursor's image has a
-// point size and one bitmap representation per scale it was rasterized at, and AppKit draws whichever representation
+// nativeNewCursor hands the cursor's pixels to AppKit, which does the per-display work itself: an NSCursor's image has
+// a point size and one bitmap representation per scale it was rasterized at, and AppKit draws whichever representation
 // best matches the display the cursor appears on, so nothing needs to be re-rasterized as the cursor crosses displays.
-func apiNewCursor(src *cursorSource) *Cursor {
+func nativeNewCursor(src *cursorSource) *Cursor {
 	var reps []*image.NRGBA
 	if src.svg == nil {
 		// An image-backed cursor has no more detail than the pixels it was handed, so it becomes a single
@@ -50,7 +50,7 @@ func apiNewCursor(src *cursorSource) *Cursor {
 	return c
 }
 
-func (c *Cursor) apiDestroy() {
+func (c *Cursor) nativeDestroy() {
 	if c.cursor != 0 {
 		c.cursor.Release()
 		c.cursor = 0

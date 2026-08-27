@@ -33,8 +33,8 @@ const (
 	nsEventTypeOtherMouseDown   uint64 = 25
 )
 
-// newTestWindowAndView builds the window+view pair the way unison's apiInit does. The returned cleanup mirrors
-// apiDestroy (release the view, close the window), which also exercises the Go dealloc override.
+// newTestWindowAndView builds the window+view pair the way unison's nativeInit does. The returned cleanup mirrors
+// nativeDestroy (release the view, close the window), which also exercises the Go dealloc override.
 func newTestWindowAndView(t *testing.T) (Window, View, func()) {
 	t.Helper()
 	w := newTestWindow(testTitledStyle, true, true)
@@ -622,7 +622,7 @@ func TestViewDrawAndBackingCallbacks(t *testing.T) {
 }
 
 // TestViewReleaseDealloc proves the Go dealloc override runs without crashing for a view that was never installed in
-// a window (the installed case is exercised by every other test's cleanup, which mirrors apiDestroy).
+// a window (the installed case is exercised by every other test's cleanup, which mirrors nativeDestroy).
 func TestViewReleaseDealloc(t *testing.T) {
 	runOnMain(func() {
 		w := newTestWindow(testTitledStyle, true, true)

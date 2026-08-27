@@ -469,9 +469,11 @@ func (w *Window) TitleIcons() []*Image {
 // SetTitleIcons sets the title icon of the window. The image closest to the size desired by the system will be selected
 // and used, scaling if needed. If no images are specified, the window reverts to its default icon.
 //
-// Note that macOS no longer has window icons, so this does nothing on that platform.
+// Note that macOS no longer has window icons, so this does nothing on that platform. A window belonging to a headless
+// session is the exception: it records the icons wherever the test is running, since behaving the same way on every
+// host is the point of such a session.
 func (w *Window) SetTitleIcons(images []*Image) {
-	if runtime.GOOS != xos.MacOS && w.IsValid() {
+	if w.IsValid() && (runtime.GOOS != xos.MacOS || headlessWindowFor(w) != nil) {
 		w.titleIcons = make([]*Image, 0, len(images))
 		imgs := make([]*image.NRGBA, 0, len(images))
 		for _, img := range images {
@@ -635,7 +637,7 @@ func (w *Window) MoveToModalCenter(other *Window) {
 	if other != nil && other != w {
 		within = other.FrameRect()
 	} else if d := PrimaryDisplay(); d != nil {
-		within = d.usableInWindowUnits()
+		within = d.apiUsableInWindowUnits()
 	}
 	wndFrame := w.FrameRect()
 	within.Y += (within.Height - wndFrame.Height) / 3

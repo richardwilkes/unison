@@ -14,7 +14,7 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-// glxAPI is the subset of x11.GLX that apiGLContext uses, expressed as an interface so tests can substitute a fake
+// glxAPI is the subset of x11.GLX that nativeGLContext uses, expressed as an interface so tests can substitute a fake
 // implementation that exercises the failure paths without a running X server.
 type glxAPI interface {
 	Visual() x11.VisualID
@@ -29,7 +29,7 @@ type glxAPI interface {
 	Close()
 }
 
-type apiGLContext struct {
+type nativeGLContext struct {
 	glx       glxAPI
 	context   x11.GLXContext
 	window    x11.GLXWindow
@@ -38,23 +38,23 @@ type apiGLContext struct {
 	hasVisual bool
 }
 
-func (c *apiGLContext) x11PrepareWindow(wnd *Window) error {
+func (c *nativeGLContext) x11PrepareWindow(wnd *Window) error {
 	// Assign through a typed local so a failed NewGLX leaves c.glx a nil interface rather than an interface wrapping a
-	// nil *x11.GLX, which would defeat the nil checks in apiCreate and apiDestroy.
+	// nil *x11.GLX, which would defeat the nil checks in nativeCreate and nativeDestroy.
 	glx, err := x11Conn.NewGLX(wnd.transparent)
 	if err != nil {
 		return err
 	}
 	c.glx = glx
 	// The window must be created with the visual & depth of the framebuffer configuration that GLX chose; otherwise
-	// glXCreateWindow will fail with BadMatch. Propagate them so apiInit uses them instead of the screen defaults.
+	// glXCreateWindow will fail with BadMatch. Propagate them so nativeInit uses them instead of the screen defaults.
 	c.visual = c.glx.Visual()
 	c.depth = c.glx.Depth()
 	c.hasVisual = true
 	return nil
 }
 
-func (c *apiGLContext) apiCreate(wnd *Window) error {
+func (c *nativeGLContext) nativeCreate(wnd *Window) error {
 	if c.glx == nil {
 		return errs.New("failed to prepare GLX resources")
 	}
@@ -62,12 +62,12 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 	if c.context == nil {
 		return errs.New("failed to create OpenGL context")
 	}
-	// No flush of the main connection is needed before glXCreateWindow references the X window: apiInit, which created
-	// that window, always flushes before returning, and NewWindow calls apiCreate immediately afterward.
+	// No flush of the main connection is needed before glXCreateWindow references the X window: nativeInit, which
+	// created that window, always flushes before returning, and NewWindow calls nativeCreate immediately afterward.
 	c.window = c.glx.CreateWindow(wnd.wnd.id)
 	if c.window == 0 {
-		// Clear the reference after destroying the context, since NewWindow's error path will invoke apiDestroy, which
-		// would otherwise destroy the same context a second time and raise GLXBadContext.
+		// Clear the reference after destroying the context, since NewWindow's error path will invoke nativeDestroy,
+		// which would otherwise destroy the same context a second time and raise GLXBadContext.
 		c.glx.DestroyContext(c.context)
 		c.context = nil
 		return errs.New("failed to create GLX window for the OpenGL context")
@@ -75,25 +75,25 @@ func (c *apiGLContext) apiCreate(wnd *Window) error {
 	return nil
 }
 
-func (c *apiGLContext) apiMakeCurrent() {
+func (c *nativeGLContext) nativeMakeCurrent() {
 	if c.glx != nil {
 		c.glx.MakeCurrent(c.window, c.context)
 	}
 }
 
-func (c *apiGLContext) apiReleaseCurrent() {
+func (c *nativeGLContext) nativeReleaseCurrent() {
 	if c.glx != nil {
 		c.glx.ReleaseCurrent()
 	}
 }
 
-func (c *apiGLContext) apiSwapBuffers() {
+func (c *nativeGLContext) nativeSwapBuffers() {
 	if c.glx != nil {
 		c.glx.SwapBuffers(c.window)
 	}
 }
 
-func (c *apiGLContext) apiDestroy() {
+func (c *nativeGLContext) nativeDestroy() {
 	if c.window != 0 {
 		c.glx.DestroyWindow(c.window)
 		c.window = 0

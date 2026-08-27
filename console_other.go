@@ -11,5 +11,5 @@
 
 package unison
 
-func apiAttachConsole() {
+func nativeAttachConsole() {
 }

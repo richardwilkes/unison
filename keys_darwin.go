@@ -14,7 +14,7 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-func apiFillKeyCodes() {
+func nativeFillKeyCodes() {
 	rawScanCodeToKeyCodeMap[0x00] = KeyA
 	rawScanCodeToKeyCodeMap[0x01] = KeyS
 	rawScanCodeToKeyCodeMap[0x02] = KeyD

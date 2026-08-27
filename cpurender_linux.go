@@ -15,8 +15,8 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-// apiPresentCPUPixels displays a CPU-rendered frame by uploading the pixels to the window with PutImage.
-func (w *Window) apiPresentCPUPixels(pixels *raster.Pixmap) {
+// nativePresentCPUPixels displays a CPU-rendered frame by uploading the pixels to the window with PutImage.
+func (w *Window) nativePresentCPUPixels(pixels *raster.Pixmap) {
 	if w.wnd.gc == 0 {
 		if w.wnd.gc = x11Conn.CreateGC(x11.DrawableID(w.wnd.id), 0, nil); w.wnd.gc == 0 {
 			errs.Log(errs.New("failed to create X11 graphics context for CPU rendering"))

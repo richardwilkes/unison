@@ -72,7 +72,7 @@ func TestW32AnyMouseButtonDown(t *testing.T) {
 	c.True(w32AnyMouseButtonDown(w32.WPARAM(w32.XBUTTON1)<<16 | 0x04 | w32.MK_MBUTTON))
 }
 
-// TestW32WindowDPI is the regression test for the unguarded GetDpiForWindow call in apiBackingScale: GetDpiForWindow
+// TestW32WindowDPI is the regression test for the unguarded GetDpiForWindow call in nativeBackingScale: GetDpiForWindow
 // only exists as of the Windows 10 Anniversary Update, and calling a missing lazy proc panics, so on older builds the
 // helper must invoke only the monitor-DPI fallback and never touch the GetDpiForWindow path (and vice versa on newer
 // builds, where the fallback must stay untouched). A failed query reporting zero must yield the default 96 DPI rather

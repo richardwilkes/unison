@@ -23,7 +23,7 @@ type w32SaveDialog struct {
 	fileCommon
 }
 
-func apiNewSaveDialog() SaveDialog {
+func nativeNewSaveDialog() SaveDialog {
 	d := &w32SaveDialog{}
 	d.initialize()
 	return d

@@ -17,14 +17,14 @@ import (
 )
 
 // TestFinalFinishStartupSurvivesReentrantOpenFiles is the regression test for a self-deadlock in
-// apiFinalFinishStartup. Before the fix, it held macPendingFilesLock while invoking the user's openFilesCallback; if
+// nativeFinalFinishStartup. Before the fix, it held macPendingFilesLock while invoking the user's openFilesCallback; if
 // that callback pumped events (e.g. via RunModal) and AppKit delivered another open-files request during the nested
 // loop, macOpenFilesRequested re-locked the same non-reentrant mutex on the same thread and deadlocked. The callback
 // here simulates that by calling macOpenFilesRequested directly from within openFilesCallback, and the test runs
-// apiFinalFinishStartup on a separate goroutine so a regression shows up as a timeout failure rather than hanging the
-// test binary. It also verifies the ordering guarantees: files buffered before startup completes are delivered
-// synchronously and exactly once, while requests arriving after the flag flips are routed through the task queue.
-// This test mutates global state and therefore must not call t.Parallel.
+// nativeFinalFinishStartup on a separate goroutine so a regression shows up as a timeout failure rather than hanging
+// the test binary. It also verifies the ordering guarantees: files buffered before startup completes are delivered
+// synchronously and exactly once, while requests arriving after the flag flips are routed through the task queue. This
+// test mutates global state and therefore must not call t.Parallel.
 func TestFinalFinishStartupSurvivesReentrantOpenFiles(t *testing.T) {
 	c := check.New(t)
 	resetTaskQueue()
@@ -56,13 +56,13 @@ func TestFinalFinishStartupSurvivesReentrantOpenFiles(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		apiFinalFinishStartup()
+		nativeFinalFinishStartup()
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("apiFinalFinishStartup deadlocked on a reentrant open-files request")
+		t.Fatal("nativeFinalFinishStartup deadlocked on a reentrant open-files request")
 	}
 
 	// The buffered files must have been delivered synchronously and the buffer cleared.
@@ -89,6 +89,6 @@ func TestFinalFinishStartupSurvivesReentrantOpenFiles(t *testing.T) {
 func TestAPIWithAutoreleasePool(t *testing.T) {
 	c := check.New(t)
 	ran := false
-	apiWithAutoreleasePool(func() { ran = true })
+	nativeWithAutoreleasePool(func() { ran = true })
 	c.True(ran)
 }

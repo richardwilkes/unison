@@ -44,7 +44,7 @@ func TestX11CursorsWithoutConnection(t *testing.T) {
 	c.NotNil(pointing, "a built-in cursor must exist without a connection")
 	c.True(pointing == PointingCursor(), "and be cached rather than rebuilt on every request")
 	c.True(pointing != ArrowCursor(), "and be distinct from the other built-in cursors")
-	c.Equal(apiNativeCursor(0), pointing.cursor, "there is no native cursor behind it")
+	c.Equal(nativeCursorHandle(0), pointing.cursor, "there is no native cursor behind it")
 
 	pointing.Destroy()
 	c.Nil(pointingCursor, "destroying it clears the built-in so the next request rebuilds it")

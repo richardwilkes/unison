@@ -16,8 +16,8 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
-// apiPresentCPUPixels displays a CPU-rendered frame by blitting the pixels to the window's device context.
-func (w *Window) apiPresentCPUPixels(pixels *raster.Pixmap) {
+// nativePresentCPUPixels displays a CPU-rendered frame by blitting the pixels to the window's device context.
+func (w *Window) nativePresentCPUPixels(pixels *raster.Pixmap) {
 	dc := w32.GetDC(w.wnd.wnd)
 	if dc == 0 {
 		return

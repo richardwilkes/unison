@@ -14,11 +14,11 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-func apiPrimaryDisplay() *Display {
+func nativePrimaryDisplay() *Display {
 	return macConvertDisplay(cocoa.MainDisplayID())
 }
 
-func apiAllDisplays() []*Display {
+func nativeAllDisplays() []*Display {
 	displayIDs := cocoa.ActiveDisplayList()
 	result := make([]*Display, 0, len(displayIDs))
 	for _, id := range displayIDs {
@@ -52,9 +52,9 @@ func macConvertDisplay(id cocoa.DisplayID) *Display {
 	return &display
 }
 
-// usableInWindowUnits returns the usable area of the display in the coordinate space used by window rects, which on
-// this platform is the same space the display rects already use.
-func (d *Display) usableInWindowUnits() geom.Rect {
+// nativeUsableInWindowUnits returns the usable area of the display in the coordinate space used by window rects, which
+// on this platform is the same space the display rects already use.
+func (d *Display) nativeUsableInWindowUnits() geom.Rect {
 	return d.Usable
 }
 

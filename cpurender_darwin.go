@@ -13,8 +13,8 @@ import (
 	"github.com/richardwilkes/canvas/raster"
 )
 
-// apiPresentCPUPixels displays a CPU-rendered frame by handing the pixels to the content view's backing layer.
-func (w *Window) apiPresentCPUPixels(pixels *raster.Pixmap) {
+// nativePresentCPUPixels displays a CPU-rendered frame by handing the pixels to the content view's backing layer.
+func (w *Window) nativePresentCPUPixels(pixels *raster.Pixmap) {
 	size := w.ContentRect().Size
 	w.wnd.view.SetLayerContentsRGBAPremul(pixels.RGBA8888Bytes(), int(size.Width), int(size.Height),
 		int(pixels.Width), int(pixels.Height))

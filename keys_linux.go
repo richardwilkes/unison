@@ -31,7 +31,7 @@ var (
 	x11KeyNumLockBitIndex  int
 )
 
-func apiFillKeyCodes() {
+func nativeFillKeyCodes() {
 	x11KbMapping = x11Conn.GetKeyboardMapping()
 	x11FillKeyCodesFromMapping()
 }
@@ -346,6 +346,11 @@ func x11KeySymToUnicode(keySym uint32) rune {
 }
 
 func x11CurrentKeyModifiers() mod.Modifiers {
+	if x11Conn == nil {
+		// No connection to ask, as when a hand-built window is queried outside of Start(); report nothing held, as
+		// the cursor and display stubs report nothing for the same case.
+		return 0
+	}
 	m := x11Conn.QueryKeymap()
 	return x11ModifiersFromKeymap(m[:])
 }

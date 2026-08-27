@@ -13,9 +13,9 @@ package unison
 
 import "github.com/richardwilkes/toolbox/v2/i18n"
 
-func apiQuitMenuTitle() string {
+func nativeQuitMenuTitle() string {
 	return i18n.Text("Exit")
 }
 
-func apiAddAppMenuEntries(_ Menu) {
+func nativeAddAppMenuEntries(_ Menu) {
 }

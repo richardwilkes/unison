@@ -145,9 +145,9 @@ func TestWaitForWindowVisibilityReturnsOnEvent(t *testing.T) {
 	c.True(conn.PollEvents(nil) == nil, "queue must be empty after draining")
 }
 
-// TestWaitForWindowVisibilityBounded is the regression test for apiShow hanging forever when the window manager never
-// maps a window: the wait is filtered, so PostEmptyEvent wake-ups cannot unstick it, and MapWindow is intercepted via
-// SubstructureRedirect, so a hung or misbehaving window manager may never produce the awaited VisibilityNotify. The
+// TestWaitForWindowVisibilityBounded is the regression test for nativeShow hanging forever when the window manager
+// never maps a window: the wait is filtered, so PostEmptyEvent wake-ups cannot unstick it, and MapWindow is intercepted
+// via SubstructureRedirect, so a hung or misbehaving window manager may never produce the awaited VisibilityNotify. The
 // wait must therefore give up on its own once the timeout elapses, even while wake-ups and non-matching events keep
 // arriving.
 func TestWaitForWindowVisibilityBounded(t *testing.T) {

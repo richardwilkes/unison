@@ -24,7 +24,7 @@ import (
 
 var w32AppUsesLightThemeValue = uint32(1)
 
-// w32MainThreadID holds the thread ID of the main (UI) thread, captured during startup so that apiPostEmptyEvent can
+// w32MainThreadID holds the thread ID of the main (UI) thread, captured during startup so that nativePostEmptyEvent can
 // wake the main event loop from any goroutine without touching UI-thread-only state such as windowList.
 var w32MainThreadID atomic.Uint32
 
@@ -39,9 +39,9 @@ func w32IsWindows10BuildOrGreater(build uint32) bool {
 	}, w32.VER_MAJORVERSION|w32.VER_MINORVERSION|w32.VER_BUILDNUMBER, cond) == 0
 }
 
-func apiBeginStartup() error {
+func nativeBeginStartup() error {
 	w32MainThreadID.Store(windows.GetCurrentThreadId())
-	apiFillKeyCodes()
+	nativeFillKeyCodes()
 	if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 		w32.SetProcessDpiAwarenessContext(w32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	} else {
@@ -50,7 +50,7 @@ func apiBeginStartup() error {
 	return w32.OleInitialize()
 }
 
-func apiLateInit() {
+func nativeLateInit() {
 	keyPath := `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
 	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, syscall.KEY_NOTIFY|registry.QUERY_VALUE)
 	if err != nil {
@@ -79,28 +79,28 @@ func w32MonitorThemeChanges(key registry.Key) {
 	}
 }
 
-func apiFinalFinishStartup() {
+func nativeFinalFinishStartup() {
 	// Not used on Windows
 }
 
-func apiTerminate() error {
+func nativeTerminate() error {
 	// Not used on Windows
 	return nil
 }
 
-func apiBeep() {
+func nativeBeep() {
 	w32.MessageBeep(w32.MB_OK)
 }
 
-func apiIsColorModeTrackingPossible() bool {
+func nativeIsColorModeTrackingPossible() bool {
 	return true
 }
 
-func apiIsDarkModeEnabled() bool {
+func nativeIsDarkModeEnabled() bool {
 	return atomic.LoadUint32(&w32AppUsesLightThemeValue) == 0
 }
 
-func apiDoubleClickInterval() time.Duration {
+func nativeDoubleClickInterval() time.Duration {
 	return w32.GetDoubleClickTime()
 }
 
@@ -125,7 +125,7 @@ func w32UpdateTheme(k registry.Key, sync bool) error {
 	return nil
 }
 
-func apiPollEvents() {
+func nativePollEvents() {
 	var msg w32.MSG
 	for w32.PeekMessageW(&msg, 0, 0, 0, w32.PM_REMOVE) {
 		if msg.Message == w32.WM_QUIT {
@@ -171,14 +171,14 @@ func w32CollectStuckModifiers(pressedKeys map[KeyCode]bool, getKeyState func(vir
 	return stuck
 }
 
-func apiWaitEvents() {
+func nativeWaitEvents() {
 	w32.WaitMessage()
-	apiPollEvents()
+	nativePollEvents()
 }
 
-func apiPostEmptyEvent() {
+func nativePostEmptyEvent() {
 	if platformInited.Load() {
-		// Post directly to the main thread's message queue rather than to a window. apiPostEmptyEvent may be called
+		// Post directly to the main thread's message queue rather than to a window. nativePostEmptyEvent may be called
 		// from arbitrary goroutines, so it must not touch windowList, which is UI-thread-only state, and posting to a
 		// window would not work anyway when no windows exist: PostMessageW with a null hwnd posts to the *calling*
 		// thread's queue, which would fail to wake the main loop blocked in WaitMessage.
@@ -186,7 +186,7 @@ func apiPostEmptyEvent() {
 	}
 }
 
-// apiWithAutoreleasePool runs f directly: autorelease pools are a macOS concept with no Win32 counterpart.
-func apiWithAutoreleasePool(f func()) {
+// nativeWithAutoreleasePool runs f directly: autorelease pools are a macOS concept with no Win32 counterpart.
+func nativeWithAutoreleasePool(f func()) {
 	f()
 }

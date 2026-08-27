@@ -16,18 +16,18 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
-type apiNativeCursor = x11.CursorID
+type nativeCursorHandle = x11.CursorID
 
-// apiNewCursor creates the native cursor. X11 cursors are immutable, fixed-size pixmaps and this backend uses a single
-// cached, global content scale rather than a per-monitor one, so one render at creation time is all X11 can consume.
-// Mixed-DPI setups therefore get a single, uniform cursor scale, a pre-existing limitation of this backend.
-func apiNewCursor(src *cursorSource) *Cursor {
+// nativeNewCursor creates the native cursor. X11 cursors are immutable, fixed-size pixmaps and this backend uses a
+// single cached, global content scale rather than a per-monitor one, so one render at creation time is all X11 can
+// consume. Mixed-DPI setups therefore get a single, uniform cursor scale, a pre-existing limitation of this backend.
+func nativeNewCursor(src *cursorSource) *Cursor {
 	if x11Conn == nil {
 		// There is no connection to an X server until Start has run (or once Terminate has finished), which is the
 		// permanent state of a headless process such as a test run on a machine without a display, so there is
 		// nothing to create a native cursor with. Callers can still reasonably expect the built-in cursors to exist
 		// and to be distinct from one another, so hand back an inert cursor: a non-nil Cursor with no native cursor
-		// behind it, which apiDestroy already knows there is nothing to free for. It is not recorded in cursorList,
+		// behind it, which nativeDestroy already knows there is nothing to free for. It is not recorded in cursorList,
 		// since there is nothing for the teardown to release either.
 		return &Cursor{}
 	}
@@ -94,7 +94,7 @@ func apiNewCursor(src *cursorSource) *Cursor {
 	return c
 }
 
-func (c *Cursor) apiDestroy() {
+func (c *Cursor) nativeDestroy() {
 	if c.cursor != 0 {
 		x11Conn.FreeCursor(c.cursor)
 		c.cursor = 0

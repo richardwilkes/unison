@@ -18,11 +18,11 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
-func apiQuitMenuTitle() string {
+func nativeQuitMenuTitle() string {
 	return i18n.Text("Quit")
 }
 
-func apiAddAppMenuEntries(m Menu) {
+func nativeAddAppMenuEntries(m Menu) {
 	m.InsertSeparator(-1, true)
 	m.InsertMenu(-1, m.Factory().NewMenu(ServicesMenuID, i18n.Text("Services"), nil))
 	m.InsertSeparator(-1, false)

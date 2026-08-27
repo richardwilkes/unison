@@ -21,7 +21,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func apiClipboardAvailableDataTypes() []string {
+func nativeClipboardAvailableDataTypes() []string {
 	var wnd windows.HWND
 	if len(windowList) != 0 {
 		wnd = windowList[0].wnd.wnd
@@ -44,7 +44,7 @@ func apiClipboardAvailableDataTypes() []string {
 	return result
 }
 
-func apiClipboardHasDataType(dataType *uti.DataType) bool {
+func nativeClipboardHasDataType(dataType *uti.DataType) bool {
 	t := w32.LookupDataType(dataType.UTI)
 	if t == w32.CFNone {
 		return false
@@ -52,7 +52,7 @@ func apiClipboardHasDataType(dataType *uti.DataType) bool {
 	return w32.IsClipboardFormatAvailable(t)
 }
 
-func apiClipboardGetData(dataType *uti.DataType) []byte {
+func nativeClipboardGetData(dataType *uti.DataType) []byte {
 	t := w32.LookupDataType(dataType.UTI)
 	if t == w32.CFNone {
 		return nil
@@ -95,7 +95,7 @@ func apiClipboardGetData(dataType *uti.DataType) []byte {
 	return data
 }
 
-func apiClipboardSetData(data ...drag.Data) {
+func nativeClipboardSetData(data ...drag.Data) {
 	type entry struct {
 		format w32.ClipboardFormat
 		obj    syscall.Handle

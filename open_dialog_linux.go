@@ -27,7 +27,7 @@ type x11OpenDialog struct {
 	fallback OpenDialog
 }
 
-func apiNewOpenDialog() OpenDialog {
+func nativeNewOpenDialog() OpenDialog {
 	return &x11OpenDialog{fallback: NewCommonOpenDialog()}
 }
 

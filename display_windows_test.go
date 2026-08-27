@@ -81,5 +81,5 @@ func TestUsableInWindowUnits(t *testing.T) {
 		Usable: geom.NewRect(3840, 32, 3840, 2128),
 		Scale:  geom.NewPoint(2, 2),
 	}
-	c.Equal(geom.NewRect(3840, 32, 1920, 1064), d.usableInWindowUnits())
+	c.Equal(geom.NewRect(3840, 32, 1920, 1064), d.apiUsableInWindowUnits())
 }
