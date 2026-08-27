@@ -22,9 +22,12 @@ import (
 type tableTestRow struct {
 	parent      *tableTestRow
 	cellFactory func(row, col int) unison.Paneler
-	id          tid.TID
-	children    []*tableTestRow
-	open        bool
+	// cellParams, when set, is told the parameters of every ColumnCell call, for the tests that check what the table
+	// tells a row about the cell it is asking for.
+	cellParams func(row, col int, fg, bg unison.Ink, selected, indirectlySelected, focused bool)
+	id         tid.TID
+	children   []*tableTestRow
+	open       bool
 }
 
 func newTableTestRow(id string) *tableTestRow {
@@ -46,7 +49,12 @@ func (r *tableTestRow) SetChildren(children []*tableTestRow) {
 	}
 }
 func (r *tableTestRow) CellDataForSort(_ int) string { return string(r.id) }
-func (r *tableTestRow) ColumnCell(row, col int, _, _ unison.Ink, _, _, _ bool) unison.Paneler {
+func (r *tableTestRow) ColumnCell(row, col int, fg, bg unison.Ink, selected, indirectlySelected,
+	focused bool,
+) unison.Paneler {
+	if r.cellParams != nil {
+		r.cellParams(row, col, fg, bg, selected, indirectlySelected, focused)
+	}
 	if r.cellFactory != nil {
 		return r.cellFactory(row, col)
 	}

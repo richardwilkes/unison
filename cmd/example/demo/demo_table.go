@@ -60,6 +60,7 @@ func NewDemoTableWindow() (*unison.Window, error) {
 			id:    tid.MustNewTID('a'),
 			text:  fmt.Sprintf("Row %d", i+1),
 			text2: fmt.Sprintf("Some longer content for Row %d", i+1),
+			text3: fmt.Sprintf("Some editable text for Row %d", i+1),
 		}
 		if i%10 == 3 {
 			if i == 3 {
@@ -74,6 +75,7 @@ func NewDemoTableWindow() (*unison.Window, error) {
 					parent: row,
 					id:     tid.MustNewTID('a'),
 					text:   fmt.Sprintf("Sub Row %d", j+1),
+					text3:  fmt.Sprintf("Some editable text for Sub Row %d", j+1),
 				}
 				row.children[j] = child
 				if j < 2 {
@@ -86,6 +88,7 @@ func NewDemoTableWindow() (*unison.Window, error) {
 							parent: child,
 							id:     tid.MustNewTID('a'),
 							text:   fmt.Sprintf("Sub Sub Row %d", k+1),
+							text3:  fmt.Sprintf("Some editable text for Sub Sub Row %d", k+1),
 						}
 					}
 				}
@@ -99,7 +102,8 @@ func NewDemoTableWindow() (*unison.Window, error) {
 	table.InstallDropSupport[any](tableDataType,
 		func(from, to *unison.Table[*demoRow]) bool { return from == to }, nil, nil)
 
-	header := unison.NewTableHeader(table,
+	header := unison.NewTableHeader(
+		table,
 		unison.NewTableColumnHeader[*demoRow]("", "", nil),
 		unison.NewTableColumnHeader[*demoRow]("First", "", nil),
 		unison.NewTableColumnHeader[*demoRow]("Second", "", nil),

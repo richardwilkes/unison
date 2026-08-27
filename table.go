@@ -11,6 +11,7 @@ package unison
 
 import (
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -111,6 +112,13 @@ type TableTheme struct {
 }
 
 // Table provides a control that can display data in columns and rows.
+//
+// A cell may contain a widget that takes the keyboard focus, such as a Field. Clicking such a widget focuses it and
+// lets the user work in it in place, Tab and Shift-Tab move the focus to the next or previous focusable cell in
+// row-major order and leave the table once there are none left in that direction, and Return, Enter or Escape hand the
+// focus back to the table. FocusCell() starts the same thing programmatically and FocusedCell() reports which cell, if
+// any, currently holds the focus. A row that supplies such a widget must hand back the same instance from every
+// ColumnCell() call, since a freshly created one would have neither the focus nor the state the user put into it.
 type Table[T TableRowConstraint[T]] struct {
 	SelectionChangedCallback func()
 	DoubleClickCallback      func()
@@ -127,11 +135,22 @@ type Table[T TableRowConstraint[T]] struct {
 	rowCache                 []tableCache[T]
 	lastMouseEnterCellPanel  *Panel
 	lastMouseDownCellPanel   *Panel
+	// Cells are normally ephemeral: the table points a cell's parent at itself just long enough to draw it or forward
+	// one event to it, then detaches it again. That can't work for a cell whose widget takes the keyboard focus, since
+	// the window dispatches keys, redraws and scrolling by walking up the parent chain from Window.focus, and
+	// Window.Focus() moves the focus elsewhere the moment it finds it detached. The cell holding the focus is therefore
+	// left installed in the table until it loses the focus. These two fields, plus focusedCellRowIndex and
+	// focusedCellColumn further down, track which cell that is and where it lives, so it can be recognized again among
+	// the panels the row hands back from ColumnCell().
+	focusedCell    *Panel
+	focusedCellRow T
 	TableTheme
 	Panel
 	pressedHitRect           geom.Rect
 	interactionRow           int
 	interactionColumn        int
+	focusedCellRowIndex      int
+	focusedCellColumn        int
 	lastMouseMotionRow       int
 	lastMouseMotionColumn    int
 	startRow                 int
@@ -159,6 +178,8 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 		interactionColumn:     -1,
 		lastMouseMotionRow:    -1,
 		lastMouseMotionColumn: -1,
+		focusedCellRowIndex:   -1,
+		focusedCellColumn:     -1,
 	}
 	t.Self = t
 	t.SetFocusable(true)
@@ -228,8 +249,9 @@ func (t *Table[T]) leadingColumnDividerWidth() float32 {
 
 // DefaultDraw provides the default drawing.
 func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
+	t.validateFocusedCell()
 	selectionInk := t.SelectionInk
-	if !t.Focused() {
+	if !t.hasFocus() {
 		selectionInk = t.InactiveSelectionInk
 	}
 
@@ -325,7 +347,6 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 		rect.X = x
 		rect.Height = t.rowCache[r].height
 		for c := firstCol; c < len(t.Columns) && rect.X < lastX; c++ {
-			fg, bg, selected, indirectlySelected, focused := t.cellParams(r, c)
 			rect.Width = t.Columns[c].Current
 			cellRect := rect.Inset(t.Padding)
 			row := t.rowCache[r].row
@@ -347,6 +368,9 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 							canvas.Rotate(90)
 							canvas.Translate(offsetPt.Neg())
 						}
+						// The disclosure triangle is the only part of the cell the table draws itself, so the cell's
+						// foreground ink is only needed here; cellFor() obtains its own copy for the cell.
+						fg, _, _, _, _ := t.cellParams(r, c)
 						chevronPaint := fg.Paint(canvas, cellRect, paintstyle.Fill)
 						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
 							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil, chevronPaint)
@@ -357,14 +381,21 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 					cellRect.Width -= indent
 				}
 			}
-			cell := row.ColumnCell(r, c, fg, bg, selected, indirectlySelected, focused).AsPanel()
+			cell := t.cellFor(row, r, c)
+			if t.focusedCell != nil && r == t.focusedCellRowIndex && c == t.focusedCellColumn && cell != t.focusedCell {
+				// The row presents a different panel at the focused position now, which happens when it creates a new
+				// editor on each call rather than memoizing one, or when it swaps the editor out for something else.
+				// The panel we are holding the focus for is no longer part of what the user sees, so end the editing
+				// session rather than let an invisible widget go on eating the keystrokes.
+				t.releaseFocusedCell(true)
+			}
 			t.installCell(cell, cellRect)
 			canvas.Save()
 			canvas.Translate(cellRect.Point)
 			cellRect.X = 0
 			cellRect.Y = 0
 			cell.Draw(canvas, cellRect)
-			t.uninstallCell(cell)
+			t.uninstallCell(cell, r, c)
 			canvas.Restore()
 			rect.X += t.Columns[c].Current
 			if t.ShowColumnDivider && (t.ShowLastColumnDivider || c < len(t.Columns)-1) {
@@ -378,18 +409,24 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	}
 }
 
-func (t *Table[T]) cellParams(row, _ int) (fg, bg Ink, selected, indirectlySelected, focused bool) {
-	focused = t.Focused()
+// cellParams returns what a row is told about the cell at the given position: the inks to draw it with and the state
+// those inks reflect. The cell holding the keyboard focus is handed the row's plain inks even when its row is selected,
+// so that it stands out from the rest of the row as the cell being edited, and so that a Field's own text selection,
+// which is drawn with the same ink as a selected row, stays visible within it. The row is still reported as selected,
+// since it is.
+func (t *Table[T]) cellParams(row, col int) (fg, bg Ink, selected, indirectlySelected, focused bool) {
+	focused = t.hasFocus()
 	selected = t.IsRowSelected(row)
 	indirectlySelected = !selected && t.IsRowOrAnyParentSelected(row)
+	editing := t.focusedCell != nil && row == t.focusedCellRowIndex && col == t.focusedCellColumn
 	switch {
-	case selected && focused:
+	case !editing && selected && focused:
 		fg = t.OnSelectionInk
 		bg = t.SelectionInk
-	case selected:
+	case !editing && selected:
 		fg = t.OnInactiveSelectionInk
 		bg = t.InactiveSelectionInk
-	case indirectlySelected:
+	case !editing && indirectlySelected:
 		fg = t.OnIndirectSelectionInk
 		bg = t.IndirectSelectionInk
 	case row%2 == 1:
@@ -403,18 +440,151 @@ func (t *Table[T]) cellParams(row, _ int) (fg, bg Ink, selected, indirectlySelec
 }
 
 func (t *Table[T]) cell(row, col int) *Panel {
+	return t.cellFor(t.rowCache[row].row, row, col)
+}
+
+// panelContains returns true if p is ancestor or one of its descendants. This walks the parent pointers directly
+// rather than using Panel.AncestorIsOrSelf(), since that compares the panels' Self fields, which are both nil for a
+// bare panel that was never given one and would then report a match between two unrelated panels.
+func panelContains(ancestor, p *Panel) bool {
+	for ; p != nil; p = p.parent {
+		if p == ancestor {
+			return true
+		}
+	}
+	return false
+}
+
+// hasFocus returns true if the table itself or the cell that is currently holding the keyboard focus has it. Unlike
+// Panel.Focused(), this asks without disturbing anything: Window.Focus() self-heals a focus it considers stale by
+// moving it to another panel, which must never happen as a side effect of drawing or measuring the table.
+func (t *Table[T]) hasFocus() bool {
+	wnd := t.Window()
+	return wnd != nil && wnd.Focused() && wnd.focus != nil &&
+		(wnd.focus == t.AsPanel() || (t.focusedCell != nil && panelContains(t.focusedCell, wnd.focus)))
+}
+
+// adoptCellIfFocused makes cell the table's focused cell if the window's keyboard focus currently lies within it. Cells
+// are acquired fresh from the row on every call, so a row that wraps a memoized editor in a newly created panel each
+// time hands back a different cell on each call, and AddChild() will have moved the editor into that newest wrapper.
+// The newest wrapper must therefore be adopted the moment it is acquired, no matter which code path asked for it,
+// because otherwise the focused editor is left hanging off a panel with no window and the next call to Window.Focus()
+// takes the focus away from it.
+func (t *Table[T]) adoptCellIfFocused(cell *Panel, rowData T, row, col int) {
+	if cell == t.focusedCell {
+		return
+	}
+	wnd := t.Window()
+	if wnd == nil || wnd.focus == nil || !panelContains(cell, wnd.focus) {
+		return
+	}
+	if t.focusedCell != nil && t.focusedCell.parent == t.AsPanel() {
+		t.focusedCell.parent = nil
+	}
+	t.focusedCell = cell
+	t.focusedCellRow = rowData
+	t.focusedCellRowIndex = row
+	t.focusedCellColumn = col
+	cell.parent = t.AsPanel()
+}
+
+// cellFor returns the cell panel for the given row data and position. Every place that asks a row for one of its cells
+// funnels through here so that the adoption of a focused cell can't be missed.
+func (t *Table[T]) cellFor(rowData T, row, col int) *Panel {
 	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
-	return t.rowCache[row].row.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
+	cell := rowData.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
+	t.adoptCellIfFocused(cell, rowData, row, col)
+	return cell
+}
+
+// releaseFocusedCell stops tracking the focused cell. If 'refocus' is true, the table takes the keyboard focus back,
+// which is what triggers the cell widget's LostFocusCallback; that is also the right thing to do when the table isn't
+// focusable or is disabled, since the focus is then simply removed, which fires the callback just the same. The order
+// here matters. The tracking fields are cleared first so that a LostFocusCallback which turns around and calls back
+// into the table (committing an edit with a SyncToModel(), for example) doesn't re-enter this with a half-cleared
+// state. The cell is detached last so that a MarkForRedraw() from that same callback can still find the window by
+// walking up the parent chain. The guard covers an application that re-parented the panel elsewhere in the meantime.
+func (t *Table[T]) releaseFocusedCell(refocus bool) {
+	cell := t.focusedCell
+	if cell == nil {
+		return
+	}
+	var zero T
+	t.focusedCell = nil
+	t.focusedCellRow = zero
+	t.focusedCellRowIndex = -1
+	t.focusedCellColumn = -1
+	if refocus {
+		t.RequestFocusWithoutScroll()
+	}
+	if cell.parent == t.AsPanel() {
+		cell.parent = nil
+	}
+}
+
+// validateFocusedCell checks that the focused cell still holds the keyboard focus and still has a row and column to
+// live in, releasing it if not and bringing its frame up to date if so. Rather than consuming the table's public
+// FocusChangeInHierarchyCallback, which belongs to the application, the state is validated lazily like this from the
+// paths that are about to rely on it: drawing, mouse handling and the model syncs.
+func (t *Table[T]) validateFocusedCell() {
+	if t.focusedCell == nil {
+		return
+	}
+	wnd := t.Window()
+	if wnd == nil {
+		// A table that isn't in a window has nothing to hand the focus back to, so leave the state alone. It will be
+		// validated again once the table is part of a window.
+		return
+	}
+	inside := panelContains(t.focusedCell, wnd.focus)
+	row := t.focusedCellRowIndex
+	if row < 0 || row >= len(t.rowCache) || t.rowCache[row].row.ID() != t.focusedCellRow.ID() {
+		// The row cache was rebuilt underneath us, so fall back to locating the row by its ID.
+		row = t.RowToIndex(t.focusedCellRow)
+	}
+	col := t.focusedCellColumn
+	if !inside || row == -1 || col < 0 || col >= len(t.Columns) {
+		// Only ask for the focus back if it is still ours to give away; if it has already moved on to another panel,
+		// yanking it back would be wrong.
+		t.releaseFocusedCell(inside)
+		return
+	}
+	t.focusedCellRowIndex = row
+	t.setCellFrame(t.focusedCell, t.CellFrame(row, col))
+}
+
+// setCellFrame positions a cell and brings its layout up to date without letting either step propagate up into the
+// table. installCell() has always done both before attaching the cell for this reason: SetFrameRect() marks the panel
+// for redraw and notifies the ancestors' FrameChangeInChildHierarchyCallback when the frame changes, and
+// ValidateLayout() marks it for redraw whenever it actually lays something out. A cell that is merely being positioned
+// as part of drawing the table must not schedule yet another draw, and a row that builds a fresh wrapper panel on each
+// ColumnCell() call always hands back one that needs to be laid out, so an attached cell would mark the window for
+// redraw on every single draw and the table would never stop drawing. The focused cell, and a freshly created wrapper
+// that was adopted the moment the row handed it back, are already attached by the time they get here, so the parent is
+// unhooked for the duration of the call.
+func (t *Table[T]) setCellFrame(cell *Panel, frame geom.Rect) {
+	parent := cell.parent
+	cell.parent = nil
+	cell.SetFrameRect(frame)
+	cell.ValidateLayout()
+	cell.parent = parent
 }
 
 func (t *Table[T]) installCell(cell *Panel, frame geom.Rect) {
-	cell.SetFrameRect(frame)
+	t.setCellFrame(cell, frame)
 	cell.parent = t.AsPanel()
-	cell.ValidateLayout()
 }
 
-func (t *Table[T]) uninstallCell(cell *Panel) {
-	cell.parent = nil
+// uninstallCell detaches a cell that installCell() attached, with one exception. The cell is first offered the chance
+// to become the focused cell, since a widget inside it may have taken the keyboard focus while handling the event that
+// was just forwarded to it, and the cell that ends up holding the focus is then left attached to the table.
+func (t *Table[T]) uninstallCell(cell *Panel, row, col int) {
+	if row >= 0 && row < len(t.rowCache) && col >= 0 && col < len(t.Columns) {
+		t.adoptCellIfFocused(cell, t.rowCache[row].row, row, col)
+	}
+	if cell != t.focusedCell {
+		cell.parent = nil
+	}
 }
 
 // RowHeights returns the heights of each row.
@@ -641,7 +811,7 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 						break
 					}
 				}
-				t.uninstallCell(cell)
+				t.uninstallCell(cell, row, col)
 				return cursor
 			}
 		}
@@ -673,7 +843,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 					}
 					target = target.parent
 				}
-				t.uninstallCell(cell)
+				t.uninstallCell(cell, row, col)
 				return avoid
 			}
 			if cell.Tooltip != nil {
@@ -710,7 +880,7 @@ func (t *Table[T]) DefaultMouseEnter(where geom.Point, mods mod.Modifiers) bool 
 		if target.MouseEnterCallback != nil {
 			SafeCall(func() { target.MouseEnterCallback(cell.PointTo(where, target), mods) })
 		}
-		t.uninstallCell(cell)
+		t.uninstallCell(cell, row, col)
 		t.lastMouseEnterCellPanel = target
 	}
 	return true
@@ -729,7 +899,7 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 		if target := cell.PanelAt(where); target.MouseMoveCallback != nil {
 			SafeCall(func() { target.MouseMoveCallback(cell.PointTo(where, target), mods) })
 		}
-		t.uninstallCell(cell)
+		t.uninstallCell(cell, row, col)
 	}
 	return true
 }
@@ -743,7 +913,7 @@ func (t *Table[T]) DefaultMouseExit() bool {
 		rect := t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn)
 		t.installCell(cell, rect)
 		SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() })
-		t.uninstallCell(cell)
+		t.uninstallCell(cell, t.lastMouseMotionRow, t.lastMouseMotionColumn)
 	}
 	t.lastMouseEnterCellPanel = nil
 	t.lastMouseMotionRow = -1
@@ -753,7 +923,16 @@ func (t *Table[T]) DefaultMouseExit() bool {
 
 // DefaultMouseDown provides the default mouse down handling.
 func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
-	t.RequestFocusWithoutScroll()
+	t.validateFocusedCell()
+	row := t.OverRow(where.Y)
+	col := t.OverColumn(where.X)
+	if t.focusedCell == nil || row != t.focusedCellRowIndex || col != t.focusedCellColumn {
+		// Don't take the focus away from a cell that already has it when the press lands inside that same cell.
+		// Bouncing the focus out to the table and back again would make the cell's widget treat this as the click that
+		// first gave it the focus, so a Field would select all of its text instead of just moving the caret to the
+		// spot that was clicked.
+		t.RequestFocusWithoutScroll()
+	}
 	t.wasDragged = false
 	t.dividerDrag = false
 	t.lastSel = ""
@@ -797,8 +976,8 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 			}
 		}
 	}
-	if row := t.OverRow(where.Y); row != -1 {
-		if col := t.OverColumn(where.X); col != -1 {
+	if row != -1 {
+		if col != -1 {
 			cell := t.cell(row, col)
 			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.MouseDownCallback != nil }) {
 				t.interactionRow = row
@@ -813,7 +992,7 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 						stop = target.MouseDownCallback(cell.PointTo(where, target), button, clickCount, mods)
 					})
 				}
-				t.uninstallCell(cell)
+				t.uninstallCell(cell, row, col)
 				if stop {
 					return stop
 				}
@@ -909,7 +1088,7 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel),
 					button, mods)
 			})
-			t.uninstallCell(cell)
+			t.uninstallCell(cell, t.interactionRow, t.interactionColumn)
 		}
 	}
 	return stop
@@ -949,7 +1128,7 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 		SafeCall(func() {
 			stop = t.lastMouseDownCellPanel.MouseUpCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mods)
 		})
-		t.uninstallCell(cell)
+		t.uninstallCell(cell, t.interactionRow, t.interactionColumn)
 	}
 	t.lastMouseDownCellPanel = nil
 	t.interactionRow = -1
@@ -959,6 +1138,35 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 
 // DefaultKeyDown provides the default key down handling.
 func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
+	t.validateFocusedCell()
+	if t.focusedCell != nil {
+		// The key bubbled up from a widget inside the focused cell, since that is the only way one can arrive here
+		// while a cell holds the focus: the window dispatches keys by walking from the focus up the parent chain, and
+		// the focused cell's chain runs through the table. The widget didn't want the key, but that doesn't make it
+		// ours to act on -- running the row navigation or the Space-to-DoubleClickCallback shortcut below would move
+		// the selection out from under something the user is editing -- so only the keys that mean "leave this cell"
+		// are handled, and everything else is ignored.
+		switch keyCode {
+		case KeyTab:
+			if mods&(mod.NonSticky&^mod.Shift) == 0 {
+				if t.focusAdjacentCell(!mods.ShiftDown()) {
+					return true
+				}
+				// There is no cell left to move to in that direction, so take the focus back and report the key as
+				// unhandled. Window.keyPressed() then applies its own Tab fallback, which traverses from the window's
+				// focus -- the table, now -- and lands on the panel just after or just before it, which is exactly what
+				// a Tab from the table itself would have done.
+				t.RequestFocusWithoutScroll()
+			}
+			return false
+		case KeyReturn, KeyNumPadEnter, KeyEscape:
+			// Taking the focus back ends the editing; the widget's LostFocusCallback fires from within SetFocus().
+			t.RequestFocusWithoutScroll()
+			return true
+		default:
+			return false
+		}
+	}
 	if IsControlAction(keyCode, mods) {
 		if t.DoubleClickCallback != nil && len(t.selMap) != 0 {
 			SafeCall(t.DoubleClickCallback)
@@ -1056,6 +1264,100 @@ func setOpenRecursively[T TableRowConstraint[T]](row T, open bool) bool {
 		}
 	}
 	return altered
+}
+
+// focusCellAt attempts to give the keyboard focus to the cell at the given row and column, scrolling it into view if it
+// succeeds. 'forward' says which end of the cell to enter when the cell itself isn't focusable but has focusable
+// content within it, so that tabbing through a cell's widgets continues in the direction the user is moving. The cell
+// has to be installed in the table before the focus can be handed to it, since Window.SetFocus() only accepts a panel
+// that is already part of that window; the matching uninstallCell() is what adopts it as the focused cell if the focus
+// did land inside it. Note that acquiring the cell asks the row for it via ColumnCell(), which is expected here.
+func (t *Table[T]) focusCellAt(row, col int, forward bool) bool {
+	if row < 0 || row >= len(t.rowCache) || col < 0 || col >= len(t.Columns) {
+		return false
+	}
+	wnd := t.Window()
+	if wnd == nil {
+		return false
+	}
+	cell := t.cell(row, col)
+	if cell.Hidden {
+		return false
+	}
+	target := cell
+	if !target.Focusable() {
+		if forward {
+			target = cell.FirstFocusableChild()
+		} else {
+			target = cell.LastFocusableChild()
+		}
+		if target == nil {
+			// Nothing in this cell can take the focus. Don't hand a non-focusable panel to SetFocus(), since it would
+			// remove the focus entirely rather than leaving it where it was.
+			return false
+		}
+	}
+	t.installCell(cell, t.CellFrame(row, col))
+	wnd.SetFocus(target)
+	t.uninstallCell(cell, row, col)
+	t.ScrollRowCellIntoView(row, col)
+	return t.focusedCell == cell
+}
+
+// focusAdjacentCell moves the keyboard focus from the currently focused cell to the next ('forward' is true) or the
+// previous focusable cell, in row-major order. It deliberately doesn't wrap around: returning false at either end is
+// what lets a Tab out of the last cell continue on to whatever follows the table.
+func (t *Table[T]) focusAdjacentCell(forward bool) bool {
+	if t.focusedCell == nil {
+		return false
+	}
+	wnd := t.Window()
+	if wnd == nil {
+		return false
+	}
+	// A cell can hold more than one focusable widget, so exhaust the current cell's own focus chain before looking at
+	// any other cell.
+	if i, focusables := collectFocusables(t.focusedCell, wnd.focus, nil); i != -1 {
+		if forward {
+			if i+1 < len(focusables) {
+				wnd.SetFocus(focusables[i+1])
+				return true
+			}
+		} else if i > 0 {
+			wnd.SetFocus(focusables[i-1])
+			return true
+		}
+	}
+	row := t.focusedCellRowIndex
+	col := t.focusedCellColumn
+	if forward {
+		for c := col + 1; c < len(t.Columns); c++ {
+			if t.focusCellAt(row, c, true) {
+				return true
+			}
+		}
+		for r := row + 1; r < len(t.rowCache); r++ {
+			for c := range len(t.Columns) {
+				if t.focusCellAt(r, c, true) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	for c := col - 1; c >= 0; c-- {
+		if t.focusCellAt(row, c, false) {
+			return true
+		}
+	}
+	for r := row - 1; r >= 0; r-- {
+		for c := range slices.Backward(t.Columns) {
+			if t.focusCellAt(r, c, false) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // PruneSelectionOfUndisclosedNodes removes any nodes in the selection map that are no longer disclosed from the
@@ -1349,6 +1651,9 @@ func (t *Table[T]) SyncToModel() {
 	t.SetFrameRect(rect)
 	t.MarkForRedraw()
 	t.MarkForLayoutRecursivelyUpward()
+	// The row cache was just thrown away and rebuilt, so a cell that holds the keyboard focus needs to have its row
+	// located again, or be released if its row is no longer being displayed at all.
+	t.validateFocusedCell()
 }
 
 func (t *Table[T]) countOpenRowChildrenRecursively(row T) int {
@@ -1399,9 +1704,7 @@ func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 }
 
 func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) geom.Size {
-	fg, bg, selected, indirectlySelected, focused := t.cellParams(row, col)
-	cell := rowData.ColumnCell(row, col, fg, bg, selected, indirectlySelected, focused).AsPanel()
-	_, size, _ := cell.Sizes(geom.NewSize(widthConstraint, 0))
+	_, size, _ := t.cellFor(rowData, row, col).Sizes(geom.NewSize(widthConstraint, 0))
 	return size
 }
 
@@ -1548,6 +1851,8 @@ func (t *Table[T]) SyncRowHeights() {
 	for row, cache := range t.rowCache {
 		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
 	}
+	// Rows have moved vertically, so a cell that holds the keyboard focus needs its frame brought up to date.
+	t.validateFocusedCell()
 }
 
 // EventuallySizeColumnsToFit sizes each column to its preferred size after a short delay, allowing multiple
@@ -1768,4 +2073,23 @@ func (t *Table[T]) RequestFocusWithoutScroll() {
 	t.noScrollOnFocus = true
 	t.RequestFocus()
 	t.noScrollOnFocus = false
+}
+
+// FocusCell gives the keyboard focus to the widget in the cell at the given row and column (the cell itself if it is
+// focusable, otherwise its first focusable descendant), scrolling the cell into view. It returns false if the indexes
+// are out of range, the table is not in a window, or the cell has nothing that can take the focus. The selection is not
+// changed.
+func (t *Table[T]) FocusCell(row, col int) bool {
+	t.validateFocusedCell()
+	return t.focusCellAt(row, col, true)
+}
+
+// FocusedCell returns the row and column of the cell whose widget currently holds the keyboard focus, or -1, -1 if none
+// does.
+func (t *Table[T]) FocusedCell() (row, col int) {
+	t.validateFocusedCell()
+	if t.focusedCell == nil {
+		return -1, -1
+	}
+	return t.focusedCellRowIndex, t.focusedCellColumn
 }

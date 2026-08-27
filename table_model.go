@@ -44,9 +44,11 @@ type TableRowData[T any] interface {
 	SetChildren(children []T)
 	// CellDataForSort returns the string that represents the data in the specified cell.
 	CellDataForSort(col int) string
-	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index. If you
-	// need for the cell to retain widget state, make sure to return the same widget each time rather than creating a
-	// new one.
+	// ColumnCell returns the panel that should be placed at the position of the cell for the given column index.
+	// 'focused' is true when the table, or one of its cells, holds the keyboard focus. Any widget that retains state --
+	// which includes anything that takes the keyboard focus so it can be edited -- must be the same instance on every
+	// call rather than a newly created one, and must never be shared between rows or between tables, which also means
+	// CloneForTarget() must not copy it into the clone.
 	ColumnCell(row, col int, foreground, background Ink, selected, indirectlySelected, focused bool) Paneler
 	// IsOpen returns true if the row can have children and is currently showing its children.
 	IsOpen() bool
