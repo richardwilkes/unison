@@ -1416,3 +1416,37 @@ func (f *Field) ApplyFieldState(state *FieldState) {
 	}
 	f.setSelection(state.SelectionStart, state.SelectionEnd, state.SelectionAnchor)
 }
+
+// InstallAccessoryPanel sets a panel into the field, attached to the right end. The editable text area will shrink by
+// the preferred width of the accessory panel.
+func (f *Field) InstallAccessoryPanel(panel Paneler) {
+	p := panel.AsPanel()
+	UninstallFocusBorders(f, f)
+	_, prefSize, _ := p.Sizes(geom.Size{})
+	adjustBorder := func(b Border) Border {
+		return NewCompoundBorder(b, NewEmptyBorder(geom.Insets{Right: prefSize.Width}))
+	}
+	focusedBorder := adjustBorder(NewDefaultFieldBorder(true))
+	unfocusedBorder := adjustBorder(NewDefaultFieldBorder(false))
+	InstallFocusBorders(f, f, focusedBorder, unfocusedBorder)
+	f.AddChild(p)
+	f.SetLayout(&fieldAccessoryLayout{})
+}
+
+type fieldAccessoryLayout struct{}
+
+func (l *fieldAccessoryLayout) LayoutSizes(p *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
+	return p.Sizer()(hint)
+}
+
+func (l *fieldAccessoryLayout) PerformLayout(target *Panel) {
+	if children := target.Children(); len(children) > 0 {
+		_, prefSize, _ := children[0].Sizes(geom.Size{})
+		r := target.ContentRect(false)
+		r.X = r.Right()
+		r.Width = prefSize.Width
+		r.Y += (r.Height - prefSize.Height) / 2
+		r.Height = prefSize.Height
+		children[0].SetFrameRect(r)
+	}
+}
