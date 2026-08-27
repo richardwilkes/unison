@@ -761,10 +761,16 @@ func TestTableCellFieldArrowsDoNotMoveSelection(t *testing.T) {
 func TestTableCellFieldCaretBlinks(t *testing.T) {
 	c := check.New(t)
 	var e *editTable
-	// The default blink rate would make the wait below take seconds, and the rate itself is not what is under test, so
-	// the fixture's fields blink much faster. This has to happen before the window is shown, since the first blink is
-	// scheduled by the first draw of a focused field.
+	// Every blink redraws the field, so the blinks are counted by counting the times the field is drawn while it holds
+	// the focus: the draw that shows it taking the focus is among them, but once the application has reacted to the
+	// click nothing except the caret's timer has any reason to draw the field again. The default blink rate would make
+	// waiting for that many take seconds, and the rate itself is not what is under test, so the fixture's fields blink
+	// much faster. This has to happen before the window is shown, since the first blink is scheduled by the first draw
+	// of a focused field, at whatever rate the field has at that moment.
 	const blinkRate = 5 * time.Millisecond
+	const wantDraws = 8
+	draws := 0
+	blinked := make(chan struct{})
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
 		unison.StartupFinishedCallback(func() {
 			e = newEditTable(3, 2, "", false)
@@ -773,23 +779,50 @@ func TestTableCellFieldCaretBlinks(t *testing.T) {
 					field.BlinkRate = blinkRate
 				}
 			}
+			field := e.fields[0][0]
+			draw := field.DrawCallback
+			field.DrawCallback = func(gc *unison.Canvas, rect geom.Rect) {
+				draw(gc, rect)
+				if field.Focused() {
+					draws++
+					if draws == wantDraws {
+						close(blinked)
+					}
+				}
+			}
 			newEditWindow(t, e, false)
 		}))
 	c.NotNil(e)
 
-	screen.Click(cellCenter(screen, e.table, 0, 0))
-	s := e.snapshot(c, screen, 0, 0)
-	c.True(s.fieldFocused)
+	// A field blinking this fast never lets the application go quiet on a slow enough machine: the timer has fired
+	// again before a pass of the event loop can draw the caret it toggled and find nothing left outstanding, so a wait
+	// for the application to settle would run to its timeout instead. Nothing may wait for that while the field is
+	// blinking. The click is therefore injected from the UI thread, where the driver only queues its events, and the
+	// blinks themselves are what is waited for.
+	pt := cellCenter(screen, e.table, 0, 0)
+	c.True(screen.Post(func() { screen.Click(pt) }))
+	select {
+	case <-blinked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the caret never blinked")
+	}
 
-	// Sync() waits for the application to go quiet, not for a timer that has yet to fire, so the wait for the blinks
-	// has to be a real one.
-	time.Sleep(10 * blinkRate)
-	screen.Sync()
-	s = e.snapshot(c, screen, 0, 0)
+	// Pushing the rate out to something that cannot fire within the test lets the application go quiet again: the one
+	// blink that may already be in flight reschedules itself an hour out, and from then on there is nothing for Sync()
+	// to wait for. The rate is only touched on the UI thread, since that is where the blink reads it.
+	c.True(screen.Do(func() {
+		for _, row := range e.fields {
+			for _, field := range row {
+				field.BlinkRate = time.Hour
+			}
+		}
+	}))
+	s := e.snapshot(c, screen, 0, 0)
 	c.True(s.fieldFocused, "the blinking caret should not have disturbed the focus")
 	c.True(s.installed)
 	c.Equal(0, s.focusRow)
 	c.Equal(0, s.focusCol)
+	c.Equal(1, s.gained, "the field held the focus throughout, so it gained it only once")
 	c.Equal(0, s.lost)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
