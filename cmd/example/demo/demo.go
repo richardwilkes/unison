@@ -17,6 +17,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/align"
@@ -415,6 +416,9 @@ func createPopupMenusPanel() *unison.Panel {
 	panel := unison.NewPanel()
 	createPopupMenu(panel, 1, "Alphabet Tooltip", "Alpha", "Beta", "Charlie", "", "Delta", "Echo", "Foxtrot")
 	createPopupMenu(panel, 2, "Color Tooltip", "Red", "Blue", "Green").SetEnabled(false)
+	createComboField(panel, 1, "Combo 1 Tooltip", new("Cat"), new("Dog"), new("Giraffe"), new("Elephant"), nil, new(""))
+	createComboField(panel, 1, "Combo 2 Tooltip", new("Air Force"), new("Army"), new("Navy"), new("Marines"))
+	createComboField(panel, 1, "Combo 3 Tooltip", new("One"), new("Two"), new("Three"), nil)
 	panel.SetLayout(&unison.FlexLayout{
 		Columns:  len(panel.Children()),
 		HSpacing: unison.StdHSpacing,
@@ -439,6 +443,23 @@ func createPopupMenu(panel *unison.Panel, selection int, tooltip string, titles 
 			slog.Info("item selected from PopupMenu", "title", title, "popup", tooltip)
 		}
 	}
+	panel.AddChild(p)
+	return p
+}
+
+func createComboField(panel *unison.Panel, selection int, tooltip string, choices ...*string) unison.Paneler {
+	p := unison.NewComboField(choices, choices[selection], func(value *string) {
+		var v string
+		switch {
+		case value == nil:
+			v = i18n.Text("«not set»")
+		case *value == "":
+			v = i18n.Text("«empty»")
+		default:
+			v = *value
+		}
+		slog.Info("item selected from ComboField", "title", v, "combo", tooltip)
+	})
 	panel.AddChild(p)
 	return p
 }
