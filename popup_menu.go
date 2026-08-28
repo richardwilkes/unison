@@ -61,6 +61,7 @@ type PopupMenu[T comparable] struct {
 	WillShowMenuCallback     func(popup *PopupMenu[T])
 	ChoiceMadeCallback       func(popup *PopupMenu[T], index int, item T)
 	SelectionChangedCallback func(popup *PopupMenu[T])
+	ItemRendererCallback     func(item T) string
 	items                    []*popupMenuItem[T]
 	selection                map[int]bool
 	PopupMenuTheme
@@ -90,6 +91,15 @@ func NewPopupMenu[T comparable]() *PopupMenu[T] {
 	return p
 }
 
+func (p *PopupMenu[T]) renderItem(item T) string {
+	if p.ItemRendererCallback != nil {
+		var s string
+		SafeCall(func() { s = p.ItemRendererCallback(item) })
+		return s
+	}
+	return fmt.Sprintf("%v", item)
+}
+
 // DefaultSizes provides the default sizing.
 func (p *PopupMenu[T]) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	prefSize, _ = LabelContentSizes(nil, nil, p.Font, 0, 0)
@@ -97,7 +107,7 @@ func (p *PopupMenu[T]) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize 
 		if one.separator {
 			continue
 		}
-		size, _ := LabelContentSizes(NewText(fmt.Sprintf("%v", one.item), &TextDecoration{
+		size, _ := LabelContentSizes(NewText(p.renderItem(one.item), &TextDecoration{
 			Font:            p.Font,
 			OnBackgroundInk: p.OnBackgroundInk,
 		}), nil, p.Font, 0, 0)
@@ -165,7 +175,7 @@ func (p *PopupMenu[T]) textObj() *Text {
 		return nil
 	case 1:
 		one := p.items[indexes[0]]
-		return NewText(fmt.Sprintf("%v", one.item), &TextDecoration{
+		return NewText(p.renderItem(one.item), &TextDecoration{
 			Font:            p.Font,
 			OnBackgroundInk: p.OnBackgroundInk,
 		})
@@ -186,7 +196,7 @@ func (p *PopupMenu[T]) Text() string {
 	case 0:
 		return ""
 	case 1:
-		return fmt.Sprintf("%v", p.items[indexes[0]].item)
+		return p.renderItem(p.items[indexes[0]].item)
 	default:
 		return i18n.Text("Multiple")
 	}
@@ -218,8 +228,8 @@ func (p *PopupMenu[T]) Click() {
 }
 
 func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]) MenuItem {
-	item := m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1,
-		fmt.Sprintf("%v", entry.item), KeyBinding{}, func(_ MenuItem) bool {
+	item := m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1, p.renderItem(entry.item), KeyBinding{},
+		func(_ MenuItem) bool {
 			return entry.enabled
 		}, func(_ MenuItem) {
 			if p.ChoiceMadeCallback != nil {
