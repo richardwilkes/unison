@@ -4,10 +4,10 @@ go 1.27.0
 
 require (
 	github.com/OpenPrinting/goipp v1.2.0
-	github.com/ebitengine/purego v0.11.0-alpha.9
+	github.com/ebitengine/purego v0.11.0-alpha.11
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/canvas v0.3.0
-	github.com/richardwilkes/toolbox/v2 v2.17.0
+	github.com/richardwilkes/toolbox/v2 v2.18.0
 	github.com/yuin/goldmark v1.8.5
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/image v0.45.0
