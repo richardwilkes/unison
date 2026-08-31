@@ -78,9 +78,11 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 		}
 	}
 	updating := false
+	fieldValueSet := false
 	setDisplay := func(value *string) {
-		if !matchesCurrent(value) {
+		if !fieldValueSet || !matchesCurrent(value) {
 			updating = true
+			fieldValueSet = true
 			currentValue = value
 			switch {
 			case value == nil:
