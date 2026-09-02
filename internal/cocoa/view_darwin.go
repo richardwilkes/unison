@@ -200,7 +200,7 @@ func registerMacContentViewClass() {
 			Fn: func(self objc.ID, _ objc.SEL) {
 				Release(self.Send(Sel("trackingArea"))) // release is nil-safe
 				Release(self.Send(Sel("markedText")))
-				self.SendSuper(Sel("dealloc"))
+				SendSuper(self, macContentViewClass, Sel("dealloc"))
 			},
 		},
 		{
@@ -344,7 +344,7 @@ func registerMacContentViewClass() {
 				)
 				self.Send(Sel("setTrackingArea:"), ta)
 				self.Send(Sel("addTrackingArea:"), ta)
-				self.SendSuper(Sel("updateTrackingAreas"))
+				SendSuper(self, macContentViewClass, Sel("updateTrackingAreas"))
 			},
 		},
 		{

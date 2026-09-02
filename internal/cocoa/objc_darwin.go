@@ -96,13 +96,17 @@ func NSRectFromRect(r geom.Rect) NSRect {
 const NSUTF8StringEncoding = 4
 
 var (
-	frameworkLock    sync.Mutex
-	frameworkHandles = make(map[string]uintptr)
-	poolOnce         sync.Once
-	poolPushFunc     func() uintptr
-	poolPopFunc      func(uintptr)
-	selCache         sync.Map // map[string]objc.SEL
-	clsCache         sync.Map // map[string]objc.Class
+	frameworkLock     sync.Mutex
+	frameworkHandles  = make(map[string]uintptr)
+	libObjCOnce       sync.Once
+	libObjCHandle     uintptr
+	poolOnce          sync.Once
+	poolPushFunc      func() uintptr
+	poolPopFunc       func(uintptr)
+	superOnce         sync.Once
+	msgSendSuper2Func func(super *objcSuper, cmd objc.SEL, args ...any) objc.ID
+	selCache          sync.Map // map[string]objc.SEL
+	clsCache          sync.Map // map[string]objc.Class
 )
 
 // LoadFramework loads the named macOS system framework (e.g. "AppKit") into the process, making its symbols and
@@ -183,15 +187,54 @@ func Autorelease(obj objc.ID) objc.ID {
 	return obj.Send(Sel("autorelease"))
 }
 
-func ensurePoolFuncs() {
-	poolOnce.Do(func() {
+// libObjC returns the dlopen handle for the Objective-C runtime library, loading it on first use. libobjc is part of
+// every macOS installation, so a failure here is unrecoverable and panics.
+func libObjC() uintptr {
+	libObjCOnce.Do(func() {
 		lib, err := purego.Dlopen("/usr/lib/libobjc.A.dylib", purego.RTLD_LAZY|purego.RTLD_GLOBAL)
 		if err != nil {
 			panic(fmt.Errorf("cocoa: unable to load libobjc: %w", err))
 		}
+		libObjCHandle = lib
+	})
+	return libObjCHandle
+}
+
+func ensurePoolFuncs() {
+	poolOnce.Do(func() {
+		lib := libObjC()
 		purego.RegisterLibFunc(&poolPushFunc, lib, "objc_autoreleasePoolPush")
 		purego.RegisterLibFunc(&poolPopFunc, lib, "objc_autoreleasePoolPop")
 	})
+}
+
+// objcSuper mirrors the Objective-C runtime's struct objc_super. objc_msgSendSuper2 (the variant the compiler emits
+// for [super sel] on the modern runtime) expects superClass to be the class whose method is making the call; it looks
+// up that class's superclass itself.
+type objcSuper struct {
+	receiver   objc.ID
+	superClass objc.Class
+}
+
+func ensureSuperFunc() {
+	superOnce.Do(func() {
+		purego.RegisterLibFunc(&msgSendSuper2Func, libObjC(), "objc_msgSendSuper2")
+	})
+}
+
+// SendSuper sends sel to the superclass implementation of a method defined on cls, with obj as the receiver. It is
+// the equivalent of a compiled [super sel] inside one of cls's methods, and must be used instead of objc.ID.SendSuper
+// from any method implementation registered with objc.RegisterClass.
+//
+// objc.ID.SendSuper resolves "super" from the receiver's runtime class (object_getClass). That is only correct while
+// the receiver's runtime class is the class that defined the method. AppKit and Foundation routinely replace an
+// object's class with a dynamically created subclass (KVO's NSKVONotifying_* classes are the common case), and once
+// that has happened the receiver's "superclass" is the class that defined the method, so the "super" call dispatches
+// straight back into the same Go implementation and recurses until the stack overflows. Passing the defining class
+// explicitly, as the compiler does, avoids that.
+func SendSuper(obj objc.ID, cls objc.Class, sel objc.SEL, args ...any) objc.ID {
+	ensureSuperFunc()
+	return msgSendSuper2Func(&objcSuper{receiver: obj, superClass: cls}, sel, args...)
 }
 
 // PoolPush pushes a new autorelease pool and returns its token. Every call must be balanced by a PoolPop of that
