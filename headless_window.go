@@ -321,6 +321,19 @@ func (hw *headlessWindow) acquireFocusAndBringToFront() {
 	hw.hs.setFocus(hw.w)
 }
 
+// cancelMouseCapture releases the grab a press in this window installed, along with the buttons that press was
+// holding, and then puts the pointer back over whatever it is actually above: the tail of buttonReleased, without the
+// delivery. The window stays on the screen, so unlike releasePointer there is no exit to deliver for it.
+func (hw *headlessWindow) cancelMouseCapture() {
+	hs := hw.hs
+	if hs.capture != hw.w {
+		return
+	}
+	hs.capture = nil
+	clear(hs.buttons)
+	hs.updateHover(hs.pointer, hs.lastMods)
+}
+
 func (hw *headlessWindow) updateRegisteredDragTypes(types []*uti.DataType) {
 	hw.dragTypes = types
 }

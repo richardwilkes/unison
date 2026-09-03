@@ -374,6 +374,12 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 	w.wnd.wnd.MakeKeyAndOrderFront()
 }
 
+// nativeCancelMouseCapture is a no-op: AppKit routes a press to the view that took it until the release, with nothing
+// for the application to hand back. The release itself, when it arrives, is dropped by mouseUp, since the button has
+// already been recorded as up.
+func (w *Window) nativeCancelMouseCapture() {
+}
+
 func (w *Window) nativeVisible() bool {
 	return w.wnd.wnd.Visible()
 }

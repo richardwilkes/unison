@@ -101,6 +101,12 @@ func (s *HeadlessScreen) quiescent() bool {
 	if pendingTasks != 0 {
 		return false
 	}
+	// An activation ToFront() has asked for is performed at the end of the pass, after the probe that calls this has
+	// run, so it is work still outstanding. As with a DrawCallback that marks its own panel for redraw, a
+	// GainedFocusCallback that calls ToFront() renews this on every pass and leaves Sync() waiting until it gives up.
+	if pendingFrontWindow != nil {
+		return false
+	}
 	// Only the windows that can actually be drawn count as work outstanding. finishProcessingEvents puts a window that
 	// is valid but not visible straight back into redrawSet, to be drawn if it is ever shown, so counting those would
 	// leave a window that was created and never shown looking like work that is about to happen — forever.

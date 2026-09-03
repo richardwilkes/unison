@@ -119,14 +119,14 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 			value := c
 			m.InsertItem(-1, fac.NewItem(PopupMenuTemporaryBaseID+i+1, display, KeyBinding{}, nil,
 				func(_ MenuItem) {
-					InvokeTask(func() {
-						before := currentValue
-						setDisplay(value)
-						field.RequestFocus()
-						if changedCallback != nil && !matchesCurrent(before) {
-							changedCallback(value)
-						}
-					})
+					// Menu handlers already run from the event loop, after the menu has closed, so the focus request
+					// here is not undone by the menu's own teardown.
+					before := currentValue
+					setDisplay(value)
+					field.RequestFocus()
+					if changedCallback != nil && !matchesCurrent(before) {
+						changedCallback(value)
+					}
 				}))
 		}
 		m.Popup(field.RectToRoot(field.ContentRect(true)), initialIndex)

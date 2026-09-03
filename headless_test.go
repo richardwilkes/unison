@@ -1397,3 +1397,106 @@ func TestHeadlessStandardMenus(t *testing.T) {
 	c.True(appItems > 0, "the application menu should have been built")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestHeadlessToFrontCoalescesWithinCallback verifies that the activations asked for during one callback collapse into
+// the last one, performed once the callback is over: the window fronted first never receives the focus, and the
+// active window reported during the callback is already the one about to be activated.
+func TestHeadlessToFrontCoalescesWithinCallback(t *testing.T) {
+	c := check.New(t)
+	var button *unison.Button
+	var a, b, cw *unison.Window
+	var bGained, cGained int
+	var activeDuring, frontmostDuring *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			button = unison.NewButton()
+			button.SetTitle("Front")
+			button.ClickCallback = func() {
+				b.ToFront()
+				cw.ToFront()
+				activeDuring = unison.ActiveWindow()
+				frontmostDuring = unison.FrontmostWindow()
+			}
+			a = newHeadlessWindow(t, "a", geom.NewRect(20, 20, 200, 80), button)
+			b = newHeadlessWindow(t, "b", geom.NewRect(20, 150, 200, 80), unison.NewPanel())
+			cw = newHeadlessWindow(t, "c", geom.NewRect(260, 20, 200, 80), unison.NewPanel())
+			b.GainedFocusCallback = func() { bGained++ }
+			cw.GainedFocusCallback = func() { cGained++ }
+		}))
+	c.NotNil(button)
+	c.NotNil(a)
+	c.NotNil(b)
+	c.NotNil(cw)
+
+	screen.Click(screen.PanelCenter(button))
+	c.True(screen.FocusedWindow() == cw, "the last window fronted should hold the focus")
+	c.True(activeDuring == cw, "the window about to be activated should already be reported as active")
+	c.True(frontmostDuring == cw, "the window about to be activated should already be reported as frontmost")
+	var gainedB, gainedC int
+	c.True(screen.Do(func() {
+		gainedB = bGained
+		gainedC = cGained
+	}))
+	c.Equal(0, gainedB, "a request replaced within the same pass should never be performed")
+	c.Equal(1, gainedC)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHeadlessDialogChainFocusesEachDialog verifies the shape an application takes when one action asks several
+// questions in a row: a callback runs one modal dialog and, when that returns, immediately another. Each dialog must
+// hold the focus while it is up, despite the activations that closing the first one asks for on behalf of the window
+// underneath, and the focus must end up back on the window that started it all.
+func TestHeadlessDialogChainFocusesEachDialog(t *testing.T) {
+	c := check.New(t)
+	var button *unison.Button
+	var main, first, second *unison.Window
+	results := []int{unison.ModalResponseDiscard, unison.ModalResponseDiscard}
+	newDialog := func() *unison.Dialog {
+		d, err := unison.NewDialog(nil, nil, unison.NewMessagePanel("Sure?", ""),
+			[]*unison.DialogButtonInfo{unison.NewCancelButtonInfo(), unison.NewOKButtonInfo()})
+		if err != nil {
+			t.Errorf("unable to create dialog: %v", err)
+		}
+		return d
+	}
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			button = unison.NewButton()
+			button.SetTitle("Ask twice")
+			button.ClickCallback = func() {
+				if d := newDialog(); d != nil {
+					first = d.Window()
+					results[0] = d.RunModal()
+				}
+				if d := newDialog(); d != nil {
+					second = d.Window()
+					results[1] = d.RunModal()
+				}
+			}
+			main = newHeadlessWindow(t, "main", geom.NewRect(50, 50, 300, 150), button)
+		}))
+	c.NotNil(button)
+	c.NotNil(main)
+
+	screen.Click(screen.PanelCenter(button))
+	c.NotNil(first)
+	c.True(screen.FocusedWindow() == first, "the first dialog should hold the focus while it is modal")
+
+	screen.KeyPress(unison.KeyEscape, 0)
+	c.NotNil(second)
+	c.True(screen.FocusedWindow() == second, "the second dialog should hold the focus while it is modal")
+	var windows int
+	c.True(screen.Do(func() { windows = len(unison.Windows()) }))
+	c.Equal(2, windows, "the first dialog should be gone and the second open")
+
+	screen.KeyPress(unison.KeyEscape, 0)
+	var responses []int
+	c.True(screen.Do(func() {
+		responses = slices.Clone(results)
+		windows = len(unison.Windows())
+	}))
+	c.Equal([]int{unison.ModalResponseCancel, unison.ModalResponseCancel}, responses)
+	c.Equal(1, windows)
+	c.True(screen.FocusedWindow() == main, "the focus should have returned to the window that started the chain")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

@@ -316,12 +316,16 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
-			w.mouseUp(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
-			// Release the capture taken on button-down once the last button has been released.
+			// Release the capture taken on button-down once the last button has been released. This is done before
+			// the release is delivered rather than after, since the handler may run a nested event loop — a modal
+			// dialog put up from a mouse up does exactly that — in which further mouse input must be routed normally
+			// rather than to this window. The flag is cleared first, so the WM_CAPTURECHANGED that ReleaseCapture
+			// sends is not mistaken for another window taking the capture away.
 			if w32MouseCaptureTransition(false, w.wnd.mouseCaptured, wParam) == w32CaptureRelease {
 				w.wnd.mouseCaptured = false
 				w32.ReleaseCapture()
 			}
+			w.mouseUp(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONUP {
 				return 1
 			}
@@ -828,6 +832,17 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 	if attached {
 		w32.AttachThreadInput(ourThread, foregroundThread, false)
 	}
+}
+
+// nativeCancelMouseCapture gives up the capture taken on button-down, as DefWindowProc does for WM_CANCELMODE. The flag
+// is cleared first, so the WM_CAPTURECHANGED that ReleaseCapture sends is not mistaken for another window taking the
+// capture away.
+func (w *Window) nativeCancelMouseCapture() {
+	if !w.wnd.mouseCaptured {
+		return
+	}
+	w.wnd.mouseCaptured = false
+	w32.ReleaseCapture()
 }
 
 func (w *Window) nativeVisible() bool {

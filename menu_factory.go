@@ -31,7 +31,11 @@ type MenuFactory interface {
 	// NewMenu creates a new Menu. updater is optional and, if present, will be called prior to showing the Menu, giving
 	// a chance to modify it.
 	NewMenu(id int, title string, updater func(Menu)) Menu
-	// NewItem creates a new MenuItem. Both validator and handler may be nil for default behavior.
+	// NewItem creates a new MenuItem. Both validator and handler may be nil for default behavior. The validator is
+	// called synchronously whenever the item's enabled state needs to be determined. The handler is run from the event
+	// loop once the menu has closed, rather than from inside the mouse or key event that chose the item, so it may
+	// freely open windows and run modal dialogs; it must not retain the MenuItem it is handed beyond the call, since
+	// the menu that item belongs to may already have been disposed of by then.
 	NewItem(id int, title string, keyBinding KeyBinding, validator func(MenuItem) bool, handler func(MenuItem)) MenuItem
 }
 

@@ -377,6 +377,7 @@ func (s *headlessState) recordError(err error) {
 func (s *headlessState) finish() {
 	windowList = nil
 	modalStack = nil
+	pendingFrontWindow = nil
 	// A fresh map rather than clear(), so that a stray reference to the old one cannot resurrect entries here.
 	redrawSet = make(map[*Window]struct{})
 	wndWithCurrentCtx = nil

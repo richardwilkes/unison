@@ -390,9 +390,11 @@ func (d *dockHeader) handleOverflowPopup() {
 	defer m.Dispose()
 	for i, tab := range tabs {
 		if tab.Hidden {
-			m.InsertItem(-1, m.Factory().NewItem(PopupMenuTemporaryBaseID+i+1, tab.dockable.Title(), KeyBinding{}, nil, func(item MenuItem) {
-				d.owner.SetCurrentDockable(tabs[item.ID()-(PopupMenuTemporaryBaseID+1)].dockable)
-			}))
+			// The dockable is captured rather than looked up through the item, since the handler runs after the menu
+			// has closed, by which point the deferred Dispose above may already have released the item.
+			dockable := tab.dockable
+			m.InsertItem(-1, m.Factory().NewItem(PopupMenuTemporaryBaseID+i+1, dockable.Title(), KeyBinding{}, nil,
+				func(_ MenuItem) { d.owner.SetCurrentDockable(dockable) }))
 		}
 	}
 	m.Popup(d.overflowButton.RectToRoot(d.overflowButton.ContentRect(true)), 0)

@@ -431,6 +431,12 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 	x11Conn.Flush()
 }
 
+// nativeCancelMouseCapture is a no-op: the only hold a press installs is the server's implicit passive grab, which the
+// server itself releases when the last button comes up. The explicit GrabPointer used for the source side of drag &
+// drop belongs to that loop, which releases it on its own way out.
+func (w *Window) nativeCancelMouseCapture() {
+}
+
 func (w *Window) nativeVisible() bool {
 	return x11Conn.IsWindowVisible(w.wnd.id)
 }

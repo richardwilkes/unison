@@ -109,3 +109,33 @@ func TestSynthesizeMouseUpReleasesAllPressedButtons(t *testing.T) {
 	c.False(w.inMouseDown)
 	c.Equal(0, len(w.pressedButtons))
 }
+
+// TestCancelPressesForModalEndsPressWithoutDelivery verifies the cancel-mode step RunModal performs before its loop:
+// a press in progress in another window is ended, but the synthesized release is not delivered to the panels, since a
+// button under the pointer would otherwise fire its click again and recurse into RunModal.
+func TestCancelPressesForModalEndsPressWithoutDelivery(t *testing.T) {
+	c := check.New(t)
+	w := newMouseButtonTestWindow()
+	savedList := windowList
+	windowList = []*Window{w}
+	t.Cleanup(func() { windowList = savedList })
+	content := w.root.contentPanel
+	content.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+	ups := 0
+	content.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+		ups++
+		return true
+	}
+	w.mouseDown(geom.NewPoint(10, 10), ButtonLeft, 0)
+	c.True(w.inMouseDown)
+	c.NotNil(w.lastMouseDownPanel)
+
+	modal := newMouseButtonTestWindow()
+	pushTestModal(t, modal)
+	cancelPressesForModal(modal)
+	c.Equal(0, ups, "the synthesized release must not reach the panels")
+	c.False(w.inMouseDown)
+	c.Equal(0, len(w.pressedButtons))
+	c.Nil(w.lastMouseDownPanel)
+	c.Equal(0, len(modal.pressedButtons), "the modal window itself is left alone")
+}

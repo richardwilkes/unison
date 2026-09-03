@@ -462,15 +462,17 @@ func TestHeadlessMinimizedWindow(t *testing.T) {
 
 	// ToFront() on a minimized window restores it as well, since activation implies restoration on the platforms:
 	// otherwise it would be a focused window that receives every key event yet is skipped by hit testing and by
-	// Capture(). Disposing of another window, or a modal dialog returning, reaches this without anything exotic.
+	// Capture(). Disposing of another window, or a modal dialog returning, reaches this without anything exotic. The
+	// activation, and so the restoration, is performed by the event loop at the end of the pass rather than by
+	// ToFront() itself, which is why the state is read back only once Do has waited for that pass to finish.
 	var minimized bool
 	c.True(screen.Do(func() {
 		reported = nil
 		front.Minimize()
 		back.ToFront()
 		front.ToFront()
-		minimized = front.IsMinimized()
 	}))
+	c.True(screen.Do(func() { minimized = front.IsMinimized() }))
 	c.False(minimized, "bringing a minimized window to the front should restore it")
 	c.True(screen.WindowAt(geom.NewPoint(50, 50)) == front)
 	c.True(screen.FocusedWindow() == front)
@@ -923,10 +925,11 @@ func TestHeadlessInputCrossingAndWheel(t *testing.T) {
 	c.NotNil(b)
 
 	var aEnters, aExits, aMoves, aWheels, bEnters, bWheels int
+	// Give the focus to a window that is not the one the wheel will be aimed at. Done before the callbacks are
+	// installed, since taking the focus enters the window and would otherwise be counted below — and in a Do of its
+	// own, since the activation happens at the end of the pass rather than inside ToFront() itself.
+	c.True(screen.Do(func() { a.ToFront() }))
 	c.True(screen.Do(func() {
-		// Give the focus to a window that is not the one the wheel will be aimed at. Done before the callbacks are
-		// installed, since taking the focus enters the window and would otherwise be counted below.
-		a.ToFront()
 		a.MouseEnterCallback = func(_ geom.Point, _ mod.Modifiers) bool {
 			aEnters++
 			return false
@@ -2344,4 +2347,139 @@ func TestDisplayUsableDispatchesOnItsOwnBackend(t *testing.T) {
 	}))
 	c.Equal(geom.NewRect(0, 0, 320, 240), sessionUsable, "the session's display is already in window units")
 	c.Equal(nativeExpected, nativeUsable, "a display built by the OS keeps the OS conversion during a session")
+}
+
+// TestHeadlessModalFromMouseDownCancelsPress verifies the cancel-mode step RunModal performs: a modal dialog put up
+// from a mouse down, while the button is still held, ends that press in the window it began in and releases the
+// pointer, so that the dialog's own loop routes input normally. A release is the usual trigger for a modal, and the
+// router already hands the pointer back before delivering one, so a press is the case that exercises this.
+func TestHeadlessModalFromMouseDownCancelsPress(t *testing.T) {
+	c := check.New(t)
+	var wnd, dlg *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			wnd = newHeadlessTestWindow(t, "main", geom.NewRect(0, 0, 200, 200))
+			if wnd == nil {
+				return
+			}
+			wnd.Content().MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
+				d, err := NewDialog(nil, nil, NewMessagePanel("Proceed?", ""),
+					[]*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()})
+				if err != nil {
+					t.Errorf("unable to create dialog: %v", err)
+					return true
+				}
+				dlg = d.Window()
+				d.RunModal()
+				return true
+			}
+		}))
+	c.NotNil(wnd)
+
+	pt := geom.NewPoint(100, 100)
+	screen.MouseDown(pt, ButtonLeft, mod.None) // returns once the application is idle inside the dialog's loop
+	c.NotNil(dlg)
+	c.True(screen.FocusedWindow() == dlg, "the dialog should hold the focus while it is modal")
+	var capture *Window
+	var buttons, pressed int
+	var inMouseDown bool
+	c.True(screen.Do(func() {
+		capture = screen.capture
+		buttons = len(screen.buttons)
+		pressed = len(wnd.pressedButtons)
+		inMouseDown = wnd.inMouseDown
+	}))
+	c.Nil(capture, "the pointer should have been released")
+	c.Equal(0, buttons, "no button should be recorded as held")
+	c.Equal(0, pressed, "the press should have been ended in the window it began in")
+	c.False(inMouseDown)
+
+	screen.KeyPress(KeyEscape, 0)
+	screen.MouseUp(pt, ButtonLeft, mod.None) // the physical release, which now has no press to complete
+	var windows int
+	c.True(screen.Do(func() { windows = len(Windows()) }))
+	c.Equal(1, windows)
+	c.True(screen.FocusedWindow() == wnd)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHeadlessMenuHandlerRunsFromEventLoop verifies that an item's handler runs once the menu has closed and the event
+// that chose it is over, rather than from inside that event, and that a handler which runs a modal dialog from there
+// leaves the dialog holding the focus.
+func TestHeadlessMenuHandlerRunsFromEventLoop(t *testing.T) {
+	c := check.New(t)
+	const (
+		testMenuID = UserBaseID + 1
+		testItemID = UserBaseID + 2
+	)
+	var wnd, dlg *Window
+	var bar, sub Menu
+	activated := 0
+	menuOpenDuringHandler := true
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			wnd = newHeadlessTestWindow(t, "menus", geom.NewRect(0, 0, 300, 200))
+			if wnd == nil {
+				return
+			}
+			factory := DefaultMenuFactory()
+			bar = factory.BarForWindow(wnd, func(m Menu) {
+				f := m.Factory()
+				sub = f.NewMenu(testMenuID, "Test", nil)
+				sub.InsertItem(-1, f.NewItem(testItemID, "Ask", KeyBinding{}, nil, func(MenuItem) {
+					activated++
+					if m, ok := sub.(*menu); ok {
+						menuOpenDuringHandler = m.popupPanel != nil
+					}
+					d, err := NewDialog(nil, nil, NewMessagePanel("Proceed?", ""),
+						[]*DialogButtonInfo{NewCancelButtonInfo(), NewOKButtonInfo()})
+					if err != nil {
+						t.Errorf("unable to create dialog: %v", err)
+						return
+					}
+					dlg = d.Window()
+					d.RunModal()
+				}))
+				m.InsertMenu(-1, sub)
+			})
+			wnd.ToFront()
+		}))
+	c.NotNil(wnd)
+	c.NotNil(bar)
+	c.NotNil(sub)
+	screen.Sync() // the bar has to have been laid out before there is anywhere to aim at
+
+	var title *Panel
+	c.True(screen.Do(func() {
+		if panels := headlessMenuItemPanels(wnd.root.menuBarPanel); len(panels) != 0 {
+			title = panels[0]
+		}
+	}))
+	c.NotNil(title, "the menu bar should carry the one title that was added to it")
+	screen.Click(screen.PanelCenter(title))
+
+	var item *Panel
+	c.True(screen.Do(func() {
+		if m, ok := sub.(*menu); ok && m.popupPanel != nil {
+			if panels := headlessMenuItemPanels(m.popupPanel); len(panels) != 0 {
+				item = panels[0]
+			}
+		}
+	}))
+	c.NotNil(item, "clicking the title should have opened the menu")
+
+	screen.Click(screen.PanelCenter(item)) // returns once the application is idle inside the dialog's loop
+	var count int
+	c.True(screen.Do(func() { count = activated }))
+	c.Equal(1, count, "choosing the item should have run its handler exactly once")
+	c.False(menuOpenDuringHandler, "the menu should have closed before the handler ran")
+	c.NotNil(dlg)
+	c.True(screen.FocusedWindow() == dlg, "the dialog the handler opened should hold the focus")
+
+	screen.KeyPress(KeyEscape, 0)
+	var windows int
+	c.True(screen.Do(func() { windows = len(Windows()) }))
+	c.Equal(1, windows)
+	c.True(screen.FocusedWindow() == wnd)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

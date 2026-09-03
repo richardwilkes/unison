@@ -21,7 +21,8 @@ import (
 // capture, Windows stops delivering mouse-move once the cursor leaves the client area during a drag and never delivers
 // a button-up that happens outside, leaving stuck button state. The window procedure drives SetCapture/ReleaseCapture
 // from this transition function, so it must acquire on the first press, hold across additional presses and partial
-// releases, and release only when the last button goes up.
+// releases, and release only when the last button goes up. The release is performed before the final button-up is
+// delivered rather than after, so that a nested event loop started by the handler runs without the capture held.
 func TestW32MouseCaptureTransition(t *testing.T) {
 	c := check.New(t)
 	for i, one := range []struct {

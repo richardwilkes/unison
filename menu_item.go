@@ -390,6 +390,11 @@ func (mi *menuItem) execute() {
 	}
 	mi.menu.closeMenuStack()
 	if mi.enabled && mi.handler != nil {
-		SafeCall(func() { mi.handler(mi) })
+		// Enablement is sampled now, while the menu is still the state the user chose from, but the handler itself
+		// runs from the event loop rather than from inside the mouse or key event that chose the item. A handler that
+		// opens a window or runs a modal dialog is then not doing so from the middle of an event dispatch, which is
+		// where the platforms behave least predictably about which window ends up with the focus. processNextTask
+		// wraps the call in SafeCall.
+		InvokeTask(func() { mi.handler(mi) })
 	}
 }

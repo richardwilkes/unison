@@ -80,6 +80,7 @@ func (s *headlessState) beginStartup() error {
 	// session from ever going quiet and spin the event loop forever.
 	windowList = nil
 	modalStack = nil
+	pendingFrontWindow = nil
 	redrawSet = make(map[*Window]struct{})
 	wndWithCurrentCtx = nil
 	// Take any cursors that predate the session out of the way, so that it neither adopts nor destroys them. Those are

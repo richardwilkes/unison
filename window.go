@@ -38,6 +38,10 @@ var (
 	windowList        []*Window
 	modalStack        []*Window
 	wndWithCurrentCtx *Window
+	// pendingFrontWindow is the window whose platform activation the most recent ToFront() asked for and that
+	// flushPendingFront has yet to perform. UI thread only, like windowList. It may point at a window that has since
+	// been disposed, so every reader checks IsValid() before acting on it.
+	pendingFrontWindow *Window
 )
 
 // WindowKind represents the kind of window, which can be used by the system to determine how to treat the window in
@@ -196,8 +200,12 @@ func Windows() []*Window {
 }
 
 // ActiveWindow returns the window that currently has the keyboard focus, or nil if none of your application windows
-// has the keyboard focus.
+// has the keyboard focus. A window whose activation has been requested with ToFront() but not yet performed by the
+// event loop counts as active, since it will hold the focus by the time anything positioned relative to it appears.
 func ActiveWindow() *Window {
+	if w := pendingFrontWindow; w.IsValid() && !w.transient {
+		return w
+	}
 	nextNonTransientIsFocus := false
 	for _, w := range windowList {
 		if nextNonTransientIsFocus && !w.transient {
@@ -219,6 +227,9 @@ func ActiveWindow() *Window {
 // new windows and dialogs even at moments when no window has the focus (e.g. immediately after a menu window closes,
 // but before the delayed focus notification for the underlying window has arrived).
 func FrontmostWindow() *Window {
+	if w := pendingFrontWindow; w.IsValid() && !w.transient && w.IsVisible() {
+		return w
+	}
 	for _, w := range windowList {
 		if !w.transient && w.IsVisible() {
 			return w
@@ -353,11 +364,28 @@ func (w *Window) RunModal() int {
 	w.modalResultCode = ModalResponseDiscard
 	w.inModal = true
 	modalStack = append(modalStack, w)
+	cancelPressesForModal(w)
 	w.ToFront()
 	for w.inModal {
 		processEvents()
 	}
 	return w.modalResultCode
+}
+
+// cancelPressesForModal ends any mouse press still in progress in the other windows before a nested modal event loop
+// takes over the thread. This is what Win32 does with WM_CANCELMODE before it runs a dialog's own message loop, and for
+// the same reason: a modal is very often started from a click, so the press that led here was delivered to a window the
+// modal is about to block, and the platform capture that press installed would otherwise go on routing every mouse
+// message to that window for as long as the modal ran. The modal must already be on the modal stack when this is
+// called, so that the synthesized releases take the bookkeeping-only path in mouseUp rather than being delivered to the
+// panels, where a button under the pointer would fire its click again and recurse into RunModal.
+func cancelPressesForModal(modal *Window) {
+	for _, w := range slices.Clone(windowList) {
+		if w != modal {
+			w.synthesizeMouseUp()
+			w.apiCancelMouseCapture()
+		}
+	}
 }
 
 // StopModal stops the current modal event loop and propagates the provided code as the result to RunModal().
@@ -444,6 +472,9 @@ func (w *Window) destroy() {
 	}
 	w.apiDestroy()
 	windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
+	if pendingFrontWindow == w {
+		pendingFrontWindow = nil
+	}
 }
 
 // Title returns the title of this window.
@@ -826,12 +857,46 @@ func (w *Window) Hide() {
 
 // ToFront attempts to bring the window to the foreground and give it the keyboard focus. If it is hidden, it will be
 // made visible first. Does nothing for windows marked keepHidden.
+//
+// The window is shown immediately, but the platform activation is performed by the event loop at the end of the
+// current pass rather than here, and repeated requests made within one pass collapse into the last one. Doing it here
+// would perform the activation from inside whatever callback asked for it, which on some platforms is inside the
+// dispatch of the very event that triggered it: the platform may then re-enter the focus callbacks on the spot, or
+// finish its own handling of that event afterwards and undo the activation. Deferring also means that a sequence such
+// as a menu closing (which fronts the window underneath) followed by a dialog opening activates only the dialog.
 func (w *Window) ToFront() {
 	if w.IsValid() && !w.keepHidden {
 		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
-		w.apiAcquireFocusAndBringToFront()
+		requestFront(w)
 	}
+}
+
+// requestFront records w as the window to activate at the end of the current pass of the event loop, replacing any
+// earlier request. The empty event wakes a loop that is about to block, such as the one RunModal is about to start,
+// so that the activation is not left waiting on the next real event.
+func requestFront(w *Window) {
+	if pendingFrontWindow == w {
+		return
+	}
+	pendingFrontWindow = w
+	apiPostEmptyEvent()
+}
+
+// flushPendingFront performs the activation the most recent ToFront() asked for, if any. It is called by the event
+// loop once per pass, after the windows have been drawn, so that a window is painted before it is raised. The request
+// is cleared before the platform is called, so that a ToFront() made from the focus callbacks the activation provokes
+// is a fresh request for the next pass rather than one that is lost.
+func flushPendingFront() {
+	w := pendingFrontWindow
+	if w == nil {
+		return
+	}
+	pendingFrontWindow = nil
+	if !w.IsValid() || w.keepHidden {
+		return
+	}
+	w.apiAcquireFocusAndBringToFront()
 }
 
 // IsMinimized returns true if the window is currently minimized.

@@ -442,6 +442,16 @@ func (w *Window) apiAcquireFocusAndBringToFront() {
 	w.nativeAcquireFocusAndBringToFront()
 }
 
+// apiCancelMouseCapture releases any hold on the pointer that a press in this window installed, without waiting for
+// the release that would normally end it. See cancelPressesForModal.
+func (w *Window) apiCancelMouseCapture() {
+	if hw := w.wnd.hw; hw != nil {
+		hw.cancelMouseCapture()
+		return
+	}
+	w.nativeCancelMouseCapture()
+}
+
 func (w *Window) apiVisible() bool {
 	if hw := w.wnd.hw; hw != nil {
 		return hw.isVisible()

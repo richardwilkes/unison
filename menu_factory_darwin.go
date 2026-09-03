@@ -66,7 +66,11 @@ func (f *macMenuFactory) NewItem(id int, title string, keyBinding KeyBinding, va
 	var h func(cocoa.MenuItem)
 	if handler != nil {
 		h = func(mi cocoa.MenuItem) {
-			SafeCall(func() { handler(&macMenuItem{factory: f, item: mi}) })
+			// Run from the event loop rather than from inside AppKit's menu action dispatch, matching the in-window
+			// menus, so that a handler that opens a window or a modal dialog does so with the menu session fully over.
+			// processNextTask wraps the call in SafeCall.
+			item := &macMenuItem{factory: f, item: mi}
+			InvokeTask(func() { handler(item) })
 		}
 	}
 	mi := cocoa.NewMenuItem(id, title, macKeyCodeToMenuEquivalentMap[keyBinding.KeyCode],
