@@ -1173,6 +1173,14 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 		}
 		return true
 	}
+	if !tableNavigationModifiersRecognized(keyCode, mods) {
+		// A navigation key carrying a modifier the table gives no meaning to isn't navigation, so it isn't acted on.
+		// The usual way one arrives here is as a menu shortcut -- a command bound to cmd+shift+up, say -- that the
+		// menu declined because the command was disabled at the time; treating it as a plain arrow would move the
+		// selection when the user expected nothing to happen. It is reported as unhandled rather than swallowed,
+		// leaving it to anything above the table that does have a use for it.
+		return false
+	}
 	switch keyCode {
 	case KeyLeft:
 		if !repeat && t.HasSelection() {
@@ -1248,6 +1256,23 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 		return false
 	}
 	return true
+}
+
+// tableNavigationModifiersRecognized returns false if the key is one of the table's navigation keys and the modifiers
+// include one the table attaches no meaning to for that key: only shift (extending the selection) means anything with
+// the vertical keys, and only option (recursing into containers) with the horizontal ones. Any other key is not the
+// table's concern here, so it is reported as recognized and left to the rest of the key handling.
+func tableNavigationModifiersRecognized(keyCode KeyCode, mods mod.Modifiers) bool {
+	var recognized mod.Modifiers
+	switch keyCode {
+	case KeyUp, KeyDown, KeyHome, KeyEnd:
+		recognized = mod.Shift
+	case KeyLeft, KeyRight:
+		recognized = mod.Option
+	default:
+		return true
+	}
+	return mods&mod.NonSticky&^recognized == 0
 }
 
 func setOpenRecursively[T TableRowConstraint[T]](row T, open bool) bool {
