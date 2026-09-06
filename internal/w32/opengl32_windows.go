@@ -10,6 +10,8 @@
 package w32
 
 import (
+	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -24,6 +26,7 @@ var (
 	opengl32              = windows.NewLazySystemDLL("opengl32.dll")
 	wglCreateContextProc  = opengl32.NewProc("wglCreateContext")
 	wglDeleteContextProc  = opengl32.NewProc("wglDeleteContext")
+	wglGetPixelFormatProc = opengl32.NewProc("wglGetPixelFormat")
 	wglGetProcAddressProc = opengl32.NewProc("wglGetProcAddress")
 	wglMakeCurrentProc    = opengl32.NewProc("wglMakeCurrent")
 )
@@ -112,6 +115,68 @@ const (
 var wglErrorNames = map[syscall.Errno]string{
 	ERROR_INVALID_VERSION_ARB: "ERROR_INVALID_VERSION_ARB",
 	ERROR_INVALID_PROFILE_ARB: "ERROR_INVALID_PROFILE_ARB",
+}
+
+// LoadOpenGL32 loads the system opengl32.dll ahead of any use of it. Doing this before the first GDI pixel format call
+// matters: GDI implements ChoosePixelFormat, SetPixelFormat and their relatives by loading opengl32.dll by name, and
+// the loader satisfies a by-name load with any module of that name already in the process. Loading the system copy
+// first therefore guarantees that GDI and the wgl calls in this package go through the same module, which is also the
+// order GLFW and SDL use.
+func LoadOpenGL32() error {
+	if err := opengl32.Load(); err != nil {
+		return errs.Newf("failed to load opengl32.dll: %v", err)
+	}
+	return nil
+}
+
+// OpenGLModuleReport lists the modules loaded in the process that bear on which OpenGL implementation is in use: the
+// executable, every module loaded from outside the system directory (drivers, mapping layers and third-party OpenGL
+// builds all live elsewhere), and the system modules related to OpenGL or Direct3D. The opengl32.dll that the wgl
+// calls in this package go through is marked. Intended for failure reports, where it answers the otherwise
+// unanswerable question of what actually refused.
+func OpenGLModuleReport() string {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPMODULE, 0)
+	if err != nil {
+		return "unable to enumerate modules: " + err.Error()
+	}
+	defer windows.CloseHandle(snapshot)          //nolint:errcheck // Nothing useful can be done about a failure here
+	systemDir, _ := windows.GetSystemDirectory() //nolint:errcheck // An empty value merely lists more modules
+	systemDir = strings.ToLower(systemDir)
+	exe := uintptr(GetModuleHandleW(""))
+	wgl := opengl32.Handle()
+	var entries []string
+	var entry windows.ModuleEntry32
+	entry.Size = uint32(unsafe.Sizeof(entry))
+	for err = windows.Module32First(snapshot, &entry); err == nil; err = windows.Module32Next(snapshot, &entry) {
+		path := windows.UTF16ToString(entry.ExePath[:])
+		lower := strings.ToLower(path)
+		handle := uintptr(entry.ModuleHandle)
+		if handle != exe && filepath.Dir(lower) == systemDir && !openGLRelatedModuleName(filepath.Base(lower)) {
+			continue
+		}
+		if wgl != 0 && handle == wgl {
+			path += " (used for wgl calls)"
+		}
+		entries = append(entries, path)
+	}
+	return strings.Join(entries, "; ")
+}
+
+func openGLRelatedModuleName(name string) bool {
+	for _, fragment := range []string{"gl", "d3d", "dx", "mesa", "icd"} {
+		if strings.Contains(name, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+// WglGetPixelFormat returns the pixel format opengl32.dll believes the device context has, or 0 if none. GDI's
+// GetPixelFormat should always agree with it; a disagreement means two OpenGL implementations are in play.
+func WglGetPixelFormat(hdc HDC) int32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := wglGetPixelFormatProc.Call(uintptr(hdc))
+	return int32(ret)
 }
 
 // WglCreateContext creates a legacy OpenGL rendering context for a device context that has already had its pixel

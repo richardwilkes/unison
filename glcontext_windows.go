@@ -63,7 +63,7 @@ func (c *nativeGLContext) nativeCreate(wnd *Window) error {
 	// means a failure at any step leaves this window format-free and therefore still paintable by the fallback.
 	f, rc, err := w32CreateGLContextOnProbeWindows()
 	if err != nil {
-		return err
+		return errs.Newf("%s [OpenGL modules: %s]", err, w32.OpenGLModuleReport())
 	}
 	if err = w32.SetPixelFormat(dc, f.index, &f.pfd); err != nil {
 		// A SetPixelFormat failure leaves the window without a pixel format, so the CPU fallback remains safe.
@@ -128,6 +128,9 @@ func (p *w32GLProbeWindow) destroy() {
 // only chance to learn why a driver refused.
 func w32CreateGLContextOnProbeWindows() (glPixelFormat, w32.HGLRC, error) {
 	var f glPixelFormat
+	if err := w32.LoadOpenGL32(); err != nil {
+		return f, 0, err
+	}
 	bootstrap, err := w32NewGLProbeWindow()
 	if err != nil {
 		return f, 0, err
@@ -181,7 +184,10 @@ func w32CreateBootstrapGLContext(dc w32.HDC) (w32.HGLRC, error) {
 	}
 	rc, err := w32.WglCreateContext(dc)
 	if err != nil {
-		return 0, errs.Newf("failed to create bootstrap OpenGL context with pixel format %d (%v): %s", index, &pfd, err)
+		// Whether the format that was just set is even visible to the context creation is the crux of any failure
+		// here, so report what both GDI and opengl32 say the device context's format is.
+		return 0, errs.Newf("failed to create bootstrap OpenGL context with pixel format %d (%v): %s [GetPixelFormat "+
+			"reports %d via GDI and %d via opengl32]", index, &pfd, err, w32.GetPixelFormat(dc), w32.WglGetPixelFormat(dc))
 	}
 	if err = w32.WglMakeCurrent(dc, rc); err != nil {
 		w32.WglDeleteContext(rc)

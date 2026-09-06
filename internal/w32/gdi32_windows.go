@@ -26,6 +26,7 @@ var (
 	deleteObjectProc        = gdi32.NewProc("DeleteObject")
 	choosePixelFormatProc   = gdi32.NewProc("ChoosePixelFormat")
 	describePixelFormatProc = gdi32.NewProc("DescribePixelFormat")
+	getPixelFormatProc      = gdi32.NewProc("GetPixelFormat")
 	selectObjectProc        = gdi32.NewProc("SelectObject")
 	setPixelFormatProc      = gdi32.NewProc("SetPixelFormat")
 	swapBuffersProc         = gdi32.NewProc("SwapBuffers")
@@ -166,6 +167,15 @@ func DescribePixelFormat(hdc HDC, iPixelFormat int32, nBytes uint32, ppfd *PIXEL
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := describePixelFormatProc.Call(uintptr(hdc), uintptr(iPixelFormat), uintptr(nBytes),
 		uintptr(unsafe.Pointer(ppfd)))
+	return int32(ret)
+}
+
+// GetPixelFormat https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getpixelformat
+//
+// Returns 0 if the device context has no pixel format.
+func GetPixelFormat(hdc HDC) int32 {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := getPixelFormatProc.Call(uintptr(hdc))
 	return int32(ret)
 }
 
