@@ -24,6 +24,7 @@ var (
 	createRectRgnProc       = gdi32.NewProc("CreateRectRgn")
 	deleteDCProc            = gdi32.NewProc("DeleteDC")
 	deleteObjectProc        = gdi32.NewProc("DeleteObject")
+	choosePixelFormatProc   = gdi32.NewProc("ChoosePixelFormat")
 	describePixelFormatProc = gdi32.NewProc("DescribePixelFormat")
 	selectObjectProc        = gdi32.NewProc("SelectObject")
 	setPixelFormatProc      = gdi32.NewProc("SetPixelFormat")
@@ -147,6 +148,17 @@ func DeleteObject(hObject HGDIOBJ) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := deleteObjectProc.Call(uintptr(hObject))
 	return ret&0xff != 0
+}
+
+// ChoosePixelFormat https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-choosepixelformat
+//
+// A failure is reported along with the Windows last-error code.
+func ChoosePixelFormat(hdc HDC, pfd *PIXELFORMATDESCRIPTOR) (int32, error) {
+	ret, _, e := choosePixelFormatProc.Call(uintptr(hdc), uintptr(unsafe.Pointer(pfd)))
+	if ret == 0 {
+		return 0, lastError("ChoosePixelFormat", e, nil)
+	}
+	return int32(ret), nil
 }
 
 // DescribePixelFormat https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-describepixelformat

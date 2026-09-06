@@ -30,6 +30,7 @@ var (
 
 var (
 	wglCreateContextAttribsARBProc   uintptr
+	wglChoosePixelFormatARBProc      uintptr
 	wglGetPixelFormatAttribivARBProc uintptr
 )
 
@@ -68,6 +69,7 @@ const (
 	WGL_DRAW_TO_WINDOW_ARB                      = 0x2001
 	WGL_DOUBLE_BUFFER_ARB                       = 0x2011
 	WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB            = 0x20A9
+	WGL_FULL_ACCELERATION_ARB                   = 0x2027
 	WGL_GREEN_BITS_ARB                          = 0x2017
 	WGL_GREEN_SHIFT_ARB                         = 0x2018
 	WGL_LOSE_CONTEXT_ON_RESET_ARB               = 0x8252
@@ -137,6 +139,30 @@ func WglCreateContextAttribsARB(dc HDC, shareCtx HGLRC, attribList []int32) (HGL
 		return 0, lastError("wglCreateContextAttribsARB", e, wglErrorNames)
 	}
 	return HGLRC(r), nil
+}
+
+// WglChoosePixelFormatARB https://registry.khronos.org/OpenGL/extensions/ARB/WGL_ARB_pixel_format.txt
+//
+// Returns up to maxFormats pixel formats that the driver itself considers to satisfy the attributes, best first, which
+// may be none. Unlike scanning DescribePixelFormat, this reflects attributes a PIXELFORMATDESCRIPTOR cannot express
+// and only ever yields formats the driver is prepared to create a context on. A context must be current on the calling
+// thread. A driver that lacks the extension is reported as an error like any other failure.
+func WglChoosePixelFormatARB(hdc HDC, attribList []int32, maxFormats int) ([]int32, error) {
+	if wglChoosePixelFormatARBProc == 0 {
+		if wglChoosePixelFormatARBProc = WglGetProcAddress("wglChoosePixelFormatARB"); wglChoosePixelFormatARBProc == 0 {
+			return nil, errs.New("wglChoosePixelFormatARB is not available")
+		}
+	}
+	formats := make([]int32, maxFormats)
+	floatAttribs := []float32{0, 0} // No float attributes, but some drivers reject a nil list
+	var count uint32
+	r, _, e := syscall.SyscallN(wglChoosePixelFormatARBProc, uintptr(hdc), uintptr(unsafe.Pointer(&attribList[0])),
+		uintptr(unsafe.Pointer(&floatAttribs[0])), uintptr(maxFormats), uintptr(unsafe.Pointer(&formats[0])),
+		uintptr(unsafe.Pointer(&count)))
+	if r&0xff == 0 {
+		return nil, lastError("wglChoosePixelFormatARB", e, wglErrorNames)
+	}
+	return formats[:min(int(count), maxFormats)], nil
 }
 
 // WglGetPixelFormatAttribivARB https://registry.khronos.org/OpenGL/extensions/ARB/WGL_ARB_pixel_format.txt
