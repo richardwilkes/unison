@@ -705,7 +705,17 @@ func (w *Window) Focused() bool {
 	return w.focused
 }
 
-// Focus returns the panel with the keyboard focus in this window.
+// CurrentFocus returns the panel that has the keyboard focus in this window. May return nil if no panel has the focus,
+// or if the window is not valid.
+func (w *Window) CurrentFocus() *Panel {
+	if w == nil || w.focus == nil || w.focus.Window() != w {
+		return nil
+	}
+	return w.focus
+}
+
+// Focus returns the panel with the keyboard focus in this window. If no panel currently has the focus, it will move the
+// focus to the next focusable panel and return that. May return nil if no panel can be focused.
 func (w *Window) Focus() *Panel {
 	if w == nil {
 		return nil
