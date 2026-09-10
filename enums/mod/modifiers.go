@@ -93,6 +93,11 @@ func OSMenuCommand() Modifiers {
 	return apiOSMenuCmdModifier()
 }
 
+// List returns a slice of all possible Modifiers values.
+func List() []Modifiers {
+	return []Modifiers{Shift, Control, Option, Command, CapsLock, NumLock}
+}
+
 // FromKey extracts Modifiers from a string created via a call to .Key().
 func FromKey(key string) Modifiers {
 	var mods Modifiers

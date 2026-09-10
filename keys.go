@@ -11,6 +11,8 @@ package unison
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -279,6 +281,11 @@ func init() {
 	for k, v := range keyCodeToString {
 		keyToKeyCode[strings.ToLower(v)] = k
 	}
+}
+
+// KeyCodeList returns a sorted slice of all known KeyCode values.
+func KeyCodeList() []KeyCode {
+	return slices.Sorted(maps.Keys(keyCodeToString))
 }
 
 // IsControlAction returns true if the keyCode should trigger a control, such as a button, that is focused.
