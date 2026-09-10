@@ -165,7 +165,6 @@ issues:
 formatters:
   enable:
     - gofumpt
-    - goimports
   settings:
     gofumpt:
       extra:
