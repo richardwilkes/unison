@@ -277,7 +277,7 @@ var (
 
 func init() {
 	for k, v := range keyCodeToString {
-		keyToKeyCode[v] = k
+		keyToKeyCode[strings.ToLower(v)] = k
 	}
 }
 
@@ -299,7 +299,7 @@ func (k *KeyCode) UnmarshalText(text []byte) error {
 
 // KeyCodeFromKey extracts KeyCode from a string created via a call to .Key().
 func KeyCodeFromKey(key string) KeyCode {
-	if v, ok := keyToKeyCode[key]; ok {
+	if v, ok := keyToKeyCode[strings.ToLower(key)]; ok {
 		return v
 	}
 	if strings.HasPrefix(key, "#") {
