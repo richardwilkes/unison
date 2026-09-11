@@ -272,7 +272,7 @@ func TestTableFocusedCellStaysInstalled(t *testing.T) {
 	f := newFocusCellFixture(t, []string{"a", "b", "c"}, 2)
 	f.pressCell(1, 0)
 	cell := f.rows[1].cells[0]
-	c.True(f.w.focus == cell, "the press must leave the focus on the cell that asked for it")
+	c.True(f.w.CurrentFocus() == cell, "the press must leave the focus on the cell that asked for it")
 	c.True(cell.Parent() == f.table.AsPanel(), "the focused cell must remain attached to the table")
 	c.True(cell.Window() == f.w, "an attached cell can find its window, which is what makes key dispatch work")
 	row, col := f.table.FocusedCell()
@@ -290,7 +290,7 @@ func TestTableFocusedCellStaysInstalled(t *testing.T) {
 	c.Nil(f.rows[0].cells[1].Parent(), "a hovered cell must not be left attached")
 	c.Nil(f.rows[2].cells[0].Parent(), "a hovered cell must not be left attached")
 	c.True(cell.Parent() == f.table.AsPanel(), "hovering elsewhere must not detach the focused cell")
-	c.True(f.w.focus == cell)
+	c.True(f.w.CurrentFocus() == cell)
 
 	// uninstallCell() is the one place that detaches cells, and it has to make an exception for the focused one.
 	f.table.uninstallCell(cell, 1, 0)
@@ -299,7 +299,7 @@ func TestTableFocusedCellStaysInstalled(t *testing.T) {
 	// Pressing the cell that already has the focus must not bounce the focus out to the table and back again, which a
 	// widget would see as a fresh click into itself rather than a click that just moves the caret.
 	f.pressCell(1, 0)
-	c.True(f.w.focus == cell)
+	c.True(f.w.CurrentFocus() == cell)
 	c.Equal(1, f.rows[1].gained[0], "re-pressing the focused cell must not re-fire GainedFocusCallback")
 	c.Equal(0, f.rows[1].lost[0], "re-pressing the focused cell must not fire LostFocusCallback")
 	row, col = f.table.FocusedCell()
@@ -321,7 +321,7 @@ func TestTableFocusedCellReleasedWhenRowGone(t *testing.T) {
 		c.Equal(-1, row)
 		c.Equal(-1, col)
 		c.Nil(cell.Parent())
-		c.True(f.w.focus == f.table.AsPanel())
+		c.True(f.w.CurrentFocus() == f.table.AsPanel())
 		c.Equal(1, f.rows[1].lost[0])
 	})
 
@@ -330,14 +330,14 @@ func TestTableFocusedCellReleasedWhenRowGone(t *testing.T) {
 		f := newFocusCellFixture(t, []string{"a", "b", "c"}, 2)
 		f.pressCell(1, 1)
 		cell := f.rows[1].cells[1]
-		c.True(f.w.focus == cell)
+		c.True(f.w.CurrentFocus() == cell)
 		f.table.Columns = f.table.Columns[:1]
 		f.table.SyncToModel()
 		row, col := f.table.FocusedCell()
 		c.Equal(-1, row)
 		c.Equal(-1, col)
 		c.Nil(cell.Parent())
-		c.True(f.w.focus == f.table.AsPanel())
+		c.True(f.w.CurrentFocus() == f.table.AsPanel())
 		c.Equal(1, f.rows[1].lost[1])
 	})
 
@@ -350,14 +350,14 @@ func TestTableFocusedCellReleasedWhenRowGone(t *testing.T) {
 		f.table.SyncToModel()
 		f.pressCell(1, 0)
 		cell := child.cells[0]
-		c.True(f.w.focus == cell, "the child row's cell should have taken the focus")
+		c.True(f.w.CurrentFocus() == cell, "the child row's cell should have taken the focus")
 		f.rows[0].SetOpen(false)
 		f.table.SyncToModel()
 		row, col := f.table.FocusedCell()
 		c.Equal(-1, row)
 		c.Equal(-1, col)
 		c.Nil(cell.Parent())
-		c.True(f.w.focus == f.table.AsPanel())
+		c.True(f.w.CurrentFocus() == f.table.AsPanel())
 		c.Equal(1, child.lost[0])
 	})
 
@@ -372,7 +372,7 @@ func TestTableFocusedCellReleasedWhenRowGone(t *testing.T) {
 		c.Equal(-1, row)
 		c.Equal(-1, col)
 		c.Nil(cell.Parent())
-		c.True(f.w.focus == f.table.AsPanel())
+		c.True(f.w.CurrentFocus() == f.table.AsPanel())
 		c.Equal(1, f.rows[1].lost[0])
 
 		// Dropping the filter brings the row back, but the focus stays where it was put.
@@ -380,7 +380,7 @@ func TestTableFocusedCellReleasedWhenRowGone(t *testing.T) {
 		row, col = f.table.FocusedCell()
 		c.Equal(-1, row)
 		c.Equal(-1, col)
-		c.True(f.w.focus == f.table.AsPanel())
+		c.True(f.w.CurrentFocus() == f.table.AsPanel())
 		c.Equal(1, f.rows[1].lost[0])
 	})
 }
@@ -400,7 +400,7 @@ func TestTableFocusedCellFollowsRowIndexShift(t *testing.T) {
 	row, col := f.table.FocusedCell()
 	c.Equal(2, row)
 	c.Equal(0, col)
-	c.True(f.w.focus == cell, "the same panel must still hold the focus")
+	c.True(f.w.CurrentFocus() == cell, "the same panel must still hold the focus")
 	c.True(cell.Parent() == f.table.AsPanel())
 	c.Equal(0, f.rows[1].lost[0], "shifting the row must not end the editing")
 	c.Equal(f.table.CellFrame(2, 0), cell.FrameRect())
@@ -411,7 +411,7 @@ func TestTableFocusedCellFollowsRowIndexShift(t *testing.T) {
 	row, col = f.table.FocusedCell()
 	c.Equal(1, row)
 	c.Equal(0, col)
-	c.True(f.w.focus == cell)
+	c.True(f.w.CurrentFocus() == cell)
 	c.Equal(0, f.rows[1].lost[0])
 	c.Equal(f.table.CellFrame(1, 0), cell.FrameRect())
 }
@@ -422,7 +422,7 @@ func TestTableFocusCellAPI(t *testing.T) {
 	c := check.New(t)
 	f := newFocusCellFixture(t, []string{"a", "b"}, 2)
 	c.True(f.table.FocusCell(0, 0))
-	c.True(f.w.focus == f.rows[0].cells[0])
+	c.True(f.w.CurrentFocus() == f.rows[0].cells[0])
 	c.Equal(1, f.rows[0].gained[0])
 	row, col := f.table.FocusedCell()
 	c.Equal(0, row)
@@ -439,7 +439,7 @@ func TestTableFocusCellAPI(t *testing.T) {
 
 	// The last column holds a plain panel, which has nothing in it that can take the focus.
 	c.False(f.table.FocusCell(1, 2))
-	c.True(f.w.focus == f.rows[0].cells[0])
+	c.True(f.w.CurrentFocus() == f.rows[0].cells[0])
 	row, col = f.table.FocusedCell()
 	c.Equal(0, row)
 	c.Equal(0, col)
@@ -476,16 +476,16 @@ func TestTableFocusLeavesCellWhenFocusMovesElsewhere(t *testing.T) {
 	cell := f.rows[0].cells[0]
 	f.w.SetFocus(other)
 	c.Equal(1, f.rows[0].lost[0])
-	c.True(f.w.focus == other)
+	c.True(f.w.CurrentFocus() == other)
 	row, col := f.table.FocusedCell()
 	c.Equal(-1, row)
 	c.Equal(-1, col)
 	c.Nil(cell.Parent())
-	c.True(f.w.focus == other, "releasing the cell must not steal the focus back")
+	c.True(f.w.CurrentFocus() == other, "releasing the cell must not steal the focus back")
 
 	// Removing the focus entirely is the other way the cell can lose it.
 	f.pressCell(0, 0)
-	c.True(f.w.focus == cell)
+	c.True(f.w.CurrentFocus() == cell)
 	c.Equal(2, f.rows[0].gained[0])
 	f.w.SetFocus(nil)
 	c.Equal(2, f.rows[0].lost[0])
@@ -493,7 +493,7 @@ func TestTableFocusLeavesCellWhenFocusMovesElsewhere(t *testing.T) {
 	c.Equal(-1, row)
 	c.Equal(-1, col)
 	c.Nil(cell.Parent())
-	c.Nil(f.w.focus, "the window must be left with no focus at all")
+	c.Nil(f.w.CurrentFocus(), "the window must be left with no focus at all")
 }
 
 // TestTableCellParamsFocusedWhenCellFocused verifies the 'focused' argument the table passes to ColumnCell(): it is
@@ -534,19 +534,19 @@ func TestTableKeyFromFocusedCell(t *testing.T) {
 	// something that is being edited would be wrong, so they are ignored and the cell keeps the focus.
 	f.pressCell(0, 0)
 	cell := f.rows[0].cells[0]
-	c.True(f.w.focus == cell)
+	c.True(f.w.CurrentFocus() == cell)
 	f.w.keyPressed(KeyDown, 0)
 	f.w.keyPressed(KeyUp, 0)
 	c.Equal(1, f.table.SelectionCount())
 	c.True(f.table.IsRowSelected(1), "the selection must not move while a cell is focused")
-	c.True(f.w.focus == cell)
+	c.True(f.w.CurrentFocus() == cell)
 
 	// Tab moves to the next focusable cell, in row-major order.
 	f.w.keyPressed(KeyTab, 0)
 	row, col := f.table.FocusedCell()
 	c.Equal(0, row)
 	c.Equal(1, col)
-	c.True(f.w.focus == f.rows[0].cells[1])
+	c.True(f.w.CurrentFocus() == f.rows[0].cells[1])
 	c.Equal(1, f.rows[0].lost[0])
 	c.Equal(1, f.rows[0].gained[1])
 	c.Nil(cell.Parent(), "the cell that was left behind must be detached again")
@@ -554,7 +554,7 @@ func TestTableKeyFromFocusedCell(t *testing.T) {
 	// Tab from the last focusable cell of the last row leaves the table, landing on the panel that follows it.
 	c.True(f.table.FocusCell(2, 1))
 	f.w.keyPressed(KeyTab, 0)
-	c.True(f.w.focus == after)
+	c.True(f.w.CurrentFocus() == after)
 	row, col = f.table.FocusedCell()
 	c.Equal(-1, row)
 	c.Equal(-1, col)
@@ -565,9 +565,9 @@ func TestTableKeyFromFocusedCell(t *testing.T) {
 	// table's own Space-to-DoubleClickCallback shortcut.
 	for _, key := range []KeyCode{KeyReturn, KeyEscape} {
 		f.pressCell(1, 0)
-		c.True(f.w.focus == f.rows[1].cells[0])
+		c.True(f.w.CurrentFocus() == f.rows[1].cells[0])
 		f.w.keyPressed(key, 0)
-		c.True(f.w.focus == f.table.AsPanel())
+		c.True(f.w.CurrentFocus() == f.table.AsPanel())
 		row, col = f.table.FocusedCell()
 		c.Equal(-1, row)
 		c.Equal(-1, col)
@@ -579,7 +579,7 @@ func TestTableKeyFromFocusedCell(t *testing.T) {
 	f.pressCell(1, 0)
 	f.w.keyPressed(KeySpace, 0)
 	c.Equal(0, doubleClicks)
-	c.True(f.w.focus == f.rows[1].cells[0], "an unwanted key must not cost the cell its focus")
+	c.True(f.w.CurrentFocus() == f.rows[1].cells[0], "an unwanted key must not cost the cell its focus")
 
 	// Sanity check that the table does still run its DoubleClickCallback for a Space when it holds the focus itself.
 	f.w.SetFocus(f.table)

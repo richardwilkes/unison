@@ -455,13 +455,14 @@ func panelContains(ancestor, p *Panel) bool {
 	return false
 }
 
-// hasFocus returns true if the table itself or the cell that is currently holding the keyboard focus has it. Unlike
-// Panel.Focused(), this asks without disturbing anything: Window.Focus() self-heals a focus it considers stale by
-// moving it to another panel, which must never happen as a side effect of drawing or measuring the table.
+// hasFocus returns true if the table itself or the cell that is currently holding the keyboard focus has it.
 func (t *Table[T]) hasFocus() bool {
 	wnd := t.Window()
-	return wnd != nil && wnd.Focused() && wnd.focus != nil &&
-		(wnd.focus == t.AsPanel() || (t.focusedCell != nil && panelContains(t.focusedCell, wnd.focus)))
+	if wnd == nil || !wnd.Focused() {
+		return false
+	}
+	focus := wnd.CurrentFocus()
+	return focus == t.AsPanel() || (t.focusedCell != nil && panelContains(t.focusedCell, focus))
 }
 
 // adoptCellIfFocused makes cell the table's focused cell if the window's keyboard focus currently lies within it. Cells
@@ -470,6 +471,12 @@ func (t *Table[T]) hasFocus() bool {
 // The newest wrapper must therefore be adopted the moment it is acquired, no matter which code path asked for it,
 // because otherwise the focused editor is left hanging off a panel with no window and the next call to Window.Focus()
 // takes the focus away from it.
+//
+// The window's raw focus pointer is consulted here deliberately, rather than Window.CurrentFocus(). CurrentFocus()
+// reports nil whenever the focused panel can't find its window, and that is precisely the state a focused editor is in
+// at this point when its row has just moved it into a wrapper that hasn't been attached to the table yet. Adopting the
+// wrapper is what reattaches it, so asking CurrentFocus() first would refuse the adoption in the one case it exists
+// for.
 func (t *Table[T]) adoptCellIfFocused(cell *Panel, rowData T, row, col int) {
 	if cell == t.focusedCell {
 		return
@@ -532,11 +539,9 @@ func (t *Table[T]) validateFocusedCell() {
 	}
 	wnd := t.Window()
 	if wnd == nil {
-		// A table that isn't in a window has nothing to hand the focus back to, so leave the state alone. It will be
-		// validated again once the table is part of a window.
 		return
 	}
-	inside := panelContains(t.focusedCell, wnd.focus)
+	inside := panelContains(t.focusedCell, wnd.CurrentFocus())
 	row := t.focusedCellRowIndex
 	if row < 0 || row >= len(t.rowCache) || t.rowCache[row].row.ID() != t.focusedCellRow.ID() {
 		// The row cache was rebuilt underneath us, so fall back to locating the row by its ID.
@@ -1342,7 +1347,7 @@ func (t *Table[T]) focusAdjacentCell(forward bool) bool {
 	}
 	// A cell can hold more than one focusable widget, so exhaust the current cell's own focus chain before looking at
 	// any other cell.
-	if i, focusables := collectFocusables(t.focusedCell, wnd.focus, nil); i != -1 {
+	if i, focusables := collectFocusables(t.focusedCell, wnd.CurrentFocus(), nil); i != -1 {
 		if forward {
 			if i+1 < len(focusables) {
 				wnd.SetFocus(focusables[i+1])

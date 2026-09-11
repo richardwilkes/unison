@@ -548,7 +548,7 @@ func TestTableCellFieldRowRemovedWhileEditing(t *testing.T) {
 	c.True(screen.Do(func() {
 		e.model.SetRootRows([]*tableTestRow{e.rows[0], e.rows[2]})
 		e.table.SyncToModel()
-		focusIsTable = wnd.Focus().Is(e.table)
+		focusIsTable = wnd.CurrentFocus().Is(e.table)
 	}))
 	c.True(focusIsTable, "the focus should have come back to the table when the row went away")
 	s = e.snapshot(c, screen, 1, 0)

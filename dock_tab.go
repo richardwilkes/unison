@@ -158,7 +158,7 @@ func (t *dockTab) draw(gc *Canvas, _ geom.Rect) {
 		bg = t.TabFocusedInk
 		fg = t.OnTabFocusedInk
 	} else if dc := Ancestor[*DockContainer](t.dockable); dc != nil && dc.CurrentDockable() == t.dockable {
-		if dc == t.Window().Focus().Ancestor[*DockContainer]() {
+		if dc == t.Window().CurrentFocus().Ancestor[*DockContainer]() {
 			bg = t.TabFocusedInk
 			fg = t.OnTabFocusedInk
 		} else {
@@ -295,7 +295,7 @@ func (t *dockTab) mouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
 			switch {
 			case dc.CurrentDockable() != t.dockable:
 				dc.SetCurrentDockable(t.dockable)
-			case dc != t.Window().Focus().Ancestor[*DockContainer]():
+			case dc != t.Window().CurrentFocus().Ancestor[*DockContainer]():
 				dc.AcquireFocus()
 			}
 		}

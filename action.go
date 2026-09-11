@@ -78,7 +78,7 @@ func (a *Action) execute(item MenuItem) {
 // focused UI widget and call CanPerformCmd() on it.
 func RouteActionToFocusEnabledFunc(action *Action, src any) bool {
 	if wnd := ActiveWindow(); wnd != nil {
-		return wnd.Focus().CanPerformCmd(src, action.ID)
+		return wnd.CurrentFocus().CanPerformCmd(src, action.ID)
 	}
 	return false
 }
@@ -87,7 +87,7 @@ func RouteActionToFocusEnabledFunc(action *Action, src any) bool {
 // focused UI widget and call PerformCmd() on it.
 func RouteActionToFocusExecuteFunc(action *Action, src any) {
 	if wnd := ActiveWindow(); wnd != nil {
-		wnd.Focus().PerformCmd(src, action.ID)
+		wnd.CurrentFocus().PerformCmd(src, action.ID)
 	}
 }
 

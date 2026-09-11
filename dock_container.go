@@ -108,7 +108,7 @@ func resolveDockable(dockable Dockable) Dockable {
 func (d *DockContainer) AcquireFocus() {
 	if wnd := d.Window(); wnd != nil {
 		current := d.CurrentDockable()
-		focus := wnd.Focus()
+		focus := wnd.CurrentFocus()
 		for focus != nil && focus.Self != current {
 			focus = focus.Parent()
 		}
@@ -133,7 +133,7 @@ func (d *DockContainer) UpdateTitle(dockable Dockable) {
 func DockableHasFocus(dockable Dockable) bool {
 	if wnd := dockable.AsPanel().Window(); wnd != nil {
 		dockable = resolveDockable(dockable)
-		focus := wnd.Focus()
+		focus := wnd.CurrentFocus()
 		for focus != nil {
 			if d, ok := focus.Self.(Dockable); ok && d == dockable {
 				return true

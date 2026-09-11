@@ -279,7 +279,7 @@ func (w *Window) okToProcess() bool {
 
 // UndoManager returns the UndoManager for the currently focused panel in the Window. May return nil.
 func (w *Window) UndoManager() *UndoManager {
-	if focus := w.Focus(); focus != nil {
+	if focus := w.CurrentFocus(); focus != nil {
 		return UndoManagerFor(focus)
 	}
 	return nil
@@ -706,7 +706,8 @@ func (w *Window) Focused() bool {
 }
 
 // CurrentFocus returns the panel that has the keyboard focus in this window. May return nil if no panel has the focus,
-// or if the window is not valid.
+// or if the window is not valid. Unlike a call to .Focus(), this does not attempt to move the focus to a new panel if
+// none currently has it.
 func (w *Window) CurrentFocus() *Panel {
 	if w == nil || w.focus == nil || w.focus.Window() != w {
 		return nil
@@ -1409,7 +1410,7 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 	}
 	w.ClearTooltip()
 	w.lastKeyDownPanel = nil
-	if focus := w.Focus(); focus != nil {
+	if focus := w.CurrentFocus(); focus != nil {
 		panel := focus
 		w.lastKeyDownPanel = panel
 		for panel != nil {
@@ -1451,7 +1452,7 @@ func (w *Window) runeTyped(ch rune) {
 	}
 	w.ClearTooltip()
 	w.lastKeyDownPanel = nil
-	if focus := w.Focus(); focus != nil {
+	if focus := w.CurrentFocus(); focus != nil {
 		panel := focus
 		w.lastKeyDownPanel = panel
 		for panel != nil {
