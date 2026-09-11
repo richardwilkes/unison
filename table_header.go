@@ -446,11 +446,16 @@ func (h *TableHeader[T]) ApplySort() {
 			break
 		}
 	}
-	if h.table.filteredRows == nil {
+	switch {
+	case h.table.hierarchicalFilter:
+		// The rows a hierarchical filter shows are the table's own lists, so they are sorted in place, leaving the
+		// model's order alone.
+		h.applySort(headers, h.table.filterRoots)
+	case h.table.filteredRows == nil:
 		roots := slices.Clone(h.table.RootRows())
 		h.applySort(headers, roots)
 		h.table.Model.SetRootRows(roots) // Avoid resetting the selection by directly updating the model
-	} else {
+	default:
 		h.applySort(headers, h.table.filteredRows)
 	}
 	h.table.SyncToModel()
@@ -476,7 +481,14 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 			}
 			return false
 		})
-		if h.table.filteredRows == nil {
+		switch {
+		case h.table.hierarchicalFilter:
+			for _, row := range rows {
+				if children := h.table.filterChildren[row.ID()]; len(children) > 1 {
+					h.applySort(headers, children)
+				}
+			}
+		case h.table.filteredRows == nil:
 			for _, row := range rows {
 				if row.CanHaveChildren() {
 					if children := row.Children(); len(children) > 1 {

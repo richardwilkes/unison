@@ -126,7 +126,10 @@ type Table[T TableRowConstraint[T]] struct {
 	DropOccurredCallback     func() // Called whenever a drop occurs that modifies the model.
 	Columns                  []ColumnInfo
 	Model                    TableModel[T]
-	filteredRows             []T // Note that we use the difference between nil and an empty slice here
+	filteredRows             []T              // Note that we use the difference between nil and an empty slice here
+	filterMatches            map[tid.TID]bool // The rows that passed a hierarchical filter, by ID
+	filterChildren           map[tid.TID][]T  // The children a hierarchical filter kept, by the ID of their parent
+	filterRoots              []T              // The root rows a hierarchical filter kept
 	header                   *TableHeader[T]
 	selMap                   map[tid.TID]bool
 	selAnchor                tid.TID
@@ -165,6 +168,7 @@ type Table[T TableRowConstraint[T]] struct {
 	wasDragged               bool
 	dividerDrag              bool
 	hasHierarchy             bool
+	hierarchicalFilter       bool // Set while the filter in force keeps the hierarchy (see ApplyHierarchicalFilter)
 	noScrollOnFocus          bool
 }
 
@@ -358,10 +362,14 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 						canvas.Save()
 						left := cellRect.X + hierarchyIndent*float32(t.rowCache[r].depth) + disclosureIndent
 						top := cellRect.Y + (t.MinimumRowHeight-disclosureSize)/2
-						t.hitRects = append(t.hitRects,
-							t.newTableHitRect(geom.NewRect(left, top, disclosureSize, disclosureSize), row))
+						// A hierarchical filter shows every container it kept as open, whatever the container's own
+						// open state, so the disclosure triangle is drawn open and is not offered for toggling.
+						if !t.hierarchicalFilter {
+							t.hitRects = append(t.hitRects,
+								t.newTableHitRect(geom.NewRect(left, top, disclosureSize, disclosureSize), row))
+						}
 						canvas.Translate(geom.NewPoint(left, top))
-						if row.IsOpen() {
+						if t.isRowDisclosed(row) {
 							offset := disclosureSize / 2
 							offsetPt := geom.NewPoint(offset, offset)
 							canvas.Translate(offsetPt)
@@ -372,6 +380,12 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 						// foreground ink is only needed here; cellFor() obtains its own copy for the cell.
 						fg, _, _, _, _ := t.cellParams(r, c)
 						chevronPaint := fg.Paint(canvas, cellRect, paintstyle.Fill)
+						if t.IsFilterContextRow(row) {
+							// The row is only there to show where the rows that passed the filter sit, so its
+							// disclosure triangle is dimmed the way a disabled control is, for the row's cells to
+							// match if they choose to.
+							chevronPaint.SetColorFilter(Grayscale30Filter())
+						}
 						CircledChevronRightSVG.DrawInRectPreservingAspectRatio(canvas,
 							geom.NewRect(0, 0, disclosureSize, disclosureSize), nil, chevronPaint)
 						canvas.Restore()
@@ -1188,7 +1202,10 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 	}
 	switch keyCode {
 	case KeyLeft:
-		if !repeat && t.HasSelection() {
+		// A hierarchical filter shows every container it kept as open, whatever the container's own open state, so
+		// the keys that open and close containers are left alone while one is applied rather than changing the open
+		// states beneath the filter without anything to show for it.
+		if !repeat && !t.hierarchicalFilter && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
 				if mods.OptionDown() {
@@ -1206,7 +1223,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			}
 		}
 	case KeyRight:
-		if !repeat && t.HasSelection() {
+		if !repeat && !t.hierarchicalFilter && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
 				if mods.OptionDown() {
@@ -1601,8 +1618,12 @@ func (t *Table[T]) DeselectRange(start, end int) {
 }
 
 // DiscloseRow ensures the given row can be viewed by opening all parents that lead to it. Returns true if any
-// modification was made.
+// modification was made. A hierarchical filter already shows every container it kept as open, so nothing is done while
+// one is applied.
 func (t *Table[T]) DiscloseRow(row T, delaySync bool) bool {
+	if t.hierarchicalFilter {
+		return false
+	}
 	modified := false
 	p := row.Parent()
 	var zero T
@@ -1623,25 +1644,36 @@ func (t *Table[T]) DiscloseRow(row T, delaySync bool) bool {
 	return modified
 }
 
-// RootRowCount returns the number of top-level rows.
+// RootRowCount returns the number of top-level rows. While a filter is applied, this is the number of rows the filter
+// shows at the top level: every row that passed, for ApplyFilter, or the root rows kept, for ApplyHierarchicalFilter.
 func (t *Table[T]) RootRowCount() int {
-	if t.filteredRows != nil {
+	switch {
+	case t.hierarchicalFilter:
+		return len(t.filterRoots)
+	case t.filteredRows != nil:
 		return len(t.filteredRows)
+	default:
+		return t.Model.RootRowCount()
 	}
-	return t.Model.RootRowCount()
 }
 
-// RootRows returns the top-level rows. Do not alter the returned list.
+// RootRows returns the top-level rows. Do not alter the returned list. While a filter is applied, these are the rows
+// the filter shows at the top level: every row that passed, for ApplyFilter, or the root rows kept, for
+// ApplyHierarchicalFilter.
 func (t *Table[T]) RootRows() []T {
-	if t.filteredRows != nil {
+	switch {
+	case t.hierarchicalFilter:
+		return t.filterRoots
+	case t.filteredRows != nil:
 		return t.filteredRows
+	default:
+		return t.Model.RootRows()
 	}
-	return t.Model.RootRows()
 }
 
 // SetRootRows sets the top-level rows this table will display. This will call SyncToModel() automatically.
 func (t *Table[T]) SetRootRows(rows []T) {
-	t.filteredRows = nil
+	t.clearFilter()
 	t.Model.SetRootRows(rows)
 	t.selMap = make(map[tid.TID]bool)
 	t.selNeedsPrune = false
@@ -1654,20 +1686,11 @@ func (t *Table[T]) SyncToModel() {
 	rowCount := 0
 	roots := t.RootRows()
 	t.hasHierarchy = false
-	if t.filteredRows != nil {
-		rowCount = len(t.filteredRows)
-		for _, row := range t.filteredRows {
-			if !t.hasHierarchy && row.CanHaveChildren() {
-				t.hasHierarchy = true
-			}
+	for _, row := range roots {
+		if !t.hasHierarchy && row.CanHaveChildren() {
+			t.hasHierarchy = true
 		}
-	} else {
-		for _, row := range roots {
-			if !t.hasHierarchy && row.CanHaveChildren() {
-				t.hasHierarchy = true
-			}
-			rowCount += t.countOpenRowChildrenRecursively(row)
-		}
+		rowCount += t.countDisclosedRowsRecursively(row)
 	}
 	t.rowCache = make([]tableCache[T], rowCount)
 	j := 0
@@ -1686,14 +1709,39 @@ func (t *Table[T]) SyncToModel() {
 	t.validateFocusedCell()
 }
 
-func (t *Table[T]) countOpenRowChildrenRecursively(row T) int {
+// countDisclosedRowsRecursively returns the number of rows the table shows for the row: the row itself plus every row
+// disclosed beneath it.
+func (t *Table[T]) countDisclosedRowsRecursively(row T) int {
 	count := 1
-	if row.CanHaveChildren() && row.IsOpen() {
-		for _, child := range row.Children() {
-			count += t.countOpenRowChildrenRecursively(child)
-		}
+	for _, child := range t.disclosedChildren(row) {
+		count += t.countDisclosedRowsRecursively(child)
 	}
 	return count
+}
+
+// disclosedChildren returns the children the table shows beneath the row. A filter applied by ApplyFilter shows none,
+// since it presents the rows that passed as a flat list. One applied by ApplyHierarchicalFilter shows the children it
+// kept, whether or not the row is open. Otherwise, the row's children are shown when it is open.
+func (t *Table[T]) disclosedChildren(row T) []T {
+	if !row.CanHaveChildren() {
+		return nil
+	}
+	switch {
+	case t.hierarchicalFilter:
+		return t.filterChildren[row.ID()]
+	case t.filteredRows != nil:
+		return nil
+	case row.IsOpen():
+		return row.Children()
+	default:
+		return nil
+	}
+}
+
+// isRowDisclosed returns true if the table shows the row's children, which a hierarchical filter always does for the
+// containers it keeps.
+func (t *Table[T]) isRowDisclosed(row T) bool {
+	return t.hierarchicalFilter || row.IsOpen()
 }
 
 func (t *Table[T]) buildRowCacheEntry(row T, parentIndex, index, depth int) int {
@@ -1703,10 +1751,8 @@ func (t *Table[T]) buildRowCacheEntry(row T, parentIndex, index, depth int) int 
 	t.rowCache[index].height = t.heightForColumns(row, index, depth)
 	parentIndex = index
 	index++
-	if t.filteredRows == nil && row.CanHaveChildren() && row.IsOpen() {
-		for _, child := range row.Children() {
-			index = t.buildRowCacheEntry(child, parentIndex, index, depth+1)
-		}
+	for _, child := range t.disclosedChildren(row) {
+		index = t.buildRowCacheEntry(child, parentIndex, index, depth+1)
 	}
 	return index
 }
@@ -1974,30 +2020,129 @@ func (t *Table[T]) ScrollRowCellIntoView(row, col int) {
 	}
 }
 
-// IsFiltered returns true if a filter is currently applied. When a filter is applied, no hierarchy is display and no
-// modifications to the row data should be performed.
+// IsFiltered returns true if a filter is currently applied, whether by ApplyFilter or by ApplyHierarchicalFilter. While
+// a filter is applied, no modifications to the row data should be performed.
 func (t *Table[T]) IsFiltered() bool {
 	return t.filteredRows != nil
 }
 
 // ApplyFilter applies a filter to the data. When a non-nil filter is applied, all rows (recursively) are passed through
 // the filter. Only those that the filter returns false for will be visible in the table. When a filter is applied, no
-// hierarchy is display and no modifications to the row data should be performed.
+// hierarchy is display and no modifications to the row data should be performed. See ApplyHierarchicalFilter for a
+// filter that keeps the hierarchy. A nil filter removes the filter, whichever of the two applied it.
 func (t *Table[T]) ApplyFilter(filter func(row T) bool) {
 	if filter == nil {
 		if t.filteredRows == nil {
 			return
 		}
-		t.filteredRows = nil
+		t.clearFilter()
 	} else {
-		t.filteredRows = make([]T, 0)
-		for _, row := range t.Model.RootRows() {
-			t.applyFilter(row, filter)
-		}
+		t.collectFilteredRows(filter)
+		t.hierarchicalFilter = false
+		t.filterMatches = nil
+		t.filterChildren = nil
+		t.filterRoots = nil
 	}
+	t.finishFilterChange()
+}
+
+// ApplyHierarchicalFilter applies a filter to the data the way ApplyFilter does, but keeps the hierarchy: each row the
+// filter keeps is shown beneath the rows above it, and every container shown is shown open, whatever its own open
+// state, so that the rows that passed are always in view. A row shown only because a row beneath it passed is context
+// rather than a match, which IsFilterContextRow reports so that such a row can be drawn differently. The disclosure
+// triangles, the keys that open and close containers and DiscloseRow are all left alone while the filter is applied,
+// since the open states they would change have nothing to show for it. A nil filter removes the filter, as it does for
+// ApplyFilter. As with ApplyFilter, no modifications to the row data should be performed while the filter is applied.
+func (t *Table[T]) ApplyHierarchicalFilter(filter func(row T) bool) {
+	if filter == nil {
+		t.ApplyFilter(nil)
+		return
+	}
+	t.collectFilteredRows(filter)
+	t.hierarchicalFilter = true
+	t.rebuildFilterHierarchy()
+	t.finishFilterChange()
+}
+
+// IsFilterContextRow returns true if the row is one a hierarchical filter shows only as context: the row did not pass
+// the filter itself, but a row beneath it did. It is false for every row while no hierarchical filter is applied.
+func (t *Table[T]) IsFilterContextRow(row T) bool {
+	return t.hierarchicalFilter && !t.filterMatches[row.ID()]
+}
+
+// collectFilteredRows puts every row of the model through the filter and records those that passed, in the model's
+// order.
+func (t *Table[T]) collectFilteredRows(filter func(row T) bool) {
+	t.filteredRows = make([]T, 0)
+	for _, row := range t.Model.RootRows() {
+		t.applyFilter(row, filter)
+	}
+}
+
+// clearFilter removes whatever filter is applied.
+func (t *Table[T]) clearFilter() {
+	t.filteredRows = nil
+	t.hierarchicalFilter = false
+	t.filterMatches = nil
+	t.filterChildren = nil
+	t.filterRoots = nil
+}
+
+// finishFilterChange brings the table in line with a change to the filter, keeping the rows sorted when the header has
+// a sort in force.
+func (t *Table[T]) finishFilterChange() {
 	t.SyncToModel()
 	if t.header != nil && t.header.HasSort() {
 		t.header.ApplySort()
+	}
+}
+
+// rebuildFilterHierarchy derives the rows a hierarchical filter shows from those that passed it. The model is walked so
+// that the rows come out in its order, keeping a row when it passed or when any row beneath it did.
+func (t *Table[T]) rebuildFilterHierarchy() {
+	t.filterMatches = make(map[tid.TID]bool, len(t.filteredRows))
+	for _, row := range t.filteredRows {
+		t.filterMatches[row.ID()] = true
+	}
+	t.filterChildren = make(map[tid.TID][]T)
+	t.filterRoots = t.keptFilterRows(t.Model.RootRows())
+}
+
+// keptFilterRows returns the rows of the list that a hierarchical filter keeps, recording the children kept beneath
+// each of them along the way.
+func (t *Table[T]) keptFilterRows(rows []T) []T {
+	kept := make([]T, 0, len(rows))
+	for _, row := range rows {
+		var children []T
+		if row.CanHaveChildren() {
+			children = t.keptFilterRows(row.Children())
+		}
+		if t.filterMatches[row.ID()] || len(children) > 0 {
+			kept = append(kept, row)
+			if len(children) > 0 {
+				t.filterChildren[row.ID()] = children
+			}
+		}
+	}
+	return kept
+}
+
+// removeRowsFromFilter takes the rows and their descendants out of the filtered view, for when they have been moved out
+// of the model while a filter is applied.
+func (t *Table[T]) removeRowsFromFilter(rows []T) {
+	if t.filteredRows == nil {
+		return
+	}
+	t.filteredRows = slices.DeleteFunc(slices.Clone(t.filteredRows), func(row T) bool {
+		for _, r := range rows {
+			if RowContainsRow(r, row) {
+				return true
+			}
+		}
+		return false
+	})
+	if t.hierarchicalFilter {
+		t.rebuildFilterHierarchy()
 	}
 }
 

@@ -277,3 +277,116 @@ func TestTableApplyFilterFlattensAndRestores(t *testing.T) {
 	c.False(table.IsFiltered())
 	c.Equal(2, table.LastRowIndex()+1)
 }
+
+// TestTableApplyHierarchicalFilterKeepsAncestors verifies that a hierarchical filter shows each row that passed
+// beneath the rows above it, with those rows shown open whatever their own open state and reported as context when
+// they did not pass themselves, and that removing the filter puts the original disclosed view back.
+func TestTableApplyHierarchicalFilterKeepsAncestors(t *testing.T) {
+	c := check.New(t)
+	grandchild := newTableTestRow("g")
+	child := newTableTestRow("c1")
+	child.SetChildren([]*tableTestRow{grandchild})
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), child})
+	sibling := newTableTestRow("s")
+	table := newTestTable(parent, sibling)
+
+	// Parent is collapsed, so only p and s are disclosed normally.
+	c.Equal(2, table.LastRowIndex()+1)
+
+	table.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "g" })
+	c.True(table.IsFiltered(), "a hierarchical filter must count as a filter")
+	c.Equal(3, table.LastRowIndex()+1, "the row that passed and the rows above it must be shown")
+	c.Equal(tid.TID("p"), table.RowFromIndex(0).ID())
+	c.Equal(tid.TID("c1"), table.RowFromIndex(1).ID())
+	c.Equal(tid.TID("g"), table.RowFromIndex(2).ID())
+	c.Equal(1, table.RootRowCount(), "only the root row above the match may be shown at the top level")
+	c.Equal(tid.TID("p"), table.RootRows()[0].ID())
+	c.True(table.IsFilterContextRow(parent), "a row shown only for the row beneath it is context")
+	c.True(table.IsFilterContextRow(child), "a row shown only for the row beneath it is context")
+	c.False(table.IsFilterContextRow(grandchild), "the row that passed is not context")
+	c.False(parent.IsOpen(), "showing the rows beneath a closed container must not open it")
+	c.False(child.IsOpen(), "showing the rows beneath a closed container must not open it")
+	c.False(table.DiscloseRow(grandchild, false), "every row shown is already disclosed")
+	c.False(parent.IsOpen(), "disclosing a row must not open the containers above it while the filter is applied")
+
+	// Removing the filter restores the original disclosed view.
+	table.ApplyHierarchicalFilter(nil)
+	c.False(table.IsFiltered())
+	c.Equal(2, table.LastRowIndex()+1)
+	c.False(table.IsFilterContextRow(parent), "no row is context once the filter is gone")
+}
+
+// TestTableApplyHierarchicalFilterShowsMatchedContainerAlone verifies that a container that passes the filter is shown
+// without the children that did not, and that a container whose children pass is shown open even when it is closed.
+func TestTableApplyHierarchicalFilterShowsMatchedContainerAlone(t *testing.T) {
+	c := check.New(t)
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), newTableTestRow("c1")})
+	parent.SetOpen(true)
+	table := newTestTable(parent, newTableTestRow("s"))
+	c.Equal(4, table.LastRowIndex()+1)
+
+	table.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "p" })
+	c.Equal(1, table.LastRowIndex()+1, "the children that did not pass must not be shown beneath the matched container")
+	c.Equal(tid.TID("p"), table.RowFromIndex(0).ID())
+	c.False(table.IsFilterContextRow(parent), "the container passed, so it is not context")
+	c.True(parent.IsOpen(), "the filter must leave the container's own open state alone")
+
+	table.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "c0" })
+	c.Equal(2, table.LastRowIndex()+1)
+	c.Equal(tid.TID("p"), table.RowFromIndex(0).ID())
+	c.Equal(tid.TID("c0"), table.RowFromIndex(1).ID())
+	c.True(table.IsFilterContextRow(parent))
+
+	table.ApplyHierarchicalFilter(func(_ *tableTestRow) bool { return true })
+	c.True(table.IsFiltered(), "a filter that nothing passes is still a filter")
+	c.Equal(0, table.LastRowIndex()+1, "nothing passed, so nothing may be shown")
+	c.Equal(0, table.RootRowCount())
+}
+
+// TestTableFilterKindsReplaceEachOther verifies that applying a filter of one kind over one of the other kind replaces
+// it outright, so that the flat and hierarchical presentations never mix.
+func TestTableFilterKindsReplaceEachOther(t *testing.T) {
+	c := check.New(t)
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), newTableTestRow("c1")})
+	table := newTestTable(parent, newTableTestRow("s"))
+	keepC1 := func(row *tableTestRow) bool { return row.ID() != "c1" }
+
+	table.ApplyHierarchicalFilter(keepC1)
+	c.Equal(2, table.LastRowIndex()+1)
+	table.ApplyFilter(keepC1)
+	c.True(table.IsFiltered())
+	c.Equal(1, table.LastRowIndex()+1, "the flat filter must show just the row that passed")
+	c.Equal(tid.TID("c1"), table.RowFromIndex(0).ID())
+	c.Equal(1, table.RootRowCount(), "the flat filter's root rows are the rows that passed")
+	c.False(table.IsFilterContextRow(parent), "a flat filter has no context rows")
+
+	table.ApplyHierarchicalFilter(keepC1)
+	c.Equal(2, table.LastRowIndex()+1, "the hierarchical filter must show the row above the one that passed again")
+	c.Equal(tid.TID("p"), table.RowFromIndex(0).ID())
+	c.True(table.IsFilterContextRow(parent))
+
+	// ApplyFilter(nil) removes a hierarchical filter as well.
+	table.ApplyFilter(nil)
+	c.False(table.IsFiltered())
+	c.Equal(2, table.LastRowIndex()+1)
+	c.Equal(tid.TID("s"), table.RowFromIndex(1).ID())
+}
+
+// TestTableSetRootRowsClearsHierarchicalFilter verifies that replacing the root rows drops a hierarchical filter the
+// way it drops a flat one.
+func TestTableSetRootRowsClearsHierarchicalFilter(t *testing.T) {
+	c := check.New(t)
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0")})
+	table := newTestTable(parent)
+	table.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "c0" })
+	c.True(table.IsFiltered())
+
+	table.SetRootRows(flatRows(3))
+	c.False(table.IsFiltered())
+	c.Equal(3, table.LastRowIndex()+1)
+	c.False(table.IsFilterContextRow(parent))
+}

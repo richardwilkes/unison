@@ -235,18 +235,9 @@ func (d *TableDrop[T, U]) DropCallback(di drag.Info, where geom.Point, mods mod.
 				parent.SetChildren(list)
 			}
 		}
-		if data.Table.filteredRows != nil {
-			// Remove the moved rows and their descendants from the source table's filtered view, since they are no
-			// longer part of its model.
-			data.Table.filteredRows = slices.DeleteFunc(slices.Clone(data.Table.filteredRows), func(row T) bool {
-				for _, r := range rows {
-					if RowContainsRow(r, row) {
-						return true
-					}
-				}
-				return false
-			})
-		}
+		// Remove the moved rows and their descendants from the source table's filtered view, if it has one, since they
+		// are no longer part of its model.
+		data.Table.removeRowsFromFilter(rows)
 		data.Table.ClearSelection()
 		data.Table.SyncToModel()
 

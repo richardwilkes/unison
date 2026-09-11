@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -117,4 +118,33 @@ func TestTableHeaderColumnWithOnlyMinimumIsResizable(t *testing.T) {
 	pinnedHeader.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
 	c.Equal(float32(100), pinned.Columns[0].Current)
 	pinnedHeader.DefaultMouseUp(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+}
+
+// TestTableHeaderSortsHierarchicalFilterInPlace verifies that a sort applied while a hierarchical filter is in force
+// orders the rows the filter shows, at every level, without reordering the model behind them.
+func TestTableHeaderSortsHierarchicalFilterInPlace(t *testing.T) {
+	c := check.New(t)
+	c1 := newTableTestRow("c1")
+	c0 := newTableTestRow("c0")
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{c1, c0})
+	a := newTableTestRow("a")
+	table := newTestTable(parent, a)
+	table.Columns = append(table.Columns, unison.ColumnInfo{ID: 0, Current: 100})
+	colHeader := newTestColumnHeader()
+	colHeader.SetSortState(unison.SortState{Order: 0, Ascending: true, Sortable: true})
+	header := unison.NewTableHeader(table, unison.TableColumnHeader[*tableTestRow](colHeader))
+	c.True(header.HasSort())
+
+	table.ApplyHierarchicalFilter(func(_ *tableTestRow) bool { return false })
+	c.Equal(4, table.LastRowIndex()+1)
+	c.Equal(tid.TID("a"), table.RowFromIndex(0).ID(), "the root rows must be sorted")
+	c.Equal(tid.TID("p"), table.RowFromIndex(1).ID())
+	c.Equal(tid.TID("c0"), table.RowFromIndex(2).ID(), "the children the filter kept must be sorted too")
+	c.Equal(tid.TID("c1"), table.RowFromIndex(3).ID())
+
+	c.Equal(tid.TID("p"), table.Model.RootRows()[0].ID(), "the model's order must be left alone")
+	c.Equal(tid.TID("a"), table.Model.RootRows()[1].ID())
+	c.Equal(tid.TID("c1"), parent.Children()[0].ID(), "the model's children must be left alone")
+	c.Equal(tid.TID("c0"), parent.Children()[1].ID())
 }

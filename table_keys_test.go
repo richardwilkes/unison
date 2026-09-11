@@ -94,3 +94,30 @@ func TestTableDisclosureKeysIgnoreUnrecognizedModifiers(t *testing.T) {
 		"Left with the command modifier must be reported as unhandled")
 	c.True(outer.IsOpen() && inner.IsOpen(), "Left with the command modifier must not close anything")
 }
+
+// TestTableDisclosureKeysAreInertUnderHierarchicalFilter verifies that the left and right arrows leave the open states
+// alone while a hierarchical filter is applied, since the filter shows every container it kept as open regardless.
+func TestTableDisclosureKeysAreInertUnderHierarchicalFilter(t *testing.T) {
+	c := check.New(t)
+	inner := newTableTestRow("inner")
+	inner.SetChildren([]*tableTestRow{newTableTestRow("leaf")})
+	outer := newTableTestRow("outer")
+	outer.SetChildren([]*tableTestRow{inner})
+	table := newTestTable(outer)
+	table.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "leaf" })
+	c.Equal(3, table.LastRowIndex()+1, "the leaf and the containers above it must be shown")
+	table.SelectByIndex(0)
+
+	c.True(table.DefaultKeyDown(unison.KeyRight, 0, false), "Right is still handled")
+	c.False(outer.IsOpen(), "Right must not open the container while the filter is applied")
+	c.True(table.DefaultKeyDown(unison.KeyRight, mod.Option, false), "an option-modified Right is still handled")
+	c.False(outer.IsOpen() || inner.IsOpen(), "an option-modified Right must not open anything either")
+	outer.SetOpen(true)
+	c.True(table.DefaultKeyDown(unison.KeyLeft, 0, false), "Left is still handled")
+	c.True(outer.IsOpen(), "Left must not close the container while the filter is applied")
+	c.Equal(3, table.LastRowIndex()+1, "the view must be unchanged throughout")
+
+	table.ApplyFilter(nil)
+	c.True(table.DefaultKeyDown(unison.KeyLeft, 0, false))
+	c.False(outer.IsOpen(), "Left must close the container again once the filter is gone")
+}

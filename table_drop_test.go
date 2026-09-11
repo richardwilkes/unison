@@ -230,3 +230,40 @@ func TestTableDropOntoSiblingStillMoves(t *testing.T) {
 	c.Equal(tid.TID("p"), roots[1].ID())
 	c.Equal(2, len(parent.Children()))
 }
+
+// TestTableMoveOutOfHierarchicallyFilteredSource verifies that a row dragged out of a table showing a hierarchical
+// filter leaves the source model's hierarchy alone and disappears from the filtered view, along with any row that was
+// only shown for its sake.
+func TestTableMoveOutOfHierarchicallyFilteredSource(t *testing.T) {
+	c := check.New(t)
+	child := newTableTestRow("c1")
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), child})
+	sibling := newTableTestRow("s")
+	src := newTestTable(parent, sibling)
+	src.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "c1" && row.ID() != "s" })
+	c.True(src.IsFiltered())
+	c.Equal(3, src.LastRowIndex()+1, "the view is [p c1 s], with p shown for c1's sake")
+
+	dst := newTestTable(newTableTestRow("d0"))
+	installMoveDropSupport(t, dst, src, child)
+	di := &fakeDragInfo{dataType: tableDropDataType().UTI}
+
+	// Drop at the bottom edge of the destination, appending "c1" to its root rows.
+	c.True(dst.DropCallback(di, geom.NewPoint(10, 299), 0))
+	got := dst.RootRows()
+	c.Equal(2, len(got))
+	c.Equal(tid.TID("d0"), got[0].ID())
+	c.Equal(tid.TID("c1"), got[1].ID())
+
+	// The source model keeps its hierarchy, less the moved row.
+	c.Equal(2, src.Model.RootRowCount())
+	c.Equal(1, len(parent.Children()))
+	c.Equal(tid.TID("c0"), parent.Children()[0].ID())
+
+	// The still-filtered source view no longer shows the moved row, nor the container that was only shown for it.
+	c.True(src.IsFiltered())
+	c.Equal(1, src.LastRowIndex()+1)
+	c.Equal(tid.TID("s"), src.RowFromIndex(0).ID())
+	c.Equal(1, src.RootRowCount())
+}
