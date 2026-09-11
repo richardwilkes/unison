@@ -485,7 +485,8 @@ func (p *Panel) SetFocusable(focusable bool) {
 
 // Focused returns true if this panel has the keyboard focus.
 func (p *Panel) Focused() bool {
-	return p.Is(p.Window().CurrentFocus())
+	wnd := p.Window()
+	return wnd != nil && wnd.Focused() && p.Is(wnd.CurrentFocus())
 }
 
 // RequestFocus attempts to make this panel the keyboard focus.
